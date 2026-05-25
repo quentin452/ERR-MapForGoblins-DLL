@@ -6,7 +6,9 @@
     "stone":      {"bg_char": 1000, "bg_scale": 0.62939453, "bg_tx": -770, "bg_ty": -770, "bg_alpha": 205, "icon_char": 1004, "icon_scale": 0.18299866, "icon_tx": -232, "icon_ty": -217},
     "crafting":   {"bg_char": 1000, "bg_scale": 0.62939453, "bg_tx": -770, "bg_ty": -770, "bg_alpha": 205, "icon_char": 1015, "icon_scale": 0.18299866, "icon_tx": -232, "icon_ty": -262},
     "seed":       {"bg_char": 1000, "bg_scale": 0.62939453, "bg_tx": -770, "bg_ty": -770, "bg_alpha": 205, "icon_char": 1003, "icon_scale": 0.18299866, "icon_tx": -292, "icon_ty": -292},
-    "piece":      {"single": true, "icon_char": 21, "icon_scale": 0.5, "icon_tx": -210, "icon_ty": -298}
+    "piece":      {"single": true, "icon_char": 21, "icon_scale": 0.5, "icon_tx": -210, "icon_ty": -298},
+    "seal":       {"single": true, "icon_char": 162,  "icon_scale": 0.22, "icon_tx": -362, "icon_ty": -360, "icon_alpha": 150},
+    "hawk":       {"single": true, "icon_char": 1023, "icon_scale": 0.25, "icon_tx": -400, "icon_ty": -400, "icon_alpha": 205}
   },
   "icons": [
     {"iconId": 408, "family": "consumable", "r": 120, "g": 60,  "b": -30, "category": "Loot - Greases"},
@@ -38,6 +40,8 @@
     {"iconId": 434, "family": "stone", "r": 130, "g": 100, "b": -30, "category": "Loot - Smithing Stones (Rare)"},
     {"iconId": 435, "family": "crafting", "r": 60,  "g": 30,  "b": 100, "category": "Loot - Gloveworts"},
     {"iconId": 436, "family": "crafting", "r": 100, "g": 20,  "b": 130, "category": "Loot - Great Gloveworts"},
-    {"iconId": 437, "family": "seed", "r": 130, "g": 60,  "b": 50,  "category": "Loot - Rada Fruit"}
+    {"iconId": 437, "family": "seed", "r": 130, "g": 60,  "b": 50,  "category": "Loot - Rada Fruit"},
+    {"iconId": 438, "family": "seal", "r": -25, "g": 25,  "b": 60,  "category": "World - Seal Puzzles"},
+    {"iconId": 439, "family": "hawk", "r": 0,   "g": 0,   "b": 0,   "category": "World - Spiritspring Hawks"}
   ]
 }

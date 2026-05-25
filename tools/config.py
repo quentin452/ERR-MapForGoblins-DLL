@@ -25,6 +25,7 @@ OO2CORE_DLL = None  # resolved from GAME_DIR below
 ERR_MOD_DIR = None
 GAME_DIR = None
 SMITHBOX_DIR = None
+DARKSCRIPT_RESOURCES = None  # path to <DarkScript3>/Resources/ (optional)
 
 _config_path = TOOLS_DIR / "config.ini"
 
@@ -43,6 +44,10 @@ if _config_path.exists():
     _sb = _cfg.get("paths", "smithbox_dir", fallback="").strip()
     if _sb:
         SMITHBOX_DIR = Path(_sb)
+
+    _ds = _cfg.get("paths", "darkscript_resources", fallback="").strip()
+    if _ds:
+        DARKSCRIPT_RESOURCES = Path(_ds)
 
 if GAME_DIR:
     OO2CORE_DLL = GAME_DIR / "oo2core_6_win64.dll"

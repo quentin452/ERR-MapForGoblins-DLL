@@ -20,7 +20,9 @@ asm = Assembly.LoadFrom(str(config.SOULSFORMATS_DLL))
 clr.AddReference(str(config.SOULSFORMATS_DLL))
 import SoulsFormats
 
-from massedit_common import OUT_DIR, UNDERGROUND_AREAS, DLC_AREAS, OVERWORLD_AREAS, resolve_location_id
+from massedit_common import (OUT_DIR, UNDERGROUND_AREAS, DLC_AREAS, OVERWORLD_AREAS,
+                             resolve_location_id, resolve_location_id_at)
+from unreachable import is_unreachable_in_err
 
 ERR_MOD_DIR = config.require_err_mod_dir()
 _str_type = SysType.GetType('System.String')
@@ -68,6 +70,8 @@ def main():
             continue
 
         for p in msb.Parts.Assets:
+            if int(getattr(p, 'GameEditionDisable', 0) or 0) == 1:
+                continue  # disabled placement — engine doesn't spawn it
             eid = int(p.EntityID) if hasattr(p, 'EntityID') else 0
             if eid <= 0:
                 continue
@@ -81,6 +85,11 @@ def main():
             x = round(float(p.Position.X), 3)
             y = round(float(p.Position.Y), 3)
             z = round(float(p.Position.Z), 3)
+            # Skip seals that ERR moved DOWN below vanilla into unreachable
+            # terrain. Conditional on actual vs vanilla Y — self-disarms if
+            # a future ERR update fixes the position.
+            if is_unreachable_in_err(map_name, str(p.Name), y):
+                continue
             key = (area, eid)
             if key in seen:
                 continue
@@ -147,9 +156,9 @@ def main():
             lines.append(f'param WorldMapPointParam: id {row_id}: textId1: = 500008000;')  # Stonesword Key
         # Seal unlock flag = entity ID
         lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId1: = {s["flag"]};')
-        # Location name for dungeons (second line)
+        # Location name for dungeons (second line) — nearest-grace lookup
         map_code = f'm{area:02d}_{gx:02d}_{gz:02d}_00'
-        loc_id = resolve_location_id(map_code)
+        loc_id = resolve_location_id_at(map_code, s["x"], s.get("y", 0.0), s["z"])
         if loc_id > 0:
             lines.append(f'param WorldMapPointParam: id {row_id}: textId2: = {loc_id};')
             lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId2: = {s["flag"]};')

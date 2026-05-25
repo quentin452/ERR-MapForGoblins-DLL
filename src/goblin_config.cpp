@@ -82,6 +82,8 @@ bool goblin::config::showSpiritSprings = true;
 bool goblin::config::showSpiritspringHawks = true;
 bool goblin::config::showStakesOfMarika = true;
 bool goblin::config::showSummoningPools = true;
+bool goblin::config::showKindlingSpirits = true;
+bool goblin::config::showInteractables = true;
 
 // ERR Markers (patches to ERR-placed map markers; see goblin_config.hpp)
 bool goblin::config::patchOverworldBossIcons = true;
@@ -215,6 +217,8 @@ void goblin::load_config(const std::filesystem::path &ini_path)
         load_line(cfg, "show_spiritspring_hawks", config::showSpiritspringHawks);
         load_line(cfg, "show_stakes_of_marika", config::showStakesOfMarika);
         load_line(cfg, "show_summoning_pools", config::showSummoningPools);
+        load_line(cfg, "show_kindling_spirits", config::showKindlingSpirits);
+        load_line(cfg, "show_interactables", config::showInteractables);
     }
 
     if (ini.has("ERR Markers"))

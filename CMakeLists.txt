@@ -3,10 +3,12 @@ cmake_minimum_required(VERSION 3.28.1)
 set(CMAKE_GENERATOR_PLATFORM x64)
 
 project( MapForGoblins
-  VERSION   "1.0.10"
+  VERSION   "1.0.13"
   LANGUAGES CXX)
 
-set(VERSION_PRE "pre")  # set to "" for release builds
+if(NOT DEFINED VERSION_PRE)
+  set(VERSION_PRE "pre")  # default for dev/snapshot; build.bat release passes -DVERSION_PRE=""
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
@@ -67,6 +69,8 @@ add_library( MapForGoblins SHARED
   src/goblin_collected.cpp
   src/goblin_inject.hpp
   src/goblin_inject.cpp
+  src/goblin_kindling.hpp
+  src/goblin_kindling.cpp
   src/goblin_logic.hpp
   src/goblin_logic.cpp
   src/goblin_markers.hpp

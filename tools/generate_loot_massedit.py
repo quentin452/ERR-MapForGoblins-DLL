@@ -14,7 +14,7 @@ from collections import defaultdict, Counter
 
 from massedit_common import (DATA_DIR, OUT_DIR, UNDERGROUND_AREAS, DLC_AREAS,
                              OVERWORLD_AREAS, VALID_LOCATION_IDS, resolve_location_id,
-                             get_disp_mask)
+                             resolve_location_id_at, get_disp_mask)
 DB_PATH = DATA_DIR / 'items_database.json'
 
 # Goods sortGroupId lookup (goodsType=0 items only) for consumable filtering
@@ -266,10 +266,13 @@ LOOT_CATEGORIES = {
         'startId': 4200000,
     },
     'Equipment - Spirits': {
-        # Spirit Ashes — goods IDs 300000-399999
-        # Exclude Lhutel (358000) — ERR EMEVD placeholder with shared flag 520000
+        # Spirit Ashes — goods IDs 300000-399999.
+        # (The Lhutel id=358000 exclusion that previously lived here was a
+        # workaround for phantom emevd records produced by templates
+        # 90005200/90005210; those templates are no longer in
+        # extract_all_items.py::TEMPLATE_EVENTS, so the workaround is moot.)
         'filter': lambda items: any(
-            i['category'] == 1 and 300000 <= i['id'] <= 399999 and i['id'] != 358000
+            i['category'] == 1 and 300000 <= i['id'] <= 399999
             for i in items
         ),
         'iconId': 383,
@@ -547,6 +550,17 @@ def load_enemy_names():
 ENEMY_NAMES = load_enemy_names()
 
 
+def load_npc_name_ids():
+    """NpcParam ID -> NpcName FMG id for named NPCs (Millicent, Vyke...)."""
+    path = DATA_DIR / 'npc_name_ids.json'
+    if path.exists():
+        with open(path) as f:
+            return {int(k): int(v) for k, v in json.load(f).items()}
+    return {}
+
+NPC_NAME_IDS = load_npc_name_ids()
+
+
 def load_tutorial_ids():
     """Load set of all valid TutorialTitle main entry IDs (for variant validation)."""
     path = DATA_DIR / 'tutorial_title_ids.json'
@@ -654,27 +668,50 @@ def write_massedit(records, filepath, icon_id, start_id):
         if flag > 0:
             lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId1: = {flag};')
 
-        # textId2: dungeon/location name from PlaceName FMG (area*1000 + sub*10)
+        # Text slot order:
+        #   1 = item name (above)
+        #   2 = NPC name for named-NPC drops (Millicent, Vyke, ...) so the
+        #       second line tells the player WHO drops this. Falls back to
+        #       location subtitle when not a named-NPC drop.
+        #   3 = location subtitle (if not already used as slot 2)
+        #       OR generic enemy name (TutorialTitle: Scarab etc.)
+        enemy_model = rec.get('enemyModel', '')
+        npc_param = rec.get('npcParamId', 0)
+        npc_name_id = NPC_NAME_IDS.get(npc_param, 0)
         next_text_slot = 2
+
+        # Slot 2 — named-NPC name if available, else dungeon location.
+        if npc_name_id > 0:
+            npc_text_id = npc_name_id + 700000000  # NpcName FMG offset
+            lines.append(f'param WorldMapPointParam: id {row_id}: textId{next_text_slot}: = {npc_text_id};')
+            if flag > 0:
+                lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId{next_text_slot}: = {flag};')
+            next_text_slot += 1
+
+        # Location subtitle (for non-overworld). Becomes slot 2 for treasures
+        # and slot 3 for named-NPC drops.
         if area not in OVERWORLD_AREAS:
-            loc_id = resolve_location_id(rec.get('map', ''))
+            loc_id = resolve_location_id_at(
+                rec.get('map', ''),
+                float(rec.get('x', 0.0)),
+                float(rec.get('y', 0.0)),
+                float(rec.get('z', 0.0)),
+            )
             if loc_id > 0:
                 lines.append(f'param WorldMapPointParam: id {row_id}: textId{next_text_slot}: = {loc_id};')
                 if flag > 0:
                     lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId{next_text_slot}: = {flag};')
                 next_text_slot += 1
 
-        # Enemy name from TutorialTitle FMG (for enemy/emevd drops)
-        # Offset by 900000000 to avoid collision with GoodsName IDs
-        # Uses NpcParam to resolve variant-specific names (e.g. Ash-of-War Scarab vs Somber Scarab)
-        enemy_model = rec.get('enemyModel', '')
-        npc_param = rec.get('npcParamId', 0)
-        tutorial_id = resolve_enemy_tutorial_id(enemy_model, npc_param)
-        if tutorial_id > 0:
-            enemy_text_id = tutorial_id + 900000000
-            lines.append(f'param WorldMapPointParam: id {row_id}: textId{next_text_slot}: = {enemy_text_id};')
-            if flag > 0:
-                lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId{next_text_slot}: = {flag};')
+        # Generic enemy name via TutorialTitle (Scarab, etc.) — only when
+        # we don't have a specific named-NPC label.
+        if npc_name_id <= 0:
+            tutorial_id = resolve_enemy_tutorial_id(enemy_model, npc_param)
+            if tutorial_id > 0:
+                enemy_text_id = tutorial_id + 900000000
+                lines.append(f'param WorldMapPointParam: id {row_id}: textId{next_text_slot}: = {enemy_text_id};')
+                if flag > 0:
+                    lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId{next_text_slot}: = {flag};')
 
         lines.append(f'param WorldMapPointParam: id {row_id}: selectMinZoomStep: = 1;')
 
@@ -809,8 +846,13 @@ def main():
             # green checkmark (clearedEventFlagId) or hide killed (textDisableFlagId1)
             lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId1: = {cleared_flag};')
 
-        # textId2: location name for dungeons
-        loc_id = resolve_location_id(rec.get('map', ''))
+        # textId2: location name for dungeons — nearest-grace lookup
+        loc_id = resolve_location_id_at(
+            rec.get('map', ''),
+            float(rec.get('x', 0.0)),
+            float(rec.get('y', 0.0)),
+            float(rec.get('z', 0.0)),
+        )
         if loc_id > 0:
             lines.append(f'param WorldMapPointParam: id {row_id}: textId2: = {loc_id};')
             if cleared_flag > 0:
@@ -884,8 +926,13 @@ def main():
         if kill_flag > 0:
             lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId1: = {kill_flag};')
 
-        # Dungeon location text
-        loc_id = resolve_location_id(boss.get('map', ''))
+        # Dungeon location text — nearest-grace lookup
+        loc_id = resolve_location_id_at(
+            boss.get('map', ''),
+            float(boss.get('x', 0.0)),
+            float(boss.get('y', 0.0)),
+            float(boss.get('z', 0.0)),
+        )
         if loc_id > 0:
             lines.append(f'param WorldMapPointParam: id {row_id}: textId2: = {loc_id};')
             if kill_flag > 0:

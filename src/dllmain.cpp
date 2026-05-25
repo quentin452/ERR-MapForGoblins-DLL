@@ -13,6 +13,7 @@
 #include "goblin_collected.hpp"
 #include "goblin_config.hpp"
 #include "goblin_inject.hpp"
+#include "goblin_kindling.hpp"
 #include "goblin_logic.hpp"
 #include "goblin_markers.hpp"
 #include "goblin_messages.hpp"
@@ -27,6 +28,18 @@ static int safe_refresh_seh()
     __try
     {
         return goblin::collected::refresh();
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return 0;
+    }
+}
+
+static int safe_kindling_refresh_seh()
+{
+    __try
+    {
+        return goblin::kindling::refresh();
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
     {
@@ -52,6 +65,7 @@ static bool seh_invoke_void(InitFn fn)
 static void init_modutils()         { modutils::initialize(); }
 static void init_from_params()      { from::params::initialize(); }
 static void init_collected()        { goblin::collected::initialize(); }
+static void init_kindling()         { goblin::kindling::initialize(); }
 static void init_inject_entries()   { goblin::inject_map_entries(); }
 static void init_apply_map_logic()  { goblin::apply_map_logic(); }
 static void init_setup_messages()   { goblin::setup_messages(); }
@@ -94,6 +108,7 @@ static void setup_mod()
     std::this_thread::sleep_for(std::chrono::seconds(goblin::config::loadDelay));
 
     safe_init_step(&init_collected,       "collected::initialize");
+    safe_init_step(&init_kindling,        "kindling::initialize");
     safe_init_step(&init_inject_entries,  "inject_map_entries");
     safe_init_step(&init_apply_map_logic, "apply_map_logic");
     safe_init_step(&init_setup_messages,  "setup_messages");
@@ -138,6 +153,14 @@ static void setup_mod()
                              goblin::collected::collected_count());
                 first_read = false;
             }
+        }
+        catch (...)
+        {
+        }
+
+        try
+        {
+            safe_kindling_refresh_seh();
         }
         catch (...)
         {

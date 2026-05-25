@@ -289,9 +289,11 @@ void goblin::setup_messages()
 
     std::vector<NewEntry> new_entries;
 
+
     // Collect item IDs used as textId — need to copy from various FMGs to PlaceName
     // FmgId slots: GoodsName=10, WeaponName=11, ProtectorName=12, AccessoryName=13,
-    //              PlaceName=19, GemName=35, ArtsName=42, TutorialTitle=207
+    //              MagicName=14, NpcName=18, PlaceName=19, GemName=35, ArtsName=42,
+    //              TutorialTitle=207
     // textId encoding: real_id + category_offset
     //   100000000+id:      WeaponName (cat=2, weapons)
     //   200000000+id:      ProtectorName (cat=3, armour)
@@ -299,7 +301,13 @@ void goblin::setup_messages()
     //   400000000+id:      GemName (cat=5, ashes of war)
     //   500000000+id:      GoodsName (cat=1, goods)
     //   600000000+id:      EventTextForMap (map event text, e.g. "Closed with an imp's seal")
+    //   700000000+id:      NpcName (named-NPC and 9MMMMVVV "Characters" boss names)
+    //   800000000+id:      ActionButtonText (in-game interact prompts, e.g. "Examine statue")
     //   900000000+id:      TutorialTitle (enemy names)
+    // NpcName has two ID ranges in vanilla+ERR: small ids (Patches=130900,
+    // Garris=137600) and 9MMMMVVV "Characters" (Stray Mimic Tear=903320300).
+    // With +700M offset, small ids land in [700M..800M); the large 9MMMMVVV ids
+    // land in [1600M..1700M). Both ranges classify here.
     // Legacy (pre-offset): raw PlaceName IDs < 100M for location names
     std::set<int32_t> goods_ids_needed;      // GoodsName FMG, slot 10
     std::set<int32_t> weapon_ids_needed;     // WeaponName FMG, slot 11
@@ -307,6 +315,8 @@ void goblin::setup_messages()
     std::set<int32_t> accessory_ids_needed;  // AccessoryName FMG, slot 13
     std::set<int32_t> gem_ids_needed;        // GemName FMG, slot 14
     std::set<int32_t> event_text_ids_needed; // EventTextForMap FMG, slot 34/467
+    std::set<int32_t> npc_name_ids_needed;   // NpcName FMG, slot 18 (+ DLC 328, 428)
+    std::set<int32_t> action_btn_ids_needed; // ActionButtonText FMG, slot 32 (+ DLC 365, 465)
     std::set<int32_t> tutorial_ids_needed;   // TutorialTitle FMG, slot 207 (enemy names from ERR Codex)
     for (size_t i = 0; i < generated::MAP_ENTRY_COUNT; i++)
     {
@@ -319,8 +329,14 @@ void goblin::setup_messages()
         {
             int32_t tid = *tidp;
             if (tid <= 0) continue;
-            if (tid >= 900000000)               // TutorialTitle (enemy names)
+            if (tid >= 1600000000 && tid < 1700000000)   // NpcName "Characters" hi-range (9MMMMVVV+700M)
+                npc_name_ids_needed.insert(tid);
+            else if (tid >= 900000000)          // TutorialTitle (enemy names)
                 tutorial_ids_needed.insert(tid);
+            else if (tid >= 800000000 && tid < 900000000) // ActionButtonText (offset 800M)
+                action_btn_ids_needed.insert(tid);
+            else if (tid >= 700000000 && tid < 800000000) // NpcName low-range (small id+700M)
+                npc_name_ids_needed.insert(tid);
             else if (tid >= 600000000)          // EventTextForMap (offset 600M)
                 event_text_ids_needed.insert(tid);
             else if (tid >= 500000000)          // GoodsName (goods, offset 500M)
@@ -336,10 +352,11 @@ void goblin::setup_messages()
             // IDs < 100M are raw PlaceName IDs (location names, no copy needed)
         }
     }
-    spdlog::debug("{} Goods + {} Weapon + {} Protector + {} Accessory + {} Gem + {} EventText + {} Tutorial IDs need lookup",
+    spdlog::debug("{} Goods + {} Weapon + {} Protector + {} Accessory + {} Gem + {} EventText + {} NpcName + {} ActionBtn + {} Tutorial IDs need lookup",
                   goods_ids_needed.size(), weapon_ids_needed.size(),
                   protector_ids_needed.size(), accessory_ids_needed.size(),
                   gem_ids_needed.size(), event_text_ids_needed.size(),
+                  npc_name_ids_needed.size(), action_btn_ids_needed.size(),
                   tutorial_ids_needed.size());
 
     auto msg_repository_address = modutils::scan<from::CS::MsgRepositoryImp *>({
@@ -470,6 +487,39 @@ void goblin::setup_messages()
     if (!event_text_ids_needed.empty())
         spdlog::warn("EventTextForMap: {} IDs requested but menu FMG bank not yet supported",
                       event_text_ids_needed.size());
+
+    // Read NpcName FMG (slots 18 + DLC 328, 428): named-NPC and boss "Characters", offset 700M.
+    // We break on first successful slot — base slot 18 typically already contains
+    // merged base+DLC entries in ER's runtime FMG layout, and trying additional
+    // DLC slots can dereference invalid pointers (see GemName precedent above).
+    if (!npc_name_ids_needed.empty())
+    {
+        for (int try_slot : {18, 328, 428})
+        {
+            if (try_slot >= count2 || !sub[try_slot]) continue;
+            auto copied = copy_fmg_entries(sub[try_slot], npc_name_ids_needed, 700000000, "NpcName");
+            if (copied > 0)
+            {
+                spdlog::info("NpcName: copied {} from slot {}", copied, try_slot);
+                break;
+            }
+        }
+    }
+
+    // Read ActionButtonText FMG (slots 32 + DLC 365, 465): in-game interact
+    // prompts ("Examine statue", "Light bonfire", ...). Offset 800M.
+    // ActionButtonText lives in menu.msgbnd but MsgRepositoryImp's FMG slot
+    // array is indexed by global BND file ID — slot 32 returns the menu
+    // ActionButtonText FMG directly, no separate bank navigation needed.
+    // DLC slots merge their own entries on top (e.g. DLC2 7041 = "Examine statue").
+    // Slot 32 = ActionButtonText.fmg. ER runtime already merges DLC entries
+    // into the base FMG at this slot — we observed 7041 ("Examine statue",
+    // added in DLC02) being readable from slot 32 in-game. Don't poke DLC
+    // slots 365/465 directly: in past testing accessing those past the
+    // valid count2 range derailed downstream FMG copies (TutorialTitle
+    // never ran and PlaceName patch never committed → "?PlaceName?" text).
+    if (!action_btn_ids_needed.empty() && 32 < count2 && sub[32])
+        copy_fmg_entries(sub[32], action_btn_ids_needed, 800000000, "ActionButtonText");
 
     // Read TutorialTitle FMG (slot 207) for ERR Codex enemy names
     // textId in MASSEDIT = real TutorialTitle ID + 900000000 (to avoid collision with GoodsName)

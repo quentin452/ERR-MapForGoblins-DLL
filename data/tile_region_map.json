@@ -1,0 +1,7256 @@
+{
+  "m10_00_00": {
+    "subCategoryId": 10000,
+    "tabId": 10000,
+    "subRegion": "Stormveil Castle",
+    "majorRegion": "Stormveil Castle",
+    "graceCount": 10,
+    "dominance": 0.7,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m10_01_00": {
+    "subCategoryId": 10010,
+    "tabId": 10000,
+    "subRegion": "Chapel of Anticipation",
+    "majorRegion": "Stormveil Castle",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m11_00_00": {
+    "subCategoryId": 11000,
+    "tabId": 11000,
+    "subRegion": "Leyndell, Royal Capital",
+    "majorRegion": "Leyndell, Royal Capital",
+    "graceCount": 9,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m11_05_00": {
+    "subCategoryId": 11050,
+    "tabId": 11000,
+    "subRegion": "Leyndell, Ashen Capital",
+    "majorRegion": "Leyndell, Royal Capital",
+    "graceCount": 6,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m11_10_00": {
+    "subCategoryId": 11100,
+    "tabId": 11100,
+    "subRegion": "Roundtable Hold",
+    "majorRegion": "Roundtable Hold",
+    "graceCount": 3,
+    "dominance": 0.667,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m12_01_00": {
+    "subCategoryId": 12012,
+    "tabId": 12000,
+    "subRegion": "Ainsel River",
+    "majorRegion": null,
+    "graceCount": 10,
+    "dominance": 0.4,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m12_02_00": {
+    "subCategoryId": 12020,
+    "tabId": 12001,
+    "subRegion": "Nokron, Eternal City",
+    "majorRegion": null,
+    "graceCount": 8,
+    "dominance": 0.625,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m12_03_00": {
+    "subCategoryId": 12030,
+    "tabId": 12002,
+    "subRegion": "Deeproot Depths",
+    "majorRegion": null,
+    "graceCount": 6,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m12_04_00": {
+    "subCategoryId": 12011,
+    "tabId": 12000,
+    "subRegion": "Lake of Rot",
+    "majorRegion": null,
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m12_05_00": {
+    "subCategoryId": 12050,
+    "tabId": 12001,
+    "subRegion": "Mohgwyn Palace",
+    "majorRegion": null,
+    "graceCount": 4,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m12_06_00": {
+    "subCategoryId": 0,
+    "tabId": null,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m12_07_00": {
+    "subCategoryId": 12070,
+    "tabId": 12001,
+    "subRegion": "Siofra River",
+    "majorRegion": null,
+    "graceCount": 2,
+    "dominance": 0.5,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m13_00_00": {
+    "subCategoryId": 13000,
+    "tabId": 13000,
+    "subRegion": "Crumbling Farum Azula",
+    "majorRegion": "Crumbling Farum Azula",
+    "graceCount": 12,
+    "dominance": 0.917,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m14_00_00": {
+    "subCategoryId": 14000,
+    "tabId": 14000,
+    "subRegion": "Academy of Raya Lucaria",
+    "majorRegion": "Academy of Raya Lucaria",
+    "graceCount": 4,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m15_00_00": {
+    "subCategoryId": 15000,
+    "tabId": 15000,
+    "subRegion": "Elphael, Brace of the Haligtree",
+    "majorRegion": "Elphael, Brace of the Haligtree",
+    "graceCount": 9,
+    "dominance": 0.556,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m16_00_00": {
+    "subCategoryId": 16000,
+    "tabId": 16000,
+    "subRegion": "Volcano Manor",
+    "majorRegion": "Volcano Manor",
+    "graceCount": 8,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m18_00_00": {
+    "subCategoryId": 18000,
+    "tabId": 61000,
+    "subRegion": "Stranded Graveyard",
+    "majorRegion": "Limgrave",
+    "graceCount": 3,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m19_00_00": {
+    "subCategoryId": 19000,
+    "tabId": 11000,
+    "subRegion": "Stone Platform",
+    "majorRegion": "Leyndell, Royal Capital",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m20_00_00": {
+    "subCategoryId": 20000,
+    "tabId": 20000,
+    "subRegion": "Belurat, Tower Settlement",
+    "majorRegion": "Belurat, Tower Settlement",
+    "graceCount": 4,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m20_01_00": {
+    "subCategoryId": 20010,
+    "tabId": 20000,
+    "subRegion": "Enir-Ilim",
+    "majorRegion": "Belurat, Tower Settlement",
+    "graceCount": 6,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m21_00_00": {
+    "subCategoryId": 21000,
+    "tabId": 21000,
+    "subRegion": "Shadow Keep",
+    "majorRegion": "Shadow Keep",
+    "graceCount": 6,
+    "dominance": 0.667,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m21_01_00": {
+    "subCategoryId": 21010,
+    "tabId": 21000,
+    "subRegion": "Specimen Storehouse",
+    "majorRegion": "Shadow Keep",
+    "graceCount": 7,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m21_02_00": {
+    "subCategoryId": 21010,
+    "tabId": 21000,
+    "subRegion": "Specimen Storehouse",
+    "majorRegion": "Shadow Keep",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m22_00_00": {
+    "subCategoryId": 22000,
+    "tabId": 6830,
+    "subRegion": "Stone Coffin Fissure",
+    "majorRegion": null,
+    "graceCount": 5,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m25_00_00": {
+    "subCategoryId": 25000,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m28_00_00": {
+    "subCategoryId": 28000,
+    "tabId": 6860,
+    "subRegion": "Midra's Manse",
+    "majorRegion": null,
+    "graceCount": 4,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_00_00": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_01_00": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_02_00": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_03_00": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_04_00": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_05_00": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_06_00": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_07_00": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_08_00": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_09_00": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_10_00": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_11_00": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_12_00": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_13_00": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_14_00": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_15_00": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_16_00": {
+    "subCategoryId": 64004,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_50_53": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 2,
+    "dominance": 0.5,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_50_55": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m30_20_00": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_43_37": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 3,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_01_00": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_42_33": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_03_00": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_04_00": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_05_00": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_06_00": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 2,
+    "dominance": 0.5,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_07_00": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_08_00": {
+    "subCategoryId": 16000,
+    "tabId": 16000,
+    "subRegion": "Volcano Manor",
+    "majorRegion": "Volcano Manor",
+    "graceCount": 3,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_09_00": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_10_00": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_11_00": {
+    "subCategoryId": 64005,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_12_00": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_15_00": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_17_00": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_18_00": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_19_00": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_20_00": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m31_21_00": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_53_56": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m32_00_00": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_37_47": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_38_53": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m32_05_00": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_46_39": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m32_07_00": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m32_08_00": {
+    "subCategoryId": 64005,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_47_55": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m32_90_00": {
+    "subCategoryId": 11101,
+    "tabId": 11100,
+    "subRegion": "Gilded Court",
+    "majorRegion": "Roundtable Hold",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m33_00_00": {
+    "subCategoryId": 11103,
+    "tabId": 0,
+    "subRegion": "Knight's Study",
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m34_10_00": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 2,
+    "dominance": 0.5,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m34_11_00": {
+    "subCategoryId": 62004,
+    "tabId": 62000,
+    "subRegion": null,
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 3,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m34_12_00": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_43_50": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m34_13_00": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m34_14_00": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m34_15_00": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m35_00_00": {
+    "subCategoryId": 35000,
+    "tabId": 11000,
+    "subRegion": "Subterranean Shunning-Grounds",
+    "majorRegion": "Leyndell, Royal Capital",
+    "graceCount": 5,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m39_20_00": {
+    "subCategoryId": 39200,
+    "tabId": 62000,
+    "subRegion": "Ruin-Strewn Precipice",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 3,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m40_00_00": {
+    "subCategoryId": 6880,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m40_01_00": {
+    "subCategoryId": 6950,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m40_02_00": {
+    "subCategoryId": 6910,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m41_00_00": {
+    "subCategoryId": 6870,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m41_01_00": {
+    "subCategoryId": 6900,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m41_02_00": {
+    "subCategoryId": 6840,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m42_00_00": {
+    "subCategoryId": 6880,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m42_01_00": {
+    "subCategoryId": 6880,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m42_02_00": {
+    "subCategoryId": 6900,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m42_03_00": {
+    "subCategoryId": 6950,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m43_00_00": {
+    "subCategoryId": 6810,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m43_01_00": {
+    "subCategoryId": 6880,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 2,
+    "dominance": 0.5,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m45_00_00": {
+    "subCategoryId": 11103,
+    "tabId": 0,
+    "subRegion": "Knight's Study",
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_41_32": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_41_33": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_41_35": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_41_38": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_42_36": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_42_37": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_42_38": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_42_40": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_43_30": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_43_31": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 3,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_43_34": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_43_35": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_43_38": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_43_39": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_44_33": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 3,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_44_34": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_44_35": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_44_36": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_44_37": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_44_38": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_44_39": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_45_33": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_45_36": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_45_41": {
+    "subCategoryId": 6870,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_45_42": {
+    "subCategoryId": 6870,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_46_38": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_46_40": {
+    "subCategoryId": 6800,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_46_42": {
+    "subCategoryId": 6870,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_46_44": {
+    "subCategoryId": 6870,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_47_41": {
+    "subCategoryId": 6800,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 2,
+    "dominance": 0.5,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_47_43": {
+    "subCategoryId": 6810,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_47_44": {
+    "subCategoryId": 6880,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 2,
+    "dominance": 0.5,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_48_42": {
+    "subCategoryId": 6880,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_48_43": {
+    "subCategoryId": 6880,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 2,
+    "dominance": 0.5,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_48_44": {
+    "subCategoryId": 6820,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_33_40": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_33_44": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_33_46": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_33_47": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_34_41": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_34_42": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_34_43": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_34_44": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_34_46": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_34_47": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_34_48": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_34_49": {
+    "subCategoryId": 62003,
+    "tabId": 62000,
+    "subRegion": null,
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_34_50": {
+    "subCategoryId": 62003,
+    "tabId": 62000,
+    "subRegion": null,
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_35_42": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_35_43": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_35_45": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_35_46": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_35_47": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_35_50": {
+    "subCategoryId": 62003,
+    "tabId": 62000,
+    "subRegion": null,
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 4,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_36_41": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_36_43": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_36_45": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_36_48": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_36_49": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 2,
+    "dominance": 0.5,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_36_50": {
+    "subCategoryId": 62003,
+    "tabId": 62000,
+    "subRegion": null,
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_37_42": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_37_44": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_37_46": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_37_48": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_37_49": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_38_40": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_38_41": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_38_43": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_38_45": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_38_46": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_38_47": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_38_48": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_38_50": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 3,
+    "dominance": 0.333,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_39_40": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_39_41": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_39_42": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_39_44": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_35_53": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_36_52": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_36_54": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_37_51": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_37_52": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_37_53": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_38_51": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_38_54": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_39_51": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_39_53": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_39_54": {
+    "subCategoryId": 63004,
+    "tabId": 63000,
+    "subRegion": null,
+    "majorRegion": "Altus Plateau",
+    "graceCount": 3,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_40_52": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_40_53": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_40_54": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_41_52": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_41_54": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_42_51": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_42_55": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_43_53": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_44_52": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_45_52": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_46_40": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_47_39": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_47_40": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_48_36": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_48_37": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_48_38": {
+    "subCategoryId": 64002,
+    "tabId": 64000,
+    "subRegion": "Swamp of Aeonia",
+    "majorRegion": "Caelid",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_48_39": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_48_40": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 2,
+    "dominance": 0.5,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_48_41": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_49_37": {
+    "subCategoryId": 64002,
+    "tabId": 64000,
+    "subRegion": "Swamp of Aeonia",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_49_38": {
+    "subCategoryId": 64002,
+    "tabId": 64000,
+    "subRegion": "Swamp of Aeonia",
+    "majorRegion": "Caelid",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_49_39": {
+    "subCategoryId": 64005,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 3,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_50_36": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_50_38": {
+    "subCategoryId": 64005,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_50_40": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_51_35": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_51_36": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_51_39": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_51_43": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_52_38": {
+    "subCategoryId": 64004,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_52_41": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_52_42": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_47_51": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_47_58": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_48_57": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_49_53": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 2,
+    "dominance": 0.5,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_49_54": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_49_55": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_51_56": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_51_53": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_51_57": {
+    "subCategoryId": 65003,
+    "tabId": 65000,
+    "subRegion": null,
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 4,
+    "dominance": 0.75,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_52_53": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_52_54": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_52_56": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_52_57": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_53_52": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_54_53": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_54_55": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_46_39": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_47_35": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_47_36": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_48_37": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_48_39": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 2,
+    "dominance": 0.5,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_49_39": {
+    "subCategoryId": 6851,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_50_38": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_50_42": {
+    "subCategoryId": 6860,
+    "tabId": 6860,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_51_42": {
+    "subCategoryId": 6860,
+    "tabId": 6860,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_52_40": {
+    "subCategoryId": 6851,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_52_43": {
+    "subCategoryId": 6860,
+    "tabId": 6860,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_53_39": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_53_41": {
+    "subCategoryId": 6860,
+    "tabId": 6860,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_54_39": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_55_39": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_44_45": {
+    "subCategoryId": 6940,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_44_46": {
+    "subCategoryId": 6940,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_45_45": {
+    "subCategoryId": 6940,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_45_46": {
+    "subCategoryId": 6950,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_45_47": {
+    "subCategoryId": 6950,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_46_47": {
+    "subCategoryId": 6940,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_47_45": {
+    "subCategoryId": 6900,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_47_47": {
+    "subCategoryId": 6940,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_48_45": {
+    "subCategoryId": 6900,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_48_47": {
+    "subCategoryId": 6950,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_49_43": {
+    "subCategoryId": 6900,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 3,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_49_44": {
+    "subCategoryId": 6900,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 2,
+    "dominance": 0.5,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_49_47": {
+    "subCategoryId": 6910,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_49_48": {
+    "subCategoryId": 6920,
+    "tabId": 21000,
+    "subRegion": null,
+    "majorRegion": "Shadow Keep",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_50_43": {
+    "subCategoryId": 6900,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_50_44": {
+    "subCategoryId": 6910,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_50_45": {
+    "subCategoryId": 6910,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_50_48": {
+    "subCategoryId": 6930,
+    "tabId": 21000,
+    "subRegion": null,
+    "majorRegion": "Shadow Keep",
+    "graceCount": 2,
+    "dominance": 0.5,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_51_44": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_51_45": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_51_47": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 1,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m61_51_48": {
+    "subCategoryId": 6930,
+    "tabId": 21000,
+    "subRegion": null,
+    "majorRegion": "Shadow Keep",
+    "graceCount": 2,
+    "dominance": 1.0,
+    "source": "BonfireWarpParam (authoritative)"
+  },
+  "m60_33_36": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_33_40 (manhattan d=4)"
+  },
+  "m60_33_37": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_33_40 (manhattan d=3)"
+  },
+  "m60_33_38": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_33_40 (manhattan d=2)"
+  },
+  "m60_33_39": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_33_40 (manhattan d=1)"
+  },
+  "m60_33_41": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_33_40 (manhattan d=1)"
+  },
+  "m60_33_42": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_34_42 (manhattan d=1)"
+  },
+  "m60_33_43": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_33_44 (manhattan d=1)"
+  },
+  "m60_33_45": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_33_44 (manhattan d=1)"
+  },
+  "m60_33_48": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_33_47 (manhattan d=1)"
+  },
+  "m60_33_49": {
+    "subCategoryId": 62003,
+    "tabId": 62000,
+    "subRegion": null,
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_34_49 (manhattan d=1)"
+  },
+  "m60_33_50": {
+    "subCategoryId": 62003,
+    "tabId": 62000,
+    "subRegion": null,
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_34_50 (manhattan d=1)"
+  },
+  "m60_33_51": {
+    "subCategoryId": 62003,
+    "tabId": 62000,
+    "subRegion": null,
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_34_50 (manhattan d=2)"
+  },
+  "m60_33_52": {
+    "subCategoryId": 62003,
+    "tabId": 62000,
+    "subRegion": null,
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_34_50 (manhattan d=3)"
+  },
+  "m60_33_53": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_35_53 (manhattan d=2)"
+  },
+  "m60_33_54": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=3)"
+  },
+  "m60_33_55": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=4)"
+  },
+  "m60_34_37": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_33_40 (manhattan d=4)"
+  },
+  "m60_34_38": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_33_40 (manhattan d=3)"
+  },
+  "m60_34_39": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_33_40 (manhattan d=2)"
+  },
+  "m60_34_40": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_33_40 (manhattan d=1)"
+  },
+  "m60_34_45": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_34_46 (manhattan d=1)"
+  },
+  "m60_34_51": {
+    "subCategoryId": 62003,
+    "tabId": 62000,
+    "subRegion": null,
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_34_50 (manhattan d=1)"
+  },
+  "m60_34_52": {
+    "subCategoryId": 62003,
+    "tabId": 62000,
+    "subRegion": null,
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_34_50 (manhattan d=2)"
+  },
+  "m60_34_53": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_35_53 (manhattan d=1)"
+  },
+  "m60_34_54": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=2)"
+  },
+  "m60_34_55": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=3)"
+  },
+  "m60_34_56": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=4)"
+  },
+  "m60_35_38": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_35_42 (manhattan d=4)"
+  },
+  "m60_35_39": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_35_42 (manhattan d=3)"
+  },
+  "m60_35_40": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_35_42 (manhattan d=2)"
+  },
+  "m60_35_41": {
+    "subCategoryId": 62002,
+    "tabId": 62000,
+    "subRegion": "Moonlight Altar",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_35_42 (manhattan d=1)"
+  },
+  "m60_35_44": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_35_43 (manhattan d=1)"
+  },
+  "m60_35_48": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_48 (manhattan d=1)"
+  },
+  "m60_35_49": {
+    "subCategoryId": 62003,
+    "tabId": 62000,
+    "subRegion": null,
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_35_50 (manhattan d=1)"
+  },
+  "m60_35_51": {
+    "subCategoryId": 62003,
+    "tabId": 62000,
+    "subRegion": null,
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_35_50 (manhattan d=1)"
+  },
+  "m60_35_52": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_52 (manhattan d=1)"
+  },
+  "m60_35_54": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=1)"
+  },
+  "m60_35_55": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=2)"
+  },
+  "m60_35_56": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=3)"
+  },
+  "m60_35_57": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=4)"
+  },
+  "m60_36_37": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_41 (manhattan d=4)"
+  },
+  "m60_36_38": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_41 (manhattan d=3)"
+  },
+  "m60_36_39": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_41 (manhattan d=2)"
+  },
+  "m60_36_40": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_41 (manhattan d=1)"
+  },
+  "m60_36_42": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_43 (manhattan d=1)"
+  },
+  "m60_36_44": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_43 (manhattan d=1)"
+  },
+  "m60_36_46": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_35_46 (manhattan d=1)"
+  },
+  "m60_36_47": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_48 (manhattan d=1)"
+  },
+  "m60_36_51": {
+    "subCategoryId": 62003,
+    "tabId": 62000,
+    "subRegion": null,
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_50 (manhattan d=1)"
+  },
+  "m60_36_53": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=1)"
+  },
+  "m60_36_55": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=1)"
+  },
+  "m60_36_56": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=2)"
+  },
+  "m60_36_57": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=3)"
+  },
+  "m60_36_58": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=4)"
+  },
+  "m60_37_32": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_32 (manhattan d=4)"
+  },
+  "m60_37_33": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_33 (manhattan d=4)"
+  },
+  "m60_37_35": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_35 (manhattan d=4)"
+  },
+  "m60_37_37": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_40 (manhattan d=4)"
+  },
+  "m60_37_38": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_40 (manhattan d=3)"
+  },
+  "m60_37_39": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_40 (manhattan d=2)"
+  },
+  "m60_37_40": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_40 (manhattan d=1)"
+  },
+  "m60_37_41": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_37_42 (manhattan d=1)"
+  },
+  "m60_37_43": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_43 (manhattan d=1)"
+  },
+  "m60_37_45": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_45 (manhattan d=1)"
+  },
+  "m60_37_50": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_50 (manhattan d=1)"
+  },
+  "m60_37_54": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=1)"
+  },
+  "m60_37_55": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=2)"
+  },
+  "m60_37_56": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=3)"
+  },
+  "m60_37_57": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_36_54 (manhattan d=4)"
+  },
+  "m60_38_31": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_32 (manhattan d=4)"
+  },
+  "m60_38_32": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_32 (manhattan d=3)"
+  },
+  "m60_38_33": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_33 (manhattan d=3)"
+  },
+  "m60_38_34": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_33 (manhattan d=4)"
+  },
+  "m60_38_35": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_35 (manhattan d=3)"
+  },
+  "m60_38_36": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_36 (manhattan d=4)"
+  },
+  "m60_38_37": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_40 (manhattan d=3)"
+  },
+  "m60_38_38": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_40 (manhattan d=2)"
+  },
+  "m60_38_39": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_40 (manhattan d=1)"
+  },
+  "m60_38_42": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_42 (manhattan d=1)"
+  },
+  "m60_38_44": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_45 (manhattan d=1)"
+  },
+  "m60_38_49": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_50 (manhattan d=1)"
+  },
+  "m60_38_52": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_53 (manhattan d=1)"
+  },
+  "m60_38_55": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_54 (manhattan d=1)"
+  },
+  "m60_38_56": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_54 (manhattan d=2)"
+  },
+  "m60_38_57": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_54 (manhattan d=3)"
+  },
+  "m60_38_58": {
+    "subCategoryId": 63001,
+    "tabId": 63000,
+    "subRegion": "Mt. Gelmir",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_54 (manhattan d=4)"
+  },
+  "m60_39_30": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_30 (manhattan d=4)"
+  },
+  "m60_39_31": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_32 (manhattan d=3)"
+  },
+  "m60_39_32": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_32 (manhattan d=2)"
+  },
+  "m60_39_33": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_33 (manhattan d=2)"
+  },
+  "m60_39_34": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_33 (manhattan d=3)"
+  },
+  "m60_39_35": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_35 (manhattan d=2)"
+  },
+  "m60_39_36": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_36 (manhattan d=3)"
+  },
+  "m60_39_37": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_38 (manhattan d=3)"
+  },
+  "m60_39_38": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_38 (manhattan d=2)"
+  },
+  "m60_39_39": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_40 (manhattan d=1)"
+  },
+  "m60_39_43": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_42 (manhattan d=1)"
+  },
+  "m60_39_45": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_45 (manhattan d=1)"
+  },
+  "m60_39_46": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_46 (manhattan d=1)"
+  },
+  "m60_39_47": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_47 (manhattan d=1)"
+  },
+  "m60_39_48": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_48 (manhattan d=1)"
+  },
+  "m60_39_49": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_50 (manhattan d=2)"
+  },
+  "m60_39_50": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_50 (manhattan d=1)"
+  },
+  "m60_39_52": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_51 (manhattan d=1)"
+  },
+  "m60_39_55": {
+    "subCategoryId": 63004,
+    "tabId": 63000,
+    "subRegion": null,
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_54 (manhattan d=1)"
+  },
+  "m60_39_56": {
+    "subCategoryId": 63004,
+    "tabId": 63000,
+    "subRegion": null,
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_54 (manhattan d=2)"
+  },
+  "m60_39_57": {
+    "subCategoryId": 63004,
+    "tabId": 63000,
+    "subRegion": null,
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_54 (manhattan d=3)"
+  },
+  "m60_39_58": {
+    "subCategoryId": 63004,
+    "tabId": 63000,
+    "subRegion": null,
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_54 (manhattan d=4)"
+  },
+  "m60_40_30": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_30 (manhattan d=3)"
+  },
+  "m60_40_31": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_32 (manhattan d=2)"
+  },
+  "m60_40_32": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_32 (manhattan d=1)"
+  },
+  "m60_40_33": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_33 (manhattan d=1)"
+  },
+  "m60_40_34": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_33 (manhattan d=2)"
+  },
+  "m60_40_35": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_35 (manhattan d=1)"
+  },
+  "m60_40_36": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_36 (manhattan d=2)"
+  },
+  "m60_40_37": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_38 (manhattan d=2)"
+  },
+  "m60_40_38": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_38 (manhattan d=1)"
+  },
+  "m60_40_39": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_38 (manhattan d=2)"
+  },
+  "m60_40_40": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_40 (manhattan d=1)"
+  },
+  "m60_40_41": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_41 (manhattan d=1)"
+  },
+  "m60_40_42": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_42 (manhattan d=1)"
+  },
+  "m60_40_43": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_42 (manhattan d=2)"
+  },
+  "m60_40_44": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_44 (manhattan d=1)"
+  },
+  "m60_40_45": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_45 (manhattan d=2)"
+  },
+  "m60_40_46": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_46 (manhattan d=2)"
+  },
+  "m60_40_47": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_47 (manhattan d=2)"
+  },
+  "m60_40_48": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_48 (manhattan d=2)"
+  },
+  "m60_40_49": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_50 (manhattan d=3)"
+  },
+  "m60_40_50": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_50 (manhattan d=2)"
+  },
+  "m60_40_51": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_51 (manhattan d=1)"
+  },
+  "m60_40_55": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_40_54 (manhattan d=1)"
+  },
+  "m60_40_56": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_40_54 (manhattan d=2)"
+  },
+  "m60_40_57": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_40_54 (manhattan d=3)"
+  },
+  "m60_40_58": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_40_54 (manhattan d=4)"
+  },
+  "m60_41_30": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_30 (manhattan d=2)"
+  },
+  "m60_41_31": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_32 (manhattan d=1)"
+  },
+  "m60_41_34": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_33 (manhattan d=1)"
+  },
+  "m60_41_36": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_36 (manhattan d=1)"
+  },
+  "m60_41_37": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_38 (manhattan d=1)"
+  },
+  "m60_41_39": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_38 (manhattan d=1)"
+  },
+  "m60_41_40": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_40 (manhattan d=1)"
+  },
+  "m60_41_41": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_41 (manhattan d=2)"
+  },
+  "m60_41_42": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_42 (manhattan d=2)"
+  },
+  "m60_41_43": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_42 (manhattan d=3)"
+  },
+  "m60_41_44": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_44 (manhattan d=2)"
+  },
+  "m60_41_45": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_45 (manhattan d=3)"
+  },
+  "m60_41_46": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_46 (manhattan d=3)"
+  },
+  "m60_41_47": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_47 (manhattan d=3)"
+  },
+  "m60_41_48": {
+    "subCategoryId": 62001,
+    "tabId": 62000,
+    "subRegion": "Bellum Highway",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_48 (manhattan d=3)"
+  },
+  "m60_41_49": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=3)"
+  },
+  "m60_41_50": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=2)"
+  },
+  "m60_41_51": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_52 (manhattan d=1)"
+  },
+  "m60_41_53": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_52 (manhattan d=1)"
+  },
+  "m60_41_55": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_54 (manhattan d=1)"
+  },
+  "m60_41_56": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_54 (manhattan d=2)"
+  },
+  "m60_41_57": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_54 (manhattan d=3)"
+  },
+  "m60_41_58": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_54 (manhattan d=4)"
+  },
+  "m60_42_30": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_30 (manhattan d=1)"
+  },
+  "m60_42_31": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_31 (manhattan d=1)"
+  },
+  "m60_42_32": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_33 (manhattan d=1)"
+  },
+  "m60_42_34": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_33 (manhattan d=1)"
+  },
+  "m60_42_35": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_36 (manhattan d=1)"
+  },
+  "m60_42_39": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_39 (manhattan d=1)"
+  },
+  "m60_42_41": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_40 (manhattan d=1)"
+  },
+  "m60_42_42": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_40 (manhattan d=2)"
+  },
+  "m60_42_43": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_40 (manhattan d=3)"
+  },
+  "m60_42_44": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_44 (manhattan d=3)"
+  },
+  "m60_42_45": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_45 (manhattan d=4)"
+  },
+  "m60_42_46": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_38_46 (manhattan d=4)"
+  },
+  "m60_42_47": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=4)"
+  },
+  "m60_42_48": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=3)"
+  },
+  "m60_42_49": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=2)"
+  },
+  "m60_42_50": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=1)"
+  },
+  "m60_42_52": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_52 (manhattan d=1)"
+  },
+  "m60_42_53": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_53 (manhattan d=1)"
+  },
+  "m60_42_54": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_41_54 (manhattan d=1)"
+  },
+  "m60_42_56": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_55 (manhattan d=1)"
+  },
+  "m60_42_57": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_55 (manhattan d=2)"
+  },
+  "m60_42_58": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_55 (manhattan d=3)"
+  },
+  "m60_43_32": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_31 (manhattan d=1)"
+  },
+  "m60_43_33": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_44_33 (manhattan d=1)"
+  },
+  "m60_43_36": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_37 (manhattan d=1)"
+  },
+  "m60_43_40": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_39 (manhattan d=1)"
+  },
+  "m60_43_41": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_39 (manhattan d=2)"
+  },
+  "m60_43_42": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_39 (manhattan d=3)"
+  },
+  "m60_43_43": {
+    "subCategoryId": 61001,
+    "tabId": 61000,
+    "subRegion": "Stormhill",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_39 (manhattan d=4)"
+  },
+  "m60_43_44": {
+    "subCategoryId": 62000,
+    "tabId": 62000,
+    "subRegion": "Liurnia of the Lakes",
+    "majorRegion": "Liurnia of the Lakes",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_39_44 (manhattan d=4)"
+  },
+  "m60_43_46": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=4)"
+  },
+  "m60_43_47": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=3)"
+  },
+  "m60_43_48": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=2)"
+  },
+  "m60_43_49": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=1)"
+  },
+  "m60_43_51": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=1)"
+  },
+  "m60_43_52": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_53 (manhattan d=1)"
+  },
+  "m60_43_54": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_53 (manhattan d=1)"
+  },
+  "m60_43_55": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_55 (manhattan d=1)"
+  },
+  "m60_43_56": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_55 (manhattan d=2)"
+  },
+  "m60_43_57": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_55 (manhattan d=3)"
+  },
+  "m60_43_58": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_58 (manhattan d=4)"
+  },
+  "m60_44_30": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_30 (manhattan d=1)"
+  },
+  "m60_44_31": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_31 (manhattan d=1)"
+  },
+  "m60_44_32": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_44_33 (manhattan d=1)"
+  },
+  "m60_44_40": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_44_39 (manhattan d=1)"
+  },
+  "m60_44_41": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_44_39 (manhattan d=2)"
+  },
+  "m60_44_42": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_44_39 (manhattan d=3)"
+  },
+  "m60_44_43": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_44_39 (manhattan d=4)"
+  },
+  "m60_44_47": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=4)"
+  },
+  "m60_44_48": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=3)"
+  },
+  "m60_44_49": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=2)"
+  },
+  "m60_44_50": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=1)"
+  },
+  "m60_44_51": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_44_52 (manhattan d=1)"
+  },
+  "m60_44_53": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_53 (manhattan d=1)"
+  },
+  "m60_44_54": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_53 (manhattan d=2)"
+  },
+  "m60_44_55": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_55 (manhattan d=2)"
+  },
+  "m60_44_56": {
+    "subCategoryId": 63000,
+    "tabId": 63000,
+    "subRegion": "Altus Plateau",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_42_55 (manhattan d=3)"
+  },
+  "m60_44_57": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_58 (manhattan d=4)"
+  },
+  "m60_44_58": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_58 (manhattan d=3)"
+  },
+  "m60_45_30": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_30 (manhattan d=2)"
+  },
+  "m60_45_31": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_31 (manhattan d=2)"
+  },
+  "m60_45_32": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_45_33 (manhattan d=1)"
+  },
+  "m60_45_34": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_45_33 (manhattan d=1)"
+  },
+  "m60_45_35": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_44_35 (manhattan d=1)"
+  },
+  "m60_45_37": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_44_37 (manhattan d=1)"
+  },
+  "m60_45_38": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_44_38 (manhattan d=1)"
+  },
+  "m60_45_39": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_46_39 (manhattan d=1)"
+  },
+  "m60_45_40": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_46_40 (manhattan d=1)"
+  },
+  "m60_45_41": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_46_40 (manhattan d=2)"
+  },
+  "m60_45_42": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_46_40 (manhattan d=3)"
+  },
+  "m60_45_43": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_46_40 (manhattan d=4)"
+  },
+  "m60_45_48": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=4)"
+  },
+  "m60_45_49": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=3)"
+  },
+  "m60_45_50": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_50 (manhattan d=2)"
+  },
+  "m60_45_51": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_45_52 (manhattan d=1)"
+  },
+  "m60_45_53": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_45_52 (manhattan d=1)"
+  },
+  "m60_45_54": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_45_52 (manhattan d=2)"
+  },
+  "m60_45_55": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_55 (manhattan d=2)"
+  },
+  "m60_45_56": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_55 (manhattan d=3)"
+  },
+  "m60_45_57": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_58 (manhattan d=3)"
+  },
+  "m60_45_58": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_58 (manhattan d=2)"
+  },
+  "m60_46_30": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_30 (manhattan d=3)"
+  },
+  "m60_46_31": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_31 (manhattan d=3)"
+  },
+  "m60_46_32": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_45_33 (manhattan d=2)"
+  },
+  "m60_46_33": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_45_33 (manhattan d=1)"
+  },
+  "m60_46_34": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_45_33 (manhattan d=2)"
+  },
+  "m60_46_35": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_44_35 (manhattan d=2)"
+  },
+  "m60_46_36": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_45_36 (manhattan d=1)"
+  },
+  "m60_46_37": {
+    "subCategoryId": 61000,
+    "tabId": 61000,
+    "subRegion": "Limgrave",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_46_38 (manhattan d=1)"
+  },
+  "m60_46_41": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_46_40 (manhattan d=1)"
+  },
+  "m60_46_42": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_46_40 (manhattan d=2)"
+  },
+  "m60_46_43": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_46_40 (manhattan d=3)"
+  },
+  "m60_46_44": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_46_40 (manhattan d=4)"
+  },
+  "m60_46_48": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_51 (manhattan d=4)"
+  },
+  "m60_46_49": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_51 (manhattan d=3)"
+  },
+  "m60_46_50": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_51 (manhattan d=2)"
+  },
+  "m60_46_51": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_51 (manhattan d=1)"
+  },
+  "m60_46_52": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_45_52 (manhattan d=1)"
+  },
+  "m60_46_53": {
+    "subCategoryId": 63002,
+    "tabId": 63000,
+    "subRegion": "Capital Outskirts",
+    "majorRegion": "Altus Plateau",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_45_52 (manhattan d=2)"
+  },
+  "m60_46_54": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_55 (manhattan d=2)"
+  },
+  "m60_46_55": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_55 (manhattan d=1)"
+  },
+  "m60_46_56": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_55 (manhattan d=2)"
+  },
+  "m60_46_57": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_58 (manhattan d=2)"
+  },
+  "m60_46_58": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_58 (manhattan d=1)"
+  },
+  "m60_47_30": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_30 (manhattan d=4)"
+  },
+  "m60_47_31": {
+    "subCategoryId": 61003,
+    "tabId": 61000,
+    "subRegion": null,
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_43_31 (manhattan d=4)"
+  },
+  "m60_47_32": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_45_33 (manhattan d=3)"
+  },
+  "m60_47_33": {
+    "subCategoryId": 61002,
+    "tabId": 61000,
+    "subRegion": "Weeping Peninsula",
+    "majorRegion": "Limgrave",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_45_33 (manhattan d=2)"
+  },
+  "m60_47_34": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_36 (manhattan d=3)"
+  },
+  "m60_47_35": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_36 (manhattan d=2)"
+  },
+  "m60_47_36": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_36 (manhattan d=1)"
+  },
+  "m60_47_37": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_37 (manhattan d=1)"
+  },
+  "m60_47_38": {
+    "subCategoryId": 64002,
+    "tabId": 64000,
+    "subRegion": "Swamp of Aeonia",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_38 (manhattan d=1)"
+  },
+  "m60_47_41": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_40 (manhattan d=1)"
+  },
+  "m60_47_42": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_40 (manhattan d=2)"
+  },
+  "m60_47_43": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_40 (manhattan d=3)"
+  },
+  "m60_47_44": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_40 (manhattan d=4)"
+  },
+  "m60_47_47": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_51 (manhattan d=4)"
+  },
+  "m60_47_48": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_51 (manhattan d=3)"
+  },
+  "m60_47_49": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_51 (manhattan d=2)"
+  },
+  "m60_47_50": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_51 (manhattan d=1)"
+  },
+  "m60_47_52": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_51 (manhattan d=1)"
+  },
+  "m60_47_53": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_49_53 (manhattan d=2)"
+  },
+  "m60_47_54": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_55 (manhattan d=1)"
+  },
+  "m60_47_56": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_55 (manhattan d=1)"
+  },
+  "m60_47_57": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_58 (manhattan d=1)"
+  },
+  "m60_48_32": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_36 (manhattan d=4)"
+  },
+  "m60_48_33": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_36 (manhattan d=3)"
+  },
+  "m60_48_34": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_36 (manhattan d=2)"
+  },
+  "m60_48_35": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_36 (manhattan d=1)"
+  },
+  "m60_48_42": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_41 (manhattan d=1)"
+  },
+  "m60_48_43": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_41 (manhattan d=2)"
+  },
+  "m60_48_44": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_41 (manhattan d=3)"
+  },
+  "m60_48_45": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_41 (manhattan d=4)"
+  },
+  "m60_48_48": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_51 (manhattan d=4)"
+  },
+  "m60_48_49": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_51 (manhattan d=3)"
+  },
+  "m60_48_50": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_51 (manhattan d=2)"
+  },
+  "m60_48_51": {
+    "subCategoryId": 63003,
+    "tabId": 65000,
+    "subRegion": "Forbidden Lands",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_51 (manhattan d=1)"
+  },
+  "m60_48_52": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_49_53 (manhattan d=2)"
+  },
+  "m60_48_53": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_49_53 (manhattan d=1)"
+  },
+  "m60_48_54": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_49_54 (manhattan d=1)"
+  },
+  "m60_48_55": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_55 (manhattan d=1)"
+  },
+  "m60_48_56": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_57 (manhattan d=1)"
+  },
+  "m60_48_58": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_58 (manhattan d=1)"
+  },
+  "m60_49_33": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_36 (manhattan d=4)"
+  },
+  "m60_49_34": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_36 (manhattan d=3)"
+  },
+  "m60_49_35": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_36 (manhattan d=2)"
+  },
+  "m60_49_36": {
+    "subCategoryId": 64000,
+    "tabId": 64000,
+    "subRegion": "Caelid",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_36 (manhattan d=1)"
+  },
+  "m60_49_40": {
+    "subCategoryId": 64005,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_49_39 (manhattan d=1)"
+  },
+  "m60_49_41": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_41 (manhattan d=1)"
+  },
+  "m60_49_42": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_41 (manhattan d=2)"
+  },
+  "m60_49_43": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_43 (manhattan d=2)"
+  },
+  "m60_49_44": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_43 (manhattan d=3)"
+  },
+  "m60_49_45": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_43 (manhattan d=4)"
+  },
+  "m60_49_49": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_49_53 (manhattan d=4)"
+  },
+  "m60_49_50": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_49_53 (manhattan d=3)"
+  },
+  "m60_49_51": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_49_53 (manhattan d=2)"
+  },
+  "m60_49_52": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_49_53 (manhattan d=1)"
+  },
+  "m60_49_56": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_49_55 (manhattan d=1)"
+  },
+  "m60_49_57": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_48_57 (manhattan d=1)"
+  },
+  "m60_49_58": {
+    "subCategoryId": 65002,
+    "tabId": 65000,
+    "subRegion": "Consecrated Snowfield",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_47_58 (manhattan d=2)"
+  },
+  "m60_50_32": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_50_36 (manhattan d=4)"
+  },
+  "m60_50_33": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_50_36 (manhattan d=3)"
+  },
+  "m60_50_34": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_50_36 (manhattan d=2)"
+  },
+  "m60_50_35": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_50_36 (manhattan d=1)"
+  },
+  "m60_50_37": {
+    "subCategoryId": 64005,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_50_38 (manhattan d=1)"
+  },
+  "m60_50_39": {
+    "subCategoryId": 64005,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_49_39 (manhattan d=1)"
+  },
+  "m60_50_41": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_50_40 (manhattan d=1)"
+  },
+  "m60_50_42": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_42 (manhattan d=2)"
+  },
+  "m60_50_43": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_43 (manhattan d=1)"
+  },
+  "m60_50_44": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_43 (manhattan d=2)"
+  },
+  "m60_50_45": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_43 (manhattan d=3)"
+  },
+  "m60_50_46": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_43 (manhattan d=4)"
+  },
+  "m60_50_49": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_50_53 (manhattan d=4)"
+  },
+  "m60_50_50": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_50_53 (manhattan d=3)"
+  },
+  "m60_50_51": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_50_53 (manhattan d=2)"
+  },
+  "m60_50_52": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_50_53 (manhattan d=1)"
+  },
+  "m60_50_54": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_50_53 (manhattan d=1)"
+  },
+  "m60_50_56": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_56 (manhattan d=1)"
+  },
+  "m60_50_57": {
+    "subCategoryId": 65003,
+    "tabId": 65000,
+    "subRegion": null,
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_57 (manhattan d=1)"
+  },
+  "m60_50_58": {
+    "subCategoryId": 65003,
+    "tabId": 65000,
+    "subRegion": null,
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_57 (manhattan d=2)"
+  },
+  "m60_51_31": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_35 (manhattan d=4)"
+  },
+  "m60_51_32": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_35 (manhattan d=3)"
+  },
+  "m60_51_33": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_35 (manhattan d=2)"
+  },
+  "m60_51_34": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_35 (manhattan d=1)"
+  },
+  "m60_51_37": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_36 (manhattan d=1)"
+  },
+  "m60_51_38": {
+    "subCategoryId": 64005,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_50_38 (manhattan d=1)"
+  },
+  "m60_51_40": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_50_40 (manhattan d=1)"
+  },
+  "m60_51_41": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_41 (manhattan d=1)"
+  },
+  "m60_51_42": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_42 (manhattan d=1)"
+  },
+  "m60_51_44": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_43 (manhattan d=1)"
+  },
+  "m60_51_45": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_43 (manhattan d=2)"
+  },
+  "m60_51_46": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_43 (manhattan d=3)"
+  },
+  "m60_51_47": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_43 (manhattan d=4)"
+  },
+  "m60_51_49": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_53 (manhattan d=4)"
+  },
+  "m60_51_50": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_53 (manhattan d=3)"
+  },
+  "m60_51_51": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_53 (manhattan d=2)"
+  },
+  "m60_51_52": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_53 (manhattan d=1)"
+  },
+  "m60_51_54": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_53 (manhattan d=1)"
+  },
+  "m60_51_55": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_56 (manhattan d=1)"
+  },
+  "m60_51_58": {
+    "subCategoryId": 65003,
+    "tabId": 65000,
+    "subRegion": null,
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_57 (manhattan d=1)"
+  },
+  "m60_52_32": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_35 (manhattan d=4)"
+  },
+  "m60_52_33": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_35 (manhattan d=3)"
+  },
+  "m60_52_34": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_35 (manhattan d=2)"
+  },
+  "m60_52_35": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_35 (manhattan d=1)"
+  },
+  "m60_52_36": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_36 (manhattan d=1)"
+  },
+  "m60_52_37": {
+    "subCategoryId": 64004,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_38 (manhattan d=1)"
+  },
+  "m60_52_39": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_39 (manhattan d=1)"
+  },
+  "m60_52_40": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_41 (manhattan d=1)"
+  },
+  "m60_52_43": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_42 (manhattan d=1)"
+  },
+  "m60_52_44": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_42 (manhattan d=2)"
+  },
+  "m60_52_45": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_42 (manhattan d=3)"
+  },
+  "m60_52_46": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_42 (manhattan d=4)"
+  },
+  "m60_52_49": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_52 (manhattan d=4)"
+  },
+  "m60_52_50": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_52 (manhattan d=3)"
+  },
+  "m60_52_51": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_52 (manhattan d=2)"
+  },
+  "m60_52_52": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_52 (manhattan d=1)"
+  },
+  "m60_52_55": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_54 (manhattan d=1)"
+  },
+  "m60_52_58": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_57 (manhattan d=1)"
+  },
+  "m60_53_33": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_35 (manhattan d=4)"
+  },
+  "m60_53_34": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_35 (manhattan d=3)"
+  },
+  "m60_53_35": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_35 (manhattan d=2)"
+  },
+  "m60_53_36": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_36 (manhattan d=2)"
+  },
+  "m60_53_37": {
+    "subCategoryId": 64004,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_38 (manhattan d=2)"
+  },
+  "m60_53_38": {
+    "subCategoryId": 64004,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_38 (manhattan d=1)"
+  },
+  "m60_53_39": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_39 (manhattan d=2)"
+  },
+  "m60_53_40": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_41 (manhattan d=2)"
+  },
+  "m60_53_41": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_41 (manhattan d=1)"
+  },
+  "m60_53_42": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_42 (manhattan d=1)"
+  },
+  "m60_53_43": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_42 (manhattan d=2)"
+  },
+  "m60_53_44": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_42 (manhattan d=3)"
+  },
+  "m60_53_45": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_42 (manhattan d=4)"
+  },
+  "m60_53_48": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_52 (manhattan d=4)"
+  },
+  "m60_53_49": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_52 (manhattan d=3)"
+  },
+  "m60_53_50": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_52 (manhattan d=2)"
+  },
+  "m60_53_51": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_52 (manhattan d=1)"
+  },
+  "m60_53_53": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_52 (manhattan d=1)"
+  },
+  "m60_53_54": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_54 (manhattan d=1)"
+  },
+  "m60_53_55": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_56 (manhattan d=1)"
+  },
+  "m60_53_57": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_56 (manhattan d=1)"
+  },
+  "m60_53_58": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_56 (manhattan d=2)"
+  },
+  "m60_54_34": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_35 (manhattan d=4)"
+  },
+  "m60_54_35": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_35 (manhattan d=3)"
+  },
+  "m60_54_36": {
+    "subCategoryId": 64003,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_36 (manhattan d=3)"
+  },
+  "m60_54_37": {
+    "subCategoryId": 64004,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_38 (manhattan d=3)"
+  },
+  "m60_54_38": {
+    "subCategoryId": 64004,
+    "tabId": 64000,
+    "subRegion": null,
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_38 (manhattan d=2)"
+  },
+  "m60_54_39": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_51_39 (manhattan d=3)"
+  },
+  "m60_54_40": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_41 (manhattan d=3)"
+  },
+  "m60_54_41": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_41 (manhattan d=2)"
+  },
+  "m60_54_42": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_42 (manhattan d=2)"
+  },
+  "m60_54_43": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_42 (manhattan d=3)"
+  },
+  "m60_54_44": {
+    "subCategoryId": 64001,
+    "tabId": 64000,
+    "subRegion": "Greyoll's Dragonbarrow",
+    "majorRegion": "Caelid",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_52_42 (manhattan d=4)"
+  },
+  "m60_54_49": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_52 (manhattan d=4)"
+  },
+  "m60_54_50": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_52 (manhattan d=3)"
+  },
+  "m60_54_51": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_52 (manhattan d=2)"
+  },
+  "m60_54_52": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_52 (manhattan d=1)"
+  },
+  "m60_54_54": {
+    "subCategoryId": 65001,
+    "tabId": 65000,
+    "subRegion": "Flame Peak",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_54_53 (manhattan d=1)"
+  },
+  "m60_54_56": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_56 (manhattan d=1)"
+  },
+  "m60_54_57": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_56 (manhattan d=2)"
+  },
+  "m60_54_58": {
+    "subCategoryId": 65000,
+    "tabId": 65000,
+    "subRegion": "Mountaintops of the Giants",
+    "majorRegion": "Mountaintops of the Giants",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m60_53_56 (manhattan d=3)"
+  },
+  "m61_44_35": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_35 (manhattan d=3)"
+  },
+  "m61_44_36": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_36 (manhattan d=3)"
+  },
+  "m61_44_37": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_46_39 (manhattan d=4)"
+  },
+  "m61_44_38": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_46_39 (manhattan d=3)"
+  },
+  "m61_44_39": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_46_39 (manhattan d=2)"
+  },
+  "m61_44_40": {
+    "subCategoryId": 6800,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_46_40 (manhattan d=2)"
+  },
+  "m61_44_41": {
+    "subCategoryId": 6870,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_45_41 (manhattan d=1)"
+  },
+  "m61_44_42": {
+    "subCategoryId": 6870,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_45_42 (manhattan d=1)"
+  },
+  "m61_44_43": {
+    "subCategoryId": 6940,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_44_45 (manhattan d=2)"
+  },
+  "m61_44_44": {
+    "subCategoryId": 6940,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_44_45 (manhattan d=1)"
+  },
+  "m61_44_47": {
+    "subCategoryId": 6940,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_44_46 (manhattan d=1)"
+  },
+  "m61_44_48": {
+    "subCategoryId": 6940,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_44_46 (manhattan d=2)"
+  },
+  "m61_45_35": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_35 (manhattan d=2)"
+  },
+  "m61_45_36": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_36 (manhattan d=2)"
+  },
+  "m61_45_37": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_46_39 (manhattan d=3)"
+  },
+  "m61_45_38": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_46_39 (manhattan d=2)"
+  },
+  "m61_45_39": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_46_39 (manhattan d=1)"
+  },
+  "m61_45_40": {
+    "subCategoryId": 6800,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_46_40 (manhattan d=1)"
+  },
+  "m61_45_43": {
+    "subCategoryId": 6870,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_45_42 (manhattan d=1)"
+  },
+  "m61_45_44": {
+    "subCategoryId": 6870,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_46_44 (manhattan d=1)"
+  },
+  "m61_45_48": {
+    "subCategoryId": 6950,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_45_47 (manhattan d=1)"
+  },
+  "m61_46_35": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_35 (manhattan d=1)"
+  },
+  "m61_46_36": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_36 (manhattan d=1)"
+  },
+  "m61_46_37": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_46_39 (manhattan d=2)"
+  },
+  "m61_46_38": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_46_39 (manhattan d=1)"
+  },
+  "m61_46_41": {
+    "subCategoryId": 6800,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_41 (manhattan d=1)"
+  },
+  "m61_46_43": {
+    "subCategoryId": 6870,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_46_42 (manhattan d=1)"
+  },
+  "m61_46_45": {
+    "subCategoryId": 6870,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_46_44 (manhattan d=1)"
+  },
+  "m61_46_46": {
+    "subCategoryId": 6950,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_45_46 (manhattan d=1)"
+  },
+  "m61_46_48": {
+    "subCategoryId": 6940,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_46_47 (manhattan d=1)"
+  },
+  "m61_47_37": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_36 (manhattan d=1)"
+  },
+  "m61_47_38": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_48_39 (manhattan d=2)"
+  },
+  "m61_47_39": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_48_39 (manhattan d=1)"
+  },
+  "m61_47_40": {
+    "subCategoryId": 6800,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_41 (manhattan d=1)"
+  },
+  "m61_47_42": {
+    "subCategoryId": 6800,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_41 (manhattan d=1)"
+  },
+  "m61_47_46": {
+    "subCategoryId": 6900,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_45 (manhattan d=1)"
+  },
+  "m61_47_48": {
+    "subCategoryId": 6940,
+    "tabId": 6940,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_47 (manhattan d=1)"
+  },
+  "m61_48_35": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_35 (manhattan d=1)"
+  },
+  "m61_48_36": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_36 (manhattan d=1)"
+  },
+  "m61_48_38": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_48_39 (manhattan d=1)"
+  },
+  "m61_48_40": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_48_39 (manhattan d=1)"
+  },
+  "m61_48_41": {
+    "subCategoryId": 6800,
+    "tabId": 6800,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_41 (manhattan d=1)"
+  },
+  "m61_48_46": {
+    "subCategoryId": 6900,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_48_45 (manhattan d=1)"
+  },
+  "m61_48_48": {
+    "subCategoryId": 6920,
+    "tabId": 21000,
+    "subRegion": null,
+    "majorRegion": "Shadow Keep",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_49_48 (manhattan d=1)"
+  },
+  "m61_49_35": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_35 (manhattan d=2)"
+  },
+  "m61_49_36": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_47_36 (manhattan d=2)"
+  },
+  "m61_49_37": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_48_37 (manhattan d=1)"
+  },
+  "m61_49_38": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_50_38 (manhattan d=1)"
+  },
+  "m61_49_40": {
+    "subCategoryId": 6851,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_49_39 (manhattan d=1)"
+  },
+  "m61_49_41": {
+    "subCategoryId": 6900,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_49_43 (manhattan d=2)"
+  },
+  "m61_49_42": {
+    "subCategoryId": 6900,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_49_43 (manhattan d=1)"
+  },
+  "m61_49_45": {
+    "subCategoryId": 6900,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_49_44 (manhattan d=1)"
+  },
+  "m61_49_46": {
+    "subCategoryId": 6910,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_49_47 (manhattan d=1)"
+  },
+  "m61_50_35": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_50_38 (manhattan d=3)"
+  },
+  "m61_50_36": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_50_38 (manhattan d=2)"
+  },
+  "m61_50_37": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_50_38 (manhattan d=1)"
+  },
+  "m61_50_39": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_50_38 (manhattan d=1)"
+  },
+  "m61_50_40": {
+    "subCategoryId": 6851,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_52_40 (manhattan d=2)"
+  },
+  "m61_50_41": {
+    "subCategoryId": 6860,
+    "tabId": 6860,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_50_42 (manhattan d=1)"
+  },
+  "m61_50_46": {
+    "subCategoryId": 6910,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_50_45 (manhattan d=1)"
+  },
+  "m61_50_47": {
+    "subCategoryId": 6930,
+    "tabId": 21000,
+    "subRegion": null,
+    "majorRegion": "Shadow Keep",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_50_48 (manhattan d=1)"
+  },
+  "m61_51_35": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_50_38 (manhattan d=4)"
+  },
+  "m61_51_36": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_50_38 (manhattan d=3)"
+  },
+  "m61_51_37": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_50_38 (manhattan d=2)"
+  },
+  "m61_51_38": {
+    "subCategoryId": 6830,
+    "tabId": 6830,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_50_38 (manhattan d=1)"
+  },
+  "m61_51_39": {
+    "subCategoryId": 6851,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_52_40 (manhattan d=2)"
+  },
+  "m61_51_40": {
+    "subCategoryId": 6851,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_52_40 (manhattan d=1)"
+  },
+  "m61_51_41": {
+    "subCategoryId": 6860,
+    "tabId": 6860,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_42 (manhattan d=1)"
+  },
+  "m61_51_43": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_44 (manhattan d=1)"
+  },
+  "m61_51_46": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_47 (manhattan d=1)"
+  },
+  "m61_52_36": {
+    "subCategoryId": 6851,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_52_40 (manhattan d=4)"
+  },
+  "m61_52_37": {
+    "subCategoryId": 6851,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_52_40 (manhattan d=3)"
+  },
+  "m61_52_38": {
+    "subCategoryId": 6851,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_52_40 (manhattan d=2)"
+  },
+  "m61_52_39": {
+    "subCategoryId": 6851,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_52_40 (manhattan d=1)"
+  },
+  "m61_52_41": {
+    "subCategoryId": 6851,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_52_40 (manhattan d=1)"
+  },
+  "m61_52_42": {
+    "subCategoryId": 6860,
+    "tabId": 6860,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_52_43 (manhattan d=1)"
+  },
+  "m61_52_44": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_44 (manhattan d=1)"
+  },
+  "m61_52_45": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_45 (manhattan d=1)"
+  },
+  "m61_52_46": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_47 (manhattan d=2)"
+  },
+  "m61_52_47": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_47 (manhattan d=1)"
+  },
+  "m61_52_48": {
+    "subCategoryId": 6930,
+    "tabId": 21000,
+    "subRegion": null,
+    "majorRegion": "Shadow Keep",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_48 (manhattan d=1)"
+  },
+  "m61_53_35": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_53_39 (manhattan d=4)"
+  },
+  "m61_53_36": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_53_39 (manhattan d=3)"
+  },
+  "m61_53_37": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_53_39 (manhattan d=2)"
+  },
+  "m61_53_38": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_53_39 (manhattan d=1)"
+  },
+  "m61_53_40": {
+    "subCategoryId": 6851,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_52_40 (manhattan d=1)"
+  },
+  "m61_53_42": {
+    "subCategoryId": 6860,
+    "tabId": 6860,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_53_41 (manhattan d=1)"
+  },
+  "m61_53_43": {
+    "subCategoryId": 6860,
+    "tabId": 6860,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_52_43 (manhattan d=1)"
+  },
+  "m61_53_44": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_44 (manhattan d=2)"
+  },
+  "m61_53_45": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_45 (manhattan d=2)"
+  },
+  "m61_53_46": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_47 (manhattan d=3)"
+  },
+  "m61_53_47": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_47 (manhattan d=2)"
+  },
+  "m61_53_48": {
+    "subCategoryId": 6930,
+    "tabId": 21000,
+    "subRegion": null,
+    "majorRegion": "Shadow Keep",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_48 (manhattan d=2)"
+  },
+  "m61_54_35": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_54_39 (manhattan d=4)"
+  },
+  "m61_54_36": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_54_39 (manhattan d=3)"
+  },
+  "m61_54_37": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_54_39 (manhattan d=2)"
+  },
+  "m61_54_38": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_54_39 (manhattan d=1)"
+  },
+  "m61_54_40": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_54_39 (manhattan d=1)"
+  },
+  "m61_54_41": {
+    "subCategoryId": 6860,
+    "tabId": 6860,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_53_41 (manhattan d=1)"
+  },
+  "m61_54_42": {
+    "subCategoryId": 6860,
+    "tabId": 6860,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_53_41 (manhattan d=2)"
+  },
+  "m61_54_43": {
+    "subCategoryId": 6860,
+    "tabId": 6860,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_52_43 (manhattan d=2)"
+  },
+  "m61_54_44": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_44 (manhattan d=3)"
+  },
+  "m61_54_45": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_45 (manhattan d=3)"
+  },
+  "m61_54_46": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_47 (manhattan d=4)"
+  },
+  "m61_54_47": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_47 (manhattan d=3)"
+  },
+  "m61_54_48": {
+    "subCategoryId": 6930,
+    "tabId": 21000,
+    "subRegion": null,
+    "majorRegion": "Shadow Keep",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_48 (manhattan d=3)"
+  },
+  "m61_55_35": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_55_39 (manhattan d=4)"
+  },
+  "m61_55_36": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_55_39 (manhattan d=3)"
+  },
+  "m61_55_37": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_55_39 (manhattan d=2)"
+  },
+  "m61_55_38": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_55_39 (manhattan d=1)"
+  },
+  "m61_55_40": {
+    "subCategoryId": 6850,
+    "tabId": 6850,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_55_39 (manhattan d=1)"
+  },
+  "m61_55_41": {
+    "subCategoryId": 6860,
+    "tabId": 6860,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_53_41 (manhattan d=2)"
+  },
+  "m61_55_42": {
+    "subCategoryId": 6860,
+    "tabId": 6860,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_53_41 (manhattan d=3)"
+  },
+  "m61_55_43": {
+    "subCategoryId": 6860,
+    "tabId": 6860,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_52_43 (manhattan d=3)"
+  },
+  "m61_55_44": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_44 (manhattan d=4)"
+  },
+  "m61_55_45": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_45 (manhattan d=4)"
+  },
+  "m61_55_47": {
+    "subCategoryId": 6970,
+    "tabId": 6900,
+    "subRegion": null,
+    "majorRegion": null,
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_47 (manhattan d=4)"
+  },
+  "m61_55_48": {
+    "subCategoryId": 6930,
+    "tabId": 21000,
+    "subRegion": null,
+    "majorRegion": "Shadow Keep",
+    "graceCount": 0,
+    "dominance": null,
+    "source": "inherited from m61_51_48 (manhattan d=4)"
+  }
+}

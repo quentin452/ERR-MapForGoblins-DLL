@@ -92,6 +92,8 @@ namespace goblin
         extern bool showSpiritspringHawks;
         extern bool showStakesOfMarika;
         extern bool showSummoningPools;
+        extern bool showKindlingSpirits;
+        extern bool showInteractables;
 
         // ── ERR Markers ─────────────────────────────────────────────────
         // Patches to ERR's pre-placed WorldMapPointParam entries (camps,

@@ -72,6 +72,8 @@ def main():
         try:
             msb = _msb_read.Invoke(None, Array[Object]([fpath]))
             for part in msb.Parts.Assets:
+                if int(getattr(part, 'GameEditionDisable', 0) or 0) == 1:
+                    continue
                 model = str(part.ModelName)
                 is_gather = model in aeg099_models or model.startswith(aeg463_prefix)
                 if not is_gather:

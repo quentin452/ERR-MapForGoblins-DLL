@@ -89,6 +89,11 @@ def main():
         p1 = int(parts[1])
         p2 = int(parts[2])
         for p in msb.Parts.Enemies:
+            # Skip parts disabled in this build (preview/test placements like
+            # cView_*, vanilla entities replaced by ERR). Engine never spawns
+            # them, so any boss marker would be phantom.
+            if int(getattr(p, 'GameEditionDisable', 0) or 0) == 1:
+                continue
             eid = int(p.EntityID)
             if eid > 0:
                 groups = set()
@@ -102,10 +107,43 @@ def main():
                     'x': round(float(p.Position.X), 3), 'y': round(float(p.Position.Y), 3),
                     'z': round(float(p.Position.Z), 3),
                     'map': map_name, 'area': area, 'gridX': p1, 'gridZ': p2,
-                    'groups': groups,
+                    'groups': groups, 'partName': str(p.Name),
                 }
 
     print(f"  {len(all_entities)} MSB entities")
+
+    # Cross-tile placeholder remap: when an entity lives in a supertile MSB
+    # (m60_XX_YY_01/_02/_12) but its partName carries a fine-tile prefix like
+    # "m60_52_38_00-c4730_9002", the position is stored in supertile-local
+    # coords. Convert it to fine-tile-local coords so the marker lands on
+    # the right map tile. Mirrors extract_all_items.py's remap.
+    import re as _re
+    _SUFFIX_SCALE = {'01': 2, '02': 4, '12': 4}
+    _FINE = 256
+    _prefix_re = _re.compile(r'^m(\d{2})_(\d{2})_(\d{2})_(\d{2})-')
+    remapped = 0
+    for eid, ent in all_entities.items():
+        m = _prefix_re.match(ent.get('partName', ''))
+        if not m: continue
+        own_area, own_gx, own_gz, own_p3 = (int(g) for g in m.groups())
+        cur_map = ent['map']
+        # Skip if partName already matches the MSB (regular asset)
+        if cur_map.startswith(f'm{own_area:02d}_{own_gx:02d}_{own_gz:02d}_{own_p3:02d}'):
+            continue
+        if own_area != ent['area']: continue  # cross-area not handled here
+        suffix = cur_map[-2:]
+        scale = _SUFFIX_SCALE.get(suffix)
+        if scale is None: continue
+        agg = _FINE * scale
+        offset_x = ent['gridX'] * agg + agg / 2 - own_gx * _FINE - _FINE / 2
+        offset_z = ent['gridZ'] * agg + agg / 2 - own_gz * _FINE - _FINE / 2
+        ent['x'] = round(ent['x'] + offset_x, 3)
+        ent['z'] = round(ent['z'] + offset_z, 3)
+        ent['gridX'] = own_gx
+        ent['gridZ'] = own_gz
+        ent['map'] = f'm{own_area:02d}_{own_gx:02d}_{own_gz:02d}_{own_p3:02d}'
+        remapped += 1
+    print(f"  Remapped {remapped} cross-tile entities to fine-grid owner tiles")
 
     # Field bosses, deduplicated by clearedEventFlagId
     field_bosses = []

@@ -57,6 +57,18 @@ data/missing_msb_hashes.json
 data/unknown_locations.txt
 data/unknown_msb_mapping.json
 data/vanilla_boss_data.json
+data/PlaceName_engus_merged.json
+data/asset_height_shifts*.json
+data/shifted_down_*.json
+data/shifted_down_*.md
+data/fixes_impact_report.md
+data/ged1_impact_report.md
+data/sfx_dumps/
+
+# Build logs (transient — from build.bat redirection)
+snapshot-build.log
+release-build.log
+*-build.log
 
 # Research / one-off scratch outputs (prefixed with _). The _*.py scripts
 # themselves are kept in git — they're useful diagnostic tools.

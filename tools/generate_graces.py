@@ -20,6 +20,7 @@ import SoulsFormats
 
 from extract_all_items import load_paramdefs, read_param, param_to_dict
 from massedit_common import OUT_DIR, UNDERGROUND_AREAS, DLC_AREAS, OVERWORLD_AREAS
+from unreachable import is_unreachable_grace
 
 ERR_MOD_DIR = config.require_err_mod_dir()
 bnd = SoulsFormats.SFUtil.DecryptERRegulation(str(ERR_MOD_DIR / 'regulation.bin'))
@@ -30,7 +31,8 @@ def main():
     print("Loading BonfireWarpParam...")
     bwp = read_param(bnd, 'BonfireWarpParam', paramdefs)
     fields = {'areaNo', 'gridXNo', 'gridZNo', 'posX', 'posY', 'posZ',
-              'eventflagId', 'textId1', 'dispMask00', 'dispMask01', 'dispMask02'}
+              'eventflagId', 'textId1', 'dispMask00', 'dispMask01',
+              'dispMask02', 'bonfireEntityId'}
     data = param_to_dict(bwp, fields)
 
     lines = []
@@ -43,6 +45,22 @@ def main():
         flag = row.get('eventflagId', 0)
         tid1 = row.get('textId1', 0)
         if flag <= 0 or tid1 <= 0:
+            continue
+
+        # Respect ERR's intentional hides: if ALL dispMaskXX = 0 in the
+        # source BonfireWarpParam row, ERR has explicitly hidden this grace
+        # (e.g. spoiler-hides for Inner Aeonia / Primeval Sorcerer Azur /
+        # Fortified Manor 1F — soft-disabled with rebound bonfireEntityId
+        # pointing to non-existent MSB asset). Don't override the hide.
+        if (not row.get('dispMask00') and not row.get('dispMask01')
+                and not row.get('dispMask02')):
+            continue
+
+        # Skip graces whose physical bonfire MSB asset ERR moved out of
+        # reach (e.g. Midra's Library raised onto a ledge, Fissure Cross
+        # dropped into terrain). Self-disarms if ERR moves it back.
+        if is_unreachable_grace(row.get('areaNo', 0),
+                                row.get('bonfireEntityId', 0)):
             continue
 
         gx = row.get('gridXNo', 0)
@@ -72,8 +90,19 @@ def main():
         if y != 0:
             lines.append(f'param WorldMapPointParam: id {row_id}: posY: = {y:.3f};')
         lines.append(f'param WorldMapPointParam: id {row_id}: posZ: = {z:.3f};')
+        # Reeling Shack (custom ERR grace, rid=62354601): override the
+        # default lit-flag with 1035469430. Event 923 in common.emevd sets
+        # 1035469430 ON after Potent Dreambrew (SpEffect 502170) and never
+        # resets it, so this hides the marker permanently once the player
+        # progresses past it. Can't OR with 76253 (lit flag) because the
+        # engine shows the icon as long as ANY text slot is visible, and
+        # the two flags never fire simultaneously (Event 923 resets 76253
+        # OFF in the same step it sets 1035469430 ON). Trade-off: between
+        # lighting and Dreambrew, our marker overlaps with vanilla icon —
+        # small cosmetic price for correct post-Dreambrew hiding.
+        disable_flag = 1035469430 if rid == 62354601 else flag
         lines.append(f'param WorldMapPointParam: id {row_id}: textId1: = {tid1};')
-        lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId1: = {flag};')
+        lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId1: = {disable_flag};')
         lines.append(f'param WorldMapPointParam: id {row_id}: selectMinZoomStep: = 2;')
         row_id += 1
         count += 1

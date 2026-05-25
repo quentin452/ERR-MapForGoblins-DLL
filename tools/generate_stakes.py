@@ -20,7 +20,8 @@ asm = Assembly.LoadFrom(str(config.SOULSFORMATS_DLL))
 clr.AddReference(str(config.SOULSFORMATS_DLL))
 import SoulsFormats
 
-from massedit_common import OUT_DIR, UNDERGROUND_AREAS, DLC_AREAS, OVERWORLD_AREAS, resolve_location_id, convert_legacy_coords
+from massedit_common import (OUT_DIR, UNDERGROUND_AREAS, DLC_AREAS, OVERWORLD_AREAS,
+                             resolve_location_id, resolve_location_id_at, convert_legacy_coords)
 
 ERR_MOD_DIR = config.require_err_mod_dir()
 _str_type = SysType.GetType('System.String')
@@ -61,6 +62,8 @@ def main():
             continue
 
         for p in msb.Parts.Assets:
+            if int(getattr(p, 'GameEditionDisable', 0) or 0) == 1:
+                continue  # disabled placement (e.g. preview/cView MSB rooms)
             if str(p.ModelName) != 'AEG099_060':
                 continue
             x = round(float(p.Position.X), 3)
@@ -105,9 +108,9 @@ def main():
         lines.append(f'param WorldMapPointParam: id {row_id}: posZ: = {s["z"]:.3f};')
         # Tutorial text 301540 = "Stakes of Marika"
         lines.append(f'param WorldMapPointParam: id {row_id}: textId1: = 900301540;')
-        # Location name for dungeons
+        # Location name for dungeons — nearest-grace lookup
         map_code = f'm{area:02d}_{gx:02d}_{gz:02d}_00'
-        loc_id = resolve_location_id(map_code)
+        loc_id = resolve_location_id_at(map_code, s["x"], s.get("y", 0.0), s["z"])
         if loc_id > 0:
             lines.append(f'param WorldMapPointParam: id {row_id}: textId2: = {loc_id};')
         lines.append(f'param WorldMapPointParam: id {row_id}: selectMinZoomStep: = 1;')

@@ -21,7 +21,9 @@ asm = Assembly.LoadFrom(str(config.SOULSFORMATS_DLL))
 clr.AddReference(str(config.SOULSFORMATS_DLL))
 import SoulsFormats
 
-from massedit_common import OUT_DIR, UNDERGROUND_AREAS, DLC_AREAS, OVERWORLD_AREAS, resolve_location_id
+from massedit_common import (OUT_DIR, UNDERGROUND_AREAS, DLC_AREAS, OVERWORLD_AREAS,
+                             resolve_location_id, resolve_location_id_at)
+from unreachable import is_unreachable_in_err
 
 ERR_MOD_DIR = config.require_err_mod_dir()
 _str_type = SysType.GetType('System.String')
@@ -69,7 +71,7 @@ def write_massedit(entries, out_name, icon_id, text_id, start_row, zoom=1):
         lines.append(f'param WorldMapPointParam: id {row_id}: posZ: = {e["z"]:.3f};')
         lines.append(f'param WorldMapPointParam: id {row_id}: textId1: = {text_id};')
         map_code = f'm{area:02d}_{gx:02d}_{gz:02d}_00'
-        loc_id = resolve_location_id(map_code)
+        loc_id = resolve_location_id_at(map_code, e["x"], e.get("y", 0.0), e["z"])
         if loc_id > 0:
             lines.append(f'param WorldMapPointParam: id {row_id}: textId2: = {loc_id};')
         flag = e.get('flag', 0)
@@ -106,9 +108,12 @@ def main():
         except:
             continue
 
-        # Spirit Springs: MountJumps/Falls regions
-        for rtype in ['MountJumps', 'LockedMountJumps',
-                      'MountJumpFalls', 'LockedMountJumpFalls']:
+        # Spirit Springs: launch points only (MountJumps / LockedMountJumps).
+        # MountJumpFalls / LockedMountJumpFalls are LANDING points — they
+        # mirror every launch and produce duplicate icons (every launch has
+        # a matching fall within 50u; verified 0 orphans across all maps).
+        # We only want one icon per spring at the interaction point.
+        for rtype in ['MountJumps', 'LockedMountJumps']:
             coll = getattr(msb.Regions, rtype, None)
             if not coll:
                 continue
@@ -116,6 +121,10 @@ def main():
                 x = round(float(r.Position.X), 3)
                 y = round(float(r.Position.Y), 3)
                 z = round(float(r.Position.Z), 3)
+                # Skip mount jumps that ERR moved DOWN below vanilla into
+                # unreachable terrain (no jump triggers in-game).
+                if is_unreachable_in_err(map_name, str(r.Name), y):
+                    continue
                 key = (area, round(x, 0), round(z, 0))
                 if key in seen_springs:
                     continue
@@ -144,6 +153,8 @@ def main():
 
         # DLC AEG463_200 assets (spirit springs without MountJumps region)
         for p in msb.Parts.Assets:
+            if int(getattr(p, 'GameEditionDisable', 0) or 0) == 1:
+                continue
             if str(p.ModelName) != 'AEG463_200':
                 continue
             x = round(float(p.Position.X), 3)
@@ -160,6 +171,8 @@ def main():
 
         # Spiritspring Hawks: c4210 enemies with EntityID ending in 0980 or 0971
         for p in msb.Parts.Enemies:
+            if int(getattr(p, 'GameEditionDisable', 0) or 0) == 1:
+                continue
             eid = int(p.EntityID)
             model = str(p.ModelName)
             if eid <= 0 or model != 'c4210':
@@ -189,10 +202,11 @@ def main():
                        icon_id=404, text_id=900301620, start_row=8600000)
     print(f"Written {n} springs to World - Spirit Springs.MASSEDIT")
 
-    # Write Hawks (icon 403, textId 904210304 = "167. Spiritspring Stormhawk")
+    # Write Hawks (icon 439 — custom image MENU_ItemIcon_03273; textId
+    # 904210304 = "167. Spiritspring Stormhawk")
     # clearedEventFlagId = hawk EntityID (set when hawk killed = spring unlocked)
     n = write_massedit(hawks, 'World - Spiritspring Hawks.MASSEDIT',
-                       icon_id=403, text_id=904210304, start_row=8650000)
+                       icon_id=439, text_id=904210304, start_row=8650000)
     print(f"Written {n} hawks to World - Spiritspring Hawks.MASSEDIT")
 
 

@@ -614,6 +614,11 @@ int goblin::collected::refresh()
     auto wgm = read_wgm_snapshot();
     std::set<uint32_t> wgm_tiles;
 
+    // Rows we positively observed alive in WGM this refresh. Used to override
+    // sticky carry-forward below: a row is "uncollected" only when we see its
+    // live instance, not just because the tile is unloaded.
+    std::set<uint64_t> demonstrably_alive_rows;
+
     // Position key uses X/Z only (rounded to int). posY in MAP_ENTRIES is sometimes
     // not set (defaults to 0) while WGM's posY is the real MSB height — matching on
     // Y would cause false negatives. Same-XZ collisions are extremely rare in
@@ -638,7 +643,11 @@ int goblin::collected::refresh()
         for (auto &[object_name, row_id] : name_it->second)
         {
             // Its own instance is alive → visible, stop here
-            if (snap.alive_names.count(object_name)) continue;
+            if (snap.alive_names.count(object_name))
+            {
+                demonstrably_alive_rows.insert(row_id);
+                continue;
+            }
 
             // Look up MAP_ENTRY coords to probe the position index
             auto pt_it = g_entry_positions.find(row_id);
@@ -679,6 +688,20 @@ int goblin::collected::refresh()
             auto prefix_it = tile_it->second.find(prefix);
             if (prefix_it == tile_it->second.end()) continue;
 
+            // Single-instance fallback. If this tile has exactly one row for
+            // this prefix, any GEOF entry means that row was collected — no
+            // need to match a slot. aeg099_index_from_geof() is calibrated
+            // for AEG099_*; AEG463_* uses a different encoding (verified via
+            // memory dump: m60_48_36 AEG463_840 has geom_slot=5 in MAP_ENTRY
+            // but GEOF reports geom_idx=4503 → AEG099 formula computes
+            // slot=6, off by one). For single-instance prefixes the slot is
+            // irrelevant, so skip the lookup entirely.
+            if (prefix_it->second.size() == 1)
+            {
+                new_collected.insert(prefix_it->second.begin()->second);
+                continue;
+            }
+
             for (int slot : slots)
             {
                 auto row_it = prefix_it->second.find(slot);
@@ -687,6 +710,30 @@ int goblin::collected::refresh()
             }
         }
     }
+
+    // ── Sticky carry-forward ──
+    //
+    // For models that don't leave a replacement asset and aren't tracked by
+    // GeomFlagSaveDataManager (notably AEG463_840 "Dragon's Calorbloom" with
+    // isBreakOnPickUp=True), both WGM-replacement and GEOF detection lose
+    // track after the player walks far from the tile — WGM goes empty and
+    // GEOF has no entry. Without carry-forward the row drops back to
+    // "uncollected" and the icon reappears on the map.
+    //
+    // Rule: if a row was collected last refresh and we don't positively see
+    // its live instance now, it stays collected. Respawn (e.g. after grace
+    // rest, when the tile reloads with the flower alive) puts the row into
+    // demonstrably_alive_rows and breaks the sticky retention.
+    int carried = 0;
+    for (uint64_t prev : g_collected_rows)
+    {
+        if (demonstrably_alive_rows.count(prev))
+            continue;  // respawn observed → release
+        if (new_collected.insert(prev).second)
+            carried++;
+    }
+    if (carried > 0)
+        spdlog::debug("[COLLECTED] Sticky carry-forward kept {} row(s) hidden", carried);
 
     if (new_collected == g_collected_rows)
         return 0;

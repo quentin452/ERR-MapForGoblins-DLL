@@ -13,7 +13,8 @@ import json
 import os
 import sys
 from pathlib import Path
-from massedit_common import UNDERGROUND_AREAS, DLC_AREAS, OVERWORLD_AREAS, resolve_location_id
+from massedit_common import (UNDERGROUND_AREAS, DLC_AREAS, OVERWORLD_AREAS,
+                             resolve_location_id, resolve_location_id_at)
 
 def main():
     project_dir = Path(__file__).parent.parent
@@ -96,9 +97,11 @@ def main():
             "textId1": goods_id + 500000000,  # offset-encoded to avoid PlaceName collision
             "selectMinZoomStep": 1,
         }
-        # Location subtitle for non-overworld maps (dungeons, legacy dungeons, DLC dungeons)
+        # Location subtitle for non-overworld maps — nearest-grace lookup
+        # (disambiguates stacked dungeon regions like Nokron / Siofra)
         if area not in OVERWORLD_AREAS:
-            loc_id = resolve_location_id(n.get("map", ""))
+            loc_id = resolve_location_id_at(
+                n.get("map", ""), n.get("x", 0.0), n.get("y", 0.0), n.get("z", 0.0))
             if loc_id > 0:
                 entry["textId2"] = loc_id
 

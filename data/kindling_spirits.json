@@ -1,0 +1,15 @@
+{
+  "_comment": "ERR Kindling Spirit pickups in m60_45_37_00. Collect all 5 between two Site-of-Grace rests to receive Goods 6610 (Kindling Spirit incantation). Engine auto-sets flag 1045377500 on award. Per-spirit collection state lives only in RAM (SFX-region delete-state); MapForGoblins reads it via goblin_kindling::refresh().",
+  "incantation_goods_id": 6610,
+  "permanent_flag": 1045377500,
+  "counter_flag_base": 1045372505,
+  "counter_flag_bits": 4,
+  "item_lot": 1045370500,
+  "spirits": [
+    {"slot": 1, "entity_id": 1045373501, "x_entity_id": 1045373511, "x": -27.65,   "y": 17.00, "z": 56.13,    "map": "m60_45_37_00", "areaNo": 60, "gridXNo": 45, "gridZNo": 37},
+    {"slot": 2, "entity_id": 1045373502, "x_entity_id": 1045373512, "x": 111.62,  "y": 25.87, "z": 21.58,    "map": "m60_45_37_00", "areaNo": 60, "gridXNo": 45, "gridZNo": 37},
+    {"slot": 3, "entity_id": 1045373503, "x_entity_id": 1045373513, "x": 62.55,   "y": 44.93, "z": -95.26,   "map": "m60_45_37_00", "areaNo": 60, "gridXNo": 45, "gridZNo": 37},
+    {"slot": 4, "entity_id": 1045373504, "x_entity_id": 1045373514, "x": -201.94, "y": 52.06, "z": -104.11,  "map": "m60_45_37_00", "areaNo": 60, "gridXNo": 45, "gridZNo": 37},
+    {"slot": 5, "entity_id": 1045373505, "x_entity_id": 1045373515, "x": -68.56,  "y": 37.13, "z": -103.14,  "map": "m60_45_37_00", "areaNo": 60, "gridXNo": 45, "gridZNo": 37}
+  ]
+}

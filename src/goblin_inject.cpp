@@ -1,5 +1,6 @@
 #include "goblin_inject.hpp"
 #include "goblin_collected.hpp"
+#include "goblin_kindling.hpp"
 #include "goblin_config.hpp"
 #include "generated/goblin_map_data.hpp"
 #include "from/params.hpp"
@@ -106,6 +107,8 @@ static bool is_category_enabled(Category cat)
     case Category::WorldSpiritspringHawks: return goblin::config::showSpiritspringHawks;
     case Category::WorldStakesOfMarika:  return goblin::config::showStakesOfMarika;
     case Category::WorldSummoningPools:  return goblin::config::showSummoningPools;
+    case Category::WorldKindlingSpirits: return goblin::config::showKindlingSpirits;
+    case Category::WorldInteractables:   return goblin::config::showInteractables;
     default:                             return true;
     }
 }
@@ -117,7 +120,8 @@ void goblin::inject_map_entries()
         int32_t row_id;
         uint64_t original_row_id;
         const from::paramdef::WORLD_MAP_POINT_PARAM_ST *data;
-        bool is_piece;
+        bool is_piece;     // collected::register_param_ptr (CSWorldGeomMan-tracked)
+        bool is_kindling;  // kindling::register_param_ptr  (SFX-region-tracked)
         Category category;
     };
 
@@ -134,11 +138,11 @@ void goblin::inject_map_entries()
             skipped_by_config++;
             continue;
         }
-        entries.push_back({0, e.row_id, &e.data,
-                           e.category == Category::ReforgedRunePieces ||
-                           e.category == Category::ReforgedEmberPieces ||
-                           e.category == Category::LootMaterialNodes,
-                           e.category});
+        bool is_piece = e.category == Category::ReforgedRunePieces ||
+                        e.category == Category::ReforgedEmberPieces ||
+                        e.category == Category::LootMaterialNodes;
+        bool is_kindling = e.category == Category::WorldKindlingSpirits;
+        entries.push_back({0, e.row_id, &e.data, is_piece, is_kindling, e.category});
     }
 
     spdlog::info("Injecting {} map entries ({} skipped by config)",
@@ -177,8 +181,9 @@ void goblin::inject_map_entries()
         entry.row_id = next_id++;
     }
 
-    // Update collected system with new dynamic IDs
+    // Update collected + kindling systems with new dynamic IDs
     collected::remap_row_ids(id_remap);
+    kindling::remap_row_ids(id_remap);
 
     spdlog::debug("Assigned IDs: {} entries, range {}-{}, remapped {} piece IDs",
                   entries.size(),
@@ -239,6 +244,7 @@ void goblin::inject_map_entries()
         int32_t row_id;
         const uint8_t *data_ptr;
         bool is_piece;
+        bool is_kindling;
         Category category;
     };
 
@@ -248,12 +254,12 @@ void goblin::inject_map_entries()
     for (uint16_t i = 0; i < orig_num_rows; i++)
     {
         auto *data = old_param_file + old_table->rows[i].param_offset;
-        all_rows.push_back({static_cast<int32_t>(old_table->rows[i].row_id), data, false, {}});
+        all_rows.push_back({static_cast<int32_t>(old_table->rows[i].row_id), data, false, false, {}});
     }
     for (auto &entry : entries)
     {
         all_rows.push_back({entry.row_id, reinterpret_cast<const uint8_t *>(entry.data),
-                            entry.is_piece, entry.category});
+                            entry.is_piece, entry.is_kindling, entry.category});
     }
 
     std::sort(all_rows.begin(), all_rows.end(),
@@ -291,28 +297,41 @@ void goblin::inject_map_entries()
         }
     }
 
-    // Register Rune/Ember piece pointers for real-time tracking
-    int registered = 0, hidden_at_inject = 0;
+    // Register Rune/Ember piece + kindling-spirit pointers for real-time tracking.
+    // Pieces are CSWorldGeomMan-driven (collected::); kindling spirits are
+    // SFX-region-driven (kindling::). Same hide-trick (areaNo = 99).
+    int registered_pieces = 0, hidden_pieces = 0;
+    int registered_kindling = 0, hidden_kindling = 0;
     for (size_t i = 0; i < all_rows.size(); i++)
     {
+        size_t data_offset = data_start + i * PARAM_DATA_SIZE;
+        auto *param_ptr = new_param_file + data_offset;
+        uint64_t row_id = static_cast<uint64_t>(all_rows[i].row_id);
+
         if (all_rows[i].is_piece)
         {
-            size_t data_offset = data_start + i * PARAM_DATA_SIZE;
-            auto *param_ptr = new_param_file + data_offset;
-            uint64_t row_id = static_cast<uint64_t>(all_rows[i].row_id);
             collected::register_param_ptr(row_id, param_ptr);
-            registered++;
-
+            registered_pieces++;
             if (collected::is_row_collected(row_id))
             {
                 param_ptr[0x20] = 99;  // areaNo = 99
-                hidden_at_inject++;
+                hidden_pieces++;
+            }
+        }
+        else if (all_rows[i].is_kindling)
+        {
+            kindling::register_param_ptr(row_id, param_ptr);
+            registered_kindling++;
+            if (kindling::is_row_collected(row_id))
+            {
+                param_ptr[0x20] = 99;
+                hidden_kindling++;
             }
         }
     }
 
-    spdlog::info("Registered {} piece pointers, {} hidden at inject time",
-                 registered, hidden_at_inject);
+    spdlog::info("Registered {} piece + {} kindling pointers ({} + {} hidden at inject)",
+                 registered_pieces, registered_kindling, hidden_pieces, hidden_kindling);
 
     spdlog::debug("Swapping param_file pointer: {:p} -> {:p}", (void *)old_param_file, (void *)new_param_file);
     file_ptr_ref = new_param_file;

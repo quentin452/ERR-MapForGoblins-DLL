@@ -85,6 +85,9 @@ CATEGORY_MAP = {
     "World - Spiritspring Hawks": "WorldSpiritspringHawks",
     "World - Stakes of Marika": "WorldStakesOfMarika",
     "World - Summoning Pools": "WorldSummoningPools",
+    "World - Kindling Spirits": "WorldKindlingSpirits",
+    "World - Seal Puzzles": "WorldInteractables",
+    "World - Hero's Tomb Statues": "WorldInteractables",
 }
 
 # MASSEDIT field name -> C++ struct field name and type

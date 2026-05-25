@@ -48,6 +48,8 @@ for i, p in enumerate(msb_files):
                       ('asset', msb.Parts.Assets),
                       ('dummy_asset', msb.Parts.DummyAssets)]:
         for part in col:
+            if int(getattr(part, 'GameEditionDisable', 0) or 0) == 1:
+                continue  # disabled in this build — not addressable at runtime
             ent = getattr(part, 'EntityID', 0)
             if ent and ent > 0:
                 pos = part.Position

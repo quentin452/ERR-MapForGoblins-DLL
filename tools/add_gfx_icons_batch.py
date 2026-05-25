@@ -125,7 +125,8 @@ def add_frames(xml_path, output_path, config):
             _set_place_object(
                 po_fg, fam["icon_char"], fam["icon_scale"],
                 fam["icon_tx"], fam["icon_ty"],
-                r=spec["r"], g=spec["g"], b=spec["b"], alpha=256)
+                r=spec["r"], g=spec["g"], b=spec["b"],
+                alpha=fam.get("icon_alpha", 256))
             po_fg.set("depth", "2")
 
             # ShowFrameTag

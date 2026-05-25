@@ -21,7 +21,8 @@ asm = Assembly.LoadFrom(str(config.SOULSFORMATS_DLL))
 clr.AddReference(str(config.SOULSFORMATS_DLL))
 import SoulsFormats
 
-from massedit_common import OUT_DIR, UNDERGROUND_AREAS, DLC_AREAS, OVERWORLD_AREAS, resolve_location_id
+from massedit_common import (OUT_DIR, UNDERGROUND_AREAS, DLC_AREAS, OVERWORLD_AREAS,
+                             resolve_location_id, resolve_location_id_at)
 
 ERR_MOD_DIR = config.require_err_mod_dir()
 _str_type = SysType.GetType('System.String')
@@ -163,9 +164,9 @@ def main():
             goods_id = 8200 + (flag - 580000) // 10
         lines.append(f'param WorldMapPointParam: id {row_id}: textId1: = {500000000 + goods_id};')
         lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId1: = {p["flag"]};')
-        # Location text for dungeons
+        # Location text for dungeons — nearest-grace lookup
         map_code = f'm{area:02d}_{gx:02d}_{gz:02d}_00'
-        loc_id = resolve_location_id(map_code)
+        loc_id = resolve_location_id_at(map_code, p.get("x", 0.0), p.get("y", 0.0), p.get("z", 0.0))
         if loc_id > 0:
             lines.append(f'param WorldMapPointParam: id {row_id}: textId2: = {loc_id};')
             lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId2: = {p["flag"]};')

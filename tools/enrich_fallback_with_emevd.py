@@ -67,6 +67,19 @@ def main():
     emevd_map = json.load(open(MAP_PATH, encoding='utf-8'))
     print(f'  {len(emevd_map)} EMEVD lot mappings')
 
+    # Lots that MSB bound only to unreachable DummyAssets. The EMEVD scan is a
+    # byte-pattern match (no instruction-arg-type awareness) and frequently
+    # produces false matches against flag/entity args that just happen to be
+    # numerically equal to a lot ID. Skipping these orphans avoids phantom
+    # markers (e.g. Headband lot 12020560 glued to a ladder via flag-arg of
+    # 2009:0 RegisterLadder).
+    unreach_path = DATA / 'unreachable_msb_lots.json'
+    if unreach_path.exists():
+        unreachable_lots = set(int(x) for x in json.load(open(unreach_path)))
+        print(f'Loaded {len(unreachable_lots)} unreachable-only MSB lots — these will be skipped')
+    else:
+        unreachable_lots = set()
+
     # Index existing records by lot_id
     by_lot = defaultdict(list)
     for r in db:
@@ -80,6 +93,8 @@ def main():
 
     for lot_str, candidates in emevd_map.items():
         lot_id = int(lot_str)
+        if lot_id in unreachable_lots:
+            continue  # orphan in MSB — don't fabricate coords from EMEVD coincidence
         existing = by_lot.get(lot_id, [])
         # Has any record with real coords already?
         has_coords = any(not r.get('from_fallback') for r in existing)

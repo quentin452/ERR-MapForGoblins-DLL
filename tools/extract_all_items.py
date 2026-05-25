@@ -5,11 +5,13 @@ Outputs items_database.json with positions, items, event flags, and categories.
 """
 
 import json
+import re
 import struct
 import sys
 import io
 import os
 import time
+from collections import defaultdict
 from pathlib import Path
 
 import config
@@ -22,6 +24,9 @@ MSB_DIR          = ERR_MOD_DIR / 'map' / 'MapStudio'
 MSGBND_PATH      = ERR_MOD_DIR / 'msg' / 'engus' / 'item_dlc02.msgbnd.dcx'
 OUTPUT_DIR       = config.DATA_DIR
 PARAMDEF_DIR     = config.PARAMDEF_DIR
+
+from unreachable import is_unreachable_in_err
+from emevd_broken import is_spawn_broken, report as report_broken_spawns
 
 UNDERGROUND_AREAS = {12}
 DLC_AREAS = {20, 21, 22, 25, 28, 40, 41, 42, 43, 61}
@@ -271,6 +276,9 @@ def decode_itemlot_id(lot_id):
 def main():
     t0 = time.time()
 
+    print('=== Known ERR EMEVD spawn bugs ===')
+    report_broken_spawns()
+
     print('=== Loading regulation.bin ===')
     reg_path = ERR_MOD_DIR / 'regulation.bin'
     bnd = SoulsFormats.SFUtil.DecryptERRegulation(str(reg_path))
@@ -299,18 +307,23 @@ def main():
 
     print('--- NpcParam (enemy drop lots) ---')
     npc_param = read_param(bnd, 'NpcParam', paramdefs)
-    npc_lots = param_to_dict(npc_param, {'itemLotId_map', 'itemLotId_enemy'})
+    npc_lots = param_to_dict(npc_param, {'itemLotId_map', 'itemLotId_enemy', 'nameId'})
     # Build NPC ID -> lot mappings (prefer map lot, fallback to enemy lot)
     npc_to_map_lot = {}
     npc_to_enemy_lot = {}
+    npc_to_name_id = {}  # npcParamId -> NpcName FMG id (for named NPCs only)
     for npc_id, fields in npc_lots.items():
         lot_map = fields.get('itemLotId_map', 0)
         lot_enemy = fields.get('itemLotId_enemy', 0)
+        name_id = fields.get('nameId', 0)
         if lot_map > 0:
             npc_to_map_lot[npc_id] = lot_map
         if lot_enemy > 0:
             npc_to_enemy_lot[npc_id] = lot_enemy
-    print(f'  {len(npc_lots)} NPCs, {len(npc_to_map_lot)} with map lots, {len(npc_to_enemy_lot)} with enemy lots')
+        if name_id > 0:
+            npc_to_name_id[npc_id] = name_id
+    print(f'  {len(npc_lots)} NPCs, {len(npc_to_map_lot)} with map lots, '
+          f'{len(npc_to_enemy_lot)} with enemy lots, {len(npc_to_name_id)} with NpcName')
 
 
     print('--- EquipParamWeapon ---')
@@ -364,6 +377,12 @@ def main():
 
     treasures = []
     msb_errors = 0
+    # Lots whose MSB Treasure events bind ONLY to unreachable DummyAssets
+    # (eid=0, no group IDs). These are orphan rows in ItemLotParam_map that
+    # the engine never delivers — used to skip them in the fallback enrich
+    # pass and avoid fabricating phantom map markers from byte-pattern
+    # coincidences in EMEVD args (e.g. flag args of 2009:0 RegisterLadder).
+    unreachable_only_lots = set()
     for idx, msb_path in enumerate(msb_files):
         if (idx + 1) % 100 == 0:
             print(f'  [{idx+1}/{len(msb_files)}] {msb_path.name}...')
@@ -385,6 +404,11 @@ def main():
         dummy_positions = {}
         dummy_entity_ids = {}
         for p in msb.Parts.Assets:
+            # GameEditionDisable=1 marks the part as disabled in this build
+            # (debug/test placements or vanilla parts ERR removed). The engine
+            # never spawns them, so treasures bound to them never deliver.
+            if int(getattr(p, 'GameEditionDisable', 0) or 0) == 1:
+                continue
             live_positions[str(p.Name)] = {
                 'x': float(p.Position.X),
                 'y': float(p.Position.Y),
@@ -446,9 +470,18 @@ def main():
                     if eid != 0 or groups:
                         reachable.append(r)
                 if not reachable:
+                    unreachable_only_lots.add(lot_id)
                     continue
                 part_name, _, pos = reachable[0]
                 bucket = 'reachable_dummy'
+
+            # Manual exclude list for assets that ERR moved DOWN below
+            # vanilla into unreachable terrain. The check is conditional
+            # on actual vs vanilla Y, so the exclusion self-disarms if a
+            # future ERR update fixes the position.
+            if is_unreachable_in_err(map_info['map'], part_name, pos['y']):
+                continue
+
             treasures.append({
                 'map': map_info['map'],
                 'areaNo': map_info['areaNo'],
@@ -465,6 +498,11 @@ def main():
 
         # Enemy drops: NPC → NpcParam → itemLotId_map or itemLotId_enemy
         for p in msb.Parts.Enemies:
+            # Skip enemies disabled in this build (debug placements, leftover
+            # vanilla entities replaced by ERR, etc.). The engine never spawns
+            # them, so their drops never trigger and any map marker is phantom.
+            if int(getattr(p, 'GameEditionDisable', 0) or 0) == 1:
+                continue
             npc_id = int(p.NPCParamID)
             lot_id = npc_to_map_lot.get(npc_id, 0)
             lot_source = 'map'
@@ -475,6 +513,12 @@ def main():
                 continue
             name = str(p.Name)
             model = str(p.ModelName) if hasattr(p, 'ModelName') else ''
+            # Skip drops whose spawn chain is broken by an ERR EMEVD bug
+            # (currently registered: m30_08 c4020_9000 deadlock).
+            # The check loads ERR EMEVD live, so the moment ERR fixes the
+            # bug — whichever way — this filter self-disarms.
+            if is_spawn_broken(map_info['map'], name):
+                continue
             treasures.append({
                 'map': map_info['map'],
                 'areaNo': map_info['areaNo'],
@@ -495,6 +539,51 @@ def main():
     enemy_count = sum(1 for t in treasures if t.get('source') == 'enemy')
     print(f'    ({len(treasures) - enemy_count} treasures + {enemy_count} enemy drops)')
 
+    # ── Cross-tile placeholder remap ──
+    # Some overworld assets (caravan loot, instance-specific chests) live in
+    # aggregate "_01"/"_02"/"_12" placeholder MSBs but encode their real
+    # owner tile in the partName prefix, e.g.
+    #   placeholder map  m60_11_10_02
+    #   partName         "m60_47_40_00-AEG100_101_1001"
+    #   owner tile       m60_47_40_00
+    # The placeholder uses a coarser tile grid (4x4 fine tiles for _02/_12,
+    # 2x2 for _01), so positions in placeholder local coords need to be
+    # offset back into owner-tile local coords before we can render an
+    # icon on the right map fragment.
+    SUFFIX_SCALE = {'01': 2, '02': 4, '12': 4}
+    FINE_TILE_SIZE = 256
+    _prefix_re = re.compile(r'^m(\d{2})_(\d{2})_(\d{2})_(\d{2})-')
+    remapped = 0
+    for tr in treasures:
+        m = _prefix_re.match(tr.get('partName', ''))
+        if not m: continue
+        own_area, own_gx, own_gz, own_p3 = (int(g) for g in m.groups())
+        cur_map = tr['map']
+        # Skip if partName already matches the MSB (regular asset)
+        if cur_map.startswith(f'm{own_area:02d}_{own_gx:02d}_{own_gz:02d}_{own_p3:02d}'):
+            continue
+        # Only handle the same-area placeholder case (m60→m60, m61→m61).
+        # Cross-area cases (m34_NN → m60_XX, legacy dungeons) need
+        # WorldMapLegacyConvParam handling and are out of scope here.
+        if own_area != tr['areaNo']: continue
+        suffix = cur_map[-2:]  # e.g. '02'
+        scale = SUFFIX_SCALE.get(suffix)
+        if scale is None: continue
+        agg_size = FINE_TILE_SIZE * scale
+        # Local-coord offset from placeholder origin to owner origin.
+        # Both tiles are center-origin in local coords.
+        offset_x = tr['p1'] * agg_size + agg_size / 2 \
+                 - own_gx * FINE_TILE_SIZE - FINE_TILE_SIZE / 2
+        offset_z = tr['p2'] * agg_size + agg_size / 2 \
+                 - own_gz * FINE_TILE_SIZE - FINE_TILE_SIZE / 2
+        tr['x'] += offset_x
+        tr['z'] += offset_z
+        tr['p1'] = own_gx
+        tr['p2'] = own_gz
+        tr['map'] = f'm{own_area:02d}_{own_gx:02d}_{own_gz:02d}_{own_p3:02d}'
+        remapped += 1
+    print(f'    Remapped {remapped} placeholder records to fine-grid owner tiles')
+
     # ── EMEVD: template event drops (scarabs, mini-bosses, etc.) ──
     print('\n=== Scanning EMEVD for template event drops ===')
 
@@ -503,32 +592,40 @@ def main():
         None, Array[SysType]([_str_type]), None)
 
     # Template events that award items: event_id -> (entity_offset, lot_offset, min_args)
-    # Scarab/enemy drops: entity at offset 8, lot at offset 16
-    # Boss rewards (90005860+): entity at offset 16, lot at offset 24
-    # NPC quest rewards (90005750): entity at offset 8, lot at offset 16
-    # NPC invasion rewards (90005774): entity at offset 8, lot at offset 12
-    # Painting pickups (90005632): entity at offset 8, lot at offset 16
-    # Great Runes (90005110): entity at offset 8, lot at offset 20
-    # Larval Tears (90005390): entity at offset 8, lot at offset 28
+    # Each entry verified against DarkScript3 ER emedf:
+    # the template body MUST contain `2003:36 Award Items (Including Clients)`
+    # (or `2003:04 Award Item Lot`) with the lot arg bound to caller srcByte
+    # (lot_offset - 8). Templates without a real award instruction are NOT listed
+    # here (e.g. 90005200/90005210 are animation-only "ambush wake-up" templates,
+    # 90005881-90005885 are boss-state machines with no item drop).
+    #
+    # Offsets:
+    #   Scarab/enemy drops:               entity@8,  lot@16
+    #   Boss rewards (90005860+):         entity@16, lot@24
+    #   NPC quest rewards (90005750):     entity@8,  lot@16
+    #   NPC invasion rewards (90005774):  entity@8,  lot@12
+    #   Hostile NPC defeat (90005792):    entity@20, lot@24  (X12_4 char, X16_4 lot)
+    #   Painting pickups (90005632):      entity@8,  lot@16
+    #   Great Runes (90005110):           entity@8,  lot@20
+    #   Larval Tears (90005390):          entity@8,  lot@28
+    #   NPC quest reward variant 90005753: entity@8, lot@16 (asset-tied; e.g. Volcanic Storm)
     TEMPLATE_EVENTS = {
         # Scarab/enemy drops
-        90005200: (8, 16, 20),
-        90005210: (8, 16, 20),
         90005300: (8, 16, 20),
         90005301: (8, 16, 20),
         # Boss rewards (field bosses, dungeon bosses)
         90005860: (16, 24, 28),
         90005861: (16, 24, 28),
         90005880: (16, 24, 28),
-        90005881: (16, 24, 28),
-        90005882: (16, 24, 28),
-        90005883: (16, 24, 28),
-        90005885: (16, 24, 28),
         # NPC quest/dialog rewards
         90005750: (8, 16, 20),
-        # NPC invasion rewards
+        90005753: (8, 16, 20),
+        # NPC invasion rewards (90005774 = "pseudo multi reward")
         90005774: (8, 12, 16),
-        90005792: (8, 24, 28),
+        # Hostile NPC defeat: X0_4=defeat flag, X12_4=char, X16_4=lot.
+        # entity offset = 8 (params start) + 12 (X12_4) = 20 in args.
+        # lot offset = 8 + 16 = 24.
+        90005792: (20, 24, 28),
         # Painting pickups
         90005632: (8, 16, 20),
         # Great Runes
@@ -539,8 +636,11 @@ def main():
         90005555: (8, 12, 16),
     }
 
-    # Boss reward event IDs (have defeat flag at offset 8)
-    BOSS_EVENTS = {90005860, 90005861, 90005880, 90005881, 90005882, 90005883, 90005885}
+    # Event IDs whose first param (args byte 8) carries an NPC defeat /
+    # completion flag. Used for marker hide-on-kill (clearedEventFlagId).
+    # Bosses: 90005860/61/80 - X0_4 = boss defeat flag.
+    # Hostile NPCs: 90005792 - X0_4 = invader defeat flag.
+    BOSS_EVENTS = {90005860, 90005861, 90005880, 90005792}
 
     emevd_dir = ERR_MOD_DIR / 'event'
     emevd_calls = []  # (entityId, lotId, map_name, eventId, defeatFlag)
@@ -592,6 +692,8 @@ def main():
         except:
             continue
         for p in msb.Parts.Enemies:
+            if int(getattr(p, 'GameEditionDisable', 0) or 0) == 1:
+                continue
             eid = int(p.EntityID)
             if eid in emevd_entity_ids and eid not in entity_to_pos:
                 entity_to_pos[eid] = {
@@ -628,6 +730,179 @@ def main():
 
     print(f'  {emevd_matched} EMEVD drops matched to positions ({len(entity_to_pos)}/{len(emevd_entity_ids)} entities found)')
 
+    # ── EMEVD: Event-flag-driven unique drops (common.emevd event 1200 template) ──
+    #
+    # The vanilla ER reward mechanism for unique items like spirit ashes that drop
+    # from named bosses works via a generic template `event 1200` in common.emevd:
+    #
+    #   common.emevd ev0 [N]: RunEvent(slot, eventId=1200,
+    #                                  params=[trigger_flag, lot_id, _, shared_flag])
+    #
+    # Event 1200 body:
+    #   [0] 2004:76  RegisterItemAwardOnFlag(trigger_flag, lot_id)  -- engine-level
+    #   [1] END IF Event Flag(shared_flag)  -- skip if already awarded
+    #   [2] IF Event Flag(trigger_flag)     -- wait until trigger fires
+    #   [4] Award Items (Including Clients)(lot_id)  -- deliver
+    #
+    # When a per-map emevd event sets the trigger_flag (e.g. ev30002800 sets flag
+    # 9200 on Tombsward Cemetery Shade death), event 1200 awards the matching lot
+    # (e.g. lot 20000 -> Lhutel the Headless).
+    #
+    # Neither the trigger event nor the RunEvent call carry the entity_id
+    # explicitly, so we recover it heuristically: walk the trigger event's
+    # instructions, find any entity_id reference matching an MSB enemy in the
+    # same map; prefer boss-like entities (eid%1000 in 800..899).
+    print('\n=== Scanning common.emevd ev0 for RunEvent(1200, ...) — flag→lot map ===')
+    flag_to_lot = {}
+    common_path = ERR_MOD_DIR / 'event' / 'common.emevd.dcx'
+    if common_path.exists():
+        try:
+            tmp_c = os.path.join(tempfile.gettempdir(), '_mfg_common.tmp')
+            SysFile.WriteAllBytes(tmp_c, SoulsFormats.DCX.Decompress(str(common_path)).ToArray())
+            common_em = _emevd_read.Invoke(None, Array[Object]([tmp_c]))
+            os.unlink(tmp_c)
+            for event in common_em.Events:
+                if int(event.ID) != 0:
+                    continue
+                for instr in event.Instructions:
+                    if int(instr.Bank) != 2000 or int(instr.ID) != 0:
+                        continue  # RunEvent (2000:00) only
+                    args = bytes(instr.ArgData) if instr.ArgData else b''
+                    if len(args) < 24:
+                        continue
+                    eid_call = struct.unpack_from('<i', args, 4)[0]
+                    if eid_call != 1200:
+                        continue
+                    trig_flag = struct.unpack_from('<i', args, 8)[0]
+                    lot_id    = struct.unpack_from('<i', args, 12)[0]
+                    if trig_flag > 0 and lot_id > 0:
+                        flag_to_lot[trig_flag] = lot_id
+        except Exception as e:
+            print(f'  WARN: failed to scan common.emevd: {e}')
+    print(f'  {len(flag_to_lot)} (flag→lot) pairs registered via event 1200')
+
+    # Find Set Event Flag instructions that trigger these lots, grouped by map+event
+    setter_events = []  # (flag_id, map_name, event_id)
+    for emevd_path in sorted(emevd_dir.glob('*.emevd.dcx')):
+        map_name = emevd_path.name.replace('.emevd.dcx', '')
+        if map_name in ('common', 'common_func'):
+            continue
+        try:
+            tmp2 = os.path.join(tempfile.gettempdir(), '_mfg_emevd2.tmp')
+            SysFile.WriteAllBytes(tmp2, SoulsFormats.DCX.Decompress(str(emevd_path)).ToArray())
+            emevd = _emevd_read.Invoke(None, Array[Object]([tmp2]))
+            os.unlink(tmp2)
+        except Exception:
+            continue
+        for event in emevd.Events:
+            for instr in event.Instructions:
+                bank = int(instr.Bank); iid = int(instr.ID)
+                # 2003:66 = Set Event Flag, 2003:69 = Set Network-Connected Event Flag.
+                # Both have layout (u8 target_type, u32 flag_id, u8 state) packed as i32×3.
+                if bank != 2003 or iid not in (66, 69):
+                    continue
+                args = bytes(instr.ArgData) if instr.ArgData else b''
+                if len(args) < 12:
+                    continue
+                flag_id = struct.unpack_from('<i', args, 4)[0]
+                state   = struct.unpack_from('<i', args, 8)[0]
+                if state != 1 or flag_id not in flag_to_lot:
+                    continue
+                setter_events.append((flag_id, map_name, int(event.ID)))
+    print(f'  {len(setter_events)} Set Event Flag(<trigger>, 1) instructions found')
+
+    # For each setter event, find the entity it references in MSB; prefer boss eid.
+    #
+    # entity_to_pos so far only contains entities referenced by TEMPLATE_EVENTS
+    # callers — boss entities like Tombsward's 30000800 aren't included because
+    # they're spawned/managed by per-map emevd events, not by common_func
+    # templates. Extend entity_to_pos by scanning every MSB enemy for the maps
+    # that have setter events.
+    emevd1200_matched = 0
+    seen_pairs = set()  # (entity_id, lot_id) — dedup
+    maps_with_setters = {m for _, m, _ in setter_events}
+    for msb_path in sorted(MSB_DIR.glob('*.msb.dcx')):
+        map_info_msb = parse_map_name(msb_path.name)
+        if not map_info_msb:
+            continue
+        if map_info_msb['map'] not in maps_with_setters:
+            continue
+        if map_info_msb.get('p3') == 99:
+            continue
+        try:
+            msb = _read_from_bytes(_msbe_read, SoulsFormats.DCX.Decompress(str(msb_path)), '.msb')
+        except Exception:
+            continue
+        for p in msb.Parts.Enemies:
+            if int(getattr(p, 'GameEditionDisable', 0) or 0) == 1:
+                continue
+            eid = int(p.EntityID)
+            if eid <= 0 or eid in entity_to_pos:
+                continue
+            entity_to_pos[eid] = {
+                'x': float(p.Position.X), 'y': float(p.Position.Y), 'z': float(p.Position.Z),
+                'map': map_info_msb['map'], 'areaNo': map_info_msb['areaNo'],
+                'p1': map_info_msb['p1'], 'p2': map_info_msb['p2'],
+                'name': str(p.Name), 'model': str(p.ModelName),
+                'npcParam': int(p.NPCParamID),
+            }
+    map_to_entities = defaultdict(set)
+    for eid, info in entity_to_pos.items():
+        map_to_entities[info['map']].add(eid)
+
+    # Re-read each map's emevd once and cache event-id -> referenced entities
+    map_event_entities = {}  # (map_name, event_id) -> set of entity_ids
+    maps_needed = {m for _, m, _ in setter_events}
+    for map_name in sorted(maps_needed):
+        em_path = emevd_dir / f'{map_name}.emevd.dcx'
+        if not em_path.exists():
+            continue
+        try:
+            tmp3 = os.path.join(tempfile.gettempdir(), '_mfg_emevd3.tmp')
+            SysFile.WriteAllBytes(tmp3, SoulsFormats.DCX.Decompress(str(em_path)).ToArray())
+            em = _emevd_read.Invoke(None, Array[Object]([tmp3]))
+            os.unlink(tmp3)
+        except Exception:
+            continue
+        valid_entities = map_to_entities.get(map_name, set())
+        for event in em.Events:
+            event_id = int(event.ID)
+            refs = set()
+            for instr in event.Instructions:
+                args = bytes(instr.ArgData) if instr.ArgData else b''
+                for i in range(0, len(args) - 3, 4):
+                    v = struct.unpack_from('<i', args, i)[0]
+                    if v in valid_entities:
+                        refs.add(v)
+            if refs:
+                map_event_entities[(map_name, event_id)] = refs
+
+    for flag_id, map_name, event_id in setter_events:
+        lot_id = flag_to_lot[flag_id]
+        refs = map_event_entities.get((map_name, event_id), set())
+        if not refs:
+            continue
+        # Prefer boss-like entities (last 3 digits in 800-899 range)
+        boss_like = sorted(e for e in refs if 800 <= (e % 1000) <= 899)
+        chosen = boss_like[0] if boss_like else sorted(refs)[0]
+        dedup_key = (chosen, lot_id)
+        if dedup_key in seen_pairs:
+            continue
+        seen_pairs.add(dedup_key)
+        pos = entity_to_pos[chosen]
+        entry = {
+            'map': pos['map'], 'areaNo': pos['areaNo'],
+            'p1': pos['p1'], 'p2': pos['p2'],
+            'x': pos['x'], 'y': pos['y'], 'z': pos['z'],
+            'itemLotId': lot_id, 'partName': pos['name'],
+            'source': 'emevd', 'enemyModel': pos['model'],
+            'npcParamId': pos.get('npcParam', 0),
+            'defeatFlag': flag_id, 'emevdEventId': event_id,
+        }
+        treasures.append(entry)
+        emevd1200_matched += 1
+    print(f'  {emevd1200_matched} event-1200 unique drops matched to entities')
+
     print('\n=== Cross-referencing data ===')
     # Build set of all MSB treasure base lot IDs (to avoid treating them as sub-lots)
     treasure_base_lots = {tr['itemLotId'] for tr in treasures if tr.get('source') == 'treasure'}
@@ -663,11 +938,17 @@ def main():
         lots_to_check = []
 
         if (is_enemy or tr.get('source') == 'emevd') and lot_id in item_lots_enemy:
-            # Check base and sequential entries in enemy lots
-            for offset in range(1000):  # up to 1000 sub-entries (some NPCs have many variants)
+            # Scan base + sequential sub-lots, STOPPING at the first gap.
+            # Without the break, the scan walks across the gap and picks up
+            # sub-lots that belong to a *different* NpcParam's chain — e.g.
+            # base 337000000 (c3370 NpcParam 33700065) would otherwise bleed
+            # into 337000800..337000807 (NpcParam 33700865) and falsely award
+            # Shining Horned Headband (lot 337000805) to every c3370 in MSB.
+            for offset in range(1000):
                 sub_lot = item_lots_enemy.get(lot_id + offset)
-                if sub_lot is not None:
-                    lots_to_check.append((lot_id + offset, sub_lot))
+                if sub_lot is None:
+                    break  # gap in sequence — chain belongs to another NPC
+                lots_to_check.append((lot_id + offset, sub_lot))
         elif lot_id in item_lots:
             # Treasure: scan base + sequential sub-lots (chests can have multiple items)
             # Stop at sub-lots that are themselves another treasure's base lot
@@ -771,6 +1052,11 @@ def main():
     for lot_id, lot in item_lots.items():
         if lot_id in matched_lot_ids or lot_id <= 0:
             continue
+        # Skip lots whose only MSB binding was to unreachable DummyAssets —
+        # the engine never spawns them, and the EMEVD-enrich pass would
+        # otherwise glue them to a random entity by byte-pattern coincidence.
+        if lot_id in unreachable_only_lots:
+            continue
 
         event_flag = lot.get('getItemFlagId', 0)
 
@@ -823,9 +1109,26 @@ def main():
     for cat, cnt in sorted(cat_counts.items(), key=lambda x: -x[1]):
         print(f'  {cat}: {cnt}')
 
+    # Sidecar: NpcParam ID → NpcName FMG ID (only rows with nameId > 0).
+    # Consumed by generate_loot_massedit.py + generate_hostile_npcs.py to
+    # label drops/markers with named-NPC names (Millicent, Vyke, ...) via
+    # the `id + 700000000` NpcName offset convention.
+    npcname_path = OUTPUT_DIR / 'npc_name_ids.json'
+    with open(npcname_path, 'w', encoding='utf-8') as f:
+        json.dump({str(k): v for k, v in npc_to_name_id.items()}, f, indent=2)
+    print(f'Saved {len(npc_to_name_id)} NpcParam→NpcName mappings to {npcname_path.name}')
+
     out_path = OUTPUT_DIR / 'items_database.json'
     with open(out_path, 'w', encoding='utf-8') as f:
         json.dump(database, f, indent=2, ensure_ascii=False)
+
+    # Sidecar: lots that MSB bound only to unreachable DummyAssets.
+    # Consumed by enrich_fallback_with_emevd.py to avoid fabricating phantom
+    # markers from EMEVD byte-pattern matches.
+    unreach_path = OUTPUT_DIR / 'unreachable_msb_lots.json'
+    with open(unreach_path, 'w', encoding='utf-8') as f:
+        json.dump(sorted(unreachable_only_lots), f)
+    print(f'Saved {len(unreachable_only_lots)} unreachable-only lot IDs to {unreach_path.name}')
 
     elapsed = time.time() - t0
     print(f'\nFinished in {elapsed:.1f}s')

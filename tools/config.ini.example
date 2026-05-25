@@ -11,3 +11,10 @@ game_dir =
 # under tools/_*.py — not required by the core build pipeline).
 # Example: C:\Tools\Smithbox_2_1_2_2016_02_16_a
 smithbox_dir =
+
+# Optional: path to <DarkScript3>/Resources/ — used by tools/emevd_decompile.py
+# for human-readable entity/model/event names. Without it the EMEDF JSON in
+# tools/er-common.emedf.json is still used (instruction decoding works), but
+# names appear as raw IDs.
+# Example: C:\Tools\Darkscript3_6_3\Resources
+darkscript_resources =

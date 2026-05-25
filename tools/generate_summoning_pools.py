@@ -22,7 +22,8 @@ clr.AddReference(str(config.SOULSFORMATS_DLL))
 import SoulsFormats
 
 from extract_all_items import load_paramdefs, read_param, param_to_dict
-from massedit_common import OUT_DIR, UNDERGROUND_AREAS, DLC_AREAS, OVERWORLD_AREAS, resolve_location_id
+from massedit_common import (OUT_DIR, UNDERGROUND_AREAS, DLC_AREAS, OVERWORLD_AREAS,
+                             resolve_location_id, resolve_location_id_at)
 
 ERR_MOD_DIR = config.require_err_mod_dir()
 bnd = SoulsFormats.SFUtil.DecryptERRegulation(str(ERR_MOD_DIR / 'regulation.bin'))
@@ -100,6 +101,8 @@ def main():
         except:
             continue
         for p in msb.Parts.Assets:
+            if int(getattr(p, 'GameEditionDisable', 0) or 0) == 1:
+                continue  # disabled placement — engine doesn't spawn it
             if str(p.ModelName) != 'AEG099_015':
                 continue
             mx = round(float(p.Position.X), 3)
@@ -191,7 +194,7 @@ def main():
             lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId1: = {pool["rid"]};')
         lines.append(f'param WorldMapPointParam: id {row_id}: textId1: = 900301690;')
         map_code = f'm{pool["area"]:02d}_{pool["gx"]:02d}_{pool["gz"]:02d}_00'
-        loc_id = resolve_location_id(map_code)
+        loc_id = resolve_location_id_at(map_code, pool["x"], pool.get("y", 0.0), pool["z"])
         if loc_id > 0:
             lines.append(f'param WorldMapPointParam: id {row_id}: textId2: = {loc_id};')
             if pool['rid'] > 0:

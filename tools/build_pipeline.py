@@ -119,7 +119,8 @@ STAGES = [
                    DATA / 'goods_spirit_ash_ids.json',
                    DATA / 'tutorial_title_ids.json',
                    DATA / 'tutorial_title_names.json',
-                   DATA / 'enemy_tutorial_mapping.json'],
+                   DATA / 'enemy_tutorial_mapping.json',
+                   DATA / 'unreachable_msb_lots.json'],
           script='extract_all_items.py',
           also_scripts=COMMON),
 
@@ -129,6 +130,12 @@ STAGES = [
           script='build_entity_index.py',
           also_scripts=['config.py']),
 
+    Stage('grace_index',
+          inputs=[REGULATION, MSGBND],
+          outputs=[DATA / 'grace_position_index.json'],
+          script='build_grace_index.py',
+          also_scripts=['config.py']),
+
     Stage('emevd_scan',
           inputs=[EVENT_DIR, REGULATION, DATA / 'msb_entity_index.json'],
           outputs=[DATA / 'emevd_lot_mapping.json'],
@@ -136,7 +143,9 @@ STAGES = [
           also_scripts=['config.py']),
 
     Stage('enrich_fallback',
-          inputs=[DATA / 'items_database.json', DATA / 'emevd_lot_mapping.json'],
+          inputs=[DATA / 'items_database.json',
+                  DATA / 'emevd_lot_mapping.json',
+                  DATA / 'unreachable_msb_lots.json'],
           outputs=[DATA / 'items_database.json'],  # modified in-place
           script='enrich_fallback_with_emevd.py',
           also_scripts=['config.py']),
@@ -157,7 +166,8 @@ STAGES = [
                   DATA / 'boss_list.json',
                   DATA / 'enemy_tutorial_mapping.json',
                   DATA / 'tutorial_title_ids.json',
-                  DATA / 'tutorial_title_names.json'],
+                  DATA / 'tutorial_title_names.json',
+                  DATA / 'grace_position_index.json'],
           outputs=[MASSEDIT_OUT / 'Loot - Consumables.MASSEDIT',
                    MASSEDIT_OUT / 'Equipment - Armaments.MASSEDIT',
                    MASSEDIT_OUT / 'Quest - Progression.MASSEDIT',
@@ -166,7 +176,8 @@ STAGES = [
           also_scripts=['massedit_common.py']),
 
     Stage('generate_pieces_massedit',
-          inputs=[DATA / 'ItemLotParam_map.csv'],
+          inputs=[DATA / 'ItemLotParam_map.csv',
+                  DATA / 'grace_position_index.json'],
           outputs=[MASSEDIT_OUT / 'Reforged - Rune Pieces.MASSEDIT',
                    MASSEDIT_OUT / 'Reforged - Ember Pieces.MASSEDIT',
                    MASSEDIT_OUT / 'Reforged - Rune Pieces_slots.json',
@@ -208,6 +219,13 @@ STAGES = [
           script='generate_summoning_pools.py',
           also_scripts=['extract_all_items.py'] + COMMON),
 
+    Stage('generate_kindling_spirits',
+          inputs=[DATA / 'kindling_spirits.json'],
+          outputs=[MASSEDIT_OUT / 'World - Kindling Spirits.MASSEDIT',
+                   MASSEDIT_OUT / 'World - Kindling Spirits_slots.json'],
+          script='generate_kindling_spirits_massedit.py',
+          also_scripts=['massedit_common.py']),
+
     Stage('generate_spirit_springs',
           inputs=[MSB_DIR],
           outputs=[MASSEDIT_OUT / 'World - Spirit Springs.MASSEDIT',
@@ -226,6 +244,24 @@ STAGES = [
           outputs=[MASSEDIT_OUT / 'World - Stakes of Marika.MASSEDIT'],
           script='generate_stakes.py',
           also_scripts=COMMON),
+
+    Stage('extract_seal_puzzles',
+          inputs=[MSB_DIR, EVENT_DIR],
+          outputs=[DATA / 'seal_puzzles.json'],
+          script='extract_seal_puzzles.py',
+          also_scripts=['config.py']),
+
+    Stage('generate_seal_puzzles',
+          inputs=[DATA / 'seal_puzzles.json'],
+          outputs=[MASSEDIT_OUT / 'World - Seal Puzzles.MASSEDIT'],
+          script='generate_seal_puzzles.py',
+          also_scripts=['massedit_common.py']),
+
+    Stage('generate_hero_tomb_statues',
+          inputs=[MSB_DIR, EVENT_DIR],
+          outputs=[MASSEDIT_OUT / "World - Hero's Tomb Statues.MASSEDIT"],
+          script='generate_hero_tomb_statues.py',
+          also_scripts=['massedit_common.py']),
 
     Stage('generate_paintings',
           inputs=[MSB_DIR, EVENT_DIR],

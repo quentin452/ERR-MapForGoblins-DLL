@@ -71,6 +71,8 @@ enum class Category : uint8_t
     WorldSpiritspringHawks,
     WorldStakesOfMarika,
     WorldSummoningPools,
+    WorldKindlingSpirits,
+    WorldInteractables,
 };
 
 struct MapEntry
