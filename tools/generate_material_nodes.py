@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 from massedit_common import (UNDERGROUND_AREAS, DLC_AREAS, OVERWORLD_AREAS,
                              resolve_location_id, resolve_location_id_at)
+from unreachable import is_unreachable_in_err
 
 def main():
     project_dir = Path(__file__).parent.parent
@@ -80,7 +81,12 @@ def main():
 
     START_ID = 6000000
     entries = []
+    excluded_unreachable = 0
     for n in onetime_nodes:
+        # Skip nodes ERR sank out of reach (see unreachable.py).
+        if is_unreachable_in_err(n.get("map", ""), n.get("name", ""), n.get("y", 0.0)):
+            excluded_unreachable += 1
+            continue
         area = n["area"]
         info = onetime_models[n["model"]]
         goods_id = info.get("primaryGoodsId", info.get("goodsId", 0))
@@ -137,7 +143,8 @@ def main():
 
         entries.append(entry)
 
-    print(f"Generated {len(entries)} MASSEDIT entries")
+    print(f"Generated {len(entries)} MASSEDIT entries "
+          f"({excluded_unreachable} skipped as unreachable)")
 
     # Write slots.json for geom tracking
     slots = {}

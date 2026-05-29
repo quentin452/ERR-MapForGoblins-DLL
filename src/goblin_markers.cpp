@@ -11,12 +11,12 @@
 #include "goblin_markers.hpp"
 #include "goblin_collected.hpp"
 #include "goblin_config.hpp"
+#include "goblin_inject.hpp"
 #include "modutils.hpp"
 #include "generated/goblin_legacy_conv.hpp"
 #include "generated/goblin_map_data.hpp"
 
 #include <windows.h>
-#include <psapi.h>
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -115,31 +115,10 @@ static bool coord_plausible(float v)
     return a > 100.0f && a < 25000.0f;
 }
 
-// Beacon types share high byte 0x01, low byte varies by placement context:
-//   0x0100 — empty/uninitialized slot
-//   0x0101 — base game world placement
-//   0x010A — DLC / Shadow Realm placement
-// (Other low-byte values may appear for events / unique world states; we
-// accept any high-byte 0x01 here. Coord/idx/pad checks below filter out
-// random memory hits that happen to have a 0x01 byte at the type offset.)
-static bool slot_is_empty_beacon(const MarkerSlot &s)
-{
-    return s.idx == -1 && s.x == 0.0f && s.z == 0.0f
-        && ((s.type >> 8) & 0xFF) == 0x01 && s.pad == 0;
-}
-
-static bool slot_is_filled_beacon(const MarkerSlot &s)
-{
-    if (s.pad != 0) return false;
-    if (((s.type >> 8) & 0xFF) != 0x01) return false;
-    if (s.idx < 0 || s.idx > 65535) return false;
-    return coord_plausible(s.x) && coord_plausible(s.z);
-}
-
-static bool slot_is_beacon(const MarkerSlot &s)
-{
-    return slot_is_empty_beacon(s) || slot_is_filled_beacon(s);
-}
+// (Beacon-shape predicates were removed when the array moved from a full
+// memory scan to the static pointer chain in find_beacon_arrays — the chain
+// gives the exact array, so no signature matching is needed. The slot format
+// lives in docs / memory: map-marker-anchor.)
 
 static bool slot_is_stamp(const MarkerSlot &s)
 {
@@ -153,84 +132,47 @@ static bool slot_is_stamp(const MarkerSlot &s)
 }
 
 
-// ── AOB scan for the 10-slot beacon array ──
-//
-// Signature: 10 consecutive valid beacon slots at 16-byte alignment.
-// At least one must be non-empty to avoid zero-filled memory.
-//
-// Note: SEH (__try) cannot coexist with C++ unwinding in the same function,
-// so the per-region scan is isolated in a C-style helper.
+static bool seh_copy(const void *src, void *dst, size_t n);  // defined below
 
-constexpr size_t MAX_HITS = 64;
-
-// Plain function: no C++ objects, can use __try.
-static size_t scan_region_for_beacons(const uint8_t *begin, size_t size,
-                                      uintptr_t *out_hits, size_t max_hits,
-                                      size_t cur_count)
-{
-    if (size < 160) return cur_count;
-    __try
-    {
-        // Step by 4 bytes — the array is 16-aligned internally but its
-        // absolute placement inside a region is NOT guaranteed to align
-        // with the region start. Seen in practice at page+0xCBC2.
-        for (size_t off = 0; off + 160 <= size; off += 4)
-        {
-            const MarkerSlot *slots = reinterpret_cast<const MarkerSlot *>(begin + off);
-            bool ok = true, any_filled = false;
-            for (int i = 0; i < 10; ++i)
-            {
-                if (!slot_is_beacon(slots[i])) { ok = false; break; }
-                if (slots[i].idx >= 0) any_filled = true;
-            }
-            if (ok && any_filled)
-            {
-                if (cur_count < max_hits)
-                    out_hits[cur_count++] = reinterpret_cast<uintptr_t>(slots);
-                else
-                    return cur_count;  // table full
-            }
-        }
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) { }
-    return cur_count;
-}
+// ── Live marker array via a static pointer chain (no memory scan) ──
+//
+//   obj0 = *(eldenring.exe + 0x3D5DF38)   static slot (survives ASLR/restart)
+//   obj1 = *(obj0 + 0x68)                  marker container (vtable RVA 0x2AC21D8)
+//   beacons[10] @ obj1 + 0x118 ; stamps[100] @ obj1 + 0x1B8 (== beacons + 10 slots)
+//
+// Found 2026-05-29 by matching real save-beacon coords in memory then chasing
+// pointers back to the static slot. Replaces the old full-process scan, which
+// produced ~2329 false candidates and raced the allocator (TOCTOU crash on the
+// dump-read). The RVAs are build-specific (ERR 2.2.1.2 / app ~2.6.x); the
+// +0x68/+0x118/+0x1B8 offsets are the stable struct layout. We validate the
+// container's vtable before trusting it. (See memory: map-marker-anchor.)
+static constexpr uintptr_t MARKER_CHAIN_RVA   = 0x3D5DF38;
+static constexpr uintptr_t MARKER_VTABLE_RVA  = 0x2AC21D8;
+static constexpr size_t    MARKER_OFF_OBJ1    = 0x68;
+static constexpr size_t    MARKER_OFF_BEACONS = 0x118;
 
 static std::vector<uintptr_t> find_beacon_arrays()
 {
-    uintptr_t hits_arr[MAX_HITS];
-    size_t hit_count = 0;
+    std::vector<uintptr_t> out;
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!er) return out;
 
-    MEMORY_BASIC_INFORMATION mbi;
-    uintptr_t addr = 0;
-    HANDLE self = GetCurrentProcess();
-    size_t regions_scanned = 0;
-    uint64_t bytes_scanned = 0;
-
-    while (VirtualQueryEx(self, reinterpret_cast<LPCVOID>(addr), &mbi, sizeof(mbi)))
+    uintptr_t obj0 = 0, obj1 = 0, vtab = 0;
+    if (!seh_copy(reinterpret_cast<const void *>(er + MARKER_CHAIN_RVA), &obj0, sizeof(obj0)) || !obj0)
+    { spdlog::warn("Markers: chain root slot empty (not in-world yet?)"); return out; }
+    if (!seh_copy(reinterpret_cast<const void *>(obj0 + MARKER_OFF_OBJ1), &obj1, sizeof(obj1)) || !obj1)
+    { spdlog::warn("Markers: container pointer null"); return out; }
+    if (!seh_copy(reinterpret_cast<const void *>(obj1), &vtab, sizeof(vtab)))
+    { spdlog::warn("Markers: container unreadable"); return out; }
+    if (vtab != er + MARKER_VTABLE_RVA)
     {
-        if (mbi.State == MEM_COMMIT
-            && (mbi.Protect == PAGE_READWRITE
-                || mbi.Protect == PAGE_READONLY
-                || mbi.Protect == PAGE_EXECUTE_READ
-                || mbi.Protect == PAGE_EXECUTE_READWRITE
-                || mbi.Protect == PAGE_WRITECOPY)
-            && mbi.RegionSize <= 512 * 1024 * 1024)
-        {
-            ++regions_scanned;
-            bytes_scanned += mbi.RegionSize;
-            hit_count = scan_region_for_beacons(
-                reinterpret_cast<const uint8_t *>(mbi.BaseAddress),
-                mbi.RegionSize, hits_arr, MAX_HITS, hit_count);
-            if (hit_count >= MAX_HITS) break;
-        }
-        addr = reinterpret_cast<uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
-        if (mbi.RegionSize == 0) break;
+        spdlog::warn("Markers: container vtable 0x{:X} != exe+0x{:X} — chain stale "
+                     "(game patch?) or not ready; skipping", vtab, MARKER_VTABLE_RVA);
+        return out;
     }
-
-    spdlog::info("Marker scan: {} regions, {} MB, {} candidates",
-                 regions_scanned, bytes_scanned / (1024 * 1024), hit_count);
-    return std::vector<uintptr_t>(hits_arr, hits_arr + hit_count);
+    out.push_back(obj1 + MARKER_OFF_BEACONS);
+    spdlog::info("Markers: container @ 0x{:X} (beacons @ +0x118, stamps @ +0x1B8)", obj1);
+    return out;
 }
 
 
@@ -278,6 +220,7 @@ static const char *category_name(generated::Category c)
         case C::KeyWhetblades: return "Key - Whetblades";
         case C::LootAmmo: return "Loot - Ammo";
         case C::LootBellBearings: return "Loot - Bell-Bearings";
+        case C::LootMerchantBellBearings: return "Loot - Merchant Bell-Bearings";
         case C::LootConsumables: return "Loot - Consumables";
         case C::LootCraftingMaterials: return "Loot - Crafting Materials";
         case C::LootMPFingers: return "Loot - MP-Fingers";
@@ -411,12 +354,26 @@ static std::vector<NearbyEntry> find_nearby_overworld(float mapX, float mapZ, fl
 
 // ── The actual dump ──
 
-static void dump_to_file()
+// Plain (POD-only) SEH-guarded memcpy: copies a found beacon array out of live
+// game memory into a local buffer before we read it field-by-field. The array
+// is located by a full process-memory scan, but the game's allocator can free
+// or move the region between the scan and the read (a TOCTOU race) — reading it
+// directly then access-violates and the whole dump aborts. Copying through this
+// guard means a stale array is skipped, not fatal.
+static bool seh_copy(const void *src, void *dst, size_t n)
+{
+    __try { memcpy(dst, src, n); return true; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// Returns the number of marker slots written (beacons + stamps), or -1 if the
+// output path isn't set. 0 is a valid result (no beacon arrays live yet).
+static int dump_to_file()
 {
     if (g_output_path.empty())
     {
         spdlog::warn("Marker dump: output path not set");
-        return;
+        return -1;
     }
 
     resolve_flag_api();
@@ -427,7 +384,7 @@ static void dump_to_file()
     if (!f)
     {
         spdlog::warn("Marker dump: cannot open {}", g_output_path.string());
-        return;
+        return -1;
     }
 
     auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
@@ -467,15 +424,33 @@ static void dump_to_file()
         }
     };
 
+    constexpr int N_BEACONS = 10;
+    constexpr int N_STAMPS  = 200;
+    int total_markers = 0;
+
     for (size_t ai = 0; ai < arrays.size(); ++ai)
     {
         uintptr_t base = arrays[ai];
+
+        // Copy the whole array (beacons + stamps) out of live memory in one
+        // guarded shot, then read from the safe local copy. Eliminates the
+        // TOCTOU AV that aborted the dump when the region moved/freed between
+        // the scan and the read.
+        MarkerSlot buf[N_BEACONS + N_STAMPS];
+        if (!seh_copy(reinterpret_cast<const void *>(base), buf, sizeof(buf)))
+        {
+            f << "\n---- Array #" << (ai + 1) << " @ 0x" << std::hex << base << std::dec
+              << " — SKIPPED (memory freed mid-read) ----\n";
+            spdlog::warn("Marker dump: array #{} @ 0x{:X} vanished mid-read — skipped",
+                         ai + 1, base);
+            continue;
+        }
+
         f << "\n---- Array #" << (ai + 1) << " @ 0x"
           << std::hex << base << std::dec << " ----\n";
 
-        // 10 beacon slots
-        const MarkerSlot *beacons = reinterpret_cast<const MarkerSlot *>(base);
-        for (int i = 0; i < 10; ++i)
+        const MarkerSlot *beacons = buf;
+        for (int i = 0; i < N_BEACONS; ++i)
         {
             const auto &s = beacons[i];
             if (slot_is_empty(s))
@@ -490,12 +465,13 @@ static void dump_to_file()
               << " map=(" << std::fixed << std::setprecision(2) << s.x << "," << s.z << ")"
               << " world=(" << std::setprecision(1) << wx << "," << wz << ")\n";
             dump_nearby(s);
+            ++total_markers;
         }
 
-        // Stamps immediately follow (100+ slots). Scan until 0xFFFF type or invalid.
-        const MarkerSlot *stamps = beacons + 10;
+        // Stamps immediately follow. Scan until 0xFFFF type or invalid.
+        const MarkerSlot *stamps = buf + N_BEACONS;
         int stamp_count = 0;
-        for (int i = 0; i < 200; ++i)
+        for (int i = 0; i < N_STAMPS; ++i)
         {
             const auto &s = stamps[i];
             // Terminator: type high-byte 0xFF or all-zero
@@ -514,30 +490,31 @@ static void dump_to_file()
               << " world=(" << std::setprecision(1) << wx << "," << wz << ")\n";
             dump_nearby(s);
             ++stamp_count;
+            ++total_markers;
         }
         f << "  -- " << stamp_count << " stamps --\n";
     }
 
-    spdlog::info("Marker dump written to {}", g_output_path.string());
+    spdlog::info("Marker dump written to {} ({} markers)", g_output_path.string(), total_markers);
+    return total_markers;
 }
 
 
 // ── Hotkey loop ──
 
-// SEH-isolated invocation of dump_to_file. The outer try/catch only
-// catches C++ exceptions; this additionally traps access violations from
-// reading stale game memory during multiplayer transitions or param
-// reloads.
-static bool seh_dump_to_file_invoke()
+// SEH-isolated invocation of dump_to_file. Returns the marker count (>=0) on
+// success, or -2 if an access violation escaped the per-array guards (e.g. a
+// fault in find_beacon_arrays itself). dump_to_file returns -1 if the output
+// path isn't set.
+static int seh_dump_to_file_invoke()
 {
     __try
     {
-        dump_to_file();
-        return true;
+        return dump_to_file();
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
     {
-        return false;
+        return -2;
     }
 }
 
@@ -546,21 +523,31 @@ void hotkey_loop()
     bool prev_down = false;
     while (true)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
         if (!config::enableMarkerDump) { prev_down = false; continue; }
         SHORT state = GetAsyncKeyState(static_cast<int>(config::markerDumpKey));
         bool down = (state & 0x8000) != 0;
         if (down && !prev_down)
         {
-            bool ok = false;
-            try { ok = seh_dump_to_file_invoke(); }
+            int count = -2;
+            try { count = seh_dump_to_file_invoke(); }
             catch (const std::exception &e) {
-                spdlog::error("Marker dump failed: {}", e.what());
+                spdlog::error("Marker dump failed: {}", e.what()); count = -2;
             }
-            catch (...) { spdlog::error("Marker dump failed: unknown"); }
-            if (!ok)
-                spdlog::error("Marker dump failed: access violation (stale memory)");
+            catch (...) { spdlog::error("Marker dump failed: unknown"); count = -2; }
+
+            // On-screen feedback via the codex toast (static DUMP_OK/FAIL text).
+            // The earlier F9 crash here was NOT override/map related — it was
+            // the same broken trampoline RVA that also crashed F10 (the May-2026
+            // game update shifted .text). With the trampoline now AOB-resolved,
+            // this is safe again. Exact count goes to the log.
+            if (count >= 0)
+                spdlog::info("Marker dump OK: {} markers", count);
+            else
+                spdlog::error("Marker dump failed (code {})", count);
+            goblin::show_codex_toast(count >= 0 ? goblin::TUTORIAL_FMG_ID_DUMP_OK
+                                                : goblin::TUTORIAL_FMG_ID_DUMP_FAIL);
         }
         prev_down = down;
     }

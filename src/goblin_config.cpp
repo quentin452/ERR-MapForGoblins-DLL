@@ -1,5 +1,7 @@
 #include "goblin_config.hpp"
 #include <spdlog/spdlog.h>
+#include <algorithm>
+#include <unordered_map>
 
 uint8_t goblin::config::loadDelay = 15;
 bool goblin::config::requireMapFragments = true;
@@ -28,6 +30,9 @@ bool goblin::config::showWhetblades = true;
 // Loot
 bool goblin::config::showAmmo = true;
 bool goblin::config::showBellBearings = true;
+// Merchant-drop bell bearings (Kalé/Patches/Gostoc/etc killed) — off by
+// default: they're a kill-the-merchant reward, not a normal pickup.
+bool goblin::config::showMerchantBellBearings = false;
 bool goblin::config::showConsumables = true;
 bool goblin::config::showCraftingMaterials = true;
 bool goblin::config::showMPFingers = true;
@@ -97,6 +102,10 @@ bool goblin::config::hideDungeonIconsOnClear = false;
 bool goblin::config::enableMarkerDump = true;
 uint32_t goblin::config::markerDumpKey = 0x78;  // VK_F9
 
+bool goblin::config::enableToggleHotkey = true;
+uint32_t goblin::config::toggleInjectionKey = 0x79;  // VK_F10
+uint16_t goblin::config::toggleGamepadMask = 0x8000 | 0x0080;  // Y + R3
+
 void goblin::load_config(const std::filesystem::path &ini_path)
 {
     spdlog::info("Config: {}", ini_path.string());
@@ -148,6 +157,7 @@ void goblin::load_config(const std::filesystem::path &ini_path)
         auto &cfg = ini["Loot"];
         load_line(cfg, "show_ammo", config::showAmmo);
         load_line(cfg, "show_bell_bearings", config::showBellBearings);
+        load_line(cfg, "show_merchant_bell_bearings", config::showMerchantBellBearings);
         load_line(cfg, "show_consumables", config::showConsumables);
         load_line(cfg, "show_crafting_materials", config::showCraftingMaterials);
         load_line(cfg, "show_mp_fingers", config::showMPFingers);
@@ -243,7 +253,61 @@ void goblin::load_config(const std::filesystem::path &ini_path)
             if (vk) config::markerDumpKey = vk;
             spdlog::debug("Config: marker_dump_key = 0x{:X}", config::markerDumpKey);
         }
+        load_line(cfg, "enable_toggle_hotkey", config::enableToggleHotkey);
+        if (cfg.has("toggle_injection_key"))
+        {
+            uint32_t vk = parse_vk_code(cfg["toggle_injection_key"]);
+            if (vk) config::toggleInjectionKey = vk;
+            spdlog::debug("Config: toggle_injection_key = 0x{:X}", config::toggleInjectionKey);
+        }
+        if (cfg.has("toggle_gamepad_combo"))
+        {
+            uint16_t mask = parse_gamepad_combo(cfg["toggle_gamepad_combo"]);
+            if (mask) config::toggleGamepadMask = mask;
+            spdlog::debug("Config: toggle_gamepad_combo = 0x{:04X}", config::toggleGamepadMask);
+        }
     }
+}
+
+// Parse an XInput button combo string like "Y+R3" or "LB+RB+START" into a
+// bitmask. Buttons separated by '+'. Returns 0 if any token is unknown.
+uint16_t goblin::parse_gamepad_combo(std::string s)
+{
+    static const std::unordered_map<std::string, uint16_t> name_to_mask = {
+        {"A", 0x1000}, {"B", 0x2000}, {"X", 0x4000}, {"Y", 0x8000},
+        {"LB", 0x0100}, {"RB", 0x0200},
+        {"L3", 0x0040}, {"LSTICK", 0x0040},
+        {"R3", 0x0080}, {"RSTICK", 0x0080},
+        {"BACK", 0x0020}, {"SELECT", 0x0020}, {"VIEW", 0x0020},
+        {"START", 0x0010}, {"MENU", 0x0010},
+        {"DPAD_UP", 0x0001}, {"UP", 0x0001},
+        {"DPAD_DOWN", 0x0002}, {"DOWN", 0x0002},
+        {"DPAD_LEFT", 0x0004}, {"LEFT", 0x0004},
+        {"DPAD_RIGHT", 0x0008}, {"RIGHT", 0x0008},
+    };
+    uint16_t mask = 0;
+    std::transform(s.begin(), s.end(), s.begin(), ::toupper);
+    size_t pos = 0;
+    while (pos < s.size())
+    {
+        // skip whitespace
+        while (pos < s.size() && (s[pos] == ' ' || s[pos] == '\t' || s[pos] == '+'))
+            pos++;
+        size_t end = pos;
+        while (end < s.size() && s[end] != '+' && s[end] != ' ' && s[end] != '\t')
+            end++;
+        if (end == pos) break;
+        std::string tok = s.substr(pos, end - pos);
+        auto it = name_to_mask.find(tok);
+        if (it == name_to_mask.end())
+        {
+            spdlog::warn("Unknown gamepad button: '{}'", tok);
+            return 0;
+        }
+        mask |= it->second;
+        pos = end;
+    }
+    return mask;
 }
 
 // Parse a human key name ("F9", "A", "Home", "0", "Space") into Win32 VK_* code.

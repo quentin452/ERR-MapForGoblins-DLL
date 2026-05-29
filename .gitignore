@@ -17,6 +17,13 @@ backup/
 backup2/
 backup3/
 
+# Local debug scratch — never committed. ALL throwaway debug artifacts live here:
+#   scratch/scripts/ — one-off investigation scripts (disasm probes, dumps, etc.)
+#   scratch/out/     — their outputs (.txt/.out/.bin dumps, memory captures)
+# New debug/research scripts and their outputs should be written here, not at the
+# repo root or in tools/. Reusable diagnostic tools belong in tools/ (committed).
+scratch/
+
 # External dependencies
 tools/DSMSPortable_src/
 
@@ -70,11 +77,14 @@ snapshot-build.log
 release-build.log
 *-build.log
 
-# Research / one-off scratch outputs (prefixed with _). The _*.py scripts
-# themselves are kept in git — they're useful diagnostic tools.
+# Stray _-prefixed scratch in tools/ (belt-and-suspenders; the real home for
+# one-off scripts/outputs is scratch/ — see above). A few reusable _*.py
+# diagnostics (e.g. _check_aobs_new_build.py, _parse_minidump.py) are committed
+# explicitly and are NOT ignored — these patterns only cover outputs.
 tools/_*.txt
 tools/_*.bin
 tools/_*.json
+tools/_*.out
 tools/before_*.json
 tools/before_*.bin
 tools/before2_*.json

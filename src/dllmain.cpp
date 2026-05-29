@@ -68,6 +68,7 @@ static void init_collected()        { goblin::collected::initialize(); }
 static void init_kindling()         { goblin::kindling::initialize(); }
 static void init_inject_entries()   { goblin::inject_map_entries(); }
 static void init_apply_map_logic()  { goblin::apply_map_logic(); }
+static void init_tutorial_popup()   { goblin::inject_tutorial_popup_rows(); }
 static void init_setup_messages()   { goblin::setup_messages(); }
 
 static void safe_init_step(InitFn fn, const char *name)
@@ -111,6 +112,7 @@ static void setup_mod()
     safe_init_step(&init_kindling,        "kindling::initialize");
     safe_init_step(&init_inject_entries,  "inject_map_entries");
     safe_init_step(&init_apply_map_logic, "apply_map_logic");
+    safe_init_step(&init_tutorial_popup,  "inject_tutorial_popup_rows");
     safe_init_step(&init_setup_messages,  "setup_messages");
 
     try
@@ -132,6 +134,23 @@ static void setup_mod()
         goblin::markers::set_output_path(g_mod_folder / "logs" / "MapForGoblins_markers.log");
         std::thread(goblin::markers::hotkey_loop).detach();
         spdlog::info("Marker dump hotkey: VK 0x{:X}", goblin::config::markerDumpKey);
+    }
+
+    if (goblin::config::enableToggleHotkey)
+    {
+        std::thread(goblin::toggle_hotkey_loop).detach();
+        spdlog::info("Injection toggle hotkey: VK 0x{:X}", goblin::config::toggleInjectionKey);
+    }
+
+    // The watcher is the single owner of the WorldMapPointParam state — it
+    // applies the F10/gamepad master-off flag and shows the toggle banner.
+    // (The map-based auto-hide it used to run was removed after the 16-align
+    // fix made the expanded table safe during hosting — see
+    // docs/ersc_hosting_and_map_autohide.md.) Run it whenever the hotkey is on.
+    if (goblin::config::enableToggleHotkey)
+    {
+        std::thread(goblin::menu_auto_toggle_loop).detach();
+        spdlog::info("Icon-state watcher started (icons EXPANDED always; F10 = personal show/hide)");
     }
 
     bool first_read = true;

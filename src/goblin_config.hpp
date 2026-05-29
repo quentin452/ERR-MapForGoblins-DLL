@@ -38,6 +38,7 @@ namespace goblin
         // Loot
         extern bool showAmmo;
         extern bool showBellBearings;
+        extern bool showMerchantBellBearings;
         extern bool showConsumables;
         extern bool showCraftingMaterials;
         extern bool showMPFingers;
@@ -117,7 +118,17 @@ namespace goblin
         // Marker dump (hotkey → dump beacon/stamp coords to file)
         extern bool enableMarkerDump;
         extern uint32_t markerDumpKey;  // Win32 VK_* code (default VK_F9 = 0x78)
+
+        // ERSC-hosting workaround: hotkey toggles WorldMapPointParam +
+        // PlaceName FMG between vanilla and expanded states. Press before
+        // hosting a co-op session, press again after.
+        extern bool enableToggleHotkey;
+        extern uint32_t toggleInjectionKey;  // default VK_F10 = 0x79
+        // XInput button bitmask combo. All buttons in the mask must be
+        // held simultaneously to fire. Default Y + R3 (right stick click).
+        extern uint16_t toggleGamepadMask;
     };
 
     uint32_t parse_vk_code(std::string name);
+    uint16_t parse_gamepad_combo(std::string s);
 };

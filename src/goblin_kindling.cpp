@@ -8,11 +8,12 @@
 // In-run per-spirit hiding (this module):
 //   1. Resolve IsEventFlag(EventFlagMan*, uint32_t*) via AOB.
 //   2. Each tick, check flag 1045377500. ON → all 5 collected, hide all.
-//   3. Otherwise consult read_sfx_alive_set() — walks the CSEmkSystem
-//      → CSEzUpdateTask → CSEmkEventIns → EcTestDistance chain to read
-//      per-spirit liveness directly (sub-millisecond once the kindling
-//      task is discovered; see comment block in this file for the
-//      stable vftable RVAs and struct offsets that drive the walk).
+//   3. Otherwise consult read_sfx_alive_set() — discovers the 5 per-spirit
+//      EcTestDistance condition objects by heap-scanning for their vftable
+//      (self-identifying via cond+0x30 == entity_id) and caches them; a
+//      spirit is alive iff its cached cond still validates. (No static
+//      pointer chain to them exists and no per-spirit event flag exists —
+//      both confirmed by the 2026-05-29 multi-angle research workflow.)
 //   4. Write `areaNo = 99` on collected rows, restore on respawned rows.
 
 #include "goblin_kindling.hpp"
@@ -136,58 +137,36 @@ bool safe_write_byte(uint8_t *addr, uint8_t val)
     }
 }
 
-// ── Liveness via CSEmkSystem chain ───────────────────────────────────
+// ── Liveness via the EcTestDistance condition objects ────────────────
 //
-// Kindling spirit liveness in m60_45_37_00 is encoded by the presence
-// of 5 `CS::EcTestDistance` instances in CSEmkSystem's event-condition
-// graph (one per spirit). EMEVD instruction `3:3 IF Entity In/Outside
-// Radius` allocates an EcTestDistance whenever the kindling template
-// event is running its radius check; the instance is freed when the
-// player picks the spirit up (condition resolved → coroutine cleanup).
+// Each live kindling spirit in m60_45_37_00 has one `CS::EcTestDistance`
+// instance in CSEmkSystem's event-condition graph (EMEVD `3:3 IF Entity
+// In/Outside Radius`). The instance is freed when the player picks the
+// spirit up. So per-spirit liveness == "does an EcTestDistance with this
+// entity_id currently exist". These conds spawn dynamically as the world
+// warms up after a load — discovery retries every 2 s until they appear
+// (typically within ~1 min of entering Misty Forest).
 //
-// The full discovery chain (validated 2026-05-14 against 3 game restarts):
+// Multi-angle research (2026-05-29 workflow, 3-way confirmed): NO static
+// pointer chain to these objects (heap-only scheduler, grid-indexed SFX),
+// and NO per-spirit event flag (only the all-5 PERMANENT_FLAG 1045377500).
+// So a heap scan is the only per-spirit source. See memory:
+// kindling-eventflag-chain.
 //
-//   CSEmkSystem singleton (heap, addr changes per launch)
-//     → ...                                                       ┐
-//     → CSEzUpdateTask<CSEzRabbitNoUpdateTask, CSEmkEventIns>     │ stable
-//          vftable @ image+0x2A5DB78                              │ vftable
-//        +0x20  → array_ptr (heap)                                │ RVAs
-//                  → CSEmkEventIns[stride 0x1C0]                  │ + struct
-//                       vftable @ image+0x2A5DBB0                 │ offsets
-//                     +0x58  → EcTestDistance*                    │
-//                                vftable @ image+0x2A5BB90        │
-//                              +0x30 = entity_id (u32)            │
-//                              +0x34 = radius (2.0f)              │
-//                              +0x38 = threshold (1.0f)           ┘
+// Scan target is the EcTestDistance vftable (image+0x2A5BB90): each hit
+// SELF-IDENTIFIES via cond+0x30 == entity_id — no task lookup, no entry
+// array walk, no 8192-hit buffer. Only the eid match is used as the
+// discriminator (a radius/threshold gate was tried and over-filtered the
+// real conds — removed). ~75 EcTestDistance objects exist once the area
+// is loaded; the 5 kindling ones are a subset.
 //
-// What's stable across game launches: the vftable RVAs and the struct
-// offsets (task+0x20, stride 0x1C0, entry+0x58, cond+0x30). What
-// changes: every heap address (singleton, task, array, conditions).
-//
-// Discovery strategy:
-//   1. Heap-scan for u64 == (image_base + 0x2A5DB78) at 8-byte
-//      alignment → list of CSEzUpdateTask candidates.
-//   2. For each candidate, walk its +0x20 array (up to 64 entries,
-//      stride 0x1C0). Filter entries with vftable == CSEmkEventIns
-//      RVA, follow +0x58 to the EcTestDistance, check its vftable
-//      matches and entity_id is in our 5 kindling eids. The kindling
-//      task is the one containing all 5 spirit entries.
-//   3. Cache the task pointer. Per-tick walk is ~µs.
-//
-// What goes away vs. the previous brute scan: the (eid||2.0f) heap
-// search, the cached-regions snapshot, periodic re-scan, the
-// consecutive-empty-tick escalation. Same worker-thread infrastructure
-// stays, but it now runs the much cheaper chain discovery instead of
-// a 50s heap walk.
+// Stable across launches: the vftable RVA and cond+0x30 (eid). Heap
+// addresses change per launch (re-discover after a map transition); a
+// cached cond ptr is re-validated each tick by
+// (qword[cond]==vft && dword[cond+0x30]==expected_eid).
 
-constexpr uintptr_t RVA_TASK_VFT         = 0x2A5DB78;  // CSEzUpdateTask<…CSEmkEventIns>
-constexpr uintptr_t RVA_EVENT_INS_VFT    = 0x2A5DBB0;  // CSEmkEventIns
-constexpr uintptr_t RVA_DISTANCE_VFT     = 0x2A5BB90;  // EcTestDistance
-constexpr size_t    EVENT_INS_STRIDE     = 0x1C0;
-constexpr size_t    EVENT_INS_TO_COND_OFFSET = 0x58;
-constexpr size_t    TASK_TO_ARRAY_OFFSET = 0x20;
-constexpr size_t    COND_TO_EID_OFFSET   = 0x30;
-constexpr size_t    MAX_TASK_ARRAY_ENTRIES = 64;
+constexpr uintptr_t RVA_DISTANCE_VFT   = 0x2A5BB90;  // EcTestDistance
+constexpr size_t    COND_TO_EID_OFFSET = 0x30;       // u32 entity_id
 
 // WorldSfxMan singleton slot RVA — used as a "game world is loaded"
 // indicator. While the player is in main menu / loading screen, this
@@ -195,9 +174,12 @@ constexpr size_t    MAX_TASK_ARRAY_ENTRIES = 64;
 constexpr uintptr_t RVA_WORLD_SFX_MAN_PTR = 0x3D6F5F8;
 
 // State shared between the discovery worker and the refresh thread.
+// Cached cond pointers keyed by entity_id (1045373501..505). A spirit is
+// alive iff its cached cond still validates (vft + eid match); picked-up
+// spirits' conds get freed and fail validation.
 std::mutex g_state_mutex;
-uintptr_t g_kindling_task = 0;     // cached CSEzUpdateTask address; 0 = not discovered
-bool g_kindling_task_valid = false; // true once discover has succeeded since (re)start
+std::map<uint32_t, uintptr_t> g_kindling_conds;  // eid -> EcTestDistance* (cached)
+bool g_conds_discovered = false;                 // true once a discovery has succeeded
 
 // Worker thread (one-shot discovery; re-run only when the cached task
 // becomes invalid — e.g. map transition freed the task instance).
@@ -251,65 +233,33 @@ static bool is_game_world_loaded()
     return val >= 0x10000;
 }
 
-// Walk task's array, return set of currently-alive kindling eids.
-// Caller must hold a valid CSEzUpdateTask pointer (post-discovery).
-// Validates each step (vftable matches) — returns empty set + sets
-// out_valid=false if the task no longer looks like a kindling task
-// (e.g. heap was reused after map transition).
-static std::set<uint32_t> walk_task(uintptr_t task, bool &out_valid)
+// True if `cond` still points at a kindling EcTestDistance for `eid`:
+// vftable matches and cond+0x30 == eid. A picked-up spirit's cond is
+// freed (vft mismatch / reused chunk) → returns false.
+static bool cond_is_alive(uintptr_t cond, uint32_t eid)
 {
-    out_valid = false;
-    std::set<uint32_t> alive;
-    if (!task) return alive;
-
+    if (cond < 0x10000) return false;
     uintptr_t base = eldenring_base();
-    if (!base) return alive;
+    if (!base) return false;
+    if (seh_read_qword(cond) != base + RVA_DISTANCE_VFT) return false;
+    return seh_read_dword(cond + COND_TO_EID_OFFSET) == eid;
+}
 
-    // Re-validate task vftable before walking its array. A stale
-    // pointer to a reallocated chunk would otherwise dereference
-    // garbage and could even segfault on +0x20 if the page is now
-    // unmapped — the SEH wrapper catches that, but verifying the
-    // vftable up front is cleaner than discovering breakage later.
-    uintptr_t task_vft = seh_read_qword(task);
-    if (task_vft != base + RVA_TASK_VFT) return alive;
-
-    uintptr_t array_ptr = seh_read_qword(task + TASK_TO_ARRAY_OFFSET);
-    if (array_ptr < 0x10000) return alive;
-
-    int kindling_seen = 0;
-    for (size_t idx = 0; idx < MAX_TASK_ARRAY_ENTRIES; idx++)
-    {
-        uintptr_t entry = array_ptr + idx * EVENT_INS_STRIDE;
-        uintptr_t entry_vft = seh_read_qword(entry);
-        if (entry_vft == 0) break;                            // end of array
-        if (entry_vft != base + RVA_EVENT_INS_VFT) continue;  // different event type
-
-        uintptr_t cond = seh_read_qword(entry + EVENT_INS_TO_COND_OFFSET);
-        if (cond < 0x10000) continue;
-
-        uintptr_t cond_vft = seh_read_qword(cond);
-        if (cond_vft != base + RVA_DISTANCE_VFT) continue;    // not a Distance condition
-
-        uint32_t eid = seh_read_dword(cond + COND_TO_EID_OFFSET);
-        if (eid < FIRST_SPIRIT_ENTITY_ID
-            || eid >= FIRST_SPIRIT_ENTITY_ID + SPIRIT_COUNT)
-            continue;
-
-        alive.insert(eid);
-        kindling_seen++;
-    }
-
-    // Heuristic: at least one kindling-eid CSEmkEventIns entry means
-    // we're still pointed at a kindling-flavoured task. If none are
-    // present, the task is either fully resolved (all 5 picked up) or
-    // it's a different EventIns task that got allocated in the same
-    // slot — invalidate the cache so the next refresh tick triggers
-    // re-discovery.
-    out_valid = (kindling_seen > 0);
+// Re-validate cached conds → set of currently-alive kindling eids.
+// out_valid=false if NONE validate (all picked up, or cache stale after a
+// map transition → caller re-discovers).
+static std::set<uint32_t> revalidate_conds(const std::map<uint32_t, uintptr_t> &conds,
+                                           bool &out_valid)
+{
+    std::set<uint32_t> alive;
+    for (const auto &[eid, cond] : conds)
+        if (cond_is_alive(cond, eid))
+            alive.insert(eid);
+    out_valid = !alive.empty();
     return alive;
 }
 
-// Scan one VirtualAlloc'd region for the CSEzUpdateTask vftable. Writes
+// Scan one VirtualAlloc'd region for the EcTestDistance vftable. Writes
 // matching addresses into `hits` (capped at `hits_max`). Plain C-style:
 // no C++ objects in scope, so MSVC accepts SEH around the raw deref.
 // Returns count of matches written.
@@ -336,23 +286,23 @@ static size_t seh_scan_region_for_vft(uintptr_t base, size_t size,
     return out;
 }
 
-// Cold discovery: heap-scan for the CSEzUpdateTask vftable, then for
-// each hit walk the array and pick the task that contains kindling
-// entries. Costly (~10-30s — proportional to RW-private heap size),
-// but happens once per game session (or once per map transition).
-static uintptr_t discover_kindling_task()
+// Cold discovery: heap-scan for the EcTestDistance vftable, then keep the
+// hits whose entity_id (cond+0x30) is one of our 5 kindling spirits. No
+// task lookup, no array walk — each hit self-identifies. Costly only in the
+// memory-read sense (touches the RW-private heap), runs once per session /
+// map transition on the worker thread behind the loading screen.
+static std::map<uint32_t, uintptr_t> discover_kindling_conds()
 {
     auto t0 = std::chrono::steady_clock::now();
+    std::map<uint32_t, uintptr_t> found;
     uintptr_t base = eldenring_base();
-    if (!base) return 0;
+    if (!base) return found;
 
-    uintptr_t target_task_vft = base + RVA_TASK_VFT;
+    uintptr_t target_cond_vft = base + RVA_DISTANCE_VFT;
 
-    // Sweep heap, collect task-vftable hits into a flat array. Bounded
-    // size keeps memory predictable — observed maximum in test sessions
-    // was ~3000 hits, so 8192 is comfortable.
-    constexpr size_t HITS_MAX = 8192;
-    static uintptr_t hits[HITS_MAX];  // static: avoid 64 KiB stack alloc
+    // ~71 EcTestDistance objects exist process-wide; 256 hit slots is ample.
+    constexpr size_t HITS_MAX = 256;
+    static uintptr_t hits[HITS_MAX];
     size_t hits_n = 0;
 
     HANDLE proc = GetCurrentProcess();
@@ -381,36 +331,37 @@ static uintptr_t discover_kindling_task()
         regions_scanned++;
         hits_n = seh_scan_region_for_vft(
             reinterpret_cast<uintptr_t>(mbi.BaseAddress), mbi.RegionSize,
-            target_task_vft, hits, HITS_MAX, hits_n);
+            target_cond_vft, hits, HITS_MAX, hits_n);
     }
 
-    // Out of SEH scope — now safe to use C++ objects (walk_task uses
-    // std::set internally).
-    uintptr_t best_task = 0;
+    // Out of SEH scope. Keep hits whose eid is a kindling spirit. eid match
+    // (cond+0x30) is the only verified discriminator — radius/threshold were
+    // an unconfirmed assumption and over-filtered, so we don't gate on them.
+    // near_count tracks hits whose eid is in the broad m60_45_37 SFX band so
+    // the failure log can distinguish "region not covered by scan filter"
+    // (near==0) from "eid range/offset wrong" (near>0 but none in 501..505).
+    int near_count = 0;
     for (size_t i = 0; i < hits_n; i++)
     {
-        bool valid = false;
-        auto alive = walk_task(hits[i], valid);
-        if (valid && alive.size() >= 1)
-        {
-            best_task = hits[i];
-            break;
-        }
+        uintptr_t cond = hits[i];
+        uint32_t eid = seh_read_dword(cond + COND_TO_EID_OFFSET);
+        if (eid >= 1045370000 && eid <= 1045380000) near_count++;
+        if (eid < FIRST_SPIRIT_ENTITY_ID || eid >= FIRST_SPIRIT_ENTITY_ID + SPIRIT_COUNT)
+            continue;
+        found[eid] = cond;
     }
 
     auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - t0).count();
-    if (best_task)
-    {
-        spdlog::info("[KINDLING] discovered task 0x{:X} in {} ms ({} regions, {} candidates)",
-                     best_task, dt, regions_scanned, hits_n);
-    }
+    if (!found.empty())
+        spdlog::info("[KINDLING] discovered {} live spirit cond(s) in {} ms ({} regions, {} EcTestDistance hits)",
+                     found.size(), dt, regions_scanned, hits_n);
     else
-    {
-        spdlog::info("[KINDLING] no kindling task found ({} ms, {} regions, {} candidates) — likely not in Misty Forest yet",
-                     dt, regions_scanned, hits_n);
-    }
-    return best_task;
+        spdlog::info("[KINDLING] no kindling conds found ({} ms, {} regions, {} hits, {} near-band) — "
+                     "near==0 => cond region not covered by scan filter; near>0 => eid range/offset off; "
+                     "else not in Misty Forest yet",
+                     dt, regions_scanned, hits_n, near_count);
+    return found;
 }
 
 // ── Worker thread ───────────────────────────────────────────────────
@@ -446,11 +397,11 @@ static void worker_loop()
         }
 
         g_discovery_in_progress = true;
-        uintptr_t task = discover_kindling_task();
+        auto conds = discover_kindling_conds();
         g_discovery_in_progress = false;
 
         // Re-check after scan: if world unloaded mid-scan (character
-        // switch happened), discard — our task pointer is now into
+        // switch happened), discard — the cond pointers are now into
         // freed memory.
         if (!is_game_world_loaded())
         {
@@ -460,8 +411,8 @@ static void worker_loop()
 
         {
             std::lock_guard<std::mutex> lock(g_state_mutex);
-            g_kindling_task = task;
-            g_kindling_task_valid = (task != 0);
+            g_kindling_conds = std::move(conds);
+            g_conds_discovered = !g_kindling_conds.empty();
         }
     }
     spdlog::info("[KINDLING] worker thread stopped");
@@ -493,37 +444,37 @@ std::optional<std::set<uint32_t>> read_sfx_alive_set()
 {
     ensure_worker_started();
 
-    uintptr_t task;
-    bool task_valid;
+    std::map<uint32_t, uintptr_t> conds;
+    bool discovered;
     {
         std::lock_guard<std::mutex> lock(g_state_mutex);
-        task = g_kindling_task;
-        task_valid = g_kindling_task_valid;
+        conds = g_kindling_conds;
+        discovered = g_conds_discovered;
     }
 
-    if (task && task_valid)
+    if (discovered && !conds.empty())
     {
         bool still_valid = false;
-        auto alive = walk_task(task, still_valid);
+        auto alive = revalidate_conds(conds, still_valid);
         if (still_valid) return alive;
 
-        // Task pointer no longer references a kindling task. Either
-        // all 5 picked up (permanent flag is about to fire and the
-        // ON branch in refresh() will take over) or the heap got
-        // reused after a map transition. Invalidate + kick discovery.
-        spdlog::info("[KINDLING] cached task 0x{:X} no longer valid — re-discovering", task);
+        // No cached cond validates anymore. Either all 5 picked up
+        // (permanent flag is about to fire and the ON branch in refresh()
+        // takes over) or the heap got reused after a map transition.
+        // Invalidate + kick re-discovery.
+        spdlog::info("[KINDLING] cached conds no longer valid — re-discovering");
         {
             std::lock_guard<std::mutex> lock(g_state_mutex);
-            g_kindling_task = 0;
-            g_kindling_task_valid = false;
+            g_kindling_conds.clear();
+            g_conds_discovered = false;
         }
         request_discovery();
         return std::nullopt;
     }
 
-    // No task cached yet — request discovery on the worker thread.
+    // Nothing cached yet — request discovery on the worker thread.
     // Returns nullopt this tick; next tick after discovery completes
-    // will return the alive set.
+    // returns the alive set.
     request_discovery();
     return std::nullopt;
 }
@@ -562,8 +513,8 @@ void goblin::kindling::initialize()
     g_original_to_dynamic.clear();
     {
         std::lock_guard<std::mutex> lock(g_state_mutex);
-        g_kindling_task = 0;
-        g_kindling_task_valid = false;
+        g_kindling_conds.clear();
+        g_conds_discovered = false;
     }
 
     for (size_t i = 0; i < generated::MAP_ENTRY_COUNT; i++)

@@ -122,7 +122,7 @@ STAGES = [
                    DATA / 'enemy_tutorial_mapping.json',
                    DATA / 'unreachable_msb_lots.json'],
           script='extract_all_items.py',
-          also_scripts=COMMON),
+          also_scripts=['unreachable.py'] + COMMON),
 
     Stage('entity_index',
           inputs=[MSB_DIR],
@@ -205,13 +205,13 @@ STAGES = [
           outputs=[MASSEDIT_OUT / 'Loot - Material Nodes.MASSEDIT',
                    MASSEDIT_OUT / 'Loot - Material Nodes_slots.json'],
           script='generate_material_nodes.py',
-          also_scripts=['massedit_common.py']),
+          also_scripts=['massedit_common.py', 'unreachable.py']),
 
     Stage('generate_graces',
           inputs=[REGULATION],
           outputs=[MASSEDIT_OUT / 'World - Graces.MASSEDIT'],
           script='generate_graces.py',
-          also_scripts=['extract_all_items.py'] + COMMON),
+          also_scripts=['extract_all_items.py', 'unreachable.py'] + COMMON),
 
     Stage('generate_summoning_pools',
           inputs=[REGULATION, MSB_DIR],
@@ -231,13 +231,13 @@ STAGES = [
           outputs=[MASSEDIT_OUT / 'World - Spirit Springs.MASSEDIT',
                    MASSEDIT_OUT / 'World - Spiritspring Hawks.MASSEDIT'],
           script='generate_spirit_springs.py',
-          also_scripts=COMMON),
+          also_scripts=['unreachable.py'] + COMMON),
 
     Stage('generate_imp_statues',
           inputs=[MSB_DIR],
           outputs=[MASSEDIT_OUT / 'World - Imp Statues.MASSEDIT'],
           script='generate_imp_statues.py',
-          also_scripts=COMMON),
+          also_scripts=['unreachable.py'] + COMMON),
 
     Stage('generate_stakes',
           inputs=[MSB_DIR],

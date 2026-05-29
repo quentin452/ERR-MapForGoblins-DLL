@@ -45,6 +45,27 @@ UNREACHABLE = {
     # -19.58 units DOWN from vanilla into terrain, also iconId rebound
     # to 44 (forbidden look). BonfireWarpParam position unchanged.
     ('m22_00_00_00', 'AEG099_060_9004'),
+    # Fort of Reprimand grace (Scadu Altus DLC) — ERR dropped the bonfire
+    # -73.1 units DOWN from vanilla (Y 399.24 -> 326.14, X/Z unchanged),
+    # sinking it into terrain out of reach. BonfireWarpParam pos unchanged
+    # so the marker would otherwise point at the vanilla surface spot.
+    # Physical part is in supertile m61_12_10_02 with a cross-tile name.
+    # (The sibling "Behind the Fort of Reprimand" 9002 is NOT displaced.)
+    ('m61_12_10_02', 'm61_49_43_00-AEG099_060_9001'),
+    # Crafting-material gather asset in Altus tile m60_49_40 — ERR dropped it
+    # -3.59 units below vanilla (Y 180.70 -> 177.10) into terrain; confirmed
+    # unreachable in-game.
+    ('m60_49_40_00', 'AEG099_610_9001'),
+}
+
+# Unconditional excludes: ERR put these out of reach but the vertical delta vs
+# vanilla is small (so the dY heuristic won't catch them) — e.g. ERR reshaped
+# the surrounding terrain rather than moving the asset far. Confirmed in-game.
+# These fire regardless of vanilla comparison.
+UNCONDITIONAL = {
+    # Material-node gather asset in Altus tile m60_51_39 — only -1.81 vs
+    # vanilla, but sits UNDER the ground in ERR (confirmed in-game).
+    ('m60_51_39_00', 'AEG099_653_9000'),
 }
 
 # Entries whose displacement is checked in any direction (abs dy > threshold),
@@ -122,12 +143,14 @@ def _load_vanilla_cache():
 
 
 def is_unreachable_in_err(map_name, name, err_y):
-    """True iff (map, name) is in UNREACHABLE AND ERR Y diverges from
-    vanilla beyond threshold. For 'displaced' kind, ANY direction counts
-    (`abs(dy) > MIN_DROP`); for default 'down' kind only below vanilla
-    (`err_y < vanilla_y - MIN_DROP`). Returns False if vanilla data
-    unavailable (conservative — keep the icon)."""
+    """True iff (map, name) is excluded. UNCONDITIONAL entries always fire.
+    For UNREACHABLE entries, ERR Y must diverge from vanilla beyond threshold:
+    'displaced' kind = ANY direction (`abs(dy) > MIN_DROP`), default 'down'
+    kind = only below vanilla (`err_y < vanilla_y - MIN_DROP`). Returns False
+    if vanilla data unavailable (conservative — keep the icon)."""
     key = (map_name, str(name))
+    if key in UNCONDITIONAL:
+        return True
     if key not in UNREACHABLE:
         return False
     cache = _load_vanilla_cache()

@@ -1,5 +1,6 @@
 #include "goblin_messages.hpp"
 #include "generated/goblin_map_data.hpp"
+#include "goblin_inject.hpp"
 #include "modutils.hpp"
 
 #include <cstring>
@@ -23,6 +24,13 @@ class MsgRepositoryImp;
 
 static from::CS::MsgRepositoryImp *msg_repository = nullptr;
 static void *fmg_allocation = nullptr;
+
+// Toggle state for PlaceName FMG (slot 19). Only this slot is a pointer
+// swap — other slots get surgical in-place additions we don't try to undo.
+static uint8_t **g_placename_slot_ptr = nullptr;
+static uint8_t *g_vanilla_placename_fmg = nullptr;
+static uint8_t *g_expanded_placename_fmg = nullptr;
+static bool g_fmg_injection_active = false;
 
 static std::string detect_language()
 {
@@ -199,13 +207,14 @@ static bool patch_fmg_in_memory(uint8_t *fmg_ptr, uint8_t **slot_ptr,
     spdlog::debug("[PATCH] New layout: groups={}, strings={}, fileSize={}",
                   total_groups, total_strings, new_file_size);
 
-    fmg_allocation = VirtualAlloc(nullptr, new_file_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    // HeapAlloc (not VirtualAlloc): see goblin_inject.cpp — Seamless Co-op
+    // hosting crashes if expanded mod buffers live outside the process heap.
+    fmg_allocation = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, new_file_size);
     if (!fmg_allocation)
     {
-        spdlog::error("[PATCH] VirtualAlloc failed ({} bytes)", new_file_size);
+        spdlog::error("[PATCH] HeapAlloc failed ({} bytes)", new_file_size);
         return false;
     }
-    memset(fmg_allocation, 0, new_file_size);
 
     auto *nfmg = reinterpret_cast<uint8_t *>(fmg_allocation);
 
@@ -594,7 +603,59 @@ void goblin::setup_messages()
     spdlog::debug("PlaceName FMG at {:p}", (void *)fmg_ptr);
 
     if (patch_fmg_in_memory(fmg_ptr, &sub[19], new_entries))
+    {
         spdlog::info("PlaceName FMG patched ({} entries)", new_entries.size());
+        // Capture toggle state. fmg_ptr was the original buffer; sub[19] now
+        // points at our expanded buffer (set inside patch_fmg_in_memory).
+        g_placename_slot_ptr = &sub[19];
+        g_vanilla_placename_fmg = fmg_ptr;
+        g_expanded_placename_fmg = sub[19];
+        g_fmg_injection_active = true;
+    }
     else
         spdlog::error("PlaceName FMG patching failed");
+
+    // Inject NEW TutorialBody entries (slot 208 = 0xD0) for the codex toasts.
+    // CSPopupMenu::ShowTutorialPopup (trampoline 0x80DA50) looks up
+    // TutorialParam[id].textId then TutorialBody.fmg[textId]. Matching
+    // TutorialParam rows are injected by goblin::inject_tutorial_popup_rows.
+    // Using fresh ids leaves all vanilla/ERR codex text untouched. The DUMP
+    // entry is a placeholder — its text is rewritten at runtime by
+    // show_codex_message() via override_fmg_text for the F9 marker-dump banner.
+    if (count2 > 208 && sub[208])
+    {
+        std::vector<NewEntry> tb_entries = {
+            {goblin::TUTORIAL_FMG_ID_ON,        L"Map icons: ON"},
+            {goblin::TUTORIAL_FMG_ID_OFF,       L"Map icons: OFF"},
+            {goblin::TUTORIAL_FMG_ID_DUMP_OK,   L"Markers dumped"},
+            {goblin::TUTORIAL_FMG_ID_DUMP_FAIL, L"Marker dump failed — press again"},
+        };
+        if (patch_fmg_in_memory(sub[208], &sub[208], tb_entries))
+            spdlog::info("[TOAST] TutorialBody.fmg expanded (ON={}, OFF={}, DUMP_OK={}, DUMP_FAIL={})",
+                         goblin::TUTORIAL_FMG_ID_ON, goblin::TUTORIAL_FMG_ID_OFF,
+                         goblin::TUTORIAL_FMG_ID_DUMP_OK, goblin::TUTORIAL_FMG_ID_DUMP_FAIL);
+        else
+            spdlog::warn("[TOAST] TutorialBody.fmg patch failed — codex banners unavailable");
+    }
+    else
+        spdlog::warn("[TOAST] TutorialBody (slot 208) unavailable — codex banners unavailable");
+}
+
+void goblin::set_fmg_injection_active(bool active)
+{
+    if (!g_placename_slot_ptr)
+    {
+        spdlog::warn("[TOGGLE] FMG swap state not initialized — setup_messages didn't run");
+        return;
+    }
+    if (active == g_fmg_injection_active)
+        return;
+    *g_placename_slot_ptr = active ? g_expanded_placename_fmg : g_vanilla_placename_fmg;
+    g_fmg_injection_active = active;
+    spdlog::info("[TOGGLE] PlaceName FMG -> {}", active ? "EXPANDED" : "VANILLA");
+}
+
+bool goblin::is_fmg_injection_active()
+{
+    return g_fmg_injection_active;
 }
