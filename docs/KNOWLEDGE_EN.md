@@ -9,11 +9,11 @@ Written so anyone (human or AI agent) can quickly get up to speed.
 
 ## What is MapForGoblins
 
-A DLL mod for Elden Ring Reforged (ERR). Adds ~7000 icons to the world map: weapons, armor, spells, quest items, bosses, NPCs, Rune Pieces, etc.
+A DLL mod for Elden Ring Reforged (ERR). Adds ~9000 icons to the world map: weapons, armor, spells, quest items, bosses, NPCs, Rune Pieces, etc.
 
 The key difference from a regular installer - the mod **does not touch regulation.bin**, all data is injected into memory when the DLL loads. This allows online play without EAC blocking (via Seamless Co-op / mod loader).
 
-Current version: **v1.0.8** (pre), ~9000 WorldMapPointParam entries (+ ~740 vanilla), 60+ granular icon categories in INI. Collected Rune/Ember Pieces are automatically hidden on the map.
+Current version: **v1.0.13** (pre), ~9000 WorldMapPointParam entries (+ ~740 vanilla), 60+ granular icon categories in INI. Collected Rune/Ember Pieces are automatically hidden on the map.
 
 ---
 
@@ -29,19 +29,23 @@ Current version: **v1.0.8** (pre), ~9000 WorldMapPointParam entries (+ ~740 vani
 | `goblin_logic.cpp` | Map fragment logic - icons only appear after the map fragment is collected |
 | `goblin_collected.cpp` | Detection of collected Rune/Ember Pieces: GEOF (model hash + InstanceID slot) + WGM (+0x263 bit1 + +0x26B bit4) |
 | `goblin_config.cpp` | INI parsing (mINI), 60+ category toggles + debug_logging, VK hotkey parsing |
-| `goblin_markers.cpp` | Optional in-memory beacon-array dump via hotkey (debug-only, off by default) |
+| `goblin_markers.cpp` | In-memory beacon/stamp-array dump via hotkey (F9, **ON by default**); shows an on-screen codex confirmation banner (Markers dumped / Marker dump failed). Reads the stable pointer chain `*(exe+0x3D5DF38)->+0x68->beacons+0x118/stamps+0x1B8` (not a memory scan) |
+| `goblin_kindling.cpp` | Kindling Spirits module (`Category::WorldKindlingSpirits`); per-spirit liveness via heap scan for `CS::EcTestDistance` condition objects |
 | `goblin_massedit.cpp` | Runtime MASSEDIT file parser (alternative loading path from `dll/offline/massedit/`) |
 | `generated/goblin_map_data.cpp` | Auto-generated array from MASSEDIT files (~9000 entries) |
 | `generated/goblin_legacy_conv.hpp` | Auto-generated dungeon→overworld coord conversion table (from WorldMapLegacyConvParam) |
 | `modutils.cpp` | AOB scanner (Pattern16), hooks (MinHook), memory utilities |
 | `from/params.cpp` | Working with SoloParamRepository - searching and iterating Param tables |
+| `goblin/goblin_structs.hpp`, `goblin/goblin_map_flags.hpp`, `goblin/goblin_map_tiles.hpp`, `goblin/goblin_map_exceptions.hpp` | Shared headers: structs, map flags, map tile data, map exceptions |
+
+New INI key: `show_merchant_bell_bearings` (`Category::LootMerchantBellBearings`, default off).
 
 ### How injection works (goblin_inject.cpp)
 
 1. Wait for params to load (`from::params::initialize()`)
 2. Find `ParamResCap` for "WorldMapPointParam" in ParamList
 3. Get pointer to param_file via `rescap + 0x80`
-4. `VirtualAlloc` a new buffer: header (0x40) + row locators + data + type string + wrapper locators
+4. `HeapAlloc (GetProcessHeap, HEAP_ZERO_MEMORY)` a new buffer: header (0x40) + row locators + data + type string + wrapper locators (changed from `VirtualAlloc` for Seamless Co-op compatibility — ERSC's `game_memory_unlimiter` crashes on a dedicated `VirtualAlloc`'d page region)
 5. Copy original rows + add ours, sort by row_id
 6. Atomically swap the pointer: `file_ptr_ref = new_param_file`
 
@@ -49,7 +53,7 @@ ParamTable memory layout:
 ```
 ParamResCap -> param_header (+0x78 = size, +0x80 = param_file ptr)
 ParamTable (param_file):
-  +0x00: param_type_offset (uint32)
+  +0x10: param_type_offset (uint64)
   +0x0A: num_rows (uint16)
   +0x30: data_start (uint64)
   +0x40: ParamRowInfo[num_rows] -- 24 bytes each: row_id(u64) + param_offset(u64) + param_end_offset(u64)
@@ -69,16 +73,30 @@ of the ID encode which existing game FMG category the marker borrows from:
 | 300 000 000 + id | AccessoryName (talismans) |
 | 400 000 000 + id | GemName (ashes of war) |
 | 500 000 000 + id | GoodsName |
-| 600 000 000 + id | Event text (tutorial/hint strings) |
-| 900 000 000 + id | TutorialTitle |
+| 600 000 000 + id | EventTextForMap (map event text) |
+| 700 000 000 + id | NpcName (named NPCs; `9MMMMVVV` boss names land at 1 600 000 000 - 1 700 000 000) |
+| 800 000 000 + id | ActionButtonText (interact prompts) |
+| 900 000 000 + id | TutorialTitle (enemy names) |
 
 When the game looks up a marker's PlaceName ID, our hook translates the offset back to the
 underlying ID and returns the existing in-game string. This gives full localisation
 for free across all 14 language slots. No `goblin_text_data.cpp` is compiled any more.
 
+### Icon display (show/hide)
+
+Icons are **EXPANDED everywhere, always**. `F10` (keyboard) or `Y + R3` (gamepad) is a personal
+master show/hide that swaps `WorldMapPointParam` between EXPANDED and VANILLA. The old "expand only
+while the map is open" auto-hide (which read `CSMenuMan + 0xCD`) was **REMOVED** after the 16-align fix.
+
+### On-screen banners (F10 / F9)
+
+The F10/F9 confirmation banner uses `CSPopupMenu::ShowTutorialPopup` (the EMEVD `2007[15]` toast).
+It is **AOB-resolved at runtime — NOT a hardcoded RVA** — because game updates shift `.text` RVAs
+(`0x80DA50 -> 0x80D960` in May 2026). By contrast, `.data` singleton slots and `.rdata` vtables stay put.
+
 ### Data generation pipeline
 
-All orchestrated by `tools/build_pipeline.py` (18 stages, hash-based incremental cache
+All orchestrated by `tools/build_pipeline.py` (25 stages, hash-based incremental cache
 in `data/.build_cache.json`; cold ~240 s, fully cached <1 s).
 
 ```
@@ -97,6 +115,12 @@ MSB files + regulation.bin + EMEVD
         |   generate_maps.py             -->  world-infrastructure MASSEDIT
         +-- generate_gestures.py         -->  gestures (via common event 90005570 scan)
         +-- generate_hostile_npcs.py     -->  invaders (via NpcParam.teamType=24 + MSB)
+        +-- generate_kindling_spirits_massedit.py -->  Kindling Spirits MASSEDIT
+        +-- extract_seal_puzzles.py, generate_seal_puzzles.py -->  seal puzzles MASSEDIT
+        +-- generate_hero_tomb_statues.py -->  hero tomb statues MASSEDIT
+        +-- generate_boss_list.py        -->  boss list
+        +-- build_grace_index.py         -->  grace index
+        +-- (gathering-node scans)       -->  material/gathering node data
         |
         v
   generate_data.py  -->  goblin_map_data.cpp + goblin_legacy_conv.hpp
@@ -119,15 +143,15 @@ A map icon entry. Key fields:
 
 | Field | Type | Description |
 |---|---|---|
-| iconId | int32 | Icon ID (376 = stonesword key style, 393 = standard loot) |
+| iconId | unsigned short (u16) | Icon ID (376 = stonesword key style, 393 = standard loot) |
 | posX, posZ | float | Map coordinates (world coordinates X and Z) |
 | textId1 | int32 | PlaceName text ID (ours start at 9000000+) |
 | textDisableFlagId1 | int32 | Event flag - when set, the icon is hidden (item picked up) |
 | eventFlagId | int32 | Display flag (map fragment) |
-| areaNo | int16 | Area number (60 = overworld, 61 = DLC, 10-21 = dungeons) |
-| gridXNo, gridZNo | int16 | Map tile coordinates |
+| areaNo | unsigned char (u8) | Area number (60 = overworld, 61 = DLC, 10-43 = dungeons / legacy areas) |
+| gridXNo, gridZNo | unsigned char (u8) | Map tile coordinates |
 | dispMask00..07 | bits | Map layer visibility masks |
-| selectMinZoomStep | int32 | Minimum zoom level for display |
+| selectMinZoomStep | unsigned char (u8) | Minimum zoom level for display |
 
 ### ItemLotParam_map
 
@@ -184,15 +208,15 @@ Key instructions:
 ### FMG - Text Files
 
 From Software's binary text format. Version 2 (Elden Ring):
-- Header: version(u32), fileSize(u32), unk(u32), groupCount(u32)
+- Header: unk0(u8), bigEndian(u8), version(u8 =2), unk3(u8), fileSize(u32), unk08(u32 =1), groupCount(u32), stringCount(u32), then a 64-bit string-offset table
 - Groups at 16 bytes each: firstId(i32), lastId(i32), offsetsStart(i32)
 - Strings in UTF-16LE
 
-Stored inside BND4 archives (`item_dlc02.msgbnd.dcx`), compressed with DCX (zstd).
+Stored inside BND4 archives (`item_dlc02.msgbnd.dcx`), compressed with DCX (Oodle Kraken).
 
 ### DCX / BND4 / BHD5
 
-- **DCX** - compression container (zstd for ER, magic `DCX\0`, zstd magic `\x28\xB5\x2F\xFD`)
+- **DCX** - compression container (magic `DCX\0`; ER/ERR use Oodle Kraken — tag `KRAK` at header offset 0x28, NOT zstd)
 - **BND4** - file archive (MSB, FMG, etc.)
 - **BHD5** - encrypted vanilla archive index (Data0-3.bdt), key for EldenRing = Game enum value 3
 
@@ -224,8 +248,7 @@ Rune Pieces (and Ember Pieces in DLC) are custom ERR items scattered across the 
 - Parsing DLC MSB needs Andre.SoulsFormats.dll (from Smithbox), the standard one crashes
 
 **AEG099_510** ("anchor" objects):
-- 133 instances
-- Have unique EntityIDs
+- 161 instances (112 distinct EntityIDs)
 - Linked to EMEVD events
 - Only ~50 of them are managed via event 1045632900
 - NOT visual piece models - they're invisible triggers / anchor points
@@ -292,22 +315,31 @@ Fully reverse-engineered via memory dumps.
 - Slot = `InstanceID - 9000` (InstanceID is an MSB Part field, read via SoulsFormats)
 - WGM mapping: each piece is bound by `name_suffix` -> `row_id` (not by position in the vector)
 
-**Known limitations:**
-- Seamless Co-op hosting crashes due to VirtualAlloc'd ParamTable (old bug, unrelated to collected detection)
+**SOLVED: Seamless Co-op hosting (2026-05-29):**
+- Hosting previously crashed. Root cause was a 16-align bug in the `wrapper_row_locator` layout; fixed by 16-aligning that array + switching the buffer to `HeapAlloc (GetProcessHeap, HEAP_ZERO_MEMORY)`.
+- The old map-open auto-hide workaround was removed; hosting verified live.
+- Details: `docs/ersc_hosting_and_map_autohide.md`.
 
 Details: `geom_collection_tracking.md` in the project root.
 
 ---
 
+## Kindling Spirits
+
+`src/goblin_kindling.cpp` runs `Category::WorldKindlingSpirits`.
+
+- `textDisableFlagId1` = `PERMANENT_FLAG 1045377500` — the engine auto-sets it when all 5 spirits are collected.
+- Per-spirit liveness is detected via a heap scan for `CS::EcTestDistance` condition objects (vftable RVA `0x2A5BB90`). Each object self-identifies via `cond+0x30 == entity_id`, with eids `1045373501..505`. These objects only appear ~1 minute after entering the Misty Forest.
+- There is **NO static anchor** and **NO per-spirit event flag** — the heap scan is the only per-spirit source.
+
+---
+
 ## Remaining Tasks
 
-### 1. Seamless Co-op hosting
-The VirtualAlloc'd ParamTable (~9800 rows instead of 740) is incompatible with Seamless Co-op when creating a session (hosting). Options:
-- Hook param lookup instead of replacing the table
-- HeapAlloc instead of VirtualAlloc
-- Figure out what exactly Seamless Co-op does with params during hosting
+### ~~1. Seamless Co-op hosting~~ — SOLVED (2026-05-29)
+Hosting now works. The ParamTable buffer was switched from `VirtualAlloc` to `HeapAlloc (GetProcessHeap, HEAP_ZERO_MEMORY)` and the `wrapper_row_locator` array was 16-aligned (the real root cause was a 16-align bug in that layout). The old map-open auto-hide workaround was removed; hosting verified live. See `docs/ersc_hosting_and_map_autohide.md`.
 
-### 2. Reference Offsets
+### 1. Reference Offsets
 
 Player position:
 ```

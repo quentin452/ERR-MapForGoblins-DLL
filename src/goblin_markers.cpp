@@ -138,7 +138,10 @@ static bool seh_copy(const void *src, void *dst, size_t n);  // defined below
 //
 //   obj0 = *(eldenring.exe + 0x3D5DF38)   static slot (survives ASLR/restart)
 //   obj1 = *(obj0 + 0x68)                  marker container (vtable RVA 0x2AC21D8)
-//   beacons[10] @ obj1 + 0x118 ; stamps[100] @ obj1 + 0x1B8 (== beacons + 10 slots)
+//   beacons[10] @ obj1 + 0x118 ; stamps[] @ obj1 + 0x1B8 (== beacons + 10 slots).
+//   The dumper reads up to N_STAMPS=200 stamp slots, stopping at the first
+//   0xFFFF-type terminator / invalid slot (200 is a safe read bound, not a
+//   confirmed array capacity).
 //
 // Found 2026-05-29 by matching real save-beacon coords in memory then chasing
 // pointers back to the static slot. Replaces the old full-process scan, which

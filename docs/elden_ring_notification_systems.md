@@ -9,6 +9,29 @@ All RVAs/offsets here are for the eldenring.exe build that ships with
 depends on a fixed offset will drift after a game patch — prefer AOBs and
 re-verify when versions change.
 
+> **UPDATE (captured pre-2026-05-29-update):** the `.text` RVAs in this doc
+> were captured **pre-2026-05-29-update** and are **SHIFTED** on current
+> builds — resolve by AOB. The trampoline moved **0x80DA50 -> 0x80D960**. By
+> contrast, `.data` singleton slots (e.g. CSMenuMan / CSFeMan) and `.rdata`
+> RTTI vtables did **NOT** move.
+>
+> **Re-verified on the 2026-05-29 build** (functions/signatures/struct offsets all
+> still correct; only the `.text` RVAs shifted — re-resolved by AOB):
+> | function | doc RVA (pre-patch) | current RVA |
+> |---|---|---|
+> | FeSystemAnnounce enqueue | 0x841C50 | **0x841B60** |
+> | Summon msg ctor | 0x843860 | **0x843770** |
+> | FullScreenMessage `display_status_message` | 0x766460 | **0x766370** |
+> | FullScreenMessage setter (writes `[CSFeMan+0x3760]`) | 0x76E480 | **0x76E390** |
+> | blinking-message setter helper | 0x76E340 | **0x76E25B** |
+> | Item-Get add function | 0x779C70 | **0x779B80** |
+> | ShowTutorialPopup trampoline | 0x80DA50 | **0x80D960** |
+>
+> `.data` slots confirmed UNCHANGED: CSFeMan `0x3D6B880`, CSItemGetMenuMan `0x3D6C3B0`.
+> Struct offsets (CSFeMan `+0x3760` / `+0x6548` / `+0x654C` / `+0x59A4` / `+0x3720`,
+> SummonMsgData `+0x08`/`+0x0A`/`+0x10`/`+0x48`) confirmed live. EMEVD class-2007
+> instruction indices confirmed against `er-common.emedf.json`.
+
 Throughout, each fact is labelled:
 
 - **Confirmed** — verified by disassembly **and**, where applicable, by live
@@ -18,6 +41,28 @@ Throughout, each fact is labelled:
   observed.
 - **Guessed** — best-effort interpretation. Could be wrong; flagged so future
   work knows where to be skeptical.
+
+## What MapForGoblins actually ships
+
+The shipping toast channel is the **AOB-resolved ShowTutorialPopup
+trampoline** (inner 0x7EF5B0 / outer 0x7EE630, popup singleton at
+CSFeMan_slot+0x80 — see the TUTORIAL_PARAM_ST section), driven by:
+
+- **injected `TUTORIAL_PARAM_ST` rows** with `menuType=0` (via
+  `inject_tutorial_popup_rows`), and
+- **4 static `TutorialBody.fmg` entries** (ids **9004251..9004254** in
+  MsgRepository slot **208**).
+
+These power two banners:
+
+- the **F10** (or **Y+R3**) "Map icons: ON/OFF" personal show/hide banner, and
+- the **F9** "Markers dumped" / "Marker dump failed" confirmation banner.
+
+Note: the old map-state auto-hide was **removed** — the table stays
+**EXPANDED always**.
+
+All other channels documented below (FeSystemAnnounce, Summon, blinking
+message, etc.) are research notes; only the trampoline path above ships.
 
 ## Singleton roots
 
@@ -124,6 +169,13 @@ calls this exact RVA the exact same way. That mod was the smoking gun that
 proved the approach.
 
 ## Summon message — narrow center-bottom plaque (working, with a trick)
+
+> **RESEARCHED BUT RETIRED in the shipping mod.** This channel worked, but it
+> depended on five hardcoded `.text` RVAs (ctor 0x843860, enqueue 0x844060,
+> dtor 0x843910, allocator 0x763360, DLString-assign 0x11A3E0) that game
+> updates invalidate. The mod ships **only** the AOB-resolved
+> ShowTutorialPopup trampoline (see "What MapForGoblins actually ships" and
+> the TUTORIAL_PARAM_ST section). The notes below are kept for reference.
 
 **Style** (confirmed live in MapForGoblins build): narrow, **horizontally
 centered**, **slightly below screen center**. Our test text rendered cleanly,
@@ -298,8 +350,10 @@ resource table at runtime.
   at **CSFeMan+0x3760** and returns.
 - The render task (consumer at **RVA 0x8C8EC5**) reads `[fev+0x36E0]` =
   CSFeMan+0x3760 each frame and dispatches the banner through a table lookup
-  at **RVA 0x140D29660** keyed by message id. The table record provides the
-  banner's FMG entry, layout, and **the sound**. Confirmed by disassembly.
+  at **RVA 0xD29660** (image-relative; the absolute VA is 0x140D29660) keyed
+  by message id. The table record provides the banner's FMG entry, layout,
+  and **the sound**. Confirmed by disassembly. (Image-relative form added to
+  the pre-patch / re-verify set — see "How to re-verify after a game patch".)
 
 `FullScreenMessage` enum (defined in `cs/fe_man.rs`):
 
@@ -324,7 +378,8 @@ resource table at runtime.
 | **41** | **MenuText** | the only one with dynamic text — supposedly renders the current `proc_status_message` MenuString. In our experiments this fires the sound but no visible text appears, which is one of the open questions noted above. |
 | 42 | YouDiedWithFade | death + screen fade |
 
-**Sound is data-driven per enum value** via the table at 0x140D29660 — it's
+**Sound is data-driven per enum value** via the table at 0xD29660
+(image-relative; absolute VA 0x140D29660) — it's
 **not** overridable at the call site. So you cannot mute YouDied/LostGrace
 banners by zeroing a field; if you fire id 5 or 11 you will hear the sound.
 
@@ -424,8 +479,10 @@ decompiling ERR's `common.emevd.dcx`.
   Codex / medal style — what we want); higher values → larger / centered
   modal cards. Renders via the Scaleform widget `menu/01_060_caption.gfx`.
   ERR's most-used message instruction by far: ~88 calls in common.emevd, all
-  using `menuType=0`. Underlying game-function RVA still unpinned — see
-  the dedicated TUTORIAL_PARAM_ST section below. Confirmed.
+  using `menuType=0`. The underlying game-function path is now pinned and
+  shipped (AOB-resolved trampoline; inner 0x7EF5B0 / outer 0x7EE630, popup
+  singleton at CSFeMan_slot+0x80) — see the dedicated TUTORIAL_PARAM_ST
+  section below. Confirmed.
 - **`DisplayNetworkMessage` 2007[16]** `(NetworkMsgParamID, b)` — MP banner,
   reads `NETWORK_MSG_PARAM_ST` (see below). ERR uses ~9 times.
 - **`DisplayGenericDialog` 2007[01]** and 2007[10] — interactive modal yes/no
@@ -503,33 +560,36 @@ upper-left** — the codex/medal style. Confirmed live in ERR (it uses
   10100010..10100290 with `<font color="#beac8b">...</font>` styling for the
   highlighted parts.
 
-**Calling it from a C++ DLL — the open piece.** The exact game-function
-RVA was NOT pinned by static analysis: the EMEVD 2007:XX dispatcher is built
-at runtime, and the wide/narrow `"TutorialParam"` strings at 0x142bb48c8 /
-0x142ab7999 have no static LEA xrefs (param lookup is hashed). So the
-handler for opcode 2007:15 needs to be located either by:
+**Calling it from a C++ DLL — RESOLVED, and this is what the mod ships.**
+The exact game-function path **is** now pinned, and MapForGoblins pins and
+ships it. The trampoline is resolved at **RUNTIME via `modutils::scan`** with
+the AOB
 
-1. **Runtime trace**: breakpoint the EMEVD VM right before it dispatches a
-   2007:15 instruction (an existing ERR codex event makes this easy — fire
-   it in-game and observe).
-2. **AOB / xref tracing**: find the singleton (`CSEzTutorial*` — Inferred
-   from FromSoft naming conventions; not verified) and its method that
-   reads TutorialParam rows; signature is most likely
-   `void(__fastcall)(CSEzTutorialIns*, uint32_t paramId, bool unk1, bool unk2)`.
-3. **Indirect**: trigger an event flag whose existing EMEVD handler does
-   `ShowTutorialPopup(rowId, ...)` for us. Indirect but doesn't need the
-   function — we'd inject our text into the FMG entry that ERR's row
-   already references (overriding the medal text, which is undesirable).
+```
+48 8B 05 ?? ?? ?? ?? 8B D1 48 85 C0 74 17 48 8B 88 80 00 00 00 48 85 C9
+```
 
-**Implementation plan from a DLL:** (a) find the game function, (b) add our
-own `TUTORIAL_PARAM_ST` row at runtime — the row-injection machinery for
+and cached. From it:
+
+- **inner = 0x7EF5B0** — `void(CSPopupMenu*, int, bool, bool)`
+- **outer = 0x7EE630** — `void(CSPopupMenu*, int, bool)`
+- the **CSPopupMenu singleton** is at **CSFeMan_slot + 0x80**.
+
+This AOB-resolved trampoline is the path the mod actually ships for its
+toasts. (RVAs above are pre-2026-05-29-update — resolve via the AOB; see the
+update banner near the top of this doc.)
+
+**Implementation as shipped from the DLL:** (a) resolve the trampoline via
+the AOB above and grab the CSPopupMenu singleton from CSFeMan_slot+0x80,
+(b) inject our own `TUTORIAL_PARAM_ST` rows at runtime via
+`inject_tutorial_popup_rows` — the row-injection machinery from
 `WorldMapPointParam` in MapForGoblins is reusable, (c) inject our title/body
-strings into TutorialTitle / TutorialBody FMGs (this needs extending our FMG
-injector — it currently only touches the item-msgbnd; TutorialTitle/Body
-live in the menu-msgbnd at slots 207/208), (d) call the function with our
-paramId. Sample row config to mimic ERR: `menuType=0`, `triggerType=0`,
-`repeatType=1`, `imageId=0`, `unlockEventFlagId=0`, `textId=<our_fmg_id>`,
-`displayMinTime=1.0`, `displayTime=3.0`.
+strings into TutorialTitle / TutorialBody FMGs (the FMG injector already
+reads slot 207 and writes slot 208 — see the FMG section below), (d) call
+the trampoline with our paramId. Sample row config to mimic ERR:
+`menuType=0`, `triggerType=0`, `repeatType=1`, `imageId=0`,
+`unlockEventFlagId=0`, `textId=<our_fmg_id>`, `displayMinTime=1.0`,
+`displayTime=3.0`.
 
 **Helper DLLs in ERR (not what we want).** `dll/online/erquestlog.dll` is a
 separate ERR mod for the quest-tracker UI, not the codex notification. It
@@ -548,8 +608,9 @@ The richest message-display API the game exposes via params. `TUTORIAL_PARAM_ST`
 columns (Confirmed from `param/generated.rs`, INDEX 212):
 
 - `disable_param_nt: bool` (bit 0 of `bits_0`)
-- `menu_type: u8` — unknown values, controls layout type (Guessed: which
-  Scaleform sub-movie hosts the card)
+- `menu_type: u8` — **Confirmed**: `menuType=0` → small **upper-left toast**
+  (the codex/medal style we ship). Higher values render larger / centered
+  modal cards.
 - `trigger_type: u8`
 - `repeat_type: u8` — probably "show once" / "show always" — Guessed
 - `image_id: u16` — id of the tutorial illustration (lookup in the tutorial
@@ -561,6 +622,16 @@ columns (Confirmed from `param/generated.rs`, INDEX 212):
 - `display_time: f32` — total seconds; **the only system with explicit per-
   call duration**
 
+**Concrete 32-byte row layout the mod uses** (row size 32):
+
+- +0x04 `u8 menuType` (0 = upper-left toast)
+- +0x05 `u8 triggerType`
+- +0x06 `u8 repeatType`
+- +0x0C `u32 unlockEventFlagId`
+- +0x10 `s32 textId`
+- +0x14 `f32 dispMinTime`
+- +0x18 `f32 dispTime`
+
 Title comes from **TutorialTitle** FMG (MsgRepositoryImp slot 207, which
 MapForGoblins already populates) keyed by the same id as the body. The body
 text uses **TutorialBody**.
@@ -568,10 +639,13 @@ text uses **TutorialBody**.
 **To use this from a DLL with custom text:** add a new `TUTORIAL_PARAM_ST`
 row at runtime with your chosen `text_id`, inject custom strings into
 TutorialTitle / TutorialBody FMGs at that id, and call the underlying
-display function (or `ShowTutorialPopup` via the EMEVD dispatcher). The
-direct game function RVA is **not** pinned in this document yet — finding it
-is open work. Note that adding a param row at runtime is also non-trivial
-(MapForGoblins does this for WorldMapPointParam, so the machinery exists).
+display function (the AOB-resolved ShowTutorialPopup trampoline — see the
+"Calling it from a C++ DLL" subsection above; inner 0x7EF5B0 / outer
+0x7EE630). This is now pinned and shipped. The FMG injector already reads
+slot 207 (TutorialTitle) and writes new entries into slot 208 (TutorialBody)
+for the shipped codex banners. Adding a param row at runtime is non-trivial
+but done (MapForGoblins does this for WorldMapPointParam, so the machinery
+exists).
 
 Use case: notifications that should genuinely look like a tutorial card,
 with an image and an explicit duration. Probably overkill for a simple
@@ -642,6 +716,14 @@ F10 fires the current one):
    ctor via callers of the enqueue.
 4. For `MENU_COMMON_PARAM_ST` field offsets, check `param/generated.rs` in
    the latest `fromsoftware-rs` — paramdef changes are tracked there.
+5. Re-verify the FullScreenMessage dispatch table at **0xD29660**
+   (image-relative; absolute VA 0x140D29660) — it lives in the `.text` /
+   read-only data that shifts on game updates, so re-derive it by AOB along
+   with the other shifted RVAs.
+6. Re-run the ShowTutorialPopup trampoline AOB
+   (`48 8B 05 ?? ?? ?? ?? 8B D1 48 85 C0 74 17 48 8B 88 80 00 00 00 48 85 C9`)
+   and confirm it still resolves (inner 0x7EF5B0 / outer 0x7EE630, popup
+   singleton at CSFeMan_slot+0x80). This is the shipped toast path.
 
 ## References
 
@@ -654,6 +736,6 @@ F10 fires the current one):
   that calls `FeSystemAnnounce` enqueue from a DLL with the same offsets.
 - `er-common.emedf.json` / `soulsmods` EMEDF — for EMEVD instruction
   signatures.
-- Diagnostic / disassembly helper scripts left in the project root:
-  `find_announce.py`, `trace_announce.py`, `disfn.py`, `aob.py`,
-  `callers.py`, `_xref3.py`, `_fast.py`.
+- Diagnostic / disassembly helper scripts from this research live (gitignored)
+  under `scratch/scripts/`: `find_announce.py`, `trace_announce.py`, `disfn.py`,
+  `aob.py`, `callers.py`, `_xref3.py`, `_fast.py`.

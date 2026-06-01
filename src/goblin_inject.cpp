@@ -518,7 +518,7 @@ bool goblin::inject_tutorial_popup_rows()
     size_t type_str_start = data_end;
     size_t after_type_str = type_str_start + type_str_len;
     // CRITICAL: align wrapper_row_loc to 16, NOT 4. The lookup-by-id engine
-    // (LookupTutorialParam @ eldenring.exe+0xD51BA0) reads this offset from the
+    // (LookupTutorialParam @ eldenring.exe+0xD51BA0, pre-2026-05-29 RVA) reads this offset from the
     // wrapper header and rounds it UP to 16 via `(x + 0xf) & ~0xf` before using
     // it as the wrapper_row_locator base for its binary search. If our actual
     // array sits at a merely-4-aligned offset, the engine reads 4-12 bytes

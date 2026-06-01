@@ -616,12 +616,12 @@ void goblin::setup_messages()
         spdlog::error("PlaceName FMG patching failed");
 
     // Inject NEW TutorialBody entries (slot 208 = 0xD0) for the codex toasts.
-    // CSPopupMenu::ShowTutorialPopup (trampoline 0x80DA50) looks up
-    // TutorialParam[id].textId then TutorialBody.fmg[textId]. Matching
-    // TutorialParam rows are injected by goblin::inject_tutorial_popup_rows.
-    // Using fresh ids leaves all vanilla/ERR codex text untouched. The DUMP
-    // entry is a placeholder — its text is rewritten at runtime by
-    // show_codex_message() via override_fmg_text for the F9 marker-dump banner.
+    // CSPopupMenu::ShowTutorialPopup (trampoline, AOB-resolved at runtime — its
+    // RVA shifts on game updates) looks up TutorialParam[id].textId then
+    // TutorialBody.fmg[textId]. Matching TutorialParam rows are injected by
+    // goblin::inject_tutorial_popup_rows. Using fresh ids leaves all vanilla/ERR
+    // codex text untouched. All four entries (ON/OFF/DUMP_OK/DUMP_FAIL) are
+    // STATIC strings written below — there is no runtime text rewriting.
     if (count2 > 208 && sub[208])
     {
         std::vector<NewEntry> tb_entries = {

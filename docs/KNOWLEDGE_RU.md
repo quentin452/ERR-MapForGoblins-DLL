@@ -13,7 +13,7 @@ DLL-мод для Elden Ring Reforged (ERR). Добавляет ~9000 иконо
 
 Ключевое отличие от обычного инсталлера -- мод **не трогает regulation.bin**, все данные инжектятся в память при загрузке DLL. Это позволяет играть онлайн без блокировки EAC (через Seamless Co-op / мод-лоадер).
 
-Текущая версия: **v1.0.8** (pre), ~9000 записей WorldMapPointParam (+ ~740 ванильных), 60+ гранулярных категорий иконок в INI. Собранные Rune/Ember Pieces автоматически скрываются на карте.
+Текущая версия: **v1.0.13** (pre), ~9000 записей WorldMapPointParam (+ ~740 ванильных), 60+ гранулярных категорий иконок в INI. Собранные Rune/Ember Pieces автоматически скрываются на карте.
 
 ---
 
@@ -29,19 +29,23 @@ DLL-мод для Elden Ring Reforged (ERR). Добавляет ~9000 иконо
 | `goblin_logic.cpp` | Логика map fragment -- иконки появляются только после сбора фрагмента карты |
 | `goblin_collected.cpp` | Определение собранных Rune/Ember Pieces: GEOF (model hash + InstanceID slot) + WGM (+0x263 бит1 + +0x26B бит4) |
 | `goblin_config.cpp` | Парсинг INI (mINI), 60+ переключателей категорий + debug_logging, парсинг VK-кода хоткея |
-| `goblin_markers.cpp` | Опциональный дамп бикон-массивов из памяти по хоткею (отладочный, выключен по умолчанию) |
+| `goblin_markers.cpp` | Дамп бикон/стамп-массивов из памяти по хоткею (F9, **включён по умолчанию**); показывает на экране подтверждающий баннер кодекса (Markers dumped / Marker dump failed). Читает стабильную цепочку указателей `*(exe+0x3D5DF38)->+0x68->beacons+0x118/stamps+0x1B8` (не скан памяти) |
+| `goblin_kindling.cpp` | Модуль Kindling Spirits (`Category::WorldKindlingSpirits`); определение живости каждого духа через скан кучи на объекты-условия `CS::EcTestDistance` |
 | `goblin_massedit.cpp` | Runtime-парсер MASSEDIT файлов (альтернативный путь загрузки из `dll/offline/massedit/`) |
 | `generated/goblin_map_data.cpp` | Автосгенерированный массив из MASSEDIT файлов (~9000 записей) |
 | `generated/goblin_legacy_conv.hpp` | Автосгенерированная таблица dungeon→overworld конверсии координат (из WorldMapLegacyConvParam) |
 | `modutils.cpp` | AOB-сканер (Pattern16), хуки (MinHook), утилиты для работы с памятью |
 | `from/params.cpp` | Работа с SoloParamRepository -- поиск и итерация по Param таблицам |
+| `goblin/goblin_structs.hpp`, `goblin/goblin_map_flags.hpp`, `goblin/goblin_map_tiles.hpp`, `goblin/goblin_map_exceptions.hpp` | Общие заголовки: структуры, флаги карты, данные тайлов карты, исключения карты |
+
+Новый ключ INI: `show_merchant_bell_bearings` (`Category::LootMerchantBellBearings`, по умолчанию выключен).
 
 ### Как работает инжект (goblin_inject.cpp)
 
 1. Дождаться загрузки params (`from::params::initialize()`)
 2. Найти `ParamResCap` для "WorldMapPointParam" в ParamList
 3. Получить указатель на param_file через `rescap + 0x80`
-4. `VirtualAlloc` новый буфер: header (0x40) + row locators + данные + type string + wrapper locators
+4. `HeapAlloc (GetProcessHeap, HEAP_ZERO_MEMORY)` новый буфер: header (0x40) + row locators + данные + type string + wrapper locators (заменено с `VirtualAlloc` для совместимости с Seamless Co-op — `game_memory_unlimiter` из ERSC крашится на выделенном `VirtualAlloc`'нутом page-регионе)
 5. Скопировать оригинальные строки + добавить наши, отсортировать по row_id
 6. Атомарно подменить указатель: `file_ptr_ref = new_param_file`
 
@@ -49,7 +53,7 @@ DLL-мод для Elden Ring Reforged (ERR). Добавляет ~9000 иконо
 ```
 ParamResCap -> param_header (+0x78 = size, +0x80 = param_file ptr)
 ParamTable (param_file):
-  +0x00: param_type_offset (uint32)
+  +0x10: param_type_offset (uint64)
   +0x0A: num_rows (uint16)
   +0x30: data_start (uint64)
   +0x40: ParamRowInfo[num_rows] -- по 24 байта: row_id(u64) + param_offset(u64) + param_end_offset(u64)
@@ -69,16 +73,32 @@ ParamTable (param_file):
 | 300 000 000 + id | AccessoryName (талисманы) |
 | 400 000 000 + id | GemName (ashes of war) |
 | 500 000 000 + id | GoodsName |
-| 600 000 000 + id | Event text (tutorial/hint строки) |
-| 900 000 000 + id | TutorialTitle |
+| 600 000 000 + id | EventTextForMap (текст событий карты) |
+| 700 000 000 + id | NpcName (именованные NPC; имена боссов `9MMMMVVV` попадают в 1 600 000 000 - 1 700 000 000) |
+| 800 000 000 + id | ActionButtonText (подсказки взаимодействия) |
+| 900 000 000 + id | TutorialTitle (имена врагов) |
 
 Когда игра запрашивает PlaceName маркера, хук переводит offset обратно в исходный ID и
 возвращает существующую в игре строку. Локализация во все 14 языковых слотов работает автоматически.
 `goblin_text_data.cpp` больше не компилируется.
 
+### Отображение иконок (показать/скрыть)
+
+Иконки **всегда EXPANDED везде**. `F10` (клавиатура) или `Y + R3` (геймпад) -- персональный
+мастер-переключатель показать/скрыть, который меняет `WorldMapPointParam` между EXPANDED и VANILLA.
+Старый авто-скрыватель "разворачивать только пока открыта карта" (читал `CSMenuMan + 0xCD`) был
+**УДАЛЁН** после фикса 16-выравнивания.
+
+### Экранные баннеры (F10 / F9)
+
+Подтверждающий баннер F10/F9 использует `CSPopupMenu::ShowTutorialPopup` (тост EMEVD `2007[15]`).
+Он **резолвится через AOB в рантайме — это НЕ хардкоженный RVA** — потому что обновления игры
+сдвигают RVA в `.text` (`0x80DA50 -> 0x80D960` в мае 2026). При этом слоты синглтонов в `.data` и
+vtable в `.rdata` остаются на месте.
+
 ### Пайплайн генерации данных
 
-Весь пайплайн оркеструется `tools/build_pipeline.py` (18 стадий, хеш-инкрементальный кеш
+Весь пайплайн оркеструется `tools/build_pipeline.py` (25 стадий, хеш-инкрементальный кеш
 в `data/.build_cache.json`; холодный запуск ~240 с, полностью кешированный <1 с).
 
 ```
@@ -97,6 +117,12 @@ MSB файлы + regulation.bin + EMEVD
         |   generate_maps.py             -->  MASSEDIT мировой инфраструктуры
         +-- generate_gestures.py         -->  жесты (через сканирование common event 90005570)
         +-- generate_hostile_npcs.py     -->  инвейдеры (через NpcParam.teamType=24 + MSB)
+        +-- generate_kindling_spirits_massedit.py -->  Kindling Spirits MASSEDIT
+        +-- extract_seal_puzzles.py, generate_seal_puzzles.py -->  seal puzzles MASSEDIT
+        +-- generate_hero_tomb_statues.py -->  статуи hero tomb MASSEDIT
+        +-- generate_boss_list.py        -->  список боссов
+        +-- build_grace_index.py         -->  индекс мест благодати
+        +-- (сканы gathering-нод)        -->  данные material/gathering нод
         |
         v
   generate_data.py  -->  goblin_map_data.cpp + goblin_legacy_conv.hpp
@@ -119,15 +145,15 @@ MSB файлы + regulation.bin + EMEVD
 
 | Поле | Тип | Описание |
 |---|---|---|
-| iconId | int32 | ID иконки (376 = stonesword key стиль, 393 = стандартный лут) |
+| iconId | unsigned short (u16) | ID иконки (376 = stonesword key стиль, 393 = стандартный лут) |
 | posX, posZ | float | Координаты на карте (мировые координаты X и Z) |
 | textId1 | int32 | ID текста PlaceName (наши начинаются с 9000000+) |
 | textDisableFlagId1 | int32 | Event flag -- при активации иконка скрывается (подбор предмета) |
 | eventFlagId | int32 | Флаг отображения (map fragment) |
-| areaNo | int16 | Номер области (60 = overworld, 61 = DLC, 10-21 = подземелья) |
-| gridXNo, gridZNo | int16 | Координаты тайла карты |
+| areaNo | unsigned char (u8) | Номер области (60 = overworld, 61 = DLC, 10-43 = подземелья / legacy-области) |
+| gridXNo, gridZNo | unsigned char (u8) | Координаты тайла карты |
 | dispMask00..07 | bits | Маски видимости слоёв карты |
-| selectMinZoomStep | int32 | Минимальный зум для отображения |
+| selectMinZoomStep | unsigned char (u8) | Минимальный зум для отображения |
 
 ### ItemLotParam_map
 
@@ -184,15 +210,15 @@ for asset in msb.Parts.Assets:
 ### FMG -- текстовые файлы
 
 Бинарный формат From Software для текстов. Версия 2 (Elden Ring):
-- Header: version(u32), fileSize(u32), unk(u32), groupCount(u32)
+- Header: unk0(u8), bigEndian(u8), version(u8 =2), unk3(u8), fileSize(u32), unk08(u32 =1), groupCount(u32), stringCount(u32), затем 64-битная таблица смещений строк
 - Groups по 16 байт: firstId(i32), lastId(i32), offsetsStart(i32)
 - Строки в UTF-16LE
 
-Хранятся внутри BND4 архивов (`item_dlc02.msgbnd.dcx`), сжатых DCX (zstd).
+Хранятся внутри BND4 архивов (`item_dlc02.msgbnd.dcx`), сжатых DCX (Oodle Kraken).
 
 ### DCX / BND4 / BHD5
 
-- **DCX** -- контейнер сжатия (zstd для ER, magic `DCX\0`, zstd magic `\x28\xB5\x2F\xFD`)
+- **DCX** -- контейнер сжатия (magic `DCX\0`; ER/ERR используют Oodle Kraken — тег `KRAK` по смещению 0x28, НЕ zstd)
 - **BND4** -- архив файлов (MSB, FMG и др.)
 - **BHD5** -- зашифрованный индекс архивов vanilla (Data0-3.bdt), ключ для EldenRing = Game enum value 3
 
@@ -224,8 +250,7 @@ Rune Pieces (и Ember Pieces в DLC) -- кастомные предметы ERR,
 - Для парсинга DLC MSB нужна Andre.SoulsFormats.dll (из Smithbox), стандартная падает
 
 **AEG099_510** ("якорные" объекты):
-- 133 экземпляра
-- Имеют уникальные EntityID
+- 161 экземпляр (112 уникальных EntityID)
 - Связаны с EMEVD событиями
 - Только ~50 из них управляются через event 1045632900
 - Не являются визуальными моделями кусочков -- это невидимые "триггеры" или "точки привязки"
@@ -292,22 +317,31 @@ Event 1045630910 (обработчик одного куска):
 - Slot = `InstanceID - 9000` (InstanceID - поле MSB Part, читается через SoulsFormats)
 - WGM маппинг: каждый piece привязан по `name_suffix` → `row_id` (не по позиции в векторе)
 
-**Известные ограничения:**
-- Хостинг Seamless Co-op крашится из-за VirtualAlloc'd ParamTable (старый баг, не связан с collected detection)
+**РЕШЕНО: Хостинг Seamless Co-op (2026-05-29):**
+- Раньше хостинг крашился. Реальная причина -- баг 16-выравнивания в layout `wrapper_row_locator`; исправлено 16-выравниванием этого массива + переключением буфера на `HeapAlloc (GetProcessHeap, HEAP_ZERO_MEMORY)`.
+- Старый воркэраунд с авто-скрытием при открытии карты удалён; хостинг проверен вживую.
+- Детали: `docs/ersc_hosting_and_map_autohide.md`.
 
 Детали: `geom_collection_tracking.md` в корне проекта.
 
 ---
 
+## Kindling Spirits
+
+`src/goblin_kindling.cpp` запускает `Category::WorldKindlingSpirits`.
+
+- `textDisableFlagId1` = `PERMANENT_FLAG 1045377500` — движок ставит его автоматически, когда собраны все 5 духов.
+- Живость каждого духа определяется сканом кучи на объекты-условия `CS::EcTestDistance` (vftable RVA `0x2A5BB90`). Каждый объект само-идентифицируется через `cond+0x30 == entity_id`, eid'ы `1045373501..505`. Эти объекты появляются только примерно через минуту после входа в Misty Forest.
+- **НЕТ статического якоря** и **НЕТ event flag на каждого духа** — скан кучи единственный источник по отдельным духам.
+
+---
+
 ## Оставшиеся задачи
 
-### 1. Seamless Co-op хостинг
-VirtualAlloc'd ParamTable (~9800 строк вместо 740) несовместима с Seamless Co-op при создании сессии (хостинг). Варианты:
-- Хук param lookup вместо замены таблицы
-- HeapAlloc вместо VirtualAlloc
-- Разобраться что именно Seamless Co-op делает с param при хостинге
+### ~~1. Seamless Co-op хостинг~~ — РЕШЕНО (2026-05-29)
+Хостинг теперь работает. Буфер ParamTable переключён с `VirtualAlloc` на `HeapAlloc (GetProcessHeap, HEAP_ZERO_MEMORY)`, а массив `wrapper_row_locator` 16-выровнен (реальной причиной был баг 16-выравнивания в этом layout). Старый воркэраунд с авто-скрытием при открытии карты удалён; хостинг проверен вживую. См. `docs/ersc_hosting_and_map_autohide.md`.
 
-### 2. Справочные оффсеты
+### 1. Справочные оффсеты
 
 Позиция игрока:
 ```

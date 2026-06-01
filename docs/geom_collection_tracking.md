@@ -5,7 +5,7 @@
 **Game version:** Elden Ring 1.16 (Calibrations 1.16.1)  
 **Context:** Research was done for the Elden Ring Reforged (ERR) mod, but the mechanism is vanilla engine stuff.  
 **Authors:** VirusAlex + Claude (Anthropic)  
-**Date:** April 2026
+**Date:** April 2026 (verified still valid as of the 2026-05-29 update)
 
 ---
 
@@ -61,6 +61,8 @@ Each entry - 8 bytes:
 When a tile is **loaded** (near the player), its GEOF data disappears from the singletons. Objects become live CSWorldGeomIns instances in memory.
 
 **CSWorldGeomMan** - RVA `0x3D69BA8`
+
+> **Note:** The three RVAs above (`0x3D69D18` GeomFlagSaveDataManager, `0x3D69D98` GeomNonActiveBlockManager, `0x3D69BA8` CSWorldGeomMan) are absolute `.data` offsets for this specific `eldenring.exe` build and must be re-resolved (or AOB-scanned) on game updates. The `+0xNNN` struct FIELD offsets are version-stable.
 
 Structure:
 ```
@@ -187,8 +189,10 @@ GEOF entries contain ALL destroyed geom objects on a tile - not just the ones yo
 
 ```
 Model hash for AEG099_821: 0x009A1C6D (bytes: 6D 1C 9A 00)
-Model hash for AEG099_822: (extract from MSB for your version)
+Model hash for AEG099_822: 0x009A1C6E (bytes: 6E 1C 9A 00)
 ```
+
+General rule: `model_id = 10,000,000 + group*1000 + number`; the hash is the little-endian u32 of that value. So AEG099_821 = 10,099,821 = `0x009A1C6D` and AEG099_822 = 10,099,822 = `0x009A1C6E`.
 
 This hash matches the value at CSWorldGeomIns +0x28 for live objects of that model.
 
@@ -283,7 +287,7 @@ Player loads a save
 **Версия игры:** Elden Ring 1.16 (Calibrations 1.16.1)  
 **Контекст:** Исследование проводилось для мода Elden Ring Reforged (ERR), но механизм ванильный, из движка игры.  
 **Авторы:** VirusAlex + Claude (Anthropic)  
-**Дата:** Апрель 2026
+**Дата:** Апрель 2026 (verified still valid as of the 2026-05-29 update)
 
 ---
 
@@ -339,6 +343,8 @@ Layout B (GeomNonActiveBlockManager):
 Когда тайл **загружен** (рядом с игроком), его GEOF-данные исчезают из синглтонов. Объекты становятся живыми CSWorldGeomIns в памяти.
 
 **CSWorldGeomMan** - RVA `0x3D69BA8`
+
+> **Примечание:** Три RVA выше (`0x3D69D18` GeomFlagSaveDataManager, `0x3D69D98` GeomNonActiveBlockManager, `0x3D69BA8` CSWorldGeomMan) - абсолютные `.data`-смещения для этой конкретной сборки `eldenring.exe`, их нужно повторно резолвить (или AOB-сканировать) при обновлениях игры. Смещения ПОЛЕЙ структур `+0xNNN` стабильны между версиями.
 
 Структура:
 ```
@@ -465,8 +471,10 @@ GEOF содержит записи обо ВСЕХ уничтоженных ге
 
 ```
 Хеш модели AEG099_821: 0x009A1C6D (байты: 6D 1C 9A 00)
-Хеш модели AEG099_822: (извлеките из MSB для вашей версии)
+Хеш модели AEG099_822: 0x009A1C6E (байты: 6E 1C 9A 00)
 ```
+
+Общее правило: `model_id = 10,000,000 + group*1000 + number`; хеш - это little-endian u32 этого значения. То есть AEG099_821 = 10,099,821 = `0x009A1C6D` и AEG099_822 = 10,099,822 = `0x009A1C6E`.
 
 Этот хеш совпадает со значением по смещению CSWorldGeomIns +0x28 для живых объектов этой модели.
 

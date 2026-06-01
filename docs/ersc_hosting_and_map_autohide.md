@@ -20,8 +20,10 @@ crash we hit when injecting `TutorialParam` rows for the codex toast:
 - We placed the trailing `wrapper_row_locator` array at a **4-byte-aligned**
   offset: `wrapper_row_loc_start = (after_type_str + 3) & ~3`.
 - The game's **param lookup-by-id** engine
-  (`LookupTutorialParam` @ `eldenring.exe+0xD51BA0`, and the same code shape
-  for any param) reads `wrapper_row_loc_start` out of the wrapper header and
+  (`LookupTutorialParam` @ `eldenring.exe+0xD51BA0` — *pre-2026-05-29 build;
+  .text shifted on that update — re-resolve before trusting*; the same code
+  shape applies to any param) reads `wrapper_row_loc_start` out of the wrapper
+  header and
   **rounds it UP to 16** (`(x + 0xF) & ~0xF`) before using it as the base of
   its binary search over `wrapper_row_locators`.
 - If the array isn't actually 16-aligned, the engine starts reading 4–12 bytes
@@ -47,11 +49,20 @@ Locations: `inject_map_entries` (WorldMapPointParam) and
 
 **How it was diagnosed:**
 1. `tools/_parse_minidump.py` on the crash dump → faulting RVA `0xD51CC5`
-   (an `ACCESS_VIOLATION read`).
-2. `tools/_dis_lookup.py` disassembled `LookupTutorialParam` and revealed the
+   (an `ACCESS_VIOLATION read`) — *pre-2026-05-29 build; .text shifted on that
+   update — re-resolve before trusting*.
+2. An ad-hoc disassembly of `LookupTutorialParam` revealed the
    `mov eax,[rdx-0x10]; add eax,0xf; and ...,~0xf` align-up of the wrapper
    offset, followed by `mov rbx,[rdx + (index+3)*24]` (the faulting row-locator
    read).
+
+Note: the RVAs above (`0xD51BA0`, `0xD51CC5`) are .text addresses captured on
+the pre-2026-05-29 build. The 2026-05-29 game+ERR update shifted .text RVAs
+(e.g. the `ShowTutorialPopup` trampoline moved `0x80DA50` -> `0x80D960`), so
+re-resolve them before trusting. They appear only in this descriptive comment,
+not in runtime code, so this is doc drift, not a bug. The align-up mechanism
+itself — `(x + 0xf) & ~0xf` of the wrapper offset before the binary search —
+remains correct regardless of the RVA.
 
 **Consequence:** with 16-align, the expanded `WorldMapPointParam` can stay live
 **during hosting** — ERSC's id lookup now lands on the correct array. The map
