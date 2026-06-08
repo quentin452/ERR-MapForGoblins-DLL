@@ -1,7 +1,9 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <mini/ini.h>
+#include <string>
 
 namespace goblin
 {

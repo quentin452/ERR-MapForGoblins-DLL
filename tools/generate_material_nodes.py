@@ -81,6 +81,7 @@ def main():
 
     START_ID = 6000000
     entries = []
+    emitted_nodes = []  # node behind entries[i] — same-loop capture for slots.json
     excluded_unreachable = 0
     for n in onetime_nodes:
         # Skip nodes ERR sank out of reach (see unreachable.py).
@@ -142,14 +143,23 @@ def main():
             entry["dispMask00"] = 1
 
         entries.append(entry)
+        emitted_nodes.append(n)
 
     print(f"Generated {len(entries)} MASSEDIT entries "
           f"({excluded_unreachable} skipped as unreachable)")
 
-    # Write slots.json for geom tracking
+    # Write slots.json for geom tracking. Pair each entry with the node captured in
+    # the SAME loop iteration — never reconstruct the list by re-filtering: the loop
+    # also skips unreachable nodes, and a re-filter that misses one condition shifts
+    # every name/geom_slot after the first exclusion (mislabeled markers + collected-
+    # tracking hiding the wrong icon).
     slots = {}
-    for i, (entry, node) in enumerate(zip(entries, [n for n in onetime_nodes if onetime_models[n["model"]].get("primaryGoodsId", onetime_models[n["model"]].get("goodsId", 0)) not in (0, 17000)])):
-        name = node["name"]  # e.g. "AEG099_651_9000"
+    for entry, node in zip(entries, emitted_nodes):
+        # Strip the SoulsFormats duplicate-name decoration: ERR copy-pastes parts keeping
+        # the name, the reader disambiguates as "AEG099_931_9006 {2}". In-game the part is
+        # plain "AEG099_931_9006" — bake THAT (decorated names parse to no slot/no name and
+        # the row becomes invisible to collected-tracking).
+        name = node["name"].split(" {")[0]  # e.g. "AEG099_651_9000"
         parts = name.rsplit("_", 1)
         if len(parts) == 2 and parts[1].isdigit():
             suffix = int(parts[1])

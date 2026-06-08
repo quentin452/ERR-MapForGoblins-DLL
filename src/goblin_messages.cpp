@@ -1,15 +1,20 @@
 #include "goblin_messages.hpp"
 #include "generated/goblin_map_data.hpp"
+#include "generated/goblin_location_alt.hpp"
+#include "goblin_config.hpp"
 #include "goblin_inject.hpp"
+#include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
 #include "modutils.hpp"
 
 #include <cstring>
 #include <set>
 #include <spdlog/spdlog.h>
+#include <deque>
 #include <string>
 #include <thread>
 #include <chrono>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <algorithm>
 
@@ -24,6 +29,10 @@ class MsgRepositoryImp;
 
 static from::CS::MsgRepositoryImp *msg_repository = nullptr;
 static void *fmg_allocation = nullptr;
+
+// Every PlaceName id that resolves to a real string after the FMG patch.
+// Populated in patch_fmg_in_memory; read by sanitize_injected_textids().
+static std::unordered_set<int32_t> g_placename_valid_ids;
 
 // Toggle state for PlaceName FMG (slot 19). Only this slot is a pointer
 // swap — other slots get surgical in-place additions we don't try to undo.
@@ -81,7 +90,8 @@ struct NewEntry
 };
 
 static bool patch_fmg_in_memory(uint8_t *fmg_ptr, uint8_t **slot_ptr,
-                                const std::vector<NewEntry> &new_entries)
+                                const std::vector<NewEntry> &new_entries,
+                                bool capture_valid_ids = false)
 {
     uint32_t orig_file_size  = *reinterpret_cast<uint32_t *>(fmg_ptr + 0x04);
     uint32_t orig_group_cnt  = *reinterpret_cast<uint32_t *>(fmg_ptr + 0x0C);
@@ -189,6 +199,19 @@ static bool patch_fmg_in_memory(uint8_t *fmg_ptr, uint8_t **slot_ptr,
 
     std::sort(merged.begin(), merged.end(),
               [](const AllEntry &a, const AllEntry &b) { return a.id < b.id; });
+
+    // Record every PlaceName id that now resolves to a real string, so
+    // sanitize_injected_textids() can strip marker textIds that point at a
+    // missing entry (game's GetMessage returns null → wstring(null) → crash).
+    // ONLY for the PlaceName (slot 19) patch — this function is also used for
+    // the TutorialBody (codex toast) patch, whose id set is unrelated; capturing
+    // that would wrongly flag every marker textId as missing and clear them all.
+    if (capture_valid_ids)
+    {
+        g_placename_valid_ids.clear();
+        for (auto &m : merged)
+            g_placename_valid_ids.insert(m.id);
+    }
 
     uint32_t total_strings = (uint32_t)merged.size();
 
@@ -602,7 +625,51 @@ void goblin::setup_messages()
 
     spdlog::debug("PlaceName FMG at {:p}", (void *)fmg_ptr);
 
-    if (patch_fmg_in_memory(fmg_ptr, &sub[19], new_entries))
+    // Composed labels for duplicate-named sub-zones (e.g. the two Hallowhorn Grounds):
+    // synthesize "<sub> (<super>)" from the game's OWN PlaceName strings so the text is
+    // correct in any language. Storage is a function-local static deque — pointer-stable.
+    {
+        auto fmg_find = [&](uint8_t *fmg, int32_t id) -> const wchar_t *
+        {
+            uint32_t grp_cnt = *reinterpret_cast<uint32_t *>(fmg + 0x0C);
+            uint32_t str_cnt = *reinterpret_cast<uint32_t *>(fmg + 0x10);
+            uint64_t raw_off = *reinterpret_cast<uint64_t *>(fmg + 0x18);
+            uint8_t *off_ptr = (raw_off > 0x1000000) ? reinterpret_cast<uint8_t *>(raw_off) : fmg + raw_off;
+            auto *groups = reinterpret_cast<FmgGroup *>(fmg + 0x28);
+            auto *str_offs = reinterpret_cast<uint64_t *>(off_ptr);
+            for (uint32_t g = 0; g < grp_cnt; g++)
+            {
+                if (id < groups[g].first_id || id > groups[g].last_id) continue;
+                int32_t si = groups[g].string_index + (id - groups[g].first_id);
+                if (si < 0 || si >= (int32_t)str_cnt) return nullptr;
+                uint64_t s_off = str_offs[si];
+                if (s_off == 0) return nullptr;
+                return (s_off > 0x1000000) ? reinterpret_cast<const wchar_t *>(s_off)
+                                           : reinterpret_cast<const wchar_t *>(fmg + s_off);
+            }
+            return nullptr;
+        };
+        static std::deque<std::wstring> compose_storage;
+        int composed = 0;
+        for (size_t i = 0; i < generated::LOCATION_COMPOSE_COUNT; i++)
+        {
+            const auto &c = generated::LOCATION_COMPOSE[i];
+            const wchar_t *sub_txt = fmg_find(fmg_ptr, c.subId);
+            const wchar_t *sup_txt = fmg_find(fmg_ptr, c.superId);
+            if (!sub_txt || !sup_txt)
+            {
+                spdlog::warn("Compose label {}: PlaceName {} or {} not found in FMG", c.id, c.subId, c.superId);
+                continue;
+            }
+            compose_storage.emplace_back(std::wstring(sub_txt) + L" (" + sup_txt + L")");
+            new_entries.push_back({c.id, compose_storage.back().c_str()});
+            composed++;
+        }
+        if (composed)
+            spdlog::info("Composed {} duplicate-zone labels into PlaceName", composed);
+    }
+
+    if (patch_fmg_in_memory(fmg_ptr, &sub[19], new_entries, /*capture_valid_ids=*/true))
     {
         spdlog::info("PlaceName FMG patched ({} entries)", new_entries.size());
         // Capture toggle state. fmg_ptr was the original buffer; sub[19] now
@@ -639,6 +706,54 @@ void goblin::setup_messages()
     }
     else
         spdlog::warn("[TOAST] TutorialBody (slot 208) unavailable — codex banners unavailable");
+
+    // Final safety pass: strip any marker textId that didn't end up with a real
+    // string in the expanded PlaceName FMG. The game's GetMessage returns null
+    // for a missing id and some callers build a std::wstring from it → null
+    // deref in game code on load transitions (grace teleport / character swap).
+    // Root cause was e.g. a double-offset enemy-name id (npc id already +900M
+    // tutorial-encoded, then +700M again → 1.6B, in no FMG). Clearing it to -1
+    // makes that text line simply absent instead of crashing.
+    goblin::sanitize_injected_textids();
+}
+
+void goblin::sanitize_injected_textids()
+{
+    if (g_placename_valid_ids.empty())
+    {
+        spdlog::warn("[SANITIZE] PlaceName valid-id set empty — skipping (FMG patch ran?)");
+        return;
+    }
+    auto valid = [](int32_t id) {
+        // Logic sentinels the DLL/engine special-case (camp/boss markers) — leave alone.
+        if (id == 5000 || id == 5100 || id == 5300 || id == 8800) return true;
+        return g_placename_valid_ids.count(id) != 0;
+    };
+    const auto &rows = goblin::injected_row_ptrs();
+    int cleared = 0, scanned = 0;
+    for (uint8_t *p : rows)
+    {
+        auto *row = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(p);
+        int32_t *tids[8]  = {&row->textId1, &row->textId2, &row->textId3, &row->textId4,
+                             &row->textId5, &row->textId6, &row->textId7, &row->textId8};
+        unsigned int *fl[8] = {&row->textDisableFlagId1, &row->textDisableFlagId2,
+                               &row->textDisableFlagId3, &row->textDisableFlagId4,
+                               &row->textDisableFlagId5, &row->textDisableFlagId6,
+                               &row->textDisableFlagId7, &row->textDisableFlagId8};
+        ++scanned;
+        for (int i = 0; i < 8; ++i)
+        {
+            int32_t id = *tids[i];
+            if (id >= 0 && !valid(id))
+            {
+                *tids[i] = -1;
+                *fl[i] = 0;
+                ++cleared;
+            }
+        }
+    }
+    spdlog::info("[SANITIZE] Scanned {} injected rows, cleared {} dangling textId(s) "
+                 "(missing from PlaceName FMG → would null-deref on load)", scanned, cleared);
 }
 
 void goblin::set_fmg_injection_active(bool active)

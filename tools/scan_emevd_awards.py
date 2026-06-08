@@ -71,17 +71,23 @@ def load_lot_ids():
     return map_lots, enemy_lots
 
 
-def scan_arg_blob(arg_bytes, lot_set, entity_set):
+def scan_arg_blob(arg_bytes, lot_set, entity_set, skip_offsets=()):
     """Find all (lot_id, entity_id) co-occurrences in one arg blob.
 
-    Returns list of (lot_id, [entity_ids_in_blob]).
+    Returns (lots, ents). Dungeon ENTITY ids share the ItemLot numbering space
+    (both 12NNxxxx), so a value that is a known MSB entity id is treated as an
+    entity reference, NEVER as a lot — otherwise e.g. Clayman entity 12070250
+    becomes a phantom "Golden Rune" treasure at the enemy's feet.
+    skip_offsets: arg byte-offsets that hold known NON-lot ids (e.g. the
+    event-id arg of InitializeEvent — 12020700 there is an event id, not a lot).
     """
     vals = []
     # Scan every 4-byte aligned (step by 4 to match common arg layout)
     # But also try unaligned in case args have different offset
     for i in range(0, len(arg_bytes) - 3):
         vals.append((i, struct.unpack_from('<I', arg_bytes, i)[0]))
-    lots = [v for i, v in vals if v in lot_set]
+    lots = [v for i, v in vals
+            if v in lot_set and v not in entity_set and i not in skip_offsets]
     ents = [v for i, v in vals if v in entity_set]
     return lots, ents
 
@@ -121,7 +127,12 @@ def main():
             for inst in evt.Instructions:
                 ab = bytes(inst.ArgData) if inst.ArgData else b''
                 if not ab: continue
-                lots, ents = scan_arg_blob(ab, lot_set, entity_set)
+                # InitializeEvent (2000[0]) / InitializeCommonEvent (2000[6]):
+                # args = [slot, event_id, params...] — the event-id at byte
+                # offset 4 is never an item lot (dungeon event ids collide
+                # with the lot numbering, e.g. 12020700).
+                skip = (4,) if (int(inst.Bank) == 2000 and int(inst.ID) in (0, 6)) else ()
+                lots, ents = scan_arg_blob(ab, lot_set, entity_set, skip)
                 # Filter trivial lot IDs (0-9999) that collide with common small integers
                 lots = [l for l in lots if l >= 10000]
                 if lots and ents:

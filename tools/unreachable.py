@@ -56,6 +56,10 @@ UNREACHABLE = {
     # -3.59 units below vanilla (Y 180.70 -> 177.10) into terrain; confirmed
     # unreachable in-game.
     ('m60_49_40_00', 'AEG099_610_9001'),
+    # Crafting-material gather asset (Turtle Neck Meat) in Mt. Gelmir tile
+    # m60_39_51 — ERR dropped it -10.0 (Y 761.97 -> 751.97) under the
+    # terrain; confirmed unreachable in-game (2026-06).
+    ('m60_39_51_00', 'AEG099_610_9002'),
 }
 
 # Unconditional excludes: ERR put these out of reach but the vertical delta vs
@@ -65,7 +69,14 @@ UNREACHABLE = {
 UNCONDITIONAL = {
     # Material-node gather asset in Altus tile m60_51_39 — only -1.81 vs
     # vanilla, but sits UNDER the ground in ERR (confirmed in-game).
+    # NOTE: this confirmation PREDATES the generate_material_nodes slot-shift
+    # fix — the in-game icon labeled 9000 was actually 9001's position. Kept
+    # until re-verified at 9000's real spot (-26.4, 245.2, 80.6).
     ('m60_51_39_00', 'AEG099_653_9000'),
+    # Material-node gather asset in Altus tile m60_51_39 at (-89.6, 246.7,
+    # 34.3) — Y identical to vanilla, but sits under the terrain in ERR
+    # (reshaped ground); confirmed in-game (2026-06).
+    ('m60_51_39_00', 'AEG099_653_9001'),
 }
 
 # Entries whose displacement is checked in any direction (abs dy > threshold),

@@ -1,7 +1,9 @@
 #include "goblin_collected.hpp"
 #include "goblin_config.hpp"
 #include "generated/goblin_map_data.hpp"
+#include "generated/goblin_geof_models.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <map>
@@ -66,9 +68,14 @@ struct ParamRef {
 static std::map<uint64_t, ParamRef> g_param_ptrs;
 
 static std::map<uint32_t, std::vector<uint64_t>> g_tile_to_rows;                // tile → ordered row_ids
-static std::map<uint32_t, std::map<std::string, uint64_t>> g_tile_name_to_row;  // tile → object_name → row_id
-// 3D slot map: tile → prefix → geom_slot → row_id  (no cross-model collisions)
-static std::map<uint32_t, std::map<std::string, std::map<int, uint64_t>>> g_tile_slot_to_row;
+// tile → object_name → row_ids. A VECTOR because ERR duplicates part names when it
+// copy-pastes assets (two AEG099_931_9006 in m12_02) — duplicate-named rows need
+// per-position classification instead of the name-keyed fast path.
+static std::map<uint32_t, std::map<std::string, std::vector<uint64_t>>> g_tile_name_to_row;
+// 3D slot map: tile → prefix → geom_slot → row_ids (duplicate-named parts share the
+// suffix-derived slot: the game writes one GEOF entry PER instance with the SAME slot
+// value — verified live: two collected AEG099_931_9006 produced GEOF slots [6, 6]).
+static std::map<uint32_t, std::map<std::string, std::map<int, std::vector<uint64_t>>>> g_tile_slot_to_row;
 // MSB-local (posX, posY, posZ) per tracked row — used to detect ERR-style
 // "replacement" where a different AEG099_* spawns at the same coords.
 static std::map<uint64_t, std::tuple<float, float, float>> g_entry_positions;
@@ -223,6 +230,10 @@ struct WGMSnapshot
 {
     std::set<std::string> alive_names;
     std::vector<std::tuple<float, float, float, std::string>> occupied;  // (x, y, z, name)
+    // alive instances WITH positions — needed for duplicate-named parts (ERR copy-pastes
+    // keep the part name, e.g. two AEG099_931_9006 in m12_02), where per-name state is
+    // ambiguous and rows must be classified by the instance at THEIR coordinates.
+    std::vector<std::tuple<float, float, std::string>> alive_occupied;  // (x, z, name)
 };
 
 static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
@@ -363,7 +374,10 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
 
                         bool alive = (f263 & 0x02) && !(f26B & 0x10);
                         if (alive)
+                        {
                             snap.alive_names.insert(narrow_str);
+                            snap.alive_occupied.emplace_back(px, pz, narrow_str);
+                        }
                     }
                 }
             }
@@ -451,15 +465,32 @@ void goblin::collected::initialize()
 
         g_tracked_prefixes.insert(prefix);
 
+        // GEOF buckets must use the part's ACTUAL model, which ERR sometimes substitutes
+        // (part AEG099_753_9000 instantiating DLC model AEG463_860): the game writes GEOF
+        // entries under the actual model's hash, so matching by the NAME prefix misses
+        // them and collected flowers stay visible on unloaded tiles after a restart.
+        std::string geof_prefix = prefix;
+        {
+            auto *end = generated::GEOF_MODEL_OVERRIDES + generated::GEOF_MODEL_OVERRIDE_COUNT;
+            auto *ov = std::lower_bound(
+                generated::GEOF_MODEL_OVERRIDES, end, e.row_id,
+                [](const generated::GeofModelOverride &o, uint64_t id) { return o.row_id < id; });
+            if (ov != end && ov->row_id == e.row_id)
+            {
+                geof_prefix = prefix_from_model_id(ov->model_id);
+                g_tracked_prefixes.insert(geof_prefix);  // feeds g_tracked_model_ids (GEOF filter)
+            }
+        }
+
         uint32_t tile = encode_tile(e.data.areaNo, e.data.gridXNo, e.data.gridZNo);
         g_tile_to_rows[tile].push_back(e.row_id);
 
-        // 3D slot map: tile → prefix → geom_slot → row_id
+        // 3D slot map: tile → ACTUAL-model prefix → geom_slot → row_ids
         if (e.geom_slot >= 0)
-            g_tile_slot_to_row[tile][prefix][e.geom_slot] = e.row_id;
+            g_tile_slot_to_row[tile][geof_prefix][e.geom_slot].push_back(e.row_id);
 
         // WGM name tracking: full object name for accurate alive matching
-        g_tile_name_to_row[tile][e.object_name] = e.row_id;
+        g_tile_name_to_row[tile][e.object_name].push_back(e.row_id);
 
         // MSB-local position for replacement detection via WGM occupancy
         g_entry_positions[e.row_id] = {e.data.posX, e.data.posY, e.data.posZ};
@@ -507,16 +538,19 @@ void goblin::collected::remap_row_ids(const std::unordered_map<uint64_t, uint64_
         }
     }
 
-    // Remap g_tile_slot_to_row (3D: tile → prefix → slot → row_id)
+    // Remap g_tile_slot_to_row (3D: tile → prefix → slot → row_ids)
     for (auto &[tile, prefix_map] : g_tile_slot_to_row)
     {
         for (auto &[prefix, slot_map] : prefix_map)
         {
-            for (auto &[slot, rid] : slot_map)
+            for (auto &[slot, rids] : slot_map)
             {
-                auto it = old_to_new.find(rid);
-                if (it != old_to_new.end())
-                    rid = it->second;
+                for (auto &rid : rids)
+                {
+                    auto it = old_to_new.find(rid);
+                    if (it != old_to_new.end())
+                        rid = it->second;
+                }
             }
         }
     }
@@ -524,11 +558,14 @@ void goblin::collected::remap_row_ids(const std::unordered_map<uint64_t, uint64_
     // Remap g_tile_name_to_row
     for (auto &[tile, name_map] : g_tile_name_to_row)
     {
-        for (auto &[obj_name, rid] : name_map)
+        for (auto &[obj_name, rids] : name_map)
         {
-            auto it = old_to_new.find(rid);
-            if (it != old_to_new.end())
-                rid = it->second;
+            for (auto &rid : rids)
+            {
+                auto it = old_to_new.find(rid);
+                if (it != old_to_new.end())
+                    rid = it->second;
+            }
         }
     }
 
@@ -638,39 +675,66 @@ int goblin::collected::refresh()
         std::map<std::pair<int, int>, std::vector<std::string>> pos_to_names;
         for (auto &[x, y, z, name] : snap.occupied)
             pos_to_names[pos_key(x, z)].push_back(name);
+        std::map<std::pair<int, int>, std::set<std::string>> alive_pos_to_names;
+        for (auto &[x, z, name] : snap.alive_occupied)
+            alive_pos_to_names[pos_key(x, z)].insert(name);
 
         // Walk every tracked MAP_ENTRY on this tile and classify it.
-        for (auto &[object_name, row_id] : name_it->second)
+        for (auto &[object_name, row_ids] : name_it->second)
         {
-            // Its own instance is alive → visible, stop here
-            if (snap.alive_names.count(object_name))
+            // Fast path: unique name (the normal case). Its own instance alive → visible.
+            if (row_ids.size() == 1 && snap.alive_names.count(object_name))
             {
-                demonstrably_alive_rows.insert(row_id);
+                demonstrably_alive_rows.insert(row_ids.front());
                 continue;
             }
 
-            // Look up MAP_ENTRY coords to probe the position index
-            auto pt_it = g_entry_positions.find(row_id);
-            if (pt_it == g_entry_positions.end()) continue;
-            auto [ex, ey, ez] = pt_it->second;
+            for (uint64_t row_id : row_ids)
+            {
+                // Look up MAP_ENTRY coords to probe the position index
+                auto pt_it = g_entry_positions.find(row_id);
+                if (pt_it == g_entry_positions.end()) continue;
+                auto [ex, ey, ez] = pt_it->second;
 
-            // Check a 3x3 integer-bucket neighborhood. Strict single-key lookup
-            // misses cases where an adjacent asset sits on the border of the
-            // rounding boundary — e.g. AEG463_600 at X=-60.48 rounds to -60
-            // while the gathered AEG463_840 at X=-60.96 probes key -61.
-            bool occupied = false;
-            int cx = (int)std::lround(ex);
-            int cz = (int)std::lround(ez);
-            for (int dx = -1; dx <= 1 && !occupied; ++dx)
-                for (int dz = -1; dz <= 1 && !occupied; ++dz)
-                    if (pos_to_names.count({cx + dx, cz + dz}))
-                        occupied = true;
-            if (!occupied) continue;  // nothing nearby → undetermined, keep visible
+                // Check a 3x3 integer-bucket neighborhood. Strict single-key lookup
+                // misses cases where an adjacent asset sits on the border of the
+                // rounding boundary — e.g. AEG463_600 at X=-60.48 rounds to -60
+                // while the gathered AEG463_840 at X=-60.96 probes key -61.
+                int cx = (int)std::lround(ex);
+                int cz = (int)std::lround(ez);
 
-            // Something is there. Either our own dead instance, or a replacement
-            // spawned by ERR (collected AEG099_860 → respawning AEG099_780 at the
-            // same coords, or AEG463_600 body where the AEG463_840 flower stood).
-            new_collected.insert(row_id);
+                // Duplicate-named parts (ERR copy-pastes keep the part name): the
+                // name-level alive check is ambiguous — classify THIS row by the
+                // instance standing at the row's own coordinates.
+                if (row_ids.size() > 1)
+                {
+                    bool alive_here = false;
+                    for (int dx = -1; dx <= 1 && !alive_here; ++dx)
+                        for (int dz = -1; dz <= 1 && !alive_here; ++dz)
+                        {
+                            auto ap = alive_pos_to_names.find({cx + dx, cz + dz});
+                            if (ap != alive_pos_to_names.end() && ap->second.count(object_name))
+                                alive_here = true;
+                        }
+                    if (alive_here)
+                    {
+                        demonstrably_alive_rows.insert(row_id);
+                        continue;
+                    }
+                }
+
+                bool occupied = false;
+                for (int dx = -1; dx <= 1 && !occupied; ++dx)
+                    for (int dz = -1; dz <= 1 && !occupied; ++dz)
+                        if (pos_to_names.count({cx + dx, cz + dz}))
+                            occupied = true;
+                if (!occupied) continue;  // nothing nearby → undetermined, keep visible
+
+                // Something is there. Either our own dead instance, or a replacement
+                // spawned by ERR (collected AEG099_860 → respawning AEG099_780 at the
+                // same coords, or AEG463_600 body where the AEG463_840 flower stood).
+                new_collected.insert(row_id);
+            }
         }
     }
 
@@ -696,17 +760,27 @@ int goblin::collected::refresh()
             // but GEOF reports geom_idx=4503 → AEG099 formula computes
             // slot=6, off by one). For single-instance prefixes the slot is
             // irrelevant, so skip the lookup entirely.
-            if (prefix_it->second.size() == 1)
+            if (prefix_it->second.size() == 1 && prefix_it->second.begin()->second.size() == 1)
             {
-                new_collected.insert(prefix_it->second.begin()->second);
+                new_collected.insert(prefix_it->second.begin()->second.front());
                 continue;
             }
 
+            // Per-slot match. Duplicate-named parts (ERR copy-pastes that keep the
+            // part Name) collapse to the SAME (model_id, geom_idx) key in the engine —
+            // their GEOF records are byte-identical and the slot is shared. The save/
+            // load path (eldenring.exe 0x6b2b80, RE'd 2026-06) keys collected state
+            // ONLY on (model_id, geom_idx): on tile reload the engine marks EVERY
+            // instance with a matching key collected — all-or-nothing per slot, twins
+            // are fused and one becomes un-collectable as a separate object. So any
+            // GEOF entry for a slot ⇒ hide ALL rows mapped to that slot (matches the
+            // engine; the loaded-tile WGM path above still distinguishes twins live).
             for (int slot : slots)
             {
                 auto row_it = prefix_it->second.find(slot);
-                if (row_it != prefix_it->second.end())
-                    new_collected.insert(row_it->second);
+                if (row_it == prefix_it->second.end()) continue;
+                for (uint64_t r : row_it->second)
+                    new_collected.insert(r);
             }
         }
     }

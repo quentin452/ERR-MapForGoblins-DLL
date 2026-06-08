@@ -145,7 +145,11 @@ def generate_massedit(items, item_name, text_id, icon_id, start_row_id, output_f
         if parse_map_tile(item['map'])[0] is None:
             continue
         iid = item.get('instance_id', -1)
-        name = item.get('name', '')
+        # Strip the SoulsFormats duplicate-name decoration: ERR copy-pastes parts keeping
+        # the Name, the reader disambiguates as "AEG099_821_9000 {2}". In-game the part is
+        # plain "AEG099_821_9000" — bake THAT so collected-tracking can match it (decorated
+        # names never match the live WGM name → the marker would never hide).
+        name = item.get('name', '').split(' {')[0]
         parts = name.rsplit('_', 1)
         suffix = int(parts[-1]) if len(parts) == 2 and parts[-1].isdigit() else -1
         slot_map[row_id2] = {

@@ -1,8 +1,16 @@
 #pragma once
 
+#include <cstdint>
+#include <vector>
+
 namespace goblin
 {
     void inject_map_entries();
+
+    // Data pointers of MFG-injected WorldMapPointParam rows in the expanded
+    // table. Populated by inject_map_entries(); consumed by
+    // sanitize_injected_textids() after the FMG bank is built.
+    const std::vector<uint8_t *> &injected_row_ptrs();
 
     // Toggle the WorldMapPointParam swap between vanilla and expanded states.
     // Used as an ERSC-hosting workaround: revert before host, re-apply after.

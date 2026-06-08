@@ -26,6 +26,14 @@ ERR_MOD_DIR = config.require_err_mod_dir()
 bnd = SoulsFormats.SFUtil.DecryptERRegulation(str(ERR_MOD_DIR / 'regulation.bin'))
 paramdefs = load_paramdefs()
 
+# Set of map tiles that actually exist as an MSB. Some BonfireWarpParam rows
+# point at cut-content maps with no MSB (e.g. area 12 / grid 6 = "m12_06",
+# which exists in neither ERR nor vanilla) — their graces are unreachable and
+# their textId1 (e.g. 120600/120601) has no PlaceName entry, so a marker for
+# them would be a nameless/null icon. Skip any grace whose tile has no MSB.
+_MSB_DIR = ERR_MOD_DIR / 'map' / 'MapStudio'
+EXISTING_TILES = {p.name[:12] for p in _MSB_DIR.glob('m*.msb.dcx')}  # 'm12_02_00_00'
+
 
 def main():
     print("Loading BonfireWarpParam...")
@@ -45,6 +53,15 @@ def main():
         flag = row.get('eventflagId', 0)
         tid1 = row.get('textId1', 0)
         if flag <= 0 or tid1 <= 0:
+            continue
+
+        # Skip graces in cut-content maps with no MSB (unreachable; their
+        # textId1 has no PlaceName text → would be a nameless/null icon).
+        gxc = row.get('gridXNo', 0)
+        gzc = row.get('gridZNo', 0)
+        tile = f'm{area:02d}_{gxc:02d}_{gzc:02d}_00'
+        if tile not in EXISTING_TILES:
+            print(f"  skip grace {rid}: tile {tile} has no MSB (textId1={tid1})")
             continue
 
         # Respect ERR's intentional hides: if ALL dispMaskXX = 0 in the

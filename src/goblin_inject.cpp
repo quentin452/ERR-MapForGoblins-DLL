@@ -5,6 +5,7 @@
 #include "goblin_messages.hpp"
 #include "modutils.hpp"
 #include "generated/goblin_map_data.hpp"
+#include "generated/goblin_location_alt.hpp"
 #include "from/params.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
 
@@ -41,6 +42,11 @@ static int64_t g_vanilla_param_size = 0;
 static uint8_t *g_expanded_param_file = nullptr;
 static int64_t g_expanded_param_size = 0;
 static bool g_param_injection_active = false;
+
+// Data pointers of MFG-injected WorldMapPointParam rows in the expanded table.
+// Used by sanitize_injected_textids() (run after the FMG is built) to strip
+// textIds that don't resolve to a real string.
+static std::vector<uint8_t *> g_injected_row_ptrs;
 
 // Master-off intent set by the toggle hotkey. When true the user has
 // explicitly hidden the icons, so the auto-toggle must keep the table vanilla
@@ -305,6 +311,7 @@ void goblin::inject_map_entries()
         bool is_piece;
         bool is_kindling;
         Category category;
+        uint64_t original_row_id;  // pre-remap id (matches locationOverrides keys); 0 for vanilla rows
     };
 
     std::vector<RowSource> all_rows;
@@ -313,12 +320,12 @@ void goblin::inject_map_entries()
     for (uint16_t i = 0; i < orig_num_rows; i++)
     {
         auto *data = old_param_file + old_table->rows[i].param_offset;
-        all_rows.push_back({static_cast<int32_t>(old_table->rows[i].row_id), data, false, false, {}});
+        all_rows.push_back({static_cast<int32_t>(old_table->rows[i].row_id), data, false, false, {}, 0});
     }
     for (auto &entry : entries)
     {
         all_rows.push_back({entry.row_id, reinterpret_cast<const uint8_t *>(entry.data),
-                            entry.is_piece, entry.is_kindling, entry.category});
+                            entry.is_piece, entry.is_kindling, entry.category, entry.original_row_id});
     }
 
     std::sort(all_rows.begin(), all_rows.end(),
@@ -337,6 +344,56 @@ void goblin::inject_map_entries()
         memcpy(new_param_file + data_offset, all_rows[i].data_ptr, PARAM_DATA_SIZE);
         new_wrapper_locs[i].row = all_rows[i].row_id;
         new_wrapper_locs[i].index = static_cast<int32_t>(i);
+
+        // Record MFG-injected rows (vanilla rows have original_row_id 0) so
+        // sanitize_injected_textids() can later strip any textId that the
+        // expanded PlaceName FMG didn't end up containing.
+        if (all_rows[i].original_row_id)
+            g_injected_row_ptrs.push_back(new_param_file + data_offset);
+
+        // Hybrid sub-area location naming (PRIMARY): overwrite the marker's location
+        // line (textId2) with the height-aware sub-area name from generated::LOCATION_ALT
+        // (MSB MapPoint/MapNameOverride volume containment, else nearest authored anchor in
+        // 3D). The table only holds rows where the hybrid name differs from the baked one;
+        // rows absent from it keep their baked textId2 = the FALLBACK (tile/nearest-grace
+        // via resolve_location_id_at) for overworld / no-volume / no-anchor spots.
+        // The value may be a synthetic compose id (generated::LOCATION_COMPOSE) for
+        // duplicate-named sub-zones — goblin_messages builds its FMG string.
+        if (all_rows[i].original_row_id)
+        {
+            auto *alt_end = generated::LOCATION_ALT + generated::LOCATION_ALT_COUNT;
+            auto *alt = std::lower_bound(
+                generated::LOCATION_ALT, alt_end, all_rows[i].original_row_id,
+                [](const generated::LocationAlt &a, uint64_t id) { return a.row_id < id; });
+            if (alt != alt_end && alt->row_id == all_rows[i].original_row_id)
+            {
+                auto *p = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(
+                    new_param_file + data_offset);
+                // Overwrite the marker's LOCATION slot (slot picked at generation time:
+                // textId2 for plain loot, textId3 for enemy-drops). slot 0 = no baseline
+                // location → add one in the first free of textId2/textId3.
+                int32_t *tid[9]  = {nullptr, &p->textId1, &p->textId2, &p->textId3, &p->textId4,
+                                    &p->textId5, &p->textId6, &p->textId7, &p->textId8};
+                unsigned int *fl[9] = {nullptr, &p->textDisableFlagId1, &p->textDisableFlagId2,
+                                       &p->textDisableFlagId3, &p->textDisableFlagId4,
+                                       &p->textDisableFlagId5, &p->textDisableFlagId6,
+                                       &p->textDisableFlagId7, &p->textDisableFlagId8};
+                uint8_t s = alt->slot;
+                if (s >= 2 && s <= 8)
+                {
+                    *tid[s] = alt->textId2;   // hide-flag already set on this slot by the generator
+                }
+                else  // s == 0: add a location line where none existed (e.g. gestures)
+                {
+                    int add = (p->textId2 == -1) ? 2 : (p->textId3 == -1 ? 3 : 0);
+                    if (add)
+                    {
+                        *tid[add] = alt->textId2;
+                        *fl[add] = p->textDisableFlagId1;  // hide with the marker on pickup
+                    }
+                }
+            }
+        }
 
         // Boss/hawk kill display mode: green checkmark vs hide killed
         auto cat = all_rows[i].category;
@@ -825,6 +882,11 @@ void goblin::show_codex_toast(int tutorial_id)
 // (The retired map-state auto-hide read CSMenuMan+0xCD with inverse logic;
 // it's fully documented in docs/ersc_hosting_and_map_autohide.md should a
 // future patch ever need it back.)
+const std::vector<uint8_t *> &goblin::injected_row_ptrs()
+{
+    return g_injected_row_ptrs;
+}
+
 void goblin::menu_auto_toggle_loop()
 {
     bool prev_user_disabled = g_icons_user_disabled.load();

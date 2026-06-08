@@ -110,7 +110,14 @@ COMMON = ['config.py', 'massedit_common.py']
 
 STAGES = [
     Stage('extract_items',
-          inputs=[REGULATION, MSB_DIR, MSGBND, config.PARAMDEF_DIR],
+          # emevd_lot_mapping is NOT read by extract_all_items, but listed as an input
+          # on purpose: enrich_fallback mutates items_database.json IN PLACE using the
+          # mapping, and is not idempotent (it can't revert stale upgrades). When the
+          # mapping changes, the DB must be re-extracted from scratch so enrich applies
+          # the new mapping to a virgin DB (converges one pipeline run after a scan
+          # change; same-run ordering puts extract before emevd_scan).
+          inputs=[REGULATION, MSB_DIR, MSGBND, config.PARAMDEF_DIR,
+                  DATA / 'emevd_lot_mapping.json'],
           outputs=[DATA / 'items_database.json',
                    DATA / 'goods_sort_groups.json',
                    DATA / 'goods_crafting_ids.json',
@@ -276,7 +283,7 @@ STAGES = [
           also_scripts=['massedit_common.py']),
 
     Stage('generate_gestures',
-          inputs=[DATA / 'msb_entity_index.json', EVENT_DIR],
+          inputs=[DATA / 'msb_entity_index.json', EVENT_DIR, REGULATION],
           outputs=[MASSEDIT_OUT / 'Loot - Gestures.MASSEDIT'],
           script='generate_gestures.py',
           also_scripts=['massedit_common.py', 'config.py']),
@@ -293,6 +300,27 @@ STAGES = [
                    GENERATED_CPP / 'goblin_text_data.cpp'],
           script='generate_data.py',
           args=['--massedit-dir', str(MASSEDIT_OUT)]),
+
+    # Per-row ACTUAL gather-asset models (ERR substitutes some assets with DLC-era models
+    # in the MSB: part NAME stays vanilla, ModelName differs; GEOF save entries carry the
+    # actual model's hash) — used by collected-tracking. Runs AFTER generate_data.
+    Stage('generate_geof_models',
+          inputs=[GENERATED_CPP / 'goblin_map_data.cpp',
+                  DATA / 'all_gathering_nodes_final.json'],
+          outputs=[GENERATED_CPP / 'goblin_geof_models.cpp',
+                   GENERATED_CPP / 'goblin_geof_models.hpp'],
+          script='generate_geof_models.py'),
+
+    # Alternative (hybrid) loot-location naming, baked as generated::LOCATION_ALT
+    # (row_id -> textId2). Shown via INI [Goblin] show_location_compare = true.
+    # Must run AFTER generate_data (reads the baked goblin_map_data.cpp).
+    Stage('generate_location_overrides',
+          inputs=[GENERATED_CPP / 'goblin_map_data.cpp', MSB_DIR,
+                  DATA / 'WorldMapPointParam.json', DATA / 'grace_position_index.json'],
+          outputs=[GENERATED_CPP / 'goblin_location_alt.cpp',
+                   GENERATED_CPP / 'goblin_location_alt.hpp'],
+          script='generate_location_overrides.py',
+          also_scripts=['massedit_common.py', 'config.py']),
 ]
 
 
