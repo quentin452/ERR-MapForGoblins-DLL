@@ -1,9 +1,11 @@
-"""Manual exclude list for drops that ERR's EMEVD has accidentally locked
-behind a broken spawn / award chain. Each entry has a specific
-check function that validates whether the bug is still present in the
-current ERR EMEVD — if ERR ever fixes it (no matter HOW: instruction
-removed, entity ID corrected, state flipped, event restructured), the
-check returns False and the icon reappears automatically on rebuild.
+"""Manual exclude list for drops whose spawn / award chain in the current
+ERR EMEVD never completes, so the item can't actually drop in-game and a
+map marker for it would mislead players. Each entry has a specific check
+function that validates whether the pattern is still present in the
+current ERR EMEVD — if a future ERR version changes the event (no matter
+HOW: instruction removed, entity ID changed, state flipped, event
+restructured), the check returns False and the icon reappears
+automatically on rebuild.
 
 Used by:
   - extract_all_items.py (treasures/enemy drops filtered before MASSEDIT generation)
@@ -12,7 +14,7 @@ Add new entries via `BROKEN_SPAWNS` below. Each entry needs:
   - map: tile name
   - part_name: MSB part name (matches items_database.partName)
   - reason: human description for logs
-  - check: function(emevd) -> True iff bug still present
+  - check: function(emevd) -> True iff the pattern is still present
 """
 import os, tempfile, struct
 import config
@@ -52,18 +54,17 @@ def _load_emevd(map_name):
 
 # ── Bug checkers ──
 def _check_m30_08_revenant_deadlock(emevd):
-    """m30_08_00_00 Event 30082550 wrongly has `IF Char Dead/Alive(30080460, Dead)`
-    that creates a deadlock — c4020_9000 must be dead to set flag 30082550,
-    but flag 30082550 is what spawns c4020_9000 (via Event 30082501 →
-    InvokeEnemyGenerator(30083460) → c4020_9000).
+    """m30_08_00_00 Event 30082550 contains `IF Char Dead/Alive(30080460, Dead)`
+    which forms a circular dependency — c4020_9000 must be dead to set flag
+    30082550, but flag 30082550 is what spawns c4020_9000 (via Event 30082501 →
+    InvokeEnemyGenerator(30083460) → c4020_9000), so the spawn never happens.
 
-    Bug is "present" iff Event 30082550 contains an instruction
+    The pattern is "present" iff Event 30082550 contains an instruction
     `4:0 IF Char Dead/Alive(target=30080460, state=Dead)`.
 
-    ERR could fix by: removing the instruction, changing entity ID
-    (e.g. to 30080462 = c4020_9002, which is what they probably meant),
-    or changing Desired State from Dead(1) to Alive(0). Any of those
-    flips this check to False."""
+    Any future change to the event (instruction removed, entity ID changed,
+    Desired State flipped from Dead(1) to Alive(0)) flips this check to
+    False and the marker comes back."""
     for ev in emevd.Events:
         if int(ev.ID) != 30082550:
             continue
@@ -83,13 +84,13 @@ def _check_m30_08_revenant_deadlock(emevd):
 
 # ── Registry ──
 # Each entry: matches when items_database has this (map, part_name) AND
-# the check function returns True (bug present). When that happens, the
-# drop is excluded from generated markers.
+# the check function returns True (pattern present). When that happens,
+# the drop is excluded from generated markers.
 BROKEN_SPAWNS = [
     {
         'map': 'm30_08_00_00',
         'part_name': 'c4020_9000',
-        'reason': 'Event 30082550 has CharacterDead(30080460, Dead) deadlock — c4020_9000 never spawns',
+        'reason': 'Event 30082550 CharacterDead(30080460, Dead) circular dependency — c4020_9000 never spawns',
         'check': _check_m30_08_revenant_deadlock,
     },
 ]
@@ -97,7 +98,7 @@ BROKEN_SPAWNS = [
 
 def is_spawn_broken(map_name, part_name):
     """True iff (map, part_name) is in the registry AND the registered
-    check confirms the bug is still in ERR EMEVD."""
+    check confirms the pattern is still present in the current ERR EMEVD."""
     for entry in BROKEN_SPAWNS:
         if entry['map'] != map_name or entry['part_name'] != part_name:
             continue
@@ -112,8 +113,8 @@ def is_spawn_broken(map_name, part_name):
 
 
 def report():
-    """For pipeline log — print which broken spawns are currently active."""
-    print('Checking known ERR EMEVD spawn bugs:')
+    """For pipeline log — print which registered spawn issues are currently active."""
+    print('Checking known ERR EMEVD spawn issues:')
     for entry in BROKEN_SPAWNS:
         em = _load_emevd(entry['map'])
         if em is None:
@@ -121,7 +122,7 @@ def report():
         else:
             try:
                 active = entry['check'](em)
-                status = 'STILL BROKEN' if active else 'fixed by ERR — re-enable'
+                status = 'still present' if active else 'no longer present — marker re-enabled'
             except Exception as e:
                 status = f'check failed: {e}'
         print(f"  [{status}] {entry['map']}/{entry['part_name']}: {entry['reason']}")

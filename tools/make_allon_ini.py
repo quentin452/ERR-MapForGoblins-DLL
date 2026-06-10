@@ -19,11 +19,11 @@ import sys
 import re
 
 HEADER = """; All-on preset for Map For Goblins v{version}.
-; Every show_* option is enabled. Copy this file into dll/offline/
+; Every show_* option is enabled. Copy this file into {target_dir}
 ; (replacing the default MapForGoblins.ini) to render every icon
 ; category at once.
 ;
-; The non-icon settings (load_delay, ERR Markers patches, Debug)
+; The non-icon settings (load_delay, hotkeys, etc.)
 ; are kept at the same defaults as the shipped MapForGoblins.ini.
 
 """
@@ -34,10 +34,11 @@ SHOW_FALSE = re.compile(r'^(\s*show_[a-z0-9_]+\s*=\s*)false\s*$', re.IGNORECASE)
 
 
 def main():
-    if len(sys.argv) != 4:
+    if len(sys.argv) not in (4, 5):
         print(__doc__)
         sys.exit(2)
     stock_path, out_path, version = sys.argv[1], sys.argv[2], sys.argv[3]
+    target_dir = sys.argv[4] if len(sys.argv) == 5 else 'dll/offline/' 
 
     # newline='' preserves the file's original line endings on read.
     with open(stock_path, 'r', encoding='utf-8', newline='') as f:
@@ -55,7 +56,7 @@ def main():
             out.append(raw)
 
     with open(out_path, 'w', encoding='utf-8', newline='') as f:
-        f.write(HEADER.format(version=version).replace('\n', eol))
+        f.write(HEADER.format(version=version, target_dir=target_dir).replace('\n', eol))
         f.write(eol.join(out))
 
     print(f"[make_allon_ini] {flipped} show_* options flipped to true")

@@ -3,12 +3,21 @@ cmake_minimum_required(VERSION 3.28.1)
 set(CMAKE_GENERATOR_PLATFORM x64)
 
 project( MapForGoblins
-  VERSION   "1.0.14"
+  VERSION   "1.0.15"
   LANGUAGES CXX)
 
 if(NOT DEFINED VERSION_PRE)
   set(VERSION_PRE "pre")  # default for dev/snapshot; build.bat release passes -DVERSION_PRE=""
 endif()
+
+# Which baked-data dir to compile. Default = ERR (src/generated). The vanilla
+# build passes -DGENERATED_SUBDIR=generated_vanilla so the two bakes never
+# clobber each other. Sources include the generated headers by bare name and
+# resolve them via the include path below.
+if(NOT DEFINED GENERATED_SUBDIR)
+  set(GENERATED_SUBDIR "generated")
+endif()
+set(GEN_DIR "${CMAKE_SOURCE_DIR}/src/${GENERATED_SUBDIR}")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
@@ -61,12 +70,14 @@ add_library( MapForGoblins SHARED
   src/goblin/goblin_map_flags.hpp
   src/goblin/goblin_map_tiles.hpp
   src/goblin/goblin_map_exceptions.hpp
-  src/generated/goblin_map_data.hpp
-  src/generated/goblin_map_data.cpp
-  src/generated/goblin_location_alt.hpp
-  src/generated/goblin_location_alt.cpp
-  src/generated/goblin_geof_models.hpp
-  src/generated/goblin_geof_models.cpp
+  ${GEN_DIR}/goblin_map_data.hpp
+  ${GEN_DIR}/goblin_map_data.cpp
+  ${GEN_DIR}/goblin_location_alt.hpp
+  ${GEN_DIR}/goblin_location_alt.cpp
+  ${GEN_DIR}/goblin_geof_models.hpp
+  ${GEN_DIR}/goblin_geof_models.cpp
+  src/goblin_config_schema.hpp
+  src/goblin_config_schema.cpp
   src/goblin_config.hpp
   src/goblin_config.cpp
   src/goblin_collected.hpp
@@ -85,6 +96,17 @@ add_library( MapForGoblins SHARED
 
 set_target_properties(MapForGoblins PROPERTIES OUTPUT_NAME "MapForGoblins")
 
+# Vanilla bake: omit + disable ERR-only config entries at runtime.
+if(GENERATED_SUBDIR STREQUAL "generated_vanilla")
+  target_compile_definitions(MapForGoblins PRIVATE MFG_VANILLA=1)
+endif()
+
+# Tiny build-time tool that emits the default ini from the in-code schema
+# (src/goblin_config_schema.cpp). build.bat runs it to generate the shipped
+# ini per profile instead of copying a hand-maintained file.
+add_executable(mfg_inigen src/inigen_main.cpp src/goblin_config_schema.cpp)
+target_include_directories(mfg_inigen PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
 if(VERSION_PRE)
   set(FULL_VERSION "${VERSION_PRE}-${CMAKE_PROJECT_VERSION}")
 else()
@@ -93,11 +115,14 @@ endif()
 configure_file(${CMAKE_SOURCE_DIR}/src/version.h.in
                ${CMAKE_BINARY_DIR}/generated/version.h @ONLY)
 target_include_directories(MapForGoblins PRIVATE ${CMAKE_BINARY_DIR}/generated)
+# Resolve bare `#include "goblin_map_data.hpp"` etc. to the active bake dir.
+target_include_directories(MapForGoblins PRIVATE ${GEN_DIR})
 
-add_custom_command(TARGET MapForGoblins POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy -t $<TARGET_FILE_DIR:MapForGoblins>
-  ${CMAKE_SOURCE_DIR}/MapForGoblins.ini
-  COMMAND_EXPAND_LISTS)
+# MapForGoblins.ini is no longer copied: build.bat generates it per profile in
+# :package via mfg_inigen, and the DLL self-creates/repairs it at runtime
+# (goblin::ensure_ini), so dev runs need no shipped ini. Keep the dependency so
+# a plain `build.bat` also builds the generator.
+add_dependencies(MapForGoblins mfg_inigen)
 
 target_link_libraries( MapForGoblins
   minhook

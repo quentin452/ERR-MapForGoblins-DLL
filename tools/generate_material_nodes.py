@@ -13,15 +13,15 @@ import json
 import os
 import sys
 from pathlib import Path
+import config
 from massedit_common import (UNDERGROUND_AREAS, DLC_AREAS, OVERWORLD_AREAS,
                              resolve_location_id, resolve_location_id_at)
 from unreachable import is_unreachable_in_err
 
 def main():
-    project_dir = Path(__file__).parent.parent
-    data_dir = project_dir / "data"
+    data_dir = config.DATA_DIR          # data/ or data/vanilla/ per profile
     out_dir = data_dir / "massedit_generated"
-    out_dir.mkdir(exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     # Load mappings
     with open(data_dir / "aeg099_item_mapping.json") as f:
@@ -84,7 +84,7 @@ def main():
     emitted_nodes = []  # node behind entries[i] — same-loop capture for slots.json
     excluded_unreachable = 0
     for n in onetime_nodes:
-        # Skip nodes ERR sank out of reach (see unreachable.py).
+        # Skip nodes that sit out of reach in ERR (see unreachable.py).
         if is_unreachable_in_err(n.get("map", ""), n.get("name", ""), n.get("y", 0.0)):
             excluded_unreachable += 1
             continue

@@ -2,14 +2,15 @@
 
 #include <cstdint>
 #include <filesystem>
-#include <mini/ini.h>
 #include <string>
 
 namespace goblin
 {
-    void load_line(mINI::INIMap<std::string> config, std::string lineInIni, bool &lineVariable);
-    void load_line(mINI::INIMap<std::string> config, std::string lineInIni, uint8_t &intVariable);
+    // Create the ini from the schema defaults if missing; otherwise migrate it
+    // in place (add new keys, apply renames, comment out obsolete keys),
+    // preserving user-set values. Then load values into goblin::config.
     void load_config(const std::filesystem::path &ini_path);
+    void ensure_ini(const std::filesystem::path &ini_path);
 
     namespace config
     {

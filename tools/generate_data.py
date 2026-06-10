@@ -175,12 +175,25 @@ CPP_FIELD_ORDER = [
 SKIP_FIELDS = {"Name", "pad4"}
 
 
+# ERR-only MASSEDIT categories: never bake these in the vanilla profile, even
+# if a stale file is present in the (gitignored) vanilla output dir.
+ERR_ONLY_FILES = {
+    "Reforged - Rune Pieces", "Reforged - Ember Pieces",
+    "Reforged - Items", "Reforged - Fortunes", "Reforged - Sealed Curios",
+    "World - Kindling Spirits",
+}
+
+
 def parse_massedit_files(massedit_dir):
     """Parse all .MASSEDIT files and return dict of {row_id: {field: value, ..., '_category': str}}"""
+    import config
     entries = defaultdict(dict)
 
     for filepath in sorted(Path(massedit_dir).glob("*.MASSEDIT")):
         filename = filepath.stem
+        if config.PROFILE == 'vanilla' and filename in ERR_ONLY_FILES:
+            print(f"SKIP (ERR-only): {filename}")
+            continue
         category = CATEGORY_MAP.get(filename)
         if category is None:
             # Auto-generate category name from filename
@@ -342,9 +355,20 @@ def main():
         massedit_dir = Path(args.massedit_dir)
     else:
         massedit_dir = project_dir / "data" / "massedit"
-    output_dir = project_dir / "src" / "generated"
+    import config
+    output_dir = config.GENERATED_DIR  # src/generated or src/generated_vanilla
 
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # goblin_map_data.hpp (the Category enum + struct) is a static, profile-
+    # independent header with no generator. The canonical copy lives in
+    # src/generated/; mirror it into a non-default bake dir (e.g. vanilla) so
+    # that dir is self-contained for the compiler's include path.
+    canonical_hpp = project_dir / "src" / "generated" / "goblin_map_data.hpp"
+    dest_hpp = output_dir / "goblin_map_data.hpp"
+    if canonical_hpp.resolve() != dest_hpp.resolve():
+        import shutil
+        shutil.copyfile(canonical_hpp, dest_hpp)
 
     print("=== Parsing MASSEDIT files ===")
     entries = parse_massedit_files(massedit_dir)
@@ -430,7 +454,7 @@ def main():
     generate_map_data_cpp(entries, output_dir / "goblin_map_data.cpp", geom_slots)
 
     print("\n=== Generating legacy-conv C++ ===")
-    generate_legacy_conv_cpp(project_dir / "data" / "WorldMapLegacyConvParam.json",
+    generate_legacy_conv_cpp(config.DATA_DIR / "WorldMapLegacyConvParam.json",
                              output_dir / "goblin_legacy_conv.hpp")
 
     print("\nDone.")

@@ -4,8 +4,8 @@
 #include "goblin_config.hpp"
 #include "goblin_messages.hpp"
 #include "modutils.hpp"
-#include "generated/goblin_map_data.hpp"
-#include "generated/goblin_location_alt.hpp"
+#include "goblin_map_data.hpp"
+#include "goblin_location_alt.hpp"
 #include "from/params.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
 
@@ -541,7 +541,12 @@ bool goblin::inject_tutorial_popup_rows()
                      derived_stride, row_data_size);
     }
 
-    // Find template row (row 4167000 — known ERR codex row with menuType=0).
+    // Find a template row. Preferred: ERR codex row 4167000 (menuType=0,
+    // repeatType=1). Vanilla has no such row, so fall back to any row with
+    // menuType==0 (vanilla ships 13 of those — the toast widget is a vanilla
+    // mechanism), and as a last resort synthesize the 32-byte row locally.
+    // Every field we depend on is patched explicitly below anyway.
+    uint8_t synth_row[TUTORIAL_ROW_DATA_SIZE] = {};
     const uint8_t *template_data = nullptr;
     for (uint16_t i = 0; i < orig_rows; i++)
     {
@@ -553,9 +558,26 @@ bool goblin::inject_tutorial_popup_rows()
     }
     if (!template_data)
     {
-        spdlog::warn("[TOAST] TutorialParam row {} (template) not found — F10 banner unavailable",
-                     TUTORIAL_TEMPLATE_ROW_ID);
-        return false;
+        for (uint16_t i = 0; i < orig_rows; i++)
+        {
+            const uint8_t *row = old_file + old_table->rows[i].param_offset;
+            if (row[4] == 0)  // menuType == 0 (toast)
+            {
+                template_data = row;
+                spdlog::info("[TOAST] template row {} absent (vanilla?) — using row {} (menuType=0)",
+                             TUTORIAL_TEMPLATE_ROW_ID, (int)old_table->rows[i].row_id);
+                break;
+            }
+        }
+    }
+    if (!template_data)
+    {
+        // Synthesized toast row: menuType=0, triggerType=0, repeatType set
+        // below, no image, dispMinTime=1s, dispTime=3s (vanilla toast values).
+        *reinterpret_cast<float *>(synth_row + 0x14) = 1.0f;
+        *reinterpret_cast<float *>(synth_row + 0x18) = 3.0f;
+        template_data = synth_row;
+        spdlog::info("[TOAST] no menuType=0 row found — synthesizing toast template");
     }
 
     constexpr size_t WRAPPER_HEADER = 0x10;
@@ -647,14 +669,16 @@ bool goblin::inject_tutorial_popup_rows()
 
         // Patch our new rows: textId -> their own row id (so the FMG-lookup
         // side resolves to the entries we injected separately), clear
-        // unlockEventFlagId so no gate prevents display. repeatType stays 1
-        // (from template) so each row can show more than once.
+        // unlockEventFlagId so no gate prevents display. repeatType is set
+        // to 1 explicitly: ERR's template carries 1, but vanilla menuType=0
+        // rows ship repeatType=0 (show-once) — the toast must repeat.
         int32_t rid = all_rows[i].row_id;
         if (rid == TUTORIAL_NEW_ROW_ID_ON || rid == TUTORIAL_NEW_ROW_ID_OFF ||
             rid == TUTORIAL_NEW_ROW_ID_DUMP_OK || rid == TUTORIAL_NEW_ROW_ID_DUMP_FAIL)
         {
             auto *p = new_file + data_offset;
             *reinterpret_cast<uint8_t *>(p + 4)  = 0;      // menuType = 0 (toast)
+            *reinterpret_cast<uint8_t *>(p + 6)  = 1;      // repeatType = 1 (repeatable)
             *reinterpret_cast<uint32_t *>(p + 12) = 0;     // unlockEventFlagId = 0
             *reinterpret_cast<int32_t *>(p + 16)  = rid;   // textId -> our row id
         }

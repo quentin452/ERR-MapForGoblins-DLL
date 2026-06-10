@@ -1,12 +1,14 @@
-# ELDEN RING Reforged - MapForGoblins - DLL
+# ELDEN RING Map For Goblins - DLL
 
-A DLL mod for [Elden Ring Reforged](https://www.nexusmods.com/eldenring/mods/541) (ERR) that adds ~9000 icons to the world map: weapons, armor, spells, quest items, bosses, NPCs, Rune Pieces, etc.
+A DLL mod for Elden Ring that adds thousands of icons to the world map: weapons, armor, spells, quest items, bosses, NPCs, gathering nodes, etc. Two builds: one for [ERR](https://www.nexusmods.com/eldenring/mods/541) (~9000 icons, including ERR-specific content like Rune Pieces) and one for the vanilla game + Shadow of the Erdtree (~5000 icons).
 
-Unlike [Goblin Maps](https://www.nexusmods.com/eldenring/mods/3091), this mod does not modify `regulation.bin`. All map point data is injected into memory at runtime, so it won't conflict with other regulation edits.
+**Download:** [Nexus Mods](https://www.nexusmods.com/eldenring/mods/10062) · **Community:** [Elden Ring - DLL Mods Discord](https://discord.gg/JvTMwPCygB)
 
-> **Note:** Not yet whitelisted for ERR online play. Seamless Co-op has a known conflict - crashes when hosting a session. Open issue.
+Unlike [Map for Goblins](https://www.nexusmods.com/eldenring/mods/3091), this mod does not modify `regulation.bin`. All map point data is injected into memory at runtime, so it won't conflict with other regulation edits.
 
-Collected Rune Pieces and Ember Pieces are automatically hidden on the map using real-time memory detection of the game's geometry object state.
+> **Note:** OFFLINE only. This is an unofficial mod, not affiliated with the ERR team.
+
+Collected Rune Pieces, Ember Pieces and gathering nodes are automatically hidden on the map using real-time memory detection of the game's geometry object state.
 
 ## Features
 
@@ -35,6 +37,9 @@ Output: `build/Release/MapForGoblins.dll` + `MapForGoblins.ini`
 
 ## Installation
 
+Grab a packaged release from [Nexus Mods](https://www.nexusmods.com/eldenring/mods/10062) — it has step-by-step instructions for both builds (ERR and vanilla via ModEngine2/me3).
+
+Manual install of the ERR build:
 1. Copy `MapForGoblins.dll` and `MapForGoblins.ini` to your ERR `dll/offline/` directory
 2. Copy `addons/MapForGoblins/menu/02_120_worldmap.gfx` to ERR `addons/MapForGoblins/menu/`
 All map data is compiled into the DLL itself - no external data files needed at runtime.
@@ -116,7 +121,7 @@ This project builds on the work of many people and projects:
 - **FromSoftware** - Elden Ring
 - **Elden Ring Reforged** team - the overhaul mod that inspired this project. Thanks to [**ividyon**](https://github.com/ividyon) and the ERR Discord
 - **Gacsam** - [Goblin-ERR](https://github.com/Gacsam/Goblin-ERR), the original map icons mod for ERR. MapForGoblins started as a fork of this project and reuses its map fragment logic
-- **Nox** - [Goblin Maps](https://www.nexusmods.com/eldenring/mods/3091), the original Elden Ring map icons mod that started it all
+- **Harmonixer** - [Map for Goblins](https://www.nexusmods.com/eldenring/mods/3091), the original Elden Ring map icons mod that started it all
 
 ### Libraries & Tools
 
@@ -136,4 +141,4 @@ Thanks to the ERR Discord for testing and bug reports, especially **AngryPhiloso
 
 ## License
 
-This project is provided as-is for the Elden Ring modding community. See individual library licenses for third-party dependencies.
+MIT-style, see [LICENSE.txt](LICENSE.txt) — includes the original [Goblin-ERR](https://github.com/Gacsam/Goblin-ERR) notice (this project started as its fork) and the bundled third-party licenses (Pattern16, MinHook, HDE64, mINI, spdlog).

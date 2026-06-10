@@ -13,8 +13,8 @@
 #include "goblin_config.hpp"
 #include "goblin_inject.hpp"
 #include "modutils.hpp"
-#include "generated/goblin_legacy_conv.hpp"
-#include "generated/goblin_map_data.hpp"
+#include "goblin_legacy_conv.hpp"
+#include "goblin_map_data.hpp"
 
 #include <windows.h>
 #include <spdlog/spdlog.h>

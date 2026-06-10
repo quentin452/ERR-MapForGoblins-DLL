@@ -230,7 +230,7 @@ for fn,key in (("rune_pieces.json","map"),("ember_pieces.json","map")):
 COORD_SHIFTS={(11,10):(-2195.0,-352.0)}
 
 # ---- parse baked cpp ----
-CPP=os.path.join(HERE,"..","src","generated","goblin_map_data.cpp")
+CPP=str(config.GENERATED_DIR / "goblin_map_data.cpp")
 txt=open(CPP,encoding="utf-8").read()
 # split per entry: "{<id>ull, {" ... "}, Category::<cat>, <geom>, <suffix>, "name"|nullptr},"
 ENTRY=re.compile(r"\{(\d+)ull,\s*\{(.*?)\},\s*Category::(\w+),\s*(-?\d+),\s*(-?\d+),\s*(?:nullptr|\"([^\"]*)\")\}", re.DOTALL)
@@ -336,7 +336,8 @@ for e in entries:
     by_area[e["area"]]+=1
 
 # Bake as a generated C++ table (sorted by row_id for binary search) — no external file.
-GEN=os.path.join(HERE,"..","src","generated")
+GEN=str(config.GENERATED_DIR)
+os.makedirs(GEN, exist_ok=True)
 trips=sorted((rid,slot,tid) for rid,slot,tid in recs)
 with open(os.path.join(GEN,"goblin_location_alt.hpp"),"w",encoding="utf-8") as f:
     f.write("""#pragma once

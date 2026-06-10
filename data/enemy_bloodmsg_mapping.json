@@ -1,0 +1,1050 @@
+{
+ "c2041": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c2140": {
+  "word_id": 30041,
+  "word": "ill-omened creature"
+ },
+ "c2270": {
+  "word_id": 30032,
+  "word": "crab"
+ },
+ "c2271": {
+  "word_id": 30032,
+  "word": "crab"
+ },
+ "c2272": {
+  "word_id": 30032,
+  "word": "crab"
+ },
+ "c2273": {
+  "word_id": 30032,
+  "word": "crab"
+ },
+ "c2274": {
+  "word_id": 30032,
+  "word": "crab"
+ },
+ "c2275": {
+  "word_id": 30032,
+  "word": "crab"
+ },
+ "c2276": {
+  "word_id": 30032,
+  "word": "crab"
+ },
+ "c2277": {
+  "word_id": 30032,
+  "word": "crab"
+ },
+ "c3000": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c3010": {
+  "word_id": 30013,
+  "word": "knight"
+ },
+ "c3020": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c3060": {
+  "word_id": 30039,
+  "word": "skeleton"
+ },
+ "c3070": {
+  "word_id": 31020,
+  "word": "wicked sort"
+ },
+ "c3080": {
+  "word_id": 30007,
+  "word": "sentry"
+ },
+ "c3170": {
+  "word_id": 30015,
+  "word": "archer"
+ },
+ "c3180": {
+  "word_id": 30026,
+  "word": "wolf"
+ },
+ "c3210": {
+  "word_id": 31009,
+  "word": "merchant"
+ },
+ "c3300": {
+  "word_id": 31007,
+  "word": "cleric"
+ },
+ "c3320": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c3330": {
+  "word_id": 30023,
+  "word": "giant"
+ },
+ "c3350": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c3360": {
+  "word_id": 31002,
+  "word": "warrior"
+ },
+ "c3370": {
+  "word_id": 31008,
+  "word": "sage"
+ },
+ "c3400": {
+  "word_id": 31002,
+  "word": "warrior"
+ },
+ "c3450": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c3451": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c3460": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c3470": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c3471": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c3500": {
+  "word_id": 30039,
+  "word": "skeleton"
+ },
+ "c3510": {
+  "word_id": 30039,
+  "word": "skeleton"
+ },
+ "c3550": {
+  "word_id": 31038,
+  "word": "noble"
+ },
+ "c3600": {
+  "word_id": 31043,
+  "word": "lord"
+ },
+ "c3610": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c3620": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c3630": {
+  "word_id": 30023,
+  "word": "giant"
+ },
+ "c3650": {
+  "word_id": 30007,
+  "word": "sentry"
+ },
+ "c3660": {
+  "word_id": 31018,
+  "word": "pauper"
+ },
+ "c3661": {
+  "word_id": 30011,
+  "word": "undead"
+ },
+ "c3662": {
+  "word_id": 30011,
+  "word": "undead"
+ },
+ "c3664": {
+  "word_id": 30038,
+  "word": "wraith"
+ },
+ "c3670": {
+  "word_id": 31006,
+  "word": "sorcerer"
+ },
+ "c3700": {
+  "word_id": 31008,
+  "word": "sage"
+ },
+ "c3701": {
+  "word_id": 31008,
+  "word": "sage"
+ },
+ "c3702": {
+  "word_id": 31006,
+  "word": "sorcerer"
+ },
+ "c3703": {
+  "word_id": 31003,
+  "word": "swordfighter"
+ },
+ "c3704": {
+  "word_id": 30017,
+  "word": "mage"
+ },
+ "c3750": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c3800": {
+  "word_id": 30013,
+  "word": "knight"
+ },
+ "c3810": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c3850": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c3860": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c3900": {
+  "word_id": 31007,
+  "word": "cleric"
+ },
+ "c3901": {
+  "word_id": 31007,
+  "word": "cleric"
+ },
+ "c3910": {
+  "word_id": 31007,
+  "word": "cleric"
+ },
+ "c3950": {
+  "word_id": 30031,
+  "word": "snake"
+ },
+ "c3970": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c4000": {
+  "word_id": 30011,
+  "word": "undead"
+ },
+ "c4020": {
+  "word_id": 30011,
+  "word": "undead"
+ },
+ "c4040": {
+  "word_id": 30037,
+  "word": "slug"
+ },
+ "c4050": {
+  "word_id": 31002,
+  "word": "warrior"
+ },
+ "c4060": {
+  "word_id": 30024,
+  "word": "horse"
+ },
+ "c4070": {
+  "word_id": 30026,
+  "word": "wolf"
+ },
+ "c4071": {
+  "word_id": 30026,
+  "word": "wolf"
+ },
+ "c4080": {
+  "word_id": 30027,
+  "word": "rat"
+ },
+ "c4090": {
+  "word_id": 30027,
+  "word": "rat"
+ },
+ "c4100": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c4101": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c4110": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c4120": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c4140": {
+  "word_id": 30031,
+  "word": "snake"
+ },
+ "c4150": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c4160": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c4161": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c4162": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c4163": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c4164": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c4165": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c4166": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c4167": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c4170": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c4171": {
+  "word_id": 30023,
+  "word": "giant"
+ },
+ "c4180": {
+  "word_id": 30038,
+  "word": "wraith"
+ },
+ "c4200": {
+  "word_id": 30029,
+  "word": "bird"
+ },
+ "c4201": {
+  "word_id": 30029,
+  "word": "bird"
+ },
+ "c4210": {
+  "word_id": 30030,
+  "word": "raptor"
+ },
+ "c4220": {
+  "word_id": 30034,
+  "word": "octopus"
+ },
+ "c4230": {
+  "word_id": 30034,
+  "word": "octopus"
+ },
+ "c4240": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c4250": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c4260": {
+  "word_id": 30007,
+  "word": "sentry"
+ },
+ "c4280": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c4281": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c4290": {
+  "word_id": 30013,
+  "word": "knight"
+ },
+ "c4300": {
+  "word_id": 31038,
+  "word": "noble"
+ },
+ "c4311": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c4312": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c4313": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c4314": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c4315": {
+  "word_id": 30011,
+  "word": "undead"
+ },
+ "c4316": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c4321": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c4340": {
+  "word_id": 31002,
+  "word": "warrior"
+ },
+ "c4351": {
+  "word_id": 30013,
+  "word": "knight"
+ },
+ "c4352": {
+  "word_id": 30013,
+  "word": "knight"
+ },
+ "c4353": {
+  "word_id": 30013,
+  "word": "knight"
+ },
+ "c4354": {
+  "word_id": 30013,
+  "word": "knight"
+ },
+ "c4355": {
+  "word_id": 30011,
+  "word": "undead"
+ },
+ "c4356": {
+  "word_id": 30013,
+  "word": "knight"
+ },
+ "c4361": {
+  "word_id": 30024,
+  "word": "horse"
+ },
+ "c4362": {
+  "word_id": 30024,
+  "word": "horse"
+ },
+ "c4363": {
+  "word_id": 30024,
+  "word": "horse"
+ },
+ "c4364": {
+  "word_id": 30024,
+  "word": "horse"
+ },
+ "c4371": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c4372": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c4373": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c4374": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c4375": {
+  "word_id": 30011,
+  "word": "undead"
+ },
+ "c4376": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c4377": {
+  "word_id": 31032,
+  "word": "thief"
+ },
+ "c4380": {
+  "word_id": 31006,
+  "word": "sorcerer"
+ },
+ "c4381": {
+  "word_id": 31031,
+  "word": "sinner"
+ },
+ "c4382": {
+  "word_id": 30023,
+  "word": "giant"
+ },
+ "c4383": {
+  "word_id": 31018,
+  "word": "pauper"
+ },
+ "c4384": {
+  "word_id": 31018,
+  "word": "pauper"
+ },
+ "c4385": {
+  "word_id": 31007,
+  "word": "cleric"
+ },
+ "c4420": {
+  "word_id": 30023,
+  "word": "giant"
+ },
+ "c4430": {
+  "word_id": 30007,
+  "word": "sentry"
+ },
+ "c4440": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c4441": {
+  "word_id": 30023,
+  "word": "giant"
+ },
+ "c4442": {
+  "word_id": 30023,
+  "word": "giant"
+ },
+ "c4460": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c4480": {
+  "word_id": 32021,
+  "word": "flower"
+ },
+ "c4481": {
+  "word_id": 32021,
+  "word": "flower"
+ },
+ "c4482": {
+  "word_id": 32021,
+  "word": "flower"
+ },
+ "c4483": {
+  "word_id": 32021,
+  "word": "flower"
+ },
+ "c4490": {
+  "word_id": 31002,
+  "word": "warrior"
+ },
+ "c4491": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c4510": {
+  "word_id": 30005,
+  "word": "dragon"
+ },
+ "c4550": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c4560": {
+  "word_id": 30023,
+  "word": "giant"
+ },
+ "c4561": {
+  "word_id": 30023,
+  "word": "giant"
+ },
+ "c4570": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c4580": {
+  "word_id": 30023,
+  "word": "giant"
+ },
+ "c4600": {
+  "word_id": 30023,
+  "word": "giant"
+ },
+ "c4601": {
+  "word_id": 30013,
+  "word": "knight"
+ },
+ "c4602": {
+  "word_id": 30023,
+  "word": "giant"
+ },
+ "c4630": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c4660": {
+  "word_id": 30007,
+  "word": "sentry"
+ },
+ "c4811": {
+  "word_id": 30023,
+  "word": "giant"
+ },
+ "c4820": {
+  "word_id": 31002,
+  "word": "warrior"
+ },
+ "c5040": {
+  "word_id": 31002,
+  "word": "warrior"
+ },
+ "c5060": {
+  "word_id": 30031,
+  "word": "snake"
+ },
+ "c5061": {
+  "word_id": 30031,
+  "word": "snake"
+ },
+ "c5080": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c5081": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c5090": {
+  "word_id": 30029,
+  "word": "bird"
+ },
+ "c5110": {
+  "word_id": 30038,
+  "word": "wraith"
+ },
+ "c5160": {
+  "word_id": 30013,
+  "word": "knight"
+ },
+ "c5190": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c5192": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c5193": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c5240": {
+  "word_id": 30038,
+  "word": "wraith"
+ },
+ "c5241": {
+  "word_id": 30038,
+  "word": "wraith"
+ },
+ "c5250": {
+  "word_id": 31002,
+  "word": "warrior"
+ },
+ "c5251": {
+  "word_id": 31007,
+  "word": "cleric"
+ },
+ "c5260": {
+  "word_id": 30023,
+  "word": "giant"
+ },
+ "c5270": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c5271": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c5311": {
+  "word_id": 31007,
+  "word": "cleric"
+ },
+ "c5320": {
+  "word_id": 31007,
+  "word": "cleric"
+ },
+ "c5360": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c5380": {
+  "word_id": 32021,
+  "word": "flower"
+ },
+ "c5381": {
+  "word_id": 32021,
+  "word": "flower"
+ },
+ "c5401": {
+  "word_id": 30029,
+  "word": "bird"
+ },
+ "c5410": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c5421": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c5430": {
+  "word_id": 30029,
+  "word": "bird"
+ },
+ "c5440": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c5450": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c5460": {
+  "word_id": 30029,
+  "word": "bird"
+ },
+ "c5470": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c5471": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c5472": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c5480": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c5490": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c5500": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c5511": {
+  "word_id": 30011,
+  "word": "undead"
+ },
+ "c5513": {
+  "word_id": 30038,
+  "word": "wraith"
+ },
+ "c5520": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c5521": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c5522": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c5523": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c5524": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c5525": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c5526": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c5527": {
+  "word_id": 30025,
+  "word": "dog"
+ },
+ "c5530": {
+  "word_id": 30029,
+  "word": "bird"
+ },
+ "c5540": {
+  "word_id": 30026,
+  "word": "wolf"
+ },
+ "c5541": {
+  "word_id": 30026,
+  "word": "wolf"
+ },
+ "c5550": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c5560": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c5570": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c5590": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c5591": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c5600": {
+  "word_id": 30039,
+  "word": "skeleton"
+ },
+ "c5630": {
+  "word_id": 30023,
+  "word": "giant"
+ },
+ "c5640": {
+  "word_id": 30032,
+  "word": "crab"
+ },
+ "c5641": {
+  "word_id": 30032,
+  "word": "crab"
+ },
+ "c5651": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c5661": {
+  "word_id": 30038,
+  "word": "wraith"
+ },
+ "c5700": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c5701": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c5710": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c5720": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c5740": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c5750": {
+  "word_id": 31002,
+  "word": "warrior"
+ },
+ "c5751": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c5760": {
+  "word_id": 30027,
+  "word": "rat"
+ },
+ "c5761": {
+  "word_id": 30027,
+  "word": "rat"
+ },
+ "c5780": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c5790": {
+  "word_id": 30007,
+  "word": "sentry"
+ },
+ "c5810": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c5830": {
+  "word_id": 30012,
+  "word": "soldier"
+ },
+ "c5840": {
+  "word_id": 30013,
+  "word": "knight"
+ },
+ "c5850": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c5870": {
+  "word_id": 30007,
+  "word": "sentry"
+ },
+ "c5871": {
+  "word_id": 30005,
+  "word": "dragon"
+ },
+ "c5872": {
+  "word_id": 30005,
+  "word": "dragon"
+ },
+ "c5880": {
+  "word_id": 31006,
+  "word": "sorcerer"
+ },
+ "c5890": {
+  "word_id": 30024,
+  "word": "horse"
+ },
+ "c5900": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c5930": {
+  "word_id": 30039,
+  "word": "skeleton"
+ },
+ "c5931": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c5940": {
+  "word_id": 30007,
+  "word": "sentry"
+ },
+ "c5970": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c5980": {
+  "word_id": 31002,
+  "word": "warrior"
+ },
+ "c5990": {
+  "word_id": 30004,
+  "word": "monster"
+ },
+ "c6001": {
+  "word_id": 30029,
+  "word": "bird"
+ },
+ "c6010": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c6031": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c6040": {
+  "word_id": 30029,
+  "word": "bird"
+ },
+ "c6050": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c6060": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c6070": {
+  "word_id": 30029,
+  "word": "bird"
+ },
+ "c6080": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c6081": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c6082": {
+  "word_id": 30035,
+  "word": "bug"
+ },
+ "c6090": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c6100": {
+  "word_id": 30028,
+  "word": "beast"
+ },
+ "c6210": {
+  "word_id": 30015,
+  "word": "archer"
+ },
+ "c6220": {
+  "word_id": 30026,
+  "word": "wolf"
+ },
+ "c6231": {
+  "word_id": 31008,
+  "word": "sage"
+ },
+ "c6232": {
+  "word_id": 31006,
+  "word": "sorcerer"
+ },
+ "c6233": {
+  "word_id": 31003,
+  "word": "swordfighter"
+ },
+ "c6290": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c6291": {
+  "word_id": 30021,
+  "word": "demi-human"
+ },
+ "c6300": {
+  "word_id": 30037,
+  "word": "slug"
+ },
+ "c6320": {
+  "word_id": 31038,
+  "word": "noble"
+ },
+ "c7000": {
+  "word_id": 30030,
+  "word": "raptor"
+ }
+}

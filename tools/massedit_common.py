@@ -3,7 +3,10 @@
 import json
 from pathlib import Path
 
-DATA_DIR = Path(__file__).parent.parent / 'data'
+import config
+
+# Profile-scoped (config selects data/ or data/vanilla/ via MFG_PROFILE).
+DATA_DIR = config.DATA_DIR
 OUT_DIR = DATA_DIR / 'massedit_generated'
 
 # Vanilla WorldMapPointParam dispMask conventions (verified against the 740

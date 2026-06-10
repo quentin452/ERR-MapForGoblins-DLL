@@ -1,5 +1,6 @@
-"""Manual exclude list for icons that ERR moved DOWN below their vanilla
-position into unreachable terrain (under-map, under-cliff, etc.).
+"""Manual exclude list for icons whose position in ERR differs from vanilla
+in a way that leaves the pickup inside terrain (under-map, under-cliff,
+etc.), so it cannot be reached in-game and its marker would mislead.
 
 Conditional check: an entry only fires if the ERR position is actually
 below the vanilla position by more than `MIN_DROP` units. If a future
@@ -17,54 +18,54 @@ import os, tempfile, json
 # Region.Name (mount jumps).
 UNREACHABLE = {
     # Golden Seed twins clipped under the Capital outer wall (Altus).
-    # Vanilla had them reachable; ERR pushed them under by ~5-7 units.
+    # They sit ~5-7 units lower than in vanilla, under the wall geometry.
     ('m60_42_51_00', 'AEG099_090_9001'),
     ('m60_43_52_00', 'AEG099_090_9002'),
     # Imp Statue south of Caelid Highway dy=-15.8 vs vanilla — clips
     # below the cliff in ERR, the seal is not interactable.
     ('m60_47_40_00', 'AEG027_079_9000'),
     # Caravan chest "Giant-Crusher" in Altus tile m60_42_50_00 dy=-11.4 —
-    # ERR sank the caravan under the road. The same weapon drops from a
+    # the caravan sits below the road surface. The same weapon drops from a
     # second chest (AEG099_630_9000) on the surface at the same tile, so
     # the underground caravan instance is the redundant unreachable one.
     # NOTE: physical part lives in supertile m60_10_12_02 with a cross-
     # tile prefix name (m60_42_50_00-AEG100_101_1000).
     ('m60_10_12_02', 'm60_42_50_00-AEG100_101_1000'),
-    # Spirit Spring "to Rune Wolf Forest" dy=-110.9 vs vanilla — ERR
-    # dropped the launch point ~110 units, no jump triggers in-game.
+    # Spirit Spring "to Rune Wolf Forest" dy=-110.9 vs vanilla — the
+    # launch point sits ~110 units lower, no jump triggers in-game.
     ('m60_39_43_00', '騎乗大ジャンプポイント ルーンウルフの森へ'),
-    # Midra's Library grace (m28_00_00_00 DLC) — ERR moved the bonfire
-    # +9.38 units UP from vanilla, out of player reach. BonfireWarpParam
+    # Midra's Library grace (m28_00_00_00 DLC) — the bonfire sits
+    # +9.38 units above its vanilla position, out of player reach. BonfireWarpParam
     # position unchanged so the marker still points at vanilla pos.
     ('m28_00_00_00', 'AEG099_060_9002'),
-    # Second Floor Chamber grace (m28_00_00_00 DLC) — ERR moved the bonfire
-    # -14.87 units DOWN from vanilla, out of player reach. BonfireWarpParam
+    # Second Floor Chamber grace (m28_00_00_00 DLC) — the bonfire sits
+    # -14.87 units below its vanilla position, out of player reach. BonfireWarpParam
     # position unchanged.
     ('m28_00_00_00', 'AEG099_060_9003'),
-    # Fissure Cross grace (m22_00_00_00 DLC) — ERR moved the bonfire
-    # -19.58 units DOWN from vanilla into terrain, also iconId rebound
+    # Fissure Cross grace (m22_00_00_00 DLC) — the bonfire sits
+    # -19.58 units below its vanilla position, inside terrain; also iconId rebound
     # to 44 (forbidden look). BonfireWarpParam position unchanged.
     ('m22_00_00_00', 'AEG099_060_9004'),
-    # Fort of Reprimand grace (Scadu Altus DLC) — ERR dropped the bonfire
-    # -73.1 units DOWN from vanilla (Y 399.24 -> 326.14, X/Z unchanged),
-    # sinking it into terrain out of reach. BonfireWarpParam pos unchanged
+    # Fort of Reprimand grace (Scadu Altus DLC) — the bonfire sits
+    # -73.1 units below its vanilla position (Y 399.24 -> 326.14, X/Z
+    # unchanged), inside terrain out of reach. BonfireWarpParam pos unchanged
     # so the marker would otherwise point at the vanilla surface spot.
     # Physical part is in supertile m61_12_10_02 with a cross-tile name.
     # (The sibling "Behind the Fort of Reprimand" 9002 is NOT displaced.)
     ('m61_12_10_02', 'm61_49_43_00-AEG099_060_9001'),
-    # Crafting-material gather asset in Altus tile m60_49_40 — ERR dropped it
-    # -3.59 units below vanilla (Y 180.70 -> 177.10) into terrain; confirmed
-    # unreachable in-game.
+    # Crafting-material gather asset in Altus tile m60_49_40 — sits
+    # -3.59 units below its vanilla position (Y 180.70 -> 177.10), inside
+    # terrain; confirmed unreachable in-game.
     ('m60_49_40_00', 'AEG099_610_9001'),
     # Crafting-material gather asset (Turtle Neck Meat) in Mt. Gelmir tile
-    # m60_39_51 — ERR dropped it -10.0 (Y 761.97 -> 751.97) under the
-    # terrain; confirmed unreachable in-game (2026-06).
+    # m60_39_51 — sits -10.0 below its vanilla position (Y 761.97 -> 751.97),
+    # under the terrain; confirmed unreachable in-game (2026-06).
     ('m60_39_51_00', 'AEG099_610_9002'),
 }
 
-# Unconditional excludes: ERR put these out of reach but the vertical delta vs
-# vanilla is small (so the dY heuristic won't catch them) — e.g. ERR reshaped
-# the surrounding terrain rather than moving the asset far. Confirmed in-game.
+# Unconditional excludes: out of reach in ERR, but the vertical delta vs
+# vanilla is small (so the dY heuristic won't catch them) — e.g. the
+# surrounding terrain differs rather than the asset position. Confirmed in-game.
 # These fire regardless of vanilla comparison.
 UNCONDITIONAL = {
     # Material-node gather asset in Altus tile m60_51_39 — only -1.81 vs
@@ -80,8 +81,8 @@ UNCONDITIONAL = {
 }
 
 # Entries whose displacement is checked in any direction (abs dy > threshold),
-# not just downward. Used for graces that ERR moved out of reach regardless
-# of direction (Midra raised, Second Floor / Fissure dropped).
+# not just downward. Used for graces displaced out of reach in either
+# direction (Midra higher, Second Floor / Fissure lower).
 ENTRY_KIND_DISPLACED = {
     ('m28_00_00_00', 'AEG099_060_9002'),
     ('m28_00_00_00', 'AEG099_060_9003'),

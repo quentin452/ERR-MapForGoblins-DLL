@@ -16,8 +16,10 @@ Usage: py generate_geof_models.py
 import os, sys, io, re, json
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 HERE = os.path.dirname(os.path.abspath(__file__))
-D = os.path.join(HERE, "..", "data")
-GEN = os.path.join(HERE, "..", "src", "generated")
+import config
+D = str(config.DATA_DIR)              # data/ or data/vanilla/
+GEN = str(config.GENERATED_DIR)       # src/generated or src/generated_vanilla
+os.makedirs(GEN, exist_ok=True)
 
 def model_id(model):  # "AEG463_860" -> 10463860 (= GEOF model hash)
     return 10000000 + int(model[3:6]) * 1000 + int(model[7:10])

@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 from collections import defaultdict, Counter
 
+import config
 from massedit_common import (DATA_DIR, OUT_DIR, UNDERGROUND_AREAS, DLC_AREAS,
                              OVERWORLD_AREAS, VALID_LOCATION_IDS, resolve_location_id,
                              resolve_location_id_at, get_disp_mask)
@@ -561,6 +562,22 @@ def load_npc_name_ids():
 NPC_NAME_IDS = load_npc_name_ids()
 
 
+def load_bloodmsg_words():
+    """Enemy model -> BloodMsg vocabulary word id (vanilla profile only).
+
+    Hand-curated table for enemy types that have no proper-name string in
+    vanilla FMGs (regular mobs): the closest word from the blood-message
+    vocabulary (BloodMsg FMG, localized in all languages). Lives in the
+    committed data/ root (profile-independent source table)."""
+    path = config.PROJECT_DIR / 'data' / 'enemy_bloodmsg_mapping.json'
+    if path.exists():
+        with open(path, encoding='utf-8') as f:
+            return {m: int(v['word_id']) for m, v in json.load(f).items()}
+    return {}
+
+BLOODMSG_WORDS = load_bloodmsg_words()
+
+
 def load_tutorial_ids():
     """Load set of all valid TutorialTitle main entry IDs (for variant validation)."""
     path = DATA_DIR / 'tutorial_title_ids.json'
@@ -703,12 +720,21 @@ def write_massedit(records, filepath, icon_id, start_id):
                     lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId{next_text_slot}: = {flag};')
                 next_text_slot += 1
 
-        # Generic enemy name via TutorialTitle (Scarab, etc.) — only when
-        # we don't have a specific named-NPC label.
+        # Generic enemy name — only when we don't have a specific named-NPC
+        # label. ERR: the ERR codex (TutorialTitle, +900M). Vanilla: vanilla
+        # has no per-type enemy names in any FMG, so we use the closest word
+        # from the blood-message vocabulary (BloodMsg FMG, +950M; localized
+        # in all languages). Mapping: data/enemy_bloodmsg_mapping.json.
         if npc_name_id <= 0:
+            enemy_text_id = 0
             tutorial_id = resolve_enemy_tutorial_id(enemy_model, npc_param)
             if tutorial_id > 0:
                 enemy_text_id = tutorial_id + 900000000
+            elif config.PROFILE == 'vanilla':
+                word_id = BLOODMSG_WORDS.get(enemy_model[:5], 0)
+                if word_id > 0:
+                    enemy_text_id = word_id + 950000000
+            if enemy_text_id > 0:
                 lines.append(f'param WorldMapPointParam: id {row_id}: textId{next_text_slot}: = {enemy_text_id};')
                 if flag > 0:
                     lines.append(f'param WorldMapPointParam: id {row_id}: textDisableFlagId{next_text_slot}: = {flag};')
@@ -745,7 +771,14 @@ def main():
     db = [r for r in db if r.get('source') != 'enemy' or flag_counts[r['eventFlag']] == 1]
     print(f'  {len(db)} after filtering shared enemy flags (-{before - len(db)})')
 
+    # ERR-only loot categories: their item IDs don't exist in vanilla, so they
+    # would only ever produce empty files there. Skip them in the vanilla profile.
+    ERR_ONLY_CATS = {'Reforged - Items', 'Reforged - Fortunes', 'Reforged - Sealed Curios'}
+
     for cat_name, cat_cfg in LOOT_CATEGORIES.items():
+        if config.PROFILE == 'vanilla' and cat_name in ERR_ONLY_CATS:
+            print(f'\n=== {cat_name} === (skipped: ERR-only)')
+            continue
         filter_fn = cat_cfg['filter']
         icon_id = cat_cfg['iconId']
         start_id = cat_cfg['startId']

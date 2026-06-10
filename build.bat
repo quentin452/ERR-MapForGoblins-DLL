@@ -21,6 +21,24 @@ if not defined VS_INSTALL (
 )
 set "VS_PATH=%VS_INSTALL%\Common7\Tools\VsDevCmd.bat"
 
+REM Build profile: default = ERR; pass "--vanilla" (any position) = vanilla.
+REM   ERR:     data/, src/generated, build/, pre-release/
+REM   vanilla: data/vanilla, src/generated_vanilla, build-vanilla/, pre-release-vanilla/
+REM MFG_PROFILE is exported so build_pipeline.py + config.py pick the data source.
+set "GEN_SUBDIR=generated"
+set "PKG_PREFIX=ERR"
+set "SNAP_DIR=%SCRIPT_DIR%pre-release"
+set "DISP_PROFILE=err"
+set "README_SRC=%SCRIPT_DIR%assets\README.txt"
+echo %*| findstr /i /c:"--vanilla" >nul && set "MFG_PROFILE=vanilla"
+if defined MFG_PROFILE set "BUILD_DIR=%SCRIPT_DIR%build-vanilla"
+if defined MFG_PROFILE set "GEN_SUBDIR=generated_vanilla"
+if defined MFG_PROFILE set "PKG_PREFIX=Vanilla"
+if defined MFG_PROFILE set "SNAP_DIR=%SCRIPT_DIR%pre-release-vanilla"
+if defined MFG_PROFILE set "DISP_PROFILE=vanilla"
+if defined MFG_PROFILE set "README_SRC=%SCRIPT_DIR%assets\README_vanilla.txt"
+echo [PROFILE] %DISP_PROFILE%  build=%BUILD_DIR%  gen=%GEN_SUBDIR%
+
 if /i "%~1"=="clean" goto :clean
 if /i "%~1"=="configure" goto :configure
 if /i "%~1"=="generate" goto :generate
@@ -77,7 +95,7 @@ mkdir "%BUILD_DIR%"
 
 call "%VS_PATH%" -arch=amd64 >nul 2>&1
 cd /d "%SCRIPT_DIR%"
-cmake -B build -G "Visual Studio 17 2022" -A x64
+cmake -B "%BUILD_DIR%" -G "Visual Studio 17 2022" -A x64 -DGENERATED_SUBDIR=%GEN_SUBDIR%
 if errorlevel 1 (
     echo ERROR: CMake configuration failed!
     exit /b 1
@@ -117,16 +135,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Package into pre-release folder
-set "SNAP_DIR=%SCRIPT_DIR%pre-release"
-if exist "%SNAP_DIR%" rmdir /s /q "%SNAP_DIR%"
-mkdir "%SNAP_DIR%\dll\offline" 2>nul
-mkdir "%SNAP_DIR%\addons\MapForGoblins\menu" 2>nul
-
-copy /Y "%BUILD_DIR%\Release\MapForGoblins.dll" "%SNAP_DIR%\dll\offline\" >nul
-copy /Y "%BUILD_DIR%\Release\MapForGoblins.ini" "%SNAP_DIR%\dll\offline\" >nul
-copy /Y "%SCRIPT_DIR%assets\menu\02_120_worldmap_new.gfx" "%SNAP_DIR%\addons\MapForGoblins\menu\02_120_worldmap.gfx" >nul
-powershell -NoProfile -Command "(Get-Content '%SCRIPT_DIR%assets\README.txt') -replace '%%VERSION%%','pre-%VER%' | Set-Content '%SNAP_DIR%\README.txt'"
+REM Package into pre-release folder (SNAP_DIR set per profile at top)
+call :package "%SNAP_DIR%"
+powershell -NoProfile -Command "(Get-Content '%README_SRC%') -replace '%%VERSION%%','pre-%VER%' | Set-Content '%SNAP_DIR%\README.txt'"
 
 echo.
 echo [SUCCESS] Snapshot packaged: %SNAP_DIR% (pre-%VER%)
@@ -159,7 +170,7 @@ if errorlevel 1 (
 REM Build with VERSION_PRE="" (release, no pre- prefix)
 call "%VS_PATH%" -arch=amd64 >nul 2>&1
 cd /d "%SCRIPT_DIR%"
-cmake -B build -G "Visual Studio 17 2022" -A x64 -DVERSION_PRE=""
+cmake -B "%BUILD_DIR%" -G "Visual Studio 17 2022" -A x64 -DGENERATED_SUBDIR=%GEN_SUBDIR% -DVERSION_PRE=""
 if errorlevel 1 (
     echo ERROR: CMake configuration failed!
     exit /b 1
@@ -175,20 +186,19 @@ if errorlevel 1 (
 )
 cd /d "%SCRIPT_DIR%"
 
-REM Package into release folder
-set "REL_DIR=%SCRIPT_DIR%ERR - MapForGoblins - DLL - v%VER%"
-mkdir "%REL_DIR%\dll\offline" 2>nul
-mkdir "%REL_DIR%\addons\MapForGoblins\menu" 2>nul
-
-copy /Y "%BUILD_DIR%\Release\MapForGoblins.dll" "%REL_DIR%\dll\offline\" >nul
-copy /Y "%BUILD_DIR%\Release\MapForGoblins.ini" "%REL_DIR%\dll\offline\" >nul
-copy /Y "%SCRIPT_DIR%assets\menu\02_120_worldmap_new.gfx" "%REL_DIR%\addons\MapForGoblins\menu\02_120_worldmap.gfx" >nul
-powershell -NoProfile -Command "(Get-Content '%SCRIPT_DIR%assets\README.txt') -replace '%%VERSION%%','%VER%' | Set-Content '%REL_DIR%\README.txt'"
+REM Package into release folder (PKG_PREFIX = ERR or Vanilla per profile)
+set "REL_DIR=%SCRIPT_DIR%%PKG_PREFIX% - MapForGoblins - DLL - v%VER%"
+call :package "%REL_DIR%"
+powershell -NoProfile -Command "(Get-Content '%README_SRC%') -replace '%%VERSION%%','%VER%' | Set-Content '%REL_DIR%\README.txt'"
 
 echo.
 echo Release packaged: %REL_DIR%
 
-REM Bump patch version: X.Y.Z -> X.Y.(Z+1)
+REM Bump patch version: X.Y.Z -> X.Y.(Z+1). Pass --no-bump to skip (used when
+REM releasing BOTH profiles for the same version: run the first release with
+REM --no-bump, the second one bumps once).
+echo %*| findstr /i /c:"--no-bump" >nul && goto :release_nobump
+
 set /a "V_NEXT=%V_PATCH%+1"
 set "NEXT_VER=%V_MAJOR%.%V_MINOR%.%V_NEXT%"
 echo Bumping to pre-%NEXT_VER%...
@@ -197,10 +207,50 @@ REM Update CMakeLists.txt version
 powershell -Command "(Get-Content '%SCRIPT_DIR%CMakeLists.txt') -replace '  VERSION   \"%VER%\"', '  VERSION   \"%NEXT_VER%\"' | Set-Content '%SCRIPT_DIR%CMakeLists.txt'"
 
 REM Reconfigure with pre- prefix
-cmake -B build -G "Visual Studio 17 2022" -A x64 >nul 2>&1
+cmake -B "%BUILD_DIR%" -G "Visual Studio 17 2022" -A x64 -DGENERATED_SUBDIR=%GEN_SUBDIR% >nul 2>&1
 
 echo Done. Next dev version: pre-%NEXT_VER%
 echo.
+exit /b 0
+
+:release_nobump
+REM Reconfigure back to pre- prefix at the SAME version (no bump)
+cmake -B "%BUILD_DIR%" -G "Visual Studio 17 2022" -A x64 -DGENERATED_SUBDIR=%GEN_SUBDIR% >nul 2>&1
+echo Done. Version kept at %VER% (--no-bump).
+echo.
+exit /b 0
+
+:package
+REM %1 = target root dir. Lays out the package per profile.
+REM   ERR     : <root>\dll\offline\{dll,ini} + <root>\addons\MapForGoblins\menu\gfx
+REM   vanilla : <root>\MapForGoblins\{dll,ini} + <root>\MapForGoblins\menu\gfx
+REM The ini is GENERATED from the in-code schema via mfg_inigen (vanilla build
+REM passes --vanilla to omit ERR-only sections), not copied.
+set "PKG_ROOT=%~1"
+set "INIGEN=%BUILD_DIR%\Release\mfg_inigen.exe"
+if not exist "%INIGEN%" set "INIGEN=%BUILD_DIR%\Debug\mfg_inigen.exe"
+if not exist "%INIGEN%" (
+    echo [FAILED] mfg_inigen.exe not found under %BUILD_DIR%
+    exit /b 1
+)
+if exist "%PKG_ROOT%" rmdir /s /q "%PKG_ROOT%"
+if defined MFG_PROFILE (
+    REM vanilla gfx = vanilla base + our icon frames (tools/build_vanilla_gfx.py),
+    REM NOT the ERR-based _new.gfx (that one carries ERR's re-iconed markers +
+    REM references to ERR-only textures absent from vanilla 01_common).
+    mkdir "%PKG_ROOT%\MapForGoblins\menu" 2>nul
+    copy /Y "%BUILD_DIR%\Release\MapForGoblins.dll" "%PKG_ROOT%\MapForGoblins\" >nul
+    "%INIGEN%" "%PKG_ROOT%\MapForGoblins\MapForGoblins.ini" --vanilla
+    copy /Y "%SCRIPT_DIR%assets\menu\02_120_worldmap_vanilla.gfx" "%PKG_ROOT%\MapForGoblins\menu\02_120_worldmap.gfx" >nul
+    copy /Y "%SCRIPT_DIR%LICENSE.txt" "%PKG_ROOT%\" >nul
+) else (
+    mkdir "%PKG_ROOT%\dll\offline" 2>nul
+    mkdir "%PKG_ROOT%\addons\MapForGoblins\menu" 2>nul
+    copy /Y "%BUILD_DIR%\Release\MapForGoblins.dll" "%PKG_ROOT%\dll\offline\" >nul
+    "%INIGEN%" "%PKG_ROOT%\dll\offline\MapForGoblins.ini"
+    copy /Y "%SCRIPT_DIR%assets\menu\02_120_worldmap_new.gfx" "%PKG_ROOT%\addons\MapForGoblins\menu\02_120_worldmap.gfx" >nul
+    copy /Y "%SCRIPT_DIR%LICENSE.txt" "%PKG_ROOT%\" >nul
+)
 exit /b 0
 
 :parse_version

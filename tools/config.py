@@ -8,12 +8,30 @@ Local project paths (SoulsFormats DLL, paramdefs) are resolved automatically.
 """
 
 import configparser
+import os
 import sys
 from pathlib import Path
 
 TOOLS_DIR = Path(__file__).parent
 PROJECT_DIR = TOOLS_DIR.parent
-DATA_DIR = PROJECT_DIR / "data"
+
+# ── Build profile ────────────────────────────────────────────────────────
+# Selected via the MFG_PROFILE env var (set by build_pipeline.py / build.bat).
+#   'err'     -> data source = the ERR mod (default; behaves exactly as before)
+#   'vanilla' -> data source = the vanilla game files (UXM-unpacked GAME_DIR)
+# The vanilla profile scopes all generated artifacts under their own dirs so
+# the two builds never clobber each other.
+PROFILE = os.environ.get("MFG_PROFILE", "err").strip().lower()
+if PROFILE not in ("err", "vanilla"):
+    PROFILE = "err"
+
+# Profile-scoped intermediate/generated data dir.
+if PROFILE == "vanilla":
+    DATA_DIR = PROJECT_DIR / "data" / "vanilla"
+    GENERATED_DIR = PROJECT_DIR / "src" / "generated_vanilla"
+else:
+    DATA_DIR = PROJECT_DIR / "data"
+    GENERATED_DIR = PROJECT_DIR / "src" / "generated"
 
 # Local project resources (no user config needed)
 LIB_DIR = TOOLS_DIR / "lib"
@@ -52,14 +70,42 @@ if _config_path.exists():
 if GAME_DIR:
     OO2CORE_DLL = GAME_DIR / "oo2core_6_win64.dll"
 
+# Active game-data source for the selected profile. The pipeline reads
+# regulation.bin / map / event / msg from here. For 'vanilla' this is the
+# UXM-unpacked vanilla game; for 'err' it is the ERR mod overlay.
+DATA_SRC_DIR = GAME_DIR if PROFILE == "vanilla" else ERR_MOD_DIR
+
+# In the vanilla profile the "mod" IS the vanilla game, so repoint ERR_MOD_DIR
+# to the active source. This makes the many scripts that read
+# `config.ERR_MOD_DIR` directly (regulation/MSB/msg) profile-correct without
+# touching each of them. In the err profile it is unchanged.
+if PROFILE == "vanilla":
+    ERR_MOD_DIR = DATA_SRC_DIR
+
+
+def require_data_src_dir():
+    """Return the active profile's game-data source dir or exit.
+
+    'err' -> ERR_MOD_DIR, 'vanilla' -> GAME_DIR. This is what every extractor
+    should read regulation/MSB/event/msg from."""
+    if DATA_SRC_DIR and DATA_SRC_DIR.exists():
+        return DATA_SRC_DIR
+    if PROFILE == "vanilla":
+        print("ERROR: vanilla profile needs a UXM-unpacked game_dir.")
+        print(f"  Set game_dir in {_config_path} (must contain loose regulation.bin, map/, event/, msg/).")
+    else:
+        print("ERROR: ERR mod directory not configured or not found.")
+        print(f"  Create {_config_path} from config.ini.example and set err_mod_dir.")
+    sys.exit(1)
+
 
 def require_err_mod_dir():
-    """Return ERR_MOD_DIR or exit with a helpful message."""
-    if ERR_MOD_DIR and ERR_MOD_DIR.exists():
-        return ERR_MOD_DIR
-    print("ERROR: ERR mod directory not configured or not found.")
-    print(f"  Create {_config_path} from config.ini.example and set err_mod_dir.")
-    sys.exit(1)
+    """Return the active profile's game-data source dir or exit.
+
+    Profile-aware alias of require_data_src_dir() (kept for the many callers
+    that predate the vanilla profile). For 'err' this is ERR_MOD_DIR; for
+    'vanilla' it transparently returns the vanilla GAME_DIR."""
+    return require_data_src_dir()
 
 
 def require_game_dir():

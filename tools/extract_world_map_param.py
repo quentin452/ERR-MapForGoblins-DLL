@@ -69,7 +69,7 @@ FIELDS_OF_INTEREST = [
 
 def load_regulation(reg_path):
     print(f"Loading regulation.bin from {reg_path}...")
-    bnd = SFUtil.DecryptERRegulation(str(reg_path))
+    bnd = SoulsFormats.SFUtil.DecryptERRegulation(str(reg_path))
     print(f"  {bnd.Files.Count} files in regulation")
     return bnd
 

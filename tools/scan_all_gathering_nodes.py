@@ -43,7 +43,8 @@ for d in [config.LIB_DIR, tempfile.gettempdir(), os.getcwd()]:
 
 def main():
     project_dir = config.PROJECT_DIR
-    data_dir = project_dir / "data"
+    data_dir = config.DATA_DIR          # data/ or data/vanilla/ per profile
+    data_dir.mkdir(parents=True, exist_ok=True)
 
     # Load gathering model sets
     with open(data_dir / "aeg099_item_mapping.json") as f:

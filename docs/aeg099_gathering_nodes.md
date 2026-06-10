@@ -304,7 +304,7 @@ Each script:
 The one-time nodes (`isEnableRepick && isHiddenOnRepick`) feed
 `tools/generate_material_nodes.py`, which:
 
-- Skips nodes that ERR sank below reachable terrain, detected via
+- Skips nodes that sit below reachable terrain in ERR, detected via
   `unreachable.is_unreachable_in_err` (`unreachable.py`).
 - Wires collection-hide flags (`textDisableFlagId1` / `textDisableFlagId2`)
   from `data/gathering_node_flags.json` for nodes that have an EMEVD-derived

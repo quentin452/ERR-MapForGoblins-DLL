@@ -1,6 +1,6 @@
 #include "goblin_messages.hpp"
-#include "generated/goblin_map_data.hpp"
-#include "generated/goblin_location_alt.hpp"
+#include "goblin_map_data.hpp"
+#include "goblin_location_alt.hpp"
 #include "goblin_config.hpp"
 #include "goblin_inject.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
@@ -336,6 +336,9 @@ void goblin::setup_messages()
     //   700000000+id:      NpcName (named-NPC and 9MMMMVVV "Characters" boss names)
     //   800000000+id:      ActionButtonText (in-game interact prompts, e.g. "Examine statue")
     //   900000000+id:      TutorialTitle (enemy names)
+    //   950000000+id:      BloodMsg (message-builder vocabulary words — generic
+    //                      enemy-type labels for the vanilla build: "skeleton",
+    //                      "demi-human", ... localized in all languages)
     // NpcName has two ID ranges in vanilla+ERR: small ids (Patches=130900,
     // Garris=137600) and 9MMMMVVV "Characters" (Stray Mimic Tear=903320300).
     // With +700M offset, small ids land in [700M..800M); the large 9MMMMVVV ids
@@ -350,6 +353,7 @@ void goblin::setup_messages()
     std::set<int32_t> npc_name_ids_needed;   // NpcName FMG, slot 18 (+ DLC 328, 428)
     std::set<int32_t> action_btn_ids_needed; // ActionButtonText FMG, slot 32 (+ DLC 365, 465)
     std::set<int32_t> tutorial_ids_needed;   // TutorialTitle FMG, slot 207 (enemy names from ERR Codex)
+    std::set<int32_t> bloodmsg_ids_needed;   // BloodMsg FMG, slot 2 (vanilla enemy-type words, offset 950M)
     for (size_t i = 0; i < generated::MAP_ENTRY_COUNT; i++)
     {
         const auto &e = generated::MAP_ENTRIES[i];
@@ -363,6 +367,8 @@ void goblin::setup_messages()
             if (tid <= 0) continue;
             if (tid >= 1600000000 && tid < 1700000000)   // NpcName "Characters" hi-range (9MMMMVVV+700M)
                 npc_name_ids_needed.insert(tid);
+            else if (tid >= 950000000 && tid < 960000000) // BloodMsg vocabulary (offset 950M)
+                bloodmsg_ids_needed.insert(tid);
             else if (tid >= 900000000)          // TutorialTitle (enemy names)
                 tutorial_ids_needed.insert(tid);
             else if (tid >= 800000000 && tid < 900000000) // ActionButtonText (offset 800M)
@@ -552,6 +558,14 @@ void goblin::setup_messages()
     // never ran and PlaceName patch never committed → "?PlaceName?" text).
     if (!action_btn_ids_needed.empty() && 32 < count2 && sub[32])
         copy_fmg_entries(sub[32], action_btn_ids_needed, 800000000, "ActionButtonText");
+
+    // Read BloodMsg FMG (slot 2, menu.msgbnd): message-builder vocabulary.
+    // The vanilla build labels generic enemy drops with the closest vocabulary
+    // word ("skeleton", "demi-human", ...) — localized for free, same as the
+    // in-game message composer. Offset 950M. Same direct-slot access as
+    // ActionButtonText above (slot array is indexed by global BND file ID).
+    if (!bloodmsg_ids_needed.empty() && 2 < count2 && sub[2])
+        copy_fmg_entries(sub[2], bloodmsg_ids_needed, 950000000, "BloodMsg");
 
     // Read TutorialTitle FMG (slot 207) for ERR Codex enemy names
     // textId in MASSEDIT = real TutorialTitle ID + 900000000 (to avoid collision with GoodsName)

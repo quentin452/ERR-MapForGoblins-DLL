@@ -276,7 +276,7 @@ def decode_itemlot_id(lot_id):
 def main():
     t0 = time.time()
 
-    print('=== Known ERR EMEVD spawn bugs ===')
+    print('=== Known ERR EMEVD spawn issues ===')
     report_broken_spawns()
 
     print('=== Loading regulation.bin ===')
@@ -513,10 +513,10 @@ def main():
                 continue
             name = str(p.Name)
             model = str(p.ModelName) if hasattr(p, 'ModelName') else ''
-            # Skip drops whose spawn chain is broken by an ERR EMEVD bug
-            # (currently registered: m30_08 c4020_9000 deadlock).
-            # The check loads ERR EMEVD live, so the moment ERR fixes the
-            # bug — whichever way — this filter self-disarms.
+            # Skip drops whose spawn chain never completes in the current
+            # ERR EMEVD (registered in emevd_broken.py; currently m30_08
+            # c4020_9000). The check loads ERR EMEVD live, so if a future
+            # ERR version changes the event the filter self-disarms.
             if is_spawn_broken(map_info['map'], name):
                 continue
             treasures.append({

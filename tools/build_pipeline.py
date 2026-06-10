@@ -12,21 +12,43 @@ Override: --force <stage_name> | --force-all
 import sys, os, json, hashlib, subprocess, time
 from pathlib import Path
 
+
+def _parse_profile(argv):
+    """Resolve the build profile from argv/env BEFORE importing config
+    (config reads MFG_PROFILE at import time)."""
+    for i, a in enumerate(argv):
+        if a == '--profile' and i + 1 < len(argv):
+            return argv[i + 1].strip().lower()
+        if a.startswith('--profile='):
+            return a.split('=', 1)[1].strip().lower()
+    return os.environ.get('MFG_PROFILE', 'err').strip().lower()
+
+
+PROFILE = _parse_profile(sys.argv[1:])
+if PROFILE not in ('err', 'vanilla'):
+    PROFILE = 'err'
+os.environ['MFG_PROFILE'] = PROFILE  # propagate to every child subprocess
+
 import config
 
 REPO = Path(__file__).resolve().parent.parent
 TOOLS = REPO / 'tools'
-DATA = config.DATA_DIR
+DATA = config.DATA_DIR                 # data/ (err) or data/vanilla/ (vanilla)
+DATA.mkdir(parents=True, exist_ok=True)
 CACHE_FILE = DATA / '.build_cache.json'
 
-ERR_MOD = config.require_err_mod_dir()
+ERR_MOD = config.require_err_mod_dir()  # profile-aware: ERR mod or vanilla game
 MSB_DIR = ERR_MOD / 'map' / 'MapStudio'
 EVENT_DIR = ERR_MOD / 'event'
 REGULATION = ERR_MOD / 'regulation.bin'
 MSGBND = ERR_MOD / 'msg' / 'engus' / 'item_dlc02.msgbnd.dcx'
 
 MASSEDIT_OUT = DATA / 'massedit_generated'
-GENERATED_CPP = REPO / 'src' / 'generated'
+GENERATED_CPP = config.GENERATED_DIR   # src/generated or src/generated_vanilla
+
+# Stages that only make sense for the ERR mod (their source assets/items do
+# not exist in vanilla). Dropped from the vanilla pipeline.
+ERR_ONLY_STAGES = {'generate_pieces_massedit', 'generate_kindling_spirits'}
 
 
 # ── Hashing ──
@@ -164,7 +186,8 @@ STAGES = [
           also_scripts=['extract_all_items.py'] + COMMON),
 
     Stage('generate_loot_massedit',
-          inputs=[DATA / 'items_database.json',
+          inputs=[REPO / 'data' / 'enemy_bloodmsg_mapping.json',
+                  DATA / 'items_database.json',
                   DATA / 'goods_sort_groups.json',
                   DATA / 'goods_crafting_ids.json',
                   DATA / 'goods_sorcery_ids.json',
@@ -324,6 +347,50 @@ STAGES = [
 ]
 
 
+# Vanilla-only bootstrap stages: regenerate, from vanilla game data, the
+# committed inputs that ship pre-extracted for ERR (they don't exist under
+# data/vanilla/). Run before the stages that consume them. For the err
+# profile these are NOT added (the committed copies are authoritative).
+VANILLA_BOOTSTRAP = [
+    Stage('extract_param_bootstrap',
+          inputs=[REGULATION, MSGBND],
+          outputs=[DATA / 'WorldMapLegacyConvParam.json',
+                   DATA / 'valid_location_ids.json'],
+          script='extract_param_bootstrap.py',
+          also_scripts=['config.py']),
+
+    Stage('extract_world_map_param',
+          inputs=[REGULATION],
+          outputs=[DATA / 'WorldMapPointParam.json',
+                   DATA / 'WorldMapPointParam.csv'],
+          script='extract_world_map_param.py',
+          also_scripts=['config.py']),
+
+    Stage('extract_aeg099_mapping',
+          inputs=[REGULATION, MSGBND],
+          outputs=[DATA / 'aeg099_item_mapping.json'],
+          script='extract_aeg099_mapping.py',
+          also_scripts=['config.py']),
+
+    Stage('extract_aeg463_mapping',
+          inputs=[REGULATION, MSGBND],
+          outputs=[DATA / 'aeg463_item_mapping.json'],
+          script='extract_aeg463_mapping.py',
+          also_scripts=['config.py']),
+]
+
+
+def active_stages():
+    """The stage list for the selected profile.
+
+    err:     the full STAGES list, unchanged (committed inputs are used as-is).
+    vanilla: bootstrap extractors first, then STAGES minus the ERR-only ones.
+    """
+    if PROFILE == 'vanilla':
+        return VANILLA_BOOTSTRAP + [s for s in STAGES if s.name not in ERR_ONLY_STAGES]
+    return STAGES
+
+
 def main():
     args = sys.argv[1:]
     force_all = '--force-all' in args
@@ -331,6 +398,8 @@ def main():
     for i, a in enumerate(args):
         if a == '--force' and i + 1 < len(args):
             force_stages.add(args[i + 1])
+
+    print(f'[PROFILE] {PROFILE}  (data={DATA}, generated={GENERATED_CPP})')
 
     cache = {}
     if CACHE_FILE.exists():
@@ -340,7 +409,7 @@ def main():
             cache = {}
 
     overall_t0 = time.time()
-    for stage in STAGES:
+    for stage in active_stages():
         t0 = time.time()
         forced = force_all or stage.name in force_stages
         if not forced and stage.is_up_to_date(cache):

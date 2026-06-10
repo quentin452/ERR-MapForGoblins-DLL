@@ -17,7 +17,7 @@
 //   4. Write `areaNo = 99` on collected rows, restore on respawned rows.
 
 #include "goblin_kindling.hpp"
-#include "generated/goblin_map_data.hpp"
+#include "goblin_map_data.hpp"
 #include "modutils.hpp"
 
 #include <algorithm>

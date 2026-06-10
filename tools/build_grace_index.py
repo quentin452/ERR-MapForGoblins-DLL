@@ -56,7 +56,7 @@ for xml in config.PARAMDEF_DIR.glob('*.xml'):
 bnd = SoulsFormats.SFUtil.DecryptERRegulation(str(config.ERR_MOD_DIR / 'regulation.bin'))
 
 # PlaceName text lookup — load from FMG (item_dlc02.msgbnd: slots 19/329/429)
-DATA_DIR = config.TOOLS_DIR.parent / 'data'
+DATA_DIR = config.DATA_DIR  # data/ or data/vanilla/ per profile
 _fcls = asm.GetType('SoulsFormats.FMG')
 _fr = _fcls.BaseType.GetMethod('Read', Array[SysType]([_str]))
 _bcls = asm.GetType('SoulsFormats.BND4')
