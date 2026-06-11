@@ -42,7 +42,7 @@ _emevd_read = asm.GetType('SoulsFormats.EMEVD').GetMethod('Read',
 
 def load_emevd(path):
     data = SoulsFormats.DCX.Decompress(str(path)).ToArray()
-    tmp = os.path.join(tempfile.gettempdir(), '_mfg_emevd_gn.tmp')
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_mfg_emevd_gn.tmp')
     SysFile.WriteAllBytes(tmp, data)
     e = _emevd_read.Invoke(None, Array[Object]([tmp]))
     os.unlink(tmp)

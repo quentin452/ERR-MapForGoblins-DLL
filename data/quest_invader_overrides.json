@@ -1,0 +1,104 @@
+{
+  "_comment": "Curated overrides for QUEST-scripted hostile-NPC invaders whose kill flags / true positions can't be auto-derived from the 90005792 template. Keyed by MSB EntityID; applies to both profiles (entities/flags verified identical in ERR and vanilla via tools/emevd_decompile.py). 'flag' = clearedEventFlagId source; optional x/y/z = marker position override (e.g. the duel-sign region instead of the parked character part).",
+  "1047410701": {
+    "flag": 1047419201,
+    "x": -4.09,
+    "y": 141.88,
+    "z": 92.23,
+    "note": "Knight of the Great Jar, duel sign 1 (region 1047412200). Per-knight death flags don't exist - event 1047412301 checks all three IFCharacterDeadAlive live and sets 1047419201 once the whole trio is defeated."
+  },
+  "1047410702": {
+    "flag": 1047419201,
+    "x": -1.26,
+    "y": 141.24,
+    "z": 90.6,
+    "note": "Knight of the Great Jar, duel sign 2 (region 1047412201)."
+  },
+  "1047410703": {
+    "flag": 1047419201,
+    "x": -6.5,
+    "y": 141.41,
+    "z": 90.29,
+    "note": "Knight of the Great Jar, duel sign 3 (region 1047412202)."
+  },
+  "11100766": {
+    "flag": 11109656,
+    "note": "Ensha of the Royal Remains (Roundtable invasion; same entity id reused by the m31_90 placement). m11_10 event 11100680: IFCharacterDeadAlive -> SetEventFlag 11109656."
+  },
+  "12050705": {
+    "flag": 7601,
+    "note": "White Mask Varre (Mohgwyn pseudo-multi). Common event 90005796 X0_4=7601 set when X4_4=12050705 dies."
+  },
+  "15000702": {
+    "flag": 7611,
+    "note": "Millicent (hostile path, Haligtree flower). 90005796 X0_4=7611."
+  },
+  "15000705": {
+    "flag": 7610,
+    "note": "Mary, Eldest Sister (Millicent-assist ambush). 90005797 'end Ver2': flag 7610 set when entity GROUP 15005706 (all four sisters) is dead - per-sister flags don't exist."
+  },
+  "15000708": {
+    "flag": 7610,
+    "note": "Maureen, Second Sister - shared sisters-ambush completion flag 7610."
+  },
+  "15000710": {
+    "flag": 7610,
+    "note": "Amy, Third Sister - shared sisters-ambush completion flag 7610."
+  },
+  "15000712": {
+    "flag": 7610,
+    "note": "Polyanna, Youngest Sister - shared sisters-ambush completion flag 7610."
+  },
+  "16000741": {
+    "flag": 16009264,
+    "note": "Tanith's Knight (Crucible Knight guarding Tanith, Volcano Manor). Event 16003706: X0_4 dead -> SetEventFlag 16009264 + AwardItemLot."
+  },
+  "22000706": {
+    "flag": 22000496,
+    "note": "Thiollier (DLC hostile phase). Event 22002497: HP<=0 -> SetEventFlag 22000496 + 'Duelist Vanquished' banner."
+  },
+  "39200701": {
+    "flag": 7606,
+    "note": "Great Horned Tragoth (Volcano Manor contract pseudo-multi). 90005796 X0_4=7606."
+  },
+  "1035460715": {
+    "flag": 7607,
+    "note": "Bloody Finger Ravenmount Assassin (pseudo-multi). 90005796 X0_4=7607."
+  },
+  "1043370740": {
+    "flag": 1043379262,
+    "note": "Bloody Finger Nerijus (Murkwater invasion). Event 1043373722: X0_4 dead -> SetEventFlag 1043379262."
+  },
+  "1053560800": {
+    "flag": 1053560800,
+    "note": "Roundtable Knight Vyke (Church of Inhibition). Boss-template event 90005880, X0_4 defeat flag = 1053560800."
+  },
+  "15000706": {
+    "flag": 7610,
+    "note": "Mary, Eldest Sister - second body (c0000_9021, same spot as 15000705); shared sisters-ambush completion flag 7610."
+  },
+  "14000710": {
+    "flag": 7608,
+    "note": "Sorceress Sellen (academy battle, hostile placement). Battle has TWO mutually-exclusive completion flags: 7608 = Sellen battle body 14000713 defeated (90005796 init in m14), 7609 = Jerren defeated (talk-set; referenced by quest state machine common:3479). After either, both NPCs stop being attackable, so both markers should check. Baked with primary 7608; the DLL FLAG_OR_PAIRS runtime swaps to 7609 when that one is set."
+  },
+  "14000715": {
+    "flag": 7608,
+    "note": "Witch-Hunter Jerren (academy battle) - same OR pair 7608/7609 as Sellen, see above."
+  },
+  "14000712": {
+    "flag": 7608,
+    "note": "Sorceress Sellen - body c0000_9016 (same spot as 14000710); OR pair 7608/7609."
+  },
+  "14000713": {
+    "flag": 7608,
+    "note": "Sorceress Sellen - battle body c0000_9017 (whose death sets 7608 via 90005796); OR pair 7608/7609."
+  },
+  "14000716": {
+    "flag": 7608,
+    "note": "Witch-Hunter Jerren - body c0000_9031 (same spot as 14000715); OR pair 7608/7609."
+  },
+  "14000717": {
+    "flag": 7608,
+    "note": "Witch-Hunter Jerren - body c0000_9032 (second placement); OR pair 7608/7609."
+  }
+}

@@ -37,7 +37,7 @@ def main():
         print(f'No file: {p}')
         return
     data = SoulsFormats.DCX.Decompress(str(p)).ToArray()
-    tmp = os.path.join(tempfile.gettempdir(), '_em.bin')
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_em.bin')
     SysFile.WriteAllBytes(tmp, data)
     emevd = _emevd.Invoke(None, Array[Object]([tmp]))
 

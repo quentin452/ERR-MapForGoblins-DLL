@@ -267,15 +267,20 @@ LOOT_CATEGORIES = {
         'startId': 4200000,
     },
     'Equipment - Spirits': {
-        # Spirit Ashes — goods IDs 300000-399999.
+        # Spirit Ashes. ERR renumbers spirit-ash goods into 300000-399999;
+        # vanilla keeps them at their stock ids (200000+, goodsType==8 —
+        # see goods_spirit_ash_ids.json from extract_goods_categories).
         # (The Lhutel id=358000 exclusion that previously lived here was a
         # workaround for phantom emevd records produced by templates
         # 90005200/90005210; those templates are no longer in
         # extract_all_items.py::TEMPLATE_EVENTS, so the workaround is moot.)
-        'filter': lambda items: any(
+        'filter': (lambda items: any(
+            i['category'] == 1 and i['id'] in SPIRIT_ASH_IDS
+            for i in items
+        )) if config.PROFILE != 'err' else (lambda items: any(
             i['category'] == 1 and 300000 <= i['id'] <= 399999
             for i in items
-        ),
+        )),
         'iconId': 383,
         'startId': 4300000,
     },
@@ -730,7 +735,7 @@ def write_massedit(records, filepath, icon_id, start_id):
             tutorial_id = resolve_enemy_tutorial_id(enemy_model, npc_param)
             if tutorial_id > 0:
                 enemy_text_id = tutorial_id + 900000000
-            elif config.PROFILE == 'vanilla':
+            elif config.PROFILE != 'err':
                 word_id = BLOODMSG_WORDS.get(enemy_model[:5], 0)
                 if word_id > 0:
                     enemy_text_id = word_id + 950000000
@@ -776,7 +781,7 @@ def main():
     ERR_ONLY_CATS = {'Reforged - Items', 'Reforged - Fortunes', 'Reforged - Sealed Curios'}
 
     for cat_name, cat_cfg in LOOT_CATEGORIES.items():
-        if config.PROFILE == 'vanilla' and cat_name in ERR_ONLY_CATS:
+        if config.PROFILE != 'err' and cat_name in ERR_ONLY_CATS:
             print(f'\n=== {cat_name} === (skipped: ERR-only)')
             continue
         filter_fn = cat_cfg['filter']
@@ -864,11 +869,17 @@ def main():
             text_matched += 1
         if tutorial_id > 0:
             lines.append(f'param WorldMapPointParam: id {row_id}: textId1: = {tutorial_id + 900000000};')
+        elif rec.get('npcNameId', 0) > 0:
+            # Vanilla: standard boss name from NpcName (every HP-bar boss has one)
+            lines.append(f'param WorldMapPointParam: id {row_id}: textId1: = {rec["npcNameId"] + 700000000};')
         else:
-            # Fallback: use PlaceName ID from ERR WorldMapPointParam
+            # Fallback: PlaceName ID from ERR WorldMapPointParam, else the
+            # generic BloodMsg word "boss" (vanilla, localized)
             wmp_tid = rec.get('wmpTextId1', 0)
             if wmp_tid > 0:
                 lines.append(f'param WorldMapPointParam: id {row_id}: textId1: = {wmp_tid};')
+            elif config.PROFILE != 'err':
+                lines.append(f'param WorldMapPointParam: id {row_id}: textId1: = {950000000 + 30006};')
 
         # Kill flag for green checkmark AND hide-when-killed option
         kill_flag = rec.get('killEventFlagId', 0)

@@ -47,7 +47,7 @@ _fmg_read = asm.GetType("SoulsFormats.FMG").GetMethod(
 
 
 def read_param(bnd_file):
-    tmp = os.path.join(tempfile.gettempdir(), "_p.bin")
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + "_p.bin")
     SysFile.WriteAllBytes(tmp, bnd_file.Bytes.ToArray())
     p = _param_read.Invoke(None, Array[Object]([tmp]))
     os.unlink(tmp)
@@ -55,7 +55,7 @@ def read_param(bnd_file):
 
 
 def read_fmg(bnd_file):
-    tmp = os.path.join(tempfile.gettempdir(), "_f.fmg")
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + "_f.fmg")
     SysFile.WriteAllBytes(tmp, bnd_file.Bytes.ToArray())
     fmg = _fmg_read.Invoke(None, Array[Object]([tmp]))
     os.unlink(tmp)

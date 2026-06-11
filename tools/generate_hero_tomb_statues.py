@@ -52,7 +52,7 @@ ROW_START = 9300000
 
 def _read(reader, path, suf='.tmp'):
     data = SoulsFormats.DCX.Decompress(str(path)).ToArray()
-    tmp = os.path.join(tempfile.gettempdir(), '_ht' + suf)
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_ht' + suf)
     SysFile.WriteAllBytes(tmp, data)
     return reader.Invoke(None, Array[Object]([tmp]))
 

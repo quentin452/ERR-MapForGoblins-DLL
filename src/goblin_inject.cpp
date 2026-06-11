@@ -395,9 +395,13 @@ void goblin::inject_map_entries()
             }
         }
 
-        // Boss/hawk kill display mode: green checkmark vs hide killed
+        // Kill display mode (bosses / hawks / NPC invaders): green checkmark
+        // vs hide killed. Without this, rows baked with BOTH clearedEventFlagId
+        // and textDisableFlagId hide all their text on kill and the icon
+        // vanishes before the checkmark can ever show.
         auto cat = all_rows[i].category;
-        if (cat == Category::WorldBosses || cat == Category::WorldSpiritspringHawks)
+        if (cat == Category::WorldBosses || cat == Category::WorldSpiritspringHawks ||
+            cat == Category::WorldHostileNPC)
         {
             auto *p = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(
                 new_param_file + data_offset);
@@ -909,6 +913,66 @@ void goblin::show_codex_toast(int tutorial_id)
 const std::vector<uint8_t *> &goblin::injected_row_ptrs()
 {
     return g_injected_row_ptrs;
+}
+
+// ── Either-flag (OR) kill indicators ─────────────────────────────────
+// Some quest fights have two mutually-exclusive completion flags (one per
+// story branch) and no single "battle over" flag. Example: the academy
+// battle — 7608 = Sellen's battle body defeated (sided with Jerren),
+// 7609 = Jerren defeated (sided with Sellen); after either one, BOTH NPCs
+// stop being attackable, so both markers should show the checkmark.
+// Such rows are baked with the PRIMARY flag; once the ALT flag turns on
+// this rewrites the matching fields so the checkmark/hide reacts within
+// the running session. Pairs mirror data/quest_invader_overrides.json.
+//
+// Event-flag query — same AOBs as goblin_markers.cpp / goblin_kindling.cpp
+// (each keeps its own local copy by established convention there).
+using OrPairIsFlagFn = bool (*)(void *, uint32_t *);
+static OrPairIsFlagFn g_orp_is_flag = nullptr;
+static void **g_orp_event_man_slot = nullptr;
+static bool g_orp_resolve_tried = false;
+
+static bool orp_flag_set(uint32_t flag_id)
+{
+    if (!g_orp_resolve_tried)
+    {
+        g_orp_resolve_tried = true;
+        try
+        {
+            g_orp_is_flag = modutils::scan<bool(void *, uint32_t *)>(
+                { .aob = "48 83 EC 28 8B 12 85 D2" });
+            g_orp_event_man_slot = reinterpret_cast<void **>(modutils::scan<void *>(
+                { .aob = "48 8B 3D ?? ?? ?? ?? 48 85 FF ?? ?? 32 C0 E9",
+                  .relative_offsets = { {3, 7} } }));
+        }
+        catch (...) { g_orp_is_flag = nullptr; g_orp_event_man_slot = nullptr; }
+    }
+    if (!g_orp_is_flag || !g_orp_event_man_slot) return false;
+    void *event_man = *g_orp_event_man_slot;
+    if (!event_man) return false;
+    uint32_t id = flag_id;
+    return g_orp_is_flag(event_man, &id);
+}
+
+struct FlagOrPair { uint32_t primary; uint32_t alt; };
+static constexpr FlagOrPair FLAG_OR_PAIRS[] = {
+    {7608, 7609},  // Sellen/Jerren academy battle
+};
+
+void goblin::apply_flag_or_pairs()
+{
+    for (const auto &pr : FLAG_OR_PAIRS)
+    {
+        if (!orp_flag_set(pr.alt))
+            continue;
+        for (uint8_t *ptr : g_injected_row_ptrs)
+        {
+            auto *p = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(ptr);
+            if (p->clearedEventFlagId == pr.primary) p->clearedEventFlagId = pr.alt;
+            if (p->textDisableFlagId1 == pr.primary) p->textDisableFlagId1 = pr.alt;
+            if (p->textDisableFlagId2 == pr.primary) p->textDisableFlagId2 = pr.alt;
+        }
+    }
 }
 
 void goblin::menu_auto_toggle_loop()

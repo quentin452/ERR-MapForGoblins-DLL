@@ -58,7 +58,7 @@ for xml in config.PARAMDEF_DIR.glob('*.xml'):
 def load_param(bnd, name):
     for f in bnd.Files:
         if name in str(f.Name):
-            tmp = os.path.join(tempfile.gettempdir(), '_pbp.param')
+            tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_pbp.param')
             SysFile.WriteAllBytes(tmp, f.Bytes.ToArray())
             p = _pr.Invoke(None, Array[Object]([tmp]))
             pdef = defs.get(str(p.ParamType))
@@ -110,7 +110,7 @@ for f in msg_bnd.Files:
     nm = str(f.Name)
     if 'PlaceName' not in nm or 'Tutorial' in nm:
         continue
-    tmp = os.path.join(tempfile.gettempdir(), '_pbp.fmg')
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_pbp.fmg')
     SysFile.WriteAllBytes(tmp, f.Bytes.ToArray())
     fmg = _fr.Invoke(None, Array[Object]([tmp]))
     for e in fmg.Entries:

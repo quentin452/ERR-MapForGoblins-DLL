@@ -108,7 +108,7 @@ def main():
         if os.path.exists(err_tpf_path):
             _tpf_read = _get_read("SoulsFormats.TPF")
             tpf = _tpf_read.Invoke(None, Array[Object]([err_tpf_path]))
-            err_dds_dir = os.path.join(tempfile.gettempdir(), "err_tpf")
+            err_dds_dir = os.path.join(tempfile.gettempdir(), str(os.getpid()) + "err_tpf")
             os.makedirs(err_dds_dir, exist_ok=True)
             for tex in tpf.Textures:
                 name = str(tex.Name)

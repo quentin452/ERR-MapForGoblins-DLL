@@ -35,7 +35,7 @@ def find_msb_entity_by_id(root, area, gx, gz, entity_id):
     pattern = f'm{area:02d}_{gx:02d}_{gz:02d}_*.msb.dcx'
     for path in sorted(msb_dir.glob(pattern)):
         data = SoulsFormats.DCX.Decompress(str(path)).ToArray()
-        tmp = os.path.join(tempfile.gettempdir(), '_cg.msb')
+        tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_cg.msb')
         SysFile.WriteAllBytes(tmp, data)
         msb = _msbe_read.Invoke(None, Array[Object]([tmp]))
         for cat in ('Assets','DummyAssets','Enemies','DummyEnemies'):

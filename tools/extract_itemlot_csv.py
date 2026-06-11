@@ -60,7 +60,7 @@ def load_paramdefs():
 def read_param(bnd, param_name, paramdefs):
     for f in bnd.Files:
         if param_name in str(f.Name):
-            tmp = os.path.join(tempfile.gettempdir(), f'{param_name}.param')
+            tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + f'{param_name}.param')
             SysFile.WriteAllBytes(tmp, f.Bytes.ToArray())
             param = _param_read_str.Invoke(None, Array[Object]([tmp]))
             os.unlink(tmp)

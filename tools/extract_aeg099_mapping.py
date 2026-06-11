@@ -60,7 +60,7 @@ _fmg_read = asm.GetType("SoulsFormats.FMG").GetMethod(
 
 
 def _read_param_from_bnd_file(bnd_file):
-    tmp = os.path.join(tempfile.gettempdir(), "_aeg_param.bin")
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + "_aeg_param.bin")
     SysFile.WriteAllBytes(tmp, bnd_file.Bytes.ToArray())
     param = _param_read.Invoke(None, Array[Object]([tmp]))
     os.unlink(tmp)
@@ -68,7 +68,7 @@ def _read_param_from_bnd_file(bnd_file):
 
 
 def _read_fmg_from_bnd_file(bnd_file):
-    tmp = os.path.join(tempfile.gettempdir(), "_aeg_fmg.fmg")
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + "_aeg_fmg.fmg")
     SysFile.WriteAllBytes(tmp, bnd_file.Bytes.ToArray())
     fmg = _fmg_read.Invoke(None, Array[Object]([tmp]))
     os.unlink(tmp)
@@ -168,7 +168,7 @@ def main():
     print("Reading GoodsName FMG...")
     goods_names = {}
     msg_path = config.require_err_mod_dir() / "msg" / "engus" / "item_dlc02.msgbnd.dcx"
-    tmp = os.path.join(tempfile.gettempdir(), "_aeg_msg.msgbnd.dcx")
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + "_aeg_msg.msgbnd.dcx")
     shutil.copy2(str(msg_path), tmp)
     msg_bnd = _bnd4_read.Invoke(None, Array[Object]([tmp]))
     os.unlink(tmp)

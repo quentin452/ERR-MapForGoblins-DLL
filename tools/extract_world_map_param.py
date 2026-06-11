@@ -43,7 +43,7 @@ def _get_read_str(type_name):
 _param_read_str = _get_read_str('SoulsFormats.PARAM')
 
 def _read_from_bytes(read_method, data, suffix='.bin'):
-    tmp = os.path.join(tempfile.gettempdir(), f'_mfg_tmp{suffix}')
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + f'_mfg_tmp{suffix}')
     if hasattr(data, 'ToArray'):
         SysFile.WriteAllBytes(tmp, data.ToArray())
     else:

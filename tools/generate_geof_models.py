@@ -83,6 +83,6 @@ with open(os.path.join(GEN, "goblin_geof_models.cpp"), "w", encoding="utf-8") as
     if not rows:
         f.write("    {0ull, 0u},\n")
     f.write("};\n\n} // namespace goblin::generated\n")
-print(f"wrote {len(rows)} model overrides -> src/generated/goblin_geof_models.cpp")
+print(f"wrote {len(rows)} model overrides -> {GEN}/goblin_geof_models.cpp")
 from collections import Counter
 print(Counter(f"{n.rsplit('_',1)[0]} -> {m}" for _, _, n, m in rows))

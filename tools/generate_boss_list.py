@@ -39,7 +39,7 @@ _msbe_read = asm.GetType('SoulsFormats.MSBE').GetMethod('Read',
     None, Array[SysType]([_str_type]), None)
 
 def rfb(rm, data, suf='.bin'):
-    tmp = os.path.join(tempfile.gettempdir(), '_mfg_tmp' + suf)
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_mfg_tmp' + suf)
     if hasattr(data, 'ToArray'):
         SysFile.WriteAllBytes(tmp, data.ToArray())
     else:
@@ -144,6 +144,162 @@ def main():
         ent['map'] = f'm{own_area:02d}_{own_gx:02d}_{own_gz:02d}_{own_p3:02d}'
         remapped += 1
     print(f"  Remapped {remapped} cross-tile entities to fine-grid owner tiles")
+
+    # ── VANILLA seed: GameAreaParam ─────────────────────────────────────
+    # The ERR path below seeds from ERR's pre-placed WorldMapPointParam boss
+    # markers (textId2==5100), which vanilla doesn't have. Vanilla's
+    # authoritative boss registry is GameAreaParam: row id == boss entity id,
+    # each row carries defeatBossFlagId + bossPos + bossMap. Names: most boss
+    # NpcParam rows have nameId==0 — the HP-bar name is assigned by EMEVD
+    # DisplayBossHealthBar 2003[11] (entity, slot, nameId), so we scan the
+    # event scripts (resolving parameterized common-event initializations).
+    if config.PROFILE != 'err':
+        import struct as _struct
+        _emevd_read = asm.GetType('SoulsFormats.EMEVD').GetMethod(
+            'Read', BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy,
+            None, Array[SysType]([_str_type]), None)
+
+        def scan_boss_bar_names(event_dir):
+            """entity_id -> NpcName id from DisplayBossHealthBar 2003[11]
+            (args: state u8@0, entity u32@4, slot s16@8, nameId s32@12)."""
+            ent_name = {}
+            param_events = {}  # event_id -> [(ent_src_off, ent_lit, nid_src_off, nid_lit)]
+            ems = []
+            for ep in sorted(event_dir.glob('*.emevd.dcx')):
+                try:
+                    em = rfb(_emevd_read, SoulsFormats.DCX.Decompress(str(ep)), '.emevd')
+                except Exception:
+                    continue
+                ems.append(em)
+                for ev in em.Events:
+                    subs = {(int(pr.InstructionIndex), int(pr.TargetStartByte)):
+                            int(pr.SourceStartByte) for pr in ev.Parameters}
+                    for ii, ins in enumerate(ev.Instructions):
+                        if int(ins.Bank) != 2003 or int(ins.ID) != 11:
+                            continue
+                        args = bytes(ins.ArgData)
+                        if len(args) < 16:
+                            continue
+                        ent = _struct.unpack_from('<I', args, 4)[0]
+                        nid = _struct.unpack_from('<i', args, 12)[0]
+                        ent_off = subs.get((ii, 4))
+                        nid_off = subs.get((ii, 12))
+                        if ent_off is None and nid_off is None:
+                            if ent > 0 and nid > 0:
+                                ent_name.setdefault(ent, nid)
+                        else:
+                            param_events.setdefault(int(ev.ID), []).append(
+                                (ent_off, ent, nid_off, nid))
+            # resolve parameterized defs through InitializeEvent/CommonEvent args
+            for em in ems:
+                for ev in em.Events:
+                    for ins in ev.Instructions:
+                        if int(ins.Bank) != 2000 or int(ins.ID) not in (0, 6):
+                            continue
+                        args = bytes(ins.ArgData)
+                        if len(args) < 8:
+                            continue
+                        tgt = _struct.unpack_from('<I', args, 4)[0]
+                        if tgt not in param_events:
+                            continue
+                        blob = args[8:]
+                        for ent_off, ent_lit, nid_off, nid_lit in param_events[tgt]:
+                            ent, nid = ent_lit, nid_lit
+                            if ent_off is not None and ent_off + 4 <= len(blob):
+                                ent = _struct.unpack_from('<I', blob, ent_off)[0]
+                            if nid_off is not None and nid_off + 4 <= len(blob):
+                                nid = _struct.unpack_from('<i', blob, nid_off)[0]
+                            if ent > 0 and nid > 0:
+                                ent_name.setdefault(ent, nid)
+            return ent_name
+
+        bar_names = scan_boss_bar_names(ERR_MOD_DIR / 'event')
+        print(f"  boss-bar name scan: {len(bar_names)} entity->name entries")
+        npc_name_path = config.DATA_DIR / 'npc_name_ids.json'
+        npc_name_ids = {}
+        if npc_name_path.exists():
+            npc_name_ids = {int(k): int(v) for k, v in
+                            json.load(open(npc_name_path, encoding='utf-8')).items()}
+
+        # NpcName texts (for vanillaPlaceName -> Great Runes name matching)
+        npc_name_text = {}
+        for f in msgbnd.Files:
+            if 'NpcName' in str(f.Name):
+                fmg = rfb(_fmg_read, f.Bytes, '.fmg')
+                for e in fmg.Entries:
+                    t = str(e.Text) if e.Text else ''
+                    if t and t != '[ERROR]':
+                        npc_name_text.setdefault(int(e.ID), t)
+
+        ga = read_param(bnd, 'GameAreaParam', paramdefs)
+        ga_fields = {'defeatBossFlagId', 'bossPosX', 'bossPosY', 'bossPosZ',
+                     'bossMapAreaNo', 'bossMapBlockNo', 'bossMapMapNo'}
+        ga_data = param_to_dict(ga, ga_fields)
+
+        result = []
+        seen_flags = set()
+        matched = 0
+        for rid, row in sorted(ga_data.items()):
+            flag = int(row.get('defeatBossFlagId', 0) or 0)
+            if rid < 10000000 or flag <= 0:
+                continue  # test rows (0, 1, 9999991/2)
+            if flag in seen_flags:
+                continue  # boss duos share one defeat flag — one marker
+            seen_flags.add(flag)
+
+            ent = all_entities.get(rid)
+            if ent is not None:
+                area, gx, gz = ent['area'], ent['gridX'], ent['gridZ']
+                x, y, z = ent['x'], ent['y'], ent['z']
+                map_name = ent['map']
+                model, npc = ent['model'], ent['npc']
+                matched += 1
+            else:
+                area = int(row.get('bossMapAreaNo', 0) or 0)
+                gx = int(row.get('bossMapBlockNo', 0) or 0)
+                gz = int(row.get('bossMapMapNo', 0) or 0)
+                if area <= 0:
+                    continue
+                x = round(float(row.get('bossPosX', 0) or 0), 3)
+                y = round(float(row.get('bossPosY', 0) or 0), 3)
+                z = round(float(row.get('bossPosZ', 0) or 0), 3)
+                map_name = f'm{area:02d}_{gx:02d}_{gz:02d}_00'
+                model, npc = '', 0
+
+            # Name resolution: NpcParam.nameId when set; else the EMEVD
+            # boss-bar assignment (DisplayBossHealthBar scan); else the
+            # NpcName id convention 900000000 + npcId//10 as a last resort.
+            name_id = npc_name_ids.get(npc, 0)
+            if name_id <= 0:
+                name_id = bar_names.get(rid, 0)
+            if name_id <= 0 and npc > 0:
+                cand = 900000000 + npc // 10
+                if cand in npc_name_text:
+                    name_id = cand
+            if name_id > 0 and name_id not in npc_name_text:
+                name_id = 0  # never bake an id the FMG can't resolve
+            result.append({
+                'areaNo': area, 'gridX': gx, 'gridZ': gz,
+                'x': x, 'y': y, 'z': z,
+                'map': map_name, 'enemyModel': model, 'npcParamId': npc,
+                'npcNameId': name_id,
+                'clearedEventFlagId': flag,
+                'killEventFlagId': flag,
+                'wmpTextId1': 0,
+                'vanillaPlaceName': npc_name_text.get(name_id, ''),
+            })
+
+        out_path = config.DATA_DIR / 'boss_list.json'
+        with open(out_path, 'w', encoding='utf-8') as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+        named = sum(1 for b in result if b['npcNameId'] > 0)
+        print(f"Vanilla bosses: {len(result)} (entity matched: {matched}, "
+              f"named via NpcName: {named}, unnamed: {len(result) - named})")
+        for b in result:
+            if b['npcNameId'] <= 0:
+                print(f"  unnamed: entity-row flag={b['clearedEventFlagId']} "
+                      f"map={b['map']} model={b['enemyModel']} npc={b['npcParamId']}")
+        return
 
     # Field bosses, deduplicated by clearedEventFlagId
     field_bosses = []

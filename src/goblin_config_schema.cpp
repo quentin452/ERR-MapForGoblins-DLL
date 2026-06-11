@@ -173,7 +173,7 @@ namespace
                 B("show_interactables", showInteractables, "false",
                   "Interactive world objects & puzzles. Includes:\n  - Blue seal puzzles (~65 seals across the overworld, unlock hidden cellars)\n  - \"Light flame\" interacts: Sellia chalices (3), Snow Town seal-release\n    statues (4), Siofra River lanterns (~14)\n  - Hero's Tomb direction statues (16, point at hidden Hero's Tomb caves)\nEach marker hides on activation via its own engine flag."),
                 B("show_world_maps", showWorldMaps, "false", "World Map fragment locations"),
-                B("hide_killed_bosses", hideKilledBosses, "false", "Hide boss markers after defeat (false = show green checkmark instead)"),
+                B("hide_killed_bosses", hideKilledBosses, "false", "Hide boss/invader/hawk markers after defeat (false = show green checkmark instead)"),
             }},
 
             {"ERR Markers",

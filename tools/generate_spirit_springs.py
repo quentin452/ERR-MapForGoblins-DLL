@@ -33,7 +33,7 @@ _msbe_read = asm.GetType('SoulsFormats.MSBE').GetMethod('Read',
 
 
 def rfb(rm, data, suf='.bin'):
-    tmp = os.path.join(tempfile.gettempdir(), '_mfg_tmp' + suf)
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_mfg_tmp' + suf)
     if hasattr(data, 'ToArray'):
         SysFile.WriteAllBytes(tmp, data.ToArray())
     else:

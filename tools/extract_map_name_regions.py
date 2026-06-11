@@ -23,7 +23,7 @@ _msbe_read = asm.GetType("SoulsFormats.MSBE").GetMethod(
     None, Array[SysType]([_str]), None)
 
 def rfb(rm, data, suf=".bin"):
-    t = os.path.join(tempfile.gettempdir(), "_mfg_tmp" + suf)
+    t = os.path.join(tempfile.gettempdir(), str(os.getpid()) + "_mfg_tmp" + suf)
     SysFile.WriteAllBytes(t, data.ToArray() if hasattr(data, "ToArray") else data)
     r = rm.Invoke(None, Array[Object]([t])); os.unlink(t); return r
 

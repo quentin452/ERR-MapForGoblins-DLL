@@ -32,12 +32,13 @@ asm = Assembly.LoadFrom(str(config.SOULSFORMATS_DLL)); clr.AddReference(str(conf
 import SoulsFormats
 _str = SysType.GetType("System.String")
 _read = asm.GetType("SoulsFormats.MSBE").GetMethod("Read", BindingFlags.Public|BindingFlags.Static|BindingFlags.FlattenHierarchy, None, Array[SysType]([_str]), None)
-D = os.path.join(HERE, "..", "data")
-PLACE = json.load(open(os.path.join(D, "PlaceName_engus.json"), encoding="utf-8"))
+D = os.path.join(HERE, "..", "data")          # repo data root (ERR-only artifacts)
+PROF = str(config.DATA_DIR)                    # profile data dir (data/ or data/vanilla/)
+PLACE = json.load(open(os.path.join(PROF, "PlaceName_engus.json"), encoding="utf-8"))
 VALID = set(int(k) for k in PLACE.keys())
-WMPP = {int(w["ID"]): w for w in json.load(open(os.path.join(D, "WorldMapPointParam.json"), encoding="utf-8"))}
+WMPP = {int(w["ID"]): w for w in json.load(open(os.path.join(PROF, "WorldMapPointParam.json"), encoding="utf-8"))}
 WP = json.load(open(os.path.join(D, "WorldMapPointParam.json"), encoding="utf-8"))
-GR = json.load(open(os.path.join(D, "grace_position_index.json"), encoding="utf-8"))
+GR = json.load(open(os.path.join(PROF, "grace_position_index.json"), encoding="utf-8"))
 SENTINELS = {5000, 5100, 5300, 8800}  # textId2/3/4 logic sentinels — never override
 from massedit_common import OVERWORLD_AREAS as OVERWORLD  # {60, 61}: no location subtitle, keep baked
 
@@ -72,7 +73,7 @@ def load_vols(mapname):
     if path.exists():
         try:
             data=SoulsFormats.DCX.Decompress(str(path))
-            t=os.path.join(tempfile.gettempdir(),"_lo.msb"); SysFile.WriteAllBytes(t,data.ToArray())
+            t=os.path.join(tempfile.gettempdir(),str(os.getpid()) + "_lo.msb"); SysFile.WriteAllBytes(t,data.ToArray())
             msb=_read.Invoke(None,Array[Object]([t])); os.unlink(t)
             byname={}
             for r in list(msb.Regions.GetEntries()):
@@ -222,6 +223,7 @@ def hybrid_id(area,gx,gz,x,y,z):
 # (generate_data.py COORD_SHIFTS, e.g. (11,10) Roundtable Hold x-2195 z-352).
 _NIDX={}
 for fn,key in (("rune_pieces.json","map"),("ember_pieces.json","map")):
+    if not os.path.exists(os.path.join(D,fn)): continue  # ERR-only artifact
     for r in json.load(open(os.path.join(D,fn),encoding="utf-8")):
         mp=r.get(key,"")
         if len(mp)<9: continue
@@ -278,20 +280,22 @@ _YIDX={}
 def _yidx_add(area,gx,gz,x,z,y):
     blk=_YIDX.setdefault((area,gx,gz),{})
     blk.setdefault((round(x),round(z)),[]).append((x,z,y))
-for r in json.load(open(os.path.join(D,"items_database.json"),encoding="utf-8")):
+for r in json.load(open(os.path.join(PROF,"items_database.json"),encoding="utf-8")):
     if r.get("x") is None or r.get("y") is None: continue
     _yidx_add(int(r.get("areaNo",0)),int(r.get("gridX",0)),int(r.get("gridZ",0)),
               float(r["x"]),float(r["z"]),float(r["y"]))
-for r in json.load(open(os.path.join(D,"all_gathering_nodes_final.json"),encoding="utf-8")):
+for r in json.load(open(os.path.join(PROF,"all_gathering_nodes_final.json"),encoding="utf-8")):
     mp=r.get("map","")
     if len(mp)<9: continue
     _yidx_add(int(mp[1:3]),int(mp[4:6]),int(mp[7:9]),float(r["x"]),float(r["z"]),float(r["y"]))
 # Rune/Ember pieces + graces: categories whose MASSEDIT rows often omit posY
-for r in json.load(open(os.path.join(D,"all_pieces.json"),encoding="utf-8"))["pieces"]:
+for r in (json.load(open(os.path.join(D,"all_pieces.json"),encoding="utf-8"))["pieces"]
+          if os.path.exists(os.path.join(D,"all_pieces.json")) else []):
     mp=r.get("tile","")
     if len(mp)<9: continue
     _yidx_add(int(mp[1:3]),int(mp[4:6]),int(mp[7:9]),float(r["x"]),float(r["z"]),float(r["y"]))
-for r in json.load(open(os.path.join(D,"ember_pieces.json"),encoding="utf-8")):
+for r in (json.load(open(os.path.join(D,"ember_pieces.json"),encoding="utf-8"))
+          if os.path.exists(os.path.join(D,"ember_pieces.json")) else []):
     mp=r.get("map","")
     if len(mp)<9: continue
     _yidx_add(int(mp[1:3]),int(mp[4:6]),int(mp[7:9]),float(r["x"]),float(r["z"]),float(r["y"]))
@@ -402,7 +406,7 @@ if comp:
     for cid,sub,sup in comp:
         print(f"   {cid}: \"{PLACE.get(str(sub),'?')} ({PLACE.get(str(sup),'?')})\"")
 print(f"\nwrote {changed} alt locations ({kept} already matched baked, "
-      f"{no_y} skipped: no Y recoverable) -> src/generated/goblin_location_alt.cpp")
+      f"{no_y} skipped: no Y recoverable) -> {config.GENERATED_DIR}/goblin_location_alt.cpp")
 print("overrides by area:", dict(by_area))
 # show a few human-readable samples
 print("\nsample changes (row_id slot: baked -> hybrid):")

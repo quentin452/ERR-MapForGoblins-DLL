@@ -61,7 +61,7 @@ _msbe_read  = _get_read_str('SoulsFormats.MSBE')
 
 
 def _read_from_bytes(read_method, data, suffix='.bin'):
-    tmp = os.path.join(tempfile.gettempdir(), f'_mfg_tmp{suffix}')
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + f'_mfg_tmp{suffix}')
     if hasattr(data, 'ToArray'):
         SysFile.WriteAllBytes(tmp, data.ToArray())
     else:
@@ -438,6 +438,20 @@ def main():
                 pass
             dummy_entity_ids[name] = (eid, tuple(groups))
 
+        # An asset keeps ONE pickup binding: when several Treasure events
+        # reference the same part with DIFFERENT lots, the one iterated last
+        # wins during map load and the earlier lots are never awarded.
+        # (Verified in-game at Ruin-Strewn Precipice: corpse AEG099_620_9000
+        # carries lots 39200000 Golden Rune + 39200080 Rune Arc — only the
+        # Rune Arc drops. Only 2 such parts exist in the whole game.)
+        # A marker for an overridden lot would point at unobtainable loot.
+        part_last_lot = {}
+        for t in msb.Events.Treasures:
+            pn = str(t.TreasurePartName) if t.TreasurePartName else ''
+            il = int(t.ItemLotID)
+            if il > 0 and pn:
+                part_last_lot[pn] = il
+
         # Group treasure events by lot and prefer the live part when a
         # single ItemLotID is bound to both a Parts.Assets and a
         # Parts.DummyAssets entry. Lots bound only to a dummy are skipped
@@ -447,6 +461,14 @@ def main():
             part_name = str(t.TreasurePartName) if t.TreasurePartName else ''
             item_lot_id = int(t.ItemLotID)
             if item_lot_id <= 0 or not part_name:
+                continue
+            if part_last_lot.get(part_name) != item_lot_id:
+                # Overridden by a later Treasure event on the same part —
+                # never awarded in-game. Keep it out of enrich too.
+                unreachable_only_lots.add(item_lot_id)
+                print(f"  skipping overridden treasure lot {item_lot_id} on "
+                      f"{map_info['map']}/{part_name} (part's final lot = "
+                      f"{part_last_lot.get(part_name)})")
                 continue
             if part_name in live_positions:
                 bucket, pos = 'live', live_positions[part_name]
@@ -648,7 +670,7 @@ def main():
     for emevd_path in sorted(emevd_dir.glob('*.emevd.dcx')):
         map_name = emevd_path.name.replace('.emevd.dcx', '')
         try:
-            tmp2 = os.path.join(tempfile.gettempdir(), '_mfg_emevd.tmp')
+            tmp2 = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_mfg_emevd.tmp')
             SysFile.WriteAllBytes(tmp2, SoulsFormats.DCX.Decompress(str(emevd_path)).ToArray())
             emevd = _emevd_read.Invoke(None, Array[Object]([tmp2]))
             os.unlink(tmp2)
@@ -686,7 +708,7 @@ def main():
         if not map_info or map_info['p3'] == 99:
             continue
         try:
-            tmp2 = os.path.join(tempfile.gettempdir(), '_mfg_msb2.tmp')
+            tmp2 = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_mfg_msb2.tmp')
             SysFile.WriteAllBytes(tmp2, SoulsFormats.DCX.Decompress(str(msb_path)).ToArray())
             msb = _read_from_bytes(_msbe_read, SoulsFormats.DCX.Decompress(str(msb_path)), '.msb')
         except:
@@ -757,7 +779,7 @@ def main():
     common_path = ERR_MOD_DIR / 'event' / 'common.emevd.dcx'
     if common_path.exists():
         try:
-            tmp_c = os.path.join(tempfile.gettempdir(), '_mfg_common.tmp')
+            tmp_c = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_mfg_common.tmp')
             SysFile.WriteAllBytes(tmp_c, SoulsFormats.DCX.Decompress(str(common_path)).ToArray())
             common_em = _emevd_read.Invoke(None, Array[Object]([tmp_c]))
             os.unlink(tmp_c)
@@ -788,7 +810,7 @@ def main():
         if map_name in ('common', 'common_func'):
             continue
         try:
-            tmp2 = os.path.join(tempfile.gettempdir(), '_mfg_emevd2.tmp')
+            tmp2 = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_mfg_emevd2.tmp')
             SysFile.WriteAllBytes(tmp2, SoulsFormats.DCX.Decompress(str(emevd_path)).ToArray())
             emevd = _emevd_read.Invoke(None, Array[Object]([tmp2]))
             os.unlink(tmp2)
@@ -858,7 +880,7 @@ def main():
         if not em_path.exists():
             continue
         try:
-            tmp3 = os.path.join(tempfile.gettempdir(), '_mfg_emevd3.tmp')
+            tmp3 = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_mfg_emevd3.tmp')
             SysFile.WriteAllBytes(tmp3, SoulsFormats.DCX.Decompress(str(em_path)).ToArray())
             em = _emevd_read.Invoke(None, Array[Object]([tmp3]))
             os.unlink(tmp3)

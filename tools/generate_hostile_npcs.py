@@ -57,7 +57,7 @@ def load_paramdefs():
 def read_param(bnd, name, paramdefs):
     for f in bnd.Files:
         if name in str(f.Name):
-            tmp = os.path.join(tempfile.gettempdir(), '_hnp_p.tmp')
+            tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_hnp_p.tmp')
             SysFile.WriteAllBytes(tmp, f.Bytes.ToArray())
             p = _param_read.Invoke(None, Array[Object]([tmp]))
             os.unlink(tmp)
@@ -69,7 +69,7 @@ def read_param(bnd, name, paramdefs):
 
 
 def read_msb(path):
-    tmp = os.path.join(tempfile.gettempdir(), '_hnp_m.tmp')
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_hnp_m.tmp')
     SysFile.WriteAllBytes(tmp, SoulsFormats.DCX.Decompress(str(path)).ToArray())
     m = _msbe_read.Invoke(None, Array[Object]([tmp]))
     os.unlink(tmp)
@@ -116,6 +116,8 @@ def main():
     # Index items_database by (map, partName) → list of records (for drops + defeat flag)
     items_db_path = DATA_DIR / 'items_database.json'
     db_by_part = defaultdict(list)
+    db_by_npc = defaultdict(list)   # (map, npcParamId) — quest invaders' drop
+                                    # records often sit under a different part
     if items_db_path.exists():
         with open(items_db_path, encoding='utf-8') as f:
             for entry in json.load(f):
@@ -123,6 +125,54 @@ def main():
                 key = (entry.get('map'), entry.get('partName'))
                 if key[0] and key[1]:
                     db_by_part[key].append(entry)
+                npc_id = int(entry.get('npcParamId', 0) or 0)
+                if key[0] and npc_id > 0:
+                    db_by_npc[(key[0], npc_id)].append(entry)
+
+    # Curated quest-invader overrides (committed repo data, profile-independent;
+    # decompile-verified flags/positions for invaders outside the 90005792
+    # template — e.g. the Knight of the Great Jar trio).
+    overrides_path = config.PROJECT_DIR / 'data' / 'quest_invader_overrides.json'
+    quest_overrides = {}
+    if overrides_path.exists():
+        with open(overrides_path, encoding='utf-8') as f:
+            quest_overrides = {int(k): v for k, v in json.load(f).items()
+                               if not k.startswith('_')}
+
+    # entity -> defeat flag, harvested from EMEVD initializations of common
+    # event 90005792 "[Common] Hostile NPC_Defeated" (X0_4 = defeat flag set
+    # on death, X12_4 = character entity, X16_4 = award lot). Unlike the
+    # items_database route this also covers invaders WITHOUT a drop lot
+    # (the event awards nothing but still sets the flag).
+    import struct as _struct
+    _emevd_read = asm.GetType('SoulsFormats.EMEVD').GetMethod('Read',
+        BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy,
+        None, Array[SysType]([_str_type]), None)
+    ent_defeat_flag = {}
+    event_dir = config.require_err_mod_dir() / 'event'
+    for ep in sorted(event_dir.glob('*.emevd.dcx')):
+        try:
+            data = SoulsFormats.DCX.Decompress(str(ep)).ToArray()
+            tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_hnp.emevd')
+            SysFile.WriteAllBytes(tmp, data)
+            em = _emevd_read.Invoke(None, Array[Object]([tmp]))
+        except Exception:
+            continue
+        for ev in em.Events:
+            for ins in ev.Instructions:
+                if int(ins.Bank) != 2000 or int(ins.ID) not in (0, 6):
+                    continue
+                args = bytes(ins.ArgData)
+                if len(args) < 8 + 16:
+                    continue
+                if _struct.unpack_from('<I', args, 4)[0] != 90005792:
+                    continue
+                blob = args[8:]
+                flag = _struct.unpack_from('<I', blob, 0)[0]   # X0_4
+                ent = _struct.unpack_from('<I', blob, 12)[0]   # X12_4
+                if ent > 0 and flag > 0:
+                    ent_defeat_flag.setdefault(ent, flag)
+    print(f'  {len(ent_defeat_flag)} entity->defeat-flag pairs from 90005792 inits')
 
     msb_dir = config.require_err_mod_dir() / 'map' / 'MapStudio'
     records = []
@@ -150,18 +200,49 @@ def main():
             pos = e.Position
             area, gx, gz = map_to_area(map_name)
 
-            # Lookup drops + defeat flag from items_database
+            # Lookup drops + defeat flag from items_database. Preferred: the
+            # explicit invader-defeat flag (ERR template 90005792). Fallback:
+            # the drop lot's acquisition flag (eventFlag) — the lot is awarded
+            # the moment the invader dies, so its flag doubles as a kill flag.
+            # This is the only per-invader flag available in vanilla, and it
+            # also covers the ERR invaders the template scan misses.
             db_entries = db_by_part.get((map_name, part_name), [])
-            defeat_flag = 0
-            for db_e in db_entries:
-                if db_e.get('defeatFlag', 0) > 0:
-                    defeat_flag = int(db_e['defeatFlag'])
-                    break
+            defeat_flag = ent_defeat_flag.get(entity, 0)
+            if defeat_flag <= 0:
+                for db_e in db_entries:
+                    if db_e.get('defeatFlag', 0) > 0:
+                        defeat_flag = int(db_e['defeatFlag'])
+                        break
+            if defeat_flag <= 0:
+                for db_e in db_entries:
+                    ef = int(db_e.get('eventFlag', 0) or 0)
+                    if ef > 0:
+                        defeat_flag = ef
+                        break
+            if defeat_flag <= 0:
+                # Quest invaders: drop record may sit under a different part
+                # name — match by (map, npcParamId) and use the drop's
+                # acquisition flag (set when the kill awards the lot).
+                for db_e in db_by_npc.get((map_name, npc), []):
+                    ef = int(db_e.get('defeatFlag', 0) or 0) or int(db_e.get('eventFlag', 0) or 0)
+                    if ef > 0:
+                        defeat_flag = ef
+                        break
+
+            # Curated override: flag and/or marker position (duel-sign spot
+            # instead of the parked character part).
+            pos_x, pos_y, pos_z = float(pos.X), float(pos.Y), float(pos.Z)
+            ov = quest_overrides.get(entity)
+            if ov:
+                if ov.get('flag'):
+                    defeat_flag = int(ov['flag'])
+                if 'x' in ov:
+                    pos_x, pos_y, pos_z = float(ov['x']), float(ov['y']), float(ov['z'])
 
             records.append({
                 'entity': entity, 'npc': npc, 'nameId': name_id,
                 'map': map_name, 'area': area, 'gx': gx, 'gz': gz,
-                'x': float(pos.X), 'y': float(pos.Y), 'z': float(pos.Z),
+                'x': pos_x, 'y': pos_y, 'z': pos_z,
                 'model': str(e.ModelName) if hasattr(e, 'ModelName') else '',
                 'defeatFlag': defeat_flag, 'partName': part_name,
             })

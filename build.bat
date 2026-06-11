@@ -21,22 +21,33 @@ if not defined VS_INSTALL (
 )
 set "VS_PATH=%VS_INSTALL%\Common7\Tools\VsDevCmd.bat"
 
-REM Build profile: default = ERR; pass "--vanilla" (any position) = vanilla.
-REM   ERR:     data/, src/generated, build/, pre-release/
-REM   vanilla: data/vanilla, src/generated_vanilla, build-vanilla/, pre-release-vanilla/
+REM Build profile: default = ERR; pass "--vanilla" or "--convergence" (any position).
+REM   ERR:         data/, src/generated, build/, pre-release/
+REM   vanilla:     data/vanilla, src/generated_vanilla, build-vanilla/, pre-release-vanilla/
+REM   convergence: data/convergence, src/generated_convergence, build-convergence/, pre-release-convergence/
 REM MFG_PROFILE is exported so build_pipeline.py + config.py pick the data source.
 set "GEN_SUBDIR=generated"
 set "PKG_PREFIX=ERR"
 set "SNAP_DIR=%SCRIPT_DIR%pre-release"
 set "DISP_PROFILE=err"
 set "README_SRC=%SCRIPT_DIR%assets\README.txt"
+set "GFX_SRC=%SCRIPT_DIR%assets\menu\02_120_worldmap_new.gfx"
 echo %*| findstr /i /c:"--vanilla" >nul && set "MFG_PROFILE=vanilla"
-if defined MFG_PROFILE set "BUILD_DIR=%SCRIPT_DIR%build-vanilla"
-if defined MFG_PROFILE set "GEN_SUBDIR=generated_vanilla"
-if defined MFG_PROFILE set "PKG_PREFIX=Vanilla"
-if defined MFG_PROFILE set "SNAP_DIR=%SCRIPT_DIR%pre-release-vanilla"
-if defined MFG_PROFILE set "DISP_PROFILE=vanilla"
-if defined MFG_PROFILE set "README_SRC=%SCRIPT_DIR%assets\README_vanilla.txt"
+echo %*| findstr /i /c:"--convergence" >nul && set "MFG_PROFILE=convergence"
+if "%MFG_PROFILE%"=="vanilla" set "BUILD_DIR=%SCRIPT_DIR%build-vanilla"
+if "%MFG_PROFILE%"=="vanilla" set "GEN_SUBDIR=generated_vanilla"
+if "%MFG_PROFILE%"=="vanilla" set "PKG_PREFIX=Vanilla"
+if "%MFG_PROFILE%"=="vanilla" set "SNAP_DIR=%SCRIPT_DIR%pre-release-vanilla"
+if "%MFG_PROFILE%"=="vanilla" set "DISP_PROFILE=vanilla"
+if "%MFG_PROFILE%"=="vanilla" set "README_SRC=%SCRIPT_DIR%assets\README_vanilla.txt"
+if "%MFG_PROFILE%"=="vanilla" set "GFX_SRC=%SCRIPT_DIR%assets\menu\02_120_worldmap_vanilla.gfx"
+if "%MFG_PROFILE%"=="convergence" set "BUILD_DIR=%SCRIPT_DIR%build-convergence"
+if "%MFG_PROFILE%"=="convergence" set "GEN_SUBDIR=generated_convergence"
+if "%MFG_PROFILE%"=="convergence" set "PKG_PREFIX=Convergence"
+if "%MFG_PROFILE%"=="convergence" set "SNAP_DIR=%SCRIPT_DIR%pre-release-convergence"
+if "%MFG_PROFILE%"=="convergence" set "DISP_PROFILE=convergence"
+if "%MFG_PROFILE%"=="convergence" set "README_SRC=%SCRIPT_DIR%assets\README_convergence.txt"
+if "%MFG_PROFILE%"=="convergence" set "GFX_SRC=%SCRIPT_DIR%assets\menu\02_120_worldmap_convergence.gfx"
 echo [PROFILE] %DISP_PROFILE%  build=%BUILD_DIR%  gen=%GEN_SUBDIR%
 
 if /i "%~1"=="clean" goto :clean
@@ -222,10 +233,10 @@ exit /b 0
 
 :package
 REM %1 = target root dir. Lays out the package per profile.
-REM   ERR     : <root>\dll\offline\{dll,ini} + <root>\addons\MapForGoblins\menu\gfx
-REM   vanilla : <root>\MapForGoblins\{dll,ini} + <root>\MapForGoblins\menu\gfx
-REM The ini is GENERATED from the in-code schema via mfg_inigen (vanilla build
-REM passes --vanilla to omit ERR-only sections), not copied.
+REM   ERR              : <root>\dll\offline\{dll,ini} + <root>\addons\MapForGoblins\menu\gfx
+REM   vanilla/convergence : <root>\MapForGoblins\{dll,ini} + <root>\MapForGoblins\menu\gfx
+REM The ini is GENERATED from the in-code schema via mfg_inigen (non-ERR builds
+REM pass --vanilla to omit ERR-only sections), not copied.
 set "PKG_ROOT=%~1"
 set "INIGEN=%BUILD_DIR%\Release\mfg_inigen.exe"
 if not exist "%INIGEN%" set "INIGEN=%BUILD_DIR%\Debug\mfg_inigen.exe"
@@ -235,13 +246,14 @@ if not exist "%INIGEN%" (
 )
 if exist "%PKG_ROOT%" rmdir /s /q "%PKG_ROOT%"
 if defined MFG_PROFILE (
-    REM vanilla gfx = vanilla base + our icon frames (tools/build_vanilla_gfx.py),
-    REM NOT the ERR-based _new.gfx (that one carries ERR's re-iconed markers +
-    REM references to ERR-only textures absent from vanilla 01_common).
+    REM non-ERR gfx = that game's own worldmap base + our icon frames
+    REM (tools/build_vanilla_gfx.py), NOT the ERR-based _new.gfx (that one
+    REM carries re-iconed markers + references to textures absent elsewhere).
+    REM GFX_SRC is set per profile at the top of this script.
     mkdir "%PKG_ROOT%\MapForGoblins\menu" 2>nul
     copy /Y "%BUILD_DIR%\Release\MapForGoblins.dll" "%PKG_ROOT%\MapForGoblins\" >nul
     "%INIGEN%" "%PKG_ROOT%\MapForGoblins\MapForGoblins.ini" --vanilla
-    copy /Y "%SCRIPT_DIR%assets\menu\02_120_worldmap_vanilla.gfx" "%PKG_ROOT%\MapForGoblins\menu\02_120_worldmap.gfx" >nul
+    copy /Y "%GFX_SRC%" "%PKG_ROOT%\MapForGoblins\menu\02_120_worldmap.gfx" >nul
     copy /Y "%SCRIPT_DIR%LICENSE.txt" "%PKG_ROOT%\" >nul
 ) else (
     mkdir "%PKG_ROOT%\dll\offline" 2>nul

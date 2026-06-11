@@ -45,7 +45,7 @@ def _load_emevd(map_name):
         _emevd_cache[map_name] = None
         return None
     data = SoulsFormats.DCX.Decompress(str(p)).ToArray()
-    tmp = os.path.join(tempfile.gettempdir(), '_broken.emevd')
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_broken.emevd')
     SysFile.WriteAllBytes(tmp, data)
     em = _emevd_read.Invoke(None, Array[Object]([tmp]))
     _emevd_cache[map_name] = em

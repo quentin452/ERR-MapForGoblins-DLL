@@ -17,21 +17,36 @@ PROJECT_DIR = TOOLS_DIR.parent
 
 # ── Build profile ────────────────────────────────────────────────────────
 # Selected via the MFG_PROFILE env var (set by build_pipeline.py / build.bat).
-#   'err'     -> data source = the ERR mod (default; behaves exactly as before)
-#   'vanilla' -> data source = the vanilla game files (UXM-unpacked GAME_DIR)
-# The vanilla profile scopes all generated artifacts under their own dirs so
-# the two builds never clobber each other.
+#   'err'         -> data source = the ERR mod (default; behaves exactly as before)
+#   'vanilla'     -> data source = the vanilla game files (UXM-unpacked GAME_DIR)
+#   'convergence' -> data source = a MERGED view of The Convergence's mod
+#                    overlay over the vanilla game (the overlay is partial —
+#                    608/1347 MSBs — so tools/prepare_merged_src.py stages
+#                    overlay-over-vanilla into data/convergence/merged_src,
+#                    reproducing what ModEngine2 serves the game at runtime)
+# Each non-default profile scopes all generated artifacts under its own dirs
+# so the builds never clobber each other.
 PROFILE = os.environ.get("MFG_PROFILE", "err").strip().lower()
-if PROFILE not in ("err", "vanilla"):
+if PROFILE not in ("err", "vanilla", "convergence"):
     PROFILE = "err"
 
 # Profile-scoped intermediate/generated data dir.
-if PROFILE == "vanilla":
-    DATA_DIR = PROJECT_DIR / "data" / "vanilla"
-    GENERATED_DIR = PROJECT_DIR / "src" / "generated_vanilla"
-else:
+if PROFILE == "err":
     DATA_DIR = PROJECT_DIR / "data"
     GENERATED_DIR = PROJECT_DIR / "src" / "generated"
+else:
+    DATA_DIR = PROJECT_DIR / "data" / PROFILE
+    GENERATED_DIR = PROJECT_DIR / "src" / ("generated_" + PROFILE)
+
+# Sprite-171 icon frame offset for the active profile. Our custom icon frames
+# occupy 349-440 on the ERR/vanilla worldmap gfx. The Convergence's own
+# 02_120_worldmap.gfx ALREADY extends sprite 171 to 756 frames (408 icons of
+# its own), so there our frames are appended after theirs and every baked
+# iconId in 349-440 shifts by (756 - 348). tools/build_vanilla_gfx.py
+# verifies this constant against the actual base gfx when building the
+# merged worldmap. Applied centrally in generate_data.py.
+OUR_ICON_RANGE = (349, 440)
+ICON_FRAME_OFFSET = 408 if PROFILE == "convergence" else 0
 
 # Local project resources (no user config needed)
 LIB_DIR = TOOLS_DIR / "lib"
@@ -42,6 +57,7 @@ OO2CORE_DLL = None  # resolved from GAME_DIR below
 # User-configured paths
 ERR_MOD_DIR = None
 GAME_DIR = None
+CONVERGENCE_MOD_DIR = None  # The Convergence's ME2 'mod' overlay dir
 SMITHBOX_DIR = None
 DARKSCRIPT_RESOURCES = None  # path to <DarkScript3>/Resources/ (optional)
 
@@ -59,6 +75,10 @@ if _config_path.exists():
     if _game:
         GAME_DIR = Path(_game)
 
+    _conv = _cfg.get("paths", "convergence_mod_dir", fallback="").strip()
+    if _conv:
+        CONVERGENCE_MOD_DIR = Path(_conv)
+
     _sb = _cfg.get("paths", "smithbox_dir", fallback="").strip()
     if _sb:
         SMITHBOX_DIR = Path(_sb)
@@ -72,14 +92,21 @@ if GAME_DIR:
 
 # Active game-data source for the selected profile. The pipeline reads
 # regulation.bin / map / event / msg from here. For 'vanilla' this is the
-# UXM-unpacked vanilla game; for 'err' it is the ERR mod overlay.
-DATA_SRC_DIR = GAME_DIR if PROFILE == "vanilla" else ERR_MOD_DIR
+# UXM-unpacked vanilla game; for 'err' it is the ERR mod overlay; for
+# 'convergence' it is the staged merged dir (overlay-over-vanilla, built by
+# tools/prepare_merged_src.py as the first pipeline stage).
+if PROFILE == "vanilla":
+    DATA_SRC_DIR = GAME_DIR
+elif PROFILE == "convergence":
+    DATA_SRC_DIR = DATA_DIR / "merged_src"
+else:
+    DATA_SRC_DIR = ERR_MOD_DIR
 
-# In the vanilla profile the "mod" IS the vanilla game, so repoint ERR_MOD_DIR
-# to the active source. This makes the many scripts that read
+# In the non-ERR profiles the "mod" IS the active source, so repoint
+# ERR_MOD_DIR to it. This makes the many scripts that read
 # `config.ERR_MOD_DIR` directly (regulation/MSB/msg) profile-correct without
 # touching each of them. In the err profile it is unchanged.
-if PROFILE == "vanilla":
+if PROFILE != "err":
     ERR_MOD_DIR = DATA_SRC_DIR
 
 
@@ -93,6 +120,10 @@ def require_data_src_dir():
     if PROFILE == "vanilla":
         print("ERROR: vanilla profile needs a UXM-unpacked game_dir.")
         print(f"  Set game_dir in {_config_path} (must contain loose regulation.bin, map/, event/, msg/).")
+    elif PROFILE == "convergence":
+        print("ERROR: convergence merged source dir not staged yet.")
+        print(f"  Set convergence_mod_dir in {_config_path}, then run tools/prepare_merged_src.py")
+        print("  (build_pipeline.py runs it automatically as the first stage).")
     else:
         print("ERROR: ERR mod directory not configured or not found.")
         print(f"  Create {_config_path} from config.ini.example and set err_mod_dir.")

@@ -34,7 +34,7 @@ _param_read = asm.GetType('SoulsFormats.PARAM').GetMethod('Read',
 
 def load_emevd(path):
     data = SoulsFormats.DCX.Decompress(str(path)).ToArray()
-    tmp = os.path.join(tempfile.gettempdir(), '_mfg_emevd.tmp')
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_mfg_emevd.tmp')
     SysFile.WriteAllBytes(tmp, data)
     e = _emevd_read.Invoke(None, Array[Object]([tmp]))
     os.unlink(tmp)
@@ -51,7 +51,7 @@ def load_lot_ids():
     for f in bnd.Files:
         fn = str(f.Name)
         if 'ItemLotParam_map' in fn:
-            tmp = os.path.join(tempfile.gettempdir(), '_mfg_p.tmp')
+            tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_mfg_p.tmp')
             # f.Bytes is Memory<byte>; need ToArray()
             arr = f.Bytes.ToArray() if hasattr(f.Bytes, 'ToArray') else f.Bytes
             SysFile.WriteAllBytes(tmp, arr)
@@ -60,7 +60,7 @@ def load_lot_ids():
             for row in p.Rows:
                 map_lots.add(int(row.ID))
         elif 'ItemLotParam_enemy' in fn:
-            tmp = os.path.join(tempfile.gettempdir(), '_mfg_p.tmp')
+            tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_mfg_p.tmp')
             # f.Bytes is Memory<byte>; need ToArray()
             arr = f.Bytes.ToArray() if hasattr(f.Bytes, 'ToArray') else f.Bytes
             SysFile.WriteAllBytes(tmp, arr)

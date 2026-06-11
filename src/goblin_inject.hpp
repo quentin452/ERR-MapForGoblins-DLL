@@ -12,6 +12,12 @@ namespace goblin
     // sanitize_injected_textids() after the FMG bank is built.
     const std::vector<uint8_t *> &injected_row_ptrs();
 
+    // Rewrites rows baked with a primary completion flag to its alternative
+    // once the alternative flag turns on (quest fights with two mutually-
+    // exclusive outcome flags, e.g. the Sellen/Jerren academy battle).
+    // Called periodically from the refresh loop.
+    void apply_flag_or_pairs();
+
     // Toggle the WorldMapPointParam swap between vanilla and expanded states.
     // Used as an ERSC-hosting workaround: revert before host, re-apply after.
     void set_param_injection_active(bool active);

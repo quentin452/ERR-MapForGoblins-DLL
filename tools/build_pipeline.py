@@ -25,7 +25,7 @@ def _parse_profile(argv):
 
 
 PROFILE = _parse_profile(sys.argv[1:])
-if PROFILE not in ('err', 'vanilla'):
+if PROFILE not in ('err', 'vanilla', 'convergence'):
     PROFILE = 'err'
 os.environ['MFG_PROFILE'] = PROFILE  # propagate to every child subprocess
 
@@ -33,11 +33,17 @@ import config
 
 REPO = Path(__file__).resolve().parent.parent
 TOOLS = REPO / 'tools'
-DATA = config.DATA_DIR                 # data/ (err) or data/vanilla/ (vanilla)
+DATA = config.DATA_DIR                 # data/ (err) or data/<profile>/ otherwise
 DATA.mkdir(parents=True, exist_ok=True)
 CACHE_FILE = DATA / '.build_cache.json'
 
-ERR_MOD = config.require_err_mod_dir()  # profile-aware: ERR mod or vanilla game
+# The convergence source is a STAGED dir (built by the prepare_merged_src
+# stage below) — create it up front so require_err_mod_dir passes on the
+# very first run; the stage then populates it before anything reads it.
+if PROFILE == 'convergence':
+    config.DATA_SRC_DIR.mkdir(parents=True, exist_ok=True)
+
+ERR_MOD = config.require_err_mod_dir()  # profile-aware: mod overlay / vanilla game / merged dir
 MSB_DIR = ERR_MOD / 'map' / 'MapStudio'
 EVENT_DIR = ERR_MOD / 'event'
 REGULATION = ERR_MOD / 'regulation.bin'
@@ -48,7 +54,10 @@ GENERATED_CPP = config.GENERATED_DIR   # src/generated or src/generated_vanilla
 
 # Stages that only make sense for the ERR mod (their source assets/items do
 # not exist in vanilla). Dropped from the vanilla pipeline.
-ERR_ONLY_STAGES = {'generate_pieces_massedit', 'generate_kindling_spirits'}
+ERR_ONLY_STAGES = {'generate_pieces_massedit', 'generate_kindling_spirits',
+                   'extract_rune_positions', 'extract_itemlot_csv'}
+
+MENU_MSGBND = ERR_MOD / 'msg' / 'engus' / 'menu_dlc02.msgbnd.dcx'
 
 
 # ── Hashing ──
@@ -131,6 +140,48 @@ class Stage:
 COMMON = ['config.py', 'massedit_common.py']
 
 STAGES = [
+    # Source-table extractors: regenerate the category/codex/placename tables
+    # from the active profile's game data (these used to be committed one-off
+    # snapshots; now they stay fresh and exist for the vanilla profile too).
+    Stage('extract_goods_categories',
+          inputs=[REGULATION, config.PARAMDEF_DIR],
+          outputs=[DATA / 'goods_sort_groups.json',
+                   DATA / 'goods_crafting_ids.json',
+                   DATA / 'goods_sorcery_ids.json',
+                   DATA / 'goods_incantation_ids.json',
+                   DATA / 'goods_spirit_ash_ids.json'],
+          script='extract_goods_categories.py',
+          also_scripts=['config.py']),
+
+    Stage('extract_tutorial_codex',
+          inputs=[MENU_MSGBND],
+          outputs=[DATA / 'tutorial_title_ids.json',
+                   DATA / 'tutorial_title_names.json',
+                   DATA / 'enemy_tutorial_mapping.json'],
+          script='extract_tutorial_codex.py',
+          also_scripts=['config.py']),
+
+    Stage('extract_placename_dump',
+          inputs=[MSGBND],
+          outputs=[DATA / 'PlaceName_engus.json'],
+          script='extract_placename_dump.py',
+          also_scripts=['config.py']),
+
+    # ERR-only: Rune/Ember Piece positions from ERR MSBs (AEG099_821/822).
+    Stage('extract_rune_positions',
+          inputs=[MSB_DIR],
+          outputs=[DATA / 'rune_pieces.json',
+                   DATA / 'ember_pieces.json'],
+          script='extract_rune_positions.py',
+          also_scripts=['config.py']),
+
+    # ERR-only: ItemLotParam_map CSV dump (consumed by generate_pieces_massedit).
+    Stage('extract_itemlot_csv',
+          inputs=[REGULATION, config.PARAMDEF_DIR],
+          outputs=[DATA / 'ItemLotParam_map.csv'],
+          script='extract_itemlot_csv.py',
+          also_scripts=['config.py']),
+
     Stage('extract_items',
           # emevd_lot_mapping is NOT read by extract_all_items, but listed as an input
           # on purpose: enrich_fallback mutates items_database.json IN PLACE using the
@@ -141,14 +192,7 @@ STAGES = [
           inputs=[REGULATION, MSB_DIR, MSGBND, config.PARAMDEF_DIR,
                   DATA / 'emevd_lot_mapping.json'],
           outputs=[DATA / 'items_database.json',
-                   DATA / 'goods_sort_groups.json',
-                   DATA / 'goods_crafting_ids.json',
-                   DATA / 'goods_sorcery_ids.json',
-                   DATA / 'goods_incantation_ids.json',
-                   DATA / 'goods_spirit_ash_ids.json',
-                   DATA / 'tutorial_title_ids.json',
-                   DATA / 'tutorial_title_names.json',
-                   DATA / 'enemy_tutorial_mapping.json',
+                   DATA / 'npc_name_ids.json',
                    DATA / 'unreachable_msb_lots.json'],
           script='extract_all_items.py',
           also_scripts=['unreachable.py'] + COMMON),
@@ -180,7 +224,7 @@ STAGES = [
           also_scripts=['config.py']),
 
     Stage('generate_boss_list',
-          inputs=[REGULATION, MSB_DIR, MSGBND],
+          inputs=[REGULATION, MSB_DIR, MSGBND, EVENT_DIR],
           outputs=[DATA / 'boss_list.json'],
           script='generate_boss_list.py',
           also_scripts=['extract_all_items.py'] + COMMON),
@@ -312,7 +356,9 @@ STAGES = [
           also_scripts=['massedit_common.py', 'config.py']),
 
     Stage('generate_hostile_npcs',
-          inputs=[REGULATION, MSB_DIR, config.PARAMDEF_DIR],
+          inputs=[REGULATION, MSB_DIR, config.PARAMDEF_DIR, EVENT_DIR,
+                  DATA / 'items_database.json',
+                  REPO / 'data' / 'quest_invader_overrides.json'],
           outputs=[MASSEDIT_OUT / 'World - Hostile NPC.MASSEDIT'],
           script='generate_hostile_npcs.py',
           also_scripts=['massedit_common.py', 'config.py']),
@@ -339,7 +385,8 @@ STAGES = [
     # Must run AFTER generate_data (reads the baked goblin_map_data.cpp).
     Stage('generate_location_overrides',
           inputs=[GENERATED_CPP / 'goblin_map_data.cpp', MSB_DIR,
-                  DATA / 'WorldMapPointParam.json', DATA / 'grace_position_index.json'],
+                  DATA / 'WorldMapPointParam.json', DATA / 'grace_position_index.json',
+                  DATA / 'PlaceName_engus.json'],
           outputs=[GENERATED_CPP / 'goblin_location_alt.cpp',
                    GENERATED_CPP / 'goblin_location_alt.hpp'],
           script='generate_location_overrides.py',
@@ -347,10 +394,34 @@ STAGES = [
 ]
 
 
-# Vanilla-only bootstrap stages: regenerate, from vanilla game data, the
-# committed inputs that ship pre-extracted for ERR (they don't exist under
-# data/vanilla/). Run before the stages that consume them. For the err
-# profile these are NOT added (the committed copies are authoritative).
+# Convergence-only: stage the merged overlay-over-vanilla source dir FIRST
+# (everything else reads from it). Defined lazily — CONVERGENCE_MOD_DIR is
+# None in the other profiles.
+def _convergence_prepare_stage():
+    conv = config.CONVERGENCE_MOD_DIR
+    if not conv or not conv.exists():
+        print('ERROR: convergence profile needs convergence_mod_dir in tools/config.ini')
+        sys.exit(1)
+    game = config.require_game_dir()
+    return Stage('prepare_merged_src',
+                 inputs=[conv / 'regulation.bin',
+                         conv / 'msg' / 'engus',
+                         conv / 'map' / 'MapStudio',
+                         conv / 'event',
+                         game / 'map' / 'mapstudio',
+                         game / 'event',
+                         game / 'msg' / 'engus'],
+                 outputs=[ERR_MOD / 'regulation.bin',
+                          ERR_MOD / '.merge_manifest.json'],
+                 script='prepare_merged_src.py',
+                 also_scripts=['config.py'])
+
+
+# Non-ERR bootstrap stages: regenerate, from the active profile's game data,
+# the committed inputs that ship pre-extracted for ERR (they don't exist under
+# data/vanilla/ or data/convergence/). Run before the stages that consume
+# them. For the err profile these are NOT added (the committed copies are
+# authoritative).
 VANILLA_BOOTSTRAP = [
     Stage('extract_param_bootstrap',
           inputs=[REGULATION, MSGBND],
@@ -383,11 +454,15 @@ VANILLA_BOOTSTRAP = [
 def active_stages():
     """The stage list for the selected profile.
 
-    err:     the full STAGES list, unchanged (committed inputs are used as-is).
-    vanilla: bootstrap extractors first, then STAGES minus the ERR-only ones.
+    err:         the full STAGES list, unchanged (committed inputs are used as-is).
+    vanilla:     bootstrap extractors first, then STAGES minus the ERR-only ones.
+    convergence: merged-source staging, then the same as vanilla.
     """
     if PROFILE == 'vanilla':
         return VANILLA_BOOTSTRAP + [s for s in STAGES if s.name not in ERR_ONLY_STAGES]
+    if PROFILE == 'convergence':
+        return ([_convergence_prepare_stage()] + VANILLA_BOOTSTRAP
+                + [s for s in STAGES if s.name not in ERR_ONLY_STAGES])
     return STAGES
 
 

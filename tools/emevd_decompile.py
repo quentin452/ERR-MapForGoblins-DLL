@@ -124,7 +124,7 @@ def msb_entity_name(map_name, entity_id, model_names):
             return None
         try:
             data = SoulsFormats.DCX.Decompress(str(p)).ToArray()
-            tmp = os.path.join(tempfile.gettempdir(), '_dec.msb')
+            tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_dec.msb')
             SysFile.WriteAllBytes(tmp, data)
             msb = _msbe_read.Invoke(None, Array[Object]([tmp]))
         except Exception:
@@ -163,7 +163,7 @@ def msb_entity_name(map_name, entity_id, model_names):
 # ── EMEVD I/O ──
 def load_emevd(path):
     data = SoulsFormats.DCX.Decompress(str(path)).ToArray()
-    tmp = os.path.join(tempfile.gettempdir(), '_dec.emevd')
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_dec.emevd')
     SysFile.WriteAllBytes(tmp, data)
     return _emevd_read.Invoke(None, Array[Object]([tmp]))
 

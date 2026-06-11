@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.28.1)
 set(CMAKE_GENERATOR_PLATFORM x64)
 
 project( MapForGoblins
-  VERSION   "1.0.15"
+  VERSION   "1.0.16"
   LANGUAGES CXX)
 
 if(NOT DEFINED VERSION_PRE)
@@ -96,8 +96,9 @@ add_library( MapForGoblins SHARED
 
 set_target_properties(MapForGoblins PROPERTIES OUTPUT_NAME "MapForGoblins")
 
-# Vanilla bake: omit + disable ERR-only config entries at runtime.
-if(GENERATED_SUBDIR STREQUAL "generated_vanilla")
+# Non-ERR bakes (vanilla, convergence): omit + disable ERR-only config
+# entries at runtime. MFG_VANILLA here means "no ERR-only features".
+if(NOT GENERATED_SUBDIR STREQUAL "generated")
   target_compile_definitions(MapForGoblins PRIVATE MFG_VANILLA=1)
 endif()
 

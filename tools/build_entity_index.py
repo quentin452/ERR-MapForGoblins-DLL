@@ -25,7 +25,7 @@ _msbe_read = asm.GetType('SoulsFormats.MSBE').GetMethod('Read',
 
 def load_msb(path):
     data = SoulsFormats.DCX.Decompress(str(path)).ToArray()
-    tmp = os.path.join(tempfile.gettempdir(), '_mfg_msb.msb')
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_mfg_msb.msb')
     SysFile.WriteAllBytes(tmp, data)
     m = _msbe_read.Invoke(None, Array[Object]([tmp]))
     os.unlink(tmp)

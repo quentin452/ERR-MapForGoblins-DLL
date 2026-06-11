@@ -7,6 +7,14 @@ err_mod_dir =
 # Example: C:\Steam\steamapps\common\ELDEN RING\Game
 game_dir =
 
+# Optional: path to The Convergence's ModEngine2 'mod' overlay directory
+# (contains regulation.bin, map/, event/, msg/ etc.). Only needed for the
+# convergence build profile (build.bat ... --convergence). game_dir must also
+# be set and UXM-unpacked: the overlay is partial, so the pipeline stages a
+# merged overlay-over-vanilla view first (tools/prepare_merged_src.py).
+# Example: C:\Games\ConvergenceER\mod
+convergence_mod_dir =
+
 # Optional: path to SmithBox install (only needed by some research scripts
 # under tools/_*.py — not required by the core build pipeline).
 # Example: C:\Tools\Smithbox_2_1_2_2016_02_16_a

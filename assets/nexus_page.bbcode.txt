@@ -1,15 +1,18 @@
 [color=#ff0000][size=6][b]OFFLINE ONLY[/b][/size][/color]
-[size=4][b]This mod is UNOFFICIAL.[/b] It is not affiliated with the ERR team and they don't support it.
-Do [b]NOT[/b] ask for help in the official ERR Discord while this mod is installed. Remove it first, then check whether your problem is still there. I am not responsible if you get kicked or banned.
+[size=4][b]This mod is UNOFFICIAL.[/b] It is not affiliated with the ERR team or the Convergence Team, and they don't support it.
+Do [b]NOT[/b] ask for help in the official ERR or Convergence Discords while this mod is installed. Remove it first, then check whether your problem is still there. I am not responsible if you get kicked or banned.
 For questions and bug reports - join our Discord: [url=https://discord.gg/JvTMwPCygB][b]Elden Ring - DLL Mods[/b][/url][/size]
+
+[size=5][b]Compatible with [url=https://www.nexusmods.com/eldenring/mods/510]Seamless Co-op[/url][/b][/size]
 
 [size=4][b]Description[/b][/size]
 [color=#D4D4D8]DLL version[/color] of the Map for Goblins mod. Thousands of loot and world icons on the in-game map, and [b]no regulation.bin changes[/b]: all map data gets injected into memory at runtime, so it won't conflict with other mods that edit the regulation.
 
-There are two builds on the Files tab, pick the one for your game:
+There are three builds on the Files tab, pick the one for your game:
 [list]
 [*][b]ERR version[/b], for [url=https://www.nexusmods.com/eldenring/mods/541]ERR[/url]. ~9000 icons, including the ERR-specific stuff (Rune Pieces, Ember Pieces, Kindling Spirits, unique loot etc).[/*]
-[*][b]Vanilla version[/b], for the base game + Shadow of the Erdtree. ~5000 icons, same mod, just without the ERR-only categories.[/*]
+[*][b]Vanilla version[/b], for the base game + Shadow of the Erdtree. ~6700 icons, same mod, just without the ERR-only categories.[/*]
+[*][b]Convergence version[/b], for [url=https://www.nexusmods.com/eldenring/mods/3419]The Convergence[/url]. ~7200 icons generated from the overhaul's own data, so it covers its relocated loot, new bosses and reworked zones. Matches the Convergence version it was built against (currently 2.2.3A) - after a Convergence update expect some markers to be off until this build is updated too.[/*]
 [/list]
 Based on [url=https://www.nexusmods.com/eldenring/mods/3091]Map for Goblins[/url] by Harmonixer and [url=https://github.com/Gacsam/Goblin-ERR]Goblin-ERR[/url] by Gacsam, rebuilt from scratch as a single DLL + gfx for icons.
 
@@ -69,10 +72,30 @@ mods = [
 [/list]
 Settings are in [b]MapForGoblins/MapForGoblins.ini[/b]
 
+[size=4][b]Installation - Convergence version[/b][/size]
+[list=1]
+[*]Download the Convergence file and unpack it[/*]
+[*]Copy the [b]MapForGoblins[/b] folder into your ConvergenceER folder (next to Start_Convergence.bat)[/*]
+[*]In [b]config_eldenring.toml[/b] add the DLL to external_dlls and the asset folder ABOVE the "mod" entry (first entry wins file conflicts - our world-map file already contains the Convergence map UI):
+[code]external_dlls = [
+    ...existing entries...,
+    "MapForGoblins\\MapForGoblins.dll",
+]
+
+mods = [
+    { enabled = true, name = "MapForGoblins", path = "MapForGoblins" },
+    { enabled = true, name = "mod", path = "mod" }
+][/code]
+[/*]
+[*]Launch through Start_Convergence.bat as usual[/*]
+[/list]
+Settings are in [b]MapForGoblins/MapForGoblins.ini[/b]. Note: the Convergence Launcher may rewrite config_eldenring.toml when it updates the mod - re-check the two edits after updates.
+
 [size=4][b]Requirements[/b][/size]
 [list]
 [*]ERR version: [url=https://www.nexusmods.com/eldenring/mods/541]ERR[/url] itself, nothing else. The mod loads through ERR's own loader.[/*]
 [*]Vanilla version: [url=https://github.com/garyttierney/me3/releases]ModEngine3[/url] or [url=https://github.com/soulsmods/ModEngine2/releases]ModEngine2[/url][/*]
+[*]Convergence version: an installed [url=https://www.nexusmods.com/eldenring/mods/3419]The Convergence[/url] (it ships its own ModEngine2). Shadow of the Erdtree is required by the overhaul itself.[/*]
 [*][color=#ff0000][b]OFFLINE ONLY.[/b][/color] Mod loaders disable EAC, so the "Inappropriate activity detected" message at launch is normal. Don't try to play online with mods. If you host Seamless Co-op sessions and something goes wrong, you may temporarily toggle off icons by pressing F10.[/*]
 [/list]
 
@@ -87,6 +110,7 @@ The mod is open source: [url=https://github.com/VirusAlex/ERR-MapForGoblins-DLL]
 [*][b]Harmonixer[/b] for [url=https://www.nexusmods.com/eldenring/mods/3091]Map for Goblins[/url], the original mod that started it all[/*]
 [*][b]Gacsam[/b] for [url=https://github.com/Gacsam/Goblin-ERR]Goblin-ERR[/url], which this project began as a fork of[/*]
 [*][b]Kirnifr, ividyon[/b] and the whole [url=https://www.nexusmods.com/eldenring/mods/541]ERR[/url] team for the overhaul itself. Special thanks to [b]AngryPhilosopher[/b] and [b]Spiswel[/b] for early testing[/*]
+[*]The [b]Convergence Team[/b] for [url=https://www.nexusmods.com/eldenring/mods/3419]The Convergence[/url], which the Convergence build targets[/*]
 [*][b]vawser[/b] for [url=https://github.com/vawser/Smithbox]Smithbox[/url] / SoulsFormats, used for all the data extraction[/*]
 [*][b]ThomasJClark[/b] for [url=https://github.com/ThomasJClark/elden-ring-glorious-merchant]glorious-merchant[/url], a great reference for DLL param injection[/*]
 [*][b]Dasaav-dsv[/b] (Pattern16, libER), [b]vswarte[/b] (fromsoftware-rs), [b]TsudaKageyu[/b] (MinHook), [b]gabime[/b] (spdlog), [b]metayeti[/b] (mINI)[/*]

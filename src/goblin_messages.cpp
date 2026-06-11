@@ -90,9 +90,26 @@ struct NewEntry
 };
 
 static bool patch_fmg_in_memory(uint8_t *fmg_ptr, uint8_t **slot_ptr,
-                                const std::vector<NewEntry> &new_entries,
+                                const std::vector<NewEntry> &new_entries_in,
                                 bool capture_valid_ids = false)
 {
+    // De-duplicate injected entries by id (first occurrence wins). Source FMG
+    // group tables can cover the same id twice (observed in modded msgbnds),
+    // and the two passes below (string-data append, then offset rebuild) MUST
+    // agree on exactly which entries carry new strings: a single skipped
+    // duplicate desynchronized every later string offset — labels after it
+    // showed truncated/foreign text (reported in-game under The Convergence).
+    std::vector<NewEntry> new_entries;
+    {
+        std::unordered_set<int32_t> seen;
+        new_entries.reserve(new_entries_in.size());
+        for (auto &ne : new_entries_in)
+            if (seen.insert(ne.id).second)
+                new_entries.push_back(ne);
+        if (new_entries.size() != new_entries_in.size())
+            spdlog::info("[PATCH] {} duplicate injected id(s) dropped",
+                         new_entries_in.size() - new_entries.size());
+    }
     uint32_t orig_file_size  = *reinterpret_cast<uint32_t *>(fmg_ptr + 0x04);
     uint32_t orig_group_cnt  = *reinterpret_cast<uint32_t *>(fmg_ptr + 0x0C);
     uint32_t orig_string_cnt = *reinterpret_cast<uint32_t *>(fmg_ptr + 0x10);
@@ -146,6 +163,26 @@ static bool patch_fmg_in_memory(uint8_t *fmg_ptr, uint8_t **slot_ptr,
         auto &e = all_entries[i];
         spdlog::debug("[PATCH] Entry[{}]: id={}, strOff=0x{:X}",
                       i, e.id, e.str_offset);
+    }
+
+    // Injected entries OVERRIDE pre-existing ids. Overhaul mods can pre-seed
+    // rows at ids our offset encoding also uses (The Convergence ships
+    // boss-text PlaceName rows in the 9xxM band, some with EMPTY text —
+    // observed shadowing our "Summoning Pools" label at 900301690). Keeping
+    // the old row would make the merge below skip ours, so drop it first.
+    if (!new_entries.empty())
+    {
+        std::unordered_set<int32_t> override_ids;
+        for (auto &ne : new_entries)
+            override_ids.insert(ne.id);
+        size_t before = all_entries.size();
+        all_entries.erase(std::remove_if(all_entries.begin(), all_entries.end(),
+                                         [&](const ExistingEntry &e)
+                                         { return override_ids.count(e.id) != 0; }),
+                          all_entries.end());
+        if (before != all_entries.size())
+            spdlog::info("[PATCH] {} existing FMG ids overridden by injected entries",
+                         before - all_entries.size());
     }
 
     uint64_t orig_str_data_start = orig_str_off_rel + orig_string_cnt * 8;
@@ -421,17 +458,27 @@ void goblin::setup_messages()
 
     auto **sub = reinterpret_cast<uint8_t **>(base_array[0]);
 
-    // Helper: copy entries from an FMG to PlaceName, with offset remapping
-    // needed_ids contains offset-encoded IDs; real FMG id = offset_id - offset_base
-    // The PlaceName entry is written at the offset-encoded ID
-    auto copy_fmg_entries = [&](uint8_t *fmg_ptr, const std::set<int32_t> &needed_ids,
-                                int32_t offset_base, const char *label) -> int
+    // Helper: copy entries from an FMG to PlaceName, with offset remapping.
+    // needed_ids contains offset-encoded IDs; real FMG id = offset_id - offset_base.
+    // The PlaceName entry is written at the offset-encoded ID. Satisfied ids
+    // are ERASED from needed_ids so layered calls only fill what is missing.
+    auto copy_fmg_entries = [&](uint8_t *fmg_ptr, std::set<int32_t> &needed_ids,
+                                int32_t offset_base, const char *label, int slot) -> int
     {
         if (needed_ids.empty() || !fmg_ptr) return 0;
 
         uint32_t grp_cnt = *reinterpret_cast<uint32_t *>(fmg_ptr + 0x0C);
         uint32_t str_cnt = *reinterpret_cast<uint32_t *>(fmg_ptr + 0x10);
         uint64_t raw_off = *reinterpret_cast<uint64_t *>(fmg_ptr + 0x18);
+
+        // Sanity-guard the header before walking: a stale/foreign slot pointer
+        // would otherwise send us through garbage group tables.
+        if (grp_cnt > 0x100000 || str_cnt > 0x100000 || raw_off == 0)
+        {
+            spdlog::debug("{}: slot {} header implausible (groups={}, strings={}) — skipped",
+                          label, slot, grp_cnt, str_cnt);
+            return 0;
+        }
 
         uint8_t *off_ptr = (raw_off > 0x1000000)
             ? reinterpret_cast<uint8_t *>(raw_off)
@@ -465,22 +512,48 @@ void goblin::setup_messages()
                 if (text && text[0])
                 {
                     new_entries.push_back({it->second, text});  // write at offset-encoded ID
+                    needed_ids.erase(it->second);
+                    // also drop from the reverse map: FMG group tables can
+                    // cover the same id twice — never push it twice
+                    real_to_offset.erase(it);
                     copied++;
                 }
             }
         }
-        spdlog::info("Copied {} {} entries to PlaceName", copied, label);
+        if (copied)
+            spdlog::info("Copied {} {} entries to PlaceName (slot {})", copied, label, slot);
         return copied;
     };
 
-    // Read GoodsName FMG (slot 10): goods items, offset 500M
-    if (!goods_ids_needed.empty() && 10 < count2 && sub[10])
-        copy_fmg_entries(sub[10], goods_ids_needed, 500000000, "GoodsName");
-
-    // Read WeaponName FMG (slot 11): ammo (offset=0, id>=50M) + weapons (offset=100M)
-    if (11 < count2 && sub[11])
+    // The runtime keeps every msgbnd FMG layer in its OWN MsgRepository slot
+    // (base / _dlc01 / _dlc02) and merges them at LOOKUP time, highest layer
+    // first — verified live: WeaponName base slot 11 does NOT contain ids that
+    // ship in WeaponName_dlc01 (slot 310). Overhaul mods (The Convergence) put
+    // their added strings in the DLC layers, so the base slot alone misses
+    // them. Walk the layers in the game's lookup priority; copy_fmg_entries
+    // erases satisfied ids, so later (lower-priority) layers only fill gaps.
+    auto copy_fmg_layered = [&](std::initializer_list<int> slots,
+                                std::set<int32_t> &needed_ids,
+                                int32_t offset_base, const char *label) -> int
     {
-        // Ammo IDs are stored as-is (>=50M), weapon IDs are offset by 100M
+        int total = 0;
+        for (int slot : slots)
+        {
+            if (needed_ids.empty()) break;
+            if (slot >= count2 || !sub[slot]) continue;
+            total += copy_fmg_entries(sub[slot], needed_ids, offset_base, label, slot);
+        }
+        if (!needed_ids.empty())
+            spdlog::debug("{}: {} ids not found in any layer", label, needed_ids.size());
+        return total;
+    };
+
+    // GoodsName: base 10, dlc01 319, dlc02 419. Offset 500M.
+    copy_fmg_layered({419, 319, 10}, goods_ids_needed, 500000000, "GoodsName");
+
+    // WeaponName: base 11, dlc01 310, dlc02 410.
+    // Ammo IDs are stored as-is (>=50M), weapon IDs are offset by 100M.
+    {
         std::set<int32_t> ammo_ids, weapon_offset_ids;
         for (int32_t tid : weapon_ids_needed)
         {
@@ -489,35 +562,18 @@ void goblin::setup_messages()
             else
                 ammo_ids.insert(tid);
         }
-        if (!ammo_ids.empty())
-            copy_fmg_entries(sub[11], ammo_ids, 0, "WeaponName(ammo)");
-        if (!weapon_offset_ids.empty())
-            copy_fmg_entries(sub[11], weapon_offset_ids, 100000000, "WeaponName(weapon)");
+        copy_fmg_layered({410, 310, 11}, ammo_ids, 0, "WeaponName(ammo)");
+        copy_fmg_layered({410, 310, 11}, weapon_offset_ids, 100000000, "WeaponName(weapon)");
     }
 
-    // Read ProtectorName FMG (slot 12): armour, offset 200M
-    if (!protector_ids_needed.empty() && 12 < count2 && sub[12])
-        copy_fmg_entries(sub[12], protector_ids_needed, 200000000, "ProtectorName");
+    // ProtectorName: base 12, dlc01 313, dlc02 413. Offset 200M.
+    copy_fmg_layered({413, 313, 12}, protector_ids_needed, 200000000, "ProtectorName");
 
-    // Read AccessoryName FMG (slot 13): talismans, offset 300M
-    if (!accessory_ids_needed.empty() && 13 < count2 && sub[13])
-        copy_fmg_entries(sub[13], accessory_ids_needed, 300000000, "AccessoryName");
+    // AccessoryName: base 13, dlc01 316, dlc02 416. Offset 300M.
+    copy_fmg_layered({416, 316, 13}, accessory_ids_needed, 300000000, "AccessoryName");
 
-    // Read GemName FMG (slot 35 = FmgId::GemName): ashes of war, offset 400M
-    if (!gem_ids_needed.empty())
-    {
-        // GemName = slot 35, ArtsName = slot 42 (alternative), DLC: 322, 422
-        for (int try_slot : {35, 42, 322, 422})
-        {
-            if (try_slot >= count2 || !sub[try_slot]) continue;
-            auto copied = copy_fmg_entries(sub[try_slot], gem_ids_needed, 400000000, "GemName");
-            if (copied > 0)
-            {
-                spdlog::info("GemName: copied {} from slot {}", copied, try_slot);
-                break;
-            }
-        }
-    }
+    // GemName: base 35 (ArtsName 42 as fallback), dlc01 322, dlc02 422. Offset 400M.
+    copy_fmg_layered({422, 322, 35, 42}, gem_ids_needed, 400000000, "GemName");
 
     // TODO: EventTextForMap FMG (slots 34/367/467) is in a separate MsgRepository bank
     // (menu msgbnd, not item msgbnd). Need to find the menu bank pointer to access it.
@@ -526,23 +582,10 @@ void goblin::setup_messages()
         spdlog::warn("EventTextForMap: {} IDs requested but menu FMG bank not yet supported",
                       event_text_ids_needed.size());
 
-    // Read NpcName FMG (slots 18 + DLC 328, 428): named-NPC and boss "Characters", offset 700M.
-    // We break on first successful slot — base slot 18 typically already contains
-    // merged base+DLC entries in ER's runtime FMG layout, and trying additional
-    // DLC slots can dereference invalid pointers (see GemName precedent above).
-    if (!npc_name_ids_needed.empty())
-    {
-        for (int try_slot : {18, 328, 428})
-        {
-            if (try_slot >= count2 || !sub[try_slot]) continue;
-            auto copied = copy_fmg_entries(sub[try_slot], npc_name_ids_needed, 700000000, "NpcName");
-            if (copied > 0)
-            {
-                spdlog::info("NpcName: copied {} from slot {}", copied, try_slot);
-                break;
-            }
-        }
-    }
+    // NpcName: base 18, dlc01 328, dlc02 428. Offset 700M.
+    // (Was break-on-first-success from base 18 — that missed every id living
+    // only in a DLC layer, e.g. The Convergence's added bosses in slot 328.)
+    copy_fmg_layered({428, 328, 18}, npc_name_ids_needed, 700000000, "NpcName");
 
     // Read ActionButtonText FMG (slots 32 + DLC 365, 465): in-game interact
     // prompts ("Examine statue", "Light bonfire", ...). Offset 800M.
@@ -557,77 +600,21 @@ void goblin::setup_messages()
     // valid count2 range derailed downstream FMG copies (TutorialTitle
     // never ran and PlaceName patch never committed → "?PlaceName?" text).
     if (!action_btn_ids_needed.empty() && 32 < count2 && sub[32])
-        copy_fmg_entries(sub[32], action_btn_ids_needed, 800000000, "ActionButtonText");
+        copy_fmg_entries(sub[32], action_btn_ids_needed, 800000000, "ActionButtonText", 32);
 
     // Read BloodMsg FMG (slot 2, menu.msgbnd): message-builder vocabulary.
     // The vanilla build labels generic enemy drops with the closest vocabulary
     // word ("skeleton", "demi-human", ...) — localized for free, same as the
     // in-game message composer. Offset 950M. Same direct-slot access as
     // ActionButtonText above (slot array is indexed by global BND file ID).
-    if (!bloodmsg_ids_needed.empty() && 2 < count2 && sub[2])
-        copy_fmg_entries(sub[2], bloodmsg_ids_needed, 950000000, "BloodMsg");
+    // BloodMsg layers: base 2, dlc01 361, dlc02 461 (vocabulary is base-game,
+    // but overhauls may extend it).
+    copy_fmg_layered({461, 361, 2}, bloodmsg_ids_needed, 950000000, "BloodMsg");
 
-    // Read TutorialTitle FMG (slot 207) for ERR Codex enemy names
-    // textId in MASSEDIT = real TutorialTitle ID + 900000000 (to avoid collision with GoodsName)
-    // We look up by real ID but write to PlaceName at the remapped ID
-    if (!tutorial_ids_needed.empty() && 207 < count2 && sub[207])
-    {
-        auto *tut_fmg = sub[207];
-        uint32_t tut_group_cnt = *reinterpret_cast<uint32_t *>(tut_fmg + 0x0C);
-        uint32_t tut_string_cnt = *reinterpret_cast<uint32_t *>(tut_fmg + 0x10);
-        uint64_t tut_raw_str_off = *reinterpret_cast<uint64_t *>(tut_fmg + 0x18);
-
-        uint8_t *tut_offsets_ptr;
-        if (tut_raw_str_off > 0x1000000)
-            tut_offsets_ptr = reinterpret_cast<uint8_t *>(tut_raw_str_off);
-        else
-            tut_offsets_ptr = tut_fmg + tut_raw_str_off;
-
-        auto *tut_groups = reinterpret_cast<FmgGroup *>(tut_fmg + 0x28);
-        auto *tut_str_offs = reinterpret_cast<uint64_t *>(tut_offsets_ptr);
-
-        // Build set of real TutorialTitle IDs (without offset)
-        std::set<int32_t> real_tut_ids;
-        for (int32_t remapped : tutorial_ids_needed)
-            real_tut_ids.insert(remapped - 900000000);
-
-        int tut_copied = 0;
-        for (uint32_t g = 0; g < tut_group_cnt; g++)
-        {
-            int32_t first = tut_groups[g].first_id;
-            int32_t last = tut_groups[g].last_id;
-            int32_t si = tut_groups[g].string_index;
-
-            for (int32_t id = first; id <= last; id++, si++)
-            {
-                if (si < 0 || si >= (int32_t)tut_string_cnt)
-                    continue;
-                if (real_tut_ids.count(id) == 0)
-                    continue;
-
-                uint64_t str_off = tut_str_offs[si];
-                if (str_off == 0) continue;
-
-                const wchar_t *text;
-                if (str_off > 0x1000000)
-                    text = reinterpret_cast<const wchar_t *>(str_off);
-                else
-                    text = reinterpret_cast<const wchar_t *>(tut_fmg + str_off);
-
-                if (text && text[0])
-                {
-                    // Write to PlaceName at remapped ID (real + 900000000)
-                    new_entries.push_back({id + 900000000, text});
-                    tut_copied++;
-                }
-            }
-        }
-        spdlog::info("Copied {} TutorialTitle entries to PlaceName (enemy names)", tut_copied);
-    }
-    else if (!tutorial_ids_needed.empty())
-    {
-        spdlog::warn("TutorialTitle FMG (slot 207) not available ({} IDs needed)", tutorial_ids_needed.size());
-    }
+    // TutorialTitle (ERR Codex enemy names + category labels like "Summoning
+    // Pools"): base 207, dlc01 375, dlc02 475. textId in MASSEDIT = real
+    // TutorialTitle ID + 900000000 (to avoid collision with GoodsName).
+    copy_fmg_layered({475, 375, 207}, tutorial_ids_needed, 900000000, "TutorialTitle");
 
     auto *fmg_ptr = sub[19];
 
@@ -663,13 +650,24 @@ void goblin::setup_messages()
             }
             return nullptr;
         };
+        // Look the parts up the way the game does: DLC PlaceName layers first
+        // (429, 329), then the base slot — overhauls keep reworked zone names
+        // in the DLC layers only.
+        auto find_layered = [&](int32_t id) -> const wchar_t *
+        {
+            for (int slot : {429, 329})
+                if (slot < count2 && sub[slot])
+                    if (const wchar_t *t = fmg_find(sub[slot], id); t && t[0])
+                        return t;
+            return fmg_find(fmg_ptr, id);
+        };
         static std::deque<std::wstring> compose_storage;
         int composed = 0;
         for (size_t i = 0; i < generated::LOCATION_COMPOSE_COUNT; i++)
         {
             const auto &c = generated::LOCATION_COMPOSE[i];
-            const wchar_t *sub_txt = fmg_find(fmg_ptr, c.subId);
-            const wchar_t *sup_txt = fmg_find(fmg_ptr, c.superId);
+            const wchar_t *sub_txt = find_layered(c.subId);
+            const wchar_t *sup_txt = find_layered(c.superId);
             if (!sub_txt || !sup_txt)
             {
                 spdlog::warn("Compose label {}: PlaceName {} or {} not found in FMG", c.id, c.subId, c.superId);
@@ -692,6 +690,45 @@ void goblin::setup_messages()
         g_vanilla_placename_fmg = fmg_ptr;
         g_expanded_placename_fmg = sub[19];
         g_fmg_injection_active = true;
+
+        // The game resolves PlaceName through the DLC layers FIRST (slots 429,
+        // 329) and falls back to base slot 19. Ids that live only in a DLC
+        // layer (vanilla DLC zones; The Convergence's reworked zones and boss
+        // texts) are perfectly valid marker textIds even though our expanded
+        // base FMG doesn't carry them — whitelist them so the sanitizer
+        // doesn't clear those labels (observed: 1330 false-cleared under The
+        // Convergence, whose layers hold 520+ dlc01-only zone ids).
+        size_t dlc_valid = 0;
+        for (int slot : {329, 429})
+        {
+            if (slot >= count2 || !sub[slot]) continue;
+            uint8_t *f = sub[slot];
+            uint32_t grp_cnt = *reinterpret_cast<uint32_t *>(f + 0x0C);
+            uint32_t str_cnt = *reinterpret_cast<uint32_t *>(f + 0x10);
+            uint64_t raw_off = *reinterpret_cast<uint64_t *>(f + 0x18);
+            if (grp_cnt > 0x100000 || str_cnt > 0x100000 || raw_off == 0) continue;
+            uint8_t *off_ptr = (raw_off > 0x1000000)
+                ? reinterpret_cast<uint8_t *>(raw_off) : f + raw_off;
+            auto *groups = reinterpret_cast<FmgGroup *>(f + 0x28);
+            auto *str_offs = reinterpret_cast<uint64_t *>(off_ptr);
+            for (uint32_t g = 0; g < grp_cnt; g++)
+            {
+                int32_t si = groups[g].string_index;
+                for (int32_t id = groups[g].first_id; id <= groups[g].last_id; id++, si++)
+                {
+                    if (si < 0 || si >= (int32_t)str_cnt) continue;
+                    uint64_t s_off = str_offs[si];
+                    if (s_off == 0) continue;
+                    const wchar_t *text = (s_off > 0x1000000)
+                        ? reinterpret_cast<const wchar_t *>(s_off)
+                        : reinterpret_cast<const wchar_t *>(f + s_off);
+                    if (text && text[0] && g_placename_valid_ids.insert(id).second)
+                        dlc_valid++;
+                }
+            }
+        }
+        if (dlc_valid)
+            spdlog::info("PlaceName DLC layers contribute {} additional valid textIds", dlc_valid);
     }
     else
         spdlog::error("PlaceName FMG patching failed");

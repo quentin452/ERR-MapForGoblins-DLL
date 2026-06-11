@@ -56,7 +56,7 @@ def load_gesture_items():
     if pf is None:
         print('WARNING: GestureParam not found in regulation — gesture markers stay nameless')
         return {}
-    tmp = os.path.join(tempfile.gettempdir(), '_gstp.param')
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_gstp.param')
     SysFile.WriteAllBytes(tmp, pf.Bytes.ToArray() if hasattr(pf.Bytes, 'ToArray') else pf.Bytes)
     param = _param_read.Invoke(None, Array[Object]([tmp]))
     os.unlink(tmp)
@@ -74,7 +74,7 @@ def load_gesture_items():
 
 
 def load_emevd(path):
-    tmp = os.path.join(tempfile.gettempdir(), '_gst.tmp')
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_gst.tmp')
     SysFile.WriteAllBytes(tmp, SoulsFormats.DCX.Decompress(str(path)).ToArray())
     e = _emevd_read.Invoke(None, Array[Object]([tmp]))
     os.unlink(tmp)

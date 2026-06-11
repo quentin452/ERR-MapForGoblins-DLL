@@ -40,7 +40,7 @@ TPL_SEAL = 90006051
 
 def _read(reader, path, suf='.tmp'):
     data = SoulsFormats.DCX.Decompress(str(path)).ToArray()
-    tmp = os.path.join(tempfile.gettempdir(), '_sp' + suf)
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_sp' + suf)
     SysFile.WriteAllBytes(tmp, data)
     return reader.Invoke(None, Array[Object]([tmp]))
 

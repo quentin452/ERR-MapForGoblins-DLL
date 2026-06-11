@@ -48,7 +48,7 @@ _emevd_read = asm.GetType('SoulsFormats.EMEVD').GetMethod(
 
 
 def _read_from_bytes(read_method, data, suffix='.bin'):
-    tmp = os.path.join(tempfile.gettempdir(), f'_mfg_tmp{suffix}')
+    tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + f'_mfg_tmp{suffix}')
     if hasattr(data, 'ToArray'):
         SysFile.WriteAllBytes(tmp, data.ToArray())
     else:
@@ -139,7 +139,7 @@ def main():
     for emevd_path in emevd_files:
         map_name = emevd_path.name.replace('.emevd.dcx', '')
         try:
-            tmp2 = os.path.join(tempfile.gettempdir(), '_mfg_emevd_analyze.tmp')
+            tmp2 = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_mfg_emevd_analyze.tmp')
             SysFile.WriteAllBytes(tmp2, SoulsFormats.DCX.Decompress(str(emevd_path)).ToArray())
             emevd = _emevd_read.Invoke(None, Array[Object]([tmp2]))
             os.unlink(tmp2)

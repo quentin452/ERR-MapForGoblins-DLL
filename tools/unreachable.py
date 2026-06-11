@@ -21,6 +21,9 @@ UNREACHABLE = {
     # They sit ~5-7 units lower than in vanilla, under the wall geometry.
     ('m60_42_51_00', 'AEG099_090_9001'),
     ('m60_43_52_00', 'AEG099_090_9002'),
+    # Imp Statue in Mt. Gelmir tile m60_38_52 dy=-13.86 vs vanilla
+    # (Y 818.43 -> 804.57) - sits under the terrain; reported in-game (2026-06-11).
+    ('m60_38_52_00', 'AEG027_079_9000'),
     # Imp Statue south of Caelid Highway dy=-15.8 vs vanilla — clips
     # below the cliff in ERR, the seal is not interactable.
     ('m60_47_40_00', 'AEG027_079_9000'),
@@ -129,7 +132,7 @@ def _load_vanilla_cache():
         if not p.exists():
             continue
         data = SoulsFormats.DCX.Decompress(str(p)).ToArray()
-        tmp = os.path.join(tempfile.gettempdir(), '_unreach.msb')
+        tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_unreach.msb')
         SysFile.WriteAllBytes(tmp, data)
         msb = _msbe.Invoke(None, Array[Object]([tmp]))
         # Index all Parts and Regions by name → y
@@ -155,13 +158,16 @@ def _load_vanilla_cache():
 
 
 def is_unreachable_in_err(map_name, name, err_y):
-    """True iff (map, name) is excluded. UNCONDITIONAL entries always fire.
-    For UNREACHABLE entries, ERR Y must diverge from vanilla beyond threshold:
-    'displaced' kind = ANY direction (`abs(dy) > MIN_DROP`), default 'down'
-    kind = only below vanilla (`err_y < vanilla_y - MIN_DROP`). Returns False
-    if vanilla data unavailable (conservative — keep the icon)."""
+    """True iff (map, name) is excluded. UNCONDITIONAL entries fire only in
+    the ERR profile — they encode ERR terrain reshapes confirmed in-game
+    (the asset Y matches vanilla), so other profiles must keep those icons.
+    For UNREACHABLE entries, the active source's Y must diverge from vanilla
+    beyond threshold: 'displaced' kind = ANY direction (`abs(dy) > MIN_DROP`),
+    default 'down' kind = only below vanilla (`err_y < vanilla_y - MIN_DROP`).
+    Returns False if vanilla data unavailable (conservative — keep the icon)."""
+    import config
     key = (map_name, str(name))
-    if key in UNCONDITIONAL:
+    if key in UNCONDITIONAL and config.PROFILE == 'err':
         return True
     if key not in UNREACHABLE:
         return False
@@ -210,7 +216,7 @@ def _load_err_entity_cache():
         p = err_dir / (map_name + '.msb.dcx')
         if not p.exists(): continue
         data = SoulsFormats.DCX.Decompress(str(p)).ToArray()
-        tmp = os.path.join(tempfile.gettempdir(), '_unreach_err.msb')
+        tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_unreach_err.msb')
         SysFile.WriteAllBytes(tmp, data)
         msb = _msbe.Invoke(None, Array[Object]([tmp]))
         for cat_name in ('Assets', 'DummyAssets', 'Enemies'):

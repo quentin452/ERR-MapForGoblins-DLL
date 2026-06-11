@@ -1,29 +1,38 @@
 #!/usr/bin/env python3
-"""Build assets/menu/02_120_worldmap_vanilla.gfx — the VANILLA-based worldmap GFX.
+"""Build the non-ERR worldmap GFX (vanilla or convergence base) + our icons.
 
 The shipped ERR gfx (assets/menu/02_120_worldmap_new.gfx) is built on top of
 ERR's modified 02_120_worldmap.gfx, which re-icons several existing frames
 (boss/camp/bounty/grace/remembrance/tower) with ERR-only textures
 (MENU_MAP_ERR_*, charIds 13500-13506) that don't exist in vanilla 01_common.
-Shipping it to vanilla players would carry ERR's UI changes (and dead texture
-references). This tool rebuilds the icon set on the VANILLA base instead:
+Shipping it to other players would carry ERR's UI changes (and dead texture
+references). This tool rebuilds the icon set on the target game's own base:
 
-  1. decompile vanilla GAME_DIR/menu/02_120_worldmap.gfx and our _new.gfx
-     (FFDEC swf2xml),
+  vanilla     base: GAME_DIR/menu/02_120_worldmap.gfx (sprite 171 = 348 frames)
+              out:  assets/menu/02_120_worldmap_vanilla.gfx
+  convergence base: CONVERGENCE_MOD_DIR/menu/02_120_worldmap.gfx (756 frames —
+              the mod adds 408 icon frames of its own, so OUR frames land at
+              757+ and the bake shifts iconIds by config.ICON_FRAME_OFFSET;
+              this tool verifies that constant against the actual base)
+              out:  assets/menu/02_120_worldmap_convergence.gfx
+
+  1. decompile the base gfx and our _new.gfx (FFDEC swf2xml),
   2. copy our added DefineExternalImage2 defs (charIds 1000-1024 — all
      vanilla texture names: MENU_Tab_*, MENU_ItemIcon_*, ...) into the
-     vanilla XML before sprite 171,
-  3. append our added frames (349..end; every frame is a self-contained
-     RemoveObject2+PlaceObject3+ShowFrame group) to vanilla sprite 171 and
-     bump its frameCount,
-  4. compile back (FFDEC xml2swf) to assets/menu/02_120_worldmap_vanilla.gfx.
+     base XML before sprite 171 (verifying the base doesn't already use
+     those charIds),
+  3. append our added frames (349..end of OUR gfx; every frame is a
+     self-contained RemoveObject2+PlaceObject3+ShowFrame group) to the base
+     sprite 171 and bump its frameCount,
+  4. compile back (FFDEC xml2swf).
 
 Verifies that no appended frame references an ERR-only charId.
 
 FFDEC: set the FFDEC_CLI env var (e.g. 'java -jar C:/.../ffdec-cli.jar'),
 otherwise the known local install next to the project is used.
 
-Usage: py build_vanilla_gfx.py
+Usage: py build_vanilla_gfx.py [--profile vanilla|convergence]
+       (default: the active MFG_PROFILE if non-ERR, else vanilla)
 """
 import os
 import shutil
@@ -37,11 +46,17 @@ import config
 
 PROJECT = config.PROJECT_DIR
 OURS_GFX = PROJECT / "assets" / "menu" / "02_120_worldmap_new.gfx"
-OUT_GFX = PROJECT / "assets" / "menu" / "02_120_worldmap_vanilla.gfx"
 
 VANILLA_SPRITE_FRAMES = 348          # frames in vanilla sprite 171
+OURS_FIRST_FRAME = 349               # our frames start here in OUR gfx
 OUR_IMAGE_IDS = set(range(1000, 1025))   # DefineExternalImage2 we added
 ERR_IMAGE_IDS = set(range(13500, 13507))  # ERR-only textures — must NOT leak
+
+# Per-profile expected base frame count. Must satisfy:
+#   base_frames == VANILLA_SPRITE_FRAMES + config-side ICON_FRAME_OFFSET
+# (the bake shifts our iconIds by that offset; see config.py). If a target
+# mod update changes its frame count, update BOTH places.
+PROFILE_BASE_FRAMES = {"vanilla": 348, "convergence": 756}
 
 
 def ffdec_cmd():
@@ -71,15 +86,35 @@ def sprite171(root):
 
 
 def main():
-    vanilla_gfx = config.require_game_dir() / "menu" / "02_120_worldmap.gfx"
-    if not vanilla_gfx.exists():
-        sys.exit(f"vanilla gfx not found: {vanilla_gfx} (UXM-unpack the game)")
+    profile = None
+    args = sys.argv[1:]
+    for i, a in enumerate(args):
+        if a == "--profile" and i + 1 < len(args):
+            profile = args[i + 1].strip().lower()
+        elif a.startswith("--profile="):
+            profile = a.split("=", 1)[1].strip().lower()
+    if profile is None:
+        profile = config.PROFILE if config.PROFILE != "err" else "vanilla"
+    if profile not in PROFILE_BASE_FRAMES:
+        sys.exit(f"unknown profile '{profile}' (expected: {sorted(PROFILE_BASE_FRAMES)})")
+
+    if profile == "convergence":
+        if not config.CONVERGENCE_MOD_DIR:
+            sys.exit("set convergence_mod_dir in tools/config.ini")
+        base_gfx = config.CONVERGENCE_MOD_DIR / "menu" / "02_120_worldmap.gfx"
+    else:
+        base_gfx = config.require_game_dir() / "menu" / "02_120_worldmap.gfx"
+    if not base_gfx.exists():
+        sys.exit(f"base gfx not found: {base_gfx}")
+    base_frames = PROFILE_BASE_FRAMES[profile]
+    out_gfx = PROJECT / "assets" / "menu" / f"02_120_worldmap_{profile}.gfx"
+    print(f"profile={profile}  base={base_gfx}")
 
     tmp = Path(tempfile.mkdtemp(prefix="mfg_gfx_"))
     try:
         van_xml, our_xml, out_xml = tmp / "van.xml", tmp / "our.xml", tmp / "out.xml"
-        print("decompiling vanilla + ours...")
-        run_ffdec(["-swf2xml", str(vanilla_gfx), str(van_xml)])
+        print("decompiling base + ours...")
+        run_ffdec(["-swf2xml", str(base_gfx), str(van_xml)])
         run_ffdec(["-swf2xml", str(OURS_GFX), str(our_xml)])
 
         van = ET.parse(van_xml)
@@ -96,7 +131,8 @@ def main():
         if len(our_images) != len(OUR_IMAGE_IDS):
             sys.exit(f"expected {len(OUR_IMAGE_IDS)} image defs, found {len(our_images)}")
 
-        # ── our sprite-171 frames after the vanilla range ──
+        # ── our sprite-171 frames after the vanilla range (in OUR gfx our
+        # frames always start at 349 — the ERR base adds no frames) ──
         osub = sprite171(oroot).find("subTags")
         frame = 0
         added = []
@@ -106,7 +142,8 @@ def main():
             if child.get("type") == "ShowFrameTag":
                 frame += 1
         n_added = sum(1 for c in added if c.get("type") == "ShowFrameTag")
-        print(f"ours: {frame} frames, appending {n_added} (349..{frame})")
+        print(f"ours: {frame} frames, appending {n_added} "
+              f"(land at {base_frames + 1}..{base_frames + n_added} on this base)")
 
         # safety: no ERR-only textures in what we append
         for c in added:
@@ -115,12 +152,21 @@ def main():
                 if cid and int(cid) in ERR_IMAGE_IDS:
                     sys.exit(f"appended frame references ERR-only charId {cid}")
 
-        # ── merge into vanilla ──
+        # ── merge into the base ──
         vsprite = sprite171(vroot)
         vsub = vsprite.find("subTags")
-        if int(vsprite.get("frameCount")) != VANILLA_SPRITE_FRAMES:
-            sys.exit(f"vanilla sprite 171 has {vsprite.get('frameCount')} frames, "
-                     f"expected {VANILLA_SPRITE_FRAMES} — game updated? adjust the constant")
+        if int(vsprite.get("frameCount")) != base_frames:
+            sys.exit(f"base sprite 171 has {vsprite.get('frameCount')} frames, "
+                     f"expected {base_frames} — base mod/game updated? Update "
+                     f"PROFILE_BASE_FRAMES here AND ICON_FRAME_OFFSET in config.py")
+
+        # the base must not already define our charId range (we'd collide)
+        for it in vroot.iter("item"):
+            if it.get("type") == "DefineExternalImage2":
+                cid = int(it.get("characterID") or 0)
+                if cid in OUR_IMAGE_IDS:
+                    sys.exit(f"base gfx already uses charId {cid} (our range "
+                             f"1000-1024) — pick a new range before merging")
 
         # insert image defs right before the sprite 171 definition (top level)
         # find the top-level container holding the sprite
@@ -141,13 +187,13 @@ def main():
             vsub.append(c)
         for e in end_tags:
             vsub.append(e)
-        vsprite.set("frameCount", str(VANILLA_SPRITE_FRAMES + n_added))
+        vsprite.set("frameCount", str(base_frames + n_added))
 
         van.write(out_xml, encoding="utf-8", xml_declaration=True)
         print("compiling...")
-        run_ffdec(["-xml2swf", str(out_xml), str(OUT_GFX)])
-        print(f"wrote {OUT_GFX} ({OUT_GFX.stat().st_size} bytes, "
-              f"sprite 171: {VANILLA_SPRITE_FRAMES + n_added} frames)")
+        run_ffdec(["-xml2swf", str(out_xml), str(out_gfx)])
+        print(f"wrote {out_gfx} ({out_gfx.stat().st_size} bytes, "
+              f"sprite 171: {base_frames + n_added} frames)")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

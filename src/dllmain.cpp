@@ -47,6 +47,17 @@ static int safe_kindling_refresh_seh()
     }
 }
 
+static void safe_flag_or_pairs_seh()
+{
+    __try
+    {
+        goblin::apply_flag_or_pairs();
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+    }
+}
+
 // ── SEH-guarded init-phase wrappers ──
 // MSVC's /EHsc disallows __try in functions that contain C++ objects with
 // destructors, so each init step goes through a plain C-style adapter +
@@ -180,6 +191,14 @@ static void setup_mod()
         try
         {
             safe_kindling_refresh_seh();
+        }
+        catch (...)
+        {
+        }
+
+        try
+        {
+            safe_flag_or_pairs_seh();
         }
         catch (...)
         {

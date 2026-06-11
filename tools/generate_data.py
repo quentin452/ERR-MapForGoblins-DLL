@@ -191,7 +191,7 @@ def parse_massedit_files(massedit_dir):
 
     for filepath in sorted(Path(massedit_dir).glob("*.MASSEDIT")):
         filename = filepath.stem
-        if config.PROFILE == 'vanilla' and filename in ERR_ONLY_FILES:
+        if config.PROFILE != 'err' and filename in ERR_ONLY_FILES:
             print(f"SKIP (ERR-only): {filename}")
             continue
         category = CATEGORY_MAP.get(filename)
@@ -222,6 +222,16 @@ def parse_massedit_files(massedit_dir):
                     if field not in FIELD_MAP:
                         print(f"WARNING: Unknown field '{field}' in {filename}, skipping")
                         continue
+
+                    # Our custom icon frames (sprite-171 349-440) sit at a
+                    # different frame index when the target mod's worldmap gfx
+                    # already extends the sprite (Convergence: +408). Single
+                    # remap chokepoint for every category/MASSEDIT.
+                    if field == "iconId" and config.ICON_FRAME_OFFSET:
+                        icon = int(float(value))
+                        lo, hi = config.OUR_ICON_RANGE
+                        if lo <= icon <= hi:
+                            value = str(icon + config.ICON_FRAME_OFFSET)
 
                     entries[row_id][field] = value
                     entries[row_id]["_category"] = category
