@@ -7,6 +7,7 @@
 #include "modutils.hpp"
 
 #include <cstring>
+#include <functional>
 #include <set>
 #include <spdlog/spdlog.h>
 #include <deque>
@@ -40,6 +41,25 @@ static uint8_t **g_placename_slot_ptr = nullptr;
 static uint8_t *g_vanilla_placename_fmg = nullptr;
 static uint8_t *g_expanded_placename_fmg = nullptr;
 static bool g_fmg_injection_active = false;
+
+// ── SEH-guarded slot access ──
+// Some runtimes keep STALE pointers in MsgRepository slots the game never
+// initialized — observed under ERR's loader with the DLC-layer slots
+// (dereferencing one access-violates; pre-1.0.15 code carried the same
+// warning for ActionButtonText 365/465). A bad slot must degrade to a
+// skipped layer, not kill the whole setup_messages init step (that is the
+// "?PlaceName? everywhere" failure: the PlaceName patch never commits).
+// seh_call has no C++ objects (MSVC C2712), the job body lives outside it.
+static int seh_run_job_thunk(void *ctx)
+{
+    return (*static_cast<std::function<int()> *>(ctx))();
+}
+
+static int seh_call(int (*fn)(void *), void *ctx)
+{
+    __try { return fn(ctx); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return -1; }
+}
 
 static std::string detect_language()
 {
@@ -541,18 +561,53 @@ void goblin::setup_messages()
         {
             if (needed_ids.empty()) break;
             if (slot >= count2 || !sub[slot]) continue;
-            total += copy_fmg_entries(sub[slot], needed_ids, offset_base, label, slot);
+            // SEH-guard each slot: stale slot pointers (ERR loader, or a
+            // vanilla install without the DLC) must not kill the init step.
+            // Roll both outputs back on failure so a partial walk over a
+            // garbage FMG never leaks bogus entries into the patch.
+            size_t entries_mark = new_entries.size();
+            std::set<int32_t> ids_snapshot = needed_ids;
+            std::function<int()> job = [&, slot]() -> int
+            { return copy_fmg_entries(sub[slot], needed_ids, offset_base, label, slot); };
+            int copied = seh_call(&seh_run_job_thunk, &job);
+            if (copied < 0)
+            {
+                new_entries.resize(entries_mark);
+                needed_ids = std::move(ids_snapshot);
+                spdlog::warn("{}: slot {} not readable in this runtime — layer skipped", label, slot);
+                continue;
+            }
+            total += copied;
         }
         if (!needed_ids.empty())
             spdlog::debug("{}: {} ids not found in any layer", label, needed_ids.size());
         return total;
     };
 
-    // GoodsName: base 10, dlc01 319, dlc02 419. Offset 500M.
-    copy_fmg_layered({419, 319, 10}, goods_ids_needed, 500000000, "GoodsName");
+    // Slot lists per FMG family, in the game's lookup-priority order
+    // (dlc02 → dlc01 → base). The ERR build walks ONLY the base slots:
+    // everything its bake references lives there (proven through v1.0.14),
+    // and the DLC-layer slots were observed to hold stale pointers under
+    // ERR's loader — touching them caused the "?PlaceName?" incident in
+    // v1.0.15 (SEH killed setup_messages before the PlaceName patch).
+#ifdef MFG_VANILLA
+    const std::initializer_list<int>
+        goods_slots{419, 319, 10}, weapon_slots{410, 310, 11},
+        protector_slots{413, 313, 12}, accessory_slots{416, 316, 13},
+        gem_slots{422, 322, 35, 42}, npc_slots{428, 328, 18},
+        bloodmsg_slots{461, 361, 2}, tutorial_slots{475, 375, 207};
+#else
+    const std::initializer_list<int>
+        goods_slots{10}, weapon_slots{11},
+        protector_slots{12}, accessory_slots{13},
+        gem_slots{35, 42}, npc_slots{18},
+        bloodmsg_slots{2}, tutorial_slots{207};
+#endif
 
-    // WeaponName: base 11, dlc01 310, dlc02 410.
-    // Ammo IDs are stored as-is (>=50M), weapon IDs are offset by 100M.
+    // GoodsName. Offset 500M.
+    copy_fmg_layered(goods_slots, goods_ids_needed, 500000000, "GoodsName");
+
+    // WeaponName. Ammo IDs are stored as-is (>=50M), weapon IDs are offset by 100M.
     {
         std::set<int32_t> ammo_ids, weapon_offset_ids;
         for (int32_t tid : weapon_ids_needed)
@@ -562,18 +617,18 @@ void goblin::setup_messages()
             else
                 ammo_ids.insert(tid);
         }
-        copy_fmg_layered({410, 310, 11}, ammo_ids, 0, "WeaponName(ammo)");
-        copy_fmg_layered({410, 310, 11}, weapon_offset_ids, 100000000, "WeaponName(weapon)");
+        copy_fmg_layered(weapon_slots, ammo_ids, 0, "WeaponName(ammo)");
+        copy_fmg_layered(weapon_slots, weapon_offset_ids, 100000000, "WeaponName(weapon)");
     }
 
-    // ProtectorName: base 12, dlc01 313, dlc02 413. Offset 200M.
-    copy_fmg_layered({413, 313, 12}, protector_ids_needed, 200000000, "ProtectorName");
+    // ProtectorName. Offset 200M.
+    copy_fmg_layered(protector_slots, protector_ids_needed, 200000000, "ProtectorName");
 
-    // AccessoryName: base 13, dlc01 316, dlc02 416. Offset 300M.
-    copy_fmg_layered({416, 316, 13}, accessory_ids_needed, 300000000, "AccessoryName");
+    // AccessoryName. Offset 300M.
+    copy_fmg_layered(accessory_slots, accessory_ids_needed, 300000000, "AccessoryName");
 
-    // GemName: base 35 (ArtsName 42 as fallback), dlc01 322, dlc02 422. Offset 400M.
-    copy_fmg_layered({422, 322, 35, 42}, gem_ids_needed, 400000000, "GemName");
+    // GemName (ArtsName 42 as fallback). Offset 400M.
+    copy_fmg_layered(gem_slots, gem_ids_needed, 400000000, "GemName");
 
     // TODO: EventTextForMap FMG (slots 34/367/467) is in a separate MsgRepository bank
     // (menu msgbnd, not item msgbnd). Need to find the menu bank pointer to access it.
@@ -582,10 +637,10 @@ void goblin::setup_messages()
         spdlog::warn("EventTextForMap: {} IDs requested but menu FMG bank not yet supported",
                       event_text_ids_needed.size());
 
-    // NpcName: base 18, dlc01 328, dlc02 428. Offset 700M.
+    // NpcName. Offset 700M.
     // (Was break-on-first-success from base 18 — that missed every id living
     // only in a DLC layer, e.g. The Convergence's added bosses in slot 328.)
-    copy_fmg_layered({428, 328, 18}, npc_name_ids_needed, 700000000, "NpcName");
+    copy_fmg_layered(npc_slots, npc_name_ids_needed, 700000000, "NpcName");
 
     // Read ActionButtonText FMG (slots 32 + DLC 365, 465): in-game interact
     // prompts ("Examine statue", "Light bonfire", ...). Offset 800M.
@@ -607,14 +662,13 @@ void goblin::setup_messages()
     // word ("skeleton", "demi-human", ...) — localized for free, same as the
     // in-game message composer. Offset 950M. Same direct-slot access as
     // ActionButtonText above (slot array is indexed by global BND file ID).
-    // BloodMsg layers: base 2, dlc01 361, dlc02 461 (vocabulary is base-game,
-    // but overhauls may extend it).
-    copy_fmg_layered({461, 361, 2}, bloodmsg_ids_needed, 950000000, "BloodMsg");
+    // BloodMsg layers (vocabulary is base-game, but overhauls may extend it).
+    copy_fmg_layered(bloodmsg_slots, bloodmsg_ids_needed, 950000000, "BloodMsg");
 
     // TutorialTitle (ERR Codex enemy names + category labels like "Summoning
-    // Pools"): base 207, dlc01 375, dlc02 475. textId in MASSEDIT = real
-    // TutorialTitle ID + 900000000 (to avoid collision with GoodsName).
-    copy_fmg_layered({475, 375, 207}, tutorial_ids_needed, 900000000, "TutorialTitle");
+    // Pools"). textId in MASSEDIT = real TutorialTitle ID + 900000000 (to
+    // avoid collision with GoodsName).
+    copy_fmg_layered(tutorial_slots, tutorial_ids_needed, 900000000, "TutorialTitle");
 
     auto *fmg_ptr = sub[19];
 
@@ -652,13 +706,16 @@ void goblin::setup_messages()
         };
         // Look the parts up the way the game does: DLC PlaceName layers first
         // (429, 329), then the base slot — overhauls keep reworked zone names
-        // in the DLC layers only.
+        // in the DLC layers only. ERR build: base slot only (its DLC slot
+        // pointers can be stale — see the slot-list comment above).
         auto find_layered = [&](int32_t id) -> const wchar_t *
         {
+#ifdef MFG_VANILLA
             for (int slot : {429, 329})
                 if (slot < count2 && sub[slot])
                     if (const wchar_t *t = fmg_find(sub[slot], id); t && t[0])
                         return t;
+#endif
             return fmg_find(fmg_ptr, id);
         };
         static std::deque<std::wstring> compose_storage;
@@ -691,6 +748,7 @@ void goblin::setup_messages()
         g_expanded_placename_fmg = sub[19];
         g_fmg_injection_active = true;
 
+#ifdef MFG_VANILLA
         // The game resolves PlaceName through the DLC layers FIRST (slots 429,
         // 329) and falls back to base slot 19. Ids that live only in a DLC
         // layer (vanilla DLC zones; The Convergence's reworked zones and boss
@@ -698,37 +756,52 @@ void goblin::setup_messages()
         // base FMG doesn't carry them — whitelist them so the sanitizer
         // doesn't clear those labels (observed: 1330 false-cleared under The
         // Convergence, whose layers hold 520+ dlc01-only zone ids).
+        // Not compiled for ERR: its bake never relies on DLC-layer-only ids,
+        // and its DLC slot pointers can be stale (see the slot-list comment).
         size_t dlc_valid = 0;
         for (int slot : {329, 429})
         {
             if (slot >= count2 || !sub[slot]) continue;
-            uint8_t *f = sub[slot];
-            uint32_t grp_cnt = *reinterpret_cast<uint32_t *>(f + 0x0C);
-            uint32_t str_cnt = *reinterpret_cast<uint32_t *>(f + 0x10);
-            uint64_t raw_off = *reinterpret_cast<uint64_t *>(f + 0x18);
-            if (grp_cnt > 0x100000 || str_cnt > 0x100000 || raw_off == 0) continue;
-            uint8_t *off_ptr = (raw_off > 0x1000000)
-                ? reinterpret_cast<uint8_t *>(raw_off) : f + raw_off;
-            auto *groups = reinterpret_cast<FmgGroup *>(f + 0x28);
-            auto *str_offs = reinterpret_cast<uint64_t *>(off_ptr);
-            for (uint32_t g = 0; g < grp_cnt; g++)
+            std::function<int()> job = [&]() -> int
             {
-                int32_t si = groups[g].string_index;
-                for (int32_t id = groups[g].first_id; id <= groups[g].last_id; id++, si++)
+                int found = 0;
+                uint8_t *f = sub[slot];
+                uint32_t grp_cnt = *reinterpret_cast<uint32_t *>(f + 0x0C);
+                uint32_t str_cnt = *reinterpret_cast<uint32_t *>(f + 0x10);
+                uint64_t raw_off = *reinterpret_cast<uint64_t *>(f + 0x18);
+                if (grp_cnt > 0x100000 || str_cnt > 0x100000 || raw_off == 0) return 0;
+                uint8_t *off_ptr = (raw_off > 0x1000000)
+                    ? reinterpret_cast<uint8_t *>(raw_off) : f + raw_off;
+                auto *groups = reinterpret_cast<FmgGroup *>(f + 0x28);
+                auto *str_offs = reinterpret_cast<uint64_t *>(off_ptr);
+                for (uint32_t g = 0; g < grp_cnt; g++)
                 {
-                    if (si < 0 || si >= (int32_t)str_cnt) continue;
-                    uint64_t s_off = str_offs[si];
-                    if (s_off == 0) continue;
-                    const wchar_t *text = (s_off > 0x1000000)
-                        ? reinterpret_cast<const wchar_t *>(s_off)
-                        : reinterpret_cast<const wchar_t *>(f + s_off);
-                    if (text && text[0] && g_placename_valid_ids.insert(id).second)
-                        dlc_valid++;
+                    int32_t si = groups[g].string_index;
+                    for (int32_t id = groups[g].first_id; id <= groups[g].last_id; id++, si++)
+                    {
+                        if (si < 0 || si >= (int32_t)str_cnt) continue;
+                        uint64_t s_off = str_offs[si];
+                        if (s_off == 0) continue;
+                        const wchar_t *text = (s_off > 0x1000000)
+                            ? reinterpret_cast<const wchar_t *>(s_off)
+                            : reinterpret_cast<const wchar_t *>(f + s_off);
+                        if (text && text[0] && g_placename_valid_ids.insert(id).second)
+                            found++;
+                    }
                 }
+                return found;
+            };
+            int found = seh_call(&seh_run_job_thunk, &job);
+            if (found < 0)
+            {
+                spdlog::warn("PlaceName layer slot {} not readable — skipped", slot);
+                continue;
             }
+            dlc_valid += found;
         }
         if (dlc_valid)
             spdlog::info("PlaceName DLC layers contribute {} additional valid textIds", dlc_valid);
+#endif
     }
     else
         spdlog::error("PlaceName FMG patching failed");
