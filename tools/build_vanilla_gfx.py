@@ -58,6 +58,29 @@ ERR_IMAGE_IDS = set(range(13500, 13507))  # ERR-only textures — must NOT leak
 # mod update changes its frame count, update BOTH places.
 PROFILE_BASE_FRAMES = {"vanilla": 348, "convergence": 756}
 
+# ── Cleared-marker badge (boss/invader defeated overlay) ──
+# The worldmap marker (sprite 174) draws the icon (sprite 171) + a "cleared"
+# badge (sprite 173 -> shape 172). Vanilla's native badge is a small gold dot
+# placed far up-right of the icon (174->173 translate (566,-448)); ERR reskins
+# it to a green checkmark that overlaps the icon (effective centre ≈ (-335,-336)
+# twips). For our non-ERR builds we (a) replace shape 172 with our own badge
+# and (b) move the badge to the ERR placement so it overlaps the icon.
+#
+# IMPORTANT — the badge is an EMBEDDED RASTER, not a vector. FFDEC can't import
+# detailed SVGs as Scaleform shapes (clip-paths/gradients garble; and a shape
+# crashes the map once it exceeds ~30-45 filled figures). So make_cleared_badge.py
+# produces a small PNG (assets/badges/cleared_badge.png) from the source art
+# (assets/badges/mark2.png) and `ffdec -replace ... 172 <png>` embeds it as a
+# DefineBitsLossless2 bitmap-fill shape (1 figure, centred ±257 = 26px, renders
+# fine in-game — verified). Vanilla-only for now (Convergence ships its own
+# MENU_MAP_Boss_Dead badge via sprite 173 -> char 902, left untouched).
+BADGE_PROFILES = {"vanilla"}
+BADGE_IMG = PROJECT / "assets" / "badges" / "cleared_badge.png"
+BADGE_SPRITE_PARENT = 174     # marker container that places the badge sprite
+BADGE_SPRITE_ID = 173         # the badge sprite
+BADGE_SHAPE_ID = 172          # the shape the badge sprite draws
+BADGE_POS_TWIPS = (-335, -336)  # ERR-matched centre (overlaps the icon)
+
 
 def ffdec_cmd():
     env = os.environ.get("FFDEC_CLI")
@@ -189,9 +212,36 @@ def main():
             vsub.append(e)
         vsprite.set("frameCount", str(base_frames + n_added))
 
+        # ── reposition the cleared badge to overlap the icon (badge profiles) ──
+        if profile in BADGE_PROFILES:
+            moved = False
+            for sp in vroot.iter("item"):
+                if sp.get("type") == "DefineSpriteTag" and sp.get("spriteId") == str(BADGE_SPRITE_PARENT):
+                    for ch in sp.iter("item"):
+                        if (ch.get("type") in ("PlaceObject2Tag", "PlaceObject3Tag")
+                                and ch.get("characterId") == str(BADGE_SPRITE_ID)):
+                            mtx = ch.find(".//matrix")
+                            if mtx is not None:
+                                mtx.set("hasTranslate", "true")
+                                mtx.set("translateX", str(BADGE_POS_TWIPS[0]))
+                                mtx.set("translateY", str(BADGE_POS_TWIPS[1]))
+                                moved = True
+            if not moved:
+                sys.exit(f"badge: could not find sprite {BADGE_SPRITE_PARENT}->{BADGE_SPRITE_ID} placement")
+            print(f"badge: moved {BADGE_SPRITE_PARENT}->{BADGE_SPRITE_ID} to {BADGE_POS_TWIPS} twips")
+
         van.write(out_xml, encoding="utf-8", xml_declaration=True)
         print("compiling...")
         run_ffdec(["-xml2swf", str(out_xml), str(out_gfx)])
+
+        # ── embed our badge raster into the badge shape (badge profiles) ──
+        if profile in BADGE_PROFILES:
+            if not BADGE_IMG.exists():
+                sys.exit(f"badge png missing: {BADGE_IMG} (run tools/make_cleared_badge.py)")
+            run_ffdec(["-replace", str(out_gfx), str(out_gfx),
+                       str(BADGE_SHAPE_ID), str(BADGE_IMG)])
+            print(f"badge: embedded {BADGE_IMG.name} into shape {BADGE_SHAPE_ID}")
+
         print(f"wrote {out_gfx} ({out_gfx.stat().st_size} bytes, "
               f"sprite 171: {base_frames + n_added} frames)")
     finally:
