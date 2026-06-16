@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.28.1)
 set(CMAKE_GENERATOR_PLATFORM x64)
 
 project( MapForGoblins
-  VERSION   "1.0.17"
+  VERSION   "1.0.18"
   LANGUAGES CXX)
 
 if(NOT DEFINED VERSION_PRE)

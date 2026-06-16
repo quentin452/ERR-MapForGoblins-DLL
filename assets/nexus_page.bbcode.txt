@@ -81,6 +81,26 @@ mods = [
 [/*]
 [*]Run launchmod_eldenring.bat[/*]
 [/list]
+[color=#ff8c00][b]Mind the slashes:[/b][/color] keep the paths with double backslashes (\\) or forward slashes (/) - a single backslash is a TOML escape, which makes the whole config invalid and stops [i]every[/i] mod from loading.
+[/spoiler]
+[b]Option C: [url=https://www.nexusmods.com/eldenring/mods/5998]Mod Engine 2 with Lazy Loader[/url][/b] [i](popular on Steam Deck)[/i]
+[spoiler]
+Same as ModEngine2, but its config lives in the [b]base/[/b] folder.
+[list=1]
+[*]Copy the [b]MapForGoblins[/b] folder into the main [b]Game[/b] folder (next to eldenring.exe, mod, mods - [b]not[/b] inside base/)[/*]
+[*]Open [b]base/config.toml[/b] and add the DLL to external_dlls and the asset folder to mods (MapForGoblins listed FIRST so its world-map file wins):
+[code]external_dlls = [
+    "MapForGoblins/MapForGoblins.dll"
+]
+
+mods = [
+    { enabled = true, name = "MapForGoblins", path = "MapForGoblins" },
+    { enabled = true, name = "default", path = "mod" }
+][/code]
+[/*]
+[*]Launch from eldenring.exe as usual[/*]
+[/list]
+[color=#ff8c00][b]Mind the slashes:[/b][/color] in this config a single backslash is an escape character, so a path like "MapForGoblins\MapForGoblins.dll" makes the WHOLE config.toml invalid and stops [i]every[/i] mod from loading - not just this one. Use forward slashes like above, or double every backslash (\\). The DLL must be in [b]external_dlls[/b]: Lazy Loader only loads ModEngine from base/, it does not auto-inject mod DLLs.
 [/spoiler]
 Settings are in [b]MapForGoblins/MapForGoblins.ini[/b] [b]Reminder: most categories are OFF by default - enable the ones you want here, or use the included all-on preset.[/b]
 
@@ -105,6 +125,7 @@ mods = [
 [/*]
 [*]Launch through Start_Convergence.bat as usual[/*]
 [/list]
+[color=#ff8c00][b]Mind the slashes:[/b][/color] keep the paths with double backslashes (\\) or forward slashes (/) - a single backslash is a TOML escape, which makes the whole config invalid and stops [i]every[/i] mod from loading.
 Settings are in [b]MapForGoblins/MapForGoblins.ini[/b]. Note: the Convergence Launcher may rewrite config_eldenring.toml when it updates the mod - re-check the two edits after updates. [b]Reminder: most categories are OFF by default - enable the ones you want here, or use the included all-on preset.[/b]
 [/spoiler]
 
