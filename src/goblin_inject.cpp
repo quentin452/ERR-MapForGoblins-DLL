@@ -5,6 +5,7 @@
 #include "goblin_messages.hpp"
 #include "modutils.hpp"
 #include "goblin_map_data.hpp"
+#include "goblin_item_icons.hpp"
 #include "goblin_location_alt.hpp"
 #include "from/params.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
@@ -12,6 +13,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <optional>
 #include <set>
 #include <thread>
 #include <unordered_map>
@@ -47,6 +49,77 @@ static bool g_param_injection_active = false;
 // Used by sanitize_injected_textids() (run after the FMG is built) to strip
 // textIds that don't resolve to a real string.
 static std::vector<uint8_t *> g_injected_row_ptrs;
+
+// Live-loot: lot-backed injected rows. refresh_loot_from_itemlot() reads the
+// LIVE ItemLotParam getItemFlagId for each and rewrites textDisableFlagId1 so
+// the marker hides on the actual light-point pickup for the loaded regulation
+// (Randomizer-compatible). g_lot_backed_set lets apply_flag_or_pairs skip them.
+struct LotBackedRow { uint8_t *ptr; uint32_t lotId; uint8_t lotType; };
+static std::vector<LotBackedRow> g_lot_backed_rows;
+static std::set<uint8_t *> g_lot_backed_set;
+
+namespace
+{
+// One ItemLotParam row, read by raw offset (ITEMLOT_PARAM_ST = 152 bytes,
+// shared layout for _map and _enemy).
+struct RawItemLotRow { uint8_t b[0x98]; };
+
+// Reads ItemLotParam_map / _enemy from live memory once, then resolves rows by
+// id. Shared by inject_map_entries (live icon/category) and
+// refresh_loot_from_itemlot (live hide-flags / labels).
+struct LotReader
+{
+    std::optional<from::params::ParamTableSequence<RawItemLotRow>> map_lots, enemy_lots;
+    void init()
+    {
+        // ParamTableSequence has a const member (not copy-assignable) → emplace.
+        try { map_lots.emplace(from::params::get_param<RawItemLotRow>(L"ItemLotParam_map")); } catch (...) {}
+        try { enemy_lots.emplace(from::params::get_param<RawItemLotRow>(L"ItemLotParam_enemy")); } catch (...) {}
+    }
+    bool ok() const { return map_lots.has_value() || enemy_lots.has_value(); }
+    RawItemLotRow *row(uint32_t lot_id, uint8_t lot_type)
+    {
+        auto &pref  = (lot_type == 2) ? enemy_lots : map_lots;
+        auto &other = (lot_type == 2) ? map_lots : enemy_lots;
+        if (pref)  { try { return &(*pref)[lot_id]; }  catch (...) {} }
+        if (other) { try { return &(*other)[lot_id]; } catch (...) {} }
+        return nullptr;
+    }
+};
+
+// Encode a live item (id + ItemLotParam category 1-5) into the offset-encoded
+// key used by both marker textIds and the generated ITEM_ICONS table.
+inline int32_t encode_live_item(int32_t item_id, int32_t cat)
+{
+    switch (cat)
+    {
+        case 1: return item_id + 500000000;                                       // goods
+        case 2: return (item_id >= 50000000) ? item_id : item_id + 100000000;     // ammo / weapon
+        case 3: return item_id + 200000000;                                       // protector
+        case 4: return item_id + 300000000;                                       // accessory
+        case 5: return item_id + 400000000;                                       // gem (ash of war)
+        default: return 0;
+    }
+}
+
+// Spoiler-free (config::anonymousLoot) constants. The generic label reuses the
+// localized BloodMsg word "something" (id 32004) at the +950M encoding (copied
+// into PlaceName by setup_messages). The icon is our gray "?" frame added to
+// sprite 171 of the worldmap gfx (next free frame after the tinted variants).
+constexpr int32_t ANON_LABEL_TEXTID = 950000000 + 32004;  // "something"
+// gray "?" frame — generated per profile (goblin::generated::ANON_ICON_ID),
+// 440 on a vanilla-base gfx, shifted by the icon-frame offset on Convergence.
+
+// Binary-search the baked item-icon table (sorted by key).
+const goblin::generated::ItemIcon *lookup_item_icon(int32_t key)
+{
+    const auto *begin = goblin::generated::ITEM_ICONS;
+    const auto *end   = begin + goblin::generated::ITEM_ICON_COUNT;
+    const auto *it = std::lower_bound(begin, end, key,
+        [](const goblin::generated::ItemIcon &a, int32_t k) { return a.key < k; });
+    return (it != end && it->key == key) ? it : nullptr;
+}
+} // namespace
 
 // Master-off intent set by the toggle hotkey. When true the user has
 // explicitly hidden the icons, so the auto-toggle must keep the table vanilla
@@ -179,7 +252,20 @@ void goblin::inject_map_entries()
         bool is_piece;     // collected::register_param_ptr (CSWorldGeomMan-tracked)
         bool is_kindling;  // kindling::register_param_ptr  (SFX-region-tracked)
         Category category;
+        uint32_t lotId;    // live-loot: source ItemLotParam row (0 = none)
+        uint8_t lotType;   // 0=none, 1=ItemLotParam_map, 2=ItemLotParam_enemy
     };
+
+    // Live-loot icons (config::liveLootIcons): a randomized lot may now hold an
+    // item of a different category than the one baked at this marker. Read the
+    // live item, look up the icon + category it would get as a normal marker,
+    // and gate / re-icon by THAT instead of the baked category. Resolved icons
+    // are keyed by original_row_id and applied when the row is copied below.
+    LotReader lot_reader;
+    if (goblin::config::liveLootIcons)
+        lot_reader.init();
+    std::unordered_map<uint64_t, uint16_t> live_icon_override;
+    size_t live_recat = 0;
 
     // Filter: only include enabled categories (disabled ones are simply not injected)
     std::vector<InjectedEntry> entries;
@@ -189,20 +275,54 @@ void goblin::inject_map_entries()
     for (size_t i = 0; i < generated::MAP_ENTRY_COUNT; i++)
     {
         const auto &e = generated::MAP_ENTRIES[i];
-        if (!is_category_enabled(e.category))
-        {
-            skipped_by_config++;
-            continue;
-        }
         bool is_piece = e.category == Category::ReforgedRunePieces ||
                         e.category == Category::ReforgedEmberPieces ||
                         e.category == Category::LootMaterialNodes;
         bool is_kindling = e.category == Category::WorldKindlingSpirits;
-        entries.push_back({0, e.row_id, &e.data, is_piece, is_kindling, e.category});
+        // Live-loot linkage: only for lot-backed loot rows, and never for
+        // piece/kindling rows (those are geom/SFX-tracked via collected::).
+        uint32_t lotId = (is_piece || is_kindling) ? 0 : e.lotId;
+        uint8_t lotType = (is_piece || is_kindling) ? 0 : e.lotType;
+
+        // Resolve the gate/icon from the LIVE item when live-loot icons is on.
+        // Spoiler-free mode takes precedence: keep the BAKED category gate (so
+        // visibility doesn't leak the hidden item's type) and force the "?" icon
+        // on every lot-backed marker.
+        Category gate_cat = e.category;
+        const bool is_lot = (lotType != 0 && lotId != 0);
+        if (goblin::config::anonymousLoot && is_lot)
+        {
+            live_icon_override[e.row_id] = goblin::generated::ANON_ICON_ID;
+        }
+        else if (goblin::config::liveLootIcons && is_lot && lot_reader.ok())
+        {
+            if (RawItemLotRow *r = lot_reader.row(lotId, lotType))
+            {
+                int32_t item_id = *reinterpret_cast<int32_t *>(r->b + 0x00);   // lotItemId01
+                int32_t cat     = *reinterpret_cast<int32_t *>(r->b + 0x20);   // lotItemCategory01
+                if (item_id > 0)
+                {
+                    const auto *ic = lookup_item_icon(encode_live_item(item_id, cat));
+                    if (ic)
+                    {
+                        if (ic->category != gate_cat) live_recat++;
+                        gate_cat = ic->category;
+                        live_icon_override[e.row_id] = ic->iconId;
+                    }
+                }
+            }
+        }
+
+        if (!is_category_enabled(gate_cat))
+        {
+            skipped_by_config++;
+            continue;
+        }
+        entries.push_back({0, e.row_id, &e.data, is_piece, is_kindling, e.category, lotId, lotType});
     }
 
-    spdlog::info("Injecting {} map entries ({} skipped by config)",
-                 entries.size(), skipped_by_config);
+    spdlog::info("Injecting {} map entries ({} skipped by config, {} live-recategorized)",
+                 entries.size(), skipped_by_config, live_recat);
 
     auto param_res_cap = find_world_map_point_param_res_cap();
     if (!param_res_cap)
@@ -312,6 +432,8 @@ void goblin::inject_map_entries()
         bool is_kindling;
         Category category;
         uint64_t original_row_id;  // pre-remap id (matches locationOverrides keys); 0 for vanilla rows
+        uint32_t lotId;            // live-loot: source ItemLotParam row (0 = none)
+        uint8_t lotType;           // 0=none, 1=ItemLotParam_map, 2=ItemLotParam_enemy
     };
 
     std::vector<RowSource> all_rows;
@@ -320,12 +442,13 @@ void goblin::inject_map_entries()
     for (uint16_t i = 0; i < orig_num_rows; i++)
     {
         auto *data = old_param_file + old_table->rows[i].param_offset;
-        all_rows.push_back({static_cast<int32_t>(old_table->rows[i].row_id), data, false, false, {}, 0});
+        all_rows.push_back({static_cast<int32_t>(old_table->rows[i].row_id), data, false, false, {}, 0, 0, 0});
     }
     for (auto &entry : entries)
     {
         all_rows.push_back({entry.row_id, reinterpret_cast<const uint8_t *>(entry.data),
-                            entry.is_piece, entry.is_kindling, entry.category, entry.original_row_id});
+                            entry.is_piece, entry.is_kindling, entry.category, entry.original_row_id,
+                            entry.lotId, entry.lotType});
     }
 
     std::sort(all_rows.begin(), all_rows.end(),
@@ -350,6 +473,21 @@ void goblin::inject_map_entries()
         // expanded PlaceName FMG didn't end up containing.
         if (all_rows[i].original_row_id)
             g_injected_row_ptrs.push_back(new_param_file + data_offset);
+
+        // Live-loot: remember lot-backed rows for refresh_loot_from_itemlot().
+        if (all_rows[i].lotType != 0 && all_rows[i].lotId != 0)
+        {
+            uint8_t *rp = new_param_file + data_offset;
+            g_lot_backed_rows.push_back({rp, all_rows[i].lotId, all_rows[i].lotType});
+            g_lot_backed_set.insert(rp);
+
+            // Live-loot icons: re-icon the marker to match the live item's
+            // category (resolved in the filter loop, keyed by original id).
+            auto ico = live_icon_override.find(all_rows[i].original_row_id);
+            if (ico != live_icon_override.end())
+                reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(rp)->iconId =
+                    ico->second;
+        }
 
         // Hybrid sub-area location naming (PRIMARY): overwrite the marker's location
         // line (textId2) with the height-aware sub-area name from generated::LOCATION_ALT
@@ -967,12 +1105,123 @@ void goblin::apply_flag_or_pairs()
             continue;
         for (uint8_t *ptr : g_injected_row_ptrs)
         {
+            // Skip live-loot rows: their textDisableFlagId1 holds a lot pickup
+            // flag (set by refresh_loot_from_itemlot), not a boss/quest flag —
+            // don't let a value-collision rewrite it.
+            if (g_lot_backed_set.count(ptr)) continue;
             auto *p = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(ptr);
             if (p->clearedEventFlagId == pr.primary) p->clearedEventFlagId = pr.alt;
             if (p->textDisableFlagId1 == pr.primary) p->textDisableFlagId1 = pr.alt;
             if (p->textDisableFlagId2 == pr.primary) p->textDisableFlagId2 = pr.alt;
         }
     }
+}
+
+// ── Live-loot: hide loot markers on the LIVE item-lot pickup flag ──────
+// Reads each lot-backed marker's source ItemLotParam row from memory and sets
+// textDisableFlagId1 to the lot's current getItemFlagId. Because we read the
+// LOADED regulation (vanilla, Randomizer, any file mod), the marker hides on
+// the actual light-point pickup regardless of which item the lot now gives.
+// One-shot at init: the flag VALUE in a row is static post-load; the engine
+// then evaluates textDisableFlagId1 live every frame. See reference_cleared_badge
+// / the randomizer-compat research. Gated by config::liveLootFlags/Labels.
+void goblin::refresh_loot_from_itemlot()
+{
+    const bool do_flags  = goblin::config::liveLootFlags;
+    const bool do_labels = goblin::config::liveLootLabels;
+    const bool do_anon   = goblin::config::anonymousLoot;
+    if ((!do_flags && !do_labels && !do_anon) || g_lot_backed_rows.empty())
+        return;
+
+    LotReader lots;
+    lots.init();
+    if (!lots.ok())
+    {
+        spdlog::warn("[LIVE-LOOT] ItemLotParam not available — skipped");
+        return;
+    }
+    auto read_row = [&](uint32_t lot_id, uint8_t lot_type) { return lots.row(lot_id, lot_type); };
+
+    int updated = 0, relabeled = 0, not_found = 0, no_flag = 0;
+    for (auto &lr : g_lot_backed_rows)
+    {
+        RawItemLotRow *row = read_row(lr.lotId, lr.lotType);
+        if (!row) { not_found++; continue; }
+        auto *p = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(lr.ptr);
+
+        if (do_flags)
+        {
+            uint32_t flag = *reinterpret_cast<uint32_t *>(row->b + 0x80);  // lot-wide getItemFlagId
+            if (flag == 0)
+            {
+                // Fall back to the per-slot flag only for single-item lots
+                // (lotItemId02 @0x04 == 0), else a slot-1 award would hide the
+                // marker while other loot remains.
+                int32_t item2 = *reinterpret_cast<int32_t *>(row->b + 0x04);
+                if (item2 == 0)
+                    flag = *reinterpret_cast<uint32_t *>(row->b + 0x60);  // getItemFlagId01
+            }
+            if (flag)
+            {
+                // Hide the WHOLE marker on the live pickup flag. A loot marker
+                // carries the same disable flag on every populated text line
+                // (item line + location line; verified uniform across all
+                // lot-backed rows) — the engine only drops the icon once ALL
+                // its lines are disabled. Rewriting just slot 1 left the
+                // location line (slot 2) pinned to the stale baked flag, which
+                // never fires under a regulation that reassigns flags (the
+                // randomizer), so the marker never disappeared. Update every
+                // line that had a (non-zero) disable flag baked.
+                int *tids[8] = {&p->textId1, &p->textId2, &p->textId3, &p->textId4,
+                                &p->textId5, &p->textId6, &p->textId7, &p->textId8};
+                unsigned int *fls[8] = {&p->textDisableFlagId1, &p->textDisableFlagId2,
+                                        &p->textDisableFlagId3, &p->textDisableFlagId4,
+                                        &p->textDisableFlagId5, &p->textDisableFlagId6,
+                                        &p->textDisableFlagId7, &p->textDisableFlagId8};
+                for (int i = 0; i < 8; ++i)
+                    if (*tids[i] > 0 && *fls[i] != 0)
+                        *fls[i] = flag;
+                updated++;
+            }
+            else no_flag++;
+        }
+
+        if (do_anon)
+        {
+            // Spoiler-free mode: replace the item name with the generic
+            // localized label. Same slot guard as the live relabel below — only
+            // overwrite an actual item-name slot, never a location/enemy slot.
+            int32_t cur = p->textId1;
+            if (cur >= 50000000 && cur < 600000000 && cur != ANON_LABEL_TEXTID)
+            {
+                p->textId1 = ANON_LABEL_TEXTID;
+                relabeled++;
+            }
+        }
+        else if (do_labels)
+        {
+            // Relabel the item-name slot (textId1) to whatever the lot now
+            // gives. Guard: only touch textId1 if it already holds an
+            // item-name encoded id (50M..600M item bands) — never clobber a
+            // location (<50M) or enemy/npc (>=700M) slot. The encoded id maps
+            // into the full item-name space copied into PlaceName at init.
+            int32_t cur = p->textId1;
+            if (cur >= 50000000 && cur < 600000000)
+            {
+                int32_t item_id = *reinterpret_cast<int32_t *>(row->b + 0x00);  // lotItemId01
+                int32_t cat     = *reinterpret_cast<int32_t *>(row->b + 0x20);  // lotItemCategory01
+                int32_t enc = encode_live_item(item_id, cat);
+                if (item_id > 0 && enc > 0 && enc != cur)
+                {
+                    p->textId1 = enc;
+                    relabeled++;
+                }
+            }
+        }
+    }
+    spdlog::info("[LIVE-LOOT] {} hide-flags, {} relabels set from live ItemLotParam "
+                 "({} lots not found, {} no flag, {} lot-backed total)",
+                 updated, relabeled, not_found, no_flag, g_lot_backed_rows.size());
 }
 
 void goblin::menu_auto_toggle_loop()

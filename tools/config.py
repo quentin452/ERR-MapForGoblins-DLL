@@ -26,8 +26,12 @@ PROJECT_DIR = TOOLS_DIR.parent
 #                    reproducing what ModEngine2 serves the game at runtime)
 # Each non-default profile scopes all generated artifacts under its own dirs
 # so the builds never clobber each other.
+#   'erte'        -> data source = a MERGED view of the ERTE overhaul's mod
+#                    overlay over the vanilla game (partial overlay, same
+#                    staging as convergence; ERTE ships no worldmap gfx so its
+#                    icon-frame offset is 0, like vanilla)
 PROFILE = os.environ.get("MFG_PROFILE", "err").strip().lower()
-if PROFILE not in ("err", "vanilla", "convergence"):
+if PROFILE not in ("err", "vanilla", "convergence", "erte"):
     PROFILE = "err"
 
 # Profile-scoped intermediate/generated data dir.
@@ -58,6 +62,7 @@ OO2CORE_DLL = None  # resolved from GAME_DIR below
 ERR_MOD_DIR = None
 GAME_DIR = None
 CONVERGENCE_MOD_DIR = None  # The Convergence's ME2 'mod' overlay dir
+ERTE_MOD_DIR = None         # ERTE overhaul's mod overlay dir
 SMITHBOX_DIR = None
 DARKSCRIPT_RESOURCES = None  # path to <DarkScript3>/Resources/ (optional)
 
@@ -79,6 +84,10 @@ if _config_path.exists():
     if _conv:
         CONVERGENCE_MOD_DIR = Path(_conv)
 
+    _erte = _cfg.get("paths", "erte_mod_dir", fallback="").strip()
+    if _erte:
+        ERTE_MOD_DIR = Path(_erte)
+
     _sb = _cfg.get("paths", "smithbox_dir", fallback="").strip()
     if _sb:
         SMITHBOX_DIR = Path(_sb)
@@ -97,7 +106,7 @@ if GAME_DIR:
 # tools/prepare_merged_src.py as the first pipeline stage).
 if PROFILE == "vanilla":
     DATA_SRC_DIR = GAME_DIR
-elif PROFILE == "convergence":
+elif PROFILE in ("convergence", "erte"):
     DATA_SRC_DIR = DATA_DIR / "merged_src"
 else:
     DATA_SRC_DIR = ERR_MOD_DIR
@@ -120,9 +129,10 @@ def require_data_src_dir():
     if PROFILE == "vanilla":
         print("ERROR: vanilla profile needs a UXM-unpacked game_dir.")
         print(f"  Set game_dir in {_config_path} (must contain loose regulation.bin, map/, event/, msg/).")
-    elif PROFILE == "convergence":
-        print("ERROR: convergence merged source dir not staged yet.")
-        print(f"  Set convergence_mod_dir in {_config_path}, then run tools/prepare_merged_src.py")
+    elif PROFILE in ("convergence", "erte"):
+        key = PROFILE + "_mod_dir"
+        print(f"ERROR: {PROFILE} merged source dir not staged yet.")
+        print(f"  Set {key} in {_config_path}, then run tools/prepare_merged_src.py")
         print("  (build_pipeline.py runs it automatically as the first stage).")
     else:
         print("ERROR: ERR mod directory not configured or not found.")

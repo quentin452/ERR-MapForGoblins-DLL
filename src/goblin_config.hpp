@@ -77,6 +77,20 @@ namespace goblin
         extern bool showBosses;
         extern bool hideKilledBosses;  // true=hide killed icons, false=green checkmark
 
+        // Compatibility
+        extern bool liveLootFlags;  // read live ItemLotParam getItemFlagId at runtime
+                                    // → loot markers hide on the actual light-point
+                                    // pickup for the current regulation (Randomizer-safe)
+        extern bool liveLootLabels; // read live ItemLotParam item+category at runtime
+                                    // → loot marker name shows the item the lot now
+                                    // gives (Randomizer-safe). Needs full-band FMG copy.
+        extern bool liveLootIcons;  // re-icon & re-gate loot markers by the LIVE item's
+                                    // category at inject (so a randomized item shows its
+                                    // own icon under its own show_* toggle).
+        extern bool anonymousLoot;  // spoiler-free mode: every loot marker shows a
+                                    // gray "?" icon + a generic localized label instead
+                                    // of the real item (blind randomizer runs).
+
         // Quest
         extern bool showDeathroot;
         extern bool showProgression;

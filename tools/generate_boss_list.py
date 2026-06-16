@@ -236,6 +236,42 @@ def main():
                      'bossMapAreaNo', 'bossMapBlockNo', 'bossMapMapNo'}
         ga_data = param_to_dict(ga, ga_fields)
 
+        # GameAreaParam.defeatBossFlagId is, for many field bosses, the boss
+        # ENTITY id — NOT the flag the game sets on kill (verified live: e.g. tile
+        # m60_36_45 stored 1036450340 = entity, but the death flag is 1036450800).
+        # The boss-death template events 90005860/61/80 carry the real defeat flag
+        # at arg offset 8 and the boss entity at offset 16. Build entity -> flag so
+        # we can map the (entity-valued) GameAreaParam field to the true flag.
+        emevd_defeat = {}       # entity id -> real defeat flag (field bosses)
+        dungeon_map_flags = {}  # map "mAA_BB_CC_00" -> set(defeat flags) (catacomb/dungeon)
+        BOSS_DEATH_EVENTS = {90005860, 90005861, 90005880}  # field: arg0=flag, arg2=entity
+        DUNGEON_BOSS_EVENT = 90005646                        # dungeon: arg0=flag
+        for ep in sorted((ERR_MOD_DIR / 'event').glob('*.emevd.dcx')):
+            mp = ep.name.replace('.emevd.dcx', '')
+            try:
+                em = rfb(_emevd_read, SoulsFormats.DCX.Decompress(str(ep)), '.emevd')
+            except Exception:
+                continue
+            for ev in em.Events:
+                for ins in ev.Instructions:
+                    if int(ins.Bank) != 2000:
+                        continue
+                    a = bytes(ins.ArgData)
+                    if len(a) < 12:
+                        continue
+                    eid = _struct.unpack_from('<i', a, 4)[0]
+                    df = _struct.unpack_from('<i', a, 8)[0]
+                    if eid in BOSS_DEATH_EVENTS and len(a) >= 20:
+                        ent = _struct.unpack_from('<i', a, 16)[0]
+                        if df > 0 and ent > 0:
+                            emevd_defeat.setdefault(ent, df)
+                    elif eid == DUNGEON_BOSS_EVENT and df > 0:
+                        dungeon_map_flags.setdefault(mp, set()).add(df)
+        # Only trust a dungeon's template flag when it is unambiguous (one boss).
+        dungeon_flag = {m: next(iter(s)) for m, s in dungeon_map_flags.items() if len(s) == 1}
+        print(f"  boss-death EMEVD scan: {len(emevd_defeat)} field entity->flag, "
+              f"{len(dungeon_flag)} single-boss dungeon map->flag")
+
         result = []
         seen_flags = set()
         matched = 0
@@ -243,6 +279,20 @@ def main():
             flag = int(row.get('defeatBossFlagId', 0) or 0)
             if rid < 10000000 or flag <= 0:
                 continue  # test rows (0, 1, 9999991/2)
+            # Replace the entity-valued GameAreaParam field with the real death
+            # flag from the boss-death event, matched by entity (rid) or by the
+            # field value itself (== entity for field bosses).
+            flag = emevd_defeat.get(rid) or emevd_defeat.get(flag) or flag
+            # Dungeon/catacomb bosses: GameAreaParam can carry a stale flag (3 of
+            # 55 mismatch the real death flag, e.g. m30_20 stored 30200810 but the
+            # boss-death event 90005646 sets 30200800). Prefer the dungeon
+            # template flag when the boss's map has a single unambiguous one.
+            ba = int(row.get('bossMapAreaNo', 0) or 0)
+            if ba and ba not in (60, 61):
+                mp = (f"m{ba:02d}_{int(row.get('bossMapBlockNo',0) or 0):02d}"
+                      f"_{int(row.get('bossMapMapNo',0) or 0):02d}_00")
+                if mp in dungeon_flag:
+                    flag = dungeon_flag[mp]
             if flag in seen_flags:
                 continue  # boss duos share one defeat flag — one marker
             seen_flags.add(flag)

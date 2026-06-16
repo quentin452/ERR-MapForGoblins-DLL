@@ -47,6 +47,18 @@ namespace goblin::config
          showSummoningPools = false, showKindlingSpirits = true,
          showInteractables = false, showWorldMaps = false, hideKilledBosses = false;
 
+    // Live-loot / randomizer-compat options default ON for the plain VANILLA
+    // build only (that's what Item/Enemy Randomizer players use) and OFF for ERR
+    // and Convergence (opt-in — they add memory/CPU with no benefit without a
+    // regulation mod). MFG_PROFILE_VANILLA is set by CMake for the vanilla bake
+    // only (MFG_VANILLA covers vanilla AND convergence, so it can't be used here).
+#ifdef MFG_PROFILE_VANILLA
+    bool liveLootFlags = true, liveLootLabels = true, liveLootIcons = true;
+#else
+    bool liveLootFlags = false, liveLootLabels = false, liveLootIcons = false;
+#endif
+    bool anonymousLoot = false;  // opt-in spoiler-free mode (all profiles default off)
+
     bool patchOverworldBossIcons = true, patchDungeonBossIcons = true,
          patchCampIcons = true, patchMerchantIcons = true,
          redifyBossIcons = false, redifyDungeonIcons = false,
@@ -68,6 +80,15 @@ namespace
     namespace cfg = goblin::config;
 
     constexpr bool ERR = true; // err-only marker for readability
+
+    // Default string for the live-loot options — "true" only in the vanilla
+    // bake (see the var defs above), "false" elsewhere. Must match the compiled
+    // bool defaults so the generated ini and the DLL agree.
+#ifdef MFG_PROFILE_VANILLA
+#define MFG_LL_DEF "true"
+#else
+#define MFG_LL_DEF "false"
+#endif
 
     // helper macros to keep the table compact
 #define B(k, var, def, cmt) IniEntry{k, IniType::Bool, &cfg::var, def, cmt, false, nullptr}
@@ -198,6 +219,19 @@ namespace
                    "Cosmetic: when patching dungeon entrances, recolour iconId to 374.\nRequires patch_dungeon_boss_icons."),
                 BE("hide_dungeon_icons_on_clear", hideDungeonIconsOnClear, "false",
                    "When patching dungeon entrances, hide the marker once the boss inside is\ndefeated. Requires patch_dungeon_boss_icons."),
+            }},
+
+            {"Compatibility",
+             "Options for running alongside other mods that change item placement.",
+             false, {
+                B("live_loot_flags", liveLootFlags, MFG_LL_DEF,
+                  "Hide loot markers using the pickup flag from the loaded regulation, so they\ndisappear correctly under the Item/Enemy Randomizer or other regulation mods."),
+                B("live_loot_labels", liveLootLabels, MFG_LL_DEF,
+                  "Relabel each loot marker with the item its lot currently gives, so names match\nthe randomizer. Uses more memory (copies item names into the map's name table)."),
+                B("live_loot_icons", liveLootIcons, MFG_LL_DEF,
+                  "Give each loot marker the icon and category of the item its lot currently\ngives, so icons and show_* toggles match the randomizer."),
+                B("anonymous_loot", anonymousLoot, "false",
+                  "Spoiler-free: every loot marker shows a gray \"?\" and a generic label instead\nof the real item. Overrides live_loot_labels/icons; markers still hide on pickup."),
             }},
 
             {"Debug",

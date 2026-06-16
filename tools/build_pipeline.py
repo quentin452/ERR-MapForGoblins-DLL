@@ -25,7 +25,7 @@ def _parse_profile(argv):
 
 
 PROFILE = _parse_profile(sys.argv[1:])
-if PROFILE not in ('err', 'vanilla', 'convergence'):
+if PROFILE not in ('err', 'vanilla', 'convergence', 'erte'):
     PROFILE = 'err'
 os.environ['MFG_PROFILE'] = PROFILE  # propagate to every child subprocess
 
@@ -40,7 +40,7 @@ CACHE_FILE = DATA / '.build_cache.json'
 # The convergence source is a STAGED dir (built by the prepare_merged_src
 # stage below) — create it up front so require_err_mod_dir passes on the
 # very first run; the stage then populates it before anything reads it.
-if PROFILE == 'convergence':
+if PROFILE in ('convergence', 'erte'):
     config.DATA_SRC_DIR.mkdir(parents=True, exist_ok=True)
 
 ERR_MOD = config.require_err_mod_dir()  # profile-aware: mod overlay / vanilla game / merged dir
@@ -231,6 +231,7 @@ STAGES = [
 
     Stage('generate_loot_massedit',
           inputs=[REPO / 'data' / 'enemy_bloodmsg_mapping.json',
+                  REPO / 'data' / 'enemy_names_i18n.json',
                   DATA / 'items_database.json',
                   DATA / 'goods_sort_groups.json',
                   DATA / 'goods_crafting_ids.json',
@@ -245,7 +246,9 @@ STAGES = [
           outputs=[MASSEDIT_OUT / 'Loot - Consumables.MASSEDIT',
                    MASSEDIT_OUT / 'Equipment - Armaments.MASSEDIT',
                    MASSEDIT_OUT / 'Quest - Progression.MASSEDIT',
-                   MASSEDIT_OUT / 'World - Bosses.MASSEDIT'],
+                   MASSEDIT_OUT / 'World - Bosses.MASSEDIT',
+                   DATA / 'loot_lot_linkage.json',
+                   DATA / 'item_icon_table.json'],
           script='generate_loot_massedit.py',
           also_scripts=['massedit_common.py']),
 
@@ -363,10 +366,25 @@ STAGES = [
           script='generate_hostile_npcs.py',
           also_scripts=['massedit_common.py', 'config.py']),
 
+    # Relocating-boss fix (Lansseax): after all marker generators, before bake.
+    # Removes the un-collectable duplicate loot at the boss's flee-spawn and
+    # ensures a flee-spawn boss marker that clears on the flee flag. Edits the
+    # MASSEDIT in place (idempotent); generate_data (below) re-bakes from it.
+    Stage('relocating_boss_fix',
+          inputs=[MASSEDIT_OUT,
+                  config.PROJECT_DIR / 'data' / 'relocating_flee_spawns.json'],
+          outputs=[DATA / '_relocating_boss_fix.done'],
+          script='generate_relocating_boss_fix.py',
+          also_scripts=['config.py']),
+
     Stage('generate_data',
-          inputs=[MASSEDIT_OUT],
+          inputs=[MASSEDIT_OUT, DATA / 'loot_lot_linkage.json',
+                  DATA / 'item_icon_table.json',
+                  config.PROJECT_DIR / 'data' / 'enemy_names_i18n.json',
+                  DATA / '_relocating_boss_fix.done'],
           outputs=[GENERATED_CPP / 'goblin_map_data.cpp',
-                   GENERATED_CPP / 'goblin_text_data.cpp'],
+                   GENERATED_CPP / 'goblin_item_icons.cpp',
+                   GENERATED_CPP / 'goblin_enemy_names.cpp'],
           script='generate_data.py',
           args=['--massedit-dir', str(MASSEDIT_OUT)]),
 
@@ -397,17 +415,19 @@ STAGES = [
 # Convergence-only: stage the merged overlay-over-vanilla source dir FIRST
 # (everything else reads from it). Defined lazily — CONVERGENCE_MOD_DIR is
 # None in the other profiles.
-def _convergence_prepare_stage():
-    conv = config.CONVERGENCE_MOD_DIR
-    if not conv or not conv.exists():
-        print('ERROR: convergence profile needs convergence_mod_dir in tools/config.ini')
+def _overlay_prepare_stage():
+    """Merged-source staging for an overlay-mod profile (convergence / erte):
+    the mod's partial file overlay laid over the vanilla game."""
+    overlay = config.CONVERGENCE_MOD_DIR if PROFILE == 'convergence' else config.ERTE_MOD_DIR
+    if not overlay or not overlay.exists():
+        print(f'ERROR: {PROFILE} profile needs {PROFILE}_mod_dir in tools/config.ini')
         sys.exit(1)
     game = config.require_game_dir()
     return Stage('prepare_merged_src',
-                 inputs=[conv / 'regulation.bin',
-                         conv / 'msg' / 'engus',
-                         conv / 'map' / 'MapStudio',
-                         conv / 'event',
+                 inputs=[overlay / 'regulation.bin',
+                         overlay / 'msg' / 'engus',
+                         overlay / 'map' / 'MapStudio',
+                         overlay / 'event',
                          game / 'map' / 'mapstudio',
                          game / 'event',
                          game / 'msg' / 'engus'],
@@ -460,8 +480,8 @@ def active_stages():
     """
     if PROFILE == 'vanilla':
         return VANILLA_BOOTSTRAP + [s for s in STAGES if s.name not in ERR_ONLY_STAGES]
-    if PROFILE == 'convergence':
-        return ([_convergence_prepare_stage()] + VANILLA_BOOTSTRAP
+    if PROFILE in ('convergence', 'erte'):
+        return ([_overlay_prepare_stage()] + VANILLA_BOOTSTRAP
                 + [s for s in STAGES if s.name not in ERR_ONLY_STAGES])
     return STAGES
 

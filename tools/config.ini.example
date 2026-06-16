@@ -15,6 +15,12 @@ game_dir =
 # Example: C:\Games\ConvergenceER\mod
 convergence_mod_dir =
 
+# Optional: path to the ERTE overhaul's mod overlay dir, for the erte build
+# profile (build.bat ... --erte). game_dir must also be set and UXM-unpacked
+# (partial overlay -> staged merged-over-vanilla view, same as convergence).
+# Example: C:\...\me3\config\profiles\eldenring-mods\ERTE SOTE
+erte_mod_dir =
+
 # Optional: path to SmithBox install (only needed by some research scripts
 # under tools/_*.py — not required by the core build pipeline).
 # Example: C:\Tools\Smithbox_2_1_2_2016_02_16_a

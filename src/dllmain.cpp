@@ -81,6 +81,7 @@ static void init_inject_entries()   { goblin::inject_map_entries(); }
 static void init_apply_map_logic()  { goblin::apply_map_logic(); }
 static void init_tutorial_popup()   { goblin::inject_tutorial_popup_rows(); }
 static void init_setup_messages()   { goblin::setup_messages(); }
+static void init_live_loot()        { goblin::refresh_loot_from_itemlot(); }
 
 static void safe_init_step(InitFn fn, const char *name)
 {
@@ -125,6 +126,7 @@ static void setup_mod()
     safe_init_step(&init_apply_map_logic, "apply_map_logic");
     safe_init_step(&init_tutorial_popup,  "inject_tutorial_popup_rows");
     safe_init_step(&init_setup_messages,  "setup_messages");
+    safe_init_step(&init_live_loot,       "refresh_loot_from_itemlot");
 
     try
     {

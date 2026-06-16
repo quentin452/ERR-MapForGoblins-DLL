@@ -545,13 +545,43 @@ def deduplicate(records):
     return unique, dupes
 
 
+# Profile-independent localized enemy-name table (committed; built from the
+# enemy-name source by extract_enemy_names_i18n). Used by the non-ERR builds so
+# their enemy labels match the ERR-build quality; the strings themselves are
+# FromSoft / community-wiki enemy names (see the comparison notes).
+def _load_enemy_names_i18n():
+    p = config.PROJECT_DIR / 'data' / 'enemy_names_i18n.json'
+    if p.exists():
+        with open(p, encoding='utf-8') as f:
+            return json.load(f)  # {"<id>": {"engus": name, ...}}
+    return {}
+
+ENEMY_NAMES_I18N = _load_enemy_names_i18n()
+
+
+def _model_map_from_i18n():
+    """model 'cNNNN' -> base name id (NNNN*1000+4), derived from the i18n id set."""
+    families = {}
+    for k in ENEMY_NAMES_I18N:
+        tid = int(k)
+        if tid % 100 == 4:
+            model, variant = tid // 1000, (tid % 1000) // 100
+            if 1000 <= model <= 9999 and variant <= 9:
+                families.setdefault(model, tid)
+    return {f'c{m}': b for m, b in sorted(families.items())}
+
+
 def load_enemy_names():
-    """Load enemy model -> TutorialTitle FMG ID mapping."""
+    """Enemy model -> name-id mapping. ERR uses its own extracted mapping; other
+    profiles derive it from the profile-independent enemy-name table so their
+    enemy labels resolve the same way."""
     path = DATA_DIR / 'enemy_tutorial_mapping.json'
     if path.exists():
         with open(path) as f:
-            return json.load(f)
-    return {}
+            d = json.load(f)
+        if d:
+            return d
+    return _model_map_from_i18n()
 
 ENEMY_NAMES = load_enemy_names()
 
@@ -584,23 +614,33 @@ BLOODMSG_WORDS = load_bloodmsg_words()
 
 
 def load_tutorial_ids():
-    """Load set of all valid TutorialTitle main entry IDs (for variant validation)."""
+    """Valid name-entry IDs (for variant validation). Non-ERR profiles add the
+    profile-independent enemy-name ids so variant resolution works there too."""
+    ids = set()
     path = DATA_DIR / 'tutorial_title_ids.json'
     if path.exists():
         with open(path) as f:
-            return set(json.load(f))
-    return set()
+            ids = set(json.load(f))
+    if config.PROFILE != 'err':
+        ids |= {int(k) for k in ENEMY_NAMES_I18N}
+    return ids
 
 TUTORIAL_IDS = load_tutorial_ids()
 
 
 def _load_tutorial_names():
-    """Load TutorialTitle ID -> clean name (without number prefix)."""
+    """Name id -> clean name. Non-ERR profiles merge the (English) enemy-name
+    table so variant text-matching resolves there too."""
+    names = {}
     path = DATA_DIR / 'tutorial_title_names.json'
     if path.exists():
         with open(path, encoding='utf-8') as f:
-            return {int(k): v for k, v in json.load(f).items()}
-    return {}
+            names = {int(k): v for k, v in json.load(f).items()}
+    if config.PROFILE != 'err':
+        for k, langs in ENEMY_NAMES_I18N.items():
+            if 'engus' in langs:
+                names.setdefault(int(k), langs['engus'])
+    return names
 
 TUTORIAL_NAMES = _load_tutorial_names()
 
@@ -637,8 +677,14 @@ def resolve_enemy_tutorial_id(enemy_model, npc_param_id, vanilla_place_name=None
     return base_id
 
 
-def write_massedit(records, filepath, icon_id, start_id):
-    """Write MASSEDIT file + slots JSON from records."""
+def write_massedit(records, filepath, icon_id, start_id, lot_linkage=None):
+    """Write MASSEDIT file + slots JSON from records.
+
+    If lot_linkage (dict) is given, records each marker's source item-lot so the
+    DLL can read the LIVE getItemFlagId/item from memory at runtime (live-loot /
+    randomizer compatibility): lot_linkage[row_id] = [lotId, lotType] where
+    lotType 1=ItemLotParam_map (treasure/emevd), 2=ItemLotParam_enemy.
+    """
     lines = []
     row_id = start_id
 
@@ -646,6 +692,13 @@ def write_massedit(records, filepath, icon_id, start_id):
         area = rec['areaNo']
         gx = rec['gridX']
         gz = rec['gridZ']
+
+        # Live-loot linkage: bake the source lot id + which param it's in.
+        if lot_linkage is not None:
+            _lot = rec.get('itemLotId', 0) or 0
+            if _lot > 0:
+                _lt = 2 if rec.get('source') == 'enemy' else 1  # enemy vs map(treasure/emevd)
+                lot_linkage[row_id] = [int(_lot), _lt]
 
         # Primary item ID for localized text, offset-encoded by item category:
         #   cat=1 (goods):    id as-is         → DLL reads GoodsName FMG
@@ -757,6 +810,9 @@ def write_massedit(records, filepath, icon_id, start_id):
 def main():
     OUT_DIR.mkdir(exist_ok=True)
 
+    # row_id -> [lotId, lotType] for live-loot mode (consumed by generate_data.py)
+    LOT_LINKAGE = {}
+
     print('Loading items database...')
     with open(DB_PATH, encoding='utf-8') as f:
         db = json.load(f)
@@ -804,7 +860,7 @@ def main():
 
         # Write MASSEDIT
         massedit_path = OUT_DIR / f'{cat_name}.MASSEDIT'
-        count = write_massedit(unique, massedit_path, icon_id, start_id)
+        count = write_massedit(unique, massedit_path, icon_id, start_id, LOT_LINKAGE)
         print(f'  Written {count} entries to {massedit_path.name}')
 
         # Stats
@@ -990,6 +1046,53 @@ def main():
     with open(massedit_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines) + '\n')
     print(f'  Written {gr_count} entries to {massedit_path.name}')
+
+    # Live-loot lot linkage (row_id -> [lotId, lotType]); generate_data.py joins
+    # this onto MapEntry so the DLL can read the live ItemLotParam at runtime.
+    linkage_path = DATA_DIR / 'loot_lot_linkage.json'
+    with open(linkage_path, 'w', encoding='utf-8') as f:
+        json.dump(LOT_LINKAGE, f)
+    print(f'\n  Wrote {len(LOT_LINKAGE)} lot-linkage entries to {linkage_path.name}')
+
+    # ── Live-loot icon/category table (consumed by generate_data.py) ──
+    # Map every item to the iconId + MFG category it would get as a normal
+    # marker, by running the SAME ordered LOOT_CATEGORIES classifier on it as a
+    # singleton lot (first matching filter wins). At runtime the DLL reads the
+    # live ItemLotParam item, looks it up here, and re-icons + re-gates the
+    # marker so randomized loot shows the right icon under its own toggle.
+    # Key = offset-encoded item id (identical to the marker textId encoding).
+    def _encode_item(iid, cat):
+        if cat == 1: return iid + 500000000          # goods
+        if cat == 2: return iid if iid >= 50000000 else iid + 100000000  # ammo / weapon
+        if cat == 3: return iid + 200000000          # protector
+        if cat == 4: return iid + 300000000          # accessory
+        if cat == 5: return iid + 400000000          # gem (ash of war)
+        return None
+
+    with open(DB_PATH, encoding='utf-8') as f:
+        _raw_db = json.load(f)
+    icon_table = {}  # encoded_key -> [iconId, category_name]
+    for rec in _raw_db:
+        for it in rec.get('items', []):
+            cat = it.get('category', 0)
+            iid = it.get('id', 0)
+            key = _encode_item(iid, cat)
+            if key is None or iid <= 0 or key in icon_table:
+                continue
+            single = [it]
+            for cn, cc in LOOT_CATEGORIES.items():
+                if config.PROFILE != 'err' and cn in ERR_ONLY_CATS:
+                    continue
+                try:
+                    if cc['filter'](single):
+                        icon_table[key] = [cc['iconId'], cn]
+                        break
+                except Exception:
+                    continue
+    icon_table_path = DATA_DIR / 'item_icon_table.json'
+    with open(icon_table_path, 'w', encoding='utf-8') as f:
+        json.dump(icon_table, f)
+    print(f'  Wrote {len(icon_table)} item-icon entries to {icon_table_path.name}')
 
 
 if __name__ == '__main__':

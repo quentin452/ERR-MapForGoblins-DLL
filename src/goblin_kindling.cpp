@@ -54,11 +54,8 @@ constexpr uint32_t FIRST_SPIRIT_ENTITY_ID = 1045373501;  // KindlingSpirit_0001
 constexpr int      SPIRIT_COUNT = 5;
 constexpr uint8_t  HIDDEN_AREA = 99;
 
-// Singleton RVAs from libER/symbols/singletons.csv (verified 2026-04 build).
-//   GLOBAL_WorldSfxMan = 64419320 = 0x3D6F5F8
-//   GLOBAL_CSSfx       = 64502200 = 0x3D7E1F8
-[[maybe_unused]] constexpr uintptr_t RVA_WORLD_SFX_MAN = 0x3D6F5F8;
-[[maybe_unused]] constexpr uintptr_t RVA_CS_SFX        = 0x3D7E1F8;
+// WorldSfxMan singleton slot + EcTestDistance vtable are resolved by AOB
+// (patch-resilient) instead of hardcoded RVAs — see the resolvers below.
 
 struct KindlingSlot
 {
@@ -165,13 +162,33 @@ bool safe_write_byte(uint8_t *addr, uint8_t val)
 // cached cond ptr is re-validated each tick by
 // (qword[cond]==vft && dword[cond+0x30]==expected_eid).
 
-constexpr uintptr_t RVA_DISTANCE_VFT   = 0x2A5BB90;  // EcTestDistance
 constexpr size_t    COND_TO_EID_OFFSET = 0x30;       // u32 entity_id
 
-// WorldSfxMan singleton slot RVA — used as a "game world is loaded"
-// indicator. While the player is in main menu / loading screen, this
-// pointer is NULL.
-constexpr uintptr_t RVA_WORLD_SFX_MAN_PTR = 0x3D6F5F8;
+// EcTestDistance vftable + WorldSfxMan slot, resolved by AOB (patch-resilient)
+// instead of hardcoded RVAs (those moved on game updates). relative_offsets
+// {{3,7}} extracts the target of the `lea/mov reg,[rip+X]` xref; AOBs wildcard
+// the rip-disp + branch targets. Resolved once, cached, 0 if not found.
+static uintptr_t kindling_resolve(const char *aob)
+{
+    return reinterpret_cast<uintptr_t>(modutils::scan<void>({
+        .aob = aob, .relative_offsets = {{3, 7}}}));
+}
+// EcTestDistance vftable (was RVA 0x2A5BB90) — the constructor's primary vtable
+// store. Used to validate per-spirit cond objects ([cond+0] == this vtable).
+static uintptr_t distance_vft()
+{
+    static uintptr_t s = kindling_resolve(
+        "48 8D 05 ?? ?? ?? ?? 48 89 01 48 8D 05 ?? ?? ?? ?? 48 89 01 F6 C2 01 74 ?? "
+        "BA 40 00 00 00 E8 ?? ?? ?? ?? 90 48 8B C3 48 83 C4 30 5B C3 90 78 ??");
+    return s;
+}
+// WorldSfxMan singleton slot (was RVA 0x3D6F5F8) — "game world loaded"
+// indicator (the pointer there is NULL at the menu / loading screen).
+static uintptr_t world_sfx_man_slot()
+{
+    static uintptr_t s = kindling_resolve("48 8B 05 ?? ?? ?? ?? 48 8D 4D 98 48 89 4C 24 60");
+    return s;
+}
 
 // State shared between the discovery worker and the refresh thread.
 // Cached cond pointers keyed by entity_id (1045373501..505). A spirit is
@@ -229,7 +246,7 @@ static bool is_game_world_loaded()
 {
     uintptr_t base = eldenring_base();
     if (!base) return false;
-    uintptr_t val = seh_read_qword(base + RVA_WORLD_SFX_MAN_PTR);
+    uintptr_t val = seh_read_qword(world_sfx_man_slot());
     return val >= 0x10000;
 }
 
@@ -241,7 +258,7 @@ static bool cond_is_alive(uintptr_t cond, uint32_t eid)
     if (cond < 0x10000) return false;
     uintptr_t base = eldenring_base();
     if (!base) return false;
-    if (seh_read_qword(cond) != base + RVA_DISTANCE_VFT) return false;
+    if (seh_read_qword(cond) != distance_vft()) return false;
     return seh_read_dword(cond + COND_TO_EID_OFFSET) == eid;
 }
 
@@ -298,7 +315,8 @@ static std::map<uint32_t, uintptr_t> discover_kindling_conds()
     uintptr_t base = eldenring_base();
     if (!base) return found;
 
-    uintptr_t target_cond_vft = base + RVA_DISTANCE_VFT;
+    uintptr_t target_cond_vft = distance_vft();
+    if (!target_cond_vft) return found;
 
     // ~71 EcTestDistance objects exist process-wide; 256 hit slots is ample.
     constexpr size_t HITS_MAX = 256;

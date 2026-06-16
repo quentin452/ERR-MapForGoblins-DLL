@@ -234,8 +234,9 @@ COORD_SHIFTS={(11,10):(-2195.0,-352.0)}
 # ---- parse baked cpp ----
 CPP=str(config.GENERATED_DIR / "goblin_map_data.cpp")
 txt=open(CPP,encoding="utf-8").read()
-# split per entry: "{<id>ull, {" ... "}, Category::<cat>, <geom>, <suffix>, "name"|nullptr},"
-ENTRY=re.compile(r"\{(\d+)ull,\s*\{(.*?)\},\s*Category::(\w+),\s*(-?\d+),\s*(-?\d+),\s*(?:nullptr|\"([^\"]*)\")\}", re.DOTALL)
+# split per entry: "{<id>ull, {" ... "}, Category::<cat>, <geom>, <suffix>, "name"|nullptr, <lotId>u, <lotType>},"
+# (the trailing lotId/lotType pair is optional for backward compat)
+ENTRY=re.compile(r"\{(\d+)ull,\s*\{(.*?)\},\s*Category::(\w+),\s*(-?\d+),\s*(-?\d+),\s*(?:nullptr|\"([^\"]*)\")(?:,\s*\d+u?,\s*\d+)?\}", re.DOTALL)
 def fget(body,name):
     m=re.search(r"\."+name+r"\s*=\s*(-?[\d.]+)f?", body)
     return m.group(1) if m else None

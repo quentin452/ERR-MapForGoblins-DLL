@@ -497,11 +497,13 @@ def main():
                 part_name, _, pos = reachable[0]
                 bucket = 'reachable_dummy'
 
-            # Manual exclude list for assets that ERR moved DOWN below
-            # vanilla into unreachable terrain. The check is conditional
-            # on actual vs vanilla Y, so the exclusion self-disarms if a
-            # future ERR update fixes the position.
+            # Manual exclude list for assets ERR displaced (down into terrain
+            # or up out of reach) vs vanilla. The check is conditional on
+            # actual vs vanilla Y, so it self-disarms if a future ERR update
+            # fixes the position. Also mark the lot unreachable so the EMEVD
+            # enrich-fallback pass doesn't re-glue it back by byte-match.
             if is_unreachable_in_err(map_info['map'], part_name, pos['y']):
+                unreachable_only_lots.add(lot_id)
                 continue
 
             treasures.append({

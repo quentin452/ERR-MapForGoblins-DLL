@@ -2,6 +2,7 @@
 #include "goblin_config.hpp"
 #include "goblin_map_data.hpp"
 #include "goblin_geof_models.hpp"
+#include "modutils.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -98,9 +99,30 @@ static int aeg099_index_from_geof(uint16_t geom_idx, uint8_t flags)
 
 // ─── GEOF from memory (GeomFlagSaveDataManager) ──────────────────────
 
-static constexpr uintptr_t RVA_GEOM_FLAG     = 0x3D69D18;  // GeomFlagSaveDataManager (unloaded tiles)
-static constexpr uintptr_t RVA_GEOM_NONACTIVE = 0x3D69D98;  // GeomNonActiveBlockManager
-static constexpr uintptr_t RVA_WORLD_GEOM_MAN = 0x3D69BA8;  // CSWorldGeomMan (loaded tiles)
+// Singleton .data slots resolved by AOB (patch-resilient) instead of hardcoded
+// RVAs: the game's static slots move on every update, so we pin them by a unique
+// surrounding-code signature. relative_offsets {{3,7}} extracts the slot address
+// from the `mov reg,[rip+slot]` xref; the AOB wildcards the rip-disp and branch
+// targets so it survives patches. Resolved once, cached. (GeomNonActiveBlock-
+// Manager is deliberately NOT read — see read_geof_from_memory and
+// docs/geom_nonactive_block_manager.md.)
+static uintptr_t resolve_slot(const char *aob)
+{
+    return reinterpret_cast<uintptr_t>(modutils::scan<void>({
+        .aob = aob, .relative_offsets = {{3, 7}}}));
+}
+static uintptr_t geom_flag_slot()  // GeomFlagSaveDataManager (was RVA 0x3D69D18)
+{
+    static uintptr_t s = resolve_slot(
+        "48 8B 3D ?? ?? ?? ?? 33 F6 48 85 FF 74 ?? 48 8B CF E8 ?? ?? ?? ?? 4C 8B 07");
+    return s;
+}
+static uintptr_t world_geom_man_slot()  // CSWorldGeomMan (was RVA 0x3D69BA8)
+{
+    static uintptr_t s = resolve_slot(
+        "48 8B 0D ?? ?? ?? ?? 48 8D 53 10 E8 ?? ?? ?? ?? 4C 8B E8");
+    return s;
+}
 
 static bool safe_read(void *addr, void *out, size_t count)
 {
@@ -133,11 +155,11 @@ static bool safe_write_byte(uint8_t *addr, uint8_t val)
     }
 }
 
-static void read_singleton_entries(uintptr_t game_base, uintptr_t rva,
+static void read_singleton_entries(uintptr_t slot,
                                     std::vector<GEOFEntry> &out)
 {
     void *gf_ptr = nullptr;
-    if (!safe_read((void *)(game_base + rva), &gf_ptr, 8) || !gf_ptr)
+    if (!slot || !safe_read((void *)slot, &gf_ptr, 8) || !gf_ptr)
         return;
 
     int tiles_found = 0, tiles_skipped = 0, consecutive_empty = 0;
@@ -244,7 +266,7 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
     if (!game_base) return result;
 
     void *wgm = nullptr;
-    if (!safe_read((void *)(game_base + RVA_WORLD_GEOM_MAN), &wgm, 8) || !wgm)
+    if (!safe_read((void *)world_geom_man_slot(), &wgm, 8) || !wgm)
         return result;
 
     // Tree at WGM+0x18: +0x08 head_ptr, +0x10 size
@@ -416,15 +438,22 @@ static std::vector<GEOFEntry> read_geof_from_memory()
     if (!game_base)
         return result;
 
-    read_singleton_entries(game_base, RVA_GEOM_FLAG, result);
-    size_t active_count = result.size();
+    read_singleton_entries(geom_flag_slot(), result);
 
-    read_singleton_entries(game_base, RVA_GEOM_NONACTIVE, result);
-    size_t nonactive_count = result.size() - active_count;
+    // NOTE: GeomNonActiveBlockManager (RVA_GEOM_NONACTIVE) is intentionally NOT
+    // scanned. Despite the name, its layout is nothing like GeomFlagSaveData-
+    // Manager — it is a 0x820-byte object holding a fixed inline array of 0x20-
+    // byte block records (count at +0x818, active flag at +0x08), not a
+    // (tile_id, ptr) table at +0x08. read_singleton_entries assumes the GeomFlag
+    // layout, so applied here it walked ~126 KB past the object end into
+    // unrelated heap, raising a stream of (safe_read-caught) access violations
+    // and never returning valid data on any game version. Collected-geometry
+    // state comes from GeomFlagSaveDataManager (above) + CSWorldGeomMan (loaded
+    // tiles) + the immediate per-AEG +0x26B flag. Full RE:
+    // docs/geom_nonactive_block_manager.md.
 
     if (!result.empty())
-        spdlog::debug("[GEOF] Memory: {} active + {} non-active = {} total entries",
-                      active_count, nonactive_count, result.size());
+        spdlog::debug("[GEOF] Memory: {} flag-save entries", result.size());
 
     return result;
 }
@@ -608,9 +637,9 @@ int goblin::collected::refresh()
     if (!game_base)
         return 0;
     void *wgm_check = nullptr;
-    safe_read((void *)(game_base + RVA_WORLD_GEOM_MAN), &wgm_check, 8);
+    safe_read((void *)world_geom_man_slot(), &wgm_check, 8);
     void *geof_check = nullptr;
-    safe_read((void *)(game_base + RVA_GEOM_FLAG), &geof_check, 8);
+    safe_read((void *)geom_flag_slot(), &geof_check, 8);
     if (!wgm_check && !geof_check)
         return 0;
 

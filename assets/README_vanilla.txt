@@ -47,10 +47,13 @@ ModEngine2
    - under [modengine], register the DLL:
        external_dlls = [ "MapForGoblins\\MapForGoblins.dll" ]
 
-   - under [extension.mod_loader], add the asset folder to mods:
+   - under [extension.mod_loader], add the asset folder as the FIRST
+     mods entry (in ModEngine2 the first entry is highest priority;
+     listing MapForGoblins first lets its world-map file win if another
+     mod ships one too):
        mods = [
-           { enabled = true, name = "default", path = "mod" },
-           { enabled = true, name = "MapForGoblins", path = "MapForGoblins" }
+           { enabled = true, name = "MapForGoblins", path = "MapForGoblins" },
+           { enabled = true, name = "default", path = "mod" }
        ]
 
 4. Run launchmod_eldenring.bat to launch.

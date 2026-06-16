@@ -31,9 +31,10 @@ set "PKG_PREFIX=ERR"
 set "SNAP_DIR=%SCRIPT_DIR%pre-release"
 set "DISP_PROFILE=err"
 set "README_SRC=%SCRIPT_DIR%assets\README.txt"
-set "GFX_SRC=%SCRIPT_DIR%assets\menu\02_120_worldmap_new.gfx"
+set "GFX_SRC=%SCRIPT_DIR%assets\menu\02_120_worldmap_err.gfx"
 echo %*| findstr /i /c:"--vanilla" >nul && set "MFG_PROFILE=vanilla"
 echo %*| findstr /i /c:"--convergence" >nul && set "MFG_PROFILE=convergence"
+echo %*| findstr /i /c:"--erte" >nul && set "MFG_PROFILE=erte"
 if "%MFG_PROFILE%"=="vanilla" set "BUILD_DIR=%SCRIPT_DIR%build-vanilla"
 if "%MFG_PROFILE%"=="vanilla" set "GEN_SUBDIR=generated_vanilla"
 if "%MFG_PROFILE%"=="vanilla" set "PKG_PREFIX=Vanilla"
@@ -48,6 +49,13 @@ if "%MFG_PROFILE%"=="convergence" set "SNAP_DIR=%SCRIPT_DIR%pre-release-converge
 if "%MFG_PROFILE%"=="convergence" set "DISP_PROFILE=convergence"
 if "%MFG_PROFILE%"=="convergence" set "README_SRC=%SCRIPT_DIR%assets\README_convergence.txt"
 if "%MFG_PROFILE%"=="convergence" set "GFX_SRC=%SCRIPT_DIR%assets\menu\02_120_worldmap_convergence.gfx"
+if "%MFG_PROFILE%"=="erte" set "BUILD_DIR=%SCRIPT_DIR%build-erte"
+if "%MFG_PROFILE%"=="erte" set "GEN_SUBDIR=generated_erte"
+if "%MFG_PROFILE%"=="erte" set "PKG_PREFIX=ERTE"
+if "%MFG_PROFILE%"=="erte" set "SNAP_DIR=%SCRIPT_DIR%pre-release-erte"
+if "%MFG_PROFILE%"=="erte" set "DISP_PROFILE=erte"
+if "%MFG_PROFILE%"=="erte" set "README_SRC=%SCRIPT_DIR%assets\README_erte.txt"
+if "%MFG_PROFILE%"=="erte" set "GFX_SRC=%SCRIPT_DIR%assets\menu\02_120_worldmap_erte.gfx"
 echo [PROFILE] %DISP_PROFILE%  build=%BUILD_DIR%  gen=%GEN_SUBDIR%
 
 if /i "%~1"=="clean" goto :clean
@@ -260,7 +268,7 @@ if defined MFG_PROFILE (
     mkdir "%PKG_ROOT%\addons\MapForGoblins\menu" 2>nul
     copy /Y "%BUILD_DIR%\Release\MapForGoblins.dll" "%PKG_ROOT%\dll\offline\" >nul
     "%INIGEN%" "%PKG_ROOT%\dll\offline\MapForGoblins.ini"
-    copy /Y "%SCRIPT_DIR%assets\menu\02_120_worldmap_new.gfx" "%PKG_ROOT%\addons\MapForGoblins\menu\02_120_worldmap.gfx" >nul
+    copy /Y "%GFX_SRC%" "%PKG_ROOT%\addons\MapForGoblins\menu\02_120_worldmap.gfx" >nul
     copy /Y "%SCRIPT_DIR%LICENSE.txt" "%PKG_ROOT%\" >nul
 )
 exit /b 0

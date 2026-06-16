@@ -1,5 +1,6 @@
 #include "goblin_messages.hpp"
 #include "goblin_map_data.hpp"
+#include "goblin_enemy_names.hpp"
 #include "goblin_location_alt.hpp"
 #include "goblin_config.hpp"
 #include "goblin_inject.hpp"
@@ -79,6 +80,28 @@ static std::string detect_language()
         }
     }
     return "english";
+}
+
+// Map a Steam game-language string (from detect_language) to an index into the
+// embedded enemy-name table's ENEMY_NAME_LANGS (msgbnd codes). Falls back to 0
+// (engus) for anything unmapped.
+static int enemy_name_lang_index(const std::string &steam_lang)
+{
+    static const std::pair<const char *, const char *> STEAM_TO_MSGBND[] = {
+        {"english", "engus"}, {"japanese", "jpnjp"}, {"german", "deude"},
+        {"french", "frafr"}, {"italian", "itait"}, {"koreana", "korkr"},
+        {"polish", "polpl"}, {"brazilian", "porbr"}, {"portuguese", "porbr"},
+        {"russian", "rusru"}, {"spanish", "spaes"}, {"latam", "spaar"},
+        {"thai", "thath"}, {"schinese", "zhocn"}, {"tchinese", "zhotw"},
+        {"arabic", "araae"},
+    };
+    const char *code = "engus";
+    for (auto &m : STEAM_TO_MSGBND)
+        if (steam_lang == m.first) { code = m.second; break; }
+    for (int i = 0; i < goblin::generated::ENEMY_NAME_LANG_COUNT; i++)
+        if (std::strcmp(code, goblin::generated::ENEMY_NAME_LANGS[i]) == 0)
+            return i;
+    return 0;
 }
 
 // In-memory FMG binary layout (Elden Ring, version 2):
@@ -584,6 +607,68 @@ void goblin::setup_messages()
         return total;
     };
 
+    // Live-loot labels (config::liveLootLabels): the randomizer can place ANY
+    // item at a loot light-point, so we can't know at bake time which item id
+    // a marker will need. Copy EVERY entry from a source FMG family into
+    // PlaceName at its offset-encoded id, so refresh_loot_from_itemlot() can
+    // point a marker's textId1 at whatever item the live ItemLotParam now gives.
+    // first-hit-wins across layers (dlc02 → dlc01 → base), same as the targeted
+    // walk. ammo_as_is: WeaponName ammo ids (>=50M) are stored unshifted.
+    auto copy_fmg_all_layered = [&](std::initializer_list<int> slots, int32_t offset_base,
+                                    const char *label, bool ammo_as_is) -> int
+    {
+        std::unordered_set<int32_t> seen;
+        int total = 0;
+        for (int slot : slots)
+        {
+            if (slot >= count2 || !sub[slot]) continue;
+            size_t entries_mark = new_entries.size();
+            std::function<int()> job = [&, slot]() -> int
+            {
+                int copied = 0;
+                uint8_t *f = sub[slot];
+                uint32_t grp_cnt = *reinterpret_cast<uint32_t *>(f + 0x0C);
+                uint32_t str_cnt = *reinterpret_cast<uint32_t *>(f + 0x10);
+                uint64_t raw_off = *reinterpret_cast<uint64_t *>(f + 0x18);
+                if (grp_cnt > 0x100000 || str_cnt > 0x100000 || raw_off == 0) return 0;
+                uint8_t *off_ptr = (raw_off > 0x1000000)
+                    ? reinterpret_cast<uint8_t *>(raw_off) : f + raw_off;
+                auto *groups = reinterpret_cast<FmgGroup *>(f + 0x28);
+                auto *str_offs = reinterpret_cast<uint64_t *>(off_ptr);
+                for (uint32_t g = 0; g < grp_cnt; g++)
+                {
+                    int32_t si = groups[g].string_index;
+                    for (int32_t id = groups[g].first_id; id <= groups[g].last_id; id++, si++)
+                    {
+                        if (si < 0 || si >= (int32_t)str_cnt) continue;
+                        if (!seen.insert(id).second) continue; // higher layer already won
+                        uint64_t s_off = str_offs[si];
+                        if (s_off == 0) continue;
+                        const wchar_t *text = (s_off > 0x1000000)
+                            ? reinterpret_cast<const wchar_t *>(s_off)
+                            : reinterpret_cast<const wchar_t *>(f + s_off);
+                        if (!text || !text[0]) continue;
+                        int32_t enc = (ammo_as_is && id >= 50000000) ? id : id + offset_base;
+                        new_entries.push_back({enc, text});
+                        copied++;
+                    }
+                }
+                return copied;
+            };
+            int copied = seh_call(&seh_run_job_thunk, &job);
+            if (copied < 0)
+            {
+                new_entries.resize(entries_mark);
+                spdlog::warn("{}(all): slot {} not readable in this runtime — layer skipped", label, slot);
+                continue;
+            }
+            total += copied;
+        }
+        if (total)
+            spdlog::info("Copied ALL {} {} entries to PlaceName (live-loot labels)", total, label);
+        return total;
+    };
+
     // Slot lists per FMG family, in the game's lookup-priority order
     // (dlc02 → dlc01 → base). The ERR build walks ONLY the base slots:
     // everything its bake references lives there (proven through v1.0.14),
@@ -630,6 +715,19 @@ void goblin::setup_messages()
     // GemName (ArtsName 42 as fallback). Offset 400M.
     copy_fmg_layered(gem_slots, gem_ids_needed, 400000000, "GemName");
 
+    // Live-loot labels: pull the WHOLE item-name space into PlaceName so a
+    // marker can be relabeled to any randomized item at runtime. Offsets match
+    // the encoding above; the targeted copies stay (they're a subset, deduped
+    // first-wins by patch_fmg_in_memory). Gated — off by default it adds nothing.
+    if (goblin::config::liveLootLabels)
+    {
+        copy_fmg_all_layered(goods_slots, 500000000, "GoodsName", false);
+        copy_fmg_all_layered(weapon_slots, 100000000, "WeaponName", true);
+        copy_fmg_all_layered(protector_slots, 200000000, "ProtectorName", false);
+        copy_fmg_all_layered(accessory_slots, 300000000, "AccessoryName", false);
+        copy_fmg_all_layered(gem_slots, 400000000, "GemName", false);
+    }
+
     // TODO: EventTextForMap FMG (slots 34/367/467) is in a separate MsgRepository bank
     // (menu msgbnd, not item msgbnd). Need to find the menu bank pointer to access it.
     // For now, 600M+ textIds will show as ?PlaceName? until this is implemented.
@@ -663,12 +761,41 @@ void goblin::setup_messages()
     // in-game message composer. Offset 950M. Same direct-slot access as
     // ActionButtonText above (slot array is indexed by global BND file ID).
     // BloodMsg layers (vocabulary is base-game, but overhauls may extend it).
+    // Spoiler-free mode: pull the generic localized label ("something",
+    // BloodMsg word 32004) into PlaceName so anonymous loot markers can point at
+    // it. Offset 950M, same band as the vanilla enemy-type vocabulary.
+    if (goblin::config::anonymousLoot)
+        bloodmsg_ids_needed.insert(950000000 + 32004);
+
     copy_fmg_layered(bloodmsg_slots, bloodmsg_ids_needed, 950000000, "BloodMsg");
 
     // TutorialTitle (ERR Codex enemy names + category labels like "Summoning
     // Pools"). textId in MASSEDIT = real TutorialTitle ID + 900000000 (to
     // avoid collision with GoodsName).
     copy_fmg_layered(tutorial_slots, tutorial_ids_needed, 900000000, "TutorialTitle");
+
+    // Non-ERR builds carry their own localized enemy-name table (the runtime
+    // FMG has only generic tutorial entries, no enemy names). Inject the names
+    // for the detected language into PlaceName at the same +900M encoding the
+    // markers use, so enemy-drop labels read properly instead of falling back to
+    // the generic vocabulary words. The ERR build ships an empty table and uses
+    // its runtime names, so this loop is a no-op there.
+    if (generated::ENEMY_NAME_COUNT > 0)
+    {
+        int li = enemy_name_lang_index(lang);
+        int added = 0;
+        for (size_t i = 0; i < generated::ENEMY_NAME_COUNT; i++)
+        {
+            const auto &en = generated::ENEMY_NAMES[i];
+            const wchar_t *nm = en.names[li] ? en.names[li] : en.names[0];
+            if (nm && nm[0])
+            {
+                new_entries.push_back({en.id + 900000000, nm});
+                added++;
+            }
+        }
+        spdlog::info("Injected {} enemy names into PlaceName (lang index {})", added, li);
+    }
 
     auto *fmg_ptr = sub[19];
 
@@ -897,4 +1024,35 @@ void goblin::set_fmg_injection_active(bool active)
 bool goblin::is_fmg_injection_active()
 {
     return g_fmg_injection_active;
+}
+
+const wchar_t *goblin::lookup_text(int32_t id)
+{
+    uint8_t *fmg = g_expanded_placename_fmg;
+    if (!fmg || id <= 0)
+        return nullptr;
+    // Same FMG-v2 layout + relative/absolute offset fixup as patch_fmg_in_memory.
+    uint32_t group_cnt  = *reinterpret_cast<uint32_t *>(fmg + 0x0C);
+    uint32_t string_cnt = *reinterpret_cast<uint32_t *>(fmg + 0x10);
+    uint64_t raw        = *reinterpret_cast<uint64_t *>(fmg + 0x18);
+    uint64_t off_rel = (raw > 0x1000000)
+                           ? static_cast<uint64_t>(reinterpret_cast<uint8_t *>(raw) - fmg)
+                           : raw;
+    auto *groups  = reinterpret_cast<FmgGroup *>(fmg + 0x28);
+    auto *offsets = reinterpret_cast<uint64_t *>(fmg + off_rel);
+    for (uint32_t g = 0; g < group_cnt; ++g)
+    {
+        if (id >= groups[g].first_id && id <= groups[g].last_id)
+        {
+            int32_t si = groups[g].string_index + (id - groups[g].first_id);
+            if (si < 0 || si >= static_cast<int32_t>(string_cnt))
+                return nullptr;
+            uint64_t so = offsets[si];
+            const wchar_t *s = (so > 0x1000000)
+                                   ? reinterpret_cast<const wchar_t *>(so)
+                                   : reinterpret_cast<const wchar_t *>(fmg + so);
+            return (s && *s) ? s : nullptr;
+        }
+    }
+    return nullptr;
 }

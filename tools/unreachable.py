@@ -64,6 +64,11 @@ UNREACHABLE = {
     # m60_39_51 — sits -10.0 below its vanilla position (Y 761.97 -> 751.97),
     # under the terrain; confirmed unreachable in-game (2026-06).
     ('m60_39_51_00', 'AEG099_610_9002'),
+    # Immunizing Cured Meat gather asset in Seethewater Cave (Mt. Gelmir,
+    # m31_07) — ERR raises it +9.49 ABOVE vanilla (Y 770.52 -> 780.01, X/Z
+    # unchanged), leaving it floating above the room out of reach; confirmed
+    # in-game and in Smithbox (2026-06). Displaced upward → 'displaced' kind.
+    ('m31_07_00_00', 'AEG099_610_9007'),
 }
 
 # Unconditional excludes: out of reach in ERR, but the vertical delta vs
@@ -90,6 +95,8 @@ ENTRY_KIND_DISPLACED = {
     ('m28_00_00_00', 'AEG099_060_9002'),
     ('m28_00_00_00', 'AEG099_060_9003'),
     ('m22_00_00_00', 'AEG099_060_9004'),
+    # Seethewater Cave meat — displaced UPWARD (+9.49) out of reach in ERR.
+    ('m31_07_00_00', 'AEG099_610_9007'),
 }
 
 MIN_DROP = 3.0  # units the ERR pos must be below vanilla to qualify ('down' kind)

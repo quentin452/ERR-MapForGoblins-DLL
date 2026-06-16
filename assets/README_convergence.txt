@@ -29,9 +29,9 @@ Install (into an existing Convergence install)
        ]
 
    - under [extension.mod_loader], add the asset folder ABOVE the
-     Convergence "mod" entry (first entry = highest priority; our
-     world-map file must win the conflict, it already contains the
-     Convergence map UI):
+     Convergence "mod" entry (in ModEngine2 the FIRST entry is highest
+     priority; our world-map file must win the conflict, it already
+     contains the Convergence map UI):
        mods = [
            { enabled = true, name = "MapForGoblins", path = "MapForGoblins" },
            { enabled = true, name = "mod", path = "mod" }

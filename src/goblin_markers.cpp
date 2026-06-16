@@ -12,6 +12,7 @@
 #include "goblin_collected.hpp"
 #include "goblin_config.hpp"
 #include "goblin_inject.hpp"
+#include "goblin_messages.hpp"
 #include "modutils.hpp"
 #include "goblin_legacy_conv.hpp"
 #include "goblin_map_data.hpp"
@@ -149,28 +150,48 @@ static bool seh_copy(const void *src, void *dst, size_t n);  // defined below
 // dump-read). The RVAs are build-specific (ERR 2.2.1.2 / app ~2.6.x); the
 // +0x68/+0x118/+0x1B8 offsets are the stable struct layout. We validate the
 // container's vtable before trusting it. (See memory: map-marker-anchor.)
-static constexpr uintptr_t MARKER_CHAIN_RVA   = 0x3D5DF38;
-static constexpr uintptr_t MARKER_VTABLE_RVA  = 0x2AC21D8;
 static constexpr size_t    MARKER_OFF_OBJ1    = 0x68;
 static constexpr size_t    MARKER_OFF_BEACONS = 0x118;
+
+// Chain root slot + container vtable resolved by AOB (patch-resilient) instead
+// of hardcoded RVAs (was 0x3D5DF38 / 0x2AC21D8 — both move on game updates).
+// relative_offsets {{3,7}} extracts the target of the `mov/lea reg,[rip+X]`
+// xref; AOBs wildcard the rip-disp. Resolved once, cached, 0 if not found.
+static uintptr_t marker_resolve(const char *aob)
+{
+    return reinterpret_cast<uintptr_t>(modutils::scan<void>({
+        .aob = aob, .relative_offsets = {{3, 7}}}));
+}
+static uintptr_t marker_chain_slot()
+{
+    static uintptr_t s = marker_resolve("48 8B 0D ?? ?? ?? ?? 48 8B 49 30 48 8D 55 5F");
+    return s;
+}
+static uintptr_t marker_container_vtable()
+{
+    static uintptr_t s = marker_resolve(
+        "48 8D 05 ?? ?? ?? ?? 48 89 07 48 8D 5F 10 48 8D 05 ?? ?? ?? ??");
+    return s;
+}
 
 static std::vector<uintptr_t> find_beacon_arrays()
 {
     std::vector<uintptr_t> out;
-    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
-    if (!er) return out;
+    uintptr_t chain = marker_chain_slot(), vtable = marker_container_vtable();
+    if (!chain || !vtable)
+    { spdlog::warn("Markers: chain/vtable AOB not resolved (game patch?)"); return out; }
 
     uintptr_t obj0 = 0, obj1 = 0, vtab = 0;
-    if (!seh_copy(reinterpret_cast<const void *>(er + MARKER_CHAIN_RVA), &obj0, sizeof(obj0)) || !obj0)
+    if (!seh_copy(reinterpret_cast<const void *>(chain), &obj0, sizeof(obj0)) || !obj0)
     { spdlog::warn("Markers: chain root slot empty (not in-world yet?)"); return out; }
     if (!seh_copy(reinterpret_cast<const void *>(obj0 + MARKER_OFF_OBJ1), &obj1, sizeof(obj1)) || !obj1)
     { spdlog::warn("Markers: container pointer null"); return out; }
     if (!seh_copy(reinterpret_cast<const void *>(obj1), &vtab, sizeof(vtab)))
     { spdlog::warn("Markers: container unreadable"); return out; }
-    if (vtab != er + MARKER_VTABLE_RVA)
+    if (vtab != vtable)
     {
-        spdlog::warn("Markers: container vtable 0x{:X} != exe+0x{:X} — chain stale "
-                     "(game patch?) or not ready; skipping", vtab, MARKER_VTABLE_RVA);
+        spdlog::warn("Markers: container vtable 0x{:X} != resolved 0x{:X} — chain stale "
+                     "(game patch?) or not ready; skipping", vtab, vtable);
         return out;
     }
     out.push_back(obj1 + MARKER_OFF_BEACONS);
@@ -287,17 +308,63 @@ struct NearbyEntry
 {
     uint64_t row_id;
     generated::Category category;
-    int32_t text_id1;
+    int32_t item_tid;         // loot item-name textId  (0 = none)
+    int32_t loc_tid;          // location (PlaceName) textId
+    int32_t enemy_tid;        // drop-source enemy/npc textId (enemy drops, bosses)
     uint32_t disable_flag1;
     uint16_t icon_id;
     uint8_t area;
     uint8_t gx;
     uint8_t gz;
-    const char *object_name;  // nullptr if none
+    float posX, posY, posZ;   // marker's own local map coords
+    uint32_t lot_id;          // source ItemLotParam row (0 = none)
+    const char *object_name;  // MSB object e.g. AEG099_610_9007, nullptr if none
     float entry_worldX;
     float entry_worldZ;
     float dist;
 };
+
+// Classify a marker's textId slots into loot / location / drop-source by their
+// offset-encoding band. The slot ORDER is not fixed — plain loot is
+// t1=item,t2=loc; enemy-drop loot is t1=item,t2=enemy,t3=loc; a boss marker is
+// t1=enemy,t2=loc — so we go by id range, never by slot index:
+//   loot item:    [50M, 600M)   (weapon 100M / protector 200M / … / goods 500M)
+//   location:     (0, 50M)      raw PlaceName, minus logic sentinels
+//   drop source:  >= 700M       (NpcName +700M, enemy +900M, BloodMsg +950M, +1.6B)
+// (COMPOSE location ids 999M+ are a runtime-only hybrid override, never present
+// in the baked MAP_ENTRIES this dump reads, so they don't collide here.)
+static void classify_textids(const from::paramdef::WORLD_MAP_POINT_PARAM_ST &d,
+                             int32_t &item_tid, int32_t &loc_tid, int32_t &enemy_tid)
+{
+    item_tid = loc_tid = enemy_tid = 0;
+    const int32_t slots[8] = { d.textId1, d.textId2, d.textId3, d.textId4,
+                               d.textId5, d.textId6, d.textId7, d.textId8 };
+    for (int32_t v : slots)
+    {
+        if (v <= 0) continue;
+        if (v >= 50000000 && v < 600000000) { if (!item_tid)  item_tid = v; }
+        else if (v >= 700000000)            { if (!enemy_tid) enemy_tid = v; }
+        else if (v < 50000000 && v != 5000 && v != 5100 && v != 5300 && v != 8800)
+                                            { if (!loc_tid)   loc_tid = v; }
+    }
+}
+
+// UTF-16 (game text) -> UTF-8 for the log file. Empty string on null/failure.
+static std::string wide_to_utf8(const wchar_t *w)
+{
+    if (!w || !*w) return {};
+    int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+    if (n <= 1) return {};
+    std::string out(static_cast<size_t>(n - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w, -1, out.data(), n, nullptr, nullptr);
+    return out;
+}
+
+// Resolve a marker textId to its in-game string (player's language). "" if none.
+static std::string resolve_text(int32_t text_id)
+{
+    return wide_to_utf8(goblin::lookup_text(text_id));
+}
 
 // For dungeon entries, use LegacyConvParam to map onto overworld (m60/m61).
 static bool entry_world_coords(const generated::MapEntry &e, float &wx, float &wz)
@@ -342,9 +409,13 @@ static std::vector<NearbyEntry> find_nearby_overworld(float mapX, float mapZ, fl
         float dz = ewz - beacon_wz;
         float d2 = dx * dx + dz * dz;
         if (d2 > r2) continue;
+        int32_t item_tid, loc_tid, enemy_tid;
+        classify_textids(e.data, item_tid, loc_tid, enemy_tid);
         out.push_back({
-            e.row_id, e.category, e.data.textId1, e.data.textDisableFlagId1,
+            e.row_id, e.category, item_tid, loc_tid, enemy_tid,
+            e.data.textDisableFlagId1,
             e.data.iconId, e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
+            e.data.posX, e.data.posY, e.data.posZ, e.lotId,
             e.object_name,
             ewx, ewz, std::sqrt(d2)
         });
@@ -416,13 +487,22 @@ static int dump_to_file()
             const char *status = hidden_by_flag  ? "hidden(flag)"
                                : hidden_by_mod   ? "hidden(collected)"
                                                  : "visible";
+            std::string loc_name  = resolve_text(n.loc_tid);    // PlaceName next to tile
+            std::string loot_name = resolve_text(n.item_tid);   // exact item name
+            std::string from_name = resolve_text(n.enemy_tid);  // drop source (enemy/boss)
             f << "        dist=" << std::fixed << std::setprecision(1) << n.dist
-              << "  " << tile
-              << "  icon=" << n.icon_id
+              << "  " << tile;
+            if (!loc_name.empty()) f << " (" << loc_name << ")";
+            f << "  icon=" << n.icon_id
               << "  row=" << n.row_id
               << "  [" << category_name(n.category) << "]"
-              << "  " << status;
-            if (n.object_name) f << "  " << n.object_name;
+              << "  " << status
+              << "  loot=" << (loot_name.empty() ? "?" : loot_name);
+            if (!from_name.empty()) f << "  from=" << from_name;
+            f << "  pos=(" << std::fixed << std::setprecision(2)
+              << n.posX << "," << n.posY << "," << n.posZ << ")";
+            if (n.lot_id) f << "  lot=" << n.lot_id;
+            f << "  obj=" << (n.object_name ? n.object_name : "-");
             f << "\n";
         }
     };

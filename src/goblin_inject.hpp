@@ -18,6 +18,13 @@ namespace goblin
     // Called periodically from the refresh loop.
     void apply_flag_or_pairs();
 
+    // Live-loot (config::liveLootFlags): read each loot marker's source
+    // ItemLotParam row from live memory and set textDisableFlagId1 to the
+    // lot's current getItemFlagId, so markers hide on the actual light-point
+    // pickup for the loaded regulation (Item/Enemy Randomizer compatible).
+    // One-shot, called once after inject_map_entries().
+    void refresh_loot_from_itemlot();
+
     // Toggle the WorldMapPointParam swap between vanilla and expanded states.
     // Used as an ERSC-hosting workaround: revert before host, re-apply after.
     void set_param_injection_active(bool active);

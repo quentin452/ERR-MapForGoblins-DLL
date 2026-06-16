@@ -72,6 +72,10 @@ add_library( MapForGoblins SHARED
   src/goblin/goblin_map_exceptions.hpp
   ${GEN_DIR}/goblin_map_data.hpp
   ${GEN_DIR}/goblin_map_data.cpp
+  ${GEN_DIR}/goblin_item_icons.hpp
+  ${GEN_DIR}/goblin_item_icons.cpp
+  ${GEN_DIR}/goblin_enemy_names.hpp
+  ${GEN_DIR}/goblin_enemy_names.cpp
   ${GEN_DIR}/goblin_location_alt.hpp
   ${GEN_DIR}/goblin_location_alt.cpp
   ${GEN_DIR}/goblin_geof_models.hpp
@@ -102,11 +106,22 @@ if(NOT GENERATED_SUBDIR STREQUAL "generated")
   target_compile_definitions(MapForGoblins PRIVATE MFG_VANILLA=1)
 endif()
 
+# Vanilla-ONLY (not Convergence): used to default the live-loot / randomizer-
+# compat options ON, since the plain vanilla build is what randomizer players
+# use. ERR and Convergence keep them OFF (opt-in).
+if(GENERATED_SUBDIR STREQUAL "generated_vanilla")
+  target_compile_definitions(MapForGoblins PRIVATE MFG_PROFILE_VANILLA=1)
+endif()
+
 # Tiny build-time tool that emits the default ini from the in-code schema
 # (src/goblin_config_schema.cpp). build.bat runs it to generate the shipped
 # ini per profile instead of copying a hand-maintained file.
 add_executable(mfg_inigen src/inigen_main.cpp src/goblin_config_schema.cpp)
 target_include_directories(mfg_inigen PRIVATE ${CMAKE_SOURCE_DIR}/src)
+# Keep the generated ini's defaults in sync with the DLL's compiled defaults.
+if(GENERATED_SUBDIR STREQUAL "generated_vanilla")
+  target_compile_definitions(mfg_inigen PRIVATE MFG_PROFILE_VANILLA=1)
+endif()
 
 if(VERSION_PRE)
   set(FULL_VERSION "${VERSION_PRE}-${CMAKE_PROJECT_VERSION}")
