@@ -5,10 +5,10 @@ category taxonomy for both maps. Per-type tables: [coverage_base.md](coverage_ba
 (Lands Between) and [coverage_dlc.md](coverage_dlc.md) (Shadow Realm). Regenerate
 with `tools/coverage_vs_mapgenie.py`.
 
-**Caveat:** MapGenie maps **vanilla** Elden Ring; this is the **ERR** profile. So a
-negative (mod < MapGenie) is a *candidate* gap, not proof — generating the vanilla
-profile (`build.bat --vanilla generate`, see [windows_generate_prompt.md](windows_generate_prompt.md))
-gives the clean same-game baseline.
+**Baseline (resolved 2026-06-17):** the **vanilla** profile is now generated, so the
+bug flag is clean — vanilla vs MapGenie is the same game. The numbers below are the
+**vanilla** column unless noted; ERR is shown only where the overhaul's delta matters.
+(MapGenie maps vanilla, so a vanilla negative is a *real* mod gap, not an ERR artifact.)
 
 ## The picture in three buckets
 
@@ -18,32 +18,46 @@ coverage:
 
 | Type | mod / MapGenie (base) |
 |---|---|
-| Rune Arc | 63 / 63 ✅ |
+| Crystal Tear | 32 / 32 ✅ |
 | Deathroot | 9 / 9 ✅ |
 | Map Fragment | 19 / 19 ✅ |
-| Bosses (all) | 179 / 170 ✅ |
-| Invasion | 37 / 36 ✅ |
-| Smithing Stones | 469 / 446 ✅ |
-| Gathering materials | 1627 / 1009 (mod ≫, ERR/extensive nodes) |
+| Bosses (all) | 164 / 170 (−6, near) ✅ |
+| Invasion | 34 / 36 (−2, near) ✅ |
+| Smithing Stones | 443 / 446 ✅ |
+| Gathering materials | 1722 / 1009 (mod ≫, extensive nodes) |
 
-**2. Loot with no physical placement → systematic negative (the one real concern).**
-Equipment is the headline: nearly every type is 20–60% below MapGenie.
+(vanilla / MapGenie, base map.)
 
-| Type | mod / MapGenie (base) |
-|---|---|
-| Weapon + Shield | 245 / 384 (−139) |
-| Incantation | 45 / 101 (−56) |
-| Ash of War | 64 / 105 (−41) |
-| Talisman | 102 / 122 (−20) |
-| Ammunition | 53 / 98 (−45) |
+**2. Loot with no physical placement → systematic negative (confirmed design, not a bug).**
+Equipment is the headline: nearly every type is 20–60% below MapGenie. Confirmed in
+the **vanilla** column (same game as MapGenie), so this is a real extraction gap — and
+ERR wires *more* than vanilla (e.g. weapons 246 > 188), which rules out "ERR removed it":
 
-The uniform direction (not mixed) points at a **missing source**, not random ERR
-edits: items handed out by **enemy drops / EMEVD events / merchant stock** have no
-MSB position, so the mod can't place them. Same root as the 312 `unreachable_msb_lots`
-and the original "purple item" investigation. The mod *can* place at an enemy's
-position (it does for bosses), so skipping common enemy-drop gear is most likely a
-**design choice** (avoid clutter) rather than a fixable per-item bug — to be
-confirmed against vanilla.
+| Type | vanilla / MapGenie (base) | ERR |
+|---|---|---|
+| Weapon + Shield | 188 / 384 (−196) | 246 |
+| Incantation | 34 / 101 (−67) | 51 |
+| Ash of War | 62 / 105 (−43) | 64 |
+| Talisman | 100 / 122 (−22) | 107 |
+| Ammunition | 56 / 98 (−42) | 55 |
+
+**Root cause (drilled).** The loot pipeline is a deliberately conservative
+*collectible* tracker: it only emits a marker for one-time pickups that have both an
+event flag and an MSB position. Four filters in `tools/generate_loot_massedit.py`
+(lines 821–833) produce the shortfall, largest first:
+
+- **`eventFlag > 0`** (l.824) — drops lots with `getItemFlagId = 0` (respawning /
+  non-persistent drops, e.g. common enemy gear). Biggest contributor.
+- **no-fallback** (l.822) — drops `ItemLotParam_map` rows never bound to an MSB
+  Treasure event (exist in data, no physical placement).
+- **shared enemy flag** (l.830–832) — collapses enemy drops that share one flag.
+- **coord dedup** (l.532–545) — merges the `_00`/`_10` MSB platform duplicates.
+
+Out of scope entirely: `ShopLineupParam` (merchant stock) and EMEVD-only awards with
+no MSB entity. MapGenie shows *every* lot (incl. `eventFlag = 0` + fallback); the mod
+shows only flagged, placed collectibles. So the gap is an **architecture/design choice**
+(markers = trackable collectibles, avoid clutter), not a fixable per-item bug. Closing
+it toward MapGenie means relaxing those filters — a behavior change, not a fix.
 
 **3. Whole classes intentionally not mapped (scope, not bugs).**
 The mod is a collectible/loot tracker, not an atlas or walkthrough:
@@ -90,14 +104,16 @@ from the loot-source gap.
 
 ## What to do
 
-1. **Generate the vanilla profile** → the bug flag becomes clean (same game). If
-   vanilla also shows the Equipment negative, it's mod-side (design/source-gap); if
-   vanilla matches, the ERR negatives are just ERR removing content.
-2. **Drill one clean negative** (e.g. Equipment Incantation −56, or DLC bosses −11):
-   list the specific missing entries and their source → confirms design-vs-bug.
+1. ✅ **Generate the vanilla profile** — done. Equipment negative is present in
+   vanilla too → mod-side (design/source-gap), confirmed not an ERR edit.
+2. ✅ **Drill the negative** — done. Root cause = the four collectible-only filters in
+   `generate_loot_massedit.py:821–833` (above). Design choice, not a bug.
 3. **Decide scope** on the unwired classes — likely "leave as-is" (loot tracker),
    except maybe a small high-value Locations layer (Divine Towers + notable
    landmarks) if desired.
+4. **Open**: vanilla DLC column reads 0 for several key-items (Cookbook/Map Fragment/
+   Bell Bearing/Crystal Tear) though Scadutree came through — re-check the vanilla DLC
+   extraction before trusting the area-61 vanilla numbers.
 
 Bottom line: **the mod is not broadly buggy.** Placed content matches MapGenie; the
 gaps are an architectural limit (un-placed loot) plus deliberate scope.
