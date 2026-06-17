@@ -58,6 +58,29 @@ The mod is a collectible/loot tracker, not an atlas or walkthrough:
 (The mod *does* wire the placed world-features MapGenie files under Locations:
 Site of Grace, Stake of Marika, Spiritspring Jump, Imp Seal Statue — all ✅.)
 
+## Internal drift: 128 baked-but-invisible markers
+
+Separate from the MapGenie comparison, **128 markers exist in `goblin_map_data.cpp`
+but never display in-game** — they sit on a source map that the baked `LEGACY_CONV`
+can't project onto the overworld (60/61), so they're injected with a dungeon `areaNo`
+and never rendered. (The coverage tool already excludes these from its area counts,
+so the MapGenie numbers above are not inflated by them.)
+
+| Source map | markers | status |
+|---|--:|---|
+| **m35_00 = Leyndell, Ashen Capital** | **120** | **recoverable** |
+| m19_00 | 5 | irreducible |
+| m45_00 | 3 | irreducible |
+
+The big one is the **Ashen Capital** (Leyndell after the Erdtree burns, late game).
+The game's `WorldMapLegacyConvParam` projects it transitively:
+`m35 → area 11 (Leyndell) → area 60 grid(45,52)` (overworld). The mod's bake keeps
+only **direct** `→ 60/61` entries (single hop), so it drops the `m35 → 11` link and
+the 120 markers vanish. **Fix:** make the LEGACY_CONV generation transitive — follow
+`area → area` chains until they reach 60/61 — which would drop the Ashen Capital's
+120 markers at Leyndell on the overworld. (m19/m45's 8 markers have no chain to
+60/61 at all, so they stay irreducibly invisible, like EMEVD-only gives.)
+
 ## Cross-cutting signal: DLC is weaker than base
 
 Where base matches, the DLC tends to under-cover: Bosses DLC −11, Smithing −35,
