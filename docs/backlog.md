@@ -20,3 +20,15 @@ then in `apply_map_logic` set their `textDisableFlagId*` / icon-hide to flag 118
 
 Low priority — the Ashen markers being correctly gated is the important half; the
 duplicate Royal markers lingering is a minor cosmetic overlap, not invisible content.
+
+## World-map open freeze (~6 s)
+
+The game re-processes every resident `WorldMapPointParam` row on each map open; cost
+is superlinear in row count, so the ~8952 injected rows cost ~6 s. The mod itself is
+not the cost (init ~30 ms, no map-open hook). Full diagnosis, bench data, and the
+row-count→freeze curve are in [map_open_freeze.md](map_open_freeze.md).
+
+Planned fix: default the densest low-value loot categories off so the resident row
+count drops into a sub-~1 s budget (the community/author "general icons" approach),
+documenting the perf/coverage trade-off. Region-lazy injection was ruled out (the
+overworld map is a single pannable page; see the doc).
