@@ -225,6 +225,10 @@ static ParamResCap *find_world_map_point_param_res_cap()
 
 static bool is_category_enabled(Category cat)
 {
+    // Master switch: show every category regardless of the per-category show_*
+    // toggles (so users don't have to flip ~60 flags by hand).
+    if (goblin::config::showAll)
+        return true;
     switch (cat)
     {
     case Category::EquipArmaments:       return goblin::config::showArmaments;

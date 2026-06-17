@@ -15,6 +15,7 @@ namespace goblin::config
     bool requireMapFragments = true;
     bool debugLogging = false;
     bool projectDungeons = true;
+    bool showAll = false;
 
     bool showArmaments = false, showArmour = false, showAshesOfWar = false,
          showSpirits = false, showTalismans = false;
@@ -107,6 +108,8 @@ namespace
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("project_dungeons", projectDungeons, "true",
                   "Remap minor-dungeon icons (catacombs, caves, tunnels, hero's graves)\nonto the overworld map near their entrance. ER has no map page for them,\nso without this their icons are injected but never rendered."),
+                B("show_all", showAll, "false",
+                  "Master switch: show EVERY category at once, ignoring the individual\nshow_* toggles below. Quick way to reveal everything without flipping ~60 flags."),
             }},
 
             {"Equipment", nullptr, false, {

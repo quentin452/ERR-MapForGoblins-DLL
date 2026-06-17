@@ -17,6 +17,8 @@ namespace goblin
         extern uint8_t loadDelay;
         extern bool requireMapFragments;
         extern bool debugLogging;
+        extern bool showAll;  // master switch: ignore per-category show_* and
+                              // inject every category (see is_category_enabled)
 
         // Equipment
         extern bool showArmaments;
