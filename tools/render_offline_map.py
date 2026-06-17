@@ -137,7 +137,7 @@ def main():
     for wx, wz, cat, src in pts:
         ring = ' stroke="#fff" stroke-width="0.4"' if src not in (60, 61) else ''
         circles.append(
-            f'<circle class="cat-{cat}" cx="{sx(wx):.1f}" cy="{sy(wz):.1f}" r="1.7" '
+            f'<circle class="cat-{cat}" cx="{sx(wx):.1f}" cy="{sy(wz):.1f}" r="2.6" '
             f'fill="{colour(cat)}"{ring}><title>{cat} (src m{src:02d})</title></circle>')
     svg = (f'<svg id="map" xmlns="http://www.w3.org/2000/svg" '
            f'width="{W*SC:.0f}" height="{H*SC:.0f}" viewBox="0 0 {W*SC:.0f} {H*SC:.0f}">'
@@ -156,7 +156,8 @@ def main():
                     f'onchange="grp(this,\'{g}\')"><b>{g}</b> ({gtot})</label></div>')
         for cat, n in sorted(bygrp[g], key=lambda kv: -kv[1]):
             rows.append(
-                f'<label class="g-{g}"><input type="checkbox" checked onchange="tog(\'{cat}\')">'
+                f'<label class="g-{g}"><input type="checkbox" checked data-cat="{cat}" '
+                f'onchange="tog(this,\'{cat}\')">'
                 f'<span class="sw" style="background:{colour(cat)}"></span>{cat} ({n})</label>')
     sidebar = "".join(rows)
 
@@ -183,9 +184,10 @@ def main():
 <div id=wrap>{svg}</div>
 <script>
  var Z=1;
- function tog(c){{document.querySelectorAll('.cat-'+CSS.escape(c)).forEach(function(e){{e.classList.toggle('off')}})}}
- function grp(cb,g){{document.querySelectorAll('#side label.g-'+g+' input').forEach(function(i){{if(i.checked!=cb.checked){{i.checked=cb.checked;i.onchange()}}}})}}
- function all(on){{document.querySelectorAll('#side input').forEach(function(i){{if(i.checked!=!!on){{i.checked=!!on;i.onchange&&i.onchange()}}}})}}
+ // state-based: show/hide deterministically from the checkbox, never flip
+ function tog(cb,c){{var hide=!cb.checked;document.querySelectorAll('.cat-'+CSS.escape(c)).forEach(function(e){{e.classList.toggle('off',hide)}})}}
+ function grp(cb,g){{document.querySelectorAll('#side label.g-'+g+' input').forEach(function(i){{i.checked=cb.checked;tog(i,i.getAttribute('data-cat'))}})}}
+ function all(on){{document.querySelectorAll('#side label[class^=g-] input').forEach(function(i){{i.checked=!!on;tog(i,i.getAttribute('data-cat'))}});document.querySelectorAll('.grp input').forEach(function(i){{i.checked=!!on}})}}
  function zoom(f){{Z*=f;document.getElementById('map').style.transform='scale('+Z+')'}}
  addEventListener('wheel',function(e){{if(e.ctrlKey){{e.preventDefault();zoom(e.deltaY<0?1.1:0.9)}}}},{{passive:false}});
 </script>"""
