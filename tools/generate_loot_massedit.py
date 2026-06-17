@@ -398,7 +398,12 @@ LOOT_CATEGORIES = {
         'startId': 5450000,
     },
     'Loot - Rune Arcs': {
-        'filter': lambda items: any(i['id'] == 150 and i['category'] == 1 for i in items),
+        # ERR/Reforged renumbers Rune Arc to goods id 150; in vanilla id 150 is
+        # Furlcalling Finger Remedy and Rune Arc keeps its stock id 190. Gate by
+        # profile (mirrors the spirit-ash handling above) so vanilla matches the
+        # real Rune Arc instead of mislabeling Furlcalling Finger Remedies.
+        'filter': (lambda items: any(i['id'] == 190 and i['category'] == 1 for i in items)) if config.PROFILE != 'err'
+                  else (lambda items: any(i['id'] == 150 and i['category'] == 1 for i in items)),
         'iconId': 411,
         'startId': 5500000,
     },
