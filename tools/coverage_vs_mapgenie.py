@@ -36,6 +36,12 @@ MAPGENIE = {
         "Key Item": 68, "Map Fragment": 19, "Memory Stone": 8, "Painting": 7,
         "Perfume Bottle": 10, "Remembrance": 15, "Ritual Pot": 9, "Spellbook": 11,
         "Stonesword Key": 65, "Talisman Pouch": 3, "Tool": 23, "Whetblade": 6,
+        # Items
+        "Ammunition": 98, "Cerulean Scarab": 21, "Consumable": 265,
+        "Crimson Scarab": 40, "Crystal Tear": 32, "Deathroot": 9,
+        "Dragon Heart": 13, "Gesture": 35, "Golden Rune": 407, "Golden Seed": 42,
+        "Item": 9, "Larval Tear": 17, "Multiplayer Item": 34, "Rune Arc": 63,
+        "Sacred Tear": 12, "Spirit Ashes": 65,
     },
     61: {  # The Shadow Realm (DLC)
         # Locations
@@ -46,6 +52,10 @@ MAPGENIE = {
         "Bell Bearing": 10, "Cookbook": 45, "Cracked Pot": 10, "Great Rune": 1,
         "Key Item": 17, "Map Fragment": 5, "Painting": 3, "Remembrance": 10,
         "Revered Spirit Ash": 23, "Scadutree Fragment": 42, "Tool": 7,
+        # Items
+        "Ammunition": 22, "Consumable": 96, "Crystal Tear": 8, "Dragon Heart": 6,
+        "Gesture": 4, "Golden Rune": 55, "Item": 4, "Larval Tear": 9,
+        "Multiplayer Item": 3, "Rune Arc": 5, "Spirit Ashes": 20,
     },
 }
 
@@ -93,6 +103,29 @@ SECTIONS = {
         ("Talisman Pouch", ["Talisman Pouch"], []),
         ("Tool", ["Tool"], []),
         ("Revered Spirit Ash", ["Revered Spirit Ash"], []),
+    ],
+    "Items": [
+        ("Ammunition", ["Ammunition"], ["LootAmmo"]),
+        # MapGenie lumps all use-items as "Consumable"; the mod splits them, so
+        # sum the consumable family for a fair compare (still noisy vs ERR).
+        ("Consumable (all use-items)", ["Consumable"],
+         ["LootConsumables", "LootGreases", "LootThrowables", "LootStatBoosts",
+          "LootUtilities", "LootReusables", "LootPrattlingPates"]),
+        ("Crystal Tear", ["Crystal Tear"], ["KeyCrystalTears"]),
+        ("Deathroot", ["Deathroot"], ["QuestDeathroot"]),
+        ("Dragon Heart", ["Dragon Heart"], ["LootDragonHearts"]),
+        ("Gesture", ["Gesture"], ["LootGestures"]),
+        ("Golden Rune", ["Golden Rune"], ["LootGoldenRunes", "LootGoldenRunesLow"]),
+        ("Golden Seed + Sacred Tear", ["Golden Seed", "Sacred Tear"],
+         ["KeySeedsTears"]),
+        ("Larval Tear", ["Larval Tear"], ["KeyLarvalTears"]),
+        ("Rune Arc", ["Rune Arc"], ["LootRuneArcs"]),
+        ("Spirit Ashes", ["Spirit Ashes"], ["EquipSpirits"]),
+        # MapGenie types with no clean mod equivalent:
+        ("Cerulean Scarab", ["Cerulean Scarab"], []),
+        ("Crimson Scarab", ["Crimson Scarab"], []),
+        ("Item (generic)", ["Item"], []),
+        ("Multiplayer Item", ["Multiplayer Item"], ["LootMPFingers"]),
     ],
 }
 
