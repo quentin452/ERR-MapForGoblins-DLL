@@ -70,6 +70,17 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 | Item (generic) | 9 | 0 | ❌ NOT WIRED (need 9) |
 | Multiplayer Item | 34 | 8 | ⚠️ DRIFT mod<MG (−26) |
 
+## Equipment
+
+| Type | MapGenie | ERR | Status |
+|---|--:|--:|---|
+| Weapon + Shield | 384 | 245 | ⚠️ DRIFT mod<MG (−139) |
+| Armor | 164 | 205 | ℹ️ mod>MG (+41, ERR?) |
+| Talisman | 122 | 102 | ⚠️ DRIFT mod<MG (−20) |
+| Ash of War | 105 | 64 | ⚠️ DRIFT mod<MG (−41) |
+| Sorcery | 73 | 61 | ⚠️ DRIFT mod<MG (−12) |
+| Incantation | 101 | 45 | ⚠️ DRIFT mod<MG (−56) |
+
 ## Other mod categories (MapGenie counts TODO)
 
 | Category | MapGenie | ERR |
@@ -78,19 +89,13 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 | ReforgedRunePieces | ? | 1210 |
 | LootSmithingStonesLow | ? | 346 |
 | LootCraftingMaterials | ? | 328 |
-| EquipArmaments | ? | 245 |
-| EquipArmour | ? | 205 |
 | WorldBosses | ? | 179 |
 | WorldSummoningPools | ? | 175 |
 | LootSmithingStones | ? | 112 |
 | WorldInteractables | ? | 102 |
-| EquipTalismans | ? | 102 |
 | KeyLostAshes | ? | 66 |
 | ReforgedItemsAndChanges | ? | 65 |
-| EquipAshesOfWar | ? | 64 |
 | ReforgedFortunes | ? | 61 |
-| MagicSorceries | ? | 61 |
-| MagicIncantations | ? | 45 |
 | WorldHostileNPC | ? | 37 |
 | QuestProgression | ? | 22 |
 | LootGloveworts | ? | 18 |
@@ -105,4 +110,4 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 
 - mod markers (ERR) on this map: **7043**
 - MapGenie types not wired (❌): **20**
-- wired types where ERR < MapGenie (⚠️): **14**
+- wired types where ERR < MapGenie (⚠️): **19**

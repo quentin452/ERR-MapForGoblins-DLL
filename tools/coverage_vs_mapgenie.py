@@ -42,6 +42,9 @@ MAPGENIE = {
         "Dragon Heart": 13, "Gesture": 35, "Golden Rune": 407, "Golden Seed": 42,
         "Item": 9, "Larval Tear": 17, "Multiplayer Item": 34, "Rune Arc": 63,
         "Sacred Tear": 12, "Spirit Ashes": 65,
+        # Equipment
+        "Armor": 164, "Ash of War": 105, "Incantation": 101, "Shield": 69,
+        "Sorcery": 73, "Talisman": 122, "Weapon": 315,
     },
     61: {  # The Shadow Realm (DLC)
         # Locations
@@ -56,6 +59,9 @@ MAPGENIE = {
         "Ammunition": 22, "Consumable": 96, "Crystal Tear": 8, "Dragon Heart": 6,
         "Gesture": 4, "Golden Rune": 55, "Item": 4, "Larval Tear": 9,
         "Multiplayer Item": 3, "Rune Arc": 5, "Spirit Ashes": 20,
+        # Equipment
+        "Armor": 46, "Ash of War": 23, "Incantation": 28, "Shield": 11,
+        "Sorcery": 14, "Talisman": 40, "Weapon": 92,
     },
 }
 
@@ -126,6 +132,16 @@ SECTIONS = {
         ("Crimson Scarab", ["Crimson Scarab"], []),
         ("Item (generic)", ["Item"], []),
         ("Multiplayer Item", ["Multiplayer Item"], ["LootMPFingers"]),
+    ],
+    "Equipment": [
+        # mod "Armaments" = weapons + shields + staves + seals; MapGenie splits
+        # Weapon (incl staves/seals) and Shield, so compare the sum.
+        ("Weapon + Shield", ["Weapon", "Shield"], ["EquipArmaments"]),
+        ("Armor", ["Armor"], ["EquipArmour"]),
+        ("Talisman", ["Talisman"], ["EquipTalismans"]),
+        ("Ash of War", ["Ash of War"], ["EquipAshesOfWar"]),
+        ("Sorcery", ["Sorcery"], ["MagicSorceries"]),
+        ("Incantation", ["Incantation"], ["MagicIncantations"]),
     ],
 }
 
