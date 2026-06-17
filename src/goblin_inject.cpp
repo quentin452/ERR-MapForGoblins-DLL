@@ -47,26 +47,49 @@ static bool project_dungeon_row_to_overworld(
 {
     if (d->areaNo == 60 || d->areaNo == 61)
         return false;
+
+    // Prefer an exact (src_area, src_gx) base-point — its local coords share an
+    // origin with this row, so we can keep the in-dungeon offset. Some dungeons
+    // (e.g. Fringefolk Hero's Grave m10_01) have NO conv entry of their own in
+    // WorldMapLegacyConvParam; fall back to any base-point of the same src_area
+    // and cluster the rows at that overworld point (entrance) — visible, if
+    // without intra-dungeon spread.
+    const goblin::generated::LegacyConvEntry *exact = nullptr;
+    const goblin::generated::LegacyConvEntry *area_fb = nullptr;
     for (size_t i = 0; i < goblin::generated::LEGACY_CONV_COUNT; ++i)
     {
         const auto &c = goblin::generated::LEGACY_CONV[i];
-        if (c.src_area != d->areaNo || c.src_gx != d->gridXNo)
+        if (c.src_area != d->areaNo)
             continue;
-        // Absolute overworld coord, then decompose into dst tile + in-tile pos.
-        float wx = static_cast<float>(c.dst_gx) * 256.0f + c.dst_pos_x
-                 + (d->posX - c.src_pos_x);
-        float wz = static_cast<float>(c.dst_gz) * 256.0f + c.dst_pos_z
-                 + (d->posZ - c.src_pos_z);
-        int gx = static_cast<int>(std::floor(wx / 256.0f));
-        int gz = static_cast<int>(std::floor(wz / 256.0f));
-        d->areaNo = c.dst_area;
-        d->gridXNo = static_cast<uint8_t>(gx);
-        d->gridZNo = static_cast<uint8_t>(gz);
-        d->posX = wx - static_cast<float>(gx) * 256.0f;
-        d->posZ = wz - static_cast<float>(gz) * 256.0f;
-        return true;  // first matching base-point wins (mirrors entry_world_coords)
+        if (!area_fb)
+            area_fb = &c;
+        if (c.src_gx == d->gridXNo)
+        {
+            exact = &c;
+            break;
+        }
     }
-    return false;
+    const auto *c = exact ? exact : area_fb;
+    if (!c)
+        return false;
+
+    // Exact match: keep the in-dungeon offset. Fallback: cluster at the base
+    // point (mixing local coords across grids would misplace, so we don't).
+    float wx = static_cast<float>(c->dst_gx) * 256.0f + c->dst_pos_x;
+    float wz = static_cast<float>(c->dst_gz) * 256.0f + c->dst_pos_z;
+    if (exact)
+    {
+        wx += d->posX - c->src_pos_x;
+        wz += d->posZ - c->src_pos_z;
+    }
+    int gx = static_cast<int>(std::floor(wx / 256.0f));
+    int gz = static_cast<int>(std::floor(wz / 256.0f));
+    d->areaNo = c->dst_area;
+    d->gridXNo = static_cast<uint8_t>(gx);
+    d->gridZNo = static_cast<uint8_t>(gz);
+    d->posX = wx - static_cast<float>(gx) * 256.0f;
+    d->posZ = wz - static_cast<float>(gz) * 256.0f;
+    return true;
 }
 
 // State for runtime toggle (ERSC-hosting workaround). On hotkey press the
