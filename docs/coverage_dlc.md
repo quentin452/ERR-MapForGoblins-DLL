@@ -84,19 +84,21 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 | Elite Enemy | 40 | 0 | ❌ NOT WIRED (need 40) |
 | Enemy | 24 | 0 | ❌ NOT WIRED (need 24) |
 
+## Materials
+
+| Type | MapGenie | ERR | Status |
+|---|--:|--:|---|
+| Smithing Stones (all) | 155 | 120 | ⚠️ DRIFT mod<MG (−35) |
+| Crafting / gathering materials (lumped) | 547 | 424 | ⚠️ DRIFT mod<MG (−123) |
+
 ## Other mod categories (MapGenie counts TODO)
 
 | Category | MapGenie | ERR |
 |---|--:|--:|
 | ReforgedEmberPieces | ? | 298 |
-| LootCraftingMaterials | ? | 206 |
-| LootMaterialNodes | ? | 172 |
-| LootSmithingStones | ? | 120 |
 | WorldSummoningPools | ? | 65 |
-| LootGloveworts | ? | 31 |
 | KeySeedsTears | ? | 22 |
 | QuestProgression | ? | 21 |
-| LootGreatGloveworts | ? | 15 |
 | KeyLostAshes | ? | 14 |
 | ReforgedItemsAndChanges | ? | 11 |
 | LootRadaFruit | ? | 3 |
@@ -107,4 +109,4 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 
 - mod markers (ERR) on this map: **1781**
 - MapGenie types not wired (❌): **17**
-- wired types where ERR < MapGenie (⚠️): **15**
+- wired types where ERR < MapGenie (⚠️): **17**

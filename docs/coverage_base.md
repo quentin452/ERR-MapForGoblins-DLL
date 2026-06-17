@@ -99,27 +99,27 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 | Elite Enemy | 144 | 0 | ❌ NOT WIRED (need 144) |
 | Enemy | 58 | 0 | ❌ NOT WIRED (need 58) |
 
+## Materials
+
+| Type | MapGenie | ERR | Status |
+|---|--:|--:|---|
+| Smithing Stones (all) | 446 | 469 | ℹ️ mod>MG (+23, ERR?) |
+| Crafting / gathering materials (lumped) | 1009 | 1627 | ℹ️ mod>MG (+618, ERR?) |
+
 ## Other mod categories (MapGenie counts TODO)
 
 | Category | MapGenie | ERR |
 |---|--:|--:|
-| LootMaterialNodes | ? | 1276 |
 | ReforgedRunePieces | ? | 1210 |
-| LootSmithingStonesLow | ? | 346 |
-| LootCraftingMaterials | ? | 328 |
 | WorldSummoningPools | ? | 175 |
-| LootSmithingStones | ? | 112 |
 | WorldInteractables | ? | 102 |
 | KeyLostAshes | ? | 66 |
 | ReforgedItemsAndChanges | ? | 65 |
 | ReforgedFortunes | ? | 61 |
 | QuestProgression | ? | 22 |
-| LootGloveworts | ? | 18 |
-| LootSmithingStonesRare | ? | 11 |
 | KeyCelestialDew | ? | 8 |
 | QuestSeedbedCurses | ? | 6 |
 | WorldKindlingSpirits | ? | 5 |
-| LootGreatGloveworts | ? | 5 |
 | KeyImbuedSwordKeys | ? | 3 |
 
 ## Summary

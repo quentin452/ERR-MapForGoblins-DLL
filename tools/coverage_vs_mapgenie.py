@@ -50,6 +50,11 @@ MAPGENIE = {
         # Enemies
         "Boss": 140, "Elite Enemy": 144, "Enemy": 58, "Great Boss": 14,
         "Invasion": 36, "Legendary Boss": 16,
+        # Materials
+        "Ancient Smithing Stone": 21, "Crafting Material": 622,
+        "Ghost Glovewort": 10, "Glovewort": 119, "Great Glovewort": 9,
+        "Miquella's Lily": 69, "Ruin Fragment": 32, "Smithing Stone": 425,
+        "Trina's Lily": 148,
     },
     61: {  # The Shadow Realm (DLC)
         # Locations
@@ -72,6 +77,10 @@ MAPGENIE = {
         # Enemies
         "Boss": 33, "Elite Enemy": 40, "Enemy": 24, "Great Boss": 1,
         "Invasion": 13, "Legendary Boss": 10,
+        # Materials
+        "Ancient Smithing Stone": 13, "Crafting Material": 507,
+        "Ghost Glovewort": 3, "Glovewort": 28, "Great Glovewort": 9,
+        "Smithing Stone": 97, "Somber Smithing Stone": 45,
     },
 }
 
@@ -166,6 +175,19 @@ SECTIONS = {
         ("Invasion", ["Invasion"], ["WorldHostileNPC"]),
         ("Elite Enemy", ["Elite Enemy"], []),
         ("Enemy", ["Enemy"], []),
+    ],
+    "Materials": [
+        # The mod lumps all gathering nodes into LootMaterialNodes, while MapGenie
+        # splits by material — so per-material rows would be artefacts. Compare in
+        # two lumped buckets instead.
+        ("Smithing Stones (all)",
+         ["Smithing Stone", "Ancient Smithing Stone", "Somber Smithing Stone"],
+         ["LootSmithingStones", "LootSmithingStonesLow", "LootSmithingStonesRare"]),
+        ("Crafting / gathering materials (lumped)",
+         ["Crafting Material", "Glovewort", "Great Glovewort", "Ghost Glovewort",
+          "Miquella's Lily", "Trina's Lily", "Ruin Fragment"],
+         ["LootMaterialNodes", "LootCraftingMaterials", "LootGloveworts",
+          "LootGreatGloveworts"]),
     ],
 }
 
