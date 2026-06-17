@@ -45,6 +45,8 @@ MAPGENIE = {
         # Equipment
         "Armor": 164, "Ash of War": 105, "Incantation": 101, "Shield": 69,
         "Sorcery": 73, "Talisman": 122, "Weapon": 315,
+        # NPCs
+        "Character": 109, "Ghost": 36, "Merchant": 40, "Trainer": 1,
     },
     61: {  # The Shadow Realm (DLC)
         # Locations
@@ -62,6 +64,8 @@ MAPGENIE = {
         # Equipment
         "Armor": 46, "Ash of War": 23, "Incantation": 28, "Shield": 11,
         "Sorcery": 14, "Talisman": 40, "Weapon": 92,
+        # NPCs
+        "Character": 18, "Ghost": 21, "Merchant": 3,
     },
 }
 
@@ -142,6 +146,14 @@ SECTIONS = {
         ("Ash of War", ["Ash of War"], ["EquipAshesOfWar"]),
         ("Sorcery", ["Sorcery"], ["MagicSorceries"]),
         ("Incantation", ["Incantation"], ["MagicIncantations"]),
+    ],
+    "NPCs": [
+        # The mod has no friendly-NPC / merchant / ghost / trainer category;
+        # WorldHostileNPC (invaders) is a different thing and stays in "Other".
+        ("Character", ["Character"], []),
+        ("Ghost", ["Ghost"], []),
+        ("Merchant", ["Merchant"], []),
+        ("Trainer", ["Trainer"], []),
     ],
 }
 

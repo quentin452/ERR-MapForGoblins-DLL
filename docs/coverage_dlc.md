@@ -67,6 +67,14 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 | Sorcery | 14 | 10 | ⚠️ DRIFT mod<MG (−4) |
 | Incantation | 28 | 18 | ⚠️ DRIFT mod<MG (−10) |
 
+## NPCs
+
+| Type | MapGenie | ERR | Status |
+|---|--:|--:|---|
+| Character | 18 | 0 | ❌ NOT WIRED (need 18) |
+| Ghost | 21 | 0 | ❌ NOT WIRED (need 21) |
+| Merchant | 3 | 0 | ❌ NOT WIRED (need 3) |
+
 ## Other mod categories (MapGenie counts TODO)
 
 | Category | MapGenie | ERR |
@@ -91,5 +99,5 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 ## Summary
 
 - mod markers (ERR) on this map: **1781**
-- MapGenie types not wired (❌): **12**
+- MapGenie types not wired (❌): **15**
 - wired types where ERR < MapGenie (⚠️): **14**
