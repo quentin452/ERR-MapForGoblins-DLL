@@ -18,6 +18,7 @@
 #include "goblin_markers.hpp"
 #include "goblin_messages.hpp"
 #include "goblin_bench.hpp"
+#include "goblin_crashdump.hpp"
 
 #include "version.h"
 
@@ -143,6 +144,10 @@ static void setup_mod()
 
     spdlog::info("Initialization complete");
 
+    // Re-assert our crash filter on top of whatever the game/Seamless installed
+    // during their startup, so the non-deterministic post-load crash is caught.
+    goblin::install_crash_handler(g_mod_folder / "logs");
+
     if (GetModuleHandleA("ersc.dll"))
         spdlog::info("Seamless Co-op detected (ersc.dll)");
 
@@ -222,6 +227,12 @@ bool WINAPI DllMain(HINSTANCE dll_instance, unsigned int fdw_reason, void *lpv_r
         g_mod_folder = folder;
 
         setup_logger(folder / "logs" / "MapForGoblins.log");
+
+        // Last-resort in-process crash dumper (WER LocalDumps does not work
+        // under Proton/Wine). Installed first so even an early fault is caught;
+        // re-installed at the end of setup_mod to sit on top of the filter the
+        // game installs during its own startup, covering the post-load window.
+        goblin::install_crash_handler(folder / "logs");
 
         spdlog::info("Map For Goblins DLL v{}", PROJECT_VERSION);
         goblin::load_config(folder / "MapForGoblins.ini");

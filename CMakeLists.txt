@@ -98,6 +98,7 @@ add_library( MapForGoblins SHARED
   src/goblin_markers.cpp
   src/goblin_messages.hpp
   src/goblin_messages.cpp
+  src/goblin_crashdump.cpp
   src/dllmain.cpp)
 
 set_target_properties(MapForGoblins PROPERTIES OUTPUT_NAME "MapForGoblins")
@@ -146,4 +147,5 @@ target_link_libraries( MapForGoblins
   minhook
   pattern16
   mini
-  spdlog)
+  spdlog
+  dbghelp)
