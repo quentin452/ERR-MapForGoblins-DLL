@@ -123,7 +123,19 @@ from the loot-source gap.
    Fragment exact, Bell Bearing/Crystal Tear/Great Rune match ERR, Cookbook finds all 45
    placements (→ 37 markers after flag-dedup); base-map Rune Arc 58 (≈ MG 63).
 
+5. **conv/erte columns** — all four profiles now generate (vanilla 6812, ERR ~8952,
+   conv 7373, erte 7720; DLC present in each). ERTE tracks vanilla closely. **Convergence
+   reads 0 for several DLC key-items (Scadutree Fragment, Cookbook, Crystal Tear)** — and
+   this was investigated: it is *not* a name/id bug (the merged FMG keeps those names at
+   their vanilla ids — Scadutree 2010000, cookbooks 9300+, crystal tears 11000+). The
+   cause is that Convergence does **not place them as collectible world item-lots**: the
+   only placed instance at e.g. goods 2010000 is *Mushroom Crown* (category 3 armor), and
+   goods 9300/11000 have zero category-1 placements. The overhaul obtains these via other
+   means (boss/shop/auto-unlock) or removes them. So the 0s are the same *collectible-only
+   filter* limit as spirit ashes — expected for an overhaul, not fixable per-item without
+   relaxing the filter. (conv is a delta vs MapGenie, never bug-flagged.)
+
 Bottom line: **the mod is not broadly buggy.** Placed content matches MapGenie; the
 real gap is the architectural un-placed-loot limit (the collectible filter, by design)
 plus deliberate scope. The vanilla-only anomalies turned out to be generation bugs,
-now fixed.
+now fixed; the Convergence DLC zeros are un-placed-loot, not bugs.
