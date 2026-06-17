@@ -81,6 +81,9 @@ MAPGENIE = {
         "Ancient Smithing Stone": 13, "Crafting Material": 507,
         "Ghost Glovewort": 3, "Glovewort": 28, "Great Glovewort": 9,
         "Smithing Stone": 97, "Somber Smithing Stone": 45,
+        # Other (guide annotations) — DLC counts only (base panel not captured)
+        "Lore": 6, "Miscellaneous": 9, "Puzzle": 8, "Quest (steps)": 7,
+        "Stone Cairn": 5, "Summoning Sigil": 6,
     },
 }
 
@@ -175,6 +178,16 @@ SECTIONS = {
         ("Invasion", ["Invasion"], ["WorldHostileNPC"]),
         ("Elite Enemy", ["Elite Enemy"], []),
         ("Enemy", ["Enemy"], []),
+    ],
+    "Other (guide annotations)": [
+        # Lore notes, hints, puzzles, quest-step pins, cairns, summon sigils —
+        # walkthrough annotations, not items. The mod maps none of these.
+        ("Lore", ["Lore"], []),
+        ("Miscellaneous", ["Miscellaneous"], []),
+        ("Puzzle", ["Puzzle"], []),
+        ("Quest (steps)", ["Quest (steps)"], []),
+        ("Stone Cairn", ["Stone Cairn"], []),
+        ("Summoning Sigil", ["Summoning Sigil"], []),
     ],
     "Materials": [
         # The mod lumps all gathering nodes into LootMaterialNodes, while MapGenie

@@ -84,6 +84,17 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 | Elite Enemy | 40 | 0 | ❌ NOT WIRED (need 40) |
 | Enemy | 24 | 0 | ❌ NOT WIRED (need 24) |
 
+## Other (guide annotations)
+
+| Type | MapGenie | ERR | Status |
+|---|--:|--:|---|
+| Lore | 6 | 0 | ❌ NOT WIRED (need 6) |
+| Miscellaneous | 9 | 0 | ❌ NOT WIRED (need 9) |
+| Puzzle | 8 | 0 | ❌ NOT WIRED (need 8) |
+| Quest (steps) | 7 | 0 | ❌ NOT WIRED (need 7) |
+| Stone Cairn | 5 | 0 | ❌ NOT WIRED (need 5) |
+| Summoning Sigil | 6 | 0 | ❌ NOT WIRED (need 6) |
+
 ## Materials
 
 | Type | MapGenie | ERR | Status |
@@ -102,11 +113,11 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 | KeyLostAshes | ? | 14 |
 | ReforgedItemsAndChanges | ? | 11 |
 | LootRadaFruit | ? | 3 |
-| MagicPrayerbooks | ? | 1 |
 | KeyImbuedSwordKeys | ? | 1 |
+| MagicPrayerbooks | ? | 1 |
 
 ## Summary
 
 - mod markers (ERR) on this map: **1781**
-- MapGenie types not wired (❌): **17**
+- MapGenie types not wired (❌): **23**
 - wired types where ERR < MapGenie (⚠️): **17**
