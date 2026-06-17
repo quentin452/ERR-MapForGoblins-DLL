@@ -7,6 +7,8 @@
 #include "goblin/goblin_map_tiles.hpp"
 #include "goblin/goblin_map_exceptions.hpp"
 #include "goblin_inject.hpp"
+#include "goblin_collected.hpp"
+#include "goblin_kindling.hpp"
 #include "goblin_bench.hpp"
 
 #include <spdlog/spdlog.h>
@@ -187,6 +189,20 @@ void goblin::apply_map_logic()
                 row.eventFlagId = flag::StoryErdtreeOnFire;
             else
                 row.eventFlagId = GetIconFlag(rowId, row);
+
+            // Fragment-eviction: a row gated on an event flag (map fragment /
+            // story flag) is invisible until that flag turns on, yet still costs
+            // on every map open. Register it so the refresh loop parks it off-page
+            // (areaNo=99) while undiscovered and restores it the moment the flag
+            // sets. Skip rows whose areaNo is already owned by collected/kindling.
+            // (Verified correct on a zero-fragment save: all gate flags read false
+            // → all parked, matching require_map_fragments=true semantics.)
+            if (row.eventFlagId != flag::AlwaysOn && row.eventFlagId != 0 &&
+                !goblin::collected::is_registered(rowId) &&
+                !goblin::kindling::is_registered(rowId))
+            {
+                goblin::register_fragment_gated_row(&row, row.areaNo, row.eventFlagId);
+            }
             modified_goblin++;
         }
         // Camp markers (textId2=5000) — ERR-placed, opt-in patching

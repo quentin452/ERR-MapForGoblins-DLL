@@ -60,6 +60,17 @@ static void safe_flag_or_pairs_seh()
     }
 }
 
+static void safe_fragment_eviction_seh()
+{
+    __try
+    {
+        goblin::refresh_fragment_eviction();
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+    }
+}
+
 // ── SEH-guarded init-phase wrappers ──
 // MSVC's /EHsc disallows __try in functions that contain C++ objects with
 // destructors, so each init step goes through a plain C-style adapter +
@@ -210,6 +221,14 @@ static void setup_mod()
         try
         {
             safe_flag_or_pairs_seh();
+        }
+        catch (...)
+        {
+        }
+
+        try
+        {
+            safe_fragment_eviction_seh();
         }
         catch (...)
         {

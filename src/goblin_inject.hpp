@@ -34,6 +34,20 @@ namespace goblin
     void set_param_injection_active(bool active);
     bool is_param_injection_active();
 
+    // ── Fragment-eviction (map-open perf) ──────────────────────────────
+    // A row whose gating event flag (map-fragment / story flag) isn't set yet
+    // costs nothing to display but the game STILL processes it on every map
+    // open (the icon is merely hidden at draw time). Parking such a row off-page
+    // (areaNo = 99) removes it from the per-page open cost entirely, the same
+    // 1-byte trick collected/kindling use. apply_map_logic registers each
+    // gate-flagged goblin row here (except those collected/kindling already own
+    // areaNo for); refresh_fragment_eviction() — called from the refresh loop,
+    // where event flags are reliably readable — parks undiscovered rows and
+    // restores them (areaNo back to original) the moment their flag turns on.
+    void register_fragment_gated_row(void *param_data, uint8_t original_area,
+                                     uint32_t gate_flag);
+    int refresh_fragment_eviction();
+
     // Row ids used for both the TutorialParam rows AND the TutorialBody.fmg
     // entries holding each banner's STATIC text. Injected by
     // inject_tutorial_popup_rows() (param table) and goblin_messages

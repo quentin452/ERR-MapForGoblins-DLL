@@ -24,6 +24,10 @@ namespace goblin::collected
 
     void register_param_ptr(uint64_t row_id, void *param_data);
 
+    /// True if this row's areaNo is owned by the collected system (so other
+    /// areaNo managers, e.g. fragment-eviction, leave it alone).
+    bool is_registered(uint64_t row_id);
+
     int collected_count();
     int skipped_count();
 };

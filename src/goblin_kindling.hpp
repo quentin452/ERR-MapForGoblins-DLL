@@ -25,5 +25,8 @@ namespace goblin::kindling
     /// Same trick as goblin::collected — write 0x20 = 99 to hide, restore original.
     void register_param_ptr(uint64_t row_id, void *param_data);
 
+    /// True if this row's areaNo is owned by the kindling system.
+    bool is_registered(uint64_t row_id);
+
     int collected_count();
 };

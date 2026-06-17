@@ -590,6 +590,11 @@ void goblin::kindling::register_param_ptr(uint64_t row_id, void *param_data)
     g_param_ptrs[row_id] = {p, p[0x20]};
 }
 
+bool goblin::kindling::is_registered(uint64_t row_id)
+{
+    return g_param_ptrs.count(row_id) > 0;
+}
+
 int goblin::kindling::refresh()
 {
     if (!g_initialized || g_slots.empty())

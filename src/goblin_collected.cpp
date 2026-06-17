@@ -631,6 +631,11 @@ void goblin::collected::register_param_ptr(uint64_t row_id, void *param_data)
     g_param_ptrs[row_id] = {p, p[0x20]};  // save original areaNo
 }
 
+bool goblin::collected::is_registered(uint64_t row_id)
+{
+    return g_param_ptrs.count(row_id) > 0;
+}
+
 // ─── refresh from memory (real-time update) ─────────────────────────
 
 int goblin::collected::refresh()

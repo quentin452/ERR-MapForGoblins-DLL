@@ -18,6 +18,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <map>
 #include <optional>
 #include <set>
 #include <thread>
@@ -1236,6 +1237,53 @@ static bool orp_flag_set(uint32_t flag_id)
     if (!event_man) return false;
     uint32_t id = flag_id;
     return g_orp_is_flag(event_man, &id);
+}
+
+// ── Fragment-eviction registry ───────────────────────────────────────
+// areaNo lives at byte offset 0x20 (uint8) of WORLD_MAP_POINT_PARAM_ST — same
+// offset hide_icon / collected use. 99 = off-page (no map-open cost); orig_area
+// = the real page (60) to restore when the gate flag turns on.
+struct FragGatedRow { uint8_t *ptr; uint8_t orig_area; uint32_t flag; };
+static std::vector<FragGatedRow> g_frag_rows;
+
+void goblin::register_fragment_gated_row(void *param_data, uint8_t original_area,
+                                         uint32_t gate_flag)
+{
+    if (!param_data || gate_flag == 0) return;
+    g_frag_rows.push_back(
+        {reinterpret_cast<uint8_t *>(param_data), original_area, gate_flag});
+}
+
+int goblin::refresh_fragment_eviction()
+{
+    GOBLIN_BENCH("refresh.fragment_eviction");
+    // Safety probe: AlwaysOn (6001) is ER's "always set" flag. If the flag API
+    // can't even read it as true, the IsEventFlag resolution is wrong/unreliable
+    // — parking would hide the WHOLE map. Bail out (restore everything to its
+    // page, defer to the game's native eventFlagId gating) until the API is fixed.
+    bool api_ok = orp_flag_set(6001);
+    int evicted = 0;
+    for (auto &r : g_frag_rows)
+    {
+        bool discovered = api_ok ? orp_flag_set(r.flag) : true;
+        if (discovered)
+        {
+            if (r.ptr[0x20] == 99) r.ptr[0x20] = r.orig_area;  // discovered → restore
+        }
+        else
+        {
+            if (r.ptr[0x20] != 99) r.ptr[0x20] = 99;            // undiscovered → park
+            evicted++;
+        }
+    }
+    static int last_parked = -1;
+    if (evicted != last_parked)
+    {
+        last_parked = evicted;
+        spdlog::info("[FRAG-EVICT] {} gate-flagged rows; {} parked off-page (api_ok={})",
+                     g_frag_rows.size(), evicted, api_ok);
+    }
+    return evicted;
 }
 
 struct FlagOrPair { uint32_t primary; uint32_t alt; };
