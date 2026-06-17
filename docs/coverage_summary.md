@@ -68,18 +68,19 @@ so the MapGenie numbers above are not inflated by them.)
 
 | Source map | markers | status |
 |---|--:|---|
-| **m35_00 = Leyndell, Ashen Capital** | **120** | **recoverable** |
+| **m35_00 = Leyndell, Ashen Capital** | **120** | **FIXED (commit afb5dec)** |
 | m19_00 | 5 | irreducible |
 | m45_00 | 3 | irreducible |
 
-The big one is the **Ashen Capital** (Leyndell after the Erdtree burns, late game).
+The big one was the **Ashen Capital** (Leyndell after the Erdtree burns, late game).
 The game's `WorldMapLegacyConvParam` projects it transitively:
-`m35 → area 11 (Leyndell) → area 60 grid(45,52)` (overworld). The mod's bake keeps
-only **direct** `→ 60/61` entries (single hop), so it drops the `m35 → 11` link and
-the 120 markers vanish. **Fix:** make the LEGACY_CONV generation transitive — follow
-`area → area` chains until they reach 60/61 — which would drop the Ashen Capital's
-120 markers at Leyndell on the overworld. (m19/m45's 8 markers have no chain to
-60/61 at all, so they stay irreducibly invisible, like EMEVD-only gives.)
+`m35 → area 11 (Leyndell) → area 60 grid(44,50)` (overworld), but the mod's bake
+kept only **direct** `→ 60/61` entries (single hop) and dropped the `m35 → 11` link.
+**Fixed:** `generate_legacy_conv_cpp` now follows `area → area` chains and composes
+the translations down to 60/61 (LEGACY_CONV 92→94 entries). The 120 Ashen Capital
+markers now land at Leyndell on the overworld; baked-but-invisible dropped 128→8.
+(m19/m45's 8 markers have no chain to 60/61 at all → irreducibly invisible, like
+EMEVD-only gives.)
 
 ## Cross-cutting signal: DLC is weaker than base
 
