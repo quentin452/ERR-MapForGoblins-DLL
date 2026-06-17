@@ -111,16 +111,17 @@ from the loot-source gap.
 3. **Decide scope** on the unwired classes — likely "leave as-is" (loot tracker),
    except maybe a small high-value Locations layer (Divine Towers + notable
    landmarks) if desired.
-4. ✅ **Vanilla DLC zeros — FIXED** (PR #1, commit 08d778d "Fix vanilla profile: load
-   DLC item names and correct Rune Arc goods id"). The area-61 zeros for Cookbook / Map
-   Fragment / Bell Bearing / Crystal Tear were a vanilla **generation bug** (DLC item
-   names weren't loaded), not a real coverage gap — confirmed by the re-gen log
-   (Cookbook area 61 = 29, Crystal Tear = 5, Bell-Bearing = 7, …). The same PR fixed the
-   base-map **Rune Arc** undercount (a wrong goods id), so the earlier vanilla-low Rune
-   Arc / Spirit Ashes were *also* generation bugs (hypothesis A), not the loot filter.
-   New vanilla total 6718 → **6812**. **The vanilla columns/tables above are pre-fix —
-   rerun `tools/coverage_vs_mapgenie.py` against the new `generated_vanilla` to refresh
-   them.**
+4. ✅ **vanilla DLC key-items** — resolved. Cookbook / Map Fragment / Bell Bearing /
+   Crystal Tear / Great Rune read 0 on area 61 because `extract_all_items.read_fmg_names`
+   skipped the DLC name FMGs (`GoodsName_dlc01.fmg`) — DLC-exclusive items got empty
+   names, so the *name-based* loot categories silently dropped them. (ERR/Reforged
+   re-bakes names into the base `GoodsName.fmg`, so only the non-ERR profiles were hit.)
+   Separately, the Rune Arc filter hardcoded ERR's goods id 150, but in vanilla id 150 is
+   *Furlcalling Finger Remedy* and Rune Arc is id 190 — so vanilla mislabeled Furlcalling
+   as Rune Arc and missed the real ones. Both fixed (FMG merge; Rune-Arc filter
+   profile-gated like the spirit-ash one). vanilla/ERTE DLC key-items now populate — Map
+   Fragment exact, Bell Bearing/Crystal Tear/Great Rune match ERR, Cookbook finds all 45
+   placements (→ 37 markers after flag-dedup); base-map Rune Arc 58 (≈ MG 63).
 
 Bottom line: **the mod is not broadly buggy.** Placed content matches MapGenie; the
 real gap is the architectural un-placed-loot limit (the collectible filter, by design)
