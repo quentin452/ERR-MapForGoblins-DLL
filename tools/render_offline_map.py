@@ -7,8 +7,12 @@ a self-contained HTML page: a zoomable map (inline SVG) + a MapGenie-style sideb
 of category filters (grouped, with counts) you can toggle on/off to instantly see
 where a given category is dense or missing. No game, no fog of war, no save risk.
 
-Usage:  tools/render_offline_map.py [out.html] [--area 60|61]
-        (default: render_map.html, area 60 = Lands Between overworld)
+Usage:  tools/render_offline_map.py [out.html] [--area 60|61] [--map m10_01]
+        --area : overworld plane (60 = Lands Between, 61 = Shadow Realm/DLC),
+                 dungeons projected onto it (mirrors the in-game map).
+        --map  : render ONE dungeon in its own local coords (its real interior
+                 layout, like a MapGenie submap) — no projection, no clustering.
+                 e.g. --map m10_01 = Fringefolk Hero's Grave.
 """
 import os
 import re
@@ -94,6 +98,9 @@ def colour(cat):
 def main():
     out_path = "render_map.html"
     area_filter = 60
+    map_filter = None  # e.g. "m10_01" → render that one dungeon in its OWN local
+                       # coords (its real interior layout, like a MapGenie submap),
+                       # instead of projecting it onto the overworld.
     args = sys.argv[1:]
     skip = False
     for i, a in enumerate(args):
@@ -102,6 +109,8 @@ def main():
             continue
         if a == "--area":
             area_filter = int(args[i + 1]); skip = True
+        elif a == "--map":
+            map_filter = args[i + 1]; skip = True
         elif not a.startswith("--"):
             out_path = a
 
@@ -109,6 +118,15 @@ def main():
     pts, by_cat = [], defaultdict(int)
     skipped = 0
     for m in markers:
+        if map_filter:
+            # submap mode: raw local coords, no projection, only this map's rows
+            if f"m{m['areaNo']:02d}_{m['gridXNo']:02d}" != map_filter:
+                continue
+            wx = m["gridXNo"] * 256.0 + m["posX"]
+            wz = m["gridZNo"] * 256.0 + m["posZ"]
+            pts.append((wx, wz, m["category"], m["areaNo"]))
+            by_cat[m["category"]] += 1
+            continue
         p = project(m["areaNo"], m["gridXNo"], m["gridZNo"], m["posX"], m["posZ"])
         if p is None:
             skipped += 1
@@ -119,15 +137,18 @@ def main():
         pts.append((wx, wz, m["category"], m["areaNo"]))
         by_cat[m["category"]] += 1
     if not pts:
-        print("no points for area", area_filter)
+        print("no points for", map_filter or f"area {area_filter}")
         return
+    label = map_filter if map_filter else f"area {area_filter}"
 
     xs = [p[0] for p in pts]; zs = [p[1] for p in pts]
     minx, maxx, minz, maxz = min(xs), max(xs), min(zs), max(zs)
     pad = 128
     W = (maxx - minx) + 2 * pad
     H = (maxz - minz) + 2 * pad
-    SC = 0.5
+    # overworld: 0.5 px/unit (big, scrollable). submap: auto-fit a small dungeon
+    # to ~900px so its interior layout is readable.
+    SC = 0.5 if not map_filter else max(1.0, 900.0 / max(W, H, 1))
 
     def sx(wx): return (wx - minx + pad) * SC
     def sy(wz): return (H - (wz - minz + pad)) * SC
@@ -161,7 +182,7 @@ def main():
                 f'<span class="sw" style="background:{colour(cat)}"></span>{cat} ({n})</label>')
     sidebar = "".join(rows)
 
-    html = f"""<!doctype html><meta charset=utf-8><title>MapForGoblins render — area {area_filter}</title>
+    html = f"""<!doctype html><meta charset=utf-8><title>MapForGoblins render — {label}</title>
 <style>
  body{{margin:0;font:12px system-ui;background:#0d0d0d;color:#ccc;display:flex}}
  #side{{width:280px;height:100vh;overflow:auto;padding:8px;box-sizing:border-box;background:#161616;flex:none}}
@@ -175,7 +196,7 @@ def main():
  button{{background:#222;color:#ccc;border:1px solid #444;padding:3px 6px;cursor:pointer;margin:2px}}
 </style>
 <div id=side>
- <h2>area {area_filter} — {len(pts)} markers</h2>
+ <h2>{label} — {len(pts)} markers</h2>
  <div><button onclick="all(1)">all on</button><button onclick="all(0)">all off</button>
  <button onclick="zoom(1.25)">+</button><button onclick="zoom(0.8)">−</button></div>
  <div style="color:#888;font-size:11px">○ ringed = dungeon-projected. Scroll to pan, +/− to zoom.</div>
