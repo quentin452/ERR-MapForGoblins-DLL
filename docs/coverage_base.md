@@ -90,6 +90,15 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 | Merchant | 40 | 0 | ❌ NOT WIRED (need 40) |
 | Trainer | 1 | 0 | ❌ NOT WIRED (need 1) |
 
+## Enemies
+
+| Type | MapGenie | ERR | Status |
+|---|--:|--:|---|
+| Bosses (all) | 170 | 179 | ℹ️ mod>MG (+9, ERR?) |
+| Invasion | 36 | 37 | ℹ️ mod>MG (+1, ERR?) |
+| Elite Enemy | 144 | 0 | ❌ NOT WIRED (need 144) |
+| Enemy | 58 | 0 | ❌ NOT WIRED (need 58) |
+
 ## Other mod categories (MapGenie counts TODO)
 
 | Category | MapGenie | ERR |
@@ -98,14 +107,12 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 | ReforgedRunePieces | ? | 1210 |
 | LootSmithingStonesLow | ? | 346 |
 | LootCraftingMaterials | ? | 328 |
-| WorldBosses | ? | 179 |
 | WorldSummoningPools | ? | 175 |
 | LootSmithingStones | ? | 112 |
 | WorldInteractables | ? | 102 |
 | KeyLostAshes | ? | 66 |
 | ReforgedItemsAndChanges | ? | 65 |
 | ReforgedFortunes | ? | 61 |
-| WorldHostileNPC | ? | 37 |
 | QuestProgression | ? | 22 |
 | LootGloveworts | ? | 18 |
 | LootSmithingStonesRare | ? | 11 |
@@ -118,5 +125,5 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 ## Summary
 
 - mod markers (ERR) on this map: **7043**
-- MapGenie types not wired (❌): **24**
+- MapGenie types not wired (❌): **26**
 - wired types where ERR < MapGenie (⚠️): **19**

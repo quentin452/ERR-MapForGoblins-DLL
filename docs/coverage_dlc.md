@@ -75,6 +75,15 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 | Ghost | 21 | 0 | ❌ NOT WIRED (need 21) |
 | Merchant | 3 | 0 | ❌ NOT WIRED (need 3) |
 
+## Enemies
+
+| Type | MapGenie | ERR | Status |
+|---|--:|--:|---|
+| Bosses (all) | 44 | 33 | ⚠️ DRIFT mod<MG (−11) |
+| Invasion | 13 | 16 | ℹ️ mod>MG (+3, ERR?) |
+| Elite Enemy | 40 | 0 | ❌ NOT WIRED (need 40) |
+| Enemy | 24 | 0 | ❌ NOT WIRED (need 24) |
+
 ## Other mod categories (MapGenie counts TODO)
 
 | Category | MapGenie | ERR |
@@ -84,11 +93,9 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 | LootMaterialNodes | ? | 172 |
 | LootSmithingStones | ? | 120 |
 | WorldSummoningPools | ? | 65 |
-| WorldBosses | ? | 33 |
 | LootGloveworts | ? | 31 |
 | KeySeedsTears | ? | 22 |
 | QuestProgression | ? | 21 |
-| WorldHostileNPC | ? | 16 |
 | LootGreatGloveworts | ? | 15 |
 | KeyLostAshes | ? | 14 |
 | ReforgedItemsAndChanges | ? | 11 |
@@ -99,5 +106,5 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 ## Summary
 
 - mod markers (ERR) on this map: **1781**
-- MapGenie types not wired (❌): **15**
-- wired types where ERR < MapGenie (⚠️): **14**
+- MapGenie types not wired (❌): **17**
+- wired types where ERR < MapGenie (⚠️): **15**

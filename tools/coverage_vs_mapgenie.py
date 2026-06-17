@@ -47,6 +47,9 @@ MAPGENIE = {
         "Sorcery": 73, "Talisman": 122, "Weapon": 315,
         # NPCs
         "Character": 109, "Ghost": 36, "Merchant": 40, "Trainer": 1,
+        # Enemies
+        "Boss": 140, "Elite Enemy": 144, "Enemy": 58, "Great Boss": 14,
+        "Invasion": 36, "Legendary Boss": 16,
     },
     61: {  # The Shadow Realm (DLC)
         # Locations
@@ -66,6 +69,9 @@ MAPGENIE = {
         "Sorcery": 14, "Talisman": 40, "Weapon": 92,
         # NPCs
         "Character": 18, "Ghost": 21, "Merchant": 3,
+        # Enemies
+        "Boss": 33, "Elite Enemy": 40, "Enemy": 24, "Great Boss": 1,
+        "Invasion": 13, "Legendary Boss": 10,
     },
 }
 
@@ -154,6 +160,12 @@ SECTIONS = {
         ("Ghost", ["Ghost"], []),
         ("Merchant", ["Merchant"], []),
         ("Trainer", ["Trainer"], []),
+    ],
+    "Enemies": [
+        ("Bosses (all)", ["Boss", "Great Boss", "Legendary Boss"], ["WorldBosses"]),
+        ("Invasion", ["Invasion"], ["WorldHostileNPC"]),
+        ("Elite Enemy", ["Elite Enemy"], []),
+        ("Enemy", ["Enemy"], []),
     ],
 }
 
