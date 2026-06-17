@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.28.1)
 
-set(CMAKE_GENERATOR_PLATFORM x64)
+if(CMAKE_GENERATOR MATCHES "Visual Studio")
+  set(CMAKE_GENERATOR_PLATFORM x64)
+endif()
 
 project( MapForGoblins
   VERSION   "1.0.18"

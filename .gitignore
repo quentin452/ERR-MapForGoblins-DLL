@@ -1,5 +1,6 @@
 # Build artifacts
 build/
+build-linux/
 build-vanilla/
 build_old/
 tracker/build/
