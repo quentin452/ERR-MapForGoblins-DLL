@@ -113,16 +113,26 @@ def param_to_dict(param, fields):
 
 
 def read_fmg_names(bnd, fmg_filename):
+    # Read the base FMG *and* its DLC variants (e.g. GoodsName.fmg plus
+    # GoodsName_dlc01.fmg / GoodsName_dlc02.fmg) and merge their entries.
+    # Vanilla keeps DLC-exclusive item names only in the _dlcNN files; reading
+    # the base alone leaves every DLC item (cookbooks, map fragments, bell
+    # bearings, crystal tears, the DLC great rune, ...) with an empty name, so
+    # the name-based loot categories silently drop them. ERR/Reforged re-bakes
+    # all names into the base GoodsName.fmg, which is why this only bit the
+    # non-ERR profiles. DLC goods IDs don't overlap base IDs, so the merge is
+    # purely additive.
+    stem = fmg_filename[:-4] if fmg_filename.lower().endswith('.fmg') else fmg_filename
+    dlc_re = re.compile(re.escape(stem) + r'_dlc\d+\.fmg$', re.IGNORECASE)
     names = {}
     for f in bnd.Files:
-        fname = str(f.Name)
-        if fname.endswith(fmg_filename) and '_dlc' not in fname.lower():
+        base = str(f.Name).replace('\\', '/').rsplit('/', 1)[-1]
+        if base == fmg_filename or dlc_re.match(base):
             fmg = _read_from_bytes(_fmg_read, f.Bytes, '.fmg')
             for e in fmg.Entries:
                 text = str(e.Text) if e.Text else ''
                 if text and text != '[ERROR]':
                     names[int(e.ID)] = text
-            break
     return names
 
 
