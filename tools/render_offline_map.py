@@ -3,12 +3,12 @@
 
 Projects each baked marker onto the overworld plane with the SAME logic the DLL
 uses at inject (LEGACY_CONV exact match, then same-src_area fallback), then emits
-a zoomable SVG: one dot per marker, coloured by category. Open in a browser and
-zoom freely to inspect placement / coverage / dungeon clusters without the
-in-game fog of war.
+a self-contained HTML page: a zoomable map (inline SVG) + a MapGenie-style sidebar
+of category filters (grouped, with counts) you can toggle on/off to instantly see
+where a given category is dense or missing. No game, no fog of war, no save risk.
 
-Usage:  tools/render_offline_map.py [out.svg] [--area 60|61]
-        (default: render_map.svg, area 60 = Lands Between overworld)
+Usage:  tools/render_offline_map.py [out.html] [--area 60|61]
+        (default: render_map.html, area 60 = Lands Between overworld)
 """
 import os
 import re
@@ -17,6 +17,16 @@ from collections import defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GEN = os.path.join(ROOT, "src", "generated")
+
+# Macro-groups (MapGenie-style) by category-name prefix, in display order.
+GROUPS = ["Equip", "Loot", "Key", "Magic", "World", "Reforged", "Quest"]
+
+
+def group_of(cat):
+    for g in GROUPS:
+        if cat.startswith(g):
+            return g
+    return "Other"
 
 
 def parse_legacy_conv():
@@ -37,8 +47,7 @@ CONV = parse_legacy_conv()
 
 
 def project(area, gx, gz, px, pz):
-    """Replicate the DLL: overworld passthrough, else exact (area,gx) then same-area fallback.
-    Returns (dst_area, world_x, world_z) or None if unmappable."""
+    """Replicate the DLL: overworld passthrough, else exact (area,gx) then same-area fallback."""
     if area in (60, 61):
         return area, gx * 256.0 + px, gz * 256.0 + pz
     exact = area_fb = None
@@ -71,31 +80,33 @@ def parse_markers():
         cat = re.search(r"Category::(\w+)", blk)
         out.append(dict(areaNo=f("areaNo", int), gridXNo=f("gridXNo", int),
                         gridZNo=f("gridZNo", int), posX=f("posX", float),
-                        posZ=f("posZ", float), category=cat.group(1) if cat else "?"))
+                        posZ=f("posZ", float), category=cat.group(1) if cat else "Unknown"))
     return out
 
 
-# Stable colour per category (hash → HSL hue). Distinct enough for a legend.
 def colour(cat):
     h = 0
     for ch in cat:
         h = (h * 31 + ord(ch)) & 0xFFFFFFFF
-    return f"hsl({h % 360},70%,50%)"
+    return f"hsl({h % 360},70%,55%)"
 
 
 def main():
-    out_path = "render_map.svg"
+    out_path = "render_map.html"
     area_filter = 60
     args = sys.argv[1:]
+    skip = False
     for i, a in enumerate(args):
+        if skip:
+            skip = False
+            continue
         if a == "--area":
-            area_filter = int(args[i + 1])
-        elif not a.startswith("--") and (i == 0 or args[i - 1] != "--area"):
+            area_filter = int(args[i + 1]); skip = True
+        elif not a.startswith("--"):
             out_path = a
 
     markers = parse_markers()
-    pts = []
-    by_cat = defaultdict(int)
+    pts, by_cat = [], defaultdict(int)
     skipped = 0
     for m in markers:
         p = project(m["areaNo"], m["gridXNo"], m["gridZNo"], m["posX"], m["posZ"])
@@ -107,45 +118,80 @@ def main():
             continue
         pts.append((wx, wz, m["category"], m["areaNo"]))
         by_cat[m["category"]] += 1
-
     if not pts:
         print("no points for area", area_filter)
         return
-    xs = [p[0] for p in pts]
-    zs = [p[1] for p in pts]
+
+    xs = [p[0] for p in pts]; zs = [p[1] for p in pts]
     minx, maxx, minz, maxz = min(xs), max(xs), min(zs), max(zs)
     pad = 128
     W = (maxx - minx) + 2 * pad
     H = (maxz - minz) + 2 * pad
-    SC = 0.5  # px per world unit
+    SC = 0.5
 
-    def sx(wx):
-        return (wx - minx + pad) * SC
+    def sx(wx): return (wx - minx + pad) * SC
+    def sy(wz): return (H - (wz - minz + pad)) * SC
 
-    def sy(wz):
-        return (H - (wz - minz + pad)) * SC  # flip Z for screen-down Y
+    # SVG circles grouped by class cat-<Category>
+    circles = []
+    for wx, wz, cat, src in pts:
+        ring = ' stroke="#fff" stroke-width="0.4"' if src not in (60, 61) else ''
+        circles.append(
+            f'<circle class="cat-{cat}" cx="{sx(wx):.1f}" cy="{sy(wz):.1f}" r="1.7" '
+            f'fill="{colour(cat)}"{ring}><title>{cat} (src m{src:02d})</title></circle>')
+    svg = (f'<svg id="map" xmlns="http://www.w3.org/2000/svg" '
+           f'width="{W*SC:.0f}" height="{H*SC:.0f}" viewBox="0 0 {W*SC:.0f} {H*SC:.0f}">'
+           f'<rect width="100%" height="100%" fill="#0d0d0d"/>' + "".join(circles) + '</svg>')
 
-    svg = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W*SC:.0f}" height="{H*SC:.0f}" '
-           f'viewBox="0 0 {W*SC:.0f} {H*SC:.0f}">',
-           f'<rect width="100%" height="100%" fill="#111"/>',
-           f'<text x="10" y="20" fill="#ccc" font-size="14">MapForGoblins offline render — '
-           f'area {area_filter} — {len(pts)} markers</text>']
-    for wx, wz, cat, srcarea in pts:
-        # dungeon-projected markers (srcarea != 60/61) ringed so they stand out
-        ring = ' stroke="#fff" stroke-width="0.4"' if srcarea not in (60, 61) else ''
-        svg.append(f'<circle cx="{sx(wx):.1f}" cy="{sy(wz):.1f}" r="1.6" '
-                   f'fill="{colour(cat)}"{ring}><title>{cat} (src m{srcarea:02d})</title></circle>')
-    # legend
-    ly = 40
-    for cat, n in sorted(by_cat.items(), key=lambda kv: -kv[1]):
-        svg.append(f'<circle cx="16" cy="{ly}" r="4" fill="{colour(cat)}"/>'
-                   f'<text x="26" y="{ly+4}" fill="#ccc" font-size="11">{cat} ({n})</text>')
-        ly += 15
-    svg.append('</svg>')
-    open(out_path, "w").write("\n".join(svg))
-    print(f"wrote {out_path}: {len(pts)} markers on area {area_filter}, "
-          f"{len(by_cat)} categories, {skipped} unmappable skipped")
-    print(f"world bounds x[{minx:.0f},{maxx:.0f}] z[{minz:.0f},{maxz:.0f}]")
+    # sidebar grouped checkboxes
+    bygrp = defaultdict(list)
+    for cat, n in by_cat.items():
+        bygrp[group_of(cat)].append((cat, n))
+    rows = []
+    for g in GROUPS + ["Other"]:
+        if g not in bygrp:
+            continue
+        gtot = sum(n for _, n in bygrp[g])
+        rows.append(f'<div class="grp"><label><input type="checkbox" checked '
+                    f'onchange="grp(this,\'{g}\')"><b>{g}</b> ({gtot})</label></div>')
+        for cat, n in sorted(bygrp[g], key=lambda kv: -kv[1]):
+            rows.append(
+                f'<label class="g-{g}"><input type="checkbox" checked onchange="tog(\'{cat}\')">'
+                f'<span class="sw" style="background:{colour(cat)}"></span>{cat} ({n})</label>')
+    sidebar = "".join(rows)
+
+    html = f"""<!doctype html><meta charset=utf-8><title>MapForGoblins render — area {area_filter}</title>
+<style>
+ body{{margin:0;font:12px system-ui;background:#0d0d0d;color:#ccc;display:flex}}
+ #side{{width:280px;height:100vh;overflow:auto;padding:8px;box-sizing:border-box;background:#161616;flex:none}}
+ #side h2{{font-size:14px;margin:4px 0}}
+ #side label{{display:flex;align-items:center;gap:6px;padding:1px 0;cursor:pointer}}
+ .grp{{margin-top:8px;border-top:1px solid #333;padding-top:4px}}
+ .sw{{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none}}
+ #wrap{{flex:1;overflow:auto;height:100vh}}
+ #map{{transform-origin:0 0}}
+ .off{{display:none}}
+ button{{background:#222;color:#ccc;border:1px solid #444;padding:3px 6px;cursor:pointer;margin:2px}}
+</style>
+<div id=side>
+ <h2>area {area_filter} — {len(pts)} markers</h2>
+ <div><button onclick="all(1)">all on</button><button onclick="all(0)">all off</button>
+ <button onclick="zoom(1.25)">+</button><button onclick="zoom(0.8)">−</button></div>
+ <div style="color:#888;font-size:11px">○ ringed = dungeon-projected. Scroll to pan, +/− to zoom.</div>
+ {sidebar}
+</div>
+<div id=wrap>{svg}</div>
+<script>
+ var Z=1;
+ function tog(c){{document.querySelectorAll('.cat-'+CSS.escape(c)).forEach(function(e){{e.classList.toggle('off')}})}}
+ function grp(cb,g){{document.querySelectorAll('#side label.g-'+g+' input').forEach(function(i){{if(i.checked!=cb.checked){{i.checked=cb.checked;i.onchange()}}}})}}
+ function all(on){{document.querySelectorAll('#side input').forEach(function(i){{if(i.checked!=!!on){{i.checked=!!on;i.onchange&&i.onchange()}}}})}}
+ function zoom(f){{Z*=f;document.getElementById('map').style.transform='scale('+Z+')'}}
+ addEventListener('wheel',function(e){{if(e.ctrlKey){{e.preventDefault();zoom(e.deltaY<0?1.1:0.9)}}}},{{passive:false}});
+</script>"""
+    open(out_path, "w").write(html)
+    print(f"wrote {out_path}: {len(pts)} markers, {len(by_cat)} categories "
+          f"in {len([g for g in bygrp])} groups, {skipped} unmappable skipped")
 
 
 if __name__ == "__main__":
