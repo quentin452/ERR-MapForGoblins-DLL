@@ -111,9 +111,18 @@ from the loot-source gap.
 3. **Decide scope** on the unwired classes — likely "leave as-is" (loot tracker),
    except maybe a small high-value Locations layer (Divine Towers + notable
    landmarks) if desired.
-4. **Open**: vanilla DLC column reads 0 for several key-items (Cookbook/Map Fragment/
-   Bell Bearing/Crystal Tear) though Scadutree came through — re-check the vanilla DLC
-   extraction before trusting the area-61 vanilla numbers.
+4. ✅ **Vanilla DLC zeros — FIXED** (PR #1, commit 08d778d "Fix vanilla profile: load
+   DLC item names and correct Rune Arc goods id"). The area-61 zeros for Cookbook / Map
+   Fragment / Bell Bearing / Crystal Tear were a vanilla **generation bug** (DLC item
+   names weren't loaded), not a real coverage gap — confirmed by the re-gen log
+   (Cookbook area 61 = 29, Crystal Tear = 5, Bell-Bearing = 7, …). The same PR fixed the
+   base-map **Rune Arc** undercount (a wrong goods id), so the earlier vanilla-low Rune
+   Arc / Spirit Ashes were *also* generation bugs (hypothesis A), not the loot filter.
+   New vanilla total 6718 → **6812**. **The vanilla columns/tables above are pre-fix —
+   rerun `tools/coverage_vs_mapgenie.py` against the new `generated_vanilla` to refresh
+   them.**
 
 Bottom line: **the mod is not broadly buggy.** Placed content matches MapGenie; the
-gaps are an architectural limit (un-placed loot) plus deliberate scope.
+real gap is the architectural un-placed-loot limit (the collectible filter, by design)
+plus deliberate scope. The vanilla-only anomalies turned out to be generation bugs,
+now fixed.

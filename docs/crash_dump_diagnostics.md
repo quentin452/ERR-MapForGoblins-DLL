@@ -24,6 +24,31 @@ Also worth a glance at the mod logs around the crash time:
 `...\ERRv2.2.1.2\tools\injector\logs\MapForGoblins_<date>.log` (look for the last lines, `[SANITIZE]`,
 `SEH exception in init step`, `Injection complete`).
 
+### Capturing a dump under Proton/Wine (Linux)
+Wine has no Windows Error Reporting service by default, so the `CrashDumps` folder stays
+empty even on a crash. Two ways to make a crash capturable:
+
+1. **werfault LocalDumps** (Wine ≥7 implements this). In the game's prefix
+   `~/.local/share/Steam/steamapps/compatdata/1245620/pfx`, add to `system.reg` (HKLM;
+   keys are relative to `REGISTRY\\Machine`) and create the target folder
+   (`drive_c/users/steamuser/AppData/Local/CrashDumps`):
+   ```
+   [Software\\Microsoft\\Windows\\Windows Error Reporting\\LocalDumps]
+   "DumpFolder"=str(2):"C:\\users\\steamuser\\AppData\\Local\\CrashDumps"
+   "DumpType"=dword:00000001          ; 1 = mini (≈50 MB, what §2 parses); 2 = full
+   "DumpCount"=dword:0000000a
+   ```
+   (A per-exe `…\\LocalDumps\\eldenring.exe` subkey with the same values also works.)
+   Edit `system.reg` only while the game is closed; back it up first. The dump lands at
+   `…/pfx/drive_c/users/steamuser/AppData/Local/CrashDumps/eldenring.exe.<pid>.dmp`.
+2. **`PROTON_LOG=1`** as a Steam launch option (`PROTON_LOG=1 %command%`) → wine writes
+   `~/steam-1245620.log` with the unhandled-exception backtrace (faulting module+RVA).
+   Lower fidelity than a dump but always works; good as a companion.
+
+In-process alternative: the mod could install a `SetUnhandledExceptionFilter` +
+`MiniDumpWriteDump` (dbghelp) — works under Wine because it is in-process, the way
+Seamless Co-op's own crash handler does. Not currently implemented.
+
 ## 2. Minidump layout (parse with `struct`)
 - Header: `MDMP` at 0; at +8 `NumberOfStreams u32`, `StreamDirRva u32`.
 - Dir entry (12 B): `Type u32, Size u32, Rva u32`. Types: **3** ThreadList, **4** ModuleList,
