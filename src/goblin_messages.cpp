@@ -4,6 +4,7 @@
 #include "goblin_location_alt.hpp"
 #include "goblin_config.hpp"
 #include "goblin_inject.hpp"
+#include "goblin_bench.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
 #include "modutils.hpp"
 
@@ -394,6 +395,7 @@ static bool patch_fmg_in_memory(uint8_t *fmg_ptr, uint8_t **slot_ptr,
 
 void goblin::setup_messages()
 {
+    GOBLIN_BENCH("map.setup_messages.total");
     using namespace goblin::generated;
 
     auto lang = detect_language();

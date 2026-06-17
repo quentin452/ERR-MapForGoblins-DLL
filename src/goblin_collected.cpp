@@ -3,6 +3,7 @@
 #include "goblin_map_data.hpp"
 #include "goblin_geof_models.hpp"
 #include "modutils.hpp"
+#include "goblin_bench.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -469,6 +470,7 @@ static uint32_t encode_tile(uint8_t area, uint8_t gridX, uint8_t gridZ)
 
 void goblin::collected::initialize()
 {
+    GOBLIN_BENCH("init.collected_initialize");
     g_collected_rows.clear();
     g_collected_count = 0;
     g_unmatched_count = 0;
@@ -646,7 +648,13 @@ int goblin::collected::refresh()
     if (!g_initialized || g_tile_to_rows.empty())
         return 0;
 
-    auto geof = read_geof_from_memory();
+    GOBLIN_BENCH("refresh.collected.total");
+
+    std::vector<GEOFEntry> geof;
+    {
+        GOBLIN_BENCH("refresh.collected.read_geof");
+        geof = read_geof_from_memory();
+    }
 
     std::set<uint64_t> new_collected;
 
@@ -677,7 +685,11 @@ int goblin::collected::refresh()
     // We CANNOT simply say "name not in alive_names → collected" because the
     // game spawns alive gathering-node CSWorldGeomIns lazily — an absent name
     // may just mean "not yet spawned near the player".
-    auto wgm = read_wgm_snapshot();
+    std::map<uint32_t, WGMSnapshot> wgm;
+    {
+        GOBLIN_BENCH("refresh.collected.read_wgm");
+        wgm = read_wgm_snapshot();
+    }
     std::set<uint32_t> wgm_tiles;
 
     // Rows we positively observed alive in WGM this refresh. Used to override

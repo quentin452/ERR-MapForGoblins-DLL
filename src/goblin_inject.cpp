@@ -9,6 +9,7 @@
 #include "goblin_location_alt.hpp"
 #include "goblin_legacy_conv.hpp"
 #include "goblin_markers.hpp"
+#include "goblin_bench.hpp"
 #include "from/params.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
 
@@ -340,6 +341,7 @@ static bool is_category_enabled(Category cat)
 
 void goblin::inject_map_entries()
 {
+    GOBLIN_BENCH("map.inject.total");
     // (The CSFreeListMemorySystem int3-assert NOP patch that used to run here
     // was removed 2026-05-29: it was an artifact of the old hosting-crash
     // theory. The real cause was the 16-align bug in the wrapper_row_locator
@@ -374,6 +376,8 @@ void goblin::inject_map_entries()
     entries.reserve(generated::MAP_ENTRY_COUNT);
 
     size_t skipped_by_config = 0;
+    {
+    GOBLIN_BENCH("map.inject.filter");
     for (size_t i = 0; i < generated::MAP_ENTRY_COUNT; i++)
     {
         const auto &e = generated::MAP_ENTRIES[i];
@@ -422,9 +426,12 @@ void goblin::inject_map_entries()
         }
         entries.push_back({0, e.row_id, &e.data, is_piece, is_kindling, e.category, lotId, lotType});
     }
+    } // map.inject.filter
 
     spdlog::info("Injecting {} map entries ({} skipped by config, {} live-recategorized)",
                  entries.size(), skipped_by_config, live_recat);
+    spdlog::info("[BENCH] map.inject.filter.count: {} kept of {} baked",
+                 entries.size(), generated::MAP_ENTRY_COUNT);
 
     auto param_res_cap = find_world_map_point_param_res_cap();
     if (!param_res_cap)
@@ -553,14 +560,21 @@ void goblin::inject_map_entries()
                             entry.lotId, entry.lotType});
     }
 
-    std::sort(all_rows.begin(), all_rows.end(),
-              [](const RowSource &a, const RowSource &b) { return a.row_id < b.row_id; });
+    {
+        GOBLIN_BENCH("map.inject.sort");
+        std::sort(all_rows.begin(), all_rows.end(),
+                  [](const RowSource &a, const RowSource &b) { return a.row_id < b.row_id; });
+    }
+    spdlog::info("[BENCH] map.inject.rows.count: {} rows (vanilla {} + injected {})",
+                 all_rows.size(), orig_num_rows, new_entry_count);
 
     auto *new_locators = reinterpret_cast<ParamRowInfo *>(new_param_file + row_locators_start);
     auto *new_wrapper_locs = reinterpret_cast<WrapperRowLocator *>(new_param_file + wrapper_row_loc_start);
     size_t file_end_marker = type_str_start + type_str_len;
 
     int reprojected_dungeons = 0;
+    {
+    GOBLIN_BENCH("map.inject.build_rows");
     for (size_t i = 0; i < all_rows.size(); i++)
     {
         size_t data_offset = data_start + i * PARAM_DATA_SIZE;
@@ -672,6 +686,7 @@ void goblin::inject_map_entries()
             }
         }
     }
+    } // map.inject.build_rows
 
     if (goblin::config::projectDungeons)
         spdlog::info("Reprojected {} minor-dungeon rows onto the overworld (LEGACY_CONV)",
@@ -682,6 +697,8 @@ void goblin::inject_map_entries()
     // SFX-region-driven (kindling::). Same hide-trick (areaNo = 99).
     int registered_pieces = 0, hidden_pieces = 0;
     int registered_kindling = 0, hidden_kindling = 0;
+    {
+    GOBLIN_BENCH("map.inject.register_pieces");
     for (size_t i = 0; i < all_rows.size(); i++)
     {
         size_t data_offset = data_start + i * PARAM_DATA_SIZE;
@@ -709,6 +726,7 @@ void goblin::inject_map_entries()
             }
         }
     }
+    } // map.inject.register_pieces
 
     spdlog::info("Registered {} piece + {} kindling pointers ({} + {} hidden at inject)",
                  registered_pieces, registered_kindling, hidden_pieces, hidden_kindling);
@@ -962,6 +980,7 @@ bool goblin::inject_tutorial_popup_rows()
 
 void goblin::set_param_injection_active(bool active)
 {
+    GOBLIN_BENCH("toggle.param_swap");
     if (!g_file_ptr_ref)
     {
         spdlog::warn("[TOGGLE] Param swap state not initialized — inject_map_entries() didn't run");
@@ -1226,6 +1245,7 @@ static constexpr FlagOrPair FLAG_OR_PAIRS[] = {
 
 void goblin::apply_flag_or_pairs()
 {
+    GOBLIN_BENCH("refresh.flag_or_pairs");
     for (const auto &pr : FLAG_OR_PAIRS)
     {
         if (!orp_flag_set(pr.alt))
@@ -1259,6 +1279,7 @@ void goblin::refresh_loot_from_itemlot()
     const bool do_anon   = goblin::config::anonymousLoot;
     if ((!do_flags && !do_labels && !do_anon) || g_lot_backed_rows.empty())
         return;
+    GOBLIN_BENCH("map.live_loot.total");
 
     LotReader lots;
     lots.init();

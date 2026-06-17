@@ -17,6 +17,7 @@
 #include "goblin_logic.hpp"
 #include "goblin_markers.hpp"
 #include "goblin_messages.hpp"
+#include "goblin_bench.hpp"
 
 #include "version.h"
 
@@ -120,13 +121,16 @@ static void setup_mod()
     spdlog::info("Waiting {}s for game init...", goblin::config::loadDelay);
     std::this_thread::sleep_for(std::chrono::seconds(goblin::config::loadDelay));
 
-    safe_init_step(&init_collected,       "collected::initialize");
-    safe_init_step(&init_kindling,        "kindling::initialize");
-    safe_init_step(&init_inject_entries,  "inject_map_entries");
-    safe_init_step(&init_apply_map_logic, "apply_map_logic");
-    safe_init_step(&init_tutorial_popup,  "inject_tutorial_popup_rows");
-    safe_init_step(&init_setup_messages,  "setup_messages");
-    safe_init_step(&init_live_loot,       "refresh_loot_from_itemlot");
+    {
+        GOBLIN_BENCH("init.heavy.total");
+        safe_init_step(&init_collected,       "collected::initialize");
+        safe_init_step(&init_kindling,        "kindling::initialize");
+        safe_init_step(&init_inject_entries,  "inject_map_entries");
+        safe_init_step(&init_apply_map_logic, "apply_map_logic");
+        safe_init_step(&init_tutorial_popup,  "inject_tutorial_popup_rows");
+        safe_init_step(&init_setup_messages,  "setup_messages");
+        safe_init_step(&init_live_loot,       "refresh_loot_from_itemlot");
+    }
 
     try
     {

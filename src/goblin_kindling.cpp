@@ -19,6 +19,7 @@
 #include "goblin_kindling.hpp"
 #include "goblin_map_data.hpp"
 #include "modutils.hpp"
+#include "goblin_bench.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -525,6 +526,7 @@ uint32_t entity_id_for_slot(int slot)
 
 void goblin::kindling::initialize()
 {
+    GOBLIN_BENCH("init.kindling_initialize");
     g_slots.clear();
     g_param_ptrs.clear();
     g_collected_rows.clear();
@@ -599,6 +601,8 @@ int goblin::kindling::refresh()
     // moment can corrupt game state and cause an "Ошибка" overlay.
     if (!is_game_world_loaded())
         return 0;
+
+    GOBLIN_BENCH("refresh.kindling.total");
 
     // Build the new collected set.
     std::set<uint64_t> new_collected;

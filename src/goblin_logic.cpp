@@ -7,6 +7,7 @@
 #include "goblin/goblin_map_tiles.hpp"
 #include "goblin/goblin_map_exceptions.hpp"
 #include "goblin_inject.hpp"
+#include "goblin_bench.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -163,16 +164,19 @@ static void SetupMerchants(int rowId, from::paramdef::WORLD_MAP_POINT_PARAM_ST &
 
 void goblin::apply_map_logic()
 {
+    GOBLIN_BENCH("map.apply_logic.total");
     spdlog::debug("Applying map fragment logic...");
 
     int modified_goblin = 0;
     int modified_boss = 0;
     int modified_camp = 0;
     int modified_merchant = 0;
+    int scanned_rows = 0;
 
     for (auto [rowId, row] :
          from::params::get_param<from::paramdef::WORLD_MAP_POINT_PARAM_ST>(L"WorldMapPointParam"))
     {
+        scanned_rows++;
         // Goblin icons (our injected entries + any existing ones)
         if (goblinIcons.IsInRange(rowId) || goblinIconsERR.IsInRange(rowId))
         {
@@ -227,4 +231,6 @@ void goblin::apply_map_logic()
 
     spdlog::debug("Map logic applied: {} goblin icons, {} bosses, {} camps, {} merchants",
                   modified_goblin, modified_boss, modified_camp, modified_merchant);
+    spdlog::info("[BENCH] map.apply_logic.count: {} rows scanned ({} goblin, {} boss, {} camp, {} merchant)",
+                 scanned_rows, modified_goblin, modified_boss, modified_camp, modified_merchant);
 }
