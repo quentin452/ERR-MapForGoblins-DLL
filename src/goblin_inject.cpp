@@ -315,6 +315,7 @@ static bool is_category_enabled(Category cat)
     case Category::LootStatBoosts:       return goblin::config::showStatBoosts;
     case Category::ReforgedFortunes:     return goblin::config::showFortunes;
     case Category::WorldHostileNPC:      return goblin::config::showHostileNPC;
+    case Category::WorldQuestNPC:        return goblin::config::showQuestNPC;
     case Category::MagicIncantations:    return goblin::config::showIncantations;
     case Category::MagicMemoryStones:    return goblin::config::showMemoryStones;
     case Category::MagicPrayerbooks:     return goblin::config::showPrayerbooks;

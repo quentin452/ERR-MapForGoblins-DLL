@@ -366,6 +366,12 @@ STAGES = [
           script='generate_hostile_npcs.py',
           also_scripts=['massedit_common.py', 'config.py']),
 
+    Stage('generate_quest_npcs',
+          inputs=[REGULATION, MSB_DIR, config.PARAMDEF_DIR],
+          outputs=[MASSEDIT_OUT / 'World - Quest NPC.MASSEDIT'],
+          script='generate_quest_npcs.py',
+          also_scripts=['massedit_common.py', 'config.py']),
+
     # Relocating-boss fix (Lansseax): after all marker generators, before bake.
     # Removes the un-collectable duplicate loot at the boss's flee-spawn and
     # ensures a flee-spawn boss marker that clears on the flee flag. Edits the

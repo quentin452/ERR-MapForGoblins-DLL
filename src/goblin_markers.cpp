@@ -281,6 +281,7 @@ const char *category_name(generated::Category c)
         case C::ReforgedRunePieces: return "Reforged - Rune Pieces";
         case C::WorldGraces: return "World - Graces";
         case C::WorldHostileNPC: return "World - Hostile NPC";
+        case C::WorldQuestNPC: return "World - Quest NPC";
         case C::WorldImpStatues: return "World - Imp Statues";
         case C::WorldMaps: return "World - Maps";
         case C::WorldPaintings: return "World - Paintings";

@@ -78,6 +78,7 @@ CATEGORY_MAP = {
     "World - Bosses": "WorldBosses",
     "World - Graces": "WorldGraces",
     "World - Hostile NPC": "WorldHostileNPC",
+    "World - Quest NPC": "WorldQuestNPC",
     "World - Imp Statues": "WorldImpStatues",
     "World - Maps": "WorldMaps",
     "World - Paintings": "WorldPaintings",

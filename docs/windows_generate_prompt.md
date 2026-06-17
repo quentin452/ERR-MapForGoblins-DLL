@@ -169,3 +169,42 @@ and `\.areaNo = 61` rows (the err file has ~7043 area-60 and ~1781 area-61). If
 If a profile errors out (missing path, missing mod overlay, UXM not unpacked), report
 which prerequisite failed rather than delivering a partial/empty dir. Vanilla is the
 one that matters most — if convergence/erte can't be set up, still deliver vanilla.
+
+---
+
+## FOLLOW-UP (2026-06-17): generate the Quest-NPC layer
+
+New feature (Thread 1): a **named friendly NPC + merchant** location layer for quest
+navigation. Code is wired on the Linux side (DLL enum `WorldQuestNPC` + config
+`show_quest_npc` + `CATEGORY_MAP` + a `build_pipeline.py` Stage + `PRESERVE_FILES`).
+The generator `tools/generate_quest_npcs.py` exists but its filter must be TUNED with
+real data — it cannot run on Linux (needs pythonnet/SoulsFormats + the ERR mod).
+
+Steps (Windows, ERR profile):
+
+1. **Tune the friendly teamType set.** Run:
+   ```
+   python tools/generate_quest_npcs.py --inspect
+   ```
+   It prints `teamType -> placed named-NPC count` with samples (npc/nameId/model/part).
+   Identify which teamTypes are friendly NPCs/merchants (Kalé, Twin Maiden Husks,
+   Roderika, Gostoc, Boc, …) vs enemies/bosses. Set `FRIENDLY_TEAM_TYPES` near the top
+   of the script accordingly (current default `{1,2,6,7,8}` is a GUESS — replace it).
+   Exclude any teamType whose samples are enemies/bosses (bosses are a separate layer).
+
+2. **Pick the icon.** `ICON_ID` defaults to 374 (same as hostile NPC = safe-renders
+   placeholder). Choose a distinct friendly/quest worldmap icon and confirm it renders
+   in-game; update the constant. (User requirement: this family is visually distinct and
+   must NOT be clustered when clustering ships.)
+
+3. **Generate + sanity check.** Run `build.bat generate` (err profile) — the new Stage
+   emits `data/massedit_generated/World - Quest NPC.MASSEDIT` and re-bakes
+   `src/generated/goblin_map_data.cpp` (now including `Category::WorldQuestNPC` rows).
+   Confirm a sane marker count (expect a few hundred — named NPCs are not numerous) and
+   that the names resolve (textId1 = nameId + 700000000). Spot-check a known NPC's
+   position on the map.
+
+4. **Deliver** the regenerated `src/generated/goblin_map_data.cpp` (+ the new MASSEDIT)
+   and the final `FRIENDLY_TEAM_TYPES` / `ICON_ID` values used, so the Linux side can
+   commit the tuned generator. If counts look noisy (enemies leaking in), report the
+   teamType breakdown so we narrow the set.

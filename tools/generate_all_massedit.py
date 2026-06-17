@@ -29,6 +29,7 @@ PRESERVE_FILES = {
     'World - Spiritspring_Hawks.MASSEDIT',
     'World - Paintings.MASSEDIT',
     'World - Hostile NPC.MASSEDIT',
+    'World - Quest NPC.MASSEDIT',
     'Quest - Progression.MASSEDIT',
     'Quest - Deathroot.MASSEDIT',
     'Quest - Seedbed Curses.MASSEDIT',

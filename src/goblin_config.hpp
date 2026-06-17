@@ -71,6 +71,7 @@ namespace goblin
         extern bool showStatBoosts;
         extern bool showFortunes;
         extern bool showHostileNPC;
+        extern bool showQuestNPC;
 
         // Magic
         extern bool showIncantations;

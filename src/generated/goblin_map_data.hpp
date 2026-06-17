@@ -52,6 +52,7 @@ enum class Category : uint8_t
     LootStatBoosts,
     ReforgedFortunes,
     WorldHostileNPC,
+    WorldQuestNPC,
     MagicIncantations,
     MagicMemoryStones,
     MagicPrayerbooks,

@@ -45,6 +45,7 @@ namespace goblin::config
          showRunePieces = true;
 
     bool showBosses = false, showGraces = false, showHostileNPC = false,
+         showQuestNPC = false,
          showImpStatues = false, showPaintings = false, showSpiritSprings = false,
          showSpiritspringHawks = false, showStakesOfMarika = false,
          showSummoningPools = false, showKindlingSpirits = true,
@@ -194,6 +195,7 @@ namespace
                 B("show_bosses", showBosses, "false", "Boss markers (field bosses, dungeon bosses)"),
                 B("show_graces", showGraces, "false", "Sites of Grace"),
                 B("show_hostile_npc", showHostileNPC, "false", "Hostile NPC invader spawn locations (auto-discovered via teamType 24/27)"),
+                B("show_quest_npc", showQuestNPC, "false", "Named friendly NPC + merchant locations (quest navigation; own family, not clustered)"),
                 B("show_imp_statues", showImpStatues, "false", "Imp Statue (Stonesword Key fog gate) locations"),
                 B("show_paintings", showPaintings, "false", "Painting locations"),
                 B("show_spirit_springs", showSpiritSprings, "false", "Spirit Spring (horse jump) locations"),
