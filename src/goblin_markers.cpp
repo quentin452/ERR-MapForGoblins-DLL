@@ -221,7 +221,7 @@ static const char *type_name(uint16_t type)
 }
 
 
-static const char *category_name(generated::Category c)
+const char *category_name(generated::Category c)
 {
     using C = generated::Category;
     switch (c)

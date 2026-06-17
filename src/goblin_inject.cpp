@@ -8,11 +8,13 @@
 #include "goblin_item_icons.hpp"
 #include "goblin_location_alt.hpp"
 #include "goblin_legacy_conv.hpp"
+#include "goblin_markers.hpp"
 #include "from/params.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <optional>
@@ -223,12 +225,45 @@ static ParamResCap *find_world_map_point_param_res_cap()
     return nullptr;
 }
 
+// Lowercase + keep only alphanumerics, so "Loot - Smithing Stones (Low)" and a
+// user-typed "LootSmithingStonesLow" / "smithing stones low" all normalize alike.
+static std::string norm_alnum(const std::string &s)
+{
+    std::string o;
+    for (unsigned char c : s)
+        if (std::isalnum(c))
+            o += static_cast<char>(std::tolower(c));
+    return o;
+}
+
+// True if `cat` matches a token in show_all_except (loose substring match).
+static bool category_in_except(Category cat)
+{
+    const std::string &ex = goblin::config::showAllExcept;
+    if (ex.empty())
+        return false;
+    std::string catn = norm_alnum(goblin::markers::category_name(cat));
+    if (catn.empty())
+        return false;
+    for (size_t i = 0; i < ex.size();)
+    {
+        size_t j = ex.find(',', i);
+        if (j == std::string::npos)
+            j = ex.size();
+        std::string tok = norm_alnum(ex.substr(i, j - i));
+        if (!tok.empty() && catn.find(tok) != std::string::npos)
+            return true;
+        i = j + 1;
+    }
+    return false;
+}
+
 static bool is_category_enabled(Category cat)
 {
-    // Master switch: show every category regardless of the per-category show_*
-    // toggles (so users don't have to flip ~60 flags by hand).
+    // Master switch: show every category without flipping ~60 show_* flags. A
+    // category can still be vetoed by listing it in show_all_except.
     if (goblin::config::showAll)
-        return true;
+        return !category_in_except(cat);
     switch (cat)
     {
     case Category::EquipArmaments:       return goblin::config::showArmaments;

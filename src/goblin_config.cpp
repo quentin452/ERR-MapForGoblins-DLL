@@ -56,6 +56,9 @@ namespace
             if (m) *static_cast<uint16_t *>(e.target) = m;
             break;
         }
+        case IniType::String:
+            *static_cast<std::string *>(e.target) = v;
+            break;
         }
     }
 

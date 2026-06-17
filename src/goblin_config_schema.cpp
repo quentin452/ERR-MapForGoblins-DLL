@@ -16,6 +16,7 @@ namespace goblin::config
     bool debugLogging = false;
     bool projectDungeons = true;
     bool showAll = false;
+    std::string showAllExcept = "";
 
     bool showArmaments = false, showArmour = false, showAshesOfWar = false,
          showSpirits = false, showTalismans = false;
@@ -110,6 +111,10 @@ namespace
                   "Remap minor-dungeon icons (catacombs, caves, tunnels, hero's graves)\nonto the overworld map near their entrance. ER has no map page for them,\nso without this their icons are injected but never rendered."),
                 B("show_all", showAll, "false",
                   "Master switch: show EVERY category at once, ignoring the individual\nshow_* toggles below. Quick way to reveal everything without flipping ~60 flags."),
+                IniEntry{"show_all_except", IniType::String, &cfg::showAllExcept, "",
+                         "When show_all is on, categories listed here stay hidden (comma-separated,\n"
+                         "matched loosely vs the category name, e.g. SmithingStonesLow, GoldenRunesLow).",
+                         false, nullptr},
             }},
 
             {"Equipment", nullptr, false, {
