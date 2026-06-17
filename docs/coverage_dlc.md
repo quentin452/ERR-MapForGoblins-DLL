@@ -113,8 +113,8 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 | KeyLostAshes | ? | 14 |
 | ReforgedItemsAndChanges | ? | 11 |
 | LootRadaFruit | ? | 3 |
-| KeyImbuedSwordKeys | ? | 1 |
 | MagicPrayerbooks | ? | 1 |
+| KeyImbuedSwordKeys | ? | 1 |
 
 ## Summary
 

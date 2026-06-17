@@ -601,30 +601,66 @@ def generate_legacy_conv_cpp(conv_json, output_path):
         print(f"  WARNING: {conv_json} missing, skipping")
         return
     rows = json.load(open(conv_json, encoding='utf-8'))
-    # Keep first row per (srcArea, srcGridX) that lands in 60/61
-    by_key = {}
+    # Parse every hop. The param maps a sub-area onto another area; many dungeon
+    # sub-areas reach the overworld (60/61) only TRANSITIVELY — e.g. Leyndell's
+    # Ashen Capital m35 -> area 11 (Leyndell) -> area 60. A single-hop filter
+    # (dst in 60/61) silently drops those, so follow the chains and compose the
+    # translations down to 60/61.
+    hops = []
     for r in rows:
         if not isinstance(r, dict): continue
-        src_area = int(r.get('srcAreaNo', 0))
-        src_gx = int(r.get('srcGridXNo', 0))
-        dst_area = int(r.get('dstAreaNo', 0))
-        if dst_area not in (60, 61): continue
-        key = (src_area, src_gx)
-        if key in by_key: continue
-        by_key[key] = {
-            'src_area': src_area, 'src_gx': src_gx,
+        hops.append({
+            'src_area': int(r.get('srcAreaNo', 0)),
+            'src_gx': int(r.get('srcGridXNo', 0)),
+            'src_gz': int(r.get('srcGridZNo', 0)),
             'src_pos_x': float(r.get('srcPosX', 0)),
             'src_pos_z': float(r.get('srcPosZ', 0)),
-            'dst_area': dst_area,
+            'dst_area': int(r.get('dstAreaNo', 0)),
             'dst_gx': int(r.get('dstGridXNo', 0)),
             'dst_gz': int(r.get('dstGridZNo', 0)),
             'dst_pos_x': float(r.get('dstPosX', 0)),
             'dst_pos_z': float(r.get('dstPosZ', 0)),
-        }
+        })
+    by_src = {}   # (area, gx) -> first hop
+    by_area = {}  # area -> first hop (grid fallback)
+    for h in hops:
+        by_src.setdefault((h['src_area'], h['src_gx']), h)
+        by_area.setdefault(h['src_area'], h)
+
+    def w(gx, pos): return gx * 256.0 + pos
+
+    def resolve(h, seen):
+        """Compose chains until dst is 60/61; None if it never reaches overworld."""
+        if h['dst_area'] in (60, 61):
+            return h
+        if h['dst_area'] in seen:  # cycle guard
+            return None
+        nxt = by_src.get((h['dst_area'], h['dst_gx'])) or by_area.get(h['dst_area'])
+        if not nxt:
+            return None
+        r = resolve(nxt, seen | {h['dst_area']})
+        if not r:
+            return None
+        # Translate H's dst world point by R's (dst - src) offset.
+        cx = w(h['dst_gx'], h['dst_pos_x']) + w(r['dst_gx'], r['dst_pos_x']) - w(r['src_gx'], r['src_pos_x'])
+        cz = w(h['dst_gz'], h['dst_pos_z']) + w(r['dst_gz'], r['dst_pos_z']) - w(r['src_gz'], r['src_pos_z'])
+        gx, gz = int(cx // 256), int(cz // 256)
+        return {**h, 'dst_area': r['dst_area'], 'dst_gx': gx, 'dst_gz': gz,
+                'dst_pos_x': cx - gx * 256.0, 'dst_pos_z': cz - gz * 256.0}
+
+    by_key = {}
+    for h in hops:
+        key = (h['src_area'], h['src_gx'])
+        if key in by_key:
+            continue
+        res = resolve(h, {h['src_area']})
+        if res:
+            by_key[key] = res
     entries = sorted(by_key.values(), key=lambda e: (e['src_area'], e['src_gx']))
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write("#pragma once\n// AUTO-GENERATED — do not edit.\n")
-        f.write("// Dungeon-area → overworld-tile conversion table (first base-point per src key).\n\n")
+        f.write("// Dungeon-area → overworld-tile conversion table (first base-point per src key,\n")
+        f.write("// transitively composed down to area 60/61 — e.g. Ashen Capital m35→11→60).\n\n")
         f.write("#include <cstdint>\n#include <cstddef>\n\n")
         f.write("namespace goblin::generated {\n\n")
         f.write("struct LegacyConvEntry {\n")

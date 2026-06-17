@@ -13,8 +13,8 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 
 | Type | MapGenie | ERR | Status |
 |---|--:|--:|---|
-| Site of Grace | 309 | 318 | ℹ️ mod>MG (+9, ERR?) |
-| Stake of Marika | 97 | 324 | ℹ️ mod>MG (+227, ERR?) |
+| Site of Grace | 309 | 323 | ℹ️ mod>MG (+14, ERR?) |
+| Stake of Marika | 97 | 329 | ℹ️ mod>MG (+232, ERR?) |
 | Spiritspring Jump | 38 | 62 | ℹ️ mod>MG (+24, ERR?) |
 | Imp Seal Statue | 38 | 36 | ⚠️ DRIFT mod<MG (−2) |
 | Divine Tower | 6 | 0 | ❌ NOT WIRED (need 6) |
@@ -35,16 +35,16 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 
 | Type | MapGenie | ERR | Status |
 |---|--:|--:|---|
-| Cookbook | 59 | 43 | ⚠️ DRIFT mod<MG (−16) |
+| Cookbook | 59 | 45 | ⚠️ DRIFT mod<MG (−14) |
 | Great Rune | 10 | 6 | ⚠️ DRIFT mod<MG (−4) |
 | Whetblade | 6 | 5 | ⚠️ DRIFT mod<MG (−1) |
 | Memory Stone | 8 | 6 | ⚠️ DRIFT mod<MG (−2) |
 | Spellbook | 11 | 13 | ℹ️ mod>MG (+2, ERR?) |
 | Map Fragment | 19 | 19 | ✅ |
 | Painting | 7 | 8 | ℹ️ mod>MG (+1, ERR?) |
-| Stonesword Key | 65 | 47 | ⚠️ DRIFT mod<MG (−18) |
+| Stonesword Key | 65 | 48 | ⚠️ DRIFT mod<MG (−17) |
 | Bell Bearing | 52 | 32 | ⚠️ DRIFT mod<MG (−20) |
-| Pots & Perfumes | 33 | 29 | ⚠️ DRIFT mod<MG (−4) |
+| Pots & Perfumes | 33 | 30 | ⚠️ DRIFT mod<MG (−3) |
 | Key Item (generic) | 68 | 0 | ❌ NOT WIRED (need 68) |
 | Remembrance | 15 | 0 | ❌ NOT WIRED (need 15) |
 | Talisman Pouch | 3 | 0 | ❌ NOT WIRED (need 3) |
@@ -54,17 +54,17 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 
 | Type | MapGenie | ERR | Status |
 |---|--:|--:|---|
-| Ammunition | 98 | 53 | ⚠️ DRIFT mod<MG (−45) |
-| Consumable (all use-items) | 265 | 443 | ℹ️ mod>MG (+178, ERR?) |
+| Ammunition | 98 | 55 | ⚠️ DRIFT mod<MG (−43) |
+| Consumable (all use-items) | 265 | 463 | ℹ️ mod>MG (+198, ERR?) |
 | Crystal Tear | 32 | 35 | ℹ️ mod>MG (+3, ERR?) |
 | Deathroot | 9 | 9 | ✅ |
 | Dragon Heart | 13 | 14 | ℹ️ mod>MG (+1, ERR?) |
 | Gesture | 35 | 5 | ⚠️ DRIFT mod<MG (−30) |
-| Golden Rune | 407 | 592 | ℹ️ mod>MG (+185, ERR?) |
+| Golden Rune | 407 | 600 | ℹ️ mod>MG (+193, ERR?) |
 | Golden Seed + Sacred Tear | 54 | 50 | ⚠️ DRIFT mod<MG (−4) |
 | Larval Tear | 17 | 11 | ⚠️ DRIFT mod<MG (−6) |
-| Rune Arc | 63 | 63 | ✅ |
-| Spirit Ashes | 65 | 55 | ⚠️ DRIFT mod<MG (−10) |
+| Rune Arc | 63 | 66 | ℹ️ mod>MG (+3, ERR?) |
+| Spirit Ashes | 65 | 56 | ⚠️ DRIFT mod<MG (−9) |
 | Cerulean Scarab | 21 | 0 | ❌ NOT WIRED (need 21) |
 | Crimson Scarab | 40 | 0 | ❌ NOT WIRED (need 40) |
 | Item (generic) | 9 | 0 | ❌ NOT WIRED (need 9) |
@@ -74,12 +74,12 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 
 | Type | MapGenie | ERR | Status |
 |---|--:|--:|---|
-| Weapon + Shield | 384 | 245 | ⚠️ DRIFT mod<MG (−139) |
-| Armor | 164 | 205 | ℹ️ mod>MG (+41, ERR?) |
-| Talisman | 122 | 102 | ⚠️ DRIFT mod<MG (−20) |
+| Weapon + Shield | 384 | 246 | ⚠️ DRIFT mod<MG (−138) |
+| Armor | 164 | 210 | ℹ️ mod>MG (+46, ERR?) |
+| Talisman | 122 | 107 | ⚠️ DRIFT mod<MG (−15) |
 | Ash of War | 105 | 64 | ⚠️ DRIFT mod<MG (−41) |
 | Sorcery | 73 | 61 | ⚠️ DRIFT mod<MG (−12) |
-| Incantation | 101 | 45 | ⚠️ DRIFT mod<MG (−56) |
+| Incantation | 101 | 51 | ⚠️ DRIFT mod<MG (−50) |
 
 ## NPCs
 
@@ -94,7 +94,7 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 
 | Type | MapGenie | ERR | Status |
 |---|--:|--:|---|
-| Bosses (all) | 170 | 179 | ℹ️ mod>MG (+9, ERR?) |
+| Bosses (all) | 170 | 181 | ℹ️ mod>MG (+11, ERR?) |
 | Invasion | 36 | 37 | ℹ️ mod>MG (+1, ERR?) |
 | Elite Enemy | 144 | 0 | ❌ NOT WIRED (need 144) |
 | Enemy | 58 | 0 | ❌ NOT WIRED (need 58) |
@@ -103,20 +103,20 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 
 | Type | MapGenie | ERR | Status |
 |---|--:|--:|---|
-| Smithing Stones (all) | 446 | 469 | ℹ️ mod>MG (+23, ERR?) |
-| Crafting / gathering materials (lumped) | 1009 | 1627 | ℹ️ mod>MG (+618, ERR?) |
+| Smithing Stones (all) | 446 | 484 | ℹ️ mod>MG (+38, ERR?) |
+| Crafting / gathering materials (lumped) | 1009 | 1643 | ℹ️ mod>MG (+634, ERR?) |
 
 ## Other mod categories (MapGenie counts TODO)
 
 | Category | MapGenie | ERR |
 |---|--:|--:|
-| ReforgedRunePieces | ? | 1210 |
-| WorldSummoningPools | ? | 175 |
+| ReforgedRunePieces | ? | 1227 |
+| WorldSummoningPools | ? | 178 |
 | WorldInteractables | ? | 102 |
-| KeyLostAshes | ? | 66 |
+| KeyLostAshes | ? | 67 |
 | ReforgedItemsAndChanges | ? | 65 |
 | ReforgedFortunes | ? | 61 |
-| QuestProgression | ? | 22 |
+| QuestProgression | ? | 23 |
 | KeyCelestialDew | ? | 8 |
 | QuestSeedbedCurses | ? | 6 |
 | WorldKindlingSpirits | ? | 5 |
@@ -124,6 +124,6 @@ Mod profiles present: **ERR**. Bug flag (Status) compares **ERR** to MapGenie.
 
 ## Summary
 
-- mod markers (ERR) on this map: **7043**
+- mod markers (ERR) on this map: **7163**
 - MapGenie types not wired (❌): **26**
 - wired types where ERR < MapGenie (⚠️): **19**
