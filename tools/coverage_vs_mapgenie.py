@@ -2,13 +2,14 @@
 """Generate per-map coverage docs: mod marker counts vs MapGenie counts, drift-flagged.
 
 Writes docs/coverage_base.md (area 60) and docs/coverage_dlc.md (area 61). For
-each type it shows MapGenie's count, the mod's count, and a status flag — the
-important one being ⚠️ when mod < MapGenie (a real gap / missing markers). mod >
-MapGenie is expected (ERR adds content) and only noted.
+each comparison row it shows MapGenie's count, the mod's count, and a status —
+the important one being ⚠️ when mod < MapGenie (a real gap). mod > MapGenie is
+expected (ERR adds content) and only noted.
 
-MapGenie numbers are hand-entered from the site's category panels (Locations so
-far); fill MAPGENIE_ITEMS as you gather the rest. Mod numbers are computed from
-the baked data with the same projection the DLL uses.
+MapGenie numbers are hand-entered from the site's category panels. Mapping is
+explicit (SECTIONS) because the taxonomies differ: one mod category can cover
+several MapGenie types (Pots & Perfumes) and vice-versa (Bell Bearing). Rows
+with an empty mod-category list are MapGenie types with no mod equivalent.
 
 Usage:  tools/coverage_vs_mapgenie.py
 """
@@ -20,49 +21,90 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GEN = os.path.join(ROOT, "src", "generated")
 DOCS = os.path.join(ROOT, "docs")
 
-# ── MapGenie "Locations" counts (from the site's panels) ──────────────────────
-MAPGENIE_LOCATIONS = {
+# ── MapGenie counts per area, flat by label (across all sections) ─────────────
+MAPGENIE = {
     60: {  # The Lands Between
+        # Locations
         "Site of Grace": 309, "Stake of Marika": 97, "Spiritspring Jump": 38,
         "Imp Seal Statue": 38, "Divine Tower": 6, "Dragon Shrine": 2,
         "Dungeon": 53, "Elevator": 24, "Evergaol": 11, "Hidden Passage": 40,
         "Landmark": 131, "Legacy Dungeon": 7, "Martyr Effigy": 156,
         "Minor Erdtree": 11, "Portal": 36, "Smithing Table": 1,
         "Wandering Mausoleum": 7,
+        # Key Items
+        "Bell Bearing": 52, "Cookbook": 59, "Cracked Pot": 14, "Great Rune": 10,
+        "Key Item": 68, "Map Fragment": 19, "Memory Stone": 8, "Painting": 7,
+        "Perfume Bottle": 10, "Remembrance": 15, "Ritual Pot": 9, "Spellbook": 11,
+        "Stonesword Key": 65, "Talisman Pouch": 3, "Tool": 23, "Whetblade": 6,
     },
     61: {  # The Shadow Realm (DLC)
+        # Locations
         "Site of Grace": 105, "Stake of Marika": 22, "Spiritspring Jump": 18,
         "Dungeon": 11, "Elevator": 16, "Hidden Passage": 19, "Landmark": 41,
         "Martyr Effigy": 56, "Miquella's Cross": 13, "Portal": 3,
+        # Key Items
+        "Bell Bearing": 10, "Cookbook": 45, "Cracked Pot": 10, "Great Rune": 1,
+        "Key Item": 17, "Map Fragment": 5, "Painting": 3, "Remembrance": 10,
+        "Revered Spirit Ash": 23, "Scadutree Fragment": 42, "Tool": 7,
     },
 }
 
-# mod Category enum name -> MapGenie Location label (only where they correspond).
-# Several mod categories can sum into one MapGenie label.
-CAT_TO_MG = {
-    "WorldGraces": "Site of Grace",
-    "WorldImpStatues": "Imp Seal Statue",
-    "WorldStakesOfMarika": "Stake of Marika",
-    "WorldSpiritSprings": "Spiritspring Jump",
-    "WorldSpiritspringHawks": "Spiritspring Jump",
+# Sections: each row = (display, [MapGenie labels to sum], [mod Category enums to sum]).
+# Empty mod list = MapGenie type with no mod equivalent (not wired).
+SECTIONS = {
+    "Locations": [
+        ("Site of Grace", ["Site of Grace"], ["WorldGraces"]),
+        ("Stake of Marika", ["Stake of Marika"], ["WorldStakesOfMarika"]),
+        ("Spiritspring Jump", ["Spiritspring Jump"],
+         ["WorldSpiritSprings", "WorldSpiritspringHawks"]),
+        ("Imp Seal Statue", ["Imp Seal Statue"], ["WorldImpStatues"]),
+        ("Divine Tower", ["Divine Tower"], []),
+        ("Dragon Shrine", ["Dragon Shrine"], []),
+        ("Dungeon", ["Dungeon"], []),
+        ("Elevator", ["Elevator"], []),
+        ("Evergaol", ["Evergaol"], []),
+        ("Hidden Passage", ["Hidden Passage"], []),
+        ("Landmark", ["Landmark"], []),
+        ("Legacy Dungeon", ["Legacy Dungeon"], []),
+        ("Martyr Effigy", ["Martyr Effigy"], []),
+        ("Minor Erdtree", ["Minor Erdtree"], []),
+        ("Portal", ["Portal"], []),
+        ("Smithing Table", ["Smithing Table"], []),
+        ("Wandering Mausoleum", ["Wandering Mausoleum"], []),
+        ("Miquella's Cross", ["Miquella's Cross"], []),
+    ],
+    "Key Items": [
+        ("Cookbook", ["Cookbook"], ["KeyCookbooks"]),
+        ("Great Rune", ["Great Rune"], ["KeyGreatRunes"]),
+        ("Whetblade", ["Whetblade"], ["KeyWhetblades"]),
+        ("Memory Stone", ["Memory Stone"], ["MagicMemoryStones"]),
+        ("Spellbook", ["Spellbook"], ["MagicPrayerbooks"]),  # ~ uncertain mapping
+        ("Map Fragment", ["Map Fragment"], ["WorldMaps"]),
+        ("Painting", ["Painting"], ["WorldPaintings"]),
+        ("Stonesword Key", ["Stonesword Key"], ["LootStoneswordKeys"]),
+        ("Bell Bearing", ["Bell Bearing"],
+         ["LootBellBearings", "LootMerchantBellBearings"]),
+        ("Pots & Perfumes", ["Cracked Pot", "Ritual Pot", "Perfume Bottle"],
+         ["KeyPotsNPerfumes"]),
+        ("Scadutree Fragment", ["Scadutree Fragment"], ["KeyScadutreeFragments"]),
+        # MapGenie types with no clean mod equivalent:
+        ("Key Item (generic)", ["Key Item"], []),
+        ("Remembrance", ["Remembrance"], []),
+        ("Talisman Pouch", ["Talisman Pouch"], []),
+        ("Tool", ["Tool"], []),
+        ("Revered Spirit Ash", ["Revered Spirit Ash"], []),
+    ],
 }
 
-# Macro-groups for the mod-only item section.
 GROUPS = ["Equip", "Loot", "Key", "Magic", "World", "Reforged", "Quest"]
-
-# Optional: MapGenie item-category counts (fill as you collect them), keyed by
-# area then mod-category enum name. Leave empty -> shown as "?" (to fill).
-MAPGENIE_ITEMS = {60: {}, 61: {}}
 
 
 def parse_legacy_conv():
     txt = open(os.path.join(GEN, "goblin_legacy_conv.hpp")).read()
     rows = []
     for m in re.finditer(
-        r"\{\s*(\d+),\s*(\d+),\s*([-\d.]+)f,\s*([-\d.]+)f,\s*"
-        r"(\d+),\s*(\d+),\s*(\d+),\s*([-\d.]+)f,\s*([-\d.]+)f\s*\}", txt):
-        g = [float(x) if "." in x else int(x) for x in m.groups()]
-        rows.append(g)  # [s_area,s_gx,s_px,s_pz,d_area,d_gx,d_gz,d_px,d_pz]
+        r"\{\s*(\d+),\s*(\d+),\s*[-\d.]+f,\s*[-\d.]+f,\s*(\d+),", txt):
+        rows.append((int(m.group(1)), int(m.group(2)), int(m.group(3))))
     return rows
 
 
@@ -73,18 +115,17 @@ def dst_area(area, gx):
     if area in (60, 61):
         return area
     fb = None
-    for c in CONV:
-        if c[0] != area:
+    for sa, sgx, da in CONV:
+        if sa != area:
             continue
         if fb is None:
-            fb = c[4]
-        if c[1] == gx:
-            return c[4]
-    return fb  # None if unmappable
+            fb = da
+        if sgx == gx:
+            return da
+    return fb
 
 
 def mod_counts():
-    """Return {area: Counter(category -> n)} using the DLL's projection target."""
     txt = open(os.path.join(GEN, "goblin_map_data.cpp"), errors="replace").read()
     out = {60: Counter(), 61: Counter()}
     for blk in txt.split("// Row ID ")[1:]:
@@ -106,8 +147,10 @@ def group_of(cat):
     return "Other"
 
 
-def status(mod, mg):
-    if mg is None:
+def status(mod, mg, wired):
+    if not wired:
+        return f"❌ NOT WIRED (need {mg})" if mg else "—"
+    if mg is None or mg == 0:
         return "—"
     if mod < mg:
         return f"⚠️ DRIFT mod<MG (−{mg - mod})"
@@ -117,53 +160,59 @@ def status(mod, mg):
 
 
 def write_doc(area, counts, path, title):
-    mg_loc = MAPGENIE_LOCATIONS.get(area, {})
-    # mod count summed per MapGenie label
-    mg_label_mod = Counter()
-    for cat, n in counts.items():
-        if cat in CAT_TO_MG:
-            mg_label_mod[CAT_TO_MG[cat]] += n
+    mg = MAPGENIE.get(area, {})
+    used_cats = set()
+    drift = notwired = 0
 
-    L = [f"# {title} — mod vs MapGenie coverage",
-         "",
-         "_Generated by tools/coverage_vs_mapgenie.py. ⚠️ = mod has FEWER than "
-         "MapGenie (likely a gap). ℹ️ = mod has more (ERR adds content)._",
-         "",
-         "## Locations (MapGenie taxonomy)",
-         "",
-         "| MapGenie Location | MapGenie | Mod | Status |",
-         "|---|--:|--:|---|"]
-    for label in sorted(mg_loc):
-        mg = mg_loc[label]
-        mod = mg_label_mod.get(label, 0)
-        wired = label in CAT_TO_MG.values()
-        st = status(mod, mg) if wired else f"❌ NOT WIRED (need {mg})"
-        L.append(f"| {label} | {mg} | {mod if wired else 0} | {st} |")
+    L = [f"# {title} — mod vs MapGenie coverage", "",
+         "_Generated by tools/coverage_vs_mapgenie.py._", "",
+         "**Read the drift with care:**",
+         "- MapGenie maps **vanilla** Elden Ring; this mod maps **ERR** (Reforged), "
+         "which adds, removes and relocates items. So `mod < MapGenie` (⚠️) is a "
+         "*candidate* gap, not proof — ERR may simply have fewer of that item. "
+         "Investigate large negatives on stable types (cookbooks, stonesword keys, "
+         "bell bearings) first; small ones are often ERR content differences.",
+         "- Taxonomies differ. A `❌` row is a MapGenie type with no dedicated mod "
+         "category — but some (Remembrance, generic Key Item) are still reachable via "
+         "another marker (e.g. the boss), just not as a distinct icon.",
+         "- ℹ️ `mod > MapGenie` is expected where ERR adds content.",
+         ""]
+    for section, rows in SECTIONS.items():
+        present = [(disp, labs, cats) for disp, labs, cats in rows
+                   if any(l in mg for l in labs)]
+        if not present:
+            continue
+        L += [f"## {section}", "",
+              "| Type | MapGenie | Mod | Status |", "|---|--:|--:|---|"]
+        for disp, labs, cats in present:
+            mgc = sum(mg.get(l, 0) for l in labs)
+            modc = sum(counts.get(c, 0) for c in cats)
+            used_cats.update(cats)
+            wired = bool(cats)
+            st = status(modc, mgc, wired)
+            if st.startswith("⚠️"):
+                drift += 1
+            if st.startswith("❌"):
+                notwired += 1
+            L.append(f"| {disp} | {mgc} | {modc if wired else 0} | {st} |")
+        L.append("")
 
-    # mod-only categories (no MapGenie Locations equivalent), grouped
-    L += ["", "## Mod item/feature categories (MapGenie item counts TODO)", "",
-          "| Category | Mod | MapGenie | Status |", "|---|--:|--:|---|"]
-    mapped = set(CAT_TO_MG)
-    for g in GROUPS + ["Other"]:
-        cats = sorted([c for c in counts if group_of(c) == g and c not in mapped],
-                      key=lambda c: -counts[c])
-        for c in cats:
-            mg = MAPGENIE_ITEMS.get(area, {}).get(c)
-            L.append(f"| {c} | {counts[c]} | {mg if mg is not None else '?'} | "
-                     f"{status(counts[c], mg)} |")
+    # mod categories not covered by any row above (MapGenie counts still TODO)
+    rest = sorted([c for c in counts if c not in used_cats], key=lambda c: -counts[c])
+    if rest:
+        L += ["## Other mod categories (MapGenie counts TODO)", "",
+              "| Category | Mod | MapGenie | Status |", "|---|--:|--:|---|"]
+        for c in rest:
+            L.append(f"| {c} | {counts[c]} | ? | — |")
+        L.append("")
 
-    total_mod = sum(counts.values())
-    drifts = sum(1 for label in mg_loc
-                 if label in CAT_TO_MG.values()
-                 and mg_label_mod.get(label, 0) < mg_loc[label])
-    notwired = sum(1 for label in mg_loc if label not in CAT_TO_MG.values())
-    L += ["", "## Summary", "",
-          f"- mod markers on this map: **{total_mod}**",
-          f"- MapGenie Location types NOT wired: **{notwired}**",
-          f"- wired Location types where mod < MapGenie (⚠️): **{drifts}**", ""]
+    L += ["## Summary", "",
+          f"- mod markers on this map: **{sum(counts.values())}**",
+          f"- MapGenie types not wired (❌): **{notwired}**",
+          f"- wired types where mod < MapGenie (⚠️ drift): **{drift}**", ""]
     open(path, "w").write("\n".join(L))
-    print(f"wrote {os.path.relpath(path, ROOT)}  (mod markers {total_mod}, "
-          f"{notwired} unwired locations, {drifts} drift)")
+    print(f"wrote {os.path.relpath(path, ROOT)}  "
+          f"(markers {sum(counts.values())}, {notwired} unwired, {drift} drift)")
 
 
 def main():
