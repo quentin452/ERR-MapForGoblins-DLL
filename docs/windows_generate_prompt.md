@@ -1,5 +1,21 @@
 # Task: generate the non-ERR profile data for MapForGoblins (Windows)
 
+> **Status (2026-06-17):**
+> - ✅ **vanilla — DELIVERED.** `src/generated_vanilla/` received (zip), dropped in,
+>   coverage rerun. See `coverage_base.md` / `coverage_dlc.md`.
+> - ⬜ `convergence` — not yet generated.
+> - ⬜ `erte` — not yet generated.
+>
+> **Open validation flag on the delivered vanilla:** the DLC (area 61) column shows
+> **0** for Cookbook / Map Fragment / Great Rune / Bell Bearing / Crystal Tear, while
+> ERR has them and Scadutree Fragments (42) *did* come through. DLC was installed, so
+> these zeros look like a partial DLC extraction for vanilla — re-check the vanilla
+> `generate` DLC stage (or confirm these key-items genuinely have no area-61
+> WorldMapPointParam rows in vanilla) before fully trusting the vanilla DLC column.
+
+---
+
+
 You are working on the **ERR-MapForGoblins-DLL** repo (an Elden Ring world-map icon
 mod). It builds in **4 profiles** — `err`, `vanilla`, `convergence`, `erte` — each
 driven by its own *generated* data under `src/generated_<profile>/`. Only the `err`
