@@ -1,14 +1,21 @@
 # MapForGoblins vs MapGenie — coverage synthesis
 
-Cross-checked the mod's marker counts (ERR profile) against MapGenie's full
-category taxonomy for both maps. Per-type tables: [coverage_base.md](coverage_base.md)
-(Lands Between) and [coverage_dlc.md](coverage_dlc.md) (Shadow Realm). Regenerate
-with `tools/coverage_vs_mapgenie.py`.
+Cross-checked the mod's marker counts against MapGenie's full category taxonomy for
+both maps. Per-type tables (columns: MapGenie | **vanilla** | ERR | **erte**):
+[coverage_base.md](coverage_base.md) (Lands Between) and
+[coverage_dlc.md](coverage_dlc.md) (Shadow Realm). Regenerate with
+`tools/coverage_vs_mapgenie.py` (on Windows run it under `PYTHONUTF8=1` — it writes
+emoji and otherwise crashes on the cp1252 default codec).
 
-**Baseline (resolved 2026-06-17):** the **vanilla** profile is now generated, so the
-bug flag is clean — vanilla vs MapGenie is the same game. The numbers below are the
+**Baseline (resolved 2026-06-17):** the **vanilla** profile is generated, so the bug
+flag is clean — vanilla vs MapGenie is the same game. The numbers below are the
 **vanilla** column unless noted; ERR is shown only where the overhaul's delta matters.
 (MapGenie maps vanilla, so a vanilla negative is a *real* mod gap, not an ERR artifact.)
+
+**Update (2026-06-17, follow-up):** the **erte** profile is now generated too (column
+added), and the two vanilla-DLC bugs flagged below are fixed — see point 4 in *What to
+do*. The vanilla/ERTE columns reflect those fixes (DLC key-items now populate; base-map
+Rune Arc corrected from a mislabel).
 
 ## The picture in three buckets
 
@@ -111,9 +118,17 @@ from the loot-source gap.
 3. **Decide scope** on the unwired classes — likely "leave as-is" (loot tracker),
    except maybe a small high-value Locations layer (Divine Towers + notable
    landmarks) if desired.
-4. **Open**: vanilla DLC column reads 0 for several key-items (Cookbook/Map Fragment/
-   Bell Bearing/Crystal Tear) though Scadutree came through — re-check the vanilla DLC
-   extraction before trusting the area-61 vanilla numbers.
+4. ✅ **vanilla DLC key-items** — resolved. Cookbook / Map Fragment / Bell Bearing /
+   Crystal Tear / Great Rune read 0 on area 61 because `extract_all_items.read_fmg_names`
+   skipped the DLC name FMGs (`GoodsName_dlc01.fmg`) — DLC-exclusive items got empty
+   names, so the *name-based* loot categories silently dropped them. (ERR/Reforged
+   re-bakes names into the base `GoodsName.fmg`, so only the non-ERR profiles were hit.)
+   Separately, the Rune Arc filter hardcoded ERR's goods id 150, but in vanilla id 150 is
+   *Furlcalling Finger Remedy* and Rune Arc is id 190 — so vanilla mislabeled Furlcalling
+   as Rune Arc and missed the real ones. Both fixed (FMG merge; Rune-Arc filter
+   profile-gated like the spirit-ash one). vanilla/ERTE DLC key-items now populate — Map
+   Fragment exact, Bell Bearing/Crystal Tear/Great Rune match ERR, Cookbook finds all 45
+   placements (→ 37 markers after flag-dedup); base-map Rune Arc 58 (≈ MG 63).
 
 Bottom line: **the mod is not broadly buggy.** Placed content matches MapGenie; the
 gaps are an architectural limit (un-placed loot) plus deliberate scope.
