@@ -1,18 +1,38 @@
 # Task: generate the non-ERR profile data for MapForGoblins (Windows)
 
-> **Status (2026-06-17):**
-> - ⚠️ **vanilla — DELIVERED but needs a re-gen.** `src/generated_vanilla/` received
->   (zip), dropped in, coverage rerun (see `coverage_base.md` / `coverage_dlc.md`) — but
->   a category-selective DLC gap turned up. **See the FOLLOW-UP brief below.**
-> - ⬜ `convergence` — not yet generated.
-> - ⬜ `erte` — not yet generated.
+> **Status (2026-06-17 — ALL profiles generated & delivered):**
+> - ✅ **vanilla** — generated, re-gen'd, delivered. `MAP_ENTRY_COUNT = 6812`, DLC
+>   present (area 60 = 2597, area 61 = 826). The category-selective DLC gap below is
+>   **fixed** — see *FOLLOW-UP — RESOLVED*.
+> - ✅ **convergence** — generated, delivered. `MAP_ENTRY_COUNT = 7373`, DLC present
+>   (area 60 = 2960, area 61 = 799). Icon-frame offset +408 applied automatically.
+> - ✅ **erte** — generated, delivered. `MAP_ENTRY_COUNT = 7720`, DLC present
+>   (area 60 = 2897, area 61 = 870).
 >
-> **FOLLOW-UP TASK — re-generate vanilla and chase a category-selective DLC gap.**
-> The delivered vanilla is mostly fine (6718 markers total, 779 area-61 rows, so the
-> DLC tier as a whole came through — Scadutree 42, Painting 3, Pots 10, Ammunition 24
-> all present). But a handful of categories are **0 in the vanilla area-61 (DLC)
-> column** while the vanilla game definitely has them and ERR extracts them. See the
-> detailed re-run brief below before re-delivering.
+> **Deliverables:** `generated_vanilla.zip`, `generated_convergence.zip`,
+> `generated_erte.zip` at the repo root — each = the full `src/generated_<p>/` dir plus
+> its `<p>_generate.log`. Coverage tables regenerated with all four columns
+> (vanilla, ERR, conv, erte): `coverage_base.md` / `coverage_dlc.md` /
+> `coverage_summary.md`. Prereqs set up on this machine: game UXM-unpacked (with DLC),
+> `tools/config.ini` filled (game_dir + convergence_mod_dir + erte_mod_dir), Python deps,
+> `oo2core_6_win64.dll` placed for SoulsFormats.
+>
+> **FOLLOW-UP — RESOLVED.** The vanilla DLC zeros (Cookbook / Map Fragment / Bell
+> Bearing / Crystal Tear / Great Rune) were two real generation bugs, both fixed and
+> merged to `master` (PR #1):
+> 1. `extract_all_items.read_fmg_names` skipped the DLC name FMGs (`GoodsName_dlc01.fmg`),
+>    so DLC-exclusive items got empty names and the *name-based* loot categories dropped
+>    them. (ERR re-bakes names into the base FMG → only non-ERR profiles were hit.)
+> 2. The Rune Arc filter hard-coded ERR's goods id 150; in vanilla id 150 is *Furlcalling
+>    Finger Remedy* and Rune Arc is id 190 → vanilla mislabeled/dropped them. Now
+>    profile-gated.
+>
+> vanilla now matches MapGenie/ERR (Map Fragment exact; Bell Bearing/Crystal Tear/Great
+> Rune = ERR; Cookbook finds all 45 placements → 37 markers after flag-dedup; base Rune
+> Arc 58 ≈ MG 63). The **Convergence** DLC zeros (Scadutree / Cookbook / Crystal Tear) are
+> NOT bugs — the overhaul keeps those names at vanilla ids but doesn't place them as
+> collectible world lots (details in `coverage_summary.md`). Original brief preserved
+> below for reference.
 
 ---
 
