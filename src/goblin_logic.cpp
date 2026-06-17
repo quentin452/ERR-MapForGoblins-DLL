@@ -6,6 +6,7 @@
 #include "goblin/goblin_map_flags.hpp"
 #include "goblin/goblin_map_tiles.hpp"
 #include "goblin/goblin_map_exceptions.hpp"
+#include "goblin_inject.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -175,7 +176,13 @@ void goblin::apply_map_logic()
         // Goblin icons (our injected entries + any existing ones)
         if (goblinIcons.IsInRange(rowId) || goblinIconsERR.IsInRange(rowId))
         {
-            row.eventFlagId = GetIconFlag(rowId, row);
+            // Leyndell Ashen Capital markers: gate on the Erdtree-burn flag so
+            // they appear only in the ashen state (burn implies Leyndell is
+            // already discovered, so we drop the map-fragment gate for them).
+            if (goblin::is_ashen_capital_row(rowId))
+                row.eventFlagId = flag::StoryErdtreeOnFire;
+            else
+                row.eventFlagId = GetIconFlag(rowId, row);
             modified_goblin++;
         }
         // Camp markers (textId2=5000) — ERR-placed, opt-in patching

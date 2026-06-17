@@ -12,6 +12,10 @@ namespace goblin
     // sanitize_injected_textids() after the FMG bank is built.
     const std::vector<uint8_t *> &injected_row_ptrs();
 
+    // True if this injected row is a Leyndell Ashen Capital (m35) marker, which
+    // apply_map_logic gates on StoryErdtreeOnFire (shows only after the burn).
+    bool is_ashen_capital_row(uint64_t row_id);
+
     // Rewrites rows baked with a primary completion flag to its alternative
     // once the alternative flag turns on (quest fights with two mutually-
     // exclusive outcome flags, e.g. the Sellen/Jerren academy battle).

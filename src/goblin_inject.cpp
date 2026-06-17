@@ -119,6 +119,10 @@ struct LotBackedRow { uint8_t *ptr; uint32_t lotId; uint8_t lotType; };
 static std::vector<LotBackedRow> g_lot_backed_rows;
 static std::set<uint8_t *> g_lot_backed_set;
 
+// Row IDs of Leyndell Ashen Capital (m35) markers — gated on StoryErdtreeOnFire
+// by apply_map_logic so they only appear once the Erdtree has burned.
+static std::set<uint64_t> g_ashen_rows;
+
 namespace
 {
 // One ItemLotParam row, read by raw offset (ITEMLOT_PARAM_ST = 152 bytes,
@@ -566,11 +570,19 @@ void goblin::inject_map_entries()
         memcpy(new_param_file + data_offset, all_rows[i].data_ptr, PARAM_DATA_SIZE);
         // Bug A: reproject injected dungeon rows onto the overworld so minor-
         // dungeon icons render. original_row_id == 0 ⇒ vanilla row (left as-is).
-        if (goblin::config::projectDungeons && all_rows[i].original_row_id != 0 &&
-            project_dungeon_row_to_overworld(
-                reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(
-                    new_param_file + data_offset)))
-            reprojected_dungeons++;
+        if (goblin::config::projectDungeons && all_rows[i].original_row_id != 0)
+        {
+            auto *prow = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(
+                new_param_file + data_offset);
+            // Leyndell Ashen Capital (m35) describes the capital AFTER the Erdtree
+            // burns. Tag these rows (before projection clobbers areaNo) so
+            // apply_map_logic can gate their icon on StoryErdtreeOnFire instead of
+            // showing them from the start.
+            if (prow->areaNo == 35)
+                g_ashen_rows.insert(static_cast<uint64_t>(all_rows[i].row_id));
+            if (project_dungeon_row_to_overworld(prow))
+                reprojected_dungeons++;
+        }
         new_wrapper_locs[i].row = all_rows[i].row_id;
         new_wrapper_locs[i].index = static_cast<int32_t>(i);
 
@@ -1161,6 +1173,11 @@ void goblin::show_codex_toast(int tutorial_id)
 const std::vector<uint8_t *> &goblin::injected_row_ptrs()
 {
     return g_injected_row_ptrs;
+}
+
+bool goblin::is_ashen_capital_row(uint64_t row_id)
+{
+    return g_ashen_rows.count(row_id) != 0;
 }
 
 // ── Either-flag (OR) kill indicators ─────────────────────────────────
