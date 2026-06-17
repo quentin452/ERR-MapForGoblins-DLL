@@ -1,17 +1,71 @@
 # Task: generate the non-ERR profile data for MapForGoblins (Windows)
 
 > **Status (2026-06-17):**
-> - ✅ **vanilla — DELIVERED.** `src/generated_vanilla/` received (zip), dropped in,
->   coverage rerun. See `coverage_base.md` / `coverage_dlc.md`.
+> - ⚠️ **vanilla — DELIVERED but needs a re-gen.** `src/generated_vanilla/` received
+>   (zip), dropped in, coverage rerun (see `coverage_base.md` / `coverage_dlc.md`) — but
+>   a category-selective DLC gap turned up. **See the FOLLOW-UP brief below.**
 > - ⬜ `convergence` — not yet generated.
 > - ⬜ `erte` — not yet generated.
 >
-> **Open validation flag on the delivered vanilla:** the DLC (area 61) column shows
-> **0** for Cookbook / Map Fragment / Great Rune / Bell Bearing / Crystal Tear, while
-> ERR has them and Scadutree Fragments (42) *did* come through. DLC was installed, so
-> these zeros look like a partial DLC extraction for vanilla — re-check the vanilla
-> `generate` DLC stage (or confirm these key-items genuinely have no area-61
-> WorldMapPointParam rows in vanilla) before fully trusting the vanilla DLC column.
+> **FOLLOW-UP TASK — re-generate vanilla and chase a category-selective DLC gap.**
+> The delivered vanilla is mostly fine (6718 markers total, 779 area-61 rows, so the
+> DLC tier as a whole came through — Scadutree 42, Painting 3, Pots 10, Ammunition 24
+> all present). But a handful of categories are **0 in the vanilla area-61 (DLC)
+> column** while the vanilla game definitely has them and ERR extracts them. See the
+> detailed re-run brief below before re-delivering.
+
+---
+
+## FOLLOW-UP: re-generate vanilla — category-selective DLC zeros
+
+**What's wrong.** In the delivered `src/generated_vanilla/`, these categories read **0
+on the DLC map (area 61)** even though they exist in the vanilla DLC and ERR finds them:
+
+| Category | generator | MapGenie (DLC) | vanilla (DLC) | ERR (DLC) |
+|---|---|--:|--:|--:|
+| Cookbook | `generate_loot_massedit.py` | 45 | **0** | 41 |
+| Map Fragment | `generate_maps.py` | 5 | **0** | 5 |
+| Great Rune | `generate_loot_massedit.py` | 1 | **0** | 0 |
+| Bell Bearing | `generate_loot_massedit.py` | 10 | **0** | 7 |
+| Crystal Tear | `generate_loot_massedit.py` | 8 | **0** | 5 |
+
+This is **not** a whole-DLC-tier failure (779 area-61 rows did come through). It is
+**category-selective**, which points at a per-category generation stage that didn't read
+the DLC (area 61) item lots for these categories during the vanilla run — a real
+generation bug, not a content/filter difference. (A clean vanilla+DLC run cannot
+legitimately yield 0 cookbooks when 45 exist and Scadutree did come through.)
+
+**Possibly also affected (base map, unconfirmed):** vanilla also reads far below ERR for
+**Rune Arc** (vanilla 19 / ERR 66 / MG 63) and **Spirit Ashes** (vanilla 12 / ERR 56 /
+MG 65) on the *base* map. This may be legitimate (those items come from enemy
+drops/shops that the loot pipeline filters by design, and ERR/Reforged places them as
+flagged pickups so only ERR passes the filter) — **or** the same generation gap. Worth
+confirming while you're in there.
+
+**Re-run steps (Windows, repo root):**
+1. Re-run the vanilla data pipeline and **capture the full console log**:
+   ```bat
+   build.bat --vanilla generate > vanilla_generate.log 2>&1
+   ```
+2. In `vanilla_generate.log`, look for the per-category stages — `generate_loot_massedit`
+   (cookbooks, bell bearings, crystal tears, rune arcs, spirit ashes) and `generate_maps`
+   (map fragments). Check for: errors/exceptions, a missing/empty DLC item source, a
+   skipped DLC (area 61) pass, or a `config.PROFILE`/path branch that diverges from the
+   `err` run. Note which stage drops the area-61 rows for these categories.
+3. Verify the regenerated `src/generated_vanilla/goblin_map_data.cpp`: it must now
+   contain area-61 (`.areaNo = 61`) rows for the cookbook / map-fragment / bell-bearing /
+   crystal-tear categories. Confirm the total area-61 row count rises above the current
+   779.
+4. **Deliver:** the regenerated `src/generated_vanilla/` (zip, same as before — do NOT
+   push a branch, nothing is published) **plus `vanilla_generate.log`** so the cause can
+   be confirmed. If the stage genuinely finds no DLC entries for a category (i.e. it's
+   correct and MapGenie counts a source we filter), say so with the log evidence instead
+   of forcing rows in.
+
+> Note: only the final `goblin_*.cpp` files were returned last time, so the vanilla
+> intermediate MASSEDIT files are not on the Linux box — the cause can only be diagnosed
+> from a fresh run's log on the Windows machine. That's why the log is a required
+> deliverable this round.
 
 ---
 
