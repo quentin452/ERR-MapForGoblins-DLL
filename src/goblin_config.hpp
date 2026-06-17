@@ -90,6 +90,11 @@ namespace goblin
         extern bool anonymousLoot;  // spoiler-free mode: every loot marker shows a
                                     // gray "?" icon + a generic localized label instead
                                     // of the real item (blind randomizer runs).
+        extern bool projectDungeons; // remap minor-dungeon entries (catacombs/caves/
+                                    // tunnels/hero's graves — areaNo with no in-game
+                                    // map page) onto the overworld via the game's own
+                                    // WorldMapLegacyConvParam (baked LEGACY_CONV), so
+                                    // their icons become visible near the entrance.
 
         // Quest
         extern bool showDeathroot;

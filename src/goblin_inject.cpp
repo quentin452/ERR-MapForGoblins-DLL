@@ -7,12 +7,14 @@
 #include "goblin_map_data.hpp"
 #include "goblin_item_icons.hpp"
 #include "goblin_location_alt.hpp"
+#include "goblin_legacy_conv.hpp"
 #include "from/params.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <optional>
 #include <set>
 #include <thread>
@@ -32,6 +34,40 @@ using ParamResCap = from::params::ParamResCap;
 using Category = goblin::generated::Category;
 
 static void *allocation = nullptr;
+
+// Bug A fix: minor dungeons (catacombs/caves/tunnels/hero's graves) have no
+// in-game map page, so rows injected with their dungeon areaNo are never
+// rendered. The game ships WorldMapLegacyConvParam (baked here as LEGACY_CONV)
+// describing how each such sub-map projects onto the overworld (areaNo 60/61).
+// We apply that conversion in-place to the injected row so its icon appears
+// near the dungeon entrance. Rows already on the overworld, or with no conv
+// entry (legacy dungeons that have their own page / unmappable), are untouched.
+static bool project_dungeon_row_to_overworld(
+    from::paramdef::WORLD_MAP_POINT_PARAM_ST *d)
+{
+    if (d->areaNo == 60 || d->areaNo == 61)
+        return false;
+    for (size_t i = 0; i < goblin::generated::LEGACY_CONV_COUNT; ++i)
+    {
+        const auto &c = goblin::generated::LEGACY_CONV[i];
+        if (c.src_area != d->areaNo || c.src_gx != d->gridXNo)
+            continue;
+        // Absolute overworld coord, then decompose into dst tile + in-tile pos.
+        float wx = static_cast<float>(c.dst_gx) * 256.0f + c.dst_pos_x
+                 + (d->posX - c.src_pos_x);
+        float wz = static_cast<float>(c.dst_gz) * 256.0f + c.dst_pos_z
+                 + (d->posZ - c.src_pos_z);
+        int gx = static_cast<int>(std::floor(wx / 256.0f));
+        int gz = static_cast<int>(std::floor(wz / 256.0f));
+        d->areaNo = c.dst_area;
+        d->gridXNo = static_cast<uint8_t>(gx);
+        d->gridZNo = static_cast<uint8_t>(gz);
+        d->posX = wx - static_cast<float>(gx) * 256.0f;
+        d->posZ = wz - static_cast<float>(gz) * 256.0f;
+        return true;  // first matching base-point wins (mirrors entry_world_coords)
+    }
+    return false;
+}
 
 // State for runtime toggle (ERSC-hosting workaround). On hotkey press the
 // pointers stored on the param-res-cap are swapped between vanilla and
@@ -458,6 +494,7 @@ void goblin::inject_map_entries()
     auto *new_wrapper_locs = reinterpret_cast<WrapperRowLocator *>(new_param_file + wrapper_row_loc_start);
     size_t file_end_marker = type_str_start + type_str_len;
 
+    int reprojected_dungeons = 0;
     for (size_t i = 0; i < all_rows.size(); i++)
     {
         size_t data_offset = data_start + i * PARAM_DATA_SIZE;
@@ -465,6 +502,13 @@ void goblin::inject_map_entries()
         new_locators[i].param_offset = data_offset;
         new_locators[i].param_end_offset = file_end_marker;
         memcpy(new_param_file + data_offset, all_rows[i].data_ptr, PARAM_DATA_SIZE);
+        // Bug A: reproject injected dungeon rows onto the overworld so minor-
+        // dungeon icons render. original_row_id == 0 ⇒ vanilla row (left as-is).
+        if (goblin::config::projectDungeons && all_rows[i].original_row_id != 0 &&
+            project_dungeon_row_to_overworld(
+                reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(
+                    new_param_file + data_offset)))
+            reprojected_dungeons++;
         new_wrapper_locs[i].row = all_rows[i].row_id;
         new_wrapper_locs[i].index = static_cast<int32_t>(i);
 
@@ -554,6 +598,10 @@ void goblin::inject_map_entries()
             }
         }
     }
+
+    if (goblin::config::projectDungeons)
+        spdlog::info("Reprojected {} minor-dungeon rows onto the overworld (LEGACY_CONV)",
+                     reprojected_dungeons);
 
     // Register Rune/Ember piece + kindling-spirit pointers for real-time tracking.
     // Pieces are CSWorldGeomMan-driven (collected::); kindling spirits are
