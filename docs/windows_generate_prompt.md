@@ -43,6 +43,10 @@ un-ignoring the dirs or `git add -f`), or zip the three dirs and hand the zip ba
   ```
   - **Vanilla needs the game UXM-unpacked** (loose files), because the pipeline reads
     `game_dir` directly. Use UXM Selective Unpacker on a vanilla ELDEN RING install.
+  - **The game install MUST include the Shadow of the Erdtree DLC.** One `generate`
+    per profile extracts BOTH the base map (area 60) and the DLC map (area 61) into a
+    single `goblin_map_data.cpp` — there is no separate base/DLC run — but if the DLC
+    files aren't present/unpacked, the area-61 (DLC) rows will simply be missing.
   - Convergence / ERTE need those overhauls' `mod` overlay dirs installed.
 
 ## Commands
@@ -67,6 +71,10 @@ MAP_ENTRY_COUNT = N;`. Sanity-check N against the README's advertised icon count
 - convergence ≈ **7200**
 - erte ≈ **7600**
 - (err, for reference, ≈ 8952)
+
+Also confirm the **DLC came through**: each file must contain both `\.areaNo = 60`
+and `\.areaNo = 61` rows (the err file has ~7043 area-60 and ~1781 area-61). If
+`.areaNo = 61` is absent, the DLC wasn't unpacked — fix the game install and re-run.
 
 If a profile errors out (missing path, missing mod overlay, UXM not unpacked), report
 which prerequisite failed rather than delivering a partial/empty dir. Vanilla is the
