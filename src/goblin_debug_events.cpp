@@ -1,5 +1,6 @@
 #include "goblin_debug_events.hpp"
 
+#include "goblin_map_data.hpp"
 #include "modutils.hpp"
 
 #include <spdlog/spdlog.h>
@@ -23,6 +24,43 @@ namespace
 // Shared sink. _mt: the flag drain thread AND the item detour (game thread) both
 // write it, so it must be thread-safe.
 std::shared_ptr<spdlog::logger> g_log;
+
+// Every collect/reveal flag the mod's baked markers carry (textDisableFlagId1-8
+// + clearedEventFlagId). A placed world lot's getItemFlagId IS its marker's
+// textDisableFlagId, so when the game sets a collectible-shaped flag NOT in this
+// set, the player collected a placed item the map has no marker for — the
+// "missing placed item" signal. Built once at init; read-only after (drain reads).
+std::unordered_set<uint32_t> g_known_collect_flags;
+
+// ER map-instance flag id = `10 AA BB C DDD`; the thousands digit C is the flag
+// TYPE. The mod's collect flags cluster on categories 0 and 7 (treasure/item);
+// other categories are non-collectible events (doors/cutscenes/boss-phase), so a
+// collectible-shaped flag is one in the map-instance range with cat 0 or 7.
+constexpr uint32_t MAP_INSTANCE_MIN = 1'000'000'000u;
+bool is_collectible_shaped(uint32_t id)
+{
+    if (id < MAP_INSTANCE_MIN)
+        return false;
+    uint32_t cat = (id / 1000u) % 10u;
+    return cat == 0 || cat == 7;
+}
+
+void build_known_collect_flags()
+{
+    using namespace goblin::generated;
+    for (size_t i = 0; i < MAP_ENTRY_COUNT; i++)
+    {
+        const auto &d = MAP_ENTRIES[i].data;
+        const uint32_t fs[] = {d.clearedEventFlagId, d.textDisableFlagId1,
+                               d.textDisableFlagId2, d.textDisableFlagId3,
+                               d.textDisableFlagId4, d.textDisableFlagId5,
+                               d.textDisableFlagId6, d.textDisableFlagId7,
+                               d.textDisableFlagId8};
+        for (uint32_t f : fs)
+            if (f)
+                g_known_collect_flags.insert(f);
+    }
+}
 
 // SEH-guarded raw copy: the detours read pointers the game hands us; a bad/borderline
 // pointer must degrade to "skip this event", never crash. Body is POD-only (no C++
@@ -93,8 +131,21 @@ void flag_drain_loop()
             g_inbox.swap(batch);
         }
         for (auto &[id, value] : batch)
-            if (seen.insert(id).second)
+        {
+            if (!seen.insert(id).second)
+                continue;
+            // A collectible-shaped flag SET that the mod has no marker for = the
+            // player collected a placed item the map is missing. This is the
+            // low-noise "missing placed item" signal (the in-DLL version of
+            // tools/analyze_events.py). Other flags are logged plainly.
+            if (value == 1 && is_collectible_shaped(id) &&
+                !g_known_collect_flags.count(id))
+                g_log->warn("UNKNOWN placed-item flag {} (cat {}) — no marker; "
+                            "coverage gap candidate",
+                            id, (id / 1000u) % 10u);
+            else
                 g_log->info("flag {} = {}", id, static_cast<int>(value));
+        }
 
         uint64_t dropped = g_dropped.load(std::memory_order_relaxed);
         if (dropped != last_dropped)
@@ -191,10 +242,15 @@ void initialize(const std::filesystem::path &log_path, bool hook_flags,
     bool any = false;
     bool flag_on = false;
     if (hook_flags)
+    {
+        build_known_collect_flags();
+        spdlog::info("[DEBUG-EVENTS] {} known marker collect-flags loaded",
+                     g_known_collect_flags.size());
         any |= flag_on = install(SET_EVENT_FLAG_AOB,
                                  reinterpret_cast<void *>(&hk_set_event_flag),
                                  reinterpret_cast<void **>(&g_orig_set_event_flag),
                                  "SetEventFlag");
+    }
     if (hook_items)
         any |= install(ADD_ITEM_AOB, reinterpret_cast<void *>(&hk_add_item),
                        reinterpret_cast<void **>(&g_orig_add_item), "AddItemFunc");
