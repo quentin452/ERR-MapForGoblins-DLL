@@ -364,8 +364,20 @@ namespace
             if (ImGui::Checkbox("Show icons (master)", &icons_on))
                 goblin::ui::set_icons_enabled(icons_on);
             ImGui::SameLine();
+            static double saved_at = -10.0;
             if (ImGui::Button("Save to INI"))
+            {
                 goblin::ui::request_save();
+                saved_at = ImGui::GetTime();
+            }
+            // Brief confirmation so the button isn't a silent no-op (the file I/O
+            // happens on the watcher thread; this just acknowledges the click).
+            double since = ImGui::GetTime() - saved_at;
+            if (since < 2.0)
+            {
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "Saved to INI");
+            }
 
             // Sections (coarse) + their categories (fine). A row shows only if
             // both its section and its category are enabled.
