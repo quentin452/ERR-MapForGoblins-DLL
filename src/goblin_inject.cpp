@@ -1370,6 +1370,10 @@ void goblin::inject_map_entries()
     }
     } // map.inject.build_rows
 
+    spdlog::info("[QUEST-NPC] registered {} marker rows from the {}-gate curated table "
+                 "(quest-aware gating only covers these; other NPCs always show)",
+                 g_quest_rows.size(), goblin::generated::QUEST_GATE_COUNT);
+
     if (goblin::config::projectDungeons)
         spdlog::info("Reprojected {} minor-dungeon rows onto the overworld (LEGACY_CONV)",
                      reprojected_dungeons);
@@ -2278,6 +2282,17 @@ int goblin::refresh_quest_npc_eviction()
         {
             r.ptr[0x20] = r.orig_area; changed++;
         }
+    }
+    // Log the parked total on change (how many of the registered/covered quest-NPC
+    // rows are currently hidden because their questline is inactive).
+    int parked = 0;
+    for (auto &r : g_quest_rows) if (r.ptr[0x20] == 99) parked++;
+    static int last_parked = -1;
+    if (parked != last_parked)
+    {
+        last_parked = parked;
+        spdlog::info("[QUEST-NPC] {} of {} covered rows parked (inactive questline)",
+                     parked, g_quest_rows.size());
     }
     return changed;
 }
