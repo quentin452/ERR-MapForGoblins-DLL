@@ -460,12 +460,17 @@ namespace
                                       "active (event flag set). Live — no restart. Needs the Quest NPC\n"
                                       "category enabled (World group). 34 NPC questlines covered.");
 
-                // Quest Browser (Phase A): ordered steps per NPC from the MIT
-                // EldenRingQuestLog. The step description carries the location in
-                // prose ("Altus Plateau") so the player can navigate manually.
-                if (ImGui::TreeNode("Quest Browser (34 questlines)"))
+                // Quest Browser: ordered steps per NPC (hand-authored, original
+                // text). Each step names its location/zone for manual navigation.
+                // step_count==0 = placeholder not yet written ([TODO]).
+                size_t covered = 0, total = goblin::generated::QUEST_BROWSER_COUNT;
+                for (size_t i = 0; i < total; i++)
+                    if (goblin::generated::QUEST_BROWSER[i].step_count) covered++;
+                char hdr[64];
+                snprintf(hdr, sizeof(hdr), "Quest Browser (%zu/%zu authored)", covered, total);
+                if (ImGui::TreeNode(hdr))
                 {
-                    ImGui::TextDisabled("Steps in order; the location is named in each line.");
+                    ImGui::TextDisabled("Steps in order; location named per line. [TODO] = not written yet.");
                     static char filter[64] = "";
                     ImGui::SetNextItemWidth(-1.0f);
                     ImGui::InputTextWithHint("##questfilter", "filter by NPC name...",
@@ -477,34 +482,47 @@ namespace
                         for (const char *p = need; *p; ++p) n += (char)tolower(*p);
                         return h.find(n) != std::string::npos;
                     };
-                    ImGui::BeginChild("questlist", ImVec2(0, 280), true);
-                    for (size_t i = 0; i < goblin::generated::QUEST_BROWSER_COUNT; i++)
+                    ImGui::BeginChild("questlist", ImVec2(0, 300), true);
+                    for (size_t i = 0; i < total; i++)
                     {
                         const auto &q = goblin::generated::QUEST_BROWSER[i];
                         if (!contains_ci(q.name, filter)) continue;
                         ImGui::PushID((int)i);
-                        if (ImGui::TreeNode(q.name))
+                        char label[160];
+                        snprintf(label, sizeof(label), "%s%s", q.name,
+                                 q.step_count ? "" : "  [TODO]");
+                        if (ImGui::TreeNode(label))
                         {
+                            if (q.related)
+                            {
+                                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.8f, 1.0f, 1.0f));
+                                ImGui::TextWrapped("Link: %s", q.related);
+                                ImGui::PopStyleColor();
+                            }
+                            if (!q.step_count)
+                                ImGui::TextDisabled("(steps not written yet)");
                             for (size_t s = 0; s < q.step_count; s++)
                             {
                                 ImGui::Bullet();
                                 ImGui::TextWrapped("%zu. %s", s + 1, q.steps[s].title);
-                                if (q.steps[s].desc[0])
+                                ImGui::Indent();
+                                if (q.steps[s].desc && q.steps[s].desc[0])
                                 {
-                                    ImGui::Indent();
                                     ImGui::PushStyleColor(ImGuiCol_Text,
                                         ImVec4(0.75f, 0.75f, 0.75f, 1.0f));
                                     ImGui::TextWrapped("%s", q.steps[s].desc);
                                     ImGui::PopStyleColor();
-                                    ImGui::Unindent();
                                 }
+                                if (q.steps[s].zone && q.steps[s].zone[0])
+                                    ImGui::TextDisabled("[%s]", q.steps[s].zone);
+                                ImGui::Unindent();
                             }
                             ImGui::TreePop();
                         }
                         ImGui::PopID();
                     }
                     ImGui::EndChild();
-                    ImGui::TextDisabled("Quest text: EldenRingQuestLog (MIT, (c) 2024 TheHaist)");
+                    ImGui::TextDisabled("Quest facts hand-authored for this project (original text).");
                     ImGui::TreePop();
                 }
             }

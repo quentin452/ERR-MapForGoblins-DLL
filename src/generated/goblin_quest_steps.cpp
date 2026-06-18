@@ -1,16 +1,76 @@
 // HAND-AUTHORED quest-step data for the overlay Quest Browser.
 // Original descriptions written for this project (quest FACTS — locations, step
-// order — are not copyrightable; we do NOT copy any third-party prose). Added
-// one NPC at a time. Target: ~36 base-game + 14 DLC questlines (~50 total).
+// order, interconnections — are not copyrightable; we copy no third-party prose).
+//
+// COVERAGE: 36 base-game + 14 DLC = 50 questlines. Entries with step_count==0 are
+// PLACEHOLDERS, filled one NPC at a time (see memory: quest-browser strategy).
 #include "goblin_quest_steps.hpp"
 
 namespace goblin::generated
 {
 
-// (empty — NPCs added one by one)
+// ── 36 base-game questlines ──────────────────────────────────────────────
 const NpcQuest QUEST_BROWSER[] = {
-    {nullptr, nullptr, nullptr, 0},  // placeholder so the array is non-empty
+    // Ranni's questline (interconnected cluster)
+    {"Ranni the Witch", nullptr, "Hub of the Blaidd/Iji/Seluvis cluster", nullptr, 0},
+    {"Blaidd", nullptr, "Part of Ranni's questline", nullptr, 0},
+    {"Iji", nullptr, "Part of Ranni's questline", nullptr, 0},
+    {"Seluvis", nullptr, "Part of Ranni's questline; crosses Gideon", nullptr, 0},
+    // Sellen
+    {"Sorceress Sellen", nullptr, "Crosses Jerren, Lusat/Azur", nullptr, 0},
+    {"Witch-Hunter Jerren", nullptr, "Sellen's quest finale (Sellen vs Jerren)", nullptr, 0},
+    // Roundtable / Roderika
+    {"Roderika", nullptr, "Crosses Hewg (Stormhill -> Roundtable)", nullptr, 0},
+    {"Smithing Master Hewg", nullptr, "Crosses Roderika", nullptr, 0},
+    {"Nepheli Loux", nullptr, "Crosses Kenneth, Gideon, Dung Eater", nullptr, 0},
+    {"Kenneth Haight", nullptr, "Feeds Nepheli's quest (Fort Haight/Godrick)", nullptr, 0},
+    {"Gideon Ofnir", nullptr, "Touches many quests (Roundtable info-broker)", nullptr, 0},
+    // Deathbed / Black Knife cluster
+    {"Fia, Deathbed Companion", nullptr, "Crosses D and Rogier (Deathroot/Godwyn)", nullptr, 0},
+    {"D, Hunter of the Dead", nullptr, "Crosses Fia; D's brother continues it", nullptr, 0},
+    {"Sorcerer Rogier", nullptr, "Feeds Fia's quest (Black Knife)", nullptr, 0},
+    // Golden Order
+    {"Goldmask", nullptr, "Part of Corhyn's questline", nullptr, 0},
+    {"Brother Corhyn", nullptr, "Searches for Goldmask", nullptr, 0},
+    // Millicent
+    {"Millicent", nullptr, "Started by Gowry (Scarlet Rot)", nullptr, 0},
+    {"Sage Gowry", nullptr, "Starts Millicent's quest", nullptr, 0},
+    // Standalone-ish
+    {"Rya", nullptr, "Leads into Volcano Manor", nullptr, 0},
+    {"Boc the Seamster", nullptr, nullptr, nullptr, 0},
+    {"Patches", nullptr, nullptr, nullptr, 0},
+    {"Irina", nullptr, "Crosses Edgar (Castle Morne)", nullptr, 0},
+    {"Edgar", nullptr, "Crosses Irina (Castle Morne)", nullptr, 0},
+    {"Yura, Bloody Finger Hunter", nullptr, "Crosses Shabriri/Eleonora; touches Hyetta", nullptr, 0},
+    {"White Mask Varre", nullptr, "Mohg / Bloody Finger path", nullptr, 0},
+    {"Hyetta", nullptr, "Frenzied Flame; crosses Shabriri/Yura", nullptr, 0},
+    {"Iron Fist Alexander", nullptr, "Crosses Jar-Bairn (Alexander's Innards)", nullptr, 0},
+    {"Diallos", nullptr, "Crosses Jar-Bairn (Jarburg)", nullptr, 0},
+    {"Jar-Bairn", nullptr, "Crosses Diallos and Alexander (Jarburg)", nullptr, 0},
+    {"Latenna", nullptr, "Albinauric / Haligtree path", nullptr, 0},
+    {"Sorcerer Thops", nullptr, nullptr, nullptr, 0},
+    {"Gurranq, Beast Clergyman", nullptr, "Deathroot deliveries", nullptr, 0},
+    {"Dung Eater", nullptr, "Crosses Nepheli (Seedbed Curses)", nullptr, 0},
+    {"Knight Bernahl", nullptr, "Volcano Manor / Recusant", nullptr, 0},
+    {"Tanith (Volcano Manor)", nullptr, "Hub of Volcano Manor (Rya, Bernahl)", nullptr, 0},
+    {"Vyke", nullptr, "Roundtable / Mohg path", nullptr, 0},
+
+    // ── 14 Shadow of the Erdtree DLC questlines ──────────────────────────
+    {"Needle Knight Leda", nullptr, "Hub of the DLC group; converges at Enir-Ilim", nullptr, 0},
+    {"Hornsent", nullptr, "Leda's group", nullptr, 0},
+    {"Redmane Freyja", nullptr, "Leda's group", nullptr, 0},
+    {"Sir Ansbach", nullptr, "Leda's group (Mohg's servant)", nullptr, 0},
+    {"Moore", nullptr, "Leda's group", nullptr, 0},
+    {"Thiollier", nullptr, "Leda's group; crosses St. Trina", nullptr, 0},
+    {"Fire Knight Queelign", nullptr, nullptr, nullptr, 0},
+    {"Igon", nullptr, "Bayle the Dread (crosses Dragon Communion Priestess?)", nullptr, 0},
+    {"Hornsent Grandam", nullptr, "Bonny Village (NOT the Hornsent companion)", nullptr, 0},
+    {"Dryleaf Dane", nullptr, "Leda's group", nullptr, 0},
+    {"Dragon Communion Priestess", nullptr, "Florissax / dragon path; crosses Igon", nullptr, 0},
+    {"Count Ymir, High Priest", nullptr, "Manus Metyr / Finger questline", nullptr, 0},
+    {"Swordhand of Night Jolan", nullptr, "Crosses Rakshasa", nullptr, 0},
+    {"St. Trina", nullptr, "Crosses Thiollier", nullptr, 0},
 };
-const size_t QUEST_BROWSER_COUNT = 0;
+const size_t QUEST_BROWSER_COUNT = sizeof(QUEST_BROWSER) / sizeof(QUEST_BROWSER[0]);
 
 } // namespace
