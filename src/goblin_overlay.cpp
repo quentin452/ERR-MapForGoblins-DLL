@@ -265,12 +265,14 @@ namespace
             g_imgui_init = true;
         }
 
-        // F1 = open/close the menu (the keybind; works anywhere). It also
-        // auto-shows over the 2D world map. Edge-detected.
+        // F1 = open/close the menu (the keybind; works anywhere, incl. over the
+        // 2D map). Edge-detected. (The CSMenuMan+0xCD auto-show signal proved
+        // dead on this build — reads 0 even with the map open — so F1 is the
+        // sole trigger; that is also the intended keybind-driven UX.)
         bool down = (GetAsyncKeyState(VK_F1) & 0x8000) != 0;
         if (down && !g_prev_toggle_down) g_user_show = !g_user_show;
         g_prev_toggle_down = down;
-        g_show = g_user_show || goblin::world_map_open();
+        g_show = g_user_show;
 
         if (g_show && g_command_queue)
         {
