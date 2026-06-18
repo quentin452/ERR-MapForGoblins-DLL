@@ -28,4 +28,10 @@ namespace goblin::generated
     // 440 on a vanilla-base gfx, shifted by the icon-frame offset on bases that
     // add their own frames (Convergence). Generated per profile.
     extern const uint16_t ANON_ICON_ID;
+
+    // Cluster map-icon frame id (the "stack of dots" glyph for collapsed marker
+    // piles). Always ANON_ICON_ID + 1 — build_vanilla_gfx appends it one frame
+    // past the "?" — so it inherits the same per-profile offset. Generated per
+    // profile beside ANON_ICON_ID.
+    extern const uint16_t CLUSTER_ICON_ID;
 }

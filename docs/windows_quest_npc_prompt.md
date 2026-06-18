@@ -1,85 +1,78 @@
-# Task: tune + generate the Quest-NPC layer (Windows, ERR profile)
+# Quest-NPC layer — tuning + generation (Windows, ERR profile)
 
-You are on a **Windows** box with the **ERR-MapForGoblins-DLL** repo cloned and the
-**err** profile already building (VS2022 + Python deps + `tools/config.ini` with a valid
-`err_mod_dir`, ERR mod's `regulation.bin` + `map/MapStudio/*.msb.dcx` present). The data
-pipeline runs here; it cannot run on Linux (needs pythonnet + SoulsFormats + the mod).
+**Status: DONE on `feat/cluster-glyph` (off `feat/clustering`).** Tuned, generated,
+baked, and spot-checked on this box. This doc records what shipped (the original
+task prompt assumed only "set 2 constants" — in reality the generator had never run
+and carried 3 API bugs + a row-id collision, all fixed below).
 
-## Background
+## What the layer is
 
-New feature (Thread 1): a **named friendly NPC + merchant** location layer for quest
-navigation. The DLL + pipeline wiring is already committed on the Linux side
-(`Category::WorldQuestNPC`, config `show_quest_npc`, `CATEGORY_MAP`, a `build_pipeline.py`
-Stage, `PRESERVE_FILES`). The generator `tools/generate_quest_npcs.py` exists but its
-**filter is untuned** — two constants near the top are guesses and must be set from real
-data on this machine:
+A **named friendly NPC + merchant** location layer (Thread 1) for quest navigation:
+one marker per placement of a named, placed (`EntityID>0`) NPC whose NpcParam
+`teamType` is friendly-dominated, labelled `nameId + 700000000`. DLL/pipeline wiring
+(`Category::WorldQuestNPC`, `show_quest_npc`, `CATEGORY_MAP`, the `build_pipeline.py`
+stage) was already committed; `tools/generate_quest_npcs.py` is the generator.
 
-- `FRIENDLY_TEAM_TYPES = {1, 2, 6, 7, 8}` (line ~54) — GUESS. The friendly-NPC teamType
-  taxonomy must be verified.
-- `ICON_ID = 374` (line ~59) — placeholder (hostile-NPC sprite, safe-renders). A distinct
-  friendly/quest icon must be chosen.
+## Tuning result (from `--inspect` + full name resolution on ERR data)
 
-How the generator works (read it — it's short, ~230 lines):
-1. From `NpcParam`: keeps NPC IDs whose `teamType ∈ FRIENDLY_TEAM_TYPES` **and** `nameId > 0`
-   (named characters/merchants; ambient creatures have no name).
-2. Scans all MSBs for `Parts.Enemies` whose `NPCParamID` is in that set and `EntityID > 0`
-   (placed, not script-spawned), dedups per (map, rounded x/z).
-3. Emits `data/massedit_generated/World - Quest NPC.MASSEDIT`; label = `nameId + 700000000`.
+`teamType` is **per-placement combat state, not a per-character trait** — the same
+friendly NPC (Moore, Leda, Millicent, Rogier, Nepheli…) has placements in several
+teams (friendly phase / turns-hostile / invades-you). So no team is purely friendly;
+the tuned set is the teams **dominated** by named merchants + questline NPCs:
 
-## Steps
+```python
+FRIENDLY_TEAM_TYPES = {0, 1, 2, 26}   # was {1,2,6,7,8} (a wrong guess: 6/7 are bosses)
+```
+- **0** — base-game friendly NPCs (Gideon, Twin Maiden Husks, Hewg, Enia, Sellen,
+  Rennala, Roderika, Blaidd, Gostoc, …). 918 raw placements but **685 are model
+  `c1000` "Menu"/system objects** ("Altar of Anticipation", "Trial of Recollection", …).
+- **26** — the cleanest: merchants + questline NPCs (Nomadic/Hermit/Isolated Merchants,
+  Patches, Alexander, Boc, Goldmask, Leda, Ansbach, Hyetta, Jar-Bairn, Ranni, …).
+- **2** — base quest NPCs (Nepheli, Bernahl, Blaidd, Dane, Melina, Shabriri, …).
+- **1** — DLC quest NPCs (Hornsent, Ansbach, Moore, Freyja, Leda, Dane).
+- Excluded: **6** (field bosses/mimics), **7** (great-enemy bosses), **24/27**
+  (invaders), **48/33/9/52** (misc enemies).
 
-### 1. Tune `FRIENDLY_TEAM_TYPES`
-
-```bat
-python tools\generate_quest_npcs.py --inspect
+```python
+EXCLUDE_MODELS = {'c1000'}   # menu/system objects (the 685 "Menu" rows), not NPCs
 ```
 
-Prints `teamType -> placed named-NPC count` with up to 8 samples each
-(`npc / nameId / model / partName @ map`). For each teamType, judge from the samples
-whether it's **friendly NPCs/merchants** (Kalé, Twin Maiden Husks, Roderika, Gostoc, Boc,
-Blaidd, Iron Fist Alexander, …) or **enemies/bosses**. Set `FRIENDLY_TEAM_TYPES` to only
-the friendly ones.
+**Count: 363 markers (all named)** — squarely in the doc's "few hundred" target.
+Spot-checked: Kalé ✓, Hewg, Roderika, Blaidd×10, Patches×7, Sellen×8, Leda×4, Ranni,
+Boc ✓. (Twin Maiden Husks is absent — they're only at Roundtable Hold, an interior hub
+reached via the grace menu, not a navigable overworld location; correct to omit.)
 
-- Invader teamTypes `{24, 27}` belong to `generate_hostile_npcs.py` — do NOT include them.
-- Exclude any teamType whose samples are clearly enemies or bosses (bosses are a separate
-  layer).
-- Use `model` (chr id) + `partName` to disambiguate — a merchant/quest model in the sample
-  is a strong friendly signal.
+## Generator fixes (it had never run)
 
-### 2. Pick `ICON_ID`
+1. `read_param`: `f.Bytes` → `f.Bytes.ToArray()` (SoulsFormats returns `Memory<byte>`).
+2. `PARAM.Read(tmp)` direct call → reflected `_param_read.Invoke(...)` (pythonnet can't
+   resolve the string overload), and key paramdefs by `ParamType`, not the param name.
+3. **Row-id collision**: `row_id` base `9300000` collided with hero-tomb-statues
+   (also 9300000) — `generate_data` keys rows by id (last writer wins), so the 363
+   quest rows clobbered all 16 hero-tomb markers (iconId 440 → 0). Moved to **9400000**
+   (free; loot=9000000/9100000, hostile=9200000, hero-tomb=9300000).
 
-Choose a **distinct** friendly/quest worldmap icon from the atlas (NOT 370=grace, NOT
-374=hostile — those collide visually). Confirm it actually renders in-game before locking
-it. **User requirement:** this family must be visually distinct and must NOT be clustered
-when clustering ships — so the icon has to read clearly on its own.
+## Icon (ICON_ID = 443)
 
-### 3. Generate + sanity-check
+A dedicated friendly "person bust" glyph (blue), synthesised by `build_vanilla_gfx` as
+the 3rd appended frame after anon (441) + cluster (442) — same clone-shape-172 +
+raster-embed trick. `tools/make_quest_npc_icon.py` draws the 160px PNG
+(`assets/badges/quest_npc_glyph.png`). ERR-only layer (offset 0) → iconId 443 directly.
+All 4 profiles rebaked: frame at index 442 (443 frames) for vanilla/erte/err, index
+850 (851 frames) for convergence; shape 1101 verified embedded.
 
-```bat
-build.bat generate
-```
+## Files
 
-(err profile — no `--vanilla/--convergence/--erte`.) The Stage emits the MASSEDIT and
-re-bakes `src/generated/goblin_map_data.cpp` with `Category::WorldQuestNPC` rows. Check:
+- `tools/generate_quest_npcs.py` — tuned constants, c1000 filter, 3 fixes, row-id 9400000.
+- `tools/make_quest_npc_icon.py` + `assets/badges/quest_npc_glyph.png` — the glyph.
+- `tools/build_vanilla_gfx.py` — `add_quest_npc_icon` + wiring (shape 1101, frame 442).
+- `assets/menu/02_120_worldmap_{vanilla,erte,err,convergence}.gfx` — rebaked.
+- `src/generated/goblin_map_data.cpp` (+363 WorldQuestNPC rows) + `goblin_location_alt.cpp`
+  (+28 location-alt entries) + `data/massedit_generated/World - Quest NPC.MASSEDIT`.
 
-- **Count is sane** — expect a few hundred markers (named NPCs aren't numerous). Thousands
-  = enemies leaking in → re-tune step 1. Single digits = set too narrow.
-- **Names resolve** — `textId1 = nameId + 700000000` present on rows.
-- **Spot-check a known NPC** — e.g. Kalé at the First Step site of grace; confirm position
-  lands on the right map area.
+## Remaining
 
-### 4. Deliver
-
-Return:
-1. The regenerated **`src/generated/goblin_map_data.cpp`** (+ the new
-   `data/massedit_generated/World - Quest NPC.MASSEDIT`).
-2. The final **`FRIENDLY_TEAM_TYPES`** and **`ICON_ID`** values used (so the Linux side
-   commits the tuned generator).
-3. The **full `--inspect` dump** (the teamType breakdown). Required — it's the evidence for
-   the chosen set, and lets the Linux side narrow further if counts look noisy.
-
-Do NOT push a branch; `src/generated/` is committed but the tuned constants land via the
-Linux box. Zip / paste back the two files + the values + the inspect dump.
-
-If a teamType is ambiguous (mix of friendly + hostile samples), report it rather than
-guessing — list its samples so we decide together.
+Runtime-test in-game: enable `show_quest_npc`, confirm the blue person glyph shows on
+named NPCs (e.g. Kalé at the Church of Elleh / First Step), and that hero-tomb statues
+(iconId 440) still render (collision regression check). Non-ERR profiles carry the
+frame but the layer itself is ERR-only for v1.

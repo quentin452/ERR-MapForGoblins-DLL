@@ -1,98 +1,93 @@
-# Task: add a distinct cluster glyph to the worldmap GFX (Windows, all profiles)
+# Cluster glyph for the worldmap GFX (Windows, all profiles)
 
-You are on a **Windows** box with **ERR-MapForGoblins-DLL** cloned and the gfx
-pipeline working (FFDEC available — `FFDEC_CLI` env var or the bundled install;
-`tools/config.ini` with valid game/mod dirs; the per-profile base
-`menu/02_120_worldmap.gfx` reachable). The gfx bake runs here.
+**Status: IMPLEMENTED on `feat/cluster-glyph` (off `feat/clustering`).** Code + the
+glyph asset are done and self-verified; the GFX **bake is still pending** (FFDEC was
+not installed on the dev box at implementation time — see "Bake" below). This doc
+records what was built and how the worldmap-icon pipeline *actually* works (the
+original task prompt described a stale "append from OURS_GFX" model and pre-refactor
+line numbers — corrected here).
 
 ## Background
 
 Marker **clustering** (Thread 5 v1, shipped) collapses dense marker piles into one
-synthetic "cluster" row. That row currently borrows the **anonymous gray "?" frame**
-as a placeholder icon — it reads as "unknown", not "a pile of N markers". This task
-gives clusters their **own distinct glyph**.
+synthetic "cluster" row. That row used to borrow the **anonymous gray "?" frame** as a
+placeholder — it reads as "unknown", not "a pile of N markers". This change gives
+clusters their **own distinct glyph**.
 
-How worldmap icons work in this repo (read `tools/build_vanilla_gfx.py` — it's the
-authority):
-- Icons are Scaleform **GFX**; **sprite 171** is the icon frame-sheet. Each `iconId`
-  on a `WorldMapPointParam` row selects a frame (1-based).
-- Our custom frames live in `assets/menu/02_120_worldmap_new.gfx` (OURS_GFX),
-  appended after the base frames (vanilla base = 348 frames, ours start at 349).
-  Each frame is a self-contained `RemoveObject2 + PlaceObject3 + ShowFrame` group,
-  referencing a `DefineExternalImage2` texture (our added charIds 1000-1024 = vanilla
-  texture names; ERR-only charIds 13500-13506 must NOT leak).
-- `build_vanilla_gfx.py` rebuilds the icon set on the target game's own base per
-  profile (vanilla/convergence/erte), shifting iconIds by `config.ICON_FRAME_OFFSET`.
-- The **anon "?" frame** is the last of our added frames → `ANON_ICON_ID = 441` on a
-  vanilla base (`src/generated/goblin_item_icons.cpp`; written by
-  `tools/generate_data.py:404`; kept in sync by `build_vanilla_gfx.py:435`).
+How worldmap icons actually work in this repo (read `tools/build_vanilla_gfx.py` — it's
+the authority):
+- Icons are Scaleform **GFX**; **sprite 171** is the icon frame-sheet. Each `iconId` on
+  a `WorldMapPointParam` row selects a frame (1-based).
+- Our 92 custom icons live in `assets/menu/02_120_worldmap_new.gfx` (OURS_GFX); the bake
+  appends them after the base frames (vanilla base = 348, ours = 349..440), referencing
+  `DefineExternalImage2` textures (our charIds 1000-1024 = vanilla texture names;
+  ERR-only charIds 13500-13506 must NOT leak — the bake fails if they do).
+- The **anon "?" frame is NOT in OURS_GFX.** `build_vanilla_gfx.py` *synthesises* it at
+  bake time: clone the single-figure badge shape **172** → a free charId, append one
+  self-contained `RemoveObject2 + PlaceObject3(clone) + ShowFrame` frame (a standalone
+  round icon, no bg, centred), then `ffdec -replace` that shape with a 160px PNG raster
+  (FFDEC can't import detailed vectors). It lands at 0-indexed `ANON_FRAME_INDEX = 440`
+  → 1-based `ANON_ICON_ID = 441` on a vanilla base (`+ICON_FRAME_OFFSET` on bases that
+  add their own frames, e.g. Convergence). Same trick as the cleared badge.
+- `ANON_ICON_ID` is written by `tools/generate_data.py` and the landing is asserted in
+  `build_vanilla_gfx.py`'s anon block; the canonical value lives in
+  `src/generated/goblin_item_icons.{hpp,cpp}`.
 
-DLL side (do NOT confuse the two uses of ANON):
-- `src/goblin_inject.cpp:850` — `cd->iconId = ANON_ICON_ID` on **cluster** rows
-  (`// v1 placeholder glyph`). **THIS is what the new glyph replaces.**
-- `src/goblin_inject.cpp:766` — `live_icon_override[...] = ANON_ICON_ID` for
-  anonymized **live-loot** items. **Leave this as the "?" frame.**
+DLL side — the two uses of `ANON_ICON_ID` are NOT the same (do not conflate):
+- `src/goblin_inject.cpp:813` — `cd->iconId = ...` on **cluster** rows. **This is what
+  the new glyph replaces** → now `CLUSTER_ICON_ID`.
+- `src/goblin_inject.cpp:731` — `live_icon_override[...] = ANON_ICON_ID` for anonymized
+  **live-loot** items. **Left as the "?" frame.**
 
-## Goal
+## What was implemented
 
-Add ONE new frame after the anon frame, holding a glyph that reads as "cluster / many
-markers here", and point cluster rows at it via a new `CLUSTER_ICON_ID`.
+The cluster frame is synthesised exactly like the "?" — a second cloned-shape round
+icon, appended **one frame past the anon "?"**, so `CLUSTER_ICON_ID = ANON_ICON_ID + 1`
+and it inherits the same per-profile offset automatically.
 
-## Steps
+1. **Glyph asset** — `assets/badges/cluster_glyph.png` (160×160 RGBA), drawn
+   procedurally by **`tools/make_cluster_icon.py`** (mirrors `make_anon_icon.py`): three
+   overlapping filled discs ("stack of dots") in saturated teal with a dark outline +
+   light inner rings. Distinct from the gray "?", grace, loot, and hostile — and
+   clusters are never themselves clustered, so it never needs to nest. No hand-art /
+   DDS round-trip. (Re-run `py -3.13 tools\make_cluster_icon.py` to tweak shape/color.)
 
-### 1. Author the glyph frame in OURS_GFX (sprite 171, after the anon frame)
+2. **`tools/build_vanilla_gfx.py`** —
+   - Refactored `add_anon_icon` into a shared `_append_round_glyph(vroot, vsprite,
+     shape_id)`; `add_anon_icon` / `add_cluster_icon` are thin wrappers.
+   - Added `CLUSTER_PROFILES`, `CLUSTER_IMG`, `CLUSTER_FRAME_INDEX = 441`,
+     `CLUSTER_GLYPH_SHAPE = 1100` (anon used 1099).
+   - `add_cluster_icon` is called **after** `add_anon_icon` in both `main()` and
+     `build_err_anon_gfx()`, with a landing assert (`441 + base offset`) so base-frame
+     drift is still caught; then the PNG is `-replace`d into shape 1100.
 
-Two options — prefer (A):
+3. **`tools/generate_data.py`** — emits `const uint16_t CLUSTER_ICON_ID = anon+1` beside
+   the `ANON_ICON_ID` write.
 
-- **(A) Reuse an existing vanilla worldmap texture, recolored/badged.** Cheapest and
-  carries no ERR-only refs: clone the anon frame's `PlaceObject3` group, swap the
-  matte/tint (e.g. a filled disc or a "stacked" look) so it's visually distinct from
-  both the "?" and the loot/grace icons. Distinct **shape+color** matters more than
-  detail — at map zoom it's a few px. **User requirement: clusters must be visually
-  distinct and are never themselves clustered**, so don't reuse 370(grace)/371(loot)/
-  374(hostile)/the "?" look.
-- **(B) New texture.** Add a `DefineExternalImage2` (charId in 1000-1024 range, vanilla
-  texture name only) + DDS, then a frame referencing it. More work; only if (A) can't
-  read clearly.
+4. **`src/generated/goblin_item_icons.{hpp,cpp}`** — declared/defined `CLUSTER_ICON_ID`
+   (`= 442u` on a vanilla/erte/err base, offset 0). Verified: re-running the generator
+   reproduces the committed `.cpp` byte-for-byte.
 
-Append it as the next frame (one past the anon frame) and bump sprite 171's
-`frameCount`. Keep it self-contained (RemoveObject2+PlaceObject3+ShowFrame) like the
-others. Must reference NO ERR-only charId (13500-13506) — `build_vanilla_gfx.py`
-verifies this and will fail the bake if violated.
+5. **`src/goblin_inject.cpp:813`** — cluster rows now use `CLUSTER_ICON_ID` (line 731
+   live-loot anon left on `ANON_ICON_ID`).
 
-### 2. Wire CLUSTER_ICON_ID
-
-- `tools/generate_data.py` (~line 404, beside the `ANON_ICON_ID` write): emit
-  `const uint16_t CLUSTER_ICON_ID = <anon+1>u;` and declare it in
-  `goblin_item_icons.hpp`. It's `ANON_ICON_ID + 1` (the frame right after anon), so it
-  inherits the same per-profile `ICON_FRAME_OFFSET` shift automatically.
-- `tools/build_vanilla_gfx.py` (~line 435, the ANON sync check): extend the
-  frame-count assertion to expect the extra frame (anon + cluster = 2 appended tail
-  frames now), so a base-frame-count drift is still caught.
-- DLL: change `src/goblin_inject.cpp:850` to
-  `cd->iconId = goblin::generated::CLUSTER_ICON_ID;` (leave line 766 = ANON).
-
-### 3. Bake all three profiles + sanity-check
+## Bake (remaining — needs FFDEC)
 
 ```bat
+set FFDEC_CLI=java -jar D:\path\to\ffdec-cli.jar   :: or fix the path in ffdec_cmd()
 py tools\build_vanilla_gfx.py --profile vanilla
 py tools\build_vanilla_gfx.py --profile convergence
+py tools\build_vanilla_gfx.py --profile err
 build.bat generate            :: re-bakes goblin_map_data.cpp + the *_ICON_ID consts
 ```
-(erte uses the vanilla base = 348 frames.) Check: bake passes the no-ERR-charId +
-frame-count asserts; `CLUSTER_ICON_ID` lands = `ANON_ICON_ID + 1` per profile;
-enabling clustering in-game shows the new glyph on cluster rows (not the "?").
+(erte uses the vanilla base = 348 frames.) Each bake prints `cluster glyph: appended
+frame at index 441/849/441` and embeds the PNG. Checks: no-ERR-charId + frame-count
+asserts pass; `CLUSTER_ICON_ID == ANON_ICON_ID + 1` per profile; with clustering enabled
+in-game, cluster rows show the teal glyph (not the "?").
 
-### 4. Deliver
+## Deliver (after bake)
 
-Return:
-1. The updated **`assets/menu/02_120_worldmap_new.gfx`** + the rebuilt per-profile
-   `assets/menu/02_120_worldmap_{vanilla,convergence}.gfx`.
-2. The regenerated **`src/generated/goblin_item_icons.{hpp,cpp}`** (+ `goblin_map_data.cpp`)
-   showing `ANON_ICON_ID` and the new `CLUSTER_ICON_ID`.
-3. The exact frame XML you added (so the Linux side can review the glyph choice) and a
-   screenshot of a cluster in-game with the new icon.
-
-Note: this is GFX/asset only — the DLL one-line swap (step 2, line 850) lands on the
-Linux side. If FFDEC runs headless on this box, the whole thing is scriptable; if the
-glyph needs hand-art, (A) reuse-and-recolor avoids a DDS authoring round-trip.
+1. The rebuilt per-profile `assets/menu/02_120_worldmap_{vanilla,convergence,err}.gfx`.
+2. `src/generated/goblin_item_icons.{hpp,cpp}` showing `ANON_ICON_ID` + `CLUSTER_ICON_ID`
+   (already committed).
+3. A screenshot of a cluster in-game with the new icon.
