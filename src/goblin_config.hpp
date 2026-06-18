@@ -88,10 +88,12 @@ namespace goblin
         extern bool enableMarkerDump;
         extern uint32_t markerDumpKey;  // Win32 VK_* code (default VK_F9 = 0x78)
 
-        // Thread 7 — SetEventFlag observer (logs every event flag the game sets to
-        // logs/MapForGoblins_events.log). Coverage-gap discovery aid. See
-        // goblin_debug_events.{hpp,cpp}.
+        // Thread 7 — coverage-gap observers (log to logs/MapForGoblins_events.log).
+        // debugEventFlags  = hook SetEventFlag (every flag the game sets).
+        // debugItemGrants  = hook AddItemFunc (every inventory grant / pickup).
+        // See goblin_debug_events.{hpp,cpp}.
         extern bool debugEventFlags;
+        extern bool debugItemGrants;
 
         // In-game per-section visibility (the 7 display groups). The section_*
         // bools are the persisted runtime state, driven live by the overlay menu

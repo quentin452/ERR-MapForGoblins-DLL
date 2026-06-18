@@ -50,6 +50,7 @@ namespace goblin::config
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
     bool debugEventFlags = false;
+    bool debugItemGrants = false;
 
     // In-game per-section visibility (the 7 display groups). Persisted so an
     // in-game toggle survives relaunch. Default all-visible = no behaviour change.
@@ -276,6 +277,8 @@ namespace
                          "Key to dump decoded markers to logs/MapForGoblins_markers.log. Default: F9.", false, nullptr},
                 B("debug_event_flags", debugEventFlags, "false",
                   "Observe every event flag the game sets at runtime and log each newly-seen\nflag id to logs/MapForGoblins_events.log (coverage-gap discovery aid).\nHooks SetEventFlag; off by default."),
+                B("debug_item_grants", debugItemGrants, "false",
+                  "Observe every inventory grant (item pickup/shop/reward) and log the raw\nrequest to logs/MapForGoblins_events.log. Hooks AddItemFunc; off by default."),
             }},
         };
     }

@@ -6,50 +6,68 @@
 #include <spdlog/sinks/basic_file_sink.h>
 
 #include <atomic>
+#include <cstring>
 #include <mutex>
 #include <thread>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
 namespace goblin::debug_events
 {
 namespace
 {
-// SetEventFlag — same id-by-pointer convention as IsEventFlag (see
-// goblin_markers.cpp resolve_flag_api): rcx = EventFlagMan*, rdx = uint32_t*
-// flag id, r8b = value (0/1). The AOB's `41 0F B6 F8` (movzx edi,r8b) value
-// capture is what distinguishes this SETTER from the getter (which lacks it).
-// A 4th param is declared purely as a safety pad so the trampoline forwards r9
-// faithfully if the real routine happens to take one — extra Win64 integer
-// args are caller-cleaned and harmless when the callee ignores them.
-using SetEventFlagFn = uint64_t (*)(void * /*flagman*/, uint32_t * /*flag_id*/,
-                                    uint8_t /*value*/, uint64_t /*pad*/);
+// Shared sink. _mt: the flag drain thread AND the item detour (game thread) both
+// write it, so it must be thread-safe.
+std::shared_ptr<spdlog::logger> g_log;
 
+// SEH-guarded raw copy: the detours read pointers the game hands us; a bad/borderline
+// pointer must degrade to "skip this event", never crash. Body is POD-only (no C++
+// object unwinding allowed inside __try under clang-cl/MSVC).
+bool safe_copy(const void *src, void *dst, size_t n)
+{
+    __try
+    {
+        memcpy(dst, src, n);
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
+// ── SetEventFlag observer ────────────────────────────────────────────────
+//
+// Same id-by-pointer convention as IsEventFlag (see goblin_markers.cpp): rcx =
+// EventFlagMan*, rdx = uint32_t* flag id, r8b = value (0/1). The AOB's
+// `41 0F B6 F8` (movzx edi,r8b) value capture distinguishes this SETTER from
+// the getter (which lacks it). 4th param = safety pad so the trampoline forwards
+// r9 faithfully if the routine takes one (extra Win64 int args are caller-cleaned
+// and harmless when ignored).
+using SetEventFlagFn = uint64_t (*)(void *, uint32_t *, uint8_t, uint64_t);
 SetEventFlagFn g_orig_set_event_flag = nullptr;
-
-// AOB for EventFlag_C1 (eldenring.exe), from Hexinton all-in-one CT v6.0.
 constexpr const char *SET_EVENT_FLAG_AOB =
     "48 89 5C 24 08 48 89 74 24 18 57 48 83 EC 30 48 8B DA 41 0F B6 F8 "
     "8B 12 48 8B F1 85 D2 0F 84";
 
-// Hot-path → drain-thread inbox. The detour only records (id,value) under a
-// short lock and returns; the drain thread does the dedup + file I/O off the
-// game's flag-set path. Mirrors the mod's "post intent, single owner applies"
-// discipline. Capped so a stalled drain can't grow it without bound.
+// Hot-path → drain-thread inbox. The flag detour fires a LOT, so it only records
+// (id,value) under a short lock and returns; the drain thread dedups + logs off
+// the game's flag-set path. Capped so a stalled drain can't grow it unbounded.
 constexpr size_t INBOX_CAP = 8192;
 std::mutex g_inbox_mtx;
 std::vector<std::pair<uint32_t, uint8_t>> g_inbox;
 std::atomic<uint64_t> g_dropped{0};
 
-std::shared_ptr<spdlog::logger> g_log;
-
 uint64_t hk_set_event_flag(void *flagman, uint32_t *flag_id, uint8_t value,
                            uint64_t pad)
 {
-    if (flag_id)
+    uint32_t id;
+    if (flag_id && safe_copy(flag_id, &id, sizeof(id)))
     {
-        uint32_t id = *flag_id;
         std::lock_guard<std::mutex> lk(g_inbox_mtx);
         if (g_inbox.size() < INBOX_CAP)
             g_inbox.emplace_back(id, value);
@@ -59,48 +77,105 @@ uint64_t hk_set_event_flag(void *flagman, uint32_t *flag_id, uint8_t value,
     return g_orig_set_event_flag(flagman, flag_id, value, pad);
 }
 
-void drain_loop()
+void flag_drain_loop()
 {
-    // Log each flag id only once per session (its first set) — the game sets a
-    // huge number of flags, but each distinct id is interesting only once for
-    // coverage discovery. Value is recorded so a later set-then-clear is visible
-    // via the value column on that first sighting.
+    // Log each flag id only once per session (first set) — the game sets a huge
+    // number, but each distinct id is interesting only once for discovery.
     std::unordered_set<uint32_t> seen;
     std::vector<std::pair<uint32_t, uint8_t>> batch;
     uint64_t last_dropped = 0;
-
     while (true)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
-
         batch.clear();
         {
             std::lock_guard<std::mutex> lk(g_inbox_mtx);
             g_inbox.swap(batch);
         }
-
         for (auto &[id, value] : batch)
-        {
             if (seen.insert(id).second)
                 g_log->info("flag {} = {}", id, static_cast<int>(value));
-        }
 
         uint64_t dropped = g_dropped.load(std::memory_order_relaxed);
         if (dropped != last_dropped)
         {
-            g_log->warn("inbox overflow: {} flag-set events dropped (drain behind)",
-                        dropped);
+            g_log->warn("inbox overflow: {} flag-set events dropped", dropped);
             last_dropped = dropped;
         }
     }
 }
-} // namespace
 
-void initialize(const std::filesystem::path &log_path)
+// ── AddItemFunc observer ─────────────────────────────────────────────────
+//
+// The game's inventory-add routine (Hexinton CT "AddItemFunc"). Convention from
+// the CT's ItemGib helper:
+//   rcx = inventory/MapItemMan accessor
+//   rdx = pointer to an array of item ENTRIES (8 bytes each in the CT template
+//         F00006AE00000001 = {qty:u32 @+0, item_id:u32 @+4}, but that's the
+//         cheat's placeholder — the exact offset is confirmed against a known
+//         pickup, so for now we LOG RAW and both dword interpretations).
+//   r8  = entry-array base, r9 = count.
+// Low volume (a few grants/min) → log directly; g_log is _mt so the game-thread
+// write races safely with the flag drain thread.
+using AddItemFn = uint64_t (*)(void *, uint8_t *, uint8_t *, uint64_t, uint64_t);
+AddItemFn g_orig_add_item = nullptr;
+constexpr const char *ADD_ITEM_AOB =
+    "40 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 70 FF FF FF 48 81 EC "
+    "90 01 00 00 48 C7 45 C8 FE FF FF FF 48 89 9C 24 D8 01 00 00 48 8B 05";
+
+uint64_t hk_add_item(void *inv, uint8_t *entries, uint8_t *base, uint64_t count,
+                     uint64_t pad)
 {
+    uint8_t buf[24];
+    if (entries && safe_copy(entries, buf, sizeof(buf)))
+    {
+        uint32_t f0, f4;
+        std::memcpy(&f0, buf + 0, 4);
+        std::memcpy(&f4, buf + 4, 4);
+        // raw hex of the first entry + the two candidate id/qty fields, so a
+        // controlled pickup pins which is the item id.
+        g_log->info(
+            "item grant: count={} entry+0={:#010x} entry+4={:#010x} "
+            "raw={:02x}{:02x}{:02x}{:02x} {:02x}{:02x}{:02x}{:02x} "
+            "{:02x}{:02x}{:02x}{:02x} {:02x}{:02x}{:02x}{:02x}",
+            count, f0, f4, buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6],
+            buf[7], buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14],
+            buf[15]);
+    }
+    return g_orig_add_item(inv, entries, base, count, pad);
+}
+
+bool install(const char *aob, void *detour, void **trampoline, const char *name)
+{
+    void *fn = modutils::scan<void>({.aob = aob});
+    if (!fn)
+    {
+        spdlog::warn("[DEBUG-EVENTS] {} AOB not found (game patch?) — skipped", name);
+        return false;
+    }
     try
     {
-        g_log = spdlog::basic_logger_st("mfg-events", log_path.string(), true);
+        modutils::hook(fn, detour, trampoline);
+        spdlog::info("[DEBUG-EVENTS] {} hooked @ {}", name, fn);
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("[DEBUG-EVENTS] {} hook failed: {}", name, e.what());
+        return false;
+    }
+}
+} // namespace
+
+void initialize(const std::filesystem::path &log_path, bool hook_flags,
+                bool hook_items)
+{
+    if (!hook_flags && !hook_items)
+        return;
+
+    try
+    {
+        g_log = spdlog::basic_logger_mt("mfg-events", log_path.string(), true);
         g_log->set_pattern("[%H:%M:%S.%e] %v");
         g_log->flush_on(spdlog::level::info);
     }
@@ -111,33 +186,38 @@ void initialize(const std::filesystem::path &log_path)
         return;
     }
 
-    void *fn = modutils::scan<void>({.aob = SET_EVENT_FLAG_AOB});
-    if (!fn)
-    {
-        spdlog::warn("[DEBUG-EVENTS] SetEventFlag AOB not found (game patch?) — "
-                     "observer disabled");
+    bool any = false;
+    bool flag_on = false;
+    if (hook_flags)
+        any |= flag_on = install(SET_EVENT_FLAG_AOB,
+                                 reinterpret_cast<void *>(&hk_set_event_flag),
+                                 reinterpret_cast<void **>(&g_orig_set_event_flag),
+                                 "SetEventFlag");
+    if (hook_items)
+        any |= install(ADD_ITEM_AOB, reinterpret_cast<void *>(&hk_add_item),
+                       reinterpret_cast<void **>(&g_orig_add_item), "AddItemFunc");
+
+    if (!any)
         return;
-    }
 
     try
     {
-        modutils::hook(fn, reinterpret_cast<void *>(&hk_set_event_flag),
-                       reinterpret_cast<void **>(&g_orig_set_event_flag));
-        // enable_hooks() (MH_ApplyQueued) already ran during setup_mod, so apply
-        // again to activate this late-queued hook.
+        // enable_hooks() (MH_ApplyQueued) already ran during setup_mod; apply
+        // again to activate these late-queued hooks.
         modutils::enable_hooks();
     }
     catch (const std::exception &e)
     {
-        spdlog::error("[DEBUG-EVENTS] hook install failed: {} — observer disabled",
-                      e.what());
+        spdlog::error("[DEBUG-EVENTS] enable_hooks failed: {} — disabled", e.what());
         return;
     }
 
-    std::thread(drain_loop).detach();
-    spdlog::info("[DEBUG-EVENTS] SetEventFlag observer active @ {} → logging to {}",
-                 fn, log_path.string());
-    g_log->info("=== SetEventFlag observer started (id = value, first set only) ===");
+    if (flag_on)
+        std::thread(flag_drain_loop).detach();
+
+    g_log->info("=== observer started (flags={} items={}) ===", hook_flags,
+                hook_items);
+    spdlog::info("[DEBUG-EVENTS] active → logging to {}", log_path.string());
 }
 
 } // namespace goblin::debug_events
