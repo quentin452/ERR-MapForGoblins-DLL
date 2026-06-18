@@ -40,6 +40,13 @@ namespace
     SetCursorPosFn o_set_cursor_pos = nullptr;
     ClipCursorFn o_clip_cursor = nullptr;
 
+    // Raw input — ER reads gameplay keyboard/mouse here (not via window
+    // messages), so we neutralise it while the menu is open to fully disable
+    // game commands. ImGui still gets keyboard/mouse via the WndProc + cursor.
+    using GetRawInputDataFn =
+        UINT(WINAPI *)(HRAWINPUT, UINT, LPVOID, PUINT, UINT);
+    GetRawInputDataFn o_get_raw_input_data = nullptr;
+
     // ── D3D12 state captured from the live game ───────────────────────────
     ID3D12Device *g_device = nullptr;
     ID3D12CommandQueue *g_command_queue = nullptr;   // captured from ExecuteCommandLists
@@ -104,6 +111,34 @@ namespace
     {
         if (g_show) return o_clip_cursor(nullptr);   // unclip while menu is up
         return o_clip_cursor(rc);
+    }
+
+    UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size,
+                                      UINT hdr)
+    {
+        UINT ret = o_get_raw_input_data(h, cmd, data, size, hdr);
+        // While the menu is open, blank the raw event so the game sees no mouse
+        // movement / clicks / key presses. (ImGui's input comes from the
+        // WndProc, not from here, so the panel stays fully usable.)
+        if (g_show && data && cmd == RID_INPUT)
+        {
+            auto *ri = reinterpret_cast<RAWINPUT *>(data);
+            if (ri->header.dwType == RIM_TYPEMOUSE)
+            {
+                ri->data.mouse.lLastX = 0;
+                ri->data.mouse.lLastY = 0;
+                ri->data.mouse.usButtonFlags = 0;
+                ri->data.mouse.usButtonData = 0;
+            }
+            else if (ri->header.dwType == RIM_TYPEKEYBOARD)
+            {
+                ri->data.keyboard.VKey = 0xFF;          // no valid key
+                ri->data.keyboard.Message = WM_NULL;
+                ri->data.keyboard.MakeCode = 0;
+                ri->data.keyboard.Flags = RI_KEY_BREAK; // treat as key-up
+            }
+        }
+        return ret;
     }
 
     // ── WndProc hook (input capture) ──────────────────────────────────────
@@ -491,6 +526,10 @@ void goblin::overlay::initialize()
         if (clp && MH_CreateHook(clp, reinterpret_cast<void *>(&hk_clip_cursor),
                                  reinterpret_cast<void **>(&o_clip_cursor)) == MH_OK)
             MH_EnableHook(clp);
+        void *grid = reinterpret_cast<void *>(GetProcAddress(u32, "GetRawInputData"));
+        if (grid && MH_CreateHook(grid, reinterpret_cast<void *>(&hk_get_raw_input_data),
+                                  reinterpret_cast<void **>(&o_get_raw_input_data)) == MH_OK)
+            MH_EnableHook(grid);
     }
 
     spdlog::info("[OVERLAY] hooks installed (Present/ResizeBuffers/ExecuteCommandLists"
