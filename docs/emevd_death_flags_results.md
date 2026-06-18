@@ -108,6 +108,21 @@ agent mis-identifications and one of my own commits**:
 - `fail_conclusion=true` — shared concluded/dead flag, overlay shows "[concluded]" not "[unfinishable]" (7):
   Sellen 3463, Nepheli 4223, Kenneth 3583, Gowry 4163, Boc 3943, Patches 3683, Thops 3803.
 
+## TalkESD pipeline (for the NPCs with NO EMEVD death flag — DLC followers)
+`tools/mine_talkesd_flags.py` (pipeline v1). Foundation **proven**: SoulsFormats parses ER talk ESD
+(`script/talk/*.talkesdbnd.dcx` → `t<TalkID>.esd`); NPC → entity + `TalkID` (MSB) → ESD → decode EzState
+int literals (`0x82` + int32-LE). Validated against Patches: his real flag **3683 IS in the candidates**.
+
+**Limitation (v1 not yet wire-ready):** raw int-extraction is too noisy — ~225 flags per NPC (every
+dialogue branch references flags), and DLC quest flags are 10-digit (`2046xxxxx`, above the current filter).
+**Next iteration:** decode EzState *commands* and bootstrap the SetEventFlag/“flag” command-id from the
+known Patches=3683 case (same bootstrap trick as the EMEVD 90005702 mechanism), so only flags the script
+SETS/gates-on are reported — narrowing 225 → a handful. Alternatively marry with save-diff (`tools/flagdiff.py`):
+the ESD candidate set ∩ the flags that flip when the NPC dies = the death flag.
+
+Targets (no EMEVD handler): Leda, Ansbach, Moore, Thiollier, Dryleaf Dane, Freyja, Hornsent, Queelign,
+Igon, Jolán (+ base ESD-driven Roderika, Rya, Latenna).
+
 ## How to re-run / extend
 Decompile (see `[[darkscript3-emevd-decompile]]` memory): `DarkScript3.exe /cmd -decompile -game er -indir <event> -outdir <out>`
 (needs `oo2core_6_win64.dll` in cwd). Then enumerate every death registration:
