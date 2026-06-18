@@ -28,10 +28,69 @@ LPTOP_LEVEL_EXCEPTION_FILTER g_prev_filter = nullptr;
 // thread faulting) must not recurse.
 volatile LONG g_in_handler = 0;
 
+// Module bases captured at install, so the offline reader can tell whether the
+// fault is in the game or in us even when the full minidump fails to write.
+uintptr_t g_self_base = 0; // MapForGoblins.dll
+uintptr_t g_er_base = 0;   // eldenring.exe
+
+// Write a tiny TEXT triage next to the dump: exception code + faulting address +
+// the module it lands in. Independent of MiniDumpWriteDump (which can produce a
+// 0-byte file on a hard crash), so the one fact that matters always survives.
+// POD-only (no C++ unwinding) — we're mid-crash.
+static void write_crash_triage(EXCEPTION_POINTERS *ep)
+{
+    wchar_t txt[MAX_PATH] = {0};
+    _snwprintf(txt, MAX_PATH, L"%ls\\MapForGoblins_crash_%lu.txt", g_dump_dir,
+               GetCurrentProcessId());
+    HANDLE f = CreateFileW(txt, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE)
+        return;
+
+    DWORD code = (ep && ep->ExceptionRecord) ? ep->ExceptionRecord->ExceptionCode : 0;
+    void *addr = (ep && ep->ExceptionRecord) ? ep->ExceptionRecord->ExceptionAddress
+                                             : nullptr;
+    char mod[MAX_PATH] = "?";
+    uintptr_t modbase = 0;
+    if (addr)
+    {
+        MEMORY_BASIC_INFORMATION mbi;
+        if (VirtualQuery(addr, &mbi, sizeof(mbi)))
+        {
+            modbase = reinterpret_cast<uintptr_t>(mbi.AllocationBase);
+            GetModuleFileNameA(reinterpret_cast<HMODULE>(mbi.AllocationBase), mod,
+                               MAX_PATH);
+        }
+    }
+    char buf[1024];
+    int n = _snprintf(
+        buf, sizeof(buf),
+        "MapForGoblins crash triage\r\n"
+        "exception_code = 0x%08lX\r\n"
+        "fault_address  = 0x%p\r\n"
+        "fault_module   = %s\r\n"
+        "fault_base     = 0x%p  (+0x%llX)\r\n"
+        "MapForGoblins.dll base = 0x%p\r\n"
+        "eldenring.exe    base  = 0x%p\r\n",
+        code, addr, mod, reinterpret_cast<void *>(modbase),
+        static_cast<unsigned long long>(addr ? reinterpret_cast<uintptr_t>(addr) - modbase
+                                             : 0),
+        reinterpret_cast<void *>(g_self_base), reinterpret_cast<void *>(g_er_base));
+    if (n > 0)
+    {
+        DWORD w = 0;
+        WriteFile(f, buf, static_cast<DWORD>(n), &w, nullptr);
+    }
+    CloseHandle(f);
+}
+
 LONG WINAPI goblin_crash_filter(EXCEPTION_POINTERS *ep)
 {
     if (InterlockedCompareExchange(&g_in_handler, 1, 0) != 0)
         return EXCEPTION_CONTINUE_SEARCH;
+
+    // Text triage first — survives even if the minidump below writes nothing.
+    write_crash_triage(ep);
 
     // Build "<dir>/MapForGoblins_crash_<pid>.dmp". No std::string / spdlog here
     // — the process is already unwinding a crash; keep it to raw Win32 + swprintf.
@@ -54,12 +113,22 @@ LONG WINAPI goblin_crash_filter(EXCEPTION_POINTERS *ep)
         const MINIDUMP_TYPE type = static_cast<MINIDUMP_TYPE>(
             MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules);
 
-        MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file,
-                          type, ep ? &mei : nullptr, nullptr, nullptr);
+        BOOL ok = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file,
+                                    type, ep ? &mei : nullptr, nullptr, nullptr);
         CloseHandle(file);
 
-        OutputDebugStringW(L"[MapForGoblins] crash minidump written: ");
-        OutputDebugStringW(path);
+        if (ok)
+        {
+            OutputDebugStringW(L"[MapForGoblins] crash minidump written: ");
+            OutputDebugStringW(path);
+        }
+        else
+        {
+            // A hard crash can leave a 0-byte dump — delete it so retention keeps
+            // only real dumps; the .txt triage already has the key facts.
+            DeleteFileW(path);
+            OutputDebugStringW(L"[MapForGoblins] minidump failed; see .txt triage");
+        }
     }
 
     // Let the previous handler (and the OS default) run as usual.
@@ -110,6 +179,15 @@ void install_crash_handler(const std::filesystem::path &dump_dir)
     const std::wstring w = dump_dir.wstring();
     wcsncpy(g_dump_dir, w.c_str(), MAX_PATH - 1);
     g_dump_dir[MAX_PATH - 1] = L'\0';
+
+    // Capture module bases for the triage file (so a fault address can be mapped
+    // to game-vs-mod offline even if the full minidump fails).
+    g_er_base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    HMODULE self = nullptr;
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           reinterpret_cast<LPCSTR>(&goblin_crash_filter), &self))
+        g_self_base = reinterpret_cast<uintptr_t>(self);
 
     // SetUnhandledExceptionFilter returns the prior filter; keep it to chain.
     g_prev_filter = SetUnhandledExceptionFilter(goblin_crash_filter);
