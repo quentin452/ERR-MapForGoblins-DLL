@@ -380,12 +380,15 @@ const NpcQuest QUEST_BROWSER[] = {
      "If Irina dies he becomes a hostile invader instead of finishing peacefully."},
     {"Yura, Bloody Finger Hunter", "Yura's Quest", "Crosses Shabriri/Eleonora; touches Hyetta", steps_yura, 4, false,
      "Shabriri usurps him late; some steps gate behind area progress."},
-    // COBAYE (Part 2): fail_flag = 1042365008 = Varre's DEATH flag, captured via
-    // the Event-flag hook (set at the exact kill moment 16:52:05 in events.log;
-    // the 1042365006/007 in the same series were earlier quest steps). Killing
-    // Varre makes his Mohg/Pureblood path unfinishable -> the line greys out.
+    // COBAYE (Part 2): fail_flag = 1042369205 = a PERSISTED Varre-death flag,
+    // found by diffing a Varre-ALIVE save vs the Varre-DEAD save (er-save-lib
+    // errflags). LESSON: the Event-flag hook also logs TRANSIENT flags (1042365008
+    // / 3082 fired at the kill but never persisted) -- for "unfinishable" use a
+    // SAVE-PERSISTED flag. Other persisted death candidates from the same diff:
+    // 1042365009 / 1042365010 / 1042365027. To disambiguate death-vs-completion,
+    // re-check against a quest-COMPLETED save (must not also set on normal finish).
     {"White Mask Varre", "Varre's Quest", "Mohg / Bloody Finger path", steps_varre, 5, false,
-     nullptr, 1042365008u},
+     nullptr, 1042369205u},
     {"Hyetta", "Hyetta's Quest", "Frenzied Flame; crosses Shabriri/Yura", steps_hyetta, 4, false,
      "Frenzied Flame path -- the final step is a point of no return that changes your ending."},
     {"Iron Fist Alexander", "Alexander's Quest", "Gives Alexander's Innards to Jar-Bairn", steps_alexander, 5, false,
