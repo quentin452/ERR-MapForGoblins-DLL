@@ -338,16 +338,17 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Ranni the Witch", "Ranni's Quest", "Hub of the Blaidd/Iji/Seluvis cluster", steps_ranni, 6},
     {"Blaidd", "Blaidd's Quest", "Part of Ranni's questline", steps_blaidd, 4, false,
      "Use Blaidd before pushing Ranni's quest too far; advancing it first can trap him and he later turns hostile."},
-    // fail_flag 1042600001 = Iji dead. Verified PERSISTENT (true even far from
-    // Liurnia) + monotonic across 5 timepoints + Iji-specific. Found by
-    // intersecting two Iji-DEAD saves taken at DIFFERENT locations (Liurnia +
-    // far) to drop region/proximity flags. Earlier picks 1034502743 (flagdiff
-    // offset bug) and 558 (a Liurnia-proximity flag — went false when far) were
-    // BOTH wrong; only a cross-location-persistent flag works for the live
-    // grey-out, which the overlay reads regardless of where the player is.
+    // fail_flag 1034509403 = Iji dead/gone. Sourced from decompiled ERR EMEVD
+    // (common.emevd $Event(3049) Ranni-cluster resolver: group 3740-3748 -> sets
+    // 1034509403 ON when Iji is no longer alive) — the exact structural parallel
+    // to Seluvis's 1034509302. Replaces the earlier save-diff pick 1042600001,
+    // which was a PHANTOM: that literal is set nowhere in EMEVD, and 1042600000 is
+    // an EventValue(1042600000, 19) 19-bit COUNTER base, so 1042600001 was just a
+    // counter bit a save-diff mistook for a death flag. See
+    // docs/emevd_death_flags_results.md. (Prior 1034502743 / 558 also wrong.)
     {"Iji", "Iji's Quest", "Part of Ranni's questline", steps_iji, 3, false,
      "Siding with Seluvis's puppet scheme, or angering Ranni's enemies, can get Iji killed.",
-     1042600001u},
+     1034509403u},
     // fail_flag 1034509302 = Seluvis dead (= seluvis_q99 "quest concluded" in the
     // QuestLog, his own 1034509* namespace). Isolated by intersecting TWO far
     // Seluvis-dead saves (Caelid + Morne) with the in-game kill-window capture;
@@ -391,8 +392,11 @@ const NpcQuest QUEST_BROWSER[] = {
      "Time-sensitive: settle Castle Morne before too much story progress, or Irina dies and Edgar turns hostile."},
     {"Edgar", "Edgar's Quest", "Crosses Irina (Castle Morne)", steps_edgar, 3, false,
      "If Irina dies he becomes a hostile invader instead of finishing peacefully."},
+    // fail_flag 3623 = Yura dead/gone (EMEVD 90005702 death handler, entity
+    // 1049530700; SetNetworkconnectedEventFlagID + SaveRequest -> persistent).
+    // Death-distinct (his thread ends when he's killed/usurped by Shabriri).
     {"Yura, Bloody Finger Hunter", "Yura's Quest", "Crosses Shabriri/Eleonora; touches Hyetta", steps_yura, 4, false,
-     "Shabriri usurps him late; some steps gate behind area progress."},
+     "Shabriri usurps him late; some steps gate behind area progress.", 3623u},
     // COBAYE (Part 2): fail_flag = 1042369205 = a PERSISTED Varre-death flag,
     // found by diffing a Varre-ALIVE save vs the Varre-DEAD save (er-save-lib
     // errflags). LESSON: the Event-flag hook also logs TRANSIENT flags (1042365008
@@ -406,16 +410,23 @@ const NpcQuest QUEST_BROWSER[] = {
      "Frenzied Flame path -- the final step is a point of no return that changes your ending."},
     {"Iron Fist Alexander", "Alexander's Quest", "Gives Alexander's Innards to Jar-Bairn", steps_alexander, 5, false,
      "Free him at each spot before that area's story moves on, or you can miss a step."},
-    {"Diallos", "Diallos's Quest", "Crosses Jar-Bairn (Jarburg)", steps_diallos, 5},
+    // fail_flag 3443 = Diallos dead/gone (EMEVD 90005702 death handler, entity
+    // 1039440710 at Jarburg; persistent). Death-distinct (he falls defending Jarburg).
+    {"Diallos", "Diallos's Quest", "Crosses Jar-Bairn (Jarburg)", steps_diallos, 5, false, nullptr, 3443u},
     {"Jar-Bairn", "Jar-Bairn's Quest", "Crosses Diallos and Alexander (Jarburg)", steps_jarbairn, 4, false,
      "His outcome is tied to Diallos and to giving Alexander's Innards -- order matters across the three."},
     {"Latenna", "Latenna's Quest", "Albinauric / Haligtree path", steps_latenna, 4, false,
      "Needs the right Haligtree medallion half from Albus first."},
     {"Sorcerer Thops", "Thops's Quest", nullptr, steps_thops, 4},
-    {"Gurranq, Beast Clergyman", "Gurranq's Quest", "Deathroot deliveries", steps_gurranq, 4},
+    // fail_flag 1051430800 = Gurranq dead (EMEVD 90005860 boss death handler,
+    // entity 1051430800 at the Bestial Sanctum; flag id == entity id, persistent).
+    {"Gurranq, Beast Clergyman", "Gurranq's Quest", "Deathroot deliveries", steps_gurranq, 4, false, nullptr, 1051430800u},
     {"Dung Eater", "Dung Eater's Quest", "Crosses Nepheli (Seedbed Curses)", steps_dungeater, 4, false,
      "Mutually exclusive ending -- empower him OR hunt him down, not both."},
-    {"Knight Bernahl", "Bernahl's Quest", "Volcano Manor / Recusant", steps_bernahl, 4},
+    // fail_flag 3883 = Bernahl dead/gone (= bernahl_q99). His CharacterDead(16000800)
+    // boss death (Farum Azula) gates the persistent conclusion flag 3883 set in
+    // common.emevd. Death-distinct (recusant turn ends his recruitable thread).
+    {"Knight Bernahl", "Bernahl's Quest", "Volcano Manor / Recusant", steps_bernahl, 4, false, nullptr, 3883u},
     {"Tanith (Volcano Manor)", "Volcano Manor (Tanith)", "Hub of Volcano Manor (Rya, Bernahl)", steps_tanith, 4},
     {"Vyke", "Vyke's Quest", "Bloody Finger invader / Mountaintops boss", steps_vyke, 3},
 
