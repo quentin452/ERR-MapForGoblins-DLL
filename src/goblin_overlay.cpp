@@ -402,23 +402,27 @@ namespace
                 ImGui::TreePop();
             }
 
-            // Clustering. Enable is a restart-time decision (clusters are built
-            // at inject); expand/labels only apply when clusters exist this run.
             ImGui::SeparatorText("Clustering");
-            bool cen = goblin::ui::clustering_enabled();
-            if (ImGui::Checkbox("Enable clustering (Save + restart)", &cen))
-                goblin::ui::set_clustering_enabled(cen);
             if (goblin::ui::clustering_active())
             {
-                bool expanded = goblin::ui::clusters_expanded();
-                if (ImGui::Checkbox("Expand clusters (show members)", &expanded))
-                    goblin::ui::set_clusters_expanded(expanded);
+                // Clusters built this session → LIVE on/off (collapse dense piles
+                // into one icon ⇔ show every member). Persisted on Save. No restart.
+                bool on = !goblin::ui::clusters_expanded();
+                if (ImGui::Checkbox("Clustering ON — collapse dense piles (live)", &on))
+                    goblin::ui::set_clusters_expanded(!on);
                 bool dbg = goblin::ui::cluster_debug();
                 if (ImGui::Checkbox("Cluster labels show counts", &dbg))
                     goblin::ui::set_cluster_debug(dbg);
             }
             else
-                ImGui::TextDisabled("Save + restart to activate.");
+            {
+                // Not built this run: clusters are synthetic rows created at inject,
+                // so the FIRST enable needs a restart to build them. Once built it
+                // toggles live (above). (Build-from-off at runtime = clustering v2.)
+                bool cen = goblin::ui::clustering_enabled();
+                if (ImGui::Checkbox("Enable clustering (Save + restart to build)", &cen))
+                    goblin::ui::set_clustering_enabled(cen);
+            }
             ImGui::End();
         }
     }

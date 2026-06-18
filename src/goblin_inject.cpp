@@ -1813,6 +1813,9 @@ void goblin::ui::set_clusters_expanded(bool expanded)
 {
     g_clusters_expanded.store(expanded);
     g_cluster_expand_dirty.store(true);
+    // Persist the live on/off intent: collapsed (clustered) ⇔ enableClustering.
+    // The Save button writes config, so next launch starts in the same state.
+    goblin::config::enableClustering = !expanded;
 }
 
 bool goblin::ui::cluster_debug() { return g_cluster_debug.load(); }
