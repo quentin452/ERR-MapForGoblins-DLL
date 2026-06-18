@@ -22,9 +22,16 @@ struct QuestStep { const char *title; const char *desc; const char *zone; };
 // can no longer be completed (the NPC died early / a needed interconnection is
 // gone). The overlay greys the line out when the watcher reads this flag as set.
 // 0 = unknown/none. Capture a real id with the in-overlay Event-flag hook.
+// `fail_conclusion` (optional): set true when `fail_flag` is the NPC's shared
+// "concluded" flag — i.e. the SAME id is set on PEACEFUL completion as on the
+// NPC's death (the merchant/quest NPCs whose dead flag == their `_q99` flag).
+// The line still greys (no longer actionable) but the overlay labels it
+// "[concluded]" with a neutral note instead of "[unfinishable] ... is dead",
+// since the flag does not prove the NPC died. Default false = death-exclusive.
 struct NpcQuest { const char *name; const char *quest_title; const char *related;
                   const QuestStep *steps; size_t step_count; bool dlc = false;
-                  const char *warning = nullptr; uint32_t fail_flag = 0; };
+                  const char *warning = nullptr; uint32_t fail_flag = 0;
+                  bool fail_conclusion = false; };
 
 extern const NpcQuest QUEST_BROWSER[];
 extern const size_t QUEST_BROWSER_COUNT;

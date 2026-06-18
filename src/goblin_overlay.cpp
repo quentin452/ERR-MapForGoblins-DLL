@@ -581,6 +581,10 @@ namespace
                         // set) takes precedence over amber "(!)" (order-sensitive /
                         // missable). Both push a text tint over the whole subtree.
                         bool dead = goblin::ui::quest_unfinishable((size_t)id);
+                        // `concl`: the fail_flag is the NPC's shared "concluded"
+                        // flag (set on completion OR death) -- grey it, but label
+                        // it [concluded] rather than asserting the NPC is dead.
+                        bool concl = dead && q.fail_conclusion;
                         bool warn = q.warning && q.warning[0];
                         bool tint = dead || warn;
                         if (tint)
@@ -589,13 +593,22 @@ namespace
                                      : ImVec4(1.0f, 0.78f, 0.35f, 1.0f));
                         bool open = ImGui::TreeNode((void *)(intptr_t)id, "%s  (%d/%zu)%s",
                                                     q.name, done, q.step_count,
-                                                    dead ? "  [unfinishable]"
+                                                    dead ? (concl ? "  [concluded]"
+                                                                  : "  [unfinishable]")
                                                          : warn ? "  (!)" : "");
                         if (tint)
                             ImGui::PopStyleColor();
                         if (open)
                         {
-                            if (dead)
+                            if (dead && concl)
+                            {
+                                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.70f, 0.70f, 1.0f));
+                                ImGui::TextWrapped("[concluded] This questline is over -- the NPC has "
+                                                   "either finished their story or is gone. (This flag "
+                                                   "is set on completion as well as on death.)");
+                                ImGui::PopStyleColor();
+                            }
+                            else if (dead)
                             {
                                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.45f, 0.45f, 1.0f));
                                 ImGui::TextWrapped("[unfinishable] This questline's NPC is dead "

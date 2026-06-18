@@ -102,8 +102,11 @@ agent mis-identifications and one of my own commits**:
 | Millicent | 15000700 / 15000703 | 4183 | confirmed (the "Jerren=4183" guess was Millicent) |
 | Gostoc | **10000700-10000707** (c3665) | — | real entities; not a Quest Browser line, not wired |
 
-**Now wired in `goblin_quest_steps.cpp` (10):** Iji 1034499202, Seluvis 1034509302, Varré 1042369205,
-Yura 3623, Diallos 3443, Bernahl 3883, Gurranq 1051430800, Irina 3383, Edgar 3403, Jerren 3363.
+**Now wired in `goblin_quest_steps.cpp` (17):**
+- death-distinct (10): Iji 1034499202, Seluvis 1034509302, Varré 1042369205, Yura 3623, Diallos 3443,
+  Bernahl 3883, Gurranq 1051430800, Irina 3383, Edgar 3403, Jerren 3363.
+- `fail_conclusion=true` — shared concluded/dead flag, overlay shows "[concluded]" not "[unfinishable]" (7):
+  Sellen 3463, Nepheli 4223, Kenneth 3583, Gowry 4163, Boc 3943, Patches 3683, Thops 3803.
 
 ## How to re-run / extend
 Decompile (see `[[darkscript3-emevd-decompile]]` memory): `DarkScript3.exe /cmd -decompile -game er -indir <event> -outdir <out>`

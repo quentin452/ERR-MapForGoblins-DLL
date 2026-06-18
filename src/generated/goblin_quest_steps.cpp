@@ -358,8 +358,15 @@ const NpcQuest QUEST_BROWSER[] = {
      "Using his puppet potion on Nepheli permanently ends HER questline -- warn her instead to keep both.",
      1034509302u},
     // Sellen
+    // fail_flag + fail_conclusion=true: these flags are the NPC's SHARED "_q99"
+    // concluded flag (set on death OR peaceful completion), via the 90005702
+    // death handler. Confirmed: Sellen 3463 (entity 14000713), Nepheli 4223
+    // (10000730), Kenneth 3583 (1045380700), Gowry 4163 (1050380700), Boc 3943
+    // (11050730), Patches 3683 (31000701), Thops 3803 (1039390700). The overlay
+    // greys these as "[concluded]" (done or gone), not "[unfinishable]/dead".
     {"Sorceress Sellen", "Sellen's Quest", "Crosses Jerren, Lusat/Azur", steps_sellen, 5, false,
-     "Her finale forces an exclusive side (Sellen vs Jerren); pick knowing the other is lost."},
+     "Her finale forces an exclusive side (Sellen vs Jerren); pick knowing the other is lost.",
+     3463u, true},
     // fail_flag 3363 = Jerren gone. MSB-confirmed: entity 14000716 / 14000717 =
     // "Witch-Hunter Jerren" (m14 Academy, Sellen finale); 90005702 sets 3363 ON.
     {"Witch-Hunter Jerren", "Jerren's Quest", "Sellen's quest finale (Sellen vs Jerren)", steps_jerren, 3, false,
@@ -368,8 +375,8 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Roderika", "Roderika's Quest", "Crosses Hewg (Stormhill -> Roundtable)", steps_roderika, 4},
     {"Smithing Master Hewg", "Hewg's Quest", "Crosses Roderika", steps_hewg, 3},
     {"Nepheli Loux", "Nepheli's Quest", "Crosses Kenneth, Gideon, Dung Eater", steps_nepheli, 5, false,
-     "Do NOT use Seluvis's potion on her, or her questline ends."},
-    {"Kenneth Haight", "Kenneth's Quest", "Feeds Nepheli's claim to Limgrave", steps_kenneth, 3},
+     "Do NOT use Seluvis's potion on her, or her questline ends.", 4223u, true},
+    {"Kenneth Haight", "Kenneth's Quest", "Feeds Nepheli's claim to Limgrave", steps_kenneth, 3, false, nullptr, 3583u, true},
     {"Gideon Ofnir", "Gideon's Quest", "Touches many quests (Roundtable info-broker)", steps_gideon, 4},
     // Deathbed / Black Knife cluster
     {"Fia, Deathbed Companion", "Fia's Quest", "Crosses D and Rogier (Deathroot/Godwyn)", steps_fia, 5, false,
@@ -385,12 +392,14 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Millicent", "Millicent's Quest", "Started by Gowry (Scarlet Rot)", steps_millicent, 5, false,
      "Time/order-sensitive: needs Gowry's repaired needle, and her ending hinges on a late choice at the Haligtree."},
     {"Sage Gowry", "Gowry's Quest", "Starts Millicent's quest", steps_gowry, 3, false,
-     "Finish the needle repair before progressing Millicent too far, or her thread can stall."},
+     "Finish the needle repair before progressing Millicent too far, or her thread can stall.",
+     4163u, true},
     // Standalone-ish
     {"Rya", "Rya's Quest", "Leads into Volcano Manor (Tanith)", steps_rya, 3},
-    {"Boc the Seamster", "Boc's Quest", nullptr, steps_boc, 6},
+    {"Boc the Seamster", "Boc's Quest", nullptr, steps_boc, 6, false, nullptr, 3943u, true},
     {"Patches", "Patches' Quest", "Joins Volcano Manor (Tanith)", steps_patches, 5, false,
-     "Attacking or killing him at the wrong moment ends his merchant questline early."},
+     "Attacking or killing him at the wrong moment ends his merchant questline early.",
+     3683u, true},
     // fail_flag 3383 = Irina gone. MSB-confirmed: entity 1045340700 = "Irina of
     // Morne" (m60_45_34); 90005702 death handler + her quest resolver set 3383 ON.
     {"Irina", "Irina's Quest", "Crosses Edgar (Castle Morne)", steps_irina, 3, false,
@@ -426,7 +435,7 @@ const NpcQuest QUEST_BROWSER[] = {
      "His outcome is tied to Diallos and to giving Alexander's Innards -- order matters across the three."},
     {"Latenna", "Latenna's Quest", "Albinauric / Haligtree path", steps_latenna, 4, false,
      "Needs the right Haligtree medallion half from Albus first."},
-    {"Sorcerer Thops", "Thops's Quest", nullptr, steps_thops, 4},
+    {"Sorcerer Thops", "Thops's Quest", nullptr, steps_thops, 4, false, nullptr, 3803u, true},
     // fail_flag 1051430800 = Gurranq dead (EMEVD 90005860 boss death handler,
     // entity 1051430800 at the Bestial Sanctum; flag id == entity id, persistent).
     {"Gurranq, Beast Clergyman", "Gurranq's Quest", "Deathroot deliveries", steps_gurranq, 4, false, nullptr, 1051430800u},
