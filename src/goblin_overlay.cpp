@@ -285,13 +285,39 @@ namespace
             if (ImGui::Checkbox("Show icons (master)", &icons_on))
                 goblin::ui::set_icons_enabled(icons_on);
 
-            // Per-section visibility.
-            ImGui::SeparatorText("Sections");
-            for (int i = 0; i < goblin::ui::section_count(); i++)
+            // Sections (coarse) + their categories (fine). A row shows only if
+            // both its section and its category are enabled.
+            ImGui::SeparatorText("Sections & categories");
+            for (int s = 0; s < goblin::ui::section_count(); s++)
             {
-                bool vis = goblin::ui::section_visible(i);
-                if (ImGui::Checkbox(goblin::ui::section_label(i), &vis))
-                    goblin::ui::set_section_visible(i, vis);
+                if (!ImGui::TreeNode(goblin::ui::section_label(s)))
+                    continue;
+
+                bool sv = goblin::ui::section_visible(s);
+                if (ImGui::Checkbox("(whole section)", &sv))
+                    goblin::ui::set_section_visible(s, sv);
+
+                ImGui::PushID(s);
+                if (ImGui::SmallButton("All"))
+                    for (int c = 0; c < goblin::ui::category_count(); c++)
+                        if (goblin::ui::category_section(c) == s)
+                            goblin::ui::set_category_visible(c, true);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("None"))
+                    for (int c = 0; c < goblin::ui::category_count(); c++)
+                        if (goblin::ui::category_section(c) == s)
+                            goblin::ui::set_category_visible(c, false);
+                ImGui::PopID();
+                ImGui::Separator();
+
+                for (int c = 0; c < goblin::ui::category_count(); c++)
+                {
+                    if (goblin::ui::category_section(c) != s) continue;
+                    bool cv = goblin::ui::category_visible(c);
+                    if (ImGui::Checkbox(goblin::ui::category_label(c), &cv))
+                        goblin::ui::set_category_visible(c, cv);
+                }
+                ImGui::TreePop();
             }
 
             // Clustering (only on builds that ship cluster data).

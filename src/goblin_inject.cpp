@@ -267,12 +267,18 @@ struct SectionRow
 {
     uint8_t *ptr;       // → row data in the live expanded blob
     Section  sec;
+    Category cat;       // fine-grained gate (the 63 show_* categories)
     uint8_t  orig_area; // areaNo to restore on show
     bool     is_piece;
     bool     is_kindling;
     uint64_t row_id;
 };
 static std::vector<SectionRow> g_section_rows;
+
+// Number of marker categories (enum has no COUNT sentinel; keep in sync).
+static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldInteractables) + 1;
+static std::atomic<bool> g_category_visible[NUM_CATEGORIES];
+static std::atomic<bool> g_category_dirty[NUM_CATEGORIES];  // set by menu, applied by watcher
 
 // Coordination for the multiple areaNo owners. Section visibility, fragment-
 // eviction and collected-eviction all write WORLD_MAP_POINT_PARAM_ST.areaNo
@@ -283,13 +289,14 @@ static std::vector<SectionRow> g_section_rows;
 // at 99. Guarded by a mutex (apply runs on the watcher thread, restores on the
 // refresh-loop thread).
 static std::mutex g_section_hidden_mtx;
-static std::set<uint8_t *> g_section_hidden_ptrs;
+static std::set<uint8_t *> g_section_hidden_ptrs;    // hidden by a section toggle
+static std::set<uint8_t *> g_category_hidden_ptrs;   // hidden by a category toggle
 
 bool goblin::is_section_hidden_ptr(const void *param_data)
 {
+    auto *p = reinterpret_cast<uint8_t *>(const_cast<void *>(param_data));
     std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
-    return g_section_hidden_ptrs.count(
-               reinterpret_cast<uint8_t *>(const_cast<void *>(param_data))) != 0;
+    return g_section_hidden_ptrs.count(p) != 0 || g_category_hidden_ptrs.count(p) != 0;
 }
 
 // Show/hide every injected row of one section in place. Hide = areaNo 99;
@@ -310,8 +317,9 @@ static void apply_section_visibility(Section s, bool visible)
         }
         else
         {
-            g_section_hidden_ptrs.erase(r.ptr);   // release: other owners may show it
+            g_section_hidden_ptrs.erase(r.ptr);   // release this owner
             bool keep_hidden =
+                g_category_hidden_ptrs.count(r.ptr) ||   // category still hides it
                 (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
                 (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
             *area = keep_hidden ? 99 : r.orig_area;
@@ -320,6 +328,37 @@ static void apply_section_visibility(Section s, bool visible)
     }
     spdlog::info("[SECTION] {} -> {} ({} rows)",
                  section_name(s), visible ? "SHOWN" : "HIDDEN", touched);
+}
+
+// Per-category visibility — the fine-grained twin of apply_section_visibility.
+// Same areaNo park/restore + two-set coordination so a category hide survives
+// the fragment/collected restore paths and doesn't fight a section toggle.
+static void apply_category_visibility(Category c, bool visible)
+{
+    int touched = 0;
+    std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
+    for (const auto &r : g_section_rows)
+    {
+        if (r.cat != c) continue;
+        uint8_t *area = r.ptr + 0x20;
+        if (!visible)
+        {
+            *area = 99;
+            g_category_hidden_ptrs.insert(r.ptr);
+        }
+        else
+        {
+            g_category_hidden_ptrs.erase(r.ptr);
+            bool keep_hidden =
+                g_section_hidden_ptrs.count(r.ptr) ||   // section still hides it
+                (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
+                (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
+            *area = keep_hidden ? 99 : r.orig_area;
+        }
+        touched++;
+    }
+    spdlog::info("[CATEGORY] {} -> {} ({} rows)",
+                 goblin::markers::category_name(c), visible ? "SHOWN" : "HIDDEN", touched);
 }
 
 // ─── Marker clustering (v1, density-triggered, static) ───────────────
@@ -771,12 +810,13 @@ void goblin::inject_map_entries()
             }
         }
 
+        // (park-all) Inject EVERY category's rows. Disabled ones are parked
+        // (areaNo 99 = off-page = free at map-open) at init and stay live-
+        // toggleable from the menu. Store gate_cat (the effective, live-loot-
+        // adjusted category) so the registry/parking/menu all agree.
         if (!is_category_enabled(gate_cat))
-        {
-            skipped_by_config++;
-            continue;
-        }
-        entries.push_back({0, e.row_id, &e.data, is_piece, is_kindling, e.category, lotId, lotType});
+            skipped_by_config++;   // now "injected but born-hidden"
+        entries.push_back({0, e.row_id, &e.data, is_piece, is_kindling, gate_cat, lotId, lotType});
     }
     } // map.inject.filter
 
@@ -1177,6 +1217,7 @@ void goblin::inject_map_entries()
         if (all_rows[i].original_row_id && !is_clustered_member)
         {
             g_section_rows.push_back({cp, section_of(all_rows[i].category),
+                                      all_rows[i].category,
                                       cp[0x20], all_rows[i].is_piece,
                                       all_rows[i].is_kindling,
                                       static_cast<uint64_t>(all_rows[i].row_id)});
@@ -1268,6 +1309,25 @@ void goblin::inject_map_entries()
     }
     spdlog::info("[SECTION] registered {} toggleable rows across {} sections",
                  g_section_rows.size(), SECTION_COUNT);
+
+    // Seed per-category runtime gates from config (park-all): every category is
+    // now injected; the ones disabled in config start parked (areaNo 99) but
+    // stay live-toggleable from the menu. Default-enabled categories are a no-op.
+    {
+        int born_hidden = 0;
+        for (int c = 0; c < NUM_CATEGORIES; c++)
+        {
+            bool on = is_category_enabled(static_cast<Category>(c));
+            g_category_visible[c].store(on);
+            if (!on)
+            {
+                apply_category_visibility(static_cast<Category>(c), false);
+                born_hidden++;
+            }
+        }
+        spdlog::info("[CATEGORY] seeded {} categories ({} parked at init)",
+                     NUM_CATEGORIES, born_hidden);
+    }
 
     if (goblin::config::enableClustering)
         spdlog::info("[CLUSTER] active: {} cluster icons, {} markers parked (collapsed)",
@@ -1774,6 +1834,33 @@ void goblin::ui::set_section_visible(int idx, bool visible)
 bool goblin::ui::icons_enabled() { return !g_icons_user_disabled.load(); }
 void goblin::ui::set_icons_enabled(bool on) { g_icons_user_disabled.store(!on); }
 
+int goblin::ui::category_count() { return NUM_CATEGORIES; }
+
+const char *goblin::ui::category_label(int idx)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return "";
+    return goblin::markers::category_name(static_cast<Category>(idx));
+}
+
+int goblin::ui::category_section(int idx)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return -1;
+    return static_cast<int>(section_of(static_cast<Category>(idx)));
+}
+
+bool goblin::ui::category_visible(int idx)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return false;
+    return g_category_visible[idx].load();
+}
+
+void goblin::ui::set_category_visible(int idx, bool visible)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return;
+    g_category_visible[idx].store(visible);
+    g_category_dirty[idx].store(true);  // watcher applies the areaNo park/restore
+}
+
 bool goblin::ui::clustering_available() { return goblin::config::enableClustering; }
 
 bool goblin::ui::clusters_expanded() { return g_clusters_expanded.load(); }
@@ -2143,6 +2230,15 @@ void goblin::menu_auto_toggle_loop()
         int treq = g_section_toast_req.exchange(0);
         if (treq)
             goblin::show_codex_toast(treq);
+
+        // Per-category toggle requests posted by the overlay menu. Applied here
+        // (single owner of game-state mutation). Scans dirty flags so a "toggle
+        // whole section" that flips many at once all land. Persistence to INI is
+        // the Save button's job (P3c) — this just applies live.
+        for (int c = 0; c < NUM_CATEGORIES; c++)
+            if (g_category_dirty[c].exchange(false))
+                apply_category_visibility(static_cast<Category>(c),
+                                          g_category_visible[c].load());
 
         // Cluster expand/collapse + debug-label flips (areaNo / textId on the live
         // blob). Applied here, the single owner of game-state mutation.

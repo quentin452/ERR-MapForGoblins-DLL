@@ -134,6 +134,14 @@ namespace goblin
         bool icons_enabled();              // master on/off (inverse of user-disabled)
         void set_icons_enabled(bool on);
 
+        // The 63 fine-grained marker categories (live park-all). category_section
+        // returns the section index the category belongs to (for grouping in UI).
+        int category_count();
+        const char *category_label(int idx);
+        int category_section(int idx);
+        bool category_visible(int idx);
+        void set_category_visible(int idx, bool visible);
+
         bool clustering_available();       // false on builds without clustering data
         bool clusters_expanded();
         void set_clusters_expanded(bool expanded);
