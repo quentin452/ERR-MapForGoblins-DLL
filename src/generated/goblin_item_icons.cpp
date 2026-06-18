@@ -8,6 +8,7 @@ namespace goblin::generated
 
 const uint16_t ANON_ICON_ID = 441u;
 const uint16_t CLUSTER_ICON_ID = 442u;
+const uint16_t CLUSTER_DONE_ICON_ID = 444u;
 
 const size_t ITEM_ICON_COUNT = 1818;
 

@@ -395,9 +395,11 @@ def generate_item_icons_cpp(output_path):
     # places the frame at 0-indexed position 440(+offset); that 0-indexed position
     # is 1-based iconId 441(+offset) in-game — the +1 is this off-by-one.
     anon_icon_id = 441 + off
-    # The cluster glyph (build_vanilla_gfx appends it one frame past the "?"),
-    # so it's always ANON_ICON_ID + 1 and inherits the same per-profile offset.
+    # Appended frames after the "?" (build_vanilla_gfx), each inheriting the same
+    # per-profile offset: cluster = anon+1 (442), quest-NPC = anon+2 (443, no DLL
+    # const — its iconId is baked into the MASSEDIT), cluster-depleted = anon+3 (444).
     cluster_icon_id = anon_icon_id + 1
+    cluster_done_icon_id = anon_icon_id + 3
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("// AUTO-GENERATED FILE - DO NOT EDIT\n")
@@ -405,7 +407,8 @@ def generate_item_icons_cpp(output_path):
         f.write('#include "goblin_item_icons.hpp"\n\n')
         f.write("namespace goblin::generated\n{\n\n")
         f.write(f"const uint16_t ANON_ICON_ID = {anon_icon_id}u;\n")
-        f.write(f"const uint16_t CLUSTER_ICON_ID = {cluster_icon_id}u;\n\n")
+        f.write(f"const uint16_t CLUSTER_ICON_ID = {cluster_icon_id}u;\n")
+        f.write(f"const uint16_t CLUSTER_DONE_ICON_ID = {cluster_done_icon_id}u;\n\n")
         f.write(f"const size_t ITEM_ICON_COUNT = {len(table)};\n\n")
         f.write("const ItemIcon ITEM_ICONS[] = {\n")
         for key in sorted(table.keys()):
