@@ -13,10 +13,13 @@ struct QuestStep { const char *title; const char *desc; const char *zone; };
 // Kenneth's quest", "Part of Ranni's questline") or null. steps==null / count==0
 // means the entry is a PLACEHOLDER not yet authored.
 // `dlc` flags a Shadow of the Erdtree questline (default false = base game);
-// the overlay groups the browser by it. Trailing default-init member so only
-// DLC entries need to set it in the table.
+// the overlay groups the browser by it. `warning` is an optional order-sensitive
+// / missable note (e.g. "doing X before Y loses progress"): when set, the overlay
+// tints the questline amber + a "(!)" marker and shows the note. Both are trailing
+// default-init members so only the entries that need them set them in the table.
 struct NpcQuest { const char *name; const char *quest_title; const char *related;
-                  const QuestStep *steps; size_t step_count; bool dlc = false; };
+                  const QuestStep *steps; size_t step_count; bool dlc = false;
+                  const char *warning = nullptr; };
 
 extern const NpcQuest QUEST_BROWSER[];
 extern const size_t QUEST_BROWSER_COUNT;

@@ -498,6 +498,9 @@ namespace
                 {
                     ImGui::TextDisabled("Steps in order; location named per line.");
                     ImGui::TextDisabled("Based on vanilla quests; modded profiles (ERR/Convergence/...) may differ.");
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.78f, 0.35f, 1.0f));
+                    ImGui::TextWrapped("(!) = order-sensitive / missable -- read its note before doing other quests.");
+                    ImGui::PopStyleColor();
                     static char filter[64] = "";
                     ImGui::SetNextItemWidth(-1.0f);
                     ImGui::InputTextWithHint("##questfilter", "filter by NPC name...",
@@ -573,9 +576,24 @@ namespace
                         int done = 0;
                         for (size_t s = 0; s < q.step_count; s++)
                             if (qp_get(q.name, s)) done++;
-                        if (ImGui::TreeNode((void *)(intptr_t)id, "%s  (%d/%zu)", q.name,
-                                            done, q.step_count))
+                        // Amber tint + "(!)" marker on order-sensitive / missable
+                        // questlines so the player sees the risk before starting it.
+                        bool warn = q.warning && q.warning[0];
+                        if (warn)
+                            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.78f, 0.35f, 1.0f));
+                        bool open = ImGui::TreeNode((void *)(intptr_t)id, "%s  (%d/%zu)%s",
+                                                    q.name, done, q.step_count,
+                                                    warn ? "  (!)" : "");
+                        if (warn)
+                            ImGui::PopStyleColor();
+                        if (open)
                         {
+                            if (warn)
+                            {
+                                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.66f, 0.28f, 1.0f));
+                                ImGui::TextWrapped("(!) %s", q.warning);
+                                ImGui::PopStyleColor();
+                            }
                             if (q.related)
                             {
                                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.8f, 1.0f, 1.0f));
