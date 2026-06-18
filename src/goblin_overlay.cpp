@@ -471,6 +471,7 @@ namespace
                 if (ImGui::TreeNode(hdr))
                 {
                     ImGui::TextDisabled("Steps in order; location named per line. [TODO] = not written yet.");
+                    ImGui::TextDisabled("Based on vanilla quests; modded profiles (ERR/Convergence/...) may differ.");
                     static char filter[64] = "";
                     ImGui::SetNextItemWidth(-1.0f);
                     ImGui::InputTextWithHint("##questfilter", "filter by NPC name...",
