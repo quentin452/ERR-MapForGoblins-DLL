@@ -2287,8 +2287,8 @@ void goblin::menu_auto_toggle_loop()
         bool user_disabled_now = g_icons_user_disabled.load();
         if (user_disabled_now != prev_user_disabled)
         {
-            show_toggle_banner(!user_disabled_now);
-            apply_master_visibility(!user_disabled_now);  // live areaNo park (instant)
+            apply_master_visibility(!user_disabled_now);  // hide first (instant areaNo park)
+            show_toggle_banner(!user_disabled_now);       // banner after (off the hot path)
             prev_user_disabled = user_disabled_now;
         }
 
