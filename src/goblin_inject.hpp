@@ -142,6 +142,10 @@ namespace goblin
         bool category_visible(int idx);
         void set_category_visible(int idx, bool visible);
 
+        // Persist the current section/category visibility to the ini (the menu's
+        // Save button). Posts a request; the watcher thread does the file I/O.
+        void request_save();
+
         bool clustering_available();       // false on builds without clustering data
         bool clusters_expanded();
         void set_clusters_expanded(bool expanded);

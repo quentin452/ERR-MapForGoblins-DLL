@@ -286,6 +286,35 @@ uint32_t goblin::parse_vk_code(std::string name)
     return 0;
 }
 
+void goblin::save_all_bool_settings(const std::filesystem::path &ini_path)
+{
+    mINI::INIFile file(ini_path.string());
+    mINI::INIStructure ini;
+    file.read(ini);  // preserve comments / key order / non-bool entries
+
+    // Write every Bool config var's CURRENT value back to its ini key (the menu
+    // syncs runtime visibility into these vars before calling this). Non-bool
+    // entries (keys, delays) are left as the file already has them.
+    for (const auto &section : goblin::ini_schema())
+    {
+        if (section.err_only && goblin::profile_is_vanilla())
+            continue;
+        for (const auto &e : section.entries)
+        {
+            if (e.type != goblin::IniType::Bool || e.target == nullptr)
+                continue;
+            if (e.err_only && goblin::profile_is_vanilla())
+                continue;
+            ini[section.name][e.key] = *reinterpret_cast<bool *>(e.target) ? "true" : "false";
+        }
+    }
+
+    if (!file.write(ini))
+        spdlog::warn("Config: failed to persist settings to {}", ini_path.string());
+    else
+        spdlog::info("Config: saved settings to {}", ini_path.string());
+}
+
 void goblin::save_section_states(const std::filesystem::path &ini_path)
 {
     mINI::INIFile file(ini_path.string());

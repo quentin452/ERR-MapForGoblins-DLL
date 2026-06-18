@@ -17,6 +17,11 @@ namespace goblin
     // changes a group's visibility so the choice survives relaunch.
     void save_section_states(const std::filesystem::path &ini_path);
 
+    // Persist EVERY bool config var (sections + the 63 categories + other
+    // toggles) to the ini, preserving the rest of the file. The menu's Save
+    // button calls this after syncing runtime visibility into the config vars.
+    void save_all_bool_settings(const std::filesystem::path &ini_path);
+
     // The ini path last passed to load_config(), for code (e.g. the in-game
     // section toggle) that needs to persist back without threading the path.
     const std::filesystem::path &config_ini_path();

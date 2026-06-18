@@ -358,10 +358,13 @@ namespace
             ImGui::TextDisabled("F1 close | %.0f fps", io.Framerate);
             ImGui::Separator();
 
-            // Master on/off.
+            // Master on/off + Save.
             bool icons_on = goblin::ui::icons_enabled();
             if (ImGui::Checkbox("Show icons (master)", &icons_on))
                 goblin::ui::set_icons_enabled(icons_on);
+            ImGui::SameLine();
+            if (ImGui::Button("Save to INI"))
+                goblin::ui::request_save();
 
             // Sections (coarse) + their categories (fine). A row shows only if
             // both its section and its category are enabled.
