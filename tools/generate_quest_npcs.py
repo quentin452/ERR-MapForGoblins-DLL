@@ -47,19 +47,33 @@ import SoulsFormats
 from massedit_common import (OUT_DIR, OVERWORLD_AREAS, DLC_AREAS,
                              get_disp_mask, resolve_location_id_at)
 
-# ── TUNABLE: friendly / quest-NPC teamTypes (verify via --inspect) ───────────
-# Best-guess defaults; MUST be confirmed against NpcParam data on Windows.
-# Invader teamTypes {24,27} are handled by generate_hostile_npcs.py and are
-# intentionally NOT here.
-FRIENDLY_TEAM_TYPES = {1, 2, 6, 7, 8}
+# ── friendly / quest-NPC teamTypes (tuned via --inspect on ERR data) ─────────
+# teamType is the placement's COMBAT state, not a per-character trait: one quest
+# NPC has placements across several teams (friendly phase, turns-hostile phase,
+# invades-you phase). So no team is purely friendly. These four are the ones
+# DOMINATED by named merchants + questline NPCs (Gideon, Twin Maiden Husks, Hewg,
+# Nomadic/Hermit/Isolated Merchants, Leda, Ansbach, Roderika, Blaidd, …). The
+# enemy/boss/invader-dominated teams (6=field bosses/mimics, 7=great-enemy bosses,
+# 27/24=invaders, 48/33/9/52=misc enemies) are intentionally excluded. Residual
+# enemy leakage in these four is minor and tolerable for v1.
+FRIENDLY_TEAM_TYPES = {0, 1, 2, 26}
 
-# Worldmap icon sprite for the quest-NPC family. 370=grace, 374=hostile NPC.
-# TODO(visual): pick a distinct friendly/quest icon from the worldmap atlas and
-# confirm in-game; 374 is a safe-renders placeholder so the layer is visible.
-ICON_ID = 374
+# Non-character models to drop: c1000 is the menu/system object model (685 "Menu"
+# rows + "Altar of Anticipation"/"Spirit Monument"/"Trial of Recollection"/… map-
+# event objects, all in team 0). They carry an NpcName but are NOT NPCs you
+# navigate to, so they'd spam bogus markers. Real NPCs/merchants never use c1000.
+EXCLUDE_MODELS = {'c1000'}
+
+# Worldmap icon for the quest-NPC family — a dedicated friendly glyph synthesised
+# by build_vanilla_gfx (3rd appended frame, after anon=441 + cluster=442). The
+# quest-NPC layer is ERR-only (offset 0), so iconId = 443 directly.
+ICON_ID = 443
 
 asm = Assembly.LoadFrom(str(config.SOULSFORMATS_DLL))
 _str_type = SysType.GetType('System.String')
+_param_read = asm.GetType('SoulsFormats.PARAM').GetMethod('Read',
+    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy,
+    None, Array[SysType]([_str_type]), None)
 _msbe_read = asm.GetType('SoulsFormats.MSBE').GetMethod('Read',
     BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy,
     None, Array[SysType]([_str_type]), None)
@@ -82,9 +96,12 @@ def read_param(bnd, name, paramdefs):
         if name in str(f.Name):
             tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_qnp_p.tmp')
             from System.IO import File as SysFile
-            SysFile.WriteAllBytes(tmp, f.Bytes)
-            p = SoulsFormats.PARAM.Read(tmp)
-            p.ApplyParamdef(paramdefs[name])
+            SysFile.WriteAllBytes(tmp, f.Bytes.ToArray())
+            p = _param_read.Invoke(None, Array[Object]([tmp]))
+            os.unlink(tmp)
+            pt = str(p.ParamType) if p.ParamType else ''
+            if pt in paramdefs:
+                p.ApplyParamdef(paramdefs[pt])
             return p
     raise KeyError(name)
 
@@ -177,6 +194,9 @@ def main():
             entity = int(getattr(e, 'EntityID', 0) or 0)
             if entity <= 0:
                 continue
+            model = str(e.ModelName) if hasattr(e, 'ModelName') else ''
+            if model in EXCLUDE_MODELS:   # drop c1000 menu/system objects
+                continue
             _team, name_id = npc_info.get(npc, (None, None))
             pos = e.Position
             area, gx, gz = map_to_area(map_name)
@@ -199,7 +219,11 @@ def main():
     records.sort(key=lambda r: (r['area'], r['gx'], r['gz'], r['x'], r['z']))
 
     lines = []
-    row_id = 9300000
+    # WorldMapPointParam row-id base. Must NOT collide with other layers:
+    # loot 9000000/9100000, hostile-NPC 9200000, hero-tomb-statues 9300000.
+    # (9300000 was the original value and clobbered all 16 hero-tomb rows at bake
+    # time — generate_data keys rows by id, last writer wins.) 9400000 is free.
+    row_id = 9400000
     named = 0
     for r in records:
         disp = get_disp_mask(r['area'])
