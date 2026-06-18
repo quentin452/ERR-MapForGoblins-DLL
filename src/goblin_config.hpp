@@ -33,6 +33,7 @@ namespace goblin
         extern bool debugLogging;
         extern bool showAll;  // master switch: show every category (see
                               // is_category_enabled) except those listed below
+        extern bool iconsHidden;  // persisted master off (menu 'Show icons' / F10)
         extern std::string showAllExcept;  // comma-separated category names to
                               // keep hidden even when showAll is on (matched
                               // loosely against the category display name)

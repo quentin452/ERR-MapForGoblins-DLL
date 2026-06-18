@@ -146,7 +146,9 @@ namespace goblin
         // Save button). Posts a request; the watcher thread does the file I/O.
         void request_save();
 
-        bool clustering_available();       // false on builds without clustering data
+        bool clustering_active();          // clusters built this session (live controls valid)
+        bool clustering_enabled();         // config flag (what a restart would use)
+        void set_clustering_enabled(bool on);  // takes effect after Save + restart
         bool clusters_expanded();
         void set_clusters_expanded(bool expanded);
         bool cluster_debug();

@@ -401,10 +401,14 @@ namespace
                 ImGui::TreePop();
             }
 
-            // Clustering (only on builds that ship cluster data).
-            if (goblin::ui::clustering_available())
+            // Clustering. Enable is a restart-time decision (clusters are built
+            // at inject); expand/labels only apply when clusters exist this run.
+            ImGui::SeparatorText("Clustering");
+            bool cen = goblin::ui::clustering_enabled();
+            if (ImGui::Checkbox("Enable clustering (Save + restart)", &cen))
+                goblin::ui::set_clustering_enabled(cen);
+            if (goblin::ui::clustering_active())
             {
-                ImGui::SeparatorText("Clustering");
                 bool expanded = goblin::ui::clusters_expanded();
                 if (ImGui::Checkbox("Expand clusters (show members)", &expanded))
                     goblin::ui::set_clusters_expanded(expanded);
@@ -412,6 +416,8 @@ namespace
                 if (ImGui::Checkbox("Cluster labels show counts", &dbg))
                     goblin::ui::set_cluster_debug(dbg);
             }
+            else
+                ImGui::TextDisabled("Save + restart to activate.");
             ImGui::End();
         }
     }

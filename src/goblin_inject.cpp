@@ -393,6 +393,7 @@ static std::atomic<bool> g_cluster_debug{true};       // true = cluster labels s
 // owner of game-state mutation), mirroring the section + master toggles.
 static std::atomic<bool> g_cluster_expand_dirty{false};
 static std::atomic<bool> g_cluster_debug_dirty{false};
+static bool g_clustering_active = false;  // clusters built this session
 
 // Collapsed: clusters visible (real area), members parked (99).
 // Expanded: clusters parked (99), members restored — the slow, see-everything view.
@@ -836,6 +837,7 @@ void goblin::inject_map_entries()
     std::vector<int> cluster_count_textid;            // parallel: its label id
     if (goblin::config::enableClustering)
     {
+        g_clustering_active = true;  // clusters built this session
         GOBLIN_BENCH("map.inject.cluster_plan");
         struct Bucket { std::vector<size_t> members; double sx = 0, sz = 0; float py = 0;
                         uint8_t area = 0, gx = 0, gz = 0; Category cat{}; };
@@ -1332,6 +1334,9 @@ void goblin::inject_map_entries()
         spdlog::info("[CATEGORY] seeded {} categories ({} parked at init)",
                      NUM_CATEGORIES, born_hidden);
     }
+
+    // Seed the master on/off from the persisted config (menu 'Show icons' / F10).
+    g_icons_user_disabled.store(goblin::config::iconsHidden);
 
     if (goblin::config::enableClustering)
         spdlog::info("[CLUSTER] active: {} cluster icons, {} markers parked (collapsed)",
@@ -1887,10 +1892,15 @@ static void persist_settings()
         if (bool *p = category_config_ptr(static_cast<Category>(c)))
             *p = g_category_visible[c].load();
 
+    // Persist the master on/off so it survives a restart.
+    goblin::config::iconsHidden = g_icons_user_disabled.load();
+
     goblin::save_all_bool_settings(goblin::config_ini_path());
 }
 
-bool goblin::ui::clustering_available() { return goblin::config::enableClustering; }
+bool goblin::ui::clustering_active() { return g_clustering_active; }
+bool goblin::ui::clustering_enabled() { return goblin::config::enableClustering; }
+void goblin::ui::set_clustering_enabled(bool on) { goblin::config::enableClustering = on; }
 
 bool goblin::ui::clusters_expanded() { return g_clusters_expanded.load(); }
 void goblin::ui::set_clusters_expanded(bool expanded)
