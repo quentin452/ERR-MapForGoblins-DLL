@@ -348,8 +348,13 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Iji", "Iji's Quest", "Part of Ranni's questline", steps_iji, 3, false,
      "Siding with Seluvis's puppet scheme, or angering Ranni's enemies, can get Iji killed.",
      1042600001u},
+    // fail_flag 1034509302 = Seluvis dead (= seluvis_q99 "quest concluded" in the
+    // QuestLog, his own 1034509* namespace). Isolated by intersecting TWO far
+    // Seluvis-dead saves (Caelid + Morne) with the in-game kill-window capture;
+    // verified persistent (true at both far spots) + clean (false while alive).
     {"Seluvis", "Seluvis's Quest", "Part of Ranni's questline; crosses Nepheli", steps_seluvis, 4, false,
-     "Using his puppet potion on Nepheli permanently ends HER questline -- warn her instead to keep both."},
+     "Using his puppet potion on Nepheli permanently ends HER questline -- warn her instead to keep both.",
+     1034509302u},
     // Sellen
     {"Sorceress Sellen", "Sellen's Quest", "Crosses Jerren, Lusat/Azur", steps_sellen, 5, false,
      "Her finale forces an exclusive side (Sellen vs Jerren); pick knowing the other is lost."},
