@@ -456,6 +456,29 @@ namespace
                 if (ImGui::Checkbox("Enable clustering (Save + restart to build)", &cen))
                     goblin::ui::set_clustering_enabled(cen);
             }
+
+            // Dev/debug observers. Each installs a hook or starts a worker thread
+            // ONCE at startup based on its config flag (dllmain setup), so these
+            // are restart-required: flip + Save, then relaunch. save_all_bool_settings
+            // persists every config bool, so no per-flag plumbing is needed.
+            ImGui::SeparatorText("Debug");
+            if (ImGui::TreeNode("Dev tools (Save + restart)"))
+            {
+                ImGui::Checkbox("Event-flag hook (coverage-gap detector)",
+                                &goblin::config::debugEventFlags);
+                ImGui::Checkbox("Item-grant hook (coverage-gap detector)",
+                                &goblin::config::debugItemGrants);
+                ImGui::Checkbox("World-map cursor probe (logs cursor coords)",
+                                &goblin::config::debugWorldmapProbe);
+                ImGui::Checkbox("Marker-dump hotkey (F9 → markers log)",
+                                &goblin::config::enableMarkerDump);
+                ImGui::Checkbox("Verbose logging (addresses, param internals)",
+                                &goblin::config::debugLogging);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("These take effect after Save + a game restart — each\n"
+                                      "installs its hook/worker once at startup.");
+                ImGui::TreePop();
+            }
             ImGui::End();
         }
     }
