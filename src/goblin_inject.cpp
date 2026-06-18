@@ -888,6 +888,21 @@ void goblin::inject_map_entries()
             {
                 int cnt = static_cast<int>(b.members.size());
                 std::string region = goblin::cluster_region_label(b.area, b.gx, b.gz);
+                if (region.empty())
+                {
+                    // Projected tile maps to no fragment region (Haligtree, the
+                    // underground, Leyndell-legacy…) → name by the dominant member
+                    // ORIGINAL area (pre-projection data here, projection runs later).
+                    std::unordered_map<int, int> acount;
+                    int best = -1, bestc = 0;
+                    for (size_t mi : b.members)
+                    {
+                        int a = entries[mi].data->areaNo;
+                        int c = ++acount[a];
+                        if (c > bestc) { bestc = c; best = a; }
+                    }
+                    region = goblin::area_region_label(best);
+                }
                 std::string label = region.empty()
                     ? std::to_string(cnt)
                     : region + " (" + std::to_string(cnt) + ")";

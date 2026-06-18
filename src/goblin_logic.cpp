@@ -81,6 +81,22 @@ std::string goblin::cluster_region_label(int area, int gx, int gz)
     }
 }
 
+// Fallback name by ORIGINAL area (the big areas a projected cluster comes from).
+// Conservative: only areas we're confident about — a wrong name is worse than a
+// bare count, so unknown → "".
+std::string goblin::area_region_label(int area)
+{
+    switch (area)
+    {
+    case 10: return "Stormveil Castle";
+    case 11: return "Leyndell, Royal Capital";
+    case 12: return "Underground";              // Siofra/Ainsel/Nokron/Deeproot (Eternal Cities)
+    case 15: return "Haligtree";                // Elphael / Miquella's Haligtree
+    case 35: return "Leyndell, Ashen Capital";
+    default: return "";
+    }
+}
+
 static void SetSecondaryFlags(from::paramdef::WORLD_MAP_POINT_PARAM_ST &row, int flagId)
 {
     row.textEnableFlag2Id1 = flagId;
