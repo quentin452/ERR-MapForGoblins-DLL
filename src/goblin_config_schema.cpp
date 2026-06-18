@@ -67,6 +67,7 @@ namespace goblin::config
     std::string clusterExclude = "";  // category names kept exact (never clustered)
     std::string clusterThresholdOverrides = "";  // "Name:N" per-category threshold overrides
     bool questNpcQuestAware = false;  // gate quest-NPC markers on quest-active flags
+    std::string questProgress = "";   // Quest Browser per-step done bits ('0'/'1')
 }
 
 // ── schema ───────────────────────────────────────────────────────────────
@@ -117,6 +118,10 @@ namespace
                          "Key that opens/closes the in-game overlay menu. Default: F1.\n"
                          "Key names: F1-F24, A-Z, 0-9, Space, Escape, Tab, Enter, Home, End,\n"
                          "PageUp, PageDown, Insert, Delete, arrows.", false, nullptr},
+                IniEntry{"quest_progress", IniType::String, &cfg::questProgress, "",
+                         "Quest Browser per-step checkmarks (one 0/1 per step, author order).\n"
+                         "Managed by the overlay's Quest Browser; saved when you Save.",
+                         false, nullptr},
             }},
 
             {"Display Sections",

@@ -483,15 +483,33 @@ namespace
                         for (const char *p = need; *p; ++p) n += (char)tolower(*p);
                         return h.find(n) != std::string::npos;
                     };
+                    // Per-step progress checkmarks live in config::questProgress
+                    // (one '0'/'1' per global step index, author order). Persisted
+                    // on Save. Toggle a step to track your run.
+                    std::string &qp = goblin::config::questProgress;
+                    auto qp_get = [&](size_t i) { return i < qp.size() && qp[i] == '1'; };
+                    auto qp_set = [&](size_t i, bool v) {
+                        if (i >= qp.size()) qp.resize(i + 1, '0');
+                        qp[i] = v ? '1' : '0';
+                    };
                     ImGui::BeginChild("questlist", ImVec2(0, 300), true);
+                    size_t gstep = 0;  // running global step index (must match author order)
                     for (size_t i = 0; i < total; i++)
                     {
                         const auto &q = goblin::generated::QUEST_BROWSER[i];
+                        size_t base = gstep;
+                        gstep += q.step_count;  // advance for ALL entries (stable index)
                         if (!contains_ci(q.name, filter)) continue;
+                        int done = 0;
+                        for (size_t s = 0; s < q.step_count; s++)
+                            if (qp_get(base + s)) done++;
                         ImGui::PushID((int)i);
-                        char label[160];
-                        snprintf(label, sizeof(label), "%s%s", q.name,
-                                 q.step_count ? "" : "  [TODO]");
+                        char label[180];
+                        if (!q.step_count)
+                            snprintf(label, sizeof(label), "%s  [TODO]", q.name);
+                        else
+                            snprintf(label, sizeof(label), "%s  (%d/%zu)", q.name, done,
+                                     q.step_count);
                         if (ImGui::TreeNode(label))
                         {
                             if (q.related)
@@ -504,7 +522,11 @@ namespace
                                 ImGui::TextDisabled("(steps not written yet)");
                             for (size_t s = 0; s < q.step_count; s++)
                             {
-                                ImGui::Bullet();
+                                ImGui::PushID((int)s);
+                                bool d = qp_get(base + s);
+                                if (ImGui::Checkbox("##done", &d))
+                                    qp_set(base + s, d);
+                                ImGui::SameLine();
                                 ImGui::TextWrapped("%zu. %s", s + 1, q.steps[s].title);
                                 ImGui::Indent();
                                 if (q.steps[s].desc && q.steps[s].desc[0])
@@ -517,13 +539,14 @@ namespace
                                 if (q.steps[s].zone && q.steps[s].zone[0])
                                     ImGui::TextDisabled("[%s]", q.steps[s].zone);
                                 ImGui::Unindent();
+                                ImGui::PopID();
                             }
                             ImGui::TreePop();
                         }
                         ImGui::PopID();
                     }
                     ImGui::EndChild();
-                    ImGui::TextDisabled("Quest facts hand-authored for this project (original text).");
+                    ImGui::TextDisabled("Tick steps to track progress; Save to keep it. Original text.");
                     ImGui::TreePop();
                 }
             }

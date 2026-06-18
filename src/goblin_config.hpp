@@ -122,6 +122,10 @@ namespace goblin
         // marker for one of the 34 curated questlines shows only while that quest is
         // active (its event flag set); off = all quest-NPC markers always shown.
         extern bool questNpcQuestAware;
+
+        // Quest Browser per-step progress: one '0'/'1' char per global step index
+        // (author order in goblin_quest_steps). Auto-grown; persisted on Save.
+        extern std::string questProgress;
     };
 
     uint32_t parse_vk_code(std::string name);
