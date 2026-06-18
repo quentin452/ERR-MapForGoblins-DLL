@@ -183,6 +183,12 @@ void flag_drain_loop()
     // CORRELATION_WINDOW_NS so a grant arriving slightly AFTER the flag is seen.
     std::vector<FlagEvt> pending;
     uint64_t last_dropped = 0;
+    // Suppression tallies (drain-thread-local). Logged as a throttled summary so
+    // burst/uncorrelated drops are VISIBLE without per-flag spam — proves the
+    // correlation filter is working vs simply nothing happening.
+    uint64_t sup_burst = 0, sup_uncorr = 0, reported = 0;
+    uint64_t last_sum_burst = 0, last_sum_uncorr = 0, last_sum_reported = 0;
+    int64_t last_summary_ns = now_ns();
 
     while (true)
     {
@@ -234,14 +240,36 @@ void flag_drain_loop()
                 if (o.t_ns >= e.t_ns - BURST_SPAN_NS && o.t_ns <= e.t_ns + BURST_SPAN_NS)
                     cluster++;
             if (cluster >= BURST_MIN)
+            {
+                sup_burst++;
                 continue;
+            }
             if (grant_within(e.t_ns, CORRELATION_WINDOW_NS))
+            {
+                reported++;
                 g_log->warn("UNKNOWN placed-item flag {} (cat {}) — collected item "
                             "with NO map marker; coverage gap candidate",
                             e.id, (e.id / 1000u) % 10u);
-            // else: collect-shaped flag with no nearby grant → script/region, ignore.
+            }
+            else
+                sup_uncorr++; // collect-shaped flag, no nearby grant → script/region
         }
         pending.swap(still);
+
+        // Throttled suppression summary (≥10 s apart, only when a tally moved) so
+        // the filter's work is provable from the log.
+        if (now - last_summary_ns >= 10'000'000'000 &&
+            (sup_burst != last_sum_burst || sup_uncorr != last_sum_uncorr ||
+             reported != last_sum_reported))
+        {
+            g_log->info("[correlation] reported {} gap candidate(s); suppressed {} "
+                        "burst-init + {} uncorrelated collectible flags",
+                        reported, sup_burst, sup_uncorr);
+            last_sum_burst = sup_burst;
+            last_sum_uncorr = sup_uncorr;
+            last_sum_reported = reported;
+            last_summary_ns = now;
+        }
 
         uint64_t dropped = g_dropped.load(std::memory_order_relaxed);
         if (dropped != last_dropped)
