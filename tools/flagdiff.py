@@ -31,11 +31,17 @@ the same way er-save-lib does (slot stride 0x280010 from the first slot).
 """
 import sys
 import argparse
+import re
+import subprocess
 
 REG_LEN = 0x1BF99F
-HEADER = 4 + 0x2FC          # magic + PC header -> slot 0 start (errflags HEADER)
-SLOT_SIZE = 0x280010
 BLOCK = 125
+# The per-character flag-region offset is NOT constant across saves — it shifts
+# as earlier data (inventory, etc.) grows (observed 0x3689D vs 0x36C0D for the
+# SAME character). The original bug hardcoded it and silently read wrong bytes ->
+# garbage flag ids on any save whose layout differed. We now ask er-save-lib's
+# errflags for the real offset per file.
+DEFAULT_ERRFLAGS = "/tmp/ER-Save-Lib/target/release/errflags"
 
 
 def load_bst(path):
@@ -47,12 +53,16 @@ def load_bst(path):
     return inv
 
 
-def region_off(char):
-    # Matches er-save-lib: slot `char` event-flags start. The +0x... within a
-    # slot is constant; errflags reported char0 @ 0x3689D, so derive the in-slot
-    # delta once and apply per slot.
-    in_slot = 0x3689D - HEADER             # event-flags delta inside slot 0
-    return HEADER + char * SLOT_SIZE + in_slot
+def region_off(save_path, errflags, char):
+    # Ask errflags for the real per-file offset of `char`'s event-flag region.
+    # errflags prints e.g.  "char[0] active name=... eventflags@0x36C0D".
+    out = subprocess.run([errflags, "get", save_path, "6001"],
+                         capture_output=True, text=True).stdout
+    offs = re.findall(r"eventflags@0x([0-9A-Fa-f]+)", out)
+    if char >= len(offs):
+        sys.exit(f"error: char {char} not active in {save_path} "
+                 f"(found {len(offs)} chars). Is errflags at --errflags correct?")
+    return int(offs[char], 16)
 
 
 def decode(inv, rb, k):
@@ -66,22 +76,45 @@ def decode(inv, rb, k):
     return blk * 1000 + idx
 
 
+def read_region(save_path, errflags, char):
+    off = region_off(save_path, errflags, char)
+    buf = open(save_path, "rb").read()[off:off + REG_LEN]
+    if len(buf) != REG_LEN:
+        sys.exit(f"error: {save_path} too short for char {char}")
+    return buf
+
+
+def set_flags(inv, buf, keep):
+    """All flag ids SET in this region buffer (filtered)."""
+    out = set()
+    for rb in range(REG_LEN):
+        if buf[rb] == 0:
+            continue
+        for k in range(8):
+            if buf[rb] & (1 << (7 - k)):
+                fid = decode(inv, rb, k)
+                if fid and keep(fid):
+                    out.add(fid)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("alive")
     ap.add_argument("dead")
     ap.add_argument("--bst", default="/tmp/ER-Save-Lib/src/res/eventflag_bst.txt")
+    ap.add_argument("--errflags", default=DEFAULT_ERRFLAGS,
+                    help="er-save-lib errflags binary (for per-file region offset)")
     ap.add_argument("--range", action="append", default=[])
     ap.add_argument("--char", type=int, default=0)
+    ap.add_argument("--monotonic", action="append", default=[],
+                    help="extra DEAD-state save(s); a flag is only reported if it is "
+                         "ALSO set in every one of these. Filters region/proximity "
+                         "flags that toggle false again when you leave the area — "
+                         "use 1-2 saves taken at different spots after the kill.")
     a = ap.parse_args()
 
     inv = load_bst(a.bst)
-    off = region_off(a.char)
-    A = open(a.alive, "rb").read()[off:off + REG_LEN]
-    B = open(a.dead, "rb").read()[off:off + REG_LEN]
-    if len(A) != REG_LEN or len(B) != REG_LEN:
-        sys.exit("error: save too short / wrong char slot / wrong layout")
-
     ranges = []
     for r in a.range:
         lo, hi = r.split("-")
@@ -90,30 +123,27 @@ def main():
     def keep(fid):
         return not ranges or any(lo <= fid <= hi for lo, hi in ranges)
 
-    newly, cleared = [], []
-    for rb in range(REG_LEN):
-        x, y = A[rb], B[rb]
-        if x == y:
-            continue
-        for k in range(8):
-            m = 1 << (7 - k)
-            fid = decode(inv, rb, k)
-            if not fid or not keep(fid):
-                continue
-            if (y & m) and not (x & m):
-                newly.append(fid)
-            elif (x & m) and not (y & m):
-                cleared.append(fid)
+    alive = set_flags(inv, read_region(a.alive, a.errflags, a.char), keep)
+    dead = set_flags(inv, read_region(a.dead, a.errflags, a.char), keep)
+    newly = dead - alive
+    cleared = alive - dead
 
-    print(f"newly SET (alive->dead): {len(newly)}")
+    # Monotonic filter: keep only flags also set in EVERY extra dead-state save.
+    for extra in a.monotonic:
+        s = set_flags(inv, read_region(extra, a.errflags, a.char), keep)
+        newly &= s
+
+    label = " (monotonic-filtered)" if a.monotonic else ""
+    print(f"newly SET (alive->dead){label}: {len(newly)}")
     for f in sorted(newly):
         print(f"  {f}")
-    print(f"newly CLEARED: {len(cleared)}")
-    for f in sorted(cleared):
-        print(f"  {f}")
-    if not ranges:
-        print("\ntip: re-run with --range 1042360000-1042369999 (the NPC's flag "
-              "block) to cut the noise; cross-check the pick with errflags get.")
+    if not a.monotonic:
+        print(f"newly CLEARED: {len(cleared)}")
+        for f in sorted(cleared):
+            print(f"  {f}")
+        print("\ntip: a real death flag is MONOTONIC. Re-run with --monotonic "
+              "<another-dead-save> (taken elsewhere) to drop region/proximity "
+              "flags that toggle off when you leave; cross-check with errflags get.")
 
 
 if __name__ == "__main__":
