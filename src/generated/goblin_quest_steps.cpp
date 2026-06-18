@@ -221,6 +221,115 @@ static const QuestStep steps_dungeater[] = {
     {"His choice", "Empower him (Mending Rune of the Fell Curse / Blessing of Despair) or hunt him down in the Shunning-Grounds.", "Leyndell (underground)"},
 };
 
+// ── base-game: Gideon & Vyke ─────────────────────────────────────────────
+static const QuestStep steps_gideon[] = {
+    {"Roundtable welcome", "Gideon Ofnir greets you coldly by the Table of Lost Grace when Melina first brings you to the Roundtable Hold, naming you a mere house guest.", "Roundtable Hold"},
+    {"Earn his regard", "Once you fell a Shardbearer and claim a Great Rune he treats you as a true member, sharing what he knows of the demigods ahead.", "Roundtable Hold"},
+    {"The All-Knowing", "As his information broker he comments on the threads of Nepheli, Dung Eater and others; advance those quests to draw out his dialog.", "Roundtable Hold"},
+    {"Sir Gideon", "He goes ahead to Leyndell and must be fought as a mandatory boss in the Ashen Capital, where his knowledge of every foe's weakness becomes his moveset.", "Leyndell (Ashen Capital)"},
+};
+static const QuestStep steps_vyke[] = {
+    {"Festering Fingerprint", "A maddened Vyke first attacks as a Bloody Finger invader on the climb to the Church of Inhibition in northeast Liurnia; his defeat drops Vyke's War Spear.", "Liurnia"},
+    {"Fanged Imp Ashes", "The invasion also rewards the Fanged Imp Ashes and pieces of his armor.", "Liurnia"},
+    {"Lord Contender's Evergaol", "His true self is sealed in the Lord Contender's Evergaol in the Mountaintops of the Giants; the duel yields his remaining gear.", "Mountaintops"},
+};
+
+// ── DLC: Leda's group (converges at Enir-Ilim) ───────────────────────────
+static const QuestStep steps_leda[] = {
+    {"Into the shadow", "After felling Mohg you touch Miquella's withered arm at the Mohgwyn cocoon; Leda meets you and you cross into the Land of Shadow.", "Gravesite Plain"},
+    {"On the trail", "She leaves messages and offers her summon through Belurat and Castle Ensis (aid for Rellana) as she chases Miquella.", "Scadu Altus"},
+    {"The charm breaks", "Entering Shadow Keep or crossing toward the village breaks Miquella's charm and turns her wary of the others.", "Shadow Keep"},
+    {"Hunting her own", "At Shadow Keep she calls you to help purge Hornsent, then Ansbach; pick a summon sign to side with her or spare them.", "Shadow Keep"},
+    {"Enir-Ilim", "She and whoever still follows Miquella ambush you in the multi-NPC battle below Enir-Ilim; her body holds Leda's Sword and armor.", "Enir-Ilim"},
+};
+static const QuestStep steps_hornsent[] = {
+    {"Three-Path Cross", "Meet the Hornsent at the Three-Path Cross in Gravesite Plain; he hands you a map of Miquella's crosses and speaks of his vengeance.", "Gravesite Plain"},
+    {"Highroad Cross", "He moves to the Highroad Cross once you reach Scadu Altus and gives an updated map.", "Scadu Altus"},
+    {"Shadow Keep stand", "After the rune breaks he confronts Leda at Shadow Keep; choose his gold sign to keep him alive, or Leda's to cut him down.", "Shadow Keep"},
+    {"Messmer's aid", "If spared he can be summoned against Messmer, then may invade near the Rauh ruins; rewards include the Falx and Hornsent set.", "Rauh Ruins"},
+    {"Enir-Ilim", "Should he survive, he joins the followers' battle at Enir-Ilim, where his gear is finally claimed.", "Enir-Ilim"},
+};
+static const QuestStep steps_freyja[] = {
+    {"Gravesite meeting", "Redmane Freyja, a former Radahn guard, greets you at the Three-Path Cross and speaks of Miquella's crosses.", "Gravesite Plain"},
+    {"Belurat summon", "She can be summoned against the Divine Beast Dancing Lion at Belurat, which opens up her past.", "Belurat"},
+    {"Storehouse", "After the charm breaks find her studying scripture on the Storehouse seventh floor; speak with Ansbach about her first.", "Shadow Keep"},
+    {"Ansbach's letter", "Carry Ansbach's letter to Freyja and exhaust her talk for the Golden Lion Shield.", "Shadow Keep"},
+    {"Enir-Ilim", "Committed to Miquella, she stands with Leda's group at Enir-Ilim; her body holds Freyja's Greatsword and set.", "Enir-Ilim"},
+};
+static const QuestStep steps_ansbach[] = {
+    {"Mohg's servant", "Sir Ansbach, once a servant of Mohg, introduces himself at the Main Gate Cross and asks you to seek Miquella's crosses.", "Gravesite Plain"},
+    {"Report the crosses", "Return after finding crosses (Belurat, Scaduview, Cerulean Coast) for more talk before the rune breaks.", "Gravesite Plain"},
+    {"Storehouse first floor", "Find him on the Storehouse first floor in Shadow Keep; speak with Freyja about her choice before him.", "Shadow Keep"},
+    {"Secret Rite Scroll", "Bring him the Secret Rite Scroll and rest; he gives the Letter for Freyja that advances her quest.", "Shadow Keep"},
+    {"Side with him", "When Leda strikes, take his gold sign so he lives (Leda's Rune, his longbow); take Leda's red sign and he dies for his set.", "Shadow Keep"},
+    {"To the end", "If alive he can be summoned at Enir-Ilim and for the final fight; his full reward is the Furious Blade of Ansbach.", "Enir-Ilim"},
+};
+static const QuestStep steps_moore[] = {
+    {"A merchant's grief", "Moore sets up as a merchant at the Main Gate Cross alongside Ansbach; buy from him to open his talk.", "Gravesite Plain"},
+    {"Thiollier's syrup", "Meet Thiollier nearby, then return to Moore for the Black Syrup before either departs.", "Gravesite Plain"},
+    {"Forager cookbooks", "Help the injured Forager Brood pest near the Church of the Crusade and gather the brood's cookbooks across the land.", "Scadu Altus"},
+    {"His sorrow", "When asked how to face loss, the answer you give ('put it behind you') decides whether he turns on you.", "Scadu Altus"},
+    {"Enir-Ilim", "If pushed to despair he joins the followers' battle; his remains hold the Verdigris Greatshield, set and Bell Bearing.", "Enir-Ilim"},
+};
+static const QuestStep steps_thiollier[] = {
+    {"Quiet merchant", "Thiollier sells poisons near the Pillar Path Cross in Gravesite Plain and barely speaks of himself.", "Gravesite Plain"},
+    {"St. Trina's name", "After Miquella's rune breaks he opens up about his devotion to St. Trina.", "Gravesite Plain"},
+    {"Garden of Deep Purple", "Reach St. Trina in the Stone Coffin Fissure; Thiollier relocates toward her resting place.", "Stone Coffin Fissure"},
+    {"The nectar", "Drink St. Trina's nectar until her voice answers, advancing his obsession.", "Stone Coffin Fissure"},
+    {"His grief", "He invades in despair near the garden; defeating him drops St. Trina's Smile, and he can later be summoned at Enir-Ilim for his set.", "Stone Coffin Fissure"},
+};
+static const QuestStep steps_dane[] = {
+    {"Monk's Missive", "Pick up the Monk's Missive and the 'May the Best Win' gesture at the Highroad Cross in Scadu Altus.", "Scadu Altus"},
+    {"Moorth Ruins", "Travel east to Dryleaf Dane waiting at the Moorth Ruins.", "Scadu Altus"},
+    {"The duel", "Offer the 'May the Best Win' gesture to fight him bare-handed for the Dryleaf Arts and his hat.", "Scadu Altus"},
+    {"His robes", "His remaining armor lies past the Recluses' River, reached through the Shadow Keep coffin teleport.", "Shadow Keep"},
+    {"Enir-Ilim", "He turns up hostile in the followers' battle regardless of earlier choices, dropping his footwork art.", "Enir-Ilim"},
+};
+static const QuestStep steps_sttrina[] = {
+    {"The sleeping saint", "St. Trina lies deep in the Stone Coffin Fissure's Garden of Deep Purple, an aspect of Miquella set aside with his love.", "Stone Coffin Fissure"},
+    {"Drink the nectar", "Drink from her repeatedly until she speaks, which also drives Thiollier's quest.", "Stone Coffin Fissure"},
+    {"Her plea", "Her words and the items she leaves (sleep gifts, gestures) reveal Miquella's discarded tenderness; her thread closes with Thiollier's.", "Stone Coffin Fissure"},
+};
+
+// ── DLC: standalone questlines ───────────────────────────────────────────
+static const QuestStep steps_queelign[] = {
+    {"East Belurat", "Fire Knight Queelign first invades near the fountain of east Belurat in service of Messmer's flame.", "Belurat"},
+    {"Church of the Crusade", "He invades again at the Church of the Crusade southwest of Shadow Keep.", "Scadu Altus"},
+    {"Shadow Keep Prayer Room", "Find him at last in the Prayer Room; give the Iris of Grace for his spirit ash, or the Iris of Occultation for his weapon.", "Shadow Keep"},
+};
+static const QuestStep steps_igon[] = {
+    {"The vengeful hunter", "Igon lies broken at the Pillar Path waypoint in Gravesite Plain, consumed by hatred for the dragon Bayle.", "Gravesite Plain"},
+    {"Dragon's Pit", "Follow the road south to the Dragon's Pit and on toward the Jagged Peak.", "Jagged Peak"},
+    {"Up the peak", "Climb past the drakes and the Dragon Communion altar toward Bayle's lair; Igon moves up behind you.", "Jagged Peak"},
+    {"Bayle the Dread", "At Bayle's arena find Igon's summon sign and call him in; his cries and harpoons join your fight.", "Jagged Peak"},
+    {"His vendetta done", "After the dragon falls Igon dies fulfilled, leaving his Greatbow, armor and Bell Bearing.", "Jagged Peak"},
+};
+static const QuestStep steps_grandam[] = {
+    {"Belurat storeroom", "Find the old Hornsent Grandam behind a locked storeroom in Belurat (needs the Storeroom Key); she mistakes you for an enemy.", "Belurat"},
+    {"Beast's head", "After the Divine Beast Dancing Lion falls, return wearing its Divine Beast Head; she gives the Watchful Spirit incantation and Scorpion Stew.", "Belurat"},
+    {"After Messmer", "Once Messmer is defeated, speak with her a final time for the Gourmet Scorpion Stew before she sleeps.", "Belurat"},
+};
+static const QuestStep steps_florissax[] = {
+    {"Grand Altar", "The Dragon Communion Priestess waits at the Grand Altar of Dragon Communion; accept her rite to devour draconic essence for the Ancient Dragon's Blessing.", "Jagged Peak"},
+    {"Slay Bayle", "She sets you on Bayle the Dread as vengeance for his betrayal of Placidusax.", "Jagged Peak"},
+    {"Night and the concoction", "For her true reward, bring Thiollier's Concoction and meet her at night as she speaks with Placidusax; she sleeps, then wakes.", "Jagged Peak"},
+    {"Florissax's pledge", "Confess the concoction after Bayle's death for the Dragonbolt of Florissax and her spirit ash; otherwise claim the Priestess Heart and Flowerstone Gavel.", "Jagged Peak"},
+};
+static const QuestStep steps_ymir[] = {
+    {"Cathedral of Manus Metyr", "High Priest Count Ymir receives you at the Cathedral of Manus Metyr and hands you a Ruins Map and the Hole-Laden Necklace.", "Manus Metyr"},
+    {"Finger Ruins of Rhia", "Ring the great bell among the Finger Ruins of Rhia; he gives the next map.", "Scadu Altus"},
+    {"O Mother", "Use the 'O Mother' gesture at the Shadow Keep back-gate altar to open the path to the Hinterlands.", "Shadow Keep"},
+    {"Finger Ruins of Dheo", "Ring the bell in the Hinterlands' Finger Ruins of Dheo (Jolán can be summoned here).", "Hinterlands"},
+    {"Metyr, Mother of Fingers", "Descend beneath the cathedral to the Finger Ruins of Miyr, past the invader Anna, and defeat Metyr for her Remembrance.", "Manus Metyr"},
+    {"Ymir's design", "Return to the throne; survive Jolán's invasion, then fell Ymir himself for his High Priest set, the Maternal Staff and Cherishing Fingers.", "Manus Metyr"},
+};
+static const QuestStep steps_jolan[] = {
+    {"Ymir's swordhand", "Swordhand of Night Jolán guards Count Ymir at the Cathedral of Manus Metyr alongside her sister Anna.", "Manus Metyr"},
+    {"Through Ymir's quest", "Her path tracks Ymir's; she can be summoned in the Finger Ruins and invades during his final turn.", "Manus Metyr"},
+    {"Iris choice", "After Ymir falls, give her the Iris of Grace for her spirit ash, or the Iris of Occultation for the Sword of Night.", "Manus Metyr"},
+    {"Reunite with Anna", "At Rabbath's Rise she can rejoin Anna for their combined ash; her thread also crosses the fallen Swordhand, Rakshasa.", "Scadu Altus"},
+};
+
 // ── 36 base-game questlines ──────────────────────────────────────────────
 const NpcQuest QUEST_BROWSER[] = {
     // Ranni's questline (interconnected cluster)
@@ -236,7 +345,7 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Smithing Master Hewg", "Hewg's Quest", "Crosses Roderika", steps_hewg, 3},
     {"Nepheli Loux", "Nepheli's Quest", "Crosses Kenneth, Gideon, Dung Eater", steps_nepheli, 5},
     {"Kenneth Haight", "Kenneth's Quest", "Feeds Nepheli's claim to Limgrave", steps_kenneth, 3},
-    {"Gideon Ofnir", nullptr, "Touches many quests (Roundtable info-broker)", nullptr, 0},
+    {"Gideon Ofnir", "Gideon's Quest", "Touches many quests (Roundtable info-broker)", steps_gideon, 4},
     // Deathbed / Black Knife cluster
     {"Fia, Deathbed Companion", "Fia's Quest", "Crosses D and Rogier (Deathroot/Godwyn)", steps_fia, 5},
     {"D, Hunter of the Dead", "D's Quest", "Crosses Fia; D's brother continues it", steps_dhunter, 3},
@@ -265,23 +374,23 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Dung Eater", "Dung Eater's Quest", "Crosses Nepheli (Seedbed Curses)", steps_dungeater, 4},
     {"Knight Bernahl", "Bernahl's Quest", "Volcano Manor / Recusant", steps_bernahl, 4},
     {"Tanith (Volcano Manor)", "Volcano Manor (Tanith)", "Hub of Volcano Manor (Rya, Bernahl)", steps_tanith, 4},
-    {"Vyke", nullptr, "Roundtable / Mohg path", nullptr, 0},
+    {"Vyke", "Vyke's Quest", "Bloody Finger invader / Mountaintops boss", steps_vyke, 3},
 
     // ── 14 Shadow of the Erdtree DLC questlines ──────────────────────────
-    {"Needle Knight Leda", nullptr, "Hub of the DLC group; converges at Enir-Ilim", nullptr, 0},
-    {"Hornsent", nullptr, "Leda's group", nullptr, 0},
-    {"Redmane Freyja", nullptr, "Leda's group", nullptr, 0},
-    {"Sir Ansbach", nullptr, "Leda's group (Mohg's servant)", nullptr, 0},
-    {"Moore", nullptr, "Leda's group", nullptr, 0},
-    {"Thiollier", nullptr, "Leda's group; crosses St. Trina", nullptr, 0},
-    {"Fire Knight Queelign", nullptr, nullptr, nullptr, 0},
-    {"Igon", nullptr, "Bayle the Dread (crosses Dragon Communion Priestess?)", nullptr, 0},
-    {"Hornsent Grandam", nullptr, "Bonny Village (NOT the Hornsent companion)", nullptr, 0},
-    {"Dryleaf Dane", nullptr, "Leda's group", nullptr, 0},
-    {"Dragon Communion Priestess", nullptr, "Florissax / dragon path; crosses Igon", nullptr, 0},
-    {"Count Ymir, High Priest", nullptr, "Manus Metyr / Finger questline", nullptr, 0},
-    {"Swordhand of Night Jolan", nullptr, "Crosses Rakshasa", nullptr, 0},
-    {"St. Trina", nullptr, "Crosses Thiollier", nullptr, 0},
+    {"Needle Knight Leda", "Leda's Quest", "Hub of the DLC group; converges at Enir-Ilim", steps_leda, 5},
+    {"Hornsent", "Hornsent's Quest", "Leda's group; gold/red summon at Shadow Keep", steps_hornsent, 5},
+    {"Redmane Freyja", "Freyja's Quest", "Leda's group; crosses Ansbach (letter)", steps_freyja, 5},
+    {"Sir Ansbach", "Ansbach's Quest", "Leda's group (Mohg's servant); crosses Freyja", steps_ansbach, 6},
+    {"Moore", "Moore's Quest", "Leda's group; crosses Thiollier (Black Syrup)", steps_moore, 5},
+    {"Thiollier", "Thiollier's Quest", "Leda's group; crosses St. Trina / Florissax", steps_thiollier, 5},
+    {"Fire Knight Queelign", "Queelign's Quest", "Messmer's flame; Iris of Grace/Occultation", steps_queelign, 3},
+    {"Igon", "Igon's Quest", "Bayle the Dread; crosses Florissax (concoction)", steps_igon, 5},
+    {"Hornsent Grandam", "Grandam's Quest", "Belurat storeroom (NOT the Hornsent companion)", steps_grandam, 3},
+    {"Dryleaf Dane", "Dane's Quest", "Leda's group; bare-handed duel at Moorth", steps_dane, 5},
+    {"Dragon Communion Priestess", "Florissax's Quest", "Dragon path; crosses Igon and Thiollier", steps_florissax, 4},
+    {"Count Ymir, High Priest", "Ymir's Quest", "Manus Metyr / Finger questline; crosses Jolan", steps_ymir, 6},
+    {"Swordhand of Night Jolan", "Jolan's Quest", "Ymir's guard; crosses Anna and Rakshasa", steps_jolan, 4},
+    {"St. Trina", "St. Trina's Quest", "Crosses Thiollier (Stone Coffin Fissure)", steps_sttrina, 3},
 };
 const size_t QUEST_BROWSER_COUNT = sizeof(QUEST_BROWSER) / sizeof(QUEST_BROWSER[0]);
 
