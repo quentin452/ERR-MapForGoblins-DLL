@@ -319,7 +319,7 @@ struct ClusterMember { uint8_t *ptr; uint8_t orig_area; };
 static std::vector<ClusterMember> g_cluster_members;  // individuals parked under a cluster
 
 static std::atomic<bool> g_clusters_expanded{false};  // false = collapsed (clusters shown)
-static std::atomic<bool> g_cluster_debug{false};      // true = cluster labels show counts
+static std::atomic<bool> g_cluster_debug{true};       // true = cluster labels show counts (default on)
 // Hotkey thread sets these; the watcher applies the areaNo/textId flips (single
 // owner of game-state mutation), mirroring the section + master toggles.
 static std::atomic<bool> g_cluster_expand_dirty{false};
@@ -660,7 +660,10 @@ void goblin::inject_map_entries()
     // Clustering plan (density-triggered, static). Bucket injected markers by
     // their FINAL (projected) area + cell; any cell over the threshold becomes a
     // single cluster row (appended to `entries`) and its members are recorded
-    // for parking. Pieces/kindling are excluded (owned by collected::/kindling::).
+    // for parking. Pieces/kindling (rune/ember pieces, material nodes) ARE
+    // clustered — they're the densest free-pickup clutter — but their
+    // collected/kindling registration is skipped below when clustered so the two
+    // areaNo owners don't fight.
     std::set<uint64_t> clustered_member_ids;          // original ids parked under a cluster
     std::vector<size_t> cluster_entry_idx;            // index in `entries` of each cluster
     std::vector<int> cluster_count_textid;            // parallel: its label id
@@ -678,7 +681,6 @@ void goblin::inject_map_entries()
         };
         for (size_t i = 0; i < entries.size(); i++)
         {
-            if (entries[i].is_piece || entries[i].is_kindling) continue;
             from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp = *entries[i].data;
             if (goblin::config::projectDungeons)
                 project_dungeon_row_to_overworld(&tmp);
@@ -701,14 +703,16 @@ void goblin::inject_map_entries()
             cd->posZ = static_cast<float>(b.sz / b.members.size());
             cd->posY = b.py;
             cd->iconId = static_cast<uint16_t>(goblin::generated::ANON_ICON_ID); // v1 placeholder glyph
-            // Clean standalone icon: no gates, icon-only by default (debug flips textId1).
+            // Clean standalone icon: no gates. Label = the member count by default
+            // (shown on hover); the F11 debug toggle flips it to icon-only (-1).
             cd->eventFlagId = 0; cd->clearedEventFlagId = 0;
-            cd->textId1 = cd->textId2 = cd->textId3 = cd->textId4 = -1;
+            int textid = CLUSTER_TEXTID_BASE + cidx;
+            cd->textId1 = textid;
+            cd->textId2 = cd->textId3 = cd->textId4 = -1;
             cd->textId5 = cd->textId6 = cd->textId7 = cd->textId8 = -1;
             cd->textDisableFlagId1 = cd->textDisableFlagId2 = cd->textDisableFlagId3 = 0;
             cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
             cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
-            int textid = CLUSTER_TEXTID_BASE + cidx;
             g_cluster_census.emplace_back(textid, static_cast<int>(b.members.size()));
             for (size_t mi : b.members)
                 clustered_member_ids.insert(entries[mi].original_row_id);
@@ -1039,6 +1043,12 @@ void goblin::inject_map_entries()
         size_t data_offset = data_start + i * PARAM_DATA_SIZE;
         auto *param_ptr = new_param_file + data_offset;
         uint64_t row_id = static_cast<uint64_t>(all_rows[i].row_id);
+
+        // A clustered piece/kindling row is owned by the cluster (parked at 99);
+        // skip collected/kindling tracking so it isn't un-parked by their refresh.
+        if (all_rows[i].original_row_id &&
+            clustered_member_ids.count(all_rows[i].original_row_id))
+            continue;
 
         if (all_rows[i].is_piece)
         {
