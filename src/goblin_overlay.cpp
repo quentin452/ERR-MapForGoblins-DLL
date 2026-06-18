@@ -47,6 +47,9 @@ namespace
         UINT(WINAPI *)(HRAWINPUT, UINT, LPVOID, PUINT, UINT);
     GetRawInputDataFn o_get_raw_input_data = nullptr;
 
+    using GetRawInputBufferFn = UINT(WINAPI *)(PRAWINPUT, PUINT, UINT);
+    GetRawInputBufferFn o_get_raw_input_buffer = nullptr;
+
     // ── D3D12 state captured from the live game ───────────────────────────
     ID3D12Device *g_device = nullptr;
     ID3D12CommandQueue *g_command_queue = nullptr;   // captured from ExecuteCommandLists
@@ -141,24 +144,42 @@ namespace
         return ret;
     }
 
+    UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
+    {
+        // Batched raw input. While the menu is open, report zero buffered events
+        // for actual reads (data != null); pass size-queries through so the
+        // game's buffer sizing stays correct.
+        if (g_show && data != nullptr) return 0;
+        return o_get_raw_input_buffer(data, size, hdr);
+    }
+
     // ── WndProc hook (input capture) ──────────────────────────────────────
     LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     {
         if (g_show)
         {
             ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
-            ImGuiIO &io = ImGui::GetIO();
-            // Stop raw-input mouse-look from moving the camera under the panel.
-            if (msg == WM_INPUT) return 0;
-            // Swallow input the panel wants, so it doesn't reach the game.
-            if (io.WantCaptureMouse &&
-                (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP || msg == WM_RBUTTONDOWN ||
-                 msg == WM_RBUTTONUP || msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP ||
-                 msg == WM_MOUSEWHEEL || msg == WM_MOUSEMOVE))
-                return 1;
-            if (io.WantCaptureKeyboard &&
-                (msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_CHAR))
-                return 1;
+            // While the menu is open, swallow ALL mouse/keyboard input so the
+            // game gets none of it — regardless of where the cursor is (over the
+            // map, the panel, anywhere). ImGui was already fed above, so the
+            // panel stays fully usable. This stops the world-map panning when
+            // the cursor is outside the panel (WantCaptureMouse would be false
+            // there and let the move reach the game).
+            switch (msg)
+            {
+            case WM_INPUT:
+            case WM_MOUSEMOVE:
+            case WM_LBUTTONDOWN: case WM_LBUTTONUP: case WM_LBUTTONDBLCLK:
+            case WM_RBUTTONDOWN: case WM_RBUTTONUP: case WM_RBUTTONDBLCLK:
+            case WM_MBUTTONDOWN: case WM_MBUTTONUP: case WM_MBUTTONDBLCLK:
+            case WM_XBUTTONDOWN: case WM_XBUTTONUP:
+            case WM_MOUSEWHEEL: case WM_MOUSEHWHEEL:
+            case WM_KEYDOWN: case WM_KEYUP: case WM_CHAR:
+            case WM_SYSKEYDOWN: case WM_SYSKEYUP:
+                return (msg == WM_INPUT) ? 0 : 1;  // consume; game never sees it
+            default:
+                break;
+            }
         }
         return CallWindowProcW(g_orig_wndproc, hwnd, msg, wp, lp);
     }
@@ -556,6 +577,10 @@ void goblin::overlay::initialize()
         if (grid && MH_CreateHook(grid, reinterpret_cast<void *>(&hk_get_raw_input_data),
                                   reinterpret_cast<void **>(&o_get_raw_input_data)) == MH_OK)
             MH_EnableHook(grid);
+        void *grib = reinterpret_cast<void *>(GetProcAddress(u32, "GetRawInputBuffer"));
+        if (grib && MH_CreateHook(grib, reinterpret_cast<void *>(&hk_get_raw_input_buffer),
+                                  reinterpret_cast<void **>(&o_get_raw_input_buffer)) == MH_OK)
+            MH_EnableHook(grib);
     }
 
     spdlog::info("[OVERLAY] hooks installed (Present/ResizeBuffers/ExecuteCommandLists"
