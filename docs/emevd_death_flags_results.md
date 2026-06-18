@@ -87,6 +87,24 @@ encodes `(entity → death_flag)` directly, so the whole roster can be enumerate
 
 ---
 
+## MSB entity-bridge resolution (update — names now confirmed)
+Resolved entity IDs → names via the MSBs (`tools/_resolve_entities.py` / `tools/_find_npc.py`:
+entity → MSB Enemy `NPCParamID` → `nameId` → NpcName FMG in `item.msgbnd`). This **corrected two
+agent mis-identifications and one of my own commits**:
+
+| NPC | entity (MSB-confirmed) | death_flag | note |
+|---|---|---|---|
+| **Iji** | 1034490700 / 1034490711 (c4604, m60_34_49) | **1034499202** | ⚠ NOT `1034509403`. The agent's entity `1034500710` is **Ranni** (c2050); `1034509403` is Ranni's resolver flag. Iji's true flag (group 3760-3767, ns 1034499xxx) set ON at `common.emevd:38156`, OFF-reset `m60_34_49:117` — Seluvis-parallel. |
+| **Irina** | 1045340700 (m60_45_34) | **3383** | "Irina of Morne", `90005702` |
+| **Edgar** | 1045340705 / 1043310705 (Castle Morne) | **3403** | "Castellan Edgar", `90005702` |
+| **Jerren** | 14000716 / 14000717 (m14 Academy) | **3363** | "Witch-Hunter Jerren", `90005702`; Sellen-finale |
+| Nepheli | 10000730 / 10000732 | 4223 | confirmed (the "Gostoc=4223" guess was Nepheli) |
+| Millicent | 15000700 / 15000703 | 4183 | confirmed (the "Jerren=4183" guess was Millicent) |
+| Gostoc | **10000700-10000707** (c3665) | — | real entities; not a Quest Browser line, not wired |
+
+**Now wired in `goblin_quest_steps.cpp` (10):** Iji 1034499202, Seluvis 1034509302, Varré 1042369205,
+Yura 3623, Diallos 3443, Bernahl 3883, Gurranq 1051430800, Irina 3383, Edgar 3403, Jerren 3363.
+
 ## How to re-run / extend
 Decompile (see `[[darkscript3-emevd-decompile]]` memory): `DarkScript3.exe /cmd -decompile -game er -indir <event> -outdir <out>`
 (needs `oo2core_6_win64.dll` in cwd). Then enumerate every death registration:

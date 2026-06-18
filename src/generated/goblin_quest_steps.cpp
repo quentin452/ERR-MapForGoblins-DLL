@@ -338,17 +338,18 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Ranni the Witch", "Ranni's Quest", "Hub of the Blaidd/Iji/Seluvis cluster", steps_ranni, 6},
     {"Blaidd", "Blaidd's Quest", "Part of Ranni's questline", steps_blaidd, 4, false,
      "Use Blaidd before pushing Ranni's quest too far; advancing it first can trap him and he later turns hostile."},
-    // fail_flag 1034509403 = Iji dead/gone. Sourced from decompiled ERR EMEVD
-    // (common.emevd $Event(3049) Ranni-cluster resolver: group 3740-3748 -> sets
-    // 1034509403 ON when Iji is no longer alive) — the exact structural parallel
-    // to Seluvis's 1034509302. Replaces the earlier save-diff pick 1042600001,
-    // which was a PHANTOM: that literal is set nowhere in EMEVD, and 1042600000 is
-    // an EventValue(1042600000, 19) 19-bit COUNTER base, so 1042600001 was just a
-    // counter bit a save-diff mistook for a death flag. See
-    // docs/emevd_death_flags_results.md. (Prior 1034502743 / 558 also wrong.)
+    // fail_flag 1034499202 = Iji dead/gone. MSB-CONFIRMED: Iji is entity
+    // 1034490700 / 1034490711 (model c4604, "Smithing Master Iji") at m60_34_49 —
+    // NOT 1034500710, which the MSB shows is RANNI (model c2050). His death handler
+    // (90005707, group 3760-3767, namespace 1034499xxx) + common.emevd $Event(3049)
+    // flag2 (group 3765-3767, gated on Iji-alive 3761) set 1034499202 (+1034499204)
+    // ON when Iji is gone; OFF-reset when alive (m60_34_49:117). Exact parallel to
+    // Seluvis's 1034509302. Earlier picks were ALL wrong: 1042600001 (a 19-bit
+    // counter bit), 1034509403 (that is Ranni's resolver flag, entity 1034500710),
+    // 1034502743 / 558. See docs/emevd_death_flags_results.md.
     {"Iji", "Iji's Quest", "Part of Ranni's questline", steps_iji, 3, false,
      "Siding with Seluvis's puppet scheme, or angering Ranni's enemies, can get Iji killed.",
-     1034509403u},
+     1034499202u},
     // fail_flag 1034509302 = Seluvis dead (= seluvis_q99 "quest concluded" in the
     // QuestLog, his own 1034509* namespace). Isolated by intersecting TWO far
     // Seluvis-dead saves (Caelid + Morne) with the in-game kill-window capture;
@@ -359,8 +360,10 @@ const NpcQuest QUEST_BROWSER[] = {
     // Sellen
     {"Sorceress Sellen", "Sellen's Quest", "Crosses Jerren, Lusat/Azur", steps_sellen, 5, false,
      "Her finale forces an exclusive side (Sellen vs Jerren); pick knowing the other is lost."},
+    // fail_flag 3363 = Jerren gone. MSB-confirmed: entity 14000716 / 14000717 =
+    // "Witch-Hunter Jerren" (m14 Academy, Sellen finale); 90005702 sets 3363 ON.
     {"Witch-Hunter Jerren", "Jerren's Quest", "Sellen's quest finale (Sellen vs Jerren)", steps_jerren, 3, false,
-     "Tied to Sellen's finale -- siding with one ends the other."},
+     "Tied to Sellen's finale -- siding with one ends the other.", 3363u},
     // Roundtable / Roderika
     {"Roderika", "Roderika's Quest", "Crosses Hewg (Stormhill -> Roundtable)", steps_roderika, 4},
     {"Smithing Master Hewg", "Hewg's Quest", "Crosses Roderika", steps_hewg, 3},
@@ -388,10 +391,16 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Boc the Seamster", "Boc's Quest", nullptr, steps_boc, 6},
     {"Patches", "Patches' Quest", "Joins Volcano Manor (Tanith)", steps_patches, 5, false,
      "Attacking or killing him at the wrong moment ends his merchant questline early."},
+    // fail_flag 3383 = Irina gone. MSB-confirmed: entity 1045340700 = "Irina of
+    // Morne" (m60_45_34); 90005702 death handler + her quest resolver set 3383 ON.
     {"Irina", "Irina's Quest", "Crosses Edgar (Castle Morne)", steps_irina, 3, false,
-     "Time-sensitive: settle Castle Morne before too much story progress, or Irina dies and Edgar turns hostile."},
+     "Time-sensitive: settle Castle Morne before too much story progress, or Irina dies and Edgar turns hostile.",
+     3383u},
+    // fail_flag 3403 = Edgar gone. MSB-confirmed: entity 1045340705 / 1043310705
+    // (Castle Morne) = "Castellan Edgar"; 90005702 death handler sets 3403 ON.
     {"Edgar", "Edgar's Quest", "Crosses Irina (Castle Morne)", steps_edgar, 3, false,
-     "If Irina dies he becomes a hostile invader instead of finishing peacefully."},
+     "If Irina dies he becomes a hostile invader instead of finishing peacefully.",
+     3403u},
     // fail_flag 3623 = Yura dead/gone (EMEVD 90005702 death handler, entity
     // 1049530700; SetNetworkconnectedEventFlagID + SaveRequest -> persistent).
     // Death-distinct (his thread ends when he's killed/usurped by Shabriri).
