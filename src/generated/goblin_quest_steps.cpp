@@ -338,8 +338,13 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Ranni the Witch", "Ranni's Quest", "Hub of the Blaidd/Iji/Seluvis cluster", steps_ranni, 6},
     {"Blaidd", "Blaidd's Quest", "Part of Ranni's questline", steps_blaidd, 4, false,
      "Use Blaidd before pushing Ranni's quest too far; advancing it first can trap him and he later turns hostile."},
+    // fail_flag 1034502743 = Iji's death (captured in-game + confirmed by save-diff
+    // intersection: the one flag set both during the armed kill window AND
+    // persisted false->true over the kill). His death ends HIS thread (not a
+    // completion like Blaidd), so greying is correct.
     {"Iji", "Iji's Quest", "Part of Ranni's questline", steps_iji, 3, false,
-     "Siding with Seluvis's puppet scheme, or angering Ranni's enemies, can get Iji killed."},
+     "Siding with Seluvis's puppet scheme, or angering Ranni's enemies, can get Iji killed.",
+     1034502743u},
     {"Seluvis", "Seluvis's Quest", "Part of Ranni's questline; crosses Nepheli", steps_seluvis, 4, false,
      "Using his puppet potion on Nepheli permanently ends HER questline -- warn her instead to keep both."},
     // Sellen
