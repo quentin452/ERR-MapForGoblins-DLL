@@ -59,10 +59,41 @@ from massedit_common import (OUT_DIR, OVERWORLD_AREAS, DLC_AREAS,
 FRIENDLY_TEAM_TYPES = {0, 1, 2, 26}
 
 # Non-character models to drop: c1000 is the menu/system object model (685 "Menu"
-# rows + "Altar of Anticipation"/"Spirit Monument"/"Trial of Recollection"/… map-
-# event objects, all in team 0). They carry an NpcName but are NOT NPCs you
-# navigate to, so they'd spam bogus markers. Real NPCs/merchants never use c1000.
+# rows + "Spirit Monument"/"Trial of Recollection"/… map-event objects, mostly in
+# team 0). They carry an NpcName but are NOT NPCs you navigate to. FORCE_NAME_IDS
+# (below) are exempted — a couple of real merchants legitimately use c1000.
 EXCLUDE_MODELS = {'c1000'}
+
+# ── Filter audit fixes (docs/windows_npc_filter_prompt.md) ───────────────────
+# teamType + c1000 alone leaves false positives (map-event objects placed under a
+# NON-c1000 model) and misses static merchants (wrong team, or c1000 model). All
+# nameIds below verified against live NpcParam/MSB (tools/_qnp_diag.py).
+
+# Objects / enemies that leak through the friendly teams. Dropped by nameId
+# regardless of team or model.
+DENY_NAME_IDS = {
+    170000,                  # Altar of Anticipation (8 leak via model c4300)
+    160100, 160200, 160500,  # Church / Smithing Table / Cathedral of Dragon Communion (c0100)
+    133200,                  # no NpcName FMG entry -> renders blank (unnamed c0000)
+    110100,                  # Torrent (the mount, not a navigable NPC)
+    120000,                  # Rennala (boss; bosses are a separate layer)
+}
+DENY_NAME_IDS |= set(range(121601, 121611))   # "Menu"/"Lord's Journey" menu family (some on c0000)
+
+# Static "resident" merchants whose placement teamType (8/27) or c1000 model would
+# otherwise drop them. Force-included by nameId regardless of team AND model.
+FORCE_NAME_IDS = {
+    160000,            # Twin Maiden Husks (Roundtable bell-bearing merchant; team 0, model c1000)
+    121800, 121810,    # Asimi, Silver Tear / Eternal King (Carian Manor; team 8)
+    135200,            # Preceptor Miriam (Shaded Castle sorcery merchant; team 27)
+    140601,            # Ancient Dragon Florissax (Dragon Communion; DLC)
+}
+
+
+def _is_generator_enemy_name(nid):
+    """9-digit nameIds (>= 900000000) are the generator-name enemy encoding (e.g.
+    Equilibrious Rat 904080600); real NPCs/merchants are 6-digit (<= ~189999)."""
+    return nid >= 900000000
 
 # Worldmap icon for the quest-NPC family — a dedicated friendly glyph synthesised
 # by build_vanilla_gfx (3rd appended frame, after anon=441 + cluster=442). The
@@ -177,8 +208,13 @@ def main():
         return
 
     friendly_ids = {nid for nid, (team, name) in npc_info.items()
-                    if team in FRIENDLY_TEAM_TYPES and name and name > 0}
-    print(f'{len(friendly_ids)} friendly named NpcParam IDs (teamType in {sorted(FRIENDLY_TEAM_TYPES)})')
+                    if name and name > 0
+                    and name not in DENY_NAME_IDS
+                    and not _is_generator_enemy_name(name)
+                    and (team in FRIENDLY_TEAM_TYPES or name in FORCE_NAME_IDS)}
+    print(f'{len(friendly_ids)} friendly named NpcParam IDs '
+          f'(teamType in {sorted(FRIENDLY_TEAM_TYPES)} + {len(FORCE_NAME_IDS)} forced, '
+          f'minus denylist)')
 
     records = []
     for msb_path in sorted(msb_dir.glob('*.msb.dcx')):
@@ -194,10 +230,10 @@ def main():
             entity = int(getattr(e, 'EntityID', 0) or 0)
             if entity <= 0:
                 continue
-            model = str(e.ModelName) if hasattr(e, 'ModelName') else ''
-            if model in EXCLUDE_MODELS:   # drop c1000 menu/system objects
-                continue
             _team, name_id = npc_info.get(npc, (None, None))
+            model = str(e.ModelName) if hasattr(e, 'ModelName') else ''
+            if model in EXCLUDE_MODELS and name_id not in FORCE_NAME_IDS:
+                continue   # drop c1000 menu/system objects (but keep forced merchants)
             pos = e.Position
             area, gx, gz = map_to_area(map_name)
             records.append({

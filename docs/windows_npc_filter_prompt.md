@@ -1,75 +1,83 @@
-# Task: fix the friendly/quest-NPC marker filter + regenerate (Windows, ERR profile)
+# Quest-NPC marker filter — audit fixes (Windows, ERR profile)
 
-You are on a **Windows** box with **ERR-MapForGoblins-DLL** cloned and the **err**
-profile building (VS2022 + Python + `tools/config.ini` valid; ERR `regulation.bin`
-+ `map/MapStudio/*.msb.dcx` present). The data pipeline runs here only.
+**Status: DONE on `feat/quest-npc-filter` (off `master`).** All three audit problems
+fixed, regenerated, and verified against live ERR data. This doc records the outcome
+(it began as the audit task prompt).
 
-## Background
+## What was wrong
 
-`tools/generate_quest_npcs.py` builds the `WorldQuestNPC` layer (named friendly
-NPCs + merchants). Filter today: `teamType ∈ {0,1,2,26}`, `EXCLUDE_MODELS={c1000}`,
-`nameId > 0`, placed `EntityID > 0`; row-id base 9400000; marker label
-`textId1 = nameId + 700000000`. A coverage audit against the game's own NpcName FMG
-(`data/npc_name_text_map.json`) found three problems to fix. **All nameIds below
-are confirmed in that map; verify each against live NpcParam/MSB before trusting.**
+The v1 filter (`teamType ∈ {0,1,2,26}`, `EXCLUDE_MODELS={c1000}`, `nameId>0`,
+`EntityID>0`) had three problems, all confirmed per-placement against the MSBs +
+NpcParam (`tools/_qnp_diag.py`, throwaway):
 
-## Problems to fix
+- **Missing static merchants** — dropped by teamType or by the c1000 model exclude.
+- **False positives** — map-event objects placed under a *non-c1000* model leaked.
+- **Data anomaly** — a placement with a stale nameId that has no NpcName entry.
 
-### A. Missing resident merchants (filter too narrow)
-These EXIST in-game and are core vendors but get NO marker (their team is outside
-`{0,1,2,26}` — they're Roundtable/static "resident" NPCs, not the questline teams):
-- **Twin Maiden Husks (160000)** — THE Roundtable Hold bell-bearing merchant. The
-  single most important omission. Run `python tools\generate_quest_npcs.py --inspect`
-  and find which teamType holds nameId 160000.
-- **Preceptor Miriam (135200)** — sorcery merchant, Shaded Castle.
-- **Asimi, Silver Tear (121800)** / **Asimi, Eternal King (121810)** — Carian Manor.
-- DLC: **Ancient Dragon Florissax (140601)** (Dragon Communion questline).
+## The fix — hybrid filter (teamType + allowlist exceptions + denylist)
 
-### B. False positives (objects/enemies tagged as NPCs — remove)
-Leaking through the friendly teamTypes; they are NOT navigable NPCs:
-- **Altar of Anticipation (170000)** — 8 markers of a map/event object (worst).
-- **Church of Dragon Communion (160100)**, **Cathedral of Dragon Communion (160500)**,
-  **Smithing Table (160200)** — location/altar labels.
-- **Lord's Journey (121608)** + the **121601–121610** menu family (a c1000-family menu
-  object placed under a non-c1000 model, so `EXCLUDE_MODELS` missed it).
-- **Equilibrious Rat (904080600)** — a DLC enemy that leaks via the generator-name
-  (1.6-billion `textId1`) encoding.
-- Borderline (decide): Rennala (120000), Torrent (110100) — a boss + the mount.
+Kept the friendly-team base, dropped nothing wholesale; added two nameId lists:
 
-### C. Data anomaly
-- **nameId 133200** — 4 markers but NO entry in the NpcName FMG → renders blank.
-  Investigate the NpcParam behind those placements; likely an unnamed enemy with a
-  stale nameId. Drop or correct.
+```python
+FRIENDLY_TEAM_TYPES = {0, 1, 2, 26}
+EXCLUDE_MODELS      = {'c1000'}          # bulk menu/system objects, FORCE-exempt
 
-## Recommended approach
+DENY_NAME_IDS = {                        # objects/enemies that leak through
+    170000,                  # Altar of Anticipation (8 leaked via model c4300)
+    160100, 160200, 160500,  # Church / Smithing Table / Cathedral of Dragon Communion (c0100)
+    133200,                  # no NpcName FMG entry -> renders blank
+    110100,                  # Torrent (the mount) — borderline, dropped
+    120000,                  # Rennala (boss) — borderline, dropped
+} | set(range(121601, 121611))           # "Menu"/"Lord's Journey" menu family
 
-Prefer an **allowlist** over widening teamType blindly:
-- Keep `WorldQuestNPC` to the NpcName **character ID range** (~110000–144999 and the
-  merchant range ~175000–180999), MINUS an explicit **object/menu denylist**
-  (170000, 160100, 160200, 160500, 121601–121610, plus the `9xxxxxx` generator-name
-  enemies like 904080600).
-- For the static merchants in (A), add their team once `--inspect` shows it's
-  friendly-dominated, OR special-case the known merchant nameIds (160000, 135200,
-  121800/121810, 140601).
-- Keep the row-id base 9400000 (do NOT reuse 9300000 — it collides with hero-tomb
-  statues; generate_data is last-writer-wins and silently clobbers).
+FORCE_NAME_IDS = {                       # static merchants, included regardless of team + model
+    160000,            # Twin Maiden Husks (Roundtable; team 0 BUT model c1000)
+    121800, 121810,    # Asimi, Silver Tear / Eternal King (team 8)
+    135200,            # Preceptor Miriam (team 27)
+    140601,            # Ancient Dragon Florissax (DLC)
+}
+# 9-digit nameIds (>= 900000000) = generator-name enemies (e.g. Equilibrious Rat
+# 904080600); dropped via _is_generator_enemy_name().
+```
 
-## Steps
-1. `python tools\generate_quest_npcs.py --inspect` — capture the teamType→sample dump
-   (needed to place Twin Maiden Husks + audit teams). Include it in the deliverable.
-2. Edit the filter per above (allowlist range + denylist + merchant special-cases).
-3. `build.bat generate` (err profile). Sanity-check: count is sane (a few hundred);
-   Twin Maiden Husks now present (`grep "= 700160000," src\generated\goblin_map_data.cpp`);
-   the false-positive nameIds (170000/160100/…) GONE; 133200 resolved.
-4. Spot-check a few placements land on the right map area (Twin Maidens @ Roundtable
-   appears via the Roundtable's overworld projection if applicable).
+`friendly_ids` now = `name>0 AND name∉DENY AND not 9-digit-enemy AND (team∈FRIENDLY OR
+name∈FORCE)`; the model exclude gained a `name_id ∉ FORCE_NAME_IDS` exception.
 
-## Deliver
-1. Regenerated **`src/generated/goblin_map_data.cpp`** (+ `data/massedit_generated/World - Quest NPC.MASSEDIT`).
-2. The final filter constants (teamTypes / allowlist range / denylist / merchant special-cases).
-3. The full `--inspect` dump (evidence; lets the Linux side narrow further).
-4. Before/after marker counts + the list of nameIds added/removed.
+### Root causes found (per-placement diagnostic)
 
-Don't push a branch; `src/generated/` is committed, but the tuned constants land via
-the Linux box. Zip / paste back the files + values + inspect dump. If a teamType is
-ambiguous (mixed friendly + hostile samples), report its samples rather than guessing.
+| nameId | name | why it was wrong | fix |
+|---|---|---|---|
+| 160000 | Twin Maiden Husks | team 0 ✓ but **model c1000** → killed by model exclude | FORCE |
+| 121800 | Asimi, Silver Tear | **team 8** (outside friendly) | FORCE |
+| 135200 | Preceptor Miriam | **team 27** (invader team) | FORCE |
+| 170000 | Altar of Anticipation | 10 placements: 2×c1000 (caught) + **8×c4300** (leaked) | DENY |
+| 160100/160200/160500 | Dragon Communion / Smithing | **model c0100** (not c1000) | DENY |
+| 121601–121610 | "Menu" / "Lord's Journey" | 121608 placed on **c0000**, not c1000 | DENY range |
+| 133200 | (no FMG) | unnamed c0000, stale nameId → blank label | DENY |
+| 904080600 | Equilibrious Rat | DLC enemy, 9-digit generator-name | DENY (≥900000000) |
+
+(Asimi Eternal King 121810 and Florissax 140601 have 0 live placements — harmless in
+the FORCE set.)
+
+## Result
+
+- **Count: 363 → 344** markers.
+- **Added:** Twin Maiden Husks (2), Asimi (1), Preceptor Miriam (2).
+- **Removed:** Altar of Anticipation (8), Dragon Communion ×3, Lord's Journey (1),
+  Equilibrious Rat (4), nameId 133200 blank (4), Torrent (1), Rennala (2).
+- Kalé still present (1). Hero-tomb statues (iconId 440) intact at 16 (no row-id
+  collision). `goblin_map_data.cpp` diff is **WorldQuestNPC-only** (9315 → 9296
+  Category rows); `goblin_location_alt.cpp` only its 9400xxx entries.
+
+## Files
+
+`tools/generate_quest_npcs.py` (DENY/FORCE lists + hybrid `friendly_ids` + model
+exclude exception); regenerated `src/generated/goblin_map_data.cpp`,
+`src/generated/goblin_location_alt.cpp`, `data/massedit_generated/World - Quest NPC.MASSEDIT`.
+
+## Remaining
+
+Runtime-test: enable `show_quest_npc`; confirm Twin Maiden Husks now shows at the
+Roundtable's overworld projection, the Altar of Anticipation / Dragon Communion
+markers are gone, and no blank-label markers remain. Borderline calls (Torrent,
+Rennala dropped) can be revisited if wanted.

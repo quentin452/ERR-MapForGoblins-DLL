@@ -6,7 +6,7 @@
 namespace goblin::generated
 {
 
-const size_t MAP_ENTRY_COUNT = 9315;
+const size_t MAP_ENTRY_COUNT = 9296;
 
 const MapEntry MAP_ENTRIES[] = {
     // Row ID 2000000
@@ -124812,20 +124812,6 @@ const MapEntry MAP_ENTRIES[] = {
         .areaNo = 11,
         .gridXNo = 10,
         .gridZNo = 0,
-        .posX = -2563.147f,
-        .posY = -32.352f,
-        .posZ = -579.673f,
-        .textId1 = 700121608,
-        .textId2 = 11100,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400029
-    {9400029ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 11,
-        .gridXNo = 10,
-        .gridZNo = 0,
         .posX = -2550.268f,
         .posY = -19.299f,
         .posZ = -678.750f,
@@ -124833,8 +124819,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400030
-    {9400030ull, {
+    // Row ID 9400029
+    {9400029ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -124847,8 +124833,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400031
-    {9400031ull, {
+    // Row ID 9400030
+    {9400030ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -124861,8 +124847,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400032
-    {9400032ull, {
+    // Row ID 9400031
+    {9400031ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -124875,8 +124861,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400033
-    {9400033ull, {
+    // Row ID 9400032
+    {9400032ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -124889,8 +124875,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400034
-    {9400034ull, {
+    // Row ID 9400033
+    {9400033ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -124903,8 +124889,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400035
-    {9400035ull, {
+    // Row ID 9400034
+    {9400034ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -124917,8 +124903,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400036
-    {9400036ull, {
+    // Row ID 9400035
+    {9400035ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -124931,8 +124917,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400037
-    {9400037ull, {
+    // Row ID 9400036
+    {9400036ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -124945,8 +124931,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400038
-    {9400038ull, {
+    // Row ID 9400037
+    {9400037ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -124959,8 +124945,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400039
-    {9400039ull, {
+    // Row ID 9400038
+    {9400038ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -124973,8 +124959,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400040
-    {9400040ull, {
+    // Row ID 9400039
+    {9400039ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -124987,8 +124973,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400041
-    {9400041ull, {
+    // Row ID 9400040
+    {9400040ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -125001,8 +124987,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400042
-    {9400042ull, {
+    // Row ID 9400041
+    {9400041ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -125015,22 +125001,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400043
-    {9400043ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 11,
-        .gridXNo = 10,
-        .gridZNo = 0,
-        .posX = -2497.059f,
-        .posY = -35.460f,
-        .posZ = -594.714f,
-        .textId1 = 700110100,
-        .textId2 = 11100,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400044
-    {9400044ull, {
+    // Row ID 9400042
+    {9400042ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -125043,8 +125015,22 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400045
-    {9400045ull, {
+    // Row ID 9400043
+    {9400043ull, {
+        .iconId = 443,
+        .dispMask00 = true,
+        .areaNo = 11,
+        .gridXNo = 10,
+        .gridZNo = 0,
+        .posX = -2493.320f,
+        .posY = -22.624f,
+        .posZ = -627.395f,
+        .textId1 = 700160000,
+        .textId2 = 11100,
+        .selectMinZoomStep = 1,
+    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
+    // Row ID 9400044
+    {9400044ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -125057,8 +125043,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400046
-    {9400046ull, {
+    // Row ID 9400045
+    {9400045ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -125071,8 +125057,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400047
-    {9400047ull, {
+    // Row ID 9400046
+    {9400046ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -125085,8 +125071,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400048
-    {9400048ull, {
+    // Row ID 9400047
+    {9400047ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -125099,8 +125085,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400049
-    {9400049ull, {
+    // Row ID 9400048
+    {9400048ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -125113,8 +125099,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400050
-    {9400050ull, {
+    // Row ID 9400049
+    {9400049ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 11,
@@ -125127,8 +125113,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 11100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400051
-    {9400051ull, {
+    // Row ID 9400050
+    {9400050ull, {
         .iconId = 443,
         .dispMask01 = true,
         .areaNo = 12,
@@ -125141,8 +125127,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 12010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400052
-    {9400052ull, {
+    // Row ID 9400051
+    {9400051ull, {
         .iconId = 443,
         .dispMask01 = true,
         .areaNo = 12,
@@ -125155,8 +125141,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 12070,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400053
-    {9400053ull, {
+    // Row ID 9400052
+    {9400052ull, {
         .iconId = 443,
         .dispMask01 = true,
         .areaNo = 12,
@@ -125169,8 +125155,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 12020,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400054
-    {9400054ull, {
+    // Row ID 9400053
+    {9400053ull, {
         .iconId = 443,
         .dispMask01 = true,
         .areaNo = 12,
@@ -125183,8 +125169,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 12070,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400055
-    {9400055ull, {
+    // Row ID 9400054
+    {9400054ull, {
         .iconId = 443,
         .dispMask01 = true,
         .areaNo = 12,
@@ -125197,8 +125183,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 12020,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400056
-    {9400056ull, {
+    // Row ID 9400055
+    {9400055ull, {
         .iconId = 443,
         .dispMask01 = true,
         .areaNo = 12,
@@ -125211,8 +125197,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 12030,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400057
-    {9400057ull, {
+    // Row ID 9400056
+    {9400056ull, {
         .iconId = 443,
         .dispMask01 = true,
         .areaNo = 12,
@@ -125225,8 +125211,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 12030,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400058
-    {9400058ull, {
+    // Row ID 9400057
+    {9400057ull, {
         .iconId = 443,
         .dispMask01 = true,
         .areaNo = 12,
@@ -125239,8 +125225,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 12030,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400059
-    {9400059ull, {
+    // Row ID 9400058
+    {9400058ull, {
         .iconId = 443,
         .dispMask01 = true,
         .areaNo = 12,
@@ -125253,8 +125239,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 12030,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400060
-    {9400060ull, {
+    // Row ID 9400059
+    {9400059ull, {
         .iconId = 443,
         .dispMask01 = true,
         .areaNo = 12,
@@ -125267,8 +125253,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 12030,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400061
-    {9400061ull, {
+    // Row ID 9400060
+    {9400060ull, {
         .iconId = 443,
         .dispMask01 = true,
         .areaNo = 12,
@@ -125281,8 +125267,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 12030,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400062
-    {9400062ull, {
+    // Row ID 9400061
+    {9400061ull, {
         .iconId = 443,
         .dispMask01 = true,
         .areaNo = 12,
@@ -125295,8 +125281,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 12030,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400063
-    {9400063ull, {
+    // Row ID 9400062
+    {9400062ull, {
         .iconId = 443,
         .dispMask01 = true,
         .areaNo = 12,
@@ -125309,8 +125295,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 12050,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400064
-    {9400064ull, {
+    // Row ID 9400063
+    {9400063ull, {
         .iconId = 443,
         .dispMask01 = true,
         .areaNo = 12,
@@ -125323,8 +125309,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 12050,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400065
-    {9400065ull, {
+    // Row ID 9400064
+    {9400064ull, {
         .iconId = 443,
         .dispMask01 = true,
         .areaNo = 12,
@@ -125337,8 +125323,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 12050,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400066
-    {9400066ull, {
+    // Row ID 9400065
+    {9400065ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 13,
@@ -125349,8 +125335,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 13000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400067
-    {9400067ull, {
+    // Row ID 9400066
+    {9400066ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 13,
@@ -125361,8 +125347,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 13000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400068
-    {9400068ull, {
+    // Row ID 9400067
+    {9400067ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 13,
@@ -125373,8 +125359,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 13000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400069
-    {9400069ull, {
+    // Row ID 9400068
+    {9400068ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 14,
@@ -125385,32 +125371,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 14000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400070
-    {9400070ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 14,
-        .posX = 39.740f,
-        .posY = 154.059f,
-        .posZ = -0.444f,
-        .textId1 = 700120000,
-        .textId2 = 14000,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400071
-    {9400071ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 14,
-        .posX = 41.770f,
-        .posY = 154.173f,
-        .posZ = -23.840f,
-        .textId1 = 700120000,
-        .textId2 = 14000,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400072
-    {9400072ull, {
+    // Row ID 9400069
+    {9400069ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 14,
@@ -125421,8 +125383,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 14000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400073
-    {9400073ull, {
+    // Row ID 9400070
+    {9400070ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 14,
@@ -125433,8 +125395,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 14000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400074
-    {9400074ull, {
+    // Row ID 9400071
+    {9400071ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 14,
@@ -125445,8 +125407,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 14000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400075
-    {9400075ull, {
+    // Row ID 9400072
+    {9400072ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 14,
@@ -125457,8 +125419,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 14000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400076
-    {9400076ull, {
+    // Row ID 9400073
+    {9400073ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 14,
@@ -125469,8 +125431,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 14000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400077
-    {9400077ull, {
+    // Row ID 9400074
+    {9400074ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 14,
@@ -125481,8 +125443,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 14000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400078
-    {9400078ull, {
+    // Row ID 9400075
+    {9400075ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 14,
@@ -125493,8 +125455,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 14000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400079
-    {9400079ull, {
+    // Row ID 9400076
+    {9400076ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 14,
@@ -125505,8 +125467,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 14000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400080
-    {9400080ull, {
+    // Row ID 9400077
+    {9400077ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 15,
@@ -125517,8 +125479,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 15000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400081
-    {9400081ull, {
+    // Row ID 9400078
+    {9400078ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 15,
@@ -125529,8 +125491,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 15000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400082
-    {9400082ull, {
+    // Row ID 9400079
+    {9400079ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 15,
@@ -125541,20 +125503,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 15000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400083
-    {9400083ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 16,
-        .posX = -0.790f,
-        .posY = 4.070f,
-        .posZ = -81.640f,
-        .textId1 = 700133200,
-        .textId2 = 16000,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400084
-    {9400084ull, {
+    // Row ID 9400080
+    {9400080ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 16,
@@ -125565,8 +125515,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 16000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400085
-    {9400085ull, {
+    // Row ID 9400081
+    {9400081ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 16,
@@ -125577,8 +125527,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 16000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400086
-    {9400086ull, {
+    // Row ID 9400082
+    {9400082ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 16,
@@ -125589,8 +125539,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 16000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400087
-    {9400087ull, {
+    // Row ID 9400083
+    {9400083ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 16,
@@ -125601,8 +125551,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 16000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400088
-    {9400088ull, {
+    // Row ID 9400084
+    {9400084ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 16,
@@ -125613,8 +125563,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 16000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400089
-    {9400089ull, {
+    // Row ID 9400085
+    {9400085ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 16,
@@ -125625,8 +125575,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 16000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400090
-    {9400090ull, {
+    // Row ID 9400086
+    {9400086ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 16,
@@ -125637,8 +125587,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 16000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400091
-    {9400091ull, {
+    // Row ID 9400087
+    {9400087ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 16,
@@ -125649,8 +125599,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 16000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400092
-    {9400092ull, {
+    // Row ID 9400088
+    {9400088ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 16,
@@ -125661,8 +125611,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 16000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400093
-    {9400093ull, {
+    // Row ID 9400089
+    {9400089ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125675,8 +125625,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400094
-    {9400094ull, {
+    // Row ID 9400090
+    {9400090ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125689,8 +125639,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400095
-    {9400095ull, {
+    // Row ID 9400091
+    {9400091ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125703,8 +125653,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400096
-    {9400096ull, {
+    // Row ID 9400092
+    {9400092ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125717,8 +125667,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400097
-    {9400097ull, {
+    // Row ID 9400093
+    {9400093ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125731,8 +125681,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400098
-    {9400098ull, {
+    // Row ID 9400094
+    {9400094ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125745,8 +125695,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400099
-    {9400099ull, {
+    // Row ID 9400095
+    {9400095ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125759,8 +125709,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400100
-    {9400100ull, {
+    // Row ID 9400096
+    {9400096ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125773,8 +125723,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400101
-    {9400101ull, {
+    // Row ID 9400097
+    {9400097ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125787,8 +125737,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400102
-    {9400102ull, {
+    // Row ID 9400098
+    {9400098ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125801,8 +125751,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400103
-    {9400103ull, {
+    // Row ID 9400099
+    {9400099ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125815,8 +125765,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400104
-    {9400104ull, {
+    // Row ID 9400100
+    {9400100ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125829,8 +125779,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400105
-    {9400105ull, {
+    // Row ID 9400101
+    {9400101ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125843,8 +125793,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400106
-    {9400106ull, {
+    // Row ID 9400102
+    {9400102ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125857,8 +125807,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400107
-    {9400107ull, {
+    // Row ID 9400103
+    {9400103ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125871,8 +125821,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400108
-    {9400108ull, {
+    // Row ID 9400104
+    {9400104ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125885,8 +125835,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400109
-    {9400109ull, {
+    // Row ID 9400105
+    {9400105ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125899,8 +125849,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400110
-    {9400110ull, {
+    // Row ID 9400106
+    {9400106ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 20,
@@ -125913,8 +125863,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 20010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400111
-    {9400111ull, {
+    // Row ID 9400107
+    {9400107ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 21,
@@ -125927,8 +125877,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 21000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400112
-    {9400112ull, {
+    // Row ID 9400108
+    {9400108ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 21,
@@ -125941,8 +125891,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 21000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400113
-    {9400113ull, {
+    // Row ID 9400109
+    {9400109ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 21,
@@ -125955,8 +125905,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 21000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400114
-    {9400114ull, {
+    // Row ID 9400110
+    {9400110ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 21,
@@ -125969,8 +125919,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 21000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400115
-    {9400115ull, {
+    // Row ID 9400111
+    {9400111ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 21,
@@ -125983,8 +125933,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 21010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400116
-    {9400116ull, {
+    // Row ID 9400112
+    {9400112ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 21,
@@ -125997,8 +125947,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 21010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400117
-    {9400117ull, {
+    // Row ID 9400113
+    {9400113ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 21,
@@ -126011,8 +125961,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 21010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400118
-    {9400118ull, {
+    // Row ID 9400114
+    {9400114ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 21,
@@ -126025,8 +125975,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 21010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400119
-    {9400119ull, {
+    // Row ID 9400115
+    {9400115ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 21,
@@ -126039,8 +125989,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 21010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400120
-    {9400120ull, {
+    // Row ID 9400116
+    {9400116ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 21,
@@ -126053,8 +126003,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 21010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400121
-    {9400121ull, {
+    // Row ID 9400117
+    {9400117ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 22,
@@ -126067,8 +126017,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 22000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400122
-    {9400122ull, {
+    // Row ID 9400118
+    {9400118ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 22,
@@ -126081,8 +126031,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 22000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400123
-    {9400123ull, {
+    // Row ID 9400119
+    {9400119ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 22,
@@ -126095,8 +126045,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 22000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400124
-    {9400124ull, {
+    // Row ID 9400120
+    {9400120ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 30,
@@ -126109,8 +126059,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 30050,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400125
-    {9400125ull, {
+    // Row ID 9400121
+    {9400121ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126121,8 +126071,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400126
-    {9400126ull, {
+    // Row ID 9400122
+    {9400122ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126133,8 +126083,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400127
-    {9400127ull, {
+    // Row ID 9400123
+    {9400123ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126147,50 +126097,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31060,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400128
-    {9400128ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 31,
-        .gridXNo = 8,
-        .gridZNo = 0,
-        .posX = -283.802f,
-        .posY = 495.955f,
-        .posZ = -190.960f,
-        .textId1 = 700133200,
-        .textId2 = 31080,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400129
-    {9400129ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 31,
-        .gridXNo = 8,
-        .gridZNo = 0,
-        .posX = -264.166f,
-        .posY = 510.695f,
-        .posZ = -115.674f,
-        .textId1 = 700133200,
-        .textId2 = 31080,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400130
-    {9400130ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 31,
-        .gridXNo = 8,
-        .gridZNo = 0,
-        .posX = -254.687f,
-        .posY = 530.768f,
-        .posZ = -67.073f,
-        .textId1 = 700133200,
-        .textId2 = 31080,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400131
-    {9400131ull, {
+    // Row ID 9400124
+    {9400124ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126203,8 +126111,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31110,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400132
-    {9400132ull, {
+    // Row ID 9400125
+    {9400125ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126217,8 +126125,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31150,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400133
-    {9400133ull, {
+    // Row ID 9400126
+    {9400126ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126231,8 +126139,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31150,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400134
-    {9400134ull, {
+    // Row ID 9400127
+    {9400127ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126245,8 +126153,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400135
-    {9400135ull, {
+    // Row ID 9400128
+    {9400128ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126259,8 +126167,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400136
-    {9400136ull, {
+    // Row ID 9400129
+    {9400129ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126273,8 +126181,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400137
-    {9400137ull, {
+    // Row ID 9400130
+    {9400130ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126287,8 +126195,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400138
-    {9400138ull, {
+    // Row ID 9400131
+    {9400131ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126301,8 +126209,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400139
-    {9400139ull, {
+    // Row ID 9400132
+    {9400132ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126315,8 +126223,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400140
-    {9400140ull, {
+    // Row ID 9400133
+    {9400133ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126329,8 +126237,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400141
-    {9400141ull, {
+    // Row ID 9400134
+    {9400134ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126343,8 +126251,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400142
-    {9400142ull, {
+    // Row ID 9400135
+    {9400135ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126357,8 +126265,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400143
-    {9400143ull, {
+    // Row ID 9400136
+    {9400136ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126371,8 +126279,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400144
-    {9400144ull, {
+    // Row ID 9400137
+    {9400137ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126385,8 +126293,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400145
-    {9400145ull, {
+    // Row ID 9400138
+    {9400138ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126399,8 +126307,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400146
-    {9400146ull, {
+    // Row ID 9400139
+    {9400139ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126413,8 +126321,22 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400147
-    {9400147ull, {
+    // Row ID 9400140
+    {9400140ull, {
+        .iconId = 443,
+        .dispMask00 = true,
+        .areaNo = 31,
+        .gridXNo = 90,
+        .gridZNo = 0,
+        .posX = -298.320f,
+        .posY = -22.624f,
+        .posZ = -275.395f,
+        .textId1 = 700160000,
+        .textId2 = 31000,
+        .selectMinZoomStep = 1,
+    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
+    // Row ID 9400141
+    {9400141ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126427,8 +126349,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400148
-    {9400148ull, {
+    // Row ID 9400142
+    {9400142ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126441,8 +126363,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400149
-    {9400149ull, {
+    // Row ID 9400143
+    {9400143ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126455,8 +126377,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400150
-    {9400150ull, {
+    // Row ID 9400144
+    {9400144ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126469,8 +126391,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400151
-    {9400151ull, {
+    // Row ID 9400145
+    {9400145ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126483,8 +126405,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400152
-    {9400152ull, {
+    // Row ID 9400146
+    {9400146ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126497,8 +126419,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400153
-    {9400153ull, {
+    // Row ID 9400147
+    {9400147ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 31,
@@ -126511,8 +126433,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 31000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400154
-    {9400154ull, {
+    // Row ID 9400148
+    {9400148ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 32,
@@ -126525,22 +126447,36 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 32070,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400155
-    {9400155ull, {
+    // Row ID 9400149
+    {9400149ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 34,
         .gridXNo = 11,
         .gridZNo = 0,
-        .posX = -9.000f,
-        .posY = -157.987f,
-        .posZ = 73.803f,
-        .textId1 = 700170000,
+        .posX = 8.084f,
+        .posY = -170.458f,
+        .posZ = -0.220f,
+        .textId1 = 700135200,
         .textId2 = 34110,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400156
-    {9400156ull, {
+    // Row ID 9400150
+    {9400150ull, {
+        .iconId = 443,
+        .dispMask00 = true,
+        .areaNo = 34,
+        .gridXNo = 11,
+        .gridZNo = 0,
+        .posX = 32.981f,
+        .posY = -133.404f,
+        .posZ = 20.752f,
+        .textId1 = 700135200,
+        .textId2 = 34110,
+        .selectMinZoomStep = 1,
+    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
+    // Row ID 9400151
+    {9400151ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 35,
@@ -126551,8 +126487,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 35000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400157
-    {9400157ull, {
+    // Row ID 9400152
+    {9400152ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 35,
@@ -126563,8 +126499,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 35000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400158
-    {9400158ull, {
+    // Row ID 9400153
+    {9400153ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 35,
@@ -126575,68 +126511,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 35000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400159
-    {9400159ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 35,
-        .posX = 45.448f,
-        .posY = -298.639f,
-        .posZ = -93.047f,
-        .textId1 = 1604080600,
-        .textId2 = 35000,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400160
-    {9400160ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 35,
-        .posX = 46.357f,
-        .posY = -298.639f,
-        .posZ = -94.622f,
-        .textId1 = 1604080600,
-        .textId2 = 35000,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400161
-    {9400161ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 35,
-        .posX = 48.341f,
-        .posY = -298.639f,
-        .posZ = -98.058f,
-        .textId1 = 1604080600,
-        .textId2 = 35000,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400162
-    {9400162ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 35,
-        .posX = 49.504f,
-        .posY = -298.639f,
-        .posZ = -100.072f,
-        .textId1 = 1604080600,
-        .textId2 = 35000,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400163
-    {9400163ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 35,
-        .posX = 55.271f,
-        .posY = -360.341f,
-        .posZ = -92.139f,
-        .textId1 = 1607560602,
-        .textId2 = 35000,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400164
-    {9400164ull, {
+    // Row ID 9400154
+    {9400154ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 35,
@@ -126647,8 +126523,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 35000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400165
-    {9400165ull, {
+    // Row ID 9400155
+    {9400155ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 39,
@@ -126661,8 +126537,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 39200,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400166
-    {9400166ull, {
+    // Row ID 9400156
+    {9400156ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 39,
@@ -126675,8 +126551,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 39200,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400167
-    {9400167ull, {
+    // Row ID 9400157
+    {9400157ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 39,
@@ -126689,8 +126565,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 39200,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400168
-    {9400168ull, {
+    // Row ID 9400158
+    {9400158ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 45,
@@ -126701,8 +126577,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId2 = 45000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400169
-    {9400169ull, {
+    // Row ID 9400159
+    {9400159ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126714,8 +126590,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700134400,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400170
-    {9400170ull, {
+    // Row ID 9400160
+    {9400160ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126727,8 +126603,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131200,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400171
-    {9400171ull, {
+    // Row ID 9400161
+    {9400161ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126740,8 +126616,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700130900,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400172
-    {9400172ull, {
+    // Row ID 9400162
+    {9400162ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126753,8 +126629,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400173
-    {9400173ull, {
+    // Row ID 9400163
+    {9400163ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126766,8 +126642,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700136300,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400174
-    {9400174ull, {
+    // Row ID 9400164
+    {9400164ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126779,8 +126655,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700135500,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400175
-    {9400175ull, {
+    // Row ID 9400165
+    {9400165ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126792,8 +126668,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700121600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400176
-    {9400176ull, {
+    // Row ID 9400166
+    {9400166ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126805,8 +126681,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400177
-    {9400177ull, {
+    // Row ID 9400167
+    {9400167ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126818,8 +126694,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400178
-    {9400178ull, {
+    // Row ID 9400168
+    {9400168ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126831,21 +126707,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700133400,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400179
-    {9400179ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 60,
-        .gridXNo = 34,
-        .gridZNo = 48,
-        .posX = 40.254f,
-        .posY = 268.395f,
-        .posZ = 114.477f,
-        .textId1 = 700170000,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400180
-    {9400180ull, {
+    // Row ID 9400169
+    {9400169ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126857,8 +126720,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122401,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400181
-    {9400181ull, {
+    // Row ID 9400170
+    {9400170ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126870,8 +126733,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122400,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400182
-    {9400182ull, {
+    // Row ID 9400171
+    {9400171ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126883,8 +126746,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122401,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400183
-    {9400183ull, {
+    // Row ID 9400172
+    {9400172ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126896,8 +126759,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700121600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400184
-    {9400184ull, {
+    // Row ID 9400173
+    {9400173ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126909,8 +126772,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700130700,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400185
-    {9400185ull, {
+    // Row ID 9400174
+    {9400174ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126922,8 +126785,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700110600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400186
-    {9400186ull, {
+    // Row ID 9400175
+    {9400175ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126935,8 +126798,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700136500,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400187
-    {9400187ull, {
+    // Row ID 9400176
+    {9400176ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126948,8 +126811,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700133400,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400188
-    {9400188ull, {
+    // Row ID 9400177
+    {9400177ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126961,8 +126824,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400189
-    {9400189ull, {
+    // Row ID 9400178
+    {9400178ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126974,8 +126837,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700132300,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400190
-    {9400190ull, {
+    // Row ID 9400179
+    {9400179ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -126987,8 +126850,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700136300,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400191
-    {9400191ull, {
+    // Row ID 9400180
+    {9400180ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127000,8 +126863,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700136400,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400192
-    {9400192ull, {
+    // Row ID 9400181
+    {9400181ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127013,8 +126876,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700130700,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400193
-    {9400193ull, {
+    // Row ID 9400182
+    {9400182ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127026,8 +126889,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700130700,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400194
-    {9400194ull, {
+    // Row ID 9400183
+    {9400183ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127039,8 +126902,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700121900,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400195
-    {9400195ull, {
+    // Row ID 9400184
+    {9400184ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127052,8 +126915,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700133401,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400196
-    {9400196ull, {
+    // Row ID 9400185
+    {9400185ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127065,8 +126928,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700110600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400197
-    {9400197ull, {
+    // Row ID 9400186
+    {9400186ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127078,8 +126941,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700130100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400198
-    {9400198ull, {
+    // Row ID 9400187
+    {9400187ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127091,8 +126954,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180107,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400199
-    {9400199ull, {
+    // Row ID 9400188
+    {9400188ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127104,8 +126967,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700133500,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400200
-    {9400200ull, {
+    // Row ID 9400189
+    {9400189ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127117,8 +126980,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400201
-    {9400201ull, {
+    // Row ID 9400190
+    {9400190ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127130,8 +126993,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400202
-    {9400202ull, {
+    // Row ID 9400191
+    {9400191ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127143,8 +127006,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700121700,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400203
-    {9400203ull, {
+    // Row ID 9400192
+    {9400192ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127156,8 +127019,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700121700,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400204
-    {9400204ull, {
+    // Row ID 9400193
+    {9400193ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127169,21 +127032,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400205
-    {9400205ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 60,
-        .gridXNo = 35,
-        .gridZNo = 54,
-        .posX = -29.957f,
-        .posY = 842.633f,
-        .posZ = -169.222f,
-        .textId1 = 700170000,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400206
-    {9400206ull, {
+    // Row ID 9400194
+    {9400194ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127195,8 +127045,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400207
-    {9400207ull, {
+    // Row ID 9400195
+    {9400195ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127208,8 +127058,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700133100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400208
-    {9400208ull, {
+    // Row ID 9400196
+    {9400196ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127221,8 +127071,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700175003,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400209
-    {9400209ull, {
+    // Row ID 9400197
+    {9400197ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127234,8 +127084,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122310,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400210
-    {9400210ull, {
+    // Row ID 9400198
+    {9400198ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127247,8 +127097,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700175003,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400211
-    {9400211ull, {
+    // Row ID 9400199
+    {9400199ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127260,8 +127110,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400212
-    {9400212ull, {
+    // Row ID 9400200
+    {9400200ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127273,8 +127123,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180108,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400213
-    {9400213ull, {
+    // Row ID 9400201
+    {9400201ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127286,8 +127136,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700130900,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400214
-    {9400214ull, {
+    // Row ID 9400202
+    {9400202ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127299,8 +127149,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131300,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400215
-    {9400215ull, {
+    // Row ID 9400203
+    {9400203ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127312,8 +127162,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131400,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400216
-    {9400216ull, {
+    // Row ID 9400204
+    {9400204ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127325,8 +127175,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700133000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400217
-    {9400217ull, {
+    // Row ID 9400205
+    {9400205ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127338,8 +127188,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700133600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400218
-    {9400218ull, {
+    // Row ID 9400206
+    {9400206ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127351,8 +127201,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700111100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400219
-    {9400219ull, {
+    // Row ID 9400207
+    {9400207ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127364,8 +127214,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180111,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400220
-    {9400220ull, {
+    // Row ID 9400208
+    {9400208ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127377,8 +127227,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700130900,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400221
-    {9400221ull, {
+    // Row ID 9400209
+    {9400209ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127390,8 +127240,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180105,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400222
-    {9400222ull, {
+    // Row ID 9400210
+    {9400210ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127403,8 +127253,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400223
-    {9400223ull, {
+    // Row ID 9400211
+    {9400211ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127416,8 +127266,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400224
-    {9400224ull, {
+    // Row ID 9400212
+    {9400212ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127429,8 +127279,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131300,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400225
-    {9400225ull, {
+    // Row ID 9400213
+    {9400213ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127442,8 +127292,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131300,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400226
-    {9400226ull, {
+    // Row ID 9400214
+    {9400214ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127455,8 +127305,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700134800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400227
-    {9400227ull, {
+    // Row ID 9400215
+    {9400215ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127468,8 +127318,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700133300,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400228
-    {9400228ull, {
+    // Row ID 9400216
+    {9400216ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127481,8 +127331,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131010,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400229
-    {9400229ull, {
+    // Row ID 9400217
+    {9400217ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127494,34 +127344,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122310,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400230
-    {9400230ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 60,
-        .gridXNo = 39,
-        .gridZNo = 42,
-        .posX = -8.990f,
-        .posY = 271.388f,
-        .posZ = -11.271f,
-        .textId1 = 700170000,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400231
-    {9400231ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 60,
-        .gridXNo = 39,
-        .gridZNo = 43,
-        .posX = -104.056f,
-        .posY = 250.346f,
-        .posZ = -22.863f,
-        .textId1 = 700170000,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400232
-    {9400232ull, {
+    // Row ID 9400218
+    {9400218ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127533,8 +127357,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131901,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400233
-    {9400233ull, {
+    // Row ID 9400219
+    {9400219ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127546,8 +127370,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400234
-    {9400234ull, {
+    // Row ID 9400220
+    {9400220ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127559,8 +127383,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400235
-    {9400235ull, {
+    // Row ID 9400221
+    {9400221ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127572,8 +127396,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400236
-    {9400236ull, {
+    // Row ID 9400222
+    {9400222ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127585,8 +127409,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400237
-    {9400237ull, {
+    // Row ID 9400223
+    {9400223ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127598,8 +127422,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131401,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400238
-    {9400238ull, {
+    // Row ID 9400224
+    {9400224ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127611,8 +127435,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400239
-    {9400239ull, {
+    // Row ID 9400225
+    {9400225ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127624,8 +127448,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131401,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400240
-    {9400240ull, {
+    // Row ID 9400226
+    {9400226ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127637,8 +127461,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122310,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400241
-    {9400241ull, {
+    // Row ID 9400227
+    {9400227ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127650,8 +127474,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400242
-    {9400242ull, {
+    // Row ID 9400228
+    {9400228ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127663,8 +127487,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700130900,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400243
-    {9400243ull, {
+    // Row ID 9400229
+    {9400229ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127676,8 +127500,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700135100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400244
-    {9400244ull, {
+    // Row ID 9400230
+    {9400230ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127689,8 +127513,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180110,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400245
-    {9400245ull, {
+    // Row ID 9400231
+    {9400231ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127702,8 +127526,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700175004,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400246
-    {9400246ull, {
+    // Row ID 9400232
+    {9400232ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127715,8 +127539,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700111200,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400247
-    {9400247ull, {
+    // Row ID 9400233
+    {9400233ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127728,8 +127552,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700135101,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400248
-    {9400248ull, {
+    // Row ID 9400234
+    {9400234ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127741,8 +127565,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180106,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400249
-    {9400249ull, {
+    // Row ID 9400235
+    {9400235ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127754,8 +127578,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400250
-    {9400250ull, {
+    // Row ID 9400236
+    {9400236ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127767,34 +127591,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131200,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400251
-    {9400251ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 60,
-        .gridXNo = 41,
-        .gridZNo = 33,
-        .posX = 95.755f,
-        .posY = 27.236f,
-        .posZ = 5.730f,
-        .textId1 = 700170000,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400252
-    {9400252ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 60,
-        .gridXNo = 41,
-        .gridZNo = 35,
-        .posX = -75.850f,
-        .posY = 27.630f,
-        .posZ = -44.840f,
-        .textId1 = 700160100,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400253
-    {9400253ull, {
+    // Row ID 9400237
+    {9400237ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127806,8 +127604,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180103,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400254
-    {9400254ull, {
+    // Row ID 9400238
+    {9400238ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127819,8 +127617,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700132000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400255
-    {9400255ull, {
+    // Row ID 9400239
+    {9400239ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127832,8 +127630,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700175001,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400256
-    {9400256ull, {
+    // Row ID 9400240
+    {9400240ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127845,21 +127643,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400257
-    {9400257ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 60,
-        .gridXNo = 42,
-        .gridZNo = 36,
-        .posX = -53.295f,
-        .posY = 92.350f,
-        .posZ = 91.356f,
-        .textId1 = 700160200,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400258
-    {9400258ull, {
+    // Row ID 9400241
+    {9400241ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127871,8 +127656,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700110610,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400259
-    {9400259ull, {
+    // Row ID 9400242
+    {9400242ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127884,8 +127669,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700130100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400260
-    {9400260ull, {
+    // Row ID 9400243
+    {9400243ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127897,8 +127682,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700132600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400261
-    {9400261ull, {
+    // Row ID 9400244
+    {9400244ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127910,8 +127695,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700134800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400262
-    {9400262ull, {
+    // Row ID 9400245
+    {9400245ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127923,8 +127708,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700134800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400263
-    {9400263ull, {
+    // Row ID 9400246
+    {9400246ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127935,8 +127720,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400264
-    {9400264ull, {
+    // Row ID 9400247
+    {9400247ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127948,8 +127733,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400265
-    {9400265ull, {
+    // Row ID 9400248
+    {9400248ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127961,8 +127746,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400266
-    {9400266ull, {
+    // Row ID 9400249
+    {9400249ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127974,8 +127759,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400267
-    {9400267ull, {
+    // Row ID 9400250
+    {9400250ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -127987,8 +127772,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122300,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400268
-    {9400268ull, {
+    // Row ID 9400251
+    {9400251ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128000,8 +127785,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400269
-    {9400269ull, {
+    // Row ID 9400252
+    {9400252ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128013,8 +127798,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400270
-    {9400270ull, {
+    // Row ID 9400253
+    {9400253ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128026,8 +127811,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700175005,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400271
-    {9400271ull, {
+    // Row ID 9400254
+    {9400254ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128039,8 +127824,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180109,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400272
-    {9400272ull, {
+    // Row ID 9400255
+    {9400255ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128052,8 +127837,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180104,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400273
-    {9400273ull, {
+    // Row ID 9400256
+    {9400256ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128065,8 +127850,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700121600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400274
-    {9400274ull, {
+    // Row ID 9400257
+    {9400257ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128078,8 +127863,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700121600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400275
-    {9400275ull, {
+    // Row ID 9400258
+    {9400258ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128091,8 +127876,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700121600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400276
-    {9400276ull, {
+    // Row ID 9400259
+    {9400259ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128104,8 +127889,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400277
-    {9400277ull, {
+    // Row ID 9400260
+    {9400260ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128117,8 +127902,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400278
-    {9400278ull, {
+    // Row ID 9400261
+    {9400261ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128130,8 +127915,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400279
-    {9400279ull, {
+    // Row ID 9400262
+    {9400262ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128143,8 +127928,21 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400280
-    {9400280ull, {
+    // Row ID 9400263
+    {9400263ull, {
+        .iconId = 443,
+        .dispMask00 = true,
+        .areaNo = 60,
+        .gridXNo = 44,
+        .gridZNo = 38,
+        .posX = -22.600f,
+        .posY = 93.154f,
+        .posZ = -30.874f,
+        .textId1 = 700121800,
+        .selectMinZoomStep = 1,
+    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
+    // Row ID 9400264
+    {9400264ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128156,8 +127954,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180101,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400281
-    {9400281ull, {
+    // Row ID 9400265
+    {9400265ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128169,8 +127967,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180101,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400282
-    {9400282ull, {
+    // Row ID 9400266
+    {9400266ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128182,8 +127980,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131900,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400283
-    {9400283ull, {
+    // Row ID 9400267
+    {9400267ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128195,8 +127993,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131900,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400284
-    {9400284ull, {
+    // Row ID 9400268
+    {9400268ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128208,8 +128006,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700133100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400285
-    {9400285ull, {
+    // Row ID 9400269
+    {9400269ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128221,8 +128019,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700133100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400286
-    {9400286ull, {
+    // Row ID 9400270
+    {9400270ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128234,8 +128032,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400287
-    {9400287ull, {
+    // Row ID 9400271
+    {9400271ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128247,8 +128045,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400288
-    {9400288ull, {
+    // Row ID 9400272
+    {9400272ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128260,8 +128058,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400289
-    {9400289ull, {
+    // Row ID 9400273
+    {9400273ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128273,8 +128071,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180102,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400290
-    {9400290ull, {
+    // Row ID 9400274
+    {9400274ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128286,8 +128084,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180102,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400291
-    {9400291ull, {
+    // Row ID 9400275
+    {9400275ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128299,8 +128097,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700121600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400292
-    {9400292ull, {
+    // Row ID 9400276
+    {9400276ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128312,8 +128110,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700121600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400293
-    {9400293ull, {
+    // Row ID 9400277
+    {9400277ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128325,8 +128123,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700132100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400294
-    {9400294ull, {
+    // Row ID 9400278
+    {9400278ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128338,8 +128136,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700132100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400295
-    {9400295ull, {
+    // Row ID 9400279
+    {9400279ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128351,8 +128149,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131900,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400296
-    {9400296ull, {
+    // Row ID 9400280
+    {9400280ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128364,8 +128162,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131900,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400297
-    {9400297ull, {
+    // Row ID 9400281
+    {9400281ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128377,8 +128175,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700132300,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400298
-    {9400298ull, {
+    // Row ID 9400282
+    {9400282ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128390,8 +128188,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700132300,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400299
-    {9400299ull, {
+    // Row ID 9400283
+    {9400283ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128403,8 +128201,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700134401,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400300
-    {9400300ull, {
+    // Row ID 9400284
+    {9400284ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128416,8 +128214,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700134401,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400301
-    {9400301ull, {
+    // Row ID 9400285
+    {9400285ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128429,8 +128227,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700134800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400302
-    {9400302ull, {
+    // Row ID 9400286
+    {9400286ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128442,8 +128240,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700134800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400303
-    {9400303ull, {
+    // Row ID 9400287
+    {9400287ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128455,8 +128253,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700132100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400304
-    {9400304ull, {
+    // Row ID 9400288
+    {9400288ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128468,8 +128266,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700132100,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400305
-    {9400305ull, {
+    // Row ID 9400289
+    {9400289ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128481,8 +128279,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700123300,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400306
-    {9400306ull, {
+    // Row ID 9400290
+    {9400290ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128494,21 +128292,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400307
-    {9400307ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 60,
-        .gridXNo = 48,
-        .gridZNo = 36,
-        .posX = 26.510f,
-        .posY = 127.440f,
-        .posZ = 92.060f,
-        .textId1 = 700160500,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400308
-    {9400308ull, {
+    // Row ID 9400291
+    {9400291ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128520,21 +128305,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180112,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400309
-    {9400309ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 60,
-        .gridXNo = 48,
-        .gridZNo = 38,
-        .posX = 42.504f,
-        .posY = 64.432f,
-        .posZ = -15.041f,
-        .textId1 = 700170000,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400310
-    {9400310ull, {
+    // Row ID 9400292
+    {9400292ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128546,8 +128318,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700175006,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400311
-    {9400311ull, {
+    // Row ID 9400293
+    {9400293ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128559,8 +128331,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180115,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400312
-    {9400312ull, {
+    // Row ID 9400294
+    {9400294ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128572,8 +128344,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180113,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400313
-    {9400313ull, {
+    // Row ID 9400295
+    {9400295ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128585,8 +128357,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700139001,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400314
-    {9400314ull, {
+    // Row ID 9400296
+    {9400296ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128598,8 +128370,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700134800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400315
-    {9400315ull, {
+    // Row ID 9400297
+    {9400297ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128611,8 +128383,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700175007,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400316
-    {9400316ull, {
+    // Row ID 9400298
+    {9400298ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128624,21 +128396,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131801,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400317
-    {9400317ull, {
-        .iconId = 443,
-        .dispMask00 = true,
-        .areaNo = 60,
-        .gridXNo = 49,
-        .gridZNo = 54,
-        .posX = -106.078f,
-        .posY = 1332.330f,
-        .posZ = -88.307f,
-        .textId1 = 700170000,
-        .selectMinZoomStep = 1,
-    }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400318
-    {9400318ull, {
+    // Row ID 9400299
+    {9400299ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128650,8 +128409,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700134900,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400319
-    {9400319ull, {
+    // Row ID 9400300
+    {9400300ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128663,8 +128422,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700134900,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400320
-    {9400320ull, {
+    // Row ID 9400301
+    {9400301ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128676,8 +128435,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700134800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400321
-    {9400321ull, {
+    // Row ID 9400302
+    {9400302ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128689,8 +128448,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700134800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400322
-    {9400322ull, {
+    // Row ID 9400303
+    {9400303ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128702,8 +128461,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131200,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400323
-    {9400323ull, {
+    // Row ID 9400304
+    {9400304ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128715,8 +128474,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400324
-    {9400324ull, {
+    // Row ID 9400305
+    {9400305ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128728,8 +128487,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700136300,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400325
-    {9400325ull, {
+    // Row ID 9400306
+    {9400306ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128741,8 +128500,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700131200,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400326
-    {9400326ull, {
+    // Row ID 9400307
+    {9400307ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128754,8 +128513,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700134400,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400327
-    {9400327ull, {
+    // Row ID 9400308
+    {9400308ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128767,8 +128526,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700121600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400328
-    {9400328ull, {
+    // Row ID 9400309
+    {9400309ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128780,8 +128539,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700135500,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400329
-    {9400329ull, {
+    // Row ID 9400310
+    {9400310ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128793,8 +128552,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700120200,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400330
-    {9400330ull, {
+    // Row ID 9400311
+    {9400311ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128806,8 +128565,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180116,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400331
-    {9400331ull, {
+    // Row ID 9400312
+    {9400312ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128819,8 +128578,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700134800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400332
-    {9400332ull, {
+    // Row ID 9400313
+    {9400313ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128832,8 +128591,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700111200,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400333
-    {9400333ull, {
+    // Row ID 9400314
+    {9400314ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128845,8 +128604,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700135101,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400334
-    {9400334ull, {
+    // Row ID 9400315
+    {9400315ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128858,8 +128617,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122500,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400335
-    {9400335ull, {
+    // Row ID 9400316
+    {9400316ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128871,8 +128630,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700121600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400336
-    {9400336ull, {
+    // Row ID 9400317
+    {9400317ull, {
         .iconId = 443,
         .dispMask00 = true,
         .areaNo = 60,
@@ -128884,8 +128643,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700122000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400337
-    {9400337ull, {
+    // Row ID 9400318
+    {9400318ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -128897,8 +128656,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700142500,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400338
-    {9400338ull, {
+    // Row ID 9400319
+    {9400319ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -128910,8 +128669,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700142500,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400339
-    {9400339ull, {
+    // Row ID 9400320
+    {9400320ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -128923,8 +128682,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700141701,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400340
-    {9400340ull, {
+    // Row ID 9400321
+    {9400321ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -128936,8 +128695,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700141500,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400341
-    {9400341ull, {
+    // Row ID 9400322
+    {9400322ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -128949,8 +128708,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700141600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400342
-    {9400342ull, {
+    // Row ID 9400323
+    {9400323ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -128962,8 +128721,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700141700,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400343
-    {9400343ull, {
+    // Row ID 9400324
+    {9400324ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -128975,8 +128734,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700141400,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400344
-    {9400344ull, {
+    // Row ID 9400325
+    {9400325ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -128988,8 +128747,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700180120,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400345
-    {9400345ull, {
+    // Row ID 9400326
+    {9400326ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129001,8 +128760,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700141500,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400346
-    {9400346ull, {
+    // Row ID 9400327
+    {9400327ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129014,8 +128773,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700141500,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400347
-    {9400347ull, {
+    // Row ID 9400328
+    {9400328ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129027,8 +128786,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700140901,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400348
-    {9400348ull, {
+    // Row ID 9400329
+    {9400329ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129040,8 +128799,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700140300,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400349
-    {9400349ull, {
+    // Row ID 9400330
+    {9400330ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129053,8 +128812,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700141900,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400350
-    {9400350ull, {
+    // Row ID 9400331
+    {9400331ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129066,8 +128825,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700141801,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400351
-    {9400351ull, {
+    // Row ID 9400332
+    {9400332ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129079,8 +128838,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700141800,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400352
-    {9400352ull, {
+    // Row ID 9400333
+    {9400333ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129092,8 +128851,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700141400,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400353
-    {9400353ull, {
+    // Row ID 9400334
+    {9400334ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129105,8 +128864,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700140600,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400354
-    {9400354ull, {
+    // Row ID 9400335
+    {9400335ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129118,8 +128877,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700142500,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400355
-    {9400355ull, {
+    // Row ID 9400336
+    {9400336ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129131,8 +128890,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700142000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400356
-    {9400356ull, {
+    // Row ID 9400337
+    {9400337ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129144,8 +128903,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700140901,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400357
-    {9400357ull, {
+    // Row ID 9400338
+    {9400338ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129157,8 +128916,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700140900,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400358
-    {9400358ull, {
+    // Row ID 9400339
+    {9400339ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129170,8 +128929,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700142000,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400359
-    {9400359ull, {
+    // Row ID 9400340
+    {9400340ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129183,8 +128942,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700140904,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400360
-    {9400360ull, {
+    // Row ID 9400341
+    {9400341ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129196,8 +128955,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700140300,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400361
-    {9400361ull, {
+    // Row ID 9400342
+    {9400342ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
@@ -129209,8 +128968,8 @@ const MapEntry MAP_ENTRIES[] = {
         .textId1 = 700140300,
         .selectMinZoomStep = 1,
     }, Category::WorldQuestNPC, -1, -1, nullptr, 0u, 0},
-    // Row ID 9400362
-    {9400362ull, {
+    // Row ID 9400343
+    {9400343ull, {
         .iconId = 443,
         .dispMask02 = true,
         .areaNo = 61,
