@@ -132,11 +132,19 @@ def ffdec_cmd():
     env = os.environ.get("FFDEC_CLI")
     if env:
         return env.split()
-    java = Path("E:/Program Files/Java/jdk1.8.0_211/bin/java.exe")
-    jar = PROJECT.parent / "FFDec - Zipped" / "ffdec-cli.jar"
-    if java.exists() and jar.exists():
-        return [str(java), "-jar", str(jar)]
-    print("ERROR: set FFDEC_CLI (e.g. 'java -jar /path/to/ffdec-cli.jar')")
+    # Known local installs (newest first). Each is a full argv list so paths
+    # with spaces are fine (no shell split). Override with FFDEC_CLI if elsewhere.
+    candidates = [
+        [r"C:\Program Files (x86)\FFDec\ffdec-cli.exe"],   # JPEXS Windows installer
+        [r"C:\Program Files\FFDec\ffdec-cli.exe"],
+        [str(Path("E:/Program Files/Java/jdk1.8.0_211/bin/java.exe")),
+         "-jar", str(PROJECT.parent / "FFDec - Zipped" / "ffdec-cli.jar")],
+    ]
+    for cmd in candidates:
+        if Path(cmd[0]).exists() and (len(cmd) < 3 or Path(cmd[2]).exists()):
+            return cmd
+    print("ERROR: FFDEC not found; set FFDEC_CLI (e.g. 'java -jar /path/to/ffdec-cli.jar' "
+          r"or 'C:\Program Files (x86)\FFDec\ffdec-cli.exe')")
     sys.exit(1)
 
 
