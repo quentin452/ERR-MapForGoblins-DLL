@@ -82,6 +82,13 @@ namespace goblin::config
     bool enableSectionToggle = true;
     uint32_t sectionSelectKey = 0x77; // VK_F8  — cycle which section is selected
     uint32_t sectionToggleKey = 0x76; // VK_F7  — show/hide the selected section
+
+    // Marker clustering (v1, density-triggered, static). Collapses dense marker
+    // piles into one cluster icon to cut the per-page map-open cost. Opt-in.
+    bool enableClustering = false;
+    uint8_t clusterThreshold = 8;     // a bucket clusters only if it holds > this many markers
+    uint32_t clusterExpandKey = 0x75; // VK_F6  — expand/collapse all clusters
+    uint32_t clusterDebugKey = 0x7A;  // VK_F11 — cluster labels: member count vs icon-only
 }
 
 // ── schema ───────────────────────────────────────────────────────────────
@@ -148,6 +155,25 @@ namespace
                 B("section_quest",     sectionQuest,     "true", "Show the Quest group's icons."),
                 B("section_reforged",  sectionReforged,  "true", "Show the Reforged group's icons."),
                 B("section_world",     sectionWorld,     "true", "Show the World group's icons."),
+            }},
+
+            {"Clustering",
+             "Collapses dense piles of markers into a single cluster icon, so the world\n"
+             "map opens fast even with everything enabled (the open cost scales with how\n"
+             "many markers are on the displayed page). Density-triggered: only spots with\n"
+             "more than the threshold of markers cluster; sparse markers stay exact.",
+             false, {
+                B("enable_clustering", enableClustering, "false",
+                  "Master switch for marker clustering."),
+                IniEntry{"cluster_threshold", IniType::U8, &cfg::clusterThreshold, "8",
+                         "A location clusters only if it holds MORE than this many markers.\n"
+                         "Lower = more aggressive clustering (faster, less precise).", false, nullptr},
+                IniEntry{"cluster_expand_key", IniType::VkKey, &cfg::clusterExpandKey, "F6",
+                         "Key to expand all clusters into individual markers (and collapse again).\n"
+                         "Expanded = every marker shown = slower open. Default: F6.", false, nullptr},
+                IniEntry{"cluster_debug_key", IniType::VkKey, &cfg::clusterDebugKey, "F11",
+                         "Key to toggle cluster labels between the member count and icon-only.\n"
+                         "Shows how many markers each cluster holds. Default: F11.", false, nullptr},
             }},
 
             {"Equipment", nullptr, false, {

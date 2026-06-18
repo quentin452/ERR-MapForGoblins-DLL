@@ -292,6 +292,66 @@ static void apply_section_visibility(Section s, bool visible)
                  section_name(s), visible ? "SHOWN" : "HIDDEN", touched);
 }
 
+// ─── Marker clustering (v1, density-triggered, static) ───────────────
+//
+// Dense piles of markers (e.g. Leyndell's ~450) are collapsed into one cluster
+// icon to cut the per-page map-open cost (which scales with rows on the page).
+// Membership is decided ONCE at inject (static), so each cluster's count is
+// known → we can show it as a label. Collapse/expand + count/icon-only are live
+// areaNo-99 / textId flips on the already-built blob — no rebuild.
+
+// World-unit size of a clustering cell. Markers within the same cell (and area)
+// merge once a cell exceeds the threshold. Tunable here for v1 (not in the ini).
+static constexpr float CLUSTER_CELL = 60.0f;
+// Cluster label PlaceName id base (one static "<count>" string per cluster,
+// injected by setup_messages). Above the 950M BloodMsg band, clear of item
+// (50-600M), location (<50M) and npc (700M+) id spaces.
+static constexpr int CLUSTER_TEXTID_BASE = 952000000;
+
+// Census handed to setup_messages so it can inject each cluster's count string:
+// (PlaceName textId, member count).
+static std::vector<std::pair<int, int>> g_cluster_census;
+
+// Runtime registries (filled during inject build).
+struct ClusterRow { uint8_t *ptr; uint8_t area; int count_textid; };
+static std::vector<ClusterRow> g_clusters;        // the synthetic cluster icons
+struct ClusterMember { uint8_t *ptr; uint8_t orig_area; };
+static std::vector<ClusterMember> g_cluster_members;  // individuals parked under a cluster
+
+static std::atomic<bool> g_clusters_expanded{false};  // false = collapsed (clusters shown)
+static std::atomic<bool> g_cluster_debug{false};      // true = cluster labels show counts
+// Hotkey thread sets these; the watcher applies the areaNo/textId flips (single
+// owner of game-state mutation), mirroring the section + master toggles.
+static std::atomic<bool> g_cluster_expand_dirty{false};
+static std::atomic<bool> g_cluster_debug_dirty{false};
+
+// Collapsed: clusters visible (real area), members parked (99).
+// Expanded: clusters parked (99), members restored — the slow, see-everything view.
+static void apply_cluster_expanded(bool expanded)
+{
+    for (const auto &c : g_clusters)
+        c.ptr[0x20] = expanded ? 99 : c.area;
+    for (const auto &m : g_cluster_members)
+        m.ptr[0x20] = expanded ? m.orig_area : 99;
+    spdlog::info("[CLUSTER] {} ({} clusters, {} members)",
+                 expanded ? "EXPANDED" : "COLLAPSED", g_clusters.size(), g_cluster_members.size());
+}
+
+// Toggle cluster labels between their member count and icon-only (textId1 = -1).
+static void apply_cluster_debug(bool show_counts)
+{
+    for (const auto &c : g_clusters)
+        reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(c.ptr)->textId1 =
+            show_counts ? c.count_textid : -1;
+    spdlog::info("[CLUSTER] labels -> {}", show_counts ? "COUNT" : "ICON-ONLY");
+}
+
+// Cluster label census for setup_messages (PlaceName textId → member count).
+const std::vector<std::pair<int, int>> &goblin::cluster_label_census()
+{
+    return g_cluster_census;
+}
+
 namespace
 {
 // One ItemLotParam row, read by raw offset (ITEMLOT_PARAM_ST = 152 bytes,
@@ -597,6 +657,71 @@ void goblin::inject_map_entries()
     }
     } // map.inject.filter
 
+    // Clustering plan (density-triggered, static). Bucket injected markers by
+    // their FINAL (projected) area + cell; any cell over the threshold becomes a
+    // single cluster row (appended to `entries`) and its members are recorded
+    // for parking. Pieces/kindling are excluded (owned by collected::/kindling::).
+    std::set<uint64_t> clustered_member_ids;          // original ids parked under a cluster
+    std::vector<size_t> cluster_entry_idx;            // index in `entries` of each cluster
+    std::vector<int> cluster_count_textid;            // parallel: its label id
+    if (goblin::config::enableClustering)
+    {
+        GOBLIN_BENCH("map.inject.cluster_plan");
+        struct Bucket { std::vector<size_t> members; double sx = 0, sz = 0; float py = 0;
+                        uint8_t area = 0, gx = 0, gz = 0; Category cat{}; };
+        std::unordered_map<uint64_t, Bucket> buckets;
+        auto cell_key = [](uint8_t area, int cx, int cz) -> uint64_t {
+            // bias cx/cz into 24-bit unsigned lanes (world cells well within ±8M)
+            return (static_cast<uint64_t>(area) << 48) |
+                   ((static_cast<uint64_t>((cx + 0x400000) & 0xFFFFFF)) << 24) |
+                    (static_cast<uint64_t>((cz + 0x400000) & 0xFFFFFF));
+        };
+        for (size_t i = 0; i < entries.size(); i++)
+        {
+            if (entries[i].is_piece || entries[i].is_kindling) continue;
+            from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp = *entries[i].data;
+            if (goblin::config::projectDungeons)
+                project_dungeon_row_to_overworld(&tmp);
+            int cx = static_cast<int>(std::floor(tmp.posX / CLUSTER_CELL));
+            int cz = static_cast<int>(std::floor(tmp.posZ / CLUSTER_CELL));
+            auto &b = buckets[cell_key(tmp.areaNo, cx, cz)];
+            b.members.push_back(i);
+            b.sx += tmp.posX; b.sz += tmp.posZ; b.py = tmp.posY;
+            b.area = tmp.areaNo; b.gx = tmp.gridXNo; b.gz = tmp.gridZNo;
+            b.cat = entries[i].category;
+        }
+        int cidx = 0;
+        for (auto &kv : buckets)
+        {
+            Bucket &b = kv.second;
+            if (b.members.size() <= goblin::config::clusterThreshold) continue;
+            auto *cd = new from::paramdef::WORLD_MAP_POINT_PARAM_ST(*entries[b.members[0]].data);
+            cd->areaNo = b.area; cd->gridXNo = b.gx; cd->gridZNo = b.gz;
+            cd->posX = static_cast<float>(b.sx / b.members.size());
+            cd->posZ = static_cast<float>(b.sz / b.members.size());
+            cd->posY = b.py;
+            cd->iconId = static_cast<uint16_t>(goblin::generated::ANON_ICON_ID); // v1 placeholder glyph
+            // Clean standalone icon: no gates, icon-only by default (debug flips textId1).
+            cd->eventFlagId = 0; cd->clearedEventFlagId = 0;
+            cd->textId1 = cd->textId2 = cd->textId3 = cd->textId4 = -1;
+            cd->textId5 = cd->textId6 = cd->textId7 = cd->textId8 = -1;
+            cd->textDisableFlagId1 = cd->textDisableFlagId2 = cd->textDisableFlagId3 = 0;
+            cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
+            cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
+            int textid = CLUSTER_TEXTID_BASE + cidx;
+            g_cluster_census.emplace_back(textid, static_cast<int>(b.members.size()));
+            for (size_t mi : b.members)
+                clustered_member_ids.insert(entries[mi].original_row_id);
+            cluster_entry_idx.push_back(entries.size());
+            cluster_count_textid.push_back(textid);
+            entries.push_back({0, 0, cd, false, false, b.cat, 0, 0});
+            cidx++;
+        }
+        spdlog::info("[CLUSTER] planned {} clusters covering {} markers (cell={}, threshold={})",
+                     g_cluster_census.size(), clustered_member_ids.size(), CLUSTER_CELL,
+                     static_cast<int>(goblin::config::clusterThreshold));
+    }
+
     spdlog::info("Injecting {} map entries ({} skipped by config, {} live-recategorized)",
                  entries.size(), skipped_by_config, live_recat);
     spdlog::info("[BENCH] map.inject.filter.count: {} kept of {} baked",
@@ -638,6 +763,12 @@ void goblin::inject_map_entries()
     // Update collected + kindling systems with new dynamic IDs
     collected::remap_row_ids(id_remap);
     kindling::remap_row_ids(id_remap);
+
+    // Map each cluster's now-assigned dynamic row_id → its label id, so the build
+    // loop can register the cluster rows (the synthetic ones, original_row_id 0).
+    std::unordered_map<int32_t, int> cluster_rowid_to_textid;
+    for (size_t k = 0; k < cluster_entry_idx.size(); k++)
+        cluster_rowid_to_textid[entries[cluster_entry_idx[k]].row_id] = cluster_count_textid[k];
 
     spdlog::debug("Assigned IDs: {} entries, range {}-{}, remapped {} piece IDs",
                   entries.size(),
@@ -855,15 +986,37 @@ void goblin::inject_map_entries()
             }
         }
 
+        auto *cp = new_param_file + data_offset;
+
+        // Clustering: register synthetic cluster rows (the only injected rows with
+        // original_row_id 0) and park their members (collapsed default = areaNo 99,
+        // restored on expand). A clustered member is NOT section-registered — the
+        // cluster owns its areaNo, so a section "show" must not un-park it.
+        bool is_clustered_member = false;
+        if (goblin::config::enableClustering)
+        {
+            auto cit = cluster_rowid_to_textid.find(all_rows[i].row_id);
+            if (all_rows[i].original_row_id == 0 && cit != cluster_rowid_to_textid.end())
+            {
+                g_clusters.push_back({cp, cp[0x20], cit->second});
+            }
+            else if (all_rows[i].original_row_id &&
+                     clustered_member_ids.count(all_rows[i].original_row_id))
+            {
+                g_cluster_members.push_back({cp, cp[0x20]});
+                cp[0x20] = 99;
+                is_clustered_member = true;
+            }
+        }
+
         // Register the row for the in-game per-section toggle (our injected rows
         // only; vanilla rows have original_row_id 0 and are never group-toggled).
         // areaNo here is final (post dungeon-reprojection) and pre piece/kindling
         // 99-hide, so it is the correct value to restore on a section "show".
-        if (all_rows[i].original_row_id)
+        if (all_rows[i].original_row_id && !is_clustered_member)
         {
-            auto *p = new_param_file + data_offset;
-            g_section_rows.push_back({p, section_of(all_rows[i].category),
-                                      p[0x20], all_rows[i].is_piece,
+            g_section_rows.push_back({cp, section_of(all_rows[i].category),
+                                      cp[0x20], all_rows[i].is_piece,
                                       all_rows[i].is_kindling,
                                       static_cast<uint64_t>(all_rows[i].row_id)});
         }
@@ -943,6 +1096,10 @@ void goblin::inject_map_entries()
     }
     spdlog::info("[SECTION] registered {} toggleable rows across {} sections",
                  g_section_rows.size(), SECTION_COUNT);
+
+    if (goblin::config::enableClustering)
+        spdlog::info("[CLUSTER] active: {} cluster icons, {} markers parked (collapsed)",
+                     g_clusters.size(), g_cluster_members.size());
 
     spdlog::debug("Injection complete: {} total rows", total_rows);
 }
@@ -1236,9 +1393,31 @@ void goblin::toggle_hotkey_loop()
 {
     bool prev_kbd = false, prev_pad = false, prev_f11 = false;
     bool prev_sel = false, prev_tog = false;
+    bool prev_ex = false, prev_db = false;
     while (true)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        // Marker clustering: expand/collapse all clusters + debug count labels.
+        // Independent of the master/section toggles; posts intent to the watcher.
+        if (config::enableClustering)
+        {
+            bool ex = (GetAsyncKeyState(static_cast<int>(config::clusterExpandKey)) & 0x8000) != 0;
+            bool db = (GetAsyncKeyState(static_cast<int>(config::clusterDebugKey)) & 0x8000) != 0;
+            if (ex && !prev_ex)
+            {
+                g_clusters_expanded.store(!g_clusters_expanded.load());
+                g_cluster_expand_dirty.store(true);
+            }
+            if (db && !prev_db)
+            {
+                g_cluster_debug.store(!g_cluster_debug.load());
+                g_cluster_debug_dirty.store(true);
+            }
+            prev_ex = ex;
+            prev_db = db;
+        }
+        else { prev_ex = false; prev_db = false; }
 
         // Per-section toggle (independent of the master toggle below). Select
         // key cycles the active group; toggle key flips its visibility. Both
@@ -1282,7 +1461,8 @@ void goblin::toggle_hotkey_loop()
         prev_pad = pad;
 
         // EXPERIMENT: F11 cycles the toast method (see TOAST_METHOD_NAMES).
-        bool f11 = (GetAsyncKeyState(VK_F11) & 0x8000) != 0;
+        // Suppressed when clustering is on — F11 is then the cluster-debug toggle.
+        bool f11 = !config::enableClustering && (GetAsyncKeyState(VK_F11) & 0x8000) != 0;
         if (f11 && !prev_f11)
         {
             int m = (g_toast_method.load() + 1) % TOAST_METHOD_COUNT;
@@ -1689,6 +1869,13 @@ void goblin::menu_auto_toggle_loop()
         int treq = g_section_toast_req.exchange(0);
         if (treq)
             goblin::show_codex_toast(treq);
+
+        // Cluster expand/collapse + debug-label flips (areaNo / textId on the live
+        // blob). Applied here, the single owner of game-state mutation.
+        if (g_cluster_expand_dirty.exchange(false))
+            apply_cluster_expanded(g_clusters_expanded.load());
+        if (g_cluster_debug_dirty.exchange(false))
+            apply_cluster_debug(g_cluster_debug.load());
 
         bool want_expanded = !user_disabled_now;
 

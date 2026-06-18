@@ -1,11 +1,17 @@
 #pragma once
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 namespace goblin
 {
     void inject_map_entries();
+
+    // Cluster label census: (PlaceName textId, member count) for each cluster the
+    // inject built. setup_messages injects a static "<count>" string per entry so
+    // the cluster-debug toggle (F11) can label clusters with their size.
+    const std::vector<std::pair<int, int>> &cluster_label_census();
 
     // Data pointers of MFG-injected WorldMapPointParam rows in the expanded
     // table. Populated by inject_map_entries(); consumed by

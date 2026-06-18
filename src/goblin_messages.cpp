@@ -867,6 +867,17 @@ void goblin::setup_messages()
             spdlog::info("Composed {} duplicate-zone labels into PlaceName", composed);
     }
 
+    // Cluster labels: one static "<count>" string per cluster (clusters are
+    // icon-only by default; the F11 debug toggle points a cluster's textId1 here).
+    // reserve() so the c_str() pointers stay valid until the patch call below.
+    std::vector<std::wstring> cluster_label_storage;
+    cluster_label_storage.reserve(goblin::cluster_label_census().size());
+    for (auto &cc : goblin::cluster_label_census())
+    {
+        cluster_label_storage.emplace_back(std::to_wstring(cc.second));
+        new_entries.push_back({cc.first, cluster_label_storage.back().c_str()});
+    }
+
     if (patch_fmg_in_memory(fmg_ptr, &sub[19], new_entries, /*capture_valid_ids=*/true))
     {
         spdlog::info("PlaceName FMG patched ({} entries)", new_entries.size());

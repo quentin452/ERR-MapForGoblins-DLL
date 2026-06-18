@@ -173,6 +173,12 @@ namespace goblin
         extern bool enableSectionToggle;
         extern uint32_t sectionSelectKey;  // default VK_F8 = 0x77 (cycle section)
         extern uint32_t sectionToggleKey;  // default VK_F7 = 0x76 (toggle section)
+
+        // Marker clustering (v1). See goblin_config_schema [Clustering].
+        extern bool enableClustering;
+        extern uint8_t clusterThreshold;   // bucket clusters only if it holds > this many
+        extern uint32_t clusterExpandKey;  // default VK_F6  = 0x75 (expand/collapse all)
+        extern uint32_t clusterDebugKey;   // default VK_F11 = 0x7A (count labels vs icon-only)
     };
 
     uint32_t parse_vk_code(std::string name);
