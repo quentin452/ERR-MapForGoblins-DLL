@@ -41,6 +41,24 @@ def decade(n):
     return f"{len(str(n))}-digit"
 
 
+def category(i):
+    """Category digit of a 10-digit map-instance flag `10 AA BB C DDD`: the
+    thousands digit C encodes the flag TYPE (collectible vs door/cutscene/etc)."""
+    return (i // 1000) % 10
+
+
+def map_block(i, block_drop=4):
+    """Map-block prefix: id with its last `block_drop` digits dropped, grouping
+    sibling flags that co-locate in the same room/area."""
+    return i // (10 ** block_drop)
+
+
+def is_map_instance(i):
+    """Map-instance flags (collectibles/treasure/enemy-defeat) are the big
+    10-digit ids; below MAP_INSTANCE_MIN are mostly system/menu/quest flags."""
+    return i >= MAP_INSTANCE_MIN
+
+
 def parse_events(path):
     set_ids, clear_ids, all_ids = set(), set(), set()
     n = 0
@@ -173,8 +191,7 @@ def main():
     # collect flags cluster on one category, a SET flag of a DIFFERENT category
     # is a non-item event (door/cutscene/boss-phase), not a missed collectible —
     # the sharpest filter we have without a controlled capture.
-    def cat(i):
-        return (i // 1000) % 10
+    cat = category
     known_cat = Counter(cat(k) for k in known if k >= MAP_INSTANCE_MIN)
     unk_cat = Counter(cat(c) for c in unknown_hi)
     print()

@@ -49,7 +49,6 @@ const QuestGate QUEST_GATES[] = {
     {134900u, {1050389205u, 0u, 0u, 0u}}, // gowry
     {135100u, {11109855u, 0u, 0u, 0u}}, // corhyn
     {135101u, {11109855u, 0u, 0u, 0u}}, // corhyn
-    {140200u, {2048459278u, 2046429210u, 0u, 0u}}, // hornsent
     {140300u, {2048429208u, 0u, 0u, 0u}}, // igon
     {140301u, {2048429208u, 0u, 0u, 0u}}, // igon
     {140500u, {22009255u, 0u, 0u, 0u}}, // trina
@@ -62,6 +61,6 @@ const QuestGate QUEST_GATES[] = {
     {141603u, {2046429355u, 2045429206u, 0u, 0u}}, // ansbach
     {142000u, {2051459220u, 0u, 0u, 0u}}, // ymir
 };
-const size_t QUEST_GATE_COUNT = 55;
+const size_t QUEST_GATE_COUNT = 54;
 
 } // namespace goblin::generated

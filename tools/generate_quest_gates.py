@@ -69,12 +69,10 @@ QUESTS = {
 }
 
 
-def worldquestnpc_nameids():
-    """nameIds actually used by WorldQuestNPC markers (textId1 - 700000000).
-    Gating only these guarantees each gate is actionable AND drops name-collision
-    false matches (e.g. Rennala for 'Renna', 'Sword of Bernahl', 'Fia's Champion')
-    that aren't friendly-placed quest-NPC markers."""
-    txt = open(MAP_DATA, encoding="utf-8").read()
+def parse_worldquestnpc_nameids(txt):
+    """Parse WorldQuestNPC marker nameIds (textId1 - 700000000) from baked
+    goblin_map_data.cpp text. Pure (string in, set out) so it is unit-testable
+    without the real generated file."""
     ids = set()
     # each MapEntry: {<id>ull, { ...data... }, Category::<C>, ...}
     for m in re.finditer(r"\{(.*?)\}, Category::(\w+),", txt, re.DOTALL):
@@ -86,17 +84,40 @@ def worldquestnpc_nameids():
     return ids
 
 
-def main():
-    name_map = json.load(open(NAME_MAP, encoding="utf-8"))
-    marker_ids = worldquestnpc_nameids()
+def worldquestnpc_nameids():
+    """nameIds actually used by WorldQuestNPC markers (textId1 - 700000000).
+    Gating only these guarantees each gate is actionable AND drops name-collision
+    false matches (e.g. Rennala for 'Renna', 'Sword of Bernahl', 'Fia's Champion')
+    that aren't friendly-placed quest-NPC markers."""
+    return parse_worldquestnpc_nameids(open(MAP_DATA, encoding="utf-8").read())
+
+
+# nameIds to NEVER gate, even on a keyword hit — name-collision merchants that
+# share a substring with a quest companion. The Hornsent Grandam (Bonny Village
+# merchant) is NOT the Hornsent companion; the "Hornsent" keyword matched both,
+# so her marker was wrongly hidden until the companion's quest activated (audit
+# 2026-06-18). No substring separates "Hornsent" from "Hornsent Grandam", hence
+# an explicit nameId exclusion.
+EXCLUDE_NAMEIDS = frozenset({140200})  # Hornsent Grandam
+
+
+def build_gate_rows(quests, name_map, marker_ids, exclude=EXCLUDE_NAMEIDS):
+    """Join quest table + nameId->name map + marker nameId set.
+
+    Pure: returns (rows, unmatched, dropped) where rows is a sorted list of
+    (nameId, npc, flags). A keyword hit is only emitted when its nameId is in
+    marker_ids (drops name-collision false hits, e.g. 'Rennala' for 'Renna');
+    otherwise it is counted in `dropped`. Flags are carried through verbatim."""
     rows = []  # (nameId, npc, [flags])
     unmatched = []
     dropped = 0
-    for npc, (keywords, flags) in QUESTS.items():
+    for npc, (keywords, flags) in quests.items():
         hit_ids = []
         for nid, name in name_map.items():
             if any(k.lower() in name.lower() for k in keywords):
                 inid = int(nid)
+                if inid in exclude:           # name-collision merchant, never gate
+                    continue
                 if inid in marker_ids:        # only gate nameIds a marker uses
                     hit_ids.append(inid)
                 else:
@@ -107,6 +128,13 @@ def main():
         for nid in hit_ids:
             rows.append((nid, npc, flags))
     rows.sort()
+    return rows, unmatched, dropped
+
+
+def main():
+    name_map = json.load(open(NAME_MAP, encoding="utf-8"))
+    marker_ids = worldquestnpc_nameids()
+    rows, unmatched, dropped = build_gate_rows(QUESTS, name_map, marker_ids)
     print("WorldQuestNPC marker nameIds: %d; dropped %d non-marker name hits"
           % (len(marker_ids), dropped))
 
