@@ -1,5 +1,6 @@
 #include "goblin_debug_events.hpp"
 
+#include "goblin_inject.hpp"
 #include "goblin_map_data.hpp"
 #include "modutils.hpp"
 
@@ -250,6 +251,8 @@ void flag_drain_loop()
                 g_log->warn("UNKNOWN placed-item flag {} (cat {}) — collected item "
                             "with NO map marker; coverage gap candidate",
                             e.id, (e.id / 1000u) % 10u);
+                // Live in-game notice (queued; the watcher spaces multiple).
+                goblin::enqueue_toast(goblin::TUTORIAL_FMG_ID_COVERAGE_GAP);
             }
             else
                 sup_uncorr++; // collect-shaped flag, no nearby grant → script/region

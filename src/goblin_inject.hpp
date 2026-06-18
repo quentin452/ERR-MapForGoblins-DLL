@@ -76,6 +76,7 @@ namespace goblin
     constexpr int TUTORIAL_FMG_ID_OFF       = 9004252;  // "Map icons: OFF"
     constexpr int TUTORIAL_FMG_ID_DUMP_OK   = 9004253;  // "Markers dumped"
     constexpr int TUTORIAL_FMG_ID_DUMP_FAIL = 9004254;  // "Marker dump failed - press again"
+    constexpr int TUTORIAL_FMG_ID_COVERAGE_GAP = 9004255; // "unmapped item collected (coverage gap)"
 
     // Per-section toggle banners. 7 display groups × {shown, hidden} = 14 static
     // rows at BASE..BASE+13. id = BASE + section*2 + (visible ? 0 : 1). The
@@ -99,6 +100,11 @@ namespace goblin
     // rows (pass a TUTORIAL_FMG_ID_* id). Static text, no FMG rewrite — same
     // path as the F10 banner. Safe from any thread once init has run.
     void show_codex_toast(int tutorial_id);
+
+    // Queue a codex toast (by TUTORIAL_FMG_ID_*) to be fired by the watcher
+    // thread, spaced so multiple don't overwrite each other. Thread-safe; the
+    // preferred entry point for runtime toasts (e.g. coverage-gap notices).
+    void enqueue_toast(int tutorial_id);
 
     // Background thread owning the WorldMapPointParam expand/revert state. It
     // applies the overlay menu's master / per-section / per-category / cluster

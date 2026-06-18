@@ -960,6 +960,8 @@ void goblin::setup_messages()
             {goblin::TUTORIAL_FMG_ID_OFF,       L"Map icons: OFF"},
             {goblin::TUTORIAL_FMG_ID_DUMP_OK,   L"Markers dumped"},
             {goblin::TUTORIAL_FMG_ID_DUMP_FAIL, L"Marker dump failed — press again"},
+            {goblin::TUTORIAL_FMG_ID_COVERAGE_GAP,
+             L"Map for Goblins: collected an unmapped item (coverage gap — see log)"},
         };
         // Per-section toggle banners: "<group>: shown" / "<group>: hidden" for
         // each of the 7 display groups. The wide strings are owned by sec_texts

@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <deque>
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -254,7 +255,16 @@ static std::atomic<bool> g_section_visible[SECTION_COUNT];
 // the areaNo flips, persists the ini, and fires the toast — mirroring how the
 // master F10 toggle defers its banner to that thread.
 static std::atomic<int> g_section_apply_req{-1};  // section idx to (re)apply, -1 = none
-static std::atomic<int> g_section_toast_req{0};   // tutorial id to fire, 0 = none
+
+// Toast request QUEUE. Replaces the old single-slot request so several toasts
+// (e.g. a burst of coverage-gap hits) can be shown in sequence instead of
+// overwriting each other. The watcher (menu_auto_toggle_loop) drains it one at
+// a time, spaced TOAST_SPACING_MS apart so each stays on screen.
+static std::mutex g_toast_mtx;
+static std::deque<int> g_toast_queue;        // tutorial ids waiting to fire
+static int64_t g_next_toast_ms = 0;          // earliest time the next may fire
+static constexpr size_t TOAST_QUEUE_CAP = 32;
+static constexpr int64_t TOAST_SPACING_MS = 2500;
 
 // One injected, section-toggleable row in the expanded blob. orig_area is the
 // row's FINAL areaNo (post dungeon-reprojection) so a show restores the right
@@ -1492,6 +1502,7 @@ bool goblin::inject_tutorial_popup_rows()
     all_rows.push_back({TUTORIAL_NEW_ROW_ID_OFF,       template_data});
     all_rows.push_back({TUTORIAL_NEW_ROW_ID_DUMP_OK,   template_data});
     all_rows.push_back({TUTORIAL_NEW_ROW_ID_DUMP_FAIL, template_data});
+    all_rows.push_back({goblin::TUTORIAL_FMG_ID_COVERAGE_GAP, template_data});
     for (int s = 0; s < goblin::TUTORIAL_SECTION_COUNT; s++)
     {
         all_rows.push_back({goblin::section_toast_id(s, true),  template_data});
@@ -1686,7 +1697,9 @@ void goblin::ui::set_section_visible(int idx, bool visible)
     // The watcher (menu_auto_toggle_loop) applies the areaNo flips and persists.
     g_section_visible[idx].store(visible);
     g_section_apply_req.store(idx);
-    g_section_toast_req.store(section_toast_id(idx, visible));
+    // No toast: the overlay menu checkbox IS the feedback. The old per-section
+    // "shown/hidden" banners were the icon-toggle toasts; the toast channel is
+    // now used for the live coverage-gap notice instead.
 }
 
 bool goblin::ui::icons_enabled() { return !g_icons_user_disabled.load(); }
@@ -1814,6 +1827,17 @@ void goblin::show_codex_toast(int tutorial_id)
     if (!er) er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
     if (!er) return;
     seh_fire_trampoline(er, tutorial_id);
+}
+
+// Queue a codex toast to be fired (spaced) by the watcher thread. Thread-safe;
+// callable from any thread (e.g. the debug-events drain). Drops silently if the
+// queue is full so a flood of gaps can't grow it without bound.
+void goblin::enqueue_toast(int tutorial_id)
+{
+    if (tutorial_id <= 0) return;
+    std::lock_guard<std::mutex> lk(g_toast_mtx);
+    if (g_toast_queue.size() < TOAST_QUEUE_CAP)
+        g_toast_queue.push_back(tutorial_id);
 }
 
 
@@ -2116,9 +2140,26 @@ void goblin::menu_auto_toggle_loop()
             apply_section_visibility(static_cast<Section>(areq), g_section_visible[areq].load());
             goblin::save_section_states(goblin::config_ini_path());
         }
-        int treq = g_section_toast_req.exchange(0);
-        if (treq)
-            goblin::show_codex_toast(treq);
+
+        // Toast queue: fire one at a time, spaced so consecutive toasts don't
+        // overwrite each other on screen.
+        {
+            int fire_id = 0;
+            int64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 std::chrono::steady_clock::now().time_since_epoch())
+                                 .count();
+            {
+                std::lock_guard<std::mutex> lk(g_toast_mtx);
+                if (!g_toast_queue.empty() && now_ms >= g_next_toast_ms)
+                {
+                    fire_id = g_toast_queue.front();
+                    g_toast_queue.pop_front();
+                    g_next_toast_ms = now_ms + TOAST_SPACING_MS;
+                }
+            }
+            if (fire_id)
+                goblin::show_codex_toast(fire_id);
+        }
 
         // Per-category toggle requests posted by the overlay menu. Applied here
         // (single owner of game-state mutation). Scans dirty flags so a "toggle
