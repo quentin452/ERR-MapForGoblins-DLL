@@ -6,12 +6,14 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 
+#include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <mutex>
 #include <thread>
 #include <unordered_set>
-#include <utility>
 #include <vector>
 
 #define WIN32_LEAN_AND_MEAN
@@ -62,6 +64,53 @@ void build_known_collect_flags()
     }
 }
 
+// ── Correlation state (P3) ───────────────────────────────────────────────
+//
+// A genuine placed-item pickup fires a collectible-shaped collect flag AND an
+// AddItemFunc grant within the same brief window. Load-time/region/script flag
+// bursts (runs of 10-20 flags in one instant) have NO accompanying grant, so
+// requiring grant-correlation rejects them. A burst guard is a cheap backstop
+// for the rare case a burst overlaps a real grant.
+int64_t now_ns()
+{
+    return std::chrono::steady_clock::now().time_since_epoch().count();
+}
+constexpr int64_t CORRELATION_WINDOW_NS = 1'500'000'000; // ±1.5 s flag↔grant
+constexpr int64_t BURST_SPAN_NS = 100'000'000;           // 100 ms
+constexpr int BURST_MIN = 4; // >=this many collectible-unknowns in BURST_SPAN = bulk init
+
+// Whether to require flag↔grant correlation (only when the item hook is also on;
+// without grant data we can't correlate, so fall back to the looser P2 report).
+bool g_correlate = false;
+
+// Timestamps (ns) of recent AddItemFunc grants, for flag↔grant correlation.
+std::mutex g_grant_mtx;
+std::vector<int64_t> g_grant_times;
+
+void record_grant_time(int64_t t)
+{
+    std::lock_guard<std::mutex> lk(g_grant_mtx);
+    g_grant_times.push_back(t);
+}
+
+bool grant_within(int64_t t, int64_t window)
+{
+    std::lock_guard<std::mutex> lk(g_grant_mtx);
+    for (int64_t g : g_grant_times)
+        if (g >= t - window && g <= t + window)
+            return true;
+    return false;
+}
+
+void prune_grant_times(int64_t before)
+{
+    std::lock_guard<std::mutex> lk(g_grant_mtx);
+    auto &v = g_grant_times;
+    v.erase(std::remove_if(v.begin(), v.end(),
+                           [before](int64_t g) { return g < before; }),
+            v.end());
+}
+
 // SEH-guarded raw copy: the detours read pointers the game hands us; a bad/borderline
 // pointer must degrade to "skip this event", never crash. Body is POD-only (no C++
 // object unwinding allowed inside __try under clang-cl/MSVC).
@@ -93,11 +142,19 @@ constexpr const char *SET_EVENT_FLAG_AOB =
     "8B 12 48 8B F1 85 D2 0F 84";
 
 // Hot-path → drain-thread inbox. The flag detour fires a LOT, so it only records
-// (id,value) under a short lock and returns; the drain thread dedups + logs off
-// the game's flag-set path. Capped so a stalled drain can't grow it unbounded.
+// the event (id, value, set-time) under a short lock and returns; the drain
+// thread dedups + correlates + logs off the game's flag-set path. The set-time
+// is captured here (not at drain) so correlation and burst detection are precise.
+// Capped so a stalled drain can't grow it unbounded.
+struct FlagEvt
+{
+    uint32_t id;
+    uint8_t val;
+    int64_t t_ns;
+};
 constexpr size_t INBOX_CAP = 8192;
 std::mutex g_inbox_mtx;
-std::vector<std::pair<uint32_t, uint8_t>> g_inbox;
+std::vector<FlagEvt> g_inbox;
 std::atomic<uint64_t> g_dropped{0};
 
 uint64_t hk_set_event_flag(void *flagman, uint32_t *flag_id, uint8_t value,
@@ -106,9 +163,10 @@ uint64_t hk_set_event_flag(void *flagman, uint32_t *flag_id, uint8_t value,
     uint32_t id;
     if (flag_id && safe_copy(flag_id, &id, sizeof(id)))
     {
+        int64_t t = now_ns();
         std::lock_guard<std::mutex> lk(g_inbox_mtx);
         if (g_inbox.size() < INBOX_CAP)
-            g_inbox.emplace_back(id, value);
+            g_inbox.push_back({id, value, t});
         else
             g_dropped.fetch_add(1, std::memory_order_relaxed);
     }
@@ -120,8 +178,12 @@ void flag_drain_loop()
     // Log each flag id only once per session (first set) — the game sets a huge
     // number, but each distinct id is interesting only once for discovery.
     std::unordered_set<uint32_t> seen;
-    std::vector<std::pair<uint32_t, uint8_t>> batch;
+    std::vector<FlagEvt> batch;
+    // Collectible-shaped UNKNOWN first-sets awaiting flag↔grant correlation. Held
+    // CORRELATION_WINDOW_NS so a grant arriving slightly AFTER the flag is seen.
+    std::vector<FlagEvt> pending;
     uint64_t last_dropped = 0;
+
     while (true)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
@@ -130,22 +192,56 @@ void flag_drain_loop()
             std::lock_guard<std::mutex> lk(g_inbox_mtx);
             g_inbox.swap(batch);
         }
-        for (auto &[id, value] : batch)
+
+        for (const FlagEvt &e : batch)
         {
-            if (!seen.insert(id).second)
+            if (!seen.insert(e.id).second)
                 continue;
-            // A collectible-shaped flag SET that the mod has no marker for = the
-            // player collected a placed item the map is missing. This is the
-            // low-noise "missing placed item" signal (the in-DLL version of
-            // tools/analyze_events.py). Other flags are logged plainly.
-            if (value == 1 && is_collectible_shaped(id) &&
-                !g_known_collect_flags.count(id))
-                g_log->warn("UNKNOWN placed-item flag {} (cat {}) — no marker; "
-                            "coverage gap candidate",
-                            id, (id / 1000u) % 10u);
-            else
-                g_log->info("flag {} = {}", id, static_cast<int>(value));
+            bool unknown_collectible = e.val == 1 && is_collectible_shaped(e.id) &&
+                                       !g_known_collect_flags.count(e.id);
+            if (!unknown_collectible)
+            {
+                g_log->info("flag {} = {}", e.id, static_cast<int>(e.val));
+                continue;
+            }
+            if (!g_correlate)
+            {
+                // No item hook → can't correlate; fall back to the looser report.
+                g_log->warn("UNKNOWN placed-item flag {} (cat {}) — no marker "
+                            "(uncorrelated)",
+                            e.id, (e.id / 1000u) % 10u);
+                continue;
+            }
+            pending.push_back(e); // finalize later, once grants have had time to land
         }
+
+        int64_t now = now_ns();
+        prune_grant_times(now - 10'000'000'000); // keep ~10 s of grant history
+
+        // Finalize pending unknowns old enough that any correlated grant has landed.
+        std::vector<FlagEvt> still;
+        for (const FlagEvt &e : pending)
+        {
+            if (now - e.t_ns < CORRELATION_WINDOW_NS)
+            {
+                still.push_back(e); // not ripe yet
+                continue;
+            }
+            // Burst guard: many collectible-unknowns in one instant = bulk init,
+            // not a pickup — drop the whole cluster regardless of grants.
+            int cluster = 0;
+            for (const FlagEvt &o : pending)
+                if (o.t_ns >= e.t_ns - BURST_SPAN_NS && o.t_ns <= e.t_ns + BURST_SPAN_NS)
+                    cluster++;
+            if (cluster >= BURST_MIN)
+                continue;
+            if (grant_within(e.t_ns, CORRELATION_WINDOW_NS))
+                g_log->warn("UNKNOWN placed-item flag {} (cat {}) — collected item "
+                            "with NO map marker; coverage gap candidate",
+                            e.id, (e.id / 1000u) % 10u);
+            // else: collect-shaped flag with no nearby grant → script/region, ignore.
+        }
+        pending.swap(still);
 
         uint64_t dropped = g_dropped.load(std::memory_order_relaxed);
         if (dropped != last_dropped)
@@ -177,6 +273,7 @@ constexpr const char *ADD_ITEM_AOB =
 uint64_t hk_add_item(void *inv, uint8_t *entries, uint8_t *base, uint64_t count,
                      uint64_t pad)
 {
+    record_grant_time(now_ns()); // for flag↔grant correlation in the drain thread
     uint8_t buf[24];
     if (entries && safe_copy(entries, buf, sizeof(buf)))
     {
@@ -252,8 +349,15 @@ void initialize(const std::filesystem::path &log_path, bool hook_flags,
                                  "SetEventFlag");
     }
     if (hook_items)
-        any |= install(ADD_ITEM_AOB, reinterpret_cast<void *>(&hk_add_item),
-                       reinterpret_cast<void **>(&g_orig_add_item), "AddItemFunc");
+    {
+        bool item_on = install(ADD_ITEM_AOB, reinterpret_cast<void *>(&hk_add_item),
+                               reinterpret_cast<void **>(&g_orig_add_item),
+                               "AddItemFunc");
+        any |= item_on;
+        // Correlate flag↔grant only when both hooks are live; otherwise the flag
+        // classifier has no grant data and falls back to the looser report.
+        g_correlate = flag_on && item_on;
+    }
 
     if (!any)
         return;
