@@ -43,6 +43,44 @@ static int GetMapFlagFromTile(MapTile location)
     return 0;
 }
 
+// Region name for a cluster tile, via the map-fragment grouping (the same tile→
+// fragment map used for fragment-eviction). Coarse (~26 regions) — enough to label
+// a cluster "Leyndell (507)" instead of a bare count. "" if the tile maps nowhere.
+std::string goblin::cluster_region_label(int area, int gx, int gz)
+{
+    namespace f = goblin::flag;
+    switch (GetMapFlagFromTile(MapTile(area, gx, gz)))
+    {
+    case f::FarumAzula:        return "Crumbling Farum Azula";
+    case f::Haligtree:         return "Haligtree";
+    case f::WestLimgrave:      return "West Limgrave";
+    case f::WeepingPeninsula:  return "Weeping Peninsula";
+    case f::EastLimgrave:      return "Limgrave";
+    case f::EastLiurnia:       return "East Liurnia";
+    case f::NorthLiurnia:      return "North Liurnia";
+    case f::WestLiurnia:       return "West Liurnia";
+    case f::Altus:             return "Altus Plateau";
+    case f::Leyndell:          return "Leyndell";
+    case f::Gelmir:            return "Mt. Gelmir";
+    case f::Caelid:            return "Caelid";
+    case f::Dragonbarrow:      return "Dragonbarrow";
+    case f::MountaintopsWest:  return "Mountaintops of the Giants";
+    case f::MountaintopsEast:  return "Mountaintops of the Giants";
+    case f::Snowfields:        return "Consecrated Snowfields";
+    case f::Ainsel:            return "Ainsel River";
+    case f::LakeOfRot:         return "Lake of Rot";
+    case f::Mohgwyn:           return "Mohgwyn Palace";
+    case f::Siofra:            return "Siofra River";
+    case f::Deeproot:          return "Deeproot Depths";
+    case f::GravesitePlain:    return "Gravesite Plain";
+    case f::ScaduAltus:        return "Scadu Altus";
+    case f::SouthernShore:     return "Cerulean Coast";
+    case f::RauhRuins:         return "Rauh Base";
+    case f::Abyss:             return "Abyssal Woods";
+    default:                   return "";
+    }
+}
+
 static void SetSecondaryFlags(from::paramdef::WORLD_MAP_POINT_PARAM_ST &row, int flagId)
 {
     row.textEnableFlag2Id1 = flagId;

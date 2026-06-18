@@ -13,6 +13,7 @@
 #include "from/params.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
 #include "goblin_quest_gates.hpp"
+#include "goblin_logic.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -437,7 +438,7 @@ static constexpr int CLUSTER_TEXTID_BASE = 952000000;
 
 // Census handed to setup_messages so it can inject each cluster's count string:
 // (PlaceName textId, member count).
-static std::vector<std::pair<int, int>> g_cluster_census;
+static std::vector<std::pair<int, std::string>> g_cluster_census;
 
 // Runtime registries (filled during inject build).
 // member_flags = the collect-flags (textDisableFlagId1) of this cluster's
@@ -479,7 +480,7 @@ static void apply_cluster_debug(bool show_counts)
 }
 
 // Cluster label census for setup_messages (PlaceName textId → member count).
-const std::vector<std::pair<int, int>> &goblin::cluster_label_census()
+const std::vector<std::pair<int, std::string>> &goblin::cluster_label_census()
 {
     return g_cluster_census;
 }
@@ -884,7 +885,14 @@ void goblin::inject_map_entries()
             cd->textDisableFlagId1 = cd->textDisableFlagId2 = cd->textDisableFlagId3 = 0;
             cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
             cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
-            g_cluster_census.emplace_back(textid, static_cast<int>(b.members.size()));
+            {
+                int cnt = static_cast<int>(b.members.size());
+                std::string region = goblin::cluster_region_label(b.area, b.gx, b.gz);
+                std::string label = region.empty()
+                    ? std::to_string(cnt)
+                    : region + " (" + std::to_string(cnt) + ")";
+                g_cluster_census.emplace_back(textid, std::move(label));
+            }
             {
                 auto &mf = cluster_flags_by_textid[textid];
                 for (size_t mi : b.members)

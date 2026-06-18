@@ -874,7 +874,8 @@ void goblin::setup_messages()
     cluster_label_storage.reserve(goblin::cluster_label_census().size());
     for (auto &cc : goblin::cluster_label_census())
     {
-        cluster_label_storage.emplace_back(std::to_wstring(cc.second));
+        // cc.second = "<Region> (<count>)" (ASCII) → widen to wstring.
+        cluster_label_storage.emplace_back(cc.second.begin(), cc.second.end());
         new_entries.push_back({cc.first, cluster_label_storage.back().c_str()});
     }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -8,10 +9,11 @@ namespace goblin
 {
     void inject_map_entries();
 
-    // Cluster label census: (PlaceName textId, member count) for each cluster the
-    // inject built. setup_messages injects a static "<count>" string per entry so
-    // the cluster-debug toggle (F11) can label clusters with their size.
-    const std::vector<std::pair<int, int>> &cluster_label_census();
+    // Cluster label census: (PlaceName textId, label) for each cluster the inject
+    // built. The label is "<Region> (<count>)" (region via cluster_region_label) or
+    // just "<count>" if the region is unknown. setup_messages injects it as the
+    // cluster's PlaceName string (shown by the cluster-label toggle).
+    const std::vector<std::pair<int, std::string>> &cluster_label_census();
 
     // Local player's world position (WorldChrMan chain, AOB-resolved + cached).
     // Returns false if not yet resolvable (early load) or the chain faulted.
