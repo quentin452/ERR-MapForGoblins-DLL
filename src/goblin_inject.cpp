@@ -785,6 +785,13 @@ void goblin::inject_map_entries()
             b.area = tmp.areaNo; b.gx = tmp.gridXNo; b.gz = tmp.gridZNo;
             b.cat = entries[i].category;
         }
+        // Census for the sorted dump below (quantifies each pile so the
+        // Leyndell-area cluster's size can be read off without hovering — used to
+        // test the post-burn overload theory: Royal areaNo-11 + Ashen areaNo-35
+        // both project to the same overworld cell, so one cluster = their sum).
+        struct CensusRow { int count; uint8_t area, gx, gz; float cx, cz; };
+        std::vector<CensusRow> census;
+
         int cidx = 0;
         for (auto &kv : buckets)
         {
@@ -812,11 +819,24 @@ void goblin::inject_map_entries()
             cluster_entry_idx.push_back(entries.size());
             cluster_count_textid.push_back(textid);
             entries.push_back({0, 0, cd, false, false, b.cat, 0, 0});
+            census.push_back({static_cast<int>(b.members.size()), b.area, b.gx, b.gz,
+                              cd->posX, cd->posZ});
             cidx++;
         }
         spdlog::info("[CLUSTER] planned {} clusters covering {} markers (cell={}, threshold={})",
                      g_cluster_census.size(), clustered_member_ids.size(), CLUSTER_CELL,
                      static_cast<int>(goblin::config::clusterThreshold));
+        // Sorted census (biggest piles first). area=60/61 overworld, area 11/35 =
+        // Leyndell Royal/Ashen if unprojected. world tile XX=gridX/2, YY=gridZ/2.
+        std::sort(census.begin(), census.end(),
+                  [](const CensusRow &a, const CensusRow &b) { return a.count > b.count; });
+        for (size_t i = 0; i < census.size(); i++)
+        {
+            const auto &c = census[i];
+            spdlog::info("[CLUSTER] #{:<3} count={:<4} area={:<2} tile=({},{}) "
+                         "worldTile=({},{}) pos=({:.0f},{:.0f})",
+                         i + 1, c.count, c.area, c.gx, c.gz, c.gx / 2, c.gz / 2, c.cx, c.cz);
+        }
     }
 
     spdlog::info("Injecting {} map entries ({} skipped by config, {} live-recategorized)",
