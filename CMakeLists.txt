@@ -174,4 +174,6 @@ target_link_libraries( MapForGoblins
   imgui
   d3d12
   dxgi
+  dinput8
+  dxguid
   dbghelp)
