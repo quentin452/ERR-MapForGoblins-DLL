@@ -94,6 +94,19 @@ ANON_QMARK_SHAPE = 1099       # free charId; cloned from badge shape 172
 ANON_BG_CHAR = 1000           # MENU_MAP_MemoCursor (standard icon background)
 BADGE_SPRITE_PARENT = 174     # marker container that places the badge sprite
 
+# ── Cluster glyph (clustering, Thread 5) ──
+# A marker "cluster" collapses a dense pile of N markers into one synthetic row.
+# It used to borrow the anon "?" frame (reads as "unknown"); this gives clusters
+# their own glyph — a teal "stack of dots" (assets/badges/cluster_glyph.png, via
+# make_cluster_icon.py). Same raster-embed mechanism as the "?" (clone shape 172
+# -> CLUSTER_GLYPH_SHAPE, then `ffdec -replace`). The frame is appended ONE PAST
+# the "?" frame, so CLUSTER_ICON_ID = ANON_ICON_ID + 1 (generate_data keeps the
+# DLL const in sync). Clusters are never themselves clustered, so it never nests.
+CLUSTER_PROFILES = {"vanilla", "erte", "convergence", "err"}
+CLUSTER_IMG = PROJECT / "assets" / "badges" / "cluster_glyph.png"
+CLUSTER_FRAME_INDEX = 441     # 0-indexed; lands one past anon (440). DLL iconId = +1
+CLUSTER_GLYPH_SHAPE = 1100    # free charId; cloned from badge shape 172 (anon = 1099)
+
 # ── MapForGoblins logo over the map's decorative plaque (obj_246) ──
 # Sprite 246 places MENU_FL_Map (char 10), a decorative plaque on the map UI, at
 # scale 0.5. char 10 is ALSO a real icon in sprite 171, so we can't replace it
@@ -174,9 +187,11 @@ def _place_object(depth, char_id, scale, tx, ty, alpha=256):
     return po
 
 
-def add_anon_icon(vroot, vsprite):
-    """Clone badge shape 172 -> ANON_QMARK_SHAPE and append the "?" frame to
-    sprite 171. Returns the appended frame index (must equal ANON_FRAME_INDEX)."""
+def _append_round_glyph(vroot, vsprite, shape_id):
+    """Clone badge shape 172 -> shape_id and append a standalone round-icon frame
+    (the cloned shape, centred, no bg) to sprite 171. Shared by the spoiler-free
+    "?" and the cluster glyph — each then gets its own 160px raster embedded via
+    `ffdec -replace`. Returns the appended 0-indexed frame index."""
     import copy
     # clone a known-good single-figure shape to get a valid charId to -replace
     src_shape = None
@@ -185,9 +200,9 @@ def add_anon_icon(vroot, vsprite):
             src_shape = it
             break
     if src_shape is None:
-        sys.exit("anon icon: badge shape 172 not found to clone")
+        sys.exit(f"glyph frame: badge shape 172 not found to clone (target {shape_id})")
     clone = copy.deepcopy(src_shape)
-    clone.set("shapeId", str(ANON_QMARK_SHAPE))
+    clone.set("shapeId", str(shape_id))
     # insert the clone right before sprite 171 (top-level, same as image defs)
     parent = next(c for c in vroot.iter() if vsprite in list(c))
     parent.insert(list(parent).index(vsprite), clone)
@@ -201,26 +216,39 @@ def add_anon_icon(vroot, vsprite):
         rm = ET.SubElement(vsub, "item")
         rm.set("type", "RemoveObject2Tag"); rm.set("depth", str(depth))
         rm.set("forceWriteAsLong", "false")
-    # The "?" seal is a COMPLETE standalone round icon (like the bg-less round
+    # The glyph is a COMPLETE standalone round icon (like the bg-less round
     # markers, e.g. iconId_846 = a 164px image at scale ~0.22 centred at the marker
-    # origin). So: no MENU_MAP_MemoCursor bg, just the "?" at one depth, sized to
-    # match those round icons and centred. ANON_QMARK_SHAPE is a CENTRE-origin
-    # circle (edgeBounds ±237 = 474tw) wrapping the 160px "?" raster, so to render
-    # at the reference on-screen size its scale is REF_NATIVE*REF_SCALE*20 / 474,
-    # and (centre-origin, symmetric bounds) translate 0 puts it dead centre.
+    # origin). So: no MENU_MAP_MemoCursor bg, just the glyph at one depth, sized to
+    # match those round icons and centred. The clone of shape 172 is a CENTRE-origin
+    # circle (edgeBounds ±237 = 474tw) wrapping the 160px raster, so to render at the
+    # reference on-screen size its scale is REF_NATIVE*REF_SCALE*20 / 474, and
+    # (centre-origin, symmetric bounds) translate 0 puts it dead centre.
     # (Earlier tries: bg's top-left transform -> speck in the corner; bg footprint
     # -> filled the whole pin; foreground-glyph -> too small + offset right.)
     REF_NATIVE = 164               # iconId_846 image native px (MENU_MAP_09)
     REF_SCALE = 0.21998596         # iconId_846 overlay scale
-    QMARK_EDGE = 474               # shape 172/1099 edgeBounds = 2*237
+    QMARK_EDGE = 474               # shape 172/1099/1100 edgeBounds = 2*237
     q_scale = round(REF_NATIVE * REF_SCALE * 20 / QMARK_EDGE, 6)   # ~1.522
-    vsub.append(_place_object(1, ANON_QMARK_SHAPE, q_scale, 0, 0))
+    vsub.append(_place_object(1, shape_id, q_scale, 0, 0))
     sf = ET.SubElement(vsub, "item")
     sf.set("type", "ShowFrameTag"); sf.set("forceWriteAsLong", "false")
     for e in end_tags:
         vsub.append(e)
     vsprite.set("frameCount", str(frame_index + 1))
     return frame_index
+
+
+def add_anon_icon(vroot, vsprite):
+    """Append the spoiler-free "?" frame (shape ANON_QMARK_SHAPE) to sprite 171.
+    Returns the appended frame index (must equal ANON_FRAME_INDEX + base offset)."""
+    return _append_round_glyph(vroot, vsprite, ANON_QMARK_SHAPE)
+
+
+def add_cluster_icon(vroot, vsprite):
+    """Append the cluster glyph frame (shape CLUSTER_GLYPH_SHAPE) to sprite 171,
+    one past the "?" frame. Returns the index (= CLUSTER_FRAME_INDEX + base offset).
+    MUST be called AFTER add_anon_icon so it lands at anon + 1."""
+    return _append_round_glyph(vroot, vsprite, CLUSTER_GLYPH_SHAPE)
 
 
 def fit_logo_square(out_png, size=256):
@@ -272,6 +300,8 @@ def build_err_anon_gfx():
     (our frames are already present), no badge (ERR keeps its own green check)."""
     if not ANON_IMG.exists():
         sys.exit(f"anon icon png missing: {ANON_IMG} (run tools/make_anon_icon.py)")
+    if not CLUSTER_IMG.exists():
+        sys.exit(f"cluster glyph png missing: {CLUSTER_IMG} (run tools/make_cluster_icon.py)")
     out_gfx = PROJECT / "assets" / "menu" / "02_120_worldmap_err.gfx"
     print(f"profile=err  base={OURS_GFX}")
     tmp = Path(tempfile.mkdtemp(prefix="mfg_gfx_"))
@@ -284,6 +314,9 @@ def build_err_anon_gfx():
         idx = add_anon_icon(vroot, vsprite)
         if idx != ANON_FRAME_INDEX:   # ERR base 348 + our 92 = 440, offset 0
             sys.exit(f"anon icon (err): frame landed at {idx}, expected {ANON_FRAME_INDEX}")
+        cidx = add_cluster_icon(vroot, vsprite)   # one past the "?" -> 441
+        if cidx != CLUSTER_FRAME_INDEX:
+            sys.exit(f"cluster glyph (err): frame landed at {cidx}, expected {CLUSTER_FRAME_INDEX}")
         logo_ok = LOGO_SRC.exists() and add_logo(vroot)
         tree.write(out_xml, encoding="utf-8", xml_declaration=True)
         print("compiling...")
@@ -292,6 +325,10 @@ def build_err_anon_gfx():
                    str(ANON_QMARK_SHAPE), str(ANON_IMG)])
         print(f"anon icon: '?' frame at index {idx}; embedded {ANON_IMG.name} "
               f"into shape {ANON_QMARK_SHAPE}")
+        run_ffdec(["-replace", str(out_gfx), str(out_gfx),
+                   str(CLUSTER_GLYPH_SHAPE), str(CLUSTER_IMG)])
+        print(f"cluster glyph: frame at index {cidx}; embedded {CLUSTER_IMG.name} "
+              f"into shape {CLUSTER_GLYPH_SHAPE}")
         if logo_ok:
             logo_png = tmp / "logo_sq.png"; fit_logo_square(logo_png)
             run_ffdec(["-replace", str(out_gfx), str(out_gfx), str(LOGO_SHAPE), str(logo_png)])
@@ -442,6 +479,21 @@ def main():
             print(f"anon icon: appended '?' frame at index {idx} "
                   f"(shape {ANON_QMARK_SHAPE} from clone of 172)")
 
+        # ── cluster glyph frame (one past the "?"; cluster profiles) ──
+        if profile in CLUSTER_PROFILES:
+            if not CLUSTER_IMG.exists():
+                sys.exit(f"cluster glyph png missing: {CLUSTER_IMG} (run tools/make_cluster_icon.py)")
+            cidx = add_cluster_icon(vroot, vsprite)
+            # CLUSTER_ICON_ID = ANON_ICON_ID + 1, so its 0-indexed landing is
+            # CLUSTER_FRAME_INDEX (441) + the same base offset as the "?".
+            cexpected = CLUSTER_FRAME_INDEX + (base_frames - 348)
+            if cidx != cexpected:
+                sys.exit(f"cluster glyph: frame landed at {cidx}, expected {cexpected} "
+                         f"(= 441 + offset {base_frames - 348}) — anon frame moved? "
+                         f"keep generate_data CLUSTER_ICON_ID in sync")
+            print(f"cluster glyph: appended frame at index {cidx} "
+                  f"(shape {CLUSTER_GLYPH_SHAPE} from clone of 172)")
+
         logo_ok = profile in LOGO_PROFILES and LOGO_SRC.exists() and add_logo(vroot)
 
         van.write(out_xml, encoding="utf-8", xml_declaration=True)
@@ -461,6 +513,12 @@ def main():
             run_ffdec(["-replace", str(out_gfx), str(out_gfx),
                        str(ANON_QMARK_SHAPE), str(ANON_IMG)])
             print(f"anon icon: embedded {ANON_IMG.name} into shape {ANON_QMARK_SHAPE}")
+
+        # ── embed the cluster raster into the cloned shape (cluster profiles) ──
+        if profile in CLUSTER_PROFILES:
+            run_ffdec(["-replace", str(out_gfx), str(out_gfx),
+                       str(CLUSTER_GLYPH_SHAPE), str(CLUSTER_IMG)])
+            print(f"cluster glyph: embedded {CLUSTER_IMG.name} into shape {CLUSTER_GLYPH_SHAPE}")
 
         # ── embed the MapForGoblins logo into obj_246 (logo profiles) ──
         if logo_ok:

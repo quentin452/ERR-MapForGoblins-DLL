@@ -810,7 +810,7 @@ void goblin::inject_map_entries()
             cd->posX = static_cast<float>(b.sx / b.members.size());
             cd->posZ = static_cast<float>(b.sz / b.members.size());
             cd->posY = b.py;
-            cd->iconId = static_cast<uint16_t>(goblin::generated::ANON_ICON_ID); // v1 placeholder glyph
+            cd->iconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID); // distinct "stack of dots" glyph
             // Clean standalone icon: no gates. Label = the member count by default
             // (shown on hover); the F11 debug toggle flips it to icon-only (-1).
             cd->eventFlagId = 0; cd->clearedEventFlagId = 0;
