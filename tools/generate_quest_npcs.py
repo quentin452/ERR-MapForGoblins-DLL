@@ -47,11 +47,52 @@ import SoulsFormats
 from massedit_common import (OUT_DIR, OVERWORLD_AREAS, DLC_AREAS,
                              get_disp_mask, resolve_location_id_at)
 
-# ── TUNABLE: friendly / quest-NPC teamTypes (verify via --inspect) ───────────
-# Best-guess defaults; MUST be confirmed against NpcParam data on Windows.
-# Invader teamTypes {24,27} are handled by generate_hostile_npcs.py and are
-# intentionally NOT here.
-FRIENDLY_TEAM_TYPES = {1, 2, 6, 7, 8}
+# ── TUNED: friendly / quest-NPC teamTypes (verified via --inspect on ERR) ────
+# Confirmed against NpcParam + NpcName on the ERR mod (see the --inspect dump):
+#   0  : "Default" — the named hub/quest NPCs (Gideon, Twin Maiden Husks, Fia,
+#        Roderika, Rya, Hewg, Two Fingers, ...). VERY noisy: also carries the
+#        "Menu" placeholder (~685 generic NPCs) and ~100 of ERR's own location
+#        label markers ("Hub:/Legacy Dungeon:/Minor Dungeon:/..."), filtered by
+#        name below.
+#   1  : DLC questline band (Leda, Freyja, Moore, Dane, Ansbach, Hornsent).
+#   2  : mixed quest NPCs (Millicent, Nepheli, Freyja, Sellen, D, Blaidd, Melina)
+#        with a few leaking enemies, filtered by name below.
+#   26 : the cleanest — merchants + quest NPCs (Kalé, Patches, Gostoc, Blaidd,
+#        Alexander, Boc, Sellen, Goldmask, every Nomadic/Hermit/Isolated Merchant).
+#   28 : Millicent.
+# Excluded as enemies/bosses (their --inspect samples are clearly hostile):
+#   6 (Crucible Knight, Rennala, ...), 7 (field/remembrance bosses),
+#   33/48/9/52 (stray enemies). Invader teamTypes {24,27} are handled by
+#   generate_hostile_npcs.py and are intentionally NOT here.
+FRIENDLY_TEAM_TYPES = {0, 1, 2, 26, 28}
+
+# Some NPCs share the friendly teamTypes but are NOT navigable characters: the
+# "Menu" placeholder, ERR's location/structure label markers, and a handful of
+# enemies/bosses that leak in. They're dropped by resolved NpcName (load_npc_names
+# + is_navigable_npc below) so the layer stays "named friendly NPCs only".
+_LABEL_PREFIXES = ('Hub:', 'Tutorial:', '???:', 'Legacy Dungeon:', 'Minor Dungeon:',
+                   'Dungeon:', 'Underground:', 'Evergaol:', 'Field Area:', 'Field Boss:')
+EXCLUDE_NAMES = {
+    # placeholders / structures / object markers (mostly team 0)
+    'Menu', 'Altar of Anticipation', 'Clouded Mirror Stand', 'Sword of Bernahl',
+    'Basin of Atonement', 'Church of Dragon Communion', 'Cathedral of Dragon Communion',
+    'Grand Altar of Dragon Communion', 'Smithing Table', 'Smithing Anvil',
+    'Trial of Recollection', 'Current Run', 'Weapon Chest', 'Spirit Monument',
+    "Lord's Journey", 'Torrent', "Jar-Friend's Bazaar",
+    # enemies/bosses leaking into the friendly teamTypes (mostly team 2 / team 0)
+    'Swordhand of Night Jolán', 'Equilibrious Rat', 'Old Knight Istvan',
+    'Great Horned Tragoth', 'Rennala, Queen of the Full Moon', "Tanith's Knight",
+}
+
+
+def is_navigable_npc(name):
+    """True if a resolved NpcName is a real navigable friendly NPC (not a
+    placeholder, an ERR location/structure label, or a leaked enemy)."""
+    if not name or name == '?':
+        return False
+    if name in EXCLUDE_NAMES:
+        return False
+    return not any(name.startswith(p) for p in _LABEL_PREFIXES)
 
 # Worldmap icon sprite for the quest-NPC family. 370=grace, 374=hostile NPC.
 # TODO(visual): pick a distinct friendly/quest icon from the worldmap atlas and
@@ -63,6 +104,43 @@ _str_type = SysType.GetType('System.String')
 _msbe_read = asm.GetType('SoulsFormats.MSBE').GetMethod('Read',
     BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy,
     None, Array[SysType]([_str_type]), None)
+_param_read = asm.GetType('SoulsFormats.PARAM').GetMethod('Read',
+    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy,
+    None, Array[SysType]([_str_type]), None)
+_bnd4_read = asm.GetType('SoulsFormats.BND4').GetMethod('Read',
+    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy,
+    None, Array[SysType]([_str_type]), None)
+_fmg_read = asm.GetType('SoulsFormats.FMG').GetMethod('Read',
+    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy,
+    None, Array[SysType]([_str_type]), None)
+
+
+def load_npc_names():
+    """NpcName FMG id -> text, for filtering placeholder/label/enemy entries out
+    of the friendly teamTypes. Reads the NpcName.fmg from the profile's msg bnds."""
+    from System.IO import File as SysFile
+    names = {}
+    msgdir = config.require_err_mod_dir() / 'msg' / 'engus'
+    for msgf in ('menu_dlc02.msgbnd.dcx', 'item_dlc02.msgbnd.dcx'):
+        p = msgdir / msgf
+        if not p.exists():
+            continue
+        data = SoulsFormats.DCX.Decompress(str(p)).ToArray()
+        tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_qnp_msg.bnd')
+        SysFile.WriteAllBytes(tmp, data)
+        bnd = _bnd4_read.Invoke(None, Array[Object]([tmp]))
+        for f in bnd.Files:
+            base = str(f.Name).replace('\\', '/').split('/')[-1]
+            if not base.lower().startswith('npcname'):
+                continue
+            ftmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_qnp_npcname.fmg')
+            SysFile.WriteAllBytes(ftmp, f.Bytes.ToArray())
+            fmg = _fmg_read.Invoke(None, Array[Object]([ftmp]))
+            for e in fmg.Entries:
+                t = str(e.Text) if e.Text else ''
+                if t and t != '[ERROR]':
+                    names[int(e.ID)] = t
+    return names
 
 
 def load_paramdefs():
@@ -82,9 +160,11 @@ def read_param(bnd, name, paramdefs):
         if name in str(f.Name):
             tmp = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_qnp_p.tmp')
             from System.IO import File as SysFile
-            SysFile.WriteAllBytes(tmp, f.Bytes)
-            p = SoulsFormats.PARAM.Read(tmp)
-            p.ApplyParamdef(paramdefs[name])
+            SysFile.WriteAllBytes(tmp, f.Bytes.ToArray())
+            p = _param_read.Invoke(None, Array[Object]([tmp]))
+            pt = str(p.ParamType)
+            if pt in paramdefs:
+                p.ApplyParamdef(paramdefs[pt])
             return p
     raise KeyError(name)
 
@@ -159,9 +239,12 @@ def main():
         inspect(npc_info, msb_dir)
         return
 
+    names = load_npc_names()
     friendly_ids = {nid for nid, (team, name) in npc_info.items()
-                    if team in FRIENDLY_TEAM_TYPES and name and name > 0}
-    print(f'{len(friendly_ids)} friendly named NpcParam IDs (teamType in {sorted(FRIENDLY_TEAM_TYPES)})')
+                    if team in FRIENDLY_TEAM_TYPES and name and name > 0
+                    and is_navigable_npc(names.get(name))}
+    print(f'{len(friendly_ids)} friendly named NpcParam IDs '
+          f'(teamType in {sorted(FRIENDLY_TEAM_TYPES)}, name-filtered)')
 
     records = []
     for msb_path in sorted(msb_dir.glob('*.msb.dcx')):
