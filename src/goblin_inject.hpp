@@ -112,4 +112,26 @@ namespace goblin
     // if resolution fails. Safe from any thread (used by the overlay to show
     // itself only over the map).
     bool world_map_open();
+
+    // ── Overlay control API ──────────────────────────────────────────────
+    // Read/post the same runtime state the F-key hotkeys drive. Setters only
+    // POST intents (atomics) — the watcher thread (menu_auto_toggle_loop) stays
+    // the single owner of game-state mutation. Safe to call from the render
+    // thread (the overlay).
+    namespace ui
+    {
+        int section_count();
+        const char *section_label(int idx);
+        bool section_visible(int idx);
+        void set_section_visible(int idx, bool visible);
+
+        bool icons_enabled();              // master on/off (inverse of user-disabled)
+        void set_icons_enabled(bool on);
+
+        bool clustering_available();       // false on builds without clustering data
+        bool clusters_expanded();
+        void set_clusters_expanded(bool expanded);
+        bool cluster_debug();
+        void set_cluster_debug(bool on);
+    }
 };

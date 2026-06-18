@@ -1724,6 +1724,50 @@ bool goblin::world_map_open()
     return v == 7;
 }
 
+// ── Overlay control API (see goblin_inject.hpp) ──────────────────────────
+int goblin::ui::section_count() { return SECTION_COUNT; }
+
+const char *goblin::ui::section_label(int idx)
+{
+    if (idx < 0 || idx >= SECTION_COUNT) return "";
+    return section_name(static_cast<Section>(idx));
+}
+
+bool goblin::ui::section_visible(int idx)
+{
+    if (idx < 0 || idx >= SECTION_COUNT) return false;
+    return g_section_visible[idx].load();
+}
+
+void goblin::ui::set_section_visible(int idx, bool visible)
+{
+    if (idx < 0 || idx >= SECTION_COUNT) return;
+    // Same intent the F7/F8 hotkey posts: flip state, request apply + toast.
+    // The watcher (menu_auto_toggle_loop) applies the areaNo flips and persists.
+    g_section_visible[idx].store(visible);
+    g_section_apply_req.store(idx);
+    g_section_toast_req.store(section_toast_id(idx, visible));
+}
+
+bool goblin::ui::icons_enabled() { return !g_icons_user_disabled.load(); }
+void goblin::ui::set_icons_enabled(bool on) { g_icons_user_disabled.store(!on); }
+
+bool goblin::ui::clustering_available() { return goblin::config::enableClustering; }
+
+bool goblin::ui::clusters_expanded() { return g_clusters_expanded.load(); }
+void goblin::ui::set_clusters_expanded(bool expanded)
+{
+    g_clusters_expanded.store(expanded);
+    g_cluster_expand_dirty.store(true);
+}
+
+bool goblin::ui::cluster_debug() { return g_cluster_debug.load(); }
+void goblin::ui::set_cluster_debug(bool on)
+{
+    g_cluster_debug.store(on);
+    g_cluster_debug_dirty.store(true);
+}
+
 static void show_toggle_banner(bool icons_on)
 {
     static bool resolved = false;

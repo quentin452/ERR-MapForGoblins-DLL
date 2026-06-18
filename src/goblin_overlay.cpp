@@ -235,17 +235,41 @@ namespace
         }
         else
         {
-            // Full panel. Phase 3 binds the 94 settings here.
+            // Full panel — live controls (post intents to the watcher thread).
             ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
-            ImGui::SetNextWindowSize(ImVec2(380, 260), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(320, 380), ImGuiCond_FirstUseEver);
             ImGui::Begin("Map for Goblins##large");
             if (ImGui::Button("[-] collapse"))
                 g_large = false;
             ImGui::SameLine();
-            ImGui::Text("FPS %.0f", io.Framerate);
+            ImGui::TextDisabled("F1 close | %.0f fps", io.Framerate);
             ImGui::Separator();
-            ImGui::TextWrapped("Settings bind here in Phase 3. Shown only over the "
-                               "2D world map; F1 toggles small / large.");
+
+            // Master on/off.
+            bool icons_on = goblin::ui::icons_enabled();
+            if (ImGui::Checkbox("Show icons (master)", &icons_on))
+                goblin::ui::set_icons_enabled(icons_on);
+
+            // Per-section visibility.
+            ImGui::SeparatorText("Sections");
+            for (int i = 0; i < goblin::ui::section_count(); i++)
+            {
+                bool vis = goblin::ui::section_visible(i);
+                if (ImGui::Checkbox(goblin::ui::section_label(i), &vis))
+                    goblin::ui::set_section_visible(i, vis);
+            }
+
+            // Clustering (only on builds that ship cluster data).
+            if (goblin::ui::clustering_available())
+            {
+                ImGui::SeparatorText("Clustering");
+                bool expanded = goblin::ui::clusters_expanded();
+                if (ImGui::Checkbox("Expand clusters (show members)", &expanded))
+                    goblin::ui::set_clusters_expanded(expanded);
+                bool dbg = goblin::ui::cluster_debug();
+                if (ImGui::Checkbox("Cluster labels show counts", &dbg))
+                    goblin::ui::set_cluster_debug(dbg);
+            }
             ImGui::End();
         }
     }
