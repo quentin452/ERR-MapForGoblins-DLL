@@ -64,6 +64,7 @@ namespace goblin
     // the refresh loop AFTER refresh_fragment_eviction so the hide wins.
     int refresh_royal_eviction();
     int refresh_quest_npc_eviction();
+    int refresh_cluster_depletion();
 
     // Row ids used for both the TutorialParam rows AND the TutorialBody.fmg
     // entries holding each banner's STATIC text. Injected by

@@ -440,7 +440,11 @@ static constexpr int CLUSTER_TEXTID_BASE = 952000000;
 static std::vector<std::pair<int, int>> g_cluster_census;
 
 // Runtime registries (filled during inject build).
-struct ClusterRow { uint8_t *ptr; uint8_t area; int count_textid; };
+// member_flags = the collect-flags (textDisableFlagId1) of this cluster's
+// flag-backed members; when ALL are set the pile is depleted → the refresh swaps
+// the icon to CLUSTER_DONE_ICON_ID (green). Empty = no collectible members (a
+// pure grace/boss pile) → never "done".
+struct ClusterRow { uint8_t *ptr; uint8_t area; int count_textid; std::vector<uint32_t> member_flags; };
 static std::vector<ClusterRow> g_clusters;        // the synthetic cluster icons
 struct ClusterMember { uint8_t *ptr; uint8_t orig_area; };
 static std::vector<ClusterMember> g_cluster_members;  // individuals parked under a cluster
@@ -825,6 +829,7 @@ void goblin::inject_map_entries()
     std::set<uint64_t> clustered_member_ids;          // original ids parked under a cluster
     std::vector<size_t> cluster_entry_idx;            // index in `entries` of each cluster
     std::vector<int> cluster_count_textid;            // parallel: its label id
+    std::unordered_map<int, std::vector<uint32_t>> cluster_flags_by_textid; // textid -> member collect-flags
     if (goblin::config::enableClustering)
     {
         g_clustering_active = true;  // clusters built this session
@@ -880,8 +885,15 @@ void goblin::inject_map_entries()
             cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
             cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
             g_cluster_census.emplace_back(textid, static_cast<int>(b.members.size()));
-            for (size_t mi : b.members)
-                clustered_member_ids.insert(entries[mi].original_row_id);
+            {
+                auto &mf = cluster_flags_by_textid[textid];
+                for (size_t mi : b.members)
+                {
+                    clustered_member_ids.insert(entries[mi].original_row_id);
+                    uint32_t f = entries[mi].data->textDisableFlagId1; // collect flag
+                    if (f) mf.push_back(f);
+                }
+            }
             cluster_entry_idx.push_back(entries.size());
             cluster_count_textid.push_back(textid);
             entries.push_back({0, 0, cd, false, false, b.cat, 0, 0});
@@ -1195,7 +1207,8 @@ void goblin::inject_map_entries()
             auto cit = cluster_rowid_to_textid.find(all_rows[i].row_id);
             if (all_rows[i].original_row_id == 0 && cit != cluster_rowid_to_textid.end())
             {
-                g_clusters.push_back({cp, cp[0x20], cit->second});
+                g_clusters.push_back({cp, cp[0x20], cit->second,
+                                      std::move(cluster_flags_by_textid[cit->second])});
             }
             else if (all_rows[i].original_row_id &&
                      clustered_member_ids.count(all_rows[i].original_row_id))
@@ -2049,6 +2062,36 @@ int goblin::refresh_quest_npc_eviction()
         {
             r.ptr[0x20] = r.orig_area; changed++;
         }
+    }
+    return changed;
+}
+
+// Cluster depletion: when every flag-backed member of a cluster is collected, swap
+// the cluster icon to the green CLUSTER_DONE glyph (else keep teal). Only while the
+// clusters are SHOWN (collapsed); throttled (piles don't deplete fast). No RE —
+// iconId is a mutable param field, like the areaNo flips.
+int goblin::refresh_cluster_depletion()
+{
+    GOBLIN_BENCH("refresh.cluster_depletion");
+    if (!g_clustering_active || g_clusters_expanded.load()) return 0;
+    if (!orp_flag_set(6001)) return 0; // cold API → never mis-deplete
+    using clock = std::chrono::steady_clock;
+    static clock::time_point last{};
+    auto now = clock::now();
+    if (now != clock::time_point{} && now - last < std::chrono::milliseconds(1000))
+        return 0;
+    last = now;
+    int changed = 0;
+    for (auto &c : g_clusters)
+    {
+        if (c.member_flags.empty()) continue; // no collectible members → never "done"
+        bool depleted = true;
+        for (uint32_t f : c.member_flags)
+            if (!orp_flag_set(f)) { depleted = false; break; }
+        uint16_t want = depleted ? goblin::generated::CLUSTER_DONE_ICON_ID
+                                 : goblin::generated::CLUSTER_ICON_ID;
+        auto *st = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(c.ptr);
+        if (st->iconId != want) { st->iconId = want; changed++; }
     }
     return changed;
 }
