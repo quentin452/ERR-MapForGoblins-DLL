@@ -1440,8 +1440,13 @@ bool goblin::inject_tutorial_popup_rows()
     const char *type_str = reinterpret_cast<const char *>(old_file + old_table->param_type_offset);
     size_t type_str_len = strlen(type_str) + 1;
 
-    // ON, OFF, DUMP_OK, DUMP_FAIL + 7 display groups × {shown, hidden}.
-    uint32_t new_row_count = 4 + goblin::TUTORIAL_SECTION_COUNT * 2;
+    // Must match EXACTLY the rows pushed into all_rows below, or the locator/
+    // data/wrapper arrays are under-sized and the write loop overflows the
+    // HeapAlloc'd buffer (heap corruption → ntdll AV at init). Rows:
+    //   4 fixed (ON/OFF/DUMP_OK/DUMP_FAIL) + 1 coverage-gap + 7 groups×{shown,
+    //   hidden} + GAP_CAT_COUNT per-category gap toasts.
+    uint32_t new_row_count =
+        4 + 1 + goblin::TUTORIAL_SECTION_COUNT * 2 + goblin::GAP_CAT_COUNT;
     uint32_t total_rows = orig_rows + new_row_count;
 
     size_t row_locators_start = HEADER_SIZE;
