@@ -12,6 +12,15 @@ namespace goblin
     void load_config(const std::filesystem::path &ini_path);
     void ensure_ini(const std::filesystem::path &ini_path);
 
+    // Write the current [Display Sections] section_* values back to the ini,
+    // preserving the rest of the file. Called when the in-game section toggle
+    // changes a group's visibility so the choice survives relaunch.
+    void save_section_states(const std::filesystem::path &ini_path);
+
+    // The ini path last passed to load_config(), for code (e.g. the in-game
+    // section toggle) that needs to persist back without threading the path.
+    const std::filesystem::path &config_ini_path();
+
     namespace config
     {
         extern uint8_t loadDelay;
@@ -155,6 +164,15 @@ namespace goblin
         // XInput button bitmask combo. All buttons in the mask must be
         // held simultaneously to fire. Default Y + R3 (right stick click).
         extern uint16_t toggleGamepadMask;
+
+        // In-game per-section visibility toggle (the 7 display groups). The
+        // section_* bools are the persisted runtime state; the two keys drive
+        // the in-game select/toggle. See goblin_config_schema [Display Sections].
+        extern bool sectionEquipment, sectionKeyItems, sectionLoot, sectionMagic,
+                    sectionQuest, sectionReforged, sectionWorld;
+        extern bool enableSectionToggle;
+        extern uint32_t sectionSelectKey;  // default VK_F8 = 0x77 (cycle section)
+        extern uint32_t sectionToggleKey;  // default VK_F7 = 0x76 (toggle section)
     };
 
     uint32_t parse_vk_code(std::string name);

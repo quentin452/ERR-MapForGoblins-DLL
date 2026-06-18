@@ -61,6 +61,18 @@ namespace goblin
     constexpr int TUTORIAL_FMG_ID_DUMP_OK   = 9004253;  // "Markers dumped"
     constexpr int TUTORIAL_FMG_ID_DUMP_FAIL = 9004254;  // "Marker dump failed - press again"
 
+    // Per-section toggle banners. 7 display groups × {shown, hidden} = 14 static
+    // rows at BASE..BASE+13. id = BASE + section*2 + (visible ? 0 : 1). The
+    // names here are shared by the FMG injector (goblin_messages) and the toast.
+    constexpr int TUTORIAL_FMG_ID_SECTION_BASE = 9004260;
+    constexpr int TUTORIAL_SECTION_COUNT       = 7;
+    inline constexpr const wchar_t *TUTORIAL_SECTION_NAMES[TUTORIAL_SECTION_COUNT] = {
+        L"Equipment", L"Key Items", L"Loot", L"Magic", L"Quest", L"Reforged", L"World"};
+    inline int section_toast_id(int section, bool visible)
+    {
+        return TUTORIAL_FMG_ID_SECTION_BASE + section * 2 + (visible ? 0 : 1);
+    }
+
     // Inject the codex-toast TutorialParam rows for the F10/F9 banners. Rows
     // get menuType=0 (upper-left codex caption widget) with textId pointing
     // at TutorialBody.fmg entries injected by goblin_messages.

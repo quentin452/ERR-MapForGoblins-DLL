@@ -165,9 +165,17 @@ void goblin::ensure_ini(const std::filesystem::path &ini_path)
     }
 }
 
+static std::filesystem::path g_loaded_ini_path;
+
+const std::filesystem::path &goblin::config_ini_path()
+{
+    return g_loaded_ini_path;
+}
+
 void goblin::load_config(const std::filesystem::path &ini_path)
 {
     spdlog::info("Config: {}", ini_path.string());
+    g_loaded_ini_path = ini_path;
 
     ensure_ini(ini_path);
     apply_defaults();
@@ -276,4 +284,26 @@ uint32_t goblin::parse_vk_code(std::string name)
     for (auto &p : named)
         if (name == p.first) return p.second;
     return 0;
+}
+
+void goblin::save_section_states(const std::filesystem::path &ini_path)
+{
+    mINI::INIFile file(ini_path.string());
+    mINI::INIStructure ini;
+    file.read(ini);  // load current file so write() preserves everything else
+
+    auto &s = ini["Display Sections"];
+    auto bstr = [](bool b) { return b ? "true" : "false"; };
+    s["section_equipment"] = bstr(config::sectionEquipment);
+    s["section_key_items"] = bstr(config::sectionKeyItems);
+    s["section_loot"]      = bstr(config::sectionLoot);
+    s["section_magic"]     = bstr(config::sectionMagic);
+    s["section_quest"]     = bstr(config::sectionQuest);
+    s["section_reforged"]  = bstr(config::sectionReforged);
+    s["section_world"]     = bstr(config::sectionWorld);
+
+    // write() updates values in place, preserving comments / key order / the
+    // rest of the file. generate() would flatten it, so use write().
+    if (!file.write(ini))
+        spdlog::warn("Config: failed to persist section visibility to {}", ini_path.string());
 }

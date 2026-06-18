@@ -73,6 +73,15 @@ namespace goblin::config
     bool enableToggleHotkey = true;
     uint32_t toggleInjectionKey = 0x79; // VK_F10
     uint16_t toggleGamepadMask = 0x8000 | 0x0080; // Y + R3
+
+    // In-game per-section visibility (the 7 display groups). Persisted so an
+    // in-game toggle survives relaunch. Default all-visible = no behaviour change.
+    bool sectionEquipment = true, sectionKeyItems = true, sectionLoot = true,
+         sectionMagic = true, sectionQuest = true, sectionReforged = true,
+         sectionWorld = true;
+    bool enableSectionToggle = true;
+    uint32_t sectionSelectKey = 0x77; // VK_F8  — cycle which section is selected
+    uint32_t sectionToggleKey = 0x76; // VK_F7  — show/hide the selected section
 }
 
 // ── schema ───────────────────────────────────────────────────────────────
@@ -116,6 +125,29 @@ namespace
                          "When show_all is on, categories listed here stay hidden (comma-separated,\n"
                          "matched loosely vs the category name, e.g. SmithingStonesLow, GoldenRunesLow).",
                          false, nullptr},
+            }},
+
+            {"Display Sections",
+             "In-game group visibility. These mirror the [Equipment]/[Key Items]/[Loot]/\n"
+             "[Magic]/[Quest]/[Reforged]/[World] groups below: a show_* flag decides if a\n"
+             "family's icons are loaded at all; the matching section flag here shows/hides\n"
+             "those loaded icons as a group, and can be flipped live in-game without a\n"
+             "restart (select key cycles the group, toggle key shows/hides it). The value\n"
+             "is written back here when you toggle in-game, so it persists.",
+             false, {
+                B("enable_section_toggle", enableSectionToggle, "true",
+                  "Master switch for the in-game per-section toggle hotkeys."),
+                IniEntry{"section_select_key", IniType::VkKey, &cfg::sectionSelectKey, "F8",
+                         "Key to cycle which display group the toggle key acts on. Default: F8.", false, nullptr},
+                IniEntry{"section_toggle_key", IniType::VkKey, &cfg::sectionToggleKey, "F7",
+                         "Key to show/hide the currently selected display group. Default: F7.", false, nullptr},
+                B("section_equipment", sectionEquipment, "true", "Show the Equipment group's icons."),
+                B("section_key_items", sectionKeyItems, "true", "Show the Key Items group's icons."),
+                B("section_loot",      sectionLoot,      "true", "Show the Loot group's icons."),
+                B("section_magic",     sectionMagic,     "true", "Show the Magic group's icons."),
+                B("section_quest",     sectionQuest,     "true", "Show the Quest group's icons."),
+                B("section_reforged",  sectionReforged,  "true", "Show the Reforged group's icons."),
+                B("section_world",     sectionWorld,     "true", "Show the World group's icons."),
             }},
 
             {"Equipment", nullptr, false, {

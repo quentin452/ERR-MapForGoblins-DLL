@@ -950,6 +950,20 @@ void goblin::setup_messages()
             {goblin::TUTORIAL_FMG_ID_DUMP_OK,   L"Markers dumped"},
             {goblin::TUTORIAL_FMG_ID_DUMP_FAIL, L"Marker dump failed — press again"},
         };
+        // Per-section toggle banners: "<group>: shown" / "<group>: hidden" for
+        // each of the 7 display groups. The wide strings are owned by sec_texts
+        // (NewEntry.text is a borrowed pointer) which lives until the patch call
+        // below returns.
+        std::vector<std::wstring> sec_texts;
+        sec_texts.reserve(goblin::TUTORIAL_SECTION_COUNT * 2);
+        for (int s = 0; s < goblin::TUTORIAL_SECTION_COUNT; s++)
+            for (int vis = 1; vis >= 0; vis--)  // visible first (matches id parity)
+            {
+                sec_texts.push_back(std::wstring(goblin::TUTORIAL_SECTION_NAMES[s]) +
+                                    (vis ? L": shown" : L": hidden"));
+                tb_entries.push_back({goblin::section_toast_id(s, vis != 0),
+                                      sec_texts.back().c_str()});
+            }
         if (patch_fmg_in_memory(sub[208], &sub[208], tb_entries))
             spdlog::info("[TOAST] TutorialBody.fmg expanded (ON={}, OFF={}, DUMP_OK={}, DUMP_FAIL={})",
                          goblin::TUTORIAL_FMG_ID_ON, goblin::TUTORIAL_FMG_ID_OFF,

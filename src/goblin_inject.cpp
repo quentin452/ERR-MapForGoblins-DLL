@@ -125,6 +125,173 @@ static std::set<uint8_t *> g_lot_backed_set;
 // by apply_map_logic so they only appear once the Erdtree has burned.
 static std::set<uint64_t> g_ashen_rows;
 
+// ─── Per-section runtime visibility (in-game family-group toggle) ─────
+//
+// The 7 INI display groups (mirrors goblin_config_schema's sections). A row's
+// family flag (show_*) decides whether it is injected at all; the SECTION gate
+// decides runtime visibility of the rows that DID get injected. The gate is
+// applied purely by flipping the row's areaNo to 99 (the same eviction trick
+// pieces use) on the live expanded blob — no param rebuild, no pointer swap.
+enum class Section : uint8_t
+{
+    Equipment, KeyItems, Loot, Magic, Quest, Reforged, World, COUNT
+};
+static constexpr int SECTION_COUNT = static_cast<int>(Section::COUNT);
+
+static const char *section_name(Section s)
+{
+    switch (s)
+    {
+    case Section::Equipment: return "Equipment";
+    case Section::KeyItems:  return "Key Items";
+    case Section::Loot:      return "Loot";
+    case Section::Magic:     return "Magic";
+    case Section::Quest:     return "Quest";
+    case Section::Reforged:  return "Reforged";
+    case Section::World:     return "World";
+    default:                 return "?";
+    }
+}
+
+// Category -> display section. Mirrors the [section] grouping in
+// goblin_config_schema.cpp::build_schema() exactly (note: HostileNPC / QuestNPC
+// live under [World] in the schema, not [Quest]). Every Category is covered.
+static Section section_of(Category c)
+{
+    switch (c)
+    {
+    case Category::EquipArmaments:
+    case Category::EquipArmour:
+    case Category::EquipAshesOfWar:
+    case Category::EquipSpirits:
+    case Category::EquipTalismans:
+        return Section::Equipment;
+    case Category::KeyCelestialDew:
+    case Category::KeyCookbooks:
+    case Category::KeyCrystalTears:
+    case Category::KeyImbuedSwordKeys:
+    case Category::KeyLarvalTears:
+    case Category::KeyScadutreeFragments:
+    case Category::KeyGreatRunes:
+    case Category::KeyLostAshes:
+    case Category::KeyPotsNPerfumes:
+    case Category::KeySeedsTears:
+    case Category::KeyWhetblades:
+        return Section::KeyItems;
+    case Category::LootAmmo:
+    case Category::LootBellBearings:
+    case Category::LootConsumables:
+    case Category::LootCraftingMaterials:
+    case Category::LootMPFingers:
+    case Category::LootMaterialNodes:
+    case Category::LootMerchantBellBearings:
+    case Category::LootReusables:
+    case Category::LootSmithingStones:
+    case Category::LootSmithingStonesLow:
+    case Category::LootSmithingStonesRare:
+    case Category::LootGoldenRunes:
+    case Category::LootGoldenRunesLow:
+    case Category::LootStoneswordKeys:
+    case Category::LootThrowables:
+    case Category::LootPrattlingPates:
+    case Category::LootRuneArcs:
+    case Category::LootDragonHearts:
+    case Category::LootGloveworts:
+    case Category::LootGreatGloveworts:
+    case Category::LootRadaFruit:
+    case Category::LootGestures:
+    case Category::LootGreases:
+    case Category::LootUtilities:
+    case Category::LootStatBoosts:
+        return Section::Loot;
+    case Category::MagicIncantations:
+    case Category::MagicMemoryStones:
+    case Category::MagicPrayerbooks:
+    case Category::MagicSorceries:
+        return Section::Magic;
+    case Category::QuestDeathroot:
+    case Category::QuestProgression:
+    case Category::QuestSeedbedCurses:
+        return Section::Quest;
+    case Category::ReforgedFortunes:
+    case Category::ReforgedEmberPieces:
+    case Category::ReforgedItemsAndChanges:
+    case Category::ReforgedRunePieces:
+        return Section::Reforged;
+    case Category::WorldHostileNPC:
+    case Category::WorldQuestNPC:
+    case Category::WorldBosses:
+    case Category::WorldGraces:
+    case Category::WorldImpStatues:
+    case Category::WorldMaps:
+    case Category::WorldPaintings:
+    case Category::WorldSpiritSprings:
+    case Category::WorldSpiritspringHawks:
+    case Category::WorldStakesOfMarika:
+    case Category::WorldSummoningPools:
+    case Category::WorldKindlingSpirits:
+    case Category::WorldInteractables:
+        return Section::World;
+    }
+    return Section::World;  // unreachable; keeps the compiler happy
+}
+
+// Runtime gate per section. Seeded from config at inject time; flipped live by
+// the section hotkey. Atomic: written by the hotkey thread, read here.
+static std::atomic<bool> g_section_visible[SECTION_COUNT];
+
+// Which section the toggle key currently acts on (cycled by the select key).
+static std::atomic<int> g_selected_section{0};
+
+// Hotkey-thread → watcher-thread inboxes. The hotkey thread only records intent;
+// the watcher (menu_auto_toggle_loop, sole owner of game-state mutation) applies
+// the areaNo flips, persists the ini, and fires the toast — mirroring how the
+// master F10 toggle defers its banner to that thread.
+static std::atomic<int> g_section_apply_req{-1};  // section idx to (re)apply, -1 = none
+static std::atomic<int> g_section_toast_req{0};   // tutorial id to fire, 0 = none
+
+// One injected, section-toggleable row in the expanded blob. orig_area is the
+// row's FINAL areaNo (post dungeon-reprojection) so a show restores the right
+// page. Piece/kindling rows may be independently 99-hidden when collected — a
+// section "show" must not resurrect those.
+struct SectionRow
+{
+    uint8_t *ptr;       // → row data in the live expanded blob
+    Section  sec;
+    uint8_t  orig_area; // areaNo to restore on show
+    bool     is_piece;
+    bool     is_kindling;
+    uint64_t row_id;
+};
+static std::vector<SectionRow> g_section_rows;
+
+// Show/hide every injected row of one section in place. Hide = areaNo 99;
+// show = restore orig_area unless the row is an already-collected piece/kindling
+// (those stay evicted, owned by collected::/kindling::).
+static void apply_section_visibility(Section s, bool visible)
+{
+    int touched = 0;
+    for (const auto &r : g_section_rows)
+    {
+        if (r.sec != s) continue;
+        uint8_t *area = r.ptr + 0x20;  // WORLD_MAP_POINT_PARAM_ST.areaNo
+        if (!visible)
+        {
+            *area = 99;
+        }
+        else
+        {
+            bool keep_hidden =
+                (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
+                (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
+            *area = keep_hidden ? 99 : r.orig_area;
+        }
+        touched++;
+    }
+    spdlog::info("[SECTION] {} -> {} ({} rows)",
+                 section_name(s), visible ? "SHOWN" : "HIDDEN", touched);
+}
+
 namespace
 {
 // One ItemLotParam row, read by raw offset (ITEMLOT_PARAM_ST = 152 bytes,
@@ -687,6 +854,19 @@ void goblin::inject_map_entries()
                 p->textDisableFlagId2 = 0;  // keep location text visible too
             }
         }
+
+        // Register the row for the in-game per-section toggle (our injected rows
+        // only; vanilla rows have original_row_id 0 and are never group-toggled).
+        // areaNo here is final (post dungeon-reprojection) and pre piece/kindling
+        // 99-hide, so it is the correct value to restore on a section "show".
+        if (all_rows[i].original_row_id)
+        {
+            auto *p = new_param_file + data_offset;
+            g_section_rows.push_back({p, section_of(all_rows[i].category),
+                                      p[0x20], all_rows[i].is_piece,
+                                      all_rows[i].is_kindling,
+                                      static_cast<uint64_t>(all_rows[i].row_id)});
+        }
     }
     } // map.inject.build_rows
 
@@ -746,6 +926,23 @@ void goblin::inject_map_entries()
     file_ptr_ref = new_param_file;
     file_size_ref = static_cast<int64_t>(param_file_size);
     g_param_injection_active = true;
+
+    // Seed per-section runtime gates from config and apply any that start
+    // hidden (areaNo 99). Default is all-visible → no-op, zero regression.
+    const bool sec_cfg[SECTION_COUNT] = {
+        goblin::config::sectionEquipment, goblin::config::sectionKeyItems,
+        goblin::config::sectionLoot,      goblin::config::sectionMagic,
+        goblin::config::sectionQuest,     goblin::config::sectionReforged,
+        goblin::config::sectionWorld,
+    };
+    for (int s = 0; s < SECTION_COUNT; s++)
+    {
+        g_section_visible[s].store(sec_cfg[s]);
+        if (!sec_cfg[s])
+            apply_section_visibility(static_cast<Section>(s), false);
+    }
+    spdlog::info("[SECTION] registered {} toggleable rows across {} sections",
+                 g_section_rows.size(), SECTION_COUNT);
 
     spdlog::debug("Injection complete: {} total rows", total_rows);
 }
@@ -872,7 +1069,8 @@ bool goblin::inject_tutorial_popup_rows()
     const char *type_str = reinterpret_cast<const char *>(old_file + old_table->param_type_offset);
     size_t type_str_len = strlen(type_str) + 1;
 
-    uint32_t new_row_count = 4;  // ON, OFF, DUMP_OK, DUMP_FAIL
+    // ON, OFF, DUMP_OK, DUMP_FAIL + 7 display groups × {shown, hidden}.
+    uint32_t new_row_count = 4 + goblin::TUTORIAL_SECTION_COUNT * 2;
     uint32_t total_rows = orig_rows + new_row_count;
 
     size_t row_locators_start = HEADER_SIZE;
@@ -933,6 +1131,11 @@ bool goblin::inject_tutorial_popup_rows()
     all_rows.push_back({TUTORIAL_NEW_ROW_ID_OFF,       template_data});
     all_rows.push_back({TUTORIAL_NEW_ROW_ID_DUMP_OK,   template_data});
     all_rows.push_back({TUTORIAL_NEW_ROW_ID_DUMP_FAIL, template_data});
+    for (int s = 0; s < goblin::TUTORIAL_SECTION_COUNT; s++)
+    {
+        all_rows.push_back({goblin::section_toast_id(s, true),  template_data});
+        all_rows.push_back({goblin::section_toast_id(s, false), template_data});
+    }
 
     std::sort(all_rows.begin(), all_rows.end(),
               [](const RowSource &a, const RowSource &b) { return a.row_id < b.row_id; });
@@ -957,8 +1160,11 @@ bool goblin::inject_tutorial_popup_rows()
         // to 1 explicitly: ERR's template carries 1, but vanilla menuType=0
         // rows ship repeatType=0 (show-once) — the toast must repeat.
         int32_t rid = all_rows[i].row_id;
-        if (rid == TUTORIAL_NEW_ROW_ID_ON || rid == TUTORIAL_NEW_ROW_ID_OFF ||
-            rid == TUTORIAL_NEW_ROW_ID_DUMP_OK || rid == TUTORIAL_NEW_ROW_ID_DUMP_FAIL)
+        // All MFG toast rows: the 4 fixed banners + the 14 section banners, a
+        // contiguous range above the highest ERR codex id (9004250). Vanilla/ERR
+        // rows never fall in here, so the range test is exact.
+        if (rid >= goblin::TUTORIAL_FMG_ID_ON &&
+            rid <= goblin::section_toast_id(goblin::TUTORIAL_SECTION_COUNT - 1, false))
         {
             auto *p = new_file + data_offset;
             *reinterpret_cast<uint8_t *>(p + 4)  = 0;      // menuType = 0 (toast)
@@ -1029,9 +1235,41 @@ static bool gamepad_combo_held()
 void goblin::toggle_hotkey_loop()
 {
     bool prev_kbd = false, prev_pad = false, prev_f11 = false;
+    bool prev_sel = false, prev_tog = false;
     while (true)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        // Per-section toggle (independent of the master toggle below). Select
+        // key cycles the active group; toggle key flips its visibility. Both
+        // only post intent to the watcher thread.
+        if (config::enableSectionToggle)
+        {
+            bool sel = (GetAsyncKeyState(static_cast<int>(config::sectionSelectKey)) & 0x8000) != 0;
+            bool tog = (GetAsyncKeyState(static_cast<int>(config::sectionToggleKey)) & 0x8000) != 0;
+            if (sel && !prev_sel)
+            {
+                int n = (g_selected_section.load() + 1) % SECTION_COUNT;
+                g_selected_section.store(n);
+                // Echo the newly-selected group's CURRENT state so the player
+                // sees what the toggle key will act on.
+                g_section_toast_req.store(section_toast_id(n, g_section_visible[n].load()));
+                spdlog::info("[SECTION] selected {} (currently {})", section_name(static_cast<Section>(n)),
+                             g_section_visible[n].load() ? "SHOWN" : "HIDDEN");
+            }
+            if (tog && !prev_tog)
+            {
+                int n = g_selected_section.load();
+                bool nv = !g_section_visible[n].load();
+                g_section_visible[n].store(nv);
+                g_section_apply_req.store(n);
+                g_section_toast_req.store(section_toast_id(n, nv));
+            }
+            prev_sel = sel;
+            prev_tog = tog;
+        }
+        else { prev_sel = false; prev_tog = false; }
+
         if (!config::enableToggleHotkey) { prev_kbd = false; prev_pad = false; prev_f11 = false; continue; }
 
         SHORT state = GetAsyncKeyState(static_cast<int>(config::toggleInjectionKey));
@@ -1438,6 +1676,19 @@ void goblin::menu_auto_toggle_loop()
             show_toggle_banner(!user_disabled_now);
             prev_user_disabled = user_disabled_now;
         }
+
+        // Per-section toggle requests posted by the hotkey thread. Apply the
+        // areaNo flips on the live blob and persist the choice here (single
+        // owner of game-state mutation), then fire whatever toast was queued.
+        int areq = g_section_apply_req.exchange(-1);
+        if (areq >= 0 && areq < SECTION_COUNT)
+        {
+            apply_section_visibility(static_cast<Section>(areq), g_section_visible[areq].load());
+            goblin::save_section_states(goblin::config_ini_path());
+        }
+        int treq = g_section_toast_req.exchange(0);
+        if (treq)
+            goblin::show_codex_toast(treq);
 
         bool want_expanded = !user_disabled_now;
 
