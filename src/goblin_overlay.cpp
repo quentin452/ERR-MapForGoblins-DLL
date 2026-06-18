@@ -380,24 +380,46 @@ namespace
                     goblin::ui::set_section_visible(s, sv);
 
                 ImGui::PushID(s);
-                if (ImGui::SmallButton("All"))
+                if (ImGui::SmallButton("Show all"))
                     for (int c = 0; c < goblin::ui::category_count(); c++)
                         if (goblin::ui::category_section(c) == s)
                             goblin::ui::set_category_visible(c, true);
                 ImGui::SameLine();
-                if (ImGui::SmallButton("None"))
+                if (ImGui::SmallButton("Show none"))
                     for (int c = 0; c < goblin::ui::category_count(); c++)
                         if (goblin::ui::category_section(c) == s)
                             goblin::ui::set_category_visible(c, false);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Cluster all"))
+                    for (int c = 0; c < goblin::ui::category_count(); c++)
+                        if (goblin::ui::category_section(c) == s)
+                            goblin::ui::set_category_clustered(c, true);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Cluster none"))
+                    for (int c = 0; c < goblin::ui::category_count(); c++)
+                        if (goblin::ui::category_section(c) == s)
+                            goblin::ui::set_category_clustered(c, false);
                 ImGui::PopID();
+                ImGui::TextDisabled("left = show on map   |   right [cluster] = fold into clusters (Save + restart)");
                 ImGui::Separator();
 
                 for (int c = 0; c < goblin::ui::category_count(); c++)
                 {
                     if (goblin::ui::category_section(c) != s) continue;
+                    ImGui::PushID(c);
                     bool cv = goblin::ui::category_visible(c);
                     if (ImGui::Checkbox(goblin::ui::category_label(c), &cv))
                         goblin::ui::set_category_visible(c, cv);
+                    // Right-aligned cluster opt-in: unchecked = this category stays
+                    // exact markers, never folded into a cluster icon.
+                    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 70.0f);
+                    bool clu = goblin::ui::category_clustered(c);
+                    if (ImGui::Checkbox("cluster", &clu))
+                        goblin::ui::set_category_clustered(c, clu);
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Fold this category's dense piles into a cluster icon.\n"
+                                          "Unchecked = always exact. Takes effect after Save + restart.");
+                    ImGui::PopID();
                 }
                 ImGui::TreePop();
             }

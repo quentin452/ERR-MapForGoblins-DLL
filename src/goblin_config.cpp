@@ -301,11 +301,17 @@ void goblin::save_all_bool_settings(const std::filesystem::path &ini_path)
             continue;
         for (const auto &e : section.entries)
         {
-            if (e.type != goblin::IniType::Bool || e.target == nullptr)
+            if (e.target == nullptr)
                 continue;
             if (e.err_only && goblin::profile_is_vanilla())
                 continue;
-            ini[section.name][e.key] = *reinterpret_cast<bool *>(e.target) ? "true" : "false";
+            // Bool entries written from their live value; String entries round-
+            // tripped from their config var so menu-driven strings (e.g.
+            // cluster_exclude) persist too. Other types (keys, delays) untouched.
+            if (e.type == goblin::IniType::Bool)
+                ini[section.name][e.key] = *reinterpret_cast<bool *>(e.target) ? "true" : "false";
+            else if (e.type == goblin::IniType::String)
+                ini[section.name][e.key] = *reinterpret_cast<std::string *>(e.target);
         }
     }
 

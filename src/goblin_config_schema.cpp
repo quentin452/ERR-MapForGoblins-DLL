@@ -64,6 +64,7 @@ namespace goblin::config
     // piles into one cluster icon to cut the per-page map-open cost. Opt-in.
     bool enableClustering = false;
     uint8_t clusterThreshold = 8;     // a bucket clusters only if it holds > this many markers
+    std::string clusterExclude = "";  // category names kept exact (never clustered)
     bool questNpcQuestAware = false;  // gate quest-NPC markers on quest-active flags
 }
 
@@ -145,6 +146,12 @@ namespace
                 IniEntry{"cluster_threshold", IniType::U8, &cfg::clusterThreshold, "8",
                          "A location clusters only if it holds MORE than this many markers.\n"
                          "Lower = more aggressive clustering (faster, less precise).", false, nullptr},
+                IniEntry{"cluster_exclude", IniType::String, &cfg::clusterExclude, "",
+                         "Categories that stay EXACT markers and never fold into a cluster\n"
+                         "(comma-separated, matched loosely vs the category name, e.g.\n"
+                         "Graces, Bosses, GreatRunes). Driven by the per-category 'cluster'\n"
+                         "checkboxes in the overlay (F1); takes effect after Save + restart.",
+                         false, nullptr},
             }},
 
             {"Equipment", nullptr, false, {

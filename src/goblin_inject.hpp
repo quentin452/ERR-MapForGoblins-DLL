@@ -158,6 +158,10 @@ namespace goblin
         int category_section(int idx);
         bool category_visible(int idx);
         void set_category_visible(int idx, bool visible);
+        // Per-category cluster opt-in (true = folds into clusters). Editing takes
+        // effect after Save + restart, since the cluster plan is built at inject.
+        bool category_clustered(int idx);
+        void set_category_clustered(int idx, bool clustered);
 
         // Persist the current section/category visibility to the ini (the menu's
         // Save button). Posts a request; the watcher thread does the file I/O.

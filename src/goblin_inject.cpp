@@ -308,6 +308,10 @@ static std::vector<SectionRow> g_section_rows;
 static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldInteractables) + 1;
 static std::atomic<bool> g_category_visible[NUM_CATEGORIES];
 static std::atomic<bool> g_category_dirty[NUM_CATEGORIES];  // set by menu, applied by watcher
+// Per-category cluster opt-in (true = this category folds into clusters). Seeded
+// from config::clusterExclude at init; toggled live by the menu but only takes
+// effect after Save + restart, since clustering is planned once at inject.
+static std::atomic<bool> g_category_cluster[NUM_CATEGORIES];
 
 // Coordination for the multiple areaNo owners. Section visibility, fragment-
 // eviction and collected-eviction all write WORLD_MAP_POINT_PARAM_ST.areaNo
@@ -695,26 +699,39 @@ static std::string norm_alnum(const std::string &s)
     return o;
 }
 
-// True if `cat` matches a token in show_all_except (loose substring match).
-static bool category_in_except(Category cat)
+// True if `cat`'s name matches a comma-separated token in `list` (loose substring
+// match, alnum-normalised). Shared by show_all_except and cluster_exclude.
+static bool category_in_list(const std::string &list, Category cat)
 {
-    const std::string &ex = goblin::config::showAllExcept;
-    if (ex.empty())
+    if (list.empty())
         return false;
     std::string catn = norm_alnum(goblin::markers::category_name(cat));
     if (catn.empty())
         return false;
-    for (size_t i = 0; i < ex.size();)
+    for (size_t i = 0; i < list.size();)
     {
-        size_t j = ex.find(',', i);
+        size_t j = list.find(',', i);
         if (j == std::string::npos)
-            j = ex.size();
-        std::string tok = norm_alnum(ex.substr(i, j - i));
+            j = list.size();
+        std::string tok = norm_alnum(list.substr(i, j - i));
         if (!tok.empty() && catn.find(tok) != std::string::npos)
             return true;
         i = j + 1;
     }
     return false;
+}
+
+// True if `cat` matches a token in show_all_except (loose substring match).
+static bool category_in_except(Category cat)
+{
+    return category_in_list(goblin::config::showAllExcept, cat);
+}
+
+// True if `cat` is allowed to fold into a cluster (i.e. NOT opted out via
+// cluster_exclude). Read at inject time when the cluster plan is built.
+static bool category_clustered_cfg(Category cat)
+{
+    return !category_in_list(goblin::config::clusterExclude, cat);
 }
 
 static bool *category_config_ptr(Category cat)
@@ -846,6 +863,10 @@ void goblin::inject_map_entries()
         };
         for (size_t i = 0; i < entries.size(); i++)
         {
+            // Per-category opt-out: excluded categories never join a bucket, so
+            // they stay exact markers (no parking, no cluster row).
+            if (!category_clustered_cfg(entries[i].category))
+                continue;
             from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp = *entries[i].data;
             if (goblin::config::projectDungeons)
                 project_dungeon_row_to_overworld(&tmp);
@@ -1377,6 +1398,20 @@ void goblin::inject_map_entries()
                      NUM_CATEGORIES, born_hidden);
     }
 
+    // Seed per-category cluster opt-in from config::clusterExclude (menu display
+    // only — the cluster plan above already read the same config directly).
+    {
+        int excluded = 0;
+        for (int c = 0; c < NUM_CATEGORIES; c++)
+        {
+            bool on = category_clustered_cfg(static_cast<Category>(c));
+            g_category_cluster[c].store(on);
+            if (!on) excluded++;
+        }
+        if (excluded)
+            spdlog::info("[CLUSTER] {} categories excluded from clustering", excluded);
+    }
+
     // Seed the master on/off from the persisted config (menu 'Show icons' / F10).
     // Park everything now if it starts hidden (the watcher's change-detector
     // wouldn't fire, since prev == current at startup).
@@ -1812,6 +1847,20 @@ void goblin::ui::set_category_visible(int idx, bool visible)
     g_category_dirty[idx].store(true);  // watcher applies the areaNo park/restore
 }
 
+bool goblin::ui::category_clustered(int idx)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return true;
+    return g_category_cluster[idx].load();
+}
+
+void goblin::ui::set_category_clustered(int idx, bool clustered)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return;
+    g_category_cluster[idx].store(clustered);
+    // No dirty flag: the cluster plan is built once at inject, so this only takes
+    // effect after Save + restart. Persisted into clusterExclude by the Save path.
+}
+
 // Save request posted by the menu; the watcher does the file I/O.
 static std::atomic<bool> g_save_req{false};
 void goblin::ui::request_save() { g_save_req.store(true); }
@@ -1836,6 +1885,20 @@ static void persist_settings()
 
     // Persist the master on/off so it survives a restart.
     goblin::config::iconsHidden = g_icons_user_disabled.load();
+
+    // Serialise per-category cluster opt-outs into clusterExclude (comma list of
+    // the unchecked categories' names) so the next launch rebuilds the plan
+    // accordingly. Uses the canonical category name = what category_in_list matches.
+    {
+        std::string ex;
+        for (int c = 0; c < NUM_CATEGORIES; c++)
+            if (!g_category_cluster[c].load())
+            {
+                if (!ex.empty()) ex += ',';
+                ex += goblin::markers::category_name(static_cast<Category>(c));
+            }
+        goblin::config::clusterExclude = std::move(ex);
+    }
 
     goblin::save_all_bool_settings(goblin::config_ini_path());
 }
