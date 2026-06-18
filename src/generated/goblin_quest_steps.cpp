@@ -338,14 +338,16 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Ranni the Witch", "Ranni's Quest", "Hub of the Blaidd/Iji/Seluvis cluster", steps_ranni, 6},
     {"Blaidd", "Blaidd's Quest", "Part of Ranni's questline", steps_blaidd, 4, false,
      "Use Blaidd before pushing Ranni's quest too far; advancing it first can trap him and he later turns hostile."},
-    // fail_flag 558 = Iji dead. Found by FIXED save-diff (per-file flag-region
-    // offset) + monotonic filter across 3 post-death saves; it's a low/global
-    // flag (region-independent, won't toggle with player location) and Iji-
-    // specific (Varre's earlier death did NOT set it). The first attempt
-    // (1034502743) was a flagdiff offset-bug artifact (false in every save).
+    // fail_flag 1042600001 = Iji dead. Verified PERSISTENT (true even far from
+    // Liurnia) + monotonic across 5 timepoints + Iji-specific. Found by
+    // intersecting two Iji-DEAD saves taken at DIFFERENT locations (Liurnia +
+    // far) to drop region/proximity flags. Earlier picks 1034502743 (flagdiff
+    // offset bug) and 558 (a Liurnia-proximity flag — went false when far) were
+    // BOTH wrong; only a cross-location-persistent flag works for the live
+    // grey-out, which the overlay reads regardless of where the player is.
     {"Iji", "Iji's Quest", "Part of Ranni's questline", steps_iji, 3, false,
      "Siding with Seluvis's puppet scheme, or angering Ranni's enemies, can get Iji killed.",
-     558u},
+     1042600001u},
     {"Seluvis", "Seluvis's Quest", "Part of Ranni's questline; crosses Nepheli", steps_seluvis, 4, false,
      "Using his puppet potion on Nepheli permanently ends HER questline -- warn her instead to keep both."},
     // Sellen
