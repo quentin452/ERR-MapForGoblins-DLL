@@ -1551,10 +1551,9 @@ bool goblin::inject_tutorial_popup_rows()
     // Must match EXACTLY the rows pushed into all_rows below, or the locator/
     // data/wrapper arrays are under-sized and the write loop overflows the
     // HeapAlloc'd buffer (heap corruption → ntdll AV at init). Rows:
-    //   4 fixed (ON/OFF/DUMP_OK/DUMP_FAIL) + 1 coverage-gap + 7 groups×{shown,
-    //   hidden} + GAP_CAT_COUNT per-category gap toasts.
-    uint32_t new_row_count =
-        4 + 1 + goblin::TUTORIAL_SECTION_COUNT * 2 + goblin::GAP_CAT_COUNT;
+    //   4 fixed (ON/OFF/DUMP_OK/DUMP_FAIL) + 1 coverage-gap + GAP_CAT_COUNT
+    //   per-category gap toasts.
+    uint32_t new_row_count = 4 + 1 + goblin::GAP_CAT_COUNT;
     uint32_t total_rows = orig_rows + new_row_count;
 
     size_t row_locators_start = HEADER_SIZE;
@@ -1616,11 +1615,6 @@ bool goblin::inject_tutorial_popup_rows()
     all_rows.push_back({TUTORIAL_NEW_ROW_ID_DUMP_OK,   template_data});
     all_rows.push_back({TUTORIAL_NEW_ROW_ID_DUMP_FAIL, template_data});
     all_rows.push_back({goblin::TUTORIAL_FMG_ID_COVERAGE_GAP, template_data});
-    for (int s = 0; s < goblin::TUTORIAL_SECTION_COUNT; s++)
-    {
-        all_rows.push_back({goblin::section_toast_id(s, true),  template_data});
-        all_rows.push_back({goblin::section_toast_id(s, false), template_data});
-    }
     for (int c = 0; c < goblin::GAP_CAT_COUNT; c++)
         all_rows.push_back({goblin::gap_cat_toast_id(c), template_data});
 

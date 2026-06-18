@@ -82,21 +82,12 @@ namespace goblin
     constexpr int TUTORIAL_FMG_ID_DUMP_FAIL = 9004254;  // "Marker dump failed - press again"
     constexpr int TUTORIAL_FMG_ID_COVERAGE_GAP = 9004255; // "unmapped item collected (coverage gap)"
 
-    // Per-section toggle banners. 7 display groups × {shown, hidden} = 14 static
-    // rows at BASE..BASE+13. id = BASE + section*2 + (visible ? 0 : 1). The
-    // names here are shared by the FMG injector (goblin_messages) and the toast.
-    constexpr int TUTORIAL_FMG_ID_SECTION_BASE = 9004260;
-    constexpr int TUTORIAL_SECTION_COUNT       = 7;
-    inline constexpr const wchar_t *TUTORIAL_SECTION_NAMES[TUTORIAL_SECTION_COUNT] = {
-        L"Equipment", L"Key Items", L"Loot", L"Magic", L"Quest", L"Reforged", L"World"};
-    inline int section_toast_id(int section, bool visible)
-    {
-        return TUTORIAL_FMG_ID_SECTION_BASE + section * 2 + (visible ? 0 : 1);
-    }
+    // (9004260..73 was the per-section toggle-banner block — removed when section
+    // toggles stopped firing toasts; the overlay menu owns section visibility now.)
 
     // Per-category coverage-gap toasts. The item category is read from the
     // granted item id's high nibble (Armament/Armour/Talisman/Goods/Ash of War/
-    // other). Placed ABOVE the section block (9004260..73) so ids don't collide.
+    // other). Base kept at 9004280 (clear of the freed 9004260..73 block).
     constexpr int TUTORIAL_FMG_ID_GAP_CAT_BASE = 9004280; // base .. base+COUNT-1
     constexpr int GAP_CAT_COUNT                = 6;
     inline constexpr const wchar_t *GAP_CAT_NAMES[GAP_CAT_COUNT] = {
