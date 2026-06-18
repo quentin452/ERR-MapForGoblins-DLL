@@ -161,8 +161,10 @@ void probe_loop()
                 if ((x != 0.f || z != 0.f) && !bounds_dumped.count(a))
                 {
                     bounds_dumped[a] = 1;
-                    g_log->info("--- bounds dump @{:#x} (find minX/minZ/maxX/maxZ) ---", a);
-                    for (ptrdiff_t off = 0xE0; off <= 0x140; off += 4)
+                    g_log->info("--- bounds dump @{:#x} (find minX/minZ/maxX/maxZ in map-extent range) ---", a);
+                    // Doc: bounds rect somewhere in cursor+0xF0..+0x340. Log the whole
+                    // window; only the 4 floats in the plausible map extent matter.
+                    for (ptrdiff_t off = 0xE0; off <= 0x340; off += 4)
                     {
                         float fv;
                         if (seh_read4(reinterpret_cast<void *>(a + off), &fv))
