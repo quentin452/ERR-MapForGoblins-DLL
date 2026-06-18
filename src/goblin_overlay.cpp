@@ -42,6 +42,15 @@ namespace
     SetCursorPosFn o_set_cursor_pos = nullptr;
     ClipCursorFn o_clip_cursor = nullptr;
 
+    // The 2D world map cursor follows the absolute OS cursor via GetCursorPos
+    // (a different path from the 3D camera's DirectInput). We can't freeze it
+    // globally — ImGui needs the real position. So return a frozen position to
+    // the GAME, the real one to ImGui (flag set only around ImGui's NewFrame).
+    using GetCursorPosFn = BOOL(WINAPI *)(LPPOINT);
+    GetCursorPosFn o_get_cursor_pos = nullptr;
+    POINT g_frozen_cursor{};
+    bool g_imgui_reading_cursor = false;
+
     // Raw input — ER reads gameplay keyboard/mouse here (not via window
     // messages), so we neutralise it while the menu is open to fully disable
     // game commands. ImGui still gets keyboard/mouse via the WndProc + cursor.
@@ -125,6 +134,16 @@ namespace
     {
         if (g_show) return o_clip_cursor(nullptr);   // unclip while menu is up
         return o_clip_cursor(rc);
+    }
+
+    BOOL WINAPI hk_get_cursor_pos(LPPOINT p)
+    {
+        BOOL r = o_get_cursor_pos(p);
+        // Freeze the cursor the GAME sees while the menu is open (so the 2D map
+        // stops following it). ImGui's own NewFrame read gets the real position.
+        if (g_show && !g_imgui_reading_cursor && p)
+            *p = g_frozen_cursor;
+        return r;
     }
 
     UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size,
@@ -412,10 +431,17 @@ namespace
         g_prev_toggle_down = down;
         g_show = g_user_show;
 
+        // While closed, keep sampling the real cursor so the freeze starts from
+        // wherever the cursor is when the menu opens.
+        if (!g_show && o_get_cursor_pos)
+            o_get_cursor_pos(&g_frozen_cursor);
+
         if (g_show && g_command_queue)
         {
+            g_imgui_reading_cursor = true;   // let ImGui's NewFrame see the real cursor
             ImGui_ImplDX12_NewFrame();
             ImGui_ImplWin32_NewFrame();
+            g_imgui_reading_cursor = false;
             ImGui::NewFrame();
             draw_panel();
             ImGui::Render();
@@ -613,6 +639,10 @@ void goblin::overlay::initialize()
         if (grib && MH_CreateHook(grib, reinterpret_cast<void *>(&hk_get_raw_input_buffer),
                                   reinterpret_cast<void **>(&o_get_raw_input_buffer)) == MH_OK)
             MH_EnableHook(grib);
+        void *gcp = reinterpret_cast<void *>(GetProcAddress(u32, "GetCursorPos"));
+        if (gcp && MH_CreateHook(gcp, reinterpret_cast<void *>(&hk_get_cursor_pos),
+                                 reinterpret_cast<void **>(&o_get_cursor_pos)) == MH_OK)
+            MH_EnableHook(gcp);
     }
 
     // DirectInput8 mouse/keyboard hook (ER's primary input path). Resolve the
