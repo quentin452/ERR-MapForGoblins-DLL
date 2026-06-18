@@ -178,10 +178,12 @@ static void setup_mod()
 
     // Thread 7 — opt-in coverage-gap observers (SetEventFlag / AddItemFunc). Each
     // self-disables on resolve/hook failure without touching the rest of the mod.
-    if (goblin::config::debugEventFlags || goblin::config::debugItemGrants)
+    if (goblin::config::debugEventFlags || goblin::config::debugItemGrants ||
+        goblin::config::debugFlagCapture)
         goblin::debug_events::initialize(g_mod_folder / "logs" / "MapForGoblins_events.log",
                                          goblin::config::debugEventFlags,
-                                         goblin::config::debugItemGrants);
+                                         goblin::config::debugItemGrants,
+                                         goblin::config::debugFlagCapture);
 
     if (goblin::config::debugWorldmapProbe)
         goblin::worldmap_probe::initialize(g_mod_folder / "logs" / "MapForGoblins_wmprobe.log");

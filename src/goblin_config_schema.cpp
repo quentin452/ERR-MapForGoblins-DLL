@@ -52,6 +52,7 @@ namespace goblin::config
     uint32_t markerDumpKey = 0x78; // VK_F9
     bool debugEventFlags = false;
     bool debugItemGrants = false;
+    bool debugFlagCapture = false;
     bool debugWorldmapProbe = false;
 
     // In-game per-section visibility (the 7 display groups). Persisted so an
@@ -307,6 +308,8 @@ namespace
                   "Observe every event flag the game sets at runtime and log each newly-seen\nflag id to logs/MapForGoblins_events.log (coverage-gap discovery aid).\nHooks SetEventFlag; off by default."),
                 B("debug_item_grants", debugItemGrants, "false",
                   "Observe every inventory grant (item pickup/shop/reward) and log the raw\nrequest to logs/MapForGoblins_events.log. Hooks AddItemFunc; off by default."),
+                B("debug_flag_capture", debugFlagCapture, "false",
+                  "Quest Browser death-flag capture tool (overlay Dev tools): arm naming an\nNPC, kill it, finalize -> the persisted flag(s) are written to\nlogs/MapForGoblins_flagcapture.txt as NpcQuest::fail_flag candidates.\nInstalls the SetEventFlag hook in a LIGHT mode (no coverage drain); off by default."),
                 B("debug_worldmap_probe", debugWorldmapProbe, "false",
                   "Dev probe: log the world-map cursor coords (read-only) to confirm the RE\noffsets for proximity clustering. Open the world map + move the cursor.\nLogs to logs/MapForGoblins_wmprobe.log; off by default."),
             }},

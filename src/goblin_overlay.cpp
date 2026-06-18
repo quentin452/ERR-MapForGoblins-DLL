@@ -1,6 +1,7 @@
 #include "goblin_overlay.hpp"
 #include "goblin_config.hpp"
 #include "goblin_quest_steps.hpp"
+#include "goblin_debug_events.hpp"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -711,9 +712,55 @@ namespace
                                 &goblin::config::enableMarkerDump);
                 ImGui::Checkbox("Verbose logging (addresses, param internals)",
                                 &goblin::config::debugLogging);
+                ImGui::Checkbox("Flag-capture hook (NPC death-flag tool)",
+                                &goblin::config::debugFlagCapture);
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("These take effect after Save + a game restart — each\n"
                                       "installs its hook/worker once at startup.");
+
+                // Flag-capture tool: arm naming an NPC, kill it, finalize -> the
+                // persisted death flag(s) are logged as fail_flag candidates.
+                ImGui::Separator();
+                ImGui::TextDisabled("NPC death-flag capture (needs the hook above + restart)");
+                static int cap_sel = 0;
+                size_t qn = goblin::generated::QUEST_BROWSER_COUNT;
+                if (cap_sel >= (int)qn) cap_sel = 0;
+                const char *cap_name = goblin::generated::QUEST_BROWSER[cap_sel].name;
+                ImGui::SetNextItemWidth(-1.0f);
+                if (ImGui::BeginCombo("##capnpc", cap_name))
+                {
+                    for (int i = 0; i < (int)qn; i++)
+                        if (ImGui::Selectable(goblin::generated::QUEST_BROWSER[i].name,
+                                              i == cap_sel))
+                            cap_sel = i;
+                    ImGui::EndCombo();
+                }
+                static int cap_last = -1;
+                if (!goblin::debug_events::capture_armed())
+                {
+                    if (ImGui::Button("Arm capture"))
+                    {
+                        goblin::debug_events::arm_capture(cap_name);
+                        cap_last = -1;
+                    }
+                    if (cap_last >= 0)
+                    {
+                        ImGui::SameLine();
+                        ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f),
+                                           "logged %d -> flagcapture.txt", cap_last);
+                    }
+                }
+                else
+                {
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.3f, 1.0f));
+                    ImGui::TextWrapped("ARMED for '%s' — kill it, wait ~5s, then Finalize.",
+                                       cap_name);
+                    ImGui::PopStyleColor();
+                    ImGui::Text("flags captured: %zu", goblin::debug_events::capture_count());
+                    if (ImGui::Button("Finalize -> log"))
+                        cap_last = goblin::debug_events::finalize_capture(
+                            &goblin::ui::read_event_flag);
+                }
                 ImGui::TreePop();
             }
 

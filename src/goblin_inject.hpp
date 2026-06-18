@@ -189,5 +189,8 @@ namespace goblin
         // Part 2: true if QUEST_BROWSER[i]'s questline is unfinishable (its
         // fail_flag is set). Cached by refresh_quest_finishable() on the watcher.
         bool quest_unfinishable(size_t i);
+        // Live event-flag read (wraps the internal IsEventFlag resolver) — used
+        // by the flag-capture tool's finalize re-check. bool(*)(uint32_t).
+        bool read_event_flag(uint32_t id);
     }
 };

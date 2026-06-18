@@ -2335,6 +2335,11 @@ bool goblin::ui::quest_unfinishable(size_t i)
     return i < g_quest_unfinishable.size() && g_quest_unfinishable[i] != 0;
 }
 
+// Live event-flag reader exposed for the overlay's flag-capture finalize step
+// (re-check captured flags so only PERSISTED ones are logged). Plain free
+// function so it matches the bool(*)(uint32_t) callback the capture tool takes.
+bool goblin::ui::read_event_flag(uint32_t id) { return orp_flag_set(id); }
+
 // Cluster depletion: when every flag-backed member of a cluster is collected, swap
 // the cluster icon to the green CLUSTER_DONE glyph (else keep teal). Only while the
 // clusters are SHOWN (collapsed); throttled (piles don't deplete fast). No RE —

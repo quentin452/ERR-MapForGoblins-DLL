@@ -101,6 +101,9 @@ namespace goblin
         // See goblin_debug_events.{hpp,cpp}.
         extern bool debugEventFlags;
         extern bool debugItemGrants;
+        // debugFlagCapture = light SetEventFlag hook for the overlay's NPC
+        // death-flag capture tool (Quest Browser Part 2).
+        extern bool debugFlagCapture;
 
         // Read-only world-map cursor probe (logs cursor coords to confirm the RE
         // offsets / marker-space). See goblin_worldmap_probe.{hpp,cpp}.
