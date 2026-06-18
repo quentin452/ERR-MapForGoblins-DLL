@@ -17,6 +17,7 @@
 #include "goblin_logic.hpp"
 #include "goblin_markers.hpp"
 #include "goblin_messages.hpp"
+#include "goblin_overlay.hpp"
 #include "goblin_bench.hpp"
 #include "goblin_crashdump.hpp"
 
@@ -186,6 +187,11 @@ static void setup_mod()
         std::thread(goblin::menu_auto_toggle_loop).detach();
         spdlog::info("Icon-state watcher started (icons EXPANDED always; F10 = personal show/hide)");
     }
+
+    // Thread 6 — in-game ImGui overlay. Phase 1: hello window toggled by F1.
+    // Installs a DX12 Present hook; on any failure it self-disables and the mod
+    // continues unaffected.
+    goblin::overlay::initialize();
 
     bool first_read = true;
     auto start = std::chrono::steady_clock::now();

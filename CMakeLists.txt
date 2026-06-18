@@ -48,19 +48,40 @@ FetchContent_Declare(spdlog
   GIT_REPOSITORY        https://github.com/gabime/spdlog.git
   GIT_TAG               v1.13.0)
 
+# Dear ImGui (in-game settings overlay, Thread 6). No CMakeLists of its own —
+# we add its sources straight into the target below. Pinned to v1.90.9, whose
+# imgui_impl_dx12 uses the classic single-font-SRV Init signature.
+FetchContent_Declare(imgui
+  GIT_REPOSITORY        https://github.com/ocornut/imgui.git
+  GIT_TAG               v1.90.9
+  CONFIGURE_COMMAND     ""
+  BUILD_COMMAND         "")
+
 # Set iterator debug level to 0 for ELDEN RING ABI compatibility
 add_definitions(-D_ITERATOR_DEBUG_LEVEL=0)
 
 # Static CRT linking (/MT) - required for DLL injection into game process
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-FetchContent_MakeAvailable(minhook pattern16 mini spdlog)
+FetchContent_MakeAvailable(minhook pattern16 mini spdlog imgui)
 
 add_library(pattern16 INTERFACE)
 target_include_directories(pattern16 INTERFACE ${pattern16_SOURCE_DIR}/include)
 
 add_library(mini INTERFACE)
 target_include_directories(mini INTERFACE ${mini_SOURCE_DIR}/src)
+
+# Dear ImGui core + DX12/Win32 backends, compiled into the DLL.
+add_library(imgui STATIC
+  ${imgui_SOURCE_DIR}/imgui.cpp
+  ${imgui_SOURCE_DIR}/imgui_draw.cpp
+  ${imgui_SOURCE_DIR}/imgui_tables.cpp
+  ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+  ${imgui_SOURCE_DIR}/backends/imgui_impl_dx12.cpp
+  ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp)
+target_include_directories(imgui PUBLIC
+  ${imgui_SOURCE_DIR}
+  ${imgui_SOURCE_DIR}/backends)
 
 add_library( MapForGoblins SHARED
   src/from/params.hpp
@@ -98,6 +119,8 @@ add_library( MapForGoblins SHARED
   src/goblin_markers.cpp
   src/goblin_messages.hpp
   src/goblin_messages.cpp
+  src/goblin_overlay.hpp
+  src/goblin_overlay.cpp
   src/goblin_crashdump.cpp
   src/dllmain.cpp)
 
@@ -148,4 +171,7 @@ target_link_libraries( MapForGoblins
   pattern16
   mini
   spdlog
+  imgui
+  d3d12
+  dxgi
   dbghelp)

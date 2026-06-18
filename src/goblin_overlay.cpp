@@ -1,0 +1,420 @@
+#include "goblin_overlay.hpp"
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <d3d12.h>
+#include <dxgi1_4.h>
+
+#include <MinHook.h>
+#include <spdlog/spdlog.h>
+
+#include <imgui.h>
+#include <backends/imgui_impl_dx12.h>
+#include <backends/imgui_impl_win32.h>
+
+#include <vector>
+
+// ImGui's Win32 backend message handler (defined in imgui_impl_win32.cpp).
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
+
+namespace
+{
+    // ── Hooked function typedefs ──────────────────────────────────────────
+    using PresentFn = HRESULT(STDMETHODCALLTYPE *)(IDXGISwapChain3 *, UINT, UINT);
+    using ResizeBuffersFn =
+        HRESULT(STDMETHODCALLTYPE *)(IDXGISwapChain3 *, UINT, UINT, UINT, DXGI_FORMAT, UINT);
+    using ExecuteCommandListsFn =
+        void(STDMETHODCALLTYPE *)(ID3D12CommandQueue *, UINT, ID3D12CommandList *const *);
+
+    PresentFn o_present = nullptr;
+    ResizeBuffersFn o_resize_buffers = nullptr;
+    ExecuteCommandListsFn o_execute_command_lists = nullptr;
+
+    // ── D3D12 state captured from the live game ───────────────────────────
+    ID3D12Device *g_device = nullptr;
+    ID3D12CommandQueue *g_command_queue = nullptr;   // captured from ExecuteCommandLists
+    ID3D12DescriptorHeap *g_rtv_heap = nullptr;
+    ID3D12DescriptorHeap *g_srv_heap = nullptr;       // ImGui font SRV (1 descriptor)
+    ID3D12GraphicsCommandList *g_command_list = nullptr;
+
+    struct FrameContext
+    {
+        ID3D12CommandAllocator *allocator = nullptr;
+        ID3D12Resource *render_target = nullptr;
+        D3D12_CPU_DESCRIPTOR_HANDLE rtv_handle{};
+    };
+    std::vector<FrameContext> g_frames;
+    UINT g_buffer_count = 0;
+
+    HWND g_hwnd = nullptr;
+    WNDPROC g_orig_wndproc = nullptr;
+
+    bool g_imgui_init = false;   // ImGui + D3D resources built against live swapchain
+    bool g_failed = false;       // gave up (no overlay), mod continues
+    bool g_show = false;         // panel visible
+    bool g_prev_toggle_down = false;
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+
+    // Read a COM object's vtable slot (function pointer) by index.
+    void *vtable_entry(void *com_object, int index)
+    {
+        void **vtable = *reinterpret_cast<void ***>(com_object);
+        return vtable[index];
+    }
+
+    void release_render_targets()
+    {
+        for (auto &f : g_frames)
+        {
+            if (f.render_target) { f.render_target->Release(); f.render_target = nullptr; }
+        }
+    }
+
+    void cleanup_imgui_device()
+    {
+        release_render_targets();
+        for (auto &f : g_frames)
+            if (f.allocator) { f.allocator->Release(); f.allocator = nullptr; }
+        g_frames.clear();
+        if (g_command_list) { g_command_list->Release(); g_command_list = nullptr; }
+        if (g_rtv_heap) { g_rtv_heap->Release(); g_rtv_heap = nullptr; }
+        if (g_srv_heap) { g_srv_heap->Release(); g_srv_heap = nullptr; }
+    }
+
+    // ── WndProc hook (input capture) ──────────────────────────────────────
+    LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+    {
+        if (g_show)
+        {
+            ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
+            ImGuiIO &io = ImGui::GetIO();
+            // Swallow input the panel wants, so it doesn't reach the game.
+            if (io.WantCaptureMouse &&
+                (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP || msg == WM_RBUTTONDOWN ||
+                 msg == WM_RBUTTONUP || msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP ||
+                 msg == WM_MOUSEWHEEL || msg == WM_MOUSEMOVE))
+                return 1;
+            if (io.WantCaptureKeyboard &&
+                (msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_CHAR))
+                return 1;
+        }
+        return CallWindowProcW(g_orig_wndproc, hwnd, msg, wp, lp);
+    }
+
+    // ── First-frame ImGui init against the live swapchain ─────────────────
+    bool init_imgui(IDXGISwapChain3 *swapchain)
+    {
+        if (FAILED(swapchain->GetDevice(IID_PPV_ARGS(&g_device))))
+        {
+            spdlog::error("[OVERLAY] swapchain->GetDevice failed");
+            return false;
+        }
+
+        DXGI_SWAP_CHAIN_DESC desc{};
+        swapchain->GetDesc(&desc);
+        g_buffer_count = desc.BufferCount;
+        g_hwnd = desc.OutputWindow;
+
+        // RTV heap: one per back buffer.
+        D3D12_DESCRIPTOR_HEAP_DESC rtv_desc{};
+        rtv_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        rtv_desc.NumDescriptors = g_buffer_count;
+        rtv_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        if (FAILED(g_device->CreateDescriptorHeap(&rtv_desc, IID_PPV_ARGS(&g_rtv_heap))))
+        {
+            spdlog::error("[OVERLAY] CreateDescriptorHeap(RTV) failed");
+            return false;
+        }
+        UINT rtv_size = g_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+        D3D12_CPU_DESCRIPTOR_HANDLE rtv_cpu = g_rtv_heap->GetCPUDescriptorHandleForHeapStart();
+
+        // SRV heap: ImGui font (shader-visible, 1 descriptor).
+        D3D12_DESCRIPTOR_HEAP_DESC srv_desc{};
+        srv_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        srv_desc.NumDescriptors = 1;
+        srv_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        if (FAILED(g_device->CreateDescriptorHeap(&srv_desc, IID_PPV_ARGS(&g_srv_heap))))
+        {
+            spdlog::error("[OVERLAY] CreateDescriptorHeap(SRV) failed");
+            return false;
+        }
+
+        // Per-frame: command allocator + back-buffer RTV.
+        g_frames.resize(g_buffer_count);
+        for (UINT i = 0; i < g_buffer_count; i++)
+        {
+            if (FAILED(g_device->CreateCommandAllocator(
+                    D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&g_frames[i].allocator))))
+            {
+                spdlog::error("[OVERLAY] CreateCommandAllocator failed");
+                return false;
+            }
+            g_frames[i].rtv_handle = rtv_cpu;
+            rtv_cpu.ptr += rtv_size;
+
+            ID3D12Resource *back = nullptr;
+            swapchain->GetBuffer(i, IID_PPV_ARGS(&back));
+            g_device->CreateRenderTargetView(back, nullptr, g_frames[i].rtv_handle);
+            g_frames[i].render_target = back;
+        }
+
+        if (FAILED(g_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                               g_frames[0].allocator, nullptr,
+                                               IID_PPV_ARGS(&g_command_list))))
+        {
+            spdlog::error("[OVERLAY] CreateCommandList failed");
+            return false;
+        }
+        g_command_list->Close();
+
+        // ImGui context + backends.
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGui::GetIO().IniFilename = nullptr;   // no imgui.ini on disk
+        ImGui::StyleColorsDark();
+        ImGui_ImplWin32_Init(g_hwnd);
+        ImGui_ImplDX12_Init(g_device, g_buffer_count, DXGI_FORMAT_R8G8B8A8_UNORM, g_srv_heap,
+                            g_srv_heap->GetCPUDescriptorHandleForHeapStart(),
+                            g_srv_heap->GetGPUDescriptorHandleForHeapStart());
+
+        // Install the input hook now that we have the window.
+        g_orig_wndproc = reinterpret_cast<WNDPROC>(
+            SetWindowLongPtrW(g_hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(hk_wndproc)));
+
+        spdlog::info("[OVERLAY] ImGui initialised: {} back buffers, hwnd={:p}",
+                     g_buffer_count, static_cast<void *>(g_hwnd));
+        return true;
+    }
+
+    void draw_panel()
+    {
+        // Phase 1: a hello window proving the hook is alive. Phase 3 binds the
+        // real settings here.
+        ImGui::SetNextWindowSize(ImVec2(360, 180), ImGuiCond_FirstUseEver);
+        ImGui::Begin("Map for Goblins");
+        ImGui::Text("Overlay alive. Phase 1 hello.");
+        ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+        ImGui::Separator();
+        ImGui::TextWrapped("Settings bind here in Phase 3. Toggle with F1.");
+        ImGui::End();
+    }
+
+    // ── Present hook (renders the overlay) ────────────────────────────────
+    HRESULT STDMETHODCALLTYPE hk_present(IDXGISwapChain3 *swapchain, UINT sync, UINT flags)
+    {
+        if (!g_imgui_init)
+        {
+            if (!init_imgui(swapchain))
+            {
+                g_failed = true;
+                cleanup_imgui_device();
+                spdlog::error("[OVERLAY] init failed → overlay disabled, mod continues");
+                return o_present(swapchain, sync, flags);
+            }
+            g_imgui_init = true;
+        }
+
+        // Toggle (F1), edge-detected. We need the game's queue captured first.
+        bool down = (GetAsyncKeyState(VK_F1) & 0x8000) != 0;
+        if (down && !g_prev_toggle_down) g_show = !g_show;
+        g_prev_toggle_down = down;
+
+        if (g_show && g_command_queue)
+        {
+            ImGui_ImplDX12_NewFrame();
+            ImGui_ImplWin32_NewFrame();
+            ImGui::NewFrame();
+            draw_panel();
+            ImGui::Render();
+
+            UINT idx = swapchain->GetCurrentBackBufferIndex();
+            FrameContext &frame = g_frames[idx];
+
+            frame.allocator->Reset();
+            g_command_list->Reset(frame.allocator, nullptr);
+
+            D3D12_RESOURCE_BARRIER barrier{};
+            barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+            barrier.Transition.pResource = frame.render_target;
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+            barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            g_command_list->ResourceBarrier(1, &barrier);
+
+            g_command_list->OMSetRenderTargets(1, &frame.rtv_handle, FALSE, nullptr);
+            g_command_list->SetDescriptorHeaps(1, &g_srv_heap);
+            ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), g_command_list);
+
+            barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+            g_command_list->ResourceBarrier(1, &barrier);
+
+            g_command_list->Close();
+            ID3D12CommandList *lists[] = {g_command_list};
+            g_command_queue->ExecuteCommandLists(1, lists);
+        }
+
+        return o_present(swapchain, sync, flags);
+    }
+
+    // ── ResizeBuffers hook (resolution / fullscreen change) ───────────────
+    HRESULT STDMETHODCALLTYPE hk_resize_buffers(IDXGISwapChain3 *swapchain, UINT count, UINT w,
+                                                UINT h, DXGI_FORMAT fmt, UINT flags)
+    {
+        // Drop our references to the old back buffers before the swapchain
+        // recreates them, then rebuild RTVs after.
+        if (g_imgui_init)
+            release_render_targets();
+
+        HRESULT hr = o_resize_buffers(swapchain, count, w, h, fmt, flags);
+
+        if (g_imgui_init && SUCCEEDED(hr))
+        {
+            DXGI_SWAP_CHAIN_DESC desc{};
+            swapchain->GetDesc(&desc);
+            UINT n = (count != 0) ? count : g_buffer_count;
+            for (UINT i = 0; i < n && i < g_frames.size(); i++)
+            {
+                ID3D12Resource *back = nullptr;
+                swapchain->GetBuffer(i, IID_PPV_ARGS(&back));
+                g_device->CreateRenderTargetView(back, nullptr, g_frames[i].rtv_handle);
+                g_frames[i].render_target = back;
+            }
+        }
+        return hr;
+    }
+
+    // ── ExecuteCommandLists hook (captures the game's DIRECT queue) ────────
+    void STDMETHODCALLTYPE hk_execute_command_lists(ID3D12CommandQueue *queue, UINT count,
+                                                    ID3D12CommandList *const *lists)
+    {
+        if (!g_command_queue && queue)
+        {
+            // The swapchain Present uses a DIRECT queue; capture the first one.
+            D3D12_COMMAND_QUEUE_DESC qd = queue->GetDesc();
+            if (qd.Type == D3D12_COMMAND_LIST_TYPE_DIRECT)
+            {
+                g_command_queue = queue;
+                spdlog::info("[OVERLAY] captured game command queue {:p}",
+                             static_cast<void *>(queue));
+            }
+        }
+        o_execute_command_lists(queue, count, lists);
+    }
+
+    // ── Vtable resolution via a throwaway device + swapchain ──────────────
+    bool resolve_vtables(void **present_addr, void **resize_addr, void **eclist_addr)
+    {
+        // A hidden message-only-ish window for the dummy swapchain.
+        WNDCLASSEXW wc{};
+        wc.cbSize = sizeof(wc);
+        wc.lpfnWndProc = DefWindowProcW;
+        wc.hInstance = GetModuleHandleW(nullptr);
+        wc.lpszClassName = L"MfgOverlayDummy";
+        RegisterClassExW(&wc);
+        HWND dummy = CreateWindowW(wc.lpszClassName, L"", WS_OVERLAPPEDWINDOW, 0, 0, 64, 64,
+                                   nullptr, nullptr, wc.hInstance, nullptr);
+        if (!dummy)
+        {
+            UnregisterClassW(wc.lpszClassName, wc.hInstance);
+            return false;
+        }
+
+        ID3D12Device *device = nullptr;
+        ID3D12CommandQueue *queue = nullptr;
+        IDXGIFactory4 *factory = nullptr;
+        IDXGISwapChain1 *swapchain1 = nullptr;
+        bool ok = false;
+
+        if (FAILED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device))))
+            goto done;
+
+        {
+            D3D12_COMMAND_QUEUE_DESC qd{};
+            qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+            if (FAILED(device->CreateCommandQueue(&qd, IID_PPV_ARGS(&queue))))
+                goto done;
+        }
+
+        if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
+            goto done;
+
+        {
+            DXGI_SWAP_CHAIN_DESC1 scd{};
+            scd.BufferCount = 2;
+            scd.Width = 64;
+            scd.Height = 64;
+            scd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+            scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+            scd.SampleDesc.Count = 1;
+            if (FAILED(factory->CreateSwapChainForHwnd(queue, dummy, &scd, nullptr, nullptr,
+                                                       &swapchain1)))
+                goto done;
+        }
+
+        // Present = vtable[8], ResizeBuffers = vtable[13] on IDXGISwapChain;
+        // ExecuteCommandLists = vtable[10] on ID3D12CommandQueue.
+        *present_addr = vtable_entry(swapchain1, 8);
+        *resize_addr = vtable_entry(swapchain1, 13);
+        *eclist_addr = vtable_entry(queue, 10);
+        ok = true;
+
+    done:
+        if (swapchain1) swapchain1->Release();
+        if (factory) factory->Release();
+        if (queue) queue->Release();
+        if (device) device->Release();
+        DestroyWindow(dummy);
+        UnregisterClassW(wc.lpszClassName, wc.hInstance);
+        return ok;
+    }
+}
+
+void goblin::overlay::initialize()
+{
+    void *present_addr = nullptr, *resize_addr = nullptr, *eclist_addr = nullptr;
+    if (!resolve_vtables(&present_addr, &resize_addr, &eclist_addr))
+    {
+        spdlog::error("[OVERLAY] vtable resolution failed (dummy swapchain) → overlay disabled");
+        g_failed = true;
+        return;
+    }
+
+    bool ok = true;
+    ok &= (MH_CreateHook(present_addr, reinterpret_cast<void *>(&hk_present),
+                         reinterpret_cast<void **>(&o_present)) == MH_OK);
+    ok &= (MH_CreateHook(resize_addr, reinterpret_cast<void *>(&hk_resize_buffers),
+                         reinterpret_cast<void **>(&o_resize_buffers)) == MH_OK);
+    ok &= (MH_CreateHook(eclist_addr, reinterpret_cast<void *>(&hk_execute_command_lists),
+                         reinterpret_cast<void **>(&o_execute_command_lists)) == MH_OK);
+    if (!ok)
+    {
+        spdlog::error("[OVERLAY] MH_CreateHook failed → overlay disabled");
+        g_failed = true;
+        return;
+    }
+
+    MH_EnableHook(present_addr);
+    MH_EnableHook(resize_addr);
+    MH_EnableHook(eclist_addr);
+    spdlog::info("[OVERLAY] hooks installed (Present/ResizeBuffers/ExecuteCommandLists). F1 toggles.");
+}
+
+void goblin::overlay::shutdown()
+{
+    if (g_failed) return;
+    if (g_hwnd && g_orig_wndproc)
+        SetWindowLongPtrW(g_hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_orig_wndproc));
+    if (g_imgui_init)
+    {
+        ImGui_ImplDX12_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+        ImGui::DestroyContext();
+        cleanup_imgui_device();
+    }
+}
+
+bool goblin::overlay::is_ready() { return g_imgui_init; }
