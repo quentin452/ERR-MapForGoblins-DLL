@@ -540,16 +540,18 @@ namespace
                         bits[s] = v ? '1' : '0';
                         reserialize();
                     };
-                    // Render one NPC subtree.
+                    // Render one NPC subtree. The tree ID is derived from the
+                    // stable array index (ptr-id overload), NOT the label text —
+                    // the label carries the live (done/total) count, and hashing
+                    // that would change the node's ID every tick and silently
+                    // collapse the subtree on each click.
                     auto draw_npc = [&](const goblin::generated::NpcQuest &q, int id) {
                         if (!contains_ci(q.name, filter)) return;
                         int done = 0;
                         for (size_t s = 0; s < q.step_count; s++)
                             if (qp_get(q.name, s)) done++;
-                        ImGui::PushID(id);
-                        char label[180];
-                        snprintf(label, sizeof(label), "%s  (%d/%zu)", q.name, done, q.step_count);
-                        if (ImGui::TreeNode(label))
+                        if (ImGui::TreeNode((void *)(intptr_t)id, "%s  (%d/%zu)", q.name,
+                                            done, q.step_count))
                         {
                             if (q.related)
                             {
@@ -580,7 +582,6 @@ namespace
                             }
                             ImGui::TreePop();
                         }
-                        ImGui::PopID();
                     };
 
                     ImGui::BeginChild("questlist", ImVec2(0, 300), true);
