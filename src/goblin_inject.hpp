@@ -100,11 +100,9 @@ namespace goblin
     // path as the F10 banner. Safe from any thread once init has run.
     void show_codex_toast(int tutorial_id);
 
-    // Background thread polling the toggle hotkey.
-    void toggle_hotkey_loop();
-
     // Background thread owning the WorldMapPointParam expand/revert state. It
-    // applies the F10/gamepad personal show/hide and shows the toggle banner.
+    // applies the overlay menu's master / per-section / per-category / cluster
+    // intents, persists them, and shows the master toggle banner.
     void menu_auto_toggle_loop();
 
     // True if a section toggle currently keeps this row's param data hidden

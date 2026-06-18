@@ -171,22 +171,15 @@ static void setup_mod()
         spdlog::info("Marker dump hotkey: VK 0x{:X}", goblin::config::markerDumpKey);
     }
 
-    if (goblin::config::enableToggleHotkey)
-    {
-        std::thread(goblin::toggle_hotkey_loop).detach();
-        spdlog::info("Injection toggle hotkey: VK 0x{:X}", goblin::config::toggleInjectionKey);
-    }
-
     // The watcher is the single owner of the WorldMapPointParam state — it
-    // applies the F10/gamepad master-off flag and shows the toggle banner.
-    // (The map-based auto-hide it used to run was removed after the 16-align
-    // fix made the expanded table safe during hosting — see
-    // docs/ersc_hosting_and_map_autohide.md.) Run it whenever the hotkey is on.
-    if (goblin::config::enableToggleHotkey)
-    {
-        std::thread(goblin::menu_auto_toggle_loop).detach();
-        spdlog::info("Icon-state watcher started (icons EXPANDED always; F10 = personal show/hide)");
-    }
+    // applies the overlay menu's master-off / per-section / per-category /
+    // cluster intents and persists them. (Legacy F-key hotkeys F6/F7/F8/F10/F11
+    // were removed in P3c; the in-game overlay menu (F1) drives all of this now.
+    // The map-based auto-hide it used to run was removed after the 16-align fix
+    // made the expanded table safe during hosting — see
+    // docs/ersc_hosting_and_map_autohide.md.) Always runs.
+    std::thread(goblin::menu_auto_toggle_loop).detach();
+    spdlog::info("Icon-state watcher started (icons EXPANDED always; overlay menu drives show/hide)");
 
     // Thread 6 — in-game ImGui overlay. Phase 1: hello window toggled by F1.
     // Installs a DX12 Present hook; on any failure it self-disables and the mod

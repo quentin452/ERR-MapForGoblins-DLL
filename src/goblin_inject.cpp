@@ -249,10 +249,7 @@ static Section section_of(Category c)
 // the section hotkey. Atomic: written by the hotkey thread, read here.
 static std::atomic<bool> g_section_visible[SECTION_COUNT];
 
-// Which section the toggle key currently acts on (cycled by the select key).
-static std::atomic<int> g_selected_section{0};
-
-// Hotkey-thread → watcher-thread inboxes. The hotkey thread only records intent;
+// Overlay-menu → watcher-thread inboxes. The menu only records intent;
 // the watcher (menu_auto_toggle_loop, sole owner of game-state mutation) applies
 // the areaNo flips, persists the ini, and fires the toast — mirroring how the
 // master F10 toggle defers its banner to that thread.
@@ -1577,120 +1574,6 @@ void goblin::set_param_injection_active(bool active)
 bool goblin::is_param_injection_active()
 {
     return g_param_injection_active;
-}
-
-// Combo is configurable via toggle_gamepad_combo in the ini. Default is
-// Y + R3 (right stick click), which is uncommon during normal play. Polled
-// on all 4 XInput slots so the order of pad-plug doesn't matter.
-static bool gamepad_combo_held()
-{
-    WORD mask = goblin::config::toggleGamepadMask;
-    if (!mask) return false;
-    for (DWORD i = 0; i < XUSER_MAX_COUNT; i++)
-    {
-        XINPUT_STATE st{};
-        if (XInputGetState(i, &st) != ERROR_SUCCESS) continue;
-        if ((st.Gamepad.wButtons & mask) == mask)
-            return true;
-    }
-    return false;
-}
-
-void goblin::toggle_hotkey_loop()
-{
-    bool prev_kbd = false, prev_pad = false, prev_f11 = false;
-    bool prev_sel = false, prev_tog = false;
-    bool prev_ex = false, prev_db = false;
-    while (true)
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-        // Marker clustering: expand/collapse all clusters + debug count labels.
-        // Independent of the master/section toggles; posts intent to the watcher.
-        if (config::enableClustering)
-        {
-            bool ex = (GetAsyncKeyState(static_cast<int>(config::clusterExpandKey)) & 0x8000) != 0;
-            bool db = (GetAsyncKeyState(static_cast<int>(config::clusterDebugKey)) & 0x8000) != 0;
-            if (ex && !prev_ex)
-            {
-                g_clusters_expanded.store(!g_clusters_expanded.load());
-                g_cluster_expand_dirty.store(true);
-            }
-            if (db && !prev_db)
-            {
-                g_cluster_debug.store(!g_cluster_debug.load());
-                g_cluster_debug_dirty.store(true);
-            }
-            prev_ex = ex;
-            prev_db = db;
-        }
-        else { prev_ex = false; prev_db = false; }
-
-        // Per-section toggle (independent of the master toggle below). Select
-        // key cycles the active group; toggle key flips its visibility. Both
-        // only post intent to the watcher thread.
-        if (config::enableSectionToggle)
-        {
-            bool sel = (GetAsyncKeyState(static_cast<int>(config::sectionSelectKey)) & 0x8000) != 0;
-            bool tog = (GetAsyncKeyState(static_cast<int>(config::sectionToggleKey)) & 0x8000) != 0;
-            if (sel && !prev_sel)
-            {
-                int n = (g_selected_section.load() + 1) % SECTION_COUNT;
-                g_selected_section.store(n);
-                // Echo the newly-selected group's CURRENT state so the player
-                // sees what the toggle key will act on.
-                g_section_toast_req.store(section_toast_id(n, g_section_visible[n].load()));
-                spdlog::info("[SECTION] selected {} (currently {})", section_name(static_cast<Section>(n)),
-                             g_section_visible[n].load() ? "SHOWN" : "HIDDEN");
-            }
-            if (tog && !prev_tog)
-            {
-                int n = g_selected_section.load();
-                bool nv = !g_section_visible[n].load();
-                g_section_visible[n].store(nv);
-                g_section_apply_req.store(n);
-                g_section_toast_req.store(section_toast_id(n, nv));
-            }
-            prev_sel = sel;
-            prev_tog = tog;
-        }
-        else { prev_sel = false; prev_tog = false; }
-
-        if (!config::enableToggleHotkey) { prev_kbd = false; prev_pad = false; prev_f11 = false; continue; }
-
-        SHORT state = GetAsyncKeyState(static_cast<int>(config::toggleInjectionKey));
-        bool kbd = (state & 0x8000) != 0;
-        bool pad = gamepad_combo_held();
-
-        // Rising-edge on either input source independently.
-        bool fired = (kbd && !prev_kbd) || (pad && !prev_pad);
-        prev_kbd = kbd;
-        prev_pad = pad;
-
-        // EXPERIMENT: F11 cycles the toast method (see TOAST_METHOD_NAMES).
-        // Suppressed when clustering is on — F11 is then the cluster-debug toggle.
-        bool f11 = !config::enableClustering && (GetAsyncKeyState(VK_F11) & 0x8000) != 0;
-        if (f11 && !prev_f11)
-        {
-            int m = (g_toast_method.load() + 1) % TOAST_METHOD_COUNT;
-            g_toast_method.store(m);
-            spdlog::info("[TOAST] method -> [{}]", TOAST_METHOD_NAMES[m]);
-        }
-        prev_f11 = f11;
-
-        if (fired)
-        {
-            // The hotkey is a master-off intent, not a direct param swap. The
-            // watcher thread (menu_auto_toggle_loop) is the single owner of the
-            // param state; it honours this flag. When disabled the user has
-            // explicitly hidden the icons, so they stay hidden even on the map.
-            bool disabled = !g_icons_user_disabled.load();
-            g_icons_user_disabled.store(disabled);
-            spdlog::info("[TOGGLE] icons {} by user (source: {})",
-                         disabled ? "HIDDEN" : "SHOWN",
-                         (kbd && !pad) ? "keyboard" : (pad && !kbd) ? "gamepad" : "both");
-        }
-    }
 }
 
 // (The old Summon-message path (post_summon) was removed: it depended on five

@@ -88,29 +88,15 @@ namespace goblin
         extern bool enableMarkerDump;
         extern uint32_t markerDumpKey;  // Win32 VK_* code (default VK_F9 = 0x78)
 
-        // ERSC-hosting workaround: hotkey toggles WorldMapPointParam +
-        // PlaceName FMG between vanilla and expanded states. Press before
-        // hosting a co-op session, press again after.
-        extern bool enableToggleHotkey;
-        extern uint32_t toggleInjectionKey;  // default VK_F10 = 0x79
-        // XInput button bitmask combo. All buttons in the mask must be
-        // held simultaneously to fire. Default Y + R3 (right stick click).
-        extern uint16_t toggleGamepadMask;
-
-        // In-game per-section visibility toggle (the 7 display groups). The
-        // section_* bools are the persisted runtime state; the two keys drive
-        // the in-game select/toggle. See goblin_config_schema [Display Sections].
+        // In-game per-section visibility (the 7 display groups). The section_*
+        // bools are the persisted runtime state, driven live by the overlay menu
+        // (F1) and written back on Save. See goblin_config_schema [Display Sections].
         extern bool sectionEquipment, sectionKeyItems, sectionLoot, sectionMagic,
                     sectionQuest, sectionReforged, sectionWorld;
-        extern bool enableSectionToggle;
-        extern uint32_t sectionSelectKey;  // default VK_F8 = 0x77 (cycle section)
-        extern uint32_t sectionToggleKey;  // default VK_F7 = 0x76 (toggle section)
 
         // Marker clustering (v1). See goblin_config_schema [Clustering].
         extern bool enableClustering;
         extern uint8_t clusterThreshold;   // bucket clusters only if it holds > this many
-        extern uint32_t clusterExpandKey;  // default VK_F6  = 0x75 (expand/collapse all)
-        extern uint32_t clusterDebugKey;   // default VK_F11 = 0x7A (count labels vs icon-only)
     };
 
     uint32_t parse_vk_code(std::string name);

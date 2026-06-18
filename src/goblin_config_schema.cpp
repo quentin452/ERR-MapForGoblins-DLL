@@ -49,25 +49,17 @@ namespace goblin::config
 
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
-    bool enableToggleHotkey = true;
-    uint32_t toggleInjectionKey = 0x79; // VK_F10
-    uint16_t toggleGamepadMask = 0x8000 | 0x0080; // Y + R3
 
     // In-game per-section visibility (the 7 display groups). Persisted so an
     // in-game toggle survives relaunch. Default all-visible = no behaviour change.
     bool sectionEquipment = true, sectionKeyItems = true, sectionLoot = true,
          sectionMagic = true, sectionQuest = true, sectionReforged = true,
          sectionWorld = true;
-    bool enableSectionToggle = true;
-    uint32_t sectionSelectKey = 0x77; // VK_F8  — cycle which section is selected
-    uint32_t sectionToggleKey = 0x76; // VK_F7  — show/hide the selected section
 
     // Marker clustering (v1, density-triggered, static). Collapses dense marker
     // piles into one cluster icon to cut the per-page map-open cost. Opt-in.
     bool enableClustering = false;
     uint8_t clusterThreshold = 8;     // a bucket clusters only if it holds > this many markers
-    uint32_t clusterExpandKey = 0x75; // VK_F6  — expand/collapse all clusters
-    uint32_t clusterDebugKey = 0x7A;  // VK_F11 — cluster labels: member count vs icon-only
 }
 
 // ── schema ───────────────────────────────────────────────────────────────
@@ -121,15 +113,9 @@ namespace
              "[Magic]/[Quest]/[Reforged]/[World] groups below: a show_* flag decides if a\n"
              "family's icons are loaded at all; the matching section flag here shows/hides\n"
              "those loaded icons as a group, and can be flipped live in-game without a\n"
-             "restart (select key cycles the group, toggle key shows/hides it). The value\n"
-             "is written back here when you toggle in-game, so it persists.",
+             "restart from the overlay menu (F1). The value is written back here when you\n"
+             "toggle and Save in-game, so it persists.",
              false, {
-                B("enable_section_toggle", enableSectionToggle, "true",
-                  "Master switch for the in-game per-section toggle hotkeys."),
-                IniEntry{"section_select_key", IniType::VkKey, &cfg::sectionSelectKey, "F8",
-                         "Key to cycle which display group the toggle key acts on. Default: F8.", false, nullptr},
-                IniEntry{"section_toggle_key", IniType::VkKey, &cfg::sectionToggleKey, "F7",
-                         "Key to show/hide the currently selected display group. Default: F7.", false, nullptr},
                 B("section_equipment", sectionEquipment, "true", "Show the Equipment group's icons."),
                 B("section_key_items", sectionKeyItems, "true", "Show the Key Items group's icons."),
                 B("section_loot",      sectionLoot,      "true", "Show the Loot group's icons."),
@@ -150,12 +136,6 @@ namespace
                 IniEntry{"cluster_threshold", IniType::U8, &cfg::clusterThreshold, "8",
                          "A location clusters only if it holds MORE than this many markers.\n"
                          "Lower = more aggressive clustering (faster, less precise).", false, nullptr},
-                IniEntry{"cluster_expand_key", IniType::VkKey, &cfg::clusterExpandKey, "F6",
-                         "Key to expand all clusters into individual markers (and collapse again).\n"
-                         "Expanded = every marker shown = slower open. Default: F6.", false, nullptr},
-                IniEntry{"cluster_debug_key", IniType::VkKey, &cfg::clusterDebugKey, "F11",
-                         "Key to toggle cluster labels between the member count and icon-only.\n"
-                         "Shows how many markers each cluster holds. Default: F11.", false, nullptr},
             }},
 
             {"Equipment", nullptr, false, {
@@ -288,17 +268,11 @@ namespace
             }},
 
             {"Debug",
-             "Hotkeys: in-memory marker dump, and the injection toggle (workaround for\nhosting Seamless Co-op). Key names: F1-F24, A-Z, 0-9, Space, Escape, Tab,\nEnter, Backspace, Home, End, PageUp, PageDown, Insert, Delete, arrows.",
+             "Hotkey for the in-memory marker dump (developer aid). Key names: F1-F24,\nA-Z, 0-9, Space, Escape, Tab, Enter, Backspace, Home, End, PageUp, PageDown,\nInsert, Delete, arrows.",
              false, {
                 B("enable_marker_dump", enableMarkerDump, "false", "Master switch for the marker dump hotkey"),
                 IniEntry{"marker_dump_key", IniType::VkKey, &cfg::markerDumpKey, "F9",
                          "Key to dump decoded markers to logs/MapForGoblins_markers.log. Default: F9.", false, nullptr},
-                B("enable_toggle_hotkey", enableToggleHotkey, "true",
-                  "Injection toggle: revert WorldMapPointParam + PlaceName FMG to vanilla and\nback (press once before hosting Seamless Co-op, again after)."),
-                IniEntry{"toggle_injection_key", IniType::VkKey, &cfg::toggleInjectionKey, "F10",
-                         "Keyboard key for the injection toggle. Default: F10.", false, nullptr},
-                IniEntry{"toggle_gamepad_combo", IniType::GamepadMask, &cfg::toggleGamepadMask, "Y+R3",
-                         "Gamepad combo (tokens joined with '+'): A,B,X,Y,LB,RB,L3/LSTICK,R3/RSTICK,\nBACK/SELECT/VIEW,START/MENU,UP/DOWN/LEFT/RIGHT. All held together. Default: Y+R3.", false, nullptr},
             }},
         };
     }
