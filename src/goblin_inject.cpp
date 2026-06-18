@@ -1901,6 +1901,12 @@ bool goblin::ui::clustering_active() { return g_clustering_active; }
 bool goblin::ui::clustering_enabled() { return goblin::config::enableClustering; }
 void goblin::ui::set_clustering_enabled(bool on) { goblin::config::enableClustering = on; }
 
+// Quest-aware NPC gating. LIVE: the refresh loop reads config every tick and
+// parks/restores accordingly (disabling restores via the was_enabled edge), so
+// no restart needed. Persisted by Save (quest_npc_quest_aware is a Bool entry).
+bool goblin::ui::quest_aware() { return goblin::config::questNpcQuestAware; }
+void goblin::ui::set_quest_aware(bool on) { goblin::config::questNpcQuestAware = on; }
+
 bool goblin::ui::clusters_expanded() { return g_clusters_expanded.load(); }
 void goblin::ui::set_clusters_expanded(bool expanded)
 {
@@ -2124,10 +2130,24 @@ int goblin::refresh_royal_eviction()
 int goblin::refresh_quest_npc_eviction()
 {
     GOBLIN_BENCH("refresh.quest_npc_eviction");
-    if (!goblin::config::questNpcQuestAware || g_quest_rows.empty()) return 0;
+    if (g_quest_rows.empty()) return 0;
+    // Track enabled-edge so disabling the toggle (e.g. live from the overlay)
+    // restores every row we parked instead of leaving it stuck off-page.
+    static bool was_enabled = false;
+    if (!goblin::config::questNpcQuestAware)
+    {
+        if (!was_enabled) return 0;            // already idle, nothing to undo
+        int restored = 0;
+        for (auto &r : g_quest_rows)
+            if (r.ptr[0x20] == 99 && !goblin::is_section_hidden_ptr(r.ptr))
+            { r.ptr[0x20] = r.orig_area; restored++; }
+        was_enabled = false;
+        return restored;
+    }
     // Cold-API safety: if AlwaysOn (6001) can't be read true, leave rows as-is —
     // never blank every quest NPC because the flag API isn't warm yet.
     if (!orp_flag_set(6001)) return 0;
+    was_enabled = true;
     int changed = 0;
     for (auto &r : g_quest_rows)
     {

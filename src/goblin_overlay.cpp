@@ -424,6 +424,17 @@ namespace
                 ImGui::TreePop();
             }
 
+            ImGui::SeparatorText("Quest navigation");
+            {
+                bool qa = goblin::ui::quest_aware();
+                if (ImGui::Checkbox("Quest-aware NPCs (hide until questline active)", &qa))
+                    goblin::ui::set_quest_aware(qa);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Show a curated questline NPC's marker only while its quest is\n"
+                                      "active (event flag set). Live — no restart. Needs the Quest NPC\n"
+                                      "category enabled (World group). 34 NPC questlines covered.");
+            }
+
             ImGui::SeparatorText("Clustering");
             if (goblin::ui::clustering_active())
             {

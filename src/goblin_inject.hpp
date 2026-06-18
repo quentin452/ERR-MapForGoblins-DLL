@@ -163,6 +163,10 @@ namespace goblin
         void set_clustering_enabled(bool on);  // takes effect after Save + restart
         bool clusters_expanded();
         void set_clusters_expanded(bool expanded);
+        // Quest-aware NPC gating (live; persisted on Save). Show a curated
+        // questline NPC's marker only while its quest is active.
+        bool quest_aware();
+        void set_quest_aware(bool on);
         bool cluster_debug();
         void set_cluster_debug(bool on);
     }
