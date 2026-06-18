@@ -13,6 +13,7 @@
 #include "goblin_collected.hpp"
 #include "goblin_config.hpp"
 #include "goblin_debug_events.hpp"
+#include "goblin_worldmap_probe.hpp"
 #include "goblin_inject.hpp"
 #include "goblin_kindling.hpp"
 #include "goblin_logic.hpp"
@@ -179,6 +180,9 @@ static void setup_mod()
         goblin::debug_events::initialize(g_mod_folder / "logs" / "MapForGoblins_events.log",
                                          goblin::config::debugEventFlags,
                                          goblin::config::debugItemGrants);
+
+    if (goblin::config::debugWorldmapProbe)
+        goblin::worldmap_probe::initialize(g_mod_folder / "logs" / "MapForGoblins_wmprobe.log");
 
     // The watcher is the single owner of the WorldMapPointParam state — it
     // applies the overlay menu's master-off / per-section / per-category /

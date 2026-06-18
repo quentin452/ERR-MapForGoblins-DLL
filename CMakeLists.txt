@@ -113,6 +113,8 @@ add_library( MapForGoblins SHARED
   src/goblin_collected.cpp
   src/goblin_debug_events.hpp
   src/goblin_debug_events.cpp
+  src/goblin_worldmap_probe.hpp
+  src/goblin_worldmap_probe.cpp
   src/goblin_inject.hpp
   src/goblin_inject.cpp
   src/goblin_kindling.hpp

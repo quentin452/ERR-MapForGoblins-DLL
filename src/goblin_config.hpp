@@ -96,6 +96,10 @@ namespace goblin
         extern bool debugEventFlags;
         extern bool debugItemGrants;
 
+        // Read-only world-map cursor probe (logs cursor coords to confirm the RE
+        // offsets / marker-space). See goblin_worldmap_probe.{hpp,cpp}.
+        extern bool debugWorldmapProbe;
+
         // In-game per-section visibility (the 7 display groups). The section_*
         // bools are the persisted runtime state, driven live by the overlay menu
         // (F1) and written back on Save. See goblin_config_schema [Display Sections].
