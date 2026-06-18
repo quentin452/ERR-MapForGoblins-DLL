@@ -1,4 +1,5 @@
 #include "goblin_overlay.hpp"
+#include "goblin_config.hpp"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -437,11 +438,11 @@ namespace
             g_imgui_init = true;
         }
 
-        // F1 = open/close the menu (the keybind; works anywhere, incl. over the
-        // 2D map). Edge-detected. (The CSMenuMan+0xCD auto-show signal proved
-        // dead on this build — reads 0 even with the map open — so F1 is the
-        // sole trigger; that is also the intended keybind-driven UX.)
-        bool down = (GetAsyncKeyState(VK_F1) & 0x8000) != 0;
+        // Configurable open/close key (default F1; INI overlay_toggle_key). Works
+        // anywhere, incl. over the 2D map. Edge-detected. (The CSMenuMan+0xCD
+        // auto-show signal proved dead on this build — reads 0 even with the map
+        // open — so this key is the sole trigger; the intended keybind-driven UX.)
+        bool down = (GetAsyncKeyState(static_cast<int>(goblin::config::overlayToggleKey)) & 0x8000) != 0;
         if (down && !g_prev_toggle_down) g_user_show = !g_user_show;
         g_prev_toggle_down = down;
         g_show = g_user_show;

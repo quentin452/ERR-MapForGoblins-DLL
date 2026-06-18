@@ -18,6 +18,7 @@ namespace goblin::config
     bool projectDungeons = true;
     bool showAll = false;
     bool iconsHidden = false;  // master off persisted (menu/F10 "Show icons")
+    uint32_t overlayToggleKey = 0x70;  // VK_F1 — overlay menu open/close key
     std::string showAllExcept = "";
 
     // One bool per goblin::generated::Category, indexed by the enum value. Seeded
@@ -109,6 +110,10 @@ namespace
                          "When show_all is on, categories listed here stay hidden (comma-separated,\n"
                          "matched loosely vs the category name, e.g. SmithingStonesLow, GoldenRunesLow).",
                          false, nullptr},
+                IniEntry{"overlay_toggle_key", IniType::VkKey, &cfg::overlayToggleKey, "F1",
+                         "Key that opens/closes the in-game overlay menu. Default: F1.\n"
+                         "Key names: F1-F24, A-Z, 0-9, Space, Escape, Tab, Enter, Home, End,\n"
+                         "PageUp, PageDown, Insert, Delete, arrows.", false, nullptr},
             }},
 
             {"Display Sections",

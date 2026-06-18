@@ -34,6 +34,7 @@ namespace goblin
         extern bool showAll;  // master switch: show every category (see
                               // is_category_enabled) except those listed below
         extern bool iconsHidden;  // persisted master off (menu 'Show icons' / F10)
+        extern uint32_t overlayToggleKey;  // VK_* for the overlay menu toggle (default F1)
         extern std::string showAllExcept;  // comma-separated category names to
                               // keep hidden even when showAll is on (matched
                               // loosely against the category display name)
