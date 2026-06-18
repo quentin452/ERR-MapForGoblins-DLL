@@ -341,6 +341,29 @@ bool goblin::is_section_hidden_ptr(const void *param_data)
 // Show/hide every injected row of one section in place. Hide = areaNo 99;
 // show = restore orig_area unless the row is an already-collected piece/kindling
 // (those stay evicted, owned by collected::/kindling::).
+// Cluster state (declared before the apply_* visibility fns, which gate clusters).
+struct ClusterRow { uint8_t *ptr; uint8_t area; int count_textid; std::vector<uint32_t> member_flags; Category cat; };
+static std::vector<ClusterRow> g_clusters;        // the synthetic cluster icons
+struct ClusterMember { uint8_t *ptr; uint8_t orig_area; Category cat; };
+static std::vector<ClusterMember> g_cluster_members;  // individuals parked under a cluster
+
+static std::atomic<bool> g_clusters_expanded{false};  // false = collapsed (clusters shown)
+static std::atomic<bool> g_cluster_debug{true};       // true = cluster labels show counts (default on)
+// Hotkey thread sets these; the watcher applies the areaNo/textId flips (single
+// owner of game-state mutation), mirroring the section + master toggles.
+static std::atomic<bool> g_cluster_expand_dirty{false};
+static std::atomic<bool> g_cluster_debug_dirty{false};
+static bool g_clustering_active = false;  // clusters built this session
+
+// A cluster icon (and its parked members) belong to ONE category since buckets
+// are per-category. Hide them when that category OR its section is toggled off,
+// so a disabled category doesn't leave its cluster glyphs on the map.
+static bool cluster_should_hide(Category cat)
+{
+    return !g_category_visible[static_cast<int>(cat)].load() ||
+           !g_section_visible[static_cast<int>(section_of(cat))].load();
+}
+
 static void apply_section_visibility(Section s, bool visible)
 {
     int touched = 0;
@@ -365,6 +388,14 @@ static void apply_section_visibility(Section s, bool visible)
         }
         touched++;
     }
+    // Gate cluster icons + members whose category lives in this section.
+    bool expanded = g_clusters_expanded.load();
+    for (const auto &cl : g_clusters)
+        if (section_of(cl.cat) == s)
+            cl.ptr[0x20] = (!visible || expanded || cluster_should_hide(cl.cat)) ? 99 : cl.area;
+    for (const auto &m : g_cluster_members)
+        if (section_of(m.cat) == s)
+            m.ptr[0x20] = (visible && expanded && !cluster_should_hide(m.cat)) ? m.orig_area : 99;
     spdlog::info("[SECTION] {} -> {} ({} rows)",
                  section_name(s), visible ? "SHOWN" : "HIDDEN", touched);
 }
@@ -396,6 +427,15 @@ static void apply_category_visibility(Category c, bool visible)
         }
         touched++;
     }
+    // Cluster icons + their parked members belong to one category — gate them too,
+    // else a disabled category leaves its (typed) cluster glyphs on the map.
+    bool expanded = g_clusters_expanded.load();
+    for (const auto &cl : g_clusters)
+        if (cl.cat == c)
+            cl.ptr[0x20] = (!visible || expanded || cluster_should_hide(c)) ? 99 : cl.area;
+    for (const auto &m : g_cluster_members)
+        if (m.cat == c)
+            m.ptr[0x20] = (visible && expanded && !cluster_should_hide(c)) ? m.orig_area : 99;
     spdlog::info("[CATEGORY] {} -> {} ({} rows)",
                  goblin::markers::category_name(c), visible ? "SHOWN" : "HIDDEN", touched);
 }
@@ -453,27 +493,16 @@ static std::vector<std::pair<int, std::string>> g_cluster_census;
 // flag-backed members; when ALL are set the pile is depleted → the refresh swaps
 // the icon to CLUSTER_DONE_ICON_ID (green). Empty = no collectible members (a
 // pure grace/boss pile) → never "done".
-struct ClusterRow { uint8_t *ptr; uint8_t area; int count_textid; std::vector<uint32_t> member_flags; };
-static std::vector<ClusterRow> g_clusters;        // the synthetic cluster icons
-struct ClusterMember { uint8_t *ptr; uint8_t orig_area; };
-static std::vector<ClusterMember> g_cluster_members;  // individuals parked under a cluster
-
-static std::atomic<bool> g_clusters_expanded{false};  // false = collapsed (clusters shown)
-static std::atomic<bool> g_cluster_debug{true};       // true = cluster labels show counts (default on)
-// Hotkey thread sets these; the watcher applies the areaNo/textId flips (single
-// owner of game-state mutation), mirroring the section + master toggles.
-static std::atomic<bool> g_cluster_expand_dirty{false};
-static std::atomic<bool> g_cluster_debug_dirty{false};
-static bool g_clustering_active = false;  // clusters built this session
-
 // Collapsed: clusters visible (real area), members parked (99).
 // Expanded: clusters parked (99), members restored — the slow, see-everything view.
 static void apply_cluster_expanded(bool expanded)
 {
+    // Collapsed: show the cluster icon (unless its category/section is hidden);
+    // park members. Expanded: park the icon; show members (same gate).
     for (const auto &c : g_clusters)
-        c.ptr[0x20] = expanded ? 99 : c.area;
+        c.ptr[0x20] = (expanded || cluster_should_hide(c.cat)) ? 99 : c.area;
     for (const auto &m : g_cluster_members)
-        m.ptr[0x20] = expanded ? m.orig_area : 99;
+        m.ptr[0x20] = (expanded && !cluster_should_hide(m.cat)) ? m.orig_area : 99;
     spdlog::info("[CLUSTER] {} ({} clusters, {} members)",
                  expanded ? "EXPANDED" : "COLLAPSED", g_clusters.size(), g_cluster_members.size());
 }
@@ -1293,12 +1322,13 @@ void goblin::inject_map_entries()
             if (all_rows[i].original_row_id == 0 && cit != cluster_rowid_to_textid.end())
             {
                 g_clusters.push_back({cp, cp[0x20], cit->second,
-                                      std::move(cluster_flags_by_textid[cit->second])});
+                                      std::move(cluster_flags_by_textid[cit->second]),
+                                      all_rows[i].category});
             }
             else if (all_rows[i].original_row_id &&
                      clustered_member_ids.count(all_rows[i].original_row_id))
             {
-                g_cluster_members.push_back({cp, cp[0x20]});
+                g_cluster_members.push_back({cp, cp[0x20], all_rows[i].category});
                 cp[0x20] = 99;
                 is_clustered_member = true;
             }
