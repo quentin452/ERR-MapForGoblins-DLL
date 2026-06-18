@@ -5,6 +5,7 @@
 
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -139,6 +140,12 @@ void probe_loop()
             if (!seh_read4(reinterpret_cast<void *>(a + OFF_X), &x) ||
                 !seh_read4(reinterpret_cast<void *>(a + OFF_Z), &z) ||
                 !seh_read4(reinterpret_cast<void *>(a + OFF_Y), &y))
+                continue;
+            // Many objects carry the vtable but are stale/uninitialised (junk:
+            // 8e34, NaN, all-zero). The real map cursor has finite, plausible,
+            // nonzero coords (the confirmed run was ~3888..6762). Filter to those.
+            auto sane = [](float v) { return std::isfinite(v) && std::fabs(v) < 1e5f; };
+            if (!sane(x) || !sane(z) || !sane(y) || (x == 0.f && z == 0.f))
                 continue;
             auto &l = last[a];
             if (x != l[0] || z != l[1] || y != l[2]) // moved → this is (likely) the active cursor
