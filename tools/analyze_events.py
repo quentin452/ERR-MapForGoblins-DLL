@@ -85,6 +85,11 @@ def main():
     ap.add_argument("--data", default=DEFAULT_DATA)
     ap.add_argument("--top", type=int, default=40,
                     help="how many unknown candidates to list")
+    ap.add_argument("--block-drop", type=int, default=4,
+                    help="trailing digits dropped to form a map-block prefix "
+                         "(group siblings). 4 = room/area granularity where mod "
+                         "markers and session flags start to co-locate; 6+ groups "
+                         "whole map-areas (too coarse). Default 4.")
     args = ap.parse_args()
 
     if not os.path.isfile(args.events):
@@ -129,11 +134,70 @@ def main():
     print("    (markers for things not collected/triggered this run — expected)")
     print()
 
-    print(f"--- top {args.top} gap candidates (set, no marker, >= 1e9) ---")
-    for fid in unknown_hi[:args.top]:
+    # Sibling analysis: a map-instance flag block (id with the last `block-drop`
+    # digits dropped) where the mod ALREADY has markers is a collectible-rich
+    # area; a SET-but-unmarked flag in that same block is far more likely a
+    # missed collectible than a flag in a block the mod knows nothing about.
+    div = 10 ** args.block_drop
+    known_blocks = {k // div for k in known if k >= MAP_INSTANCE_MIN}
+    sibling = [c for c in unknown_hi if c // div in known_blocks]
+    orphan = [c for c in unknown_hi if c // div not in known_blocks]
+    print(f"[D] map-block sibling analysis (block = id // 1e{args.block_drop})")
+    print(f"    gap candidates in a block the mod ALREADY marks : {len(sibling)}  <-- HIGH signal (missed collectible)")
+    print(f"    gap candidates in a block with no mod markers   : {len(orphan)}  (likely non-collectible events)")
+    print()
+
+    # Show the high-signal blocks: the mod's known flags next to the new unmarked
+    # siblings the game set this session.
+    known_by_block = {}
+    for k in known:
+        if k >= MAP_INSTANCE_MIN:
+            known_by_block.setdefault(k // div, set()).add(k)
+    sib_by_block = {}
+    for c in sibling:
+        sib_by_block.setdefault(c // div, []).append(c)
+
+    print(f"--- HIGH-signal blocks (mod marks the area, missed these) ---")
+    for blk in sorted(sib_by_block):
+        miss = sorted(sib_by_block[blk])
+        have = sorted(known_by_block.get(blk, ()))
+        print(f"  block {blk}{'_' * args.block_drop}: "
+              f"mod has {len(have)} marker-flags, game set {len(miss)} UNMARKED")
+        print(f"    unmarked: {', '.join(str(m) for m in miss[:12])}"
+              + (" ..." if len(miss) > 12 else ""))
+        print(f"    mod has : {', '.join(str(h) for h in have[:6])}"
+              + (" ..." if len(have) > 6 else ""))
+
+    # Category digit: in the 10-digit map-instance flag `10 AA BB C DDD`, the
+    # thousands digit C ((id//1000)%10) encodes the flag TYPE. If the mod's
+    # collect flags cluster on one category, a SET flag of a DIFFERENT category
+    # is a non-item event (door/cutscene/boss-phase), not a missed collectible —
+    # the sharpest filter we have without a controlled capture.
+    def cat(i):
+        return (i // 1000) % 10
+    known_cat = Counter(cat(k) for k in known if k >= MAP_INSTANCE_MIN)
+    unk_cat = Counter(cat(c) for c in unknown_hi)
+    print()
+    print("[E] category digit (id//1000 %10) — mod collect-flags vs unmarked")
+    print("    cat | mod-known | unmarked-set")
+    for c in sorted(set(known_cat) | set(unk_cat)):
+        print(f"     {c}  | {known_cat.get(c,0):>9} | {unk_cat.get(c,0)}")
+    item_cats = {c for c, n in known_cat.items()
+                 if n >= 0.05 * sum(known_cat.values())}
+    item_like = sorted(c for c in unknown_hi
+                       if c // div in known_blocks and cat(c) in item_cats)
+    print(f"    => mod's collectible categories: {sorted(item_cats)}")
+    print(f"    => SHARPEST gap candidates (covered block AND collectible category): "
+          f"{len(item_like)}")
+    for fid in item_like:
+        print(f"       {fid}  (block {fid // div}, cat {cat(fid)})")
+
+    print()
+    print(f"--- top {args.top} orphan-block candidates (no mod markers nearby) ---")
+    for fid in orphan[:args.top]:
         print(f"  {fid}")
-    if len(unknown_hi) > args.top:
-        print(f"  ... and {len(unknown_hi) - args.top} more")
+    if len(orphan) > args.top:
+        print(f"  ... and {len(orphan) - args.top} more")
 
 
 if __name__ == "__main__":
