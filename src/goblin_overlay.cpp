@@ -48,7 +48,6 @@ namespace
     // the GAME, the real one to ImGui (flag set only around ImGui's NewFrame).
     using GetCursorPosFn = BOOL(WINAPI *)(LPPOINT);
     GetCursorPosFn o_get_cursor_pos = nullptr;
-    POINT g_frozen_cursor{};
     bool g_imgui_reading_cursor = false;
 
     // Raw input — ER reads gameplay keyboard/mouse here (not via window
@@ -141,8 +140,15 @@ namespace
         BOOL r = o_get_cursor_pos(p);
         // Freeze the cursor the GAME sees while the menu is open (so the 2D map
         // stops following it). ImGui's own NewFrame read gets the real position.
+        // Report the SCREEN CENTRE (not the open-time point): the map pans on
+        // (cursor - centre) delta, so a static off-centre point = a constant
+        // non-zero delta = the map drifts forever (softlock). Centre = zero
+        // delta = no pan.
         if (g_show && !g_imgui_reading_cursor && p)
-            *p = g_frozen_cursor;
+        {
+            p->x = GetSystemMetrics(SM_CXSCREEN) / 2;
+            p->y = GetSystemMetrics(SM_CYSCREEN) / 2;
+        }
         return r;
     }
 
@@ -430,11 +436,6 @@ namespace
         if (down && !g_prev_toggle_down) g_user_show = !g_user_show;
         g_prev_toggle_down = down;
         g_show = g_user_show;
-
-        // While closed, keep sampling the real cursor so the freeze starts from
-        // wherever the cursor is when the menu opens.
-        if (!g_show && o_get_cursor_pos)
-            o_get_cursor_pos(&g_frozen_cursor);
 
         if (g_show && g_command_queue)
         {
