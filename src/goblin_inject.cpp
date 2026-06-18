@@ -1023,7 +1023,16 @@ void goblin::inject_map_entries()
             // Royal Capital (areaNo 11) is the inverse — visible until the burn,
             // then hidden. Tag before projection clobbers areaNo; registered below
             // (only if not clustered).
-            was_royal = (prow->areaNo == 11);
+            //
+            // areaNo 11 is NOT all Royal Capital. WorldMapLegacyConvParam
+            // (LEGACY_CONV) splits src_area 11 by src_gx into three sub-maps:
+            //   gx 0  = Royal Capital   (m11_00) → hide post-burn  ← only this
+            //   gx 5  = Ashen Capital   (m11_05) → APPEARS post-burn (never hide)
+            //   gx 10 = Shunning-Grounds(m11_10) → persists post-burn (never hide)
+            // Gating on gridXNo==0 keeps the Subterranean Shunning-Grounds (and any
+            // vanilla Ashen rows) visible after the Erdtree burns. gridXNo here is
+            // still the source sub-grid (projection below clobbers it).
+            was_royal = (prow->areaNo == 11 && prow->gridXNo == 0);
             if (project_dungeon_row_to_overworld(prow))
                 reprojected_dungeons++;
         }
