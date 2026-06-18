@@ -13,6 +13,14 @@ Two targets:
   marker's coordinate (and read/confirm the map cursor), so a quest step can reveal its
   location on the map.
 
+> **STATUS (2026-06-18):**
+> - **Target B — cursor READ done** (static + live-confirmed). Findings in
+>   `docs/re_findings_questbrowser_cursor.md`; live recipe in
+>   `D:\DOWNLOAD\MapForGoblins_verify_cursor_recipe.md`. Cursor = `CS::WorldMapCursorControl`
+>   at menu+0x2DB0; `+0xFC`=X confirmed live in marker space (app 2.6.2.0). **Remaining:** the
+>   write/pan test (Cheat Engine) to pin the exact (X,Z) pair (+0x100 vs +0x104).
+> - **Target A — player pos: IN PROGRESS** (static Ghidra, scripts `re_v13+`).
+
 ---
 
 ## 0. Target build & environment
