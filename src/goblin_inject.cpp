@@ -1711,8 +1711,17 @@ bool goblin::world_map_open()
     if (!menu_man_slot) return false;
     void *mm = *menu_man_slot;
     if (!mm) return false;
-    // 0xCD = per-screen menu-state byte; 7 = the world-map screen is up.
-    return reinterpret_cast<uint8_t *>(mm)[0xCD] == 7;
+    // 0xCD = per-screen menu-state byte; 7 = the world-map screen is up (value
+    // from a previous build — log every distinct value so we can confirm/correct
+    // it on this build by opening the map and reading the log).
+    uint8_t v = reinterpret_cast<uint8_t *>(mm)[0xCD];
+    static int last = -1;
+    if (v != last)
+    {
+        spdlog::info("[OVERLAY] CSMenuMan+0xCD changed -> {}", static_cast<int>(v));
+        last = v;
+    }
+    return v == 7;
 }
 
 static void show_toggle_banner(bool icons_on)

@@ -53,8 +53,9 @@ namespace
 
     bool g_imgui_init = false;   // ImGui + D3D resources built against live swapchain
     bool g_failed = false;       // gave up (no overlay), mod continues
-    bool g_show = false;         // panel visible this frame (= world map open)
-    bool g_large = false;        // false = compact widget, true = full panel
+    bool g_show = false;         // panel visible this frame
+    bool g_user_show = false;    // F1 master open/close (works anywhere = the menu keybind)
+    bool g_large = true;         // false = compact widget, true = full panel
     bool g_prev_toggle_down = false;
 
     // ── Helpers ───────────────────────────────────────────────────────────
@@ -175,6 +176,9 @@ namespace
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         ImGui::GetIO().IniFilename = nullptr;   // no imgui.ini on disk
+        // The game hides the OS cursor, so draw ImGui's own software cursor.
+        // Only rendered while the panel is up (we skip NewFrame otherwise).
+        ImGui::GetIO().MouseDrawCursor = true;
         ImGui::StyleColorsDark();
         ImGui_ImplWin32_Init(g_hwnd);
         ImGui_ImplDX12_Init(g_device, g_buffer_count, DXGI_FORMAT_R8G8B8A8_UNORM, g_srv_heap,
@@ -201,7 +205,7 @@ namespace
             ImGui::Begin("Map for Goblins##small", nullptr,
                          ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
                              ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar);
-            if (ImGui::Button("Map for Goblins  \xe2\xa4\xa2"))  // ⤢ expand
+            if (ImGui::Button("Map for Goblins  [+]"))  // expand
                 g_large = true;
             ImGui::SameLine();
             ImGui::TextDisabled("F1");
@@ -213,7 +217,7 @@ namespace
             ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
             ImGui::SetNextWindowSize(ImVec2(380, 260), ImGuiCond_FirstUseEver);
             ImGui::Begin("Map for Goblins##large");
-            if (ImGui::Button("\xe2\x96\xbe collapse"))  // ▾
+            if (ImGui::Button("[-] collapse"))
                 g_large = false;
             ImGui::SameLine();
             ImGui::Text("FPS %.0f", io.Framerate);
@@ -239,12 +243,12 @@ namespace
             g_imgui_init = true;
         }
 
-        // Visible only while the 2D world map screen is open — the panel floats
-        // over the map. F1 toggles small / large (edge-detected).
-        g_show = goblin::world_map_open();
+        // F1 = open/close the menu (the keybind; works anywhere). It also
+        // auto-shows over the 2D world map. Edge-detected.
         bool down = (GetAsyncKeyState(VK_F1) & 0x8000) != 0;
-        if (down && !g_prev_toggle_down) g_large = !g_large;
+        if (down && !g_prev_toggle_down) g_user_show = !g_user_show;
         g_prev_toggle_down = down;
+        g_show = g_user_show || goblin::world_map_open();
 
         if (g_show && g_command_queue)
         {
