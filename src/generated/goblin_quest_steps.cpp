@@ -9,6 +9,29 @@
 namespace goblin::generated
 {
 
+// ── authored step tables (original wording; quest facts only) ────────────
+static const QuestStep steps_boc[] = {
+    {"Free Boc", "A voice cries from a bush by the road in western Limgrave. Strike the bush to free the demi-human Boc, who turns out to be a skilled tailor.", "Limgrave"},
+    {"Coastal Cave", "He relocates to the mouth of the Coastal Cave on Limgrave's west shore.", "Limgrave"},
+    {"Lake-facing Cliffs", "Boc next settles by the Lake-facing Cliffs in eastern Liurnia and offers to alter and reinforce your garments.", "Liurnia"},
+    {"Tailoring tools", "Bring him the Sewing Needle and the Iron/Gold Tailoring Tools so he can do heavier alterations.", "Liurnia"},
+    {"Altus Plateau", "He moves on again, found resting along the Altus Plateau highway.", "Altus Plateau"},
+    {"Resolve his wish", "Console Boc with the 'You're Beautiful Too' gesture, or grant a Larval Tear, to finish his story.", "Altus Plateau"},
+};
+static const QuestStep steps_thops[] = {
+    {"Meet Thops", "Find Sorcerer Thops resting at the Church of Irith in eastern Liurnia; he longs to enter the Academy but lacks a key.", "Liurnia"},
+    {"Academy Glintstone Key", "Bring him a spare Academy Glintstone Key so he can pass the Academy's seal.", "Liurnia"},
+    {"Schoolhouse Classroom", "He relocates to the Schoolhouse Classroom deep within Raya Lucaria Academy.", "Raya Lucaria"},
+    {"His end", "Return later to find Thops has passed at the Classroom; claim Thops's Barrier, the Academy Glintstone Staff, and his Bell Bearing.", "Raya Lucaria"},
+};
+static const QuestStep steps_patches[] = {
+    {"Murkwater Cave", "Patches ambushes you as a boss in Murkwater Cave. When he feigns surrender, spare him and he opens a shop.", "Limgrave"},
+    {"Forgive the trap", "Open his bait treasure chest (a trap), then forgive him to keep him around as a merchant.", "Limgrave"},
+    {"Scenic Isle", "He relocates to Scenic Isle on the western edge of Liurnia.", "Liurnia"},
+    {"Volcano Manor", "Patches later resurfaces at Volcano Manor, recruited to Tanith's cause.", "Mt. Gelmir"},
+    {"Later errands", "He sends you on errands and reappears elsewhere (e.g. the Shaded Castle); attacking him ends his story early.", "varies"},
+};
+
 // ── 36 base-game questlines ──────────────────────────────────────────────
 const NpcQuest QUEST_BROWSER[] = {
     // Ranni's questline (interconnected cluster)
@@ -37,8 +60,8 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Sage Gowry", nullptr, "Starts Millicent's quest", nullptr, 0},
     // Standalone-ish
     {"Rya", nullptr, "Leads into Volcano Manor", nullptr, 0},
-    {"Boc the Seamster", nullptr, nullptr, nullptr, 0},
-    {"Patches", nullptr, nullptr, nullptr, 0},
+    {"Boc the Seamster", "Boc's Quest", nullptr, steps_boc, 6},
+    {"Patches", "Patches' Quest", "Joins Volcano Manor (Tanith)", steps_patches, 5},
     {"Irina", nullptr, "Crosses Edgar (Castle Morne)", nullptr, 0},
     {"Edgar", nullptr, "Crosses Irina (Castle Morne)", nullptr, 0},
     {"Yura, Bloody Finger Hunter", nullptr, "Crosses Shabriri/Eleonora; touches Hyetta", nullptr, 0},
@@ -48,7 +71,7 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Diallos", nullptr, "Crosses Jar-Bairn (Jarburg)", nullptr, 0},
     {"Jar-Bairn", nullptr, "Crosses Diallos and Alexander (Jarburg)", nullptr, 0},
     {"Latenna", nullptr, "Albinauric / Haligtree path", nullptr, 0},
-    {"Sorcerer Thops", nullptr, nullptr, nullptr, 0},
+    {"Sorcerer Thops", "Thops's Quest", nullptr, steps_thops, 4},
     {"Gurranq, Beast Clergyman", nullptr, "Deathroot deliveries", nullptr, 0},
     {"Dung Eater", nullptr, "Crosses Nepheli (Seedbed Curses)", nullptr, 0},
     {"Knight Bernahl", nullptr, "Volcano Manor / Recusant", nullptr, 0},
