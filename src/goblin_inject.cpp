@@ -13,6 +13,7 @@
 #include "from/params.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
 #include "goblin_quest_gates.hpp"
+#include "goblin_quest_steps.hpp"
 #include "goblin_logic.hpp"
 
 #include <algorithm>
@@ -2303,6 +2304,35 @@ int goblin::refresh_quest_npc_eviction()
                      parked, g_quest_rows.size());
     }
     return changed;
+}
+
+// Part 2: per-questline "unfinishable" cache. One byte per QUEST_BROWSER entry,
+// indexed by array order (same index the overlay passes). Written here on the
+// watcher thread, read by ui::quest_unfinishable() on the render thread (a
+// single-byte read; a benign cross-thread race at worst flips one frame late).
+static std::vector<uint8_t> g_quest_unfinishable;
+
+int goblin::refresh_quest_finishable()
+{
+    const size_t n = goblin::generated::QUEST_BROWSER_COUNT;
+    if (g_quest_unfinishable.size() != n) g_quest_unfinishable.assign(n, 0);
+    // Cold-API safety: if AlwaysOn (6001) can't read true, leave the cache as-is
+    // rather than marking everything finishable on a not-yet-warm flag API.
+    if (!orp_flag_set(6001)) return 0;
+    int unfinishable = 0;
+    for (size_t i = 0; i < n; i++)
+    {
+        uint32_t f = goblin::generated::QUEST_BROWSER[i].fail_flag;
+        bool dead = (f != 0) && orp_flag_set(f);
+        g_quest_unfinishable[i] = dead ? 1 : 0;
+        if (dead) unfinishable++;
+    }
+    return unfinishable;
+}
+
+bool goblin::ui::quest_unfinishable(size_t i)
+{
+    return i < g_quest_unfinishable.size() && g_quest_unfinishable[i] != 0;
 }
 
 // Cluster depletion: when every flag-backed member of a cluster is collected, swap

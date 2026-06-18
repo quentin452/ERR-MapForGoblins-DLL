@@ -576,18 +576,31 @@ namespace
                         int done = 0;
                         for (size_t s = 0; s < q.step_count; s++)
                             if (qp_get(q.name, s)) done++;
-                        // Amber tint + "(!)" marker on order-sensitive / missable
-                        // questlines so the player sees the risk before starting it.
+                        // Visual state: grey "[unfinishable]" (NPC dead, fail_flag
+                        // set) takes precedence over amber "(!)" (order-sensitive /
+                        // missable). Both push a text tint over the whole subtree.
+                        bool dead = goblin::ui::quest_unfinishable((size_t)id);
                         bool warn = q.warning && q.warning[0];
-                        if (warn)
-                            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.78f, 0.35f, 1.0f));
+                        bool tint = dead || warn;
+                        if (tint)
+                            ImGui::PushStyleColor(ImGuiCol_Text,
+                                dead ? ImVec4(0.55f, 0.55f, 0.55f, 1.0f)
+                                     : ImVec4(1.0f, 0.78f, 0.35f, 1.0f));
                         bool open = ImGui::TreeNode((void *)(intptr_t)id, "%s  (%d/%zu)%s",
                                                     q.name, done, q.step_count,
-                                                    warn ? "  (!)" : "");
-                        if (warn)
+                                                    dead ? "  [unfinishable]"
+                                                         : warn ? "  (!)" : "");
+                        if (tint)
                             ImGui::PopStyleColor();
                         if (open)
                         {
+                            if (dead)
+                            {
+                                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.45f, 0.45f, 1.0f));
+                                ImGui::TextWrapped("[unfinishable] This questline's NPC is dead "
+                                                   "-- it can no longer be completed.");
+                                ImGui::PopStyleColor();
+                            }
                             if (warn)
                             {
                                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.66f, 0.28f, 1.0f));

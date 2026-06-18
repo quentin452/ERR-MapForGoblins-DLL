@@ -68,6 +68,12 @@ namespace goblin
     int refresh_quest_npc_eviction();
     int refresh_cluster_depletion();
 
+    // Part 2 (Quest Browser): recompute, for each QUEST_BROWSER entry, whether
+    // its questline is now UNFINISHABLE — its NpcQuest::fail_flag event flag is
+    // set (NPC dead early / interconnection lost). Reads flags on the watcher
+    // thread; the overlay reads the cached result via ui::quest_unfinishable().
+    int refresh_quest_finishable();
+
     // Row ids used for both the TutorialParam rows AND the TutorialBody.fmg
     // entries holding each banner's STATIC text. Injected by
     // inject_tutorial_popup_rows() (param table) and goblin_messages
@@ -180,5 +186,8 @@ namespace goblin
         // re-seeds config from defaults + writes the ini (restart to fully apply).
         void reset_quest_progress();
         void reset_to_defaults();
+        // Part 2: true if QUEST_BROWSER[i]'s questline is unfinishable (its
+        // fail_flag is set). Cached by refresh_quest_finishable() on the watcher.
+        bool quest_unfinishable(size_t i);
     }
 };

@@ -380,7 +380,12 @@ const NpcQuest QUEST_BROWSER[] = {
      "If Irina dies he becomes a hostile invader instead of finishing peacefully."},
     {"Yura, Bloody Finger Hunter", "Yura's Quest", "Crosses Shabriri/Eleonora; touches Hyetta", steps_yura, 4, false,
      "Shabriri usurps him late; some steps gate behind area progress."},
-    {"White Mask Varre", "Varre's Quest", "Mohg / Bloody Finger path", steps_varre, 5},
+    // COBAYE (Part 2): fail_flag is a CANDIDATE — 1042369206 is Varre's known
+    // quest gate flag (from goblin_quest_gates), used here to light up the
+    // grey-out pipeline. Replace with his true DEATH flag once captured via the
+    // Event-flag hook (enable it, kill Varre, read logs/MapForGoblins.log).
+    {"White Mask Varre", "Varre's Quest", "Mohg / Bloody Finger path", steps_varre, 5, false,
+     nullptr, 1042369206u},
     {"Hyetta", "Hyetta's Quest", "Frenzied Flame; crosses Shabriri/Yura", steps_hyetta, 4, false,
      "Frenzied Flame path -- the final step is a point of no return that changes your ending."},
     {"Iron Fist Alexander", "Alexander's Quest", "Gives Alexander's Innards to Jar-Bairn", steps_alexander, 5, false,

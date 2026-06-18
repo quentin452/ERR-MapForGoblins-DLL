@@ -71,6 +71,7 @@ static void safe_fragment_eviction_seh()
         goblin::refresh_royal_eviction();  // after frag-evict so the post-burn hide wins
         goblin::refresh_quest_npc_eviction();  // quest-aware quest-NPC gating (opt-in)
         goblin::refresh_cluster_depletion();   // green icon when a cluster is fully collected
+        goblin::refresh_quest_finishable();    // Quest Browser: grey out unfinishable lines
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
     {
