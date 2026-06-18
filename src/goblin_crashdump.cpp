@@ -4,8 +4,11 @@
 #include <windows.h>
 #include <dbghelp.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cwchar>
+#include <utility>
+#include <vector>
 
 // dbghelp provides MiniDumpWriteDump. clang-cl honours #pragma comment(lib),
 // so no CMake change is strictly required, but the lib is also listed in
@@ -66,12 +69,43 @@ LONG WINAPI goblin_crash_filter(EXCEPTION_POINTERS *ep)
 }
 } // namespace
 
+// Keep only the `keep` most-recent MapForGoblins_crash_*.dmp files (each is
+// tens of MB). Without this they accumulate forever — one per crash, never
+// cleaned. Run at install time (before any dump this session), so pruning to
+// `keep` leaves room for the current session's dump. Best-effort: all errors
+// swallowed via error_code so this never disturbs init.
+static void prune_old_dumps(const std::filesystem::path &dir, size_t keep)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    std::vector<std::pair<fs::file_time_type, fs::path>> dumps;
+    for (auto it = fs::directory_iterator(dir, ec);
+         !ec && it != fs::directory_iterator(); it.increment(ec))
+    {
+        const fs::path &p = it->path();
+        const std::string name = p.filename().string();
+        if (name.rfind("MapForGoblins_crash_", 0) == 0 && p.extension() == ".dmp")
+        {
+            auto t = fs::last_write_time(p, ec);
+            if (!ec)
+                dumps.emplace_back(t, p);
+        }
+    }
+    if (dumps.size() <= keep)
+        return;
+    std::sort(dumps.begin(), dumps.end(),
+              [](const auto &a, const auto &b) { return a.first > b.first; });
+    for (size_t i = keep; i < dumps.size(); i++)
+        fs::remove(dumps[i].second, ec);
+}
+
 namespace goblin
 {
 void install_crash_handler(const std::filesystem::path &dump_dir)
 {
     std::error_code ec;
     std::filesystem::create_directories(dump_dir, ec);
+    prune_old_dumps(dump_dir, 4); // keep newest 4 + this session's = max 5
 
     const std::wstring w = dump_dir.wstring();
     wcsncpy(g_dump_dir, w.c_str(), MAX_PATH - 1);
