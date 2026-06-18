@@ -1694,6 +1694,27 @@ static void seh_dispatch_toast(int method, uintptr_t er, void * /*mm*/, void *fe
 
 // Fire a toast using the currently-selected method (cycled by F11). Resolves
 // the module base + singleton slots once.
+bool goblin::world_map_open()
+{
+    static bool resolved = false;
+    static void **menu_man_slot = nullptr;
+    if (!resolved)
+    {
+        resolved = true;
+        // Same CSMenuMan singleton AOB as the toast path below.
+        menu_man_slot = reinterpret_cast<void **>(modutils::scan<void *>({
+            .aob = "48 8B 05 ?? ?? ?? ?? 33 DB 48 89 74 24",
+            .relative_offsets = {{3, 7}},
+        }));
+        spdlog::info("[OVERLAY] world_map_open CSMenuMan_slot={:p}", (void *)menu_man_slot);
+    }
+    if (!menu_man_slot) return false;
+    void *mm = *menu_man_slot;
+    if (!mm) return false;
+    // 0xCD = per-screen menu-state byte; 7 = the world-map screen is up.
+    return reinterpret_cast<uint8_t *>(mm)[0xCD] == 7;
+}
+
 static void show_toggle_banner(bool icons_on)
 {
     static bool resolved = false;

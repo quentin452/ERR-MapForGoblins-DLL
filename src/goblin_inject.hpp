@@ -106,4 +106,10 @@ namespace goblin
     // Background thread owning the WorldMapPointParam expand/revert state. It
     // applies the F10/gamepad personal show/hide and shows the toggle banner.
     void menu_auto_toggle_loop();
+
+    // True when the in-game 2D world map screen is open (CSMenuMan+0xCD == 7).
+    // Resolves the CSMenuMan singleton once via AOB; returns false until warm or
+    // if resolution fails. Safe from any thread (used by the overlay to show
+    // itself only over the map).
+    bool world_map_open();
 };

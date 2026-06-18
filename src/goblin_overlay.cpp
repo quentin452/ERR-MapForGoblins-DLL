@@ -12,6 +12,8 @@
 #include <backends/imgui_impl_dx12.h>
 #include <backends/imgui_impl_win32.h>
 
+#include "goblin_inject.hpp"   // goblin::world_map_open()
+
 #include <vector>
 
 // ImGui's Win32 backend message handler (defined in imgui_impl_win32.cpp).
@@ -51,7 +53,8 @@ namespace
 
     bool g_imgui_init = false;   // ImGui + D3D resources built against live swapchain
     bool g_failed = false;       // gave up (no overlay), mod continues
-    bool g_show = false;         // panel visible
+    bool g_show = false;         // panel visible this frame (= world map open)
+    bool g_large = false;        // false = compact widget, true = full panel
     bool g_prev_toggle_down = false;
 
     // ── Helpers ───────────────────────────────────────────────────────────
@@ -189,15 +192,36 @@ namespace
 
     void draw_panel()
     {
-        // Phase 1: a hello window proving the hook is alive. Phase 3 binds the
-        // real settings here.
-        ImGui::SetNextWindowSize(ImVec2(360, 180), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Map for Goblins");
-        ImGui::Text("Overlay alive. Phase 1 hello.");
-        ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-        ImGui::Separator();
-        ImGui::TextWrapped("Settings bind here in Phase 3. Toggle with F1.");
-        ImGui::End();
+        ImGuiIO &io = ImGui::GetIO();
+        if (!g_large)
+        {
+            // Compact widget: a small corner pill that expands to the full panel.
+            ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);  // auto-fit
+            ImGui::Begin("Map for Goblins##small", nullptr,
+                         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+                             ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar);
+            if (ImGui::Button("Map for Goblins  \xe2\xa4\xa2"))  // ⤢ expand
+                g_large = true;
+            ImGui::SameLine();
+            ImGui::TextDisabled("F1");
+            ImGui::End();
+        }
+        else
+        {
+            // Full panel. Phase 3 binds the 94 settings here.
+            ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(380, 260), ImGuiCond_FirstUseEver);
+            ImGui::Begin("Map for Goblins##large");
+            if (ImGui::Button("\xe2\x96\xbe collapse"))  // ▾
+                g_large = false;
+            ImGui::SameLine();
+            ImGui::Text("FPS %.0f", io.Framerate);
+            ImGui::Separator();
+            ImGui::TextWrapped("Settings bind here in Phase 3. Shown only over the "
+                               "2D world map; F1 toggles small / large.");
+            ImGui::End();
+        }
     }
 
     // ── Present hook (renders the overlay) ────────────────────────────────
@@ -215,9 +239,11 @@ namespace
             g_imgui_init = true;
         }
 
-        // Toggle (F1), edge-detected. We need the game's queue captured first.
+        // Visible only while the 2D world map screen is open — the panel floats
+        // over the map. F1 toggles small / large (edge-detected).
+        g_show = goblin::world_map_open();
         bool down = (GetAsyncKeyState(VK_F1) & 0x8000) != 0;
-        if (down && !g_prev_toggle_down) g_show = !g_show;
+        if (down && !g_prev_toggle_down) g_large = !g_large;
         g_prev_toggle_down = down;
 
         if (g_show && g_command_queue)
