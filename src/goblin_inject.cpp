@@ -2104,17 +2104,29 @@ int goblin::refresh_cluster_depletion()
     if (now != clock::time_point{} && now - last < std::chrono::milliseconds(1000))
         return 0;
     last = now;
-    int changed = 0;
+    int changed = 0, with_flags = 0, depleted_n = 0;
     for (auto &c : g_clusters)
     {
         if (c.member_flags.empty()) continue; // no collectible members → never "done"
+        with_flags++;
         bool depleted = true;
         for (uint32_t f : c.member_flags)
             if (!orp_flag_set(f)) { depleted = false; break; }
+        if (depleted) depleted_n++;
         uint16_t want = depleted ? goblin::generated::CLUSTER_DONE_ICON_ID
                                  : goblin::generated::CLUSTER_ICON_ID;
         auto *st = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(c.ptr);
         if (st->iconId != want) { st->iconId = want; changed++; }
+    }
+    // Diagnostic: log when the depleted count changes (and the startup state) so we
+    // can tell apart "no collect-flags captured" vs "swapped but icon not re-read".
+    static int last_depleted = -1;
+    if (depleted_n != last_depleted)
+    {
+        last_depleted = depleted_n;
+        spdlog::info("[CLUSTER-DEPLETE] {} clusters, {} with collect-flags, {} depleted, "
+                     "{} icon-swapped this pass", g_clusters.size(), with_flags,
+                     depleted_n, changed);
     }
     return changed;
 }
