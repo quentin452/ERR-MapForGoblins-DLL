@@ -135,6 +135,13 @@ namespace goblin
         // Quest Browser per-step progress: one '0'/'1' char per global step index
         // (author order in goblin_quest_steps). Auto-grown; persisted on Save.
         extern std::string questProgress;
+
+        // Quest Browser: grey out + tag a questline ([unfinishable]/[concluded])
+        // when the overlay reads its NPC's death/conclusion fail_flag as set.
+        // Default true (existing behaviour). EXPERIMENTAL — the per-NPC death
+        // flags are reverse-engineered and may mis-grey; users can turn it off.
+        // Toggle is in the overlay Quest Browser; persisted in the ini.
+        extern bool questGreyOnDeath;
     };
 
     uint32_t parse_vk_code(std::string name);

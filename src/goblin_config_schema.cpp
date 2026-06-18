@@ -69,6 +69,7 @@ namespace goblin::config
     std::string clusterThresholdOverrides = "";  // "Name:N" per-category threshold overrides
     bool questNpcQuestAware = false;  // gate quest-NPC markers on quest-active flags
     std::string questProgress = "";   // Quest Browser per-step done bits ('0'/'1')
+    bool questGreyOnDeath = true;     // grey questlines whose NPC death flag is set
 }
 
 // ── schema ───────────────────────────────────────────────────────────────
@@ -140,6 +141,21 @@ namespace
                 B("section_quest",     sectionQuest,     "true", "Show the Quest group's icons."),
                 B("section_reforged",  sectionReforged,  "true", "Show the Reforged group's icons."),
                 B("section_world",     sectionWorld,     "true", "Show the World group's icons."),
+            }},
+
+            {"Quest Browser",
+             "Settings for the in-overlay Quest Browser (F1).",
+             false, {
+                B("grey_unfinishable_on_death", questGreyOnDeath, "true",
+                  "Grey out a questline and tag it [unfinishable] (or [concluded] for\n"
+                  "merchant-type NPCs) when the overlay reads that NPC's death/conclusion\n"
+                  "event flag as set.\n"
+                  "WARNING: EXPERIMENTAL / potentially buggy. The per-NPC death flags are\n"
+                  "reverse-engineered from EMEVD/TalkESD; some may be wrong, shared with\n"
+                  "normal quest completion, or simply not set in your particular save -- so\n"
+                  "a questline can be greyed when it shouldn't be, or not greyed when its\n"
+                  "NPC is actually gone. Set to false to always show every questline\n"
+                  "normally. The same toggle is in the Quest Browser itself."),
             }},
 
             {"Clustering",

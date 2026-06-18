@@ -506,6 +506,19 @@ namespace
                     ImGui::SetNextItemWidth(-1.0f);
                     ImGui::InputTextWithHint("##questfilter", "filter by NPC name...",
                                              filter, sizeof(filter));
+                    // Experimental: grey out questlines whose NPC death flag is set.
+                    // Live (read each frame) + persisted to the ini on toggle.
+                    if (ImGui::Checkbox("Grey out dead-NPC questlines (experimental)",
+                                        &goblin::config::questGreyOnDeath))
+                        goblin::ui::request_save();  // watcher-thread sync + persist to ini
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(?)");
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip(
+                            "POTENTIALLY BUGGY. Death flags are reverse-engineered per NPC;\n"
+                            "a line may grey incorrectly, or stay normal when its NPC is gone.\n"
+                            "Some flags are also shared with normal completion ([concluded]).\n"
+                            "Turn this off to always show every questline. Saved to the ini.");
                     auto contains_ci = [](const char *hay, const char *need) {
                         if (!need[0]) return true;
                         std::string h, n;
@@ -580,7 +593,8 @@ namespace
                         // Visual state: grey "[unfinishable]" (NPC dead, fail_flag
                         // set) takes precedence over amber "(!)" (order-sensitive /
                         // missable). Both push a text tint over the whole subtree.
-                        bool dead = goblin::ui::quest_unfinishable((size_t)id);
+                        bool dead = goblin::config::questGreyOnDeath
+                                    && goblin::ui::quest_unfinishable((size_t)id);
                         // `concl`: the fail_flag is the NPC's shared "concluded"
                         // flag (set on completion OR death) -- grey it, but label
                         // it [concluded] rather than asserting the NPC is dead.
