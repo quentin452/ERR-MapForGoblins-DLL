@@ -12,8 +12,11 @@ struct QuestStep { const char *title; const char *desc; const char *zone; };
 // One NPC questline. `related` = a short note on interconnections ("Start after
 // Kenneth's quest", "Part of Ranni's questline") or null. steps==null / count==0
 // means the entry is a PLACEHOLDER not yet authored.
+// `dlc` flags a Shadow of the Erdtree questline (default false = base game);
+// the overlay groups the browser by it. Trailing default-init member so only
+// DLC entries need to set it in the table.
 struct NpcQuest { const char *name; const char *quest_title; const char *related;
-                  const QuestStep *steps; size_t step_count; };
+                  const QuestStep *steps; size_t step_count; bool dlc = false; };
 
 extern const NpcQuest QUEST_BROWSER[];
 extern const size_t QUEST_BROWSER_COUNT;

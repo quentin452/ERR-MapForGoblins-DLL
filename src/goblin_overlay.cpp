@@ -19,6 +19,8 @@
 #include "goblin_inject.hpp"   // goblin::world_map_open()
 
 #include <vector>
+#include <map>
+#include <string>
 
 // ImGui's Win32 backend message handler (defined in imgui_impl_win32.cpp).
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
@@ -458,19 +460,20 @@ namespace
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("Show a curated questline NPC's marker only while its quest is\n"
                                       "active (event flag set). Live — no restart. Needs the Quest NPC\n"
-                                      "category enabled (World group). 34 NPC questlines covered.");
+                                      "category enabled (World group). 50 NPC questlines covered.");
 
                 // Quest Browser: ordered steps per NPC (hand-authored, original
                 // text). Each step names its location/zone for manual navigation.
-                // step_count==0 = placeholder not yet written ([TODO]).
-                size_t covered = 0, total = goblin::generated::QUEST_BROWSER_COUNT;
+                // Grouped into base game + Shadow of the Erdtree via NpcQuest::dlc.
+                size_t total = goblin::generated::QUEST_BROWSER_COUNT;
+                size_t nbase = 0, ndlc = 0;
                 for (size_t i = 0; i < total; i++)
-                    if (goblin::generated::QUEST_BROWSER[i].step_count) covered++;
+                    (goblin::generated::QUEST_BROWSER[i].dlc ? ndlc : nbase)++;
                 char hdr[64];
-                snprintf(hdr, sizeof(hdr), "Quest Browser (%zu/%zu authored)", covered, total);
+                snprintf(hdr, sizeof(hdr), "Quest Browser (%zu questlines)", total);
                 if (ImGui::TreeNode(hdr))
                 {
-                    ImGui::TextDisabled("Steps in order; location named per line. [TODO] = not written yet.");
+                    ImGui::TextDisabled("Steps in order; location named per line.");
                     ImGui::TextDisabled("Based on vanilla quests; modded profiles (ERR/Convergence/...) may differ.");
                     static char filter[64] = "";
                     ImGui::SetNextItemWidth(-1.0f);
@@ -483,33 +486,69 @@ namespace
                         for (const char *p = need; *p; ++p) n += (char)tolower(*p);
                         return h.find(n) != std::string::npos;
                     };
-                    // Per-step progress checkmarks live in config::questProgress
-                    // (one '0'/'1' per global step index, author order). Persisted
-                    // on Save. Toggle a step to track your run.
+                    // Per-step progress is keyed by NPC NAME (stable), not array
+                    // position: blob format "<name>=<bits>;<name>=<bits>;". So
+                    // reordering or inserting NPCs no longer shifts saved ticks
+                    // (the old positional bitstring from commit 40691d5 drifted).
+                    // Names carry no '=' or ';'; bits are one '0'/'1' per step.
                     std::string &qp = goblin::config::questProgress;
-                    auto qp_get = [&](size_t i) { return i < qp.size() && qp[i] == '1'; };
-                    auto qp_set = [&](size_t i, bool v) {
-                        if (i >= qp.size()) qp.resize(i + 1, '0');
-                        qp[i] = v ? '1' : '0';
-                    };
-                    ImGui::BeginChild("questlist", ImVec2(0, 300), true);
-                    size_t gstep = 0;  // running global step index (must match author order)
-                    for (size_t i = 0; i < total; i++)
+                    // One-time migration: a non-empty blob with no '=' is the old
+                    // positional format. Walk author order and re-key by name. Base
+                    // NPCs precede all DLC, so their global indices are unchanged by
+                    // the now-authored DLC steps; legacy bits map cleanly.
+                    if (!qp.empty() && qp.find('=') == std::string::npos)
                     {
-                        const auto &q = goblin::generated::QUEST_BROWSER[i];
-                        size_t base = gstep;
-                        gstep += q.step_count;  // advance for ALL entries (stable index)
-                        if (!contains_ci(q.name, filter)) continue;
+                        std::string out;
+                        size_t g = 0;
+                        for (size_t i = 0; i < total; i++)
+                        {
+                            const auto &q = goblin::generated::QUEST_BROWSER[i];
+                            std::string bits;
+                            for (size_t s = 0; s < q.step_count; s++)
+                                bits += (g + s < qp.size() && qp[g + s] == '1') ? '1' : '0';
+                            if (bits.find('1') != std::string::npos)
+                                out += std::string(q.name) + "=" + bits + ";";
+                            g += q.step_count;
+                        }
+                        qp = out;
+                    }
+                    // Parse keyed blob -> name -> bits.
+                    std::map<std::string, std::string> prog;
+                    for (size_t p = 0; p < qp.size();)
+                    {
+                        size_t semi = qp.find(';', p);
+                        if (semi == std::string::npos) semi = qp.size();
+                        size_t eq = qp.rfind('=', semi);
+                        if (eq != std::string::npos && eq > p)
+                            prog[qp.substr(p, eq - p)] = qp.substr(eq + 1, semi - eq - 1);
+                        p = semi + 1;
+                    }
+                    auto reserialize = [&]() {
+                        std::string out;
+                        for (auto &kv : prog)
+                            if (kv.second.find('1') != std::string::npos)
+                                out += kv.first + "=" + kv.second + ";";
+                        qp = out;
+                    };
+                    auto qp_get = [&](const char *name, size_t s) {
+                        auto it = prog.find(name);
+                        return it != prog.end() && s < it->second.size() && it->second[s] == '1';
+                    };
+                    auto qp_set = [&](const char *name, size_t s, bool v) {
+                        std::string &bits = prog[name];
+                        if (bits.size() <= s) bits.resize(s + 1, '0');
+                        bits[s] = v ? '1' : '0';
+                        reserialize();
+                    };
+                    // Render one NPC subtree.
+                    auto draw_npc = [&](const goblin::generated::NpcQuest &q, int id) {
+                        if (!contains_ci(q.name, filter)) return;
                         int done = 0;
                         for (size_t s = 0; s < q.step_count; s++)
-                            if (qp_get(base + s)) done++;
-                        ImGui::PushID((int)i);
+                            if (qp_get(q.name, s)) done++;
+                        ImGui::PushID(id);
                         char label[180];
-                        if (!q.step_count)
-                            snprintf(label, sizeof(label), "%s  [TODO]", q.name);
-                        else
-                            snprintf(label, sizeof(label), "%s  (%d/%zu)", q.name, done,
-                                     q.step_count);
+                        snprintf(label, sizeof(label), "%s  (%d/%zu)", q.name, done, q.step_count);
                         if (ImGui::TreeNode(label))
                         {
                             if (q.related)
@@ -518,14 +557,12 @@ namespace
                                 ImGui::TextWrapped("Link: %s", q.related);
                                 ImGui::PopStyleColor();
                             }
-                            if (!q.step_count)
-                                ImGui::TextDisabled("(steps not written yet)");
                             for (size_t s = 0; s < q.step_count; s++)
                             {
                                 ImGui::PushID((int)s);
-                                bool d = qp_get(base + s);
+                                bool d = qp_get(q.name, s);
                                 if (ImGui::Checkbox("##done", &d))
-                                    qp_set(base + s, d);
+                                    qp_set(q.name, s, d);
                                 ImGui::SameLine();
                                 ImGui::TextWrapped("%zu. %s", s + 1, q.steps[s].title);
                                 ImGui::Indent();
@@ -544,6 +581,25 @@ namespace
                             ImGui::TreePop();
                         }
                         ImGui::PopID();
+                    };
+
+                    ImGui::BeginChild("questlist", ImVec2(0, 300), true);
+                    char gh[48];
+                    snprintf(gh, sizeof(gh), "Base game (%zu)", nbase);
+                    if (ImGui::TreeNodeEx(gh, ImGuiTreeNodeFlags_DefaultOpen))
+                    {
+                        for (size_t i = 0; i < total; i++)
+                            if (!goblin::generated::QUEST_BROWSER[i].dlc)
+                                draw_npc(goblin::generated::QUEST_BROWSER[i], (int)i);
+                        ImGui::TreePop();
+                    }
+                    snprintf(gh, sizeof(gh), "Shadow of the Erdtree (%zu)", ndlc);
+                    if (ImGui::TreeNodeEx(gh, ImGuiTreeNodeFlags_DefaultOpen))
+                    {
+                        for (size_t i = 0; i < total; i++)
+                            if (goblin::generated::QUEST_BROWSER[i].dlc)
+                                draw_npc(goblin::generated::QUEST_BROWSER[i], (int)i);
+                        ImGui::TreePop();
                     }
                     ImGui::EndChild();
                     ImGui::TextDisabled("Tick steps to track progress; Save to keep it. Original text.");
