@@ -108,6 +108,7 @@ void probe_loop()
     using clock = std::chrono::steady_clock;
     std::vector<uintptr_t> candidates;
     std::unordered_map<uintptr_t, std::array<float, 3>> last;
+    std::unordered_map<uintptr_t, char> bounds_dumped; // one-shot bounds dump per active cursor
     clock::time_point last_scan{};
     int empty_logs = 0;
 
@@ -145,6 +146,22 @@ void probe_loop()
                 g_log->info("cursor @{:#x} (menu @{:#x}): +0xFC={:.2f}  +0x104={:.2f}  +0x10C={:.2f}",
                             a, a - CURSOR_OFF_IN_MENU, x, z, y);
                 l = {x, z, y};
+
+                // One-shot: dump the float window around the cursor coords to find
+                // the bounds rect (minX/minZ/maxX/maxZ, doc says cursor+0xF0..+0x340)
+                // → reveals the cursor coord-space extent → derive the cursor↔world
+                // transform for proximity, no manual calibration.
+                if ((x != 0.f || z != 0.f) && !bounds_dumped.count(a))
+                {
+                    bounds_dumped[a] = 1;
+                    g_log->info("--- bounds dump @{:#x} (find minX/minZ/maxX/maxZ) ---", a);
+                    for (ptrdiff_t off = 0xE0; off <= 0x140; off += 4)
+                    {
+                        float fv;
+                        if (seh_read4(reinterpret_cast<void *>(a + off), &fv))
+                            g_log->info("  +{:#05x} = {:.2f}", off, fv);
+                    }
+                }
             }
         }
     }
