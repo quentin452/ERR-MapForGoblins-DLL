@@ -377,33 +377,72 @@ static void resolve_world_chr_man()
     spdlog::info("[PLAYER] WorldChrMan static @ {:p}", (void *)g_wcm_static);
 }
 
-// SEH-guarded chain walk (POD-only locals — no C++ unwinding). out = {x,y,z}.
-static bool read_player_pos_seh(void **wcm_static, float *out)
+// DIAGNOSTIC probe (POD-only; no C++ objects in the __try). Fills intermediate
+// pointers + two candidate coordinate chains so one in-game run identifies the
+// correct offsets. Caller logs the result OUTSIDE the SEH frame.
+struct PlayerProbe
 {
+    void *wcm, *player, *subA;      // [static], [wcm+10EF8], [player+0]
+    float a[3]; bool a_ok;          // candidate A: global = [..+0]+6B0/6B4/6B8
+    void *physMod;                  // candidate B physics module
+    float b[3]; bool b_ok;          // candidate B: pCoordAdr = [[[[[WCM]+1E508]+58]+10]+190]+68
+};
+
+static void probe_player_seh(void **wcm_static, PlayerProbe *pr)
+{
+    pr->wcm = pr->player = pr->subA = pr->physMod = nullptr;
+    pr->a_ok = pr->b_ok = false;
     __try
     {
         auto *wcm = *reinterpret_cast<uint8_t **>(wcm_static);
-        if (!wcm) return false;
+        pr->wcm = wcm;
+        if (!wcm) return;
+        // Candidate A: WorldChrMan + LocalPlayerOffset(0x10EF8) + [+0] + 0x6B0..
         auto *player = *reinterpret_cast<uint8_t **>(wcm + 0x10EF8);
-        if (!player) return false;
-        auto *sub = *reinterpret_cast<uint8_t **>(player + 0x0);
-        if (!sub) return false;
-        out[0] = *reinterpret_cast<float *>(sub + 0x6B0);
-        out[1] = *reinterpret_cast<float *>(sub + 0x6B4);
-        out[2] = *reinterpret_cast<float *>(sub + 0x6B8);
-        return true;
+        pr->player = player;
+        if (player)
+        {
+            auto *subA = *reinterpret_cast<uint8_t **>(player + 0x0);
+            pr->subA = subA;
+            if (subA)
+            {
+                pr->a[0] = *reinterpret_cast<float *>(subA + 0x6B0);
+                pr->a[1] = *reinterpret_cast<float *>(subA + 0x6B4);
+                pr->a[2] = *reinterpret_cast<float *>(subA + 0x6B8);
+                pr->a_ok = true;
+            }
+            // Candidate B: physics chain [[[[player]+58]+10]+190]+68  (pCoordAdr,
+            // but using the LocalPlayerOffset player rather than +1E508).
+            auto *p2 = *reinterpret_cast<uint8_t **>(player + 0x58);
+            if (p2) { auto *p3 = *reinterpret_cast<uint8_t **>(p2 + 0x10);
+            if (p3) { auto *phys = *reinterpret_cast<uint8_t **>(p3 + 0x190);
+            pr->physMod = phys;
+            if (phys) {
+                pr->b[0] = *reinterpret_cast<float *>(phys + 0x68 + 0x0);
+                pr->b[1] = *reinterpret_cast<float *>(phys + 0x68 + 0x4);
+                pr->b[2] = *reinterpret_cast<float *>(phys + 0x68 + 0x8);
+                pr->b_ok = true;
+            } } }
+        }
     }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
 bool goblin::get_player_world_pos(float &x, float &y, float &z)
 {
     if (!g_wcm_tried) resolve_world_chr_man();
     if (!g_wcm_static) return false;
-    float p[3] = {0, 0, 0};
-    if (!read_player_pos_seh(g_wcm_static, p)) return false;
-    x = p[0]; y = p[1]; z = p[2];
-    return true;
+    PlayerProbe pr{};
+    probe_player_seh(g_wcm_static, &pr);
+    spdlog::info("[PLAYER] wcm={:p} player={:p} subA={:p} phys={:p} | "
+                 "A(+0,+6B0)={} X={:.1f} Y={:.1f} Z={:.1f} | "
+                 "B(phys+68)={} X={:.1f} Y={:.1f} Z={:.1f}",
+                 pr.wcm, pr.player, pr.subA, pr.physMod,
+                 pr.a_ok, pr.a[0], pr.a[1], pr.a[2],
+                 pr.b_ok, pr.b[0], pr.b[1], pr.b[2]);
+    if (pr.b_ok) { x = pr.b[0]; y = pr.b[1]; z = pr.b[2]; return true; }
+    if (pr.a_ok) { x = pr.a[0]; y = pr.a[1]; z = pr.a[2]; return true; }
+    return false;
 }
 
 namespace
@@ -1941,19 +1980,10 @@ void goblin::menu_auto_toggle_loop()
         if (g_cluster_debug_dirty.exchange(false))
             apply_cluster_debug(g_cluster_debug.load());
 
-        // v2 groundwork: log the player world position every ~2 s while
-        // clustering is on, so the WorldChrMan chain + coordinate space can be
-        // verified in-game against marker posX/posZ before proximity is wired.
-        static int s_pp_tick = 0;
-        if (goblin::config::enableClustering && ++s_pp_tick >= 200)
-        {
-            s_pp_tick = 0;
-            float px, py, pz;
-            if (goblin::get_player_world_pos(px, py, pz))
-                spdlog::info("[PLAYER] world pos  X={:.1f}  Y={:.1f}  Z={:.1f}", px, py, pz);
-            else
-                spdlog::debug("[PLAYER] position unavailable (chain not ready)");
-        }
+        // (Player-position probe logging removed — proximity clustering paused:
+        // live player world coords are unstable/chunk-local and the map-cursor /
+        // live-refresh paths both need the blocked CSWorldMapMenu RE. The reader
+        // get_player_world_pos() is kept dormant for when that RE lands.)
 
         bool want_expanded = !user_disabled_now;
 
