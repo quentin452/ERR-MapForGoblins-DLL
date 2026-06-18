@@ -12,6 +12,7 @@
 
 #include "goblin_collected.hpp"
 #include "goblin_config.hpp"
+#include "goblin_debug_events.hpp"
 #include "goblin_inject.hpp"
 #include "goblin_kindling.hpp"
 #include "goblin_logic.hpp"
@@ -170,6 +171,11 @@ static void setup_mod()
         std::thread(goblin::markers::hotkey_loop).detach();
         spdlog::info("Marker dump hotkey: VK 0x{:X}", goblin::config::markerDumpKey);
     }
+
+    // Thread 7 — opt-in SetEventFlag observer (coverage-gap discovery). Installs a
+    // detour, so it self-disables on resolve/hook failure without touching the mod.
+    if (goblin::config::debugEventFlags)
+        goblin::debug_events::initialize(g_mod_folder / "logs" / "MapForGoblins_events.log");
 
     // The watcher is the single owner of the WorldMapPointParam state — it
     // applies the overlay menu's master-off / per-section / per-category /
