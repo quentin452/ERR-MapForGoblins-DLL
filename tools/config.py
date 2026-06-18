@@ -1,8 +1,14 @@
 """
 Shared configuration for MapForGoblins tools.
 
-Reads paths from tools/config.ini. Copy config.ini.example to config.ini
-and fill in your local paths before running any tool scripts.
+Per-machine paths are resolved in this order (first hit wins):
+  1. environment variables, loaded from .env / .env.local (see tools/load_env.py)
+     or exported in the real shell — ERR_MOD_DIR, GAME_DIR, CONVERGENCE_MOD_DIR,
+     ERTE_MOD_DIR, SMITHBOX_DIR, DARKSCRIPT_RESOURCES (FFDEC_CLI is read directly
+     by tools/build_vanilla_gfx.py).
+  2. tools/config.ini  (copy config.ini.example to config.ini and fill it in).
+Copy tools/.env to tools/.env.local and set the real paths there for the env
+route; .env.local is gitignored and overrides the committed .env template.
 
 Local project paths (SoulsFormats DLL, paramdefs) are resolved automatically.
 """
@@ -12,8 +18,15 @@ import os
 import sys
 from pathlib import Path
 
+import load_env
+
 TOOLS_DIR = Path(__file__).parent
 PROJECT_DIR = TOOLS_DIR.parent
+
+# Populate os.environ from .env / .env.local (real env wins). Done at import
+# time so every tool — and every child subprocess that inherits os.environ —
+# sees the same path config. See tools/load_env.py.
+load_env.load()
 
 # ── Build profile ────────────────────────────────────────────────────────
 # Selected via the MFG_PROFILE env var (set by build_pipeline.py / build.bat).
@@ -58,43 +71,60 @@ SOULSFORMATS_DLL = LIB_DIR / "Andre.SoulsFormats.dll"
 PARAMDEF_DIR = TOOLS_DIR / "paramdefs"
 OO2CORE_DLL = None  # resolved from GAME_DIR below
 
-# User-configured paths
-ERR_MOD_DIR = None
-GAME_DIR = None
-CONVERGENCE_MOD_DIR = None  # The Convergence's ME2 'mod' overlay dir
-ERTE_MOD_DIR = None         # ERTE overhaul's mod overlay dir
-SMITHBOX_DIR = None
-DARKSCRIPT_RESOURCES = None  # path to <DarkScript3>/Resources/ (optional)
+# User-configured paths. Resolution order per path:
+#   1. environment variable (from .env / .env.local or the real shell env)
+#   2. tools/config.ini  [paths] section
+#   3. None -> the require_*() helpers below emit a setup hint and exit
+# This keeps the historical config.ini workflow working unchanged while letting
+# .env / .env.local (or an exported env var) override it.
+def _env_path(name):
+    v = os.environ.get(name, "").strip()
+    return Path(v) if v else None
+
+
+ERR_MOD_DIR = _env_path("ERR_MOD_DIR")
+GAME_DIR = _env_path("GAME_DIR")
+CONVERGENCE_MOD_DIR = _env_path("CONVERGENCE_MOD_DIR")  # The Convergence's ME2 'mod' overlay dir
+ERTE_MOD_DIR = _env_path("ERTE_MOD_DIR")                # ERTE overhaul's mod overlay dir
+SMITHBOX_DIR = _env_path("SMITHBOX_DIR")
+DARKSCRIPT_RESOURCES = _env_path("DARKSCRIPT_RESOURCES")  # <DarkScript3>/Resources/ (optional)
 
 _config_path = TOOLS_DIR / "config.ini"
 
+# config.ini fills any path not already supplied via the environment.
 if _config_path.exists():
     _cfg = configparser.ConfigParser()
     _cfg.read(str(_config_path), encoding="utf-8")
 
-    _err = _cfg.get("paths", "err_mod_dir", fallback="").strip()
-    if _err:
-        ERR_MOD_DIR = Path(_err)
+    if ERR_MOD_DIR is None:
+        _err = _cfg.get("paths", "err_mod_dir", fallback="").strip()
+        if _err:
+            ERR_MOD_DIR = Path(_err)
 
-    _game = _cfg.get("paths", "game_dir", fallback="").strip()
-    if _game:
-        GAME_DIR = Path(_game)
+    if GAME_DIR is None:
+        _game = _cfg.get("paths", "game_dir", fallback="").strip()
+        if _game:
+            GAME_DIR = Path(_game)
 
-    _conv = _cfg.get("paths", "convergence_mod_dir", fallback="").strip()
-    if _conv:
-        CONVERGENCE_MOD_DIR = Path(_conv)
+    if CONVERGENCE_MOD_DIR is None:
+        _conv = _cfg.get("paths", "convergence_mod_dir", fallback="").strip()
+        if _conv:
+            CONVERGENCE_MOD_DIR = Path(_conv)
 
-    _erte = _cfg.get("paths", "erte_mod_dir", fallback="").strip()
-    if _erte:
-        ERTE_MOD_DIR = Path(_erte)
+    if ERTE_MOD_DIR is None:
+        _erte = _cfg.get("paths", "erte_mod_dir", fallback="").strip()
+        if _erte:
+            ERTE_MOD_DIR = Path(_erte)
 
-    _sb = _cfg.get("paths", "smithbox_dir", fallback="").strip()
-    if _sb:
-        SMITHBOX_DIR = Path(_sb)
+    if SMITHBOX_DIR is None:
+        _sb = _cfg.get("paths", "smithbox_dir", fallback="").strip()
+        if _sb:
+            SMITHBOX_DIR = Path(_sb)
 
-    _ds = _cfg.get("paths", "darkscript_resources", fallback="").strip()
-    if _ds:
-        DARKSCRIPT_RESOURCES = Path(_ds)
+    if DARKSCRIPT_RESOURCES is None:
+        _ds = _cfg.get("paths", "darkscript_resources", fallback="").strip()
+        if _ds:
+            DARKSCRIPT_RESOURCES = Path(_ds)
 
 if GAME_DIR:
     OO2CORE_DLL = GAME_DIR / "oo2core_6_win64.dll"

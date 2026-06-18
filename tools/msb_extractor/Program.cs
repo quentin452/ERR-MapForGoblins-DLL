@@ -28,7 +28,10 @@ Dictionary<string, string> ErKeys2 = new()
     ["DLC"] = "-----BEGIN RSA PUBLIC KEY-----\nMIIBCwKCAQEAmYJ/5GJU4boJSvZ81BFOHYTGdBWPHnWYly3yWo01BYjGRnz8NTkz\nDHUxsbjIgtG5XqsQfZstZILQ97hgSI5AaAoCGrT8sn0PeXg2i0mKwL21gRjRUdvP\nDp1Y+7hgrGwuTkjycqqsQ/qILm4NvJHvGRd7xLOJ9rs2zwYhceRVrq9XU2AXbdY4\npdCQ3+HuoaFiJ0dW0ly5qdEXjbSv2QEYe36nWCtsd6hEY9LjbBX8D1fK3D2c6C0g\nNdHJGH2iEONUN6DMK9t0v2JBnwCOZQ7W+Gt7SpNNrkx8xKEM8gH9na10g9ne11Mi\nO1FnLm8i4zOxVdPHQBKICkKcGS1o3C2dfwIEXw/f3w==\n-----END RSA PUBLIC KEY-----",
 };
 
-string gameDir = args.Length > 0 ? args[0] : @"G:\Steam\steamapps\common\ELDEN RING\Game";
+// Game dir: CLI arg > GAME_DIR env var (see .env / .env.local) > legacy default.
+string gameDir = args.Length > 0 ? args[0]
+    : Environment.GetEnvironmentVariable("GAME_DIR")
+      ?? @"G:\Steam\steamapps\common\ELDEN RING\Game";
 string outDir = args.Length > 1 ? args[1] : Path.Combine(gameDir, "map", "MapStudio");
 
 Directory.CreateDirectory(outDir);

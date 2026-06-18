@@ -11,7 +11,10 @@ class Program
 {
     static void Main(string[] args)
     {
-        string gameDir = args.Length > 0 ? args[0] : @"G:\Steam\steamapps\common\ELDEN RING\Game";
+        // Game dir: CLI arg > GAME_DIR env var (see .env / .env.local) > legacy default.
+        string gameDir = args.Length > 0 ? args[0]
+            : Environment.GetEnvironmentVariable("GAME_DIR")
+              ?? @"G:\Steam\steamapps\common\ELDEN RING\Game";
         string outDir = args.Length > 1 ? args[1] : Path.Combine(gameDir, "map", "MapStudio");
 
         Directory.CreateDirectory(outDir);

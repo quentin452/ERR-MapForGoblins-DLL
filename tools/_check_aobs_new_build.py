@@ -7,7 +7,14 @@ import sys, io, struct, re
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import pefile
 
-EXE = r'G:\Steam\steamapps\common\ELDEN RING\Game\eldenring.exe'
+import config  # resolves GAME_DIR from env (.env / .env.local) or config.ini
+
+# eldenring.exe to scan, resolved in order:
+#   1. CLI arg          2. GAME_DIR/eldenring.exe (env or config.ini)
+#   3. legacy hardcoded default (kept so the script still runs unconfigured)
+EXE = (sys.argv[1] if len(sys.argv) > 1
+       else str(config.GAME_DIR / 'eldenring.exe') if config.GAME_DIR
+       else r'G:\Steam\steamapps\common\ELDEN RING\Game\eldenring.exe')
 IMG = 0x140000000
 pe = pefile.PE(EXE, fast_load=True)
 texts = [s for s in pe.sections if s.Name.rstrip(b'\x00') == b'.text']

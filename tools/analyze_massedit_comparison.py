@@ -1,6 +1,18 @@
 """Analyze original vs generated MASSEDIT files for Quest and Reforged categories."""
+import os
 import re
 from collections import defaultdict, Counter
+from pathlib import Path
+
+import config
+
+# Original (hand-authored) vs generated MASSEDIT dirs. Default to the repo's own
+# data/ tree; override with MFG_MASSEDIT_ORIG_DIR / MFG_MASSEDIT_GEN_DIR (e.g.
+# in .env.local) to compare against an out-of-tree snapshot.
+ORIG_MASSEDIT_DIR = Path(os.environ.get("MFG_MASSEDIT_ORIG_DIR")
+                         or (config.DATA_DIR / "massedit"))
+GEN_MASSEDIT_DIR = Path(os.environ.get("MFG_MASSEDIT_GEN_DIR")
+                        or (config.DATA_DIR / "massedit_generated"))
 
 def parse_massedit(filepath):
     """Parse MASSEDIT file into dict of {row_id: {field: value}}."""
@@ -14,11 +26,8 @@ def parse_massedit(filepath):
     return dict(rows)
 
 def analyze_quest_progression():
-    base = r"G:\Games\Elden Ring\ERR saves piece\MapForGoblins\data\massedit"
-    base_gen = r"G:\Games\Elden Ring\ERR saves piece\MapForGoblins\data\massedit_generated"
-
-    orig = parse_massedit(f"{base}\\Quest - Progression.MASSEDIT")
-    gen = parse_massedit(f"{base_gen}\\Quest - Progression.MASSEDIT")
+    orig = parse_massedit(ORIG_MASSEDIT_DIR / "Quest - Progression.MASSEDIT")
+    gen = parse_massedit(GEN_MASSEDIT_DIR / "Quest - Progression.MASSEDIT")
 
     print("=" * 70)
     print("1. QUEST - PROGRESSION COMPARISON")
@@ -131,8 +140,7 @@ def analyze_quest_progression():
             print(f"  id={rid} flag={flag} textId1={tid1} area={area}{extra_str}")
 
 def analyze_camp_contents():
-    base = r"G:\Games\Elden Ring\ERR saves piece\MapForGoblins\data\massedit"
-    rows = parse_massedit(f"{base}\\Reforged - camp contents.MASSEDIT")
+    rows = parse_massedit(ORIG_MASSEDIT_DIR / "Reforged - camp contents.MASSEDIT")
 
     print()
     print("=" * 70)
@@ -188,8 +196,7 @@ def analyze_camp_contents():
     print(f"Unique textId values: {sorted(text_ids)}")
 
 def analyze_items_and_changes():
-    base = r"G:\Games\Elden Ring\ERR saves piece\MapForGoblins\data\massedit"
-    rows = parse_massedit(f"{base}\\Reforged - items and changes.MASSEDIT")
+    rows = parse_massedit(ORIG_MASSEDIT_DIR / "Reforged - items and changes.MASSEDIT")
 
     print()
     print("=" * 70)
@@ -293,8 +300,7 @@ def analyze_items_and_changes():
             print(f"  {s}-{e}: {count} entries")
 
 def analyze_quest_details():
-    base = r"G:\Games\Elden Ring\ERR saves piece\MapForGoblins\data\massedit"
-    orig = parse_massedit(f"{base}\\Quest - Progression.MASSEDIT")
+    orig = parse_massedit(ORIG_MASSEDIT_DIR / "Quest - Progression.MASSEDIT")
 
     print()
     print("=" * 70)
@@ -339,7 +345,7 @@ def analyze_quest_details():
         print(f"    id={rid} textId1={f['textId1']} area={f.get('areaNo','?')} flag={f.get('textDisableFlagId1','?')}")
 
     # Analyze the 2 generated-only entries
-    gen = parse_massedit(r"G:\Games\Elden Ring\ERR saves piece\MapForGoblins\data\massedit_generated\Quest - Progression.MASSEDIT")
+    gen = parse_massedit(GEN_MASSEDIT_DIR / "Quest - Progression.MASSEDIT")
     print(f"\nGenerated-only entries details:")
     gen_by_flag = {}
     for rid, fields in gen.items():
@@ -360,8 +366,7 @@ def analyze_quest_details():
 
 def analyze_camp_text_ids():
     """Check what text IDs in camp contents mean."""
-    base = r"G:\Games\Elden Ring\ERR saves piece\MapForGoblins\data\massedit"
-    rows = parse_massedit(f"{base}\\Reforged - camp contents.MASSEDIT")
+    rows = parse_massedit(ORIG_MASSEDIT_DIR / "Reforged - camp contents.MASSEDIT")
 
     print()
     print("=" * 70)
