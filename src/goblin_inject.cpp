@@ -291,9 +291,11 @@ static std::atomic<bool> g_category_dirty[NUM_CATEGORIES];  // set by menu, appl
 static std::mutex g_section_hidden_mtx;
 static std::set<uint8_t *> g_section_hidden_ptrs;    // hidden by a section toggle
 static std::set<uint8_t *> g_category_hidden_ptrs;   // hidden by a category toggle
+static std::atomic<bool> g_master_off{false};        // master "Show icons" off (hides ALL)
 
 bool goblin::is_section_hidden_ptr(const void *param_data)
 {
+    if (g_master_off.load()) return true;  // master off hides every injected row
     auto *p = reinterpret_cast<uint8_t *>(const_cast<void *>(param_data));
     std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
     return g_section_hidden_ptrs.count(p) != 0 || g_category_hidden_ptrs.count(p) != 0;
@@ -359,6 +361,34 @@ static void apply_category_visibility(Category c, bool visible)
     }
     spdlog::info("[CATEGORY] {} -> {} ({} rows)",
                  goblin::markers::category_name(c), visible ? "SHOWN" : "HIDDEN", touched);
+}
+
+// Master "Show icons" on/off via the SAME live areaNo lever as sections/
+// categories (not the param-file swap, which only reapplies per-region as the
+// game re-reads the file → icons vanish gradually). Parks/restores every
+// injected row at once; g_master_off makes the restore paths keep them at 99.
+static void apply_master_visibility(bool icons_on)
+{
+    g_master_off.store(!icons_on);
+    std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
+    for (const auto &r : g_section_rows)
+    {
+        uint8_t *area = r.ptr + 0x20;
+        if (!icons_on)
+        {
+            *area = 99;
+        }
+        else
+        {
+            bool keep_hidden =
+                g_section_hidden_ptrs.count(r.ptr) || g_category_hidden_ptrs.count(r.ptr) ||
+                (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
+                (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
+            *area = keep_hidden ? 99 : r.orig_area;
+        }
+    }
+    spdlog::info("[MASTER] icons {} ({} injected rows)",
+                 icons_on ? "SHOWN" : "HIDDEN", g_section_rows.size());
 }
 
 // ─── Marker clustering (v1, density-triggered, static) ───────────────
@@ -1336,7 +1366,11 @@ void goblin::inject_map_entries()
     }
 
     // Seed the master on/off from the persisted config (menu 'Show icons' / F10).
+    // Park everything now if it starts hidden (the watcher's change-detector
+    // wouldn't fire, since prev == current at startup).
     g_icons_user_disabled.store(goblin::config::iconsHidden);
+    if (goblin::config::iconsHidden)
+        apply_master_visibility(false);
 
     if (goblin::config::enableClustering)
         spdlog::info("[CLUSTER] active: {} cluster icons, {} markers parked (collapsed)",
@@ -2254,6 +2288,7 @@ void goblin::menu_auto_toggle_loop()
         if (user_disabled_now != prev_user_disabled)
         {
             show_toggle_banner(!user_disabled_now);
+            apply_master_visibility(!user_disabled_now);  // live areaNo park (instant)
             prev_user_disabled = user_disabled_now;
         }
 
@@ -2296,17 +2331,9 @@ void goblin::menu_auto_toggle_loop()
         // live-refresh paths both need the blocked CSWorldMapMenu RE. The reader
         // get_player_world_pos() is kept dormant for when that RE lands.)
 
-        bool want_expanded = !user_disabled_now;
-
-        if (want_expanded && !g_param_injection_active)
-        {
-            set_param_injection_active(true);
-            spdlog::info("[TOGGLE] -> EXPANDED (icons on)");
-        }
-        else if (!want_expanded && g_param_injection_active)
-        {
-            set_param_injection_active(false);
-            spdlog::info("[TOGGLE] -> VANILLA (icons off)");
-        }
+        // (Master on/off is applied via apply_master_visibility above — the live
+        // areaNo lever — not the param-file swap, which reflected only per-region
+        // as the game re-read the file. set_param_injection_active stays for the
+        // ERSC-hosting revert path.)
     }
 }
