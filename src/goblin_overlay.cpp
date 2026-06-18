@@ -32,6 +32,14 @@ namespace
     ResizeBuffersFn o_resize_buffers = nullptr;
     ExecuteCommandListsFn o_execute_command_lists = nullptr;
 
+    // user32 cursor calls — the game recenters/clips the cursor every frame for
+    // raw-input mouse-look. We neutralise them while the menu is open so the OS
+    // cursor can move freely over the panel.
+    using SetCursorPosFn = BOOL(WINAPI *)(int, int);
+    using ClipCursorFn = BOOL(WINAPI *)(const RECT *);
+    SetCursorPosFn o_set_cursor_pos = nullptr;
+    ClipCursorFn o_clip_cursor = nullptr;
+
     // ── D3D12 state captured from the live game ───────────────────────────
     ID3D12Device *g_device = nullptr;
     ID3D12CommandQueue *g_command_queue = nullptr;   // captured from ExecuteCommandLists
@@ -86,6 +94,18 @@ namespace
         if (g_srv_heap) { g_srv_heap->Release(); g_srv_heap = nullptr; }
     }
 
+    // ── Cursor hooks (free the OS cursor while the menu is open) ──────────
+    BOOL WINAPI hk_set_cursor_pos(int x, int y)
+    {
+        if (g_show) return TRUE;            // swallow the game's recenter-to-middle
+        return o_set_cursor_pos(x, y);
+    }
+    BOOL WINAPI hk_clip_cursor(const RECT *rc)
+    {
+        if (g_show) return o_clip_cursor(nullptr);   // unclip while menu is up
+        return o_clip_cursor(rc);
+    }
+
     // ── WndProc hook (input capture) ──────────────────────────────────────
     LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     {
@@ -93,6 +113,8 @@ namespace
         {
             ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
             ImGuiIO &io = ImGui::GetIO();
+            // Stop raw-input mouse-look from moving the camera under the panel.
+            if (msg == WM_INPUT) return 0;
             // Swallow input the panel wants, so it doesn't reach the game.
             if (io.WantCaptureMouse &&
                 (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP || msg == WM_RBUTTONDOWN ||
@@ -430,7 +452,23 @@ void goblin::overlay::initialize()
     MH_EnableHook(present_addr);
     MH_EnableHook(resize_addr);
     MH_EnableHook(eclist_addr);
-    spdlog::info("[OVERLAY] hooks installed (Present/ResizeBuffers/ExecuteCommandLists). F1 toggles.");
+
+    // Cursor hooks (user32) — let the OS cursor move freely over the menu by
+    // neutralising the game's per-frame recenter/clip while the panel is open.
+    if (HMODULE u32 = GetModuleHandleW(L"user32.dll"))
+    {
+        void *scp = reinterpret_cast<void *>(GetProcAddress(u32, "SetCursorPos"));
+        void *clp = reinterpret_cast<void *>(GetProcAddress(u32, "ClipCursor"));
+        if (scp && MH_CreateHook(scp, reinterpret_cast<void *>(&hk_set_cursor_pos),
+                                 reinterpret_cast<void **>(&o_set_cursor_pos)) == MH_OK)
+            MH_EnableHook(scp);
+        if (clp && MH_CreateHook(clp, reinterpret_cast<void *>(&hk_clip_cursor),
+                                 reinterpret_cast<void **>(&o_clip_cursor)) == MH_OK)
+            MH_EnableHook(clp);
+    }
+
+    spdlog::info("[OVERLAY] hooks installed (Present/ResizeBuffers/ExecuteCommandLists"
+                 "/SetCursorPos/ClipCursor). F1 toggles.");
 }
 
 void goblin::overlay::shutdown()
