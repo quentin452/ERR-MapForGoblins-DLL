@@ -1961,6 +1961,14 @@ void goblin::ui::set_global_threshold(int t)
 static std::atomic<bool> g_save_req{false};
 void goblin::ui::request_save() { g_save_req.store(true); }
 
+// Danger zone. Clearing quest progress is just a string reset (render-thread
+// safe; the browser reparses config::questProgress each frame). Reset-to-defaults
+// re-seeds + writes the ini, so it's posted to the watcher to keep file I/O off
+// the render thread.
+static std::atomic<bool> g_reset_defaults_req{false};
+void goblin::ui::reset_quest_progress() { goblin::config::questProgress.clear(); }
+void goblin::ui::reset_to_defaults() { g_reset_defaults_req.store(true); }
+
 // Sync the live section/category visibility into the config vars, then write the
 // ini. The menu is now the category authority, so drop the showAll shortcut
 // (else it would force every category back on at next load).
@@ -2535,6 +2543,11 @@ void goblin::menu_auto_toggle_loop()
         // the render thread).
         if (g_save_req.exchange(false))
             persist_settings();
+
+        // Danger zone: re-seed config from defaults + write the ini (off the
+        // render thread). Runtime visibility is unchanged until a restart.
+        if (g_reset_defaults_req.exchange(false))
+            goblin::reset_to_defaults_and_save(goblin::config_ini_path());
 
         // Cluster expand/collapse + debug-label flips (areaNo / textId on the live
         // blob). Applied here, the single owner of game-state mutation.

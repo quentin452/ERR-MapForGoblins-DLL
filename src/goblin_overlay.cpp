@@ -353,9 +353,14 @@ namespace
         else
         {
             // Full panel — live controls (post intents to the watcher thread).
+            // Auto-fit to content (so it stops being clipped too small), clamped
+            // to a sane min/max so it neither shrinks to nothing nor overflows the
+            // screen; if content exceeds the max it scrolls.
             ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
-            ImGui::SetNextWindowSize(ImVec2(320, 380), ImGuiCond_FirstUseEver);
-            ImGui::Begin("Map for Goblins##large");
+            ImGui::SetNextWindowSizeConstraints(
+                ImVec2(360.0f, 240.0f),
+                ImVec2(720.0f, io.DisplaySize.y * 0.92f));
+            ImGui::Begin("Map for Goblins##large", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
             if (ImGui::Button("[-] collapse"))
                 g_large = false;
             ImGui::SameLine();
@@ -680,6 +685,58 @@ namespace
                                       "installs its hook/worker once at startup.");
                 ImGui::TreePop();
             }
+
+            // ── Danger zone: destructive resets behind a confirm popup ────────
+            ImGui::Separator();
+            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.55f, 0.13f, 0.13f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.78f, 0.18f, 0.18f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.90f, 0.22f, 0.22f, 1.0f));
+            if (ImGui::TreeNode("Danger zone"))
+            {
+                if (ImGui::Button("Reset quest progression"))
+                    ImGui::OpenPopup("##confirm_reset_quest");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Clear every quest-step checkmark. Save to INI to persist.");
+                if (ImGui::Button("Reset parameters to default"))
+                    ImGui::OpenPopup("##confirm_reset_params");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Restore all settings to defaults and write the ini.\n"
+                                      "Restart the game to fully apply.");
+
+                if (ImGui::BeginPopupModal("##confirm_reset_quest", nullptr,
+                                           ImGuiWindowFlags_AlwaysAutoResize))
+                {
+                    ImGui::TextUnformatted("Clear ALL quest-step checkmarks?");
+                    ImGui::TextDisabled("Cannot be undone. Save to INI afterwards to persist.");
+                    if (ImGui::Button("Yes, clear"))
+                    {
+                        goblin::ui::reset_quest_progress();
+                        ImGui::CloseCurrentPopup();
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Cancel"))
+                        ImGui::CloseCurrentPopup();
+                    ImGui::EndPopup();
+                }
+                if (ImGui::BeginPopupModal("##confirm_reset_params", nullptr,
+                                           ImGuiWindowFlags_AlwaysAutoResize))
+                {
+                    ImGui::TextUnformatted("Reset ALL settings to defaults?");
+                    ImGui::TextDisabled("Writes defaults to MapForGoblins.ini. Restart to fully apply.");
+                    if (ImGui::Button("Yes, reset"))
+                    {
+                        goblin::ui::reset_to_defaults();
+                        ImGui::CloseCurrentPopup();
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Cancel"))
+                        ImGui::CloseCurrentPopup();
+                    ImGui::EndPopup();
+                }
+                ImGui::TreePop();
+            }
+            ImGui::PopStyleColor(3);
+
             ImGui::End();
         }
     }

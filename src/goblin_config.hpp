@@ -22,6 +22,12 @@ namespace goblin
     // button calls this after syncing runtime visibility into the config vars.
     void save_all_bool_settings(const std::filesystem::path &ini_path);
 
+    // Re-seed every config var from its schema default, then persist to the ini
+    // (the menu's "Reset parameters to default" danger button). Does NOT touch
+    // the live runtime visibility atomics — those are seeded at inject time, so
+    // a game restart is needed to fully apply the defaults.
+    void reset_to_defaults_and_save(const std::filesystem::path &ini_path);
+
     // The ini path last passed to load_config(), for code (e.g. the in-game
     // section toggle) that needs to persist back without threading the path.
     const std::filesystem::path &config_ini_path();

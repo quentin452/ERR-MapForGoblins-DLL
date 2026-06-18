@@ -323,6 +323,18 @@ void goblin::save_all_bool_settings(const std::filesystem::path &ini_path)
         spdlog::info("Config: saved settings to {}", ini_path.string());
 }
 
+void goblin::reset_to_defaults_and_save(const std::filesystem::path &ini_path)
+{
+    // apply_defaults() (file-local, above) re-seeds every config var — including
+    // questProgress="" and all visibility/cluster vars — from the schema. Then
+    // persist: save_all_bool_settings reads the config vars (now defaults), so it
+    // writes a defaults ini without going through the runtime-atomic sync that
+    // persist_settings() does (which would otherwise clobber the reset).
+    apply_defaults();
+    save_all_bool_settings(ini_path);
+    spdlog::info("Config: reset all settings to defaults in {}", ini_path.string());
+}
+
 void goblin::save_section_states(const std::filesystem::path &ini_path)
 {
     mINI::INIFile file(ini_path.string());

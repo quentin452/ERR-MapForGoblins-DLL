@@ -175,5 +175,10 @@ namespace goblin
         void set_quest_aware(bool on);
         bool cluster_debug();
         void set_cluster_debug(bool on);
+        // Danger zone. reset_quest_progress clears all quest-step checkmarks live
+        // (persisted on next Save). reset_to_defaults posts a request; the watcher
+        // re-seeds config from defaults + writes the ini (restart to fully apply).
+        void reset_quest_progress();
+        void reset_to_defaults();
     }
 };
