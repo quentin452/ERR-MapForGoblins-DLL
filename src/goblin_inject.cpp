@@ -2151,34 +2151,6 @@ void goblin::menu_auto_toggle_loop()
         if (g_cluster_debug_dirty.exchange(false))
             apply_cluster_debug(g_cluster_debug.load());
 
-        // DIAG: detect whether a section-hide "sticks". Every ~2s, for sections
-        // toggled OFF, count how many of their rows still read areaNo==99 (our
-        // hide) vs got reverted to a visible area by some other writer. If
-        // reverted>0 → another system overwrites our flips. If reverted==0 but
-        // icons still show in-game → the game isn't rebuilding its point list on
-        // map reopen (live-refresh wall).
-        {
-            static int diag_tick = 0;
-            if (++diag_tick >= 200)  // 200 * 10ms ≈ 2s
-            {
-                diag_tick = 0;
-                int hidden_secs = 0, stuck = 0, reverted = 0;
-                for (int s = 0; s < SECTION_COUNT; s++)
-                    if (!g_section_visible[s].load()) hidden_secs++;
-                if (hidden_secs > 0)
-                {
-                    for (const auto &r : g_section_rows)
-                    {
-                        if (g_section_visible[static_cast<int>(r.sec)].load()) continue;
-                        if (r.ptr[0x20] == 99) stuck++;
-                        else reverted++;
-                    }
-                    spdlog::info("[SECTION-DIAG] hidden sections={} rows: stuck@99={} reverted={}",
-                                 hidden_secs, stuck, reverted);
-                }
-            }
-        }
-
         // (Player-position probe logging removed — proximity clustering paused:
         // live player world coords are unstable/chunk-local and the map-cursor /
         // live-refresh paths both need the blocked CSWorldMapMenu RE. The reader
