@@ -1,5 +1,6 @@
 #include "goblin_overlay.hpp"
 #include "goblin_config.hpp"
+#include "goblin_quest_steps.hpp"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -458,6 +459,54 @@ namespace
                     ImGui::SetTooltip("Show a curated questline NPC's marker only while its quest is\n"
                                       "active (event flag set). Live — no restart. Needs the Quest NPC\n"
                                       "category enabled (World group). 34 NPC questlines covered.");
+
+                // Quest Browser (Phase A): ordered steps per NPC from the MIT
+                // EldenRingQuestLog. The step description carries the location in
+                // prose ("Altus Plateau") so the player can navigate manually.
+                if (ImGui::TreeNode("Quest Browser (34 questlines)"))
+                {
+                    ImGui::TextDisabled("Steps in order; the location is named in each line.");
+                    static char filter[64] = "";
+                    ImGui::SetNextItemWidth(-1.0f);
+                    ImGui::InputTextWithHint("##questfilter", "filter by NPC name...",
+                                             filter, sizeof(filter));
+                    auto contains_ci = [](const char *hay, const char *need) {
+                        if (!need[0]) return true;
+                        std::string h, n;
+                        for (const char *p = hay; *p; ++p) h += (char)tolower(*p);
+                        for (const char *p = need; *p; ++p) n += (char)tolower(*p);
+                        return h.find(n) != std::string::npos;
+                    };
+                    ImGui::BeginChild("questlist", ImVec2(0, 280), true);
+                    for (size_t i = 0; i < goblin::generated::QUEST_BROWSER_COUNT; i++)
+                    {
+                        const auto &q = goblin::generated::QUEST_BROWSER[i];
+                        if (!contains_ci(q.name, filter)) continue;
+                        ImGui::PushID((int)i);
+                        if (ImGui::TreeNode(q.name))
+                        {
+                            for (size_t s = 0; s < q.step_count; s++)
+                            {
+                                ImGui::Bullet();
+                                ImGui::TextWrapped("%zu. %s", s + 1, q.steps[s].title);
+                                if (q.steps[s].desc[0])
+                                {
+                                    ImGui::Indent();
+                                    ImGui::PushStyleColor(ImGuiCol_Text,
+                                        ImVec4(0.75f, 0.75f, 0.75f, 1.0f));
+                                    ImGui::TextWrapped("%s", q.steps[s].desc);
+                                    ImGui::PopStyleColor();
+                                    ImGui::Unindent();
+                                }
+                            }
+                            ImGui::TreePop();
+                        }
+                        ImGui::PopID();
+                    }
+                    ImGui::EndChild();
+                    ImGui::TextDisabled("Quest text: EldenRingQuestLog (MIT, (c) 2024 TheHaist)");
+                    ImGui::TreePop();
+                }
             }
 
             ImGui::SeparatorText("Clustering");
