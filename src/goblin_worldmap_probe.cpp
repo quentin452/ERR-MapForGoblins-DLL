@@ -3,11 +3,14 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <memory>
 #include <thread>
+#include <unordered_map>
+#include <vector>
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -53,29 +56,38 @@ uintptr_t scan_region(uintptr_t base, size_t size, uintptr_t vtable_va)
     return hit;
 }
 
-// Walk committed private RW memory for the cursor vtable → cursor obj address.
-uintptr_t scan_for_cursor(uintptr_t vtable_va)
+// Collect ALL addresses holding the cursor vtable (there are several instances;
+// only the active map cursor's coords change as you move). Region-level SEH.
+void scan_region_all(uintptr_t base, size_t size, uintptr_t vtable_va,
+                     std::vector<uintptr_t> &out, size_t cap)
 {
+    __try
+    {
+        uintptr_t end = base + size;
+        for (uintptr_t p = base; p + 8 <= end && out.size() < cap; p += 8)
+            if (*reinterpret_cast<const volatile uint64_t *>(p) == vtable_va)
+                out.push_back(p);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+void scan_all_cursors(uintptr_t vtable_va, std::vector<uintptr_t> &out)
+{
+    constexpr size_t CAP = 256;
     MEMORY_BASIC_INFORMATION mbi;
     uintptr_t addr = 0;
-    while (VirtualQuery(reinterpret_cast<void *>(addr), &mbi, sizeof(mbi)))
+    while (out.size() < CAP && VirtualQuery(reinterpret_cast<void *>(addr), &mbi, sizeof(mbi)))
     {
         uintptr_t base = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
         size_t sz = mbi.RegionSize;
-        bool scanny = mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE &&
-                      (mbi.Protect == PAGE_READWRITE || mbi.Protect == PAGE_READONLY) &&
-                      sz >= 0x1000 && sz < 0x10000000;
-        if (scanny)
-        {
-            uintptr_t hit = scan_region(base, sz, vtable_va);
-            if (hit)
-                return hit;
-        }
+        if (mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE &&
+            (mbi.Protect == PAGE_READWRITE || mbi.Protect == PAGE_READONLY) &&
+            sz >= 0x1000 && sz < 0x10000000)
+            scan_region_all(base, sz, vtable_va, out, CAP);
         uintptr_t next = base + sz;
-        if (next <= addr) break; // overflow / no progress
+        if (next <= addr) break;
         addr = next;
     }
-    return 0;
 }
 
 void probe_loop()
@@ -90,45 +102,49 @@ void probe_loop()
     g_log->info("probe start: eldenring.exe base={:#x}, cursor vtable={:#x} (RVA {:#x})",
                 base, vtable_va, CURSOR_VTABLE_RVA);
 
-    uintptr_t cur = 0;       // cached cursor-object address
-    int miss = 0;
-    float lx = 0, lz = 0, ly = 0;
+    // Several objects carry the WorldMapCursorControl vtable; only the ACTIVE map
+    // cursor's coords change as you move. So track ALL instances and log each one's
+    // coords on change (with its address) — the changing one is the real cursor.
+    using clock = std::chrono::steady_clock;
+    std::vector<uintptr_t> candidates;
+    std::unordered_map<uintptr_t, std::array<float, 3>> last;
+    clock::time_point last_scan{};
+    int empty_logs = 0;
+
     while (true)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        std::this_thread::sleep_for(std::chrono::milliseconds(350));
+        auto now = clock::now();
 
-        // Re-validate cache (menu re-created each open → ptr moves/dies).
-        if (cur)
+        // (Re)scan the full address space periodically (and when empty) — the menu
+        // is re-created on each open, so new instances appear.
+        if (candidates.empty() || now - last_scan > std::chrono::seconds(5))
+        {
+            candidates.clear();
+            scan_all_cursors(vtable_va, candidates);
+            last_scan = now;
+            if (!candidates.empty())
+                g_log->info("scan: {} cursor-vtable instance(s)", candidates.size());
+            else if (++empty_logs % 6 == 0)
+                g_log->info("no cursor-vtable instances (exe version shifted the RVA?)");
+        }
+
+        for (uintptr_t a : candidates)
         {
             uint64_t v;
-            if (!seh_read8(reinterpret_cast<void *>(cur), &v) || v != vtable_va)
-                cur = 0;
-        }
-        if (!cur)
-        {
-            cur = scan_for_cursor(vtable_va);
-            if (cur)
-                g_log->info("cursor obj @ {:#x} (world-map menu @ {:#x})", cur,
-                            cur - CURSOR_OFF_IN_MENU);
-            else
-            {
-                if (++miss % 25 == 0)
-                    g_log->info("cursor not found (open the world map; or the exe "
-                                "version != RE doc → vtable RVA shifted)");
+            if (!seh_read8(reinterpret_cast<void *>(a), &v) || v != vtable_va)
+                continue; // instance died (menu closed)
+            float x, z, y;
+            if (!seh_read4(reinterpret_cast<void *>(a + OFF_X), &x) ||
+                !seh_read4(reinterpret_cast<void *>(a + OFF_Z), &z) ||
+                !seh_read4(reinterpret_cast<void *>(a + OFF_Y), &y))
                 continue;
-            }
-        }
-
-        float x, z, y;
-        if (seh_read4(reinterpret_cast<void *>(cur + OFF_X), &x) &&
-            seh_read4(reinterpret_cast<void *>(cur + OFF_Z), &z) &&
-            seh_read4(reinterpret_cast<void *>(cur + OFF_Y), &y))
-        {
-            // Log only on change (cursor moved) to keep the log readable.
-            if (x != lx || z != lz || y != ly)
+            auto &l = last[a];
+            if (x != l[0] || z != l[1] || y != l[2]) // moved → this is (likely) the active cursor
             {
-                g_log->info("cursor +0xFC={:.2f}  +0x104={:.2f}  +0x10C={:.2f}", x, z, y);
-                lx = x; lz = z; ly = y;
+                g_log->info("cursor @{:#x} (menu @{:#x}): +0xFC={:.2f}  +0x104={:.2f}  +0x10C={:.2f}",
+                            a, a - CURSOR_OFF_IN_MENU, x, z, y);
+                l = {x, z, y};
             }
         }
     }
