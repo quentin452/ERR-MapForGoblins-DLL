@@ -34,4 +34,9 @@ namespace goblin::generated
     // past the "?" — so it inherits the same per-profile offset. Generated per
     // profile beside ANON_ICON_ID.
     extern const uint16_t CLUSTER_ICON_ID;
+
+    // Cluster-depleted map-icon frame id (the GREEN "stack of dots"). The DLL swaps
+    // a cluster's iconId to this once all its members are collected. ANON_ICON_ID + 3
+    // (one past the quest-NPC frame) — same per-profile offset. Generated per profile.
+    extern const uint16_t CLUSTER_DONE_ICON_ID;
 }

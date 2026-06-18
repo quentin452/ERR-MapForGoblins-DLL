@@ -119,6 +119,17 @@ QUESTNPC_IMG = PROJECT / "assets" / "badges" / "quest_npc_glyph.png"
 QUESTNPC_FRAME_INDEX = 442    # 0-indexed; one past cluster (441). DLL iconId = +1
 QUESTNPC_GLYPH_SHAPE = 1101   # free charId; cloned from badge shape 172
 
+# ── Cluster-depleted glyph (clustering, Thread 5) ──
+# A GREEN "stack of dots" (assets/badges/cluster_done_glyph.png, via
+# make_cluster_done_icon.py) — the DLL swaps a cluster's iconId to this once all its
+# members are collected, so a depleted pile reads as done instead of a stale count.
+# Same family/mechanism as the teal cluster glyph; appended one past quest-NPC, so
+# CLUSTER_DONE_ICON_ID = ANON_ICON_ID + 3 (= 444 offset-0, 852 convergence).
+CLUSTER_DONE_PROFILES = {"vanilla", "erte", "convergence", "err"}
+CLUSTER_DONE_IMG = PROJECT / "assets" / "badges" / "cluster_done_glyph.png"
+CLUSTER_DONE_FRAME_INDEX = 443  # 0-indexed; one past quest-NPC (442). DLL iconId = +1
+CLUSTER_DONE_GLYPH_SHAPE = 1102 # free charId; cloned from badge shape 172
+
 # ── MapForGoblins logo over the map's decorative plaque (obj_246) ──
 # Sprite 246 places MENU_FL_Map (char 10), a decorative plaque on the map UI, at
 # scale 0.5. char 10 is ALSO a real icon in sprite 171, so we can't replace it
@@ -278,6 +289,13 @@ def add_quest_npc_icon(vroot, vsprite):
     return _append_round_glyph(vroot, vsprite, QUESTNPC_GLYPH_SHAPE)
 
 
+def add_cluster_done_icon(vroot, vsprite):
+    """Append the cluster-depleted glyph frame (shape CLUSTER_DONE_GLYPH_SHAPE) to
+    sprite 171, one past the quest-NPC frame. Returns the index
+    (= CLUSTER_DONE_FRAME_INDEX + offset). MUST be called AFTER add_quest_npc_icon."""
+    return _append_round_glyph(vroot, vsprite, CLUSTER_DONE_GLYPH_SHAPE)
+
+
 def fit_logo_square(out_png, size=256):
     """Fit the logo (LOGO_SRC) into a transparent size×size square (scaled to
     full height, centred) so it maps cleanly onto the square clone shape."""
@@ -331,6 +349,8 @@ def build_err_anon_gfx():
         sys.exit(f"cluster glyph png missing: {CLUSTER_IMG} (run tools/make_cluster_icon.py)")
     if not QUESTNPC_IMG.exists():
         sys.exit(f"quest-NPC glyph png missing: {QUESTNPC_IMG} (run tools/make_quest_npc_icon.py)")
+    if not CLUSTER_DONE_IMG.exists():
+        sys.exit(f"cluster-done glyph png missing: {CLUSTER_DONE_IMG} (run tools/make_cluster_done_icon.py)")
     out_gfx = PROJECT / "assets" / "menu" / "02_120_worldmap_err.gfx"
     print(f"profile=err  base={OURS_GFX}")
     tmp = Path(tempfile.mkdtemp(prefix="mfg_gfx_"))
@@ -349,6 +369,9 @@ def build_err_anon_gfx():
         qidx = add_quest_npc_icon(vroot, vsprite)  # one past the cluster -> 442
         if qidx != QUESTNPC_FRAME_INDEX:
             sys.exit(f"quest-NPC glyph (err): frame landed at {qidx}, expected {QUESTNPC_FRAME_INDEX}")
+        didx = add_cluster_done_icon(vroot, vsprite)  # one past quest-NPC -> 443
+        if didx != CLUSTER_DONE_FRAME_INDEX:
+            sys.exit(f"cluster-done glyph (err): frame landed at {didx}, expected {CLUSTER_DONE_FRAME_INDEX}")
         logo_ok = LOGO_SRC.exists() and add_logo(vroot)
         tree.write(out_xml, encoding="utf-8", xml_declaration=True)
         print("compiling...")
@@ -365,6 +388,10 @@ def build_err_anon_gfx():
                    str(QUESTNPC_GLYPH_SHAPE), str(QUESTNPC_IMG)])
         print(f"quest-NPC glyph: frame at index {qidx}; embedded {QUESTNPC_IMG.name} "
               f"into shape {QUESTNPC_GLYPH_SHAPE}")
+        run_ffdec(["-replace", str(out_gfx), str(out_gfx),
+                   str(CLUSTER_DONE_GLYPH_SHAPE), str(CLUSTER_DONE_IMG)])
+        print(f"cluster-done glyph: frame at index {didx}; embedded {CLUSTER_DONE_IMG.name} "
+              f"into shape {CLUSTER_DONE_GLYPH_SHAPE}")
         if logo_ok:
             logo_png = tmp / "logo_sq.png"; fit_logo_square(logo_png)
             run_ffdec(["-replace", str(out_gfx), str(out_gfx), str(LOGO_SHAPE), str(logo_png)])
@@ -543,6 +570,19 @@ def main():
             print(f"quest-NPC glyph: appended frame at index {qidx} "
                   f"(shape {QUESTNPC_GLYPH_SHAPE} from clone of 172)")
 
+        # ── cluster-depleted glyph frame (one past quest-NPC; cluster-done profiles) ──
+        if profile in CLUSTER_DONE_PROFILES:
+            if not CLUSTER_DONE_IMG.exists():
+                sys.exit(f"cluster-done glyph png missing: {CLUSTER_DONE_IMG} (run tools/make_cluster_done_icon.py)")
+            didx = add_cluster_done_icon(vroot, vsprite)
+            dexpected = CLUSTER_DONE_FRAME_INDEX + (base_frames - 348)
+            if didx != dexpected:
+                sys.exit(f"cluster-done glyph: frame landed at {didx}, expected {dexpected} "
+                         f"(= 443 + offset {base_frames - 348}) — quest-NPC frame moved? "
+                         f"keep generate_data CLUSTER_DONE_ICON_ID in sync")
+            print(f"cluster-done glyph: appended frame at index {didx} "
+                  f"(shape {CLUSTER_DONE_GLYPH_SHAPE} from clone of 172)")
+
         logo_ok = profile in LOGO_PROFILES and LOGO_SRC.exists() and add_logo(vroot)
 
         van.write(out_xml, encoding="utf-8", xml_declaration=True)
@@ -574,6 +614,12 @@ def main():
             run_ffdec(["-replace", str(out_gfx), str(out_gfx),
                        str(QUESTNPC_GLYPH_SHAPE), str(QUESTNPC_IMG)])
             print(f"quest-NPC glyph: embedded {QUESTNPC_IMG.name} into shape {QUESTNPC_GLYPH_SHAPE}")
+
+        # ── embed the cluster-done raster into the cloned shape (cluster-done profiles) ──
+        if profile in CLUSTER_DONE_PROFILES:
+            run_ffdec(["-replace", str(out_gfx), str(out_gfx),
+                       str(CLUSTER_DONE_GLYPH_SHAPE), str(CLUSTER_DONE_IMG)])
+            print(f"cluster-done glyph: embedded {CLUSTER_DONE_IMG.name} into shape {CLUSTER_DONE_GLYPH_SHAPE}")
 
         # ── embed the MapForGoblins logo into obj_246 (logo profiles) ──
         if logo_ok:
