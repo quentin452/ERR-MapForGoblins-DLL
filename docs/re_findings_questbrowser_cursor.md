@@ -2,8 +2,18 @@
 
 Static Ghidra RE (project `D:\ghidra_proj2\ER.gpr`, Ghidra 12.1.2, headless scripts
 `D:\ghidra_scripts\re_v9..v12.java`) answering `docs/windows_re_briefing_playerpos_questbrowser.md`
-**Target B**. **All static** (decompiler) — confidence flagged; dynamic verification
+**Target B**. Static (decompiler) + a live READ confirmation; dynamic verification
 recipe in §5 (and the standalone `D:\DOWNLOAD\MapForGoblins_verify_cursor_recipe.md`).
+
+> **LIVE READ CONFIRMED (2026-06-18, app 2.6.2.0 / ERR 2.2.9.6, 720p windowed):** with the
+> world map OPEN + cursor moving, the in-DLL probe (`debug_worldmap_probe`) captured the
+> active cursor — **`+0xFC` = X in marker space** (ranged 3183→3843), `+0x104` ranged
+> 2472→4057. So RVA `0x2b29a90` is correct for this build (no drift); the cursor object +
+> offsets are right. Probe pitfall: it only logs instances whose coords change → **map must
+> be open + cursor moving**, else only dormant ≈0 cursor objects show.
+> **Per the decompiler the tick re-writes the pair `(+0xFC, +0x100)`** (the true reticle pos);
+> the probe logged `+0x104` (a neighbour field). **Still TODO:** the Cheat-Engine WRITE/pan
+> test to pin which Z partner (+0x100 vs +0x104) actually moves the reticle.
 
 Imagebase `0x140000000`. RVAs are for the analysed build — **resolve by AOB on other
 patches** (VMProtect drifts RVAs; the probe re-scans the vtable so it is patch-robust).
