@@ -65,6 +65,7 @@ static void safe_fragment_eviction_seh()
     __try
     {
         goblin::refresh_fragment_eviction();
+        goblin::refresh_royal_eviction();  // after frag-evict so the post-burn hide wins
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
     {

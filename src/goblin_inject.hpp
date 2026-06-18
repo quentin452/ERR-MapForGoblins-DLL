@@ -59,6 +59,11 @@ namespace goblin
                                      uint32_t gate_flag);
     int refresh_fragment_eviction();
 
+    // Thread 4: hide Leyndell Royal Capital (areaNo 11) markers once the Erdtree
+    // burns (StoryErdtreeOnFire). Inverse of the ashen gate; park-only. Call from
+    // the refresh loop AFTER refresh_fragment_eviction so the hide wins.
+    int refresh_royal_eviction();
+
     // Row ids used for both the TutorialParam rows AND the TutorialBody.fmg
     // entries holding each banner's STATIC text. Injected by
     // inject_tutorial_popup_rows() (param table) and goblin_messages

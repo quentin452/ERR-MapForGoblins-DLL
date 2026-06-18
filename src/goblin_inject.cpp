@@ -125,6 +125,14 @@ static std::set<uint8_t *> g_lot_backed_set;
 // by apply_map_logic so they only appear once the Erdtree has burned.
 static std::set<uint64_t> g_ashen_rows;
 
+// Data pointers of Leyndell Royal Capital (m11_00, areaNo 11) markers — the
+// INVERSE of the ashen gate: hidden (areaNo 99) once StoryErdtreeOnFire sets,
+// because the Royal Capital is consumed by the Ashen Capital after the burn.
+// Park-only (burn is permanent → never restore); refresh_royal_eviction()
+// applies it after fragment-eviction so it wins. Clustered royal rows are NOT
+// registered (the cluster owns their areaNo).
+static std::vector<uint8_t *> g_royal_rows;
+
 // ─── Per-section runtime visibility (in-game family-group toggle) ─────
 //
 // The 7 INI display groups (mirrors goblin_config_schema's sections). A row's
@@ -1001,6 +1009,7 @@ void goblin::inject_map_entries()
         memcpy(new_param_file + data_offset, all_rows[i].data_ptr, PARAM_DATA_SIZE);
         // Bug A: reproject injected dungeon rows onto the overworld so minor-
         // dungeon icons render. original_row_id == 0 ⇒ vanilla row (left as-is).
+        bool was_royal = false;  // Leyndell Royal Capital (m11_00) → hide post-burn
         if (goblin::config::projectDungeons && all_rows[i].original_row_id != 0)
         {
             auto *prow = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(
@@ -1011,6 +1020,10 @@ void goblin::inject_map_entries()
             // showing them from the start.
             if (prow->areaNo == 35)
                 g_ashen_rows.insert(static_cast<uint64_t>(all_rows[i].row_id));
+            // Royal Capital (areaNo 11) is the inverse — visible until the burn,
+            // then hidden. Tag before projection clobbers areaNo; registered below
+            // (only if not clustered).
+            was_royal = (prow->areaNo == 11);
             if (project_dungeon_row_to_overworld(prow))
                 reprojected_dungeons++;
         }
@@ -1137,6 +1150,11 @@ void goblin::inject_map_entries()
                                       all_rows[i].is_kindling,
                                       static_cast<uint64_t>(all_rows[i].row_id)});
         }
+
+        // Royal Capital row → register for post-burn hide, unless clustered (a
+        // clustered royal row is already parked under its cluster).
+        if (was_royal && !is_clustered_member)
+            g_royal_rows.push_back(cp);
     }
     } // map.inject.build_rows
 
@@ -1826,6 +1844,31 @@ int goblin::refresh_fragment_eviction()
                      g_frag_rows.size(), evicted, api_ok);
     }
     return evicted;
+}
+
+// Thread 4 — inverse of the ashen gate. Once StoryErdtreeOnFire (flag 118) sets,
+// the Leyndell Royal Capital is consumed by the Ashen Capital, so its markers
+// must vanish. Park-only (the burn is permanent → never restore). Must run AFTER
+// refresh_fragment_eviction so the hide wins over a fragment "discovered" restore.
+int goblin::refresh_royal_eviction()
+{
+    GOBLIN_BENCH("refresh.royal_eviction");
+    if (g_royal_rows.empty()) return 0;
+    // Safety: only act when the flag API is warm (AlwaysOn 6001 reads true), else
+    // leave royal rows to their normal gating — never blank on a cold API.
+    if (!orp_flag_set(6001)) return 0;
+    if (!orp_flag_set(118 /* goblin::flag::StoryErdtreeOnFire */)) return 0;  // not burned → visible
+    int parked = 0;
+    for (auto *p : g_royal_rows)
+        if (p[0x20] != 99) { p[0x20] = 99; parked++; }
+    static bool logged = false;
+    if (!logged && parked)
+    {
+        logged = true;
+        spdlog::info("[ROYAL-EVICT] Erdtree burned → parked {} Royal Capital rows",
+                     g_royal_rows.size());
+    }
+    return parked;
 }
 
 struct FlagOrPair { uint32_t primary; uint32_t alt; };
