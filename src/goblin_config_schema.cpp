@@ -65,6 +65,7 @@ namespace goblin::config
     bool enableClustering = false;
     uint8_t clusterThreshold = 8;     // a bucket clusters only if it holds > this many markers
     std::string clusterExclude = "";  // category names kept exact (never clustered)
+    std::string clusterThresholdOverrides = "";  // "Name:N" per-category threshold overrides
     bool questNpcQuestAware = false;  // gate quest-NPC markers on quest-active flags
 }
 
@@ -151,6 +152,13 @@ namespace
                          "(comma-separated, matched loosely vs the category name, e.g.\n"
                          "Graces, Bosses, GreatRunes). Driven by the per-category 'cluster'\n"
                          "checkboxes in the overlay (F1); takes effect after Save + restart.",
+                         false, nullptr},
+                IniEntry{"cluster_threshold_overrides", IniType::String, &cfg::clusterThresholdOverrides, "",
+                         "Per-category cluster thresholds: \"Name:N\" comma-separated, by\n"
+                         "EXACT category name (e.g. SmithingStones:4,WorldBosses:20). A\n"
+                         "category not listed uses cluster_threshold above. Each category\n"
+                         "now clusters separately per map cell. Driven by the overlay's\n"
+                         "per-category threshold inputs; takes effect after Save + restart.",
                          false, nullptr},
             }},
 

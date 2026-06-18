@@ -312,6 +312,10 @@ static std::atomic<bool> g_category_dirty[NUM_CATEGORIES];  // set by menu, appl
 // from config::clusterExclude at init; toggled live by the menu but only takes
 // effect after Save + restart, since clustering is planned once at inject.
 static std::atomic<bool> g_category_cluster[NUM_CATEGORIES];
+// Per-category cluster threshold for menu display (effective value: override or
+// the global default). Seeded at init; edits persist to clusterThresholdOverrides
+// on Save and take effect after restart.
+static std::atomic<int> g_category_threshold[NUM_CATEGORIES];
 
 // Coordination for the multiple areaNo owners. Section visibility, fragment-
 // eviction and collected-eviction all write WORLD_MAP_POINT_PARAM_ST.areaNo
@@ -734,6 +738,36 @@ static bool category_clustered_cfg(Category cat)
     return !category_in_list(goblin::config::clusterExclude, cat);
 }
 
+// Cluster threshold for `cat`: a per-category override from
+// cluster_threshold_overrides ("Name:N,Name2:M", loose name match) if present,
+// else the global clusterThreshold. Read at inject when the plan is built.
+static int cluster_threshold_for_cfg(Category cat)
+{
+    int def = goblin::config::clusterThreshold;
+    const std::string &ov = goblin::config::clusterThresholdOverrides;
+    if (ov.empty()) return def;
+    std::string catn = norm_alnum(goblin::markers::category_name(cat));
+    if (catn.empty()) return def;
+    for (size_t i = 0; i < ov.size();)
+    {
+        size_t j = ov.find(',', i);
+        if (j == std::string::npos) j = ov.size();
+        std::string tok = ov.substr(i, j - i);
+        size_t c = tok.find(':');
+        if (c != std::string::npos)
+        {
+            std::string nm = norm_alnum(tok.substr(0, c));
+            int v = std::atoi(tok.substr(c + 1).c_str());
+            // Exact name match (not substring) so "SmithingStones:4" does NOT bleed
+            // into SmithingStonesLow/Rare; the overlay writes full category names.
+            if (!nm.empty() && v >= 0 && catn == nm)
+                return v;
+        }
+        i = j + 1;
+    }
+    return def;
+}
+
 static bool *category_config_ptr(Category cat)
 {
     return &goblin::config::showCategory[static_cast<int>(cat)];
@@ -855,9 +889,13 @@ void goblin::inject_map_entries()
         struct Bucket { std::vector<size_t> members; double sx = 0, sz = 0; float py = 0;
                         uint8_t area = 0, gx = 0, gz = 0; Category cat{}; };
         std::unordered_map<uint64_t, Bucket> buckets;
-        auto cell_key = [](uint8_t area, int cx, int cz) -> uint64_t {
-            // bias cx/cz into 24-bit unsigned lanes (world cells well within ±8M)
-            return (static_cast<uint64_t>(area) << 48) |
+        // Key by category too: each category clusters separately in a cell, so a
+        // per-category threshold is well-defined and the cluster label/icon can be
+        // typed (e.g. "Smithing Stones (12)" + "Golden Runes (9)" instead of one
+        // mixed pile). cat in bits 56-63, area 48-55, cx/cz in 24-bit lanes.
+        auto cell_key = [](Category cat, uint8_t area, int cx, int cz) -> uint64_t {
+            return (static_cast<uint64_t>(static_cast<uint8_t>(cat)) << 56) |
+                   (static_cast<uint64_t>(area) << 48) |
                    ((static_cast<uint64_t>((cx + 0x400000) & 0xFFFFFF)) << 24) |
                     (static_cast<uint64_t>((cz + 0x400000) & 0xFFFFFF));
         };
@@ -872,7 +910,7 @@ void goblin::inject_map_entries()
                 project_dungeon_row_to_overworld(&tmp);
             int cx = static_cast<int>(std::floor(tmp.posX / CLUSTER_CELL));
             int cz = static_cast<int>(std::floor(tmp.posZ / CLUSTER_CELL));
-            auto &b = buckets[cell_key(tmp.areaNo, cx, cz)];
+            auto &b = buckets[cell_key(entries[i].category, tmp.areaNo, cx, cz)];
             b.members.push_back(i);
             b.sx += tmp.posX; b.sz += tmp.posZ; b.py = tmp.posY;
             b.area = tmp.areaNo; b.gx = tmp.gridXNo; b.gz = tmp.gridZNo;
@@ -889,7 +927,7 @@ void goblin::inject_map_entries()
         for (auto &kv : buckets)
         {
             Bucket &b = kv.second;
-            if (b.members.size() <= goblin::config::clusterThreshold) continue;
+            if (static_cast<int>(b.members.size()) <= cluster_threshold_for_cfg(b.cat)) continue;
             auto *cd = new from::paramdef::WORLD_MAP_POINT_PARAM_ST(*entries[b.members[0]].data);
             cd->areaNo = b.area; cd->gridXNo = b.gx; cd->gridZNo = b.gz;
             cd->posX = static_cast<float>(b.sx / b.members.size());
@@ -907,7 +945,10 @@ void goblin::inject_map_entries()
             cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
             cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
             {
+                // Buckets are now single-category, so label by TYPE (+ region for
+                // context when known): "Smithing Stones — Limgrave (12)".
                 int cnt = static_cast<int>(b.members.size());
+                std::string type = goblin::markers::category_name(b.cat);
                 std::string region = goblin::cluster_region_label(b.area, b.gx, b.gz);
                 if (region.empty())
                 {
@@ -924,9 +965,9 @@ void goblin::inject_map_entries()
                     }
                     region = goblin::area_region_label(best);
                 }
-                std::string label = region.empty()
-                    ? std::to_string(cnt)
-                    : region + " (" + std::to_string(cnt) + ")";
+                std::string label = type.empty() ? region : type;
+                if (!region.empty() && !type.empty()) label += " — " + region;
+                label += " (" + std::to_string(cnt) + ")";
                 g_cluster_census.emplace_back(textid, std::move(label));
             }
             {
@@ -1406,6 +1447,7 @@ void goblin::inject_map_entries()
         {
             bool on = category_clustered_cfg(static_cast<Category>(c));
             g_category_cluster[c].store(on);
+            g_category_threshold[c].store(cluster_threshold_for_cfg(static_cast<Category>(c)));
             if (!on) excluded++;
         }
         if (excluded)
@@ -1855,6 +1897,32 @@ void goblin::ui::set_category_clustered(int idx, bool clustered)
     // effect after Save + restart. Persisted into clusterExclude by the Save path.
 }
 
+int goblin::ui::category_threshold(int idx)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return goblin::config::clusterThreshold;
+    return g_category_threshold[idx].load();
+}
+
+void goblin::ui::set_category_threshold(int idx, int threshold)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return;
+    if (threshold < 0) threshold = 0;
+    if (threshold > 255) threshold = 255;
+    g_category_threshold[idx].store(threshold);  // persisted on Save (overrides), restart to apply
+}
+
+int goblin::ui::global_threshold() { return goblin::config::clusterThreshold; }
+void goblin::ui::set_global_threshold(int t)
+{
+    if (t < 0) t = 0; if (t > 255) t = 255;
+    int old = goblin::config::clusterThreshold;
+    goblin::config::clusterThreshold = static_cast<uint8_t>(t);
+    // Categories still tracking the old default follow the new default, so they
+    // aren't written as spurious per-category overrides on Save.
+    for (int c = 0; c < NUM_CATEGORIES; c++)
+        if (g_category_threshold[c].load() == old) g_category_threshold[c].store(t);
+}
+
 // Save request posted by the menu; the watcher does the file I/O.
 static std::atomic<bool> g_save_req{false};
 void goblin::ui::request_save() { g_save_req.store(true); }
@@ -1892,6 +1960,24 @@ static void persist_settings()
                 ex += goblin::markers::category_name(static_cast<Category>(c));
             }
         goblin::config::clusterExclude = std::move(ex);
+    }
+
+    // Serialise per-category threshold overrides: "Name:N" for every category
+    // whose effective threshold differs from the global default. Empty if none.
+    {
+        int def = goblin::config::clusterThreshold;
+        std::string ov;
+        for (int c = 0; c < NUM_CATEGORIES; c++)
+        {
+            int t = g_category_threshold[c].load();
+            if (t != def)
+            {
+                if (!ov.empty()) ov += ',';
+                ov += std::string(goblin::markers::category_name(static_cast<Category>(c)))
+                      + ':' + std::to_string(t);
+            }
+        }
+        goblin::config::clusterThresholdOverrides = std::move(ov);
     }
 
     goblin::save_all_bool_settings(goblin::config_ini_path());

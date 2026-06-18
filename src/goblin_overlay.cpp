@@ -412,13 +412,26 @@ namespace
                         goblin::ui::set_category_visible(c, cv);
                     // Right-aligned cluster opt-in: unchecked = this category stays
                     // exact markers, never folded into a cluster icon.
-                    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 70.0f);
+                    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 150.0f);
                     bool clu = goblin::ui::category_clustered(c);
                     if (ImGui::Checkbox("cluster", &clu))
                         goblin::ui::set_category_clustered(c, clu);
                     if (ImGui::IsItemHovered())
                         ImGui::SetTooltip("Fold this category's dense piles into a cluster icon.\n"
                                           "Unchecked = always exact. Takes effect after Save + restart.");
+                    // Per-category threshold (clusters only where a cell holds MORE
+                    // than this many of THIS category). Only when clustered.
+                    if (clu)
+                    {
+                        ImGui::SameLine();
+                        int thr = goblin::ui::category_threshold(c);
+                        ImGui::SetNextItemWidth(70.0f);
+                        if (ImGui::InputInt(">thr", &thr))
+                            goblin::ui::set_category_threshold(c, thr);
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Cluster only where a map cell holds MORE than this many\n"
+                                              "of this category. Default = global threshold. Save + restart.");
+                    }
                     ImGui::PopID();
                 }
                 ImGui::TreePop();
@@ -436,6 +449,16 @@ namespace
             }
 
             ImGui::SeparatorText("Clustering");
+            {
+                // Global default threshold (per-category overrides set per row above).
+                int gt = goblin::ui::global_threshold();
+                ImGui::SetNextItemWidth(90.0f);
+                if (ImGui::InputInt("Default threshold (Save + restart)", &gt))
+                    goblin::ui::set_global_threshold(gt);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("A category clusters in a map cell holding MORE than this many\n"
+                                      "of it. Per-category overrides are set next to each 'cluster' box.");
+            }
             if (goblin::ui::clustering_active())
             {
                 // Clusters built this session → LIVE on/off (collapse dense piles

@@ -113,6 +113,10 @@ namespace goblin
         // like showAllExcept) that stay EXACT markers and never fold into a cluster.
         // Empty = every category is clusterable (the v1 behaviour).
         extern std::string clusterExclude;
+        // Per-category cluster-threshold overrides: "Name:N,Name2:M" (loose name
+        // match). A category not listed uses the global clusterThreshold. Driven by
+        // the per-category threshold inputs in the overlay.
+        extern std::string clusterThresholdOverrides;
 
         // Thread 1 v1.5 — quest-aware quest-NPC markers. When true, a WorldQuestNPC
         // marker for one of the 34 curated questlines shows only while that quest is

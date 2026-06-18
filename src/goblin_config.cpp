@@ -305,13 +305,15 @@ void goblin::save_all_bool_settings(const std::filesystem::path &ini_path)
                 continue;
             if (e.err_only && goblin::profile_is_vanilla())
                 continue;
-            // Bool entries written from their live value; String entries round-
-            // tripped from their config var so menu-driven strings (e.g.
-            // cluster_exclude) persist too. Other types (keys, delays) untouched.
+            // Bool/String/U8 entries round-tripped from their config var so
+            // menu-driven values (cluster_exclude, cluster_threshold, …) persist.
+            // Other types (keys) untouched.
             if (e.type == goblin::IniType::Bool)
                 ini[section.name][e.key] = *reinterpret_cast<bool *>(e.target) ? "true" : "false";
             else if (e.type == goblin::IniType::String)
                 ini[section.name][e.key] = *reinterpret_cast<std::string *>(e.target);
+            else if (e.type == goblin::IniType::U8)
+                ini[section.name][e.key] = std::to_string(*reinterpret_cast<uint8_t *>(e.target));
         }
     }
 

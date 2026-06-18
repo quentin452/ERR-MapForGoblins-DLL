@@ -153,6 +153,12 @@ namespace goblin
         // effect after Save + restart, since the cluster plan is built at inject.
         bool category_clustered(int idx);
         void set_category_clustered(int idx, bool clustered);
+        // Per-category cluster threshold (effective: override or global default).
+        // Persisted into cluster_threshold_overrides on Save; restart to apply.
+        int  category_threshold(int idx);
+        void set_category_threshold(int idx, int threshold);
+        int  global_threshold();
+        void set_global_threshold(int t);
 
         // Persist the current section/category visibility to the ini (the menu's
         // Save button). Posts a request; the watcher thread does the file I/O.
