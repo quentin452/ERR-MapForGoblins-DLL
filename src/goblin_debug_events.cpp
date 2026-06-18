@@ -84,32 +84,66 @@ constexpr int BURST_MIN = 4; // >=this many collectible-unknowns in BURST_SPAN =
 // without grant data we can't correlate, so fall back to the looser P2 report).
 bool g_correlate = false;
 
-// Timestamps (ns) of recent AddItemFunc grants, for flag↔grant correlation.
+// Recent AddItemFunc grants (time + granted item id), for flag↔grant correlation
+// and to name the gap toast by item category.
+struct GrantEvt
+{
+    int64_t t;
+    uint32_t item_id;
+};
 std::mutex g_grant_mtx;
-std::vector<int64_t> g_grant_times;
+std::vector<GrantEvt> g_grants;
 
-void record_grant_time(int64_t t)
+void record_grant(int64_t t, uint32_t item_id)
 {
     std::lock_guard<std::mutex> lk(g_grant_mtx);
-    g_grant_times.push_back(t);
+    g_grants.push_back({t, item_id});
 }
 
-bool grant_within(int64_t t, int64_t window)
+// If a grant falls within ±window of t, return true and set out_id to the
+// NEAREST such grant's item id (0 if its entry was unreadable).
+bool grant_within(int64_t t, int64_t window, uint32_t &out_id)
 {
     std::lock_guard<std::mutex> lk(g_grant_mtx);
-    for (int64_t g : g_grant_times)
-        if (g >= t - window && g <= t + window)
-            return true;
-    return false;
+    bool found = false;
+    int64_t best = window + 1;
+    for (const GrantEvt &g : g_grants)
+    {
+        int64_t d = g.t > t ? g.t - t : t - g.t;
+        if (d <= window && d < best)
+        {
+            best = d;
+            out_id = g.item_id;
+            found = true;
+        }
+    }
+    return found;
 }
 
-void prune_grant_times(int64_t before)
+void prune_grants(int64_t before)
 {
     std::lock_guard<std::mutex> lk(g_grant_mtx);
-    auto &v = g_grant_times;
+    auto &v = g_grants;
     v.erase(std::remove_if(v.begin(), v.end(),
-                           [before](int64_t g) { return g < before; }),
+                           [before](const GrantEvt &g) { return g.t < before; }),
             v.end());
+}
+
+// Item category from the runtime item id's high nibble. Index matches
+// goblin::GAP_CAT_NAMES / gap_cat_toast_id order.
+const char *const GAP_CAT_LOG[] = {"Armament", "Armour", "Talisman",
+                                   "Goods", "Ash of War", "item"};
+int item_category_index(uint32_t id)
+{
+    switch ((id >> 28) & 0xF)
+    {
+    case 0x0: return 0; // Armament / weapon
+    case 0x1: return 1; // Armour / protector
+    case 0x2: return 2; // Talisman / accessory
+    case 0x4: return 3; // Goods
+    case 0x8: return 4; // Ash of War / gem
+    default:  return 5; // other
+    }
 }
 
 // SEH-guarded raw copy: the detours read pointers the game hands us; a bad/borderline
@@ -223,7 +257,7 @@ void flag_drain_loop()
         }
 
         int64_t now = now_ns();
-        prune_grant_times(now - 10'000'000'000); // keep ~10 s of grant history
+        prune_grants(now - 10'000'000'000); // keep ~10 s of grant history
 
         // Finalize pending unknowns old enough that any correlated grant has landed.
         std::vector<FlagEvt> still;
@@ -245,14 +279,17 @@ void flag_drain_loop()
                 sup_burst++;
                 continue;
             }
-            if (grant_within(e.t_ns, CORRELATION_WINDOW_NS))
+            uint32_t gid = 0;
+            if (grant_within(e.t_ns, CORRELATION_WINDOW_NS, gid))
             {
                 reported++;
-                g_log->warn("UNKNOWN placed-item flag {} (cat {}) — collected item "
-                            "with NO map marker; coverage gap candidate",
-                            e.id, (e.id / 1000u) % 10u);
-                // Live in-game notice (queued; the watcher spaces multiple).
-                goblin::enqueue_toast(goblin::TUTORIAL_FMG_ID_COVERAGE_GAP);
+                int cat = item_category_index(gid);
+                g_log->warn("UNKNOWN placed-item flag {} (flag-cat {}) — collected "
+                            "{} {:#010x} with NO map marker; coverage gap candidate",
+                            e.id, (e.id / 1000u) % 10u, GAP_CAT_LOG[cat], gid);
+                // Live in-game notice, named by item category (queued; watcher
+                // spaces multiple). gid==0 (unreadable entry) → "item" bucket.
+                goblin::enqueue_toast(goblin::gap_cat_toast_id(cat));
             }
             else
                 sup_uncorr++; // collect-shaped flag, no nearby grant → script/region
@@ -304,13 +341,15 @@ constexpr const char *ADD_ITEM_AOB =
 uint64_t hk_add_item(void *inv, uint8_t *entries, uint8_t *base, uint64_t count,
                      uint64_t pad)
 {
-    record_grant_time(now_ns()); // for flag↔grant correlation in the drain thread
+    int64_t t = now_ns();
+    uint32_t item_id = 0;
     uint8_t buf[24];
     if (entries && safe_copy(entries, buf, sizeof(buf)))
     {
         uint32_t f0, f4;
         std::memcpy(&f0, buf + 0, 4);
         std::memcpy(&f4, buf + 4, 4);
+        item_id = f4; // entry+4 = item id (confirmed in-game; entry+0 = quantity)
         // raw hex of the first entry + the two candidate id/qty fields, so a
         // controlled pickup pins which is the item id.
         g_log->info(
@@ -321,6 +360,7 @@ uint64_t hk_add_item(void *inv, uint8_t *entries, uint8_t *base, uint64_t count,
             buf[7], buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14],
             buf[15]);
     }
+    record_grant(t, item_id); // for flag↔grant correlation + gap-toast category
     return g_orig_add_item(inv, entries, base, count, pad);
 }
 

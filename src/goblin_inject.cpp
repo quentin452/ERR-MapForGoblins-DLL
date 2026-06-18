@@ -1508,6 +1508,8 @@ bool goblin::inject_tutorial_popup_rows()
         all_rows.push_back({goblin::section_toast_id(s, true),  template_data});
         all_rows.push_back({goblin::section_toast_id(s, false), template_data});
     }
+    for (int c = 0; c < goblin::GAP_CAT_COUNT; c++)
+        all_rows.push_back({goblin::gap_cat_toast_id(c), template_data});
 
     std::sort(all_rows.begin(), all_rows.end(),
               [](const RowSource &a, const RowSource &b) { return a.row_id < b.row_id; });
@@ -1532,11 +1534,11 @@ bool goblin::inject_tutorial_popup_rows()
         // to 1 explicitly: ERR's template carries 1, but vanilla menuType=0
         // rows ship repeatType=0 (show-once) — the toast must repeat.
         int32_t rid = all_rows[i].row_id;
-        // All MFG toast rows: the 4 fixed banners + the 14 section banners, a
-        // contiguous range above the highest ERR codex id (9004250). Vanilla/ERR
-        // rows never fall in here, so the range test is exact.
+        // All MFG toast rows: the fixed banners + coverage-gap + 14 section
+        // banners + 6 per-category gap banners — a contiguous range above the
+        // highest ERR codex id (9004250). Vanilla/ERR rows never fall in here.
         if (rid >= goblin::TUTORIAL_FMG_ID_ON &&
-            rid <= goblin::section_toast_id(goblin::TUTORIAL_SECTION_COUNT - 1, false))
+            rid <= goblin::gap_cat_toast_id(goblin::GAP_CAT_COUNT - 1))
         {
             auto *p = new_file + data_offset;
             *reinterpret_cast<uint8_t *>(p + 4)  = 0;      // menuType = 0 (toast)

@@ -90,6 +90,15 @@ namespace goblin
         return TUTORIAL_FMG_ID_SECTION_BASE + section * 2 + (visible ? 0 : 1);
     }
 
+    // Per-category coverage-gap toasts. The item category is read from the
+    // granted item id's high nibble (Armament/Armour/Talisman/Goods/Ash of War/
+    // other). Placed ABOVE the section block (9004260..73) so ids don't collide.
+    constexpr int TUTORIAL_FMG_ID_GAP_CAT_BASE = 9004280; // base .. base+COUNT-1
+    constexpr int GAP_CAT_COUNT                = 6;
+    inline constexpr const wchar_t *GAP_CAT_NAMES[GAP_CAT_COUNT] = {
+        L"Armament", L"Armour", L"Talisman", L"Goods", L"Ash of War", L"item"};
+    inline int gap_cat_toast_id(int cat) { return TUTORIAL_FMG_ID_GAP_CAT_BASE + cat; }
+
     // Inject the codex-toast TutorialParam rows for the F10/F9 banners. Rows
     // get menuType=0 (upper-left codex caption widget) with textId pointing
     // at TutorialBody.fmg entries injected by goblin_messages.

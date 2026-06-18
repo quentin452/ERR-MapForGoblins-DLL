@@ -967,6 +967,18 @@ void goblin::setup_messages()
         // each of the 7 display groups. The wide strings are owned by sec_texts
         // (NewEntry.text is a borrowed pointer) which lives until the patch call
         // below returns.
+        // Per-category coverage-gap banners: "Unmapped <category> collected".
+        // gap_texts owns the wide strings (NewEntry.text is borrowed) until the
+        // patch call below returns.
+        std::vector<std::wstring> gap_texts;
+        gap_texts.reserve(goblin::GAP_CAT_COUNT);
+        for (int c = 0; c < goblin::GAP_CAT_COUNT; c++)
+        {
+            gap_texts.push_back(std::wstring(L"Map for Goblins: unmapped ") +
+                                goblin::GAP_CAT_NAMES[c] + L" collected (coverage gap)");
+            tb_entries.push_back({goblin::gap_cat_toast_id(c), gap_texts.back().c_str()});
+        }
+
         std::vector<std::wstring> sec_texts;
         sec_texts.reserve(goblin::TUTORIAL_SECTION_COUNT * 2);
         for (int s = 0; s < goblin::TUTORIAL_SECTION_COUNT; s++)
