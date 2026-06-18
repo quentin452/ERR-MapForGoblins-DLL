@@ -92,14 +92,30 @@ LONG WINAPI goblin_crash_filter(EXCEPTION_POINTERS *ep)
     // Text triage first — survives even if the minidump below writes nothing.
     write_crash_triage(ep);
 
+    // Only write the heavy (~13 MB) minidump when the fault is in OUR DLL — a bug
+    // we can act on. Game/ntdll faults (incl. the eldenring.exe crash-on-exit while
+    // the game tears down) get the lightweight .txt triage only, saving the dump's
+    // disk per non-actionable crash. The minidump under this Proton/Wine has been
+    // unreliable for non-our-code faults anyway; the .txt has code+addr+module.
+    bool ours = false;
+    if (ep && ep->ExceptionRecord && g_self_base)
+    {
+        MEMORY_BASIC_INFORMATION m;
+        if (VirtualQuery(ep->ExceptionRecord->ExceptionAddress, &m, sizeof(m)))
+            ours = reinterpret_cast<uintptr_t>(m.AllocationBase) == g_self_base;
+    }
+
     // Build "<dir>/MapForGoblins_crash_<pid>.dmp". No std::string / spdlog here
     // — the process is already unwinding a crash; keep it to raw Win32 + swprintf.
     wchar_t path[MAX_PATH] = {0};
     _snwprintf(path, MAX_PATH, L"%ls\\MapForGoblins_crash_%lu.dmp",
                g_dump_dir, GetCurrentProcessId());
 
-    HANDLE file = CreateFileW(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
-                              FILE_ATTRIBUTE_NORMAL, nullptr);
+    HANDLE file = ours ? CreateFileW(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                     FILE_ATTRIBUTE_NORMAL, nullptr)
+                       : INVALID_HANDLE_VALUE;
+    if (!ours)
+        OutputDebugStringW(L"[MapForGoblins] fault outside our DLL — minidump skipped (see .txt)");
     if (file != INVALID_HANDLE_VALUE)
     {
         MINIDUMP_EXCEPTION_INFORMATION mei = {};
