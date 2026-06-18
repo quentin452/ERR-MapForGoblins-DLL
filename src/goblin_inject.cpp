@@ -352,6 +352,60 @@ const std::vector<std::pair<int, int>> &goblin::cluster_label_census()
     return g_cluster_census;
 }
 
+// ─── Player world position (WorldChrMan) — for proximity clustering (v2) ──
+// Chain extracted from Hexinton all-in-one CT v6.0:
+//   WorldChrMan static: AOB `48 8B FA 0F 11 41 70 48 8B 05`; the trailing
+//   `48 8B 05` is `mov rax,[rip+disp32]` at +7 (ends +0xE) → static slot =
+//   finder + 0xE + *(int32*)(finder+0xA).
+//   Global pos floats: [[[WorldChrMan]+0x10EF8]+0]+0x6B0/6B4/6B8 = X/Y/Z.
+// Offsets are game-version specific (CT v6.0); VERIFY in-game before trusting.
+static void **g_wcm_static = nullptr;
+static bool g_wcm_tried = false;
+
+static void resolve_world_chr_man()
+{
+    g_wcm_tried = true;
+    auto *finder = reinterpret_cast<uint8_t *>(
+        modutils::scan<void>({.aob = "48 8B FA 0F 11 41 70 48 8B 05"}));
+    if (!finder)
+    {
+        spdlog::warn("[PLAYER] WorldChrMan AOB not found");
+        return;
+    }
+    int32_t disp = *reinterpret_cast<int32_t *>(finder + 0xA);
+    g_wcm_static = reinterpret_cast<void **>(finder + 0xE + disp);
+    spdlog::info("[PLAYER] WorldChrMan static @ {:p}", (void *)g_wcm_static);
+}
+
+// SEH-guarded chain walk (POD-only locals — no C++ unwinding). out = {x,y,z}.
+static bool read_player_pos_seh(void **wcm_static, float *out)
+{
+    __try
+    {
+        auto *wcm = *reinterpret_cast<uint8_t **>(wcm_static);
+        if (!wcm) return false;
+        auto *player = *reinterpret_cast<uint8_t **>(wcm + 0x10EF8);
+        if (!player) return false;
+        auto *sub = *reinterpret_cast<uint8_t **>(player + 0x0);
+        if (!sub) return false;
+        out[0] = *reinterpret_cast<float *>(sub + 0x6B0);
+        out[1] = *reinterpret_cast<float *>(sub + 0x6B4);
+        out[2] = *reinterpret_cast<float *>(sub + 0x6B8);
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+bool goblin::get_player_world_pos(float &x, float &y, float &z)
+{
+    if (!g_wcm_tried) resolve_world_chr_man();
+    if (!g_wcm_static) return false;
+    float p[3] = {0, 0, 0};
+    if (!read_player_pos_seh(g_wcm_static, p)) return false;
+    x = p[0]; y = p[1]; z = p[2];
+    return true;
+}
+
 namespace
 {
 // One ItemLotParam row, read by raw offset (ITEMLOT_PARAM_ST = 152 bytes,
@@ -1886,6 +1940,20 @@ void goblin::menu_auto_toggle_loop()
             apply_cluster_expanded(g_clusters_expanded.load());
         if (g_cluster_debug_dirty.exchange(false))
             apply_cluster_debug(g_cluster_debug.load());
+
+        // v2 groundwork: log the player world position every ~2 s while
+        // clustering is on, so the WorldChrMan chain + coordinate space can be
+        // verified in-game against marker posX/posZ before proximity is wired.
+        static int s_pp_tick = 0;
+        if (goblin::config::enableClustering && ++s_pp_tick >= 200)
+        {
+            s_pp_tick = 0;
+            float px, py, pz;
+            if (goblin::get_player_world_pos(px, py, pz))
+                spdlog::info("[PLAYER] world pos  X={:.1f}  Y={:.1f}  Z={:.1f}", px, py, pz);
+            else
+                spdlog::debug("[PLAYER] position unavailable (chain not ready)");
+        }
 
         bool want_expanded = !user_disabled_now;
 

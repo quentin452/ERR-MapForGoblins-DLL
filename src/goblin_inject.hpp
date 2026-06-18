@@ -13,6 +13,11 @@ namespace goblin
     // the cluster-debug toggle (F11) can label clusters with their size.
     const std::vector<std::pair<int, int>> &cluster_label_census();
 
+    // Local player's world position (WorldChrMan chain, AOB-resolved + cached).
+    // Returns false if not yet resolvable (early load) or the chain faulted.
+    // For proximity clustering (v2). Coordinate space = global/world (verify).
+    bool get_player_world_pos(float &x, float &y, float &z);
+
     // Data pointers of MFG-injected WorldMapPointParam rows in the expanded
     // table. Populated by inject_map_entries(); consumed by
     // sanitize_injected_textids() after the FMG bank is built.
