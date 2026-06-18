@@ -21,6 +21,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <mutex>
 #include <thread>
 #include <unordered_map>
 #include <spdlog/spdlog.h>
@@ -273,12 +274,31 @@ struct SectionRow
 };
 static std::vector<SectionRow> g_section_rows;
 
+// Coordination for the multiple areaNo owners. Section visibility, fragment-
+// eviction and collected-eviction all write WORLD_MAP_POINT_PARAM_ST.areaNo
+// (offset 0x20) independently. Without coordination, a restore-to-orig path
+// (e.g. fragment-eviction's cold-API safety, or collected's restore-all)
+// un-hides rows the user hid via a section toggle. This set holds the data
+// pointers a section currently hides; every restore path must keep such a row
+// at 99. Guarded by a mutex (apply runs on the watcher thread, restores on the
+// refresh-loop thread).
+static std::mutex g_section_hidden_mtx;
+static std::set<uint8_t *> g_section_hidden_ptrs;
+
+bool goblin::is_section_hidden_ptr(const void *param_data)
+{
+    std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
+    return g_section_hidden_ptrs.count(
+               reinterpret_cast<uint8_t *>(const_cast<void *>(param_data))) != 0;
+}
+
 // Show/hide every injected row of one section in place. Hide = areaNo 99;
 // show = restore orig_area unless the row is an already-collected piece/kindling
 // (those stay evicted, owned by collected::/kindling::).
 static void apply_section_visibility(Section s, bool visible)
 {
     int touched = 0;
+    std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
     for (const auto &r : g_section_rows)
     {
         if (r.sec != s) continue;
@@ -286,9 +306,11 @@ static void apply_section_visibility(Section s, bool visible)
         if (!visible)
         {
             *area = 99;
+            g_section_hidden_ptrs.insert(r.ptr);  // claim authority: keep at 99
         }
         else
         {
+            g_section_hidden_ptrs.erase(r.ptr);   // release: other owners may show it
             bool keep_hidden =
                 (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
                 (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
@@ -1911,7 +1933,10 @@ int goblin::refresh_fragment_eviction()
         bool discovered = api_ok ? orp_flag_set(r.flag) : true;
         if (discovered)
         {
-            if (r.ptr[0x20] == 99) r.ptr[0x20] = r.orig_area;  // discovered → restore
+            // Don't un-hide a row a section toggle is keeping hidden (the
+            // cold-API safety would otherwise stomp the user's section choice).
+            if (r.ptr[0x20] == 99 && !goblin::is_section_hidden_ptr(r.ptr))
+                r.ptr[0x20] = r.orig_area;  // discovered → restore
         }
         else
         {
@@ -2125,6 +2150,34 @@ void goblin::menu_auto_toggle_loop()
             apply_cluster_expanded(g_clusters_expanded.load());
         if (g_cluster_debug_dirty.exchange(false))
             apply_cluster_debug(g_cluster_debug.load());
+
+        // DIAG: detect whether a section-hide "sticks". Every ~2s, for sections
+        // toggled OFF, count how many of their rows still read areaNo==99 (our
+        // hide) vs got reverted to a visible area by some other writer. If
+        // reverted>0 → another system overwrites our flips. If reverted==0 but
+        // icons still show in-game → the game isn't rebuilding its point list on
+        // map reopen (live-refresh wall).
+        {
+            static int diag_tick = 0;
+            if (++diag_tick >= 200)  // 200 * 10ms ≈ 2s
+            {
+                diag_tick = 0;
+                int hidden_secs = 0, stuck = 0, reverted = 0;
+                for (int s = 0; s < SECTION_COUNT; s++)
+                    if (!g_section_visible[s].load()) hidden_secs++;
+                if (hidden_secs > 0)
+                {
+                    for (const auto &r : g_section_rows)
+                    {
+                        if (g_section_visible[static_cast<int>(r.sec)].load()) continue;
+                        if (r.ptr[0x20] == 99) stuck++;
+                        else reverted++;
+                    }
+                    spdlog::info("[SECTION-DIAG] hidden sections={} rows: stuck@99={} reverted={}",
+                                 hidden_secs, stuck, reverted);
+                }
+            }
+        }
 
         // (Player-position probe logging removed — proximity clustering paused:
         // live player world coords are unstable/chunk-local and the map-cursor /

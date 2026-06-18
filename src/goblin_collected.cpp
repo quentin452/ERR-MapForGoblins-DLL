@@ -1,5 +1,6 @@
 #include "goblin_collected.hpp"
 #include "goblin_config.hpp"
+#include "goblin_inject.hpp"  // goblin::is_section_hidden_ptr
 #include "goblin_map_data.hpp"
 #include "goblin_geof_models.hpp"
 #include "modutils.hpp"
@@ -880,7 +881,11 @@ int goblin::collected::refresh()
     std::vector<uint64_t> stale;
     for (auto &[row_id, ref] : g_param_ptrs)
     {
-        if (!safe_write_byte(ref.ptr + 0x20, ref.original_areaNo))
+        // Respect a section toggle that is keeping this row hidden — otherwise
+        // the restore-all would un-hide it (the section-vs-collected areaNo
+        // conflict).
+        uint8_t target = goblin::is_section_hidden_ptr(ref.ptr) ? 99 : ref.original_areaNo;
+        if (!safe_write_byte(ref.ptr + 0x20, target))
             stale.push_back(row_id);
     }
 

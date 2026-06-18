@@ -107,6 +107,12 @@ namespace goblin
     // applies the F10/gamepad personal show/hide and shows the toggle banner.
     void menu_auto_toggle_loop();
 
+    // True if a section toggle currently keeps this row's param data hidden
+    // (areaNo forced to 99). Other areaNo owners (fragment-eviction restore,
+    // collected restore-all) must consult this before restoring a row to its
+    // visible area, else they un-hide section-hidden rows. Thread-safe.
+    bool is_section_hidden_ptr(const void *param_data);
+
     // True when the in-game 2D world map screen is open (CSMenuMan+0xCD == 7).
     // Resolves the CSMenuMan singleton once via AOB; returns false until warm or
     // if resolution fails. Safe from any thread (used by the overlay to show
