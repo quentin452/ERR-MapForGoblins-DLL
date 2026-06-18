@@ -686,75 +686,7 @@ static bool category_in_except(Category cat)
 
 static bool *category_config_ptr(Category cat)
 {
-    switch (cat)
-    {
-    case Category::EquipArmaments:       return &goblin::config::showArmaments;
-    case Category::EquipArmour:          return &goblin::config::showArmour;
-    case Category::EquipAshesOfWar:      return &goblin::config::showAshesOfWar;
-    case Category::EquipSpirits:         return &goblin::config::showSpirits;
-    case Category::EquipTalismans:       return &goblin::config::showTalismans;
-    case Category::KeyCelestialDew:      return &goblin::config::showCelestialDew;
-    case Category::KeyCookbooks:         return &goblin::config::showCookbooks;
-    case Category::KeyCrystalTears:      return &goblin::config::showCrystalTears;
-    case Category::KeyImbuedSwordKeys:   return &goblin::config::showImbuedSwordKeys;
-    case Category::KeyLarvalTears:       return &goblin::config::showLarvalTears;
-    case Category::KeyScadutreeFragments: return &goblin::config::showScadutreeFragments;
-    case Category::KeyGreatRunes:        return &goblin::config::showGreatRunes;
-    case Category::KeyLostAshes:         return &goblin::config::showLostAshes;
-    case Category::KeyPotsNPerfumes:     return &goblin::config::showPotsNPerfumes;
-    case Category::KeySeedsTears:        return &goblin::config::showSeedsTears;
-    case Category::KeyWhetblades:        return &goblin::config::showWhetblades;
-    case Category::LootAmmo:             return &goblin::config::showAmmo;
-    case Category::LootBellBearings:     return &goblin::config::showBellBearings;
-    case Category::LootMerchantBellBearings: return &goblin::config::showMerchantBellBearings;
-    case Category::LootConsumables:      return &goblin::config::showConsumables;
-    case Category::LootCraftingMaterials:return &goblin::config::showCraftingMaterials;
-    case Category::LootMPFingers:        return &goblin::config::showMPFingers;
-    case Category::LootMaterialNodes:    return &goblin::config::showMaterialNodes;
-    case Category::LootReusables:        return &goblin::config::showReusables;
-    case Category::LootSmithingStones:       return &goblin::config::showSmithingStones;
-    case Category::LootSmithingStonesLow:   return &goblin::config::showSmithingStonesLow;
-    case Category::LootSmithingStonesRare:  return &goblin::config::showSmithingStonesRare;
-    case Category::LootGoldenRunes:         return &goblin::config::showGoldenRunes;
-    case Category::LootGoldenRunesLow:      return &goblin::config::showGoldenRunesLow;
-    case Category::LootStoneswordKeys:   return &goblin::config::showStoneswordKeys;
-    case Category::LootThrowables:       return &goblin::config::showThrowables;
-    case Category::LootPrattlingPates:   return &goblin::config::showPrattlingPates;
-    case Category::LootRuneArcs:         return &goblin::config::showRuneArcs;
-    case Category::LootDragonHearts:     return &goblin::config::showDragonHearts;
-    case Category::LootGloveworts:       return &goblin::config::showGloveworts;
-    case Category::LootGreatGloveworts:  return &goblin::config::showGreatGloveworts;
-    case Category::LootRadaFruit:        return &goblin::config::showRadaFruit;
-    case Category::LootGestures:         return &goblin::config::showGestures;
-    case Category::LootGreases:          return &goblin::config::showGreases;
-    case Category::LootUtilities:        return &goblin::config::showUtilities;
-    case Category::LootStatBoosts:       return &goblin::config::showStatBoosts;
-    case Category::ReforgedFortunes:     return &goblin::config::showFortunes;
-    case Category::WorldHostileNPC:      return &goblin::config::showHostileNPC;
-    case Category::WorldQuestNPC:        return &goblin::config::showQuestNPC;
-    case Category::MagicIncantations:    return &goblin::config::showIncantations;
-    case Category::MagicMemoryStones:    return &goblin::config::showMemoryStones;
-    case Category::MagicPrayerbooks:     return &goblin::config::showPrayerbooks;
-    case Category::MagicSorceries:       return &goblin::config::showSorceries;
-    case Category::WorldBosses:          return &goblin::config::showBosses;
-    case Category::QuestDeathroot:       return &goblin::config::showDeathroot;
-    case Category::QuestProgression:     return &goblin::config::showProgression;
-    case Category::QuestSeedbedCurses:   return &goblin::config::showSeedbedCurses;
-    case Category::ReforgedEmberPieces:  return &goblin::config::showEmberPieces;
-    case Category::ReforgedItemsAndChanges: return &goblin::config::showItemsAndChanges;
-    case Category::ReforgedRunePieces:   return &goblin::config::showRunePieces;
-    case Category::WorldGraces:          return &goblin::config::showGraces;
-    case Category::WorldImpStatues:      return &goblin::config::showImpStatues;
-    case Category::WorldMaps:            return &goblin::config::showWorldMaps;
-    case Category::WorldPaintings:       return &goblin::config::showPaintings;
-    case Category::WorldSpiritSprings:   return &goblin::config::showSpiritSprings;
-    case Category::WorldSpiritspringHawks: return &goblin::config::showSpiritspringHawks;
-    case Category::WorldStakesOfMarika:  return &goblin::config::showStakesOfMarika;
-    case Category::WorldSummoningPools:  return &goblin::config::showSummoningPools;
-    case Category::WorldKindlingSpirits: return &goblin::config::showKindlingSpirits;
-    case Category::WorldInteractables:   return &goblin::config::showInteractables;
-    default:                             return nullptr;
-    }
+    return &goblin::config::showCategory[static_cast<int>(cat)];
 }
 
 static bool is_category_enabled(Category cat)

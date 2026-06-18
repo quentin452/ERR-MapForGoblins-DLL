@@ -3,6 +3,7 @@
 
 #include "goblin_config_schema.hpp"
 #include "goblin_config.hpp"
+#include "goblin_map_data.hpp"
 
 #include <cstring>
 
@@ -19,38 +20,15 @@ namespace goblin::config
     bool iconsHidden = false;  // master off persisted (menu/F10 "Show icons")
     std::string showAllExcept = "";
 
-    bool showArmaments = false, showArmour = false, showAshesOfWar = false,
-         showSpirits = false, showTalismans = false;
+    // One bool per goblin::generated::Category, indexed by the enum value. Seeded
+    // from the schema defaults by apply_defaults() at load time (the per-category
+    // "true"/"false" defaults live on the B(...) entries below); the zero-init
+    // here is just a sane fallback before load_config() runs.
+    static constexpr int NUM_CATEGORIES =
+        static_cast<int>(goblin::generated::Category::WorldInteractables) + 1;
+    bool showCategory[NUM_CATEGORIES] = {};
 
-    bool showCelestialDew = false, showCookbooks = false, showCrystalTears = false,
-         showGreatRunes = false, showImbuedSwordKeys = false, showLarvalTears = false,
-         showLostAshes = false, showPotsNPerfumes = false, showScadutreeFragments = false,
-         showSeedsTears = false, showWhetblades = false;
-
-    bool showAmmo = false, showBellBearings = false, showMerchantBellBearings = false,
-         showConsumables = false, showGreases = false, showUtilities = false,
-         showStatBoosts = false, showCraftingMaterials = false, showGloveworts = false,
-         showGoldenRunes = false, showGoldenRunesLow = false, showGreatGloveworts = false,
-         showMaterialNodes = false, showMPFingers = false, showPrattlingPates = false,
-         showRadaFruit = false, showGestures = false, showReusables = false,
-         showSmithingStones = false, showSmithingStonesLow = false,
-         showSmithingStonesRare = false, showStoneswordKeys = false,
-         showThrowables = false, showRuneArcs = false, showDragonHearts = false;
-
-    bool showIncantations = false, showMemoryStones = false, showPrayerbooks = false,
-         showSorceries = false;
-
-    bool showDeathroot = false, showProgression = false, showSeedbedCurses = false;
-
-    bool showEmberPieces = true, showItemsAndChanges = false, showFortunes = false,
-         showRunePieces = true;
-
-    bool showBosses = false, showGraces = false, showHostileNPC = false,
-         showQuestNPC = false,
-         showImpStatues = false, showPaintings = false, showSpiritSprings = false,
-         showSpiritspringHawks = false, showStakesOfMarika = false,
-         showSummoningPools = false, showKindlingSpirits = true,
-         showInteractables = false, showWorldMaps = false, hideKilledBosses = false;
+    bool hideKilledBosses = false;
 
     // Live-loot / randomizer-compat options default ON for the plain VANILLA
     // build only (that's what Item/Enemy Randomizer players use) and OFF for ERR
@@ -99,6 +77,7 @@ namespace
     using goblin::IniSection;
     using goblin::IniType;
     namespace cfg = goblin::config;
+    using Cat = goblin::generated::Category;
 
     constexpr bool ERR = true; // err-only marker for readability
 
@@ -180,94 +159,94 @@ namespace
             }},
 
             {"Equipment", nullptr, false, {
-                B("show_armaments", showArmaments, "false", "Weapons, shields, bows, staves, etc."),
-                B("show_armour", showArmour, "false", "Armor pieces (helms, chest, gauntlets, legs)"),
-                B("show_ashes_of_war", showAshesOfWar, "false", "Ashes of War (weapon skills)"),
-                B("show_spirits", showSpirits, "false", "Spirit Ashes (summons)"),
-                B("show_talismans", showTalismans, "false", "Talismans"),
+                B("show_armaments", showCategory[static_cast<int>(Cat::EquipArmaments)], "false", "Weapons, shields, bows, staves, etc."),
+                B("show_armour", showCategory[static_cast<int>(Cat::EquipArmour)], "false", "Armor pieces (helms, chest, gauntlets, legs)"),
+                B("show_ashes_of_war", showCategory[static_cast<int>(Cat::EquipAshesOfWar)], "false", "Ashes of War (weapon skills)"),
+                B("show_spirits", showCategory[static_cast<int>(Cat::EquipSpirits)], "false", "Spirit Ashes (summons)"),
+                B("show_talismans", showCategory[static_cast<int>(Cat::EquipTalismans)], "false", "Talismans"),
             }},
 
             {"Key Items", nullptr, false, {
-                B("show_celestial_dew", showCelestialDew, "false", "Celestial Dew (for reversing Spirit Ashes upgrades)"),
-                B("show_cookbooks", showCookbooks, "false", "Cookbooks (crafting recipes)"),
-                B("show_crystal_tears", showCrystalTears, "false", "Crystal Tears (for Flask of Wondrous Physick)"),
-                B("show_great_runes", showGreatRunes, "false", "Great Runes (dropped by story bosses)"),
-                B("show_imbued_sword_keys", showImbuedSwordKeys, "false", "Imbued Sword Keys (Four Belfries)"),
-                B("show_larval_tears", showLarvalTears, "false", "Larval Tears (respec items)"),
-                B("show_lost_ashes", showLostAshes, "false", "Lost Ashes of War"),
-                B("show_pots_n_perfumes", showPotsNPerfumes, "false", "Cracked Pots, Ritual Pots, Perfume Bottles"),
-                B("show_scadutree_fragments", showScadutreeFragments, "false", "Scadutree Fragments (DLC blessing upgrade)"),
-                B("show_seeds_tears", showSeedsTears, "false", "Golden Seeds, Sacred Tears, Revered Spirit Ashes"),
-                B("show_whetblades", showWhetblades, "false", "Whetblades (weapon infusion types)"),
+                B("show_celestial_dew", showCategory[static_cast<int>(Cat::KeyCelestialDew)], "false", "Celestial Dew (for reversing Spirit Ashes upgrades)"),
+                B("show_cookbooks", showCategory[static_cast<int>(Cat::KeyCookbooks)], "false", "Cookbooks (crafting recipes)"),
+                B("show_crystal_tears", showCategory[static_cast<int>(Cat::KeyCrystalTears)], "false", "Crystal Tears (for Flask of Wondrous Physick)"),
+                B("show_great_runes", showCategory[static_cast<int>(Cat::KeyGreatRunes)], "false", "Great Runes (dropped by story bosses)"),
+                B("show_imbued_sword_keys", showCategory[static_cast<int>(Cat::KeyImbuedSwordKeys)], "false", "Imbued Sword Keys (Four Belfries)"),
+                B("show_larval_tears", showCategory[static_cast<int>(Cat::KeyLarvalTears)], "false", "Larval Tears (respec items)"),
+                B("show_lost_ashes", showCategory[static_cast<int>(Cat::KeyLostAshes)], "false", "Lost Ashes of War"),
+                B("show_pots_n_perfumes", showCategory[static_cast<int>(Cat::KeyPotsNPerfumes)], "false", "Cracked Pots, Ritual Pots, Perfume Bottles"),
+                B("show_scadutree_fragments", showCategory[static_cast<int>(Cat::KeyScadutreeFragments)], "false", "Scadutree Fragments (DLC blessing upgrade)"),
+                B("show_seeds_tears", showCategory[static_cast<int>(Cat::KeySeedsTears)], "false", "Golden Seeds, Sacred Tears, Revered Spirit Ashes"),
+                B("show_whetblades", showCategory[static_cast<int>(Cat::KeyWhetblades)], "false", "Whetblades (weapon infusion types)"),
             }},
 
             {"Loot", nullptr, false, {
-                B("show_ammo", showAmmo, "false", "Arrows, bolts, greatarrows, greatbolts"),
-                B("show_bell_bearings", showBellBearings, "false", "Bell Bearings from treasures/chests/quest rewards"),
-                B("show_merchant_bell_bearings", showMerchantBellBearings, "false",
+                B("show_ammo", showCategory[static_cast<int>(Cat::LootAmmo)], "false", "Arrows, bolts, greatarrows, greatbolts"),
+                B("show_bell_bearings", showCategory[static_cast<int>(Cat::LootBellBearings)], "false", "Bell Bearings from treasures/chests/quest rewards"),
+                B("show_merchant_bell_bearings", showCategory[static_cast<int>(Cat::LootMerchantBellBearings)], "false",
                   "Bell Bearings dropped by KILLING merchants (Kale, Patches, Gostoc, nomadic\nmerchants, etc.) - off by default; this is a kill-the-merchant reward"),
-                B("show_consumables", showConsumables, "false", "Healing/buff consumables (boluses, cured meats, livers)"),
-                B("show_greases", showGreases, "false", "Weapon greases"),
-                B("show_utilities", showUtilities, "false", "Utility items (rainbow stone, glowstone, soap, soft cotton)"),
-                B("show_stat_boosts", showStatBoosts, "false", "Stat-up items (Starlight Shards, Sacrificial Twig, Blessing of Marika)"),
-                B("show_crafting_materials", showCraftingMaterials, "false", "Crafting materials (flowers, bones, bugs, etc.)"),
-                B("show_gloveworts", showGloveworts, "false", "Gloveworts (Grave/Ghost [1-9]) - Spirit Ash upgrade materials"),
-                B("show_golden_runes", showGoldenRunes, "false", "Golden Runes [4000+], Hero's/Numen's/Lord's/Shadow Realm Runes"),
-                B("show_golden_runes_low", showGoldenRunesLow, "false", "Golden Runes [200-3000], Broken Runes (disabled by default - many icons)"),
-                B("show_great_gloveworts", showGreatGloveworts, "false", "Great Gloveworts (Great Grave, Great Ghost) - rare boss drops"),
-                B("show_material_nodes", showMaterialNodes, "false", "One-time gathering nodes (Erdleaf Flower, Trina's Lily, etc.)"),
-                B("show_mp_fingers", showMPFingers, "false", "Multiplayer items (Furlcalling/Wizened Fingers, Recusant/Bloody Finger)"),
-                B("show_prattling_pates", showPrattlingPates, "false", "Prattling Pates"),
-                B("show_rada_fruit", showRadaFruit, "false", "Rada Fruit (DLC stat-up consumable)"),
-                B("show_gestures", showGestures, "false", "Gestures (auto-discovered via gesture template 90005570 - covers 7/9 spawns)"),
-                B("show_reusables", showReusables, "false", "Reusable tools (Mimic Veil, Margit's Shackle, etc.)"),
-                B("show_smithing_stones", showSmithingStones, "false", "Smithing Stones [7-8], Somber [7-9], Scadushards"),
-                B("show_smithing_stones_low", showSmithingStonesLow, "false", "Smithing Stones [1-6], Somber [1-6] (disabled by default - many icons)"),
-                B("show_smithing_stones_rare", showSmithingStonesRare, "false", "Ancient Dragon Smithing Stones (rare, endgame)"),
-                B("show_stonesword_keys", showStoneswordKeys, "false", "Stonesword Keys"),
-                B("show_throwables", showThrowables, "false", "Throwable items (darts, daggers, stones, chakrams, warming stones)"),
-                B("show_rune_arcs", showRuneArcs, "false", "Rune Arcs (buffs for active Great Rune)"),
-                B("show_dragon_hearts", showDragonHearts, "false", "Dragon Hearts (for Dragon Communion incantations)"),
+                B("show_consumables", showCategory[static_cast<int>(Cat::LootConsumables)], "false", "Healing/buff consumables (boluses, cured meats, livers)"),
+                B("show_greases", showCategory[static_cast<int>(Cat::LootGreases)], "false", "Weapon greases"),
+                B("show_utilities", showCategory[static_cast<int>(Cat::LootUtilities)], "false", "Utility items (rainbow stone, glowstone, soap, soft cotton)"),
+                B("show_stat_boosts", showCategory[static_cast<int>(Cat::LootStatBoosts)], "false", "Stat-up items (Starlight Shards, Sacrificial Twig, Blessing of Marika)"),
+                B("show_crafting_materials", showCategory[static_cast<int>(Cat::LootCraftingMaterials)], "false", "Crafting materials (flowers, bones, bugs, etc.)"),
+                B("show_gloveworts", showCategory[static_cast<int>(Cat::LootGloveworts)], "false", "Gloveworts (Grave/Ghost [1-9]) - Spirit Ash upgrade materials"),
+                B("show_golden_runes", showCategory[static_cast<int>(Cat::LootGoldenRunes)], "false", "Golden Runes [4000+], Hero's/Numen's/Lord's/Shadow Realm Runes"),
+                B("show_golden_runes_low", showCategory[static_cast<int>(Cat::LootGoldenRunesLow)], "false", "Golden Runes [200-3000], Broken Runes (disabled by default - many icons)"),
+                B("show_great_gloveworts", showCategory[static_cast<int>(Cat::LootGreatGloveworts)], "false", "Great Gloveworts (Great Grave, Great Ghost) - rare boss drops"),
+                B("show_material_nodes", showCategory[static_cast<int>(Cat::LootMaterialNodes)], "false", "One-time gathering nodes (Erdleaf Flower, Trina's Lily, etc.)"),
+                B("show_mp_fingers", showCategory[static_cast<int>(Cat::LootMPFingers)], "false", "Multiplayer items (Furlcalling/Wizened Fingers, Recusant/Bloody Finger)"),
+                B("show_prattling_pates", showCategory[static_cast<int>(Cat::LootPrattlingPates)], "false", "Prattling Pates"),
+                B("show_rada_fruit", showCategory[static_cast<int>(Cat::LootRadaFruit)], "false", "Rada Fruit (DLC stat-up consumable)"),
+                B("show_gestures", showCategory[static_cast<int>(Cat::LootGestures)], "false", "Gestures (auto-discovered via gesture template 90005570 - covers 7/9 spawns)"),
+                B("show_reusables", showCategory[static_cast<int>(Cat::LootReusables)], "false", "Reusable tools (Mimic Veil, Margit's Shackle, etc.)"),
+                B("show_smithing_stones", showCategory[static_cast<int>(Cat::LootSmithingStones)], "false", "Smithing Stones [7-8], Somber [7-9], Scadushards"),
+                B("show_smithing_stones_low", showCategory[static_cast<int>(Cat::LootSmithingStonesLow)], "false", "Smithing Stones [1-6], Somber [1-6] (disabled by default - many icons)"),
+                B("show_smithing_stones_rare", showCategory[static_cast<int>(Cat::LootSmithingStonesRare)], "false", "Ancient Dragon Smithing Stones (rare, endgame)"),
+                B("show_stonesword_keys", showCategory[static_cast<int>(Cat::LootStoneswordKeys)], "false", "Stonesword Keys"),
+                B("show_throwables", showCategory[static_cast<int>(Cat::LootThrowables)], "false", "Throwable items (darts, daggers, stones, chakrams, warming stones)"),
+                B("show_rune_arcs", showCategory[static_cast<int>(Cat::LootRuneArcs)], "false", "Rune Arcs (buffs for active Great Rune)"),
+                B("show_dragon_hearts", showCategory[static_cast<int>(Cat::LootDragonHearts)], "false", "Dragon Hearts (for Dragon Communion incantations)"),
             }},
 
             {"Magic", nullptr, false, {
-                B("show_incantations", showIncantations, "false", "Incantation locations"),
-                B("show_memory_stones", showMemoryStones, "false", "Memory Stone locations (extra spell slots)"),
-                B("show_prayerbooks", showPrayerbooks, "false", "Prayerbooks and Scrolls (unlock spells at vendors)"),
-                B("show_sorceries", showSorceries, "false", "Sorcery locations"),
+                B("show_incantations", showCategory[static_cast<int>(Cat::MagicIncantations)], "false", "Incantation locations"),
+                B("show_memory_stones", showCategory[static_cast<int>(Cat::MagicMemoryStones)], "false", "Memory Stone locations (extra spell slots)"),
+                B("show_prayerbooks", showCategory[static_cast<int>(Cat::MagicPrayerbooks)], "false", "Prayerbooks and Scrolls (unlock spells at vendors)"),
+                B("show_sorceries", showCategory[static_cast<int>(Cat::MagicSorceries)], "false", "Sorcery locations"),
             }},
 
             {"Quest", nullptr, false, {
-                B("show_deathroot", showDeathroot, "false", "Deathroot locations (for Gurranq)"),
-                B("show_progression", showProgression, "false", "Quest progression items (medallions, keys, Needles, quest-specific goods)"),
-                B("show_seedbed_curses", showSeedbedCurses, "false", "Seedbed Curse locations (for Dung Eater quest)"),
+                B("show_deathroot", showCategory[static_cast<int>(Cat::QuestDeathroot)], "false", "Deathroot locations (for Gurranq)"),
+                B("show_progression", showCategory[static_cast<int>(Cat::QuestProgression)], "false", "Quest progression items (medallions, keys, Needles, quest-specific goods)"),
+                B("show_seedbed_curses", showCategory[static_cast<int>(Cat::QuestSeedbedCurses)], "false", "Seedbed Curse locations (for Dung Eater quest)"),
             }},
 
             {"Reforged",
              "Elden Ring Reforged-only content. Absent from the vanilla build.",
              ERR, {
-                BE("show_ember_pieces", showEmberPieces, "true", "ERR Ember Piece locations"),
-                BE("show_items_and_changes", showItemsAndChanges, "false", "ERR-added items: Oracle Effigy/Remedy, Starlight Tokens, Sealed Curios"),
-                BE("show_fortunes", showFortunes, "false", "ERR Fortune trinkets (12 types)"),
-                BE("show_rune_pieces", showRunePieces, "true", "ERR Rune Piece locations"),
+                BE("show_ember_pieces", showCategory[static_cast<int>(Cat::ReforgedEmberPieces)], "true", "ERR Ember Piece locations"),
+                BE("show_items_and_changes", showCategory[static_cast<int>(Cat::ReforgedItemsAndChanges)], "false", "ERR-added items: Oracle Effigy/Remedy, Starlight Tokens, Sealed Curios"),
+                BE("show_fortunes", showCategory[static_cast<int>(Cat::ReforgedFortunes)], "false", "ERR Fortune trinkets (12 types)"),
+                BE("show_rune_pieces", showCategory[static_cast<int>(Cat::ReforgedRunePieces)], "true", "ERR Rune Piece locations"),
             }},
 
             {"World", nullptr, false, {
-                B("show_bosses", showBosses, "false", "Boss markers (field bosses, dungeon bosses)"),
-                B("show_graces", showGraces, "false", "Sites of Grace"),
-                B("show_hostile_npc", showHostileNPC, "false", "Hostile NPC invader spawn locations (auto-discovered via teamType 24/27)"),
-                B("show_quest_npc", showQuestNPC, "false", "Named friendly NPC + merchant locations (quest navigation; own family, not clustered)"),
-                B("show_imp_statues", showImpStatues, "false", "Imp Statue (Stonesword Key fog gate) locations"),
-                B("show_paintings", showPaintings, "false", "Painting locations"),
-                B("show_spirit_springs", showSpiritSprings, "false", "Spirit Spring (horse jump) locations"),
-                B("show_spiritspring_hawks", showSpiritspringHawks, "false", "Spiritspring Hawk locations"),
-                B("show_stakes_of_marika", showStakesOfMarika, "false", "Stakes of Marika (respawn points)"),
-                B("show_summoning_pools", showSummoningPools, "false", "Summoning Pool (Martyr Effigy) locations"),
-                BE("show_kindling_spirits", showKindlingSpirits, "true",
+                B("show_bosses", showCategory[static_cast<int>(Cat::WorldBosses)], "false", "Boss markers (field bosses, dungeon bosses)"),
+                B("show_graces", showCategory[static_cast<int>(Cat::WorldGraces)], "false", "Sites of Grace"),
+                B("show_hostile_npc", showCategory[static_cast<int>(Cat::WorldHostileNPC)], "false", "Hostile NPC invader spawn locations (auto-discovered via teamType 24/27)"),
+                B("show_quest_npc", showCategory[static_cast<int>(Cat::WorldQuestNPC)], "false", "Named friendly NPC + merchant locations (quest navigation; own family, not clustered)"),
+                B("show_imp_statues", showCategory[static_cast<int>(Cat::WorldImpStatues)], "false", "Imp Statue (Stonesword Key fog gate) locations"),
+                B("show_paintings", showCategory[static_cast<int>(Cat::WorldPaintings)], "false", "Painting locations"),
+                B("show_spirit_springs", showCategory[static_cast<int>(Cat::WorldSpiritSprings)], "false", "Spirit Spring (horse jump) locations"),
+                B("show_spiritspring_hawks", showCategory[static_cast<int>(Cat::WorldSpiritspringHawks)], "false", "Spiritspring Hawk locations"),
+                B("show_stakes_of_marika", showCategory[static_cast<int>(Cat::WorldStakesOfMarika)], "false", "Stakes of Marika (respawn points)"),
+                B("show_summoning_pools", showCategory[static_cast<int>(Cat::WorldSummoningPools)], "false", "Summoning Pool (Martyr Effigy) locations"),
+                BE("show_kindling_spirits", showCategory[static_cast<int>(Cat::WorldKindlingSpirits)], "true",
                    "ERR Kindling Spirits in Misty Forest (m60_45_37_00) - collect all 5\nbetween rests for the Kindling Spirit incantation. Markers hide\npermanently once the incantation is acquired (engine flag 1045377500),\nand individually within a run via SFX-region runtime state."),
-                B("show_interactables", showInteractables, "false",
+                B("show_interactables", showCategory[static_cast<int>(Cat::WorldInteractables)], "false",
                   "Interactive world objects & puzzles. Includes:\n  - Blue seal puzzles (~65 seals across the overworld, unlock hidden cellars)\n  - \"Light flame\" interacts: Sellia chalices (3), Snow Town seal-release\n    statues (4), Siofra River lanterns (~14)\n  - Hero's Tomb direction statues (16, point at hidden Hero's Tomb caves)\nEach marker hides on activation via its own engine flag."),
-                B("show_world_maps", showWorldMaps, "false", "World Map fragment locations"),
+                B("show_world_maps", showCategory[static_cast<int>(Cat::WorldMaps)], "false", "World Map fragment locations"),
                 B("hide_killed_bosses", hideKilledBosses, "false", "Hide boss/invader/hawk markers after defeat (false = show green checkmark instead)"),
             }},
 

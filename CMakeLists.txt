@@ -144,6 +144,9 @@ endif()
 # ini per profile instead of copying a hand-maintained file.
 add_executable(mfg_inigen src/inigen_main.cpp src/goblin_config_schema.cpp)
 target_include_directories(mfg_inigen PRIVATE ${CMAKE_SOURCE_DIR}/src)
+# schema.cpp now includes goblin_map_data.hpp (the Category enum) for the
+# showCategory[] array — give the generator the active bake's include dir too.
+target_include_directories(mfg_inigen PRIVATE ${GEN_DIR})
 # Keep the generated ini's defaults in sync with the DLL's compiled defaults.
 if(GENERATED_SUBDIR STREQUAL "generated_vanilla")
   target_compile_definitions(mfg_inigen PRIVATE MFG_PROFILE_VANILLA=1)
