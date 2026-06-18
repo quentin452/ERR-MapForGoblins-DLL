@@ -449,24 +449,31 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Vyke", "Vyke's Quest", "Bloody Finger invader / Mountaintops boss", steps_vyke, 3},
 
     // ── 14 Shadow of the Erdtree DLC questlines ──────────────────────────
+    // DLC follower fail_flags found via the TalkESD pipeline (tools/mine_talkesd_flags
+    // + esdtool decompile): each follower's talk-template call uses flag1 = the
+    // "dead/gone" flag (bootstrapped from Patches flag1=3683=dead). Confirmed
+    // persistent in EMEVD as networkconnected blocks 44X0-44X3 (dead = 44X3); Ansbach
+    // & Freyja also have explicit 90005702 death handlers at m21_01 (the Leda fight).
     {"Needle Knight Leda", "Leda's Quest", "Hub of the DLC group; converges at Enir-Ilim", steps_leda, 5, true,
-     "Hub of the followers -- siding with Leda at Shadow Keep cuts down Hornsent/Ansbach and locks their branches."},
+     "Hub of the followers -- siding with Leda at Shadow Keep cuts down Hornsent/Ansbach and locks their branches.",
+     4443u},
     {"Hornsent", "Hornsent's Quest", "Leda's group; gold/red summon at Shadow Keep", steps_hornsent, 5, true,
-     "At Shadow Keep, siding with Leda (red sign) kills him and locks his rewards."},
+     "At Shadow Keep, siding with Leda (red sign) kills him and locks his rewards.", 4363u},
     {"Redmane Freyja", "Freyja's Quest", "Leda's group; crosses Ansbach (letter)", steps_freyja, 5, true,
-     "Speak with her BEFORE giving Ansbach the Secret Rite Scroll, or her questline is locked out."},
+     "Speak with her BEFORE giving Ansbach the Secret Rite Scroll, or her questline is locked out.", 4423u},
     {"Sir Ansbach", "Ansbach's Quest", "Leda's group (Mohg's servant); crosses Freyja", steps_ansbach, 6, true,
-     "Giving the Secret Rite Scroll before speaking to Freyja locks HER quest; the Leda fight side-choice decides if he lives."},
+     "Giving the Secret Rite Scroll before speaking to Freyja locks HER quest; the Leda fight side-choice decides if he lives.",
+     4403u},
     {"Moore", "Moore's Quest", "Leda's group; crosses Thiollier (Black Syrup)", steps_moore, 5, true,
      "His answer to 'how to face sorrow' decides whether he turns hostile at Enir-Ilim."},
     {"Thiollier", "Thiollier's Quest", "Leda's group; crosses St. Trina / Florissax", steps_thiollier, 5, true,
-     "Reach St. Trina before he leaves; his Concoction is also needed for Florissax's true reward."},
+     "Reach St. Trina before he leaves; his Concoction is also needed for Florissax's true reward.", 4463u},
     {"Fire Knight Queelign", "Queelign's Quest", "Messmer's flame; Iris of Grace/Occultation", steps_queelign, 3, true,
      "Exclusive reward: Iris of Grace gives his spirit ash, Iris of Occultation gives his weapon -- not both."},
     {"Igon", "Igon's Quest", "Bayle the Dread; crosses Florissax (concoction)", steps_igon, 5, true,
      "Summon him at Bayle's arena before finishing the fight, or you miss his send-off."},
     {"Hornsent Grandam", "Grandam's Quest", "Belurat storeroom (NOT the Hornsent companion)", steps_grandam, 3, true},
-    {"Dryleaf Dane", "Dane's Quest", "Leda's group; bare-handed duel at Moorth", steps_dane, 5, true},
+    {"Dryleaf Dane", "Dane's Quest", "Leda's group; bare-handed duel at Moorth", steps_dane, 5, true, nullptr, 4563u},
     {"Dragon Communion Priestess", "Florissax's Quest", "Dragon path; crosses Igon and Thiollier", steps_florissax, 4, true,
      "Her true reward needs Thiollier's Concoction given at night BEFORE you kill Bayle."},
     {"Count Ymir, High Priest", "Ymir's Quest", "Manus Metyr / Finger questline; crosses Jolan", steps_ymir, 6, true,

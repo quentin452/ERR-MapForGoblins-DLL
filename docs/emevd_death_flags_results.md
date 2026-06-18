@@ -102,26 +102,34 @@ agent mis-identifications and one of my own commits**:
 | Millicent | 15000700 / 15000703 | 4183 | confirmed (the "Jerren=4183" guess was Millicent) |
 | Gostoc | **10000700-10000707** (c3665) | — | real entities; not a Quest Browser line, not wired |
 
-**Now wired in `goblin_quest_steps.cpp` (17):**
-- death-distinct (10): Iji 1034499202, Seluvis 1034509302, Varré 1042369205, Yura 3623, Diallos 3443,
+**Now wired in `goblin_quest_steps.cpp` (23):**
+- death-distinct base (10): Iji 1034499202, Seluvis 1034509302, Varré 1042369205, Yura 3623, Diallos 3443,
   Bernahl 3883, Gurranq 1051430800, Irina 3383, Edgar 3403, Jerren 3363.
+- death-distinct DLC (6, via TalkESD pipeline): Ansbach 4403, Freyja 4423, Hornsent 4363, Leda 4443,
+  Thiollier 4463, Dane 4563.
 - `fail_conclusion=true` — shared concluded/dead flag, overlay shows "[concluded]" not "[unfinishable]" (7):
   Sellen 3463, Nepheli 4223, Kenneth 3583, Gowry 4163, Boc 3943, Patches 3683, Thops 3803.
 
-## TalkESD pipeline (for the NPCs with NO EMEVD death flag — DLC followers)
-`tools/mine_talkesd_flags.py` (pipeline v1). Foundation **proven**: SoulsFormats parses ER talk ESD
-(`script/talk/*.talkesdbnd.dcx` → `t<TalkID>.esd`); NPC → entity + `TalkID` (MSB) → ESD → decode EzState
-int literals (`0x82` + int32-LE). Validated against Patches: his real flag **3683 IS in the candidates**.
+## TalkESD pipeline (for the DLC followers) — SOLVED for 6/10
+**Tool: `esdtool.exe`** (thefifthmatt/ESDLang v0.5.1, the ESD analogue of DarkScript3) at
+`D:\tools\esdtool\esdtool-v0.5.1\`. Decompiles ER talk ESD → readable Python:
+```
+esdtool.exe -er -basedir "<game>" -writepy "<out>\%m\%e.py" -nobackup     # run from the esdtool dir (needs dist\); oo2core in cwd
+```
+Decompiled all 378 talk ESDs → `D:\tools\esd_py\<map>\t<TalkID>.py`. Map NPC→TalkID with `tools/_npc_talkids.py`.
 
-**Limitation (v1 not yet wire-ready):** raw int-extraction is too noisy — ~225 flags per NPC (every
-dialogue branch references flags), and DLC quest flags are 10-digit (`2046xxxxx`, above the current filter).
-**Next iteration:** decode EzState *commands* and bootstrap the SetEventFlag/“flag” command-id from the
-known Patches=3683 case (same bootstrap trick as the EMEVD 90005702 mechanism), so only flags the script
-SETS/gates-on are reported — narrowing 225 → a handful. Alternatively marry with save-diff (`tools/flagdiff.py`):
-the ESD candidate set ∩ the flags that flip when the NPC dies = the death flag.
+**The pattern (bootstrapped from Patches):** each NPC's talk-template call is
+`t..._x5(flag1=<dead>, flag2=<alive>, flag3=<state>, …)` — **flag1 = the dead/gone flag** (Patches flag1=3683
+= his known death flag). For the DLC followers flag1 lands in a `44X0-44X3` networkconnected block
+(dead = `44X3`), confirmed persistent in EMEVD (`BatchSetNetworkconnectedEventFlags(44X0,44X3,OFF)` resets;
+Ansbach & Freyja also have explicit `90005702` death handlers at m21_01 — which the EMEVD-only pass missed).
 
-Targets (no EMEVD handler): Leda, Ansbach, Moore, Thiollier, Dryleaf Dane, Freyja, Hornsent, Queelign,
-Igon, Jolán (+ base ESD-driven Roderika, Rya, Latenna).
+**Cracked & wired (6):** Sir Ansbach **4403**, Redmane Freyja **4423**, Hornsent **4363**, Needle Knight Leda
+**4443**, Thiollier **4463**, Dryleaf Dane **4563** (all death-distinct).
+
+**Remaining tail (4):** Moore, Igon, Queelign, Jolán — their blocks exist (unmapped: 4480/4500/4520/4540/4580
++ 43xx) but need block→entity mapping (Moore=despair-merchant, Queelign=repeatable invader gate uses map-local
+flags, Igon=post-Bayle, Jolán's NpcName didn't match the resolver). Plus base ESD-driven Roderika, Rya, Latenna.
 
 ## How to re-run / extend
 Decompile (see `[[darkscript3-emevd-decompile]]` memory): `DarkScript3.exe /cmd -decompile -game er -indir <event> -outdir <out>`
