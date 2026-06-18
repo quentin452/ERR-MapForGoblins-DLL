@@ -422,9 +422,24 @@ namespace
                 {
                     if (goblin::ui::category_section(c) != s) continue;
                     ImGui::PushID(c);
+                    // The raw Quest-NPC map pins are legacy/unfinished — the Quest
+                    // Browser below is the supported quest-navigation path. Tag the
+                    // label and explain on hover. Off by default.
+                    const char *clabel = goblin::ui::category_label(c);
+                    bool legacy_quest = std::string(clabel) == "World - Quest NPC";
+                    char clbuf[96];
+                    if (legacy_quest)
+                    {
+                        snprintf(clbuf, sizeof(clbuf), "%s  (legacy)", clabel);
+                        clabel = clbuf;
+                    }
                     bool cv = goblin::ui::category_visible(c);
-                    if (ImGui::Checkbox(goblin::ui::category_label(c), &cv))
+                    if (ImGui::Checkbox(clabel, &cv))
                         goblin::ui::set_category_visible(c, cv);
+                    if (legacy_quest && ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Legacy / unfinished: raw quest-NPC map pins.\n"
+                                          "Use the Quest Browser (below) for quest navigation.\n"
+                                          "Off by default.");
                     // Right-aligned cluster opt-in: unchecked = this category stays
                     // exact markers, never folded into a cluster icon.
                     ImGui::SameLine(ImGui::GetContentRegionAvail().x - 150.0f);
@@ -454,13 +469,16 @@ namespace
 
             ImGui::SeparatorText("Quest navigation");
             {
+                ImGui::TextDisabled("Use the Quest Browser below. The map-pin options here are");
+                ImGui::TextDisabled("legacy / unfinished and off by default.");
                 bool qa = goblin::ui::quest_aware();
-                if (ImGui::Checkbox("Quest-aware NPCs (hide until questline active)", &qa))
+                if (ImGui::Checkbox("Quest-aware NPCs (legacy / unfinished)", &qa))
                     goblin::ui::set_quest_aware(qa);
                 if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("Show a curated questline NPC's marker only while its quest is\n"
-                                      "active (event flag set). Live — no restart. Needs the Quest NPC\n"
-                                      "category enabled (World group). 50 NPC questlines covered.");
+                    ImGui::SetTooltip("LEGACY / UNFINISHED — superseded by the Quest Browser below.\n"
+                                      "Gates the legacy quest-NPC map pins on their questline flag\n"
+                                      "(show a pin only while its quest is active). Needs the Quest\n"
+                                      "NPC (legacy) category enabled. Off by default.");
 
                 // Quest Browser: ordered steps per NPC (hand-authored, original
                 // text). Each step names its location/zone for manual navigation.
