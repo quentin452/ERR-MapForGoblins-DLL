@@ -12,6 +12,7 @@
 #include "goblin_bench.hpp"
 #include "from/params.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
+#include "goblin_quest_gates.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -134,6 +135,26 @@ static std::set<uint64_t> g_ashen_rows;
 // applies it after fragment-eviction so it wins. Clustered royal rows are NOT
 // registered (the cluster owns their areaNo).
 static std::vector<uint8_t *> g_royal_rows;
+
+// Thread 1 v1.5 — quest-aware quest-NPC gating. Each registered WorldQuestNPC row
+// carries its NPC's quest-active flags (from goblin_quest_gates, joined from the
+// MIT EldenRingQuestLog data). refresh_quest_npc_eviction parks it (areaNo 99)
+// while NONE of those flags is set (quest not active) and restores it when active.
+// Opt-in (config questNpcQuestAware); coordinates with section/category via
+// is_section_hidden_ptr on restore. Clustered rows excluded.
+struct QuestRow { uint8_t *ptr; uint8_t orig_area; uint32_t flags[4]; };
+static std::vector<QuestRow> g_quest_rows;
+
+static const goblin::generated::QuestGate *lookup_quest_gate(uint32_t nameId)
+{
+    const auto *a = goblin::generated::QUEST_GATES;
+    size_t lo = 0, hi = goblin::generated::QUEST_GATE_COUNT;
+    while (lo < hi) { size_t m = (lo + hi) / 2;
+        if (a[m].nameId < nameId) lo = m + 1; else hi = m; }
+    if (lo < goblin::generated::QUEST_GATE_COUNT && a[lo].nameId == nameId)
+        return &a[lo];
+    return nullptr;
+}
 
 // ─── Per-section runtime visibility (in-game family-group toggle) ─────
 //
@@ -1202,6 +1223,22 @@ void goblin::inject_map_entries()
         // clustered royal row is already parked under its cluster).
         if (was_royal && !is_clustered_member)
             g_royal_rows.push_back(cp);
+
+        // Quest-NPC row → register for quest-aware gating (opt-in). nameId from
+        // textId1 (= nameId + 700000000); only rows whose NPC is in the curated
+        // quest-gate table. Clustered rows excluded (cluster owns their areaNo).
+        if (all_rows[i].category == Category::WorldQuestNPC && !is_clustered_member)
+        {
+            auto *st = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(cp);
+            if (st->textId1 >= 700000000)
+            {
+                const auto *g = lookup_quest_gate(
+                    static_cast<uint32_t>(st->textId1) - 700000000u);
+                if (g)
+                    g_quest_rows.push_back(
+                        {cp, cp[0x20], {g->flags[0], g->flags[1], g->flags[2], g->flags[3]}});
+            }
+        }
     }
     } // map.inject.build_rows
 
@@ -1983,6 +2020,34 @@ int goblin::refresh_royal_eviction()
                      g_royal_rows.size());
     }
     return parked;
+}
+
+// Thread 1 v1.5 — quest-aware quest-NPC gating. Park a registered quest-NPC row
+// while its questline is inactive (none of its flags set), restore when active.
+// Opt-in. Runs after section/category apply in the loop; respects them on restore.
+int goblin::refresh_quest_npc_eviction()
+{
+    GOBLIN_BENCH("refresh.quest_npc_eviction");
+    if (!goblin::config::questNpcQuestAware || g_quest_rows.empty()) return 0;
+    // Cold-API safety: if AlwaysOn (6001) can't be read true, leave rows as-is —
+    // never blank every quest NPC because the flag API isn't warm yet.
+    if (!orp_flag_set(6001)) return 0;
+    int changed = 0;
+    for (auto &r : g_quest_rows)
+    {
+        bool active = false;
+        for (uint32_t f : r.flags)
+            if (f && orp_flag_set(f)) { active = true; break; }
+        if (!active)
+        {
+            if (r.ptr[0x20] != 99) { r.ptr[0x20] = 99; changed++; }
+        }
+        else if (r.ptr[0x20] == 99 && !goblin::is_section_hidden_ptr(r.ptr))
+        {
+            r.ptr[0x20] = r.orig_area; changed++;
+        }
+    }
+    return changed;
 }
 
 struct FlagOrPair { uint32_t primary; uint32_t alt; };

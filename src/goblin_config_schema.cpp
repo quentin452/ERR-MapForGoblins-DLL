@@ -62,6 +62,7 @@ namespace goblin::config
     // piles into one cluster icon to cut the per-page map-open cost. Opt-in.
     bool enableClustering = false;
     uint8_t clusterThreshold = 8;     // a bucket clusters only if it holds > this many markers
+    bool questNpcQuestAware = false;  // gate quest-NPC markers on quest-active flags
 }
 
 // ── schema ───────────────────────────────────────────────────────────────
@@ -218,6 +219,7 @@ namespace
                 B("show_graces", showCategory[static_cast<int>(Cat::WorldGraces)], "false", "Sites of Grace"),
                 B("show_hostile_npc", showCategory[static_cast<int>(Cat::WorldHostileNPC)], "false", "Hostile NPC invader spawn locations (auto-discovered via teamType 24/27)"),
                 B("show_quest_npc", showCategory[static_cast<int>(Cat::WorldQuestNPC)], "false", "Named friendly NPC + merchant locations (quest navigation; own family, not clustered)"),
+                B("quest_npc_quest_aware", questNpcQuestAware, "false", "Quest-aware quest NPCs: show a curated questline NPC's marker only while its quest is active (event flag set). Off = always shown."),
                 B("show_imp_statues", showCategory[static_cast<int>(Cat::WorldImpStatues)], "false", "Imp Statue (Stonesword Key fog gate) locations"),
                 B("show_paintings", showCategory[static_cast<int>(Cat::WorldPaintings)], "false", "Painting locations"),
                 B("show_spirit_springs", showCategory[static_cast<int>(Cat::WorldSpiritSprings)], "false", "Spirit Spring (horse jump) locations"),

@@ -104,6 +104,11 @@ namespace goblin
         // Marker clustering (v1). See goblin_config_schema [Clustering].
         extern bool enableClustering;
         extern uint8_t clusterThreshold;   // bucket clusters only if it holds > this many
+
+        // Thread 1 v1.5 — quest-aware quest-NPC markers. When true, a WorldQuestNPC
+        // marker for one of the 34 curated questlines shows only while that quest is
+        // active (its event flag set); off = all quest-NPC markers always shown.
+        extern bool questNpcQuestAware;
     };
 
     uint32_t parse_vk_code(std::string name);

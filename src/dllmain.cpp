@@ -68,6 +68,7 @@ static void safe_fragment_eviction_seh()
     {
         goblin::refresh_fragment_eviction();
         goblin::refresh_royal_eviction();  // after frag-evict so the post-burn hide wins
+        goblin::refresh_quest_npc_eviction();  // quest-aware quest-NPC gating (opt-in)
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
     {
