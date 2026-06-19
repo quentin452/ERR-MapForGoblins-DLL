@@ -342,15 +342,25 @@ static std::atomic<bool> g_clusters_expanded{false};
 // their members at once). Built-once → no lock needed for the read.
 static std::set<uint8_t *> g_cluster_member_ptrs;
 
+// Spare pool of cluster rows reserved at inject (the param table can't realloc at
+// runtime). replan_clusters() fills/empties them from the LIVE rows, so enable /
+// soft-hard / threshold / exclude all apply with NO restart (the map rebuild shows
+// it on next open). g_cluster_member_ptrs + the pool are mutated by replan under
+// g_section_hidden_mtx; is_section_hidden_ptr reads the member set under the lock.
+static constexpr size_t CLUSTER_POOL_SIZE = 1024;
+static constexpr int CLUSTER_MAX_COUNT = 1999;  // pre-injected number strings 1..this
+static std::vector<uint8_t *> g_cluster_pool;
+static std::atomic<bool> g_cluster_replan_dirty{false};
+
 bool goblin::is_section_hidden_ptr(const void *param_data)
 {
     if (g_master_off.load()) return true;  // master off hides every injected row
     auto *p = reinterpret_cast<uint8_t *>(const_cast<void *>(param_data));
+    std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
     // Collapsed cluster member → kept parked under its cluster, regardless of any
     // other owner's restore.
     if (!g_clusters_expanded.load() && g_cluster_member_ptrs.count(p) != 0)
         return true;
-    std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
     return g_section_hidden_ptrs.count(p) != 0 || g_category_hidden_ptrs.count(p) != 0;
 }
 
@@ -821,6 +831,111 @@ static int cluster_threshold_for_cfg(Category cat)
     return def;
 }
 
+// Runtime (re)planner: compute the ENTIRE cluster plan from the live resident
+// rows (g_section_rows) into the reserved pool. Called once after inject and on
+// any enable / soft-hard / threshold / exclude change — NO restart (the map shows
+// it on next open). Counts are live: each pile points its label at a pre-injected
+// number string (CLUSTER_TEXTID_BASE + count). Runs on the watcher thread only.
+static void replan_clusters()
+{
+    using ST = from::paramdef::WORLD_MAP_POINT_PARAM_ST;
+    std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
+
+    // 1. Tear down the previous plan: restore the members we parked, park all pool
+    //    rows, clear the registries.
+    for (const auto &m : g_cluster_members)
+        if (g_cluster_member_ptrs.count(m.ptr)) m.ptr[0x20] = m.orig_area;
+    for (auto *p : g_cluster_pool) p[0x20] = 99;
+    g_clusters.clear();
+    g_cluster_members.clear();
+    g_cluster_member_ptrs.clear();
+
+    if (!goblin::config::enableClustering || g_cluster_pool.empty())
+    {
+        g_clustering_active = false;
+        return;
+    }
+
+    // 2. Bucket the live rows by cell (+ category in SOFT, mixed in HARD).
+    const bool hard = goblin::config::clusterHard;
+    auto cell_key = [](Category cat, uint8_t area, int cx, int cz) -> uint64_t {
+        return (static_cast<uint64_t>(static_cast<uint8_t>(cat)) << 56) |
+               (static_cast<uint64_t>(area) << 48) |
+               ((static_cast<uint64_t>((cx + 0x400000) & 0xFFFFFF)) << 24) |
+                (static_cast<uint64_t>((cz + 0x400000) & 0xFFFFFF));
+    };
+    struct Bucket { std::vector<size_t> members; double sx = 0, sz = 0; float py = 0;
+                    uint8_t area = 0, gx = 0, gz = 0; };
+    std::unordered_map<uint64_t, Bucket> buckets;
+    for (size_t i = 0; i < g_section_rows.size(); i++)
+    {
+        const auto &r = g_section_rows[i];
+        if (!category_clustered_cfg(r.cat)) continue;  // excluded → stays exact
+        auto *st = reinterpret_cast<ST *>(r.ptr);
+        uint8_t area = r.orig_area;                    // FINAL (post-projection) page
+        int cx = static_cast<int>(std::floor(st->posX / CLUSTER_CELL));
+        int cz = static_cast<int>(std::floor(st->posZ / CLUSTER_CELL));
+        Category kc = hard ? static_cast<Category>(0) : r.cat;
+        auto &b = buckets[cell_key(kc, area, cx, cz)];
+        b.members.push_back(i);
+        b.sx += st->posX; b.sz += st->posZ; b.py = st->posY;
+        b.area = area; b.gx = st->gridXNo; b.gz = st->gridZNo;
+    }
+
+    // 3. Over-threshold cells → fill a pool row, park members.
+    size_t pi = 0;
+    int dropped = 0;
+    for (auto &kv : buckets)
+    {
+        Bucket &b = kv.second;
+        Category domcat = g_section_rows[b.members[0]].cat;  // pile icon/label/gate
+        if (hard)
+        {
+            std::unordered_map<int, int> cc; int best = -1, bestc = 0;
+            for (size_t mi : b.members)
+            {
+                int c = ++cc[static_cast<int>(g_section_rows[mi].cat)];
+                if (c > bestc) { bestc = c; best = static_cast<int>(g_section_rows[mi].cat); }
+            }
+            if (best >= 0) domcat = static_cast<Category>(best);
+        }
+        int thr = hard ? static_cast<int>(goblin::config::clusterThreshold)
+                       : cluster_threshold_for_cfg(domcat);
+        if (static_cast<int>(b.members.size()) <= thr) continue;
+        if (pi >= g_cluster_pool.size()) { dropped++; continue; }
+
+        uint8_t *cp = g_cluster_pool[pi++];
+        auto *cd = reinterpret_cast<ST *>(cp);
+        cd->areaNo = b.area; cd->gridXNo = b.gx; cd->gridZNo = b.gz;
+        cd->posX = static_cast<float>(b.sx / b.members.size());
+        cd->posZ = static_cast<float>(b.sz / b.members.size());
+        cd->posY = b.py;
+        cd->iconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID);
+        int cnt = std::min<int>(static_cast<int>(b.members.size()), CLUSTER_MAX_COUNT);
+        int textid = CLUSTER_TEXTID_BASE + cnt;        // → pre-injected number string
+        cd->textId1 = textid;
+
+        std::vector<uint32_t> mf;
+        for (size_t mi : b.members)
+        {
+            const auto &r = g_section_rows[mi];
+            r.ptr[0x20] = 99;                          // park member off-page
+            g_cluster_member_ptrs.insert(r.ptr);
+            g_cluster_members.push_back({r.ptr, r.orig_area, r.cat});
+            uint32_t f = reinterpret_cast<ST *>(r.ptr)->textDisableFlagId1;  // collect flag
+            if (f) mf.push_back(f);
+        }
+        g_clusters.push_back({cp, b.area, textid, std::move(mf), domcat});
+    }
+    g_clustering_active = !g_clusters.empty();
+    spdlog::info("[CLUSTER] replan {}: {} piles, {} members parked, {}/{} pool used, {} dropped",
+                 hard ? "HARD" : "SOFT", g_clusters.size(), g_cluster_members.size(),
+                 pi, g_cluster_pool.size(), dropped);
+
+    // 4. Apply the current collapsed/expanded view to the new plan.
+    apply_cluster_expanded(g_clusters_expanded.load());
+}
+
 static bool *category_config_ptr(Category cat)
 {
     return &goblin::config::showCategory[static_cast<int>(cat)];
@@ -931,19 +1046,48 @@ void goblin::inject_map_entries()
     // clustered — they're the densest free-pickup clutter — but their
     // collected/kindling registration is skipped below when clustered so the two
     // areaNo owners don't fight.
-    std::set<uint64_t> clustered_member_ids;          // original ids parked under a cluster
-    std::vector<size_t> cluster_entry_idx;            // index in `entries` of each cluster
-    std::vector<int> cluster_count_textid;            // parallel: its label id
-    std::unordered_map<int, std::vector<uint32_t>> cluster_flags_by_textid; // textid -> member collect-flags
-    // Always build the cluster plan (even when clustering starts OFF) so it can be
-    // toggled live with NO restart: the synthetic rows sit parked (areaNo 99) until
-    // collapsed. config::enableClustering sets only the INITIAL state (applied just
-    // below). g_clustering_active is set after the loop = did any pile actually form.
+    // ── Cluster pool reservation (the plan itself is RUNTIME) ────────────────
+    // The cluster plan is computed at RUNTIME by replan_clusters() so enable /
+    // soft-hard / threshold / exclude all take effect with NO restart. The param
+    // table can't grow at runtime, so reserve a fixed POOL of spare cluster rows
+    // here (parked off-page); replan fills/empties them live. Counts are live too:
+    // pre-inject number strings "1".."MAX" → a pile points its label at
+    // CLUSTER_TEXTID_BASE + count.
+    std::vector<size_t> pool_entry_idx;
     {
-        GOBLIN_BENCH("map.inject.cluster_plan");
+        GOBLIN_BENCH("map.inject.cluster_pool");
+        for (int n = 1; n <= CLUSTER_MAX_COUNT; n++)
+            g_cluster_census.emplace_back(CLUSTER_TEXTID_BASE + n, std::to_string(n));
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST tmpl =
+            entries.empty() ? from::paramdef::WORLD_MAP_POINT_PARAM_ST{}
+                            : *entries.front().data;
+        for (size_t k = 0; k < CLUSTER_POOL_SIZE; k++)
+        {
+            auto *cd = new from::paramdef::WORLD_MAP_POINT_PARAM_ST(tmpl);
+            cd->areaNo = 99;             // parked; replan sets the real page + pos
+            cd->iconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID);
+            cd->eventFlagId = 0; cd->clearedEventFlagId = 0;
+            cd->textId1 = -1;            // replan sets the live count label
+            cd->textId2 = cd->textId3 = cd->textId4 = -1;
+            cd->textId5 = cd->textId6 = cd->textId7 = cd->textId8 = -1;
+            cd->textDisableFlagId1 = cd->textDisableFlagId2 = cd->textDisableFlagId3 = 0;
+            cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
+            cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
+            pool_entry_idx.push_back(entries.size());
+            entries.push_back({0, 0, cd, false, false, Category::WorldInteractables, 0, 0});
+        }
+        spdlog::info("[CLUSTER] reserved pool of {} spare rows (+{} count strings); "
+                     "plan is RUNTIME (replan_clusters)", CLUSTER_POOL_SIZE, CLUSTER_MAX_COUNT);
+    }
+#if 0  // OLD init-time plan — replaced by runtime replan_clusters()
+    {
         struct Bucket { std::vector<size_t> members; double sx = 0, sz = 0; float py = 0;
                         uint8_t area = 0, gx = 0, gz = 0; Category cat{}; };
         std::unordered_map<uint64_t, Bucket> buckets;
+        // HARD clustering = bucket a cell's markers regardless of category (ONE mixed
+        // pile per dense cell — far more aggressive declutter). SOFT (default) = per-
+        // category buckets (typed piles). Excluded categories stay exact in both.
+        const bool hard = goblin::config::clusterHard;
         // Key by category too: each category clusters separately in a cell, so a
         // per-category threshold is well-defined and the cluster label/icon can be
         // typed (e.g. "Smithing Stones (12)" + "Golden Runes (9)" instead of one
@@ -965,11 +1109,12 @@ void goblin::inject_map_entries()
                 project_dungeon_row_to_overworld(&tmp);
             int cx = static_cast<int>(std::floor(tmp.posX / CLUSTER_CELL));
             int cz = static_cast<int>(std::floor(tmp.posZ / CLUSTER_CELL));
-            auto &b = buckets[cell_key(entries[i].category, tmp.areaNo, cx, cz)];
+            Category key_cat = hard ? static_cast<Category>(0) : entries[i].category;
+            auto &b = buckets[cell_key(key_cat, tmp.areaNo, cx, cz)];
             b.members.push_back(i);
             b.sx += tmp.posX; b.sz += tmp.posZ; b.py = tmp.posY;
             b.area = tmp.areaNo; b.gx = tmp.gridXNo; b.gz = tmp.gridZNo;
-            b.cat = entries[i].category;
+            b.cat = entries[i].category;  // soft: all same; hard: dominant set below
         }
         // Census for the sorted dump below (quantifies each pile so the
         // Leyndell-area cluster's size can be read off without hovering — used to
@@ -982,7 +1127,24 @@ void goblin::inject_map_entries()
         for (auto &kv : buckets)
         {
             Bucket &b = kv.second;
-            if (static_cast<int>(b.members.size()) <= cluster_threshold_for_cfg(b.cat)) continue;
+            // HARD uses the global threshold (a mixed pile has no per-category
+            // threshold); SOFT uses the per-category effective threshold.
+            int thr = hard ? static_cast<int>(goblin::config::clusterThreshold)
+                           : cluster_threshold_for_cfg(b.cat);
+            if (static_cast<int>(b.members.size()) <= thr) continue;
+            if (hard)
+            {
+                // Pick the dominant member category for the mixed cluster's icon /
+                // label / section-gating.
+                std::unordered_map<int, int> cc;
+                int best = -1, bestc = 0;
+                for (size_t mi : b.members)
+                {
+                    int c = ++cc[static_cast<int>(entries[mi].category)];
+                    if (c > bestc) { bestc = c; best = static_cast<int>(entries[mi].category); }
+                }
+                if (best >= 0) b.cat = static_cast<Category>(best);
+            }
             auto *cd = new from::paramdef::WORLD_MAP_POINT_PARAM_ST(*entries[b.members[0]].data);
             cd->areaNo = b.area; cd->gridXNo = b.gx; cd->gridZNo = b.gz;
             cd->posX = static_cast<float>(b.sx / b.members.size());
@@ -1003,7 +1165,8 @@ void goblin::inject_map_entries()
                 // Buckets are now single-category, so label by TYPE (+ region for
                 // context when known): "Smithing Stones — Limgrave (12)".
                 int cnt = static_cast<int>(b.members.size());
-                std::string type = goblin::markers::category_name(b.cat);
+                // HARD = mixed pile → label by region only (no single type).
+                std::string type = hard ? "" : goblin::markers::category_name(b.cat);
                 std::string region = goblin::cluster_region_label(b.area, b.gx, b.gz);
                 if (region.empty())
                 {
@@ -1057,6 +1220,7 @@ void goblin::inject_map_entries()
                          i + 1, c.count, c.area, c.gx, c.gz, c.gx / 2, c.gz / 2, c.cx, c.cz);
         }
     }
+#endif  // OLD init-time plan
 
     spdlog::info("Injecting {} map entries ({} skipped by config, {} live-recategorized)",
                  entries.size(), skipped_by_config, live_recat);
@@ -1100,11 +1264,12 @@ void goblin::inject_map_entries()
     collected::remap_row_ids(id_remap);
     kindling::remap_row_ids(id_remap);
 
-    // Map each cluster's now-assigned dynamic row_id → its label id, so the build
-    // loop can register the cluster rows (the synthetic ones, original_row_id 0).
-    std::unordered_map<int32_t, int> cluster_rowid_to_textid;
-    for (size_t k = 0; k < cluster_entry_idx.size(); k++)
-        cluster_rowid_to_textid[entries[cluster_entry_idx[k]].row_id] = cluster_count_textid[k];
+    // Pool row_ids (the reserved spare cluster rows) → the build loop collects
+    // their live ptrs into g_cluster_pool; replan_clusters() fills them at runtime.
+    std::set<int32_t> pool_row_ids;
+    for (size_t idx : pool_entry_idx) pool_row_ids.insert(entries[idx].row_id);
+    g_cluster_pool.clear();
+    g_cluster_pool.reserve(pool_entry_idx.size());
 
     spdlog::debug("Assigned IDs: {} entries, range {}-{}, remapped {} piece IDs",
                   entries.size(),
@@ -1338,35 +1503,22 @@ void goblin::inject_map_entries()
 
         auto *cp = new_param_file + data_offset;
 
-        // Clustering: register synthetic cluster rows (the only injected rows with
-        // original_row_id 0) and park their members (collapsed default = areaNo 99,
-        // restored on expand). A clustered member is NOT section-registered — the
-        // cluster owns its areaNo, so a section "show" must not un-park it.
-        bool is_clustered_member = false;
-        if (g_clustering_active)  // plan always built; register whenever piles formed
+        // Reserved POOL cluster row → collect its ptr for replan_clusters() and
+        // skip the rest (it's not a section/royal/quest row). Parked off-page.
+        if (all_rows[i].original_row_id == 0 && pool_row_ids.count(all_rows[i].row_id))
         {
-            auto cit = cluster_rowid_to_textid.find(all_rows[i].row_id);
-            if (all_rows[i].original_row_id == 0 && cit != cluster_rowid_to_textid.end())
-            {
-                g_clusters.push_back({cp, cp[0x20], cit->second,
-                                      std::move(cluster_flags_by_textid[cit->second]),
-                                      all_rows[i].category});
-            }
-            else if (all_rows[i].original_row_id &&
-                     clustered_member_ids.count(all_rows[i].original_row_id))
-            {
-                g_cluster_members.push_back({cp, cp[0x20], all_rows[i].category});
-                g_cluster_member_ptrs.insert(cp);  // eviction-coordination set
-                cp[0x20] = 99;
-                is_clustered_member = true;
-            }
+            cp[0x20] = 99;
+            g_cluster_pool.push_back(cp);
+            continue;
         }
 
         // Register the row for the in-game per-section toggle (our injected rows
         // only; vanilla rows have original_row_id 0 and are never group-toggled).
         // areaNo here is final (post dungeon-reprojection) and pre piece/kindling
         // 99-hide, so it is the correct value to restore on a section "show".
-        if (all_rows[i].original_row_id && !is_clustered_member)
+        // ALL injected rows are section-registered now; replan_clusters() parks the
+        // ones it folds into a pile and the eviction coordination keeps them parked.
+        if (all_rows[i].original_row_id)
         {
             g_section_rows.push_back({cp, section_of(all_rows[i].category),
                                       all_rows[i].category,
@@ -1375,15 +1527,14 @@ void goblin::inject_map_entries()
                                       static_cast<uint64_t>(all_rows[i].row_id)});
         }
 
-        // Royal Capital row → register for post-burn hide, unless clustered (a
-        // clustered royal row is already parked under its cluster).
-        if (was_royal && !is_clustered_member)
+        // Royal Capital row → register for post-burn hide.
+        if (was_royal)
             g_royal_rows.push_back(cp);
 
         // Quest-NPC row → register for quest-aware gating (opt-in). nameId from
         // textId1 (= nameId + 700000000); only rows whose NPC is in the curated
-        // quest-gate table. Clustered rows excluded (cluster owns their areaNo).
-        if (all_rows[i].category == Category::WorldQuestNPC && !is_clustered_member)
+        // quest-gate table.
+        if (all_rows[i].category == Category::WorldQuestNPC)
         {
             auto *st = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(cp);
             if (st->textId1 >= 700000000)
@@ -1419,12 +1570,9 @@ void goblin::inject_map_entries()
         auto *param_ptr = new_param_file + data_offset;
         uint64_t row_id = static_cast<uint64_t>(all_rows[i].row_id);
 
-        // A clustered piece/kindling row is owned by the cluster (parked at 99);
-        // skip collected/kindling tracking so it isn't un-parked by their refresh.
-        if (all_rows[i].original_row_id &&
-            clustered_member_ids.count(all_rows[i].original_row_id))
-            continue;
-
+        // Clustering is now RUNTIME: a piece/kindling folded into a pile is kept
+        // parked via the eviction coordination (is_section_hidden_ptr), so no
+        // inject-time skip is needed. Pool rows aren't pieces/kindling.
         if (all_rows[i].is_piece)
         {
             collected::register_param_ptr(row_id, param_ptr);
@@ -1523,18 +1671,10 @@ void goblin::inject_map_entries()
     if (goblin::config::iconsHidden)
         apply_master_visibility(false);
 
-    // The plan is always built COLLAPSED (members parked at registration). Set the
-    // INITIAL live state from config: clustering OFF ⇔ expanded (members shown,
-    // clusters parked). The watcher applies the dirty state once it starts; with
-    // the map not open yet there's no visible flicker.
-    if (g_clustering_active)
-    {
-        g_clusters_expanded.store(!goblin::config::enableClustering);
-        g_cluster_expand_dirty.store(true);
-        spdlog::info("[CLUSTER] built {} cluster icons over {} markers; initial state: {}",
-                     g_clusters.size(), g_cluster_members.size(),
-                     goblin::config::enableClustering ? "ON (collapsed)" : "OFF (expanded)");
-    }
+    // Build the initial cluster plan at RUNTIME from the rows we just registered.
+    // enableClustering ⇔ collapsed (clusters shown); off ⇔ expanded (members shown).
+    g_clusters_expanded.store(!goblin::config::enableClustering);
+    replan_clusters();
 
     spdlog::debug("Injection complete: {} total rows", total_rows);
 }
@@ -1992,6 +2132,15 @@ void goblin::ui::set_global_threshold(int t)
     // aren't written as spurious per-category overrides on Save.
     for (int c = 0; c < NUM_CATEGORIES; c++)
         if (g_category_threshold[c].load() == old) g_category_threshold[c].store(t);
+    g_cluster_replan_dirty.store(true);  // re-plan live (no restart)
+}
+
+// Hard (mixed-category) vs Soft (per-category) clustering — live, re-plans.
+bool goblin::ui::cluster_hard() { return goblin::config::clusterHard; }
+void goblin::ui::set_cluster_hard(bool on)
+{
+    goblin::config::clusterHard = on;
+    g_cluster_replan_dirty.store(true);
 }
 
 // Save request posted by the menu; the watcher does the file I/O.
@@ -2076,10 +2225,11 @@ bool goblin::ui::clusters_expanded() { return g_clusters_expanded.load(); }
 void goblin::ui::set_clusters_expanded(bool expanded)
 {
     g_clusters_expanded.store(expanded);
-    g_cluster_expand_dirty.store(true);
     // Persist the live on/off intent: collapsed (clustered) ⇔ enableClustering.
-    // The Save button writes config, so next launch starts in the same state.
     goblin::config::enableClustering = !expanded;
+    // enable/disable changes whether the plan exists, so re-plan (it rebuilds when
+    // enabled, clears when disabled, and applies the collapsed/expanded view).
+    g_cluster_replan_dirty.store(true);
 }
 
 bool goblin::ui::cluster_debug() { return g_cluster_debug.load(); }
@@ -2638,8 +2788,12 @@ void goblin::menu_auto_toggle_loop()
         if (g_reset_defaults_req.exchange(false))
             goblin::reset_to_defaults_and_save(goblin::config_ini_path());
 
-        // Cluster expand/collapse + debug-label flips (areaNo / textId on the live
-        // blob). Applied here, the single owner of game-state mutation.
+        // Runtime cluster re-plan (enable / soft-hard / threshold / exclude). Rebuilds
+        // the whole plan from the live rows into the pool, then applies the view. The
+        // single owner of game-state mutation. Shows on the next map open.
+        if (g_cluster_replan_dirty.exchange(false))
+            replan_clusters();
+        // Cluster expand/collapse + debug-label flips (areaNo / textId on the live blob).
         if (g_cluster_expand_dirty.exchange(false))
             apply_cluster_expanded(g_clusters_expanded.load());
         if (g_cluster_debug_dirty.exchange(false))

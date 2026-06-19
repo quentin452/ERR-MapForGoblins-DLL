@@ -117,6 +117,7 @@ namespace goblin
 
         // Marker clustering (v1). See goblin_config_schema [Clustering].
         extern bool enableClustering;
+        extern bool clusterHard;  // hard = mixed-category piles; soft = per-category
         extern uint8_t clusterThreshold;   // bucket clusters only if it holds > this many
         // Per-category cluster opt-out. Comma-separated category names (loose match,
         // like showAllExcept) that stay EXACT markers and never fold into a cluster.

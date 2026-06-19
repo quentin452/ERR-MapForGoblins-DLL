@@ -64,6 +64,7 @@ namespace goblin::config
     // Marker clustering (v1, density-triggered, static). Collapses dense marker
     // piles into one cluster icon to cut the per-page map-open cost. Opt-in.
     bool enableClustering = false;
+    bool clusterHard = false;         // hard = mix categories into one pile; soft = per-category
     uint8_t clusterThreshold = 8;     // a bucket clusters only if it holds > this many markers
     std::string clusterExclude = "";  // category names kept exact (never clustered)
     std::string clusterThresholdOverrides = "";  // "Name:N" per-category threshold overrides
@@ -166,9 +167,14 @@ namespace
              false, {
                 B("enable_clustering", enableClustering, "false",
                   "Master switch for marker clustering."),
+                B("cluster_hard", clusterHard, "false",
+                  "HARD clustering: fold ALL marker types in a dense map cell into ONE\n"
+                  "mixed pile (far fewer icons). false = SOFT: cluster each category\n"
+                  "separately (typed piles, e.g. 'Smithing Stones (12)'). Excluded\n"
+                  "categories stay exact in both. Save + restart (re-plans the piles)."),
                 IniEntry{"cluster_threshold", IniType::U8, &cfg::clusterThreshold, "8",
-                         "A location clusters only if it holds MORE than this many markers.\n"
-                         "Lower = more aggressive clustering (faster, less precise).", false, nullptr},
+                         "A cell clusters only if it holds MORE than this many markers.\n"
+                         "LOWER = MORE aggressive (groups smaller piles). NOT higher.", false, nullptr},
                 IniEntry{"cluster_exclude", IniType::String, &cfg::clusterExclude, "",
                          "Categories that stay EXACT markers and never fold into a cluster\n"
                          "(comma-separated, matched loosely vs the category name, e.g.\n"

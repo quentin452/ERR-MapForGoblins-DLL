@@ -175,6 +175,10 @@ namespace goblin
         void set_clustering_enabled(bool on);  // takes effect after Save + restart
         bool clusters_expanded();
         void set_clusters_expanded(bool expanded);
+        // Hard (mixed-category piles) vs Soft (per-category). LIVE — re-plans the
+        // clusters at runtime (applied on next map open), no restart.
+        bool cluster_hard();
+        void set_cluster_hard(bool on);
         // Quest-aware NPC gating (live; persisted on Save). Show a curated
         // questline NPC's marker only while its quest is active.
         bool quest_aware();

@@ -695,11 +695,12 @@ namespace
                 // Global default threshold (per-category overrides set per row above).
                 int gt = goblin::ui::global_threshold();
                 ImGui::SetNextItemWidth(90.0f);
-                if (ImGui::InputInt("Default threshold (Save + restart)", &gt))
+                if (ImGui::InputInt("Threshold (live — reopen map)", &gt))
                     goblin::ui::set_global_threshold(gt);
                 if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("A category clusters in a map cell holding MORE than this many\n"
-                                      "of it. Per-category overrides are set next to each 'cluster' box.");
+                    ImGui::SetTooltip("A cell clusters when it holds MORE than this many markers.\n"
+                                      "LOWER = MORE clustering (groups smaller piles). Live — reopen\n"
+                                      "the map to see it.");
             }
             if (goblin::ui::clustering_active())
             {
@@ -717,6 +718,14 @@ namespace
                 bool dbg = goblin::ui::cluster_debug();
                 if (ImGui::Checkbox("Cluster labels show counts", &dbg))
                     goblin::ui::set_cluster_debug(dbg);
+                bool hard = goblin::ui::cluster_hard();
+                if (ImGui::Checkbox("Hard clustering — mix all categories (live)", &hard))
+                    goblin::ui::set_cluster_hard(hard);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("HARD: fold ALL marker types in a dense cell into ONE pile\n"
+                                      "(far fewer icons — the real declutter). Off = SOFT: cluster\n"
+                                      "each category separately (typed piles). Live — reopen the map.\n"
+                                      "Tip: LOWER the threshold = MORE clustering.");
             }
             else
             {
