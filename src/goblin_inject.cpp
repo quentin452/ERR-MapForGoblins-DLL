@@ -978,28 +978,48 @@ static void replan_clusters()
         cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
         cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
         cd->textId5 = cd->textId6 = cd->textId7 = cd->textId8 = -1;
-        // Position: a projected dungeon sits at its entrance; everything else at
-        // the centroid of its members (split back to display grid tile + local).
-        double cwx = (b.ent_x >= 0) ? b.ent_x : b.sx / b.members.size();
-        double cwz = (b.ent_x >= 0) ? b.ent_z : b.sz / b.members.size();
-        int gx = static_cast<int>(std::floor(cwx / 256.0));
-        int gz = static_cast<int>(std::floor(cwz / 256.0));
+        // Position. A projected dungeon sits at its overworld ENTRANCE (those pages
+        // are 256-tiled, so a world split is valid). Otherwise keep a REAL member's
+        // grid tile and average posX/posZ over members in THAT SAME tile — do NOT
+        // re-split a world centroid by 256: underground tiles are not 256 wide (area
+        // 12 posX runs to ~1900), so the split invents a grid index that doesn't
+        // exist on that page and the pile lands in the wrong spot.
+        uint8_t cgx, cgz; float cpx, cpz;
+        if (b.ent_x >= 0)
+        {
+            int gx = static_cast<int>(std::floor(b.ent_x / 256.0));
+            int gz = static_cast<int>(std::floor(b.ent_z / 256.0));
+            cgx = static_cast<uint8_t>(gx);
+            cgz = static_cast<uint8_t>(gz);
+            cpx = static_cast<float>(b.ent_x - gx * 256.0);
+            cpz = static_cast<float>(b.ent_z - gz * 256.0);
+        }
+        else
+        {
+            auto *seed = reinterpret_cast<ST *>(g_section_rows[b.members[0]].ptr);
+            cgx = seed->gridXNo; cgz = seed->gridZNo;
+            double sx = 0, sz = 0; int n = 0;
+            for (size_t mi : b.members)
+            {
+                auto *m = reinterpret_cast<ST *>(g_section_rows[mi].ptr);
+                if (m->gridXNo == cgx && m->gridZNo == cgz) { sx += m->posX; sz += m->posZ; n++; }
+            }
+            cpx = static_cast<float>(sx / n);
+            cpz = static_cast<float>(sz / n);
+        }
         cd->areaNo = b.area;
-        cd->gridXNo = static_cast<uint8_t>(gx);
-        cd->gridZNo = static_cast<uint8_t>(gz);
-        cd->posX = static_cast<float>(cwx - gx * 256.0);
-        cd->posZ = static_cast<float>(cwz - gz * 256.0);
+        cd->gridXNo = cgx; cd->gridZNo = cgz;
+        cd->posX = cpx; cd->posZ = cpz;
         cd->posY = b.py;
-        // The zoomed-out / page-select map places the icon by a SEPARATE distant-
-        // view coord set. Pool rows are copied from a base-area-60 template, so
-        // without mirroring these every cluster renders on the base overworld
-        // (DLC area 61 + underground area 12 piles leaked onto the base map).
+        // Mirror the distant-view coords (used by some pages / zoom levels). Pool
+        // rows are copied from a base-area-60 template; without this they could leak
+        // onto the base map. isOverrideDistViewMarkPos is inherited from the seed.
         cd->areaNo_forDistViewMark = b.area;
-        cd->gridXNo_forDistViewMark = static_cast<uint8_t>(gx);
-        cd->gridZNo_forDistViewMark = static_cast<uint8_t>(gz);
-        cd->posX_forDistViewMark = cd->posX;
-        cd->posY_forDistViewMark = cd->posY;
-        cd->posZ_forDistViewMark = cd->posZ;
+        cd->gridXNo_forDistViewMark = cgx;
+        cd->gridZNo_forDistViewMark = cgz;
+        cd->posX_forDistViewMark = cpx;
+        cd->posY_forDistViewMark = b.py;
+        cd->posZ_forDistViewMark = cpz;
         cd->iconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID);
         int cnt = std::min<int>(static_cast<int>(b.members.size()), CLUSTER_MAX_COUNT);
         int cnt_textid = CLUSTER_TEXTID_BASE + cnt;    // → pre-injected number string
@@ -1026,7 +1046,7 @@ static void replan_clusters()
         if (dbg)
             spdlog::info("[CLUSTER-DUMP] #{} key={} area={} tab={} grid=({},{}) pos=({:.1f},{:.1f}) "
                          "pname={} members={} mode={}",
-                         g_clusters.size() - 1, kv.first, b.area, b.tab, gx, gz,
+                         g_clusters.size() - 1, kv.first, b.area, b.tab, cgx, cgz,
                          cd->posX, cd->posZ, b.pname, static_cast<int>(b.members.size()),
                          (b.ent_x >= 0) ? "ENTRANCE" : "CENTROID");
     }
