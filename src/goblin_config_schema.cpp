@@ -73,9 +73,9 @@ namespace goblin::config
     // clustering → fewer distant icons). Linear ramp over nearRadius..farRadius
     // tiles. Applied per pile at map-open replan.
     bool    clusterDistanceAdaptive = false;
-    uint8_t clusterNearThreshold = 18; // detail size NEAR player (high = more individual items)
-    uint8_t clusterNearRadius    = 4;  // tiles: full-detail radius
-    uint8_t clusterFarRadius     = 16; // tiles: at/beyond this, clusterThreshold (clustered)
+    uint8_t clusterNearThreshold = 60; // detail size NEAR player (high = more individual items)
+    uint8_t clusterNearRadius    = 1;  // tiles: full-detail radius (tight = just your immediate area)
+    uint8_t clusterFarRadius     = 2;  // tiles: at/beyond this, clusterThreshold (clustered)
     bool questNpcQuestAware = false;  // gate quest-NPC markers on quest-active flags
     std::string questProgress = "";   // Quest Browser per-step done bits ('0'/'1')
     bool questGreyOnDeath = true;     // grey questlines whose NPC death flag is set
@@ -188,12 +188,12 @@ namespace
                   "Scale cluster size by distance from the player: full detail near you,\n"
                   "distant dense spots merge harder (fewer far icons). Linear ramp from\n"
                   "cluster_near_threshold (near, high) DOWN to cluster_threshold (far)."),
-                IniEntry{"cluster_near_threshold", IniType::U8, &cfg::clusterNearThreshold, "18",
+                IniEntry{"cluster_near_threshold", IniType::U8, &cfg::clusterNearThreshold, "60",
                          "Distance-adaptive: detail cluster size NEAR the player (high = more\n"
                          "individual items shown near you). Ramps down to cluster_threshold far.", false, nullptr},
-                IniEntry{"cluster_near_radius", IniType::U8, &cfg::clusterNearRadius, "4",
+                IniEntry{"cluster_near_radius", IniType::U8, &cfg::clusterNearRadius, "1",
                          "Distance-adaptive: full-detail radius around the player, in 256-unit tiles.", false, nullptr},
-                IniEntry{"cluster_far_radius", IniType::U8, &cfg::clusterFarRadius, "16",
+                IniEntry{"cluster_far_radius", IniType::U8, &cfg::clusterFarRadius, "2",
                          "Distance-adaptive: at/beyond this many tiles, use cluster_threshold (full clustering).", false, nullptr},
                 IniEntry{"cluster_exclude", IniType::String, &cfg::clusterExclude, "",
                          "Categories that stay EXACT markers and never fold into a cluster\n"

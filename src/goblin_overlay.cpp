@@ -767,22 +767,25 @@ namespace
                     ImGui::SameLine();
                     if (ImGui::SmallButton("Explorer"))
                     {
-                        goblin::ui::set_global_threshold(6);           // far = clustered
+                        // Tight radius: only the area immediately around you is detailed,
+                        // everything else clusters (covers just the useful part of the
+                        // map, not the whole thing). Verified-good config.
+                        goblin::ui::set_global_threshold(4);           // far = clustered
                         goblin::config::clusterDistanceAdaptive = true;
-                        goblin::config::clusterNearThreshold = 50;     // near = individual items
-                        goblin::config::clusterNearRadius = 4;
-                        goblin::config::clusterFarRadius = 18;
+                        goblin::config::clusterNearThreshold = 60;     // near = individual items
+                        goblin::config::clusterNearRadius = 1;
+                        goblin::config::clusterFarRadius = 2;
                         goblin::ui::request_cluster_replan();
                     }
-                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Balanced: individual items near you, distant dense spots merge.");
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Balanced: individual items in your immediate area, everything else merged.");
                     ImGui::SameLine();
                     if (ImGui::SmallButton("Performance"))
                     {
-                        goblin::ui::set_global_threshold(3);           // far = very aggressive
+                        goblin::ui::set_global_threshold(2);           // far = very aggressive
                         goblin::config::clusterDistanceAdaptive = true;
-                        goblin::config::clusterNearThreshold = 24;     // even near merges sooner
-                        goblin::config::clusterNearRadius = 2;
-                        goblin::config::clusterFarRadius = 12;
+                        goblin::config::clusterNearThreshold = 30;     // tighter detail bubble
+                        goblin::config::clusterNearRadius = 1;
+                        goblin::config::clusterFarRadius = 2;
                         goblin::ui::request_cluster_replan();
                     }
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Aggressive far-merge: fewest distant icons (Steam Deck / low-end).");
