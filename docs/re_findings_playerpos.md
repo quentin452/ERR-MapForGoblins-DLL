@@ -307,18 +307,30 @@ local, no global field needed.
   used (world/map-state). [Tracking @ Academy Gate `0x3C252C00` / Castle Morne `0x3C2B1F00` to
   re-confirm next session, but the exact First Step match is decisive.]
 
-## ✅ TARGET A SOLVED — DLL recipe
+## TARGET A — player pointer CONFIRMED, region re-parent caveat (NOT fully solved)
 
+Stable inputs (module-relative statics, survive warp + restart):
 ```
-mapId  = *(uint32*)( *( *(uintptr*)(eldenring_base + 0x3d691d8) ) + 0x2c )   // player current MapId
-gridX  = (mapId >> 16) & 0xff      // 0x2A = 42
-gridZ  = (mapId >> 8)  & 0xff      // 0x24 = 36   (area = (mapId>>24)&0xff)
-mgr    = *(uintptr*)(eldenring_base + 0x3d69ba8)        // world-map-point manager
-localX = *(float*)(mgr + 0x70)     // block-local X (recentred ±32)
-localZ = *(float*)(mgr + 0x74)     // block-local Z   (NB +0x78 = height, not Z)
-worldX = gridX*256 + localX
-worldZ = gridZ*256 + localZ        // CELLSIZE 256 confirmed; for map-UI: mapX = worldX - 7042,
-                                   // mapZ = 16511 - worldZ (Z flip) per extract_markers.py
+mapId  = *(uint32*)( *(uintptr*)(eldenring_base + 0x3d691d8) + 0x2c )   // player IMMEDIATE-block MapId
+gridX  = (mapId >> 16) & 0xff ;  gridZ = (mapId >> 8) & 0xff ;  area = (mapId>>24)&0xff
+mgr    = *(uintptr*)(eldenring_base + 0x3d69ba8)
+localX = *(float*)(mgr + 0x70) ;  localZ = *(float*)(mgr + 0x74)   // block-local (+0x78 = height)
 ```
-Compare `(worldX, worldZ)` directly against each icon's `gridXNo*256 + posX/posZ` for clustering —
-no materialised global needed. All offsets are module-relative statics (survive warps + restarts).
+**Sanity check (3 graces, hex):** First Step `0x3C2A2400`=(42,36) ✓ exact; Castle Morne `0x3C2B1F00`=
+(43,31) ✓ exact; **Academy Gate `0x3C232E00`=(35,46) but the icon/`WorldMapPointParam` tile is
+(37,44) — off by (+2,−2).** Data confirms Academy Gate Town icon is genuinely at (37,44); runtime
+(35,46) only has anon icons. So **the immediate-block grid ≠ the icon/display grid in NESTED regions.**
+
+**Cause:** the game's transform `FUN_140876140` first calls `FUN_1408775e0` which **re-parents the
+block up the tree** (accumulating `node+0x24/+0x2c` origins); gridX/gridZ come from the TOP-LEVEL
+block. Limgrave/Weeping: immediate == top-level (offset 0) → matched. Liurnia: immediate block is
+nested in a parent offset by (+2,−2) tiles → must re-parent. `WorldMapLegacyConvParam` is NOT this
+(it's legacy-dungeon→overworld).
+
+**To finish (next session):** map the player's immediate (MapId, local) to the icon/display grid by
+either (a) replicating `FUN_1408775e0` re-parent over the block tree at `mgr` (walk parent via
+node+0x20, add node+0x24/+0x2c until top); or (b) deriving a per-map-region offset table (Limgrave/
+Weeping=(0,0), Liurnia=(+2,−2), …) by sampling one grace per region; or (c) finding the game's cached
+player map-UI/display position (computed map-open; the `[[[+0x3d6b7b0]+0x80]+0x250]+0xa0` slot was 0/
+map-constants here, so it's a different manager — pin the one whose `+0xa0` fills only with the map
+open). Compare in display grid: icon = `gridXNo*256 + posX`.
