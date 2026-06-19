@@ -900,7 +900,11 @@ static void replan_clusters()
     //    rows, clear the registries.
     for (const auto &m : g_cluster_members)
         if (g_cluster_member_ptrs.count(m.ptr)) m.ptr[0x20] = m.orig_area;
-    for (auto *p : g_cluster_pool) p[0x20] = 99;
+    for (auto *p : g_cluster_pool)
+    {
+        p[0x20] = 99;                                          // park main page
+        reinterpret_cast<ST *>(p)->areaNo_forDistViewMark = 99; // and distant-view page
+    }
     g_clusters.clear();
     g_cluster_members.clear();
     g_cluster_member_ptrs.clear();
@@ -953,6 +957,16 @@ static void replan_clusters()
 
         uint8_t *cp = g_cluster_pool[pi++];
         auto *cd = reinterpret_cast<ST *>(cp);
+        // Seed the pile from a REAL member row so it inherits EVERY page-selecting
+        // field (base / DLC / underground). The pool template is a base-area-60 row,
+        // and setting areaNo/grid/distView alone still left all clusters on the base
+        // map — individual rows page fine, so just copy one. Then override below.
+        *cd = *reinterpret_cast<ST *>(g_section_rows[b.members[0]].ptr);
+        cd->eventFlagId = 0; cd->clearedEventFlagId = 0;     // a pile has no appear/clear gate
+        cd->textDisableFlagId1 = cd->textDisableFlagId2 = cd->textDisableFlagId3 = 0;
+        cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
+        cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
+        cd->textId5 = cd->textId6 = cd->textId7 = cd->textId8 = -1;
         // Position: a projected dungeon sits at its entrance; everything else at
         // the centroid of its members (split back to display grid tile + local).
         double cwx = (b.ent_x >= 0) ? b.ent_x : b.sx / b.members.size();
@@ -965,6 +979,16 @@ static void replan_clusters()
         cd->posX = static_cast<float>(cwx - gx * 256.0);
         cd->posZ = static_cast<float>(cwz - gz * 256.0);
         cd->posY = b.py;
+        // The zoomed-out / page-select map places the icon by a SEPARATE distant-
+        // view coord set. Pool rows are copied from a base-area-60 template, so
+        // without mirroring these every cluster renders on the base overworld
+        // (DLC area 61 + underground area 12 piles leaked onto the base map).
+        cd->areaNo_forDistViewMark = b.area;
+        cd->gridXNo_forDistViewMark = static_cast<uint8_t>(gx);
+        cd->gridZNo_forDistViewMark = static_cast<uint8_t>(gz);
+        cd->posX_forDistViewMark = cd->posX;
+        cd->posY_forDistViewMark = cd->posY;
+        cd->posZ_forDistViewMark = cd->posZ;
         cd->iconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID);
         int cnt = std::min<int>(static_cast<int>(b.members.size()), CLUSTER_MAX_COUNT);
         int cnt_textid = CLUSTER_TEXTID_BASE + cnt;    // → pre-injected number string
@@ -994,6 +1018,17 @@ static void replan_clusters()
                  pi, g_cluster_pool.size(), dropped);
     spdlog::info("[CLUSTER] stayed-exact: {} no-location, {} unchecked-category, {} locations sub-threshold (<= {})",
                  skip_noloc, skip_unchecked, sub_threshold, thr);
+    {
+        // Per-area cluster tally (which map page each pile lands on): 60/61 =
+        // overworld, 12 = underground, others = legacy dungeons. Tells us where the
+        // stray "in the sea" piles live and whether underground gets any clusters.
+        std::map<int, int> per_area;
+        for (const auto &c : g_clusters) per_area[c.area]++;
+        std::string s;
+        for (const auto &kv : per_area)
+            s += " a" + std::to_string(kv.first) + "=" + std::to_string(kv.second);
+        spdlog::info("[CLUSTER] piles per area:{}", s.empty() ? " (none)" : s);
+    }
 
     // 4. Apply the current collapsed/expanded view to the new plan.
     apply_cluster_expanded(g_clusters_expanded.load());
@@ -1132,6 +1167,7 @@ void goblin::inject_map_entries()
         {
             auto *cd = new from::paramdef::WORLD_MAP_POINT_PARAM_ST(tmpl);
             cd->areaNo = 99;             // parked; replan sets the real page + pos
+            cd->areaNo_forDistViewMark = 99;  // also park the distant-view page (template = base 60)
             cd->iconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID);
             cd->eventFlagId = 0; cd->clearedEventFlagId = 0;
             cd->textId1 = -1;            // replan sets the live count label
