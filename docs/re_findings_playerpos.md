@@ -300,15 +300,25 @@ local, no global field needed.
 - **Player local source (builder `FUN_1406d3a20`):** writes `mgr+0x70..0x7c` from
   `FUN_1403f0bf0([WorldChrMan+0x1e508])` (WorldChrMan = `DAT_143d65f88` = `eldenring.exe+0x3d65f88`).
   It does NOT store a MapId in the manager. Player-exists path = local only.
-- **CANDIDATE player/area MapId (UNTESTED):** the builder's fallback (player==null) uses
-  `FUN_140243a60(DAT_143d691d8, key)` where `FUN_140243a60 = return *(p+0x2c)`. So
-  **`[[eldenring.exe+0x3d691d8]+0x2c]` (4 bytes) = a MapId** read from a heavily-used world/map-state
-  singleton. TEST: read it as hex at graces — is it the player's tile MapId (`0x3C2A24xx` @ First
-  Step, changing per tile)? `player_mapid.CT` probes it (+0x2c and neighbours).
+- **PLAYER MapId — CONFIRMED (2026-06-19): `[[eldenring.exe+0x3d691d8]+0x2c]` (4 bytes).** Found via
+  the builder fallback `FUN_140243a60(DAT_143d691d8, key)` where `FUN_140243a60 = return *(p+0x2c)`.
+  LIVE READ @ First Step = `1009394688` = **`0x3C2A2400`** = exactly First Step's MapId
+  (area60·gridX42·gridZ36·lod0) ✓. `+0x28/+0x30` = `0xFFFFFFFF` (empty). The singleton is heavily
+  used (world/map-state). [Tracking @ Academy Gate `0x3C252C00` / Castle Morne `0x3C2B1F00` to
+  re-confirm next session, but the exact First Step match is decisive.]
 
-**STATUS:** formula + MapId decode + player local (`[eldenring.exe+0x3d69ba8]+0x70`=X,`+0x74`=Z)
-are SOLID. Missing = a confirmed stable pointer to the player's current **gridX/gridZ** (= MapId
-bytes). Best next attempts: (1) test the `[[+0x3d691d8]+0x2c]` candidate; (2) re-pin the clean
-`gridZNo` int (the one that did +1/​tile when WALKING at session start) then Ctrl+F5 it (lands in the
-OpenField grid, cleaner than the block-registry RB-tree); (3) runtime: breakpoint the map-open
-marker calc (`FUN_140876140`) and read the MapId param it receives.
+## ✅ TARGET A SOLVED — DLL recipe
+
+```
+mapId  = *(uint32*)( *( *(uintptr*)(eldenring_base + 0x3d691d8) ) + 0x2c )   // player current MapId
+gridX  = (mapId >> 16) & 0xff      // 0x2A = 42
+gridZ  = (mapId >> 8)  & 0xff      // 0x24 = 36   (area = (mapId>>24)&0xff)
+mgr    = *(uintptr*)(eldenring_base + 0x3d69ba8)        // world-map-point manager
+localX = *(float*)(mgr + 0x70)     // block-local X (recentred ±32)
+localZ = *(float*)(mgr + 0x74)     // block-local Z   (NB +0x78 = height, not Z)
+worldX = gridX*256 + localX
+worldZ = gridZ*256 + localZ        // CELLSIZE 256 confirmed; for map-UI: mapX = worldX - 7042,
+                                   // mapZ = 16511 - worldZ (Z flip) per extract_markers.py
+```
+Compare `(worldX, worldZ)` directly against each icon's `gridXNo*256 + posX/posZ` for clustering —
+no materialised global needed. All offsets are module-relative statics (survive warps + restarts).
