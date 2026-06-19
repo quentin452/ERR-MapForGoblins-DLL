@@ -331,10 +331,25 @@ static std::set<uint8_t *> g_section_hidden_ptrs;    // hidden by a section togg
 static std::set<uint8_t *> g_category_hidden_ptrs;   // hidden by a category toggle
 static std::atomic<bool> g_master_off{false};        // master "Show icons" off (hides ALL)
 
+// Cluster expand/collapse state (false = collapsed = clusters shown, members
+// parked). Declared here (ahead of its sibling cluster statics) so the eviction
+// coordination in is_section_hidden_ptr can read it.
+static std::atomic<bool> g_clusters_expanded{false};
+// Cluster-member row pointers (built once at registration, read-only after). When
+// the view is COLLAPSED these are parked under their cluster icon; the other areaNo
+// owners (fragment/collected/royal eviction) must treat them as hidden so their
+// restore paths don't un-park a clustered member (the bug that showed clusters AND
+// their members at once). Built-once → no lock needed for the read.
+static std::set<uint8_t *> g_cluster_member_ptrs;
+
 bool goblin::is_section_hidden_ptr(const void *param_data)
 {
     if (g_master_off.load()) return true;  // master off hides every injected row
     auto *p = reinterpret_cast<uint8_t *>(const_cast<void *>(param_data));
+    // Collapsed cluster member → kept parked under its cluster, regardless of any
+    // other owner's restore.
+    if (!g_clusters_expanded.load() && g_cluster_member_ptrs.count(p) != 0)
+        return true;
     std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
     return g_section_hidden_ptrs.count(p) != 0 || g_category_hidden_ptrs.count(p) != 0;
 }
@@ -348,7 +363,7 @@ static std::vector<ClusterRow> g_clusters;        // the synthetic cluster icons
 struct ClusterMember { uint8_t *ptr; uint8_t orig_area; Category cat; };
 static std::vector<ClusterMember> g_cluster_members;  // individuals parked under a cluster
 
-static std::atomic<bool> g_clusters_expanded{false};  // false = collapsed (clusters shown)
+// g_clusters_expanded is declared earlier (near is_section_hidden_ptr).
 static std::atomic<bool> g_cluster_debug{true};       // true = cluster labels show counts (default on)
 // Hotkey thread sets these; the watcher applies the areaNo/textId flips (single
 // owner of game-state mutation), mirroring the section + master toggles.
@@ -500,12 +515,20 @@ static void apply_cluster_expanded(bool expanded)
 {
     // Collapsed: show the cluster icon (unless its category/section is hidden);
     // park members. Expanded: park the icon; show members (same gate).
+    int cl_shown = 0, mem_parked = 0;
     for (const auto &c : g_clusters)
+    {
         c.ptr[0x20] = (expanded || cluster_should_hide(c.cat)) ? 99 : c.area;
+        if (c.ptr[0x20] != 99) cl_shown++;
+    }
     for (const auto &m : g_cluster_members)
+    {
         m.ptr[0x20] = (expanded && !cluster_should_hide(m.cat)) ? m.orig_area : 99;
-    spdlog::info("[CLUSTER] {} ({} clusters, {} members)",
-                 expanded ? "EXPANDED" : "COLLAPSED", g_clusters.size(), g_cluster_members.size());
+        if (m.ptr[0x20] == 99) mem_parked++;
+    }
+    spdlog::info("[CLUSTER] {} -> {}/{} cluster icons shown, {}/{} members parked",
+                 expanded ? "EXPANDED" : "COLLAPSED", cl_shown, g_clusters.size(),
+                 mem_parked, g_cluster_members.size());
 }
 
 // Toggle cluster labels between their member count and icon-only (textId1 = -1).
@@ -1333,6 +1356,7 @@ void goblin::inject_map_entries()
                      clustered_member_ids.count(all_rows[i].original_row_id))
             {
                 g_cluster_members.push_back({cp, cp[0x20], all_rows[i].category});
+                g_cluster_member_ptrs.insert(cp);  // eviction-coordination set
                 cp[0x20] = 99;
                 is_clustered_member = true;
             }
