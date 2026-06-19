@@ -6,7 +6,14 @@ endif()
 
 project( MapForGoblins
   VERSION   "1.0.18"
-  LANGUAGES CXX)
+  LANGUAGES CXX RC)
+
+# The VERSIONINFO resource (.rc) is preprocessed by clang-cl, which must find
+# <winver.h> from the xwin SDK (the CXX /imsvc dirs don't apply to the RC rule).
+if(DEFINED XWIN)
+  string(APPEND CMAKE_RC_FLAGS
+    " -I ${XWIN}/sdk/include/um -I ${XWIN}/sdk/include/shared -I ${XWIN}/sdk/include/ucrt")
+endif()
 
 if(NOT DEFINED VERSION_PRE)
   set(VERSION_PRE "pre")  # default for dev/snapshot; build.bat release passes -DVERSION_PRE=""
@@ -175,6 +182,11 @@ else()
 endif()
 configure_file(${CMAKE_SOURCE_DIR}/src/version.h.in
                ${CMAKE_BINARY_DIR}/generated/version.h @ONLY)
+# Win32 VERSIONINFO resource (CompanyName/FileDescription/versions) so the DLL
+# carries metadata → fewer antivirus false positives on the unsigned binary.
+configure_file(${CMAKE_SOURCE_DIR}/src/version.rc.in
+               ${CMAKE_BINARY_DIR}/generated/version.rc @ONLY)
+target_sources(MapForGoblins PRIVATE ${CMAKE_BINARY_DIR}/generated/version.rc)
 target_include_directories(MapForGoblins PRIVATE ${CMAKE_BINARY_DIR}/generated)
 # Resolve bare `#include "goblin_map_data.hpp"` etc. to the active bake dir.
 target_include_directories(MapForGoblins PRIVATE ${GEN_DIR})
