@@ -692,46 +692,46 @@ namespace
 
             ImGui::SeparatorText("Clustering");
             {
-                // Global default threshold (per-category overrides set per row above).
-                int gt = goblin::ui::global_threshold();
-                ImGui::SetNextItemWidth(90.0f);
-                if (ImGui::InputInt("Threshold (live — reopen map)", &gt))
-                    goblin::ui::set_global_threshold(gt);
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("A cell clusters when it holds MORE than this many markers.\n"
-                                      "LOWER = MORE clustering (groups smaller piles). Live — reopen\n"
-                                      "the map to see it.");
-            }
-            if (goblin::ui::clustering_active())
-            {
-                // The plan is ALWAYS built at inject now, so enable/disable is LIVE
-                // (collapse dense piles into one icon ⇔ show every member). Applies
-                // on the next map open (no restart); persisted on Save.
-                bool on = !goblin::ui::clusters_expanded();
-                if (ImGui::Checkbox("Enable clustering (live — reopen map to apply)", &on))
-                    goblin::ui::set_clusters_expanded(!on);
+                // Master enable — ALWAYS shown. (Bug: this was gated on
+                // clustering_active(), so once a re-plan found no pile over the
+                // threshold the whole block vanished and clustering could not be
+                // re-enabled without a restart.) Drives config::enableClustering and
+                // re-plans live; enabled ⇔ dense piles collapsed into one icon.
+                bool en = goblin::ui::clustering_enabled();
+                if (ImGui::Checkbox("Enable clustering (live — reopen map to apply)", &en))
+                    goblin::ui::set_clustering_enabled(en);
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("Collapse dense marker piles into one cluster icon.\n"
-                                      "Toggles live (no restart); close+reopen the map to see it.\n"
-                                      "Threshold/per-category changes still need Save + restart\n"
-                                      "(they re-plan which markers cluster).");
-                bool dbg = goblin::ui::cluster_debug();
-                if (ImGui::Checkbox("Cluster labels show counts", &dbg))
-                    goblin::ui::set_cluster_debug(dbg);
-                bool hard = goblin::ui::cluster_hard();
-                if (ImGui::Checkbox("Hard clustering — mix all categories (live)", &hard))
-                    goblin::ui::set_cluster_hard(hard);
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("HARD: fold ALL marker types in a dense cell into ONE pile\n"
-                                      "(far fewer icons — the real declutter). Off = SOFT: cluster\n"
-                                      "each category separately (typed piles). Live — reopen the map.\n"
-                                      "Tip: LOWER the threshold = MORE clustering.");
-            }
-            else
-            {
-                // Plan built but no cell exceeded the threshold → nothing to cluster.
-                ImGui::TextDisabled("No dense piles at the current threshold.");
-                ImGui::TextDisabled("Lower 'Default threshold' (+ Save + restart) to form clusters.");
+                                      "Live (no restart); close+reopen the map to see it.");
+
+                if (en)
+                {
+                    // Global default threshold (per-category overrides set per row above).
+                    int gt = goblin::ui::global_threshold();
+                    ImGui::SetNextItemWidth(90.0f);
+                    if (ImGui::InputInt("Cluster size — markers per pile (live)", &gt))
+                        goblin::ui::set_global_threshold(gt);
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("A cell clusters when it holds MORE than this many markers.\n"
+                                          "LOWER = MORE clustering (groups smaller piles). Min 1.\n"
+                                          "Live — reopen the map to see it.");
+
+                    bool hard = goblin::ui::cluster_hard();
+                    if (ImGui::Checkbox("Hard clustering — mix all categories (live)", &hard))
+                        goblin::ui::set_cluster_hard(hard);
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("HARD: fold ALL marker types in a dense cell into ONE pile\n"
+                                          "(far fewer icons — the real declutter). Off = SOFT: cluster\n"
+                                          "each category separately (typed piles). Live — reopen the map.\n"
+                                          "Tip: LOWER the cluster size = MORE clustering.");
+
+                    bool dbg = goblin::ui::cluster_debug();
+                    if (ImGui::Checkbox("Cluster labels show counts", &dbg))
+                        goblin::ui::set_cluster_debug(dbg);
+
+                    if (!goblin::ui::clustering_active())
+                        ImGui::TextDisabled("No dense piles at this size — lower the cluster size.");
+                }
             }
 
             // Dev/debug observers. Each installs a hook or starts a worker thread

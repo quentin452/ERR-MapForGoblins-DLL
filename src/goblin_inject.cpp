@@ -902,6 +902,7 @@ static void replan_clusters()
         }
         int thr = hard ? static_cast<int>(goblin::config::clusterThreshold)
                        : cluster_threshold_for_cfg(domcat);
+        if (thr < 1) thr = 1;  // defense: threshold 0 → every cell clusters → pool blowout
         if (static_cast<int>(b.members.size()) <= thr) continue;
         if (pi >= g_cluster_pool.size()) { dropped++; continue; }
 
@@ -2125,7 +2126,7 @@ int goblin::ui::category_threshold(int idx)
 void goblin::ui::set_category_threshold(int idx, int threshold)
 {
     if (idx < 0 || idx >= NUM_CATEGORIES) return;
-    if (threshold < 0) threshold = 0;
+    if (threshold < 1) threshold = 1;  // 0 = "cluster piles of 0" → every cell, pool blowout
     if (threshold > 255) threshold = 255;
     g_category_threshold[idx].store(threshold);  // persisted on Save (overrides), restart to apply
 }
@@ -2133,7 +2134,7 @@ void goblin::ui::set_category_threshold(int idx, int threshold)
 int goblin::ui::global_threshold() { return goblin::config::clusterThreshold; }
 void goblin::ui::set_global_threshold(int t)
 {
-    if (t < 0) t = 0; if (t > 255) t = 255;
+    if (t < 1) t = 1; if (t > 255) t = 255;  // 0 → every cell clusters → pool blowout/crash
     int old = goblin::config::clusterThreshold;
     goblin::config::clusterThreshold = static_cast<uint8_t>(t);
     // Categories still tracking the old default follow the new default, so they
@@ -2221,7 +2222,12 @@ static void persist_settings()
 
 bool goblin::ui::clustering_active() { return g_clustering_active; }
 bool goblin::ui::clustering_enabled() { return goblin::config::enableClustering; }
-void goblin::ui::set_clustering_enabled(bool on) { goblin::config::enableClustering = on; }
+void goblin::ui::set_clustering_enabled(bool on)
+{
+    goblin::config::enableClustering = on;
+    g_clusters_expanded.store(!on);       // enabled ⇔ collapsed (piles shown)
+    g_cluster_replan_dirty.store(true);   // re-plan live: off tears down, on rebuilds
+}
 
 // Quest-aware NPC gating. LIVE: the refresh loop reads config every tick and
 // parks/restores accordingly (disabling restores via the was_enabled edge), so
