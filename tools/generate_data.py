@@ -506,6 +506,15 @@ def main():
         if canonical_hpp.resolve() != dest_hpp.resolve():
             shutil.copyfile(canonical_hpp, dest_hpp)
 
+    # goblin_tile_tabs.{hpp,cpp} (player MapId tile -> map sub-page tabId, from
+    # build_tile_tabs.py) is profile-independent — the game's tiling is identical
+    # across bakes — so mirror the committed canonical pair into a non-default dir.
+    for f in ("goblin_tile_tabs.hpp", "goblin_tile_tabs.cpp"):
+        canonical = project_dir / "src" / "generated" / f
+        dest = output_dir / f
+        if canonical.exists() and canonical.resolve() != dest.resolve():
+            shutil.copyfile(canonical, dest)
+
     print("=== Parsing MASSEDIT files ===")
     entries = parse_massedit_files(massedit_dir)
     print(f"Total unique entries: {len(entries)}")
