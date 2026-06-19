@@ -703,23 +703,26 @@ namespace
             }
             if (goblin::ui::clustering_active())
             {
-                // Clusters built this session → LIVE on/off (collapse dense piles
-                // into one icon ⇔ show every member). Persisted on Save. No restart.
+                // The plan is ALWAYS built at inject now, so enable/disable is LIVE
+                // (collapse dense piles into one icon ⇔ show every member). Applies
+                // on the next map open (no restart); persisted on Save.
                 bool on = !goblin::ui::clusters_expanded();
-                if (ImGui::Checkbox("Clustering ON — collapse dense piles (live)", &on))
+                if (ImGui::Checkbox("Enable clustering (live — reopen map to apply)", &on))
                     goblin::ui::set_clusters_expanded(!on);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Collapse dense marker piles into one cluster icon.\n"
+                                      "Toggles live (no restart); close+reopen the map to see it.\n"
+                                      "Threshold/per-category changes still need Save + restart\n"
+                                      "(they re-plan which markers cluster).");
                 bool dbg = goblin::ui::cluster_debug();
                 if (ImGui::Checkbox("Cluster labels show counts", &dbg))
                     goblin::ui::set_cluster_debug(dbg);
             }
             else
             {
-                // Not built this run: clusters are synthetic rows created at inject,
-                // so the FIRST enable needs a restart to build them. Once built it
-                // toggles live (above). (Build-from-off at runtime = clustering v2.)
-                bool cen = goblin::ui::clustering_enabled();
-                if (ImGui::Checkbox("Enable clustering (Save + restart to build)", &cen))
-                    goblin::ui::set_clustering_enabled(cen);
+                // Plan built but no cell exceeded the threshold → nothing to cluster.
+                ImGui::TextDisabled("No dense piles at the current threshold.");
+                ImGui::TextDisabled("Lower 'Default threshold' (+ Save + restart) to form clusters.");
             }
 
             // Dev/debug observers. Each installs a hook or starts a worker thread

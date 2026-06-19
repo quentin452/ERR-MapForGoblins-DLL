@@ -912,9 +912,11 @@ void goblin::inject_map_entries()
     std::vector<size_t> cluster_entry_idx;            // index in `entries` of each cluster
     std::vector<int> cluster_count_textid;            // parallel: its label id
     std::unordered_map<int, std::vector<uint32_t>> cluster_flags_by_textid; // textid -> member collect-flags
-    if (goblin::config::enableClustering)
+    // Always build the cluster plan (even when clustering starts OFF) so it can be
+    // toggled live with NO restart: the synthetic rows sit parked (areaNo 99) until
+    // collapsed. config::enableClustering sets only the INITIAL state (applied just
+    // below). g_clustering_active is set after the loop = did any pile actually form.
     {
-        g_clustering_active = true;  // clusters built this session
         GOBLIN_BENCH("map.inject.cluster_plan");
         struct Bucket { std::vector<size_t> members; double sx = 0, sz = 0; float py = 0;
                         uint8_t area = 0, gx = 0, gz = 0; Category cat{}; };
@@ -1016,6 +1018,7 @@ void goblin::inject_map_entries()
                               cd->posX, cd->posZ});
             cidx++;
         }
+        g_clustering_active = !g_cluster_census.empty();  // any pile over threshold?
         spdlog::info("[CLUSTER] planned {} clusters covering {} markers (cell={}, threshold={})",
                      g_cluster_census.size(), clustered_member_ids.size(), CLUSTER_CELL,
                      static_cast<int>(goblin::config::clusterThreshold));
@@ -1317,7 +1320,7 @@ void goblin::inject_map_entries()
         // restored on expand). A clustered member is NOT section-registered — the
         // cluster owns its areaNo, so a section "show" must not un-park it.
         bool is_clustered_member = false;
-        if (goblin::config::enableClustering)
+        if (g_clustering_active)  // plan always built; register whenever piles formed
         {
             auto cit = cluster_rowid_to_textid.find(all_rows[i].row_id);
             if (all_rows[i].original_row_id == 0 && cit != cluster_rowid_to_textid.end())
@@ -1496,9 +1499,18 @@ void goblin::inject_map_entries()
     if (goblin::config::iconsHidden)
         apply_master_visibility(false);
 
-    if (goblin::config::enableClustering)
-        spdlog::info("[CLUSTER] active: {} cluster icons, {} markers parked (collapsed)",
-                     g_clusters.size(), g_cluster_members.size());
+    // The plan is always built COLLAPSED (members parked at registration). Set the
+    // INITIAL live state from config: clustering OFF ⇔ expanded (members shown,
+    // clusters parked). The watcher applies the dirty state once it starts; with
+    // the map not open yet there's no visible flicker.
+    if (g_clustering_active)
+    {
+        g_clusters_expanded.store(!goblin::config::enableClustering);
+        g_cluster_expand_dirty.store(true);
+        spdlog::info("[CLUSTER] built {} cluster icons over {} markers; initial state: {}",
+                     g_clusters.size(), g_cluster_members.size(),
+                     goblin::config::enableClustering ? "ON (collapsed)" : "OFF (expanded)");
+    }
 
     spdlog::debug("Injection complete: {} total rows", total_rows);
 }
