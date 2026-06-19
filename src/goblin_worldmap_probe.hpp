@@ -11,6 +11,10 @@
 // for the CS::WorldMapCursorControl vtable, then LOGS the three coords live so we
 // can confirm the X/Z offset order + that they track the cursor in marker space.
 //
+// Also a PROJECTION transform-scan: follows cursor+0xF0 (CS::WorldMapArea) and logs
+// the live viewport (pan +0x378, zoom +0x380) + the virtual UI canvas, so we can
+// confirm the world→screen affine (docs/world_map_projection_re_findings.md §6).
+//
 // Opt-in (config debug_worldmap_probe). STRICTLY READ-ONLY + SEH-guarded → safe;
 // the risky live-refresh call-test (FUN_140a832a0) is a separate future step.
 namespace goblin::worldmap_probe

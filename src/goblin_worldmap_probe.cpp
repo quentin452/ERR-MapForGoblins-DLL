@@ -30,6 +30,18 @@ constexpr uintptr_t CURSOR_VTABLE_RVA = 0x2b29a90;
 constexpr ptrdiff_t OFF_X = 0xFC, OFF_Z = 0x104, OFF_Y = 0x10C;
 constexpr uintptr_t CURSOR_OFF_IN_MENU = 0x2DB0;
 
+// PROJECTION transform-scan (docs/world_map_projection_re_findings.md). cursor+0xF0
+// points to the CS::WorldMapArea view object; the LIVE viewport is plain floats there:
+//   +0x378 = pan (vec2, marker space)   +0x380 = zoom (f32)
+//   +0x350..0x35c = STATIC full-map rect [0,0,10496,10496] (sanity: should NOT move)
+// The make-or-break test: PAN should sweep +0x378; ZOOM should change +0x380; the
+// +0x350 rect should stay put. All reads are SEH-guarded + read-only.
+constexpr ptrdiff_t OFF_VIEW_PTR = 0xF0;     // cursor -> WorldMapArea
+constexpr ptrdiff_t VIEW_PAN_X = 0x378, VIEW_PAN_Z = 0x37C, VIEW_ZOOM = 0x380;
+// Virtual UI canvas singleton: [DAT_1447ef360 + 0x128] -> {+0x110 originX, +0x114
+// originY, +0x118 width, +0x11c height}. RVA, patch-fragile (debug only).
+constexpr uintptr_t CANVAS_SINGLETON_RVA = 0x47ef360;
+
 // SEH-guarded 8-byte read (POD body — no C++ unwinding inside __try).
 bool seh_read8(const void *src, uint64_t *out)
 {
@@ -154,21 +166,61 @@ void probe_loop()
                             a, a - CURSOR_OFF_IN_MENU, x, z, y);
                 l = {x, z, y};
 
-                // One-shot: dump the float window around the cursor coords to find
-                // the bounds rect (minX/minZ/maxX/maxZ, doc says cursor+0xF0..+0x340)
-                // → reveals the cursor coord-space extent → derive the cursor↔world
-                // transform for proximity, no manual calibration.
+                // PROJECTION: follow cursor+0xF0 → WorldMapArea and log the LIVE
+                // viewport (pan +0x378, zoom +0x380) + the static full-map rect every
+                // time the cursor moves. PAN the map → pan sweeps; ZOOM → zoom changes;
+                // the +0x350 rect should stay [0,0,10496,10496]. (doc §6)
+                uint64_t view = 0;
+                if (seh_read8(reinterpret_cast<void *>(a + OFF_VIEW_PTR), &view) && view)
+                {
+                    float panx, panz, zoom, r0, r1, r2, r3;
+                    if (seh_read4(reinterpret_cast<void *>(view + VIEW_PAN_X), &panx) &&
+                        seh_read4(reinterpret_cast<void *>(view + VIEW_PAN_Z), &panz) &&
+                        seh_read4(reinterpret_cast<void *>(view + VIEW_ZOOM), &zoom) &&
+                        seh_read4(reinterpret_cast<void *>(view + 0x350), &r0) &&
+                        seh_read4(reinterpret_cast<void *>(view + 0x354), &r1) &&
+                        seh_read4(reinterpret_cast<void *>(view + 0x358), &r2) &&
+                        seh_read4(reinterpret_cast<void *>(view + 0x35c), &r3))
+                        g_log->info("  VIEW @{:#x}: pan(+0x378)=({:.2f},{:.2f})  zoom(+0x380)={:.4f}"
+                                    "  fullRect(+0x350)=[{:.1f},{:.1f},{:.1f},{:.1f}]",
+                                    view, panx, panz, zoom, r0, r1, r2, r3);
+                }
+
+                // One-shot per active cursor: the full float window cursor+0xE0..+0x388
+                // (covers both rects + pan + zoom) + the virtual canvas (1920×1080?).
                 if ((x != 0.f || z != 0.f) && !bounds_dumped.count(a))
                 {
                     bounds_dumped[a] = 1;
-                    g_log->info("--- bounds dump @{:#x} (find minX/minZ/maxX/maxZ in map-extent range) ---", a);
-                    // Doc: bounds rect somewhere in cursor+0xF0..+0x340. Log the whole
-                    // window; only the 4 floats in the plausible map extent matter.
-                    for (ptrdiff_t off = 0xE0; off <= 0x340; off += 4)
+                    g_log->info("--- window dump @{:#x} (rects, pan@+0x378, zoom@+0x380) ---", a);
+                    for (ptrdiff_t off = 0xE0; off <= 0x388; off += 4)
                     {
                         float fv;
                         if (seh_read4(reinterpret_cast<void *>(a + off), &fv))
-                            g_log->info("  +{:#05x} = {:.2f}", off, fv);
+                            g_log->info("  +{:#05x} = {:.3f}", off, fv);
+                    }
+                    if (view)
+                        for (ptrdiff_t off = 0x340; off <= 0x388; off += 4)
+                        {
+                            float fv;
+                            if (seh_read4(reinterpret_cast<void *>(view + off), &fv))
+                                g_log->info("  VIEW+{:#05x} = {:.3f}", off, fv);
+                        }
+                    // Virtual UI canvas: expect width≈1920, height≈1080.
+                    uintptr_t exe = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+                    uint64_t canvas = 0;
+                    if (exe && seh_read8(reinterpret_cast<void *>(exe + CANVAS_SINGLETON_RVA), &canvas) &&
+                        canvas)
+                    {
+                        uint64_t c2 = 0;
+                        if (seh_read8(reinterpret_cast<void *>(canvas + 0x128), &c2) && c2)
+                        {
+                            float ox, oy, w, h;
+                            if (seh_read4(reinterpret_cast<void *>(c2 + 0x110), &ox) &&
+                                seh_read4(reinterpret_cast<void *>(c2 + 0x114), &oy) &&
+                                seh_read4(reinterpret_cast<void *>(c2 + 0x118), &w) &&
+                                seh_read4(reinterpret_cast<void *>(c2 + 0x11c), &h))
+                                g_log->info("  CANVAS: origin=({:.1f},{:.1f})  size=({:.1f},{:.1f})", ox, oy, w, h);
+                        }
                     }
                 }
             }
