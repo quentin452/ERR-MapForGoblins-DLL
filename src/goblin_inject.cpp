@@ -2384,6 +2384,24 @@ int goblin::refresh_cluster_depletion()
 {
     GOBLIN_BENCH("refresh.cluster_depletion");
     if (!g_clustering_active || g_clusters_expanded.load()) return 0;
+    // DIAGNOSTIC: collapsed ⇒ EVERY member must be parked (areaNo 99). If any are
+    // SHOWN, something un-parks them after the COLLAPSED apply (real bug). If 0,
+    // the individual icons on the map are SPARSE markers (sub-threshold cells —
+    // never clustered, shown by design) or excluded categories, NOT cluster members.
+    {
+        int shown = 0;
+        for (const auto &m : g_cluster_members)
+            if (m.ptr[0x20] != 99) shown++;
+        static int last_shown = -1;
+        if (shown != last_shown)
+        {
+            last_shown = shown;
+            spdlog::info("[CLUSTER-CHECK] {} of {} members SHOWN while collapsed "
+                         "(should be 0; >0 = un-park bug, 0 = the loose icons are "
+                         "sub-threshold/excluded, not members)",
+                         shown, g_cluster_members.size());
+        }
+    }
     if (!orp_flag_set(6001)) return 0; // cold API → never mis-deplete
     using clock = std::chrono::steady_clock;
     static clock::time_point last{};
