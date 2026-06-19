@@ -128,6 +128,11 @@ static void setup_logger(std::filesystem::path log_file)
 #endif
 
     spdlog::set_default_logger(logger);
+    // The daily sink APPENDS, so restarts concatenate into one file. Emit a loud
+    // separator so the latest session is unmistakable (no more reading a stale
+    // session's startup and mis-diagnosing). Search "NEW SESSION" → last match.
+    spdlog::info("");
+    spdlog::info("==================== NEW SESSION ====================");
 }
 
 static std::filesystem::path g_mod_folder;
