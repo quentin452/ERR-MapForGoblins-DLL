@@ -28,6 +28,17 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM,
 
 namespace
 {
+    // Case-insensitive substring match (empty needle = match all). Used by the
+    // Sections & categories search box (the Quest Browser has its own local copy).
+    bool contains_ci(const char *hay, const char *need)
+    {
+        if (!need || !need[0]) return true;
+        std::string h, n;
+        for (const char *p = hay; p && *p; ++p) h += (char)tolower((unsigned char)*p);
+        for (const char *p = need; *p; ++p)     n += (char)tolower((unsigned char)*p);
+        return h.find(n) != std::string::npos;
+    }
+
     // ── Hooked function typedefs ──────────────────────────────────────────
     using PresentFn = HRESULT(STDMETHODCALLTYPE *)(IDXGISwapChain3 *, UINT, UINT);
     using ResizeBuffersFn =
@@ -394,10 +405,35 @@ namespace
             // Sections (coarse) + their categories (fine). A row shows only if
             // both its section and its category are enabled.
             ImGui::SeparatorText("Sections & categories");
+            // Search box: filter the category list by name. Matching a SECTION name
+            // shows that whole section; otherwise only matching category rows show,
+            // and sections with no match are hidden. Sections auto-expand while
+            // filtering so matches are visible without manual clicking.
+            static char cat_filter[64] = "";
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+            ImGui::InputTextWithHint("##catfilter", "search categories... (e.g. sorcer, ash, smith)",
+                                     cat_filter, sizeof(cat_filter));
+            const bool cat_filtering = cat_filter[0] != '\0';
             for (int s = 0; s < goblin::ui::section_count(); s++)
             {
+                bool sec_name_match = contains_ci(goblin::ui::section_label(s), cat_filter);
+                if (cat_filtering && !sec_name_match)
+                {
+                    // Skip a section entirely if neither it nor any of its categories match.
+                    bool any = false;
+                    for (int c = 0; c < goblin::ui::category_count() && !any; c++)
+                        if (goblin::ui::category_section(c) == s &&
+                            contains_ci(goblin::ui::category_label(c), cat_filter))
+                            any = true;
+                    if (!any) continue;
+                }
+                if (cat_filtering)
+                    ImGui::SetNextItemOpen(true, ImGuiCond_Always);
                 if (!ImGui::TreeNode(goblin::ui::section_label(s)))
                     continue;
+                // While filtering, a category row shows only if it matches (unless the
+                // section name itself matched → show the whole section).
+                const bool show_all_cats = !cat_filtering || sec_name_match;
 
                 bool sv = goblin::ui::section_visible(s);
                 if (ImGui::Checkbox("(whole section)", &sv))
@@ -430,6 +466,8 @@ namespace
                 for (int c = 0; c < goblin::ui::category_count(); c++)
                 {
                     if (goblin::ui::category_section(c) != s) continue;
+                    if (!show_all_cats && !contains_ci(goblin::ui::category_label(c), cat_filter))
+                        continue;   // search box: hide non-matching category rows
                     ImGui::PushID(c);
                     // The raw Quest-NPC map pins are legacy/unfinished — the Quest
                     // Browser below is the supported quest-navigation path. Tag the
