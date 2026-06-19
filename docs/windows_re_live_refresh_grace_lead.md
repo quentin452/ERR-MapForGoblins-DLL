@@ -78,3 +78,92 @@ adjacent `call` is the best candidate for the actual (re)build/re-filter routine
   the other half of proximity v2; this live-refresh is the remaining blocker.
 - Hide mechanism: `apply_section_visibility()` / cluster apply in `src/goblin_inject.cpp`
   flip `areaNo` 99↔orig on the live param blob.
+
+---
+
+# RESULTS (2026-06-19, static, Ghidra headless `re_v31`–`re_v37`, app 2.6.2.0)
+
+**TL;DR — the lead resolves cleanly but is the WRONG subsystem.** The `NewMenuSystemWarp2`
+AOB is the **map-FRAGMENT / overlay reveal** path (`WorldMapPieceParam` +
+`CS::WorldMapDialogBase` map-number masks). It has **zero** connection to the icon/point
+path (`WorldMapPointParam` → `CSWorldMapPointIns`). Writing that byte reveals the whole map
+**terrain** live; it does **nothing** for our grace/item/cluster icons. The CT label "Show
+All Graces" is a misnomer for "reveal entire map".
+
+## Deliverable 1 — the site (RESOLVED, unique AOB hit in MSVC `.text`)
+| thing | value |
+|---|---|
+| AOB site | VA `0x140889111` (RVA `0x889111`) |
+| toggle byte `NewMenuSystemWarp2` | VA `0x143d6cfc0` (RVA `0x3d6cfc0`) — disp32 @ site+3, `byteVA = site+7+disp32` |
+| `E8` call target | `FUN_1408882d0` (RVA `0x8882d0`) |
+| containing fn | `FUN_1408890b0` (RVA `0x8890b0`); its caller = `FUN_140887870` (`0x887870`) |
+
+`FUN_1408882d0(toggleByte, areaIdx)`: walks `CS::WorldMapPieceParam` rows
+(`FUN_140d56d90` lookup, row IDs `areaIdx*100 + i`, `i` in `0..0x1f`) and builds a 32-bit
+"revealed pieces" mask. **When the toggle byte ≠ 0 it returns `0xffffffff`** (= every piece
+revealed); else it computes the legit set from flags/`_GetMapVariation`.
+`FUN_1408890b0` diffs old-vs-new mask stored at `[manager+0x39c + idx*4]` and incrementally
+creates the newly-revealed piece display objects (`CS::WorldMapPieceParam::vftable`). This is
+a **per-frame diff-reconcile** — that's why flipping the byte refreshes live.
+
+All 7 consumers of the byte are piece/overlay, none touch points:
+`FUN_1409c6f70` / `FUN_1409c2470` read it inside
+`CS::WorldMapDialogBase::_IsChangeableOverlayLayer` and `GetEnableMapNoMask`
+(force overlay/map-number layers "enabled"); plus `FUN_1408855b0`, `FUN_140886910`,
+`FUN_1409be5e0` (world-map menu setup).
+
+## Deliverable 2 — relationship to `FUN_140a832a0` (NONE)
+`E8` target `0x8882d0` ≠ `0xa832a0`. Automated bridge check over all 7 consumers: **zero**
+refs to the point subsystem (`FUN_140a832a0` `0xa832a0`, `_DiscoverMapPoint` `0xa84080`,
+point singleton `0x143d6e9d8`). The two subsystems are fully disjoint.
+
+## Deliverable 3 — scope (PIECE-only, CRITICAL)
+This path re-evaluates `WorldMapPieceParam` (map fragments) + overlay/map-number masks, **not**
+`WorldMapPointParam` rows. Flipping our cluster/section `areaNo`=99 is invisible to it. So the
+grace lead does **not** unblock the icon features.
+
+## Deliverable 4/5 — trigger & `areaNo` caveat
+- The byte is a valid live trigger **for terrain/pieces only**. Not usable for icons.
+- This path never reads `WorldMapPointParam.areaNo` (offset 0x20). It reads `WorldMapPieceParam`
+  IDs + map-variation/overlay masks. So the `areaNo`-vs-event-flag question is moot here.
+
+## Deliverables 6/7 — N/A
+No icon-refresh `goblin::refresh_world_map_icons()` falls out of this byte; no runtime test
+warranted (it would only confirm terrain reveal).
+
+---
+
+# The REAL path forward (point subsystem map — the useful output)
+The engine **does** have a per-frame point pipeline; it's just separate from the grace byte:
+
+- **Per-frame driver:** `FUN_140623410` (RVA `0x623410`, takes FD4Time delta) → calls
+  **`FUN_140a832a0`** (`0xa832a0`) every frame.
+- **`FUN_140a832a0` = per-frame RECONCILE**, not a from-scratch rebuild. It walks the RB-tree
+  of **already-built** `CSWorldMapPointIns` instances (tree root `[singleton+8]`, red/black
+  byte at `+0x19`), reads player pos (`[DAT_143d65f88 + 0x1e508]`), calls each instance's
+  virtual visibility/update methods (`vtable+0x18`, `+0x28` → deeper `+0x90`), and
+  adds/removes/discovers via `_DiscoverMapPoint` (`0xa84080`), add `FUN_140a84210`, remove
+  `FUN_140a850c0`. It does **not** re-read the param table to *create* instances.
+- **`_DiscoverMapPoint` (`0xa84080`):** reads the row ptr at `[inst+0x80]` (id @ `+4`,
+  fields @ `+0x30`/`+0x78`), checks discovery via `FUN_140d09bf0`-style flag query, marks revealed.
+- **Build-from-params (constructs `CSWorldMapPointIns`):** constructor `FUN_140a811e0`
+  (`0xa811e0`) is `new`-ed at call site **`0xa82d09`**, which lives in an **un-analyzed code gap**
+  between `FUN_140a82a80` and `FUN_140a82eb0` (Ghidra never created the function). This is the
+  "build all points from `WorldMapPointParam`" loop = the analog of the piece path's
+  `FUN_1408890b0`. **Pin its exact entry/signature at runtime** (breakpoint constructor
+  `0xa811e0`, read the return address / call stack — quentin's runtime step).
+- Point singleton slot = `0x143d6e9d8` (per prior notes, AOB
+  `48 8B 05 ?? ?? ?? ?? 48 85 C0 75 05 E8`).
+
+### Recommended runtime options (in order)
+1. **Re-drive the point build loop** (the `0xa82d09` container) on the singleton after our
+   `areaNo` flip while map open (`CSMenuMan +0xCD == 7`). Cleanest if its ABI is simple
+   (likely `(manager_this, area_arg)`). Pin via the constructor breakpoint above.
+2. **Test the cheap case first:** for *hiding*, flipping `areaNo`→99 on an already-built
+   instance may already take effect through the per-frame `FUN_140a832a0` visibility predicate
+   — verify in CE before building anything. *Showing* (creating a new instance) will still
+   need the build loop.
+3. **Fallback — programmatic map reopen** via CSMenuMan close+open (1-frame flicker); already
+   scoped in `docs/world_map_live_refresh_re.md`.
+
+Scripts: `D:\ghidra_scripts\re_v31.java`..`re_v37.java`; full dumps `out_v31..v37.txt`.
