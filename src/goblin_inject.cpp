@@ -7,6 +7,7 @@
 #include "goblin_map_data.hpp"
 #include "goblin_item_icons.hpp"
 #include "goblin_location_alt.hpp"
+#include "goblin_grace_anchors.hpp"
 #include "goblin_legacy_conv.hpp"
 #include "goblin_markers.hpp"
 #include "goblin_bench.hpp"
@@ -317,7 +318,8 @@ struct SectionRow
     bool     is_piece;
     bool     is_kindling;
     uint64_t row_id;
-    int      loc_id;    // location PlaceName id (names the sub-area); -1 = none → never clustered
+    int      grp_key;   // cluster grouping key: nearest-grace index, or entrance key, or -1 = homeless
+    int      grp_pname; // PlaceName id for the pile label (-1 = count-only)
     float    ent_x;     // projected-dungeon overworld ENTRANCE (world coords); <0 = not a projected dungeon
     float    ent_z;
 };
@@ -529,14 +531,38 @@ static constexpr float CLUSTER_CELL = 60.0f;
 static constexpr int CLUSTER_TEXTID_BASE = 952000000;          // + count → "<n>"
 static constexpr int CLUSTER_CATNAME_TEXTID_BASE = 952010000;  // + category → its name
 
-// True if a PlaceName id NAMES A LOCATION (a sub-area), vs an item/category/count
-// id. Real location ids live below 50M; synthetic LOCATION_COMPOSE ids sit at
-// 999M+. Item names (50-600M), npc (700M+) and cluster count/catname (952M) are
-// all excluded. Used to read a marker's location off its textId slots so clusters
-// can group "one pile per named location".
-static inline bool is_location_id(int id)
+// Nearest Site-of-Grace anchor to a world point WITHIN THE SAME AREA. Graces are
+// the authoritative named-location anchors (BonfireWarpParam); assigning each
+// marker to its nearest grace gives a real, complete location grouping with no
+// dependence on the marker's (often-missing) location textId. Returns the grace
+// index + its region PlaceName id (for the label).
+static bool find_nearest_grace(uint8_t area, float wx, float wz,
+                               int *out_idx, int *out_pname)
 {
-    return id > 0 && (id < 50000000 || id >= 999000000);
+    int best = -1;
+    float bestd = 1e30f;
+    for (size_t i = 0; i < goblin::generated::GRACE_ANCHOR_COUNT; i++)
+    {
+        const auto &g = goblin::generated::GRACE_ANCHORS[i];
+        if (g.area != area) continue;
+        float dx = g.wx - wx, dz = g.wz - wz;
+        float d = dx * dx + dz * dz;
+        if (d < bestd) { bestd = d; best = static_cast<int>(i); }
+    }
+    if (best < 0) return false;
+    *out_idx = best;
+    *out_pname = goblin::generated::GRACE_ANCHORS[best].placename_id;
+    return true;
+}
+
+// A stable cluster key for a projected dungeon, derived from its overworld
+// ENTRANCE (the conv base point) so one dungeon = one pile. Offset far above the
+// grace-index space (0..~443) so the two key spaces never collide.
+static int entrance_cluster_key(float ex, float ez)
+{
+    int qx = static_cast<int>(std::floor(ex / 8.0f));
+    int qz = static_cast<int>(std::floor(ez / 8.0f));
+    return 1000000 + ((qx & 0xFFFF) << 16) + (qz & 0xFFFF);
 }
 
 // Census handed to setup_messages so it can inject each cluster's count string:
@@ -885,17 +911,17 @@ static void replan_clusters()
         return;
     }
 
-    // 2. Bucket the live rows by LOCATION — one mixed pile per named sub-area.
-    //    Rows with no location id, and categories the user left unchecked (read
-    //    LIVE from g_category_cluster), stay exact on the map.
+    // 2. Bucket the live rows by their grouping key (nearest grace, or dungeon
+    //    entrance). Rows with no anchor (grp_key < 0) and categories the user left
+    //    unchecked (read LIVE from g_category_cluster) stay exact on the map.
     struct Bucket { std::vector<size_t> members; double sx = 0, sz = 0; float py = 0;
-                    uint8_t area = 0; float ent_x = -1, ent_z = -1; };
-    std::unordered_map<int, Bucket> buckets;        // key = location PlaceName id
+                    uint8_t area = 0; float ent_x = -1, ent_z = -1; int pname = -1; };
+    std::unordered_map<int, Bucket> buckets;        // key = grace index / entrance key
     int skip_noloc = 0, skip_unchecked = 0;         // diagnostics (why a row stays exact)
     for (size_t i = 0; i < g_section_rows.size(); i++)
     {
         const auto &r = g_section_rows[i];
-        if (r.loc_id <= 0) { skip_noloc++; continue; }                    // no location → exact
+        if (r.grp_key < 0) { skip_noloc++; continue; }                    // no anchor → exact
         if (!g_category_cluster[static_cast<int>(r.cat)].load()) { skip_unchecked++; continue; } // unchecked
         auto *st = reinterpret_cast<ST *>(r.ptr);
         // Accumulate the centroid in WORLD coords (grid tile * 256 + tile-local
@@ -903,10 +929,11 @@ static void replan_clusters()
         // display-grid tile size (matches project_dungeon_row_to_overworld).
         float wx = static_cast<float>(st->gridXNo) * 256.0f + st->posX;
         float wz = static_cast<float>(st->gridZNo) * 256.0f + st->posZ;
-        auto &b = buckets[r.loc_id];
+        auto &b = buckets[r.grp_key];
         b.members.push_back(i);
         b.sx += wx; b.sz += wz; b.py = st->posY;
         b.area = r.orig_area;
+        if (b.pname < 0) b.pname = r.grp_pname;        // label = anchor's region name
         // Projected dungeon → remember its overworld entrance so the pile sits
         // there (one point) rather than at the centroid of its spread interior.
         if (r.ent_x >= 0) { b.ent_x = r.ent_x; b.ent_z = r.ent_z; }
@@ -941,10 +968,10 @@ static void replan_clusters()
         cd->iconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID);
         int cnt = std::min<int>(static_cast<int>(b.members.size()), CLUSTER_MAX_COUNT);
         int cnt_textid = CLUSTER_TEXTID_BASE + cnt;    // → pre-injected number string
-        // Line 1 = the LOCATION name — its own PlaceName id renders directly (no
-        // new FMG needed). Line 2 = the live member count (the "show counts"
-        // toggle hides/shows it via apply_cluster_debug; textId1 always stays).
-        cd->textId1 = kv.first;                        // location PlaceName id
+        // Line 1 = the anchor's region name — its PlaceName id renders directly (no
+        // new FMG needed); -1 = count-only when the anchor has no name. Line 2 = the
+        // live count (the "show counts" toggle hides/shows it via apply_cluster_debug).
+        cd->textId1 = (b.pname > 0) ? b.pname : -1;    // location/region PlaceName id
         cd->textId2 = g_cluster_debug.load() ? cnt_textid : -1;
         cd->textId3 = cd->textId4 = -1;
 
@@ -1423,6 +1450,20 @@ void goblin::inject_map_entries()
         new_locators[i].param_offset = data_offset;
         new_locators[i].param_end_offset = file_end_marker;
         memcpy(new_param_file + data_offset, all_rows[i].data_ptr, PARAM_DATA_SIZE);
+        // Nearest-grace anchor — computed on the marker's ORIGINAL (pre-projection)
+        // area + coords, so a catacomb/legacy marker matches a grace inside its OWN
+        // dungeon, not a random surface grace. This is the authoritative location
+        // grouping (replaces the incomplete textId-based location lookup).
+        int grace_idx = -1, grace_pname = -1;
+        if (all_rows[i].original_row_id != 0)
+        {
+            auto *mrow = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(
+                new_param_file + data_offset);
+            find_nearest_grace(mrow->areaNo,
+                               static_cast<float>(mrow->gridXNo) * 256.0f + mrow->posX,
+                               static_cast<float>(mrow->gridZNo) * 256.0f + mrow->posZ,
+                               &grace_idx, &grace_pname);
+        }
         // Bug A: reproject injected dungeon rows onto the overworld so minor-
         // dungeon icons render. original_row_id == 0 ⇒ vanilla row (left as-is).
         bool was_royal = false;  // Leyndell Royal Capital (m11_00) → hide post-burn
@@ -1561,19 +1602,22 @@ void goblin::inject_map_entries()
         // ones it folds into a pile and the eviction coordination keeps them parked.
         if (all_rows[i].original_row_id)
         {
-            // Capture this marker's LOCATION id (for location-based clustering).
-            // The location line lives in textId2 (loot) or textId3 (enemy-drops);
-            // LOCATION_ALT may have rewritten it above. Pick the first slot that
-            // holds a location-space id; -1 = no named location → never clustered.
-            auto *lp = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(cp);
-            int loc_id = is_location_id(lp->textId2) ? lp->textId2
-                       : is_location_id(lp->textId3) ? lp->textId3 : -1;
+            // Cluster grouping key: a PROJECTED dungeon folds into ONE pile at its
+            // entrance; everything else (overworld / underground) folds into its
+            // nearest grace. Label = the nearest grace's region name when known.
+            int grp_key, grp_pname = grace_pname;
+            if (ent_x >= 0.0f)
+                grp_key = entrance_cluster_key(ent_x, ent_z);  // one pile per dungeon
+            else if (grace_idx >= 0)
+                grp_key = grace_idx;                           // nearest-grace pile
+            else
+                grp_key = -1;                                  // no grace in area → exact
             g_section_rows.push_back({cp, section_of(all_rows[i].category),
                                       all_rows[i].category,
                                       cp[0x20], all_rows[i].is_piece,
                                       all_rows[i].is_kindling,
                                       static_cast<uint64_t>(all_rows[i].row_id),
-                                      loc_id, ent_x, ent_z});
+                                      grp_key, grp_pname, ent_x, ent_z});
         }
 
         // Royal Capital row → register for post-burn hide.
