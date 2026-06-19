@@ -735,6 +735,63 @@ bool goblin::get_player_world_pos(float &x, float &y, float &z)
     return false;
 }
 
+// ─── Player MARKER-space position — CONFIRMED Target-A chain (playerpos doc) ──
+// Both statics are AOB-anchored (drift per patch, so never hardcode the RVAs):
+//   player-MapId singleton (was 0x3d691d8): unique site that loads it then calls
+//     the +0x2c MapId getter — `mov rcx,[rip]; lea rdx,[rsp+0x20]; call getter;
+//     movsd xmm0,[rip]`. relative_offsets {{3,7}} → slot from the mov's rip-disp.
+//   CSWorldGeomMan / map-pos mgr (was 0x3d69ba8): same slot goblin_collected
+//     resolves; its +0x70/+0x74 hold the player block-local X/Z.
+static uintptr_t g_mapid_slot = 0;     // &(player-MapId singleton ptr)
+static uintptr_t g_mappos_mgr_slot = 0; // &(CSWorldGeomMan ptr)
+static bool g_mappos_tried = false;
+
+static void resolve_player_map_pos_statics()
+{
+    g_mappos_tried = true;
+    g_mapid_slot = reinterpret_cast<uintptr_t>(modutils::scan<void>({
+        .aob = "48 8B 0D ?? ?? ?? ?? 48 8D 54 24 20 E8 ?? ?? ?? ?? F2 0F 10 05 ?? ?? ?? ??",
+        .relative_offsets = {{3, 7}}}));
+    g_mappos_mgr_slot = reinterpret_cast<uintptr_t>(modutils::scan<void>({
+        .aob = "48 8B 0D ?? ?? ?? ?? 48 8D 53 10 E8 ?? ?? ?? ?? 4C 8B E8",
+        .relative_offsets = {{3, 7}}}));
+    spdlog::info("[PLAYER] map-pos statics: mapId-slot {:p}, geomMgr-slot {:p}",
+                 (void *)g_mapid_slot, (void *)g_mappos_mgr_slot);
+}
+
+struct MapPosProbe { int area, gx, gz; float lx, lz; bool ok; };
+static void probe_map_pos_seh(uintptr_t mapid_slot, uintptr_t mgr_slot, MapPosProbe *pr)
+{
+    pr->ok = false;
+    __try
+    {
+        auto *singleton = *reinterpret_cast<uint8_t **>(mapid_slot);
+        auto *mgr = *reinterpret_cast<uint8_t **>(mgr_slot);
+        if (!singleton || !mgr) return;
+        uint32_t mid = *reinterpret_cast<uint32_t *>(singleton + 0x2c);
+        pr->area = (mid >> 24) & 0xff;
+        pr->gx   = (mid >> 16) & 0xff;
+        pr->gz   = (mid >> 8)  & 0xff;
+        pr->lx = *reinterpret_cast<float *>(mgr + 0x70);  // block-local X
+        pr->lz = *reinterpret_cast<float *>(mgr + 0x74);  // block-local Z (+0x78 = height)
+        pr->ok = true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z)
+{
+    if (!g_mappos_tried) resolve_player_map_pos_statics();
+    if (!g_mapid_slot || !g_mappos_mgr_slot) return false;
+    MapPosProbe pr{};
+    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
+    if (!pr.ok) return false;
+    out_area = pr.area;
+    world_x = pr.gx * 256.0f + pr.lx;   // marker space: gridX*256 + local
+    world_z = pr.gz * 256.0f + pr.lz;
+    return true;
+}
+
 namespace
 {
 // One ItemLotParam row, read by raw offset (ITEMLOT_PARAM_ST = 152 bytes,
@@ -2806,6 +2863,17 @@ int goblin::refresh_cluster_depletion()
     if (now != clock::time_point{} && now - last < std::chrono::milliseconds(1000))
         return 0;
     last = now;
+    // Diagnostic (debug_logging only): verify the AOB-anchored player map-pos reader
+    // resolves + reads sane marker-space coords, ahead of distance-adaptive clustering.
+    if (goblin::config::debugLogging)
+    {
+        int parea; float pwx, pwz;
+        if (goblin::get_player_map_pos(parea, pwx, pwz))
+            spdlog::info("[PLAYER] map-pos area={} world=({:.1f},{:.1f}) [tile {},{}]",
+                         parea, pwx, pwz, static_cast<int>(pwx / 256.0f), static_cast<int>(pwz / 256.0f));
+        else
+            spdlog::info("[PLAYER] map-pos unavailable (AOB unresolved or chain faulted)");
+    }
     int changed = 0, with_flags = 0, depleted_n = 0;
     for (auto &c : g_clusters)
     {

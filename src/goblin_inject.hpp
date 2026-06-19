@@ -20,6 +20,15 @@ namespace goblin
     // For proximity clustering (v2). Coordinate space = global/world (verify).
     bool get_player_world_pos(float &x, float &y, float &z);
 
+    // Player position in MARKER space via the CONFIRMED Target-A chain (see
+    // docs/re_findings_playerpos.md): player MapId singleton (gridX/gridZ) +
+    // CSWorldGeomMan block-local (+0x70/+0x74). Both statics AOB-anchored (patch-
+    // resilient). out_area = page (60/61 overworld, 12 underground, …); world_x/z =
+    // gridXZ*256 + local, directly comparable to a marker's gridXNo*256 + posX
+    // WITHIN THE SAME area. Caveat: nested-region tile may be off ~±2 (negligible
+    // for coarse proximity). Returns false until resolvable / on fault.
+    bool get_player_map_pos(int &out_area, float &world_x, float &world_z);
+
     // Data pointers of MFG-injected WorldMapPointParam rows in the expanded
     // table. Populated by inject_map_entries(); consumed by
     // sanitize_injected_textids() after the FMG bank is built.
