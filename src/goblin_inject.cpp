@@ -508,7 +508,8 @@ static constexpr float CLUSTER_CELL = 60.0f;
 // Cluster label PlaceName id base (one static "<count>" string per cluster,
 // injected by setup_messages). Above the 950M BloodMsg band, clear of item
 // (50-600M), location (<50M) and npc (700M+) id spaces.
-static constexpr int CLUSTER_TEXTID_BASE = 952000000;
+static constexpr int CLUSTER_TEXTID_BASE = 952000000;          // + count → "<n>"
+static constexpr int CLUSTER_CATNAME_TEXTID_BASE = 952010000;  // + category → its name
 
 // Census handed to setup_messages so it can inject each cluster's count string:
 // (PlaceName textId, member count).
@@ -545,8 +546,8 @@ static void apply_cluster_expanded(bool expanded)
 static void apply_cluster_debug(bool show_counts)
 {
     for (const auto &c : g_clusters)
-        reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(c.ptr)->textId1 =
-            show_counts ? c.count_textid : -1;
+        reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(c.ptr)->textId2 =
+            show_counts ? c.count_textid : -1;  // line 2 = count; textId1 (name) stays
     spdlog::info("[CLUSTER] labels -> {}", show_counts ? "COUNT" : "ICON-ONLY");
 }
 
@@ -912,8 +913,11 @@ static void replan_clusters()
         cd->posY = b.py;
         cd->iconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID);
         int cnt = std::min<int>(static_cast<int>(b.members.size()), CLUSTER_MAX_COUNT);
-        int textid = CLUSTER_TEXTID_BASE + cnt;        // → pre-injected number string
-        cd->textId1 = textid;
+        int cnt_textid = CLUSTER_TEXTID_BASE + cnt;    // → pre-injected number string
+        // Line 1 = the pile's TYPE name (restores names/locations); line 2 = the
+        // live count. textId2 toggled by the "show counts" debug; textId1 stays.
+        cd->textId1 = CLUSTER_CATNAME_TEXTID_BASE + static_cast<int>(domcat);
+        cd->textId2 = g_cluster_debug.load() ? cnt_textid : -1;
 
         std::vector<uint32_t> mf;
         for (size_t mi : b.members)
@@ -925,7 +929,7 @@ static void replan_clusters()
             uint32_t f = reinterpret_cast<ST *>(r.ptr)->textDisableFlagId1;  // collect flag
             if (f) mf.push_back(f);
         }
-        g_clusters.push_back({cp, b.area, textid, std::move(mf), domcat});
+        g_clusters.push_back({cp, b.area, cnt_textid, std::move(mf), domcat});
     }
     g_clustering_active = !g_clusters.empty();
     spdlog::info("[CLUSTER] replan {}: {} piles, {} members parked, {}/{} pool used, {} dropped",
@@ -1058,6 +1062,10 @@ void goblin::inject_map_entries()
         GOBLIN_BENCH("map.inject.cluster_pool");
         for (int n = 1; n <= CLUSTER_MAX_COUNT; n++)
             g_cluster_census.emplace_back(CLUSTER_TEXTID_BASE + n, std::to_string(n));
+        // Category-name labels (textId1 = the pile's type, e.g. "Smithing Stones").
+        for (int c = 0; c < NUM_CATEGORIES; c++)
+            g_cluster_census.emplace_back(CLUSTER_CATNAME_TEXTID_BASE + c,
+                                          goblin::markers::category_name(static_cast<Category>(c)));
         from::paramdef::WORLD_MAP_POINT_PARAM_ST tmpl =
             entries.empty() ? from::paramdef::WORLD_MAP_POINT_PARAM_ST{}
                             : *entries.front().data;
