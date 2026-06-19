@@ -52,9 +52,19 @@ static void *allocation = nullptr;
 // near the dungeon entrance. Rows already on the overworld, or with no conv
 // entry (legacy dungeons that have their own page / unmappable), are untouched.
 static bool project_dungeon_row_to_overworld(
-    from::paramdef::WORLD_MAP_POINT_PARAM_ST *d)
+    from::paramdef::WORLD_MAP_POINT_PARAM_ST *d,
+    float *out_ent_x = nullptr, float *out_ent_z = nullptr)
 {
     if (d->areaNo == 60 || d->areaNo == 61)
+        return false;
+    // Underground worlds that have their OWN world-map page must NOT be projected
+    // onto the overworld — there is no overworld surface spot for them, so they
+    // land "in the sea". Keep them on their native page instead:
+    //   area 12      = Siofra/Ainsel/Deeproot/Nokron/Mohgwyn/Lake of Rot
+    //   area 40-43   = DLC underground caverns
+    // (Catacombs/caves 30-39 and legacy dungeons 10/11/13/14… DO have overworld
+    //  entrances, so they keep projecting.)
+    if (d->areaNo == 12 || (d->areaNo >= 40 && d->areaNo <= 43))
         return false;
 
     // Prefer an exact (src_area, src_gx) base-point — its local coords share an
@@ -86,6 +96,11 @@ static bool project_dungeon_row_to_overworld(
     // point (mixing local coords across grids would misplace, so we don't).
     float wx = static_cast<float>(c->dst_gx) * 256.0f + c->dst_pos_x;
     float wz = static_cast<float>(c->dst_gz) * 256.0f + c->dst_pos_z;
+    // The conv base point IS the dungeon's overworld ENTRANCE — hand it back so a
+    // cluster of this dungeon's markers can sit there instead of at the centroid
+    // of their spread-out projected interior (which can drift off into the sea).
+    if (out_ent_x) *out_ent_x = wx;
+    if (out_ent_z) *out_ent_z = wz;
     if (exact)
     {
         wx += d->posX - c->src_pos_x;
@@ -302,6 +317,9 @@ struct SectionRow
     bool     is_piece;
     bool     is_kindling;
     uint64_t row_id;
+    int      loc_id;    // location PlaceName id (names the sub-area); -1 = none → never clustered
+    float    ent_x;     // projected-dungeon overworld ENTRANCE (world coords); <0 = not a projected dungeon
+    float    ent_z;
 };
 static std::vector<SectionRow> g_section_rows;
 
@@ -510,6 +528,16 @@ static constexpr float CLUSTER_CELL = 60.0f;
 // (50-600M), location (<50M) and npc (700M+) id spaces.
 static constexpr int CLUSTER_TEXTID_BASE = 952000000;          // + count → "<n>"
 static constexpr int CLUSTER_CATNAME_TEXTID_BASE = 952010000;  // + category → its name
+
+// True if a PlaceName id NAMES A LOCATION (a sub-area), vs an item/category/count
+// id. Real location ids live below 50M; synthetic LOCATION_COMPOSE ids sit at
+// 999M+. Item names (50-600M), npc (700M+) and cluster count/catname (952M) are
+// all excluded. Used to read a marker's location off its textId slots so clusters
+// can group "one pile per named location".
+static inline bool is_location_id(int id)
+{
+    return id > 0 && (id < 50000000 || id >= 999000000);
+}
 
 // Census handed to setup_messages so it can inject each cluster's count string:
 // (PlaceName textId, member count).
@@ -857,70 +885,71 @@ static void replan_clusters()
         return;
     }
 
-    // 2. Bucket the live rows by cell (+ category in SOFT, mixed in HARD).
-    const bool hard = goblin::config::clusterHard;
-    auto cell_key = [](Category cat, uint8_t area, int cx, int cz) -> uint64_t {
-        return (static_cast<uint64_t>(static_cast<uint8_t>(cat)) << 56) |
-               (static_cast<uint64_t>(area) << 48) |
-               ((static_cast<uint64_t>((cx + 0x400000) & 0xFFFFFF)) << 24) |
-                (static_cast<uint64_t>((cz + 0x400000) & 0xFFFFFF));
-    };
+    // 2. Bucket the live rows by LOCATION — one mixed pile per named sub-area.
+    //    Rows with no location id, and categories the user left unchecked (read
+    //    LIVE from g_category_cluster), stay exact on the map.
     struct Bucket { std::vector<size_t> members; double sx = 0, sz = 0; float py = 0;
-                    uint8_t area = 0, gx = 0, gz = 0; };
-    std::unordered_map<uint64_t, Bucket> buckets;
+                    uint8_t area = 0; float ent_x = -1, ent_z = -1; };
+    std::unordered_map<int, Bucket> buckets;        // key = location PlaceName id
+    int skip_noloc = 0, skip_unchecked = 0;         // diagnostics (why a row stays exact)
     for (size_t i = 0; i < g_section_rows.size(); i++)
     {
         const auto &r = g_section_rows[i];
-        if (!category_clustered_cfg(r.cat)) continue;  // excluded → stays exact
+        if (r.loc_id <= 0) { skip_noloc++; continue; }                    // no location → exact
+        if (!g_category_cluster[static_cast<int>(r.cat)].load()) { skip_unchecked++; continue; } // unchecked
         auto *st = reinterpret_cast<ST *>(r.ptr);
-        uint8_t area = r.orig_area;                    // FINAL (post-projection) page
-        int cx = static_cast<int>(std::floor(st->posX / CLUSTER_CELL));
-        int cz = static_cast<int>(std::floor(st->posZ / CLUSTER_CELL));
-        Category kc = hard ? static_cast<Category>(0) : r.cat;
-        auto &b = buckets[cell_key(kc, area, cx, cz)];
+        // Accumulate the centroid in WORLD coords (grid tile * 256 + tile-local
+        // pos) so a pile whose members straddle grid tiles lands correctly. 256 =
+        // display-grid tile size (matches project_dungeon_row_to_overworld).
+        float wx = static_cast<float>(st->gridXNo) * 256.0f + st->posX;
+        float wz = static_cast<float>(st->gridZNo) * 256.0f + st->posZ;
+        auto &b = buckets[r.loc_id];
         b.members.push_back(i);
-        b.sx += st->posX; b.sz += st->posZ; b.py = st->posY;
-        b.area = area; b.gx = st->gridXNo; b.gz = st->gridZNo;
+        b.sx += wx; b.sz += wz; b.py = st->posY;
+        b.area = r.orig_area;
+        // Projected dungeon → remember its overworld entrance so the pile sits
+        // there (one point) rather than at the centroid of its spread interior.
+        if (r.ent_x >= 0) { b.ent_x = r.ent_x; b.ent_z = r.ent_z; }
     }
 
-    // 3. Over-threshold cells → fill a pool row, park members.
+    // 3. Locations over the threshold → fill a pool row, park members. Sparse
+    //    locations (≤ threshold) stay exact. Threshold counts markers per location.
+    int thr = static_cast<int>(goblin::config::clusterThreshold);
+    if (thr < 1) thr = 1;  // defense: 0 would cluster every location → pool blowout
     size_t pi = 0;
-    int dropped = 0;
+    int dropped = 0, sub_threshold = 0;
     for (auto &kv : buckets)
     {
         Bucket &b = kv.second;
-        Category domcat = g_section_rows[b.members[0]].cat;  // pile icon/label/gate
-        if (hard)
-        {
-            std::unordered_map<int, int> cc; int best = -1, bestc = 0;
-            for (size_t mi : b.members)
-            {
-                int c = ++cc[static_cast<int>(g_section_rows[mi].cat)];
-                if (c > bestc) { bestc = c; best = static_cast<int>(g_section_rows[mi].cat); }
-            }
-            if (best >= 0) domcat = static_cast<Category>(best);
-        }
-        int thr = hard ? static_cast<int>(goblin::config::clusterThreshold)
-                       : cluster_threshold_for_cfg(domcat);
-        if (thr < 1) thr = 1;  // defense: threshold 0 → every cell clusters → pool blowout
-        if (static_cast<int>(b.members.size()) <= thr) continue;
+        if (static_cast<int>(b.members.size()) <= thr) { sub_threshold++; continue; }
         if (pi >= g_cluster_pool.size()) { dropped++; continue; }
 
         uint8_t *cp = g_cluster_pool[pi++];
         auto *cd = reinterpret_cast<ST *>(cp);
-        cd->areaNo = b.area; cd->gridXNo = b.gx; cd->gridZNo = b.gz;
-        cd->posX = static_cast<float>(b.sx / b.members.size());
-        cd->posZ = static_cast<float>(b.sz / b.members.size());
+        // Position: a projected dungeon sits at its entrance; everything else at
+        // the centroid of its members (split back to display grid tile + local).
+        double cwx = (b.ent_x >= 0) ? b.ent_x : b.sx / b.members.size();
+        double cwz = (b.ent_x >= 0) ? b.ent_z : b.sz / b.members.size();
+        int gx = static_cast<int>(std::floor(cwx / 256.0));
+        int gz = static_cast<int>(std::floor(cwz / 256.0));
+        cd->areaNo = b.area;
+        cd->gridXNo = static_cast<uint8_t>(gx);
+        cd->gridZNo = static_cast<uint8_t>(gz);
+        cd->posX = static_cast<float>(cwx - gx * 256.0);
+        cd->posZ = static_cast<float>(cwz - gz * 256.0);
         cd->posY = b.py;
         cd->iconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID);
         int cnt = std::min<int>(static_cast<int>(b.members.size()), CLUSTER_MAX_COUNT);
         int cnt_textid = CLUSTER_TEXTID_BASE + cnt;    // → pre-injected number string
-        // Line 1 = the pile's TYPE name (restores names/locations); line 2 = the
-        // live count. textId2 toggled by the "show counts" debug; textId1 stays.
-        cd->textId1 = CLUSTER_CATNAME_TEXTID_BASE + static_cast<int>(domcat);
+        // Line 1 = the LOCATION name — its own PlaceName id renders directly (no
+        // new FMG needed). Line 2 = the live member count (the "show counts"
+        // toggle hides/shows it via apply_cluster_debug; textId1 always stays).
+        cd->textId1 = kv.first;                        // location PlaceName id
         cd->textId2 = g_cluster_debug.load() ? cnt_textid : -1;
+        cd->textId3 = cd->textId4 = -1;
 
         std::vector<uint32_t> mf;
+        Category domcat = g_section_rows[b.members[0]].cat;  // for section gating
         for (size_t mi : b.members)
         {
             const auto &r = g_section_rows[mi];
@@ -933,9 +962,11 @@ static void replan_clusters()
         g_clusters.push_back({cp, b.area, cnt_textid, std::move(mf), domcat});
     }
     g_clustering_active = !g_clusters.empty();
-    spdlog::info("[CLUSTER] replan {}: {} piles, {} members parked, {}/{} pool used, {} dropped",
-                 hard ? "HARD" : "SOFT", g_clusters.size(), g_cluster_members.size(),
+    spdlog::info("[CLUSTER] replan by-location: {} piles, {} members parked, {}/{} pool used, {} dropped",
+                 g_clusters.size(), g_cluster_members.size(),
                  pi, g_cluster_pool.size(), dropped);
+    spdlog::info("[CLUSTER] stayed-exact: {} no-location, {} unchecked-category, {} locations sub-threshold (<= {})",
+                 skip_noloc, skip_unchecked, sub_threshold, thr);
 
     // 4. Apply the current collapsed/expanded view to the new plan.
     apply_cluster_expanded(g_clusters_expanded.load());
@@ -1395,6 +1426,7 @@ void goblin::inject_map_entries()
         // Bug A: reproject injected dungeon rows onto the overworld so minor-
         // dungeon icons render. original_row_id == 0 ⇒ vanilla row (left as-is).
         bool was_royal = false;  // Leyndell Royal Capital (m11_00) → hide post-burn
+        float ent_x = -1.0f, ent_z = -1.0f;  // overworld entrance if this row gets projected
         if (goblin::config::projectDungeons && all_rows[i].original_row_id != 0)
         {
             auto *prow = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(
@@ -1418,7 +1450,7 @@ void goblin::inject_map_entries()
             // vanilla Ashen rows) visible after the Erdtree burns. gridXNo here is
             // still the source sub-grid (projection below clobbers it).
             was_royal = (prow->areaNo == 11 && prow->gridXNo == 0);
-            if (project_dungeon_row_to_overworld(prow))
+            if (project_dungeon_row_to_overworld(prow, &ent_x, &ent_z))
                 reprojected_dungeons++;
         }
         new_wrapper_locs[i].row = all_rows[i].row_id;
@@ -1529,11 +1561,19 @@ void goblin::inject_map_entries()
         // ones it folds into a pile and the eviction coordination keeps them parked.
         if (all_rows[i].original_row_id)
         {
+            // Capture this marker's LOCATION id (for location-based clustering).
+            // The location line lives in textId2 (loot) or textId3 (enemy-drops);
+            // LOCATION_ALT may have rewritten it above. Pick the first slot that
+            // holds a location-space id; -1 = no named location → never clustered.
+            auto *lp = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(cp);
+            int loc_id = is_location_id(lp->textId2) ? lp->textId2
+                       : is_location_id(lp->textId3) ? lp->textId3 : -1;
             g_section_rows.push_back({cp, section_of(all_rows[i].category),
                                       all_rows[i].category,
                                       cp[0x20], all_rows[i].is_piece,
                                       all_rows[i].is_kindling,
-                                      static_cast<uint64_t>(all_rows[i].row_id)});
+                                      static_cast<uint64_t>(all_rows[i].row_id),
+                                      loc_id, ent_x, ent_z});
         }
 
         // Royal Capital row → register for post-burn hide.
@@ -2113,8 +2153,10 @@ void goblin::ui::set_category_clustered(int idx, bool clustered)
 {
     if (idx < 0 || idx >= NUM_CATEGORIES) return;
     g_category_cluster[idx].store(clustered);
-    // No dirty flag: the cluster plan is built once at inject, so this only takes
-    // effect after Save + restart. Persisted into clusterExclude by the Save path.
+    // LIVE: replan reads g_category_cluster directly, so checked ⇔ this category
+    // joins the location pile / unchecked ⇔ shown normally — applied on next map
+    // open (no restart). Persisted into clusterExclude by the Save path.
+    g_cluster_replan_dirty.store(true);
 }
 
 int goblin::ui::category_threshold(int idx)
@@ -2578,14 +2620,28 @@ int goblin::refresh_cluster_depletion()
     {
         if (c.member_flags.empty()) continue; // no collectible members → never "done"
         with_flags++;
-        bool depleted = true;
+        // Count collected members (collect-flag set) — drives both the done-icon
+        // swap and the live REMAINING count.
+        int collected_n = 0;
         for (uint32_t f : c.member_flags)
-            if (!orp_flag_set(f)) { depleted = false; break; }
+            if (orp_flag_set(f)) collected_n++;
+        bool depleted = (collected_n == static_cast<int>(c.member_flags.size()));
         if (depleted) depleted_n++;
         uint16_t want = depleted ? goblin::generated::CLUSTER_DONE_ICON_ID
                                  : goblin::generated::CLUSTER_ICON_ID;
         auto *st = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(c.ptr);
         if (st->iconId != want) { st->iconId = want; changed++; }
+        // Bug fix: the label count was frozen at replan time (= TOTAL members, incl.
+        // already-collected loot), so it never went down as you looted. Show the
+        // live REMAINING = total - collected. count_textid encodes the total.
+        if (g_cluster_debug.load())
+        {
+            int total = c.count_textid - CLUSTER_TEXTID_BASE;
+            int remaining = total - collected_n;
+            if (remaining < 0) remaining = 0;
+            int want_tid = CLUSTER_TEXTID_BASE + std::min(remaining, CLUSTER_MAX_COUNT);
+            if (st->textId2 != want_tid) { st->textId2 = want_tid; changed++; }
+        }
     }
     // Diagnostic: log when the depleted count changes (and the startup state) so we
     // can tell apart "no collect-flags captured" vs "swapped but icon not re-read".

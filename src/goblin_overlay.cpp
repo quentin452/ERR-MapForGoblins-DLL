@@ -421,7 +421,7 @@ namespace
                         if (goblin::ui::category_section(c) == s)
                             goblin::ui::set_category_clustered(c, false);
                 ImGui::PopID();
-                ImGui::TextDisabled("left = show on map   |   right [cluster] = fold into clusters (Save + restart)");
+                ImGui::TextDisabled("left = show on map   |   right [cluster] = join location pile (live) / unchecked = shown normally");
                 ImGui::Separator();
 
                 for (int c = 0; c < goblin::ui::category_count(); c++)
@@ -446,28 +446,17 @@ namespace
                         ImGui::SetTooltip("Legacy / unfinished: raw quest-NPC map pins.\n"
                                           "Use the Quest Browser (below) for quest navigation.\n"
                                           "Off by default.");
-                    // Right-aligned cluster opt-in: unchecked = this category stays
-                    // exact markers, never folded into a cluster icon.
-                    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 150.0f);
+                    // Right-aligned cluster opt-in: checked = this category's markers
+                    // join the location pile; unchecked = shown normally on the map.
+                    // Live (re-plans on next map open).
+                    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 70.0f);
                     bool clu = goblin::ui::category_clustered(c);
                     if (ImGui::Checkbox("cluster", &clu))
                         goblin::ui::set_category_clustered(c, clu);
                     if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Fold this category's dense piles into a cluster icon.\n"
-                                          "Unchecked = always exact. Takes effect after Save + restart.");
-                    // Per-category threshold (clusters only where a cell holds MORE
-                    // than this many of THIS category). Only when clustered.
-                    if (clu)
-                    {
-                        ImGui::SameLine();
-                        int thr = goblin::ui::category_threshold(c);
-                        ImGui::SetNextItemWidth(70.0f);
-                        if (ImGui::InputInt(">thr", &thr))
-                            goblin::ui::set_category_threshold(c, thr);
-                        if (ImGui::IsItemHovered())
-                            ImGui::SetTooltip("Cluster only where a map cell holds MORE than this many\n"
-                                              "of this category. Default = global threshold. Save + restart.");
-                    }
+                        ImGui::SetTooltip("Checked = this category's markers fold into the\n"
+                                          "one-per-location cluster pile. Unchecked = shown\n"
+                                          "normally on the map. Live — reopen the map to apply.");
                     ImGui::PopID();
                 }
                 ImGui::TreePop();
@@ -706,31 +695,24 @@ namespace
 
                 if (en)
                 {
-                    // Global default threshold (per-category overrides set per row above).
+                    ImGui::TextDisabled("One mixed pile per location. Per-category opt-in above.");
+                    // Cluster size = how many markers a LOCATION must hold to collapse
+                    // into one pile (sparse locations stay normal).
                     int gt = goblin::ui::global_threshold();
                     ImGui::SetNextItemWidth(90.0f);
-                    if (ImGui::InputInt("Cluster size — markers per pile (live)", &gt))
+                    if (ImGui::InputInt("Cluster size — markers per location (live)", &gt))
                         goblin::ui::set_global_threshold(gt);
                     if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("A cell clusters when it holds MORE than this many markers.\n"
-                                          "LOWER = MORE clustering (groups smaller piles). Min 1.\n"
-                                          "Live — reopen the map to see it.");
-
-                    bool hard = goblin::ui::cluster_hard();
-                    if (ImGui::Checkbox("Hard clustering — mix all categories (live)", &hard))
-                        goblin::ui::set_cluster_hard(hard);
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("HARD: fold ALL marker types in a dense cell into ONE pile\n"
-                                          "(far fewer icons — the real declutter). Off = SOFT: cluster\n"
-                                          "each category separately (typed piles). Live — reopen the map.\n"
-                                          "Tip: LOWER the cluster size = MORE clustering.");
+                        ImGui::SetTooltip("A location collapses into one pile when it holds MORE\n"
+                                          "than this many (clustered-category) markers. LOWER = MORE\n"
+                                          "clustering. Min 1. Live — reopen the map to see it.");
 
                     bool dbg = goblin::ui::cluster_debug();
                     if (ImGui::Checkbox("Cluster labels show counts", &dbg))
                         goblin::ui::set_cluster_debug(dbg);
 
                     if (!goblin::ui::clustering_active())
-                        ImGui::TextDisabled("No dense piles at this size — lower the cluster size.");
+                        ImGui::TextDisabled("No location over this size — lower the cluster size.");
                 }
             }
 
