@@ -8,6 +8,7 @@
 #include "goblin_item_icons.hpp"
 #include "goblin_location_alt.hpp"
 #include "goblin_grace_anchors.hpp"
+#include "goblin_region_anchors.hpp"
 #include "goblin_legacy_conv.hpp"
 #include "goblin_markers.hpp"
 #include "goblin_bench.hpp"
@@ -540,8 +541,8 @@ static constexpr int CLUSTER_CATNAME_TEXTID_BASE = 952010000;  // + category →
 static bool find_nearest_grace(uint8_t area, float wx, float wz,
                                int *out_idx, int *out_pname, int *out_tab)
 {
-    int best = -1;
-    float bestd = 1e30f;
+    int best = -1, best_named = -1;
+    float bestd = 1e30f, bestnd = 1e30f;
     for (size_t i = 0; i < goblin::generated::GRACE_ANCHOR_COUNT; i++)
     {
         const auto &g = goblin::generated::GRACE_ANCHORS[i];
@@ -549,12 +550,36 @@ static bool find_nearest_grace(uint8_t area, float wx, float wz,
         float dx = g.wx - wx, dz = g.wz - wz;
         float d = dx * dx + dz * dz;
         if (d < bestd) { bestd = d; best = static_cast<int>(i); }
+        // Track the nearest grace that actually has a name, for a label fallback.
+        if (g.placename_id > 0 && d < bestnd) { bestnd = d; best_named = static_cast<int>(i); }
     }
     if (best < 0) return false;
-    *out_idx = best;
-    *out_pname = goblin::generated::GRACE_ANCHORS[best].placename_id;
-    *out_tab = goblin::generated::GRACE_ANCHORS[best].tab_id;
+    const auto &b = goblin::generated::GRACE_ANCHORS[best];
+    *out_idx = best;                      // grouping: physical-nearest grace
+    *out_tab = b.tab_id;
+    // Label: the grouped grace's name, else borrow the nearest NAMED grace's region
+    // name (some underground/DLC graces store a tab id, not a PlaceName → no name).
+    *out_pname = (b.placename_id > 0) ? b.placename_id
+               : (best_named >= 0 ? goblin::generated::GRACE_ANCHORS[best_named].placename_id : 0);
     return true;
+}
+
+// Nearest MSB region-volume PlaceName to a world point in the same area — a LABEL
+// fallback for piles whose grace has no name (every DLC area-61 grace stores a tab
+// id, not a PlaceName). Returns 0 if no named region in this area.
+static int find_nearest_region_pname(uint8_t area, float wx, float wz)
+{
+    int best = -1;
+    float bestd = 1e30f;
+    for (size_t i = 0; i < goblin::generated::REGION_ANCHOR_COUNT; i++)
+    {
+        const auto &g = goblin::generated::REGION_ANCHORS[i];
+        if (g.area != area) continue;
+        float dx = g.wx - wx, dz = g.wz - wz;
+        float d = dx * dx + dz * dz;
+        if (d < bestd) { bestd = d; best = static_cast<int>(i); }
+    }
+    return best < 0 ? 0 : goblin::generated::REGION_ANCHORS[best].placename_id;
 }
 
 // A stable cluster key for a projected dungeon, derived from its overworld
@@ -1553,10 +1578,13 @@ void goblin::inject_map_entries()
         {
             auto *mrow = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(
                 new_param_file + data_offset);
-            find_nearest_grace(mrow->areaNo,
-                               static_cast<float>(mrow->gridXNo) * 256.0f + mrow->posX,
-                               static_cast<float>(mrow->gridZNo) * 256.0f + mrow->posZ,
-                               &grace_idx, &grace_pname, &grace_tab);
+            float mwx = static_cast<float>(mrow->gridXNo) * 256.0f + mrow->posX;
+            float mwz = static_cast<float>(mrow->gridZNo) * 256.0f + mrow->posZ;
+            find_nearest_grace(mrow->areaNo, mwx, mwz, &grace_idx, &grace_pname, &grace_tab);
+            // No named grace nearby (DLC graces have no PlaceName) → label by the
+            // nearest MSB region volume instead.
+            if (grace_pname <= 0)
+                grace_pname = find_nearest_region_pname(mrow->areaNo, mwx, mwz);
         }
         // Bug A: reproject injected dungeon rows onto the overworld so minor-
         // dungeon icons render. original_row_id == 0 ⇒ vanilla row (left as-is).
@@ -1587,6 +1615,11 @@ void goblin::inject_map_entries()
             was_royal = (prow->areaNo == 11 && prow->gridXNo == 0);
             if (project_dungeon_row_to_overworld(prow, &ent_x, &ent_z))
                 reprojected_dungeons++;
+            // A projected dungeon (catacomb/cave) whose own area had no named grace
+            // or region stays nameless — but its pile sits at the overworld ENTRANCE.
+            // Label it by the overworld region there (prow->areaNo is now 60/61).
+            if (grace_pname <= 0 && ent_x >= 0.0f)
+                grace_pname = find_nearest_region_pname(prow->areaNo, ent_x, ent_z);
         }
         new_wrapper_locs[i].row = all_rows[i].row_id;
         new_wrapper_locs[i].index = static_cast<int32_t>(i);
