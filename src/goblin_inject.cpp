@@ -13,6 +13,7 @@
 #include "from/params.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
 #include "goblin_quest_gates.hpp"
+#include "goblin_quest_steps.hpp"
 #include "goblin_logic.hpp"
 
 #include <algorithm>
@@ -308,6 +309,14 @@ static std::vector<SectionRow> g_section_rows;
 static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldInteractables) + 1;
 static std::atomic<bool> g_category_visible[NUM_CATEGORIES];
 static std::atomic<bool> g_category_dirty[NUM_CATEGORIES];  // set by menu, applied by watcher
+// Per-category cluster opt-in (true = this category folds into clusters). Seeded
+// from config::clusterExclude at init; toggled live by the menu but only takes
+// effect after Save + restart, since clustering is planned once at inject.
+static std::atomic<bool> g_category_cluster[NUM_CATEGORIES];
+// Per-category cluster threshold for menu display (effective value: override or
+// the global default). Seeded at init; edits persist to clusterThresholdOverrides
+// on Save and take effect after restart.
+static std::atomic<int> g_category_threshold[NUM_CATEGORIES];
 
 // Coordination for the multiple areaNo owners. Section visibility, fragment-
 // eviction and collected-eviction all write WORLD_MAP_POINT_PARAM_ST.areaNo
@@ -333,6 +342,29 @@ bool goblin::is_section_hidden_ptr(const void *param_data)
 // Show/hide every injected row of one section in place. Hide = areaNo 99;
 // show = restore orig_area unless the row is an already-collected piece/kindling
 // (those stay evicted, owned by collected::/kindling::).
+// Cluster state (declared before the apply_* visibility fns, which gate clusters).
+struct ClusterRow { uint8_t *ptr; uint8_t area; int count_textid; std::vector<uint32_t> member_flags; Category cat; };
+static std::vector<ClusterRow> g_clusters;        // the synthetic cluster icons
+struct ClusterMember { uint8_t *ptr; uint8_t orig_area; Category cat; };
+static std::vector<ClusterMember> g_cluster_members;  // individuals parked under a cluster
+
+static std::atomic<bool> g_clusters_expanded{false};  // false = collapsed (clusters shown)
+static std::atomic<bool> g_cluster_debug{true};       // true = cluster labels show counts (default on)
+// Hotkey thread sets these; the watcher applies the areaNo/textId flips (single
+// owner of game-state mutation), mirroring the section + master toggles.
+static std::atomic<bool> g_cluster_expand_dirty{false};
+static std::atomic<bool> g_cluster_debug_dirty{false};
+static bool g_clustering_active = false;  // clusters built this session
+
+// A cluster icon (and its parked members) belong to ONE category since buckets
+// are per-category. Hide them when that category OR its section is toggled off,
+// so a disabled category doesn't leave its cluster glyphs on the map.
+static bool cluster_should_hide(Category cat)
+{
+    return !g_category_visible[static_cast<int>(cat)].load() ||
+           !g_section_visible[static_cast<int>(section_of(cat))].load();
+}
+
 static void apply_section_visibility(Section s, bool visible)
 {
     int touched = 0;
@@ -357,6 +389,14 @@ static void apply_section_visibility(Section s, bool visible)
         }
         touched++;
     }
+    // Gate cluster icons + members whose category lives in this section.
+    bool expanded = g_clusters_expanded.load();
+    for (const auto &cl : g_clusters)
+        if (section_of(cl.cat) == s)
+            cl.ptr[0x20] = (!visible || expanded || cluster_should_hide(cl.cat)) ? 99 : cl.area;
+    for (const auto &m : g_cluster_members)
+        if (section_of(m.cat) == s)
+            m.ptr[0x20] = (visible && expanded && !cluster_should_hide(m.cat)) ? m.orig_area : 99;
     spdlog::info("[SECTION] {} -> {} ({} rows)",
                  section_name(s), visible ? "SHOWN" : "HIDDEN", touched);
 }
@@ -388,6 +428,15 @@ static void apply_category_visibility(Category c, bool visible)
         }
         touched++;
     }
+    // Cluster icons + their parked members belong to one category — gate them too,
+    // else a disabled category leaves its (typed) cluster glyphs on the map.
+    bool expanded = g_clusters_expanded.load();
+    for (const auto &cl : g_clusters)
+        if (cl.cat == c)
+            cl.ptr[0x20] = (!visible || expanded || cluster_should_hide(c)) ? 99 : cl.area;
+    for (const auto &m : g_cluster_members)
+        if (m.cat == c)
+            m.ptr[0x20] = (visible && expanded && !cluster_should_hide(c)) ? m.orig_area : 99;
     spdlog::info("[CATEGORY] {} -> {} ({} rows)",
                  goblin::markers::category_name(c), visible ? "SHOWN" : "HIDDEN", touched);
 }
@@ -445,27 +494,16 @@ static std::vector<std::pair<int, std::string>> g_cluster_census;
 // flag-backed members; when ALL are set the pile is depleted → the refresh swaps
 // the icon to CLUSTER_DONE_ICON_ID (green). Empty = no collectible members (a
 // pure grace/boss pile) → never "done".
-struct ClusterRow { uint8_t *ptr; uint8_t area; int count_textid; std::vector<uint32_t> member_flags; };
-static std::vector<ClusterRow> g_clusters;        // the synthetic cluster icons
-struct ClusterMember { uint8_t *ptr; uint8_t orig_area; };
-static std::vector<ClusterMember> g_cluster_members;  // individuals parked under a cluster
-
-static std::atomic<bool> g_clusters_expanded{false};  // false = collapsed (clusters shown)
-static std::atomic<bool> g_cluster_debug{true};       // true = cluster labels show counts (default on)
-// Hotkey thread sets these; the watcher applies the areaNo/textId flips (single
-// owner of game-state mutation), mirroring the section + master toggles.
-static std::atomic<bool> g_cluster_expand_dirty{false};
-static std::atomic<bool> g_cluster_debug_dirty{false};
-static bool g_clustering_active = false;  // clusters built this session
-
 // Collapsed: clusters visible (real area), members parked (99).
 // Expanded: clusters parked (99), members restored — the slow, see-everything view.
 static void apply_cluster_expanded(bool expanded)
 {
+    // Collapsed: show the cluster icon (unless its category/section is hidden);
+    // park members. Expanded: park the icon; show members (same gate).
     for (const auto &c : g_clusters)
-        c.ptr[0x20] = expanded ? 99 : c.area;
+        c.ptr[0x20] = (expanded || cluster_should_hide(c.cat)) ? 99 : c.area;
     for (const auto &m : g_cluster_members)
-        m.ptr[0x20] = expanded ? m.orig_area : 99;
+        m.ptr[0x20] = (expanded && !cluster_should_hide(m.cat)) ? m.orig_area : 99;
     spdlog::info("[CLUSTER] {} ({} clusters, {} members)",
                  expanded ? "EXPANDED" : "COLLAPSED", g_clusters.size(), g_cluster_members.size());
 }
@@ -695,26 +733,69 @@ static std::string norm_alnum(const std::string &s)
     return o;
 }
 
-// True if `cat` matches a token in show_all_except (loose substring match).
-static bool category_in_except(Category cat)
+// True if `cat`'s name matches a comma-separated token in `list` (loose substring
+// match, alnum-normalised). Shared by show_all_except and cluster_exclude.
+static bool category_in_list(const std::string &list, Category cat)
 {
-    const std::string &ex = goblin::config::showAllExcept;
-    if (ex.empty())
+    if (list.empty())
         return false;
     std::string catn = norm_alnum(goblin::markers::category_name(cat));
     if (catn.empty())
         return false;
-    for (size_t i = 0; i < ex.size();)
+    for (size_t i = 0; i < list.size();)
     {
-        size_t j = ex.find(',', i);
+        size_t j = list.find(',', i);
         if (j == std::string::npos)
-            j = ex.size();
-        std::string tok = norm_alnum(ex.substr(i, j - i));
+            j = list.size();
+        std::string tok = norm_alnum(list.substr(i, j - i));
         if (!tok.empty() && catn.find(tok) != std::string::npos)
             return true;
         i = j + 1;
     }
     return false;
+}
+
+// True if `cat` matches a token in show_all_except (loose substring match).
+static bool category_in_except(Category cat)
+{
+    return category_in_list(goblin::config::showAllExcept, cat);
+}
+
+// True if `cat` is allowed to fold into a cluster (i.e. NOT opted out via
+// cluster_exclude). Read at inject time when the cluster plan is built.
+static bool category_clustered_cfg(Category cat)
+{
+    return !category_in_list(goblin::config::clusterExclude, cat);
+}
+
+// Cluster threshold for `cat`: a per-category override from
+// cluster_threshold_overrides ("Name:N,Name2:M", loose name match) if present,
+// else the global clusterThreshold. Read at inject when the plan is built.
+static int cluster_threshold_for_cfg(Category cat)
+{
+    int def = goblin::config::clusterThreshold;
+    const std::string &ov = goblin::config::clusterThresholdOverrides;
+    if (ov.empty()) return def;
+    std::string catn = norm_alnum(goblin::markers::category_name(cat));
+    if (catn.empty()) return def;
+    for (size_t i = 0; i < ov.size();)
+    {
+        size_t j = ov.find(',', i);
+        if (j == std::string::npos) j = ov.size();
+        std::string tok = ov.substr(i, j - i);
+        size_t c = tok.find(':');
+        if (c != std::string::npos)
+        {
+            std::string nm = norm_alnum(tok.substr(0, c));
+            int v = std::atoi(tok.substr(c + 1).c_str());
+            // Exact name match (not substring) so "SmithingStones:4" does NOT bleed
+            // into SmithingStonesLow/Rare; the overlay writes full category names.
+            if (!nm.empty() && v >= 0 && catn == nm)
+                return v;
+        }
+        i = j + 1;
+    }
+    return def;
 }
 
 static bool *category_config_ptr(Category cat)
@@ -838,20 +919,28 @@ void goblin::inject_map_entries()
         struct Bucket { std::vector<size_t> members; double sx = 0, sz = 0; float py = 0;
                         uint8_t area = 0, gx = 0, gz = 0; Category cat{}; };
         std::unordered_map<uint64_t, Bucket> buckets;
-        auto cell_key = [](uint8_t area, int cx, int cz) -> uint64_t {
-            // bias cx/cz into 24-bit unsigned lanes (world cells well within ±8M)
-            return (static_cast<uint64_t>(area) << 48) |
+        // Key by category too: each category clusters separately in a cell, so a
+        // per-category threshold is well-defined and the cluster label/icon can be
+        // typed (e.g. "Smithing Stones (12)" + "Golden Runes (9)" instead of one
+        // mixed pile). cat in bits 56-63, area 48-55, cx/cz in 24-bit lanes.
+        auto cell_key = [](Category cat, uint8_t area, int cx, int cz) -> uint64_t {
+            return (static_cast<uint64_t>(static_cast<uint8_t>(cat)) << 56) |
+                   (static_cast<uint64_t>(area) << 48) |
                    ((static_cast<uint64_t>((cx + 0x400000) & 0xFFFFFF)) << 24) |
                     (static_cast<uint64_t>((cz + 0x400000) & 0xFFFFFF));
         };
         for (size_t i = 0; i < entries.size(); i++)
         {
+            // Per-category opt-out: excluded categories never join a bucket, so
+            // they stay exact markers (no parking, no cluster row).
+            if (!category_clustered_cfg(entries[i].category))
+                continue;
             from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp = *entries[i].data;
             if (goblin::config::projectDungeons)
                 project_dungeon_row_to_overworld(&tmp);
             int cx = static_cast<int>(std::floor(tmp.posX / CLUSTER_CELL));
             int cz = static_cast<int>(std::floor(tmp.posZ / CLUSTER_CELL));
-            auto &b = buckets[cell_key(tmp.areaNo, cx, cz)];
+            auto &b = buckets[cell_key(entries[i].category, tmp.areaNo, cx, cz)];
             b.members.push_back(i);
             b.sx += tmp.posX; b.sz += tmp.posZ; b.py = tmp.posY;
             b.area = tmp.areaNo; b.gx = tmp.gridXNo; b.gz = tmp.gridZNo;
@@ -868,7 +957,7 @@ void goblin::inject_map_entries()
         for (auto &kv : buckets)
         {
             Bucket &b = kv.second;
-            if (b.members.size() <= goblin::config::clusterThreshold) continue;
+            if (static_cast<int>(b.members.size()) <= cluster_threshold_for_cfg(b.cat)) continue;
             auto *cd = new from::paramdef::WORLD_MAP_POINT_PARAM_ST(*entries[b.members[0]].data);
             cd->areaNo = b.area; cd->gridXNo = b.gx; cd->gridZNo = b.gz;
             cd->posX = static_cast<float>(b.sx / b.members.size());
@@ -886,7 +975,10 @@ void goblin::inject_map_entries()
             cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
             cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
             {
+                // Buckets are now single-category, so label by TYPE (+ region for
+                // context when known): "Smithing Stones — Limgrave (12)".
                 int cnt = static_cast<int>(b.members.size());
+                std::string type = goblin::markers::category_name(b.cat);
                 std::string region = goblin::cluster_region_label(b.area, b.gx, b.gz);
                 if (region.empty())
                 {
@@ -903,9 +995,9 @@ void goblin::inject_map_entries()
                     }
                     region = goblin::area_region_label(best);
                 }
-                std::string label = region.empty()
-                    ? std::to_string(cnt)
-                    : region + " (" + std::to_string(cnt) + ")";
+                std::string label = type.empty() ? region : type;
+                if (!region.empty() && !type.empty()) label += " — " + region;
+                label += " (" + std::to_string(cnt) + ")";
                 g_cluster_census.emplace_back(textid, std::move(label));
             }
             {
@@ -1231,12 +1323,13 @@ void goblin::inject_map_entries()
             if (all_rows[i].original_row_id == 0 && cit != cluster_rowid_to_textid.end())
             {
                 g_clusters.push_back({cp, cp[0x20], cit->second,
-                                      std::move(cluster_flags_by_textid[cit->second])});
+                                      std::move(cluster_flags_by_textid[cit->second]),
+                                      all_rows[i].category});
             }
             else if (all_rows[i].original_row_id &&
                      clustered_member_ids.count(all_rows[i].original_row_id))
             {
-                g_cluster_members.push_back({cp, cp[0x20]});
+                g_cluster_members.push_back({cp, cp[0x20], all_rows[i].category});
                 cp[0x20] = 99;
                 is_clustered_member = true;
             }
@@ -1277,6 +1370,10 @@ void goblin::inject_map_entries()
         }
     }
     } // map.inject.build_rows
+
+    spdlog::info("[QUEST-NPC] registered {} marker rows from the {}-gate curated table "
+                 "(quest-aware gating only covers these; other NPCs always show)",
+                 g_quest_rows.size(), goblin::generated::QUEST_GATE_COUNT);
 
     if (goblin::config::projectDungeons)
         spdlog::info("Reprojected {} minor-dungeon rows onto the overworld (LEGACY_CONV)",
@@ -1375,6 +1472,21 @@ void goblin::inject_map_entries()
         }
         spdlog::info("[CATEGORY] seeded {} categories ({} parked at init)",
                      NUM_CATEGORIES, born_hidden);
+    }
+
+    // Seed per-category cluster opt-in from config::clusterExclude (menu display
+    // only — the cluster plan above already read the same config directly).
+    {
+        int excluded = 0;
+        for (int c = 0; c < NUM_CATEGORIES; c++)
+        {
+            bool on = category_clustered_cfg(static_cast<Category>(c));
+            g_category_cluster[c].store(on);
+            g_category_threshold[c].store(cluster_threshold_for_cfg(static_cast<Category>(c)));
+            if (!on) excluded++;
+        }
+        if (excluded)
+            spdlog::info("[CLUSTER] {} categories excluded from clustering", excluded);
     }
 
     // Seed the master on/off from the persisted config (menu 'Show icons' / F10).
@@ -1516,10 +1628,9 @@ bool goblin::inject_tutorial_popup_rows()
     // Must match EXACTLY the rows pushed into all_rows below, or the locator/
     // data/wrapper arrays are under-sized and the write loop overflows the
     // HeapAlloc'd buffer (heap corruption → ntdll AV at init). Rows:
-    //   4 fixed (ON/OFF/DUMP_OK/DUMP_FAIL) + 1 coverage-gap + 7 groups×{shown,
-    //   hidden} + GAP_CAT_COUNT per-category gap toasts.
-    uint32_t new_row_count =
-        4 + 1 + goblin::TUTORIAL_SECTION_COUNT * 2 + goblin::GAP_CAT_COUNT;
+    //   4 fixed (ON/OFF/DUMP_OK/DUMP_FAIL) + 1 coverage-gap + GAP_CAT_COUNT
+    //   per-category gap toasts.
+    uint32_t new_row_count = 4 + 1 + goblin::GAP_CAT_COUNT;
     uint32_t total_rows = orig_rows + new_row_count;
 
     size_t row_locators_start = HEADER_SIZE;
@@ -1581,11 +1692,6 @@ bool goblin::inject_tutorial_popup_rows()
     all_rows.push_back({TUTORIAL_NEW_ROW_ID_DUMP_OK,   template_data});
     all_rows.push_back({TUTORIAL_NEW_ROW_ID_DUMP_FAIL, template_data});
     all_rows.push_back({goblin::TUTORIAL_FMG_ID_COVERAGE_GAP, template_data});
-    for (int s = 0; s < goblin::TUTORIAL_SECTION_COUNT; s++)
-    {
-        all_rows.push_back({goblin::section_toast_id(s, true),  template_data});
-        all_rows.push_back({goblin::section_toast_id(s, false), template_data});
-    }
     for (int c = 0; c < goblin::GAP_CAT_COUNT; c++)
         all_rows.push_back({goblin::gap_cat_toast_id(c), template_data});
 
@@ -1812,9 +1918,57 @@ void goblin::ui::set_category_visible(int idx, bool visible)
     g_category_dirty[idx].store(true);  // watcher applies the areaNo park/restore
 }
 
+bool goblin::ui::category_clustered(int idx)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return true;
+    return g_category_cluster[idx].load();
+}
+
+void goblin::ui::set_category_clustered(int idx, bool clustered)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return;
+    g_category_cluster[idx].store(clustered);
+    // No dirty flag: the cluster plan is built once at inject, so this only takes
+    // effect after Save + restart. Persisted into clusterExclude by the Save path.
+}
+
+int goblin::ui::category_threshold(int idx)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return goblin::config::clusterThreshold;
+    return g_category_threshold[idx].load();
+}
+
+void goblin::ui::set_category_threshold(int idx, int threshold)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return;
+    if (threshold < 0) threshold = 0;
+    if (threshold > 255) threshold = 255;
+    g_category_threshold[idx].store(threshold);  // persisted on Save (overrides), restart to apply
+}
+
+int goblin::ui::global_threshold() { return goblin::config::clusterThreshold; }
+void goblin::ui::set_global_threshold(int t)
+{
+    if (t < 0) t = 0; if (t > 255) t = 255;
+    int old = goblin::config::clusterThreshold;
+    goblin::config::clusterThreshold = static_cast<uint8_t>(t);
+    // Categories still tracking the old default follow the new default, so they
+    // aren't written as spurious per-category overrides on Save.
+    for (int c = 0; c < NUM_CATEGORIES; c++)
+        if (g_category_threshold[c].load() == old) g_category_threshold[c].store(t);
+}
+
 // Save request posted by the menu; the watcher does the file I/O.
 static std::atomic<bool> g_save_req{false};
 void goblin::ui::request_save() { g_save_req.store(true); }
+
+// Danger zone. Clearing quest progress is just a string reset (render-thread
+// safe; the browser reparses config::questProgress each frame). Reset-to-defaults
+// re-seeds + writes the ini, so it's posted to the watcher to keep file I/O off
+// the render thread.
+static std::atomic<bool> g_reset_defaults_req{false};
+void goblin::ui::reset_quest_progress() { goblin::config::questProgress.clear(); }
+void goblin::ui::reset_to_defaults() { g_reset_defaults_req.store(true); }
 
 // Sync the live section/category visibility into the config vars, then write the
 // ini. The menu is now the category authority, so drop the showAll shortcut
@@ -1837,12 +1991,50 @@ static void persist_settings()
     // Persist the master on/off so it survives a restart.
     goblin::config::iconsHidden = g_icons_user_disabled.load();
 
+    // Serialise per-category cluster opt-outs into clusterExclude (comma list of
+    // the unchecked categories' names) so the next launch rebuilds the plan
+    // accordingly. Uses the canonical category name = what category_in_list matches.
+    {
+        std::string ex;
+        for (int c = 0; c < NUM_CATEGORIES; c++)
+            if (!g_category_cluster[c].load())
+            {
+                if (!ex.empty()) ex += ',';
+                ex += goblin::markers::category_name(static_cast<Category>(c));
+            }
+        goblin::config::clusterExclude = std::move(ex);
+    }
+
+    // Serialise per-category threshold overrides: "Name:N" for every category
+    // whose effective threshold differs from the global default. Empty if none.
+    {
+        int def = goblin::config::clusterThreshold;
+        std::string ov;
+        for (int c = 0; c < NUM_CATEGORIES; c++)
+        {
+            int t = g_category_threshold[c].load();
+            if (t != def)
+            {
+                if (!ov.empty()) ov += ',';
+                ov += std::string(goblin::markers::category_name(static_cast<Category>(c)))
+                      + ':' + std::to_string(t);
+            }
+        }
+        goblin::config::clusterThresholdOverrides = std::move(ov);
+    }
+
     goblin::save_all_bool_settings(goblin::config_ini_path());
 }
 
 bool goblin::ui::clustering_active() { return g_clustering_active; }
 bool goblin::ui::clustering_enabled() { return goblin::config::enableClustering; }
 void goblin::ui::set_clustering_enabled(bool on) { goblin::config::enableClustering = on; }
+
+// Quest-aware NPC gating. LIVE: the refresh loop reads config every tick and
+// parks/restores accordingly (disabling restores via the was_enabled edge), so
+// no restart needed. Persisted by Save (quest_npc_quest_aware is a Bool entry).
+bool goblin::ui::quest_aware() { return goblin::config::questNpcQuestAware; }
+void goblin::ui::set_quest_aware(bool on) { goblin::config::questNpcQuestAware = on; }
 
 bool goblin::ui::clusters_expanded() { return g_clusters_expanded.load(); }
 void goblin::ui::set_clusters_expanded(bool expanded)
@@ -2067,10 +2259,24 @@ int goblin::refresh_royal_eviction()
 int goblin::refresh_quest_npc_eviction()
 {
     GOBLIN_BENCH("refresh.quest_npc_eviction");
-    if (!goblin::config::questNpcQuestAware || g_quest_rows.empty()) return 0;
+    if (g_quest_rows.empty()) return 0;
+    // Track enabled-edge so disabling the toggle (e.g. live from the overlay)
+    // restores every row we parked instead of leaving it stuck off-page.
+    static bool was_enabled = false;
+    if (!goblin::config::questNpcQuestAware)
+    {
+        if (!was_enabled) return 0;            // already idle, nothing to undo
+        int restored = 0;
+        for (auto &r : g_quest_rows)
+            if (r.ptr[0x20] == 99 && !goblin::is_section_hidden_ptr(r.ptr))
+            { r.ptr[0x20] = r.orig_area; restored++; }
+        was_enabled = false;
+        return restored;
+    }
     // Cold-API safety: if AlwaysOn (6001) can't be read true, leave rows as-is —
     // never blank every quest NPC because the flag API isn't warm yet.
     if (!orp_flag_set(6001)) return 0;
+    was_enabled = true;
     int changed = 0;
     for (auto &r : g_quest_rows)
     {
@@ -2086,8 +2292,53 @@ int goblin::refresh_quest_npc_eviction()
             r.ptr[0x20] = r.orig_area; changed++;
         }
     }
+    // Log the parked total on change (how many of the registered/covered quest-NPC
+    // rows are currently hidden because their questline is inactive).
+    int parked = 0;
+    for (auto &r : g_quest_rows) if (r.ptr[0x20] == 99) parked++;
+    static int last_parked = -1;
+    if (parked != last_parked)
+    {
+        last_parked = parked;
+        spdlog::info("[QUEST-NPC] {} of {} covered rows parked (inactive questline)",
+                     parked, g_quest_rows.size());
+    }
     return changed;
 }
+
+// Part 2: per-questline "unfinishable" cache. One byte per QUEST_BROWSER entry,
+// indexed by array order (same index the overlay passes). Written here on the
+// watcher thread, read by ui::quest_unfinishable() on the render thread (a
+// single-byte read; a benign cross-thread race at worst flips one frame late).
+static std::vector<uint8_t> g_quest_unfinishable;
+
+int goblin::refresh_quest_finishable()
+{
+    const size_t n = goblin::generated::QUEST_BROWSER_COUNT;
+    if (g_quest_unfinishable.size() != n) g_quest_unfinishable.assign(n, 0);
+    // Cold-API safety: if AlwaysOn (6001) can't read true, leave the cache as-is
+    // rather than marking everything finishable on a not-yet-warm flag API.
+    if (!orp_flag_set(6001)) return 0;
+    int unfinishable = 0;
+    for (size_t i = 0; i < n; i++)
+    {
+        uint32_t f = goblin::generated::QUEST_BROWSER[i].fail_flag;
+        bool dead = (f != 0) && orp_flag_set(f);
+        g_quest_unfinishable[i] = dead ? 1 : 0;
+        if (dead) unfinishable++;
+    }
+    return unfinishable;
+}
+
+bool goblin::ui::quest_unfinishable(size_t i)
+{
+    return i < g_quest_unfinishable.size() && g_quest_unfinishable[i] != 0;
+}
+
+// Live event-flag reader exposed for the overlay's flag-capture finalize step
+// (re-check captured flags so only PERSISTED ones are logged). Plain free
+// function so it matches the bool(*)(uint32_t) callback the capture tool takes.
+bool goblin::ui::read_event_flag(uint32_t id) { return orp_flag_set(id); }
 
 // Cluster depletion: when every flag-backed member of a cluster is collected, swap
 // the cluster icon to the green CLUSTER_DONE glyph (else keep teal). Only while the
@@ -2327,6 +2578,11 @@ void goblin::menu_auto_toggle_loop()
         // the render thread).
         if (g_save_req.exchange(false))
             persist_settings();
+
+        // Danger zone: re-seed config from defaults + write the ini (off the
+        // render thread). Runtime visibility is unchanged until a restart.
+        if (g_reset_defaults_req.exchange(false))
+            goblin::reset_to_defaults_and_save(goblin::config_ini_path());
 
         // Cluster expand/collapse + debug-label flips (areaNo / textId on the live
         // blob). Applied here, the single owner of game-state mutation.

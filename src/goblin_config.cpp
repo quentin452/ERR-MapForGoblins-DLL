@@ -301,11 +301,19 @@ void goblin::save_all_bool_settings(const std::filesystem::path &ini_path)
             continue;
         for (const auto &e : section.entries)
         {
-            if (e.type != goblin::IniType::Bool || e.target == nullptr)
+            if (e.target == nullptr)
                 continue;
             if (e.err_only && goblin::profile_is_vanilla())
                 continue;
-            ini[section.name][e.key] = *reinterpret_cast<bool *>(e.target) ? "true" : "false";
+            // Bool/String/U8 entries round-tripped from their config var so
+            // menu-driven values (cluster_exclude, cluster_threshold, …) persist.
+            // Other types (keys) untouched.
+            if (e.type == goblin::IniType::Bool)
+                ini[section.name][e.key] = *reinterpret_cast<bool *>(e.target) ? "true" : "false";
+            else if (e.type == goblin::IniType::String)
+                ini[section.name][e.key] = *reinterpret_cast<std::string *>(e.target);
+            else if (e.type == goblin::IniType::U8)
+                ini[section.name][e.key] = std::to_string(*reinterpret_cast<uint8_t *>(e.target));
         }
     }
 
@@ -313,6 +321,18 @@ void goblin::save_all_bool_settings(const std::filesystem::path &ini_path)
         spdlog::warn("Config: failed to persist settings to {}", ini_path.string());
     else
         spdlog::info("Config: saved settings to {}", ini_path.string());
+}
+
+void goblin::reset_to_defaults_and_save(const std::filesystem::path &ini_path)
+{
+    // apply_defaults() (file-local, above) re-seeds every config var — including
+    // questProgress="" and all visibility/cluster vars — from the schema. Then
+    // persist: save_all_bool_settings reads the config vars (now defaults), so it
+    // writes a defaults ini without going through the runtime-atomic sync that
+    // persist_settings() does (which would otherwise clobber the reset).
+    apply_defaults();
+    save_all_bool_settings(ini_path);
+    spdlog::info("Config: reset all settings to defaults in {}", ini_path.string());
 }
 
 void goblin::save_section_states(const std::filesystem::path &ini_path)

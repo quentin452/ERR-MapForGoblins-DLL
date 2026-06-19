@@ -289,6 +289,7 @@ const char *category_name(generated::Category c)
         case C::WorldSpiritspringHawks: return "World - Spiritspring Hawks";
         case C::WorldStakesOfMarika: return "World - Stakes of Marika";
         case C::WorldSummoningPools: return "World - Summoning Pools";
+        case C::WorldKindlingSpirits: return "World - Kindling Spirits";
         case C::WorldInteractables: return "World - Interactables";
     }
     return "?";

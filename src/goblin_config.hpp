@@ -22,6 +22,12 @@ namespace goblin
     // button calls this after syncing runtime visibility into the config vars.
     void save_all_bool_settings(const std::filesystem::path &ini_path);
 
+    // Re-seed every config var from its schema default, then persist to the ini
+    // (the menu's "Reset parameters to default" danger button). Does NOT touch
+    // the live runtime visibility atomics — those are seeded at inject time, so
+    // a game restart is needed to fully apply the defaults.
+    void reset_to_defaults_and_save(const std::filesystem::path &ini_path);
+
     // The ini path last passed to load_config(), for code (e.g. the in-game
     // section toggle) that needs to persist back without threading the path.
     const std::filesystem::path &config_ini_path();
@@ -95,6 +101,9 @@ namespace goblin
         // See goblin_debug_events.{hpp,cpp}.
         extern bool debugEventFlags;
         extern bool debugItemGrants;
+        // debugFlagCapture = light SetEventFlag hook for the overlay's NPC
+        // death-flag capture tool (Quest Browser Part 2).
+        extern bool debugFlagCapture;
 
         // Read-only world-map cursor probe (logs cursor coords to confirm the RE
         // offsets / marker-space). See goblin_worldmap_probe.{hpp,cpp}.
@@ -109,11 +118,30 @@ namespace goblin
         // Marker clustering (v1). See goblin_config_schema [Clustering].
         extern bool enableClustering;
         extern uint8_t clusterThreshold;   // bucket clusters only if it holds > this many
+        // Per-category cluster opt-out. Comma-separated category names (loose match,
+        // like showAllExcept) that stay EXACT markers and never fold into a cluster.
+        // Empty = every category is clusterable (the v1 behaviour).
+        extern std::string clusterExclude;
+        // Per-category cluster-threshold overrides: "Name:N,Name2:M" (loose name
+        // match). A category not listed uses the global clusterThreshold. Driven by
+        // the per-category threshold inputs in the overlay.
+        extern std::string clusterThresholdOverrides;
 
         // Thread 1 v1.5 — quest-aware quest-NPC markers. When true, a WorldQuestNPC
         // marker for one of the 34 curated questlines shows only while that quest is
         // active (its event flag set); off = all quest-NPC markers always shown.
         extern bool questNpcQuestAware;
+
+        // Quest Browser per-step progress: one '0'/'1' char per global step index
+        // (author order in goblin_quest_steps). Auto-grown; persisted on Save.
+        extern std::string questProgress;
+
+        // Quest Browser: grey out + tag a questline ([unfinishable]/[concluded])
+        // when the overlay reads its NPC's death/conclusion fail_flag as set.
+        // Default true (existing behaviour). EXPERIMENTAL — the per-NPC death
+        // flags are reverse-engineered and may mis-grey; users can turn it off.
+        // Toggle is in the overlay Quest Browser; persisted in the ini.
+        extern bool questGreyOnDeath;
     };
 
     uint32_t parse_vk_code(std::string name);

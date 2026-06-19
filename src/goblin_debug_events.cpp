@@ -12,7 +12,9 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <unordered_set>
 #include <vector>
@@ -192,18 +194,41 @@ std::mutex g_inbox_mtx;
 std::vector<FlagEvt> g_inbox;
 std::atomic<uint64_t> g_dropped{0};
 
+// ── Flag-capture (Part 2 death-flag discovery) ───────────────────────────
+// Light path, independent of the heavy coverage drain. When ARMED, the detour
+// records every flag the game SETS (val==1) into g_capture. After the NPC dies
+// the overlay re-checks each captured flag via the flag reader and keeps only
+// those STILL set — that filters the TRANSIENT flags (which pulse and clear,
+// e.g. Varre's 1042365008) from the persistent quest-death flag (1042369205).
+std::atomic<bool> g_coverage_active{false};   // heavy inbox/drain path on?
+std::atomic<bool> g_capture_armed{false};
+std::mutex g_capture_mtx;
+std::unordered_set<uint32_t> g_capture;
+std::string g_capture_name;
+std::filesystem::path g_capture_log;
+
 uint64_t hk_set_event_flag(void *flagman, uint32_t *flag_id, uint8_t value,
                            uint64_t pad)
 {
     uint32_t id;
     if (flag_id && safe_copy(flag_id, &id, sizeof(id)))
     {
-        int64_t t = now_ns();
-        std::lock_guard<std::mutex> lk(g_inbox_mtx);
-        if (g_inbox.size() < INBOX_CAP)
-            g_inbox.push_back({id, value, t});
-        else
-            g_dropped.fetch_add(1, std::memory_order_relaxed);
+        // Cheap capture tap first (light mode may run with the drain OFF).
+        if (value == 1 && g_capture_armed.load(std::memory_order_relaxed))
+        {
+            std::lock_guard<std::mutex> lk(g_capture_mtx);
+            g_capture.insert(id);
+        }
+        // Heavy coverage path only when the correlation drain is active.
+        if (g_coverage_active.load(std::memory_order_relaxed))
+        {
+            int64_t t = now_ns();
+            std::lock_guard<std::mutex> lk(g_inbox_mtx);
+            if (g_inbox.size() < INBOX_CAP)
+                g_inbox.push_back({id, value, t});
+            else
+                g_dropped.fetch_add(1, std::memory_order_relaxed);
+        }
     }
     return g_orig_set_event_flag(flagman, flag_id, value, pad);
 }
@@ -387,10 +412,12 @@ bool install(const char *aob, void *detour, void **trampoline, const char *name)
 } // namespace
 
 void initialize(const std::filesystem::path &log_path, bool hook_flags,
-                bool hook_items)
+                bool hook_items, bool hook_capture)
 {
-    if (!hook_flags && !hook_items)
+    if (!hook_flags && !hook_items && !hook_capture)
         return;
+    // Capture log sits beside the events log.
+    g_capture_log = log_path.parent_path() / "MapForGoblins_flagcapture.txt";
 
     try
     {
@@ -409,16 +436,23 @@ void initialize(const std::filesystem::path &log_path, bool hook_flags,
 
     bool any = false;
     bool flag_on = false;
-    if (hook_flags)
+    // The SetEventFlag detour backs BOTH the coverage logger (hook_flags) and the
+    // light flag-capture tool (hook_capture) — install it if either is requested.
+    if (hook_flags || hook_capture)
     {
-        build_known_collect_flags();
-        spdlog::info("[DEBUG-EVENTS] {} known marker collect-flags loaded",
-                     g_known_collect_flags.size());
+        if (hook_flags)
+        {
+            build_known_collect_flags();
+            spdlog::info("[DEBUG-EVENTS] {} known marker collect-flags loaded",
+                         g_known_collect_flags.size());
+        }
         any |= flag_on = install(SET_EVENT_FLAG_AOB,
                                  reinterpret_cast<void *>(&hk_set_event_flag),
                                  reinterpret_cast<void **>(&g_orig_set_event_flag),
                                  "SetEventFlag");
     }
+    // Heavy inbox/drain path runs only in coverage mode; capture-only stays light.
+    g_coverage_active.store(hook_flags && flag_on);
     if (hook_items)
     {
         bool item_on = install(ADD_ITEM_AOB, reinterpret_cast<void *>(&hk_add_item),
@@ -445,12 +479,71 @@ void initialize(const std::filesystem::path &log_path, bool hook_flags,
         return;
     }
 
-    if (flag_on)
+    // Drain thread only in coverage mode; capture-only must stay light.
+    if (g_coverage_active.load())
         std::thread(flag_drain_loop).detach();
 
-    g_log->info("=== observer started (flags={} items={}) ===", hook_flags,
-                hook_items);
+    g_log->info("=== observer started (flags={} items={} capture={}) ===",
+                hook_flags, hook_items, hook_capture);
     spdlog::info("[DEBUG-EVENTS] active → logging to {}", log_path.string());
+}
+
+// ── Flag-capture public API (driven by the overlay's debug section) ──────
+void arm_capture(const char *npc_name)
+{
+    {
+        std::lock_guard<std::mutex> lk(g_capture_mtx);
+        g_capture.clear();
+        g_capture_name = npc_name ? npc_name : "";
+    }
+    g_capture_armed.store(true);
+}
+
+bool capture_armed() { return g_capture_armed.load(); }
+
+size_t capture_count()
+{
+    std::lock_guard<std::mutex> lk(g_capture_mtx);
+    return g_capture.size();
+}
+
+int finalize_capture(bool (*reader)(uint32_t))
+{
+    g_capture_armed.store(false);
+    std::vector<uint32_t> ids;
+    std::string name;
+    {
+        std::lock_guard<std::mutex> lk(g_capture_mtx);
+        ids.assign(g_capture.begin(), g_capture.end());
+        name = g_capture_name;
+    }
+    // Keep only flags STILL set now — transients have cleared, the persisted
+    // death flag remains. (No reader → keep all, can't filter.)
+    std::vector<uint32_t> persisted;
+    for (uint32_t f : ids)
+        if (!reader || reader(f))
+            persisted.push_back(f);
+    std::sort(persisted.begin(), persisted.end());
+
+    try
+    {
+        std::ofstream out(g_capture_log, std::ios::app);
+        out << "[" << name << "] " << persisted.size() << " persisted of "
+            << ids.size() << " captured:\n";
+        for (uint32_t f : persisted)
+        {
+            // Flag the quest-namespace candidates (10AABBCDDD map-instance ids)
+            // — those are the likely NpcQuest::fail_flag.
+            bool questy = f >= 1000000000u && f < 2000000000u;
+            out << "  " << f << (questy ? "   <- fail_flag candidate" : "") << "\n";
+        }
+        out.flush();
+    }
+    catch (...)
+    {
+        return -1;
+    }
+    return static_cast<int>(persisted.size());
 }
 
 } // namespace goblin::debug_events

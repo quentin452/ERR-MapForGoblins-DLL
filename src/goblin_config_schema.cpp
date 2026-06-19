@@ -52,6 +52,7 @@ namespace goblin::config
     uint32_t markerDumpKey = 0x78; // VK_F9
     bool debugEventFlags = false;
     bool debugItemGrants = false;
+    bool debugFlagCapture = false;
     bool debugWorldmapProbe = false;
 
     // In-game per-section visibility (the 7 display groups). Persisted so an
@@ -64,7 +65,11 @@ namespace goblin::config
     // piles into one cluster icon to cut the per-page map-open cost. Opt-in.
     bool enableClustering = false;
     uint8_t clusterThreshold = 8;     // a bucket clusters only if it holds > this many markers
+    std::string clusterExclude = "";  // category names kept exact (never clustered)
+    std::string clusterThresholdOverrides = "";  // "Name:N" per-category threshold overrides
     bool questNpcQuestAware = false;  // gate quest-NPC markers on quest-active flags
+    std::string questProgress = "";   // Quest Browser per-step done bits ('0'/'1')
+    bool questGreyOnDeath = true;     // grey questlines whose NPC death flag is set
 }
 
 // ── schema ───────────────────────────────────────────────────────────────
@@ -115,6 +120,10 @@ namespace
                          "Key that opens/closes the in-game overlay menu. Default: F1.\n"
                          "Key names: F1-F24, A-Z, 0-9, Space, Escape, Tab, Enter, Home, End,\n"
                          "PageUp, PageDown, Insert, Delete, arrows.", false, nullptr},
+                IniEntry{"quest_progress", IniType::String, &cfg::questProgress, "",
+                         "Quest Browser per-step checkmarks (one 0/1 per step, author order).\n"
+                         "Managed by the overlay's Quest Browser; saved when you Save.",
+                         false, nullptr},
             }},
 
             {"Display Sections",
@@ -134,6 +143,21 @@ namespace
                 B("section_world",     sectionWorld,     "true", "Show the World group's icons."),
             }},
 
+            {"Quest Browser",
+             "Settings for the in-overlay Quest Browser (F1).",
+             false, {
+                B("grey_unfinishable_on_death", questGreyOnDeath, "true",
+                  "Grey out a questline and tag it [unfinishable] (or [concluded] for\n"
+                  "merchant-type NPCs) when the overlay reads that NPC's death/conclusion\n"
+                  "event flag as set.\n"
+                  "WARNING: EXPERIMENTAL / potentially buggy. The per-NPC death flags are\n"
+                  "reverse-engineered from EMEVD/TalkESD; some may be wrong, shared with\n"
+                  "normal quest completion, or simply not set in your particular save -- so\n"
+                  "a questline can be greyed when it shouldn't be, or not greyed when its\n"
+                  "NPC is actually gone. Set to false to always show every questline\n"
+                  "normally. The same toggle is in the Quest Browser itself."),
+            }},
+
             {"Clustering",
              "Collapses dense piles of markers into a single cluster icon, so the world\n"
              "map opens fast even with everything enabled (the open cost scales with how\n"
@@ -145,6 +169,19 @@ namespace
                 IniEntry{"cluster_threshold", IniType::U8, &cfg::clusterThreshold, "8",
                          "A location clusters only if it holds MORE than this many markers.\n"
                          "Lower = more aggressive clustering (faster, less precise).", false, nullptr},
+                IniEntry{"cluster_exclude", IniType::String, &cfg::clusterExclude, "",
+                         "Categories that stay EXACT markers and never fold into a cluster\n"
+                         "(comma-separated, matched loosely vs the category name, e.g.\n"
+                         "Graces, Bosses, GreatRunes). Driven by the per-category 'cluster'\n"
+                         "checkboxes in the overlay (F1); takes effect after Save + restart.",
+                         false, nullptr},
+                IniEntry{"cluster_threshold_overrides", IniType::String, &cfg::clusterThresholdOverrides, "",
+                         "Per-category cluster thresholds: \"Name:N\" comma-separated, by\n"
+                         "EXACT category name (e.g. SmithingStones:4,WorldBosses:20). A\n"
+                         "category not listed uses cluster_threshold above. Each category\n"
+                         "now clusters separately per map cell. Driven by the overlay's\n"
+                         "per-category threshold inputs; takes effect after Save + restart.",
+                         false, nullptr},
             }},
 
             {"Equipment", nullptr, false, {
@@ -224,8 +261,8 @@ namespace
                 B("show_bosses", showCategory[static_cast<int>(Cat::WorldBosses)], "false", "Boss markers (field bosses, dungeon bosses)"),
                 B("show_graces", showCategory[static_cast<int>(Cat::WorldGraces)], "false", "Sites of Grace"),
                 B("show_hostile_npc", showCategory[static_cast<int>(Cat::WorldHostileNPC)], "false", "Hostile NPC invader spawn locations (auto-discovered via teamType 24/27)"),
-                B("show_quest_npc", showCategory[static_cast<int>(Cat::WorldQuestNPC)], "false", "Named friendly NPC + merchant locations (quest navigation; own family, not clustered)"),
-                B("quest_npc_quest_aware", questNpcQuestAware, "false", "Quest-aware quest NPCs: show a curated questline NPC's marker only while its quest is active (event flag set). Off = always shown."),
+                B("show_quest_npc", showCategory[static_cast<int>(Cat::WorldQuestNPC)], "false", "LEGACY / UNFINISHED (superseded by the in-overlay Quest Browser): raw quest-NPC + merchant map pins. Off by default."),
+                B("quest_npc_quest_aware", questNpcQuestAware, "false", "LEGACY / UNFINISHED (superseded by the Quest Browser): gate the legacy quest-NPC map pins on their questline flag (show only while the quest is active). Needs show_quest_npc. Off by default."),
                 B("show_imp_statues", showCategory[static_cast<int>(Cat::WorldImpStatues)], "false", "Imp Statue (Stonesword Key fog gate) locations"),
                 B("show_paintings", showCategory[static_cast<int>(Cat::WorldPaintings)], "false", "Painting locations"),
                 B("show_spirit_springs", showCategory[static_cast<int>(Cat::WorldSpiritSprings)], "false", "Spirit Spring (horse jump) locations"),
@@ -287,6 +324,8 @@ namespace
                   "Observe every event flag the game sets at runtime and log each newly-seen\nflag id to logs/MapForGoblins_events.log (coverage-gap discovery aid).\nHooks SetEventFlag; off by default."),
                 B("debug_item_grants", debugItemGrants, "false",
                   "Observe every inventory grant (item pickup/shop/reward) and log the raw\nrequest to logs/MapForGoblins_events.log. Hooks AddItemFunc; off by default."),
+                B("debug_flag_capture", debugFlagCapture, "false",
+                  "Quest Browser death-flag capture tool (overlay Dev tools): arm naming an\nNPC, kill it, finalize -> the persisted flag(s) are written to\nlogs/MapForGoblins_flagcapture.txt as NpcQuest::fail_flag candidates.\nInstalls the SetEventFlag hook in a LIGHT mode (no coverage drain); off by default."),
                 B("debug_worldmap_probe", debugWorldmapProbe, "false",
                   "Dev probe: log the world-map cursor coords (read-only) to confirm the RE\noffsets for proximity clustering. Open the world map + move the cursor.\nLogs to logs/MapForGoblins_wmprobe.log; off by default."),
             }},

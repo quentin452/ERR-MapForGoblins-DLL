@@ -1,5 +1,7 @@
 #include "goblin_overlay.hpp"
 #include "goblin_config.hpp"
+#include "goblin_quest_steps.hpp"
+#include "goblin_debug_events.hpp"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -18,6 +20,8 @@
 #include "goblin_inject.hpp"   // goblin::world_map_open()
 
 #include <vector>
+#include <map>
+#include <string>
 
 // ImGui's Win32 backend message handler (defined in imgui_impl_win32.cpp).
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
@@ -350,9 +354,14 @@ namespace
         else
         {
             // Full panel — live controls (post intents to the watcher thread).
+            // Auto-fit to content (so it stops being clipped too small), clamped
+            // to a sane min/max so it neither shrinks to nothing nor overflows the
+            // screen; if content exceeds the max it scrolls.
             ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
-            ImGui::SetNextWindowSize(ImVec2(320, 380), ImGuiCond_FirstUseEver);
-            ImGui::Begin("Map for Goblins##large");
+            ImGui::SetNextWindowSizeConstraints(
+                ImVec2(360.0f, 240.0f),
+                ImVec2(720.0f, io.DisplaySize.y * 0.92f));
+            ImGui::Begin("Map for Goblins##large", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
             if (ImGui::Button("[-] collapse"))
                 g_large = false;
             ImGui::SameLine();
@@ -364,8 +373,20 @@ namespace
             if (ImGui::Checkbox("Show icons (master)", &icons_on))
                 goblin::ui::set_icons_enabled(icons_on);
             ImGui::SameLine();
+            static double saved_at = -10.0;
             if (ImGui::Button("Save to INI"))
+            {
                 goblin::ui::request_save();
+                saved_at = ImGui::GetTime();
+            }
+            // Brief confirmation so the button isn't a silent no-op (the file I/O
+            // happens on the watcher thread; this just acknowledges the click).
+            double since = ImGui::GetTime() - saved_at;
+            if (since < 2.0)
+            {
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "Saved to INI");
+            }
 
             // Sections (coarse) + their categories (fine). A row shows only if
             // both its section and its category are enabled.
@@ -380,29 +401,306 @@ namespace
                     goblin::ui::set_section_visible(s, sv);
 
                 ImGui::PushID(s);
-                if (ImGui::SmallButton("All"))
+                if (ImGui::SmallButton("Show all"))
                     for (int c = 0; c < goblin::ui::category_count(); c++)
                         if (goblin::ui::category_section(c) == s)
                             goblin::ui::set_category_visible(c, true);
                 ImGui::SameLine();
-                if (ImGui::SmallButton("None"))
+                if (ImGui::SmallButton("Show none"))
                     for (int c = 0; c < goblin::ui::category_count(); c++)
                         if (goblin::ui::category_section(c) == s)
                             goblin::ui::set_category_visible(c, false);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Cluster all"))
+                    for (int c = 0; c < goblin::ui::category_count(); c++)
+                        if (goblin::ui::category_section(c) == s)
+                            goblin::ui::set_category_clustered(c, true);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Cluster none"))
+                    for (int c = 0; c < goblin::ui::category_count(); c++)
+                        if (goblin::ui::category_section(c) == s)
+                            goblin::ui::set_category_clustered(c, false);
                 ImGui::PopID();
+                ImGui::TextDisabled("left = show on map   |   right [cluster] = fold into clusters (Save + restart)");
                 ImGui::Separator();
 
                 for (int c = 0; c < goblin::ui::category_count(); c++)
                 {
                     if (goblin::ui::category_section(c) != s) continue;
+                    ImGui::PushID(c);
+                    // The raw Quest-NPC map pins are legacy/unfinished — the Quest
+                    // Browser below is the supported quest-navigation path. Tag the
+                    // label and explain on hover. Off by default.
+                    const char *clabel = goblin::ui::category_label(c);
+                    bool legacy_quest = std::string(clabel) == "World - Quest NPC";
+                    char clbuf[96];
+                    if (legacy_quest)
+                    {
+                        snprintf(clbuf, sizeof(clbuf), "%s  (legacy)", clabel);
+                        clabel = clbuf;
+                    }
                     bool cv = goblin::ui::category_visible(c);
-                    if (ImGui::Checkbox(goblin::ui::category_label(c), &cv))
+                    if (ImGui::Checkbox(clabel, &cv))
                         goblin::ui::set_category_visible(c, cv);
+                    if (legacy_quest && ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Legacy / unfinished: raw quest-NPC map pins.\n"
+                                          "Use the Quest Browser (below) for quest navigation.\n"
+                                          "Off by default.");
+                    // Right-aligned cluster opt-in: unchecked = this category stays
+                    // exact markers, never folded into a cluster icon.
+                    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 150.0f);
+                    bool clu = goblin::ui::category_clustered(c);
+                    if (ImGui::Checkbox("cluster", &clu))
+                        goblin::ui::set_category_clustered(c, clu);
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Fold this category's dense piles into a cluster icon.\n"
+                                          "Unchecked = always exact. Takes effect after Save + restart.");
+                    // Per-category threshold (clusters only where a cell holds MORE
+                    // than this many of THIS category). Only when clustered.
+                    if (clu)
+                    {
+                        ImGui::SameLine();
+                        int thr = goblin::ui::category_threshold(c);
+                        ImGui::SetNextItemWidth(70.0f);
+                        if (ImGui::InputInt(">thr", &thr))
+                            goblin::ui::set_category_threshold(c, thr);
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Cluster only where a map cell holds MORE than this many\n"
+                                              "of this category. Default = global threshold. Save + restart.");
+                    }
+                    ImGui::PopID();
                 }
                 ImGui::TreePop();
             }
 
+            ImGui::SeparatorText("Quest navigation");
+            {
+                ImGui::TextDisabled("Use the Quest Browser below. The map-pin options here are");
+                ImGui::TextDisabled("legacy / unfinished and off by default.");
+                bool qa = goblin::ui::quest_aware();
+                if (ImGui::Checkbox("Quest-aware NPCs (legacy / unfinished)", &qa))
+                    goblin::ui::set_quest_aware(qa);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("LEGACY / UNFINISHED — superseded by the Quest Browser below.\n"
+                                      "Gates the legacy quest-NPC map pins on their questline flag\n"
+                                      "(show a pin only while its quest is active). Needs the Quest\n"
+                                      "NPC (legacy) category enabled. Off by default.");
+
+                // Quest Browser: ordered steps per NPC (hand-authored, original
+                // text). Each step names its location/zone for manual navigation.
+                // Grouped into base game + Shadow of the Erdtree via NpcQuest::dlc.
+                size_t total = goblin::generated::QUEST_BROWSER_COUNT;
+                size_t nbase = 0, ndlc = 0;
+                for (size_t i = 0; i < total; i++)
+                    (goblin::generated::QUEST_BROWSER[i].dlc ? ndlc : nbase)++;
+                char hdr[64];
+                snprintf(hdr, sizeof(hdr), "Quest Browser (%zu questlines)", total);
+                if (ImGui::TreeNode(hdr))
+                {
+                    ImGui::TextDisabled("Steps in order; location named per line.");
+                    ImGui::TextDisabled("Based on vanilla quests; modded profiles (ERR/Convergence/...) may differ.");
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.78f, 0.35f, 1.0f));
+                    ImGui::TextWrapped("(!) = order-sensitive / missable -- read its note before doing other quests.");
+                    ImGui::PopStyleColor();
+                    static char filter[64] = "";
+                    ImGui::SetNextItemWidth(-1.0f);
+                    ImGui::InputTextWithHint("##questfilter", "filter by NPC name...",
+                                             filter, sizeof(filter));
+                    // Experimental: grey out questlines whose NPC death flag is set.
+                    // Live (read each frame) + persisted to the ini on toggle.
+                    if (ImGui::Checkbox("Grey out dead-NPC questlines (experimental)",
+                                        &goblin::config::questGreyOnDeath))
+                        goblin::ui::request_save();  // watcher-thread sync + persist to ini
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(?)");
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip(
+                            "POTENTIALLY BUGGY. Death flags are reverse-engineered per NPC;\n"
+                            "a line may grey incorrectly, or stay normal when its NPC is gone.\n"
+                            "Some flags are also shared with normal completion ([concluded]).\n"
+                            "Turn this off to always show every questline. Saved to the ini.");
+                    auto contains_ci = [](const char *hay, const char *need) {
+                        if (!need[0]) return true;
+                        std::string h, n;
+                        for (const char *p = hay; *p; ++p) h += (char)tolower(*p);
+                        for (const char *p = need; *p; ++p) n += (char)tolower(*p);
+                        return h.find(n) != std::string::npos;
+                    };
+                    // Per-step progress is keyed by NPC NAME (stable), not array
+                    // position: blob format "<name>=<bits>;<name>=<bits>;". So
+                    // reordering or inserting NPCs no longer shifts saved ticks
+                    // (the old positional bitstring from commit 40691d5 drifted).
+                    // Names carry no '=' or ';'; bits are one '0'/'1' per step.
+                    std::string &qp = goblin::config::questProgress;
+                    // One-time migration: a non-empty blob with no '=' is the old
+                    // positional format. Walk author order and re-key by name. Base
+                    // NPCs precede all DLC, so their global indices are unchanged by
+                    // the now-authored DLC steps; legacy bits map cleanly.
+                    if (!qp.empty() && qp.find('=') == std::string::npos)
+                    {
+                        std::string out;
+                        size_t g = 0;
+                        for (size_t i = 0; i < total; i++)
+                        {
+                            const auto &q = goblin::generated::QUEST_BROWSER[i];
+                            std::string bits;
+                            for (size_t s = 0; s < q.step_count; s++)
+                                bits += (g + s < qp.size() && qp[g + s] == '1') ? '1' : '0';
+                            if (bits.find('1') != std::string::npos)
+                                out += std::string(q.name) + "=" + bits + ";";
+                            g += q.step_count;
+                        }
+                        qp = out;
+                    }
+                    // Parse keyed blob -> name -> bits.
+                    std::map<std::string, std::string> prog;
+                    for (size_t p = 0; p < qp.size();)
+                    {
+                        size_t semi = qp.find(';', p);
+                        if (semi == std::string::npos) semi = qp.size();
+                        size_t eq = qp.rfind('=', semi);
+                        if (eq != std::string::npos && eq > p)
+                            prog[qp.substr(p, eq - p)] = qp.substr(eq + 1, semi - eq - 1);
+                        p = semi + 1;
+                    }
+                    auto reserialize = [&]() {
+                        std::string out;
+                        for (auto &kv : prog)
+                            if (kv.second.find('1') != std::string::npos)
+                                out += kv.first + "=" + kv.second + ";";
+                        qp = out;
+                    };
+                    auto qp_get = [&](const char *name, size_t s) {
+                        auto it = prog.find(name);
+                        return it != prog.end() && s < it->second.size() && it->second[s] == '1';
+                    };
+                    auto qp_set = [&](const char *name, size_t s, bool v) {
+                        std::string &bits = prog[name];
+                        if (bits.size() <= s) bits.resize(s + 1, '0');
+                        bits[s] = v ? '1' : '0';
+                        reserialize();
+                    };
+                    // Render one NPC subtree. The tree ID is derived from the
+                    // stable array index (ptr-id overload), NOT the label text —
+                    // the label carries the live (done/total) count, and hashing
+                    // that would change the node's ID every tick and silently
+                    // collapse the subtree on each click.
+                    auto draw_npc = [&](const goblin::generated::NpcQuest &q, int id) {
+                        if (!contains_ci(q.name, filter)) return;
+                        int done = 0;
+                        for (size_t s = 0; s < q.step_count; s++)
+                            if (qp_get(q.name, s)) done++;
+                        // Visual state: grey "[unfinishable]" (NPC dead, fail_flag
+                        // set) takes precedence over amber "(!)" (order-sensitive /
+                        // missable). Both push a text tint over the whole subtree.
+                        bool dead = goblin::config::questGreyOnDeath
+                                    && goblin::ui::quest_unfinishable((size_t)id);
+                        // `concl`: the fail_flag is the NPC's shared "concluded"
+                        // flag (set on completion OR death) -- grey it, but label
+                        // it [concluded] rather than asserting the NPC is dead.
+                        bool concl = dead && q.fail_conclusion;
+                        bool warn = q.warning && q.warning[0];
+                        bool tint = dead || warn;
+                        if (tint)
+                            ImGui::PushStyleColor(ImGuiCol_Text,
+                                dead ? ImVec4(0.55f, 0.55f, 0.55f, 1.0f)
+                                     : ImVec4(1.0f, 0.78f, 0.35f, 1.0f));
+                        bool open = ImGui::TreeNode((void *)(intptr_t)id, "%s  (%d/%zu)%s",
+                                                    q.name, done, q.step_count,
+                                                    dead ? (concl ? "  [concluded]"
+                                                                  : "  [unfinishable]")
+                                                         : warn ? "  (!)" : "");
+                        if (tint)
+                            ImGui::PopStyleColor();
+                        if (open)
+                        {
+                            if (dead && concl)
+                            {
+                                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.70f, 0.70f, 1.0f));
+                                ImGui::TextWrapped("[concluded] This questline is over -- the NPC has "
+                                                   "either finished their story or is gone. (This flag "
+                                                   "is set on completion as well as on death.)");
+                                ImGui::PopStyleColor();
+                            }
+                            else if (dead)
+                            {
+                                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.45f, 0.45f, 1.0f));
+                                ImGui::TextWrapped("[unfinishable] This questline's NPC is dead "
+                                                   "-- it can no longer be completed.");
+                                ImGui::PopStyleColor();
+                            }
+                            if (warn)
+                            {
+                                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.66f, 0.28f, 1.0f));
+                                ImGui::TextWrapped("(!) %s", q.warning);
+                                ImGui::PopStyleColor();
+                            }
+                            if (q.related)
+                            {
+                                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.8f, 1.0f, 1.0f));
+                                ImGui::TextWrapped("Link: %s", q.related);
+                                ImGui::PopStyleColor();
+                            }
+                            for (size_t s = 0; s < q.step_count; s++)
+                            {
+                                ImGui::PushID((int)s);
+                                bool d = qp_get(q.name, s);
+                                if (ImGui::Checkbox("##done", &d))
+                                    qp_set(q.name, s, d);
+                                ImGui::SameLine();
+                                ImGui::TextWrapped("%zu. %s", s + 1, q.steps[s].title);
+                                ImGui::Indent();
+                                if (q.steps[s].desc && q.steps[s].desc[0])
+                                {
+                                    ImGui::PushStyleColor(ImGuiCol_Text,
+                                        ImVec4(0.75f, 0.75f, 0.75f, 1.0f));
+                                    ImGui::TextWrapped("%s", q.steps[s].desc);
+                                    ImGui::PopStyleColor();
+                                }
+                                if (q.steps[s].zone && q.steps[s].zone[0])
+                                    ImGui::TextDisabled("[%s]", q.steps[s].zone);
+                                ImGui::Unindent();
+                                ImGui::PopID();
+                            }
+                            ImGui::TreePop();
+                        }
+                    };
+
+                    ImGui::BeginChild("questlist", ImVec2(0, 300), true);
+                    char gh[48];
+                    snprintf(gh, sizeof(gh), "Base game (%zu)", nbase);
+                    if (ImGui::TreeNodeEx(gh, ImGuiTreeNodeFlags_DefaultOpen))
+                    {
+                        for (size_t i = 0; i < total; i++)
+                            if (!goblin::generated::QUEST_BROWSER[i].dlc)
+                                draw_npc(goblin::generated::QUEST_BROWSER[i], (int)i);
+                        ImGui::TreePop();
+                    }
+                    snprintf(gh, sizeof(gh), "Shadow of the Erdtree (%zu)", ndlc);
+                    if (ImGui::TreeNodeEx(gh, ImGuiTreeNodeFlags_DefaultOpen))
+                    {
+                        for (size_t i = 0; i < total; i++)
+                            if (goblin::generated::QUEST_BROWSER[i].dlc)
+                                draw_npc(goblin::generated::QUEST_BROWSER[i], (int)i);
+                        ImGui::TreePop();
+                    }
+                    ImGui::EndChild();
+                    ImGui::TextDisabled("Tick steps to track progress; Save to keep it. Original text.");
+                    ImGui::TreePop();
+                }
+            }
+
             ImGui::SeparatorText("Clustering");
+            {
+                // Global default threshold (per-category overrides set per row above).
+                int gt = goblin::ui::global_threshold();
+                ImGui::SetNextItemWidth(90.0f);
+                if (ImGui::InputInt("Default threshold (Save + restart)", &gt))
+                    goblin::ui::set_global_threshold(gt);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("A category clusters in a map cell holding MORE than this many\n"
+                                      "of it. Per-category overrides are set next to each 'cluster' box.");
+            }
             if (goblin::ui::clustering_active())
             {
                 // Clusters built this session → LIVE on/off (collapse dense piles
@@ -423,6 +721,127 @@ namespace
                 if (ImGui::Checkbox("Enable clustering (Save + restart to build)", &cen))
                     goblin::ui::set_clustering_enabled(cen);
             }
+
+            // Dev/debug observers. Each installs a hook or starts a worker thread
+            // ONCE at startup based on its config flag (dllmain setup), so these
+            // are restart-required: flip + Save, then relaunch. save_all_bool_settings
+            // persists every config bool, so no per-flag plumbing is needed.
+            ImGui::SeparatorText("Debug");
+            if (ImGui::TreeNode("Dev tools (Save + restart)"))
+            {
+                ImGui::Checkbox("Event-flag hook (coverage-gap detector)",
+                                &goblin::config::debugEventFlags);
+                ImGui::Checkbox("Item-grant hook (coverage-gap detector)",
+                                &goblin::config::debugItemGrants);
+                ImGui::Checkbox("World-map cursor probe (logs cursor coords)",
+                                &goblin::config::debugWorldmapProbe);
+                ImGui::Checkbox("Marker-dump hotkey (F9 → markers log)",
+                                &goblin::config::enableMarkerDump);
+                ImGui::Checkbox("Verbose logging (addresses, param internals)",
+                                &goblin::config::debugLogging);
+                ImGui::Checkbox("Flag-capture hook (NPC death-flag tool)",
+                                &goblin::config::debugFlagCapture);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("These take effect after Save + a game restart — each\n"
+                                      "installs its hook/worker once at startup.");
+
+                // Flag-capture tool: arm naming an NPC, kill it, finalize -> the
+                // persisted death flag(s) are logged as fail_flag candidates.
+                ImGui::Separator();
+                ImGui::TextDisabled("NPC death-flag capture (needs the hook above + restart)");
+                static int cap_sel = 0;
+                size_t qn = goblin::generated::QUEST_BROWSER_COUNT;
+                if (cap_sel >= (int)qn) cap_sel = 0;
+                const char *cap_name = goblin::generated::QUEST_BROWSER[cap_sel].name;
+                ImGui::SetNextItemWidth(-1.0f);
+                if (ImGui::BeginCombo("##capnpc", cap_name))
+                {
+                    for (int i = 0; i < (int)qn; i++)
+                        if (ImGui::Selectable(goblin::generated::QUEST_BROWSER[i].name,
+                                              i == cap_sel))
+                            cap_sel = i;
+                    ImGui::EndCombo();
+                }
+                static int cap_last = -1;
+                if (!goblin::debug_events::capture_armed())
+                {
+                    if (ImGui::Button("Arm capture"))
+                    {
+                        goblin::debug_events::arm_capture(cap_name);
+                        cap_last = -1;
+                    }
+                    if (cap_last >= 0)
+                    {
+                        ImGui::SameLine();
+                        ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f),
+                                           "logged %d -> flagcapture.txt", cap_last);
+                    }
+                }
+                else
+                {
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.3f, 1.0f));
+                    ImGui::TextWrapped("ARMED for '%s' — kill it, wait ~5s, then Finalize.",
+                                       cap_name);
+                    ImGui::PopStyleColor();
+                    ImGui::Text("flags captured: %zu", goblin::debug_events::capture_count());
+                    if (ImGui::Button("Finalize -> log"))
+                        cap_last = goblin::debug_events::finalize_capture(
+                            &goblin::ui::read_event_flag);
+                }
+                ImGui::TreePop();
+            }
+
+            // ── Danger zone: destructive resets behind a confirm popup ────────
+            ImGui::Separator();
+            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.55f, 0.13f, 0.13f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.78f, 0.18f, 0.18f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.90f, 0.22f, 0.22f, 1.0f));
+            if (ImGui::TreeNode("Danger zone"))
+            {
+                if (ImGui::Button("Reset quest progression"))
+                    ImGui::OpenPopup("##confirm_reset_quest");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Clear every quest-step checkmark. Save to INI to persist.");
+                if (ImGui::Button("Reset parameters to default"))
+                    ImGui::OpenPopup("##confirm_reset_params");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Restore all settings to defaults and write the ini.\n"
+                                      "Restart the game to fully apply.");
+
+                if (ImGui::BeginPopupModal("##confirm_reset_quest", nullptr,
+                                           ImGuiWindowFlags_AlwaysAutoResize))
+                {
+                    ImGui::TextUnformatted("Clear ALL quest-step checkmarks?");
+                    ImGui::TextDisabled("Cannot be undone. Save to INI afterwards to persist.");
+                    if (ImGui::Button("Yes, clear"))
+                    {
+                        goblin::ui::reset_quest_progress();
+                        ImGui::CloseCurrentPopup();
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Cancel"))
+                        ImGui::CloseCurrentPopup();
+                    ImGui::EndPopup();
+                }
+                if (ImGui::BeginPopupModal("##confirm_reset_params", nullptr,
+                                           ImGuiWindowFlags_AlwaysAutoResize))
+                {
+                    ImGui::TextUnformatted("Reset ALL settings to defaults?");
+                    ImGui::TextDisabled("Writes defaults to MapForGoblins.ini. Restart to fully apply.");
+                    if (ImGui::Button("Yes, reset"))
+                    {
+                        goblin::ui::reset_to_defaults();
+                        ImGui::CloseCurrentPopup();
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Cancel"))
+                        ImGui::CloseCurrentPopup();
+                    ImGui::EndPopup();
+                }
+                ImGui::TreePop();
+            }
+            ImGui::PopStyleColor(3);
+
             ImGui::End();
         }
     }

@@ -8,6 +8,7 @@ namespace goblin::generated
 const QuestGate QUEST_GATES[] = {
     {110600u, {1034509410u, 1034509431u, 0u, 0u}}, // ranni
     {110610u, {1034509410u, 1034509431u, 0u, 0u}}, // ranni
+    {111200u, {11109855u, 0u, 0u, 0u}}, // goldmask
     {120200u, {1051439205u, 11109617u, 0u, 0u}}, // gurranq
     {121600u, {1042369320u, 1042369328u, 0u, 0u}}, // blaidd
     {122000u, {1043399306u, 1051369255u, 1051369265u, 0u}}, // alexander
@@ -61,6 +62,6 @@ const QuestGate QUEST_GATES[] = {
     {141603u, {2046429355u, 2045429206u, 0u, 0u}}, // ansbach
     {142000u, {2051459220u, 0u, 0u, 0u}}, // ymir
 };
-const size_t QUEST_GATE_COUNT = 54;
+const size_t QUEST_GATE_COUNT = 55;
 
 } // namespace goblin::generated

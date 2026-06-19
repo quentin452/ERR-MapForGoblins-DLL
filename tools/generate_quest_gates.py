@@ -58,6 +58,11 @@ QUESTS = {
     "millicent": (["Millicent"],                   [1050389258, 1038519256]),
     "jarbairn":  (["Jar-Bairn", "Jarbairn"],       [1039449255, 1039449256]),
     "corhyn":    (["Corhyn"],                      [11109855]),
+    # Goldmask has no separate quest in EldenRingQuestLog — his steps live under
+    # Corhyn's quest ("Searching for Goldmask", 8726xxxx), whose quest-active
+    # condition is esd_get_flag(11109855). Gate his marker (111200) on the same
+    # flag so it hides until the Corhyn/Goldmask questline is live.
+    "goldmask":  (["Goldmask"],                    [11109855]),
     "latenna":   (["Latenna"],                     [1035429209]),
     "bernahl":   (["Bernahl"],                     [1042382713, 16009455, 16009456]),
     "ansbach":   (["Ansbach"],                     [2046429355, 2045429206]),

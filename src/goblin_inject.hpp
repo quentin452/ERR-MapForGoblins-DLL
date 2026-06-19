@@ -68,6 +68,12 @@ namespace goblin
     int refresh_quest_npc_eviction();
     int refresh_cluster_depletion();
 
+    // Part 2 (Quest Browser): recompute, for each QUEST_BROWSER entry, whether
+    // its questline is now UNFINISHABLE — its NpcQuest::fail_flag event flag is
+    // set (NPC dead early / interconnection lost). Reads flags on the watcher
+    // thread; the overlay reads the cached result via ui::quest_unfinishable().
+    int refresh_quest_finishable();
+
     // Row ids used for both the TutorialParam rows AND the TutorialBody.fmg
     // entries holding each banner's STATIC text. Injected by
     // inject_tutorial_popup_rows() (param table) and goblin_messages
@@ -82,21 +88,12 @@ namespace goblin
     constexpr int TUTORIAL_FMG_ID_DUMP_FAIL = 9004254;  // "Marker dump failed - press again"
     constexpr int TUTORIAL_FMG_ID_COVERAGE_GAP = 9004255; // "unmapped item collected (coverage gap)"
 
-    // Per-section toggle banners. 7 display groups × {shown, hidden} = 14 static
-    // rows at BASE..BASE+13. id = BASE + section*2 + (visible ? 0 : 1). The
-    // names here are shared by the FMG injector (goblin_messages) and the toast.
-    constexpr int TUTORIAL_FMG_ID_SECTION_BASE = 9004260;
-    constexpr int TUTORIAL_SECTION_COUNT       = 7;
-    inline constexpr const wchar_t *TUTORIAL_SECTION_NAMES[TUTORIAL_SECTION_COUNT] = {
-        L"Equipment", L"Key Items", L"Loot", L"Magic", L"Quest", L"Reforged", L"World"};
-    inline int section_toast_id(int section, bool visible)
-    {
-        return TUTORIAL_FMG_ID_SECTION_BASE + section * 2 + (visible ? 0 : 1);
-    }
+    // (9004260..73 was the per-section toggle-banner block — removed when section
+    // toggles stopped firing toasts; the overlay menu owns section visibility now.)
 
     // Per-category coverage-gap toasts. The item category is read from the
     // granted item id's high nibble (Armament/Armour/Talisman/Goods/Ash of War/
-    // other). Placed ABOVE the section block (9004260..73) so ids don't collide.
+    // other). Base kept at 9004280 (clear of the freed 9004260..73 block).
     constexpr int TUTORIAL_FMG_ID_GAP_CAT_BASE = 9004280; // base .. base+COUNT-1
     constexpr int GAP_CAT_COUNT                = 6;
     inline constexpr const wchar_t *GAP_CAT_NAMES[GAP_CAT_COUNT] = {
@@ -158,6 +155,16 @@ namespace goblin
         int category_section(int idx);
         bool category_visible(int idx);
         void set_category_visible(int idx, bool visible);
+        // Per-category cluster opt-in (true = folds into clusters). Editing takes
+        // effect after Save + restart, since the cluster plan is built at inject.
+        bool category_clustered(int idx);
+        void set_category_clustered(int idx, bool clustered);
+        // Per-category cluster threshold (effective: override or global default).
+        // Persisted into cluster_threshold_overrides on Save; restart to apply.
+        int  category_threshold(int idx);
+        void set_category_threshold(int idx, int threshold);
+        int  global_threshold();
+        void set_global_threshold(int t);
 
         // Persist the current section/category visibility to the ini (the menu's
         // Save button). Posts a request; the watcher thread does the file I/O.
@@ -168,7 +175,22 @@ namespace goblin
         void set_clustering_enabled(bool on);  // takes effect after Save + restart
         bool clusters_expanded();
         void set_clusters_expanded(bool expanded);
+        // Quest-aware NPC gating (live; persisted on Save). Show a curated
+        // questline NPC's marker only while its quest is active.
+        bool quest_aware();
+        void set_quest_aware(bool on);
         bool cluster_debug();
         void set_cluster_debug(bool on);
+        // Danger zone. reset_quest_progress clears all quest-step checkmarks live
+        // (persisted on next Save). reset_to_defaults posts a request; the watcher
+        // re-seeds config from defaults + writes the ini (restart to fully apply).
+        void reset_quest_progress();
+        void reset_to_defaults();
+        // Part 2: true if QUEST_BROWSER[i]'s questline is unfinishable (its
+        // fail_flag is set). Cached by refresh_quest_finishable() on the watcher.
+        bool quest_unfinishable(size_t i);
+        // Live event-flag read (wraps the internal IsEventFlag resolver) — used
+        // by the flag-capture tool's finalize re-check. bool(*)(uint32_t).
+        bool read_event_flag(uint32_t id);
     }
 };
