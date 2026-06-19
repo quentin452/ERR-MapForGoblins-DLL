@@ -27,7 +27,11 @@ namespace goblin
     // gridXZ*256 + local, directly comparable to a marker's gridXNo*256 + posX
     // WITHIN THE SAME area. Caveat: nested-region tile may be off ~±2 (negligible
     // for coarse proximity). Returns false until resolvable / on fault.
-    bool get_player_map_pos(int &out_area, float &world_x, float &world_z);
+    // out_gx/out_gz (optional) = the player's reliable map TILE (from MapId, valid
+    // even underground where the +0x70 local float is leaf-block-local garbage) —
+    // used for tile-distance proximity in non-256 frames (area 12 / DLC underground).
+    bool get_player_map_pos(int &out_area, float &world_x, float &world_z,
+                            int *out_gx = nullptr, int *out_gz = nullptr);
 
     // Data pointers of MFG-injected WorldMapPointParam rows in the expanded
     // table. Populated by inject_map_entries(); consumed by

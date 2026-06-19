@@ -9,6 +9,7 @@
 #include "goblin_location_alt.hpp"
 #include "goblin_grace_anchors.hpp"
 #include "goblin_region_anchors.hpp"
+#include "goblin_tile_tabs.hpp"
 #include "goblin_legacy_conv.hpp"
 #include "goblin_markers.hpp"
 #include "goblin_bench.hpp"
@@ -580,6 +581,23 @@ static bool find_nearest_grace(uint8_t area, float wx, float wz,
     return true;
 }
 
+// Player MapId TILE -> map sub-page (tabId), via the authoritative tile_region_map
+// table. Used for UNDERGROUND distance-adaptive: the player's local float is leaf-
+// block-local garbage and the marker param gridXNo is coarse (1/2), so neither
+// distance separates sub-regions — but the MapId tile is reliable and maps 1:1 to a
+// tabId (Ainsel 12000 / Nokron+Siofra+Mohgwyn 12001 / Deeproot 12002 / DLC 6800..).
+// Returns -1 if the tile isn't in the table (overworld tiles aren't — they use the
+// Euclidean frame).
+static int tab_for_tile(int area, int gx, int gz)
+{
+    for (size_t i = 0; i < goblin::generated::TILE_TAB_COUNT; i++)
+    {
+        const auto &t = goblin::generated::TILE_TABS[i];
+        if (t.area == area && t.gx == gx && t.gz == gz) return t.tab;
+    }
+    return -1;
+}
+
 // Nearest MSB region-volume PlaceName to a world point in the same area — a LABEL
 // fallback for piles whose grace has no name (every DLC area-61 grace stores a tab
 // id, not a PlaceName). Returns 0 if no named region in this area.
@@ -800,7 +818,8 @@ static void probe_map_pos_seh(uintptr_t mapid_slot, uintptr_t mgr_slot, MapPosPr
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z)
+bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
+                                int *out_gx, int *out_gz)
 {
     if (!g_mappos_tried) resolve_player_map_pos_statics();
     if (!g_mapid_slot || !g_mappos_mgr_slot) return false;
@@ -824,12 +843,16 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z)
         out_area = tmp.areaNo;
         world_x = tmp.gridXNo * 256.0f + tmp.posX;
         world_z = tmp.gridZNo * 256.0f + tmp.posZ;
+        if (out_gx) *out_gx = tmp.gridXNo;
+        if (out_gz) *out_gz = tmp.gridZNo;
     }
     else
     {
         out_area = pr.area;
         world_x = pr.gx * 256.0f + pr.lx;   // marker space: gridX*256 + local
         world_z = pr.gz * 256.0f + pr.lz;
+        if (out_gx) *out_gx = pr.gx;        // reliable tile (from MapId) — valid even underground
+        if (out_gz) *out_gz = pr.gz;
     }
     return true;
 }
@@ -1083,8 +1106,22 @@ static void replan_clusters()
     // distant dense spots merge harder (fewer far icons) while near you stays detailed.
     const bool dist_adaptive = goblin::config::clusterDistanceAdaptive;
     int player_area = -1; float player_wx = 0, player_wz = 0;
+    int player_gx = -1, player_gz = -1;
     const bool have_player =
-        dist_adaptive && goblin::get_player_map_pos(player_area, player_wx, player_wz);
+        dist_adaptive && goblin::get_player_map_pos(player_area, player_wx, player_wz,
+                                                    &player_gx, &player_gz);
+    // The grid*256+local world frame is only valid on the 256-tiled overworld pages
+    // (60/61) — and projected dungeons resolve the player onto 60. Underground
+    // (area 12 / DLC 40-43) has non-256 tiles AND a leaf-block-local player float,
+    // so Euclidean distance there is garbage. Fall back to TILE distance (player &
+    // pile tiles are reliable from MapId/gridXNo) for those pages.
+    const bool euclid_frame = (player_area == 60 || player_area == 61);
+    // Underground (non-Euclidean frame): the player's reliable MapId tile -> sub-page
+    // (tabId). Piles on the SAME sub-page as the player get near-detail; other
+    // sub-pages cluster. (Tile/Euclidean distance can't separate underground sub-
+    // regions — they share coarse gridXNo 1/2 — so discriminate by sub-page instead.)
+    const int player_tab =
+        (have_player && !euclid_frame) ? tab_for_tile(player_area, player_gx, player_gz) : -1;
     int near_thr = static_cast<int>(goblin::config::clusterNearThreshold);
     if (near_thr < 1) near_thr = 1;
     const float near_u  = goblin::config::clusterNearRadius * 256.0f;
@@ -1135,15 +1172,28 @@ static void replan_clusters()
         // ramping DOWN to base_thr far away (more clustering → fewer distant icons).
         // Same area only — world coords aren't comparable across pages.
         int thr = base_thr;
-        if (have_player && b.area == player_area && far_u > near_u)
+        if (have_player && b.area == player_area)
         {
-            float dx = (cgx * 256.0f + cpx) - player_wx;
-            float dz = (cgz * 256.0f + cpz) - player_wz;
-            float d = std::sqrt(dx * dx + dz * dz);
-            float t = (d - near_u) / (far_u - near_u);
-            if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
-            thr = static_cast<int>(std::lround(near_thr + t * (base_thr - near_thr)));
-            if (thr < 1) thr = 1;
+            if (euclid_frame && far_u > near_u)
+            {
+                // Overworld / projected-dungeon: real Euclidean distance in marker
+                // space, ramped near_thr (detail) -> base_thr (clustered).
+                float dx = (cgx * 256.0f + cpx) - player_wx;
+                float dz = (cgz * 256.0f + cpz) - player_wz;
+                float d = std::sqrt(dx * dx + dz * dz);
+                float t = (d - near_u) / (far_u - near_u);
+                if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
+                thr = static_cast<int>(std::lround(near_thr + t * (base_thr - near_thr)));
+                if (thr < 1) thr = 1;
+            }
+            else if (!euclid_frame && player_tab > 0)
+            {
+                // Underground: sub-page (tabId) gradient. The player's sub-region gets
+                // near-detail (near_thr), every other sub-page clusters (base_thr).
+                // Discrete — no ramp, since sub-pages have no in-between distance.
+                thr = (b.tab == player_tab) ? near_thr : base_thr;
+                if (thr < 1) thr = 1;
+            }
         }
 
         if (static_cast<int>(b.members.size()) <= thr)
@@ -1237,7 +1287,11 @@ static void replan_clusters()
                  pi, g_cluster_pool.size(), dropped);
     spdlog::info("[CLUSTER] stayed-exact: {} no-location, {} unchecked-category, {} locations sub-threshold (base <= {}{})",
                  skip_noloc, skip_unchecked, sub_threshold, base_thr,
-                 (dist_adaptive && have_player) ? ", distance-adaptive" : "");
+                 (dist_adaptive && have_player)
+                     ? (euclid_frame ? ", distance-adaptive[euclid]"
+                                     : ", distance-adaptive[subpage tab=" + std::to_string(player_tab) +
+                                       " tile=" + std::to_string(player_gx) + "," + std::to_string(player_gz) + "]")
+                     : "");
     {
         // Per-area cluster tally (which map page each pile lands on): 60/61 =
         // overworld, 12 = underground, others = legacy dungeons. Tells us where the
@@ -3295,21 +3349,26 @@ void goblin::menu_auto_toggle_loop()
             static std::chrono::steady_clock::time_point s_last_chk{};
             static int s_last_area = -999;
             static float s_last_x = 0, s_last_z = 0;
+            static int s_last_gx = -999, s_last_gz = -999;
             auto now2 = std::chrono::steady_clock::now();
             if ((now2 == std::chrono::steady_clock::time_point{} || now2 - s_last_chk > std::chrono::milliseconds(2000))
                 && !goblin::world_map_open())
             {
                 s_last_chk = now2;
-                int pa; float px, pz;
-                if (goblin::get_player_map_pos(pa, px, pz))
+                int pa, pgx = -1, pgz = -1; float px, pz;
+                if (goblin::get_player_map_pos(pa, px, pz, &pgx, &pgz))
                 {
-                    // re-plan once the player drifts past ~half the near radius (or warps)
+                    // re-plan on area change, or — underground, where px/pz are leaf-
+                    // block-local garbage — on TILE change (reliable from MapId); else
+                    // (overworld) once the player drifts past ~half the near radius.
                     float move_gate = std::max(256.0f, goblin::config::clusterNearRadius * 128.0f);
+                    bool tile_changed = (pgx != s_last_gx || pgz != s_last_gz);
                     float moved = (pa != s_last_area) ? 1e9f : std::sqrt(
                         (px - s_last_x) * (px - s_last_x) + (pz - s_last_z) * (pz - s_last_z));
-                    if (moved > move_gate)
+                    if (moved > move_gate || tile_changed)
                     {
                         s_last_area = pa; s_last_x = px; s_last_z = pz;
+                        s_last_gx = pgx; s_last_gz = pgz;
                         g_cluster_replan_dirty.store(true);
                     }
                 }
