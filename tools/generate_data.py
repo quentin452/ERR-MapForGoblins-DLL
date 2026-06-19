@@ -509,7 +509,8 @@ def main():
     # goblin_tile_tabs.{hpp,cpp} (player MapId tile -> map sub-page tabId, from
     # build_tile_tabs.py) is profile-independent — the game's tiling is identical
     # across bakes — so mirror the committed canonical pair into a non-default dir.
-    for f in ("goblin_tile_tabs.hpp", "goblin_tile_tabs.cpp"):
+    for f in ("goblin_tile_tabs.hpp", "goblin_tile_tabs.cpp",
+              "goblin_major_regions.hpp", "goblin_major_regions.cpp"):
         canonical = project_dir / "src" / "generated" / f
         dest = output_dir / f
         if canonical.exists() and canonical.resolve() != dest.resolve():

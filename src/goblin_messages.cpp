@@ -2,6 +2,7 @@
 #include "goblin_map_data.hpp"
 #include "goblin_enemy_names.hpp"
 #include "goblin_location_alt.hpp"
+#include "goblin_major_regions.hpp"
 #include "goblin_config.hpp"
 #include "goblin_inject.hpp"
 #include "goblin_bench.hpp"
@@ -877,6 +878,19 @@ void goblin::setup_messages()
         // cc.second = "<Region> (<count>)" (ASCII) → widen to wstring.
         cluster_label_storage.emplace_back(cc.second.begin(), cc.second.end());
         new_entries.push_back({cc.first, cluster_label_storage.back().c_str()});
+    }
+
+    // Major-region last-resort labels: inject each anchor's name at its fresh
+    // label_id (the source WorldMapPlaceNameParam textId is in the region-banner FMG
+    // bank, not usable as a map-point label). Storage must outlive the patch call.
+    std::vector<std::wstring> major_region_storage;
+    major_region_storage.reserve(goblin::generated::MAJOR_REGION_ANCHOR_COUNT);
+    for (size_t i = 0; i < goblin::generated::MAJOR_REGION_ANCHOR_COUNT; i++)
+    {
+        const auto &g = goblin::generated::MAJOR_REGION_ANCHORS[i];
+        const char *n = g.name;
+        major_region_storage.emplace_back(n, n + std::char_traits<char>::length(n));  // ASCII → wide
+        new_entries.push_back({g.label_id, major_region_storage.back().c_str()});
     }
 
     if (patch_fmg_in_memory(fmg_ptr, &sub[19], new_entries, /*capture_valid_ids=*/true))
