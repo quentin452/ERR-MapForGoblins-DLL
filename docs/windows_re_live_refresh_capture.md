@@ -101,3 +101,115 @@ A committed `goblin::refresh_world_map_icons()` (AOB-resolved, SEH-guarded) that
 `areaNo` edit while the map is open, updates icons live with no reopen and no crash — verified by
 flipping a section toggle or a cluster expand in-game. If only HIDE works live (not SHOW), ship that and
 document the SHOW-needs-reopen limitation.
+
+---
+
+# RESULTS (2026-06-19, static, Ghidra headless `re_v38`–`re_v44`, app 2.6.2.0)
+
+**TL;DR — the static map is fully solved; the trigger is shipped as a hook-capture-replay gated
+behind a new OFF-by-default config flag, for the user to runtime-validate.** The build function was
+recovered (Ghidra had truncated it; a mis-flagged `noreturn` allocator fragmented the body), the
+instance container + layout + the per-frame reconcile are decoded, and a unique entry AOB for the
+build fn is verified. The remaining unknowns (does the build run while the map is open? does its extra
+pass remove now-hidden rows?) are runtime-only and the implementation is **safe + no-regression**
+either way.
+
+## Deliverable 1 — Instance container (SOLVED)
+- **Manager singleton instance** lives at static `0x143d6e9b0` (the `CSWorldMapPointManImplement`
+  instance ptr; the FD4Singleton getter slot from prior notes, `0x3d6e9d8`, resolves the same object).
+  Build driver `FUN_14063d400` calls the refresh as `FUN_140a82a80(*(0x143d6e9b0), ctx)`.
+- **Built-icon collection = `[manager + 0x398]`** — an MSVC `std::map<int id, CSWorldMapPointIns*>`
+  (red-black `_Tree`). Sentinel/head node at `[mgr+0x398]`; root = `[head+8]` (parent),
+  begin = `[head+0]` (leftmost). Per node: `[0]` left, `[8]` parent, `[0x10]` right,
+  **`+0x19` = color/isnil byte** (0 = real node), **`+0x20` = key** (int point id),
+  **`+0x28` = value** (`CSWorldMapPointIns*`). Both the reconcile and the build iterate it with the
+  standard left/parent/right `_Tree` walk.
+- A **second tree at `[manager + 0x8]`** holds the discovery/reentry-point instances — the ONLY set
+  the per-frame reconcile adds/removes (gated by vmethods `+0x18`/`+0x28`). The earlier Linux note
+  "`[singleton+8]` reads 0 → not the tree" was a false negative: that set was simply empty at the
+  time. The placed-icon set is `+0x398`, not `+0x8`.
+- Other manager fields seen: `+0x88/+0x90` and `+0x120/+0x128` = two intrusive lists (pending/free),
+  `+0x158` a sub-object, `+0x11c`/`+0x148`/`+0x14c` counters.
+
+## Deliverable 2 — `CSWorldMapPointIns` layout + cached visibility (SOLVED)
+- Size **`0x110`** bytes (`FUN_141eb9ed0(0x110, 0x10)` at the build site). vtable
+  `CS::CSWorldMapPointIns::vftable` (`0x142b487a8`).
+- `[inst+0x18]` = embedded `CSWorldMapPoint` wrapper; **`[inst+0x80]` = source `WorldMapPointParam`
+  row ptr** (= `inst+0x18 + 0x68`), confirmed by `_DiscoverMapPoint` reading `[inst+0x80]` (id @ +4,
+  fields @ +0x30/+0x78). Position floats written at `inst+0x70/+0x90/+0xd0`; two bool fields
+  zero-init in the ctor at `inst+0xC0` and `inst+0x100`.
+- vtable methods (decompiled): **`+0x8`** = show-predicate `FUN_140a81450` (bool "display this point?"
+  — reads `FUN_140cfbcb0(inst+0x18)`, then sets the position); **`+0x18`** = area/page getter
+  `FUN_140a81440` (`return FUN_140d0f060(inst+0x18)`); **`+0x28`** = `FUN_140a811d0`
+  (`[[inst+8]+0x90]()`).
+- **CRITICAL (answers #2 / #4b):** the per-frame reconcile `FUN_140a832a0` does **NOT** re-evaluate
+  the show-predicate on the `+0x398` set — its `+0x398` loop only runs `thunk_FUN_1457cd3df(inst, ctx)`
+  (a position/animation tick) per node. The show-predicate (`vtable+0x8`) is evaluated **only at build
+  time** (in `FUN_140a82a80`, right after each `new`). ⇒ **There is no per-frame instance field to flip
+  for a live hide — deliverable #4(b) is not achievable.** Both show and hide require re-running the
+  build.
+
+## Deliverable 5 — areaNo vs event-flag gate (SOLVED: areaNo)
+The build's per-row visibility derives from the `CSWorldMapPoint` wrapper (`FUN_140cfbcb0`/`FUN_140d0f060`
+on `inst+0x18`), which is built from the `WorldMapPointParam` row at `[inst+0x80]`. Our hide flips that
+row's **`areaNo` (0x20)** to 99; the rebuild re-reads the row, so the edit is honored on rebuild
+(consistent with "shows on reopen today"). The reconcile's *discovery/reentry* path also consults event
+flags via `FUN_140d09bf0(DAT_143d7d478, 0x21/0x26/0x27, 1)` (area-availability), but for the placed
+icons `areaNo` is the effective lever the build honors. **No switch to a flag field needed.**
+
+## Deliverable 3 — Build loop (SOLVED)
+- The "build all points from params" function is **`FUN_140a82a80` (RVA `0xa82a80`)** — earlier seen as
+  a 160-byte stub because Ghidra truncated it: the allocator `FUN_141eb9ed0` was mis-flagged
+  `noreturn`, fragmenting the body. It is one function spanning `0xa82a80..~0xa82eb0`; the build call
+  site **`0xa82d09`** (`new 0x110` + ctor `FUN_140a811e0`) sits inside it.
+- **Signature/ABI:** `void __fastcall FUN_140a82a80(void *pointman /*rcx, this*/, void *ctx /*rdx*/)`.
+  `ctx` is a **transient per-frame context**: `[ctx+0x34]` = int page/area filter, `[ctx+0x48]` =
+  `ParamRepo*` for `FUN_140cf6300(repo, categoryId)` count lookups (categories `0x26/0x27/0x21`).
+- **Behavior:** per category it gets the row count, constructs missing instances (running the
+  show-predicate, destroying rows that fail), inserts/updates into `+0x398` via lower_bound +
+  `FUN_140a80430`, and has a removal pass over `+0x398`. It is an **incremental reconcile** from current
+  params, not a from-scratch wipe.
+- **Invocation:** called every world-step from `FUN_14063d400` (the "step all map subsystems" driver,
+  ~15 guarded singleton updates) as `FUN_140a82a80(*(0x143d6e9b0), *(driverArg+8))`, guarded by
+  `driverArg+0x40 != 0`. `ctx` is owned by that driver's frame — **not a singleton** — which is why a
+  blind direct call (with a fabricated ctx) is unsafe.
+
+## Deliverable 4/6 — Trigger (analysis + shipped mechanism)
+- **(4a) callable rebuild:** `FUN_140a82a80` IS the engine's rebuild, but its non-resolvable per-frame
+  `ctx` makes a blind direct call unsafe.
+- **(4b) live-hide-without-rebuild:** NOT possible — no per-frame predicate on `+0x398` (see #2).
+- **(6) programmatic reopen:** opening the map = the menu framework constructs `CS::WorldMapDialog`
+  (ctor `FUN_1409cef10` → setup `FUN_1409be5e0`) via a factory (`@0x9cfa05`) and pushes it on the menu
+  stack — there is no simple `reopen()`, so a blind reopen is also unsafe to ship.
+- **SHIPPED — hook-capture-replay:** hook `FUN_140a82a80`; the detour passively records the engine's
+  own `(this, ctx)` every call, and when `refresh_world_map_icons()` has set a request (after an
+  `areaNo` edit, map open) it **re-invokes the original once more with that captured real pair, inside
+  the same natural call (so `ctx` is guaranteed live), on the engine's own thread.** No fabrication, no
+  menu surgery. **Entry AOB (verified UNIQUE):**
+  `40 55 53 56 57 41 54 41 56 41 57 48 8B EC 48 83 EC 60 48 C7 45 D0 FE FF FF FF 4C 8B F9 8B 42 34`.
+
+## Deliverable 7 — C++ (committed, OFF by default)
+`src/goblin_inject.cpp`: `install_live_refresh_hook()` (resolve+queue the hook; called from
+`setup_mod` before `enable_hooks`), `wm_build_detour` (POD, SEH-guarded extra pass), and
+`goblin::refresh_world_map_icons()` (sets the request when the map is open). Wired into
+`menu_auto_toggle_loop` after the section/category `areaNo` applies. Gated by the new config flag
+**`live_refresh_world_map` (default false)** — default builds are byte-for-byte unaffected (the hook
+isn't even installed unless the flag is set).
+
+## What remains for the user (runtime, you have the debugger)
+The implementation is **safe and no-regression either way**; runtime testing decides how *prompt* the
+refresh is:
+1. **Does `FUN_140a82a80` run while the 2D map is open?** Bp `0xa82a80`, open the map, move around. The
+   prior CONFIRMED-LIVE note ("reconcile fires every frame; ctor did NOT fire on reopen") implies the
+   build driver *does* run continuously but finds all instances cached (no new ctor) — if so the replay
+   fires within a frame of your toggle. **If the world-step driver pauses while the map dialog is up,**
+   the replay won't fire until the next world step (≈ when you close the map) — i.e. it degrades to
+   today's "applies on reopen" behavior, no worse. In that case the fallback is to hook the *reconcile*
+   `FUN_140a832a0` (fires every frame with the map open) and replay the build from there using a ctx
+   captured while the build last ran — only viable if that ctx is heap-persistent (verify), else the
+   menu-reopen path.
+2. **Does the extra build pass actually HIDE now-`areaNo`-99 rows** (its `+0x398` removal loop at
+   `0xa82df0`), not just SHOW newly-passing ones? Toggle a section OFF with the map open and watch.
+3. **No crash** across repeated toggles. Enable with `live_refresh_world_map=true` in the ini.
+
+Scripts: `D:\ghidra_scripts\re_v38.java`–`re_v44.java`; dumps `out_v38.txt`–`out_v44.txt`.

@@ -54,6 +54,7 @@ namespace goblin::config
     bool debugItemGrants = false;
     bool debugFlagCapture = false;
     bool debugWorldmapProbe = false;
+    bool liveRefreshWorldMap = false;
 
     // In-game per-section visibility (the 7 display groups). Persisted so an
     // in-game toggle survives relaunch. Default all-visible = no behaviour change.
@@ -354,6 +355,8 @@ namespace
                   "Quest Browser death-flag capture tool (overlay Dev tools): arm naming an\nNPC, kill it, finalize -> the persisted flag(s) are written to\nlogs/MapForGoblins_flagcapture.txt as NpcQuest::fail_flag candidates.\nInstalls the SetEventFlag hook in a LIGHT mode (no coverage drain); off by default."),
                 B("debug_worldmap_probe", debugWorldmapProbe, "false",
                   "Dev probe: log the world-map cursor coords (read-only) to confirm the RE\noffsets for proximity clustering. Open the world map + move the cursor.\nLogs to logs/MapForGoblins_wmprobe.log; off by default."),
+                B("live_refresh_world_map", liveRefreshWorldMap, "false",
+                  "EXPERIMENTAL: re-render world-map icons WHILE the map is open when you\ntoggle a section/category (instead of only on the next map open). Hooks the\ngame's own placed-map-point (re)build and replays it with the engine's real\ncontext on its own thread. Off by default -- enable to test; if icons don't\nupdate live or anything misbehaves, set back to false (toggles still apply on\nthe next map open). See docs/windows_re_live_refresh_capture.md."),
             }},
         };
     }

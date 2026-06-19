@@ -154,6 +154,20 @@ namespace goblin
     // itself only over the map).
     bool world_map_open();
 
+    // ── Live world-map icon refresh (EXPERIMENTAL, config::liveRefreshWorldMap) ──
+    // Resolve + queue the hook on the engine's placed-map-point (re)build
+    // (FUN_140a82a80). Must run BEFORE modutils::enable_hooks() applies the queued
+    // hooks. No-op unless config::liveRefreshWorldMap is set, so default builds are
+    // unaffected. See docs/windows_re_live_refresh_capture.md.
+    void install_live_refresh_hook();
+
+    // Request a live icon refresh: the next time the engine runs its build the
+    // detour replays it once more with the engine's own captured (this, ctx), so
+    // an areaNo edit applied while the map is open re-renders without a reopen.
+    // No-op if the hook isn't installed or the map isn't open. Thread-safe (sets an
+    // atomic; the actual rebuild runs on the engine's thread).
+    void refresh_world_map_icons();
+
     // ── Overlay control API ──────────────────────────────────────────────
     // Read/post the same runtime state the F-key hotkeys drive. Setters only
     // POST intents (atomics) — the watcher thread (menu_auto_toggle_loop) stays
