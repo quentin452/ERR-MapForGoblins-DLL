@@ -191,6 +191,9 @@ namespace goblin
         // clusters at runtime (applied on next map open), no restart.
         bool cluster_hard();
         void set_cluster_hard(bool on);
+        // Re-plan request (overlay writes the distance-adaptive knobs/presets to
+        // config::* directly, then asks for a live re-plan on next map open).
+        void request_cluster_replan();
         // Quest-aware NPC gating (live; persisted on Save). Show a curated
         // questline NPC's marker only while its quest is active.
         bool quest_aware();

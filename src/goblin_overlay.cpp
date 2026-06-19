@@ -718,7 +718,72 @@ namespace
                     if (ImGui::IsItemHovered())
                         ImGui::SetTooltip("A location collapses into one pile when it holds MORE\n"
                                           "than this many (clustered-category) markers. LOWER = MORE\n"
-                                          "clustering. Min 1. Live — reopen the map to see it.");
+                                          "clustering. Min 1. Live — reopen the map to see it.\n"
+                                          "When distance-adaptive is on, this is the FAR (clustered) size.");
+
+                    // Distance-adaptive: scale the size up far from the player.
+                    bool da = goblin::config::clusterDistanceAdaptive;
+                    if (ImGui::Checkbox("Scale cluster size by distance from player", &da))
+                    {
+                        goblin::config::clusterDistanceAdaptive = da;
+                        goblin::ui::request_cluster_replan();
+                    }
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Full detail near you; distant dense spots merge into bigger\n"
+                                          "piles (fewer far icons, faster map). Ramps from the cluster\n"
+                                          "size above (near) to the far size below, same map area only.\n"
+                                          "Recomputed when you open the map. Live.");
+                    if (da)
+                    {
+                        int nr = goblin::config::clusterNearRadius;
+                        ImGui::SetNextItemWidth(160.0f);
+                        if (ImGui::SliderInt("Near radius (tiles)", &nr, 1, 40))
+                        { goblin::config::clusterNearRadius = static_cast<uint8_t>(nr); goblin::ui::request_cluster_replan(); }
+                        int nt = goblin::config::clusterNearThreshold;
+                        ImGui::SetNextItemWidth(160.0f);
+                        if (ImGui::SliderInt("Detail near you (cluster size)", &nt, 1, 60))
+                        { goblin::config::clusterNearThreshold = static_cast<uint8_t>(nt); goblin::ui::request_cluster_replan(); }
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Cluster size WITHIN the near radius (higher = more individual\n"
+                                              "items shown near you). Ramps down to 'Cluster size' (above) far away.");
+                        int fr = goblin::config::clusterFarRadius;
+                        ImGui::SetNextItemWidth(160.0f);
+                        if (ImGui::SliderInt("Far radius (tiles)", &fr, 2, 80))
+                        { goblin::config::clusterFarRadius = static_cast<uint8_t>(fr); goblin::ui::request_cluster_replan(); }
+                    }
+
+                    // Player-profile presets — one click sets every cluster knob.
+                    ImGui::TextDisabled("Preset:");
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Completionist"))
+                    {
+                        goblin::ui::set_global_threshold(20);          // only very dense spots cluster
+                        goblin::config::clusterDistanceAdaptive = false;
+                        goblin::ui::request_cluster_replan();
+                    }
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Max detail: only very dense spots cluster; no distance scaling.");
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Explorer"))
+                    {
+                        goblin::ui::set_global_threshold(4);           // far = clustered
+                        goblin::config::clusterDistanceAdaptive = true;
+                        goblin::config::clusterNearThreshold = 18;     // near = detail
+                        goblin::config::clusterNearRadius = 4;
+                        goblin::config::clusterFarRadius = 16;
+                        goblin::ui::request_cluster_replan();
+                    }
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Balanced: full detail near you, distant dense spots merge.");
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Performance"))
+                    {
+                        goblin::ui::set_global_threshold(2);           // far = very aggressive
+                        goblin::config::clusterDistanceAdaptive = true;
+                        goblin::config::clusterNearThreshold = 8;      // even near merges sooner
+                        goblin::config::clusterNearRadius = 2;
+                        goblin::config::clusterFarRadius = 10;
+                        goblin::ui::request_cluster_replan();
+                    }
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Aggressive far-merge: fewest distant icons (Steam Deck / low-end).");
 
                     bool dbg = goblin::ui::cluster_debug();
                     if (ImGui::Checkbox("Cluster labels show counts", &dbg))

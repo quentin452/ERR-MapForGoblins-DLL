@@ -786,9 +786,30 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z)
     MapPosProbe pr{};
     probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
     if (!pr.ok) return false;
-    out_area = pr.area;
-    world_x = pr.gx * 256.0f + pr.lx;   // marker space: gridX*256 + local
-    world_z = pr.gz * 256.0f + pr.lz;
+    // If the player is inside a dungeon that PROJECTS to the overworld (legacy
+    // dungeons like Leyndell/Stormveil, catacombs…), project their position the same
+    // way the markers are projected — else the player reads the dungeon's native
+    // area (e.g. 11) while its piles live on area 60, so distance-adaptive never
+    // engages there and everything stays clustered. (project_* is plain C++; run it
+    // OUTSIDE the SEH frame on the values the probe captured.)
+    from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp{};
+    tmp.areaNo  = static_cast<uint8_t>(pr.area);
+    tmp.gridXNo = static_cast<uint8_t>(pr.gx);
+    tmp.gridZNo = static_cast<uint8_t>(pr.gz);
+    tmp.posX = pr.lx;
+    tmp.posZ = pr.lz;
+    if (project_dungeon_row_to_overworld(&tmp))
+    {
+        out_area = tmp.areaNo;
+        world_x = tmp.gridXNo * 256.0f + tmp.posX;
+        world_z = tmp.gridZNo * 256.0f + tmp.posZ;
+    }
+    else
+    {
+        out_area = pr.area;
+        world_x = pr.gx * 256.0f + pr.lx;   // marker space: gridX*256 + local
+        world_z = pr.gz * 256.0f + pr.lz;
+    }
     return true;
 }
 
@@ -1034,8 +1055,19 @@ static void replan_clusters()
 
     // 3. Locations over the threshold → fill a pool row, park members. Sparse
     //    locations (≤ threshold) stay exact. Threshold counts markers per location.
-    int thr = static_cast<int>(goblin::config::clusterThreshold);
-    if (thr < 1) thr = 1;  // defense: 0 would cluster every location → pool blowout
+    int base_thr = static_cast<int>(goblin::config::clusterThreshold);
+    if (base_thr < 1) base_thr = 1;  // defense: 0 would cluster every location → pool blowout
+    // Distance-adaptive: read the player position ONCE (map-open replan). Each pile's
+    // threshold ramps base→far over near→far radius (tiles), SAME map area only, so
+    // distant dense spots merge harder (fewer far icons) while near you stays detailed.
+    const bool dist_adaptive = goblin::config::clusterDistanceAdaptive;
+    int player_area = -1; float player_wx = 0, player_wz = 0;
+    const bool have_player =
+        dist_adaptive && goblin::get_player_map_pos(player_area, player_wx, player_wz);
+    int near_thr = static_cast<int>(goblin::config::clusterNearThreshold);
+    if (near_thr < 1) near_thr = 1;
+    const float near_u  = goblin::config::clusterNearRadius * 256.0f;
+    const float far_u   = goblin::config::clusterFarRadius * 256.0f;
     size_t pi = 0;
     int dropped = 0, sub_threshold = 0;
     const bool dbg = goblin::config::debugLogging;          // detailed dumps off by default
@@ -1044,32 +1076,12 @@ static void replan_clusters()
     for (auto &kv : buckets)
     {
         Bucket &b = kv.second;
-        if (static_cast<int>(b.members.size()) <= thr)
-        {
-            sub_threshold++;
-            if (dbg) subthr_at[{b.area, b.tab}]++;
-            continue;
-        }
-        if (pi >= g_cluster_pool.size()) { dropped++; continue; }
-
-        uint8_t *cp = g_cluster_pool[pi++];
-        auto *cd = reinterpret_cast<ST *>(cp);
-        // Seed the pile from a REAL member row so it inherits EVERY page-selecting
-        // field (base / DLC / underground). The pool template is a base-area-60 row,
-        // and setting areaNo/grid/distView alone still left all clusters on the base
-        // map — individual rows page fine, so just copy one. Then override below.
-        *cd = *reinterpret_cast<ST *>(g_section_rows[b.members[0]].ptr);
-        cd->eventFlagId = 0; cd->clearedEventFlagId = 0;     // a pile has no appear/clear gate
-        cd->textDisableFlagId1 = cd->textDisableFlagId2 = cd->textDisableFlagId3 = 0;
-        cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
-        cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
-        cd->textId5 = cd->textId6 = cd->textId7 = cd->textId8 = -1;
-        // Position. A projected dungeon sits at its overworld ENTRANCE (those pages
-        // are 256-tiled, so a world split is valid). Otherwise keep a REAL member's
-        // grid tile and average posX/posZ over members in THAT SAME tile — do NOT
-        // re-split a world centroid by 256: underground tiles are not 256 wide (area
-        // 12 posX runs to ~1900), so the split invents a grid index that doesn't
-        // exist on that page and the pile lands in the wrong spot.
+        // Pile position (also its world centroid for distance). Computed BEFORE the
+        // threshold so distance-adaptive can use it; no pool row taken yet. A
+        // projected dungeon sits at its overworld ENTRANCE (256-tiled → world split
+        // valid); otherwise keep a REAL member's grid tile and average posX/posZ over
+        // members in THAT SAME tile — never re-split a world centroid by 256 (area-12
+        // underground tiles aren't 256 wide, so the split invents a bad grid index).
         uint8_t cgx, cgz; float cpx, cpz;
         if (b.ent_x >= 0)
         {
@@ -1093,6 +1105,40 @@ static void replan_clusters()
             cpx = static_cast<float>(sx / n);
             cpz = static_cast<float>(sz / n);
         }
+
+        // Per-pile threshold: HIGH near the player (few piles → detail / real items),
+        // ramping DOWN to base_thr far away (more clustering → fewer distant icons).
+        // Same area only — world coords aren't comparable across pages.
+        int thr = base_thr;
+        if (have_player && b.area == player_area && far_u > near_u)
+        {
+            float dx = (cgx * 256.0f + cpx) - player_wx;
+            float dz = (cgz * 256.0f + cpz) - player_wz;
+            float d = std::sqrt(dx * dx + dz * dz);
+            float t = (d - near_u) / (far_u - near_u);
+            if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
+            thr = static_cast<int>(std::lround(near_thr + t * (base_thr - near_thr)));
+            if (thr < 1) thr = 1;
+        }
+
+        if (static_cast<int>(b.members.size()) <= thr)
+        {
+            sub_threshold++;
+            if (dbg) subthr_at[{b.area, b.tab}]++;
+            continue;
+        }
+        if (pi >= g_cluster_pool.size()) { dropped++; continue; }
+
+        uint8_t *cp = g_cluster_pool[pi++];
+        auto *cd = reinterpret_cast<ST *>(cp);
+        // Seed the pile from a REAL member row so it inherits EVERY page-selecting
+        // field (base / DLC / underground); then override position/label/icon below.
+        *cd = *reinterpret_cast<ST *>(g_section_rows[b.members[0]].ptr);
+        cd->eventFlagId = 0; cd->clearedEventFlagId = 0;     // a pile has no appear/clear gate
+        cd->textDisableFlagId1 = cd->textDisableFlagId2 = cd->textDisableFlagId3 = 0;
+        cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
+        cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
+        cd->textId5 = cd->textId6 = cd->textId7 = cd->textId8 = -1;
         cd->areaNo = b.area;
         cd->gridXNo = cgx; cd->gridZNo = cgz;
         cd->posX = cpx; cd->posZ = cpz;
@@ -1144,8 +1190,9 @@ static void replan_clusters()
     spdlog::info("[CLUSTER] replan by-location: {} piles, {} members parked, {}/{} pool used, {} dropped",
                  g_clusters.size(), g_cluster_members.size(),
                  pi, g_cluster_pool.size(), dropped);
-    spdlog::info("[CLUSTER] stayed-exact: {} no-location, {} unchecked-category, {} locations sub-threshold (<= {})",
-                 skip_noloc, skip_unchecked, sub_threshold, thr);
+    spdlog::info("[CLUSTER] stayed-exact: {} no-location, {} unchecked-category, {} locations sub-threshold (base <= {}{})",
+                 skip_noloc, skip_unchecked, sub_threshold, base_thr,
+                 (dist_adaptive && have_player) ? ", distance-adaptive" : "");
     {
         // Per-area cluster tally (which map page each pile lands on): 60/61 =
         // overworld, 12 = underground, others = legacy dungeons. Tells us where the
@@ -2442,6 +2489,13 @@ void goblin::ui::set_cluster_hard(bool on)
     g_cluster_replan_dirty.store(true);
 }
 
+// Re-plan request for settings the overlay writes to config::* directly (the
+// distance-adaptive knobs + presets). Applied on the next map open.
+void goblin::ui::request_cluster_replan()
+{
+    g_cluster_replan_dirty.store(true);
+}
+
 // Save request posted by the menu; the watcher does the file I/O.
 static std::atomic<bool> g_save_req{false};
 void goblin::ui::request_save() { g_save_req.store(true); }
@@ -3122,6 +3176,38 @@ void goblin::menu_auto_toggle_loop()
         // render thread). Runtime visibility is unchanged until a restart.
         if (g_reset_defaults_req.exchange(false))
             goblin::reset_to_defaults_and_save(goblin::config_ini_path());
+
+        // Distance-adaptive: keep the plan tracking the player. Re-planning AT map-open
+        // wouldn't show until the NEXT open (the game reads the rows at open time), so
+        // instead re-plan IN-WORLD as the player moves — then any open shows current
+        // bands. Throttled; only when the player moved a meaningful distance (or
+        // changed map area) since the last plan, and only while the map is CLOSED
+        // (don't thrash mid-view). Feature-gated.
+        if (goblin::config::clusterDistanceAdaptive && goblin::config::enableClustering)
+        {
+            static std::chrono::steady_clock::time_point s_last_chk{};
+            static int s_last_area = -999;
+            static float s_last_x = 0, s_last_z = 0;
+            auto now2 = std::chrono::steady_clock::now();
+            if ((now2 == std::chrono::steady_clock::time_point{} || now2 - s_last_chk > std::chrono::milliseconds(2000))
+                && !goblin::world_map_open())
+            {
+                s_last_chk = now2;
+                int pa; float px, pz;
+                if (goblin::get_player_map_pos(pa, px, pz))
+                {
+                    // re-plan once the player drifts past ~half the near radius (or warps)
+                    float move_gate = std::max(256.0f, goblin::config::clusterNearRadius * 128.0f);
+                    float moved = (pa != s_last_area) ? 1e9f : std::sqrt(
+                        (px - s_last_x) * (px - s_last_x) + (pz - s_last_z) * (pz - s_last_z));
+                    if (moved > move_gate)
+                    {
+                        s_last_area = pa; s_last_x = px; s_last_z = pz;
+                        g_cluster_replan_dirty.store(true);
+                    }
+                }
+            }
+        }
 
         // Runtime cluster re-plan (enable / soft-hard / threshold / exclude). Rebuilds
         // the whole plan from the live rows into the pool, then applies the view. The

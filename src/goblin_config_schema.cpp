@@ -65,9 +65,17 @@ namespace goblin::config
     // piles into one cluster icon to cut the per-page map-open cost. Opt-in.
     bool enableClustering = false;
     bool clusterHard = false;         // hard = mix categories into one pile; soft = per-category
-    uint8_t clusterThreshold = 4;     // a location clusters only if it holds > this many markers
+    uint8_t clusterThreshold = 4;     // a location clusters only if it holds > this many markers; the FAR (clustered) size when distance-adaptive
     std::string clusterExclude = "";  // category names kept exact (never clustered)
     std::string clusterThresholdOverrides = "";  // "Name:N" per-category threshold overrides
+    // Distance-adaptive clustering: NEAR the player use a HIGH threshold (few piles
+    // → detail / real items), ramping DOWN to clusterThreshold FAR away (more
+    // clustering → fewer distant icons). Linear ramp over nearRadius..farRadius
+    // tiles. Applied per pile at map-open replan.
+    bool    clusterDistanceAdaptive = false;
+    uint8_t clusterNearThreshold = 18; // detail size NEAR player (high = more individual items)
+    uint8_t clusterNearRadius    = 4;  // tiles: full-detail radius
+    uint8_t clusterFarRadius     = 16; // tiles: at/beyond this, clusterThreshold (clustered)
     bool questNpcQuestAware = false;  // gate quest-NPC markers on quest-active flags
     std::string questProgress = "";   // Quest Browser per-step done bits ('0'/'1')
     bool questGreyOnDeath = true;     // grey questlines whose NPC death flag is set
@@ -174,7 +182,19 @@ namespace
                   "categories stay exact in both. Save + restart (re-plans the piles)."),
                 IniEntry{"cluster_threshold", IniType::U8, &cfg::clusterThreshold, "4",
                          "A location clusters only if it holds MORE than this many markers.\n"
-                         "LOWER = MORE aggressive (groups smaller piles). NOT higher.", false, nullptr},
+                         "LOWER = MORE aggressive (groups smaller piles). NOT higher.\n"
+                         "When distance-adaptive is on, this is the size NEAR the player.", false, nullptr},
+                B("cluster_distance_adaptive", clusterDistanceAdaptive, "false",
+                  "Scale cluster size by distance from the player: full detail near you,\n"
+                  "distant dense spots merge harder (fewer far icons). Linear ramp from\n"
+                  "cluster_near_threshold (near, high) DOWN to cluster_threshold (far)."),
+                IniEntry{"cluster_near_threshold", IniType::U8, &cfg::clusterNearThreshold, "18",
+                         "Distance-adaptive: detail cluster size NEAR the player (high = more\n"
+                         "individual items shown near you). Ramps down to cluster_threshold far.", false, nullptr},
+                IniEntry{"cluster_near_radius", IniType::U8, &cfg::clusterNearRadius, "4",
+                         "Distance-adaptive: full-detail radius around the player, in 256-unit tiles.", false, nullptr},
+                IniEntry{"cluster_far_radius", IniType::U8, &cfg::clusterFarRadius, "16",
+                         "Distance-adaptive: at/beyond this many tiles, use cluster_threshold (full clustering).", false, nullptr},
                 IniEntry{"cluster_exclude", IniType::String, &cfg::clusterExclude, "",
                          "Categories that stay EXACT markers and never fold into a cluster\n"
                          "(comma-separated, matched loosely vs the category name, e.g.\n"

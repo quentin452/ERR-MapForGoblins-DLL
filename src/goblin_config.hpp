@@ -118,7 +118,14 @@ namespace goblin
         // Marker clustering (v1). See goblin_config_schema [Clustering].
         extern bool enableClustering;
         extern bool clusterHard;  // hard = mixed-category piles; soft = per-category
-        extern uint8_t clusterThreshold;   // bucket clusters only if it holds > this many
+        extern uint8_t clusterThreshold;   // base cluster size; the FAR (clustered) size when distance-adaptive
+        // Distance-adaptive clustering: near the player use a HIGH threshold (few
+        // piles = detail / real items), ramping DOWN to clusterThreshold far away
+        // (more clustering = fewer distant icons).
+        extern bool    clusterDistanceAdaptive;
+        extern uint8_t clusterNearThreshold; // detail size NEAR player (high = more individual items)
+        extern uint8_t clusterNearRadius;    // tiles: full-detail radius
+        extern uint8_t clusterFarRadius;     // tiles: at/beyond → clusterThreshold (clustered)
         // Per-category cluster opt-out. Comma-separated category names (loose match,
         // like showAllExcept) that stay EXACT markers and never fold into a cluster.
         // Empty = every category is clusterable (the v1 behaviour).
