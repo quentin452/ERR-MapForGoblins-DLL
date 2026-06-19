@@ -9,6 +9,7 @@
 #include "goblin_location_alt.hpp"
 #include "goblin_grace_anchors.hpp"
 #include "goblin_region_anchors.hpp"
+#include "goblin_major_regions.hpp"
 #include "goblin_tile_tabs.hpp"
 #include "goblin_legacy_conv.hpp"
 #include "goblin_markers.hpp"
@@ -614,6 +615,28 @@ static int find_nearest_region_pname(uint8_t area, float wx, float wz)
         if (d < bestd) { bestd = d; best = static_cast<int>(i); }
     }
     return best < 0 ? 0 : goblin::generated::REGION_ANCHORS[best].placename_id;
+}
+
+// Coarsest LABEL fallback: nearest WorldMapPlaceNameParam major-region anchor in the
+// same area. Returns the anchor's FRESH label_id (its name string is injected into our
+// PlaceName bank by setup_messages — the source textId lives in the region-banner FMG,
+// unusable as a map-point label). Last resort after grace + named-grace + MSB-region.
+static int find_nearest_major_region_pname(uint8_t area, float wx, float wz)
+{
+    // DLC underground caverns (40-43) have no region anchor of their own — they sit
+    // beneath the Realm of Shadow (area 61), so borrow its name as the coarse label.
+    uint8_t lookup_area = (area >= 40 && area <= 43) ? 61 : area;
+    int best = -1;
+    float bestd = 1e30f;
+    for (size_t i = 0; i < goblin::generated::MAJOR_REGION_ANCHOR_COUNT; i++)
+    {
+        const auto &g = goblin::generated::MAJOR_REGION_ANCHORS[i];
+        if (g.area != lookup_area) continue;
+        float dx = g.wx - wx, dz = g.wz - wz;
+        float d = dx * dx + dz * dz;
+        if (d < bestd) { bestd = d; best = static_cast<int>(i); }
+    }
+    return best < 0 ? 0 : goblin::generated::MAJOR_REGION_ANCHORS[best].label_id;
 }
 
 // A stable cluster key for a projected dungeon, derived from its overworld
@@ -1793,9 +1816,12 @@ void goblin::inject_map_entries()
             float mwz = static_cast<float>(mrow->gridZNo) * 256.0f + mrow->posZ;
             find_nearest_grace(mrow->areaNo, mwx, mwz, &grace_idx, &grace_pname, &grace_tab);
             // No named grace nearby (DLC graces have no PlaceName) → label by the
-            // nearest MSB region volume instead.
+            // nearest MSB region volume; if even that misses (anchor coverage gap),
+            // fall back to the coarsest major-region name (never leave count-only).
             if (grace_pname <= 0)
                 grace_pname = find_nearest_region_pname(mrow->areaNo, mwx, mwz);
+            if (grace_pname <= 0)
+                grace_pname = find_nearest_major_region_pname(mrow->areaNo, mwx, mwz);
         }
         // Bug A: reproject injected dungeon rows onto the overworld so minor-
         // dungeon icons render. original_row_id == 0 ⇒ vanilla row (left as-is).
@@ -1830,7 +1856,11 @@ void goblin::inject_map_entries()
             // or region stays nameless — but its pile sits at the overworld ENTRANCE.
             // Label it by the overworld region there (prow->areaNo is now 60/61).
             if (grace_pname <= 0 && ent_x >= 0.0f)
+            {
                 grace_pname = find_nearest_region_pname(prow->areaNo, ent_x, ent_z);
+                if (grace_pname <= 0)
+                    grace_pname = find_nearest_major_region_pname(prow->areaNo, ent_x, ent_z);
+            }
         }
         new_wrapper_locs[i].row = all_rows[i].row_id;
         new_wrapper_locs[i].index = static_cast<int32_t>(i);
