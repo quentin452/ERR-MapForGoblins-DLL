@@ -70,3 +70,27 @@ that routine — the same pin trick used for the `ShowTutorialPopup` trampoline
 - **Programmatic reopen**: invoke the map menu close+open via CSMenuMan (1-frame
   flicker). Needs the map open/close entry, also an RE target but simpler.
 - Keep v1 behaviour (applies on reopen) and document it.
+
+## LIVE LEAD (2026-06-19): "Show All Grace" rebuilds the open map in real time
+
+Empirical finding while live-testing in Cheat Engine: triggering **"Show All Grace"**
+(a cheat-table grace-reveal action) **rebuilds the in-game world map live, with the
+map already open** — exactly the behaviour this thread wants. This is strong evidence
+that:
+- A **callable live icon (re)build path exists** and can run while the map is open
+  without a reopen (validates approach (a) above — no programmatic-reopen fallback
+  needed).
+- "Reveal all graces" works by setting the grace **discovery/event flags**, which
+  then drive the per-point reveal — i.e. it almost certainly funnels through
+  `_DiscoverMapPoint` (`CSWorldMapPointManImplement::_DiscoverMapPoint`,
+  anchor VA `0x142b48c1c`) and/or the manager's refresh loop **`FUN_140a832a0`**
+  (RVA `0xa832a0`) already identified as the per-point re-eval loop.
+
+### Next action to convert this into `refresh_world_map_icons()`
+Attach Cheat Engine / x64dbg to the running game, trigger **Show All Grace**, and
+**breakpoint `FUN_140a832a0` (0xa832a0)** + `_DiscoverMapPoint` to confirm which one
+fires on the live rebuild and with what args (the singleton `this` + per-point data).
+Whichever fires is the on-demand rebuild entry to call from
+`menu_auto_toggle_loop` after `apply_section_visibility()` (map open, CSMenuMan
+`+0xCD == 7`). This is the cleanest path yet to live F7/F8 refresh — drive the same
+routine "Show All Grace" uses, scoped to the toggled rows instead of all graces.
