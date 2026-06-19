@@ -2322,6 +2322,18 @@ void goblin::ui::set_category_visible(int idx, bool visible)
     g_category_dirty[idx].store(true);  // watcher applies the areaNo park/restore
 }
 
+// ERR integration convenience: ERR already marks bosses on the world map, so this
+// hides MapForGoblins' own boss markers (the WorldBosses category) to avoid the
+// duplicate. Reuses the per-category visibility flag (persists as show_bosses).
+bool goblin::ui::err_hide_bosses()
+{
+    return !g_category_visible[static_cast<int>(Category::WorldBosses)].load();
+}
+void goblin::ui::set_err_hide_bosses(bool hide)
+{
+    goblin::ui::set_category_visible(static_cast<int>(Category::WorldBosses), !hide);
+}
+
 bool goblin::ui::category_clustered(int idx)
 {
     if (idx < 0 || idx >= NUM_CATEGORIES) return true;

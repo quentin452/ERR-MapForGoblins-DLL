@@ -462,6 +462,19 @@ namespace
                 ImGui::TreePop();
             }
 
+            ImGui::SeparatorText("ERR integration");
+            {
+                bool hide_bosses = goblin::ui::err_hide_bosses();
+                if (ImGui::Checkbox("Hide boss markers (ERR already marks bosses)", &hide_bosses))
+                    goblin::ui::set_err_hide_bosses(hide_bosses);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("ELDEN RING Reforged natively marks bosses (and enemy camps,\n"
+                                      "plus completion markers) on the world map. Enable this to hide\n"
+                                      "MapForGoblins' own boss markers and avoid the duplicate.\n"
+                                      "Same as unchecking 'World - Bosses' above; persists on Save.");
+                ImGui::TextDisabled("ERR also marks enemy camps & completion (cleared dungeons/ruins).");
+            }
+
             ImGui::SeparatorText("Quest navigation");
             {
                 ImGui::TextDisabled("Use the Quest Browser below. The map-pin options here are");

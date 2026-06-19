@@ -155,6 +155,9 @@ namespace goblin
         int category_section(int idx);
         bool category_visible(int idx);
         void set_category_visible(int idx, bool visible);
+        // ERR integration: hide our boss markers since ERR marks bosses natively.
+        bool err_hide_bosses();
+        void set_err_hide_bosses(bool hide);
         // Per-category cluster opt-in (true = folds into clusters). Editing takes
         // effect after Save + restart, since the cluster plan is built at inject.
         bool category_clustered(int idx);
