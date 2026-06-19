@@ -530,8 +530,16 @@ static void apply_master_visibility(bool icons_on)
             *area = keep_hidden ? 99 : r.orig_area;
         }
     }
-    spdlog::info("[MASTER] icons {} ({} injected rows)",
-                 icons_on ? "SHOWN" : "HIDDEN", g_section_rows.size());
+    // Cluster glyphs + their parked members are NOT in g_section_rows — gate them on
+    // master too, else master-off hides the base icons but leaves the cluster piles.
+    bool expanded = g_clusters_expanded.load();
+    for (const auto &cl : g_clusters)
+        cl.ptr[0x20] = (icons_on && !expanded && g_cluster_debug.load() && !cluster_should_hide(cl.cat))
+                       ? cl.area : 99;
+    for (const auto &m : g_cluster_members)
+        m.ptr[0x20] = (icons_on && expanded && !cluster_should_hide(m.cat)) ? m.orig_area : 99;
+    spdlog::info("[MASTER] icons {} ({} injected rows, {} clusters)",
+                 icons_on ? "SHOWN" : "HIDDEN", g_section_rows.size(), g_clusters.size());
 }
 
 // ─── Marker clustering (v1, density-triggered, static) ───────────────
