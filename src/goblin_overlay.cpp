@@ -757,30 +757,32 @@ namespace
                     ImGui::SameLine();
                     if (ImGui::SmallButton("Completionist"))
                     {
-                        goblin::ui::set_global_threshold(20);          // only very dense spots cluster
+                        // Anchors aggregate ~40 markers each, so only a very high
+                        // threshold leaves them as individual items everywhere.
+                        goblin::ui::set_global_threshold(60);
                         goblin::config::clusterDistanceAdaptive = false;
                         goblin::ui::request_cluster_replan();
                     }
-                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Max detail: only very dense spots cluster; no distance scaling.");
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Max detail: individual items everywhere; only the densest spots cluster. No distance scaling.");
                     ImGui::SameLine();
                     if (ImGui::SmallButton("Explorer"))
                     {
-                        goblin::ui::set_global_threshold(4);           // far = clustered
+                        goblin::ui::set_global_threshold(6);           // far = clustered
                         goblin::config::clusterDistanceAdaptive = true;
-                        goblin::config::clusterNearThreshold = 18;     // near = detail
+                        goblin::config::clusterNearThreshold = 50;     // near = individual items
                         goblin::config::clusterNearRadius = 4;
-                        goblin::config::clusterFarRadius = 16;
+                        goblin::config::clusterFarRadius = 18;
                         goblin::ui::request_cluster_replan();
                     }
-                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Balanced: full detail near you, distant dense spots merge.");
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Balanced: individual items near you, distant dense spots merge.");
                     ImGui::SameLine();
                     if (ImGui::SmallButton("Performance"))
                     {
-                        goblin::ui::set_global_threshold(2);           // far = very aggressive
+                        goblin::ui::set_global_threshold(3);           // far = very aggressive
                         goblin::config::clusterDistanceAdaptive = true;
-                        goblin::config::clusterNearThreshold = 8;      // even near merges sooner
+                        goblin::config::clusterNearThreshold = 24;     // even near merges sooner
                         goblin::config::clusterNearRadius = 2;
-                        goblin::config::clusterFarRadius = 10;
+                        goblin::config::clusterFarRadius = 12;
                         goblin::ui::request_cluster_replan();
                     }
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Aggressive far-merge: fewest distant icons (Steam Deck / low-end).");

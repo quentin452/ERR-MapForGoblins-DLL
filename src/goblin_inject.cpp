@@ -1082,8 +1082,12 @@ static void replan_clusters()
         // valid); otherwise keep a REAL member's grid tile and average posX/posZ over
         // members in THAT SAME tile — never re-split a world centroid by 256 (area-12
         // underground tiles aren't 256 wide, so the split invents a bad grid index).
+        // Entrance-key buckets (graceless projected dungeons, key >= 1000000) sit at
+        // the dungeon entrance. Grace buckets — including dungeons WITH graces, whose
+        // members are projected — use the centroid of their (projected) member tiles.
         uint8_t cgx, cgz; float cpx, cpz;
-        if (b.ent_x >= 0)
+        const bool entrance_bucket = (kv.first >= 1000000) && (b.ent_x >= 0);
+        if (entrance_bucket)
         {
             int gx = static_cast<int>(std::floor(b.ent_x / 256.0));
             int gz = static_cast<int>(std::floor(b.ent_z / 256.0));
@@ -1134,33 +1138,49 @@ static void replan_clusters()
         // Seed the pile from a REAL member row so it inherits EVERY page-selecting
         // field (base / DLC / underground); then override position/label/icon below.
         *cd = *reinterpret_cast<ST *>(g_section_rows[b.members[0]].ptr);
+        // RACE GUARD: the seed-copy just made this pool row an exact copy of an
+        // on-page member (its areaNo, icon, isAreaIcon, size). The game renders on
+        // another thread, so if it reads the row NOW it shows a duplicate, sometimes
+        // OVERSIZED (member isAreaIcon) marker. Keep the row OFF-PAGE while we set its
+        // fields, and publish areaNo (→ visible) LAST, fully formed.
+        cd->areaNo = 99;
+        cd->areaNo_forDistViewMark = 99;
         cd->eventFlagId = 0; cd->clearedEventFlagId = 0;     // a pile has no appear/clear gate
         cd->textDisableFlagId1 = cd->textDisableFlagId2 = cd->textDisableFlagId3 = 0;
         cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
         cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
         cd->textId5 = cd->textId6 = cd->textId7 = cd->textId8 = -1;
-        cd->areaNo = b.area;
         cd->gridXNo = cgx; cd->gridZNo = cgz;
         cd->posX = cpx; cd->posZ = cpz;
         cd->posY = b.py;
-        // Mirror the distant-view coords (used by some pages / zoom levels). Pool
-        // rows are copied from a base-area-60 template; without this they could leak
-        // onto the base map. isOverrideDistViewMarkPos is inherited from the seed.
-        cd->areaNo_forDistViewMark = b.area;
+        // Mirror the distant-view coords (used by some pages / zoom levels).
         cd->gridXNo_forDistViewMark = cgx;
         cd->gridZNo_forDistViewMark = cgz;
         cd->posX_forDistViewMark = cpx;
         cd->posY_forDistViewMark = b.py;
         cd->posZ_forDistViewMark = cpz;
         cd->iconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID);
+        // The pile is a POINT icon. Seeding from a member can inherit isAreaIcon
+        // (a range icon = "same size as the map") → the pile renders oversized; and
+        // a stale distViewIconId would show the seed's glyph when zoomed out. Force
+        // both to the cluster glyph / point.
+        cd->isAreaIcon = false;
+        cd->distViewIconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID);
         int cnt = std::min<int>(static_cast<int>(b.members.size()), CLUSTER_MAX_COUNT);
         int cnt_textid = CLUSTER_TEXTID_BASE + cnt;    // → pre-injected number string
-        // Line 1 = the anchor's region name — its PlaceName id renders directly (no
-        // new FMG needed); -1 = count-only when the anchor has no name. Line 2 = the
-        // live count (the "show counts" toggle hides/shows it via apply_cluster_debug).
-        cd->textId1 = (b.pname > 0) ? b.pname : -1;    // location/region PlaceName id
-        cd->textId2 = g_cluster_debug.load() ? cnt_textid : -1;
+        // Line 1 = the anchor's region name (its PlaceName id renders directly); if
+        // the anchor has NO name, fall back to the count so the pile ALWAYS has a
+        // hover tooltip (was -1 → no tooltip at all on nameless piles). Line 2 = the
+        // live count when "show counts" is on (apply_cluster_debug toggles it), but
+        // not on nameless piles (the count is already on line 1 there).
+        const bool named = (b.pname > 0);
+        cd->textId1 = named ? b.pname : cnt_textid;
+        cd->textId2 = (named && g_cluster_debug.load()) ? cnt_textid : -1;
         cd->textId3 = cd->textId4 = -1;
+        // PUBLISH last: every field is now set, so make the row visible only now.
+        // (areaNo is the on-page lever; the render thread sees a fully-formed row.)
+        cd->areaNo_forDistViewMark = b.area;
+        cd->areaNo = b.area;
 
         std::vector<ClusterMemberRef> mrefs;
         Category domcat = g_section_rows[b.members[0]].cat;  // for section gating
@@ -1841,16 +1861,18 @@ void goblin::inject_map_entries()
         // ones it folds into a pile and the eviction coordination keeps them parked.
         if (all_rows[i].original_row_id)
         {
-            // Cluster grouping key: a PROJECTED dungeon folds into ONE pile at its
-            // entrance; everything else (overworld / underground) folds into its
-            // nearest grace. Label = the nearest grace's region name when known.
+            // Cluster grouping key: bucket by the nearest grace (overworld AND
+            // dungeons WITH graces, e.g. Leyndell's 18 — so a high threshold lets
+            // their sub-areas show as individual items instead of one mega-pile).
+            // Only a GRACELESS projected dungeon (most catacombs/caves) folds into a
+            // single entrance pile. Label = the nearest grace's region name.
             int grp_key, grp_pname = grace_pname;
-            if (ent_x >= 0.0f)
-                grp_key = entrance_cluster_key(ent_x, ent_z);  // one pile per dungeon
-            else if (grace_idx >= 0)
+            if (grace_idx >= 0)
                 grp_key = grace_idx;                           // nearest-grace pile
+            else if (ent_x >= 0.0f)
+                grp_key = entrance_cluster_key(ent_x, ent_z);  // graceless dungeon → one entrance pile
             else
-                grp_key = -1;                                  // no grace in area → exact
+                grp_key = -1;                                  // no grace, not projected → exact
             g_section_rows.push_back({cp, section_of(all_rows[i].category),
                                       all_rows[i].category,
                                       cp[0x20], all_rows[i].is_piece,
@@ -3210,14 +3232,25 @@ void goblin::menu_auto_toggle_loop()
         }
 
         // Runtime cluster re-plan (enable / soft-hard / threshold / exclude). Rebuilds
-        // the whole plan from the live rows into the pool, then applies the view. The
-        // single owner of game-state mutation. Shows on the next map open.
-        if (g_cluster_replan_dirty.exchange(false))
+        // the whole plan from the live rows into the pool, then applies the view.
+        // ONLY while the map is CLOSED: replan's teardown briefly un-parks every old
+        // member then re-parks them into new piles, so applying it mid-render leaves
+        // PHANTOM / duplicate icons. Deferred (keep the dirty flag set) until the map
+        // closes, then it's applied for the next open — matching "reopen to apply".
+        // Likewise the expand/collapse re-park.
+        bool map_open_now = goblin::world_map_open();
+        if (!map_open_now && g_cluster_replan_dirty.load())
+        {
+            g_cluster_replan_dirty.store(false);
             replan_clusters();
+        }
         // Cluster expand/collapse + debug-label flips (areaNo / textId on the live blob).
-        if (g_cluster_expand_dirty.exchange(false))
+        if (!map_open_now && g_cluster_expand_dirty.load())
+        {
+            g_cluster_expand_dirty.store(false);
             apply_cluster_expanded(g_clusters_expanded.load());
-        if (g_cluster_debug_dirty.exchange(false))
+        }
+        if (g_cluster_debug_dirty.exchange(false))  // textId flip only — no parking, render-safe
             apply_cluster_debug(g_cluster_debug.load());
 
         // (Player-position probe logging removed — proximity clustering paused:
