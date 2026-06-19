@@ -390,7 +390,11 @@ bool goblin::is_section_hidden_ptr(const void *param_data)
 // show = restore orig_area unless the row is an already-collected piece/kindling
 // (those stay evicted, owned by collected::/kindling::).
 // Cluster state (declared before the apply_* visibility fns, which gate clusters).
-struct ClusterRow { uint8_t *ptr; uint8_t area; int count_textid; std::vector<uint32_t> member_flags; Category cat; };
+// A collectable member of a cluster, with every signal needed to tell if it's been
+// taken: the textDisableFlagId1 event flag (plain loot), or piece/kindling tracking
+// (Reforged Rune Pieces / Kindling Spirits — collected by row id, no event flag).
+struct ClusterMemberRef { uint32_t flag; uint64_t row_id; bool is_piece; bool is_kindling; };
+struct ClusterRow { uint8_t *ptr; uint8_t area; int count_textid; std::vector<ClusterMemberRef> members; Category cat; };
 static std::vector<ClusterRow> g_clusters;        // the synthetic cluster icons
 struct ClusterMember { uint8_t *ptr; uint8_t orig_area; Category cat; };
 static std::vector<ClusterMember> g_cluster_members;  // individuals parked under a cluster
@@ -1055,7 +1059,7 @@ static void replan_clusters()
         cd->textId2 = g_cluster_debug.load() ? cnt_textid : -1;
         cd->textId3 = cd->textId4 = -1;
 
-        std::vector<uint32_t> mf;
+        std::vector<ClusterMemberRef> mrefs;
         Category domcat = g_section_rows[b.members[0]].cat;  // for section gating
         for (size_t mi : b.members)
         {
@@ -1064,9 +1068,13 @@ static void replan_clusters()
             g_cluster_member_ptrs.insert(r.ptr);
             g_cluster_members.push_back({r.ptr, r.orig_area, r.cat});
             uint32_t f = reinterpret_cast<ST *>(r.ptr)->textDisableFlagId1;  // collect flag
-            if (f) mf.push_back(f);
+            // Track any member that CAN be collected — plain loot (event flag) AND
+            // Reforged pieces/kindling (row-id tracked, no flag) — so the live count
+            // decrements for ERR items too, not only base flag-loot.
+            if (f || r.is_piece || r.is_kindling)
+                mrefs.push_back({f, r.row_id, r.is_piece, r.is_kindling});
         }
-        g_clusters.push_back({cp, b.area, cnt_textid, std::move(mf), domcat});
+        g_clusters.push_back({cp, b.area, cnt_textid, std::move(mrefs), domcat});
         piles_at[{b.area, b.tab}]++;
         if (dbg)
             spdlog::info("[CLUSTER-DUMP] #{} key={} area={} tab={} grid=({},{}) pos=({:.1f},{:.1f}) "
@@ -2789,14 +2797,20 @@ int goblin::refresh_cluster_depletion()
     int changed = 0, with_flags = 0, depleted_n = 0;
     for (auto &c : g_clusters)
     {
-        if (c.member_flags.empty()) continue; // no collectible members → never "done"
+        if (c.members.empty()) continue; // no collectible members → never "done"
         with_flags++;
-        // Count collected members (collect-flag set) — drives both the done-icon
-        // swap and the live REMAINING count.
+        // Count collected members — by event flag (plain loot) OR by piece/kindling
+        // row-id tracking (Reforged items have no event flag). Drives both the
+        // done-icon swap and the live REMAINING count.
         int collected_n = 0;
-        for (uint32_t f : c.member_flags)
-            if (orp_flag_set(f)) collected_n++;
-        bool depleted = (collected_n == static_cast<int>(c.member_flags.size()));
+        for (const auto &m : c.members)
+        {
+            bool got = (m.flag && orp_flag_set(m.flag)) ||
+                       (m.is_piece && goblin::collected::is_row_collected(m.row_id)) ||
+                       (m.is_kindling && goblin::kindling::is_row_collected(m.row_id));
+            if (got) collected_n++;
+        }
+        bool depleted = (collected_n == static_cast<int>(c.members.size()));
         if (depleted) depleted_n++;
         uint16_t want = depleted ? goblin::generated::CLUSTER_DONE_ICON_ID
                                  : goblin::generated::CLUSTER_ICON_ID;
