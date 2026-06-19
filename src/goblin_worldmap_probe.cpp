@@ -28,6 +28,36 @@ std::shared_ptr<spdlog::logger> g_log;
 // markers prototype. 0 = no live cursor seen yet / map closed.
 std::atomic<uintptr_t> g_active_cursor{0};
 
+// The eldenring.exe image range [base, end). A STATIC/default cursor template
+// lives in here with a constant junk view (zoom≈4.88, coord≈0); only the real
+// map cursor's WorldMapArea is HEAP-allocated (outside the image). Rejecting
+// cursors whose +0xF0 view points inside the image kills that false positive
+// (it was thrashing g_active_cursor every tick → first-open lag / jumps).
+bool exe_range_inited = false;
+uintptr_t g_exe_base = 0, g_exe_end = 0;
+
+void init_exe_range()
+{
+    if (exe_range_inited)
+        return;
+    exe_range_inited = true;
+    g_exe_base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!g_exe_base)
+        return;
+    // PE: e_lfanew @ base+0x3C; SizeOfImage @ base + e_lfanew + 0x50 (PE64).
+    uint32_t e_lfanew = *reinterpret_cast<uint32_t *>(g_exe_base + 0x3C);
+    uint32_t size_of_image = *reinterpret_cast<uint32_t *>(g_exe_base + e_lfanew + 0x50);
+    g_exe_end = g_exe_base + size_of_image;
+}
+
+// True if `view` points inside the exe image = the static cursor template, not a
+// live heap WorldMapArea.
+bool view_is_static(uintptr_t view)
+{
+    init_exe_range();
+    return g_exe_base && view >= g_exe_base && view < g_exe_end;
+}
+
 // CS::WorldMapCursorControl vtable RVA (doc imagebase 0x140000000). The cursor
 // object's first qword IS this vtable ptr, so scanning memory for this value
 // finds cursor instances directly. Resolve-by-RVA: if a game patch shifted it,
@@ -216,7 +246,7 @@ void probe_loop()
                     // the overlay-markers prototype's get_live_view(). DIAG: log the
                     // 0→addr (and address-change) transition so the first-open latency
                     // can be measured against the map-open moment.
-                    if (zoom != 0.f)
+                    if (zoom != 0.f && !view_is_static(view))
                     {
                         if (g_active_cursor.load(std::memory_order_relaxed) != a)
                             g_log->info("[PUBLISH] active cursor @{:#x} (view @{:#x}) zoom={:.4f} "
@@ -292,7 +322,8 @@ bool get_live_view(LiveView &out)
     // Confirm the cached address is still a live cursor (menu may have closed).
     if (!seh_read8(reinterpret_cast<void *>(a), &vt) || vt != base + CURSOR_VTABLE_RVA)
         return false;
-    if (!seh_read8(reinterpret_cast<void *>(a + OFF_VIEW_PTR), &view) || !view)
+    if (!seh_read8(reinterpret_cast<void *>(a + OFF_VIEW_PTR), &view) || !view ||
+        view_is_static(view))
         return false;
     if (!seh_read4(reinterpret_cast<void *>(a + OFF_X), &out.cursorX) ||
         !seh_read4(reinterpret_cast<void *>(a + OFF_Z), &out.cursorZ) ||
