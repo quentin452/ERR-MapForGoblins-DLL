@@ -362,6 +362,9 @@ namespace
                 ImVec2(360.0f, 240.0f),
                 ImVec2(720.0f, io.DisplaySize.y * 0.92f));
             ImGui::Begin("Map for Goblins##large", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+            // Keep the per-category census warm: the watcher only runs the flag
+            // sweep while the panel is on-screen (stamped here each frame).
+            goblin::ui::note_menu_visible();
             if (ImGui::Button("[-] collapse"))
                 g_large = false;
             ImGui::SameLine();
@@ -442,14 +445,33 @@ namespace
                     bool cv = goblin::ui::category_visible(c);
                     if (ImGui::Checkbox(clabel, &cv))
                         goblin::ui::set_category_visible(c, cv);
+                    // Capture row width once, before any SameLine, so the badge and
+                    // the cluster checkbox both position from a stable origin.
+                    float row_avail = ImGui::GetContentRegionAvail().x;
                     if (legacy_quest && ImGui::IsItemHovered())
                         ImGui::SetTooltip("Legacy / unfinished: raw quest-NPC map pins.\n"
                                           "Use the Quest Browser (below) for quest navigation.\n"
                                           "Off by default.");
+                    // Uncollected badge: "<remaining>/<total>" of collectible items in
+                    // this category. Skipped for categories with no collectible rows
+                    // (graces/NPCs/regions → total 0). Green once fully looted.
+                    int rem = goblin::ui::category_remaining(c);
+                    int tot = goblin::ui::category_total(c);
+                    if (tot > 0)
+                    {
+                        char cntbuf[24];
+                        snprintf(cntbuf, sizeof(cntbuf), "%d/%d", rem < 0 ? 0 : rem, tot);
+                        ImGui::SameLine(row_avail - 150.0f);
+                        ImVec4 col = (rem == 0) ? ImVec4(0.45f, 0.85f, 0.45f, 1.0f)   // all collected
+                                                : ImVec4(0.85f, 0.82f, 0.45f, 1.0f);  // some left
+                        ImGui::TextColored(col, "%s", cntbuf);
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Items not yet collected / total collectible in this category.");
+                    }
                     // Right-aligned cluster opt-in: checked = this category's markers
                     // join the location pile; unchecked = shown normally on the map.
                     // Live (re-plans on next map open).
-                    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 70.0f);
+                    ImGui::SameLine(row_avail - 70.0f);
                     bool clu = goblin::ui::category_clustered(c);
                     if (ImGui::Checkbox("cluster", &clu))
                         goblin::ui::set_category_clustered(c, clu);
@@ -791,8 +813,12 @@ namespace
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Aggressive far-merge: fewest distant icons (Steam Deck / low-end).");
 
                     bool dbg = goblin::ui::cluster_debug();
-                    if (ImGui::Checkbox("Cluster labels show counts", &dbg))
+                    if (ImGui::Checkbox("Show cluster bubbles on map (off = counts only in this menu)", &dbg))
                         goblin::ui::set_cluster_debug(dbg);
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("On: a pile glyph (with its per-location count) sits on the map.\n"
+                                          "Off: no bubble on the map; the per-category counts above are\n"
+                                          "the source. Clustered piles stay parked either way (no freeze).");
 
                     if (!goblin::ui::clustering_active())
                         ImGui::TextDisabled("No location over this size — lower the cluster size.");

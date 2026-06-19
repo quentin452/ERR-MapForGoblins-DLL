@@ -77,6 +77,14 @@ namespace goblin
     int refresh_quest_npc_eviction();
     int refresh_cluster_depletion();
 
+    // Per-category uncollected census. Sweeps g_section_rows, buckets by category,
+    // and caches "collectible total" + "remaining (uncollected)" per category for
+    // the overlay to show next to each checkbox. Reads the game flag API, so it
+    // runs on the watcher thread — and ONLY while the overlay panel is on-screen
+    // (ui::note_menu_visible stamps a deadline), so the 9296-row sweep costs
+    // nothing when the menu is closed. Throttled to 1s.
+    int refresh_category_census();
+
     // Part 2 (Quest Browser): recompute, for each QUEST_BROWSER entry, whether
     // its questline is now UNFINISHABLE — its NpcQuest::fail_flag event flag is
     // set (NPC dead early / interconnection lost). Reads flags on the watcher
@@ -164,6 +172,15 @@ namespace goblin
         int category_section(int idx);
         bool category_visible(int idx);
         void set_category_visible(int idx, bool visible);
+        // Per-category uncollected census (drives the "<remaining>/<total>" badge
+        // next to each category). category_total = collectible rows in the
+        // category; category_remaining = uncollected (total - looted), or -1 when
+        // the category has no collectible rows (graces/NPCs/regions → no badge).
+        // Cached by refresh_category_census() on the watcher thread. note_menu_visible
+        // must be called each frame the panel is drawn to keep the census warm.
+        int category_total(int idx);
+        int category_remaining(int idx);
+        void note_menu_visible();
         // ERR integration: hide our boss markers since ERR marks bosses natively.
         bool err_hide_bosses();
         void set_err_hide_bosses(bool hide);
