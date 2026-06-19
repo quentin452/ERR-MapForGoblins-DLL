@@ -339,6 +339,14 @@ static std::atomic<bool> g_category_cluster[NUM_CATEGORIES];
 // the global default). Seeded at init; edits persist to clusterThresholdOverrides
 // on Save and take effect after restart.
 static std::atomic<int> g_category_threshold[NUM_CATEGORIES];
+// Per-category uncollected census (refresh_category_census fills these on the
+// watcher thread; the overlay reads them). g_cat_total = collectible rows in the
+// category; g_cat_remaining = uncollected, or -1 = no collectible rows (no badge).
+// g_menu_visible_ns = steady_clock nanoseconds of the last overlay-panel frame;
+// the census skips its flag sweep unless this is within the last 2s.
+static std::atomic<int> g_cat_total[NUM_CATEGORIES];
+static std::atomic<int> g_cat_remaining[NUM_CATEGORIES];
+static std::atomic<long long> g_menu_visible_ns{0};
 
 // Coordination for the multiple areaNo owners. Section visibility, fragment-
 // eviction and collected-eviction all write WORLD_MAP_POINT_PARAM_ST.areaNo
@@ -400,7 +408,11 @@ struct ClusterMember { uint8_t *ptr; uint8_t orig_area; Category cat; };
 static std::vector<ClusterMember> g_cluster_members;  // individuals parked under a cluster
 
 // g_clusters_expanded is declared earlier (near is_section_hidden_ptr).
-static std::atomic<bool> g_cluster_debug{true};       // true = cluster labels show counts (default on)
+// Cluster bubbles ON by default: the checkbox reads this value directly while the
+// MAP state is only synced at plan-time (replan reads this) / on toggle — so the
+// default MUST match what plan-time publishes, else the checkbox and the map
+// disagree until the user toggles. true => bubble shown WITH its count (no phantom).
+static std::atomic<bool> g_cluster_debug{true};       // on-map cluster bubbles + count shown by default; uncheck in the menu (off = counts only in the overlay census)
 // Hotkey thread sets these; the watcher applies the areaNo/textId flips (single
 // owner of game-state mutation), mirroring the section + master toggles.
 static std::atomic<bool> g_cluster_expand_dirty{false};
@@ -444,7 +456,7 @@ static void apply_section_visibility(Section s, bool visible)
     bool expanded = g_clusters_expanded.load();
     for (const auto &cl : g_clusters)
         if (section_of(cl.cat) == s)
-            cl.ptr[0x20] = (!visible || expanded || cluster_should_hide(cl.cat)) ? 99 : cl.area;
+            cl.ptr[0x20] = (!visible || expanded || !g_cluster_debug.load() || cluster_should_hide(cl.cat)) ? 99 : cl.area;
     for (const auto &m : g_cluster_members)
         if (section_of(m.cat) == s)
             m.ptr[0x20] = (visible && expanded && !cluster_should_hide(m.cat)) ? m.orig_area : 99;
@@ -484,7 +496,7 @@ static void apply_category_visibility(Category c, bool visible)
     bool expanded = g_clusters_expanded.load();
     for (const auto &cl : g_clusters)
         if (cl.cat == c)
-            cl.ptr[0x20] = (!visible || expanded || cluster_should_hide(c)) ? 99 : cl.area;
+            cl.ptr[0x20] = (!visible || expanded || !g_cluster_debug.load() || cluster_should_hide(c)) ? 99 : cl.area;
     for (const auto &m : g_cluster_members)
         if (m.cat == c)
             m.ptr[0x20] = (visible && expanded && !cluster_should_hide(c)) ? m.orig_area : 99;
@@ -627,13 +639,22 @@ static void apply_cluster_expanded(bool expanded)
                  mem_parked, g_cluster_members.size());
 }
 
-// Toggle cluster labels between their member count and icon-only (textId1 = -1).
-static void apply_cluster_debug(bool show_counts)
+// Show / hide the on-map cluster bubbles. ON = the pile glyph is on its page with
+// its count on line 2. OFF = the bubble is parked off-page (areaNo 99) entirely —
+// no phantom numberless glyph; the per-category overlay census is the count source.
+// Members stay parked either way (they only un-park in expanded view), so OFF just
+// removes the pile icon, keeping the freeze-fix parking intact.
+static void apply_cluster_debug(bool show_bubbles)
 {
+    bool expanded = g_clusters_expanded.load();
     for (const auto &c : g_clusters)
-        reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(c.ptr)->textId2 =
-            show_counts ? c.count_textid : -1;  // line 2 = count; textId1 (name) stays
-    spdlog::info("[CLUSTER] labels -> {}", show_counts ? "COUNT" : "ICON-ONLY");
+    {
+        auto *st = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(c.ptr);
+        st->textId2 = show_bubbles ? c.count_textid : -1;  // line 2 = count; textId1 (name) stays
+        bool hide = !show_bubbles || expanded || cluster_should_hide(c.cat);
+        c.ptr[0x20] = hide ? 99 : c.area;
+    }
+    spdlog::info("[CLUSTER] bubbles -> {}", show_bubbles ? "SHOWN(+count)" : "HIDDEN");
 }
 
 // Cluster label census for setup_messages (PlaceName textId → member count).
@@ -1179,8 +1200,12 @@ static void replan_clusters()
         cd->textId3 = cd->textId4 = -1;
         // PUBLISH last: every field is now set, so make the row visible only now.
         // (areaNo is the on-page lever; the render thread sees a fully-formed row.)
-        cd->areaNo_forDistViewMark = b.area;
-        cd->areaNo = b.area;
+        // Bubbles default OFF (counts live in the overlay census) — park unless the
+        // user has the "Show cluster bubbles" toggle on. apply_cluster_debug flips
+        // this live; the section/category gates re-apply the same g_cluster_debug check.
+        uint8_t pub_area = g_cluster_debug.load() ? b.area : 99;
+        cd->areaNo_forDistViewMark = pub_area;
+        cd->areaNo = pub_area;
 
         std::vector<ClusterMemberRef> mrefs;
         Category domcat = g_section_rows[b.members[0]].cat;  // for section gating
@@ -2997,6 +3022,66 @@ int goblin::refresh_cluster_depletion()
     return changed;
 }
 
+// Per-category uncollected census — feeds the overlay's "<remaining>/<total>"
+// badge next to each category. Gated to "menu on-screen" + throttled to 1s so the
+// 9296-row flag sweep is free when the panel is closed. Collected detection mirrors
+// cluster depletion: plain loot via textDisableFlagId1 + orp_flag_set, Reforged
+// pieces/kindling via row-id tracking. Categories with no collectible rows
+// (graces/NPCs/regions) cache remaining = -1 so the overlay draws no badge.
+int goblin::refresh_category_census()
+{
+    GOBLIN_BENCH("refresh.category_census");
+    using clock = std::chrono::steady_clock;
+    // Skip entirely unless the overlay panel was drawn within the last 2s.
+    long long now_ns =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now().time_since_epoch()).count();
+    long long last_seen = g_menu_visible_ns.load();
+    if (last_seen == 0 || now_ns - last_seen > 2'000'000'000LL) return 0;
+    // Throttle: piles don't deplete fast, and the menu reads cached atomics.
+    static clock::time_point last{};
+    auto now = clock::now();
+    if (now != clock::time_point{} && now - last < std::chrono::milliseconds(1000)) return 0;
+    last = now;
+    if (!orp_flag_set(6001)) return 0;  // cold flag API → don't publish bogus counts
+    using ST = from::paramdef::WORLD_MAP_POINT_PARAM_ST;
+    int collectible[NUM_CATEGORIES] = {0};
+    int looted[NUM_CATEGORIES]      = {0};
+    for (const auto &r : g_section_rows)
+    {
+        int ci = static_cast<int>(r.cat);
+        if (ci < 0 || ci >= NUM_CATEGORIES) continue;
+        uint32_t f = reinterpret_cast<ST *>(r.ptr)->textDisableFlagId1;  // collect flag
+        if (!(f || r.is_piece || r.is_kindling)) continue;  // not a collectible row
+        collectible[ci]++;
+        bool taken = (f && orp_flag_set(f)) ||
+                     (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
+                     (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
+        if (taken) looted[ci]++;
+    }
+    for (int c = 0; c < NUM_CATEGORIES; c++)
+    {
+        g_cat_total[c].store(collectible[c]);
+        g_cat_remaining[c].store(collectible[c] > 0 ? (collectible[c] - looted[c]) : -1);
+    }
+    return 0;
+}
+
+int  goblin::ui::category_total(int idx)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return 0;
+    return g_cat_total[idx].load();
+}
+int  goblin::ui::category_remaining(int idx)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return -1;
+    return g_cat_remaining[idx].load();
+}
+void goblin::ui::note_menu_visible()
+{
+    g_menu_visible_ns.store(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
 struct FlagOrPair { uint32_t primary; uint32_t alt; };
 static constexpr FlagOrPair FLAG_OR_PAIRS[] = {
     {7608, 7609},  // Sellen/Jerren academy battle
@@ -3250,8 +3335,15 @@ void goblin::menu_auto_toggle_loop()
             g_cluster_expand_dirty.store(false);
             apply_cluster_expanded(g_clusters_expanded.load());
         }
-        if (g_cluster_debug_dirty.exchange(false))  // textId flip only — no parking, render-safe
+        // Bubble show/hide now PARKS the cluster glyph (areaNo), not just a textId
+        // flip — so gate it to map-closed like expand/replan (parking the live blob
+        // while the map renders risks the duplicate/oversized race). Applies on next
+        // open. Keep the dirty bit set until then so the toggle isn't lost.
+        if (!map_open_now && g_cluster_debug_dirty.load())
+        {
+            g_cluster_debug_dirty.store(false);
             apply_cluster_debug(g_cluster_debug.load());
+        }
 
         // (Player-position probe logging removed — proximity clustering paused:
         // live player world coords are unstable/chunk-local and the map-cursor /
