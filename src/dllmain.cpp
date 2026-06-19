@@ -195,7 +195,9 @@ static void setup_mod()
                                          goblin::config::debugItemGrants,
                                          goblin::config::debugFlagCapture);
 
-    if (goblin::config::debugWorldmapProbe)
+    // The overlay-markers prototype needs the probe loop running (it publishes the
+    // active cursor for get_live_view), so start it for either flag.
+    if (goblin::config::debugWorldmapProbe || goblin::config::overlayMarkersProto)
         goblin::worldmap_probe::initialize(g_mod_folder / "logs" / "MapForGoblins_wmprobe.log");
 
     // The watcher is the single owner of the WorldMapPointParam state — it

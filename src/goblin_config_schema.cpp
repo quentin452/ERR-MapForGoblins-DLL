@@ -54,6 +54,7 @@ namespace goblin::config
     bool debugItemGrants = false;
     bool debugFlagCapture = false;
     bool debugWorldmapProbe = false;
+    bool overlayMarkersProto = false;
     bool liveRefreshWorldMap = false;
 
     // In-game per-section visibility (the 7 display groups). Persisted so an
@@ -355,6 +356,8 @@ namespace
                   "Quest Browser death-flag capture tool (overlay Dev tools): arm naming an\nNPC, kill it, finalize -> the persisted flag(s) are written to\nlogs/MapForGoblins_flagcapture.txt as NpcQuest::fail_flag candidates.\nInstalls the SetEventFlag hook in a LIGHT mode (no coverage drain); off by default."),
                 B("debug_worldmap_probe", debugWorldmapProbe, "false",
                   "Dev probe: log the world-map cursor coords (read-only) + the live view\nprojection (pan/zoom @ WorldMapArea+0x378/+0x380, virtual canvas) to confirm\nthe world->screen transform. Open the world map, move the cursor, then PAN\nand ZOOM. Logs to logs/MapForGoblins_wmprobe.log; off by default."),
+                B("overlay_markers_proto", overlayMarkersProto, "false",
+                  "Dev prototype (overlay-rendered markers): draw our own marker dot in\nthe ImGui overlay, projected onto the open world map via the live pan/zoom\n(WorldMapArea), to verify the world->screen affine. Starts the cursor probe\nif not already on. Open the F1 menu to tune scale/bias live. Off by default."),
                 B("live_refresh_world_map", liveRefreshWorldMap, "false",
                   "EXPERIMENTAL: re-render world-map icons WHILE the map is open when you\ntoggle a section/category (instead of only on the next map open). Hooks the\ngame's own placed-map-point (re)build and replays it with the engine's real\ncontext on its own thread. Off by default -- enable to test; if icons don't\nupdate live or anything misbehaves, set back to false (toggles still apply on\nthe next map open). See docs/windows_re_live_refresh_capture.md."),
             }},

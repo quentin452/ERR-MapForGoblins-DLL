@@ -109,6 +109,11 @@ namespace goblin
         // offsets / marker-space). See goblin_worldmap_probe.{hpp,cpp}.
         extern bool debugWorldmapProbe;
 
+        // Dev prototype: draw overlay-rendered marker dots projected onto the open
+        // world map (verifies the world->screen affine). See goblin_overlay.cpp +
+        // goblin_worldmap_probe::get_live_view.
+        extern bool overlayMarkersProto;
+
         // EXPERIMENTAL live world-map icon refresh. Hooks the engine's placed-
         // map-point (re)build (FUN_140a82a80) so a section/category toggle re-renders
         // icons WHILE the map is open instead of only on the next open. Off by

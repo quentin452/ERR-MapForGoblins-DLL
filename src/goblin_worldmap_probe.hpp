@@ -20,4 +20,23 @@
 namespace goblin::worldmap_probe
 {
     void initialize(const std::filesystem::path &log_path);
+
+    // Live projection inputs for the overlay-markers prototype. The active map
+    // cursor's marker coord (+0xFC/+0x104) and its WorldMapArea (cursor+0xF0)
+    // pan (+0x378) / zoom (+0x380). Read fresh from the cached active cursor each
+    // call (read-only + SEH-guarded → safe on the render thread). Returns false
+    // if the map is closed / no live cursor / a read faulted. Requires the probe
+    // loop to be running (config debug_worldmap_probe OR overlay_markers_proto).
+    struct LiveView
+    {
+        float cursorX, cursorZ; // reticle, marker space (+0xFC / +0x104)
+        float panX, panZ, zoom; // WorldMapArea viewport
+        float raw[8];           // diag: cursor+0xFC,+0x100,+0x104,+0x108,+0x10C,+0x110,+0x114,+0x118
+    };
+    bool get_live_view(LiveView &out);
+
+    // DIAG: the currently-published active cursor address (0 = none). Lets the
+    // overlay tell apart "probe hasn't found a cursor yet" (0) from "found but the
+    // live read failed" (non-0 but get_live_view false) when chasing open latency.
+    uintptr_t debug_active_cursor();
 }

@@ -4,6 +4,7 @@
 #include <spdlog/sinks/basic_file_sink.h>
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -21,6 +22,11 @@ namespace goblin::worldmap_probe
 namespace
 {
 std::shared_ptr<spdlog::logger> g_log;
+
+// Last active map cursor (the one with a valid WorldMapArea/zoom). Published by
+// the probe loop, read by get_live_view() on the render thread for the overlay-
+// markers prototype. 0 = no live cursor seen yet / map closed.
+std::atomic<uintptr_t> g_active_cursor{0};
 
 // CS::WorldMapCursorControl vtable RVA (doc imagebase 0x140000000). The cursor
 // object's first qword IS this vtable ptr, so scanning memory for this value
@@ -121,18 +127,38 @@ void probe_loop()
     using clock = std::chrono::steady_clock;
     std::vector<uintptr_t> candidates;
     std::unordered_map<uintptr_t, std::array<float, 3>> last;
+    std::unordered_map<uintptr_t, std::array<float, 3>> last_view; // panx/panz/zoom per cursor
     std::unordered_map<uintptr_t, char> bounds_dumped; // one-shot bounds dump per active cursor
     clock::time_point last_scan{};
     int empty_logs = 0;
 
     while (true)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(350));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
         auto now = clock::now();
 
+        // Force a rescan if the published active cursor just died (map closed/reopened)
+        // → republish a fresh one fast, so the overlay-markers prototype tracks from
+        // the first frame of a new map open instead of waiting out the periodic rescan.
+        bool active_dead = false;
+        if (uintptr_t ac = g_active_cursor.load(std::memory_order_relaxed))
+        {
+            uint64_t vt;
+            if (!seh_read8(reinterpret_cast<void *>(ac), &vt) || vt != vtable_va)
+            {
+                active_dead = true;
+                g_active_cursor.store(0, std::memory_order_relaxed);
+            }
+        }
+
         // (Re)scan the full address space periodically (and when empty) — the menu
-        // is re-created on each open, so new instances appear.
-        if (candidates.empty() || now - last_scan > std::chrono::seconds(5))
+        // is re-created on each open, so new instances appear. Scan eagerly (≈0.4s)
+        // while we have NO active cursor (map closed / just opened → publish fast),
+        // and lazily (2s) once one is locked (cheap; the per-frame read is live).
+        auto rescan_period = g_active_cursor.load(std::memory_order_relaxed)
+                                 ? std::chrono::milliseconds(2000)
+                                 : std::chrono::milliseconds(400);
+        if (candidates.empty() || active_dead || now - last_scan > rescan_period)
         {
             candidates.clear();
             scan_all_cursors(vtable_va, candidates);
@@ -160,30 +186,53 @@ void probe_loop()
             if (!sane(x) || !sane(z) || !sane(y) || (x == 0.f && z == 0.f))
                 continue;
             auto &l = last[a];
-            if (x != l[0] || z != l[1] || y != l[2]) // moved → this is (likely) the active cursor
+            bool coord_moved = (x != l[0] || z != l[1] || y != l[2]);
+            if (coord_moved) // reticle moved → this is (likely) the active cursor
             {
                 g_log->info("cursor @{:#x} (menu @{:#x}): +0xFC={:.2f}  +0x104={:.2f}  +0x10C={:.2f}",
                             a, a - CURSOR_OFF_IN_MENU, x, z, y);
                 l = {x, z, y};
+            }
 
-                // PROJECTION: follow cursor+0xF0 → WorldMapArea and log the LIVE
-                // viewport (pan +0x378, zoom +0x380) + the static full-map rect every
-                // time the cursor moves. PAN the map → pan sweeps; ZOOM → zoom changes;
-                // the +0x350 rect should stay [0,0,10496,10496]. (doc §6)
-                uint64_t view = 0;
-                if (seh_read8(reinterpret_cast<void *>(a + OFF_VIEW_PTR), &view) && view)
+            // PROJECTION: follow cursor+0xF0 → WorldMapArea and read the LIVE viewport
+            // (pan +0x378, zoom +0x380) + the static full-map rect EVERY tick. Log when
+            // the reticle moved OR pan/zoom changed — ZOOM centers on the reticle (coord
+            // unchanged) and edge-scroll PAN clamps the reticle at the edge (coord frozen
+            // while pan sweeps), so gating on coord-move alone misses both. (doc §6)
+            // PAN → pan sweeps; ZOOM → zoom changes; +0x350 rect stays [0,0,10496,10496].
+            uint64_t view = 0;
+            if (seh_read8(reinterpret_cast<void *>(a + OFF_VIEW_PTR), &view) && view)
+            {
+                float panx, panz, zoom, r0, r1, r2, r3;
+                if (seh_read4(reinterpret_cast<void *>(view + VIEW_PAN_X), &panx) &&
+                    seh_read4(reinterpret_cast<void *>(view + VIEW_PAN_Z), &panz) &&
+                    seh_read4(reinterpret_cast<void *>(view + VIEW_ZOOM), &zoom) &&
+                    seh_read4(reinterpret_cast<void *>(view + 0x350), &r0) &&
+                    seh_read4(reinterpret_cast<void *>(view + 0x354), &r1) &&
+                    seh_read4(reinterpret_cast<void *>(view + 0x358), &r2) &&
+                    seh_read4(reinterpret_cast<void *>(view + 0x35c), &r3))
                 {
-                    float panx, panz, zoom, r0, r1, r2, r3;
-                    if (seh_read4(reinterpret_cast<void *>(view + VIEW_PAN_X), &panx) &&
-                        seh_read4(reinterpret_cast<void *>(view + VIEW_PAN_Z), &panz) &&
-                        seh_read4(reinterpret_cast<void *>(view + VIEW_ZOOM), &zoom) &&
-                        seh_read4(reinterpret_cast<void *>(view + 0x350), &r0) &&
-                        seh_read4(reinterpret_cast<void *>(view + 0x354), &r1) &&
-                        seh_read4(reinterpret_cast<void *>(view + 0x358), &r2) &&
-                        seh_read4(reinterpret_cast<void *>(view + 0x35c), &r3))
+                    // Publish this cursor as the active one (valid view + zoom) for
+                    // the overlay-markers prototype's get_live_view(). DIAG: log the
+                    // 0→addr (and address-change) transition so the first-open latency
+                    // can be measured against the map-open moment.
+                    if (zoom != 0.f)
+                    {
+                        if (g_active_cursor.load(std::memory_order_relaxed) != a)
+                            g_log->info("[PUBLISH] active cursor @{:#x} (view @{:#x}) zoom={:.4f} "
+                                        "coord=({:.1f},{:.1f})", a, view, zoom, x, z);
+                        g_active_cursor.store(a, std::memory_order_relaxed);
+                    }
+
+                    auto &lv = last_view[a];
+                    bool view_changed = (panx != lv[0] || panz != lv[1] || zoom != lv[2]);
+                    if (coord_moved || view_changed)
+                    {
                         g_log->info("  VIEW @{:#x}: pan(+0x378)=({:.2f},{:.2f})  zoom(+0x380)={:.4f}"
                                     "  fullRect(+0x350)=[{:.1f},{:.1f},{:.1f},{:.1f}]",
                                     view, panx, panz, zoom, r0, r1, r2, r3);
+                        lv = {panx, panz, zoom};
+                    }
                 }
 
                 // One-shot per active cursor: the full float window cursor+0xE0..+0x388
@@ -228,6 +277,35 @@ void probe_loop()
     }
 }
 } // namespace
+
+uintptr_t debug_active_cursor() { return g_active_cursor.load(std::memory_order_relaxed); }
+
+bool get_live_view(LiveView &out)
+{
+    uintptr_t a = g_active_cursor.load(std::memory_order_relaxed);
+    if (!a)
+        return false;
+    static uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base)
+        return false;
+    uint64_t vt = 0, view = 0;
+    // Confirm the cached address is still a live cursor (menu may have closed).
+    if (!seh_read8(reinterpret_cast<void *>(a), &vt) || vt != base + CURSOR_VTABLE_RVA)
+        return false;
+    if (!seh_read8(reinterpret_cast<void *>(a + OFF_VIEW_PTR), &view) || !view)
+        return false;
+    if (!seh_read4(reinterpret_cast<void *>(a + OFF_X), &out.cursorX) ||
+        !seh_read4(reinterpret_cast<void *>(a + OFF_Z), &out.cursorZ) ||
+        !seh_read4(reinterpret_cast<void *>(view + VIEW_PAN_X), &out.panX) ||
+        !seh_read4(reinterpret_cast<void *>(view + VIEW_PAN_Z), &out.panZ) ||
+        !seh_read4(reinterpret_cast<void *>(view + VIEW_ZOOM), &out.zoom) || out.zoom == 0.f)
+        return false;
+    // diag window cursor+0xFC..+0x118 (find which offset drives the vertical axis)
+    for (int i = 0; i < 8; ++i)
+        if (!seh_read4(reinterpret_cast<void *>(a + 0xFC + i * 4), &out.raw[i]))
+            out.raw[i] = 0.f;
+    return true;
+}
 
 void initialize(const std::filesystem::path &log_path)
 {

@@ -18,6 +18,7 @@
 #include <backends/imgui_impl_win32.h>
 
 #include "goblin_inject.hpp"   // goblin::world_map_open()
+#include "goblin_worldmap_probe.hpp"   // get_live_view() for the marker prototype
 
 #include <vector>
 #include <map>
@@ -343,6 +344,163 @@ namespace
         spdlog::info("[OVERLAY] ImGui initialised: {} back buffers, hwnd={:p}",
                      g_buffer_count, static_cast<void *>(g_hwnd));
         return true;
+    }
+
+    // ── Overlay-rendered markers PROTOTYPE (config overlay_markers_proto) ──
+    // Project the live map reticle (and later real markers) onto the open world
+    // map via the WorldMapArea pan/zoom, to verify the world→screen affine. The
+    // RE doc's formula direction is unconfirmed (evidence says zoom = px/marker-
+    // unit → MULTIPLY, not the doc's /zoom), so both forms + a residual {scale,
+    // bias} are exposed as live sliders. Tune until our dot sits on the game's
+    // reticle through pan + zoom → the affine is solved.
+    // SOLVED model (re-fitted from the cross-capture, 2026-06-19) — CENTER-RELATIVE,
+    // so it's zoom-independent (the earlier pan-based form drifted with zoom):
+    //   screenX = (markerU - centerU) * zoom * scaleX + realW/2 + biasX
+    //   screenY = (markerV - centerV) * zoom * scaleY + realH/2 + biasY
+    // centerU = +0xFC (raw[0]), centerV = +0x100 (raw[1]) = the VIEW CENTER in marker
+    // space; markerU = +0x104 (raw[2]), markerV = +0x108 (raw[3]) = a point's coords;
+    // screen-centre (realW/2, realH/2) is the pivot. scale ≈ 0.986 (fine residual);
+    // bias ≈ 0 (centre handles it). Verified: (3390-4824)*0.196+960 = 679 ✓.
+    struct MarkerCalib
+    {
+        float scaleX = 1.0f, scaleY = 1.0f, biasX = 0.0f, biasY = 0.0f;
+    };
+    MarkerCalib g_calib;
+
+    // (markerU, markerV) marker coords → backbuffer px. centerU/V = live view centre.
+    ImVec2 project_uv(const goblin::worldmap_probe::LiveView &v, float mU, float mV,
+                      float realW, float realH)
+    {
+        float centerU = v.raw[0], centerV = v.raw[1];
+        return ImVec2((mU - centerU) * v.zoom * g_calib.scaleX + realW * 0.5f + g_calib.biasX,
+                      (mV - centerV) * v.zoom * g_calib.scaleY + realH * 0.5f + g_calib.biasY);
+    }
+
+    // OS cursor in client/backbuffer px, read DIRECTLY (not io.MousePos). ImGui's
+    // mouse pos comes from the WndProc, which hk_wndproc only forwards while the
+    // menu is open → io.MousePos freezes once the menu has been closed. The game
+    // reticle still tracks the OS cursor, so read that straight from the source.
+    ImVec2 os_mouse_px()
+    {
+        POINT pt{};
+        BOOL ok = o_get_cursor_pos ? o_get_cursor_pos(&pt) : GetCursorPos(&pt);
+        if (ok && g_hwnd && ScreenToClient(g_hwnd, &pt))
+            return ImVec2((float)pt.x, (float)pt.y);
+        return ImGui::GetIO().MousePos; // fallback
+    }
+
+    // Draws the prototype every frame the map is open. Foreground dots = always;
+    // the tuning window + hotkeys = the calibration UI.
+    void draw_markers_proto(bool menu_open)
+    {
+        goblin::worldmap_probe::LiveView v;
+        bool live = goblin::worldmap_probe::get_live_view(v);
+        ImGuiIO &io = ImGui::GetIO();
+        ImDrawList *fg = ImGui::GetForegroundDrawList();
+
+        // DIAG (first-open latency): how long have we been WITHOUT a live view, and is
+        // the probe's published cursor null (probe hasn't found one) or non-null but
+        // failing the live read? Accumulates while !live, resets on live.
+        static float wait_s = 0.0f;
+        if (live)
+            wait_s = 0.0f;
+        else
+        {
+            wait_s += io.DeltaTime;
+            uintptr_t ac = goblin::worldmap_probe::debug_active_cursor();
+            char wbuf[160];
+            snprintf(wbuf, sizeof(wbuf),
+                     "MARKER PROTO: no live view  waiting=%.2fs  active_cursor=%#llx  (%s)",
+                     wait_s, (unsigned long long)ac,
+                     ac ? "published but read failed" : "probe has no cursor yet");
+            fg->AddText(ImVec2(12, 12), IM_COL32(0, 0, 0, 200), wbuf);
+            fg->AddText(ImVec2(11, 11), IM_COL32(255, 220, 0, 255), wbuf);
+        }
+
+        // Magenta cross at the mouse = where we BELIEVE the game reticle is. If it
+        // sits on the game's reticle, reticle==mouse holds → capture is valid.
+        ImVec2 m = os_mouse_px();
+        fg->AddLine(ImVec2(m.x - 12, m.y), ImVec2(m.x + 12, m.y), IM_COL32(255, 0, 255, 220), 1.0f);
+        fg->AddLine(ImVec2(m.x, m.y - 12), ImVec2(m.x, m.y + 12), IM_COL32(255, 0, 255, 220), 1.0f);
+
+        // The reticle's screen-axis coords: U = +0x104 (raw[2]), V = +0x108 (raw[3]).
+        float U = v.raw[2], V = v.raw[3];
+        if (live)
+        {
+            ImVec2 p = project_uv(v, U, V, io.DisplaySize.x, io.DisplaySize.y);
+            // Our projected reticle: cyan ring + crosshair. Should sit on the game
+            // reticle (= the magenta mouse cross) once calibrated.
+            fg->AddCircle(p, 10.0f, IM_COL32(0, 255, 255, 255), 0, 2.0f);
+            fg->AddLine(ImVec2(p.x - 14, p.y), ImVec2(p.x + 14, p.y), IM_COL32(0, 255, 255, 200), 1.0f);
+            fg->AddLine(ImVec2(p.x, p.y - 14), ImVec2(p.x, p.y + 14), IM_COL32(0, 255, 255, 200), 1.0f);
+
+            // On-screen readout (menu-CLOSED, so the reticle is live and mouse==reticle).
+            // err = projected - mouse = the true model error. Verify it stays ~0 through
+            // pan+zoom. (Reading this via the F1 window is useless: opening F1 freezes the
+            // game reticle, so cyan and the mouse diverge by design.)
+            char buf[160];
+            snprintf(buf, sizeof(buf),
+                     "MARKER PROTO  zoom=%.4f  err=(%.1f, %.1f)px  scale=(%.4f,%.4f)\n"
+                     "C=calibrate (reticle on mouse)   X=reset   L=log",
+                     v.zoom, p.x - m.x, p.y - m.y, g_calib.scaleX, g_calib.scaleY);
+            fg->AddText(ImVec2(12, 12), IM_COL32(0, 0, 0, 200), buf);          // shadow
+            fg->AddText(ImVec2(11, 11), IM_COL32(0, 255, 255, 255), buf);
+        }
+
+        // Hotkeys (work menu-closed): C = 1-point calibrate (solve biasX/Y so the
+        // projection of the reticle hits the mouse), L = log a row, X = reset. The
+        // model is linear in bias, so a single capture pins both biases exactly.
+        static bool prevC = false, prevX = false, prevL = false;
+        bool downC = (GetAsyncKeyState('C') & 0x8000) != 0;
+        bool downX = (GetAsyncKeyState('X') & 0x8000) != 0;
+        bool downL = (GetAsyncKeyState('L') & 0x8000) != 0;
+        if (downC && !prevC && live)
+        {
+            // Solve the residual bias so the projection hits the mouse exactly here.
+            g_calib.biasX = 0.f;
+            g_calib.biasY = 0.f;
+            ImVec2 p0 = project_uv(v, U, V, io.DisplaySize.x, io.DisplaySize.y);
+            g_calib.biasX = m.x - p0.x;
+            g_calib.biasY = m.y - p0.y;
+        }
+        if (downL && !prevL && live)
+            spdlog::info("[MARKERCAL] mouse=({:.1f},{:.1f}) pan=({:.2f},{:.2f}) zoom={:.5f} "
+                         "U(+0x104)={:.2f} V(+0x108)={:.2f}", m.x, m.y, v.panX, v.panZ, v.zoom, U, V);
+        if (downX && !prevX)
+            g_calib = MarkerCalib{};
+        prevC = downC;
+        prevX = downX;
+        prevL = downL;
+
+        if (!menu_open)
+            return;
+        ImGui::SetNextWindowBgAlpha(0.88f);
+        if (ImGui::Begin("Marker proto (affine tune)"))
+        {
+            if (!live)
+                ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1), "no live map view (open the world map)");
+            else
+            {
+                ImVec2 p = project_uv(v, U, V, io.DisplaySize.x, io.DisplaySize.y);
+                ImGui::Text("U(+0x104)=%.1f  V(+0x108)=%.1f", U, V);
+                ImGui::Text("pan=(%.1f, %.1f)  zoom=%.4f", v.panX, v.panZ, v.zoom);
+                ImGui::Text("projected px = (%.0f, %.0f)   mouse = (%.0f, %.0f)   [%.0fx%.0f]",
+                            p.x, p.y, m.x, m.y, io.DisplaySize.x, io.DisplaySize.y);
+                ImGui::Text("err = (%.0f, %.0f) px", p.x - m.x, p.y - m.y);
+            }
+            ImGui::Separator();
+            ImGui::TextColored(ImVec4(0, 1, 1, 1), "model: screenX=U*zoom*sx - panX + bx ; Y=V*zoom*sy - panZ + by");
+            ImGui::TextWrapped("C = 1-point calibrate (reticle on mouse) -> then PAN+ZOOM and watch the "
+                               "cyan ring stay locked. If it drifts, nudge scaleX/scaleY ~1.0. X = reset.");
+            ImGui::Separator();
+            ImGui::DragFloat("scaleX", &g_calib.scaleX, 0.0005f, 0.5f, 1.5f, "%.5f");
+            ImGui::DragFloat("scaleY", &g_calib.scaleY, 0.0005f, 0.5f, 1.5f, "%.5f");
+            ImGui::DragFloat("biasX", &g_calib.biasX, 0.5f, -4000.0f, 4000.0f, "%.1f");
+            ImGui::DragFloat("biasY", &g_calib.biasY, 0.5f, -4000.0f, 4000.0f, "%.1f");
+            if (ImGui::Button("reset calib"))
+                g_calib = MarkerCalib{};
+        }
+        ImGui::End();
     }
 
     void draw_panel()
@@ -1011,14 +1169,20 @@ namespace
         g_prev_toggle_down = down;
         g_show = g_user_show;
 
-        if (g_show && g_command_queue)
+        // The marker prototype draws over the open map even when the menu is closed,
+        // so build a frame for it too (get_live_view() no-ops when the map is shut).
+        bool proto = goblin::config::overlayMarkersProto;
+        if ((g_show || proto) && g_command_queue)
         {
             g_imgui_reading_cursor = true;   // let ImGui's NewFrame see the real cursor
             ImGui_ImplDX12_NewFrame();
             ImGui_ImplWin32_NewFrame();
             g_imgui_reading_cursor = false;
             ImGui::NewFrame();
-            draw_panel();
+            if (g_show)
+                draw_panel();
+            if (proto)
+                draw_markers_proto(g_show);
             ImGui::Render();
 
             UINT idx = swapchain->GetCurrentBackBufferIndex();
