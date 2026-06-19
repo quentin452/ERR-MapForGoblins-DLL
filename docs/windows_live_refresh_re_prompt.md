@@ -93,3 +93,49 @@ routine. This is exactly how the mod pins `ShowTutorialPopup` — see the commen
 If no clean rebuild method exists, report that with the evidence and fall back: find the
 **map menu close+open** entry instead (programmatic reopen, 1-frame flicker) and deliver
 its AOB the same way. State clearly which path you delivered.
+
+---
+
+## BREAKTHROUGH LEAD (2026-06-19) — the live rebuild EXISTS and is reachable
+
+User confirmed IN-GAME: the **Hexinton all-in-one CT v6.0** toggle **"Show All Graces"**
+rebuilds the world-map icons **LIVE while the map is open** (no reopen). So the engine
+DOES have a live re-evaluate/rebuild path — this is the function we want. Lift it.
+
+The CT script (Progression → "Show All Graces") is trivial:
+```
+aobscanmodule(Finder, eldenring.exe, 0F B6 0D xx xx xx xx E8 xx xx xx xx 44 8B E0)
+addr = Finder + readInteger(Finder+3) + 7      ; RIP-rel target of the movzx
+registerSymbol("NewMenuSystemWarp2", addr)     ; a global BYTE
+NewMenuSystemWarp2 = 01 ; NewMenuSystemWarp2+1 = 01   ; flip 0->1 = show all graces, LIVE
+```
+Decoded: at the AOB site `0F B6 0D <disp32>` = `movzx ecx, byte [rip+NewMenuSystemWarp2]`,
+then `E8 <call>` , then `44 8B E0` = `mov r12d, eax`. So the byte is read **inside the
+live map-icon evaluation path**, and flipping it forces the visible rebuild.
+
+### What to extract from this site (the concrete asks)
+1. **Identify the containing function** of that AOB site and **the `E8` call** right after
+   the `movzx` — that call is the prime candidate for the actual icon (re)build/re-filter.
+   Cross-reference with the earlier candidate `FUN_140a832a0` (RVA 0xa832a0): is the `E8`
+   target == 0xa832a0, or does the containing function call it? Map the relationship.
+2. **Confirm scope:** does this path re-evaluate **ALL `WorldMapPointParam` rows**
+   (so flipping our cluster/section `areaNo`=99 and re-running it would show live), or is it
+   **grace-specific**? If grace-only, find the general map-point equivalent it routes
+   through (the CSWorldMapPointMan point-list walk).
+3. **Trigger mechanism:** two acceptable deliverables —
+   (a) the **callable rebuild fn** (AOB + signature + args + thread/precondition) we invoke
+   from injected code after we change `areaNo`; OR
+   (b) the **state byte/flag** (like `NewMenuSystemWarp2`) whose change the engine reacts to
+   each frame — if writing a byte forces a live rebuild, we may just toggle it after our
+   edits (simplest). Give its AOB-resolved address + how the engine consumes it.
+4. **Caveat to check:** our hide system is `areaNo`=99. Confirm this live path reads
+   `areaNo` (or the row's event-flag/text fields). If it gates on event flags not `areaNo`,
+   note it — we'd switch the hide to a flag field (textDisableFlagId↔AlwaysOn 6001) then
+   trigger the rebuild.
+
+### Why it matters
+This one function unblocks **THREE** stuck features at once: live section/category toggle,
+**runtime clustering** (re-plan without restart, reflected live), and **proximity-cluster
+v2** (re-cluster around the player as they move — player pos is already solved, marker-space
+`manager+0x70/+0x78`, see `docs/re_findings_playerpos.md`). Deliver the trigger + a minimal
+SEH-guarded `goblin::refresh_world_map_icons()` snippet as in the asks above.
