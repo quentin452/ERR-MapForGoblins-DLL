@@ -13,6 +13,7 @@ struct GraceAnchor {
     float    wx;
     float    wz;
     int32_t  placename_id;
+    int32_t  tab_id;        // map sub-page (underground area 12 splits into 12000/12001/12002)
 };
 
 extern const GraceAnchor GRACE_ANCHORS[];

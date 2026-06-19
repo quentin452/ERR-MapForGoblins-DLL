@@ -320,6 +320,7 @@ struct SectionRow
     uint64_t row_id;
     int      grp_key;   // cluster grouping key: nearest-grace index, or entrance key, or -1 = homeless
     int      grp_pname; // PlaceName id for the pile label (-1 = count-only)
+    int      grp_tab;   // anchor map sub-page (tabId) — DIAGNOSTIC ONLY (underground 12000/12001/...)
     float    ent_x;     // projected-dungeon overworld ENTRANCE (world coords); <0 = not a projected dungeon
     float    ent_z;
 };
@@ -537,7 +538,7 @@ static constexpr int CLUSTER_CATNAME_TEXTID_BASE = 952010000;  // + category →
 // dependence on the marker's (often-missing) location textId. Returns the grace
 // index + its region PlaceName id (for the label).
 static bool find_nearest_grace(uint8_t area, float wx, float wz,
-                               int *out_idx, int *out_pname)
+                               int *out_idx, int *out_pname, int *out_tab)
 {
     int best = -1;
     float bestd = 1e30f;
@@ -552,6 +553,7 @@ static bool find_nearest_grace(uint8_t area, float wx, float wz,
     if (best < 0) return false;
     *out_idx = best;
     *out_pname = goblin::generated::GRACE_ANCHORS[best].placename_id;
+    *out_tab = goblin::generated::GRACE_ANCHORS[best].tab_id;
     return true;
 }
 
@@ -919,7 +921,7 @@ static void replan_clusters()
     //    entrance). Rows with no anchor (grp_key < 0) and categories the user left
     //    unchecked (read LIVE from g_category_cluster) stay exact on the map.
     struct Bucket { std::vector<size_t> members; double sx = 0, sz = 0; float py = 0;
-                    uint8_t area = 0; float ent_x = -1, ent_z = -1; int pname = -1; };
+                    uint8_t area = 0; float ent_x = -1, ent_z = -1; int pname = -1; int tab = 0; };
     std::unordered_map<int, Bucket> buckets;        // key = grace index / entrance key
     int skip_noloc = 0, skip_unchecked = 0;         // diagnostics (why a row stays exact)
     for (size_t i = 0; i < g_section_rows.size(); i++)
@@ -937,6 +939,7 @@ static void replan_clusters()
         b.members.push_back(i);
         b.sx += wx; b.sz += wz; b.py = st->posY;
         b.area = r.orig_area;
+        b.tab = r.grp_tab;                             // DIAGNOSTIC: anchor sub-page
         if (b.pname < 0) b.pname = r.grp_pname;        // label = anchor's region name
         // Projected dungeon → remember its overworld entrance so the pile sits
         // there (one point) rather than at the centroid of its spread interior.
@@ -949,10 +952,18 @@ static void replan_clusters()
     if (thr < 1) thr = 1;  // defense: 0 would cluster every location → pool blowout
     size_t pi = 0;
     int dropped = 0, sub_threshold = 0;
+    const bool dbg = goblin::config::debugLogging;          // detailed dumps off by default
+    std::map<std::pair<int, int>, int> piles_at;           // (area,tab) -> # piles
+    std::map<std::pair<int, int>, int> subthr_at;          // (area,tab) -> # sub-threshold locations
     for (auto &kv : buckets)
     {
         Bucket &b = kv.second;
-        if (static_cast<int>(b.members.size()) <= thr) { sub_threshold++; continue; }
+        if (static_cast<int>(b.members.size()) <= thr)
+        {
+            sub_threshold++;
+            if (dbg) subthr_at[{b.area, b.tab}]++;
+            continue;
+        }
         if (pi >= g_cluster_pool.size()) { dropped++; continue; }
 
         uint8_t *cp = g_cluster_pool[pi++];
@@ -1011,6 +1022,13 @@ static void replan_clusters()
             if (f) mf.push_back(f);
         }
         g_clusters.push_back({cp, b.area, cnt_textid, std::move(mf), domcat});
+        piles_at[{b.area, b.tab}]++;
+        if (dbg)
+            spdlog::info("[CLUSTER-DUMP] #{} key={} area={} tab={} grid=({},{}) pos=({:.1f},{:.1f}) "
+                         "pname={} members={} mode={}",
+                         g_clusters.size() - 1, kv.first, b.area, b.tab, gx, gz,
+                         cd->posX, cd->posZ, b.pname, static_cast<int>(b.members.size()),
+                         (b.ent_x >= 0) ? "ENTRANCE" : "CENTROID");
     }
     g_clustering_active = !g_clusters.empty();
     spdlog::info("[CLUSTER] replan by-location: {} piles, {} members parked, {}/{} pool used, {} dropped",
@@ -1028,6 +1046,26 @@ static void replan_clusters()
         for (const auto &kv : per_area)
             s += " a" + std::to_string(kv.first) + "=" + std::to_string(kv.second);
         spdlog::info("[CLUSTER] piles per area:{}", s.empty() ? " (none)" : s);
+    }
+    {
+        // Per-(area, sub-page) tally — splits underground area 12 into its real
+        // pages (Ainsel 12000 / Siofra 12001 / Deeproot 12002), so an empty sub-page
+        // (no piles) is visible as the absence of its tab.
+        std::string s;
+        for (const auto &kv : piles_at)
+            s += " a" + std::to_string(kv.first.first) + "t" + std::to_string(kv.first.second) +
+                 "=" + std::to_string(kv.second);
+        spdlog::info("[CLUSTER] piles per area/tab:{}", s.empty() ? " (none)" : s);
+    }
+    if (dbg)
+    {
+        // Which (area, sub-page) had locations that stayed exact for being sub-
+        // threshold — tells "Siofra/Deeproot are just sparse" apart from "mis-paged".
+        std::string s;
+        for (const auto &kv : subthr_at)
+            s += " a" + std::to_string(kv.first.first) + "t" + std::to_string(kv.first.second) +
+                 "=" + std::to_string(kv.second);
+        spdlog::info("[CLUSTER-DUMP] sub-threshold per area/tab:{}", s.empty() ? " (none)" : s);
     }
 
     // 4. Apply the current collapsed/expanded view to the new plan.
@@ -1490,7 +1528,7 @@ void goblin::inject_map_entries()
         // area + coords, so a catacomb/legacy marker matches a grace inside its OWN
         // dungeon, not a random surface grace. This is the authoritative location
         // grouping (replaces the incomplete textId-based location lookup).
-        int grace_idx = -1, grace_pname = -1;
+        int grace_idx = -1, grace_pname = -1, grace_tab = 0;
         if (all_rows[i].original_row_id != 0)
         {
             auto *mrow = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(
@@ -1498,7 +1536,7 @@ void goblin::inject_map_entries()
             find_nearest_grace(mrow->areaNo,
                                static_cast<float>(mrow->gridXNo) * 256.0f + mrow->posX,
                                static_cast<float>(mrow->gridZNo) * 256.0f + mrow->posZ,
-                               &grace_idx, &grace_pname);
+                               &grace_idx, &grace_pname, &grace_tab);
         }
         // Bug A: reproject injected dungeon rows onto the overworld so minor-
         // dungeon icons render. original_row_id == 0 ⇒ vanilla row (left as-is).
@@ -1653,7 +1691,7 @@ void goblin::inject_map_entries()
                                       cp[0x20], all_rows[i].is_piece,
                                       all_rows[i].is_kindling,
                                       static_cast<uint64_t>(all_rows[i].row_id),
-                                      grp_key, grp_pname, ent_x, ent_z});
+                                      grp_key, grp_pname, grace_tab, ent_x, ent_z});
         }
 
         // Royal Capital row → register for post-burn hide.
