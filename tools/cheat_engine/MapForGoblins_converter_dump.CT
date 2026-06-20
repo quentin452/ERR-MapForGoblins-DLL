@@ -22,51 +22,54 @@
      OPEN the world map (so the converters exist), then press NUMPAD 3.
      Results -> console + MapForGoblins_converters.csv. ]]
 
-local VT_RVA = 0x2ad5998
+local VM_VT_RVA = 0x2ad82e0   -- CS::WorldMapViewModel vtable
+local ARR_OFF = 0xf8          -- converter array (inline, stride 0x30)
+local CNT_OFF = 0x280         -- element count
+local STRIDE = 0x30
 local VALID = {[60]=true,[61]=true,[12]=true,[40]=true,[41]=true,[42]=true,[43]=true}
 mfg = mfg or {}
-
 local function finite(v) return v~=nil and v==v and v<1e30 and v>-1e30 end
 
 function mfg_dump_converters()
   local base = getAddress("eldenring.exe"); if base==0 then print("[MFG] eldenring.exe not found"); return end
-  local vt = base + VT_RVA
-  local b = {}; for i=0,7 do b[i+1]=string.format("%02X",(vt>>(i*8))&0xFF) end
+  local vt = base + VM_VT_RVA
+  local b={}; for i=0,7 do b[i+1]=string.format("%02X",(vt>>(i*8))&0xFF) end
   local res = AOBScan(table.concat(b," "), "+W-C")
-  if res==nil then print("[MFG] no converter found -- open the world map first."); return end
-  print(string.format("[MFG] %d converter-vtable instance(s) -- DIAGNOSTIC dump:", res.Count))
+  if res==nil then print("[MFG] no WorldMapViewModel found -- open the world map first."); return end
+  print(string.format("[MFG] %d ViewModel-vtable instance(s):", res.Count))
   local f = io.open("MapForGoblins_converters.csv","a")
-  for i = 0, math.min(res.Count-1, 8) do
-    local a = getAddress(res[i])
-    print(string.format("\n[MFG] === instance %d @ %X ===", i, a))
-    -- raw hex of the first 0x40 bytes
-    for off=0,0x30,0x10 do
-      local s=""
-      for k=0,15 do local b=readByte(a+off+k) or 0; s=s..string.format("%02X ",b) end
-      print(string.format("  +%02X: %s", off, s))
-    end
-    -- scan a 0x400 window for an area byte (60/61/12/40-43) IMMEDIATELY followed within 0x20 by a float ~0.5
-    print("  -- area-byte (60/61/12/40-43) + nearby scale-float (0.2..2.0) hits --")
-    local hits=0
-    for off=0,0x3F8,1 do
-      local b=readByte(a+off)
-      if b and VALID[b] then
-        for so=-0x20,0x20,4 do
-          local fl=readFloat(a+off+so)
-          if fl and fl>0.2 and fl<2.0 then
-            print(string.format("    area=%d @+0x%X   scale~%.5f @+0x%X (delta %+d)", b, off, fl, off+so, so))
-            if f then f:write(string.format("inst%d,area=%d,@+0x%X,scale=%.6f,@+0x%X\n",i,b,off,fl,off+so)) end
-            hits=hits+1; if hits>=12 then break end
-          end
+  for i = 0, math.min(res.Count-1, 6) do
+    local vm = getAddress(res[i])
+    local cnt = readInteger(vm + CNT_OFF) or -1
+    print(string.format("\n[MFG] === VM %d @ %X   count[+0x280]=%d ===", i, vm, cnt))
+    if cnt>0 and cnt<256 then
+      local arr = vm + ARR_OFF
+      for e = 0, math.min(cnt-1, 12) do
+        local a = arr + e*STRIDE
+        -- raw 0x30 of the first element so we can verify the layout
+        if e==0 then
+          for off=0,0x20,0x10 do local s=""; for k=0,15 do s=s..string.format("%02X ",readByte(a+off+k) or 0) end; print(string.format("    e0 +%02X: %s",off,s)) end
+        end
+        local area=readByte(a+0xB); local scale=readFloat(a+0x20)
+        if area and VALID[area] and finite(scale) and math.abs(scale)>1e-3 and math.abs(scale)<10 then
+          local gZ=readByte(a+0x9) or 0; local gX=readByte(a+0xA) or 0
+          local cX=readFloat(a+0xC) or 0; local cZ=readFloat(a+0x14) or 0
+          local bX=readFloat(a+0x18) or 0; local bZ=readFloat(a+0x1C) or 0
+          local oX=gX*256+cX; local oZ=gZ*256+cZ
+          local Tx=bX-scale*oX; local Tz=bZ+scale*oZ
+          print(string.format("    [e%d] area=%-3d scale=%.5f originX=%.1f originZ=%.1f biasX=%.1f biasZ=%.1f  => renderX=%.5f*wx %+0.2f ; renderZ=-%.5f*wz %+0.2f",
+                e, area, scale, oX, oZ, bX, bZ, scale, Tx, scale, Tz))
+          if f then f:write(string.format("%d,%.6f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%X\n",area,scale,oX,oZ,bX,bZ,Tx,Tz,a)) end
+        else
+          print(string.format("    [e%d] area=%s scale=%s  (offsets may differ -> raw above)", e, tostring(area), tostring(scale)))
         end
       end
-      if hits>=12 then break end
+    else
+      print("    count implausible -> this VM instance is wrong, or +0x280/+0xf8 offsets differ.")
     end
-    if hits==0 then print("    (none -- this instance is probably the manager/container, not an element)") end
   end
-  res.destroy()
-  if f then f:close() end
-  print("\n[MFG] paste this whole block back. The 'area=X @+0x.. scale~0.5 @+0x..' lines give the real layout.")
+  res.destroy(); if f then f:close() end
+  print("\n[MFG] paste the [eN] lines + the e0 raw bytes.")
 end
 
 if mfg.hk3 then pcall(function() mfg.hk3.destroy() end) end
