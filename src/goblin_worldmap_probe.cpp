@@ -255,27 +255,46 @@ void probe_loop()
         }
         else
         {
-            // Walk found nothing → map closed, OR the offset drifted. Fall back to the
-            // 0xCD gate: closed → drop everything; "open" but walk failed → throttled
-            // whole-RAM scan (handles a future offset shift without breaking the probe).
-            bool map_open = goblin::world_map_open();
-            if (!map_open)
-            {
-                if (g_active_cursor.load(std::memory_order_relaxed))
-                    g_active_cursor.store(0, std::memory_order_relaxed);
-                candidates.clear();
-                last.clear();
-                last_view.clear();
-                continue;
-            }
-            bool active_dead = (g_active_cursor.load(std::memory_order_relaxed) == 0);
-            if (candidates.empty() || active_dead || now - last_scan > std::chrono::milliseconds(400))
+            // Walk found nothing (map closed, OR the dialog offset is wrong). Throttled
+            // whole-RAM scan (1/s, gate-INDEPENDENT — the 0xCD gate flakes 3/7/0) so the
+            // overlay keeps working while we fix the walk.
+            if (now - last_scan > std::chrono::milliseconds(1000))
             {
                 candidates.clear();
                 scan_all_cursors(vtable_va, candidates);
                 last_scan = now;
                 if (!candidates.empty())
-                    g_log->info("resolve: {} cursor (scan fallback — menu walk failed)", candidates.size());
+                {
+                    g_log->info("resolve: {} cursor (scan fallback — menu walk missed)", candidates.size());
+                    // DIAG (one-shot): the scan found the cursor; locate dialog =
+                    // cursor−0x2DB0 inside CSMenuMan so we can fix the walk's offset/chain.
+                    static bool diag2 = false;
+                    if (!diag2)
+                    {
+                        diag2 = true;
+                        uint64_t mm = 0;
+                        seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm);
+                        uintptr_t dialog = candidates[0] - CURSOR_OFF_IN_MENU;
+                        g_log->info("[MENU-DIAG] scan cursor={:#x} dialog={:#x} mm={:#x}",
+                                    candidates[0], dialog, mm);
+                        bool found = false;
+                        if (mm)
+                            for (uintptr_t off = 0; off < 0x40000; off += 8)
+                            {
+                                uint64_t p = 0;
+                                if (seh_read8(reinterpret_cast<void *>(mm + off), &p) && p == dialog)
+                                {
+                                    g_log->info("[MENU-DIAG] dialog ptr at CSMenuMan+{:#x} "
+                                                "(hardcode/widen the walk)", off);
+                                    found = true;
+                                    break;
+                                }
+                            }
+                        if (!found)
+                            g_log->info("[MENU-DIAG] dialog NOT a flat field in CSMenuMan[0..0x40000] "
+                                        "— needs a deref chain (mm→X→dialog)");
+                    }
+                }
                 else if (++empty_logs % 6 == 0)
                     g_log->info("no cursor (menu walk + scan both empty — offset/RVA shift?)");
             }
