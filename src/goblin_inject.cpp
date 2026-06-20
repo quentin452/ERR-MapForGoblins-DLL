@@ -115,6 +115,16 @@ static bool project_dungeon_row_to_overworld(
     float src_base_z = static_cast<float>(c->src_gz) * 256.0f + c->src_pos_z;
     float wx = dst_base_x + (marker_x - src_base_x);
     float wz = dst_base_z + (marker_z - src_base_z);
+    // GUARD: a few baked rows carry abnormal local coords (e.g. area-11 grid(10,0)
+    // posX=-4695) → the translation sends wx/wz out of the overworld tile extent →
+    // gridXNo (uint8) wraps → the game's icon build (FUN_141eb9ed0) indexes an
+    // out-of-range tile and CRASHES on map open. Out of range → fall back to the
+    // entrance base point (the old clustering behaviour, always valid).
+    if (wx < 0.f || wz < 0.f || wx > 0x3F * 256.0f || wz > 0x3F * 256.0f)
+    {
+        wx = dst_base_x;
+        wz = dst_base_z;
+    }
     int gx = static_cast<int>(std::floor(wx / 256.0f));
     int gz = static_cast<int>(std::floor(wz / 256.0f));
     d->areaNo = c->dst_area;
@@ -1027,7 +1037,24 @@ static ParamResCap *find_world_map_point_param_res_cap()
 // is walked during volatile game init, so a mid-load fault just reads "not ready".
 bool goblin::world_map_param_ready()
 {
-    __try { return find_world_map_point_param_res_cap() != nullptr; }
+    // Not just "registered" — the ResCap appears almost instantly (the probe logged
+    // "ready after 0 ms") while the regulation FILE + rows load later. Walk to the
+    // param table and require num_rows > 0, else inject runs on an empty/half-loaded
+    // table and the map fails to load on the slow launches. Same chain inject uses.
+    __try
+    {
+        auto *prc = find_world_map_point_param_res_cap();
+        if (!prc)
+            return false;
+        auto *rescap = reinterpret_cast<uint8_t *>(prc->param_header);
+        if (!rescap)
+            return false;
+        auto *file_ptr = *reinterpret_cast<uint8_t **>(rescap + 0x80);
+        if (!file_ptr)
+            return false;
+        auto *table = reinterpret_cast<ParamTable *>(file_ptr);
+        return table->num_rows > 0;
+    }
     __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
