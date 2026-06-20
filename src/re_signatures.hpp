@@ -134,23 +134,50 @@ namespace goblin::sig
         return table;
     }
 
-    // Logs one PASS/FAIL line per AOB + a summary. Safe to call once at init.
+    // Logs one line per AOB + a summary. Checks both PRESENCE and UNIQUENESS — a
+    // signature that matches >1 site (MULTI) is a latent wrong-function bug: scan()
+    // returns only the first match, so it may resolve a sibling instead of the real
+    // target (this is exactly how SET_EVENT_FLAG picked a decoy half the time).
+    //   FAIL  = 0 matches (gone — re-find after game update)
+    //   PASS  = exactly 1 match (unique)
+    //   MULTI = >1 match (ambiguous — tighten the AOB until unique)
+    // Safe to call once at init.
     inline void resolve_all_signatures()
     {
         size_t n = 0;
         const SigEntry *t = all_signatures(n);
-        int ok = 0;
-        spdlog::info("[SIG] AOB health check — {} signatures:", n);
+        int pass = 0, multi = 0, fail = 0;
+        spdlog::info("[SIG] AOB health check — {} signatures (presence + uniqueness):", n);
         for (size_t i = 0; i < n; ++i)
         {
+            size_t cnt = 0;
             void *addr = nullptr;
-            try { addr = modutils::scan<void>({.aob = t[i].aob}); }
-            catch (...) { addr = nullptr; }
-            if (addr) { ++ok; spdlog::info("[SIG]   PASS {} -> {}", t[i].name, addr); }
-            else        spdlog::warn("[SIG]   FAIL {} (signature not found — re-find after game update)",
-                                     t[i].name);
+            try
+            {
+                cnt = modutils::scan_count(t[i].aob);
+                addr = modutils::scan<void>({.aob = t[i].aob});
+            }
+            catch (...) { cnt = 0; addr = nullptr; }
+
+            if (cnt == 0)
+            {
+                ++fail;
+                spdlog::warn("[SIG]   FAIL  {} (0 matches — re-find after game update)", t[i].name);
+            }
+            else if (cnt == 1)
+            {
+                ++pass;
+                spdlog::info("[SIG]   PASS  {} -> {}", t[i].name, addr);
+            }
+            else
+            {
+                ++multi;
+                spdlog::warn("[SIG]   MULTI {} -> {} ({} matches — AMBIGUOUS, may resolve the "
+                             "wrong function; tighten the AOB)", t[i].name, addr, cnt);
+            }
         }
-        spdlog::info("[SIG] {}/{} signatures resolved{}", ok, n,
-                     ok == (int)n ? "" : "  <-- some FAILED, see above");
+        spdlog::info("[SIG] {} unique / {} ambiguous / {} missing  (of {}){}",
+                     pass, multi, fail, n,
+                     (multi || fail) ? "  <-- see warnings above" : "  — all clean");
     }
 }
