@@ -77,3 +77,60 @@ instance (the object whose `+0x2DB0` carries the cursor vtable). Candidate appro
   the chain is better than the scan (no "which mirror?" ambiguity).
 - This unblocks: (a) instant map-open live view, (b) per-frame lag-free read (fixes the pan
   "dash"), (c) deleting the whole-memory scan from `goblin_worldmap_probe.cpp`.
+
+---
+
+## RESULTS — static side closed (2026-06-20, Ghidra headless)
+
+Scripts `find_chain.java`..`find_chain4.java` (in `D:\ghidra_scripts`, outputs `out_chain*.txt`),
+run against `D:\ghidra_proj2\ER` (`eldenring.exe`, app 2.6.2.0). Everything below is verified on
+this build.
+
+### Confirmed handles
+
+- **Cursor vtable RVA `0x2b29a90` still valid** — Ghidra labels it `CS::WorldMapCursorControl::vftable`;
+  RTTI `.?AVWorldMapCursorControl@CS@@` @ `0x143cddb30`. No drift on 2.6.2.0.
+- **`cursor = dialog + 0x2DB0` — triple-confirmed.** The base ctor `FUN_1409c1080` constructs the
+  cursor in place: `FUN_1409bc6a0(param_1 + 0x5b6)`, and `param_1` is `undefined8*`, so
+  `0x5b6 · 8 = 0x2DB0`. Cursor ctors: `FUN_1409bc6a0` (the `+0x2DB0` one) and `FUN_1409bc5b0`.
+- **The "world-map menu" is `CS::WorldMapDialog`** (derived; ctor `FUN_1409cf8f0` sets
+  `WorldMapDialog::vftable`, sizeof `0x3ed0`) over base **`CS::WorldMapDialogBase`** (`FUN_1409c1080`).
+  A second variant ctor `FUN_1409c1c10` (sizeof `0x3ec8`) exists.
+- **`CSMenuMan` static slot = `0x143d6b7b0`** (RVA `0x3d6b7b0`). AOB `48 8B 05 ?? ?? ?? ?? 33 DB 48 89 74 24`,
+  disp@3 / len 7 — single unambiguous match @ `0x140758056`.
+
+### Blocker — the last hop is a runtime field
+
+The `CSMenuMan → WorldMapDialog` offset is **not statically resolvable**:
+
+- `CSMenuMan` is read by **471 functions** (hot global) → xref alone can't isolate the walk.
+- The dialog vtable is an unnamed `DAT_` (only 4 debug-string users, none of them CSMenuMan readers).
+- The concrete dialog ctors have **no static callers** — the dialog is created via a factory/vtable
+  table, so there is no global-store to climb. Reader ∩ dialog-user = ∅.
+
+This matches the brief's own warning that offsets shift per patch.
+
+### Recommendation — kill the scan without that offset
+
+The exact offset is not needed to delete the multi-GB scan. Replace it with a **bounded walk of the
+`CSMenuMan` struct**:
+
+```cpp
+void* mm = *(void**)(base + 0x3d6b7b0);              // CSMenuMan
+if (!mm /* || *(uint8_t*)((char*)mm+0xCD)!=7 */) return nullptr;  // 0xCD gate: reconfirm live
+for (size_t off = 0; off < 0x2000; off += 8) {        // few-KB window, not all RAM
+    void* p = *(void**)((char*)mm + off);
+    if (is_readable(p) && *(uintptr_t*)((char*)p + 0x2DB0) == base + 0x2b29a90) {
+        // p = WorldMapDialog ; cursor = p + 0x2DB0 ; LOG off → hardcode as O(1) deref next patch
+        return (char*)p + 0x2DB0;
+    }
+}
+```
+
+`O(KB)/frame` instead of `O(GB)` ⟹ instant map-open + lag-free per-frame read (fixes the pan "dash"),
+and it self-heals across patches. Log the winning `off` once and it becomes the clean O(1) deref.
+
+### Still needs the running game
+
+1. **Reconfirm `CSMenuMan + 0xCD == 7`** for "world map open" on 2.6.2.0 (not statically checkable).
+2. **Capture the winning `off`** once with the bounded walk → promote to a hardcoded O(1) deref.
