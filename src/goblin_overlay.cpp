@@ -398,7 +398,7 @@ namespace
     // (+ zoom +0x380), and does NOT move the reticle (+0xFC/+0x104 fire only on mouse hover).
     // So the reticle centre froze under the stick (markers slid); the pan path tracks BOTH
     // devices. Default = pan now; Y toggles the old reticle centre for A/B.
-    bool g_pan_center = true;
+    bool g_pan_center = false; // pan is INSTANCE-VARIANT (user) -> unusable; reticle baseline until cursor RE
 
     // (markerU, markerV) marker coords → backbuffer px.
     ImVec2 project_uv(const goblin::worldmap_probe::LiveView &v, float mU, float mV,
