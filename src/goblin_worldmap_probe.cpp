@@ -74,6 +74,11 @@ bool plausible_ptr(uintptr_t p)
 constexpr uintptr_t CURSOR_VTABLE_RVA = 0x2b29a90;
 constexpr ptrdiff_t OFF_X = 0xFC, OFF_Z = 0x104, OFF_Y = 0x10C;
 constexpr uintptr_t CURSOR_OFF_IN_MENU = 0x2DB0;
+// CSMenuMan static slot (RVA, re_v? Ghidra c843cc3). The world-map cursor =
+// WorldMapDialog + 0x2DB0, and the dialog ptr lives somewhere in the first few KB
+// of CSMenuMan → a BOUNDED walk (vs the whole-RAM scan) resolves it in O(KB).
+constexpr uintptr_t CSMENUMAN_SLOT_RVA = 0x3d6b7b0;
+constexpr uintptr_t MENU_WALK_WINDOW = 0x2000;
 
 // PROJECTION transform-scan (docs/world_map_projection_re_findings.md). cursor+0xF0
 // points to the CS::WorldMapArea view object; the LIVE viewport is plain floats there:
@@ -159,6 +164,38 @@ void scan_all_cursors(uintptr_t vtable_va, std::vector<uintptr_t> &out)
     }
 }
 
+// O(KB) resolve: CSMenuMan → (bounded walk) → WorldMapDialog → +0x2DB0 = cursor.
+// Replaces the whole-address-space vtable scan (Ghidra c843cc3): the dialog pointer
+// is in the first few KB of CSMenuMan, and *(dialog + 0x2DB0) == the cursor vtable is
+// the ground-truth check. Returns the cursor address, 0 if not found / map closed.
+// Logs the winning offset once → can be hardcoded to a true O(1) deref next patch.
+uintptr_t resolve_cursor_via_menu(uintptr_t base, uintptr_t vtable_va)
+{
+    uint64_t mm = 0;
+    if (!seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm) ||
+        !mm || !plausible_ptr(mm))
+        return 0;
+    for (uintptr_t off = 0; off < MENU_WALK_WINDOW; off += 8)
+    {
+        uint64_t p = 0;
+        if (!seh_read8(reinterpret_cast<void *>(mm + off), &p) || !p || !plausible_ptr(p))
+            continue;
+        uint64_t vt = 0;
+        if (seh_read8(reinterpret_cast<void *>(p + CURSOR_OFF_IN_MENU), &vt) && vt == vtable_va)
+        {
+            static uintptr_t logged_off = ~uintptr_t(0);
+            if (logged_off != off)
+            {
+                logged_off = off;
+                g_log->info("[MENU] cursor via CSMenuMan+{:#x} → dialog {:#x} → cursor {:#x} "
+                            "(hardcode this offset for O(1))", off, p, p + CURSOR_OFF_IN_MENU);
+            }
+            return p + CURSOR_OFF_IN_MENU;
+        }
+    }
+    return 0;
+}
+
 void probe_loop()
 {
     uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
@@ -230,12 +267,18 @@ void probe_loop()
         if (just_opened || candidates.empty() || active_dead || now - last_scan > rescan_period)
         {
             candidates.clear();
-            scan_all_cursors(vtable_va, candidates);
+            // O(KB) menu walk first; whole-RAM scan only if the offset drifted.
+            uintptr_t cur = resolve_cursor_via_menu(base, vtable_va);
+            if (cur)
+                candidates.push_back(cur);
+            else
+                scan_all_cursors(vtable_va, candidates);
             last_scan = now;
             if (!candidates.empty())
-                g_log->info("scan: {} cursor-vtable instance(s)", candidates.size());
+                g_log->info("resolve: {} cursor instance(s){}", candidates.size(),
+                            cur ? " (menu walk)" : " (scan fallback)");
             else if (++empty_logs % 6 == 0)
-                g_log->info("no cursor-vtable instances (exe version shifted the RVA?)");
+                g_log->info("no cursor (menu walk + scan both empty — exe version shift?)");
         }
 
         for (uintptr_t a : candidates)
