@@ -600,21 +600,28 @@ namespace
         //   s += (raw - s)*alpha.   alpha=1 -> instant (current). alpha~0.1 -> ER's ease.
         // Eased fields: panX/panZ (grace centre) AND reticle raw[2]/raw[3] (the cyan). At rest
         // s==raw so static placement is untouched; only the in-motion render-lead is removed.
-        // DEFAULT 0.5: user-dialed value where the grid + graces stay glued to the terrain
-        // through a scroll = the engine's displayed-view ease rate. (Per-frame lerp; if the
-        // framerate changes a lot this may want re-tuning / dt-normalising. F/H to re-dial.)
-        static float g_panAlpha = 0.5f;
+        // FRAMERATE-INDEPENDENT ease (F/H dial the RATE). The engine eases the displayed view
+        // on a TIME basis, so a fixed per-frame alpha lagged at low fps AND on zoom even at
+        // high fps. Compute the per-frame alpha from dt: a = 1 − exp(−dt·rate). Same time-
+        // constant at any fps. rate≈35 ↔ the 0.5/frame dialed at ~50fps. Re-seed when the map
+        // closes (!live) so reopening doesn't ease from a stale pan (= icons frozen off-screen).
+        static float g_easeRate = 35.0f;
         {
             static float sX = 0, sZ = 0, sZoom = 0;
             static bool sInit = false;
             if (live)
             {
+                float dt = io.DeltaTime; if (dt < 0.0f) dt = 0.0f; else if (dt > 0.1f) dt = 0.1f;
+                float a = 1.0f - expf(-dt * g_easeRate);
+                if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
                 if (!sInit) { sX = v.panX; sZ = v.panZ; sZoom = v.zoom; sInit = true; }
-                sX    += (v.panX - sX)    * g_panAlpha;
-                sZ    += (v.panZ - sZ)    * g_panAlpha;
-                sZoom += (v.zoom - sZoom) * g_panAlpha; // zoom eases too, else zoom drifts
+                sX    += (v.panX - sX)    * a;
+                sZ    += (v.panZ - sZ)    * a;
+                sZoom += (v.zoom - sZoom) * a; // zoom eases too, else zoom drifts
                 v.panX = sX; v.panZ = sZ; v.zoom = sZoom; // grid + graces; reticle left raw as target ref
             }
+            else
+                sInit = false; // map closed → re-seed fresh on reopen
         }
 
         // UPDATE-RATE THROTTLE (T / Z). Hypothesis: ER refreshes the displayed map at a fixed
@@ -640,8 +647,8 @@ namespace
         }
         {
             char lb[96];
-            snprintf(lb, sizeof(lb), "PANALPHA=%.3f (F/H, R=1)   grid=I   MAPFPS=%.0f (T/Z)",
-                     g_panAlpha, g_mapFps);
+            snprintf(lb, sizeof(lb), "EASERATE=%.1f (F/H, R=35)   grid=I   MAPFPS=%.0f (T/Z)",
+                     g_easeRate, g_mapFps);
             fg->AddText(ImVec2(12, 31), IM_COL32(0, 0, 0, 200), lb);
             fg->AddText(ImVec2(11, 30), IM_COL32(120, 255, 160, 255), lb);
             // DIAG: live snap-rect + pan + reticle. Watch in UNDERGROUND while moving the
@@ -998,9 +1005,9 @@ namespace
         bool downLB = (GetAsyncKeyState('F') & 0x8000) != 0; // convScale -
         bool downRB = (GetAsyncKeyState('H') & 0x8000) != 0; // convScale +
         bool downBS = (GetAsyncKeyState('R') & 0x8000) != 0; // reset 1.0
-        if (downLB && !prevLB) { g_panAlpha -= 0.05f; if (g_panAlpha < 0.05f) g_panAlpha = 0.05f; spdlog::info("[PANALPHA] {:.3f}", g_panAlpha); }
-        if (downRB && !prevRB) { g_panAlpha += 0.05f; if (g_panAlpha > 1.0f) g_panAlpha = 1.0f; spdlog::info("[PANALPHA] {:.3f}", g_panAlpha); }
-        if (downBS && !prevBS) { g_panAlpha = 1.0f; spdlog::info("[PANALPHA] reset 1.0"); }
+        if (downLB && !prevLB) { g_easeRate -= 2.5f; if (g_easeRate < 1.0f) g_easeRate = 1.0f; spdlog::info("[EASERATE] {:.1f}", g_easeRate); }
+        if (downRB && !prevRB) { g_easeRate += 2.5f; spdlog::info("[EASERATE] {:.1f}", g_easeRate); }
+        if (downBS && !prevBS) { g_easeRate = 35.0f; spdlog::info("[EASERATE] reset 35"); }
         prevLB = downLB; prevRB = downRB; prevBS = downBS;
 
         // T / Z = map-update-rate throttle (Hz); 0 = off (every frame).
