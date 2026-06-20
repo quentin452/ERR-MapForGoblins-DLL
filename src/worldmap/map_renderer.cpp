@@ -192,7 +192,9 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     // between two graces, whose ANGLE is zoom-invariant (zoom scales both graces'
     // positions by the same factor), so the chosen direction is STABLE across zoom —
     // no flipping when you zoom in/out. Isolated piles default to "below".
-    const float OFF = iconHalf + glyphR + 4.f;
+    // Offset depends ONLY on the cluster glyph size (not iconHalf) so the category
+    // icon scale never moves the piles — clusters are governed by the cluster scale.
+    const float OFF = glyphR * 2.0f;
     for (size_t i = 0; i < piles.size(); ++i)
     {
         int nn = -1;
