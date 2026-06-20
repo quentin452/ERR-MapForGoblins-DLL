@@ -20,6 +20,7 @@
 #include "goblin_inject.hpp"   // goblin::world_map_open()
 #include "goblin_worldmap_probe.hpp"   // get_live_view() for the marker prototype
 #include "goblin_map_data.hpp"         // generated::MAP_ENTRIES (graces for Phase 1)
+#include "goblin_projection.hpp"       // baked map-space → backbuffer projection
 
 #include <vector>
 #include <map>
@@ -358,1020 +359,140 @@ namespace
         return true;
     }
 
-    // ── Overlay-rendered markers PROTOTYPE (config overlay_markers_proto) ──
-    // Project the live map reticle (and later real markers) onto the open world
-    // map via the WorldMapArea pan/zoom, to verify the world→screen affine. The
-    // RE doc's formula direction is unconfirmed (evidence says zoom = px/marker-
-    // unit → MULTIPLY, not the doc's /zoom), so both forms + a residual {scale,
-    // bias} are exposed as live sliders. Tune until our dot sits on the game's
-    // reticle through pan + zoom → the affine is solved.
-    // SOLVED model (re-fitted from the cross-capture, 2026-06-19) — CENTER-RELATIVE,
-    // so it's zoom-independent (the earlier pan-based form drifted with zoom):
-    //   screenX = (markerU - centerU) * zoom * scaleX + realW/2 + biasX
-    //   screenY = (markerV - centerV) * zoom * scaleY + realH/2 + biasY
-    // centerU = +0xFC (raw[0]), centerV = +0x100 (raw[1]) = the VIEW CENTER in marker
-    // space; markerU = +0x104 (raw[2]), markerV = +0x108 (raw[3]) = a point's coords;
-    // screen-centre (realW/2, realH/2) is the pivot. scale ≈ 0.986 (fine residual);
-    // bias ≈ 0 (centre handles it). Verified: (3390-4824)*0.196+960 = 679 ✓.
-    struct MarkerCalib
+    // ── Overlay-rendered markers (graces) ─────────────────────────────────
+    // Projects baked grace data onto the open world map via the live WorldMapArea
+    // pan/zoom (see goblin_projection.hpp). The projection (canvas factor, pan-
+    // centred cursor-independent view) and the motion-sync (−1.0-frame view delay)
+    // are SOLVED and baked; the RE/diag scaffolding that found them (grid, reticle
+    // dots, LAGCSV, LEAD/MAPFPS hotkeys, the in-DLL affine solver, the per-page
+    // calibration UI) was removed in the projection-bake refactor — see the git
+    // history at be1bd9c…5f755f5 and docs/re/windows_worldmap_viewcenter_re_findings.md
+    // if any of it needs to come back.
+
+    // Baked: the native GFx map layer is composited exactly 1 frame behind our
+    // Present sample, so map-bound markers need a 1-frame view delay to sync.
+    constexpr float kViewDelayFrames = 1.0f;
+
+    // Probe LiveView → the pure projection View (keeps the header probe-free).
+    goblin::projection::View to_proj_view(const goblin::worldmap_probe::LiveView &v)
     {
-        // S = zoom EXACTLY (scale 1.0). The earlier 0.987 was mouse-capture noise and
-        // left a ~1.3% residual = the micro reticle offset (grows from screen centre).
-        // Proven end-to-end err=(0,-0.1)px at scale 1.0; nudge only if drift reappears.
-        float scaleX = 1.0f, scaleY = 1.0f, biasX = 0.0f, biasY = 0.0f;
-    };
-    MarkerCalib g_calib;
-
-    // Render-ease gain on the grace screen-shift. DEFAULT 0 = OFF: the reticle ease source
-    // (+0x10C − +0x104) is SNAP-contaminated (when locked onto an icon +0x104 snaps but
-    // +0x10C stays at the cursor → a bogus non-zero delta at rest that drags every grace).
-    // F/H still dial it for experiments; the grid diag (key I) is the cleaner signal.
-    float g_easeGain = 0.0f;
-
-    // ★ THE view centre = (pan + snapMid)/zoom — NOT the reticle (+0xFC). Proven by the
-    // gamepad symptom (2026-06-20): the old reticle centre makes markers "jamais centré" on
-    // the stick and only aligns when you move the MOUSE — because the reticle-centre formula
-    // `screen = (marker − reticle)·zoom + screenCentre` is correct ONLY when the reticle sits
-    // at screen centre; the mouse lets you put it there, the gamepad reticle sits off-centre.
-    // The engine pan setter FUN_1409cd100 does `pan = zoom·viewCentre − snapMid` (snapMid =
-    // midpoint of WorldMapArea +0x340..+0x34c), so the marker at screen centre is
-    // `viewCentre = (pan + snapMid)/zoom`. Under mouse it EQUALS the reticle (drop-in for the
-    // known-good baseline); under gamepad the reticle is off-centre but viewCentre is right →
-    // markers stay locked on the map for BOTH devices, no mouse wiggle needed. (Earlier "pan
-    // is instance-variant" was bare `pan` missing the per-page snapMid term — fixed here.)
-    // Cross-checked against the origin RE line (docs/windows_worldmap_viewcenter_re_findings.md):
-    // that brief reaches the SAME cursor-independent centre via the pan setter + transform
-    // FUN_1409cd0a0 (`screen = marker·zoom − pan`, centre = (pan + screenCentre)/zoom), and
-    // confirms via [INPUT-DELTA] that the GAMEPAD stick pans +0x378/+0x37c (+ zoom +0x380) and
-    // never moves the reticle (+0xFC/+0x104 fire only on mouse hover) — consistent with snapMid.
-    // Default = (pan+snapMid)/zoom (cursor-INDEPENDENT). This is the fix the user CONFIRMED
-    // kills the camera-frozen / mouse-to-screen-edge drift (bug 1) — markers no longer track
-    // the cursor. Y toggles to the raw-reticle baseline for A/B.
-    bool g_pan_center = true;
-
-    // OS cursor in client/backbuffer px, read DIRECTLY (not io.MousePos). ImGui's
-    // mouse pos comes from the WndProc, which hk_wndproc only forwards while the
-    // menu is open → io.MousePos freezes once the menu has been closed. The game
-    // reticle still tracks the OS cursor, so read that straight from the source.
-    ImVec2 os_mouse_px()
-    {
-        POINT pt{};
-        BOOL ok = o_get_cursor_pos ? o_get_cursor_pos(&pt) : GetCursorPos(&pt);
-        if (ok && g_hwnd && ScreenToClient(g_hwnd, &pt))
-            return ImVec2((float)pt.x, (float)pt.y);
-        return ImGui::GetIO().MousePos; // fallback
+        goblin::projection::View pv;
+        pv.panX = v.panX; pv.panZ = v.panZ; pv.zoom = v.zoom;
+        pv.snapMidX = v.snapMidX; pv.snapMidZ = v.snapMidZ;
+        return pv;
     }
 
-    // (markerU, markerV) marker coords → backbuffer px.
-    ImVec2 project_uv(const goblin::worldmap_probe::LiveView &v, float mU, float mV,
-                      float realW, float realH)
+    goblin::projection::ViewDelay<> g_view_delay;
+    float g_centroidX = 0.f, g_centroidZ = 0.f; // world centroid of the open group (DLC-UG pivot)
+
+    // DLC UNDERGROUND (group 3, areas 40-43) world→map-space. Its page-10 converter
+    // was never dumped, so this stays the user's hand-tuned eyeball fit, baked: a
+    // swap@1.0 frame (renderX≈worldZ, renderZ≈worldX) rotated −90° about the group
+    // centroid, placed at the render centre + a fixed pan. Approximate / unverified
+    // (the other three pages use the EXACT converter below); precise per-page bake is
+    // in the backlog. Everything else (base OW 60, base UG 12, DLC OW 61) is exact.
+    void dlc_ug_eyeball(float wx, float wz, float &gU, float &gV)
     {
-        float centerU, centerV;
-        if (g_pan_center)
-        {
-            // Cursor-INDEPENDENT view centre = (pan+snapMid)/zoom (engine pan setter inverted).
-            // No reticle term → does NOT follow the mouse (bug-1 stays fixed).
-            centerU = (v.panX + v.snapMidX) / v.zoom;
-            centerV = (v.panZ + v.snapMidZ) / v.zoom;
-        }
-        else
-        {
-            centerU = v.raw[0]; centerV = v.raw[1]; // raw reticle (mouse-only) for A/B compare
-        }
-        // ★ CANVAS FACTOR (realW/1920, realH/1080) — the missing piece. The engine renders the
-        // map in a virtual 1920×1080 canvas, then scales to the backbuffer. Measured via CT
-        // (3 zooms, same grace): pixel = screen_local·(canvasW/1920) + offset, scale = 0.665 ≈
-        // 1280/1920 CONSTANT across zoom. Without this factor scaleX=1.0 over-scaled by 1.5× at
-        // 1280×720 → error ∝ distance-from-centre = worse at low zoom / during pan (the décalage
-        // bug). scaleX/scaleY stay ≈1.0 (residual). screen_local = (mU−centerU)·zoom.
-        // bias is RESOLUTION-RELATIVE: stored in 1920×1080-reference px and scaled by realW/1920,
-        // so a calibration tuned at one resolution holds at every resolution. Without scaling, a
-        // constant-px bias tuned at 1920 mis-placed everything at 1280 (the whole anchor must be
-        // realW·coefficient to be resolution-independent — realW·0.5 already is; the bias must
-        // scale the same way).
-        return ImVec2((mU - centerU) * v.zoom * (realW / 1920.0f) * g_calib.scaleX + realW * 0.5f + g_calib.biasX * (realW / 1920.0f),
-                      (mV - centerV) * v.zoom * (realH / 1080.0f) * g_calib.scaleY + realH * 0.5f + g_calib.biasY * (realH / 1080.0f));
+        constexpr float RC = 5248.f;        // render-space centre (10496/2)
+        constexpr float rot_deg = -90.f, panX = -2170.f, panZ = 850.f;
+        const float dx = wx - g_centroidX, dz = wz - g_centroidZ;
+        float u0 = dz, v0 = dx;             // M = swap@1.0 (a=0,b=1,c=1,d=0)
+        const float rr = rot_deg * 3.14159265f / 180.f, cs = cosf(rr), sn = sinf(rr);
+        gU = (u0 * cs - v0 * sn) + RC + panX;
+        gV = (u0 * sn + v0 * cs) + RC + panZ;
     }
 
-    // ── In-DLL world→render AFFINE solver (replaces the by-hand diagonal calib) ──
-    // The world→render step is a full affine `render = M·world + T` (M = scale·
-    // rotation, shared across pages; T per page) — by-hand origin·scale came out
-    // ROTATED (see docs/marker_mapspace_CT_recipe.md). The overlay already reads the
-    // live cursor render coords (+0x104/+0x108) for calibration, so we recover M/T
-    // IN-DLL from (world→render) pairs — no external Cheat Engine needed.
-    struct CalPair { int page; float wx, wz, rx, rz; };
-    std::vector<CalPair> g_cal_pairs;
-
-    struct AffineFit
+    // Draws all graces of the open map page every frame the map is open.
+    void draw_markers_proto(bool /*menu_open*/)
     {
-        bool enabled = true;          // affine vs the diagonal origin baseline
-        // shared M = [[a,b],[c,d]]; seed = the 90° axis-swap @ 0.5 hypothesis
-        // (renderX ≈ 0.5·worldZ, renderZ ≈ 0.5·worldX) — confirm signs live.
-        // NOTE the seed has det<0 = a REFLECTION (mirror), not a rotation; the true
-        // map frame is likely a 90° ROTATION (det>0) = one off-diagonal sign flipped.
-        // Use the F1 presets + live a/b/c/d + global gtx/gty pan to dial it by eye.
-        // DEFAULT = user's hand-tuned OVERWORLD fit (2026-06-20): M = swap@1.0, render
-        // rotation −90°, pan (−2170, 850), centroid pivot. Roughly aligns 60/61; eyeball-
-        // approximate (scale not exact → slight de-centering when zoomed far). Underground
-        // (12) / DLC (40-43) need their own pan; precise per-page bake via lstsq later.
-        float a = 0.f, b = 1.f, c = 1.f, d = 0.f;
-        float e[64] = {}, f[64] = {}; // per-page T
-        float gtx = -1086.f, gty = -341.f; // overworld pan (fixed-pivot, user-tuned 06-20)
-        bool pivot = true;            // eyeball: rotate about the marker CENTROID (so
-                                      // changing M spins in place, not flings about (0,0))
-        float screen_rot = -90.f;     // REAL rotation field (deg, CW), applied in RENDER
-                                      // space so the live pan/zoom tracks. User: −90.
-        // UNDERGROUND (page 12 + DLC 40-43) has its OWN render frame (the game switches
-        // canvas) → own rotation + pan, picked when the DAT_143d6cfc3 sublayer flag is
-        // set. Seeded from overworld; dial while the underground map is open.
-        float screen_rot_u = -90.f;
-        float gtx_u = -2170.f, gty_u = 850.f;
-    };
-    float g_centroidX = 0.f, g_centroidZ = 0.f; // world centroid of drawn graces (pivot)
-    AffineFit g_aff;
-
-    // Solve A·x = b (3×3) by Gaussian elimination w/ partial pivoting. A is mutated.
-    bool solve3x3(double A[3][3], double b[3], double out[3])
-    {
-        for (int col = 0; col < 3; ++col)
+        namespace proj = goblin::projection;
+        goblin::worldmap_probe::LiveView lv;
+        if (!goblin::worldmap_probe::get_live_view(lv))
         {
-            int piv = col;
-            for (int r = col + 1; r < 3; ++r)
-                if (std::fabs(A[r][col]) > std::fabs(A[piv][col])) piv = r;
-            if (std::fabs(A[piv][col]) < 1e-9) return false;
-            if (piv != col)
-            {
-                for (int c = 0; c < 3; ++c) std::swap(A[piv][c], A[col][c]);
-                std::swap(b[piv], b[col]);
-            }
-            for (int r = 0; r < 3; ++r)
-            {
-                if (r == col) continue;
-                double fac = A[r][col] / A[col][col];
-                for (int c = 0; c < 3; ++c) A[r][c] -= fac * A[col][c];
-                b[r] -= fac * b[col];
-            }
+            g_view_delay.reset(); // map closed → re-seed the delay fresh on reopen
+            return;
         }
-        for (int i = 0; i < 3; ++i) out[i] = b[i] / A[i][i];
-        return true;
-    }
 
-    // Fit shared M + per-page T from g_cal_pairs. Pass 1: per page with ≥3 pairs,
-    // least-squares solve [a,b,e]/[c,d,f]; average a,b,c,d → shared M. Pass 2: per
-    // page T = mean residual (render − M·world) so M is shared, T per-page. Logs
-    // M, each page's T, and mean per-pair residual (sub-pixel = good). Returns #pages.
-    int solve_affine(AffineFit &af)
-    {
-        std::map<int, std::vector<const CalPair *>> by;
-        for (auto &p : g_cal_pairs) by[p.page & 63].push_back(&p);
-
-        double sa = 0, sb = 0, sc = 0, sd = 0;
-        int mcount = 0;
-        for (auto &kv : by)
-        {
-            auto &pts = kv.second;
-            if (pts.size() < 3) continue;
-            double ATA[3][3] = {}, atx[3] = {}, atz[3] = {};
-            for (auto *p : pts)
-            {
-                double row[3] = {p->wx, p->wz, 1.0};
-                for (int i = 0; i < 3; ++i)
-                {
-                    for (int j = 0; j < 3; ++j) ATA[i][j] += row[i] * row[j];
-                    atx[i] += row[i] * p->rx;
-                    atz[i] += row[i] * p->rz;
-                }
-            }
-            double A2[3][3], bb[3], rx[3], rz[3];
-            std::memcpy(A2, ATA, sizeof A2); std::memcpy(bb, atx, sizeof bb);
-            if (!solve3x3(A2, bb, rx)) continue;
-            std::memcpy(A2, ATA, sizeof A2); std::memcpy(bb, atz, sizeof bb);
-            if (!solve3x3(A2, bb, rz)) continue;
-            sa += rx[0]; sb += rx[1]; sc += rz[0]; sd += rz[1]; ++mcount;
-            spdlog::info("[AFFINE] page {} (n={}) M=[[{:.5f},{:.5f}],[{:.5f},{:.5f}]] T=({:.2f},{:.2f})",
-                         kv.first, pts.size(), rx[0], rx[1], rz[0], rz[1], rx[2], rz[2]);
-        }
-        if (mcount == 0)
-        {
-            spdlog::warn("[AFFINE] need >=3 pairs on at least one page (have {} pairs)", g_cal_pairs.size());
-            return 0;
-        }
-        af.a = (float)(sa / mcount); af.b = (float)(sb / mcount);
-        af.c = (float)(sc / mcount); af.d = (float)(sd / mcount);
-
-        int pages = 0;
-        for (auto &kv : by)
-        {
-            int pg = kv.first;
-            double te = 0, tf = 0;
-            for (auto *p : kv.second)
-            {
-                te += p->rx - (af.a * p->wx + af.b * p->wz);
-                tf += p->rz - (af.c * p->wx + af.d * p->wz);
-            }
-            af.e[pg] = (float)(te / kv.second.size());
-            af.f[pg] = (float)(tf / kv.second.size());
-            double mr = 0;
-            for (auto *p : kv.second)
-            {
-                double dx = p->rx - (af.a * p->wx + af.b * p->wz + af.e[pg]);
-                double dz = p->rz - (af.c * p->wx + af.d * p->wz + af.f[pg]);
-                mr += std::sqrt(dx * dx + dz * dz);
-            }
-            ++pages;
-            spdlog::info("[AFFINE] page {} T=({:.2f},{:.2f}) meanResidual={:.2f}px (n={})",
-                         pg, af.e[pg], af.f[pg], mr / kv.second.size(), kv.second.size());
-        }
-        spdlog::info("[AFFINE] SHARED M=[[{:.5f},{:.5f}],[{:.5f},{:.5f}]] from {} page(s) -> bake M once + per-page T",
-                     af.a, af.b, af.c, af.d, mcount);
-        return pages;
-    }
-
-    // Draws the prototype every frame the map is open. Foreground dots = always;
-    // the tuning window + hotkeys = the calibration UI.
-    void draw_markers_proto(bool menu_open)
-    {
-        goblin::worldmap_probe::LiveView v;
-        bool live = goblin::worldmap_probe::get_live_view(v);
         ImGuiIO &io = ImGui::GetIO();
         ImDrawList *fg = ImGui::GetForegroundDrawList();
+        const float realW = io.DisplaySize.x, realH = io.DisplaySize.y;
 
-        // RENDER-EASE MATCH (low-pass, F/H). Bug 2: we project the engine's TARGET fields
-        // (pan +0x378, reticle +0x104) which are INSTANT, but ER DRAWS them eased toward the
-        // target each frame (cursor +0x130 0.1f lerp / snap-anim FUN_1409bc8c0). Proven by the
-        // cyan(target) vs game-reticle(eased) gap on fast moves. So our overlay leads the eased
-        // map during motion. Match it: low-pass the SAME fields with the engine's alpha —
-        //   s += (raw - s)*alpha.   alpha=1 -> instant (current). alpha~0.1 -> ER's ease.
-        // Eased fields: panX/panZ (grace centre) AND reticle raw[2]/raw[3] (the cyan). At rest
-        // s==raw so static placement is untouched; only the in-motion render-lead is removed.
-        // ★ FRAME LEAD/DELAY on the full view (centre + zoom). The "dash" = our overlay (every
-        // Present) vs the native GFx map layer's compositing phase. Now that the projection is
-        // EXACT (canvas factor), this is a CLEAN test of a pure temporal frame-shift: extrapolate
-        // the camera by g_lead frames. lead>0 = forward (lead the map), lead<0 = backward (DELAY,
-        // = use last frame's view, if the map layer trails us). lead=0 = instant. F/H dial,
-        // R=0. Applied to the view CENTRE + zoom, written back to pan so project_uv reproduces it.
-        // If no value syncs the points to the map → the dash is the inherent overlay-vs-native
-        // limit (sub-frame compositing phase), accept it.
-        // For DELAY (lead<0) use a real frame-history ring buffer (sample |lead| frames back,
-        // fractional → lerp) — NOT extrapolation. Extrapolation `cur + lead·(cur−prev)` amplifies
-        // the per-frame delta 1.25× in the OPPOSITE direction on a sharp reversal (keyboard/gamepad
-        // ZQSD pan = instant velocity flips) → the points visibly "se retournent"/overshoot. A true
-        // past value never overshoots. lead>0 (forward) still extrapolates (experiment only).
-        static float g_lead = -1.0f; // user-tuned: exactly 1-frame delay = the map layer is
-                                     // composited 1 frame behind our Present sample. Markers live
-                                     // on that delayed layer; the cursor/reticle does NOT (drawn
-                                     // fresh by the game), so the delay applies to markers only.
+        // Motion sync: delay the projected view by the baked frame so markers ride
+        // the native map layer instead of leading it during a pan.
+        proj::View view = to_proj_view(lv);
+        g_view_delay.apply(view, kViewDelayFrames);
+
+        const auto &graces = goblin::live_graces(); // LIVE WorldMapPointParam, no bake
+
+        // REGION GATING (mirrors the game's native areaNo+tab display). 4 map groups
+        // = isDLC*2 | isUG: 0 base-overworld {60,61}, 1 base-underground {12}, 2 DLC
+        // overworld, 3 DLC underground {40-43}. Classification is data-derived → cache
+        // it once per grace index, plus a FIXED per-group centroid pivot (the DLC-UG
+        // eyeball rotates about it; a fixed pivot keeps the pan stable).
+        static bool s_classified = false;
+        static std::vector<uint8_t> s_group; // per grace: 0..3 group
+        static float s_pivX[4] = {0}, s_pivZ[4] = {0};
+        if (!s_classified)
         {
-            static const int HN = 8;
-            static float hCU[HN] = {0}, hCV[HN] = {0}, hZ[HN] = {0};
-            static int hHead = 0; static bool pInit = false;
-            if (live)
-            {
-                float cU = (v.panX + v.snapMidX) / v.zoom;
-                float cV = (v.panZ + v.snapMidZ) / v.zoom;
-                if (!pInit) { for (int i = 0; i < HN; ++i) { hCU[i] = cU; hCV[i] = cV; hZ[i] = v.zoom; } pInit = true; }
-                hHead = (hHead + 1) % HN;
-                hCU[hHead] = cU; hCV[hHead] = cV; hZ[hHead] = v.zoom;
-                float eU, eV, eZ;
-                if (g_lead < 0.0f)
-                {
-                    float d = -g_lead; if (d > HN - 1) d = HN - 1; // frames back
-                    int d0 = (int)d; float fr = d - d0;
-                    int i0 = (hHead - d0 + 2 * HN) % HN;
-                    int i1 = (hHead - d0 - 1 + 2 * HN) % HN;
-                    eU = hCU[i0] * (1 - fr) + hCU[i1] * fr;
-                    eV = hCV[i0] * (1 - fr) + hCV[i1] * fr;
-                    eZ = hZ[i0]  * (1 - fr) + hZ[i1]  * fr;
-                }
-                else
-                {
-                    int ip = (hHead - 1 + HN) % HN; // forward extrapolation (experiment)
-                    eU = cU + g_lead * (cU - hCU[ip]);
-                    eV = cV + g_lead * (cV - hCV[ip]);
-                    eZ = v.zoom + g_lead * (v.zoom - hZ[ip]);
-                }
-                v.zoom = eZ;
-                v.panX = eU * eZ - v.snapMidX;
-                v.panZ = eV * eZ - v.snapMidZ;
-            }
-            else
-                pInit = false; // map closed → re-seed fresh on reopen
-        }
-
-        // UPDATE-RATE THROTTLE (T / Z). Hypothesis: ER refreshes the displayed map at a fixed
-        // lower rate (e.g. 30 Hz) while we re-sample every Present frame, so between the
-        // engine's updates our markers run ahead. Quantize our pan/reticle sampling to
-        // g_mapFps Hz (hold the value between ticks). g_mapFps<=0 = every frame (off).
-        static float g_mapFps = 0.0f;
-        {
-            static float acc = 0.0f, hX = 0, hZ = 0, hRU = 0, hRV = 0;
-            static bool hInit = false;
-            if (live && g_mapFps > 0.0f)
-            {
-                acc += io.DeltaTime;
-                if (!hInit || acc >= 1.0f / g_mapFps)
-                {
-                    hX = v.panX; hZ = v.panZ; hRU = v.raw[2]; hRV = v.raw[3];
-                    acc = 0.0f; hInit = true;
-                }
-                v.panX = hX; v.panZ = hZ; v.raw[2] = hRU; v.raw[3] = hRV;
-            }
-            else
-                hInit = false;
-        }
-        {
-            char lb[96];
-            snprintf(lb, sizeof(lb), "LEAD=%.2f frames (F=delay/H=lead, R=0)   grid=I   MAPFPS=%.0f (T/Z)",
-                     g_lead, g_mapFps);
-            fg->AddText(ImVec2(12, 31), IM_COL32(0, 0, 0, 200), lb);
-            fg->AddText(ImVec2(11, 30), IM_COL32(120, 255, 160, 255), lb);
-            // DIAG: live snap-rect + pan + reticle. Watch in UNDERGROUND while moving the
-            // mouse with the camera frozen — if snapMin/snapMax (or snapMid) CHANGE with the
-            // cursor, the snap-rect is cursor-coupled there (= bug1 reappears via the centre).
-            char sb[200];
-            snprintf(sb, sizeof(sb),
-                     "snap[%.1f,%.1f .. %.1f,%.1f] mid(%.1f,%.1f) pan(%.1f,%.1f) ret(%.1f,%.1f) z%.3f",
-                     v.snapMinX, v.snapMinZ, v.snapMaxX, v.snapMaxZ, v.snapMidX, v.snapMidZ,
-                     v.panX, v.panZ, v.raw[2], v.raw[3], v.zoom);
-            fg->AddText(ImVec2(12, 49), IM_COL32(0, 0, 0, 200), sb);
-            fg->AddText(ImVec2(11, 48), IM_COL32(255, 220, 120, 255), sb);
-        }
-
-        // TERRAIN-GRID DIAG (toggle I). Draws a grid at fixed marker-space intervals through
-        // OUR projection (the target frame). Compare its lines to the game's map features
-        // during a scroll/lock: if our grid LEADS/LAGS the map art, that gap IS the bug-2
-        // target-vs-displayed offset, seen directly without the snap-contaminated reticle.
-        static bool g_grid = false;
-        if (g_grid && live)
-        {
-            const float step = 512.0f;            // marker-space spacing
-            float cU = (v.panX + v.snapMidX) / v.zoom; // view-centre marker coord
-            float cV = (v.panZ + v.snapMidZ) / v.zoom;
-            int N = 12;
-            float baseU = roundf(cU / step) * step, baseV = roundf(cV / step) * step;
-            ImU32 gcol = IM_COL32(255, 0, 255, 90);
-            for (int k = -N; k <= N; ++k)
-            {
-                float lu = baseU + k * step, lv = baseV + k * step;
-                ImVec2 a = project_uv(v, lu, cV - N * step, io.DisplaySize.x, io.DisplaySize.y);
-                ImVec2 b = project_uv(v, lu, cV + N * step, io.DisplaySize.x, io.DisplaySize.y);
-                fg->AddLine(a, b, gcol, 1.0f);     // vertical line (const U)
-                ImVec2 c = project_uv(v, cU - N * step, lv, io.DisplaySize.x, io.DisplaySize.y);
-                ImVec2 d = project_uv(v, cU + N * step, lv, io.DisplaySize.x, io.DisplaySize.y);
-                fg->AddLine(c, d, gcol, 1.0f);     // horizontal line (const V)
-            }
-        }
-
-        // DIAG (first-open latency): how long have we been WITHOUT a live view, and is
-        // the probe's published cursor null (probe hasn't found one) or non-null but
-        // failing the live read? Accumulates while !live, resets on live.
-        static float wait_s = 0.0f;
-        if (live)
-            wait_s = 0.0f;
-        else
-        {
-            wait_s += io.DeltaTime;
-            uintptr_t ac = goblin::worldmap_probe::debug_active_cursor();
-            char wbuf[160];
-            snprintf(wbuf, sizeof(wbuf),
-                     "MARKER PROTO: no live view  waiting=%.2fs  active_cursor=%#llx  (%s)",
-                     wait_s, (unsigned long long)ac,
-                     ac ? "published but read failed" : "probe has no cursor yet");
-            fg->AddText(ImVec2(12, 12), IM_COL32(0, 0, 0, 200), wbuf);
-            fg->AddText(ImVec2(11, 11), IM_COL32(255, 220, 0, 255), wbuf);
-        }
-
-        // Magenta cross = where the GAME draws its reticle. The whole game frame (map + its
-        // cursor) is composited ~1 frame behind the OS input, so the ER cursor LAGS the raw OS
-        // mouse. Draw the cross at the |g_lead|-frame-delayed mouse (same ring-buffer delay as
-        // the markers) so it sits on the ER cursor, not ahead of it. `m` stays RAW (calibration
-        // C-key + LAGCSV compare against the live mouse).
-        ImVec2 m = os_mouse_px();
-        ImVec2 md = m;
-        {
-            static const int MHN = 8;
-            static ImVec2 mh[MHN]; static int mHead = 0; static bool mInit = false;
-            if (!mInit) { for (int i = 0; i < MHN; ++i) mh[i] = m; mInit = true; }
-            mHead = (mHead + 1) % MHN; mh[mHead] = m;
-            float d = (g_lead < 0.0f) ? -g_lead : 0.0f; if (d > MHN - 1) d = MHN - 1;
-            int d0 = (int)d; float fr = d - d0;
-            int i0 = (mHead - d0 + 2 * MHN) % MHN, i1 = (mHead - d0 - 1 + 2 * MHN) % MHN;
-            md.x = mh[i0].x * (1 - fr) + mh[i1].x * fr;
-            md.y = mh[i0].y * (1 - fr) + mh[i1].y * fr;
-        }
-        fg->AddLine(ImVec2(md.x - 12, md.y), ImVec2(md.x + 12, md.y), IM_COL32(255, 0, 255, 220), 1.0f);
-        fg->AddLine(ImVec2(md.x, md.y - 12), ImVec2(md.x, md.y + 12), IM_COL32(255, 0, 255, 220), 1.0f);
-
-        // The reticle's screen-axis coords: U = +0x104 (raw[2]), V = +0x108 (raw[3]).
-        float U = v.raw[2], V = v.raw[3];
-
-        // FRAME-LAG CAPTURE (toggle V). One CSV row per frame: the pan we sampled this
-        // frame + the reticle marker coord + the OS mouse px (= the game reticle's true
-        // screen pos = ground truth). Grep "[LAGCSV]" out of the log → feed the data-driven
-        // test: it cross-correlates the per-frame gap (reticle_projected − mouse) against the
-        // 1-frame model (pan[n] − pan[n−1])·scale to prove the lag is exactly one frame.
-        //   columns: frame,panX,panZ,zoom,reticleU,reticleV,mouseX,mouseY,slX,slZ
-        // slX=retU*zoom-panX, slZ=retV*zoom-panZ = the mouse in screen-local px. If ret and
-        // pan are sampled in sync this is CONSTANT (mouse fixed); any per-frame drift during a
-        // scroll = the exact ret-vs-pan desync in px = the bug-2 lag, measured directly.
-        static bool g_csv = false;
-        static unsigned long g_csv_frame = 0;
-        if (g_csv && live)
-            spdlog::info("[LAGCSV] {},{:.4f},{:.4f},{:.6f},{:.4f},{:.4f},{:.2f},{:.2f},{:.3f},{:.3f}",
-                         g_csv_frame++, v.panX, v.panZ, v.zoom, v.raw[2], v.raw[3], m.x, m.y,
-                         v.raw[2] * v.zoom - v.panX, v.raw[3] * v.zoom - v.panZ);
-
-        if (live)
-        {
-            ImVec2 p = project_uv(v, U, V, io.DisplaySize.x, io.DisplaySize.y);
-            // Our projected reticle: cyan ring + crosshair. Should sit on the game
-            // reticle (= the magenta mouse cross) once calibrated.
-            fg->AddCircle(p, 10.0f, IM_COL32(0, 255, 255, 255), 0, 2.0f);
-            fg->AddLine(ImVec2(p.x - 14, p.y), ImVec2(p.x + 14, p.y), IM_COL32(0, 255, 255, 200), 1.0f);
-            fg->AddLine(ImVec2(p.x, p.y - 14), ImVec2(p.x, p.y + 14), IM_COL32(0, 255, 255, 200), 1.0f);
-
-            // FIELD-ID DIAG (set PANALPHA=1 with R first so nothing is eased): the game draws
-            // its reticle from SOME cursor field; project all three pairs and see which dot
-            // lands on the white game reticle during a FAST move. cyan=+0x104, RED=+0xFC,
-            // ORANGE=+0x10C. The match = the field the engine renders from (the eased one).
-            ImVec2 pF = project_uv(v, v.raw[0], v.raw[1], io.DisplaySize.x, io.DisplaySize.y); // +0xFC
-            ImVec2 pT = project_uv(v, v.raw[4], v.raw[5], io.DisplaySize.x, io.DisplaySize.y); // +0x10C
-            fg->AddCircle(pF, 7.0f, IM_COL32(255, 60, 60, 255), 0, 2.0f);   // red = +0xFC
-            fg->AddCircle(pT, 13.0f, IM_COL32(255, 170, 0, 255), 0, 2.0f);  // orange = +0x10C
-
-            // On-screen readout (menu-CLOSED, so the reticle is live and mouse==reticle).
-            // err = projected - mouse = the true model error. Verify it stays ~0 through
-            // pan+zoom. (Reading this via the F1 window is useless: opening F1 freezes the
-            // game reticle, so cyan and the mouse diverge by design.)
-            char buf[160];
-            snprintf(buf, sizeof(buf),
-                     "MARKER PROTO  zoom=%.4f  err=(%.1f, %.1f)px  scale=(%.4f,%.4f)\n"
-                     "C=calibrate (reticle on mouse)   X=reset   L=log",
-                     v.zoom, p.x - m.x, p.y - m.y, g_calib.scaleX, g_calib.scaleY);
-            fg->AddText(ImVec2(12, 12), IM_COL32(0, 0, 0, 200), buf);          // shadow
-            fg->AddText(ImVec2(11, 11), IM_COL32(0, 255, 255, 255), buf);
-        }
-
-        // ── PHASE 1: draw real GRACES from MAP_ENTRIES, projected by the same affine.
-        // marker axes: U(+0x104)=marker Z=gridZ*256+posZ, V(+0x108)=marker X=gridX*256+posX
-        // (G toggles a swap in case the axis order is transposed). Filter to the open
-        // page (areaNo == viewArea) so other pages' markers don't bleed in.
-        // World-scale: the baked grid*256+pos overshoots the reticle space (~0..10496)
-        // by ~2x (gridXNo is half-tiles: "world tile XX = gridXNo/2"), so scale grace
-        // world coords into reticle space. Live-tunable [ / ] to dial the exact factor.
-        static float g_world_scale = 0.5f;
-        static bool g_graces = true;
-        // DIAGONAL baseline: render = (world − origin[page]) · scale, K-calibrated.
-        // Superseded by the affine g_aff (M·world+T) which captures the rotation the
-        // diagonal can't; kept as a fallback (press U to compare). See solve_affine().
-        static float g_origin_u[64] = {}, g_origin_v[64] = {};
-        static bool g_seeded = false;
-        if (!g_seeded)
-        {
-            g_seeded = true;
-            g_origin_u[60] = 5565.f;
-            g_origin_u[61] = 301.f;  g_origin_v[61] = -390.f;
-        }
-        // captured from the solo'd grace this frame, for the K calibration:
-        static float g_solo_wU = 0, g_solo_wV = 0;
-        static int g_solo_page = -1;
-        // Region-by-region test: cycle which single areaNo is drawn (clearer than the
-        // whole map at once). Built once from the grace set; -1 index = all.
-        namespace gen = goblin::generated;
-        static std::vector<int> grace_areas;
-        static int area_idx = -1; // -1 = all areas
-        if (grace_areas.empty())
-        {
-            for (const auto &e : goblin::live_graces())
-            {
-                int a = e.areaNo;
-                if (std::find(grace_areas.begin(), grace_areas.end(), a) == grace_areas.end())
-                    grace_areas.push_back(a);
-            }
-            std::sort(grace_areas.begin(), grace_areas.end());
-        }
-        int area_filter = (area_idx >= 0 && area_idx < (int)grace_areas.size())
-                              ? grace_areas[area_idx] : -1;
-        // SOLO mode: isolate ONE grace (within the area filter) — draw it big + show
-        // its raw data, so a single known grace can be matched against the game icon.
-        // O = toggle solo, . / , = next/prev grace.
-        static int g_solo = -1;                 // -1 = off (draw all in filter)
-        static int g_grace_filtered_count = 0;  // # graces in the current area filter
-        if (live && g_graces)
-        {
-            // REGION GATING (mirrors the game's native areaNo+tab display). 4 map groups
-            // = isDLC*2 | isUG: 0 base-overworld {60,61}, 1 base-underground {12}, 2 DLC
-            // overworld, 3 DLC underground {40-43}. DLC reuses area 60/61 (projected) but
-            // carries a DLC tab (6800-6999) → tab_id is what separates it from base.
-            // Classification is data-derived → cache it once (per MAP_ENTRY index), plus a
-            // FIXED per-group pivot (stable pan, see fixed-pivot note).
-            static bool piv_done = false;
-            static float pivX[4] = {0}, pivZ[4] = {0};
-            static std::vector<uint8_t> g_greg; // per entry: 0..3 group, 0xFF = not a grace
-            if (!piv_done)
-            {
-                piv_done = true;
-                const auto &graces = goblin::live_graces();   // LIVE WorldMapPointParam, no bake
-                g_greg.assign(graces.size(), 0xFF);
-                double sx[4] = {0}, sz[4] = {0}; int sn[4] = {0};
-                for (size_t i = 0; i < graces.size(); ++i)
-                {
-                    const goblin::LiveGrace &e = graces[i];
-                    int ga; float wx, wz;
-                    goblin::marker_world_pos(e.areaNo, e.gridXNo, e.gridZNo,
-                                             e.posX, e.posZ, ga, wx, wz,
-                                             /*conv_underground=*/true);
-                    int pg = ga & 63;
-                    // DLC vs base by FINAL page (61/40-43 = DLC) — fixes Shadow Keep (area
-                    // 21 → page 61, missed by the old tab heuristic). UNDERGROUND is by the
-                    // ORIGINAL areaNo (12 / 40-43): area 12 now projects to overworld
-                    // map-space (pg=60) so it would mis-classify as overworld — but it's an
-                    // UG-layer grace, so gate it by its source areaNo. Catacombs/caves
-                    // (areas 30-39) → page 60 = base overworld, correct (game shows them).
-                    bool isug  = (e.areaNo == 12) || (e.areaNo >= 40 && e.areaNo <= 43);
-                    bool isdlc = (pg == 61) || (e.areaNo >= 40 && e.areaNo <= 43);
-                    int grp = (isdlc ? 2 : 0) | (isug ? 1 : 0);
-                    g_greg[i] = (uint8_t)grp;
-                    sx[grp] += wx; sz[grp] += wz; ++sn[grp];
-                }
-                for (int g = 0; g < 4; ++g)
-                    if (sn[g]) { pivX[g] = (float)(sx[g] / sn[g]); pivZ[g] = (float)(sz[g] / sn[g]); }
-            }
-            // Which group's map is OPEN — from the SOLVED region getter (probe reads the
-            // WorldMapDialog page+layer, commit 3f4ba42): openDlc = DLC map (page==10),
-            // underground = layer byte. Replaces the old player_in_dlc()+dead-flag guess
-            // (player position ≠ open map; you can open any discovered map).
-            int open_grp = (v.openDlc ? 2 : 0) | ((v.underground != 0) ? 1 : 0);
-            bool ug_open = (open_grp & 1);
-            g_centroidX = pivX[open_grp];
-            g_centroidZ = pivZ[open_grp];
-            int total = 0, drawn = 0, fidx = 0, culled = 0;
-            int drawn_by_area[64] = {0};   // DIAG: original areaNo histogram of drawn graces
-            char solo_info[160] = "";
-            const auto &graces = goblin::live_graces();   // LIVE WorldMapPointParam, no bake
+            s_classified = true;
+            s_group.assign(graces.size(), 0xFF);
+            double sx[4] = {0}, sz[4] = {0};
+            int sn[4] = {0};
             for (size_t i = 0; i < graces.size(); ++i)
             {
                 const goblin::LiveGrace &e = graces[i];
-                if (area_filter >= 0 && e.areaNo != area_filter)
-                    continue;
-                int myidx = fidx++;
-                ++total;
-                if (g_solo >= 0 && myidx != g_solo)
-                    continue; // solo: skip every grace but the selected one
-                // Project the row to UNIFIED overworld coords (legacy dungeons like
-                // Stormveil/area-10 are page-local until projected → else they pile up).
-                int ga;
-                float wx, wz;
-                goblin::marker_world_pos(e.areaNo, e.gridXNo, e.gridZNo,
-                                         e.posX, e.posZ, ga, wx, wz,
-                                         /*conv_underground=*/true);
+                int ga; float wx, wz;
+                goblin::marker_world_pos(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ,
+                                         ga, wx, wz, /*conv_underground=*/true);
                 int pg = ga & 63;
-                if (g_greg[i] != open_grp)
-                    continue; // draw only the OPEN map group (base/DLC × OW/UG)
-                // world axis → render axis. AFFINE (default): render = M·world + T[pg]
-                // (M shared, T per-page; solved in-DLL from P/M calibration). U toggles
-                // back to the diagonal origin·scale baseline for comparison. The rotation
-                // + pan are per-LAYER (overworld vs underground have different frames).
-                float L_rot = ug_open ? g_aff.screen_rot_u : g_aff.screen_rot;
-                float L_px  = ug_open ? g_aff.gtx_u : g_aff.gtx;
-                float L_py  = ug_open ? g_aff.gty_u : g_aff.gty;
-                float gU, gV;
-                // DLC UNDERGROUND only (group 3, area 40-43) keeps the eyeball — its page-10
-                // converter isn't dumped yet. Everything else uses the EXACT converter:
-                // base overworld (60), base underground (12, now unified), AND DLC overworld
-                // (61) — the agent dump proved areaNo 60 and 61 have IDENTICAL constants, so
-                // DLC overworld is the SAME formula, not a separate one.
-                bool dlc_ug = (open_grp == 3);
-                if (!dlc_ug)
-                {
-                    // EXACT world->map-space (agent RE 0a30738: FUN_140876140 + live
-                    // CS::WorldMapViewModel dump). origin (7168,16384), bias 128, scale 1.0,
-                    // Z-flipped:  mapX = worldX - 7040 ;  mapZ = -worldZ + 16512.
-                    gU = wx - 7040.0f;
-                    gV = -wz + 16512.0f;
-                }
-                else if (g_aff.enabled && g_aff.pivot)
-                {
-                    // rotate about the centroid, placed at render-centre + pan → M only
-                    // ROTATES the cloud (in place), never translates it off-screen.
-                    const float RC = 5248.f; // render-space centre (10496/2)
-                    float dx = wx - g_centroidX, dz = wz - g_centroidZ;
-                    float u0 = g_aff.a * dx + g_aff.b * dz; // M (scale/orient) rel. centroid
-                    float v0 = g_aff.c * dx + g_aff.d * dz;
-                    // REAL rotation, applied in RENDER space (NOT screen) so project_uv's
-                    // live pan/zoom tracks on top — screen-space rotation rotated the
-                    // pan/zoom response too ("n'importe quoi" on zoom). This is correct.
-                    if (L_rot != 0.f)
-                    {
-                        float rr = L_rot * 3.14159265f / 180.f;
-                        float cs = cosf(rr), sn = sinf(rr);
-                        float u1 = u0 * cs - v0 * sn, v1 = u0 * sn + v0 * cs;
-                        u0 = u1; v0 = v1;
-                    }
-                    gU = u0 + RC + L_px;
-                    gV = v0 + RC + L_py;
-                }
-                else if (g_aff.enabled)
-                {
-                    gU = g_aff.a * wx + g_aff.b * wz + g_aff.e[pg] + g_aff.gtx;
-                    gV = g_aff.c * wx + g_aff.d * wz + g_aff.f[pg] + g_aff.gty;
-                }
-                else
-                {
-                    gU = (wx - g_origin_u[pg]) * g_world_scale;
-                    gV = (wz - g_origin_v[pg]) * g_world_scale;
-                }
-                // (rotation is applied in RENDER space above so pan/zoom track)
-                ImVec2 gp = project_uv(v, gU, gV, io.DisplaySize.x, io.DisplaySize.y);
-                // RENDER-EASE SHIFT: the game draws the eased frame (+0x10C), we project the
-                // target. Shift every grace by the reticle's screen-space ease vector =
-                // project(+0x10C) − project(+0x104) = (raw[4]−raw[2])·zoom·scale. Static-marker
-                // correct (unlike the centre-ease), cursor-independent, 0 at rest. F/H = gain.
-                gp.x += (v.raw[4] - v.raw[2]) * v.zoom * g_calib.scaleX * g_easeGain;
-                gp.y += (v.raw[5] - v.raw[3]) * v.zoom * g_calib.scaleY * g_easeGain;
-                bool solo = (g_solo >= 0 && myidx == g_solo);
-                if (solo) { g_solo_wU = wx; g_solo_wV = wz; g_solo_page = pg; }
-                if (!solo && (gp.x < -16 || gp.y < -16 || gp.x > io.DisplaySize.x + 16 ||
-                              gp.y > io.DisplaySize.y + 16))
-                {
-                    ++culled; // ImGui does NOT CPU-cull primitives outside the clip rect (it
-                              // still builds their vertices, GPU clips) → culling here saves
-                              // the per-marker vertex work. Count it for tuning.
-                    continue;
-                }
-                float r = solo ? 12.0f : 5.0f;
-                ImU32 col = solo ? IM_COL32(255, 60, 60, 255) : IM_COL32(90, 230, 130, 235);
-                fg->AddCircleFilled(gp, r, col);
-                fg->AddCircle(gp, r, IM_COL32(0, 0, 0, 220), 0, 1.5f);
-                ++drawn;
-                if (e.areaNo < 64) ++drawn_by_area[e.areaNo]; // DIAG histogram
-                if (solo)
-                    snprintf(solo_info, sizeof(solo_info),
-                             "SOLO #%d area=%d page=%d world=(%.0f,%.0f) offset[%d]=(%.0f,%.0f) px=(%.0f,%.0f)  K=calib page",
-                             myidx, (int)e.areaNo, pg, wx, wz, pg,
-                             g_origin_u[pg], g_origin_v[pg], gp.x, gp.y);
+                // DLC vs base by FINAL page (61/40-43 = DLC). UNDERGROUND by the
+                // ORIGINAL areaNo (12 / 40-43): area 12 projects to overworld map-space
+                // (pg=60) so it must be gated by its source layer, not the final page.
+                bool isug = (e.areaNo == 12) || (e.areaNo >= 40 && e.areaNo <= 43);
+                bool isdlc = (pg == 61) || (e.areaNo >= 40 && e.areaNo <= 43);
+                int grp = (isdlc ? 2 : 0) | (isug ? 1 : 0);
+                s_group[i] = (uint8_t)grp;
+                sx[grp] += wx; sz[grp] += wz; ++sn[grp];
             }
-            if (g_solo >= 0)
+            for (int g = 0; g < 4; ++g)
+                if (sn[g]) { s_pivX[g] = (float)(sx[g] / sn[g]); s_pivZ[g] = (float)(sz[g] / sn[g]); }
+        }
+
+        // Which group's map is OPEN — from the SOLVED region getter (probe reads the
+        // WorldMapDialog page+layer): openDlc = DLC map, underground = layer byte.
+        const int open_grp = (lv.openDlc ? 2 : 0) | ((lv.underground != 0) ? 1 : 0);
+        const bool dlc_ug = (open_grp == 3);
+        g_centroidX = s_pivX[open_grp];
+        g_centroidZ = s_pivZ[open_grp];
+
+        for (size_t i = 0; i < graces.size(); ++i)
+        {
+            if (s_group[i] != open_grp)
+                continue; // draw only the open map group (base/DLC × OW/UG)
+            const goblin::LiveGrace &e = graces[i];
+            int ga; float wx, wz;
+            goblin::marker_world_pos(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ,
+                                     ga, wx, wz, /*conv_underground=*/true);
+
+            float gU, gV;
+            if (!dlc_ug)
             {
-                fg->AddText(ImVec2(12, 60), IM_COL32(0, 0, 0, 200), solo_info);
-                fg->AddText(ImVec2(11, 59), IM_COL32(255, 120, 120, 255), solo_info);
+                // EXACT world→map-space (agent RE 0a30738): origin (7168,16384), bias
+                // 128, scale 1.0, Z-flipped: mapX = worldX − 7040 ; mapZ = −worldZ + 16512.
+                gU = wx - 7040.0f;
+                gV = -wz + 16512.0f;
             }
-            g_grace_filtered_count = total;
-            char gbuf[320];
-            snprintf(gbuf, sizeof(gbuf),
-                     "GRACES drawn=%d/%d area=%s solo=%s | proj=%s pairs=%d [O=solo ./,=cycle  P=pair M=solve U=toggle Del=clear]",
-                     drawn, total, area_filter < 0 ? "ALL" : std::to_string(area_filter).c_str(),
-                     g_solo < 0 ? "off" : std::to_string(g_solo).c_str(),
-                     g_aff.enabled ? "AFFINE" : "diag", (int)g_cal_pairs.size());
-            fg->AddText(ImVec2(12, 44), IM_COL32(0, 0, 0, 200), gbuf);
-            fg->AddText(ImVec2(11, 43), IM_COL32(90, 230, 130, 255), gbuf);
-            // DIAG: which ORIGINAL areaNos are drawn on this open map (spot UG leaks) +
-            // the live open-region read (open_grp / dlc / ug) — all on screen, no logs.
-            char abuf[320];
-            int ap = snprintf(abuf, sizeof(abuf), "OPEN grp=%d dlc=%d ug=%d | DRAWN area: ",
-                              open_grp, (int)v.openDlc, (int)v.underground);
-            for (int a = 0; a < 64 && ap < (int)sizeof(abuf) - 16; ++a)
-                if (drawn_by_area[a])
-                    ap += snprintf(abuf + ap, sizeof(abuf) - ap, "%d:%d ", a, drawn_by_area[a]);
-            fg->AddText(ImVec2(12, 76), IM_COL32(0, 0, 0, 200), abuf);
-            fg->AddText(ImVec2(11, 75), IM_COL32(255, 220, 120, 255), abuf);
-            // Also log it (once per change) so it can be copied from the log file.
-            static std::string s_last_hist;
-            if (abuf != s_last_hist)
-            {
-                s_last_hist = abuf;
-                spdlog::info("[GRACE-DIAG] open_grp={} (dlc={} ug={}) drawn={}/{} culled-offscreen={}  {}",
-                             open_grp, (int)v.openDlc, (int)v.underground, drawn, total, culled, abuf);
-            }
-        }
-
-        // Hotkeys (work menu-closed): C = 1-point calibrate (solve biasX/Y so the
-        // projection of the reticle hits the mouse), L = log a row, X = reset,
-        // G = swap grace axes. The model is linear in bias, so one capture pins both.
-        // F / H = nudge the frame LEAD/DELAY (F = −0.25 toward delay, H = +0.25 toward lead);
-        // R = reset 0. Negative = delay (use older view), positive = lead (extrapolate forward).
-        // (Letter keys: OEM [ ] were unreachable on AZERTY.)
-        static bool prevLB = false, prevRB = false, prevBS = false;
-        bool downLB = (GetAsyncKeyState('F') & 0x8000) != 0; // lead -
-        bool downRB = (GetAsyncKeyState('H') & 0x8000) != 0; // lead +
-        bool downBS = (GetAsyncKeyState('R') & 0x8000) != 0; // reset 0
-        if (downLB && !prevLB) { g_lead -= 0.125f; spdlog::info("[LEAD] {:.3f}", g_lead); }
-        if (downRB && !prevRB) { g_lead += 0.125f; spdlog::info("[LEAD] {:.3f}", g_lead); }
-        if (downBS && !prevBS) { g_lead = 0.0f; spdlog::info("[LEAD] reset 0"); }
-        prevLB = downLB; prevRB = downRB; prevBS = downBS;
-
-        // T / Z = map-update-rate throttle (Hz); 0 = off (every frame).
-        static bool prevT = false, prevZ = false;
-        bool downT = (GetAsyncKeyState('T') & 0x8000) != 0;
-        bool downZ = (GetAsyncKeyState('Z') & 0x8000) != 0;
-        if (downT && !prevT) { g_mapFps -= 5.0f; if (g_mapFps < 0.0f) g_mapFps = 0.0f; spdlog::info("[MAPFPS] {:.0f}", g_mapFps); }
-        if (downZ && !prevZ) { g_mapFps += 5.0f; spdlog::info("[MAPFPS] {:.0f}", g_mapFps); }
-        prevT = downT; prevZ = downZ;
-
-        // I = toggle the terrain-grid diagnostic.
-        static bool prevI = false;
-        bool downI = (GetAsyncKeyState('I') & 0x8000) != 0;
-        if (downI && !prevI) { g_grid = !g_grid; spdlog::info("[GRID] {}", g_grid ? "ON" : "OFF"); }
-        prevI = downI;
-
-        static bool prevC = false, prevX = false, prevL = false;
-        bool downC = (GetAsyncKeyState('C') & 0x8000) != 0;
-        bool downX = (GetAsyncKeyState('X') & 0x8000) != 0;
-        bool downL = (GetAsyncKeyState('L') & 0x8000) != 0;
-
-        // V = toggle the per-frame frame-lag CSV capture ([LAGCSV] rows in the log).
-        static bool prevV = false;
-        bool downV = (GetAsyncKeyState('V') & 0x8000) != 0;
-        if (downV && !prevV)
-        {
-            g_csv = !g_csv;
-            spdlog::info("[LAGCSV] capture {} (cols: frame,panX,panZ,zoom,reticleU,reticleV,mouseX,mouseY)",
-                         g_csv ? "ON" : "OFF");
-        }
-        prevV = downV;
-
-        // Y = toggle the projection centre: stable pan-based (fixes markers-follow-reticle)
-        // vs the old reticle-coupled +0xFC. Default = pan-based.
-        static bool prevY = false;
-        bool downY = (GetAsyncKeyState('Y') & 0x8000) != 0;
-        if (downY && !prevY) g_pan_center = !g_pan_center;
-        prevY = downY;
-
-        // PageDown / PageUp dial the grace world-scale live (physical keys = AZERTY-safe).
-        // Hold Shift for fine ±0.001 steps.
-        static bool prevPD = false, prevPU = false;
-        bool downPD = (GetAsyncKeyState(VK_NEXT) & 0x8000) != 0;   // PageDown
-        bool downPU = (GetAsyncKeyState(VK_PRIOR) & 0x8000) != 0;  // PageUp
-        float step = (GetAsyncKeyState(VK_SHIFT) & 0x8000) ? 0.001f : 0.01f;
-        if (downPD && !prevPD)
-            g_world_scale -= step;
-        if (downPU && !prevPU)
-            g_world_scale += step;
-        prevPD = downPD;
-        prevPU = downPU;
-
-        // N / B = cycle the drawn areaNo, A = all (region-by-region test).
-        static bool prevN = false, prevB = false, prevA = false;
-        bool downN = (GetAsyncKeyState('N') & 0x8000) != 0;
-        bool downB = (GetAsyncKeyState('B') & 0x8000) != 0;
-        bool downA = (GetAsyncKeyState('A') & 0x8000) != 0;
-        if (downN && !prevN && !grace_areas.empty())
-            area_idx = (area_idx + 1) % (int)grace_areas.size();
-        if (downB && !prevB && !grace_areas.empty())
-            area_idx = (area_idx <= 0 ? (int)grace_areas.size() - 1 : area_idx - 1);
-        if (downA && !prevA)
-            area_idx = -1;
-        prevN = downN;
-        prevB = downB;
-        prevA = downA;
-
-        // O = toggle solo (isolate one grace), . / , = next/prev grace in the filter.
-        static bool prevO = false, prevDot = false, prevComma = false;
-        bool downO = (GetAsyncKeyState('O') & 0x8000) != 0;
-        bool downDot = (GetAsyncKeyState(VK_OEM_PERIOD) & 0x8000) != 0;
-        bool downComma = (GetAsyncKeyState(VK_OEM_COMMA) & 0x8000) != 0;
-        int fc = g_grace_filtered_count > 0 ? g_grace_filtered_count : 1;
-        if (downO && !prevO)
-            g_solo = (g_solo < 0) ? 0 : -1;
-        if (downDot && !prevDot && g_solo >= 0)
-            g_solo = (g_solo + 1) % fc;
-        if (downComma && !prevComma && g_solo >= 0)
-            g_solo = (g_solo <= 0 ? fc - 1 : g_solo - 1);
-        prevO = downO;
-        prevDot = downDot;
-        prevComma = downComma;
-
-        // K = calibrate the solo'd grace's PAGE origin: put the reticle on the grace's
-        // REAL game icon, then origin = world − reticleRender/scale (render=(world−o)·s).
-        static bool prevK = false;
-        bool downK = (GetAsyncKeyState('K') & 0x8000) != 0;
-        if (downK && !prevK && live && g_solo >= 0 && g_solo_page >= 0 &&
-            g_world_scale != 0.f)
-        {
-            g_origin_u[g_solo_page] = g_solo_wU - v.raw[2] / g_world_scale;
-            g_origin_v[g_solo_page] = g_solo_wV - v.raw[3] / g_world_scale;
-            spdlog::info("[ORIGINCAL] page={} origin=({:.1f},{:.1f}) "
-                         "(world=({:.1f},{:.1f}) reticle=({:.1f},{:.1f}))",
-                         g_solo_page, g_origin_u[g_solo_page], g_origin_v[g_solo_page],
-                         g_solo_wU, g_solo_wV, v.raw[2], v.raw[3]);
-        }
-        prevK = downK;
-
-        // ── In-DLL AFFINE calibration hotkeys (menu-CLOSED so the reticle is live) ──
-        // P = push a (world→render) PAIR: solo a grace (O + ./,), hover its REAL game
-        //     icon so the reticle sits on it, press P. Collect ≥3 per page.
-        // M = solve the affine from the pairs (shared M + per-page T) and apply it.
-        // U = toggle affine vs the diagonal baseline.  Del = clear pairs.
-        static bool prevP = false, prevM = false, prevU = false, prevDel = false;
-        bool downP = (GetAsyncKeyState('P') & 0x8000) != 0;
-        bool downM = (GetAsyncKeyState('M') & 0x8000) != 0;
-        bool downU = (GetAsyncKeyState('U') & 0x8000) != 0;
-        bool downDel = (GetAsyncKeyState(VK_DELETE) & 0x8000) != 0;
-        if (downP && !prevP && live && g_solo >= 0 && g_solo_page >= 0)
-        {
-            g_cal_pairs.push_back({g_solo_page, g_solo_wU, g_solo_wV, v.raw[2], v.raw[3]});
-            spdlog::info("[AFFINE] pair #{} page={} world=({:.1f},{:.1f}) render=({:.1f},{:.1f})",
-                         g_cal_pairs.size(), g_solo_page, g_solo_wU, g_solo_wV, v.raw[2], v.raw[3]);
-        }
-        if (downM && !prevM)
-        {
-            if (solve_affine(g_aff) > 0) g_aff.enabled = true;
-        }
-        if (downU && !prevU)
-        {
-            g_aff.enabled = !g_aff.enabled;
-            spdlog::info("[AFFINE] enabled={}", g_aff.enabled);
-        }
-        if (downDel && !prevDel)
-        {
-            g_cal_pairs.clear();
-            spdlog::info("[AFFINE] pairs cleared");
-        }
-        prevP = downP; prevM = downM; prevU = downU; prevDel = downDel;
-
-        // J = one-shot dump of EVERY grace's raw row + computed unified world coord,
-        // so we can correlate against the reticle's true marker coord (hover a known
-        // grace + press L) and reverse the data→marker-space transform.
-        static bool prevJ = false;
-        bool downJ = (GetAsyncKeyState('J') & 0x8000) != 0;
-        if (downJ && !prevJ)
-        {
-            namespace gen = goblin::generated;
-            spdlog::info("[GRACEDUMP] begin (reticle now U={:.1f} V={:.1f} pan=({:.1f},{:.1f}) zoom={:.4f})",
-                         v.raw[2], v.raw[3], v.panX, v.panZ, v.zoom);
-            int n = 0;
-            const auto &dump_graces = goblin::live_graces();
-            for (size_t i = 0; i < dump_graces.size() && n < 500; ++i)
-            {
-                const goblin::LiveGrace &e = dump_graces[i];
-                int ga;
-                float wx, wz;
-                goblin::marker_world_pos(e.areaNo, e.gridXNo, e.gridZNo,
-                                         e.posX, e.posZ, ga, wx, wz,
-                                         /*conv_underground=*/true);
-                spdlog::info("[GRACE] area={} grid=({},{}) pos=({:.1f},{:.1f}) -> world=({:.1f},{:.1f})",
-                             (int)e.areaNo, (int)e.gridXNo, (int)e.gridZNo,
-                             e.posX, e.posZ, wx, wz);
-                ++n;
-            }
-            spdlog::info("[GRACEDUMP] end ({} graces)", n);
-        }
-        prevJ = downJ;
-        if (downC && !prevC && live)
-        {
-            // Solve the residual bias so the projection hits the mouse exactly here. Store in
-            // 1920×1080-reference px (project_uv scales bias by realW/1920) → calibration is
-            // resolution-independent.
-            g_calib.biasX = 0.f;
-            g_calib.biasY = 0.f;
-            ImVec2 p0 = project_uv(v, U, V, io.DisplaySize.x, io.DisplaySize.y);
-            g_calib.biasX = (m.x - p0.x) * (1920.0f / io.DisplaySize.x);
-            g_calib.biasY = (m.y - p0.y) * (1080.0f / io.DisplaySize.y);
-        }
-        if (downL && !prevL && live)
-            spdlog::info("[MARKERCAL] mouse=({:.1f},{:.1f}) pan=({:.2f},{:.2f}) zoom={:.5f} "
-                         "U(+0x104)={:.2f} V(+0x108)={:.2f}", m.x, m.y, v.panX, v.panZ, v.zoom, U, V);
-        if (downX && !prevX)
-            g_calib = MarkerCalib{};
-        prevC = downC;
-        prevX = downX;
-        prevL = downL;
-
-        if (!menu_open)
-            return;
-        ImGui::SetNextWindowBgAlpha(0.88f);
-        if (ImGui::Begin("Marker proto (affine tune)"))
-        {
-            if (!live)
-                ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1), "no live map view (open the world map)");
             else
             {
-                ImVec2 p = project_uv(v, U, V, io.DisplaySize.x, io.DisplaySize.y);
-                ImGui::Text("U(+0x104)=%.1f  V(+0x108)=%.1f   reticle-ctr(+0xFC)=(%.1f,%.1f)",
-                            U, V, v.raw[0], v.raw[1]);
-                ImGui::Text("pan=(%.1f, %.1f)  zoom=%.4f   centre=%s (Y toggles)",
-                            v.panX, v.panZ, v.zoom, g_pan_center ? "PAN (stable)" : "RETICLE (+0xFC)");
-                ImGui::Text("projected px = (%.0f, %.0f)   mouse = (%.0f, %.0f)   [%.0fx%.0f]",
-                            p.x, p.y, m.x, m.y, io.DisplaySize.x, io.DisplaySize.y);
-                ImGui::Text("err = (%.0f, %.0f) px", p.x - m.x, p.y - m.y);
+                dlc_ug_eyeball(wx, wz, gU, gV); // page-10 converter not dumped (eyeball)
             }
-            ImGui::Separator();
-            ImGui::TextColored(ImVec4(0, 1, 1, 1), "model: px = U*zoom*sx - panX + bx  (RE: screen = marker*zoom - pan)");
-            ImGui::TextWrapped("C = 1-point calibrate (reticle on mouse) -> then PAN+ZOOM and watch the "
-                               "cyan ring stay locked. If it drifts, nudge scaleX/scaleY ~1.0. X = reset.");
-            ImGui::Separator();
-            ImGui::DragFloat("scaleX", &g_calib.scaleX, 0.0005f, 0.5f, 1.5f, "%.5f");
-            ImGui::DragFloat("scaleY", &g_calib.scaleY, 0.0005f, 0.5f, 1.5f, "%.5f");
-            ImGui::DragFloat("biasX", &g_calib.biasX, 0.5f, -4000.0f, 4000.0f, "%.1f");
-            ImGui::DragFloat("biasY", &g_calib.biasY, 0.5f, -4000.0f, 4000.0f, "%.1f");
-            if (ImGui::Button("reset calib"))
-                g_calib = MarkerCalib{};
 
-            ImGui::Separator();
-            ImGui::TextColored(ImVec4(0.6f, 0.9f, 1, 1), "MOTION SYNC: frame delay (neg) / lead (pos)");
-            ImGui::SliderFloat("delay (frames)", &g_lead, -3.0f, 1.0f, "%.3f");
-            ImGui::SameLine();
-            if (ImGui::Button("0##lead")) g_lead = 0.0f;
-            ImGui::TextDisabled("scroll the map while dragging; <0 = delay (ring buffer, no overshoot)");
-
-            ImGui::Separator();
-            ImGui::TextColored(ImVec4(0.5f, 1, 0.6f, 1), "WORLD->RENDER affine: render = M*world + T[page] + pan");
-            ImGui::Checkbox("affine enabled (else diagonal baseline)", &g_aff.enabled);
-            float det = g_aff.a * g_aff.d - g_aff.b * g_aff.c;
-            ImGui::Text("M = [[%.4f, %.4f], [%.4f, %.4f]]  det=%.4f (%s)", g_aff.a, g_aff.b,
-                        g_aff.c, g_aff.d, det, det < 0 ? "MIRROR" : "rotation");
-            // REAL ROTATION FIELD — separate from scale. Rotates the whole projected
-            // marker layer in screen space about the map centre. Use M=diag (pure 0.5
-            // scale) + this for a clean 90deg. Buttons step CW; slider for any angle.
-            ImGui::TextColored(ImVec4(1, 0.85f, 0.2f, 1), "ROTATION (render, zoom-stable): %.0f deg CW  [user: -90]", g_aff.screen_rot);
-            if (ImGui::Button("0"))   g_aff.screen_rot = 0.f;    ImGui::SameLine();
-            if (ImGui::Button("90 CW"))  g_aff.screen_rot = 90.f;  ImGui::SameLine();
-            if (ImGui::Button("180")) g_aff.screen_rot = 180.f;  ImGui::SameLine();
-            if (ImGui::Button("270 CW")) g_aff.screen_rot = 270.f;
-            ImGui::DragFloat("rotation deg", &g_aff.screen_rot, 1.f, -360.f, 360.f, "%.0f");
-            ImGui::TextDisabled("(tip: set M to 'diag' below, then dial this rotation + pan)");
-            // EYEBALL DIAL: rotation presets @ scale 0.5 (one off-diagonal sign each),
-            // then pan with gtx/gty until page 60 lines up. If rotate+pan aligns -> it's
-            // a clean 90deg rotation; if not -> T differs per page -> use Solve.
-            // ORIENTATION = the 8 dihedral signed-permutations (the true map frame is
-            // scale·{swap or not}·{sign flips}, NOT an arbitrary angle). Three toggles
-            // cover all 8 with NO surprise minus: default (swap on, no negate) = the
-            // 0.5/0.5 convention. negX/negZ are what fix a MIRRORED ("wrong direction")
-            // cluster. (Edit a,b,c,d below for a fine non-dihedral tweak if ever needed.)
-            static float g_oscale = 1.0f; // matches the default M = swap@1.0
-            static bool g_swap = true, g_negX = false, g_negZ = false;
-            bool ch = false;
-            ch |= ImGui::DragFloat("scale", &g_oscale, 0.005f, 0.1f, 1.5f, "%.3f");
-            ch |= ImGui::Checkbox("swap axes", &g_swap); ImGui::SameLine();
-            ch |= ImGui::Checkbox("negate X", &g_negX); ImGui::SameLine();
-            ch |= ImGui::Checkbox("negate Z", &g_negZ);
-            if (ch)
-            {
-                float s = g_oscale, a, b, c, d;
-                if (g_swap) { a = 0; b = s; c = s; d = 0; }   // renderX~worldZ, renderZ~worldX
-                else        { a = s; b = 0; c = 0; d = s; }   // renderX~worldX, renderZ~worldZ
-                if (g_negX) { a = -a; b = -b; }               // flip render X
-                if (g_negZ) { c = -c; d = -d; }               // flip render Z
-                g_aff.a = a; g_aff.b = b; g_aff.c = c; g_aff.d = d;
-            }
-            ImGui::TextDisabled("quick presets (scale 0.5):");
-            ImGui::SameLine();
-            if (ImGui::Button("90 CW"))  { g_aff.a=0; g_aff.b=-0.5f; g_aff.c=0.5f;  g_aff.d=0; }
-            ImGui::SameLine();
-            if (ImGui::Button("90 CCW")) { g_aff.a=0; g_aff.b=0.5f;  g_aff.c=-0.5f; g_aff.d=0; }
-            ImGui::SameLine();
-            if (ImGui::Button("mirror"))  { g_aff.a=0; g_aff.b=0.5f;  g_aff.c=0.5f;  g_aff.d=0; }
-            ImGui::SameLine();
-            if (ImGui::Button("diag"))    { g_aff.a=0.5f; g_aff.b=0; g_aff.c=0; g_aff.d=0.5f; }
-            ImGui::DragFloat4("a,b,c,d", &g_aff.a, 0.01f, -2.f, 2.f, "%.3f");
-            ImGui::Checkbox("rotate around centroid (eyeball: M spins in place)", &g_aff.pivot);
-            ImGui::DragFloat("pan X (gtx)", &g_aff.gtx, 10.f, -12000.f, 12000.f, "%.0f");
-            ImGui::DragFloat("pan Y (gty)", &g_aff.gty, 10.f, -12000.f, 12000.f, "%.0f");
-            ImGui::Separator();
-            {
-                bool dlcF = goblin::player_in_dlc();
-                int ogF = (dlcF ? 2 : 0) | ((live && v.underground) ? 1 : 0);
-                const char *gname[4] = {"base-OW", "base-UG", "DLC-OW", "DLC-UG"};
-                ImGui::TextColored(live && v.underground ? ImVec4(1, 0.6f, 0.2f, 1) : ImVec4(0.5f, 0.7f, 1, 1),
-                                   "OPEN GROUP: %s  (sublayer DAT=%d, player_in_dlc=%d)",
-                                   gname[ogF], live ? v.underground : -1, dlcF);
-                ImGui::TextDisabled("  ^ sublayer must flip 0<->non0 when you toggle UG; else flag is wrong");
-            }
-            ImGui::TextDisabled("underground (page 12 + DLC 40-43) own rotation + pan:");
-            ImGui::DragFloat("UG rotation deg", &g_aff.screen_rot_u, 1.f, -360.f, 360.f, "%.0f");
-            ImGui::DragFloat("UG pan X", &g_aff.gtx_u, 10.f, -12000.f, 12000.f, "%.0f");
-            ImGui::DragFloat("UG pan Y", &g_aff.gty_u, 10.f, -12000.f, 12000.f, "%.0f");
-            if (g_aff.pivot)
-            {
-                // The FINAL bakeable transform render = M'*world + T' (rotation folded in,
-                // per the CURRENT layer). M' = R(rot)*M ; T' = RC + pan - M'*pivot. Give me
-                // these for the open layer and I bake render=M'*world+T' (no pivot/pan/RC).
-                bool ugF = live && v.underground;
-                float rotF = ugF ? g_aff.screen_rot_u : g_aff.screen_rot;
-                float pxF  = ugF ? g_aff.gtx_u : g_aff.gtx;
-                float pyF  = ugF ? g_aff.gty_u : g_aff.gty;
-                const float RC = 5248.f;
-                float rr = rotF * 3.14159265f / 180.f, cs = cosf(rr), sn = sinf(rr);
-                float a1 = cs * g_aff.a - sn * g_aff.c, b1 = cs * g_aff.b - sn * g_aff.d;
-                float c1 = sn * g_aff.a + cs * g_aff.c, d1 = sn * g_aff.b + cs * g_aff.d;
-                float Te = RC + pxF - (a1 * g_centroidX + b1 * g_centroidZ);
-                float Tf = RC + pyF - (c1 * g_centroidX + d1 * g_centroidZ);
-                ImGui::TextColored(ImVec4(0.4f, 1, 0.4f, 1),
-                                   "BAKE [%s] pivot=(%.0f,%.0f):", ugF ? "UNDERGROUND" : "overworld",
-                                   g_centroidX, g_centroidZ);
-                ImGui::Text("  M'=[[%.4f,%.4f],[%.4f,%.4f]]  T'=(%.1f, %.1f)", a1, b1, c1, d1, Te, Tf);
-            }
-            ImGui::Text("collected pairs: %d", (int)g_cal_pairs.size());
-            ImGui::TextWrapped("EYEBALL: pick a preset, then drag pan X/Y until graces sit on the "
-                               "game icons (page 60). Aligns by rotate+pan alone => clean 90deg. "
-                               "Or capture: solo a grace (O, ./,), hover its real icon, P (>=3/page), Solve.");
-            if (ImGui::Button("Solve affine (M)"))
-                solve_affine(g_aff);
-            ImGui::SameLine();
-            if (ImGui::Button("Clear pairs (Del)"))
-                g_cal_pairs.clear();
+            proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
+            if (p.x < -16 || p.y < -16 || p.x > realW + 16 || p.y > realH + 16)
+                continue; // ImGui doesn't CPU-cull; skip off-screen primitives ourselves
+            fg->AddCircleFilled(ImVec2(p.x, p.y), 5.0f, IM_COL32(90, 230, 130, 235));
+            fg->AddCircle(ImVec2(p.x, p.y), 5.0f, IM_COL32(0, 0, 0, 220), 0, 1.5f);
         }
-        ImGui::End();
     }
 
     void draw_panel()

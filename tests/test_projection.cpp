@@ -121,6 +121,39 @@ int main()
               "engine dY=" + std::to_string(truthDY) + " code dY=" + std::to_string(codeDY));
     }
 
+    // ---------------------------------------------------------------------------
+    // T5. BAKED project_screen — the API the overlay actually uses. Two invariants:
+    //   (a) a marker AT the view centre lands at the backbuffer centre (realW/2,realH/2),
+    //       regardless of zoom/pan — the pan-centred model.
+    //   (b) the CANVAS FACTOR is applied: at a non-1920×1080 backbuffer the same world
+    //       offset scales by realW/1920 (the bug the factor fixed). Compare 1920 vs 1280.
+    {
+        using goblin::projection::project_screen;
+        using goblin::projection::view_center;
+        using goblin::projection::View;
+        View v;
+        v.panX = PANX; v.panZ = PANZ; v.zoom = ZOOM;
+        v.snapMidX = 120.f; v.snapMidZ = -75.f; // arbitrary snap-rect midpoint
+        float cU, cV;
+        view_center(v, cU, cV);
+
+        // (a) centre marker → backbuffer centre, at two resolutions.
+        Px c1920 = project_screen(cU, cV, v, 1920.f, 1080.f);
+        Px c1280 = project_screen(cU, cV, v, 1280.f, 720.f);
+        check(approx(c1920.x, 960.f) && approx(c1920.y, 540.f), "T5a centre->backbuffer centre @1920",
+              std::to_string(c1920.x) + "," + std::to_string(c1920.y));
+        check(approx(c1280.x, 640.f) && approx(c1280.y, 360.f), "T5a centre->backbuffer centre @1280",
+              std::to_string(c1280.x) + "," + std::to_string(c1280.y));
+
+        // (b) an off-centre marker: its pixel offset from centre must scale by realW/1920.
+        float mU = cU + 1000.f, mV = cV + 600.f;
+        Px o1920 = project_screen(mU, mV, v, 1920.f, 1080.f);
+        Px o1280 = project_screen(mU, mV, v, 1280.f, 720.f);
+        float dx1920 = o1920.x - 960.f, dx1280 = o1280.x - 640.f;
+        check(approx(dx1280, dx1920 * (1280.f / 1920.f), 0.1f), "T5b canvas factor scales offset by realW/1920",
+              "d1920=" + std::to_string(dx1920) + " d1280=" + std::to_string(dx1280));
+    }
+
     std::printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }
