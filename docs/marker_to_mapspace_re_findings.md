@@ -149,3 +149,52 @@ transitive-projection errors.
 - Offsets version-specific; resolve by AOB. SCALE 0.5 and the per-page-origin structure are
   the stable contract.
 ```
+
+---
+
+## ✅ CORRECTED + SOLVED — exact game formula, ONE conversion (2026-06-20)
+
+The earlier "per-dst-page origin (60/61/12/40-43 each distinct)" theory was **WRONG** (it
+came from a noisy empirical fit on mixed legacy/field graces). RE of the actual transform +
+a live dump of the game's converter constants settles it.
+
+### The transform function: `FUN_140876140` (RVA 0x876140), exact
+
+```c
+gridX = mapId>>0x10 & 0xFF ;  gridZ = mapId>>8 & 0xFF        // from point's MapId
+worldX = gridX*256 + posX  ;  worldZ = gridZ*256 + posZ      // 256 = DAT_1429ce8b4
+mapX =  (worldX - originX)*scale + biasX
+mapZ = -(worldZ - originZ)*scale + biasZ                     // Z flipped via XOR 0x80000000 (DAT_14329f470)
+```
+**Diagonal + Z-flip — NO swap, NO rotation.** Converter fields (in `FUN_140876140`'s param_1):
+area `+0xB`, gridXbase `+0xA`, gridZbase `+0x9`, originX-float `+0xC`, originZ-float `+0x14`,
+biasX `+0x18`, biasZ `+0x1C`, scale `+0x20`, parent block node `+0x28`.
+
+### Live converter constants (dumped via `tools/cheat_engine/MapForGoblins_converter_dump.CT`)
+
+The converters live INLINE in **`CS::WorldMapViewModel`** (vtable RVA `0x2ad82e0`): array @
+`VM+0xF8` (stride `0x30`), count @ `VM+0x280`. Dumped while the map was open:
+
+| area | scale | originX | originZ | biasX | biasZ | → formula |
+|---|---|---|---|---|---|---|
+| **60** | 1.0 | 7168 | 16384 | 128 | 128 | `mapX = worldX − 7040 ; mapZ = −worldZ + 16512` |
+| **61** | 1.0 | 7168 | 16384 | 128 | 128 | **identical to 60** |
+
+→ **areaNo 60 and 61 have IDENTICAL constants** ⇒ the whole **overworld is ONE conversion**.
+Matches the repo's existing `tools/extract_markers.py` (`worldX = mapX+7042`, `worldZ = −mapZ+16511`).
+
+### Overworld + Underground share the SAME conversion (live-confirmed)
+
+With the **underground map displayed** (Siofra/Ainsel terrain on screen), the converter array
+STILL showed only area 60/61 with the same constants — **no area-12 converter loaded**. So ERR
+places underground markers with the **overworld conversion** (consistent: underground shares the
+page `dialog+0xA88=0`, `cfc3` never flips). **One formula for overworld + underground.**
+
+`scale=1.0` here ⇒ this is the **world→map-space** stage; the map-space→screen (×0.5 / pan / zoom)
+is the separate `WorldMapArea` step (see `world_map_projection_re_findings.md`).
+
+### Still pending
+- **DLC** (separate page `0xA88=10`, area 40-43): dump its converter (open the Realm of Shadows
+  map → NUMPAD 3) — likely a distinct origin/bias.
+- RE scripts: `find_formula.java`, plus the converter-dump CT, in `D:\ghidra_scripts` /
+  `tools/cheat_engine/`.
