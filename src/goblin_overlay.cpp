@@ -413,14 +413,17 @@ namespace
         // NOTE the seed has det<0 = a REFLECTION (mirror), not a rotation; the true
         // map frame is likely a 90° ROTATION (det>0) = one off-diagonal sign flipped.
         // Use the F1 presets + live a/b/c/d + global gtx/gty pan to dial it by eye.
-        float a = 0.f, b = 0.5f, c = 0.5f, d = 0.f;
+        // DEFAULT = user's hand-tuned OVERWORLD fit (2026-06-20): M = swap@1.0, render
+        // rotation −90°, pan (−2170, 850), centroid pivot. Roughly aligns 60/61; eyeball-
+        // approximate (scale not exact → slight de-centering when zoomed far). Underground
+        // (12) / DLC (40-43) need their own pan; precise per-page bake via lstsq later.
+        float a = 0.f, b = 1.f, c = 1.f, d = 0.f;
         float e[64] = {}, f[64] = {}; // per-page T
-        float gtx = 0.f, gty = 0.f;   // global pan (eyeball T), added to every page
+        float gtx = -2170.f, gty = 850.f; // global pan (eyeball T), added to every page
         bool pivot = true;            // eyeball: rotate about the marker CENTROID (so
                                       // changing M spins in place, not flings about (0,0))
-        float screen_rot = 0.f;       // REAL rotation field (deg, CW), applied in SCREEN
-                                      // space about the map/view centre AFTER projection —
-                                      // decoupled from scale. Set M=diag + this = 90.
+        float screen_rot = -90.f;     // REAL rotation field (deg, CW), applied in RENDER
+                                      // space so the live pan/zoom tracks. User: −90.
     };
     float g_centroidX = 0.f, g_centroidZ = 0.f; // world centroid of drawn graces (pivot)
     AffineFit g_aff;
@@ -932,7 +935,7 @@ namespace
             // cover all 8 with NO surprise minus: default (swap on, no negate) = the
             // 0.5/0.5 convention. negX/negZ are what fix a MIRRORED ("wrong direction")
             // cluster. (Edit a,b,c,d below for a fine non-dihedral tweak if ever needed.)
-            static float g_oscale = 0.5f;
+            static float g_oscale = 1.0f; // matches the default M = swap@1.0
             static bool g_swap = true, g_negX = false, g_negZ = false;
             bool ch = false;
             ch |= ImGui::DragFloat("scale", &g_oscale, 0.005f, 0.1f, 1.5f, "%.3f");
