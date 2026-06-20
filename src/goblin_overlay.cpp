@@ -377,29 +377,39 @@ namespace
     // The view-centre reference. raw[0]/raw[1] (+0xFC/+0x100) was assumed to be the stable
     // view centre, but it is RETICLE-COUPLED — it tracks the cursor, so markers projected
     // against it FOLLOW the reticle when the mouse/gamepad moves (the "gamepad breaks the
-    // map" + "no icon lock" bug). The STABLE reference is the WorldMapArea pan (+0x378/+0x37C):
-    //   centre_marker = pan + (screen/2)/zoom   ⇒   screen = (marker − pan)·zoom + bias
-    // BUT live test (2026-06-20): pan-centre = WRONG position for ALL markers (the pan→
-    // centre relationship isn't this simple); reticle-centre (+0xFC) is correct mouse-still
-    // but reticle-coupled (markers follow the cursor/gamepad). Neither is right → the true
-    // device-independent view centre needs RE (docs/windows_worldmap_viewcenter_re_prompt.md).
-    // Default = reticle (usable with mouse); Y toggles to pan for testing RE candidates.
-    bool g_pan_center = false;
+    // map" + "no icon lock" bug).
+    //
+    // SOLVED by RE (docs/windows_worldmap_viewcenter_re_findings.md). The engine's own
+    // forward projection (pan SETTER FUN_1409cd100 + transform FUN_1409cd0a0) is, exactly:
+    //   screen_local = marker·zoom − pan         pan = WorldMapArea +0x378/+0x37C, zoom = +0x380
+    // pan is stored in 1920×1080 virtual-canvas px and is device-independent (the cursor
+    // tick FUN_1409bd4b0 never writes it — only the pan/zoom setters do). screen_local is in
+    // that virtual canvas → scale to the real backbuffer by (realW/1920, realH/1080); any
+    // residual widget-inset/letterbox offset is a CONSTANT absorbed by the calibrated bias.
+    // The earlier failed "pan-centre" tried screen = (marker − [pan + (screen/2)/zoom])·zoom,
+    // which expands to marker·zoom − pan·ZOOM — pan got multiplied by zoom (the bug). The fix
+    // is to subtract pan DIRECTLY (it is already in screen-local px), not via a /zoom centre.
+    // Self-test: projecting the reticle's own coord (+0x104/+0x108) lands on the reticle/mouse
+    // through pan AND zoom AND input device, by construction (screen = marker·zoom − pan).
+    // Default = pan-based (device-independent); Y toggles to the old reticle centre to compare.
+    bool g_pan_center = true;
 
     // (markerU, markerV) marker coords → backbuffer px.
     ImVec2 project_uv(const goblin::worldmap_probe::LiveView &v, float mU, float mV,
                       float realW, float realH)
     {
-        float centerU, centerV;
         if (g_pan_center)
         {
-            centerU = v.panX + (realW * 0.5f) / v.zoom;   // stable: pan = viewport, not reticle
-            centerV = v.panZ + (realH * 0.5f) / v.zoom;
+            // Device-independent engine projection: screen_local = marker·zoom − pan,
+            // then virtual-canvas → backbuffer. (axis: U/+0x104 pairs with panX/+0x378,
+            // V/+0x108 with panZ/+0x37C — same X/Z order as the reticle; G swaps if needed.)
+            float sx = (mU * v.zoom - v.panX) * (realW / 1920.f);
+            float sz = (mV * v.zoom - v.panZ) * (realH / 1080.f);
+            return ImVec2(sx * g_calib.scaleX + g_calib.biasX,
+                          sz * g_calib.scaleY + g_calib.biasY);
         }
-        else
-        {
-            centerU = v.raw[0]; centerV = v.raw[1];        // old reticle-coupled centre
-        }
+        // Old reticle-coupled centre (markers follow the cursor) — kept for A/B compare only.
+        float centerU = v.raw[0], centerV = v.raw[1];
         return ImVec2((mU - centerU) * v.zoom * g_calib.scaleX + realW * 0.5f + g_calib.biasX,
                       (mV - centerV) * v.zoom * g_calib.scaleY + realH * 0.5f + g_calib.biasY);
     }
@@ -1002,7 +1012,7 @@ namespace
                 ImGui::Text("err = (%.0f, %.0f) px", p.x - m.x, p.y - m.y);
             }
             ImGui::Separator();
-            ImGui::TextColored(ImVec4(0, 1, 1, 1), "model: screenX=U*zoom*sx - panX + bx ; Y=V*zoom*sy - panZ + by");
+            ImGui::TextColored(ImVec4(0, 1, 1, 1), "model: px=(U*zoom - panX)*realW/1920*sx + bx (RE: screen=marker*zoom-pan)");
             ImGui::TextWrapped("C = 1-point calibrate (reticle on mouse) -> then PAN+ZOOM and watch the "
                                "cyan ring stay locked. If it drifts, nudge scaleX/scaleY ~1.0. X = reset.");
             ImGui::Separator();
