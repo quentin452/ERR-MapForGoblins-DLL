@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CheatTable CheatEngineTableVersion="44">
+  <CheatEntries>
+    <CheatEntry>
+      <ID>0</ID>
+      <Description>"=== MapForGoblins: world-map RENDER space probe ==="</Description>
+      <GroupHeader>1</GroupHeader>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>1</ID>
+      <Description>"cursor render X  (+0x104)"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_CURSOR+104</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>2</ID>
+      <Description>"cursor render Z  (+0x108)"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_CURSOR+108</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>3</ID>
+      <Description>"cursor reticle X (+0xFC)"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_CURSOR+FC</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>4</ID>
+      <Description>"cursor reticle Y (+0x100)"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_CURSOR+100</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>5</ID>
+      <Description>"cursor +0x10C"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_CURSOR+10C</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>10</ID>
+      <Description>"--- WorldMapArea (view) [cursor+0xF0] ---"</Description>
+      <GroupHeader>1</GroupHeader>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>11</ID>
+      <Description>"pan X  (+0x378)"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_VIEW+378</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>12</ID>
+      <Description>"pan Z  (+0x37C)"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_VIEW+37C</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>13</ID>
+      <Description>"zoom   (+0x380)"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_VIEW+380</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>14</ID>
+      <Description>"fullRect minX (+0x350)"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_VIEW+350</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>15</ID>
+      <Description>"fullRect minZ (+0x354)"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_VIEW+354</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>16</ID>
+      <Description>"fullRect maxX (+0x358)"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_VIEW+358</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>17</ID>
+      <Description>"fullRect maxZ (+0x35C)"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_VIEW+35C</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>20</ID>
+      <Description>"--- page selectors ---"</Description>
+      <GroupHeader>1</GroupHeader>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>21</ID>
+      <Description>"view root areaNo (+0x370, =0: unified cursor view, NOT the page)"</Description>
+      <VariableType>4 Bytes</VariableType>
+      <Address>MFG_VIEW+370</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>23</ID>
+      <Description>"view sub-id (+0x374, layout index)"</Description>
+      <VariableType>4 Bytes</VariableType>
+      <Address>MFG_VIEW+374</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>22</ID>
+      <Description>"sublayer/underground flag (DAT_143d6cfc3)"</Description>
+      <VariableType>Byte</VariableType>
+      <Address>eldenring.exe+3D6CFC3</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>30</ID>
+      <Description>"resolved cursor ptr (diag)"</Description>
+      <ShowAsHex>1</ShowAsHex>
+      <VariableType>8 Bytes</VariableType>
+      <Address>MFG_CURSOR</Address>
+    </CheatEntry>
+  </CheatEntries>
+  <LuaScript><![CDATA[
+--[[ MapForGoblins map-space probe — auto-resolves the live world-map cursor and
+     exposes its render coord + the WorldMapArea view (pan/zoom/fullRect) + page id.
+
+  Press NUMPAD 0 while hovering a KNOWN grace (reticle snapped on it) to log the
+  render coord + page to MapForGoblins_mapspace_ct.log. Pair each render with that
+  grace's baked world (gridX*256+posX, gridZ*256+posZ) -> across >=3 graces on ONE
+  page, solve render = M*world + T (M 2x2 shared, T per page).
+
+  Cursor is found the same way the in-DLL probe does: scan writable memory for the
+  CS::WorldMapCursorControl vtable value (eldenring.exe + 0x2b29a90) and pick the
+  instance whose +0x104/+0x108 are finite/plausible. Re-resolves on a 1s timer
+  (the menu/cursor is rebuilt every map open).                                  ]]
+
+local CURSOR_VTABLE_RVA = 0x2b29a90
+local OFF_RX, OFF_RZ    = 0x104, 0x108
+local OFF_VIEW          = 0xF0
+local OFF_MENU          = 0x2DB0   -- cursor = menu + 0x2DB0
+
+mfg = mfg or {}
+
+local function finite(v) return v ~= nil and v == v and v < 1e30 and v > -1e30 end
+
+-- eldenring.exe image range. The engine keeps a STATIC cursor TEMPLATE inside the
+-- image whose +0xF0 view ALSO points in-image, with denormal/junk coords. The real
+-- map cursor is heap-allocated with a heap view → reject any cursor whose view is
+-- in-image (same guard as the in-DLL probe's view_is_static).
+local function module_range()
+  local base = getAddress("eldenring.exe")
+  local size = 0
+  if getModuleSize then local ok, s = pcall(getModuleSize, "eldenring.exe"); if ok and s then size = s end end
+  if size == 0 then
+    local mods = enumModules()
+    if mods then for i = 1, #mods do local m = mods[i]
+      if m.Name and string.find(string.lower(m.Name), "eldenring.exe", 1, true) then
+        base = m.Address; size = m.Size; break end
+    end end
+  end
+  if size == 0 then size = 0x8000000 end
+  return base, base + size
+end
+
+-- cache the image range (computing it every tick via enumModules is wasteful).
+local function get_module_range()
+  if mfg.mbase then return mfg.mbase, mfg.mend end
+  local b, e = module_range(); mfg.mbase, mfg.mend = b, e; return b, e
+end
+
+-- real render coords (+0x104/+0x108) are map units (~hundreds..10496); denormal
+-- junk (~1e-41) and zero are dormant/template cursors.
+local function plausible_coord(v) return finite(v) and math.abs(v) >= 1.0 and math.abs(v) <= 2.0e4 end
+
+local function valid_cursor(a, vt, mbase, mend)
+  if a == nil or a == 0 then return false end
+  if readQword(a) ~= vt then return false end
+  local x, z = readFloat(a + OFF_RX), readFloat(a + OFF_RZ)
+  if not (plausible_coord(x) and plausible_coord(z)) then return false end
+  local view = readPointer(a + OFF_VIEW)
+  if view == nil or view == 0 then return false end
+  if mbase and view >= mbase and view < mend then return false end   -- in-image = static template
+  local zoom = readFloat(view + 0x380)
+  return finite(zoom) and math.abs(zoom) > 1e-4 and math.abs(zoom) < 1e5
+end
+
+local function publish(cur)
+  mfg.cursor = cur
+  unregisterSymbol("MFG_CURSOR"); registerSymbol("MFG_CURSOR", cur, true)
+  local menu = cur - OFF_MENU
+  mfg.menu = menu
+  unregisterSymbol("MFG_MENU"); registerSymbol("MFG_MENU", menu, true)
+  local view = readPointer(cur + OFF_VIEW)
+  if view ~= nil and view ~= 0 then
+    mfg.view = view
+    unregisterSymbol("MFG_VIEW"); registerSymbol("MFG_VIEW", view, true)
+  end
+  print(string.format("[MFG] locked cursor=%X  view=%X (heap)  render=(%.1f, %.1f)",
+        cur, view or 0, readFloat(cur + OFF_RX) or 0, readFloat(cur + OFF_RZ) or 0))
+end
+
+-- HEAVY: full writable-memory scan for the cursor vtable value. Expensive — called
+-- only on demand / throttled (a continuous 1 s scan pegs a CPU core). Returns true
+-- if it locked a valid (heap, plausible-coord) cursor.
+function mfg_scan()
+  local base = getAddress("eldenring.exe"); if base == 0 then return false end
+  local vt = base + CURSOR_VTABLE_RVA
+  local mbase, mend = get_module_range()
+  local b = {}
+  for i = 0, 7 do b[i + 1] = string.format("%02X", (vt >> (i * 8)) & 0xFF) end
+  local res = AOBScan(table.concat(b, " "), "+W-C")
+  if res == nil then return false end
+  local ok = false
+  for i = 0, res.Count - 1 do
+    local a = getAddress(res[i])
+    if valid_cursor(a, vt, mbase, mend) then publish(a); ok = true; break end
+  end
+  res.destroy()
+  return ok
+end
+mfg_rescan = mfg_scan  -- manual alias (hotkey / console)
+
+-- CHEAP per-tick: re-validate the cached cursor (a few pointer reads). Only fall back
+-- to the heavy scan when unlocked, and at most once per SCAN_EVERY ticks. For an
+-- instant scan after opening the map, press the rescan hotkey (NUMPAD 1).
+local SCAN_EVERY = 6   -- ~6 s between auto-scans while unlocked
+function mfg_tick()
+  mfg.tick = (mfg.tick or 0) + 1
+  local base = getAddress("eldenring.exe"); if base == 0 then return end
+  local vt = base + CURSOR_VTABLE_RVA
+  local mbase, mend = get_module_range()
+  if valid_cursor(mfg.cursor, vt, mbase, mend) then
+    local view = readPointer(mfg.cursor + OFF_VIEW)
+    if view ~= nil and view ~= 0 and view ~= mfg.view then
+      mfg.view = view; unregisterSymbol("MFG_VIEW"); registerSymbol("MFG_VIEW", view, true)
+    end
+    return
+  end
+  if (mfg.tick % SCAN_EVERY) == 0 then mfg_scan() end
+end
+
+function mfg_snapshot()
+  local mbase, mend = get_module_range()
+  if not valid_cursor(mfg.cursor, getAddress("eldenring.exe") + CURSOR_VTABLE_RVA, mbase, mend) then
+    print("[MFG] no live cursor — press NUMPAD 1 to rescan (map open + cursor moved)"); return
+  end
+  local c    = mfg.cursor
+  local rx   = readFloat(c + OFF_RX)   -- +0x104
+  local rz   = readFloat(c + OFF_RZ)   -- +0x108
+  local tx   = readFloat(c + 0xFC)     -- reticle pair (log both; pick the one that
+  local ty   = readFloat(c + 0x100)    -- equals the grace render when snapped)
+  local area, sub2 = -1, -1
+  if mfg.view then area = readInteger(mfg.view + 0x370); sub2 = readInteger(mfg.view + 0x374) end
+  local sub  = readBytes(getAddress("eldenring.exe") + 0x3D6CFC3, 1, true) or -1
+  local panx, panz, zoom = -1, -1, -1
+  if mfg.view then
+    panx = readFloat(mfg.view + 0x378); panz = readFloat(mfg.view + 0x37C)
+    zoom = readFloat(mfg.view + 0x380)
+  end
+  local line = string.format(
+    "render104=(%.2f, %.2f)  reticleFC=(%.2f, %.2f)  area=%d sub=%d ug=%d  pan=(%.2f, %.2f)  zoom=%.4f",
+    rx, rz, tx, ty, area, sub2, sub, panx, panz, zoom)
+  print("[MFG] " .. line)
+  local f = io.open("MapForGoblins_mapspace_ct.log", "a")
+  if f then f:write(os.date("%H:%M:%S ") .. line .. "\n"); f:close() end
+end
+
+-- Manual diagnostic: print EVERY cursor-vtable instance + its coords/view. Run from
+-- the CE Lua console (Table -> Show Cheat Table Lua Script -> bottom input):  mfg_dump()
+function mfg_dump()
+  local base = getAddress("eldenring.exe"); if base == 0 then print("[MFG] no exe"); return end
+  local vt = base + CURSOR_VTABLE_RVA
+  local mbase, mend = get_module_range()
+  local b = {}; for i = 0, 7 do b[i + 1] = string.format("%02X", (vt >> (i * 8)) & 0xFF) end
+  local res = AOBScan(table.concat(b, " "), "+W-C")
+  if res == nil then print("[MFG] scan: none"); return end
+  print(string.format("[MFG] %d cursor-vtable instance(s):", res.Count))
+  for i = 0, math.min(res.Count - 1, 48) do
+    local a = getAddress(res[i])
+    local x, z = readFloat(a + OFF_RX), readFloat(a + OFF_RZ)
+    local v = readPointer(a + OFF_VIEW) or 0
+    local inimg = (v >= mbase and v < mend)
+    print(string.format("  %X  +0x104/108=(%.4g, %.4g)  view=%X%s",
+          a, x or 0, z or 0, v, inimg and " [IN-IMAGE/template]" or " [heap]"))
+  end
+  res.destroy()
+end
+
+-- Re-executing this script MUST pick up code changes. CE keeps the global `mfg`
+-- table (and the running timer) across table loads, so tear down any prior timer/
+-- hotkey + clear the stale symbols first — else the OLD timer keeps running the OLD
+-- resolver and nothing you changed takes effect.
+if mfg.timer then pcall(function() mfg.timer.destroy() end); mfg.timer = nil end
+if mfg.hk    then pcall(function() mfg.hk.destroy()    end); mfg.hk    = nil end
+if mfg.hk2   then pcall(function() mfg.hk2.destroy()   end); mfg.hk2   = nil end
+mfg.cursor, mfg.view, mfg.menu, mfg.mbase, mfg.mend, mfg.tick = nil, nil, nil, nil, nil, 0
+unregisterSymbol("MFG_CURSOR"); unregisterSymbol("MFG_VIEW"); unregisterSymbol("MFG_MENU")
+
+mfg.timer = createTimer(nil)
+mfg.timer.Interval = 1000          -- cheap re-validate; heavy scan only every ~6 s
+mfg.timer.OnTimer  = mfg_tick
+mfg.hk  = createHotkey(mfg_snapshot, VK_NUMPAD0)  -- NUMPAD 0 = snapshot (world↔render pair)
+mfg.hk2 = createHotkey(mfg_rescan,   VK_NUMPAD1)  -- NUMPAD 1 = force cursor rescan
+mfg_scan()  -- one scan now (cheap if the map is already open)
+print("[MFG] map-space probe armed (v3, low-CPU). Open the world map, MOVE the cursor,")
+print("[MFG] press NUMPAD 1 to lock the cursor, then NUMPAD 0 on a known grace to log.")
+]]></LuaScript>
+</CheatTable>

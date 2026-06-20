@@ -5,6 +5,15 @@ Answers `docs/windows_marker_to_mapspace_re_prompt.md`. Static Ghidra RE
 the prompt. App 2.6.2.0 / ERR 2.2.9.6, imagebase `0x140000000`. Builds on
 `docs/world_map_projection_re_findings.md` (the screen projection — DONE).
 
+> **CORRECTION (2026-06-20):** the `render = (world − origin)·0.5` model below is
+> **incomplete** — by-hand calibration showed the constellation comes out **rotated**, so
+> the world→render step is a full affine `render = M·world + T` with `M` a scale·**rotation**
+> (an ~90° axis-swap fits the one good anchor with tiny `T`), not a diagonal scale. The
+> per-page origin/scale here still stands as the *structure*; `M`/`T` are recovered live via
+> the Cheat Engine table — see `docs/marker_mapspace_CT_recipe.md` and
+> `tools/cheat_engine/MapForGoblins_mapspace.CT` (cursor render `+0x104/+0x108`, WorldMapArea
+> pan/zoom/fullRect; confirmed live: `fullRect [0,0,10496,10496]`, `zoom 2.25`).
+
 ---
 
 ## 0. TL;DR
