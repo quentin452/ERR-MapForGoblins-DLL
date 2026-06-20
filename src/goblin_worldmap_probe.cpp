@@ -115,7 +115,7 @@ __declspec(noinline) bool seh_read_i32(const void *src, int *out)
 
 // Scan one region for the vtable qword (8-aligned). Region-level SEH so a page
 // that faults mid-scan just aborts this region. POD-only inside __try.
-uintptr_t scan_region(uintptr_t base, size_t size, uintptr_t vtable_va)
+__declspec(noinline) uintptr_t scan_region(uintptr_t base, size_t size, uintptr_t vtable_va)
 {
     uintptr_t hit = 0;
     __try
@@ -130,8 +130,8 @@ uintptr_t scan_region(uintptr_t base, size_t size, uintptr_t vtable_va)
 
 // Collect ALL addresses holding the cursor vtable (there are several instances;
 // only the active map cursor's coords change as you move). Region-level SEH.
-void scan_region_all(uintptr_t base, size_t size, uintptr_t vtable_va,
-                     std::vector<uintptr_t> &out, size_t cap)
+__declspec(noinline) void scan_region_all(uintptr_t base, size_t size, uintptr_t vtable_va,
+                                          std::vector<uintptr_t> &out, size_t cap)
 {
     __try
     {
@@ -255,9 +255,20 @@ void probe_loop()
         }
         else
         {
-            // Walk found nothing (map closed, OR the dialog offset is wrong). Throttled
-            // whole-RAM scan (1/s, gate-INDEPENDENT — the 0xCD gate flakes 3/7/0) so the
-            // overlay keeps working while we fix the walk.
+            // Walk found nothing → map closed, OR the dialog offset is wrong. GATE the
+            // whole-RAM scan on map-open: scanning at startup/loading (gate-independent)
+            // hit volatile memory and crashed (0xC0000005). 0xCD reaches 7 when the map
+            // is actually open, which is enough for the scan + the offset diag.
+            bool map_open = goblin::world_map_open();
+            if (!map_open)
+            {
+                if (g_active_cursor.load(std::memory_order_relaxed))
+                    g_active_cursor.store(0, std::memory_order_relaxed);
+                candidates.clear();
+                last.clear();
+                last_view.clear();
+                continue;
+            }
             if (now - last_scan > std::chrono::milliseconds(1000))
             {
                 candidates.clear();
