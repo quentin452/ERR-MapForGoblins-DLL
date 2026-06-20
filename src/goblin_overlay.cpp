@@ -396,14 +396,10 @@ namespace
     // construction; the win is GAMEPAD, where pan moves but the reticle doesn't.
     // ✅ CONFIRMED by [INPUT-DELTA] (2026-06-20): the GAMEPAD stick pans via view +0x378/+0x37c
     // (+ zoom +0x380), and does NOT move the reticle (+0xFC/+0x104 fire only on mouse hover).
-    // So the reticle centre froze under the stick (markers slid); the pan path tracks BOTH
-    // devices. Default = pan now; Y toggles the old reticle centre for A/B.
-    // Pan-anchored by default. The reticle-coupled path (false) anchors markers to the
-    // cursor (+0xFC), so they drift with the mouse even when pan/zoom are frozen — proven
-    // on a real capture: 1482px drift over a 149-frame pan-frozen run vs 0px pan-anchored
-    // (tests/test_lag_capture.cpp). Pan (+0x378/+0x37C) is device-independent (RE §0). Y
-    // still toggles back to the reticle path for A/B.
-    bool g_pan_center = true;
+    // Reticle baseline; Y toggles pan-anchored for A/B. (pan-anchored alone didn't fix the
+    // lag — the suspected cause is the engine interpolating the displayed view toward a
+    // target each frame with an alpha we don't replicate; see lerp investigation.)
+    bool g_pan_center = false;
 
     // (markerU, markerV) marker coords → backbuffer px.
     ImVec2 project_uv(const goblin::worldmap_probe::LiveView &v, float mU, float mV,
@@ -419,8 +415,13 @@ namespace
             return ImVec2(sx * g_calib.scaleX + g_calib.biasX,
                           sz * g_calib.scaleY + g_calib.biasY);
         }
-        // Old reticle-coupled centre (markers follow the cursor) — kept for A/B compare only.
-        float centerU = v.raw[0], centerV = v.raw[1];
+        // CURSOR-INDEPENDENT view centre (RE §2): the old code subtracted the cursor
+        // (+0xFC) here, so the projection scaled about a point that moved with the mouse ->
+        // every marker drifted as the cursor moved (the "scaling is cursor-dependent" bug).
+        // The true view centre is derived from pan + the snap-rect, no cursor:
+        //   panX = zoom*centreX - snapRectCentreX  =>  centreX = (panX + (minX+maxX)/2)/zoom
+        float centerU = (v.panX + (v.snapMinX + v.snapMaxX) * 0.5f) / v.zoom;
+        float centerV = (v.panZ + (v.snapMinZ + v.snapMaxZ) * 0.5f) / v.zoom;
         return ImVec2((mU - centerU) * v.zoom * g_calib.scaleX + realW * 0.5f + g_calib.biasX,
                       (mV - centerV) * v.zoom * g_calib.scaleY + realH * 0.5f + g_calib.biasY);
     }
@@ -580,6 +581,37 @@ namespace
         bool live = goblin::worldmap_probe::get_live_view(v);
         ImGuiIO &io = ImGui::GetIO();
         ImDrawList *fg = ImGui::GetForegroundDrawList();
+
+        // INTERPOLATION-COMPENSATION knob ([ = -0.1, ] = +0.1). The engine eases the
+        // displayed view/reticle toward its target each frame (0.1f lerp — cursor +0x130 /
+        // snap-anim FUN_1409bc8c0, RE). We draw the RAW field, so markers lead/lag the eased
+        // map. Compensate by extrapolating each pan/reticle field along its per-frame delta:
+        //   used = raw + lead*(raw - prevRaw)
+        // lead=0 -> raw (no change). >0 pushes forward (catches a lag up). <0 backs off (kills
+        // a lead). Dial until markers stick -> the value that matches the engine's interp.
+        static float g_lead = 0.0f;
+        {
+            static goblin::worldmap_probe::LiveView pv;
+            static bool pvInit = false;
+            goblin::worldmap_probe::LiveView raw = v; // unmodified snapshot for next-frame prev
+            if (live && pvInit && g_lead != 0.0f)
+            {
+                auto ex = [&](float cur, float prev) { return cur + g_lead * (cur - prev); };
+                v.panX = ex(raw.panX, pv.panX);
+                v.panZ = ex(raw.panZ, pv.panZ);
+                v.raw[0] = ex(raw.raw[0], pv.raw[0]);
+                v.raw[1] = ex(raw.raw[1], pv.raw[1]);
+                v.raw[2] = ex(raw.raw[2], pv.raw[2]);
+                v.raw[3] = ex(raw.raw[3], pv.raw[3]);
+            }
+            if (live) { pv = raw; pvInit = true; }
+        }
+        {
+            char lb[80];
+            snprintf(lb, sizeof(lb), "LEAD=%.2f  ([ -0.1  ] +0.1  \\ reset)", g_lead);
+            fg->AddText(ImVec2(12, 31), IM_COL32(0, 0, 0, 200), lb);
+            fg->AddText(ImVec2(11, 30), IM_COL32(120, 255, 160, 255), lb);
+        }
 
         // DIAG (first-open latency): how long have we been WITHOUT a live view, and is
         // the probe's published cursor null (probe hasn't found one) or non-null but
@@ -873,6 +905,16 @@ namespace
         // Hotkeys (work menu-closed): C = 1-point calibrate (solve biasX/Y so the
         // projection of the reticle hits the mouse), L = log a row, X = reset,
         // G = swap grace axes. The model is linear in bias, so one capture pins both.
+        // [ / ] = nudge the interpolation-compensation lead; \ = reset to 0.
+        static bool prevLB = false, prevRB = false, prevBS = false;
+        bool downLB = (GetAsyncKeyState(VK_OEM_4) & 0x8000) != 0; // [
+        bool downRB = (GetAsyncKeyState(VK_OEM_6) & 0x8000) != 0; // ]
+        bool downBS = (GetAsyncKeyState(VK_OEM_5) & 0x8000) != 0; // backslash
+        if (downLB && !prevLB) { g_lead -= 0.1f; spdlog::info("[LEAD] {:.2f}", g_lead); }
+        if (downRB && !prevRB) { g_lead += 0.1f; spdlog::info("[LEAD] {:.2f}", g_lead); }
+        if (downBS && !prevBS) { g_lead = 0.0f; spdlog::info("[LEAD] reset 0"); }
+        prevLB = downLB; prevRB = downRB; prevBS = downBS;
+
         static bool prevC = false, prevX = false, prevL = false;
         bool downC = (GetAsyncKeyState('C') & 0x8000) != 0;
         bool downX = (GetAsyncKeyState('X') & 0x8000) != 0;

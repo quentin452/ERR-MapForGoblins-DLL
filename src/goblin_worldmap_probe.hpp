@@ -31,6 +31,9 @@ namespace goblin::worldmap_probe
     {
         float cursorX, cursorZ; // reticle, marker space (+0xFC / +0x104)
         float panX, panZ, zoom; // WorldMapArea viewport
+        // Cursor/snap bounds rect on the view (view+0x340..0x34c): minX,minZ,maxX,maxZ.
+        // RE §2: viewCentre = (pan + ((min+max)/2)) / zoom -- the CURSOR-INDEPENDENT centre.
+        float snapMinX, snapMinZ, snapMaxX, snapMaxZ;
         float raw[8];           // diag: cursor+0xFC,+0x100,+0x104,+0x108,+0x10C,+0x110,+0x114,+0x118
         int viewArea;           // WorldMapArea+0x6e = areaNo of the open page (doc §3)
         int underground;        // open-map layer (dialog+0x2B68 deref +0xB8): 0=surface, 1=underground
