@@ -191,8 +191,16 @@ static void setup_mod()
         // Snapshot the real graces from the LIVE WorldMapPointParam BEFORE injection swaps
         // the param backing — the ImGui overlay draws from this (no baked data).
         safe_init_step(&goblin::capture_live_graces, "capture_live_graces");
-        safe_init_step(&init_inject_entries,  "inject_map_entries");
-        safe_init_step(&init_apply_map_logic, "apply_map_logic");
+        // Native WorldMapPointParam injection (+ its map-logic patches). Skipped when
+        // native_map_injection=false → the ImGui overlay is the sole map (no native
+        // page-build = no freeze, no double-draw). Grace capture above still runs.
+        if (goblin::config::nativeMapInjection)
+        {
+            safe_init_step(&init_inject_entries,  "inject_map_entries");
+            safe_init_step(&init_apply_map_logic, "apply_map_logic");
+        }
+        else
+            spdlog::info("[INIT] native_map_injection=false → skipping injection; overlay is the sole map");
         safe_init_step(&init_tutorial_popup,  "inject_tutorial_popup_rows");
         safe_init_step(&init_setup_messages,  "setup_messages");
         safe_init_step(&init_live_loot,       "refresh_loot_from_itemlot");
@@ -236,8 +244,10 @@ static void setup_mod()
                                          goblin::config::debugFlagCapture);
 
     // The overlay-markers prototype needs the probe loop running (it publishes the
-    // active cursor for get_live_view), so start it for either flag.
-    if (goblin::config::debugWorldmapProbe || goblin::config::overlayMarkersProto)
+    // active cursor for get_live_view), so start it for either flag — and whenever
+    // native injection is off (the overlay is then the sole map and must draw).
+    if (goblin::config::debugWorldmapProbe || goblin::config::overlayMarkersProto ||
+        !goblin::config::nativeMapInjection)
         goblin::worldmap_probe::initialize(g_mod_folder / "logs" / "MapForGoblins_wmprobe.log");
 
     // The watcher is the single owner of the WorldMapPointParam state — it

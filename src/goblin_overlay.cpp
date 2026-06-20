@@ -1197,7 +1197,9 @@ namespace
 
         // The marker prototype draws over the open map even when the menu is closed,
         // so build a frame for it too (get_live_view() no-ops when the map is shut).
-        bool proto = goblin::config::overlayMarkersProto;
+        // Draw overlay markers when the prototype flag is on OR native injection is
+        // off (overlay is then the sole map).
+        bool proto = goblin::config::overlayMarkersProto || !goblin::config::nativeMapInjection;
         if ((g_show || proto) && g_command_queue)
         {
             try_upload_atlas();   // one-time; needs the captured command queue

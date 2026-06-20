@@ -55,6 +55,7 @@ namespace goblin::config
     bool debugFlagCapture = false;
     bool debugWorldmapProbe = false;
     bool overlayMarkersProto = false;
+    bool nativeMapInjection = true;
     bool liveRefreshWorldMap = false;
 
     // In-game per-section visibility (the 7 display groups). Persisted so an
@@ -361,6 +362,8 @@ namespace
                   "Dev probe: log the world-map cursor coords (read-only) + the live view\nprojection (pan/zoom @ WorldMapArea+0x378/+0x380, virtual canvas) to confirm\nthe world->screen transform. Open the world map, move the cursor, then PAN\nand ZOOM. Logs to logs/MapForGoblins_wmprobe.log; off by default."),
                 B("overlay_markers_proto", overlayMarkersProto, "false",
                   "Dev prototype (overlay-rendered markers): draw our own marker dot in\nthe ImGui overlay, projected onto the open world map via the live pan/zoom\n(WorldMapArea), to verify the world->screen affine. Starts the cursor probe\nif not already on. Open the F1 menu to tune scale/bias live. Off by default."),
+                B("native_map_injection", nativeMapInjection, "true",
+                  "Inject goblin markers into the game's native world map\n(WorldMapPointParam). TRUE (default) = the classic behaviour (native icons +\nall legacy features: clustering, census badges, collected-graying, region\nlabels). FALSE = skip the injection entirely: the ImGui overlay becomes the\nSOLE map source (no native page-build, so no map-open freeze and no double-\ndraw), but the not-yet-ported legacy features are unavailable. The overlay\nmarker layers draw automatically when this is false."),
                 B("live_refresh_world_map", liveRefreshWorldMap, "false",
                   "EXPERIMENTAL: re-render world-map icons WHILE the map is open when you\ntoggle a section/category (instead of only on the next map open). Hooks the\ngame's own placed-map-point (re)build and replays it with the engine's real\ncontext on its own thread. Off by default -- enable to test; if icons don't\nupdate live or anything misbehaves, set back to false (toggles still apply on\nthe next map open). See docs/windows_re_live_refresh_capture.md."),
             }},

@@ -114,6 +114,11 @@ namespace goblin
         // goblin_worldmap_probe::get_live_view.
         extern bool overlayMarkersProto;
 
+        // When false, skip the native WorldMapPointParam injection (+ apply_map_logic)
+        // so the ImGui overlay is the sole map source (no native page-build = no
+        // freeze, no double-draw). Default true = classic native-map behaviour.
+        extern bool nativeMapInjection;
+
         // EXPERIMENTAL live world-map icon refresh. Hooks the engine's placed-
         // map-point (re)build (FUN_140a82a80) so a section/category toggle re-renders
         // icons WHILE the map is open instead of only on the next open. Off by
