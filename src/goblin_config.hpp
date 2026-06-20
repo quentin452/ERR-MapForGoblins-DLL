@@ -119,6 +119,11 @@ namespace goblin
         // freeze, no double-draw). Default true = classic native-map behaviour.
         extern bool nativeMapInjection;
 
+        // Overlay marker sizes. Final = resolution-base × master × type-scale.
+        extern float overlayMasterScale;   // all overlay markers + piles
+        extern float overlayIconScale;     // category marker icons
+        extern float overlayClusterScale;  // cluster pile glyphs
+
         // EXPERIMENTAL live world-map icon refresh. Hooks the engine's placed-
         // map-point (re)build (FUN_140a82a80) so a section/category toggle re-renders
         // icons WHILE the map is open instead of only on the next open. Off by

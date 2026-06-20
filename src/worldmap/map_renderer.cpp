@@ -3,6 +3,7 @@
 #include "goblin_projection.hpp"     // baked map-space → backbuffer projection
 #include "goblin_worldmap_probe.hpp" // get_live_view()
 #include "goblin_inject.hpp"         // ui::clustering_enabled / global_threshold / category_clustered
+#include "goblin_config.hpp"         // overlay marker scale config
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
 
 #include <imgui.h>
@@ -265,10 +266,12 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // by construction (re-binned every frame), so toggles/zoom update with no rebuild.
     const bool clustering = goblin::ui::clustering_enabled();
     const int threshold = clustering ? goblin::ui::global_threshold() : 0;
-    // Resolution-relative icon/glyph sizes (match the native canvas-scaled icons).
+    // Resolution-relative icon/glyph sizes (match the native canvas-scaled icons),
+    // × the user's master scale × the per-type scale (saved in the ini).
     const float uiScale = realH / 1080.f;
-    const float iconHalf = kIconHalfBase * uiScale;
-    const float glyphR = kGlyphRBase * uiScale;
+    const float master = goblin::config::overlayMasterScale;
+    const float iconHalf = kIconHalfBase * uiScale * master * goblin::config::overlayIconScale;
+    const float glyphR = kGlyphRBase * uiScale * master * goblin::config::overlayClusterScale;
     std::vector<ScreenMarker> clustered; // markers whose category opted into clustering
 
     for (auto *L : layers)

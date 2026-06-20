@@ -586,6 +586,23 @@ namespace
                 ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "Saved to INI");
             }
 
+            // Overlay marker scale (live preview; persists via "Save to INI"). Final
+            // size = resolution-relative base × master × per-type scale.
+            if (ImGui::CollapsingHeader("Marker scale (overlay map)"))
+            {
+                ImGui::SliderFloat("Master", &goblin::config::overlayMasterScale, 0.3f, 3.0f, "%.2f");
+                ImGui::SliderFloat("Category icons", &goblin::config::overlayIconScale, 0.3f, 3.0f, "%.2f");
+                ImGui::SliderFloat("Cluster piles", &goblin::config::overlayClusterScale, 0.3f, 3.0f, "%.2f");
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Reset##scale"))
+                {
+                    goblin::config::overlayMasterScale = 1.0f;
+                    goblin::config::overlayIconScale = 1.0f;
+                    goblin::config::overlayClusterScale = 1.0f;
+                }
+                ImGui::TextDisabled("Live. × a resolution-relative base. Save to INI to persist.");
+            }
+
             // Sections (coarse) + their categories (fine). A row shows only if
             // both its section and its category are enabled.
             ImGui::SeparatorText("Sections & categories");

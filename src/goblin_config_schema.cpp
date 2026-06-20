@@ -57,6 +57,9 @@ namespace goblin::config
     bool overlayMarkersProto = false;
     bool nativeMapInjection = true;
     bool liveRefreshWorldMap = false;
+    float overlayMasterScale = 1.0f;   // master scale for all overlay markers + piles
+    float overlayIconScale = 1.0f;     // category marker icons (× master)
+    float overlayClusterScale = 1.0f;  // cluster pile glyphs (× master)
 
     // In-game per-section visibility (the 7 display groups). Persisted so an
     // in-game toggle survives relaunch. Default all-visible = no behaviour change.
@@ -362,6 +365,12 @@ namespace
                   "Dev probe: log the world-map cursor coords (read-only) + the live view\nprojection (pan/zoom @ WorldMapArea+0x378/+0x380, virtual canvas) to confirm\nthe world->screen transform. Open the world map, move the cursor, then PAN\nand ZOOM. Logs to logs/MapForGoblins_wmprobe.log; off by default."),
                 B("overlay_markers_proto", overlayMarkersProto, "false",
                   "Dev prototype (overlay-rendered markers): draw our own marker dot in\nthe ImGui overlay, projected onto the open world map via the live pan/zoom\n(WorldMapArea), to verify the world->screen affine. Starts the cursor probe\nif not already on. Open the F1 menu to tune scale/bias live. Off by default."),
+                IniEntry{"overlay_master_scale", IniType::F32, &cfg::overlayMasterScale, "1.0",
+                  "Master scale for ALL overlay map markers + cluster piles (multiplies the\nper-type scales). 1.0 = default. A resolution-relative base size is applied\nfirst, then ×master×type. Editable live in the F1 menu; persists on Save."},
+                IniEntry{"overlay_icon_scale", IniType::F32, &cfg::overlayIconScale, "1.0",
+                  "Scale for category marker ICONS (x master). 1.0 = default."},
+                IniEntry{"overlay_cluster_scale", IniType::F32, &cfg::overlayClusterScale, "1.0",
+                  "Scale for CLUSTER pile glyphs (x master). 1.0 = default."},
                 B("native_map_injection", nativeMapInjection, "true",
                   "Inject goblin markers into the game's native world map\n(WorldMapPointParam). TRUE (default) = the classic behaviour (native icons +\nall legacy features: clustering, census badges, collected-graying, region\nlabels). FALSE = skip the injection entirely: the ImGui overlay becomes the\nSOLE map source (no native page-build, so no map-open freeze and no double-\ndraw), but the not-yet-ported legacy features are unavailable. The overlay\nmarker layers draw automatically when this is false."),
                 B("live_refresh_world_map", liveRefreshWorldMap, "false",
