@@ -633,6 +633,23 @@ int goblin::marker_cluster_key(uint8_t area, uint8_t gridX, uint8_t gridZ, float
     return -1;
 }
 
+// Project a grace anchor (by its GRACE_ANCHORS index = a marker's cluster_key) to
+// UNIFIED world coords via the same marker_world_pos pipeline the markers use, so the
+// overlay can place a cluster pile AT its grace (a real, correctly-placed location)
+// instead of the member centroid (which drifts into the sea when a group spans water
+// or has a mis-projected member). Returns false on a bad key.
+bool goblin::grace_anchor_world(int key, int &out_area, float &wx, float &wz)
+{
+    if (key < 0 || static_cast<size_t>(key) >= goblin::generated::GRACE_ANCHOR_COUNT)
+        return false;
+    const auto &a = goblin::generated::GRACE_ANCHORS[key];
+    int ga;
+    marker_world_pos(a.area, a.gridX, a.gridZ, a.posX, a.posZ, ga, wx, wz,
+                     /*conv_underground=*/true);
+    out_area = ga;
+    return true;
+}
+
 // Player MapId TILE -> map sub-page (tabId), via the authoritative tile_region_map
 // table. Used for UNDERGROUND distance-adaptive: the player's local float is leaf-
 // block-local garbage and the marker param gridXNo is coarse (1/2), so neither

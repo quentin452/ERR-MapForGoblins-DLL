@@ -20,6 +20,10 @@ namespace goblin
     int marker_cluster_key(uint8_t area, uint8_t gridX, uint8_t gridZ, float posX,
                            float posZ, int *out_pname = nullptr);
 
+    // Project a grace anchor (GRACE_ANCHORS index = a marker's cluster_key) to unified
+    // world coords, so a cluster pile can be drawn AT its grace. False on a bad key.
+    bool grace_anchor_world(int key, int &out_area, float &wx, float &wz);
+
     // Cluster label census: (PlaceName textId, label) for each cluster the inject
     // built. The label is "<Region> (<count>)" (region via cluster_region_label) or
     // just "<count>" if the region is unknown. setup_messages injects it as the

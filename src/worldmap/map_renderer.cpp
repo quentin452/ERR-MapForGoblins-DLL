@@ -87,19 +87,23 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas)
 }
 
 // Unified world coords → map-space (the frame project_screen expects).
-void world_to_mapspace(const Marker &m, bool dlc_ug, float &gU, float &gV)
+void world_to_mapspace_xy(float worldX, float worldZ, bool dlc_ug, float &gU, float &gV)
 {
     if (!dlc_ug)
     {
         // EXACT world→map-space (agent RE 0a30738): origin (7168,16384), bias 128,
         // scale 1.0, Z-flipped: mapX = worldX − 7040 ; mapZ = −worldZ + 16512.
-        gU = m.worldX - 7040.0f;
-        gV = -m.worldZ + 16512.0f;
+        gU = worldX - 7040.0f;
+        gV = -worldZ + 16512.0f;
     }
     else
     {
-        dlc_ug_eyeball(m.worldX, m.worldZ, gU, gV);
+        dlc_ug_eyeball(worldX, worldZ, gU, gV);
     }
+}
+inline void world_to_mapspace(const Marker &m, bool dlc_ug, float &gU, float &gV)
+{
+    world_to_mapspace_xy(m.worldX, m.worldZ, dlc_ug, gU, gV);
 }
 
 // A projected marker awaiting the clustering decision.
@@ -127,8 +131,10 @@ void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n)
 // member screen-centroid; smaller groups draw their members normally. Off-screen
 // piles/markers are culled. realW/realH = backbuffer size for the cull.
 void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int threshold,
-                   ImTextureID atlas, float realW, float realH)
+                   ImTextureID atlas, float realW, float realH,
+                   const goblin::projection::View &view, bool dlc_ug)
 {
+    namespace proj = goblin::projection;
     auto on_screen = [&](const ImVec2 &p) {
         return !(p.x < -32 || p.y < -32 || p.x > realW + 32 || p.y > realH + 32);
     };
@@ -141,9 +147,25 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         const auto &idxs = kv.second;
         if ((int)idxs.size() > threshold) // ">" : the threshold is "more than N markers"
         {
-            float sx = 0, sy = 0;
-            for (int i : idxs) { sx += items[i].p.x; sy += items[i].p.y; }
-            ImVec2 c(sx / idxs.size(), sy / idxs.size());
+            // Place the pile AT its grace (a real, correctly-placed location), not the
+            // member centroid (which drifts into the sea when the group spans water or
+            // a member mis-projects). Fall back to the centroid if the anchor is bad.
+            ImVec2 c;
+            int garea;
+            float gwx, gwz;
+            if (goblin::grace_anchor_world(kv.first, garea, gwx, gwz))
+            {
+                float gU, gV;
+                world_to_mapspace_xy(gwx, gwz, dlc_ug, gU, gV);
+                proj::Px gp = proj::project_screen(gU, gV, view, realW, realH);
+                c = ImVec2(gp.x, gp.y);
+            }
+            else
+            {
+                float sx = 0, sy = 0;
+                for (int i : idxs) { sx += items[i].p.x; sy += items[i].p.y; }
+                c = ImVec2(sx / idxs.size(), sy / idxs.size());
+            }
             if (on_screen(c))
                 draw_cluster_glyph(fg, c, (int)idxs.size());
         }
@@ -227,6 +249,6 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     }
 
     if (clustering && !clustered.empty())
-        draw_clusters(fg, clustered, threshold, atlas, realW, realH);
+        draw_clusters(fg, clustered, threshold, atlas, realW, realH, view, dlc_ug);
 }
 } // namespace goblin::worldmap
