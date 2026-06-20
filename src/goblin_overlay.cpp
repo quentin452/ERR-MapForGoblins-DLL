@@ -398,7 +398,12 @@ namespace
     // (+ zoom +0x380), and does NOT move the reticle (+0xFC/+0x104 fire only on mouse hover).
     // So the reticle centre froze under the stick (markers slid); the pan path tracks BOTH
     // devices. Default = pan now; Y toggles the old reticle centre for A/B.
-    bool g_pan_center = false; // pan is INSTANCE-VARIANT (user) -> unusable; reticle baseline until cursor RE
+    // Pan-anchored by default. The reticle-coupled path (false) anchors markers to the
+    // cursor (+0xFC), so they drift with the mouse even when pan/zoom are frozen — proven
+    // on a real capture: 1482px drift over a 149-frame pan-frozen run vs 0px pan-anchored
+    // (tests/test_lag_capture.cpp). Pan (+0x378/+0x37C) is device-independent (RE §0). Y
+    // still toggles back to the reticle path for A/B.
+    bool g_pan_center = true;
 
     // (markerU, markerV) marker coords → backbuffer px.
     ImVec2 project_uv(const goblin::worldmap_probe::LiveView &v, float mU, float mV,
@@ -603,6 +608,19 @@ namespace
 
         // The reticle's screen-axis coords: U = +0x104 (raw[2]), V = +0x108 (raw[3]).
         float U = v.raw[2], V = v.raw[3];
+
+        // FRAME-LAG CAPTURE (toggle V). One CSV row per frame: the pan we sampled this
+        // frame + the reticle marker coord + the OS mouse px (= the game reticle's true
+        // screen pos = ground truth). Grep "[LAGCSV]" out of the log → feed the data-driven
+        // test: it cross-correlates the per-frame gap (reticle_projected − mouse) against the
+        // 1-frame model (pan[n] − pan[n−1])·scale to prove the lag is exactly one frame.
+        //   columns: frame,panX,panZ,zoom,reticleU,reticleV,mouseX,mouseY
+        static bool g_csv = false;
+        static unsigned long g_csv_frame = 0;
+        if (g_csv && live)
+            spdlog::info("[LAGCSV] {},{:.4f},{:.4f},{:.6f},{:.4f},{:.4f},{:.2f},{:.2f}",
+                         g_csv_frame++, v.panX, v.panZ, v.zoom, v.raw[2], v.raw[3], m.x, m.y);
+
         if (live)
         {
             ImVec2 p = project_uv(v, U, V, io.DisplaySize.x, io.DisplaySize.y);
@@ -859,6 +877,17 @@ namespace
         bool downC = (GetAsyncKeyState('C') & 0x8000) != 0;
         bool downX = (GetAsyncKeyState('X') & 0x8000) != 0;
         bool downL = (GetAsyncKeyState('L') & 0x8000) != 0;
+
+        // V = toggle the per-frame frame-lag CSV capture ([LAGCSV] rows in the log).
+        static bool prevV = false;
+        bool downV = (GetAsyncKeyState('V') & 0x8000) != 0;
+        if (downV && !prevV)
+        {
+            g_csv = !g_csv;
+            spdlog::info("[LAGCSV] capture {} (cols: frame,panX,panZ,zoom,reticleU,reticleV,mouseX,mouseY)",
+                         g_csv ? "ON" : "OFF");
+        }
+        prevV = downV;
 
         // Y = toggle the projection centre: stable pan-based (fixes markers-follow-reticle)
         // vs the old reticle-coupled +0xFC. Default = pan-based.
