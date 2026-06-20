@@ -19,6 +19,7 @@
 
 #include "goblin_inject.hpp"   // goblin::world_map_open()
 #include "goblin_worldmap_probe.hpp"   // get_live_view() for the marker prototype
+#include "goblin_map_data.hpp"         // generated::MAP_ENTRIES (graces for Phase 1)
 
 #include <vector>
 #include <map>
@@ -363,7 +364,9 @@ namespace
     // bias ≈ 0 (centre handles it). Verified: (3390-4824)*0.196+960 = 679 ✓.
     struct MarkerCalib
     {
-        float scaleX = 1.0f, scaleY = 1.0f, biasX = 0.0f, biasY = 0.0f;
+        // S ≈ zoom*0.987 (the ~1.4% residual measured in the cross-capture; the
+        // reticle err shows it only far from centre / zoomed out).
+        float scaleX = 0.987f, scaleY = 0.987f, biasX = 0.0f, biasY = 0.0f;
     };
     MarkerCalib g_calib;
 
@@ -447,13 +450,177 @@ namespace
             fg->AddText(ImVec2(11, 11), IM_COL32(0, 255, 255, 255), buf);
         }
 
+        // ── PHASE 1: draw real GRACES from MAP_ENTRIES, projected by the same affine.
+        // marker axes: U(+0x104)=marker Z=gridZ*256+posZ, V(+0x108)=marker X=gridX*256+posX
+        // (G toggles a swap in case the axis order is transposed). Filter to the open
+        // page (areaNo == viewArea) so other pages' markers don't bleed in.
+        // World-scale: the baked grid*256+pos overshoots the reticle space (~0..10496)
+        // by ~2x (gridXNo is half-tiles: "world tile XX = gridXNo/2"), so scale grace
+        // world coords into reticle space. Live-tunable [ / ] to dial the exact factor.
+        static float g_world_scale = 0.5f;
+        static bool g_graces = true, g_grace_swap = false;
+        // Region-by-region test: cycle which single areaNo is drawn (clearer than the
+        // whole map at once). Built once from the grace set; -1 index = all.
+        namespace gen = goblin::generated;
+        static std::vector<int> grace_areas;
+        static int area_idx = -1; // -1 = all areas
+        if (grace_areas.empty())
+        {
+            for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
+                if (gen::MAP_ENTRIES[i].category == gen::Category::WorldGraces)
+                {
+                    int a = gen::MAP_ENTRIES[i].data.areaNo;
+                    if (std::find(grace_areas.begin(), grace_areas.end(), a) == grace_areas.end())
+                        grace_areas.push_back(a);
+                }
+            std::sort(grace_areas.begin(), grace_areas.end());
+        }
+        int area_filter = (area_idx >= 0 && area_idx < (int)grace_areas.size())
+                              ? grace_areas[area_idx] : -1;
+        // SOLO mode: isolate ONE grace (within the area filter) — draw it big + show
+        // its raw data, so a single known grace can be matched against the game icon.
+        // O = toggle solo, . / , = next/prev grace.
+        static int g_solo = -1;                 // -1 = off (draw all in filter)
+        static int g_grace_filtered_count = 0;  // # graces in the current area filter
+        if (live && g_graces)
+        {
+            int total = 0, drawn = 0, fidx = 0;
+            char solo_info[160] = "";
+            for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
+            {
+                const gen::MapEntry &e = gen::MAP_ENTRIES[i];
+                if (e.category != gen::Category::WorldGraces)
+                    continue;
+                if (area_filter >= 0 && e.data.areaNo != area_filter)
+                    continue;
+                int myidx = fidx++;
+                ++total;
+                if (g_solo >= 0 && myidx != g_solo)
+                    continue; // solo: skip every grace but the selected one
+                // Project the row to UNIFIED overworld coords (legacy dungeons like
+                // Stormveil/area-10 are page-local until projected → else they pile up).
+                int ga;
+                float wx, wz;
+                goblin::marker_world_pos(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
+                                         e.data.posX, e.data.posZ, ga, wx, wz);
+                float gU = wz * g_world_scale, gV = wx * g_world_scale; // U=+0x104(Z), V=+0x108(X)
+                ImVec2 gp = g_grace_swap
+                                ? project_uv(v, gV, gU, io.DisplaySize.x, io.DisplaySize.y)
+                                : project_uv(v, gU, gV, io.DisplaySize.x, io.DisplaySize.y);
+                bool solo = (g_solo >= 0 && myidx == g_solo);
+                if (!solo && (gp.x < -16 || gp.y < -16 || gp.x > io.DisplaySize.x + 16 ||
+                              gp.y > io.DisplaySize.y + 16))
+                    continue; // cull off-screen (keep the solo'd one even off-screen)
+                float r = solo ? 12.0f : 5.0f;
+                ImU32 col = solo ? IM_COL32(255, 60, 60, 255) : IM_COL32(90, 230, 130, 235);
+                fg->AddCircleFilled(gp, r, col);
+                fg->AddCircle(gp, r, IM_COL32(0, 0, 0, 220), 0, 1.5f);
+                ++drawn;
+                if (solo)
+                    snprintf(solo_info, sizeof(solo_info),
+                             "SOLO #%d  area=%d grid=(%d,%d) pos=(%.0f,%.0f) world=(%.0f,%.0f) px=(%.0f,%.0f)",
+                             myidx, (int)e.data.areaNo, (int)e.data.gridXNo, (int)e.data.gridZNo,
+                             e.data.posX, e.data.posZ, wx, wz, gp.x, gp.y);
+            }
+            if (g_solo >= 0)
+            {
+                fg->AddText(ImVec2(12, 60), IM_COL32(0, 0, 0, 200), solo_info);
+                fg->AddText(ImVec2(11, 59), IM_COL32(255, 120, 120, 255), solo_info);
+            }
+            g_grace_filtered_count = total;
+            char gbuf[224];
+            snprintf(gbuf, sizeof(gbuf),
+                     "GRACES drawn=%d/%d  area=%s  scale=%.3f  solo=%s  [N/B=area, PgUp/PgDn=scale(+Shift fine), G=swap, O=solo ./,=cycle, J=dump]",
+                     drawn, total, area_filter < 0 ? "ALL" : std::to_string(area_filter).c_str(),
+                     g_world_scale, g_solo < 0 ? "off" : std::to_string(g_solo).c_str());
+            fg->AddText(ImVec2(12, 44), IM_COL32(0, 0, 0, 200), gbuf);
+            fg->AddText(ImVec2(11, 43), IM_COL32(90, 230, 130, 255), gbuf);
+        }
+
         // Hotkeys (work menu-closed): C = 1-point calibrate (solve biasX/Y so the
-        // projection of the reticle hits the mouse), L = log a row, X = reset. The
-        // model is linear in bias, so a single capture pins both biases exactly.
-        static bool prevC = false, prevX = false, prevL = false;
+        // projection of the reticle hits the mouse), L = log a row, X = reset,
+        // G = swap grace axes. The model is linear in bias, so one capture pins both.
+        static bool prevC = false, prevX = false, prevL = false, prevG = false;
         bool downC = (GetAsyncKeyState('C') & 0x8000) != 0;
         bool downX = (GetAsyncKeyState('X') & 0x8000) != 0;
         bool downL = (GetAsyncKeyState('L') & 0x8000) != 0;
+        bool downG = (GetAsyncKeyState('G') & 0x8000) != 0;
+        if (downG && !prevG)
+            g_grace_swap = !g_grace_swap;
+        prevG = downG;
+
+        // PageDown / PageUp dial the grace world-scale live (physical keys = AZERTY-safe).
+        // Hold Shift for fine ±0.001 steps.
+        static bool prevPD = false, prevPU = false;
+        bool downPD = (GetAsyncKeyState(VK_NEXT) & 0x8000) != 0;   // PageDown
+        bool downPU = (GetAsyncKeyState(VK_PRIOR) & 0x8000) != 0;  // PageUp
+        float step = (GetAsyncKeyState(VK_SHIFT) & 0x8000) ? 0.001f : 0.01f;
+        if (downPD && !prevPD)
+            g_world_scale -= step;
+        if (downPU && !prevPU)
+            g_world_scale += step;
+        prevPD = downPD;
+        prevPU = downPU;
+
+        // N / B = cycle the drawn areaNo, A = all (region-by-region test).
+        static bool prevN = false, prevB = false, prevA = false;
+        bool downN = (GetAsyncKeyState('N') & 0x8000) != 0;
+        bool downB = (GetAsyncKeyState('B') & 0x8000) != 0;
+        bool downA = (GetAsyncKeyState('A') & 0x8000) != 0;
+        if (downN && !prevN && !grace_areas.empty())
+            area_idx = (area_idx + 1) % (int)grace_areas.size();
+        if (downB && !prevB && !grace_areas.empty())
+            area_idx = (area_idx <= 0 ? (int)grace_areas.size() - 1 : area_idx - 1);
+        if (downA && !prevA)
+            area_idx = -1;
+        prevN = downN;
+        prevB = downB;
+        prevA = downA;
+
+        // O = toggle solo (isolate one grace), . / , = next/prev grace in the filter.
+        static bool prevO = false, prevDot = false, prevComma = false;
+        bool downO = (GetAsyncKeyState('O') & 0x8000) != 0;
+        bool downDot = (GetAsyncKeyState(VK_OEM_PERIOD) & 0x8000) != 0;
+        bool downComma = (GetAsyncKeyState(VK_OEM_COMMA) & 0x8000) != 0;
+        int fc = g_grace_filtered_count > 0 ? g_grace_filtered_count : 1;
+        if (downO && !prevO)
+            g_solo = (g_solo < 0) ? 0 : -1;
+        if (downDot && !prevDot && g_solo >= 0)
+            g_solo = (g_solo + 1) % fc;
+        if (downComma && !prevComma && g_solo >= 0)
+            g_solo = (g_solo <= 0 ? fc - 1 : g_solo - 1);
+        prevO = downO;
+        prevDot = downDot;
+        prevComma = downComma;
+
+        // J = one-shot dump of EVERY grace's raw row + computed unified world coord,
+        // so we can correlate against the reticle's true marker coord (hover a known
+        // grace + press L) and reverse the data→marker-space transform.
+        static bool prevJ = false;
+        bool downJ = (GetAsyncKeyState('J') & 0x8000) != 0;
+        if (downJ && !prevJ)
+        {
+            namespace gen = goblin::generated;
+            spdlog::info("[GRACEDUMP] begin (reticle now U={:.1f} V={:.1f} pan=({:.1f},{:.1f}) zoom={:.4f})",
+                         v.raw[2], v.raw[3], v.panX, v.panZ, v.zoom);
+            int n = 0;
+            for (size_t i = 0; i < gen::MAP_ENTRY_COUNT && n < 500; ++i)
+            {
+                const gen::MapEntry &e = gen::MAP_ENTRIES[i];
+                if (e.category != gen::Category::WorldGraces)
+                    continue;
+                int ga;
+                float wx, wz;
+                goblin::marker_world_pos(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
+                                         e.data.posX, e.data.posZ, ga, wx, wz);
+                spdlog::info("[GRACE] area={} grid=({},{}) pos=({:.1f},{:.1f}) -> world=({:.1f},{:.1f})",
+                             (int)e.data.areaNo, (int)e.data.gridXNo, (int)e.data.gridZNo,
+                             e.data.posX, e.data.posZ, wx, wz);
+                ++n;
+            }
+            spdlog::info("[GRACEDUMP] end ({} graces)", n);
+        }
+        prevJ = downJ;
         if (downC && !prevC && live)
         {
             // Solve the residual bias so the projection hits the mouse exactly here.

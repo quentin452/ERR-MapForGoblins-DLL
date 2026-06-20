@@ -888,6 +888,28 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
     return true;
 }
 
+// Unified overworld marker-space coord for an arbitrary baked marker (overlay-
+// rendered markers need this: a row's native (areaNo, grid, pos) is page-local,
+// but the overworld view projects everything into area-60 space). Mirrors the
+// player path above: project legacy dungeons (area 10/11/30-39…) onto the
+// overworld via LEGACY_CONV, then world = grid*256 + local. Rows already on the
+// overworld (area 60/61) or on their own underground page are returned as-is.
+bool goblin::marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,
+                              int &out_area, float &world_x, float &world_z)
+{
+    from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp{};
+    tmp.areaNo = areaNo;
+    tmp.gridXNo = gx;
+    tmp.gridZNo = gz;
+    tmp.posX = px;
+    tmp.posZ = pz;
+    project_dungeon_row_to_overworld(&tmp); // in-place; no-op if already overworld / unmappable
+    out_area = tmp.areaNo;
+    world_x = tmp.gridXNo * 256.0f + tmp.posX;
+    world_z = tmp.gridZNo * 256.0f + tmp.posZ;
+    return true;
+}
+
 namespace
 {
 // One ItemLotParam row, read by raw offset (ITEMLOT_PARAM_ST = 152 bytes,

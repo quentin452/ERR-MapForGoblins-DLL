@@ -32,6 +32,7 @@ namespace goblin::worldmap_probe
         float cursorX, cursorZ; // reticle, marker space (+0xFC / +0x104)
         float panX, panZ, zoom; // WorldMapArea viewport
         float raw[8];           // diag: cursor+0xFC,+0x100,+0x104,+0x108,+0x10C,+0x110,+0x114,+0x118
+        int viewArea;           // WorldMapArea+0x6e = areaNo of the open page (doc §3)
     };
     bool get_live_view(LiveView &out);
 

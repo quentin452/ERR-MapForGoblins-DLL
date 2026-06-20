@@ -33,6 +33,12 @@ namespace goblin
     bool get_player_map_pos(int &out_area, float &world_x, float &world_z,
                             int *out_gx = nullptr, int *out_gz = nullptr);
 
+    // Unified overworld marker-space coord for an arbitrary baked marker (projects
+    // legacy dungeons to area-60 via LEGACY_CONV, then world = grid*256 + local).
+    // Used by the overlay-rendered-markers prototype to place graces etc.
+    bool marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,
+                          int &out_area, float &world_x, float &world_z);
+
     // Data pointers of MFG-injected WorldMapPointParam rows in the expanded
     // table. Populated by inject_map_entries(); consumed by
     // sanitize_injected_textids() after the FMG bank is built.

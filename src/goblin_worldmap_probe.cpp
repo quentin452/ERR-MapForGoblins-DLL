@@ -58,6 +58,14 @@ bool view_is_static(uintptr_t view)
     return g_exe_base && view >= g_exe_base && view < g_exe_end;
 }
 
+// Cheap sanity gate before dereferencing a read-from-memory pointer (the cursor's
+// +0xF0 view can be mid-transition garbage on map/DLC load). SEH is the real net,
+// but clang-cl SEH is fragile, so reject implausible pointers up front too.
+bool plausible_ptr(uintptr_t p)
+{
+    return p >= 0x10000 && p < 0x7fffffffffffull && (p & 7) == 0;
+}
+
 // CS::WorldMapCursorControl vtable RVA (doc imagebase 0x140000000). The cursor
 // object's first qword IS this vtable ptr, so scanning memory for this value
 // finds cursor instances directly. Resolve-by-RVA: if a game patch shifted it,
@@ -78,15 +86,24 @@ constexpr ptrdiff_t VIEW_PAN_X = 0x378, VIEW_PAN_Z = 0x37C, VIEW_ZOOM = 0x380;
 // originY, +0x118 width, +0x11c height}. RVA, patch-fragile (debug only).
 constexpr uintptr_t CANVAS_SINGLETON_RVA = 0x47ef360;
 
-// SEH-guarded 8-byte read (POD body — no C++ unwinding inside __try).
-bool seh_read8(const void *src, uint64_t *out)
+// SEH-guarded reads. __declspec(noinline) is REQUIRED: if the compiler inlines
+// these, clang-cl merges/hoists the raw load out of the __try region and the SEH
+// guard is silently lost → a bad pointer faults unhandled (observed: a 0xC0000005
+// crash reading view+0x378 on DLC map entry, where cursor+0xF0 was mid-transition
+// garbage). Keeping them as real calls keeps each __try self-contained.
+__declspec(noinline) bool seh_read8(const void *src, uint64_t *out)
 {
     __try { *out = *reinterpret_cast<const volatile uint64_t *>(src); return true; }
     __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
-bool seh_read4(const void *src, float *out)
+__declspec(noinline) bool seh_read4(const void *src, float *out)
 {
     __try { *out = *reinterpret_cast<const volatile float *>(src); return true; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+__declspec(noinline) bool seh_read_i32(const void *src, int *out)
+{
+    __try { *out = *reinterpret_cast<const volatile int *>(src); return true; }
     __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
@@ -231,7 +248,8 @@ void probe_loop()
             // while pan sweeps), so gating on coord-move alone misses both. (doc §6)
             // PAN → pan sweeps; ZOOM → zoom changes; +0x350 rect stays [0,0,10496,10496].
             uint64_t view = 0;
-            if (seh_read8(reinterpret_cast<void *>(a + OFF_VIEW_PTR), &view) && view)
+            if (seh_read8(reinterpret_cast<void *>(a + OFF_VIEW_PTR), &view) && view &&
+                plausible_ptr(view) && !view_is_static(view))
             {
                 float panx, panz, zoom, r0, r1, r2, r3;
                 if (seh_read4(reinterpret_cast<void *>(view + VIEW_PAN_X), &panx) &&
@@ -323,7 +341,7 @@ bool get_live_view(LiveView &out)
     if (!seh_read8(reinterpret_cast<void *>(a), &vt) || vt != base + CURSOR_VTABLE_RVA)
         return false;
     if (!seh_read8(reinterpret_cast<void *>(a + OFF_VIEW_PTR), &view) || !view ||
-        view_is_static(view))
+        !plausible_ptr(view) || view_is_static(view))
         return false;
     if (!seh_read4(reinterpret_cast<void *>(a + OFF_X), &out.cursorX) ||
         !seh_read4(reinterpret_cast<void *>(a + OFF_Z), &out.cursorZ) ||
@@ -335,6 +353,9 @@ bool get_live_view(LiveView &out)
     for (int i = 0; i < 8; ++i)
         if (!seh_read4(reinterpret_cast<void *>(a + 0xFC + i * 4), &out.raw[i]))
             out.raw[i] = 0.f;
+    // WorldMapArea+0x6e (i32) = areaNo of the open page (doc §3) → page filter.
+    out.viewArea = -1;
+    seh_read_i32(reinterpret_cast<void *>(view + 0x6e), &out.viewArea);
     return true;
 }
 
