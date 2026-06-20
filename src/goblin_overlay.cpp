@@ -416,7 +416,10 @@ namespace
         float a = 0.f, b = 0.5f, c = 0.5f, d = 0.f;
         float e[64] = {}, f[64] = {}; // per-page T
         float gtx = 0.f, gty = 0.f;   // global pan (eyeball T), added to every page
+        bool pivot = true;            // eyeball: rotate about the marker CENTROID (so
+                                      // changing M spins in place, not flings about (0,0))
     };
+    float g_centroidX = 0.f, g_centroidZ = 0.f; // world centroid of drawn graces (pivot)
     AffineFit g_aff;
 
     // Solve A·x = b (3×3) by Gaussian elimination w/ partial pivoting. A is mutated.
@@ -622,6 +625,23 @@ namespace
         static int g_grace_filtered_count = 0;  // # graces in the current area filter
         if (live && g_graces)
         {
+            // Centroid of the drawn graces (world space) = the pivot for eyeball
+            // rotation, so changing M spins the cloud IN PLACE instead of flinging it
+            // about world-origin (the "rotate moves the map" bug the user hit).
+            {
+                float cx = 0, cz = 0; int cn = 0;
+                for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
+                {
+                    const gen::MapEntry &e = gen::MAP_ENTRIES[i];
+                    if (e.category != gen::Category::WorldGraces) continue;
+                    if (area_filter >= 0 && e.data.areaNo != area_filter) continue;
+                    int ga; float wx, wz;
+                    goblin::marker_world_pos(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
+                                             e.data.posX, e.data.posZ, ga, wx, wz);
+                    cx += wx; cz += wz; ++cn;
+                }
+                if (cn) { g_centroidX = cx / cn; g_centroidZ = cz / cn; }
+            }
             int total = 0, drawn = 0, fidx = 0;
             char solo_info[160] = "";
             for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
@@ -646,7 +666,15 @@ namespace
                 // (M shared, T per-page; solved in-DLL from P/M calibration). U toggles
                 // back to the diagonal origin·scale baseline for comparison.
                 float gU, gV;
-                if (g_aff.enabled)
+                if (g_aff.enabled && g_aff.pivot)
+                {
+                    // rotate about the centroid, placed at render-centre + pan → M only
+                    // ROTATES the cloud (in place), never translates it off-screen.
+                    const float RC = 5248.f; // render-space centre (10496/2)
+                    gU = g_aff.a * (wx - g_centroidX) + g_aff.b * (wz - g_centroidZ) + RC + g_aff.gtx;
+                    gV = g_aff.c * (wx - g_centroidX) + g_aff.d * (wz - g_centroidZ) + RC + g_aff.gty;
+                }
+                else if (g_aff.enabled)
                 {
                     gU = g_aff.a * wx + g_aff.b * wz + g_aff.e[pg] + g_aff.gtx;
                     gV = g_aff.c * wx + g_aff.d * wz + g_aff.f[pg] + g_aff.gty;
@@ -882,8 +910,19 @@ namespace
             ImGui::SameLine();
             if (ImGui::Button("diag"))    { g_aff.a=0.5f; g_aff.b=0; g_aff.c=0; g_aff.d=0.5f; }
             ImGui::DragFloat4("a,b,c,d", &g_aff.a, 0.01f, -2.f, 2.f, "%.3f");
+            ImGui::Checkbox("rotate around centroid (eyeball: M spins in place)", &g_aff.pivot);
             ImGui::DragFloat("pan X (gtx)", &g_aff.gtx, 10.f, -12000.f, 12000.f, "%.0f");
             ImGui::DragFloat("pan Y (gty)", &g_aff.gty, 10.f, -12000.f, 12000.f, "%.0f");
+            if (g_aff.pivot)
+            {
+                // effective bakeable T if you keep this eyeball fit:
+                // render = M*world + T  with  T = RC + pan - M*centroid
+                const float RC = 5248.f;
+                float Te = RC + g_aff.gtx - (g_aff.a * g_centroidX + g_aff.b * g_centroidZ);
+                float Tf = RC + g_aff.gty - (g_aff.c * g_centroidX + g_aff.d * g_centroidZ);
+                ImGui::Text("centroid world=(%.0f,%.0f)  =>  bake T=(%.1f, %.1f)",
+                            g_centroidX, g_centroidZ, Te, Tf);
+            }
             ImGui::Text("collected pairs: %d", (int)g_cal_pairs.size());
             ImGui::TextWrapped("EYEBALL: pick a preset, then drag pan X/Y until graces sit on the "
                                "game icons (page 60). Aligns by rotate+pan alone => clean 90deg. "
