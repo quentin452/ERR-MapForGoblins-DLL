@@ -154,6 +154,32 @@ engine builds + positions, giving the `(world → render)` sample set to fit `M`
 inline row — read `[point+0x80]` then the row fields. (The 4-instance run was too few +
 heterogeneous to locate a consistent row, hence the finder needs the injected-marker set.)
 
+### OPEN ANOMALY (2026-06-20) — only ~4 `CSWorldMapPointIns` exist regardless of reveal
+
+The mod **always injects `WorldMapPointParam` rows** (`inject_map_entries()` via
+`init_inject_entries()` in `dllmain.cpp` — unconditional; `overlay_markers_proto` is purely
+*additive* ImGui drawing, it does not suppress injection). The mod's icons are visible on the
+map. **Yet the `render_finder` vtable-scan finds only ~4 instances total** (`Point=2
+Discovery=1 Reentry=1`) — and this **did not change after revealing the whole region + enabling
+all grace icons.** So the working theory ("markers = scannable `CSWorldMapPointIns`, gated by
+discovery/region") is **wrong**: the visible markers are **not** one-C++-object-per-icon that
+the vtable scan can enumerate. Candidates (unverified):
+
+- the per-icon render position lives in the **Scaleform display list** (Flash sprites driven
+  from `WorldMapPointParam` + the view transform), with no scannable C++ render field — i.e.
+  the same VMP/Scaleform wall as `render_out`; OR
+- the visible markers the tester saw are the **overlay-proto ImGui dots** (the mod computing
+  positions itself), not game-built icons, so there is nothing in game memory to read; OR
+- `CSWorldMapPointIns` is only a small set (special/interactive points) and the bulk of icons
+  use a different, not-yet-identified path.
+
+**Consequence:** the C++-instance `render_finder` is a dead end for harvesting many
+`(world → render)` pairs. The reliable `render_out` source remains the **snapped cursor**
+(`+0x104/+0x108`, exact when the reticle is on an icon): hover 3–4 **known** graces on a page,
+read render, pair with their known world → solve `M` + per-page `T`. A handful of exact pairs
+beats hundreds of unavailable ones. (To actually resolve the anomaly, dump the 4 instances'
+param rows + identify what renders the bulk of icons — deferred; not needed for the M/T bake.)
+
 ## Handles / AOBs
 
 - reconcile `FUN_140a832a0`; **hook call @ `0xa839a6`** (AOB above), RCX=point, RDX=ctx.
