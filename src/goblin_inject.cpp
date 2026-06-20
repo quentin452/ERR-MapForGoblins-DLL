@@ -71,28 +71,31 @@ static bool project_dungeon_row_to_overworld(
     if (d->areaNo == 12 || (d->areaNo >= 40 && d->areaNo <= 43))
         return false;
 
-    // Prefer an exact (src_area, src_gx) base-point — its local coords share an
-    // origin with this row, so we can keep the in-dungeon offset. Some dungeons
-    // (e.g. Fringefolk Hero's Grave m10_01) have NO conv entry of their own in
-    // WorldMapLegacyConvParam; fall back to any base-point of the same src_area
-    // and cluster the rows at that overworld point (entrance) — visible, if
-    // without intra-dungeon spread.
+    // Prefer an EXACT (src_area, src_gx, src_gz) base-point — its local coords share
+    // an origin with this row, so we keep the in-dungeon offset. Else fall back to the
+    // NEAREST base-point of the same src_area (by grid distance) and cluster at that
+    // overworld entrance — visible, region-correct, if without intra-dungeon spread.
+    // (Was: the FIRST entry of the area, which sent the few rows whose gridX matches
+    //  no entry — e.g. an m31 cave grace at gx 8 — to an arbitrary far cave mouth.)
     const goblin::generated::LegacyConvEntry *exact = nullptr;
-    const goblin::generated::LegacyConvEntry *area_fb = nullptr;
+    const goblin::generated::LegacyConvEntry *nearest = nullptr;
+    int best_dist = 0x7fffffff;
     for (size_t i = 0; i < goblin::generated::LEGACY_CONV_COUNT; ++i)
     {
         const auto &c = goblin::generated::LEGACY_CONV[i];
         if (c.src_area != d->areaNo)
             continue;
-        if (!area_fb)
-            area_fb = &c;
-        if (c.src_gx == d->gridXNo)
+        int dgx = (int)c.src_gx - (int)d->gridXNo; if (dgx < 0) dgx = -dgx;
+        int dgz = (int)c.src_gz - (int)d->gridZNo; if (dgz < 0) dgz = -dgz;
+        int dist = dgx + dgz;
+        if (dist < best_dist) { best_dist = dist; nearest = &c; }
+        if (c.src_gx == d->gridXNo && c.src_gz == d->gridZNo)
         {
             exact = &c;
             break;
         }
     }
-    const auto *c = exact ? exact : area_fb;
+    const auto *c = exact ? exact : nearest;
     if (!c)
         return false;
 
