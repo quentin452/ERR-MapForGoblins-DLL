@@ -2,12 +2,17 @@
 
 #include "goblin_projection.hpp"     // baked map-space → backbuffer projection
 #include "goblin_worldmap_probe.hpp" // get_live_view()
+#include "goblin_inject.hpp"         // ui::clustering_enabled / global_threshold / category_clustered
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
 
 #include <imgui.h>
 
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <unordered_map>
+#include <vector>
 
 namespace goblin::worldmap
 {
@@ -96,6 +101,57 @@ void world_to_mapspace(const Marker &m, bool dlc_ug, float &gU, float &gV)
         dlc_ug_eyeball(m.worldX, m.worldZ, gU, gV);
     }
 }
+
+// A projected marker awaiting the clustering decision.
+struct ScreenMarker
+{
+    ImVec2 p;
+    const Marker *m;
+};
+
+// Draw a cluster pile glyph (filled disc + member count) at screen point c.
+void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n)
+{
+    const float r = 14.f;
+    fg->AddCircleFilled(c, r, IM_COL32(40, 42, 52, 235));
+    fg->AddCircle(c, r, IM_COL32(255, 255, 255, 230), 0, 2.0f);
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%d", n);
+    ImVec2 ts = ImGui::CalcTextSize(buf);
+    fg->AddText(ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), IM_COL32(255, 255, 255, 255), buf);
+}
+
+// Bin clustered markers into a screen grid; cells at/above threshold draw ONE glyph
+// (mixed pile) at the member centroid, sparse cells draw their members normally. The
+// screen-space grid makes clusters dissolve as you zoom in — no rebuild needed.
+void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int threshold,
+                   ImTextureID atlas)
+{
+    constexpr float CELL = 44.f;
+    std::unordered_map<uint64_t, std::vector<int>> cells;
+    cells.reserve(items.size());
+    for (int i = 0; i < (int)items.size(); ++i)
+    {
+        uint32_t cx = (uint32_t)(int32_t)std::floor(items[i].p.x / CELL);
+        uint32_t cy = (uint32_t)(int32_t)std::floor(items[i].p.y / CELL);
+        cells[((uint64_t)cx << 32) | cy].push_back(i);
+    }
+    if (threshold < 2)
+        threshold = 2; // a "cluster" needs ≥2 members
+    for (auto &kv : cells)
+    {
+        const auto &idxs = kv.second;
+        if ((int)idxs.size() >= threshold)
+        {
+            float sx = 0, sy = 0;
+            for (int i : idxs) { sx += items[i].p.x; sy += items[i].p.y; }
+            draw_cluster_glyph(fg, ImVec2(sx / idxs.size(), sy / idxs.size()), (int)idxs.size());
+        }
+        else
+            for (int i : idxs)
+                draw_marker(fg, *items[i].m, items[i].p, atlas);
+    }
+}
 } // namespace
 
 void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_texture)
@@ -139,6 +195,13 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
         if (n) { g_centroidX = (float)(sx / n); g_centroidZ = (float)(sz / n); }
     }
 
+    // Clustering = a live render pass: categories opted into clustering bin together
+    // into ONE mixed pile per dense screen cell; everything else draws normally. Live
+    // by construction (re-binned every frame), so toggles/zoom update with no rebuild.
+    const bool clustering = goblin::ui::clustering_enabled();
+    const int threshold = clustering ? goblin::ui::global_threshold() : 0;
+    std::vector<ScreenMarker> clustered; // markers whose category opted into clustering
+
     for (auto *L : layers)
     {
         if (!L || !L->visible())
@@ -152,8 +215,15 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
             if (p.x < -32 || p.y < -32 || p.x > realW + 32 || p.y > realH + 32)
                 continue; // ImGui doesn't CPU-cull; skip off-screen primitives ourselves
-            draw_marker(fg, m, ImVec2(p.x, p.y), atlas);
+            ImVec2 sp(p.x, p.y);
+            if (clustering && m.category >= 0 && goblin::ui::category_clustered(m.category))
+                clustered.push_back({sp, &m}); // defer to the clustering pass
+            else
+                draw_marker(fg, m, sp, atlas);
         }
     }
+
+    if (clustering && !clustered.empty())
+        draw_clusters(fg, clustered, threshold, atlas);
 }
 } // namespace goblin::worldmap
