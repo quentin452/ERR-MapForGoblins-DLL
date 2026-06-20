@@ -99,6 +99,47 @@ static bool is_flag_set(uint32_t flag_id)
     return g_is_event_flag(event_man, &id);
 }
 
+// ── Event-flag WRITER (SetEventFlag) ──
+// Same EventFlagMan singleton as the reader; signature mirrors the SetEventFlag
+// detour in goblin_debug_events (rcx=EventFlagMan*, rdx=uint32_t* id, r8b=value,
+// r9=pad). Resolving the entry independently of that observer hook means writing
+// works whether or not the debug-events feature installed its detour (calling the
+// entry just runs through that detour's tap harmlessly if it is installed).
+using SetEventFlagFn = uint64_t (*)(void *, uint32_t *, uint8_t, uint64_t);
+static SetEventFlagFn g_set_event_flag = nullptr;
+static bool g_set_flag_tried = false;
+
+static void resolve_set_flag()
+{
+    if (g_set_flag_tried) return;
+    g_set_flag_tried = true;
+
+    // EventFlag_C1 (SetEventFlag) entry. NOTE: the full Hexinton signature's TAIL
+    // (after the `41 0F B6 F8` value-capture: `8B 12 48 8B F1 85 D2 0F 84 ...`)
+    // differs in this game version, so we match only the stable prologue through
+    // the r8b value-capture (which distinguishes this SETTER from the getter and is
+    // distinctive enough to be unique). Resolved live to 0x1405d2240 here.
+    try
+    {
+        g_set_event_flag = modutils::scan<uint64_t(void *, uint32_t *, uint8_t, uint64_t)>(
+            { .aob = "48 89 5C 24 08 48 89 74 24 18 57 48 83 EC 30 48 8B DA 41 0F B6 F8" });
+    }
+    catch (...) { g_set_event_flag = nullptr; }
+    spdlog::info("Flag WRITER: SetEventFlag={}", (void *)g_set_event_flag);
+}
+
+bool set_event_flag(uint32_t flag_id, uint8_t value)
+{
+    resolve_flag_api();   // resolves g_event_man_slot
+    resolve_set_flag();
+    if (!g_set_event_flag || !g_event_man_slot) return false;
+    void *event_man = *g_event_man_slot;
+    if (!event_man) return false;
+    uint32_t id = flag_id;
+    g_set_event_flag(event_man, &id, value, 0);
+    return true;
+}
+
 
 // ── Validation of a 16-byte slot ──
 
