@@ -177,8 +177,25 @@ the vtable scan can enumerate. Candidates (unverified):
 `(world → render)` pairs. The reliable `render_out` source remains the **snapped cursor**
 (`+0x104/+0x108`, exact when the reticle is on an icon): hover 3–4 **known** graces on a page,
 read render, pair with their known world → solve `M` + per-page `T`. A handful of exact pairs
-beats hundreds of unavailable ones. (To actually resolve the anomaly, dump the 4 instances'
-param rows + identify what renders the bulk of icons — deferred; not needed for the M/T bake.)
+beats hundreds of unavailable ones.
+
+### RESOLVED (re_v61) — the icons are Scaleform GUI list items, no C++ render field
+
+What renders the visible markers (since they're not per-marker `CSWorldMapPointIns`): the
+world-map menu builds **9 `CS::WorldMapItemControl` lists** (MarkerList, AreaList, ItemList,
+WarpList, MemoList, …) in the menu setup `FUN_1409be5e0` (9 `FUN_1409ca380` ctor calls). Each
+marker icon is a **Scaleform display object under one of those lists**, positioned by the GFx
+movie. The hover/tooltip is the **generic FD4 GUI hit-test** `FUN_140d7ff40` — its callers are
+all in the generic GUI layer (`0x74xxxx`: `FUN_14074e780`, `FUN_14073a5c0`, `FUN_140782ba0`),
+not marker-specific code. So the per-marker render position lives in the **Scaleform display
+list**, not in any flat C++ field, and the hover path is the same Scaleform/VMP wall as
+`render_out` itself. (The "Font Baker" idea is a dead end — that bakes tooltip *text*, it does
+not position icons.)
+
+**Final:** there is no C++ per-marker render coordinate to read. The only C++-readable render
+position is the **cursor** (`+0x104/+0x108`); calibrate `M`/`T` from snapped-cursor pairs on
+known graces and bake them. This is the path — no further RE will surface a readable
+per-marker render field.
 
 ## Handles / AOBs
 
