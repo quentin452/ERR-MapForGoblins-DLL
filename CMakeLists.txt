@@ -147,6 +147,8 @@ add_library( MapForGoblins SHARED
   src/goblin_overlay.hpp
   src/goblin_overlay.cpp
   src/goblin_projection.hpp
+  src/generated_shared/goblin_overlay_icons.hpp
+  src/generated_shared/goblin_overlay_icons.cpp
   src/worldmap/marker_layer.hpp
   src/worldmap/grace_layer.hpp
   src/worldmap/grace_layer.cpp

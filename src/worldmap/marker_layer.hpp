@@ -21,7 +21,11 @@ struct Marker
     // 3 DLC-underground. The renderer draws only the OPEN group's markers.
     int group = 0;
     int srcArea = 0;            // original areaNo (diagnostics / converter choice)
-    unsigned int color = 0xEB82E65Au; // packed ImU32 ABGR — default grace green
+    unsigned int color = 0xEB82E65Au; // packed ImU32 ABGR — circle-fallback colour
+    // Atlas cell key (goblin::overlay_icons ICON_CELLS, e.g. "show_graces"). When the
+    // atlas is loaded and the key resolves, the marker draws as that icon; otherwise it
+    // falls back to a coloured circle.
+    const char *icon_key = nullptr;
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the

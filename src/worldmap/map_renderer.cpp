@@ -2,10 +2,12 @@
 
 #include "goblin_projection.hpp"     // baked map-space → backbuffer projection
 #include "goblin_worldmap_probe.hpp" // get_live_view()
+#include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
 
 #include <imgui.h>
 
 #include <cmath>
+#include <cstring>
 
 namespace goblin::worldmap
 {
@@ -43,6 +45,42 @@ void dlc_ug_eyeball(float wx, float wz, float &gU, float &gV)
     gV = (u0 * sn + v0 * cs) + RC + panZ;
 }
 
+constexpr float kIconHalf = 13.f; // marker icon half-size in px (≈26px sprite)
+
+// Resolve a marker's atlas cell to UVs. Returns false if no atlas / key missing.
+bool icon_uv(const char *key, ImVec2 &uv0, ImVec2 &uv1)
+{
+    using namespace goblin::overlay_icons;
+    if (!key)
+        return false;
+    for (int i = 0; i < ICON_CELL_COUNT; ++i)
+        if (std::strcmp(ICON_CELLS[i].key, key) == 0)
+        {
+            const IconCell &c = ICON_CELLS[i];
+            uv0 = ImVec2((c.col * CELL) / (float)ATLAS_W, (c.row * CELL) / (float)ATLAS_H);
+            uv1 = ImVec2(((c.col + 1) * CELL) / (float)ATLAS_W,
+                         ((c.row + 1) * CELL) / (float)ATLAS_H);
+            return true;
+        }
+    return false;
+}
+
+// Draw one marker at backbuffer px p: the atlas icon if available, else a circle.
+void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas)
+{
+    ImVec2 uv0, uv1;
+    if (atlas && icon_uv(m.icon_key, uv0, uv1))
+    {
+        fg->AddImage(atlas, ImVec2(p.x - kIconHalf, p.y - kIconHalf),
+                     ImVec2(p.x + kIconHalf, p.y + kIconHalf), uv0, uv1);
+    }
+    else
+    {
+        fg->AddCircleFilled(p, 5.0f, m.color);
+        fg->AddCircle(p, 5.0f, IM_COL32(0, 0, 0, 220), 0, 1.5f);
+    }
+}
+
 // Unified world coords → map-space (the frame project_screen expects).
 void world_to_mapspace(const Marker &m, bool dlc_ug, float &gU, float &gV)
 {
@@ -60,9 +98,10 @@ void world_to_mapspace(const Marker &m, bool dlc_ug, float &gU, float &gV)
 }
 } // namespace
 
-void render_markers(const std::vector<MarkerLayer *> &layers)
+void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_texture)
 {
     namespace proj = goblin::projection;
+    ImTextureID atlas = reinterpret_cast<ImTextureID>(atlas_texture);
     goblin::worldmap_probe::LiveView lv;
     if (!goblin::worldmap_probe::get_live_view(lv))
     {
@@ -111,10 +150,9 @@ void render_markers(const std::vector<MarkerLayer *> &layers)
             float gU, gV;
             world_to_mapspace(m, dlc_ug, gU, gV);
             proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
-            if (p.x < -16 || p.y < -16 || p.x > realW + 16 || p.y > realH + 16)
+            if (p.x < -32 || p.y < -32 || p.x > realW + 32 || p.y > realH + 32)
                 continue; // ImGui doesn't CPU-cull; skip off-screen primitives ourselves
-            fg->AddCircleFilled(ImVec2(p.x, p.y), 5.0f, m.color);
-            fg->AddCircle(ImVec2(p.x, p.y), 5.0f, IM_COL32(0, 0, 0, 220), 0, 1.5f);
+            draw_marker(fg, m, ImVec2(p.x, p.y), atlas);
         }
     }
 }

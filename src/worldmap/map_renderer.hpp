@@ -12,5 +12,8 @@ namespace goblin::worldmap
 {
 // Draw all visible layers' markers for the currently open map page. Call once per
 // frame the overlay builds (from the Present hook). Must run inside an ImGui frame.
-void render_markers(const std::vector<MarkerLayer *> &layers);
+// atlas_texture = the category-icon atlas's ImGui texture id (GPU descriptor handle),
+// or null to draw coloured-circle fallbacks. The overlay owns the texture; the
+// renderer computes the per-icon UVs itself from goblin::overlay_icons.
+void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_texture = nullptr);
 } // namespace goblin::worldmap

@@ -27,7 +27,7 @@ const std::vector<Marker> &GraceLayer::markers() const
         bool isug = (e.areaNo == 12) || (e.areaNo >= 40 && e.areaNo <= 43);
         bool isdlc = (pg == 61) || (e.areaNo >= 40 && e.areaNo <= 43);
         int grp = (isdlc ? 2 : 0) | (isug ? 1 : 0);
-        cache_.push_back(Marker{wx, wz, grp, (int)e.areaNo, 0xEB82E65Au});
+        cache_.push_back(Marker{wx, wz, grp, (int)e.areaNo, 0xEB82E65Au, "show_graces"});
     }
     return cache_;
 }

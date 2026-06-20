@@ -22,6 +22,7 @@
 #include "goblin_map_data.hpp"         // generated::MAP_ENTRIES (graces for Phase 1)
 #include "worldmap/grace_layer.hpp"    // goblin::worldmap::GraceLayer
 #include "worldmap/map_renderer.hpp"   // goblin::worldmap::render_markers
+#include "generated_shared/goblin_overlay_icons.hpp" // ATLAS_RGBA category-icon atlas
 
 #include <vector>
 #include <map>
@@ -96,8 +97,14 @@ namespace
     ID3D12Device *g_device = nullptr;
     ID3D12CommandQueue *g_command_queue = nullptr;   // captured from ExecuteCommandLists
     ID3D12DescriptorHeap *g_rtv_heap = nullptr;
-    ID3D12DescriptorHeap *g_srv_heap = nullptr;       // ImGui font SRV (1 descriptor)
+    ID3D12DescriptorHeap *g_srv_heap = nullptr;       // [0] ImGui font, [1] icon atlas
     ID3D12GraphicsCommandList *g_command_list = nullptr;
+
+    // Category-icon atlas (SRV index 1) — uploaded once from the baked RGBA so the
+    // overlay-rendered map can draw real icons instead of coloured circles.
+    ID3D12Resource *g_atlas_tex = nullptr;
+    D3D12_GPU_DESCRIPTOR_HANDLE g_atlas_gpu{};
+    bool g_atlas_ready = false;
 
     struct FrameContext
     {
@@ -142,8 +149,137 @@ namespace
             if (f.allocator) { f.allocator->Release(); f.allocator = nullptr; }
         g_frames.clear();
         if (g_command_list) { g_command_list->Release(); g_command_list = nullptr; }
+        if (g_atlas_tex) { g_atlas_tex->Release(); g_atlas_tex = nullptr; }
+        g_atlas_ready = false;
+        g_atlas_gpu = D3D12_GPU_DESCRIPTOR_HANDLE{};
         if (g_rtv_heap) { g_rtv_heap->Release(); g_rtv_heap = nullptr; }
         if (g_srv_heap) { g_srv_heap->Release(); g_srv_heap = nullptr; }
+    }
+
+    // ── Category-icon atlas upload (SRV index 1) ──────────────────────────
+    // One-time GPU upload of the baked RGBA atlas so the overlay map can draw
+    // real icons. Ported from upstream (VirusAlex) goblin_overlay.cpp.
+    bool upload_rgba(const unsigned char *rgba, int w, int h, UINT srv_index,
+                     ID3D12Resource **out_tex, D3D12_GPU_DESCRIPTOR_HANDLE *out_gpu)
+    {
+        const UINT inc =
+            g_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        D3D12_HEAP_PROPERTIES hp_def{};
+        hp_def.Type = D3D12_HEAP_TYPE_DEFAULT;
+        D3D12_RESOURCE_DESC td{};
+        td.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        td.Width = static_cast<UINT64>(w);
+        td.Height = static_cast<UINT>(h);
+        td.DepthOrArraySize = 1;
+        td.MipLevels = 1;
+        td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        td.SampleDesc.Count = 1;
+        td.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        if (FAILED(g_device->CreateCommittedResource(&hp_def, D3D12_HEAP_FLAG_NONE, &td,
+                                                     D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                                                     IID_PPV_ARGS(out_tex))))
+            return false;
+
+        const UINT row = static_cast<UINT>(w) * 4;
+        const UINT arow = (row + 255u) & ~255u; // 256-byte row alignment
+        const UINT64 upsize = static_cast<UINT64>(arow) * h;
+        D3D12_HEAP_PROPERTIES hp_up{};
+        hp_up.Type = D3D12_HEAP_TYPE_UPLOAD;
+        D3D12_RESOURCE_DESC bd{};
+        bd.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        bd.Width = upsize;
+        bd.Height = 1;
+        bd.DepthOrArraySize = 1;
+        bd.MipLevels = 1;
+        bd.Format = DXGI_FORMAT_UNKNOWN;
+        bd.SampleDesc.Count = 1;
+        bd.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        ID3D12Resource *upbuf = nullptr;
+        if (FAILED(g_device->CreateCommittedResource(&hp_up, D3D12_HEAP_FLAG_NONE, &bd,
+                                                     D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                     IID_PPV_ARGS(&upbuf))))
+        {
+            (*out_tex)->Release(); *out_tex = nullptr;
+            return false;
+        }
+
+        void *mapped = nullptr;
+        D3D12_RANGE no_read{0, 0};
+        if (SUCCEEDED(upbuf->Map(0, &no_read, &mapped)) && mapped)
+        {
+            for (int y = 0; y < h; ++y)
+                memcpy(static_cast<char *>(mapped) + static_cast<size_t>(y) * arow,
+                       rgba + static_cast<size_t>(y) * row, row);
+            upbuf->Unmap(0, nullptr);
+        }
+
+        g_frames[0].allocator->Reset();
+        g_command_list->Reset(g_frames[0].allocator, nullptr);
+        D3D12_TEXTURE_COPY_LOCATION dst{};
+        dst.pResource = *out_tex;
+        dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        dst.SubresourceIndex = 0;
+        D3D12_TEXTURE_COPY_LOCATION src{};
+        src.pResource = upbuf;
+        src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        src.PlacedFootprint.Offset = 0;
+        src.PlacedFootprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        src.PlacedFootprint.Footprint.Width = static_cast<UINT>(w);
+        src.PlacedFootprint.Footprint.Height = static_cast<UINT>(h);
+        src.PlacedFootprint.Footprint.Depth = 1;
+        src.PlacedFootprint.Footprint.RowPitch = arow;
+        g_command_list->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+        D3D12_RESOURCE_BARRIER b{};
+        b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        b.Transition.pResource = *out_tex;
+        b.Transition.Subresource = 0;
+        b.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        b.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        g_command_list->ResourceBarrier(1, &b);
+        g_command_list->Close();
+        ID3D12CommandList *lists[] = {g_command_list};
+        g_command_queue->ExecuteCommandLists(1, lists);
+
+        ID3D12Fence *fence = nullptr;
+        if (SUCCEEDED(g_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))))
+        {
+            HANDLE ev = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+            g_command_queue->Signal(fence, 1);
+            if (ev && fence->GetCompletedValue() < 1)
+            {
+                fence->SetEventOnCompletion(1, ev);
+                WaitForSingleObject(ev, 1000);
+            }
+            if (ev) CloseHandle(ev);
+            fence->Release();
+        }
+        upbuf->Release();
+
+        D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
+        cpu.ptr += static_cast<SIZE_T>(inc) * srv_index;
+        D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
+        sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        sd.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        sd.Texture2D.MipLevels = 1;
+        g_device->CreateShaderResourceView(*out_tex, &sd, cpu);
+        *out_gpu = g_srv_heap->GetGPUDescriptorHandleForHeapStart();
+        out_gpu->ptr += static_cast<SIZE_T>(inc) * srv_index;
+        return true;
+    }
+
+    // Upload the atlas once g_command_queue is captured. Self-gates; on failure it
+    // marks ready anyway so we don't retry every frame (just falls back to circles).
+    void try_upload_atlas()
+    {
+        if (g_atlas_ready || !g_imgui_init || !g_command_queue || !g_device || !g_srv_heap)
+            return;
+        using namespace goblin::overlay_icons;
+        if (upload_rgba(ATLAS_RGBA, ATLAS_W, ATLAS_H, 1, &g_atlas_tex, &g_atlas_gpu))
+            spdlog::info("[OVERLAY] icon atlas {}x{} uploaded (SRV 1)", ATLAS_W, ATLAS_H);
+        else
+            spdlog::warn("[OVERLAY] icon atlas upload failed → circle fallback");
+        g_atlas_ready = true;
     }
 
     // ── Cursor hooks (free the OS cursor while the menu is open) ──────────
@@ -299,10 +435,10 @@ namespace
         UINT rtv_size = g_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
         D3D12_CPU_DESCRIPTOR_HANDLE rtv_cpu = g_rtv_heap->GetCPUDescriptorHandleForHeapStart();
 
-        // SRV heap: ImGui font (shader-visible, 1 descriptor).
+        // SRV heap (shader-visible): [0] ImGui font, [1] the category-icon atlas.
         D3D12_DESCRIPTOR_HEAP_DESC srv_desc{};
         srv_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        srv_desc.NumDescriptors = 1;
+        srv_desc.NumDescriptors = 2;
         srv_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         if (FAILED(g_device->CreateDescriptorHeap(&srv_desc, IID_PPV_ARGS(&g_srv_heap))))
         {
@@ -369,7 +505,8 @@ namespace
     {
         static goblin::worldmap::GraceLayer s_graces;
         static std::vector<goblin::worldmap::MarkerLayer *> s_layers = {&s_graces};
-        goblin::worldmap::render_markers(s_layers);
+        void *atlas = g_atlas_ready ? reinterpret_cast<void *>(g_atlas_gpu.ptr) : nullptr;
+        goblin::worldmap::render_markers(s_layers, atlas);
     }
 
     void draw_panel()
@@ -1043,6 +1180,7 @@ namespace
         bool proto = goblin::config::overlayMarkersProto;
         if ((g_show || proto) && g_command_queue)
         {
+            try_upload_atlas();   // one-time; needs the captured command queue
             g_imgui_reading_cursor = true;   // let ImGui's NewFrame see the real cursor
             ImGui_ImplDX12_NewFrame();
             ImGui_ImplWin32_NewFrame();
