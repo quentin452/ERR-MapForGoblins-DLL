@@ -382,6 +382,11 @@ namespace
     };
     MarkerCalib g_calib;
 
+    // Render-ease gain: how much of the engine's reticle ease (+0x10C − +0x104) to add to
+    // the view centre so graces track the DISPLAYED (eased) map, not the instant target.
+    // 1.0 = full match (default). F/H dial (can go negative to flip sign if needed).
+    float g_easeGain = 1.0f;
+
     // ★ THE view centre = (pan + snapMid)/zoom — NOT the reticle (+0xFC). Proven by the
     // gamepad symptom (2026-06-20): the old reticle centre makes markers "jamais centré" on
     // the stick and only aligns when you move the MOUSE — because the reticle-centre formula
@@ -410,10 +415,16 @@ namespace
         float centerU, centerV;
         if (g_pan_center)
         {
-            // Device-independent view centre (== reticle under mouse; tracks pan under gamepad).
-            // axis: panX/snapMidX (+0x378/+0x340) pair with U/+0x104.
-            centerU = (v.panX + v.snapMidX) / v.zoom;
-            centerV = (v.panZ + v.snapMidZ) / v.zoom;
+            // Device-independent view centre = (pan+snapMid)/zoom, PLUS the engine's render
+            // ease. The game DRAWS from the eased reticle +0x10C (raw[4/5]), not the target
+            // +0x104 (raw[2/3]) — confirmed in-game (the +0x10C dot lands on the real reticle
+            // during fast moves). The ease in marker space = (+0x10C − +0x104); the cursor
+            // offset cancels in that difference, so adding it to the target centre yields the
+            // DISPLAYED centre (cursor-independent). At rest the two are equal → no change.
+            float easeU = (v.raw[4] - v.raw[2]) * g_easeGain;
+            float easeV = (v.raw[5] - v.raw[3]) * g_easeGain;
+            centerU = (v.panX + v.snapMidX) / v.zoom + easeU;
+            centerV = (v.panZ + v.snapMidZ) / v.zoom + easeV;
         }
         else
         {
@@ -582,30 +593,54 @@ namespace
         ImGuiIO &io = ImGui::GetIO();
         ImDrawList *fg = ImGui::GetForegroundDrawList();
 
-        // SCROLL-TRANSITION SMOOTHING (low-pass, F/H). Bug 2 is DYNAMIC: markers are correct
-        // at rest but drift DURING the scroll transition, then settle. The engine EASES the
-        // displayed view toward its target (cursor +0x130 0.1f lerp / snap-anim FUN_1409bc8c0);
-        // we draw the RAW pan, so during the ease our markers and the eased map diverge. Match
-        // it by low-passing our pan the same way: panSmooth += (raw - panSmooth)*alpha.
-        //   alpha=1 -> raw (no smoothing, current). alpha<1 -> eased (markers follow the ease).
-        // Dial alpha during a scroll until the transition decalage vanishes. (Does NOT move the
-        // static position — at rest panSmooth == raw — so it only affects the transition.)
+        // RENDER-EASE MATCH (low-pass, F/H). Bug 2: we project the engine's TARGET fields
+        // (pan +0x378, reticle +0x104) which are INSTANT, but ER DRAWS them eased toward the
+        // target each frame (cursor +0x130 0.1f lerp / snap-anim FUN_1409bc8c0). Proven by the
+        // cyan(target) vs game-reticle(eased) gap on fast moves. So our overlay leads the eased
+        // map during motion. Match it: low-pass the SAME fields with the engine's alpha —
+        //   s += (raw - s)*alpha.   alpha=1 -> instant (current). alpha~0.1 -> ER's ease.
+        // Eased fields: panX/panZ (grace centre) AND reticle raw[2]/raw[3] (the cyan). At rest
+        // s==raw so static placement is untouched; only the in-motion render-lead is removed.
         static float g_panAlpha = 1.0f;
         {
-            static float sX = 0, sZ = 0;
+            static float sX = 0, sZ = 0, sRU = 0, sRV = 0;
             static bool sInit = false;
             if (live)
             {
-                if (!sInit) { sX = v.panX; sZ = v.panZ; sInit = true; }
-                sX += (v.panX - sX) * g_panAlpha;
-                sZ += (v.panZ - sZ) * g_panAlpha;
-                v.panX = sX;
-                v.panZ = sZ;
+                if (!sInit) { sX = v.panX; sZ = v.panZ; sRU = v.raw[2]; sRV = v.raw[3]; sInit = true; }
+                sX  += (v.panX   - sX)  * g_panAlpha;
+                sZ  += (v.panZ   - sZ)  * g_panAlpha;
+                sRU += (v.raw[2] - sRU) * g_panAlpha;
+                sRV += (v.raw[3] - sRV) * g_panAlpha;
+                v.panX = sX; v.panZ = sZ; v.raw[2] = sRU; v.raw[3] = sRV;
             }
         }
+
+        // UPDATE-RATE THROTTLE (T / Z). Hypothesis: ER refreshes the displayed map at a fixed
+        // lower rate (e.g. 30 Hz) while we re-sample every Present frame, so between the
+        // engine's updates our markers run ahead. Quantize our pan/reticle sampling to
+        // g_mapFps Hz (hold the value between ticks). g_mapFps<=0 = every frame (off).
+        static float g_mapFps = 0.0f;
         {
-            char lb[80];
-            snprintf(lb, sizeof(lb), "PANALPHA=%.3f  (F -0.05  H +0.05  R 1.0)", g_panAlpha);
+            static float acc = 0.0f, hX = 0, hZ = 0, hRU = 0, hRV = 0;
+            static bool hInit = false;
+            if (live && g_mapFps > 0.0f)
+            {
+                acc += io.DeltaTime;
+                if (!hInit || acc >= 1.0f / g_mapFps)
+                {
+                    hX = v.panX; hZ = v.panZ; hRU = v.raw[2]; hRV = v.raw[3];
+                    acc = 0.0f; hInit = true;
+                }
+                v.panX = hX; v.panZ = hZ; v.raw[2] = hRU; v.raw[3] = hRV;
+            }
+            else
+                hInit = false;
+        }
+        {
+            char lb[96];
+            snprintf(lb, sizeof(lb), "EASEGAIN=%.2f (F/H, R=1)   MAPFPS=%.0f (T/Z)",
+                     g_easeGain, g_mapFps);
             fg->AddText(ImVec2(12, 31), IM_COL32(0, 0, 0, 200), lb);
             fg->AddText(ImVec2(11, 30), IM_COL32(120, 255, 160, 255), lb);
             // DIAG: live snap-rect + pan + reticle. Watch in UNDERGROUND while moving the
@@ -672,6 +707,15 @@ namespace
             fg->AddCircle(p, 10.0f, IM_COL32(0, 255, 255, 255), 0, 2.0f);
             fg->AddLine(ImVec2(p.x - 14, p.y), ImVec2(p.x + 14, p.y), IM_COL32(0, 255, 255, 200), 1.0f);
             fg->AddLine(ImVec2(p.x, p.y - 14), ImVec2(p.x, p.y + 14), IM_COL32(0, 255, 255, 200), 1.0f);
+
+            // FIELD-ID DIAG (set PANALPHA=1 with R first so nothing is eased): the game draws
+            // its reticle from SOME cursor field; project all three pairs and see which dot
+            // lands on the white game reticle during a FAST move. cyan=+0x104, RED=+0xFC,
+            // ORANGE=+0x10C. The match = the field the engine renders from (the eased one).
+            ImVec2 pF = project_uv(v, v.raw[0], v.raw[1], io.DisplaySize.x, io.DisplaySize.y); // +0xFC
+            ImVec2 pT = project_uv(v, v.raw[4], v.raw[5], io.DisplaySize.x, io.DisplaySize.y); // +0x10C
+            fg->AddCircle(pF, 7.0f, IM_COL32(255, 60, 60, 255), 0, 2.0f);   // red = +0xFC
+            fg->AddCircle(pT, 13.0f, IM_COL32(255, 170, 0, 255), 0, 2.0f);  // orange = +0x10C
 
             // On-screen readout (menu-CLOSED, so the reticle is live and mouse==reticle).
             // err = projected - mouse = the true model error. Verify it stays ~0 through
@@ -922,10 +966,18 @@ namespace
         bool downLB = (GetAsyncKeyState('F') & 0x8000) != 0; // convScale -
         bool downRB = (GetAsyncKeyState('H') & 0x8000) != 0; // convScale +
         bool downBS = (GetAsyncKeyState('R') & 0x8000) != 0; // reset 1.0
-        if (downLB && !prevLB) { g_panAlpha -= 0.05f; if (g_panAlpha < 0.05f) g_panAlpha = 0.05f; spdlog::info("[PANALPHA] {:.3f}", g_panAlpha); }
-        if (downRB && !prevRB) { g_panAlpha += 0.05f; if (g_panAlpha > 1.0f) g_panAlpha = 1.0f; spdlog::info("[PANALPHA] {:.3f}", g_panAlpha); }
-        if (downBS && !prevBS) { g_panAlpha = 1.0f; spdlog::info("[PANALPHA] reset 1.0"); }
+        if (downLB && !prevLB) { g_easeGain -= 0.1f; spdlog::info("[EASEGAIN] {:.2f}", g_easeGain); }
+        if (downRB && !prevRB) { g_easeGain += 0.1f; spdlog::info("[EASEGAIN] {:.2f}", g_easeGain); }
+        if (downBS && !prevBS) { g_easeGain = 1.0f; spdlog::info("[EASEGAIN] reset 1.0"); }
         prevLB = downLB; prevRB = downRB; prevBS = downBS;
+
+        // T / Z = map-update-rate throttle (Hz); 0 = off (every frame).
+        static bool prevT = false, prevZ = false;
+        bool downT = (GetAsyncKeyState('T') & 0x8000) != 0;
+        bool downZ = (GetAsyncKeyState('Z') & 0x8000) != 0;
+        if (downT && !prevT) { g_mapFps -= 5.0f; if (g_mapFps < 0.0f) g_mapFps = 0.0f; spdlog::info("[MAPFPS] {:.0f}", g_mapFps); }
+        if (downZ && !prevZ) { g_mapFps += 5.0f; spdlog::info("[MAPFPS] {:.0f}", g_mapFps); }
+        prevT = downT; prevZ = downZ;
 
         static bool prevC = false, prevX = false, prevL = false;
         bool downC = (GetAsyncKeyState('C') & 0x8000) != 0;
