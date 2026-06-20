@@ -458,7 +458,21 @@ namespace
         // by ~2x (gridXNo is half-tiles: "world tile XX = gridXNo/2"), so scale grace
         // world coords into reticle space. Live-tunable [ / ] to dial the exact factor.
         static float g_world_scale = 0.5f;
-        static bool g_graces = true, g_grace_swap = false;
+        static bool g_graces = true;
+        // render = (world − origin[page]) · scale. Per-page origin K-calibrated.
+        // (The transform actually has a rotation we couldn't pin by hand — being RE'd
+        // with a Cheat Engine table; this origin model is just a non-broken baseline.)
+        static float g_origin_u[64] = {}, g_origin_v[64] = {};
+        static bool g_seeded = false;
+        if (!g_seeded)
+        {
+            g_seeded = true;
+            g_origin_u[60] = 5565.f;
+            g_origin_u[61] = 301.f;  g_origin_v[61] = -390.f;
+        }
+        // captured from the solo'd grace this frame, for the K calibration:
+        static float g_solo_wU = 0, g_solo_wV = 0;
+        static int g_solo_page = -1;
         // Region-by-region test: cycle which single areaNo is drawn (clearer than the
         // whole map at once). Built once from the grace set; -1 index = all.
         namespace gen = goblin::generated;
@@ -503,11 +517,14 @@ namespace
                 float wx, wz;
                 goblin::marker_world_pos(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
                                          e.data.posX, e.data.posZ, ga, wx, wz);
-                float gU = wz * g_world_scale, gV = wx * g_world_scale; // U=+0x104(Z), V=+0x108(X)
-                ImVec2 gp = g_grace_swap
-                                ? project_uv(v, gV, gU, io.DisplaySize.x, io.DisplaySize.y)
-                                : project_uv(v, gU, gV, io.DisplaySize.x, io.DisplaySize.y);
+                int pg = ga & 63;
+                // world axis → render axis. RE: U=+0x104↔world_X, V=+0x108↔world_Z.
+                // (G flips it if a page turns out transposed.) render=(world−origin)·scale.
+                float gU = (wx - g_origin_u[pg]) * g_world_scale;
+                float gV = (wz - g_origin_v[pg]) * g_world_scale;
+                ImVec2 gp = project_uv(v, gU, gV, io.DisplaySize.x, io.DisplaySize.y);
                 bool solo = (g_solo >= 0 && myidx == g_solo);
+                if (solo) { g_solo_wU = wx; g_solo_wV = wz; g_solo_page = pg; }
                 if (!solo && (gp.x < -16 || gp.y < -16 || gp.x > io.DisplaySize.x + 16 ||
                               gp.y > io.DisplaySize.y + 16))
                     continue; // cull off-screen (keep the solo'd one even off-screen)
@@ -518,9 +535,9 @@ namespace
                 ++drawn;
                 if (solo)
                     snprintf(solo_info, sizeof(solo_info),
-                             "SOLO #%d  area=%d grid=(%d,%d) pos=(%.0f,%.0f) world=(%.0f,%.0f) px=(%.0f,%.0f)",
-                             myidx, (int)e.data.areaNo, (int)e.data.gridXNo, (int)e.data.gridZNo,
-                             e.data.posX, e.data.posZ, wx, wz, gp.x, gp.y);
+                             "SOLO #%d area=%d page=%d world=(%.0f,%.0f) offset[%d]=(%.0f,%.0f) px=(%.0f,%.0f)  K=calib page",
+                             myidx, (int)e.data.areaNo, pg, wx, wz, pg,
+                             g_origin_u[pg], g_origin_v[pg], gp.x, gp.y);
             }
             if (g_solo >= 0)
             {
@@ -530,7 +547,7 @@ namespace
             g_grace_filtered_count = total;
             char gbuf[224];
             snprintf(gbuf, sizeof(gbuf),
-                     "GRACES drawn=%d/%d  area=%s  scale=%.3f  solo=%s  [N/B=area, PgUp/PgDn=scale(+Shift fine), G=swap, O=solo ./,=cycle, J=dump]",
+                     "GRACES drawn=%d/%d area=%s scale=%.3f solo=%s [N/B=area O=solo ./,=cycle K=calib J=dump]",
                      drawn, total, area_filter < 0 ? "ALL" : std::to_string(area_filter).c_str(),
                      g_world_scale, g_solo < 0 ? "off" : std::to_string(g_solo).c_str());
             fg->AddText(ImVec2(12, 44), IM_COL32(0, 0, 0, 200), gbuf);
@@ -540,14 +557,10 @@ namespace
         // Hotkeys (work menu-closed): C = 1-point calibrate (solve biasX/Y so the
         // projection of the reticle hits the mouse), L = log a row, X = reset,
         // G = swap grace axes. The model is linear in bias, so one capture pins both.
-        static bool prevC = false, prevX = false, prevL = false, prevG = false;
+        static bool prevC = false, prevX = false, prevL = false;
         bool downC = (GetAsyncKeyState('C') & 0x8000) != 0;
         bool downX = (GetAsyncKeyState('X') & 0x8000) != 0;
         bool downL = (GetAsyncKeyState('L') & 0x8000) != 0;
-        bool downG = (GetAsyncKeyState('G') & 0x8000) != 0;
-        if (downG && !prevG)
-            g_grace_swap = !g_grace_swap;
-        prevG = downG;
 
         // PageDown / PageUp dial the grace world-scale live (physical keys = AZERTY-safe).
         // Hold Shift for fine ±0.001 steps.
@@ -592,6 +605,22 @@ namespace
         prevO = downO;
         prevDot = downDot;
         prevComma = downComma;
+
+        // K = calibrate the solo'd grace's PAGE origin: put the reticle on the grace's
+        // REAL game icon, then origin = world − reticleRender/scale (render=(world−o)·s).
+        static bool prevK = false;
+        bool downK = (GetAsyncKeyState('K') & 0x8000) != 0;
+        if (downK && !prevK && live && g_solo >= 0 && g_solo_page >= 0 &&
+            g_world_scale != 0.f)
+        {
+            g_origin_u[g_solo_page] = g_solo_wU - v.raw[2] / g_world_scale;
+            g_origin_v[g_solo_page] = g_solo_wV - v.raw[3] / g_world_scale;
+            spdlog::info("[ORIGINCAL] page={} origin=({:.1f},{:.1f}) "
+                         "(world=({:.1f},{:.1f}) reticle=({:.1f},{:.1f}))",
+                         g_solo_page, g_origin_u[g_solo_page], g_origin_v[g_solo_page],
+                         g_solo_wU, g_solo_wV, v.raw[2], v.raw[3]);
+        }
+        prevK = downK;
 
         // J = one-shot dump of EVERY grace's raw row + computed unified world coord,
         // so we can correlate against the reticle's true marker coord (hover a known
