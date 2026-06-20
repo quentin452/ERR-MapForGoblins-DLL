@@ -128,15 +128,10 @@ static uintptr_t world_geom_man_slot()  // CSWorldGeomMan (was RVA 0x3D69BA8)
 
 static bool safe_read(void *addr, void *out, size_t count)
 {
-    __try
-    {
-        memcpy(out, addr, count);
-        return true;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER)
-    {
-        return false;
-    }
+    // clang-cl ELIDES __try around a raw memcpy → use ReadProcessMemory (kernel call,
+    // not elidable; returns false on a bad/freed addr). See goblin_worldmap_probe.
+    SIZE_T got = 0;
+    return ReadProcessMemory(GetCurrentProcess(), addr, out, count, &got) && got == count;
 }
 
 // SEH-guarded single byte write. Returns true on success, false if the
@@ -146,15 +141,10 @@ static bool safe_read(void *addr, void *out, size_t count)
 // skipping the whole refresh cycle.
 static bool safe_write_byte(uint8_t *addr, uint8_t val)
 {
-    __try
-    {
-        *addr = val;
-        return true;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER)
-    {
-        return false;
-    }
+    // clang-cl ELIDES __try around a raw store → use WriteProcessMemory (kernel call,
+    // not elidable; returns false on a bad/read-only addr). See goblin_worldmap_probe.
+    SIZE_T n = 0;
+    return WriteProcessMemory(GetCurrentProcess(), addr, &val, 1, &n) && n == 1;
 }
 
 static void read_singleton_entries(uintptr_t slot,

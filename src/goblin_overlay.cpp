@@ -374,48 +374,40 @@ namespace
     };
     MarkerCalib g_calib;
 
-    // The view-centre reference. raw[0]/raw[1] (+0xFC/+0x100) was assumed to be the stable
-    // view centre, but it is RETICLE-COUPLED — it tracks the cursor, so markers projected
-    // against it FOLLOW the reticle when the mouse/gamepad moves (the "gamepad breaks the
-    // map" + "no icon lock" bug).
-    //
-    // SOLVED by RE (docs/windows_worldmap_viewcenter_re_findings.md). The engine's own
-    // forward projection (pan SETTER FUN_1409cd100 + transform FUN_1409cd0a0) is, exactly:
-    //   screen = marker·zoom − pan         pan = WorldMapArea +0x378/+0x37C, zoom = +0x380
-    // pan is the device-independent view state (the cursor tick FUN_1409bd4b0 never writes it,
-    // only the pan/zoom setters do). This is ALGEBRAICALLY IDENTICAL to the known-good reticle
-    // baseline `screen = (marker − reticle)·zoom + screenCentre`: equating the two gives
-    // `pan = reticle·zoom − screenCentre`, so substituting pan just swaps the reticle (mouse-
-    // only) for pan (updates under both devices). Therefore the pan form needs the SAME units
-    // and NO extra canvas rescale — the realW/1920 factor in the first attempt was the bug that
-    // "broke calibration" (it rescaled an already-correct result). scale/bias absorb the
-    // residual exactly as they do for the reticle form. The brief's other failed try used
-    // `centre = pan + (screen/2)/zoom` → `marker·zoom − pan·ZOOM` (pan wrongly ×zoom); the
-    // correct centre is `(pan + screenCentre)/zoom`, which reduces to `screen = marker·zoom − pan`.
-    // Self-test: projecting the reticle's own coord (+0x104/+0x108) lands on the mouse by
-    // construction; the win is GAMEPAD, where pan moves but the reticle doesn't.
-    // ✅ CONFIRMED by [INPUT-DELTA] (2026-06-20): the GAMEPAD stick pans via view +0x378/+0x37c
-    // (+ zoom +0x380), and does NOT move the reticle (+0xFC/+0x104 fire only on mouse hover).
-    // So the reticle centre froze under the stick (markers slid); the pan path tracks BOTH
-    // devices. Default = pan now; Y toggles the old reticle centre for A/B.
-    bool g_pan_center = false; // pan is INSTANCE-VARIANT (user) -> unusable; reticle baseline until cursor RE
+    // ★ THE view centre = (pan + snapMid)/zoom — NOT the reticle (+0xFC). Proven by the
+    // gamepad symptom (2026-06-20): the old reticle centre makes markers "jamais centré" on
+    // the stick and only aligns when you move the MOUSE — because the reticle-centre formula
+    // `screen = (marker − reticle)·zoom + screenCentre` is correct ONLY when the reticle sits
+    // at screen centre; the mouse lets you put it there, the gamepad reticle sits off-centre.
+    // The engine pan setter FUN_1409cd100 does `pan = zoom·viewCentre − snapMid` (snapMid =
+    // midpoint of WorldMapArea +0x340..+0x34c), so the marker at screen centre is
+    // `viewCentre = (pan + snapMid)/zoom`. Under mouse it EQUALS the reticle (drop-in for the
+    // known-good baseline); under gamepad the reticle is off-centre but viewCentre is right →
+    // markers stay locked on the map for BOTH devices, no mouse wiggle needed. (Earlier "pan
+    // is instance-variant" was bare `pan` missing the per-page snapMid term — fixed here.)
+    // Default = raw reticle (the known-good mouse baseline). The (pan+snapMid)/zoom view-
+    // centre stayed broken in-game (user, 2026-06-20) → reverted to reticle; instead we force
+    // a synthetic MOUSE update on map open (goblin_worldmap_probe.cpp) to reproduce the
+    // "move the mouse" workaround automatically. Y still toggles the view-centre for testing.
+    bool g_pan_center = false;
 
     // (markerU, markerV) marker coords → backbuffer px.
     ImVec2 project_uv(const goblin::worldmap_probe::LiveView &v, float mU, float mV,
                       float realW, float realH)
     {
+        float centerU, centerV;
         if (g_pan_center)
         {
-            // Device-independent: screen = marker·zoom − pan (NO canvas rescale — same units as
-            // the reticle baseline). axis: U/+0x104 pairs with panX/+0x378, V/+0x108 with
-            // panZ/+0x37C (same X/Z order as the reticle); G swaps if transposed.
-            float sx = mU * v.zoom - v.panX;
-            float sz = mV * v.zoom - v.panZ;
-            return ImVec2(sx * g_calib.scaleX + g_calib.biasX,
-                          sz * g_calib.scaleY + g_calib.biasY);
+            // Device-independent view centre (== reticle under mouse; tracks pan under gamepad).
+            // axis: panX/snapMidX (+0x378/+0x340) pair with U/+0x104.
+            centerU = (v.panX + v.snapMidX) / v.zoom;
+            centerV = (v.panZ + v.snapMidZ) / v.zoom;
         }
-        // Old reticle-coupled centre (markers follow the cursor) — kept for A/B compare only.
-        float centerU = v.raw[0], centerV = v.raw[1];
+        else
+        {
+            centerU = v.raw[0]; centerV = v.raw[1]; // raw reticle (mouse-only) for A/B compare
+        }
+        // Same proven reticle-form math for both paths (screen-centre anchor + scale/bias).
         return ImVec2((mU - centerU) * v.zoom * g_calib.scaleX + realW * 0.5f + g_calib.biasX,
                       (mV - centerV) * v.zoom * g_calib.scaleY + realH * 0.5f + g_calib.biasY);
     }

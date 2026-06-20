@@ -156,3 +156,4 @@ render_map*.html
 tools/cheat_engine/ExceptionAutoSave_*.ct
 MapForGoblins_*.csv
 MapForGoblins_*.log
+/build-clang

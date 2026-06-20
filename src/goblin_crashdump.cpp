@@ -31,7 +31,26 @@ volatile LONG g_in_handler = 0;
 // Module bases captured at install, so the offline reader can tell whether the
 // fault is in the game or in us even when the full minidump fails to write.
 uintptr_t g_self_base = 0; // MapForGoblins.dll
+uintptr_t g_self_end = 0;
 uintptr_t g_er_base = 0;   // eldenring.exe
+uintptr_t g_er_end = 0;
+
+// SizeOfImage from the PE header at `base` (PE64: e_lfanew@+0x3C, SizeOfImage@
+// +0x50 of the optional header). 0 on failure. POD-only.
+static uintptr_t image_end(uintptr_t base)
+{
+    if (!base) return 0;
+    __try
+    {
+        uint32_t e_lfanew = *reinterpret_cast<uint32_t *>(base + 0x3C);
+        uint32_t size = *reinterpret_cast<uint32_t *>(base + e_lfanew + 0x50);
+        return base + size;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return 0;
+    }
+}
 
 // Write a tiny TEXT triage next to the dump: exception code + faulting address +
 // the module it lands in. Independent of MiniDumpWriteDump (which can produce a
@@ -80,6 +99,42 @@ static void write_crash_triage(EXCEPTION_POINTERS *ep)
     {
         DWORD w = 0;
         WriteFile(f, buf, static_cast<DWORD>(n), &w, nullptr);
+    }
+
+    // Poor-man's stack trace: scan the crashing thread's stack for qwords that fall
+    // inside MapForGoblins.dll or eldenring.exe — probable return addresses. Reveals
+    // whether the MOD is in the call chain (mod-triggered fault / DL_PANIC) and gives
+    // the eldenring.exe offsets to symbolise in Ghidra. Naive (no unwind info) but
+    // robust mid-crash: just reads stack memory. POD-only.
+    if (ep && ep->ContextRecord)
+    {
+        uintptr_t rsp = static_cast<uintptr_t>(ep->ContextRecord->Rsp);
+        const char hdr[] = "\r\nstack (probable return addrs, top-down):\r\n";
+        DWORD w = 0;
+        WriteFile(f, hdr, sizeof(hdr) - 1, &w, nullptr);
+        int printed = 0;
+        for (int i = 0; i < 4096 && printed < 48; i++)
+        {
+            uintptr_t slot = rsp + static_cast<uintptr_t>(i) * 8;
+            uintptr_t val = 0;
+            MEMORY_BASIC_INFORMATION mq;
+            if (!VirtualQuery(reinterpret_cast<void *>(slot), &mq, sizeof(mq)) ||
+                mq.State != MEM_COMMIT)
+                break; // ran off the stack
+            __try { val = *reinterpret_cast<uintptr_t *>(slot); }
+            __except (EXCEPTION_EXECUTE_HANDLER) { continue; }
+            const char *m = nullptr;
+            uintptr_t b = 0;
+            if (g_self_base && val >= g_self_base && val < g_self_end) { m = "MapForGoblins.dll"; b = g_self_base; }
+            else if (g_er_base && val >= g_er_base && val < g_er_end) { m = "eldenring.exe"; b = g_er_base; }
+            if (!m) continue;
+            char line[128];
+            int ln = _snprintf(line, sizeof(line), "  [+0x%05X] %s +0x%llX\r\n",
+                               (unsigned)(i * 8), m,
+                               static_cast<unsigned long long>(val - b));
+            if (ln > 0) WriteFile(f, line, static_cast<DWORD>(ln), &w, nullptr);
+            printed++;
+        }
     }
     CloseHandle(f);
 }
@@ -199,11 +254,15 @@ void install_crash_handler(const std::filesystem::path &dump_dir)
     // Capture module bases for the triage file (so a fault address can be mapped
     // to game-vs-mod offline even if the full minidump fails).
     g_er_base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    g_er_end = image_end(g_er_base);
     HMODULE self = nullptr;
     if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                            reinterpret_cast<LPCSTR>(&goblin_crash_filter), &self))
+    {
         g_self_base = reinterpret_cast<uintptr_t>(self);
+        g_self_end = image_end(g_self_base);
+    }
 
     // SetUnhandledExceptionFilter returns the prior filter; keep it to chain.
     g_prev_filter = SetUnhandledExceptionFilter(goblin_crash_filter);

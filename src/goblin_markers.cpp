@@ -479,8 +479,11 @@ static std::vector<NearbyEntry> find_nearby_overworld(float mapX, float mapZ, fl
 // guard means a stale array is skipped, not fatal.
 static bool seh_copy(const void *src, void *dst, size_t n)
 {
-    __try { memcpy(dst, src, n); return true; }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    // clang-cl ELIDES __try/__except around a raw memcpy (proves it "can't fault"),
+    // so a stale src crashes instead of degrading. ReadProcessMemory is a kernel call
+    // it cannot elide — returns false on a bad/freed src. (See goblin_worldmap_probe.)
+    SIZE_T got = 0;
+    return ReadProcessMemory(GetCurrentProcess(), src, dst, n, &got) && got == n;
 }
 
 // Returns the number of marker slots written (beacons + stamps), or -1 if the

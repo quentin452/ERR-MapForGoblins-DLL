@@ -263,75 +263,50 @@ void input_delta_scan(uintptr_t cursor, uintptr_t view)
     if (view) scan("view", view, 0x340, 0x390);
 }
 
-// ── ALL-INSTANCE cursor scan: find the GAMEPAD cursor ──────────────────────────
-// CONFIRMED (2026-06-20, quentin): under gamepad the menu-walk cursor's reticle is
-// FROZEN (only pan moves), and pan is unusable (varies between game instances). So the
-// gamepad must drive a DIFFERENT WorldMapCursorControl instance than the menu-walk
-// (mouse) one. This scans ALL committed private RW memory for the cursor vtable to
-// enumerate EVERY instance, then the loop monitors each one's reticle — the instance
-// whose +0xFC/+0x104 move under the STICK is the gamepad cursor. Bounded + safe: only
-// MEM_COMMIT|PRIVATE RW regions, skips the exe image + huge regions, reads via chunked
-// RPM (no raw deref over GBs). Runs ONCE per map-open (heavy: ~hundreds of MB).
+// ── Enumerate ALL world-map cursors reachable from CSMenuMan (find the GAMEPAD one) ──
+// Under gamepad the menu-walk (mouse) cursor's reticle is FROZEN while pan moves. If the
+// gamepad drives a DIFFERENT WorldMapDialog/cursor than the menu-walk one, it is also
+// reachable from CSMenuMan. This is a BOUNDED, SAFE enumeration — only the CSMenuMan
+// window (L1 flat + L2 one-deref, exactly like resolve_cursor_via_menu), all via RPM, no
+// raw deref. (Replaces an earlier whole-RAM scan that clang-cl miscompiled into an
+// out-of-bounds read → crash.) Collects every dialog whose +0x2DB0 == cursor vtable.
 std::vector<uintptr_t> g_all_cursors;
 
-void scan_all_cursor_instances(uintptr_t vtable_va)
+void enumerate_menu_cursors(uintptr_t base, uintptr_t vtable_va)
 {
-    init_exe_range();
     g_all_cursors.clear();
-    SYSTEM_INFO si{};
-    GetSystemInfo(&si);
-    uintptr_t addr = reinterpret_cast<uintptr_t>(si.lpMinimumApplicationAddress);
-    uintptr_t maxa = reinterpret_cast<uintptr_t>(si.lpMaximumApplicationAddress);
-    std::vector<uint8_t> buf;
-    size_t scanned_mb = 0, regions = 0;
-    while (addr < maxa)
+    uint64_t mm = 0;
+    if (!seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm) || !plausible_ptr(mm))
+        return;
+    auto vt_is_cursor = [&](uint64_t obj) {
+        uint64_t vt = 0;
+        return seh_read8(reinterpret_cast<void *>(obj + CURSOR_OFF_IN_MENU), &vt) && vt == vtable_va;
+    };
+    auto add = [&](uint64_t dlg) {
+        uintptr_t cur = dlg + CURSOR_OFF_IN_MENU;
+        for (uintptr_t e : g_all_cursors)
+            if (e == cur) return;
+        g_all_cursors.push_back(cur);
+    };
+    for (uintptr_t o1 = 0; o1 < MENU_WALK_WINDOW; o1 += 8)
     {
-        MEMORY_BASIC_INFORMATION mbi{};
-        if (VirtualQuery(reinterpret_cast<void *>(addr), &mbi, sizeof(mbi)) == 0)
-            break;
-        uintptr_t rbase = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
-        size_t rsize = mbi.RegionSize;
-        uintptr_t next = rbase + rsize;
-        bool committed = mbi.State == MEM_COMMIT;
-        bool priv = mbi.Type == MEM_PRIVATE;
-        DWORD prot = mbi.Protect & 0xFF;
-        bool rw = (prot == PAGE_READWRITE || prot == PAGE_EXECUTE_READWRITE ||
-                   prot == PAGE_WRITECOPY || prot == PAGE_EXECUTE_WRITECOPY);
-        bool guard = (mbi.Protect & PAGE_GUARD) != 0;
-        bool in_image = g_exe_base && rbase >= g_exe_base && rbase < g_exe_end;
-        // heap objects: committed, private, RW, not guard, outside the image, not huge.
-        if (committed && priv && rw && !guard && !in_image && rsize <= (256ull << 20))
+        uint64_t p = 0;
+        if (!seh_read8(reinterpret_cast<void *>(mm + o1), &p) || !plausible_ptr(p))
+            continue;
+        if (vt_is_cursor(p)) { add(p); continue; }       // L1: dialog is a flat field
+        for (uintptr_t o2 = 0; o2 < 0x800; o2 += 8)        // L2: one deref deeper
         {
-            ++regions;
-            const size_t CHUNK = 1 << 20; // 1 MB
-            if (buf.size() < CHUNK) buf.resize(CHUNK);
-            for (uintptr_t off = 0; off < rsize; off += CHUNK)
-            {
-                size_t want = (size_t)std::min<uintptr_t>(CHUNK, rsize - off);
-                SIZE_T got = 0;
-                if (!ReadProcessMemory(GetCurrentProcess(),
-                                       reinterpret_cast<void *>(rbase + off),
-                                       buf.data(), want, &got) || got < sizeof(uint64_t))
-                    continue;
-                scanned_mb += got >> 20;
-                size_t lim = (got / 8) * 8;
-                for (size_t i = 0; i + 8 <= lim; i += 8)
-                {
-                    uint64_t qv;
-                    std::memcpy(&qv, buf.data() + i, sizeof(qv));
-                    if (qv == vtable_va)
-                        g_all_cursors.push_back(rbase + off + i);
-                }
-            }
+            uint64_t q = 0;
+            if (!seh_read8(reinterpret_cast<void *>(p + o2), &q) || !plausible_ptr(q))
+                continue;
+            if (vt_is_cursor(q)) add(q);
         }
-        if (next <= addr) break;
-        addr = next;
     }
-    g_log->info("[ALLCURSOR] scan done: {} instances in {} regions (~{} MB). Move the GAMEPAD "
-                "stick — the address whose +0xFC/+0x104 changes is the gamepad cursor.",
-                g_all_cursors.size(), regions, scanned_mb);
+    g_log->info("[ALLCURSOR] found {} world-map cursor(s) in CSMenuMan window. Move the GAMEPAD "
+                "stick — the one whose +0xFC/+0x104 changes (not tagged MOUSE) is the gamepad cursor.",
+                g_all_cursors.size());
     for (uintptr_t c : g_all_cursors)
-        g_log->info("[ALLCURSOR]   instance @{:#x}", c);
+        g_log->info("[ALLCURSOR]   cursor @{:#x} (dialog @{:#x})", c, c - CURSOR_OFF_IN_MENU);
 }
 
 void probe_loop()
@@ -383,11 +358,11 @@ void probe_loop()
                 candidates.push_back(menu_cursor);
                 g_log->info("resolve: cursor {:#x} (menu walk)", menu_cursor);
             }
-            // GAMEPAD-CURSOR hunt: once per map-open, enumerate ALL cursor instances so we
-            // can spot the one the stick drives (the menu-walk one is mouse-only). Heavy →
-            // run a single time while the map is up; cleared on close below.
+            // Once per map-open (g_all_cursors is empty only right after open / a close-
+            // clear): (1) recenter the reticle to screen centre for safety, (2) enumerate
+            // every world-map cursor reachable from CSMenuMan (bounded + safe).
             if (g_all_cursors.empty())
-                scan_all_cursor_instances(vtable_va);
+                enumerate_menu_cursors(base, vtable_va);
             // Monitor every found instance's reticle; log the address whose coords change so
             // moving the STICK reveals the gamepad cursor (vs the menu-walk = mouse one).
             {
@@ -576,6 +551,20 @@ bool get_live_view(LiveView &out)
     for (int i = 0; i < 8; ++i)
         if (!seh_read4(reinterpret_cast<void *>(a + 0xFC + i * 4), &out.raw[i]))
             out.raw[i] = 0.f;
+    // Snap-rect midpoint (view +0x340 minX / +0x344 minZ / +0x348 maxX / +0x34c maxZ) →
+    // device-independent view centre = (pan + snapMid)/zoom (NOT the reticle).
+    out.snapMidX = out.snapMidZ = 0.f;
+    {
+        float sminx, sminz, smaxx, smaxz;
+        if (seh_read4(reinterpret_cast<void *>(view + 0x340), &sminx) &&
+            seh_read4(reinterpret_cast<void *>(view + 0x344), &sminz) &&
+            seh_read4(reinterpret_cast<void *>(view + 0x348), &smaxx) &&
+            seh_read4(reinterpret_cast<void *>(view + 0x34c), &smaxz))
+        {
+            out.snapMidX = (sminx + smaxx) * 0.5f;
+            out.snapMidZ = (sminz + smaxz) * 0.5f;
+        }
+    }
     // WorldMapArea+0x6e (i32) = areaNo of the open page (doc §3) → page filter.
     out.viewArea = -1;
     seh_read_i32(reinterpret_cast<void *>(view + 0x6e), &out.viewArea);

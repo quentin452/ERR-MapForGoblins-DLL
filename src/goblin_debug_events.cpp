@@ -154,15 +154,10 @@ int item_category_index(uint32_t id)
 // object unwinding allowed inside __try under clang-cl/MSVC).
 bool safe_copy(const void *src, void *dst, size_t n)
 {
-    __try
-    {
-        memcpy(dst, src, n);
-        return true;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER)
-    {
-        return false;
-    }
+    // clang-cl ELIDES __try around a raw memcpy → use ReadProcessMemory (kernel call,
+    // not elidable; returns false on a bad pointer). See goblin_worldmap_probe.
+    SIZE_T got = 0;
+    return ReadProcessMemory(GetCurrentProcess(), src, dst, n, &got) && got == n;
 }
 
 // ── SetEventFlag observer ────────────────────────────────────────────────
