@@ -250,9 +250,50 @@ struct WGMSnapshot
     std::vector<std::tuple<float, float, std::string>> alive_occupied;  // (x, z, name)
 };
 
+// PERF cache for read_wgm_snapshot. The per-instance work (MSB-part pointer chain →
+// wide name → family filter → 3 position floats) is the cost, and it grows unbounded as
+// loaded tiles accumulate (CSWorldGeomMan never unloads them mid-session) → 108ms→1089ms.
+// But that structure is STABLE per tile: only the two alive flags (+0x263/+0x26B) change
+// between refreshes. So cache the resolved tracked-family instances per tile (keyed +
+// validated by the tile's geom_ins vector begin/end pointers), and on a hit re-read ONLY
+// the alive flags. Correctness is preserved: alive state is still read live every refresh.
+struct WGMCacheInst
+{
+    void *geom_ins;
+    float px, py, pz;
+    std::string name;   // narrow AEG099_*/AEG463_* part name
+    bool track_alive;   // prefix is in g_tracked_prefixes → read alive flags
+};
+struct WGMCacheTile
+{
+    void *vec_begin = nullptr, *vec_end = nullptr;
+    std::vector<WGMCacheInst> insts;   // only tracked-FAMILY instances (structure)
+};
+static std::map<uint32_t, WGMCacheTile> g_wgm_cache;
+
+// Build the per-tile snapshot from a cached instance list: occupancy from the cached
+// structure, alive state re-read live (the only thing that changes between refreshes).
+static void wgm_snap_from_cache(const WGMCacheTile &ct, WGMSnapshot &snap)
+{
+    for (const WGMCacheInst &ci : ct.insts)
+    {
+        snap.occupied.emplace_back(ci.px, ci.py, ci.pz, ci.name);
+        if (!ci.track_alive) continue;
+        uint8_t f263 = 0, f26B = 0;
+        safe_read((char *)ci.geom_ins + 0x263, &f263, 1);
+        safe_read((char *)ci.geom_ins + 0x26B, &f26B, 1);
+        if ((f263 & 0x02) && !(f26B & 0x10))
+        {
+            snap.alive_names.insert(ci.name);
+            snap.alive_occupied.emplace_back(ci.px, ci.pz, ci.name);
+        }
+    }
+}
+
 static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
 {
     std::map<uint32_t, WGMSnapshot> result;
+    std::set<uint32_t> seen_tiles;   // for pruning unloaded tiles from the cache
 
     uintptr_t game_base = (uintptr_t)GetModuleHandleA("eldenring.exe");
     if (!game_base) return result;
@@ -328,6 +369,26 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
             safe_read((char *)block_data + 0x288 + 0x08, &vec_begin, 8);
             safe_read((char *)block_data + 0x288 + 0x10, &vec_end, 8);
 
+            seen_tiles.insert(block_id);
+
+            // CACHE HIT: same tile vector as last walk → reuse resolved structure, only
+            // re-read alive flags (done in wgm_snap_from_cache). Skips the expensive
+            // per-instance name/position resolution.
+            auto cit = g_wgm_cache.find(block_id);
+            bool cache_hit = (cit != g_wgm_cache.end() && cit->second.vec_begin == vec_begin &&
+                              cit->second.vec_end == vec_end && vec_begin);
+            if (cache_hit)
+            {
+                if (!cit->second.insts.empty())
+                    wgm_snap_from_cache(cit->second, result[block_id]);
+            }
+            // CACHE MISS: full resolve + rebuild this tile's cache entry.
+            else if (true)
+            {
+            WGMCacheTile ctile;
+            ctile.vec_begin = vec_begin;
+            ctile.vec_end = vec_end;
+
             if (vec_begin && vec_end && vec_end > vec_begin)
             {
                 size_t count = ((uintptr_t)vec_end - (uintptr_t)vec_begin) / 8;
@@ -378,7 +439,8 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
 
                     // Track alive state only for models we're actually hiding on the map
                     std::string prefix = prefix_from_object_name(narrow);
-                    if (!prefix.empty() && g_tracked_prefixes.count(prefix))
+                    bool track_alive = !prefix.empty() && g_tracked_prefixes.count(prefix) != 0;
+                    if (track_alive)
                     {
                         // +0x263 bit1: persistent alive flag (survives restart)
                         // +0x26B bit4: immediate collection flag (lost on tile reload)
@@ -393,8 +455,14 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                             snap.alive_occupied.emplace_back(px, pz, narrow_str);
                         }
                     }
+
+                    // Cache the resolved instance (structure) for next refresh's fast path.
+                    ctile.insts.push_back({geom_ins, px, py, pz, narrow_str, track_alive});
                 }
             }
+
+            g_wgm_cache[block_id] = std::move(ctile); // (re)build this tile's cache entry
+            } // end CACHE MISS
         }
 
         // In-order successor
@@ -418,6 +486,10 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
             current = parent;
         }
     }
+
+    // Prune cache entries for tiles no longer loaded (bounds memory across a session).
+    for (auto it = g_wgm_cache.begin(); it != g_wgm_cache.end();)
+        it = seen_tiles.count(it->first) ? std::next(it) : g_wgm_cache.erase(it);
 
     return result;
 }
