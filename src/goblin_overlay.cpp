@@ -410,8 +410,12 @@ namespace
         bool enabled = true;          // affine vs the diagonal origin baseline
         // shared M = [[a,b],[c,d]]; seed = the 90° axis-swap @ 0.5 hypothesis
         // (renderX ≈ 0.5·worldZ, renderZ ≈ 0.5·worldX) — confirm signs live.
+        // NOTE the seed has det<0 = a REFLECTION (mirror), not a rotation; the true
+        // map frame is likely a 90° ROTATION (det>0) = one off-diagonal sign flipped.
+        // Use the F1 presets + live a/b/c/d + global gtx/gty pan to dial it by eye.
         float a = 0.f, b = 0.5f, c = 0.5f, d = 0.f;
         float e[64] = {}, f[64] = {}; // per-page T
+        float gtx = 0.f, gty = 0.f;   // global pan (eyeball T), added to every page
     };
     AffineFit g_aff;
 
@@ -644,8 +648,8 @@ namespace
                 float gU, gV;
                 if (g_aff.enabled)
                 {
-                    gU = g_aff.a * wx + g_aff.b * wz + g_aff.e[pg];
-                    gV = g_aff.c * wx + g_aff.d * wz + g_aff.f[pg];
+                    gU = g_aff.a * wx + g_aff.b * wz + g_aff.e[pg] + g_aff.gtx;
+                    gV = g_aff.c * wx + g_aff.d * wz + g_aff.f[pg] + g_aff.gty;
                 }
                 else
                 {
@@ -860,12 +864,30 @@ namespace
                 g_calib = MarkerCalib{};
 
             ImGui::Separator();
-            ImGui::TextColored(ImVec4(0.5f, 1, 0.6f, 1), "WORLD->RENDER affine: render = M*world + T[page]");
+            ImGui::TextColored(ImVec4(0.5f, 1, 0.6f, 1), "WORLD->RENDER affine: render = M*world + T[page] + pan");
             ImGui::Checkbox("affine enabled (else diagonal baseline)", &g_aff.enabled);
-            ImGui::Text("M = [[%.5f, %.5f], [%.5f, %.5f]]", g_aff.a, g_aff.b, g_aff.c, g_aff.d);
+            float det = g_aff.a * g_aff.d - g_aff.b * g_aff.c;
+            ImGui::Text("M = [[%.4f, %.4f], [%.4f, %.4f]]  det=%.4f (%s)", g_aff.a, g_aff.b,
+                        g_aff.c, g_aff.d, det, det < 0 ? "MIRROR" : "rotation");
+            // EYEBALL DIAL: rotation presets @ scale 0.5 (one off-diagonal sign each),
+            // then pan with gtx/gty until page 60 lines up. If rotate+pan aligns -> it's
+            // a clean 90deg rotation; if not -> T differs per page -> use Solve.
+            ImGui::TextDisabled("presets (scale 0.5):");
+            ImGui::SameLine();
+            if (ImGui::Button("90 CW"))  { g_aff.a=0; g_aff.b=-0.5f; g_aff.c=0.5f;  g_aff.d=0; }
+            ImGui::SameLine();
+            if (ImGui::Button("90 CCW")) { g_aff.a=0; g_aff.b=0.5f;  g_aff.c=-0.5f; g_aff.d=0; }
+            ImGui::SameLine();
+            if (ImGui::Button("mirror"))  { g_aff.a=0; g_aff.b=0.5f;  g_aff.c=0.5f;  g_aff.d=0; }
+            ImGui::SameLine();
+            if (ImGui::Button("diag"))    { g_aff.a=0.5f; g_aff.b=0; g_aff.c=0; g_aff.d=0.5f; }
+            ImGui::DragFloat4("a,b,c,d", &g_aff.a, 0.01f, -2.f, 2.f, "%.3f");
+            ImGui::DragFloat("pan X (gtx)", &g_aff.gtx, 10.f, -12000.f, 12000.f, "%.0f");
+            ImGui::DragFloat("pan Y (gty)", &g_aff.gty, 10.f, -12000.f, 12000.f, "%.0f");
             ImGui::Text("collected pairs: %d", (int)g_cal_pairs.size());
-            ImGui::TextWrapped("Solo a grace (O, ./,), hover its real icon, press P to capture a pair. "
-                               ">=3 per page, then Solve. (Hotkeys need the menu CLOSED so the reticle is live.)");
+            ImGui::TextWrapped("EYEBALL: pick a preset, then drag pan X/Y until graces sit on the "
+                               "game icons (page 60). Aligns by rotate+pan alone => clean 90deg. "
+                               "Or capture: solo a grace (O, ./,), hover its real icon, P (>=3/page), Solve.");
             if (ImGui::Button("Solve affine (M)"))
                 solve_affine(g_aff);
             ImGui::SameLine();
