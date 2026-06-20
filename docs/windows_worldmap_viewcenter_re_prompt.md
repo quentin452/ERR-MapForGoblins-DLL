@@ -60,3 +60,14 @@ function (B) signature. Live-verify: a KNOWN grace's map-space coord projects on
 icon and STAYS there while panning with BOTH mouse and gamepad, across zoom. Then we bake it
 into `project_uv` (goblin_overlay.cpp), replacing the `cursor+0xFC` centre. There is a `Y`
 hotkey in the overlay that A/B-toggles centre candidates for quick testing.
+
+## ADD (2026-06-20): the GAMEPAD reticle field
+NEW symptom: marker positions update only on MOUSE movement, NOT on gamepad-stick movement.
+The cursor we resolve (CSMenuMan menu-walk → WorldMapDialog+0x2DB0; reticle at +0x104/+0x108)
+tracks the MOUSE reticle but appears NOT to update when the player moves the on-screen reticle
+with the GAMEPAD. So either (a) the gamepad drives a DIFFERENT cursor object/mirror than the
+menu-walk canonical one, or (b) the gamepad reticle lives at a different offset on the same
+object. FIND the field that updates the visible reticle under BOTH input devices (move the
+stick, delta-scan the cursor object + WorldMapArea for the f32 pair that changes). The view
+projection must read THAT, not the mouse-only +0x104/+0x108. (per-frame resolve already added
+in get_live_view; it didn't help → it's the field/object, not staleness.)
