@@ -636,22 +636,20 @@ namespace
         static int g_grace_filtered_count = 0;  // # graces in the current area filter
         if (live && g_graces)
         {
-            // Overworld vs underground: the game switches map canvas, so draw + tune
-            // each separately. The sublayer flag (DAT_143d6cfc3) says which is open.
-            bool ug_open = (v.underground != 0);
-            auto is_ug_page = [](int pg) { return pg == 12 || (pg >= 40 && pg <= 43); };
-            // FIXED per-layer pivot for eyeball rotation. Computed ONCE over ALL graces
-            // of each layer (independent of area_filter / solo / visibility / show_all),
-            // so it never moves → the same pan always lands the cluster in the same place.
-            // (A centroid recomputed each frame over the VISIBLE set drifted as toggles
-            // changed the set → the "pan X/Y not stable" bug.)
+            // REGION GATING (mirrors the game's native areaNo+tab display). 4 map groups
+            // = isDLC*2 | isUG: 0 base-overworld {60,61}, 1 base-underground {12}, 2 DLC
+            // overworld, 3 DLC underground {40-43}. DLC reuses area 60/61 (projected) but
+            // carries a DLC tab (6800-6999) → tab_id is what separates it from base.
+            // Classification is data-derived → cache it once (per MAP_ENTRY index), plus a
+            // FIXED per-group pivot (stable pan, see fixed-pivot note).
             static bool piv_done = false;
-            static float piv_ow_x = 0, piv_ow_z = 0, piv_ug_x = 0, piv_ug_z = 0;
+            static float pivX[4] = {0}, pivZ[4] = {0};
+            static std::vector<uint8_t> g_greg; // per entry: 0..3 group, 0xFF = not a grace
             if (!piv_done)
             {
                 piv_done = true;
-                double owx = 0, owz = 0; int own = 0;
-                double ugx = 0, ugz = 0; int ugn = 0;
+                g_greg.assign(gen::MAP_ENTRY_COUNT, 0xFF);
+                double sx[4] = {0}, sz[4] = {0}; int sn[4] = {0};
                 for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
                 {
                     const gen::MapEntry &e = gen::MAP_ENTRIES[i];
@@ -659,14 +657,24 @@ namespace
                     int ga; float wx, wz;
                     goblin::marker_world_pos(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
                                              e.data.posX, e.data.posZ, ga, wx, wz);
-                    if (is_ug_page(ga & 63)) { ugx += wx; ugz += wz; ++ugn; }
-                    else { owx += wx; owz += wz; ++own; }
+                    int pg = ga & 63;
+                    float rawwx = e.data.gridXNo * 256.f + e.data.posX;
+                    float rawwz = e.data.gridZNo * 256.f + e.data.posZ;
+                    int tab = goblin::grace_tab_id(e.data.areaNo, rawwx, rawwz);
+                    bool isug = (pg == 12) || (pg >= 40 && pg <= 43);
+                    bool isdlc = (pg >= 40 && pg <= 43) || (tab >= 6800 && tab <= 6999);
+                    int grp = (isdlc ? 2 : 0) | (isug ? 1 : 0);
+                    g_greg[i] = (uint8_t)grp;
+                    sx[grp] += wx; sz[grp] += wz; ++sn[grp];
                 }
-                if (own) { piv_ow_x = (float)(owx / own); piv_ow_z = (float)(owz / own); }
-                if (ugn) { piv_ug_x = (float)(ugx / ugn); piv_ug_z = (float)(ugz / ugn); }
+                for (int g = 0; g < 4; ++g)
+                    if (sn[g]) { pivX[g] = (float)(sx[g] / sn[g]); pivZ[g] = (float)(sz[g] / sn[g]); }
             }
-            g_centroidX = ug_open ? piv_ug_x : piv_ow_x;
-            g_centroidZ = ug_open ? piv_ug_z : piv_ow_z;
+            // Which group's map is OPEN: sublayer flag (OW/UG) + player-in-DLC (base/DLC).
+            int open_grp = (goblin::player_in_dlc() ? 2 : 0) | ((v.underground != 0) ? 1 : 0);
+            bool ug_open = (open_grp & 1);
+            g_centroidX = pivX[open_grp];
+            g_centroidZ = pivZ[open_grp];
             int total = 0, drawn = 0, fidx = 0;
             char solo_info[160] = "";
             for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
@@ -687,8 +695,8 @@ namespace
                 goblin::marker_world_pos(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
                                          e.data.posX, e.data.posZ, ga, wx, wz);
                 int pg = ga & 63;
-                if (is_ug_page(pg) != ug_open)
-                    continue; // draw only the layer (overworld/underground) that's open
+                if (g_greg[i] != open_grp)
+                    continue; // draw only the OPEN map group (base/DLC × OW/UG)
                 // world axis → render axis. AFFINE (default): render = M·world + T[pg]
                 // (M shared, T per-page; solved in-DLL from P/M calibration). U toggles
                 // back to the diagonal origin·scale baseline for comparison. The rotation

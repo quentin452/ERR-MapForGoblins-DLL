@@ -39,6 +39,16 @@ namespace goblin
     bool marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,
                           int &out_area, float &world_x, float &world_z);
 
+    // Region gating for the overlay (mirrors the game's native areaNo+tab display).
+    // grace_tab_id: the map sub-page (tabId) of the nearest GRACE_ANCHOR in this
+    // SOURCE area (12000/12001 underground, 6800-6999 DLC, …); -1 if none. Lets the
+    // overlay tell DLC graces (area 22/25/28 project onto base 60/61 but carry a DLC
+    // tab) from base ones. raw_wx/wz = SOURCE-area world (gridXNo*256+posX, pre-conv).
+    int grace_tab_id(uint8_t src_area, float raw_wx, float raw_wz);
+    // True when the PLAYER is currently in the DLC (Land of Shadow / DLC underground),
+    // from the live MapId tile → its tabId (6800-6999) or native DLC area 40-43.
+    bool player_in_dlc();
+
     // True once WorldMapPointParam is loaded — the robust init wait polls this
     // instead of sleeping a fixed load_delay (slow PCs can take >5s). SEH-guarded.
     bool world_map_param_ready();

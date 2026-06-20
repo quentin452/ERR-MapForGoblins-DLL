@@ -906,6 +906,27 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
     return true;
 }
 
+// Region gating helpers for the overlay (mirror the game's native areaNo+tab gating).
+int goblin::grace_tab_id(uint8_t src_area, float raw_wx, float raw_wz)
+{
+    int idx = -1, pname = -1, tab = -1;
+    if (find_nearest_grace(src_area, raw_wx, raw_wz, &idx, &pname, &tab))
+        return tab;
+    return -1;
+}
+
+bool goblin::player_in_dlc()
+{
+    if (!g_mappos_tried) resolve_player_map_pos_statics();
+    if (!g_mapid_slot || !g_mappos_mgr_slot) return false;
+    MapPosProbe pr{};
+    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
+    if (!pr.ok) return false;
+    if (pr.area >= 40 && pr.area <= 43) return true;       // DLC underground (native)
+    int tab = tab_for_tile(pr.area, pr.gx, pr.gz);          // DLC overworld/under → 6800-6999
+    return tab >= 6800 && tab <= 6999;
+}
+
 // Unified overworld marker-space coord for an arbitrary baked marker (overlay-
 // rendered markers need this: a row's native (areaNo, grid, pos) is page-local,
 // but the overworld view projects everything into area-60 space). Mirrors the
