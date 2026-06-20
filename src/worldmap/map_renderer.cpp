@@ -142,37 +142,67 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     groups.reserve(items.size());
     for (int i = 0; i < (int)items.size(); ++i)
         groups[items[i].m->cluster_key].push_back(i);
+
+    // Pass 1: resolve each pile's GRACE anchor position (sub-threshold groups draw
+    // their members normally now). The anchor pos doubles as the neighbour set used to
+    // pick a non-overlapping offset below.
+    struct Pile { ImVec2 g; int count; };
+    std::vector<Pile> piles;
     for (auto &kv : groups)
     {
         const auto &idxs = kv.second;
-        if ((int)idxs.size() > threshold) // ">" : the threshold is "more than N markers"
+        if ((int)idxs.size() <= threshold)
         {
-            // Place the pile AT its grace (a real, correctly-placed location), not the
-            // member centroid (which drifts into the sea when the group spans water or
-            // a member mis-projects). Fall back to the centroid if the anchor is bad.
-            ImVec2 c;
-            int garea;
-            float gwx, gwz;
-            if (goblin::grace_anchor_world(kv.first, garea, gwx, gwz))
-            {
-                float gU, gV;
-                world_to_mapspace_xy(gwx, gwz, dlc_ug, gU, gV);
-                proj::Px gp = proj::project_screen(gU, gV, view, realW, realH);
-                c = ImVec2(gp.x, gp.y);
-            }
-            else
-            {
-                float sx = 0, sy = 0;
-                for (int i : idxs) { sx += items[i].p.x; sy += items[i].p.y; }
-                c = ImVec2(sx / idxs.size(), sy / idxs.size());
-            }
-            if (on_screen(c))
-                draw_cluster_glyph(fg, c, (int)idxs.size());
-        }
-        else
             for (int i : idxs)
                 if (on_screen(items[i].p))
                     draw_marker(fg, *items[i].m, items[i].p, atlas);
+            continue;
+        }
+        // Pile AT its grace (correctly placed), not the member centroid (which drifts
+        // into the sea). Fall back to the centroid only if the anchor is bad.
+        ImVec2 c;
+        int garea;
+        float gwx, gwz;
+        if (goblin::grace_anchor_world(kv.first, garea, gwx, gwz))
+        {
+            float gU, gV;
+            world_to_mapspace_xy(gwx, gwz, dlc_ug, gU, gV);
+            proj::Px gp = proj::project_screen(gU, gV, view, realW, realH);
+            c = ImVec2(gp.x, gp.y);
+        }
+        else
+        {
+            float sx = 0, sy = 0;
+            for (int i : idxs) { sx += items[i].p.x; sy += items[i].p.y; }
+            c = ImVec2(sx / idxs.size(), sy / idxs.size());
+        }
+        piles.push_back({c, (int)idxs.size()});
+    }
+
+    // Pass 2: nudge each pile off its grace icon (so both stay visible), choosing the
+    // up/down/left/right direction with the MOST clearance from neighbouring grace
+    // anchors — so a pile next to other graces doesn't land on one of them.
+    constexpr float OFF = 28.f; // grace icon (~13) + glyph radius (14) + gap
+    const ImVec2 dirs[4] = {{-OFF, 0}, {OFF, 0}, {0, -OFF}, {0, OFF}};
+    for (size_t i = 0; i < piles.size(); ++i)
+    {
+        ImVec2 best = piles[i].g;
+        float bestClear = -1.f;
+        for (const ImVec2 &d : dirs)
+        {
+            ImVec2 cand(piles[i].g.x + d.x, piles[i].g.y + d.y);
+            float mind = 1e30f;
+            for (size_t j = 0; j < piles.size(); ++j)
+            {
+                if (j == i) continue;
+                float dx = cand.x - piles[j].g.x, dy = cand.y - piles[j].g.y;
+                float dd = dx * dx + dy * dy;
+                if (dd < mind) mind = dd;
+            }
+            if (mind > bestClear) { bestClear = mind; best = cand; }
+        }
+        if (on_screen(best))
+            draw_cluster_glyph(fg, best, piles[i].count);
     }
 }
 } // namespace
