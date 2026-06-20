@@ -143,7 +143,7 @@ local function region()
   if not mfg.menu then return "?", -1, -1 end
   local page = readInteger(mfg.menu+0xA88) or -1
   local sub = readPointer(mfg.menu+0x2B68)
-  local layer = (sub and sub~=0) and (readBytes(sub+0xB8,1,true) or -1) or -1
+  local layer = (sub and sub~=0) and (readByte(sub+0xB8) or -1) or -1
   local r = (page==10 and "DLC") or (layer==0 and "OW") or (layer~=-1 and "UG") or "?"
   return r, page, layer
 end

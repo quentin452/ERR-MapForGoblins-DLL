@@ -219,7 +219,7 @@ function mfg_snapshot()
   local function vi(off) return v and readInteger(v + off) or -1 end
   -- *** THE OW/UG KEY: layer = [[dialog+0x2B68]+0xB8] (0=surface/OW, !=0=underground/UG) ***
   local sub = readPointer(d + 0x2B68)
-  local layer = (sub and sub ~= 0) and (readBytes(sub + 0xB8, 1, true) or -1) or -1
+  local layer = (sub and sub ~= 0) and (readByte(sub + 0xB8) or -1) or -1
   local page = di(0xA88)
   local region = (page == 10 and "DLC") or (layer == 0 and "OVERWORLD") or (layer ~= -1 and "UNDERGROUND") or "?"
   local line = string.format(
