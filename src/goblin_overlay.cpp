@@ -999,13 +999,23 @@ namespace
             ImGui::DragFloat("UG pan Y", &g_aff.gty_u, 10.f, -12000.f, 12000.f, "%.0f");
             if (g_aff.pivot)
             {
-                // effective bakeable T if you keep this eyeball fit:
-                // render = M*world + T  with  T = RC + pan - M*centroid
+                // The FINAL bakeable transform render = M'*world + T' (rotation folded in,
+                // per the CURRENT layer). M' = R(rot)*M ; T' = RC + pan - M'*pivot. Give me
+                // these for the open layer and I bake render=M'*world+T' (no pivot/pan/RC).
+                bool ugF = live && v.underground;
+                float rotF = ugF ? g_aff.screen_rot_u : g_aff.screen_rot;
+                float pxF  = ugF ? g_aff.gtx_u : g_aff.gtx;
+                float pyF  = ugF ? g_aff.gty_u : g_aff.gty;
                 const float RC = 5248.f;
-                float Te = RC + g_aff.gtx - (g_aff.a * g_centroidX + g_aff.b * g_centroidZ);
-                float Tf = RC + g_aff.gty - (g_aff.c * g_centroidX + g_aff.d * g_centroidZ);
-                ImGui::Text("centroid world=(%.0f,%.0f)  =>  bake T=(%.1f, %.1f)",
-                            g_centroidX, g_centroidZ, Te, Tf);
+                float rr = rotF * 3.14159265f / 180.f, cs = cosf(rr), sn = sinf(rr);
+                float a1 = cs * g_aff.a - sn * g_aff.c, b1 = cs * g_aff.b - sn * g_aff.d;
+                float c1 = sn * g_aff.a + cs * g_aff.c, d1 = sn * g_aff.b + cs * g_aff.d;
+                float Te = RC + pxF - (a1 * g_centroidX + b1 * g_centroidZ);
+                float Tf = RC + pyF - (c1 * g_centroidX + d1 * g_centroidZ);
+                ImGui::TextColored(ImVec4(0.4f, 1, 0.4f, 1),
+                                   "BAKE [%s] pivot=(%.0f,%.0f):", ugF ? "UNDERGROUND" : "overworld",
+                                   g_centroidX, g_centroidZ);
+                ImGui::Text("  M'=[[%.4f,%.4f],[%.4f,%.4f]]  T'=(%.1f, %.1f)", a1, b1, c1, d1, Te, Tf);
             }
             ImGui::Text("collected pairs: %d", (int)g_cal_pairs.size());
             ImGui::TextWrapped("EYEBALL: pick a preset, then drag pan X/Y until graces sit on the "
