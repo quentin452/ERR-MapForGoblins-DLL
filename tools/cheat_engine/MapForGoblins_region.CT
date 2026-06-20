@@ -49,6 +49,12 @@
       <Address>eldenring.exe+3D6CFC3</Address>
     </CheatEntry>
     <CheatEntry>
+      <ID>8</ID>
+      <Description>"overlay/map-variation LAYER (DAT_143d6cfc0) -- NEW: OW vs UG? (_IsChangeableOverlayLayer)"</Description>
+      <VariableType>Byte</VariableType>
+      <Address>eldenring.exe+3D6CFC0</Address>
+    </CheatEntry>
+    <CheatEntry>
       <ID>20</ID>
       <Description>"--- diagnostics (resolved pointers) ---"</Description>
       <GroupHeader>1</GroupHeader>
@@ -199,10 +205,11 @@ function mfg_snapshot()
   local v  = mfg.view
   local function di(off) return readInteger(d + off) end
   local function vi(off) return v and readInteger(v + off) or -1 end
-  local ug = readBytes(getAddress("eldenring.exe") + 0x3D6CFC3, 1, true) or -1
+  local ug  = readBytes(getAddress("eldenring.exe") + 0x3D6CFC3, 1, true) or -1
+  local lyr = readBytes(getAddress("eldenring.exe") + 0x3D6CFC0, 1, true) or -1  -- overlay/variation layer
   local line = string.format(
-    "page[A88]=%-4d  view370=%-4d view374=%-4d  d98=%-4d d14=%-4d d5c=%-4d  ug=%d",
-    di(0xA88), vi(0x370), vi(0x374), di(0x98), di(0x14), di(0x5C), ug)
+    "page[A88]=%-4d  LAYER[cfc0]=%-3d  view370=%-4d view374=%-4d  d98=%-4d d14=%-4d  ug[cfc3]=%d",
+    di(0xA88), lyr, vi(0x370), vi(0x374), di(0x98), di(0x14), ug)
   print("[MFG] " .. line .. "   <-- LABEL THIS with the open map (OW / UG / DLC-OW / DLC-UG)")
   local f = io.open("MapForGoblins_region_ct.log", "a")
   if f then f:write(os.date("%H:%M:%S ") .. line .. "\n"); f:close() end
