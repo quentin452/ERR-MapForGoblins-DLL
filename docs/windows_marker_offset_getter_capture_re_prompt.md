@@ -94,12 +94,29 @@ Answer: **"undiscovered markers have a readable render position: YES/NO"** + evi
 (YES → we could skip the affine and read positions live. NO → the M/T bake is mandatory.
 Either way the captured pairs still pin M/T.)
 
+## Page → region (use `areaNo` from `point+0x80` to label pairs)
+
+`areaNo` read at the bp is POST legacy-conv = the dst page. Map it:
+
+| areaNo | page | region |
+|---|---|---|
+| **60** | overworld, base | Limgrave / Liurnia / Caelid / Altus / Mountaintops (tabIds 61000–65000) |
+| **61** | overworld, DLC | Realm of Shadow / Shadow Keep (tabIds 6800–6940, 21000) |
+| **12** | underground, base | Nokron, Deeproot, Ainsel, Siofra, Lake of Rot, Mohgwyn (tabIds 12000–12002) |
+| **40–43** | underground, DLC | Realm of Shadow (tabIds 6800–6940) |
+
+Capture pairs on the matching map: base overworld for 60, DLC overworld for 61, base
+underground for 12, DLC underground for 40–43.
+
 ## Sanity anchors (your pairs should match)
 
 | grace | page | world (X, Z) | render (X, Z) |
 |---|---|---|---|
-| Dragonbarrow | 61 | (12338.25, 11985) | (6018.75, 6187.28) |
+| Shadow Keep (area 21 → conv) | 61 | (12338.25, 11985) | (6018.75, 6187.28) |
 | Academy Gate | 60 | (9217.7, 13617) | (~1826, ?) |
 
-Dragonbarrow check: `(12338.25 − originX[61])·0.5 = 6018.75` → `originX[61] ≈ 300`; i.e.
-`T` and the per-page origin are the same constant in different form (`T = −origin·0.5`).
+NB: the page-61 anchor is a DLC Shadow Keep grace (source area 21, tabId 21000), NOT
+Dragonbarrow (Dragonbarrow is base-game Caelid → page 60). Earlier notes mislabeled it.
+
+Anchor check: `(12338.25 − originX[61])·0.5 = 6018.75` → `originX[61] ≈ 300`; i.e. `T` and
+the per-page origin are the same constant in different form (`T = −origin·0.5`).
