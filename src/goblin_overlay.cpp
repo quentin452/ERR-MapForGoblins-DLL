@@ -444,8 +444,13 @@ namespace
         // 1280/1920 CONSTANT across zoom. Without this factor scaleX=1.0 over-scaled by 1.5× at
         // 1280×720 → error ∝ distance-from-centre = worse at low zoom / during pan (the décalage
         // bug). scaleX/scaleY stay ≈1.0 (residual). screen_local = (mU−centerU)·zoom.
-        return ImVec2((mU - centerU) * v.zoom * (realW / 1920.0f) * g_calib.scaleX + realW * 0.5f + g_calib.biasX,
-                      (mV - centerV) * v.zoom * (realH / 1080.0f) * g_calib.scaleY + realH * 0.5f + g_calib.biasY);
+        // bias is RESOLUTION-RELATIVE: stored in 1920×1080-reference px and scaled by realW/1920,
+        // so a calibration tuned at one resolution holds at every resolution. Without scaling, a
+        // constant-px bias tuned at 1920 mis-placed everything at 1280 (the whole anchor must be
+        // realW·coefficient to be resolution-independent — realW·0.5 already is; the bias must
+        // scale the same way).
+        return ImVec2((mU - centerU) * v.zoom * (realW / 1920.0f) * g_calib.scaleX + realW * 0.5f + g_calib.biasX * (realW / 1920.0f),
+                      (mV - centerV) * v.zoom * (realH / 1080.0f) * g_calib.scaleY + realH * 0.5f + g_calib.biasY * (realH / 1080.0f));
     }
 
     // ── In-DLL world→render AFFINE solver (replaces the by-hand diagonal calib) ──
@@ -1214,12 +1219,14 @@ namespace
         prevJ = downJ;
         if (downC && !prevC && live)
         {
-            // Solve the residual bias so the projection hits the mouse exactly here.
+            // Solve the residual bias so the projection hits the mouse exactly here. Store in
+            // 1920×1080-reference px (project_uv scales bias by realW/1920) → calibration is
+            // resolution-independent.
             g_calib.biasX = 0.f;
             g_calib.biasY = 0.f;
             ImVec2 p0 = project_uv(v, U, V, io.DisplaySize.x, io.DisplaySize.y);
-            g_calib.biasX = m.x - p0.x;
-            g_calib.biasY = m.y - p0.y;
+            g_calib.biasX = (m.x - p0.x) * (1920.0f / io.DisplaySize.x);
+            g_calib.biasY = (m.y - p0.y) * (1080.0f / io.DisplaySize.y);
         }
         if (downL && !prevL && live)
             spdlog::info("[MARKERCAL] mouse=({:.1f},{:.1f}) pan=({:.2f},{:.2f}) zoom={:.5f} "
