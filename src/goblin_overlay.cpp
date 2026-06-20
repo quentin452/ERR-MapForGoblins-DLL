@@ -367,9 +367,10 @@ namespace
     // bias ≈ 0 (centre handles it). Verified: (3390-4824)*0.196+960 = 679 ✓.
     struct MarkerCalib
     {
-        // S ≈ zoom*0.987 (the ~1.4% residual measured in the cross-capture; the
-        // reticle err shows it only far from centre / zoomed out).
-        float scaleX = 0.987f, scaleY = 0.987f, biasX = 0.0f, biasY = 0.0f;
+        // S = zoom EXACTLY (scale 1.0). The earlier 0.987 was mouse-capture noise and
+        // left a ~1.3% residual = the micro reticle offset (grows from screen centre).
+        // Proven end-to-end err=(0,-0.1)px at scale 1.0; nudge only if drift reappears.
+        float scaleX = 1.0f, scaleY = 1.0f, biasX = 0.0f, biasY = 0.0f;
     };
     MarkerCalib g_calib;
 
