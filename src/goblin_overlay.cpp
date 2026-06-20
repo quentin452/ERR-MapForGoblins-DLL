@@ -674,8 +674,21 @@ namespace
                     // rotate about the centroid, placed at render-centre + pan → M only
                     // ROTATES the cloud (in place), never translates it off-screen.
                     const float RC = 5248.f; // render-space centre (10496/2)
-                    gU = g_aff.a * (wx - g_centroidX) + g_aff.b * (wz - g_centroidZ) + RC + g_aff.gtx;
-                    gV = g_aff.c * (wx - g_centroidX) + g_aff.d * (wz - g_centroidZ) + RC + g_aff.gty;
+                    float dx = wx - g_centroidX, dz = wz - g_centroidZ;
+                    float u0 = g_aff.a * dx + g_aff.b * dz; // M (scale/orient) rel. centroid
+                    float v0 = g_aff.c * dx + g_aff.d * dz;
+                    // REAL rotation, applied in RENDER space (NOT screen) so project_uv's
+                    // live pan/zoom tracks on top — screen-space rotation rotated the
+                    // pan/zoom response too ("n'importe quoi" on zoom). This is correct.
+                    if (g_aff.screen_rot != 0.f)
+                    {
+                        float rr = g_aff.screen_rot * 3.14159265f / 180.f;
+                        float cs = cosf(rr), sn = sinf(rr);
+                        float u1 = u0 * cs - v0 * sn, v1 = u0 * sn + v0 * cs;
+                        u0 = u1; v0 = v1;
+                    }
+                    gU = u0 + RC + g_aff.gtx;
+                    gV = v0 + RC + g_aff.gty;
                 }
                 else if (g_aff.enabled)
                 {
@@ -687,18 +700,8 @@ namespace
                     gU = (wx - g_origin_u[pg]) * g_world_scale;
                     gV = (wz - g_origin_v[pg]) * g_world_scale;
                 }
+                // (rotation is applied in RENDER space above so pan/zoom track)
                 ImVec2 gp = project_uv(v, gU, gV, io.DisplaySize.x, io.DisplaySize.y);
-                // REAL rotation: rotate the projected marker in SCREEN space about the
-                // map/view centre (= screen centre, where project_uv pins viewCentre).
-                // Decoupled from M's scale — this is the actual "rotate the map" knob.
-                if (g_aff.screen_rot != 0.f)
-                {
-                    float cx = io.DisplaySize.x * 0.5f, cy = io.DisplaySize.y * 0.5f;
-                    float rr = g_aff.screen_rot * 3.14159265f / 180.f;
-                    float cs = cosf(rr), sn = sinf(rr);
-                    float dx = gp.x - cx, dy = gp.y - cy;
-                    gp = ImVec2(cx + dx * cs - dy * sn, cy + dx * sn + dy * cs);
-                }
                 bool solo = (g_solo >= 0 && myidx == g_solo);
                 if (solo) { g_solo_wU = wx; g_solo_wV = wz; g_solo_page = pg; }
                 if (!solo && (gp.x < -16 || gp.y < -16 || gp.x > io.DisplaySize.x + 16 ||
@@ -914,7 +917,7 @@ namespace
             // REAL ROTATION FIELD — separate from scale. Rotates the whole projected
             // marker layer in screen space about the map centre. Use M=diag (pure 0.5
             // scale) + this for a clean 90deg. Buttons step CW; slider for any angle.
-            ImGui::TextColored(ImVec4(1, 0.85f, 0.2f, 1), "ROTATION (screen, separate from scale): %.0f deg CW", g_aff.screen_rot);
+            ImGui::TextColored(ImVec4(1, 0.85f, 0.2f, 1), "ROTATION (render, zoom-stable): %.0f deg CW  [user: -90]", g_aff.screen_rot);
             if (ImGui::Button("0"))   g_aff.screen_rot = 0.f;    ImGui::SameLine();
             if (ImGui::Button("90 CW"))  g_aff.screen_rot = 90.f;  ImGui::SameLine();
             if (ImGui::Button("180")) g_aff.screen_rot = 180.f;  ImGui::SameLine();
