@@ -378,6 +378,13 @@ bool get_live_view(LiveView &out)
     // WorldMapArea+0x6e (i32) = areaNo of the open page (doc §3) → page filter.
     out.viewArea = -1;
     seh_read_i32(reinterpret_cast<void *>(view + 0x6e), &out.viewArea);
+    // Sublayer flag DAT_143d6cfc3 (eldenring.exe+0x3D6CFC3): 0 = overworld, !=0 =
+    // underground. Cheap 1-byte read → lets the overlay switch overworld/underground
+    // projection params + draw only the matching page's graces.
+    out.underground = 0;
+    int ug = 0;
+    if (seh_read_i32(reinterpret_cast<void *>(base + 0x3D6CFC3), &ug))
+        out.underground = ug & 0xFF; // the flag is a byte
     return true;
 }
 

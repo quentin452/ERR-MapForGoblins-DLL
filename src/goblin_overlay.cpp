@@ -424,6 +424,11 @@ namespace
                                       // changing M spins in place, not flings about (0,0))
         float screen_rot = -90.f;     // REAL rotation field (deg, CW), applied in RENDER
                                       // space so the live pan/zoom tracks. User: −90.
+        // UNDERGROUND (page 12 + DLC 40-43) has its OWN render frame (the game switches
+        // canvas) → own rotation + pan, picked when the DAT_143d6cfc3 sublayer flag is
+        // set. Seeded from overworld; dial while the underground map is open.
+        float screen_rot_u = -90.f;
+        float gtx_u = -2170.f, gty_u = 850.f;
     };
     float g_centroidX = 0.f, g_centroidZ = 0.f; // world centroid of drawn graces (pivot)
     AffineFit g_aff;
@@ -631,9 +636,14 @@ namespace
         static int g_grace_filtered_count = 0;  // # graces in the current area filter
         if (live && g_graces)
         {
+            // Overworld vs underground: the game switches map canvas, so draw + tune
+            // each separately. The sublayer flag (DAT_143d6cfc3) says which is open.
+            bool ug_open = (v.underground != 0);
+            auto is_ug_page = [](int pg) { return pg == 12 || (pg >= 40 && pg <= 43); };
             // Centroid of the drawn graces (world space) = the pivot for eyeball
             // rotation, so changing M spins the cloud IN PLACE instead of flinging it
-            // about world-origin (the "rotate moves the map" bug the user hit).
+            // about world-origin (the "rotate moves the map" bug the user hit). Computed
+            // over the graces of the CURRENT layer (overworld or underground) only.
             {
                 float cx = 0, cz = 0; int cn = 0;
                 for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
@@ -644,6 +654,7 @@ namespace
                     int ga; float wx, wz;
                     goblin::marker_world_pos(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
                                              e.data.posX, e.data.posZ, ga, wx, wz);
+                    if (is_ug_page(ga & 63) != ug_open) continue; // current layer only
                     cx += wx; cz += wz; ++cn;
                 }
                 if (cn) { g_centroidX = cx / cn; g_centroidZ = cz / cn; }
@@ -668,9 +679,15 @@ namespace
                 goblin::marker_world_pos(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
                                          e.data.posX, e.data.posZ, ga, wx, wz);
                 int pg = ga & 63;
+                if (is_ug_page(pg) != ug_open)
+                    continue; // draw only the layer (overworld/underground) that's open
                 // world axis → render axis. AFFINE (default): render = M·world + T[pg]
                 // (M shared, T per-page; solved in-DLL from P/M calibration). U toggles
-                // back to the diagonal origin·scale baseline for comparison.
+                // back to the diagonal origin·scale baseline for comparison. The rotation
+                // + pan are per-LAYER (overworld vs underground have different frames).
+                float L_rot = ug_open ? g_aff.screen_rot_u : g_aff.screen_rot;
+                float L_px  = ug_open ? g_aff.gtx_u : g_aff.gtx;
+                float L_py  = ug_open ? g_aff.gty_u : g_aff.gty;
                 float gU, gV;
                 if (g_aff.enabled && g_aff.pivot)
                 {
@@ -683,15 +700,15 @@ namespace
                     // REAL rotation, applied in RENDER space (NOT screen) so project_uv's
                     // live pan/zoom tracks on top — screen-space rotation rotated the
                     // pan/zoom response too ("n'importe quoi" on zoom). This is correct.
-                    if (g_aff.screen_rot != 0.f)
+                    if (L_rot != 0.f)
                     {
-                        float rr = g_aff.screen_rot * 3.14159265f / 180.f;
+                        float rr = L_rot * 3.14159265f / 180.f;
                         float cs = cosf(rr), sn = sinf(rr);
                         float u1 = u0 * cs - v0 * sn, v1 = u0 * sn + v0 * cs;
                         u0 = u1; v0 = v1;
                     }
-                    gU = u0 + RC + g_aff.gtx;
-                    gV = v0 + RC + g_aff.gty;
+                    gU = u0 + RC + L_px;
+                    gV = v0 + RC + L_py;
                 }
                 else if (g_aff.enabled)
                 {
@@ -964,6 +981,14 @@ namespace
             ImGui::Checkbox("rotate around centroid (eyeball: M spins in place)", &g_aff.pivot);
             ImGui::DragFloat("pan X (gtx)", &g_aff.gtx, 10.f, -12000.f, 12000.f, "%.0f");
             ImGui::DragFloat("pan Y (gty)", &g_aff.gty, 10.f, -12000.f, 12000.f, "%.0f");
+            ImGui::Separator();
+            ImGui::TextColored(live && v.underground ? ImVec4(1, 0.6f, 0.2f, 1) : ImVec4(0.5f, 0.7f, 1, 1),
+                               "LAYER NOW: %s (DAT_143d6cfc3=%d)",
+                               live ? (v.underground ? "UNDERGROUND" : "overworld") : "?", live ? v.underground : -1);
+            ImGui::TextDisabled("underground (page 12 + DLC 40-43) own rotation + pan:");
+            ImGui::DragFloat("UG rotation deg", &g_aff.screen_rot_u, 1.f, -360.f, 360.f, "%.0f");
+            ImGui::DragFloat("UG pan X", &g_aff.gtx_u, 10.f, -12000.f, 12000.f, "%.0f");
+            ImGui::DragFloat("UG pan Y", &g_aff.gty_u, 10.f, -12000.f, 12000.f, "%.0f");
             if (g_aff.pivot)
             {
                 // effective bakeable T if you keep this eyeball fit:

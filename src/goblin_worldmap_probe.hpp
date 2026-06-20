@@ -33,6 +33,7 @@ namespace goblin::worldmap_probe
         float panX, panZ, zoom; // WorldMapArea viewport
         float raw[8];           // diag: cursor+0xFC,+0x100,+0x104,+0x108,+0x10C,+0x110,+0x114,+0x118
         int viewArea;           // WorldMapArea+0x6e = areaNo of the open page (doc §3)
+        int underground;        // DAT_143d6cfc3 sublayer flag: 0 = overworld, !=0 = underground
     };
     bool get_live_view(LiveView &out);
 
