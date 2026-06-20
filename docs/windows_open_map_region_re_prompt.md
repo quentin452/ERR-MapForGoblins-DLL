@@ -87,3 +87,52 @@ a purely view/tab-selection-driven one.
 - Marker display/gating: build `FUN_140a82a80` / reconcile `FUN_140a832a0` over
   `CSWorldMapPointMan+0x398`; the per-row show predicate `FUN_140d58470` (reads the row's
   display-group flag) — somewhere here the open-page is compared to the marker's area/tab.
+
+---
+
+## RESULTS — open-page field PINNED, value→region is runtime (2026-06-20, Ghidra headless)
+
+Scripts `find_region.java` / `find_region2.java` (`D:\ghidra_scripts`, outputs `out_region*.txt`),
+app 2.6.2.0.
+
+### The authoritative field: `dialog + 0xA88` (int32) = open menu page id
+
+The dialog's `[0x151]` slot (`undefined8*` units ⟹ byte `0xA88`) **is the selected map page**:
+- **Written** by the dialog setup `FUN_1409be5e0` @ `0x9be5e0` L259 (`*(int*)(dialog+0xA88) = page`)
+  from the open parameter, and on page-change via `FUN_1409c8120(dialog, *(int*)(dialog+0xA88))` (L984).
+- **Decoded** by the page→mapno getter `FUN_1409c4900(page, flag)` @ `0x9c4900`: returns the page
+  ≈ map-no as-is (`page==1` → `_DefaultMapNo` resolution; negatives clamp to 0). So the field *is*
+  effectively the open map-no / page index.
+- **View-driven by construction** — it's the menu's selected page, written by the open/tab path,
+  independent of player physical area. Exactly the axis the brief requires.
+
+### Secondary identity: `view + 0x370` / `+0x374` = WorldMapArea ctor params
+
+`WorldMapArea` ctor `FUN_1409cb9c0` @ `0x9cb9c0` writes `*(int*)(view+0x370)=param_5` and
+`*(int*)(view+0x374)=param_6` (areaNo-like identity baked at construction). Matches the delta-scan
+`0↔10` / `1↔11`. Only one area is constructed per dialog (in setup, at `dialog+0x4fb`), and the
+decompiler truncated the ctor call args, so **the literal region constants are not statically
+liftable** — they come out at runtime.
+
+### Dead ends reconfirmed statically
+
+- `FUN_140d58470` (the brief's "show predicate") is the **grace event-flag check**
+  (`_Verify{Enable,Disable}EventFlag` = `FUN_140d58640`/`FUN_140d58550`), NOT a region gate.
+- `FUN_1409c6f70` (called by the base ctor with the page id) is an **overlay-layer changeability**
+  helper (`_IsChangeableOverlayLayer`, reads the overlay toggle byte `DAT_143d6cfc0`), NOT the region.
+
+### Deliverable for runtime (quentin)
+
+Read these three on each of the 4 maps and pick the one giving 4 distinct values (or a clean
+`(page, sublayer)` pair — underground may need a combo since the standalone sublayer byte is dead):
+
+| field | type | source |
+|---|---|---|
+| **`dialog + 0xA88`** | int32 | menu page id (engine's own decode key) — try FIRST |
+| `view + 0x370` | int32 | WorldMapArea areaNo-like ctor param (delta-scan `0↔10`) |
+| `dialog + 0x98` | int32 | delta-scan `1↔2` (clean 2-value; static role unconfirmed) |
+
+`dialog = cursor − 0x2DB0` (already resolved O(1) via the CSMenuMan walk in
+`goblin_worldmap_probe.cpp`); `view = *(cursor + 0xF0)`. Version-stability: re-find `0xA88` as the
+int written by `FUN_1409be5e0`/read by `FUN_1409c4900`; re-find `view+0x370/0x374` as the
+`WorldMapArea` ctor (`FUN_1409cb9c0`) params 5/6.
