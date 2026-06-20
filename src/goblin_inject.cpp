@@ -58,18 +58,22 @@ static void *allocation = nullptr;
 // entry (legacy dungeons that have their own page / unmappable), are untouched.
 static bool project_dungeon_row_to_overworld(
     from::paramdef::WORLD_MAP_POINT_PARAM_ST *d,
-    float *out_ent_x = nullptr, float *out_ent_z = nullptr)
+    float *out_ent_x = nullptr, float *out_ent_z = nullptr,
+    bool conv_underground = false)
 {
     if (d->areaNo == 60 || d->areaNo == 61)
         return false;
-    // Underground worlds that have their OWN world-map page must NOT be projected
-    // onto the overworld — there is no overworld surface spot for them, so they
-    // land "in the sea". Keep them on their native page instead:
-    //   area 12      = Siofra/Ainsel/Deeproot/Nokron/Mohgwyn/Lake of Rot
-    //   area 40-43   = DLC underground caverns
-    // (Catacombs/caves 30-39 and legacy dungeons 10/11/13/14… DO have overworld
-    //  entrances, so they keep projecting.)
-    if (d->areaNo == 12 || (d->areaNo >= 40 && d->areaNo <= 43))
+    // INJECTION (conv_underground=false): area 12 / 40-43 have their OWN native world-map
+    // page, so keep them native (projecting them onto the overworld surface lands them "in
+    // the sea"). OVERLAY (conv_underground=true): the agent's RE proved underground SHARES
+    // the overworld map-space (one converter, no area-12 converter) — the underground map is
+    // a LAYER of the same space — so area 12 IS projected to unified coords (its conv rows
+    // map area-12-local → area-60 geographic), and the overlay draws it on the UG layer
+    // (gated separately by ORIGINAL areaNo). DLC underground (40-43) stays native for now
+    // (DLC is still on the eyeball path).
+    if (d->areaNo >= 40 && d->areaNo <= 43)
+        return false;
+    if (d->areaNo == 12 && !conv_underground)
         return false;
 
     // Prefer an EXACT (src_area, src_gx, src_gz) base-point — its local coords share
@@ -934,8 +938,52 @@ bool goblin::player_in_dlc()
 // player path above: project legacy dungeons (area 10/11/30-39…) onto the
 // overworld via LEGACY_CONV, then world = grid*256 + local. Rows already on the
 // overworld (area 60/61) or on their own underground page are returned as-is.
+static std::vector<goblin::LiveGrace> g_live_graces;
+
+void goblin::capture_live_graces()
+{
+    g_live_graces.clear();
+    // Try the LIVE WorldMapPointParam first (rows with the grace icon). NOTE: vanilla
+    // WorldMapPointParam does NOT contain grace markers — in the base game grace map-pins
+    // are generated from BonfireWarpParam at runtime, not stored here. The project AUTHORS
+    // the grace rows from MASSEDIT (positions extracted offline from MSB / BonfireWarpParam)
+    // and injects them. So pre-injection this finds ~0; we fall back to the baked set, which
+    // IS that offline-extracted game data. (A true live path would read BonfireWarpParam +
+    // resolve each bonfire's MSB position — deferred, see [[live-param-vs-baked-data]].)
+    try
+    {
+        for (auto [rowId, row] :
+             from::params::get_param<from::paramdef::WORLD_MAP_POINT_PARAM_ST>(L"WorldMapPointParam"))
+        {
+            if (row.iconId != 370) continue;   // Site of Grace icon (ERR profile)
+            g_live_graces.push_back({ row.areaNo, row.gridXNo, row.gridZNo,
+                                      row.posX, row.posZ, row.textId1, rowId });
+        }
+    }
+    catch (...) {}
+
+    if (g_live_graces.empty())
+    {
+        for (size_t i = 0; i < goblin::generated::MAP_ENTRY_COUNT; ++i)
+        {
+            const auto &e = goblin::generated::MAP_ENTRIES[i];
+            if (e.category != goblin::generated::Category::WorldGraces) continue;
+            g_live_graces.push_back({ e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
+                                      e.data.posX, e.data.posZ, e.data.textId1, e.row_id });
+        }
+        spdlog::info("[LIVE-GRACE] live param has no grace pins (vanilla WMP lacks them) → "
+                     "using {} baked graces (offline MSB/BonfireWarp extraction)",
+                     g_live_graces.size());
+    }
+    else
+        spdlog::info("[LIVE-GRACE] {} grace rows from live WorldMapPointParam", g_live_graces.size());
+}
+
+const std::vector<goblin::LiveGrace> &goblin::live_graces() { return g_live_graces; }
+
 bool goblin::marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,
-                              int &out_area, float &world_x, float &world_z)
+                              int &out_area, float &world_x, float &world_z,
+                              bool conv_underground)
 {
     from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp{};
     tmp.areaNo = areaNo;
@@ -943,7 +991,9 @@ bool goblin::marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, 
     tmp.gridZNo = gz;
     tmp.posX = px;
     tmp.posZ = pz;
-    project_dungeon_row_to_overworld(&tmp); // in-place; no-op if already overworld / unmappable
+    // in-place; no-op if already overworld / unmappable. conv_underground=true also unifies
+    // base underground (area 12) into overworld map-space (overlay UG layer).
+    project_dungeon_row_to_overworld(&tmp, nullptr, nullptr, conv_underground);
     out_area = tmp.areaNo;
     world_x = tmp.gridXNo * 256.0f + tmp.posX;
     world_z = tmp.gridZNo * 256.0f + tmp.posZ;

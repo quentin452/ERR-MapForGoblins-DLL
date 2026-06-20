@@ -36,8 +36,26 @@ namespace goblin
     // Unified overworld marker-space coord for an arbitrary baked marker (projects
     // legacy dungeons to area-60 via LEGACY_CONV, then world = grid*256 + local).
     // Used by the overlay-rendered-markers prototype to place graces etc.
+    // conv_underground=true also unifies base underground (area 12) into overworld
+    // map-space (the underground map shares it; overlay draws it on the UG layer).
     bool marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,
-                          int &out_area, float &world_x, float &world_z);
+                          int &out_area, float &world_x, float &world_z,
+                          bool conv_underground = false);
+
+    // A Site of Grace read LIVE from WorldMapPointParam (iconId 370) — no baked data.
+    struct LiveGrace
+    {
+        uint8_t areaNo, gridXNo, gridZNo;
+        float posX, posZ;
+        int textId;        // name (resolve via MsgRepository)
+        uint64_t rowId;
+    };
+    // Capture all grace rows from the LIVE WorldMapPointParam. MUST run at init BEFORE
+    // inject_map_entries() swaps the param backing (else it reads our injected rows).
+    void capture_live_graces();
+    // The captured grace list (empty until capture_live_graces() ran). Used by the
+    // ImGui overlay path instead of the baked MAP_ENTRIES graces.
+    const std::vector<LiveGrace> &live_graces();
 
     // Region gating for the overlay (mirrors the game's native areaNo+tab display).
     // grace_tab_id: the map sub-page (tabId) of the nearest GRACE_ANCHOR in this

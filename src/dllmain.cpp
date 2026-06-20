@@ -188,6 +188,9 @@ static void setup_mod()
         GOBLIN_BENCH("init.heavy.total");
         safe_init_step(&init_collected,       "collected::initialize");
         safe_init_step(&init_kindling,        "kindling::initialize");
+        // Snapshot the real graces from the LIVE WorldMapPointParam BEFORE injection swaps
+        // the param backing — the ImGui overlay draws from this (no baked data).
+        safe_init_step(&goblin::capture_live_graces, "capture_live_graces");
         safe_init_step(&init_inject_entries,  "inject_map_entries");
         safe_init_step(&init_apply_map_logic, "apply_map_logic");
         safe_init_step(&init_tutorial_popup,  "inject_tutorial_popup_rows");
