@@ -613,6 +613,26 @@ static bool find_nearest_grace(uint8_t area, float wx, float wz,
     return true;
 }
 
+// Cluster grouping key for a marker = its nearest Site-of-Grace index (within the
+// marker's SOURCE area + raw world gridX*256+pos), matching the native map's
+// by-location clustering (replan_clusters grp_key). Returns -1 when no grace anchor
+// shares the area → the caller draws it exact. out_pname (optional) = the group's
+// region PlaceName id, for the pile's location-name label.
+int goblin::marker_cluster_key(uint8_t area, uint8_t gridX, uint8_t gridZ, float posX,
+                               float posZ, int *out_pname)
+{
+    float mwx = static_cast<float>(gridX) * 256.0f + posX;
+    float mwz = static_cast<float>(gridZ) * 256.0f + posZ;
+    int idx = -1, pname = -1, tab = 0;
+    if (find_nearest_grace(area, mwx, mwz, &idx, &pname, &tab))
+    {
+        if (out_pname) *out_pname = pname;
+        return idx;
+    }
+    if (out_pname) *out_pname = -1;
+    return -1;
+}
+
 // Player MapId TILE -> map sub-page (tabId), via the authoritative tile_region_map
 // table. Used for UNDERGROUND distance-adaptive: the player's local float is leaf-
 // block-local garbage and the marker param gridXNo is coarse (1/2), so neither

@@ -14,6 +14,12 @@ namespace goblin
     // native_map_injection is off, so the overlay needs this independent path).
     void seed_runtime_gates();
 
+    // Nearest-grace cluster key for a marker (source area + raw grid/pos), matching
+    // the native by-location clustering. -1 = no anchor (draw exact). out_pname (opt)
+    // = the group's region PlaceName id for the pile label.
+    int marker_cluster_key(uint8_t area, uint8_t gridX, uint8_t gridZ, float posX,
+                           float posZ, int *out_pname = nullptr);
+
     // Cluster label census: (PlaceName textId, label) for each cluster the inject
     // built. The label is "<Region> (<count>)" (region via cluster_region_label) or
     // just "<count>" if the region is unknown. setup_messages injects it as the

@@ -37,8 +37,11 @@ const std::vector<Marker> &GraceLayer::markers() const
         bool isdlc = (pg == 61) || (e.areaNo >= 40 && e.areaNo <= 43);
         int grp = (isdlc ? 2 : 0) | (isug ? 1 : 0);
         const int gc = static_cast<int>(goblin::generated::Category::WorldGraces);
-        cache_.push_back(
-            Marker{wx, wz, grp, (int)e.areaNo, gc, category_color(gc), "show_graces"});
+        int pname = -1;
+        int ckey = goblin::marker_cluster_key(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ,
+                                              &pname);
+        cache_.push_back(Marker{wx, wz, grp, (int)e.areaNo, gc, ckey, pname,
+                                category_color(gc), "show_graces"});
     }
     return cache_;
 }

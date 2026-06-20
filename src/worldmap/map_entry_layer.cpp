@@ -38,8 +38,11 @@ void build_buckets()
         bool isug = (d.areaNo == 12) || (d.areaNo >= 40 && d.areaNo <= 43);
         bool isdlc = (pg == 61) || (d.areaNo >= 40 && d.areaNo <= 43);
         int grp = (isdlc ? 2 : 0) | (isug ? 1 : 0);
-        g_buckets[c].push_back(
-            Marker{wx, wz, grp, (int)d.areaNo, c, category_color(c), category_icon_key(c)});
+        int pname = -1;
+        int ckey = goblin::marker_cluster_key(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ,
+                                              &pname);
+        g_buckets[c].push_back(Marker{wx, wz, grp, (int)d.areaNo, c, ckey, pname,
+                                      category_color(c), category_icon_key(c)});
     }
 }
 } // namespace

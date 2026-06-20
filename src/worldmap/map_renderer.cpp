@@ -121,35 +121,36 @@ void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n)
     fg->AddText(ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), IM_COL32(255, 255, 255, 255), buf);
 }
 
-// Bin clustered markers into a screen grid; cells at/above threshold draw ONE glyph
-// (mixed pile) at the member centroid, sparse cells draw their members normally. The
-// screen-space grid makes clusters dissolve as you zoom in — no rebuild needed.
+// Group clustered markers by their nearest-grace key (matches the native map's
+// by-location clustering, NOT screen proximity — markers sharing a grace pile even
+// when spread out). A group with MORE than `threshold` members draws ONE glyph at the
+// member screen-centroid; smaller groups draw their members normally. Off-screen
+// piles/markers are culled. realW/realH = backbuffer size for the cull.
 void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int threshold,
-                   ImTextureID atlas)
+                   ImTextureID atlas, float realW, float realH)
 {
-    constexpr float CELL = 44.f;
-    std::unordered_map<uint64_t, std::vector<int>> cells;
-    cells.reserve(items.size());
+    auto on_screen = [&](const ImVec2 &p) {
+        return !(p.x < -32 || p.y < -32 || p.x > realW + 32 || p.y > realH + 32);
+    };
+    std::unordered_map<int, std::vector<int>> groups; // cluster_key → member indices
+    groups.reserve(items.size());
     for (int i = 0; i < (int)items.size(); ++i)
-    {
-        uint32_t cx = (uint32_t)(int32_t)std::floor(items[i].p.x / CELL);
-        uint32_t cy = (uint32_t)(int32_t)std::floor(items[i].p.y / CELL);
-        cells[((uint64_t)cx << 32) | cy].push_back(i);
-    }
-    if (threshold < 2)
-        threshold = 2; // a "cluster" needs ≥2 members
-    for (auto &kv : cells)
+        groups[items[i].m->cluster_key].push_back(i);
+    for (auto &kv : groups)
     {
         const auto &idxs = kv.second;
-        if ((int)idxs.size() >= threshold)
+        if ((int)idxs.size() > threshold) // ">" : the threshold is "more than N markers"
         {
             float sx = 0, sy = 0;
             for (int i : idxs) { sx += items[i].p.x; sy += items[i].p.y; }
-            draw_cluster_glyph(fg, ImVec2(sx / idxs.size(), sy / idxs.size()), (int)idxs.size());
+            ImVec2 c(sx / idxs.size(), sy / idxs.size());
+            if (on_screen(c))
+                draw_cluster_glyph(fg, c, (int)idxs.size());
         }
         else
             for (int i : idxs)
-                draw_marker(fg, *items[i].m, items[i].p, atlas);
+                if (on_screen(items[i].p))
+                    draw_marker(fg, *items[i].m, items[i].p, atlas);
     }
 }
 } // namespace
@@ -213,17 +214,19 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             float gU, gV;
             world_to_mapspace(m, dlc_ug, gU, gV);
             proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
-            if (p.x < -32 || p.y < -32 || p.x > realW + 32 || p.y > realH + 32)
-                continue; // ImGui doesn't CPU-cull; skip off-screen primitives ourselves
             ImVec2 sp(p.x, p.y);
-            if (clustering && m.category >= 0 && goblin::ui::category_clustered(m.category))
-                clustered.push_back({sp, &m}); // defer to the clustering pass
-            else
+            // Clustered-eligible markers are deferred WITHOUT culling — an off-screen
+            // member still counts toward its grace pile + centroid (a pile can sit on
+            // screen while some members are off it). Everything else culls + draws now.
+            if (clustering && m.category >= 0 && m.cluster_key >= 0 &&
+                goblin::ui::category_clustered(m.category))
+                clustered.push_back({sp, &m});
+            else if (!(sp.x < -32 || sp.y < -32 || sp.x > realW + 32 || sp.y > realH + 32))
                 draw_marker(fg, m, sp, atlas);
         }
     }
 
     if (clustering && !clustered.empty())
-        draw_clusters(fg, clustered, threshold, atlas);
+        draw_clusters(fg, clustered, threshold, atlas, realW, realH);
 }
 } // namespace goblin::worldmap
