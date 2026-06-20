@@ -36,8 +36,11 @@ namespace goblin
     // Unified overworld marker-space coord for an arbitrary baked marker (projects
     // legacy dungeons to area-60 via LEGACY_CONV, then world = grid*256 + local).
     // Used by the overlay-rendered-markers prototype to place graces etc.
+    // conv_underground=true also unifies base underground (area 12) into overworld
+    // map-space (the underground map shares it; overlay draws it on the UG layer).
     bool marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,
-                          int &out_area, float &world_x, float &world_z);
+                          int &out_area, float &world_x, float &world_z,
+                          bool conv_underground = false);
 
     // Region gating for the overlay (mirrors the game's native areaNo+tab display).
     // grace_tab_id: the map sub-page (tabId) of the nearest GRACE_ANCHOR in this

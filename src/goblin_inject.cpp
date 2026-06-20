@@ -58,18 +58,22 @@ static void *allocation = nullptr;
 // entry (legacy dungeons that have their own page / unmappable), are untouched.
 static bool project_dungeon_row_to_overworld(
     from::paramdef::WORLD_MAP_POINT_PARAM_ST *d,
-    float *out_ent_x = nullptr, float *out_ent_z = nullptr)
+    float *out_ent_x = nullptr, float *out_ent_z = nullptr,
+    bool conv_underground = false)
 {
     if (d->areaNo == 60 || d->areaNo == 61)
         return false;
-    // Underground worlds that have their OWN world-map page must NOT be projected
-    // onto the overworld — there is no overworld surface spot for them, so they
-    // land "in the sea". Keep them on their native page instead:
-    //   area 12      = Siofra/Ainsel/Deeproot/Nokron/Mohgwyn/Lake of Rot
-    //   area 40-43   = DLC underground caverns
-    // (Catacombs/caves 30-39 and legacy dungeons 10/11/13/14… DO have overworld
-    //  entrances, so they keep projecting.)
-    if (d->areaNo == 12 || (d->areaNo >= 40 && d->areaNo <= 43))
+    // INJECTION (conv_underground=false): area 12 / 40-43 have their OWN native world-map
+    // page, so keep them native (projecting them onto the overworld surface lands them "in
+    // the sea"). OVERLAY (conv_underground=true): the agent's RE proved underground SHARES
+    // the overworld map-space (one converter, no area-12 converter) — the underground map is
+    // a LAYER of the same space — so area 12 IS projected to unified coords (its conv rows
+    // map area-12-local → area-60 geographic), and the overlay draws it on the UG layer
+    // (gated separately by ORIGINAL areaNo). DLC underground (40-43) stays native for now
+    // (DLC is still on the eyeball path).
+    if (d->areaNo >= 40 && d->areaNo <= 43)
+        return false;
+    if (d->areaNo == 12 && !conv_underground)
         return false;
 
     // Prefer an EXACT (src_area, src_gx, src_gz) base-point — its local coords share
@@ -935,7 +939,8 @@ bool goblin::player_in_dlc()
 // overworld via LEGACY_CONV, then world = grid*256 + local. Rows already on the
 // overworld (area 60/61) or on their own underground page are returned as-is.
 bool goblin::marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,
-                              int &out_area, float &world_x, float &world_z)
+                              int &out_area, float &world_x, float &world_z,
+                              bool conv_underground)
 {
     from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp{};
     tmp.areaNo = areaNo;
@@ -943,7 +948,9 @@ bool goblin::marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, 
     tmp.gridZNo = gz;
     tmp.posX = px;
     tmp.posZ = pz;
-    project_dungeon_row_to_overworld(&tmp); // in-place; no-op if already overworld / unmappable
+    // in-place; no-op if already overworld / unmappable. conv_underground=true also unifies
+    // base underground (area 12) into overworld map-space (overlay UG layer).
+    project_dungeon_row_to_overworld(&tmp, nullptr, nullptr, conv_underground);
     out_area = tmp.areaNo;
     world_x = tmp.gridXNo * 256.0f + tmp.posX;
     world_z = tmp.gridZNo * 256.0f + tmp.posZ;
