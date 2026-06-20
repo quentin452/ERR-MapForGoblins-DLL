@@ -9,6 +9,11 @@ namespace goblin
 {
     void inject_map_entries();
 
+    // Seed per-category visibility / cluster opt-in / threshold + master gate from
+    // config. Runs in BOTH modes (inject_map_entries also seeds, but is skipped when
+    // native_map_injection is off, so the overlay needs this independent path).
+    void seed_runtime_gates();
+
     // Cluster label census: (PlaceName textId, label) for each cluster the inject
     // built. The label is "<Region> (<count>)" (region via cluster_region_label) or
     // just "<count>" if the region is unknown. setup_messages injects it as the

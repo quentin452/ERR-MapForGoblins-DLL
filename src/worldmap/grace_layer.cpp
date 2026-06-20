@@ -8,8 +8,9 @@ namespace goblin::worldmap
 {
 bool GraceLayer::visible() const
 {
-    return goblin::ui::category_visible(
-        static_cast<int>(goblin::generated::Category::WorldGraces));
+    const int g = static_cast<int>(goblin::generated::Category::WorldGraces);
+    return goblin::ui::category_visible(g) &&
+           goblin::ui::section_visible(goblin::ui::category_section(g));
 }
 
 const std::vector<Marker> &GraceLayer::markers() const

@@ -52,7 +52,8 @@ MapEntryLayer::MapEntryLayer(int category) : cat_(category)
 
 bool MapEntryLayer::visible() const
 {
-    return goblin::ui::category_visible(cat_);
+    return goblin::ui::category_visible(cat_) &&
+           goblin::ui::section_visible(goblin::ui::category_section(cat_));
 }
 
 const std::vector<Marker> &MapEntryLayer::markers() const

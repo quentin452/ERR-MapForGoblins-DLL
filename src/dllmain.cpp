@@ -191,6 +191,10 @@ static void setup_mod()
         // Snapshot the real graces from the LIVE WorldMapPointParam BEFORE injection swaps
         // the param backing — the ImGui overlay draws from this (no baked data).
         safe_init_step(&goblin::capture_live_graces, "capture_live_graces");
+        // Seed the per-category visibility / cluster / threshold + master gates from
+        // config in BOTH modes — the overlay reads these, and inject (which also seeds)
+        // is skipped when native_map_injection is off.
+        safe_init_step(&goblin::seed_runtime_gates, "seed_runtime_gates");
         // Native WorldMapPointParam injection (+ its map-logic patches). Skipped when
         // native_map_injection=false → the ImGui overlay is the sole map (no native
         // page-build = no freeze, no double-draw). Grace capture above still runs.

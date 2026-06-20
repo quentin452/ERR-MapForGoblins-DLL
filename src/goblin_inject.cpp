@@ -1511,6 +1511,32 @@ static bool is_category_enabled(Category cat)
     return p ? *p : true;
 }
 
+// Seed the runtime gate atomics from config: per-category visibility + cluster opt-in
+// + threshold, the master on/off, and the cluster collapsed/expanded state. This is
+// the pure config→state step (no native-row park / no cluster replan), so it can run
+// in BOTH modes — crucially when native_map_injection is OFF and inject_map_entries()
+// (which used to be the only seeder) is skipped, the ImGui overlay still needs these
+// gates seeded so its per-category visibility + clustering work.
+void goblin::seed_runtime_gates()
+{
+    const bool sec_cfg[SECTION_COUNT] = {
+        goblin::config::sectionEquipment, goblin::config::sectionKeyItems,
+        goblin::config::sectionLoot,      goblin::config::sectionMagic,
+        goblin::config::sectionQuest,     goblin::config::sectionReforged,
+        goblin::config::sectionWorld,
+    };
+    for (int s = 0; s < SECTION_COUNT; s++)
+        g_section_visible[s].store(sec_cfg[s]);
+    for (int c = 0; c < NUM_CATEGORIES; c++)
+    {
+        g_category_visible[c].store(is_category_enabled(static_cast<Category>(c)));
+        g_category_cluster[c].store(category_clustered_cfg(static_cast<Category>(c)));
+        g_category_threshold[c].store(cluster_threshold_for_cfg(static_cast<Category>(c)));
+    }
+    g_icons_user_disabled.store(goblin::config::iconsHidden);
+    g_clusters_expanded.store(!goblin::config::enableClustering);
+}
+
 void goblin::inject_map_entries()
 {
     GOBLIN_BENCH("map.inject.total");
