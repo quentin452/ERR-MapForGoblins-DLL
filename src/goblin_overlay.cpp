@@ -245,15 +245,23 @@ namespace
             // there and let the move reach the game).
             switch (msg)
             {
+            // RELEASES always pass through to the game (fall out of the switch). If we
+            // swallowed them, a key/button held BEFORE the overlay opened (or held when the
+            // map is quit abnormally) would never get its KEYUP → the game thinks it is held
+            // forever → camera/movement stuck "à vie". ImGui was already fed above.
+            case WM_KEYUP: case WM_SYSKEYUP:
+            case WM_LBUTTONUP: case WM_RBUTTONUP: case WM_MBUTTONUP: case WM_XBUTTONUP:
+                break;
+            // PRESSES / moves / wheel / char are consumed so the game gets none while open.
             case WM_INPUT:
             case WM_MOUSEMOVE:
-            case WM_LBUTTONDOWN: case WM_LBUTTONUP: case WM_LBUTTONDBLCLK:
-            case WM_RBUTTONDOWN: case WM_RBUTTONUP: case WM_RBUTTONDBLCLK:
-            case WM_MBUTTONDOWN: case WM_MBUTTONUP: case WM_MBUTTONDBLCLK:
-            case WM_XBUTTONDOWN: case WM_XBUTTONUP:
+            case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK:
+            case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK:
+            case WM_MBUTTONDOWN: case WM_MBUTTONDBLCLK:
+            case WM_XBUTTONDOWN:
             case WM_MOUSEWHEEL: case WM_MOUSEHWHEEL:
-            case WM_KEYDOWN: case WM_KEYUP: case WM_CHAR:
-            case WM_SYSKEYDOWN: case WM_SYSKEYUP:
+            case WM_KEYDOWN: case WM_CHAR:
+            case WM_SYSKEYDOWN:
                 return (msg == WM_INPUT) ? 0 : 1;  // consume; game never sees it
             default:
                 break;
@@ -373,12 +381,6 @@ namespace
         float scaleX = 1.0f, scaleY = 1.0f, biasX = 0.0f, biasY = 0.0f;
     };
     MarkerCalib g_calib;
-
-    // GRACE-ONLY world->render converter scale (bug 2 precision dial). The reticle uses the
-    // game's true render coord (+0x104) and is clean; graces use OUR converter (gU=wx-7040),
-    // so a tiny converter error shows as drift that grows away from the calibration anchor
-    // (visible zoomed-out, fine zoomed-in). It does NOT touch the reticle. F/H dial, R=1.0.
-    float g_convScale = 1.0f;
 
     // ★ THE view centre = (pan + snapMid)/zoom — NOT the reticle (+0xFC). Proven by the
     // gamepad symptom (2026-06-20): the old reticle centre makes markers "jamais centré" on
@@ -580,33 +582,30 @@ namespace
         ImGuiIO &io = ImGui::GetIO();
         ImDrawList *fg = ImGui::GetForegroundDrawList();
 
-        // INTERPOLATION-COMPENSATION knob ([ = -0.1, ] = +0.1). The engine eases the
-        // displayed view/reticle toward its target each frame (0.1f lerp — cursor +0x130 /
-        // snap-anim FUN_1409bc8c0, RE). We draw the RAW field, so markers lead/lag the eased
-        // map. Compensate by extrapolating each pan/reticle field along its per-frame delta:
-        //   used = raw + lead*(raw - prevRaw)
-        // lead=0 -> raw (no change). >0 pushes forward (catches a lag up). <0 backs off (kills
-        // a lead). Dial until markers stick -> the value that matches the engine's interp.
-        static float g_lead = 0.0f;
+        // SCROLL-TRANSITION SMOOTHING (low-pass, F/H). Bug 2 is DYNAMIC: markers are correct
+        // at rest but drift DURING the scroll transition, then settle. The engine EASES the
+        // displayed view toward its target (cursor +0x130 0.1f lerp / snap-anim FUN_1409bc8c0);
+        // we draw the RAW pan, so during the ease our markers and the eased map diverge. Match
+        // it by low-passing our pan the same way: panSmooth += (raw - panSmooth)*alpha.
+        //   alpha=1 -> raw (no smoothing, current). alpha<1 -> eased (markers follow the ease).
+        // Dial alpha during a scroll until the transition decalage vanishes. (Does NOT move the
+        // static position — at rest panSmooth == raw — so it only affects the transition.)
+        static float g_panAlpha = 1.0f;
         {
-            static goblin::worldmap_probe::LiveView pv;
-            static bool pvInit = false;
-            goblin::worldmap_probe::LiveView raw = v; // unmodified snapshot for next-frame prev
-            if (live && pvInit && g_lead != 0.0f)
+            static float sX = 0, sZ = 0;
+            static bool sInit = false;
+            if (live)
             {
-                auto ex = [&](float cur, float prev) { return cur + g_lead * (cur - prev); };
-                v.panX = ex(raw.panX, pv.panX);
-                v.panZ = ex(raw.panZ, pv.panZ);
-                v.raw[0] = ex(raw.raw[0], pv.raw[0]);
-                v.raw[1] = ex(raw.raw[1], pv.raw[1]);
-                v.raw[2] = ex(raw.raw[2], pv.raw[2]);
-                v.raw[3] = ex(raw.raw[3], pv.raw[3]);
+                if (!sInit) { sX = v.panX; sZ = v.panZ; sInit = true; }
+                sX += (v.panX - sX) * g_panAlpha;
+                sZ += (v.panZ - sZ) * g_panAlpha;
+                v.panX = sX;
+                v.panZ = sZ;
             }
-            if (live) { pv = raw; pvInit = true; }
         }
         {
             char lb[80];
-            snprintf(lb, sizeof(lb), "CONVSCALE=%.4f  (F -0.001  H +0.001  R 1.0)", g_convScale);
+            snprintf(lb, sizeof(lb), "PANALPHA=%.3f  (F -0.05  H +0.05  R 1.0)", g_panAlpha);
             fg->AddText(ImVec2(12, 31), IM_COL32(0, 0, 0, 200), lb);
             fg->AddText(ImVec2(11, 30), IM_COL32(120, 255, 160, 255), lb);
         }
@@ -808,8 +807,8 @@ namespace
                     // EXACT world->map-space (agent RE 0a30738: FUN_140876140 + live
                     // CS::WorldMapViewModel dump). origin (7168,16384), bias 128, scale 1.0,
                     // Z-flipped:  mapX = worldX - 7040 ;  mapZ = -worldZ + 16512.
-                    gU = (wx - 7040.0f) * g_convScale;
-                    gV = (-wz + 16512.0f) * g_convScale;
+                    gU = wx - 7040.0f;
+                    gV = -wz + 16512.0f;
                 }
                 else if (g_aff.enabled && g_aff.pivot)
                 {
@@ -903,15 +902,15 @@ namespace
         // Hotkeys (work menu-closed): C = 1-point calibrate (solve biasX/Y so the
         // projection of the reticle hits the mouse), L = log a row, X = reset,
         // G = swap grace axes. The model is linear in bias, so one capture pins both.
-        // F / H = nudge the grace-only converter scale (bug 2 precision dial); R = reset 1.0.
+        // F / H = nudge the pan low-pass alpha (scroll-transition smoothing); R = reset 1.0.
         // (Letter keys: OEM [ ] were unreachable on AZERTY.)
         static bool prevLB = false, prevRB = false, prevBS = false;
         bool downLB = (GetAsyncKeyState('F') & 0x8000) != 0; // convScale -
         bool downRB = (GetAsyncKeyState('H') & 0x8000) != 0; // convScale +
         bool downBS = (GetAsyncKeyState('R') & 0x8000) != 0; // reset 1.0
-        if (downLB && !prevLB) { g_convScale -= 0.001f; spdlog::info("[CONVSCALE] {:.4f}", g_convScale); }
-        if (downRB && !prevRB) { g_convScale += 0.001f; spdlog::info("[CONVSCALE] {:.4f}", g_convScale); }
-        if (downBS && !prevBS) { g_convScale = 1.0f; spdlog::info("[CONVSCALE] reset 1.0"); }
+        if (downLB && !prevLB) { g_panAlpha -= 0.05f; if (g_panAlpha < 0.05f) g_panAlpha = 0.05f; spdlog::info("[PANALPHA] {:.3f}", g_panAlpha); }
+        if (downRB && !prevRB) { g_panAlpha += 0.05f; if (g_panAlpha > 1.0f) g_panAlpha = 1.0f; spdlog::info("[PANALPHA] {:.3f}", g_panAlpha); }
+        if (downBS && !prevBS) { g_panAlpha = 1.0f; spdlog::info("[PANALPHA] reset 1.0"); }
         prevLB = downLB; prevRB = downRB; prevBS = downBS;
 
         static bool prevC = false, prevX = false, prevL = false;
