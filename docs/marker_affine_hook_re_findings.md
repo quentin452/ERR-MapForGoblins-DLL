@@ -139,6 +139,21 @@ entry for an undiscovered grace → confirmed NO (matches the static read). If i
 undiscovered entries with a valid `Matrix2x4` translation (render range) → that would flip
 it to YES and let us skip the math; the static evidence says not to expect that.
 
+**LIVE-CONFIRMED NO (2026-06-20).** The `render_finder` CT (`tools/cheat_engine/
+MapForGoblins_render_finder.CT`, vtable-scans all 3 instance classes — `CSWorldMapPointIns`
+`0x2b487a8`, `CSWorldMapDiscoveryPointIns` `0x2b48440`, `CSWorldMapReentryPointIns`
+`0x2b48d28`) found only **4 built instances total** on an open overworld page
+(`Point=2 Discovery=1 Reentry=1`). So the engine builds an instance (and a render position)
+only for the handful of **discovered/given** markers — **undiscovered markers are not built
+→ no render position to read → `render = M·world + T` is mandatory.** Corollary: the
+finder/calibration needs MANY built instances with known world, so it must be run with the
+mod's **marker injection ON** (show_all / many categories) — the injected rows are what the
+engine builds + positions, giving the `(world → render)` sample set to fit `M`/`T`.
+
+`point+0x80` is a **pointer** to the `WorldMapPointParam` row (ctor inits it to 0), not the
+inline row — read `[point+0x80]` then the row fields. (The 4-instance run was too few +
+heterogeneous to locate a consistent row, hence the finder needs the injected-marker set.)
+
 ## Handles / AOBs
 
 - reconcile `FUN_140a832a0`; **hook call @ `0xa839a6`** (AOB above), RCX=point, RDX=ctx.
