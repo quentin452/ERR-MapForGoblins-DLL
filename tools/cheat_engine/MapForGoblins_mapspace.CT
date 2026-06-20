@@ -254,8 +254,9 @@ function mfg_snapshot()
   end
   -- Mouse pixel (screen coords) = the reticle's TRUE screen pos (mouse mode) → ground truth
   -- for the stage-2 canvas mapping screen_local→pixel. screen_local = reticleFC·zoom − pan.
-  local mx, my = -1, -1
-  local mp = getMousePos(); if mp then mx = mp.x; my = mp.y end
+  local mx, my = getMousePos()
+  if type(mx) ~= "number" then mx = -1 end
+  if type(my) ~= "number" then my = -1 end
   -- Stage-2 canvas: [eldenring+0x47ef360] → [+0x128] → originX +0x110, originY +0x114, W +0x118, H +0x11c
   local cox, coy, cw, ch = -1, -1, -1, -1
   local cs = readPointer(getAddress("eldenring.exe") + 0x47EF360)
