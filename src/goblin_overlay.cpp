@@ -409,33 +409,6 @@ namespace
     // the cursor. Y toggles to the raw-reticle baseline for A/B.
     bool g_pan_center = true;
 
-    // (markerU, markerV) marker coords → backbuffer px.
-    ImVec2 project_uv(const goblin::worldmap_probe::LiveView &v, float mU, float mV,
-                      float realW, float realH)
-    {
-        float centerU, centerV;
-        if (g_pan_center)
-        {
-            // Device-independent view centre = (pan+snapMid)/zoom, PLUS the engine's render
-            // ease. The game DRAWS from the eased reticle +0x10C (raw[4/5]), not the target
-            // +0x104 (raw[2/3]) — confirmed in-game (the +0x10C dot lands on the real reticle
-            // during fast moves). The ease in marker space = (+0x10C − +0x104); the cursor
-            // offset cancels in that difference, so adding it to the target centre yields the
-            // DISPLAYED centre (cursor-independent). At rest the two are equal → no change.
-            centerU = (v.panX + v.snapMidX) / v.zoom;
-            centerV = (v.panZ + v.snapMidZ) / v.zoom;
-        }
-        else
-        {
-            centerU = v.raw[0]; centerV = v.raw[1]; // raw reticle (mouse-only) for A/B compare
-        }
-        // Same proven reticle-form math for both paths (screen-centre anchor + scale/bias).
-        // NOTE: the g_pan_center path uses snapMid = (snapMin+snapMax)/2 (the origin RE line's
-        // cursor-independent centre, equivalent to (pan + (min+max)/2)/zoom) — see project below.
-        return ImVec2((mU - centerU) * v.zoom * g_calib.scaleX + realW * 0.5f + g_calib.biasX,
-                      (mV - centerV) * v.zoom * g_calib.scaleY + realH * 0.5f + g_calib.biasY);
-    }
-
     // OS cursor in client/backbuffer px, read DIRECTLY (not io.MousePos). ImGui's
     // mouse pos comes from the WndProc, which hk_wndproc only forwards while the
     // menu is open → io.MousePos freezes once the menu has been closed. The game
@@ -447,6 +420,32 @@ namespace
         if (ok && g_hwnd && ScreenToClient(g_hwnd, &pt))
             return ImVec2((float)pt.x, (float)pt.y);
         return ImGui::GetIO().MousePos; // fallback
+    }
+
+    // (markerU, markerV) marker coords → backbuffer px.
+    ImVec2 project_uv(const goblin::worldmap_probe::LiveView &v, float mU, float mV,
+                      float realW, float realH)
+    {
+        float centerU, centerV;
+        if (g_pan_center)
+        {
+            // Cursor-INDEPENDENT view centre = (pan+snapMid)/zoom (engine pan setter inverted).
+            // No reticle term → does NOT follow the mouse (bug-1 stays fixed).
+            centerU = (v.panX + v.snapMidX) / v.zoom;
+            centerV = (v.panZ + v.snapMidZ) / v.zoom;
+        }
+        else
+        {
+            centerU = v.raw[0]; centerV = v.raw[1]; // raw reticle (mouse-only) for A/B compare
+        }
+        // ★ CANVAS FACTOR (realW/1920, realH/1080) — the missing piece. The engine renders the
+        // map in a virtual 1920×1080 canvas, then scales to the backbuffer. Measured via CT
+        // (3 zooms, same grace): pixel = screen_local·(canvasW/1920) + offset, scale = 0.665 ≈
+        // 1280/1920 CONSTANT across zoom. Without this factor scaleX=1.0 over-scaled by 1.5× at
+        // 1280×720 → error ∝ distance-from-centre = worse at low zoom / during pan (the décalage
+        // bug). scaleX/scaleY stay ≈1.0 (residual). screen_local = (mU−centerU)·zoom.
+        return ImVec2((mU - centerU) * v.zoom * (realW / 1920.0f) * g_calib.scaleX + realW * 0.5f + g_calib.biasX,
+                      (mV - centerV) * v.zoom * (realH / 1080.0f) * g_calib.scaleY + realH * 0.5f + g_calib.biasY);
     }
 
     // ── In-DLL world→render AFFINE solver (replaces the by-hand diagonal calib) ──
@@ -606,23 +605,28 @@ namespace
         // Use a = dt/(dt+tau) instead → steady lag = v·tau EXACTLY, frame-independent. tau≈0.02s
         // ↔ the 0.5/frame at ~50fps. Re-seed on map close (!live) so reopen doesn't ease from a
         // stale pan (= icons frozen off-screen).
-        static float g_easeTau = 0.02f;
+        // ★ ZOOM-ONLY ease. The transition décalage is ∝ screen_offset·Δzoom/zoom (worst at low
+        // zoom): the displayed map's zoom LAGS the target zoom (+0x380) we sample, so during a
+        // zoom our markers spread faster than the map. Easing PAN too (earlier attempts) only
+        // contaminated it — pan/snapMid are right at instant. So ease ONLY zoom; leave pan/snapMid
+        // raw. project_uv's centre (pan+snapMid)/zoom uses the eased zoom and the /zoom·zoom
+        // cancels for the pan term → ONLY the mU·zoom spread term gets the eased zoom = exactly
+        // the 1/zoom décalage term. F/H dial g_zoomTau (R=0=instant). At rest eased==raw → static
+        // placement intact, no mouse coupling (centre is still pan-based, cursor-independent).
+        static float g_zoomTau = 0.0f; // 0 = instant; real fix is the canvas factor, no ease needed
         {
-            static float sX = 0, sZ = 0, sZoom = 0;
-            static bool sInit = false;
+            static float sZoom = 0; static bool zInit = false;
             if (live)
             {
                 float dt = io.DeltaTime; if (dt < 0.0f) dt = 0.0f; else if (dt > 0.1f) dt = 0.1f;
-                float a = (g_easeTau > 0.0001f) ? dt / (dt + g_easeTau) : 1.0f;
-                if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
-                if (!sInit) { sX = v.panX; sZ = v.panZ; sZoom = v.zoom; sInit = true; }
-                sX    += (v.panX - sX)    * a;
-                sZ    += (v.panZ - sZ)    * a;
-                sZoom += (v.zoom - sZoom) * a; // zoom eases too, else zoom drifts
-                v.panX = sX; v.panZ = sZ; v.zoom = sZoom; // grid + graces; reticle left raw as target ref
+                float az = (g_zoomTau > 0.0001f) ? dt / (dt + g_zoomTau) : 1.0f;
+                if (az < 0.0f) az = 0.0f; else if (az > 1.0f) az = 1.0f;
+                if (!zInit) { sZoom = v.zoom; zInit = true; }
+                sZoom += (v.zoom - sZoom) * az;
+                v.zoom = sZoom; // ONLY zoom eased; pan/snapMid raw
             }
             else
-                sInit = false; // map closed → re-seed fresh on reopen
+                zInit = false; // map closed → re-seed fresh on reopen
         }
 
         // UPDATE-RATE THROTTLE (T / Z). Hypothesis: ER refreshes the displayed map at a fixed
@@ -648,8 +652,8 @@ namespace
         }
         {
             char lb[96];
-            snprintf(lb, sizeof(lb), "EASETAU=%.4fs (F/H, R=.02)   grid=I   MAPFPS=%.0f (T/Z)",
-                     g_easeTau, g_mapFps);
+            snprintf(lb, sizeof(lb), "ZOOMTAU=%.4f (F/H, R=0)   grid=I   MAPFPS=%.0f (T/Z)",
+                     g_zoomTau, g_mapFps);
             fg->AddText(ImVec2(12, 31), IM_COL32(0, 0, 0, 200), lb);
             fg->AddText(ImVec2(11, 30), IM_COL32(120, 255, 160, 255), lb);
             // DIAG: live snap-rect + pan + reticle. Watch in UNDERGROUND while moving the
@@ -1000,15 +1004,15 @@ namespace
         // Hotkeys (work menu-closed): C = 1-point calibrate (solve biasX/Y so the
         // projection of the reticle hits the mouse), L = log a row, X = reset,
         // G = swap grace axes. The model is linear in bias, so one capture pins both.
-        // F / H = nudge the pan low-pass alpha (scroll-transition smoothing); R = reset 1.0.
+        // F / H = nudge the ZOOM-only ease tau (seconds); R = reset 0 (instant).
         // (Letter keys: OEM [ ] were unreachable on AZERTY.)
         static bool prevLB = false, prevRB = false, prevBS = false;
-        bool downLB = (GetAsyncKeyState('F') & 0x8000) != 0; // convScale -
-        bool downRB = (GetAsyncKeyState('H') & 0x8000) != 0; // convScale +
-        bool downBS = (GetAsyncKeyState('R') & 0x8000) != 0; // reset 1.0
-        if (downLB && !prevLB) { g_easeTau -= 0.005f; if (g_easeTau < 0.0f) g_easeTau = 0.0f; spdlog::info("[EASETAU] {:.4f}", g_easeTau); }
-        if (downRB && !prevRB) { g_easeTau += 0.005f; spdlog::info("[EASETAU] {:.4f}", g_easeTau); }
-        if (downBS && !prevBS) { g_easeTau = 0.02f; spdlog::info("[EASETAU] reset 0.02"); }
+        bool downLB = (GetAsyncKeyState('F') & 0x8000) != 0; // zoomTau -
+        bool downRB = (GetAsyncKeyState('H') & 0x8000) != 0; // zoomTau +
+        bool downBS = (GetAsyncKeyState('R') & 0x8000) != 0; // reset 0
+        if (downLB && !prevLB) { g_zoomTau -= 0.005f; if (g_zoomTau < 0.0f) g_zoomTau = 0.0f; spdlog::info("[ZOOMTAU] {:.4f}", g_zoomTau); }
+        if (downRB && !prevRB) { g_zoomTau += 0.005f; spdlog::info("[ZOOMTAU] {:.4f}", g_zoomTau); }
+        if (downBS && !prevBS) { g_zoomTau = 0.0f; spdlog::info("[ZOOMTAU] reset 0"); }
         prevLB = downLB; prevRB = downRB; prevBS = downBS;
 
         // T / Z = map-update-rate throttle (Hz); 0 = off (every frame).
