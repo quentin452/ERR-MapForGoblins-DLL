@@ -1016,6 +1016,16 @@ static ParamResCap *find_world_map_point_param_res_cap()
     return nullptr;
 }
 
+// Readiness probe for the robust init wait: true once the WorldMapPointParam table
+// is registered (regulation loaded). Polling THIS instead of a fixed sleep makes
+// init slow-PC-safe (the param can take >5s to load). SEH-guarded — the param list
+// is walked during volatile game init, so a mid-load fault just reads "not ready".
+bool goblin::world_map_param_ready()
+{
+    __try { return find_world_map_point_param_res_cap() != nullptr; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
 // Lowercase + keep only alphanumerics, so "Loot - Smithing Stones (Low)" and a
 // user-typed "LootSmithingStonesLow" / "smithing stones low" all normalize alike.
 static std::string norm_alnum(const std::string &s)

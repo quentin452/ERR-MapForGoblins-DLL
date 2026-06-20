@@ -112,7 +112,10 @@ namespace
         return {
             {"Goblin", nullptr, false, {
                 IniEntry{"load_delay", IniType::U8, &cfg::loadDelay, "5",
-                         "Delay in seconds before loading map icons (wait for game initialization)", false, nullptr},
+                         "MINIMUM seconds to wait before loading map icons. The mod now POLLS\n"
+                         "for the world-map data to finish loading (robust on slow PCs) and\n"
+                         "proceeds as soon as it's ready; this is just a floor/settle margin.\n"
+                         "Leave at 5 unless you want a longer guaranteed settle.", false, nullptr},
                 B("require_map_fragments", requireMapFragments, "true",
                   "Require map fragment discovery before showing icons in that area"),
                 B("debug_logging", debugLogging, "false",

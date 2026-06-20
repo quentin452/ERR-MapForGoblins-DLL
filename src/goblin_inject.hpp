@@ -39,6 +39,10 @@ namespace goblin
     bool marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,
                           int &out_area, float &world_x, float &world_z);
 
+    // True once WorldMapPointParam is loaded — the robust init wait polls this
+    // instead of sleeping a fixed load_delay (slow PCs can take >5s). SEH-guarded.
+    bool world_map_param_ready();
+
     // Data pointers of MFG-injected WorldMapPointParam rows in the expanded
     // table. Populated by inject_map_entries(); consumed by
     // sanitize_injected_textids() after the FMG bank is built.

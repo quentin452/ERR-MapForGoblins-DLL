@@ -144,8 +144,36 @@ static void setup_mod()
     safe_init_step(&init_modutils,    "modutils::initialize");
     safe_init_step(&init_from_params, "from::params::initialize");
 
-    spdlog::info("Waiting {}s for game init...", goblin::config::loadDelay);
-    std::this_thread::sleep_for(std::chrono::seconds(goblin::config::loadDelay));
+    // Robust init wait: POLL for the WorldMapPointParam table (the real dependency
+    // of inject_map_entries) instead of sleeping a fixed load_delay — on a slow PC
+    // the params can take well over 5s to load, and a too-short fixed delay makes
+    // the inject find nothing / init incorrectly. We still honor load_delay as a
+    // MINIMUM total wait (settle margin + backward-compat), and cap the poll so we
+    // never hang forever if the probe never goes ready.
+    {
+        using namespace std::chrono;
+        constexpr int POLL_MS = 200;
+        constexpr int HARD_CAP_S = 180;  // never wait longer than this
+        auto t0 = steady_clock::now();
+        spdlog::info("Waiting for WorldMapPointParam to load (min {}s, cap {}s)...",
+                     goblin::config::loadDelay, HARD_CAP_S);
+        bool ready = false;
+        for (int waited = 0; waited < HARD_CAP_S * 1000; waited += POLL_MS)
+        {
+            if (goblin::world_map_param_ready()) { ready = true; break; }
+            std::this_thread::sleep_for(milliseconds(POLL_MS));
+        }
+        auto elapsed = duration_cast<milliseconds>(steady_clock::now() - t0).count();
+        if (ready)
+            spdlog::info("WorldMapPointParam ready after {} ms", elapsed);
+        else
+            spdlog::warn("WorldMapPointParam not ready after {}s cap — proceeding "
+                         "anyway (init may degrade)", HARD_CAP_S);
+        // Honor load_delay as a minimum total wait (settle + old behaviour).
+        auto min_ms = static_cast<long long>(goblin::config::loadDelay) * 1000;
+        if (elapsed < min_ms)
+            std::this_thread::sleep_for(milliseconds(min_ms - elapsed));
+    }
 
     {
         GOBLIN_BENCH("init.heavy.total");
