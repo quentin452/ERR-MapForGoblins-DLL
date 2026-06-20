@@ -31,12 +31,6 @@ namespace goblin::worldmap_probe
     {
         float cursorX, cursorZ; // reticle, marker space (+0xFC / +0x104)
         float panX, panZ, zoom; // WorldMapArea viewport
-        // Snap-rect midpoint (WorldMapArea +0x340..+0x34c centre). The engine pan setter
-        // (FUN_1409cd100) sets pan = zoom·viewCentre − snapMid, so the device-independent
-        // view centre = (pan + snapMid)/zoom — equals the reticle under mouse, and TRACKS
-        // the gamepad (pan moves, reticle frozen). snapMid is per-page → the missing term
-        // that made bare pan look "instance-variant".
-        float snapMidX, snapMidZ;
         float raw[8];           // diag: cursor+0xFC,+0x100,+0x104,+0x108,+0x10C,+0x110,+0x114,+0x118
         int viewArea;           // WorldMapArea+0x6e = areaNo of the open page (doc §3)
         int underground;        // open-map layer (dialog+0x2B68 deref +0xB8): 0=surface, 1=underground

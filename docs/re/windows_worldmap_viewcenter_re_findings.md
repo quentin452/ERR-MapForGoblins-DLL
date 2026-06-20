@@ -9,33 +9,32 @@ for this build. Builds on `world_map_projection_re_findings.md` and
 
 ---
 
-## 0. TL;DR — device-independent view centre = `(pan + snapMid) / zoom`
+## 0. TL;DR — the answer is (B): the engine's projection, in plain readable floats
 
-The marker that sits at the screen centre — **stable across input device AND game launch**:
+The map-space → screen step is **exact and device-independent**:
 
 ```
-viewCentreX = (panX + snapMidX) / zoom        pan    = WorldMapArea +0x378 / +0x37C
-viewCentreZ = (panZ + snapMidZ) / zoom        zoom   = WorldMapArea +0x380
-snapMidX = (view+0x340 + view+0x348) / 2      snapMid = midpoint of the snap rect +0x340..+0x34c
-snapMidZ = (view+0x344 + view+0x34c) / 2
-screen   = (marker − viewCentre) · zoom + screenCentre        (+ scale/bias residual)
+screen_local_x = markerX · zoom − panX        zoom = WorldMapArea +0x380
+screen_local_z = markerZ · zoom − panZ        pan  = WorldMapArea +0x378 (panX) / +0x37C (panZ)
+backbuffer_px  = screen_local · (realW/1920, realH/1080) + bias
 ```
 
-- Derived from the engine pan setter `FUN_1409cd100`: `pan = zoom·viewCentre − snapMid` (§2),
-  inverted. **Under mouse it EQUALS the reticle** (drop-in for the known-good baseline); **under
-  gamepad the reticle freezes but `pan` is still updated** (confirmed by `[INPUT-DELTA]`, §5b),
-  so the centre tracks the stick.
-- **`snapMid` is the term that was missing.** Bare `pan` looked "instance-variant" because the
-  centre was off by `snapMid/zoom`, and `snapMid` is **per-page** — it changes with the open
-  page/view, so a baked pan offset never transferred. Add it and pan becomes stable.
-- All three terms live on the ONE deterministically-resolved `WorldMapArea` (menu-walk →
-  dialog → `cursor+0xF0`) → **no separate "gamepad cursor" is needed** (the all-instance scan in
-  §5b is now an opt-in fallback only).
+- `marker` = the map-space coord (`mapX = worldX−7040`, `mapZ = −worldZ+16512`, already solved).
+- `pan` (`+0x378/+0x37C`) is stored in **1920×1080 virtual-canvas pixels** and is the
+  **stable, input-device-independent view state** — the cursor tick (`FUN_1409bd4b0`) NEVER
+  writes it; only the pan/zoom setters do (so mouse vs gamepad reticle motion can't move it).
+- `bias` is a **constant** screen offset (widget inset / letterbox), absorbed by the overlay's
+  one-point calibration. No moving "centre" field is needed at all.
 
-**Why the cursor fields all failed:** `cursor+0xFC/+0x100`, `+0x104/+0x108`, `+0x10C/+0x110` are
-*all three* the input-driven reticle (clamped to different rects, §1), and the reticle freezes
-under gamepad. **Why earlier pan attempts failed:** `centre = pan + (screen/2)/zoom` multiplied
-pan by zoom; and bare `pan` omitted the per-page `snapMid`. The correct centre is `(pan+snapMid)/zoom`.
+**Why the old code was reticle-coupled:** `cursor+0xFC/+0x100`, `+0x104/+0x108`,
+`+0x10C/+0x110` are *all three* the input-driven reticle (clamped to different rects, §1) —
+none is a view centre. **Why the brief's pan attempt failed:** it used
+`centre = pan + (screen/2)/zoom`, so `screen = (marker − centre)·zoom = marker·zoom − pan·zoom`
+— `pan` got multiplied by `zoom`. `pan` is already in screen-local px; subtract it **directly**.
+
+If you still want an explicit "marker at screen centre" value (e.g. for a centre-relative
+form), it is `viewCentre = (pan + snapRectCentre) / zoom` (§2), with the snap-rect centre =
+`((+0x340++0x348)/2, (+0x344++0x34c)/2)`. But the direct form above needs neither.
 
 ---
 
@@ -102,15 +101,13 @@ vtable-scanned cursor → `cursor+0xF0` (no new AOBs needed); `LiveView` already
 
 ## 4. Shipped — `project_uv` (src/goblin_overlay.cpp)
 
-Default ON; `Y` toggles the raw reticle for A/B. Uses the device-independent centre in the
-proven reticle-form (same screen-centre anchor + scale/bias as the mouse baseline):
+The pan path now implements the direct form (default ON; `Y` toggles back to the reticle
+centre for A/B):
 ```cpp
-float centerU = (v.panX + v.snapMidX) / v.zoom;   // == reticle under mouse; tracks pan under gamepad
-float centerV = (v.panZ + v.snapMidZ) / v.zoom;
-return { (mU-centerU)*v.zoom*scaleX + realW*0.5f + biasX,
-         (mV-centerV)*v.zoom*scaleY + realH*0.5f + biasY };
+float sx = (mU * v.zoom - v.panX) * (realW / 1920.f);
+float sz = (mV * v.zoom - v.panZ) * (realH / 1080.f);
+return { sx*scaleX + biasX, sz*scaleY + biasY };
 ```
-`snapMid = midpoint(view+0x340..+0x34c)`, exposed via `LiveView.snapMidX/snapMidZ`.
 
 ## 5. Live verification (quentin) — the make-or-break
 
@@ -147,22 +144,20 @@ stick. Two static facts bound the search:
   menu-walk cursor reticle `+0xFC/+0x104` stays **frozen**.
 - **Mouse:** reticle `+0xFC/+0x104` changes **and** `view+0x378` (pan).
 
-`pan` tracks the view under both devices. The user first reported bare `pan` as "variant between
-game launches" — **root cause now understood: the missing per-page `snapMid` term** (§0). The
-correct device-independent centre `(pan + snapMid)/zoom` is stable AND tracks the gamepad, all from
-the deterministic `WorldMapArea` → **no separate gamepad cursor required.**
+`pan` is the only field tracking the view under both devices, BUT the user reports `pan` is
+**unusable: variant between game launches** → can't anchor the projection. **Decision (user): RE
+the gamepad-driven cursor.** The menu-walk cursor is mouse-only → the gamepad must move a
+DIFFERENT `WorldMapCursorControl` instance whose reticle is stable across instances.
 
-**Shipped (primary):** `LiveView.snapMidX/snapMidZ` (read from `view+0x340..+0x34c`) and
-`project_uv` now uses `centre = (pan+snapMid)/zoom` in the reticle-form (default on; `Y` toggles
-the raw reticle for A/B). Self-test: under mouse the centre == reticle (cyan ring stays on the
-mouse); under gamepad it should now track the stick.
-
-**Fallback (opt-in) — `scan_all_cursor_instances`:** if `(pan+snapMid)/zoom` still fails, set env
-`MFG_GAMEPAD_CURSOR_SCAN` to enumerate EVERY `WorldMapCursorControl` instance (bounded VirtualQuery
-+ chunked RPM; skips the exe image and >256 MB regions — NOT the old O(GB) raw-deref scan). It logs
-`[ALLCURSOR-MOVE] @addr` for any instance whose `+0xFC/+0x104` changes, tagging the menu-walk one
-`(MOUSE)`. Move ONLY the stick → an address that logs and is NOT the menu-walk one would be a
-genuine separate gamepad cursor. Off by default (heavy).
+**Shipped finder — `scan_all_cursor_instances` (goblin_worldmap_probe.cpp):** enumerates EVERY
+`WorldMapCursorControl` instance in committed private RW memory (bounded VirtualQuery walk +
+chunked RPM; skips the exe image and >256 MB regions — NOT the old O(GB) raw-deref scan that
+crashed). Runs once per map-open. The loop logs `[ALLCURSOR-MOVE] @addr` for any instance whose
+`+0xFC/+0x104` changes, tagging the menu-walk one `(MOUSE)`. **Protocol:** open the map, move ONLY
+the stick → the address that logs and is NOT the menu-walk one is the **gamepad cursor**. Report it
+so we can pin a deterministic resolve (offset from the dialog / CSMenuMan, or the field to read).
+If NO instance moves under the stick, the gamepad reticle is a different class → trace the
+stick→view path (`FUN_140757a10` consumer under gamepad).
 
 ## 6. Caveats
 

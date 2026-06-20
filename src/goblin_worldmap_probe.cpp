@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <cstdlib>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -384,12 +383,10 @@ void probe_loop()
                 candidates.push_back(menu_cursor);
                 g_log->info("resolve: cursor {:#x} (menu walk)", menu_cursor);
             }
-            // GAMEPAD-CURSOR hunt (FALLBACK, opt-in): the (pan+snapMid)/zoom centre should make
-            // a separate gamepad cursor unnecessary. If that fails, set env MFG_GAMEPAD_CURSOR_SCAN
-            // to enumerate ALL cursor instances once per map-open (heavy ~hundreds of MB) and log
-            // [ALLCURSOR-MOVE] for the one the stick drives. Off by default.
-            static bool want_scan = std::getenv("MFG_GAMEPAD_CURSOR_SCAN") != nullptr;
-            if (want_scan && g_all_cursors.empty())
+            // GAMEPAD-CURSOR hunt: once per map-open, enumerate ALL cursor instances so we
+            // can spot the one the stick drives (the menu-walk one is mouse-only). Heavy →
+            // run a single time while the map is up; cleared on close below.
+            if (g_all_cursors.empty())
                 scan_all_cursor_instances(vtable_va);
             // Monitor every found instance's reticle; log the address whose coords change so
             // moving the STICK reveals the gamepad cursor (vs the menu-walk = mouse one).
@@ -579,20 +576,6 @@ bool get_live_view(LiveView &out)
     for (int i = 0; i < 8; ++i)
         if (!seh_read4(reinterpret_cast<void *>(a + 0xFC + i * 4), &out.raw[i]))
             out.raw[i] = 0.f;
-    // Snap-rect midpoint (view +0x340 minX / +0x344 minZ / +0x348 maxX / +0x34c maxZ).
-    // Device-independent view centre = (pan + snapMid)/zoom (engine setter FUN_1409cd100).
-    out.snapMidX = out.snapMidZ = 0.f;
-    {
-        float sminx, sminz, smaxx, smaxz;
-        if (seh_read4(reinterpret_cast<void *>(view + 0x340), &sminx) &&
-            seh_read4(reinterpret_cast<void *>(view + 0x344), &sminz) &&
-            seh_read4(reinterpret_cast<void *>(view + 0x348), &smaxx) &&
-            seh_read4(reinterpret_cast<void *>(view + 0x34c), &smaxz))
-        {
-            out.snapMidX = (sminx + smaxx) * 0.5f;
-            out.snapMidZ = (sminz + smaxz) * 0.5f;
-        }
-    }
     // WorldMapArea+0x6e (i32) = areaNo of the open page (doc §3) → page filter.
     out.viewArea = -1;
     seh_read_i32(reinterpret_cast<void *>(view + 0x6e), &out.viewArea);

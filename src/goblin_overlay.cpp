@@ -392,35 +392,30 @@ namespace
     // residual exactly as they do for the reticle form. The brief's other failed try used
     // `centre = pan + (screen/2)/zoom` → `marker·zoom − pan·ZOOM` (pan wrongly ×zoom); the
     // correct centre is `(pan + screenCentre)/zoom`, which reduces to `screen = marker·zoom − pan`.
-    // ✅ DEVICE-INDEPENDENT CENTRE (2026-06-20) — derived, not bare pan. The engine pan setter
-    // FUN_1409cd100 does `pan = zoom·viewCentre − snapMid` (snapMid = midpoint of view
-    // +0x340..+0x34c). Invert → the marker at screen centre is `viewCentre = (pan + snapMid)/zoom`.
-    // Under MOUSE this EQUALS the reticle (so it's a drop-in for the known-good baseline); under
-    // GAMEPAD the reticle is frozen but pan IS updated (confirmed by [INPUT-DELTA]) → viewCentre
-    // tracks the stick. snapMid is PER-PAGE — omitting it is exactly why bare `pan` looked
-    // "instance-variant" (the centre was off by snapMid/zoom, which changes per page/view). All
-    // three terms (pan, snapMid, zoom) live on the ONE deterministically-resolved WorldMapArea →
-    // no separate gamepad cursor needed. Default = this; Y toggles the raw reticle for A/B.
-    bool g_pan_center = true;
+    // Self-test: projecting the reticle's own coord (+0x104/+0x108) lands on the mouse by
+    // construction; the win is GAMEPAD, where pan moves but the reticle doesn't.
+    // ✅ CONFIRMED by [INPUT-DELTA] (2026-06-20): the GAMEPAD stick pans via view +0x378/+0x37c
+    // (+ zoom +0x380), and does NOT move the reticle (+0xFC/+0x104 fire only on mouse hover).
+    // So the reticle centre froze under the stick (markers slid); the pan path tracks BOTH
+    // devices. Default = pan now; Y toggles the old reticle centre for A/B.
+    bool g_pan_center = false; // pan is INSTANCE-VARIANT (user) -> unusable; reticle baseline until cursor RE
 
     // (markerU, markerV) marker coords → backbuffer px.
     ImVec2 project_uv(const goblin::worldmap_probe::LiveView &v, float mU, float mV,
                       float realW, float realH)
     {
-        float centerU, centerV;
         if (g_pan_center)
         {
-            // Device-independent view centre = (pan + snapMid)/zoom (== reticle under mouse,
-            // tracks pan under gamepad). axis: panX/snapMidX (+0x378/+0x340) pair with U/+0x104.
-            centerU = (v.panX + v.snapMidX) / v.zoom;
-            centerV = (v.panZ + v.snapMidZ) / v.zoom;
+            // Device-independent: screen = marker·zoom − pan (NO canvas rescale — same units as
+            // the reticle baseline). axis: U/+0x104 pairs with panX/+0x378, V/+0x108 with
+            // panZ/+0x37C (same X/Z order as the reticle); G swaps if transposed.
+            float sx = mU * v.zoom - v.panX;
+            float sz = mV * v.zoom - v.panZ;
+            return ImVec2(sx * g_calib.scaleX + g_calib.biasX,
+                          sz * g_calib.scaleY + g_calib.biasY);
         }
-        else
-        {
-            centerU = v.raw[0]; centerV = v.raw[1]; // raw reticle (mouse-only) for A/B compare
-        }
-        // Same proven reticle-form math (screen-centre anchor + scale/bias) for both paths, so
-        // no baked offset: realW/2 + live snapMid/pan keep it correct across sessions and pages.
+        // Old reticle-coupled centre (markers follow the cursor) — kept for A/B compare only.
+        float centerU = v.raw[0], centerV = v.raw[1];
         return ImVec2((mU - centerU) * v.zoom * g_calib.scaleX + realW * 0.5f + g_calib.biasX,
                       (mV - centerV) * v.zoom * g_calib.scaleY + realH * 0.5f + g_calib.biasY);
     }
@@ -1029,7 +1024,7 @@ namespace
                 ImGui::Text("err = (%.0f, %.0f) px", p.x - m.x, p.y - m.y);
             }
             ImGui::Separator();
-            ImGui::TextColored(ImVec4(0, 1, 1, 1), "model: centre=(pan+snapMid)/zoom  px=(U-centre)*zoom*sx + W/2 + bx");
+            ImGui::TextColored(ImVec4(0, 1, 1, 1), "model: px = U*zoom*sx - panX + bx  (RE: screen = marker*zoom - pan)");
             ImGui::TextWrapped("C = 1-point calibrate (reticle on mouse) -> then PAN+ZOOM and watch the "
                                "cyan ring stay locked. If it drifts, nudge scaleX/scaleY ~1.0. X = reset.");
             ImGui::Separator();
