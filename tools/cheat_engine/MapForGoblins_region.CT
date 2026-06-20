@@ -211,12 +211,14 @@ function mfg_snapshot()
   local v  = mfg.view
   local function di(off) return readInteger(d + off) end
   local function vi(off) return v and readInteger(v + off) or -1 end
-  local ug   = readBytes(getAddress("eldenring.exe") + 0x3D6CFC3, 1, true) or -1  -- SURFACE/UNDERGROUND key
-  local cfc2 = readBytes(getAddress("eldenring.exe") + 0x3D6CFC2, 1, true) or -1
-  local lyr  = readBytes(getAddress("eldenring.exe") + 0x3D6CFC0, 1, true) or -1  -- dead variation byte
+  local ug   = readBytes(getAddress("eldenring.exe") + 0x3D6CFC3, 1, true) or -1
+  -- OW/UG has no state field -> the distinguishing signal must be WHERE on the canvas the view sits.
+  local function vf(off) return v and readFloat(v + off) or 0 end
+  local panx, panz, zoom = vf(0x378), vf(0x37C), vf(0x380)
+  local rx, rz = readFloat(mfg.cursor + 0x104), readFloat(mfg.cursor + 0x108)  -- cursor render pos on canvas
   local line = string.format(
-    "page[A88]=%-4d  UG[cfc3]=%-3d cfc2=%-3d  view370=%-4d view374=%-4d  d98=%-4d  (cfc0=%d dead)",
-    di(0xA88), ug, cfc2, vi(0x370), vi(0x374), di(0x98), lyr)
+    "page[A88]=%-3d view370=%-3d view374=%-3d  cfc3=%-2d  | pan=(%.1f, %.1f) zoom=%.4f  render=(%.1f, %.1f)",
+    di(0xA88), vi(0x370), vi(0x374), ug, panx, panz, zoom, rx, rz)
   print("[MFG] " .. line .. "   <-- LABEL THIS with the open map (OW / UG / DLC-OW / DLC-UG)")
   local f = io.open("MapForGoblins_region_ct.log", "a")
   if f then f:write(os.date("%H:%M:%S ") .. line .. "\n"); f:close() end
