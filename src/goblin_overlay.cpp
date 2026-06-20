@@ -374,11 +374,32 @@ namespace
     };
     MarkerCalib g_calib;
 
-    // (markerU, markerV) marker coords → backbuffer px. centerU/V = live view centre.
+    // The view-centre reference. raw[0]/raw[1] (+0xFC/+0x100) was assumed to be the stable
+    // view centre, but it is RETICLE-COUPLED — it tracks the cursor, so markers projected
+    // against it FOLLOW the reticle when the mouse/gamepad moves (the "gamepad breaks the
+    // map" + "no icon lock" bug). The STABLE reference is the WorldMapArea pan (+0x378/+0x37C):
+    //   centre_marker = pan + (screen/2)/zoom   ⇒   screen = (marker − pan)·zoom + bias
+    // BUT live test (2026-06-20): pan-centre = WRONG position for ALL markers (the pan→
+    // centre relationship isn't this simple); reticle-centre (+0xFC) is correct mouse-still
+    // but reticle-coupled (markers follow the cursor/gamepad). Neither is right → the true
+    // device-independent view centre needs RE (docs/windows_worldmap_viewcenter_re_prompt.md).
+    // Default = reticle (usable with mouse); Y toggles to pan for testing RE candidates.
+    bool g_pan_center = false;
+
+    // (markerU, markerV) marker coords → backbuffer px.
     ImVec2 project_uv(const goblin::worldmap_probe::LiveView &v, float mU, float mV,
                       float realW, float realH)
     {
-        float centerU = v.raw[0], centerV = v.raw[1];
+        float centerU, centerV;
+        if (g_pan_center)
+        {
+            centerU = v.panX + (realW * 0.5f) / v.zoom;   // stable: pan = viewport, not reticle
+            centerV = v.panZ + (realH * 0.5f) / v.zoom;
+        }
+        else
+        {
+            centerU = v.raw[0]; centerV = v.raw[1];        // old reticle-coupled centre
+        }
         return ImVec2((mU - centerU) * v.zoom * g_calib.scaleX + realW * 0.5f + g_calib.biasX,
                       (mV - centerV) * v.zoom * g_calib.scaleY + realH * 0.5f + g_calib.biasY);
     }
@@ -658,11 +679,14 @@ namespace
                     goblin::marker_world_pos(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
                                              e.data.posX, e.data.posZ, ga, wx, wz);
                     int pg = ga & 63;
-                    float rawwx = e.data.gridXNo * 256.f + e.data.posX;
-                    float rawwz = e.data.gridZNo * 256.f + e.data.posZ;
-                    int tab = goblin::grace_tab_id(e.data.areaNo, rawwx, rawwz);
-                    bool isug = (pg == 12) || (pg >= 40 && pg <= 43);
-                    bool isdlc = (pg >= 40 && pg <= 43) || (tab >= 6800 && tab <= 6999);
+                    // Classify by the FINAL resolved page (agent RE: base = 60/12,
+                    // DLC = 61/40-43). Page-based replaces the old tab heuristic, which
+                    // missed Shadow Keep (area 21 → page 61, tab 21000 ∉ 6800-6999) and
+                    // leaked it onto the base overworld. Catacombs/caves (areas 30-39)
+                    // resolve to page 60 → base-overworld group, which is correct (the
+                    // game shows their graces on the overworld map at the entrance).
+                    bool isug  = (pg == 12) || (pg >= 40 && pg <= 43);
+                    bool isdlc = (pg == 61) || (pg >= 40 && pg <= 43);
                     int grp = (isdlc ? 2 : 0) | (isug ? 1 : 0);
                     g_greg[i] = (uint8_t)grp;
                     sx[grp] += wx; sz[grp] += wz; ++sn[grp];
@@ -679,6 +703,7 @@ namespace
             g_centroidX = pivX[open_grp];
             g_centroidZ = pivZ[open_grp];
             int total = 0, drawn = 0, fidx = 0;
+            int drawn_by_area[64] = {0};   // DIAG: original areaNo histogram of drawn graces
             char solo_info[160] = "";
             for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
             {
@@ -708,7 +733,20 @@ namespace
                 float L_px  = ug_open ? g_aff.gtx_u : g_aff.gtx;
                 float L_py  = ug_open ? g_aff.gty_u : g_aff.gty;
                 float gU, gV;
-                if (g_aff.enabled && g_aff.pivot)
+                bool dlc_page = (open_grp & 2); // DLC map open (page==10, area 40-43)
+                if (!dlc_page)
+                {
+                    // EXACT world->map-space converter (agent RE 0a30738: FUN_140876140 +
+                    // live CS::WorldMapViewModel dump). Overworld 60/61 AND underground 12
+                    // share ONE conversion — origin (7168,16384), bias 128, scale 1.0,
+                    // Z-flipped:  mapX = worldX - 7040 ;  mapZ = -worldZ + 16512.
+                    // No swap, no rotation, no per-page origin. map-space->screen is the
+                    // pan/zoom step in project_uv below. DLC keeps the eyeball path until
+                    // its converter (page 10) is dumped.
+                    gU = wx - 7040.0f;
+                    gV = -wz + 16512.0f;
+                }
+                else if (g_aff.enabled && g_aff.pivot)
                 {
                     // rotate about the centroid, placed at render-centre + pan → M only
                     // ROTATES the cloud (in place), never translates it off-screen.
@@ -751,6 +789,7 @@ namespace
                 fg->AddCircleFilled(gp, r, col);
                 fg->AddCircle(gp, r, IM_COL32(0, 0, 0, 220), 0, 1.5f);
                 ++drawn;
+                if (e.data.areaNo < 64) ++drawn_by_area[e.data.areaNo]; // DIAG histogram
                 if (solo)
                     snprintf(solo_info, sizeof(solo_info),
                              "SOLO #%d area=%d page=%d world=(%.0f,%.0f) offset[%d]=(%.0f,%.0f) px=(%.0f,%.0f)  K=calib page",
@@ -771,6 +810,24 @@ namespace
                      g_aff.enabled ? "AFFINE" : "diag", (int)g_cal_pairs.size());
             fg->AddText(ImVec2(12, 44), IM_COL32(0, 0, 0, 200), gbuf);
             fg->AddText(ImVec2(11, 43), IM_COL32(90, 230, 130, 255), gbuf);
+            // DIAG: which ORIGINAL areaNos are drawn on this open map (spot UG leaks) +
+            // the live open-region read (open_grp / dlc / ug) — all on screen, no logs.
+            char abuf[320];
+            int ap = snprintf(abuf, sizeof(abuf), "OPEN grp=%d dlc=%d ug=%d | DRAWN area: ",
+                              open_grp, (int)v.openDlc, (int)v.underground);
+            for (int a = 0; a < 64 && ap < (int)sizeof(abuf) - 16; ++a)
+                if (drawn_by_area[a])
+                    ap += snprintf(abuf + ap, sizeof(abuf) - ap, "%d:%d ", a, drawn_by_area[a]);
+            fg->AddText(ImVec2(12, 76), IM_COL32(0, 0, 0, 200), abuf);
+            fg->AddText(ImVec2(11, 75), IM_COL32(255, 220, 120, 255), abuf);
+            // Also log it (once per change) so it can be copied from the log file.
+            static std::string s_last_hist;
+            if (abuf != s_last_hist)
+            {
+                s_last_hist = abuf;
+                spdlog::info("[GRACE-DIAG] open_grp={} (dlc={} ug={}) drawn={}/{}  {}",
+                             open_grp, (int)v.openDlc, (int)v.underground, drawn, total, abuf);
+            }
         }
 
         // Hotkeys (work menu-closed): C = 1-point calibrate (solve biasX/Y so the
@@ -780,6 +837,13 @@ namespace
         bool downC = (GetAsyncKeyState('C') & 0x8000) != 0;
         bool downX = (GetAsyncKeyState('X') & 0x8000) != 0;
         bool downL = (GetAsyncKeyState('L') & 0x8000) != 0;
+
+        // Y = toggle the projection centre: stable pan-based (fixes markers-follow-reticle)
+        // vs the old reticle-coupled +0xFC. Default = pan-based.
+        static bool prevY = false;
+        bool downY = (GetAsyncKeyState('Y') & 0x8000) != 0;
+        if (downY && !prevY) g_pan_center = !g_pan_center;
+        prevY = downY;
 
         // PageDown / PageUp dial the grace world-scale live (physical keys = AZERTY-safe).
         // Hold Shift for fine ±0.001 steps.
@@ -929,8 +993,10 @@ namespace
             else
             {
                 ImVec2 p = project_uv(v, U, V, io.DisplaySize.x, io.DisplaySize.y);
-                ImGui::Text("U(+0x104)=%.1f  V(+0x108)=%.1f", U, V);
-                ImGui::Text("pan=(%.1f, %.1f)  zoom=%.4f", v.panX, v.panZ, v.zoom);
+                ImGui::Text("U(+0x104)=%.1f  V(+0x108)=%.1f   reticle-ctr(+0xFC)=(%.1f,%.1f)",
+                            U, V, v.raw[0], v.raw[1]);
+                ImGui::Text("pan=(%.1f, %.1f)  zoom=%.4f   centre=%s (Y toggles)",
+                            v.panX, v.panZ, v.zoom, g_pan_center ? "PAN (stable)" : "RETICLE (+0xFC)");
                 ImGui::Text("projected px = (%.0f, %.0f)   mouse = (%.0f, %.0f)   [%.0fx%.0f]",
                             p.x, p.y, m.x, m.y, io.DisplaySize.x, io.DisplaySize.y);
                 ImGui::Text("err = (%.0f, %.0f) px", p.x - m.x, p.y - m.y);
