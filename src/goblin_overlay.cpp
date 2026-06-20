@@ -600,19 +600,20 @@ namespace
         //   s += (raw - s)*alpha.   alpha=1 -> instant (current). alpha~0.1 -> ER's ease.
         // Eased fields: panX/panZ (grace centre) AND reticle raw[2]/raw[3] (the cyan). At rest
         // s==raw so static placement is untouched; only the in-motion render-lead is removed.
-        // FRAMERATE-INDEPENDENT ease (F/H dial the RATE). The engine eases the displayed view
-        // on a TIME basis, so a fixed per-frame alpha lagged at low fps AND on zoom even at
-        // high fps. Compute the per-frame alpha from dt: a = 1 − exp(−dt·rate). Same time-
-        // constant at any fps. rate≈35 ↔ the 0.5/frame dialed at ~50fps. Re-seed when the map
-        // closes (!live) so reopening doesn't ease from a stale pan (= icons frozen off-screen).
-        static float g_easeRate = 35.0f;
+        // FRAMERATE-INDEPENDENT ease (F/H dial TAU = the time-constant in seconds). For a
+        // constant-velocity scroll the steady-state lag of an exp filter is (1−a)/a·v·dt,
+        // which is STILL dt-dependent (the bug: grid lag changed with fps even after dt-norm).
+        // Use a = dt/(dt+tau) instead → steady lag = v·tau EXACTLY, frame-independent. tau≈0.02s
+        // ↔ the 0.5/frame at ~50fps. Re-seed on map close (!live) so reopen doesn't ease from a
+        // stale pan (= icons frozen off-screen).
+        static float g_easeTau = 0.02f;
         {
             static float sX = 0, sZ = 0, sZoom = 0;
             static bool sInit = false;
             if (live)
             {
                 float dt = io.DeltaTime; if (dt < 0.0f) dt = 0.0f; else if (dt > 0.1f) dt = 0.1f;
-                float a = 1.0f - expf(-dt * g_easeRate);
+                float a = (g_easeTau > 0.0001f) ? dt / (dt + g_easeTau) : 1.0f;
                 if (a < 0.0f) a = 0.0f; else if (a > 1.0f) a = 1.0f;
                 if (!sInit) { sX = v.panX; sZ = v.panZ; sZoom = v.zoom; sInit = true; }
                 sX    += (v.panX - sX)    * a;
@@ -647,8 +648,8 @@ namespace
         }
         {
             char lb[96];
-            snprintf(lb, sizeof(lb), "EASERATE=%.1f (F/H, R=35)   grid=I   MAPFPS=%.0f (T/Z)",
-                     g_easeRate, g_mapFps);
+            snprintf(lb, sizeof(lb), "EASETAU=%.4fs (F/H, R=.02)   grid=I   MAPFPS=%.0f (T/Z)",
+                     g_easeTau, g_mapFps);
             fg->AddText(ImVec2(12, 31), IM_COL32(0, 0, 0, 200), lb);
             fg->AddText(ImVec2(11, 30), IM_COL32(120, 255, 160, 255), lb);
             // DIAG: live snap-rect + pan + reticle. Watch in UNDERGROUND while moving the
@@ -1005,9 +1006,9 @@ namespace
         bool downLB = (GetAsyncKeyState('F') & 0x8000) != 0; // convScale -
         bool downRB = (GetAsyncKeyState('H') & 0x8000) != 0; // convScale +
         bool downBS = (GetAsyncKeyState('R') & 0x8000) != 0; // reset 1.0
-        if (downLB && !prevLB) { g_easeRate -= 2.5f; if (g_easeRate < 1.0f) g_easeRate = 1.0f; spdlog::info("[EASERATE] {:.1f}", g_easeRate); }
-        if (downRB && !prevRB) { g_easeRate += 2.5f; spdlog::info("[EASERATE] {:.1f}", g_easeRate); }
-        if (downBS && !prevBS) { g_easeRate = 35.0f; spdlog::info("[EASERATE] reset 35"); }
+        if (downLB && !prevLB) { g_easeTau -= 0.005f; if (g_easeTau < 0.0f) g_easeTau = 0.0f; spdlog::info("[EASETAU] {:.4f}", g_easeTau); }
+        if (downRB && !prevRB) { g_easeTau += 0.005f; spdlog::info("[EASETAU] {:.4f}", g_easeTau); }
+        if (downBS && !prevBS) { g_easeTau = 0.02f; spdlog::info("[EASETAU] reset 0.02"); }
         prevLB = downLB; prevRB = downRB; prevBS = downBS;
 
         // T / Z = map-update-rate throttle (Hz); 0 = off (every frame).
