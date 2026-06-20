@@ -231,61 +231,54 @@ void probe_loop()
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         auto now = clock::now();
 
-        // Only the world-map screen has a live cursor. While the map is CLOSED, skip
-        // the (whole-address-space) vtable scan entirely — that idle thrash was the
-        // ~5s "no live view": a map open landing mid-flight in a slow closed-state scan
-        // had to wait it out + the next scan to find the fresh cursor. Drop state on
-        // close and force one scan the instant it opens.
-        bool map_open = goblin::world_map_open();
-        static bool prev_open = false;
-        bool just_opened = map_open && !prev_open;
-        prev_open = map_open;
-        if (!map_open)
-        {
-            if (g_active_cursor.load(std::memory_order_relaxed))
-                g_active_cursor.store(0, std::memory_order_relaxed);
-            candidates.clear();
-            last.clear();
-            last_view.clear();
-            continue;
-        }
-
-        // Force a rescan if the published active cursor just died (map closed/reopened)
-        // → republish a fresh one fast, so the overlay-markers prototype tracks from
-        // the first frame of a new map open instead of waiting out the periodic rescan.
-        bool active_dead = false;
+        // Drop a dead active cursor so the sticky publish can re-lock a fresh one.
         if (uintptr_t ac = g_active_cursor.load(std::memory_order_relaxed))
         {
             uint64_t vt;
             if (!seh_read8(reinterpret_cast<void *>(ac), &vt) || vt != vtable_va)
-            {
-                active_dead = true;
                 g_active_cursor.store(0, std::memory_order_relaxed);
-            }
         }
 
-        // (Re)scan the full address space periodically (and when empty) — the menu
-        // is re-created on each open, so new instances appear. Scan eagerly (≈0.4s)
-        // while we have NO active cursor (map closed / just opened → publish fast),
-        // and lazily (2s) once one is locked (cheap; the per-frame read is live).
-        auto rescan_period = g_active_cursor.load(std::memory_order_relaxed)
-                                 ? std::chrono::milliseconds(2000)
-                                 : std::chrono::milliseconds(400);
-        if (just_opened || candidates.empty() || active_dead || now - last_scan > rescan_period)
+        // PRIMARY: the menu walk (CSMenuMan → WorldMapDialog → +0x2DB0 = cursor) is cheap
+        // (O(KB)) AND is itself the map-open detector — the dialog only exists while the
+        // map is up. Run it EVERY tick, independent of the 0xCD gate (which oscillates
+        // 3/7/0 and starved the probe). If it finds the canonical cursor, the map is open.
+        uintptr_t menu_cursor = resolve_cursor_via_menu(base, vtable_va);
+        if (menu_cursor)
         {
-            candidates.clear();
-            // O(KB) menu walk first; whole-RAM scan only if the offset drifted.
-            uintptr_t cur = resolve_cursor_via_menu(base, vtable_va);
-            if (cur)
-                candidates.push_back(cur);
-            else
+            if (candidates.size() != 1 || candidates[0] != menu_cursor)
+            {
+                candidates.clear();
+                candidates.push_back(menu_cursor);
+                g_log->info("resolve: cursor {:#x} (menu walk)", menu_cursor);
+            }
+        }
+        else
+        {
+            // Walk found nothing → map closed, OR the offset drifted. Fall back to the
+            // 0xCD gate: closed → drop everything; "open" but walk failed → throttled
+            // whole-RAM scan (handles a future offset shift without breaking the probe).
+            bool map_open = goblin::world_map_open();
+            if (!map_open)
+            {
+                if (g_active_cursor.load(std::memory_order_relaxed))
+                    g_active_cursor.store(0, std::memory_order_relaxed);
+                candidates.clear();
+                last.clear();
+                last_view.clear();
+                continue;
+            }
+            bool active_dead = (g_active_cursor.load(std::memory_order_relaxed) == 0);
+            if (candidates.empty() || active_dead || now - last_scan > std::chrono::milliseconds(400))
+            {
+                candidates.clear();
                 scan_all_cursors(vtable_va, candidates);
-            last_scan = now;
-            if (!candidates.empty())
-                g_log->info("resolve: {} cursor instance(s){}", candidates.size(),
-                            cur ? " (menu walk)" : " (scan fallback)");
-            else if (++empty_logs % 6 == 0)
-                g_log->info("no cursor (menu walk + scan both empty — exe version shift?)");
+                last_scan = now;
+                if (!candidates.empty())
+                    g_log->info("resolve: {} cursor (scan fallback — menu walk failed)", candidates.size());
+                else if (++empty_logs % 6 == 0)
+                    g_log->info("no cursor (menu walk + scan both empty — offset/RVA shift?)");
+            }
         }
 
         for (uintptr_t a : candidates)
