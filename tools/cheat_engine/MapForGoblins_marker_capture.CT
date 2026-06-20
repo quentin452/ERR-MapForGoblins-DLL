@@ -103,6 +103,31 @@ function mfg_scan()
   res.destroy(); return ok
 end
 mfg_rescan=mfg_scan
+
+-- DIAGNOSTIC rescan: lists every cursor-vtable instance and why it's accepted/rejected.
+-- Run on NUMPAD 1; tells you if the map is closed, or if the cursor just needs to be moved.
+function mfg_diag()
+  local base=getAddress("eldenring.exe"); if base==0 then print("[MFG] eldenring.exe not found"); return end
+  local vt=base+CURSOR_VTABLE_RVA; local mb,me=get_module_range()
+  local b={}; for i=0,7 do b[i+1]=string.format("%02X",(vt>>(i*8))&0xFF) end
+  local res=AOBScan(table.concat(b," "),"+W-C")
+  if res==nil then print("[MFG] 0 cursor-vtable instances -> map is CLOSED. Open the world map."); return end
+  print(string.format("[MFG] %d cursor-vtable instance(s):", res.Count))
+  local locked=false
+  for i=0,math.min(res.Count-1,32) do
+    local a=getAddress(res[i]); local x,z=readFloat(a+OFF_RX),readFloat(a+OFF_RZ)
+    local view=readPointer(a+OFF_VIEW) or 0
+    local inimg=(view>=mb and view<me)
+    local why
+    if view==0 then why="view=0"
+    elseif inimg then why="view in-image (static template)"
+    elseif not (plausible(x) and plausible(z)) then why=string.format("coords not live (%.3g,%.3g) -> MOVE/snap the reticle",x,z)
+    else why="OK -> LOCKING"; if not locked then publish(a); locked=true end end
+    print(string.format("  %X +0x104/108=(%.3g,%.3g) view=%X  [%s]", a, x, z, view, why))
+  end
+  res.destroy()
+  if not locked then print("[MFG] none lockable. If coords say 'not live': move the cursor on the open map, then NUMPAD 1 again.") end
+end
 function mfg_tick()
   local base=getAddress("eldenring.exe"); if base==0 then return end
   local vt=base+CURSOR_VTABLE_RVA; local mb,me=get_module_range()
@@ -110,7 +135,7 @@ function mfg_tick()
     local view=readPointer(mfg.cursor+OFF_VIEW); if view and view~=0 and view~=mfg.view then mfg.view=view; unregisterSymbol("MFG_VIEW"); registerSymbol("MFG_VIEW",view,true) end
     return
   end
-  mfg.tick=(mfg.tick or 0)+1; if (mfg.tick%6)==0 then mfg_scan() end
+  mfg.tick=(mfg.tick or 0)+1; if (mfg.tick%2)==0 then mfg_scan() end
 end
 
 -- region label (page + layer) from the SOLVED region fields
@@ -146,9 +171,9 @@ mfg.cursor,mfg.view,mfg.menu,mfg.mbase,mfg.mend,mfg.tick,mfg.hdr = nil,nil,nil,n
 unregisterSymbol("MFG_CURSOR"); unregisterSymbol("MFG_VIEW"); unregisterSymbol("MFG_MENU")
 mfg.timer=createTimer(nil); mfg.timer.Interval=1000; mfg.timer.OnTimer=mfg_tick
 mfg.hk =createHotkey(mfg_capture, VK_NUMPAD0)   -- NUMPAD 0 = capture render_out (after snap)
-mfg.hk2=createHotkey(mfg_rescan,  VK_NUMPAD1)   -- NUMPAD 1 = rescan cursor
+mfg.hk2=createHotkey(mfg_diag,    VK_NUMPAD1)   -- NUMPAD 1 = diagnostic rescan (lists why + locks)
 mfg_scan()
-print("[MFG] MARKER capture armed. Open map -> hover known grace (let cursor SNAP) -> NUMPAD 0.")
-print("[MFG] >=3 spread graces per page (60,61,12,40,41,42,43). Then tools/solve_marker_affine.py")
+print("[MFG] MARKER capture armed. Open map, MOVE the reticle, NUMPAD 1 to lock (it diagnoses if it can't).")
+print("[MFG] Then hover a known grace (let cursor SNAP) -> NUMPAD 0. >=3 graces/page (60,61,12,40-43).")
 ]]></LuaScript>
 </CheatTable>
