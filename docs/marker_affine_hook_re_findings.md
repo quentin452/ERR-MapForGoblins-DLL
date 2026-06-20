@@ -111,6 +111,34 @@ The overlay already fits `M` (shared) + per-page `T` from collected pairs
 - confirm `M` shared (hypothesis: 90° axis-swap @ 0.5: `a≈0, b≈±0.5, c≈±0.5, d≈0`), bake
   `M` + `T[page]`, replace the runtime solve.
 
+## Do UNDISCOVERED markers have a readable render position? (re_v59)
+
+**Static answer: almost certainly NO → the `M·world+T` bake is required.** Evidence:
+
+- **Visibility is build-time + event-flag (discovery) gated, not a draw-time alpha.** The
+  show-predicate `vt[1] FUN_140a81450` *registers* the point (`FUN_140d0cb20(PointMan+0x158,
+  …)`) only when its gate passes, and the prior live-refresh RE confirmed `vt[1]` is **not
+  re-run in the per-frame reconcile** — so it gates *whether the point is built/registered*,
+  not per-frame drawing. The per-row predicate `FUN_140d58470` evaluates the row's display-
+  group flag via `_VerifyEnableEventFlag`/`_VerifyDisableEventFlag` (`0xd58640`/`0xd58550`)
+  — i.e. discovery/event flags decide inclusion.
+- The unconditional icon-update over `+0x398` only positions points **already in** that map;
+  it does not build entries for gated-out (undiscovered) markers.
+- Architectural corroboration: the mod has to **inject `WorldMapPointParam` rows** to show
+  undiscovered graces at all (and gates on `require_map_fragments`) — if the game already
+  built+positioned every marker and merely hid undiscovered ones, neither the injection nor
+  this whole `M·world+T` effort would be needed.
+
+So the engine builds/positions only the markers that pass the discovery+fragment gate;
+undiscovered ones (the overlay's reason to exist) have **no render position to read** → the
+overlay must compute them via `render = M·world + T`.
+
+**Definitive live confirmation (the brief's count — user runs):** with the map open on a
+page, count entries in `CSWorldMapPointMan+0x398` vs on-screen icons. If `+0x398` has **no**
+entry for an undiscovered grace → confirmed NO (matches the static read). If it *does* carry
+undiscovered entries with a valid `Matrix2x4` translation (render range) → that would flip
+it to YES and let us skip the math; the static evidence says not to expect that.
+
 ## Handles / AOBs
 
 - reconcile `FUN_140a832a0`; **hook call @ `0xa839a6`** (AOB above), RCX=point, RDX=ctx.
