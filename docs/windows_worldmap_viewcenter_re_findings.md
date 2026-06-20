@@ -122,6 +122,31 @@ return { sx*scaleX + biasX, sz*scaleY + biasY };
 4. **Axis:** `U=+0x104` should pair with `panX=+0x378`. If the constellation is transposed,
    press `G` (axis swap) — confirm which way live and bake it.
 
+## 5b. GAMEPAD reticle (open, 2026-06-20) — runtime test added
+
+Runtime feedback: markers update on MOUSE motion but NOT on gamepad-stick motion; the
+canonical (menu-walk) cursor's reticle `+0x104/+0x108` tracks the mouse but seemingly not the
+stick. Two static facts bound the search:
+
+- **The tick DOES read the stick.** `FUN_1409bd4b0` calls the analog reader `FUN_140757a10`
+  (RVA `0x757a10`) at `0x1409bd66a` and adds it to the edge-scroll vector → moves reticle `+0xFC`.
+  Both `FUN_140757a10`/`FUN_140757af0` gate on the input-enable check `FUN_140758050` (reads
+  CSMenuMan `DAT_143d6b7b0` state) — so stick input *can* be suppressed by menu sub-state.
+- **The per-frame view updater is `FUN_1409c32f0`** (RVA `0x9c32f0`, called from `FUN_1409cfb60`):
+  it drives the pan setter `FUN_1409cd100`/`FUN_1409cd1c0` on `WorldMapArea` (`dialog+0x4fb`)
+  toward a **view target at `dialog+0x2eac/+0x2eb4`** (page-change writes it in `FUN_1409c1fc0`).
+  So pan follows that target, not the reticle directly.
+
+**Decisive runtime test (shipped):** `goblin_worldmap_probe.cpp` now has `input_delta_scan` —
+it logs every f32 on the cursor (`+0xE0..+0x160`) and the view (`+0x340..+0x390`) that changes
+between ticks (`[INPUT-DELTA]` lines). Protocol: open the map, move ONLY the mouse (note offsets),
+then move ONLY the stick (note offsets). Outcomes:
+- **pan `+0x378` moves under the stick** → the pan projection (`screen = marker·zoom − pan`) is
+  the device-independent fix; flip the `Y` toggle on by default.
+- **the stick moves a DIFFERENT cursor field** (e.g. another coord pair) → read that field.
+- **nothing on this cursor/view moves under the stick** → the gamepad drives a different
+  cursor object/mirror; restore a bounded all-instance vtable scan to find the active one.
+
 ## 6. Caveats
 
 - `pan/zoom` are in the **virtual 1920×1080 canvas**; the `realW/1920` scale handles

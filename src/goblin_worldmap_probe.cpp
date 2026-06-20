@@ -232,6 +232,36 @@ void region_diag(uintptr_t cursor, uintptr_t view)
     if (view) scan("view", view, 0x400);
 }
 
+// INPUT-DEVICE delta scan: which f32 fields move under MOUSE vs GAMEPAD-STICK?
+// Symptom (2026-06-20): markers update on mouse motion but NOT gamepad stick — the
+// reticle (+0x104/+0x108) tracks the mouse cursor but seemingly not the gamepad one.
+// This logs EVERY f32 in a window on the cursor object AND the WorldMapArea (view) that
+// changed since last tick, with its offset. Recipe: open the map, move ONLY the mouse →
+// note the offsets logged; then move ONLY the gamepad stick → note the offsets. The field
+// the projection must read is one that changes under BOTH (prime suspect: view pan +0x378).
+// If NOTHING on this cursor/view changes under the stick, the gamepad drives a different
+// object → bring back a bounded all-instance scan. Read-only + SEH-guarded.
+void input_delta_scan(uintptr_t cursor, uintptr_t view)
+{
+    static std::unordered_map<uintptr_t, float> last;
+    auto scan = [&](const char *tag, uintptr_t base_obj, int lo, int hi) {
+        for (int off = lo; off <= hi; off += 4)
+        {
+            float val = 0.f;
+            if (!seh_read4(reinterpret_cast<void *>(base_obj + off), &val)) continue;
+            if (!std::isfinite(val)) continue;
+            uintptr_t key = base_obj + off;
+            auto it = last.find(key);
+            if (it != last.end() && std::fabs(it->second - val) > 0.01f)
+                g_log->info("[INPUT-DELTA] {}+{:#05x}: {:.3f} -> {:.3f}", tag, off, it->second, val);
+            last[key] = val;
+        }
+    };
+    // cursor coord cluster (reticle/snap fields) + the view's pan/zoom/rect cluster.
+    scan("cursor", cursor, 0xE0, 0x160);
+    if (view) scan("view", view, 0x340, 0x390);
+}
+
 void probe_loop()
 {
     uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
@@ -371,6 +401,7 @@ void probe_loop()
                         lv = {panx, panz, zoom};
                     }
                     region_diag(a, view); // find the open-map region field (switch maps → flips)
+                    input_delta_scan(a, view); // which f32 moves under mouse vs gamepad stick?
                 }
 
                 // One-shot per active cursor: the full float window cursor+0xE0..+0x388
