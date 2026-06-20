@@ -418,6 +418,9 @@ namespace
         float gtx = 0.f, gty = 0.f;   // global pan (eyeball T), added to every page
         bool pivot = true;            // eyeball: rotate about the marker CENTROID (so
                                       // changing M spins in place, not flings about (0,0))
+        float screen_rot = 0.f;       // REAL rotation field (deg, CW), applied in SCREEN
+                                      // space about the map/view centre AFTER projection —
+                                      // decoupled from scale. Set M=diag + this = 90.
     };
     float g_centroidX = 0.f, g_centroidZ = 0.f; // world centroid of drawn graces (pivot)
     AffineFit g_aff;
@@ -685,6 +688,17 @@ namespace
                     gV = (wz - g_origin_v[pg]) * g_world_scale;
                 }
                 ImVec2 gp = project_uv(v, gU, gV, io.DisplaySize.x, io.DisplaySize.y);
+                // REAL rotation: rotate the projected marker in SCREEN space about the
+                // map/view centre (= screen centre, where project_uv pins viewCentre).
+                // Decoupled from M's scale — this is the actual "rotate the map" knob.
+                if (g_aff.screen_rot != 0.f)
+                {
+                    float cx = io.DisplaySize.x * 0.5f, cy = io.DisplaySize.y * 0.5f;
+                    float rr = g_aff.screen_rot * 3.14159265f / 180.f;
+                    float cs = cosf(rr), sn = sinf(rr);
+                    float dx = gp.x - cx, dy = gp.y - cy;
+                    gp = ImVec2(cx + dx * cs - dy * sn, cy + dx * sn + dy * cs);
+                }
                 bool solo = (g_solo >= 0 && myidx == g_solo);
                 if (solo) { g_solo_wU = wx; g_solo_wV = wz; g_solo_page = pg; }
                 if (!solo && (gp.x < -16 || gp.y < -16 || gp.x > io.DisplaySize.x + 16 ||
@@ -897,6 +911,16 @@ namespace
             float det = g_aff.a * g_aff.d - g_aff.b * g_aff.c;
             ImGui::Text("M = [[%.4f, %.4f], [%.4f, %.4f]]  det=%.4f (%s)", g_aff.a, g_aff.b,
                         g_aff.c, g_aff.d, det, det < 0 ? "MIRROR" : "rotation");
+            // REAL ROTATION FIELD — separate from scale. Rotates the whole projected
+            // marker layer in screen space about the map centre. Use M=diag (pure 0.5
+            // scale) + this for a clean 90deg. Buttons step CW; slider for any angle.
+            ImGui::TextColored(ImVec4(1, 0.85f, 0.2f, 1), "ROTATION (screen, separate from scale): %.0f deg CW", g_aff.screen_rot);
+            if (ImGui::Button("0"))   g_aff.screen_rot = 0.f;    ImGui::SameLine();
+            if (ImGui::Button("90 CW"))  g_aff.screen_rot = 90.f;  ImGui::SameLine();
+            if (ImGui::Button("180")) g_aff.screen_rot = 180.f;  ImGui::SameLine();
+            if (ImGui::Button("270 CW")) g_aff.screen_rot = 270.f;
+            ImGui::DragFloat("rotation deg", &g_aff.screen_rot, 1.f, -360.f, 360.f, "%.0f");
+            ImGui::TextDisabled("(tip: set M to 'diag' below, then dial this rotation + pan)");
             // EYEBALL DIAL: rotation presets @ scale 0.5 (one off-diagonal sign each),
             // then pan with gtx/gty until page 60 lines up. If rotate+pan aligns -> it's
             // a clean 90deg rotation; if not -> T differs per page -> use Solve.
