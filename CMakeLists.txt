@@ -96,6 +96,8 @@ add_library( MapForGoblins SHARED
   src/from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp
   src/modutils.hpp
   src/modutils.cpp
+  src/goblin_log_archive.hpp
+  src/goblin_log_archive.cpp
   src/goblin/goblin_structs.hpp
   src/goblin/goblin_map_flags.hpp
   src/goblin/goblin_map_tiles.hpp

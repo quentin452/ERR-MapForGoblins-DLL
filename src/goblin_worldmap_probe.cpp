@@ -473,7 +473,7 @@ void initialize(const std::filesystem::path &log_path)
 {
     try
     {
-        g_log = spdlog::basic_logger_mt("mfg-wmprobe", log_path.string(), false);
+        g_log = spdlog::basic_logger_mt("mfg-wmprobe", log_path.string(), true);  // truncate; prev sessions archived
         g_log->set_pattern("[%H:%M:%S.%e] %v");
         g_log->flush_on(spdlog::level::info);
     }

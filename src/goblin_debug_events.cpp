@@ -421,8 +421,8 @@ void initialize(const std::filesystem::path &log_path, bool hook_flags,
     try
     {
         // Append (not truncate): a relaunch must not wipe a capture in progress.
-        // Sessions are separated by the "=== observer started ===" marker below.
-        g_log = spdlog::basic_logger_mt("mfg-events", log_path.string(), false);
+        // Truncate per session; previous sessions are archived (logs/archive/) at startup.
+        g_log = spdlog::basic_logger_mt("mfg-events", log_path.string(), true);
         g_log->set_pattern("[%H:%M:%S.%e] %v");
         g_log->flush_on(spdlog::level::info);
     }
