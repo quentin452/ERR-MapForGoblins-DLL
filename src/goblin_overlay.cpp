@@ -736,11 +736,26 @@ namespace
             fg->AddText(ImVec2(11, 11), IM_COL32(255, 220, 0, 255), wbuf);
         }
 
-        // Magenta cross at the mouse = where we BELIEVE the game reticle is. If it
-        // sits on the game's reticle, reticle==mouse holds → capture is valid.
+        // Magenta cross = where the GAME draws its reticle. The whole game frame (map + its
+        // cursor) is composited ~1 frame behind the OS input, so the ER cursor LAGS the raw OS
+        // mouse. Draw the cross at the |g_lead|-frame-delayed mouse (same ring-buffer delay as
+        // the markers) so it sits on the ER cursor, not ahead of it. `m` stays RAW (calibration
+        // C-key + LAGCSV compare against the live mouse).
         ImVec2 m = os_mouse_px();
-        fg->AddLine(ImVec2(m.x - 12, m.y), ImVec2(m.x + 12, m.y), IM_COL32(255, 0, 255, 220), 1.0f);
-        fg->AddLine(ImVec2(m.x, m.y - 12), ImVec2(m.x, m.y + 12), IM_COL32(255, 0, 255, 220), 1.0f);
+        ImVec2 md = m;
+        {
+            static const int MHN = 8;
+            static ImVec2 mh[MHN]; static int mHead = 0; static bool mInit = false;
+            if (!mInit) { for (int i = 0; i < MHN; ++i) mh[i] = m; mInit = true; }
+            mHead = (mHead + 1) % MHN; mh[mHead] = m;
+            float d = (g_lead < 0.0f) ? -g_lead : 0.0f; if (d > MHN - 1) d = MHN - 1;
+            int d0 = (int)d; float fr = d - d0;
+            int i0 = (mHead - d0 + 2 * MHN) % MHN, i1 = (mHead - d0 - 1 + 2 * MHN) % MHN;
+            md.x = mh[i0].x * (1 - fr) + mh[i1].x * fr;
+            md.y = mh[i0].y * (1 - fr) + mh[i1].y * fr;
+        }
+        fg->AddLine(ImVec2(md.x - 12, md.y), ImVec2(md.x + 12, md.y), IM_COL32(255, 0, 255, 220), 1.0f);
+        fg->AddLine(ImVec2(md.x, md.y - 12), ImVec2(md.x, md.y + 12), IM_COL32(255, 0, 255, 220), 1.0f);
 
         // The reticle's screen-axis coords: U = +0x104 (raw[2]), V = +0x108 (raw[3]).
         float U = v.raw[2], V = v.raw[3];
