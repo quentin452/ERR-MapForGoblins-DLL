@@ -612,7 +612,10 @@ namespace
         // the per-frame delta 1.25× in the OPPOSITE direction on a sharp reversal (keyboard/gamepad
         // ZQSD pan = instant velocity flips) → the points visibly "se retournent"/overshoot. A true
         // past value never overshoots. lead>0 (forward) still extrapolates (experiment only).
-        static float g_lead = -1.25f; // user-tuned: −1.25 frame delay best-syncs to the native map
+        static float g_lead = -1.0f; // user-tuned: exactly 1-frame delay = the map layer is
+                                     // composited 1 frame behind our Present sample. Markers live
+                                     // on that delayed layer; the cursor/reticle does NOT (drawn
+                                     // fresh by the game), so the delay applies to markers only.
         {
             static const int HN = 8;
             static float hCU[HN] = {0}, hCV[HN] = {0}, hZ[HN] = {0};
@@ -1032,8 +1035,8 @@ namespace
         bool downLB = (GetAsyncKeyState('F') & 0x8000) != 0; // lead -
         bool downRB = (GetAsyncKeyState('H') & 0x8000) != 0; // lead +
         bool downBS = (GetAsyncKeyState('R') & 0x8000) != 0; // reset 0
-        if (downLB && !prevLB) { g_lead -= 0.25f; spdlog::info("[LEAD] {:.2f}", g_lead); }
-        if (downRB && !prevRB) { g_lead += 0.25f; spdlog::info("[LEAD] {:.2f}", g_lead); }
+        if (downLB && !prevLB) { g_lead -= 0.125f; spdlog::info("[LEAD] {:.3f}", g_lead); }
+        if (downRB && !prevRB) { g_lead += 0.125f; spdlog::info("[LEAD] {:.3f}", g_lead); }
         if (downBS && !prevBS) { g_lead = 0.0f; spdlog::info("[LEAD] reset 0"); }
         prevLB = downLB; prevRB = downRB; prevBS = downBS;
 
@@ -1241,6 +1244,13 @@ namespace
             ImGui::DragFloat("biasY", &g_calib.biasY, 0.5f, -4000.0f, 4000.0f, "%.1f");
             if (ImGui::Button("reset calib"))
                 g_calib = MarkerCalib{};
+
+            ImGui::Separator();
+            ImGui::TextColored(ImVec4(0.6f, 0.9f, 1, 1), "MOTION SYNC: frame delay (neg) / lead (pos)");
+            ImGui::SliderFloat("delay (frames)", &g_lead, -3.0f, 1.0f, "%.3f");
+            ImGui::SameLine();
+            if (ImGui::Button("0##lead")) g_lead = 0.0f;
+            ImGui::TextDisabled("scroll the map while dragging; <0 = delay (ring buffer, no overshoot)");
 
             ImGui::Separator();
             ImGui::TextColored(ImVec4(0.5f, 1, 0.6f, 1), "WORLD->RENDER affine: render = M*world + T[page] + pan");
