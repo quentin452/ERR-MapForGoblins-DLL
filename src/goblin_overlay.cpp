@@ -599,34 +599,32 @@ namespace
         //   s += (raw - s)*alpha.   alpha=1 -> instant (current). alpha~0.1 -> ER's ease.
         // Eased fields: panX/panZ (grace centre) AND reticle raw[2]/raw[3] (the cyan). At rest
         // s==raw so static placement is untouched; only the in-motion render-lead is removed.
-        // FRAMERATE-INDEPENDENT ease (F/H dial TAU = the time-constant in seconds). For a
-        // constant-velocity scroll the steady-state lag of an exp filter is (1−a)/a·v·dt,
-        // which is STILL dt-dependent (the bug: grid lag changed with fps even after dt-norm).
-        // Use a = dt/(dt+tau) instead → steady lag = v·tau EXACTLY, frame-independent. tau≈0.02s
-        // ↔ the 0.5/frame at ~50fps. Re-seed on map close (!live) so reopen doesn't ease from a
-        // stale pan (= icons frozen off-screen).
-        // ★ ZOOM-ONLY ease. The transition décalage is ∝ screen_offset·Δzoom/zoom (worst at low
-        // zoom): the displayed map's zoom LAGS the target zoom (+0x380) we sample, so during a
-        // zoom our markers spread faster than the map. Easing PAN too (earlier attempts) only
-        // contaminated it — pan/snapMid are right at instant. So ease ONLY zoom; leave pan/snapMid
-        // raw. project_uv's centre (pan+snapMid)/zoom uses the eased zoom and the /zoom·zoom
-        // cancels for the pan term → ONLY the mU·zoom spread term gets the eased zoom = exactly
-        // the 1/zoom décalage term. F/H dial g_zoomTau (R=0=instant). At rest eased==raw → static
-        // placement intact, no mouse coupling (centre is still pan-based, cursor-independent).
-        static float g_zoomTau = 0.0f; // 0 = instant; real fix is the canvas factor, no ease needed
+        // ★ FRAME LEAD/DELAY on the full view (centre + zoom). The "dash" = our overlay (every
+        // Present) vs the native GFx map layer's compositing phase. Now that the projection is
+        // EXACT (canvas factor), this is a CLEAN test of a pure temporal frame-shift: extrapolate
+        // the camera by g_lead frames. lead>0 = forward (lead the map), lead<0 = backward (DELAY,
+        // = use last frame's view, if the map layer trails us). lead=0 = instant. F/H dial,
+        // R=0. Applied to the view CENTRE + zoom, written back to pan so project_uv reproduces it.
+        // If no value syncs the points to the map → the dash is the inherent overlay-vs-native
+        // limit (sub-frame compositing phase), accept it.
+        static float g_lead = -1.25f; // user-tuned: −1.25 frame delay best-syncs to the native map
         {
-            static float sZoom = 0; static bool zInit = false;
+            static float pCU = 0, pCV = 0, pZoom = 0; static bool pInit = false;
             if (live)
             {
-                float dt = io.DeltaTime; if (dt < 0.0f) dt = 0.0f; else if (dt > 0.1f) dt = 0.1f;
-                float az = (g_zoomTau > 0.0001f) ? dt / (dt + g_zoomTau) : 1.0f;
-                if (az < 0.0f) az = 0.0f; else if (az > 1.0f) az = 1.0f;
-                if (!zInit) { sZoom = v.zoom; zInit = true; }
-                sZoom += (v.zoom - sZoom) * az;
-                v.zoom = sZoom; // ONLY zoom eased; pan/snapMid raw
+                float cU = (v.panX + v.snapMidX) / v.zoom;
+                float cV = (v.panZ + v.snapMidZ) / v.zoom;
+                if (!pInit) { pCU = cU; pCV = cV; pZoom = v.zoom; pInit = true; }
+                float eU = cU + g_lead * (cU - pCU);
+                float eV = cV + g_lead * (cV - pCV);
+                float eZ = v.zoom + g_lead * (v.zoom - pZoom);
+                pCU = cU; pCV = cV; pZoom = v.zoom;
+                v.zoom = eZ;
+                v.panX = eU * eZ - v.snapMidX;
+                v.panZ = eV * eZ - v.snapMidZ;
             }
             else
-                zInit = false; // map closed → re-seed fresh on reopen
+                pInit = false; // map closed → re-seed fresh on reopen
         }
 
         // UPDATE-RATE THROTTLE (T / Z). Hypothesis: ER refreshes the displayed map at a fixed
@@ -652,8 +650,8 @@ namespace
         }
         {
             char lb[96];
-            snprintf(lb, sizeof(lb), "ZOOMTAU=%.4f (F/H, R=0)   grid=I   MAPFPS=%.0f (T/Z)",
-                     g_zoomTau, g_mapFps);
+            snprintf(lb, sizeof(lb), "LEAD=%.2f frames (F=delay/H=lead, R=0)   grid=I   MAPFPS=%.0f (T/Z)",
+                     g_lead, g_mapFps);
             fg->AddText(ImVec2(12, 31), IM_COL32(0, 0, 0, 200), lb);
             fg->AddText(ImVec2(11, 30), IM_COL32(120, 255, 160, 255), lb);
             // DIAG: live snap-rect + pan + reticle. Watch in UNDERGROUND while moving the
@@ -1004,15 +1002,16 @@ namespace
         // Hotkeys (work menu-closed): C = 1-point calibrate (solve biasX/Y so the
         // projection of the reticle hits the mouse), L = log a row, X = reset,
         // G = swap grace axes. The model is linear in bias, so one capture pins both.
-        // F / H = nudge the ZOOM-only ease tau (seconds); R = reset 0 (instant).
+        // F / H = nudge the frame LEAD/DELAY (F = −0.25 toward delay, H = +0.25 toward lead);
+        // R = reset 0. Negative = delay (use older view), positive = lead (extrapolate forward).
         // (Letter keys: OEM [ ] were unreachable on AZERTY.)
         static bool prevLB = false, prevRB = false, prevBS = false;
-        bool downLB = (GetAsyncKeyState('F') & 0x8000) != 0; // zoomTau -
-        bool downRB = (GetAsyncKeyState('H') & 0x8000) != 0; // zoomTau +
+        bool downLB = (GetAsyncKeyState('F') & 0x8000) != 0; // lead -
+        bool downRB = (GetAsyncKeyState('H') & 0x8000) != 0; // lead +
         bool downBS = (GetAsyncKeyState('R') & 0x8000) != 0; // reset 0
-        if (downLB && !prevLB) { g_zoomTau -= 0.005f; if (g_zoomTau < 0.0f) g_zoomTau = 0.0f; spdlog::info("[ZOOMTAU] {:.4f}", g_zoomTau); }
-        if (downRB && !prevRB) { g_zoomTau += 0.005f; spdlog::info("[ZOOMTAU] {:.4f}", g_zoomTau); }
-        if (downBS && !prevBS) { g_zoomTau = 0.0f; spdlog::info("[ZOOMTAU] reset 0"); }
+        if (downLB && !prevLB) { g_lead -= 0.25f; spdlog::info("[LEAD] {:.2f}", g_lead); }
+        if (downRB && !prevRB) { g_lead += 0.25f; spdlog::info("[LEAD] {:.2f}", g_lead); }
+        if (downBS && !prevBS) { g_lead = 0.0f; spdlog::info("[LEAD] reset 0"); }
         prevLB = downLB; prevRB = downRB; prevBS = downBS;
 
         // T / Z = map-update-rate throttle (Hz); 0 = off (every frame).
