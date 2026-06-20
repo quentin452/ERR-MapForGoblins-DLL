@@ -286,12 +286,21 @@ void probe_loop()
                     // the overlay-markers prototype's get_live_view(). DIAG: log the
                     // 0→addr (and address-change) transition so the first-open latency
                     // can be measured against the map-open moment.
+                    // STICKY: several mirror cursor instances carry a valid view+zoom;
+                    // publishing "the last valid candidate" each scan made the active
+                    // cursor SWITCH mid-session → its view centre jumped → the markers
+                    // TELEPORTED (and the eyeball pan shifted per session). Lock onto the
+                    // first valid one and keep it until it dies (active_dead clears it).
                     if (zoom != 0.f && !view_is_static(view))
                     {
-                        if (g_active_cursor.load(std::memory_order_relaxed) != a)
-                            g_log->info("[PUBLISH] active cursor @{:#x} (view @{:#x}) zoom={:.4f} "
-                                        "coord=({:.1f},{:.1f})", a, view, zoom, x, z);
-                        g_active_cursor.store(a, std::memory_order_relaxed);
+                        uintptr_t cur = g_active_cursor.load(std::memory_order_relaxed);
+                        if (cur == 0 || cur == a)
+                        {
+                            if (cur != a)
+                                g_log->info("[PUBLISH] active cursor @{:#x} (view @{:#x}) zoom={:.4f} "
+                                            "coord=({:.1f},{:.1f})", a, view, zoom, x, z);
+                            g_active_cursor.store(a, std::memory_order_relaxed);
+                        }
                     }
 
                     auto &lv = last_view[a];
