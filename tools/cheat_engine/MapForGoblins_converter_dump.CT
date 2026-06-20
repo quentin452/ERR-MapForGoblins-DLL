@@ -34,35 +34,39 @@ function mfg_dump_converters()
   local b = {}; for i=0,7 do b[i+1]=string.format("%02X",(vt>>(i*8))&0xFF) end
   local res = AOBScan(table.concat(b," "), "+W-C")
   if res==nil then print("[MFG] no converter found -- open the world map first."); return end
-  print(string.format("[MFG] %d converter-vtable instance(s):", res.Count))
+  print(string.format("[MFG] %d converter-vtable instance(s) -- DIAGNOSTIC dump:", res.Count))
   local f = io.open("MapForGoblins_converters.csv","a")
-  if f then f:write("# area,scale,originX,originZ,biasX,biasZ,Tx,Tz,addr\n") end
-  local shown = 0
-  for i = 0, res.Count-1 do
+  for i = 0, math.min(res.Count-1, 8) do
     local a = getAddress(res[i])
-    local area  = readByte(a+0xB)
-    local scale = readFloat(a+0x20)
-    if area and VALID[area] and finite(scale) and math.abs(scale)>1e-4 and math.abs(scale)<10 then
-      local gZ = readByte(a+0x9) or 0
-      local gX = readByte(a+0xA) or 0
-      local cX = readFloat(a+0xC) or 0
-      local cZ = readFloat(a+0x14) or 0
-      local bX = readFloat(a+0x18) or 0
-      local bZ = readFloat(a+0x1C) or 0
-      local originX = gX*256 + cX
-      local originZ = gZ*256 + cZ
-      local Tx = bX - scale*originX
-      local Tz = bZ + scale*originZ
-      print(string.format("  area=%-3d scale=%.5f  originX=%.2f originZ=%.2f  biasX=%.2f biasZ=%.2f  => renderX=%.5f*wx %+0.2f ; renderZ=-%.5f*wz %+0.2f   @%X",
-            area, scale, originX, originZ, bX, bZ, scale, Tx, scale, Tz, a))
-      if f then f:write(string.format("%d,%.6f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%X\n", area, scale, originX, originZ, bX, bZ, Tx, Tz, a)) end
-      shown = shown + 1
+    print(string.format("\n[MFG] === instance %d @ %X ===", i, a))
+    -- raw hex of the first 0x40 bytes
+    for off=0,0x30,0x10 do
+      local s=""
+      for k=0,15 do local b=readByte(a+off+k) or 0; s=s..string.format("%02X ",b) end
+      print(string.format("  +%02X: %s", off, s))
     end
+    -- scan a 0x400 window for an area byte (60/61/12/40-43) IMMEDIATELY followed within 0x20 by a float ~0.5
+    print("  -- area-byte (60/61/12/40-43) + nearby scale-float (0.2..2.0) hits --")
+    local hits=0
+    for off=0,0x3F8,1 do
+      local b=readByte(a+off)
+      if b and VALID[b] then
+        for so=-0x20,0x20,4 do
+          local fl=readFloat(a+off+so)
+          if fl and fl>0.2 and fl<2.0 then
+            print(string.format("    area=%d @+0x%X   scale~%.5f @+0x%X (delta %+d)", b, off, fl, off+so, so))
+            if f then f:write(string.format("inst%d,area=%d,@+0x%X,scale=%.6f,@+0x%X\n",i,b,off,fl,off+so)) end
+            hits=hits+1; if hits>=12 then break end
+          end
+        end
+      end
+      if hits>=12 then break end
+    end
+    if hits==0 then print("    (none -- this instance is probably the manager/container, not an element)") end
   end
   res.destroy()
   if f then f:close() end
-  if shown==0 then print("[MFG] scanned but no converter had a VALID area + plausible scale. Map open? (layout may differ -> tell me the raw count)") end
-  print(string.format("[MFG] %d valid converter(s) -> MapForGoblins_converters.csv", shown))
+  print("\n[MFG] paste this whole block back. The 'area=X @+0x.. scale~0.5 @+0x..' lines give the real layout.")
 end
 
 if mfg.hk3 then pcall(function() mfg.hk3.destroy() end) end
