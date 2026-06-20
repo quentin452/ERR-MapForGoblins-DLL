@@ -110,6 +110,28 @@ void *modutils::scan(const ScanArgs &args)
     return nullptr;
 }
 
+size_t modutils::scan_count(const std::string &aob)
+{
+    if (memory.empty() || aob.empty())
+        return 0;
+    size_t count = 0;
+    unsigned char *start = &memory.front();
+    size_t remaining = memory.size();
+    while (remaining)
+    {
+        auto *m = reinterpret_cast<unsigned char *>(Pattern16::scan(start, remaining, aob));
+        if (!m)
+            break;
+        ++count;
+        size_t consumed = static_cast<size_t>(m - start) + 1;
+        if (consumed >= remaining)
+            break;
+        start = m + 1;
+        remaining -= consumed;
+    }
+    return count;
+}
+
 void modutils::hook(void *function, void *detour, void **trampoline)
 {
     auto mh_status = MH_CreateHook(function, detour, trampoline);

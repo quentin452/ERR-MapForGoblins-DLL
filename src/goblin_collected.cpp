@@ -4,6 +4,7 @@
 #include "goblin_map_data.hpp"
 #include "goblin_geof_models.hpp"
 #include "modutils.hpp"
+#include "re_signatures.hpp"
 #include "goblin_bench.hpp"
 
 #include <algorithm>
@@ -115,14 +116,13 @@ static uintptr_t resolve_slot(const char *aob)
 }
 static uintptr_t geom_flag_slot()  // GeomFlagSaveDataManager (was RVA 0x3D69D18)
 {
-    static uintptr_t s = resolve_slot(
-        "48 8B 3D ?? ?? ?? ?? 33 F6 48 85 FF 74 ?? 48 8B CF E8 ?? ?? ?? ?? 4C 8B 07");
+    static uintptr_t s = resolve_slot(goblin::sig::GEOM_FLAG_SLOT);
     return s;
 }
 static uintptr_t world_geom_man_slot()  // CSWorldGeomMan (was RVA 0x3D69BA8)
 {
     static uintptr_t s = resolve_slot(
-        "48 8B 0D ?? ?? ?? ?? 48 8D 53 10 E8 ?? ?? ?? ?? 4C 8B E8");
+        goblin::sig::WORLD_GEOM_MAN_SLOT);
     return s;
 }
 

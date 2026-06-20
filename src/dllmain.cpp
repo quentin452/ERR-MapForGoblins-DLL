@@ -1,7 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <filesystem>
 #include <memory>
-#include <spdlog/sinks/daily_file_sink.h>
+#include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <thread>
@@ -9,6 +9,8 @@
 
 #include "from/params.hpp"
 #include "modutils.hpp"
+#include "re_signatures.hpp"
+#include "goblin_log_archive.hpp"
 
 #include "goblin_collected.hpp"
 #include "goblin_config.hpp"
@@ -115,8 +117,10 @@ static void setup_logger(std::filesystem::path log_file)
 {
     auto logger = std::make_shared<spdlog::logger>("mapforgoblins");
     logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%n] %^[%l]%$ %v");
+    // Truncate: one fresh file per session. Previous sessions are preserved by the
+    // log-archive lifecycle (zipped to logs/archive/ at startup), so no append needed.
     logger->sinks().push_back(
-        std::make_shared<spdlog::sinks::daily_file_sink_st>(log_file.string(), 0, 0, false, 5));
+        std::make_shared<spdlog::sinks::basic_file_sink_st>(log_file.string(), true));
     logger->flush_on(spdlog::level::info);
 
 #if _DEBUG
@@ -143,6 +147,11 @@ static void setup_mod()
 {
     safe_init_step(&init_modutils,    "modutils::initialize");
     safe_init_step(&init_from_params, "from::params::initialize");
+
+    // AOB signature health check — logs PASS/FAIL for every centralized signature
+    // (src/re_signatures.hpp). After a game update, a FAIL line names exactly which
+    // signature broke. Cheap, read-only; runs once at init.
+    safe_init_step(&goblin::sig::resolve_all_signatures, "AOB signature health check");
 
     // Robust init wait: POLL for the WorldMapPointParam table (the real dependency
     // of inject_map_entries) instead of sleeping a fixed load_delay — on a slow PC
@@ -301,6 +310,10 @@ bool WINAPI DllMain(HINSTANCE dll_instance, unsigned int fdw_reason, void *lpv_r
         GetModuleFileNameW(dll_instance, dll_filename, MAX_PATH);
         auto folder = std::filesystem::path(dll_filename).parent_path();
         g_mod_folder = folder;
+
+        // Log lifecycle: zip the PREVIOUS session's logs into logs/archive/ and start
+        // clean. MUST run before any logger opens its file. Keep the newest 20 archives.
+        goblin::log_archive::archive_and_rotate(folder / "logs", 20);
 
         setup_logger(folder / "logs" / "MapForGoblins.log");
 

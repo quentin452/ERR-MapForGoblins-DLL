@@ -670,8 +670,11 @@ namespace
                 for (int g = 0; g < 4; ++g)
                     if (sn[g]) { pivX[g] = (float)(sx[g] / sn[g]); pivZ[g] = (float)(sz[g] / sn[g]); }
             }
-            // Which group's map is OPEN: sublayer flag (OW/UG) + player-in-DLC (base/DLC).
-            int open_grp = (goblin::player_in_dlc() ? 2 : 0) | ((v.underground != 0) ? 1 : 0);
+            // Which group's map is OPEN — from the SOLVED region getter (probe reads the
+            // WorldMapDialog page+layer, commit 3f4ba42): openDlc = DLC map (page==10),
+            // underground = layer byte. Replaces the old player_in_dlc()+dead-flag guess
+            // (player position ≠ open map; you can open any discovered map).
+            int open_grp = (v.openDlc ? 2 : 0) | ((v.underground != 0) ? 1 : 0);
             bool ug_open = (open_grp & 1);
             g_centroidX = pivX[open_grp];
             g_centroidZ = pivZ[open_grp];

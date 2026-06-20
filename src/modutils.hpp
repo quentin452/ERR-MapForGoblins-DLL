@@ -1,7 +1,9 @@
 #pragma once
 #define WIN32_LEAN_AND_MEAN
 
+#include <cstddef>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace modutils
@@ -20,6 +22,11 @@ struct ScanArgs
 };
 
 void *scan(const ScanArgs &args);
+
+// Count how many times an AOB matches in the module image. Used by the signature
+// health check to flag NON-UNIQUE signatures (>1 → scan() may resolve the wrong
+// function, a latent bug). 0 = gone, 1 = unique, >1 = ambiguous.
+size_t scan_count(const std::string &aob);
 
 void hook(void *function, void *detour, void **trampoline);
 

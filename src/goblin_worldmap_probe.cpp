@@ -1,5 +1,6 @@
 #include "goblin_worldmap_probe.hpp"
 #include "goblin_inject.hpp"   // goblin::world_map_open() — gate the scan on map-open
+#include "re_signatures.hpp"   // centralized image RVAs
 
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -71,13 +72,13 @@ bool plausible_ptr(uintptr_t p)
 // object's first qword IS this vtable ptr, so scanning memory for this value
 // finds cursor instances directly. Resolve-by-RVA: if a game patch shifted it,
 // the scan finds nothing → re-derive from the cursor ctor AOB (doc Goal 2).
-constexpr uintptr_t CURSOR_VTABLE_RVA = 0x2b29a90;
+constexpr uintptr_t CURSOR_VTABLE_RVA = goblin::sig::CURSOR_VTABLE_RVA;
 constexpr ptrdiff_t OFF_X = 0xFC, OFF_Z = 0x104, OFF_Y = 0x10C;
 constexpr uintptr_t CURSOR_OFF_IN_MENU = 0x2DB0;
 // CSMenuMan static slot (RVA, re_v? Ghidra c843cc3). The world-map cursor =
 // WorldMapDialog + 0x2DB0, and the dialog ptr lives somewhere in the first few KB
 // of CSMenuMan → a BOUNDED walk (vs the whole-RAM scan) resolves it in O(KB).
-constexpr uintptr_t CSMENUMAN_SLOT_RVA = 0x3d6b7b0;
+constexpr uintptr_t CSMENUMAN_SLOT_RVA = goblin::sig::CSMENUMAN_SLOT_RVA;
 constexpr uintptr_t MENU_WALK_WINDOW = 0x10000; // dialog ptr "in the first few KB"; widen to be safe
 
 // PROJECTION transform-scan (docs/world_map_projection_re_findings.md). cursor+0xF0
@@ -90,7 +91,7 @@ constexpr ptrdiff_t OFF_VIEW_PTR = 0xF0;     // cursor -> WorldMapArea
 constexpr ptrdiff_t VIEW_PAN_X = 0x378, VIEW_PAN_Z = 0x37C, VIEW_ZOOM = 0x380;
 // Virtual UI canvas singleton: [DAT_1447ef360 + 0x128] -> {+0x110 originX, +0x114
 // originY, +0x118 width, +0x11c height}. RVA, patch-fragile (debug only).
-constexpr uintptr_t CANVAS_SINGLETON_RVA = 0x47ef360;
+constexpr uintptr_t CANVAS_SINGLETON_RVA = goblin::sig::CANVAS_SINGLETON_RVA;
 
 // Safe reads via ReadProcessMemory (NOT __try). clang-cl proved the plain load
 // "can't fault" and ELIDED the __try/__except even with __declspec(noinline) — the
@@ -445,13 +446,26 @@ bool get_live_view(LiveView &out)
     // WorldMapArea+0x6e (i32) = areaNo of the open page (doc §3) → page filter.
     out.viewArea = -1;
     seh_read_i32(reinterpret_cast<void *>(view + 0x6e), &out.viewArea);
-    // Sublayer flag DAT_143d6cfc3 (eldenring.exe+0x3D6CFC3): 0 = overworld, !=0 =
-    // underground. Cheap 1-byte read → lets the overlay switch overworld/underground
-    // projection params + draw only the matching page's graces.
+    // Open-map region — SOLVED RE (commit 3f4ba42, docs/windows_open_map_region_re_prompt.md).
+    // The dead DAT_143d6cfc3 flag (render-only/transient) is replaced by two O(1) reads off
+    // the WorldMapDialog (= cursor − 0x2DB0):
+    //   page  = *(int*)(dialog + 0xA88)                       0 = base, 10 = DLC
+    //   layer = *(uint8_t*)( *(void**)(dialog + 0x2B68) + 0xB8 )  0 = surface, 1 = underground
+    // (underground is applied internally as page+1, not stored in `page`.) Gate:
+    //   page==10 → DLC ; else layer==0 → overworld ; else underground.
     out.underground = 0;
-    int ug = 0;
-    if (seh_read_i32(reinterpret_cast<void *>(base + 0x3D6CFC3), &ug))
-        out.underground = ug & 0xFF; // the flag is a byte
+    out.openDlc = 0;
+    uintptr_t dialog = a - CURSOR_OFF_IN_MENU;
+    int page = 0;
+    if (seh_read_i32(reinterpret_cast<void *>(dialog + 0xA88), &page))
+        out.openDlc = (page == 10) ? 1 : 0;
+    uint64_t layer_obj = 0;
+    if (seh_read8(reinterpret_cast<void *>(dialog + 0x2B68), &layer_obj) && layer_obj)
+    {
+        int layer = 0;
+        if (seh_read_i32(reinterpret_cast<void *>(layer_obj + 0xB8), &layer))
+            out.underground = layer & 0xFF; // the layer state is a byte
+    }
     return true;
 }
 
@@ -459,7 +473,7 @@ void initialize(const std::filesystem::path &log_path)
 {
     try
     {
-        g_log = spdlog::basic_logger_mt("mfg-wmprobe", log_path.string(), false);
+        g_log = spdlog::basic_logger_mt("mfg-wmprobe", log_path.string(), true);  // truncate; prev sessions archived
         g_log->set_pattern("[%H:%M:%S.%e] %v");
         g_log->flush_on(spdlog::level::info);
     }
