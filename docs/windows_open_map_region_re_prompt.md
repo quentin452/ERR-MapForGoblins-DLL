@@ -136,3 +136,52 @@ Read these three on each of the 4 maps and pick the one giving 4 distinct values
 `goblin_worldmap_probe.cpp`); `view = *(cursor + 0xF0)`. Version-stability: re-find `0xA88` as the
 int written by `FUN_1409be5e0`/read by `FUN_1409c4900`; re-find `view+0x370/0x374` as the
 `WorldMapArea` ctor (`FUN_1409cb9c0`) params 5/6.
+
+---
+
+## ✅ SOLVED — full 3-region gate, LIVE-CONFIRMED (2026-06-20)
+
+The page (`0xA88`) only splits **base vs DLC** — Overworld and Underground share it (page=0), because
+**underground is applied internally as `page + 1`**, not stored in the page field. The live OW↔UG state
+lives in a **separate readable byte behind a deref**, found via the 3 map-switch buttons
+(`CS::WorldMapSwitchDialog` / `CS::WorldMapViewModel`).
+
+### The two O(1) fields
+
+From the O(1)-resolved cursor (`dialog = cursor − 0x2DB0`):
+
+```c
+int     page  = *(int*)(dialog + 0xA88);                            // 0 = base, 10 = DLC
+uint8_t layer = *(uint8_t*)( *(void**)(dialog + 0x2B68) + 0xB8 );   // 0 = surface, 1 = underground
+```
+
+- **`layer`** = the surface/underground state. **Setter `FUN_1409c40f0`** writes
+  `*(*(dialog+0x2B68)+0xB8) = target_layer`, then applies `FUN_1409c8120(dialog, page + (layer?1:0))`
+  (→ underground = page+1 internally). Confirmed by the button-state fns: **`FUN_1409d5ce0`** (layer==0 →
+  shows the "Afficher souterrain" button), **`FUN_1409d5e40`** (layer!=0 → shows "Afficher surface").
+- `FUN_1409c6f70` (`_IsChangeableOverlayLayer`, takes `page@0xA88`) only says whether the toggle is
+  *available* — not the current state. The global `DAT_143d6cfc3` is transient/render-only (set per-frame
+  in projection `FUN_1409ce190/cd790`), `DAT_143d6cfc0` is dead — **ignore both**; use the deref byte.
+
+### The gate
+
+```c
+if      (page == 10) region = DLC;          // areaNo 40-43
+else if (layer == 0) region = OVERWORLD;    // areaNo 60/61
+else                 region = UNDERGROUND;  // areaNo 12
+```
+
+### Live verification (CT `MapForGoblins_region.CT` entry 30 = `[[dialog+0x2B68]+0xB8]`)
+
+| map | `page (0xA88)` | `layer (deref)` | → region |
+|---|---|---|---|
+| Overworld | 0 | **0** | OVERWORLD ✓ |
+| Underground | 0 | **1** | UNDERGROUND ✓ |
+| DLC | 10 | 0 | DLC ✓ |
+
+Two reads, zero scan. All other candidates (`view+0x370/0x374`, `dialog+0x98/0x14/0x5c`, `cfc3/2/0`)
+are unnecessary — `page` + `layer` are the only fields needed.
+
+**Version-stability:** re-find `layer` via the setter `FUN_1409c40f0` (writes
+`*(*(dialog+0x2B68)+0xB8)` and calls `FUN_1409c8120(dialog, page+layer)`), or the button-state fns
+`FUN_1409d5ce0`/`FUN_1409d5e40`. `page` as before (`FUN_1409be5e0`/`FUN_1409c4900`).
