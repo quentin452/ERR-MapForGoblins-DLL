@@ -46,18 +46,28 @@ zero hover error. (Approximate cursor-hover variant: `docs/marker_mapspace_CT_re
 stay large, the transform is more than one global affine (per-region origins inside a
 page, or a non-affine Scaleform step) — the hook brief says to report the per-page `M`s.
 
-## 2. Transitive (multi-hop) LegacyConv — wrong region for nested dungeons
+## 2. Legacy conv — ✅ ESSENTIALLY DONE (investigated 2026-06-20)
 
-`project_dungeon_row_to_overworld` (`goblin_inject.cpp:58`) does **one** hop:
-`d->areaNo = c->dst_area` once, then returns. If `dst_area` is itself a legacy sub-area
-(not 60/61), the row is left in an intermediate space → wrong overworld region. Known
-victims (memory): Raya Lucaria interior (area 16 → looks misplaced to Caelid/east; "no
-graces in Liurnia"), Stormveil (10), Leyndell (11), Ashen Capital (35).
+The "transitive multi-hop" worry is a **non-issue**: the Python pipeline already resolves
+the chains. `generate_legacy_conv_cpp` (`tools/generate_data.py`) has a `resolve()` that
+composes every chain (e.g. Ashen Capital m35 → area 11 → area 60) down to 60/61 at bake
+time — so **every baked `LEGACY_CONV` `dst_area` is 60 or 61**. A runtime loop = dead code.
+The area-16 "wrong region" bug was the offset-drop, already fixed by the base-point
+translation (`f960f81`).
 
-**Action:** loop the conv until `dst_area ∈ {60,61}` (or a native page), chaining
-base-point translations: `world ← dstBase + (world − srcBase)` each hop. Guard against
-cycles / missing entries (keep the current entrance-cluster fallback). Verify against a
-Raya Lucaria grace landing in Liurnia, not Caelid.
+Coverage audit of the 562 graces (231 native 60/61, 178 native 12/40-43, 153 legacy):
+- conv keys on `src_gx`; `src_gz` is 0 everywhere and `src_gx` is unique per area → no
+  collision. Of 153 legacy graces, **148 hit an exact base-point**.
+- **5 imperfect, all degrade to an entrance cluster (visible, region-ish):**
+  - area 19 (1 grace, Haligtree) — genuinely absent from `WorldMapLegacyConvParam` (no
+    overworld surface position; the game itself has none). Leave un-projected → it'll be
+    handled by the open-page filter (#3), not the overworld.
+  - (10,1)×1, (31,8)×3 — gridX matches no conv entry of the area → fall back.
+
+**Shipped:** the fallback was the *first* entry of the area (arbitrary far entrance); now
+the **NEAREST base-point by grid distance** (`goblin_inject.cpp` `project_dungeon_row_to_
+overworld`) — keeps those 4 at the closest dungeon mouth. Exact match now also checks
+`src_gz` (was `src_gx` only). Nothing more to do here until #1/#3 land.
 
 ## 3. Open-page filter — graces from ALL pages draw at once (overlapping)
 
@@ -84,7 +94,7 @@ valid extent (or the correct page) removes the need to clamp.
 ---
 
 ### TL;DR priority
-1. **Measure M/T live (P/M keys) and bake** — fixes the global rotation/offset (do first).
-2. **Transitive conv loop** — fixes Raya Lucaria / Liurnia / Ashen regions.
+1. **Measure M/T (placement-hook RE) and bake** — fixes the global rotation/offset. THE one.
+2. ✅ Legacy conv — done (pipeline flattens chains; nearest-entrance fallback shipped).
 3. **Open-page RE** — stop cross-page bleed (needs a small read-only RE: page-id field).
 4. Out-of-range clamp review — cosmetic spread, after 1–3.
