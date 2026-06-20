@@ -640,25 +640,33 @@ namespace
             // each separately. The sublayer flag (DAT_143d6cfc3) says which is open.
             bool ug_open = (v.underground != 0);
             auto is_ug_page = [](int pg) { return pg == 12 || (pg >= 40 && pg <= 43); };
-            // Centroid of the drawn graces (world space) = the pivot for eyeball
-            // rotation, so changing M spins the cloud IN PLACE instead of flinging it
-            // about world-origin (the "rotate moves the map" bug the user hit). Computed
-            // over the graces of the CURRENT layer (overworld or underground) only.
+            // FIXED per-layer pivot for eyeball rotation. Computed ONCE over ALL graces
+            // of each layer (independent of area_filter / solo / visibility / show_all),
+            // so it never moves → the same pan always lands the cluster in the same place.
+            // (A centroid recomputed each frame over the VISIBLE set drifted as toggles
+            // changed the set → the "pan X/Y not stable" bug.)
+            static bool piv_done = false;
+            static float piv_ow_x = 0, piv_ow_z = 0, piv_ug_x = 0, piv_ug_z = 0;
+            if (!piv_done)
             {
-                float cx = 0, cz = 0; int cn = 0;
+                piv_done = true;
+                double owx = 0, owz = 0; int own = 0;
+                double ugx = 0, ugz = 0; int ugn = 0;
                 for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
                 {
                     const gen::MapEntry &e = gen::MAP_ENTRIES[i];
                     if (e.category != gen::Category::WorldGraces) continue;
-                    if (area_filter >= 0 && e.data.areaNo != area_filter) continue;
                     int ga; float wx, wz;
                     goblin::marker_world_pos(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
                                              e.data.posX, e.data.posZ, ga, wx, wz);
-                    if (is_ug_page(ga & 63) != ug_open) continue; // current layer only
-                    cx += wx; cz += wz; ++cn;
+                    if (is_ug_page(ga & 63)) { ugx += wx; ugz += wz; ++ugn; }
+                    else { owx += wx; owz += wz; ++own; }
                 }
-                if (cn) { g_centroidX = cx / cn; g_centroidZ = cz / cn; }
+                if (own) { piv_ow_x = (float)(owx / own); piv_ow_z = (float)(owz / own); }
+                if (ugn) { piv_ug_x = (float)(ugx / ugn); piv_ug_z = (float)(ugz / ugn); }
             }
+            g_centroidX = ug_open ? piv_ug_x : piv_ow_x;
+            g_centroidZ = ug_open ? piv_ug_z : piv_ow_z;
             int total = 0, drawn = 0, fidx = 0;
             char solo_info[160] = "";
             for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
