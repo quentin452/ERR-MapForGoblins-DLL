@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CheatTable CheatEngineTableVersion="44">
+  <CheatEntries>
+    <CheatEntry>
+      <ID>0</ID>
+      <Description>"=== MapForGoblins: WorldMapLegacyConverter constants dump ==="</Description>
+      <GroupHeader>1</GroupHeader>
+    </CheatEntry>
+  </CheatEntries>
+  <LuaScript><![CDATA[
+--[[ Dump the 5 projection constants per converter (RE: FUN_140876140).
+     The transform is:  renderX = scale*worldX + Tx ;  renderZ = -scale*worldZ + Tz
+       scale   = float [conv+0x20]
+       originX = byte[conv+0xA]*256 + float[conv+0xC]
+       originZ = byte[conv+0x9]*256 + float[conv+0x14]
+       biasX   = float [conv+0x18]   ; biasZ = float [conv+0x1C]
+       area    = byte  [conv+0xB]    (60/61 overworld, 12 underground, 40-43 DLC)
+       Tx = biasX - scale*originX  ;  Tz = biasZ + scale*originZ
+     Converter object starts with CS::WorldMapLegacyConverter::vftable (RVA 0x2ad5998).
+     We scan writable memory for that vtable value -> each hit is a converter.
+
+     OPEN the world map (so the converters exist), then press NUMPAD 3.
+     Results -> console + MapForGoblins_converters.csv. ]]
+
+local VT_RVA = 0x2ad5998
+local VALID = {[60]=true,[61]=true,[12]=true,[40]=true,[41]=true,[42]=true,[43]=true}
+mfg = mfg or {}
+
+local function finite(v) return v~=nil and v==v and v<1e30 and v>-1e30 end
+
+function mfg_dump_converters()
+  local base = getAddress("eldenring.exe"); if base==0 then print("[MFG] eldenring.exe not found"); return end
+  local vt = base + VT_RVA
+  local b = {}; for i=0,7 do b[i+1]=string.format("%02X",(vt>>(i*8))&0xFF) end
+  local res = AOBScan(table.concat(b," "), "+W-C")
+  if res==nil then print("[MFG] no converter found -- open the world map first."); return end
+  print(string.format("[MFG] %d converter-vtable instance(s):", res.Count))
+  local f = io.open("MapForGoblins_converters.csv","a")
+  if f then f:write("# area,scale,originX,originZ,biasX,biasZ,Tx,Tz,addr\n") end
+  local shown = 0
+  for i = 0, res.Count-1 do
+    local a = getAddress(res[i])
+    local area  = readByte(a+0xB)
+    local scale = readFloat(a+0x20)
+    if area and VALID[area] and finite(scale) and math.abs(scale)>1e-4 and math.abs(scale)<10 then
+      local gZ = readByte(a+0x9) or 0
+      local gX = readByte(a+0xA) or 0
+      local cX = readFloat(a+0xC) or 0
+      local cZ = readFloat(a+0x14) or 0
+      local bX = readFloat(a+0x18) or 0
+      local bZ = readFloat(a+0x1C) or 0
+      local originX = gX*256 + cX
+      local originZ = gZ*256 + cZ
+      local Tx = bX - scale*originX
+      local Tz = bZ + scale*originZ
+      print(string.format("  area=%-3d scale=%.5f  originX=%.2f originZ=%.2f  biasX=%.2f biasZ=%.2f  => renderX=%.5f*wx %+0.2f ; renderZ=-%.5f*wz %+0.2f   @%X",
+            area, scale, originX, originZ, bX, bZ, scale, Tx, scale, Tz, a))
+      if f then f:write(string.format("%d,%.6f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%X\n", area, scale, originX, originZ, bX, bZ, Tx, Tz, a)) end
+      shown = shown + 1
+    end
+  end
+  res.destroy()
+  if f then f:close() end
+  if shown==0 then print("[MFG] scanned but no converter had a VALID area + plausible scale. Map open? (layout may differ -> tell me the raw count)") end
+  print(string.format("[MFG] %d valid converter(s) -> MapForGoblins_converters.csv", shown))
+end
+
+if mfg.hk3 then pcall(function() mfg.hk3.destroy() end) end
+mfg.hk3 = createHotkey(mfg_dump_converters, VK_NUMPAD3)
+print("[MFG] converter dump loaded. Open the world map (any page) -> NUMPAD 3.")
+print("[MFG] Prints area + scale + originX/Z + biasX/Z + the baked renderX/renderZ formula per converter.")
+]]></LuaScript>
+</CheatTable>
