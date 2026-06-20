@@ -1,4 +1,5 @@
 #include "goblin_worldmap_probe.hpp"
+#include "goblin_inject.hpp"   // goblin::world_map_open() — gate the scan on map-open
 
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -146,8 +147,10 @@ void scan_all_cursors(uintptr_t vtable_va, std::vector<uintptr_t> &out)
     {
         uintptr_t base = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
         size_t sz = mbi.RegionSize;
+        // RW only: the cursor instances live on the heap (READWRITE). Scanning
+        // READONLY regions just doubled the cost for nothing (cut → faster first find).
         if (mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE &&
-            (mbi.Protect == PAGE_READWRITE || mbi.Protect == PAGE_READONLY) &&
+            mbi.Protect == PAGE_READWRITE &&
             sz >= 0x1000 && sz < 0x10000000)
             scan_region_all(base, sz, vtable_va, out, CAP);
         uintptr_t next = base + sz;
@@ -184,6 +187,25 @@ void probe_loop()
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         auto now = clock::now();
 
+        // Only the world-map screen has a live cursor. While the map is CLOSED, skip
+        // the (whole-address-space) vtable scan entirely — that idle thrash was the
+        // ~5s "no live view": a map open landing mid-flight in a slow closed-state scan
+        // had to wait it out + the next scan to find the fresh cursor. Drop state on
+        // close and force one scan the instant it opens.
+        bool map_open = goblin::world_map_open();
+        static bool prev_open = false;
+        bool just_opened = map_open && !prev_open;
+        prev_open = map_open;
+        if (!map_open)
+        {
+            if (g_active_cursor.load(std::memory_order_relaxed))
+                g_active_cursor.store(0, std::memory_order_relaxed);
+            candidates.clear();
+            last.clear();
+            last_view.clear();
+            continue;
+        }
+
         // Force a rescan if the published active cursor just died (map closed/reopened)
         // → republish a fresh one fast, so the overlay-markers prototype tracks from
         // the first frame of a new map open instead of waiting out the periodic rescan.
@@ -205,7 +227,7 @@ void probe_loop()
         auto rescan_period = g_active_cursor.load(std::memory_order_relaxed)
                                  ? std::chrono::milliseconds(2000)
                                  : std::chrono::milliseconds(400);
-        if (candidates.empty() || active_dead || now - last_scan > rescan_period)
+        if (just_opened || candidates.empty() || active_dead || now - last_scan > rescan_period)
         {
             candidates.clear();
             scan_all_cursors(vtable_va, candidates);
