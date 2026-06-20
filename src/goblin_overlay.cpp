@@ -900,24 +900,25 @@ namespace
             // EYEBALL DIAL: rotation presets @ scale 0.5 (one off-diagonal sign each),
             // then pan with gtx/gty until page 60 lines up. If rotate+pan aligns -> it's
             // a clean 90deg rotation; if not -> T differs per page -> use Solve.
-            // GENERAL orientation: continuous angle + independent axis flips. Covers ALL
-            // 8 dihedral orientations (90° steps × flips) AND any in-between angle — a flip
-            // is what fixes a cluster that's MIRRORED ("wrong direction"), which plain
-            // rotation can't. angle/scale/flips drive a,b,c,d (edit a,b,c,d for fine tweaks).
-            static float g_angle = 90.f, g_scale = 0.5f;
-            static bool g_flipX = false, g_flipZ = false;
+            // ORIENTATION = the 8 dihedral signed-permutations (the true map frame is
+            // scale·{swap or not}·{sign flips}, NOT an arbitrary angle). Three toggles
+            // cover all 8 with NO surprise minus: default (swap on, no negate) = the
+            // 0.5/0.5 convention. negX/negZ are what fix a MIRRORED ("wrong direction")
+            // cluster. (Edit a,b,c,d below for a fine non-dihedral tweak if ever needed.)
+            static float g_oscale = 0.5f;
+            static bool g_swap = true, g_negX = false, g_negZ = false;
             bool ch = false;
-            ch |= ImGui::DragFloat("angle (deg)", &g_angle, 1.f, -180.f, 180.f, "%.0f");
-            ch |= ImGui::DragFloat("scale", &g_scale, 0.005f, 0.1f, 1.5f, "%.3f");
-            ch |= ImGui::Checkbox("flip X", &g_flipX); ImGui::SameLine();
-            ch |= ImGui::Checkbox("flip Z (mirror)", &g_flipZ);
+            ch |= ImGui::DragFloat("scale", &g_oscale, 0.005f, 0.1f, 1.5f, "%.3f");
+            ch |= ImGui::Checkbox("swap axes", &g_swap); ImGui::SameLine();
+            ch |= ImGui::Checkbox("negate X", &g_negX); ImGui::SameLine();
+            ch |= ImGui::Checkbox("negate Z", &g_negZ);
             if (ch)
             {
-                float r = g_angle * 3.14159265f / 180.f;
-                float ca = cosf(r) * g_scale, sa = sinf(r) * g_scale;
-                float a = ca, b = -sa, c = sa, d = ca;
-                if (g_flipX) { a = -a; b = -b; }   // negate renderX output
-                if (g_flipZ) { c = -c; d = -d; }   // negate renderZ output
+                float s = g_oscale, a, b, c, d;
+                if (g_swap) { a = 0; b = s; c = s; d = 0; }   // renderX~worldZ, renderZ~worldX
+                else        { a = s; b = 0; c = 0; d = s; }   // renderX~worldX, renderZ~worldZ
+                if (g_negX) { a = -a; b = -b; }               // flip render X
+                if (g_negZ) { c = -c; d = -d; }               // flip render Z
                 g_aff.a = a; g_aff.b = b; g_aff.c = c; g_aff.d = d;
             }
             ImGui::TextDisabled("quick presets (scale 0.5):");
