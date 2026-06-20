@@ -39,7 +39,7 @@ void build_buckets()
         bool isdlc = (pg == 61) || (d.areaNo >= 40 && d.areaNo <= 43);
         int grp = (isdlc ? 2 : 0) | (isug ? 1 : 0);
         g_buckets[c].push_back(
-            Marker{wx, wz, grp, (int)d.areaNo, 0xEB82E65Au, category_icon_key(c)});
+            Marker{wx, wz, grp, (int)d.areaNo, category_color(c), category_icon_key(c)});
     }
 }
 } // namespace

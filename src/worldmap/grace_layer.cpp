@@ -1,5 +1,6 @@
 #include "grace_layer.hpp"
 
+#include "category_meta.hpp" // category_color
 #include "goblin_inject.hpp" // goblin::live_graces / marker_world_pos / ui::category_visible
 #include "goblin_map_data.hpp" // Category::WorldGraces
 
@@ -34,7 +35,8 @@ const std::vector<Marker> &GraceLayer::markers() const
         bool isug = (e.areaNo == 12) || (e.areaNo >= 40 && e.areaNo <= 43);
         bool isdlc = (pg == 61) || (e.areaNo >= 40 && e.areaNo <= 43);
         int grp = (isdlc ? 2 : 0) | (isug ? 1 : 0);
-        cache_.push_back(Marker{wx, wz, grp, (int)e.areaNo, 0xEB82E65Au, "show_graces"});
+        const int gc = static_cast<int>(goblin::generated::Category::WorldGraces);
+        cache_.push_back(Marker{wx, wz, grp, (int)e.areaNo, category_color(gc), "show_graces"});
     }
     return cache_;
 }

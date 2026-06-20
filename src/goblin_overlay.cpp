@@ -502,7 +502,7 @@ namespace
     // map_renderer owns projection + motion-sync + group gating + draw; each marker
     // type is a MarkerLayer plugin (graces = 1st impl). This is the NEW overlay-
     // rendered map, distinct from the legacy native WorldMapPointParam injection.
-    void draw_markers_proto(bool /*menu_open*/)
+    void draw_worldmap_markers(bool /*menu_open*/)
     {
         if (!goblin::ui::icons_enabled())
             return; // master off → draw no overlay markers
@@ -1211,7 +1211,7 @@ namespace
             if (g_show)
                 draw_panel();
             if (proto)
-                draw_markers_proto(g_show);
+                draw_worldmap_markers(g_show);
             ImGui::Render();
 
             UINT idx = swapchain->GetCurrentBackBufferIndex();

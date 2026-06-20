@@ -8,4 +8,8 @@ namespace goblin::worldmap
 {
 // category = static_cast<int>(Category). Out-of-range → nullptr.
 const char *category_icon_key(int category);
+
+// Circle-fallback colour (packed ImU32 ABGR) for the category, by broad group. Only
+// shows where the category has no atlas icon; out-of-range → a neutral default.
+unsigned int category_color(int category);
 } // namespace goblin::worldmap
