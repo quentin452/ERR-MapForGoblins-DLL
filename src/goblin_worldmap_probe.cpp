@@ -547,6 +547,14 @@ bool get_live_view(LiveView &out)
         !seh_read4(reinterpret_cast<void *>(view + VIEW_PAN_Z), &out.panZ) ||
         !seh_read4(reinterpret_cast<void *>(view + VIEW_ZOOM), &out.zoom) || out.zoom == 0.f)
         return false;
+    // Cursor/snap bounds rect on the view (view+0x340..0x34c) → cursor-independent centre.
+    if (!seh_read4(reinterpret_cast<void *>(view + 0x340), &out.snapMinX) ||
+        !seh_read4(reinterpret_cast<void *>(view + 0x344), &out.snapMinZ) ||
+        !seh_read4(reinterpret_cast<void *>(view + 0x348), &out.snapMaxX) ||
+        !seh_read4(reinterpret_cast<void *>(view + 0x34c), &out.snapMaxZ))
+    {
+        out.snapMinX = out.snapMinZ = out.snapMaxX = out.snapMaxZ = 0.f;
+    }
     // diag window cursor+0xFC..+0x118 (find which offset drives the vertical axis)
     for (int i = 0; i < 8; ++i)
         if (!seh_read4(reinterpret_cast<void *>(a + 0xFC + i * 4), &out.raw[i]))

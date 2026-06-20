@@ -31,10 +31,14 @@ namespace goblin::worldmap_probe
     {
         float cursorX, cursorZ; // reticle, marker space (+0xFC / +0x104)
         float panX, panZ, zoom; // WorldMapArea viewport
-        // Snap-rect midpoint (WorldMapArea +0x340..+0x34c centre). The DEVICE-INDEPENDENT
-        // view centre = (pan + snapMid)/zoom (engine pan setter FUN_1409cd100 inverted).
-        // The reticle (+0xFC) is NOT the view centre — on gamepad it sits off-centre, which
-        // is why reticle-centred markers are "jamais centré" until you move the mouse.
+        // Cursor/snap bounds rect on the view (view+0x340..0x34c): minX,minZ,maxX,maxZ.
+        // RE §2: viewCentre = (pan + ((min+max)/2)) / zoom -- the CURSOR-INDEPENDENT centre.
+        float snapMinX, snapMinZ, snapMaxX, snapMaxZ;
+        // Snap-rect midpoint (= (min+max)/2 of the rect above), precomputed by the probe.
+        // The DEVICE-INDEPENDENT view centre = (pan + snapMid)/zoom (engine pan setter
+        // FUN_1409cd100 inverted). The reticle (+0xFC) is NOT the view centre — on gamepad it
+        // sits off-centre, which is why reticle-centred markers are "jamais centré" until you
+        // move the mouse.
         float snapMidX, snapMidZ;
         float raw[8];           // diag: cursor+0xFC,+0x100,+0x104,+0x108,+0x10C,+0x110,+0x114,+0x118
         int viewArea;           // WorldMapArea+0x6e = areaNo of the open page (doc §3)

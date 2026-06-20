@@ -385,6 +385,11 @@ namespace
     // known-good baseline); under gamepad the reticle is off-centre but viewCentre is right →
     // markers stay locked on the map for BOTH devices, no mouse wiggle needed. (Earlier "pan
     // is instance-variant" was bare `pan` missing the per-page snapMid term — fixed here.)
+    // Cross-checked against the origin RE line (docs/windows_worldmap_viewcenter_re_findings.md):
+    // that brief reaches the SAME cursor-independent centre via the pan setter + transform
+    // FUN_1409cd0a0 (`screen = marker·zoom − pan`, centre = (pan + screenCentre)/zoom), and
+    // confirms via [INPUT-DELTA] that the GAMEPAD stick pans +0x378/+0x37c (+ zoom +0x380) and
+    // never moves the reticle (+0xFC/+0x104 fire only on mouse hover) — consistent with snapMid.
     // Default = raw reticle (the known-good mouse baseline). The (pan+snapMid)/zoom view-
     // centre stayed broken in-game (user, 2026-06-20) → reverted to reticle; instead we force
     // a synthetic MOUSE update on map open (goblin_worldmap_probe.cpp) to reproduce the
@@ -408,6 +413,8 @@ namespace
             centerU = v.raw[0]; centerV = v.raw[1]; // raw reticle (mouse-only) for A/B compare
         }
         // Same proven reticle-form math for both paths (screen-centre anchor + scale/bias).
+        // NOTE: the g_pan_center path uses snapMid = (snapMin+snapMax)/2 (the origin RE line's
+        // cursor-independent centre, equivalent to (pan + (min+max)/2)/zoom) — see project below.
         return ImVec2((mU - centerU) * v.zoom * g_calib.scaleX + realW * 0.5f + g_calib.biasX,
                       (mV - centerV) * v.zoom * g_calib.scaleY + realH * 0.5f + g_calib.biasY);
     }
@@ -568,6 +575,37 @@ namespace
         ImGuiIO &io = ImGui::GetIO();
         ImDrawList *fg = ImGui::GetForegroundDrawList();
 
+        // INTERPOLATION-COMPENSATION knob ([ = -0.1, ] = +0.1). The engine eases the
+        // displayed view/reticle toward its target each frame (0.1f lerp — cursor +0x130 /
+        // snap-anim FUN_1409bc8c0, RE). We draw the RAW field, so markers lead/lag the eased
+        // map. Compensate by extrapolating each pan/reticle field along its per-frame delta:
+        //   used = raw + lead*(raw - prevRaw)
+        // lead=0 -> raw (no change). >0 pushes forward (catches a lag up). <0 backs off (kills
+        // a lead). Dial until markers stick -> the value that matches the engine's interp.
+        static float g_lead = 0.0f;
+        {
+            static goblin::worldmap_probe::LiveView pv;
+            static bool pvInit = false;
+            goblin::worldmap_probe::LiveView raw = v; // unmodified snapshot for next-frame prev
+            if (live && pvInit && g_lead != 0.0f)
+            {
+                auto ex = [&](float cur, float prev) { return cur + g_lead * (cur - prev); };
+                v.panX = ex(raw.panX, pv.panX);
+                v.panZ = ex(raw.panZ, pv.panZ);
+                v.raw[0] = ex(raw.raw[0], pv.raw[0]);
+                v.raw[1] = ex(raw.raw[1], pv.raw[1]);
+                v.raw[2] = ex(raw.raw[2], pv.raw[2]);
+                v.raw[3] = ex(raw.raw[3], pv.raw[3]);
+            }
+            if (live) { pv = raw; pvInit = true; }
+        }
+        {
+            char lb[80];
+            snprintf(lb, sizeof(lb), "LEAD=%.2f  ([ -0.1  ] +0.1  \\ reset)", g_lead);
+            fg->AddText(ImVec2(12, 31), IM_COL32(0, 0, 0, 200), lb);
+            fg->AddText(ImVec2(11, 30), IM_COL32(120, 255, 160, 255), lb);
+        }
+
         // DIAG (first-open latency): how long have we been WITHOUT a live view, and is
         // the probe's published cursor null (probe hasn't found one) or non-null but
         // failing the live read? Accumulates while !live, resets on live.
@@ -595,6 +633,19 @@ namespace
 
         // The reticle's screen-axis coords: U = +0x104 (raw[2]), V = +0x108 (raw[3]).
         float U = v.raw[2], V = v.raw[3];
+
+        // FRAME-LAG CAPTURE (toggle V). One CSV row per frame: the pan we sampled this
+        // frame + the reticle marker coord + the OS mouse px (= the game reticle's true
+        // screen pos = ground truth). Grep "[LAGCSV]" out of the log → feed the data-driven
+        // test: it cross-correlates the per-frame gap (reticle_projected − mouse) against the
+        // 1-frame model (pan[n] − pan[n−1])·scale to prove the lag is exactly one frame.
+        //   columns: frame,panX,panZ,zoom,reticleU,reticleV,mouseX,mouseY
+        static bool g_csv = false;
+        static unsigned long g_csv_frame = 0;
+        if (g_csv && live)
+            spdlog::info("[LAGCSV] {},{:.4f},{:.4f},{:.6f},{:.4f},{:.4f},{:.2f},{:.2f}",
+                         g_csv_frame++, v.panX, v.panZ, v.zoom, v.raw[2], v.raw[3], m.x, m.y);
+
         if (live)
         {
             ImVec2 p = project_uv(v, U, V, io.DisplaySize.x, io.DisplaySize.y);
@@ -847,10 +898,31 @@ namespace
         // Hotkeys (work menu-closed): C = 1-point calibrate (solve biasX/Y so the
         // projection of the reticle hits the mouse), L = log a row, X = reset,
         // G = swap grace axes. The model is linear in bias, so one capture pins both.
+        // [ / ] = nudge the interpolation-compensation lead; \ = reset to 0.
+        static bool prevLB = false, prevRB = false, prevBS = false;
+        bool downLB = (GetAsyncKeyState(VK_OEM_4) & 0x8000) != 0; // [
+        bool downRB = (GetAsyncKeyState(VK_OEM_6) & 0x8000) != 0; // ]
+        bool downBS = (GetAsyncKeyState(VK_OEM_5) & 0x8000) != 0; // backslash
+        if (downLB && !prevLB) { g_lead -= 0.1f; spdlog::info("[LEAD] {:.2f}", g_lead); }
+        if (downRB && !prevRB) { g_lead += 0.1f; spdlog::info("[LEAD] {:.2f}", g_lead); }
+        if (downBS && !prevBS) { g_lead = 0.0f; spdlog::info("[LEAD] reset 0"); }
+        prevLB = downLB; prevRB = downRB; prevBS = downBS;
+
         static bool prevC = false, prevX = false, prevL = false;
         bool downC = (GetAsyncKeyState('C') & 0x8000) != 0;
         bool downX = (GetAsyncKeyState('X') & 0x8000) != 0;
         bool downL = (GetAsyncKeyState('L') & 0x8000) != 0;
+
+        // V = toggle the per-frame frame-lag CSV capture ([LAGCSV] rows in the log).
+        static bool prevV = false;
+        bool downV = (GetAsyncKeyState('V') & 0x8000) != 0;
+        if (downV && !prevV)
+        {
+            g_csv = !g_csv;
+            spdlog::info("[LAGCSV] capture {} (cols: frame,panX,panZ,zoom,reticleU,reticleV,mouseX,mouseY)",
+                         g_csv ? "ON" : "OFF");
+        }
+        prevV = downV;
 
         // Y = toggle the projection centre: stable pan-based (fixes markers-follow-reticle)
         // vs the old reticle-coupled +0xFC. Default = pan-based.
