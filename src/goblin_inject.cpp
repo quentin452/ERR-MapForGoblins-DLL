@@ -96,20 +96,25 @@ static bool project_dungeon_row_to_overworld(
     if (!c)
         return false;
 
-    // Exact match: keep the in-dungeon offset. Fallback: cluster at the base
-    // point (mixing local coords across grids would misplace, so we don't).
-    float wx = static_cast<float>(c->dst_gx) * 256.0f + c->dst_pos_x;
-    float wz = static_cast<float>(c->dst_gz) * 256.0f + c->dst_pos_z;
+    // Base-point TRANSLATION (RE: docs/marker_to_mapspace_re_findings.md §2). The
+    // legacy-dungeon→overworld conv is a uniform translation: take the marker's FULL
+    // world offset (grid + pos) from the src base point and apply it to the dst base
+    // point. The previous code added only the LOCAL pos delta (posX-src_pos_x),
+    // dropping the (gridXNo-src_gx)·256 grid term + src_gz entirely → markers in a
+    // different grid cell than the base landed in the wrong region (the area-16 bug).
+    float dst_base_x = static_cast<float>(c->dst_gx) * 256.0f + c->dst_pos_x;
+    float dst_base_z = static_cast<float>(c->dst_gz) * 256.0f + c->dst_pos_z;
     // The conv base point IS the dungeon's overworld ENTRANCE — hand it back so a
     // cluster of this dungeon's markers can sit there instead of at the centroid
     // of their spread-out projected interior (which can drift off into the sea).
-    if (out_ent_x) *out_ent_x = wx;
-    if (out_ent_z) *out_ent_z = wz;
-    if (exact)
-    {
-        wx += d->posX - c->src_pos_x;
-        wz += d->posZ - c->src_pos_z;
-    }
+    if (out_ent_x) *out_ent_x = dst_base_x;
+    if (out_ent_z) *out_ent_z = dst_base_z;
+    float marker_x = static_cast<float>(d->gridXNo) * 256.0f + d->posX;
+    float marker_z = static_cast<float>(d->gridZNo) * 256.0f + d->posZ;
+    float src_base_x = static_cast<float>(c->src_gx) * 256.0f + c->src_pos_x;
+    float src_base_z = static_cast<float>(c->src_gz) * 256.0f + c->src_pos_z;
+    float wx = dst_base_x + (marker_x - src_base_x);
+    float wz = dst_base_z + (marker_z - src_base_z);
     int gx = static_cast<int>(std::floor(wx / 256.0f));
     int gz = static_cast<int>(std::floor(wz / 256.0f));
     d->areaNo = c->dst_area;
