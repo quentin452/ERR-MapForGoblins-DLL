@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CheatTable CheatEngineTableVersion="44">
+  <CheatEntries>
+    <CheatEntry>
+      <ID>0</ID>
+      <Description>"=== MapForGoblins: MARKER AFFINE capture (M + T[page]) ==="</Description>
+      <GroupHeader>1</GroupHeader>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>1</ID>
+      <Description>"cursor render X (+0x104) -- snapped icon pos = render_out X"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_CURSOR+104</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>2</ID>
+      <Description>"cursor render Z (+0x108) -- snapped icon pos = render_out Z"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_CURSOR+108</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>3</ID>
+      <Description>"reticle X (+0xFC)"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_CURSOR+FC</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>4</ID>
+      <Description>"reticle Y (+0x100)"</Description>
+      <VariableType>Float</VariableType>
+      <Address>MFG_CURSOR+100</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>5</ID>
+      <Description>"PAGE (dialog+0xA88): 0=base, 10=DLC"</Description>
+      <VariableType>4 Bytes</VariableType>
+      <Address>MFG_MENU+A88</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>6</ID>
+      <Description>"LAYER [[dialog+0x2B68]+0xB8]: 0=surface, 1=underground"</Description>
+      <VariableType>Byte</VariableType>
+      <Address>[MFG_MENU+2B68]+B8</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>20</ID>
+      <Description>"cursor ptr (diag)"</Description>
+      <ShowAsHex>1</ShowAsHex>
+      <VariableType>8 Bytes</VariableType>
+      <Address>MFG_CURSOR</Address>
+    </CheatEntry>
+  </CheatEntries>
+  <LuaScript><![CDATA[
+--[[ MapForGoblins MARKER AFFINE capture.  Goal: pairs (world, render) per page to solve
+     render = M*world + T[page].  See docs/windows_marker_offset_getter_capture_re_prompt.md.
+
+  RENDER side (this CT): hover a KNOWN grace, let the cursor SNAP onto it, press NUMPAD 0.
+     cursor +0x104/+0x108 (when snapped) == the icon's render position == render_out.
+     The line is logged with the auto-detected PAGE (= dst-page label) to
+     MapForGoblins_marker_capture.csv  as:  page,layer,render_x,render_z,reticle_x,reticle_y,<grace?>
+  WORLD side: you already know each grace's world from GRACE_ANCHORS
+     (world = gridXNo*256 + posX , gridZNo*256 + posZ).  Pair render<->world by grace name.
+
+  Collect >=3 spread graces per page for pages 60,61 (overworld), 12 (underground),
+  40..43 (DLC), then run  tools/solve_marker_affine.py.
+
+  Cursor resolved the same way as the other CTs (vtable scan, heap instance).         ]]
+
+local CURSOR_VTABLE_RVA = 0x2b29a90
+local OFF_RX, OFF_RZ, OFF_VIEW, OFF_MENU = 0x104, 0x108, 0xF0, 0x2DB0
+mfg = mfg or {}
+local function finite(v) return v~=nil and v==v and v<1e30 and v>-1e30 end
+local function module_range()
+  local base=getAddress("eldenring.exe"); local size=0
+  if getModuleSize then local ok,s=pcall(getModuleSize,"eldenring.exe"); if ok and s then size=s end end
+  if size==0 then local m=enumModules(); if m then for i=1,#m do if m[i].Name and string.find(string.lower(m[i].Name),"eldenring.exe",1,true) then base=m[i].Address; size=m[i].Size; break end end end end
+  if size==0 then size=0x8000000 end; return base, base+size
+end
+local function get_module_range() if mfg.mbase then return mfg.mbase,mfg.mend end local b,e=module_range(); mfg.mbase,mfg.mend=b,e; return b,e end
+local function plausible(v) return finite(v) and math.abs(v)>=1.0 and math.abs(v)<=2.0e4 end
+local function valid_cursor(a,vt,mb,me)
+  if a==nil or a==0 then return false end
+  if readQword(a)~=vt then return false end
+  local x,z=readFloat(a+OFF_RX),readFloat(a+OFF_RZ)
+  if not (plausible(x) and plausible(z)) then return false end
+  local view=readPointer(a+OFF_VIEW); if view==nil or view==0 then return false end
+  if mb and view>=mb and view<me then return false end
+  local zoom=readFloat(view+0x380); return finite(zoom) and math.abs(zoom)>1e-4 and math.abs(zoom)<1e5
+end
+local function publish(cur)
+  mfg.cursor=cur; unregisterSymbol("MFG_CURSOR"); registerSymbol("MFG_CURSOR",cur,true)
+  local menu=cur-OFF_MENU; mfg.menu=menu; unregisterSymbol("MFG_MENU"); registerSymbol("MFG_MENU",menu,true)
+  local view=readPointer(cur+OFF_VIEW); if view and view~=0 then mfg.view=view; unregisterSymbol("MFG_VIEW"); registerSymbol("MFG_VIEW",view,true) end
+  print(string.format("[MFG] locked cursor=%X dialog=%X",cur,menu))
+end
+function mfg_scan()
+  local base=getAddress("eldenring.exe"); if base==0 then return false end
+  local vt=base+CURSOR_VTABLE_RVA; local mb,me=get_module_range()
+  local b={}; for i=0,7 do b[i+1]=string.format("%02X",(vt>>(i*8))&0xFF) end
+  local res=AOBScan(table.concat(b," "),"+W-C"); if res==nil then return false end
+  local ok=false
+  for i=0,res.Count-1 do local a=getAddress(res[i]); if valid_cursor(a,vt,mb,me) then publish(a); ok=true; break end end
+  res.destroy(); return ok
+end
+mfg_rescan=mfg_scan
+function mfg_tick()
+  local base=getAddress("eldenring.exe"); if base==0 then return end
+  local vt=base+CURSOR_VTABLE_RVA; local mb,me=get_module_range()
+  if valid_cursor(mfg.cursor,vt,mb,me) then
+    local view=readPointer(mfg.cursor+OFF_VIEW); if view and view~=0 and view~=mfg.view then mfg.view=view; unregisterSymbol("MFG_VIEW"); registerSymbol("MFG_VIEW",view,true) end
+    return
+  end
+  mfg.tick=(mfg.tick or 0)+1; if (mfg.tick%6)==0 then mfg_scan() end
+end
+
+-- region label (page + layer) from the SOLVED region fields
+local function region()
+  if not mfg.menu then return "?", -1, -1 end
+  local page = readInteger(mfg.menu+0xA88) or -1
+  local sub = readPointer(mfg.menu+0x2B68)
+  local layer = (sub and sub~=0) and (readBytes(sub+0xB8,1,true) or -1) or -1
+  local r = (page==10 and "DLC") or (layer==0 and "OW") or (layer~=-1 and "UG") or "?"
+  return r, page, layer
+end
+
+-- NUMPAD 0: log render_out (snapped cursor) + page/layer. Hover a KNOWN grace and let it snap first.
+function mfg_capture()
+  local mb,me=get_module_range()
+  if not valid_cursor(mfg.cursor,getAddress("eldenring.exe")+CURSOR_VTABLE_RVA,mb,me) then
+    print("[MFG] no live cursor -- open map, hover a known grace (let it SNAP), NUMPAD 1 to lock"); return
+  end
+  local rx,rz = readFloat(mfg.cursor+OFF_RX), readFloat(mfg.cursor+OFF_RZ)
+  local tx,ty = readFloat(mfg.cursor+0xFC), readFloat(mfg.cursor+0x100)
+  local r,page,layer = region()
+  local line = string.format("%s,%d,%d,%.3f,%.3f,%.3f,%.3f", r, page, layer, rx, rz, tx, ty)
+  print("[MFG] captured: "..line.."   <-- note which GRACE you snapped (for its world)")
+  local f=io.open("MapForGoblins_marker_capture.csv","a")
+  if f then if mfg.hdr==nil then mfg.hdr=true; f:write("# region,page,layer,render_x,render_z,reticle_x,reticle_y,grace\n") end
+    f:write(line..",\n"); f:close() end
+end
+
+if mfg.timer then pcall(function() mfg.timer.destroy() end); mfg.timer=nil end
+if mfg.hk  then pcall(function() mfg.hk.destroy()  end); mfg.hk=nil end
+if mfg.hk2 then pcall(function() mfg.hk2.destroy() end); mfg.hk2=nil end
+mfg.cursor,mfg.view,mfg.menu,mfg.mbase,mfg.mend,mfg.tick,mfg.hdr = nil,nil,nil,nil,nil,0,nil
+unregisterSymbol("MFG_CURSOR"); unregisterSymbol("MFG_VIEW"); unregisterSymbol("MFG_MENU")
+mfg.timer=createTimer(nil); mfg.timer.Interval=1000; mfg.timer.OnTimer=mfg_tick
+mfg.hk =createHotkey(mfg_capture, VK_NUMPAD0)   -- NUMPAD 0 = capture render_out (after snap)
+mfg.hk2=createHotkey(mfg_rescan,  VK_NUMPAD1)   -- NUMPAD 1 = rescan cursor
+mfg_scan()
+print("[MFG] MARKER capture armed. Open map -> hover known grace (let cursor SNAP) -> NUMPAD 0.")
+print("[MFG] >=3 spread graces per page (60,61,12,40,41,42,43). Then tools/solve_marker_affine.py")
+]]></LuaScript>
+</CheatTable>

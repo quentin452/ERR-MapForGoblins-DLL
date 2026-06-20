@@ -103,3 +103,24 @@ Either way the captured pairs still pin M/T.)
 
 Dragonbarrow check: `(12338.25 − originX[61])·0.5 = 6018.75` → `originX[61] ≈ 300`; i.e.
 `T` and the per-page origin are the same constant in different form (`T = −origin·0.5`).
+
+---
+
+## TOOLS READY (2026-06-20)
+
+Capture is done via the **cursor-snap** path (re_v56 note: `cursor +0x104/+0x108` IS exact when the
+cursor snaps onto an icon → that's `render_out`; no in-VMP bp needed). The page is auto-labelled using
+the now-solved region key (`page=dialog+0xA88`, `layer=[[dialog+0x2B68]+0xB8]`).
+
+- **`tools/cheat_engine/MapForGoblins_marker_capture.CT`** — resolves the cursor O(1), NUMPAD 0 captures
+  `render_out` (cursor +0x104/+0x108) + auto-detected page/layer → `MapForGoblins_marker_capture.csv`.
+  Recipe: open map on a page → hover a KNOWN grace, let the cursor **SNAP** onto it → NUMPAD 0 → note the
+  grace name. ≥3 spread graces per page for 60,61,12,40,41,42,43.
+- **`tools/solve_marker_affine.py`** — input `page,wx,wz,rx,rz` (wx,wz from `GRACE_ANCHORS`:
+  `gridXNo·256+posX`, `gridZNo·256+posZ`; rx,rz from the capture). No numpy dependency (pure-python
+  lstsq). Solves per-page `M=[[a,b],[c,d]]` + `T[page]=(e,f)`, reports residuals, and whether `M` is
+  shared across pages (→ bake `M` once + `T[page]`).
+
+**Workflow:** snap-capture render per grace → fill `wx,wz` from anchors → `python solve_marker_affine.py
+pairs.csv` → bake the printed `M` + `T[page]` into `goblin_overlay.cpp` (replace the `g_aff` runtime solve
++ centroid pivot).
