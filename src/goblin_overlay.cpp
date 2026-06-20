@@ -391,8 +391,11 @@ namespace
     // is to subtract pan DIRECTLY (it is already in screen-local px), not via a /zoom centre.
     // Self-test: projecting the reticle's own coord (+0x104/+0x108) lands on the reticle/mouse
     // through pan AND zoom AND input device, by construction (screen = marker·zoom − pan).
-    // Default = pan-based (device-independent); Y toggles to the old reticle centre to compare.
-    bool g_pan_center = true;
+    // NOTE (2026-06-20, user): the pan path as-is BREAKS calibration in-game (positions wrong)
+    // — the agent's runtime-verify never passed (no MSVC on its box). So DEFAULT BACK to the
+    // reticle centre (correct mouse-still, the known-good baseline); the pan path stays behind
+    // Y for iterating the axis/scale/bias (likely a transpose or canvas-scale issue).
+    bool g_pan_center = false;
 
     // (markerU, markerV) marker coords → backbuffer px.
     ImVec2 project_uv(const goblin::worldmap_probe::LiveView &v, float mU, float mV,
