@@ -393,10 +393,12 @@ namespace
     // `centre = pan + (screen/2)/zoom` → `marker·zoom − pan·ZOOM` (pan wrongly ×zoom); the
     // correct centre is `(pan + screenCentre)/zoom`, which reduces to `screen = marker·zoom − pan`.
     // Self-test: projecting the reticle's own coord (+0x104/+0x108) lands on the mouse by
-    // construction; the win is GAMEPAD, where pan moves but the reticle doesn't — IF pan (+0x378)
-    // actually updates under the stick (open question in the prompt; see the stick-delta scan in
-    // goblin_worldmap_probe.cpp). Default stays reticle (known-good) until the stick test confirms.
-    bool g_pan_center = false;
+    // construction; the win is GAMEPAD, where pan moves but the reticle doesn't.
+    // ✅ CONFIRMED by [INPUT-DELTA] (2026-06-20): the GAMEPAD stick pans via view +0x378/+0x37c
+    // (+ zoom +0x380), and does NOT move the reticle (+0xFC/+0x104 fire only on mouse hover).
+    // So the reticle centre froze under the stick (markers slid); the pan path tracks BOTH
+    // devices. Default = pan now; Y toggles the old reticle centre for A/B.
+    bool g_pan_center = true;
 
     // (markerU, markerV) marker coords → backbuffer px.
     ImVec2 project_uv(const goblin::worldmap_probe::LiveView &v, float mU, float mV,
