@@ -938,6 +938,28 @@ bool goblin::player_in_dlc()
 // player path above: project legacy dungeons (area 10/11/30-39…) onto the
 // overworld via LEGACY_CONV, then world = grid*256 + local. Rows already on the
 // overworld (area 60/61) or on their own underground page are returned as-is.
+static std::vector<goblin::LiveGrace> g_live_graces;
+
+void goblin::capture_live_graces()
+{
+    g_live_graces.clear();
+    try
+    {
+        for (auto [rowId, row] :
+             from::params::get_param<from::paramdef::WORLD_MAP_POINT_PARAM_ST>(L"WorldMapPointParam"))
+        {
+            if (row.iconId != 370) continue;   // 370 = Site of Grace icon
+            g_live_graces.push_back({ row.areaNo, row.gridXNo, row.gridZNo,
+                                      row.posX, row.posZ, row.textId1, rowId });
+        }
+    }
+    catch (...) {}
+    spdlog::info("[LIVE-GRACE] captured {} grace rows (iconId 370) from live WorldMapPointParam",
+                 g_live_graces.size());
+}
+
+const std::vector<goblin::LiveGrace> &goblin::live_graces() { return g_live_graces; }
+
 bool goblin::marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,
                               int &out_area, float &world_x, float &world_z,
                               bool conv_underground)

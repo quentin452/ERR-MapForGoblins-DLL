@@ -639,13 +639,12 @@ namespace
         static int area_idx = -1; // -1 = all areas
         if (grace_areas.empty())
         {
-            for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
-                if (gen::MAP_ENTRIES[i].category == gen::Category::WorldGraces)
-                {
-                    int a = gen::MAP_ENTRIES[i].data.areaNo;
-                    if (std::find(grace_areas.begin(), grace_areas.end(), a) == grace_areas.end())
-                        grace_areas.push_back(a);
-                }
+            for (const auto &e : goblin::live_graces())
+            {
+                int a = e.areaNo;
+                if (std::find(grace_areas.begin(), grace_areas.end(), a) == grace_areas.end())
+                    grace_areas.push_back(a);
+            }
             std::sort(grace_areas.begin(), grace_areas.end());
         }
         int area_filter = (area_idx >= 0 && area_idx < (int)grace_areas.size())
@@ -669,15 +668,15 @@ namespace
             if (!piv_done)
             {
                 piv_done = true;
-                g_greg.assign(gen::MAP_ENTRY_COUNT, 0xFF);
+                const auto &graces = goblin::live_graces();   // LIVE WorldMapPointParam, no bake
+                g_greg.assign(graces.size(), 0xFF);
                 double sx[4] = {0}, sz[4] = {0}; int sn[4] = {0};
-                for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
+                for (size_t i = 0; i < graces.size(); ++i)
                 {
-                    const gen::MapEntry &e = gen::MAP_ENTRIES[i];
-                    if (e.category != gen::Category::WorldGraces) continue;
+                    const goblin::LiveGrace &e = graces[i];
                     int ga; float wx, wz;
-                    goblin::marker_world_pos(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
-                                             e.data.posX, e.data.posZ, ga, wx, wz,
+                    goblin::marker_world_pos(e.areaNo, e.gridXNo, e.gridZNo,
+                                             e.posX, e.posZ, ga, wx, wz,
                                              /*conv_underground=*/true);
                     int pg = ga & 63;
                     // DLC vs base by FINAL page (61/40-43 = DLC) — fixes Shadow Keep (area
@@ -686,8 +685,8 @@ namespace
                     // map-space (pg=60) so it would mis-classify as overworld — but it's an
                     // UG-layer grace, so gate it by its source areaNo. Catacombs/caves
                     // (areas 30-39) → page 60 = base overworld, correct (game shows them).
-                    bool isug  = (e.data.areaNo == 12) || (e.data.areaNo >= 40 && e.data.areaNo <= 43);
-                    bool isdlc = (pg == 61) || (e.data.areaNo >= 40 && e.data.areaNo <= 43);
+                    bool isug  = (e.areaNo == 12) || (e.areaNo >= 40 && e.areaNo <= 43);
+                    bool isdlc = (pg == 61) || (e.areaNo >= 40 && e.areaNo <= 43);
                     int grp = (isdlc ? 2 : 0) | (isug ? 1 : 0);
                     g_greg[i] = (uint8_t)grp;
                     sx[grp] += wx; sz[grp] += wz; ++sn[grp];
@@ -706,12 +705,11 @@ namespace
             int total = 0, drawn = 0, fidx = 0, culled = 0;
             int drawn_by_area[64] = {0};   // DIAG: original areaNo histogram of drawn graces
             char solo_info[160] = "";
-            for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
+            const auto &graces = goblin::live_graces();   // LIVE WorldMapPointParam, no bake
+            for (size_t i = 0; i < graces.size(); ++i)
             {
-                const gen::MapEntry &e = gen::MAP_ENTRIES[i];
-                if (e.category != gen::Category::WorldGraces)
-                    continue;
-                if (area_filter >= 0 && e.data.areaNo != area_filter)
+                const goblin::LiveGrace &e = graces[i];
+                if (area_filter >= 0 && e.areaNo != area_filter)
                     continue;
                 int myidx = fidx++;
                 ++total;
@@ -721,8 +719,8 @@ namespace
                 // Stormveil/area-10 are page-local until projected → else they pile up).
                 int ga;
                 float wx, wz;
-                goblin::marker_world_pos(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
-                                         e.data.posX, e.data.posZ, ga, wx, wz,
+                goblin::marker_world_pos(e.areaNo, e.gridXNo, e.gridZNo,
+                                         e.posX, e.posZ, ga, wx, wz,
                                          /*conv_underground=*/true);
                 int pg = ga & 63;
                 if (g_greg[i] != open_grp)
@@ -797,11 +795,11 @@ namespace
                 fg->AddCircleFilled(gp, r, col);
                 fg->AddCircle(gp, r, IM_COL32(0, 0, 0, 220), 0, 1.5f);
                 ++drawn;
-                if (e.data.areaNo < 64) ++drawn_by_area[e.data.areaNo]; // DIAG histogram
+                if (e.areaNo < 64) ++drawn_by_area[e.areaNo]; // DIAG histogram
                 if (solo)
                     snprintf(solo_info, sizeof(solo_info),
                              "SOLO #%d area=%d page=%d world=(%.0f,%.0f) offset[%d]=(%.0f,%.0f) px=(%.0f,%.0f)  K=calib page",
-                             myidx, (int)e.data.areaNo, pg, wx, wz, pg,
+                             myidx, (int)e.areaNo, pg, wx, wz, pg,
                              g_origin_u[pg], g_origin_v[pg], gp.x, gp.y);
             }
             if (g_solo >= 0)
@@ -956,19 +954,18 @@ namespace
             spdlog::info("[GRACEDUMP] begin (reticle now U={:.1f} V={:.1f} pan=({:.1f},{:.1f}) zoom={:.4f})",
                          v.raw[2], v.raw[3], v.panX, v.panZ, v.zoom);
             int n = 0;
-            for (size_t i = 0; i < gen::MAP_ENTRY_COUNT && n < 500; ++i)
+            const auto &dump_graces = goblin::live_graces();
+            for (size_t i = 0; i < dump_graces.size() && n < 500; ++i)
             {
-                const gen::MapEntry &e = gen::MAP_ENTRIES[i];
-                if (e.category != gen::Category::WorldGraces)
-                    continue;
+                const goblin::LiveGrace &e = dump_graces[i];
                 int ga;
                 float wx, wz;
-                goblin::marker_world_pos(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
-                                         e.data.posX, e.data.posZ, ga, wx, wz,
+                goblin::marker_world_pos(e.areaNo, e.gridXNo, e.gridZNo,
+                                         e.posX, e.posZ, ga, wx, wz,
                                          /*conv_underground=*/true);
                 spdlog::info("[GRACE] area={} grid=({},{}) pos=({:.1f},{:.1f}) -> world=({:.1f},{:.1f})",
-                             (int)e.data.areaNo, (int)e.data.gridXNo, (int)e.data.gridZNo,
-                             e.data.posX, e.data.posZ, wx, wz);
+                             (int)e.areaNo, (int)e.gridXNo, (int)e.gridZNo,
+                             e.posX, e.posZ, wx, wz);
                 ++n;
             }
             spdlog::info("[GRACEDUMP] end ({} graces)", n);

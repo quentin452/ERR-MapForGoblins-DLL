@@ -42,6 +42,21 @@ namespace goblin
                           int &out_area, float &world_x, float &world_z,
                           bool conv_underground = false);
 
+    // A Site of Grace read LIVE from WorldMapPointParam (iconId 370) — no baked data.
+    struct LiveGrace
+    {
+        uint8_t areaNo, gridXNo, gridZNo;
+        float posX, posZ;
+        int textId;        // name (resolve via MsgRepository)
+        uint64_t rowId;
+    };
+    // Capture all grace rows from the LIVE WorldMapPointParam. MUST run at init BEFORE
+    // inject_map_entries() swaps the param backing (else it reads our injected rows).
+    void capture_live_graces();
+    // The captured grace list (empty until capture_live_graces() ran). Used by the
+    // ImGui overlay path instead of the baked MAP_ENTRIES graces.
+    const std::vector<LiveGrace> &live_graces();
+
     // Region gating for the overlay (mirrors the game's native areaNo+tab display).
     // grace_tab_id: the map sub-page (tabId) of the nearest GRACE_ANCHOR in this
     // SOURCE area (12000/12001 underground, 6800-6999 DLC, …); -1 if none. Lets the
