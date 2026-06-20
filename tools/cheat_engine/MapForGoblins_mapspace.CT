@@ -245,7 +245,8 @@ function mfg_snapshot()
   local ty   = readFloat(c + 0x100)    -- equals the grace render when snapped)
   local area, sub2 = -1, -1
   if mfg.view then area = readInteger(mfg.view + 0x370); sub2 = readInteger(mfg.view + 0x374) end
-  local sub  = readBytes(getAddress("eldenring.exe") + 0x3D6CFC3, 1, true) or -1
+  local subt = readBytes(getAddress("eldenring.exe") + 0x3D6CFC3, 1, true)
+  local sub  = (type(subt) == "table" and subt[1]) or (type(subt) == "number" and subt) or -1
   local panx, panz, zoom = -1, -1, -1
   if mfg.view then
     panx = readFloat(mfg.view + 0x378); panz = readFloat(mfg.view + 0x37C)
