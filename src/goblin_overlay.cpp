@@ -24,6 +24,9 @@
 #include <vector>
 #include <map>
 #include <string>
+#include <cmath>
+#include <cstring>
+#include <algorithm>
 
 // ImGui's Win32 backend message handler (defined in imgui_impl_win32.cpp).
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
@@ -392,6 +395,122 @@ namespace
         return ImGui::GetIO().MousePos; // fallback
     }
 
+    // ── In-DLL world→render AFFINE solver (replaces the by-hand diagonal calib) ──
+    // The world→render step is a full affine `render = M·world + T` (M = scale·
+    // rotation, shared across pages; T per page) — by-hand origin·scale came out
+    // ROTATED (see docs/marker_mapspace_CT_recipe.md). The overlay already reads the
+    // live cursor render coords (+0x104/+0x108) for calibration, so we recover M/T
+    // IN-DLL from (world→render) pairs — no external Cheat Engine needed.
+    struct CalPair { int page; float wx, wz, rx, rz; };
+    std::vector<CalPair> g_cal_pairs;
+
+    struct AffineFit
+    {
+        bool enabled = true;          // affine vs the diagonal origin baseline
+        // shared M = [[a,b],[c,d]]; seed = the 90° axis-swap @ 0.5 hypothesis
+        // (renderX ≈ 0.5·worldZ, renderZ ≈ 0.5·worldX) — confirm signs live.
+        float a = 0.f, b = 0.5f, c = 0.5f, d = 0.f;
+        float e[64] = {}, f[64] = {}; // per-page T
+    };
+    AffineFit g_aff;
+
+    // Solve A·x = b (3×3) by Gaussian elimination w/ partial pivoting. A is mutated.
+    bool solve3x3(double A[3][3], double b[3], double out[3])
+    {
+        for (int col = 0; col < 3; ++col)
+        {
+            int piv = col;
+            for (int r = col + 1; r < 3; ++r)
+                if (std::fabs(A[r][col]) > std::fabs(A[piv][col])) piv = r;
+            if (std::fabs(A[piv][col]) < 1e-9) return false;
+            if (piv != col)
+            {
+                for (int c = 0; c < 3; ++c) std::swap(A[piv][c], A[col][c]);
+                std::swap(b[piv], b[col]);
+            }
+            for (int r = 0; r < 3; ++r)
+            {
+                if (r == col) continue;
+                double fac = A[r][col] / A[col][col];
+                for (int c = 0; c < 3; ++c) A[r][c] -= fac * A[col][c];
+                b[r] -= fac * b[col];
+            }
+        }
+        for (int i = 0; i < 3; ++i) out[i] = b[i] / A[i][i];
+        return true;
+    }
+
+    // Fit shared M + per-page T from g_cal_pairs. Pass 1: per page with ≥3 pairs,
+    // least-squares solve [a,b,e]/[c,d,f]; average a,b,c,d → shared M. Pass 2: per
+    // page T = mean residual (render − M·world) so M is shared, T per-page. Logs
+    // M, each page's T, and mean per-pair residual (sub-pixel = good). Returns #pages.
+    int solve_affine(AffineFit &af)
+    {
+        std::map<int, std::vector<const CalPair *>> by;
+        for (auto &p : g_cal_pairs) by[p.page & 63].push_back(&p);
+
+        double sa = 0, sb = 0, sc = 0, sd = 0;
+        int mcount = 0;
+        for (auto &kv : by)
+        {
+            auto &pts = kv.second;
+            if (pts.size() < 3) continue;
+            double ATA[3][3] = {}, atx[3] = {}, atz[3] = {};
+            for (auto *p : pts)
+            {
+                double row[3] = {p->wx, p->wz, 1.0};
+                for (int i = 0; i < 3; ++i)
+                {
+                    for (int j = 0; j < 3; ++j) ATA[i][j] += row[i] * row[j];
+                    atx[i] += row[i] * p->rx;
+                    atz[i] += row[i] * p->rz;
+                }
+            }
+            double A2[3][3], bb[3], rx[3], rz[3];
+            std::memcpy(A2, ATA, sizeof A2); std::memcpy(bb, atx, sizeof bb);
+            if (!solve3x3(A2, bb, rx)) continue;
+            std::memcpy(A2, ATA, sizeof A2); std::memcpy(bb, atz, sizeof bb);
+            if (!solve3x3(A2, bb, rz)) continue;
+            sa += rx[0]; sb += rx[1]; sc += rz[0]; sd += rz[1]; ++mcount;
+            spdlog::info("[AFFINE] page {} (n={}) M=[[{:.5f},{:.5f}],[{:.5f},{:.5f}]] T=({:.2f},{:.2f})",
+                         kv.first, pts.size(), rx[0], rx[1], rz[0], rz[1], rx[2], rz[2]);
+        }
+        if (mcount == 0)
+        {
+            spdlog::warn("[AFFINE] need >=3 pairs on at least one page (have {} pairs)", g_cal_pairs.size());
+            return 0;
+        }
+        af.a = (float)(sa / mcount); af.b = (float)(sb / mcount);
+        af.c = (float)(sc / mcount); af.d = (float)(sd / mcount);
+
+        int pages = 0;
+        for (auto &kv : by)
+        {
+            int pg = kv.first;
+            double te = 0, tf = 0;
+            for (auto *p : kv.second)
+            {
+                te += p->rx - (af.a * p->wx + af.b * p->wz);
+                tf += p->rz - (af.c * p->wx + af.d * p->wz);
+            }
+            af.e[pg] = (float)(te / kv.second.size());
+            af.f[pg] = (float)(tf / kv.second.size());
+            double mr = 0;
+            for (auto *p : kv.second)
+            {
+                double dx = p->rx - (af.a * p->wx + af.b * p->wz + af.e[pg]);
+                double dz = p->rz - (af.c * p->wx + af.d * p->wz + af.f[pg]);
+                mr += std::sqrt(dx * dx + dz * dz);
+            }
+            ++pages;
+            spdlog::info("[AFFINE] page {} T=({:.2f},{:.2f}) meanResidual={:.2f}px (n={})",
+                         pg, af.e[pg], af.f[pg], mr / kv.second.size(), kv.second.size());
+        }
+        spdlog::info("[AFFINE] SHARED M=[[{:.5f},{:.5f}],[{:.5f},{:.5f}]] from {} page(s) -> bake M once + per-page T",
+                     af.a, af.b, af.c, af.d, mcount);
+        return pages;
+    }
+
     // Draws the prototype every frame the map is open. Foreground dots = always;
     // the tuning window + hotkeys = the calibration UI.
     void draw_markers_proto(bool menu_open)
@@ -459,9 +578,9 @@ namespace
         // world coords into reticle space. Live-tunable [ / ] to dial the exact factor.
         static float g_world_scale = 0.5f;
         static bool g_graces = true;
-        // render = (world − origin[page]) · scale. Per-page origin K-calibrated.
-        // (The transform actually has a rotation we couldn't pin by hand — being RE'd
-        // with a Cheat Engine table; this origin model is just a non-broken baseline.)
+        // DIAGONAL baseline: render = (world − origin[page]) · scale, K-calibrated.
+        // Superseded by the affine g_aff (M·world+T) which captures the rotation the
+        // diagonal can't; kept as a fallback (press U to compare). See solve_affine().
         static float g_origin_u[64] = {}, g_origin_v[64] = {};
         static bool g_seeded = false;
         if (!g_seeded)
@@ -518,10 +637,20 @@ namespace
                 goblin::marker_world_pos(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
                                          e.data.posX, e.data.posZ, ga, wx, wz);
                 int pg = ga & 63;
-                // world axis → render axis. RE: U=+0x104↔world_X, V=+0x108↔world_Z.
-                // (G flips it if a page turns out transposed.) render=(world−origin)·scale.
-                float gU = (wx - g_origin_u[pg]) * g_world_scale;
-                float gV = (wz - g_origin_v[pg]) * g_world_scale;
+                // world axis → render axis. AFFINE (default): render = M·world + T[pg]
+                // (M shared, T per-page; solved in-DLL from P/M calibration). U toggles
+                // back to the diagonal origin·scale baseline for comparison.
+                float gU, gV;
+                if (g_aff.enabled)
+                {
+                    gU = g_aff.a * wx + g_aff.b * wz + g_aff.e[pg];
+                    gV = g_aff.c * wx + g_aff.d * wz + g_aff.f[pg];
+                }
+                else
+                {
+                    gU = (wx - g_origin_u[pg]) * g_world_scale;
+                    gV = (wz - g_origin_v[pg]) * g_world_scale;
+                }
                 ImVec2 gp = project_uv(v, gU, gV, io.DisplaySize.x, io.DisplaySize.y);
                 bool solo = (g_solo >= 0 && myidx == g_solo);
                 if (solo) { g_solo_wU = wx; g_solo_wV = wz; g_solo_page = pg; }
@@ -545,11 +674,12 @@ namespace
                 fg->AddText(ImVec2(11, 59), IM_COL32(255, 120, 120, 255), solo_info);
             }
             g_grace_filtered_count = total;
-            char gbuf[224];
+            char gbuf[320];
             snprintf(gbuf, sizeof(gbuf),
-                     "GRACES drawn=%d/%d area=%s scale=%.3f solo=%s [N/B=area O=solo ./,=cycle K=calib J=dump]",
+                     "GRACES drawn=%d/%d area=%s solo=%s | proj=%s pairs=%d [O=solo ./,=cycle  P=pair M=solve U=toggle Del=clear]",
                      drawn, total, area_filter < 0 ? "ALL" : std::to_string(area_filter).c_str(),
-                     g_world_scale, g_solo < 0 ? "off" : std::to_string(g_solo).c_str());
+                     g_solo < 0 ? "off" : std::to_string(g_solo).c_str(),
+                     g_aff.enabled ? "AFFINE" : "diag", (int)g_cal_pairs.size());
             fg->AddText(ImVec2(12, 44), IM_COL32(0, 0, 0, 200), gbuf);
             fg->AddText(ImVec2(11, 43), IM_COL32(90, 230, 130, 255), gbuf);
         }
@@ -621,6 +751,38 @@ namespace
                          g_solo_wU, g_solo_wV, v.raw[2], v.raw[3]);
         }
         prevK = downK;
+
+        // ── In-DLL AFFINE calibration hotkeys (menu-CLOSED so the reticle is live) ──
+        // P = push a (world→render) PAIR: solo a grace (O + ./,), hover its REAL game
+        //     icon so the reticle sits on it, press P. Collect ≥3 per page.
+        // M = solve the affine from the pairs (shared M + per-page T) and apply it.
+        // U = toggle affine vs the diagonal baseline.  Del = clear pairs.
+        static bool prevP = false, prevM = false, prevU = false, prevDel = false;
+        bool downP = (GetAsyncKeyState('P') & 0x8000) != 0;
+        bool downM = (GetAsyncKeyState('M') & 0x8000) != 0;
+        bool downU = (GetAsyncKeyState('U') & 0x8000) != 0;
+        bool downDel = (GetAsyncKeyState(VK_DELETE) & 0x8000) != 0;
+        if (downP && !prevP && live && g_solo >= 0 && g_solo_page >= 0)
+        {
+            g_cal_pairs.push_back({g_solo_page, g_solo_wU, g_solo_wV, v.raw[2], v.raw[3]});
+            spdlog::info("[AFFINE] pair #{} page={} world=({:.1f},{:.1f}) render=({:.1f},{:.1f})",
+                         g_cal_pairs.size(), g_solo_page, g_solo_wU, g_solo_wV, v.raw[2], v.raw[3]);
+        }
+        if (downM && !prevM)
+        {
+            if (solve_affine(g_aff) > 0) g_aff.enabled = true;
+        }
+        if (downU && !prevU)
+        {
+            g_aff.enabled = !g_aff.enabled;
+            spdlog::info("[AFFINE] enabled={}", g_aff.enabled);
+        }
+        if (downDel && !prevDel)
+        {
+            g_cal_pairs.clear();
+            spdlog::info("[AFFINE] pairs cleared");
+        }
+        prevP = downP; prevM = downM; prevU = downU; prevDel = downDel;
 
         // J = one-shot dump of EVERY grace's raw row + computed unified world coord,
         // so we can correlate against the reticle's true marker coord (hover a known
@@ -695,6 +857,19 @@ namespace
             ImGui::DragFloat("biasY", &g_calib.biasY, 0.5f, -4000.0f, 4000.0f, "%.1f");
             if (ImGui::Button("reset calib"))
                 g_calib = MarkerCalib{};
+
+            ImGui::Separator();
+            ImGui::TextColored(ImVec4(0.5f, 1, 0.6f, 1), "WORLD->RENDER affine: render = M*world + T[page]");
+            ImGui::Checkbox("affine enabled (else diagonal baseline)", &g_aff.enabled);
+            ImGui::Text("M = [[%.5f, %.5f], [%.5f, %.5f]]", g_aff.a, g_aff.b, g_aff.c, g_aff.d);
+            ImGui::Text("collected pairs: %d", (int)g_cal_pairs.size());
+            ImGui::TextWrapped("Solo a grace (O, ./,), hover its real icon, press P to capture a pair. "
+                               ">=3 per page, then Solve. (Hotkeys need the menu CLOSED so the reticle is live.)");
+            if (ImGui::Button("Solve affine (M)"))
+                solve_affine(g_aff);
+            ImGui::SameLine();
+            if (ImGui::Button("Clear pairs (Del)"))
+                g_cal_pairs.clear();
         }
         ImGui::End();
     }
