@@ -1,0 +1,4 @@
+# compiled test binaries
+/tests/test_lag_capture
+/tests/test_projection
+*.o
