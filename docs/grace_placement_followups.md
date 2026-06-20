@@ -35,10 +35,16 @@ kept native by conv (`goblin_inject.cpp:71`) so they each need their own `T`.
 - Dragonbarrow (page 61) world `(12338, 11985)` → render `(6018.75, 6187.28)`
 - Academy (page 60) world `(9217, 13617)` → render `(1826, ?)`
 
+**The in-DLL hover route is approximate** (cursor render coord, exact only if perfectly
+snapped). For the EXACT bake, hook the placement at the source: see
+**`docs/windows_marker_affine_hook_re_prompt.md`** — a Windows/Cheat-Engine RE brief that
+bp's the build/reconcile call site (NON-VMP), reads `world_in` from `point+0x80` and
+`render_out` from the icon's written matrix → clean `(world→render)` pairs → lstsq `M`+`T`,
+zero hover error. (Approximate cursor-hover variant: `docs/marker_mapspace_CT_recipe.md`.)
+
 **Risk / possible deeper RE:** if `M` does NOT come out shared across pages, or residuals
 stay large, the transform is more than one global affine (per-region origins inside a
-page, or a non-affine Scaleform step). Fallback = the external Cheat Engine route
-(`docs/marker_mapspace_CT_recipe.md`) which hooks the placement thunk directly.
+page, or a non-affine Scaleform step) — the hook brief says to report the per-page `M`s.
 
 ## 2. Transitive (multi-hop) LegacyConv — wrong region for nested dungeons
 
