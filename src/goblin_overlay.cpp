@@ -374,6 +374,12 @@ namespace
     };
     MarkerCalib g_calib;
 
+    // GRACE-ONLY world->render converter scale (bug 2 precision dial). The reticle uses the
+    // game's true render coord (+0x104) and is clean; graces use OUR converter (gU=wx-7040),
+    // so a tiny converter error shows as drift that grows away from the calibration anchor
+    // (visible zoomed-out, fine zoomed-in). It does NOT touch the reticle. F/H dial, R=1.0.
+    float g_convScale = 1.0f;
+
     // ★ THE view centre = (pan + snapMid)/zoom — NOT the reticle (+0xFC). Proven by the
     // gamepad symptom (2026-06-20): the old reticle centre makes markers "jamais centré" on
     // the stick and only aligns when you move the MOUSE — because the reticle-centre formula
@@ -600,7 +606,7 @@ namespace
         }
         {
             char lb[80];
-            snprintf(lb, sizeof(lb), "LEAD=%.2f  ([ -0.1  ] +0.1  \\ reset)", g_lead);
+            snprintf(lb, sizeof(lb), "CONVSCALE=%.4f  (F -0.001  H +0.001  R 1.0)", g_convScale);
             fg->AddText(ImVec2(12, 31), IM_COL32(0, 0, 0, 200), lb);
             fg->AddText(ImVec2(11, 30), IM_COL32(120, 255, 160, 255), lb);
         }
@@ -802,8 +808,8 @@ namespace
                     // EXACT world->map-space (agent RE 0a30738: FUN_140876140 + live
                     // CS::WorldMapViewModel dump). origin (7168,16384), bias 128, scale 1.0,
                     // Z-flipped:  mapX = worldX - 7040 ;  mapZ = -worldZ + 16512.
-                    gU = wx - 7040.0f;
-                    gV = -wz + 16512.0f;
+                    gU = (wx - 7040.0f) * g_convScale;
+                    gV = (-wz + 16512.0f) * g_convScale;
                 }
                 else if (g_aff.enabled && g_aff.pivot)
                 {
@@ -897,14 +903,15 @@ namespace
         // Hotkeys (work menu-closed): C = 1-point calibrate (solve biasX/Y so the
         // projection of the reticle hits the mouse), L = log a row, X = reset,
         // G = swap grace axes. The model is linear in bias, so one capture pins both.
-        // [ / ] = nudge the interpolation-compensation lead; \ = reset to 0.
+        // F / H = nudge the grace-only converter scale (bug 2 precision dial); R = reset 1.0.
+        // (Letter keys: OEM [ ] were unreachable on AZERTY.)
         static bool prevLB = false, prevRB = false, prevBS = false;
-        bool downLB = (GetAsyncKeyState(VK_OEM_4) & 0x8000) != 0; // [
-        bool downRB = (GetAsyncKeyState(VK_OEM_6) & 0x8000) != 0; // ]
-        bool downBS = (GetAsyncKeyState(VK_OEM_5) & 0x8000) != 0; // backslash
-        if (downLB && !prevLB) { g_lead -= 0.1f; spdlog::info("[LEAD] {:.2f}", g_lead); }
-        if (downRB && !prevRB) { g_lead += 0.1f; spdlog::info("[LEAD] {:.2f}", g_lead); }
-        if (downBS && !prevBS) { g_lead = 0.0f; spdlog::info("[LEAD] reset 0"); }
+        bool downLB = (GetAsyncKeyState('F') & 0x8000) != 0; // convScale -
+        bool downRB = (GetAsyncKeyState('H') & 0x8000) != 0; // convScale +
+        bool downBS = (GetAsyncKeyState('R') & 0x8000) != 0; // reset 1.0
+        if (downLB && !prevLB) { g_convScale -= 0.001f; spdlog::info("[CONVSCALE] {:.4f}", g_convScale); }
+        if (downRB && !prevRB) { g_convScale += 0.001f; spdlog::info("[CONVSCALE] {:.4f}", g_convScale); }
+        if (downBS && !prevBS) { g_convScale = 1.0f; spdlog::info("[CONVSCALE] reset 1.0"); }
         prevLB = downLB; prevRB = downRB; prevBS = downBS;
 
         static bool prevC = false, prevX = false, prevL = false;
