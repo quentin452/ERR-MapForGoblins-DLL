@@ -608,6 +608,16 @@ namespace
             snprintf(lb, sizeof(lb), "PANALPHA=%.3f  (F -0.05  H +0.05  R 1.0)", g_panAlpha);
             fg->AddText(ImVec2(12, 31), IM_COL32(0, 0, 0, 200), lb);
             fg->AddText(ImVec2(11, 30), IM_COL32(120, 255, 160, 255), lb);
+            // DIAG: live snap-rect + pan + reticle. Watch in UNDERGROUND while moving the
+            // mouse with the camera frozen — if snapMin/snapMax (or snapMid) CHANGE with the
+            // cursor, the snap-rect is cursor-coupled there (= bug1 reappears via the centre).
+            char sb[200];
+            snprintf(sb, sizeof(sb),
+                     "snap[%.1f,%.1f .. %.1f,%.1f] mid(%.1f,%.1f) pan(%.1f,%.1f) ret(%.1f,%.1f) z%.3f",
+                     v.snapMinX, v.snapMinZ, v.snapMaxX, v.snapMaxZ, v.snapMidX, v.snapMidZ,
+                     v.panX, v.panZ, v.raw[2], v.raw[3], v.zoom);
+            fg->AddText(ImVec2(12, 49), IM_COL32(0, 0, 0, 200), sb);
+            fg->AddText(ImVec2(11, 48), IM_COL32(255, 220, 120, 255), sb);
         }
 
         // DIAG (first-open latency): how long have we been WITHOUT a live view, and is
@@ -643,12 +653,16 @@ namespace
         // screen pos = ground truth). Grep "[LAGCSV]" out of the log → feed the data-driven
         // test: it cross-correlates the per-frame gap (reticle_projected − mouse) against the
         // 1-frame model (pan[n] − pan[n−1])·scale to prove the lag is exactly one frame.
-        //   columns: frame,panX,panZ,zoom,reticleU,reticleV,mouseX,mouseY
+        //   columns: frame,panX,panZ,zoom,reticleU,reticleV,mouseX,mouseY,slX,slZ
+        // slX=retU*zoom-panX, slZ=retV*zoom-panZ = the mouse in screen-local px. If ret and
+        // pan are sampled in sync this is CONSTANT (mouse fixed); any per-frame drift during a
+        // scroll = the exact ret-vs-pan desync in px = the bug-2 lag, measured directly.
         static bool g_csv = false;
         static unsigned long g_csv_frame = 0;
         if (g_csv && live)
-            spdlog::info("[LAGCSV] {},{:.4f},{:.4f},{:.6f},{:.4f},{:.4f},{:.2f},{:.2f}",
-                         g_csv_frame++, v.panX, v.panZ, v.zoom, v.raw[2], v.raw[3], m.x, m.y);
+            spdlog::info("[LAGCSV] {},{:.4f},{:.4f},{:.6f},{:.4f},{:.4f},{:.2f},{:.2f},{:.3f},{:.3f}",
+                         g_csv_frame++, v.panX, v.panZ, v.zoom, v.raw[2], v.raw[3], m.x, m.y,
+                         v.raw[2] * v.zoom - v.panX, v.raw[3] * v.zoom - v.panZ);
 
         if (live)
         {
