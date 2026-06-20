@@ -998,9 +998,15 @@ namespace
             ImGui::DragFloat("pan X (gtx)", &g_aff.gtx, 10.f, -12000.f, 12000.f, "%.0f");
             ImGui::DragFloat("pan Y (gty)", &g_aff.gty, 10.f, -12000.f, 12000.f, "%.0f");
             ImGui::Separator();
-            ImGui::TextColored(live && v.underground ? ImVec4(1, 0.6f, 0.2f, 1) : ImVec4(0.5f, 0.7f, 1, 1),
-                               "LAYER NOW: %s (DAT_143d6cfc3=%d)",
-                               live ? (v.underground ? "UNDERGROUND" : "overworld") : "?", live ? v.underground : -1);
+            {
+                bool dlcF = goblin::player_in_dlc();
+                int ogF = (dlcF ? 2 : 0) | ((live && v.underground) ? 1 : 0);
+                const char *gname[4] = {"base-OW", "base-UG", "DLC-OW", "DLC-UG"};
+                ImGui::TextColored(live && v.underground ? ImVec4(1, 0.6f, 0.2f, 1) : ImVec4(0.5f, 0.7f, 1, 1),
+                                   "OPEN GROUP: %s  (sublayer DAT=%d, player_in_dlc=%d)",
+                                   gname[ogF], live ? v.underground : -1, dlcF);
+                ImGui::TextDisabled("  ^ sublayer must flip 0<->non0 when you toggle UG; else flag is wrong");
+            }
             ImGui::TextDisabled("underground (page 12 + DLC 40-43) own rotation + pan:");
             ImGui::DragFloat("UG rotation deg", &g_aff.screen_rot_u, 1.f, -360.f, 360.f, "%.0f");
             ImGui::DragFloat("UG pan X", &g_aff.gtx_u, 10.f, -12000.f, 12000.f, "%.0f");
