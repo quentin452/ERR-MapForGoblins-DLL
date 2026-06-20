@@ -78,6 +78,30 @@ there. Options, in order of cleanliness:
 Reading `point` post-call does NOT yield `render_out` — `point` carries no render field
 (only the color LUT + the param row + sub-objects). The render pos is on the icon node.
 
+### Post-call read is NOT statically resolvable (re_v58, confirmed)
+
+The thunk at `0xa805e0` is a **bare `JMP 0x1457cd3df`** straight into the VMProtect region —
+it does **not** load `point->icon` in non-VMP code first. The point ctor caller that NEWs
+the instance + creates its icon is at `0xa82d09`, in the **un-analyzed VMP gap** (Ghidra
+never made it a function). So `point→icon` and the icon→`Matrix2x4` translation offset
+**cannot be lifted statically** — they live inside VMP. The post-call plain-memory read
+(and a fully in-DLL self-calibration) therefore need the **live in-VMP step** (bp `0xa805e0`,
+follow the jmp, find the two-float matrix store), or fall back to the **cursor snap
+cross-check** for `render_out`.
+
+**Recommended capture path (no VMP step needed):** hook `0xa839a6` for an exact `world_in`
+(`point+0x80`, the param row), and take `render_out` from the **snapped cursor**
+(`+0x104/+0x108` — exact when the reticle is on the icon). The hook removes the "which grace
+am I on?" ambiguity; the snap removes the hover error. That yields clean pairs with only the
+already-shipped CT, no breakpoint into VMP.
+
+### Param row field layout (at `point+0x80`)
+
+Relative layout (mod's `WORLD_MAP_POINT_PARAM_ST`, `…/from/paramdef`): `angle` (f32) then
+**`areaNo` u8, `gridXNo` u8, `gridZNo` u8, pad u8, `posX` f32, posY f32, `posZ` f32** —
+i.e. from the `areaNo` byte: `gridXNo=+1`, `gridZNo=+2`, `posX=+4`, `posZ=+12`. Match the
+`areaNo` byte in the live row at `point+0x80` (small 60/61/12/40-43) to anchor the base.
+
 ## Deliverable handoff
 
 The overlay already fits `M` (shared) + per-page `T` from collected pairs
