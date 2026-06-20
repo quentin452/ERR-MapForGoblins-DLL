@@ -55,6 +55,22 @@ authoritative one and decode it.)
    12000/12001/12002, DLC 6800..), give the field that holds the **open tab id** — that's the
    finest, most direct key (matches the mod's `GRACE_ANCHORS.tab_id`).
 
+## CRITICAL — the field must be VIEW-driven, not player-driven
+
+Verify the candidate field reflects **which map the user is LOOKING AT** (the open map
+page the user toggled to), NOT where the **player physically is**. The overlay needs the
+*viewed* region: the player can stand in Limgrave and open the DLC or underground map, and
+the overlay must gate to the OPEN map, not Limgrave. So check both axes independently:
+- switch the map view (overworld → underground → DLC) **without moving the player** → the
+  field MUST change;
+- **move the player** into a different area while NOT changing the open map (or with the map
+  closed) → the field must NOT change for our purpose.
+
+If the only field you find is player-driven (tracks physical area, not the viewed map),
+say so explicitly — then the open-map id lives elsewhere (the menu/tab-selection state),
+and that's the one we need. A field that changes on BOTH is ambiguous — flag it and prefer
+a purely view/tab-selection-driven one.
+
 ## Deliverable
 
 - The field (offset on `dialog` or `view`, or a static/singleton) for the open region/page/
