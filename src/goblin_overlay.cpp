@@ -607,18 +607,41 @@ namespace
         // R=0. Applied to the view CENTRE + zoom, written back to pan so project_uv reproduces it.
         // If no value syncs the points to the map → the dash is the inherent overlay-vs-native
         // limit (sub-frame compositing phase), accept it.
+        // For DELAY (lead<0) use a real frame-history ring buffer (sample |lead| frames back,
+        // fractional → lerp) — NOT extrapolation. Extrapolation `cur + lead·(cur−prev)` amplifies
+        // the per-frame delta 1.25× in the OPPOSITE direction on a sharp reversal (keyboard/gamepad
+        // ZQSD pan = instant velocity flips) → the points visibly "se retournent"/overshoot. A true
+        // past value never overshoots. lead>0 (forward) still extrapolates (experiment only).
         static float g_lead = -1.25f; // user-tuned: −1.25 frame delay best-syncs to the native map
         {
-            static float pCU = 0, pCV = 0, pZoom = 0; static bool pInit = false;
+            static const int HN = 8;
+            static float hCU[HN] = {0}, hCV[HN] = {0}, hZ[HN] = {0};
+            static int hHead = 0; static bool pInit = false;
             if (live)
             {
                 float cU = (v.panX + v.snapMidX) / v.zoom;
                 float cV = (v.panZ + v.snapMidZ) / v.zoom;
-                if (!pInit) { pCU = cU; pCV = cV; pZoom = v.zoom; pInit = true; }
-                float eU = cU + g_lead * (cU - pCU);
-                float eV = cV + g_lead * (cV - pCV);
-                float eZ = v.zoom + g_lead * (v.zoom - pZoom);
-                pCU = cU; pCV = cV; pZoom = v.zoom;
+                if (!pInit) { for (int i = 0; i < HN; ++i) { hCU[i] = cU; hCV[i] = cV; hZ[i] = v.zoom; } pInit = true; }
+                hHead = (hHead + 1) % HN;
+                hCU[hHead] = cU; hCV[hHead] = cV; hZ[hHead] = v.zoom;
+                float eU, eV, eZ;
+                if (g_lead < 0.0f)
+                {
+                    float d = -g_lead; if (d > HN - 1) d = HN - 1; // frames back
+                    int d0 = (int)d; float fr = d - d0;
+                    int i0 = (hHead - d0 + 2 * HN) % HN;
+                    int i1 = (hHead - d0 - 1 + 2 * HN) % HN;
+                    eU = hCU[i0] * (1 - fr) + hCU[i1] * fr;
+                    eV = hCV[i0] * (1 - fr) + hCV[i1] * fr;
+                    eZ = hZ[i0]  * (1 - fr) + hZ[i1]  * fr;
+                }
+                else
+                {
+                    int ip = (hHead - 1 + HN) % HN; // forward extrapolation (experiment)
+                    eU = cU + g_lead * (cU - hCU[ip]);
+                    eV = cV + g_lead * (cV - hCV[ip]);
+                    eZ = v.zoom + g_lead * (v.zoom - hZ[ip]);
+                }
                 v.zoom = eZ;
                 v.panX = eU * eZ - v.snapMidX;
                 v.panZ = eV * eZ - v.snapMidZ;
