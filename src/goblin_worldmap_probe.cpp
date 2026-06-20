@@ -358,35 +358,10 @@ void probe_loop()
                 candidates.push_back(menu_cursor);
                 g_log->info("resolve: cursor {:#x} (menu walk)", menu_cursor);
             }
-            // Once per map-open (g_all_cursors is empty only right after open / a close-
-            // clear): (1) recenter the reticle to screen centre for safety, (2) enumerate
-            // every world-map cursor reachable from CSMenuMan (bounded + safe).
-            if (g_all_cursors.empty())
-                enumerate_menu_cursors(base, vtable_va);
-            // Monitor every found instance's reticle; log the address whose coords change so
-            // moving the STICK reveals the gamepad cursor (vs the menu-walk = mouse one).
-            {
-                static std::unordered_map<uintptr_t, std::array<float, 2>> last_all;
-                for (uintptr_t c : g_all_cursors)
-                {
-                    uint64_t vt = 0;
-                    if (!seh_read8(reinterpret_cast<void *>(c), &vt) || vt != vtable_va)
-                        continue;
-                    float cx, cz;
-                    if (!seh_read4(reinterpret_cast<void *>(c + OFF_X), &cx) ||
-                        !seh_read4(reinterpret_cast<void *>(c + 0x104), &cz))
-                        continue;
-                    if (!std::isfinite(cx) || !std::isfinite(cz))
-                        continue;
-                    auto &l = last_all[c];
-                    if (std::fabs(l[0] - cx) > 0.01f || std::fabs(l[1] - cz) > 0.01f)
-                    {
-                        g_log->info("[ALLCURSOR-MOVE] @{:#x} +0xFC={:.2f} +0x104={:.2f}{}",
-                                    c, cx, cz, c == menu_cursor ? "  (menu-walk = MOUSE)" : "");
-                        l = {cx, cz};
-                    }
-                }
-            }
+            // DISABLED (gamepad-cursor WIP): the all-instance enumerate_menu_cursors scan
+            // (L1 0x10000 × L2 0x800 RPM reads) ran once per map-open and slowed the map
+            // load noticeably — and it never reliably found the gamepad cursor. Removed; the
+            // single menu-walk cursor is used. Re-enable only behind a debug flag if needed.
         }
         else
         {
