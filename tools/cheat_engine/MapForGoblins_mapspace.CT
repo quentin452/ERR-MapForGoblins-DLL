@@ -252,9 +252,23 @@ function mfg_snapshot()
     panx = readFloat(mfg.view + 0x378); panz = readFloat(mfg.view + 0x37C)
     zoom = readFloat(mfg.view + 0x380)
   end
+  -- Mouse pixel (screen coords) = the reticle's TRUE screen pos (mouse mode) → ground truth
+  -- for the stage-2 canvas mapping screen_local→pixel. screen_local = reticleFC·zoom − pan.
+  local mx, my = -1, -1
+  local mp = getMousePos(); if mp then mx = mp.x; my = mp.y end
+  -- Stage-2 canvas: [eldenring+0x47ef360] → [+0x128] → originX +0x110, originY +0x114, W +0x118, H +0x11c
+  local cox, coy, cw, ch = -1, -1, -1, -1
+  local cs = readPointer(getAddress("eldenring.exe") + 0x47EF360)
+  if cs and cs ~= 0 then
+    local cv = readPointer(cs + 0x128)
+    if cv and cv ~= 0 then
+      cox = readFloat(cv + 0x110); coy = readFloat(cv + 0x114)
+      cw  = readFloat(cv + 0x118); ch  = readFloat(cv + 0x11C)
+    end
+  end
   local line = string.format(
-    "render104=(%.2f, %.2f)  reticleFC=(%.2f, %.2f)  area=%d sub=%d ug=%d  pan=(%.2f, %.2f)  zoom=%.4f",
-    rx, rz, tx, ty, area, sub2, sub, panx, panz, zoom)
+    "render104=(%.2f, %.2f)  reticleFC=(%.2f, %.2f)  area=%d sub=%d ug=%d  pan=(%.2f, %.2f)  zoom=%.4f  mouse=(%d, %d)  canvas=origin(%.1f,%.1f) wh(%.1f,%.1f)",
+    rx, rz, tx, ty, area, sub2, sub, panx, panz, zoom, mx, my, cox, coy, cw, ch)
   print("[MFG] " .. line)
   local f = io.open("MapForGoblins_mapspace_ct.log", "a")
   if f then f:write(os.date("%H:%M:%S ") .. line .. "\n"); f:close() end
