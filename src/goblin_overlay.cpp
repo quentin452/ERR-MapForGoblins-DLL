@@ -390,11 +390,10 @@ namespace
     // FUN_1409cd0a0 (`screen = marker·zoom − pan`, centre = (pan + screenCentre)/zoom), and
     // confirms via [INPUT-DELTA] that the GAMEPAD stick pans +0x378/+0x37c (+ zoom +0x380) and
     // never moves the reticle (+0xFC/+0x104 fire only on mouse hover) — consistent with snapMid.
-    // Default = raw reticle (the known-good mouse baseline). The (pan+snapMid)/zoom view-
-    // centre stayed broken in-game (user, 2026-06-20) → reverted to reticle; instead we force
-    // a synthetic MOUSE update on map open (goblin_worldmap_probe.cpp) to reproduce the
-    // "move the mouse" workaround automatically. Y still toggles the view-centre for testing.
-    bool g_pan_center = false;
+    // Default = (pan+snapMid)/zoom (cursor-INDEPENDENT). This is the fix the user CONFIRMED
+    // kills the camera-frozen / mouse-to-screen-edge drift (bug 1) — markers no longer track
+    // the cursor. Y toggles to the raw-reticle baseline for A/B.
+    bool g_pan_center = true;
 
     // (markerU, markerV) marker coords → backbuffer px.
     ImVec2 project_uv(const goblin::worldmap_probe::LiveView &v, float mU, float mV,
