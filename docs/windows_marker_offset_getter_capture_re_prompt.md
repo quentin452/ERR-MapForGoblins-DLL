@@ -52,12 +52,8 @@ statically liftable — it must be read **live at a breakpoint**. That is the wh
    - **(b) post-call read** — resolve `point → icon` and the icon→`Matrix2x4` translation
      offset so `render_out` is a plain memory read after the call. **Report both offsets** —
      they unlock fully-automated in-DLL self-calibration later (no CE needed).
-3. **Collect ≥3 spread pairs per page** for the **3 real map pages: 60, 61, 12** (open map on
-   each, a few seconds each). More = better fit. There are only THREE world-map screens —
-   60 (base overworld), 12 (base underground), 61 (DLC, single map). Areas 40-43 are DLC
-   dungeon interiors that legacy-conv ONTO page 61 (verified: src-only in
-   WorldMapLegacyConvParam, all resolve to 61) — their markers render on page 61, so do NOT
-   treat them as separate pages.
+3. **Collect ≥3 spread pairs per page** for **60, 61, 12, 40, 41, 42, 43** (open map on each,
+   a few seconds each). More = better fit.
 4. **Solve per page** (`render = M·world + T`):
    ```python
    import numpy as np
@@ -75,7 +71,7 @@ statically liftable — it must be read **live at a breakpoint**. That is the wh
 ## Deliverable — the numbers
 
 1. **`M`** — 4 floats `a, b, c, d` (one shared matrix).
-2. **`T[page]`** — the `(e, f)` offset for each of the 3 pages 60, 61, 12. **This is the
+2. **`T[page]`** — the `(e, f)` offset for each of 60, 61, 12, 40, 41, 42, 43. **This is the
    per-page offset that fixes the session drift.**
 3. Per-page mean residual (sub-pixel proof).
 4. If step 2(b): the `point → icon` offset + icon → `Matrix2x4` translation offset.
@@ -98,37 +94,33 @@ Answer: **"undiscovered markers have a readable render position: YES/NO"** + evi
 (YES → we could skip the affine and read positions live. NO → the M/T bake is mandatory.
 Either way the captured pairs still pin M/T.)
 
-## Page → region (use `areaNo` from `point+0x80` to label pairs)
-
-`areaNo` read at the bp is POST legacy-conv = the dst page. Map it:
-
-There are only THREE world-map screens:
-
-| areaNo | map screen | region |
-|---|---|---|
-| **60** | base overworld | Limgrave / Liurnia / Caelid / Altus / Mountaintops (tabIds 61000–65000) |
-| **12** | base underground | Nokron, Deeproot, Ainsel, Siofra, Lake of Rot, Mohgwyn (tabIds 12000–12002) |
-| **61** | DLC (single map) | Land of Shadow / Shadow Keep (tabIds 6800–6940, 21000) |
-
-Base game = two separate map screens you toggle between (60 surface ⇄ 12 underground). The
-DLC = ONE map (61); it has no separate underground screen. Areas **40-43 are DLC dungeon
-interiors** (Stone Coffin Fissure etc.) that legacy-conv onto page 61 — their markers render
-on 61, they are NOT separate pages. (Verified: 40-43 are src-only in WorldMapLegacyConvParam,
-all resolve to 61. Terminal map pages = {60, 61, 12}; 19/70 are tiny edge areas.)
-
-Capture pairs on the matching map: base overworld for 60, base underground for 12, DLC map
-for 61 (move around it incl. former-40-43 dungeon entrances — they label as areaNo 61 once
-conv'd).
-
 ## Sanity anchors (your pairs should match)
 
 | grace | page | world (X, Z) | render (X, Z) |
 |---|---|---|---|
-| Shadow Keep (area 21 → conv) | 61 | (12338.25, 11985) | (6018.75, 6187.28) |
+| Dragonbarrow | 61 | (12338.25, 11985) | (6018.75, 6187.28) |
 | Academy Gate | 60 | (9217.7, 13617) | (~1826, ?) |
 
-NB: the page-61 anchor is a DLC Shadow Keep grace (source area 21, tabId 21000), NOT
-Dragonbarrow (Dragonbarrow is base-game Caelid → page 60). Earlier notes mislabeled it.
+Dragonbarrow check: `(12338.25 − originX[61])·0.5 = 6018.75` → `originX[61] ≈ 300`; i.e.
+`T` and the per-page origin are the same constant in different form (`T = −origin·0.5`).
 
-Anchor check: `(12338.25 − originX[61])·0.5 = 6018.75` → `originX[61] ≈ 300`; i.e. `T` and
-the per-page origin are the same constant in different form (`T = −origin·0.5`).
+---
+
+## TOOLS READY (2026-06-20)
+
+Capture is done via the **cursor-snap** path (re_v56 note: `cursor +0x104/+0x108` IS exact when the
+cursor snaps onto an icon → that's `render_out`; no in-VMP bp needed). The page is auto-labelled using
+the now-solved region key (`page=dialog+0xA88`, `layer=[[dialog+0x2B68]+0xB8]`).
+
+- **`tools/cheat_engine/MapForGoblins_marker_capture.CT`** — resolves the cursor O(1), NUMPAD 0 captures
+  `render_out` (cursor +0x104/+0x108) + auto-detected page/layer → `MapForGoblins_marker_capture.csv`.
+  Recipe: open map on a page → hover a KNOWN grace, let the cursor **SNAP** onto it → NUMPAD 0 → note the
+  grace name. ≥3 spread graces per page for 60,61,12,40,41,42,43.
+- **`tools/solve_marker_affine.py`** — input `page,wx,wz,rx,rz` (wx,wz from `GRACE_ANCHORS`:
+  `gridXNo·256+posX`, `gridZNo·256+posZ`; rx,rz from the capture). No numpy dependency (pure-python
+  lstsq). Solves per-page `M=[[a,b],[c,d]]` + `T[page]=(e,f)`, reports residuals, and whether `M` is
+  shared across pages (→ bake `M` once + `T[page]`).
+
+**Workflow:** snap-capture render per grace → fill `wx,wz` from anchors → `python solve_marker_affine.py
+pairs.csv` → bake the printed `M` + `T[page]` into `goblin_overlay.cpp` (replace the `g_aff` runtime solve
++ centroid pivot).

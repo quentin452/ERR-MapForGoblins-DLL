@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CheatTable CheatEngineTableVersion="44">
+  <CheatEntries>
+    <CheatEntry>
+      <ID>0</ID>
+      <Description>"=== MapForGoblins: world_in BREAKPOINT (dump markers' dst-page world) ==="</Description>
+      <GroupHeader>1</GroupHeader>
+    </CheatEntry>
+  </CheatEntries>
+  <LuaScript><![CDATA[
+--[[ world_in BREAKPOINT capture. Site = eldenring.exe + 0xa839a6 (CALL thunk in reconcile
+     FUN_140a832a0). At the call RCX = CSWorldMapPointIns* point.
+  HOTKEYS:
+    NUMPAD 9 = DIAGNOSE: arm in diag mode, logs the first hits RAW (RCX + both inline &
+               deref reads of point+0x80) so we confirm the bp fires + the row layout.
+    NUMPAD 7 = ARM real capture (dedup by point, cap 800).
+    NUMPAD 8 = DISARM + dump -> MapForGoblins_markers.csv + per-page count.
+  Heavy bp (per-frame per-marker). If the game hangs, NUMPAD 8.                       ]]
+
+local SITE_RVA = 0xa839a6
+local AOB_PREFIX = {0x66,0x48,0x0F,0x7E,0xC9}  -- bytes expected at site-13 (sanity)
+local VALID = {[60]=true,[61]=true,[12]=true,[40]=true,[41]=true,[42]=true,[43]=true}
+mfg = mfg or {}
+
+local function site() local b=getAddress("eldenring.exe"); if b==0 then return 0 end return b+SITE_RVA end
+
+local function check_site(s)
+  -- verify the AOB prefix sits 13 bytes before the call
+  local ok=true; for i=1,#AOB_PREFIX do local b=readBytes(s-13+(i-1),1,false); if b~=AOB_PREFIX[i] then ok=false break end end
+  return ok
+end
+
+-- read the param row both ways; return area,wx,wz using whichever yields a VALID areaNo
+local function read_row(point)
+  -- (a) point+0x80 is a POINTER to the row
+  local row = readPointer(point + 0x80)
+  if row and row~=0 then
+    local a=readByte(row)
+    if a and VALID[a] then
+      local gx,gz=readByte(row+1),readByte(row+2); local px,pz=readFloat(row+4),readFloat(row+0xC)
+      if gx and gz and px and pz then return a, gx*256+px, gz*256+pz, "deref" end
+    end
+  end
+  -- (b) point+0x80 is the INLINE row
+  local r2 = point+0x80
+  local a2=readByte(r2)
+  if a2 and VALID[a2] then
+    local gx,gz=readByte(r2+1),readByte(r2+2); local px,pz=readFloat(r2+4),readFloat(r2+0xC)
+    if gx and gz and px and pz then return a2, gx*256+px, gz*256+pz, "inline" end
+  end
+  return nil
+end
+
+function mfg_bp()
+  mfg.hits=(mfg.hits or 0)+1
+  local ok,err = pcall(function()
+    local point = RCX
+    if not point or point==0 then return end
+    if mfg.diag and mfg.hits<=8 then
+      local rowp = readPointer(point+0x80)
+      print(string.format("[MFG] hit#%d RCX=%X  [point+0x80]=%X  inlineArea=%s derefArea=%s",
+        mfg.hits, point, rowp or 0,
+        tostring(readByte(point+0x80)), rowp and tostring(readByte(rowp)) or "n/a"))
+    end
+    if mfg.seen[point] then return end
+    local a,wx,wz,how = read_row(point)
+    if a then
+      mfg.seen[point]=true
+      mfg.markers[#mfg.markers+1]={area=a,wx=wx,wz=wz,point=point,how=how}
+      if #mfg.markers >= 800 then mfg_disarm() end
+    end
+  end)
+  if not ok and not mfg.errshown then mfg.errshown=true; print("[MFG] bp callback error: "..tostring(err)) end
+  return 1
+end
+
+local function arm(diag)
+  mfg.markers={}; mfg.seen={}; mfg.hits=0; mfg.diag=diag; mfg.errshown=false
+  local s=site(); if s==0 then print("[MFG] eldenring.exe not found"); return end
+  if not check_site(s) then
+    print(string.format("[MFG] WARNING: bytes at %X-13 != expected AOB prefix (66 48 0F 7E C9). Site may be wrong / patched.", s))
+  end
+  mfg.site=s
+  debug_setBreakpoint(s, 1, bptExecute, mfg_bp)
+  mfg.armed=true
+  print(string.format("[MFG] %s ARMED @ %X (eldenring.exe+0x%X). Open map + move cursor so reconcile runs.", diag and "DIAG" or "CAPTURE", s, SITE_RVA))
+end
+function mfg_diag_arm() arm(true) end
+function mfg_arm() arm(false) end
+
+function mfg_disarm()
+  if mfg.site then pcall(function() debug_removeBreakpoint(mfg.site) end) end
+  mfg.armed=false
+  print(string.format("[MFG] DISARMED. hits=%d  distinct markers=%d", mfg.hits or 0, #mfg.markers))
+  if #mfg.markers>0 then
+    local f=io.open("MapForGoblins_markers.csv","a")
+    if f then f:write(string.format("# dump %d markers (how=%s)\n# areaNo,world_x,world_z,point\n", #mfg.markers, mfg.markers[1].how))
+      for _,m in ipairs(mfg.markers) do f:write(string.format("%d,%.3f,%.3f,%X\n",m.area,m.wx,m.wz,m.point)) end f:close() end
+    local per={}; for _,m in ipairs(mfg.markers) do per[m.area]=(per[m.area] or 0)+1 end
+    local s=""; for a,c in pairs(per) do s=s..string.format("area %d=%d  ",a,c) end
+    print("[MFG] -> MapForGoblins_markers.csv  ["..s.."]")
+  elseif (mfg.hits or 0)==0 then
+    print("[MFG] bp NEVER fired -> reconcile not running. Make sure map is OPEN and MOVE the cursor (forces reconcile). Or the site RVA shifted.")
+  else
+    print("[MFG] bp fired but no VALID rows read -> run NUMPAD 9 (diag) to see the raw layout.")
+  end
+end
+
+if mfg.armed and mfg.site then pcall(function() debug_removeBreakpoint(mfg.site) end) end
+for _,h in ipairs({"hk7","hk8","hk9"}) do if mfg[h] then pcall(function() mfg[h].destroy() end) end end
+mfg.armed=false; mfg.markers={}; mfg.seen={}
+mfg.hk9=createHotkey(mfg_diag_arm, VK_NUMPAD9)  -- DIAG arm
+mfg.hk7=createHotkey(mfg_arm,      VK_NUMPAD7)  -- CAPTURE arm
+mfg.hk8=createHotkey(mfg_disarm,   VK_NUMPAD8)  -- disarm + dump
+print("[MFG] world_in BP v2 loaded. FIRST: open map, MOVE cursor, NUMPAD 9 (diag) -> read the hit logs.")
+print("[MFG] Then NUMPAD 8 to stop. If diag looks right, NUMPAD 7 to capture for real, NUMPAD 8 to dump.")
+]]></LuaScript>
+</CheatTable>
