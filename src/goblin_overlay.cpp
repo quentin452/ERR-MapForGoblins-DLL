@@ -382,10 +382,11 @@ namespace
     };
     MarkerCalib g_calib;
 
-    // Render-ease gain: how much of the engine's reticle ease (+0x10C − +0x104) to add to
-    // the view centre so graces track the DISPLAYED (eased) map, not the instant target.
-    // 1.0 = full match (default). F/H dial (can go negative to flip sign if needed).
-    float g_easeGain = 1.0f;
+    // Render-ease gain on the grace screen-shift. DEFAULT 0 = OFF: the reticle ease source
+    // (+0x10C − +0x104) is SNAP-contaminated (when locked onto an icon +0x104 snaps but
+    // +0x10C stays at the cursor → a bogus non-zero delta at rest that drags every grace).
+    // F/H still dial it for experiments; the grid diag (key I) is the cleaner signal.
+    float g_easeGain = 0.0f;
 
     // ★ THE view centre = (pan + snapMid)/zoom — NOT the reticle (+0xFC). Proven by the
     // gamepad symptom (2026-06-20): the old reticle centre makes markers "jamais centré" on
@@ -421,10 +422,8 @@ namespace
             // during fast moves). The ease in marker space = (+0x10C − +0x104); the cursor
             // offset cancels in that difference, so adding it to the target centre yields the
             // DISPLAYED centre (cursor-independent). At rest the two are equal → no change.
-            float easeU = (v.raw[4] - v.raw[2]) * g_easeGain;
-            float easeV = (v.raw[5] - v.raw[3]) * g_easeGain;
-            centerU = (v.panX + v.snapMidX) / v.zoom + easeU;
-            centerV = (v.panZ + v.snapMidZ) / v.zoom + easeV;
+            centerU = (v.panX + v.snapMidX) / v.zoom;
+            centerV = (v.panZ + v.snapMidZ) / v.zoom;
         }
         else
         {
@@ -601,18 +600,20 @@ namespace
         //   s += (raw - s)*alpha.   alpha=1 -> instant (current). alpha~0.1 -> ER's ease.
         // Eased fields: panX/panZ (grace centre) AND reticle raw[2]/raw[3] (the cyan). At rest
         // s==raw so static placement is untouched; only the in-motion render-lead is removed.
-        static float g_panAlpha = 1.0f;
+        // DEFAULT 0.5: user-dialed value where the grid + graces stay glued to the terrain
+        // through a scroll = the engine's displayed-view ease rate. (Per-frame lerp; if the
+        // framerate changes a lot this may want re-tuning / dt-normalising. F/H to re-dial.)
+        static float g_panAlpha = 0.5f;
         {
-            static float sX = 0, sZ = 0, sRU = 0, sRV = 0;
+            static float sX = 0, sZ = 0, sZoom = 0;
             static bool sInit = false;
             if (live)
             {
-                if (!sInit) { sX = v.panX; sZ = v.panZ; sRU = v.raw[2]; sRV = v.raw[3]; sInit = true; }
-                sX  += (v.panX   - sX)  * g_panAlpha;
-                sZ  += (v.panZ   - sZ)  * g_panAlpha;
-                sRU += (v.raw[2] - sRU) * g_panAlpha;
-                sRV += (v.raw[3] - sRV) * g_panAlpha;
-                v.panX = sX; v.panZ = sZ; v.raw[2] = sRU; v.raw[3] = sRV;
+                if (!sInit) { sX = v.panX; sZ = v.panZ; sZoom = v.zoom; sInit = true; }
+                sX    += (v.panX - sX)    * g_panAlpha;
+                sZ    += (v.panZ - sZ)    * g_panAlpha;
+                sZoom += (v.zoom - sZoom) * g_panAlpha; // zoom eases too, else zoom drifts
+                v.panX = sX; v.panZ = sZ; v.zoom = sZoom; // grid + graces; reticle left raw as target ref
             }
         }
 
@@ -639,8 +640,8 @@ namespace
         }
         {
             char lb[96];
-            snprintf(lb, sizeof(lb), "EASEGAIN=%.2f (F/H, R=1)   MAPFPS=%.0f (T/Z)",
-                     g_easeGain, g_mapFps);
+            snprintf(lb, sizeof(lb), "PANALPHA=%.3f (F/H, R=1)   grid=I   MAPFPS=%.0f (T/Z)",
+                     g_panAlpha, g_mapFps);
             fg->AddText(ImVec2(12, 31), IM_COL32(0, 0, 0, 200), lb);
             fg->AddText(ImVec2(11, 30), IM_COL32(120, 255, 160, 255), lb);
             // DIAG: live snap-rect + pan + reticle. Watch in UNDERGROUND while moving the
@@ -653,6 +654,31 @@ namespace
                      v.panX, v.panZ, v.raw[2], v.raw[3], v.zoom);
             fg->AddText(ImVec2(12, 49), IM_COL32(0, 0, 0, 200), sb);
             fg->AddText(ImVec2(11, 48), IM_COL32(255, 220, 120, 255), sb);
+        }
+
+        // TERRAIN-GRID DIAG (toggle I). Draws a grid at fixed marker-space intervals through
+        // OUR projection (the target frame). Compare its lines to the game's map features
+        // during a scroll/lock: if our grid LEADS/LAGS the map art, that gap IS the bug-2
+        // target-vs-displayed offset, seen directly without the snap-contaminated reticle.
+        static bool g_grid = false;
+        if (g_grid && live)
+        {
+            const float step = 512.0f;            // marker-space spacing
+            float cU = (v.panX + v.snapMidX) / v.zoom; // view-centre marker coord
+            float cV = (v.panZ + v.snapMidZ) / v.zoom;
+            int N = 12;
+            float baseU = roundf(cU / step) * step, baseV = roundf(cV / step) * step;
+            ImU32 gcol = IM_COL32(255, 0, 255, 90);
+            for (int k = -N; k <= N; ++k)
+            {
+                float lu = baseU + k * step, lv = baseV + k * step;
+                ImVec2 a = project_uv(v, lu, cV - N * step, io.DisplaySize.x, io.DisplaySize.y);
+                ImVec2 b = project_uv(v, lu, cV + N * step, io.DisplaySize.x, io.DisplaySize.y);
+                fg->AddLine(a, b, gcol, 1.0f);     // vertical line (const U)
+                ImVec2 c = project_uv(v, cU - N * step, lv, io.DisplaySize.x, io.DisplaySize.y);
+                ImVec2 d = project_uv(v, cU + N * step, lv, io.DisplaySize.x, io.DisplaySize.y);
+                fg->AddLine(c, d, gcol, 1.0f);     // horizontal line (const V)
+            }
         }
 
         // DIAG (first-open latency): how long have we been WITHOUT a live view, and is
@@ -901,6 +927,12 @@ namespace
                 }
                 // (rotation is applied in RENDER space above so pan/zoom track)
                 ImVec2 gp = project_uv(v, gU, gV, io.DisplaySize.x, io.DisplaySize.y);
+                // RENDER-EASE SHIFT: the game draws the eased frame (+0x10C), we project the
+                // target. Shift every grace by the reticle's screen-space ease vector =
+                // project(+0x10C) − project(+0x104) = (raw[4]−raw[2])·zoom·scale. Static-marker
+                // correct (unlike the centre-ease), cursor-independent, 0 at rest. F/H = gain.
+                gp.x += (v.raw[4] - v.raw[2]) * v.zoom * g_calib.scaleX * g_easeGain;
+                gp.y += (v.raw[5] - v.raw[3]) * v.zoom * g_calib.scaleY * g_easeGain;
                 bool solo = (g_solo >= 0 && myidx == g_solo);
                 if (solo) { g_solo_wU = wx; g_solo_wV = wz; g_solo_page = pg; }
                 if (!solo && (gp.x < -16 || gp.y < -16 || gp.x > io.DisplaySize.x + 16 ||
@@ -966,9 +998,9 @@ namespace
         bool downLB = (GetAsyncKeyState('F') & 0x8000) != 0; // convScale -
         bool downRB = (GetAsyncKeyState('H') & 0x8000) != 0; // convScale +
         bool downBS = (GetAsyncKeyState('R') & 0x8000) != 0; // reset 1.0
-        if (downLB && !prevLB) { g_easeGain -= 0.1f; spdlog::info("[EASEGAIN] {:.2f}", g_easeGain); }
-        if (downRB && !prevRB) { g_easeGain += 0.1f; spdlog::info("[EASEGAIN] {:.2f}", g_easeGain); }
-        if (downBS && !prevBS) { g_easeGain = 1.0f; spdlog::info("[EASEGAIN] reset 1.0"); }
+        if (downLB && !prevLB) { g_panAlpha -= 0.05f; if (g_panAlpha < 0.05f) g_panAlpha = 0.05f; spdlog::info("[PANALPHA] {:.3f}", g_panAlpha); }
+        if (downRB && !prevRB) { g_panAlpha += 0.05f; if (g_panAlpha > 1.0f) g_panAlpha = 1.0f; spdlog::info("[PANALPHA] {:.3f}", g_panAlpha); }
+        if (downBS && !prevBS) { g_panAlpha = 1.0f; spdlog::info("[PANALPHA] reset 1.0"); }
         prevLB = downLB; prevRB = downRB; prevBS = downBS;
 
         // T / Z = map-update-rate throttle (Hz); 0 = off (every frame).
@@ -978,6 +1010,12 @@ namespace
         if (downT && !prevT) { g_mapFps -= 5.0f; if (g_mapFps < 0.0f) g_mapFps = 0.0f; spdlog::info("[MAPFPS] {:.0f}", g_mapFps); }
         if (downZ && !prevZ) { g_mapFps += 5.0f; spdlog::info("[MAPFPS] {:.0f}", g_mapFps); }
         prevT = downT; prevZ = downZ;
+
+        // I = toggle the terrain-grid diagnostic.
+        static bool prevI = false;
+        bool downI = (GetAsyncKeyState('I') & 0x8000) != 0;
+        if (downI && !prevI) { g_grid = !g_grid; spdlog::info("[GRID] {}", g_grid ? "ON" : "OFF"); }
+        prevI = downI;
 
         static bool prevC = false, prevX = false, prevL = false;
         bool downC = (GetAsyncKeyState('C') & 0x8000) != 0;
