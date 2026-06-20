@@ -64,6 +64,29 @@ its own `(world → render)` per marker gives the exact transform.
 We bake `M` + `T[page]` as constants in `goblin_overlay.cpp` (replace the `g_aff` runtime
 solve) → base mode renders correctly with no user calibration.
 
+## ALSO REPORT — does the game place UNDISCOVERED markers? (architecture-critical)
+
+The overlay's whole point is showing **undiscovered** graces/markers. If the game only
+builds an icon (and thus computes a render position) for **visible/discovered** markers,
+then undiscovered ones have no render pos to read → we MUST compute them via the baked
+`M·world+T` (the math is mandatory). But if the game builds icons for **all** markers and
+merely hides the undiscovered ones (visibility flag off, position still computed), then we
+could read every render pos directly and the math becomes optional. **Determine which.**
+
+Concretely, while the map is open on a page:
+1. Does the built-icon map at `CSWorldMapPointMan + 0x398` contain entries for graces the
+   player has **NOT** discovered (i.e. icons not drawn on screen)? Count built nodes vs
+   visible icons.
+2. The instance's show-predicate is vt[1] `FUN_140a81450` — is it evaluated **before** the
+   point is inserted into the `+0x398` map (→ hidden points never built, no pos), or
+   **after** (→ all points built with a pos, just not drawn)?
+3. If built-but-hidden points exist, do they carry a valid render position (the
+   `Matrix2x4` translation in render range), or is the matrix only written for visible ones?
+
+Report a yes/no: **"undiscovered markers have a readable render position: YES/NO"** — plus
+the evidence. (YES would let us skip the affine entirely and read positions live; NO
+confirms the M/T bake is required. Either way the captured pairs above still pin M/T.)
+
 ## Sanity anchors (your captured pairs should match)
 
 | grace | page | world (X, Z) | render (X, Z) |
