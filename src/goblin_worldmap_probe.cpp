@@ -445,13 +445,26 @@ bool get_live_view(LiveView &out)
     // WorldMapArea+0x6e (i32) = areaNo of the open page (doc §3) → page filter.
     out.viewArea = -1;
     seh_read_i32(reinterpret_cast<void *>(view + 0x6e), &out.viewArea);
-    // Sublayer flag DAT_143d6cfc3 (eldenring.exe+0x3D6CFC3): 0 = overworld, !=0 =
-    // underground. Cheap 1-byte read → lets the overlay switch overworld/underground
-    // projection params + draw only the matching page's graces.
+    // Open-map region — SOLVED RE (commit 3f4ba42, docs/windows_open_map_region_re_prompt.md).
+    // The dead DAT_143d6cfc3 flag (render-only/transient) is replaced by two O(1) reads off
+    // the WorldMapDialog (= cursor − 0x2DB0):
+    //   page  = *(int*)(dialog + 0xA88)                       0 = base, 10 = DLC
+    //   layer = *(uint8_t*)( *(void**)(dialog + 0x2B68) + 0xB8 )  0 = surface, 1 = underground
+    // (underground is applied internally as page+1, not stored in `page`.) Gate:
+    //   page==10 → DLC ; else layer==0 → overworld ; else underground.
     out.underground = 0;
-    int ug = 0;
-    if (seh_read_i32(reinterpret_cast<void *>(base + 0x3D6CFC3), &ug))
-        out.underground = ug & 0xFF; // the flag is a byte
+    out.openDlc = 0;
+    uintptr_t dialog = a - CURSOR_OFF_IN_MENU;
+    int page = 0;
+    if (seh_read_i32(reinterpret_cast<void *>(dialog + 0xA88), &page))
+        out.openDlc = (page == 10) ? 1 : 0;
+    uint64_t layer_obj = 0;
+    if (seh_read8(reinterpret_cast<void *>(dialog + 0x2B68), &layer_obj) && layer_obj)
+    {
+        int layer = 0;
+        if (seh_read_i32(reinterpret_cast<void *>(layer_obj + 0xB8), &layer))
+            out.underground = layer & 0xFF; // the layer state is a byte
+    }
     return true;
 }
 
