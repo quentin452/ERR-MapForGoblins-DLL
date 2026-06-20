@@ -215,6 +215,52 @@ function mfg_snapshot()
   if f then f:write(os.date("%H:%M:%S ") .. line .. "\n"); f:close() end
 end
 
+-- AREA HUNT: scan the cursor/dialog/view structs for any field holding the current hovered
+-- AREA (MapId area byte: 60/61=OW, 12=UG, 40-43=DLC). Static RE found no single stored region
+-- field, so we find it empirically: run this on the OW map (hovering a known spot), then on the
+-- UG map, and DIFF the two logs -- the field we want is the offset whose value flips 60/61 -> 12.
+--   * packed-MapId int32 (top byte = area, e.g. 0x3C2A2400) is the most specific match.
+--   * lone byte == area is noisier (constant noise cancels in the OW-vs-UG diff).
+function mfg_areahunt()
+  local mbase, mend = get_module_range()
+  if not valid_cursor(mfg.cursor, getAddress("eldenring.exe") + CURSOR_VTABLE_RVA, mbase, mend) then
+    print("[MFG] no live cursor -- open map, hover a known spot, NUMPAD 1 to lock first"); return
+  end
+  local AREA = {[60]=true,[61]=true,[12]=true,[40]=true,[41]=true,[42]=true,[43]=true}
+  local function scan(name, base, lo, hi)
+    local hits = {}
+    if not base or base == 0 then return hits end
+    for off = lo, hi, 4 do                              -- packed MapId: top byte in AREA, lower bytes set
+      local v = readInteger(base + off)
+      if v and v ~= 0 then
+        local top = (v >> 24) & 0xFF
+        if AREA[top] and (v & 0x00FFFF00) ~= 0 then
+          hits[#hits+1] = string.format("  %s+0x%X = MapId 0x%08X  (area=%d gridX=%d gridZ=%d)",
+            name, off, v & 0xFFFFFFFF, top, (v>>16)&0xFF, (v>>8)&0xFF)
+        end
+      end
+    end
+    for off = lo, hi do                                 -- lone byte == area
+      local b = readBytes(base + off, 1, true)
+      if b and AREA[b] then hits[#hits+1] = string.format("  %s+0x%X = byte %d", name, off, b) end
+    end
+    return hits
+  end
+  local all = {}
+  for _, e in ipairs(scan("cursor", mfg.cursor, 0, 0x400)) do all[#all+1] = e end
+  for _, e in ipairs(scan("view",   mfg.view,   0, 0x400)) do all[#all+1] = e end
+  for _, e in ipairs(scan("dialog", mfg.menu,   0, 0x1400)) do all[#all+1] = e end
+  print(string.format("[MFG] areahunt: %d field(s) holding an area value (cursor=%X)", #all, mfg.cursor))
+  local f = io.open("MapForGoblins_areahunt.log", "a")
+  if f then
+    f:write(string.format("\n=== areahunt %s  cursor=%X  page[A88]=%d  <-- LABEL: OW / UG / DLC ===\n",
+            os.date("%H:%M:%S"), mfg.cursor, readInteger(mfg.menu + 0xA88) or -1))
+    for _, e in ipairs(all) do f:write(e .. "\n"); print(e) end
+    f:close()
+  end
+  print("[MFG] -> MapForGoblins_areahunt.log. Run on OW then UG; the offset whose area flips 60/61->12 is the key.")
+end
+
 -- diag: dump every cursor-vtable instance (CE Lua console:  mfg_dump())
 function mfg_dump()
   local base = getAddress("eldenring.exe"); if base == 0 then print("[MFG] no exe"); return end
@@ -239,6 +285,7 @@ end
 if mfg.timer then pcall(function() mfg.timer.destroy() end); mfg.timer = nil end
 if mfg.hk    then pcall(function() mfg.hk.destroy()    end); mfg.hk    = nil end
 if mfg.hk2   then pcall(function() mfg.hk2.destroy()   end); mfg.hk2   = nil end
+if mfg.hk3   then pcall(function() mfg.hk3.destroy()   end); mfg.hk3   = nil end
 mfg.cursor, mfg.view, mfg.menu, mfg.mbase, mfg.mend, mfg.tick = nil, nil, nil, nil, nil, 0
 unregisterSymbol("MFG_CURSOR"); unregisterSymbol("MFG_VIEW"); unregisterSymbol("MFG_MENU")
 
@@ -247,8 +294,9 @@ mfg.timer.Interval = 1000
 mfg.timer.OnTimer  = mfg_tick
 mfg.hk  = createHotkey(mfg_snapshot, VK_NUMPAD0)  -- NUMPAD 0 = log region-candidate snapshot
 mfg.hk2 = createHotkey(mfg_rescan,   VK_NUMPAD1)  -- NUMPAD 1 = force cursor rescan
+mfg.hk3 = createHotkey(mfg_areahunt, VK_NUMPAD2)  -- NUMPAD 2 = scan structs for the hovered area byte
 mfg_scan()
-print("[MFG] OPEN-MAP REGION probe armed. Open the world map, MOVE the cursor, NUMPAD 1 to lock,")
-print("[MFG] then NUMPAD 0 on each of the 4 maps. Pick the field that is DISTINCT across all 4.")
+print("[MFG] OPEN-MAP REGION probe armed. NUMPAD 1 = lock cursor, NUMPAD 0 = snapshot fields,")
+print("[MFG] NUMPAD 2 = AREA HUNT (run on OW then UG, hovering a known spot; diff the logs).")
 ]]></LuaScript>
 </CheatTable>
