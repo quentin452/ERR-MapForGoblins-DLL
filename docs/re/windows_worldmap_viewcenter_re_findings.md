@@ -134,18 +134,30 @@ stick. Two static facts bound the search:
   CSMenuMan `DAT_143d6b7b0` state) — so stick input *can* be suppressed by menu sub-state.
 - **The per-frame view updater is `FUN_1409c32f0`** (RVA `0x9c32f0`, called from `FUN_1409cfb60`):
   it drives the pan setter `FUN_1409cd100`/`FUN_1409cd1c0` on `WorldMapArea` (`dialog+0x4fb`)
-  toward a **view target at `dialog+0x2eac/+0x2eb4`** (page-change writes it in `FUN_1409c1fc0`).
-  So pan follows that target, not the reticle directly.
+  toward the target at `dialog+0x2eac/+0x2eb4`. NOTE `0x2eac − 0x2DB0 = 0xFC`, so that target IS
+  the cursor reticle `+0xFC/+0x104` — pan centres on the (mouse) reticle. With the stick the
+  reticle is frozen, yet pan still moves → the gamepad pans via a path that does NOT go through
+  this reticle (a separate cursor/controller).
 
-**Decisive runtime test (shipped):** `goblin_worldmap_probe.cpp` now has `input_delta_scan` —
-it logs every f32 on the cursor (`+0xE0..+0x160`) and the view (`+0x340..+0x390`) that changes
-between ticks (`[INPUT-DELTA]` lines). Protocol: open the map, move ONLY the mouse (note offsets),
-then move ONLY the stick (note offsets). Outcomes:
-- **pan `+0x378` moves under the stick** → the pan projection (`screen = marker·zoom − pan`) is
-  the device-independent fix; flip the `Y` toggle on by default.
-- **the stick moves a DIFFERENT cursor field** (e.g. another coord pair) → read that field.
-- **nothing on this cursor/view moves under the stick** → the gamepad drives a different
-  cursor object/mirror; restore a bounded all-instance vtable scan to find the active one.
+**Runtime result (`input_delta_scan`, 2026-06-20, quentin):**
+- **Gamepad (stick only):** `view+0x378` (panX), `+0x37C` (panZ), `+0x380` (zoom) change; the
+  menu-walk cursor reticle `+0xFC/+0x104` stays **frozen**.
+- **Mouse:** reticle `+0xFC/+0x104` changes **and** `view+0x378` (pan).
+
+`pan` is the only field tracking the view under both devices, BUT the user reports `pan` is
+**unusable: variant between game launches** → can't anchor the projection. **Decision (user): RE
+the gamepad-driven cursor.** The menu-walk cursor is mouse-only → the gamepad must move a
+DIFFERENT `WorldMapCursorControl` instance whose reticle is stable across instances.
+
+**Shipped finder — `scan_all_cursor_instances` (goblin_worldmap_probe.cpp):** enumerates EVERY
+`WorldMapCursorControl` instance in committed private RW memory (bounded VirtualQuery walk +
+chunked RPM; skips the exe image and >256 MB regions — NOT the old O(GB) raw-deref scan that
+crashed). Runs once per map-open. The loop logs `[ALLCURSOR-MOVE] @addr` for any instance whose
+`+0xFC/+0x104` changes, tagging the menu-walk one `(MOUSE)`. **Protocol:** open the map, move ONLY
+the stick → the address that logs and is NOT the menu-walk one is the **gamepad cursor**. Report it
+so we can pin a deterministic resolve (offset from the dialog / CSMenuMan, or the field to read).
+If NO instance moves under the stick, the gamepad reticle is a different class → trace the
+stick→view path (`FUN_140757a10` consumer under gamepad).
 
 ## 6. Caveats
 

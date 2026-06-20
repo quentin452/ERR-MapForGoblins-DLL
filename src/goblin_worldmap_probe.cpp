@@ -5,6 +5,7 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -262,6 +263,77 @@ void input_delta_scan(uintptr_t cursor, uintptr_t view)
     if (view) scan("view", view, 0x340, 0x390);
 }
 
+// ── ALL-INSTANCE cursor scan: find the GAMEPAD cursor ──────────────────────────
+// CONFIRMED (2026-06-20, quentin): under gamepad the menu-walk cursor's reticle is
+// FROZEN (only pan moves), and pan is unusable (varies between game instances). So the
+// gamepad must drive a DIFFERENT WorldMapCursorControl instance than the menu-walk
+// (mouse) one. This scans ALL committed private RW memory for the cursor vtable to
+// enumerate EVERY instance, then the loop monitors each one's reticle — the instance
+// whose +0xFC/+0x104 move under the STICK is the gamepad cursor. Bounded + safe: only
+// MEM_COMMIT|PRIVATE RW regions, skips the exe image + huge regions, reads via chunked
+// RPM (no raw deref over GBs). Runs ONCE per map-open (heavy: ~hundreds of MB).
+std::vector<uintptr_t> g_all_cursors;
+
+void scan_all_cursor_instances(uintptr_t vtable_va)
+{
+    init_exe_range();
+    g_all_cursors.clear();
+    SYSTEM_INFO si{};
+    GetSystemInfo(&si);
+    uintptr_t addr = reinterpret_cast<uintptr_t>(si.lpMinimumApplicationAddress);
+    uintptr_t maxa = reinterpret_cast<uintptr_t>(si.lpMaximumApplicationAddress);
+    std::vector<uint8_t> buf;
+    size_t scanned_mb = 0, regions = 0;
+    while (addr < maxa)
+    {
+        MEMORY_BASIC_INFORMATION mbi{};
+        if (VirtualQuery(reinterpret_cast<void *>(addr), &mbi, sizeof(mbi)) == 0)
+            break;
+        uintptr_t rbase = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
+        size_t rsize = mbi.RegionSize;
+        uintptr_t next = rbase + rsize;
+        bool committed = mbi.State == MEM_COMMIT;
+        bool priv = mbi.Type == MEM_PRIVATE;
+        DWORD prot = mbi.Protect & 0xFF;
+        bool rw = (prot == PAGE_READWRITE || prot == PAGE_EXECUTE_READWRITE ||
+                   prot == PAGE_WRITECOPY || prot == PAGE_EXECUTE_WRITECOPY);
+        bool guard = (mbi.Protect & PAGE_GUARD) != 0;
+        bool in_image = g_exe_base && rbase >= g_exe_base && rbase < g_exe_end;
+        // heap objects: committed, private, RW, not guard, outside the image, not huge.
+        if (committed && priv && rw && !guard && !in_image && rsize <= (256ull << 20))
+        {
+            ++regions;
+            const size_t CHUNK = 1 << 20; // 1 MB
+            if (buf.size() < CHUNK) buf.resize(CHUNK);
+            for (uintptr_t off = 0; off < rsize; off += CHUNK)
+            {
+                size_t want = (size_t)std::min<uintptr_t>(CHUNK, rsize - off);
+                SIZE_T got = 0;
+                if (!ReadProcessMemory(GetCurrentProcess(),
+                                       reinterpret_cast<void *>(rbase + off),
+                                       buf.data(), want, &got) || got < sizeof(uint64_t))
+                    continue;
+                scanned_mb += got >> 20;
+                size_t lim = (got / 8) * 8;
+                for (size_t i = 0; i + 8 <= lim; i += 8)
+                {
+                    uint64_t qv;
+                    std::memcpy(&qv, buf.data() + i, sizeof(qv));
+                    if (qv == vtable_va)
+                        g_all_cursors.push_back(rbase + off + i);
+                }
+            }
+        }
+        if (next <= addr) break;
+        addr = next;
+    }
+    g_log->info("[ALLCURSOR] scan done: {} instances in {} regions (~{} MB). Move the GAMEPAD "
+                "stick — the address whose +0xFC/+0x104 changes is the gamepad cursor.",
+                g_all_cursors.size(), regions, scanned_mb);
+    for (uintptr_t c : g_all_cursors)
+        g_log->info("[ALLCURSOR]   instance @{:#x}", c);
+}
+
 void probe_loop()
 {
     uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
@@ -311,6 +383,35 @@ void probe_loop()
                 candidates.push_back(menu_cursor);
                 g_log->info("resolve: cursor {:#x} (menu walk)", menu_cursor);
             }
+            // GAMEPAD-CURSOR hunt: once per map-open, enumerate ALL cursor instances so we
+            // can spot the one the stick drives (the menu-walk one is mouse-only). Heavy →
+            // run a single time while the map is up; cleared on close below.
+            if (g_all_cursors.empty())
+                scan_all_cursor_instances(vtable_va);
+            // Monitor every found instance's reticle; log the address whose coords change so
+            // moving the STICK reveals the gamepad cursor (vs the menu-walk = mouse one).
+            {
+                static std::unordered_map<uintptr_t, std::array<float, 2>> last_all;
+                for (uintptr_t c : g_all_cursors)
+                {
+                    uint64_t vt = 0;
+                    if (!seh_read8(reinterpret_cast<void *>(c), &vt) || vt != vtable_va)
+                        continue;
+                    float cx, cz;
+                    if (!seh_read4(reinterpret_cast<void *>(c + OFF_X), &cx) ||
+                        !seh_read4(reinterpret_cast<void *>(c + 0x104), &cz))
+                        continue;
+                    if (!std::isfinite(cx) || !std::isfinite(cz))
+                        continue;
+                    auto &l = last_all[c];
+                    if (std::fabs(l[0] - cx) > 0.01f || std::fabs(l[1] - cz) > 0.01f)
+                    {
+                        g_log->info("[ALLCURSOR-MOVE] @{:#x} +0xFC={:.2f} +0x104={:.2f}{}",
+                                    c, cx, cz, c == menu_cursor ? "  (menu-walk = MOUSE)" : "");
+                        l = {cx, cz};
+                    }
+                }
+            }
         }
         else
         {
@@ -323,6 +424,7 @@ void probe_loop()
             candidates.clear();
             last.clear();
             last_view.clear();
+            g_all_cursors.clear(); // re-enumerate next map-open
             continue;
         }
 
