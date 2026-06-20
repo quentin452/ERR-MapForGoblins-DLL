@@ -78,7 +78,7 @@ constexpr uintptr_t CURSOR_OFF_IN_MENU = 0x2DB0;
 // WorldMapDialog + 0x2DB0, and the dialog ptr lives somewhere in the first few KB
 // of CSMenuMan → a BOUNDED walk (vs the whole-RAM scan) resolves it in O(KB).
 constexpr uintptr_t CSMENUMAN_SLOT_RVA = 0x3d6b7b0;
-constexpr uintptr_t MENU_WALK_WINDOW = 0x8000; // dialog ptr "in the first few KB"; widen to be safe
+constexpr uintptr_t MENU_WALK_WINDOW = 0x10000; // dialog ptr "in the first few KB"; widen to be safe
 
 // PROJECTION transform-scan (docs/world_map_projection_re_findings.md). cursor+0xF0
 // points to the CS::WorldMapArea view object; the LIVE viewport is plain floats there:
@@ -92,77 +92,31 @@ constexpr ptrdiff_t VIEW_PAN_X = 0x378, VIEW_PAN_Z = 0x37C, VIEW_ZOOM = 0x380;
 // originY, +0x118 width, +0x11c height}. RVA, patch-fragile (debug only).
 constexpr uintptr_t CANVAS_SINGLETON_RVA = 0x47ef360;
 
-// SEH-guarded reads. __declspec(noinline) is REQUIRED: if the compiler inlines
-// these, clang-cl merges/hoists the raw load out of the __try region and the SEH
-// guard is silently lost → a bad pointer faults unhandled (observed: a 0xC0000005
-// crash reading view+0x378 on DLC map entry, where cursor+0xF0 was mid-transition
-// garbage). Keeping them as real calls keeps each __try self-contained.
-__declspec(noinline) bool seh_read8(const void *src, uint64_t *out)
+// Safe reads via ReadProcessMemory (NOT __try). clang-cl proved the plain load
+// "can't fault" and ELIDED the __try/__except even with __declspec(noinline) — the
+// guard was silently dropped and bad pointers faulted unhandled (0xC0000005 at the
+// outlined `*out=*src` leaf, decoded from the crash RVA). RPM is an opaque kernel
+// call the optimizer can't elide or prove safe: an invalid src returns false, never
+// crashes. Slightly slower (a syscall) but bulletproof — fine once the O(KB) walk
+// replaces the whole-RAM scan.
+inline bool seh_read8(const void *src, uint64_t *out)
 {
-    __try { *out = *reinterpret_cast<const volatile uint64_t *>(src); return true; }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    SIZE_T n = 0;
+    return ReadProcessMemory(GetCurrentProcess(), src, out, sizeof(*out), &n) && n == sizeof(*out);
 }
-__declspec(noinline) bool seh_read4(const void *src, float *out)
+inline bool seh_read4(const void *src, float *out)
 {
-    __try { *out = *reinterpret_cast<const volatile float *>(src); return true; }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    SIZE_T n = 0;
+    return ReadProcessMemory(GetCurrentProcess(), src, out, sizeof(*out), &n) && n == sizeof(*out);
 }
-__declspec(noinline) bool seh_read_i32(const void *src, int *out)
+inline bool seh_read_i32(const void *src, int *out)
 {
-    __try { *out = *reinterpret_cast<const volatile int *>(src); return true; }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-
-// Scan one region for the vtable qword (8-aligned). Region-level SEH so a page
-// that faults mid-scan just aborts this region. POD-only inside __try.
-__declspec(noinline) uintptr_t scan_region(uintptr_t base, size_t size, uintptr_t vtable_va)
-{
-    uintptr_t hit = 0;
-    __try
-    {
-        uintptr_t end = base + size;
-        for (uintptr_t p = base; p + 8 <= end; p += 8)
-            if (*reinterpret_cast<const volatile uint64_t *>(p) == vtable_va) { hit = p; break; }
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) { hit = 0; }
-    return hit;
+    SIZE_T n = 0;
+    return ReadProcessMemory(GetCurrentProcess(), src, out, sizeof(*out), &n) && n == sizeof(*out);
 }
 
-// Collect ALL addresses holding the cursor vtable (there are several instances;
-// only the active map cursor's coords change as you move). Region-level SEH.
-__declspec(noinline) void scan_region_all(uintptr_t base, size_t size, uintptr_t vtable_va,
-                                          std::vector<uintptr_t> &out, size_t cap)
-{
-    __try
-    {
-        uintptr_t end = base + size;
-        for (uintptr_t p = base; p + 8 <= end && out.size() < cap; p += 8)
-            if (*reinterpret_cast<const volatile uint64_t *>(p) == vtable_va)
-                out.push_back(p);
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-
-void scan_all_cursors(uintptr_t vtable_va, std::vector<uintptr_t> &out)
-{
-    constexpr size_t CAP = 256;
-    MEMORY_BASIC_INFORMATION mbi;
-    uintptr_t addr = 0;
-    while (out.size() < CAP && VirtualQuery(reinterpret_cast<void *>(addr), &mbi, sizeof(mbi)))
-    {
-        uintptr_t base = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
-        size_t sz = mbi.RegionSize;
-        // RW only: the cursor instances live on the heap (READWRITE). Scanning
-        // READONLY regions just doubled the cost for nothing (cut → faster first find).
-        if (mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE &&
-            mbi.Protect == PAGE_READWRITE &&
-            sz >= 0x1000 && sz < 0x10000000)
-            scan_region_all(base, sz, vtable_va, out, CAP);
-        uintptr_t next = base + sz;
-        if (next <= addr) break;
-        addr = next;
-    }
-}
+// (The whole-address-space vtable scan was removed — it was O(GB), crashed at
+// startup, and is superseded by the O(KB) CSMenuMan walk below.)
 
 // O(KB) resolve: CSMenuMan → (bounded walk) → WorldMapDialog → +0x2DB0 = cursor.
 // Replaces the whole-address-space vtable scan (Ghidra c843cc3): the dialog pointer
@@ -255,60 +209,16 @@ void probe_loop()
         }
         else
         {
-            // Walk found nothing → map closed, OR the dialog offset is wrong. GATE the
-            // whole-RAM scan on map-open: scanning at startup/loading (gate-independent)
-            // hit volatile memory and crashed (0xC0000005). 0xCD reaches 7 when the map
-            // is actually open, which is enough for the scan + the offset diag.
-            bool map_open = goblin::world_map_open();
-            if (!map_open)
-            {
-                if (g_active_cursor.load(std::memory_order_relaxed))
-                    g_active_cursor.store(0, std::memory_order_relaxed);
-                candidates.clear();
-                last.clear();
-                last_view.clear();
-                continue;
-            }
-            if (now - last_scan > std::chrono::milliseconds(1000))
-            {
-                candidates.clear();
-                scan_all_cursors(vtable_va, candidates);
-                last_scan = now;
-                if (!candidates.empty())
-                {
-                    g_log->info("resolve: {} cursor (scan fallback — menu walk missed)", candidates.size());
-                    // DIAG (one-shot): the scan found the cursor; locate dialog =
-                    // cursor−0x2DB0 inside CSMenuMan so we can fix the walk's offset/chain.
-                    static bool diag2 = false;
-                    if (!diag2)
-                    {
-                        diag2 = true;
-                        uint64_t mm = 0;
-                        seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm);
-                        uintptr_t dialog = candidates[0] - CURSOR_OFF_IN_MENU;
-                        g_log->info("[MENU-DIAG] scan cursor={:#x} dialog={:#x} mm={:#x}",
-                                    candidates[0], dialog, mm);
-                        bool found = false;
-                        if (mm)
-                            for (uintptr_t off = 0; off < 0x40000; off += 8)
-                            {
-                                uint64_t p = 0;
-                                if (seh_read8(reinterpret_cast<void *>(mm + off), &p) && p == dialog)
-                                {
-                                    g_log->info("[MENU-DIAG] dialog ptr at CSMenuMan+{:#x} "
-                                                "(hardcode/widen the walk)", off);
-                                    found = true;
-                                    break;
-                                }
-                            }
-                        if (!found)
-                            g_log->info("[MENU-DIAG] dialog NOT a flat field in CSMenuMan[0..0x40000] "
-                                        "— needs a deref chain (mm→X→dialog)");
-                    }
-                }
-                else if (++empty_logs % 6 == 0)
-                    g_log->info("no cursor (menu walk + scan both empty — offset/RVA shift?)");
-            }
+            // Menu walk found no cursor → the map is closed (no WorldMapDialog) or the
+            // dialog offset is outside the walk window. NO whole-RAM scan anymore (it
+            // crashed at startup + is O(GB)). Drop the active cursor; the walk re-resolves
+            // the instant the map opens.
+            if (g_active_cursor.load(std::memory_order_relaxed))
+                g_active_cursor.store(0, std::memory_order_relaxed);
+            candidates.clear();
+            last.clear();
+            last_view.clear();
+            continue;
         }
 
         for (uintptr_t a : candidates)
