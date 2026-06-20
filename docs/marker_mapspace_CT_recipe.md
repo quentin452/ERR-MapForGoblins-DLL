@@ -124,6 +124,16 @@ for wx, wz, rX, rZ in pairs:
     print(rX - (a*wx + b*wz + e), rZ - (c*wx + d*wz + f))
 ```
 
+**The pivot is `T`, and it's per-page — don't ship `M` alone.** `M·world` with `T=0`
+rotates about the world origin `(0,0)`; world coords are thousands, so every marker flies
+**off-screen** (the exact "rotated but off-screen" bug). The per-page translation `T=(e,f)`
+re-centers each page into the render rect — it's the missing pivot, and it falls straight
+out of the same lstsq (the `1` column). **Deliver `M` (shared) + `T[page]` for every page
+60/61/12/40/41/42/43**, and sanity-check that `M·world + T[page]` lands inside
+`[0,0,10496,10496]` for that page's anchors. A page with no `T` reproduces the off-screen
+bug. (The `render_finder` CT v6 emits exactly this: one shared `M` + a `T[page]` line per
+page with an on-rect YES/NO.)
+
 `M` should come out ≈ `scale·rotation`. The strong hypothesis (from the single fully
 measured anchor, Dragonbarrow page 61 → tiny T) is a **90° axis-swap at scale 0.5**:
 `a≈0, b≈±0.5, c≈±0.5, d≈0` (i.e. `renderX≈0.5·worldZ + e`, `renderZ≈0.5·worldX + f`).

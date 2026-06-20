@@ -151,7 +151,21 @@ function rf_scan()
     if common==nil then common=s else for off,_ in pairs(common) do if not s[off] then common[off]=nil end end end end
   if common then for off,_ in pairs(common) do sources[#sources+1]={name="ptr@0x"..string.format("%X",off),poff=off} end end
 
-  local best = {}
+  -- group point indices by page (areaNo). M is SHARED across pages; T is PER PAGE
+  -- (the pivot — see pivot clarification). Fit/score M on the dominant page so a
+  -- cross-page T offset can't hide a real render_out field.
+  local pageIdx = {}
+  for i = 1, #W do local p = W[i][3]; pageIdx[p] = pageIdx[p] or {}; table.insert(pageIdx[p], i) end
+  local mainpage, mainIdx = nil, {}
+  for p, idx in pairs(pageIdx) do if #idx > #mainIdx then mainpage = p; mainIdx = idx end end
+  local function sub(arr, idx) local o = {} for _, i in ipairs(idx) do o[#o+1] = arr[i] end return o end
+  print(string.format("[RF] pages: %s ; fitting M on page %s (%d pts)",
+        (function() local s = {} for p, idx in pairs(pageIdx) do s[#s+1] = p .. ":" .. #idx end
+         return table.concat(s, " ") end)(), tostring(mainpage), #mainIdx))
+  if #mainIdx < 4 then print("[RF] dominant page has <4 points — need more BUILT markers (inject mode)"); return end
+  local Wmp = sub(W, mainIdx)
+
+  local best = {}   -- {src, off, a,b,c,d, res, rx, rz}
   for _,src in ipairs(sources) do
     local len = src.name=="point" and #caps[1].b or #caps[1].ptrs[src.poff].b
     for off=0,len-8,4 do
@@ -164,25 +178,44 @@ function rf_scan()
         if first==nil then first=fx elseif math.abs(fx-first)>0.5 then vary=true end
       end
       if good and vary then
-        local a,b,e,mr = lstsq(W,rx); local c2,d,f,mr2 = lstsq(W,rz)
+        local a,b,e,mr  = lstsq(Wmp, sub(rx, mainIdx))
+        local c2,d,f,mr2 = lstsq(Wmp, sub(rz, mainIdx))
         if a and c2 then local res=math.max(mr,mr2)
-          if res<8.0 then best[#best+1]=string.format(
-            "  %s +0x%X  resid=%.2f  M=[[%.4f,%.4f],[%.4f,%.4f]]  T=(%.1f,%.1f)",
-            src.name,off,res,a,b,c2,d,e,f) end end
+          if res<8.0 then best[#best+1]={src=src.name,off=off,a=a,b=b,c=c2,d=d,res=res,rx=rx,rz=rz} end end
       end
     end
   end
   if #best==0 then
     print("[RF] NO float pair tracks world linearly -> render_out is NOT stored on the point")
     print("[RF] or its direct pointers (VMP-only). Use the snapped-cursor render_out.")
-  else
-    print("[RF] render_out candidate(s) (low residual = the field + its M/T):")
-    table.sort(best); for i=1,math.min(#best,20) do print(best[i]) end
+    return
+  end
+  table.sort(best, function(x,y) return x.res < y.res end)
+  local w = best[1]
+  print(string.format("[RF] render_out = %s +0x%X  (page-%s resid=%.2f)", w.src, w.off, tostring(mainpage), w.res))
+  print(string.format("[RF] M = [[%.5f, %.5f], [%.5f, %.5f]]  (shared)", w.a, w.b, w.c, w.d))
+  -- per-page T = mean(render - M*world) + on-rect [0,0,10496,10496] sanity
+  for p, idx in pairs(pageIdx) do
+    local se, sf = 0, 0
+    for _, i in ipairs(idx) do
+      se = se + (w.rx[i] - (w.a*W[i][1] + w.b*W[i][2]))
+      sf = sf + (w.rz[i] - (w.c*W[i][1] + w.d*W[i][2]))
+    end
+    local e, f = se/#idx, sf/#idx
+    -- check all this page's points land on-rect with its T
+    local onrect = true
+    for _, i in ipairs(idx) do
+      local rxp = w.a*W[i][1] + w.b*W[i][2] + e
+      local rzp = w.c*W[i][1] + w.d*W[i][2] + f
+      if rxp < -50 or rxp > 10546 or rzp < -50 or rzp > 10546 then onrect = false end
+    end
+    print(string.format("[RF]   T[%s] = (%.1f, %.1f)   (%d pts, on-rect: %s)",
+          tostring(p), e, f, #idx, onrect and "YES" or "NO -- bad fit/page label"))
   end
 end
 
 if rf.hk then pcall(function() rf.hk.destroy() end) end
 rf.hk = createHotkey(rf_scan, VK_NUMPAD3)
-print("[RF] render_out finder v5 (3 vtables + deref'd row, no debugger). Open the map, NUMPAD 3.")
+print("[RF] render_out finder v6 (shared M + per-page T, no debugger). Open the map, NUMPAD 3.")
 ]]></LuaScript>
 </CheatTable>
