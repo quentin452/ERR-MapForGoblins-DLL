@@ -1,0 +1,101 @@
+# RE findings — placement hook to capture clean `(world_in → render_out)` pairs
+
+Answers `docs/windows_marker_affine_hook_re_prompt.md`. Static Ghidra RE (`D:\ghidra_proj2\ER`,
+script `re_v56`) pinning the icon-placement call site so the world→render affine
+`render = M·world + T` can be fitted from source-exact pairs. App 2.6.2.0 / ERR 2.2.9.6,
+imagebase `0x140000000`. Read-only.
+
+## TL;DR
+
+- **`world_in` capture site is fully pinned and NON-VMP.** Hook the `CALL
+  thunk_FUN_1457cd3df` in reconcile `FUN_140a832a0` at **RVA `0xa839a6`**; at the call
+  **RCX = `CSWorldMapPointIns*` (`point`)**, RDX = ctx. The baked param row is at
+  **`point + 0x80`** (`areaNo` u8, `gridXNo` u8, `gridZNo` u8, `posX/posZ` f32) →
+  `world = (gridXNo·256+posX, gridZNo·256+posZ)`.
+- **`render_out` is NOT a plain field on `point`.** The ctor's `point+0xa0/+0xe0` vecs are
+  a **color/UV LUT** (`FUN_1401899c0` — returns constants like 1.0 / 0.97, not coords), and
+  `point` has no render-pos field. The render position is written by the VMP thunk onto the
+  icon's `Scaleform::Render::Matrix2x4<float>`. So `render_out` must come from **(a)** an
+  in-thunk matrix-write breakpoint (CE can bp into VMP), or **(b)** the cursor snap
+  cross-check, which is *exact when the reticle is snapped on the icon* (the snap target IS
+  the icon render pos — so the hover recipe is not actually noisy if you let it snap).
+
+## The hook site (disassembly, reconcile `FUN_140a832a0`)
+
+```
+0xa8397e  MOV   RDI, [R15 + 0x398]      ; R15 = CSWorldMapPointMan; +0x398 = built-icon map
+0xa83985  MOV   RBX, [RDI]              ; RBX = first RB-tree node
+0xa83988  CMP   RBX, RDI                ; node == sentinel? -> done
+        ... per-node loop ...
+0xa83990  MOVUPS XMM1, [RBX + 0x20]     ; node key@+0x20, value@+0x28
+0xa83994  PSRLDQ XMM1, 0x8             ; -> node+0x28 (the map value)
+0xa83999  MOVQ  RCX, XMM1              ; RCX = CSWorldMapPointIns*  == `point`
+0xa8399e  TEST  RCX, RCX
+0xa839a1  JZ    skip
+0xa839a3  MOV   RDX, R13               ; RDX = ctx (param_2)
+0xa839a6  CALL  thunk_FUN_1457cd3df    ; <-- HOOK HERE. RCX=point, RDX=ctx
+```
+
+**AOB for the call site** (unique; `66 48 0F 7E C9` = `MOVQ RCX,XMM1`, ends at the `E8` CALL):
+```
+66 48 0F 7E C9 48 85 C9 74 08 49 8B D5 E8
+```
+`E8` is the `CALL rel32`. Hook = AOBScan this, the call is at `found+13`. Read `point` from
+RCX. (Same icon update is also driven from build `FUN_140a82a80`; the reconcile site above
+fires every frame the map is open and is the convenient one.)
+
+## `world_in` — read at the hook (NON-VMP, exact)
+
+```
+point   = RCX
+row     = point + 0x80          ; baked WORLD_MAP_POINT_PARAM_ST (mod's injected layout)
+areaNo  = byte  [row + 0x00]    ; page disambiguation (after the game's legacy-conv)
+gridX   = byte  [row + ...]     ; WORLD_MAP_POINT_PARAM_ST field offsets per the mod's paramdef
+gridZ   = byte  [row + ...]
+posX    = float [row + ...]
+posZ    = float [row + ...]
+world   = (gridX*256 + posX, gridZ*256 + posZ)
+```
+(Use the mod's `WORLD_MAP_POINT_PARAM_ST` offsets — the same struct it injects — for the
+exact field positions within `row`.) Read the MapId via vt[4] `FUN_140a81140` if a page
+needs disambiguation beyond `areaNo`.
+
+## `render_out` — two ways (the VMP boundary)
+
+`thunk_FUN_1457cd3df` (entry `0xa805e0`) jmps into the VMProtect region; the matrix write is
+there. Options, in order of cleanliness:
+
+1. **In-thunk matrix write (exact).** Bp `0xa805e0`, step until the two adjacent `float`
+   stores that land render-space values (hundreds … ~10496, ≈0.5× world) onto the icon's
+   `Matrix2x4<float>` translation `(tx, ty)`. Conditional-log there, paired with `point`
+   captured at `0xa839a6` (same frame). This is the brief's preferred capture.
+2. **Cursor snap cross-check (already exact when snapped).** The reticle snap target equals
+   the icon render pos, so cursor `+0x104/+0x108` for a snapped grace IS `render_out`. Use
+   `tools/cheat_engine/MapForGoblins_mapspace.CT` (NUMPAD 0) — pairing it with the param-row
+   `world_in` (which you now read exactly from `point+0x80`, no guessing which grace) already
+   gives clean pairs. The "hover noise" the brief assumes only applies to *un-snapped* hover.
+
+Reading `point` post-call does NOT yield `render_out` — `point` carries no render field
+(only the color LUT + the param row + sub-objects). The render pos is on the icon node.
+
+## Deliverable handoff
+
+The overlay already fits `M` (shared) + per-page `T` from collected pairs
+(`g_aff`/`solve_affine` in `goblin_overlay.cpp`). To bake exact constants:
+- capture ≥3 pairs/page (60, 61, 12, 40-43) via option 1 or 2 above,
+- `lstsq` per page (solver in `marker_mapspace_CT_recipe.md`),
+- confirm `M` shared (hypothesis: 90° axis-swap @ 0.5: `a≈0, b≈±0.5, c≈±0.5, d≈0`), bake
+  `M` + `T[page]`, replace the runtime solve.
+
+## Handles / AOBs
+
+- reconcile `FUN_140a832a0`; **hook call @ `0xa839a6`** (AOB above), RCX=point, RDX=ctx.
+- icon update `thunk_FUN_1457cd3df` entry `0xa805e0` (jmp → VMP; matrix write inside).
+- `CSWorldMapPointIns`: param row `point+0x80`; color LUT `FUN_1401899c0`; MapId vt[4]
+  `FUN_140a81140`; vtable `0x142b487a8`.
+- `CSWorldMapPointMan` static `0x143d6e9b0`; built-icon map at `+0x398` (key@node+0x20,
+  value@node+0x28 = the `CSWorldMapPointIns*`).
+- Cross-check: cursor render `+0x104/+0x108` (vtable scan `0x142b29a90`), WorldMapArea
+  `[cursor+0xF0]` fullRect `+0x350` `[0,0,10496,10496]`, pan `+0x378`, zoom `+0x380`.
+- Offsets version-specific; resolve point-man/instances by static + vtable (patch-robust).
+```
