@@ -78,7 +78,7 @@ constexpr uintptr_t CURSOR_OFF_IN_MENU = 0x2DB0;
 // WorldMapDialog + 0x2DB0, and the dialog ptr lives somewhere in the first few KB
 // of CSMenuMan → a BOUNDED walk (vs the whole-RAM scan) resolves it in O(KB).
 constexpr uintptr_t CSMENUMAN_SLOT_RVA = 0x3d6b7b0;
-constexpr uintptr_t MENU_WALK_WINDOW = 0x2000;
+constexpr uintptr_t MENU_WALK_WINDOW = 0x8000; // dialog ptr "in the first few KB"; widen to be safe
 
 // PROJECTION transform-scan (docs/world_map_projection_re_findings.md). cursor+0xF0
 // points to the CS::WorldMapArea view object; the LIVE viewport is plain floats there:
@@ -172,8 +172,15 @@ void scan_all_cursors(uintptr_t vtable_va, std::vector<uintptr_t> &out)
 uintptr_t resolve_cursor_via_menu(uintptr_t base, uintptr_t vtable_va)
 {
     uint64_t mm = 0;
-    if (!seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm) ||
-        !mm || !plausible_ptr(mm))
+    bool mm_ok = seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm);
+    static int diag = 0;
+    if (diag < 3)
+    {
+        ++diag;
+        g_log->info("[MENU] walk: CSMenuMan slot {:#x} -> mm={:#x} (read_ok={}, plausible={})",
+                    base + CSMENUMAN_SLOT_RVA, mm, mm_ok, mm ? plausible_ptr(mm) : false);
+    }
+    if (!mm_ok || !mm || !plausible_ptr(mm))
         return 0;
     for (uintptr_t off = 0; off < MENU_WALK_WINDOW; off += 8)
     {
