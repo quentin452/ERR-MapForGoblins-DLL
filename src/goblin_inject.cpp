@@ -943,19 +943,40 @@ static std::vector<goblin::LiveGrace> g_live_graces;
 void goblin::capture_live_graces()
 {
     g_live_graces.clear();
+    // Try the LIVE WorldMapPointParam first (rows with the grace icon). NOTE: vanilla
+    // WorldMapPointParam does NOT contain grace markers — in the base game grace map-pins
+    // are generated from BonfireWarpParam at runtime, not stored here. The project AUTHORS
+    // the grace rows from MASSEDIT (positions extracted offline from MSB / BonfireWarpParam)
+    // and injects them. So pre-injection this finds ~0; we fall back to the baked set, which
+    // IS that offline-extracted game data. (A true live path would read BonfireWarpParam +
+    // resolve each bonfire's MSB position — deferred, see [[live-param-vs-baked-data]].)
     try
     {
         for (auto [rowId, row] :
              from::params::get_param<from::paramdef::WORLD_MAP_POINT_PARAM_ST>(L"WorldMapPointParam"))
         {
-            if (row.iconId != 370) continue;   // 370 = Site of Grace icon
+            if (row.iconId != 370) continue;   // Site of Grace icon (ERR profile)
             g_live_graces.push_back({ row.areaNo, row.gridXNo, row.gridZNo,
                                       row.posX, row.posZ, row.textId1, rowId });
         }
     }
     catch (...) {}
-    spdlog::info("[LIVE-GRACE] captured {} grace rows (iconId 370) from live WorldMapPointParam",
-                 g_live_graces.size());
+
+    if (g_live_graces.empty())
+    {
+        for (size_t i = 0; i < goblin::generated::MAP_ENTRY_COUNT; ++i)
+        {
+            const auto &e = goblin::generated::MAP_ENTRIES[i];
+            if (e.category != goblin::generated::Category::WorldGraces) continue;
+            g_live_graces.push_back({ e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
+                                      e.data.posX, e.data.posZ, e.data.textId1, e.row_id });
+        }
+        spdlog::info("[LIVE-GRACE] live param has no grace pins (vanilla WMP lacks them) → "
+                     "using {} baked graces (offline MSB/BonfireWarp extraction)",
+                     g_live_graces.size());
+    }
+    else
+        spdlog::info("[LIVE-GRACE] {} grace rows from live WorldMapPointParam", g_live_graces.size());
 }
 
 const std::vector<goblin::LiveGrace> &goblin::live_graces() { return g_live_graces; }
