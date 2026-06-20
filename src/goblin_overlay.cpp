@@ -419,7 +419,7 @@ namespace
         // (12) / DLC (40-43) need their own pan; precise per-page bake via lstsq later.
         float a = 0.f, b = 1.f, c = 1.f, d = 0.f;
         float e[64] = {}, f[64] = {}; // per-page T
-        float gtx = -2170.f, gty = 850.f; // global pan (eyeball T), added to every page
+        float gtx = -1086.f, gty = -341.f; // overworld pan (fixed-pivot, user-tuned 06-20)
         bool pivot = true;            // eyeball: rotate about the marker CENTROID (so
                                       // changing M spins in place, not flings about (0,0))
         float screen_rot = -90.f;     // REAL rotation field (deg, CW), applied in RENDER
