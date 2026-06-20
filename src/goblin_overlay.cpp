@@ -1212,6 +1212,21 @@ namespace
         g_prev_toggle_down = down;
         g_show = g_user_show;
 
+        // Mid-session resolution diagnostic ([RENDIMS], read-only). Throttled ~2s; runs
+        // regardless of the overlay being shown. Change the in-game resolution, then
+        // read MapForGoblins.log for the stale render-output entry.
+        if (goblin::config::debugRenderDims)
+        {
+            static int s_rd_tick = 0;
+            if ((s_rd_tick++ % 120) == 0)
+            {
+                DXGI_SWAP_CHAIN_DESC d{};
+                swapchain->GetDesc(&d);
+                goblin::worldmap_probe::dump_render_dims(static_cast<float>(d.BufferDesc.Width),
+                                                         static_cast<float>(d.BufferDesc.Height));
+            }
+        }
+
         // The marker prototype draws over the open map even when the menu is closed,
         // so build a frame for it too (get_live_view() no-ops when the map is shut).
         // Draw overlay markers when the prototype flag is on OR native injection is

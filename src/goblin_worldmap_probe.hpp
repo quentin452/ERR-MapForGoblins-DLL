@@ -51,4 +51,11 @@ namespace goblin::worldmap_probe
     // overlay tell apart "probe hasn't found a cursor yet" (0) from "found but the
     // live read failed" (non-0 but get_live_view false) when chasing open latency.
     uintptr_t debug_active_cursor();
+
+    // DIAG (mid-session resolution bug, RE 3ce2b18): walk ER's render-output list and
+    // log each entry's ACTIVE float dims (+0x118/+0x11c) + dirty bit (+0x140) vs the
+    // live backbuffer (bbW/bbH). After a mid-session resize the entry(ies) that stay
+    // at the OLD resolution are the stale ones driving the 3D + map zoom. Read-only
+    // (RPM-guarded). Gated by config debug_render_dims; call throttled.
+    void dump_render_dims(float bbW, float bbH);
 }

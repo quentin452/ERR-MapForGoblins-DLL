@@ -119,6 +119,10 @@ namespace goblin
         // freeze, no double-draw). Default true = classic native-map behaviour.
         extern bool nativeMapInjection;
 
+        // Dev: log ER's render-output dims each ~2s ([RENDIMS]) to diagnose the
+        // mid-session resolution-change zoom corruption. Read-only.
+        extern bool debugRenderDims;
+
         // Overlay marker sizes. Final = resolution-base × master × type-scale.
         extern float overlayMasterScale;   // all overlay markers + piles
         extern float overlayIconScale;     // category marker icons

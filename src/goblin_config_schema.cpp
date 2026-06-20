@@ -55,6 +55,7 @@ namespace goblin::config
     bool debugFlagCapture = false;
     bool debugWorldmapProbe = false;
     bool overlayMarkersProto = false;
+    bool debugRenderDims = false;
     bool nativeMapInjection = true;
     bool liveRefreshWorldMap = false;
     float overlayMasterScale = 1.0f;   // master scale for all overlay markers + piles
@@ -365,6 +366,8 @@ namespace
                   "Dev probe: log the world-map cursor coords (read-only) + the live view\nprojection (pan/zoom @ WorldMapArea+0x378/+0x380, virtual canvas) to confirm\nthe world->screen transform. Open the world map, move the cursor, then PAN\nand ZOOM. Logs to logs/MapForGoblins_wmprobe.log; off by default."),
                 B("overlay_markers_proto", overlayMarkersProto, "false",
                   "Dev prototype (overlay-rendered markers): draw our own marker dot in\nthe ImGui overlay, projected onto the open world map via the live pan/zoom\n(WorldMapArea), to verify the world->screen affine. Starts the cursor probe\nif not already on. Open the F1 menu to tune scale/bias live. Off by default."),
+                B("debug_render_dims", debugRenderDims, "false",
+                  "Dev diagnostic (mid-session resolution bug): every ~2s log ER's render-\noutput dims (active +0x118/+0x11c vs the live backbuffer) + dirty bits to\nMapForGoblins.log as [RENDIMS]. Change the resolution in-game, then read the\nlog: the entry that stays at the OLD resolution is the stale one. Off by default."),
                 IniEntry{"overlay_master_scale", IniType::F32, &cfg::overlayMasterScale, "1.0",
                   "Master scale for ALL overlay map markers + cluster piles (multiplies the\nper-type scales). 1.0 = default. A resolution-relative base size is applied\nfirst, then ×master×type. Editable live in the F1 menu; persists on Save."},
                 IniEntry{"overlay_icon_scale", IniType::F32, &cfg::overlayIconScale, "1.0",

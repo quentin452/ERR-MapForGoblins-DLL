@@ -591,4 +591,47 @@ void initialize(const std::filesystem::path &log_path)
     spdlog::info("[WM-PROBE] world-map cursor probe active → {}", log_path.string());
 }
 
+// Mid-session resolution diagnostic (RE docs/re/windows_midsession_resolution_swapchain_re_findings.md).
+// Walks the render-output list at DAT_1447ef360+0x128..+0x130 (stride 0x170) and logs each
+// entry's active float dims (+0x118/+0x11c) + dirty bit (+0x140) against the live backbuffer.
+// Self-contained + RPM-guarded (no probe init needed); logs to the main MapForGoblins.log.
+void dump_render_dims(float bbW, float bbH)
+{
+    uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base) { spdlog::info("[RENDIMS] no eldenring.exe base"); return; }
+    constexpr uintptr_t RENDER_MGR_SLOT_RVA = 0x47ef360; // DAT_1447ef360 (RE 3ce2b18)
+    uint64_t mgr = 0;
+    if (!seh_read8(reinterpret_cast<void *>(base + RENDER_MGR_SLOT_RVA), &mgr) || mgr < 0x10000)
+    {
+        spdlog::info("[RENDIMS] render-mgr slot (rva {:#x}) unread/null (mgr={:#x})",
+                     RENDER_MGR_SLOT_RVA, mgr);
+        return;
+    }
+    uint64_t begin = 0, end = 0;
+    seh_read8(reinterpret_cast<void *>(mgr + 0x128), &begin);
+    seh_read8(reinterpret_cast<void *>(mgr + 0x130), &end);
+    int mgrDirty = 0;
+    seh_read_i32(reinterpret_cast<void *>(mgr + 0xeb8), &mgrDirty);
+    spdlog::info("[RENDIMS] backbuffer={}x{} mgr={:#x} list=[{:#x}..{:#x}] mgrDirty(+0xeb8)={}",
+                 bbW, bbH, mgr, begin, end, mgrDirty & 0xff);
+    if (begin < 0x10000 || end < begin || (end - begin) > 0x4000)
+    {
+        spdlog::info("[RENDIMS] output-list ptrs implausible — abort walk");
+        return;
+    }
+    int i = 0;
+    for (uint64_t e = begin; e < end && i < 16; e += 0x170, ++i)
+    {
+        float w = 0, h = 0;
+        int outIdx = 0, dirty = 0;
+        seh_read4(reinterpret_cast<void *>(e + 0x118), &w);
+        seh_read4(reinterpret_cast<void *>(e + 0x11c), &h);
+        seh_read_i32(reinterpret_cast<void *>(e + 0x128), &outIdx);
+        seh_read_i32(reinterpret_cast<void *>(e + 0x140), &dirty);
+        bool stale = (w != bbW || h != bbH);
+        spdlog::info("[RENDIMS]  entry#{} outIdx={} activeWH={}x{} dirty(+0x140)={} {}", i, outIdx,
+                     w, h, dirty & 0xff, stale ? "<-- STALE vs backbuffer" : "ok");
+    }
+}
+
 } // namespace goblin::worldmap_probe
