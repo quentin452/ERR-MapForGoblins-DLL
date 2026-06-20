@@ -146,6 +146,12 @@ add_library( MapForGoblins SHARED
   src/goblin_messages.cpp
   src/goblin_overlay.hpp
   src/goblin_overlay.cpp
+  src/goblin_projection.hpp
+  src/worldmap/marker_layer.hpp
+  src/worldmap/grace_layer.hpp
+  src/worldmap/grace_layer.cpp
+  src/worldmap/map_renderer.hpp
+  src/worldmap/map_renderer.cpp
   src/goblin_crashdump.cpp
   src/dllmain.cpp)
 
@@ -189,6 +195,7 @@ configure_file(${CMAKE_SOURCE_DIR}/src/version.h.in
 configure_file(${CMAKE_SOURCE_DIR}/src/version.rc.in
                ${CMAKE_BINARY_DIR}/generated/version.rc @ONLY)
 target_sources(MapForGoblins PRIVATE ${CMAKE_BINARY_DIR}/generated/version.rc)
+target_include_directories(MapForGoblins PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_include_directories(MapForGoblins PRIVATE ${CMAKE_BINARY_DIR}/generated)
 # Resolve bare `#include "goblin_map_data.hpp"` etc. to the active bake dir.
 target_include_directories(MapForGoblins PRIVATE ${GEN_DIR})

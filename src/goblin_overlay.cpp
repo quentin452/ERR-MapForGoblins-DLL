@@ -20,7 +20,8 @@
 #include "goblin_inject.hpp"   // goblin::world_map_open()
 #include "goblin_worldmap_probe.hpp"   // get_live_view() for the marker prototype
 #include "goblin_map_data.hpp"         // generated::MAP_ENTRIES (graces for Phase 1)
-#include "goblin_projection.hpp"       // baked map-space → backbuffer projection
+#include "worldmap/grace_layer.hpp"    // goblin::worldmap::GraceLayer
+#include "worldmap/map_renderer.hpp"   // goblin::worldmap::render_markers
 
 #include <vector>
 #include <map>
@@ -359,140 +360,16 @@ namespace
         return true;
     }
 
-    // ── Overlay-rendered markers (graces) ─────────────────────────────────
-    // Projects baked grace data onto the open world map via the live WorldMapArea
-    // pan/zoom (see goblin_projection.hpp). The projection (canvas factor, pan-
-    // centred cursor-independent view) and the motion-sync (−1.0-frame view delay)
-    // are SOLVED and baked; the RE/diag scaffolding that found them (grid, reticle
-    // dots, LAGCSV, LEAD/MAPFPS hotkeys, the in-DLL affine solver, the per-page
-    // calibration UI) was removed in the projection-bake refactor — see the git
-    // history at be1bd9c…5f755f5 and docs/re/windows_worldmap_viewcenter_re_findings.md
-    // if any of it needs to come back.
-
-    // Baked: the native GFx map layer is composited exactly 1 frame behind our
-    // Present sample, so map-bound markers need a 1-frame view delay to sync.
-    constexpr float kViewDelayFrames = 1.0f;
-
-    // Probe LiveView → the pure projection View (keeps the header probe-free).
-    goblin::projection::View to_proj_view(const goblin::worldmap_probe::LiveView &v)
-    {
-        goblin::projection::View pv;
-        pv.panX = v.panX; pv.panZ = v.panZ; pv.zoom = v.zoom;
-        pv.snapMidX = v.snapMidX; pv.snapMidZ = v.snapMidZ;
-        return pv;
-    }
-
-    goblin::projection::ViewDelay<> g_view_delay;
-    float g_centroidX = 0.f, g_centroidZ = 0.f; // world centroid of the open group (DLC-UG pivot)
-
-    // DLC UNDERGROUND (group 3, areas 40-43) world→map-space. Its page-10 converter
-    // was never dumped, so this stays the user's hand-tuned eyeball fit, baked: a
-    // swap@1.0 frame (renderX≈worldZ, renderZ≈worldX) rotated −90° about the group
-    // centroid, placed at the render centre + a fixed pan. Approximate / unverified
-    // (the other three pages use the EXACT converter below); precise per-page bake is
-    // in the backlog. Everything else (base OW 60, base UG 12, DLC OW 61) is exact.
-    void dlc_ug_eyeball(float wx, float wz, float &gU, float &gV)
-    {
-        constexpr float RC = 5248.f;        // render-space centre (10496/2)
-        constexpr float rot_deg = -90.f, panX = -2170.f, panZ = 850.f;
-        const float dx = wx - g_centroidX, dz = wz - g_centroidZ;
-        float u0 = dz, v0 = dx;             // M = swap@1.0 (a=0,b=1,c=1,d=0)
-        const float rr = rot_deg * 3.14159265f / 180.f, cs = cosf(rr), sn = sinf(rr);
-        gU = (u0 * cs - v0 * sn) + RC + panX;
-        gV = (u0 * sn + v0 * cs) + RC + panZ;
-    }
-
-    // Draws all graces of the open map page every frame the map is open.
+    // ── Overlay-rendered markers ──────────────────────────────────────────
+    // The world map is now drawn by the goblin::worldmap module (src/worldmap/):
+    // map_renderer owns projection + motion-sync + group gating + draw; each marker
+    // type is a MarkerLayer plugin (graces = 1st impl). This is the NEW overlay-
+    // rendered map, distinct from the legacy native WorldMapPointParam injection.
     void draw_markers_proto(bool /*menu_open*/)
     {
-        namespace proj = goblin::projection;
-        goblin::worldmap_probe::LiveView lv;
-        if (!goblin::worldmap_probe::get_live_view(lv))
-        {
-            g_view_delay.reset(); // map closed → re-seed the delay fresh on reopen
-            return;
-        }
-
-        ImGuiIO &io = ImGui::GetIO();
-        ImDrawList *fg = ImGui::GetForegroundDrawList();
-        const float realW = io.DisplaySize.x, realH = io.DisplaySize.y;
-
-        // Motion sync: delay the projected view by the baked frame so markers ride
-        // the native map layer instead of leading it during a pan.
-        proj::View view = to_proj_view(lv);
-        g_view_delay.apply(view, kViewDelayFrames);
-
-        const auto &graces = goblin::live_graces(); // LIVE WorldMapPointParam, no bake
-
-        // REGION GATING (mirrors the game's native areaNo+tab display). 4 map groups
-        // = isDLC*2 | isUG: 0 base-overworld {60,61}, 1 base-underground {12}, 2 DLC
-        // overworld, 3 DLC underground {40-43}. Classification is data-derived → cache
-        // it once per grace index, plus a FIXED per-group centroid pivot (the DLC-UG
-        // eyeball rotates about it; a fixed pivot keeps the pan stable).
-        static bool s_classified = false;
-        static std::vector<uint8_t> s_group; // per grace: 0..3 group
-        static float s_pivX[4] = {0}, s_pivZ[4] = {0};
-        if (!s_classified)
-        {
-            s_classified = true;
-            s_group.assign(graces.size(), 0xFF);
-            double sx[4] = {0}, sz[4] = {0};
-            int sn[4] = {0};
-            for (size_t i = 0; i < graces.size(); ++i)
-            {
-                const goblin::LiveGrace &e = graces[i];
-                int ga; float wx, wz;
-                goblin::marker_world_pos(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ,
-                                         ga, wx, wz, /*conv_underground=*/true);
-                int pg = ga & 63;
-                // DLC vs base by FINAL page (61/40-43 = DLC). UNDERGROUND by the
-                // ORIGINAL areaNo (12 / 40-43): area 12 projects to overworld map-space
-                // (pg=60) so it must be gated by its source layer, not the final page.
-                bool isug = (e.areaNo == 12) || (e.areaNo >= 40 && e.areaNo <= 43);
-                bool isdlc = (pg == 61) || (e.areaNo >= 40 && e.areaNo <= 43);
-                int grp = (isdlc ? 2 : 0) | (isug ? 1 : 0);
-                s_group[i] = (uint8_t)grp;
-                sx[grp] += wx; sz[grp] += wz; ++sn[grp];
-            }
-            for (int g = 0; g < 4; ++g)
-                if (sn[g]) { s_pivX[g] = (float)(sx[g] / sn[g]); s_pivZ[g] = (float)(sz[g] / sn[g]); }
-        }
-
-        // Which group's map is OPEN — from the SOLVED region getter (probe reads the
-        // WorldMapDialog page+layer): openDlc = DLC map, underground = layer byte.
-        const int open_grp = (lv.openDlc ? 2 : 0) | ((lv.underground != 0) ? 1 : 0);
-        const bool dlc_ug = (open_grp == 3);
-        g_centroidX = s_pivX[open_grp];
-        g_centroidZ = s_pivZ[open_grp];
-
-        for (size_t i = 0; i < graces.size(); ++i)
-        {
-            if (s_group[i] != open_grp)
-                continue; // draw only the open map group (base/DLC × OW/UG)
-            const goblin::LiveGrace &e = graces[i];
-            int ga; float wx, wz;
-            goblin::marker_world_pos(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ,
-                                     ga, wx, wz, /*conv_underground=*/true);
-
-            float gU, gV;
-            if (!dlc_ug)
-            {
-                // EXACT world→map-space (agent RE 0a30738): origin (7168,16384), bias
-                // 128, scale 1.0, Z-flipped: mapX = worldX − 7040 ; mapZ = −worldZ + 16512.
-                gU = wx - 7040.0f;
-                gV = -wz + 16512.0f;
-            }
-            else
-            {
-                dlc_ug_eyeball(wx, wz, gU, gV); // page-10 converter not dumped (eyeball)
-            }
-
-            proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
-            if (p.x < -16 || p.y < -16 || p.x > realW + 16 || p.y > realH + 16)
-                continue; // ImGui doesn't CPU-cull; skip off-screen primitives ourselves
-            fg->AddCircleFilled(ImVec2(p.x, p.y), 5.0f, IM_COL32(90, 230, 130, 235));
-            fg->AddCircle(ImVec2(p.x, p.y), 5.0f, IM_COL32(0, 0, 0, 220), 0, 1.5f);
-        }
+        static goblin::worldmap::GraceLayer s_graces;
+        static std::vector<goblin::worldmap::MarkerLayer *> s_layers = {&s_graces};
+        goblin::worldmap::render_markers(s_layers);
     }
 
     void draw_panel()
