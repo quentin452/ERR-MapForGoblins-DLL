@@ -27,12 +27,16 @@ namespace goblin::sig
     // Use with relative_offsets {{3,7}} to lift the slot from the rip-disp.
     inline constexpr const char *EVENT_FLAG_MAN_SLOT =
         "48 8B 3D ?? ?? ?? ?? 48 85 FF ?? ?? 32 C0 E9";
-    // SetEventFlag ("EventFlag_C1", Hexinton) ENTRY — match the stable prologue THROUGH the
-    // `41 0F B6 F8` (movzx edi,r8b value-capture) only; the full Hexinton tail
-    // (`8B 12 48 8B F1 85 D2 0F 84 …`) DRIFTS per game version and fails to resolve.
-    // Verified live -> 0x1405d2240. Resolves the same entry the debug-events hook needs.
+    // SetEventFlag ("EventFlag_C1") ENTRY. CAREFUL: a sibling fn shares the prologue +
+    // `8B 12 48 8B F1 85 D2`, then DIVERGES — the REAL SetEventFlag has a short `74` (jz)
+    // there; the DECOY has `0F 84` (jz near). Stop the signature at the `74` to pin the real
+    // one UNIQUELY (the prologue-only 22-byte form matched BOTH → resolved to the wrong fn
+    // ~half the time). The full Hexinton AOB (`…85 D2 0F 84`) actually describes the DECOY
+    // and fails at runtime. Verified live: this resolves the real entry (0x1405d2240,
+    // read-back 5/5 OK); the `7D` rel8 after `74` is excluded as version-variant.
     inline constexpr const char *SET_EVENT_FLAG =
-        "48 89 5C 24 08 48 89 74 24 18 57 48 83 EC 30 48 8B DA 41 0F B6 F8";
+        "48 89 5C 24 08 48 89 74 24 18 57 48 83 EC 30 48 8B DA 41 0F B6 F8 "
+        "8B 12 48 8B F1 85 D2 74";
     // Alt EventFlagMan singleton resolve used by the inject fast-path (fe_man_slot).
     inline constexpr const char *EVENT_FLAG_MAN_SLOT_ALT =
         "48 8B 05 ?? ?? ?? ?? 48 85 C0 74 11 8B 80 3C 65 00 00";
