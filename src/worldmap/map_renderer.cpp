@@ -50,7 +50,11 @@ void dlc_ug_eyeball(float wx, float wz, float &gU, float &gV)
     gV = (u0 * sn + v0 * cs) + RC + panZ;
 }
 
-constexpr float kIconHalf = 13.f; // marker icon half-size in px (≈26px sprite)
+// Marker/glyph base sizes at 1920×1080; scaled by realH/1080 at draw time so they
+// track the native GFx icons (which scale with the canvas) instead of looking
+// oversized at low res / undersized at high res.
+constexpr float kIconHalfBase = 10.f; // ~20px sprite at 1080 (native-ish)
+constexpr float kGlyphRBase = 12.f;   // cluster pile disc radius at 1080
 
 // Resolve a marker's atlas cell to UVs. Returns false if no atlas / key missing.
 bool icon_uv(const char *key, ImVec2 &uv0, ImVec2 &uv1)
@@ -71,18 +75,20 @@ bool icon_uv(const char *key, ImVec2 &uv0, ImVec2 &uv1)
 }
 
 // Draw one marker at backbuffer px p: the atlas icon if available, else a circle.
-void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas)
+// half = icon half-size in px (resolution-scaled by the caller).
+void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, float half)
 {
     ImVec2 uv0, uv1;
     if (atlas && icon_uv(m.icon_key, uv0, uv1))
     {
-        fg->AddImage(atlas, ImVec2(p.x - kIconHalf, p.y - kIconHalf),
-                     ImVec2(p.x + kIconHalf, p.y + kIconHalf), uv0, uv1);
+        fg->AddImage(atlas, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
+                     uv0, uv1);
     }
     else
     {
-        fg->AddCircleFilled(p, 5.0f, m.color);
-        fg->AddCircle(p, 5.0f, IM_COL32(0, 0, 0, 220), 0, 1.5f);
+        float cr = half * 0.45f;
+        fg->AddCircleFilled(p, cr, m.color);
+        fg->AddCircle(p, cr, IM_COL32(0, 0, 0, 220), 0, 1.5f);
     }
 }
 
@@ -114,9 +120,8 @@ struct ScreenMarker
 };
 
 // Draw a cluster pile glyph (filled disc + member count) at screen point c.
-void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n)
+void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n, float r)
 {
-    const float r = 14.f;
     fg->AddCircleFilled(c, r, IM_COL32(40, 42, 52, 235));
     fg->AddCircle(c, r, IM_COL32(255, 255, 255, 230), 0, 2.0f);
     char buf[16];
@@ -132,7 +137,8 @@ void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n)
 // piles/markers are culled. realW/realH = backbuffer size for the cull.
 void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int threshold,
                    ImTextureID atlas, float realW, float realH,
-                   const goblin::projection::View &view, bool dlc_ug)
+                   const goblin::projection::View &view, bool dlc_ug, float iconHalf,
+                   float glyphR)
 {
     namespace proj = goblin::projection;
     auto on_screen = [&](const ImVec2 &p) {
@@ -155,7 +161,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         {
             for (int i : idxs)
                 if (on_screen(items[i].p))
-                    draw_marker(fg, *items[i].m, items[i].p, atlas);
+                    draw_marker(fg, *items[i].m, items[i].p, atlas, iconHalf);
             continue;
         }
         // Pile AT its grace (correctly placed), not the member centroid (which drifts
@@ -179,30 +185,36 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         piles.push_back({c, (int)idxs.size()});
     }
 
-    // Pass 2: nudge each pile off its grace icon (so both stay visible), choosing the
-    // up/down/left/right direction with the MOST clearance from neighbouring grace
-    // anchors — so a pile next to other graces doesn't land on one of them.
-    constexpr float OFF = 28.f; // grace icon (~13) + glyph radius (14) + gap
-    const ImVec2 dirs[4] = {{-OFF, 0}, {OFF, 0}, {0, -OFF}, {0, OFF}};
+    // Pass 2: nudge each pile off its grace icon (so both stay visible), in the cardinal
+    // direction pointing AWAY from its nearest neighbouring grace — so a pile next to
+    // other graces doesn't land on one. The direction is derived from the screen vector
+    // between two graces, whose ANGLE is zoom-invariant (zoom scales both graces'
+    // positions by the same factor), so the chosen direction is STABLE across zoom —
+    // no flipping when you zoom in/out. Isolated piles default to "below".
+    const float OFF = iconHalf + glyphR + 4.f;
     for (size_t i = 0; i < piles.size(); ++i)
     {
-        ImVec2 best = piles[i].g;
-        float bestClear = -1.f;
-        for (const ImVec2 &d : dirs)
+        int nn = -1;
+        float nnd = 1e30f;
+        for (size_t j = 0; j < piles.size(); ++j)
         {
-            ImVec2 cand(piles[i].g.x + d.x, piles[i].g.y + d.y);
-            float mind = 1e30f;
-            for (size_t j = 0; j < piles.size(); ++j)
-            {
-                if (j == i) continue;
-                float dx = cand.x - piles[j].g.x, dy = cand.y - piles[j].g.y;
-                float dd = dx * dx + dy * dy;
-                if (dd < mind) mind = dd;
-            }
-            if (mind > bestClear) { bestClear = mind; best = cand; }
+            if (j == i) continue;
+            float dx = piles[i].g.x - piles[j].g.x, dy = piles[i].g.y - piles[j].g.y;
+            float d = dx * dx + dy * dy;
+            if (d < nnd) { nnd = d; nn = (int)j; }
         }
+        ImVec2 off(0.f, OFF); // default: below
+        if (nn >= 0)
+        {
+            float vx = piles[i].g.x - piles[nn].g.x, vy = piles[i].g.y - piles[nn].g.y;
+            if (std::fabs(vx) > std::fabs(vy))
+                off = ImVec2(vx > 0 ? OFF : -OFF, 0.f);
+            else
+                off = ImVec2(0.f, vy > 0 ? OFF : -OFF);
+        }
+        ImVec2 best(piles[i].g.x + off.x, piles[i].g.y + off.y);
         if (on_screen(best))
-            draw_cluster_glyph(fg, best, piles[i].count);
+            draw_cluster_glyph(fg, best, piles[i].count, glyphR);
     }
 }
 } // namespace
@@ -253,6 +265,10 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // by construction (re-binned every frame), so toggles/zoom update with no rebuild.
     const bool clustering = goblin::ui::clustering_enabled();
     const int threshold = clustering ? goblin::ui::global_threshold() : 0;
+    // Resolution-relative icon/glyph sizes (match the native canvas-scaled icons).
+    const float uiScale = realH / 1080.f;
+    const float iconHalf = kIconHalfBase * uiScale;
+    const float glyphR = kGlyphRBase * uiScale;
     std::vector<ScreenMarker> clustered; // markers whose category opted into clustering
 
     for (auto *L : layers)
@@ -274,11 +290,12 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                 goblin::ui::category_clustered(m.category))
                 clustered.push_back({sp, &m});
             else if (!(sp.x < -32 || sp.y < -32 || sp.x > realW + 32 || sp.y > realH + 32))
-                draw_marker(fg, m, sp, atlas);
+                draw_marker(fg, m, sp, atlas, iconHalf);
         }
     }
 
     if (clustering && !clustered.empty())
-        draw_clusters(fg, clustered, threshold, atlas, realW, realH, view, dlc_ug);
+        draw_clusters(fg, clustered, threshold, atlas, realW, realH, view, dlc_ug, iconHalf,
+                      glyphR);
 }
 } // namespace goblin::worldmap
