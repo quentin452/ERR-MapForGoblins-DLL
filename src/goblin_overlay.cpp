@@ -20,8 +20,9 @@
 #include "goblin_inject.hpp"   // goblin::world_map_open()
 #include "goblin_worldmap_probe.hpp"   // get_live_view() for the marker prototype
 #include "goblin_map_data.hpp"         // generated::MAP_ENTRIES (graces for Phase 1)
-#include "worldmap/grace_layer.hpp"    // goblin::worldmap::GraceLayer
-#include "worldmap/map_renderer.hpp"   // goblin::worldmap::render_markers
+#include "worldmap/grace_layer.hpp"      // goblin::worldmap::GraceLayer
+#include "worldmap/map_entry_layer.hpp"  // goblin::worldmap::MapEntryLayer
+#include "worldmap/map_renderer.hpp"     // goblin::worldmap::render_markers
 #include "generated_shared/goblin_overlay_icons.hpp" // ATLAS_RGBA category-icon atlas
 
 #include <vector>
@@ -503,10 +504,29 @@ namespace
     // rendered map, distinct from the legacy native WorldMapPointParam injection.
     void draw_markers_proto(bool /*menu_open*/)
     {
-        static goblin::worldmap::GraceLayer s_graces;
-        static std::vector<goblin::worldmap::MarkerLayer *> s_layers = {&s_graces};
+        if (!goblin::ui::icons_enabled())
+            return; // master off → draw no overlay markers
+        namespace wm = goblin::worldmap;
+        namespace gen = goblin::generated;
+        // One GraceLayer (live BonfireWarp graces) + one MapEntryLayer per other
+        // category (baked MAP_ENTRIES). Built once; layer order is stable.
+        static wm::GraceLayer s_graces;
+        static std::vector<wm::MapEntryLayer> s_cat;     // stable storage
+        static std::vector<wm::MarkerLayer *> s_layers;  // pointers into the above
+        if (s_layers.empty())
+        {
+            const int N = static_cast<int>(gen::Category::WorldInteractables) + 1;
+            const int graces = static_cast<int>(gen::Category::WorldGraces);
+            s_cat.reserve(N); // reserve → no realloc, so the pointers below stay valid
+            for (int c = 0; c < N; ++c)
+                if (c != graces) // graces come from the live GraceLayer, not MAP_ENTRIES
+                    s_cat.emplace_back(c);
+            s_layers.push_back(&s_graces);
+            for (auto &L : s_cat)
+                s_layers.push_back(&L);
+        }
         void *atlas = g_atlas_ready ? reinterpret_cast<void *>(g_atlas_gpu.ptr) : nullptr;
-        goblin::worldmap::render_markers(s_layers, atlas);
+        wm::render_markers(s_layers, atlas);
     }
 
     void draw_panel()

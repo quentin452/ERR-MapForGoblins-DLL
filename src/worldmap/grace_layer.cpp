@@ -1,9 +1,16 @@
 #include "grace_layer.hpp"
 
-#include "goblin_inject.hpp" // goblin::live_graces / marker_world_pos / LiveGrace
+#include "goblin_inject.hpp" // goblin::live_graces / marker_world_pos / ui::category_visible
+#include "goblin_map_data.hpp" // Category::WorldGraces
 
 namespace goblin::worldmap
 {
+bool GraceLayer::visible() const
+{
+    return goblin::ui::category_visible(
+        static_cast<int>(goblin::generated::Category::WorldGraces));
+}
+
 const std::vector<Marker> &GraceLayer::markers() const
 {
     if (built_)

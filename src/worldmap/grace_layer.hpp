@@ -10,7 +10,7 @@ class GraceLayer : public MarkerLayer
 {
 public:
     const char *category() const override { return "Graces"; }
-    bool visible() const override { return true; } // TODO: wire to a category toggle
+    bool visible() const override; // live show_graces toggle
     const std::vector<Marker> &markers() const override;
 
 private:
