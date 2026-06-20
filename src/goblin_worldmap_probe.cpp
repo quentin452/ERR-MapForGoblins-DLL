@@ -206,6 +206,31 @@ uintptr_t resolve_cursor_via_menu(uintptr_t base, uintptr_t vtable_va)
     return 0;
 }
 
+// REGION-FIELD finder: the open-map region (overworld / underground / DLC) is NOT
+// the sublayer flag (dead) nor fullRect (constant 10496). Delta-scan the WorldMapDialog
+// (cursor−0x2DB0) + the WorldMapArea (view) for any int32 holding a SMALL value that
+// CHANGES when the user switches maps → that field is the open-region id. Logs each
+// change once; the user opens overworld→underground→DLC and reports which offset flips.
+void region_diag(uintptr_t cursor, uintptr_t view)
+{
+    static std::unordered_map<uintptr_t, int> last;
+    auto scan = [&](const char *tag, uintptr_t base_obj, int span) {
+        for (int off = 0; off <= span; off += 4)
+        {
+            int val = 0;
+            if (!seh_read_i32(reinterpret_cast<void *>(base_obj + off), &val)) continue;
+            uintptr_t key = (base_obj == cursor - CURSOR_OFF_IN_MENU ? 0 : 0x80000000ull) + off;
+            auto it = last.find(key);
+            if (it != last.end() && it->second != val &&
+                val >= 0 && val < 256 && it->second >= 0 && it->second < 256)
+                g_log->info("[REGION-DIAG] {}+{:#x}: {} -> {}", tag, off, it->second, val);
+            last[key] = val;
+        }
+    };
+    scan("dialog", cursor - CURSOR_OFF_IN_MENU, 0x600);
+    if (view) scan("view", view, 0x400);
+}
+
 void probe_loop()
 {
     uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
@@ -344,6 +369,7 @@ void probe_loop()
                                     view, panx, panz, zoom, r0, r1, r2, r3);
                         lv = {panx, panz, zoom};
                     }
+                    region_diag(a, view); // find the open-map region field (switch maps → flips)
                 }
 
                 // One-shot per active cursor: the full float window cursor+0xE0..+0x388
