@@ -43,6 +43,12 @@
       <Address>MFG_MENU+5C</Address>
     </CheatEntry>
     <CheatEntry>
+      <ID>30</ID>
+      <Description>"*** LAYER = THE OW/UG KEY *** [[dialog+0x2B68]+0xB8]: 0=surface(OW), !=0=underground(UG). Setter FUN_1409c40f0; underground applies page+1 internally. Gating: page==10 DLC, else layer==0 OW(60/61), else UG(12)."</Description>
+      <VariableType>Byte</VariableType>
+      <Address>[MFG_MENU+2B68]+B8</Address>
+    </CheatEntry>
+    <CheatEntry>
       <ID>7</ID>
       <Description>"SURFACE/UNDERGROUND flag (DAT_143d6cfc3) -- THE OW/UG KEY: 0=surface, !=0=underground. Set at map-build by FUN_1408855b0; projection branches on it (FUN_1409ce190/cd790: cfc3==0 -> view+0x360 surface rect, else +0x350 underground rect). CLICK 'Afficher souterrains' to flip it."</Description>
       <VariableType>Byte</VariableType>
@@ -211,15 +217,15 @@ function mfg_snapshot()
   local v  = mfg.view
   local function di(off) return readInteger(d + off) end
   local function vi(off) return v and readInteger(v + off) or -1 end
-  local ug   = readBytes(getAddress("eldenring.exe") + 0x3D6CFC3, 1, true) or -1
-  -- OW/UG has no state field -> the distinguishing signal must be WHERE on the canvas the view sits.
-  local function vf(off) return v and readFloat(v + off) or 0 end
-  local panx, panz, zoom = vf(0x378), vf(0x37C), vf(0x380)
-  local rx, rz = readFloat(mfg.cursor + 0x104), readFloat(mfg.cursor + 0x108)  -- cursor render pos on canvas
+  -- *** THE OW/UG KEY: layer = [[dialog+0x2B68]+0xB8] (0=surface/OW, !=0=underground/UG) ***
+  local sub = readPointer(d + 0x2B68)
+  local layer = (sub and sub ~= 0) and (readBytes(sub + 0xB8, 1, true) or -1) or -1
+  local page = di(0xA88)
+  local region = (page == 10 and "DLC") or (layer == 0 and "OVERWORLD") or (layer ~= -1 and "UNDERGROUND") or "?"
   local line = string.format(
-    "page[A88]=%-3d view370=%-3d view374=%-3d  cfc3=%-2d  | pan=(%.1f, %.1f) zoom=%.4f  render=(%.1f, %.1f)",
-    di(0xA88), vi(0x370), vi(0x374), ug, panx, panz, zoom, rx, rz)
-  print("[MFG] " .. line .. "   <-- LABEL THIS with the open map (OW / UG / DLC-OW / DLC-UG)")
+    "REGION=%-11s  page[A88]=%-3d LAYER=%-3d  view370=%-3d view374=%-3d",
+    region, page, layer, vi(0x370), vi(0x374))
+  print("[MFG] " .. line)
   local f = io.open("MapForGoblins_region_ct.log", "a")
   if f then f:write(os.date("%H:%M:%S ") .. line .. "\n"); f:close() end
 end
