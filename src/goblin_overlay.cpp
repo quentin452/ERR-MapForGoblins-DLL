@@ -900,7 +900,27 @@ namespace
             // EYEBALL DIAL: rotation presets @ scale 0.5 (one off-diagonal sign each),
             // then pan with gtx/gty until page 60 lines up. If rotate+pan aligns -> it's
             // a clean 90deg rotation; if not -> T differs per page -> use Solve.
-            ImGui::TextDisabled("presets (scale 0.5):");
+            // GENERAL orientation: continuous angle + independent axis flips. Covers ALL
+            // 8 dihedral orientations (90° steps × flips) AND any in-between angle — a flip
+            // is what fixes a cluster that's MIRRORED ("wrong direction"), which plain
+            // rotation can't. angle/scale/flips drive a,b,c,d (edit a,b,c,d for fine tweaks).
+            static float g_angle = 90.f, g_scale = 0.5f;
+            static bool g_flipX = false, g_flipZ = false;
+            bool ch = false;
+            ch |= ImGui::DragFloat("angle (deg)", &g_angle, 1.f, -180.f, 180.f, "%.0f");
+            ch |= ImGui::DragFloat("scale", &g_scale, 0.005f, 0.1f, 1.5f, "%.3f");
+            ch |= ImGui::Checkbox("flip X", &g_flipX); ImGui::SameLine();
+            ch |= ImGui::Checkbox("flip Z (mirror)", &g_flipZ);
+            if (ch)
+            {
+                float r = g_angle * 3.14159265f / 180.f;
+                float ca = cosf(r) * g_scale, sa = sinf(r) * g_scale;
+                float a = ca, b = -sa, c = sa, d = ca;
+                if (g_flipX) { a = -a; b = -b; }   // negate renderX output
+                if (g_flipZ) { c = -c; d = -d; }   // negate renderZ output
+                g_aff.a = a; g_aff.b = b; g_aff.c = c; g_aff.d = d;
+            }
+            ImGui::TextDisabled("quick presets (scale 0.5):");
             ImGui::SameLine();
             if (ImGui::Button("90 CW"))  { g_aff.a=0; g_aff.b=-0.5f; g_aff.c=0.5f;  g_aff.d=0; }
             ImGui::SameLine();
