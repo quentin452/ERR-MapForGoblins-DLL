@@ -4,6 +4,7 @@
 #include "goblin_config.hpp"
 #include "goblin_messages.hpp"
 #include "modutils.hpp"
+#include "re_signatures.hpp"
 #include "goblin_map_data.hpp"
 #include "goblin_item_icons.hpp"
 #include "goblin_location_alt.hpp"
@@ -744,7 +745,7 @@ static void resolve_world_chr_man()
 {
     g_wcm_tried = true;
     auto *finder = reinterpret_cast<uint8_t *>(
-        modutils::scan<void>({.aob = "48 8B FA 0F 11 41 70 48 8B 05"}));
+        modutils::scan<void>({.aob = goblin::sig::WCM_FINDER}));
     if (!finder)
     {
         spdlog::warn("[PLAYER] WorldChrMan AOB not found");
@@ -838,10 +839,10 @@ static void resolve_player_map_pos_statics()
 {
     g_mappos_tried = true;
     g_mapid_slot = reinterpret_cast<uintptr_t>(modutils::scan<void>({
-        .aob = "48 8B 0D ?? ?? ?? ?? 48 8D 54 24 20 E8 ?? ?? ?? ?? F2 0F 10 05 ?? ?? ?? ??",
+        .aob = goblin::sig::PLAYER_MAPID_SLOT,
         .relative_offsets = {{3, 7}}}));
     g_mappos_mgr_slot = reinterpret_cast<uintptr_t>(modutils::scan<void>({
-        .aob = "48 8B 0D ?? ?? ?? ?? 48 8D 53 10 E8 ?? ?? ?? ?? 4C 8B E8",
+        .aob = goblin::sig::WORLD_GEOM_MAN_SLOT,
         .relative_offsets = {{3, 7}}}));
     spdlog::info("[PLAYER] map-pos statics: mapId-slot {:p}, geomMgr-slot {:p}",
                  (void *)g_mapid_slot, (void *)g_mappos_mgr_slot);
@@ -2540,7 +2541,7 @@ static void show_tutorial_popup_trampoline(uintptr_t /*er*/, int tutorial_id)
     {
         tried = true;
         fn = reinterpret_cast<void (*)(int)>(modutils::scan<void>({
-            .aob = "48 8B 05 ?? ?? ?? ?? 8B D1 48 85 C0 74 17 48 8B 88 80 00 00 00 48 85 C9",
+            .aob = goblin::sig::WORLDMAP_POINT_FN,
         }));
         spdlog::info("[TOAST] trampoline ShowTutorialPopup @ {:p}", (void *)fn);
     }
@@ -2575,7 +2576,7 @@ bool goblin::world_map_open()
         resolved = true;
         // Same CSMenuMan singleton AOB as the toast path below.
         menu_man_slot = reinterpret_cast<void **>(modutils::scan<void *>({
-            .aob = "48 8B 05 ?? ?? ?? ?? 33 DB 48 89 74 24",
+            .aob = goblin::sig::CSMENUMAN_SLOT,
             .relative_offsets = {{3, 7}},
         }));
         spdlog::info("[OVERLAY] world_map_open CSMenuMan_slot={:p}", (void *)menu_man_slot);
@@ -2643,8 +2644,7 @@ void goblin::install_live_refresh_hook()
     // Entry AOB of FUN_140a82a80 (verified UNIQUE; no RIP-relative bytes, so the raw
     // prologue is patch-resilient). this=rcx (PointMan), ctx=rdx ({+0x34,+0x48}).
     void *fn = modutils::scan<void>({
-        .aob = "40 55 53 56 57 41 54 41 56 41 57 48 8B EC 48 83 EC 60 "
-               "48 C7 45 D0 FE FF FF FF 4C 8B F9 8B 42 34",
+        .aob = goblin::sig::WORLDMAP_POINT_CTOR,
     });
     if (!fn)
     {
@@ -2910,11 +2910,11 @@ static void show_toggle_banner(bool icons_on)
         resolved = true;
         er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
         menu_man_slot = reinterpret_cast<void **>(modutils::scan<void *>({
-            .aob = "48 8B 05 ?? ?? ?? ?? 33 DB 48 89 74 24",
+            .aob = goblin::sig::CSMENUMAN_SLOT,
             .relative_offsets = {{3, 7}},
         }));
         fe_man_slot = reinterpret_cast<void **>(modutils::scan<void *>({
-            .aob = "48 8B 05 ?? ?? ?? ?? 48 85 C0 74 11 8B 80 3C 65 00 00",
+            .aob = goblin::sig::EVENT_FLAG_MAN_SLOT_ALT,
             .relative_offsets = {{3, 7}},
         }));
         spdlog::info("[TOAST] resolve er=0x{:X} CSMenuMan_slot={:p} CSFeMan_slot={:p}",
@@ -3010,9 +3010,9 @@ static bool orp_flag_set(uint32_t flag_id)
         try
         {
             g_orp_is_flag = modutils::scan<bool(void *, uint32_t *)>(
-                { .aob = "48 83 EC 28 8B 12 85 D2" });
+                { .aob = goblin::sig::IS_EVENT_FLAG });
             g_orp_event_man_slot = reinterpret_cast<void **>(modutils::scan<void *>(
-                { .aob = "48 8B 3D ?? ?? ?? ?? 48 85 FF ?? ?? 32 C0 E9",
+                { .aob = goblin::sig::EVENT_FLAG_MAN_SLOT,
                   .relative_offsets = { {3, 7} } }));
         }
         catch (...) { g_orp_is_flag = nullptr; g_orp_event_man_slot = nullptr; }

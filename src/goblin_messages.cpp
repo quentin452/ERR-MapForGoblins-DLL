@@ -8,6 +8,7 @@
 #include "goblin_bench.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
 #include "modutils.hpp"
+#include "re_signatures.hpp"
 
 #include <cstring>
 #include <functional>
@@ -481,7 +482,7 @@ void goblin::setup_messages()
                   tutorial_ids_needed.size());
 
     auto msg_repository_address = modutils::scan<from::CS::MsgRepositoryImp *>({
-        .aob = "48 8B 3D ?? ?? ?? ?? 44 0F B6 30 48 85 FF 75",
+        .aob = goblin::sig::MSG_REPOSITORY,
         .relative_offsets = {{3, 7}},
     });
     if (!msg_repository_address) { spdlog::error("MsgRepositoryImp AOB not found"); return; }

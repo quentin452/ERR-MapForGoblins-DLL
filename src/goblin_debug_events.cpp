@@ -3,6 +3,7 @@
 #include "goblin_inject.hpp"
 #include "goblin_map_data.hpp"
 #include "modutils.hpp"
+#include "re_signatures.hpp"
 
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -174,9 +175,9 @@ bool safe_copy(const void *src, void *dst, size_t n)
 // and harmless when ignored).
 using SetEventFlagFn = uint64_t (*)(void *, uint32_t *, uint8_t, uint64_t);
 SetEventFlagFn g_orig_set_event_flag = nullptr;
-constexpr const char *SET_EVENT_FLAG_AOB =
-    "48 89 5C 24 08 48 89 74 24 18 57 48 83 EC 30 48 8B DA 41 0F B6 F8 "
-    "8B 12 48 8B F1 85 D2 0F 84";
+// Stable prologue (goblin::sig::SET_EVENT_FLAG) — the full Hexinton signature's tail drifts
+// per version and used to fail to resolve here, leaving this hook un-installed.
+constexpr const char *SET_EVENT_FLAG_AOB = goblin::sig::SET_EVENT_FLAG;
 
 // Hot-path → drain-thread inbox. The flag detour fires a LOT, so it only records
 // the event (id, value, set-time) under a short lock and returns; the drain
@@ -359,9 +360,7 @@ void flag_drain_loop()
 // write races safely with the flag drain thread.
 using AddItemFn = uint64_t (*)(void *, uint8_t *, uint8_t *, uint64_t, uint64_t);
 AddItemFn g_orig_add_item = nullptr;
-constexpr const char *ADD_ITEM_AOB =
-    "40 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 70 FF FF FF 48 81 EC "
-    "90 01 00 00 48 C7 45 C8 FE FF FF FF 48 89 9C 24 D8 01 00 00 48 8B 05";
+constexpr const char *ADD_ITEM_AOB = goblin::sig::ADD_ITEM_FUNC;
 
 uint64_t hk_add_item(void *inv, uint8_t *entries, uint8_t *base, uint64_t count,
                      uint64_t pad)

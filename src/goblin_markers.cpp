@@ -14,6 +14,7 @@
 #include "goblin_inject.hpp"
 #include "goblin_messages.hpp"
 #include "modutils.hpp"
+#include "re_signatures.hpp"
 #include "goblin_legacy_conv.hpp"
 #include "goblin_map_data.hpp"
 
@@ -74,7 +75,7 @@ static void resolve_flag_api()
     try
     {
         g_is_event_flag = modutils::scan<bool(void *, uint32_t *)>(
-            { .aob = "48 83 EC 28 8B 12 85 D2" });
+            { .aob = goblin::sig::IS_EVENT_FLAG });
     }
     catch (...) { g_is_event_flag = nullptr; }
 
@@ -82,7 +83,7 @@ static void resolve_flag_api()
     {
         // mov rdi, [rip+disp]; test rdi, rdi — resolve disp to pointer slot.
         g_event_man_slot = modutils::scan<void *>(
-            { .aob = "48 8B 3D ?? ?? ?? ?? 48 85 FF ?? ?? 32 C0 E9",
+            { .aob = goblin::sig::EVENT_FLAG_MAN_SLOT,
               .relative_offsets = { {3, 7} } });
     }
     catch (...) { g_event_man_slot = nullptr; }
@@ -122,7 +123,7 @@ static void resolve_set_flag()
     try
     {
         g_set_event_flag = modutils::scan<uint64_t(void *, uint32_t *, uint8_t, uint64_t)>(
-            { .aob = "48 89 5C 24 08 48 89 74 24 18 57 48 83 EC 30 48 8B DA 41 0F B6 F8" });
+            { .aob = goblin::sig::SET_EVENT_FLAG });
     }
     catch (...) { g_set_event_flag = nullptr; }
     spdlog::info("Flag WRITER: SetEventFlag={}", (void *)g_set_event_flag);
@@ -205,13 +206,12 @@ static uintptr_t marker_resolve(const char *aob)
 }
 static uintptr_t marker_chain_slot()
 {
-    static uintptr_t s = marker_resolve("48 8B 0D ?? ?? ?? ?? 48 8B 49 30 48 8D 55 5F");
+    static uintptr_t s = marker_resolve(goblin::sig::MARKER_CHAIN_SLOT);
     return s;
 }
 static uintptr_t marker_container_vtable()
 {
-    static uintptr_t s = marker_resolve(
-        "48 8D 05 ?? ?? ?? ?? 48 89 07 48 8D 5F 10 48 8D 05 ?? ?? ?? ??");
+    static uintptr_t s = marker_resolve(goblin::sig::MARKER_ARRAY_CTOR);
     return s;
 }
 

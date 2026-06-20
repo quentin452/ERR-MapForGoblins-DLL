@@ -19,6 +19,7 @@
 #include "goblin_kindling.hpp"
 #include "goblin_map_data.hpp"
 #include "modutils.hpp"
+#include "re_signatures.hpp"
 #include "goblin_bench.hpp"
 
 #include <algorithm>
@@ -94,14 +95,14 @@ void resolve_flag_api()
     try
     {
         g_is_event_flag = modutils::scan<bool(void *, uint32_t *)>(
-            { .aob = "48 83 EC 28 8B 12 85 D2" });
+            { .aob = goblin::sig::IS_EVENT_FLAG });
     }
     catch (...) { g_is_event_flag = nullptr; }
 
     try
     {
         g_event_man_slot = modutils::scan<void *>(
-            { .aob = "48 8B 3D ?? ?? ?? ?? 48 85 FF ?? ?? 32 C0 E9",
+            { .aob = goblin::sig::EVENT_FLAG_MAN_SLOT,
               .relative_offsets = { {3, 7} } });
     }
     catch (...) { g_event_man_slot = nullptr; }
@@ -178,16 +179,14 @@ static uintptr_t kindling_resolve(const char *aob)
 // store. Used to validate per-spirit cond objects ([cond+0] == this vtable).
 static uintptr_t distance_vft()
 {
-    static uintptr_t s = kindling_resolve(
-        "48 8D 05 ?? ?? ?? ?? 48 89 01 48 8D 05 ?? ?? ?? ?? 48 89 01 F6 C2 01 74 ?? "
-        "BA 40 00 00 00 E8 ?? ?? ?? ?? 90 48 8B C3 48 83 C4 30 5B C3 90 78 ??");
+    static uintptr_t s = kindling_resolve(goblin::sig::EC_TEST_DISTANCE_VFT);
     return s;
 }
 // WorldSfxMan singleton slot (was RVA 0x3D6F5F8) — "game world loaded"
 // indicator (the pointer there is NULL at the menu / loading screen).
 static uintptr_t world_sfx_man_slot()
 {
-    static uintptr_t s = kindling_resolve("48 8B 05 ?? ?? ?? ?? 48 8D 4D 98 48 89 4C 24 60");
+    static uintptr_t s = kindling_resolve(goblin::sig::WORLD_SFX_MAN_SLOT);
     return s;
 }
 

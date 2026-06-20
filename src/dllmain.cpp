@@ -9,6 +9,7 @@
 
 #include "from/params.hpp"
 #include "modutils.hpp"
+#include "re_signatures.hpp"
 
 #include "goblin_collected.hpp"
 #include "goblin_config.hpp"
@@ -143,6 +144,11 @@ static void setup_mod()
 {
     safe_init_step(&init_modutils,    "modutils::initialize");
     safe_init_step(&init_from_params, "from::params::initialize");
+
+    // AOB signature health check — logs PASS/FAIL for every centralized signature
+    // (src/re_signatures.hpp). After a game update, a FAIL line names exactly which
+    // signature broke. Cheap, read-only; runs once at init.
+    safe_init_step(&goblin::sig::resolve_all_signatures, "AOB signature health check");
 
     // Robust init wait: POLL for the WorldMapPointParam table (the real dependency
     // of inject_map_entries) instead of sleeping a fixed load_delay — on a slow PC
