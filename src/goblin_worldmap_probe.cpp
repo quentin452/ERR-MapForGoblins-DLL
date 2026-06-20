@@ -136,23 +136,72 @@ uintptr_t resolve_cursor_via_menu(uintptr_t base, uintptr_t vtable_va)
     }
     if (!mm_ok || !mm || !plausible_ptr(mm))
         return 0;
-    for (uintptr_t off = 0; off < MENU_WALK_WINDOW; off += 8)
+    auto vt_is_cursor = [&](uint64_t obj) {
+        uint64_t vt = 0;
+        return seh_read8(reinterpret_cast<void *>(obj + CURSOR_OFF_IN_MENU), &vt) && vt == vtable_va;
+    };
+    // CACHED chain (found once, reused O(1)). off2==~0 → 1-level (mm+off1 = dialog).
+    static uintptr_t c_off1 = ~uintptr_t(0), c_off2 = ~uintptr_t(0);
+    if (c_off1 != ~uintptr_t(0))
     {
         uint64_t p = 0;
-        if (!seh_read8(reinterpret_cast<void *>(mm + off), &p) || !p || !plausible_ptr(p))
-            continue;
-        uint64_t vt = 0;
-        if (seh_read8(reinterpret_cast<void *>(p + CURSOR_OFF_IN_MENU), &vt) && vt == vtable_va)
+        if (seh_read8(reinterpret_cast<void *>(mm + c_off1), &p) && plausible_ptr(p))
         {
-            static uintptr_t logged_off = ~uintptr_t(0);
-            if (logged_off != off)
+            uint64_t dlg = p;
+            if (c_off2 != ~uintptr_t(0))
             {
-                logged_off = off;
-                g_log->info("[MENU] cursor via CSMenuMan+{:#x} → dialog {:#x} → cursor {:#x} "
-                            "(hardcode this offset for O(1))", off, p, p + CURSOR_OFF_IN_MENU);
+                uint64_t q = 0;
+                if (!seh_read8(reinterpret_cast<void *>(p + c_off2), &q) || !plausible_ptr(q))
+                    dlg = 0;
+                else
+                    dlg = q;
             }
+            if (dlg && vt_is_cursor(dlg))
+                return dlg + CURSOR_OFF_IN_MENU;
+        }
+        c_off1 = c_off2 = ~uintptr_t(0); // chain went stale (reopen) → re-search
+    }
+    // LEVEL 1: the dialog is a flat field of CSMenuMan.
+    for (uintptr_t o1 = 0; o1 < MENU_WALK_WINDOW; o1 += 8)
+    {
+        uint64_t p = 0;
+        if (!seh_read8(reinterpret_cast<void *>(mm + o1), &p) || !plausible_ptr(p))
+            continue;
+        if (vt_is_cursor(p))
+        {
+            c_off1 = o1; c_off2 = ~uintptr_t(0);
+            g_log->info("[MENU] cursor via CSMenuMan+{:#x} (L1) → cursor {:#x} (hardcode O(1))",
+                        o1, p + CURSOR_OFF_IN_MENU);
             return p + CURSOR_OFF_IN_MENU;
         }
+    }
+    // LEVEL 2: the dialog is one deref deeper (mm → container → dialog). EXPENSIVE, so
+    // run it only a few times while the map is open (0xCD reaches 7), then give up.
+    static int l2_tries = 0;
+    if (l2_tries < 6 && goblin::world_map_open())
+    {
+        ++l2_tries;
+        for (uintptr_t o1 = 0; o1 < MENU_WALK_WINDOW; o1 += 8)
+        {
+            uint64_t p = 0;
+            if (!seh_read8(reinterpret_cast<void *>(mm + o1), &p) || !plausible_ptr(p))
+                continue;
+            for (uintptr_t o2 = 0; o2 < 0x800; o2 += 8)
+            {
+                uint64_t q = 0;
+                if (!seh_read8(reinterpret_cast<void *>(p + o2), &q) || !plausible_ptr(q))
+                    continue;
+                if (vt_is_cursor(q))
+                {
+                    c_off1 = o1; c_off2 = o2;
+                    g_log->info("[MENU] cursor via CSMenuMan+{:#x} → +{:#x} (L2) → cursor {:#x} "
+                                "(hardcode O(1))", o1, o2, q + CURSOR_OFF_IN_MENU);
+                    return q + CURSOR_OFF_IN_MENU;
+                }
+            }
+        }
+        g_log->info("[MENU] L2 pass {} found no dialog (mm={:#x}) — chain deeper or different struct",
+                    l2_tries, mm);
     }
     return 0;
 }
