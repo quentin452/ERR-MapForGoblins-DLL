@@ -52,8 +52,12 @@ statically liftable — it must be read **live at a breakpoint**. That is the wh
    - **(b) post-call read** — resolve `point → icon` and the icon→`Matrix2x4` translation
      offset so `render_out` is a plain memory read after the call. **Report both offsets** —
      they unlock fully-automated in-DLL self-calibration later (no CE needed).
-3. **Collect ≥3 spread pairs per page** for **60, 61, 12, 40, 41, 42, 43** (open map on each,
-   a few seconds each). More = better fit.
+3. **Collect ≥3 spread pairs per page** for the **3 real map pages: 60, 61, 12** (open map on
+   each, a few seconds each). More = better fit. There are only THREE world-map screens —
+   60 (base overworld), 12 (base underground), 61 (DLC, single map). Areas 40-43 are DLC
+   dungeon interiors that legacy-conv ONTO page 61 (verified: src-only in
+   WorldMapLegacyConvParam, all resolve to 61) — their markers render on page 61, so do NOT
+   treat them as separate pages.
 4. **Solve per page** (`render = M·world + T`):
    ```python
    import numpy as np
@@ -71,7 +75,7 @@ statically liftable — it must be read **live at a breakpoint**. That is the wh
 ## Deliverable — the numbers
 
 1. **`M`** — 4 floats `a, b, c, d` (one shared matrix).
-2. **`T[page]`** — the `(e, f)` offset for each of 60, 61, 12, 40, 41, 42, 43. **This is the
+2. **`T[page]`** — the `(e, f)` offset for each of the 3 pages 60, 61, 12. **This is the
    per-page offset that fixes the session drift.**
 3. Per-page mean residual (sub-pixel proof).
 4. If step 2(b): the `point → icon` offset + icon → `Matrix2x4` translation offset.
@@ -98,15 +102,23 @@ Either way the captured pairs still pin M/T.)
 
 `areaNo` read at the bp is POST legacy-conv = the dst page. Map it:
 
-| areaNo | page | region |
-|---|---|---|
-| **60** | overworld, base | Limgrave / Liurnia / Caelid / Altus / Mountaintops (tabIds 61000–65000) |
-| **61** | overworld, DLC | Realm of Shadow / Shadow Keep (tabIds 6800–6940, 21000) |
-| **12** | underground, base | Nokron, Deeproot, Ainsel, Siofra, Lake of Rot, Mohgwyn (tabIds 12000–12002) |
-| **40–43** | underground, DLC | Realm of Shadow (tabIds 6800–6940) |
+There are only THREE world-map screens:
 
-Capture pairs on the matching map: base overworld for 60, DLC overworld for 61, base
-underground for 12, DLC underground for 40–43.
+| areaNo | map screen | region |
+|---|---|---|
+| **60** | base overworld | Limgrave / Liurnia / Caelid / Altus / Mountaintops (tabIds 61000–65000) |
+| **12** | base underground | Nokron, Deeproot, Ainsel, Siofra, Lake of Rot, Mohgwyn (tabIds 12000–12002) |
+| **61** | DLC (single map) | Land of Shadow / Shadow Keep (tabIds 6800–6940, 21000) |
+
+Base game = two separate map screens you toggle between (60 surface ⇄ 12 underground). The
+DLC = ONE map (61); it has no separate underground screen. Areas **40-43 are DLC dungeon
+interiors** (Stone Coffin Fissure etc.) that legacy-conv onto page 61 — their markers render
+on 61, they are NOT separate pages. (Verified: 40-43 are src-only in WorldMapLegacyConvParam,
+all resolve to 61. Terminal map pages = {60, 61, 12}; 19/70 are tiny edge areas.)
+
+Capture pairs on the matching map: base overworld for 60, base underground for 12, DLC map
+for 61 (move around it incl. former-40-43 dungeon entrances — they label as areaNo 61 once
+conv'd).
 
 ## Sanity anchors (your pairs should match)
 
