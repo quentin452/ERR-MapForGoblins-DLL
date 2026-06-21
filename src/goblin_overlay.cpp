@@ -1212,18 +1212,23 @@ namespace
         g_prev_toggle_down = down;
         g_show = g_user_show;
 
-        // Mid-session resolution diagnostic ([RENDIMS], read-only). Throttled ~2s; runs
-        // regardless of the overlay being shown. Change the in-game resolution, then
-        // read MapForGoblins.log for the stale render-output entry.
-        if (goblin::config::debugRenderDims)
+        // Mid-session resolution fix + diagnostic. Run every frame (the fix self-skips
+        // when the dims already match) because NOT all resolution changes fire
+        // ResizeBuffers — a per-frame enforcer catches the paths the resize hook misses.
+        if (goblin::config::fixMidsessionResolution || goblin::config::debugRenderDims)
         {
-            static int s_rd_tick = 0;
-            if ((s_rd_tick++ % 120) == 0)
+            DXGI_SWAP_CHAIN_DESC d{};
+            swapchain->GetDesc(&d);
+            const int bbW = static_cast<int>(d.BufferDesc.Width);
+            const int bbH = static_cast<int>(d.BufferDesc.Height);
+            if (goblin::config::fixMidsessionResolution)
+                goblin::worldmap_probe::fix_render_dims(bbW, bbH); // idempotent → cheap
+            if (goblin::config::debugRenderDims)
             {
-                DXGI_SWAP_CHAIN_DESC d{};
-                swapchain->GetDesc(&d);
-                goblin::worldmap_probe::dump_render_dims(static_cast<float>(d.BufferDesc.Width),
-                                                         static_cast<float>(d.BufferDesc.Height));
+                static int s_rd_tick = 0;
+                if ((s_rd_tick++ % 120) == 0)
+                    goblin::worldmap_probe::dump_render_dims(static_cast<float>(bbW),
+                                                             static_cast<float>(bbH));
             }
         }
 

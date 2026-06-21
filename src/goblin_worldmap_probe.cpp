@@ -674,6 +674,15 @@ int fix_render_dims(int w, int h)
     seh_read8(reinterpret_cast<void *>(mgr + 0x128), &begin);
     seh_read8(reinterpret_cast<void *>(mgr + 0x130), &end);
     if (begin < 0x10000 || end < begin || (end - begin) > 0x4000) return 0;
+    // Idempotent: skip if the first output's active dims already match (lets this be
+    // called every frame as a cheap path-independent enforcer — not all resolution
+    // changes fire ResizeBuffers).
+    {
+        float aw = 0, ah = 0;
+        seh_read4(reinterpret_cast<void *>(begin + 0x118), &aw);
+        seh_read4(reinterpret_cast<void *>(begin + 0x11c), &ah);
+        if (static_cast<int>(aw) == w && static_cast<int>(ah) == h) return 0;
+    }
     const float fw = static_cast<float>(w), fh = static_cast<float>(h);
     int n = 0;
     for (uint64_t e = begin; e < end && n < 16; e += 0x170)
