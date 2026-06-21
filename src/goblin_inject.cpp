@@ -828,16 +828,22 @@ static bool g_wcm_tried = false;
 static void resolve_world_chr_man()
 {
     g_wcm_tried = true;
-    auto *finder = reinterpret_cast<uint8_t *>(
-        modutils::scan<void>({.aob = goblin::sig::WCM_FINDER}));
-    if (!finder)
+    // Doc-confirmed static slot (runtime RPM walk, windows_player_pos_RESOLVED):
+    // WorldChrMan = [eldenring.exe + 0x3D65F88]. Prefer this exact slot — the in-game
+    // [PLR2] read 0,0,0 via the WCM_FINDER AOB, so that AOB resolves a DIFFERENT
+    // WorldChrMan-ish static on this build. Keep the AOB as a drift fallback.
+    uintptr_t er_base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    void **fixed = er_base ? reinterpret_cast<void **>(er_base + 0x3D65F88) : nullptr;
+    void **aob = nullptr;
+    if (auto *finder = reinterpret_cast<uint8_t *>(
+            modutils::scan<void>({.aob = goblin::sig::WCM_FINDER})))
     {
-        spdlog::warn("[PLAYER] WorldChrMan AOB not found");
-        return;
+        int32_t disp = *reinterpret_cast<int32_t *>(finder + 0xA);
+        aob = reinterpret_cast<void **>(finder + 0xE + disp);
     }
-    int32_t disp = *reinterpret_cast<int32_t *>(finder + 0xA);
-    g_wcm_static = reinterpret_cast<void **>(finder + 0xE + disp);
-    spdlog::info("[PLAYER] WorldChrMan static @ {:p}", (void *)g_wcm_static);
+    g_wcm_static = fixed ? fixed : aob;
+    spdlog::info("[PLAYER] WorldChrMan slot: fixed(er+0x3D65F88)={:p} aob={:p} -> using {:p}",
+                 (void *)fixed, (void *)aob, (void *)g_wcm_static);
 }
 
 // Player-position probe (POD-only; no C++ objects in the __try). Caller reads the
@@ -846,7 +852,7 @@ static void resolve_world_chr_man()
 struct PlayerProbe
 {
     void *wcm, *lp;   // [static], [wcm+0x1E508]
-    float p[3];       // X, Y(height), Z
+    float p[3];       // X, Y(height), Z at LocalPlayer +0x6C0/+0x6C4/+0x6C8
     bool ok;
 };
 
@@ -862,9 +868,9 @@ static void probe_player_seh(void **wcm_static, PlayerProbe *pr)
         auto *lp = *reinterpret_cast<uint8_t **>(wcm + 0x1E508);
         pr->lp = lp;
         if (!lp) return;
-        pr->p[0] = *reinterpret_cast<float *>(lp + 0x6C0); // X
+        pr->p[0] = *reinterpret_cast<float *>(lp + 0x6C0); // X (tile-local)
         pr->p[1] = *reinterpret_cast<float *>(lp + 0x6C4); // Y (height)
-        pr->p[2] = *reinterpret_cast<float *>(lp + 0x6C8); // Z
+        pr->p[2] = *reinterpret_cast<float *>(lp + 0x6C8); // Z (tile-local)
         pr->ok = true;
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -939,31 +945,37 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
     PlayerProbe pp{};
     probe_player_seh(g_wcm_static, &pp);                     // live ChrIns world pos
     if (!pr.ok || !pp.ok) return false;
-    out_area = pr.area;
-    // Player position = the live ChrIns world vector (RESOLVED chain, see above) instead of
-    // the geom-manager block-local read (pr.lx/lz), which went STALE while the map is CLOSED
-    // → the minimap/distance-adaptive centred on the wrong place. For the OVERWORLD (m60)
-    // the ChrIns X/Z are absolute world coords = the SAME frame as marker_world_pos
-    // (tile*256 + local), so feed them straight in. Underground (area 12 / DLC) the ChrIns
-    // frame differs from the unified-overworld projection the markers use → not converted
-    // here (minimap + distance-adaptive are overworld-only). out_gx/gz stay the reliable
-    // MapId tile (valid even underground).
-    world_x = pp.p[0];
-    world_z = pp.p[2];
-    if (out_gx) *out_gx = pr.gx;
-    if (out_gz) *out_gz = pr.gz;
-    // [PLR2] frame check (logged on area change, low spam): compare the live ChrIns pos to
-    // the MapId tile*256 and the old geom block-local. If chrIns ≈ tile*256 + geomLocal →
-    // absolute world == marker frame (current code right). If chrIns ≈ geomLocal (0..256) →
-    // block-local → world = tile*256 + chrIns. Resolves §4 of the RESOLVED doc in one run.
-    static int s_plr2_last_area = -2;
-    if (pr.area != s_plr2_last_area)
+    // Player LOCAL = LocalPlayer+0x6C0/+0x6C8 — RUNTIME-CONFIRMED to be the EXACT
+    // WorldMapPointParam posX/posZ frame on every page (RE windows_player_pos_RESOLVED §4:
+    // standing on the Bois-des-Fidèles grace, +0x6C0/+0x6C8 = 1437.8/1519.0 == the grace's
+    // baked posX/posZ). So feed it as posX/posZ and bridge + project EXACTLY like a marker.
+    // The old bug: get_player_map_pos read the local from geomMgr+0x70/+0x74 (a physics-block
+    // frame, off by the block origin underground) — geomLocal is NOT used now. ChrIns reads
+    // (0,0) only during a load before the player is positioned → report no position then.
+    if (pp.p[0] == 0.0f && pp.p[2] == 0.0f) return false;
+    from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp{};
+    tmp.areaNo  = static_cast<uint8_t>(pr.area);
+    tmp.gridXNo = static_cast<uint8_t>(pr.gx);
+    tmp.gridZNo = static_cast<uint8_t>(pr.gz);
+    tmp.posX = pp.p[0]; // LocalPlayer+0x6C0 (param posX frame)
+    tmp.posZ = pp.p[2]; // LocalPlayer+0x6C8 (param posZ frame)
+    // Project dungeons/underground onto the overworld map-space EXACTLY like markers
+    // (conv_underground=true unifies base underground area 12 too) → matches every page.
+    if (project_dungeon_row_to_overworld(&tmp, nullptr, nullptr, /*conv_underground=*/true))
     {
-        s_plr2_last_area = pr.area;
-        spdlog::info("[PLR2] area={} tile=({},{}) tile*256=({:.0f},{:.0f}) "
-                     "chrIns=({:.1f},{:.1f},{:.1f}) geomLocal=({:.1f},{:.1f})",
-                     pr.area, pr.gx, pr.gz, pr.gx * 256.0f, pr.gz * 256.0f,
-                     pp.p[0], pp.p[1], pp.p[2], pr.lx, pr.lz);
+        out_area = tmp.areaNo;
+        world_x = tmp.gridXNo * 256.0f + tmp.posX;
+        world_z = tmp.gridZNo * 256.0f + tmp.posZ;
+        if (out_gx) *out_gx = tmp.gridXNo;
+        if (out_gz) *out_gz = tmp.gridZNo;
+    }
+    else
+    {
+        out_area = pr.area;
+        world_x = pr.gx * 256.0f + pp.p[0];
+        world_z = pr.gz * 256.0f + pp.p[2];
+        if (out_gx) *out_gx = pr.gx;
+        if (out_gz) *out_gz = pr.gz;
     }
     return true;
 }
