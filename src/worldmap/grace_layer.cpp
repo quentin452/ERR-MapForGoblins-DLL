@@ -24,11 +24,6 @@ const std::vector<Marker> &GraceLayer::markers() const
     cache_.reserve(graces.size());
     for (const goblin::LiveGrace &e : graces)
     {
-        // Area 19 (Chapel of Anticipation) has no LegacyConv → projects to the far NW
-        // overworld corner and leaks onto post-prologue maps; the Chapel is blanked in the
-        // prologue and is no real overworld page, so drop its graces (see map_entry_layer).
-        if (e.areaNo == 19)
-            continue;
         // Project the row to UNIFIED overworld coords (legacy dungeons like
         // Stormveil/area-10 are page-local until projected → else they pile up).
         int ga;
@@ -41,7 +36,9 @@ const std::vector<Marker> &GraceLayer::markers() const
         // by its source layer, not the final page.
         bool isug = (e.areaNo == 12) || (e.areaNo >= 40 && e.areaNo <= 43);
         bool isdlc = (pg == 61) || (e.areaNo >= 40 && e.areaNo <= 43);
-        int grp = (isdlc ? 2 : 0) | (isug ? 1 : 0);
+        // Area 19 (Chapel) → Chapel group: kept but not drawn on the overworld (no LegacyConv
+        // → would project to the NW corner). See GROUP_CHAPEL / map_entry_layer.
+        int grp = (e.areaNo == 19) ? GROUP_CHAPEL : ((isdlc ? 2 : 0) | (isug ? 1 : 0));
         const int gc = static_cast<int>(goblin::generated::Category::WorldGraces);
         int pname = -1;
         int ckey = goblin::marker_cluster_key(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ,
