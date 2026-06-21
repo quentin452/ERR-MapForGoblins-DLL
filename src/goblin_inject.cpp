@@ -941,8 +941,11 @@ static void probe_map_pos_seh(uintptr_t mapid_slot, uintptr_t mgr_slot, MapPosPr
         pr->area = (mid >> 24) & 0xff;
         pr->gx   = (mid >> 16) & 0xff;
         pr->gz   = (mid >> 8)  & 0xff;
-        pr->lx = *reinterpret_cast<float *>(mgr + 0x70);  // block-local X
-        pr->lz = *reinterpret_cast<float *>(mgr + 0x74);  // block-local Z (+0x78 = height)
+        // Vec layout (RE FUN_14045e390, doc windows_yellowdot_player_pos): X@+0x70,
+        // Y(HEIGHT)@+0x74, Z@+0x78. The old code read +0x74 as Z = HEIGHT → masked
+        // overworld (flat, Y small), broken underground (deep, Y swings). Z is +0x78.
+        pr->lx = *reinterpret_cast<float *>(mgr + 0x70);  // local X
+        pr->lz = *reinterpret_cast<float *>(mgr + 0x78);  // local Z (NOT +0x74 = height)
         pr->ok = true;
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {}

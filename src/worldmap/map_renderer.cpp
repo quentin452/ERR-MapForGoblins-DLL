@@ -542,6 +542,24 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const int open_grp = (lv.openDlc ? 2 : 0) | ((lv.underground != 0) ? 1 : 0);
     const bool dlc_ug = (open_grp == 3);
 
+    // Player-dot validation (cluster_debug_radius): draw get_player_map_pos projected, on
+    // EVERY page, to confirm the +0x78-Z axis fix lands on the native yellow dot + tracks
+    // movement underground (RE doc windows_yellowdot_player_pos §1). Lean: dot + label.
+    if (goblin::config::clusterDebugRadius)
+    {
+        int pa = -1; float pwx = 0, pwz = 0;
+        if (goblin::get_player_map_pos(pa, pwx, pwz))
+        {
+            float gU, gV;
+            world_to_mapspace_xy(pwx, pwz, dlc_ug, gU, gV);
+            proj::Px p = proj::project_screen(gU, gV, view, io.DisplaySize.x, io.DisplaySize.y);
+            ImVec2 q(p.x, p.y);
+            fg->AddCircleFilled(q, 11.f, IM_COL32(255, 0, 255, 255));
+            fg->AddCircle(q, 11.f, IM_COL32(0, 0, 0, 220), 0, 2.f);
+            fg->AddText(ImVec2(q.x + 14, q.y - 7), IM_COL32(255, 0, 255, 255), "PLAYER");
+        }
+    }
+
     // The DLC-UG eyeball rotates about the open group's world centroid. Compute it over
     // every visible layer's markers (cheap; only needed for group 3).
     if (dlc_ug)
