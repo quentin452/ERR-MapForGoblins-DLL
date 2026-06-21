@@ -948,6 +948,19 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
     return true;
 }
 
+// RAW player area (the m-prefix of the live MapId, e.g. 19 = Chapel of Anticipation),
+// WITHOUT the dungeon→overworld projection get_player_map_pos applies. The overlay uses
+// this to detect the start-of-game prologue (m19) and blank the map there. -1 if the
+// MapId statics aren't resolved yet. Cheap: one bounded SEH read of the singleton.
+int goblin::get_player_raw_area()
+{
+    if (!g_mappos_tried) resolve_player_map_pos_statics();
+    if (!g_mapid_slot || !g_mappos_mgr_slot) return -1;
+    MapPosProbe pr{};
+    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
+    return pr.ok ? pr.area : -1;
+}
+
 // Region gating helpers for the overlay (mirror the game's native areaNo+tab gating).
 int goblin::grace_tab_id(uint8_t src_area, float raw_wx, float raw_wz)
 {
