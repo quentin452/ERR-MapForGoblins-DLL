@@ -41,7 +41,7 @@ void build_buckets()
         int pname = -1;
         int ckey = goblin::marker_cluster_key(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ,
                                               &pname);
-        g_buckets[c].push_back(Marker{wx, wz, grp, (int)d.areaNo, c, ckey, pname,
+        g_buckets[c].push_back(Marker{wx, wz, grp, (int)d.areaNo, c, ckey, pname, d.textId1,
                                       category_color(c), category_icon_key(c)});
     }
 }

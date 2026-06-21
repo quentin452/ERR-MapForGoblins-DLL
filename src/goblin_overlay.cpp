@@ -526,7 +526,12 @@ namespace
                 s_layers.push_back(&L);
         }
         void *atlas = g_atlas_ready ? reinterpret_cast<void *>(g_atlas_gpu.ptr) : nullptr;
-        wm::render_markers(s_layers, atlas);
+        // OS cursor in client/backbuffer px for marker tooltips (the map cursor tracks it).
+        float mx = -1.f, my = -1.f;
+        POINT pt{};
+        BOOL ok = o_get_cursor_pos ? o_get_cursor_pos(&pt) : GetCursorPos(&pt);
+        if (ok && g_hwnd && ScreenToClient(g_hwnd, &pt)) { mx = (float)pt.x; my = (float)pt.y; }
+        wm::render_markers(s_layers, atlas, mx, my);
     }
 
     void draw_panel()

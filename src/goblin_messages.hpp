@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 namespace goblin
 {
@@ -21,4 +22,8 @@ namespace goblin
     /// expanded PlaceName FMG we build at init. Returns nullptr if the id has
     /// no entry. Used by the marker dump to print exact loot/location names.
     const wchar_t *lookup_text(int32_t id);
+
+    /// lookup_text + UTF-8 conversion (for ImGui, which wants UTF-8). Empty string if
+    /// the id has no entry. Used by the overlay marker tooltips.
+    std::string lookup_text_utf8(int32_t id);
 }

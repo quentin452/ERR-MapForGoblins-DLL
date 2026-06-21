@@ -4,6 +4,9 @@
 #include "goblin_worldmap_probe.hpp" // get_live_view()
 #include "goblin_inject.hpp"         // ui::clustering_enabled / global_threshold / category_clustered
 #include "goblin_config.hpp"         // overlay marker scale config
+#include "goblin_messages.hpp"       // lookup_text_utf8 (tooltip names)
+
+#include <string>
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
 
 #include <imgui.h>
@@ -120,6 +123,43 @@ struct ScreenMarker
     const Marker *m;
 };
 
+// Best hovered item this frame (for the tooltip). bestd = squared px distance.
+struct Hover
+{
+    float bestd = 1e30f;
+    ImVec2 pos;
+    std::string text;
+};
+// If `mouse` is within radius r of p and closer than the current best, take it.
+void hover_test(Hover &h, ImVec2 mouse, ImVec2 p, float r, const std::string &text)
+{
+    if (mouse.x < 0 || text.empty()) return;
+    float dx = mouse.x - p.x, dy = mouse.y - p.y, d = dx * dx + dy * dy;
+    if (d <= r * r && d < h.bestd) { h.bestd = d; h.pos = p; h.text = text; }
+}
+// One marker's tooltip text = its FMG name (empty if none → no tooltip).
+std::string marker_label(const Marker &m)
+{
+    return goblin::lookup_text_utf8(m.name_id);
+}
+// A cluster pile's tooltip = its location name (if any) + the member count.
+std::string pile_label(int loc_pname, int count)
+{
+    std::string loc = goblin::lookup_text_utf8(loc_pname);
+    std::string n = std::to_string(count) + " markers";
+    return loc.empty() ? n : (loc + "\n" + n);
+}
+// Draw a small dark tooltip box near the cursor on the foreground draw list.
+void draw_tooltip(ImDrawList *fg, ImVec2 at, const std::string &text)
+{
+    if (text.empty()) return;
+    ImVec2 ts = ImGui::CalcTextSize(text.c_str());
+    ImVec2 p0(at.x + 16, at.y + 6), p1(p0.x + ts.x + 12, p0.y + ts.y + 8);
+    fg->AddRectFilled(p0, p1, IM_COL32(20, 20, 26, 235), 4.f);
+    fg->AddRect(p0, p1, IM_COL32(255, 255, 255, 70), 4.f);
+    fg->AddText(ImVec2(p0.x + 6, p0.y + 4), IM_COL32(245, 245, 245, 255), text.c_str());
+}
+
 // Draw a cluster pile glyph (filled disc + member count) at screen point c.
 void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n, float r)
 {
@@ -139,7 +179,7 @@ void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n, float r)
 void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int threshold,
                    ImTextureID atlas, float realW, float realH,
                    const goblin::projection::View &view, bool dlc_ug, float iconHalf,
-                   float glyphR)
+                   float glyphR, ImVec2 mouse, Hover &hover)
 {
     namespace proj = goblin::projection;
     auto on_screen = [&](const ImVec2 &p) {
@@ -153,7 +193,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     // Pass 1: resolve each pile's GRACE anchor position (sub-threshold groups draw
     // their members normally now). The anchor pos doubles as the neighbour set used to
     // pick a non-overlapping offset below.
-    struct Pile { ImVec2 g; int count; };
+    struct Pile { ImVec2 g; int count; int loc_pname; };
     std::vector<Pile> piles;
     for (auto &kv : groups)
     {
@@ -162,7 +202,10 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         {
             for (int i : idxs)
                 if (on_screen(items[i].p))
+                {
                     draw_marker(fg, *items[i].m, items[i].p, atlas, iconHalf);
+                    hover_test(hover, mouse, items[i].p, iconHalf, marker_label(*items[i].m));
+                }
             continue;
         }
         // Pile AT its grace (correctly placed), not the member centroid (which drifts
@@ -183,7 +226,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
             for (int i : idxs) { sx += items[i].p.x; sy += items[i].p.y; }
             c = ImVec2(sx / idxs.size(), sy / idxs.size());
         }
-        piles.push_back({c, (int)idxs.size()});
+        piles.push_back({c, (int)idxs.size(), items[idxs[0]].m->loc_pname});
     }
 
     // Pass 2: nudge each pile off its grace icon (so both stay visible), in the cardinal
@@ -217,15 +260,21 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         }
         ImVec2 best(piles[i].g.x + off.x, piles[i].g.y + off.y);
         if (on_screen(best))
+        {
             draw_cluster_glyph(fg, best, piles[i].count, glyphR);
+            hover_test(hover, mouse, best, glyphR, pile_label(piles[i].loc_pname, piles[i].count));
+        }
     }
 }
 } // namespace
 
-void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_texture)
+void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_texture, float mouseX,
+                    float mouseY)
 {
     namespace proj = goblin::projection;
     ImTextureID atlas = reinterpret_cast<ImTextureID>(atlas_texture);
+    const ImVec2 mouse(mouseX, mouseY);
+    Hover hover;
     goblin::worldmap_probe::LiveView lv;
     if (!goblin::worldmap_probe::get_live_view(lv))
     {
@@ -295,12 +344,19 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                 goblin::ui::category_clustered(m.category))
                 clustered.push_back({sp, &m});
             else if (!(sp.x < -32 || sp.y < -32 || sp.x > realW + 32 || sp.y > realH + 32))
+            {
                 draw_marker(fg, m, sp, atlas, iconHalf);
+                hover_test(hover, mouse, sp, iconHalf, marker_label(m));
+            }
         }
     }
 
     if (clustering && !clustered.empty())
         draw_clusters(fg, clustered, threshold, atlas, realW, realH, view, dlc_ug, iconHalf,
-                      glyphR);
+                      glyphR, mouse, hover);
+
+    // Tooltip for the hovered marker / pile (drawn last so it's on top).
+    if (hover.bestd < 1e30f)
+        draw_tooltip(fg, mouse, hover.text);
 }
 } // namespace goblin::worldmap
