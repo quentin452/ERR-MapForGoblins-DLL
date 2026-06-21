@@ -245,8 +245,8 @@ void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n, float r, bool depleted)
 // piles/markers are culled. realW/realH = backbuffer size for the cull.
 void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int threshold,
                    ImTextureID atlas, float realW, float realH,
-                   const goblin::projection::View &view, bool dlc_ug, float iconHalf,
-                   float glyphR, ImVec2 mouse, Hover &hover)
+                   const goblin::projection::View &view, bool dlc_ug, bool overworld_page,
+                   float iconHalf, float glyphR, ImVec2 mouse, Hover &hover)
 {
     namespace proj = goblin::projection;
     auto on_screen = [&](const ImVec2 &p) {
@@ -289,9 +289,15 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         float gwx = 0, gwz = 0;
         const bool has_anchor = goblin::grace_anchor_world(kv.first, garea, gwx, gwz);
         // Per-location threshold: distance-adaptive ramp near_thr→base_thr (overworld,
-        // same page as the player); flat base_thr otherwise.
+        // same page as the player); flat base_thr otherwise. EUCLID ONLY on the
+        // overworld page: the grid*256+local world frame is valid only on the 256-tiled
+        // overworld (60/61). On an underground page the markers project to overworld
+        // coords (conv_underground) so garea reads 60 == an overworld player → the ramp
+        // would fire with unreliable projected distances. The native path uses a tab/
+        // sub-page gradient there instead; the overlay just stays flat (base_thr).
         int thr = base_thr;
-        if (have_player && has_anchor && euclid_frame && garea == player_area && far_u > near_u)
+        if (have_player && overworld_page && has_anchor && euclid_frame &&
+            garea == player_area && far_u > near_u)
         {
             const float dx = gwx - pwx, dz = gwz - pwz;
             const float d = std::sqrt(dx * dx + dz * dz);
@@ -497,8 +503,8 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     }
 
     if (clustering && !clustered.empty())
-        draw_clusters(fg, clustered, threshold, atlas, realW, realH, view, dlc_ug, iconHalf,
-                      glyphR, mouse, hover);
+        draw_clusters(fg, clustered, threshold, atlas, realW, realH, view, dlc_ug,
+                      /*overworld_page=*/!(open_grp & 1), iconHalf, glyphR, mouse, hover);
 
     // Tooltip for the hovered marker / pile (drawn last so it's on top).
     if (hover.bestd < 1e30f)
