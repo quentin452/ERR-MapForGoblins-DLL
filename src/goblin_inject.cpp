@@ -652,6 +652,17 @@ bool goblin::grace_anchor_world(int key, int &out_area, float &wx, float &wz)
     return true;
 }
 
+// The map sub-page (tabId) of a grace anchor (by its GRACE_ANCHORS index = a marker's
+// cluster_key). Underground pages split into sub-pages (12000/12001/12002, DLC 6800+),
+// where Euclidean distance is meaningless — distance-adaptive uses this discrete tab
+// gradient there (same sub-page as the player = detail). -1 on a bad key.
+int goblin::grace_anchor_tab(int key)
+{
+    if (key < 0 || static_cast<size_t>(key) >= goblin::generated::GRACE_ANCHOR_COUNT)
+        return -1;
+    return goblin::generated::GRACE_ANCHORS[key].tab_id;
+}
+
 // Player MapId TILE -> map sub-page (tabId), via the authoritative tile_region_map
 // table. Used for UNDERGROUND distance-adaptive: the player's local float is leaf-
 // block-local garbage and the marker param gridXNo is coarse (1/2), so neither

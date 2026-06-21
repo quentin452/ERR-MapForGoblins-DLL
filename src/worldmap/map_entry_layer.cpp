@@ -11,6 +11,7 @@
 #include <spdlog/spdlog.h>
 
 #include <array>
+#include <string>
 #include <unordered_set>
 
 namespace goblin::worldmap
@@ -136,6 +137,20 @@ void refresh_overlay_census()
             }
             total = (int)all.size();
             looted = (int)taken.size();
+            // DEBUG: on the FIRST publish, sample a few still-UNSET flags per category.
+            // On a 100% save these should be ~none — any here are flags we check that the
+            // game never sets (wrong/non-pickup flag) → the over-count to investigate.
+            if (!s_logged_once && total - looted > 0)
+            {
+                std::string s;
+                int n = 0;
+                for (int f : all)
+                    if (!taken.count(f) && n++ < 10)
+                        s += std::to_string(f) + " ";
+                spdlog::info("[CENSUS-UNSET] cat {:2} '{}' {} unset; sample flags: {}",
+                             c, goblin::markers::category_name(static_cast<gen::Category>(c)),
+                             total - looted, s);
+            }
         }
         goblin::ui::set_category_census(c, total, looted);
 

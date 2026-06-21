@@ -23,6 +23,9 @@ namespace goblin
     // Project a grace anchor (GRACE_ANCHORS index = a marker's cluster_key) to unified
     // world coords, so a cluster pile can be drawn AT its grace. False on a bad key.
     bool grace_anchor_world(int key, int &out_area, float &wx, float &wz);
+    // Map sub-page (tabId) of a grace anchor by its GRACE_ANCHORS index (cluster_key).
+    // Used for underground distance-adaptive (same-sub-page = detail). -1 = bad key.
+    int grace_anchor_tab(int key);
 
     // Cluster label census: (PlaceName textId, label) for each cluster the inject
     // built. The label is "<Region> (<count>)" (region via cluster_region_label) or

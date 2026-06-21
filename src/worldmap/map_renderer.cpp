@@ -275,6 +275,12 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     const bool have_player =
         dist_adaptive && goblin::get_player_map_pos(player_area, pwx, pwz);
     const bool euclid_frame = (player_area == 60 || player_area == 61); // overworld pages
+    // Underground pages have no usable Euclidean frame (non-256 tiles, garbage player
+    // float) → use a DISCRETE sub-page (tabId) gradient like the native path: the
+    // player's sub-page gets near-detail, other sub-pages cluster. Player tab computed
+    // once (nearest-grace tab at the player's tile); only used on an underground page.
+    const int player_tab = (have_player && !overworld_page)
+        ? goblin::grace_tab_id((uint8_t)player_area, pwx, pwz) : -1;
 
     // Pass 1: resolve each pile's GRACE anchor + its (distance-adaptive) threshold.
     // Sub-threshold groups draw their members normally; denser ones become a pile.
@@ -288,13 +294,11 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         int garea = -1;
         float gwx = 0, gwz = 0;
         const bool has_anchor = goblin::grace_anchor_world(kv.first, garea, gwx, gwz);
-        // Per-location threshold: distance-adaptive ramp near_thr→base_thr (overworld,
-        // same page as the player); flat base_thr otherwise. EUCLID ONLY on the
-        // overworld page: the grid*256+local world frame is valid only on the 256-tiled
-        // overworld (60/61). On an underground page the markers project to overworld
-        // coords (conv_underground) so garea reads 60 == an overworld player → the ramp
-        // would fire with unreliable projected distances. The native path uses a tab/
-        // sub-page gradient there instead; the overlay just stays flat (base_thr).
+        // Per-location threshold. OVERWORLD page: Euclidean ramp near_thr→base_thr over
+        // near→far radius (the grid*256+local world frame is valid only on the 256-tiled
+        // overworld 60/61). UNDERGROUND page: discrete sub-page gradient (same tabId as
+        // the player = near detail, other sub-pages = clustered) — Euclid is meaningless
+        // underground (non-256 tiles, garbage player float), so we never use it there.
         int thr = base_thr;
         if (have_player && overworld_page && has_anchor && euclid_frame &&
             garea == player_area && far_u > near_u)
@@ -305,6 +309,12 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
             if (t < 0.f) t = 0.f; else if (t > 1.f) t = 1.f;
             thr = (int)std::lround(near_thr + t * (base_thr - near_thr));
             if (thr < 1) thr = 1;
+        }
+        else if (have_player && !overworld_page && player_tab > 0)
+        {
+            const int gtab = goblin::grace_anchor_tab(kv.first);
+            if (gtab > 0)
+                thr = (gtab == player_tab) ? near_thr : base_thr;
         }
         if ((int)idxs.size() <= thr)
         {
