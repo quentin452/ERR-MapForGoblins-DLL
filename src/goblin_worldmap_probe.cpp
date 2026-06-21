@@ -335,6 +335,49 @@ void enumerate_menu_cursors(uintptr_t base, uintptr_t vtable_va)
         g_log->info("[ALLCURSOR]   cursor @{:#x} (dialog @{:#x})", c, c - CURSOR_OFF_IN_MENU);
 }
 
+// ── Live world→map-space projection (call the engine's own fn) ──────────────────────
+// FUN_1408877d0(VM, float out[2], u32* packedId, float world[3]) -> char (1 on match).
+// Loops the VM converters, folds WorldMapLegacyConvParam, applies the per-page affine —
+// i.e. projects ANY (area,grid,pos) exactly like the native map (RE findings §4). This is
+// the replacement for our baked LEGACY_CONV + -7040/+16512 affine + DLC eyeball.
+using ProjLoopFn = char (*)(void *, float *, uint32_t *, float *);
+ProjLoopFn resolve_proj_loop()
+{
+    static ProjLoopFn fn = nullptr;
+    static bool tried = false;
+    if (!tried)
+    {
+        tried = true;
+        try
+        {
+            fn = modutils::scan<char(void *, float *, uint32_t *, float *)>(
+                {.aob = goblin::sig::WORLDMAP_PROJ_LOOP});
+        }
+        catch (...) { fn = nullptr; }
+        g_log->info("[PROJ] FUN_1408877d0 (loop wrapper) resolve -> {:p}", (void *)fn);
+    }
+    return fn;
+}
+// Call the engine projection. packedId = (area<<24)|(gridX<<16)|(gridZ<<8); world =
+// {posX, posY, posZ} AREA-LOCAL (NOT gridX*256+pos — the fn reconstructs the tile). Returns
+// false on no-match (e.g. a no-conv area like m19 Chapel the game doesn't place).
+bool project_live(void *vm, int area, int gx, int gz, float px, float pz, float &u, float &v)
+{
+    ProjLoopFn fn = resolve_proj_loop();
+    if (!fn || !vm)
+        return false;
+    uint32_t packed = ((uint32_t)(area & 0xff) << 24) | ((uint32_t)(gx & 0xff) << 16) |
+                      ((uint32_t)(gz & 0xff) << 8);
+    float world[3] = {px, 0.0f, pz};
+    float out[2] = {0.0f, 0.0f};
+    char ok = fn(vm, out, &packed, world);
+    if (!ok)
+        return false;
+    u = out[0];
+    v = out[1];
+    return true;
+}
+
 // Dev one-shot (config dump_converters): find the live CS::WorldMapViewModel and dump its
 // converter array — the engine's own world->map-space projection table (RE:
 // docs/re/windows_world_to_mapspace_projection_re_findings.md §1/§2). The VM is found by
@@ -375,23 +418,6 @@ void dump_converters(uintptr_t base, uintptr_t cursor)
     seh_read8(reinterpret_cast<void *>(vm + 0x280), &count);
     uint64_t n = count > 8 ? 8 : count;
 
-    // Change-detect: only (re)log when the array content actually changed (i.e. a different
-    // page was opened), else this would spam every 1.5s while the map sits open.
-    uint64_t sig = count;
-    for (uint64_t i = 0; i < n; ++i)
-    {
-        uintptr_t c = vm + 0xF8 + i * 0x30;
-        int key = 0; float ox = 0, sc = 0;
-        seh_read_i32(reinterpret_cast<void *>(c + 0x08), &key);
-        seh_read4(reinterpret_cast<void *>(c + 0x0C), &ox);
-        seh_read4(reinterpret_cast<void *>(c + 0x20), &sc);
-        uint32_t oxb, scb; std::memcpy(&oxb, &ox, 4); std::memcpy(&scb, &sc, 4);
-        sig = sig * 1099511628211ull ^ (uint32_t)key ^ ((uint64_t)oxb << 13) ^ ((uint64_t)scb << 27);
-    }
-    static uint64_t s_last_sig = 0;
-    if (sig == s_last_sig) return;
-    s_last_sig = sig;
-
     g_log->info("[CONV] VM={:#x} count={} (dialog={:#x}, vtable RVA {:#x})",
                 vm, count, dialog, goblin::sig::WORLDMAP_VIEWMODEL_VTABLE_RVA);
     for (uint64_t i = 0; i < n; ++i)
@@ -416,6 +442,27 @@ void dump_converters(uintptr_t base, uintptr_t cursor)
     // Sanity vs the baked affine: overworld slot should give originX-biasX=7040, originZ+biasZ=16512.
     g_log->info("[CONV] (expect an overworld slot: scale 1.0, origin 7168/16384, bias 128/128 "
                 "=> our baked -7040/+16512)");
+
+    // PROJ A/B: project a few known points LIVE (FUN_1408877d0) vs the baked overworld affine,
+    // to validate the callable path (correct ABI + matches) BEFORE wiring it everywhere. A
+    // dungeon/UG sample (legacy-fold) won't match baked — that's the point: the live fold is
+    // the proper projection our baked LEGACY_CONV only approximates.
+    struct Sample { int a, gx, gz; float px, pz; const char *what; } samples[] = {
+        {60, 40, 40, 100.0f, 100.0f, "overworld (should == baked)"},
+        {60, 28, 64, 0.0f, 0.0f, "overworld origin tile"},
+        {61, 40, 40, 100.0f, 100.0f, "DLC overworld"},
+        {12, 1, 0, 50.0f, 50.0f, "underground m12 (legacy-fold)"},
+    };
+    for (const Sample &s : samples)
+    {
+        float lu = 0, lv = 0;
+        bool ok = project_live(reinterpret_cast<void *>(vm), s.a, s.gx, s.gz, s.px, s.pz, lu, lv);
+        float wx = s.gx * 256.0f + s.px, wz = s.gz * 256.0f + s.pz;
+        float bu = wx - 7040.0f, bv = -wz + 16512.0f;
+        g_log->info("[PROJTEST] {} | area{} grid({},{}) pos({:.0f},{:.0f}) -> live=({:.1f},{:.1f}) "
+                    "ok={} | baked-OW=({:.1f},{:.1f}) dU={:.1f} dV={:.1f}",
+                    s.what, s.a, s.gx, s.gz, s.px, s.pz, lu, lv, ok, bu, bv, lu - bu, lv - bv);
+    }
 }
 
 void probe_loop()
