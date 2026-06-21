@@ -69,6 +69,7 @@ namespace goblin::config
 
     // In-game minimap HUD (corner, north-up, overworld-only — underground player pos
     // is not yet reliable). Foundation/opt-in; off by default.
+    bool debugRegionVolumes = false; // viz: draw each MapNameOverride volume + name
     bool showMinimap = false;
     float minimapZoom = 0.08f;     // px per world-unit shown on the minimap
     float minimapSize = 130.0f;    // minimap radius in px
@@ -409,6 +410,8 @@ namespace
                   "Scale for category marker ICONS (x master). 1.0 = default."},
                 IniEntry{"overlay_cluster_scale", IniType::F32, &cfg::overlayClusterScale, "1.0",
                   "Scale for CLUSTER pile glyphs (x master). 1.0 = default."},
+                B("debug_region_volumes", debugRegionVolumes, "false",
+                  "Debug viz: draw every MapNameOverride region volume on the open map page at\nits projected centre + its name; RED = the textId does NOT resolve in the FMG\n(the bug), cyan = resolves. Off by default."),
                 B("show_minimap", showMinimap, "false",
                   "In-game minimap HUD: a small north-up minimap in a screen corner showing\nnearby goblin markers around the player during gameplay (not the pause-screen\nmap). OVERWORLD only for now (underground player position isn't reliable yet).\nFoundation/opt-in; off by default."),
                 IniEntry{"minimap_zoom", IniType::F32, &cfg::minimapZoom, "0.08",

@@ -138,6 +138,9 @@ namespace goblin
         extern float overlayIconScale;     // category marker icons
         extern float overlayClusterScale;  // cluster pile glyphs
 
+        // Debug viz: draw each MapNameOverride region volume + name (red = unresolved).
+        extern bool debugRegionVolumes;
+
         // In-game minimap HUD (corner, north-up, overworld-only). Opt-in.
         extern bool showMinimap;
         extern float minimapZoom;     // px per world-unit

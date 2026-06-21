@@ -8,6 +8,7 @@
 #include "goblin_collected.hpp"      // is_original_row_collected (rune/ember graying)
 #include "goblin_kindling.hpp"       // is_row_collected (kindling graying)
 #include "goblin_major_regions.hpp"  // MAJOR_REGION_ANCHORS (region labels)
+#include "goblin_name_regions.hpp"   // NAME_REGIONS (MapNameOverride debug viz)
 #include "goblin_quest_gates.hpp"    // QUEST_GATES (quest-NPC gating)
 #include "goblin_map_data.hpp"       // Category enum (WorldQuestNPC)
 #include "goblin_grace_anchors.hpp"  // GRACE_ANCHOR_COUNT (player-pos debug viz)
@@ -631,6 +632,37 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // Region names beneath the markers (major-region anchors for the open page).
     if (goblin::config::showRegionLabels)
         draw_region_labels(fg, open_grp, dlc_ug, view, realW, realH, uiScale);
+
+    // DEBUG (debug_region_volumes): draw every MapNameOverride region volume on the open
+    // page at its projected centre + its name. RED = its textId does NOT resolve in the FMG
+    // (the bug — region returns the id but lookup_text_utf8 gives nothing), cyan = resolves.
+    if (goblin::config::debugRegionVolumes)
+    {
+        namespace gen = goblin::generated;
+        for (size_t i = 0; i < gen::NAME_REGION_COUNT; ++i)
+        {
+            const auto &r = gen::NAME_REGIONS[i];
+            int ga; float wx, wz;
+            goblin::marker_world_pos(r.area, r.gx, r.gz, r.px, r.pz, ga, wx, wz,
+                                     /*conv_underground=*/true);
+            if (goblin::marker_group_from(r.area, ga) != open_grp)
+                continue;
+            float gU, gV;
+            world_to_mapspace_xy(wx, wz, dlc_ug, gU, gV);
+            proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
+            if (p.x < -4 || p.y < -4 || p.x > realW + 4 || p.y > realH + 4)
+                continue;
+            std::string nm = goblin::lookup_text_utf8(r.text_id);
+            const ImU32 col = nm.empty() ? IM_COL32(255, 60, 60, 255)  // unresolved
+                                         : IM_COL32(80, 200, 255, 255); // resolves
+            fg->AddCircleFilled(ImVec2(p.x, p.y), 4.f, col);
+            fg->AddCircle(ImVec2(p.x, p.y), 4.f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
+            char b[160];
+            std::snprintf(b, sizeof(b), "%s [%d]", nm.empty() ? "UNRESOLVED" : nm.c_str(),
+                          r.text_id);
+            fg->AddText(ImVec2(p.x + 6, p.y - 5), col, b);
+        }
+    }
 
     for (auto *L : layers)
     {
