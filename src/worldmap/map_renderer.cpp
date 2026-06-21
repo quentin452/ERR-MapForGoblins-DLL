@@ -528,28 +528,53 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const int open_grp = (lv.openDlc ? 2 : 0) | ((lv.underground != 0) ? 1 : 0);
     const bool dlc_ug = (open_grp == 3);
 
-    // [YELLOWDOT] RE diag: when cluster_debug_radius is on, DRAW the candidate player dot
-    // (tile*256 + manager-local) on EVERY open page, so we can SEE whether it lands on the
-    // native yellow "you are here" dot. Z uses mgr+0x78 (the 3D map-point Z per RE; +0x74
-    // is height). If the dot is OFF the yellow dot, this manager isn't the map-point one.
+    // [YELLOWDOT] RE diag: when cluster_debug_radius is on, draw a LOUD overlay — a fixed
+    // top-left HUD with the raw numbers + each candidate's projected screen px (so even an
+    // off-screen dot is diagnosable), plus big crosshair markers + a line from screen
+    // centre to each candidate. Z uses mgr+0x78 (3D map-point Z per RE; +0x74 = height).
     if (goblin::config::clusterDebugRadius)
     {
-        int da, dgx, dgz; float dx70, dz74, dz78;
-        if (goblin::debug_map_pos_raw(da, dgx, dgz, dx70, dz74, dz78))
+        ImDrawList *fgd = ImGui::GetForegroundDrawList();
+        const float realWd = io.DisplaySize.x, realHd = io.DisplaySize.y;
+        const ImVec2 ctr(realWd * 0.5f, realHd * 0.5f);
+        char hud[512];
+        int da = -1, dgx = -1, dgz = -1; float dx70 = 0, dz74 = 0, dz78 = 0;
+        const bool okraw = goblin::debug_map_pos_raw(da, dgx, dgz, dx70, dz74, dz78);
+        // HUD background box, top-left, always on screen.
+        fgd->AddRectFilled(ImVec2(12, 90), ImVec2(560, 240), IM_COL32(10, 10, 16, 230), 4.f);
+        fgd->AddRect(ImVec2(12, 90), ImVec2(560, 240), IM_COL32(255, 0, 255, 255), 4.f);
+        std::snprintf(hud, sizeof(hud),
+                      "[YELLOWDOT] raw_ok=%d  open_grp=%d dlc_ug=%d\narea=%d tile=(%d,%d)\n"
+                      "+70=%.1f +74=%.1f +78=%.1f\nview pan=(%.0f,%.0f) zoom=%.3f snapMid=(%.0f,%.0f)",
+                      okraw, open_grp, (int)dlc_ug, da, dgx, dgz, dx70, dz74, dz78,
+                      view.panX, view.panZ, view.zoom, view.snapMidX, view.snapMidZ);
+        fgd->AddText(ImVec2(20, 96), IM_COL32(255, 255, 255, 255), hud);
+        if (okraw)
         {
-            ImDrawList *fgd = ImGui::GetForegroundDrawList();
-            const float realWd = io.DisplaySize.x, realHd = io.DisplaySize.y;
-            auto draw_cand = [&](float zlocal, ImU32 col, const char *lbl, float yoff) {
+            auto draw_cand = [&](float zlocal, ImU32 col, const char *lbl, int hudrow) {
                 float wx = dgx * 256.0f + dx70, wz = dgz * 256.0f + zlocal;
                 float gU, gV;
                 world_to_mapspace_xy(wx, wz, dlc_ug, gU, gV);
                 proj::Px p = proj::project_screen(gU, gV, view, realWd, realHd);
-                fgd->AddCircleFilled(ImVec2(p.x, p.y), 6.f, col);
-                fgd->AddCircle(ImVec2(p.x, p.y), 6.f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
-                fgd->AddText(ImVec2(p.x + 8, p.y + yoff), col, lbl);
+                const bool onscreen = p.x >= 0 && p.y >= 0 && p.x <= realWd && p.y <= realHd;
+                // HUD line: the projected px + on/off-screen.
+                char line[160];
+                std::snprintf(line, sizeof(line), "%s: map=(%.0f,%.0f) px=(%.0f,%.0f) %s",
+                              lbl, gU, gV, p.x, p.y, onscreen ? "ON" : "OFF-SCREEN");
+                fgd->AddText(ImVec2(20, 196.f + hudrow * 18.f), col, line);
+                // Big crosshair + line from centre (clamped so an off-screen target still
+                // points the right way).
+                ImVec2 q(p.x < 0 ? 4 : (p.x > realWd ? realWd - 4 : p.x),
+                         p.y < 0 ? 4 : (p.y > realHd ? realHd - 4 : p.y));
+                fgd->AddLine(ctr, q, col, 2.f);
+                fgd->AddCircleFilled(q, 14.f, col);
+                fgd->AddCircle(q, 14.f, IM_COL32(0, 0, 0, 220), 0, 2.f);
+                fgd->AddLine(ImVec2(q.x - 22, q.y), ImVec2(q.x + 22, q.y), col, 2.f);
+                fgd->AddLine(ImVec2(q.x, q.y - 22), ImVec2(q.x, q.y + 22), col, 2.f);
+                fgd->AddText(ImVec2(q.x + 16, q.y - 8), col, lbl);
             };
-            draw_cand(dz78, IM_COL32(255, 0, 255, 255), "PLAYER +78", -6.f);   // primary hypothesis
-            draw_cand(dz74, IM_COL32(80, 200, 255, 220), "+74", 8.f);          // old Z (compare)
+            draw_cand(dz78, IM_COL32(255, 0, 255, 255), "PLAYER+78", 0);   // primary hypothesis
+            draw_cand(dz74, IM_COL32(80, 200, 255, 230), "+74", 1);        // old Z (compare)
         }
     }
 
