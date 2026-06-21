@@ -988,37 +988,62 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
 // while the map is open → confirm what shares the set (graces/categories vs player-marker/
 // objective ids) → decides the suppression approach (areaNo-99 vs predicate hook vs clear).
 // POD-only in the __try (no C++ objects); the caller logs outside the SEH frame.
+// std::map candidate found while scanning the manager for a populated RB-tree:
+// {head-ptr, _Mysize} pair at [mgr+offset] / [mgr+offset+8].
+struct MapCand { int offset; void *head; size_t size; };
 struct PinSetProbe
 {
-    void *mgr;
-    size_t size;       // std::map _Mysize
-    int keys[256];     // first N point ids (in-order)
-    int count;         // keys captured
+    void *mgr[2];      // [er+0x3D6E9B0], [er+0x3D6E9D8] (the two RE-given slots)
+    MapCand cands[16]; // plausible std::map<> fields found by the window scan
+    int n_cands;
+    int keys[256];     // ids walked from the FIRST candidate (or +0x398)
+    int count;
+    int walk_off;      // which offset we walked
     bool ok;
 };
 static void probe_pinset_seh(uintptr_t er_base, PinSetProbe *pr)
 {
-    pr->mgr = nullptr; pr->size = 0; pr->count = 0; pr->ok = false;
+    *pr = PinSetProbe{};
     __try
     {
-        auto *mgr = *reinterpret_cast<uint8_t **>(er_base + 0x3D6E9B0);
-        pr->mgr = mgr;
+        pr->mgr[0] = *reinterpret_cast<uint8_t **>(er_base + 0x3D6E9B0);
+        pr->mgr[1] = *reinterpret_cast<uint8_t **>(er_base + 0x3D6E9D8);
+        auto *mgr = static_cast<uint8_t *>(pr->mgr[0]);
         if (!mgr) return;
-        auto *head = *reinterpret_cast<uint8_t **>(mgr + 0x398); // _Myhead (nil sentinel)
-        if (!head) return;
-        pr->size = *reinterpret_cast<size_t *>(mgr + 0x3A0);     // _Mysize
-        auto isnil = [](uint8_t *n) { return !n || *(n + 0x19) != 0; };
-        // Iterative in-order: leftmost, then successor. Cap by a guard + the keys array.
-        uint8_t *stack[256]; int sp = 0;
-        uint8_t *cur = *reinterpret_cast<uint8_t **>(head + 0x8); // root = head->_Parent
-        int guard = 0;
-        while ((!isnil(cur) || sp > 0) && guard++ < 8000)
+        // Scan a window of the manager for {non-null head, plausible size} pairs = a
+        // populated std::map. The real built-icon set is one of these (RE said +0x398
+        // but runtime read 0 there → find the actual offset).
+        for (int off = 0x300; off <= 0x600 && pr->n_cands < 16; off += 8)
         {
-            while (!isnil(cur) && sp < 256) { stack[sp++] = cur; cur = *reinterpret_cast<uint8_t **>(cur); }
-            if (sp == 0) break;
-            cur = stack[--sp];
-            if (pr->count < 256) pr->keys[pr->count++] = *reinterpret_cast<int *>(cur + 0x20);
-            cur = *reinterpret_cast<uint8_t **>(cur + 0x10); // right
+            auto *head = *reinterpret_cast<uint8_t **>(mgr + off);
+            size_t sz = *reinterpret_cast<size_t *>(mgr + off + 8);
+            if (head && sz >= 1 && sz <= 20000)
+                pr->cands[pr->n_cands++] = {off, head, sz};
+        }
+        // Walk whichever offset has a sane size (prefer +0x398 if non-empty, else the
+        // first/biggest candidate) to dump ids.
+        int walk_off = 0x398;
+        size_t best = *reinterpret_cast<size_t *>(mgr + 0x3A0);
+        if (best == 0 || best > 20000)
+            for (int i = 0; i < pr->n_cands; ++i)
+                if (pr->cands[i].size > best && pr->cands[i].size <= 20000)
+                { best = pr->cands[i].size; walk_off = pr->cands[i].offset; }
+        pr->walk_off = walk_off;
+        auto *head = *reinterpret_cast<uint8_t **>(mgr + walk_off);
+        if (head)
+        {
+            auto isnil = [](uint8_t *n) { return !n || *(n + 0x19) != 0; };
+            uint8_t *stack[256]; int sp = 0;
+            uint8_t *cur = *reinterpret_cast<uint8_t **>(head + 0x8); // root = head->_Parent
+            int guard = 0;
+            while ((!isnil(cur) || sp > 0) && guard++ < 8000)
+            {
+                while (!isnil(cur) && sp < 256) { stack[sp++] = cur; cur = *reinterpret_cast<uint8_t **>(cur); }
+                if (sp == 0) break;
+                cur = stack[--sp];
+                if (pr->count < 256) pr->keys[pr->count++] = *reinterpret_cast<int *>(cur + 0x20);
+                cur = *reinterpret_cast<uint8_t **>(cur + 0x10);
+            }
         }
         pr->ok = true;
     }
@@ -1031,12 +1056,15 @@ void goblin::dump_native_pins()
     if (!er_base) return;
     PinSetProbe pr{};
     probe_pinset_seh(er_base, &pr);
-    if (!pr.ok) { spdlog::info("[PINSET] walk faulted (map closed / mgr null)"); return; }
+    if (!pr.ok) { spdlog::info("[PINSET] walk faulted"); return; }
+    std::string cands;
+    for (int i = 0; i < pr.n_cands; ++i)
+        cands += std::format("+0x{:X}:sz={} ", pr.cands[i].offset, pr.cands[i].size);
     std::string s;
     for (int i = 0; i < pr.count && i < 120; ++i)
         s += std::to_string(pr.keys[i]) + " ";
-    spdlog::info("[PINSET] mgr={:p} size={} walked={} | first ids: {}",
-                 pr.mgr, pr.size, pr.count, s);
+    spdlog::info("[PINSET] mgr0={:p} mgr1={:p} | map candidates: {}", pr.mgr[0], pr.mgr[1], cands);
+    spdlog::info("[PINSET] walked +0x{:X} count={} | first ids: {}", pr.walk_off, pr.count, s);
 }
 
 // Region gating helpers for the overlay (mirror the game's native areaNo+tab gating).
