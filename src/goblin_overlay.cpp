@@ -683,7 +683,12 @@ namespace
                 ImGui::SliderFloat("Zoom (px/world)", &goblin::config::minimapZoom, 0.02f, 0.30f, "%.3f");
                 ImGui::SliderFloat("Radius (px)", &goblin::config::minimapSize, 60.0f, 300.0f, "%.0f");
                 ImGui::SliderFloat("Opacity", &goblin::config::minimapOpacity, 0.0f, 1.0f, "%.2f");
-                ImGui::TextDisabled("Foundation: overworld, north-up. Save to INI to persist.");
+                ImGui::Checkbox("Anchor right", &goblin::config::minimapAnchorRight);
+                ImGui::SameLine();
+                ImGui::Checkbox("Anchor bottom", &goblin::config::minimapAnchorBottom);
+                ImGui::SliderFloat("Offset X", &goblin::config::minimapOffsetX, 0.0f, 600.0f, "%.0f");
+                ImGui::SliderFloat("Offset Y", &goblin::config::minimapOffsetY, 0.0f, 600.0f, "%.0f");
+                ImGui::TextDisabled("North-up. Hidden while the world map is open. Save to INI to persist.");
             }
 
             // Sections (coarse) + their categories (fine). A row shows only if
@@ -1101,8 +1106,12 @@ namespace
                         // Debug viz: draw the player + near/far rings (overworld) and
                         // per-pile sub-page tab (underground) so you can SEE where the
                         // distance ramp engages and pin the bug.
-                        ImGui::Checkbox("DEBUG: show distance zones (player + rings + tabs)",
+                        ImGui::Checkbox("DEBUG: distance zones (player + near/far rings)",
                                         &goblin::config::clusterDebugRadius);
+                        ImGui::Checkbox("DEBUG: cluster anchors (pile→member lines + name)",
+                                        &goblin::config::debugClusterAnchors);
+                        ImGui::Checkbox("DEBUG: region volumes (names; red = unresolved)",
+                                        &goblin::config::debugRegionVolumes);
                     }
 
                     // Player-profile presets — one click sets every cluster knob.

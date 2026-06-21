@@ -75,6 +75,10 @@ namespace goblin::config
     float minimapZoom = 0.08f;     // px per world-unit shown on the minimap
     float minimapSize = 130.0f;    // minimap radius in px
     float minimapOpacity = 0.85f;  // background disc opacity 0..1
+    bool minimapAnchorRight = true;   // corner: right vs left
+    bool minimapAnchorBottom = false; // corner: bottom vs top
+    float minimapOffsetX = 0.0f;      // px offset from the anchored corner
+    float minimapOffsetY = 0.0f;
 
     // In-game per-section visibility (the 7 display groups). Persisted so an
     // in-game toggle survives relaunch. Default all-visible = no behaviour change.
@@ -423,6 +427,14 @@ namespace
                   "Minimap radius in pixels. 130 = default."},
                 IniEntry{"minimap_opacity", IniType::F32, &cfg::minimapOpacity, "0.85",
                   "Minimap background disc opacity, 0..1. 0.85 = default."},
+                B("minimap_anchor_right", minimapAnchorRight, "true",
+                  "Minimap corner: anchor to the RIGHT edge (false = left). Default true."),
+                B("minimap_anchor_bottom", minimapAnchorBottom, "false",
+                  "Minimap corner: anchor to the BOTTOM edge (false = top). Default false."),
+                IniEntry{"minimap_offset_x", IniType::F32, &cfg::minimapOffsetX, "0",
+                  "Minimap X offset (px) from the anchored corner. 0 = default."},
+                IniEntry{"minimap_offset_y", IniType::F32, &cfg::minimapOffsetY, "0",
+                  "Minimap Y offset (px) from the anchored corner. 0 = default."},
                 B("native_map_injection", nativeMapInjection, "false",
                   "Inject goblin markers into the game's native world map\n(WorldMapPointParam). FALSE (default) = the ImGui overlay is the SOLE map\nsource (no native page-build, so no map-open freeze and no double-draw) — all\nfeatures are ported to the overlay. TRUE = also inject the legacy native icons\n(the old behaviour); kept only as a fallback and slated for removal."),
                 B("live_refresh_world_map", liveRefreshWorldMap, "false",

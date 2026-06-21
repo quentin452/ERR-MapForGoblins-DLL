@@ -580,7 +580,9 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     }
 
     ImGuiIO &io = ImGui::GetIO();
-    ImDrawList *fg = ImGui::GetForegroundDrawList();
+    // Background draw list (above the game map, BELOW the F1 ImGui window) so the F1 menu
+    // stays on top of our markers instead of being covered by them.
+    ImDrawList *fg = ImGui::GetBackgroundDrawList();
     const float realW = io.DisplaySize.x, realH = io.DisplaySize.y;
 
     // Motion sync: delay the projected view by the baked frame so markers ride the
@@ -731,6 +733,9 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     namespace cfg = goblin::config;
     if (!cfg::showMinimap || !goblin::ui::icons_enabled())
         return;
+    // Hide the minimap while the full world map is open (it's a gameplay HUD).
+    if (goblin::world_map_open())
+        return;
     // Live player position (read during gameplay, map closed). The player pos is the
     // WorldMapPointParam frame on EVERY page now (RE windows_player_pos_RESOLVED), so the
     // minimap works overworld, underground AND DLC — pick the player's marker group.
@@ -742,13 +747,18 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     const float R = cfg::minimapSize > 24.f ? cfg::minimapSize : 24.f;
     const float scale = cfg::minimapZoom > 0.0001f ? cfg::minimapZoom : 0.08f;
     const float margin = 24.f;
-    const ImVec2 ctr(screenW - R - margin, R + margin); // top-right corner
+    // Configurable corner + pixel offset.
+    const float ax = cfg::minimapAnchorRight ? (screenW - R - margin - cfg::minimapOffsetX)
+                                             : (R + margin + cfg::minimapOffsetX);
+    const float ay = cfg::minimapAnchorBottom ? (screenH - R - margin - cfg::minimapOffsetY)
+                                              : (R + margin + cfg::minimapOffsetY);
+    const ImVec2 ctr(ax, ay);
     const float cullR = R - 5.f;
 
     int bgA = (int)(cfg::minimapOpacity * 255.f);
     bgA = bgA < 0 ? 0 : (bgA > 255 ? 255 : bgA);
 
-    ImDrawList *fg = ImGui::GetForegroundDrawList();
+    ImDrawList *fg = ImGui::GetBackgroundDrawList(); // below the F1 window (topmost)
     fg->AddCircleFilled(ctr, R, IM_COL32(12, 14, 20, bgA), 64);
     fg->AddCircle(ctr, R, IM_COL32(230, 220, 180, 200), 64, 2.0f);
 
