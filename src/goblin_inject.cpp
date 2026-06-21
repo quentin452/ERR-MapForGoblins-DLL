@@ -829,9 +829,8 @@ static void resolve_world_chr_man()
 {
     g_wcm_tried = true;
     // Doc-confirmed static slot (runtime RPM walk, windows_player_pos_RESOLVED):
-    // WorldChrMan = [eldenring.exe + 0x3D65F88]. Prefer this exact slot — the in-game
-    // [PLR2] read 0,0,0 via the WCM_FINDER AOB, so that AOB resolves a DIFFERENT
-    // WorldChrMan-ish static on this build. Keep the AOB as a drift fallback.
+    // WorldChrMan = [eldenring.exe + 0x3D65F88]. Prefer this exact RVA; keep the WCM_FINDER
+    // AOB as a patch-drift fallback (on this build both resolve to the same slot).
     uintptr_t er_base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
     void **fixed = er_base ? reinterpret_cast<void **>(er_base + 0x3D65F88) : nullptr;
     void **aob = nullptr;
@@ -3449,17 +3448,6 @@ int goblin::refresh_cluster_depletion()
     if (now != clock::time_point{} && now - last < std::chrono::milliseconds(1000))
         return 0;
     last = now;
-    // Diagnostic (debug_logging only): verify the AOB-anchored player map-pos reader
-    // resolves + reads sane marker-space coords, ahead of distance-adaptive clustering.
-    if (goblin::config::debugLogging)
-    {
-        int parea; float pwx, pwz;
-        if (goblin::get_player_map_pos(parea, pwx, pwz))
-            spdlog::info("[PLAYER] map-pos area={} world=({:.1f},{:.1f}) [tile {},{}]",
-                         parea, pwx, pwz, static_cast<int>(pwx / 256.0f), static_cast<int>(pwz / 256.0f));
-        else
-            spdlog::info("[PLAYER] map-pos unavailable (AOB unresolved or chain faulted)");
-    }
     int changed = 0, with_flags = 0, depleted_n = 0;
     for (auto &c : g_clusters)
     {
