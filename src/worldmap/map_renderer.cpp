@@ -611,11 +611,13 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const bool clustering = goblin::ui::clustering_enabled();
     const int threshold = clustering ? goblin::ui::global_threshold() : 0;
     // Distance-adaptive is its own clustering mode: when on it OVERRIDES the per-category
-    // opt-in (every category clusters by distance from the player; see draw_clusters). Works
-    // on ALL pages now — the player position is the WorldMapPointParam frame everywhere
-    // (RE windows_player_pos_RESOLVED); the euclid ramp keys on the player's own page.
+    // opt-in (every category clusters by distance from the player; see draw_clusters).
+    // OVERWORLD pages ONLY (open_grp 0/2): the underground/DLC-UG pages (bit 0) project
+    // their markers into the OVERLAPPING unified overworld map-space, so euclid distance
+    // there is meaningless (it removed near-player markers in Siofra) — those pages fall
+    // back to normal per-category threshold clustering until a sub-page-aware ramp exists.
     const bool dist_adaptive =
-        clustering && goblin::config::clusterDistanceAdaptive;
+        clustering && goblin::config::clusterDistanceAdaptive && !(open_grp & 1);
     // Resolution-relative icon/glyph sizes (match the native canvas-scaled icons),
     // × the user's master scale × the per-type scale (saved in the ini).
     const float uiScale = realH / 1080.f;
@@ -682,7 +684,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
 
     if (clustering && !clustered.empty())
         draw_clusters(fg, clustered, threshold, atlas, realW, realH, view, dlc_ug,
-                      /*dist_eligible=*/true, iconHalf, glyphR, mouse, hover);
+                      /*dist_eligible=*/!(open_grp & 1), iconHalf, glyphR, mouse, hover);
 
     // Tooltip for the hovered marker / pile (drawn last so it's on top).
     if (hover.bestd < 1e30f)
