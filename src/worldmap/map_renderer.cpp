@@ -235,6 +235,24 @@ inline void project_marker(const Marker &m, bool dlc_ug, float &gU, float &gV)
     world_to_mapspace(m, dlc_ug, gU, gV);
 }
 
+// Project a NON-marker point (grace-anchor pile, region label) to map-space. With
+// config::liveProjection, call the engine from the point's RAW per-area frame
+// (rawX/rawZ = gridX*256+pos in the point's OWN area — NOT pre-folded) by decomposing
+// back to grid+pos; else the baked affine on the already-folded world coords. No cache
+// (these are few per frame). area < 0 → baked.
+inline void project_raw(int area, float rawX, float rawZ, float bakedWX, float bakedWZ,
+                        bool dlc_ug, float &gU, float &gV)
+{
+    if (goblin::config::liveProjection && area >= 0)
+    {
+        int gx = (int)std::floor(rawX / 256.0f), gz = (int)std::floor(rawZ / 256.0f);
+        if (goblin::worldmap_probe::project(area, gx, gz, rawX - gx * 256.0f,
+                                            rawZ - gz * 256.0f, gU, gV))
+            return;
+    }
+    world_to_mapspace_xy(bakedWX, bakedWZ, dlc_ug, gU, gV);
+}
+
 // A projected marker awaiting the clustering decision.
 struct ScreenMarker
 {
@@ -418,8 +436,12 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         ImVec2 c;
         if (has_anchor)
         {
+            // Place the pile at its grace via the live engine projection (from the grace's
+            // RAW per-area frame, so legacy/UG graces fold correctly); baked fallback.
             float gU, gV;
-            world_to_mapspace_xy(gwx, gwz, dlc_ug, gU, gV);
+            int ra = -1; float rx = 0, rz = 0;
+            bool raw_ok = goblin::grace_anchor_raw(kv.first, ra, rx, rz);
+            project_raw(raw_ok ? ra : -1, rx, rz, gwx, gwz, dlc_ug, gU, gV);
             proj::Px gp = proj::project_screen(gU, gV, view, realW, realH);
             c = ImVec2(gp.x, gp.y);
         }
@@ -569,7 +591,7 @@ void draw_region_labels(ImDrawList *fg, int open_grp, bool dlc_ug,
         if (goblin::marker_group_from(a.area, ga) != open_grp)
             continue;
         float gU, gV;
-        world_to_mapspace_xy(wx, wz, dlc_ug, gU, gV);
+        project_raw(a.area, a.gx * 256.0f + a.px, a.gz * 256.0f + a.pz, wx, wz, dlc_ug, gU, gV);
         proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
         if (p.x < -64 || p.y < -32 || p.x > realW + 64 || p.y > realH + 32)
             continue;
