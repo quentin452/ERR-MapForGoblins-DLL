@@ -1257,7 +1257,19 @@ namespace
             ImGui::NewFrame();
             if (g_show)
                 draw_panel();
-            if (proto)
+            // Blank the overlay map during the Chapel of Anticipation PROLOGUE: event flag
+            // 120 is set ON only on leaving the Chapel (m19 EMEVD), so !flag(120) == still
+            // in the prologue, where the player isn't on the Lands Between map and the
+            // marker projection is invalid (RE: docs/re/windows_prologue_gate_re_findings.md).
+            // NG+-safe + only the prologue (the later Four-Belfries Chapel visit has 120 ON).
+            // Gated on the marker draw (NOT g_show) since markers render on `proto`, not the
+            // menu toggle; the F1 menu stays usable in the prologue. FAIL-OPEN: read_event_
+            // flag returns false when the flag manager isn't resolved yet (early load) too —
+            // 6001 ("game world ready", the codebase's api-ok probe) being OFF means the read
+            // is unreliable, so draw rather than wrongly blank.
+            const bool past_prologue =
+                goblin::ui::read_event_flag(120) || !goblin::ui::read_event_flag(6001);
+            if (proto && past_prologue)
                 draw_worldmap_markers(g_show);
             ImGui::Render();
 
