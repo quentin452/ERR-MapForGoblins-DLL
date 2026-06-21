@@ -56,17 +56,42 @@ All reads via ReadProcessMemory/SEH-guarded as today. `er_base = GetModuleHandle
 (handles ASLR). This single source serves **both** consumers: distance-adaptive (map open) AND the
 future minimap (map closed) — the ChrIns field updates every frame regardless of the map dialog.
 
-## 4. Open item — the frame (world vs map-space)
+## 4. The frame — SOLVED: `+0x6C0` IS `WorldMapPointParam.posX/posZ`
 
-The value is the ChrIns position (X=1444.26, Z=1542.22, Y=-815.14 height at Siofra). Confirm whether
-it is:
-- **(a) already map/marker space** (same units as `marker_world_pos` output / `WorldMapPointParam`
-  world_x/world_z) → feed straight into the overlay projection, OR
-- **(b) raw world** → route through the same underground conversion markers use.
+`LocalPlayer+0x6C0`(X)/`+0x6C8`(Z) is the player's position **in the exact `posX/posZ` param frame**
+markers use. The world coord is then the SAME bridge as markers:
+```
+worldX = MapId_gridX*256 + [LocalPlayer+0x6C0]
+worldZ = MapId_gridZ*256 + [LocalPlayer+0x6C8]
+```
+(MapId tile from the singleton `+0x2c`; then `project_dungeon_row_to_overworld` /
+`marker_world_pos(area, gridX, gridZ, posX, posZ, conv_underground=…)` exactly like a marker.)
 
-Decisive check: read `+0x6C0` **overworld** at a known tile (e.g. 46,38) — if it ≈ `tile*256 + local`
-it is map-frame (a); if it's an unrelated continuous value it is raw world (b). Or compare the live
-value to `marker_world_pos(area,gridX,gridZ,posX,posZ)` for a grace standing next to the player.
+**Runtime validation — standing ON the "Bois des Fidèles" grace (area 12 underground):**
+| | grace anchor (baked) | live `LocalPlayer+0x6C0` |
+|---|---|---|
+| posX | 1438.0 | 1437.823 |
+| posZ | 1519.0 | 1519.030 |
+| MapId gridX/gridZ | 2 / 0 | 2 / 0 |
+→ `worldX = 2*256 + 1437.8 = 1949.8 ≈ wx 1950`; `worldZ = 0 + 1519.0 = wz 1519`. Exact match. The
+overworld reading (tile 46,40; `+0x6C0` ≈ -69.7 / 3.8 → small = a `posX/posZ`) is consistent — same
+frame on every page.
+
+**Why the old underground path failed (root cause, confirmed):** `get_player_map_pos` read the local
+from the **geom manager `+0x70/+0x74`** (a *physics-block* frame, e.g. 5.8) instead of
+`LocalPlayer+0x6C0` (the *param* frame, 1437.8). The two differ by the physics-block origin (a
+constant `+1432 / -816 / +1544` for the m12_02_00 block) — that delta is the wrong-underground bug.
+The MapId tile + `tile*256 + local` + projection were all correct; only the local *source* was wrong.
+
+### Fix (`goblin_inject.cpp::get_player_map_pos`)
+Replace the local source — keep everything else (MapId tile, `gx*256+lx`, projection):
+```cpp
+uint8_t* wcm = *(uint8_t**)(er_base + 0x3D65F88);                 // WCM_FINDER
+uint8_t* lp  = wcm ? *(uint8_t**)(wcm + 0x1E508) : nullptr;       // LocalPlayer
+if (lp) { pr.lx = *(float*)(lp + 0x6C0); pr.lz = *(float*)(lp + 0x6C8); }  // posX/posZ (was geomMgr+0x70/+0x74)
+```
+Works overworld AND underground (m12; DLC m40-43/61 via the same conv), map-open AND map-closed
+(minimap) — one source. SEH/RPM-guard as today.
 
 ## 5. Offsets / AOBs (version-stability)
 - WorldChrMan `eldenring.exe+0x3D65F88` — `WCM_FINDER` `48 8B FA 0F 11 41 70 48 8B 05` (already in
