@@ -249,8 +249,8 @@ void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n, float r, bool depleted)
 // piles/markers are culled. realW/realH = backbuffer size for the cull.
 void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int threshold,
                    ImTextureID atlas, float realW, float realH,
-                   const goblin::projection::View &view, bool dlc_ug, bool overworld_page,
-                   float iconHalf, float glyphR, ImVec2 mouse, Hover &hover)
+                   const goblin::projection::View &view, bool dlc_ug, float curU, float curV,
+                   bool have_cursor, float iconHalf, float glyphR, ImVec2 mouse, Hover &hover)
 {
     namespace proj = goblin::projection;
     auto on_screen = [&](const ImVec2 &p) {
@@ -261,47 +261,36 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     for (int i = 0; i < (int)items.size(); ++i)
         groups[items[i].m->cluster_key].push_back(i);
 
-    // Distance-adaptive: when on, the per-location threshold ramps from near_thr (full
-    // detail around the player) to base_thr (clustered far away) over near→far radius,
-    // SAME overworld page only (world coords aren't comparable across pages, and the
-    // underground player float is unreliable). This is its own feature: enabling it
-    // OVERRIDES per-category opt-in (every category clusters by distance — handled at
-    // the eligibility check in render_markers).
+    // Distance-adaptive: the per-location threshold ramps from near_thr (full detail) to
+    // base_thr (clustered) over the near→far radius, measured from the NATIVE MAP CURSOR
+    // (reticle) — the game keeps its marker-space coord exact on EVERY page (overworld +
+    // underground), so this replaces the unreliable player physics-pos and works
+    // everywhere. "Detail near where you point, clustered far away." Enabling it OVERRIDES
+    // per-category opt-in (every category clusters by distance — eligibility in render_markers).
     namespace cfg = goblin::config;
-    const bool dist_adaptive = cfg::clusterDistanceAdaptive && overworld_page; // overworld only
+    const bool dist_adaptive = cfg::clusterDistanceAdaptive && have_cursor;
     const int base_thr = threshold;
     int near_thr = (int)cfg::clusterNearThreshold;
     if (near_thr < 1) near_thr = 1;
-    const float near_u = cfg::clusterNearRadius * 256.0f;
+    const float near_u = cfg::clusterNearRadius * 256.0f;  // map-space units (scale 1 = world units)
     const float far_u = cfg::clusterFarRadius * 256.0f;
-    int player_area = -1;
-    float pwx = 0, pwz = 0;
-    const bool have_player =
-        dist_adaptive && goblin::get_player_map_pos(player_area, pwx, pwz);
-    const bool euclid_frame = (player_area == 60 || player_area == 61); // overworld pages
 
-    // DEBUG viz (config cluster_debug_radius): player marker + near/far rings so you can
-    // SEE where the distance ramp engages. Overworld only (= where dist_adaptive runs).
-    const bool dbg_radius = goblin::config::clusterDebugRadius && have_player;
+    // DEBUG viz (config cluster_debug_radius): the cursor reference dot + near/far rings so
+    // you can SEE where the ramp engages. Reads the live cursor marker-space coord directly.
+    const bool dbg_radius = goblin::config::clusterDebugRadius && dist_adaptive;
     if (dbg_radius)
     {
-        float gU, gV;
-        world_to_mapspace_xy(pwx, pwz, dlc_ug, gU, gV);
-        proj::Px pp = proj::project_screen(gU, gV, view, realW, realH);
+        proj::Px pp = proj::project_screen(curU, curV, view, realW, realH);
         const ImVec2 ppx(pp.x, pp.y);
         auto ring_px = [&](float r) {
-            float u, v;
-            world_to_mapspace_xy(pwx + r, pwz, dlc_ug, u, v);
-            proj::Px e = proj::project_screen(u, v, view, realW, realH);
+            proj::Px e = proj::project_screen(curU + r, curV, view, realW, realH);
             return std::fabs(e.x - pp.x);
         };
         fg->AddCircle(ppx, ring_px(near_u), IM_COL32(60, 230, 90, 210), 64, 2.f);  // near=detail
         fg->AddCircle(ppx, ring_px(far_u), IM_COL32(255, 90, 30, 210), 64, 2.f);   // far=clustered
         fg->AddCircleFilled(ppx, 6.f, IM_COL32(255, 0, 255, 255));
         fg->AddCircle(ppx, 6.f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
-        char b[48];
-        std::snprintf(b, sizeof(b), "player A%d", player_area);
-        fg->AddText(ImVec2(ppx.x + 8, ppx.y - 6), IM_COL32(255, 120, 255, 255), b);
+        fg->AddText(ImVec2(ppx.x + 8, ppx.y - 6), IM_COL32(255, 120, 255, 255), "cursor");
     }
 
     // Pass 1: resolve each pile's GRACE anchor + its (distance-adaptive) threshold.
@@ -316,15 +305,15 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         int garea = -1;
         float gwx = 0, gwz = 0;
         const bool has_anchor = goblin::grace_anchor_world(kv.first, garea, gwx, gwz);
-        // Per-location threshold. Distance-adaptive (OVERWORLD only — dist_adaptive is
-        // gated off underground because the underground player position is unavailable):
-        // Euclidean ramp near_thr→base_thr over the near→far radius. Otherwise flat
-        // base_thr (normal threshold clustering).
+        // Per-location threshold. Distance-adaptive: ramp near_thr→base_thr over the
+        // near→far radius by the grace anchor's distance to the CURSOR, both in marker
+        // space (works on every page). Otherwise flat base_thr (normal clustering).
         int thr = base_thr;
-        if (have_player && overworld_page && has_anchor && euclid_frame &&
-            garea == player_area && far_u > near_u)
+        if (dist_adaptive && has_anchor && far_u > near_u)
         {
-            const float dx = gwx - pwx, dz = gwz - pwz;
+            float aU, aV;
+            world_to_mapspace_xy(gwx, gwz, dlc_ug, aU, aV); // grace anchor → marker space
+            const float dx = aU - curU, dz = aV - curV;     // distance to the cursor
             const float d = std::sqrt(dx * dx + dz * dz);
             float t = (d - near_u) / (far_u - near_u);
             if (t < 0.f) t = 0.f; else if (t > 1.f) t = 1.f;
@@ -550,12 +539,10 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const bool clustering = goblin::ui::clustering_enabled();
     const int threshold = clustering ? goblin::ui::global_threshold() : 0;
     // Distance-adaptive is its own clustering mode: when on it OVERRIDES the per-category
-    // opt-in (every category clusters by distance from the player; see draw_clusters).
-    // OVERWORLD ONLY: the underground player position is unavailable (WorldChrMan physics
-    // returns NaN, MapId map-pos reads garbage origin) → can't gauge distance there, so
-    // underground falls back to normal threshold + per-category clustering.
-    const bool dist_adaptive =
-        clustering && goblin::config::clusterDistanceAdaptive && !(open_grp & 1);
+    // opt-in (every category clusters by distance from the CURSOR; see draw_clusters).
+    // Keyed on the native map cursor (reticle) marker-space coord, which is reliable on
+    // EVERY page (overworld + underground) — so this works everywhere now (no page gate).
+    const bool dist_adaptive = clustering && goblin::config::clusterDistanceAdaptive;
     // Resolution-relative icon/glyph sizes (match the native canvas-scaled icons),
     // × the user's master scale × the per-type scale (saved in the ini).
     const float uiScale = realH / 1080.f;
@@ -615,7 +602,8 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
 
     if (clustering && !clustered.empty())
         draw_clusters(fg, clustered, threshold, atlas, realW, realH, view, dlc_ug,
-                      /*overworld_page=*/!(open_grp & 1), iconHalf, glyphR, mouse, hover);
+                      /*curU=*/lv.cursorX, /*curV=*/lv.cursorZ, /*have_cursor=*/true,
+                      iconHalf, glyphR, mouse, hover);
 
     // Tooltip for the hovered marker / pile (drawn last so it's on top).
     if (hover.bestd < 1e30f)
