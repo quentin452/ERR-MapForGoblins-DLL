@@ -38,7 +38,6 @@ namespace goblin
         extern bool requireMapFragments;
         extern bool collectedGraying;
         extern bool hideCollected;
-        extern bool dedupSharedFlags;
         extern bool debugLogging;
         extern bool showAll;  // master switch: show every category (see
                               // is_category_enabled) except those listed below

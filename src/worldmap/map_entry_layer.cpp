@@ -7,7 +7,6 @@
 #include "goblin_collected.hpp" // is_original_row_collected (piece graying)
 #include "goblin_kindling.hpp"  // is_row_collected (kindling graying)
 #include "goblin_markers.hpp"   // category_name (census log)
-#include "goblin_config.hpp"    // dedupSharedFlags
 
 #include <spdlog/spdlog.h>
 
@@ -31,9 +30,6 @@ void build_buckets()
         return;
     g_built = true;
     namespace gen = goblin::generated;
-    // Per-category set of collect/clear flags already taken — dedup_shared_flags keeps
-    // ONE marker per distinct flag (ERR shares one flag across many markers; see below).
-    std::array<std::unordered_set<int>, NUM_CAT> seen_flags;
     for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
     {
         const gen::MapEntry &e = gen::MAP_ENTRIES[i];
@@ -56,21 +52,9 @@ void build_buckets()
         // Lot-backed loot: resolve the LIVE pickup flag (baked textDisableFlagId1 is
         // stale under ERR/randomizer) so collected loot grays + the census decrements.
         int collected_flag = (int)goblin::resolve_loot_flag(e.lotId, e.lotType, d.textDisableFlagId1);
-        int cleared_flag = (int)d.clearedEventFlagId;
-        // Dedup shared flags: ERR shares one collect/clear event flag across many markers
-        // (e.g. ~54 Fortunes share flag 60320). Keep ONE marker per distinct flag so the
-        // map + census + graying don't multiply. flag 0 (piece/kindling — no per-item
-        // flag, tracked per row_id) is never deduped. Unique-flag categories are
-        // unaffected (each flag is its own marker).
-        if (goblin::config::dedupSharedFlags)
-        {
-            int key = collected_flag ? collected_flag : cleared_flag;
-            if (key != 0 && !seen_flags[c].insert(key).second)
-                continue; // a marker for this flag already exists → drop this duplicate
-        }
         g_buckets[c].push_back(Marker{wx, wz, grp, (int)d.areaNo, c, ckey, pname, d.textId1,
                                       category_color(c), category_icon_key(c), frag,
-                                      e.row_id, cleared_flag, collected_flag});
+                                      e.row_id, (int)d.clearedEventFlagId, collected_flag});
     }
 }
 } // namespace
