@@ -11,6 +11,7 @@
 #include "goblin_grace_anchors.hpp"
 #include "goblin_region_anchors.hpp"
 #include "goblin_major_regions.hpp"
+#include "goblin_name_regions.hpp"
 #include "goblin_tile_tabs.hpp"
 #include "goblin_legacy_conv.hpp"
 #include "goblin_logic.hpp"
@@ -615,24 +616,54 @@ static bool find_nearest_grace(uint8_t area, float wx, float wz,
     return true;
 }
 
+// Region PlaceName for a marker via the GAME's own logic = point-in-volume containment
+// against the MSB MapNameOverride volumes (goblin_name_regions), in the marker's MSB map
+// LOCAL frame (area+gridX+gridZ keys the map; posX/posZ are that map's local coords, same
+// as the volume's). Returns the PlaceName textId of the SMALLEST (most specific) containing
+// volume, or 0 = no volume here (caller falls back to the nearest-grace pname). Far more
+// reliable than nearest-anchor for tooltips + cluster labels (cities, region borders).
+int goblin::region_name_pname(uint8_t area, uint8_t gx, uint8_t gz, float posX, float posZ)
+{
+    namespace gen = goblin::generated;
+    for (size_t i = 0; i < gen::NAME_REGION_COUNT; ++i) // sorted smallest-first per map
+    {
+        const auto &r = gen::NAME_REGIONS[i];
+        if (r.area != area || r.gx != gx || r.gz != gz)
+            continue;
+        // Point into the volume's local frame (inverse yaw about its centre).
+        float dx = posX - r.px, dz = posZ - r.pz;
+        float c = std::cos(r.rot), s = std::sin(r.rot);
+        float lx = dx * c + dz * s;
+        float lz = -dx * s + dz * c;
+        bool inside = (r.shape == 0)
+            ? (std::fabs(lx) <= r.half_w && std::fabs(lz) <= r.half_d)
+            : (lx * lx + lz * lz <= r.radius * r.radius);
+        if (inside)
+            return r.text_id; // first match = smallest = most specific
+    }
+    return 0;
+}
+
 // Cluster grouping key for a marker = its nearest Site-of-Grace index (within the
 // marker's SOURCE area + raw world gridX*256+pos), matching the native map's
 // by-location clustering (replan_clusters grp_key). Returns -1 when no grace anchor
-// shares the area → the caller draws it exact. out_pname (optional) = the group's
-// region PlaceName id, for the pile's location-name label.
+// shares the area → the caller draws it exact. out_pname (optional) = the marker's
+// region PlaceName id (MapNameOverride containment, else the group's grace region).
 int goblin::marker_cluster_key(uint8_t area, uint8_t gridX, uint8_t gridZ, float posX,
                                float posZ, int *out_pname)
 {
     float mwx = static_cast<float>(gridX) * 256.0f + posX;
     float mwz = static_cast<float>(gridZ) * 256.0f + posZ;
     int idx = -1, pname = -1, tab = 0;
-    if (find_nearest_grace(area, mwx, mwz, &idx, &pname, &tab))
+    bool has_grace = find_nearest_grace(area, mwx, mwz, &idx, &pname, &tab);
+    if (out_pname)
     {
-        if (out_pname) *out_pname = pname;
-        return idx;
+        // Prefer the game's own region naming (point-in-volume); fall back to the
+        // nearest grace's region only when no MapNameOverride volume contains the marker.
+        int region = region_name_pname(area, gridX, gridZ, posX, posZ);
+        *out_pname = region ? region : (has_grace ? pname : -1);
     }
-    if (out_pname) *out_pname = -1;
-    return -1;
+    return has_grace ? idx : -1;
 }
 
 // Project a grace anchor (by its GRACE_ANCHORS index = a marker's cluster_key) to

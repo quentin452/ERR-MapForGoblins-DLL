@@ -20,6 +20,11 @@ namespace goblin
     int marker_cluster_key(uint8_t area, uint8_t gridX, uint8_t gridZ, float posX,
                            float posZ, int *out_pname = nullptr);
 
+    // Region PlaceName id for a marker via the game's MapNameOverride volumes (point-in-
+    // volume containment in the marker's MSB-local frame). 0 = no volume here. The reliable
+    // location-name source for tooltips + cluster labels (cities, region borders).
+    int region_name_pname(uint8_t area, uint8_t gx, uint8_t gz, float posX, float posZ);
+
     // Project a grace anchor (GRACE_ANCHORS index = a marker's cluster_key) to unified
     // world coords, so a cluster pile can be drawn AT its grace. False on a bad key.
     bool grace_anchor_world(int key, int &out_area, float &wx, float &wz);
