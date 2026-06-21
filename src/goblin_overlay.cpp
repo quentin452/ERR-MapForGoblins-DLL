@@ -1159,6 +1159,15 @@ namespace
             // are restart-required: flip + Save, then relaunch. save_all_bool_settings
             // persists every config bool, so no per-flag plumbing is needed.
             ImGui::SeparatorText("Debug");
+            // Live toggle (no restart): project_marker reads this every frame.
+            ImGui::Checkbox("Live projection (engine world→map fn; fixes dungeon/UG placement)",
+                            &goblin::config::liveProjection);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(
+                    "Project markers with the game's OWN WorldMapViewModel instead of the baked\n"
+                    "affine. Toggles live (open the map and flip it to compare). Underground /\n"
+                    "dungeon markers snap to their real LegacyConv-folded positions. Falls back\n"
+                    "to baked until the map is open (engine VM must resolve).");
             if (ImGui::TreeNode("Dev tools (Save + restart)"))
             {
                 ImGui::Checkbox("Event-flag hook (coverage-gap detector)",
