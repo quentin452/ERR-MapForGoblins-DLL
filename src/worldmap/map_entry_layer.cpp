@@ -2,8 +2,13 @@
 
 #include "category_meta.hpp"
 #include "goblin_map_data.hpp" // MAP_ENTRIES / MAP_ENTRY_COUNT / MapEntry / Category
-#include "goblin_inject.hpp"   // marker_world_pos / goblin::ui::category_visible
+#include "goblin_inject.hpp"   // marker_world_pos / category_visible / read_event_flag / census
 #include "goblin_logic.hpp"    // map_fragment_flag
+#include "goblin_collected.hpp" // is_original_row_collected (piece graying)
+#include "goblin_kindling.hpp"  // is_row_collected (kindling graying)
+#include "goblin_markers.hpp"   // category_name (census log)
+
+#include <spdlog/spdlog.h>
 
 #include <array>
 
@@ -69,5 +74,58 @@ const std::vector<Marker> &MapEntryLayer::markers() const
 {
     build_buckets();
     return g_buckets[cat_];
+}
+
+void refresh_overlay_census()
+{
+    namespace gen = goblin::generated;
+    build_buckets(); // ensure the overlay markers exist (one-time)
+
+    static int s_prev_looted[NUM_CAT];
+    static bool s_logged_once = false;
+
+    for (int c = 0; c < NUM_CAT; ++c)
+    {
+        // Graces aren't census items (deduped against the native pin) → no badge.
+        if (c == static_cast<int>(gen::Category::WorldGraces))
+        {
+            goblin::ui::set_category_census(c, 0, 0);
+            continue;
+        }
+        // Piece/kindling rows are geom/SFX-tracked (no textDisableFlag) — their
+        // collectibility is known by category, same as the native census.
+        const bool piece = c == static_cast<int>(gen::Category::ReforgedRunePieces) ||
+                           c == static_cast<int>(gen::Category::ReforgedEmberPieces) ||
+                           c == static_cast<int>(gen::Category::LootMaterialNodes);
+        const bool kind = c == static_cast<int>(gen::Category::WorldKindlingSpirits);
+
+        int total = 0, looted = 0;
+        for (const Marker &m : g_buckets[c])
+        {
+            const bool collectible = (m.collected_flag != 0) || piece || kind;
+            if (!collectible)
+                continue; // not a counted item (e.g. boss with only a clear flag, NPC)
+            ++total;
+            // SAME collected detection the renderer uses to gray the marker → the badge
+            // can never disagree with the map. collected_flag was resolved live at build.
+            const bool done =
+                (m.collected_flag && goblin::ui::read_event_flag((uint32_t)m.collected_flag)) ||
+                (m.cleared_flag && goblin::ui::read_event_flag((uint32_t)m.cleared_flag)) ||
+                (piece && goblin::collected::is_original_row_collected(m.row_id)) ||
+                (kind && goblin::kindling::is_row_collected(m.row_id));
+            if (done)
+                ++looted;
+        }
+        goblin::ui::set_category_census(c, total, looted);
+
+        // [OVERLAY-CENSUS] log: full dump on the first publish, then a line whenever a
+        // category's looted count changes (so a pickup is visible in the log).
+        if ((!s_logged_once || s_prev_looted[c] != looted) && total > 0)
+            spdlog::info("[OVERLAY-CENSUS] cat {:2} '{}' remaining={}/{} (looted {} -> {})",
+                         c, goblin::markers::category_name(static_cast<gen::Category>(c)),
+                         total - looted, total, s_prev_looted[c], looted);
+        s_prev_looted[c] = looted;
+    }
+    s_logged_once = true;
 }
 } // namespace goblin::worldmap

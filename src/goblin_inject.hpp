@@ -271,6 +271,8 @@ namespace goblin
         // must be called each frame the panel is drawn to keep the census warm.
         int category_total(int idx);
         int category_remaining(int idx);
+        // Publish a category's census from the overlay (total collectible + looted).
+        void set_category_census(int idx, int total, int looted);
         void note_menu_visible();
         // ERR integration: hide our boss markers since ERR marks bosses natively.
         bool err_hide_bosses();

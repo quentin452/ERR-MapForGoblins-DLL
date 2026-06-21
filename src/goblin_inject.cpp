@@ -3479,6 +3479,10 @@ int goblin::refresh_cluster_depletion()
 // cluster depletion: plain loot via textDisableFlagId1 + orp_flag_set, Reforged
 // pieces/kindling via row-id tracking. Categories with no collectible rows
 // (graces/NPCs/regions) cache remaining = -1 so the overlay draws no badge.
+// Overlay-only census: implemented in the worldmap module (it owns the marker
+// buckets). Forward-declared here so the refresh entry point can delegate to it.
+namespace goblin::worldmap { void refresh_overlay_census(); }
+
 int goblin::refresh_category_census()
 {
     GOBLIN_BENCH("refresh.category_census");
@@ -3512,89 +3516,19 @@ int goblin::refresh_category_census()
                          (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
             if (taken) looted[ci]++;
         }
-    }
-    else
-    {
-        // Overlay-only mode: inject_map_entries never ran, so g_section_rows is empty.
-        // Recompute the same census straight from MAP_ENTRIES (same predicate as the
-        // native path + inject_map_entries' is_piece/is_kindling classification), using
-        // ORIGINAL row ids (no dynamic remap happens without injection). Graces carry a
-        // textDisableFlagId1 (their discovery flag) but are deduped against the native
-        // pin, not census-counted → excluded so they show no badge (matches native).
-        for (size_t i = 0; i < goblin::generated::MAP_ENTRY_COUNT; i++)
-        {
-            const auto &e = goblin::generated::MAP_ENTRIES[i];
-            int ci = static_cast<int>(e.category);
-            if (ci < 0 || ci >= NUM_CATEGORIES || e.category == Category::WorldGraces) continue;
-            bool is_piece = e.category == Category::ReforgedRunePieces ||
-                            e.category == Category::ReforgedEmberPieces ||
-                            e.category == Category::LootMaterialNodes;
-            bool is_kindling = e.category == Category::WorldKindlingSpirits;
-            // Lot-backed loot: use the LIVE pickup flag (ERR/randomizer reassign them;
-            // the baked textDisableFlagId1 is stale) so the count actually decrements.
-            uint32_t f = goblin::resolve_loot_flag(e.lotId, e.lotType, e.data.textDisableFlagId1);
-            if (!(f || is_piece || is_kindling)) continue;  // not a collectible row
-            collectible[ci]++;
-            bool taken = (f && orp_flag_set(f)) ||
-                         (is_piece && goblin::collected::is_original_row_collected(e.row_id)) ||
-                         (is_kindling && goblin::kindling::is_row_collected(e.row_id));
-            if (taken) looted[ci]++;
-        }
-    }
-    for (int c = 0; c < NUM_CATEGORIES; c++)
-    {
-        g_cat_total[c].store(collectible[c]);
-        g_cat_remaining[c].store(collectible[c] > 0 ? (collectible[c] - looted[c]) : -1);
-    }
-
-    // One-shot diagnostic for the overlay census/cluster wiring: dumps the REAL numbers
-    // (collectible/looted, nearest-grace cluster_key coverage, per-category cluster
-    // opt-in, and a Golden-Rune live-loot flag sample) so a stuck "<n>/<n>" badge or an
-    // ineffective cluster opt-in can be pinned from the log instead of guessed. Fires
-    // once per session in overlay-only mode.
-    static bool s_diag_done = false;
-    if (!s_diag_done && g_section_rows.empty())
-    {
-        s_diag_done = true;
-        int ckcov[NUM_CATEGORIES] = {0}, rows[NUM_CATEGORIES] = {0};
-        uint32_t gr_lot = 0, gr_baked = 0, gr_res = 0;
-        bool gr_set = false, gr_found = false;
-        for (size_t i = 0; i < goblin::generated::MAP_ENTRY_COUNT; i++)
-        {
-            const auto &e = goblin::generated::MAP_ENTRIES[i];
-            int ci = static_cast<int>(e.category);
-            if (ci < 0 || ci >= NUM_CATEGORIES) continue;
-            rows[ci]++;
-            int pn = -1;
-            if (marker_cluster_key(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
-                                   e.data.posX, e.data.posZ, &pn) >= 0)
-                ckcov[ci]++;
-            if (!gr_found && e.lotType &&
-                (e.category == Category::LootGoldenRunes ||
-                 e.category == Category::LootGoldenRunesLow))
-            {
-                gr_found = true;
-                gr_lot = e.lotId;
-                gr_baked = e.data.textDisableFlagId1;
-                gr_res = goblin::resolve_loot_flag(e.lotId, e.lotType, e.data.textDisableFlagId1);
-                gr_set = gr_res && orp_flag_set(gr_res);
-            }
-        }
-        spdlog::info("[CENSUS-DIAG] overlay-only; liveLootFlags={} clustering_enabled={} threshold={}",
-                     goblin::config::liveLootFlags, goblin::ui::clustering_enabled(),
-                     goblin::config::clusterThreshold);
-        if (gr_found)
-            spdlog::info("[CENSUS-DIAG] GoldenRune sample: lot={} baked_flag={} resolved_flag={} is_set={}",
-                         gr_lot, gr_baked, gr_res, gr_set);
         for (int c = 0; c < NUM_CATEGORIES; c++)
         {
-            if (rows[c] == 0) continue;
-            spdlog::info("[CENSUS-DIAG] cat {:2} '{}' rows={} collectible={} looted={} ckey_cov={}/{} cluster_optin={}",
-                         c, goblin::markers::category_name(static_cast<Category>(c)),
-                         rows[c], collectible[c], looted[c], ckcov[c], rows[c],
-                         goblin::ui::category_clustered(c));
+            g_cat_total[c].store(collectible[c]);
+            g_cat_remaining[c].store(collectible[c] > 0 ? (collectible[c] - looted[c]) : -1);
         }
+        return 0;
     }
+
+    // Overlay-only mode: count from the OVERLAY's OWN marker layers (the exact markers
+    // it draws + grays), so the F1 badge matches the map and can't diverge from a
+    // parallel native-style recompute. refresh_overlay_census writes the census atomics
+    // and logs [OVERLAY-CENSUS] (full dump once, then a line on each change).
+    goblin::worldmap::refresh_overlay_census();
     return 0;
 }
 
@@ -3607,6 +3541,12 @@ int  goblin::ui::category_remaining(int idx)
 {
     if (idx < 0 || idx >= NUM_CATEGORIES) return -1;
     return g_cat_remaining[idx].load();
+}
+void goblin::ui::set_category_census(int idx, int total, int looted)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return;
+    g_cat_total[idx].store(total);
+    g_cat_remaining[idx].store(total > 0 ? (total - looted) : -1);
 }
 void goblin::ui::note_menu_visible()
 {
