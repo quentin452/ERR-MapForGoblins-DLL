@@ -10,6 +10,7 @@
 #include "goblin_major_regions.hpp"  // MAJOR_REGION_ANCHORS (region labels)
 #include "goblin_quest_gates.hpp"    // QUEST_GATES (quest-NPC gating)
 #include "goblin_map_data.hpp"       // Category enum (WorldQuestNPC)
+#include "goblin_grace_anchors.hpp"  // GRACE_ANCHOR_COUNT (player-pos debug viz)
 
 #include <string>
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
@@ -542,22 +543,45 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const int open_grp = (lv.openDlc ? 2 : 0) | ((lv.underground != 0) ? 1 : 0);
     const bool dlc_ug = (open_grp == 3);
 
-    // Player-dot validation (cluster_debug_radius): draw get_player_map_pos projected, on
-    // EVERY page, to confirm the +0x78-Z axis fix lands on the native yellow dot + tracks
-    // movement underground (RE doc windows_yellowdot_player_pos §1). Lean: dot + label.
+    // Player-pos debug (cluster_debug_radius): the PLAYER dot (magenta) via
+    // get_player_map_pos + a HUD of its full pipeline + EVERY grace anchor projected as a
+    // small cyan dot. Graces use the marker pipeline (correct), so the grace nearest the
+    // native yellow dot shows where the player SHOULD land — the magenta-vs-cyan delta +
+    // the HUD tile/world numbers reveal whether the player's MapId tile/local is in a
+    // different frame than WorldMapPointParam (the underground mis-projection hypothesis).
     if (goblin::config::clusterDebugRadius)
     {
-        int pa = -1; float pwx = 0, pwz = 0;
-        if (goblin::get_player_map_pos(pa, pwx, pwz))
+        const float realWd = io.DisplaySize.x, realHd = io.DisplaySize.y;
+        // Cyan grace anchors (the correct pipeline) for reference.
+        for (size_t i = 0; i < goblin::generated::GRACE_ANCHOR_COUNT; ++i)
         {
-            float gU, gV;
+            int ga; float gwx, gwz;
+            if (!goblin::grace_anchor_world((int)i, ga, gwx, gwz)) continue;
+            float gU, gV; world_to_mapspace_xy(gwx, gwz, dlc_ug, gU, gV);
+            proj::Px gp = proj::project_screen(gU, gV, view, realWd, realHd);
+            if (gp.x < -8 || gp.y < -8 || gp.x > realWd + 8 || gp.y > realHd + 8) continue;
+            fg->AddCircleFilled(ImVec2(gp.x, gp.y), 4.f, IM_COL32(40, 220, 255, 200));
+        }
+        int pa = -1, pgx = -1, pgz = -1; float pwx = 0, pwz = 0;
+        const bool okp = goblin::get_player_map_pos(pa, pwx, pwz, &pgx, &pgz);
+        float gU = 0, gV = 0; proj::Px p{};
+        if (okp)
+        {
             world_to_mapspace_xy(pwx, pwz, dlc_ug, gU, gV);
-            proj::Px p = proj::project_screen(gU, gV, view, io.DisplaySize.x, io.DisplaySize.y);
+            p = proj::project_screen(gU, gV, view, realWd, realHd);
             ImVec2 q(p.x, p.y);
             fg->AddCircleFilled(q, 11.f, IM_COL32(255, 0, 255, 255));
             fg->AddCircle(q, 11.f, IM_COL32(0, 0, 0, 220), 0, 2.f);
             fg->AddText(ImVec2(q.x + 14, q.y - 7), IM_COL32(255, 0, 255, 255), "PLAYER");
         }
+        char hud[320];
+        std::snprintf(hud, sizeof(hud),
+                      "[PLR] open_grp=%d ug=%d ok=%d | proj_area=%d projTile=(%d,%d)\n"
+                      "world=(%.0f,%.0f) map=(%.0f,%.0f) px=(%.0f,%.0f)  (cyan=grace anchors)",
+                      open_grp, (int)dlc_ug, okp, pa, pgx, pgz, pwx, pwz, gU, gV, p.x, p.y);
+        fg->AddRectFilled(ImVec2(12, 88), ImVec2(700, 132), IM_COL32(10, 10, 16, 230), 4.f);
+        fg->AddRect(ImVec2(12, 88), ImVec2(700, 132), IM_COL32(255, 0, 255, 255), 4.f);
+        fg->AddText(ImVec2(20, 96), IM_COL32(255, 255, 255, 255), hud);
     }
 
     // The DLC-UG eyeball rotates about the open group's world centroid. Compute it over
