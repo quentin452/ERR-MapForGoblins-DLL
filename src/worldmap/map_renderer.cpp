@@ -286,8 +286,21 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     const bool dbg_radius = goblin::config::clusterDebugRadius && have_player;
     if (dbg_radius)
     {
+        // The markers project area-12/DLC underground to the unified frame
+        // (conv_underground=true); get_player_map_pos returns RAW underground coords, so
+        // reproject the player the SAME way — else the player marker + rings land off-map
+        // on an underground page (the markers are fine; only the raw player wasn't).
+        float vwx = pwx, vwz = pwz;
+        if (!overworld_page && player_gx >= 0)
+        {
+            float plx = pwx - player_gx * 256.0f, plz = pwz - player_gz * 256.0f;
+            int ga;
+            goblin::marker_world_pos((uint8_t)player_area, (uint8_t)player_gx,
+                                     (uint8_t)player_gz, plx, plz, ga, vwx, vwz,
+                                     /*conv_underground=*/true);
+        }
         float gU, gV;
-        world_to_mapspace_xy(pwx, pwz, dlc_ug, gU, gV);
+        world_to_mapspace_xy(vwx, vwz, dlc_ug, gU, gV);
         proj::Px pp = proj::project_screen(gU, gV, view, realW, realH);
         const ImVec2 ppx(pp.x, pp.y);
         // Near/far radius rings around the player — drawn on BOTH pages now (same world
@@ -296,7 +309,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         {
             auto ring_px = [&](float r) {
                 float u, v;
-                world_to_mapspace_xy(pwx + r, pwz, dlc_ug, u, v);
+                world_to_mapspace_xy(vwx + r, vwz, dlc_ug, u, v);
                 proj::Px e = proj::project_screen(u, v, view, realW, realH);
                 return std::fabs(e.x - pp.x);
             };
