@@ -30,6 +30,10 @@ struct Marker
     // atlas is loaded and the key resolves, the marker draws as that icon; otherwise it
     // falls back to a coloured circle.
     const char *icon_key = nullptr;
+    // Map-fragment discovery flag for this marker's tile (goblin::map_fragment_flag).
+    // 0 = no fragment gate. When config::requireMapFragments is on, the renderer hides
+    // the marker until this event flag is set (player found the area's map fragment).
+    int fragment_flag = 0;
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the

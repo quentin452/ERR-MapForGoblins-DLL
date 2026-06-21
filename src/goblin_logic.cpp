@@ -43,6 +43,15 @@ static int GetMapFlagFromTile(MapTile location)
     return 0;
 }
 
+// Map-fragment discovery flag for a tile — overlay port of the native gate (GetMapFragment
+// sets row.eventFlagId to this, so the game shows the icon only once the flag is set). The
+// per-paramId ExceptionList overrides aren't applied here (no rowId at the marker layer);
+// the tile table covers the overwhelming majority. 0 = tile needs no fragment.
+int goblin::map_fragment_flag(int area, int gx, int gz)
+{
+    return GetMapFlagFromTile(MapTile(area, gx, gz));
+}
+
 // Region name for a cluster tile, via the map-fragment grouping (the same tile→
 // fragment map used for fragment-eviction). Coarse (~26 regions) — enough to label
 // a cluster "Leyndell (507)" instead of a bare count. "" if the tile maps nowhere.

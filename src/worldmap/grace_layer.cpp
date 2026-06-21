@@ -3,6 +3,7 @@
 #include "category_meta.hpp" // category_color
 #include "goblin_inject.hpp" // goblin::live_graces / marker_world_pos / ui::category_visible
 #include "goblin_map_data.hpp" // Category::WorldGraces
+#include "goblin_logic.hpp"    // map_fragment_flag
 
 namespace goblin::worldmap
 {
@@ -40,8 +41,9 @@ const std::vector<Marker> &GraceLayer::markers() const
         int pname = -1;
         int ckey = goblin::marker_cluster_key(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ,
                                               &pname);
+        int frag = goblin::map_fragment_flag(e.areaNo, e.gridXNo, e.gridZNo);
         cache_.push_back(Marker{wx, wz, grp, (int)e.areaNo, gc, ckey, pname, e.textId,
-                                category_color(gc), "show_graces"});
+                                category_color(gc), "show_graces", frag});
     }
     return cache_;
 }

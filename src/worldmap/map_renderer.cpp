@@ -347,6 +347,11 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
         {
             if (m.group != open_grp)
                 continue; // draw only the open map group
+            // Fragment gate (overlay port of the native eventFlagId gate): when on, hide
+            // a marker until its tile's map-fragment discovery flag is set.
+            if (goblin::config::requireMapFragments && m.fragment_flag &&
+                !goblin::ui::read_event_flag((uint32_t)m.fragment_flag))
+                continue;
             float gU, gV;
             world_to_mapspace(m, dlc_ug, gU, gV);
             proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
