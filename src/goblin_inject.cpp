@@ -841,7 +841,7 @@ static void resolve_world_chr_man()
 // correct offsets. Caller logs the result OUTSIDE the SEH frame.
 struct PlayerProbe
 {
-    void *wcm, *player, *subA;      // [static], [wcm+10EF8], [player+0]
+    void *wcm, *player, *subA;      // [static], [wcm+0x1e508], [player+0]
     float a[3]; bool a_ok;          // candidate A: global = [..+0]+6B0/6B4/6B8
     void *physMod;                  // candidate B physics module
     float b[3]; bool b_ok;          // candidate B: pCoordAdr = [[[[[WCM]+1E508]+58]+10]+190]+68
@@ -856,8 +856,10 @@ static void probe_player_seh(void **wcm_static, PlayerProbe *pr)
         auto *wcm = *reinterpret_cast<uint8_t **>(wcm_static);
         pr->wcm = wcm;
         if (!wcm) return;
-        // Candidate A: WorldChrMan + LocalPlayerOffset(0x10EF8) + [+0] + 0x6B0..
-        auto *player = *reinterpret_cast<uint8_t **>(wcm + 0x10EF8);
+        // LIVE LocalPlayer field = WorldChrMan + 0x1e508 (RE ec5586d: the old
+        // +0x10EF8 drifted dead → null underground; +0x1e508 is what the engine's
+        // own map-point builder reads).
+        auto *player = *reinterpret_cast<uint8_t **>(wcm + 0x1e508);
         pr->player = player;
         if (player)
         {
@@ -928,21 +930,48 @@ static void resolve_player_map_pos_statics()
                  (void *)g_mapid_slot, (void *)g_mappos_mgr_slot);
 }
 
-struct MapPosProbe { int area, gx, gz; float lx, lz; bool ok; };
-static void probe_map_pos_seh(uintptr_t mapid_slot, uintptr_t mgr_slot, MapPosProbe *pr)
+struct MapPosProbe { int area, gx, gz; float lx, lz; bool ok; bool from_phys; };
+static void probe_map_pos_seh(uintptr_t mapid_slot, uintptr_t mgr_slot, void **wcm_static,
+                              MapPosProbe *pr)
 {
     pr->ok = false;
+    pr->from_phys = false;
     __try
     {
         auto *singleton = *reinterpret_cast<uint8_t **>(mapid_slot);
-        auto *mgr = *reinterpret_cast<uint8_t **>(mgr_slot);
-        if (!singleton || !mgr) return;
+        if (!singleton) return;
         uint32_t mid = *reinterpret_cast<uint32_t *>(singleton + 0x2c);
         pr->area = (mid >> 24) & 0xff;
-        pr->gx   = (mid >> 16) & 0xff;
+        pr->gx   = (mid >> 16) & 0xff;   // tile from MapId — reliable even underground
         pr->gz   = (mid >> 8)  & 0xff;
-        pr->lx = *reinterpret_cast<float *>(mgr + 0x70);  // block-local X
-        pr->lz = *reinterpret_cast<float *>(mgr + 0x74);  // block-local Z (+0x78 = height)
+        // Candidate A (RE ec5586d, robust + valid underground): the LIVE player physics
+        // Vec via WorldChrMan+0x1e508 → +0x58 → +0x10 → +0x190 → +0x68 (X@+0, Z@+8 —
+        // NOT +4 = height). This is the exact source the engine's map-point builder uses,
+        // so it works on every page (the fix for underground).
+        bool phys_ok = false;
+        if (wcm_static)
+            if (auto *wcm = *reinterpret_cast<uint8_t **>(wcm_static))
+            if (auto *player = *reinterpret_cast<uint8_t **>(wcm + 0x1e508))
+            if (auto *a = *reinterpret_cast<uint8_t **>(player + 0x58))
+            if (auto *b = *reinterpret_cast<uint8_t **>(a + 0x10))
+            if (auto *c = *reinterpret_cast<uint8_t **>(b + 0x190))
+            {
+                pr->lx = *reinterpret_cast<float *>(c + 0x68 + 0x0);
+                pr->lz = *reinterpret_cast<float *>(c + 0x68 + 0x8);
+                phys_ok = true;
+            }
+        if (phys_ok)
+            pr->from_phys = true;
+        else if (auto *mgr = *reinterpret_cast<uint8_t **>(mgr_slot))
+        {
+            // Fallback = the resolved manager (CSWorldGeomMan, shared with goblin_collected):
+            // a 2D block-local X@+0x70 / Z@+0x74 — correct OVERWORLD, but reads the block
+            // anchor (origin) underground. Hence Candidate A above is preferred.
+            pr->lx = *reinterpret_cast<float *>(mgr + 0x70);
+            pr->lz = *reinterpret_cast<float *>(mgr + 0x74);
+        }
+        else
+            return;
         pr->ok = true;
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -953,9 +982,20 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
 {
     if (!g_mappos_tried) resolve_player_map_pos_statics();
     if (!g_mapid_slot || !g_mappos_mgr_slot) return false;
+    if (!g_wcm_tried) resolve_world_chr_man();   // Candidate-A physics chain needs WCM
     MapPosProbe pr{};
-    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
+    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, g_wcm_static, &pr);
     if (!pr.ok) return false;
+    // One-shot: confirm the underground source in-game (phys = Candidate A live player,
+    // else the manager-anchor fallback that reads origin underground).
+    static bool s_logged = false;
+    if (!s_logged)
+    {
+        s_logged = true;
+        spdlog::info("[PLAYER-MAPPOS] area={} tile=({},{}) local=({:.1f},{:.1f}) src={}",
+                     pr.area, pr.gx, pr.gz, pr.lx, pr.lz,
+                     pr.from_phys ? "phys+0x1e508" : "mgr-fallback");
+    }
     // If the player is inside a dungeon that PROJECTS to the overworld (legacy
     // dungeons like Leyndell/Stormveil, catacombs…), project their position the same
     // way the markers are projected — else the player reads the dungeon's native
@@ -1001,7 +1041,7 @@ bool goblin::player_in_dlc()
     if (!g_mappos_tried) resolve_player_map_pos_statics();
     if (!g_mapid_slot || !g_mappos_mgr_slot) return false;
     MapPosProbe pr{};
-    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
+    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, g_wcm_static, &pr);  // area only; chain optional
     if (!pr.ok) return false;
     if (pr.area >= 40 && pr.area <= 43) return true;       // DLC underground (native)
     int tab = tab_for_tile(pr.area, pr.gx, pr.gz);          // DLC overworld/under → 6800-6999
