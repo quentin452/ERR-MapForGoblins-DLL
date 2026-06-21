@@ -8,6 +8,8 @@
 #include "goblin_collected.hpp"      // is_original_row_collected (rune/ember graying)
 #include "goblin_kindling.hpp"       // is_row_collected (kindling graying)
 #include "goblin_major_regions.hpp"  // MAJOR_REGION_ANCHORS (region labels)
+#include "goblin_quest_gates.hpp"    // QUEST_GATES (quest-NPC gating)
+#include "goblin_map_data.hpp"       // Category enum (WorldQuestNPC)
 
 #include <string>
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
@@ -474,6 +476,28 @@ void draw_region_labels(ImDrawList *fg, int open_grp, bool dlc_ug,
         fg->AddText(font, fontSize, tp, col, a.name);
     }
 }
+
+// Quest-aware gating: a WorldQuestNPC marker is hidden while its questline is
+// inactive (NONE of its quest-active flags is set). Mirrors the legacy native gate
+// (refresh_quest_npc_eviction, goblin_inject.cpp). An NPC with no QuestGate entry is
+// always shown. Gate join is by name_id (== QuestGate.nameId).
+bool quest_npc_gated_out(const Marker &m)
+{
+    using namespace goblin::generated;
+    if (!goblin::config::questNpcQuestAware) return false;
+    if (m.category != (int)Category::WorldQuestNPC) return false;
+    // Cold-API safety: until AlwaysOn (6001) reads true the flag manager isn't warm —
+    // never blank every quest NPC on map open. Show as-is.
+    if (!goblin::ui::read_event_flag(6001)) return false;
+    for (size_t i = 0; i < QUEST_GATE_COUNT; ++i)
+        if (QUEST_GATES[i].nameId == (uint32_t)m.name_id)
+        {
+            for (uint32_t f : QUEST_GATES[i].flags)
+                if (f && goblin::ui::read_event_flag(f)) return false; // quest active → show
+            return true; // gate found, none of its flags active → hide
+        }
+    return false; // no gate for this NPC → always show
+}
 } // namespace
 
 void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_texture, float mouseX,
@@ -557,6 +581,9 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // discover_flag is set only on grace markers; read live so it updates the
             // moment the player rests at a grace.
             if (m.discover_flag && goblin::ui::read_event_flag((uint32_t)m.discover_flag))
+                continue;
+            // Quest-aware gating: hide a quest-NPC whose questline is currently inactive.
+            if (quest_npc_gated_out(m))
                 continue;
             float gU, gV;
             world_to_mapspace(m, dlc_ug, gU, gV);
