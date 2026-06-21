@@ -79,6 +79,13 @@ void build_buckets()
                  category_color(c), category_icon_key(c), frag,
                  e.row_id, (int)d.clearedEventFlagId, collected_flag};
         m.secondary_flag = secondary_story_flag(d.areaNo, d.gridXNo, d.gridZNo);
+        // Lot-backed loot (for anonymous_loot spoiler mode). Pieces/kindling are
+        // geom/SFX-tracked, never a lot — exclude them (mirrors goblin_inject's is_lot).
+        const bool piece = e.category == gen::Category::ReforgedRunePieces ||
+                           e.category == gen::Category::ReforgedEmberPieces ||
+                           e.category == gen::Category::LootMaterialNodes;
+        const bool kind = e.category == gen::Category::WorldKindlingSpirits;
+        m.lot_backed = !piece && !kind && e.lotId != 0 && e.lotType != 0;
         g_buckets[c].push_back(m);
     }
 }

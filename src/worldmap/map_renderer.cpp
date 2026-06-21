@@ -148,6 +148,20 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, f
         if (done && goblin::config::hideCollected)
             return; // legacy-style: hide collected/cleared entirely
     }
+    // Spoiler-free (anonymous_loot): lot-backed loot draws as a neutral gray "?" disc,
+    // hiding the item's icon/colour. Collected ones still gray; category gate unchanged.
+    if (goblin::config::anonymousLoot && m.lot_backed)
+    {
+        float cr = half * 0.5f;
+        const ImU32 fill = done ? IM_COL32(120, 120, 120, 120) : IM_COL32(155, 155, 160, 215);
+        fg->AddCircleFilled(p, cr, fill);
+        fg->AddCircle(p, cr, IM_COL32(0, 0, 0, done ? 120 : 220), 0, 1.5f);
+        const char *q = "?";
+        ImVec2 ts = ImGui::CalcTextSize(q);
+        fg->AddText(ImVec2(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f),
+                    IM_COL32(25, 25, 30, done ? 150 : 255), q);
+        return;
+    }
     const bool red = !done && redify_boss(m);
     const ImU32 tint = done ? IM_COL32(150, 150, 150, 130)
                             : (red ? IM_COL32(255, 70, 70, 255) : IM_COL32(255, 255, 255, 255));
@@ -214,8 +228,11 @@ void hover_test(Hover &h, ImVec2 mouse, ImVec2 p, float r, const std::string &te
 // like the native map. Either may be empty; empty if both are.
 std::string marker_label(const Marker &m)
 {
-    std::string name = goblin::lookup_text_utf8(m.name_id);
     std::string loc = goblin::lookup_text_utf8(m.loc_pname);
+    // Spoiler-free: don't leak the item name — just "?" (+ its location, like native).
+    if (goblin::config::anonymousLoot && m.lot_backed)
+        return loc.empty() ? std::string("?") : ("?\n" + loc);
+    std::string name = goblin::lookup_text_utf8(m.name_id);
     if (name.empty()) return loc;
     if (loc.empty()) return name;
     return name + "\n" + loc; // item name, then its location on the next line

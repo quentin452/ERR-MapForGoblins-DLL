@@ -50,6 +50,11 @@ struct Marker
     // the story flag fires — the renderer HIDES it while the flag is unset (inverse of
     // discover_flag). 0 = no gate. Set only by MapEntryLayer.
     int secondary_flag = 0;
+    // Lot-backed loot marker (its item comes from an ItemLotParam row). Drives
+    // anonymous_loot spoiler-free mode: when that config is on, this marker draws as a
+    // gray "?" with a generic label instead of its real icon/name. Set only by
+    // MapEntryLayer (false for pieces/kindling/bosses/graces — never lot-backed loot).
+    bool lot_backed = false;
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the

@@ -617,6 +617,16 @@ namespace
             ImGui::Checkbox("Red boss markers (tint boss icons red)",
                             &goblin::config::redifyBossIcons);
 
+            // Spoiler-free loot (overlay port of anonymous_loot; live, persists via
+            // "Save to INI"). Lot-backed loot markers draw as a gray "?" with a generic
+            // label instead of the real item icon/name.
+            ImGui::Checkbox("Spoiler-free loot (gray \"?\" instead of the item)",
+                            &goblin::config::anonymousLoot);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Every loot marker shows a gray \"?\" and only its location,\n"
+                                  "hiding the real item (useful with randomizers). Markers still\n"
+                                  "gray out when collected; category show/hide is unaffected.");
+
             // Overlay marker scale (live preview; persists via "Save to INI"). Final
             // size = resolution-relative base × master × per-type scale.
             if (ImGui::CollapsingHeader("Marker scale (overlay map)"))
