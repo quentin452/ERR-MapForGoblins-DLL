@@ -391,6 +391,25 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
             for (int i : idxs) { sx += items[i].p.x; sy += items[i].p.y; }
             c = ImVec2(sx / idxs.size(), sy / idxs.size());
         }
+        // DEBUG (cluster_debug_radius): draw the pile ANCHOR + lines to every member +
+        // the location name → SEE where a pile is placed vs its markers. Green = placed at
+        // its grace anchor; red = anchor missing → member centroid (the drift/mis-place
+        // cases, e.g. the Chapel cluster + underground miscalc). Lines that fan way out =
+        // the pile sits far from its members.
+        if (goblin::config::clusterDebugRadius)
+        {
+            const ImU32 dcol = has_anchor ? IM_COL32(40, 230, 170, 170)
+                                          : IM_COL32(255, 70, 70, 220);
+            for (int i : idxs)
+                fg->AddLine(c, items[i].p, dcol, 1.0f);
+            fg->AddCircleFilled(c, 4.f, dcol);
+            fg->AddCircle(c, 4.f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
+            std::string nm = goblin::lookup_text_utf8(items[idxs[0]].m->loc_pname);
+            char db[96];
+            std::snprintf(db, sizeof(db), "%s%s [%d]", has_anchor ? "" : "CENTROID ",
+                          nm.c_str(), (int)idxs.size());
+            fg->AddText(ImVec2(c.x + 7, c.y + 5), dcol, db);
+        }
         // Pile count = UNCOLLECTED members (depletion), so the glyph reflects progress
         // instead of the static total. When collected_graying is off, show the full
         // total. marker_done = the same collected/cleared predicate used for graying.

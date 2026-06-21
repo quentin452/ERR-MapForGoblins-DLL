@@ -641,6 +641,35 @@ int goblin::region_name_pname(uint8_t area, uint8_t gx, uint8_t gz, float posX, 
         if (inside)
             return r.text_id; // first match = smallest = most specific
     }
+    // [REGION] frame diag: when no volume contains, log the marker pos vs the NEAREST
+    // same-map volume + the delta — a consistent offset reveals a frame mismatch.
+    if (goblin::config::debugLogging)
+    {
+        static int s_diag = 0;
+        if (s_diag++ < 40)
+        {
+            int bi = -1; float bd = 1e30f;
+            for (size_t i = 0; i < gen::NAME_REGION_COUNT; ++i)
+            {
+                const auto &r = gen::NAME_REGIONS[i];
+                if (r.area != area || r.gx != gx || r.gz != gz) continue;
+                float dx = posX - r.px, dz = posZ - r.pz, d = dx * dx + dz * dz;
+                if (d < bd) { bd = d; bi = (int)i; }
+            }
+            if (bi >= 0)
+            {
+                const auto &r = gen::NAME_REGIONS[bi];
+                spdlog::info("[REGION] MISS area={} tile=({},{}) markerPos=({:.1f},{:.1f}) | "
+                             "nearestVol px=({:.1f},{:.1f}) half=({:.1f},{:.1f})/r={:.1f} tid={} "
+                             "delta=({:.1f},{:.1f})", area, gx, gz, posX, posZ,
+                             r.px, r.pz, r.half_w, r.half_d, r.radius, r.text_id,
+                             posX - r.px, posZ - r.pz);
+            }
+            else
+                spdlog::info("[REGION] MISS area={} tile=({},{}) markerPos=({:.1f},{:.1f}) | NO volume for this map",
+                             area, gx, gz, posX, posZ);
+        }
+    }
     return 0;
 }
 
