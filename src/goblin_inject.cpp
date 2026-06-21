@@ -146,62 +146,14 @@ static bool project_dungeon_row_to_overworld(
     return true;
 }
 
-// State for runtime toggle (ERSC-hosting workaround). On hotkey press the
-// pointers stored on the param-res-cap are swapped between vanilla and
-// expanded values. set_param_injection_active() is a no-op until
-// inject_map_entries() has populated these.
-static uint8_t **g_file_ptr_ref = nullptr;
-static int64_t *g_file_size_ref = nullptr;
-static uint8_t *g_vanilla_param_file = nullptr;
-static int64_t g_vanilla_param_size = 0;
-static uint8_t *g_expanded_param_file = nullptr;
-static int64_t g_expanded_param_size = 0;
-static bool g_param_injection_active = false;
 
 // Data pointers of MFG-injected WorldMapPointParam rows in the expanded table.
 // Used by sanitize_injected_textids() (run after the FMG is built) to strip
 // textIds that don't resolve to a real string.
 static std::vector<uint8_t *> g_injected_row_ptrs;
 
-// Live-loot: lot-backed injected rows. refresh_loot_from_itemlot() reads the
-// LIVE ItemLotParam getItemFlagId for each and rewrites textDisableFlagId1 so
-// the marker hides on the actual light-point pickup for the loaded regulation
-// (Randomizer-compatible). g_lot_backed_set lets apply_flag_or_pairs skip them.
-struct LotBackedRow { uint8_t *ptr; uint32_t lotId; uint8_t lotType; };
-static std::vector<LotBackedRow> g_lot_backed_rows;
 static std::set<uint8_t *> g_lot_backed_set;
 
-// Row IDs of Leyndell Ashen Capital (m35) markers — gated on StoryErdtreeOnFire
-// by apply_map_logic so they only appear once the Erdtree has burned.
-static std::set<uint64_t> g_ashen_rows;
-
-// Data pointers of Leyndell Royal Capital (m11_00, areaNo 11) markers — the
-// INVERSE of the ashen gate: hidden (areaNo 99) once StoryErdtreeOnFire sets,
-// because the Royal Capital is consumed by the Ashen Capital after the burn.
-// Park-only (burn is permanent → never restore); refresh_royal_eviction()
-// applies it after fragment-eviction so it wins. Clustered royal rows are NOT
-// registered (the cluster owns their areaNo).
-static std::vector<uint8_t *> g_royal_rows;
-
-// Thread 1 v1.5 — quest-aware quest-NPC gating. Each registered WorldQuestNPC row
-// carries its NPC's quest-active flags (from goblin_quest_gates, joined from the
-// MIT EldenRingQuestLog data). refresh_quest_npc_eviction parks it (areaNo 99)
-// while NONE of those flags is set (quest not active) and restores it when active.
-// Opt-in (config questNpcQuestAware); coordinates with section/category via
-// is_section_hidden_ptr on restore. Clustered rows excluded.
-struct QuestRow { uint8_t *ptr; uint8_t orig_area; uint32_t flags[4]; };
-static std::vector<QuestRow> g_quest_rows;
-
-static const goblin::generated::QuestGate *lookup_quest_gate(uint32_t nameId)
-{
-    const auto *a = goblin::generated::QUEST_GATES;
-    size_t lo = 0, hi = goblin::generated::QUEST_GATE_COUNT;
-    while (lo < hi) { size_t m = (lo + hi) / 2;
-        if (a[m].nameId < nameId) lo = m + 1; else hi = m; }
-    if (lo < goblin::generated::QUEST_GATE_COUNT && a[lo].nameId == nameId)
-        return &a[lo];
-    return nullptr;
-}
 
 // ─── Per-section runtime visibility (in-game family-group toggle) ─────
 //
@@ -2006,36 +1958,6 @@ bool goblin::inject_tutorial_popup_rows()
 }
 
 
-// ─── Runtime param toggle (drives the F10 personal show/hide) ────────
-
-void goblin::set_param_injection_active(bool active)
-{
-    GOBLIN_BENCH("toggle.param_swap");
-    if (!g_file_ptr_ref)
-    {
-        spdlog::warn("[TOGGLE] Param swap state not initialized — inject_map_entries() didn't run");
-        return;
-    }
-    if (active == g_param_injection_active)
-        return;
-    if (active)
-    {
-        *g_file_ptr_ref = g_expanded_param_file;
-        *g_file_size_ref = g_expanded_param_size;
-    }
-    else
-    {
-        *g_file_ptr_ref = g_vanilla_param_file;
-        *g_file_size_ref = g_vanilla_param_size;
-    }
-    g_param_injection_active = active;
-    spdlog::info("[TOGGLE] WorldMapPointParam -> {}", active ? "EXPANDED" : "VANILLA");
-}
-
-bool goblin::is_param_injection_active()
-{
-    return g_param_injection_active;
-}
 
 // (The old Summon-message path (post_summon) was removed: it depended on five
 // hardcoded RVAs (0x763360/0x11A3E0/0x843860/0x844060/0x843910) that a game
@@ -2508,11 +2430,6 @@ const std::vector<uint8_t *> &goblin::injected_row_ptrs()
     return g_injected_row_ptrs;
 }
 
-bool goblin::is_ashen_capital_row(uint64_t row_id)
-{
-    return g_ashen_rows.count(row_id) != 0;
-}
-
 // ── Either-flag (OR) kill indicators ─────────────────────────────────
 // Some quest fights have two mutually-exclusive completion flags (one per
 // story branch) and no single "battle over" flag. Example: the academy
@@ -2552,134 +2469,6 @@ static bool orp_flag_set(uint32_t flag_id)
     return g_orp_is_flag(event_man, &id);
 }
 
-// ── Fragment-eviction registry ───────────────────────────────────────
-// areaNo lives at byte offset 0x20 (uint8) of WORLD_MAP_POINT_PARAM_ST — same
-// offset hide_icon / collected use. 99 = off-page (no map-open cost); orig_area
-// = the real page (60) to restore when the gate flag turns on.
-struct FragGatedRow { uint8_t *ptr; uint8_t orig_area; uint32_t flag; };
-static std::vector<FragGatedRow> g_frag_rows;
-
-void goblin::register_fragment_gated_row(void *param_data, uint8_t original_area,
-                                         uint32_t gate_flag)
-{
-    if (!param_data || gate_flag == 0) return;
-    g_frag_rows.push_back(
-        {reinterpret_cast<uint8_t *>(param_data), original_area, gate_flag});
-}
-
-int goblin::refresh_fragment_eviction()
-{
-    GOBLIN_BENCH("refresh.fragment_eviction");
-    // Safety probe: AlwaysOn (6001) is ER's "always set" flag. If the flag API
-    // can't even read it as true, the IsEventFlag resolution is wrong/unreliable
-    // — parking would hide the WHOLE map. Bail out (restore everything to its
-    // page, defer to the game's native eventFlagId gating) until the API is fixed.
-    bool api_ok = orp_flag_set(6001);
-    int evicted = 0;
-    for (auto &r : g_frag_rows)
-    {
-        bool discovered = api_ok ? orp_flag_set(r.flag) : true;
-        if (discovered)
-        {
-            // Don't un-hide a row a section toggle is keeping hidden (the
-            // cold-API safety would otherwise stomp the user's section choice).
-            if (r.ptr[0x20] == 99 && !goblin::is_section_hidden_ptr(r.ptr))
-                r.ptr[0x20] = r.orig_area;  // discovered → restore
-        }
-        else
-        {
-            if (r.ptr[0x20] != 99) r.ptr[0x20] = 99;            // undiscovered → park
-            evicted++;
-        }
-    }
-    static int last_parked = -1;
-    if (evicted != last_parked)
-    {
-        last_parked = evicted;
-        spdlog::info("[FRAG-EVICT] {} gate-flagged rows; {} parked off-page (api_ok={})",
-                     g_frag_rows.size(), evicted, api_ok);
-    }
-    return evicted;
-}
-
-// Thread 4 — inverse of the ashen gate. Once StoryErdtreeOnFire (flag 118) sets,
-// the Leyndell Royal Capital is consumed by the Ashen Capital, so its markers
-// must vanish. Park-only (the burn is permanent → never restore). Must run AFTER
-// refresh_fragment_eviction so the hide wins over a fragment "discovered" restore.
-int goblin::refresh_royal_eviction()
-{
-    GOBLIN_BENCH("refresh.royal_eviction");
-    if (g_royal_rows.empty()) return 0;
-    // Safety: only act when the flag API is warm (AlwaysOn 6001 reads true), else
-    // leave royal rows to their normal gating — never blank on a cold API.
-    if (!orp_flag_set(6001)) return 0;
-    if (!orp_flag_set(118 /* goblin::flag::StoryErdtreeOnFire */)) return 0;  // not burned → visible
-    int parked = 0;
-    for (auto *p : g_royal_rows)
-        if (p[0x20] != 99) { p[0x20] = 99; parked++; }
-    static bool logged = false;
-    if (!logged && parked)
-    {
-        logged = true;
-        spdlog::info("[ROYAL-EVICT] Erdtree burned → parked {} Royal Capital rows",
-                     g_royal_rows.size());
-    }
-    return parked;
-}
-
-// Thread 1 v1.5 — quest-aware quest-NPC gating. Park a registered quest-NPC row
-// while its questline is inactive (none of its flags set), restore when active.
-// Opt-in. Runs after section/category apply in the loop; respects them on restore.
-int goblin::refresh_quest_npc_eviction()
-{
-    GOBLIN_BENCH("refresh.quest_npc_eviction");
-    if (g_quest_rows.empty()) return 0;
-    // Track enabled-edge so disabling the toggle (e.g. live from the overlay)
-    // restores every row we parked instead of leaving it stuck off-page.
-    static bool was_enabled = false;
-    if (!goblin::config::questNpcQuestAware)
-    {
-        if (!was_enabled) return 0;            // already idle, nothing to undo
-        int restored = 0;
-        for (auto &r : g_quest_rows)
-            if (r.ptr[0x20] == 99 && !goblin::is_section_hidden_ptr(r.ptr))
-            { r.ptr[0x20] = r.orig_area; restored++; }
-        was_enabled = false;
-        return restored;
-    }
-    // Cold-API safety: if AlwaysOn (6001) can't be read true, leave rows as-is —
-    // never blank every quest NPC because the flag API isn't warm yet.
-    if (!orp_flag_set(6001)) return 0;
-    was_enabled = true;
-    int changed = 0;
-    for (auto &r : g_quest_rows)
-    {
-        bool active = false;
-        for (uint32_t f : r.flags)
-            if (f && orp_flag_set(f)) { active = true; break; }
-        if (!active)
-        {
-            if (r.ptr[0x20] != 99) { r.ptr[0x20] = 99; changed++; }
-        }
-        else if (r.ptr[0x20] == 99 && !goblin::is_section_hidden_ptr(r.ptr))
-        {
-            r.ptr[0x20] = r.orig_area; changed++;
-        }
-    }
-    // Log the parked total on change (how many of the registered/covered quest-NPC
-    // rows are currently hidden because their questline is inactive).
-    int parked = 0;
-    for (auto &r : g_quest_rows) if (r.ptr[0x20] == 99) parked++;
-    static int last_parked = -1;
-    if (parked != last_parked)
-    {
-        last_parked = parked;
-        spdlog::info("[QUEST-NPC] {} of {} covered rows parked (inactive questline)",
-                     parked, g_quest_rows.size());
-    }
-    return changed;
-}
-
 // Part 2: per-questline "unfinishable" cache. One byte per QUEST_BROWSER entry,
 // indexed by array order (same index the overlay passes). Written here on the
 // watcher thread, read by ui::quest_unfinishable() on the render thread (a
@@ -2713,86 +2502,6 @@ bool goblin::ui::quest_unfinishable(size_t i)
 // (re-check captured flags so only PERSISTED ones are logged). Plain free
 // function so it matches the bool(*)(uint32_t) callback the capture tool takes.
 bool goblin::ui::read_event_flag(uint32_t id) { return orp_flag_set(id); }
-
-// Cluster depletion: when every flag-backed member of a cluster is collected, swap
-// the cluster icon to the green CLUSTER_DONE glyph (else keep teal). Only while the
-// clusters are SHOWN (collapsed); throttled (piles don't deplete fast). No RE —
-// iconId is a mutable param field, like the areaNo flips.
-int goblin::refresh_cluster_depletion()
-{
-    GOBLIN_BENCH("refresh.cluster_depletion");
-    if (!g_clustering_active || g_clusters_expanded.load()) return 0;
-    // DIAGNOSTIC: collapsed ⇒ EVERY member must be parked (areaNo 99). If any are
-    // SHOWN, something un-parks them after the COLLAPSED apply (real bug). If 0,
-    // the individual icons on the map are SPARSE markers (sub-threshold cells —
-    // never clustered, shown by design) or excluded categories, NOT cluster members.
-    {
-        int shown = 0;
-        for (const auto &m : g_cluster_members)
-            if (m.ptr[0x20] != 99) shown++;
-        static int last_shown = -1;
-        if (shown != last_shown)
-        {
-            last_shown = shown;
-            spdlog::info("[CLUSTER-CHECK] {} of {} members SHOWN while collapsed "
-                         "(should be 0; >0 = un-park bug, 0 = the loose icons are "
-                         "sub-threshold/excluded, not members)",
-                         shown, g_cluster_members.size());
-        }
-    }
-    if (!orp_flag_set(6001)) return 0; // cold API → never mis-deplete
-    using clock = std::chrono::steady_clock;
-    static clock::time_point last{};
-    auto now = clock::now();
-    if (now != clock::time_point{} && now - last < std::chrono::milliseconds(1000))
-        return 0;
-    last = now;
-    int changed = 0, with_flags = 0, depleted_n = 0;
-    for (auto &c : g_clusters)
-    {
-        if (c.members.empty()) continue; // no collectible members → never "done"
-        with_flags++;
-        // Count collected members — by event flag (plain loot) OR by piece/kindling
-        // row-id tracking (Reforged items have no event flag). Drives both the
-        // done-icon swap and the live REMAINING count.
-        int collected_n = 0;
-        for (const auto &m : c.members)
-        {
-            bool got = (m.flag && orp_flag_set(m.flag)) ||
-                       (m.is_piece && goblin::collected::is_row_collected(m.row_id)) ||
-                       (m.is_kindling && goblin::kindling::is_row_collected(m.row_id));
-            if (got) collected_n++;
-        }
-        bool depleted = (collected_n == static_cast<int>(c.members.size()));
-        if (depleted) depleted_n++;
-        uint16_t want = depleted ? goblin::generated::CLUSTER_DONE_ICON_ID
-                                 : goblin::generated::CLUSTER_ICON_ID;
-        auto *st = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(c.ptr);
-        if (st->iconId != want) { st->iconId = want; changed++; }
-        // Bug fix: the label count was frozen at replan time (= TOTAL members, incl.
-        // already-collected loot), so it never went down as you looted. Show the
-        // live REMAINING = total - collected. count_textid encodes the total.
-        if (g_cluster_debug.load())
-        {
-            int total = c.count_textid - CLUSTER_TEXTID_BASE;
-            int remaining = total - collected_n;
-            if (remaining < 0) remaining = 0;
-            int want_tid = CLUSTER_TEXTID_BASE + std::min(remaining, CLUSTER_MAX_COUNT);
-            if (st->textId2 != want_tid) { st->textId2 = want_tid; changed++; }
-        }
-    }
-    // Diagnostic: log when the depleted count changes (and the startup state) so we
-    // can tell apart "no collect-flags captured" vs "swapped but icon not re-read".
-    static int last_depleted = -1;
-    if (depleted_n != last_depleted)
-    {
-        last_depleted = depleted_n;
-        spdlog::info("[CLUSTER-DEPLETE] {} clusters, {} with collect-flags, {} depleted, "
-                     "{} icon-swapped this pass", g_clusters.size(), with_flags,
-                     depleted_n, changed);
-    }
-    return changed;
-}
 
 // Per-category uncollected census — feeds the overlay's "<remaining>/<total>"
 // badge next to each category. Gated to "menu on-screen" + throttled to 1s so the
@@ -2994,113 +2703,6 @@ void goblin::diag_loot_flags(uint32_t lotId, uint8_t lotType, uint32_t baked, in
                  category, nameId, lotId, lotType, item2, lotwide, setstr(lotwide), baked,
                  setstr(baked), slots);
     per_cat[category]++;
-}
-
-// Reads each lot-backed marker's source ItemLotParam row from memory and sets
-// textDisableFlagId1 to the lot's current getItemFlagId. Because we read the
-// LOADED regulation (vanilla, Randomizer, any file mod), the marker hides on
-// the actual light-point pickup regardless of which item the lot now gives.
-// One-shot at init: the flag VALUE in a row is static post-load; the engine
-// then evaluates textDisableFlagId1 live every frame. See reference_cleared_badge
-// / the randomizer-compat research. Gated by config::liveLootFlags/Labels.
-void goblin::refresh_loot_from_itemlot()
-{
-    const bool do_flags  = goblin::config::liveLootFlags;
-    const bool do_labels = goblin::config::liveLootLabels;
-    const bool do_anon   = goblin::config::anonymousLoot;
-    if ((!do_flags && !do_labels && !do_anon) || g_lot_backed_rows.empty())
-        return;
-    GOBLIN_BENCH("map.live_loot.total");
-
-    LotReader lots;
-    lots.init();
-    if (!lots.ok())
-    {
-        spdlog::warn("[LIVE-LOOT] ItemLotParam not available — skipped");
-        return;
-    }
-    auto read_row = [&](uint32_t lot_id, uint8_t lot_type) { return lots.row(lot_id, lot_type); };
-
-    int updated = 0, relabeled = 0, not_found = 0, no_flag = 0;
-    for (auto &lr : g_lot_backed_rows)
-    {
-        RawItemLotRow *row = read_row(lr.lotId, lr.lotType);
-        if (!row) { not_found++; continue; }
-        auto *p = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(lr.ptr);
-
-        if (do_flags)
-        {
-            uint32_t flag = *reinterpret_cast<uint32_t *>(row->b + 0x80);  // lot-wide getItemFlagId
-            if (flag == 0)
-            {
-                // Fall back to the per-slot flag only for single-item lots
-                // (lotItemId02 @0x04 == 0), else a slot-1 award would hide the
-                // marker while other loot remains.
-                int32_t item2 = *reinterpret_cast<int32_t *>(row->b + 0x04);
-                if (item2 == 0)
-                    flag = *reinterpret_cast<uint32_t *>(row->b + 0x60);  // getItemFlagId01
-            }
-            if (flag)
-            {
-                // Hide the WHOLE marker on the live pickup flag. A loot marker
-                // carries the same disable flag on every populated text line
-                // (item line + location line; verified uniform across all
-                // lot-backed rows) — the engine only drops the icon once ALL
-                // its lines are disabled. Rewriting just slot 1 left the
-                // location line (slot 2) pinned to the stale baked flag, which
-                // never fires under a regulation that reassigns flags (the
-                // randomizer), so the marker never disappeared. Update every
-                // line that had a (non-zero) disable flag baked.
-                int *tids[8] = {&p->textId1, &p->textId2, &p->textId3, &p->textId4,
-                                &p->textId5, &p->textId6, &p->textId7, &p->textId8};
-                unsigned int *fls[8] = {&p->textDisableFlagId1, &p->textDisableFlagId2,
-                                        &p->textDisableFlagId3, &p->textDisableFlagId4,
-                                        &p->textDisableFlagId5, &p->textDisableFlagId6,
-                                        &p->textDisableFlagId7, &p->textDisableFlagId8};
-                for (int i = 0; i < 8; ++i)
-                    if (*tids[i] > 0 && *fls[i] != 0)
-                        *fls[i] = flag;
-                updated++;
-            }
-            else no_flag++;
-        }
-
-        if (do_anon)
-        {
-            // Spoiler-free mode: replace the item name with the generic
-            // localized label. Same slot guard as the live relabel below — only
-            // overwrite an actual item-name slot, never a location/enemy slot.
-            int32_t cur = p->textId1;
-            if (cur >= 50000000 && cur < 600000000 && cur != ANON_LABEL_TEXTID)
-            {
-                p->textId1 = ANON_LABEL_TEXTID;
-                relabeled++;
-            }
-        }
-        else if (do_labels)
-        {
-            // Relabel the item-name slot (textId1) to whatever the lot now
-            // gives. Guard: only touch textId1 if it already holds an
-            // item-name encoded id (50M..600M item bands) — never clobber a
-            // location (<50M) or enemy/npc (>=700M) slot. The encoded id maps
-            // into the full item-name space copied into PlaceName at init.
-            int32_t cur = p->textId1;
-            if (cur >= 50000000 && cur < 600000000)
-            {
-                int32_t item_id = *reinterpret_cast<int32_t *>(row->b + 0x00);  // lotItemId01
-                int32_t cat     = *reinterpret_cast<int32_t *>(row->b + 0x20);  // lotItemCategory01
-                int32_t enc = encode_live_item(item_id, cat);
-                if (item_id > 0 && enc > 0 && enc != cur)
-                {
-                    p->textId1 = enc;
-                    relabeled++;
-                }
-            }
-        }
-    }
-    spdlog::info("[LIVE-LOOT] {} hide-flags, {} relabels set from live ItemLotParam "
-                 "({} lots not found, {} no flag, {} lot-backed total)",
-                 updated, relabeled, not_found, no_flag, g_lot_backed_rows.size());
 }
 
 void goblin::menu_auto_toggle_loop()

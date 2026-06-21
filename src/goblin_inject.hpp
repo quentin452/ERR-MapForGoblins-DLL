@@ -157,48 +157,11 @@ namespace goblin
     // sanitize_injected_textids() after the FMG bank is built.
     const std::vector<uint8_t *> &injected_row_ptrs();
 
-    // True if this injected row is a Leyndell Ashen Capital (m35) marker, which
-    // apply_map_logic gates on StoryErdtreeOnFire (shows only after the burn).
-    bool is_ashen_capital_row(uint64_t row_id);
-
     // Rewrites rows baked with a primary completion flag to its alternative
     // once the alternative flag turns on (quest fights with two mutually-
     // exclusive outcome flags, e.g. the Sellen/Jerren academy battle).
     // Called periodically from the refresh loop.
     void apply_flag_or_pairs();
-
-    // Live-loot (config::liveLootFlags): read each loot marker's source
-    // ItemLotParam row from live memory and set textDisableFlagId1 to the
-    // lot's current getItemFlagId, so markers hide on the actual light-point
-    // pickup for the loaded regulation (Item/Enemy Randomizer compatible).
-    // One-shot, called once after inject_map_entries().
-    void refresh_loot_from_itemlot();
-
-    // Toggle the WorldMapPointParam swap between vanilla and expanded states.
-    // Used as an ERSC-hosting workaround: revert before host, re-apply after.
-    void set_param_injection_active(bool active);
-    bool is_param_injection_active();
-
-    // ── Fragment-eviction (map-open perf) ──────────────────────────────
-    // A row whose gating event flag (map-fragment / story flag) isn't set yet
-    // costs nothing to display but the game STILL processes it on every map
-    // open (the icon is merely hidden at draw time). Parking such a row off-page
-    // (areaNo = 99) removes it from the per-page open cost entirely, the same
-    // 1-byte trick collected/kindling use. apply_map_logic registers each
-    // gate-flagged goblin row here (except those collected/kindling already own
-    // areaNo for); refresh_fragment_eviction() — called from the refresh loop,
-    // where event flags are reliably readable — parks undiscovered rows and
-    // restores them (areaNo back to original) the moment their flag turns on.
-    void register_fragment_gated_row(void *param_data, uint8_t original_area,
-                                     uint32_t gate_flag);
-    int refresh_fragment_eviction();
-
-    // Thread 4: hide Leyndell Royal Capital (areaNo 11) markers once the Erdtree
-    // burns (StoryErdtreeOnFire). Inverse of the ashen gate; park-only. Call from
-    // the refresh loop AFTER refresh_fragment_eviction so the hide wins.
-    int refresh_royal_eviction();
-    int refresh_quest_npc_eviction();
-    int refresh_cluster_depletion();
 
     // Per-category uncollected census. Sweeps g_section_rows, buckets by category,
     // and caches "collectible total" + "remaining (uncollected)" per category for
