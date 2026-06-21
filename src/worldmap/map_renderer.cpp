@@ -528,10 +528,17 @@ void draw_region_labels(ImDrawList *fg, int open_grp, bool dlc_ug,
     for (size_t i = 0; i < MAJOR_REGION_ANCHOR_COUNT; ++i)
     {
         const MajorRegionAnchor &a = MAJOR_REGION_ANCHORS[i];
-        if (!region_in_group(a.area, open_grp))
+        // Project the anchor EXACTLY like a marker (LegacyConv) so legacy-area rows land
+        // right: Limgrave is stored as area 10 (Stormveil) + m10-local coords, underground
+        // as area 12 — both must project to their overworld/UG page, not be used raw.
+        int ga;
+        float wx, wz;
+        goblin::marker_world_pos(a.area, a.gx, a.gz, a.px, a.pz, ga, wx, wz,
+                                 /*conv_underground=*/true);
+        if (goblin::marker_group_from(a.area, ga) != open_grp)
             continue;
         float gU, gV;
-        world_to_mapspace_xy(a.wx, a.wz, dlc_ug, gU, gV);
+        world_to_mapspace_xy(wx, wz, dlc_ug, gU, gV);
         proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
         if (p.x < -64 || p.y < -32 || p.x > realW + 64 || p.y > realH + 32)
             continue;

@@ -779,7 +779,7 @@ static int find_nearest_major_region_pname(uint8_t area, float wx, float wz)
     {
         const auto &g = goblin::generated::MAJOR_REGION_ANCHORS[i];
         if (g.area != lookup_area) continue;
-        float dx = g.wx - wx, dz = g.wz - wz;
+        float dx = (g.gx * 256.0f + g.px) - wx, dz = (g.gz * 256.0f + g.pz) - wz;
         float d = dx * dx + dz * dz;
         if (d < bestd) { bestd = d; best = static_cast<int>(i); }
     }
