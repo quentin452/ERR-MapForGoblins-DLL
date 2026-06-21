@@ -983,19 +983,20 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
                      "| +80={:.1f} +84={:.1f} +88={:.1f}  (using +70/+74; world=tile*256+local)",
                      pr.area, pr.gx, pr.gz, pr.d70, pr.d74, pr.d78, pr.d80, pr.d84, pr.d88);
     }
-    // If the player is inside a dungeon that PROJECTS to the overworld (legacy
-    // dungeons like Leyndell/Stormveil, catacombs…), project their position the same
-    // way the markers are projected — else the player reads the dungeon's native
-    // area (e.g. 11) while its piles live on area 60, so distance-adaptive never
-    // engages there and everything stays clustered. (project_* is plain C++; run it
-    // OUTSIDE the SEH frame on the values the probe captured.)
+    // Project the player position the SAME way the markers are (marker_world_pos /
+    // grace_anchor_world both pass conv_underground=true) — else the player reads the
+    // dungeon's native area while its piles live on area 60, so distance-adaptive never
+    // engages there. conv_underground=true ALSO unifies base underground (area 12) into
+    // the same overworld map-space the underground markers use (without it the player
+    // dot lands in the raw area-12 frame = grossly mis-placed, off-screen underground).
+    // (project_* is plain C++; run it OUTSIDE the SEH frame on the captured values.)
     from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp{};
     tmp.areaNo  = static_cast<uint8_t>(pr.area);
     tmp.gridXNo = static_cast<uint8_t>(pr.gx);
     tmp.gridZNo = static_cast<uint8_t>(pr.gz);
     tmp.posX = pr.lx;
     tmp.posZ = pr.lz;
-    if (project_dungeon_row_to_overworld(&tmp))
+    if (project_dungeon_row_to_overworld(&tmp, nullptr, nullptr, /*conv_underground=*/true))
     {
         out_area = tmp.areaNo;
         world_x = tmp.gridXNo * 256.0f + tmp.posX;
