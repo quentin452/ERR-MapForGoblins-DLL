@@ -11,6 +11,7 @@
 #include <spdlog/spdlog.h>
 
 #include <array>
+#include <unordered_set>
 
 namespace goblin::worldmap
 {
@@ -100,12 +101,15 @@ void refresh_overlay_census()
         const bool kind = c == static_cast<int>(gen::Category::WorldKindlingSpirits);
 
         int total = 0, looted = 0;
+        std::unordered_set<int> distinct_flags; // detect shared collect flags (over-count)
         for (const Marker &m : g_buckets[c])
         {
             const bool collectible = (m.collected_flag != 0) || piece || kind;
             if (!collectible)
                 continue; // not a counted item (e.g. boss with only a clear flag, NPC)
             ++total;
+            if (m.collected_flag)
+                distinct_flags.insert(m.collected_flag);
             // SAME collected detection the renderer uses to gray the marker → the badge
             // can never disagree with the map. collected_flag was resolved live at build.
             const bool done =
@@ -121,9 +125,10 @@ void refresh_overlay_census()
         // [OVERLAY-CENSUS] log: full dump on the first publish, then a line whenever a
         // category's looted count changes (so a pickup is visible in the log).
         if ((!s_logged_once || s_prev_looted[c] != looted) && total > 0)
-            spdlog::info("[OVERLAY-CENSUS] cat {:2} '{}' remaining={}/{} (looted {} -> {})",
+            spdlog::info("[OVERLAY-CENSUS] cat {:2} '{}' remaining={}/{} (looted {} -> {}) distinct_flags={}",
                          c, goblin::markers::category_name(static_cast<gen::Category>(c)),
-                         total - looted, total, s_prev_looted[c], looted);
+                         total - looted, total, s_prev_looted[c], looted,
+                         (int)distinct_flags.size());
         s_prev_looted[c] = looted;
     }
     s_logged_once = true;
