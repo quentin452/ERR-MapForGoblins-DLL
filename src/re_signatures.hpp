@@ -94,6 +94,16 @@ namespace goblin::sig
     inline constexpr const char *WORLD_SFX_MAN_SLOT =
         "48 8B 05 ?? ?? ?? ?? 48 8D 4D 98 48 89 4C 24 60";
 
+    // ── Render swapchain re-apply (mid-session resolution/mode fix) ──
+    // FUN_1419ed440(renderMgr, W, H): the engine's COMPLETE resolution re-apply —
+    // release all per-output GPU targets → unconditional ResizeBuffers on every output →
+    // refresh source dims from GetDesc → recompute+recreate targets. Fixes windowed /
+    // fullscreen / borderless mid-session resize. Call from the Present thread only.
+    // (RE: docs/re/windows_midsession_resolution_swapchain_re_followup_findings.md.) The
+    // `48 8B 05 <disp>` (loads the render-mgr slot) disp is masked for version-stability.
+    inline constexpr const char *RENDER_REAPPLY_RES =
+        "40 53 55 56 57 48 81 EC B8 00 00 00 48 8B 05 ?? ?? ?? ?? 48";
+
     // ── Image RVAs (genuine hardcoded offsets — patch-FRAGILE, re-derive if they move) ──
     // CS::WorldMapCursorControl vtable (doc imagebase 0x140000000).
     inline constexpr uintptr_t CURSOR_VTABLE_RVA = 0x2b29a90;
@@ -129,6 +139,7 @@ namespace goblin::sig
             {"WORLDMAP_POINT_CTOR", WORLDMAP_POINT_CTOR},
             {"EC_TEST_DISTANCE_VFT", EC_TEST_DISTANCE_VFT},
             {"WORLD_SFX_MAN_SLOT", WORLD_SFX_MAN_SLOT},
+            {"RENDER_REAPPLY_RES", RENDER_REAPPLY_RES},
         };
         count = sizeof(table) / sizeof(table[0]);
         return table;

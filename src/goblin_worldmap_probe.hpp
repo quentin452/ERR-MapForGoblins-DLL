@@ -59,8 +59,9 @@ namespace goblin::worldmap_probe
     // (RPM-guarded). Gated by config debug_render_dims; call throttled.
     void dump_render_dims(float bbW, float bbH);
 
-    // No-restart fix for the mid-session resolution zoom: raw-poke ER's render-output
-    // source + active dims to the new W/H (the resize leaves them stale). WPM-guarded,
-    // no engine call. Returns # entries patched. Gated by config fix_midsession_resolution.
-    int fix_render_dims(int w, int h);
+    // No-restart fix for mid-session resolution / display-mode changes: edge-triggered
+    // call to ER's complete swapchain re-apply (FUN_1419ed440 — release+ResizeBuffers+
+    // recreate all render targets), fixing windowed/fullscreen/borderless. Render-thread
+    // only; idempotent. Returns 1 if it fired. Gated by config fix_midsession_resolution.
+    int reapply_render_res(int w, int h);
 }
