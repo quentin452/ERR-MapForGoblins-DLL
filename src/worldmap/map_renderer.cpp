@@ -7,12 +7,14 @@
 #include "goblin_messages.hpp"       // lookup_text_utf8 (tooltip names)
 #include "goblin_collected.hpp"      // is_original_row_collected (rune/ember graying)
 #include "goblin_kindling.hpp"       // is_row_collected (kindling graying)
+#include "goblin_major_regions.hpp"  // MAJOR_REGION_ANCHORS (region labels)
 
 #include <string>
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
 
 #include <imgui.h>
 
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -428,6 +430,50 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         }
     }
 }
+
+// Does a major-region anchor (its `area` page id) belong to the currently OPEN map
+// group? Anchor pages: 10/60 = base overworld, 12 = base underground, 61 = DLC
+// overworld. (No major-region anchor exists for the DLC underground, group 3.)
+bool region_in_group(uint8_t area, int open_grp)
+{
+    switch (open_grp)
+    {
+    case 0: return area == 10 || area == 60; // base overworld
+    case 1: return area == 12;               // base underground
+    case 2: return area == 61;               // DLC overworld
+    default: return false;                   // group 3 (DLC UG): none
+    }
+}
+
+// Draw the coarse major-region names (Limgrave, Caelid, ...) on the open page, beneath
+// the markers. Each anchor's world centre projects exactly like a marker; the label is
+// drawn large + shadowed, centred on the anchor. Off-screen labels are culled.
+void draw_region_labels(ImDrawList *fg, int open_grp, bool dlc_ug,
+                        const goblin::projection::View &view, float realW, float realH,
+                        float uiScale)
+{
+    namespace proj = goblin::projection;
+    using namespace goblin::generated;
+    const float fontSize = ImGui::GetFontSize() * 1.6f * uiScale;
+    const ImU32 col = IM_COL32(238, 226, 188, 205);   // muted gold, semi-transparent
+    const ImU32 shadow = IM_COL32(0, 0, 0, 190);
+    ImFont *font = ImGui::GetFont();
+    for (size_t i = 0; i < MAJOR_REGION_ANCHOR_COUNT; ++i)
+    {
+        const MajorRegionAnchor &a = MAJOR_REGION_ANCHORS[i];
+        if (!region_in_group(a.area, open_grp))
+            continue;
+        float gU, gV;
+        world_to_mapspace_xy(a.wx, a.wz, dlc_ug, gU, gV);
+        proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
+        if (p.x < -64 || p.y < -32 || p.x > realW + 64 || p.y > realH + 32)
+            continue;
+        ImVec2 ts = font->CalcTextSizeA(fontSize, FLT_MAX, 0.f, a.name);
+        ImVec2 tp(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f);
+        fg->AddText(font, fontSize, ImVec2(tp.x + 1.5f, tp.y + 1.5f), shadow, a.name);
+        fg->AddText(font, fontSize, tp, col, a.name);
+    }
+}
 } // namespace
 
 void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_texture, float mouseX,
@@ -493,6 +539,10 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const float iconHalf = kIconHalfBase * uiScale * master * goblin::config::overlayIconScale;
     const float glyphR = kGlyphRBase * uiScale * master * goblin::config::overlayClusterScale;
     std::vector<ScreenMarker> clustered; // markers whose category opted into clustering
+
+    // Region names beneath the markers (major-region anchors for the open page).
+    if (goblin::config::showRegionLabels)
+        draw_region_labels(fg, open_grp, dlc_ug, view, realW, realH, uiScale);
 
     for (auto *L : layers)
     {
