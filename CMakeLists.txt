@@ -149,6 +149,7 @@ add_library( MapForGoblins SHARED
   src/goblin_projection.hpp
   src/generated_shared/goblin_overlay_icons.hpp
   src/generated_shared/goblin_overlay_icons.cpp
+  src/stb_image_impl.cpp
   src/worldmap/marker_layer.hpp
   src/worldmap/grace_layer.hpp
   src/worldmap/grace_layer.cpp
@@ -205,6 +206,8 @@ target_include_directories(MapForGoblins PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_include_directories(MapForGoblins PRIVATE ${CMAKE_BINARY_DIR}/generated)
 # Resolve bare `#include "goblin_map_data.hpp"` etc. to the active bake dir.
 target_include_directories(MapForGoblins PRIVATE ${GEN_DIR})
+# stb_image.h (single-header PNG decode for the embedded icon atlas).
+target_include_directories(MapForGoblins PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
 
 # MapForGoblins.ini is no longer copied: build.bat generates it per profile in
 # :package via mfg_inigen, and the DLL self-creates/repairs it at runtime

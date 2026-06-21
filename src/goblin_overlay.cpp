@@ -23,7 +23,8 @@
 #include "worldmap/grace_layer.hpp"      // goblin::worldmap::GraceLayer
 #include "worldmap/map_entry_layer.hpp"  // goblin::worldmap::MapEntryLayer
 #include "worldmap/map_renderer.hpp"     // goblin::worldmap::render_markers
-#include "generated_shared/goblin_overlay_icons.hpp" // ATLAS_RGBA category-icon atlas
+#include "generated_shared/goblin_overlay_icons.hpp" // ATLAS_PNG category-icon atlas
+#include "stb_image.h"                                // stbi_load_from_memory (PNG decode)
 
 #include <vector>
 #include <map>
@@ -276,10 +277,17 @@ namespace
         if (g_atlas_ready || !g_imgui_init || !g_command_queue || !g_device || !g_srv_heap)
             return;
         using namespace goblin::overlay_icons;
-        if (upload_rgba(ATLAS_RGBA, ATLAS_W, ATLAS_H, 1, &g_atlas_tex, &g_atlas_gpu))
-            spdlog::info("[OVERLAY] icon atlas {}x{} uploaded (SRV 1)", ATLAS_W, ATLAS_H);
+        // The atlas ships as a compressed PNG blob (small source); decode it to RGBA once.
+        int w = 0, h = 0, ch = 0;
+        unsigned char *rgba =
+            stbi_load_from_memory(ATLAS_PNG, ATLAS_PNG_LEN, &w, &h, &ch, 4);
+        if (rgba && w == ATLAS_W && h == ATLAS_H &&
+            upload_rgba(rgba, w, h, 1, &g_atlas_tex, &g_atlas_gpu))
+            spdlog::info("[OVERLAY] icon atlas {}x{} decoded + uploaded (SRV 1)", w, h);
         else
-            spdlog::warn("[OVERLAY] icon atlas upload failed → circle fallback");
+            spdlog::warn("[OVERLAY] icon atlas decode/upload failed → circle fallback");
+        if (rgba)
+            stbi_image_free(rgba);
         g_atlas_ready = true;
     }
 
