@@ -85,6 +85,33 @@ namespace goblin::sig
         "40 55 53 56 57 41 54 41 56 41 57 48 8B EC 48 83 EC 60 "
         "48 C7 45 D0 FE FF FF FF 4C 8B F9 8B 42 34";
 
+    // ── World→map-space projection (the native map's per-icon projection) ──
+    // RE: docs/re/windows_world_to_mapspace_projection_re_findings.md (FUN_140876140
+    // + the live WorldMapViewModel converter array; binary-verified objdump §6b).
+    // These let us call/replicate the engine's own projection and delete the baked
+    // LEGACY_CONV / -7040+16512 affine / DLC eyeball / marker_group_from. ADDED as a
+    // RUNTIME-RESOLUTION TEST first (the [SIG] log proves they resolve live before we
+    // wire them). All 4 unique in .text (static AOB check 2026-06-22).
+    // FUN_140876140: project ONE point through ONE converter (the affine + Z-flip).
+    inline constexpr const char *WORLDMAP_PROJ_POINT =
+        "40 53 57 48 83 EC 68 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 44 24 50 "
+        "41 8B 41 08 48 8B D9 48 8B 49 28 48 8B FA";
+    // FUN_1408877d0: loop wrapper (VM, &outMapXZ, &packedId, &worldLocal) → first match.
+    inline constexpr const char *WORLDMAP_PROJ_LOOP =
+        "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 "
+        "48 83 EC 20 33 DB 4D 8B F9 4D 8B E0 4C 8B EA";
+    // FUN_140876100: converter-entry builder (field layout of the 0x30-byte converter).
+    inline constexpr const char *WORLDMAP_CONV_BUILD =
+        "8B 02 89 41 08 F2 41 0F 10 00 F2 0F 11 41 0C 41 8B 40 08 "
+        "F3 0F 10 44 24 28 89 41 14 49 8B 01 48 89 41 18";
+    // FUN_1408775e0: live WorldMapLegacyConvParam fold (RB-tree remap + pos translate).
+    inline constexpr const char *WORLDMAP_LEGACY_FOLD =
+        "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 41 56 48 83 EC 30 "
+        "48 8B F1 49 8B D9 49 8B C9 49 8B F8 4C 8B F2";
+    // CS::WorldMapViewModel vtable RVA (the converter array lives at VM+0xF8, count
+    // VM+0x280; page table at vtable+0x18 = 0x2ad82f8 = [00 01 0a]).
+    inline constexpr uintptr_t WORLDMAP_VIEWMODEL_VTABLE_RVA = 0x2ad82e0;
+
     // ── Kindling (grace/EcTest/WorldSfx) ──
     // EcTestDistance vftable (was RVA 0x2A5BB90).
     inline constexpr const char *EC_TEST_DISTANCE_VFT =
@@ -137,6 +164,10 @@ namespace goblin::sig
             {"CSMENUMAN_SLOT", CSMENUMAN_SLOT},
             {"WORLDMAP_POINT_FN", WORLDMAP_POINT_FN},
             {"WORLDMAP_POINT_CTOR", WORLDMAP_POINT_CTOR},
+            {"WORLDMAP_PROJ_POINT", WORLDMAP_PROJ_POINT},
+            {"WORLDMAP_PROJ_LOOP", WORLDMAP_PROJ_LOOP},
+            {"WORLDMAP_CONV_BUILD", WORLDMAP_CONV_BUILD},
+            {"WORLDMAP_LEGACY_FOLD", WORLDMAP_LEGACY_FOLD},
             {"EC_TEST_DISTANCE_VFT", EC_TEST_DISTANCE_VFT},
             {"WORLD_SFX_MAN_SLOT", WORLD_SFX_MAN_SLOT},
             {"RENDER_REAPPLY_RES", RENDER_REAPPLY_RES},

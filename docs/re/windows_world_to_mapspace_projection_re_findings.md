@@ -182,6 +182,18 @@ Draw a marker only when its computed page == the open page (`menu+0x151` / `DAT_
 - Converter fields: §1. The math contract (§2) + the live table are the stable part;
   resolve fns by AOB, the VM by vtable scan — RVAs drift with VMProtect.
 
+## 6b. Independent static verification (objdump on the shipped exe, 2026-06-22)
+
+Disassembled `eldenring.exe` (Steam, App 2.6.2.0) directly (`objdump -d` @ VMA
+`0x140876140`, .text off `0x600`) — `FUN_140876140` matches §1/§2 byte-for-byte:
+`mov rcx,[rcx+0x28]`→`call 0x1408775e0` (legacy fold), `shr ecx,0x18; cmp cl,[rbx+0xb]`
+(area `+0x0B`), `(gridX−[rbx+0xa])·256 + px − [rbx+0xc]` then `·[rbx+0x20] + [rbx+0x18]`
+(scale `+0x20`, biasX `+0x18`, originX `+0x0C`); Z path negated via `xorps xmm0,[mask]`.
+Constants read live: the `·256` literal `0x1429ce8b4` = `0x43800000` (256.0f), the Z mask
+`0x14329f470` = `80000000`×4 (sign flip), and the page table `0x142ad82f8` = bytes
+`00 01 0a` = `[overworld, underground, DLC]`. **Findings confirmed on the exact build;
+the RVAs are plain readable code (not VMP-wrapped) at these addresses.**
+
 ## 7. Open / runtime-confirm (quentin runs — game not running during this RE)
 
 1. **Read the live array per page.** With the overworld map open, dump `VM+0xF8` × `VM+0x280`
