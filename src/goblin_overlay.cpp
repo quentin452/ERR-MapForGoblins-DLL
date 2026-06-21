@@ -611,6 +611,12 @@ namespace
             ImGui::Checkbox("Show region labels (major-region names on the map)",
                             &goblin::config::showRegionLabels);
 
+            // Redify boss markers (overlay port of the legacy red-skull iconId; live,
+            // persists via "Save to INI"). Tints WorldBosses markers red (overworld +
+            // dungeon bosses); collected/cleared graying still takes precedence.
+            ImGui::Checkbox("Red boss markers (tint boss icons red)",
+                            &goblin::config::redifyBossIcons);
+
             // Overlay marker scale (live preview; persists via "Save to INI"). Final
             // size = resolution-relative base × master × per-type scale.
             if (ImGui::CollapsingHeader("Marker scale (overlay map)"))

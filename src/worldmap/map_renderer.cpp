@@ -123,10 +123,21 @@ void draw_check(ImDrawList *fg, ImVec2 p, float half)
                 ImVec2(c.x + s * 0.50f, c.y - s * 0.42f), col, 2.2f);
 }
 
+// Boss markers tinted red when redify_boss_icons is on (overlay port of the legacy
+// red-skull iconId 374). The overlay has one WorldBosses category covering overworld +
+// dungeon bosses; collected/cleared graying takes precedence (a dead boss grays). The
+// legacy redify_dungeon (dungeon-ENTRANCE markers) has no overlay equivalent — the
+// overlay projects dungeon CONTENTS, not a separate entrance marker — so it's native-only.
+inline bool redify_boss(const Marker &m)
+{
+    return goblin::config::redifyBossIcons &&
+           m.category == static_cast<int>(goblin::generated::Category::WorldBosses);
+}
+
 // Draw one marker at backbuffer px p: the atlas icon if available, else a circle.
 // half = icon half-size in px (resolution-scaled by the caller). When collected_graying
 // is on, collected/cleared markers dim+desaturate (or hide if hide_collected), and
-// cleared bosses get a green checkmark.
+// cleared bosses get a green checkmark. Uncollected bosses redden when redify_boss_icons.
 void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, float half)
 {
     bool cleared = false, done = false;
@@ -136,7 +147,9 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, f
         if (done && goblin::config::hideCollected)
             return; // legacy-style: hide collected/cleared entirely
     }
-    const ImU32 tint = done ? IM_COL32(150, 150, 150, 130) : IM_COL32(255, 255, 255, 255);
+    const bool red = !done && redify_boss(m);
+    const ImU32 tint = done ? IM_COL32(150, 150, 150, 130)
+                            : (red ? IM_COL32(255, 70, 70, 255) : IM_COL32(255, 255, 255, 255));
 
     ImVec2 uv0, uv1;
     if (atlas && icon_uv(m.icon_key, uv0, uv1))
@@ -147,7 +160,8 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, f
     else
     {
         float cr = half * 0.45f;
-        fg->AddCircleFilled(p, cr, done ? dim_color(m.color) : m.color);
+        const ImU32 fill = done ? dim_color(m.color) : (red ? IM_COL32(235, 70, 70, 255) : m.color);
+        fg->AddCircleFilled(p, cr, fill);
         fg->AddCircle(p, cr, IM_COL32(0, 0, 0, done ? 120 : 220), 0, 1.5f);
     }
     if (cleared)
