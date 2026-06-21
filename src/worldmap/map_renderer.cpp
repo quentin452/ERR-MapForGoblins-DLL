@@ -316,7 +316,8 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     const bool euclid_frame = (player_area == 60 || player_area == 61);
 
     // DEBUG viz (config cluster_debug_radius): player marker + near/far rings so you can
-    // SEE where the distance ramp engages. Overworld only (= where dist_adaptive runs).
+    // SEE where the distance ramp engages. Draws on every page the ramp runs (incl. the
+    // projected underground); per-pile d=/thr= below shows the ramp's decision.
     const bool dbg_radius = goblin::config::clusterDebugRadius && have_player;
     if (dbg_radius)
     {
@@ -355,11 +356,13 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         // the near→far radius (player + grace in the same projected frame). Otherwise flat
         // base_thr (normal threshold clustering).
         int thr = base_thr;
+        float dbg_d = -1.f; // euclid distance player→grace (for the debug viz)
         if (have_player && dist_eligible && has_anchor && euclid_frame &&
             garea == player_area && far_u > near_u)
         {
             const float dx = gwx - pwx, dz = gwz - pwz;
             const float d = std::sqrt(dx * dx + dz * dz);
+            dbg_d = d;
             float t = (d - near_u) / (far_u - near_u);
             if (t < 0.f) t = 0.f; else if (t > 1.f) t = 1.f;
             thr = (int)std::lround(near_thr + t * (base_thr - near_thr));
@@ -405,9 +408,14 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
             fg->AddCircleFilled(c, 4.f, dcol);
             fg->AddCircle(c, 4.f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
             std::string nm = goblin::lookup_text_utf8(items[idxs[0]].m->loc_pname);
-            char db[96];
-            std::snprintf(db, sizeof(db), "%s%s [%d]", has_anchor ? "" : "CENTROID ",
-                          nm.c_str(), (int)idxs.size());
+            char db[140];
+            if (dbg_d >= 0.f) // distance-adaptive engaged: show dist + chosen threshold
+                std::snprintf(db, sizeof(db), "%s%s [%d] d=%.0f thr=%d",
+                              has_anchor ? "" : "CENTROID ", nm.c_str(), (int)idxs.size(),
+                              dbg_d, thr);
+            else
+                std::snprintf(db, sizeof(db), "%s%s [%d] thr=%d",
+                              has_anchor ? "" : "CENTROID ", nm.c_str(), (int)idxs.size(), thr);
             fg->AddText(ImVec2(c.x + 7, c.y + 5), dcol, db);
         }
         // Pile count = UNCOLLECTED members (depletion), so the glyph reflects progress
