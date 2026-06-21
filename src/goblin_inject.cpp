@@ -3546,6 +3546,55 @@ int goblin::refresh_category_census()
         g_cat_total[c].store(collectible[c]);
         g_cat_remaining[c].store(collectible[c] > 0 ? (collectible[c] - looted[c]) : -1);
     }
+
+    // One-shot diagnostic for the overlay census/cluster wiring: dumps the REAL numbers
+    // (collectible/looted, nearest-grace cluster_key coverage, per-category cluster
+    // opt-in, and a Golden-Rune live-loot flag sample) so a stuck "<n>/<n>" badge or an
+    // ineffective cluster opt-in can be pinned from the log instead of guessed. Fires
+    // once per session in overlay-only mode.
+    static bool s_diag_done = false;
+    if (!s_diag_done && g_section_rows.empty())
+    {
+        s_diag_done = true;
+        int ckcov[NUM_CATEGORIES] = {0}, rows[NUM_CATEGORIES] = {0};
+        uint32_t gr_lot = 0, gr_baked = 0, gr_res = 0;
+        bool gr_set = false, gr_found = false;
+        for (size_t i = 0; i < goblin::generated::MAP_ENTRY_COUNT; i++)
+        {
+            const auto &e = goblin::generated::MAP_ENTRIES[i];
+            int ci = static_cast<int>(e.category);
+            if (ci < 0 || ci >= NUM_CATEGORIES) continue;
+            rows[ci]++;
+            int pn = -1;
+            if (marker_cluster_key(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
+                                   e.data.posX, e.data.posZ, &pn) >= 0)
+                ckcov[ci]++;
+            if (!gr_found && e.lotType &&
+                (e.category == Category::LootGoldenRunes ||
+                 e.category == Category::LootGoldenRunesLow))
+            {
+                gr_found = true;
+                gr_lot = e.lotId;
+                gr_baked = e.data.textDisableFlagId1;
+                gr_res = goblin::resolve_loot_flag(e.lotId, e.lotType, e.data.textDisableFlagId1);
+                gr_set = gr_res && orp_flag_set(gr_res);
+            }
+        }
+        spdlog::info("[CENSUS-DIAG] overlay-only; liveLootFlags={} clustering_enabled={} threshold={}",
+                     goblin::config::liveLootFlags, goblin::ui::clustering_enabled(),
+                     goblin::config::clusterThreshold);
+        if (gr_found)
+            spdlog::info("[CENSUS-DIAG] GoldenRune sample: lot={} baked_flag={} resolved_flag={} is_set={}",
+                         gr_lot, gr_baked, gr_res, gr_set);
+        for (int c = 0; c < NUM_CATEGORIES; c++)
+        {
+            if (rows[c] == 0) continue;
+            spdlog::info("[CENSUS-DIAG] cat {:2} '{}' rows={} collectible={} looted={} ckey_cov={}/{} cluster_optin={}",
+                         c, goblin::markers::category_name(static_cast<Category>(c)),
+                         rows[c], collectible[c], looted[c], ckcov[c], rows[c],
+                         goblin::ui::category_clustered(c));
+        }
+    }
     return 0;
 }
 
