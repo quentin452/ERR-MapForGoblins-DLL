@@ -50,6 +50,12 @@ struct Marker
     // the story flag fires — the renderer HIDES it while the flag is unset (inverse of
     // discover_flag). 0 = no gate. Set only by MapEntryLayer.
     int secondary_flag = 0;
+    // Post-event "hide" story flag — the INVERSE of secondary_flag. When SET this marker
+    // is a PRE-event variant (e.g. Leyndell Royal Capital, area 11) that is replaced once
+    // the story flag fires (the Ashen Capital takes over), so the renderer HIDES it the
+    // moment the flag is set. 0 = no gate. Set only by MapEntryLayer. Mirrors the legacy
+    // refresh_royal_eviction (which only ever ran on native injected rows).
+    int hide_when_flag = 0;
     // Lot-backed loot marker (its item comes from an ItemLotParam row). Drives
     // anonymous_loot spoiler-free mode: when that config is on, this marker draws as a
     // gray "?" with a generic label instead of its real icon/name. Set only by

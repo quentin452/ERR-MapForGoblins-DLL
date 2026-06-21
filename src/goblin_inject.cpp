@@ -146,62 +146,14 @@ static bool project_dungeon_row_to_overworld(
     return true;
 }
 
-// State for runtime toggle (ERSC-hosting workaround). On hotkey press the
-// pointers stored on the param-res-cap are swapped between vanilla and
-// expanded values. set_param_injection_active() is a no-op until
-// inject_map_entries() has populated these.
-static uint8_t **g_file_ptr_ref = nullptr;
-static int64_t *g_file_size_ref = nullptr;
-static uint8_t *g_vanilla_param_file = nullptr;
-static int64_t g_vanilla_param_size = 0;
-static uint8_t *g_expanded_param_file = nullptr;
-static int64_t g_expanded_param_size = 0;
-static bool g_param_injection_active = false;
 
 // Data pointers of MFG-injected WorldMapPointParam rows in the expanded table.
 // Used by sanitize_injected_textids() (run after the FMG is built) to strip
 // textIds that don't resolve to a real string.
 static std::vector<uint8_t *> g_injected_row_ptrs;
 
-// Live-loot: lot-backed injected rows. refresh_loot_from_itemlot() reads the
-// LIVE ItemLotParam getItemFlagId for each and rewrites textDisableFlagId1 so
-// the marker hides on the actual light-point pickup for the loaded regulation
-// (Randomizer-compatible). g_lot_backed_set lets apply_flag_or_pairs skip them.
-struct LotBackedRow { uint8_t *ptr; uint32_t lotId; uint8_t lotType; };
-static std::vector<LotBackedRow> g_lot_backed_rows;
 static std::set<uint8_t *> g_lot_backed_set;
 
-// Row IDs of Leyndell Ashen Capital (m35) markers — gated on StoryErdtreeOnFire
-// by apply_map_logic so they only appear once the Erdtree has burned.
-static std::set<uint64_t> g_ashen_rows;
-
-// Data pointers of Leyndell Royal Capital (m11_00, areaNo 11) markers — the
-// INVERSE of the ashen gate: hidden (areaNo 99) once StoryErdtreeOnFire sets,
-// because the Royal Capital is consumed by the Ashen Capital after the burn.
-// Park-only (burn is permanent → never restore); refresh_royal_eviction()
-// applies it after fragment-eviction so it wins. Clustered royal rows are NOT
-// registered (the cluster owns their areaNo).
-static std::vector<uint8_t *> g_royal_rows;
-
-// Thread 1 v1.5 — quest-aware quest-NPC gating. Each registered WorldQuestNPC row
-// carries its NPC's quest-active flags (from goblin_quest_gates, joined from the
-// MIT EldenRingQuestLog data). refresh_quest_npc_eviction parks it (areaNo 99)
-// while NONE of those flags is set (quest not active) and restores it when active.
-// Opt-in (config questNpcQuestAware); coordinates with section/category via
-// is_section_hidden_ptr on restore. Clustered rows excluded.
-struct QuestRow { uint8_t *ptr; uint8_t orig_area; uint32_t flags[4]; };
-static std::vector<QuestRow> g_quest_rows;
-
-static const goblin::generated::QuestGate *lookup_quest_gate(uint32_t nameId)
-{
-    const auto *a = goblin::generated::QUEST_GATES;
-    size_t lo = 0, hi = goblin::generated::QUEST_GATE_COUNT;
-    while (lo < hi) { size_t m = (lo + hi) / 2;
-        if (a[m].nameId < nameId) lo = m + 1; else hi = m; }
-    if (lo < goblin::generated::QUEST_GATE_COUNT && a[lo].nameId == nameId)
-        return &a[lo];
-    return nullptr;
-}
 
 // ─── Per-section runtime visibility (in-game family-group toggle) ─────
 //
@@ -338,22 +290,6 @@ static constexpr int64_t TOAST_SPACING_MS = 2500;
 // row's FINAL areaNo (post dungeon-reprojection) so a show restores the right
 // page. Piece/kindling rows may be independently 99-hidden when collected — a
 // section "show" must not resurrect those.
-struct SectionRow
-{
-    uint8_t *ptr;       // → row data in the live expanded blob
-    Section  sec;
-    Category cat;       // fine-grained gate (the 63 show_* categories)
-    uint8_t  orig_area; // areaNo to restore on show
-    bool     is_piece;
-    bool     is_kindling;
-    uint64_t row_id;
-    int      grp_key;   // cluster grouping key: nearest-grace index, or entrance key, or -1 = homeless
-    int      grp_pname; // PlaceName id for the pile label (-1 = count-only)
-    int      grp_tab;   // anchor map sub-page (tabId) — DIAGNOSTIC ONLY (underground 12000/12001/...)
-    float    ent_x;     // projected-dungeon overworld ENTRANCE (world coords); <0 = not a projected dungeon
-    float    ent_z;
-};
-static std::vector<SectionRow> g_section_rows;
 
 // Number of marker categories (enum has no COUNT sentinel; keep in sync).
 static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldInteractables) + 1;
@@ -425,15 +361,6 @@ bool goblin::is_section_hidden_ptr(const void *param_data)
 // Show/hide every injected row of one section in place. Hide = areaNo 99;
 // show = restore orig_area unless the row is an already-collected piece/kindling
 // (those stay evicted, owned by collected::/kindling::).
-// Cluster state (declared before the apply_* visibility fns, which gate clusters).
-// A collectable member of a cluster, with every signal needed to tell if it's been
-// taken: the textDisableFlagId1 event flag (plain loot), or piece/kindling tracking
-// (Reforged Rune Pieces / Kindling Spirits — collected by row id, no event flag).
-struct ClusterMemberRef { uint32_t flag; uint64_t row_id; bool is_piece; bool is_kindling; };
-struct ClusterRow { uint8_t *ptr; uint8_t area; int count_textid; std::vector<ClusterMemberRef> members; Category cat; };
-static std::vector<ClusterRow> g_clusters;        // the synthetic cluster icons
-struct ClusterMember { uint8_t *ptr; uint8_t orig_area; Category cat; };
-static std::vector<ClusterMember> g_cluster_members;  // individuals parked under a cluster
 
 // g_clusters_expanded is declared earlier (near is_section_hidden_ptr).
 // Cluster bubbles ON by default: the checkbox reads this value directly while the
@@ -445,128 +372,13 @@ static std::atomic<bool> g_cluster_debug{true};       // on-map cluster bubbles 
 // owner of game-state mutation), mirroring the section + master toggles.
 static std::atomic<bool> g_cluster_expand_dirty{false};
 static std::atomic<bool> g_cluster_debug_dirty{false};
-static bool g_clustering_active = false;  // clusters built this session
 
 // A cluster icon (and its parked members) belong to ONE category since buckets
 // are per-category. Hide them when that category OR its section is toggled off,
 // so a disabled category doesn't leave its cluster glyphs on the map.
-static bool cluster_should_hide(Category cat)
-{
-    return !g_category_visible[static_cast<int>(cat)].load() ||
-           !g_section_visible[static_cast<int>(section_of(cat))].load();
-}
 
-static void apply_section_visibility(Section s, bool visible)
-{
-    int touched = 0;
-    std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
-    for (const auto &r : g_section_rows)
-    {
-        if (r.sec != s) continue;
-        uint8_t *area = r.ptr + 0x20;  // WORLD_MAP_POINT_PARAM_ST.areaNo
-        if (!visible)
-        {
-            *area = 99;
-            g_section_hidden_ptrs.insert(r.ptr);  // claim authority: keep at 99
-        }
-        else
-        {
-            g_section_hidden_ptrs.erase(r.ptr);   // release this owner
-            bool keep_hidden =
-                g_category_hidden_ptrs.count(r.ptr) ||   // category still hides it
-                (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
-                (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
-            *area = keep_hidden ? 99 : r.orig_area;
-        }
-        touched++;
-    }
-    // Gate cluster icons + members whose category lives in this section.
-    bool expanded = g_clusters_expanded.load();
-    for (const auto &cl : g_clusters)
-        if (section_of(cl.cat) == s)
-            cl.ptr[0x20] = (!visible || expanded || !g_cluster_debug.load() || cluster_should_hide(cl.cat)) ? 99 : cl.area;
-    for (const auto &m : g_cluster_members)
-        if (section_of(m.cat) == s)
-            m.ptr[0x20] = (visible && expanded && !cluster_should_hide(m.cat)) ? m.orig_area : 99;
-    spdlog::info("[SECTION] {} -> {} ({} rows)",
-                 section_name(s), visible ? "SHOWN" : "HIDDEN", touched);
-}
 
-// Per-category visibility — the fine-grained twin of apply_section_visibility.
-// Same areaNo park/restore + two-set coordination so a category hide survives
-// the fragment/collected restore paths and doesn't fight a section toggle.
-static void apply_category_visibility(Category c, bool visible)
-{
-    int touched = 0;
-    std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
-    for (const auto &r : g_section_rows)
-    {
-        if (r.cat != c) continue;
-        uint8_t *area = r.ptr + 0x20;
-        if (!visible)
-        {
-            *area = 99;
-            g_category_hidden_ptrs.insert(r.ptr);
-        }
-        else
-        {
-            g_category_hidden_ptrs.erase(r.ptr);
-            bool keep_hidden =
-                g_section_hidden_ptrs.count(r.ptr) ||   // section still hides it
-                (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
-                (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
-            *area = keep_hidden ? 99 : r.orig_area;
-        }
-        touched++;
-    }
-    // Cluster icons + their parked members belong to one category — gate them too,
-    // else a disabled category leaves its (typed) cluster glyphs on the map.
-    bool expanded = g_clusters_expanded.load();
-    for (const auto &cl : g_clusters)
-        if (cl.cat == c)
-            cl.ptr[0x20] = (!visible || expanded || !g_cluster_debug.load() || cluster_should_hide(c)) ? 99 : cl.area;
-    for (const auto &m : g_cluster_members)
-        if (m.cat == c)
-            m.ptr[0x20] = (visible && expanded && !cluster_should_hide(c)) ? m.orig_area : 99;
-    spdlog::info("[CATEGORY] {} -> {} ({} rows)",
-                 goblin::markers::category_name(c), visible ? "SHOWN" : "HIDDEN", touched);
-}
 
-// Master "Show icons" on/off via the SAME live areaNo lever as sections/
-// categories (not the param-file swap, which only reapplies per-region as the
-// game re-reads the file → icons vanish gradually). Parks/restores every
-// injected row at once; g_master_off makes the restore paths keep them at 99.
-static void apply_master_visibility(bool icons_on)
-{
-    g_master_off.store(!icons_on);
-    std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
-    for (const auto &r : g_section_rows)
-    {
-        uint8_t *area = r.ptr + 0x20;
-        if (!icons_on)
-        {
-            *area = 99;
-        }
-        else
-        {
-            bool keep_hidden =
-                g_section_hidden_ptrs.count(r.ptr) || g_category_hidden_ptrs.count(r.ptr) ||
-                (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
-                (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
-            *area = keep_hidden ? 99 : r.orig_area;
-        }
-    }
-    // Cluster glyphs + their parked members are NOT in g_section_rows — gate them on
-    // master too, else master-off hides the base icons but leaves the cluster piles.
-    bool expanded = g_clusters_expanded.load();
-    for (const auto &cl : g_clusters)
-        cl.ptr[0x20] = (icons_on && !expanded && g_cluster_debug.load() && !cluster_should_hide(cl.cat))
-                       ? cl.area : 99;
-    for (const auto &m : g_cluster_members)
-        m.ptr[0x20] = (icons_on && expanded && !cluster_should_hide(m.cat)) ? m.orig_area : 99;
-    spdlog::info("[MASTER] icons {} ({} injected rows, {} clusters)",
-                 icons_on ? "SHOWN" : "HIDDEN", g_section_rows.size(), g_clusters.size());
-}
 
 // ─── Marker clustering (v1, density-triggered, static) ───────────────
 //
@@ -807,43 +619,12 @@ static std::vector<std::pair<int, std::string>> g_cluster_census;
 // pure grace/boss pile) → never "done".
 // Collapsed: clusters visible (real area), members parked (99).
 // Expanded: clusters parked (99), members restored — the slow, see-everything view.
-static void apply_cluster_expanded(bool expanded)
-{
-    // Collapsed: show the cluster icon (unless its category/section is hidden);
-    // park members. Expanded: park the icon; show members (same gate).
-    int cl_shown = 0, mem_parked = 0;
-    for (const auto &c : g_clusters)
-    {
-        c.ptr[0x20] = (expanded || cluster_should_hide(c.cat)) ? 99 : c.area;
-        if (c.ptr[0x20] != 99) cl_shown++;
-    }
-    for (const auto &m : g_cluster_members)
-    {
-        m.ptr[0x20] = (expanded && !cluster_should_hide(m.cat)) ? m.orig_area : 99;
-        if (m.ptr[0x20] == 99) mem_parked++;
-    }
-    spdlog::info("[CLUSTER] {} -> {}/{} cluster icons shown, {}/{} members parked",
-                 expanded ? "EXPANDED" : "COLLAPSED", cl_shown, g_clusters.size(),
-                 mem_parked, g_cluster_members.size());
-}
 
 // Show / hide the on-map cluster bubbles. ON = the pile glyph is on its page with
 // its count on line 2. OFF = the bubble is parked off-page (areaNo 99) entirely —
 // no phantom numberless glyph; the per-category overlay census is the count source.
 // Members stay parked either way (they only un-park in expanded view), so OFF just
 // removes the pile icon, keeping the freeze-fix parking intact.
-static void apply_cluster_debug(bool show_bubbles)
-{
-    bool expanded = g_clusters_expanded.load();
-    for (const auto &c : g_clusters)
-    {
-        auto *st = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(c.ptr);
-        st->textId2 = show_bubbles ? c.count_textid : -1;  // line 2 = count; textId1 (name) stays
-        bool hide = !show_bubbles || expanded || cluster_should_hide(c.cat);
-        c.ptr[0x20] = hide ? 99 : c.area;
-    }
-    spdlog::info("[CLUSTER] bubbles -> {}", show_bubbles ? "SHOWN(+count)" : "HIDDEN");
-}
 
 // Cluster label census for setup_messages (PlaceName textId → member count).
 const std::vector<std::pair<int, std::string>> &goblin::cluster_label_census()
@@ -1444,290 +1225,6 @@ static int cluster_threshold_for_cfg(Category cat)
 // any enable / soft-hard / threshold / exclude change — NO restart (the map shows
 // it on next open). Counts are live: each pile points its label at a pre-injected
 // number string (CLUSTER_TEXTID_BASE + count). Runs on the watcher thread only.
-static void replan_clusters()
-{
-    using ST = from::paramdef::WORLD_MAP_POINT_PARAM_ST;
-    std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
-
-    // 1. Tear down the previous plan: restore the members we parked, park all pool
-    //    rows, clear the registries.
-    for (const auto &m : g_cluster_members)
-        if (g_cluster_member_ptrs.count(m.ptr)) m.ptr[0x20] = m.orig_area;
-    for (auto *p : g_cluster_pool)
-    {
-        p[0x20] = 99;                                          // park main page
-        reinterpret_cast<ST *>(p)->areaNo_forDistViewMark = 99; // and distant-view page
-    }
-    g_clusters.clear();
-    g_cluster_members.clear();
-    g_cluster_member_ptrs.clear();
-
-    if (!goblin::config::enableClustering || g_cluster_pool.empty())
-    {
-        g_clustering_active = false;
-        return;
-    }
-
-    // 2. Bucket the live rows by their grouping key (nearest grace, or dungeon
-    //    entrance). Rows with no anchor (grp_key < 0) and categories the user left
-    //    unchecked (read LIVE from g_category_cluster) stay exact on the map.
-    struct Bucket { std::vector<size_t> members; double sx = 0, sz = 0; float py = 0;
-                    uint8_t area = 0; float ent_x = -1, ent_z = -1; int pname = -1; int tab = 0; };
-    std::unordered_map<int, Bucket> buckets;        // key = grace index / entrance key
-    int skip_noloc = 0, skip_unchecked = 0;         // diagnostics (why a row stays exact)
-    for (size_t i = 0; i < g_section_rows.size(); i++)
-    {
-        const auto &r = g_section_rows[i];
-        if (r.grp_key < 0) { skip_noloc++; continue; }                    // no anchor → exact
-        if (!g_category_cluster[static_cast<int>(r.cat)].load()) { skip_unchecked++; continue; } // unchecked
-        auto *st = reinterpret_cast<ST *>(r.ptr);
-        // Accumulate the centroid in WORLD coords (grid tile * 256 + tile-local
-        // pos) so a pile whose members straddle grid tiles lands correctly. 256 =
-        // display-grid tile size (matches project_dungeon_row_to_overworld).
-        float wx = static_cast<float>(st->gridXNo) * 256.0f + st->posX;
-        float wz = static_cast<float>(st->gridZNo) * 256.0f + st->posZ;
-        auto &b = buckets[r.grp_key];
-        b.members.push_back(i);
-        b.sx += wx; b.sz += wz; b.py = st->posY;
-        b.area = r.orig_area;
-        b.tab = r.grp_tab;                             // DIAGNOSTIC: anchor sub-page
-        if (b.pname < 0) b.pname = r.grp_pname;        // label = anchor's region name
-        // Projected dungeon → remember its overworld entrance so the pile sits
-        // there (one point) rather than at the centroid of its spread interior.
-        if (r.ent_x >= 0) { b.ent_x = r.ent_x; b.ent_z = r.ent_z; }
-    }
-
-    // 3. Locations over the threshold → fill a pool row, park members. Sparse
-    //    locations (≤ threshold) stay exact. Threshold counts markers per location.
-    int base_thr = static_cast<int>(goblin::config::clusterThreshold);
-    if (base_thr < 1) base_thr = 1;  // defense: 0 would cluster every location → pool blowout
-    // Distance-adaptive: read the player position ONCE (map-open replan). Each pile's
-    // threshold ramps base→far over near→far radius (tiles), SAME map area only, so
-    // distant dense spots merge harder (fewer far icons) while near you stays detailed.
-    const bool dist_adaptive = goblin::config::clusterDistanceAdaptive;
-    int player_area = -1; float player_wx = 0, player_wz = 0;
-    int player_gx = -1, player_gz = -1;
-    const bool have_player =
-        dist_adaptive && goblin::get_player_map_pos(player_area, player_wx, player_wz,
-                                                    &player_gx, &player_gz);
-    // The grid*256+local world frame is only valid on the 256-tiled overworld pages
-    // (60/61) — and projected dungeons resolve the player onto 60. Underground
-    // (area 12 / DLC 40-43) has non-256 tiles AND a leaf-block-local player float,
-    // so Euclidean distance there is garbage. Fall back to TILE distance (player &
-    // pile tiles are reliable from MapId/gridXNo) for those pages.
-    const bool euclid_frame = (player_area == 60 || player_area == 61);
-    // Underground (non-Euclidean frame): the player's reliable MapId tile -> sub-page
-    // (tabId). Piles on the SAME sub-page as the player get near-detail; other
-    // sub-pages cluster. (Tile/Euclidean distance can't separate underground sub-
-    // regions — they share coarse gridXNo 1/2 — so discriminate by sub-page instead.)
-    const int player_tab =
-        (have_player && !euclid_frame) ? tab_for_tile(player_area, player_gx, player_gz) : -1;
-    int near_thr = static_cast<int>(goblin::config::clusterNearThreshold);
-    if (near_thr < 1) near_thr = 1;
-    const float near_u  = goblin::config::clusterNearRadius * 256.0f;
-    const float far_u   = goblin::config::clusterFarRadius * 256.0f;
-    size_t pi = 0;
-    int dropped = 0, sub_threshold = 0;
-    const bool dbg = goblin::config::debugLogging;          // detailed dumps off by default
-    std::map<std::pair<int, int>, int> piles_at;           // (area,tab) -> # piles
-    std::map<std::pair<int, int>, int> subthr_at;          // (area,tab) -> # sub-threshold locations
-    for (auto &kv : buckets)
-    {
-        Bucket &b = kv.second;
-        // Pile position (also its world centroid for distance). Computed BEFORE the
-        // threshold so distance-adaptive can use it; no pool row taken yet. A
-        // projected dungeon sits at its overworld ENTRANCE (256-tiled → world split
-        // valid); otherwise keep a REAL member's grid tile and average posX/posZ over
-        // members in THAT SAME tile — never re-split a world centroid by 256 (area-12
-        // underground tiles aren't 256 wide, so the split invents a bad grid index).
-        // Entrance-key buckets (graceless projected dungeons, key >= 1000000) sit at
-        // the dungeon entrance. Grace buckets — including dungeons WITH graces, whose
-        // members are projected — use the centroid of their (projected) member tiles.
-        uint8_t cgx, cgz; float cpx, cpz;
-        const bool entrance_bucket = (kv.first >= 1000000) && (b.ent_x >= 0);
-        if (entrance_bucket)
-        {
-            int gx = static_cast<int>(std::floor(b.ent_x / 256.0));
-            int gz = static_cast<int>(std::floor(b.ent_z / 256.0));
-            cgx = static_cast<uint8_t>(gx);
-            cgz = static_cast<uint8_t>(gz);
-            cpx = static_cast<float>(b.ent_x - gx * 256.0);
-            cpz = static_cast<float>(b.ent_z - gz * 256.0);
-        }
-        else
-        {
-            auto *seed = reinterpret_cast<ST *>(g_section_rows[b.members[0]].ptr);
-            cgx = seed->gridXNo; cgz = seed->gridZNo;
-            double sx = 0, sz = 0; int n = 0;
-            for (size_t mi : b.members)
-            {
-                auto *m = reinterpret_cast<ST *>(g_section_rows[mi].ptr);
-                if (m->gridXNo == cgx && m->gridZNo == cgz) { sx += m->posX; sz += m->posZ; n++; }
-            }
-            cpx = static_cast<float>(sx / n);
-            cpz = static_cast<float>(sz / n);
-        }
-
-        // Per-pile threshold: HIGH near the player (few piles → detail / real items),
-        // ramping DOWN to base_thr far away (more clustering → fewer distant icons).
-        // Same area only — world coords aren't comparable across pages.
-        int thr = base_thr;
-        if (have_player && b.area == player_area)
-        {
-            if (euclid_frame && far_u > near_u)
-            {
-                // Overworld / projected-dungeon: real Euclidean distance in marker
-                // space, ramped near_thr (detail) -> base_thr (clustered).
-                float dx = (cgx * 256.0f + cpx) - player_wx;
-                float dz = (cgz * 256.0f + cpz) - player_wz;
-                float d = std::sqrt(dx * dx + dz * dz);
-                float t = (d - near_u) / (far_u - near_u);
-                if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
-                thr = static_cast<int>(std::lround(near_thr + t * (base_thr - near_thr)));
-                if (thr < 1) thr = 1;
-            }
-            else if (!euclid_frame && player_tab > 0)
-            {
-                // Underground: sub-page (tabId) gradient. The player's sub-region gets
-                // near-detail (near_thr), every other sub-page clusters (base_thr).
-                // Discrete — no ramp, since sub-pages have no in-between distance.
-                thr = (b.tab == player_tab) ? near_thr : base_thr;
-                if (thr < 1) thr = 1;
-            }
-        }
-
-        if (static_cast<int>(b.members.size()) <= thr)
-        {
-            sub_threshold++;
-            if (dbg) subthr_at[{b.area, b.tab}]++;
-            continue;
-        }
-        if (pi >= g_cluster_pool.size()) { dropped++; continue; }
-
-        uint8_t *cp = g_cluster_pool[pi++];
-        auto *cd = reinterpret_cast<ST *>(cp);
-        // Seed the pile from a REAL member row so it inherits EVERY page-selecting
-        // field (base / DLC / underground); then override position/label/icon below.
-        *cd = *reinterpret_cast<ST *>(g_section_rows[b.members[0]].ptr);
-        // RACE GUARD: the seed-copy just made this pool row an exact copy of an
-        // on-page member (its areaNo, icon, isAreaIcon, size). The game renders on
-        // another thread, so if it reads the row NOW it shows a duplicate, sometimes
-        // OVERSIZED (member isAreaIcon) marker. Keep the row OFF-PAGE while we set its
-        // fields, and publish areaNo (→ visible) LAST, fully formed.
-        cd->areaNo = 99;
-        cd->areaNo_forDistViewMark = 99;
-        cd->eventFlagId = 0; cd->clearedEventFlagId = 0;     // a pile has no appear/clear gate
-        cd->textDisableFlagId1 = cd->textDisableFlagId2 = cd->textDisableFlagId3 = 0;
-        cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
-        cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
-        cd->textId5 = cd->textId6 = cd->textId7 = cd->textId8 = -1;
-        cd->gridXNo = cgx; cd->gridZNo = cgz;
-        cd->posX = cpx; cd->posZ = cpz;
-        cd->posY = b.py;
-        // Mirror the distant-view coords (used by some pages / zoom levels).
-        cd->gridXNo_forDistViewMark = cgx;
-        cd->gridZNo_forDistViewMark = cgz;
-        cd->posX_forDistViewMark = cpx;
-        cd->posY_forDistViewMark = b.py;
-        cd->posZ_forDistViewMark = cpz;
-        cd->iconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID);
-        // The pile is a POINT icon. Seeding from a member can inherit isAreaIcon
-        // (a range icon = "same size as the map") → the pile renders oversized; and
-        // a stale distViewIconId would show the seed's glyph when zoomed out. Force
-        // both to the cluster glyph / point.
-        cd->isAreaIcon = false;
-        cd->distViewIconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID);
-        int cnt = std::min<int>(static_cast<int>(b.members.size()), CLUSTER_MAX_COUNT);
-        int cnt_textid = CLUSTER_TEXTID_BASE + cnt;    // → pre-injected number string
-        // Line 1 = the anchor's region name (its PlaceName id renders directly); if
-        // the anchor has NO name, fall back to the count so the pile ALWAYS has a
-        // hover tooltip (was -1 → no tooltip at all on nameless piles). Line 2 = the
-        // live count when "show counts" is on (apply_cluster_debug toggles it), but
-        // not on nameless piles (the count is already on line 1 there).
-        const bool named = (b.pname > 0);
-        cd->textId1 = named ? b.pname : cnt_textid;
-        cd->textId2 = (named && g_cluster_debug.load()) ? cnt_textid : -1;
-        cd->textId3 = cd->textId4 = -1;
-        // PUBLISH last: every field is now set, so make the row visible only now.
-        // (areaNo is the on-page lever; the render thread sees a fully-formed row.)
-        // Bubbles default OFF (counts live in the overlay census) — park unless the
-        // user has the "Show cluster bubbles" toggle on. apply_cluster_debug flips
-        // this live; the section/category gates re-apply the same g_cluster_debug check.
-        uint8_t pub_area = g_cluster_debug.load() ? b.area : 99;
-        cd->areaNo_forDistViewMark = pub_area;
-        cd->areaNo = pub_area;
-
-        std::vector<ClusterMemberRef> mrefs;
-        Category domcat = g_section_rows[b.members[0]].cat;  // for section gating
-        for (size_t mi : b.members)
-        {
-            const auto &r = g_section_rows[mi];
-            r.ptr[0x20] = 99;                          // park member off-page
-            g_cluster_member_ptrs.insert(r.ptr);
-            g_cluster_members.push_back({r.ptr, r.orig_area, r.cat});
-            uint32_t f = reinterpret_cast<ST *>(r.ptr)->textDisableFlagId1;  // collect flag
-            // Track any member that CAN be collected — plain loot (event flag) AND
-            // Reforged pieces/kindling (row-id tracked, no flag) — so the live count
-            // decrements for ERR items too, not only base flag-loot.
-            if (f || r.is_piece || r.is_kindling)
-                mrefs.push_back({f, r.row_id, r.is_piece, r.is_kindling});
-        }
-        g_clusters.push_back({cp, b.area, cnt_textid, std::move(mrefs), domcat});
-        piles_at[{b.area, b.tab}]++;
-        if (dbg)
-            spdlog::info("[CLUSTER-DUMP] #{} key={} area={} tab={} grid=({},{}) pos=({:.1f},{:.1f}) "
-                         "pname={} members={} mode={}",
-                         g_clusters.size() - 1, kv.first, b.area, b.tab, cgx, cgz,
-                         cd->posX, cd->posZ, b.pname, static_cast<int>(b.members.size()),
-                         (b.ent_x >= 0) ? "ENTRANCE" : "CENTROID");
-    }
-    g_clustering_active = !g_clusters.empty();
-    spdlog::info("[CLUSTER] replan by-location: {} piles, {} members parked, {}/{} pool used, {} dropped",
-                 g_clusters.size(), g_cluster_members.size(),
-                 pi, g_cluster_pool.size(), dropped);
-    spdlog::info("[CLUSTER] stayed-exact: {} no-location, {} unchecked-category, {} locations sub-threshold (base <= {}{})",
-                 skip_noloc, skip_unchecked, sub_threshold, base_thr,
-                 (dist_adaptive && have_player)
-                     ? (euclid_frame ? ", distance-adaptive[euclid]"
-                                     : ", distance-adaptive[subpage tab=" + std::to_string(player_tab) +
-                                       " tile=" + std::to_string(player_gx) + "," + std::to_string(player_gz) + "]")
-                     : "");
-    {
-        // Per-area cluster tally (which map page each pile lands on): 60/61 =
-        // overworld, 12 = underground, others = legacy dungeons. Tells us where the
-        // stray "in the sea" piles live and whether underground gets any clusters.
-        std::map<int, int> per_area;
-        for (const auto &c : g_clusters) per_area[c.area]++;
-        std::string s;
-        for (const auto &kv : per_area)
-            s += " a" + std::to_string(kv.first) + "=" + std::to_string(kv.second);
-        spdlog::info("[CLUSTER] piles per area:{}", s.empty() ? " (none)" : s);
-    }
-    {
-        // Per-(area, sub-page) tally — splits underground area 12 into its real
-        // pages (Ainsel 12000 / Siofra 12001 / Deeproot 12002), so an empty sub-page
-        // (no piles) is visible as the absence of its tab.
-        std::string s;
-        for (const auto &kv : piles_at)
-            s += " a" + std::to_string(kv.first.first) + "t" + std::to_string(kv.first.second) +
-                 "=" + std::to_string(kv.second);
-        spdlog::info("[CLUSTER] piles per area/tab:{}", s.empty() ? " (none)" : s);
-    }
-    if (dbg)
-    {
-        // Which (area, sub-page) had locations that stayed exact for being sub-
-        // threshold — tells "Siofra/Deeproot are just sparse" apart from "mis-paged".
-        std::string s;
-        for (const auto &kv : subthr_at)
-            s += " a" + std::to_string(kv.first.first) + "t" + std::to_string(kv.first.second) +
-                 "=" + std::to_string(kv.second);
-        spdlog::info("[CLUSTER-DUMP] sub-threshold per area/tab:{}", s.empty() ? " (none)" : s);
-    }
-
-    // 4. Apply the current collapsed/expanded view to the new plan.
-    apply_cluster_expanded(g_clusters_expanded.load());
-}
-
 static bool *category_config_ptr(Category cat)
 {
     return &goblin::config::showCategory[static_cast<int>(cat)];
@@ -2006,36 +1503,6 @@ bool goblin::inject_tutorial_popup_rows()
 }
 
 
-// ─── Runtime param toggle (drives the F10 personal show/hide) ────────
-
-void goblin::set_param_injection_active(bool active)
-{
-    GOBLIN_BENCH("toggle.param_swap");
-    if (!g_file_ptr_ref)
-    {
-        spdlog::warn("[TOGGLE] Param swap state not initialized — inject_map_entries() didn't run");
-        return;
-    }
-    if (active == g_param_injection_active)
-        return;
-    if (active)
-    {
-        *g_file_ptr_ref = g_expanded_param_file;
-        *g_file_size_ref = g_expanded_param_size;
-    }
-    else
-    {
-        *g_file_ptr_ref = g_vanilla_param_file;
-        *g_file_size_ref = g_vanilla_param_size;
-    }
-    g_param_injection_active = active;
-    spdlog::info("[TOGGLE] WorldMapPointParam -> {}", active ? "EXPANDED" : "VANILLA");
-}
-
-bool goblin::is_param_injection_active()
-{
-    return g_param_injection_active;
-}
 
 // (The old Summon-message path (post_summon) was removed: it depended on five
 // hardcoded RVAs (0x763360/0x11A3E0/0x843860/0x844060/0x843910) that a game
@@ -2394,7 +1861,6 @@ static void persist_settings()
     goblin::save_all_bool_settings(goblin::config_ini_path());
 }
 
-bool goblin::ui::clustering_active() { return g_clustering_active; }
 bool goblin::ui::clustering_enabled() { return goblin::config::enableClustering; }
 void goblin::ui::set_clustering_enabled(bool on)
 {
@@ -2508,11 +1974,6 @@ const std::vector<uint8_t *> &goblin::injected_row_ptrs()
     return g_injected_row_ptrs;
 }
 
-bool goblin::is_ashen_capital_row(uint64_t row_id)
-{
-    return g_ashen_rows.count(row_id) != 0;
-}
-
 // ── Either-flag (OR) kill indicators ─────────────────────────────────
 // Some quest fights have two mutually-exclusive completion flags (one per
 // story branch) and no single "battle over" flag. Example: the academy
@@ -2552,134 +2013,6 @@ static bool orp_flag_set(uint32_t flag_id)
     return g_orp_is_flag(event_man, &id);
 }
 
-// ── Fragment-eviction registry ───────────────────────────────────────
-// areaNo lives at byte offset 0x20 (uint8) of WORLD_MAP_POINT_PARAM_ST — same
-// offset hide_icon / collected use. 99 = off-page (no map-open cost); orig_area
-// = the real page (60) to restore when the gate flag turns on.
-struct FragGatedRow { uint8_t *ptr; uint8_t orig_area; uint32_t flag; };
-static std::vector<FragGatedRow> g_frag_rows;
-
-void goblin::register_fragment_gated_row(void *param_data, uint8_t original_area,
-                                         uint32_t gate_flag)
-{
-    if (!param_data || gate_flag == 0) return;
-    g_frag_rows.push_back(
-        {reinterpret_cast<uint8_t *>(param_data), original_area, gate_flag});
-}
-
-int goblin::refresh_fragment_eviction()
-{
-    GOBLIN_BENCH("refresh.fragment_eviction");
-    // Safety probe: AlwaysOn (6001) is ER's "always set" flag. If the flag API
-    // can't even read it as true, the IsEventFlag resolution is wrong/unreliable
-    // — parking would hide the WHOLE map. Bail out (restore everything to its
-    // page, defer to the game's native eventFlagId gating) until the API is fixed.
-    bool api_ok = orp_flag_set(6001);
-    int evicted = 0;
-    for (auto &r : g_frag_rows)
-    {
-        bool discovered = api_ok ? orp_flag_set(r.flag) : true;
-        if (discovered)
-        {
-            // Don't un-hide a row a section toggle is keeping hidden (the
-            // cold-API safety would otherwise stomp the user's section choice).
-            if (r.ptr[0x20] == 99 && !goblin::is_section_hidden_ptr(r.ptr))
-                r.ptr[0x20] = r.orig_area;  // discovered → restore
-        }
-        else
-        {
-            if (r.ptr[0x20] != 99) r.ptr[0x20] = 99;            // undiscovered → park
-            evicted++;
-        }
-    }
-    static int last_parked = -1;
-    if (evicted != last_parked)
-    {
-        last_parked = evicted;
-        spdlog::info("[FRAG-EVICT] {} gate-flagged rows; {} parked off-page (api_ok={})",
-                     g_frag_rows.size(), evicted, api_ok);
-    }
-    return evicted;
-}
-
-// Thread 4 — inverse of the ashen gate. Once StoryErdtreeOnFire (flag 118) sets,
-// the Leyndell Royal Capital is consumed by the Ashen Capital, so its markers
-// must vanish. Park-only (the burn is permanent → never restore). Must run AFTER
-// refresh_fragment_eviction so the hide wins over a fragment "discovered" restore.
-int goblin::refresh_royal_eviction()
-{
-    GOBLIN_BENCH("refresh.royal_eviction");
-    if (g_royal_rows.empty()) return 0;
-    // Safety: only act when the flag API is warm (AlwaysOn 6001 reads true), else
-    // leave royal rows to their normal gating — never blank on a cold API.
-    if (!orp_flag_set(6001)) return 0;
-    if (!orp_flag_set(118 /* goblin::flag::StoryErdtreeOnFire */)) return 0;  // not burned → visible
-    int parked = 0;
-    for (auto *p : g_royal_rows)
-        if (p[0x20] != 99) { p[0x20] = 99; parked++; }
-    static bool logged = false;
-    if (!logged && parked)
-    {
-        logged = true;
-        spdlog::info("[ROYAL-EVICT] Erdtree burned → parked {} Royal Capital rows",
-                     g_royal_rows.size());
-    }
-    return parked;
-}
-
-// Thread 1 v1.5 — quest-aware quest-NPC gating. Park a registered quest-NPC row
-// while its questline is inactive (none of its flags set), restore when active.
-// Opt-in. Runs after section/category apply in the loop; respects them on restore.
-int goblin::refresh_quest_npc_eviction()
-{
-    GOBLIN_BENCH("refresh.quest_npc_eviction");
-    if (g_quest_rows.empty()) return 0;
-    // Track enabled-edge so disabling the toggle (e.g. live from the overlay)
-    // restores every row we parked instead of leaving it stuck off-page.
-    static bool was_enabled = false;
-    if (!goblin::config::questNpcQuestAware)
-    {
-        if (!was_enabled) return 0;            // already idle, nothing to undo
-        int restored = 0;
-        for (auto &r : g_quest_rows)
-            if (r.ptr[0x20] == 99 && !goblin::is_section_hidden_ptr(r.ptr))
-            { r.ptr[0x20] = r.orig_area; restored++; }
-        was_enabled = false;
-        return restored;
-    }
-    // Cold-API safety: if AlwaysOn (6001) can't be read true, leave rows as-is —
-    // never blank every quest NPC because the flag API isn't warm yet.
-    if (!orp_flag_set(6001)) return 0;
-    was_enabled = true;
-    int changed = 0;
-    for (auto &r : g_quest_rows)
-    {
-        bool active = false;
-        for (uint32_t f : r.flags)
-            if (f && orp_flag_set(f)) { active = true; break; }
-        if (!active)
-        {
-            if (r.ptr[0x20] != 99) { r.ptr[0x20] = 99; changed++; }
-        }
-        else if (r.ptr[0x20] == 99 && !goblin::is_section_hidden_ptr(r.ptr))
-        {
-            r.ptr[0x20] = r.orig_area; changed++;
-        }
-    }
-    // Log the parked total on change (how many of the registered/covered quest-NPC
-    // rows are currently hidden because their questline is inactive).
-    int parked = 0;
-    for (auto &r : g_quest_rows) if (r.ptr[0x20] == 99) parked++;
-    static int last_parked = -1;
-    if (parked != last_parked)
-    {
-        last_parked = parked;
-        spdlog::info("[QUEST-NPC] {} of {} covered rows parked (inactive questline)",
-                     parked, g_quest_rows.size());
-    }
-    return changed;
-}
-
 // Part 2: per-questline "unfinishable" cache. One byte per QUEST_BROWSER entry,
 // indexed by array order (same index the overlay passes). Written here on the
 // watcher thread, read by ui::quest_unfinishable() on the render thread (a
@@ -2714,86 +2047,6 @@ bool goblin::ui::quest_unfinishable(size_t i)
 // function so it matches the bool(*)(uint32_t) callback the capture tool takes.
 bool goblin::ui::read_event_flag(uint32_t id) { return orp_flag_set(id); }
 
-// Cluster depletion: when every flag-backed member of a cluster is collected, swap
-// the cluster icon to the green CLUSTER_DONE glyph (else keep teal). Only while the
-// clusters are SHOWN (collapsed); throttled (piles don't deplete fast). No RE —
-// iconId is a mutable param field, like the areaNo flips.
-int goblin::refresh_cluster_depletion()
-{
-    GOBLIN_BENCH("refresh.cluster_depletion");
-    if (!g_clustering_active || g_clusters_expanded.load()) return 0;
-    // DIAGNOSTIC: collapsed ⇒ EVERY member must be parked (areaNo 99). If any are
-    // SHOWN, something un-parks them after the COLLAPSED apply (real bug). If 0,
-    // the individual icons on the map are SPARSE markers (sub-threshold cells —
-    // never clustered, shown by design) or excluded categories, NOT cluster members.
-    {
-        int shown = 0;
-        for (const auto &m : g_cluster_members)
-            if (m.ptr[0x20] != 99) shown++;
-        static int last_shown = -1;
-        if (shown != last_shown)
-        {
-            last_shown = shown;
-            spdlog::info("[CLUSTER-CHECK] {} of {} members SHOWN while collapsed "
-                         "(should be 0; >0 = un-park bug, 0 = the loose icons are "
-                         "sub-threshold/excluded, not members)",
-                         shown, g_cluster_members.size());
-        }
-    }
-    if (!orp_flag_set(6001)) return 0; // cold API → never mis-deplete
-    using clock = std::chrono::steady_clock;
-    static clock::time_point last{};
-    auto now = clock::now();
-    if (now != clock::time_point{} && now - last < std::chrono::milliseconds(1000))
-        return 0;
-    last = now;
-    int changed = 0, with_flags = 0, depleted_n = 0;
-    for (auto &c : g_clusters)
-    {
-        if (c.members.empty()) continue; // no collectible members → never "done"
-        with_flags++;
-        // Count collected members — by event flag (plain loot) OR by piece/kindling
-        // row-id tracking (Reforged items have no event flag). Drives both the
-        // done-icon swap and the live REMAINING count.
-        int collected_n = 0;
-        for (const auto &m : c.members)
-        {
-            bool got = (m.flag && orp_flag_set(m.flag)) ||
-                       (m.is_piece && goblin::collected::is_row_collected(m.row_id)) ||
-                       (m.is_kindling && goblin::kindling::is_row_collected(m.row_id));
-            if (got) collected_n++;
-        }
-        bool depleted = (collected_n == static_cast<int>(c.members.size()));
-        if (depleted) depleted_n++;
-        uint16_t want = depleted ? goblin::generated::CLUSTER_DONE_ICON_ID
-                                 : goblin::generated::CLUSTER_ICON_ID;
-        auto *st = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(c.ptr);
-        if (st->iconId != want) { st->iconId = want; changed++; }
-        // Bug fix: the label count was frozen at replan time (= TOTAL members, incl.
-        // already-collected loot), so it never went down as you looted. Show the
-        // live REMAINING = total - collected. count_textid encodes the total.
-        if (g_cluster_debug.load())
-        {
-            int total = c.count_textid - CLUSTER_TEXTID_BASE;
-            int remaining = total - collected_n;
-            if (remaining < 0) remaining = 0;
-            int want_tid = CLUSTER_TEXTID_BASE + std::min(remaining, CLUSTER_MAX_COUNT);
-            if (st->textId2 != want_tid) { st->textId2 = want_tid; changed++; }
-        }
-    }
-    // Diagnostic: log when the depleted count changes (and the startup state) so we
-    // can tell apart "no collect-flags captured" vs "swapped but icon not re-read".
-    static int last_depleted = -1;
-    if (depleted_n != last_depleted)
-    {
-        last_depleted = depleted_n;
-        spdlog::info("[CLUSTER-DEPLETE] {} clusters, {} with collect-flags, {} depleted, "
-                     "{} icon-swapped this pass", g_clusters.size(), with_flags,
-                     depleted_n, changed);
-    }
-    return changed;
-}
-
 // Per-category uncollected census — feeds the overlay's "<remaining>/<total>"
 // badge next to each category. Gated to "menu on-screen" + throttled to 1s so the
 // 9296-row flag sweep is free when the panel is closed. Collected detection mirrors
@@ -2819,33 +2072,8 @@ int goblin::refresh_category_census()
     if (now != clock::time_point{} && now - last < std::chrono::milliseconds(1000)) return 0;
     last = now;
     if (!orp_flag_set(6001)) return 0;  // cold flag API → don't publish bogus counts
-    using ST = from::paramdef::WORLD_MAP_POINT_PARAM_ST;
-    int collectible[NUM_CATEGORIES] = {0};
-    int looted[NUM_CATEGORIES]      = {0};
-    if (!g_section_rows.empty())
-    {
-        // Native path: the injected param rows carry the live collect flag in-place.
-        for (const auto &r : g_section_rows)
-        {
-            int ci = static_cast<int>(r.cat);
-            if (ci < 0 || ci >= NUM_CATEGORIES) continue;
-            uint32_t f = reinterpret_cast<ST *>(r.ptr)->textDisableFlagId1;  // collect flag
-            if (!(f || r.is_piece || r.is_kindling)) continue;  // not a collectible row
-            collectible[ci]++;
-            bool taken = (f && orp_flag_set(f)) ||
-                         (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
-                         (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
-            if (taken) looted[ci]++;
-        }
-        for (int c = 0; c < NUM_CATEGORIES; c++)
-        {
-            g_cat_total[c].store(collectible[c]);
-            g_cat_remaining[c].store(collectible[c] > 0 ? (collectible[c] - looted[c]) : -1);
-        }
-        return 0;
-    }
 
-    // Overlay-only mode: count from the OVERLAY's OWN marker layers (the exact markers
+    // Count from the OVERLAY's OWN marker layers (the exact markers
     // it draws + grays), so the F1 badge matches the map and can't diverge from a
     // parallel native-style recompute. refresh_overlay_census writes the census atomics
     // and logs [OVERLAY-CENSUS] (full dump once, then a line on each change).
@@ -2996,113 +2224,6 @@ void goblin::diag_loot_flags(uint32_t lotId, uint8_t lotType, uint32_t baked, in
     per_cat[category]++;
 }
 
-// Reads each lot-backed marker's source ItemLotParam row from memory and sets
-// textDisableFlagId1 to the lot's current getItemFlagId. Because we read the
-// LOADED regulation (vanilla, Randomizer, any file mod), the marker hides on
-// the actual light-point pickup regardless of which item the lot now gives.
-// One-shot at init: the flag VALUE in a row is static post-load; the engine
-// then evaluates textDisableFlagId1 live every frame. See reference_cleared_badge
-// / the randomizer-compat research. Gated by config::liveLootFlags/Labels.
-void goblin::refresh_loot_from_itemlot()
-{
-    const bool do_flags  = goblin::config::liveLootFlags;
-    const bool do_labels = goblin::config::liveLootLabels;
-    const bool do_anon   = goblin::config::anonymousLoot;
-    if ((!do_flags && !do_labels && !do_anon) || g_lot_backed_rows.empty())
-        return;
-    GOBLIN_BENCH("map.live_loot.total");
-
-    LotReader lots;
-    lots.init();
-    if (!lots.ok())
-    {
-        spdlog::warn("[LIVE-LOOT] ItemLotParam not available — skipped");
-        return;
-    }
-    auto read_row = [&](uint32_t lot_id, uint8_t lot_type) { return lots.row(lot_id, lot_type); };
-
-    int updated = 0, relabeled = 0, not_found = 0, no_flag = 0;
-    for (auto &lr : g_lot_backed_rows)
-    {
-        RawItemLotRow *row = read_row(lr.lotId, lr.lotType);
-        if (!row) { not_found++; continue; }
-        auto *p = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(lr.ptr);
-
-        if (do_flags)
-        {
-            uint32_t flag = *reinterpret_cast<uint32_t *>(row->b + 0x80);  // lot-wide getItemFlagId
-            if (flag == 0)
-            {
-                // Fall back to the per-slot flag only for single-item lots
-                // (lotItemId02 @0x04 == 0), else a slot-1 award would hide the
-                // marker while other loot remains.
-                int32_t item2 = *reinterpret_cast<int32_t *>(row->b + 0x04);
-                if (item2 == 0)
-                    flag = *reinterpret_cast<uint32_t *>(row->b + 0x60);  // getItemFlagId01
-            }
-            if (flag)
-            {
-                // Hide the WHOLE marker on the live pickup flag. A loot marker
-                // carries the same disable flag on every populated text line
-                // (item line + location line; verified uniform across all
-                // lot-backed rows) — the engine only drops the icon once ALL
-                // its lines are disabled. Rewriting just slot 1 left the
-                // location line (slot 2) pinned to the stale baked flag, which
-                // never fires under a regulation that reassigns flags (the
-                // randomizer), so the marker never disappeared. Update every
-                // line that had a (non-zero) disable flag baked.
-                int *tids[8] = {&p->textId1, &p->textId2, &p->textId3, &p->textId4,
-                                &p->textId5, &p->textId6, &p->textId7, &p->textId8};
-                unsigned int *fls[8] = {&p->textDisableFlagId1, &p->textDisableFlagId2,
-                                        &p->textDisableFlagId3, &p->textDisableFlagId4,
-                                        &p->textDisableFlagId5, &p->textDisableFlagId6,
-                                        &p->textDisableFlagId7, &p->textDisableFlagId8};
-                for (int i = 0; i < 8; ++i)
-                    if (*tids[i] > 0 && *fls[i] != 0)
-                        *fls[i] = flag;
-                updated++;
-            }
-            else no_flag++;
-        }
-
-        if (do_anon)
-        {
-            // Spoiler-free mode: replace the item name with the generic
-            // localized label. Same slot guard as the live relabel below — only
-            // overwrite an actual item-name slot, never a location/enemy slot.
-            int32_t cur = p->textId1;
-            if (cur >= 50000000 && cur < 600000000 && cur != ANON_LABEL_TEXTID)
-            {
-                p->textId1 = ANON_LABEL_TEXTID;
-                relabeled++;
-            }
-        }
-        else if (do_labels)
-        {
-            // Relabel the item-name slot (textId1) to whatever the lot now
-            // gives. Guard: only touch textId1 if it already holds an
-            // item-name encoded id (50M..600M item bands) — never clobber a
-            // location (<50M) or enemy/npc (>=700M) slot. The encoded id maps
-            // into the full item-name space copied into PlaceName at init.
-            int32_t cur = p->textId1;
-            if (cur >= 50000000 && cur < 600000000)
-            {
-                int32_t item_id = *reinterpret_cast<int32_t *>(row->b + 0x00);  // lotItemId01
-                int32_t cat     = *reinterpret_cast<int32_t *>(row->b + 0x20);  // lotItemCategory01
-                int32_t enc = encode_live_item(item_id, cat);
-                if (item_id > 0 && enc > 0 && enc != cur)
-                {
-                    p->textId1 = enc;
-                    relabeled++;
-                }
-            }
-        }
-    }
-    spdlog::info("[LIVE-LOOT] {} hide-flags, {} relabels set from live ItemLotParam "
-                 "({} lots not found, {} no flag, {} lot-backed total)",
-                 updated, relabeled, not_found, no_flag, g_lot_backed_rows.size());
-}
-
 void goblin::menu_auto_toggle_loop()
 {
     bool prev_user_disabled = g_icons_user_disabled.load();
@@ -3111,32 +2232,21 @@ void goblin::menu_auto_toggle_loop()
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-        // Show the native banner when the user flips the master-off via hotkey.
-        // Driven from this thread (the param-state owner) so all game-state
-        // mutation happens in one place.
+        // Master-off banner. The overlay itself honours the toggle — goblin_overlay
+        // skips render_markers when ui::icons_enabled() is false — so this thread only
+        // fires the visual banner when the user flips master-off via the F10 hotkey.
         bool user_disabled_now = g_icons_user_disabled.load();
         if (user_disabled_now != prev_user_disabled)
         {
-            apply_master_visibility(!user_disabled_now);  // hide first (instant areaNo park)
-            show_toggle_banner(!user_disabled_now);       // banner after (off the hot path)
+            show_toggle_banner(!user_disabled_now);
             prev_user_disabled = user_disabled_now;
         }
 
-        // Track whether this tick flipped any areaNo on the live blob, so we can ask
-        // the engine for a live icon re-render (experimental; no-op unless the hook
-        // is installed AND the map is open — see install_live_refresh_hook).
-        bool wm_live_edit = false;
-
-        // Per-section toggle requests posted by the hotkey thread. Apply the
-        // areaNo flips on the live blob and persist the choice here (single
-        // owner of game-state mutation), then fire whatever toast was queued.
-        int areq = g_section_apply_req.exchange(-1);
-        if (areq >= 0 && areq < SECTION_COUNT)
-        {
-            apply_section_visibility(static_cast<Section>(areq), g_section_visible[areq].load());
+        // Per-section toggle: persist the choice to the ini (single owner of file I/O,
+        // off the render thread). The overlay reads section_visible() live via the
+        // ui:: getter, so no blob mutation is needed — just save.
+        if (g_section_apply_req.exchange(-1) >= 0)
             goblin::save_section_states(goblin::config_ini_path());
-            wm_live_edit = true;
-        }
 
         // Toast queue: fire one at a time, spaced so consecutive toasts don't
         // overwrite each other on screen.
@@ -3158,109 +2268,14 @@ void goblin::menu_auto_toggle_loop()
                 goblin::show_codex_toast(fire_id);
         }
 
-        // Per-category toggle requests posted by the overlay menu. Applied here
-        // (single owner of game-state mutation). Scans dirty flags so a "toggle
-        // whole section" that flips many at once all land. Persistence to INI is
-        // the Save button's job (P3c) — this just applies live.
-        for (int c = 0; c < NUM_CATEGORIES; c++)
-            if (g_category_dirty[c].exchange(false))
-            {
-                apply_category_visibility(static_cast<Category>(c),
-                                          g_category_visible[c].load());
-                wm_live_edit = true;
-            }
-
-        // If a section/category toggle changed an areaNo while the map is open, ask
-        // the engine to re-render the icons now (instead of only on the next open).
-        // Experimental + self-gating: no-op unless config::liveRefreshWorldMap hooked
-        // the build fn and the 2D map is currently up.
-        if (wm_live_edit)
-            goblin::refresh_world_map_icons();
-
         // Menu "Save" → persist current visibility to the ini (file I/O here, off
         // the render thread).
         if (g_save_req.exchange(false))
             persist_settings();
 
-        // Danger zone: re-seed config from defaults + write the ini (off the
-        // render thread). Runtime visibility is unchanged until a restart.
+        // Danger zone: re-seed config from defaults + write the ini (off the render
+        // thread). Runtime visibility is unchanged until a restart.
         if (g_reset_defaults_req.exchange(false))
             goblin::reset_to_defaults_and_save(goblin::config_ini_path());
-
-        // Distance-adaptive: keep the plan tracking the player. Re-planning AT map-open
-        // wouldn't show until the NEXT open (the game reads the rows at open time), so
-        // instead re-plan IN-WORLD as the player moves — then any open shows current
-        // bands. Throttled; only when the player moved a meaningful distance (or
-        // changed map area) since the last plan, and only while the map is CLOSED
-        // (don't thrash mid-view). Feature-gated.
-        if (goblin::config::clusterDistanceAdaptive && goblin::config::enableClustering)
-        {
-            static std::chrono::steady_clock::time_point s_last_chk{};
-            static int s_last_area = -999;
-            static float s_last_x = 0, s_last_z = 0;
-            static int s_last_gx = -999, s_last_gz = -999;
-            auto now2 = std::chrono::steady_clock::now();
-            if ((now2 == std::chrono::steady_clock::time_point{} || now2 - s_last_chk > std::chrono::milliseconds(2000))
-                && !goblin::world_map_open())
-            {
-                s_last_chk = now2;
-                int pa, pgx = -1, pgz = -1; float px, pz;
-                if (goblin::get_player_map_pos(pa, px, pz, &pgx, &pgz))
-                {
-                    // re-plan on area change, or — underground, where px/pz are leaf-
-                    // block-local garbage — on TILE change (reliable from MapId); else
-                    // (overworld) once the player drifts past ~half the near radius.
-                    float move_gate = std::max(256.0f, goblin::config::clusterNearRadius * 128.0f);
-                    bool tile_changed = (pgx != s_last_gx || pgz != s_last_gz);
-                    float moved = (pa != s_last_area) ? 1e9f : std::sqrt(
-                        (px - s_last_x) * (px - s_last_x) + (pz - s_last_z) * (pz - s_last_z));
-                    if (moved > move_gate || tile_changed)
-                    {
-                        s_last_area = pa; s_last_x = px; s_last_z = pz;
-                        s_last_gx = pgx; s_last_gz = pgz;
-                        g_cluster_replan_dirty.store(true);
-                    }
-                }
-            }
-        }
-
-        // Runtime cluster re-plan (enable / soft-hard / threshold / exclude). Rebuilds
-        // the whole plan from the live rows into the pool, then applies the view.
-        // ONLY while the map is CLOSED: replan's teardown briefly un-parks every old
-        // member then re-parks them into new piles, so applying it mid-render leaves
-        // PHANTOM / duplicate icons. Deferred (keep the dirty flag set) until the map
-        // closes, then it's applied for the next open — matching "reopen to apply".
-        // Likewise the expand/collapse re-park.
-        bool map_open_now = goblin::world_map_open();
-        if (!map_open_now && g_cluster_replan_dirty.load())
-        {
-            g_cluster_replan_dirty.store(false);
-            replan_clusters();
-        }
-        // Cluster expand/collapse + debug-label flips (areaNo / textId on the live blob).
-        if (!map_open_now && g_cluster_expand_dirty.load())
-        {
-            g_cluster_expand_dirty.store(false);
-            apply_cluster_expanded(g_clusters_expanded.load());
-        }
-        // Bubble show/hide now PARKS the cluster glyph (areaNo), not just a textId
-        // flip — so gate it to map-closed like expand/replan (parking the live blob
-        // while the map renders risks the duplicate/oversized race). Applies on next
-        // open. Keep the dirty bit set until then so the toggle isn't lost.
-        if (!map_open_now && g_cluster_debug_dirty.load())
-        {
-            g_cluster_debug_dirty.store(false);
-            apply_cluster_debug(g_cluster_debug.load());
-        }
-
-        // (Player-position probe logging removed — proximity clustering paused:
-        // live player world coords are unstable/chunk-local and the map-cursor /
-        // live-refresh paths both need the blocked CSWorldMapMenu RE. The reader
-        // get_player_world_pos() is kept dormant for when that RE lands.)
-
-        // (Master on/off is applied via apply_master_visibility above — the live
-        // areaNo lever — not the param-file swap, which reflected only per-region
-        // as the game re-read the file. set_param_injection_active stays for the
-        // ERSC-hosting revert path.)
     }
 }
