@@ -12,7 +12,6 @@
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
 
 #include <imgui.h>
-#include <spdlog/spdlog.h>
 
 #include <cmath>
 #include <cstdint>
@@ -265,78 +264,39 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     // OVERRIDES per-category opt-in (every category clusters by distance — handled at
     // the eligibility check in render_markers).
     namespace cfg = goblin::config;
-    const bool dist_adaptive = cfg::clusterDistanceAdaptive;
+    const bool dist_adaptive = cfg::clusterDistanceAdaptive && overworld_page; // overworld only
     const int base_thr = threshold;
     int near_thr = (int)cfg::clusterNearThreshold;
     if (near_thr < 1) near_thr = 1;
     const float near_u = cfg::clusterNearRadius * 256.0f;
     const float far_u = cfg::clusterFarRadius * 256.0f;
-    int player_area = -1, player_gx = -1, player_gz = -1;
+    int player_area = -1;
     float pwx = 0, pwz = 0;
-    const bool have_player = dist_adaptive &&
-        goblin::get_player_map_pos(player_area, pwx, pwz, &player_gx, &player_gz);
+    const bool have_player =
+        dist_adaptive && goblin::get_player_map_pos(player_area, pwx, pwz);
     const bool euclid_frame = (player_area == 60 || player_area == 61); // overworld pages
-    // Underground pages have no usable Euclidean frame (non-256 tiles, garbage player
-    // float) → use a DISCRETE sub-page (tabId) gradient like the native path: the
-    // player's sub-page gets near-detail, other sub-pages cluster. Player tab from the
-    // RELIABLE MapId tile (not the garbage float); only used on an underground page.
-    const int player_tab = (have_player && !overworld_page) ? goblin::player_map_tab() : -1;
 
-    // DEBUG viz (config cluster_debug_radius): player marker + near/far rings (overworld)
-    // so you can SEE where the distance ramp engages and pin the bug.
+    // DEBUG viz (config cluster_debug_radius): player marker + near/far rings so you can
+    // SEE where the distance ramp engages. Overworld only (= where dist_adaptive runs).
     const bool dbg_radius = goblin::config::clusterDebugRadius && have_player;
     if (dbg_radius)
     {
-        // The markers project area-12/DLC underground to the unified frame
-        // (conv_underground=true); get_player_map_pos returns RAW underground coords, so
-        // reproject the player the SAME way — else the player marker + rings land off-map
-        // on an underground page (the markers are fine; only the raw player wasn't).
-        float vwx = pwx, vwz = pwz;
-        if (!overworld_page && player_gx >= 0)
-        {
-            float plx = pwx - player_gx * 256.0f, plz = pwz - player_gz * 256.0f;
-            int ga;
-            goblin::marker_world_pos((uint8_t)player_area, (uint8_t)player_gx,
-                                     (uint8_t)player_gz, plx, plz, ga, vwx, vwz,
-                                     /*conv_underground=*/true);
-        }
-        // One-shot diag to pin the underground player frame (map_pos tile is coarse +
-        // float garbage → marker lands off). Compare to a nearby known marker.
-        if (!overworld_page)
-        {
-            static bool s_pdiag = false;
-            if (!s_pdiag)
-            {
-                s_pdiag = true;
-                float wpx = 0, wpy = 0, wpz = 0;
-                bool wp = goblin::get_player_world_pos(wpx, wpy, wpz); // self-logs [PLAYER]
-                spdlog::info("[PLAYER-DIAG] map_pos area={} gx={} gz={} raw=({:.0f},{:.0f}) "
-                             "reproj=({:.0f},{:.0f}) | world_pos ok={} ({:.0f},{:.0f},{:.0f})",
-                             player_area, player_gx, player_gz, pwx, pwz, vwx, vwz, wp, wpx,
-                             wpy, wpz);
-            }
-        }
         float gU, gV;
-        world_to_mapspace_xy(vwx, vwz, dlc_ug, gU, gV);
+        world_to_mapspace_xy(pwx, pwz, dlc_ug, gU, gV);
         proj::Px pp = proj::project_screen(gU, gV, view, realW, realH);
         const ImVec2 ppx(pp.x, pp.y);
-        // Near/far radius rings around the player — drawn on BOTH pages now (same world
-        // radius near_u/far_u). Underground uses TILE distance for the threshold, but the
-        // ring radius in world units is the same, so the ring still shows the zone.
-        {
-            auto ring_px = [&](float r) {
-                float u, v;
-                world_to_mapspace_xy(vwx + r, vwz, dlc_ug, u, v);
-                proj::Px e = proj::project_screen(u, v, view, realW, realH);
-                return std::fabs(e.x - pp.x);
-            };
-            fg->AddCircle(ppx, ring_px(near_u), IM_COL32(60, 230, 90, 210), 64, 2.f);  // near=detail
-            fg->AddCircle(ppx, ring_px(far_u), IM_COL32(255, 90, 30, 210), 64, 2.f);   // far=clustered
-        }
+        auto ring_px = [&](float r) {
+            float u, v;
+            world_to_mapspace_xy(pwx + r, pwz, dlc_ug, u, v);
+            proj::Px e = proj::project_screen(u, v, view, realW, realH);
+            return std::fabs(e.x - pp.x);
+        };
+        fg->AddCircle(ppx, ring_px(near_u), IM_COL32(60, 230, 90, 210), 64, 2.f);  // near=detail
+        fg->AddCircle(ppx, ring_px(far_u), IM_COL32(255, 90, 30, 210), 64, 2.f);   // far=clustered
         fg->AddCircleFilled(ppx, 6.f, IM_COL32(255, 0, 255, 255));
         fg->AddCircle(ppx, 6.f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
-        char b[64];
-        std::snprintf(b, sizeof(b), "player A%d T%d", player_area, player_tab);
+        char b[48];
+        std::snprintf(b, sizeof(b), "player A%d", player_area);
         fg->AddText(ImVec2(ppx.x + 8, ppx.y - 6), IM_COL32(255, 120, 255, 255), b);
     }
 
@@ -352,11 +312,10 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         int garea = -1;
         float gwx = 0, gwz = 0;
         const bool has_anchor = goblin::grace_anchor_world(kv.first, garea, gwx, gwz);
-        // Per-location threshold. OVERWORLD page: Euclidean ramp near_thr→base_thr over
-        // near→far radius (the grid*256+local world frame is valid only on the 256-tiled
-        // overworld 60/61). UNDERGROUND page: discrete sub-page gradient (same tabId as
-        // the player = near detail, other sub-pages = clustered) — Euclid is meaningless
-        // underground (non-256 tiles, garbage player float), so we never use it there.
+        // Per-location threshold. Distance-adaptive (OVERWORLD only — dist_adaptive is
+        // gated off underground because the underground player position is unavailable):
+        // Euclidean ramp near_thr→base_thr over the near→far radius. Otherwise flat
+        // base_thr (normal threshold clustering).
         int thr = base_thr;
         if (have_player && overworld_page && has_anchor && euclid_frame &&
             garea == player_area && far_u > near_u)
@@ -367,34 +326,6 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
             if (t < 0.f) t = 0.f; else if (t > 1.f) t = 1.f;
             thr = (int)std::lround(near_thr + t * (base_thr - near_thr));
             if (thr < 1) thr = 1;
-        }
-        else if (have_player && !overworld_page && player_tab > 0)
-        {
-            // Underground: only the player's SUB-PAGE (tab) can get detail (other
-            // sub-pages are different layers at the same X/Z — would merge under Euclid),
-            // and WITHIN it use TILE distance (reliable; the player float is garbage).
-            const int gtab = goblin::grace_anchor_tab(kv.first);
-            int ggx, ggz;
-            if (gtab != player_tab)
-                thr = base_thr; // other sub-page → clustered
-            else if (goblin::grace_anchor_tile(kv.first, ggx, ggz) && player_gx >= 0)
-            {
-                const float dgx = (float)(ggx - player_gx), dgz = (float)(ggz - player_gz);
-                const float dt = std::sqrt(dgx * dgx + dgz * dgz); // distance in tiles
-                const float nr = (float)goblin::config::clusterNearRadius;
-                const float fr = (float)goblin::config::clusterFarRadius;
-                if (fr > nr)
-                {
-                    float t = (dt - nr) / (fr - nr);
-                    if (t < 0.f) t = 0.f; else if (t > 1.f) t = 1.f;
-                    thr = (int)std::lround(near_thr + t * (base_thr - near_thr));
-                    if (thr < 1) thr = 1;
-                }
-                else
-                    thr = near_thr;
-            }
-            else
-                thr = near_thr; // same sub-page, no tile → full detail
         }
         if ((int)idxs.size() <= thr)
         {
@@ -550,7 +481,11 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const int threshold = clustering ? goblin::ui::global_threshold() : 0;
     // Distance-adaptive is its own clustering mode: when on it OVERRIDES the per-category
     // opt-in (every category clusters by distance from the player; see draw_clusters).
-    const bool dist_adaptive = clustering && goblin::config::clusterDistanceAdaptive;
+    // OVERWORLD ONLY: the underground player position is unavailable (WorldChrMan physics
+    // returns NaN, MapId map-pos reads garbage origin) → can't gauge distance there, so
+    // underground falls back to normal threshold + per-category clustering.
+    const bool dist_adaptive =
+        clustering && goblin::config::clusterDistanceAdaptive && !(open_grp & 1);
     // Resolution-relative icon/glyph sizes (match the native canvas-scaled icons),
     // × the user's master scale × the per-type scale (saved in the ini).
     const float uiScale = realH / 1080.f;
