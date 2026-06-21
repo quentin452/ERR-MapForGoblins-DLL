@@ -201,11 +201,14 @@ std::string marker_label(const Marker &m)
     if (loc.empty()) return name;
     return name + "\n" + loc; // item name, then its location on the next line
 }
-// A cluster pile's tooltip = its location name (if any) + the member count.
-std::string pile_label(int loc_pname, int count)
+// A cluster pile's tooltip = its location name (if any) + the member count. Shows
+// "<remaining>/<total> left" while some are uncollected, "<total> markers" otherwise.
+std::string pile_label(int loc_pname, int remaining, int total)
 {
     std::string loc = goblin::lookup_text_utf8(loc_pname);
-    std::string n = std::to_string(count) + " markers";
+    std::string n = (remaining == total)
+                        ? (std::to_string(total) + " markers")
+                        : (std::to_string(remaining) + "/" + std::to_string(total) + " left");
     return loc.empty() ? n : (loc + "\n" + n);
 }
 // Draw a small dark tooltip box near the cursor on the foreground draw list.
@@ -219,15 +222,20 @@ void draw_tooltip(ImDrawList *fg, ImVec2 at, const std::string &text)
     fg->AddText(ImVec2(p0.x + 6, p0.y + 4), IM_COL32(245, 245, 245, 255), text.c_str());
 }
 
-// Draw a cluster pile glyph (filled disc + member count) at screen point c.
-void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n, float r)
+// Draw a cluster pile glyph (filled disc + remaining-member count) at screen point c.
+// depleted = every member collected → green-tinted disc (mirrors the legacy native
+// CLUSTER_DONE icon) so a finished area reads as done at a glance.
+void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n, float r, bool depleted)
 {
-    fg->AddCircleFilled(c, r, IM_COL32(40, 42, 52, 235));
-    fg->AddCircle(c, r, IM_COL32(255, 255, 255, 230), 0, 2.0f);
+    const ImU32 fill = depleted ? IM_COL32(28, 44, 30, 205) : IM_COL32(40, 42, 52, 235);
+    const ImU32 ring = depleted ? IM_COL32(70, 205, 95, 225) : IM_COL32(255, 255, 255, 230);
+    const ImU32 txt = depleted ? IM_COL32(150, 225, 155, 255) : IM_COL32(255, 255, 255, 255);
+    fg->AddCircleFilled(c, r, fill);
+    fg->AddCircle(c, r, ring, 0, 2.0f);
     char buf[16];
     std::snprintf(buf, sizeof(buf), "%d", n);
     ImVec2 ts = ImGui::CalcTextSize(buf);
-    fg->AddText(ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), IM_COL32(255, 255, 255, 255), buf);
+    fg->AddText(ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), txt, buf);
 }
 
 // Group clustered markers by their nearest-grace key (matches the native map's
@@ -252,7 +260,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     // Pass 1: resolve each pile's GRACE anchor position (sub-threshold groups draw
     // their members normally now). The anchor pos doubles as the neighbour set used to
     // pick a non-overlapping offset below.
-    struct Pile { ImVec2 g; int count; int loc_pname; };
+    struct Pile { ImVec2 g; int count; int total; int loc_pname; };
     std::vector<Pile> piles;
     for (auto &kv : groups)
     {
@@ -285,7 +293,22 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
             for (int i : idxs) { sx += items[i].p.x; sy += items[i].p.y; }
             c = ImVec2(sx / idxs.size(), sy / idxs.size());
         }
-        piles.push_back({c, (int)idxs.size(), items[idxs[0]].m->loc_pname});
+        // Pile count = UNCOLLECTED members (depletion), so the glyph reflects progress
+        // instead of the static total. When collected_graying is off, show the full
+        // total. marker_done = the same collected/cleared predicate used for graying.
+        int total = (int)idxs.size();
+        int remaining = total;
+        if (goblin::config::collectedGraying)
+        {
+            remaining = 0;
+            for (int i : idxs)
+            {
+                bool co;
+                if (!marker_done(*items[i].m, co))
+                    ++remaining;
+            }
+        }
+        piles.push_back({c, remaining, total, items[idxs[0]].m->loc_pname});
     }
 
     // Pass 2: nudge each pile off its grace icon (so both stay visible), in the cardinal
@@ -320,8 +343,10 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         ImVec2 best(piles[i].g.x + off.x, piles[i].g.y + off.y);
         if (on_screen(best))
         {
-            draw_cluster_glyph(fg, best, piles[i].count, glyphR);
-            hover_test(hover, mouse, best, glyphR, pile_label(piles[i].loc_pname, piles[i].count));
+            const bool depleted = (piles[i].count == 0 && piles[i].total > 0);
+            draw_cluster_glyph(fg, best, piles[i].count, glyphR, depleted);
+            hover_test(hover, mouse, best, glyphR,
+                       pile_label(piles[i].loc_pname, piles[i].count, piles[i].total));
             // Location name centred under the glyph (shadowed for readability on the busy map).
             std::string loc = goblin::lookup_text_utf8(piles[i].loc_pname);
             if (!loc.empty())

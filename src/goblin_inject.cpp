@@ -3497,17 +3497,47 @@ int goblin::refresh_category_census()
     using ST = from::paramdef::WORLD_MAP_POINT_PARAM_ST;
     int collectible[NUM_CATEGORIES] = {0};
     int looted[NUM_CATEGORIES]      = {0};
-    for (const auto &r : g_section_rows)
+    if (!g_section_rows.empty())
     {
-        int ci = static_cast<int>(r.cat);
-        if (ci < 0 || ci >= NUM_CATEGORIES) continue;
-        uint32_t f = reinterpret_cast<ST *>(r.ptr)->textDisableFlagId1;  // collect flag
-        if (!(f || r.is_piece || r.is_kindling)) continue;  // not a collectible row
-        collectible[ci]++;
-        bool taken = (f && orp_flag_set(f)) ||
-                     (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
-                     (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
-        if (taken) looted[ci]++;
+        // Native path: the injected param rows carry the live collect flag in-place.
+        for (const auto &r : g_section_rows)
+        {
+            int ci = static_cast<int>(r.cat);
+            if (ci < 0 || ci >= NUM_CATEGORIES) continue;
+            uint32_t f = reinterpret_cast<ST *>(r.ptr)->textDisableFlagId1;  // collect flag
+            if (!(f || r.is_piece || r.is_kindling)) continue;  // not a collectible row
+            collectible[ci]++;
+            bool taken = (f && orp_flag_set(f)) ||
+                         (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
+                         (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
+            if (taken) looted[ci]++;
+        }
+    }
+    else
+    {
+        // Overlay-only mode: inject_map_entries never ran, so g_section_rows is empty.
+        // Recompute the same census straight from MAP_ENTRIES (same predicate as the
+        // native path + inject_map_entries' is_piece/is_kindling classification), using
+        // ORIGINAL row ids (no dynamic remap happens without injection). Graces carry a
+        // textDisableFlagId1 (their discovery flag) but are deduped against the native
+        // pin, not census-counted → excluded so they show no badge (matches native).
+        for (size_t i = 0; i < goblin::generated::MAP_ENTRY_COUNT; i++)
+        {
+            const auto &e = goblin::generated::MAP_ENTRIES[i];
+            int ci = static_cast<int>(e.category);
+            if (ci < 0 || ci >= NUM_CATEGORIES || e.category == Category::WorldGraces) continue;
+            bool is_piece = e.category == Category::ReforgedRunePieces ||
+                            e.category == Category::ReforgedEmberPieces ||
+                            e.category == Category::LootMaterialNodes;
+            bool is_kindling = e.category == Category::WorldKindlingSpirits;
+            uint32_t f = e.data.textDisableFlagId1;
+            if (!(f || is_piece || is_kindling)) continue;  // not a collectible row
+            collectible[ci]++;
+            bool taken = (f && orp_flag_set(f)) ||
+                         (is_piece && goblin::collected::is_original_row_collected(e.row_id)) ||
+                         (is_kindling && goblin::kindling::is_row_collected(e.row_id));
+            if (taken) looted[ci]++;
+        }
     }
     for (int c = 0; c < NUM_CATEGORIES; c++)
     {
