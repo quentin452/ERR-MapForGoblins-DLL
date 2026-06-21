@@ -528,13 +528,29 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const int open_grp = (lv.openDlc ? 2 : 0) | ((lv.underground != 0) ? 1 : 0);
     const bool dlc_ug = (open_grp == 3);
 
-    // [YELLOWDOT] RE diag: when cluster_debug_radius is on, poke get_player_map_pos on
-    // EVERY open page (incl. underground) so its one-shot-per-area log dumps the candidate
-    // manager offsets — to find which holds the native player-dot position underground.
+    // [YELLOWDOT] RE diag: when cluster_debug_radius is on, DRAW the candidate player dot
+    // (tile*256 + manager-local) on EVERY open page, so we can SEE whether it lands on the
+    // native yellow "you are here" dot. Z uses mgr+0x78 (the 3D map-point Z per RE; +0x74
+    // is height). If the dot is OFF the yellow dot, this manager isn't the map-point one.
     if (goblin::config::clusterDebugRadius)
     {
-        int da; float dwx, dwz;
-        goblin::get_player_map_pos(da, dwx, dwz);
+        int da, dgx, dgz; float dx70, dz74, dz78;
+        if (goblin::debug_map_pos_raw(da, dgx, dgz, dx70, dz74, dz78))
+        {
+            ImDrawList *fgd = ImGui::GetForegroundDrawList();
+            const float realWd = io.DisplaySize.x, realHd = io.DisplaySize.y;
+            auto draw_cand = [&](float zlocal, ImU32 col, const char *lbl, float yoff) {
+                float wx = dgx * 256.0f + dx70, wz = dgz * 256.0f + zlocal;
+                float gU, gV;
+                world_to_mapspace_xy(wx, wz, dlc_ug, gU, gV);
+                proj::Px p = proj::project_screen(gU, gV, view, realWd, realHd);
+                fgd->AddCircleFilled(ImVec2(p.x, p.y), 6.f, col);
+                fgd->AddCircle(ImVec2(p.x, p.y), 6.f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
+                fgd->AddText(ImVec2(p.x + 8, p.y + yoff), col, lbl);
+            };
+            draw_cand(dz78, IM_COL32(255, 0, 255, 255), "PLAYER +78", -6.f);   // primary hypothesis
+            draw_cand(dz74, IM_COL32(80, 200, 255, 220), "+74", 8.f);          // old Z (compare)
+        }
     }
 
     // The DLC-UG eyeball rotates about the open group's world centroid. Compute it over

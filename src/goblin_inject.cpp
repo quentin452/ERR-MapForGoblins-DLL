@@ -1014,6 +1014,18 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
     return true;
 }
 
+bool goblin::debug_map_pos_raw(int &area, int &gx, int &gz, float &x70, float &z74, float &z78)
+{
+    if (!g_mappos_tried) resolve_player_map_pos_statics();
+    if (!g_mapid_slot || !g_mappos_mgr_slot) return false;
+    MapPosProbe pr{};
+    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
+    if (!pr.ok) return false;
+    area = pr.area; gx = pr.gx; gz = pr.gz;
+    x70 = pr.d70; z74 = pr.d74; z78 = pr.d78;
+    return true;
+}
+
 // Region gating helpers for the overlay (mirror the game's native areaNo+tab gating).
 int goblin::grace_tab_id(uint8_t src_area, float raw_wx, float raw_wz)
 {
