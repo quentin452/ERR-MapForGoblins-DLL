@@ -1048,10 +1048,6 @@ void build_fog_pieces()
             FogPiece p{layer, row.openTravelAreaLeft, row.openTravelAreaRight,
                        row.openTravelAreaTop, row.openTravelAreaBottom, row.openEventFlagId};
             g_fog_pieces.push_back(p);
-            // Calibration log: dump every piece's rect + flag so the marker map-space ↔
-            // openTravelArea transform can be confirmed against a known fragment in-game.
-            spdlog::info("[FOGCAL] piece id={} layer={} rect=({:.1f},{:.1f})-({:.1f},{:.1f}) flag={}",
-                         rowId, layer, p.l, p.t, p.r, p.b, p.flag);
             int li = (layer >= 0 && layer < 16) ? layer : 0;
             per_layer[li]++;
             bbL[li] = std::min(bbL[li], p.l); bbR[li] = std::max(bbR[li], p.r);
