@@ -811,13 +811,17 @@ const std::vector<std::pair<int, std::string>> &goblin::cluster_label_census()
     return g_cluster_census;
 }
 
-// ─── Player world position (WorldChrMan) — for proximity clustering (v2) ──
-// Chain extracted from Hexinton all-in-one CT v6.0:
-//   WorldChrMan static: AOB `48 8B FA 0F 11 41 70 48 8B 05`; the trailing
-//   `48 8B 05` is `mov rax,[rip+disp32]` at +7 (ends +0xE) → static slot =
-//   finder + 0xE + *(int32*)(finder+0xA).
-//   Global pos floats: [[[WorldChrMan]+0x10EF8]+0]+0x6B0/6B4/6B8 = X/Y/Z.
-// Offsets are game-version specific (CT v6.0); VERIFY in-game before trusting.
+// ─── Player world position (WorldChrMan) ─────────────────────────────────────
+// WorldChrMan static: AOB `48 8B FA 0F 11 41 70 48 8B 05`; the trailing `48 8B 05`
+// is `mov rax,[rip+disp32]` at +7 (ends +0xE) → static slot = finder + 0xE +
+// *(int32*)(finder+0xA).
+// Player position chain RESOLVED (runtime-confirmed, CE find-what-accesses + RPM walk —
+// docs/re/windows_player_pos_RESOLVED_re_findings.md, commit cc53594):
+//   LocalPlayer = [WorldChrMan + 0x1E508]
+//   X/Y/Z       = float [LocalPlayer + 0x6C0 / +0x6C4 / +0x6C8]   (Y = height)
+// Correct on EVERY page (underground included) and updates while the map is CLOSED —
+// the single source for distance-adaptive (map open) AND the minimap (map closed).
+// Supersedes the dead 0x10EF8 → +0x6B0 chain (LocalPlayer offset drifted, field moved).
 static void **g_wcm_static = nullptr;
 static bool g_wcm_tried = false;
 
@@ -836,53 +840,32 @@ static void resolve_world_chr_man()
     spdlog::info("[PLAYER] WorldChrMan static @ {:p}", (void *)g_wcm_static);
 }
 
-// DIAGNOSTIC probe (POD-only; no C++ objects in the __try). Fills intermediate
-// pointers + two candidate coordinate chains so one in-game run identifies the
-// correct offsets. Caller logs the result OUTSIDE the SEH frame.
+// Player-position probe (POD-only; no C++ objects in the __try). Caller reads the
+// result OUTSIDE the SEH frame. LocalPlayer = [WorldChrMan+0x1E508]; X/Y/Z =
+// LocalPlayer +0x6C0/+0x6C4/+0x6C8 (a 2nd render copy sits at +0x6D4.. — use +0x6C0).
 struct PlayerProbe
 {
-    void *wcm, *player, *subA;      // [static], [wcm+10EF8], [player+0]
-    float a[3]; bool a_ok;          // candidate A: global = [..+0]+6B0/6B4/6B8
-    void *physMod;                  // candidate B physics module
-    float b[3]; bool b_ok;          // candidate B: pCoordAdr = [[[[[WCM]+1E508]+58]+10]+190]+68
+    void *wcm, *lp;   // [static], [wcm+0x1E508]
+    float p[3];       // X, Y(height), Z
+    bool ok;
 };
 
 static void probe_player_seh(void **wcm_static, PlayerProbe *pr)
 {
-    pr->wcm = pr->player = pr->subA = pr->physMod = nullptr;
-    pr->a_ok = pr->b_ok = false;
+    pr->wcm = pr->lp = nullptr;
+    pr->ok = false;
     __try
     {
         auto *wcm = *reinterpret_cast<uint8_t **>(wcm_static);
         pr->wcm = wcm;
         if (!wcm) return;
-        // Candidate A: WorldChrMan + LocalPlayerOffset(0x10EF8) + [+0] + 0x6B0..
-        auto *player = *reinterpret_cast<uint8_t **>(wcm + 0x10EF8);
-        pr->player = player;
-        if (player)
-        {
-            auto *subA = *reinterpret_cast<uint8_t **>(player + 0x0);
-            pr->subA = subA;
-            if (subA)
-            {
-                pr->a[0] = *reinterpret_cast<float *>(subA + 0x6B0);
-                pr->a[1] = *reinterpret_cast<float *>(subA + 0x6B4);
-                pr->a[2] = *reinterpret_cast<float *>(subA + 0x6B8);
-                pr->a_ok = true;
-            }
-            // Candidate B: physics chain [[[[player]+58]+10]+190]+68  (pCoordAdr,
-            // but using the LocalPlayerOffset player rather than +1E508).
-            auto *p2 = *reinterpret_cast<uint8_t **>(player + 0x58);
-            if (p2) { auto *p3 = *reinterpret_cast<uint8_t **>(p2 + 0x10);
-            if (p3) { auto *phys = *reinterpret_cast<uint8_t **>(p3 + 0x190);
-            pr->physMod = phys;
-            if (phys) {
-                pr->b[0] = *reinterpret_cast<float *>(phys + 0x68 + 0x0);
-                pr->b[1] = *reinterpret_cast<float *>(phys + 0x68 + 0x4);
-                pr->b[2] = *reinterpret_cast<float *>(phys + 0x68 + 0x8);
-                pr->b_ok = true;
-            } } }
-        }
+        auto *lp = *reinterpret_cast<uint8_t **>(wcm + 0x1E508);
+        pr->lp = lp;
+        if (!lp) return;
+        pr->p[0] = *reinterpret_cast<float *>(lp + 0x6C0); // X
+        pr->p[1] = *reinterpret_cast<float *>(lp + 0x6C4); // Y (height)
+        pr->p[2] = *reinterpret_cast<float *>(lp + 0x6C8); // Z
+        pr->ok = true;
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -893,15 +876,9 @@ bool goblin::get_player_world_pos(float &x, float &y, float &z)
     if (!g_wcm_static) return false;
     PlayerProbe pr{};
     probe_player_seh(g_wcm_static, &pr);
-    spdlog::info("[PLAYER] wcm={:p} player={:p} subA={:p} phys={:p} | "
-                 "A(+0,+6B0)={} X={:.1f} Y={:.1f} Z={:.1f} | "
-                 "B(phys+68)={} X={:.1f} Y={:.1f} Z={:.1f}",
-                 pr.wcm, pr.player, pr.subA, pr.physMod,
-                 pr.a_ok, pr.a[0], pr.a[1], pr.a[2],
-                 pr.b_ok, pr.b[0], pr.b[1], pr.b[2]);
-    if (pr.b_ok) { x = pr.b[0]; y = pr.b[1]; z = pr.b[2]; return true; }
-    if (pr.a_ok) { x = pr.a[0]; y = pr.a[1]; z = pr.a[2]; return true; }
-    return false;
+    if (!pr.ok) return false;
+    x = pr.p[0]; y = pr.p[1]; z = pr.p[2];
+    return true;
 }
 
 // ─── Player MARKER-space position — CONFIRMED Target-A chain (playerpos doc) ──
@@ -955,38 +932,38 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
                                 int *out_gx, int *out_gz)
 {
     if (!g_mappos_tried) resolve_player_map_pos_statics();
-    if (!g_mapid_slot || !g_mappos_mgr_slot) return false;
+    if (!g_wcm_tried) resolve_world_chr_man();
+    if (!g_mapid_slot || !g_mappos_mgr_slot || !g_wcm_static) return false;
     MapPosProbe pr{};
-    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
-    if (!pr.ok) return false;
-    // Project the player position the SAME way the markers are (marker_world_pos /
-    // grace_anchor_world both pass conv_underground=true) — else the player reads the
-    // dungeon's native area while its piles live on area 60, so distance-adaptive never
-    // engages there. conv_underground=true ALSO unifies base underground (area 12) into
-    // the same overworld map-space the underground markers use (without it the player
-    // dot lands in the raw area-12 frame = grossly mis-placed, off-screen underground).
-    // (project_* is plain C++; run it OUTSIDE the SEH frame on the captured values.)
-    from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp{};
-    tmp.areaNo  = static_cast<uint8_t>(pr.area);
-    tmp.gridXNo = static_cast<uint8_t>(pr.gx);
-    tmp.gridZNo = static_cast<uint8_t>(pr.gz);
-    tmp.posX = pr.lx;
-    tmp.posZ = pr.lz;
-    if (project_dungeon_row_to_overworld(&tmp, nullptr, nullptr, /*conv_underground=*/true))
+    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr); // area/tile (+ stale geom local)
+    PlayerProbe pp{};
+    probe_player_seh(g_wcm_static, &pp);                     // live ChrIns world pos
+    if (!pr.ok || !pp.ok) return false;
+    out_area = pr.area;
+    // Player position = the live ChrIns world vector (RESOLVED chain, see above) instead of
+    // the geom-manager block-local read (pr.lx/lz), which went STALE while the map is CLOSED
+    // → the minimap/distance-adaptive centred on the wrong place. For the OVERWORLD (m60)
+    // the ChrIns X/Z are absolute world coords = the SAME frame as marker_world_pos
+    // (tile*256 + local), so feed them straight in. Underground (area 12 / DLC) the ChrIns
+    // frame differs from the unified-overworld projection the markers use → not converted
+    // here (minimap + distance-adaptive are overworld-only). out_gx/gz stay the reliable
+    // MapId tile (valid even underground).
+    world_x = pp.p[0];
+    world_z = pp.p[2];
+    if (out_gx) *out_gx = pr.gx;
+    if (out_gz) *out_gz = pr.gz;
+    // [PLR2] frame check (logged on area change, low spam): compare the live ChrIns pos to
+    // the MapId tile*256 and the old geom block-local. If chrIns ≈ tile*256 + geomLocal →
+    // absolute world == marker frame (current code right). If chrIns ≈ geomLocal (0..256) →
+    // block-local → world = tile*256 + chrIns. Resolves §4 of the RESOLVED doc in one run.
+    static int s_plr2_last_area = -2;
+    if (pr.area != s_plr2_last_area)
     {
-        out_area = tmp.areaNo;
-        world_x = tmp.gridXNo * 256.0f + tmp.posX;
-        world_z = tmp.gridZNo * 256.0f + tmp.posZ;
-        if (out_gx) *out_gx = tmp.gridXNo;
-        if (out_gz) *out_gz = tmp.gridZNo;
-    }
-    else
-    {
-        out_area = pr.area;
-        world_x = pr.gx * 256.0f + pr.lx;   // marker space: gridX*256 + local
-        world_z = pr.gz * 256.0f + pr.lz;
-        if (out_gx) *out_gx = pr.gx;        // reliable tile (from MapId) — valid even underground
-        if (out_gz) *out_gz = pr.gz;
+        s_plr2_last_area = pr.area;
+        spdlog::info("[PLR2] area={} tile=({},{}) tile*256=({:.0f},{:.0f}) "
+                     "chrIns=({:.1f},{:.1f},{:.1f}) geomLocal=({:.1f},{:.1f})",
+                     pr.area, pr.gx, pr.gz, pr.gx * 256.0f, pr.gz * 256.0f,
+                     pp.p[0], pp.p[1], pp.p[2], pr.lx, pr.lz);
     }
     return true;
 }
