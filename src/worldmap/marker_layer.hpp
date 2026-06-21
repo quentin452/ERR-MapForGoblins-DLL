@@ -45,6 +45,11 @@ struct Marker
     // BonfireWarpParam), so the renderer DROPS this overlay marker to avoid a double
     // icon. Undiscovered (flag unset) → drawn as the helper marker. 0 = no gate.
     int discover_flag = 0;
+    // Post-event "secondary story flag" (legacy SetSecondaryFlags + Ashen Capital). When
+    // SET this marker is a post-event variant (burnt/changed area) and only appears once
+    // the story flag fires — the renderer HIDES it while the flag is unset (inverse of
+    // discover_flag). 0 = no gate. Set only by MapEntryLayer.
+    int secondary_flag = 0;
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the

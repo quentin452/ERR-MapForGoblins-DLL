@@ -7,6 +7,7 @@
 #include "goblin_collected.hpp" // is_original_row_collected (piece graying)
 #include "goblin_kindling.hpp"  // is_row_collected (kindling graying)
 #include "goblin_markers.hpp"   // category_name (census log)
+#include "goblin/goblin_map_flags.hpp" // flag::Story* (secondary story gate)
 
 #include <spdlog/spdlog.h>
 
@@ -22,6 +23,29 @@ constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldInter
 
 std::array<std::vector<Marker>, NUM_CAT> g_buckets;
 bool g_built = false;
+
+// Post-event "secondary story flag" for a tile (legacy SetSecondaryFlags + Ashen Capital).
+// A marker on a post-event tile — or anywhere in Leyndell, Ashen Capital (area 35) — only
+// appears once its story flag is set (the burnt/changed map state). Returns 0 = no gate.
+// Mirrors goblin_logic.cpp GetMapFragment's SetSecondaryFlags() tile table + apply_map_logic()
+// is_ashen_capital_row(), but UNCONDITIONAL (legacy coupled SetSecondaryFlags to
+// require_map_fragments; this is a story-spoiler gate, correct regardless). MapTile(X,Y,Z)
+// = (areaNo, gridXNo, gridZNo).
+int secondary_story_flag(int area, int gx, int gz)
+{
+    namespace flag = goblin::flag;
+    if (area == 35) // Leyndell, Ashen Capital — whole area is the post-Erdtree-burn state
+        return flag::StoryErdtreeOnFire;
+    if (gz != 0)
+        return 0;
+    if ((area == 11 && gx == 5) || (area == 19 && gx == 0)) // post-burn Leyndell / Chapel m19
+        return flag::StoryErdtreeOnFire;
+    if ((area == 21 && (gx == 0 || gx == 1 || gx == 2)) || (area == 22 && gx == 0))
+        return flag::StoryCharmBroken;
+    if (area == 20 && gx == 1)
+        return flag::StorySealingTreeBurnt;
+    return 0;
+}
 
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows). Same
 // world-projection + group classification as the grace layer.
@@ -51,9 +75,11 @@ void build_buckets()
         // stale under ERR/randomizer) so collected loot grays + the census decrements.
         int collected_flag = (int)goblin::resolve_loot_flag(e.lotId, e.lotType, d.textDisableFlagId1);
         goblin::diag_loot_flags(e.lotId, e.lotType, d.textDisableFlagId1, c, d.textId1);
-        g_buckets[c].push_back(Marker{wx, wz, grp, (int)d.areaNo, c, ckey, pname, d.textId1,
-                                      category_color(c), category_icon_key(c), frag,
-                                      e.row_id, (int)d.clearedEventFlagId, collected_flag});
+        Marker m{wx, wz, grp, (int)d.areaNo, c, ckey, pname, d.textId1,
+                 category_color(c), category_icon_key(c), frag,
+                 e.row_id, (int)d.clearedEventFlagId, collected_flag};
+        m.secondary_flag = secondary_story_flag(d.areaNo, d.gridXNo, d.gridZNo);
+        g_buckets[c].push_back(m);
     }
 }
 } // namespace

@@ -645,6 +645,13 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // Quest-aware gating: hide a quest-NPC whose questline is currently inactive.
             if (quest_npc_gated_out(m))
                 continue;
+            // Post-event story gate: a marker tagged with a secondary story flag (post-burn
+            // Leyndell / Chapel, Ashen Capital, Charm-broken, Sealing-tree-burnt) is a
+            // post-event variant and appears only once that flag is set. Read live so it
+            // reveals the instant the event fires. Legacy parity: SetSecondaryFlags
+            // (textEnableFlag2) + the Ashen Capital eventFlag gate.
+            if (m.secondary_flag && !goblin::ui::read_event_flag((uint32_t)m.secondary_flag))
+                continue;
             float gU, gV;
             world_to_mapspace(m, dlc_ug, gU, gV);
             // Discovery gate: when require_map_fragments is on, hide a marker whose map
