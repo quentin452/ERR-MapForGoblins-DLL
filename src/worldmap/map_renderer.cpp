@@ -10,6 +10,7 @@
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
 
 #include <imgui.h>
+#include <spdlog/spdlog.h>
 
 #include <cmath>
 #include <cstdint>
@@ -339,6 +340,13 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const float glyphR = kGlyphRBase * uiScale * master * goblin::config::overlayClusterScale;
     std::vector<ScreenMarker> clustered; // markers whose category opted into clustering
 
+    // Fog calibration: once every ~120 frames, log one open-group marker's map-space coords
+    // + fog verdict so the marker-space ↔ openTravelArea transform can be checked vs the
+    // [FOGCAL] piece rects. Only while the experimental fog gate is on.
+    static int s_fogcal_tick = 0;
+    const bool fogcal_log = goblin::config::fogRevealGate && (s_fogcal_tick++ % 120 == 0);
+    bool fogcal_logged = false;
+
     for (auto *L : layers)
     {
         if (!L || !L->visible())
@@ -347,13 +355,31 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
         {
             if (m.group != open_grp)
                 continue; // draw only the open map group
-            // Fragment gate (overlay port of the native eventFlagId gate): when on, hide
-            // a marker until its tile's map-fragment discovery flag is set.
-            if (goblin::config::requireMapFragments && m.fragment_flag &&
-                !goblin::ui::read_event_flag((uint32_t)m.fragment_flag))
-                continue;
             float gU, gV;
             world_to_mapspace(m, dlc_ug, gU, gV);
+            // Discovery gate (when require_map_fragments is on): the real fog-of-war reveal
+            // state (WorldMapPieceParam, fog_reveal_gate) OR the MapList fragment-flag
+            // approximation. fog uses map-space (gU,gV) → must be computed first.
+            if (goblin::config::requireMapFragments)
+            {
+                if (goblin::config::fogRevealGate)
+                {
+                    // group bits = isDLC*2 | isUG → fog layer areaIdx {0 OW, 1 UG, 10 DLC}.
+                    const int areaIdx = (m.group & 2) ? 10 : (m.group & 1);
+                    if (fogcal_log && !fogcal_logged)
+                    {
+                        spdlog::info("[FOGCAL] sample marker layer={} mapspace=({:.1f},{:.1f}) "
+                                     "fogged={}",
+                                     areaIdx, gU, gV, goblin::marker_fogged(areaIdx, gU, gV));
+                        fogcal_logged = true;
+                    }
+                    if (goblin::marker_fogged(areaIdx, gU, gV))
+                        continue;
+                }
+                else if (m.fragment_flag &&
+                         !goblin::ui::read_event_flag((uint32_t)m.fragment_flag))
+                    continue;
+            }
             proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
             ImVec2 sp(p.x, p.y);
             // Clustered-eligible markers are deferred WITHOUT culling — an off-screen
