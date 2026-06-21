@@ -41,7 +41,7 @@ const std::vector<Marker> &GraceLayer::markers() const
         int pname = -1;
         int ckey = goblin::marker_cluster_key(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ,
                                               &pname);
-        int frag = goblin::map_fragment_flag(e.areaNo, e.gridXNo, e.gridZNo);
+        int frag = goblin::marker_fragment_flag(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ);
         cache_.push_back(Marker{wx, wz, grp, (int)e.areaNo, gc, ckey, pname, e.textId,
                                 category_color(gc), "show_graces", frag});
     }
