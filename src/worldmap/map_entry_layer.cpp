@@ -53,6 +53,7 @@ void build_buckets()
         // Lot-backed loot: resolve the LIVE pickup flag (baked textDisableFlagId1 is
         // stale under ERR/randomizer) so collected loot grays + the census decrements.
         int collected_flag = (int)goblin::resolve_loot_flag(e.lotId, e.lotType, d.textDisableFlagId1);
+        goblin::diag_loot_flags(e.lotId, e.lotType, d.textDisableFlagId1, c, d.textId1);
         g_buckets[c].push_back(Marker{wx, wz, grp, (int)d.areaNo, c, ckey, pname, d.textId1,
                                       category_color(c), category_icon_key(c), frag,
                                       e.row_id, (int)d.clearedEventFlagId, collected_flag});

@@ -3651,7 +3651,67 @@ uint32_t goblin::resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t bak
         if (item2 == 0)
             flag = *reinterpret_cast<uint32_t *>(row->b + 0x60);  // getItemFlagId01
     }
-    return flag ? flag : baked_flag;
+    uint32_t resolved = flag ? flag : baked_flag;
+    // Non-persistent / repeatable flags have NO save-backed "obtained" bit, so they
+    // read false forever (IsEventFlag: a flag whose group isn't in the persistent
+    // manager returns false — the temp/event-local groups never are). -1 = "always
+    // re-droppable" (Paramdex); >=2^30 = the empirical temp range (golden runes /
+    // crafting / consumables — repeatable loot). Treat these as NOT a tracked
+    // collectible: return 0 so the caller skips the marker for graying + census
+    // (instead of counting it perpetually "remaining"). This is the dominant cause of
+    // the 100%-save over-report. See docs/re/windows_collected_loot_flag_re_findings.md.
+    if (resolved == 0xFFFFFFFFu || resolved >= 0x40000000u)
+        return 0;
+    return resolved;
+}
+
+// One-shot field dump to RE the real per-item "obtained" flag (see the findings doc).
+// For up to ~6 markers per category, log every candidate flag and its live SET/unset
+// state. Run on a 100% save: the candidate that reads SET for a known-collected item is
+// the correct field; if NONE is set for whole categories, those lots carry no readable
+// persistent obtained flag (repeatable, or the real flag isn't in the lot/map data).
+void goblin::diag_loot_flags(uint32_t lotId, uint8_t lotType, uint32_t baked, int category,
+                             uint32_t nameId)
+{
+    if (!goblin::config::diagLootFlags) return;
+    static int per_cat[NUM_CATEGORIES] = {0};
+    if (category < 0 || category >= NUM_CATEGORIES || per_cat[category] >= 6) return;
+    auto setstr = [](uint32_t f) -> const char * {
+        return f ? (orp_flag_set(f) ? "(SET)" : "(unset)") : "";
+    };
+    if (lotType == 0 || lotId == 0)
+    {
+        spdlog::info("[LOOTDIAG] cat {:2} name {} NO-LOT baked={}{}", category, nameId, baked,
+                     setstr(baked));
+        per_cat[category]++;
+        return;
+    }
+    static LotReader s_diag;
+    static bool s_init = false, s_ok = false;
+    if (!s_init) { s_init = true; s_diag.init(); s_ok = s_diag.ok(); }
+    RawItemLotRow *row = s_ok ? s_diag.row(lotId, lotType) : nullptr;
+    if (!row)
+    {
+        spdlog::info("[LOOTDIAG] cat {:2} name {} lot {}/{} NO-ROW baked={}{}", category, nameId,
+                     lotId, lotType, baked, setstr(baked));
+        per_cat[category]++;
+        return;
+    }
+    int32_t item2 = *reinterpret_cast<int32_t *>(row->b + 0x04);
+    uint32_t lotwide = *reinterpret_cast<uint32_t *>(row->b + 0x80);
+    std::string slots;
+    for (int i = 0; i < 8; ++i)
+    {
+        uint32_t f = *reinterpret_cast<uint32_t *>(row->b + 0x60 + i * 4);
+        slots += std::to_string(f);
+        slots += setstr(f);
+        slots += ' ';
+    }
+    spdlog::info("[LOOTDIAG] cat {:2} name {} lot {}/{} item2={} | @0x80={}{} | baked={}{} | "
+                 "slots60: {}",
+                 category, nameId, lotId, lotType, item2, lotwide, setstr(lotwide), baked,
+                 setstr(baked), slots);
+    per_cat[category]++;
 }
 
 // Reads each lot-backed marker's source ItemLotParam row from memory and sets
