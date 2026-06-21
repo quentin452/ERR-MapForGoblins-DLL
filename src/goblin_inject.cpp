@@ -35,6 +35,7 @@
 #include <mutex>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <spdlog/spdlog.h>
 #include <vector>
 
@@ -3482,6 +3483,7 @@ int goblin::refresh_cluster_depletion()
 // Overlay-only census: implemented in the worldmap module (it owns the marker
 // buckets). Forward-declared here so the refresh entry point can delegate to it.
 namespace goblin::worldmap { void refresh_overlay_census(); }
+static void log_fortune_flag_sources(); // [FLAG-SRC] probe, defined below
 
 int goblin::refresh_category_census()
 {
@@ -3528,6 +3530,7 @@ int goblin::refresh_category_census()
     // it draws + grays), so the F1 badge matches the map and can't diverge from a
     // parallel native-style recompute. refresh_overlay_census writes the census atomics
     // and logs [OVERLAY-CENSUS] (full dump once, then a line on each change).
+    log_fortune_flag_sources(); // one-shot [FLAG-SRC] probe (shared-flag root cause)
     goblin::worldmap::refresh_overlay_census();
     return 0;
 }
@@ -3613,6 +3616,61 @@ uint32_t goblin::resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t bak
             flag = *reinterpret_cast<uint32_t *>(row->b + 0x60);  // getItemFlagId01
     }
     return flag ? flag : baked_flag;
+}
+
+// One-shot probe: for the ReforgedFortunes rows, report WHERE each resolved pickup
+// flag comes from (live ItemLotParam @0x80 / @0x60, or baked fallback / no-lot) plus a
+// summary + distinct-resolved count. Answers "would reading runtime fix the shared-flag
+// over-count?": if distinct_resolved≈row-count → live flags ARE unique (a deeper read
+// would fix it); if it stays small with mostly baked-fallback → our resolver can't reach
+// a unique flag (multi-item lots); if small with mostly live → ERR genuinely shares flags.
+static void log_fortune_flag_sources()
+{
+    static bool done = false;
+    if (done) return;
+    static LotReader lots;
+    static bool inited = false, ok = false;
+    if (!inited) { inited = true; lots.init(); ok = lots.ok(); }
+    if (!ok) { spdlog::info("[FLAG-SRC] ItemLotParam unavailable — retry next census"); return; }
+    done = true;
+
+    int n80 = 0, n60 = 0, nbaked = 0, nnolot = 0, samples = 0;
+    std::unordered_set<uint32_t> distinct;
+    for (size_t i = 0; i < goblin::generated::MAP_ENTRY_COUNT; i++)
+    {
+        const auto &e = goblin::generated::MAP_ENTRIES[i];
+        if (e.category != Category::ReforgedFortunes) continue;
+        uint32_t baked = e.data.textDisableFlagId1, resolved = baked;
+        const char *src = "baked";
+        if (e.lotType && e.lotId)
+        {
+            RawItemLotRow *row = lots.row(e.lotId, e.lotType);
+            if (!row) { src = "no-lot"; nnolot++; }
+            else
+            {
+                uint32_t f80 = *reinterpret_cast<uint32_t *>(row->b + 0x80);
+                if (f80) { resolved = f80; src = "live@0x80"; n80++; }
+                else
+                {
+                    int32_t item2 = *reinterpret_cast<int32_t *>(row->b + 0x04);
+                    uint32_t f60 = (item2 == 0) ? *reinterpret_cast<uint32_t *>(row->b + 0x60) : 0;
+                    if (f60) { resolved = f60; src = "live@0x60"; n60++; }
+                    else { src = "baked-fallback"; nbaked++; }
+                }
+            }
+        }
+        else nbaked++;
+        distinct.insert(resolved);
+        if (samples < 12)
+        {
+            spdlog::info("[FLAG-SRC] fortune lot={} baked={} resolved={} src={}",
+                         e.lotId, baked, resolved, src);
+            samples++;
+        }
+    }
+    spdlog::info("[FLAG-SRC] Fortunes summary: live@0x80={} live@0x60={} baked-fallback={} "
+                 "no-lot={} distinct_resolved={}",
+                 n80, n60, nbaked, nnolot, (int)distinct.size());
 }
 
 // Reads each lot-backed marker's source ItemLotParam row from memory and sets
