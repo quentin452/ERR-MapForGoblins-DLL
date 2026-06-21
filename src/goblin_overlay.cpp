@@ -591,11 +591,6 @@ namespace
                 ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "Saved to INI");
             }
 
-            // Map-fragment gate (live; persists via "Save to INI"). When on, a marker
-            // stays hidden until the player has discovered that area's map fragment.
-            ImGui::Checkbox("Require map fragments (hide an area's icons until its fragment is found)",
-                            &goblin::config::requireMapFragments);
-
             // Overlay marker scale (live preview; persists via "Save to INI"). Final
             // size = resolution-relative base × master × per-type scale.
             if (ImGui::CollapsingHeader("Marker scale (overlay map)"))

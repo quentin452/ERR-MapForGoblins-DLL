@@ -296,14 +296,6 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
         return;
     }
 
-    // Start-of-game prologue: while the player is in the Chapel of Anticipation (m19,
-    // the Grafted Scion intro before the Cave of Knowledge tutorial), the world map
-    // shows the Lands Between with all our markers = a spoiler before the game has even
-    // begun. Blank the overlay there. Player AREA (not the open page) so it holds no
-    // matter what page the prologue map defaults to. -1 = statics unresolved → fail open.
-    if (goblin::get_player_raw_area() == 19)
-        return;
-
     ImGuiIO &io = ImGui::GetIO();
     ImDrawList *fg = ImGui::GetForegroundDrawList();
     const float realW = io.DisplaySize.x, realH = io.DisplaySize.y;
