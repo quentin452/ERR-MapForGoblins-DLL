@@ -928,7 +928,17 @@ static void resolve_player_map_pos_statics()
                  (void *)g_mapid_slot, (void *)g_mappos_mgr_slot);
 }
 
-struct MapPosProbe { int area, gx, gz; float lx, lz; bool ok; };
+struct MapPosProbe
+{
+    int area, gx, gz;
+    float lx, lz;
+    bool ok;
+    // [YELLOWDOT] diag: the candidate manager offsets so one in-game run (overworld +
+    // underground at a known spot) identifies which holds the real player map-pos = the
+    // native yellow "you are here" dot. d74 = current Z source (= height per RE),
+    // d78 = the 3D map-point Z, d80/d88 = the smoothed/camera copy.
+    float d70, d74, d78, d80, d84, d88;
+};
 static void probe_map_pos_seh(uintptr_t mapid_slot, uintptr_t mgr_slot, MapPosProbe *pr)
 {
     pr->ok = false;
@@ -943,6 +953,12 @@ static void probe_map_pos_seh(uintptr_t mapid_slot, uintptr_t mgr_slot, MapPosPr
         pr->gz   = (mid >> 8)  & 0xff;
         pr->lx = *reinterpret_cast<float *>(mgr + 0x70);  // block-local X
         pr->lz = *reinterpret_cast<float *>(mgr + 0x74);  // block-local Z (+0x78 = height)
+        pr->d70 = *reinterpret_cast<float *>(mgr + 0x70);
+        pr->d74 = *reinterpret_cast<float *>(mgr + 0x74);
+        pr->d78 = *reinterpret_cast<float *>(mgr + 0x78);
+        pr->d80 = *reinterpret_cast<float *>(mgr + 0x80);
+        pr->d84 = *reinterpret_cast<float *>(mgr + 0x84);
+        pr->d88 = *reinterpret_cast<float *>(mgr + 0x88);
         pr->ok = true;
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -956,6 +972,17 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
     MapPosProbe pr{};
     probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
     if (!pr.ok) return false;
+    // [YELLOWDOT] one-shot per page: dump the candidate manager offsets so a single run
+    // (overworld + underground at a KNOWN spot) reveals which triple = the native yellow
+    // player-dot position. Then get_player_map_pos can read the right offset on all pages.
+    static int s_logged_area = -999;
+    if (s_logged_area != pr.area)
+    {
+        s_logged_area = pr.area;
+        spdlog::info("[YELLOWDOT] area={} tile=({},{}) | +70={:.1f} +74={:.1f} +78={:.1f} "
+                     "| +80={:.1f} +84={:.1f} +88={:.1f}  (using +70/+74; world=tile*256+local)",
+                     pr.area, pr.gx, pr.gz, pr.d70, pr.d74, pr.d78, pr.d80, pr.d84, pr.d88);
+    }
     // If the player is inside a dungeon that PROJECTS to the overworld (legacy
     // dungeons like Leyndell/Stormveil, catacombs…), project their position the same
     // way the markers are projected — else the player reads the dungeon's native

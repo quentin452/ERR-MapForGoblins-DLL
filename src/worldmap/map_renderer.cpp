@@ -528,6 +528,15 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const int open_grp = (lv.openDlc ? 2 : 0) | ((lv.underground != 0) ? 1 : 0);
     const bool dlc_ug = (open_grp == 3);
 
+    // [YELLOWDOT] RE diag: when cluster_debug_radius is on, poke get_player_map_pos on
+    // EVERY open page (incl. underground) so its one-shot-per-area log dumps the candidate
+    // manager offsets — to find which holds the native player-dot position underground.
+    if (goblin::config::clusterDebugRadius)
+    {
+        int da; float dwx, dwz;
+        goblin::get_player_map_pos(da, dwx, dwz);
+    }
+
     // The DLC-UG eyeball rotates about the open group's world centroid. Compute it over
     // every visible layer's markers (cheap; only needed for group 3).
     if (dlc_ug)
