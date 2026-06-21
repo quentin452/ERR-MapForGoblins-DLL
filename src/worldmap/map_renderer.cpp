@@ -12,6 +12,7 @@
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
 
 #include <imgui.h>
+#include <spdlog/spdlog.h>
 
 #include <cmath>
 #include <cstdint>
@@ -298,6 +299,22 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
             goblin::marker_world_pos((uint8_t)player_area, (uint8_t)player_gx,
                                      (uint8_t)player_gz, plx, plz, ga, vwx, vwz,
                                      /*conv_underground=*/true);
+        }
+        // One-shot diag to pin the underground player frame (map_pos tile is coarse +
+        // float garbage → marker lands off). Compare to a nearby known marker.
+        if (!overworld_page)
+        {
+            static bool s_pdiag = false;
+            if (!s_pdiag)
+            {
+                s_pdiag = true;
+                float wpx = 0, wpy = 0, wpz = 0;
+                bool wp = goblin::get_player_world_pos(wpx, wpy, wpz); // self-logs [PLAYER]
+                spdlog::info("[PLAYER-DIAG] map_pos area={} gx={} gz={} raw=({:.0f},{:.0f}) "
+                             "reproj=({:.0f},{:.0f}) | world_pos ok={} ({:.0f},{:.0f},{:.0f})",
+                             player_area, player_gx, player_gz, pwx, pwz, vwx, vwz, wp, wpx,
+                             wpy, wpz);
+            }
         }
         float gU, gV;
         world_to_mapspace_xy(vwx, vwz, dlc_ug, gU, gV);
