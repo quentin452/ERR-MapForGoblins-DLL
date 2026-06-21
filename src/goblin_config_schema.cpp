@@ -69,6 +69,7 @@ namespace goblin::config
 
     // In-game minimap HUD (corner, north-up, overworld-only — underground player pos
     // is not yet reliable). Foundation/opt-in; off by default.
+    bool debugClusterAnchors = false; // viz: pile anchor + member lines + name + d/thr
     bool debugRegionVolumes = false; // viz: draw each MapNameOverride volume + name
     bool showMinimap = false;
     float minimapZoom = 0.08f;     // px per world-unit shown on the minimap
@@ -410,6 +411,8 @@ namespace
                   "Scale for category marker ICONS (x master). 1.0 = default."},
                 IniEntry{"overlay_cluster_scale", IniType::F32, &cfg::overlayClusterScale, "1.0",
                   "Scale for CLUSTER pile glyphs (x master). 1.0 = default."},
+                B("debug_cluster_anchors", debugClusterAnchors, "false",
+                  "Debug viz: per cluster pile, draw the anchor + lines to every member + the\nname + distance/threshold. Green = grace anchor, red CENTROID = anchor missing.\nSeparate from the distance rings (cluster_debug_radius). Off by default."),
                 B("debug_region_volumes", debugRegionVolumes, "false",
                   "Debug viz: draw every MapNameOverride region volume on the open map page at\nits projected centre + its name; RED = the textId does NOT resolve in the FMG\n(the bug), cyan = resolves. Off by default."),
                 B("show_minimap", showMinimap, "false",

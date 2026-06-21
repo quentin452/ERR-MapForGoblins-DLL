@@ -403,7 +403,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         // its grace anchor; red = anchor missing → member centroid (the drift/mis-place
         // cases, e.g. the Chapel cluster + underground miscalc). Lines that fan way out =
         // the pile sits far from its members.
-        if (goblin::config::clusterDebugRadius)
+        if (goblin::config::debugClusterAnchors)
         {
             const ImU32 dcol = has_anchor ? IM_COL32(40, 230, 170, 170)
                                           : IM_COL32(255, 70, 70, 220);

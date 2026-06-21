@@ -138,6 +138,8 @@ namespace goblin
         extern float overlayIconScale;     // category marker icons
         extern float overlayClusterScale;  // cluster pile glyphs
 
+        // Debug viz: cluster pile anchor + member lines + name + d/thr (own toggle).
+        extern bool debugClusterAnchors;
         // Debug viz: draw each MapNameOverride region volume + name (red = unresolved).
         extern bool debugRegionVolumes;
 
