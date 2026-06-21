@@ -14,6 +14,7 @@ namespace goblin::config
 {
     uint8_t loadDelay = 5;
     bool requireMapFragments = true;
+    bool fogRevealGate = false;
     bool debugLogging = false;
     bool projectDungeons = true;
     bool showAll = false;
@@ -124,6 +125,10 @@ namespace
                          "Leave at 5 unless you want a longer guaranteed settle.", false, nullptr},
                 B("require_map_fragments", requireMapFragments, "true",
                   "Require map fragment discovery before showing icons in that area"),
+                B("fog_reveal_gate", fogRevealGate, "false",
+                  "EXPERIMENTAL (overlay map): gate markers on the game's real fog-of-war\n"
+                  "reveal state (WorldMapPieceParam) instead of the coarse MapList table.\n"
+                  "Needs map-space calibration — see [FOGCAL] log lines. Default off."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("project_dungeons", projectDungeons, "true",

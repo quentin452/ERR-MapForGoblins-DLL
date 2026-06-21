@@ -36,6 +36,8 @@ namespace goblin
     {
         extern uint8_t loadDelay;
         extern bool requireMapFragments;
+        extern bool fogRevealGate; // experimental: gate overlay markers on the real
+                                   // WorldMapPieceParam fog state (vs the MapList table)
         extern bool debugLogging;
         extern bool showAll;  // master switch: show every category (see
                               // is_category_enabled) except those listed below

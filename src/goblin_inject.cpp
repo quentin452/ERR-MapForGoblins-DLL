@@ -18,6 +18,7 @@
 #include "goblin_bench.hpp"
 #include "from/params.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
+#include "from/paramdef/WORLD_MAP_PIECE_PARAM_ST.hpp"
 #include "goblin_quest_gates.hpp"
 #include "goblin_quest_steps.hpp"
 #include "goblin_logic.hpp"
@@ -1018,6 +1019,66 @@ void goblin::capture_live_graces()
 }
 
 const std::vector<goblin::LiveGrace> &goblin::live_graces() { return g_live_graces; }
+
+// ── Fog-of-war reveal gate (RE: docs/re/windows_fog_reveal_mask_re_findings.md) ──
+// A WorldMapPieceParam piece covers the map-space rectangle openTravelArea L/R/T/B and is
+// revealed ⇔ IsEventFlag(openEventFlagId) (flag 0 = always shown). A marker is fogged when
+// the piece whose rect contains it has an unset reveal flag. This is the engine's TRUE fog
+// state — replaces the coarse MapList/marker_fragment_flag approximation once calibrated.
+namespace
+{
+struct FogPiece { int layer; float l, r, t, b; uint32_t flag; };
+std::vector<FogPiece> g_fog_pieces;
+bool g_fog_built = false;
+
+void build_fog_pieces()
+{
+    if (g_fog_built) return;
+    g_fog_built = true;
+    int per_layer[16] = {0};
+    float bbL[16], bbR[16], bbT[16], bbB[16];
+    for (int i = 0; i < 16; ++i) { bbL[i] = 1e30f; bbR[i] = -1e30f; bbT[i] = 1e30f; bbB[i] = -1e30f; }
+    try
+    {
+        for (auto [rowId, row] :
+             from::params::get_param<from::paramdef::WORLD_MAP_PIECE_PARAM_ST>(L"WorldMapPieceParam"))
+        {
+            // rowId = areaIdx*100 + pieceIdx; areaIdx ∈ {0=overworld,1=underground,10=DLC}.
+            int layer = static_cast<int>(rowId / 100);
+            FogPiece p{layer, row.openTravelAreaLeft, row.openTravelAreaRight,
+                       row.openTravelAreaTop, row.openTravelAreaBottom, row.openEventFlagId};
+            g_fog_pieces.push_back(p);
+            // Calibration log: dump every piece's rect + flag so the marker map-space ↔
+            // openTravelArea transform can be confirmed against a known fragment in-game.
+            spdlog::info("[FOGCAL] piece id={} layer={} rect=({:.1f},{:.1f})-({:.1f},{:.1f}) flag={}",
+                         rowId, layer, p.l, p.t, p.r, p.b, p.flag);
+            int li = (layer >= 0 && layer < 16) ? layer : 0;
+            per_layer[li]++;
+            bbL[li] = std::min(bbL[li], p.l); bbR[li] = std::max(bbR[li], p.r);
+            bbT[li] = std::min(bbT[li], p.t); bbB[li] = std::max(bbB[li], p.b);
+        }
+    }
+    catch (...) {}
+    for (int i = 0; i < 16; ++i)
+        if (per_layer[i])
+            spdlog::info("[FOGCAL] layer {} : {} pieces, rect bbox=({:.1f},{:.1f})-({:.1f},{:.1f})",
+                         i, per_layer[i], bbL[i], bbT[i], bbR[i], bbB[i]);
+    spdlog::info("[FOGCAL] {} WorldMapPieceParam pieces loaded", g_fog_pieces.size());
+}
+} // namespace
+
+bool goblin::marker_fogged(int areaIdx, float mx, float my)
+{
+    if (!g_fog_built) build_fog_pieces();
+    for (const FogPiece &p : g_fog_pieces)
+    {
+        if (p.layer != areaIdx) continue;
+        if (mx < p.l || mx > p.r || my < p.t || my > p.b) continue; // not this piece
+        if (p.flag == 0) return false;                              // ungated piece
+        return !goblin::ui::read_event_flag(p.flag);                // fogged if flag unset
+    }
+    return false; // covered by no piece ⇒ ungated (matches the engine)
+}
 
 // Map-fragment discovery flag for a marker, computed on the SAME tile the native
 // injection gates on. Legacy GetMapFragment runs AFTER inject_map_entries projected the

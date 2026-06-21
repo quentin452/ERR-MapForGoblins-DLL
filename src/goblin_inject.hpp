@@ -63,6 +63,14 @@ namespace goblin
     // require_map_fragments gate — the raw tile misses dungeon-interior cells → leaks.
     int marker_fragment_flag(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz);
 
+    // Fog-of-war reveal test (RE: docs/re/windows_fog_reveal_mask_re_findings.md). True
+    // when the marker at MAP-SPACE (mx,my) on the given areaIdx layer (0=overworld,
+    // 1=underground, 10=DLC) sits on a WorldMapPieceParam piece whose reveal event flag is
+    // unset = still fogged. This is the engine's real fog state (replaces marker_fragment_
+    // flag once the map-space↔openTravelArea transform is calibrated). Builds the piece
+    // cache live on first call + logs [FOGCAL] calibration data.
+    bool marker_fogged(int areaIdx, float mx, float my);
+
     // A Site of Grace read LIVE from WorldMapPointParam (iconId 370) — no baked data.
     struct LiveGrace
     {
