@@ -64,4 +64,10 @@ namespace goblin::worldmap_probe
     // recreate all render targets), fixing windowed/fullscreen/borderless. Render-thread
     // only; idempotent. Returns 1 if it fired. Gated by config fix_midsession_resolution.
     int reapply_render_res(int w, int h);
+
+    // Called from hk_resize_buffers to flag that a swapchain resize happened, so the
+    // hk_present enforcer fires the re-apply even when the dims read consistent (the
+    // fullscreen-doubling case = stale GPU resources, unchanged dims). Self-suppresses
+    // during the re-apply's own nested ResizeBuffers. Cheap (sets an atomic).
+    void note_resize_event();
 }

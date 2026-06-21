@@ -672,6 +672,8 @@ void dump_render_dims(float bbW, float bbH)
 using ReApplyResFn = void(__fastcall *)(void *mgr, uint32_t w, uint32_t h);
 static ReApplyResFn g_reapply_fn = nullptr;
 static bool g_reapply_tried = false;
+static std::atomic<bool> g_reapply_in_progress{false}; // suppress the nested-resize loop
+static std::atomic<bool> g_resize_pending{false};      // set by hk_resize_buffers
 
 static void resolve_reapply_fn() // C++ EH (scan can throw) — kept out of the SEH frame
 {
@@ -701,52 +703,100 @@ static void call_reapply_seh(void *mgr, uint32_t w, uint32_t h)
     }
 }
 
-// Edge-triggered enforcer: when the active dims disagree with the live backbuffer, run the
-// engine re-apply once. Idempotent + re-entrancy-guarded so hk_present can call it every
-// frame (catches resize paths the hook misses). Gated by config fix_midsession_resolution.
-// Returns 1 if the re-apply fired this call, else 0.
+// Raw-poke BACKSTOP: force the render-output scalar dims (source mgr+0x3c8/0x3cc + active
+// entry+0x108/0x10c int, +0x118/0x11c float) to W/H — the fields the map-fit + 3D viewport
+// read. WPM-guarded. Kept alongside the engine re-apply (belt-and-suspenders): covers a
+// partial re-apply or an unresolved engine fn. Returns # output entries written.
+static int poke_render_dims(uint64_t mgr, uint64_t begin, uint64_t end, int w, int h)
+{
+    if (begin < 0x10000 || end < begin || (end - begin) > 0x4000) return 0;
+    const float fw = static_cast<float>(w), fh = static_cast<float>(h);
+    int n = 0;
+    for (uint64_t e = begin; e < end && n < 16; e += 0x170)
+    {
+        int outIdx = 0;
+        seh_read_i32(reinterpret_cast<void *>(e + 0x128), &outIdx);
+        uint64_t src = mgr + static_cast<uint64_t>(static_cast<uint32_t>(outIdx)) * 0x30;
+        seh_write_i32(reinterpret_cast<void *>(src + 0x3c8), w);
+        seh_write_i32(reinterpret_cast<void *>(src + 0x3cc), h);
+        seh_write_i32(reinterpret_cast<void *>(e + 0x108), w);
+        seh_write_i32(reinterpret_cast<void *>(e + 0x10c), h);
+        seh_write_f32(reinterpret_cast<void *>(e + 0x110), 0.f);
+        seh_write_f32(reinterpret_cast<void *>(e + 0x114), 0.f);
+        seh_write_f32(reinterpret_cast<void *>(e + 0x118), fw);
+        seh_write_f32(reinterpret_cast<void *>(e + 0x11c), fh);
+        ++n;
+    }
+    return n;
+}
+
+// Note a swapchain resize so hk_present fires the re-apply even when the dims read
+// CONSISTENT — the fullscreen-doubling case is stale GPU resources with UNCHANGED dims, so
+// a dims edge-trigger alone never catches it. Suppressed while our own re-apply runs (its
+// nested ResizeBuffers re-enters hk_resize_buffers → would loop).
+void note_resize_event()
+{
+    if (g_reapply_in_progress.load(std::memory_order_relaxed)) return;
+    g_resize_pending.store(true, std::memory_order_relaxed);
+}
+
+// Mid-session resolution/mode enforcer, called every frame from hk_present. Fires the
+// engine re-apply + a scalar poke when EITHER a resize event is pending (catches the
+// consistent-dims fullscreen case) OR the active dims disagree with the live backbuffer
+// (catches windowed stale dims + hook-missed paths). Gated by fix_midsession_resolution.
+// Returns 1 if anything fired this call.
 int reapply_render_res(int w, int h)
 {
     if (w <= 0 || h <= 0) return 0;
     if (!g_reapply_tried) resolve_reapply_fn();
-    if (!g_reapply_fn) return 0;
 
     uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
     if (!base) return 0;
     uint64_t mgr = 0;
     if (!seh_read8(reinterpret_cast<void *>(base + 0x47ef360), &mgr) || mgr < 0x10000) return 0;
-
-    // Edge-trigger: act only when the first output's active dims (entry+0x118/+0x11c)
-    // differ from the live backbuffer — cheap path-independent gate.
-    uint64_t begin = 0;
+    uint64_t begin = 0, end = 0;
     if (!seh_read8(reinterpret_cast<void *>(mgr + 0x128), &begin) || begin < 0x10000) return 0;
+    seh_read8(reinterpret_cast<void *>(mgr + 0x130), &end);
+
+    // Trigger: pending resize event OR active dims (entry+0x118/+0x11c) ≠ live backbuffer.
+    const bool pending = g_resize_pending.exchange(false, std::memory_order_relaxed);
     float aw = 0, ah = 0;
     seh_read4(reinterpret_cast<void *>(begin + 0x118), &aw);
     seh_read4(reinterpret_cast<void *>(begin + 0x11c), &ah);
-    if (static_cast<int>(aw) == w && static_cast<int>(ah) == h) return 0;
+    const bool mismatch = (static_cast<int>(aw) != w || static_cast<int>(ah) != h);
+    if (!pending && !mismatch) return 0;
 
-    // Render-thread guard: the engine fn takes a lock branch unless it runs on the render
-    // thread ([mgr+0x6d0]+0x14 == current tid). Only fire when we ARE that thread (the
-    // Present hook is) — bail otherwise rather than risk the lock path.
-    uint64_t rt = 0;
-    if (seh_read8(reinterpret_cast<void *>(mgr + 0x6d0), &rt) && rt > 0x10000)
+    // (1) Engine re-apply = the real GPU-resource recreation (release + ResizeBuffers +
+    //     recreate targets). Render-thread + re-entrancy guarded. Skipped if the AOB didn't
+    //     resolve → only the poke runs (degrades to the old partial fix).
+    bool fired = false;
+    if (g_reapply_fn && !g_reapply_in_progress.load(std::memory_order_relaxed))
     {
-        int rtid = 0;
-        if (seh_read_i32(reinterpret_cast<void *>(rt + 0x14), &rtid) && rtid &&
-            static_cast<uint32_t>(rtid) != GetCurrentThreadId())
-            return 0;
+        bool thread_ok = true;
+        uint64_t rt = 0;
+        if (seh_read8(reinterpret_cast<void *>(mgr + 0x6d0), &rt) && rt > 0x10000)
+        {
+            int rtid = 0;
+            if (seh_read_i32(reinterpret_cast<void *>(rt + 0x14), &rtid) && rtid &&
+                static_cast<uint32_t>(rtid) != GetCurrentThreadId())
+                thread_ok = false;
+        }
+        if (thread_ok)
+        {
+            g_reapply_in_progress.store(true, std::memory_order_relaxed);
+            call_reapply_seh(reinterpret_cast<void *>(mgr), static_cast<uint32_t>(w),
+                             static_cast<uint32_t>(h));
+            g_reapply_in_progress.store(false, std::memory_order_relaxed);
+            fired = true;
+        }
     }
 
-    // The nested ResizeBuffers re-enters hk_resize_buffers (fine — rebuilds our RTVs) but
-    // must not re-fire this enforcer mid-call.
-    static bool s_in = false;
-    if (s_in) return 0;
-    s_in = true;
-    call_reapply_seh(reinterpret_cast<void *>(mgr), static_cast<uint32_t>(w),
-                     static_cast<uint32_t>(h));
-    s_in = false;
-    spdlog::info("[RENDIMS] reapply_render_res({}x{}) via FUN_1419ed440", w, h);
-    return 1;
+    // (2) Scalar-dims poke backstop (covers a partial re-apply / unresolved engine fn).
+    const int n = poke_render_dims(mgr, begin, end, w, h);
+
+    spdlog::info("[RENDIMS] reapply_render_res({}x{}) engine={} poked={} (pending={} mismatch={})",
+                 w, h, fired, n, pending, mismatch);
+    return (fired || n) ? 1 : 0;
 }
 
 } // namespace goblin::worldmap_probe

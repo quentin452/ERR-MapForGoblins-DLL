@@ -1317,9 +1317,12 @@ namespace
             }
         }
 
-        // NOTE: the mid-session resolution re-apply (reapply_render_res → FUN_1419ed440)
-        // is NOT called here — it calls ResizeBuffers internally and would re-enter this
-        // hook. The per-frame edge-triggered enforcer in hk_present owns it instead.
+        // Flag the resize so the hk_present enforcer fires the re-apply even when the dims
+        // read consistent (fullscreen doubling = stale GPU resources, unchanged dims). We
+        // only NOTE it here — the re-apply itself (reapply_render_res → FUN_1419ed440)
+        // calls ResizeBuffers internally and must run from hk_present, not re-enter here.
+        if (SUCCEEDED(hr) && goblin::config::fixMidsessionResolution)
+            goblin::worldmap_probe::note_resize_event();
         return hr;
     }
 
