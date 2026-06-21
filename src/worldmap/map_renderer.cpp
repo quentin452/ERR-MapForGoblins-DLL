@@ -705,4 +705,80 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     if (hover.bestd < 1e30f)
         draw_tooltip(fg, mouse, hover.text);
 }
+
+void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture, float screenW,
+                  float screenH)
+{
+    namespace cfg = goblin::config;
+    if (!cfg::showMinimap || !goblin::ui::icons_enabled())
+        return;
+    // Live player position (read during gameplay, map closed). OVERWORLD only — the
+    // underground player position isn't reliable yet (see overlay-pending-re #1).
+    int parea = 0;
+    float pwx = 0.f, pwz = 0.f;
+    if (!goblin::get_player_map_pos(parea, pwx, pwz))
+        return;
+    int pgroup;
+    if (parea == 60)
+        pgroup = 0; // base overworld
+    else if (parea == 61)
+        pgroup = 2; // DLC overworld
+    else
+        return; // underground / unknown page → no minimap (player pos unreliable)
+
+    const float R = cfg::minimapSize > 24.f ? cfg::minimapSize : 24.f;
+    const float scale = cfg::minimapZoom > 0.0001f ? cfg::minimapZoom : 0.08f;
+    const float margin = 24.f;
+    const ImVec2 ctr(screenW - R - margin, R + margin); // top-right corner
+    const float cullR = R - 5.f;
+
+    int bgA = (int)(cfg::minimapOpacity * 255.f);
+    bgA = bgA < 0 ? 0 : (bgA > 255 ? 255 : bgA);
+
+    ImDrawList *fg = ImGui::GetForegroundDrawList();
+    fg->AddCircleFilled(ctr, R, IM_COL32(12, 14, 20, bgA), 64);
+    fg->AddCircle(ctr, R, IM_COL32(230, 220, 180, 200), 64, 2.0f);
+
+    fg->PushClipRect(ImVec2(ctr.x - R, ctr.y - R), ImVec2(ctr.x + R, ctr.y + R), true);
+    ImTextureID atlas = reinterpret_cast<ImTextureID>(atlas_texture);
+    const float half = 6.0f; // minimap markers are small + fixed-size
+    for (auto *L : layers)
+    {
+        if (!L || !L->visible())
+            continue;
+        for (const Marker &m : L->markers())
+        {
+            if (m.group != pgroup)
+                continue; // only the player's overworld page
+            // Same hide-gates as the worldmap (discovered grace, quest-NPC, post-event story).
+            if (m.discover_flag && goblin::ui::read_event_flag((uint32_t)m.discover_flag))
+                continue;
+            if (quest_npc_gated_out(m))
+                continue;
+            if (m.secondary_flag && !goblin::ui::read_event_flag((uint32_t)m.secondary_flag))
+                continue;
+            // North-up, player-centred: same orientation as the worldmap (mapV = -worldZ).
+            float dx = (m.worldX - pwx) * scale;
+            float dy = -(m.worldZ - pwz) * scale;
+            if (dx * dx + dy * dy > cullR * cullR)
+                continue; // outside the HUD radius
+            // Fog gate: hide markers on a still-fogged map piece (require_map_fragments).
+            if (cfg::requireMapFragments)
+            {
+                float gU, gV;
+                world_to_mapspace(m, /*dlc_ug=*/false, gU, gV);
+                const int areaIdx = (m.group & 2) ? 10 : 0;
+                if (goblin::marker_fogged(areaIdx, gU, gV))
+                    continue;
+            }
+            draw_marker(fg, m, ImVec2(ctr.x + dx, ctr.y + dy), atlas, half);
+        }
+    }
+    fg->PopClipRect();
+
+    // Player marker at centre + a north tick (no heading yet → north-up only).
+    fg->AddCircleFilled(ctr, 4.0f, IM_COL32(255, 225, 70, 255));
+    fg->AddCircle(ctr, 4.0f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
+    fg->AddText(ImVec2(ctr.x - 4.f, ctr.y - R - 16.f), IM_COL32(230, 220, 180, 220), "N");
+}
 } // namespace goblin::worldmap

@@ -502,14 +502,13 @@ namespace
     // map_renderer owns projection + motion-sync + group gating + draw; each marker
     // type is a MarkerLayer plugin (graces = 1st impl). This is the NEW overlay-
     // rendered map, distinct from the legacy native WorldMapPointParam injection.
-    void draw_worldmap_markers(bool /*menu_open*/)
+    // Shared overlay marker layers: one GraceLayer (live BonfireWarp graces) + one
+    // MapEntryLayer per other category (baked MAP_ENTRIES). Built once; layer order is
+    // stable. Used by both the worldmap markers and the minimap HUD.
+    std::vector<goblin::worldmap::MarkerLayer *> &overlay_layers()
     {
-        if (!goblin::ui::icons_enabled())
-            return; // master off → draw no overlay markers
         namespace wm = goblin::worldmap;
         namespace gen = goblin::generated;
-        // One GraceLayer (live BonfireWarp graces) + one MapEntryLayer per other
-        // category (baked MAP_ENTRIES). Built once; layer order is stable.
         static wm::GraceLayer s_graces;
         static std::vector<wm::MapEntryLayer> s_cat;     // stable storage
         static std::vector<wm::MarkerLayer *> s_layers;  // pointers into the above
@@ -525,6 +524,15 @@ namespace
             for (auto &L : s_cat)
                 s_layers.push_back(&L);
         }
+        return s_layers;
+    }
+
+    void draw_worldmap_markers(bool /*menu_open*/)
+    {
+        if (!goblin::ui::icons_enabled())
+            return; // master off → draw no overlay markers
+        namespace wm = goblin::worldmap;
+        std::vector<wm::MarkerLayer *> &s_layers = overlay_layers();
         void *atlas = g_atlas_ready ? reinterpret_cast<void *>(g_atlas_gpu.ptr) : nullptr;
         // OS cursor in client/backbuffer px for marker tooltips (the map cursor tracks it).
         float mx = -1.f, my = -1.f;
@@ -532,6 +540,17 @@ namespace
         BOOL ok = o_get_cursor_pos ? o_get_cursor_pos(&pt) : GetCursorPos(&pt);
         if (ok && g_hwnd && ScreenToClient(g_hwnd, &pt)) { mx = (float)pt.x; my = (float)pt.y; }
         wm::render_markers(s_layers, atlas, mx, my);
+    }
+
+    // In-game minimap HUD (corner, north-up, overworld). Drawn during gameplay (map
+    // closed) on the foreground draw list. No-ops internally when show_minimap is off,
+    // the icons master is off, or the player is underground (pos not yet reliable).
+    void draw_minimap_hud()
+    {
+        void *atlas = g_atlas_ready ? reinterpret_cast<void *>(g_atlas_gpu.ptr) : nullptr;
+        ImGuiIO &io = ImGui::GetIO();
+        goblin::worldmap::draw_minimap(overlay_layers(), atlas, io.DisplaySize.x,
+                                       io.DisplaySize.y);
     }
 
     void draw_panel()
@@ -642,6 +661,21 @@ namespace
                     goblin::config::overlayClusterScale = 1.0f;
                 }
                 ImGui::TextDisabled("Live. × a resolution-relative base. Save to INI to persist.");
+            }
+
+            // In-game minimap HUD (foundation; overworld-only, north-up). Live; persists.
+            if (ImGui::CollapsingHeader("Minimap (in-game HUD)"))
+            {
+                ImGui::Checkbox("Show minimap (corner HUD during gameplay)",
+                                &goblin::config::showMinimap);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("A small north-up minimap in the screen corner showing nearby\n"
+                                      "markers around you during play. OVERWORLD only for now\n"
+                                      "(underground player position isn't reliable yet).");
+                ImGui::SliderFloat("Zoom (px/world)", &goblin::config::minimapZoom, 0.02f, 0.30f, "%.3f");
+                ImGui::SliderFloat("Radius (px)", &goblin::config::minimapSize, 60.0f, 300.0f, "%.0f");
+                ImGui::SliderFloat("Opacity", &goblin::config::minimapOpacity, 0.0f, 1.0f, "%.2f");
+                ImGui::TextDisabled("Foundation: overworld, north-up. Save to INI to persist.");
             }
 
             // Sections (coarse) + their categories (fine). A row shows only if
@@ -1276,7 +1310,8 @@ namespace
         // Draw overlay markers when the prototype flag is on OR native injection is
         // off (overlay is then the sole map).
         bool proto = goblin::config::overlayMarkersProto || !goblin::config::nativeMapInjection;
-        if ((g_show || proto) && g_command_queue)
+        bool minimap = goblin::config::showMinimap;
+        if ((g_show || proto || minimap) && g_command_queue)
         {
             try_upload_atlas();   // one-time; needs the captured command queue
             g_imgui_reading_cursor = true;   // let ImGui's NewFrame see the real cursor
@@ -1288,6 +1323,8 @@ namespace
                 draw_panel();
             if (proto)
                 draw_worldmap_markers(g_show);
+            if (minimap)
+                draw_minimap_hud();   // gameplay HUD (map closed) — self-gates overworld-only
             ImGui::Render();
 
             UINT idx = swapchain->GetCurrentBackBufferIndex();

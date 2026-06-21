@@ -19,4 +19,12 @@ namespace goblin::worldmap
 // tooltip (name / location + count).
 void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_texture = nullptr,
                     float mouseX = -1.f, float mouseY = -1.f);
+
+// Draw the in-game minimap HUD (corner, north-up, player-centred) on the foreground
+// draw list. Unlike render_markers this runs DURING GAMEPLAY (map closed) — it reads the
+// live player position (goblin::get_player_map_pos) instead of the open-map view. Foundation:
+// OVERWORLD only (area 60/61); no-op underground (player pos not yet reliable there) or when
+// config::showMinimap is off / icons master off. screenW/H = backbuffer size (HUD anchor).
+void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture, float screenW,
+                  float screenH);
 } // namespace goblin::worldmap

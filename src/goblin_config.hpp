@@ -138,6 +138,12 @@ namespace goblin
         extern float overlayIconScale;     // category marker icons
         extern float overlayClusterScale;  // cluster pile glyphs
 
+        // In-game minimap HUD (corner, north-up, overworld-only). Opt-in.
+        extern bool showMinimap;
+        extern float minimapZoom;     // px per world-unit
+        extern float minimapSize;     // radius px
+        extern float minimapOpacity;  // background opacity 0..1
+
         // EXPERIMENTAL live world-map icon refresh. Hooks the engine's placed-
         // map-point (re)build (FUN_140a82a80) so a section/category toggle re-renders
         // icons WHILE the map is open instead of only on the next open. Off by
