@@ -101,34 +101,50 @@ void refresh_overlay_census()
         const bool kind = c == static_cast<int>(gen::Category::WorldKindlingSpirits);
 
         int total = 0, looted = 0;
-        std::unordered_set<int> distinct_flags; // detect shared collect flags (over-count)
-        for (const Marker &m : g_buckets[c])
+        if (piece || kind)
         {
-            const bool collectible = (m.collected_flag != 0) || piece || kind;
-            if (!collectible)
-                continue; // not a counted item (e.g. boss with only a clear flag, NPC)
-            ++total;
-            if (m.collected_flag)
-                distinct_flags.insert(m.collected_flag);
-            // SAME collected detection the renderer uses to gray the marker → the badge
-            // can never disagree with the map. collected_flag was resolved live at build.
-            const bool done =
-                (m.collected_flag && goblin::ui::read_event_flag((uint32_t)m.collected_flag)) ||
-                (m.cleared_flag && goblin::ui::read_event_flag((uint32_t)m.cleared_flag)) ||
-                (piece && goblin::collected::is_original_row_collected(m.row_id)) ||
-                (kind && goblin::kindling::is_row_collected(m.row_id));
-            if (done)
-                ++looted;
+            // Geom/SFX-tracked: each row is its own collectible, keyed by row_id (these
+            // rows have no per-item event flag, so the flag-dedup path can't apply).
+            for (const Marker &m : g_buckets[c])
+            {
+                ++total;
+                const bool done = piece ? goblin::collected::is_original_row_collected(m.row_id)
+                                        : goblin::kindling::is_row_collected(m.row_id);
+                if (done)
+                    ++looted;
+            }
+        }
+        else
+        {
+            // Flag-based: count by DISTINCT event flag, not per row. ERR data shares one
+            // collect/clear flag across many markers (e.g. ~61 Fortunes share ~8 flags),
+            // so a per-row count over-reports (one pickup would mark ~18 rows taken). A
+            // flag = collected_flag (loot pickup) else cleared_flag (boss/hawk kill). For
+            // categories with unique flags this equals the row count, so nothing changes
+            // there; it only corrects the shared-flag categories. SAME flags the renderer
+            // grays on, so the badge tracks the map (modulo shared-flag groups, which the
+            // game itself can't disambiguate).
+            std::unordered_set<int> all, taken;
+            for (const Marker &m : g_buckets[c])
+            {
+                const int flag = m.collected_flag ? m.collected_flag : m.cleared_flag;
+                if (!flag)
+                    continue; // not a counted item (NPC, spirit spring, stake, …)
+                all.insert(flag);
+                if (goblin::ui::read_event_flag((uint32_t)flag))
+                    taken.insert(flag);
+            }
+            total = (int)all.size();
+            looted = (int)taken.size();
         }
         goblin::ui::set_category_census(c, total, looted);
 
         // [OVERLAY-CENSUS] log: full dump on the first publish, then a line whenever a
         // category's looted count changes (so a pickup is visible in the log).
         if ((!s_logged_once || s_prev_looted[c] != looted) && total > 0)
-            spdlog::info("[OVERLAY-CENSUS] cat {:2} '{}' remaining={}/{} (looted {} -> {}) distinct_flags={}",
+            spdlog::info("[OVERLAY-CENSUS] cat {:2} '{}' remaining={}/{} (looted {} -> {})",
                          c, goblin::markers::category_name(static_cast<gen::Category>(c)),
-                         total - looted, total, s_prev_looted[c], looted,
-                         (int)distinct_flags.size());
+                         total - looted, total, s_prev_looted[c], looted);
         s_prev_looted[c] = looted;
     }
     s_logged_once = true;
