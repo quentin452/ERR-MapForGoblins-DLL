@@ -911,6 +911,15 @@ static void probe_map_pos_seh(uintptr_t mapid_slot, uintptr_t mgr_slot, MapPosPr
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
+int goblin::get_player_raw_area()
+{
+    if (!g_mappos_tried) resolve_player_map_pos_statics();
+    if (!g_mapid_slot || !g_mappos_mgr_slot) return -1;
+    MapPosProbe pr{};
+    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
+    return pr.ok ? pr.area : -1;
+}
+
 bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
                                 int *out_gx, int *out_gz)
 {
