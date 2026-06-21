@@ -1301,6 +1301,17 @@ namespace
                 g_frames[i].render_target = back;
             }
         }
+
+        // EXPERIMENTAL no-restart fix: ER leaves its render-output dims at the old
+        // resolution on a mid-session resize → 3D + map stay zoomed. Poke them to the
+        // new size (from the live swapchain desc, since w/h can be 0 = "use window").
+        if (SUCCEEDED(hr) && goblin::config::fixMidsessionResolution)
+        {
+            DXGI_SWAP_CHAIN_DESC d{};
+            swapchain->GetDesc(&d);
+            goblin::worldmap_probe::fix_render_dims(static_cast<int>(d.BufferDesc.Width),
+                                                    static_cast<int>(d.BufferDesc.Height));
+        }
         return hr;
     }
 

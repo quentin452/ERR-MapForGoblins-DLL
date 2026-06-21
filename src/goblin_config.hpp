@@ -123,6 +123,11 @@ namespace goblin
         // mid-session resolution-change zoom corruption. Read-only.
         extern bool debugRenderDims;
 
+        // EXPERIMENTAL: on a swapchain resize, raw-poke ER's stale render-output dims
+        // to the new size so a mid-session resolution change doesn't leave the world
+        // zoomed (no restart needed). Same-aspect only. Default off.
+        extern bool fixMidsessionResolution;
+
         // Overlay marker sizes. Final = resolution-base × master × type-scale.
         extern float overlayMasterScale;   // all overlay markers + piles
         extern float overlayIconScale;     // category marker icons

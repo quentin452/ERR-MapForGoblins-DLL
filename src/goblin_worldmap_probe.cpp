@@ -116,6 +116,17 @@ inline bool seh_read_i32(const void *src, int *out)
     SIZE_T n = 0;
     return ReadProcessMemory(GetCurrentProcess(), src, out, sizeof(*out), &n) && n == sizeof(*out);
 }
+// Safe writes via WriteProcessMemory — bad/read-only dst returns false, never crashes.
+inline bool seh_write_i32(void *dst, int v)
+{
+    SIZE_T n = 0;
+    return WriteProcessMemory(GetCurrentProcess(), dst, &v, sizeof(v), &n) && n == sizeof(v);
+}
+inline bool seh_write_f32(void *dst, float v)
+{
+    SIZE_T n = 0;
+    return WriteProcessMemory(GetCurrentProcess(), dst, &v, sizeof(v), &n) && n == sizeof(v);
+}
 
 // (The whole-address-space vtable scan was removed — it was O(GB), crashed at
 // startup, and is superseded by the O(KB) CSMenuMan walk below.)
@@ -643,6 +654,45 @@ void dump_render_dims(float bbW, float bbH)
                      i, outIdx, w, h, srcW, srcH, rscale, dirty & 0xff,
                      stale ? "<-- STALE vs backbuffer" : "ok");
     }
+}
+
+// No-restart fix for the mid-session resolution corruption. The probe proved BOTH the
+// source dims (mgr+outIdx*0x30+0x3c8/0x3cc) AND the active dims (entry+0x108/0x10c int,
+// +0x118/+0x11c float) stay at the OLD resolution after a mid-session resize (the entry
+// is never marked dirty, so the engine never re-derives it). Rather than call the engine
+// recompute (FUN_1419ebb40 — VMP-adjacent, crash-risk from the swapchain thread), we
+// RAW-POKE the fields to the new W/H (agent fix-3). Offsets +0x110/+0x114 = 0 (no
+// letterbox on a same-aspect change, e.g. 1080↔720). All writes are WPM-guarded.
+// Returns the number of output entries patched. Gated by config fix_midsession_resolution.
+int fix_render_dims(int w, int h)
+{
+    uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base || w <= 0 || h <= 0) return 0;
+    uint64_t mgr = 0;
+    if (!seh_read8(reinterpret_cast<void *>(base + 0x47ef360), &mgr) || mgr < 0x10000) return 0;
+    uint64_t begin = 0, end = 0;
+    seh_read8(reinterpret_cast<void *>(mgr + 0x128), &begin);
+    seh_read8(reinterpret_cast<void *>(mgr + 0x130), &end);
+    if (begin < 0x10000 || end < begin || (end - begin) > 0x4000) return 0;
+    const float fw = static_cast<float>(w), fh = static_cast<float>(h);
+    int n = 0;
+    for (uint64_t e = begin; e < end && n < 16; e += 0x170)
+    {
+        int outIdx = 0;
+        seh_read_i32(reinterpret_cast<void *>(e + 0x128), &outIdx);
+        uint64_t src = mgr + static_cast<uint64_t>(static_cast<uint32_t>(outIdx)) * 0x30;
+        seh_write_i32(reinterpret_cast<void *>(src + 0x3c8), w);  // source W
+        seh_write_i32(reinterpret_cast<void *>(src + 0x3cc), h);  // source H
+        seh_write_i32(reinterpret_cast<void *>(e + 0x108), w);    // active int W
+        seh_write_i32(reinterpret_cast<void *>(e + 0x10c), h);    // active int H
+        seh_write_f32(reinterpret_cast<void *>(e + 0x110), 0.f);  // offset X (no letterbox)
+        seh_write_f32(reinterpret_cast<void *>(e + 0x114), 0.f);  // offset Y
+        seh_write_f32(reinterpret_cast<void *>(e + 0x118), fw);   // active float W
+        seh_write_f32(reinterpret_cast<void *>(e + 0x11c), fh);   // active float H
+        ++n;
+    }
+    spdlog::info("[RENDIMS] fix_render_dims({}x{}) patched {} output entry(ies)", w, h, n);
+    return n;
 }
 
 } // namespace goblin::worldmap_probe

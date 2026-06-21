@@ -58,4 +58,9 @@ namespace goblin::worldmap_probe
     // at the OLD resolution are the stale ones driving the 3D + map zoom. Read-only
     // (RPM-guarded). Gated by config debug_render_dims; call throttled.
     void dump_render_dims(float bbW, float bbH);
+
+    // No-restart fix for the mid-session resolution zoom: raw-poke ER's render-output
+    // source + active dims to the new W/H (the resize leaves them stale). WPM-guarded,
+    // no engine call. Returns # entries patched. Gated by config fix_midsession_resolution.
+    int fix_render_dims(int w, int h);
 }
