@@ -378,6 +378,39 @@ bool project_live(void *vm, int area, int gx, int gz, float px, float pz, float 
     return true;
 }
 
+// Find the live CS::WorldMapViewModel (cached). Resolves from the active map cursor →
+// WorldMapDialog (cursor-0x2DB0) → scan its pointer fields for an object whose first qword
+// is the VM vtable. Re-validates the cached ptr cheaply; re-scans only when it goes stale
+// (map reopened / freed). Returns 0 if the map is closed / not found.
+uintptr_t find_view_model()
+{
+    static uintptr_t s_vm = 0;
+    uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base)
+        return 0;
+    const uintptr_t vm_vtable = base + goblin::sig::WORLDMAP_VIEWMODEL_VTABLE_RVA;
+    if (s_vm)
+    {
+        uint64_t vt = 0;
+        if (seh_read8(reinterpret_cast<void *>(s_vm), &vt) && vt == vm_vtable)
+            return s_vm;
+        s_vm = 0;
+    }
+    uintptr_t cursor = g_active_cursor.load(std::memory_order_relaxed);
+    if (!cursor)
+        return 0;
+    uintptr_t dialog = cursor - CURSOR_OFF_IN_MENU;
+    for (uintptr_t o = 0; o < 0x8000; o += 8)
+    {
+        uint64_t p = 0;
+        if (!seh_read8(reinterpret_cast<void *>(dialog + o), &p) || !plausible_ptr(p))
+            continue;
+        uint64_t vt = 0;
+        if (seh_read8(reinterpret_cast<void *>(p), &vt) && vt == vm_vtable) { s_vm = p; return p; }
+    }
+    return 0;
+}
+
 // Dev one-shot (config dump_converters): find the live CS::WorldMapViewModel and dump its
 // converter array — the engine's own world->map-space projection table (RE:
 // docs/re/windows_world_to_mapspace_projection_re_findings.md §1/§2). The VM is found by
@@ -660,6 +693,14 @@ void probe_loop()
 } // namespace
 
 uintptr_t debug_active_cursor() { return g_active_cursor.load(std::memory_order_relaxed); }
+
+bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU, float &mapV)
+{
+    uintptr_t vm = find_view_model();
+    if (!vm)
+        return false;
+    return project_live(reinterpret_cast<void *>(vm), area, gridX, gridZ, posX, posZ, mapU, mapV);
+}
 
 bool get_live_view(LiveView &out)
 {

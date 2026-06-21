@@ -61,6 +61,14 @@ struct Marker
     // gray "?" with a generic label instead of its real icon/name. Set only by
     // MapEntryLayer (false for pieces/kindling/bosses/graces — never lot-backed loot).
     bool lot_backed = false;
+    // Raw param coords (area-local) for the engine's live projection (config
+    // live_projection → worldmap_probe::project). raw_area < 0 = not set (skip live).
+    int raw_area = -1, raw_gx = 0, raw_gz = 0;
+    float raw_px = 0.0f, raw_pz = 0.0f;
+    // Cached live map-space UV (filled lazily at render when the map is open).
+    // live_state: 0 = untried, 1 = projected ok, -1 = engine didn't place it.
+    mutable float live_u = 0.0f, live_v = 0.0f;
+    mutable signed char live_state = 0;
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the

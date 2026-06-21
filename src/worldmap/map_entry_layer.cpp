@@ -94,6 +94,9 @@ void build_buckets()
                  e.row_id, (int)d.clearedEventFlagId, collected_flag};
         m.secondary_flag = secondary_story_flag(d.areaNo, d.gridXNo, d.gridZNo);
         m.hide_when_flag = hide_when_story_flag(d.areaNo, d.gridXNo, d.gridZNo);
+        // Raw param coords for the engine's live projection (config live_projection).
+        m.raw_area = d.areaNo; m.raw_gx = d.gridXNo; m.raw_gz = d.gridZNo;
+        m.raw_px = d.posX; m.raw_pz = d.posZ;
         // Lot-backed loot (for anonymous_loot spoiler mode). Pieces/kindling are
         // geom/SFX-tracked, never a lot — exclude them (mirrors goblin_inject's is_lot).
         const bool piece = e.category == gen::Category::ReforgedRunePieces ||

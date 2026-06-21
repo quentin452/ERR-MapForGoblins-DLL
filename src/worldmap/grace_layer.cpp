@@ -40,9 +40,12 @@ const std::vector<Marker> &GraceLayer::markers() const
         // renderer drops this marker (the game draws that grace natively) — keeps only
         // UNdiscovered graces as overlay helpers. row_id/cleared/collected stay 0
         // (graces aren't collectible; discovery is handled by discover_flag).
-        cache_.push_back(Marker{wx, wz, grp, (int)e.areaNo, gc, ckey, pname, e.textId,
-                                category_color(gc), "show_graces", frag,
-                                0ull, 0, 0, e.discoverFlag});
+        Marker m{wx, wz, grp, (int)e.areaNo, gc, ckey, pname, e.textId,
+                 category_color(gc), "show_graces", frag,
+                 0ull, 0, 0, e.discoverFlag};
+        m.raw_area = e.areaNo; m.raw_gx = e.gridXNo; m.raw_gz = e.gridZNo;
+        m.raw_px = e.posX; m.raw_pz = e.posZ;
+        cache_.push_back(m);
     }
     return cache_;
 }

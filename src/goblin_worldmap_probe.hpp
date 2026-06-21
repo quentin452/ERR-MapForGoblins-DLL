@@ -47,6 +47,18 @@ namespace goblin::worldmap_probe
     };
     bool get_live_view(LiveView &out);
 
+    // Live world→map-space projection: call the engine's own per-icon projection
+    // (FUN_1408877d0 on the live CS::WorldMapViewModel) to map a raw (area, gridX,
+    // gridZ, posX, posZ) to map-space UV — folds WorldMapLegacyConvParam + applies the
+    // per-page affine exactly like the native map (RE: windows_world_to_mapspace_
+    // projection_re_findings.md). Replaces the baked LEGACY_CONV + -7040/+16512 affine
+    // + DLC eyeball. Returns false if the map is closed (no live VM) or the area isn't
+    // placed by the game (e.g. m19 Chapel has no converter) → caller falls back / gates.
+    // Self-resolves the VM from the active cursor (cached); direct in-process call (fast,
+    // safe to batch at marker-build time). Map must be OPEN for the VM to exist.
+    bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU,
+                 float &mapV);
+
     // DIAG: the currently-published active cursor address (0 = none). Lets the
     // overlay tell apart "probe hasn't found a cursor yet" (0) from "found but the
     // live read failed" (non-0 but get_live_view false) when chasing open latency.

@@ -204,6 +204,37 @@ inline void world_to_mapspace(const Marker &m, bool dlc_ug, float &gU, float &gV
     world_to_mapspace_xy(m.worldX, m.worldZ, dlc_ug, gU, gV);
 }
 
+// Project a marker to map-space. With config::liveProjection, use the engine's OWN
+// projection (worldmap_probe::project on the live WorldMapViewModel) — folds LegacyConv
+// for dungeons/underground exactly like the native map. Result is cached per marker
+// (the converter affine is static, so it's valid across map reopens); retries until the
+// map is open + the VM resolves. Falls back to the baked affine until then / if the engine
+// doesn't place the area (e.g. m19 Chapel — no converter accepts it).
+inline void project_marker(const Marker &m, bool dlc_ug, float &gU, float &gV)
+{
+    if (goblin::config::liveProjection && m.raw_area >= 0)
+    {
+        if (m.live_state != 1)
+        {
+            float u, v;
+            if (goblin::worldmap_probe::project(m.raw_area, m.raw_gx, m.raw_gz, m.raw_px,
+                                                m.raw_pz, u, v))
+            {
+                m.live_u = u;
+                m.live_v = v;
+                m.live_state = 1;
+            }
+        }
+        if (m.live_state == 1)
+        {
+            gU = m.live_u;
+            gV = m.live_v;
+            return;
+        }
+    }
+    world_to_mapspace(m, dlc_ug, gU, gV);
+}
+
 // A projected marker awaiting the clustering decision.
 struct ScreenMarker
 {
@@ -702,7 +733,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             if (m.hide_when_flag && goblin::ui::read_event_flag((uint32_t)m.hide_when_flag))
                 continue;
             float gU, gV;
-            world_to_mapspace(m, dlc_ug, gU, gV);
+            project_marker(m, dlc_ug, gU, gV);
             // Discovery gate: when require_map_fragments is on, hide a marker whose map
             // piece is still fogged — the engine's REAL fog-of-war reveal state
             // (WorldMapPieceParam, in-game-confirmed exact, no calibration needed). group

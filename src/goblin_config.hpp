@@ -114,6 +114,12 @@ namespace goblin
         // offsets / marker-space). See goblin_worldmap_probe.{hpp,cpp}.
         extern bool debugWorldmapProbe;
 
+        // Use the engine's own live world->map-space projection (call the native
+        // WorldMapViewModel) instead of our baked LEGACY_CONV + affine + DLC eyeball.
+        // Fixes dungeon/underground marker placement (proper LegacyConv fold). Falls
+        // back to baked when the map is closed / an area isn't placed by the game.
+        extern bool liveProjection;
+
         // Dev one-shot: find the live CS::WorldMapViewModel + dump its converter
         // array (VM+0xF8) — confirms the world->map-space projection RE before we
         // wire it. See goblin_worldmap_probe.cpp dump_converters_once.
