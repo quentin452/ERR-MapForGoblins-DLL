@@ -155,6 +155,11 @@ uintptr_t resolve_cursor_via_menu(uintptr_t base, uintptr_t vtable_va)
         return seh_read8(reinterpret_cast<void *>(obj + CURSOR_OFF_IN_MENU), &vt) && vt == vtable_va;
     };
     // CACHED chain (found once, reused O(1)). off2==~0 → 1-level (mm+off1 = dialog).
+    // l2_tries budgets the EXPENSIVE L2 scan; it must reset on a stale chain (below) so a
+    // reopen whose dialog moved gets a fresh budget — else after 6 lifetime stale events
+    // L2 is permanently disabled and the cursor never re-resolves (map dies forever, e.g.
+    // after a grace-rest reallocates the dialog).
+    static int l2_tries = 0;
     static uintptr_t c_off1 = ~uintptr_t(0), c_off2 = ~uintptr_t(0);
     if (c_off1 != ~uintptr_t(0))
     {
@@ -174,6 +179,7 @@ uintptr_t resolve_cursor_via_menu(uintptr_t base, uintptr_t vtable_va)
                 return dlg + CURSOR_OFF_IN_MENU;
         }
         c_off1 = c_off2 = ~uintptr_t(0); // chain went stale (reopen) → re-search
+        l2_tries = 0;                    // fresh L2 budget for the moved dialog (the fix)
     }
     // LEVEL 1: the dialog is a flat field of CSMenuMan.
     for (uintptr_t o1 = 0; o1 < MENU_WALK_WINDOW; o1 += 8)
@@ -190,8 +196,8 @@ uintptr_t resolve_cursor_via_menu(uintptr_t base, uintptr_t vtable_va)
         }
     }
     // LEVEL 2: the dialog is one deref deeper (mm → container → dialog). EXPENSIVE, so
-    // run it only a few times while the map is open (0xCD reaches 7), then give up.
-    static int l2_tries = 0;
+    // run it only a few times per re-search (l2_tries, reset on a stale chain above), then
+    // give up until the next reopen.
     if (l2_tries < 6 && goblin::world_map_open())
     {
         ++l2_tries;
