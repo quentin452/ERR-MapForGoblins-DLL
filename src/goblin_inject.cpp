@@ -3651,7 +3651,18 @@ uint32_t goblin::resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t bak
         if (item2 == 0)
             flag = *reinterpret_cast<uint32_t *>(row->b + 0x60);  // getItemFlagId01
     }
-    return flag ? flag : baked_flag;
+    uint32_t resolved = flag ? flag : baked_flag;
+    // Non-persistent / repeatable flags have NO save-backed "obtained" bit, so they
+    // read false forever (IsEventFlag: a flag whose group isn't in the persistent
+    // manager returns false — the temp/event-local groups never are). -1 = "always
+    // re-droppable" (Paramdex); >=2^30 = the empirical temp range (golden runes /
+    // crafting / consumables — repeatable loot). Treat these as NOT a tracked
+    // collectible: return 0 so the caller skips the marker for graying + census
+    // (instead of counting it perpetually "remaining"). This is the dominant cause of
+    // the 100%-save over-report. See docs/re/windows_collected_loot_flag_re_findings.md.
+    if (resolved == 0xFFFFFFFFu || resolved >= 0x40000000u)
+        return 0;
+    return resolved;
 }
 
 // Reads each lot-backed marker's source ItemLotParam row from memory and sets
