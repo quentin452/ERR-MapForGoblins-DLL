@@ -101,6 +101,13 @@ namespace goblin
     // native injection's refresh_loot_from_itemlot. lotType: 1=_map, 2=_enemy, 0=none.
     uint32_t resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag);
 
+    // One-shot RE diagnostic (config diag_loot_flags): for a sample of loot lots per
+    // category, log every candidate "obtained" flag (lot-wide @0x80, the 8 per-slot
+    // getItemFlagId0N @0x60, baked textDisableFlagId1) AND whether each currently reads
+    // SET — so on a 100% save the column that is SET reveals the real collected flag.
+    void diag_loot_flags(uint32_t lotId, uint8_t lotType, uint32_t baked, int category,
+                         uint32_t nameId);
+
     // Region gating for the overlay (mirrors the game's native areaNo+tab display).
     // grace_tab_id: the map sub-page (tabId) of the nearest GRACE_ANCHOR in this
     // SOURCE area (12000/12001 underground, 6800-6999 DLC, …); -1 if none. Lets the
