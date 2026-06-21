@@ -7,12 +7,16 @@
 #include "goblin_messages.hpp"       // lookup_text_utf8 (tooltip names)
 #include "goblin_collected.hpp"      // is_original_row_collected (rune/ember graying)
 #include "goblin_kindling.hpp"       // is_row_collected (kindling graying)
+#include "goblin_major_regions.hpp"  // MAJOR_REGION_ANCHORS (region labels)
+#include "goblin_quest_gates.hpp"    // QUEST_GATES (quest-NPC gating)
+#include "goblin_map_data.hpp"       // Category enum (WorldQuestNPC)
 
 #include <string>
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
 
 #include <imgui.h>
 
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -428,6 +432,72 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         }
     }
 }
+
+// Does a major-region anchor (its `area` page id) belong to the currently OPEN map
+// group? Anchor pages: 10/60 = base overworld, 12 = base underground, 61 = DLC
+// overworld. (No major-region anchor exists for the DLC underground, group 3.)
+bool region_in_group(uint8_t area, int open_grp)
+{
+    switch (open_grp)
+    {
+    case 0: return area == 10 || area == 60; // base overworld
+    case 1: return area == 12;               // base underground
+    case 2: return area == 61;               // DLC overworld
+    default: return false;                   // group 3 (DLC UG): none
+    }
+}
+
+// Draw the coarse major-region names (Limgrave, Caelid, ...) on the open page, beneath
+// the markers. Each anchor's world centre projects exactly like a marker; the label is
+// drawn large + shadowed, centred on the anchor. Off-screen labels are culled.
+void draw_region_labels(ImDrawList *fg, int open_grp, bool dlc_ug,
+                        const goblin::projection::View &view, float realW, float realH,
+                        float uiScale)
+{
+    namespace proj = goblin::projection;
+    using namespace goblin::generated;
+    const float fontSize = ImGui::GetFontSize() * 1.6f * uiScale;
+    const ImU32 col = IM_COL32(238, 226, 188, 205);   // muted gold, semi-transparent
+    const ImU32 shadow = IM_COL32(0, 0, 0, 190);
+    ImFont *font = ImGui::GetFont();
+    for (size_t i = 0; i < MAJOR_REGION_ANCHOR_COUNT; ++i)
+    {
+        const MajorRegionAnchor &a = MAJOR_REGION_ANCHORS[i];
+        if (!region_in_group(a.area, open_grp))
+            continue;
+        float gU, gV;
+        world_to_mapspace_xy(a.wx, a.wz, dlc_ug, gU, gV);
+        proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
+        if (p.x < -64 || p.y < -32 || p.x > realW + 64 || p.y > realH + 32)
+            continue;
+        ImVec2 ts = font->CalcTextSizeA(fontSize, FLT_MAX, 0.f, a.name);
+        ImVec2 tp(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f);
+        fg->AddText(font, fontSize, ImVec2(tp.x + 1.5f, tp.y + 1.5f), shadow, a.name);
+        fg->AddText(font, fontSize, tp, col, a.name);
+    }
+}
+
+// Quest-aware gating: a WorldQuestNPC marker is hidden while its questline is
+// inactive (NONE of its quest-active flags is set). Mirrors the legacy native gate
+// (refresh_quest_npc_eviction, goblin_inject.cpp). An NPC with no QuestGate entry is
+// always shown. Gate join is by name_id (== QuestGate.nameId).
+bool quest_npc_gated_out(const Marker &m)
+{
+    using namespace goblin::generated;
+    if (!goblin::config::questNpcQuestAware) return false;
+    if (m.category != (int)Category::WorldQuestNPC) return false;
+    // Cold-API safety: until AlwaysOn (6001) reads true the flag manager isn't warm —
+    // never blank every quest NPC on map open. Show as-is.
+    if (!goblin::ui::read_event_flag(6001)) return false;
+    for (size_t i = 0; i < QUEST_GATE_COUNT; ++i)
+        if (QUEST_GATES[i].nameId == (uint32_t)m.name_id)
+        {
+            for (uint32_t f : QUEST_GATES[i].flags)
+                if (f && goblin::ui::read_event_flag(f)) return false; // quest active → show
+            return true; // gate found, none of its flags active → hide
+        }
+    return false; // no gate for this NPC → always show
+}
 } // namespace
 
 void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_texture, float mouseX,
@@ -494,6 +564,10 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const float glyphR = kGlyphRBase * uiScale * master * goblin::config::overlayClusterScale;
     std::vector<ScreenMarker> clustered; // markers whose category opted into clustering
 
+    // Region names beneath the markers (major-region anchors for the open page).
+    if (goblin::config::showRegionLabels)
+        draw_region_labels(fg, open_grp, dlc_ug, view, realW, realH, uiScale);
+
     for (auto *L : layers)
     {
         if (!L || !L->visible())
@@ -507,6 +581,9 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // discover_flag is set only on grace markers; read live so it updates the
             // moment the player rests at a grace.
             if (m.discover_flag && goblin::ui::read_event_flag((uint32_t)m.discover_flag))
+                continue;
+            // Quest-aware gating: hide a quest-NPC whose questline is currently inactive.
+            if (quest_npc_gated_out(m))
                 continue;
             float gU, gV;
             world_to_mapspace(m, dlc_ug, gU, gV);

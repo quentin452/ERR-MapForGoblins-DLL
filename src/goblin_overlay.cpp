@@ -607,6 +607,10 @@ namespace
                 ImGui::Checkbox("hide instead", &goblin::config::hideCollected);
             }
 
+            // Major-region name labels (overlay map; live, persists via "Save to INI").
+            ImGui::Checkbox("Show region labels (major-region names on the map)",
+                            &goblin::config::showRegionLabels);
+
             // Overlay marker scale (live preview; persists via "Save to INI"). Final
             // size = resolution-relative base × master × per-type scale.
             if (ImGui::CollapsingHeader("Marker scale (overlay map)"))

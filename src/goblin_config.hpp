@@ -39,6 +39,7 @@ namespace goblin
         extern bool collectedGraying;
         extern bool hideCollected;
         extern bool clusterDebugRadius;
+        extern bool showRegionLabels; // overlay map: draw major-region names (Limgrave, Caelid, ...)
         extern bool debugLogging;
         extern bool showAll;  // master switch: show every category (see
                               // is_category_enabled) except those listed below

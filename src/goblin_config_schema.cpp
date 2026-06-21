@@ -16,6 +16,7 @@ namespace goblin::config
     bool requireMapFragments = true;
     bool collectedGraying = true;
     bool hideCollected = false;
+    bool showRegionLabels = true;  // overlay: draw major-region name labels on the map
     bool debugLogging = false;
     bool projectDungeons = true;
     bool showAll = false;
@@ -135,6 +136,9 @@ namespace
                 B("hide_collected", hideCollected, "false",
                   "Overlay map: when collected_graying is on, HIDE collected/cleared\n"
                   "markers entirely instead of dimming them (legacy native-map behaviour)."),
+                B("show_region_labels", showRegionLabels, "true",
+                  "Overlay map: draw the major-region names (Limgrave, Caelid, Liurnia,\n"
+                  "Altus Plateau, ...) on the open map page, beneath the markers."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("project_dungeons", projectDungeons, "true",
