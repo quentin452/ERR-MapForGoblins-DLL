@@ -16,6 +16,7 @@ namespace goblin::config
     bool requireMapFragments = true;
     bool collectedGraying = true;
     bool hideCollected = false;
+    bool dedupSharedFlags = true;
     bool debugLogging = false;
     bool projectDungeons = true;
     bool showAll = false;
@@ -134,6 +135,11 @@ namespace
                 B("hide_collected", hideCollected, "false",
                   "Overlay map: when collected_graying is on, HIDE collected/cleared\n"
                   "markers entirely instead of dimming them (legacy native-map behaviour)."),
+                B("dedup_shared_flags", dedupSharedFlags, "true",
+                  "Overlay map: collapse markers that share one collect/clear event flag\n"
+                  "to a SINGLE marker per flag (ERR shares e.g. one flag across ~54\n"
+                  "Fortunes; without this they over-count and over-gray). Off = show every\n"
+                  "marker (count/graying may multiply on shared-flag items)."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("project_dungeons", projectDungeons, "true",
