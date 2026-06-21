@@ -935,7 +935,7 @@ static void probe_map_pos_seh(uintptr_t mapid_slot, uintptr_t mgr_slot, MapPosPr
 }
 
 bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
-                                int *out_gx, int *out_gz)
+                                int *out_gx, int *out_gz, int *out_group)
 {
     if (!g_mappos_tried) resolve_player_map_pos_statics();
     if (!g_wcm_tried) resolve_world_chr_man();
@@ -968,6 +968,7 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
         world_z = tmp.gridZNo * 256.0f + tmp.posZ;
         if (out_gx) *out_gx = tmp.gridXNo;
         if (out_gz) *out_gz = tmp.gridZNo;
+        if (out_group) *out_group = goblin::marker_group_from((uint8_t)pr.area, tmp.areaNo);
     }
     else
     {
@@ -976,6 +977,7 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
         world_z = pr.gz * 256.0f + pp.p[2];
         if (out_gx) *out_gx = pr.gx;
         if (out_gz) *out_gz = pr.gz;
+        if (out_group) *out_group = goblin::marker_group_from((uint8_t)pr.area, pr.area);
     }
     return true;
 }

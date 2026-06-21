@@ -281,7 +281,7 @@ void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n, float r, bool depleted)
 // piles/markers are culled. realW/realH = backbuffer size for the cull.
 void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int threshold,
                    ImTextureID atlas, float realW, float realH,
-                   const goblin::projection::View &view, bool dlc_ug, bool overworld_page,
+                   const goblin::projection::View &view, bool dlc_ug, bool dist_eligible,
                    float iconHalf, float glyphR, ImVec2 mouse, Hover &hover)
 {
     namespace proj = goblin::projection;
@@ -300,7 +300,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     // OVERRIDES per-category opt-in (every category clusters by distance — handled at
     // the eligibility check in render_markers).
     namespace cfg = goblin::config;
-    const bool dist_adaptive = cfg::clusterDistanceAdaptive && overworld_page; // overworld only
+    const bool dist_adaptive = cfg::clusterDistanceAdaptive && dist_eligible;
     const int base_thr = threshold;
     int near_thr = (int)cfg::clusterNearThreshold;
     if (near_thr < 1) near_thr = 1;
@@ -310,7 +310,10 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     float pwx = 0, pwz = 0;
     const bool have_player =
         dist_adaptive && goblin::get_player_map_pos(player_area, pwx, pwz);
-    const bool euclid_frame = (player_area == 60 || player_area == 61); // overworld pages
+    // The euclid ramp needs metric world coords: overworld (60), DLC-overworld (61), and
+    // base underground (area 12 projects to 60) all qualify; DLC underground (40-43, not
+    // projected) keeps flat base_thr. The grace anchors project the same way → same frame.
+    const bool euclid_frame = (player_area == 60 || player_area == 61);
 
     // DEBUG viz (config cluster_debug_radius): player marker + near/far rings so you can
     // SEE where the distance ramp engages. Overworld only (= where dist_adaptive runs).
@@ -348,12 +351,11 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         int garea = -1;
         float gwx = 0, gwz = 0;
         const bool has_anchor = goblin::grace_anchor_world(kv.first, garea, gwx, gwz);
-        // Per-location threshold. Distance-adaptive (OVERWORLD only — dist_adaptive is
-        // gated off underground because the underground player position is unavailable):
-        // Euclidean ramp near_thr→base_thr over the near→far radius. Otherwise flat
+        // Per-location threshold. Distance-adaptive: Euclidean ramp near_thr→base_thr over
+        // the near→far radius (player + grace in the same projected frame). Otherwise flat
         // base_thr (normal threshold clustering).
         int thr = base_thr;
-        if (have_player && overworld_page && has_anchor && euclid_frame &&
+        if (have_player && dist_eligible && has_anchor && euclid_frame &&
             garea == player_area && far_u > near_u)
         {
             const float dx = gwx - pwx, dz = gwz - pwz;
@@ -627,12 +629,11 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const bool clustering = goblin::ui::clustering_enabled();
     const int threshold = clustering ? goblin::ui::global_threshold() : 0;
     // Distance-adaptive is its own clustering mode: when on it OVERRIDES the per-category
-    // opt-in (every category clusters by distance from the player; see draw_clusters).
-    // OVERWORLD ONLY: the underground player position is unavailable (WorldChrMan physics
-    // returns NaN, MapId map-pos reads garbage origin) → can't gauge distance there, so
-    // underground falls back to normal threshold + per-category clustering.
+    // opt-in (every category clusters by distance from the player; see draw_clusters). Works
+    // on ALL pages now — the player position is the WorldMapPointParam frame everywhere
+    // (RE windows_player_pos_RESOLVED); the euclid ramp keys on the player's own page.
     const bool dist_adaptive =
-        clustering && goblin::config::clusterDistanceAdaptive && !(open_grp & 1);
+        clustering && goblin::config::clusterDistanceAdaptive;
     // Resolution-relative icon/glyph sizes (match the native canvas-scaled icons),
     // × the user's master scale × the per-type scale (saved in the ini).
     const float uiScale = realH / 1080.f;
@@ -699,7 +700,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
 
     if (clustering && !clustered.empty())
         draw_clusters(fg, clustered, threshold, atlas, realW, realH, view, dlc_ug,
-                      /*overworld_page=*/!(open_grp & 1), iconHalf, glyphR, mouse, hover);
+                      /*dist_eligible=*/true, iconHalf, glyphR, mouse, hover);
 
     // Tooltip for the hovered marker / pile (drawn last so it's on top).
     if (hover.bestd < 1e30f)
@@ -712,19 +713,13 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     namespace cfg = goblin::config;
     if (!cfg::showMinimap || !goblin::ui::icons_enabled())
         return;
-    // Live player position (read during gameplay, map closed). OVERWORLD only — the
-    // underground player position isn't reliable yet (see overlay-pending-re #1).
-    int parea = 0;
+    // Live player position (read during gameplay, map closed). The player pos is the
+    // WorldMapPointParam frame on EVERY page now (RE windows_player_pos_RESOLVED), so the
+    // minimap works overworld, underground AND DLC — pick the player's marker group.
+    int parea = 0, pgroup = 0;
     float pwx = 0.f, pwz = 0.f;
-    if (!goblin::get_player_map_pos(parea, pwx, pwz))
-        return;
-    int pgroup;
-    if (parea == 60)
-        pgroup = 0; // base overworld
-    else if (parea == 61)
-        pgroup = 2; // DLC overworld
-    else
-        return; // underground / unknown page → no minimap (player pos unreliable)
+    if (!goblin::get_player_map_pos(parea, pwx, pwz, nullptr, nullptr, &pgroup))
+        return; // no position (e.g. during a load) → no minimap this frame
 
     const float R = cfg::minimapSize > 24.f ? cfg::minimapSize : 24.f;
     const float scale = cfg::minimapZoom > 0.0001f ? cfg::minimapZoom : 0.08f;
@@ -749,7 +744,7 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
         for (const Marker &m : L->markers())
         {
             if (m.group != pgroup)
-                continue; // only the player's overworld page
+                continue; // only the player's current map page
             // Same hide-gates as the worldmap (discovered grace, quest-NPC, post-event story).
             if (m.discover_flag && goblin::ui::read_event_flag((uint32_t)m.discover_flag))
                 continue;
@@ -765,9 +760,10 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             // Fog gate: hide markers on a still-fogged map piece (require_map_fragments).
             if (cfg::requireMapFragments)
             {
+                const bool dlc_ug = (m.group & 2) && (m.group & 1); // DLC underground = eyeball
                 float gU, gV;
-                world_to_mapspace(m, /*dlc_ug=*/false, gU, gV);
-                const int areaIdx = (m.group & 2) ? 10 : 0;
+                world_to_mapspace(m, dlc_ug, gU, gV);
+                const int areaIdx = (m.group & 2) ? 10 : (m.group & 1);
                 if (goblin::marker_fogged(areaIdx, gU, gV))
                     continue;
             }

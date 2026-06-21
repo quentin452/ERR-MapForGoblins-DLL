@@ -54,8 +54,12 @@ namespace goblin
     // out_gx/out_gz (optional) = the player's reliable map TILE (from MapId, valid
     // even underground where the +0x70 local float is leaf-block-local garbage) —
     // used for tile-distance proximity in non-256 frames (area 12 / DLC underground).
+    // out_group (optional) = the player's overlay marker GROUP (marker_group_from of the
+    // raw + projected area): 0 base-OW, 1 base-UG, 2 DLC-OW, 3 DLC-UG → which map page the
+    // player is on (the minimap / distance-adaptive use it to pick the player's markers).
     bool get_player_map_pos(int &out_area, float &world_x, float &world_z,
-                            int *out_gx = nullptr, int *out_gz = nullptr);
+                            int *out_gx = nullptr, int *out_gz = nullptr,
+                            int *out_group = nullptr);
 
     // Unified overworld marker-space coord for an arbitrary baked marker (projects
     // legacy dungeons to area-60 via LEGACY_CONV, then world = grid*256 + local).
