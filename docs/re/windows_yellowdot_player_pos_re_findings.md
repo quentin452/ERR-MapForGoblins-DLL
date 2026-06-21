@@ -1,5 +1,8 @@
 # RE findings — yellow-dot player position: the Vec axis bug + the real source question
 
+> ⚠️ **SUPERSEDED — solved at runtime.** Player pos = `[[ER+0x3D65F88]+0x1E508]+0x6C0/0x6C4/0x6C8`.
+> See `docs/re/windows_player_pos_RESOLVED_re_findings.md`. Kept for the reasoning trail.
+
 Static Ghidra (`D:\ghidra_proj2\ER`, script `find_yellowdot.java`) for
 `docs/re/windows_player_pos_runtime_ct_re_prompt.md` (commit 6a68c1e). App 2.6.2.0 / ERR 2.2.9.6.
 
