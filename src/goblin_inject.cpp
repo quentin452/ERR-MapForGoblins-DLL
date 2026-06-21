@@ -3645,12 +3645,15 @@ void goblin::apply_flag_or_pairs()
 // lookup as refresh_loot_from_itemlot below), so the overlay map can detect
 // collected loot WITHOUT the native injection running. ERR/Randomizer reassign
 // loot flags, so the baked textDisableFlagId1 is often stale — the live
-// getItemFlagId is authoritative. Returns baked_flag when live-loot is off, the
-// row isn't lot-backed, or the lot can't be resolved (graceful fallback). The
-// LotReader is cached after first use (params are loaded by map-open time).
+// getItemFlagId is authoritative. Returns baked_flag when the row isn't lot-backed
+// or the lot can't be resolved (graceful fallback). NOT gated on
+// config::liveLootFlags: that flag governs whether the NATIVE map rewrites its param
+// rows; this is a read-only resolve for the overlay's collected-detection, which must
+// work regardless (else ERR-remapped loot like Golden Runes never registers as taken).
+// The LotReader is cached after first use (params are loaded by map-open time).
 uint32_t goblin::resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag)
 {
-    if (!goblin::config::liveLootFlags || lotType == 0 || lotId == 0)
+    if (lotType == 0 || lotId == 0)
         return baked_flag;
     static LotReader s_lots;
     static bool s_init = false, s_ok = false;
