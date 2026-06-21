@@ -1015,8 +1015,9 @@ namespace
                         ImGui::SetTooltip("Own mode: OVERRIDES the per-category opt-in above and clusters\n"
                                           "EVERY category by distance — full detail (individual items)\n"
                                           "near you, dense spots far away merged into piles. Ramps from\n"
-                                          "the near size to the far size below, same overworld page only.\n"
-                                          "Live (updates as you move / pan).");
+                                          "the near size to the far size below. OVERWORLD ONLY (the\n"
+                                          "underground player position isn't available, so underground\n"
+                                          "uses normal threshold + per-category). Live.");
                     if (da)
                     {
                         int nr = goblin::config::clusterNearRadius;
