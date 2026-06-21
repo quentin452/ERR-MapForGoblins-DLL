@@ -1143,8 +1143,10 @@ struct LotReader
     {
         auto &pref  = (lot_type == 2) ? enemy_lots : map_lots;
         auto &other = (lot_type == 2) ? map_lots : enemy_lots;
-        if (pref)  { try { return &(*pref)[lot_id]; }  catch (...) {} }
-        if (other) { try { return &(*other)[lot_id]; } catch (...) {} }
+        // try_get = non-throwing, non-logging: a missing lot (ERR/randomizer removed it)
+        // is an expected miss, not an error — just fall back to the other table / baked.
+        if (pref)  { if (RawItemLotRow *r = pref->try_get(lot_id))  return r; }
+        if (other) { if (RawItemLotRow *r = other->try_get(lot_id)) return r; }
         return nullptr;
     }
 };
