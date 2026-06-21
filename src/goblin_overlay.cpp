@@ -1232,7 +1232,7 @@ namespace
             const int bbW = static_cast<int>(d.BufferDesc.Width);
             const int bbH = static_cast<int>(d.BufferDesc.Height);
             if (goblin::config::fixMidsessionResolution)
-                goblin::worldmap_probe::fix_render_dims(bbW, bbH); // idempotent → cheap
+                goblin::worldmap_probe::reapply_render_res(bbW, bbH); // edge-triggered, idempotent
             if (goblin::config::debugRenderDims)
             {
                 static int s_rd_tick = 0;
@@ -1317,16 +1317,12 @@ namespace
             }
         }
 
-        // EXPERIMENTAL no-restart fix: ER leaves its render-output dims at the old
-        // resolution on a mid-session resize → 3D + map stay zoomed. Poke them to the
-        // new size (from the live swapchain desc, since w/h can be 0 = "use window").
+        // Flag the resize so the hk_present enforcer fires the re-apply even when the dims
+        // read consistent (fullscreen doubling = stale GPU resources, unchanged dims). We
+        // only NOTE it here — the re-apply itself (reapply_render_res → FUN_1419ed440)
+        // calls ResizeBuffers internally and must run from hk_present, not re-enter here.
         if (SUCCEEDED(hr) && goblin::config::fixMidsessionResolution)
-        {
-            DXGI_SWAP_CHAIN_DESC d{};
-            swapchain->GetDesc(&d);
-            goblin::worldmap_probe::fix_render_dims(static_cast<int>(d.BufferDesc.Width),
-                                                    static_cast<int>(d.BufferDesc.Height));
-        }
+            goblin::worldmap_probe::note_resize_event();
         return hr;
     }
 

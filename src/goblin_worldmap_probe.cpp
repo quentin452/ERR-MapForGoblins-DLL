@@ -1,6 +1,7 @@
 #include "goblin_worldmap_probe.hpp"
 #include "goblin_inject.hpp"   // goblin::world_map_open() — gate the scan on map-open
 #include "re_signatures.hpp"   // centralized image RVAs
+#include "modutils.hpp"        // AOB scan (render re-apply fn resolve)
 
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -656,33 +657,59 @@ void dump_render_dims(float bbW, float bbH)
     }
 }
 
-// No-restart fix for the mid-session resolution corruption. The probe proved BOTH the
-// source dims (mgr+outIdx*0x30+0x3c8/0x3cc) AND the active dims (entry+0x108/0x10c int,
-// +0x118/+0x11c float) stay at the OLD resolution after a mid-session resize (the entry
-// is never marked dirty, so the engine never re-derives it). Rather than call the engine
-// recompute (FUN_1419ebb40 — VMP-adjacent, crash-risk from the swapchain thread), we
-// RAW-POKE the fields to the new W/H (agent fix-3). Offsets +0x110/+0x114 = 0 (no
-// letterbox on a same-aspect change, e.g. 1080↔720). All writes are WPM-guarded.
-// Returns the number of output entries patched. Gated by config fix_midsession_resolution.
-int fix_render_dims(int w, int h)
+// No-restart fix for mid-session resolution / display-mode changes. The earlier raw-poke
+// (fix_render_dims, removed) only rewrote scalar dims — it fixed borderless same-aspect by
+// luck but left windowed zoomed and fullscreen doubled, because the real corruption is
+// stale GPU RESOURCES: the swapchain back-buffers + each output's render-target array are
+// recreated at (or never resized from) the old resolution on a same-mode change (the
+// engine's own apply gates ResizeBuffers on a fullscreen-state transition). The RE
+// follow-up (defda96d / windows_midsession_resolution_swapchain_re_followup_findings.md)
+// found FUN_1419ed440(renderMgr, W, H) = the COMPLETE re-apply: bump generation, release
+// all per-output targets, UNCONDITIONAL ResizeBuffers on every output, refresh the source
+// dims from GetDesc, then recompute+recreate every output's targets. One call fixes
+// windowed / fullscreen / borderless. It must run on the render (Present) thread — never
+// from hk_resize_buffers, since it calls ResizeBuffers internally (re-entrant).
+using ReApplyResFn = void(__fastcall *)(void *mgr, uint32_t w, uint32_t h);
+static ReApplyResFn g_reapply_fn = nullptr;
+static bool g_reapply_tried = false;
+static std::atomic<bool> g_reapply_in_progress{false}; // suppress the nested-resize loop
+static std::atomic<bool> g_resize_pending{false};      // set by hk_resize_buffers
+
+static void resolve_reapply_fn() // C++ EH (scan can throw) — kept out of the SEH frame
 {
-    uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
-    if (!base || w <= 0 || h <= 0) return 0;
-    uint64_t mgr = 0;
-    if (!seh_read8(reinterpret_cast<void *>(base + 0x47ef360), &mgr) || mgr < 0x10000) return 0;
-    uint64_t begin = 0, end = 0;
-    seh_read8(reinterpret_cast<void *>(mgr + 0x128), &begin);
-    seh_read8(reinterpret_cast<void *>(mgr + 0x130), &end);
-    if (begin < 0x10000 || end < begin || (end - begin) > 0x4000) return 0;
-    // Idempotent: skip if the first output's active dims already match (lets this be
-    // called every frame as a cheap path-independent enforcer — not all resolution
-    // changes fire ResizeBuffers).
+    g_reapply_tried = true;
+    try
     {
-        float aw = 0, ah = 0;
-        seh_read4(reinterpret_cast<void *>(begin + 0x118), &aw);
-        seh_read4(reinterpret_cast<void *>(begin + 0x11c), &ah);
-        if (static_cast<int>(aw) == w && static_cast<int>(ah) == h) return 0;
+        g_reapply_fn = modutils::scan<void(void *, uint32_t, uint32_t)>(
+            {.aob = goblin::sig::RENDER_REAPPLY_RES});
     }
+    catch (...)
+    {
+        g_reapply_fn = nullptr;
+    }
+    spdlog::info("[RENDIMS] render re-apply fn (FUN_1419ed440) @ {:p}", (void *)g_reapply_fn);
+}
+
+// SEH wrapper around the engine call — POD-only (no C++ object unwinding) so __try is
+// legal here (MSVC/clang-cl forbids mixing __try with C++ EH in one function).
+static void call_reapply_seh(void *mgr, uint32_t w, uint32_t h)
+{
+    __try
+    {
+        g_reapply_fn(mgr, w, h);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+    }
+}
+
+// Raw-poke BACKSTOP: force the render-output scalar dims (source mgr+0x3c8/0x3cc + active
+// entry+0x108/0x10c int, +0x118/0x11c float) to W/H — the fields the map-fit + 3D viewport
+// read. WPM-guarded. Kept alongside the engine re-apply (belt-and-suspenders): covers a
+// partial re-apply or an unresolved engine fn. Returns # output entries written.
+static int poke_render_dims(uint64_t mgr, uint64_t begin, uint64_t end, int w, int h)
+{
+    if (begin < 0x10000 || end < begin || (end - begin) > 0x4000) return 0;
     const float fw = static_cast<float>(w), fh = static_cast<float>(h);
     int n = 0;
     for (uint64_t e = begin; e < end && n < 16; e += 0x170)
@@ -690,18 +717,98 @@ int fix_render_dims(int w, int h)
         int outIdx = 0;
         seh_read_i32(reinterpret_cast<void *>(e + 0x128), &outIdx);
         uint64_t src = mgr + static_cast<uint64_t>(static_cast<uint32_t>(outIdx)) * 0x30;
-        seh_write_i32(reinterpret_cast<void *>(src + 0x3c8), w);  // source W
-        seh_write_i32(reinterpret_cast<void *>(src + 0x3cc), h);  // source H
-        seh_write_i32(reinterpret_cast<void *>(e + 0x108), w);    // active int W
-        seh_write_i32(reinterpret_cast<void *>(e + 0x10c), h);    // active int H
-        seh_write_f32(reinterpret_cast<void *>(e + 0x110), 0.f);  // offset X (no letterbox)
-        seh_write_f32(reinterpret_cast<void *>(e + 0x114), 0.f);  // offset Y
-        seh_write_f32(reinterpret_cast<void *>(e + 0x118), fw);   // active float W
-        seh_write_f32(reinterpret_cast<void *>(e + 0x11c), fh);   // active float H
+        seh_write_i32(reinterpret_cast<void *>(src + 0x3c8), w);
+        seh_write_i32(reinterpret_cast<void *>(src + 0x3cc), h);
+        seh_write_i32(reinterpret_cast<void *>(e + 0x108), w);
+        seh_write_i32(reinterpret_cast<void *>(e + 0x10c), h);
+        seh_write_f32(reinterpret_cast<void *>(e + 0x110), 0.f);
+        seh_write_f32(reinterpret_cast<void *>(e + 0x114), 0.f);
+        seh_write_f32(reinterpret_cast<void *>(e + 0x118), fw);
+        seh_write_f32(reinterpret_cast<void *>(e + 0x11c), fh);
         ++n;
     }
-    spdlog::info("[RENDIMS] fix_render_dims({}x{}) patched {} output entry(ies)", w, h, n);
     return n;
+}
+
+// Note a swapchain resize so hk_present fires the re-apply even when the dims read
+// CONSISTENT — the fullscreen-doubling case is stale GPU resources with UNCHANGED dims, so
+// a dims edge-trigger alone never catches it. Suppressed while our own re-apply runs (its
+// nested ResizeBuffers re-enters hk_resize_buffers → would loop).
+void note_resize_event()
+{
+    if (g_reapply_in_progress.load(std::memory_order_relaxed)) return;
+    g_resize_pending.store(true, std::memory_order_relaxed);
+}
+
+// Mid-session resolution/mode enforcer, called every frame from hk_present. Fires the
+// engine re-apply + a scalar poke when EITHER a resize event is pending (catches the
+// consistent-dims fullscreen case) OR the active dims disagree with the live backbuffer
+// (catches windowed stale dims + hook-missed paths). Gated by fix_midsession_resolution.
+// Returns 1 if anything fired this call.
+//
+// TODO (residual — likely an ENGINE bug, not really ours to fix; revisit only if cheap):
+//   Two windowed cases the re-apply + poke still don't fully clear (user 2026-06-21):
+//   (1) windowed 720p -> 1920x1080 : the zoom still appears (the up-size path leaves a
+//       stale view somewhere the re-apply doesn't reach).
+//   (2) windowed 1920x1080 -> 720p : DOUBLE buffer — a stale 1080p-sized buffer lingers
+//       BEHIND the real 720p game (old back-buffer not released/recreated on this path).
+//   Both are window-resize paths where ER's own swapchain management leaves stale GPU
+//   state our user-side hook can't cleanly own. Borderless + fullscreen-same-mode are the
+//   fixed/intended cases; these windowed transitions are best-effort. If revisited: a full
+//   swapchain RECREATE (vs ResizeBuffers) or a forced SetFullscreenState toggle may be the
+//   only complete cure — both are heavy/risky and out of scope for the map overlay.
+int reapply_render_res(int w, int h)
+{
+    if (w <= 0 || h <= 0) return 0;
+    if (!g_reapply_tried) resolve_reapply_fn();
+
+    uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base) return 0;
+    uint64_t mgr = 0;
+    if (!seh_read8(reinterpret_cast<void *>(base + 0x47ef360), &mgr) || mgr < 0x10000) return 0;
+    uint64_t begin = 0, end = 0;
+    if (!seh_read8(reinterpret_cast<void *>(mgr + 0x128), &begin) || begin < 0x10000) return 0;
+    seh_read8(reinterpret_cast<void *>(mgr + 0x130), &end);
+
+    // Trigger: pending resize event OR active dims (entry+0x118/+0x11c) ≠ live backbuffer.
+    const bool pending = g_resize_pending.exchange(false, std::memory_order_relaxed);
+    float aw = 0, ah = 0;
+    seh_read4(reinterpret_cast<void *>(begin + 0x118), &aw);
+    seh_read4(reinterpret_cast<void *>(begin + 0x11c), &ah);
+    const bool mismatch = (static_cast<int>(aw) != w || static_cast<int>(ah) != h);
+    if (!pending && !mismatch) return 0;
+
+    // (1) Engine re-apply = the real GPU-resource recreation (release + ResizeBuffers +
+    //     recreate targets). Render-thread + re-entrancy guarded. Skipped if the AOB didn't
+    //     resolve → only the poke runs (degrades to the old partial fix).
+    bool fired = false;
+    if (g_reapply_fn && !g_reapply_in_progress.load(std::memory_order_relaxed))
+    {
+        bool thread_ok = true;
+        uint64_t rt = 0;
+        if (seh_read8(reinterpret_cast<void *>(mgr + 0x6d0), &rt) && rt > 0x10000)
+        {
+            int rtid = 0;
+            if (seh_read_i32(reinterpret_cast<void *>(rt + 0x14), &rtid) && rtid &&
+                static_cast<uint32_t>(rtid) != GetCurrentThreadId())
+                thread_ok = false;
+        }
+        if (thread_ok)
+        {
+            g_reapply_in_progress.store(true, std::memory_order_relaxed);
+            call_reapply_seh(reinterpret_cast<void *>(mgr), static_cast<uint32_t>(w),
+                             static_cast<uint32_t>(h));
+            g_reapply_in_progress.store(false, std::memory_order_relaxed);
+            fired = true;
+        }
+    }
+
+    // (2) Scalar-dims poke backstop (covers a partial re-apply / unresolved engine fn).
+    const int n = poke_render_dims(mgr, begin, end, w, h);
+
+    spdlog::info("[RENDIMS] reapply_render_res({}x{}) engine={} poked={} (pending={} mismatch={})",
+                 w, h, fired, n, pending, mismatch);
+    return (fired || n) ? 1 : 0;
 }
 
 } // namespace goblin::worldmap_probe
