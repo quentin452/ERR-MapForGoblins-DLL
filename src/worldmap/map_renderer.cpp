@@ -268,6 +268,15 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         {
             draw_cluster_glyph(fg, best, piles[i].count, glyphR);
             hover_test(hover, mouse, best, glyphR, pile_label(piles[i].loc_pname, piles[i].count));
+            // Location name centred under the glyph (shadowed for readability on the busy map).
+            std::string loc = goblin::lookup_text_utf8(piles[i].loc_pname);
+            if (!loc.empty())
+            {
+                ImVec2 ts = ImGui::CalcTextSize(loc.c_str());
+                ImVec2 tp(best.x - ts.x * 0.5f, best.y + glyphR + 2.f);
+                fg->AddText(ImVec2(tp.x + 1, tp.y + 1), IM_COL32(0, 0, 0, 205), loc.c_str());
+                fg->AddText(tp, IM_COL32(255, 255, 255, 235), loc.c_str());
+            }
         }
     }
 }
