@@ -1,5 +1,11 @@
 # RE findings — underground player position (m12 / DLC m40-43) for the overlay map
 
+> ⚠️ **SUPERSEDED — runtime-refuted (commit 6a68c1e).** Candidate A (`*(WCM+0x1e508)→…→+0x68`)
+> read (0,0,0) — it was a short read; the real leaf is `*(c+0x68)+0x70`. The `+0x74`=Z claim is
+> wrong (`+0x74` is Y/height; Z is `+0x78`), and `DAT_143d69ba8` is the SAME slot as
+> `WORLD_GEOM_MAN_SLOT`, not a separate manager. Corrected analysis:
+> `docs/re/windows_yellowdot_player_pos_re_findings.md`. Kept for history only.
+
 Answers `docs/re/windows_underground_player_pos_re_prompt.md`. Static Ghidra (`D:\ghidra_proj2\ER`,
 scripts `find_ugpos.java` / `find_ugmgr.java`). App 2.6.2.0 / ERR 2.2.9.6, imagebase `0x140000000`.
 Resolve by AOB. Builds on `docs/re/re_findings_playerpos.md`.
