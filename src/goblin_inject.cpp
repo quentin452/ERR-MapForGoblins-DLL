@@ -1012,6 +1012,17 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
         if (out_gx) *out_gx = pr.gx;        // reliable tile (from MapId) — valid even underground
         if (out_gz) *out_gz = pr.gz;
     }
+    // [YELLOWDOT-PROJ] one-shot per page: the PROJECTED result so we can see if the
+    // underground conv fired (proj_area 60 vs raw 12) and where it landed vs the markers.
+    static int s_logged_proj = -999;
+    if (s_logged_proj != pr.area)
+    {
+        s_logged_proj = pr.area;
+        spdlog::info("[YELLOWDOT-PROJ] raw area={} tile=({},{}) local=({:.1f},{:.1f}) "
+                     "-> proj area={} world=({:.0f},{:.0f}) tile=({},{})",
+                     pr.area, pr.gx, pr.gz, pr.lx, pr.lz, out_area, world_x, world_z,
+                     (int)(world_x / 256.f), (int)(world_z / 256.f));
+    }
     return true;
 }
 
