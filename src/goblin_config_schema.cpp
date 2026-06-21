@@ -61,7 +61,7 @@ namespace goblin::config
     bool overlayMarkersProto = false;
     bool debugRenderDims = false;
     bool fixMidsessionResolution = false;
-    bool nativeMapInjection = true;
+    bool nativeMapInjection = false;
     bool liveRefreshWorldMap = false;
     float overlayMasterScale = 1.0f;   // master scale for all overlay markers + piles
     float overlayIconScale = 1.0f;     // category marker icons (× master)
@@ -417,8 +417,8 @@ namespace
                   "Minimap radius in pixels. 130 = default."},
                 IniEntry{"minimap_opacity", IniType::F32, &cfg::minimapOpacity, "0.85",
                   "Minimap background disc opacity, 0..1. 0.85 = default."},
-                B("native_map_injection", nativeMapInjection, "true",
-                  "Inject goblin markers into the game's native world map\n(WorldMapPointParam). TRUE (default) = the classic behaviour (native icons +\nall legacy features: clustering, census badges, collected-graying, region\nlabels). FALSE = skip the injection entirely: the ImGui overlay becomes the\nSOLE map source (no native page-build, so no map-open freeze and no double-\ndraw), but the not-yet-ported legacy features are unavailable. The overlay\nmarker layers draw automatically when this is false."),
+                B("native_map_injection", nativeMapInjection, "false",
+                  "Inject goblin markers into the game's native world map\n(WorldMapPointParam). FALSE (default) = the ImGui overlay is the SOLE map\nsource (no native page-build, so no map-open freeze and no double-draw) — all\nfeatures are ported to the overlay. TRUE = also inject the legacy native icons\n(the old behaviour); kept only as a fallback and slated for removal."),
                 B("live_refresh_world_map", liveRefreshWorldMap, "false",
                   "EXPERIMENTAL: re-render world-map icons WHILE the map is open when you\ntoggle a section/category (instead of only on the next map open). Hooks the\ngame's own placed-map-point (re)build and replays it with the engine's real\ncontext on its own thread. Off by default -- enable to test; if icons don't\nupdate live or anything misbehaves, set back to false (toggles still apply on\nthe next map open). See docs/windows_re_live_refresh_capture.md."),
             }},
