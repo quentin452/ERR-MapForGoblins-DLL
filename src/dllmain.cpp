@@ -69,12 +69,8 @@ static void safe_fragment_eviction_seh()
 {
     __try
     {
-        goblin::refresh_fragment_eviction();
-        goblin::refresh_royal_eviction();  // after frag-evict so the post-burn hide wins
-        goblin::refresh_quest_npc_eviction();  // quest-aware quest-NPC gating (opt-in)
-        goblin::refresh_cluster_depletion();   // green icon when a cluster is fully collected
-        goblin::refresh_category_census();     // per-category uncollected counts (only while menu open)
-        goblin::refresh_quest_finishable();    // Quest Browser: grey out unfinishable lines
+        goblin::refresh_category_census();  // per-category uncollected counts (overlay)
+        goblin::refresh_quest_finishable(); // Quest Browser: grey out unfinishable lines
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
     {
@@ -100,11 +96,9 @@ static void init_modutils()         { modutils::initialize(); }
 static void init_from_params()      { from::params::initialize(); }
 static void init_collected()        { goblin::collected::initialize(); }
 static void init_kindling()         { goblin::kindling::initialize(); }
-static void init_inject_entries()   { goblin::inject_map_entries(); }
 static void init_tutorial_popup()   { goblin::inject_tutorial_popup_rows(); }
 static void init_setup_messages()   { goblin::setup_messages(); }
 static void init_live_refresh()     { goblin::install_live_refresh_hook(); }
-static void init_live_loot()        { goblin::refresh_loot_from_itemlot(); }
 
 static void safe_init_step(InitFn fn, const char *name)
 {
@@ -187,27 +181,18 @@ static void setup_mod()
         GOBLIN_BENCH("init.heavy.total");
         safe_init_step(&init_collected,       "collected::initialize");
         safe_init_step(&init_kindling,        "kindling::initialize");
-        // Snapshot the real graces from the LIVE WorldMapPointParam BEFORE injection swaps
-        // the param backing — the ImGui overlay draws from this (no baked data).
+        // Snapshot the real graces from the LIVE WorldMapPointParam — the ImGui overlay
+        // draws from this (no baked grace data).
         safe_init_step(&goblin::capture_live_graces, "capture_live_graces");
         // Seed the per-category visibility / cluster / threshold + master gates from
-        // config in BOTH modes — the overlay reads these, and inject (which also seeds)
-        // is skipped when native_map_injection is off.
+        // config — the overlay reads these.
         safe_init_step(&goblin::seed_runtime_gates, "seed_runtime_gates");
-        // Native WorldMapPointParam injection (+ its map-logic patches). Skipped when
-        // native_map_injection=false → the ImGui overlay is the sole map (no native
-        // page-build = no freeze, no double-draw). Grace capture above still runs.
-        if (goblin::config::nativeMapInjection)
-        {
-            safe_init_step(&init_inject_entries,  "inject_map_entries");
-        }
-        else
-            spdlog::info("[INIT] native_map_injection=false → skipping injection; overlay is the sole map");
+        // The ImGui overlay is the sole world map (the native WorldMapPointParam
+        // injection was removed — no native page-build = no freeze, no double-draw).
         safe_init_step(&init_tutorial_popup,  "inject_tutorial_popup_rows");
         safe_init_step(&init_setup_messages,  "setup_messages");
-        safe_init_step(&init_live_loot,       "refresh_loot_from_itemlot");
-        // Queue the experimental live-refresh hook (no-op unless config-enabled);
-        // must precede enable_hooks() below, which applies all queued hooks.
+        // Queue the live-refresh hook (FUN_140a82a80) — kept for the native-pin
+        // suppression path; no-op until enabled.
         safe_init_step(&init_live_refresh,    "install_live_refresh_hook");
     }
 
