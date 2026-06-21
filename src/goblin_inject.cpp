@@ -3634,43 +3634,34 @@ static void log_fortune_flag_sources()
     if (!ok) { spdlog::info("[FLAG-SRC] ItemLotParam unavailable — retry next census"); return; }
     done = true;
 
-    int n80 = 0, n60 = 0, nbaked = 0, nnolot = 0, samples = 0;
-    std::unordered_set<uint32_t> distinct;
+    int samples = 0;
+    std::unordered_set<uint32_t> distinct80, distinct60;
     for (size_t i = 0; i < goblin::generated::MAP_ENTRY_COUNT; i++)
     {
         const auto &e = goblin::generated::MAP_ENTRIES[i];
         if (e.category != Category::ReforgedFortunes) continue;
-        uint32_t baked = e.data.textDisableFlagId1, resolved = baked;
-        const char *src = "baked";
-        if (e.lotType && e.lotId)
+        if (!e.lotType || !e.lotId) continue;
+        RawItemLotRow *row = lots.row(e.lotId, e.lotType);
+        if (!row) continue;
+        // @0x80 = lot-wide getItemFlagId (shared across fortunes here). @0x60 =
+        // getItemFlagId01 (per-slot) — probe whether THIS is unique per fortune (would
+        // be the real per-fortune obtain flag). @0x04 = lotItemId02 (0 => single-item).
+        uint32_t f80 = *reinterpret_cast<uint32_t *>(row->b + 0x80);
+        uint32_t f60 = *reinterpret_cast<uint32_t *>(row->b + 0x60);
+        int32_t item2 = *reinterpret_cast<int32_t *>(row->b + 0x04);
+        distinct80.insert(f80);
+        distinct60.insert(f60);
+        if (samples < 14)
         {
-            RawItemLotRow *row = lots.row(e.lotId, e.lotType);
-            if (!row) { src = "no-lot"; nnolot++; }
-            else
-            {
-                uint32_t f80 = *reinterpret_cast<uint32_t *>(row->b + 0x80);
-                if (f80) { resolved = f80; src = "live@0x80"; n80++; }
-                else
-                {
-                    int32_t item2 = *reinterpret_cast<int32_t *>(row->b + 0x04);
-                    uint32_t f60 = (item2 == 0) ? *reinterpret_cast<uint32_t *>(row->b + 0x60) : 0;
-                    if (f60) { resolved = f60; src = "live@0x60"; n60++; }
-                    else { src = "baked-fallback"; nbaked++; }
-                }
-            }
-        }
-        else nbaked++;
-        distinct.insert(resolved);
-        if (samples < 12)
-        {
-            spdlog::info("[FLAG-SRC] fortune lot={} baked={} resolved={} src={}",
-                         e.lotId, baked, resolved, src);
+            spdlog::info("[FLAG-SRC] fortune lot={} flag80={} flag60={} item2={}",
+                         e.lotId, f80, f60, item2);
             samples++;
         }
     }
-    spdlog::info("[FLAG-SRC] Fortunes summary: live@0x80={} live@0x60={} baked-fallback={} "
-                 "no-lot={} distinct_resolved={}",
-                 n80, n60, nbaked, nnolot, (int)distinct.size());
+    spdlog::info("[FLAG-SRC] Fortunes summary: distinct flag80(lot-wide)={} "
+                 "distinct flag60(per-slot)={}  (if flag60 ~= 61 -> per-slot is the real "
+                 "per-fortune flag)",
+                 (int)distinct80.size(), (int)distinct60.size());
 }
 
 // Reads each lot-backed marker's source ItemLotParam row from memory and sets
