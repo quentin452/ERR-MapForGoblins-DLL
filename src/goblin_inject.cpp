@@ -290,22 +290,6 @@ static constexpr int64_t TOAST_SPACING_MS = 2500;
 // row's FINAL areaNo (post dungeon-reprojection) so a show restores the right
 // page. Piece/kindling rows may be independently 99-hidden when collected — a
 // section "show" must not resurrect those.
-struct SectionRow
-{
-    uint8_t *ptr;       // → row data in the live expanded blob
-    Section  sec;
-    Category cat;       // fine-grained gate (the 63 show_* categories)
-    uint8_t  orig_area; // areaNo to restore on show
-    bool     is_piece;
-    bool     is_kindling;
-    uint64_t row_id;
-    int      grp_key;   // cluster grouping key: nearest-grace index, or entrance key, or -1 = homeless
-    int      grp_pname; // PlaceName id for the pile label (-1 = count-only)
-    int      grp_tab;   // anchor map sub-page (tabId) — DIAGNOSTIC ONLY (underground 12000/12001/...)
-    float    ent_x;     // projected-dungeon overworld ENTRANCE (world coords); <0 = not a projected dungeon
-    float    ent_z;
-};
-static std::vector<SectionRow> g_section_rows;
 
 // Number of marker categories (enum has no COUNT sentinel; keep in sync).
 static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldInteractables) + 1;
@@ -377,15 +361,6 @@ bool goblin::is_section_hidden_ptr(const void *param_data)
 // Show/hide every injected row of one section in place. Hide = areaNo 99;
 // show = restore orig_area unless the row is an already-collected piece/kindling
 // (those stay evicted, owned by collected::/kindling::).
-// Cluster state (declared before the apply_* visibility fns, which gate clusters).
-// A collectable member of a cluster, with every signal needed to tell if it's been
-// taken: the textDisableFlagId1 event flag (plain loot), or piece/kindling tracking
-// (Reforged Rune Pieces / Kindling Spirits — collected by row id, no event flag).
-struct ClusterMemberRef { uint32_t flag; uint64_t row_id; bool is_piece; bool is_kindling; };
-struct ClusterRow { uint8_t *ptr; uint8_t area; int count_textid; std::vector<ClusterMemberRef> members; Category cat; };
-static std::vector<ClusterRow> g_clusters;        // the synthetic cluster icons
-struct ClusterMember { uint8_t *ptr; uint8_t orig_area; Category cat; };
-static std::vector<ClusterMember> g_cluster_members;  // individuals parked under a cluster
 
 // g_clusters_expanded is declared earlier (near is_section_hidden_ptr).
 // Cluster bubbles ON by default: the checkbox reads this value directly while the
@@ -397,7 +372,6 @@ static std::atomic<bool> g_cluster_debug{true};       // on-map cluster bubbles 
 // owner of game-state mutation), mirroring the section + master toggles.
 static std::atomic<bool> g_cluster_expand_dirty{false};
 static std::atomic<bool> g_cluster_debug_dirty{false};
-static bool g_clustering_active = false;  // clusters built this session
 
 // A cluster icon (and its parked members) belong to ONE category since buckets
 // are per-category. Hide them when that category OR its section is toggled off,
@@ -1887,7 +1861,6 @@ static void persist_settings()
     goblin::save_all_bool_settings(goblin::config_ini_path());
 }
 
-bool goblin::ui::clustering_active() { return g_clustering_active; }
 bool goblin::ui::clustering_enabled() { return goblin::config::enableClustering; }
 void goblin::ui::set_clustering_enabled(bool on)
 {
@@ -2099,33 +2072,8 @@ int goblin::refresh_category_census()
     if (now != clock::time_point{} && now - last < std::chrono::milliseconds(1000)) return 0;
     last = now;
     if (!orp_flag_set(6001)) return 0;  // cold flag API → don't publish bogus counts
-    using ST = from::paramdef::WORLD_MAP_POINT_PARAM_ST;
-    int collectible[NUM_CATEGORIES] = {0};
-    int looted[NUM_CATEGORIES]      = {0};
-    if (!g_section_rows.empty())
-    {
-        // Native path: the injected param rows carry the live collect flag in-place.
-        for (const auto &r : g_section_rows)
-        {
-            int ci = static_cast<int>(r.cat);
-            if (ci < 0 || ci >= NUM_CATEGORIES) continue;
-            uint32_t f = reinterpret_cast<ST *>(r.ptr)->textDisableFlagId1;  // collect flag
-            if (!(f || r.is_piece || r.is_kindling)) continue;  // not a collectible row
-            collectible[ci]++;
-            bool taken = (f && orp_flag_set(f)) ||
-                         (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
-                         (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
-            if (taken) looted[ci]++;
-        }
-        for (int c = 0; c < NUM_CATEGORIES; c++)
-        {
-            g_cat_total[c].store(collectible[c]);
-            g_cat_remaining[c].store(collectible[c] > 0 ? (collectible[c] - looted[c]) : -1);
-        }
-        return 0;
-    }
 
-    // Overlay-only mode: count from the OVERLAY's OWN marker layers (the exact markers
+    // Count from the OVERLAY's OWN marker layers (the exact markers
     // it draws + grays), so the F1 badge matches the map and can't diverge from a
     // parallel native-style recompute. refresh_overlay_census writes the census atomics
     // and logs [OVERLAY-CENSUS] (full dump once, then a line on each change).
