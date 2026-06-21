@@ -40,6 +40,11 @@ struct Marker
     uint64_t row_id = 0;     // original MAP_ENTRIES row id → rune/ember/kindling collected check
     int cleared_flag = 0;    // clearedEventFlagId: boss/NPC cleared → dim + green checkmark
     int collected_flag = 0;  // textDisableFlagId1: loot picked up → dim
+    // Graces: their per-grace discovery flag (textDisableFlagId1). When SET (player has
+    // discovered/rested there), the game draws that grace natively (generated from
+    // BonfireWarpParam), so the renderer DROPS this overlay marker to avoid a double
+    // icon. Undiscovered (flag unset) → drawn as the helper marker. 0 = no gate.
+    int discover_flag = 0;
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the

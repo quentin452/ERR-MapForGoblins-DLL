@@ -401,6 +401,12 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
         {
             if (m.group != open_grp)
                 continue; // draw only the open map group
+            // Discovered graces are drawn by the game natively (generated from
+            // BonfireWarpParam), so drop our overlay marker to avoid a double icon.
+            // discover_flag is set only on grace markers; read live so it updates the
+            // moment the player rests at a grace.
+            if (m.discover_flag && goblin::ui::read_event_flag((uint32_t)m.discover_flag))
+                continue;
             float gU, gV;
             world_to_mapspace(m, dlc_ug, gU, gV);
             // Discovery gate: when require_map_fragments is on, hide a marker whose map

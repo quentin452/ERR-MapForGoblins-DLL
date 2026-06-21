@@ -996,7 +996,8 @@ void goblin::capture_live_graces()
         {
             if (row.iconId != 370) continue;   // Site of Grace icon (ERR profile)
             g_live_graces.push_back({ row.areaNo, row.gridXNo, row.gridZNo,
-                                      row.posX, row.posZ, row.textId1, rowId });
+                                      row.posX, row.posZ, row.textId1, rowId,
+                                      (int)row.textDisableFlagId1 });
         }
     }
     catch (...) {}
@@ -1008,7 +1009,8 @@ void goblin::capture_live_graces()
             const auto &e = goblin::generated::MAP_ENTRIES[i];
             if (e.category != goblin::generated::Category::WorldGraces) continue;
             g_live_graces.push_back({ e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
-                                      e.data.posX, e.data.posZ, e.data.textId1, e.row_id });
+                                      e.data.posX, e.data.posZ, e.data.textId1, e.row_id,
+                                      (int)e.data.textDisableFlagId1 });
         }
         spdlog::info("[LIVE-GRACE] live param has no grace pins (vanilla WMP lacks them) → "
                      "using {} baked graces (offline MSB/BonfireWarp extraction)",

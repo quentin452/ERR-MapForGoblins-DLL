@@ -42,8 +42,13 @@ const std::vector<Marker> &GraceLayer::markers() const
         int ckey = goblin::marker_cluster_key(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ,
                                               &pname);
         int frag = goblin::marker_fragment_flag(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ);
+        // discover_flag = the grace's textDisableFlagId1: when set (discovered), the
+        // renderer drops this marker (the game draws that grace natively) — keeps only
+        // UNdiscovered graces as overlay helpers. row_id/cleared/collected stay 0
+        // (graces aren't collectible; discovery is handled by discover_flag).
         cache_.push_back(Marker{wx, wz, grp, (int)e.areaNo, gc, ckey, pname, e.textId,
-                                category_color(gc), "show_graces", frag});
+                                category_color(gc), "show_graces", frag,
+                                0ull, 0, 0, e.discoverFlag});
     }
     return cache_;
 }

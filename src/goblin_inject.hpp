@@ -78,6 +78,7 @@ namespace goblin
         float posX, posZ;
         int textId;        // name (resolve via MsgRepository)
         uint64_t rowId;
+        int discoverFlag;  // textDisableFlagId1 = per-grace discovery flag (set when rested)
     };
     // Capture all grace rows from the LIVE WorldMapPointParam. MUST run at init BEFORE
     // inject_map_entries() swaps the param backing (else it reads our injected rows).
