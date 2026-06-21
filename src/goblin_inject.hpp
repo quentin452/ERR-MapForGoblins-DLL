@@ -118,10 +118,6 @@ namespace goblin
     // from the live MapId tile → its tabId (6800-6999) or native DLC area 40-43.
     bool player_in_dlc();
 
-    // [YELLOWDOT] debug: raw map-pos-manager candidate offsets for the player-dot RE.
-    // Fills area/gx/gz (MapId tile) + x70 (mgr+0x70 X) + z74 (mgr+0x74) + z78 (mgr+0x78),
-    // so the overlay can DRAW a candidate dot and compare it to the native yellow dot.
-    bool debug_map_pos_raw(int &area, int &gx, int &gz, float &x70, float &z74, float &z78);
 
     // True once WorldMapPointParam is loaded — the robust init wait polls this
     // instead of sleeping a fixed load_delay (slow PCs can take >5s). SEH-guarded.

@@ -528,45 +528,6 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const int open_grp = (lv.openDlc ? 2 : 0) | ((lv.underground != 0) ? 1 : 0);
     const bool dlc_ug = (open_grp == 3);
 
-    // [YELLOWDOT] RE diag: draw the player dot via get_player_map_pos (now projected with
-    // conv_underground=true, same pipeline as the markers) + a fixed HUD with the numbers.
-    // The dot should glue to the map like a marker and sit on the native yellow dot.
-    if (goblin::config::clusterDebugRadius)
-    {
-        ImDrawList *fgd = ImGui::GetForegroundDrawList();
-        const float realWd = io.DisplaySize.x, realHd = io.DisplaySize.y;
-        int pa = -1, pgx = -1, pgz = -1; float pwx = 0, pwz = 0;
-        const bool okp = goblin::get_player_map_pos(pa, pwx, pwz, &pgx, &pgz);
-        int da = -1, dgx = -1, dgz = -1; float dx70 = 0, dz74 = 0, dz78 = 0;
-        goblin::debug_map_pos_raw(da, dgx, dgz, dx70, dz74, dz78);
-        float gU = 0, gV = 0; proj::Px p{};
-        if (okp)
-        {
-            world_to_mapspace_xy(pwx, pwz, dlc_ug, gU, gV);
-            p = proj::project_screen(gU, gV, view, realWd, realHd);
-        }
-        const bool onscreen = okp && p.x >= 0 && p.y >= 0 && p.x <= realWd && p.y <= realHd;
-        char hud[512];
-        std::snprintf(hud, sizeof(hud),
-                      "[YELLOWDOT] open_grp=%d ug=%d | raw area=%d tile=(%d,%d) +70=%.1f +74=%.1f +78=%.1f\n"
-                      "player_ok=%d proj_area=%d world=(%.0f,%.0f) map=(%.0f,%.0f) px=(%.0f,%.0f) %s",
-                      open_grp, (int)dlc_ug, da, dgx, dgz, dx70, dz74, dz78,
-                      okp, pa, pwx, pwz, gU, gV, p.x, p.y, onscreen ? "ON" : (okp ? "OFF-SCREEN" : "NO-POS"));
-        fgd->AddRectFilled(ImVec2(12, 90), ImVec2(720, 150), IM_COL32(10, 10, 16, 230), 4.f);
-        fgd->AddRect(ImVec2(12, 90), ImVec2(720, 150), IM_COL32(255, 0, 255, 255), 4.f);
-        fgd->AddText(ImVec2(20, 100), IM_COL32(255, 255, 255, 255), hud);
-        if (onscreen)
-        {
-            const ImU32 col = IM_COL32(255, 0, 255, 255);
-            ImVec2 q(p.x, p.y);
-            fgd->AddCircleFilled(q, 12.f, col);
-            fgd->AddCircle(q, 12.f, IM_COL32(0, 0, 0, 220), 0, 2.f);
-            fgd->AddLine(ImVec2(q.x - 24, q.y), ImVec2(q.x + 24, q.y), col, 2.f);
-            fgd->AddLine(ImVec2(q.x, q.y - 24), ImVec2(q.x, q.y + 24), col, 2.f);
-            fgd->AddText(ImVec2(q.x + 16, q.y - 8), col, "PLAYER");
-        }
-    }
-
     // The DLC-UG eyeball rotates about the open group's world centroid. Compute it over
     // every visible layer's markers (cheap; only needed for group 3).
     if (dlc_ug)

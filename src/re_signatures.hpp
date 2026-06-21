@@ -64,13 +64,6 @@ namespace goblin::sig
         "48 8B 0D ?? ?? ?? ?? 48 8D 53 10 E8 ?? ?? ?? ?? 4C 8B E8";
     // WorldChrMan finder (player map-pos path).
     inline constexpr const char *WCM_FINDER = "48 8B FA 0F 11 41 70 48 8B 05";
-    // Map-POINT manager DAT_143d69ba8 builder (FUN_1406d3a20) — the manager the engine
-    // tests map points against = the native player "yellow dot" position at +0x70(X)/
-    // +0x78(Z), valid underground (unlike CSWorldGeomMan, which reads origin there). The
-    // fn prologue ends with `mov rax,[rip+DAT_143d69ba8]` (48 8B 05); relative_offsets
-    // {{24,28}} → slot from that rip-disp. (RE: underground_player_pos findings.)
-    inline constexpr const char *MAPPOINT_MGR_BUILDER =
-        "48 89 5C 24 18 57 48 81 EC A0 00 00 00 0F 29 B4 24 90 00 00 00 48 8B 05 ?? ?? ?? ??";
     // Player-MapId singleton load site (was 0x3d691d8). relative_offsets {{3,7}}.
     inline constexpr const char *PLAYER_MAPID_SLOT =
         "48 8B 0D ?? ?? ?? ?? 48 8D 54 24 20 E8 ?? ?? ?? ?? F2 0F 10 05 ?? ?? ?? ??";
@@ -138,7 +131,6 @@ namespace goblin::sig
             {"GEOM_FLAG_SLOT", GEOM_FLAG_SLOT},
             {"WORLD_GEOM_MAN_SLOT", WORLD_GEOM_MAN_SLOT},
             {"WCM_FINDER", WCM_FINDER},
-            {"MAPPOINT_MGR_BUILDER", MAPPOINT_MGR_BUILDER},
             {"PLAYER_MAPID_SLOT", PLAYER_MAPID_SLOT},
             {"MARKER_CHAIN_SLOT", MARKER_CHAIN_SLOT},
             {"MARKER_ARRAY_CTOR", MARKER_ARRAY_CTOR},
