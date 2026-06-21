@@ -745,6 +745,18 @@ void note_resize_event()
 // consistent-dims fullscreen case) OR the active dims disagree with the live backbuffer
 // (catches windowed stale dims + hook-missed paths). Gated by fix_midsession_resolution.
 // Returns 1 if anything fired this call.
+//
+// TODO (residual — likely an ENGINE bug, not really ours to fix; revisit only if cheap):
+//   Two windowed cases the re-apply + poke still don't fully clear (user 2026-06-21):
+//   (1) windowed 720p -> 1920x1080 : the zoom still appears (the up-size path leaves a
+//       stale view somewhere the re-apply doesn't reach).
+//   (2) windowed 1920x1080 -> 720p : DOUBLE buffer — a stale 1080p-sized buffer lingers
+//       BEHIND the real 720p game (old back-buffer not released/recreated on this path).
+//   Both are window-resize paths where ER's own swapchain management leaves stale GPU
+//   state our user-side hook can't cleanly own. Borderless + fullscreen-same-mode are the
+//   fixed/intended cases; these windowed transitions are best-effort. If revisited: a full
+//   swapchain RECREATE (vs ResizeBuffers) or a forced SetFullscreenState toggle may be the
+//   only complete cure — both are heavy/risky and out of scope for the map overlay.
 int reapply_render_res(int w, int h)
 {
     if (w <= 0 || h <= 0) return 0;
