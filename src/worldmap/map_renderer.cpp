@@ -123,10 +123,21 @@ void draw_check(ImDrawList *fg, ImVec2 p, float half)
                 ImVec2(c.x + s * 0.50f, c.y - s * 0.42f), col, 2.2f);
 }
 
+// Boss markers tinted red when redify_boss_icons is on (overlay port of the legacy
+// red-skull iconId 374). The overlay has one WorldBosses category covering overworld +
+// dungeon bosses; collected/cleared graying takes precedence (a dead boss grays). The
+// legacy redify_dungeon (dungeon-ENTRANCE markers) has no overlay equivalent — the
+// overlay projects dungeon CONTENTS, not a separate entrance marker — so it's native-only.
+inline bool redify_boss(const Marker &m)
+{
+    return goblin::config::redifyBossIcons &&
+           m.category == static_cast<int>(goblin::generated::Category::WorldBosses);
+}
+
 // Draw one marker at backbuffer px p: the atlas icon if available, else a circle.
 // half = icon half-size in px (resolution-scaled by the caller). When collected_graying
 // is on, collected/cleared markers dim+desaturate (or hide if hide_collected), and
-// cleared bosses get a green checkmark.
+// cleared bosses get a green checkmark. Uncollected bosses redden when redify_boss_icons.
 void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, float half)
 {
     bool cleared = false, done = false;
@@ -136,7 +147,9 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, f
         if (done && goblin::config::hideCollected)
             return; // legacy-style: hide collected/cleared entirely
     }
-    const ImU32 tint = done ? IM_COL32(150, 150, 150, 130) : IM_COL32(255, 255, 255, 255);
+    const bool red = !done && redify_boss(m);
+    const ImU32 tint = done ? IM_COL32(150, 150, 150, 130)
+                            : (red ? IM_COL32(255, 70, 70, 255) : IM_COL32(255, 255, 255, 255));
 
     ImVec2 uv0, uv1;
     if (atlas && icon_uv(m.icon_key, uv0, uv1))
@@ -147,7 +160,8 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, f
     else
     {
         float cr = half * 0.45f;
-        fg->AddCircleFilled(p, cr, done ? dim_color(m.color) : m.color);
+        const ImU32 fill = done ? dim_color(m.color) : (red ? IM_COL32(235, 70, 70, 255) : m.color);
+        fg->AddCircleFilled(p, cr, fill);
         fg->AddCircle(p, cr, IM_COL32(0, 0, 0, done ? 120 : 220), 0, 1.5f);
     }
     if (cleared)
@@ -527,45 +541,6 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // WorldMapDialog page+layer): openDlc = DLC map, underground = layer byte.
     const int open_grp = (lv.openDlc ? 2 : 0) | ((lv.underground != 0) ? 1 : 0);
     const bool dlc_ug = (open_grp == 3);
-
-    // [YELLOWDOT] RE diag: draw the player dot via get_player_map_pos (now projected with
-    // conv_underground=true, same pipeline as the markers) + a fixed HUD with the numbers.
-    // The dot should glue to the map like a marker and sit on the native yellow dot.
-    if (goblin::config::clusterDebugRadius)
-    {
-        ImDrawList *fgd = ImGui::GetForegroundDrawList();
-        const float realWd = io.DisplaySize.x, realHd = io.DisplaySize.y;
-        int pa = -1, pgx = -1, pgz = -1; float pwx = 0, pwz = 0;
-        const bool okp = goblin::get_player_map_pos(pa, pwx, pwz, &pgx, &pgz);
-        int da = -1, dgx = -1, dgz = -1; float dx70 = 0, dz74 = 0, dz78 = 0;
-        goblin::debug_map_pos_raw(da, dgx, dgz, dx70, dz74, dz78);
-        float gU = 0, gV = 0; proj::Px p{};
-        if (okp)
-        {
-            world_to_mapspace_xy(pwx, pwz, dlc_ug, gU, gV);
-            p = proj::project_screen(gU, gV, view, realWd, realHd);
-        }
-        const bool onscreen = okp && p.x >= 0 && p.y >= 0 && p.x <= realWd && p.y <= realHd;
-        char hud[512];
-        std::snprintf(hud, sizeof(hud),
-                      "[YELLOWDOT] open_grp=%d ug=%d | raw area=%d tile=(%d,%d) +70=%.1f +74=%.1f +78=%.1f\n"
-                      "player_ok=%d proj_area=%d world=(%.0f,%.0f) map=(%.0f,%.0f) px=(%.0f,%.0f) %s",
-                      open_grp, (int)dlc_ug, da, dgx, dgz, dx70, dz74, dz78,
-                      okp, pa, pwx, pwz, gU, gV, p.x, p.y, onscreen ? "ON" : (okp ? "OFF-SCREEN" : "NO-POS"));
-        fgd->AddRectFilled(ImVec2(12, 90), ImVec2(720, 150), IM_COL32(10, 10, 16, 230), 4.f);
-        fgd->AddRect(ImVec2(12, 90), ImVec2(720, 150), IM_COL32(255, 0, 255, 255), 4.f);
-        fgd->AddText(ImVec2(20, 100), IM_COL32(255, 255, 255, 255), hud);
-        if (onscreen)
-        {
-            const ImU32 col = IM_COL32(255, 0, 255, 255);
-            ImVec2 q(p.x, p.y);
-            fgd->AddCircleFilled(q, 12.f, col);
-            fgd->AddCircle(q, 12.f, IM_COL32(0, 0, 0, 220), 0, 2.f);
-            fgd->AddLine(ImVec2(q.x - 24, q.y), ImVec2(q.x + 24, q.y), col, 2.f);
-            fgd->AddLine(ImVec2(q.x, q.y - 24), ImVec2(q.x, q.y + 24), col, 2.f);
-            fgd->AddText(ImVec2(q.x + 16, q.y - 8), col, "PLAYER");
-        }
-    }
 
     // The DLC-UG eyeball rotates about the open group's world centroid. Compute it over
     // every visible layer's markers (cheap; only needed for group 3).
