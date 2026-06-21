@@ -137,10 +137,15 @@ void hover_test(Hover &h, ImVec2 mouse, ImVec2 p, float r, const std::string &te
     float dx = mouse.x - p.x, dy = mouse.y - p.y, d = dx * dx + dy * dy;
     if (d <= r * r && d < h.bestd) { h.bestd = d; h.pos = p; h.text = text; }
 }
-// One marker's tooltip text = its FMG name (empty if none → no tooltip).
+// One marker's tooltip = its item/marker name + its location (nearest-grace region),
+// like the native map. Either may be empty; empty if both are.
 std::string marker_label(const Marker &m)
 {
-    return goblin::lookup_text_utf8(m.name_id);
+    std::string name = goblin::lookup_text_utf8(m.name_id);
+    std::string loc = goblin::lookup_text_utf8(m.loc_pname);
+    if (name.empty()) return loc;
+    if (loc.empty()) return name;
+    return name + "\n" + loc; // item name, then its location on the next line
 }
 // A cluster pile's tooltip = its location name (if any) + the member count.
 std::string pile_label(int loc_pname, int count)
