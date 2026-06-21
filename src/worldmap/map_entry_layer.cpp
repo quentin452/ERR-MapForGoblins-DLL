@@ -31,13 +31,6 @@ void build_buckets()
         if (c < 0 || c >= NUM_CAT)
             continue;
         const auto &d = e.data;
-        // Area 19 = Chapel of Anticipation (prologue). It has NO LegacyConv (unlike area 18
-        // → West Limgrave), so its rows project to map-space (~-6859, ~17119) = the far NW
-        // corner of the overworld and leak onto every post-prologue map. The Chapel is
-        // blanked in the prologue and is not a real overworld page, so these markers have no
-        // valid display anywhere → drop them.
-        if (d.areaNo == 19)
-            continue;
         int ga;
         float wx, wz;
         goblin::marker_world_pos(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ, ga, wx, wz,
