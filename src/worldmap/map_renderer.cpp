@@ -270,10 +270,10 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     if (near_thr < 1) near_thr = 1;
     const float near_u = cfg::clusterNearRadius * 256.0f;
     const float far_u = cfg::clusterFarRadius * 256.0f;
-    int player_area = -1;
+    int player_area = -1, player_gx = -1, player_gz = -1;
     float pwx = 0, pwz = 0;
-    const bool have_player =
-        dist_adaptive && goblin::get_player_map_pos(player_area, pwx, pwz);
+    const bool have_player = dist_adaptive &&
+        goblin::get_player_map_pos(player_area, pwx, pwz, &player_gx, &player_gz);
     const bool euclid_frame = (player_area == 60 || player_area == 61); // overworld pages
     // Underground pages have no usable Euclidean frame (non-256 tiles, garbage player
     // float) → use a DISCRETE sub-page (tabId) gradient like the native path: the
@@ -290,7 +290,9 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         world_to_mapspace_xy(pwx, pwz, dlc_ug, gU, gV);
         proj::Px pp = proj::project_screen(gU, gV, view, realW, realH);
         const ImVec2 ppx(pp.x, pp.y);
-        if (overworld_page && euclid_frame)
+        // Near/far radius rings around the player — drawn on BOTH pages now (same world
+        // radius near_u/far_u). Underground uses TILE distance for the threshold, but the
+        // ring radius in world units is the same, so the ring still shows the zone.
         {
             auto ring_px = [&](float r) {
                 float u, v;
@@ -338,9 +340,31 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         }
         else if (have_player && !overworld_page && player_tab > 0)
         {
+            // Underground: only the player's SUB-PAGE (tab) can get detail (other
+            // sub-pages are different layers at the same X/Z — would merge under Euclid),
+            // and WITHIN it use TILE distance (reliable; the player float is garbage).
             const int gtab = goblin::grace_anchor_tab(kv.first);
-            if (gtab > 0)
-                thr = (gtab == player_tab) ? near_thr : base_thr;
+            int ggx, ggz;
+            if (gtab != player_tab)
+                thr = base_thr; // other sub-page → clustered
+            else if (goblin::grace_anchor_tile(kv.first, ggx, ggz) && player_gx >= 0)
+            {
+                const float dgx = (float)(ggx - player_gx), dgz = (float)(ggz - player_gz);
+                const float dt = std::sqrt(dgx * dgx + dgz * dgz); // distance in tiles
+                const float nr = (float)goblin::config::clusterNearRadius;
+                const float fr = (float)goblin::config::clusterFarRadius;
+                if (fr > nr)
+                {
+                    float t = (dt - nr) / (fr - nr);
+                    if (t < 0.f) t = 0.f; else if (t > 1.f) t = 1.f;
+                    thr = (int)std::lround(near_thr + t * (base_thr - near_thr));
+                    if (thr < 1) thr = 1;
+                }
+                else
+                    thr = near_thr;
+            }
+            else
+                thr = near_thr; // same sub-page, no tile → full detail
         }
         if ((int)idxs.size() <= thr)
         {

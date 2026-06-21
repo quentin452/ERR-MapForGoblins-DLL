@@ -680,6 +680,19 @@ static int tab_for_tile(int area, int gx, int gz)
     return -1;
 }
 
+// Raw tile (gridX/gridZ) of a grace anchor by its GRACE_ANCHORS index (cluster_key).
+// Underground distance-adaptive uses TILE distance (the float is garbage there, but
+// the tile is reliable) within the player's sub-page. false on a bad key.
+bool goblin::grace_anchor_tile(int key, int &out_gx, int &out_gz)
+{
+    if (key < 0 || static_cast<size_t>(key) >= goblin::generated::GRACE_ANCHOR_COUNT)
+        return false;
+    const auto &a = goblin::generated::GRACE_ANCHORS[key];
+    out_gx = a.gridX;
+    out_gz = a.gridZ;
+    return true;
+}
+
 // The player's current map sub-page (tabId) from the RELIABLE MapId tile (gx,gz) —
 // the float is leaf-block-local garbage underground, so coord/nearest-grace tab is
 // unreliable there; this uses tab_for_tile like the native distance-adaptive path.
