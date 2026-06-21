@@ -981,6 +981,64 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
     return true;
 }
 
+// ── [PINSET] diagnostic: walk CSWorldMapPointMan+0x398 (the native built-icon set) ──
+// RE windows_suppress_native_pins_re_findings §1/§5: +0x398 is an MSVC std::map<int,
+// CSWorldMapPointIns*> (RB-tree; node _Left@+0, _Parent@+8, _Right@+0x10, _Isnil@+0x19,
+// key@+0x20, value@+0x28); mgr = [er_base+0x3D6E9B0]. Dump the keys (point ids) present
+// while the map is open → confirm what shares the set (graces/categories vs player-marker/
+// objective ids) → decides the suppression approach (areaNo-99 vs predicate hook vs clear).
+// POD-only in the __try (no C++ objects); the caller logs outside the SEH frame.
+struct PinSetProbe
+{
+    void *mgr;
+    size_t size;       // std::map _Mysize
+    int keys[256];     // first N point ids (in-order)
+    int count;         // keys captured
+    bool ok;
+};
+static void probe_pinset_seh(uintptr_t er_base, PinSetProbe *pr)
+{
+    pr->mgr = nullptr; pr->size = 0; pr->count = 0; pr->ok = false;
+    __try
+    {
+        auto *mgr = *reinterpret_cast<uint8_t **>(er_base + 0x3D6E9B0);
+        pr->mgr = mgr;
+        if (!mgr) return;
+        auto *head = *reinterpret_cast<uint8_t **>(mgr + 0x398); // _Myhead (nil sentinel)
+        if (!head) return;
+        pr->size = *reinterpret_cast<size_t *>(mgr + 0x3A0);     // _Mysize
+        auto isnil = [](uint8_t *n) { return !n || *(n + 0x19) != 0; };
+        // Iterative in-order: leftmost, then successor. Cap by a guard + the keys array.
+        uint8_t *stack[256]; int sp = 0;
+        uint8_t *cur = *reinterpret_cast<uint8_t **>(head + 0x8); // root = head->_Parent
+        int guard = 0;
+        while ((!isnil(cur) || sp > 0) && guard++ < 8000)
+        {
+            while (!isnil(cur) && sp < 256) { stack[sp++] = cur; cur = *reinterpret_cast<uint8_t **>(cur); }
+            if (sp == 0) break;
+            cur = stack[--sp];
+            if (pr->count < 256) pr->keys[pr->count++] = *reinterpret_cast<int *>(cur + 0x20);
+            cur = *reinterpret_cast<uint8_t **>(cur + 0x10); // right
+        }
+        pr->ok = true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+void goblin::dump_native_pins()
+{
+    uintptr_t er_base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!er_base) return;
+    PinSetProbe pr{};
+    probe_pinset_seh(er_base, &pr);
+    if (!pr.ok) { spdlog::info("[PINSET] walk faulted (map closed / mgr null)"); return; }
+    std::string s;
+    for (int i = 0; i < pr.count && i < 120; ++i)
+        s += std::to_string(pr.keys[i]) + " ";
+    spdlog::info("[PINSET] mgr={:p} size={} walked={} | first ids: {}",
+                 pr.mgr, pr.size, pr.count, s);
+}
+
 // Region gating helpers for the overlay (mirror the game's native areaNo+tab gating).
 int goblin::grace_tab_id(uint8_t src_area, float raw_wx, float raw_wz)
 {

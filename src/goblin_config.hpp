@@ -138,6 +138,9 @@ namespace goblin
         extern float overlayIconScale;     // category marker icons
         extern float overlayClusterScale;  // cluster pile glyphs
 
+        // Diagnostic: dump the native built-icon set (CSWorldMapPointMan+0x398) ids.
+        extern bool dumpNativePins;
+
         // In-game minimap HUD (corner, north-up, overworld-only). Opt-in.
         extern bool showMinimap;
         extern float minimapZoom;     // px per world-unit

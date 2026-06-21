@@ -44,6 +44,11 @@ namespace goblin
     // For proximity clustering (v2). Coordinate space = global/world (verify).
     bool get_player_world_pos(float &x, float &y, float &z);
 
+    // Diagnostic: dump the native built-icon set (CSWorldMapPointMan+0x398) — the point
+    // ids present while the map is open. Decides the native-pin suppression approach
+    // (docs/re/windows_suppress_native_pins_re_findings). Gated by config::dumpNativePins.
+    void dump_native_pins();
+
     // Player position in MARKER space via the CONFIRMED Target-A chain (see
     // docs/re_findings_playerpos.md): player MapId singleton (gridX/gridZ) +
     // CSWorldGeomMan block-local (+0x70/+0x74). Both statics AOB-anchored (patch-

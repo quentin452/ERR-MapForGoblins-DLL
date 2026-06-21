@@ -69,6 +69,7 @@ namespace goblin::config
 
     // In-game minimap HUD (corner, north-up, overworld-only — underground player pos
     // is not yet reliable). Foundation/opt-in; off by default.
+    bool dumpNativePins = false;   // diagnostic: log CSWorldMapPointMan+0x398 point ids
     bool showMinimap = false;
     float minimapZoom = 0.08f;     // px per world-unit shown on the minimap
     float minimapSize = 130.0f;    // minimap radius in px
@@ -409,6 +410,8 @@ namespace
                   "Scale for category marker ICONS (x master). 1.0 = default."},
                 IniEntry{"overlay_cluster_scale", IniType::F32, &cfg::overlayClusterScale, "1.0",
                   "Scale for CLUSTER pile glyphs (x master). 1.0 = default."},
+                B("dump_native_pins", dumpNativePins, "false",
+                  "Diagnostic: while the world map is open, log the ids in the game's\nnative built-icon set (CSWorldMapPointMan+0x398) as [PINSET] to\nMapForGoblins.log — used to decide how to suppress the native pins. Off by default."),
                 B("show_minimap", showMinimap, "false",
                   "In-game minimap HUD: a small north-up minimap in a screen corner showing\nnearby goblin markers around the player during gameplay (not the pause-screen\nmap). OVERWORLD only for now (underground player position isn't reliable yet).\nFoundation/opt-in; off by default."),
                 IniEntry{"minimap_zoom", IniType::F32, &cfg::minimapZoom, "0.08",

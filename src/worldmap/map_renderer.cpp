@@ -548,6 +548,14 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
         return;
     }
 
+    // [PINSET] diagnostic — map is open here; throttled dump of the native built-icon set.
+    if (goblin::config::dumpNativePins)
+    {
+        static int s_pin_tick = 0;
+        if ((s_pin_tick++ % 120) == 0)
+            goblin::dump_native_pins();
+    }
+
     ImGuiIO &io = ImGui::GetIO();
     ImDrawList *fg = ImGui::GetForegroundDrawList();
     const float realW = io.DisplaySize.x, realH = io.DisplaySize.y;
