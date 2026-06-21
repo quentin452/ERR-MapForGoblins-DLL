@@ -309,11 +309,13 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     int player_area = -1;
     float pwx = 0, pwz = 0;
     const bool have_player =
-        dist_adaptive && goblin::get_player_map_pos(player_area, pwx, pwz);
-    // The euclid ramp needs metric world coords: overworld (60), DLC-overworld (61), and
-    // base underground (area 12 projects to 60) all qualify; DLC underground (40-43, not
-    // projected) keeps flat base_thr. The grace anchors project the same way → same frame.
-    const bool euclid_frame = (player_area == 60 || player_area == 61);
+        dist_adaptive && goblin::get_player_map_pos(player_area, pwx, pwz); // projected (debug rings)
+    // The distance ramp measures player↔grace in the RAW per-area frame (gridX*256+pos, NO
+    // projection) so it's correct on EVERY page — the projected unified frame OVERLAPS
+    // overworld↔underground, which gave garbage distances in Siofra. Gate on same raw area.
+    int raw_pa = -1;
+    float raw_pwx = 0, raw_pwz = 0;
+    const bool have_raw = dist_adaptive && goblin::get_player_raw_pos(raw_pa, raw_pwx, raw_pwz);
 
     // DEBUG viz (config cluster_debug_radius): player marker + near/far rings so you can
     // SEE where the distance ramp engages. Draws on every page the ramp runs (incl. the
@@ -347,20 +349,21 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     for (auto &kv : groups)
     {
         const auto &idxs = kv.second;
-        // Grace anchor (world + page) up front — needed for the distance ramp AND the
-        // pile placement below.
+        // Grace anchor (projected world + page) for the pile PLACEMENT below.
         int garea = -1;
         float gwx = 0, gwz = 0;
         const bool has_anchor = goblin::grace_anchor_world(kv.first, garea, gwx, gwz);
         // Per-location threshold. Distance-adaptive: Euclidean ramp near_thr→base_thr over
-        // the near→far radius (player + grace in the same projected frame). Otherwise flat
-        // base_thr (normal threshold clustering).
+        // the near→far radius, measured in the RAW per-area frame (player + grace must share
+        // the same raw area; underground sub-maps stay distinct via gridX*256). Otherwise
+        // flat base_thr (normal threshold clustering).
         int thr = base_thr;
-        float dbg_d = -1.f; // euclid distance player→grace (for the debug viz)
-        if (have_player && dist_eligible && has_anchor && euclid_frame &&
-            garea == player_area && far_u > near_u)
+        float dbg_d = -1.f; // raw euclid distance player→grace (for the debug viz)
+        int graw_a = -1; float graw_x = 0, graw_z = 0;
+        if (have_raw && goblin::grace_anchor_raw(kv.first, graw_a, graw_x, graw_z) &&
+            graw_a == raw_pa && far_u > near_u)
         {
-            const float dx = gwx - pwx, dz = gwz - pwz;
+            const float dx = graw_x - raw_pwx, dz = graw_z - raw_pwz;
             const float d = std::sqrt(dx * dx + dz * dz);
             dbg_d = d;
             float t = (d - near_u) / (far_u - near_u);
@@ -611,13 +614,12 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const bool clustering = goblin::ui::clustering_enabled();
     const int threshold = clustering ? goblin::ui::global_threshold() : 0;
     // Distance-adaptive is its own clustering mode: when on it OVERRIDES the per-category
-    // opt-in (every category clusters by distance from the player; see draw_clusters).
-    // OVERWORLD pages ONLY (open_grp 0/2): the underground/DLC-UG pages (bit 0) project
-    // their markers into the OVERLAPPING unified overworld map-space, so euclid distance
-    // there is meaningless (it removed near-player markers in Siofra) — those pages fall
-    // back to normal per-category threshold clustering until a sub-page-aware ramp exists.
+    // opt-in (every category clusters by distance from the player; see draw_clusters). Works
+    // on ALL pages — the ramp measures distance in the RAW per-area frame (get_player_raw_pos
+    // / grace_anchor_raw), gated to the same raw area, so the projected-frame overlap that
+    // broke it underground (Siofra) no longer applies.
     const bool dist_adaptive =
-        clustering && goblin::config::clusterDistanceAdaptive && !(open_grp & 1);
+        clustering && goblin::config::clusterDistanceAdaptive;
     // Resolution-relative icon/glyph sizes (match the native canvas-scaled icons),
     // × the user's master scale × the per-type scale (saved in the ini).
     const float uiScale = realH / 1080.f;
@@ -684,7 +686,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
 
     if (clustering && !clustered.empty())
         draw_clusters(fg, clustered, threshold, atlas, realW, realH, view, dlc_ug,
-                      /*dist_eligible=*/!(open_grp & 1), iconHalf, glyphR, mouse, hover);
+                      /*dist_eligible=*/true, iconHalf, glyphR, mouse, hover);
 
     // Tooltip for the hovered marker / pile (drawn last so it's on top).
     if (hover.bestd < 1e30f)

@@ -20,6 +20,12 @@ namespace goblin
     int marker_cluster_key(uint8_t area, uint8_t gridX, uint8_t gridZ, float posX,
                            float posZ, int *out_pname = nullptr);
 
+    // Player + grace position in the RAW per-area frame (NO projection) — for overlap-free
+    // distance-adaptive clustering (gate on same raw area; underground sub-maps stay
+    // distinct via gridX*256). false during a load / on probe failure / bad key.
+    bool get_player_raw_pos(int &out_area, float &wx, float &wz);
+    bool grace_anchor_raw(int key, int &out_area, float &wx, float &wz);
+
     // Region PlaceName id for a marker via the game's MapNameOverride volumes (point-in-
     // volume containment in the marker's MSB-local frame). 0 = no volume here. The reliable
     // location-name source for tooltips + cluster labels (cities, region borders).

@@ -645,8 +645,9 @@ int goblin::region_name_pname(uint8_t area, uint8_t gx, uint8_t gz, float posX, 
     // same-map volume + the delta — a consistent offset reveals a frame mismatch.
     if (goblin::config::debugLogging)
     {
-        static int s_diag = 0;
-        if (s_diag++ < 40)
+        static std::set<uint32_t> s_seen; // log the FIRST miss per (area,gx,gz) map
+        uint32_t key = ((uint32_t)area << 16) | ((uint32_t)gx << 8) | gz;
+        if (s_seen.size() < 200 && s_seen.insert(key).second)
         {
             int bi = -1; float bd = 1e30f;
             for (size_t i = 0; i < gen::NAME_REGION_COUNT; ++i)
@@ -1038,6 +1039,42 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
         if (out_gz) *out_gz = pr.gz;
         if (out_group) *out_group = goblin::marker_group_from((uint8_t)pr.area, pr.area);
     }
+    return true;
+}
+
+// Player position in the RAW per-area frame (NO projection): out_area = the real MapId
+// area (60 overworld, 12 base underground, 61/40-43 DLC, …); wx/wz = gridX*256 + the live
+// ChrIns local. Unlike get_player_map_pos (which projects underground into the OVERLAPPING
+// unified overworld map-space), this keeps each area in its own frame — so distance-adaptive
+// can measure player↔grace distance correctly underground (gate on same raw area). Returns
+// false during a load (ChrIns 0) or when the statics/probe fail.
+bool goblin::get_player_raw_pos(int &out_area, float &wx, float &wz)
+{
+    if (!g_mappos_tried) resolve_player_map_pos_statics();
+    if (!g_wcm_tried) resolve_world_chr_man();
+    if (!g_mapid_slot || !g_wcm_static) return false;
+    MapPosProbe pr{};
+    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
+    PlayerProbe pp{};
+    probe_player_seh(g_wcm_static, &pp);
+    if (!pr.ok || !pp.ok) return false;
+    if (pp.p[0] == 0.0f && pp.p[2] == 0.0f) return false;
+    out_area = pr.area;
+    wx = pr.gx * 256.0f + pp.p[0];
+    wz = pr.gz * 256.0f + pp.p[2];
+    return true;
+}
+
+// Grace anchor in its RAW per-area frame (NO projection) — for same-area distance vs
+// get_player_raw_pos. area = GRACE_ANCHORS[key].area; wx/wz = gridX*256 + posX/posZ.
+bool goblin::grace_anchor_raw(int key, int &out_area, float &wx, float &wz)
+{
+    if (key < 0 || static_cast<size_t>(key) >= goblin::generated::GRACE_ANCHOR_COUNT)
+        return false;
+    const auto &a = goblin::generated::GRACE_ANCHORS[key];
+    out_area = a.area;
+    wx = a.gridX * 256.0f + a.posX;
+    wz = a.gridZ * 256.0f + a.posZ;
     return true;
 }
 
