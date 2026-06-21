@@ -257,15 +257,50 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     for (int i = 0; i < (int)items.size(); ++i)
         groups[items[i].m->cluster_key].push_back(i);
 
-    // Pass 1: resolve each pile's GRACE anchor position (sub-threshold groups draw
-    // their members normally now). The anchor pos doubles as the neighbour set used to
-    // pick a non-overlapping offset below.
+    // Distance-adaptive: when on, the per-location threshold ramps from near_thr (full
+    // detail around the player) to base_thr (clustered far away) over near→far radius,
+    // SAME overworld page only (world coords aren't comparable across pages, and the
+    // underground player float is unreliable). This is its own feature: enabling it
+    // OVERRIDES per-category opt-in (every category clusters by distance — handled at
+    // the eligibility check in render_markers).
+    namespace cfg = goblin::config;
+    const bool dist_adaptive = cfg::clusterDistanceAdaptive;
+    const int base_thr = threshold;
+    int near_thr = (int)cfg::clusterNearThreshold;
+    if (near_thr < 1) near_thr = 1;
+    const float near_u = cfg::clusterNearRadius * 256.0f;
+    const float far_u = cfg::clusterFarRadius * 256.0f;
+    int player_area = -1;
+    float pwx = 0, pwz = 0;
+    const bool have_player =
+        dist_adaptive && goblin::get_player_map_pos(player_area, pwx, pwz);
+    const bool euclid_frame = (player_area == 60 || player_area == 61); // overworld pages
+
+    // Pass 1: resolve each pile's GRACE anchor + its (distance-adaptive) threshold.
+    // Sub-threshold groups draw their members normally; denser ones become a pile.
     struct Pile { ImVec2 g; int count; int total; int loc_pname; };
     std::vector<Pile> piles;
     for (auto &kv : groups)
     {
         const auto &idxs = kv.second;
-        if ((int)idxs.size() <= threshold)
+        // Grace anchor (world + page) up front — needed for the distance ramp AND the
+        // pile placement below.
+        int garea = -1;
+        float gwx = 0, gwz = 0;
+        const bool has_anchor = goblin::grace_anchor_world(kv.first, garea, gwx, gwz);
+        // Per-location threshold: distance-adaptive ramp near_thr→base_thr (overworld,
+        // same page as the player); flat base_thr otherwise.
+        int thr = base_thr;
+        if (have_player && has_anchor && euclid_frame && garea == player_area && far_u > near_u)
+        {
+            const float dx = gwx - pwx, dz = gwz - pwz;
+            const float d = std::sqrt(dx * dx + dz * dz);
+            float t = (d - near_u) / (far_u - near_u);
+            if (t < 0.f) t = 0.f; else if (t > 1.f) t = 1.f;
+            thr = (int)std::lround(near_thr + t * (base_thr - near_thr));
+            if (thr < 1) thr = 1;
+        }
+        if ((int)idxs.size() <= thr)
         {
             for (int i : idxs)
                 if (on_screen(items[i].p))
@@ -278,9 +313,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         // Pile AT its grace (correctly placed), not the member centroid (which drifts
         // into the sea). Fall back to the centroid only if the anchor is bad.
         ImVec2 c;
-        int garea;
-        float gwx, gwz;
-        if (goblin::grace_anchor_world(kv.first, garea, gwx, gwz))
+        if (has_anchor)
         {
             float gU, gV;
             world_to_mapspace_xy(gwx, gwz, dlc_ug, gU, gV);
@@ -410,6 +443,9 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // by construction (re-binned every frame), so toggles/zoom update with no rebuild.
     const bool clustering = goblin::ui::clustering_enabled();
     const int threshold = clustering ? goblin::ui::global_threshold() : 0;
+    // Distance-adaptive is its own clustering mode: when on it OVERRIDES the per-category
+    // opt-in (every category clusters by distance from the player; see draw_clusters).
+    const bool dist_adaptive = clustering && goblin::config::clusterDistanceAdaptive;
     // Resolution-relative icon/glyph sizes (match the native canvas-scaled icons),
     // × the user's master scale × the per-type scale (saved in the ini).
     const float uiScale = realH / 1080.f;
@@ -450,7 +486,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // member still counts toward its grace pile + centroid (a pile can sit on
             // screen while some members are off it). Everything else culls + draws now.
             if (clustering && m.category >= 0 && m.cluster_key >= 0 &&
-                goblin::ui::category_clustered(m.category))
+                (dist_adaptive || goblin::ui::category_clustered(m.category)))
                 clustered.push_back({sp, &m});
             else if (!(sp.x < -32 || sp.y < -32 || sp.x > realW + 32 || sp.y > realH + 32))
             {

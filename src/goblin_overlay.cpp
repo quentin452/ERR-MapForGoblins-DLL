@@ -982,11 +982,12 @@ namespace
                 // re-enabled without a restart.) Drives config::enableClustering and
                 // re-plans live; enabled ⇔ dense piles collapsed into one icon.
                 bool en = goblin::ui::clustering_enabled();
-                if (ImGui::Checkbox("Enable clustering (live — reopen map to apply)", &en))
+                if (ImGui::Checkbox("Enable clustering (declutter dense areas)", &en))
                     goblin::ui::set_clustering_enabled(en);
                 if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("Collapse dense marker piles into one cluster icon.\n"
-                                      "Live (no restart); close+reopen the map to see it.");
+                    ImGui::SetTooltip("Collapse dense marker piles into one icon to keep busy\n"
+                                      "regions readable. NOT for performance — the overlay map\n"
+                                      "has no freeze. Live (updates as you pan/zoom the map).");
 
                 if (en)
                 {
@@ -1005,16 +1006,17 @@ namespace
 
                     // Distance-adaptive: scale the size up far from the player.
                     bool da = goblin::config::clusterDistanceAdaptive;
-                    if (ImGui::Checkbox("Scale cluster size by distance from player", &da))
+                    if (ImGui::Checkbox("Distance-adaptive (cluster by distance from player)", &da))
                     {
                         goblin::config::clusterDistanceAdaptive = da;
                         goblin::ui::request_cluster_replan();
                     }
                     if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Full detail near you; distant dense spots merge into bigger\n"
-                                          "piles (fewer far icons, faster map). Ramps from the cluster\n"
-                                          "size above (near) to the far size below, same map area only.\n"
-                                          "Recomputed when you open the map. Live.");
+                        ImGui::SetTooltip("Own mode: OVERRIDES the per-category opt-in above and clusters\n"
+                                          "EVERY category by distance — full detail (individual items)\n"
+                                          "near you, dense spots far away merged into piles. Ramps from\n"
+                                          "the near size to the far size below, same overworld page only.\n"
+                                          "Live (updates as you move / pan).");
                     if (da)
                     {
                         int nr = goblin::config::clusterNearRadius;
@@ -1070,18 +1072,7 @@ namespace
                         goblin::config::clusterFarRadius = 2;
                         goblin::ui::request_cluster_replan();
                     }
-                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Aggressive far-merge: fewest distant icons (Steam Deck / low-end).");
-
-                    bool dbg = goblin::ui::cluster_debug();
-                    if (ImGui::Checkbox("Show cluster bubbles on map (off = counts only in this menu)", &dbg))
-                        goblin::ui::set_cluster_debug(dbg);
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("On: a pile glyph (with its per-location count) sits on the map.\n"
-                                          "Off: no bubble on the map; the per-category counts above are\n"
-                                          "the source. Clustered piles stay parked either way (no freeze).");
-
-                    if (!goblin::ui::clustering_active())
-                        ImGui::TextDisabled("No location over this size — lower the cluster size.");
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Aggressive far-merge: fewest distant icons, most declutter.");
                 }
             }
 
