@@ -378,6 +378,66 @@ bool project_live(void *vm, int area, int gx, int gz, float px, float pz, float 
     return true;
 }
 
+// FUN_140876140(converter, float out[2], u32* packedId, float world[3]) -> char(1 on match).
+// Projects ONE point through ONE converter; folds LegacyConv (mutates *packedId to the dst
+// area) then checks area match. We loop it per slot to find the matched slot → page.
+using ProjPointFn = char (*)(void *, float *, uint32_t *, float *);
+ProjPointFn resolve_proj_point()
+{
+    static ProjPointFn fn = nullptr;
+    static bool tried = false;
+    if (!tried)
+    {
+        tried = true;
+        try
+        {
+            fn = modutils::scan<char(void *, float *, uint32_t *, float *)>(
+                {.aob = goblin::sig::WORLDMAP_PROJ_POINT});
+        }
+        catch (...) { fn = nullptr; }
+        g_log->info("[PAGE] FUN_140876140 (per-converter) resolve -> {:p}", (void *)fn);
+    }
+    return fn;
+}
+
+// Live PAGE for a point: loop the VM converters with FUN_140876140; the first slot that
+// matches → page = page-table[slot] (base+0x2ad82f8 = [00 01 0a] = {overworld,underground,
+// DLC}), with the area==12 ⇒ underground override (findings §5). out_* report the matched
+// slot + post-fold area for the A/B. Returns the raw page id (0/1/10), -1 = not placed.
+int project_page(uintptr_t vm, int area, int gx, int gz, float px, float pz, int &out_slot,
+                 int &out_folded_area)
+{
+    out_slot = -1;
+    out_folded_area = -1;
+    ProjPointFn fn = resolve_proj_point();
+    if (!fn || !vm)
+        return -2;
+    uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    uint64_t count = 0;
+    seh_read8(reinterpret_cast<void *>(vm + 0x280), &count);
+    uint64_t n = count > 8 ? 8 : count;
+    int page_tab = 0;
+    seh_read_i32(reinterpret_cast<void *>(base + 0x2ad82f8), &page_tab); // bytes [00 01 0a ..]
+    for (uint64_t i = 0; i < n; ++i)
+    {
+        uintptr_t conv = vm + 0xF8 + i * 0x30;
+        uint32_t packed = ((uint32_t)(area & 0xff) << 24) | ((uint32_t)(gx & 0xff) << 16) |
+                          ((uint32_t)(gz & 0xff) << 8);
+        float world[3] = {px, 0.0f, pz};
+        float out[2] = {0.0f, 0.0f};
+        if (fn(reinterpret_cast<void *>(conv), out, &packed, world))
+        {
+            out_slot = (int)i;
+            out_folded_area = (int)((packed >> 24) & 0xff);
+            int pg = (i < 3) ? ((page_tab >> (i * 8)) & 0xff) : -1;
+            if (pg == 0 && area == 12) // base-underground override (shares the OW converter)
+                pg = 1;
+            return pg;
+        }
+    }
+    return -1; // no converter accepts it (e.g. m19 Chapel) → game doesn't place it
+}
+
 // Find the live CS::WorldMapViewModel (cached). Resolves from the active map cursor →
 // WorldMapDialog (cursor-0x2DB0) → scan its pointer fields for an object whose first qword
 // is the VM vtable. Re-validates the cached ptr cheaply; re-scans only when it goes stale
@@ -495,6 +555,29 @@ void dump_converters(uintptr_t base, uintptr_t cursor)
         g_log->info("[PROJTEST] {} | area{} grid({},{}) pos({:.0f},{:.0f}) -> live=({:.1f},{:.1f}) "
                     "ok={} | baked-OW=({:.1f},{:.1f}) dU={:.1f} dV={:.1f}",
                     s.what, s.a, s.gx, s.gz, s.px, s.pz, lu, lv, ok, bu, bv, lu - bu, lv - bv);
+    }
+
+    // PAGE A/B: live page (loop FUN_140876140 → page-table) vs the baked marker_group_from
+    // (which needs the fold's projected area). Goal: confirm the live page gives enough to
+    // drop marker_group_from. Samples cover OW(60) / base-UG(12) / DLC-OW(61) / DLC-UG(40-43).
+    struct PSample { int a, gx, gz; float px, pz; const char *what; } psamples[] = {
+        {60, 40, 40, 100.0f, 100.0f, "overworld"},
+        {12, 1, 0, 50.0f, 50.0f, "base underground"},
+        {61, 40, 40, 100.0f, 100.0f, "DLC overworld"},
+        {40, 1, 0, 50.0f, 50.0f, "DLC underground m40"},
+        {19, 0, 0, 0.0f, 0.0f, "m19 Chapel (no-conv)"},
+    };
+    for (const PSample &s : psamples)
+    {
+        int slot = -1, folded = -1;
+        int live_pg = project_page(vm, s.a, s.gx, s.gz, s.px, s.pz, slot, folded);
+        int ga = 0; float wx = 0, wz = 0;
+        goblin::marker_world_pos((uint8_t)s.a, (uint8_t)s.gx, (uint8_t)s.gz, s.px, s.pz, ga, wx, wz,
+                                 /*conv_underground=*/true);
+        int baked_grp = goblin::marker_group_from((uint8_t)s.a, ga);
+        g_log->info("[PAGETEST] {} | area{} -> LIVE page={} slot={} foldedArea={} | "
+                    "BAKED group={} (projArea={})",
+                    s.what, s.a, live_pg, slot, folded, baked_grp, ga);
     }
 }
 
