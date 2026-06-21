@@ -4,7 +4,7 @@
 namespace goblin::generated {
 
 const MajorRegionAnchor MAJOR_REGION_ANCHORS[] = {
-    { 10, -750.6400f, -66.6300f, 952020000, "Limgrave" },
+    { 60, 10731.0000f, 9553.0000f, 952020000, "Limgrave" },
     { 12, -322.8700f, 834.5300f, 952020001, "Ainsel River" },
     { 12, 135.8400f, 654.5200f, 952020002, "Deeproot Depths" },
     { 12, 2065.2900f, 2496.4399f, 952020003, "Siofra River" },
