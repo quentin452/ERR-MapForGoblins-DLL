@@ -628,9 +628,20 @@ void dump_render_dims(float bbW, float bbH)
         seh_read4(reinterpret_cast<void *>(e + 0x11c), &h);
         seh_read_i32(reinterpret_cast<void *>(e + 0x128), &outIdx);
         seh_read_i32(reinterpret_cast<void *>(e + 0x140), &dirty);
+        // Source dims + render-scale (mgr + outIdx*0x30 + 0x3c8/0x3cc/0x3ec): FUN_1419ebb40
+        // recomputes the active dims FROM these. If source is fresh → fix(1) recompute is
+        // enough; if source is also stale → fix(2) full re-apply (updates source first).
+        int srcW = 0, srcH = 0;
+        float rscale = 0;
+        uint64_t srcBase = mgr + static_cast<uint64_t>(static_cast<uint32_t>(outIdx)) * 0x30;
+        seh_read_i32(reinterpret_cast<void *>(srcBase + 0x3c8), &srcW);
+        seh_read_i32(reinterpret_cast<void *>(srcBase + 0x3cc), &srcH);
+        seh_read4(reinterpret_cast<void *>(srcBase + 0x3ec), &rscale);
         bool stale = (w != bbW || h != bbH);
-        spdlog::info("[RENDIMS]  entry#{} outIdx={} activeWH={}x{} dirty(+0x140)={} {}", i, outIdx,
-                     w, h, dirty & 0xff, stale ? "<-- STALE vs backbuffer" : "ok");
+        spdlog::info("[RENDIMS]  entry#{} outIdx={} activeWH={}x{} srcWH={}x{} rscale={} "
+                     "dirty(+0x140)={} {}",
+                     i, outIdx, w, h, srcW, srcH, rscale, dirty & 0xff,
+                     stale ? "<-- STALE vs backbuffer" : "ok");
     }
 }
 
