@@ -66,6 +66,20 @@ namespace goblin
                           int &out_area, float &world_x, float &world_z,
                           bool conv_underground = false);
 
+    // Overlay marker GROUP (which map page it belongs to) from the ORIGINAL areaNo + the
+    // PROJECTED area (`out_area` from marker_world_pos): 0 base-overworld, 1 base-underground,
+    // 2 DLC-overworld, 3 DLC-underground. DLC by the final page (61 / 40-43); UNDERGROUND by
+    // the original areaNo (12 / 40-43) — area 12 projects to overworld map-space (pg 60) so it
+    // must gate by its SOURCE layer, not the final page. ONE place so the grace + map-entry
+    // layers and the player-pos debug gate identically. The renderer draws only open_grp.
+    inline int marker_group_from(uint8_t orig_area, int projected_area)
+    {
+        int pg = projected_area & 63;
+        bool isug = (orig_area == 12) || (orig_area >= 40 && orig_area <= 43);
+        bool isdlc = (pg == 61) || (orig_area >= 40 && orig_area <= 43);
+        return (isdlc ? 2 : 0) | (isug ? 1 : 0);
+    }
+
     // Map-fragment discovery flag for a marker, on the tile the native injection gates
     // on (projects overworld dungeons to area 60 first, like legacy GetMapFragment).
     // 0 = no fragment. Use this (not the raw-tile map_fragment_flag) for the overlay

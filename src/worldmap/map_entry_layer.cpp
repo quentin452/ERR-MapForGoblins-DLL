@@ -42,10 +42,7 @@ void build_buckets()
         float wx, wz;
         goblin::marker_world_pos(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ, ga, wx, wz,
                                  /*conv_underground=*/true);
-        int pg = ga & 63;
-        bool isug = (d.areaNo == 12) || (d.areaNo >= 40 && d.areaNo <= 43);
-        bool isdlc = (pg == 61) || (d.areaNo >= 40 && d.areaNo <= 43);
-        int grp = (isdlc ? 2 : 0) | (isug ? 1 : 0);
+        int grp = goblin::marker_group_from(d.areaNo, ga);
         int pname = -1;
         int ckey = goblin::marker_cluster_key(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ,
                                               &pname);

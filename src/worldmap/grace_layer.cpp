@@ -30,13 +30,7 @@ const std::vector<Marker> &GraceLayer::markers() const
         float wx, wz;
         goblin::marker_world_pos(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ, ga, wx, wz,
                                  /*conv_underground=*/true);
-        int pg = ga & 63;
-        // DLC vs base by FINAL page (61/40-43 = DLC). UNDERGROUND by the ORIGINAL areaNo
-        // (12 / 40-43): area 12 projects to overworld map-space (pg=60) so it must be gated
-        // by its source layer, not the final page.
-        bool isug = (e.areaNo == 12) || (e.areaNo >= 40 && e.areaNo <= 43);
-        bool isdlc = (pg == 61) || (e.areaNo >= 40 && e.areaNo <= 43);
-        int grp = (isdlc ? 2 : 0) | (isug ? 1 : 0);
+        int grp = goblin::marker_group_from(e.areaNo, ga);
         const int gc = static_cast<int>(goblin::generated::Category::WorldGraces);
         int pname = -1;
         int ckey = goblin::marker_cluster_key(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ,

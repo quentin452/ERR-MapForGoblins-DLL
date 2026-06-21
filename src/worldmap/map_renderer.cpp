@@ -552,11 +552,15 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     if (goblin::config::clusterDebugRadius)
     {
         const float realWd = io.DisplaySize.x, realHd = io.DisplaySize.y;
-        // Cyan grace anchors (the correct pipeline) for reference.
+        // Cyan grace anchors (the correct pipeline) for reference — gated to the OPEN page
+        // via the SAME group helper the layers use, so underground shows only underground
+        // graces (not the whole overworld set).
         for (size_t i = 0; i < goblin::generated::GRACE_ANCHOR_COUNT; ++i)
         {
             int ga; float gwx, gwz;
             if (!goblin::grace_anchor_world((int)i, ga, gwx, gwz)) continue;
+            if (goblin::marker_group_from(goblin::generated::GRACE_ANCHORS[i].area, ga) != open_grp)
+                continue;
             float gU, gV; world_to_mapspace_xy(gwx, gwz, dlc_ug, gU, gV);
             proj::Px gp = proj::project_screen(gU, gV, view, realWd, realHd);
             if (gp.x < -8 || gp.y < -8 || gp.x > realWd + 8 || gp.y > realHd + 8) continue;
