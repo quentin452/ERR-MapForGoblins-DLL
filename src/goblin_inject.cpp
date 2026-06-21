@@ -836,6 +836,29 @@ static void resolve_world_chr_man()
     spdlog::info("[PLAYER] WorldChrMan static @ {:p}", (void *)g_wcm_static);
 }
 
+// Safe single-value read via ReadProcessMemory — clang-cl ELIDES __try around a raw
+// deref (see clang-cl-seh-noinline), so a bad pointer crashes uncaught; RPM is a kernel
+// call that returns false instead. Used by the [YELLOWDOT2] player-dot diag.
+template <typename T> static bool rpm(uintptr_t addr, T &out)
+{
+    SIZE_T n = 0;
+    return addr && ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(addr),
+                                     &out, sizeof(T), &n) && n == sizeof(T);
+}
+
+// Map-POINT manager DAT_143d69ba8 slot — the manager whose +0x70/+0x78 hold the native
+// player "yellow dot" position (valid underground, unlike CSWorldGeomMan).
+static uintptr_t g_mappoint_slot = 0;
+static bool g_mappoint_tried = false;
+static void resolve_mappoint_mgr()
+{
+    g_mappoint_tried = true;
+    g_mappoint_slot = reinterpret_cast<uintptr_t>(modutils::scan<void>({
+        .aob = goblin::sig::MAPPOINT_MGR_BUILDER,
+        .relative_offsets = {{24, 28}}}));
+    spdlog::info("[PLAYER] mappoint-mgr (DAT_143d69ba8) slot @ {:p}", (void *)g_mappoint_slot);
+}
+
 // DIAGNOSTIC probe (POD-only; no C++ objects in the __try). Fills intermediate
 // pointers + two candidate coordinate chains so one in-game run identifies the
 // correct offsets. Caller logs the result OUTSIDE the SEH frame.
@@ -1022,6 +1045,24 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
                      "-> proj area={} world=({:.0f},{:.0f}) tile=({},{})",
                      pr.area, pr.gx, pr.gz, pr.lx, pr.lz, out_area, world_x, world_z,
                      (int)(world_x / 256.f), (int)(world_z / 256.f));
+        // Compare the two REAL candidate player-dot sources (RPM-safe, no __try → no crash
+        // if an AOB resolved wrong). Underground decides which is non-origin = the truth.
+        if (!g_mappoint_tried) resolve_mappoint_mgr();
+        if (!g_wcm_tried) resolve_world_chr_man();
+        float m70 = 0, m74 = 0, m78 = 0, m80 = 0, m88 = 0; bool mok = false;
+        uintptr_t mp = 0;
+        if (rpm<uintptr_t>(g_mappoint_slot, mp) && mp)
+            mok = rpm(mp + 0x70, m70) && rpm(mp + 0x74, m74) && rpm(mp + 0x78, m78) &&
+                  rpm(mp + 0x80, m80) && rpm(mp + 0x88, m88);
+        float vx = 0, vy = 0, vz = 0; bool vok = false;
+        uintptr_t wcm = 0, pp = 0, a = 0, b = 0, cc = 0;
+        if (g_wcm_static && rpm<uintptr_t>(reinterpret_cast<uintptr_t>(g_wcm_static), wcm) && wcm &&
+            rpm<uintptr_t>(wcm + 0x1e508, pp) && pp && rpm<uintptr_t>(pp + 0x58, a) && a &&
+            rpm<uintptr_t>(a + 0x10, b) && b && rpm<uintptr_t>(b + 0x190, cc) && cc)
+            vok = rpm(cc + 0x68, vx) && rpm(cc + 0x6c, vy) && rpm(cc + 0x70, vz);
+        spdlog::info("[YELLOWDOT2] DAT_143d69ba8 ok={} +70={:.1f} +74={:.1f} +78={:.1f} +80={:.1f} "
+                     "+88={:.1f} | phys ok={} X={:.1f} Y={:.1f} Z={:.1f}",
+                     mok, m70, m74, m78, m80, m88, vok, vx, vy, vz);
     }
     return true;
 }
