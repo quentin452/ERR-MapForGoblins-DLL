@@ -697,6 +697,10 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // (textEnableFlag2) + the Ashen Capital eventFlag gate.
             if (m.secondary_flag && !goblin::ui::read_event_flag((uint32_t)m.secondary_flag))
                 continue;
+            // Inverse story gate: a PRE-event variant (Leyndell Royal Capital) disappears
+            // the moment its flag fires (the Ashen Capital replaces it).
+            if (m.hide_when_flag && goblin::ui::read_event_flag((uint32_t)m.hide_when_flag))
+                continue;
             float gU, gV;
             world_to_mapspace(m, dlc_ug, gU, gV);
             // Discovery gate: when require_map_fragments is on, hide a marker whose map
@@ -786,6 +790,10 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             if (quest_npc_gated_out(m))
                 continue;
             if (m.secondary_flag && !goblin::ui::read_event_flag((uint32_t)m.secondary_flag))
+                continue;
+            // Inverse story gate: a PRE-event variant (Leyndell Royal Capital) disappears
+            // the moment its flag fires (the Ashen Capital replaces it).
+            if (m.hide_when_flag && goblin::ui::read_event_flag((uint32_t)m.hide_when_flag))
                 continue;
             // North-up, player-centred: same orientation as the worldmap (mapV = -worldZ).
             float dx = (m.worldX - pwx) * scale;

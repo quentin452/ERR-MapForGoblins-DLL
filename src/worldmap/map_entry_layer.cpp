@@ -47,6 +47,20 @@ int secondary_story_flag(int area, int gx, int gz)
     return 0;
 }
 
+// Inverse of secondary_story_flag: a PRE-event tile that must DISAPPEAR once the story
+// flag fires. Leyndell Royal Capital (area 11, m11_00) is consumed by the Ashen Capital
+// when the Erdtree burns (StoryErdtreeOnFire), so its markers hide post-burn — EXCEPT the
+// post-burn tile (11, gx5, gz0) which secondary_story_flag already gates to SHOW after the
+// burn (never both gates on one tile). Mirrors the legacy refresh_royal_eviction, which
+// only ever ran on native injected rows (never active in overlay-only mode).
+int hide_when_story_flag(int area, int gx, int gz)
+{
+    namespace flag = goblin::flag;
+    if (area == 11 && !(gx == 5 && gz == 0))
+        return flag::StoryErdtreeOnFire;
+    return 0;
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows). Same
 // world-projection + group classification as the grace layer.
 void build_buckets()
@@ -79,6 +93,7 @@ void build_buckets()
                  category_color(c), category_icon_key(c), frag,
                  e.row_id, (int)d.clearedEventFlagId, collected_flag};
         m.secondary_flag = secondary_story_flag(d.areaNo, d.gridXNo, d.gridZNo);
+        m.hide_when_flag = hide_when_story_flag(d.areaNo, d.gridXNo, d.gridZNo);
         // Lot-backed loot (for anonymous_loot spoiler mode). Pieces/kindling are
         // geom/SFX-tracked, never a lot — exclude them (mirrors goblin_inject's is_lot).
         const bool piece = e.category == gen::Category::ReforgedRunePieces ||
