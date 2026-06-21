@@ -1,5 +1,31 @@
 # RE prompt — LIVE player position (overworld + UNDERGROUND), runtime-validated, with a Cheat Engine CT deliverable
 
+## UPDATE 2026-06-21 (in-game tests narrowed it — read this first)
+- The axis fix (`+0x74`→`+0x78` for Z, per windows_yellowdot_player_pos_re_findings.md) was
+  applied and is **NOT sufficient underground**. Player dot still lands far off (Ancestral
+  Woods / Siofra: dot bottom-left, real player at map centre).
+- **The overlay's grace/marker pipeline is CORRECT underground** — drawing every grace anchor
+  via `marker_world_pos(area,gridX,gridZ,posX,posZ, conv_underground=true)` lands the graces ON
+  their real positions. So the projection + the unified-frame conversion are RIGHT.
+- ⇒ **The bug is the player INPUT, not the projection.** We reconstruct the player from the
+  **MapId tile** (`singleton+0x2c`: area>>24 / gridX>>16 / gridZ>>8) + the **manager local**
+  (`er_base+0x3d69ba8 +0x70`(X)/`+0x78`(Z)). Underground those are in a DIFFERENT frame than the
+  `WorldMapPointParam` grid the graces use (MapId underground tile is a coarse block id, e.g.
+  Ancestral Woods = area12 tile (2,0); the manager local is small sub-area-local) — so feeding
+  them through the marker conv picks the wrong entrance / wrong cell. Overworld works because the
+  MapId tile == the WorldMapPointParam 60-grid there.
+- **Most promising lead = §3 of windows_yellowdot_player_pos_re_findings.md: the cursor position
+  provider.** The map cursor draws the yellow dot via `(**(cursor+0x90)+8)()` → world/area pos →
+  `FUN_140d82770` (per-area world→map-UV, correct underground by construction). That provider's
+  output IS the authoritative player map position in the SAME frame as the markers, on every page.
+  **Priority: RE `cursor+0x90`'s provider + `FUN_140d82770`** (ctor `FUN_1409bc5b0`, tick
+  `FUN_1409bd4b0`, setup `FUN_1409be5e0`). Deliver a CT exposing the provider's world pos +/or the
+  map-UV, validated underground. (Map-OPEN only — fine for distance-adaptive; the minimap's
+  map-closed source is a separate follow-up.)
+
+---
+
+
 **Status: BLOCKED on RUNTIME RE.** Static decompile alone has produced wrong offsets twice
 (see "What we already tried"). We need a source for the player's world/map position that is
 **verified live in Cheat Engine** on app **2.6.2.0 / ERR 2.2.9.6**, then handed back as (a) a
