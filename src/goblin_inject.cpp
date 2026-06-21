@@ -836,56 +836,6 @@ static void resolve_world_chr_man()
     spdlog::info("[PLAYER] WorldChrMan static @ {:p}", (void *)g_wcm_static);
 }
 
-// Map-POINT manager (DAT_143d69ba8) slot — the manager whose +0x70/+0x78 hold the native
-// player "yellow dot" position (valid underground, unlike CSWorldGeomMan). Resolved from
-// the builder fn's trailing `mov rax,[rip+DAT_143d69ba8]`.
-static uintptr_t g_mappoint_slot = 0;
-static bool g_mappoint_tried = false;
-static void resolve_mappoint_mgr()
-{
-    g_mappoint_tried = true;
-    g_mappoint_slot = reinterpret_cast<uintptr_t>(modutils::scan<void>({
-        .aob = goblin::sig::MAPPOINT_MGR_BUILDER,
-        .relative_offsets = {{24, 28}}}));
-    spdlog::info("[PLAYER] mappoint-mgr (DAT_143d69ba8) slot @ {:p}", (void *)g_mappoint_slot);
-}
-
-// [YELLOWDOT2] one-shot diag: read BOTH the real map-point manager (DAT_143d69ba8
-// +0x70/+0x74/+0x78/+0x80/+0x88) AND the live player physics Vec
-// (WCM+0x1e508 → +0x58 → +0x10 → +0x190 → +0x68 = X,Y,Z) so one underground run shows
-// which holds the real player position (the CSWorldGeomMan one reads origin underground).
-struct YellowDot2 { float m70, m74, m78, m80, m88; bool mok; float vx, vy, vz; bool vok; };
-static void probe_yellowdot2_seh(uintptr_t mp_slot, void **wcm_static, YellowDot2 *y)
-{
-    y->mok = y->vok = false;
-    __try
-    {
-        if (mp_slot)
-            if (auto *m = *reinterpret_cast<uint8_t **>(mp_slot))
-            {
-                y->m70 = *reinterpret_cast<float *>(m + 0x70);
-                y->m74 = *reinterpret_cast<float *>(m + 0x74);
-                y->m78 = *reinterpret_cast<float *>(m + 0x78);
-                y->m80 = *reinterpret_cast<float *>(m + 0x80);
-                y->m88 = *reinterpret_cast<float *>(m + 0x88);
-                y->mok = true;
-            }
-        if (wcm_static)
-            if (auto *wcm = *reinterpret_cast<uint8_t **>(wcm_static))
-            if (auto *p = *reinterpret_cast<uint8_t **>(wcm + 0x1e508))
-            if (auto *a = *reinterpret_cast<uint8_t **>(p + 0x58))
-            if (auto *b = *reinterpret_cast<uint8_t **>(a + 0x10))
-            if (auto *c = *reinterpret_cast<uint8_t **>(b + 0x190))
-            {
-                y->vx = *reinterpret_cast<float *>(c + 0x68 + 0x0);
-                y->vy = *reinterpret_cast<float *>(c + 0x68 + 0x4);
-                y->vz = *reinterpret_cast<float *>(c + 0x68 + 0x8);
-                y->vok = true;
-            }
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-
 // DIAGNOSTIC probe (POD-only; no C++ objects in the __try). Fills intermediate
 // pointers + two candidate coordinate chains so one in-game run identifies the
 // correct offsets. Caller logs the result OUTSIDE the SEH frame.
@@ -1072,14 +1022,6 @@ bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
                      "-> proj area={} world=({:.0f},{:.0f}) tile=({},{})",
                      pr.area, pr.gx, pr.gz, pr.lx, pr.lz, out_area, world_x, world_z,
                      (int)(world_x / 256.f), (int)(world_z / 256.f));
-        // Compare the two REAL candidate sources for the player dot (underground decides).
-        if (!g_mappoint_tried) resolve_mappoint_mgr();
-        if (!g_wcm_tried) resolve_world_chr_man();
-        YellowDot2 y{};
-        probe_yellowdot2_seh(g_mappoint_slot, g_wcm_static, &y);
-        spdlog::info("[YELLOWDOT2] DAT_143d69ba8 ok={} +70={:.1f} +74={:.1f} +78={:.1f} "
-                     "+80={:.1f} +88={:.1f} | phys ok={} X={:.1f} Y={:.1f} Z={:.1f}",
-                     y.mok, y.m70, y.m74, y.m78, y.m80, y.m88, y.vok, y.vx, y.vy, y.vz);
     }
     return true;
 }
