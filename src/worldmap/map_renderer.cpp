@@ -277,14 +277,40 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     const bool euclid_frame = (player_area == 60 || player_area == 61); // overworld pages
     // Underground pages have no usable Euclidean frame (non-256 tiles, garbage player
     // float) → use a DISCRETE sub-page (tabId) gradient like the native path: the
-    // player's sub-page gets near-detail, other sub-pages cluster. Player tab computed
-    // once (nearest-grace tab at the player's tile); only used on an underground page.
-    const int player_tab = (have_player && !overworld_page)
-        ? goblin::grace_tab_id((uint8_t)player_area, pwx, pwz) : -1;
+    // player's sub-page gets near-detail, other sub-pages cluster. Player tab from the
+    // RELIABLE MapId tile (not the garbage float); only used on an underground page.
+    const int player_tab = (have_player && !overworld_page) ? goblin::player_map_tab() : -1;
+
+    // DEBUG viz (config cluster_debug_radius): player marker + near/far rings (overworld)
+    // so you can SEE where the distance ramp engages and pin the bug.
+    const bool dbg_radius = goblin::config::clusterDebugRadius && have_player;
+    if (dbg_radius)
+    {
+        float gU, gV;
+        world_to_mapspace_xy(pwx, pwz, dlc_ug, gU, gV);
+        proj::Px pp = proj::project_screen(gU, gV, view, realW, realH);
+        const ImVec2 ppx(pp.x, pp.y);
+        if (overworld_page && euclid_frame)
+        {
+            auto ring_px = [&](float r) {
+                float u, v;
+                world_to_mapspace_xy(pwx + r, pwz, dlc_ug, u, v);
+                proj::Px e = proj::project_screen(u, v, view, realW, realH);
+                return std::fabs(e.x - pp.x);
+            };
+            fg->AddCircle(ppx, ring_px(near_u), IM_COL32(60, 230, 90, 210), 64, 2.f);  // near=detail
+            fg->AddCircle(ppx, ring_px(far_u), IM_COL32(255, 90, 30, 210), 64, 2.f);   // far=clustered
+        }
+        fg->AddCircleFilled(ppx, 6.f, IM_COL32(255, 0, 255, 255));
+        fg->AddCircle(ppx, 6.f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
+        char b[64];
+        std::snprintf(b, sizeof(b), "player A%d T%d", player_area, player_tab);
+        fg->AddText(ImVec2(ppx.x + 8, ppx.y - 6), IM_COL32(255, 120, 255, 255), b);
+    }
 
     // Pass 1: resolve each pile's GRACE anchor + its (distance-adaptive) threshold.
     // Sub-threshold groups draw their members normally; denser ones become a pile.
-    struct Pile { ImVec2 g; int count; int total; int loc_pname; };
+    struct Pile { ImVec2 g; int count; int total; int loc_pname; int thr; };
     std::vector<Pile> piles;
     for (auto &kv : groups)
     {
@@ -357,7 +383,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
                     ++remaining;
             }
         }
-        piles.push_back({c, remaining, total, items[idxs[0]].m->loc_pname});
+        piles.push_back({c, remaining, total, items[idxs[0]].m->loc_pname, thr});
     }
 
     // Pass 2: nudge each pile off its grace icon (so both stay visible), in the cardinal
@@ -394,6 +420,15 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         {
             const bool depleted = (piles[i].count == 0 && piles[i].total > 0);
             draw_cluster_glyph(fg, best, piles[i].count, glyphR, depleted);
+            if (dbg_radius)
+            {
+                // The per-location threshold this pile used (near_thr vs base_thr =
+                // distance/tab decision) — drawn above the glyph in cyan.
+                char tb[24];
+                std::snprintf(tb, sizeof(tb), "thr%d", piles[i].thr);
+                fg->AddText(ImVec2(best.x - glyphR, best.y - glyphR - 14.f),
+                            IM_COL32(80, 230, 255, 255), tb);
+            }
             hover_test(hover, mouse, best, glyphR,
                        pile_label(piles[i].loc_pname, piles[i].count, piles[i].total));
             // Location name centred under the glyph (shadowed for readability on the busy map).

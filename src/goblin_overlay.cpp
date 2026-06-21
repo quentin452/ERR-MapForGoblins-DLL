@@ -1034,6 +1034,12 @@ namespace
                         ImGui::SetNextItemWidth(160.0f);
                         if (ImGui::SliderInt("Far radius (tiles)", &fr, 2, 80))
                         { goblin::config::clusterFarRadius = static_cast<uint8_t>(fr); goblin::ui::request_cluster_replan(); }
+
+                        // Debug viz: draw the player + near/far rings (overworld) and
+                        // per-pile sub-page tab (underground) so you can SEE where the
+                        // distance ramp engages and pin the bug.
+                        ImGui::Checkbox("DEBUG: show distance zones (player + rings + tabs)",
+                                        &goblin::config::clusterDebugRadius);
                     }
 
                     // Player-profile presets — one click sets every cluster knob.

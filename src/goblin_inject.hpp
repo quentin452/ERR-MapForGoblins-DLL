@@ -26,6 +26,9 @@ namespace goblin
     // Map sub-page (tabId) of a grace anchor by its GRACE_ANCHORS index (cluster_key).
     // Used for underground distance-adaptive (same-sub-page = detail). -1 = bad key.
     int grace_anchor_tab(int key);
+    // The player's current sub-page (tabId) from the reliable MapId tile. -1 = overworld
+    // / unresolved. Underground distance-adaptive uses this (not the garbage float).
+    int player_map_tab();
 
     // Cluster label census: (PlaceName textId, label) for each cluster the inject
     // built. The label is "<Region> (<count>)" (region via cluster_region_label) or

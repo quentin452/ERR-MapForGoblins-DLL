@@ -680,6 +680,19 @@ static int tab_for_tile(int area, int gx, int gz)
     return -1;
 }
 
+// The player's current map sub-page (tabId) from the RELIABLE MapId tile (gx,gz) —
+// the float is leaf-block-local garbage underground, so coord/nearest-grace tab is
+// unreliable there; this uses tab_for_tile like the native distance-adaptive path.
+// Returns -1 on the overworld (those tiles aren't in the tab table) or if unresolved.
+int goblin::player_map_tab()
+{
+    int area = -1, gx = -1, gz = -1;
+    float wx = 0, wz = 0;
+    if (!get_player_map_pos(area, wx, wz, &gx, &gz))
+        return -1;
+    return tab_for_tile(area, gx, gz);
+}
+
 // Nearest MSB region-volume PlaceName to a world point in the same area — a LABEL
 // fallback for piles whose grace has no name (every DLC area-61 grace stores a tab
 // id, not a PlaceName). Returns 0 if no named region in this area.
