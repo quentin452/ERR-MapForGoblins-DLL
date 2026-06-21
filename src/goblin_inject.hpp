@@ -57,6 +57,12 @@ namespace goblin
                           int &out_area, float &world_x, float &world_z,
                           bool conv_underground = false);
 
+    // Map-fragment discovery flag for a marker, on the tile the native injection gates
+    // on (projects overworld dungeons to area 60 first, like legacy GetMapFragment).
+    // 0 = no fragment. Use this (not the raw-tile map_fragment_flag) for the overlay
+    // require_map_fragments gate — the raw tile misses dungeon-interior cells → leaks.
+    int marker_fragment_flag(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz);
+
     // A Site of Grace read LIVE from WorldMapPointParam (iconId 370) — no baked data.
     struct LiveGrace
     {

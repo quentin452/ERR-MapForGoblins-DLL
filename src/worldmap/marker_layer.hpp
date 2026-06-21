@@ -24,11 +24,16 @@ struct Marker
     int category = -1;          // static_cast<int>(Category); drives the cluster opt-in
     int cluster_key = -1;       // nearest-grace group id (native by-location clustering); -1 = exact
     int loc_pname = -1;         // group's region PlaceName id (for the pile name label)
+    int name_id = -1;           // this marker's own name textId (FMG lookup for the tooltip)
     unsigned int color = 0xEB82E65Au; // packed ImU32 ABGR — circle-fallback colour
     // Atlas cell key (goblin::overlay_icons ICON_CELLS, e.g. "show_graces"). When the
     // atlas is loaded and the key resolves, the marker draws as that icon; otherwise it
     // falls back to a coloured circle.
     const char *icon_key = nullptr;
+    // Map-fragment discovery flag for this marker's tile (goblin::map_fragment_flag).
+    // 0 = no fragment gate. When config::requireMapFragments is on, the renderer hides
+    // the marker until this event flag is set (player found the area's map fragment).
+    int fragment_flag = 0;
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the

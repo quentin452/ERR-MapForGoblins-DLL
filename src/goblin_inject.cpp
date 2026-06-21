@@ -13,6 +13,7 @@
 #include "goblin_major_regions.hpp"
 #include "goblin_tile_tabs.hpp"
 #include "goblin_legacy_conv.hpp"
+#include "goblin_logic.hpp"
 #include "goblin_markers.hpp"
 #include "goblin_bench.hpp"
 #include "from/params.hpp"
@@ -1017,6 +1018,29 @@ void goblin::capture_live_graces()
 }
 
 const std::vector<goblin::LiveGrace> &goblin::live_graces() { return g_live_graces; }
+
+// Map-fragment discovery flag for a marker, computed on the SAME tile the native
+// injection gates on. Legacy GetMapFragment runs AFTER inject_map_entries projected the
+// row, so it looks the fragment up by the PROJECTED tile: overworld dungeons (Stormveil
+// m10, catacombs m30…) become area-60 overworld tiles, while underground (m12 / DLC
+// 40-43) stays native (MapList keys those separately) — exactly conv_underground=false.
+// The first overlay port looked up the ORIGINAL baked tile instead, so a dungeon whose
+// interior grid cell isn't enumerated in MapList (deep Stormveil, etc.) returned 0 =
+// "no fragment" = always shown → the islands that leaked into the fog with zero
+// fragments. Projecting first puts them on a MapList-covered overworld tile and gates
+// them like the native map. (ExceptionList per-row overrides still not applied — no
+// rowId here; the tile table covers the vast majority.)
+int goblin::marker_fragment_flag(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz)
+{
+    from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp{};
+    tmp.areaNo = areaNo;
+    tmp.gridXNo = gx;
+    tmp.gridZNo = gz;
+    tmp.posX = px;
+    tmp.posZ = pz;
+    project_dungeon_row_to_overworld(&tmp, nullptr, nullptr, /*conv_underground=*/false);
+    return goblin::map_fragment_flag(tmp.areaNo, tmp.gridXNo, tmp.gridZNo);
+}
 
 bool goblin::marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,
                               int &out_area, float &world_x, float &world_z,

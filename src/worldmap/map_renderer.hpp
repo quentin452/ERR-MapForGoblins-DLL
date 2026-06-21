@@ -15,5 +15,8 @@ namespace goblin::worldmap
 // atlas_texture = the category-icon atlas's ImGui texture id (GPU descriptor handle),
 // or null to draw coloured-circle fallbacks. The overlay owns the texture; the
 // renderer computes the per-icon UVs itself from goblin::overlay_icons.
-void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_texture = nullptr);
+// mouseX/mouseY = OS cursor in backbuffer px (-1 = no hover) → drives the marker/pile
+// tooltip (name / location + count).
+void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_texture = nullptr,
+                    float mouseX = -1.f, float mouseY = -1.f);
 } // namespace goblin::worldmap

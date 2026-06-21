@@ -3,6 +3,7 @@
 #include "category_meta.hpp"
 #include "goblin_map_data.hpp" // MAP_ENTRIES / MAP_ENTRY_COUNT / MapEntry / Category
 #include "goblin_inject.hpp"   // marker_world_pos / goblin::ui::category_visible
+#include "goblin_logic.hpp"    // map_fragment_flag
 
 #include <array>
 
@@ -41,8 +42,9 @@ void build_buckets()
         int pname = -1;
         int ckey = goblin::marker_cluster_key(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ,
                                               &pname);
-        g_buckets[c].push_back(Marker{wx, wz, grp, (int)d.areaNo, c, ckey, pname,
-                                      category_color(c), category_icon_key(c)});
+        int frag = goblin::marker_fragment_flag(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ);
+        g_buckets[c].push_back(Marker{wx, wz, grp, (int)d.areaNo, c, ckey, pname, d.textId1,
+                                      category_color(c), category_icon_key(c), frag});
     }
 }
 } // namespace

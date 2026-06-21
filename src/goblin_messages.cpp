@@ -1099,3 +1099,16 @@ const wchar_t *goblin::lookup_text(int32_t id)
     }
     return nullptr;
 }
+
+std::string goblin::lookup_text_utf8(int32_t id)
+{
+    const wchar_t *w = lookup_text(id);
+    if (!w || !w[0])
+        return {};
+    int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+    if (n <= 1)
+        return {};
+    std::string s(static_cast<size_t>(n - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w, -1, &s[0], n, nullptr, nullptr);
+    return s;
+}
