@@ -114,6 +114,11 @@ namespace goblin
         // offsets / marker-space). See goblin_worldmap_probe.{hpp,cpp}.
         extern bool debugWorldmapProbe;
 
+        // Dev one-shot: find the live CS::WorldMapViewModel + dump its converter
+        // array (VM+0xF8) — confirms the world->map-space projection RE before we
+        // wire it. See goblin_worldmap_probe.cpp dump_converters_once.
+        extern bool dumpConverters;
+
         // Dev prototype: draw overlay-rendered marker dots projected onto the open
         // world map (verifies the world->screen affine). See goblin_overlay.cpp +
         // goblin_worldmap_probe::get_live_view.

@@ -1,5 +1,6 @@
 #include "goblin_worldmap_probe.hpp"
 #include "goblin_inject.hpp"   // goblin::world_map_open() — gate the scan on map-open
+#include "goblin_config.hpp"   // config::dumpConverters
 #include "re_signatures.hpp"   // centralized image RVAs
 #include "modutils.hpp"        // AOB scan (render re-apply fn resolve)
 
@@ -334,6 +335,89 @@ void enumerate_menu_cursors(uintptr_t base, uintptr_t vtable_va)
         g_log->info("[ALLCURSOR]   cursor @{:#x} (dialog @{:#x})", c, c - CURSOR_OFF_IN_MENU);
 }
 
+// Dev one-shot (config dump_converters): find the live CS::WorldMapViewModel and dump its
+// converter array — the engine's own world->map-space projection table (RE:
+// docs/re/windows_world_to_mapspace_projection_re_findings.md §1/§2). The VM is found by
+// scanning the WorldMapDialog's pointer fields for an object whose first qword == the VM
+// vtable (RVA WORLDMAP_VIEWMODEL_VTABLE_RVA). Logs [CONV] once per DISTINCT array content,
+// so opening overworld → base-UG (m12) → DLC each logs its page's converters (incl. the
+// never-solved DLC slot). STRICTLY READ-ONLY (ReadProcessMemory). cursor = dialog+0x2DB0.
+void dump_converters(uintptr_t base, uintptr_t cursor)
+{
+    using clock = std::chrono::steady_clock;
+    static clock::time_point s_last{};
+    auto now = clock::now();
+    if (now != clock::time_point{} && now - s_last < std::chrono::milliseconds(1500))
+        return;
+    s_last = now;
+
+    const uintptr_t vm_vtable = base + goblin::sig::WORLDMAP_VIEWMODEL_VTABLE_RVA;
+    const uintptr_t dialog = cursor - CURSOR_OFF_IN_MENU;
+    uintptr_t vm = 0;
+    for (uintptr_t o = 0; o < 0x8000; o += 8)
+    {
+        uint64_t p = 0;
+        if (!seh_read8(reinterpret_cast<void *>(dialog + o), &p) || !plausible_ptr(p))
+            continue;
+        uint64_t vt = 0;
+        if (seh_read8(reinterpret_cast<void *>(p), &vt) && vt == vm_vtable) { vm = p; break; }
+    }
+    static int s_misses = 0;
+    if (!vm)
+    {
+        if (s_misses++ < 6)
+            g_log->info("[CONV] WorldMapViewModel (vtable {:#x}) NOT in WorldMapDialog {:#x} "
+                        "+0..0x8000 — VM lives elsewhere; try a wider/other root", vm_vtable, dialog);
+        return;
+    }
+
+    uint64_t count = 0;
+    seh_read8(reinterpret_cast<void *>(vm + 0x280), &count);
+    uint64_t n = count > 8 ? 8 : count;
+
+    // Change-detect: only (re)log when the array content actually changed (i.e. a different
+    // page was opened), else this would spam every 1.5s while the map sits open.
+    uint64_t sig = count;
+    for (uint64_t i = 0; i < n; ++i)
+    {
+        uintptr_t c = vm + 0xF8 + i * 0x30;
+        int key = 0; float ox = 0, sc = 0;
+        seh_read_i32(reinterpret_cast<void *>(c + 0x08), &key);
+        seh_read4(reinterpret_cast<void *>(c + 0x0C), &ox);
+        seh_read4(reinterpret_cast<void *>(c + 0x20), &sc);
+        uint32_t oxb, scb; std::memcpy(&oxb, &ox, 4); std::memcpy(&scb, &sc, 4);
+        sig = sig * 1099511628211ull ^ (uint32_t)key ^ ((uint64_t)oxb << 13) ^ ((uint64_t)scb << 27);
+    }
+    static uint64_t s_last_sig = 0;
+    if (sig == s_last_sig) return;
+    s_last_sig = sig;
+
+    g_log->info("[CONV] VM={:#x} count={} (dialog={:#x}, vtable RVA {:#x})",
+                vm, count, dialog, goblin::sig::WORLDMAP_VIEWMODEL_VTABLE_RVA);
+    for (uint64_t i = 0; i < n; ++i)
+    {
+        uintptr_t c = vm + 0xF8 + i * 0x30;
+        int key = 0;
+        float ox = 0, oz = 0, bx = 0, bz = 0, sc = 0;
+        uint64_t node = 0;
+        seh_read_i32(reinterpret_cast<void *>(c + 0x08), &key);
+        seh_read4(reinterpret_cast<void *>(c + 0x0C), &ox);
+        seh_read4(reinterpret_cast<void *>(c + 0x14), &oz);
+        seh_read4(reinterpret_cast<void *>(c + 0x18), &bx);
+        seh_read4(reinterpret_cast<void *>(c + 0x1C), &bz);
+        seh_read4(reinterpret_cast<void *>(c + 0x20), &sc);
+        seh_read8(reinterpret_cast<void *>(c + 0x28), &node);
+        unsigned area = ((unsigned)key >> 24) & 0xff, gxb = ((unsigned)key >> 16) & 0xff,
+                 gzb = ((unsigned)key >> 8) & 0xff;
+        g_log->info("[CONV]   slot{} area={} gridXbase={} gridZbase={} origin=({:.1f},{:.1f}) "
+                    "bias=({:.1f},{:.1f}) scale={:.4f} legacyConv={:#x}{}",
+                    i, area, gxb, gzb, ox, oz, bx, bz, sc, node, node ? " [folds legacy]" : "");
+    }
+    // Sanity vs the baked affine: overworld slot should give originX-biasX=7040, originZ+biasZ=16512.
+    g_log->info("[CONV] (expect an overworld slot: scale 1.0, origin 7168/16384, bias 128/128 "
+                "=> our baked -7040/+16512)");
+}
+
 void probe_loop()
 {
     uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
@@ -383,6 +467,10 @@ void probe_loop()
                 candidates.push_back(menu_cursor);
                 g_log->info("resolve: cursor {:#x} (menu walk)", menu_cursor);
             }
+            // RE check: dump the live WorldMapViewModel converter array (world->map-space
+            // projection) when requested. Read-only; throttled + change-detected internally.
+            if (goblin::config::dumpConverters)
+                dump_converters(base, menu_cursor);
             // DISABLED (gamepad-cursor WIP): the all-instance enumerate_menu_cursors scan
             // (L1 0x10000 × L2 0x800 RPM reads) ran once per map-open and slowed the map
             // load noticeably — and it never reliably found the gamepad cursor. Removed; the
