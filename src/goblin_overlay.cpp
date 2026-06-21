@@ -596,6 +596,17 @@ namespace
             ImGui::Checkbox("Require map fragments (hide an area's icons until its fragment is found)",
                             &goblin::config::requireMapFragments);
 
+            // Collected/cleared graying (overlay map; live, persists via "Save to INI").
+            // On = dim looted items / killed bosses (cleared bosses get a checkmark);
+            // hide_collected switches dim → remove (legacy native-map behaviour).
+            ImGui::Checkbox("Gray collected/cleared markers (dim looted items & killed bosses)",
+                            &goblin::config::collectedGraying);
+            if (goblin::config::collectedGraying)
+            {
+                ImGui::SameLine();
+                ImGui::Checkbox("hide instead", &goblin::config::hideCollected);
+            }
+
             // Overlay marker scale (live preview; persists via "Save to INI"). Final
             // size = resolution-relative base × master × per-type scale.
             if (ImGui::CollapsingHeader("Marker scale (overlay map)"))

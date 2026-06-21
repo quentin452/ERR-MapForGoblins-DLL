@@ -14,6 +14,8 @@ namespace goblin::config
 {
     uint8_t loadDelay = 5;
     bool requireMapFragments = true;
+    bool collectedGraying = true;
+    bool hideCollected = false;
     bool debugLogging = false;
     bool projectDungeons = true;
     bool showAll = false;
@@ -125,6 +127,13 @@ namespace
                 B("require_map_fragments", requireMapFragments, "true",
                   "Require map fragment discovery before showing icons in that area\n"
                   "(overlay map: gates on the game's real fog-of-war reveal state)."),
+                B("collected_graying", collectedGraying, "true",
+                  "Overlay map: dim+desaturate markers for items already collected and\n"
+                  "bosses already cleared (cleared bosses also get a green checkmark).\n"
+                  "FALSE = always draw markers at full brightness."),
+                B("hide_collected", hideCollected, "false",
+                  "Overlay map: when collected_graying is on, HIDE collected/cleared\n"
+                  "markers entirely instead of dimming them (legacy native-map behaviour)."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("project_dungeons", projectDungeons, "true",

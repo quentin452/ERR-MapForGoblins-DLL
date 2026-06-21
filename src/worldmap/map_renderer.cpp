@@ -5,6 +5,8 @@
 #include "goblin_inject.hpp"         // ui::clustering_enabled / global_threshold / category_clustered
 #include "goblin_config.hpp"         // overlay marker scale config
 #include "goblin_messages.hpp"       // lookup_text_utf8 (tooltip names)
+#include "goblin_collected.hpp"      // is_original_row_collected (rune/ember graying)
+#include "goblin_kindling.hpp"       // is_row_collected (kindling graying)
 
 #include <string>
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
@@ -78,22 +80,74 @@ bool icon_uv(const char *key, ImVec2 &uv0, ImVec2 &uv1)
     return false;
 }
 
+// Desaturate toward luminance + halve alpha → the "collected" dim tint (packed ABGR).
+unsigned int dim_color(unsigned int abgr)
+{
+    int a = (abgr >> 24) & 0xff, b = (abgr >> 16) & 0xff, g = (abgr >> 8) & 0xff, r = abgr & 0xff;
+    int lum = (r * 54 + g * 183 + b * 19) >> 8; // ITU-R-ish luma
+    r = (r + lum * 2) / 3; g = (g + lum * 2) / 3; b = (b + lum * 2) / 3;
+    a /= 2;
+    return ((unsigned)a << 24) | ((unsigned)b << 16) | ((unsigned)g << 8) | (unsigned)r;
+}
+
+// Is this marker's item collected / boss cleared? cleared_only reports the boss-clear
+// sub-case (gets a checkmark). Event flags (cleared/loot) read the live game state;
+// rune/ember/kindling use the collected-tracking sets (refreshed by the mod thread).
+bool marker_done(const Marker &m, bool &cleared_only)
+{
+    cleared_only = m.cleared_flag && goblin::ui::read_event_flag((uint32_t)m.cleared_flag);
+    if (cleared_only)
+        return true;
+    if (m.collected_flag && goblin::ui::read_event_flag((uint32_t)m.collected_flag))
+        return true;
+    if (m.row_id && (goblin::collected::is_original_row_collected(m.row_id) ||
+                     goblin::kindling::is_row_collected(m.row_id)))
+        return true;
+    return false;
+}
+
+// A small green checkmark at the marker's top-right (cleared bosses, native-style).
+void draw_check(ImDrawList *fg, ImVec2 p, float half)
+{
+    const float s = half * 0.8f;
+    const ImVec2 c(p.x + half * 0.55f, p.y - half * 0.55f);
+    fg->AddCircleFilled(c, s * 0.7f, IM_COL32(18, 40, 18, 200));
+    const ImU32 col = IM_COL32(70, 225, 90, 255);
+    fg->AddLine(ImVec2(c.x - s * 0.45f, c.y + s * 0.02f),
+                ImVec2(c.x - s * 0.08f, c.y + s * 0.38f), col, 2.2f);
+    fg->AddLine(ImVec2(c.x - s * 0.08f, c.y + s * 0.38f),
+                ImVec2(c.x + s * 0.50f, c.y - s * 0.42f), col, 2.2f);
+}
+
 // Draw one marker at backbuffer px p: the atlas icon if available, else a circle.
-// half = icon half-size in px (resolution-scaled by the caller).
+// half = icon half-size in px (resolution-scaled by the caller). When collected_graying
+// is on, collected/cleared markers dim+desaturate (or hide if hide_collected), and
+// cleared bosses get a green checkmark.
 void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, float half)
 {
+    bool cleared = false, done = false;
+    if (goblin::config::collectedGraying)
+    {
+        done = marker_done(m, cleared);
+        if (done && goblin::config::hideCollected)
+            return; // legacy-style: hide collected/cleared entirely
+    }
+    const ImU32 tint = done ? IM_COL32(150, 150, 150, 130) : IM_COL32(255, 255, 255, 255);
+
     ImVec2 uv0, uv1;
     if (atlas && icon_uv(m.icon_key, uv0, uv1))
     {
         fg->AddImage(atlas, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
-                     uv0, uv1);
+                     uv0, uv1, tint);
     }
     else
     {
         float cr = half * 0.45f;
-        fg->AddCircleFilled(p, cr, m.color);
-        fg->AddCircle(p, cr, IM_COL32(0, 0, 0, 220), 0, 1.5f);
+        fg->AddCircleFilled(p, cr, done ? dim_color(m.color) : m.color);
+        fg->AddCircle(p, cr, IM_COL32(0, 0, 0, done ? 120 : 220), 0, 1.5f);
     }
+    if (cleared)
+        draw_check(fg, p, half);
 }
 
 // Unified world coords → map-space (the frame project_screen expects).

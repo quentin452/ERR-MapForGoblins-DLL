@@ -44,7 +44,9 @@ void build_buckets()
                                               &pname);
         int frag = goblin::marker_fragment_flag(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ);
         g_buckets[c].push_back(Marker{wx, wz, grp, (int)d.areaNo, c, ckey, pname, d.textId1,
-                                      category_color(c), category_icon_key(c), frag});
+                                      category_color(c), category_icon_key(c), frag,
+                                      e.row_id, (int)d.clearedEventFlagId,
+                                      (int)d.textDisableFlagId1});
     }
 }
 } // namespace

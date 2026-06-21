@@ -9,6 +9,7 @@
 // Kept free of ImGui/Windows so it stays trivially testable; color is a packed ImU32
 // (ABGR) so the interface needs no imgui include.
 
+#include <cstdint>
 #include <vector>
 
 namespace goblin::worldmap
@@ -34,6 +35,11 @@ struct Marker
     // 0 = no fragment gate. When config::requireMapFragments is on, the renderer hides
     // the marker until this event flag is set (player found the area's map fragment).
     int fragment_flag = 0;
+    // ── Collected/cleared graying (collected_graying config) ──────────────────────
+    // All 0 = not applicable (e.g. graces) → never grayed. Set only by MapEntryLayer.
+    uint64_t row_id = 0;     // original MAP_ENTRIES row id → rune/ember/kindling collected check
+    int cleared_flag = 0;    // clearedEventFlagId: boss/NPC cleared → dim + green checkmark
+    int collected_flag = 0;  // textDisableFlagId1: loot picked up → dim
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the
