@@ -1267,14 +1267,9 @@ namespace
             // flag returns false when the flag manager isn't resolved yet (early load) too —
             // 6001 ("game world ready", the codebase's api-ok probe) being OFF means the read
             // is unreliable, so draw rather than wrongly blank.
-            // Blank the overlay during the Chapel of Anticipation prologue. The ERR EMEVD
-            // prologue flags (120/6010/21/22) read FALSE even past the prologue on this build
-            // (save skipped them / ERR differs), so gate on the PLAYER'S CURRENT MAP instead:
-            // get_player_raw_area()==19 == physically in m19 (Chapel), where the player isn't
-            // on the Lands Between map and the projection is invalid. -1 (statics unresolved)
-            // ⇒ not 19 ⇒ fail-open (draw). Also blanks the rare late Four-Belfries revisit —
-            // acceptable (no Lands-Between map there either).
-            if (proto && goblin::get_player_raw_area() != 19)
+            const bool past_prologue =
+                goblin::ui::read_event_flag(120) || !goblin::ui::read_event_flag(6001);
+            if (proto && past_prologue)
                 draw_worldmap_markers(g_show);
             ImGui::Render();
 
