@@ -31,6 +31,13 @@ void build_buckets()
         if (c < 0 || c >= NUM_CAT)
             continue;
         const auto &d = e.data;
+        // Area 19 = Chapel of Anticipation (prologue). It has NO LegacyConv (unlike area 18
+        // → West Limgrave), so its rows project to map-space (~-6859, ~17119) = the far NW
+        // corner of the overworld and leak onto every post-prologue map. The Chapel is
+        // blanked in the prologue and is not a real overworld page, so these markers have no
+        // valid display anywhere → drop them.
+        if (d.areaNo == 19)
+            continue;
         int ga;
         float wx, wz;
         goblin::marker_world_pos(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ, ga, wx, wz,
@@ -38,11 +45,7 @@ void build_buckets()
         int pg = ga & 63;
         bool isug = (d.areaNo == 12) || (d.areaNo >= 40 && d.areaNo <= 43);
         bool isdlc = (pg == 61) || (d.areaNo >= 40 && d.areaNo <= 43);
-        // Area 19 = Chapel of Anticipation: no LegacyConv → its rows project to the far NW
-        // overworld corner. Classify them as the Chapel group so they're KEPT but never
-        // drawn on the overworld (vs the old hard drop) — see GROUP_CHAPEL. A future m19
-        // page + converter can then render them correctly.
-        int grp = (d.areaNo == 19) ? GROUP_CHAPEL : ((isdlc ? 2 : 0) | (isug ? 1 : 0));
+        int grp = (isdlc ? 2 : 0) | (isug ? 1 : 0);
         int pname = -1;
         int ckey = goblin::marker_cluster_key(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ,
                                               &pname);

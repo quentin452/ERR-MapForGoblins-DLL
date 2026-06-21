@@ -595,8 +595,6 @@ namespace
             // stays hidden until the player has discovered that area's map fragment.
             ImGui::Checkbox("Require map fragments (hide an area's icons until its fragment is found)",
                             &goblin::config::requireMapFragments);
-            ImGui::Checkbox("Blank map in the Chapel of Anticipation prologue (m19)",
-                            &goblin::config::chapelGate);
 
             // Overlay marker scale (live preview; persists via "Save to INI"). Final
             // size = resolution-relative base × master × per-type scale.
@@ -1276,9 +1274,7 @@ namespace
             // on the Lands Between map and the projection is invalid. -1 (statics unresolved)
             // ⇒ not 19 ⇒ fail-open (draw). Also blanks the rare late Four-Belfries revisit —
             // acceptable (no Lands-Between map there either).
-            const bool chapel_blank =
-                goblin::config::chapelGate && goblin::get_player_raw_area() == 19;
-            if (proto && !chapel_blank)
+            if (proto && goblin::get_player_raw_area() != 19)
                 draw_worldmap_markers(g_show);
             ImGui::Render();
 

@@ -36,8 +36,6 @@ namespace goblin
     {
         extern uint8_t loadDelay;
         extern bool requireMapFragments;
-        extern bool chapelGate; // blank the overlay while in the Chapel of Anticipation (m19,
-                                // prologue); turn off once real Chapel data + an m19 page exist
         extern bool debugLogging;
         extern bool showAll;  // master switch: show every category (see
                               // is_category_enabled) except those listed below

@@ -14,7 +14,6 @@ namespace goblin::config
 {
     uint8_t loadDelay = 5;
     bool requireMapFragments = true;
-    bool chapelGate = true;
     bool debugLogging = false;
     bool projectDungeons = true;
     bool showAll = false;
@@ -126,10 +125,6 @@ namespace
                 B("require_map_fragments", requireMapFragments, "true",
                   "Require map fragment discovery before showing icons in that area\n"
                   "(overlay map: gates on the game's real fog-of-war reveal state)."),
-                B("chapel_gate", chapelGate, "true",
-                  "Blank the overlay map while in the Chapel of Anticipation (m19, the\n"
-                  "game-start prologue) — its content has no valid Lands-Between position.\n"
-                  "Turn off once real Chapel data + an m19 map page exist."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("project_dungeons", projectDungeons, "true",

@@ -13,13 +13,6 @@
 
 namespace goblin::worldmap
 {
-// Map group for the Chapel of Anticipation (m19, the prologue). Out of the renderer's
-// open_grp range (0..3 = OW/UG/DLC × surface/underground), so these markers are KEPT in
-// the data but never drawn by the current renderer (no leak onto the overworld) — ready
-// for a future m19 map page once its world→map-space converter is dumped (TODO/RE). Until
-// then area-19 rows have no valid Lands-Between position.
-constexpr int GROUP_CHAPEL = 4;
-
 // A single marker in UNIFIED world space, pre-classified to a map group.
 struct Marker
 {
