@@ -3530,7 +3530,9 @@ int goblin::refresh_category_census()
                             e.category == Category::ReforgedEmberPieces ||
                             e.category == Category::LootMaterialNodes;
             bool is_kindling = e.category == Category::WorldKindlingSpirits;
-            uint32_t f = e.data.textDisableFlagId1;
+            // Lot-backed loot: use the LIVE pickup flag (ERR/randomizer reassign them;
+            // the baked textDisableFlagId1 is stale) so the count actually decrements.
+            uint32_t f = goblin::resolve_loot_flag(e.lotId, e.lotType, e.data.textDisableFlagId1);
             if (!(f || is_piece || is_kindling)) continue;  // not a collectible row
             collectible[ci]++;
             bool taken = (f && orp_flag_set(f)) ||
@@ -3590,6 +3592,37 @@ void goblin::apply_flag_or_pairs()
 }
 
 // ── Live-loot: hide loot markers on the LIVE item-lot pickup flag ──────
+// Resolve a lot-backed loot marker's LIVE pickup flag from ItemLotParam (same
+// lookup as refresh_loot_from_itemlot below), so the overlay map can detect
+// collected loot WITHOUT the native injection running. ERR/Randomizer reassign
+// loot flags, so the baked textDisableFlagId1 is often stale — the live
+// getItemFlagId is authoritative. Returns baked_flag when live-loot is off, the
+// row isn't lot-backed, or the lot can't be resolved (graceful fallback). The
+// LotReader is cached after first use (params are loaded by map-open time).
+uint32_t goblin::resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag)
+{
+    if (!goblin::config::liveLootFlags || lotType == 0 || lotId == 0)
+        return baked_flag;
+    static LotReader s_lots;
+    static bool s_init = false, s_ok = false;
+    if (!s_init) { s_init = true; s_lots.init(); s_ok = s_lots.ok(); }
+    if (!s_ok)
+        return baked_flag;
+    RawItemLotRow *row = s_lots.row(lotId, lotType);
+    if (!row)
+        return baked_flag;
+    uint32_t flag = *reinterpret_cast<uint32_t *>(row->b + 0x80);  // lot-wide getItemFlagId
+    if (flag == 0)
+    {
+        // Single-item lots only (else a slot-1 flag would mark the whole row taken
+        // while other loot remains) — mirrors refresh_loot_from_itemlot.
+        int32_t item2 = *reinterpret_cast<int32_t *>(row->b + 0x04);
+        if (item2 == 0)
+            flag = *reinterpret_cast<uint32_t *>(row->b + 0x60);  // getItemFlagId01
+    }
+    return flag ? flag : baked_flag;
+}
+
 // Reads each lot-backed marker's source ItemLotParam row from memory and sets
 // textDisableFlagId1 to the lot's current getItemFlagId. Because we read the
 // LOADED regulation (vanilla, Randomizer, any file mod), the marker hides on

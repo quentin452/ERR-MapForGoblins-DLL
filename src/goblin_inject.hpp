@@ -87,6 +87,11 @@ namespace goblin
     // ImGui overlay path instead of the baked MAP_ENTRIES graces.
     const std::vector<LiveGrace> &live_graces();
 
+    // Resolve a lot-backed loot marker's LIVE pickup flag (ItemLotParam getItemFlagId),
+    // falling back to baked_flag. Lets the overlay detect collected loot without the
+    // native injection's refresh_loot_from_itemlot. lotType: 1=_map, 2=_enemy, 0=none.
+    uint32_t resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag);
+
     // Region gating for the overlay (mirrors the game's native areaNo+tab display).
     // grace_tab_id: the map sub-page (tabId) of the nearest GRACE_ANCHOR in this
     // SOURCE area (12000/12001 underground, 6800-6999 DLC, …); -1 if none. Lets the
