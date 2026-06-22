@@ -1919,12 +1919,15 @@ void goblin::verify_equip_iconids()
     if (!goblin::config::dumpIconTextures)
         return;
     struct P { const wchar_t *name; const char *tag; int off; };
+    // iconId offsets (u16) — AUTHORITATIVE, from the Ghidra findings
+    // (docs/re/windows_menu_item_icon_re_findings.md §0). The earlier XML-summed offsets were
+    // each ~3 bytes too high (bitfield mis-pack) → the probe read garbage.
     static const P params[] = {
-        {L"EquipParamWeapon", "Weapon", 0xc2},
-        {L"EquipParamProtector", "Protector", 0xaa},
-        {L"EquipParamAccessory", "Accessory", 0x2a},
-        {L"EquipParamGoods", "Goods", 0x34},
-        {L"EquipParamGem", "Gem", 0x6},
+        {L"EquipParamWeapon", "Weapon", 0xBF},
+        {L"EquipParamProtector", "Protector", 0xA7}, // iconIdM (iconIdF = 0xA9)
+        {L"EquipParamAccessory", "Accessory", 0x27},
+        {L"EquipParamGoods", "Goods", 0x31},
+        {L"EquipParamGem", "Gem", 0x05},
     };
     static const uint16_t want[] = {40144, 40147, 40172}; // the 3 inventory-captured iconIds
     for (const P &p : params)
