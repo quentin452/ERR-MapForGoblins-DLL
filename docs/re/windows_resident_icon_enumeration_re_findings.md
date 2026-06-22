@@ -206,6 +206,42 @@ future attempt are preserved above should a cleaner streaming entry surface.
 
 ---
 
+## 5b. The texture-manager LOAD lever (re_v104–v109) — callable
+
+Reframed force-load attempt (the "texture manager" angle). The file/resource loader IS exposed and
+callable without a menu, via the **`CSFile` singleton**:
+
+- **`CSFile` singleton = `*(er + 0x3D5B0F8)`** (`DAT_143d5b0f8`, an `FD4DerivedSingleton<CSFile>`).
+- **load-by-path family** `FUN_1401f5560` / `FUN_1401f5090` / `FUN_1401f2300` (`er+0x1f5560` etc.).
+  Disasm (re_v109): standard `__fastcall`, saves RCX/RDX/R8/R9, allocates a 0x98-byte request, then
+  fills+enqueues it (tail truncated by Ghidra after the alloc thunk `FUN_141eb9ed0(0x98,8)`):
+  ```c
+  void* load(void* CSFile /*RCX*/, const wchar_t* path /*RDX*/, void* a2=0 /*R8*/, uint32_t a3=0 /*R9*/);
+  ```
+  In every caller the 2nd arg is the **raw `wchar_t*` path buffer** (extracted from an FD4 path obj),
+  so a plain `L"menu:/….tpf"` works. `FUN_1401f5560` is the variant the **resident-group** loader uses.
+- **resource-GROUP loader** `FUN_140d77550(menuResMgr, groupId)` (`er+0xd77550`): indexes a name table
+  (`PTR_…00_Solo…142bbb4e0`), builds `menu:/<name>.tpf`/`.tpfbhd`, loads via CSFile. Path templates:
+  `menu:/%s.tpf`, `menu:/%s%s.%s`, `menutpfbnd:/00_Solo/%s.tpf`, `menutpfbnd:/71_MapTile/%s.tpf`.
+- The Scaleform resident-load steps that call all this: `STEP_Init_forResidentTextureLoad`
+  `FUN_140d6e1c0`, `STEP_Init_forResidentResourceLoad` `FUN_140d6e190`, `STEP_Init_forGfxFileLoad`
+  `FUN_140d6e130` (table built in `FUN_1400ae9e0`). The fixed 113-resource menu set loads in
+  `FUN_140d6ae30` (table `DAT_143b3d360`).
+
+**Caveat (unchanged):** loading a TPF gives the **atlas texture**; the per-icon **rects** come from the
+gfx layout (the repo, §1) which needs the gfx movie bound. So a TPF force-load alone = atlas without
+rects → pair with offline sblytbnd rects, OR only needed for the 63 WorldMapPoint pin frames (which
+live in the world-map gfx, resident when the map is open).
+
+**Open (next):** find the GLOBAL file list (for mod compat) — the menu uses fixed tables
+(`DAT_143b3d360`, `PTR_142bbb4e0`); a global resource manifest would be mod-robust. And the exact
+icon-atlas TPF `<name>` (read from a resident atlas's FD4 path, or the resource tables).
+
+**Test harness:** `goblin::force_load_file(path)` (dev, `dump_icon_textures`) calls
+`load(CSFile, path, 0, 0)` from a P2b-panel button — see `src/goblin_inject.cpp` / `goblin_overlay.cpp`.
+
+---
+
 ## 6. Handles
 - repo singleton `DAT_143d82510` `er+0x3D82510` (FD4Singleton); container map `repo+0x80`,
   `_Myhead` `repo+0x88`, `_Mysize` `repo+0x90`.
