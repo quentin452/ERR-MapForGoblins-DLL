@@ -27,6 +27,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <climits>
+#include <cstdio>
 #include <deque>
 #include <cctype>
 #include <chrono>
@@ -1642,6 +1644,14 @@ using create_image_fn = void *(__fastcall *)(void *, void *, void *, void *, voi
                                              void *, void *);
 create_image_fn g_create_image_orig = nullptr;
 
+// CreateImage context capture (RE §5g) — populated by create_image_detour, consumed by
+// run_create_icon to replay the GFx per-image bind for an arbitrary symbol. a0=param_1 (creator this),
+// a1=param_2, a2=param_3 (symbol desc: ASCII name @ (*a2 & ~3)+0xc, format "%hS").
+std::atomic<void *> g_ci_p1{nullptr};
+std::atomic<void *> g_ci_p2{nullptr};
+std::atomic<int> g_ci_logn{0};
+char g_ci_last[96] = {0};   // most-recent live symbol name (e.g. "img://KG_R1") for replay control test
+
 inline bool icon_rpm_i32(uintptr_t a, int &out)
 {
     SIZE_T n = 0;
@@ -1908,6 +1918,22 @@ void *__fastcall create_image_detour(void *a0, void *a1, void *a2, void *a3, voi
 {
     void *ret = g_create_image_orig(a0, a1, a2, a3, a4, a5, a6, a7);
     icon_log_image((uintptr_t)ret, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3);
+    // §5g: capture the live creator context (a0/a1) + log the real symbol name (a2 = param_3 →
+    // ASCII @ (*a2 & ~3)+0xc) so we can replay CreateImage for arbitrary item-icon symbols.
+    if (g_ci_p1.load(std::memory_order_relaxed) == nullptr) { g_ci_p1.store(a0); g_ci_p2.store(a1); }
+    int n = g_ci_logn.fetch_add(1, std::memory_order_relaxed);
+    if (n < 60 && a2)
+    {
+        uintptr_t descv = 0;
+        if (icon_rpm_ptr((uintptr_t)a2, descv))
+        {
+            char nm[96] = {0}; SIZE_T got = 0;
+            ReadProcessMemory(GetCurrentProcess(), (void *)((descv & ~uintptr_t(3)) + 0xc), nm, 95, &got);
+            if (nm[0]) strncpy(g_ci_last, nm, sizeof(g_ci_last) - 1);   // remember for replay control
+            spdlog::info("[CREATEIMG] live a0={} a1={} *a2={:#x} name='{}' -> img={:#x}",
+                         a0, a1, descv, nm, (uintptr_t)ret);
+        }
+    }
     return ret;
 }
 
@@ -2451,6 +2477,15 @@ std::atomic<uintptr_t> g_res_mgr{0};
 std::atomic<int> g_bind_action{0};   // 0 idle | 1 dump | 2 load files | 3 flip-bind | 4 load+flip
 std::atomic<int> g_bind_gid{1};      // group id for the loaders (1 = 01_Common = the item-icon group)
 
+// ── CreateImage force-bind (RE §5g) ──────────────────────────────────────────────────────────────
+// CSScaleformImageCreator::CreateImage (FUN_140d6bbc0) is hooked above (create_image_detour, the
+// existing probe hook) which captures the live context g_ci_p1/g_ci_p2. Here we replay it: build a
+// synthetic symbol desc for "MENU_ItemIcon_<id>" and call the original via g_create_image_orig.
+constexpr int CI_REPLAY_LAST = INT_MIN + 1;   // sentinel: replay the last captured live symbol
+std::atomic<int> g_ci_req_icon{INT_MIN};   // queued iconId (INT_MIN = idle, CI_REPLAY_LAST = replay)
+alignas(16) char g_ci_name[96];            // 4-aligned scratch for the synthesized symbol name
+uintptr_t g_ci_desc[4] = {0};              // synthetic param_3: [0] = (g_ci_name - 0xc), rest 0 (pad)
+
 inline bool res_w32(uintptr_t a, uint32_t v)
 {
     SIZE_T n = 0;
@@ -2508,6 +2543,34 @@ void run_bind_action(uintptr_t mgr, uintptr_t er, int act, int gid)
     res_walk_groups(mgr, er, /*flip=*/(act == 3 || act == 4));
 }
 
+// Force-call CreateImage for "MENU_ItemIcon_<iconId>" (engine thread, via the ticker request). Builds a
+// synthetic symbol desc: param_3 → a qword holding (nameAddr-0xc) so (*p3 & ~3)+0xc == nameAddr (the
+// 4-aligned ASCII name). Calls the ORIGINAL via g_create_image_orig (the hook trampoline) with the
+// captured creator context. Logs the returned image + whether the repo grew. Caveat (§5b): the
+// "<name>_ptl" view resolves against a RESIDENT sheet — pair with "Load files (gid)" if not loaded.
+void run_create_icon(uintptr_t er, int iconId)
+{
+    (void)er;
+    if (!g_create_image_orig) { spdlog::warn("[CREATEIMG] no orig (probe hook missing)"); return; }
+    if (iconId == CI_REPLAY_LAST)
+    {
+        if (!g_ci_last[0]) { spdlog::warn("[CREATEIMG] no live symbol captured yet"); return; }
+        strncpy(g_ci_name, g_ci_last, sizeof(g_ci_name) - 1);   // replay a known-good symbol (control)
+    }
+    else
+    {
+        // GFx import scheme is "img://<name>" (live names showed img://KG_R1 etc.), base = MENU_ItemIcon_<id>.
+        snprintf(g_ci_name, sizeof(g_ci_name), "img://MENU_ItemIcon_%d", iconId);
+    }
+    g_ci_desc[0] = reinterpret_cast<uintptr_t>(g_ci_name) - 0xc;   // (desc[0] & ~3)+0xc == g_ci_name
+    size_t before = goblin::harvested_count();
+    void *img = g_create_image_orig(g_ci_p1.load(), g_ci_p2.load(), g_ci_desc, nullptr, nullptr,
+                                    nullptr, nullptr, nullptr);
+    size_t after = goblin::harvested_count();
+    spdlog::info("[CREATEIMG] force '{}' (p1={} p2={}) -> img={:#x}  harvested {}->{}", g_ci_name,
+                 g_ci_p1.load(), g_ci_p2.load(), reinterpret_cast<uintptr_t>(img), before, after);
+}
+
 void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
 {
     if (p2)
@@ -2516,12 +2579,11 @@ void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
         if (mgr > 0x10000)
         {
             g_res_mgr.store(mgr, std::memory_order_relaxed);
+            uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
             int act = g_bind_action.exchange(0, std::memory_order_acq_rel);
-            if (act)
-            {
-                uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
-                run_bind_action(mgr, er, act, g_bind_gid.load(std::memory_order_relaxed));
-            }
+            if (act) run_bind_action(mgr, er, act, g_bind_gid.load(std::memory_order_relaxed));
+            int ci = g_ci_req_icon.exchange(INT_MIN, std::memory_order_acq_rel);
+            if (ci != INT_MIN) run_create_icon(er, ci);
         }
     }
     if (g_res_tick_orig) g_res_tick_orig(p1, p2);
@@ -2541,6 +2603,30 @@ bool goblin::bind_test(int action, int groupId)
     }
     g_bind_gid.store(groupId, std::memory_order_relaxed);
     g_bind_action.store(action, std::memory_order_release);
+    return true;
+}
+
+// Queue a force-CreateImage for "MENU_ItemIcon_<iconId>" — consumed on the next residency tick (engine
+// thread). The CreateImage hook must have captured a live context first (open the inventory once).
+bool goblin::force_create_icon(int iconId)
+{
+    if (!goblin::config::dumpIconTextures) return false;
+    if (g_res_mgr.load(std::memory_order_relaxed) == 0)
+    {
+        spdlog::warn("[CREATEIMG] manager not captured yet — open the inventory/map once");
+        return false;
+    }
+    g_ci_req_icon.store(iconId, std::memory_order_release);
+    return true;
+}
+
+// Control test: replay the LAST captured live symbol (a known-good img:// import) to prove the replay
+// mechanism end-to-end. If this returns a valid img but force_create_icon(id) returns 0, the item-icon
+// base simply isn't a CreateImage import (it's the widget's direct repo find / sblytbnd bind path).
+bool goblin::force_create_last()
+{
+    if (!goblin::config::dumpIconTextures) return false;
+    g_ci_req_icon.store(CI_REPLAY_LAST, std::memory_order_release);
     return true;
 }
 
@@ -2647,6 +2733,8 @@ void goblin::install_icon_texture_probe()
         spdlog::error("[BINDTEST] ticker hook failed: {}", e.what());
         g_res_tick_orig = nullptr;
     }
+    // CreateImage context capture + force-replay (§5g) reuses the existing CreateImage probe hook
+    // above (create_image_detour) — no separate hook (MinHook can't double-hook the same fn).
 }
 
 // Path A verify step (findings §6): on a MAP-OPEN frame, re-read each registered image's
@@ -2688,8 +2776,12 @@ void goblin::dump_icon_textures_live()
             continue; // a real C++ object's vtable lives in the module .rdata
         ++bound;
         icon_detail_dump(rtex, base); // one-shot full Render::Texture layout (first bound)
-        // DETERMINISTIC hop (SOLVED): rtex+0x70 = the ID3D12Resource (vkd3d d3d12_resource;
-        // non-module vtable, DIM at +0x10 == 3 = TEXTURE2D, W/H at +0x20/+0x28). No BFS.
+        // rtex+0x70 = the backing ID3D12Resource. Do NOT gate on the RPM-read DIM at res+0x10: the
+        // vkd3d resource layout drifted (a driver/game update; res+0x10 no longer reads 3 and the live
+        // dump showed "90 bound, 0 resolved") — but res IS the resource (ensure_item_icon_srv /
+        // cache_icon_from_img use exactly rtex+0x70 and GetDesc() on the render thread still returns the
+        // right desc). Just validate a non-module vtable (a real COM object) and store it; the overlay
+        // reads the authoritative format/dims via ID3D12Resource::GetDesc() at copy time.
         uintptr_t res = 0, resvt = 0;
         if (!icon_rpm_ptr(rtex + 0x70, res) || res < 0x10000 || res >= 0x7fffffffffffULL)
             continue;
@@ -2697,18 +2789,25 @@ void goblin::dump_icon_textures_live()
             continue; // a real D3D12 resource has a NON-module vtable (vkd3d / d3d12.dll)
         int dim = 0, rw = 0, rh = 0;
         icon_rpm_i32(res + 0x10, dim); icon_rpm_i32(res + 0x20, rw); icon_rpm_i32(res + 0x28, rh);
-        if (dim != 3)
-            continue; // not a TEXTURE2D → reject (guards against a stray non-module pointer)
         ++resolved;
         // ERR map sprites (RE e4b3f6a §6): the discovered grace + all other ERR map icons draw through
         // CreateImage (not the find fn) → captured here with resolved sheet+rect. Collect EVERY
         // 'SB_ERR_*' candidate (dev viewer — to test whether non-grace icons harvest cleanly vs the
-        // grace's time-of-day variants), and LOCK the grace sprite on the exact 'Morning_Color' frame.
+        // grace's time-of-day variants), and LOCK the grace sprite on the first LIT '..._Color' frame
+        // with a grace-sized rect (any time-of-day; the engine resolves only one per session).
         if (it.name.rfind("SB_ERR_", 0) == 0)
         {
             int gfmt = 0; icon_rpm_i32(res + 0x30, gfmt);
             bool is_grace = it.name.rfind("SB_ERR_Grace", 0) == 0;
             bool exact = it.name.find("Morning_Color") != std::string::npos;
+            // The LIT/discovered grace look is any "..._Color" frame (Morning/LateDay/Night — the
+            // engine only ever resolves ONE per session, e.g. SB_ERR_Grace_LateDay_Color_ptl); the
+            // grey "undiscovered" variants lack "Color". Require a grace-sized rect so we never store a
+            // degenerate/empty frame. (The old "Morning_Color"-exact lock never matched at runtime, so
+            // the eager "|| !valid" clause grabbed the first SB_ERR_Grace frame = the wrong-icon bug.)
+            bool lit = it.name.find("Color") != std::string::npos;
+            int gw = it.x1 - it.x0, gh = it.y1 - it.y0;
+            bool rect_ok = gw >= 16 && gw <= 160 && gh >= 16 && gh <= 160;
             static std::set<std::string> seen_cand;   // dedup across the repeatable re-runs
             std::lock_guard<std::mutex> lk(g_harvest_mtx);
             if (seen_cand.insert(it.name).second)      // NEW SB_ERR_ name → log + add to the viewer
@@ -2725,7 +2824,7 @@ void goblin::dump_icon_textures_live()
                 gc.spr.valid = true;
                 if (g_grace_cands.size() < 64) g_grace_cands.push_back(gc);
             }
-            if (is_grace && ((exact && !g_grace_locked) || !g_grace_sprite.valid))
+            if (is_grace && lit && rect_ok && !g_grace_locked)
             {
                 g_grace_sprite.sheet = reinterpret_cast<void *>(res);
                 g_grace_sprite.x0 = it.x0; g_grace_sprite.y0 = it.y0;
@@ -2734,9 +2833,9 @@ void goblin::dump_icon_textures_live()
                 g_grace_sprite.sheetH = static_cast<unsigned>(rh);
                 g_grace_sprite.format = static_cast<unsigned>(gfmt);
                 g_grace_sprite.valid = true;
-                if (exact) g_grace_locked = true;
-                spdlog::info("[GRACE-SPRITE] '{}' rect=({},{})-({},{}) res={:#x} fmt={} (stored{})",
-                             it.name, it.x0, it.y0, it.x1, it.y1, res, gfmt, exact ? ", LOCKED Morning_Color" : "");
+                g_grace_locked = true;   // first valid LIT grace frame wins → stable, no variant flip-flop
+                spdlog::info("[GRACE-SPRITE] '{}' rect=({},{})-({},{}) {}x{} res={:#x} fmt={} (LOCKED lit grace)",
+                             it.name, it.x0, it.y0, it.x1, it.y1, gw, gh, res, gfmt);
             }
         }
         // Track unique sheet resources (icons on one sheet share a resource).

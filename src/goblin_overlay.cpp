@@ -466,9 +466,18 @@ namespace
             return false;   // not harvested yet → retry next frame (do NOT mark failed)
 
         auto *src_res = reinterpret_cast<ID3D12Resource *>(sp.sheet);
-        DXGI_FORMAT fmt = static_cast<DXGI_FORMAT>(sp.format);
+        // Authoritative format/dims from D3D12 (render thread, sheet bound) — NOT the RPM-read
+        // sp.format (0 pre-bind, and the RPM dim/format offsets drifted; see dump_icon_textures_live).
+        // Mirrors ensure_item_icon_srv. If not a ready TEXTURE2D yet, retry next frame (no permanent fail).
+        D3D12_RESOURCE_DESC rd = src_res->GetDesc();
+        DXGI_FORMAT fmt = rd.Format;
+        if (rd.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || fmt == DXGI_FORMAT_UNKNOWN)
+            return false;
+        int sw = static_cast<int>(rd.Width), sh = static_cast<int>(rd.Height);
         int x0 = sp.x0 & ~3, y0 = sp.y0 & ~3;            // snap to 4-aligned blocks (BC7)
         int x1 = (sp.x1 + 3) & ~3, y1 = (sp.y1 + 3) & ~3;
+        if (x1 > sw) x1 = sw;
+        if (y1 > sh) y1 = sh;
         int w = x1 - x0, h = y1 - y0;
         if (w <= 0 || h <= 0 || w > 1024 || h > 1024) { g_grace_state = 2; return false; }
 
@@ -990,6 +999,18 @@ namespace
                 if (ImGui::Button("3) Flip-bind all"))      goblin::bind_test(3, s_bt_gid);
                 ImGui::SameLine();
                 if (ImGui::Button("4) Load + flip (gid)")) goblin::bind_test(4, s_bt_gid);
+
+                // Force-CreateImage (§5g): replay the GFx per-image bind callback for one item icon.
+                // Watch [CREATEIMG] in the log: live names while browsing, then the forced result +
+                // whether "harvested:" grows. Open inventory once first so the context is captured.
+                ImGui::Separator();
+                ImGui::TextDisabled("Force-bind one icon via CreateImage (§5g):");
+                static int s_ci_icon = 0;
+                ImGui::SetNextItemWidth(120);
+                ImGui::InputInt("iconId##ci", &s_ci_icon);
+                ImGui::SameLine();
+                if (ImGui::Button("Force CreateImage")) goblin::force_create_icon(s_ci_icon);
+                if (ImGui::Button("Replay last live symbol (control)")) goblin::force_create_last();
             }
 
             // Grace-sprite GPU debug: draw every harvested SB_ERR_Grace_* frame (full-sheet SRV +

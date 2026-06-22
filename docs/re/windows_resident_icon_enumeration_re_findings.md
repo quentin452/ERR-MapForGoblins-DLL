@@ -554,6 +554,25 @@ runtime levers are exhausted; **offline bake remains the path.**
 
 ---
 
+## 5h. CreateImage replay — works for img:// SWF assets, NOT item icons (re_v124, live 2026-06-22)
+
+Tested branch E live by replaying `CSScaleformImageCreator::CreateImage` (`FUN_140d6bbc0`) with a
+captured context. The live hook revealed the symbol scheme: CreateImage is called with **GFx import
+URLs `img://<name>`** (e.g. `img://KG_R1`, `img://KG_R_D`, `img://KG_R_L` — keyguide/button prompts),
+NOT `MENU_ItemIcon_<id>`. It builds `<name>_ptl` and resolves the rect against the resident sheet.
+- **Control: replay `img://KG_R_D` → returns a valid image (0x210b03fca70).** The replay path works
+  end-to-end (synthetic param_3 = a qword holding `nameAddr-0xc`, called via `g_create_image_orig`).
+- **`img://MENU_ItemIcon_0` → returns 0** (harvested unchanged). So item icons are **NOT** CreateImage
+  `img://` imports — CreateImage serves SWF-embedded static assets (button prompts, fonts). Item icons
+  are resolved by the item-icon WIDGET (`FUN_14074bcc0` → direct repo find `FUN_140d63e50`), and the
+  repo is populated by the sblytbnd bind (the VMP provider-apply). **Branch E is a confirmed dead end
+  for item-icon coverage** — now proven live with a working control, not just inferred.
+
+Tooling: `goblin::force_create_icon(id)` + `force_create_last()` (P2b panel), reuse the existing
+`create_image_detour` hook (no double-hook). Kept as a gated diagnostic.
+
+---
+
 ## 6. Handles
 - repo singleton `DAT_143d82510` `er+0x3D82510` (FD4Singleton); container map `repo+0x80`,
   `_Myhead` `repo+0x88`, `_Mysize` `repo+0x90`.
