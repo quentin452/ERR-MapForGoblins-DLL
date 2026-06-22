@@ -117,8 +117,11 @@ namespace goblin::bench
     class ScopedTimer
     {
     public:
-        explicit ScopedTimer(const char *label)
-            : label_(label), start_(std::chrono::steady_clock::now())
+        // quiet = aggregate into the Registry but DON'T emit a per-line log. For hot
+        // per-frame paths (the worldmap render) where a line every frame would flood
+        // the log; the avg/min/max/total still show in the session report.
+        explicit ScopedTimer(const char *label, bool quiet = false)
+            : label_(label), start_(std::chrono::steady_clock::now()), quiet_(quiet)
         {
         }
 
@@ -127,7 +130,8 @@ namespace goblin::bench
             const auto ms = std::chrono::duration<double, std::milli>(
                                 std::chrono::steady_clock::now() - start_)
                                 .count();
-            spdlog::info("[BENCH] {}: {:.2f} ms", label_, ms);
+            if (!quiet_)
+                spdlog::info("[BENCH] {}: {:.2f} ms", label_, ms);
             Registry::instance().record(label_, ms);
         }
 
@@ -137,6 +141,7 @@ namespace goblin::bench
     private:
         const char *label_;
         std::chrono::steady_clock::time_point start_;
+        bool quiet_;
     };
 }
 
@@ -147,3 +152,8 @@ namespace goblin::bench
 // greppable string literal, e.g. GOBLIN_BENCH("map.inject").
 #define GOBLIN_BENCH(label) \
     ::goblin::bench::ScopedTimer GOBLIN_BENCH_CONCAT(goblin_bench_timer_, __LINE__)(label)
+
+// Like GOBLIN_BENCH but aggregate-only (no per-line log) — for hot per-frame paths
+// that would otherwise flood the log. Numbers still appear in the session report.
+#define GOBLIN_BENCH_QUIET(label) \
+    ::goblin::bench::ScopedTimer GOBLIN_BENCH_CONCAT(goblin_bench_timer_, __LINE__)(label, true)
