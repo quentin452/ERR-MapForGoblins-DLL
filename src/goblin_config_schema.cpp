@@ -39,10 +39,13 @@ namespace goblin::config
     // and Convergence (opt-in — they add memory/CPU with no benefit without a
     // regulation mod). MFG_PROFILE_VANILLA is set by CMake for the vanilla bake
     // only (MFG_VANILLA covers vanilla AND convergence, so it can't be used here).
+    // live_loot_flags / live_loot_icons removed (Phase 2b): their only consumers were the native
+    // map's param rewriters, deleted with native injection. live_loot_labels survives — it's the
+    // randomizer relabel (copy the whole item-name space into PlaceName, perf-heavy → opt-in).
 #ifdef MFG_PROFILE_VANILLA
-    bool liveLootFlags = true, liveLootLabels = true, liveLootIcons = true;
+    bool liveLootLabels = true;
 #else
-    bool liveLootFlags = false, liveLootLabels = false, liveLootIcons = false;
+    bool liveLootLabels = false;
 #endif
     bool anonymousLoot = false;  // opt-in spoiler-free mode (all profiles default off)
 
@@ -369,14 +372,10 @@ namespace
             {"Compatibility",
              "Options for running alongside other mods that change item placement.",
              false, {
-                B("live_loot_flags", liveLootFlags, MFG_LL_DEF,
-                  "Hide loot markers using the pickup flag from the loaded regulation, so they\ndisappear correctly under the Item/Enemy Randomizer or other regulation mods."),
                 B("live_loot_labels", liveLootLabels, MFG_LL_DEF,
                   "Relabel each loot marker with the item its lot currently gives, so names match\nthe randomizer. Uses more memory (copies item names into the map's name table)."),
-                B("live_loot_icons", liveLootIcons, MFG_LL_DEF,
-                  "Give each loot marker the icon and category of the item its lot currently\ngives, so icons and show_* toggles match the randomizer."),
                 B("anonymous_loot", anonymousLoot, "false",
-                  "Spoiler-free: every loot marker shows a gray \"?\" and a generic label instead\nof the real item. Overrides live_loot_labels/icons; markers still hide on pickup."),
+                  "Spoiler-free: every loot marker shows a gray \"?\" and a generic label instead\nof the real item. Overrides live_loot_labels; markers still hide on pickup."),
             }},
 
             {"Debug",
