@@ -1688,25 +1688,35 @@ void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
     if (!goblin::config::dumpIconTextures || !img)
         return;
     static int logged = 0;
-    if (logged > 300)
+    if (logged > 40)
         return;
     logged++;
-    int x0 = 0, x1 = 0, y0 = 0, y1 = 0, w = 0, h = 0;
-    uintptr_t tex = 0, gx = 0, res = 0, res2 = 0;
-    icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x7c, x1);
-    icon_rpm_i32(img + 0x3c, y0); icon_rpm_i32(img + 0x40, y1);
-    icon_rpm_i32(img + 0x2c, w);  icon_rpm_i32(img + 0x30, h);
-    icon_rpm_ptr(img + 0x38, tex);
-    icon_rpm_ptr(tex + 0x10, gx); icon_rpm_ptr(gx + 0x40, res); // CSGxTexture → GXTexture2D → res
-    icon_rpm_ptr(tex + 0x40, res2);                              // or tex IS the GXTexture2D
-    // a2 may be the import name string — read + sanitize.
-    char nm[40] = {0}; SIZE_T n = 0;
-    ReadProcessMemory(GetCurrentProcess(), (void *)a2, nm, sizeof(nm) - 1, &n);
-    for (size_t i = 0; i < sizeof(nm); ++i)
-        if (nm[i] && ((unsigned char)nm[i] < 0x20 || (unsigned char)nm[i] >= 0x7f)) nm[i] = '.';
-    spdlog::info("[ICONTEX] img={:#x} rect=({},{})-({},{}) sheet={}x{} backTex={:#x} gx={:#x} "
-                 "res={:#x} res2={:#x} | a1={:#x} a2={:#x} a2str='{}' a3={:#x}",
-                 img, x0, y0, x1, y1, w, h, tex, gx, res, res2, a1, a2, nm, a3);
+    int w = 0, h = 0;
+    icon_rpm_i32(img + 0x2c, w); icon_rpm_i32(img + 0x30, h);   // sheet dims (confirmed)
+    // Find the backing texture object by VTABLE: scan the image's ptr fields for one whose
+    // first qword is the GXTexture2D / CSGxTexture / TextureImage vtable (RVA from findings §1).
+    uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    const uintptr_t vt_gx = base + 0x2f05928, vt_csgx = base + 0x2b761b0;
+    uintptr_t texobj = 0, texvt = 0; int texoff = -1;
+    for (int o = 0x08; o <= 0x110; o += 8)
+    {
+        uintptr_t p = 0;
+        if (!icon_rpm_ptr(img + o, p) || p < 0x10000) continue;
+        uintptr_t vt = 0;
+        if (icon_rpm_ptr(p, vt) && (vt == vt_gx || vt == vt_csgx))
+        { texobj = p; texvt = vt; texoff = o; break; }
+    }
+    // The ID3D12Resource off the found texture (GXTexture2D+0x40); if we found a CSGxTexture
+    // first, its +0x10/+0x18 points to the concrete GXTexture2D.
+    uintptr_t res = 0, gx2 = 0;
+    if (texobj) { icon_rpm_ptr(texobj + 0x40, res); icon_rpm_ptr(texobj + 0x10, gx2); }
+    // Dump i32 window around the x-rect (+0x74/+0x7c known) to locate y0/y1.
+    int iv[10] = {0};
+    for (int i = 0; i < 10; ++i) icon_rpm_i32(img + 0x70 + i * 4, iv[i]); // 0x70..0x94
+    spdlog::info("[ICONTEX] img={:#x} sheet={}x{} | tex@+{:#x}={:#x} vt={:#x} res={:#x} gx2={:#x} | "
+                 "i[0x70..0x94]={} {} {} {} {} {} {} {} {} {}",
+                 img, w, h, texoff, texobj, texvt, res, gx2,
+                 iv[0], iv[1], iv[2], iv[3], iv[4], iv[5], iv[6], iv[7], iv[8], iv[9]);
 }
 
 void *__fastcall create_image_detour(void *a0, void *a1, void *a2, void *a3, void *a4, void *a5,
