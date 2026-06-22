@@ -717,6 +717,25 @@ namespace
         }
     }
 
+    // Dev UX guard: the F1 candidate viewers only fill up once run_force_grace force-creates the
+    // mod's MENU_MAP_* grace sprites — and it does that ONLY while grace_overlay + grace_gpu_sprite
+    // are BOTH on. Open the viewer with either off (incl. off in the INI) and the list silently
+    // stays at the single naturally-drawn SB_ERR_Grace_* frame: the "I don't see my candidates"
+    // trap. Show an amber warning pointing at both the checkboxes and the INI keys when the gate
+    // is closed. No-op once both are on.
+    void grace_candidate_gate_warning()
+    {
+        if (goblin::config::graceOverlay && goblin::config::graceGpuSprite)
+            return;
+        ImGui::TextColored(ImVec4(1.0f, 0.70f, 0.15f, 1.0f),
+            "(!) Few/no candidates listed?\n"
+            "    The forced MENU_MAP_* grace sprites are only created while BOTH\n"
+            "    'grace_overlay' AND 'grace_gpu_sprite' are ON. Enable them via the\n"
+            "    checkboxes below (Overlay graces / live engine sprite), or set both\n"
+            "    = true in MapForGoblins.ini. Otherwise only the live SB_ERR_Grace_*\n"
+            "    frame the game happens to draw will appear.");
+    }
+
     // Upload the atlas once g_command_queue is captured. Self-gates; on failure it
     // marks ready anyway so we don't retry every frame (just falls back to circles).
     void try_upload_atlas()
@@ -1149,6 +1168,7 @@ namespace
             if (goblin::config::dumpIconTextures && ImGui::CollapsingHeader("ERR map sprites (GPU debug)"))
             {
                 ensure_grace_debug();
+                grace_candidate_gate_warning();
                 if (g_grace_dbg.empty())
                     ImGui::TextDisabled("open the world map to harvest SB_ERR_* map sprites");
                 for (const GraceDbg &d : g_grace_dbg)
@@ -1193,6 +1213,7 @@ namespace
                 // Source picker: which captured candidate is the active grace (test "the right name").
                 ImGui::Separator();
                 ImGui::TextDisabled("source candidate (click to use as grace):");
+                grace_candidate_gate_warning();
                 std::vector<goblin::GraceCandidate> cands = goblin::grace_candidates();
                 for (size_t i = 0; i < cands.size(); ++i)
                 {
