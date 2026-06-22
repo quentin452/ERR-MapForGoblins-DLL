@@ -1,4 +1,5 @@
 #include "goblin_worldmap_probe.hpp"
+#include "goblin_bench.hpp"    // GOBLIN_BENCH_QUIET — make dev dump cost visible in the report
 #include "goblin_inject.hpp"   // goblin::world_map_open() — gate the scan on map-open
 #include "goblin_config.hpp"   // config::dumpConverters
 #include "re_signatures.hpp"   // centralized image RVAs
@@ -751,16 +752,30 @@ void probe_loop()
             }
             // RE check: dump the live WorldMapViewModel converter array (world->map-space
             // projection) when requested. Read-only; throttled + change-detected internally.
+            // Dev dumps run on THIS 100ms probe thread and are RPM-heavy (std::map /
+            // converter-array walks) → under Wine each RPM is a wineserver round-trip,
+            // and the single-threaded wineserver means a storm here stalls the render
+            // thread too (= phantom map lag with no [BENCH] line). Wrap them so a stray
+            // dump_* flag left ON shows up as debug.dump_* in the session report.
             if (goblin::config::dumpConverters)
+            {
+                GOBLIN_BENCH_QUIET("debug.dump_converters");
                 dump_converters(base, menu_cursor);
+            }
             // RE check: walk the native-pin icon manager (CSWorldMapPointMan +0x398) to
             // see what pins the engine builds → decide native-pin suppression. Read-only.
             if (goblin::config::dumpNativePins)
+            {
+                GOBLIN_BENCH_QUIET("debug.dump_native_pins");
                 dump_native_pins(base);
+            }
             // Path A verify: the map is open here → re-read the registered icon images'
             // lazily-bound GPU textures (img+0x10 → GXTexture2D → ID3D12Resource). Once.
             if (goblin::config::dumpIconTextures)
+            {
+                GOBLIN_BENCH_QUIET("debug.dump_icon_textures");
                 goblin::dump_icon_textures_live();
+            }
             // DISABLED (gamepad-cursor WIP): the all-instance enumerate_menu_cursors scan
             // (L1 0x10000 × L2 0x800 RPM reads) ran once per map-open and slowed the map
             // load noticeably — and it never reliably found the gamepad cursor. Removed; the
