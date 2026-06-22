@@ -1320,8 +1320,8 @@ namespace
             if (ImGui::CollapsingHeader("Marker scale (overlay map)"))
             {
                 scale_control("Master", &goblin::config::overlayMasterScale, 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
-                scale_control("Category icons", &goblin::config::overlayIconScale, 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
-                scale_control("Grace icons (calib)", &goblin::config::graceIconScale, 0.2f, 4.0f, 0.05f, 0.25f, "%.2f");
+                scale_control("Category icons", &goblin::config::overlayIconScale, 0.3f, 10.0f, 0.05f, 0.25f, "%.2f");
+                scale_control("Grace icons (calib)", &goblin::config::graceIconScale, 0.2f, 10.0f, 0.05f, 0.25f, "%.2f");
                 scale_control("Grace offset X (native vs imgui)", &goblin::config::graceOffsetX, -200.0f, 200.0f, 1.0f, 10.0f, "%.0f");
                 scale_control("Grace offset Y (native vs imgui)", &goblin::config::graceOffsetY, -200.0f, 200.0f, 1.0f, 10.0f, "%.0f");
                 scale_control("Cluster piles", &goblin::config::overlayClusterScale, 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
