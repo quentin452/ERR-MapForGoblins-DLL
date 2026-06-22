@@ -3105,18 +3105,26 @@ void *__fastcall warp_pin_detour(void *a1, void *a2, void *warpData, void *a4)
     }
 
     static int logged = 0, suppressed = 0;
-    // PHASE B suppression: only when the overlay is drawing graces itself (else the map would have
-    // NO graces). Neutralise the built pin's state byte (pin+0xC, copied from the source state) to 0
-    // — the state-0 warps are exactly the ones the game already doesn't draw → it stops drawing this
-    // discovered pin, leaving the overlay's grace as the sole icon. WriteProcessMemory (crash-safe).
+    // PHASE B suppression (RE windows_grace_warppin_suppression_re_findings.md): only when the
+    // overlay draws graces itself (else the map would have NO graces). The draw-gate is the per-frame
+    // visibility virtual vt[3] FUN_14087afa0, which RECOMPUTES the cached visible byte pin+0xC from
+    // the per-layer STATE bitmask at pin+0x60 (vis &= (state>>layerbit)&1). The earlier attempt zeroed
+    // pin+0xC — the engine's scratch OUTPUT — so the next update recomputed it back to 1. Zero the
+    // INPUT instead: pin+0x60 (state dword). All layer bits clear → vt[3] yields invisible forever.
+    // (Ghidra showed param_1 as undefined8*, so its "param_1+0xc" = byte 0x60, not 0xC — that was the
+    // miscalc.) Grace-local: pin+0x60 is this WarpPinData's own state; player dot/objectives/fog/
+    // markers are separate objects. The zero survives the value-copy into the VM warp list
+    // (FUN_140885500 copies +0x60). WriteProcessMemory (crash-safe, no SEH).
     if (goblin::config::graceOverlay && ret && (state & 7) != 0)
     {
-        uint8_t zero = 0; SIZE_T n = 0;
-        WriteProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(ret) + 0xC),
-                           &zero, 1, &n);
+        uintptr_t pin = reinterpret_cast<uintptr_t>(ret);
+        uint32_t zero32 = 0; uint8_t vis0 = 0; SIZE_T n = 0;
+        WriteProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(pin + 0x60), &zero32, 4, &n);
+        // hide the current frame too (recomputed from +0x60 next tick anyway)
+        WriteProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(pin + 0xC), &vis0, 1, &n);
         if (suppressed++ < 20)
-            spdlog::info("[WARPPIN] suppressed pin={:#x} iconId={} (state was {})",
-                         reinterpret_cast<uintptr_t>(ret), iconId, state & 7);
+            spdlog::info("[WARPPIN] suppressed pin={:#x} iconId={} (state +0x60 was {})",
+                         pin, iconId, state & 7);
     }
     else if (logged < 40)
     {
