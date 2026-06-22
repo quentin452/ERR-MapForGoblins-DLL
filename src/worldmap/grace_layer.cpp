@@ -5,6 +5,11 @@
 #include "goblin_map_data.hpp" // Category::WorldGraces
 #include "goblin_logic.hpp"    // map_fragment_flag
 #include "goblin_bench.hpp"    // GOBLIN_BENCH scoped timers
+#include "goblin_config.hpp"   // config::dumpIconTextures (verification log gate)
+
+#include <spdlog/spdlog.h>
+#include <map>
+#include <string>
 
 namespace goblin::worldmap
 {
@@ -47,11 +52,27 @@ const std::vector<Marker> &GraceLayer::markers() const
                  0ull, 0, 0, e.discoverFlag};
         m.raw_area = e.areaNo; m.raw_gx = e.gridXNo; m.raw_gz = e.gridZNo;
         m.raw_px = e.posX; m.raw_pz = e.posZ;
-        // Dungeon grace = NOT open-world surface (area 60/61) and NOT underground (group 1/3) → a
-        // legacy/minor dungeon or DLC dungeon projected onto the overworld. ERR draws these with its
-        // dungeon-style grace icon; the renderer mirrors that when the ERR grace sprite is available.
-        m.dungeon = (e.areaNo != 60 && e.areaNo != 61) && grp != 1 && grp != 3;
+        // Dungeon grace = a CAVE (raw areaNo 31 = m31 "Grottes"). ERR uses its dungeon-style grace
+        // icon (MENU_MAP_ERR_GraceUnderground) ONLY for cave graces — NOT catacombs (m30), tunnels
+        // (m32), legacy dungeons (m10–12) or DLC. The OLD gate ((area != 60/61) && grp != 1/3) flagged
+        // ALL of those, so far too many graces drew the ERR icon. areaNo here is the RAW WorldMapPoint
+        // area (pre-projection), so it still reads 31 for cave graces. If ERR's real set turns out to
+        // include other dungeon types, widen this — verify in-game via the [GRACE-AREA] log below.
+        m.dungeon = (e.areaNo == 31);
         cache_.push_back(m);
+    }
+    // Verification (dev, gated by dump_icon_textures): one-shot histogram of the raw areaNos that
+    // carry graces + which we flag as CAVE → ERR underground icon. Compare against what ERR actually
+    // draws to confirm the m31-only gate (or learn the correct set).
+    if (goblin::config::dumpIconTextures)
+    {
+        std::map<int, int> by_area;
+        for (const Marker &mm : cache_) by_area[mm.raw_area]++;
+        std::string s;
+        for (const auto &kv : by_area)
+            s += " m" + std::to_string(kv.first) + "=" + std::to_string(kv.second) +
+                 (kv.first == 31 ? "(CAVE->ERR)" : "");
+        spdlog::info("[GRACE-AREA] grace areaNo histogram (CAVE m31 = ERR underground icon):{}", s);
     }
     return cache_;
 }
