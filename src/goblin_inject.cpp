@@ -2183,32 +2183,16 @@ void goblin::probe_icon_find_runtime()
 {
     if (!goblin::config::dumpIconTextures)
         return;
-    spdlog::info("[FIND2] === resolve_item_sprite probe (draw-free) ===");
-    // Mix of captured ids (40xxx) + real EquipParam iconIds likely NOT displayed (goods 4000/4121,
-    // weapon 1013, accessory 18000, gem 8300/8307). HIT on an un-displayed id = draw-free works.
-    static const int ids[] = {40144, 40147, 40172, 4000, 4121, 1013, 18000, 8300, 8307};
-    for (int id : ids)
-    {
-        ItemSprite s = goblin::resolve_item_sprite(id);
-        if (!s.valid) { spdlog::info("[FIND2] id={} MISS (not resolved / sheet not resident)", id); continue; }
-        spdlog::info("[FIND2] id={} OK sheet={:#x} rect=({},{})-({},{}) sheet={}x{} fmt={}",
-                     id, reinterpret_cast<uintptr_t>(s.sheet), s.x0, s.y0, s.x1, s.y1,
-                     s.sheetW, s.sheetH, s.format);
-        // One-time: dump the resource's first 0x60 bytes as i32 to LOCATE the DXGI_FORMAT field
-        // (a small int 1..120 near W/H; e.g. 71=BC1, 77=BC3, 98=BC7). Read-only (icon_rpm).
-        static bool dumped = false;
-        if (!dumped)
-        {
-            dumped = true;
-            uintptr_t res = reinterpret_cast<uintptr_t>(s.sheet);
-            for (int o = 0; o < 0x60; o += 4)
-            {
-                int v = 0; icon_rpm_i32(res + o, v);
-                spdlog::info("[FIND2-FMT] res+0x{:02x} = {} (0x{:x})", o, v, static_cast<unsigned>(v));
-            }
-        }
-    }
-    spdlog::info("[FIND2] === done (DXGI: 28=RGBA8, 71=BC1, 74=BC2, 77=BC3, 87=BGRA8, 98=BC7) ===");
+    // ⛔ DISABLED: find-by-name (resolve_item_sprite) CRASHES DETERMINISTICALLY inside
+    // FUN_140d63c30 (exe+0xD63E02, fault exe+0x591401F) when the queried icon's sheet is NOT fully
+    // resident — for not-loaded ids it returns a clean miss, but for a partially-referenced id it
+    // derefs an unready field and faults. clang-cl can't SEH-guard the foreign call. The earlier
+    // [FIND2-TEX] successes were a lucky inventory state. → the SAFE path is enumerate-LOADED images
+    // (sprite findings §1: FUN_140d69640 walks the loaded movie's image list — only resident images,
+    // no risky by-name query) + integrate on the RENDER thread, not this hotkey thread. resolve_item_sprite
+    // stays for resident-only use. See [[overlay-icon-atlas]].
+    spdlog::warn("[FIND2] find-by-name probe DISABLED — crashes on non-resident sheets; "
+                 "switch to enumerate-loaded (FUN_140d69640). See memory.");
 }
 
 void goblin::install_icon_texture_probe()
