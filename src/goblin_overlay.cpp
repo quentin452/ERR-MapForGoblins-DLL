@@ -970,6 +970,26 @@ namespace
                     };
                     for (const char *p : kGroups) goblin::force_load_file(p);
                 }
+
+                // ── Bind-flip test (findings §5e) — does +0x7c flip trigger the per-icon bind? ──
+                // Recommended sequence (watch [BINDTEST] in the log, then "harvested:" above):
+                //   0) open inventory/map ONCE so the ticker captures the manager.
+                //   1) "Dump groups" — logs each loaded group's apply-vmethod RVA + flags.
+                //   2) "Load files (gid)" — streams the group's TPF+sblytbnd resident via the by-id loaders.
+                //   3) "Flip-bind all" — sets +0x7c on every loaded group → engine re-applies this tick.
+                //   4) re-check "harvested:" — if it JUMPS for un-browsed items, the flag IS the bind lever.
+                ImGui::Separator();
+                ImGui::TextDisabled("Bind-flip test (§5e): open inventory once, then ->");
+                static int s_bt_gid = 1;   // 1 = 01_Common (item-icon group)
+                ImGui::SetNextItemWidth(120);
+                ImGui::InputInt("group id", &s_bt_gid);
+                if (s_bt_gid < 0) s_bt_gid = 0; if (s_bt_gid > 8) s_bt_gid = 8;
+                if (ImGui::Button("1) Dump groups"))       goblin::bind_test(1, s_bt_gid);
+                ImGui::SameLine();
+                if (ImGui::Button("2) Load files (gid)"))  goblin::bind_test(2, s_bt_gid);
+                if (ImGui::Button("3) Flip-bind all"))      goblin::bind_test(3, s_bt_gid);
+                ImGui::SameLine();
+                if (ImGui::Button("4) Load + flip (gid)")) goblin::bind_test(4, s_bt_gid);
             }
 
             // Grace-sprite GPU debug: draw every harvested SB_ERR_Grace_* frame (full-sheet SRV +

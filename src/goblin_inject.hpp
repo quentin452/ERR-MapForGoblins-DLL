@@ -289,6 +289,15 @@ namespace goblin
     // from the P2b panel button. utf8_path e.g. "menu:/00_Solo.tpf".
     void *force_load_file(const char *utf8_path);
 
+    // DEV bind-flip TEST (RE findings §5e): confirm that flipping a loaded resource-GROUP entry's
+    // +0x7c "needs-apply" flag triggers the binding (apply vmethod resource+0xc8) that populates the
+    // repo with per-icon RECTS — i.e. whether a non-resident item-icon group can be forced resident +
+    // bound on demand. Queues a one-shot action consumed on the next residency tick (engine thread,
+    // via the FUN_140d724c0 hook). action: 1=dump groups (log apply-vmethod RVA + flags), 2=load
+    // files(groupId) via the by-id loaders, 3=flip-bind all loaded groups, 4=load+flip(groupId).
+    // Returns false if the manager isn't captured yet (open inventory/map once). Gated by dumpIconTextures.
+    bool bind_test(int action, int groupId);
+
     // First `max` harvested iconIds (dev — the P2b test panel draws ACTUAL harvested icons
     // instead of a hardcoded id list that may not match what the player browsed).
     std::vector<int> harvested_ids(size_t max);

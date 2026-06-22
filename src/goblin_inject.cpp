@@ -2434,6 +2434,116 @@ void *goblin::force_load_file(const char *utf8_path)
     return res;
 }
 
+// ── DEV bind-flip TEST (RE findings §5e) ─────────────────────────────────────────────────────────
+// Question: does setting a loaded resource-GROUP entry's +0x7c "needs-apply" flag trigger the binding
+// (the apply vmethod resource+0xc8) that populates the repo with per-icon RECTS — i.e. can we force a
+// non-resident item-icon group resident + bound on demand? We hook the residency ticker FUN_140d724c0
+// to (a) capture the live menu-resource manager (*param_2 — it is reached via the task system, not a
+// flat singleton) and (b) run a one-shot action INLINE on the engine thread BEFORE calling the
+// original, so the original's per-tick group-apply (FUN_140d78540) consumes our flag THIS tick.
+// All memory access is RPM/WPM (clang-cl elides __try around raw derefs); the by-groupId loaders are
+// called directly (same as force_load_file). Gated by config::dumpIconTextures; driven from the P2b panel.
+namespace
+{
+using res_tick_fn = void(__fastcall *)(uintptr_t, uintptr_t *);
+res_tick_fn g_res_tick_orig = nullptr;
+std::atomic<uintptr_t> g_res_mgr{0};
+std::atomic<int> g_bind_action{0};   // 0 idle | 1 dump | 2 load files | 3 flip-bind | 4 load+flip
+std::atomic<int> g_bind_gid{1};      // group id for the loaders (1 = 01_Common = the item-icon group)
+
+inline bool res_w32(uintptr_t a, uint32_t v)
+{
+    SIZE_T n = 0;
+    return a && WriteProcessMemory(GetCurrentProcess(), (void *)a, &v, 4, &n) && n == 4;
+}
+
+// Walk the manager's loaded-group array (base = align8(mgr+0x9d8), stride 0x10, count mgr+0xbe0; each
+// slot holds a POINTER to a group entry). Log each entry's resource obj (+0x18), its apply vmethod
+// (resource vtable +0xc8 as an RVA — THIS identifies what the bind does, cf. §5c parse fns), and the
+// flags (+0x7c needs-apply, +0x80 applied). If `flip`, set +0x7c=1 to force a re-apply this tick.
+void res_walk_groups(uintptr_t mgr, uintptr_t er, bool flip)
+{
+    uintptr_t count = 0;
+    if (!icon_rpm_ptr(mgr + 0xbe0, count) || count == 0 || count > 4096)
+    {
+        spdlog::warn("[BINDTEST] implausible group count {} @ mgr={:#x} — aborting (wrong manager?)", count, mgr);
+        return;
+    }
+    uintptr_t base = (mgr + 0x9d8 + 7) & ~uintptr_t(7);   // engine's (-(addr)&7) 8-byte pad
+    int flipped = 0;
+    for (uintptr_t i = 0; i < count; ++i)
+    {
+        uintptr_t entry = 0;
+        if (!icon_rpm_ptr(base + i * 0x10, entry) || entry < 0x10000) continue;
+        int f7c = 0, f80 = 0;
+        icon_rpm_i32(entry + 0x7c, f7c);
+        icon_rpm_i32(entry + 0x80, f80);
+        uintptr_t res = 0, vt = 0, apply = 0;
+        icon_rpm_ptr(entry + 0x18, res);
+        if (res > 0x10000) { icon_rpm_ptr(res, vt); if (vt) icon_rpm_ptr(vt + 0xc8, apply); }
+        spdlog::info("[BINDTEST] grp[{}] entry={:#x} res={:#x} apply(vt+0xc8)={:#x} RVA={:#x} +0x7c={} +0x80={}",
+                     i, entry, res, apply, (apply > er) ? apply - er : 0, f7c, f80);
+        if (flip && res_w32(entry + 0x7c, 1)) ++flipped;
+    }
+    if (flip)
+    {
+        res_w32(mgr + 0x1e19, 1);   // dirty flag (also drains the +0x1df0 load queue next tick)
+        spdlog::info("[BINDTEST] flipped +0x7c on {} groups + set dirty +0x1e19 — orig FUN_140d78540 applies now", flipped);
+    }
+}
+
+void run_bind_action(uintptr_t mgr, uintptr_t er, int act, int gid)
+{
+    spdlog::info("[BINDTEST] action={} gid={} mgr={:#x} harvested={} (before)", act, gid, mgr,
+                 goblin::harvested_count());
+    if ((act == 2 || act == 4) && gid >= 0 && gid <= 8)
+    {
+        // By-groupId loaders (FUN_140d77550 = TPF, FUN_140d771d0 = sblytbnd). UNLIKE force_load_file's
+        // raw CSFile call, these cache the handle at mgr+0xd10/+0xd58+gid*8 — exactly where the bind's
+        // apply vmethod looks for the loaded resource. Guarded internally (no-op if already loaded).
+        reinterpret_cast<void(__fastcall *)(uintptr_t, uint8_t)>(er + 0xd77550)(mgr, (uint8_t)gid);
+        reinterpret_cast<void(__fastcall *)(uintptr_t, uint8_t)>(er + 0xd771d0)(mgr, (uint8_t)gid);
+        spdlog::info("[BINDTEST] called FUN_140d77550 + FUN_140d771d0 (mgr, gid={})", gid);
+    }
+    res_walk_groups(mgr, er, /*flip=*/(act == 3 || act == 4));
+}
+
+void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
+{
+    if (p2)
+    {
+        uintptr_t mgr = *p2;
+        if (mgr > 0x10000)
+        {
+            g_res_mgr.store(mgr, std::memory_order_relaxed);
+            int act = g_bind_action.exchange(0, std::memory_order_acq_rel);
+            if (act)
+            {
+                uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+                run_bind_action(mgr, er, act, g_bind_gid.load(std::memory_order_relaxed));
+            }
+        }
+    }
+    if (g_res_tick_orig) g_res_tick_orig(p1, p2);
+}
+}  // namespace
+
+// Public driver (P2b panel). Queues a one-shot action consumed on the next residency tick (engine
+// thread). action: 1=dump groups, 2=load files(gid), 3=flip-bind all loaded groups, 4=load+flip(gid).
+// Returns false if the ticker hasn't captured the manager yet (open the inventory/map once).
+bool goblin::bind_test(int action, int groupId)
+{
+    if (!goblin::config::dumpIconTextures) return false;
+    if (g_res_mgr.load(std::memory_order_relaxed) == 0)
+    {
+        spdlog::warn("[BINDTEST] manager not captured yet — open the inventory or map once (ticker must run)");
+        return false;
+    }
+    g_bind_gid.store(groupId, std::memory_order_relaxed);
+    g_bind_action.store(action, std::memory_order_release);
+    return true;
+}
+
 bool goblin::harvested_grace(ItemSprite &out)
 {
     std::lock_guard<std::mutex> lk(g_harvest_mtx);
@@ -2519,6 +2629,23 @@ void goblin::install_icon_texture_probe()
     {
         spdlog::error("[ENUM] hook failed: {}", e.what());
         g_enum_orig = nullptr;
+    }
+
+    // Residency-ticker hook (findings §5e): capture the live menu-resource manager (*param_2) for the
+    // bind-flip test + run queued one-shot actions inline on the engine thread. Idle cost = one deref
+    // + one atomic load per tick. Dev-gated (whole probe is behind config::dumpIconTextures).
+    try
+    {
+        uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+        void *tickfn = reinterpret_cast<void *>(er + 0xd724c0);   // FUN_140d724c0
+        modutils::hook(tickfn, reinterpret_cast<void *>(&res_tick_detour),
+                       reinterpret_cast<void **>(&g_res_tick_orig));
+        spdlog::info("[BINDTEST] residency-ticker hooked @ {} — open inventory/map to capture manager", tickfn);
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("[BINDTEST] ticker hook failed: {}", e.what());
+        g_res_tick_orig = nullptr;
     }
 }
 
