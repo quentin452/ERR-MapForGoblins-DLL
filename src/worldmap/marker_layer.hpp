@@ -69,6 +69,9 @@ struct Marker
     // live_state: 0 = untried, 1 = projected ok, -1 = engine didn't place it.
     mutable float live_u = 0.0f, live_v = 0.0f;
     mutable signed char live_state = 0;
+    // Cached live PAGE (0 overworld, 1 base-UG, 10 DLC; -1 untried). Lets the group be
+    // derived without the baked fold: group = (page==10?2:0)|((area==12||40-43)?1:0).
+    mutable int live_page = -1;
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the

@@ -17,6 +17,7 @@
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
 
 #include <imgui.h>
+#include <spdlog/spdlog.h>  // [GROUPCHK] live-vs-baked group validation
 
 #include <cfloat>
 #include <cmath>
@@ -217,12 +218,27 @@ inline void project_marker(const Marker &m, bool dlc_ug, float &gU, float &gV)
         if (m.live_state != 1)
         {
             float u, v;
+            int pg = -1;
             if (goblin::worldmap_probe::project(m.raw_area, m.raw_gx, m.raw_gz, m.raw_px,
-                                                m.raw_pz, u, v))
+                                                m.raw_pz, u, v, pg))
             {
                 m.live_u = u;
                 m.live_v = v;
+                m.live_page = pg;
                 m.live_state = 1;
+                // Validate the LIVE-derived group vs the baked m.group — the last check
+                // before dropping marker_group_from + the baked fold. group =
+                // (page==10?DLC:0) | ((area==12 || 40<=area<=43)?UG:0).
+                int live_grp = (pg == 10 ? 2 : 0) |
+                               ((m.raw_area == 12 || (m.raw_area >= 40 && m.raw_area <= 43)) ? 1 : 0);
+                if (live_grp != m.group)
+                {
+                    static int n = 0;
+                    if (n++ < 30)
+                        spdlog::warn("[GROUPCHK] mismatch area{} grid({},{}) live_page={} "
+                                     "live_grp={} baked_grp={}",
+                                     m.raw_area, m.raw_gx, m.raw_gz, pg, live_grp, m.group);
+                }
             }
         }
         if (m.live_state == 1)
@@ -246,8 +262,9 @@ inline void project_raw(int area, float rawX, float rawZ, float bakedWX, float b
     if (goblin::config::liveProjection && area >= 0)
     {
         int gx = (int)std::floor(rawX / 256.0f), gz = (int)std::floor(rawZ / 256.0f);
+        int pg = -1;
         if (goblin::worldmap_probe::project(area, gx, gz, rawX - gx * 256.0f,
-                                            rawZ - gz * 256.0f, gU, gV))
+                                            rawZ - gz * 256.0f, gU, gV, pg))
             return;
     }
     world_to_mapspace_xy(bakedWX, bakedWZ, dlc_ug, gU, gV);

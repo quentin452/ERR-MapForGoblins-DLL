@@ -56,8 +56,12 @@ namespace goblin::worldmap_probe
     // placed by the game (e.g. m19 Chapel has no converter) → caller falls back / gates.
     // Self-resolves the VM from the active cursor (cached); direct in-process call (fast,
     // safe to batch at marker-build time). Map must be OPEN for the VM to exist.
+    // page out: the live map PAGE the point lands on — 0 overworld, 1 base underground,
+    // 10 DLC (the engine's page-table + area-12 override). Lets the overlay derive the
+    // marker group without the baked LegacyConv fold: group = (page==10?2:0) |
+    // ((area==12 || 40<=area<=43)?1:0).
     bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU,
-                 float &mapV);
+                 float &mapV, int &page);
 
     // DIAG: the currently-published active cursor address (0 = none). Lets the
     // overlay tell apart "probe hasn't found a cursor yet" (0) from "found but the

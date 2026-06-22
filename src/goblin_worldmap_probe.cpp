@@ -777,12 +777,43 @@ void probe_loop()
 
 uintptr_t debug_active_cursor() { return g_active_cursor.load(std::memory_order_relaxed); }
 
-bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU, float &mapV)
+bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU, float &mapV,
+             int &page)
 {
+    page = -1;
     uintptr_t vm = find_view_model();
     if (!vm)
         return false;
-    return project_live(reinterpret_cast<void *>(vm), area, gridX, gridZ, posX, posZ, mapU, mapV);
+    ProjPointFn fn = resolve_proj_point();
+    if (!fn)
+        return false;
+    uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    uint64_t count = 0;
+    seh_read8(reinterpret_cast<void *>(vm + 0x280), &count);
+    uint64_t n = count > 8 ? 8 : count;
+    int page_tab = 0;
+    seh_read_i32(reinterpret_cast<void *>(base + 0x2ad82f8), &page_tab); // bytes [00 01 0a ..]
+    // Loop the converters with FUN_140876140 (per-converter): one pass yields BOTH the UV
+    // (out[]) and the matched slot → page. First match wins.
+    for (uint64_t i = 0; i < n; ++i)
+    {
+        uintptr_t conv = vm + 0xF8 + i * 0x30;
+        uint32_t packed = ((uint32_t)(area & 0xff) << 24) | ((uint32_t)(gridX & 0xff) << 16) |
+                          ((uint32_t)(gridZ & 0xff) << 8);
+        float world[3] = {posX, 0.0f, posZ};
+        float out[2] = {0.0f, 0.0f};
+        if (fn(reinterpret_cast<void *>(conv), out, &packed, world))
+        {
+            mapU = out[0];
+            mapV = out[1];
+            int pg = (i < 3) ? ((page_tab >> (i * 8)) & 0xff) : 0;
+            if (pg == 0 && area == 12) // base-underground shares the overworld converter
+                pg = 1;
+            page = pg;
+            return true;
+        }
+    }
+    return false; // no converter accepts it
 }
 
 bool get_live_view(LiveView &out)
