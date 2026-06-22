@@ -1696,23 +1696,29 @@ void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
     icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
     icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
     icon_rpm_i32(img + 0x84, w);  icon_rpm_i32(img + 0x88, h);
-    // Locate the backing texture: dump every heap ptr field 0x08..0xF0 with its vtable RVA
-    // (vt − er_base), so we can ID the texture object even if the findings' vtable RVAs drifted.
+    // img+0x10 = the backing texture wrapper (vt RVA 0x2c0f318, constant across all images).
+    // Drill it: dump its ptr fields with vtable RVA — fields whose target vtable is OUTSIDE
+    // er_base ("EXT") are dll/COM objects = the ID3D12Resource candidate.
     uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
-    char buf[480]; int len = 0; buf[0] = 0;
-    for (int o = 0x08; o <= 0xF0; o += 8)
-    {
-        uintptr_t p = 0;
-        if (!icon_rpm_ptr(img + o, p) || p < 0x10000 || p >= 0x7fffffffffffULL) continue;
-        uintptr_t vt = 0;
-        long rva = -1;
-        if (icon_rpm_ptr(p, vt) && vt > base && vt < base + 0x6000000) rva = (long)(vt - base);
-        len += std::snprintf(buf + len, sizeof(buf) - len, " +%x=%llx[vt=%lx]", o,
-                             (unsigned long long)p, rva);
-        if (len > (int)sizeof(buf) - 40) break;
-    }
-    spdlog::info("[ICONTEX] img={:#x} rect=({},{})-({},{}) sheet={}x{} | ptrs:{}",
-                 img, x0, y0, x1, y1, w, h, buf);
+    uintptr_t tw = 0; icon_rpm_ptr(img + 0x10, tw);
+    char buf[490]; int len = 0; buf[0] = 0;
+    if (tw)
+        for (int o = 0x00; o <= 0xA0; o += 8)
+        {
+            uintptr_t p = 0;
+            if (!icon_rpm_ptr(tw + o, p) || p < 0x10000 || p >= 0x7fffffffffffULL) continue;
+            uintptr_t vt = 0;
+            bool okvt = icon_rpm_ptr(p, vt) && vt >= 0x10000;
+            if (okvt && vt > base && vt < base + 0x6000000)
+                len += std::snprintf(buf + len, sizeof(buf) - len, " +%x=%llx[vt=%lx]", o,
+                                     (unsigned long long)p, (long)(vt - base));
+            else if (okvt)
+                len += std::snprintf(buf + len, sizeof(buf) - len, " +%x=%llx[EXT %llx]", o,
+                                     (unsigned long long)p, (unsigned long long)vt);
+            if (len > (int)sizeof(buf) - 44) break;
+        }
+    spdlog::info("[ICONTEX] img={:#x} rect=({},{})-({},{}) sheet={}x{} tw={:#x} |{}",
+                 img, x0, y0, x1, y1, w, h, tw, buf);
 }
 
 void *__fastcall create_image_detour(void *a0, void *a1, void *a2, void *a3, void *a4, void *a5,
