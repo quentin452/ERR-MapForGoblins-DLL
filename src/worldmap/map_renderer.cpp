@@ -135,6 +135,14 @@ ImVec2 s_grace_dgn_uv0{}, s_grace_dgn_uv1{};
 // calibration nudge expressed in 1920×1080-reference px; markers project as ·zoom·(real/virtual),
 // so the offset must use the SAME factor or it drifts apart from the native pin as you zoom.
 float s_grace_off_sx = 1.f, s_grace_off_sy = 1.f;
+// Live view zoom (set each frame by render_markers after the view delay). The grace GPU
+// icon scales WITH this so it tracks the map (zoom in → bigger, zoom out → smaller) instead
+// of staying constant-px (which read as "huge when zoomed out, tiny when zoomed in").
+float s_grace_zoom = 1.f;
+// Zoom at which the grace size = graceIconScale·iconHalf (1×). Map zoom runs ~0.05..1; this
+// reference centres the scaling so a mid zoom is unchanged. Calibration constant — tune if the
+// size feels off across the zoom range.
+constexpr float kGraceZoomRef = 0.25f;
 
 // Draw one marker at backbuffer px p: the atlas icon if available, else a circle.
 // half = icon half-size in px (resolution-scaled by the caller). When collected_graying
@@ -160,7 +168,13 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, f
             ImTextureID gt = s_grace_tex;
             ImVec2 u0 = s_grace_uv0;
             ImVec2 u1 = s_grace_uv1;
-            float gh = half * goblin::config::graceIconScale;
+            // Scale WITH the map zoom (clamped so it never vanishes / overflows). zf = 1 at
+            // kGraceZoomRef; zoom in → >1 (bigger), zoom out → <1 (smaller). graceIconScale is
+            // the user's overall-size dial on top.
+            float zf = s_grace_zoom / kGraceZoomRef;
+            if (zf < 0.3f) zf = 0.3f;
+            if (zf > 4.0f) zf = 4.0f;
+            float gh = half * goblin::config::graceIconScale * zf;
             // Optional offset → shift the imgui grace beside the game's NATIVE pin for side-by-side
             // calibration (0 = on top). Scaled by the live projection factor (zoom × canvas) so the
             // nudge tracks the native pin across zoom levels instead of drifting (it's stored in
@@ -754,6 +768,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // finalizes view.zoom; draw_marker reads s_grace_off_sx/sy. (kx/ky mirror project_screen.)
     s_grace_off_sx = view.zoom * (realW / 1920.f);
     s_grace_off_sy = view.zoom * (realH / 1080.f);
+    s_grace_zoom = view.zoom;   // grace GPU icon scales with zoom (draw_marker reads this)
 
     // Clustering = a live render pass: categories opted into clustering bin together
     // into ONE mixed pile per dense screen cell; everything else draws normally. Live
