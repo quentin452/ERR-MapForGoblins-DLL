@@ -2167,18 +2167,13 @@ goblin::ItemSprite goblin::resolve_item_sprite(int iconId)
     uintptr_t res = 0; icon_rpm_ptr(rtex + 0x70, res);         // ID3D12Resource
     if (res < 0x10000) return s;
     s.sheet = reinterpret_cast<void *>(res);
-    // GetDesc (ID3D12Resource vtable[10]) → D3D12_RESOURCE_DESC: Width@+0x10, Height@+0x18, Format@+0x20.
-    uintptr_t resvt = 0; icon_rpm_ptr(res, resvt);
-    if (resvt > 0x10000)
-    {
-        using GetDescFn = void *(__fastcall *)(void *, void *);
-        auto getdesc = reinterpret_cast<GetDescFn>(reinterpret_cast<void **>(resvt)[10]);
-        unsigned char desc[0x48] = {0};
-        getdesc(reinterpret_cast<void *>(res), desc);
-        s.sheetW = *reinterpret_cast<unsigned long long *>(desc + 0x10);
-        s.sheetH = *reinterpret_cast<unsigned int *>(desc + 0x18);
-        s.format = *reinterpret_cast<unsigned int *>(desc + 0x20);
-    }
+    // Read W/H from the vkd3d d3d12_resource INTERNAL struct DIRECTLY (proven: dim@+0x10=3,
+    // W@+0x20, H@+0x28) — NOT via GetDesc (the foreign COM call crashed). The DXGI_FORMAT lives
+    // at some internal offset (found by the probe's field dump, then read here once known).
+    int w = 0, h = 0; icon_rpm_i32(res + 0x20, w); icon_rpm_i32(res + 0x28, h);
+    s.sheetW = static_cast<unsigned long long>(w);
+    s.sheetH = static_cast<unsigned int>(h);
+    s.format = 0;  // TODO: read once the internal format offset is identified (probe dump)
     s.valid = true;
     cache[iconId] = s;
     return s;
@@ -2199,8 +2194,21 @@ void goblin::probe_icon_find_runtime()
         spdlog::info("[FIND2] id={} OK sheet={:#x} rect=({},{})-({},{}) sheet={}x{} fmt={}",
                      id, reinterpret_cast<uintptr_t>(s.sheet), s.x0, s.y0, s.x1, s.y1,
                      s.sheetW, s.sheetH, s.format);
+        // One-time: dump the resource's first 0x60 bytes as i32 to LOCATE the DXGI_FORMAT field
+        // (a small int 1..120 near W/H; e.g. 71=BC1, 77=BC3, 98=BC7). Read-only (icon_rpm).
+        static bool dumped = false;
+        if (!dumped)
+        {
+            dumped = true;
+            uintptr_t res = reinterpret_cast<uintptr_t>(s.sheet);
+            for (int o = 0; o < 0x60; o += 4)
+            {
+                int v = 0; icon_rpm_i32(res + o, v);
+                spdlog::info("[FIND2-FMT] res+0x{:02x} = {} (0x{:x})", o, v, static_cast<unsigned>(v));
+            }
+        }
     }
-    spdlog::info("[FIND2] === done (fmt = DXGI_FORMAT: 28=RGBA8, 71=BC1, 74=BC2, 77=BC3, 98=BC7) ===");
+    spdlog::info("[FIND2] === done (DXGI: 28=RGBA8, 71=BC1, 74=BC2, 77=BC3, 87=BGRA8, 98=BC7) ===");
 }
 
 void goblin::install_icon_texture_probe()
