@@ -8,6 +8,7 @@
 #include "goblin_kindling.hpp"  // is_row_collected (kindling graying)
 #include "goblin_markers.hpp"   // category_name (census log)
 #include "goblin/goblin_map_flags.hpp" // flag::Story* (secondary story gate)
+#include "goblin_bench.hpp"            // GOBLIN_BENCH scoped timers
 
 #include <spdlog/spdlog.h>
 
@@ -68,6 +69,7 @@ void build_buckets()
     if (g_built)
         return;
     g_built = true;
+    GOBLIN_BENCH("build.buckets");
     namespace gen = goblin::generated;
     for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
     {
@@ -130,6 +132,7 @@ const std::vector<Marker> &MapEntryLayer::markers() const
 void refresh_overlay_census()
 {
     namespace gen = goblin::generated;
+    GOBLIN_BENCH("refresh.overlay_census");
     build_buckets(); // ensure the overlay markers exist (one-time)
 
     static int s_prev_looted[NUM_CAT];

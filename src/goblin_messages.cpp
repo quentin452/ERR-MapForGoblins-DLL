@@ -698,6 +698,7 @@ void goblin::setup_messages()
 
     // WeaponName. Ammo IDs are stored as-is (>=50M), weapon IDs are offset by 100M.
     {
+        GOBLIN_BENCH("messages.weapon");
         std::set<int32_t> ammo_ids, weapon_offset_ids;
         for (int32_t tid : weapon_ids_needed)
         {
@@ -725,6 +726,7 @@ void goblin::setup_messages()
     // first-wins by patch_fmg_in_memory). Gated — off by default it adds nothing.
     if (goblin::config::liveLootLabels)
     {
+        GOBLIN_BENCH("messages.live_loot_all");
         copy_fmg_all_layered(goods_slots, 500000000, "GoodsName", false);
         copy_fmg_all_layered(weapon_slots, 100000000, "WeaponName", true);
         copy_fmg_all_layered(protector_slots, 200000000, "ProtectorName", false);
@@ -742,7 +744,10 @@ void goblin::setup_messages()
     // NpcName. Offset 700M.
     // (Was break-on-first-success from base 18 — that missed every id living
     // only in a DLC layer, e.g. The Convergence's added bosses in slot 328.)
-    copy_fmg_layered(npc_slots, npc_name_ids_needed, 700000000, "NpcName");
+    {
+        GOBLIN_BENCH("messages.npc");
+        copy_fmg_layered(npc_slots, npc_name_ids_needed, 700000000, "NpcName");
+    }
 
     // Read ActionButtonText FMG (slots 32 + DLC 365, 465): in-game interact
     // prompts ("Examine statue", "Light bonfire", ...). Offset 800M.
@@ -776,7 +781,10 @@ void goblin::setup_messages()
     // TutorialTitle (ERR Codex enemy names + category labels like "Summoning
     // Pools"). textId in MASSEDIT = real TutorialTitle ID + 900000000 (to
     // avoid collision with GoodsName).
-    copy_fmg_layered(tutorial_slots, tutorial_ids_needed, 900000000, "TutorialTitle");
+    {
+        GOBLIN_BENCH("messages.tutorial");
+        copy_fmg_layered(tutorial_slots, tutorial_ids_needed, 900000000, "TutorialTitle");
+    }
 
     // Non-ERR builds carry their own localized enemy-name table (the runtime
     // FMG has only generic tutorial entries, no enemy names). Inject the names

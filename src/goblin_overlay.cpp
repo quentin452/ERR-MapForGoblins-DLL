@@ -25,6 +25,7 @@
 #include "worldmap/map_renderer.hpp"     // goblin::worldmap::render_markers
 #include "generated_shared/goblin_overlay_icons.hpp" // ATLAS_PNG category-icon atlas
 #include "stb_image.h"                                // stbi_load_from_memory (PNG decode)
+#include "goblin_bench.hpp"                           // GOBLIN_BENCH scoped timers
 
 #include <vector>
 #include <map>
@@ -276,6 +277,7 @@ namespace
     {
         if (g_atlas_ready || !g_imgui_init || !g_command_queue || !g_device || !g_srv_heap)
             return;
+        GOBLIN_BENCH("overlay.init.atlas");
         using namespace goblin::overlay_icons;
         // The atlas ships as a compressed PNG blob (small source); decode it to RGBA once.
         int w = 0, h = 0, ch = 0;
@@ -420,6 +422,7 @@ namespace
     // ── First-frame ImGui init against the live swapchain ─────────────────
     bool init_imgui(IDXGISwapChain3 *swapchain)
     {
+        GOBLIN_BENCH("overlay.init.imgui");
         if (FAILED(swapchain->GetDevice(IID_PPV_ARGS(&g_device))))
         {
             spdlog::error("[OVERLAY] swapchain->GetDevice failed");
@@ -1507,6 +1510,7 @@ namespace
 
 void goblin::overlay::initialize()
 {
+    GOBLIN_BENCH("overlay.init.hooks");
     void *present_addr = nullptr, *resize_addr = nullptr, *eclist_addr = nullptr;
     if (!resolve_vtables(&present_addr, &resize_addr, &eclist_addr))
     {

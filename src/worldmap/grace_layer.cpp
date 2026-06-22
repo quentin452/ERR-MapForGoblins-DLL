@@ -4,6 +4,7 @@
 #include "goblin_inject.hpp" // goblin::live_graces / marker_world_pos / ui::category_visible
 #include "goblin_map_data.hpp" // Category::WorldGraces
 #include "goblin_logic.hpp"    // map_fragment_flag
+#include "goblin_bench.hpp"    // GOBLIN_BENCH scoped timers
 
 namespace goblin::worldmap
 {
@@ -19,6 +20,7 @@ const std::vector<Marker> &GraceLayer::markers() const
     if (built_)
         return cache_;
     built_ = true;
+    GOBLIN_BENCH("build.graces");
 
     const auto &graces = goblin::live_graces(); // LIVE WorldMapPointParam, no bake
     cache_.reserve(graces.size());

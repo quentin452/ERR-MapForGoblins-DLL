@@ -140,12 +140,18 @@ static std::filesystem::path g_mod_folder;
 static void setup_mod()
 {
     safe_init_step(&init_modutils,    "modutils::initialize");
-    safe_init_step(&init_from_params, "from::params::initialize");
+    {
+        GOBLIN_BENCH("init.from_params");
+        safe_init_step(&init_from_params, "from::params::initialize");
+    }
 
     // AOB signature health check — logs PASS/FAIL for every centralized signature
     // (src/re_signatures.hpp). After a game update, a FAIL line names exactly which
     // signature broke. Cheap, read-only; runs once at init.
-    safe_init_step(&goblin::sig::resolve_all_signatures, "AOB signature health check");
+    {
+        GOBLIN_BENCH("init.signatures");
+        safe_init_step(&goblin::sig::resolve_all_signatures, "AOB signature health check");
+    }
 
     // Robust init wait: POLL for the WorldMapPointParam table (the real dependency
     // of inject_map_entries) instead of sleeping a fixed load_delay — on a slow PC
@@ -155,6 +161,7 @@ static void setup_mod()
     // never hang forever if the probe never goes ready.
     {
         using namespace std::chrono;
+        GOBLIN_BENCH("init.param_poll");
         constexpr int POLL_MS = 200;
         constexpr int HARD_CAP_S = 180;  // never wait longer than this
         auto t0 = steady_clock::now();
@@ -200,6 +207,7 @@ static void setup_mod()
 
     try
     {
+        GOBLIN_BENCH("init.enable_hooks");
         modutils::enable_hooks();
     }
     catch (const std::exception &e)
