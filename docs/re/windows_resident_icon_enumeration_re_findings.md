@@ -342,6 +342,89 @@ so the repo ACCUMULATES the browse union instead of evicting — the safer of th
 
 ---
 
+## 5e. The ticker chain decompiled — force-load lever is NOT in the ticker; bind = a flag flip (re_v119)
+
+Decompiled the whole residency tick chain (`find_resmgr.java` / `find_resload.java`,
+`D:\ghidra_scripts\out_resmgr.txt` / `out_resload.txt`). Answers "can a non-resident item icon be
+forced resident via `FUN_140d724c0`?" — **the ticker is only the pump; the levers are downstream.**
+
+**The ticker `FUN_140d724c0(unused, &manager)` (RVA 0xd724c0)** — `manager = *param_2`:
+```c
+if (FUN_140d69d00() == 0) {                       // not in the alt/teardown branch
+  if (*(char*)(manager + 0x1e19) != 0) {          // dirty flag set?
+    FUN_140d790a0(manager, param_2 + 1);          //   -> drain LOAD(+0x1df0)/UNLOAD(+0x1e08) queues
+    *(char*)(manager + 0x1e19) = 0;               //   -> clear dirty
+  }
+  FUN_140d78540(manager);                          // ALWAYS: per-tick group apply
+}
+```
+Sibling ticker `FUN_140d78060` (RVA 0xd78060) does the same under a lock (`mgr = *(param_1+0x18)`).
+So the ticker contains **no load logic** — it only (a) drains queues when `+0x1e19` is dirty, and
+(b) runs the per-tick group apply.
+
+**The LOAD queue `+0x1df0` (drained by `FUN_140d790a0` pass-1):** a linked list of **movie-load
+REQUEST objects** (`req = node[2]`). Per request: not-loaded flag `req+0x48`; movie count
+`FUN_140d695e0(req)`; movie key `FUN_140d69590(req,i)`; for each key `FUN_140d7c940` (our known repo
+find) then apply; done-check `FUN_140d69630(req)`; pump `FUN_140d69580(req, *(param_2+8))`; on done,
+unlink + `mgr+0x1df8`--. **Confirms §5d:** forcing via this queue = fabricating a valid request object
+(the movie set + its load state machine) — complex, not pursued.
+
+**The FILE-LOAD half — cleanly callable by groupId (the real §5b/5c levers, exact sites):**
+- `FUN_140d77550(manager, byte groupId)` (RVA 0xd77550) — loads the group **TPF** (`menu:/<name>.tpf`
+  / `.tpfbhd`, name from `PTR_u_00_Solo_142bbb4e0[groupId]`) via CSFile `FUN_1401f5560`/`FUN_1401f52f0`;
+  **guarded** `if (*(manager + groupId*8 + 0xd10) == 0)` (handle cached at `manager+0xd10+gid*8`).
+- `FUN_140d771d0(manager, byte groupId)` (RVA 0xd771d0) — loads the group **sblytbnd**
+  (`menu:/<name>.sblytbnd`, the layout = the per-icon **rects**) via CSFile `FUN_1401f5a00`; guarded
+  `if (*(manager + groupId*8 + 0xd58) == 0)` (handle at `manager+0xd58+gid*8`).
+- Wrappers (`step+8` = manager), all called by STEP_Init `FUN_140d6e1c0`/`FUN_140d6e320`:
+  `FUN_140d6ae40`→`77550(mgr,8)`; `FUN_140d6ae60`→`77550(mgr,4)`; `FUN_140d6b000`→`77550(mgr,2)`;
+  `FUN_140d6ae80`→`77550(mgr,id)` over table `DAT_142bb9120..142bb9125`; **`FUN_140d6aef0`→`771d0(mgr,
+  {1,2,3,4,5,6,8})`** (the sblytbnd set). `FUN_140d6ae30` = the 113-resource `.gfx` set (`DAT_143b3d360`).
+- **These wrappers ONLY load files** — none calls a bind/apply (no `FUN_140d70940`, no `+0x7c`, no
+  vmethod `+0xc8`). So loading the sblytbnd via this path does **not** populate the repo with rects —
+  surgical confirmation of the §5c wall, now with the exact call sites.
+
+**★ NEW — the BIND has a per-tick trigger that is a FLAG FLIP, not a fabricated request.**
+The per-tick apply `FUN_140d78540(manager)` (RVA 0xd78540) loops the **group array** (`manager+0x9d8`,
+stride 0x10, count `manager+0xbe0`) and for any entry with **`entry+0x7c != 0`** calls
+`FUN_140d70940(entry)` (RVA 0xd70940):
+```c
+FUN_140d70940(entry):
+  entry+0x7c = 0;                                            // consume the dirty flag
+  if (entry+0x18 != 0) {                                     // entry+0x18 = the group RESOURCE object
+    ... FUN_140d717f0(entry,&key) ...                        // resolve the group key
+    (**(code**)(*(entry+0x18) + 0xc8))(entry+0x18, 1);       // <<< the APPLY/BIND vmethod (+0xc8)
+    entry+0x98 += 1;                                         // apply counter
+    entry+0x80 = 1;                                          // applied flag
+  }
+```
+So the bind we need (§5c: the sblytbnd parse that emits `MENU_ItemIcon_<id>` repo entries with rects)
+is reachable by **setting a registered group entry's `+0x7c` flag** → next tick → vmethod `entry+0x18
+→ +0xc8`. This is far simpler than the §5d "enqueue into +0x1df0" path (no request-object synthesis).
+
+**Group entry layout (`manager+0x9d8 + i*0x10` → entry):** `+0x18` resource obj (vtable `+0xc8` =
+apply/bind), `+0x38` lock, `+0x7c` dirty/needs-apply (int), `+0x80` applied flag, `+0x88` lock,
+`+0x98` apply counter. `manager+0xbe0` = group count; `manager+0xda0` = the manager lock.
+
+**Decision — the remaining unknown is best closed at RUNTIME (quentin's workflow).** Two facts must hold
+for the flag-flip to yield per-item icons, neither statically resolvable (resource obj is built at
+runtime so vtable+0xc8 can't be pinned in Ghidra; group registration is dynamic):
+1. the item-icon group (likely **gid 1 = 01_Common**) is **registered** as a `+0x9d8` entry even when
+   un-browsed (or can be made so by the file-load half), and
+2. its `entry+0x18 → vtable+0xc8` apply is the sblytbnd parse (`FUN_140d650b0`/`FUN_140d66520` family,
+   §5c) that writes repo rects — not a generic "mark resident" that still needs the menu's own apply.
+
+**Gated runtime experiment (next, quentin):** with the manager pinned live (hook a ticker
+`FUN_140d724c0`, capture `*param_2`; or resolve via context getter `FUN_140d69c20`/`FUN_140d69b40`):
+(a) ensure files resident — `FUN_140d77550(mgr,1)` + `FUN_140d771d0(mgr,1)`; (b) walk `mgr+0x9d8`
+[count `mgr+0xbe0`], find the 01_Common entry, log its `entry+0x18` vtable + the `+0xc8` target;
+(c) set `entry+0x7c = 1`, set `mgr+0x1e19 = 1`, wait a few ticks; (d) re-walk the repo (`harvest_repo_icons`)
+— did `_Mysize` / distinct `MENU_ItemIcon` jump for un-browsed items? Gate it like `force_load_file`
+(dev panel button), VRAM-watch, single group at a time. If the repo gains rects → this is the runtime
+100%-coverage lever; if not → vmethod `+0xc8` is not the parse and offline bake (§5/§5c) stays the path.
+
+---
+
 ## 6. Handles
 - repo singleton `DAT_143d82510` `er+0x3D82510` (FD4Singleton); container map `repo+0x80`,
   `_Myhead` `repo+0x88`, `_Mysize` `repo+0x90`.
