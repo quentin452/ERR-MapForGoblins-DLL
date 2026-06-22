@@ -466,9 +466,18 @@ namespace
             return false;   // not harvested yet → retry next frame (do NOT mark failed)
 
         auto *src_res = reinterpret_cast<ID3D12Resource *>(sp.sheet);
-        DXGI_FORMAT fmt = static_cast<DXGI_FORMAT>(sp.format);
+        // Authoritative format/dims from D3D12 (render thread, sheet bound) — NOT the RPM-read
+        // sp.format (0 pre-bind, and the RPM dim/format offsets drifted; see dump_icon_textures_live).
+        // Mirrors ensure_item_icon_srv. If not a ready TEXTURE2D yet, retry next frame (no permanent fail).
+        D3D12_RESOURCE_DESC rd = src_res->GetDesc();
+        DXGI_FORMAT fmt = rd.Format;
+        if (rd.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || fmt == DXGI_FORMAT_UNKNOWN)
+            return false;
+        int sw = static_cast<int>(rd.Width), sh = static_cast<int>(rd.Height);
         int x0 = sp.x0 & ~3, y0 = sp.y0 & ~3;            // snap to 4-aligned blocks (BC7)
         int x1 = (sp.x1 + 3) & ~3, y1 = (sp.y1 + 3) & ~3;
+        if (x1 > sw) x1 = sw;
+        if (y1 > sh) y1 = sh;
         int w = x1 - x0, h = y1 - y0;
         if (w <= 0 || h <= 0 || w > 1024 || h > 1024) { g_grace_state = 2; return false; }
 
