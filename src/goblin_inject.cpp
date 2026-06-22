@@ -1985,10 +1985,18 @@ using enum_fn = void *(__fastcall *)(void *, void *, void *, void *);
 enum_fn g_enum_orig = nullptr;
 uintptr_t g_inv_movie = 0;
 
+void harvest_resident_icons(uintptr_t movie);   // §8 walk-all (defined after find_detour/g_find_orig)
+
 void *__fastcall enum_detour(void *movie, void *a1, void *a2, void *a3)
 {
-    g_inv_movie = reinterpret_cast<uintptr_t>(movie);  // stash; the [p1+0x90] container is a complex
-    return g_enum_orig(movie, a1, a2, a3);             // FD4 object → harvest via the find hook below.
+    g_inv_movie = reinterpret_cast<uintptr_t>(movie);
+    void *r = g_enum_orig(movie, a1, a2, a3);
+    // Proactive harvest: walk THIS movie's resident image-list (sprite findings §8) instead of
+    // waiting for the find hook to catch each icon as the player browses. enum_detour fires for
+    // MANY movies (load screens etc.) — we must walk the CURRENT arg, not a stashed global, so the
+    // inventory movie (many MENU_ItemIcon) actually gets processed. Engine thread, post-original.
+    harvest_resident_icons(reinterpret_cast<uintptr_t>(movie));
+    return r;
 }
 
 // ── HARVEST via the find hook (the SAFE path): the engine calls FUN_140d63c30(repo,&out,key) to
@@ -2003,9 +2011,39 @@ find_fn2 g_find_orig = nullptr;
 // these into our own SRV atlas.
 std::mutex g_harvest_mtx;
 std::unordered_map<int, goblin::ItemSprite> g_harvest;
+uintptr_t g_icon_repo = 0;   // FUN_140d63c30 arg0 (repo) — stashed for the proactive §8 walk
+
+// Read a resolved CSTextureImage (`img` = the find fn's `out`) and cache its sub-rect + backing
+// sheet resource + DXGI_FORMAT under the iconId parsed from a MENU_ItemIcon_<id> name. Shared by
+// the find hook (browse-to-fill) and the §8 proactive walk. Read-only (RPM). Returns true if cached.
+bool cache_icon_from_img(const char *nm, uintptr_t img)
+{
+    if (img < 0x10000 || std::strncmp(nm, "MENU_ItemIcon_", 14) != 0) return false;
+    uintptr_t vt = 0; icon_rpm_ptr(img, vt);
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!(vt > er && vt - er == 0x2bb8910)) return false;   // CSTextureImage vtable guard
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
+    icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
+    uintptr_t rtex = 0, res = 0;
+    icon_rpm_ptr(img + 0x10, rtex);
+    if (rtex > 0x10000) icon_rpm_ptr(rtex + 0x70, res);
+    if (res <= 0x10000) return false;
+    int iconId = std::atoi(nm + 14);
+    int fmt = 0; icon_rpm_i32(res + 0x30, fmt);
+    goblin::ItemSprite hs;
+    hs.sheet = reinterpret_cast<void *>(res);
+    hs.x0 = x0; hs.y0 = y0; hs.x1 = x1; hs.y1 = y1;
+    hs.format = static_cast<unsigned>(fmt);
+    hs.valid = true;
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    g_harvest[iconId] = hs;
+    return true;
+}
 
 void *__fastcall find_detour(void *repo, void **out, const wchar_t *key)
 {
+    if (repo && !g_icon_repo) g_icon_repo = reinterpret_cast<uintptr_t>(repo);
     void *ret = g_find_orig(repo, out, key);
     if (goblin::config::dumpIconTextures && key)
     {
@@ -2027,20 +2065,8 @@ void *__fastcall find_detour(void *repo, void **out, const wchar_t *key)
                 icon_rpm_ptr(img + 0x10, rtex);
                 if (rtex > 0x10000) icon_rpm_ptr(rtex + 0x70, res);
                 spdlog::info("[ENUM2] '{}' img={:#x} rect=({},{})-({},{}) res={:#x}", nm, img, x0, y0, x1, y1, res);
-                // Cache per-iconId for the overlay's CopyTextureRegion (only proper item icons:
-                // MENU_ItemIcon_<id>). format = vkd3d d3d12_resource internal field @ res+0x30.
-                if (res > 0x10000 && std::strncmp(nm, "MENU_ItemIcon_", 14) == 0)
-                {
-                    int iconId = std::atoi(nm + 14);
-                    int fmt = 0; icon_rpm_i32(res + 0x30, fmt);
-                    goblin::ItemSprite hs;
-                    hs.sheet = reinterpret_cast<void *>(res);
-                    hs.x0 = x0; hs.y0 = y0; hs.x1 = x1; hs.y1 = y1;
-                    hs.format = static_cast<unsigned>(fmt);
-                    hs.valid = true;
-                    std::lock_guard<std::mutex> lk(g_harvest_mtx);
-                    g_harvest[iconId] = hs;
-                }
+                // Cache per-iconId for the overlay's CopyTextureRegion (MENU_ItemIcon_<id> only).
+                cache_icon_from_img(nm, img);
                 // P2b: one-time dump of the sheet resource's first 0x60 bytes (i32) to LOCATE the
                 // DXGI_FORMAT field (a small int near W@0x20/H@0x28; e.g. 71=BC1,77=BC3,98=BC7,87=BGRA8).
                 static bool fmt_dumped = false;
@@ -2057,6 +2083,71 @@ void *__fastcall find_detour(void *repo, void **out, const wchar_t *key)
         }
     }
     return ret;
+}
+
+// §8 proactive harvest (sprite findings §8, commit 6913ec4): walk the loaded movie's resident
+// image-list in ONE pass and cache every MENU_ItemIcon_* (vs the find hook, which only catches the
+// one icon the engine happens to resolve while the player browses). Layout (instruction-confirmed):
+//   movie+0x40 -> res ; gate res+0x88 == 4 (image-list) ; res+0x90 -> list
+//   list+0x78 u32 count ; list+0x80 -> arr (entry-ptr array, stride 8)
+//   entry+0x18 = name DLWString (heap iff *(entry+0x30) >= 8, else inline) ; names are GFx symbols.
+// Each name is RESIDENT by construction → re-resolving it via the find fn (g_find_orig, the original
+// trampoline — does NOT re-enter find_detour) is SAFE (the non-resident crash constraint doesn't
+// apply). Read-only walk; runs on the engine thread from enum_detour. Throttled (500ms).
+void harvest_resident_icons(uintptr_t movie)
+{
+    if (!goblin::config::dumpIconTextures || movie < 0x10000 || !g_icon_repo || !g_find_orig)
+        return;
+
+    uintptr_t res = 0; icon_rpm_ptr(movie + 0x40, res);
+    if (res < 0x10000) return;
+    uintptr_t list = 0; icon_rpm_ptr(res + 0x90, list);
+    if (list < 0x10000) return;
+    int count = 0; icon_rpm_i32(list + 0x78, count);
+    uintptr_t arr = 0; icon_rpm_ptr(list + 0x80, arr);
+    if (count <= 0 || count > 100000 || arr < 0x10000) return;
+    // NOTE: the static +0x88==4 type gate from the findings reads garbage live (0x44) → dropped;
+    // we instead filter by entry NAME (only MENU_ItemIcon_* are cached) which is self-validating.
+
+    // Process each distinct (movie,count) once — enum_detour fires every frame for many movies; this
+    // dedup avoids re-walking + re-resolving an unchanged list. A grown list (new count) reprocesses.
+    static std::set<uint64_t> s_done;
+    uint64_t key = (static_cast<uint64_t>(movie) * 1000003u) ^ static_cast<uint64_t>(count);
+    if (!s_done.insert(key).second) return;
+
+    int loops = count < 4096 ? count : 4096;   // hard cap (a non-list movie could give a bogus count)
+    int harvested = 0, names_menu = 0;
+    for (int i = 0; i < loops; ++i)
+    {
+        uintptr_t entry = 0; icon_rpm_ptr(arr + static_cast<uintptr_t>(i) * 8, entry);
+        if (entry < 0x10000) continue;
+        uintptr_t len = 0; icon_rpm_ptr(entry + 0x30, len);          // name length (wchars)
+        uintptr_t namep = (len >= 8) ? 0 : entry + 0x18;             // SSO inline vs heap
+        if (len >= 8) icon_rpm_ptr(entry + 0x18, namep);
+        if (namep < 0x1000) continue;
+
+        wchar_t wbuf[80] = {0}; SIZE_T got = 0;                       // one RPM for the whole name
+        ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(namep), wbuf,
+                          sizeof(wbuf) - sizeof(wchar_t), &got);
+        char nm[80]; int k = 0;
+        for (; k < 79 && wbuf[k]; ++k) nm[k] = (wbuf[k] < 128) ? static_cast<char>(wbuf[k]) : '?';
+        nm[k] = 0;
+        if (std::strncmp(nm, "MENU_ItemIcon_", 14) != 0) continue;
+        ++names_menu;
+        int iconId = std::atoi(nm + 14);
+        { std::lock_guard<std::mutex> lk(g_harvest_mtx); if (g_harvest.count(iconId)) continue; }
+
+        // Resolve the resident image by name (safe; trampoline, not the detour) → read+cache.
+        // The fn writes the image into *out; some paths return it instead.
+        void *out = nullptr;
+        void *ret = g_find_orig(reinterpret_cast<void *>(g_icon_repo), &out, wbuf);
+        uintptr_t img = reinterpret_cast<uintptr_t>(out);
+        if (img < 0x10000) img = reinterpret_cast<uintptr_t>(ret);
+        if (cache_icon_from_img(nm, img)) ++harvested;
+    }
+    if (names_menu || harvested)
+        spdlog::info("[ENUM-WALK] §8 movie={:#x} count={} MENU_ItemIcon_names={} harvested_new={}",
+                     movie, count, names_menu, harvested);
 }
 } // namespace
 
