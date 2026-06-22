@@ -1978,11 +1978,84 @@ void goblin::verify_equip_iconids()
     }
 }
 
+// Self-calibrating iconId-offset finder (RE §3, windows_live_paramdef_offset_re_findings).
+// For each EquipParam, scan every u16 column across all rows and rank the offsets whose
+// distribution looks like an iconId (many distinct, plausible range, ideally containing a
+// known anchor). Zero offline / zero hardcoded offset / survives ER patches + mod swaps.
+// Anchors: Weapon row 1000 (Dagger) = iconId 100; the live-captured inventory iconIds
+// {40144,40147,40172} ([ICONMAP]) tag whichever param actually owns those items.
+static void self_calibrate_iconid()
+{
+    if (!goblin::config::dumpIconTextures)
+        return;
+    struct P { const wchar_t *name; const char *tag; int known_off; };
+    static const P params[] = {
+        {L"EquipParamWeapon", "Weapon", 0xC0},
+        {L"EquipParamProtector", "Protector", -1},
+        {L"EquipParamAccessory", "Accessory", -1},
+        {L"EquipParamGoods", "Goods", -1},
+        {L"EquipParamGem", "Gem", -1},
+    };
+    static const uint16_t anchors[] = {40144, 40147, 40172};
+    for (const P &p : params)
+    {
+        try
+        {
+            std::vector<uintptr_t> bases;
+            for (auto row : from::params::get_param<uint8_t>(p.name))
+                bases.push_back(reinterpret_cast<uintptr_t>(&row.second));
+            if (bases.size() < 2)
+            {
+                spdlog::info("[CALIB] {} too few rows", p.tag);
+                continue;
+            }
+            uintptr_t stride = bases[1] - bases[0];
+            if (stride < 4 || stride > 0x2000)
+            {
+                spdlog::info("[CALIB] {} non-contiguous rows (stride={:#x}) — skip", p.tag, stride);
+                continue;
+            }
+            int N = static_cast<int>(bases.size());
+            struct Cand { int off, distinct, validPct; uint16_t mn, mx; bool anchor; };
+            std::vector<Cand> cands;
+            for (uintptr_t off = 0; off + 2 <= stride; ++off)
+            {
+                std::set<uint16_t> seen;
+                int valid = 0; uint16_t mn = 0xffff, mx = 0; bool anc = false;
+                for (uintptr_t b : bases)
+                {
+                    uint16_t v = *reinterpret_cast<uint16_t *>(b + off);
+                    if (v >= 1 && v <= 65534) { ++valid; if (v < mn) mn = v; if (v > mx) mx = v; seen.insert(v); }
+                    for (uint16_t a : anchors) if (v == a) anc = true;
+                }
+                int distinct = static_cast<int>(seen.size());
+                if (distinct < 8 || mx > 60000) continue;       // iconId: varied + bounded
+                cands.push_back({(int)off, distinct, valid * 100 / N, mn, mx, anc});
+            }
+            std::sort(cands.begin(), cands.end(), [](const Cand &a, const Cand &b) {
+                if (a.anchor != b.anchor) return a.anchor;       // a captured iconId here = strong
+                return a.distinct > b.distinct;                   // else most-varied column wins
+            });
+            spdlog::info("[CALIB] {} N={} stride={:#x} knownOff=0x{:x} — top offset candidates:",
+                         p.tag, N, stride, p.known_off);
+            for (int i = 0; i < (int)cands.size() && i < 6; ++i)
+            {
+                const Cand &c = cands[i];
+                spdlog::info("[CALIB]   off=0x{:x} distinct={} valid={}% range[{},{}]{}{}",
+                             c.off, c.distinct, c.validPct, c.mn, c.mx,
+                             c.anchor ? " <ANCHOR>" : "", c.off == p.known_off ? " <KNOWN>" : "");
+            }
+        }
+        catch (...) { spdlog::info("[CALIB] {} not loaded", p.tag); }
+    }
+}
+
 void goblin::install_icon_texture_probe()
 {
     if (!goblin::config::dumpIconTextures)
         return;
     goblin::verify_equip_iconids();
+    self_calibrate_iconid();
     void *fn = modutils::scan<void>({.aob = goblin::sig::WORLDMAP_CREATE_IMAGE});
     if (!fn)
     {
