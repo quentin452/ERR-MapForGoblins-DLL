@@ -36,7 +36,6 @@ namespace
 constexpr float kViewDelayFrames = 1.0f;
 
 goblin::projection::ViewDelay<> g_view_delay;
-float g_centroidX = 0.f, g_centroidZ = 0.f; // open-group world centroid (DLC-UG pivot)
 
 // Probe LiveView → the pure projection View (keeps goblin_projection.hpp probe-free).
 goblin::projection::View to_proj_view(const goblin::worldmap_probe::LiveView &v)
@@ -47,21 +46,6 @@ goblin::projection::View to_proj_view(const goblin::worldmap_probe::LiveView &v)
     return pv;
 }
 
-// DLC UNDERGROUND (group 3, areas 40-43) world→map-space. Its page-10 converter was
-// never dumped, so this stays the user's hand-tuned eyeball fit, baked: a swap@1.0
-// frame (renderX≈worldZ, renderZ≈worldX) rotated −90° about the group centroid, placed
-// at the render centre + a fixed pan. Approximate / unverified (the other three pages
-// use the EXACT converter); precise per-page bake is in the backlog.
-void dlc_ug_eyeball(float wx, float wz, float &gU, float &gV)
-{
-    constexpr float RC = 5248.f; // render-space centre (10496/2)
-    constexpr float rot_deg = -90.f, panX = -2170.f, panZ = 850.f;
-    const float dx = wx - g_centroidX, dz = wz - g_centroidZ;
-    float u0 = dz, v0 = dx; // M = swap@1.0 (a=0,b=1,c=1,d=0)
-    const float rr = rot_deg * 3.14159265f / 180.f, cs = cosf(rr), sn = sinf(rr);
-    gU = (u0 * cs - v0 * sn) + RC + panX;
-    gV = (u0 * sn + v0 * cs) + RC + panZ;
-}
 
 // Marker/glyph base sizes at 1920×1080; scaled by realH/1080 at draw time so they
 // track the native GFx icons (which scale with the canvas) instead of looking
@@ -186,23 +170,16 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, f
 }
 
 // Unified world coords → map-space (the frame project_screen expects).
-void world_to_mapspace_xy(float worldX, float worldZ, bool dlc_ug, float &gU, float &gV)
+void world_to_mapspace_xy(float worldX, float worldZ, float &gU, float &gV)
 {
-    if (!dlc_ug)
-    {
-        // EXACT world→map-space (agent RE 0a30738): origin (7168,16384), bias 128,
-        // scale 1.0, Z-flipped: mapX = worldX − 7040 ; mapZ = −worldZ + 16512.
-        gU = worldX - 7040.0f;
-        gV = -worldZ + 16512.0f;
-    }
-    else
-    {
-        dlc_ug_eyeball(worldX, worldZ, gU, gV);
-    }
+    // EXACT world→map-space (agent RE 0a30738): origin (7168,16384), bias 128,
+    // scale 1.0, Z-flipped: mapX = worldX − 7040 ; mapZ = −worldZ + 16512.
+    gU = worldX - 7040.0f;
+    gV = -worldZ + 16512.0f;
 }
-inline void world_to_mapspace(const Marker &m, bool dlc_ug, float &gU, float &gV)
+inline void world_to_mapspace(const Marker &m, float &gU, float &gV)
 {
-    world_to_mapspace_xy(m.worldX, m.worldZ, dlc_ug, gU, gV);
+    world_to_mapspace_xy(m.worldX, m.worldZ, gU, gV);
 }
 
 // Project a marker to map-space. With config::liveProjection, use the engine's OWN
@@ -211,7 +188,7 @@ inline void world_to_mapspace(const Marker &m, bool dlc_ug, float &gU, float &gV
 // (the converter affine is static, so it's valid across map reopens); retries until the
 // map is open + the VM resolves. Falls back to the baked affine until then / if the engine
 // doesn't place the area (e.g. m19 Chapel — no converter accepts it).
-inline void project_marker(const Marker &m, bool dlc_ug, float &gU, float &gV)
+inline void project_marker(const Marker &m, float &gU, float &gV)
 {
     if (goblin::config::liveProjection && m.raw_area >= 0)
     {
@@ -226,11 +203,10 @@ inline void project_marker(const Marker &m, bool dlc_ug, float &gU, float &gV)
                 m.live_v = v;
                 m.live_page = pg;
                 m.live_state = 1;
-                // Validate the LIVE-derived group vs the baked m.group — the last check
-                // before dropping marker_group_from + the baked fold. group =
-                // (page==10?DLC:0) | ((area==12 || 40<=area<=43)?UG:0).
-                int live_grp = (pg == 10 ? 2 : 0) |
-                               ((m.raw_area == 12 || (m.raw_area >= 40 && m.raw_area <= 43)) ? 1 : 0);
+                // Validate the LIVE-derived group vs the baked m.group. group =
+                // (page==10?DLC:0) | (area==12?UG:0) — DLC areas 40-43 are plain DLC
+                // (no separate underground page), matching marker_group_from.
+                int live_grp = (pg == 10 ? 2 : 0) | (m.raw_area == 12 ? 1 : 0);
                 if (live_grp != m.group)
                 {
                     static int n = 0;
@@ -248,7 +224,7 @@ inline void project_marker(const Marker &m, bool dlc_ug, float &gU, float &gV)
             return;
         }
     }
-    world_to_mapspace(m, dlc_ug, gU, gV);
+    world_to_mapspace(m, gU, gV);
 }
 
 // Project a NON-marker point (grace-anchor pile, region label) to map-space. With
@@ -257,7 +233,7 @@ inline void project_marker(const Marker &m, bool dlc_ug, float &gU, float &gV)
 // back to grid+pos; else the baked affine on the already-folded world coords. No cache
 // (these are few per frame). area < 0 → baked.
 inline void project_raw(int area, float rawX, float rawZ, float bakedWX, float bakedWZ,
-                        bool dlc_ug, float &gU, float &gV)
+                        float &gU, float &gV)
 {
     if (goblin::config::liveProjection && area >= 0)
     {
@@ -267,7 +243,7 @@ inline void project_raw(int area, float rawX, float rawZ, float bakedWX, float b
                                             rawZ - gz * 256.0f, gU, gV, pg))
             return;
     }
-    world_to_mapspace_xy(bakedWX, bakedWZ, dlc_ug, gU, gV);
+    world_to_mapspace_xy(bakedWX, bakedWZ, gU, gV);
 }
 
 // A projected marker awaiting the clustering decision.
@@ -348,7 +324,7 @@ void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n, float r, bool depleted)
 // piles/markers are culled. realW/realH = backbuffer size for the cull.
 void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int threshold,
                    ImTextureID atlas, float realW, float realH,
-                   const goblin::projection::View &view, bool dlc_ug, bool dist_eligible,
+                   const goblin::projection::View &view, bool dist_eligible,
                    float iconHalf, float glyphR, ImVec2 mouse, Hover &hover)
 {
     namespace proj = goblin::projection;
@@ -391,12 +367,12 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     if (dbg_radius)
     {
         float gU, gV;
-        world_to_mapspace_xy(pwx, pwz, dlc_ug, gU, gV);
+        world_to_mapspace_xy(pwx, pwz, gU, gV);
         proj::Px pp = proj::project_screen(gU, gV, view, realW, realH);
         const ImVec2 ppx(pp.x, pp.y);
         auto ring_px = [&](float r) {
             float u, v;
-            world_to_mapspace_xy(pwx + r, pwz, dlc_ug, u, v);
+            world_to_mapspace_xy(pwx + r, pwz, u, v);
             proj::Px e = proj::project_screen(u, v, view, realW, realH);
             return std::fabs(e.x - pp.x);
         };
@@ -458,7 +434,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
             float gU, gV;
             int ra = -1; float rx = 0, rz = 0;
             bool raw_ok = goblin::grace_anchor_raw(kv.first, ra, rx, rz);
-            project_raw(raw_ok ? ra : -1, rx, rz, gwx, gwz, dlc_ug, gU, gV);
+            project_raw(raw_ok ? ra : -1, rx, rz, gwx, gwz, gU, gV);
             proj::Px gp = proj::project_screen(gU, gV, view, realW, realH);
             c = ImVec2(gp.x, gp.y);
         }
@@ -585,7 +561,7 @@ bool region_in_group(uint8_t area, int open_grp)
 // Draw the coarse major-region names (Limgrave, Caelid, ...) on the open page, beneath
 // the markers. Each anchor's world centre projects exactly like a marker; the label is
 // drawn large + shadowed, centred on the anchor. Off-screen labels are culled.
-void draw_region_labels(ImDrawList *fg, int open_grp, bool dlc_ug,
+void draw_region_labels(ImDrawList *fg, int open_grp,
                         const goblin::projection::View &view, float realW, float realH,
                         float uiScale)
 {
@@ -608,7 +584,7 @@ void draw_region_labels(ImDrawList *fg, int open_grp, bool dlc_ug,
         if (goblin::marker_group_from(a.area, ga) != open_grp)
             continue;
         float gU, gV;
-        project_raw(a.area, a.gx * 256.0f + a.px, a.gz * 256.0f + a.pz, wx, wz, dlc_ug, gU, gV);
+        project_raw(a.area, a.gx * 256.0f + a.px, a.gz * 256.0f + a.pz, wx, wz, gU, gV);
         proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
         if (p.x < -64 || p.y < -32 || p.x > realW + 64 || p.y > realH + 32)
             continue;
@@ -668,25 +644,11 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     g_view_delay.apply(view, kViewDelayFrames);
 
     // Which group's map is OPEN — from the SOLVED region getter (probe reads the
-    // WorldMapDialog page+layer): openDlc = DLC map, underground = layer byte.
-    const int open_grp = (lv.openDlc ? 2 : 0) | ((lv.underground != 0) ? 1 : 0);
-    const bool dlc_ug = (open_grp == 3);
-
-    // The DLC-UG eyeball rotates about the open group's world centroid. Compute it over
-    // every visible layer's markers (cheap; only needed for group 3).
-    if (dlc_ug)
-    {
-        double sx = 0, sz = 0;
-        int n = 0;
-        for (auto *L : layers)
-        {
-            if (!L || !L->visible())
-                continue;
-            for (const Marker &m : L->markers())
-                if (m.group == open_grp) { sx += m.worldX; sz += m.worldZ; ++n; }
-        }
-        if (n) { g_centroidX = (float)(sx / n); g_centroidZ = (float)(sz / n); }
-    }
+    // WorldMapDialog page+layer): openDlc = DLC map, underground = layer byte. The DLC
+    // page has NO underground sub-layer (areas 40-43 share the one DLC page), so on the
+    // DLC map we ignore the layer byte → DLC is always group 2. Base map keeps the
+    // overworld/underground toggle.
+    const int open_grp = lv.openDlc ? 2 : ((lv.underground != 0) ? 1 : 0);
 
     // Clustering = a live render pass: categories opted into clustering bin together
     // into ONE mixed pile per dense screen cell; everything else draws normally. Live
@@ -710,7 +672,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
 
     // Region names beneath the markers (major-region anchors for the open page).
     if (goblin::config::showRegionLabels)
-        draw_region_labels(fg, open_grp, dlc_ug, view, realW, realH, uiScale);
+        draw_region_labels(fg, open_grp, view, realW, realH, uiScale);
 
     // DEBUG (debug_region_volumes): draw every MapNameOverride region volume on the open
     // page at its projected centre + its name. RED = its textId does NOT resolve in the FMG
@@ -727,7 +689,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             if (goblin::marker_group_from(r.area, ga) != open_grp)
                 continue;
             float gU, gV;
-            world_to_mapspace_xy(wx, wz, dlc_ug, gU, gV);
+            world_to_mapspace_xy(wx, wz, gU, gV);
             proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
             if (p.x < -4 || p.y < -4 || p.x > realW + 4 || p.y > realH + 4)
                 continue;
@@ -809,7 +771,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             if (m.hide_when_flag && goblin::ui::read_event_flag((uint32_t)m.hide_when_flag))
                 continue;
             float gU, gV;
-            project_marker(m, dlc_ug, gU, gV);
+            project_marker(m, gU, gV);
             // Discovery gate: when require_map_fragments is on, hide a marker whose map
             // piece is still fogged — the engine's REAL fog-of-war reveal state
             // (WorldMapPieceParam, in-game-confirmed exact, no calibration needed). group
@@ -837,7 +799,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     }
 
     if (clustering && !clustered.empty())
-        draw_clusters(fg, clustered, threshold, atlas, realW, realH, view, dlc_ug,
+        draw_clusters(fg, clustered, threshold, atlas, realW, realH, view,
                       /*dist_eligible=*/true, iconHalf, glyphR, mouse, hover);
 
     // Tooltip for the hovered marker / pile (drawn last so it's on top).
@@ -910,9 +872,8 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             // Fog gate: hide markers on a still-fogged map piece (require_map_fragments).
             if (cfg::requireMapFragments)
             {
-                const bool dlc_ug = (m.group & 2) && (m.group & 1); // DLC underground = eyeball
                 float gU, gV;
-                world_to_mapspace(m, dlc_ug, gU, gV);
+                world_to_mapspace(m, gU, gV);
                 const int areaIdx = (m.group & 2) ? 10 : (m.group & 1);
                 if (goblin::marker_fogged(areaIdx, gU, gV))
                     continue;

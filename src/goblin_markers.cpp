@@ -16,6 +16,7 @@
 #include "modutils.hpp"
 #include "re_signatures.hpp"
 #include "goblin_legacy_conv.hpp"
+#include "goblin_legacy_fold.hpp"
 #include "goblin_map_data.hpp"
 
 #include <windows.h>
@@ -419,7 +420,22 @@ static bool entry_world_coords(const generated::MapEntry &e, float &wx, float &w
         wz = static_cast<float>(e.data.gridZNo) * 256.0f + e.data.posZ;
         return true;
     }
-    // Dungeon: lookup (srcArea, srcGridX) in conv table (takes first match).
+    // Dungeon: fold to the overworld via the LIVE WorldMapLegacyConvParam
+    // (full-block key + chained + [50,88] terminal). Falls back to the baked
+    // LEGACY_CONV when the param isn't resident yet.
+    {
+        auto fr = goblin::legacy_fold::fold(area, e.data.gridXNo, e.data.gridZNo,
+                                            e.data.posX, e.data.posZ);
+        if (fr.matched)
+        {
+            wx = static_cast<float>(fr.gx) * 256.0f + fr.posX;
+            wz = static_cast<float>(fr.gz) * 256.0f + fr.posZ;
+            return true;
+        }
+        if (goblin::legacy_fold::available())
+            return false;  // resident but unmappable
+    }
+    // BAKED fallback: lookup (srcArea, srcGridX) in conv table (takes first match).
     for (size_t i = 0; i < generated::LEGACY_CONV_COUNT; ++i)
     {
         const auto &c = generated::LEGACY_CONV[i];
