@@ -270,6 +270,35 @@ read the loaded sblytbnd layout at runtime for rects; OR bake rects offline + fo
 
 ---
 
+## 5c. The GFX BINDING — rects come from the sblytbnd, not the TPF (re_v111–v115)
+
+How loaded resources become findable `MENU_ItemIcon_<id>` repo entries WITH rects:
+
+1. **sblytbnd = the layout (rects + names), loaded per group.** `FUN_140d771d0(menuCtx, groupId)`
+   (`er+0xd771d0`) builds `menu:/<group>.sblytbnd` and loads via CSFile `FUN_1401f5a00`, storing the
+   handle at `menuCtx+0xd58+groupId*8`. The layout holds per-sprite **(name, rect[x0,y0,x1,y1],
+   sheet-ref)**. (The TPF atlas — loaded separately — is just the pixels.)
+2. **Per-sprite create:** `FUN_140d650b0(layoutObj, name, rect*, sheet, …)` (`er+0xd650b0`) creates a
+   `CS::CSTextureImage` via `FUN_140d68410` (`er+0xd68410`), which **writes the rect**:
+   `img+0x74=rect[0]  +0x78=rect[1]  +0x7c=rect[2]  +0x80=rect[3]`, sets the name (`img+0x40` region),
+   the sheet dims (`+0x2c/+0x6c`) and a flip flag. No-rect variant `FUN_140d68550`.
+3. **Insert into the image map by name:** `FUN_140d63060` / `FUN_140d62db0` (`er+0xd63060`/`0xd62db0`)
+   on a `std::map` at `obj+0x98` (end `obj+0xa0`) — same shape as the repo's `repo+0x80`; and
+   `FUN_140d68690`→`FUN_140d65cf0(repo=DAT_143d82510, …)` inserts into the global repo.
+4. **The parse loop** (function at `er+0xd66520`, body loop ending `0xd66519`; `this`=layoutObj in R13,
+   its map at R13+0x98 / end R13+0xa0) iterates the layout entries → create (2) + insert (3) per sprite.
+   This region was UNDEFINED in Ghidra (VMProtect/indirect) — disassembled in re_v115.
+
+**Key insight:** the per-icon **rects live in the `sblytbnd`**, and the binding parses it to build the
+repo entries. So a TPF-only force-load gives pixels without rects (the §5b wall); the runtime path to
+per-item icons WITHOUT the menu is: force-load the group **sblytbnd** (`menu:/<group>.sblytbnd`) +
+trigger this parse loop → repo gains `MENU_ItemIcon_<id>` with rects → harvest as usual.
+
+**Open (last piece):** does loading the sblytbnd AUTO-trigger the parse (then force-load alone
+suffices), or is the parse a separate call (find who calls `er+0xd66520` / the loop)?
+
+---
+
 ## 6. Handles
 - repo singleton `DAT_143d82510` `er+0x3D82510` (FD4Singleton); container map `repo+0x80`,
   `_Myhead` `repo+0x88`, `_Mysize` `repo+0x90`.
