@@ -247,12 +247,23 @@ but mod-robust because mods repackage the same-named BNDs:
 So force-load targets = the group BNDs (`menu:/01_Common.tpfbhd` etc.) via CSFile, OR a specific TPF
 inside a BND. The exact per-atlas TPF `<name>` lives in the group-BND TOC (read at runtime or offline).
 
-**Force-load CONFIRMED working (2026-06-22):** `[FORCELOAD] load(CSFile=0x21b001b47c0,
-'menu:/00_Solo.tpf') -> 0x21b14e4d780` — non-null handle, no crash. The lever is callable from the DLL.
-(00_Solo was already resident, so this proved the call; a non-resident-group test is next.)
+**Force-load CALL works, but is async + insufficient alone (2026-06-22).** Sweeping the group BNDs
+(`menu:/01_Common.tpfbhd`, `00_Solo`, `03_ChrMake`, `71_MapTile`, `02_Title`, …) each returned a
+**non-null handle, no crash** — BUT the handles are sequential same-heap allocations (`…f8a0 …f800
+…f6c0 …f580`, 0x80 apart) = the **0x98 async REQUEST object** the loader allocates immediately. So a
+non-null return does NOT prove the file loaded (it's the request, the load is async/queued). And
+`harvested` stayed 131→131 across all of them: **loading a TPF/BND yields the atlas bytes, NOT the
+per-icon repo entries (rects)** — those appear only when the gfx movie BINDS (menu init processes the
+sblytbnd layout). Confirmed live.
 
-**Open (next):** test force-loading a NON-resident group (e.g. `menu:/03_ChrMake.tpfbhd` outside
-char-creation) + confirm icons become resident; read the group-BND TOC for exact atlas TPF names.
+**Bottom line on the texture-manager lever:** callable from the DLL, but (a) success isn't observable
+from the return (async), and (b) a successful TPF/BND load still gives an atlas WITHOUT per-icon rects.
+Runtime force-load can stream the atlas; the rects must come from the gfx binding (fragile) OR offline
+`sblytbnd` (`extract_subtextures.py`). For the map's 63 WorldMapPoint pins (category design) no
+force-load is needed — they're in the world-map gfx, resident when the map is open.
+
+**Open (next, if pursuing per-item icons):** poll the request object's state to confirm load success;
+read the loaded sblytbnd layout at runtime for rects; OR bake rects offline + force-load atlas.
 
 **Test harness:** `goblin::force_load_file(path)` (dev, `dump_icon_textures`) calls
 `load(CSFile, path, 0, 0)` from a P2b-panel button — see `src/goblin_inject.cpp` / `goblin_overlay.cpp`.
