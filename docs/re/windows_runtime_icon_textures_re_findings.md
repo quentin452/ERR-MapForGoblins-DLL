@@ -19,7 +19,9 @@ GFx worldmap movie image  (built by CS::CSScaleformImageCreator from the importe
    └─ CS::CSTextureImage : Scaleform::Render::TextureImage      ← carries the SUB-RECT (#2)
         +0x38  ptr → CS::CSGxTexture (GXBS::IGXTexture)          ← the backing sheet
         +0x2c/+0x34 i32  full-sheet W/H
-        +0x74/+0x7c i32  rect x0/x1   ;  +0x3c/+0x40 i32 rect y0/y1   (px in the sheet)
+        +0x74/+0x78/+0x7c/+0x80 i32  rect x0/y0/x1/y1  (px in the sheet)
+        // CORRECTED 2026-06-22 by the live [ICONTEX] probe — was +0x3c/+0x40 for y (wrong).
+        // See windows_runtime_icon_textures_followup_re_findings.md §1.
    └─ CS::CSGxTexture  →  GXBS::GXTexture2D                      ← the concrete GPU texture (#1)
         +0x40  ptr → GXBS GPU-resource object → ID3D12Resource (desc at [+0x40]+0x20)
         +0x48  SRV / descriptor handle ;  +0x58 i32 format/flag
@@ -29,8 +31,9 @@ GFx worldmap movie image  (built by CS::CSScaleformImageCreator from the importe
 - **Unknown #1 (the resource + resolve chain)** → `GXBS::GXTexture2D` (vtable RVA `0x2f05928`),
   `ID3D12Resource` reached via `GXTexture2D+0x40` → GPU-resource → desc at `+0x20`. Reached from a
   worldmap icon image by `CSTextureImage+0x38` → `CSGxTexture` → its `GXTexture2D`.
-- **Unknown #2 (iconId→rect)** → the rect is on the `CSTextureImage` (`+0x74/+0x7c/+0x3c/+0x40`,
-  full dims `+0x2c/+0x34`). It is **not** a flat `iconId→rect` table; it's per-Scaleform-image. You
+- **Unknown #2 (iconId→rect)** → the rect is on the `CSTextureImage` (`+0x74/+0x78/+0x7c/+0x80` —
+  CORRECTED, live; full dims `+0x84/+0x88` & `+0x2c/+0x30`). It is **not** a flat `iconId→rect`
+  table; it's per-Scaleform-image. You
   bind it to an iconId at the image, via `CS::WorldMapPointPinData::GetIconId` + the item control
   (Scaleform side, VMP) — so the iconId↔image map is captured at runtime, §7.
 - **Readback** → `CopyTextureRegion` the sub-rect from the engine's `ID3D12Resource` into our own
