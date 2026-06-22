@@ -126,6 +126,10 @@ inline bool redify_boss(const Marker &m)
 // markers draw with it instead of the circle/native hybrid. Render-thread only.
 ImTextureID s_grace_tex = nullptr;
 ImVec2 s_grace_uv0{}, s_grace_uv1{};
+// ERR dungeon-style grace (MENU_MAP_ERR_GraceUnderground). Valid only when ERR is installed; used for
+// DUNGEON graces (m.dungeon) in place of the vanilla bonfire. null → dungeon graces use s_grace_tex.
+ImTextureID s_grace_dgn_tex = nullptr;
+ImVec2 s_grace_dgn_uv0{}, s_grace_dgn_uv1{};
 
 // Draw one marker at backbuffer px p: the atlas icon if available, else a circle.
 // half = icon half-size in px (resolution-scaled by the caller). When collected_graying
@@ -143,8 +147,13 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, f
         ImU32 t = disc ? IM_COL32(255, 255, 255, 255) : IM_COL32(140, 140, 150, 205);
         if (goblin::config::graceGpuSprite && s_grace_tex)
         {
-            fg->AddImage(s_grace_tex, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
-                         s_grace_uv0, s_grace_uv1, t);
+            // Dungeon graces use the ERR dungeon-style icon when available (ERR installed); else the
+            // vanilla bonfire. graceIconScale calibrates the grace size against the map.
+            ImTextureID gt = (m.dungeon && s_grace_dgn_tex) ? s_grace_dgn_tex : s_grace_tex;
+            ImVec2 u0 = (m.dungeon && s_grace_dgn_tex) ? s_grace_dgn_uv0 : s_grace_uv0;
+            ImVec2 u1 = (m.dungeon && s_grace_dgn_tex) ? s_grace_dgn_uv1 : s_grace_uv1;
+            float gh = half * goblin::config::graceIconScale;
+            fg->AddImage(gt, ImVec2(p.x - gh, p.y - gh), ImVec2(p.x + gh, p.y + gh), u0, u1, t);
             return;
         }
         ImVec2 uv0, uv1;
@@ -666,6 +675,13 @@ void set_grace_sprite(void *tex, float u0, float v0, float u1, float v1)
     s_grace_tex = reinterpret_cast<ImTextureID>(tex);
     s_grace_uv0 = ImVec2(u0, v0);
     s_grace_uv1 = ImVec2(u1, v1);
+}
+
+void set_grace_dungeon_sprite(void *tex, float u0, float v0, float u1, float v1)
+{
+    s_grace_dgn_tex = reinterpret_cast<ImTextureID>(tex);
+    s_grace_dgn_uv0 = ImVec2(u0, v0);
+    s_grace_dgn_uv1 = ImVec2(u1, v1);
 }
 
 void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_texture, float mouseX,

@@ -1982,8 +1982,11 @@ uintptr_t g_icon_repo = 0;   // FUN_140d63c30 arg0 (repo) — stashed for the pr
 // by the SAME find hook when the open map draws a discovered grace → lets the overlay draw graces
 // itself (discovered = this sprite, undiscovered = grey-tinted) and become the sole grace source.
 goblin::ItemSprite g_grace_sprite{};
-bool g_grace_locked = false;   // true once the exact SB_ERR_Grace_Morning_Color is stored
-std::vector<goblin::GraceCandidate> g_grace_cands;   // all SB_ERR_Grace_* frames (dev F1 viewer)
+bool g_grace_locked = false;   // true once the canonical grace (MENU_MAP_01_Bonfire) is stored
+std::vector<goblin::GraceCandidate> g_grace_cands;   // all grace candidates (dev F1 viewer)
+// ERR dungeon-style grace (MENU_MAP_ERR_GraceUnderground). Valid iff ERR is installed (the sprite
+// exists in the worldmap gfx). The renderer uses it for DUNGEON graces in place of the vanilla bonfire.
+goblin::ItemSprite g_grace_dungeon_sprite{};
 
 // Read a resolved CSTextureImage (`img` = the find fn's `out`) and cache its sub-rect + backing
 // sheet resource + DXGI_FORMAT under the iconId parsed from a MENU_ItemIcon_<id> name. Shared by
@@ -2789,6 +2792,16 @@ std::vector<goblin::GraceCandidate> goblin::grace_candidates()
     return g_grace_cands;
 }
 
+// The ERR dungeon-style grace sprite (MENU_MAP_ERR_GraceUnderground). False until captured / if ERR
+// isn't installed (sprite absent) → renderer falls back to the vanilla grace for dungeon graces too.
+bool goblin::harvested_grace_dungeon(ItemSprite &out)
+{
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    if (!g_grace_dungeon_sprite.valid) return false;
+    out = g_grace_dungeon_sprite;
+    return true;
+}
+
 // DEV (F1 grace-debug): set the active grace sprite from a captured candidate by index, so the
 // overlay can test which name maps to the correct grace. Also locks it so the auto-capture won't
 // override. Returns false on a bad index. The overlay must then force_rebuild_grace() to re-copy.
@@ -2960,7 +2973,9 @@ void goblin::dump_icon_textures_live()
             // SB_ERR_Grace_*_Color is the native time-tinted pin (wrong). Lock on the canonical; an
             // SB_ERR_Grace _Color frame is kept only as an overridable fallback. (MENU_MAP_ sprites have
             // no time-of-day variants, so they're always "lit".)
-            // Canonical = the REAL vanilla grace icon MENU_MAP_01_Bonfire (bonfire = grace internally).
+            // Canonical (default) grace = the vanilla icon MENU_MAP_01_Bonfire (bonfire = grace). The
+            // ERR dungeon-style grace MENU_MAP_ERR_GraceUnderground is captured separately (below) and
+            // used for dungeon graces when ERR is installed. GOBLIN_Grace/SB_ERR_Grace = F1 candidates.
             bool canon = it.name.rfind("MENU_MAP_01_Bonfire", 0) == 0;
             bool is_grace = canon || it.name.rfind("MENU_MAP_GOBLIN_Grace", 0) == 0 ||
                             it.name.rfind("SB_ERR_Grace", 0) == 0;
@@ -2995,7 +3010,22 @@ void goblin::dump_icon_textures_live()
                 if (canon) g_grace_locked = true;   // canonical wins + locks; fallback stays overridable
                 spdlog::info("[GRACE-SPRITE] '{}' rect=({},{})-({},{}) {}x{} res={:#x} fmt={} ({})",
                              it.name, it.x0, it.y0, it.x1, it.y1, gw, gh, res, gfmt,
-                             canon ? "LOCKED canonical MENU_MAP_GOBLIN_Grace" : "fallback (awaiting canonical)");
+                             canon ? "LOCKED canonical MENU_MAP_01_Bonfire" : "fallback (awaiting canonical)");
+            }
+            // ERR dungeon-style grace — captured separately; its presence = ERR installed. The renderer
+            // uses it for dungeon graces. Store once (it doesn't change).
+            if (it.name.rfind("MENU_MAP_ERR_GraceUnderground", 0) == 0 && rect_ok &&
+                !g_grace_dungeon_sprite.valid)
+            {
+                g_grace_dungeon_sprite.sheet = reinterpret_cast<void *>(res);
+                g_grace_dungeon_sprite.x0 = it.x0; g_grace_dungeon_sprite.y0 = it.y0;
+                g_grace_dungeon_sprite.x1 = it.x1; g_grace_dungeon_sprite.y1 = it.y1;
+                g_grace_dungeon_sprite.sheetW = static_cast<unsigned long long>(rw);
+                g_grace_dungeon_sprite.sheetH = static_cast<unsigned>(rh);
+                g_grace_dungeon_sprite.format = static_cast<unsigned>(gfmt);
+                g_grace_dungeon_sprite.valid = true;
+                spdlog::info("[GRACE-SPRITE] DUNGEON (ERR) '{}' rect=({},{})-({},{}) res={:#x} stored",
+                             it.name, it.x0, it.y0, it.x1, it.y1, res);
             }
         }
         // Track unique sheet resources (icons on one sheet share a resource).

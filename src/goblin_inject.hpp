@@ -318,6 +318,10 @@ namespace goblin
     // graces itself (discovered = this sprite, undiscovered = grey-tinted).
     bool harvested_grace(ItemSprite &out);
 
+    // The ERR dungeon-style grace sprite (MENU_MAP_ERR_GraceUnderground). False until captured / if
+    // ERR isn't installed. The overlay uses it for DUNGEON graces in place of the vanilla bonfire.
+    bool harvested_grace_dungeon(ItemSprite &out);
+
     // All SB_ERR_Grace_* sprite frames seen on the sheet (dev debug — the F1 grace viewer draws each
     // so we can visually pick the correct grace rect). spr carries sheet/rect/dims/format.
     struct GraceCandidate { ItemSprite spr; std::string name; };
