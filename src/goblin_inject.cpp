@@ -2021,6 +2021,18 @@ void *__fastcall find_detour(void *repo, void **out, const wchar_t *key)
                 icon_rpm_ptr(img + 0x10, rtex);
                 if (rtex > 0x10000) icon_rpm_ptr(rtex + 0x70, res);
                 spdlog::info("[ENUM2] '{}' img={:#x} rect=({},{})-({},{}) res={:#x}", nm, img, x0, y0, x1, y1, res);
+                // P2b: one-time dump of the sheet resource's first 0x60 bytes (i32) to LOCATE the
+                // DXGI_FORMAT field (a small int near W@0x20/H@0x28; e.g. 71=BC1,77=BC3,98=BC7,87=BGRA8).
+                static bool fmt_dumped = false;
+                if (!fmt_dumped && res > 0x10000)
+                {
+                    fmt_dumped = true;
+                    for (int o = 0; o < 0x60; o += 4)
+                    {
+                        int fv = 0; icon_rpm_i32(res + o, fv);
+                        spdlog::info("[ENUM2-FMT] res+0x{:02x} = {} (0x{:x})", o, fv, static_cast<unsigned>(fv));
+                    }
+                }
             }
         }
     }
