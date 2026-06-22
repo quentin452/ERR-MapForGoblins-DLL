@@ -165,16 +165,44 @@ read-only, no `__try` needed (pointer-guarded reads only).
 
 ---
 
-## 5. Secondary — force-load (still a lead, not solved)
+## 5. Secondary — force-load (INVESTIGATED re_v98–v100; NO clean runtime lever)
 
-The walk is resident-only. To cover items the player never browses, the sheet must be made resident
-first. The not-found branch of the twin (`FUN_140d63e50`) shows the **create/insert** path
-(`FUN_140d5fee0` build-node → `FUN_140d60d00`/`FUN_140d622f0` insert into the `repo+0xb0` map), i.e.
-the in-repo registration — NOT a TPF sheet loader. A genuine force-load is the higher-level FD4
-resource-load-by-name (load the `MENU_ItemIcon_<sheet>` gfx/TPF), which still needs the FD4 load entry
-+ likely a live `GFxMovieView` (matches sprite-findings §3, `CSScaleformImageCreator::CreateImage`
-`FUN_140d6bbc0`). Left as future RE — resident-only + browse-to-fill + baked PNG fallback is already
-shippable.
+The walk is resident-only — it yields only the icons whose atlas the current menu loaded ("TOUT du
+menu, pas TOUT du jeu"). To cover un-browsed items the atlas TPF must be made resident first. The
+full load path was reversed; the verdict is that **a safe, context-free force-load does not exist**:
+
+- **The find/widget never loads.** The icon widget `FUN_14074bcc0` does per-icon find
+  (`FUN_140d63e50`, the `repo+0xb0` map) → on miss the sheet-key find → on miss it simply **draws
+  nothing**. No load is triggered by lookup.
+- **`CSScaleformImageCreator::CreateImage` `FUN_140d6bbc0`** builds an FD4 filepath from the symbol
+  (`FUN_140d6ba60` + format `DAT_142a91a00`) and calls the repo loader `FUN_140d64490`, but that only
+  creates a per-symbol image **VIEW** (the `<symbol>_ptl` descriptor, `L"%s_ptl"`) into an atlas that
+  must ALREADY be resident — it does not stream the atlas TPF. And CreateImage is a GFx image-creator
+  **callback** (no static callers); calling it needs the live Scaleform/`GFxMovieView` context.
+- **The atlas TPFs are streamed by the menu resource orchestrator `FUN_140d790a0`** (3044 B; it builds
+  the path via `FUN_140d7bb10` — `menu:/%s%s.tpf`, `menutpfbnd:/00_Solo/%s.tpf`, `…/71_MapTile/…`
+  selected by movie-name prefix — then drives the FD4 task/streaming system). Driving it from our DLL
+  means supplying a menu/movie instance + the task system on the right thread → fragile, high crash
+  risk (matches sprite-findings §3).
+- **`"RequestReloadMenuTexture"`** (`0x2bd6b60`) looked promising but is referenced **only** by a
+  command-name data table (`0x3b3fee8`) with **no statically-reachable handler** (VMProtect'd /
+  data-driven) — not callable.
+- Even if the atlas TPF were force-streamed, the repo only gains `MENU_ItemIcon_<id>` `CSTextureImage`
+  entries once **GFx binds the movie** (menu init processes the `sblytbnd` layout). So populating the
+  repo for un-browsed items effectively requires re-running menu init — not a bounded, safe call.
+
+- **The orchestrator is a per-frame TICK, not a by-name entry** (re_v101). `FUN_140d790a0` is ticked
+  by `FUN_140d724c0`/`FUN_140d78060` (the CSMenuResourceManager update) and drains a **load queue**
+  (`manager+0x1df0`/`+0x1e08`) fed by menu-open requests — for each queued movie it calls our known
+  find (`FUN_140d7c940`) + enumerate (`FUN_140d69640`). So a force-load = locating the live manager
+  singleton AND constructing valid movie-load requests AND letting the FD4 task system drain them on
+  the right thread — i.e. re-implementing menu loading. No bounded by-name call exists.
+
+**Conclusion / recommendation.** Runtime full-coverage is not safely achievable without re-driving
+menu/GFx init. The robust path to 100% coverage is **offline extraction** (`tools/extract_subtextures.py`
+already crops sub-textures from the `sblytbnd.dcx` layout + DDS atlases, vanilla AND ERR) → a baked
+per-iconId atlas, with the §8b runtime repo-walk kept as the live/mod-freshness override. Handles for a
+future attempt are preserved above should a cleaner streaming entry surface.
 
 ---
 

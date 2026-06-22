@@ -1986,6 +1986,7 @@ enum_fn g_enum_orig = nullptr;
 uintptr_t g_inv_movie = 0;
 
 void harvest_resident_icons(uintptr_t movie);   // §8 walk-all (defined after find_detour/g_find_orig)
+void harvest_repo_icons();                       // §8b repo-tree walk-all (RE-validated, see below)
 
 void *__fastcall enum_detour(void *movie, void *a1, void *a2, void *a3)
 {
@@ -2088,6 +2089,10 @@ void *__fastcall find_detour(void *repo, void **out, const wchar_t *key)
             }
         }
     }
+    // §8b: proactively harvest ALL resident icons from the repo tree (cheap: no-ops unless the
+    // resident image count grew). Runs here because find_detour fires constantly while a menu is
+    // open. Uses node+0x50 directly (no re-resolve), so it never re-enters g_find_orig.
+    harvest_repo_icons();
     return ret;
 }
 
@@ -2154,6 +2159,87 @@ void harvest_resident_icons(uintptr_t movie)
     if (names_menu || harvested)
         spdlog::info("[ENUM-WALK] §8 movie={:#x} count={} MENU_ItemIcon_names={} harvested_new={}",
                      movie, count, names_menu, harvested);
+}
+
+// §8b PROACTIVE repo-walk harvest — SOLVED + validated live (163 icons / 938 images, 2026-06-22).
+// See docs/re/windows_resident_icon_enumeration_re_findings.md. Walk the FD4 image-repo's by-name
+// std::map (a red-black tree) directly and cache EVERY resident MENU_ItemIcon_* in one pass —
+// movie-independent (the §8 movie-walk only saw load-screen movies on this build), reading the
+// CSTextureImage* straight from node+0x50 (NO find-by-name re-resolve, so the §5 non-resident crash
+// can't occur). Read-only RPM, runs on the engine thread from find_detour; reprocesses only when the
+// resident image count (_Mysize) grows, so the steady-state cost is two RPM reads + a compare.
+//   repo    = *(er+0x3d82510)  (DAT_143d82510; fallback to g_icon_repo stashed by find_detour)
+//   _Myhead = *(repo+0x88) ; root = *(_Myhead+0x08) ; _Mysize = *(repo+0x90)
+//   node: _Left+0x00 _Parent+0x08 _Right+0x10 _Isnil(u8)+0x19 ; key DLWString+0x28 (len+0x38,cap+0x40)
+//         value = CS::CSTextureImage* @ node+0x50
+void harvest_repo_icons()
+{
+    if (!goblin::config::dumpIconTextures) return;
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!er) return;
+
+    uintptr_t repo = 0; icon_rpm_ptr(er + 0x3d82510, repo);  // the canonical static anchor
+    if (repo < 0x10000) repo = g_icon_repo;                  // fallback: arg0 stashed by find_detour
+    if (repo < 0x10000) return;
+
+    uintptr_t head = 0; icon_rpm_ptr(repo + 0x88, head);     // _Myhead (nil sentinel == end())
+    if (head < 0x10000) return;
+    int size = 0; icon_rpm_i32(repo + 0x90, size);           // _Mysize (count of ALL resident images)
+
+    // Dedup: only walk when the resident image count grows (or on the first call). enum/find fire
+    // constantly; an unchanged tree must not be re-walked every frame.
+    static int s_last_size = -1;
+    if (size <= s_last_size) return;
+    s_last_size = size;
+
+    uintptr_t root = 0; icon_rpm_ptr(head + 0x08, root);     // _Myhead._Parent
+    if (root < 0x10000) return;
+
+    // Stack DFS over _Left/_Right, skipping nil sentinels (_Isnil@+0x19 != 0). Tree height is
+    // O(log n) so the frontier stays small; the vector grows if a build ever holds a huge repo.
+    std::vector<uintptr_t> stack; stack.reserve(64); stack.push_back(root);
+    int walked = 0, harvested = 0;
+    while (!stack.empty())
+    {
+        if (walked > 200000) break;                          // runaway guard
+        uintptr_t n = stack.back(); stack.pop_back();
+        if (n < 0x10000) continue;
+        uint8_t isnil = 1; SIZE_T got = 0;
+        ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(n + 0x19), &isnil, 1, &got);
+        if (got != 1 || isnil) continue;
+        ++walked;
+
+        uintptr_t cap = 0; icon_rpm_ptr(n + 0x40, cap);      // key DLWString capacity (heap iff >= 8)
+        uintptr_t namep = (cap >= 8) ? 0 : (n + 0x28);
+        if (cap >= 8) icon_rpm_ptr(n + 0x28, namep);
+        if (namep >= 0x1000)
+        {
+            wchar_t wbuf[80] = {0}; SIZE_T g2 = 0;
+            ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(namep), wbuf,
+                              sizeof(wbuf) - sizeof(wchar_t), &g2);
+            char nm[80]; int k = 0;
+            for (; k < 79 && wbuf[k]; ++k) nm[k] = (wbuf[k] < 128) ? static_cast<char>(wbuf[k]) : '?';
+            nm[k] = 0;
+            if (std::strncmp(nm, "MENU_ItemIcon_", 14) == 0)
+            {
+                int iconId = std::atoi(nm + 14);
+                bool have;
+                { std::lock_guard<std::mutex> lk(g_harvest_mtx); have = g_harvest.count(iconId) != 0; }
+                if (!have)
+                {
+                    uintptr_t img = 0; icon_rpm_ptr(n + 0x50, img);   // value = CSTextureImage* (direct)
+                    if (cache_icon_from_img(nm, img)) ++harvested;
+                }
+            }
+        }
+
+        uintptr_t l = 0, r = 0;
+        icon_rpm_ptr(n + 0x00, l); icon_rpm_ptr(n + 0x10, r);
+        if (l >= 0x10000) stack.push_back(l);
+        if (r >= 0x10000) stack.push_back(r);
+    }
+    if (harvested)
+        spdlog::info("[REPO-WALK] §8b images={} walked={} harvested_new={}", size, walked, harvested);
 }
 } // namespace
 
