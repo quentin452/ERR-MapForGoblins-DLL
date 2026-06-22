@@ -276,6 +276,11 @@ namespace goblin
     };
     ItemSprite resolve_item_sprite(int iconId);
 
+    // Look up an item icon HARVESTED live by the find-hook (resident menu icons; their sheet
+    // resource + sub-rect + DXGI_FORMAT). Thread-safe (engine thread writes, render thread reads).
+    // Returns false if that iconId hasn't been seen/loaded yet → caller falls back to the baked PNG.
+    bool harvested_icon(int iconId, ItemSprite &out);
+
     // Dev runtime-confirm (sprite findings §6): call the engine's draw-free icon
     // find-by-name FUN_140d63c30(repo, &out, L"MENU_ItemIcon_<id>") for a set of iconIds and
     // log whether each resolves to a CSTextureImage+rect WITHOUT the icon being drawn. Press

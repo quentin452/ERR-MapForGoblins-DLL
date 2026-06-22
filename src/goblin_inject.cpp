@@ -1998,6 +1998,12 @@ void *__fastcall enum_detour(void *movie, void *a1, void *a2, void *a3)
 using find_fn2 = void *(__fastcall *)(void *, void **, const wchar_t *);
 find_fn2 g_find_orig = nullptr;
 
+// Harvested icon cache: iconId → {sheet ID3D12Resource, sub-rect, format}. Engine thread (find
+// hook) writes; render thread (overlay) reads → mutex. The render thread CopyTextureRegions from
+// these into our own SRV atlas.
+std::mutex g_harvest_mtx;
+std::unordered_map<int, goblin::ItemSprite> g_harvest;
+
 void *__fastcall find_detour(void *repo, void **out, const wchar_t *key)
 {
     void *ret = g_find_orig(repo, out, key);
@@ -2021,6 +2027,20 @@ void *__fastcall find_detour(void *repo, void **out, const wchar_t *key)
                 icon_rpm_ptr(img + 0x10, rtex);
                 if (rtex > 0x10000) icon_rpm_ptr(rtex + 0x70, res);
                 spdlog::info("[ENUM2] '{}' img={:#x} rect=({},{})-({},{}) res={:#x}", nm, img, x0, y0, x1, y1, res);
+                // Cache per-iconId for the overlay's CopyTextureRegion (only proper item icons:
+                // MENU_ItemIcon_<id>). format = vkd3d d3d12_resource internal field @ res+0x30.
+                if (res > 0x10000 && std::strncmp(nm, "MENU_ItemIcon_", 14) == 0)
+                {
+                    int iconId = std::atoi(nm + 14);
+                    int fmt = 0; icon_rpm_i32(res + 0x30, fmt);
+                    goblin::ItemSprite hs;
+                    hs.sheet = reinterpret_cast<void *>(res);
+                    hs.x0 = x0; hs.y0 = y0; hs.x1 = x1; hs.y1 = y1;
+                    hs.format = static_cast<unsigned>(fmt);
+                    hs.valid = true;
+                    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+                    g_harvest[iconId] = hs;
+                }
                 // P2b: one-time dump of the sheet resource's first 0x60 bytes (i32) to LOCATE the
                 // DXGI_FORMAT field (a small int near W@0x20/H@0x28; e.g. 71=BC1,77=BC3,98=BC7,87=BGRA8).
                 static bool fmt_dumped = false;
@@ -2239,6 +2259,15 @@ goblin::ItemSprite goblin::resolve_item_sprite(int iconId)
     s.valid = true;
     cache[iconId] = s;
     return s;
+}
+
+bool goblin::harvested_icon(int iconId, ItemSprite &out)
+{
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    auto it = g_harvest.find(iconId);
+    if (it == g_harvest.end()) return false;
+    out = it->second;
+    return true;
 }
 
 void goblin::probe_icon_find_runtime()
