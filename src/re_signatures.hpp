@@ -112,6 +112,16 @@ namespace goblin::sig
     // VM+0x280; page table at vtable+0x18 = 0x2ad82f8 = [00 01 0a]).
     inline constexpr uintptr_t WORLDMAP_VIEWMODEL_VTABLE_RVA = 0x2ad82e0;
 
+    // ── Runtime icon textures (read the engine's live worldmap icon sprites) ──
+    // RE: docs/re/windows_runtime_icon_textures_re_findings.md. CSScaleformImageCreator::
+    // CreateImage (FUN_140d6bbc0): builds each GFx image from the TPF import → a
+    // CS::CSTextureImage carrying the sprite RECT (+0x74/+0x7c/+0x3c/+0x40, dims +0x2c/+0x30)
+    // + backing GXTexture2D (+0x38 → +0x40 = ID3D12Resource). Hook it to capture the worldmap
+    // icon sheet + per-sprite rects, then map to iconIds. Unique in .text (static AOB check).
+    inline constexpr const char *WORLDMAP_CREATE_IMAGE =
+        "48 8B C4 55 48 8D 68 A1 48 81 EC E0 00 00 00 48 C7 45 A7 FE FF FF FF "
+        "48 89 58 08 48 89 78 10";
+
     // ── Kindling (grace/EcTest/WorldSfx) ──
     // EcTestDistance vftable (was RVA 0x2A5BB90).
     inline constexpr const char *EC_TEST_DISTANCE_VFT =
@@ -168,6 +178,7 @@ namespace goblin::sig
             {"WORLDMAP_PROJ_LOOP", WORLDMAP_PROJ_LOOP},
             {"WORLDMAP_CONV_BUILD", WORLDMAP_CONV_BUILD},
             {"WORLDMAP_LEGACY_FOLD", WORLDMAP_LEGACY_FOLD},
+            {"WORLDMAP_CREATE_IMAGE", WORLDMAP_CREATE_IMAGE},
             {"EC_TEST_DISTANCE_VFT", EC_TEST_DISTANCE_VFT},
             {"WORLD_SFX_MAN_SLOT", WORLD_SFX_MAN_SLOT},
             {"RENDER_REAPPLY_RES", RENDER_REAPPLY_RES},

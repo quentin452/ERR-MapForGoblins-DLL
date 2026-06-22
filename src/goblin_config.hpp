@@ -120,6 +120,11 @@ namespace goblin
         // back to baked when the map is closed / an area isn't placed by the game.
         extern bool liveProjection;
 
+        // Dev probe: hook CSScaleformImageCreator::CreateImage and log each worldmap
+        // icon image (sprite rect + backing GPU texture) to crack the iconId↔image
+        // mapping for runtime icon textures. See goblin_inject.cpp icon-texture probe.
+        extern bool dumpIconTextures;
+
         // Dev one-shot: find the live CS::WorldMapViewModel + dump its converter
         // array (VM+0xF8) — confirms the world->map-space projection RE before we
         // wire it. See goblin_worldmap_probe.cpp dump_converters_once.
