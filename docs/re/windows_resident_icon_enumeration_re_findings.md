@@ -455,9 +455,25 @@ gid via `FUN_140d77550`+`FUN_140d771d0` (handle cached at `mgr+0xd10/0xd58` — 
   re-renders the movie, it does not re-parse any sblytbnd into repo rects.
 - Loading files by gid (`FUN_140d77550`/`771d0`) likewise added nothing (loading ≠ binding, §5b).
 
+**LOAD-queue (`+0x1df0`) pass-1 = find-and-activate + keep-alive timer, NOT a bind (re_v121,
+`find_loadq.java`).** Tested quentin's "does the load queue bind itself?" hypothesis by decompiling the
+pass-1 apply + request state machine. The request (`req`) carries movies at `req+0x40→+0x90→+0x80[i]`
+and a FLOAT timer at `req+0x4c`: `FUN_140d69580` counts it down (`+0x4c -= dt`), `FUN_140d69630`
+done-at-`<=0`, `FUN_140d69910` resets to `1.0`. Pass-1 (1) **finds** each movie by key via
+`FUN_140d7c940` (= a pure repo FIND `FUN_140d63c30`, creates nothing), (2) **activates** each found one
+via `thunk_FUN_14112b7d0` → `(**(code**)*found)(found,1)` — a virtual call on the movie's vt[0], GFx
+region (`FUN_141140bb0` @0x1140bb0), and (3) holds it ~1.0s then drops. So the load queue is a movie
+keep-alive/activation mechanism, NOT the sblytbnd→repo bind. **Structural ceiling:** `FUN_140d7c940`
+only FINDS — if a movie isn't already resident the apply is skipped — so even a synthesized request
+could only re-activate ALREADY-present movies, never bring in new per-item rects.
+
 **CONCLUSION — runtime force-residency via the residency manager is exhausted and refuted at every
 accessible trigger:** (1) force-load files → atlas/sblytbnd bytes, no rects; (2) `+0x7c` group-apply →
-movie render, no rects; (3) `+0x1df0` request → same movie-apply machinery. The per-icon rect-binding
+movie render, no rects; (3) `+0x1df0` load queue → find-and-activate movies + keep-alive timer, no
+rects (and find-only ⇒ can't introduce new ones). The whole resource-manager subsystem manages
+**Scaleform MOVIE residency** at the GFx layer; browse-time repo growth comes from GFx BINDING a newly
+loaded movie at menu-init (which parses its sblytbnd provider, §5c) — a different layer. The per-icon
+rect-binding
 is ONLY the menu-init virtual apply on the `ShoeboxLayoutbndFileCap` (vtables 0x493c8f0/0x378bf40,
 §5c) — not reachable as a bounded call. **The robust 100%-coverage path is OFFLINE BAKE** (extend
 `tools/extract_subtextures.py`, which already parses the sblytbnd, to emit iconId→(atlas,rect)); keep
