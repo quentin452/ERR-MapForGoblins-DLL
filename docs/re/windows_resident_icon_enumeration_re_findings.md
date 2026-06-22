@@ -191,6 +191,13 @@ full load path was reversed; the verdict is that **a safe, context-free force-lo
   entries once **GFx binds the movie** (menu init processes the `sblytbnd` layout). So populating the
   repo for un-browsed items effectively requires re-running menu init — not a bounded, safe call.
 
+- **The orchestrator is a per-frame TICK, not a by-name entry** (re_v101). `FUN_140d790a0` is ticked
+  by `FUN_140d724c0`/`FUN_140d78060` (the CSMenuResourceManager update) and drains a **load queue**
+  (`manager+0x1df0`/`+0x1e08`) fed by menu-open requests — for each queued movie it calls our known
+  find (`FUN_140d7c940`) + enumerate (`FUN_140d69640`). So a force-load = locating the live manager
+  singleton AND constructing valid movie-load requests AND letting the FD4 task system drain them on
+  the right thread — i.e. re-implementing menu loading. No bounded by-name call exists.
+
 **Conclusion / recommendation.** Runtime full-coverage is not safely achievable without re-driving
 menu/GFx init. The robust path to 100% coverage is **offline extraction** (`tools/extract_subtextures.py`
 already crops sub-textures from the `sblytbnd.dcx` layout + DDS atlases, vanilla AND ERR) → a baked
