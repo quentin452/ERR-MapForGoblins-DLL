@@ -1712,6 +1712,28 @@ namespace
         g_prev_toggle_down = down;
         g_show = g_user_show;
 
+        // Falling edge (menu JUST closed): restore state the open-state hooks left
+        // dangling. While open, hk_clip_cursor forced the cursor UNclipped on every
+        // game ClipCursor call; the game only re-clips on a focus change, so after a
+        // close the cursor can stay free — leaving mouse-look / map-drag input in a
+        // bad state until the next refocus. Re-confine to the window client rect (what
+        // the game does during play) so input is never left dangling. Idempotent and
+        // safe whether the map is open or in gameplay (ER is window-confined in both).
+        static bool s_prev_show = false;
+        if (s_prev_show && !g_show && o_clip_cursor && g_hwnd)
+        {
+            RECT rc;
+            if (GetClientRect(g_hwnd, &rc))
+            {
+                POINT tl{rc.left, rc.top}, br{rc.right, rc.bottom};
+                ClientToScreen(g_hwnd, &tl);
+                ClientToScreen(g_hwnd, &br);
+                RECT screen{tl.x, tl.y, br.x, br.y};
+                o_clip_cursor(&screen); // ORIGINAL ClipCursor (g_show already false here)
+            }
+        }
+        s_prev_show = g_show;
+
         // Mid-session resolution fix + diagnostic. Run every frame (the fix self-skips
         // when the dims already match) because NOT all resolution changes fire
         // ResizeBuffers — a per-frame enforcer catches the paths the resize hook misses.
