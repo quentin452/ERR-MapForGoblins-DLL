@@ -57,6 +57,7 @@ namespace goblin::config
     bool dumpIconTextures = false;
     bool liveProjection = true;
     bool dumpConverters = false;
+    bool dumpNativePins = false;
     bool overlayMarkersProto = false;
     bool debugRenderDims = false;
     bool fixMidsessionResolution = false;
@@ -389,6 +390,8 @@ namespace
                   "Project markers with the engine's OWN world->map-space function (the\nlive WorldMapViewModel) instead of our baked LEGACY_CONV + affine + DLC\neyeball. Fixes hundreds of dungeon/underground misplacements via the game's\nreal LegacyConv fold. Falls back to the baked projection when the map is\nclosed or an area isn't placed by the game. On by default; set false to\nforce the old baked projection."),
                 B("dump_converters", dumpConverters, "false",
                   "Dev one-shot RE check: when the world map is open, find the live\nCS::WorldMapViewModel and dump its 8 converter slots (origin/bias/scale/\narea/legacyConvNode @ VM+0xF8) + count to MapForGoblins.log as [CONV]. Open\nthe overworld, then base underground (m12), then the DLC/Realm of Shadows map\nto capture each page's converter (incl. the never-solved DLC constants).\nConfirms the world->map-space projection RE. Off by default."),
+                B("dump_native_pins", dumpNativePins, "false",
+                  "Dev one-shot RE check: when the world map is open, walk the native-pin\nicon manager (CSWorldMapPointMan std::map @ mgr+0x398, mgr=[er+0x3D6E9B0])\nand its sibling [er+0x3D6F558], dumping each built pin's key/ins-ptr + a\nfield window as [PINS] to MapForGoblins.log. Identifies WHAT native pins\nstill draw (graces/categories/objectives) + their source, to decide native-\npin suppression (overlay = sole icon source). Read-only. Off by default."),
                 B("overlay_markers_proto", overlayMarkersProto, "false",
                   "Dev prototype (overlay-rendered markers): draw our own marker dot in\nthe ImGui overlay, projected onto the open world map via the live pan/zoom\n(WorldMapArea), to verify the world->screen affine. Starts the cursor probe\nif not already on. Open the F1 menu to tune scale/bias live. Off by default."),
                 B("fix_midsession_resolution", fixMidsessionResolution, "false",

@@ -13,8 +13,10 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -581,6 +583,123 @@ void dump_converters(uintptr_t base, uintptr_t cursor)
     }
 }
 
+// Dev one-shot (config dump_native_pins): walk the native-pin icon manager's std::map and
+// log what pins the engine built — RE windows_suppress_native_pins_runtime_re_findings.md.
+// mgr = [er+ICON_MGR_SLOT_RVA]; MSVC std::map _Tree @ mgr+0x390: _Myhead@+0x398 (sentinel
+// ptr, non-null even empty), _Mysize@+0x3A0 (count). Node: Left@+0, Parent@+8, Right@+0x10,
+// isNil@+0x19, key(int)@+0x20, value(CSWorldMapPointIns*)@+0x28. We DFS via Left/Right and
+// stop at nil nodes. STRICTLY READ-ONLY (ReadProcessMemory via seh_read*). Throttled +
+// change-detected (logs once per distinct size) so it doesn't spam per tick.
+void dump_native_pin_map(uintptr_t base, uintptr_t mgr_slot, const char *tag)
+{
+    uint64_t mgr = 0;
+    if (!seh_read8(reinterpret_cast<void *>(base + mgr_slot), &mgr) || !plausible_ptr(mgr))
+    {
+        g_log->info("[PINS] {} mgr slot {:#x} -> {:#x} (not resolved)", tag, base + mgr_slot, mgr);
+        return;
+    }
+    uint64_t size = 0, head = 0;
+    seh_read8(reinterpret_cast<void *>(mgr + 0x3A0), &size); // _Mysize
+    seh_read8(reinterpret_cast<void *>(mgr + 0x398), &head); // _Myhead (sentinel)
+    g_log->info("[PINS] {} mgr={:#x} size={} head={:#x}", tag, mgr, size, head);
+    if (!plausible_ptr(head) || size == 0 || size > 100000)
+        return;
+
+    uint64_t root = 0;
+    seh_read8(reinterpret_cast<void *>(head + 0x8), &root); // _Myhead->Parent = root
+    if (!plausible_ptr(root))
+        return;
+
+    // Bounded DFS (cap nodes hard; log first LOG_CAP).
+    constexpr int NODE_CAP = 8192;
+    constexpr int LOG_CAP = 120;
+    std::vector<uint64_t> stack;
+    stack.push_back(root);
+    int visited = 0, logged = 0;
+    bool dumped_window = false;
+    while (!stack.empty() && visited < NODE_CAP)
+    {
+        uint64_t node = stack.back();
+        stack.pop_back();
+        if (!plausible_ptr(node) || node == head)
+            continue;
+        uint8_t nil = 1;
+        { uint64_t b = 0; if (seh_read8(reinterpret_cast<void *>(node + 0x18), &b)) nil = (b >> 8) & 0xff; }
+        if (nil) // isNil byte @ +0x19 set → sentinel
+            continue;
+        ++visited;
+
+        int key = 0;
+        uint64_t ins = 0;
+        seh_read_i32(reinterpret_cast<void *>(node + 0x20), &key);
+        seh_read8(reinterpret_cast<void *>(node + 0x28), &ins);
+        int ins_id = -1;
+        if (plausible_ptr(ins))
+            seh_read_i32(reinterpret_cast<void *>(ins + 0x30), &ins_id); // ins+0x30 = id (findings §2)
+        if (logged < LOG_CAP)
+        {
+            g_log->info("[PINS]   {} key={} ins={:#x} ins+0x30={}", tag, key, ins, ins_id);
+            ++logged;
+        }
+        // First valid ins → dump a field window to help locate iconId/type for a future
+        // SELECTIVE filter (grace vs category). One-shot.
+        if (!dumped_window && plausible_ptr(ins))
+        {
+            std::string hex;
+            for (int o = 0x28; o <= 0x80; o += 4)
+            {
+                int v = 0;
+                seh_read_i32(reinterpret_cast<void *>(ins + o), &v);
+                char buf[32];
+                std::snprintf(buf, sizeof(buf), "+%02x=%d ", o, v);
+                hex += buf;
+            }
+            g_log->info("[PINS]   {} ins {:#x} window: {}", tag, ins, hex);
+            dumped_window = true;
+        }
+
+        uint64_t l = 0, r = 0;
+        seh_read8(reinterpret_cast<void *>(node + 0x00), &l); // Left
+        seh_read8(reinterpret_cast<void *>(node + 0x10), &r); // Right
+        if (plausible_ptr(l) && l != head) stack.push_back(l);
+        if (plausible_ptr(r) && r != head) stack.push_back(r);
+    }
+    g_log->info("[PINS] {} walked {} nodes (logged {}{})", tag, visited, logged,
+                visited >= NODE_CAP ? ", CAPPED" : "");
+}
+
+void dump_native_pins(uintptr_t base)
+{
+    using clock = std::chrono::steady_clock;
+    static clock::time_point s_last{};
+    static uint64_t s_last_size = ~0ull;
+    static bool s_saw_nonempty = false; // once we log a non-empty PRIMARY, switch to change-detect
+    static int s_force_attempts = 0;    // cap the "dump until non-empty" spam (~6s of map-open)
+    auto now = clock::now();
+    // Sample often (a map session can be brief + pins build a few hundred ms after open).
+    if (now != clock::time_point{} && now - s_last < std::chrono::milliseconds(400))
+        return;
+    s_last = now;
+
+    // Read the primary manager size. Until we've seen it NON-empty at least once, dump every
+    // tick (the first sample is often before the pins build → an early 0 must not lock us out).
+    // After the first non-empty dump, change-detect on size so we don't spam an idle map.
+    uint64_t mgr = 0, size = 0;
+    if (seh_read8(reinterpret_cast<void *>(base + goblin::sig::ICON_MGR_SLOT_RVA), &mgr) &&
+        plausible_ptr(mgr))
+        seh_read8(reinterpret_cast<void *>(mgr + 0x3A0), &size);
+    bool force = !s_saw_nonempty && s_force_attempts < 15; // keep probing early-empty
+    if (!force && size == s_last_size)
+        return;
+    if (force) ++s_force_attempts;
+    s_last_size = size;
+    if (size > 0 && size < 100000)
+        s_saw_nonempty = true;
+
+    dump_native_pin_map(base, goblin::sig::ICON_MGR_SLOT_RVA, "PRIMARY[er+0x3D6E9B0]");
+    dump_native_pin_map(base, goblin::sig::ICON_MGR_SIBLING_SLOT_RVA, "SIBLING[er+0x3D6F558]");
+}
+
 void probe_loop()
 {
     uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
@@ -634,6 +753,10 @@ void probe_loop()
             // projection) when requested. Read-only; throttled + change-detected internally.
             if (goblin::config::dumpConverters)
                 dump_converters(base, menu_cursor);
+            // RE check: walk the native-pin icon manager (CSWorldMapPointMan +0x398) to
+            // see what pins the engine builds → decide native-pin suppression. Read-only.
+            if (goblin::config::dumpNativePins)
+                dump_native_pins(base);
             // Path A verify: the map is open here → re-read the registered icon images'
             // lazily-bound GPU textures (img+0x10 → GXTexture2D → ID3D12Resource). Once.
             if (goblin::config::dumpIconTextures)

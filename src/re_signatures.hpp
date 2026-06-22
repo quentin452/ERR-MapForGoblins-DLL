@@ -148,6 +148,13 @@ namespace goblin::sig
     inline constexpr uintptr_t CSMENUMAN_SLOT_RVA = 0x3d6b7b0;
     // WorldMap canvas singleton (debug-only).
     inline constexpr uintptr_t CANVAS_SINGLETON_RVA = 0x47ef360;
+    // CSWorldMapPointMan (native-pin icon manager) — RE: windows_suppress_native_pins_
+    // runtime_re_findings.md. Static slot CONFIRMED at the call site (FUN_140623410
+    // 0x624296 MOV RCX,[0x143d6e9b0]). The std::map<int id, CSWorldMapPointIns*> _Tree
+    // sits at mgr+0x390: _Myhead@+0x398 (ptr), _Mysize@+0x3A0 (count), node key@+0x20 /
+    // value@+0x28. Sibling mgr (player-markers/objectives, separate → don't touch).
+    inline constexpr uintptr_t ICON_MGR_SLOT_RVA = 0x3d6e9b0;
+    inline constexpr uintptr_t ICON_MGR_SIBLING_SLOT_RVA = 0x3d6f558;
 
     // ── Health check ───────────────────────────────────────────────────────────
     // Scans every AOB above (no relative_offsets — a base match is enough to prove the

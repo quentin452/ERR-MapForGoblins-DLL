@@ -109,6 +109,13 @@ namespace goblin
         // wire it. See goblin_worldmap_probe.cpp dump_converters_once.
         extern bool dumpConverters;
 
+        // Dev one-shot: walk the native-pin icon manager (CSWorldMapPointMan
+        // [er+ICON_MGR_SLOT_RVA] std::map @+0x398) and dump each built pin's key/ins
+        // to MapForGoblins.log as [PINS] — identifies WHAT native pins exist + their
+        // source before we suppress them (overlay = sole icon source). Read-only
+        // (ReadProcessMemory). See goblin_worldmap_probe.cpp dump_native_pins.
+        extern bool dumpNativePins;
+
         // Dev prototype: draw overlay-rendered marker dots projected onto the open
         // world map (verifies the world->screen affine). See goblin_overlay.cpp +
         // goblin_worldmap_probe::get_live_view.
