@@ -1872,7 +1872,7 @@ static std::vector<uint16_t> g_menu_iconids;
 static void correlate_menu_iconids()
 {
     std::set<uint16_t> ids(g_menu_iconids.begin(), g_menu_iconids.end());
-    if (ids.size() < 2)
+    if (ids.empty())
         return;
     // sample a few captured ids in the log so we can value-scan manually if needed
     std::string sample;
@@ -1955,9 +1955,7 @@ void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
                 if (std::find(g_menu_iconids.begin(), g_menu_iconids.end(), N) == g_menu_iconids.end())
                 {
                     g_menu_iconids.push_back(N);
-                    size_t s = g_menu_iconids.size();
-                    if (s == 3 || s == 6 || s == 10 || s == 16 || s == 24 || s == 36 || s == 52)
-                        correlate_menu_iconids();
+                    correlate_menu_iconids();   // every new drawn-item iconId → re-correlate
                 }
             }
         }
