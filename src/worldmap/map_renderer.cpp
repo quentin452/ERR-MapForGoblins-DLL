@@ -672,6 +672,31 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const int open_grp = (lv.openDlc ? 2 : 0) | ((lv.underground != 0) ? 1 : 0);
     const bool dlc_ug = (open_grp == 3);
 
+    // Page-transition flicker suppress (option A): on a page change `open_grp` flips at once
+    // but the engine ANIMATES the swap (~0.5s) → new-page markers would appear over the
+    // still-animating old map. Skip the whole overlay until the view stops sweeping (settled
+    // for a few frames), with a hard cap so it never sticks. The cached UV stays valid; this
+    // only gates the DRAW. Not gated by live_projection (the view sync is projection-agnostic).
+    {
+        static int s_prev_grp = -999;
+        static float s_px = 0, s_pz = 0, s_zoom = 0;
+        static int s_trans = 0, s_still = 0;
+        const float dpan = std::fabs(lv.panX - s_px) + std::fabs(lv.panZ - s_pz);
+        const float dz = std::fabs(lv.zoom - s_zoom);
+        s_px = lv.panX; s_pz = lv.panZ; s_zoom = lv.zoom;
+        const bool moving = (dpan > 2.0f) || (dz > 0.002f);
+        if (open_grp != s_prev_grp) { s_trans = 40; s_still = 0; } // page flip → arm (~0.6s cap)
+        s_prev_grp = open_grp;
+        if (s_trans > 0)
+        {
+            s_trans--;
+            s_still = moving ? 0 : (s_still + 1);
+            if (s_still < 3 && s_trans > 0)
+                return;       // still animating → suppress the overlay this frame
+            s_trans = 0;      // view settled (or cap hit) → resume drawing
+        }
+    }
+
     // The DLC-UG eyeball rotates about the open group's world centroid. Compute it over
     // every visible layer's markers (cheap; only needed for group 3).
     if (dlc_ug)
