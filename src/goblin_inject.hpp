@@ -90,7 +90,13 @@ namespace goblin
     inline int marker_group_from(uint8_t orig_area, int projected_area)
     {
         int pg = projected_area & 63;
-        bool isug = (orig_area == 12) || (orig_area >= 40 && orig_area <= 43);
+        // The DLC map has NO separate underground sub-page — DLC areas 40-43 share the
+        // ONE Land-of-Shadow page with area 61 (verified in-game: Gravesite Plain and the
+        // "DLC underground" areas render on the same page, no depth toggle). So they group
+        // as plain DLC, NOT DLC-underground. Only base-game area 12 is a true underground
+        // layer. (group 3 = DLC-underground is therefore never produced → the DLC eyeball
+        // projection it gated is dead.)
+        bool isug = (orig_area == 12);
         bool isdlc = (pg == 61) || (orig_area >= 40 && orig_area <= 43);
         return (isdlc ? 2 : 0) | (isug ? 1 : 0);
     }

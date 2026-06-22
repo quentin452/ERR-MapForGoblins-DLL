@@ -495,6 +495,11 @@ int goblin::region_name_pname(uint8_t area, uint8_t gx, uint8_t gz, float posX, 
 // by-location clustering (replan_clusters grp_key). Returns -1 when no grace anchor
 // shares the area → the caller draws it exact. out_pname (optional) = the marker's
 // region PlaceName id (MapNameOverride containment, else the group's grace region).
+// LABEL fallbacks (defined below) — nearest MSB region, then nearest major-region
+// anchor (which borrows area 61 for the DLC underground areas 40-43).
+static int find_nearest_region_pname(uint8_t area, float wx, float wz);
+static int find_nearest_major_region_pname(uint8_t area, float wx, float wz);
+
 int goblin::marker_cluster_key(uint8_t area, uint8_t gridX, uint8_t gridZ, float posX,
                                float posZ, int *out_pname)
 {
@@ -505,9 +510,15 @@ int goblin::marker_cluster_key(uint8_t area, uint8_t gridX, uint8_t gridZ, float
     if (out_pname)
     {
         // Prefer the game's own region naming (point-in-volume); fall back to the
-        // nearest grace's region only when no MapNameOverride volume contains the marker.
+        // nearest grace's region when no MapNameOverride volume contains the marker.
         int region = region_name_pname(area, gridX, gridZ, posX, posZ);
-        *out_pname = region ? region : (has_grace ? pname : -1);
+        int pn = region ? region : (has_grace ? pname : 0);
+        // Last resort (e.g. DLC underground 40-43: no named volume, no in-area grace):
+        // nearest MSB region, then the major-region anchor (borrows area 61 for 40-43),
+        // so the tooltip shows a location like the native map instead of a bare name.
+        if (!pn) pn = find_nearest_region_pname(area, mwx, mwz);
+        if (!pn) pn = find_nearest_major_region_pname(area, mwx, mwz);
+        *out_pname = pn ? pn : -1;
     }
     return has_grace ? idx : -1;
 }
