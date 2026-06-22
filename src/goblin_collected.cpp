@@ -147,6 +147,24 @@ static bool safe_write_byte(uint8_t *addr, uint8_t val)
     return WriteProcessMemory(GetCurrentProcess(), addr, &val, 1, &n) && n == 1;
 }
 
+// The +0x08 table is a Dantelion2 DLFixedVector (RE: windows_geom_flag_savedata_
+// table_re_findings.md, commit 6d41b0e): inline contiguous, capacity 6300,
+// element stride 0x10 { u32 tile_id; u32 pad; void* block }, sorted by tile_id,
+// with the LIVE element count as a u64 at manager+0x189d0. So the valid elements
+// are exactly [0, count) — no 0x20000/stride-16/256-empty heuristic needed.
+//
+// This collapses the per-refresh ReadProcessMemory count from ~16,000 (2 RPM per
+// 16-byte slot across 128 KB) to 1 + 2·(#valid tiles) (~tens). On native Windows
+// RPM-on-self is a cheap kernel path (the old scan showed ~0 lag); under Wine
+// each RPM is a wineserver IPC round-trip (~10 µs), so the old scan cost ~153 ms
+// (37% wallclock) on Linux/Proton — this is a Linux-only win, no-op on Windows.
+// Block ptrs realloc on load/unload + the vector shifts on insert/evict, so a
+// known-blocks cache is unsafe; a full bulk re-read each refresh is the correct
+// cheap design (see findings §"Mutation model").
+static constexpr uintptr_t GEOF_VEC_OFF = 0x08;       // inline DLFixedVector buffer
+static constexpr uintptr_t GEOF_COUNT_OFF = 0x189d0;  // u64 element count
+static constexpr uint64_t GEOF_CAPACITY = 6300;       // 0x189c fixed capacity
+
 static void read_singleton_entries(uintptr_t slot,
                                     std::vector<GEOFEntry> &out)
 {
@@ -154,78 +172,74 @@ static void read_singleton_entries(uintptr_t slot,
     if (!slot || !safe_read((void *)slot, &gf_ptr, 8) || !gf_ptr)
         return;
 
-    int tiles_found = 0, tiles_skipped = 0, consecutive_empty = 0;
-    for (int off = 0x08; off < 0x20000; off += 16)
+    uint64_t count = 0;
+    if (!safe_read((char *)gf_ptr + GEOF_COUNT_OFF, &count, 8))
+        return;
+    if (count == 0 || count > GEOF_CAPACITY)
+        return; // empty or an implausible count → treat as nothing this refresh
+
+    // One bulk RPM of the whole live region of the inline vector. On the rare
+    // failure (a straddled unmapped page — unlikely for inline manager memory)
+    // fall back to per-element 0x10 reads: still bounded by `count`, not 8192.
+    std::vector<uint8_t> tbl(static_cast<size_t>(count) * 0x10);
+    bool bulk_ok = safe_read((char *)gf_ptr + GEOF_VEC_OFF, tbl.data(), tbl.size());
+
+    for (uint64_t i = 0; i < count; i++)
     {
-        uint64_t id_val = 0, ptr_val = 0;
-        if (!safe_read((char *)gf_ptr + off, &id_val, 8))
-            break;
-        if (!safe_read((char *)gf_ptr + off + 8, &ptr_val, 8))
-            break;
-
-        if (id_val == 0 && ptr_val == 0)
+        uint32_t tile_id = 0;
+        uint64_t blk = 0;
+        if (bulk_ok)
         {
-            if (++consecutive_empty > 256)
-                break;
-            continue;
-        }
-        consecutive_empty = 0;
-
-        uint32_t tile_id = (uint32_t)id_val;
-        uint8_t area = (tile_id >> 24) & 0xFF;
-        if (area < 0x0A || area > 0x3D)
-        {
-            tiles_skipped++;
-            continue;
-        }
-        if (ptr_val < 0x10000 || ptr_val > 0x7FFFFFFFFFFF)
-        {
-            tiles_skipped++;
-            continue;
-        }
-        tiles_found++;
-
-        // Layout A: count @+8, entries @+16 | Layout B: count @+0, entries @+8
-        uint8_t header[16] = {};
-        if (!safe_read((void *)ptr_val, header, 16))
-            continue;
-
-        uint32_t count = 0;
-        uintptr_t entries_start = 0;
-
-        uint32_t countA = 0;
-        memcpy(&countA, header + 8, 4);
-        uint32_t countB = 0;
-        memcpy(&countB, header + 0, 4);
-
-        if (countA > 0 && countA < 100000)
-        {
-            count = countA;
-            entries_start = ptr_val + 16;
-        }
-        else if (countB > 0 && countB < 100000)
-        {
-            count = countB;
-            entries_start = ptr_val + 8;
+            memcpy(&tile_id, tbl.data() + i * 0x10 + 0, 4);
+            memcpy(&blk, tbl.data() + i * 0x10 + 8, 8);
         }
         else
+        {
+            // Per-element fallback (still O(count) RPM, not O(128KB/16)).
+            uint8_t elem[0x10] = {};
+            if (!safe_read((char *)gf_ptr + GEOF_VEC_OFF + i * 0x10, elem, 0x10))
+                continue;
+            memcpy(&tile_id, elem + 0, 4);
+            memcpy(&blk, elem + 8, 8);
+        }
+
+        // Belt-and-suspenders (the vector is dense + sorted, so these rarely fire).
+        uint8_t area = (tile_id >> 24) & 0xFF;
+        if (area < 0x0A || area > 0x3D)
+            continue;
+        if (blk < 0x10000)
             continue;
 
-        for (uint32_t ei = 0; ei < count; ei++)
-        {
-            uint8_t entry[8] = {};
-            if (!safe_read((void *)(entries_start + ei * 8), entry, 8))
-                break;
+        // Per-tile entry block (RE: the real format is the old "Layout A" —
+        // count @+0x08, entries @+0x10 contiguous, stride 8). The "Layout B"
+        // guess never fires; the engine only ever writes Layout A.
+        uint8_t header[16] = {};
+        if (!safe_read((void *)blk, header, 16))
+            continue;
+        uint32_t ecount = 0;
+        memcpy(&ecount, header + 8, 4);
+        if (ecount == 0 || ecount >= 100000)
+            continue;
 
-            uint8_t entry_flags = entry[1];
-            uint16_t geom_idx = entry[2] | (entry[3] << 8);
-            uint32_t model_hash = entry[4] | (entry[5] << 8) | (entry[6] << 16) | (entry[7] << 24);
+        // One bulk RPM of this tile's contiguous entry array.
+        std::vector<uint8_t> ents(static_cast<size_t>(ecount) * 8);
+        if (!safe_read((void *)(blk + 0x10), ents.data(), ents.size()))
+            continue;
+
+        for (uint32_t e = 0; e < ecount; e++)
+        {
+            const uint8_t *p = ents.data() + e * 8;
+            // Decode unchanged + byte-correct (RE: record =
+            // ((geom_idx | model_id<<17)<<15) | present → p[1] = (geom_idx&1)<<7,
+            // hence the 0x00/0x80 filter; aeg099_index_from_geof reconstructs it).
+            uint8_t entry_flags = p[1];
+            uint16_t geom_idx = p[2] | (p[3] << 8);
+            uint32_t model_hash = p[4] | (p[5] << 8) | (p[6] << 16) | (p[7] << 24);
 
             if (g_tracked_model_ids.count(model_hash) && (entry_flags == 0x00 || entry_flags == 0x80))
                 out.push_back({tile_id, entry_flags, geom_idx, model_hash});
         }
     }
-
 }
 
 // ─── Read geom state from CSWorldGeomMan (loaded tiles) ─────────────
