@@ -461,21 +461,6 @@ namespace
     int g_grace_dbg_swiz = 0;     // SRV component mapping: 0 default RGBA | 1 R<->B | 2 R<->G | 3 force A=1
     int g_grace_dbg_fmt_used = 0; // last format actually used (for the panel readout)
 
-    // Resolve a grace sprite's backing ID3D12Resource. Prefer the captured sheet; else resolve lazily
-    // from the CSTextureImage img (img+0x10 -> Render::Texture, +0x70 -> ID3D12Resource) — the capture
-    // is GPU-independent, so this binds here on the render thread (bound by the time graces draw).
-    ID3D12Resource *grace_resolve_sheet(const goblin::ItemSprite &sp)
-    {
-        if (sp.sheet) return reinterpret_cast<ID3D12Resource *>(sp.sheet);
-        if (!sp.img) return nullptr;
-        uintptr_t rtex = 0, res = 0; SIZE_T n = 0;
-        ReadProcessMemory(GetCurrentProcess(), (void *)((uintptr_t)sp.img + 0x10), &rtex, 8, &n);
-        if (rtex < 0x10000) return nullptr;
-        ReadProcessMemory(GetCurrentProcess(), (void *)(rtex + 0x70), &res, 8, &n);
-        if (res < 0x10000) return nullptr;
-        return reinterpret_cast<ID3D12Resource *>(res);
-    }
-
     // SRV component mapping for the debug swizzle test (diagnoses channel-order / green-red issues).
     UINT grace_dbg_mapping()
     {
@@ -498,8 +483,7 @@ namespace
               goblin::harvested_grace(sp) && sp.sheet))
             return false;   // not harvested yet → retry next frame (do NOT mark failed)
 
-        auto *src_res = grace_resolve_sheet(sp);   // sheet, or resolve lazily from img (GPU-independent capture)
-        if (!src_res) return false;                 // GPU texture not bound yet → retry next frame
+        auto *src_res = reinterpret_cast<ID3D12Resource *>(sp.sheet);
         // Authoritative format/dims from D3D12 (render thread, sheet bound) — NOT the RPM-read
         // sp.format (0 pre-bind, and the RPM dim/format offsets drifted; see dump_icon_textures_live).
         // Mirrors ensure_item_icon_srv. If not a ready TEXTURE2D yet, retry next frame (no permanent fail).
@@ -618,8 +602,7 @@ namespace
         if (!(g_device && g_command_queue && g_srv_heap && g_next_item_srv < 256 &&
               goblin::harvested_grace_dungeon(sp) && sp.sheet))
             return false;
-        auto *src_res = grace_resolve_sheet(sp);   // sheet, or resolve lazily from img
-        if (!src_res) return false;
+        auto *src_res = reinterpret_cast<ID3D12Resource *>(sp.sheet);
         D3D12_RESOURCE_DESC rd = src_res->GetDesc();
         DXGI_FORMAT fmt = rd.Format;
         if (rd.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || fmt == DXGI_FORMAT_UNKNOWN) return false;
