@@ -443,10 +443,26 @@ strings for binding/layout/provider/apply/resident/sprite terms + xref source. U
 runs one-shot actions inline on the engine thread before the original: (1) dump groups (logs each
 loaded group's `entry+0x18` resource + `apply(vt+0xc8)` RVA + `+0x7c`/`+0x80` flags), (2) load files by
 gid via `FUN_140d77550`+`FUN_140d771d0` (handle cached at `mgr+0xd10/0xd58` — where the bind looks),
-(3) flip-bind all (set `+0x7c=1` + dirty `+0x1e19`), (4) load+flip. RUNTIME-UNVERIFIED (quentin tests):
-sequence = open inventory once → "Dump groups" (read the apply RVAs; does one match the §5c parse
-family?) → "Load files (gid 1)" → "Flip-bind all" → re-check `harvested:`. If it jumps for un-browsed
-items → the flag flip IS the runtime force-residency lever.
+(3) flip-bind all (set `+0x7c=1` + dirty `+0x1e19`), (4) load+flip. RUNTIME RESULT (quentin, 2026-06-22,
+`logs/MapForGoblins.log`): **the +0x7c flag-flip is REFUTED as a bind lever.**
+- Manager captured (`mgr=0x22280302080`), **15 group entries**. All 4 actions (dump / load gid1 /
+  flip-bind / load+flip) left **`harvested` flat at 162→162** — the repo gained NO entries.
+- **Every group's apply `vt+0xc8` = the SAME fn `FUN_14112fc80` (RVA 0x112fc80)** — and decompiling it
+  (`find_apply.java`) shows it is a **Scaleform display-tree RENDER/update** method (`Matrix2x4<float>`,
+  `Scaleform::Render::Matrix3x4::MultiplyMatrix`, walks `obj+0x30` siblings from root `param_1+0x90`),
+  NOT a resource load/bind. So the manager's `+0x9d8` "groups" are the **15 loaded Scaleform MOVIES**,
+  and `FUN_140d70940`'s `+0xc8` call is the movie's per-tick render-update — flipping `+0x7c` just
+  re-renders the movie, it does not re-parse any sblytbnd into repo rects.
+- Loading files by gid (`FUN_140d77550`/`771d0`) likewise added nothing (loading ≠ binding, §5b).
+
+**CONCLUSION — runtime force-residency via the residency manager is exhausted and refuted at every
+accessible trigger:** (1) force-load files → atlas/sblytbnd bytes, no rects; (2) `+0x7c` group-apply →
+movie render, no rects; (3) `+0x1df0` request → same movie-apply machinery. The per-icon rect-binding
+is ONLY the menu-init virtual apply on the `ShoeboxLayoutbndFileCap` (vtables 0x493c8f0/0x378bf40,
+§5c) — not reachable as a bounded call. **The robust 100%-coverage path is OFFLINE BAKE** (extend
+`tools/extract_subtextures.py`, which already parses the sblytbnd, to emit iconId→(atlas,rect)); keep
+the runtime repo-walk (`harvest_repo_icons`) as the live/mod-freshness override. This is now an
+empirical conclusion, not a theoretical one. (The `bind_test` dev harness stays as a gated diagnostic.)
 
 ---
 
