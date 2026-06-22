@@ -152,11 +152,14 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, f
         ImU32 t = disc ? IM_COL32(255, 255, 255, 255) : IM_COL32(140, 140, 150, 205);
         if (goblin::config::graceGpuSprite && s_grace_tex)
         {
-            // Dungeon graces use the ERR dungeon-style icon when available (ERR installed); else the
-            // vanilla bonfire. graceIconScale calibrates the grace size against the map.
-            ImTextureID gt = (m.dungeon && s_grace_dgn_tex) ? s_grace_dgn_tex : s_grace_tex;
-            ImVec2 u0 = (m.dungeon && s_grace_dgn_tex) ? s_grace_dgn_uv0 : s_grace_uv0;
-            ImVec2 u1 = (m.dungeon && s_grace_dgn_tex) ? s_grace_dgn_uv1 : s_grace_uv1;
+            // SIMPLIFIED: the BASE grace sprite is drawn for EVERY grace (cave/dungeon/overworld
+            // alike). The ERR dungeon-style icon (s_grace_dgn_tex, gated on m.dungeon) is parked for
+            // now — once the GPU/CPU grace paths are unified we'll reintroduce per-type icons as a
+            // deliberate DX feature (e.g. above/below the player) instead of the current branchy gate.
+            // m.dungeon + the [GRACE-AREA] verification log stay so that work has its data ready.
+            ImTextureID gt = s_grace_tex;
+            ImVec2 u0 = s_grace_uv0;
+            ImVec2 u1 = s_grace_uv1;
             float gh = half * goblin::config::graceIconScale;
             // Optional offset → shift the imgui grace beside the game's NATIVE pin for side-by-side
             // calibration (0 = on top). Scaled by the live projection factor (zoom × canvas) so the
