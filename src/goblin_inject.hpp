@@ -288,6 +288,11 @@ namespace goblin
     // instead of a hardcoded id list that may not match what the player browsed).
     std::vector<int> harvested_ids(size_t max);
 
+    // The discovered/lit grace sprite (SB_ERR_Grace_Morning_Color), harvested by the find hook when
+    // the open map draws a discovered grace. False until seen at least once. Lets the overlay draw
+    // graces itself (discovered = this sprite, undiscovered = grey-tinted).
+    bool harvested_grace(ItemSprite &out);
+
     // Dev runtime-confirm (sprite findings §6): call the engine's draw-free icon
     // find-by-name FUN_140d63c30(repo, &out, L"MENU_ItemIcon_<id>") for a set of iconIds and
     // log whether each resolves to a CSTextureImage+rect WITHOUT the icon being drawn. Press

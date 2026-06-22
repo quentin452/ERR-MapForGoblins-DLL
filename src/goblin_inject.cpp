@@ -2012,6 +2012,10 @@ find_fn2 g_find_orig = nullptr;
 std::mutex g_harvest_mtx;
 std::unordered_map<int, goblin::ItemSprite> g_harvest;
 uintptr_t g_icon_repo = 0;   // FUN_140d63c30 arg0 (repo) — stashed for the proactive §8 walk
+// Discovered/lit grace sprite (RE e4b3f6a §6: SB_ERR_Grace_Morning_Color, world-map movie). Harvested
+// by the SAME find hook when the open map draws a discovered grace → lets the overlay draw graces
+// itself (discovered = this sprite, undiscovered = grey-tinted) and become the sole grace source.
+goblin::ItemSprite g_grace_sprite{};
 
 // Read a resolved CSTextureImage (`img` = the find fn's `out`) and cache its sub-rect + backing
 // sheet resource + DXGI_FORMAT under the iconId parsed from a MENU_ItemIcon_<id> name. Shared by
@@ -2367,6 +2371,14 @@ size_t goblin::harvested_count()
     return g_harvest.size();
 }
 
+bool goblin::harvested_grace(ItemSprite &out)
+{
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    if (!g_grace_sprite.valid) return false;
+    out = g_grace_sprite;
+    return true;
+}
+
 std::vector<int> goblin::harvested_ids(size_t max)
 {
     std::lock_guard<std::mutex> lk(g_harvest_mtx);
@@ -2483,6 +2495,25 @@ void goblin::dump_icon_textures_live()
         if (dim != 3)
             continue; // not a TEXTURE2D → reject (guards against a stray non-module pointer)
         ++resolved;
+        // Grace sprite (RE e4b3f6a §6): the discovered/lit grace 'SB_ERR_Grace_Morning_Color' draws
+        // through CreateImage (not the find fn) → captured here in g_icon_imgs with its resolved
+        // sheet+rect. Stash it so the overlay can draw graces itself. Prefer the Morning variant.
+        if (it.name.rfind("SB_ERR_Grace", 0) == 0)
+        {
+            bool morning = it.name.find("Morning") != std::string::npos;
+            int gfmt = 0; icon_rpm_i32(res + 0x30, gfmt);
+            std::lock_guard<std::mutex> lk(g_harvest_mtx);
+            if (morning || !g_grace_sprite.valid)
+            {
+                g_grace_sprite.sheet = reinterpret_cast<void *>(res);
+                g_grace_sprite.x0 = it.x0; g_grace_sprite.y0 = it.y0;
+                g_grace_sprite.x1 = it.x1; g_grace_sprite.y1 = it.y1;
+                g_grace_sprite.format = static_cast<unsigned>(gfmt);
+                g_grace_sprite.valid = true;
+                spdlog::info("[GRACE-SPRITE] '{}' rect=({},{})-({},{}) res={:#x} fmt={} (live{})",
+                             it.name, it.x0, it.y0, it.x1, it.y1, res, gfmt, morning ? ", Morning" : "");
+            }
+        }
         // Track unique sheet resources (icons on one sheet share a resource).
         bool known = false;
         for (uintptr_t s : g_icon_sheets) if (s == res) { known = true; break; }
