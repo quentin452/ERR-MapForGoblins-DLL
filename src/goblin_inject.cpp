@@ -1947,6 +1947,8 @@ uintptr_t g_inv_movie = 0;
 
 void harvest_resident_icons(uintptr_t movie);   // §8 walk-all (defined after find_detour/g_find_orig)
 void harvest_repo_icons();                       // §8b repo-tree walk-all (RE-validated, see below)
+void harvest_twin_map_icons(uintptr_t repo, uintptr_t er);  // §8c twin map repo+0xb0 (pin/grace sprites)
+void cache_map_sprite_from_img(const char *nm, uintptr_t img);
 
 void *__fastcall enum_detour(void *movie, void *a1, void *a2, void *a3)
 {
@@ -2214,6 +2216,112 @@ void harvest_repo_icons()
     }
     if (harvested)
         spdlog::info("[REPO-WALK] §8b images={} walked={} harvested_new={}", size, walked, harvested);
+
+    harvest_twin_map_icons(repo, er);
+}
+
+// Build an ItemSprite from a CSTextureImage* (rect + backing sheet) and register it as a grace
+// CANDIDATE — used by the twin-map walk for the WorldMapPoint pin sprites (MENU_MAP_*). Mirrors
+// cache_icon_from_img but keyed by NAME (not iconId): rect @img+0x74.., sheet = rtex+0x70 (no DIM
+// gate — GetDesc resolves it at copy time). If the name is the canonical grace, set g_grace_sprite.
+void cache_map_sprite_from_img(const char *nm, uintptr_t img)
+{
+    if (img < 0x10000) return;
+    uintptr_t vt = 0; icon_rpm_ptr(img, vt);
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!(vt > er && vt - er == 0x2bb8910)) return;     // CSTextureImage vtable guard
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
+    icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
+    uintptr_t rtex = 0, res = 0;
+    icon_rpm_ptr(img + 0x10, rtex);
+    if (rtex > 0x10000) icon_rpm_ptr(rtex + 0x70, res);
+    if (res <= 0x10000) return;
+    if (x1 - x0 < 2 || y1 - y0 < 2) return;             // need a real rect
+    int rw = 0, rh = 0, fmt = 0;
+    icon_rpm_i32(res + 0x20, rw); icon_rpm_i32(res + 0x28, rh); icon_rpm_i32(res + 0x30, fmt);
+    goblin::ItemSprite hs;
+    hs.sheet = reinterpret_cast<void *>(res);
+    hs.x0 = x0; hs.y0 = y0; hs.x1 = x1; hs.y1 = y1;
+    hs.sheetW = static_cast<unsigned long long>(rw);
+    hs.sheetH = static_cast<unsigned>(rh);
+    hs.format = static_cast<unsigned>(fmt);
+    hs.valid = true;
+
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    bool dup = false;
+    for (const auto &gc : g_grace_cands) if (gc.name == nm) { dup = true; break; }
+    if (!dup && g_grace_cands.size() < 64)
+    {
+        goblin::GraceCandidate gc; gc.name = nm; gc.spr = hs;
+        g_grace_cands.push_back(gc);
+        spdlog::info("[TWIN-WALK] candidate '{}' rect=({},{})-({},{}) res={:#x} fmt={}",
+                     nm, x0, y0, x1, y1, res, fmt);
+    }
+    // Canonical grace = the mod's MENU_MAP_GOBLIN_Grace sprite (NOT the native SB_ERR_Grace pin).
+    bool canon = std::strcmp(nm, "MENU_MAP_GOBLIN_Grace") == 0;
+    if (canon || (!g_grace_locked && std::strstr(nm, "Grace") && !std::strstr(nm, "Underground")))
+    {
+        g_grace_sprite = hs;
+        if (canon) g_grace_locked = true;
+        spdlog::info("[GRACE-SPRITE] twin '{}' rect=({},{})-({},{}) res={:#x} ({})",
+                     nm, x0, y0, x1, y1, res, canon ? "LOCKED canonical MENU_MAP_GOBLIN_Grace" : "fallback");
+    }
+}
+
+// §8c TWIN-map walk — the WorldMapPoint PIN icons (the REAL grace) live in the repo's TWIN std::map
+// at repo+0xb0 (head +0xb8, size +0xc0), keyed by the gfx sprite name (MENU_MAP_*), looked up by the
+// icon widget FUN_14074bcc0 via FUN_140d63e50 — NOT in repo+0x80 (MENU_ItemIcon). We never walked it,
+// which is why we only ever found the wrong SB_ERR_Grace native pin. Same RB-tree node shape as §8b.
+void harvest_twin_map_icons(uintptr_t repo, uintptr_t er)
+{
+    (void)er;
+    if (repo < 0x10000) return;
+    uintptr_t head = 0; icon_rpm_ptr(repo + 0xb8, head);
+    if (head < 0x10000) return;
+    int size = 0; icon_rpm_i32(repo + 0xc0, size);
+    static int s_last_twin = -1;
+    if (size == s_last_twin) return;                    // re-walk only when the twin count changes
+    s_last_twin = size;
+    uintptr_t root = 0; icon_rpm_ptr(head + 0x08, root);
+    if (root < 0x10000) return;
+
+    std::vector<uintptr_t> stack; stack.reserve(64); stack.push_back(root);
+    int walked = 0, found = 0;
+    while (!stack.empty())
+    {
+        if (walked > 200000) break;
+        uintptr_t n = stack.back(); stack.pop_back();
+        if (n < 0x10000) continue;
+        uint8_t isnil = 1; SIZE_T got = 0;
+        ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(n + 0x19), &isnil, 1, &got);
+        if (got != 1 || isnil) continue;
+        ++walked;
+        uintptr_t cap = 0; icon_rpm_ptr(n + 0x40, cap);
+        uintptr_t namep = (cap >= 8) ? 0 : (n + 0x28);
+        if (cap >= 8) icon_rpm_ptr(n + 0x28, namep);
+        if (namep >= 0x1000)
+        {
+            wchar_t wbuf[96] = {0}; SIZE_T g2 = 0;
+            ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(namep), wbuf,
+                              sizeof(wbuf) - sizeof(wchar_t), &g2);
+            char nm[96]; int k = 0;
+            for (; k < 95 && wbuf[k]; ++k) nm[k] = (wbuf[k] < 128) ? static_cast<char>(wbuf[k]) : '?';
+            nm[k] = 0;
+            if (nm[0]) ++found;
+            // Capture map-point sprites (MENU_MAP_*) and anything grace-ish into grace candidates.
+            if (std::strncmp(nm, "MENU_MAP_", 9) == 0 || std::strstr(nm, "Grace"))
+            {
+                uintptr_t img = 0; icon_rpm_ptr(n + 0x50, img);
+                cache_map_sprite_from_img(nm, img);
+            }
+        }
+        uintptr_t l = 0, r = 0;
+        icon_rpm_ptr(n + 0x00, l); icon_rpm_ptr(n + 0x10, r);
+        if (l >= 0x10000) stack.push_back(l);
+        if (r >= 0x10000) stack.push_back(r);
+    }
+    spdlog::info("[TWIN-WALK] repo+0xb0 size={} walked={} named={}", size, walked, found);
 }
 } // namespace
 
