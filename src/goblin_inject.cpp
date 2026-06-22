@@ -3105,16 +3105,18 @@ void *__fastcall warp_pin_detour(void *a1, void *a2, void *warpData, void *a4)
     }
 
     static int logged = 0, suppressed = 0;
-    // PHASE B suppression (RE windows_grace_warppin_suppression_re_findings.md): only when the
-    // overlay draws graces itself (else the map would have NO graces). The draw-gate is the per-frame
-    // visibility virtual vt[3] FUN_14087afa0, which RECOMPUTES the cached visible byte pin+0xC from
-    // the per-layer STATE bitmask at pin+0x60 (vis &= (state>>layerbit)&1). The earlier attempt zeroed
-    // pin+0xC — the engine's scratch OUTPUT — so the next update recomputed it back to 1. Zero the
-    // INPUT instead: pin+0x60 (state dword). All layer bits clear → vt[3] yields invisible forever.
-    // (Ghidra showed param_1 as undefined8*, so its "param_1+0xc" = byte 0x60, not 0xC — that was the
-    // miscalc.) Grace-local: pin+0x60 is this WarpPinData's own state; player dot/objectives/fog/
-    // markers are separate objects. The zero survives the value-copy into the VM warp list
-    // (FUN_140885500 copies +0x60). WriteProcessMemory (crash-safe, no SEH).
+    // PHASE B suppression (RE windows_grace_warppin_suppression_re_findings.md): zero the per-layer
+    // STATE bitmask pin+0x60, the INPUT to the visibility virtual vt[3] FUN_14087afa0 (it recomputes
+    // the cached visible byte pin+0xC as vis &= (state>>layerbit)&1). All layer bits clear -> invisible.
+    //
+    // ⚠ SUPERSEDED — BREAKS FAST-TRAVEL (RE windows_grace_warppin_teleport_re_findings.md): pin+0x60
+    // -> pin+0xC also drives the pin's GFx widget _visible, and the map cursor only snaps to a _visible
+    // widget. So zeroing +0x60 hides the icon AND removes the warp interaction (no teleport-to-grace).
+    // Draw and click are coupled at _visible; there is NO separate per-pin draw flag. The draw-ONLY fix
+    // is to hook vt[1] SetTo FUN_14087ae20 and re-hide only the "Icon_0" child (keep the outer widget
+    // _visible) — see that doc §4. Until that lands, grace_suppress_native stays OFF by default
+    // (hybrid: native draws+teleports discovered graces, overlay covers undiscovered) so warp works.
+    // The block below is kept only as the icon-suppression reference; do not enable without the SetTo fix.
     if (goblin::config::graceOverlay && ret && (state & 7) != 0)
     {
         uintptr_t pin = reinterpret_cast<uintptr_t>(ret);
