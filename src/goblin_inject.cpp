@@ -2176,6 +2176,18 @@ void goblin::probe_icon_find_runtime()
         spdlog::info("[FIND2] id={} HIT img={:#x} vtRVA={:#x} rect=({},{})-({},{}) {}",
                      id, img, (vt > er) ? vt - er : 0, x0, y0, x1, y1,
                      ok ? "CSTextureImage OK" : "vt mismatch");
+        if (!ok) continue;
+        // §2: img+0x10 → Render::Texture (vt RVA 0x2c0f318, bound lazily) → +0x70 → ID3D12Resource.
+        // Confirms the GPU-readback chain is reachable WITHOUT drawing. If rtex is null here, the
+        // texture binds only on first sample → we'd need the sheet image (always bound) or a render.
+        uintptr_t rtex = 0; icon_rpm_ptr(img + 0x10, rtex);
+        if (rtex < 0x10000) { spdlog::info("[FIND2-TEX] id={} rtex(img+0x10)=NULL — not bound (needs sample/sheet)", id); continue; }
+        uintptr_t rvt = 0; icon_rpm_ptr(rtex, rvt);
+        uintptr_t res = 0; icon_rpm_ptr(rtex + 0x70, res);
+        int dim = 0, w = 0, h = 0;
+        if (res > 0x10000) { icon_rpm_i32(res + 0x10, dim); icon_rpm_i32(res + 0x20, w); icon_rpm_i32(res + 0x28, h); }
+        spdlog::info("[FIND2-TEX] id={} rtex={:#x} rtexVtRVA={:#x} ID3D12Resource={:#x} dim={} {}x{}",
+                     id, rtex, (rvt > er) ? rvt - er : 0, res, dim, w, h);
     }
     spdlog::info("[FIND2] === done. Now CLOSE the inventory and press F8 again to test residency. ===");
 }
