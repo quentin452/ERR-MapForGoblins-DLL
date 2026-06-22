@@ -143,3 +143,40 @@ fresh save shows category icons until things are browsed.
 None blocks the feature (browse-to-fill + PNG fallback is shippable); these are for 100%-coverage
 without browsing. The crash constraint (find-by-name unsafe on non-resident) means option 4 must
 gate on residency; options 1-3 are inherently resident-only and safe.
+
+## 8. Option 3 SOLVED — the resident-image container layout (walk-all) (re_v91, 2026-06-22)
+
+Disasm of `FUN_140d69640`'s loop (instruction-confirmed) gives the exact layout to **walk every
+resident image in one pass** — `FUN_140d69640` itself is a *find-one* (returns at the first match);
+we reuse its loop shape to enumerate. ⚠️ **The list is a DOUBLE deref + a type gate**, not `movie+0x90`
+(the earlier `[p1+0x90]` dump missed the `+0x40` hop — likely why it stalled):
+
+```
+movie (= param_1 to FUN_140d69640; capture it via the existing ENUM hook on 0xd69640)
+  +0x40            → res            // resource holder (skip if 0)
+        res +0x88  u8   == 4        // TYPE GATE — must be 4 (image-list); else not this list
+        res +0x90  ptr → list
+  list  +0x78  u32  count           // number of entries
+  list  +0x80  ptr → arr            // array of entry POINTERS, stride 8
+  for i in 0..count:
+    entry = ((void**)arr)[i]                         // skip if 0
+    // name is a DLWString at entry+0x18 (SSO): heap iff length >= 8
+    len  = *(u64*)(entry + 0x30)
+    name = (len >= 8) ? *(wchar**)(entry + 0x18)     // heap buffer
+                      :  (wchar* )(entry + 0x18)      // inline (<=7 wchars + NUL)
+    // name = the GFx symbol, e.g. L"MENU_ItemIcon_<id>" / ERR L"MENU_FL_<id>" / KG_* / SB_ERR_*
+    harvest(name)   // parse iconId from the symbol, then resolve/copy as in §1/§2/P2b
+```
+(`entry` is an FD4ResCap-ish node: `+0x08` refcount, `+0x18` name DLWString, `+0x30` name length.
+`FUN_140d63c30(repo,&out,name,…)` re-resolves the name → the `CSTextureImage`; but every name here is
+**resident by construction**, so resolving is SAFE — this is the proactive full-harvest the §5 crash
+constraint blocked for arbitrary ids.)
+
+**Recipe:** keep the ENUM hook on `FUN_140d69640` to capture the live inventory `movie` ptr (P2a
+already does), then on a menu-open tick walk the §8 list and harvest **all** resident icons at once
+(not just the one the engine was finding) → far more coverage per browse, still 100%-safe. Combine
+with the §7 browse-to-fill for the long tail. To go fully proactive (no browse at all) you still need
+option 1 (force-load the sheets) so they're resident to begin with; §8 maximizes what each load yields.
+
+Handles: walk `[*(movie+0x40)]` gate `+0x88==4` → `+0x90` = list; `list+0x78` count, `list+0x80` arr
+(stride 8); entry name `+0x18` (heap iff `*(entry+0x30) >= 8`). Confirmed @ `0xd69662..0xd696f5`.
