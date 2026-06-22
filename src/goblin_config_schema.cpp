@@ -67,7 +67,6 @@ namespace goblin::config
     bool overlayMarkersProto = false;
     bool debugRenderDims = false;
     bool fixMidsessionResolution = false;
-    bool nativeMapInjection = false;
     float overlayMasterScale = 1.0f;   // master scale for all overlay markers + piles
     float overlayIconScale = 1.0f;     // category marker icons (× master)
     float overlayClusterScale = 1.0f;  // cluster pile glyphs (× master)
@@ -431,8 +430,6 @@ namespace
                   "Minimap X offset (px) from the anchored corner. 0 = default."},
                 IniEntry{"minimap_offset_y", IniType::F32, &cfg::minimapOffsetY, "0",
                   "Minimap Y offset (px) from the anchored corner. 0 = default."},
-                B("native_map_injection", nativeMapInjection, "false",
-                  "Inject goblin markers into the game's native world map\n(WorldMapPointParam). FALSE (default) = the ImGui overlay is the SOLE map\nsource (no native page-build, so no map-open freeze and no double-draw) — all\nfeatures are ported to the overlay. TRUE = also inject the legacy native icons\n(the old behaviour); kept only as a fallback and slated for removal."),
             }},
         };
     }

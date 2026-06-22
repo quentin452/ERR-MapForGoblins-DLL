@@ -245,12 +245,9 @@ static void setup_mod()
                                          goblin::config::debugItemGrants,
                                          goblin::config::debugFlagCapture);
 
-    // The overlay-markers prototype needs the probe loop running (it publishes the
-    // active cursor for get_live_view), so start it for either flag — and whenever
-    // native injection is off (the overlay is then the sole map and must draw).
-    if (goblin::config::debugWorldmapProbe || goblin::config::overlayMarkersProto ||
-        !goblin::config::nativeMapInjection)
-        goblin::worldmap_probe::initialize(g_mod_folder / "logs" / "MapForGoblins_wmprobe.log");
+    // The overlay IS the map now (native injection removed), so the probe loop always runs
+    // — it publishes the active cursor + live view the overlay renders against.
+    goblin::worldmap_probe::initialize(g_mod_folder / "logs" / "MapForGoblins_wmprobe.log");
 
     // The watcher is the single owner of the WorldMapPointParam state — it
     // applies the overlay menu's master-off / per-section / per-category /

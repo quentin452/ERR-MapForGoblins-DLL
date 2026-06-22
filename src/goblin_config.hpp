@@ -130,11 +130,6 @@ namespace goblin
         // goblin_worldmap_probe::get_live_view.
         extern bool overlayMarkersProto;
 
-        // When false, skip the native WorldMapPointParam injection (+ apply_map_logic)
-        // so the ImGui overlay is the sole map source (no native page-build = no
-        // freeze, no double-draw). Default true = classic native-map behaviour.
-        extern bool nativeMapInjection;
-
         // Dev: log ER's render-output dims each ~2s ([RENDIMS]) to diagnose the
         // mid-session resolution-change zoom corruption. Read-only.
         extern bool debugRenderDims;
