@@ -1644,6 +1644,13 @@ using create_image_fn = void *(__fastcall *)(void *, void *, void *, void *, voi
                                              void *, void *);
 create_image_fn g_create_image_orig = nullptr;
 
+// CreateImage context capture (RE §5g) — populated by create_image_detour, consumed by
+// run_create_icon to replay the GFx per-image bind for an arbitrary symbol. a0=param_1 (creator this),
+// a1=param_2, a2=param_3 (symbol desc: ASCII name @ (*a2 & ~3)+0xc, format "%hS").
+std::atomic<void *> g_ci_p1{nullptr};
+std::atomic<void *> g_ci_p2{nullptr};
+std::atomic<int> g_ci_logn{0};
+
 inline bool icon_rpm_i32(uintptr_t a, int &out)
 {
     SIZE_T n = 0;
@@ -1910,6 +1917,21 @@ void *__fastcall create_image_detour(void *a0, void *a1, void *a2, void *a3, voi
 {
     void *ret = g_create_image_orig(a0, a1, a2, a3, a4, a5, a6, a7);
     icon_log_image((uintptr_t)ret, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3);
+    // §5g: capture the live creator context (a0/a1) + log the real symbol name (a2 = param_3 →
+    // ASCII @ (*a2 & ~3)+0xc) so we can replay CreateImage for arbitrary item-icon symbols.
+    if (g_ci_p1.load(std::memory_order_relaxed) == nullptr) { g_ci_p1.store(a0); g_ci_p2.store(a1); }
+    int n = g_ci_logn.fetch_add(1, std::memory_order_relaxed);
+    if (n < 60 && a2)
+    {
+        uintptr_t descv = 0;
+        if (icon_rpm_ptr((uintptr_t)a2, descv))
+        {
+            char nm[96] = {0}; SIZE_T got = 0;
+            ReadProcessMemory(GetCurrentProcess(), (void *)((descv & ~uintptr_t(3)) + 0xc), nm, 95, &got);
+            spdlog::info("[CREATEIMG] live a0={} a1={} *a2={:#x} name='{}' -> img={:#x}",
+                         a0, a1, descv, nm, (uintptr_t)ret);
+        }
+    }
     return ret;
 }
 
@@ -2454,18 +2476,12 @@ std::atomic<int> g_bind_action{0};   // 0 idle | 1 dump | 2 load files | 3 flip-
 std::atomic<int> g_bind_gid{1};      // group id for the loaders (1 = 01_Common = the item-icon group)
 
 // ── CreateImage force-bind (RE §5g) ──────────────────────────────────────────────────────────────
-// CSScaleformImageCreator::CreateImage = FUN_140d6bbc0(p1, p2, symbolDesc) — the GFx per-image bind
-// callback. It reads an ASCII name at (*p3 & ~3)+0xc (format "%hS"), builds "<name>_ptl", and
-// find/creates the repo image (DAT_143d82510) + addref/activate, returning it. p1/p2 are UNUSED in the
-// body → callable with null. We (a) hook it to capture a live context + log the real symbol names, and
-// (b) force-call it for a synthesized "MENU_ItemIcon_<id>" symbol to try to bind an icon on demand.
-using create_img_fn2 = long long(__fastcall *)(void *, void *, uintptr_t *);
-create_img_fn2 g_ci_orig = nullptr;
-std::atomic<void *> g_ci_p1{nullptr};
-std::atomic<void *> g_ci_p2{nullptr};
-std::atomic<int> g_ci_logn{0};
+// CSScaleformImageCreator::CreateImage (FUN_140d6bbc0) is hooked above (create_image_detour, the
+// existing probe hook) which captures the live context g_ci_p1/g_ci_p2. Here we replay it: build a
+// synthetic symbol desc for "MENU_ItemIcon_<id>" and call the original via g_create_image_orig.
 std::atomic<int> g_ci_req_icon{INT_MIN};   // queued iconId to force-create (INT_MIN = idle)
 alignas(16) char g_ci_name[64];            // 4-aligned scratch for the synthesized symbol name
+uintptr_t g_ci_desc = 0;                   // synthetic param_3 qword: holds (g_ci_name - 0xc)
 
 inline bool res_w32(uintptr_t a, uint32_t v)
 {
@@ -2524,35 +2540,22 @@ void run_bind_action(uintptr_t mgr, uintptr_t er, int act, int gid)
     res_walk_groups(mgr, er, /*flip=*/(act == 3 || act == 4));
 }
 
-// CreateImage hook: capture a live (p1,p2) context once + throttle-log the real symbol names so we can
-// confirm the param_3 layout (name @ (*p3 & ~3)+0xc). Pass-through; read-only.
-long long __fastcall ci_detour(void *p1, void *p2, uintptr_t *p3)
-{
-    if (g_ci_p1.load(std::memory_order_relaxed) == nullptr) { g_ci_p1.store(p1); g_ci_p2.store(p2); }
-    int n = g_ci_logn.fetch_add(1, std::memory_order_relaxed);
-    if (n < 40 && p3)
-    {
-        uintptr_t namep = (*p3 & ~uintptr_t(3)) + 0xc;
-        char nm[96] = {0}; SIZE_T got = 0;
-        ReadProcessMemory(GetCurrentProcess(), (void *)namep, nm, 95, &got);
-        spdlog::info("[CREATEIMG] live p1={} p2={} *p3={:#x} name='{}'", p1, p2, (uintptr_t)*p3, nm);
-    }
-    return g_ci_orig(p1, p2, p3);
-}
-
 // Force-call CreateImage for "MENU_ItemIcon_<iconId>" (engine thread, via the ticker request). Builds a
-// synthetic symbol desc: a qword holding (nameAddr-0xc) so (*p3 & ~3)+0xc == nameAddr. Logs the returned
-// image + whether the repo grew. Caveat (§5b): the "<name>_ptl" view resolves against a RESIDENT sheet,
-// so pair with a force-load of the atlas group first if the icon's sheet isn't loaded.
+// synthetic symbol desc: param_3 → a qword holding (nameAddr-0xc) so (*p3 & ~3)+0xc == nameAddr (the
+// 4-aligned ASCII name). Calls the ORIGINAL via g_create_image_orig (the hook trampoline) with the
+// captured creator context. Logs the returned image + whether the repo grew. Caveat (§5b): the
+// "<name>_ptl" view resolves against a RESIDENT sheet — pair with "Load files (gid)" if not loaded.
 void run_create_icon(uintptr_t er, int iconId)
 {
+    if (!g_create_image_orig) { spdlog::warn("[CREATEIMG] no orig (probe hook missing)"); return; }
     snprintf(g_ci_name, sizeof(g_ci_name), "MENU_ItemIcon_%d", iconId);
-    uintptr_t p3 = reinterpret_cast<uintptr_t>(g_ci_name) - 0xc;   // (p3 & ~3)+0xc == g_ci_name (4-aligned)
+    g_ci_desc = reinterpret_cast<uintptr_t>(g_ci_name) - 0xc;   // (desc & ~3)+0xc == g_ci_name (4-aligned)
     size_t before = goblin::harvested_count();
-    auto CreateImage = reinterpret_cast<create_img_fn2>(er + 0xd6bbc0);
-    long long img = CreateImage(g_ci_p1.load(), g_ci_p2.load(), &p3);
+    void *img = g_create_image_orig(g_ci_p1.load(), g_ci_p2.load(), &g_ci_desc, nullptr, nullptr,
+                                    nullptr, nullptr, nullptr);
     size_t after = goblin::harvested_count();
-    spdlog::info("[CREATEIMG] force '{}' -> img={:#x}  harvested {}->{}", g_ci_name, (uintptr_t)img, before, after);
+    spdlog::info("[CREATEIMG] force '{}' (p1={} p2={}) -> img={:#x}  harvested {}->{}", g_ci_name,
+                 g_ci_p1.load(), g_ci_p2.load(), reinterpret_cast<uintptr_t>(img), before, after);
 }
 
 void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
@@ -2707,22 +2710,8 @@ void goblin::install_icon_texture_probe()
         spdlog::error("[BINDTEST] ticker hook failed: {}", e.what());
         g_res_tick_orig = nullptr;
     }
-
-    // CreateImage hook (findings §5g): capture the GFx image-creator context + log real symbol names,
-    // and enable force_create_icon() to replay it for an arbitrary item-icon symbol.
-    try
-    {
-        uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
-        void *cifn = reinterpret_cast<void *>(er + 0xd6bbc0);   // FUN_140d6bbc0
-        modutils::hook(cifn, reinterpret_cast<void *>(&ci_detour),
-                       reinterpret_cast<void **>(&g_ci_orig));
-        spdlog::info("[CREATEIMG] CreateImage hooked @ {} — open inventory to capture context + names", cifn);
-    }
-    catch (const std::exception &e)
-    {
-        spdlog::error("[CREATEIMG] hook failed: {}", e.what());
-        g_ci_orig = nullptr;
-    }
+    // CreateImage context capture + force-replay (§5g) reuses the existing CreateImage probe hook
+    // above (create_image_detour) — no separate hook (MinHook can't double-hook the same fn).
 }
 
 // Path A verify step (findings §6): on a MAP-OPEN frame, re-read each registered image's
