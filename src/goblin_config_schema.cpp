@@ -49,6 +49,7 @@ namespace goblin::config
     bool redifyBossIcons = false;
     bool graceOverlay = false;
     bool graceGpuSprite = false;
+    bool graceSuppressNative = false;
 
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
@@ -361,6 +362,8 @@ namespace
                    "Draw ALL Sites of Grace in the overlay (discovered = full colour,\nundiscovered = grey) instead of letting the game draw discovered ones.\nNeeds native-pin suppression to avoid doubled grace icons."),
                 BE("grace_gpu_sprite", graceGpuSprite, "false",
                    "Grace icon source when grace_overlay is on: false = the mod's baked atlas\nicon (clean, constant); true = the live engine sprite (SB_ERR_Grace,\ntinted by in-game time of day)."),
+                BE("grace_suppress_native", graceSuppressNative, "false",
+                   "Suppress the game's native discovered-grace map pins so the overlay is the\nsole grace source (pair with grace_overlay). Hooks the WarpPinData builder.\nDev/experimental."),
             }},
 
             {"Compatibility",

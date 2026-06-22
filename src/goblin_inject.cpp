@@ -2661,6 +2661,60 @@ void goblin::dump_icon_textures_live()
     }
 }
 
+// ── Native discovered-grace pin suppression (RE e4b3f6a; config grace_suppress_native) ──
+// Graces are WorldMapWarpPinData built by FUN_14088b7b0(this, out, WarpData* param_3) from a
+// WarpData whose source entry (warpData+0x8) holds: state byte @+0x1E (bits 0/1/2 = registered/
+// discovered/visible), iconId @+0x08. PHASE A (now): hook + LOG each build ([WARPPIN] state/iconId)
+// to confirm we can identify discovered graces at build time. Suppression (skip/hide the discovered
+// ones) is added once the log confirms identification. Read-only RPM in the detour; calls the orig.
+namespace
+{
+using warp_pin_fn = void *(__fastcall *)(void *, void *, void *, void *);
+warp_pin_fn g_warp_pin_orig = nullptr;
+
+void *__fastcall warp_pin_detour(void *a1, void *a2, void *warpData, void *a4)
+{
+    void *ret = g_warp_pin_orig(a1, a2, warpData, a4);
+    static int logged = 0;
+    if (goblin::config::graceSuppressNative && logged < 40)
+    {
+        uintptr_t src = 0; icon_rpm_ptr(reinterpret_cast<uintptr_t>(warpData) + 0x8, src);
+        int state = -1, iconId = -1;
+        if (src > 0x10000)
+        {
+            int sb = 0; icon_rpm_i32(src + 0x1C, sb);   // read dword spanning +0x1E; mask the byte
+            state = (sb >> 16) & 0xff;                   // +0x1E = byte 2 of the dword at +0x1C
+            icon_rpm_i32(src + 0x08, iconId);
+        }
+        ++logged;
+        spdlog::info("[WARPPIN] build warpData={:#x} src={:#x} stateByte(+0x1E)={:#x} (bits0-2={}) "
+                     "iconId={} pin={:#x}",
+                     reinterpret_cast<uintptr_t>(warpData), src, state & 0xff, state & 7, iconId,
+                     reinterpret_cast<uintptr_t>(ret));
+    }
+    return ret;
+}
+} // namespace
+
+void goblin::install_grace_suppression_hook()
+{
+    if (!goblin::config::graceSuppressNative) return;
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!er) return;
+    void *fn = reinterpret_cast<void *>(er + 0x88b7b0);   // FUN_14088b7b0 (RE e4b3f6a §1)
+    try
+    {
+        modutils::hook(fn, reinterpret_cast<void *>(&warp_pin_detour),
+                       reinterpret_cast<void **>(&g_warp_pin_orig));
+        spdlog::info("[WARPPIN] WarpPinData builder hooked @ {} (phase A: log only)", fn);
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("[WARPPIN] hook failed: {}", e.what());
+        g_warp_pin_orig = nullptr;
+    }
+}
+
 void goblin::refresh_world_map_icons()
 {
     if (!g_wm_build_orig) return;           // hook not installed (flag off / AOB miss)

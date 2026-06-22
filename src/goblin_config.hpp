@@ -83,6 +83,12 @@ namespace goblin
         extern bool graceOverlay;
         extern bool graceGpuSprite;
 
+        // Suppress the game's native discovered-grace map pins (so the overlay is the sole grace
+        // source, paired with graceOverlay). Hooks the WarpPinData builder (RE e4b3f6a). PHASE A:
+        // when on, the hook installs + LOGS each grace pin build ([WARPPIN]) to confirm we can
+        // identify discovered ones — actual suppression is gated behind this once verified.
+        extern bool graceSuppressNative;
+
         // Marker dump (hotkey → dump beacon/stamp coords to file)
         extern bool enableMarkerDump;
         extern uint32_t markerDumpKey;  // Win32 VK_* code (default VK_F9 = 0x78)

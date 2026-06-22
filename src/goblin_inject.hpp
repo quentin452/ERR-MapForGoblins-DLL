@@ -253,6 +253,10 @@ namespace goblin
     // log each worldmap icon image (sprite rect + backing GPU texture) → crack iconId↔image.
     void install_icon_texture_probe();
 
+    // Hook the WarpPinData builder to suppress native discovered-grace pins (config
+    // grace_suppress_native). Phase A logs [WARPPIN] to confirm identification (RE e4b3f6a).
+    void install_grace_suppression_hook();
+
     // Dev probe (dump_icon_textures): iterate EquipParam* live, log rows whose iconId matches
     // the inventory-captured MENU_FL_<iconId> sprites → proves item↔iconId↔sprite.
     void verify_equip_iconids();
