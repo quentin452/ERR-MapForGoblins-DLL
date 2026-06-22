@@ -2138,58 +2138,69 @@ static void self_calibrate_iconid()
     }
 }
 
+goblin::ItemSprite goblin::resolve_item_sprite(int iconId)
+{
+    // Cache VALID resolves only (a miss may be "sheet not loaded yet" → retry later).
+    static std::unordered_map<int, ItemSprite> cache;
+    auto it = cache.find(iconId);
+    if (it != cache.end()) return it->second;
+
+    ItemSprite s;
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!er) return s;
+    using FindFn = void *(__fastcall *)(void *, void **, const wchar_t *);  // FUN_140d63c30
+    auto find = reinterpret_cast<FindFn>(er + 0xd63c30);
+    void *repo = *reinterpret_cast<void **>(er + 0x3d82510);  // FD4 image repo singleton
+    if (!repo) return s;                                       // menu not loaded → no sheets resident
+    wchar_t key[40] = L"MENU_ItemIcon_00000";
+    { int v = iconId; for (int i = 18; i >= 14; --i) { key[i] = static_cast<wchar_t>(L'0' + (v % 10)); v /= 10; } }
+    void *out = nullptr;
+    void *ret = find(repo, &out, key);
+    uintptr_t img = reinterpret_cast<uintptr_t>(out ? out : ret);
+    if (img < 0x10000) return s;
+    uintptr_t vt = 0; icon_rpm_ptr(img, vt);
+    if (!(vt > er && vt - er == 0x2bb8910)) return s;          // miss = sentinel (vt != CSTextureImage)
+    icon_rpm_i32(img + 0x74, s.x0); icon_rpm_i32(img + 0x78, s.y0);
+    icon_rpm_i32(img + 0x7c, s.x1); icon_rpm_i32(img + 0x80, s.y1);
+    uintptr_t rtex = 0; icon_rpm_ptr(img + 0x10, rtex);        // Render::Texture (bound)
+    if (rtex < 0x10000) return s;
+    uintptr_t res = 0; icon_rpm_ptr(rtex + 0x70, res);         // ID3D12Resource
+    if (res < 0x10000) return s;
+    s.sheet = reinterpret_cast<void *>(res);
+    // GetDesc (ID3D12Resource vtable[10]) → D3D12_RESOURCE_DESC: Width@+0x10, Height@+0x18, Format@+0x20.
+    uintptr_t resvt = 0; icon_rpm_ptr(res, resvt);
+    if (resvt > 0x10000)
+    {
+        using GetDescFn = void *(__fastcall *)(void *, void *);
+        auto getdesc = reinterpret_cast<GetDescFn>(reinterpret_cast<void **>(resvt)[10]);
+        unsigned char desc[0x48] = {0};
+        getdesc(reinterpret_cast<void *>(res), desc);
+        s.sheetW = *reinterpret_cast<unsigned long long *>(desc + 0x10);
+        s.sheetH = *reinterpret_cast<unsigned int *>(desc + 0x18);
+        s.format = *reinterpret_cast<unsigned int *>(desc + 0x20);
+    }
+    s.valid = true;
+    cache[iconId] = s;
+    return s;
+}
+
 void goblin::probe_icon_find_runtime()
 {
     if (!goblin::config::dumpIconTextures)
         return;
-    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
-    if (!er) { spdlog::warn("[FIND2] no eldenring.exe base"); return; }
-    // find-by-name: FUN_140d63c30(repo, &out, key) → CSTextureImage* (sprite findings §1/§6).
-    using FindFn = void *(__fastcall *)(void *, void **, const wchar_t *);
-    auto find = reinterpret_cast<FindFn>(er + 0xd63c30);
-    void *repo = *reinterpret_cast<void **>(er + 0x3d82510);  // FD4 image repo singleton DAT_143d82510
-    spdlog::info("[FIND2] === draw-free icon find-by-name probe === repo={:#x} find={:#x}",
-                 reinterpret_cast<uintptr_t>(repo), er + 0xd63c30);
-    if (!repo) { spdlog::warn("[FIND2] repo null — open the inventory menu, then press F8"); return; }
-    // Mix of captured/displayed ids (40xxx) + real EquipParam iconIds we likely did NOT display
-    // (goods 4000/4121, weapon 1013, accessory 18000, gem 8300/8307) → a HIT on an un-displayed id
-    // with the menu open = draw-free find works (beats the CreateImage reach-limit).
+    spdlog::info("[FIND2] === resolve_item_sprite probe (draw-free) ===");
+    // Mix of captured ids (40xxx) + real EquipParam iconIds likely NOT displayed (goods 4000/4121,
+    // weapon 1013, accessory 18000, gem 8300/8307). HIT on an un-displayed id = draw-free works.
     static const int ids[] = {40144, 40147, 40172, 4000, 4121, 1013, 18000, 8300, 8307};
     for (int id : ids)
     {
-        wchar_t key[40] = L"MENU_ItemIcon_00000";   // 5-digit field at [14..18]
-        { int v = id; for (int i = 18; i >= 14; --i) { key[i] = static_cast<wchar_t>(L'0' + (v % 10)); v /= 10; } }
-        void *out = nullptr;
-        void *ret = find(repo, &out, key);           // foreign call (dev probe; crashdumper covers a bad sig)
-        uintptr_t img = reinterpret_cast<uintptr_t>(out ? out : ret);
-        if (img < 0x10000)
-        {
-            spdlog::info("[FIND2] id={} MISS (ret={:#x} out={:#x})", id,
-                         reinterpret_cast<uintptr_t>(ret), reinterpret_cast<uintptr_t>(out));
-            continue;
-        }
-        uintptr_t vt = 0; icon_rpm_ptr(img, vt);
-        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-        icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
-        icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
-        bool ok = (vt > er) && (vt - er == 0x2bb8910);
-        spdlog::info("[FIND2] id={} HIT img={:#x} vtRVA={:#x} rect=({},{})-({},{}) {}",
-                     id, img, (vt > er) ? vt - er : 0, x0, y0, x1, y1,
-                     ok ? "CSTextureImage OK" : "vt mismatch");
-        if (!ok) continue;
-        // §2: img+0x10 → Render::Texture (vt RVA 0x2c0f318, bound lazily) → +0x70 → ID3D12Resource.
-        // Confirms the GPU-readback chain is reachable WITHOUT drawing. If rtex is null here, the
-        // texture binds only on first sample → we'd need the sheet image (always bound) or a render.
-        uintptr_t rtex = 0; icon_rpm_ptr(img + 0x10, rtex);
-        if (rtex < 0x10000) { spdlog::info("[FIND2-TEX] id={} rtex(img+0x10)=NULL — not bound (needs sample/sheet)", id); continue; }
-        uintptr_t rvt = 0; icon_rpm_ptr(rtex, rvt);
-        uintptr_t res = 0; icon_rpm_ptr(rtex + 0x70, res);
-        int dim = 0, w = 0, h = 0;
-        if (res > 0x10000) { icon_rpm_i32(res + 0x10, dim); icon_rpm_i32(res + 0x20, w); icon_rpm_i32(res + 0x28, h); }
-        spdlog::info("[FIND2-TEX] id={} rtex={:#x} rtexVtRVA={:#x} ID3D12Resource={:#x} dim={} {}x{}",
-                     id, rtex, (rvt > er) ? rvt - er : 0, res, dim, w, h);
+        ItemSprite s = goblin::resolve_item_sprite(id);
+        if (!s.valid) { spdlog::info("[FIND2] id={} MISS (not resolved / sheet not resident)", id); continue; }
+        spdlog::info("[FIND2] id={} OK sheet={:#x} rect=({},{})-({},{}) sheet={}x{} fmt={}",
+                     id, reinterpret_cast<uintptr_t>(s.sheet), s.x0, s.y0, s.x1, s.y1,
+                     s.sheetW, s.sheetH, s.format);
     }
-    spdlog::info("[FIND2] === done. Now CLOSE the inventory and press F8 again to test residency. ===");
+    spdlog::info("[FIND2] === done (fmt = DXGI_FORMAT: 28=RGBA8, 71=BC1, 74=BC2, 77=BC3, 98=BC7) ===");
 }
 
 void goblin::install_icon_texture_probe()

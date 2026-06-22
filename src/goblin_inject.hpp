@@ -262,6 +262,20 @@ namespace goblin
     // the worldmap probe loop while the map is open; runs once per session after it resolves.
     void dump_icon_textures_live();
 
+    // A resolved item-icon sprite: the engine's sheet ID3D12Resource + the sub-rect on it + the
+    // sheet's GetDesc() info. `sheet` is engine-owned (do NOT Release). Resolved draw-free via the
+    // find-by-name chain (sprite findings §1/§2). valid=false ⇒ miss / sheet not resident (caller
+    // falls back to the baked PNG). Cached per iconId (valid only). Feeds the future DX12 atlas copy.
+    struct ItemSprite
+    {
+        void *sheet = nullptr;                 // ID3D12Resource* of the loaded sheet
+        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;    // sub-rect on the sheet
+        unsigned long long sheetW = 0;
+        unsigned int sheetH = 0, format = 0;   // DXGI_FORMAT (from GetDesc)
+        bool valid = false;
+    };
+    ItemSprite resolve_item_sprite(int iconId);
+
     // Dev runtime-confirm (sprite findings §6): call the engine's draw-free icon
     // find-by-name FUN_140d63c30(repo, &out, L"MENU_ItemIcon_<id>") for a set of iconIds and
     // log whether each resolves to a CSTextureImage+rect WITHOUT the icon being drawn. Press
