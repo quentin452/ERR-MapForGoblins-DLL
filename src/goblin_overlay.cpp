@@ -23,6 +23,7 @@
 #include "worldmap/grace_layer.hpp"      // goblin::worldmap::GraceLayer
 #include "worldmap/map_entry_layer.hpp"  // goblin::worldmap::MapEntryLayer
 #include "worldmap/map_renderer.hpp"     // goblin::worldmap::render_markers
+#include "worldmap/category_meta.hpp"    // baked→GPU icon migration counters (F1 panel)
 #include "generated_shared/goblin_overlay_icons.hpp" // ATLAS_PNG category-icon atlas
 #include "stb_image.h"                                // stbi_load_from_memory (PNG decode)
 #include "goblin_bench.hpp"                           // GOBLIN_BENCH scoped timers
@@ -1132,6 +1133,51 @@ namespace
                 ImGui::SameLine();
                 if (ImGui::Button("Force CreateImage")) goblin::force_create_icon(s_ci_icon);
                 if (ImGui::Button("Replay last live symbol (control)")) goblin::force_create_last();
+            }
+
+            // Icon migration completion (Baked → GPU): how many category icons still draw from the
+            // baked PNG atlas vs have a real engine GPU sprite wired. The denominator is the
+            // categories that HAVE a baked icon (the by-design circle-fallback ones are excluded —
+            // they have no baked cell to replace). A category counts as "GPU" once it's mapped to an
+            // engine iconId (category_gpu_iconId) AND that sprite has been harvested.
+            if (ImGui::CollapsingHeader("Icon migration (Baked \xE2\x86\x92 GPU)"))
+            {
+                namespace wm = goblin::worldmap;
+                const int total = wm::category_count();
+                int baked = 0, gpu = 0;
+                for (int c = 0; c < total; ++c)
+                {
+                    if (!wm::category_has_baked_icon(c))
+                        continue;
+                    ++baked;
+                    int iid = wm::category_gpu_iconId(c);
+                    goblin::ItemSprite sp;
+                    if (iid && goblin::harvested_icon(iid, sp))
+                        ++gpu;
+                }
+                const float frac = baked ? static_cast<float>(gpu) / baked : 0.f;
+                ImGui::Text("GPU sprites: %d / %d baked categories (%.0f%%)", gpu, baked, frac * 100.f);
+                ImGui::ProgressBar(frac, ImVec2(-1, 0));
+                ImGui::Text("Remaining to replace: %d   |   circle-fallback (no baked): %d",
+                            baked - gpu, total - baked);
+                ImGui::Separator();
+                ImGui::TextDisabled("Still baked (to replace):");
+                if (ImGui::BeginChild("iconmig_list", ImVec2(0, 180), true))
+                {
+                    for (int c = 0; c < total; ++c)
+                    {
+                        if (!wm::category_has_baked_icon(c))
+                            continue;
+                        int iid = wm::category_gpu_iconId(c);
+                        goblin::ItemSprite sp;
+                        if (iid && goblin::harvested_icon(iid, sp))
+                            continue; // only list the ones NOT yet replaced
+                        const char *name = goblin::ui::category_label(c);
+                        ImGui::BulletText("%s%s", name ? name : "?",
+                                          iid ? "  (mapped, sprite not harvested yet)" : "");
+                    }
+                }
+                ImGui::EndChild();
             }
 
             // Grace-sprite GPU debug: draw every harvested SB_ERR_Grace_* frame (full-sheet SRV +

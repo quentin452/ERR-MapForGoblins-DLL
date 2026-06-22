@@ -12,4 +12,18 @@ const char *category_icon_key(int category);
 // Circle-fallback colour (packed ImU32 ABGR) for the category, by broad group. Only
 // shows where the category has no atlas icon; out-of-range → a neutral default.
 unsigned int category_color(int category);
+
+// ── Baked → GPU icon migration tracking (F1 completion panel) ───────────────────
+// Total number of categories (Category enum size).
+int category_count();
+
+// True when the category's icon_key resolves to a real BAKED atlas cell (vs the
+// by-design circle-fallback categories, which have no cell). = "has a baked icon".
+bool category_has_baked_icon(int category);
+
+// Canonical engine iconId for the category's icon, for the baked→GPU migration.
+// 0 = NOT mapped yet (still baked-only → "to replace"). Sparse: fill an entry as each
+// category's real engine sprite is wired. Combined with harvested_icon() this drives
+// the F1 "X / N icons replaced" completion counter.
+int category_gpu_iconId(int category);
 } // namespace goblin::worldmap
