@@ -216,11 +216,16 @@ static void setup_mod()
     if (GetModuleHandleA("ersc.dll"))
         spdlog::info("Seamless Co-op detected (ersc.dll)");
 
-    if (goblin::config::enableMarkerDump)
+    // hotkey_loop also services the F8 icon find-by-name dev probe (gated dump_icon_textures),
+    // so start it for EITHER flag.
+    if (goblin::config::enableMarkerDump || goblin::config::dumpIconTextures)
     {
         goblin::markers::set_output_path(g_mod_folder / "logs" / "MapForGoblins_markers.log");
         std::thread(goblin::markers::hotkey_loop).detach();
-        spdlog::info("Marker dump hotkey: VK 0x{:X}", goblin::config::markerDumpKey);
+        if (goblin::config::enableMarkerDump)
+            spdlog::info("Marker dump hotkey: VK 0x{:X}", goblin::config::markerDumpKey);
+        if (goblin::config::dumpIconTextures)
+            spdlog::info("[FIND2] icon find-by-name probe armed on F8 (open inventory, press F8)");
     }
 
     // Thread 7 — opt-in coverage-gap observers (SetEventFlag / AddItemFunc). Each
