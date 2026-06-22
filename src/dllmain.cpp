@@ -311,6 +311,21 @@ static void setup_mod()
         catch (...)
         {
         }
+
+        // Periodic [BENCH] session report. DLL_PROCESS_DETACH does NOT fire under
+        // Proton/Wine (the game hard-terminates → no clean unload, confirmed: no
+        // deinit/shutdown line ever reaches the log), so an exit-time dump is
+        // impossible. Instead snapshot the aggregate every 30s; spdlog flushes per
+        // line, so the log always ends with a recent full report even on a hard kill.
+        {
+            static auto last_report = std::chrono::steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
+            if (now - last_report >= std::chrono::seconds(30))
+            {
+                goblin::bench::Registry::instance().dump_report();
+                last_report = now;
+            }
+        }
     }
 }
 
@@ -318,6 +333,10 @@ bool WINAPI DllMain(HINSTANCE dll_instance, unsigned int fdw_reason, void *lpv_r
 {
     if (fdw_reason == DLL_PROCESS_ATTACH)
     {
+        // Stamp the load instant so the [BENCH] session report (dumped at detach)
+        // can express each timer's cost as a share of total DLL wallclock.
+        goblin::bench::Registry::instance().mark_load();
+
         wchar_t dll_filename[MAX_PATH] = {0};
         GetModuleFileNameW(dll_instance, dll_filename, MAX_PATH);
         auto folder = std::filesystem::path(dll_filename).parent_path();
@@ -365,6 +384,9 @@ bool WINAPI DllMain(HINSTANCE dll_instance, unsigned int fdw_reason, void *lpv_r
         {
             spdlog::error("Error deinitializing: {}", e.what());
         }
+        // Full [BENCH] session summary (avg/min/max/total per label + %wall) before
+        // the logger closes — one greppable block instead of scraping per-line timings.
+        goblin::bench::Registry::instance().dump_report();
         spdlog::shutdown();
     }
     return true;
