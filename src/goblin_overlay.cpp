@@ -736,6 +736,29 @@ namespace
             "    frame the game happens to draw will appear.");
     }
 
+    // A scale/offset row with BOTH a coarse slider AND a precise input on the same line: drag the
+    // slider for a rough value, or type an exact one / click the +/- step arrows of the InputFloat
+    // for fine control. Keyboard text entry already works (the WndProc feeds WM_CHAR to ImGui), so
+    // no ImGui-init change is needed for typing. The value is clamped to [lo,hi] (the slider range).
+    // Returns true if the value changed this frame. (Tip: Ctrl+Click the slider itself also types.)
+    bool scale_control(const char *label, float *v, float lo, float hi,
+                       float step, float step_fast, const char *fmt)
+    {
+        bool changed = false;
+        ImGui::PushID(label);
+        ImGui::SetNextItemWidth(150.0f);
+        changed |= ImGui::SliderFloat("##slider", v, lo, hi, fmt);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(120.0f);
+        changed |= ImGui::InputFloat("##input", v, step, step_fast, fmt);
+        if (*v < lo) *v = lo;
+        if (*v > hi) *v = hi;
+        ImGui::SameLine();
+        ImGui::TextUnformatted(label);
+        ImGui::PopID();
+        return changed;
+    }
+
     // Upload the atlas once g_command_queue is captured. Self-gates; on failure it
     // marks ready anyway so we don't retry every frame (just falls back to circles).
     void try_upload_atlas()
@@ -1296,20 +1319,24 @@ namespace
             // size = resolution-relative base × master × per-type scale.
             if (ImGui::CollapsingHeader("Marker scale (overlay map)"))
             {
-                ImGui::SliderFloat("Master", &goblin::config::overlayMasterScale, 0.3f, 3.0f, "%.2f");
-                ImGui::SliderFloat("Category icons", &goblin::config::overlayIconScale, 0.3f, 3.0f, "%.2f");
-                ImGui::SliderFloat("Grace icons (calib)", &goblin::config::graceIconScale, 0.2f, 4.0f, "%.2f");
-                ImGui::SliderFloat("Grace offset X (native vs imgui)", &goblin::config::graceOffsetX, -200.0f, 200.0f, "%.0f");
-                ImGui::SliderFloat("Grace offset Y (native vs imgui)", &goblin::config::graceOffsetY, -200.0f, 200.0f, "%.0f");
-                ImGui::SliderFloat("Cluster piles", &goblin::config::overlayClusterScale, 0.3f, 3.0f, "%.2f");
-                ImGui::SameLine();
+                scale_control("Master", &goblin::config::overlayMasterScale, 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
+                scale_control("Category icons", &goblin::config::overlayIconScale, 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
+                scale_control("Grace icons (calib)", &goblin::config::graceIconScale, 0.2f, 4.0f, 0.05f, 0.25f, "%.2f");
+                scale_control("Grace offset X (native vs imgui)", &goblin::config::graceOffsetX, -200.0f, 200.0f, 1.0f, 10.0f, "%.0f");
+                scale_control("Grace offset Y (native vs imgui)", &goblin::config::graceOffsetY, -200.0f, 200.0f, 1.0f, 10.0f, "%.0f");
+                scale_control("Cluster piles", &goblin::config::overlayClusterScale, 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
                 if (ImGui::SmallButton("Reset##scale"))
                 {
                     goblin::config::overlayMasterScale = 1.0f;
-                    goblin::config::overlayIconScale = 1.0f;
+                    goblin::config::overlayIconScale = 1.2f;     // match the schema defaults
                     goblin::config::overlayClusterScale = 1.0f;
+                    goblin::config::graceIconScale = 1.2f;
+                    goblin::config::graceOffsetX = 0.0f;
+                    goblin::config::graceOffsetY = 0.0f;
                 }
-                ImGui::TextDisabled("Live. × a resolution-relative base. Save to INI to persist.");
+                ImGui::TextDisabled("Slider = coarse; type in the box or use its +/- arrows for an exact\n"
+                                    "value (Ctrl+Click the slider also types). × a resolution-relative\n"
+                                    "base. Save to INI to persist.");
             }
 
             // In-game minimap HUD (foundation; overworld-only, north-up). Live; persists.

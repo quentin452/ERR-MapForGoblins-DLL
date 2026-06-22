@@ -68,9 +68,9 @@ namespace goblin::config
     bool debugRenderDims = false;
     bool fixMidsessionResolution = false;
     float overlayMasterScale = 1.0f;   // master scale for all overlay markers + piles
-    float overlayIconScale = 1.0f;     // category marker icons (× master)
+    float overlayIconScale = 1.2f;     // category marker icons (× master)
     float overlayClusterScale = 1.0f;  // cluster pile glyphs (× master)
-    float graceIconScale = 1.0f;       // grace markers only (× icon scale) — calibration
+    float graceIconScale = 1.2f;       // grace markers only (× icon scale) — calibration
     float graceOffsetX = 0.0f;         // px offset of the overlay grace draw — native-vs-imgui compare
     float graceOffsetY = 0.0f;
 
@@ -409,12 +409,12 @@ namespace
                   "Dev diagnostic (mid-session resolution bug): every ~2s log ER's render-\noutput dims (active +0x118/+0x11c vs the live backbuffer) + dirty bits to\nMapForGoblins.log as [RENDIMS]. Change the resolution in-game, then read the\nlog: the entry that stays at the OLD resolution is the stale one. Off by default."),
                 IniEntry{"overlay_master_scale", IniType::F32, &cfg::overlayMasterScale, "1.0",
                   "Master scale for ALL overlay map markers + cluster piles (multiplies the\nper-type scales). 1.0 = default. A resolution-relative base size is applied\nfirst, then ×master×type. Editable live in the F1 menu; persists on Save."},
-                IniEntry{"overlay_icon_scale", IniType::F32, &cfg::overlayIconScale, "1.0",
-                  "Scale for category marker ICONS (x master). 1.0 = default."},
+                IniEntry{"overlay_icon_scale", IniType::F32, &cfg::overlayIconScale, "1.2",
+                  "Scale for category marker ICONS (x master). 1.2 = default."},
                 IniEntry{"overlay_cluster_scale", IniType::F32, &cfg::overlayClusterScale, "1.0",
                   "Scale for CLUSTER pile glyphs (x master). 1.0 = default."},
-                IniEntry{"grace_icon_scale", IniType::F32, &cfg::graceIconScale, "1.0",
-                  "Scale for GRACE markers only (x icon scale). 1.0 = default. For calibrating the\ngrace sprite size against the map."},
+                IniEntry{"grace_icon_scale", IniType::F32, &cfg::graceIconScale, "1.2",
+                  "Scale for GRACE markers only (x icon scale). 1.2 = default. For calibrating the\ngrace sprite size against the map. NOTE: grace size compounds with overlay_icon_scale."},
                 IniEntry{"grace_offset_x", IniType::F32, &cfg::graceOffsetX, "0.0",
                   "Pixel X offset of the overlay grace draw — set non-zero to shift the imgui grace\nbeside the game's NATIVE grace pin for side-by-side comparison/calibration."},
                 IniEntry{"grace_offset_y", IniType::F32, &cfg::graceOffsetY, "0.0",
