@@ -153,6 +153,25 @@ own "view animating" verdict (one call, no eps tuning).
 - view (`cursor+0xF0`): pan `+0x378/+0x37C`, zoom `+0x380`.
 - Resolve fns by AOB, the dialog via the existing CSMenuMan cursor walk; offsets version-specific.
 
+## 7b. RUNTIME CONFIRMED (2026-06-22, Linux/Proton, [WMTRANS] probe in get_live_view)
+
+Logged overworld→underground→DLC→back. Results:
+- **`dialog+0xA44` swap edge = ✓** pulses `1` for ~1 frame at each press, else 0.
+- **page id flips at the START = ✓** the edge frame already shows the new `openDlc`/`underground`
+  (the "flip too early" cause, confirmed).
+- **`dialog+0xE00` fadeTimer = ✓ THE usable progress signal**: resets to **0.200** at the swap,
+  ramps down by dt to 0 over ~6–7 frames (~0.2 s), crosses zero, **settles at ~-0.023**. Its SIGN
+  selects the layer (≥0 surface, <0 UG). → `progress = clamp01(1 − fadeTimer/0.2)`.
+- **pan/zoom-target offsets (`+0x2EAC/+0x2EB0/+0x2EB4`) = ✗ WRONG**: read garbage (tgtPan≈5129,7000;
+  tgtZoom≈5129 — absurd for a ~0.2 zoom); current pan SNAPS between fixed per-page values rather
+  than easing. **Not needed** — §4: marker POSITIONS already ride the live view, so the fix is
+  set-membership + alpha only. Dropped these reads.
+- `+0x3E74` settle timer stayed 0 in these transitions — not load-bearing here.
+
+**Fix recipe (revised):** detect swap by `open_grp` change (or `+0xA44`), then cross-fade the marker
+SET via `fadeTimer` (`progress = 1 − fade/0.2`) — or a self-timed ~0.2 s `io.DeltaTime` ramp
+(equivalent, no offset dependence). LiveView now exposes `swapEdge` + `fadeTimer`.
+
 ## 7. Runtime confirm (quentin — game not running during this RE)
 
 Log per frame across **overworld→underground→DLC→back**:

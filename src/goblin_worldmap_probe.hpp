@@ -44,6 +44,14 @@ namespace goblin::worldmap_probe
         int viewArea;           // WorldMapArea+0x6e = areaNo of the open page (doc §3)
         int underground;        // open-map layer (dialog+0x2B68 deref +0xB8): 0=surface, 1=underground
         int openDlc;            // open-map page (dialog+0xA88): 1 if DLC map (page==10), else 0
+        // Page-transition state (RE: windows_worldmap_page_transition_re_findings.md, runtime-
+        // CONFIRMED 2026-06-22). The page id (openDlc/underground) flips INSTANTLY at the button
+        // press, but the VISUAL cross-fades over ~0.2s → the "flip too early" overlay flicker.
+        // fadeTimer is the clean progress signal; the pan/zoom-target offsets from the doc were
+        // wrong (and unneeded — marker positions already ride the live view, §4).
+        int swapEdge;           // dialog+0xA44 (u8): 1 the frame a swap was requested (transient)
+        float fadeTimer;        // dialog+0xE00 (f32): resets 0.2 at swap → ramps to 0 → settles
+                                // ~-0.023; sign = layer (≥0 surface, <0 UG). progress=1-fade/0.2.
     };
     bool get_live_view(LiveView &out);
 

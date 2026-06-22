@@ -890,6 +890,17 @@ bool get_live_view(LiveView &out)
         if (seh_read_i32(reinterpret_cast<void *>(layer_obj + 0xB8), &layer))
             out.underground = layer & 0xFF; // the layer state is a byte
     }
+    // Page-transition state (RE §2/§5, runtime-CONFIRMED). fadeTimer (dialog+0xE00) resets to 0.2
+    // at a swap and ramps to 0 over ~0.2s (sign=layer); the doc's pan/zoom-target offsets read
+    // garbage and aren't needed (marker positions ride the live view, §4). swapEdge = the 1-frame
+    // swap pulse.
+    out.swapEdge = 0; out.fadeTimer = 0.f;
+    {
+        int edge = 0;
+        if (seh_read_i32(reinterpret_cast<void *>(dialog + 0xA44), &edge))
+            out.swapEdge = edge & 0xFF; // u8 (read as i32, mask)
+        seh_read4(reinterpret_cast<void *>(dialog + 0xE00), &out.fadeTimer);
+    }
     return true;
 }
 
