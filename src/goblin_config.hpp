@@ -71,30 +71,9 @@ namespace goblin
         extern bool anonymousLoot;  // spoiler-free mode: every loot marker shows a
                                     // gray "?" icon + a generic localized label instead
                                     // of the real item (blind randomizer runs).
-        extern bool projectDungeons; // remap minor-dungeon entries (catacombs/caves/
-                                    // tunnels/hero's graves — areaNo with no in-game
-                                    // map page) onto the overworld via the game's own
-                                    // WorldMapLegacyConvParam (baked LEGACY_CONV), so
-                                    // their icons become visible near the entrance.
 
         // ── ERR Markers ─────────────────────────────────────────────────
-        // Patches to ERR's pre-placed WorldMapPointParam entries (camps,
-        // merchants, field bosses, dungeon entrances). Each `patch*` flag
-        // decides whether we rewrite that category's flags so the marker
-        // appears/hides in sync with map-fragment discovery and (for
-        // dungeons) boss completion. `false` = leave the row alone — the
-        // icon still appears with whatever flags ERR ships.
-        extern bool patchOverworldBossIcons;
-        extern bool patchDungeonBossIcons;
-        extern bool patchCampIcons;
-        extern bool patchMerchantIcons;
-        // Cosmetic options layered on top of the patch flags above. Each
-        // requires its corresponding `patch*` flag to be true to take
-        // effect (we only touch the icon when we're already rewriting
-        // the row).
-        extern bool redifyBossIcons;            // overworld bosses: red icon + auto-hide on kill
-        extern bool redifyDungeonIcons;         // dungeon entrances: red icon
-        extern bool hideDungeonIconsOnClear;    // dungeon entrances: hide on boss kill
+        extern bool redifyBossIcons;  // overlay: boss markers drawn red + auto-hide on kill
 
         // Marker dump (hotkey → dump beacon/stamp coords to file)
         extern bool enableMarkerDump;
