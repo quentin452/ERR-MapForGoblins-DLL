@@ -98,8 +98,8 @@ static void init_collected()        { goblin::collected::initialize(); }
 static void init_kindling()         { goblin::kindling::initialize(); }
 static void init_tutorial_popup()   { goblin::inject_tutorial_popup_rows(); }
 static void init_setup_messages()   { goblin::setup_messages(); }
-static void init_live_refresh()     { goblin::install_live_refresh_hook(); }
 static void init_icon_tex_probe()   { goblin::install_icon_texture_probe(); }
+static void init_grace_suppress()   { goblin::install_grace_suppression_hook(); }
 
 static void safe_init_step(InitFn fn, const char *name)
 {
@@ -201,8 +201,8 @@ static void setup_mod()
         safe_init_step(&init_setup_messages,  "setup_messages");
         // Queue the live-refresh hook (FUN_140a82a80) — kept for the native-pin
         // suppression path; no-op until enabled.
-        safe_init_step(&init_live_refresh,    "install_live_refresh_hook");
         safe_init_step(&init_icon_tex_probe,  "install_icon_texture_probe");
+        safe_init_step(&init_grace_suppress,  "install_grace_suppression_hook");
     }
 
     try
@@ -245,12 +245,9 @@ static void setup_mod()
                                          goblin::config::debugItemGrants,
                                          goblin::config::debugFlagCapture);
 
-    // The overlay-markers prototype needs the probe loop running (it publishes the
-    // active cursor for get_live_view), so start it for either flag — and whenever
-    // native injection is off (the overlay is then the sole map and must draw).
-    if (goblin::config::debugWorldmapProbe || goblin::config::overlayMarkersProto ||
-        !goblin::config::nativeMapInjection)
-        goblin::worldmap_probe::initialize(g_mod_folder / "logs" / "MapForGoblins_wmprobe.log");
+    // The overlay IS the map now (native injection removed), so the probe loop always runs
+    // — it publishes the active cursor + live view the overlay renders against.
+    goblin::worldmap_probe::initialize(g_mod_folder / "logs" / "MapForGoblins_wmprobe.log");
 
     // The watcher is the single owner of the WorldMapPointParam state — it
     // applies the overlay menu's master-off / per-section / per-category /

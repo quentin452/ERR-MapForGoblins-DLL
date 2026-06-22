@@ -59,15 +59,10 @@ namespace goblin
         extern bool hideKilledBosses;  // true=hide killed icons, false=green checkmark
 
         // Compatibility
-        extern bool liveLootFlags;  // read live ItemLotParam getItemFlagId at runtime
-                                    // → loot markers hide on the actual light-point
-                                    // pickup for the current regulation (Randomizer-safe)
         extern bool liveLootLabels; // read live ItemLotParam item+category at runtime
                                     // → loot marker name shows the item the lot now
                                     // gives (Randomizer-safe). Needs full-band FMG copy.
-        extern bool liveLootIcons;  // re-icon & re-gate loot markers by the LIVE item's
-                                    // category at inject (so a randomized item shows its
-                                    // own icon under its own show_* toggle).
+                                    // (live_loot_flags/icons removed in Phase 2b — native-only.)
         extern bool anonymousLoot;  // spoiler-free mode: every loot marker shows a
                                     // gray "?" icon + a generic localized label instead
                                     // of the real item (blind randomizer runs).
@@ -82,6 +77,12 @@ namespace goblin
         // suppression to avoid doubling discovered graces.
         extern bool graceOverlay;
         extern bool graceGpuSprite;
+
+        // Suppress the game's native discovered-grace map pins (so the overlay is the sole grace
+        // source, paired with graceOverlay). Hooks the WarpPinData builder (RE e4b3f6a). PHASE A:
+        // when on, the hook installs + LOGS each grace pin build ([WARPPIN]) to confirm we can
+        // identify discovered ones — actual suppression is gated behind this once verified.
+        extern bool graceSuppressNative;
 
         // Marker dump (hotkey → dump beacon/stamp coords to file)
         extern bool enableMarkerDump;
@@ -129,11 +130,6 @@ namespace goblin
         // goblin_worldmap_probe::get_live_view.
         extern bool overlayMarkersProto;
 
-        // When false, skip the native WorldMapPointParam injection (+ apply_map_logic)
-        // so the ImGui overlay is the sole map source (no native page-build = no
-        // freeze, no double-draw). Default true = classic native-map behaviour.
-        extern bool nativeMapInjection;
-
         // Dev: log ER's render-output dims each ~2s ([RENDIMS]) to diagnose the
         // mid-session resolution-change zoom corruption. Read-only.
         extern bool debugRenderDims;
@@ -162,12 +158,6 @@ namespace goblin
         extern bool minimapAnchorBottom;
         extern float minimapOffsetX;
         extern float minimapOffsetY;
-
-        // EXPERIMENTAL live world-map icon refresh. Hooks the engine's placed-
-        // map-point (re)build (FUN_140a82a80) so a section/category toggle re-renders
-        // icons WHILE the map is open instead of only on the next open. Off by
-        // default; needs in-game validation. See docs/windows_re_live_refresh_capture.md.
-        extern bool liveRefreshWorldMap;
 
         // In-game per-section visibility (the 7 display groups). The section_*
         // bools are the persisted runtime state, driven live by the overlay menu

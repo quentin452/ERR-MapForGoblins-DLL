@@ -822,15 +822,19 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                 continue;
             float gU, gV;
             project_marker(m, gU, gV);
-            // Discovery gate: when require_map_fragments is on, hide a marker whose map
-            // piece is still fogged — the engine's REAL fog-of-war reveal state
-            // (WorldMapPieceParam, in-game-confirmed exact, no calibration needed). group
-            // bits = isDLC*2 | isUG → fog layer areaIdx {0 OW, 1 UG, 10 DLC}.
+            // Discovery gate (require_map_fragments) — TWO distinct reveal conditions, both must
+            // pass (fog-of-war != map fragment): (a) the region's MAP FRAGMENT item must be acquired
+            // (m.fragment_flag = GetMapFlagFromTile, read live); (b) the tile must not be FOGGED
+            // (marker_fogged = WorldMapPieceParam reveal state). group bits = isDLC*2 | isUG → fog
+            // layer areaIdx {0 OW, 1 UG, 10 DLC}.
             if (goblin::config::requireMapFragments)
             {
+                if (m.fragment_flag &&
+                    !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)))
+                    continue; // map fragment not acquired yet
                 const int areaIdx = (m.group & 2) ? 10 : (m.group & 1);
                 if (goblin::marker_fogged(areaIdx, gU, gV))
-                    continue;
+                    continue; // tile still fogged
             }
             proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
             ImVec2 sp(p.x, p.y);
@@ -920,9 +924,13 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             float dy = -(m.worldZ - pwz) * scale;
             if (dx * dx + dy * dy > cullR * cullR)
                 continue; // outside the HUD radius
-            // Fog gate: hide markers on a still-fogged map piece (require_map_fragments).
+            // Discovery gate (require_map_fragments): map FRAGMENT acquired AND tile not fogged
+            // (the two are distinct — see the worldmap loop).
             if (cfg::requireMapFragments)
             {
+                if (m.fragment_flag &&
+                    !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)))
+                    continue;
                 float gU, gV;
                 world_to_mapspace(m, gU, gV);
                 const int areaIdx = (m.group & 2) ? 10 : (m.group & 1);

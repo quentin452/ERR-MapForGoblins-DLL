@@ -1628,72 +1628,6 @@ bool goblin::world_map_open()
     return v == 7;
 }
 
-// ── Live world-map icon refresh (EXPERIMENTAL, config::liveRefreshWorldMap) ──
-//
-// The engine (re)builds the placed map-point icons in FUN_140a82a80(PointMan, ctx)
-// (Windows RE, docs/windows_re_live_refresh_capture.md): it news CSWorldMapPointIns
-// (ctor 0xa811e0), evaluates the per-row show-predicate (vtable+0x8), and inserts/
-// updates/removes the std::map<int id, CSWorldMapPointIns*> at PointMan+0x398. Our
-// section/category hide flips WORLD_MAP_POINT_PARAM_ST.areaNo to 99 on the live
-// param blob — correct, but INVISIBLE while the map is open, because the per-frame
-// reconcile (FUN_140a832a0) only UPDATES already-built icons; it never re-evaluates
-// visibility on the +0x398 set. Only the build above does, and it runs off a
-// transient per-frame context (ctx = {+0x34 page filter, +0x48 ParamRepo*}) that we
-// must NOT fabricate — a bogus ctx would crash.
-//
-// So we HOOK the build fn and passively record the engine's own (this, ctx) as it
-// is called naturally. When a refresh is requested (after an areaNo edit, map open)
-// the detour re-invokes the ORIGINAL once more with that captured real pair — a
-// second add/remove reconcile against the freshly-edited params. This keeps ALL
-// game-state mutation on the engine's own thread; the watcher thread only sets a
-// flag. Off unless config::liveRefreshWorldMap; the user runtime-verifies that the
-// build is invoked while the map is open and that the extra pass refreshes icons
-// with no crash (doc "Runtime test plan").
-namespace
-{
-using world_map_build_fn = void(__fastcall *)(void *pointman, void *ctx);
-world_map_build_fn g_wm_build_orig = nullptr;     // MinHook trampoline (relocated original)
-std::atomic<bool>  g_wm_refresh_request{false};
-
-// Detour over FUN_140a82a80. POD-only body (no C++ unwinding) so the __try is legal.
-// The trampoline is the relocated original — calling it does NOT re-enter this
-// detour, so the extra pass cannot recurse.
-void __fastcall wm_build_detour(void *pointman, void *ctx)
-{
-    g_wm_build_orig(pointman, ctx);
-    if (g_wm_refresh_request.exchange(false))
-    {
-        __try { g_wm_build_orig(pointman, ctx); }
-        __except (EXCEPTION_EXECUTE_HANDLER) {}
-    }
-}
-} // namespace
-
-void goblin::install_live_refresh_hook()
-{
-    if (!goblin::config::liveRefreshWorldMap) return;
-    // Entry AOB of FUN_140a82a80 (verified UNIQUE; no RIP-relative bytes, so the raw
-    // prologue is patch-resilient). this=rcx (PointMan), ctx=rdx ({+0x34,+0x48}).
-    void *fn = modutils::scan<void>({
-        .aob = goblin::sig::WORLDMAP_POINT_CTOR,
-    });
-    if (!fn)
-    {
-        spdlog::warn("[LIVE-REFRESH] build-fn AOB not found (game patch?) — live refresh disabled");
-        return;
-    }
-    try
-    {
-        modutils::hook(fn, reinterpret_cast<void *>(&wm_build_detour),
-                       reinterpret_cast<void **>(&g_wm_build_orig));
-        spdlog::info("[LIVE-REFRESH] world-map build hooked @ {} (experimental)", fn);
-    }
-    catch (const std::exception &e)
-    {
-        spdlog::error("[LIVE-REFRESH] hook failed: {}", e.what());
-        g_wm_build_orig = nullptr;
-    }
-}
 
 // ── Icon-texture probe (config dump_icon_textures) ───────────────────────────────────
 // Hooks CSScaleformImageCreator::CreateImage (FUN_140d6bbc0): builds each GFx image from a
@@ -2671,11 +2605,74 @@ void goblin::dump_icon_textures_live()
     }
 }
 
-void goblin::refresh_world_map_icons()
+// ── Native discovered-grace pin suppression (RE e4b3f6a; config grace_suppress_native) ──
+// Graces are WorldMapWarpPinData built by FUN_14088b7b0(this, out, WarpData* param_3) from a
+// WarpData whose source entry (warpData+0x8) holds: state byte @+0x1E (bits 0/1/2 = registered/
+// discovered/visible), iconId @+0x08. PHASE A (now): hook + LOG each build ([WARPPIN] state/iconId)
+// to confirm we can identify discovered graces at build time. Suppression (skip/hide the discovered
+// ones) is added once the log confirms identification. Read-only RPM in the detour; calls the orig.
+namespace
 {
-    if (!g_wm_build_orig) return;           // hook not installed (flag off / AOB miss)
-    if (!goblin::world_map_open()) return;  // only meaningful while the 2D map is up
-    g_wm_refresh_request.store(true);       // engine thread replays on its next build
+using warp_pin_fn = void *(__fastcall *)(void *, void *, void *, void *);
+warp_pin_fn g_warp_pin_orig = nullptr;
+
+void *__fastcall warp_pin_detour(void *a1, void *a2, void *warpData, void *a4)
+{
+    void *ret = g_warp_pin_orig(a1, a2, warpData, a4);
+    if (!goblin::config::graceSuppressNative) return ret;
+
+    // Identify the just-built grace pin's draw state (source state byte @ warpData+0x8 +0x1E;
+    // state != 0 = a drawn/registered grace, as confirmed by [WARPPIN]).
+    uintptr_t src = 0; icon_rpm_ptr(reinterpret_cast<uintptr_t>(warpData) + 0x8, src);
+    int state = 0, iconId = -1;
+    if (src > 0x10000)
+    {
+        int sb = 0; icon_rpm_i32(src + 0x1C, sb);   // +0x1E = byte 2 of the dword at +0x1C
+        state = (sb >> 16) & 0xff;
+        icon_rpm_i32(src + 0x08, iconId);
+    }
+
+    static int logged = 0, suppressed = 0;
+    // PHASE B suppression: only when the overlay is drawing graces itself (else the map would have
+    // NO graces). Neutralise the built pin's state byte (pin+0xC, copied from the source state) to 0
+    // — the state-0 warps are exactly the ones the game already doesn't draw → it stops drawing this
+    // discovered pin, leaving the overlay's grace as the sole icon. WriteProcessMemory (crash-safe).
+    if (goblin::config::graceOverlay && ret && (state & 7) != 0)
+    {
+        uint8_t zero = 0; SIZE_T n = 0;
+        WriteProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(ret) + 0xC),
+                           &zero, 1, &n);
+        if (suppressed++ < 20)
+            spdlog::info("[WARPPIN] suppressed pin={:#x} iconId={} (state was {})",
+                         reinterpret_cast<uintptr_t>(ret), iconId, state & 7);
+    }
+    else if (logged < 40)
+    {
+        ++logged;
+        spdlog::info("[WARPPIN] build src={:#x} stateByte(+0x1E)={:#x} (bits0-2={}) iconId={} pin={:#x}",
+                     src, state & 0xff, state & 7, iconId, reinterpret_cast<uintptr_t>(ret));
+    }
+    return ret;
+}
+} // namespace
+
+void goblin::install_grace_suppression_hook()
+{
+    if (!goblin::config::graceSuppressNative) return;
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!er) return;
+    void *fn = reinterpret_cast<void *>(er + 0x88b7b0);   // FUN_14088b7b0 (RE e4b3f6a §1)
+    try
+    {
+        modutils::hook(fn, reinterpret_cast<void *>(&warp_pin_detour),
+                       reinterpret_cast<void **>(&g_warp_pin_orig));
+        spdlog::info("[WARPPIN] WarpPinData builder hooked @ {} (phase A: log only)", fn);
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("[WARPPIN] hook failed: {}", e.what());
+        g_warp_pin_orig = nullptr;
+    }
 }
 
 // ── Overlay control API (see goblin_inject.hpp) ──────────────────────────
@@ -3147,10 +3144,10 @@ void goblin::apply_flag_or_pairs()
 // collected loot WITHOUT the native injection running. ERR/Randomizer reassign
 // loot flags, so the baked textDisableFlagId1 is often stale — the live
 // getItemFlagId is authoritative. Returns baked_flag when the row isn't lot-backed
-// or the lot can't be resolved (graceful fallback). NOT gated on
-// config::liveLootFlags: that flag governs whether the NATIVE map rewrites its param
-// rows; this is a read-only resolve for the overlay's collected-detection, which must
-// work regardless (else ERR-remapped loot like Golden Runes never registers as taken).
+// or the lot can't be resolved (graceful fallback). Always on (the old live_loot_flags
+// flag, which gated the NATIVE map's param rewrite, was removed in Phase 2b); this is a
+// read-only resolve for the overlay's collected-detection, which must work regardless
+// (else ERR-remapped loot like Golden Runes never registers as taken).
 // The LotReader is cached after first use (params are loaded by map-open time).
 uint32_t goblin::resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag)
 {

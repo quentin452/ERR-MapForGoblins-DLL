@@ -1709,11 +1709,9 @@ namespace
             }
         }
 
-        // The marker prototype draws over the open map even when the menu is closed,
-        // so build a frame for it too (get_live_view() no-ops when the map is shut).
-        // Draw overlay markers when the prototype flag is on OR native injection is
-        // off (overlay is then the sole map).
-        bool proto = goblin::config::overlayMarkersProto || !goblin::config::nativeMapInjection;
+        // The overlay IS the map (native injection removed) → always draw overlay markers over
+        // the open map, even with the F1 menu closed (get_live_view() no-ops when the map is shut).
+        bool proto = true;
         bool minimap = goblin::config::showMinimap;
         if ((g_show || proto || minimap) && g_command_queue)
         {

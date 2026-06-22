@@ -39,16 +39,20 @@ namespace goblin::config
     // and Convergence (opt-in — they add memory/CPU with no benefit without a
     // regulation mod). MFG_PROFILE_VANILLA is set by CMake for the vanilla bake
     // only (MFG_VANILLA covers vanilla AND convergence, so it can't be used here).
+    // live_loot_flags / live_loot_icons removed (Phase 2b): their only consumers were the native
+    // map's param rewriters, deleted with native injection. live_loot_labels survives — it's the
+    // randomizer relabel (copy the whole item-name space into PlaceName, perf-heavy → opt-in).
 #ifdef MFG_PROFILE_VANILLA
-    bool liveLootFlags = true, liveLootLabels = true, liveLootIcons = true;
+    bool liveLootLabels = true;
 #else
-    bool liveLootFlags = false, liveLootLabels = false, liveLootIcons = false;
+    bool liveLootLabels = false;
 #endif
     bool anonymousLoot = false;  // opt-in spoiler-free mode (all profiles default off)
 
     bool redifyBossIcons = false;
     bool graceOverlay = false;
     bool graceGpuSprite = false;
+    bool graceSuppressNative = false;
 
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
@@ -63,8 +67,6 @@ namespace goblin::config
     bool overlayMarkersProto = false;
     bool debugRenderDims = false;
     bool fixMidsessionResolution = false;
-    bool nativeMapInjection = false;
-    bool liveRefreshWorldMap = false;
     float overlayMasterScale = 1.0f;   // master scale for all overlay markers + piles
     float overlayIconScale = 1.0f;     // category marker icons (× master)
     float overlayClusterScale = 1.0f;  // cluster pile glyphs (× master)
@@ -361,19 +363,17 @@ namespace
                    "Draw ALL Sites of Grace in the overlay (discovered = full colour,\nundiscovered = grey) instead of letting the game draw discovered ones.\nNeeds native-pin suppression to avoid doubled grace icons."),
                 BE("grace_gpu_sprite", graceGpuSprite, "false",
                    "Grace icon source when grace_overlay is on: false = the mod's baked atlas\nicon (clean, constant); true = the live engine sprite (SB_ERR_Grace,\ntinted by in-game time of day)."),
+                BE("grace_suppress_native", graceSuppressNative, "false",
+                   "Suppress the game's native discovered-grace map pins so the overlay is the\nsole grace source (pair with grace_overlay). Hooks the WarpPinData builder.\nDev/experimental."),
             }},
 
             {"Compatibility",
              "Options for running alongside other mods that change item placement.",
              false, {
-                B("live_loot_flags", liveLootFlags, MFG_LL_DEF,
-                  "Hide loot markers using the pickup flag from the loaded regulation, so they\ndisappear correctly under the Item/Enemy Randomizer or other regulation mods."),
                 B("live_loot_labels", liveLootLabels, MFG_LL_DEF,
                   "Relabel each loot marker with the item its lot currently gives, so names match\nthe randomizer. Uses more memory (copies item names into the map's name table)."),
-                B("live_loot_icons", liveLootIcons, MFG_LL_DEF,
-                  "Give each loot marker the icon and category of the item its lot currently\ngives, so icons and show_* toggles match the randomizer."),
                 B("anonymous_loot", anonymousLoot, "false",
-                  "Spoiler-free: every loot marker shows a gray \"?\" and a generic label instead\nof the real item. Overrides live_loot_labels/icons; markers still hide on pickup."),
+                  "Spoiler-free: every loot marker shows a gray \"?\" and a generic label instead\nof the real item. Overrides live_loot_labels; markers still hide on pickup."),
             }},
 
             {"Debug",
@@ -430,10 +430,6 @@ namespace
                   "Minimap X offset (px) from the anchored corner. 0 = default."},
                 IniEntry{"minimap_offset_y", IniType::F32, &cfg::minimapOffsetY, "0",
                   "Minimap Y offset (px) from the anchored corner. 0 = default."},
-                B("native_map_injection", nativeMapInjection, "false",
-                  "Inject goblin markers into the game's native world map\n(WorldMapPointParam). FALSE (default) = the ImGui overlay is the SOLE map\nsource (no native page-build, so no map-open freeze and no double-draw) — all\nfeatures are ported to the overlay. TRUE = also inject the legacy native icons\n(the old behaviour); kept only as a fallback and slated for removal."),
-                B("live_refresh_world_map", liveRefreshWorldMap, "false",
-                  "EXPERIMENTAL: re-render world-map icons WHILE the map is open when you\ntoggle a section/category (instead of only on the next map open). Hooks the\ngame's own placed-map-point (re)build and replays it with the engine's real\ncontext on its own thread. Off by default -- enable to test; if icons don't\nupdate live or anything misbehaves, set back to false (toggles still apply on\nthe next map open). See docs/windows_re_live_refresh_capture.md."),
             }},
         };
     }
