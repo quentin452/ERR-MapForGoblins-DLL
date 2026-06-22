@@ -687,17 +687,31 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     ImDrawList *fg = ImGui::GetBackgroundDrawList();
     const float realW = io.DisplaySize.x, realH = io.DisplaySize.y;
 
-    // Motion sync: delay the projected view by the baked frame so markers ride the
-    // native map layer instead of leading it during a pan.
     proj::View view = to_proj_view(lv);
-    g_view_delay.apply(view, kViewDelayFrames);
 
     // Which group's map is OPEN — from the SOLVED region getter (probe reads the
     // WorldMapDialog page+layer): openDlc = DLC map, underground = layer byte. The DLC
     // page has NO underground sub-layer (areas 40-43 share the one DLC page), so on the
     // DLC map we ignore the layer byte → DLC is always group 2. Base map keeps the
-    // overworld/underground toggle.
+    // overworld/underground toggle. Computed BEFORE the motion-sync delay so a page swap
+    // can snap it (below).
     const int open_grp = lv.openDlc ? 2 : ((lv.underground != 0) ? 1 : 0);
+
+    // Page-transition snap: switching map page (notably OW↔DLC) flips the native map
+    // CANVAS instantly — the engine snaps pan/zoom between fixed per-page values, no ease
+    // (RE findings §7b). The motion-sync delay below, tuned for smooth pans, would instead
+    // project markers from the PREVIOUS frame's view for one frame → the OLD map flashes
+    // for 1 frame at the switch. On a group change, drop the delay history (re-seed to the
+    // live, already-snapped view) so the overlay snaps WITH the canvas instead of lagging
+    // it by a frame. Normal pans (same group) keep the 1-frame delay.
+    static int s_prev_grp = -1;
+    if (open_grp != s_prev_grp)
+        g_view_delay.reset();
+    s_prev_grp = open_grp;
+
+    // Motion sync: delay the projected view by the baked frame so markers ride the
+    // native map layer instead of leading it during a pan.
+    g_view_delay.apply(view, kViewDelayFrames);
 
     // Clustering = a live render pass: categories opted into clustering bin together
     // into ONE mixed pile per dense screen cell; everything else draws normally. Live
