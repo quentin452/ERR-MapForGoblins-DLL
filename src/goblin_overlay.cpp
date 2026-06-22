@@ -490,9 +490,10 @@ namespace
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         ImGui::GetIO().IniFilename = nullptr;   // no imgui.ini on disk
-        // The game hides the OS cursor, so draw ImGui's own software cursor.
-        // Only rendered while the panel is up (we skip NewFrame otherwise).
-        ImGui::GetIO().MouseDrawCursor = true;
+        // Software cursor: the game hides the OS cursor, so ImGui draws its own — but ONLY while the
+        // F1 panel is up. Set per-frame to g_show in the render loop (NewFrame now runs every frame
+        // for the overlay markers, so this can't be a one-time true). Default off.
+        ImGui::GetIO().MouseDrawCursor = false;
         ImGui::StyleColorsDark();
         ImGui_ImplWin32_Init(g_hwnd);
         ImGui_ImplDX12_Init(g_device, g_buffer_count, DXGI_FORMAT_R8G8B8A8_UNORM, g_srv_heap,
@@ -1348,6 +1349,10 @@ namespace
             ImGui_ImplWin32_NewFrame();
             g_imgui_reading_cursor = false;
             ImGui::NewFrame();
+            // Draw ImGui's software cursor ONLY while the F1 panel is up. (NewFrame now runs every
+            // frame to draw the overlay markers/minimap — the overlay is the sole map — so the old
+            // init-time MouseDrawCursor=true leaked the cursor into normal gameplay.)
+            ImGui::GetIO().MouseDrawCursor = g_show;
             if (g_show)
                 draw_panel();
             if (proto)
