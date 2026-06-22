@@ -1703,28 +1703,37 @@ void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
     uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
     const uintptr_t WANT_GX = base + 0x2f05928, WANT_CSGX = base + 0x2b761b0;
     uintptr_t img_vt = 0; icon_rpm_ptr(img, img_vt);
-    uintptr_t texobj = 0, texvt = 0; int o1f = -1, o2f = -1;
-    for (int o1 = 0x00; o1 <= 0x110 && !texobj; o1 += 8)
+    // Bounded BFS over the CS object graph (follow er-base-vtable'd ptr fields) to find the
+    // GXTexture2D/CSGxTexture at any depth ≤4, ≤300 nodes. Reports depth + the found vtable.
+    uintptr_t texobj = 0, texvt = 0; int depth = -1;
     {
-        uintptr_t p1 = 0;
-        if (!icon_rpm_ptr(img + o1, p1) || p1 < 0x10000 || p1 >= 0x7fffffffffffULL) continue;
-        uintptr_t vt1 = 0;
-        if (icon_rpm_ptr(p1, vt1) && (vt1 == WANT_GX || vt1 == WANT_CSGX))
-        { texobj = p1; texvt = vt1; o1f = o1; break; }
-        for (int o2 = 0x00; o2 <= 0xA0; o2 += 8)
+        std::vector<std::pair<uintptr_t, int>> q;
+        std::vector<uintptr_t> seen;
+        q.push_back({img, 0}); seen.push_back(img);
+        for (size_t qi = 0; qi < q.size() && qi < 300 && !texobj; ++qi)
         {
-            uintptr_t p2 = 0;
-            if (!icon_rpm_ptr(p1 + o2, p2) || p2 < 0x10000 || p2 >= 0x7fffffffffffULL) continue;
-            uintptr_t vt2 = 0;
-            if (icon_rpm_ptr(p2, vt2) && (vt2 == WANT_GX || vt2 == WANT_CSGX))
-            { texobj = p2; texvt = vt2; o1f = o1; o2f = o2; break; }
+            uintptr_t node = q[qi].first; int d = q[qi].second;
+            for (int o = 0x00; o <= 0x120; o += 8)
+            {
+                uintptr_t p = 0;
+                if (!icon_rpm_ptr(node + o, p) || p < 0x10000 || p >= 0x7fffffffffffULL) continue;
+                uintptr_t vt = 0;
+                if (!icon_rpm_ptr(p, vt)) continue;
+                if (vt == WANT_GX || vt == WANT_CSGX) { texobj = p; texvt = vt; depth = d + 1; break; }
+                if (d < 4 && vt > base && vt < base + 0x6000000 && q.size() < 300)
+                {
+                    bool dup = false;
+                    for (uintptr_t s : seen) if (s == p) { dup = true; break; }
+                    if (!dup) { seen.push_back(p); q.push_back({p, d + 1}); }
+                }
+            }
         }
     }
-    uintptr_t res = 0; if (texobj) icon_rpm_ptr(texobj + 0x40, res);
+    uintptr_t res = 0, resvt = 0; if (texobj) { icon_rpm_ptr(texobj + 0x40, res); if (res) icon_rpm_ptr(res, resvt); }
     spdlog::info("[ICONTEX] img={:#x} imgVtRVA={:#x} rect=({},{})-({},{}) sheet={}x{} | "
-                 "TEX={:#x} vtRVA={:#x} path=+{:#x}/+{:#x} res={:#x}",
+                 "TEX={:#x} vtRVA={:#x} depth={} res={:#x} resVt={:#x}",
                  img, img_vt > base ? img_vt - base : 0, x0, y0, x1, y1, w, h,
-                 texobj, texvt > base ? texvt - base : 0, o1f, o2f, res);
+                 texobj, texvt > base ? texvt - base : 0, depth, res, resvt);
 }
 
 void *__fastcall create_image_detour(void *a0, void *a1, void *a2, void *a3, void *a4, void *a5,
