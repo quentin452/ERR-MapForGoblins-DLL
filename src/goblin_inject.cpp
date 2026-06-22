@@ -1941,6 +1941,7 @@ void goblin::verify_equip_iconids()
         try
         {
             int n = 0, sample = 0; uint32_t mn = 0xffffffff, mx = 0; int hits = 0;
+            uintptr_t prev_base = 0;
             for (auto row : from::params::get_param<uint8_t>(p.name))
             {
                 uintptr_t base = reinterpret_cast<uintptr_t>(&row.second);
@@ -1948,7 +1949,18 @@ void goblin::verify_equip_iconids()
                 ++n;
                 if (icon < mn) mn = icon;
                 if (icon > mx) mx = icon;
-                if (sample < 8) { spdlog::info("[EQUIPVERIFY] {} SAMPLE row_id={} iconId={}", p.tag, row.first, icon); ++sample; }
+                if (sample < 8)
+                {
+                    // [EQUIPADDR] = the absolute row-base + name + struct stride, for CE
+                    // find-what-accesses: watch <base + iconId-offset> and trigger the menu
+                    // icon draw to capture the compiled `movzx r,[reg+0xXX]` (XX = true offset).
+                    std::string nm = goblin::lookup_text_utf8(static_cast<int>(row.first));
+                    uintptr_t stride = prev_base ? (base - prev_base) : 0;
+                    spdlog::info("[EQUIPADDR] {} row_id={} base={:#x} stride={:#x} u16@0x{:x}={} name='{}'",
+                                 p.tag, row.first, base, stride, p.off, icon, nm);
+                    ++sample;
+                }
+                prev_base = base;
                 for (uint16_t w : want)
                     if (icon == w)
                     {
