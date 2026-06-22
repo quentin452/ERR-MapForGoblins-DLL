@@ -743,6 +743,43 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
         }
     }
 
+    // Batch pre-warm: project EVERY marker (ALL pages) the first time the live VM is ready,
+    // not lazily per-page. The page gate below culls off-page markers BEFORE project_marker,
+    // so without this each page's markers project on their FIRST view → a visible 1-by-1
+    // pop-in on open / page-change. The projection is page-independent (static converters) →
+    // valid forever once cached, so one upfront pass makes every reopen/page-switch instant.
+    if (goblin::config::liveProjection)
+    {
+        static bool s_prewarmed = false;
+        if (!s_prewarmed)
+        {
+            bool all_done = true;
+            for (auto *L : layers)
+            {
+                if (!L)
+                    continue;
+                for (const Marker &m : L->markers())
+                {
+                    if (m.live_state == 1 || m.raw_area < 0)
+                        continue;
+                    float u, v;
+                    int pg = -1;
+                    if (goblin::worldmap_probe::project(m.raw_area, m.raw_gx, m.raw_gz, m.raw_px,
+                                                        m.raw_pz, u, v, pg))
+                    {
+                        m.live_u = u;
+                        m.live_v = v;
+                        m.live_page = pg;
+                        m.live_state = 1;
+                    }
+                    else
+                        all_done = false; // VM not ready yet → retry next frame
+                }
+            }
+            s_prewarmed = all_done;
+        }
+    }
+
     for (auto *L : layers)
     {
         if (!L || !L->visible())
