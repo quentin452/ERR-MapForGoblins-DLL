@@ -958,6 +958,18 @@ namespace
                 ImGui::SameLine();
                 if (ImGui::Button("Force-load (CSFile)"))
                     goblin::force_load_file(s_fl_path);
+                // One-click sweep of the menu resource-GROUP BNDs (re_v110): logs a [FORCELOAD] line per
+                // path. Try with the map/inventory CLOSED so a non-resident group's load is visible
+                // (handle != 0 + harvested grows after you then open the inventory).
+                if (ImGui::Button("Test: force-load common groups"))
+                {
+                    static const char *kGroups[] = {
+                        "menu:/01_Common.tpfbhd", "menu:/01_Common.tpf",
+                        "menu:/00_Solo.tpfbhd",   "menu:/03_ChrMake.tpfbhd",
+                        "menu:/71_MapTile.tpfbhd", "menu:/02_Title.tpfbhd",
+                    };
+                    for (const char *p : kGroups) goblin::force_load_file(p);
+                }
             }
 
             // Grace-sprite GPU debug: draw every harvested SB_ERR_Grace_* frame (full-sheet SRV +

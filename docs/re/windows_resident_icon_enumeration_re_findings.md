@@ -233,9 +233,26 @@ gfx layout (the repo, §1) which needs the gfx movie bound. So a TPF force-load 
 rects → pair with offline sblytbnd rects, OR only needed for the 63 WorldMapPoint pin frames (which
 live in the world-map gfx, resident when the map is open).
 
-**Open (next):** find the GLOBAL file list (for mod compat) — the menu uses fixed tables
-(`DAT_143b3d360`, `PTR_142bbb4e0`); a global resource manifest would be mod-robust. And the exact
-icon-atlas TPF `<name>` (read from a resident atlas's FD4 path, or the resource tables).
+**The menu file list (re_v110).** The engine uses two FIXED (hardcoded) tables — no dynamic manifest,
+but mod-robust because mods repackage the same-named BNDs:
+- **`PTR_142bbb4e0` — the 9 resource-GROUP BNDs** (`FUN_140d77550(ctx, groupId)` builds
+  `menu:/<name>.tpf`/`.tpfbhd`): `[0] 00_Solo  [1] 01_Common  [2] 02_Title  [3] 03_ChrMake  [4]
+  04_NowLoading  [5] 05_Dummy  [6] 06_Platform  [7] 71_MapTile  [8] 80_Language`. **Item-icon atlases
+  are TPFs inside these group BNDs (likely `01_Common`); `03_ChrMake` = the face/beard sprites seen
+  resident in char-creation.**
+- **`DAT_143b3d360` — 7 always-resident common gfx** (`FUN_140d6ae30`, loaded `menu:/Win/<name>.gfx`):
+  `01_900_Black`, `01_080_EmergencyNotice`, `01_090_SummonMessage`, `01_910_Fade`, `01_920_Movie`,
+  `01_930_KeyGuide` (path builder `FUN_140d7b800` = `menu:/Win/%s.gfx`).
+
+So force-load targets = the group BNDs (`menu:/01_Common.tpfbhd` etc.) via CSFile, OR a specific TPF
+inside a BND. The exact per-atlas TPF `<name>` lives in the group-BND TOC (read at runtime or offline).
+
+**Force-load CONFIRMED working (2026-06-22):** `[FORCELOAD] load(CSFile=0x21b001b47c0,
+'menu:/00_Solo.tpf') -> 0x21b14e4d780` — non-null handle, no crash. The lever is callable from the DLL.
+(00_Solo was already resident, so this proved the call; a non-resident-group test is next.)
+
+**Open (next):** test force-loading a NON-resident group (e.g. `menu:/03_ChrMake.tpfbhd` outside
+char-creation) + confirm icons become resident; read the group-BND TOC for exact atlas TPF names.
 
 **Test harness:** `goblin::force_load_file(path)` (dev, `dump_icon_textures`) calls
 `load(CSFile, path, 0, 0)` from a P2b-panel button — see `src/goblin_inject.cpp` / `goblin_overlay.cpp`.
