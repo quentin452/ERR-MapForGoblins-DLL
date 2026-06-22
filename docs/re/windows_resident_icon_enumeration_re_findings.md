@@ -5,6 +5,15 @@ Answers `docs/re/windows_resident_icon_enumeration_re_prompt.md`. Static Ghidra 
 imagebase `0x140000000`. Read-only. Supersedes the §8 movie-walk in
 `windows_runtime_item_sprite_re_findings.md` (that targeted load-screen movies on this build).
 
+**✅ VALIDATED LIVE (2026-06-22, 2.6.2.0/Proton).** CE table walk with inventory open:
+`repo=0x…DC0200`, `_Mysize=938` (all resident images), `walked=938`, **`MENU_ItemIcon_*=163`** — all
+`vt=OK`, rects + sheet groupings correct (e.g. crafting-mat 415xx all share one 4096-wide sheet, 45xxx
+sorceries another). The container recipe (§1) is confirmed. **One correction:** the DXGI format is NOT
+at `sheet+0x30` — that reads `0` live for every entry (and the in-DLL `cache_icon_from_img` reads the
+same offset; `goblin_inject.cpp:2349` already carries a TODO that the internal-format offset is
+unidentified). The format offset is a **separate, still-open sub-task** (probe `sheet+0x00..0x100` for
+the W/H/format triple) — it does NOT affect enumeration, only downstream drawing.
+
 Deliverables shipped:
 - **Cheat Engine table:** `tools/cheat_engine/MapForGoblins_icon_repo.CT` — resolves the repo from the
   static anchor, walks the tree, lists every resident `MENU_ItemIcon_*` (name + image + rect + sheet +
@@ -78,7 +87,8 @@ ResCap node (MSVC _Tree_node):
 CSTextureImage (already known, re-confirmed): vtable == eldenring.exe + 0x2BB8910 (validity guard)
   img + 0x74/0x78/0x7c/0x80 = sub-rect x0/y0/x1/y1
   img + 0x10 -> Render::Texture, +0x70 -> ID3D12Resource (the BCn sheet)
-  sheet res + 0x30 = DXGI_FORMAT (vkd3d internal; 71=BC1_UNORM observed for the 4096x2048 atlases)
+  sheet res: DXGI_FORMAT offset UNIDENTIFIED (res+0x30 reads 0 live — was a guess; probe res+0x00..0x100
+             for the W/H/format triple; vkd3d-internal on Proton). Does not affect enumeration.
 ```
 
 ### Enumeration recipe (the walk)
@@ -137,7 +147,8 @@ The repo only populates once a menu has loaded icon sheets — open inventory/eq
 1. **CE table** (`MapForGoblins_icon_repo.CT`): load it, open the inventory, press **NUMPAD 2**.
    - Expect: `_Mysize` (entry #3) > 0 and growing as you browse; `MENU_ItemIcon_*` count (entry #4)
      in the hundreds; the console/`MapForGoblins_icon_repo_ct.log` lists names + `vt=OK` + rects +
-     sheet + `fmt=71`.
+     sheet. (Done: 163 icons / 938 images, `vt=OK`, rects+sheets correct. `fmt` reads 0 — format
+     offset open, §0.)
 2. **Python RPM** (`python D:\ghidra_scripts\walk_icon_repo.py`): prints `total nodes`,
    `MENU_ItemIcon_* entries`, and ~12 samples.
 3. **Cross-check (proves correctness):** pick a few iconIds present in BOTH the walk output and the
@@ -175,7 +186,7 @@ shippable.
 - node: `_Left+0x00 _Parent+0x08 _Right+0x10 _Isnil(u8)+0x19`; key DLWString `+0x28` (len `+0x38`,
   cap `+0x40`, heap iff cap>=8); value `CSTextureImage* +0x50`.
 - image: vtable `er+0x2BB8910`; rect `+0x74..0x80`; `+0x10→Render::Texture+0x70→ID3D12Resource`;
-  format `sheet+0x30`.
+  format offset UNIDENTIFIED (sheet+0x30 reads 0 live — open sub-task).
 - clean global caller `FUN_140d7c940` `er+0xd7c940`. enumerate (load-screen-scoped) `FUN_140d69640`
   `er+0xd69640`.
 - deliverables: `tools/cheat_engine/MapForGoblins_icon_repo.CT`, `D:\ghidra_scripts\walk_icon_repo.py`.
