@@ -27,6 +27,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <climits>
+#include <cstdio>
 #include <deque>
 #include <cctype>
 #include <chrono>
@@ -2451,6 +2453,20 @@ std::atomic<uintptr_t> g_res_mgr{0};
 std::atomic<int> g_bind_action{0};   // 0 idle | 1 dump | 2 load files | 3 flip-bind | 4 load+flip
 std::atomic<int> g_bind_gid{1};      // group id for the loaders (1 = 01_Common = the item-icon group)
 
+// ── CreateImage force-bind (RE §5g) ──────────────────────────────────────────────────────────────
+// CSScaleformImageCreator::CreateImage = FUN_140d6bbc0(p1, p2, symbolDesc) — the GFx per-image bind
+// callback. It reads an ASCII name at (*p3 & ~3)+0xc (format "%hS"), builds "<name>_ptl", and
+// find/creates the repo image (DAT_143d82510) + addref/activate, returning it. p1/p2 are UNUSED in the
+// body → callable with null. We (a) hook it to capture a live context + log the real symbol names, and
+// (b) force-call it for a synthesized "MENU_ItemIcon_<id>" symbol to try to bind an icon on demand.
+using create_img_fn2 = long long(__fastcall *)(void *, void *, uintptr_t *);
+create_img_fn2 g_ci_orig = nullptr;
+std::atomic<void *> g_ci_p1{nullptr};
+std::atomic<void *> g_ci_p2{nullptr};
+std::atomic<int> g_ci_logn{0};
+std::atomic<int> g_ci_req_icon{INT_MIN};   // queued iconId to force-create (INT_MIN = idle)
+alignas(16) char g_ci_name[64];            // 4-aligned scratch for the synthesized symbol name
+
 inline bool res_w32(uintptr_t a, uint32_t v)
 {
     SIZE_T n = 0;
@@ -2508,6 +2524,37 @@ void run_bind_action(uintptr_t mgr, uintptr_t er, int act, int gid)
     res_walk_groups(mgr, er, /*flip=*/(act == 3 || act == 4));
 }
 
+// CreateImage hook: capture a live (p1,p2) context once + throttle-log the real symbol names so we can
+// confirm the param_3 layout (name @ (*p3 & ~3)+0xc). Pass-through; read-only.
+long long __fastcall ci_detour(void *p1, void *p2, uintptr_t *p3)
+{
+    if (g_ci_p1.load(std::memory_order_relaxed) == nullptr) { g_ci_p1.store(p1); g_ci_p2.store(p2); }
+    int n = g_ci_logn.fetch_add(1, std::memory_order_relaxed);
+    if (n < 40 && p3)
+    {
+        uintptr_t namep = (*p3 & ~uintptr_t(3)) + 0xc;
+        char nm[96] = {0}; SIZE_T got = 0;
+        ReadProcessMemory(GetCurrentProcess(), (void *)namep, nm, 95, &got);
+        spdlog::info("[CREATEIMG] live p1={} p2={} *p3={:#x} name='{}'", p1, p2, (uintptr_t)*p3, nm);
+    }
+    return g_ci_orig(p1, p2, p3);
+}
+
+// Force-call CreateImage for "MENU_ItemIcon_<iconId>" (engine thread, via the ticker request). Builds a
+// synthetic symbol desc: a qword holding (nameAddr-0xc) so (*p3 & ~3)+0xc == nameAddr. Logs the returned
+// image + whether the repo grew. Caveat (§5b): the "<name>_ptl" view resolves against a RESIDENT sheet,
+// so pair with a force-load of the atlas group first if the icon's sheet isn't loaded.
+void run_create_icon(uintptr_t er, int iconId)
+{
+    snprintf(g_ci_name, sizeof(g_ci_name), "MENU_ItemIcon_%d", iconId);
+    uintptr_t p3 = reinterpret_cast<uintptr_t>(g_ci_name) - 0xc;   // (p3 & ~3)+0xc == g_ci_name (4-aligned)
+    size_t before = goblin::harvested_count();
+    auto CreateImage = reinterpret_cast<create_img_fn2>(er + 0xd6bbc0);
+    long long img = CreateImage(g_ci_p1.load(), g_ci_p2.load(), &p3);
+    size_t after = goblin::harvested_count();
+    spdlog::info("[CREATEIMG] force '{}' -> img={:#x}  harvested {}->{}", g_ci_name, (uintptr_t)img, before, after);
+}
+
 void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
 {
     if (p2)
@@ -2516,12 +2563,11 @@ void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
         if (mgr > 0x10000)
         {
             g_res_mgr.store(mgr, std::memory_order_relaxed);
+            uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
             int act = g_bind_action.exchange(0, std::memory_order_acq_rel);
-            if (act)
-            {
-                uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
-                run_bind_action(mgr, er, act, g_bind_gid.load(std::memory_order_relaxed));
-            }
+            if (act) run_bind_action(mgr, er, act, g_bind_gid.load(std::memory_order_relaxed));
+            int ci = g_ci_req_icon.exchange(INT_MIN, std::memory_order_acq_rel);
+            if (ci != INT_MIN) run_create_icon(er, ci);
         }
     }
     if (g_res_tick_orig) g_res_tick_orig(p1, p2);
@@ -2541,6 +2587,20 @@ bool goblin::bind_test(int action, int groupId)
     }
     g_bind_gid.store(groupId, std::memory_order_relaxed);
     g_bind_action.store(action, std::memory_order_release);
+    return true;
+}
+
+// Queue a force-CreateImage for "MENU_ItemIcon_<iconId>" — consumed on the next residency tick (engine
+// thread). The CreateImage hook must have captured a live context first (open the inventory once).
+bool goblin::force_create_icon(int iconId)
+{
+    if (!goblin::config::dumpIconTextures) return false;
+    if (g_res_mgr.load(std::memory_order_relaxed) == 0)
+    {
+        spdlog::warn("[CREATEIMG] manager not captured yet — open the inventory/map once");
+        return false;
+    }
+    g_ci_req_icon.store(iconId, std::memory_order_release);
     return true;
 }
 
@@ -2646,6 +2706,22 @@ void goblin::install_icon_texture_probe()
     {
         spdlog::error("[BINDTEST] ticker hook failed: {}", e.what());
         g_res_tick_orig = nullptr;
+    }
+
+    // CreateImage hook (findings §5g): capture the GFx image-creator context + log real symbol names,
+    // and enable force_create_icon() to replay it for an arbitrary item-icon symbol.
+    try
+    {
+        uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+        void *cifn = reinterpret_cast<void *>(er + 0xd6bbc0);   // FUN_140d6bbc0
+        modutils::hook(cifn, reinterpret_cast<void *>(&ci_detour),
+                       reinterpret_cast<void **>(&g_ci_orig));
+        spdlog::info("[CREATEIMG] CreateImage hooked @ {} — open inventory to capture context + names", cifn);
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("[CREATEIMG] hook failed: {}", e.what());
+        g_ci_orig = nullptr;
     }
 }
 

@@ -990,6 +990,17 @@ namespace
                 if (ImGui::Button("3) Flip-bind all"))      goblin::bind_test(3, s_bt_gid);
                 ImGui::SameLine();
                 if (ImGui::Button("4) Load + flip (gid)")) goblin::bind_test(4, s_bt_gid);
+
+                // Force-CreateImage (§5g): replay the GFx per-image bind callback for one item icon.
+                // Watch [CREATEIMG] in the log: live names while browsing, then the forced result +
+                // whether "harvested:" grows. Open inventory once first so the context is captured.
+                ImGui::Separator();
+                ImGui::TextDisabled("Force-bind one icon via CreateImage (§5g):");
+                static int s_ci_icon = 0;
+                ImGui::SetNextItemWidth(120);
+                ImGui::InputInt("iconId##ci", &s_ci_icon);
+                ImGui::SameLine();
+                if (ImGui::Button("Force CreateImage")) goblin::force_create_icon(s_ci_icon);
             }
 
             // Grace-sprite GPU debug: draw every harvested SB_ERR_Grace_* frame (full-sheet SRV +

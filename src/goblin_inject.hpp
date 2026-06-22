@@ -298,6 +298,13 @@ namespace goblin
     // Returns false if the manager isn't captured yet (open inventory/map once). Gated by dumpIconTextures.
     bool bind_test(int action, int groupId);
 
+    // DEV force-bind a single item icon (RE §5g): replay CSScaleformImageCreator::CreateImage
+    // (FUN_140d6bbc0) for the symbol "MENU_ItemIcon_<iconId>" on the engine thread — the GFx per-image
+    // bind callback that find/creates the repo image. Lets us test forcing a non-browsed icon's bind
+    // without driving the menu. Queue-based (needs a captured context — open the inventory once first).
+    // Gated by dumpIconTextures. Returns false if no manager/context captured yet.
+    bool force_create_icon(int iconId);
+
     // First `max` harvested iconIds (dev — the P2b test panel draws ACTUAL harvested icons
     // instead of a hardcoded id list that may not match what the player browsed).
     std::vector<int> harvested_ids(size_t max);
