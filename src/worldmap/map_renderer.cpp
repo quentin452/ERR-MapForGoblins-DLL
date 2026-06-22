@@ -583,8 +583,19 @@ void draw_region_labels(ImDrawList *fg, int open_grp,
                                  /*conv_underground=*/true);
         if (goblin::marker_group_from(a.area, ga) != open_grp)
             continue;
+        // Project the anchor's ORIGINAL block (a.gx,a.gz,a.px,a.pz) DIRECTLY — exactly like
+        // project_marker. project_raw decomposed rawX/rawZ via floor/256 into a DIFFERENT block,
+        // which the block-keyed underground LegacyConv fold then mis-folded (Deeproot Depths drifted
+        // to the screen-left edge while Ainsel/Siofra coincidentally survived). Baked fallback.
         float gU, gV;
-        project_raw(a.area, a.gx * 256.0f + a.px, a.gz * 256.0f + a.pz, wx, wz, gU, gV);
+        bool placed = false;
+        if (goblin::config::liveProjection)
+        {
+            int pg = -1;
+            placed = goblin::worldmap_probe::project(a.area, a.gx, a.gz, a.px, a.pz, gU, gV, pg);
+        }
+        if (!placed)
+            world_to_mapspace_xy(wx, wz, gU, gV);
         proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
         if (p.x < -64 || p.y < -32 || p.x > realW + 64 || p.y > realH + 32)
             continue;
