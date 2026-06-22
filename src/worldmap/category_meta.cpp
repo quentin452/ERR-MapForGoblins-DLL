@@ -1,6 +1,9 @@
 #include "category_meta.hpp"
 
 #include "goblin_map_data.hpp" // Category enum
+#include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS (baked-cell resolve)
+
+#include <cstring>
 
 namespace goblin::worldmap
 {
@@ -121,5 +124,40 @@ unsigned int category_color(int category)
     if (category < 0 || category >= CAT_COUNT)
         return GROUP_COLOR[G_LOOT];
     return GROUP_COLOR[CAT[category].grp];
+}
+
+int category_count() { return CAT_COUNT; }
+
+bool category_has_baked_icon(int category)
+{
+    const char *key = category_icon_key(category);
+    if (!key)
+        return false;
+    using namespace goblin::overlay_icons;
+    for (int i = 0; i < ICON_CELL_COUNT; ++i)
+        if (std::strcmp(ICON_CELLS[i].key, key) == 0)
+            return true;
+    return false;
+}
+
+namespace
+{
+// Canonical engine iconId per category for the baked→GPU migration. SPARSE — a category
+// absent here is still baked-only ("to replace"). Populate an entry as each category's
+// real engine sprite gets wired into the marker draw; the F1 completion panel then counts
+// it as replaced once harvested_icon() has the sprite.
+struct CategoryGpuIcon { int category; int iconId; };
+constexpr CategoryGpuIcon CATEGORY_GPU_ICONS[] = {
+    {-1, 0},  // sentinel (never matches a real category) — keeps the array non-empty;
+              // add {static_cast<int>(Category::X), iconId} entries as categories migrate
+};
+} // namespace
+
+int category_gpu_iconId(int category)
+{
+    for (const auto &e : CATEGORY_GPU_ICONS)
+        if (e.category == category)
+            return e.iconId;
+    return 0;
 }
 } // namespace goblin::worldmap
