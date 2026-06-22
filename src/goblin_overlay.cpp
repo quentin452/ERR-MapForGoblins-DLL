@@ -947,6 +947,29 @@ namespace
                 if (!drawn)
                     ImGui::TextDisabled(ids.empty() ? "no icons harvested yet — open inventory first"
                                                     : "harvested icons not ready yet (1-frame batch)...");
+
+                // DEV force-load test (findings §5b): stream a TPF resident by FD4 path via CSFile.
+                // Type a path + click → watch [FORCELOAD] in the log (handle != 0 = loaded) and whether
+                // the sheet becomes resident. e.g. "menu:/00_Solo.tpf", "menutpfbnd:/00_Solo/<name>.tpf".
+                ImGui::Separator();
+                static char s_fl_path[192] = "menu:/00_Solo.tpf";
+                ImGui::SetNextItemWidth(260);
+                ImGui::InputText("##flpath", s_fl_path, sizeof(s_fl_path));
+                ImGui::SameLine();
+                if (ImGui::Button("Force-load (CSFile)"))
+                    goblin::force_load_file(s_fl_path);
+                // One-click sweep of the menu resource-GROUP BNDs (re_v110): logs a [FORCELOAD] line per
+                // path. Try with the map/inventory CLOSED so a non-resident group's load is visible
+                // (handle != 0 + harvested grows after you then open the inventory).
+                if (ImGui::Button("Test: force-load common groups"))
+                {
+                    static const char *kGroups[] = {
+                        "menu:/01_Common.tpfbhd", "menu:/01_Common.tpf",
+                        "menu:/00_Solo.tpfbhd",   "menu:/03_ChrMake.tpfbhd",
+                        "menu:/71_MapTile.tpfbhd", "menu:/02_Title.tpfbhd",
+                    };
+                    for (const char *p : kGroups) goblin::force_load_file(p);
+                }
             }
 
             // Grace-sprite GPU debug: draw every harvested SB_ERR_Grace_* frame (full-sheet SRV +

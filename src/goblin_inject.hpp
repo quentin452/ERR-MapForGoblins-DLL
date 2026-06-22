@@ -282,6 +282,13 @@ namespace goblin
     // Count of icons harvested so far (dev/diagnostic — shown in the P2b test panel).
     size_t harvested_count();
 
+    // DEV force-load TEST (RE windows_resident_icon_enumeration_re_findings §5b): stream a TPF/file
+    // RESIDENT by FD4 path via the CSFile singleton — load(CSFile=*(er+0x3d5b0f8), wchar* path, 0, 0)
+    // at er+0x1f5560. Returns the resource handle (0 on miss/null singleton). Lets us test whether a
+    // non-resident icon sheet can be force-loaded on demand. Gated by config::dumpIconTextures; called
+    // from the P2b panel button. utf8_path e.g. "menu:/00_Solo.tpf".
+    void *force_load_file(const char *utf8_path);
+
     // First `max` harvested iconIds (dev — the P2b test panel draws ACTUAL harvested icons
     // instead of a hardcoded id list that may not match what the player browsed).
     std::vector<int> harvested_ids(size_t max);

@@ -206,6 +206,59 @@ future attempt are preserved above should a cleaner streaming entry surface.
 
 ---
 
+## 5b. The texture-manager LOAD lever (re_v104–v109) — callable
+
+Reframed force-load attempt (the "texture manager" angle). The file/resource loader IS exposed and
+callable without a menu, via the **`CSFile` singleton**:
+
+- **`CSFile` singleton = `*(er + 0x3D5B0F8)`** (`DAT_143d5b0f8`, an `FD4DerivedSingleton<CSFile>`).
+- **load-by-path family** `FUN_1401f5560` / `FUN_1401f5090` / `FUN_1401f2300` (`er+0x1f5560` etc.).
+  Disasm (re_v109): standard `__fastcall`, saves RCX/RDX/R8/R9, allocates a 0x98-byte request, then
+  fills+enqueues it (tail truncated by Ghidra after the alloc thunk `FUN_141eb9ed0(0x98,8)`):
+  ```c
+  void* load(void* CSFile /*RCX*/, const wchar_t* path /*RDX*/, void* a2=0 /*R8*/, uint32_t a3=0 /*R9*/);
+  ```
+  In every caller the 2nd arg is the **raw `wchar_t*` path buffer** (extracted from an FD4 path obj),
+  so a plain `L"menu:/….tpf"` works. `FUN_1401f5560` is the variant the **resident-group** loader uses.
+- **resource-GROUP loader** `FUN_140d77550(menuResMgr, groupId)` (`er+0xd77550`): indexes a name table
+  (`PTR_…00_Solo…142bbb4e0`), builds `menu:/<name>.tpf`/`.tpfbhd`, loads via CSFile. Path templates:
+  `menu:/%s.tpf`, `menu:/%s%s.%s`, `menutpfbnd:/00_Solo/%s.tpf`, `menutpfbnd:/71_MapTile/%s.tpf`.
+- The Scaleform resident-load steps that call all this: `STEP_Init_forResidentTextureLoad`
+  `FUN_140d6e1c0`, `STEP_Init_forResidentResourceLoad` `FUN_140d6e190`, `STEP_Init_forGfxFileLoad`
+  `FUN_140d6e130` (table built in `FUN_1400ae9e0`). The fixed 113-resource menu set loads in
+  `FUN_140d6ae30` (table `DAT_143b3d360`).
+
+**Caveat (unchanged):** loading a TPF gives the **atlas texture**; the per-icon **rects** come from the
+gfx layout (the repo, §1) which needs the gfx movie bound. So a TPF force-load alone = atlas without
+rects → pair with offline sblytbnd rects, OR only needed for the 63 WorldMapPoint pin frames (which
+live in the world-map gfx, resident when the map is open).
+
+**The menu file list (re_v110).** The engine uses two FIXED (hardcoded) tables — no dynamic manifest,
+but mod-robust because mods repackage the same-named BNDs:
+- **`PTR_142bbb4e0` — the 9 resource-GROUP BNDs** (`FUN_140d77550(ctx, groupId)` builds
+  `menu:/<name>.tpf`/`.tpfbhd`): `[0] 00_Solo  [1] 01_Common  [2] 02_Title  [3] 03_ChrMake  [4]
+  04_NowLoading  [5] 05_Dummy  [6] 06_Platform  [7] 71_MapTile  [8] 80_Language`. **Item-icon atlases
+  are TPFs inside these group BNDs (likely `01_Common`); `03_ChrMake` = the face/beard sprites seen
+  resident in char-creation.**
+- **`DAT_143b3d360` — 7 always-resident common gfx** (`FUN_140d6ae30`, loaded `menu:/Win/<name>.gfx`):
+  `01_900_Black`, `01_080_EmergencyNotice`, `01_090_SummonMessage`, `01_910_Fade`, `01_920_Movie`,
+  `01_930_KeyGuide` (path builder `FUN_140d7b800` = `menu:/Win/%s.gfx`).
+
+So force-load targets = the group BNDs (`menu:/01_Common.tpfbhd` etc.) via CSFile, OR a specific TPF
+inside a BND. The exact per-atlas TPF `<name>` lives in the group-BND TOC (read at runtime or offline).
+
+**Force-load CONFIRMED working (2026-06-22):** `[FORCELOAD] load(CSFile=0x21b001b47c0,
+'menu:/00_Solo.tpf') -> 0x21b14e4d780` — non-null handle, no crash. The lever is callable from the DLL.
+(00_Solo was already resident, so this proved the call; a non-resident-group test is next.)
+
+**Open (next):** test force-loading a NON-resident group (e.g. `menu:/03_ChrMake.tpfbhd` outside
+char-creation) + confirm icons become resident; read the group-BND TOC for exact atlas TPF names.
+
+**Test harness:** `goblin::force_load_file(path)` (dev, `dump_icon_textures`) calls
+`load(CSFile, path, 0, 0)` from a P2b-panel button — see `src/goblin_inject.cpp` / `goblin_overlay.cpp`.
+
+---
+
 ## 6. Handles
 - repo singleton `DAT_143d82510` `er+0x3D82510` (FD4Singleton); container map `repo+0x80`,
   `_Myhead` `repo+0x88`, `_Mysize` `repo+0x90`.

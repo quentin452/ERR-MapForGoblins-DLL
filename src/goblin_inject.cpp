@@ -2403,6 +2403,33 @@ size_t goblin::harvested_count()
     return g_harvest.size();
 }
 
+// DEV force-load TEST — see header + findings §5b. Stream a file RESIDENT by FD4 path through the
+// CSFile singleton. The loader (er+0x1f5560) is __fastcall load(CSFile, const wchar_t* path, 0, 0);
+// it allocates a request, fills it from the path, and enqueues into the FD4 file/task system → an
+// async load, so a bad path fails gracefully (returns null) rather than crashing. We log the handle +
+// the harvested count before/after (a force-loaded icon sheet only adds repo entries once its gfx
+// binds, so the count may not move immediately — the returned non-null handle is the primary signal).
+void *goblin::force_load_file(const char *utf8_path)
+{
+    if (!goblin::config::dumpIconTextures || !utf8_path || !utf8_path[0]) return nullptr;
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!er) return nullptr;
+    uintptr_t csfile = 0; icon_rpm_ptr(er + 0x3d5b0f8, csfile);   // CSFile FD4Singleton
+    if (csfile < 0x10000) { spdlog::warn("[FORCELOAD] CSFile singleton null (not init yet)"); return nullptr; }
+
+    wchar_t wpath[192] = {0};
+    if (MultiByteToWideChar(CP_UTF8, 0, utf8_path, -1, wpath, 191) <= 0) return nullptr;
+
+    size_t before; { std::lock_guard<std::mutex> lk(g_harvest_mtx); before = g_harvest.size(); }
+    using LoadFn = void *(__fastcall *)(void *, const wchar_t *, void *, uint32_t);  // FUN_1401f5560
+    auto load = reinterpret_cast<LoadFn>(er + 0x1f5560);
+    void *res = load(reinterpret_cast<void *>(csfile), wpath, nullptr, 0);
+    size_t after; { std::lock_guard<std::mutex> lk(g_harvest_mtx); after = g_harvest.size(); }
+    spdlog::info("[FORCELOAD] load(CSFile={:#x}, '{}') -> {:#x}  harvested {}->{}",
+                 csfile, utf8_path, reinterpret_cast<uintptr_t>(res), before, after);
+    return res;
+}
+
 bool goblin::harvested_grace(ItemSprite &out)
 {
     std::lock_guard<std::mutex> lk(g_harvest_mtx);
