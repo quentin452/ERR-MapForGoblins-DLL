@@ -299,6 +299,116 @@ namespace
         g_icon_batch_open = true;
     }
 
+    // ── Shared GPU sub-rect copy (factored out of ensure_item_icon_srv / ensure_grace_srv /
+    //    ensure_grace_dungeon_srv, which all did the identical snap-rect → CreateCommittedResource
+    //    → barriers → CopyTextureRegion → UV chain). ────────────────────────────────────────────
+    struct SrvCopy
+    {
+        ID3D12Resource *tex = nullptr;  // dest, left in PIXEL_SHADER_RESOURCE
+        int w = 0, h = 0;               // dest dims (4-aligned, block-snapped)
+        ImVec2 uv0, uv1;                // crop the exact sprite rect back out of the snapped copy
+    };
+
+    // Snap the sprite rect OUT to 4-aligned BC blocks (item cells / grace sprites aren't multiples
+    // of 4, so a raw sub-rect copy is rejected), create the dest texture, and RECORD into the OPEN
+    // g_command_list: src→COPY_SOURCE, CopyTextureRegion, then restore src + dest→PIXEL_SHADER_RESOURCE.
+    // Caller must have the list recording (begin_icon_batch / own Reset) and owns submit + the SRV.
+    // Returns false (no resource created, nothing recorded) on an invalid rect / create failure.
+    bool record_sprite_copy(ID3D12Resource *src_res, DXGI_FORMAT fmt,
+                            const goblin::ItemSprite &sp, SrvCopy &out)
+    {
+        D3D12_RESOURCE_DESC rd = src_res->GetDesc();
+        int sw = static_cast<int>(rd.Width), sh = static_cast<int>(rd.Height);
+        int x0 = sp.x0 & ~3, y0 = sp.y0 & ~3;
+        int x1 = (sp.x1 + 3) & ~3, y1 = (sp.y1 + 3) & ~3;
+        if (x1 > sw) x1 = sw;
+        if (y1 > sh) y1 = sh;
+        int w = x1 - x0, h = y1 - y0;
+        if (w <= 0 || h <= 0 || w > 1024 || h > 1024)
+            return false;
+
+        D3D12_HEAP_PROPERTIES hp{}; hp.Type = D3D12_HEAP_TYPE_DEFAULT;
+        D3D12_RESOURCE_DESC td{};
+        td.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        td.Width = static_cast<UINT64>(w); td.Height = static_cast<UINT>(h);
+        td.DepthOrArraySize = 1; td.MipLevels = 1; td.Format = fmt;
+        td.SampleDesc.Count = 1; td.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        ID3D12Resource *tex = nullptr;
+        if (FAILED(g_device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &td,
+                D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&tex))))
+            return false;
+
+        // src sheet: assume PIXEL_SHADER_RESOURCE → COPY_SOURCE (sampled engine texture).
+        D3D12_RESOURCE_BARRIER bs{};
+        bs.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        bs.Transition.pResource = src_res; bs.Transition.Subresource = 0;
+        bs.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        bs.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        g_command_list->ResourceBarrier(1, &bs);
+
+        D3D12_TEXTURE_COPY_LOCATION dst{}; dst.pResource = tex;
+        dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; dst.SubresourceIndex = 0;
+        D3D12_TEXTURE_COPY_LOCATION csrc{}; csrc.pResource = src_res;
+        csrc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; csrc.SubresourceIndex = 0;
+        D3D12_BOX box{}; box.left = x0; box.top = y0; box.front = 0;
+        box.right = x1; box.bottom = y1; box.back = 1;
+        g_command_list->CopyTextureRegion(&dst, 0, 0, 0, &csrc, &box);
+
+        D3D12_RESOURCE_BARRIER after[2]{};
+        after[0] = bs;  // restore src: COPY_SOURCE → PIXEL_SHADER_RESOURCE
+        after[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        after[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        after[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        after[1].Transition.pResource = tex; after[1].Transition.Subresource = 0;
+        after[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        after[1].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        g_command_list->ResourceBarrier(2, after);
+
+        out.tex = tex; out.w = w; out.h = h;
+        out.uv0 = ImVec2(static_cast<float>(sp.x0 - x0) / w, static_cast<float>(sp.y0 - y0) / h);
+        out.uv1 = ImVec2(static_cast<float>(sp.x1 - x0) / w, static_cast<float>(sp.y1 - y0) / h);
+        return true;
+    }
+
+    // Close + submit g_command_list and block until the GPU finishes — the synchronous one-shot
+    // path the grace copies use (item icons batch via flush_item_icon_batch instead).
+    void submit_and_wait()
+    {
+        g_command_list->Close();
+        ID3D12CommandList *lists[] = {g_command_list};
+        g_command_queue->ExecuteCommandLists(1, lists);
+        ID3D12Fence *fence = nullptr;
+        if (SUCCEEDED(g_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))))
+        {
+            HANDLE ev = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+            g_command_queue->Signal(fence, 1);
+            if (ev && fence->GetCompletedValue() < 1)
+            { fence->SetEventOnCompletion(1, ev); WaitForSingleObject(ev, 1000); }
+            if (ev) CloseHandle(ev);
+            fence->Release();
+        }
+    }
+
+    // Create an inline TEXTURE2D SRV for `tex` at SRV slot `*idx` (allocated from g_next_item_srv
+    // and REUSED across rebuilds when already >=0, so debug re-applies don't leak heap slots).
+    // `mapping` = the channel swizzle. Returns the slot's GPU descriptor handle.
+    D3D12_GPU_DESCRIPTOR_HANDLE write_inline_srv(ID3D12Resource *tex, DXGI_FORMAT fmt,
+                                                 int &idx, UINT mapping)
+    {
+        const UINT inc = g_device->GetDescriptorHandleIncrementSize(
+            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        if (idx < 0) idx = static_cast<int>(g_next_item_srv++);
+        D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
+        cpu.ptr += static_cast<SIZE_T>(inc) * idx;
+        D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
+        sd.Format = fmt; sd.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        sd.Shader4ComponentMapping = mapping; sd.Texture2D.MipLevels = 1;
+        g_device->CreateShaderResourceView(tex, &sd, cpu);
+        D3D12_GPU_DESCRIPTOR_HANDLE gpu = g_srv_heap->GetGPUDescriptorHandleForHeapStart();
+        gpu.ptr += static_cast<SIZE_T>(inc) * idx;
+        return gpu;
+    }
+
     // Request an item icon SRV. If cached → return its GPU handle (ok) or 0 (known miss).
     // If new → CREATE the dest texture + RECORD its copy into the frame's batch and return 0
     // (drawn next frame after flush). Never blocks; never submits per-icon.
@@ -335,65 +445,20 @@ namespace
                 return 0;   // sheet not bound yet → retry next frame (no permanent-miss store)
             // BC formats (BC1/BC7) copy on 4x4 BLOCKS. Most item cells are 270x270 / 54x54 — NOT
             // multiples of 4 — so a raw sub-rect copy was rejected (the "131 harvested, 3 drawn" bug:
-            // only the 160x160 cells passed). Snap the rect OUT to 4-aligned bounds (like the grace
-            // path), copy the slightly-larger block-aligned region, and store UVs so ImGui crops back
-            // to the exact icon. Clamp to the sheet (W/H are 4-aligned) so we never read past its edge.
-            int sw = static_cast<int>(rd.Width), sh = static_cast<int>(rd.Height);
-            int x0 = sp.x0 & ~3, y0 = sp.y0 & ~3;
-            int x1 = (sp.x1 + 3) & ~3, y1 = (sp.y1 + 3) & ~3;
-            if (x1 > sw) x1 = sw;
-            if (y1 > sh) y1 = sh;
-            int w = x1 - x0, h = y1 - y0;
-            if (w > 0 && h > 0 && w <= 1024 && h <= 1024)
+            // only the 160x160 cells passed). record_sprite_copy snaps the rect OUT to 4-aligned
+            // bounds + stores UVs so ImGui crops back to the exact icon. Unlike the grace paths this
+            // one BATCHES (no per-icon submit) — the SRV descriptor is written later in flush.
+            begin_icon_batch();
+            SrvCopy cp;
+            if (record_sprite_copy(src_res, fmt, sp, cp))
             {
-                slot.uv0 = ImVec2(static_cast<float>(sp.x0 - x0) / w, static_cast<float>(sp.y0 - y0) / h);
-                slot.uv1 = ImVec2(static_cast<float>(sp.x1 - x0) / w, static_cast<float>(sp.y1 - y0) / h);
-                D3D12_HEAP_PROPERTIES hp{}; hp.Type = D3D12_HEAP_TYPE_DEFAULT;
-                D3D12_RESOURCE_DESC td{};
-                td.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-                td.Width = static_cast<UINT64>(w); td.Height = static_cast<UINT>(h);
-                td.DepthOrArraySize = 1; td.MipLevels = 1; td.Format = fmt;
-                td.SampleDesc.Count = 1; td.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-                if (SUCCEEDED(g_device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &td,
-                        D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&slot.tex))))
-                {
-                    begin_icon_batch();
-                    // src sheet: assume PIXEL_SHADER_RESOURCE → COPY_SOURCE (sampled engine texture).
-                    // Per-icon barriers are fine inside one list even when icons share a sheet (each
-                    // pair restores it to PSR); the win is collapsing N submits+waits into one.
-                    D3D12_RESOURCE_BARRIER bs{};
-                    bs.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-                    bs.Transition.pResource = src_res; bs.Transition.Subresource = 0;
-                    bs.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-                    bs.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
-                    g_command_list->ResourceBarrier(1, &bs);
-
-                    D3D12_TEXTURE_COPY_LOCATION dst{}; dst.pResource = slot.tex;
-                    dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; dst.SubresourceIndex = 0;
-                    D3D12_TEXTURE_COPY_LOCATION csrc{}; csrc.pResource = src_res;
-                    csrc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; csrc.SubresourceIndex = 0;
-                    D3D12_BOX box{};
-                    box.left = x0; box.top = y0; box.front = 0;
-                    box.right = x1; box.bottom = y1; box.back = 1;
-                    g_command_list->CopyTextureRegion(&dst, 0, 0, 0, &csrc, &box);
-
-                    D3D12_RESOURCE_BARRIER after[2]{};
-                    after[0] = bs;  // restore src: COPY_SOURCE → PIXEL_SHADER_RESOURCE
-                    after[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
-                    after[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-                    after[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-                    after[1].Transition.pResource = slot.tex; after[1].Transition.Subresource = 0;
-                    after[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-                    after[1].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-                    g_command_list->ResourceBarrier(2, after);
-
-                    // Reserve the SRV slot now; the descriptor itself is written at flush (after the
-                    // copy completes). Park the slot as not-ok so it isn't re-enqueued; flush flips it.
-                    UINT idx = g_next_item_srv++;
-                    g_pending_icons.push_back({iconId, slot.tex, fmt, idx, w, h});
-                    g_item_icon_srvs[iconId] = slot;  // ok=false, tex set → pending
-                    return 0;                          // drawn next frame, after flush
-                }
+                slot.tex = cp.tex; slot.uv0 = cp.uv0; slot.uv1 = cp.uv1;
+                // Reserve the SRV slot now; the descriptor itself is written at flush (after the
+                // copy completes). Park the slot as not-ok so it isn't re-enqueued; flush flips it.
+                UINT idx = g_next_item_srv++;
+                g_pending_icons.push_back({iconId, cp.tex, fmt, idx, cp.w, cp.h});
+                g_item_icon_srvs[iconId] = slot;  // ok=false, tex set → pending
+                return 0;                          // drawn next frame, after flush
             }
         }
         if (!slot.ok && slot.tex) { slot.tex->Release(); slot.tex = nullptr; }
@@ -407,20 +472,7 @@ namespace
     void flush_item_icon_batch()
     {
         if (!g_icon_batch_open) return;
-        g_command_list->Close();
-        ID3D12CommandList *lists[] = {g_command_list};
-        g_command_queue->ExecuteCommandLists(1, lists);
-
-        ID3D12Fence *fence = nullptr;
-        if (SUCCEEDED(g_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))))
-        {
-            HANDLE ev = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-            g_command_queue->Signal(fence, 1);
-            if (ev && fence->GetCompletedValue() < 1)
-            { fence->SetEventOnCompletion(1, ev); WaitForSingleObject(ev, 1000); }
-            if (ev) CloseHandle(ev);
-            fence->Release();
-        }
+        submit_and_wait();   // one ExecuteCommandLists + one fence wait for the whole batch
 
         const UINT inc = g_device->GetDescriptorHandleIncrementSize(
             D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -498,82 +550,23 @@ namespace
             else if (g_grace_dbg_srgb == 2) fmt = DXGI_FORMAT_BC7_UNORM_SRGB;
         }
         g_grace_dbg_fmt_used = static_cast<int>(fmt);
-        int sw = static_cast<int>(rd.Width), sh = static_cast<int>(rd.Height);
-        int x0 = sp.x0 & ~3, y0 = sp.y0 & ~3;            // snap to 4-aligned blocks (BC7)
-        int x1 = (sp.x1 + 3) & ~3, y1 = (sp.y1 + 3) & ~3;
-        if (x1 > sw) x1 = sw;
-        if (y1 > sh) y1 = sh;
-        int w = x1 - x0, h = y1 - y0;
-        if (w <= 0 || h <= 0 || w > 1024 || h > 1024) { g_grace_state = 2; return false; }
 
-        D3D12_HEAP_PROPERTIES hp{}; hp.Type = D3D12_HEAP_TYPE_DEFAULT;
-        D3D12_RESOURCE_DESC td{};
-        td.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-        td.Width = static_cast<UINT64>(w); td.Height = static_cast<UINT>(h);
-        td.DepthOrArraySize = 1; td.MipLevels = 1; td.Format = fmt;
-        td.SampleDesc.Count = 1; td.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-        if (FAILED(g_device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &td,
-                D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&g_grace_tex))))
-        { g_grace_state = 2; return false; }
-
+        // Open the shared list, record the snap+copy, submit synchronously, then write the SRV
+        // (with the debug swizzle) into the REUSED grace slot. See record_sprite_copy / submit_and_wait
+        // / write_inline_srv.
         g_frames[0].allocator->Reset();
         g_command_list->Reset(g_frames[0].allocator, nullptr);
-        D3D12_RESOURCE_BARRIER bs{};
-        bs.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        bs.Transition.pResource = src_res; bs.Transition.Subresource = 0;
-        bs.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        bs.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
-        g_command_list->ResourceBarrier(1, &bs);
-        D3D12_TEXTURE_COPY_LOCATION dst{}; dst.pResource = g_grace_tex;
-        dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; dst.SubresourceIndex = 0;
-        D3D12_TEXTURE_COPY_LOCATION csrc{}; csrc.pResource = src_res;
-        csrc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; csrc.SubresourceIndex = 0;
-        D3D12_BOX box{}; box.left = x0; box.top = y0; box.front = 0;
-        box.right = x1; box.bottom = y1; box.back = 1;
-        g_command_list->CopyTextureRegion(&dst, 0, 0, 0, &csrc, &box);
-        D3D12_RESOURCE_BARRIER after[2]{};
-        after[0] = bs;
-        after[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
-        after[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        after[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        after[1].Transition.pResource = g_grace_tex; after[1].Transition.Subresource = 0;
-        after[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-        after[1].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        g_command_list->ResourceBarrier(2, after);
-        g_command_list->Close();
-        ID3D12CommandList *lists[] = {g_command_list};
-        g_command_queue->ExecuteCommandLists(1, lists);
-        ID3D12Fence *fence = nullptr;
-        if (SUCCEEDED(g_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))))
-        {
-            HANDLE ev = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-            g_command_queue->Signal(fence, 1);
-            if (ev && fence->GetCompletedValue() < 1)
-            { fence->SetEventOnCompletion(1, ev); WaitForSingleObject(ev, 1000); }
-            if (ev) CloseHandle(ev);
-            fence->Release();
-        }
+        SrvCopy cp;
+        if (!record_sprite_copy(src_res, fmt, sp, cp)) { g_grace_state = 2; return false; }
+        g_grace_tex = cp.tex;
+        submit_and_wait();
 
-        const UINT inc = g_device->GetDescriptorHandleIncrementSize(
-            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        // Reuse one slot across debug re-applies (avoid leaking heap slots on every format toggle).
-        if (g_grace_srv_idx < 0) g_grace_srv_idx = static_cast<int>(g_next_item_srv++);
-        UINT idx = static_cast<UINT>(g_grace_srv_idx);
-        D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
-        cpu.ptr += static_cast<SIZE_T>(inc) * idx;
-        D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
-        sd.Format = fmt; sd.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-        sd.Shader4ComponentMapping = grace_dbg_mapping();   // DEBUG channel swizzle (R<->B etc.)
-        sd.Texture2D.MipLevels = 1;
-        g_device->CreateShaderResourceView(g_grace_tex, &sd, cpu);
-        g_grace_gpu = g_srv_heap->GetGPUDescriptorHandleForHeapStart();
-        g_grace_gpu.ptr += static_cast<SIZE_T>(inc) * idx;
-        // UV onto the exact grace rect within the snapped copy.
-        g_grace_uv0 = ImVec2(static_cast<float>(sp.x0 - x0) / w, static_cast<float>(sp.y0 - y0) / h);
-        g_grace_uv1 = ImVec2(static_cast<float>(sp.x1 - x0) / w, static_cast<float>(sp.y1 - y0) / h);
+        g_grace_gpu = write_inline_srv(g_grace_tex, fmt, g_grace_srv_idx, grace_dbg_mapping());
+        g_grace_uv0 = cp.uv0; g_grace_uv1 = cp.uv1;
         g_grace_state = 1;
         spdlog::info("[GRACE-SRV] copied {}x{} (snapped from {},{}-{},{}) fmt={} -> slot {} gpu={:#x}",
-                     w, h, sp.x0, sp.y0, sp.x1, sp.y1, static_cast<int>(fmt), idx, g_grace_gpu.ptr);
+                     cp.w, cp.h, sp.x0, sp.y0, sp.x1, sp.y1, static_cast<int>(fmt), g_grace_srv_idx,
+                     g_grace_gpu.ptr);
         return true;
     }
 
@@ -606,64 +599,20 @@ namespace
         D3D12_RESOURCE_DESC rd = src_res->GetDesc();
         DXGI_FORMAT fmt = rd.Format;
         if (rd.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || fmt == DXGI_FORMAT_UNKNOWN) return false;
-        int swd = static_cast<int>(rd.Width), shd = static_cast<int>(rd.Height);
-        int x0 = sp.x0 & ~3, y0 = sp.y0 & ~3, x1 = (sp.x1 + 3) & ~3, y1 = (sp.y1 + 3) & ~3;
-        if (x1 > swd) x1 = swd; if (y1 > shd) y1 = shd;
-        int w = x1 - x0, h = y1 - y0;
-        if (w <= 0 || h <= 0 || w > 1024 || h > 1024) { g_grace_dgn_state = 2; return false; }
-        D3D12_HEAP_PROPERTIES hp{}; hp.Type = D3D12_HEAP_TYPE_DEFAULT;
-        D3D12_RESOURCE_DESC td{}; td.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-        td.Width = (UINT64)w; td.Height = (UINT)h; td.DepthOrArraySize = 1; td.MipLevels = 1;
-        td.Format = fmt; td.SampleDesc.Count = 1; td.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-        if (FAILED(g_device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &td,
-                D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&g_grace_dgn_tex))))
-        { g_grace_dgn_state = 2; return false; }
+
         g_frames[0].allocator->Reset();
         g_command_list->Reset(g_frames[0].allocator, nullptr);
-        D3D12_RESOURCE_BARRIER bs{}; bs.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        bs.Transition.pResource = src_res; bs.Transition.Subresource = 0;
-        bs.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        bs.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
-        g_command_list->ResourceBarrier(1, &bs);
-        D3D12_TEXTURE_COPY_LOCATION dst{}; dst.pResource = g_grace_dgn_tex;
-        dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; dst.SubresourceIndex = 0;
-        D3D12_TEXTURE_COPY_LOCATION csrc{}; csrc.pResource = src_res;
-        csrc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; csrc.SubresourceIndex = 0;
-        D3D12_BOX box{}; box.left = x0; box.top = y0; box.front = 0; box.right = x1; box.bottom = y1; box.back = 1;
-        g_command_list->CopyTextureRegion(&dst, 0, 0, 0, &csrc, &box);
-        D3D12_RESOURCE_BARRIER af[2]{}; af[0] = bs;
-        af[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
-        af[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        af[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION; af[1].Transition.pResource = g_grace_dgn_tex;
-        af[1].Transition.Subresource = 0; af[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-        af[1].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        g_command_list->ResourceBarrier(2, af);
-        g_command_list->Close();
-        ID3D12CommandList *lists[] = {g_command_list};
-        g_command_queue->ExecuteCommandLists(1, lists);
-        ID3D12Fence *fence = nullptr;
-        if (SUCCEEDED(g_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))))
-        {
-            HANDLE ev = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-            g_command_queue->Signal(fence, 1);
-            if (ev && fence->GetCompletedValue() < 1) { fence->SetEventOnCompletion(1, ev); WaitForSingleObject(ev, 1000); }
-            if (ev) CloseHandle(ev);
-            fence->Release();
-        }
-        const UINT inc = g_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        if (g_grace_dgn_srv_idx < 0) g_grace_dgn_srv_idx = (int)g_next_item_srv++;
-        UINT idx = (UINT)g_grace_dgn_srv_idx;
-        D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
-        cpu.ptr += (SIZE_T)inc * idx;
-        D3D12_SHADER_RESOURCE_VIEW_DESC sd{}; sd.Format = fmt; sd.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-        sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING; sd.Texture2D.MipLevels = 1;
-        g_device->CreateShaderResourceView(g_grace_dgn_tex, &sd, cpu);
-        g_grace_dgn_gpu = g_srv_heap->GetGPUDescriptorHandleForHeapStart();
-        g_grace_dgn_gpu.ptr += (SIZE_T)inc * idx;
-        g_grace_dgn_uv0 = ImVec2((float)(sp.x0 - x0) / w, (float)(sp.y0 - y0) / h);
-        g_grace_dgn_uv1 = ImVec2((float)(sp.x1 - x0) / w, (float)(sp.y1 - y0) / h);
+        SrvCopy cp;
+        if (!record_sprite_copy(src_res, fmt, sp, cp)) { g_grace_dgn_state = 2; return false; }
+        g_grace_dgn_tex = cp.tex;
+        submit_and_wait();
+
+        g_grace_dgn_gpu = write_inline_srv(g_grace_dgn_tex, fmt, g_grace_dgn_srv_idx,
+                                           D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING);
+        g_grace_dgn_uv0 = cp.uv0; g_grace_dgn_uv1 = cp.uv1;
         g_grace_dgn_state = 1;
-        spdlog::info("[GRACE-SRV] DUNGEON copied {}x{} fmt={} -> slot {}", w, h, (int)fmt, idx);
+        spdlog::info("[GRACE-SRV] DUNGEON copied {}x{} fmt={} -> slot {}", cp.w, cp.h, (int)fmt,
+                     g_grace_dgn_srv_idx);
         return true;
     }
 
