@@ -98,7 +98,6 @@ static void init_collected()        { goblin::collected::initialize(); }
 static void init_kindling()         { goblin::kindling::initialize(); }
 static void init_tutorial_popup()   { goblin::inject_tutorial_popup_rows(); }
 static void init_setup_messages()   { goblin::setup_messages(); }
-static void init_live_refresh()     { goblin::install_live_refresh_hook(); }
 static void init_icon_tex_probe()   { goblin::install_icon_texture_probe(); }
 static void init_grace_suppress()   { goblin::install_grace_suppression_hook(); }
 
@@ -202,7 +201,6 @@ static void setup_mod()
         safe_init_step(&init_setup_messages,  "setup_messages");
         // Queue the live-refresh hook (FUN_140a82a80) — kept for the native-pin
         // suppression path; no-op until enabled.
-        safe_init_step(&init_live_refresh,    "install_live_refresh_hook");
         safe_init_step(&init_icon_tex_probe,  "install_icon_texture_probe");
         safe_init_step(&init_grace_suppress,  "install_grace_suppression_hook");
     }

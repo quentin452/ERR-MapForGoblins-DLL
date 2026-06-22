@@ -1628,72 +1628,6 @@ bool goblin::world_map_open()
     return v == 7;
 }
 
-// ── Live world-map icon refresh (EXPERIMENTAL, config::liveRefreshWorldMap) ──
-//
-// The engine (re)builds the placed map-point icons in FUN_140a82a80(PointMan, ctx)
-// (Windows RE, docs/windows_re_live_refresh_capture.md): it news CSWorldMapPointIns
-// (ctor 0xa811e0), evaluates the per-row show-predicate (vtable+0x8), and inserts/
-// updates/removes the std::map<int id, CSWorldMapPointIns*> at PointMan+0x398. Our
-// section/category hide flips WORLD_MAP_POINT_PARAM_ST.areaNo to 99 on the live
-// param blob — correct, but INVISIBLE while the map is open, because the per-frame
-// reconcile (FUN_140a832a0) only UPDATES already-built icons; it never re-evaluates
-// visibility on the +0x398 set. Only the build above does, and it runs off a
-// transient per-frame context (ctx = {+0x34 page filter, +0x48 ParamRepo*}) that we
-// must NOT fabricate — a bogus ctx would crash.
-//
-// So we HOOK the build fn and passively record the engine's own (this, ctx) as it
-// is called naturally. When a refresh is requested (after an areaNo edit, map open)
-// the detour re-invokes the ORIGINAL once more with that captured real pair — a
-// second add/remove reconcile against the freshly-edited params. This keeps ALL
-// game-state mutation on the engine's own thread; the watcher thread only sets a
-// flag. Off unless config::liveRefreshWorldMap; the user runtime-verifies that the
-// build is invoked while the map is open and that the extra pass refreshes icons
-// with no crash (doc "Runtime test plan").
-namespace
-{
-using world_map_build_fn = void(__fastcall *)(void *pointman, void *ctx);
-world_map_build_fn g_wm_build_orig = nullptr;     // MinHook trampoline (relocated original)
-std::atomic<bool>  g_wm_refresh_request{false};
-
-// Detour over FUN_140a82a80. POD-only body (no C++ unwinding) so the __try is legal.
-// The trampoline is the relocated original — calling it does NOT re-enter this
-// detour, so the extra pass cannot recurse.
-void __fastcall wm_build_detour(void *pointman, void *ctx)
-{
-    g_wm_build_orig(pointman, ctx);
-    if (g_wm_refresh_request.exchange(false))
-    {
-        __try { g_wm_build_orig(pointman, ctx); }
-        __except (EXCEPTION_EXECUTE_HANDLER) {}
-    }
-}
-} // namespace
-
-void goblin::install_live_refresh_hook()
-{
-    if (!goblin::config::liveRefreshWorldMap) return;
-    // Entry AOB of FUN_140a82a80 (verified UNIQUE; no RIP-relative bytes, so the raw
-    // prologue is patch-resilient). this=rcx (PointMan), ctx=rdx ({+0x34,+0x48}).
-    void *fn = modutils::scan<void>({
-        .aob = goblin::sig::WORLDMAP_POINT_CTOR,
-    });
-    if (!fn)
-    {
-        spdlog::warn("[LIVE-REFRESH] build-fn AOB not found (game patch?) — live refresh disabled");
-        return;
-    }
-    try
-    {
-        modutils::hook(fn, reinterpret_cast<void *>(&wm_build_detour),
-                       reinterpret_cast<void **>(&g_wm_build_orig));
-        spdlog::info("[LIVE-REFRESH] world-map build hooked @ {} (experimental)", fn);
-    }
-    catch (const std::exception &e)
-    {
-        spdlog::error("[LIVE-REFRESH] hook failed: {}", e.what());
-        g_wm_build_orig = nullptr;
-    }
-}
 
 // ── Icon-texture probe (config dump_icon_textures) ───────────────────────────────────
 // Hooks CSScaleformImageCreator::CreateImage (FUN_140d6bbc0): builds each GFx image from a
@@ -2729,13 +2663,6 @@ void goblin::install_grace_suppression_hook()
         spdlog::error("[WARPPIN] hook failed: {}", e.what());
         g_warp_pin_orig = nullptr;
     }
-}
-
-void goblin::refresh_world_map_icons()
-{
-    if (!g_wm_build_orig) return;           // hook not installed (flag off / AOB miss)
-    if (!goblin::world_map_open()) return;  // only meaningful while the 2D map is up
-    g_wm_refresh_request.store(true);       // engine thread replays on its next build
 }
 
 // ── Overlay control API (see goblin_inject.hpp) ──────────────────────────

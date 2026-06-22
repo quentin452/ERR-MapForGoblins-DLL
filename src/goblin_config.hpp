@@ -164,12 +164,6 @@ namespace goblin
         extern float minimapOffsetX;
         extern float minimapOffsetY;
 
-        // EXPERIMENTAL live world-map icon refresh. Hooks the engine's placed-
-        // map-point (re)build (FUN_140a82a80) so a section/category toggle re-renders
-        // icons WHILE the map is open instead of only on the next open. Off by
-        // default; needs in-game validation. See docs/windows_re_live_refresh_capture.md.
-        extern bool liveRefreshWorldMap;
-
         // In-game per-section visibility (the 7 display groups). The section_*
         // bools are the persisted runtime state, driven live by the overlay menu
         // (F1) and written back on Save. See goblin_config_schema [Display Sections].
