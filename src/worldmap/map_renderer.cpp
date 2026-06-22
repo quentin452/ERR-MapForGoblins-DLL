@@ -671,28 +671,33 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // WorldMapDialog page+layer): openDlc = DLC map, underground = layer byte.
     const int raw_grp = (lv.openDlc ? 2 : 0) | ((lv.underground != 0) ? 1 : 0);
 
-    // Page-transition LAG: on a page change `raw_grp` flips at once but the engine ANIMATES
-    // the swap (~0.5s). Instead of blanking, keep DRAWING the OLD page's markers (they ride
-    // the out-going map) and only switch to the new page once the live view stops sweeping
-    // (settled a few frames), hard-capped so it never sticks. So old icons don't vanish too
-    // early, and new ones don't pop over the still-animating old map. The cached UV stays
-    // valid; this only delays the page GATE. Projection-agnostic.
-    static int s_prev_raw = -999, s_draw_grp = -999, s_trans = 0, s_still = 0;
-    static float s_px = 0, s_pz = 0, s_zoom = 0;
+    // Page-transition LAG (delta-time based): on a page change `raw_grp` flips at once but the
+    // engine ANIMATES the swap (~0.4s — a CROSS-FADE where the view DOESN'T move, or a pan).
+    // Keep DRAWING the old page until the swap is done, then switch — so old icons don't
+    // vanish too early and new ones don't pop over the out-going map. The view-settle signal
+    // alone fails for a fade (no movement → instant false-settle → flicker), so use a fixed
+    // delta-time WINDOW; only END it early when the view actually MOVED and then settled (the
+    // pan case). Framerate-independent. Only delays the page GATE; cached UV unchanged.
+    static int s_prev_raw = -999, s_draw_grp = -999, s_still = 0;
+    static float s_win = 0.0f, s_px = 0, s_pz = 0, s_zoom = 0;
+    static bool s_moved = false;
     {
+        const float dt = (io.DeltaTime > 0.0f && io.DeltaTime < 0.25f) ? io.DeltaTime : 0.016f;
         const float dpan = std::fabs(lv.panX - s_px) + std::fabs(lv.panZ - s_pz);
         const float dz = std::fabs(lv.zoom - s_zoom);
         s_px = lv.panX; s_pz = lv.panZ; s_zoom = lv.zoom;
         const bool moving = (dpan > 2.0f) || (dz > 0.002f);
-        if (raw_grp != s_prev_raw) { s_trans = 40; s_still = 0; } // page flip → start the lag
+        if (raw_grp != s_prev_raw) { s_win = 0.40f; s_still = 0; s_moved = false; } // page flip
         s_prev_raw = raw_grp;
-        if (s_draw_grp == -999) s_draw_grp = raw_grp;             // first frame → no lag
-        if (s_trans > 0)
+        if (s_draw_grp == -999) s_draw_grp = raw_grp;            // first frame → no lag
+        if (s_win > 0.0f)
         {
-            s_trans--;
-            s_still = moving ? 0 : (s_still + 1);
-            if (s_still >= 3 || s_trans == 0)                     // view settled (or cap) → swap
-            { s_draw_grp = raw_grp; s_trans = 0; }
+            s_win -= dt;
+            if (moving) { s_moved = true; s_still = 0; }
+            else s_still++;
+            // Swap when the window elapses (fade case) OR the view moved then settled (pan).
+            if (s_win <= 0.0f || (s_moved && s_still >= 3))
+            { s_draw_grp = raw_grp; s_win = 0.0f; }
         }
         else
             s_draw_grp = raw_grp;
