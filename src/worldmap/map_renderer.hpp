@@ -27,4 +27,11 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
 // config::showMinimap is off / icons master off. screenW/H = backbuffer size (HUD anchor).
 void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture, float screenW,
                   float screenH);
+
+// Provide the harvested discovered-grace sprite so the overlay draws graces itself (RE e4b3f6a
+// §6): tex = the grace texture's ImGui id, uv0/uv1 = the grace sub-rect within it. When set, grace
+// markers draw with this sprite (discovered = full colour, undiscovered = grey) instead of being
+// dropped (discovered) / circle-drawn (undiscovered). Pass tex=null to revert to the old behaviour.
+// Call each frame before render_markers/draw_minimap.
+void set_grace_sprite(void *tex, float u0, float v0, float u1, float v1);
 } // namespace goblin::worldmap

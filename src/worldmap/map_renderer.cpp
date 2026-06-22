@@ -121,12 +121,43 @@ inline bool redify_boss(const Marker &m)
            m.category == static_cast<int>(goblin::generated::Category::WorldBosses);
 }
 
+// Harvested discovered-grace sprite (set by the overlay via set_grace_sprite). When valid, grace
+// markers draw with it instead of the circle/native hybrid. Render-thread only.
+ImTextureID s_grace_tex = nullptr;
+ImVec2 s_grace_uv0{}, s_grace_uv1{};
+
 // Draw one marker at backbuffer px p: the atlas icon if available, else a circle.
 // half = icon half-size in px (resolution-scaled by the caller). When collected_graying
 // is on, collected/cleared markers dim+desaturate (or hide if hide_collected), and
 // cleared bosses get a green checkmark. Uncollected bosses redden when redify_boss_icons.
 void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, float half)
 {
+    // Grace marker (discover_flag set only on graces): with grace_overlay the overlay draws it
+    // itself — discovered (rested) = full colour, undiscovered = grey. Source per grace_gpu_sprite:
+    // the live engine sprite (s_grace_tex, time-tinted) or the mod's baked atlas icon (clean). Needs
+    // native-pin suppression to avoid doubling. Graces aren't collectible → no graying path.
+    if (m.discover_flag && goblin::config::graceOverlay)
+    {
+        bool disc = goblin::ui::read_event_flag(static_cast<uint32_t>(m.discover_flag));
+        ImU32 t = disc ? IM_COL32(255, 255, 255, 255) : IM_COL32(140, 140, 150, 205);
+        if (goblin::config::graceGpuSprite && s_grace_tex)
+        {
+            fg->AddImage(s_grace_tex, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
+                         s_grace_uv0, s_grace_uv1, t);
+            return;
+        }
+        ImVec2 uv0, uv1;
+        if (atlas && icon_uv(m.icon_key, uv0, uv1))
+            fg->AddImage(atlas, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
+                         uv0, uv1, t);
+        else
+        {
+            float cr = half * 0.45f;
+            fg->AddCircleFilled(p, cr, disc ? m.color : dim_color(m.color));
+            fg->AddCircle(p, cr, IM_COL32(0, 0, 0, 220), 0, 1.5f);
+        }
+        return;
+    }
     bool cleared = false, done = false;
     if (goblin::config::collectedGraying)
     {
@@ -629,6 +660,13 @@ bool quest_npc_gated_out(const Marker &m)
 }
 } // namespace
 
+void set_grace_sprite(void *tex, float u0, float v0, float u1, float v1)
+{
+    s_grace_tex = reinterpret_cast<ImTextureID>(tex);
+    s_grace_uv0 = ImVec2(u0, v0);
+    s_grace_uv1 = ImVec2(u1, v1);
+}
+
 void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_texture, float mouseX,
                     float mouseY)
 {
@@ -761,11 +799,12 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
         {
             if (m.group != open_grp)
                 continue; // draw only the open map group
-            // Discovered graces are drawn by the game natively (generated from
-            // BonfireWarpParam), so drop our overlay marker to avoid a double icon.
-            // discover_flag is set only on grace markers; read live so it updates the
-            // moment the player rests at a grace.
-            if (m.discover_flag && goblin::ui::read_event_flag((uint32_t)m.discover_flag))
+            // Graces (discover_flag set only on grace markers). With grace_overlay the overlay draws
+            // ALL graces itself (draw_marker: discovered = colour, undiscovered = grey). Without it,
+            // the old hybrid: drop discovered graces (the game draws those natively), keep undiscovered.
+            // Read live so it updates the moment the player rests at a grace.
+            if (m.discover_flag && !goblin::config::graceOverlay &&
+                goblin::ui::read_event_flag((uint32_t)m.discover_flag))
                 continue;
             // Quest-aware gating: hide a quest-NPC whose questline is currently inactive.
             if (quest_npc_gated_out(m))
@@ -865,7 +904,8 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             if (m.group != pgroup)
                 continue; // only the player's current map page
             // Same hide-gates as the worldmap (discovered grace, quest-NPC, post-event story).
-            if (m.discover_flag && goblin::ui::read_event_flag((uint32_t)m.discover_flag))
+            if (m.discover_flag && !goblin::config::graceOverlay &&
+                goblin::ui::read_event_flag((uint32_t)m.discover_flag))
                 continue;
             if (quest_npc_gated_out(m))
                 continue;

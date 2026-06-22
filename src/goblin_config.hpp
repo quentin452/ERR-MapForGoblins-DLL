@@ -75,6 +75,14 @@ namespace goblin
         // ── ERR Markers ─────────────────────────────────────────────────
         extern bool redifyBossIcons;  // overlay: boss markers drawn red + auto-hide on kill
 
+        // Grace rendering: when graceOverlay is on, the overlay draws ALL graces itself
+        // (discovered = full colour, undiscovered = grey) instead of the hybrid (native draws
+        // discovered). graceGpuSprite picks the icon source: false = baked atlas (clean, constant),
+        // true = the live engine sprite (SB_ERR_Grace, time-of-day tinted). Needs native-pin
+        // suppression to avoid doubling discovered graces.
+        extern bool graceOverlay;
+        extern bool graceGpuSprite;
+
         // Marker dump (hotkey → dump beacon/stamp coords to file)
         extern bool enableMarkerDump;
         extern uint32_t markerDumpKey;  // Win32 VK_* code (default VK_F9 = 0x78)

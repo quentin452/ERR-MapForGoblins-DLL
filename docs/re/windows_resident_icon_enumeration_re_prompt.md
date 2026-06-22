@@ -80,3 +80,26 @@ fn + the corrected `res`/list/entry offsets for THIS build. (Repo-walk is prefer
 - our probe to extend: `goblin_inject.cpp` `find_detour` / `harvest_resident_icons` (RPM-safe, config
   `dump_icon_textures`). Point a repo-walk here once the layout is known.
 - Constraints: RPM/WPM-safe, no `__try` reliance (clang-cl elides it — see the project SEH note).
+
+---
+
+## ADDENDUM (2026-06-22) — the CreateImage harvest does NOT yield the drawn marker sprite
+
+Live result after wiring a repeatable harvest off the CreateImage hook (`FUN_140d6bbc0`) +
+`dump_icon_textures_live` (resolve `img+0x10→rtex+0x70` = sheet `ID3D12Resource`): on the open
+world map, **the ONLY `SB_ERR_*` image ever captured is `SB_ERR_Grace_LateDay_Color_ptl`**
+(rect 818,548-892,622, 74×74, BC7) — and per the user that LateDay frame is an **UNUSED** variant
+(the game never draws it). No other ERR map-marker sprites appear, and the ACTUAL drawn grace frame
+(time-of-day correct) is never the one we get. Panning/interacting doesn't add more.
+
+So the CreateImage-image list is NOT the path that selects what a marker draws — it just holds
+whatever symbol images happen to be resident, including unused frames. **We need the RE for how a
+DRAWN map marker resolves to its exact sprite frame**, specifically:
+- For a `WorldMapWarpPinData` grace (RE `windows_native_grace_pin_manager_re_findings.md`: iconId at
+  `[warpData+0x8]+0x08`), how does iconId → the concrete sprite RECT actually blitted, and where is
+  the time-of-day grace variant SELECTED (Morning/LateDay/Night)? Report the selector + the live
+  field holding the chosen frame, so we can read the SAME frame the game shows.
+- The world-map movie's image-list (findings §8 path, `[movie+0x40]+0x90`) for the **world-map**
+  movie (not inventory) — does it expose the per-marker drawn sprite? If so, the offsets for THIS
+  build (the inventory-movie offsets did not hold — see the main brief).
+Deliverable as before: a CE `.CT` + offset recipe, validated live against the grace the map shows.
