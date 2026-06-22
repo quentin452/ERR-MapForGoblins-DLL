@@ -512,6 +512,48 @@ offline bake is the path, now triply confirmed (no force-load, no group/queue tr
 
 ---
 
+## 5g. RUNTIME confirmation — CE "find what writes to _Mysize" (re_v123, quentin, 2026-06-22)
+
+Definitive live cross-check. Pinned `_Mysize` (`repo+0x90`) in CE and "find out what writes to the
+address pointed at by this pointer", then browsed the inventory so the count moved. **Two writer
+instructions** (session base `er=0x7FF61AB80000`):
+- **INSERT `_Mysize++`** @ **RVA 0xD611AB** (`inc rax; mov [r10+0x10],rax`, r10=repo→map node hdr).
+- **ERASE `_Mysize--`** @ **RVA 0xD6746E** (`dec rax; mov [r14+0x10],rax`).
+
+Captured both call stacks and resolved every `eldenring.exe` return address in Ghidra
+(`find_resolve*.java`). The two stacks are **asymmetric**, and that asymmetry IS the proof:
+
+**INSERT stack (messy → pierces into VMP):**
+```
+_Mysize++ FUN_140d61180 ← FUN_140d61ff0 ← FUN_140d64f30 (←★FUN_140d66a60) ← [VMP @d6648b] ← [VMP @d63dbd] ← …
+```
+Confirms the static caller tree: the insert is driven by the **VMProtect provider-apply parse**
+(`0xd66xxx`). The icon-widget frames `FUN_14074bcc0` that also appeared on the raw stack are **STALE** —
+decompiling `FUN_14074bcc0` shows its ONLY repo callee is `FUN_140d63e50` (the read-only twin FIND); it
+has NO edge to CreateImage / the parse / any insert. So the widget reads, it does NOT trigger a load (§5
+was right; the stack frames were leftover values).
+
+**ERASE stack (clean → all defined functions):**
+```
+[FD4 task system FUN_14253ebcc → FUN_141f3a6e0 → FUN_140e82220 …]
+ → FUN_140d78060  (TICKER, sibling of FUN_140d724c0)
+  → FUN_140d790a0+b5a  (ORCHESTRATOR, pass-2 unload queue +0x1e08)
+   → FUN_140d70740 → FUN_140d70180  (manager unload)
+    → [Scaleform release FUN_14112ca80 / FUN_141158xxx / FUN_14112b7d0]
+     → FUN_140d68780 → FUN_140d68690  (repo sync) → [VMP @d65de3] → FUN_140d66f70 → erase
+```
+Every frame is a defined function and matches §5d/§5e exactly — the eviction is driven by the
+**residency-manager ticker→orchestrator unload pass** (the same objects `bind_test` hooks).
+
+**Why the asymmetry = the answer.** Insertion happens during the **GFx movie BIND** (provider-apply =
+VMProtect) → its trigger can't be cleanly attributed even at runtime. Eviction happens during the
+**manager's unload pass** (plain FD4 code) → clean stack. So the repo strictly **follows the movie
+lifecycle**: insert = movie bind (VMP), erase = manager unload (defined). There is **no on-demand
+per-icon load trigger** — confirmed live from both ends. The icon consumers (widget) only read. All six
+runtime levers are exhausted; **offline bake remains the path.**
+
+---
+
 ## 6. Handles
 - repo singleton `DAT_143d82510` `er+0x3D82510` (FD4Singleton); container map `repo+0x80`,
   `_Myhead` `repo+0x88`, `_Mysize` `repo+0x90`.
