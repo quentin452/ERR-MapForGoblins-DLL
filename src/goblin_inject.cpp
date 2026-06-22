@@ -2791,12 +2791,21 @@ void goblin::dump_icon_textures_live()
         // ERR map sprites (RE e4b3f6a §6): the discovered grace + all other ERR map icons draw through
         // CreateImage (not the find fn) → captured here with resolved sheet+rect. Collect EVERY
         // 'SB_ERR_*' candidate (dev viewer — to test whether non-grace icons harvest cleanly vs the
-        // grace's time-of-day variants), and LOCK the grace sprite on the exact 'Morning_Color' frame.
+        // grace's time-of-day variants), and LOCK the grace sprite on the first LIT '..._Color' frame
+        // with a grace-sized rect (any time-of-day; the engine resolves only one per session).
         if (it.name.rfind("SB_ERR_", 0) == 0)
         {
             int gfmt = 0; icon_rpm_i32(res + 0x30, gfmt);
             bool is_grace = it.name.rfind("SB_ERR_Grace", 0) == 0;
             bool exact = it.name.find("Morning_Color") != std::string::npos;
+            // The LIT/discovered grace look is any "..._Color" frame (Morning/LateDay/Night — the
+            // engine only ever resolves ONE per session, e.g. SB_ERR_Grace_LateDay_Color_ptl); the
+            // grey "undiscovered" variants lack "Color". Require a grace-sized rect so we never store a
+            // degenerate/empty frame. (The old "Morning_Color"-exact lock never matched at runtime, so
+            // the eager "|| !valid" clause grabbed the first SB_ERR_Grace frame = the wrong-icon bug.)
+            bool lit = it.name.find("Color") != std::string::npos;
+            int gw = it.x1 - it.x0, gh = it.y1 - it.y0;
+            bool rect_ok = gw >= 16 && gw <= 160 && gh >= 16 && gh <= 160;
             static std::set<std::string> seen_cand;   // dedup across the repeatable re-runs
             std::lock_guard<std::mutex> lk(g_harvest_mtx);
             if (seen_cand.insert(it.name).second)      // NEW SB_ERR_ name → log + add to the viewer
@@ -2813,7 +2822,7 @@ void goblin::dump_icon_textures_live()
                 gc.spr.valid = true;
                 if (g_grace_cands.size() < 64) g_grace_cands.push_back(gc);
             }
-            if (is_grace && ((exact && !g_grace_locked) || !g_grace_sprite.valid))
+            if (is_grace && lit && rect_ok && !g_grace_locked)
             {
                 g_grace_sprite.sheet = reinterpret_cast<void *>(res);
                 g_grace_sprite.x0 = it.x0; g_grace_sprite.y0 = it.y0;
@@ -2822,9 +2831,9 @@ void goblin::dump_icon_textures_live()
                 g_grace_sprite.sheetH = static_cast<unsigned>(rh);
                 g_grace_sprite.format = static_cast<unsigned>(gfmt);
                 g_grace_sprite.valid = true;
-                if (exact) g_grace_locked = true;
-                spdlog::info("[GRACE-SPRITE] '{}' rect=({},{})-({},{}) res={:#x} fmt={} (stored{})",
-                             it.name, it.x0, it.y0, it.x1, it.y1, res, gfmt, exact ? ", LOCKED Morning_Color" : "");
+                g_grace_locked = true;   // first valid LIT grace frame wins → stable, no variant flip-flop
+                spdlog::info("[GRACE-SPRITE] '{}' rect=({},{})-({},{}) {}x{} res={:#x} fmt={} (LOCKED lit grace)",
+                             it.name, it.x0, it.y0, it.x1, it.y1, gw, gh, res, gfmt);
             }
         }
         // Track unique sheet resources (icons on one sheet share a resource).
