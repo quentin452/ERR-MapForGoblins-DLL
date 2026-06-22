@@ -40,6 +40,21 @@ own SRV texture on the game's D3D12 device/queue (the ImGui DX12 backend already
 NOTE (Proton): the resource vtable is vkd3d's, not d3d12.dll's — call GetDesc() for the exact
 DXGI_FORMAT rather than guessing an offset; CopyTextureRegion is the same device, so it's valid.
 
+### iconId / sprite NAME (img+0x40) + Path A's REACH LIMIT (runtime-verified 2026-06-22)
+
+`img+0x40` → a heap pointer to the GFx import name string `'<symbol>_ptl'` (the resolve fn formats
+`L"%s_ptl"`). Two name families seen live: `KG_*` = controller button glyphs (R1/L1/dpad/sticks —
+ignore), and **`SB_ERR_*`** = ERR's custom map icons on the 2048×1024 sheet. Captured:
+`SB_ERR_Grace_Morning_Color` at rect (818,368)-(892,442), 74×74 — the LIT/discovered grace.
+
+**REACH LIMIT (important):** CreateImage only fires for sprites the NATIVE worldmap actually draws.
+The 6 MFG-only overlay categories (talismans/whetblades/throwables/utilities/world-maps/quest-NPC)
+are NOT drawn by the native map (overlay-only, or parked at areaNo 99) → their `SB_ERR_*` images are
+never created → their rects are NOT capturable at runtime. So Path A reaches the LIT GRACE (+ any
+natively-drawn icon) but NOT the 6 categories — those still require FFDEC (static `.gfx` atlas).
+Pragmatic Path A endgame for the grace = one-shot CopyTextureRegion→readback of its rect → save PNG
+→ bake into the overlay atlas (no permanent runtime texture infra for a single sprite).
+
 ---
 
 ## 0. TL;DR — the BFS found nothing because the texture is bound LAZILY at render, one hop deeper

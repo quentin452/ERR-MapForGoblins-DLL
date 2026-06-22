@@ -1754,10 +1754,34 @@ uintptr_t icon_find_gpu_tex(uintptr_t root, uintptr_t base, uintptr_t &out_vt, i
     return 0;
 }
 
+// Try to read a printable string at `addr` — narrow (char) first, then wide (char,0,char,0).
+// Returns "" if no run of >=3 printable ASCII. Used to find the GFx import NAME the image was
+// built from (findings §4: CreateImage builds from an import descriptor; the resolve path
+// formats L"%s_ptl" from its wide name → label iconId by that name).
+std::string icon_try_str(uintptr_t addr)
+{
+    if (!addr || addr < 0x10000 || addr >= 0x7fffffffffffULL) return {};
+    unsigned char buf[96] = {0};
+    SIZE_T n = 0;
+    if (!ReadProcessMemory(GetCurrentProcess(), (void *)addr, buf, sizeof(buf) - 1, &n) || n < 4)
+        return {};
+    auto printable = [](unsigned char c) { return (c >= 0x20 && c < 0x7f); };
+    // narrow
+    int run = 0; for (int i = 0; i < (int)n && printable(buf[i]); ++i) run++;
+    if (run >= 4) return std::string((char *)buf, run);
+    // wide (every other byte 0)
+    std::string w; for (int i = 0; i + 1 < (int)n; i += 2)
+    {
+        if (printable(buf[i]) && buf[i + 1] == 0) w.push_back((char)buf[i]); else break;
+    }
+    if (w.size() >= 4) return w;
+    return {};
+}
+
 // Registry of created CSTextureImages (load-time) so the live dump can re-read each
 // img+0x10 once the world map is open and the GPU texture is bound. Capped; sheet-sized
 // images only (icon sheets are 512×512 / 2048×1024 — skip tiny/huge GFx images).
-struct IconImg { uintptr_t img; int x0, y0, x1, y1, w, h; };
+struct IconImg { uintptr_t img; int x0, y0, x1, y1, w, h; std::string name; };
 std::vector<IconImg> g_icon_imgs;
 std::vector<uintptr_t> g_icon_sheets; // unique ID3D12Resource per TPF sheet
 bool g_icon_live_done = false;
@@ -1853,18 +1877,23 @@ void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
     // Register sheet-sized images so the live dump can re-read img+0x10 once the map is
     // open (the GPU texture binds LAZILY on first render — findings §2; the BFS here at
     // load time finds nothing, which is expected). Icon sheets are 512×512 / 2048×1024.
+    // The GFx import NAME (SOLVED): img+0x40 -> '<symbol>_ptl' string (the resolve fn formats
+    // L"%s_ptl"). ERR map icons = 'SB_ERR_*'; 'KG_*' = controller button glyphs (skip).
+    uintptr_t name_ptr = 0; icon_rpm_ptr(img + 0x40, name_ptr);
+    std::string name = icon_try_str(name_ptr);
+    // Register sheet-sized images so the live dump can re-read img+0x10 once the map is open
+    // (the GPU texture binds LAZILY on first render). Icon sheets are 512×512 / 2048×1024.
     if (w >= 256 && h >= 256 && g_icon_imgs.size() < 512)
-        g_icon_imgs.push_back({img, x0, y0, x1, y1, w, h});
-    uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
-    uintptr_t img_vt = 0; icon_rpm_ptr(img, img_vt);
-    // Load-time GPU-texture search (expected to miss — texture not yet bound; see live dump).
-    uintptr_t texvt = 0; int depth = -1;
-    uintptr_t texobj = icon_find_gpu_tex(img, base, texvt, depth);
-    uintptr_t res = 0, resvt = 0; if (texobj) { icon_rpm_ptr(texobj + 0x40, res); if (res) icon_rpm_ptr(res, resvt); }
-    spdlog::info("[ICONTEX] img={:#x} imgVtRVA={:#x} rect=({},{})-({},{}) sheet={}x{} | "
-                 "TEX={:#x} vtRVA={:#x} depth={} res={:#x} resVt={:#x}",
-                 img, img_vt > base ? img_vt - base : 0, x0, y0, x1, y1, w, h,
-                 texobj, texvt > base ? texvt - base : 0, depth, res, resvt);
+        g_icon_imgs.push_back({img, x0, y0, x1, y1, w, h, name});
+    // Accumulate the UNIQUE name→rect table (skip KG_ button glyphs + the _ptl suffix) — this is
+    // the iconId-equivalent label for each sprite → drives the step-3 category→rect mapping.
+    if (!name.empty() && name.rfind("KG_", 0) != 0)
+    {
+        static std::set<std::string> seen;
+        if (seen.insert(name).second)
+            spdlog::info("[ICONMAP] '{}' rect=({},{})-({},{}) sheet={}x{} ({}x{})",
+                         name, x0, y0, x1, y1, w, h, x1 - x0, y1 - y0);
+    }
 }
 
 void *__fastcall create_image_detour(void *a0, void *a1, void *a2, void *a3, void *a4, void *a5,
@@ -1950,11 +1979,9 @@ void goblin::dump_icon_textures_live()
             spdlog::info("[ICONTEX-LIVE] SHEET #{} res={:#x} resVt={:#x} {}x{} (DIM={})",
                          g_icon_sheets.size(), res, resvt, rw, rh, dim);
         }
-        if (logged++ < 12)
-            spdlog::info("[ICONTEX-LIVE] img={:#x} rect=({},{})-({},{}) sheet={}x{} | "
-                         "renderTex={:#x} res={:#x} resVt={:#x} {}x{}",
-                         it.img, it.x0, it.y0, it.x1, it.y1, it.w, it.h,
-                         rtex, res, resvt, rw, rh);
+        if (logged++ < 16)
+            spdlog::info("[ICONTEX-LIVE] name='{}' rect=({},{})-({},{}) sheet={}x{} | res={:#x} {}x{}",
+                         it.name, it.x0, it.y0, it.x1, it.y1, it.w, it.h, res, rw, rh);
     }
     if (bound > 0)
     {
