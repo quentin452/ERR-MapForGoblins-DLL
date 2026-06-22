@@ -819,6 +819,29 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
         {
             if (m.group != open_grp)
                 continue; // draw only the open map group
+
+            // PROJECT + CULL FIRST, gates LAST. The per-marker visibility gates below
+            // (discover/quest/secondary/hide_when/fragment/fog) each call into the game's
+            // event-flag lookup — cheap individually but run thousands of times per frame.
+            // On a zoomed map most on-page markers are OFF-SCREEN, so doing the cheap
+            // cached projection + screen cull BEFORE the gates skips all that work for them
+            // (this was the dominant render.worldmap cost). Clustered-eligible markers are
+            // NOT culled — an off-screen member still counts toward its grace pile/centroid
+            // — but their eligibility doesn't depend on any flag, so we can test it early.
+            const bool clustered_eligible =
+                clustering && m.category >= 0 && m.cluster_key >= 0 &&
+                (dist_adaptive || goblin::ui::category_clustered(m.category));
+
+            float gU, gV;
+            project_marker(m, gU, gV);
+            proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
+            ImVec2 sp(p.x, p.y);
+            const bool offscreen =
+                (sp.x < -32 || sp.y < -32 || sp.x > realW + 32 || sp.y > realH + 32);
+            if (offscreen && !clustered_eligible)
+                continue; // off-screen + not a pile member → no gates, no draw
+
+            // ── visibility gates (now only for on-screen markers + all pile members) ──
             // Graces (discover_flag set only on grace markers). With grace_overlay the overlay draws
             // ALL graces itself (draw_marker: discovered = colour, undiscovered = grey). Without it,
             // the old hybrid: drop discovered graces (the game draws those natively), keep undiscovered.
@@ -840,8 +863,6 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // the moment its flag fires (the Ashen Capital replaces it).
             if (m.hide_when_flag && goblin::ui::read_event_flag((uint32_t)m.hide_when_flag))
                 continue;
-            float gU, gV;
-            project_marker(m, gU, gV);
             // Discovery gate (require_map_fragments) — TWO distinct reveal conditions, both must
             // pass (fog-of-war != map fragment): (a) the region's MAP FRAGMENT item must be acquired
             // (m.fragment_flag = GetMapFlagFromTile, read live); (b) the tile must not be FOGGED
@@ -856,15 +877,12 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                 if (goblin::marker_fogged(areaIdx, gU, gV))
                     continue; // tile still fogged
             }
-            proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
-            ImVec2 sp(p.x, p.y);
-            // Clustered-eligible markers are deferred WITHOUT culling — an off-screen
-            // member still counts toward its grace pile + centroid (a pile can sit on
-            // screen while some members are off it). Everything else culls + draws now.
-            if (clustering && m.category >= 0 && m.cluster_key >= 0 &&
-                (dist_adaptive || goblin::ui::category_clustered(m.category)))
+
+            // Clustered-eligible markers are deferred (uncull'd) to the pile pass;
+            // everything else (already on-screen here) draws now.
+            if (clustered_eligible)
                 clustered.push_back({sp, &m});
-            else if (!(sp.x < -32 || sp.y < -32 || sp.x > realW + 32 || sp.y > realH + 32))
+            else
             {
                 draw_marker(fg, m, sp, atlas, iconHalf);
                 hover_test(hover, mouse, sp, iconHalf, marker_label(m));
