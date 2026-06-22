@@ -482,6 +482,36 @@ empirical conclusion, not a theoretical one. (The `bind_test` dev harness stays 
 
 ---
 
+## 5f. Last two levers (D parse, E CreateImage) — both closed (re_v122, find_bindlever/find_parseloop)
+
+Decompiled the only two paths that actually create repo rects.
+
+**E — CreateImage `FUN_140d6bbc0` → `FUN_140d64490`: DEAD.** `FUN_140d64490(repo, &out, path)` only builds
+the `L"%s_ptl"` name (`<symbol>_ptl`) + DLString containers — **it reads NO rect from any sblytbnd**.
+The `_ptl` is a name-keyed VIEW that resolves against a sheet whose layout is ALREADY bound. So calling
+it for an un-browsed symbol yields a view with no backing rect — the §5 caveat, confirmed at disasm level.
+
+**D — the sblytbnd parse: rect-leaves are concrete, but no bounded entry.** The direct call `@0xd64689`
+is `CALL FUN_140d66520(R14, &out, R15, name)` — but `FUN_140d66520` is just a name→DLString key builder,
+not the loop. The real rect creation is:
+- `FUN_140d650b0(?, name=p2, sheet=p3, entry=p4, …)` → `(*p3->vt[0xe0])(name,0x80,…)` makes a sheet
+  texture-desc carrying the rect (desc+0x38/+0x3c) → allocs a `CSTextureImage` (`DAT_144593250` vt+0x50,
+  0x90 B) → `FUN_140d68410(img, name, …, rect, …)` writes `CS::CSTextureImage::vftable` + rect
+  (`img+0x2c/+0x74/+0x7c/+0x84`). (No-rect variant `FUN_140d68550`.)
+- `p4` (the sprite ENTRY, vt +0x10/+0x20) is produced by the **parse loop** — region `0xd663xx..0xd667xx`
+  (`FUN_140d663a6` is only a recovered fragment with `unaff_` regs; `@0xd666fc`/`@0xd66770` have no
+  definable prologue). It is **VMProtect/indirect**, invoked polymorphically via the provider vtables
+  `0x493c8f0`/`0x378bf40` at resource-apply time (no RTTI recoverable, no standalone callable entry).
+
+So calling the rect-leaf `FUN_140d650b0` by hand requires constructing a valid layout sprite-ENTRY
+object (`p4`) per icon — i.e. **re-implementing the sblytbnd parse**. Which is exactly the offline bake:
+`FUN_140d650b0`→`FUN_140d68410` = "read layout entry → (name, rect) → CSTextureImage", and
+`tools/extract_subtextures.py` already parses the sblytbnd offline to the same `(name, rect)`. The layer
+we'd have to drive at runtime IS the layer we already process offline. **All evident levers exhausted —
+offline bake is the path, now triply confirmed (no force-load, no group/queue trigger, no bounded parse).**
+
+---
+
 ## 6. Handles
 - repo singleton `DAT_143d82510` `er+0x3D82510` (FD4Singleton); container map `repo+0x80`,
   `_Myhead` `repo+0x88`, `_Mysize` `repo+0x90`.
