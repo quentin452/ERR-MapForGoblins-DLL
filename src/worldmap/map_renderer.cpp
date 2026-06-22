@@ -672,6 +672,31 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const int open_grp = (lv.openDlc ? 2 : 0) | ((lv.underground != 0) ? 1 : 0);
     const bool dlc_ug = (open_grp == 3);
 
+    // Page-transition flicker suppress (option A): on a page change `open_grp` flips at once
+    // but the engine ANIMATES the swap (~0.5s) → new-page markers would appear over the
+    // still-animating old map. Skip the whole overlay until the view stops sweeping (settled
+    // for a few frames), with a hard cap so it never sticks. The cached UV stays valid; this
+    // only gates the DRAW. Not gated by live_projection (the view sync is projection-agnostic).
+    {
+        static int s_prev_grp = -999;
+        static float s_px = 0, s_pz = 0, s_zoom = 0;
+        static int s_trans = 0, s_still = 0;
+        const float dpan = std::fabs(lv.panX - s_px) + std::fabs(lv.panZ - s_pz);
+        const float dz = std::fabs(lv.zoom - s_zoom);
+        s_px = lv.panX; s_pz = lv.panZ; s_zoom = lv.zoom;
+        const bool moving = (dpan > 2.0f) || (dz > 0.002f);
+        if (open_grp != s_prev_grp) { s_trans = 40; s_still = 0; } // page flip → arm (~0.6s cap)
+        s_prev_grp = open_grp;
+        if (s_trans > 0)
+        {
+            s_trans--;
+            s_still = moving ? 0 : (s_still + 1);
+            if (s_still < 3 && s_trans > 0)
+                return;       // still animating → suppress the overlay this frame
+            s_trans = 0;      // view settled (or cap hit) → resume drawing
+        }
+    }
+
     // The DLC-UG eyeball rotates about the open group's world centroid. Compute it over
     // every visible layer's markers (cheap; only needed for group 3).
     if (dlc_ug)
@@ -740,6 +765,43 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             std::snprintf(b, sizeof(b), "%s [%d]", nm.empty() ? "UNRESOLVED" : nm.c_str(),
                           r.text_id);
             fg->AddText(ImVec2(p.x + 6, p.y - 5), col, b);
+        }
+    }
+
+    // Batch pre-warm: project EVERY marker (ALL pages) the first time the live VM is ready,
+    // not lazily per-page. The page gate below culls off-page markers BEFORE project_marker,
+    // so without this each page's markers project on their FIRST view → a visible 1-by-1
+    // pop-in on open / page-change. The projection is page-independent (static converters) →
+    // valid forever once cached, so one upfront pass makes every reopen/page-switch instant.
+    if (goblin::config::liveProjection)
+    {
+        static bool s_prewarmed = false;
+        if (!s_prewarmed)
+        {
+            bool all_done = true;
+            for (auto *L : layers)
+            {
+                if (!L)
+                    continue;
+                for (const Marker &m : L->markers())
+                {
+                    if (m.live_state == 1 || m.raw_area < 0)
+                        continue;
+                    float u, v;
+                    int pg = -1;
+                    if (goblin::worldmap_probe::project(m.raw_area, m.raw_gx, m.raw_gz, m.raw_px,
+                                                        m.raw_pz, u, v, pg))
+                    {
+                        m.live_u = u;
+                        m.live_v = v;
+                        m.live_page = pg;
+                        m.live_state = 1;
+                    }
+                    else
+                        all_done = false; // VM not ready yet → retry next frame
+                }
+            }
+            s_prewarmed = all_done;
         }
     }
 
