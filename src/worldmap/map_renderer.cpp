@@ -130,6 +130,11 @@ ImVec2 s_grace_uv0{}, s_grace_uv1{};
 // DUNGEON graces (m.dungeon) in place of the vanilla bonfire. null → dungeon graces use s_grace_tex.
 ImTextureID s_grace_dgn_tex = nullptr;
 ImVec2 s_grace_dgn_uv0{}, s_grace_dgn_uv1{};
+// Projection scale (zoom × canvas factor) for the grace GPU offset, refreshed each frame by
+// render_markers AFTER the view delay finalizes zoom. graceOffsetX/Y is a native-vs-imgui
+// calibration nudge expressed in 1920×1080-reference px; markers project as ·zoom·(real/virtual),
+// so the offset must use the SAME factor or it drifts apart from the native pin as you zoom.
+float s_grace_off_sx = 1.f, s_grace_off_sy = 1.f;
 
 // Draw one marker at backbuffer px p: the atlas icon if available, else a circle.
 // half = icon half-size in px (resolution-scaled by the caller). When collected_graying
@@ -153,9 +158,12 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, f
             ImVec2 u0 = (m.dungeon && s_grace_dgn_tex) ? s_grace_dgn_uv0 : s_grace_uv0;
             ImVec2 u1 = (m.dungeon && s_grace_dgn_tex) ? s_grace_dgn_uv1 : s_grace_uv1;
             float gh = half * goblin::config::graceIconScale;
-            // Optional px offset → shift the imgui grace beside the game's NATIVE pin for side-by-side
-            // calibration (0 = on top). gx/gy in backbuffer px.
-            float gx = p.x + goblin::config::graceOffsetX, gy = p.y + goblin::config::graceOffsetY;
+            // Optional offset → shift the imgui grace beside the game's NATIVE pin for side-by-side
+            // calibration (0 = on top). Scaled by the live projection factor (zoom × canvas) so the
+            // nudge tracks the native pin across zoom levels instead of drifting (it's stored in
+            // 1920×1080-reference px, same convention as the projection bias).
+            float gx = p.x + goblin::config::graceOffsetX * s_grace_off_sx,
+                  gy = p.y + goblin::config::graceOffsetY * s_grace_off_sy;
             fg->AddImage(gt, ImVec2(gx - gh, gy - gh), ImVec2(gx + gh, gy + gh), u0, u1, t);
             return;
         }
@@ -737,6 +745,12 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // Motion sync: delay the projected view by the baked frame so markers ride the
     // native map layer instead of leading it during a pan.
     g_view_delay.apply(view, kViewDelayFrames);
+
+    // Grace GPU offset rides the SAME projection as the markers (zoom × canvas factor), so the
+    // native-vs-imgui calibration nudge stays aligned across zoom. Sampled here, after the delay
+    // finalizes view.zoom; draw_marker reads s_grace_off_sx/sy. (kx/ky mirror project_screen.)
+    s_grace_off_sx = view.zoom * (realW / 1920.f);
+    s_grace_off_sy = view.zoom * (realH / 1080.f);
 
     // Clustering = a live render pass: categories opted into clustering bin together
     // into ONE mixed pile per dense screen cell; everything else draws normally. Live
