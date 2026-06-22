@@ -2776,17 +2776,34 @@ void goblin::dump_icon_textures_live()
             continue; // a real C++ object's vtable lives in the module .rdata
         ++bound;
         icon_detail_dump(rtex, base); // one-shot full Render::Texture layout (first bound)
-        // DETERMINISTIC hop (SOLVED): rtex+0x70 = the ID3D12Resource (vkd3d d3d12_resource;
-        // non-module vtable, DIM at +0x10 == 3 = TEXTURE2D, W/H at +0x20/+0x28). No BFS.
+        // rtex+0x70 = the GPU texture. OLD layout: directly the vkd3d d3d12_resource (DIM @+0x10 == 3,
+        // W/H @+0x20/+0x28). NEW layout (driver/game update, seen 2026-06-22): rtex+0x70 is a FromSoft
+        // HAL texture WRAPPER (non-module vtable, but DIM != 3) and the real d3d12_resource is a CHILD
+        // pointer inside it → scan the wrapper for a child with DIM==3 + plausible W/H. Handles both.
         uintptr_t res = 0, resvt = 0;
         if (!icon_rpm_ptr(rtex + 0x70, res) || res < 0x10000 || res >= 0x7fffffffffffULL)
             continue;
         if (!icon_rpm_ptr(res, resvt) || (resvt >= mod_lo && resvt < mod_hi))
-            continue; // a real D3D12 resource has a NON-module vtable (vkd3d / d3d12.dll)
+            continue; // a real D3D12 resource / HAL wrapper has a NON-module vtable (vkd3d / d3d12.dll)
         int dim = 0, rw = 0, rh = 0;
         icon_rpm_i32(res + 0x10, dim); icon_rpm_i32(res + 0x20, rw); icon_rpm_i32(res + 0x28, rh);
         if (dim != 3)
-            continue; // not a TEXTURE2D → reject (guards against a stray non-module pointer)
+        {
+            // HAL wrapper → find the child d3d12_resource (DIM==3, sane dims).
+            uintptr_t hal = res; bool found = false;
+            for (int o = 0; o <= 0x100 && !found; o += 8)
+            {
+                uintptr_t child = 0;
+                if (!icon_rpm_ptr(hal + o, child) || child < 0x10000 || child >= 0x7fffffffffffULL)
+                    continue;
+                int cdim = 0, cw = 0, ch = 0;
+                icon_rpm_i32(child + 0x10, cdim); icon_rpm_i32(child + 0x20, cw); icon_rpm_i32(child + 0x28, ch);
+                if (cdim == 3 && cw > 0 && cw <= 16384 && ch > 0 && ch <= 16384)
+                { res = child; dim = 3; rw = cw; rh = ch; found = true; }
+            }
+            if (!found)
+                continue; // not a TEXTURE2D anywhere in the wrapper → reject
+        }
         ++resolved;
         // ERR map sprites (RE e4b3f6a §6): the discovered grace + all other ERR map icons draw through
         // CreateImage (not the find fn) → captured here with resolved sheet+rect. Collect EVERY
