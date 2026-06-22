@@ -34,4 +34,6 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
 // dropped (discovered) / circle-drawn (undiscovered). Pass tex=null to revert to the old behaviour.
 // Call each frame before render_markers/draw_minimap.
 void set_grace_sprite(void *tex, float u0, float v0, float u1, float v1);
+// The ERR dungeon-style grace (for m.dungeon graces; null = fall back to the vanilla grace sprite).
+void set_grace_dungeon_sprite(void *tex, float u0, float v0, float u1, float v1);
 } // namespace goblin::worldmap

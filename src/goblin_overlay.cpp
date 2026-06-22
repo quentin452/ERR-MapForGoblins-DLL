@@ -585,6 +585,88 @@ namespace
         g_grace_state = 0;   // ensure_grace_srv re-copies + rewrites the (reused) SRV slot next frame
     }
 
+    // ── ERR dungeon grace SRV (2nd grace sprite) ─────────────────────────────────────────────────
+    // Mirror of ensure_grace_srv for goblin::harvested_grace_dungeon (MENU_MAP_ERR_GraceUnderground).
+    // No debug overrides; GetDesc at copy time. Valid only when ERR is installed (sprite captured).
+    ID3D12Resource *g_grace_dgn_tex = nullptr;
+    D3D12_GPU_DESCRIPTOR_HANDLE g_grace_dgn_gpu{};
+    ImVec2 g_grace_dgn_uv0{}, g_grace_dgn_uv1{};
+    int g_grace_dgn_state = 0;       // 0 retry | 1 ok | 2 failed
+    int g_grace_dgn_srv_idx = -1;
+
+    bool ensure_grace_dungeon_srv()
+    {
+        if (g_grace_dgn_state == 1) return true;
+        if (g_grace_dgn_state == 2) return false;
+        goblin::ItemSprite sp;
+        if (!(g_device && g_command_queue && g_srv_heap && g_next_item_srv < 256 &&
+              goblin::harvested_grace_dungeon(sp) && sp.sheet))
+            return false;
+        auto *src_res = reinterpret_cast<ID3D12Resource *>(sp.sheet);
+        D3D12_RESOURCE_DESC rd = src_res->GetDesc();
+        DXGI_FORMAT fmt = rd.Format;
+        if (rd.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || fmt == DXGI_FORMAT_UNKNOWN) return false;
+        int swd = static_cast<int>(rd.Width), shd = static_cast<int>(rd.Height);
+        int x0 = sp.x0 & ~3, y0 = sp.y0 & ~3, x1 = (sp.x1 + 3) & ~3, y1 = (sp.y1 + 3) & ~3;
+        if (x1 > swd) x1 = swd; if (y1 > shd) y1 = shd;
+        int w = x1 - x0, h = y1 - y0;
+        if (w <= 0 || h <= 0 || w > 1024 || h > 1024) { g_grace_dgn_state = 2; return false; }
+        D3D12_HEAP_PROPERTIES hp{}; hp.Type = D3D12_HEAP_TYPE_DEFAULT;
+        D3D12_RESOURCE_DESC td{}; td.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        td.Width = (UINT64)w; td.Height = (UINT)h; td.DepthOrArraySize = 1; td.MipLevels = 1;
+        td.Format = fmt; td.SampleDesc.Count = 1; td.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        if (FAILED(g_device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &td,
+                D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&g_grace_dgn_tex))))
+        { g_grace_dgn_state = 2; return false; }
+        g_frames[0].allocator->Reset();
+        g_command_list->Reset(g_frames[0].allocator, nullptr);
+        D3D12_RESOURCE_BARRIER bs{}; bs.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        bs.Transition.pResource = src_res; bs.Transition.Subresource = 0;
+        bs.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        bs.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        g_command_list->ResourceBarrier(1, &bs);
+        D3D12_TEXTURE_COPY_LOCATION dst{}; dst.pResource = g_grace_dgn_tex;
+        dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; dst.SubresourceIndex = 0;
+        D3D12_TEXTURE_COPY_LOCATION csrc{}; csrc.pResource = src_res;
+        csrc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; csrc.SubresourceIndex = 0;
+        D3D12_BOX box{}; box.left = x0; box.top = y0; box.front = 0; box.right = x1; box.bottom = y1; box.back = 1;
+        g_command_list->CopyTextureRegion(&dst, 0, 0, 0, &csrc, &box);
+        D3D12_RESOURCE_BARRIER af[2]{}; af[0] = bs;
+        af[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        af[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        af[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION; af[1].Transition.pResource = g_grace_dgn_tex;
+        af[1].Transition.Subresource = 0; af[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        af[1].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        g_command_list->ResourceBarrier(2, af);
+        g_command_list->Close();
+        ID3D12CommandList *lists[] = {g_command_list};
+        g_command_queue->ExecuteCommandLists(1, lists);
+        ID3D12Fence *fence = nullptr;
+        if (SUCCEEDED(g_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))))
+        {
+            HANDLE ev = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+            g_command_queue->Signal(fence, 1);
+            if (ev && fence->GetCompletedValue() < 1) { fence->SetEventOnCompletion(1, ev); WaitForSingleObject(ev, 1000); }
+            if (ev) CloseHandle(ev);
+            fence->Release();
+        }
+        const UINT inc = g_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        if (g_grace_dgn_srv_idx < 0) g_grace_dgn_srv_idx = (int)g_next_item_srv++;
+        UINT idx = (UINT)g_grace_dgn_srv_idx;
+        D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
+        cpu.ptr += (SIZE_T)inc * idx;
+        D3D12_SHADER_RESOURCE_VIEW_DESC sd{}; sd.Format = fmt; sd.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING; sd.Texture2D.MipLevels = 1;
+        g_device->CreateShaderResourceView(g_grace_dgn_tex, &sd, cpu);
+        g_grace_dgn_gpu = g_srv_heap->GetGPUDescriptorHandleForHeapStart();
+        g_grace_dgn_gpu.ptr += (SIZE_T)inc * idx;
+        g_grace_dgn_uv0 = ImVec2((float)(sp.x0 - x0) / w, (float)(sp.y0 - y0) / h);
+        g_grace_dgn_uv1 = ImVec2((float)(sp.x1 - x0) / w, (float)(sp.y1 - y0) / h);
+        g_grace_dgn_state = 1;
+        spdlog::info("[GRACE-SRV] DUNGEON copied {}x{} fmt={} -> slot {}", w, h, (int)fmt, idx);
+        return true;
+    }
+
     // ── Grace-sprite GPU debug viewer (dev) ──────────────────────────────────────────
     // Draws EVERY harvested SB_ERR_Grace_* frame as a GPU image so we can visually pick the correct
     // grace rect (the captured 'Morning_Color' frame didn't look like a grace). Uses a FULL-SHEET SRV
@@ -913,6 +995,9 @@ namespace
         if (ensure_grace_srv())
             wm::set_grace_sprite(reinterpret_cast<void *>(g_grace_gpu.ptr),
                                  g_grace_uv0.x, g_grace_uv0.y, g_grace_uv1.x, g_grace_uv1.y);
+        if (ensure_grace_dungeon_srv())
+            wm::set_grace_dungeon_sprite(reinterpret_cast<void *>(g_grace_dgn_gpu.ptr),
+                                         g_grace_dgn_uv0.x, g_grace_dgn_uv0.y, g_grace_dgn_uv1.x, g_grace_dgn_uv1.y);
         wm::render_markers(s_layers, atlas, mx, my);
     }
 
@@ -926,6 +1011,9 @@ namespace
         if (ensure_grace_srv())
             goblin::worldmap::set_grace_sprite(reinterpret_cast<void *>(g_grace_gpu.ptr),
                                                g_grace_uv0.x, g_grace_uv0.y, g_grace_uv1.x, g_grace_uv1.y);
+        if (ensure_grace_dungeon_srv())
+            goblin::worldmap::set_grace_dungeon_sprite(reinterpret_cast<void *>(g_grace_dgn_gpu.ptr),
+                                                       g_grace_dgn_uv0.x, g_grace_dgn_uv0.y, g_grace_dgn_uv1.x, g_grace_dgn_uv1.y);
         goblin::worldmap::draw_minimap(overlay_layers(), atlas, io.DisplaySize.x,
                                        io.DisplaySize.y);
     }
@@ -1182,6 +1270,9 @@ namespace
             {
                 ImGui::SliderFloat("Master", &goblin::config::overlayMasterScale, 0.3f, 3.0f, "%.2f");
                 ImGui::SliderFloat("Category icons", &goblin::config::overlayIconScale, 0.3f, 3.0f, "%.2f");
+                ImGui::SliderFloat("Grace icons (calib)", &goblin::config::graceIconScale, 0.2f, 4.0f, "%.2f");
+                ImGui::SliderFloat("Grace offset X (native vs imgui)", &goblin::config::graceOffsetX, -200.0f, 200.0f, "%.0f");
+                ImGui::SliderFloat("Grace offset Y (native vs imgui)", &goblin::config::graceOffsetY, -200.0f, 200.0f, "%.0f");
                 ImGui::SliderFloat("Cluster piles", &goblin::config::overlayClusterScale, 0.3f, 3.0f, "%.2f");
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Reset##scale"))

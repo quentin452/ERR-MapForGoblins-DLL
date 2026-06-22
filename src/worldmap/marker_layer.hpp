@@ -45,6 +45,11 @@ struct Marker
     // BonfireWarpParam), so the renderer DROPS this overlay marker to avoid a double
     // icon. Undiscovered (flag unset) → drawn as the helper marker. 0 = no gate.
     int discover_flag = 0;
+    // Grace in a DUNGEON (legacy/minor dungeon or DLC dungeon, projected to the overworld — NOT an
+    // open-world-surface or underground grace). When ERR is installed, the renderer draws these with
+    // the ERR dungeon-style grace icon (MENU_MAP_ERR_GraceUnderground) instead of the vanilla bonfire.
+    // Set by GraceLayer (after the aggregate init); default false keeps the positional init intact.
+    bool dungeon = false;
     // Post-event "secondary story flag" (legacy SetSecondaryFlags + Ashen Capital). When
     // SET this marker is a post-event variant (burnt/changed area) and only appears once
     // the story flag fires — the renderer HIDES it while the flag is unset (inverse of

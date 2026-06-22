@@ -573,6 +573,35 @@ Tooling: `goblin::force_create_icon(id)` + `force_create_last()` (P2b panel), re
 
 ---
 
+## 5i. The REAL grace icon = WorldMapPoint pin Frame<iconId> in the TWIN map repo+0xb0 (re_v125)
+
+Correction to the grace work: **`SB_ERR_Grace_*_Color` is the WRONG sprite** — it's the native
+time-of-day-tinted pin (morning=green, evening=red tint; no untinted variant), not the mod's grace
+map icon. The user confirmed visually (no format/swizzle fixes it; the live capture path is correct —
+item icons render fine through the identical code). The REAL grace icon is found by tracing the pin:
+- `CS::WorldMapPointPinData::GetIconId` (`FUN_14087bf20`) reads the pin's iconId from
+  `WorldMapPointParam` (fields at `pinData+0x248`+4/+8); grace = **iconId 370**.
+- `CS::WorldMapPinData::SetTo` (`FUN_14087ae20`) gets the Scaleform child **`"Icon_0"`** /
+  **`"IconImage"`** and calls the icon widget **`FUN_14074bcc0(element, iconId)`**.
+- `FUN_14074bcc0` builds the frame name **`"Frame%d"`** (= `Frame370` for grace) and looks it up via
+  **`FUN_140d63e50(repo, key)`** — the **TWIN std::map at `repo+0xb0`** (head `+0xb8`, size `+0xc0`),
+  keyed by the gfx sprite name (**`MENU_MAP_*`**), NOT the `repo+0x80` `MENU_ItemIcon` map.
+
+So the grace pin icon = the worldmap gfx sprite **`MENU_MAP_GOBLIN_Grace`** (found in
+`addons/MapForGoblins/menu/02_120_worldmap.gfx`, alongside `MENU_MAP_ERR_GraceUnderground`,
+`MENU_MAP_GOBLIN_SortaGraceIDK`, `MENU_MAP_ERR_Boss/Camp/Completed/Remembrance/BlueTower/Bounty`),
+living in **`repo+0xb0`** — which `harvest_repo_icons` NEVER walked (it only walks `repo+0x80`). That's
+the root cause we missed the real grace.
+
+**FIX shipped:** `harvest_twin_map_icons(repo,er)` (§8c) walks `repo+0xb0` (same RB-tree shape as §8b),
+captures `MENU_MAP_*` sprites via `cache_map_sprite_from_img` into the grace-candidate list (F1 picker),
+and locks the grace on `MENU_MAP_GOBLIN_Grace`. Twin map confirmed to hold the pin sprites (earlier
+"twin repo+0xb0 has 0 item icons" was right — it has MAP-POINT sprites, not item icons). Pin handles:
+`GetIconId` `er+0x87bf20`, `SetTo` `er+0x87ae20`, widget `er+0x74bcc0` (frame `"Frame%d"`), twin find
+`er+0xd63e50` (map `repo+0xb0`).
+
+---
+
 ## 6. Handles
 - repo singleton `DAT_143d82510` `er+0x3D82510` (FD4Singleton); container map `repo+0x80`,
   `_Myhead` `repo+0x88`, `_Mysize` `repo+0x90`.

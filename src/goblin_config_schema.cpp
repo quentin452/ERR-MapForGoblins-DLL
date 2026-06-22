@@ -70,6 +70,9 @@ namespace goblin::config
     float overlayMasterScale = 1.0f;   // master scale for all overlay markers + piles
     float overlayIconScale = 1.0f;     // category marker icons (× master)
     float overlayClusterScale = 1.0f;  // cluster pile glyphs (× master)
+    float graceIconScale = 1.0f;       // grace markers only (× icon scale) — calibration
+    float graceOffsetX = 0.0f;         // px offset of the overlay grace draw — native-vs-imgui compare
+    float graceOffsetY = 0.0f;
 
     // In-game minimap HUD (corner, north-up, overworld-only — underground player pos
     // is not yet reliable). Foundation/opt-in; off by default.
@@ -410,6 +413,12 @@ namespace
                   "Scale for category marker ICONS (x master). 1.0 = default."},
                 IniEntry{"overlay_cluster_scale", IniType::F32, &cfg::overlayClusterScale, "1.0",
                   "Scale for CLUSTER pile glyphs (x master). 1.0 = default."},
+                IniEntry{"grace_icon_scale", IniType::F32, &cfg::graceIconScale, "1.0",
+                  "Scale for GRACE markers only (x icon scale). 1.0 = default. For calibrating the\ngrace sprite size against the map."},
+                IniEntry{"grace_offset_x", IniType::F32, &cfg::graceOffsetX, "0.0",
+                  "Pixel X offset of the overlay grace draw — set non-zero to shift the imgui grace\nbeside the game's NATIVE grace pin for side-by-side comparison/calibration."},
+                IniEntry{"grace_offset_y", IniType::F32, &cfg::graceOffsetY, "0.0",
+                  "Pixel Y offset of the overlay grace draw (see grace_offset_x)."},
                 B("debug_cluster_anchors", debugClusterAnchors, "false",
                   "Debug viz: per cluster pile, draw the anchor + lines to every member + the\nname + distance/threshold. Green = grace anchor, red CENTROID = anchor missing.\nSeparate from the distance rings (cluster_debug_radius). Off by default."),
                 B("debug_region_volumes", debugRegionVolumes, "false",

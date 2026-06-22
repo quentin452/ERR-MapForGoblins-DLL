@@ -47,6 +47,10 @@ const std::vector<Marker> &GraceLayer::markers() const
                  0ull, 0, 0, e.discoverFlag};
         m.raw_area = e.areaNo; m.raw_gx = e.gridXNo; m.raw_gz = e.gridZNo;
         m.raw_px = e.posX; m.raw_pz = e.posZ;
+        // Dungeon grace = NOT open-world surface (area 60/61) and NOT underground (group 1/3) → a
+        // legacy/minor dungeon or DLC dungeon projected onto the overworld. ERR draws these with its
+        // dungeon-style grace icon; the renderer mirrors that when the ERR grace sprite is available.
+        m.dungeon = (e.areaNo != 60 && e.areaNo != 61) && grp != 1 && grp != 3;
         cache_.push_back(m);
     }
     return cache_;

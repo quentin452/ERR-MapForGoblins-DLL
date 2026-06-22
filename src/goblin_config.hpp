@@ -143,6 +143,8 @@ namespace goblin
         extern float overlayMasterScale;   // all overlay markers + piles
         extern float overlayIconScale;     // category marker icons
         extern float overlayClusterScale;  // cluster pile glyphs
+        extern float graceIconScale;       // grace markers only (calibration)
+        extern float graceOffsetX, graceOffsetY;  // overlay grace draw px offset (native-vs-imgui compare)
 
         // Debug viz: cluster pile anchor + member lines + name + d/thr (own toggle).
         extern bool debugClusterAnchors;
