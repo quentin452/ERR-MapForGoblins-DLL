@@ -3178,21 +3178,37 @@ void goblin::install_grace_suppression_hook()
     }
 
     // DRAW-ONLY suppression: hook vt[1] SetTo + resolve the GFx helpers (RE teleport findings §4/§5).
-    g_gfx_get_child = reinterpret_cast<decltype(g_gfx_get_child)>(er + 0x74a2f0);   // FUN_14074a2f0
-    g_gfx_set_visible = reinterpret_cast<decltype(g_gfx_set_visible)>(er + 0x733340); // FUN_140733340
-    g_gfx_release_proxy = reinterpret_cast<decltype(g_gfx_release_proxy)>(er + 0xd7f850); // FUN_140d7f850
-    g_warppin_vftable = reinterpret_cast<void *>(er + 0x2ad8228); // WorldMapWarpPinData::vftable
-    void *setto = reinterpret_cast<void *>(er + 0x87ae20);   // FUN_14087ae20 (vt[1] SetTo)
-    try
+    // ⚠ DISABLED — the inferred GFx proxy ABI CRASHED in-game (0xC000001D illegal-instruction in the
+    // release path: our detour → get_child(0x74a2f0) → set_visible(0x73334f) → release(0xd7f88c) →
+    // jumped to garbage; the stack proxy / fn signatures / "Icon_0" encoding don't match the engine's
+    // real ABI). Re-enable once a follow-up RE pins the exact getChild/setVisible/release calling
+    // convention + proxy layout (see windows_grace_warppin_seto_abi_re_prompt.md). Until then the
+    // SetTo hook is NOT installed → grace_suppress_native is harmless (builder hook stays log-only,
+    // hybrid draws+teleports discovered graces). Keep the code + resolves for the re-enable.
+    constexpr bool kSetToHookEnabled = false;
+    if (kSetToHookEnabled)
     {
-        modutils::hook(setto, reinterpret_cast<void *>(&warp_setto_detour),
-                       reinterpret_cast<void **>(&g_setto_orig));
-        spdlog::info("[WARPPIN] SetTo hooked @ {} (draw-only: hide Icon_0, keep teleport)", setto);
+        g_gfx_get_child = reinterpret_cast<decltype(g_gfx_get_child)>(er + 0x74a2f0);   // FUN_14074a2f0
+        g_gfx_set_visible = reinterpret_cast<decltype(g_gfx_set_visible)>(er + 0x733340); // FUN_140733340
+        g_gfx_release_proxy = reinterpret_cast<decltype(g_gfx_release_proxy)>(er + 0xd7f850); // FUN_140d7f850
+        g_warppin_vftable = reinterpret_cast<void *>(er + 0x2ad8228); // WorldMapWarpPinData::vftable
+        void *setto = reinterpret_cast<void *>(er + 0x87ae20);   // FUN_14087ae20 (vt[1] SetTo)
+        try
+        {
+            modutils::hook(setto, reinterpret_cast<void *>(&warp_setto_detour),
+                           reinterpret_cast<void **>(&g_setto_orig));
+            spdlog::info("[WARPPIN] SetTo hooked @ {} (draw-only: hide Icon_0, keep teleport)", setto);
+        }
+        catch (const std::exception &e)
+        {
+            spdlog::error("[WARPPIN] SetTo hook failed: {}", e.what());
+            g_setto_orig = nullptr;
+        }
     }
-    catch (const std::exception &e)
+    else
     {
-        spdlog::error("[WARPPIN] SetTo hook failed: {}", e.what());
-        g_setto_orig = nullptr;
+        (void)&warp_setto_detour; // keep referenced while the hook is disabled
+        spdlog::info("[WARPPIN] SetTo draw-only hook DISABLED (proxy ABI crashed; pending RE)");
     }
 }
 
