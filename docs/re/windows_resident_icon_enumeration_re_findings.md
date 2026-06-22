@@ -247,15 +247,55 @@ but mod-robust because mods repackage the same-named BNDs:
 So force-load targets = the group BNDs (`menu:/01_Common.tpfbhd` etc.) via CSFile, OR a specific TPF
 inside a BND. The exact per-atlas TPF `<name>` lives in the group-BND TOC (read at runtime or offline).
 
-**Force-load CONFIRMED working (2026-06-22):** `[FORCELOAD] load(CSFile=0x21b001b47c0,
-'menu:/00_Solo.tpf') -> 0x21b14e4d780` — non-null handle, no crash. The lever is callable from the DLL.
-(00_Solo was already resident, so this proved the call; a non-resident-group test is next.)
+**Force-load CALL works, but is async + insufficient alone (2026-06-22).** Sweeping the group BNDs
+(`menu:/01_Common.tpfbhd`, `00_Solo`, `03_ChrMake`, `71_MapTile`, `02_Title`, …) each returned a
+**non-null handle, no crash** — BUT the handles are sequential same-heap allocations (`…f8a0 …f800
+…f6c0 …f580`, 0x80 apart) = the **0x98 async REQUEST object** the loader allocates immediately. So a
+non-null return does NOT prove the file loaded (it's the request, the load is async/queued). And
+`harvested` stayed 131→131 across all of them: **loading a TPF/BND yields the atlas bytes, NOT the
+per-icon repo entries (rects)** — those appear only when the gfx movie BINDS (menu init processes the
+sblytbnd layout). Confirmed live.
 
-**Open (next):** test force-loading a NON-resident group (e.g. `menu:/03_ChrMake.tpfbhd` outside
-char-creation) + confirm icons become resident; read the group-BND TOC for exact atlas TPF names.
+**Bottom line on the texture-manager lever:** callable from the DLL, but (a) success isn't observable
+from the return (async), and (b) a successful TPF/BND load still gives an atlas WITHOUT per-icon rects.
+Runtime force-load can stream the atlas; the rects must come from the gfx binding (fragile) OR offline
+`sblytbnd` (`extract_subtextures.py`). For the map's 63 WorldMapPoint pins (category design) no
+force-load is needed — they're in the world-map gfx, resident when the map is open.
+
+**Open (next, if pursuing per-item icons):** poll the request object's state to confirm load success;
+read the loaded sblytbnd layout at runtime for rects; OR bake rects offline + force-load atlas.
 
 **Test harness:** `goblin::force_load_file(path)` (dev, `dump_icon_textures`) calls
 `load(CSFile, path, 0, 0)` from a P2b-panel button — see `src/goblin_inject.cpp` / `goblin_overlay.cpp`.
+
+---
+
+## 5c. The GFX BINDING — rects come from the sblytbnd, not the TPF (re_v111–v115)
+
+How loaded resources become findable `MENU_ItemIcon_<id>` repo entries WITH rects:
+
+1. **sblytbnd = the layout (rects + names), loaded per group.** `FUN_140d771d0(menuCtx, groupId)`
+   (`er+0xd771d0`) builds `menu:/<group>.sblytbnd` and loads via CSFile `FUN_1401f5a00`, storing the
+   handle at `menuCtx+0xd58+groupId*8`. The layout holds per-sprite **(name, rect[x0,y0,x1,y1],
+   sheet-ref)**. (The TPF atlas — loaded separately — is just the pixels.)
+2. **Per-sprite create:** `FUN_140d650b0(layoutObj, name, rect*, sheet, …)` (`er+0xd650b0`) creates a
+   `CS::CSTextureImage` via `FUN_140d68410` (`er+0xd68410`), which **writes the rect**:
+   `img+0x74=rect[0]  +0x78=rect[1]  +0x7c=rect[2]  +0x80=rect[3]`, sets the name (`img+0x40` region),
+   the sheet dims (`+0x2c/+0x6c`) and a flip flag. No-rect variant `FUN_140d68550`.
+3. **Insert into the image map by name:** `FUN_140d63060` / `FUN_140d62db0` (`er+0xd63060`/`0xd62db0`)
+   on a `std::map` at `obj+0x98` (end `obj+0xa0`) — same shape as the repo's `repo+0x80`; and
+   `FUN_140d68690`→`FUN_140d65cf0(repo=DAT_143d82510, …)` inserts into the global repo.
+4. **The parse loop** (function at `er+0xd66520`, body loop ending `0xd66519`; `this`=layoutObj in R13,
+   its map at R13+0x98 / end R13+0xa0) iterates the layout entries → create (2) + insert (3) per sprite.
+   This region was UNDEFINED in Ghidra (VMProtect/indirect) — disassembled in re_v115.
+
+**Key insight:** the per-icon **rects live in the `sblytbnd`**, and the binding parses it to build the
+repo entries. So a TPF-only force-load gives pixels without rects (the §5b wall); the runtime path to
+per-item icons WITHOUT the menu is: force-load the group **sblytbnd** (`menu:/<group>.sblytbnd`) +
+trigger this parse loop → repo gains `MENU_ItemIcon_<id>` with rects → harvest as usual.
+
+**Open (last piece):** does loading the sblytbnd AUTO-trigger the parse (then force-load alone
+suffices), or is the parse a separate call (find who calls `er+0xd66520` / the loop)?
 
 ---
 
