@@ -1872,14 +1872,20 @@ static std::vector<uint16_t> g_menu_iconids;
 static void correlate_menu_iconids()
 {
     std::set<uint16_t> ids(g_menu_iconids.begin(), g_menu_iconids.end());
-    if (ids.size() < 3)
+    if (ids.size() < 2)
         return;
+    // sample a few captured ids in the log so we can value-scan manually if needed
+    std::string sample;
+    { int k = 0; for (uint16_t v : ids) { if (k++) sample += ","; sample += std::to_string(v); if (k >= 8) break; } }
+    spdlog::info("[ICONFIND] correlating {} captured iconIds (e.g. {}) vs EquipParams:",
+                 (int)ids.size(), sample);
     struct P { const wchar_t *name; const char *tag; };
     static const P params[] = {
         {L"EquipParamWeapon", "Weapon"}, {L"EquipParamProtector", "Protector"},
         {L"EquipParamAccessory", "Accessory"}, {L"EquipParamGoods", "Goods"},
         {L"EquipParamGem", "Gem"}, {L"EquipParamMagic", "Magic"},
     };
+    int totalBest = 0;
     for (const P &p : params)
     {
         try
@@ -1887,7 +1893,7 @@ static void correlate_menu_iconids()
             std::vector<uintptr_t> bases;
             for (auto row : from::params::get_param<uint8_t>(p.name))
                 bases.push_back(reinterpret_cast<uintptr_t>(&row.second));
-            if (bases.size() < 2) continue;
+            if (bases.size() < 2) { spdlog::info("[ICONFIND]   {} not loaded", p.tag); continue; }
             uintptr_t stride = bases[1] - bases[0];
             if (stride < 4 || stride > 0x2000) continue;
             int bestOff = -1, bestHits = 0;
@@ -1901,12 +1907,14 @@ static void correlate_menu_iconids()
                 }
                 if ((int)hit.size() > bestHits) { bestHits = (int)hit.size(); bestOff = (int)off; }
             }
-            if (bestHits >= 2)
-                spdlog::info("[ICONFIND] {} off=0x{:x} matches {}/{} captured iconIds",
-                             p.tag, bestOff, bestHits, (int)ids.size());
+            totalBest += bestHits;
+            spdlog::info("[ICONFIND]   {} bestOff=0x{:x} matches {}/{}", p.tag, bestOff, bestHits, (int)ids.size());
         }
-        catch (...) {}
+        catch (...) { spdlog::info("[ICONFIND]   {} not loaded", p.tag); }
     }
+    if (totalBest == 0)
+        spdlog::info("[ICONFIND] NO captured iconId appears in ANY EquipParam column → MENU_FL_<id> "
+                     "is a TRANSFORMED id, not the raw EquipParam.iconId.");
 }
 
 void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
@@ -1948,7 +1956,7 @@ void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
                 {
                     g_menu_iconids.push_back(N);
                     size_t s = g_menu_iconids.size();
-                    if (s == 3 || s == 5 || s == 8 || s == 12 || s == 18 || s == 28 || s == 44)
+                    if (s == 3 || s == 6 || s == 10 || s == 16 || s == 24 || s == 36 || s == 52)
                         correlate_menu_iconids();
                 }
             }
