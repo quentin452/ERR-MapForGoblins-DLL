@@ -294,8 +294,17 @@ repo entries. So a TPF-only force-load gives pixels without rects (the §5b wall
 per-item icons WITHOUT the menu is: force-load the group **sblytbnd** (`menu:/<group>.sblytbnd`) +
 trigger this parse loop → repo gains `MENU_ItemIcon_<id>` with rects → harvest as usual.
 
-**Open (last piece):** does loading the sblytbnd AUTO-trigger the parse (then force-load alone
-suffices), or is the parse a separate call (find who calls `er+0xd66520` / the loop)?
+**Trigger RESOLVED (re_v116):** the binding fns are **virtual methods** — `FUN_140d650b0` (create) and
+`FUN_140d66520` (find-or-create) are referenced as DATA in two vtables (`0x493c8f0`/`0x493c9bc` and
+`0x378bf40`/`0x378ba40`) plus one direct call (`@0xd64689`, also undefined region). So the parse is
+invoked **polymorphically when the texture-provider/sblytbnd resource is applied** (menu load path) —
+NOT a standalone callable. Triggering it by hand = constructing/holding a valid provider object + its
+apply sequence → as fragile as driving the menu orchestrator (§5).
+
+**Conclusion — don't trigger the runtime binding.** The per-icon **rects live in the `sblytbnd` file**,
+which `tools/extract_subtextures.py` already parses OFFLINE. So per-item icons = **offline rects
+(sblytbnd) + pixels from the TPF atlas** (offline bake, OR runtime force-load the TPF via the §5b
+CSFile lever + offline rects). This short-circuits the fragile runtime binding entirely.
 
 ---
 
