@@ -1984,48 +1984,46 @@ void *__fastcall create_image_detour(void *a0, void *a1, void *a2, void *a3, voi
 using enum_fn = void *(__fastcall *)(void *, void *, void *, void *);
 enum_fn g_enum_orig = nullptr;
 uintptr_t g_inv_movie = 0;
-bool g_enum_dumped = false;
-
-void enum_dump_once(uintptr_t movie)
-{
-    if (g_enum_dumped || !movie) return;
-    g_enum_dumped = true;
-    uintptr_t p1 = 0; icon_rpm_ptr(movie + 0x40, p1);
-    spdlog::info("[ENUM] movie={:#x} [movie+0x40]={:#x}", movie, p1);
-    if (p1 < 0x10000) return;
-    for (int o = 0x80; o <= 0xC0; o += 8)
-    {
-        uintptr_t q = 0; icon_rpm_ptr(p1 + o, q);
-        spdlog::info("[ENUM]   [p1+0x{:x}] = {:#x}", o, q);
-    }
-    // The list pointer = [p1+0x90]. Dump the array AT that address (raw qwords) to reverse whether
-    // it's an array of entry POINTERS or INLINE entries, + where the count lives.
-    uintptr_t arr = 0; icon_rpm_ptr(p1 + 0x90, arr);
-    spdlog::info("[ENUM] list array @ {:#x} — raw qwords:", arr);
-    if (arr > 0x10000)
-    {
-        for (int o = 0; o < 0x80; o += 8)
-        {
-            uintptr_t q = 0; icon_rpm_ptr(arr + o, q);
-            spdlog::info("[ENUM]   arr+0x{:02x} = {:#x}", o, q);
-            // if q looks like a heap object, probe it as a candidate entry (type@+0x88, name@+0x40)
-            if (q > 0x10000 && q < 0x7fffffffffffULL)
-            {
-                int type = 0; uintptr_t namep = 0;
-                icon_rpm_i32(q + 0x88, type); icon_rpm_ptr(q + 0x40, namep);
-                std::string nm = icon_try_str(namep);
-                if (!nm.empty())
-                    spdlog::info("[ENUM]       → as-entry: type@0x88={} name@0x40='{}'", type, nm);
-            }
-        }
-    }
-}
 
 void *__fastcall enum_detour(void *movie, void *a1, void *a2, void *a3)
 {
-    g_inv_movie = reinterpret_cast<uintptr_t>(movie);
-    void *ret = g_enum_orig(movie, a1, a2, a3);
-    if (goblin::config::dumpIconTextures) enum_dump_once(reinterpret_cast<uintptr_t>(movie));
+    g_inv_movie = reinterpret_cast<uintptr_t>(movie);  // stash; the [p1+0x90] container is a complex
+    return g_enum_orig(movie, a1, a2, a3);             // FD4 object → harvest via the find hook below.
+}
+
+// ── HARVEST via the find hook (the SAFE path): the engine calls FUN_140d63c30(repo,&out,key) to
+// resolve each LOADED image (during enumeration + menu draws) — so hooking it captures every
+// RESIDENT item icon's name+rect+sheet, on the engine thread, no container-reversing, no risky
+// self-initiated find (the engine only finds what's loaded → never the crashing non-resident path).
+using find_fn2 = void *(__fastcall *)(void *, void **, const wchar_t *);
+find_fn2 g_find_orig = nullptr;
+
+void *__fastcall find_detour(void *repo, void **out, const wchar_t *key)
+{
+    void *ret = g_find_orig(repo, out, key);
+    if (goblin::config::dumpIconTextures && key)
+    {
+        char nm[48] = {0};
+        for (int i = 0; i < 47; ++i) { wchar_t c = key[i]; if (!c) break; nm[i] = (c < 128) ? static_cast<char>(c) : '?'; }
+        if (nm[0] == 'M' && nm[1] == 'E' && nm[2] == 'N' && nm[3] == 'U')   // MENU_* item icons
+        {
+            uintptr_t img = 0; icon_rpm_ptr(reinterpret_cast<uintptr_t>(out), img);
+            if (img < 0x10000) img = reinterpret_cast<uintptr_t>(ret);
+            uintptr_t vt = 0; icon_rpm_ptr(img, vt);
+            uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+            static std::set<std::string> seen;
+            if (img > 0x10000 && vt > er && vt - er == 0x2bb8910 && seen.insert(nm).second)
+            {
+                int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+                icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
+                icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
+                uintptr_t rtex = 0, res = 0;
+                icon_rpm_ptr(img + 0x10, rtex);
+                if (rtex > 0x10000) icon_rpm_ptr(rtex + 0x70, res);
+                spdlog::info("[ENUM2] '{}' img={:#x} rect=({},{})-({},{}) res={:#x}", nm, img, x0, y0, x1, y1, res);
+            }
+        }
+    }
     return ret;
 }
 } // namespace
@@ -2279,7 +2277,11 @@ void goblin::install_icon_texture_probe()
         void *enumfn = reinterpret_cast<void *>(er + 0xd69640);
         modutils::hook(enumfn, reinterpret_cast<void *>(&enum_detour),
                        reinterpret_cast<void **>(&g_enum_orig));
-        spdlog::info("[ENUM] FUN_140d69640 hooked @ {} (open inventory to dump image list)", enumfn);
+        void *findfn = reinterpret_cast<void *>(er + 0xd63c30);
+        modutils::hook(findfn, reinterpret_cast<void *>(&find_detour),
+                       reinterpret_cast<void **>(&g_find_orig));
+        spdlog::info("[ENUM2] find-hook (FUN_140d63c30) @ {} + enum @ {} — open inventory to harvest "
+                     "resident item icons", findfn, enumfn);
     }
     catch (const std::exception &e)
     {
