@@ -2571,6 +2571,24 @@ void run_create_icon(uintptr_t er, int iconId)
                  g_ci_p1.load(), g_ci_p2.load(), reinterpret_cast<uintptr_t>(img), before, after);
 }
 
+// Force the CANONICAL grace variant (Morning) so the live grace is time-INDEPENDENT. Calls the HOOKED
+// CreateImage entry (er+0xd6bbc0) for "img://SB_ERR_Grace_Morning_Color" so create_image_detour logs
+// the result into g_icon_imgs → dump_icon_textures_live captures it (preferring the canonical name).
+// The Morning cell lives on the same resident world-map sheet as the current-time variant, so this
+// resolves even when it's evening in-game. Engine thread (ticker); throttled by the caller.
+int g_grace_force_tries = 0;
+void run_force_grace(uintptr_t er)
+{
+    if (!g_create_image_orig || g_ci_p1.load() == nullptr) return;
+    snprintf(g_ci_name, sizeof(g_ci_name), "img://SB_ERR_Grace_Morning_Color");
+    g_ci_desc[0] = reinterpret_cast<uintptr_t>(g_ci_name) - 0xc;
+    auto CreateImageHooked = reinterpret_cast<create_image_fn>(er + 0xd6bbc0);
+    void *img = CreateImageHooked(g_ci_p1.load(), g_ci_p2.load(), g_ci_desc, nullptr, nullptr,
+                                  nullptr, nullptr, nullptr);
+    spdlog::info("[GRACE-FORCE] CreateImage('{}') -> {:#x} (try {})", g_ci_name,
+                 reinterpret_cast<uintptr_t>(img), g_grace_force_tries);
+}
+
 void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
 {
     if (p2)
@@ -2584,6 +2602,14 @@ void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
             if (act) run_bind_action(mgr, er, act, g_bind_gid.load(std::memory_order_relaxed));
             int ci = g_ci_req_icon.exchange(INT_MIN, std::memory_order_acq_rel);
             if (ci != INT_MIN) run_create_icon(er, ci);
+            // Auto force the canonical grace (Morning) for a time-independent live grace. Only while
+            // the GPU-sprite grace is on, until it's canon-locked, context captured, throttled, capped.
+            if (goblin::config::graceOverlay && goblin::config::graceGpuSprite && !g_grace_locked &&
+                g_ci_p1.load(std::memory_order_relaxed) && g_grace_force_tries < 30)
+            {
+                static int s_gt = 0;
+                if ((s_gt++ % 30) == 0) { ++g_grace_force_tries; run_force_grace(er); }
+            }
         }
     }
     if (g_res_tick_orig) g_res_tick_orig(p1, p2);
@@ -2824,7 +2850,11 @@ void goblin::dump_icon_textures_live()
                 gc.spr.valid = true;
                 if (g_grace_cands.size() < 64) g_grace_cands.push_back(gc);
             }
-            if (is_grace && lit && rect_ok && !g_grace_locked)
+            // Prefer the CANONICAL variant (Morning_Color) for a time-INDEPENDENT grace look — the
+            // engine only CreateImage's the current-time variant, so run_force_grace force-creates
+            // Morning and we lock on it here. A non-canonical lit frame is stored only as a fallback
+            // (no lock) until the canonical arrives, so it can be overridden.
+            if (is_grace && lit && rect_ok && !g_grace_locked && (exact || !g_grace_sprite.valid))
             {
                 g_grace_sprite.sheet = reinterpret_cast<void *>(res);
                 g_grace_sprite.x0 = it.x0; g_grace_sprite.y0 = it.y0;
@@ -2833,9 +2863,10 @@ void goblin::dump_icon_textures_live()
                 g_grace_sprite.sheetH = static_cast<unsigned>(rh);
                 g_grace_sprite.format = static_cast<unsigned>(gfmt);
                 g_grace_sprite.valid = true;
-                g_grace_locked = true;   // first valid LIT grace frame wins → stable, no variant flip-flop
-                spdlog::info("[GRACE-SPRITE] '{}' rect=({},{})-({},{}) {}x{} res={:#x} fmt={} (LOCKED lit grace)",
-                             it.name, it.x0, it.y0, it.x1, it.y1, gw, gh, res, gfmt);
+                if (exact) g_grace_locked = true;   // canonical wins + locks; fallback stays overridable
+                spdlog::info("[GRACE-SPRITE] '{}' rect=({},{})-({},{}) {}x{} res={:#x} fmt={} ({})",
+                             it.name, it.x0, it.y0, it.x1, it.y1, gw, gh, res, gfmt,
+                             exact ? "LOCKED canonical Morning" : "fallback (awaiting canonical)");
             }
         }
         // Track unique sheet resources (icons on one sheet share a resource).
