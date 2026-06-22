@@ -47,11 +47,15 @@ DXGI_FORMAT rather than guessing an offset; CopyTextureRegion is the same device
 ignore), and **`SB_ERR_*`** = ERR's custom map icons on the 2048×1024 sheet. Captured:
 `SB_ERR_Grace_Morning_Color` at rect (818,368)-(892,442), 74×74 — the LIT/discovered grace.
 
-**REACH LIMIT (important):** CreateImage only fires for sprites the NATIVE worldmap actually draws.
-The 6 MFG-only overlay categories (talismans/whetblades/throwables/utilities/world-maps/quest-NPC)
-are NOT drawn by the native map (overlay-only, or parked at areaNo 99) → their `SB_ERR_*` images are
-never created → their rects are NOT capturable at runtime. So Path A reaches the LIT GRACE (+ any
-natively-drawn icon) but NOT the 6 categories — those still require FFDEC (static `.gfx` atlas).
+**REACH LIMIT — CONFIRMED DEFINITIVE (runtime, `g_injected_row_ptrs` is EMPTY):** MFG no longer
+injects native WorldMapPointParam rows — the overlay-rendered-markers refactor draws ALL category
+markers in ImGui, so the native map draws ONLY vanilla content (graces etc). The 6 MFG categories
+(talismans/whetblades/throwables/utilities/world-maps/quest-NPC) therefore have NO native rows →
+are NEVER natively rendered → their `SB_ERR_*` sprites are never CreateImage'd → their rects are
+UNCAPTURABLE at runtime. A force-render experiment (un-park injected rows to make the engine draw
+them) found 0 rows to un-park — there is nothing to force. The iconId→sprite bind is also not a
+static table (§4: Scaleform/VMP). So Path A reaches the LIT GRACE (+ any natively-drawn icon) ONLY;
+the 6 categories require FFDEC (static `.gfx` atlas) — no runtime route exists.
 Pragmatic Path A endgame for the grace = one-shot CopyTextureRegion→readback of its rect → save PNG
 → bake into the overlay atlas (no permanent runtime texture infra for a single sprite).
 
