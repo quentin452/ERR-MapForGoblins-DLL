@@ -3104,36 +3104,57 @@ void *__fastcall warp_pin_detour(void *a1, void *a2, void *warpData, void *a4)
         icon_rpm_i32(src + 0x08, iconId);
     }
 
-    static int logged = 0, suppressed = 0;
-    // PHASE B suppression (RE windows_grace_warppin_suppression_re_findings.md): zero the per-layer
-    // STATE bitmask pin+0x60, the INPUT to the visibility virtual vt[3] FUN_14087afa0 (it recomputes
-    // the cached visible byte pin+0xC as vis &= (state>>layerbit)&1). All layer bits clear -> invisible.
-    //
-    // ⚠ SUPERSEDED — BREAKS FAST-TRAVEL (RE windows_grace_warppin_teleport_re_findings.md): pin+0x60
-    // -> pin+0xC also drives the pin's GFx widget _visible, and the map cursor only snaps to a _visible
-    // widget. So zeroing +0x60 hides the icon AND removes the warp interaction (no teleport-to-grace).
-    // Draw and click are coupled at _visible; there is NO separate per-pin draw flag. The draw-ONLY fix
-    // is to hook vt[1] SetTo FUN_14087ae20 and re-hide only the "Icon_0" child (keep the outer widget
-    // _visible) — see that doc §4. Until that lands, grace_suppress_native stays OFF by default
-    // (hybrid: native draws+teleports discovered graces, overlay covers undiscovered) so warp works.
-    // The block below is kept only as the icon-suppression reference; do not enable without the SetTo fix.
-    if (goblin::config::graceOverlay && ret && (state & 7) != 0)
-    {
-        uintptr_t pin = reinterpret_cast<uintptr_t>(ret);
-        uint32_t zero32 = 0; uint8_t vis0 = 0; SIZE_T n = 0;
-        WriteProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(pin + 0x60), &zero32, 4, &n);
-        // hide the current frame too (recomputed from +0x60 next tick anyway)
-        WriteProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(pin + 0xC), &vis0, 1, &n);
-        if (suppressed++ < 20)
-            spdlog::info("[WARPPIN] suppressed pin={:#x} iconId={} (state +0x60 was {})",
-                         pin, iconId, state & 7);
-    }
-    else if (logged < 40)
+    // Suppression now happens at the vt[1] SetTo apply point (warp_setto_detour below) by hiding
+    // the pin's "Icon_0" child — NOT here. Zeroing pin+0x60/+0xC suppressed the draw but also broke
+    // fast-travel (the map cursor only snaps to a _visible widget; draw + click are coupled at
+    // _visible — RE windows_grace_warppin_teleport_re_findings.md). This builder hook is kept
+    // log-only (phase-A diagnostic: confirms discovered-grace identity at build time).
+    static int logged = 0;
+    if (logged < 40)
     {
         ++logged;
         spdlog::info("[WARPPIN] build src={:#x} stateByte(+0x1E)={:#x} (bits0-2={}) iconId={} pin={:#x}",
                      src, state & 0xff, state & 7, iconId, reinterpret_cast<uintptr_t>(ret));
     }
+    return ret;
+}
+
+// ── Grace DRAW-ONLY suppression (RE windows_grace_warppin_teleport_re_findings.md §4) ──
+// Hook vt[1] WorldMap(Warp|Point)PinData::SetTo = FUN_14087ae20: the per-refresh widget bind that
+// sets widget._visible from pin+0xC. After the original runs, for a DISCOVERED WarpPinData, hide
+// ONLY the "Icon_0" child of the pin's GFx widget — the outer widget stays _visible, so the map
+// cursor still snaps to it and fast-travel works; only the native icon image is gone (the overlay
+// draws our own). pin+0xC/+0x60 are left untouched (poking them is the layer-trap that re-fills
+// every SetTo). Runs on the engine thread (in-context), so we call the GFx fns directly.
+using setto_fn = void *(__fastcall *)(void *, void *, void *, void *);
+setto_fn g_setto_orig = nullptr;
+// GFx helpers (resolve at hook-install, cached): get a named child proxy / set a widget _visible /
+// release the stack proxy. Signatures inferred from the RE pseudocode (doc §4).
+void *(__fastcall *g_gfx_get_child)(void *widgetRoot, void *outChild, const char *name) = nullptr;
+void *(__fastcall *g_gfx_set_visible)(void *child, int visible) = nullptr;
+void *(__fastcall *g_gfx_release_proxy)(void *child) = nullptr;
+void *g_warppin_vftable = nullptr;   // er + 0x2ad8228 (WorldMapWarpPinData::vftable) — grace filter
+
+void *__fastcall warp_setto_detour(void *pin, void *widgetRoot, void *a3, void *a4)
+{
+    void *ret = g_setto_orig(pin, widgetRoot, a3, a4);
+    if (!goblin::config::graceSuppressNative || !goblin::config::graceOverlay || !pin || !widgetRoot)
+        return ret;
+    if (!g_gfx_get_child || !g_gfx_set_visible || !g_gfx_release_proxy)
+        return ret;
+    // vt[1] is shared by Warp & Point pins → filter to grace warp pins by the object vtable.
+    if (*reinterpret_cast<void **>(pin) != g_warppin_vftable)
+        return ret;
+    // discovered = state bitmask pin+0x60 has any layer bit set (undiscovered → native draws nothing).
+    uint32_t state = *reinterpret_cast<uint32_t *>(reinterpret_cast<uintptr_t>(pin) + 0x60);
+    if ((state & 7) == 0)
+        return ret;
+    // Hide ONLY the Icon_0 child. Over-allocate the GFx stack proxy (RE hint: SetTo locals
+    // local_78[40]/local_50[56] ≈ 96B); zeroed; released right after, as vanilla does.
+    alignas(16) uint8_t child[256] = {};
+    g_gfx_get_child(widgetRoot, child, "Icon_0");
+    g_gfx_set_visible(child, 0);
+    g_gfx_release_proxy(child);
     return ret;
 }
 } // namespace
@@ -3154,6 +3175,24 @@ void goblin::install_grace_suppression_hook()
     {
         spdlog::error("[WARPPIN] hook failed: {}", e.what());
         g_warp_pin_orig = nullptr;
+    }
+
+    // DRAW-ONLY suppression: hook vt[1] SetTo + resolve the GFx helpers (RE teleport findings §4/§5).
+    g_gfx_get_child = reinterpret_cast<decltype(g_gfx_get_child)>(er + 0x74a2f0);   // FUN_14074a2f0
+    g_gfx_set_visible = reinterpret_cast<decltype(g_gfx_set_visible)>(er + 0x733340); // FUN_140733340
+    g_gfx_release_proxy = reinterpret_cast<decltype(g_gfx_release_proxy)>(er + 0xd7f850); // FUN_140d7f850
+    g_warppin_vftable = reinterpret_cast<void *>(er + 0x2ad8228); // WorldMapWarpPinData::vftable
+    void *setto = reinterpret_cast<void *>(er + 0x87ae20);   // FUN_14087ae20 (vt[1] SetTo)
+    try
+    {
+        modutils::hook(setto, reinterpret_cast<void *>(&warp_setto_detour),
+                       reinterpret_cast<void **>(&g_setto_orig));
+        spdlog::info("[WARPPIN] SetTo hooked @ {} (draw-only: hide Icon_0, keep teleport)", setto);
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("[WARPPIN] SetTo hook failed: {}", e.what());
+        g_setto_orig = nullptr;
     }
 }
 
