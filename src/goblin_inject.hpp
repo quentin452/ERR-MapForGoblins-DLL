@@ -323,6 +323,10 @@ namespace goblin
     struct GraceCandidate { ItemSprite spr; std::string name; };
     std::vector<GraceCandidate> grace_candidates();
 
+    // DEV (F1 grace-debug): set the active grace sprite from a captured candidate index (test which
+    // name maps to the right grace). Locks it; the overlay should then rebuild its SRV. False on bad idx.
+    bool set_grace_from_candidate(size_t idx);
+
     // Dev runtime-confirm (sprite findings §6): call the engine's draw-free icon
     // find-by-name FUN_140d63c30(repo, &out, L"MENU_ItemIcon_<id>") for a set of iconIds and
     // log whether each resolves to a CSTextureImage+rect WITHOUT the icon being drawn. Press

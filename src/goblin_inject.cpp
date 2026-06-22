@@ -2670,6 +2670,19 @@ std::vector<goblin::GraceCandidate> goblin::grace_candidates()
     return g_grace_cands;
 }
 
+// DEV (F1 grace-debug): set the active grace sprite from a captured candidate by index, so the
+// overlay can test which name maps to the correct grace. Also locks it so the auto-capture won't
+// override. Returns false on a bad index. The overlay must then force_rebuild_grace() to re-copy.
+bool goblin::set_grace_from_candidate(size_t idx)
+{
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    if (idx >= g_grace_cands.size() || !g_grace_cands[idx].spr.valid) return false;
+    g_grace_sprite = g_grace_cands[idx].spr;
+    g_grace_locked = true;
+    spdlog::info("[GRACE-DBG] active grace set to candidate[{}] '{}'", idx, g_grace_cands[idx].name);
+    return true;
+}
+
 std::vector<int> goblin::harvested_ids(size_t max)
 {
     std::lock_guard<std::mutex> lk(g_harvest_mtx);

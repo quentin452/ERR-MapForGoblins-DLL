@@ -455,6 +455,24 @@ namespace
     D3D12_GPU_DESCRIPTOR_HANDLE g_grace_gpu{};
     ImVec2 g_grace_uv0{}, g_grace_uv1{};
     int g_grace_state = 0;   // 0 = not ready (retry), 1 = ok, 2 = failed (give up)
+    int g_grace_srv_idx = -1;   // reuse one SRV slot across rebuilds (no slot leak on re-apply)
+    // ── Grace texture DEBUG (F1 panel) — live format/swizzle/source override ────────────────────────
+    int g_grace_dbg_srgb = 0;     // 0 = auto (GetDesc) | 1 = force BC7_UNORM (linear) | 2 = force BC7_UNORM_SRGB
+    int g_grace_dbg_swiz = 0;     // SRV component mapping: 0 default RGBA | 1 R<->B | 2 R<->G | 3 force A=1
+    int g_grace_dbg_fmt_used = 0; // last format actually used (for the panel readout)
+
+    // SRV component mapping for the debug swizzle test (diagnoses channel-order / green-red issues).
+    UINT grace_dbg_mapping()
+    {
+        switch (g_grace_dbg_swiz)
+        {
+        case 1: return D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(2, 1, 0, 3);  // R<->B
+        case 2: return D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(1, 0, 2, 3);  // R<->G
+        case 3: return D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(0, 1, 2,
+                       D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_1);          // force opaque alpha
+        default: return D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        }
+    }
 
     bool ensure_grace_srv()
     {
@@ -473,6 +491,13 @@ namespace
         DXGI_FORMAT fmt = rd.Format;
         if (rd.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || fmt == DXGI_FORMAT_UNKNOWN)
             return false;
+        // DEBUG sRGB override (BC7 only — UNORM/SRGB share a copy group, so the GPU→GPU copy stays valid).
+        if (fmt == DXGI_FORMAT_BC7_UNORM || fmt == DXGI_FORMAT_BC7_UNORM_SRGB)
+        {
+            if (g_grace_dbg_srgb == 1) fmt = DXGI_FORMAT_BC7_UNORM;
+            else if (g_grace_dbg_srgb == 2) fmt = DXGI_FORMAT_BC7_UNORM_SRGB;
+        }
+        g_grace_dbg_fmt_used = static_cast<int>(fmt);
         int sw = static_cast<int>(rd.Width), sh = static_cast<int>(rd.Height);
         int x0 = sp.x0 & ~3, y0 = sp.y0 & ~3;            // snap to 4-aligned blocks (BC7)
         int x1 = (sp.x1 + 3) & ~3, y1 = (sp.y1 + 3) & ~3;
@@ -531,12 +556,14 @@ namespace
 
         const UINT inc = g_device->GetDescriptorHandleIncrementSize(
             D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        UINT idx = g_next_item_srv++;
+        // Reuse one slot across debug re-applies (avoid leaking heap slots on every format toggle).
+        if (g_grace_srv_idx < 0) g_grace_srv_idx = static_cast<int>(g_next_item_srv++);
+        UINT idx = static_cast<UINT>(g_grace_srv_idx);
         D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
         cpu.ptr += static_cast<SIZE_T>(inc) * idx;
         D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
         sd.Format = fmt; sd.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-        sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        sd.Shader4ComponentMapping = grace_dbg_mapping();   // DEBUG channel swizzle (R<->B etc.)
         sd.Texture2D.MipLevels = 1;
         g_device->CreateShaderResourceView(g_grace_tex, &sd, cpu);
         g_grace_gpu = g_srv_heap->GetGPUDescriptorHandleForHeapStart();
@@ -548,6 +575,14 @@ namespace
         spdlog::info("[GRACE-SRV] copied {}x{} (snapped from {},{}-{},{}) fmt={} -> slot {} gpu={:#x}",
                      w, h, sp.x0, sp.y0, sp.x1, sp.y1, static_cast<int>(fmt), idx, g_grace_gpu.ptr);
         return true;
+    }
+
+    // Re-run the grace copy + SRV next frame (with the current debug format/swizzle) — for the F1
+    // Grace-debug panel's "Re-apply" so format/swizzle/source changes take effect live.
+    void force_rebuild_grace()
+    {
+        if (g_grace_tex) { g_grace_tex->Release(); g_grace_tex = nullptr; }
+        g_grace_state = 0;   // ensure_grace_srv re-copies + rewrites the (reused) SRV slot next frame
     }
 
     // ── Grace-sprite GPU debug viewer (dev) ──────────────────────────────────────────
@@ -1027,6 +1062,51 @@ namespace
                     ImGui::SameLine();
                     ImGui::Text("%s  %dx%d  uv(%.3f,%.3f)-(%.3f,%.3f)", d.name.c_str(), d.w, d.h,
                                 d.uv0.x, d.uv0.y, d.uv1.x, d.uv1.y);
+                }
+            }
+
+            // Grace texture DEBUG (live format/swizzle/source) — verify the active grace mapped the
+            // right NAME and the right COLORING. Tweak below + "Re-apply" re-copies the SRV live.
+            if (goblin::config::dumpIconTextures && ImGui::CollapsingHeader("Grace texture debug (live)"))
+            {
+                // The active grace, drawn big (this IS what the map markers use).
+                if (g_grace_state == 1)
+                {
+                    ImGui::Text("active grace  fmt=%d (98=BC7_UNORM 99=BC7_SRGB)", g_grace_dbg_fmt_used);
+                    ImGui::Image(reinterpret_cast<ImTextureID>(g_grace_gpu.ptr), ImVec2(128, 128),
+                                 g_grace_uv0, g_grace_uv1);
+                    ImGui::SameLine();
+                    // Full copied texture (no UV crop) so a wrong-rect vs wrong-color bug is separable.
+                    ImGui::Image(reinterpret_cast<ImTextureID>(g_grace_gpu.ptr), ImVec2(128, 128));
+                    ImGui::TextDisabled("left = UV-cropped (marker) | right = full copied block");
+                }
+                else ImGui::TextDisabled("grace not ready (open map near a grace)");
+
+                bool dirty = false;
+                ImGui::Text("sRGB:");
+                ImGui::SameLine(); dirty |= ImGui::RadioButton("auto##gs", &g_grace_dbg_srgb, 0);
+                ImGui::SameLine(); dirty |= ImGui::RadioButton("UNORM(98)##gs", &g_grace_dbg_srgb, 1);
+                ImGui::SameLine(); dirty |= ImGui::RadioButton("SRGB(99)##gs", &g_grace_dbg_srgb, 2);
+                ImGui::Text("channels:");
+                ImGui::SameLine(); dirty |= ImGui::RadioButton("RGBA##gz", &g_grace_dbg_swiz, 0);
+                ImGui::SameLine(); dirty |= ImGui::RadioButton("R<->B##gz", &g_grace_dbg_swiz, 1);
+                ImGui::SameLine(); dirty |= ImGui::RadioButton("R<->G##gz", &g_grace_dbg_swiz, 2);
+                ImGui::SameLine(); dirty |= ImGui::RadioButton("A=1##gz", &g_grace_dbg_swiz, 3);
+                if (ImGui::Button("Re-apply (rebuild grace SRV)") || dirty)
+                    force_rebuild_grace();
+
+                // Source picker: which captured candidate is the active grace (test "the right name").
+                ImGui::Separator();
+                ImGui::TextDisabled("source candidate (click to use as grace):");
+                std::vector<goblin::GraceCandidate> cands = goblin::grace_candidates();
+                for (size_t i = 0; i < cands.size(); ++i)
+                {
+                    ImGui::PushID(static_cast<int>(i));
+                    if (ImGui::SmallButton("use")) { goblin::set_grace_from_candidate(i); force_rebuild_grace(); }
+                    ImGui::SameLine();
+                    ImGui::Text("%s  (%d,%d)-(%d,%d)", cands[i].name.c_str(), cands[i].spr.x0,
+                                cands[i].spr.y0, cands[i].spr.x1, cands[i].spr.y1);
+                    ImGui::PopID();
                 }
             }
 
