@@ -333,6 +333,19 @@ namespace
             // permanent miss so a later frame retries.
             D3D12_RESOURCE_DESC rd = src_res->GetDesc();
             DXGI_FORMAT fmt = rd.Format;
+            // DIAG (capped): why does an harvested icon NOT produce an SRV? ready = sheet is a bound
+            // TEXTURE2D (GetDesc ok); the rect must be BC-block aligned (4) in BOTH size AND offset.
+            static int s_srv_dbg = 0;
+            bool ready = (rd.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && fmt != DXGI_FORMAT_UNKNOWN);
+            bool size_ok = (w > 0 && h > 0 && w <= 1024 && h <= 1024 && (w % 4) == 0 && (h % 4) == 0);
+            bool off_ok = ((sp.x0 % 4) == 0 && (sp.y0 % 4) == 0);
+            if (s_srv_dbg < 80 && !(ready && size_ok && off_ok))
+            {
+                ++s_srv_dbg;
+                spdlog::info("[ICONSRV-DBG] id={} rect=({},{})-({},{}) w={} h={} ready={} dim={} fmt={} size_ok={} off_ok={}",
+                             iconId, sp.x0, sp.y0, sp.x1, sp.y1, w, h, ready, (int)rd.Dimension,
+                             (int)fmt, size_ok, off_ok);
+            }
             if (rd.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || fmt == DXGI_FORMAT_UNKNOWN)
                 return 0;   // sheet not bound yet → retry next frame (no permanent-miss store)
             if (w > 0 && h > 0 && w <= 1024 && h <= 1024 && (w % 4) == 0 && (h % 4) == 0)
