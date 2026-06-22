@@ -1696,29 +1696,35 @@ void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
     icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
     icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
     icon_rpm_i32(img + 0x84, w);  icon_rpm_i32(img + 0x88, h);
-    // img+0x10 = the backing texture wrapper (vt RVA 0x2c0f318, constant across all images).
-    // Drill it: dump its ptr fields with vtable RVA — fields whose target vtable is OUTSIDE
-    // er_base ("EXT") are dll/COM objects = the ID3D12Resource candidate.
+    // 2-level search for the GPU texture: findings GXTexture2D vt=0x2f05928, CSGxTexture
+    // vt=0x2b761b0 (the other findings vtables, e.g. CSTextureImage 0x2bb8910, verified live).
+    // Walk img's ptr fields and each of their ptr fields for one of those vtables → that's the
+    // texture; its +0x40 = the ID3D12Resource. Report the path. Also log img's own vtable RVA.
     uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
-    uintptr_t tw = 0; icon_rpm_ptr(img + 0x10, tw);
-    char buf[490]; int len = 0; buf[0] = 0;
-    if (tw)
-        for (int o = 0x00; o <= 0xA0; o += 8)
+    const uintptr_t WANT_GX = base + 0x2f05928, WANT_CSGX = base + 0x2b761b0;
+    uintptr_t img_vt = 0; icon_rpm_ptr(img, img_vt);
+    uintptr_t texobj = 0, texvt = 0; int o1f = -1, o2f = -1;
+    for (int o1 = 0x00; o1 <= 0x110 && !texobj; o1 += 8)
+    {
+        uintptr_t p1 = 0;
+        if (!icon_rpm_ptr(img + o1, p1) || p1 < 0x10000 || p1 >= 0x7fffffffffffULL) continue;
+        uintptr_t vt1 = 0;
+        if (icon_rpm_ptr(p1, vt1) && (vt1 == WANT_GX || vt1 == WANT_CSGX))
+        { texobj = p1; texvt = vt1; o1f = o1; break; }
+        for (int o2 = 0x00; o2 <= 0xA0; o2 += 8)
         {
-            uintptr_t p = 0;
-            if (!icon_rpm_ptr(tw + o, p) || p < 0x10000 || p >= 0x7fffffffffffULL) continue;
-            uintptr_t vt = 0;
-            bool okvt = icon_rpm_ptr(p, vt) && vt >= 0x10000;
-            if (okvt && vt > base && vt < base + 0x6000000)
-                len += std::snprintf(buf + len, sizeof(buf) - len, " +%x=%llx[vt=%lx]", o,
-                                     (unsigned long long)p, (long)(vt - base));
-            else if (okvt)
-                len += std::snprintf(buf + len, sizeof(buf) - len, " +%x=%llx[EXT %llx]", o,
-                                     (unsigned long long)p, (unsigned long long)vt);
-            if (len > (int)sizeof(buf) - 44) break;
+            uintptr_t p2 = 0;
+            if (!icon_rpm_ptr(p1 + o2, p2) || p2 < 0x10000 || p2 >= 0x7fffffffffffULL) continue;
+            uintptr_t vt2 = 0;
+            if (icon_rpm_ptr(p2, vt2) && (vt2 == WANT_GX || vt2 == WANT_CSGX))
+            { texobj = p2; texvt = vt2; o1f = o1; o2f = o2; break; }
         }
-    spdlog::info("[ICONTEX] img={:#x} rect=({},{})-({},{}) sheet={}x{} tw={:#x} |{}",
-                 img, x0, y0, x1, y1, w, h, tw, buf);
+    }
+    uintptr_t res = 0; if (texobj) icon_rpm_ptr(texobj + 0x40, res);
+    spdlog::info("[ICONTEX] img={:#x} imgVtRVA={:#x} rect=({},{})-({},{}) sheet={}x{} | "
+                 "TEX={:#x} vtRVA={:#x} path=+{:#x}/+{:#x} res={:#x}",
+                 img, img_vt > base ? img_vt - base : 0, x0, y0, x1, y1, w, h,
+                 texobj, texvt > base ? texvt - base : 0, o1f, o2f, res);
 }
 
 void *__fastcall create_image_detour(void *a0, void *a1, void *a2, void *a3, void *a4, void *a5,
