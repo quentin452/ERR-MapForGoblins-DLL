@@ -1,5 +1,6 @@
 #include "map_renderer.hpp"
 
+#include "goblin_bench.hpp"          // GOBLIN_BENCH_QUIET (per-frame render timing)
 #include "goblin_projection.hpp"     // baked map-space → backbuffer projection
 #include "goblin_worldmap_probe.hpp" // get_live_view()
 #include "goblin_inject.hpp"         // ui::clustering_enabled / global_threshold / category_clustered
@@ -680,6 +681,11 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
         g_view_delay.reset(); // map closed → re-seed the delay fresh on reopen
         return;
     }
+
+    // Per-frame worldmap render cost (aggregate-only — runs every frame the map is
+    // open). Diagnoses whether the felt map lag is THIS render path vs the background
+    // refresh thread (read_wgm). Shows as render.worldmap in the [BENCH] session report.
+    GOBLIN_BENCH_QUIET("render.worldmap");
 
     ImGuiIO &io = ImGui::GetIO();
     // Background draw list (above the game map, BELOW the F1 ImGui window) so the F1 menu
