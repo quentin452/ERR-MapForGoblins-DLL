@@ -1988,23 +1988,20 @@ void goblin::verify_equip_iconids()
     if (!goblin::config::dumpIconTextures)
         return;
     struct P { const wchar_t *name; const char *tag; int off; };
-    // iconId offsets (u16) are PER-PARAM and NONE are reliably known. The [CALIB] density scan
-    // DISPROVED Weapon 0xC0 (distinct=2 over 6643 rows → a near-constant field, NOT iconId; the
-    // Dagger=100/max=999 match was coincidental). No heuristic finds iconId (low-cardinality +
-    // pre-SOTE paramdef ambiguity). Resolve via CE find-what-accesses anchored on a live [ICONMAP]
-    // value — see docs/re/ce_iconid_offset_procedure.md. Offsets below are STALE guesses, kept only
-    // so the probe still runs; do NOT trust them.
-    //   Gem/Protector/Accessory/Goods — NO clean offset found. Gem 0x06=value<<8, 0x07=0xFF<<8|val
-    //     (real byte flanked by a 0xFF field → no aligned u16 is clean); Accessory=all 0xFFFF;
-    //     Protector=garbage(max 45808); Goods=all 0. Left at last guess; NOT chased (probe is
-    //     dev-only, per-item icons not productionized). For real use read iconId via the engine
-    //     resolver FUN_14073d9d0 + iconRef{type@0,id@+4}, NOT hardcoded offsets.
+    // iconId offsets (u16) — SOLVED + cross-verified (2026-06-22): computed from the CURRENT
+    // (SOTE) Paramdex (Nordgaren/Erd-Tools Defs-English) by tools/paramdef_iconid_offset.py AND
+    // confirmed against the live [CALIB] high-distinct columns. The earlier 0xC0 "confirmation" was
+    // DURABILITY (paramdef order: equipModelId@0xBC, iconId@0xBE, durability@0xC0; Dagger has both
+    // iconId=100 AND durability=100 → coincidence). distinct=2 @ 0xC0 = durability default 100.
+    //   Weapon iconId=0xBE (live distinct=599 range[20,45818]); Protector iconIdM=0xA6 / iconIdF=0xA8
+    //   (distinct=760 range[1097,45808]); Accessory=0x26 (distinct=167/170); Goods=0x30
+    //   (distinct=1573, contains the live-captured 40144); Gem=0x04 (distinct=609).
     static const P params[] = {
-        {L"EquipParamWeapon", "Weapon", 0xC0}, // ✗ DISPROVED (distinct=2; coincidental Dagger=100)
-        {L"EquipParamProtector", "Protector", 0xA8}, // ✗ unresolved
-        {L"EquipParamAccessory", "Accessory", 0x28}, // ✗ unresolved (all 0xFFFF)
-        {L"EquipParamGoods", "Goods", 0x32},         // ✗ unresolved (all 0)
-        {L"EquipParamGem", "Gem", 0x07},             // ✗ unresolved (0xFF flank)
+        {L"EquipParamWeapon", "Weapon", 0xBE},
+        {L"EquipParamProtector", "Protector", 0xA6}, // iconIdM (iconIdF = 0xA8)
+        {L"EquipParamAccessory", "Accessory", 0x26},
+        {L"EquipParamGoods", "Goods", 0x30},
+        {L"EquipParamGem", "Gem", 0x04},
     };
     static const uint16_t want[] = {40144, 40147, 40172}; // the 3 inventory-captured iconIds
     for (const P &p : params)
