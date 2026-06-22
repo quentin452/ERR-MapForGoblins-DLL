@@ -1719,6 +1719,124 @@ inline bool icon_rpm_ptr(uintptr_t a, uintptr_t &out)
     return a && ReadProcessMemory(GetCurrentProcess(), (void *)a, &out, 8, &n) && n == 8;
 }
 
+// Bounded BFS over the CS object graph from `root` (follow er-base-vtable'd ptr fields)
+// for the GXTexture2D / CSGxTexture vtable → the backing GPU texture. Returns its addr
+// (+ out vtable/depth), 0 if not found. Used at load (usually fails — texture bound
+// lazily) and on a map-open frame from root = *(img+0x10) (the now-bound Render::Texture).
+uintptr_t icon_find_gpu_tex(uintptr_t root, uintptr_t base, uintptr_t &out_vt, int &out_depth)
+{
+    // ONLY GXTexture2D (0x2f05928) is the terminal — it carries the ID3D12Resource at +0x40.
+    // CSGxTexture (0x2b761b0) is a WRAPPER whose +0x40 is a name string, so we expand THROUGH
+    // it (and every other CS object) rather than stopping on it.
+    const uintptr_t WANT_GX = base + 0x2f05928;
+    std::vector<std::pair<uintptr_t, int>> q;
+    std::vector<uintptr_t> seen;
+    q.push_back({root, 0}); seen.push_back(root);
+    for (size_t qi = 0; qi < q.size() && qi < 600; ++qi)
+    {
+        uintptr_t node = q[qi].first; int d = q[qi].second;
+        for (int o = 0x00; o <= 0x120; o += 8)
+        {
+            uintptr_t p = 0;
+            if (!icon_rpm_ptr(node + o, p) || p < 0x10000 || p >= 0x7fffffffffffULL) continue;
+            uintptr_t vt = 0;
+            if (!icon_rpm_ptr(p, vt)) continue;
+            if (vt == WANT_GX) { out_vt = vt; out_depth = d + 1; return p; }
+            if (d < 7 && vt > base && vt < base + 0x6000000 && q.size() < 600)
+            {
+                bool dup = false;
+                for (uintptr_t s : seen) if (s == p) { dup = true; break; }
+                if (!dup) { seen.push_back(p); q.push_back({p, d + 1}); }
+            }
+        }
+    }
+    out_vt = 0; out_depth = -1;
+    return 0;
+}
+
+// Registry of created CSTextureImages (load-time) so the live dump can re-read each
+// img+0x10 once the world map is open and the GPU texture is bound. Capped; sheet-sized
+// images only (icon sheets are 512×512 / 2048×1024 — skip tiny/huge GFx images).
+struct IconImg { uintptr_t img; int x0, y0, x1, y1, w, h; };
+std::vector<IconImg> g_icon_imgs;
+std::vector<uintptr_t> g_icon_sheets; // unique ID3D12Resource per TPF sheet
+bool g_icon_live_done = false;
+bool g_icon_detail_done = false;
+
+// One-shot full dump of the FIRST bound Render::Texture (img+0x10). The BFS proved
+// non-deterministic (wanders into a shared global some runs, misses others), so dump the
+// Scaleform Render::Texture's whole layout: every ptr field (tagged GXTexture2D /
+// CSGxTexture / other CS-obj, + one-level child that points at GXTexture2D) and every
+// small int (dims / the tex+0x3c size). Reveals the DETERMINISTIC renderTex→GPU-texture
+// offset to replace the BFS, and whether all images share one atlas.
+void icon_detail_dump(uintptr_t rtex, uintptr_t base)
+{
+    if (g_icon_detail_done || !rtex) return;
+    g_icon_detail_done = true;
+    const uintptr_t WANT_GX = base + 0x2f05928, WANT_CSGX = base + 0x2b761b0;
+    spdlog::info("[ICONTEX-DET] renderTex={:#x} full layout dump:", rtex);
+    for (int o = 0; o <= 0xB8; o += 8)
+    {
+        uintptr_t p = 0;
+        if (!icon_rpm_ptr(rtex + o, p)) continue;
+        if (p > 0x10000 && p < 0x7fffffffffffULL)
+        {
+            uintptr_t vt = 0; icon_rpm_ptr(p, vt);
+            const char *tag = vt == WANT_GX ? " <GXTexture2D>"
+                            : vt == WANT_CSGX ? " <CSGxTexture>"
+                            : (vt > base && vt < base + 0x6000000) ? " <CSobj>" : "";
+            spdlog::info("[ICONTEX-DET]  rtex+{:#x} = ptr {:#x} vtRVA={:#x}{}",
+                         o, p, vt > base ? vt - base : 0, tag);
+            // one level down: a child field pointing straight at the GXTexture2D
+            if (vt > base && vt < base + 0x6000000)
+                for (int o2 = 0; o2 <= 0x70; o2 += 8)
+                {
+                    uintptr_t c = 0; if (!icon_rpm_ptr(p + o2, c) || c < 0x10000) continue;
+                    uintptr_t cv = 0; icon_rpm_ptr(c, cv);
+                    if (cv == WANT_GX)
+                        spdlog::info("[ICONTEX-DET]    -> [{:#x}+{:#x}] = GXTexture2D {:#x}", p, o2, c);
+                }
+        }
+        else
+        {
+            int lo = (int)(p & 0xffffffff), hi = (int)(p >> 32);
+            if ((lo > 0 && lo <= 8192) || (hi > 0 && hi <= 8192))
+                spdlog::info("[ICONTEX-DET]  rtex+{:#x} = ints ({}, {})", o, lo, hi);
+        }
+    }
+    // rtex+0x70 = the D3D texture HAL object (non-module vtable, repeated across the texture
+    // list → a real D3D/driver type). Deep-dump it: its fields + ints, hunting the actual
+    // ID3D12Resource (a ptr whose vtable is OUTSIDE the ER module = d3d12.dll / vkd3d) and the
+    // texture dims/format. mod range = [base, base+0x6000000).
+    const uintptr_t mod_lo = base, mod_hi = base + 0x6000000;
+    uintptr_t hal = 0;
+    if (icon_rpm_ptr(rtex + 0x70, hal) && hal > 0x10000 && hal < 0x7fffffffffffULL)
+    {
+        uintptr_t halvt = 0; icon_rpm_ptr(hal, halvt);
+        spdlog::info("[ICONTEX-DET] -- HAL tex rtex+0x70 = {:#x} vt={:#x} fields:", hal, halvt);
+        for (int o = 0; o <= 0xC0; o += 8)
+        {
+            uintptr_t p = 0;
+            if (!icon_rpm_ptr(hal + o, p)) continue;
+            if (p > 0x10000 && p < 0x7fffffffffffULL)
+            {
+                uintptr_t vt = 0; bool hasvt = icon_rpm_ptr(p, vt) && vt > 0x10000;
+                bool in_mod = (vt >= mod_lo && vt < mod_hi);
+                const char *tag = !hasvt ? " <data?>"
+                                : in_mod ? " <CSobj>" : " <NON-MODULE vt = D3D12/COM?>";
+                spdlog::info("[ICONTEX-DET]    hal+{:#x} = ptr {:#x} vt={:#x}{}",
+                             o, p, hasvt ? (in_mod ? vt - base : vt) : 0, tag);
+            }
+            else
+            {
+                int lo = (int)(p & 0xffffffff), hi = (int)(p >> 32);
+                if ((lo > 0 && lo <= 8192) || (hi > 0 && hi <= 8192))
+                    spdlog::info("[ICONTEX-DET]    hal+{:#x} = ints ({}, {})", o, lo, hi);
+            }
+        }
+    }
+}
+
 void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
 {
     if (!goblin::config::dumpIconTextures || !img)
@@ -1732,39 +1850,16 @@ void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
     icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
     icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
     icon_rpm_i32(img + 0x84, w);  icon_rpm_i32(img + 0x88, h);
-    // 2-level search for the GPU texture: findings GXTexture2D vt=0x2f05928, CSGxTexture
-    // vt=0x2b761b0 (the other findings vtables, e.g. CSTextureImage 0x2bb8910, verified live).
-    // Walk img's ptr fields and each of their ptr fields for one of those vtables → that's the
-    // texture; its +0x40 = the ID3D12Resource. Report the path. Also log img's own vtable RVA.
+    // Register sheet-sized images so the live dump can re-read img+0x10 once the map is
+    // open (the GPU texture binds LAZILY on first render — findings §2; the BFS here at
+    // load time finds nothing, which is expected). Icon sheets are 512×512 / 2048×1024.
+    if (w >= 256 && h >= 256 && g_icon_imgs.size() < 512)
+        g_icon_imgs.push_back({img, x0, y0, x1, y1, w, h});
     uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
-    const uintptr_t WANT_GX = base + 0x2f05928, WANT_CSGX = base + 0x2b761b0;
     uintptr_t img_vt = 0; icon_rpm_ptr(img, img_vt);
-    // Bounded BFS over the CS object graph (follow er-base-vtable'd ptr fields) to find the
-    // GXTexture2D/CSGxTexture at any depth ≤4, ≤300 nodes. Reports depth + the found vtable.
-    uintptr_t texobj = 0, texvt = 0; int depth = -1;
-    {
-        std::vector<std::pair<uintptr_t, int>> q;
-        std::vector<uintptr_t> seen;
-        q.push_back({img, 0}); seen.push_back(img);
-        for (size_t qi = 0; qi < q.size() && qi < 300 && !texobj; ++qi)
-        {
-            uintptr_t node = q[qi].first; int d = q[qi].second;
-            for (int o = 0x00; o <= 0x120; o += 8)
-            {
-                uintptr_t p = 0;
-                if (!icon_rpm_ptr(node + o, p) || p < 0x10000 || p >= 0x7fffffffffffULL) continue;
-                uintptr_t vt = 0;
-                if (!icon_rpm_ptr(p, vt)) continue;
-                if (vt == WANT_GX || vt == WANT_CSGX) { texobj = p; texvt = vt; depth = d + 1; break; }
-                if (d < 4 && vt > base && vt < base + 0x6000000 && q.size() < 300)
-                {
-                    bool dup = false;
-                    for (uintptr_t s : seen) if (s == p) { dup = true; break; }
-                    if (!dup) { seen.push_back(p); q.push_back({p, d + 1}); }
-                }
-            }
-        }
-    }
+    // Load-time GPU-texture search (expected to miss — texture not yet bound; see live dump).
+    uintptr_t texvt = 0; int depth = -1;
+    uintptr_t texobj = icon_find_gpu_tex(img, base, texvt, depth);
     uintptr_t res = 0, resvt = 0; if (texobj) { icon_rpm_ptr(texobj + 0x40, res); if (res) icon_rpm_ptr(res, resvt); }
     spdlog::info("[ICONTEX] img={:#x} imgVtRVA={:#x} rect=({},{})-({},{}) sheet={}x{} | "
                  "TEX={:#x} vtRVA={:#x} depth={} res={:#x} resVt={:#x}",
@@ -1801,6 +1896,74 @@ void goblin::install_icon_texture_probe()
     {
         spdlog::error("[ICONTEX] hook failed: {}", e.what());
         g_create_image_orig = nullptr;
+    }
+}
+
+// Path A verify step (findings §6): on a MAP-OPEN frame, re-read each registered image's
+// img+0x10 (the lazily-bound Scaleform::Render::Texture) → BFS to the GXTexture2D → +0x40 =
+// ID3D12Resource. Confirms the load-time-null texture is now bound + reachable. Runs once
+// per session after the chain first resolves. Called from the worldmap probe loop (map-open
+// detector). Read-only RPM (reading the already-bound pointer is thread-safe; we do NOT call
+// GetTexture, which would have to be on the render thread).
+void goblin::dump_icon_textures_live()
+{
+    if (!goblin::config::dumpIconTextures || g_icon_live_done || g_icon_imgs.empty())
+        return;
+    uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base)
+        return;
+    int bound = 0, resolved = 0, logged = 0;
+    for (const IconImg &it : g_icon_imgs)
+    {
+        uintptr_t rtex = 0;
+        // A REAL Scaleform Render::Texture = heap object (OUTSIDE the ER module) whose vtable
+        // is INSIDE the module (.rdata). img+0x10 also takes junk states: 0 (unbound), a small
+        // int (0x6), or a CODE/module pointer (0x141xxxxxx) — reject all three.
+        const uintptr_t mod_lo = base, mod_hi = base + 0x6000000;
+        if (!icon_rpm_ptr(it.img + 0x10, rtex) || rtex < 0x10000 || rtex >= 0x7fffffffffffULL)
+            continue;
+        if (rtex >= mod_lo && rtex < mod_hi)
+            continue; // object inside the module = code/static, not a heap texture
+        uintptr_t rtex_vt = 0;
+        if (!icon_rpm_ptr(rtex, rtex_vt) || rtex_vt < mod_lo || rtex_vt >= mod_hi)
+            continue; // a real C++ object's vtable lives in the module .rdata
+        ++bound;
+        icon_detail_dump(rtex, base); // one-shot full Render::Texture layout (first bound)
+        // DETERMINISTIC hop (SOLVED): rtex+0x70 = the ID3D12Resource (vkd3d d3d12_resource;
+        // non-module vtable, DIM at +0x10 == 3 = TEXTURE2D, W/H at +0x20/+0x28). No BFS.
+        uintptr_t res = 0, resvt = 0;
+        if (!icon_rpm_ptr(rtex + 0x70, res) || res < 0x10000 || res >= 0x7fffffffffffULL)
+            continue;
+        if (!icon_rpm_ptr(res, resvt) || (resvt >= mod_lo && resvt < mod_hi))
+            continue; // a real D3D12 resource has a NON-module vtable (vkd3d / d3d12.dll)
+        int dim = 0, rw = 0, rh = 0;
+        icon_rpm_i32(res + 0x10, dim); icon_rpm_i32(res + 0x20, rw); icon_rpm_i32(res + 0x28, rh);
+        if (dim != 3)
+            continue; // not a TEXTURE2D → reject (guards against a stray non-module pointer)
+        ++resolved;
+        // Track unique sheet resources (icons on one sheet share a resource).
+        bool known = false;
+        for (uintptr_t s : g_icon_sheets) if (s == res) { known = true; break; }
+        if (!known && g_icon_sheets.size() < 32)
+        {
+            g_icon_sheets.push_back(res);
+            spdlog::info("[ICONTEX-LIVE] SHEET #{} res={:#x} resVt={:#x} {}x{} (DIM={})",
+                         g_icon_sheets.size(), res, resvt, rw, rh, dim);
+        }
+        if (logged++ < 12)
+            spdlog::info("[ICONTEX-LIVE] img={:#x} rect=({},{})-({},{}) sheet={}x{} | "
+                         "renderTex={:#x} res={:#x} resVt={:#x} {}x{}",
+                         it.img, it.x0, it.y0, it.x1, it.y1, it.w, it.h,
+                         rtex, res, resvt, rw, rh);
+    }
+    if (bound > 0)
+    {
+        spdlog::info("[ICONTEX-LIVE] summary: {}/{} bound, {} resolved via rtex+0x70, "
+                     "{} unique sheet resources",
+                     bound, g_icon_imgs.size(), resolved, g_icon_sheets.size());
+        // Deterministic hop is solid once several images resolve to a small sheet set.
+        if (resolved >= 5)
+            g_icon_live_done = true;
     }
 }
 

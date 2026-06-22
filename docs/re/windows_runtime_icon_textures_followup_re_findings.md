@@ -7,6 +7,41 @@ App 2.6.2.0 / ERR 2.2.9.6, imagebase `0x140000000`. Read-only. Corrects two offs
 
 ---
 
+## SOLVED LIVE (2026-06-22) — deterministic img → ID3D12Resource chain
+
+Runtime-verified via the extended `[ICONTEX-LIVE]` probe on a map-open frame (Linux/Proton,
+vkd3d-proton). **The BFS in §2/§5 was a dead end** (it wandered into a shared global GXTexture2D —
+non-deterministic: 20 hits one run, 0 the next). The real per-sheet GPU texture is reached by a
+FIXED offset chain, no search:
+
+```
+img (CSTextureImage, vt RVA 0x2bb8910)
+  +0x10  → Scaleform Render::Texture          // heap object; vtable RVA 0x2c0f318
+           (junk states to reject: 0 unbound, small int e.g. 0x6, or a CODE/module ptr 0x141xxxxxx.
+            VALID = heap object [outside module] whose vtable is INSIDE the module .rdata)
+  +0x70  → ID3D12Resource                      // vkd3d d3d12_resource; NON-module vtable (e.g. 0x1cafc0800)
+           +0x10 i32 = D3D12_RESOURCE_DIMENSION (==3 → TEXTURE2D, the validity gate)
+           +0x20 i32 = Width
+           +0x28 i32 = Height
+img +0x74/+0x78/+0x7c/+0x80 = sprite rect (x0,y0,x1,y1) ; +0x84/+0x88 = sheet W/H
+```
+
+Render::Texture internals (confirmed): `rtex+0x10`/`+0x18`/`+0xb0` are a CIRCULAR linked list of
+sibling textures (same vt 0x2c0f318; `+0xb0` points back to rtex) — NOT this texture's planes, so
+do not drill them. `rtex+0x38` packs the width (512). The ID3D12Resource is `rtex+0x70`.
+
+Live result: **18/18 images bound, 17 resolved (1 not yet drawn that tick), 2 unique sheet
+resources** — a 512×512 and a 2048×1024, both DIM=3, resVt=0x1cafc0800. Icons on the same TPF
+sheet share one resource → dedup by resource pointer (a few sheets total, not per-image).
+
+Path A is unblocked: hook CreateImage to register img+rect+dims (done), on a map-open frame read
+`[[img+0x10]+0x70]` = the ID3D12Resource (validate DIM==3), then CopyTextureRegion the rect into our
+own SRV texture on the game's D3D12 device/queue (the ImGui DX12 backend already hooks them).
+NOTE (Proton): the resource vtable is vkd3d's, not d3d12.dll's — call GetDesc() for the exact
+DXGI_FORMAT rather than guessing an offset; CopyTextureRegion is the same device, so it's valid.
+
+---
+
 ## 0. TL;DR — the BFS found nothing because the texture is bound LAZILY at render, one hop deeper
 
 The image never stores a `GXTexture2D` pointer. It stores a **`Scaleform::Render::Texture` at

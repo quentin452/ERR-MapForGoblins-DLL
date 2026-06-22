@@ -253,6 +253,11 @@ namespace goblin
     // log each worldmap icon image (sprite rect + backing GPU texture) → crack iconId↔image.
     void install_icon_texture_probe();
 
+    // Path A verify (findings §6): on a MAP-OPEN frame, re-read each registered image's
+    // img+0x10 (lazily-bound Render::Texture) → GXTexture2D+0x40 = ID3D12Resource. Call from
+    // the worldmap probe loop while the map is open; runs once per session after it resolves.
+    void dump_icon_textures_live();
+
     // Request a live icon refresh: the next time the engine runs its build the
     // detour replays it once more with the engine's own captured (this, ctx), so
     // an areaNo edit applied while the map is open re-renders without a reopen.

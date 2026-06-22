@@ -634,6 +634,10 @@ void probe_loop()
             // projection) when requested. Read-only; throttled + change-detected internally.
             if (goblin::config::dumpConverters)
                 dump_converters(base, menu_cursor);
+            // Path A verify: the map is open here → re-read the registered icon images'
+            // lazily-bound GPU textures (img+0x10 → GXTexture2D → ID3D12Resource). Once.
+            if (goblin::config::dumpIconTextures)
+                goblin::dump_icon_textures_live();
             // DISABLED (gamepad-cursor WIP): the all-instance enumerate_menu_cursors scan
             // (L1 0x10000 × L2 0x800 RPM reads) ran once per map-open and slowed the map
             // load noticeably — and it never reliably found the gamepad cursor. Removed; the
