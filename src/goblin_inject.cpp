@@ -2469,8 +2469,17 @@ void goblin::install_icon_texture_probe()
 // GetTexture, which would have to be on the render thread).
 void goblin::dump_icon_textures_live()
 {
-    if (!goblin::config::dumpIconTextures || g_icon_live_done || g_icon_imgs.empty())
+    if (!goblin::config::dumpIconTextures || g_icon_imgs.empty())
         return;
+    // REPEATABLE (throttled): images bind LAZILY + g_icon_imgs grows as the map draws more sprites,
+    // so re-resolve periodically to accumulate ALL SB_ERR_*/icons (the old one-shot caught only what
+    // was resident at the first run — e.g. a single grace frame). Candidate capture + logs dedup by
+    // name; the verbose [ICONTEX-LIVE] summary stays one-shot (g_icon_live_done).
+    static std::chrono::steady_clock::time_point s_last{};
+    auto now = std::chrono::steady_clock::now();
+    if (g_icon_live_done && now - s_last < std::chrono::milliseconds(500))
+        return;
+    s_last = now;
     uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
     if (!base)
         return;
@@ -2503,18 +2512,21 @@ void goblin::dump_icon_textures_live()
         if (dim != 3)
             continue; // not a TEXTURE2D → reject (guards against a stray non-module pointer)
         ++resolved;
-        // Grace sprite (RE e4b3f6a §6): the discovered/lit grace 'SB_ERR_Grace_Morning_Color' draws
-        // through CreateImage (not the find fn) → captured here in g_icon_imgs with its resolved
-        // sheet+rect. Log EVERY candidate (the sheet carries several grace frames) and LOCK the first
-        // exact 'Morning_Color' (deterministic; don't overwrite) — else fall back to the first grace.
-        if (it.name.rfind("SB_ERR_Grace", 0) == 0)
+        // ERR map sprites (RE e4b3f6a §6): the discovered grace + all other ERR map icons draw through
+        // CreateImage (not the find fn) → captured here with resolved sheet+rect. Collect EVERY
+        // 'SB_ERR_*' candidate (dev viewer — to test whether non-grace icons harvest cleanly vs the
+        // grace's time-of-day variants), and LOCK the grace sprite on the exact 'Morning_Color' frame.
+        if (it.name.rfind("SB_ERR_", 0) == 0)
         {
             int gfmt = 0; icon_rpm_i32(res + 0x30, gfmt);
+            bool is_grace = it.name.rfind("SB_ERR_Grace", 0) == 0;
             bool exact = it.name.find("Morning_Color") != std::string::npos;
-            spdlog::info("[GRACE-CAND] '{}' rect=({},{})-({},{}) res={:#x} fmt={}{}",
-                         it.name, it.x0, it.y0, it.x1, it.y1, res, gfmt, exact ? " <-Morning_Color" : "");
+            static std::set<std::string> seen_cand;   // dedup across the repeatable re-runs
             std::lock_guard<std::mutex> lk(g_harvest_mtx);
+            if (seen_cand.insert(it.name).second)      // NEW SB_ERR_ name → log + add to the viewer
             {
+                spdlog::info("[ICON-CAND] '{}' rect=({},{})-({},{}) res={:#x} fmt={}{}",
+                             it.name, it.x0, it.y0, it.x1, it.y1, res, gfmt, exact ? " <-Morning_Color" : "");
                 goblin::GraceCandidate gc;
                 gc.name = it.name;
                 gc.spr.sheet = reinterpret_cast<void *>(res);
@@ -2523,9 +2535,9 @@ void goblin::dump_icon_textures_live()
                 gc.spr.sheetH = static_cast<unsigned>(rh);
                 gc.spr.format = static_cast<unsigned>(gfmt);
                 gc.spr.valid = true;
-                if (g_grace_cands.size() < 32) g_grace_cands.push_back(gc);
+                if (g_grace_cands.size() < 64) g_grace_cands.push_back(gc);
             }
-            if ((exact && !g_grace_locked) || !g_grace_sprite.valid)
+            if (is_grace && ((exact && !g_grace_locked) || !g_grace_sprite.valid))
             {
                 g_grace_sprite.sheet = reinterpret_cast<void *>(res);
                 g_grace_sprite.x0 = it.x0; g_grace_sprite.y0 = it.y0;
@@ -2548,7 +2560,7 @@ void goblin::dump_icon_textures_live()
             spdlog::info("[ICONTEX-LIVE] SHEET #{} res={:#x} resVt={:#x} {}x{} (DIM={})",
                          g_icon_sheets.size(), res, resvt, rw, rh, dim);
         }
-        if (logged++ < 16)
+        if (!g_icon_live_done && logged++ < 16)   // verbose only on the first pass (re-runs are quiet)
             spdlog::info("[ICONTEX-LIVE] name='{}' rect=({},{})-({},{}) sheet={}x{} | res={:#x} {}x{}",
                          it.name, it.x0, it.y0, it.x1, it.y1, it.w, it.h, res, rw, rh);
     }

@@ -530,17 +530,18 @@ namespace
     // wrong-rect bug from a copy/UV bug). Engine-owned sheet (don't Release); dev/map-open only.
     struct GraceDbg { ImTextureID tex; ImVec2 uv0, uv1; std::string name; int w, h; };
     std::vector<GraceDbg> g_grace_dbg;
-    bool g_grace_dbg_done = false;
+    size_t g_grace_dbg_built = 0;   // # candidates already turned into SRVs (the list grows live)
 
     void ensure_grace_debug()
     {
-        if (g_grace_dbg_done || !g_device || !g_srv_heap) return;
+        if (!g_device || !g_srv_heap) return;
         std::vector<goblin::GraceCandidate> cands = goblin::grace_candidates();
-        if (cands.empty()) return;
+        if (cands.size() <= g_grace_dbg_built) return;   // only build SRVs for NEW candidates
         const UINT inc = g_device->GetDescriptorHandleIncrementSize(
             D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        for (const goblin::GraceCandidate &c : cands)
+        for (size_t i = g_grace_dbg_built; i < cands.size(); ++i)
         {
+            const goblin::GraceCandidate &c = cands[i];
             if (!c.spr.sheet || c.spr.sheetW == 0 || c.spr.sheetH == 0 || g_next_item_srv >= 256)
                 continue;
             UINT idx = g_next_item_srv++;
@@ -562,7 +563,7 @@ namespace
             d.name = c.name; d.w = c.spr.x1 - c.spr.x0; d.h = c.spr.y1 - c.spr.y0;
             g_grace_dbg.push_back(d);
         }
-        g_grace_dbg_done = true;
+        g_grace_dbg_built = cands.size();
     }
 
     // Upload the atlas once g_command_queue is captured. Self-gates; on failure it
@@ -929,11 +930,11 @@ namespace
             // Grace-sprite GPU debug: draw every harvested SB_ERR_Grace_* frame (full-sheet SRV +
             // UV, no copy) so we can visually pick the correct grace rect. Open the world map (with a
             // discovered grace) to populate. The frame that looks like a Site of Grace = the one to lock.
-            if (goblin::config::dumpIconTextures && ImGui::CollapsingHeader("Grace sprites (GPU debug)"))
+            if (goblin::config::dumpIconTextures && ImGui::CollapsingHeader("ERR map sprites (GPU debug)"))
             {
                 ensure_grace_debug();
                 if (g_grace_dbg.empty())
-                    ImGui::TextDisabled("open the world map (with a grace) to harvest grace frames");
+                    ImGui::TextDisabled("open the world map to harvest SB_ERR_* map sprites");
                 for (const GraceDbg &d : g_grace_dbg)
                 {
                     ImGui::Image(d.tex, ImVec2(64, 64), d.uv0, d.uv1);
