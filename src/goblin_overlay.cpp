@@ -674,19 +674,27 @@ namespace
     // wrong-rect bug from a copy/UV bug). Engine-owned sheet (don't Release); dev/map-open only.
     struct GraceDbg { ImTextureID tex; ImVec2 uv0, uv1; std::string name; int w, h; };
     std::vector<GraceDbg> g_grace_dbg;
-    size_t g_grace_dbg_built = 0;   // # candidates already turned into SRVs (the list grows live)
 
     void ensure_grace_debug()
     {
         if (!g_device || !g_srv_heap) return;
         std::vector<goblin::GraceCandidate> cands = goblin::grace_candidates();
-        if (cands.size() <= g_grace_dbg_built) return;   // only build SRVs for NEW candidates
+        // Build one SRV per candidate that has a bound sheet. Candidates are now LISTED before their
+        // GPU sheet binds (vkd3d/Proton binds lazily — a candidate can appear unbound, then resolve a
+        // few frames later), so we can't use a high-water mark: it would skip an entry permanently once
+        // it binds. g_grace_dbg holds one entry per built NAME, so once every candidate is built the
+        // sizes match and we early-out; until then we re-scan (cands is tiny, ≤64).
+        if (g_grace_dbg.size() >= cands.size()) return;
         const UINT inc = g_device->GetDescriptorHandleIncrementSize(
             D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        for (size_t i = g_grace_dbg_built; i < cands.size(); ++i)
+        for (size_t i = 0; i < cands.size(); ++i)
         {
             const goblin::GraceCandidate &c = cands[i];
-            if (!c.spr.sheet || c.spr.sheetW == 0 || c.spr.sheetH == 0 || g_next_item_srv >= 256)
+            if (!c.spr.sheet || c.spr.sheetW == 0 || c.spr.sheetH == 0)
+                continue;   // listed but not bound yet — its SRV gets built once the texture resolves
+            bool already = false;
+            for (const GraceDbg &d : g_grace_dbg) if (d.name == c.name) { already = true; break; }
+            if (already || g_next_item_srv >= 256)
                 continue;
             UINT idx = g_next_item_srv++;
             D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
@@ -707,7 +715,6 @@ namespace
             d.name = c.name; d.w = c.spr.x1 - c.spr.x0; d.h = c.spr.y1 - c.spr.y0;
             g_grace_dbg.push_back(d);
         }
-        g_grace_dbg_built = cands.size();
     }
 
     // Upload the atlas once g_command_queue is captured. Self-gates; on failure it

@@ -2933,34 +2933,40 @@ void goblin::dump_icon_textures_live()
     int bound = 0, resolved = 0, logged = 0;
     for (const IconImg &it : g_icon_imgs)
     {
-        uintptr_t rtex = 0;
-        // A REAL Scaleform Render::Texture = heap object (OUTSIDE the ER module) whose vtable
-        // is INSIDE the module (.rdata). img+0x10 also takes junk states: 0 (unbound), a small
-        // int (0x6), or a CODE/module pointer (0x141xxxxxx) — reject all three.
+        // ── Resolve the BOUND GPU sheet (binds LAZILY on first render). On vkd3d/Proton far fewer
+        // sprites bind than on native D3D12, so this often fails on Linux even for valid sprites.
+        // We DO NOT `continue` on failure: the candidate LIST is registered below GPU-independently
+        // (fix: the list used to drop 3-4 candidates on Linux because only the 1-2 sprites that
+        // happened to bind ever reached the push_back). Only the DISPLAY paths require sheet_ok.
         const uintptr_t mod_lo = base, mod_hi = base + 0x6000000;
-        if (!icon_rpm_ptr(it.img + 0x10, rtex) || rtex < 0x10000 || rtex >= 0x7fffffffffffULL)
-            continue;
-        if (rtex >= mod_lo && rtex < mod_hi)
-            continue; // object inside the module = code/static, not a heap texture
-        uintptr_t rtex_vt = 0;
-        if (!icon_rpm_ptr(rtex, rtex_vt) || rtex_vt < mod_lo || rtex_vt >= mod_hi)
-            continue; // a real C++ object's vtable lives in the module .rdata
-        ++bound;
-        icon_detail_dump(rtex, base); // one-shot full Render::Texture layout (first bound)
-        // rtex+0x70 = the backing ID3D12Resource. Do NOT gate on the RPM-read DIM at res+0x10: the
-        // vkd3d resource layout drifted (a driver/game update; res+0x10 no longer reads 3 and the live
-        // dump showed "90 bound, 0 resolved") — but res IS the resource (ensure_item_icon_srv /
-        // cache_icon_from_img use exactly rtex+0x70 and GetDesc() on the render thread still returns the
-        // right desc). Just validate a non-module vtable (a real COM object) and store it; the overlay
-        // reads the authoritative format/dims via ID3D12Resource::GetDesc() at copy time.
-        uintptr_t res = 0, resvt = 0;
-        if (!icon_rpm_ptr(rtex + 0x70, res) || res < 0x10000 || res >= 0x7fffffffffffULL)
-            continue;
-        if (!icon_rpm_ptr(res, resvt) || (resvt >= mod_lo && resvt < mod_hi))
-            continue; // a real D3D12 resource has a NON-module vtable (vkd3d / d3d12.dll)
-        int dim = 0, rw = 0, rh = 0;
-        icon_rpm_i32(res + 0x10, dim); icon_rpm_i32(res + 0x20, rw); icon_rpm_i32(res + 0x28, rh);
-        ++resolved;
+        uintptr_t rtex = 0, res = 0, resvt = 0;
+        int dim = 0, rw = 0, rh = 0, gfmt = 0;
+        bool sheet_ok = false;
+        // A REAL Scaleform Render::Texture = heap object (OUTSIDE the ER module) whose vtable is
+        // INSIDE the module (.rdata). img+0x10 also takes junk states: 0 (unbound), a small int
+        // (0x6), or a CODE/module pointer (0x141xxxxxx) — reject all three.
+        if (icon_rpm_ptr(it.img + 0x10, rtex) && rtex >= 0x10000 && rtex < 0x7fffffffffffULL &&
+            !(rtex >= mod_lo && rtex < mod_hi))
+        {
+            uintptr_t rtex_vt = 0;
+            if (icon_rpm_ptr(rtex, rtex_vt) && rtex_vt >= mod_lo && rtex_vt < mod_hi)
+            {
+                ++bound;
+                icon_detail_dump(rtex, base); // one-shot full Render::Texture layout (first bound)
+                // rtex+0x70 = the backing ID3D12Resource. Do NOT gate on the RPM-read DIM at res+0x10:
+                // the vkd3d resource layout drifted (a driver/game update; res+0x10 no longer reads 3) —
+                // but res IS the resource; just validate a non-module vtable (a real COM object). The
+                // overlay reads the authoritative format/dims via ID3D12Resource::GetDesc() at copy time.
+                if (icon_rpm_ptr(rtex + 0x70, res) && res >= 0x10000 && res < 0x7fffffffffffULL &&
+                    icon_rpm_ptr(res, resvt) && !(resvt >= mod_lo && resvt < mod_hi))
+                {
+                    icon_rpm_i32(res + 0x10, dim); icon_rpm_i32(res + 0x20, rw);
+                    icon_rpm_i32(res + 0x28, rh); icon_rpm_i32(res + 0x30, gfmt);
+                    ++resolved;
+                    sheet_ok = true; // a bound, displayable GPU texture
+                }
+            }
+        }
         // ERR map sprites (RE e4b3f6a §6): the discovered grace + all other ERR map icons draw through
         // CreateImage (not the find fn) → captured here with resolved sheet+rect. Collect EVERY
         // 'SB_ERR_*' candidate (dev viewer — to test whether non-grace icons harvest cleanly vs the
@@ -2968,7 +2974,6 @@ void goblin::dump_icon_textures_live()
         // with a grace-sized rect (any time-of-day; the engine resolves only one per session).
         if (it.name.rfind("SB_ERR_", 0) == 0 || it.name.rfind("MENU_MAP_", 0) == 0)
         {
-            int gfmt = 0; icon_rpm_i32(res + 0x30, gfmt);
             // The REAL grace = the mod's gfx sprite MENU_MAP_GOBLIN_Grace (force-created via img://);
             // SB_ERR_Grace_*_Color is the native time-tinted pin (wrong). Lock on the canonical; an
             // SB_ERR_Grace _Color frame is kept only as an overridable fallback. (MENU_MAP_ sprites have
@@ -2982,23 +2987,41 @@ void goblin::dump_icon_textures_live()
             bool lit = it.name.rfind("MENU_MAP_", 0) == 0 || it.name.find("Color") != std::string::npos;
             int gw = it.x1 - it.x0, gh = it.y1 - it.y0;
             bool rect_ok = gw >= 8 && gw <= 256 && gh >= 8 && gh <= 256;
-            static std::set<std::string> seen_cand;   // dedup across the repeatable re-runs
             std::lock_guard<std::mutex> lk(g_harvest_mtx);
-            if (seen_cand.insert(it.name).second)      // NEW SB_ERR_/MENU_MAP_ name → log + add to viewer
+            // Candidate LIST is GPU-INDEPENDENT — register by name+rect whether or not the sheet is
+            // bound, so vkd3d/Proton (which binds far fewer sprites) lists the SAME candidates as
+            // native D3D12. Find-or-add by name; when the sheet later binds (sheet_ok), UPGRADE the
+            // stored candidate in place so the F1 picker can actually DISPLAY it. (Sprites the game
+            // never draws — e.g. the vanilla Bonfire on ERR — stay listed but never become displayable;
+            // that's the inherent GPU limitation, not a list bug.)
+            goblin::GraceCandidate *cand = nullptr;
+            for (auto &gc : g_grace_cands) if (gc.name == it.name) { cand = &gc; break; }
+            bool is_new = (cand == nullptr);
+            if (is_new && g_grace_cands.size() < 64)
             {
-                spdlog::info("[ICON-CAND] '{}' rect=({},{})-({},{}) res={:#x} fmt={}{}",
-                             it.name, it.x0, it.y0, it.x1, it.y1, res, gfmt, canon ? " <-CANONICAL grace" : "");
-                goblin::GraceCandidate gc;
-                gc.name = it.name;
-                gc.spr.sheet = reinterpret_cast<void *>(res);
-                gc.spr.x0 = it.x0; gc.spr.y0 = it.y0; gc.spr.x1 = it.x1; gc.spr.y1 = it.y1;
-                gc.spr.sheetW = static_cast<unsigned long long>(rw);
-                gc.spr.sheetH = static_cast<unsigned>(rh);
-                gc.spr.format = static_cast<unsigned>(gfmt);
-                gc.spr.valid = true;
-                if (g_grace_cands.size() < 64) g_grace_cands.push_back(gc);
+                g_grace_cands.push_back(goblin::GraceCandidate{});
+                cand = &g_grace_cands.back();
+                cand->name = it.name;
+                cand->spr.x0 = it.x0; cand->spr.y0 = it.y0; cand->spr.x1 = it.x1; cand->spr.y1 = it.y1;
+                cand->spr.valid = false;   // listed-only until its texture binds
             }
-            if (is_grace && lit && rect_ok && !g_grace_locked && (canon || !g_grace_sprite.valid))
+            if (cand && sheet_ok && !cand->spr.valid)   // bound now → resolve sheet so it's displayable
+            {
+                cand->spr.sheet = reinterpret_cast<void *>(res);
+                cand->spr.x0 = it.x0; cand->spr.y0 = it.y0; cand->spr.x1 = it.x1; cand->spr.y1 = it.y1;
+                cand->spr.sheetW = static_cast<unsigned long long>(rw);
+                cand->spr.sheetH = static_cast<unsigned>(rh);
+                cand->spr.format = static_cast<unsigned>(gfmt);
+                cand->spr.valid = true;
+            }
+            if (is_new)
+                spdlog::info("[ICON-CAND] '{}' rect=({},{})-({},{}) res={:#x} fmt={} {}{}",
+                             it.name, it.x0, it.y0, it.x1, it.y1, res, gfmt,
+                             sheet_ok ? "bound" : "LISTED(unbound)", canon ? " <-CANONICAL grace" : "");
+            // ── DISPLAY paths below require a BOUND sheet (only rendered sprites have a GPU texture
+            // to copy). Keeping these gated on sheet_ok is what preserves the Windows display while the
+            // list above is decoupled — the reverted attempt broke display by lazy-resolving these too.
+            if (sheet_ok && is_grace && lit && rect_ok && !g_grace_locked && (canon || !g_grace_sprite.valid))
             {
                 g_grace_sprite.sheet = reinterpret_cast<void *>(res);
                 g_grace_sprite.x0 = it.x0; g_grace_sprite.y0 = it.y0;
@@ -3014,7 +3037,7 @@ void goblin::dump_icon_textures_live()
             }
             // ERR dungeon-style grace — captured separately; its presence = ERR installed. The renderer
             // uses it for dungeon graces. Store once (it doesn't change).
-            if (it.name.rfind("MENU_MAP_ERR_GraceUnderground", 0) == 0 && rect_ok &&
+            if (sheet_ok && it.name.rfind("MENU_MAP_ERR_GraceUnderground", 0) == 0 && rect_ok &&
                 !g_grace_dungeon_sprite.valid)
             {
                 g_grace_dungeon_sprite.sheet = reinterpret_cast<void *>(res);
@@ -3028,6 +3051,8 @@ void goblin::dump_icon_textures_live()
                              it.name, it.x0, it.y0, it.x1, it.y1, res);
             }
         }
+        if (!sheet_ok)
+            continue;   // unbound entry: candidate was listed above; the sheet tracking below needs res
         // Track unique sheet resources (icons on one sheet share a resource).
         bool known = false;
         for (uintptr_t s : g_icon_sheets) if (s == res) { known = true; break; }
