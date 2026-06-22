@@ -271,6 +271,104 @@ namespace
         return true;
     }
 
+    // ── Per-item icon: copy the live engine sheet sub-rect → our own SRV (sprite findings P2b) ──
+    // Looks up a HARVESTED icon (goblin::harvested_icon), CopyTextureRegion's its rect GPU→GPU from
+    // the engine's BCn menu sheet into a small dest texture, and makes an SRV (heap slot 2+). Cached
+    // per iconId (incl. failures, to not retry every frame). Runs on the render thread. Returns the
+    // GPU handle ptr (ImTextureID) or 0 on miss/fail → caller falls back to the baked atlas.
+    struct ItemIconSrv { ID3D12Resource *tex = nullptr; D3D12_GPU_DESCRIPTOR_HANDLE gpu{}; bool ok = false; };
+    std::map<int, ItemIconSrv> g_item_icon_srvs;
+    UINT g_next_item_srv = 2;   // 0 = ImGui font, 1 = category atlas
+
+    UINT64 ensure_item_icon_srv(int iconId)
+    {
+        auto it = g_item_icon_srvs.find(iconId);
+        if (it != g_item_icon_srvs.end()) return it->second.ok ? it->second.gpu.ptr : 0;
+
+        ItemIconSrv slot;  // stored even on failure → no per-frame retry
+        goblin::ItemSprite sp;
+        if (g_device && g_command_queue && g_srv_heap && g_next_item_srv < 256 &&
+            goblin::harvested_icon(iconId, sp) && sp.sheet)
+        {
+            int w = sp.x1 - sp.x0, h = sp.y1 - sp.y0;
+            auto *src_res = reinterpret_cast<ID3D12Resource *>(sp.sheet);
+            DXGI_FORMAT fmt = static_cast<DXGI_FORMAT>(sp.format);
+            if (w > 0 && h > 0 && w <= 1024 && h <= 1024 && (w % 4) == 0 && (h % 4) == 0)
+            {
+                D3D12_HEAP_PROPERTIES hp{}; hp.Type = D3D12_HEAP_TYPE_DEFAULT;
+                D3D12_RESOURCE_DESC td{};
+                td.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+                td.Width = static_cast<UINT64>(w); td.Height = static_cast<UINT>(h);
+                td.DepthOrArraySize = 1; td.MipLevels = 1; td.Format = fmt;
+                td.SampleDesc.Count = 1; td.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+                if (SUCCEEDED(g_device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &td,
+                        D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&slot.tex))))
+                {
+                    g_frames[0].allocator->Reset();
+                    g_command_list->Reset(g_frames[0].allocator, nullptr);
+                    // src sheet: assume PIXEL_SHADER_RESOURCE → COPY_SOURCE (sampled engine texture)
+                    D3D12_RESOURCE_BARRIER bs{};
+                    bs.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                    bs.Transition.pResource = src_res; bs.Transition.Subresource = 0;
+                    bs.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+                    bs.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+                    g_command_list->ResourceBarrier(1, &bs);
+
+                    D3D12_TEXTURE_COPY_LOCATION dst{}; dst.pResource = slot.tex;
+                    dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; dst.SubresourceIndex = 0;
+                    D3D12_TEXTURE_COPY_LOCATION csrc{}; csrc.pResource = src_res;
+                    csrc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; csrc.SubresourceIndex = 0;
+                    D3D12_BOX box{};
+                    box.left = sp.x0; box.top = sp.y0; box.front = 0;
+                    box.right = sp.x1; box.bottom = sp.y1; box.back = 1;
+                    g_command_list->CopyTextureRegion(&dst, 0, 0, 0, &csrc, &box);
+
+                    D3D12_RESOURCE_BARRIER after[2]{};
+                    after[0] = bs;  // restore src: COPY_SOURCE → PIXEL_SHADER_RESOURCE
+                    after[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+                    after[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+                    after[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                    after[1].Transition.pResource = slot.tex; after[1].Transition.Subresource = 0;
+                    after[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+                    after[1].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+                    g_command_list->ResourceBarrier(2, after);
+                    g_command_list->Close();
+                    ID3D12CommandList *lists[] = {g_command_list};
+                    g_command_queue->ExecuteCommandLists(1, lists);
+
+                    ID3D12Fence *fence = nullptr;
+                    if (SUCCEEDED(g_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))))
+                    {
+                        HANDLE ev = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+                        g_command_queue->Signal(fence, 1);
+                        if (ev && fence->GetCompletedValue() < 1)
+                        { fence->SetEventOnCompletion(1, ev); WaitForSingleObject(ev, 1000); }
+                        if (ev) CloseHandle(ev);
+                        fence->Release();
+                    }
+                    const UINT inc = g_device->GetDescriptorHandleIncrementSize(
+                        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                    UINT idx = g_next_item_srv++;
+                    D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
+                    cpu.ptr += static_cast<SIZE_T>(inc) * idx;
+                    D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
+                    sd.Format = fmt; sd.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+                    sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                    sd.Texture2D.MipLevels = 1;
+                    g_device->CreateShaderResourceView(slot.tex, &sd, cpu);
+                    slot.gpu = g_srv_heap->GetGPUDescriptorHandleForHeapStart();
+                    slot.gpu.ptr += static_cast<SIZE_T>(inc) * idx;
+                    slot.ok = true;
+                    spdlog::info("[ICONSRV] iconId={} {}x{} fmt={} -> slot {} gpu={:#x}",
+                                 iconId, w, h, static_cast<int>(fmt), idx, slot.gpu.ptr);
+                }
+            }
+        }
+        if (!slot.ok && slot.tex) { slot.tex->Release(); slot.tex = nullptr; }
+        g_item_icon_srvs[iconId] = slot;
+        return slot.ok ? slot.gpu.ptr : 0;
+    }
+
     // Upload the atlas once g_command_queue is captured. Self-gates; on failure it
     // marks ready anyway so we don't retry every frame (just falls back to circles).
     void try_upload_atlas()
@@ -447,10 +545,11 @@ namespace
         UINT rtv_size = g_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
         D3D12_CPU_DESCRIPTOR_HANDLE rtv_cpu = g_rtv_heap->GetCPUDescriptorHandleForHeapStart();
 
-        // SRV heap (shader-visible): [0] ImGui font, [1] the category-icon atlas.
+        // SRV heap (shader-visible): [0] ImGui font, [1] the category-icon atlas, [2..] per-item
+        // icons copied live from the engine's menu sheets (see ensure_item_icon_srv).
         D3D12_DESCRIPTOR_HEAP_DESC srv_desc{};
         srv_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        srv_desc.NumDescriptors = 2;
+        srv_desc.NumDescriptors = 256;
         srv_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         if (FAILED(g_device->CreateDescriptorHeap(&srv_desc, IID_PPV_ARGS(&g_srv_heap))))
         {
@@ -601,6 +700,23 @@ namespace
             ImGui::SameLine();
             ImGui::TextDisabled("F1 close | %.0f fps", io.Framerate);
             ImGui::Separator();
+
+            // P2b vertical slice: draw live-harvested item icons (copied GPU→GPU from the engine's
+            // menu sheets). Open the inventory first to harvest, then check here. Dev-gated.
+            if (goblin::config::dumpIconTextures && ImGui::CollapsingHeader("Item icons (P2b test)"))
+            {
+                static const int test_ids[] = {1013, 18000, 8300, 8307, 45188, 10642, 321, 1010, 594};
+                int drawn = 0;
+                for (int id : test_ids)
+                {
+                    UINT64 h = ensure_item_icon_srv(id);
+                    if (!h) continue;
+                    if (drawn++ % 6 != 0) ImGui::SameLine();
+                    ImGui::Image(reinterpret_cast<ImTextureID>(h), ImVec2(48, 48));
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("iconId %d", id);
+                }
+                if (!drawn) ImGui::TextDisabled("no icons harvested yet — open inventory first");
+            }
 
             // Master on/off + Save.
             bool icons_on = goblin::ui::icons_enabled();
