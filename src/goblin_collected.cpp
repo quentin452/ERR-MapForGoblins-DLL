@@ -293,9 +293,14 @@ static void wgm_snap_from_cache(const WGMCacheTile &ct, WGMSnapshot &snap)
     {
         snap.occupied.emplace_back(ci.px, ci.py, ci.pz, ci.name);
         if (!ci.track_alive) continue;
-        uint8_t f263 = 0, f26B = 0;
-        safe_read((char *)ci.geom_ins + 0x263, &f263, 1);
-        safe_read((char *)ci.geom_ins + 0x26B, &f26B, 1);
+        // The two alive flags are at +0x263 / +0x26B → read the 9-byte span in ONE RPM
+        // instead of two (halves the per-instance warm-path cost — the recurring read_wgm
+        // tax under Wine, where every RPM is a wineserver round-trip). f263 = bits[0],
+        // f26B = bits[8]; decode unchanged.
+        uint8_t fl[9] = {};
+        if (!safe_read((char *)ci.geom_ins + 0x263, fl, 9))
+            continue;
+        uint8_t f263 = fl[0], f26B = fl[8];
         if ((f263 & 0x02) && !(f26B & 0x10))
         {
             snap.alive_names.insert(ci.name);
@@ -408,18 +413,38 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                 size_t count = ((uintptr_t)vec_end - (uintptr_t)vec_begin) / 8;
                 if (count > 10000) count = 10000;
 
+                // Bulk-read the whole contiguous geom_ins POINTER vector in ONE RPM
+                // (instead of one RPM per element). Under Wine each RPM is a wineserver
+                // round-trip, so this cache-MISS path (the felt ~960ms freeze on tile
+                // load) is dominated by raw call count. Fallback: per-element on failure.
+                std::vector<void *> ins_ptrs(count, nullptr);
+                bool vec_bulk = safe_read(vec_begin, ins_ptrs.data(), count * 8);
+
                 for (size_t i = 0; i < count; i++)
                 {
                     void *geom_ins = nullptr;
-                    safe_read((char *)vec_begin + i * 8, &geom_ins, 8);
+                    if (vec_bulk)
+                        geom_ins = ins_ptrs[i];
+                    else
+                        safe_read((char *)vec_begin + i * 8, &geom_ins, 8);
                     if (!geom_ins) continue;
 
+                    // Bulk the geom_ins header (0..0x26C) in ONE RPM: covers the MSB-part
+                    // pointer (+0x48 = +0x18*3) and BOTH alive flags (+0x263 / +0x26B),
+                    // replacing 3 separate reads. geom_ins objects are >0x270, so this
+                    // never straddles past the alloc in practice; skip on a faulted read.
+                    uint8_t gi[0x26C] = {};
+                    if (!safe_read(geom_ins, gi, sizeof(gi))) continue;
                     void *msb_part_ptr = nullptr;
-                    safe_read((char *)geom_ins + 0x18 + 0x18 + 0x18, &msb_part_ptr, 8);
+                    memcpy(&msb_part_ptr, gi + 0x18 + 0x18 + 0x18, 8);
                     if (!msb_part_ptr) continue;
 
+                    // Bulk the MSB-part header (0..0x2C) in ONE RPM: the name pointer
+                    // (+0x00) and the runtime position (+0x20, 3 floats).
+                    uint8_t mp[0x2C] = {};
+                    if (!safe_read(msb_part_ptr, mp, sizeof(mp))) continue;
                     void *name_ptr = nullptr;
-                    safe_read(msb_part_ptr, &name_ptr, 8);
+                    memcpy(&name_ptr, mp + 0, 8);
                     if (!name_ptr) continue;
 
                     wchar_t name_buf[64] = {};
@@ -440,11 +465,12 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                     if (!is_tracked_family)
                         continue;
 
-                    // Runtime position lives in MsbPart +0x20 (3 floats)
+                    // Runtime position lives in MsbPart +0x20 (3 floats) — already in the
+                    // bulked MSB-part blob, no extra RPM.
                     float px = 0, py = 0, pz = 0;
-                    safe_read((char *)msb_part_ptr + 0x20 + 0, &px, 4);
-                    safe_read((char *)msb_part_ptr + 0x20 + 4, &py, 4);
-                    safe_read((char *)msb_part_ptr + 0x20 + 8, &pz, 4);
+                    memcpy(&px, mp + 0x20 + 0, 4);
+                    memcpy(&py, mp + 0x20 + 4, 4);
+                    memcpy(&pz, mp + 0x20 + 8, 4);
 
                     auto &snap = result[block_id];
 
@@ -458,9 +484,8 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                     {
                         // +0x263 bit1: persistent alive flag (survives restart)
                         // +0x26B bit4: immediate collection flag (lost on tile reload)
-                        uint8_t f263 = 0, f26B = 0;
-                        safe_read((char *)geom_ins + 0x263, &f263, 1);
-                        safe_read((char *)geom_ins + 0x26B, &f26B, 1);
+                        // Both already in the bulked geom_ins blob (gi), no extra RPM.
+                        uint8_t f263 = gi[0x263], f26B = gi[0x26B];
 
                         bool alive = (f263 & 0x02) && !(f26B & 0x10);
                         if (alive)
