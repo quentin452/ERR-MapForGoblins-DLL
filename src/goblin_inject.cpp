@@ -1861,6 +1861,54 @@ void icon_detail_dump(uintptr_t rtex, uintptr_t base)
     }
 }
 
+// Live anchors: the numeric iconIds the menu actually DRAW (MENU_FL_<N>) as the user browses.
+static std::vector<uint16_t> g_menu_iconids;
+
+// Correlate the live-captured iconIds against the EquipParam tables: for each param, the offset
+// whose u16 column CONTAINS the most captured iconIds = that param's iconId offset (every drawn
+// item's iconId lives at the same offset). This is the anchored self-calibration that the abstract
+// distinct/density heuristics couldn't do — the anchors are real, drawn items. Hover a few items of
+// each type → [ICONFIND] converges. Dev-only (dump_icon_textures).
+static void correlate_menu_iconids()
+{
+    std::set<uint16_t> ids(g_menu_iconids.begin(), g_menu_iconids.end());
+    if (ids.size() < 3)
+        return;
+    struct P { const wchar_t *name; const char *tag; };
+    static const P params[] = {
+        {L"EquipParamWeapon", "Weapon"}, {L"EquipParamProtector", "Protector"},
+        {L"EquipParamAccessory", "Accessory"}, {L"EquipParamGoods", "Goods"},
+        {L"EquipParamGem", "Gem"}, {L"EquipParamMagic", "Magic"},
+    };
+    for (const P &p : params)
+    {
+        try
+        {
+            std::vector<uintptr_t> bases;
+            for (auto row : from::params::get_param<uint8_t>(p.name))
+                bases.push_back(reinterpret_cast<uintptr_t>(&row.second));
+            if (bases.size() < 2) continue;
+            uintptr_t stride = bases[1] - bases[0];
+            if (stride < 4 || stride > 0x2000) continue;
+            int bestOff = -1, bestHits = 0;
+            for (uintptr_t off = 0; off + 2 <= stride; ++off)
+            {
+                std::set<uint16_t> hit;
+                for (uintptr_t b : bases)
+                {
+                    uint16_t v = *reinterpret_cast<uint16_t *>(b + off);
+                    if (ids.count(v)) hit.insert(v);
+                }
+                if ((int)hit.size() > bestHits) { bestHits = (int)hit.size(); bestOff = (int)off; }
+            }
+            if (bestHits >= 2)
+                spdlog::info("[ICONFIND] {} off=0x{:x} matches {}/{} captured iconIds",
+                             p.tag, bestOff, bestHits, (int)ids.size());
+        }
+        catch (...) {}
+    }
+}
+
 void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
 {
     if (!goblin::config::dumpIconTextures || !img)
@@ -1888,8 +1936,23 @@ void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
     {
         static std::set<std::string> seen;
         if (seen.insert(name).second)
+        {
             spdlog::info("[ICONMAP] '{}' rect=({},{})-({},{}) sheet={}x{} ({}x{})",
                          name, x0, y0, x1, y1, w, h, x1 - x0, y1 - y0);
+            // MENU_FL_<N> = a drawn item icon → N is a live iconId anchor. Accumulate + correlate
+            // against the EquipParam tables to pin the iconId offset per param ([ICONFIND]).
+            if (name.rfind("MENU_FL_", 0) == 0 && name.size() > 8 && name[8] >= '0' && name[8] <= '9')
+            {
+                uint16_t N = static_cast<uint16_t>(std::atoi(name.c_str() + 8));
+                if (std::find(g_menu_iconids.begin(), g_menu_iconids.end(), N) == g_menu_iconids.end())
+                {
+                    g_menu_iconids.push_back(N);
+                    size_t s = g_menu_iconids.size();
+                    if (s == 3 || s == 5 || s == 8 || s == 12 || s == 18 || s == 28 || s == 44)
+                        correlate_menu_iconids();
+                }
+            }
+        }
     }
     // Verbose per-image line, capped (avoid flooding when a busy menu creates hundreds).
     if (logged < 60)
