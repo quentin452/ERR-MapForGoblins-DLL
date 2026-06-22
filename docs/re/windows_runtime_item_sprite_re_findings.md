@@ -116,3 +116,30 @@ Cold fallback = the baked per-category PNG (mirrors `live_projection`'s baked fa
   whose rect matches your `[ICONMAP]` capture for that id (proves draw-free find). Then close the
   menu and retry → confirms/measures the residency limit (§5).
 ```
+
+## 7. Coverage gap + future RE (P2b validated, 2026-06-22)
+
+P2b shipped the full pixel path live (find-hook harvest → CopyTextureRegion BC1 → our SRV → drawn;
+sheets = `BC1_UNORM` fmt 71, 4096×2048; copy persists in OUR texture so eviction is moot). The
+**remaining limitation = COVERAGE, not persistence**: the find-hook only captures icons whose sheet
+the engine has LOADED + RESOLVED — i.e. items the player has BROWSED (inventory/menu). An icon never
+browsed this session → never harvested → the marker falls back to the baked per-category PNG. So
+per-item icons "fill in" as the player opens menus, never regressing (the copy is permanent), but a
+fresh save shows category icons until things are browsed.
+
+**Future RE to close the gap (proactive / full harvest) — pick one when desired:**
+1. **Force-load the item-icon sheets** at startup so ALL `MENU_ItemIcon_*` sheets are resident, then
+   harvest the lot — needs the FD4/TPF resource-load entry (load by gfx/TPF name) + a safe trigger.
+2. **Enumerate the FD4 image repository directly** (`DAT_143d82510`) for ALL currently-loaded images
+   in one pass (vs per-find) — reverse the repo container's iteration (it's a non-trivial FD4 object,
+   not a flat array; the per-find hook sidestepped it). Still LOADED-only, but one-shot.
+3. **Reverse the loaded-movie image container** at `[movie+0x40]+0x90` (FUN_140d69640 walks it; the
+   raw object has in-module vtables at +0x00/+0x08, a count region, and entry refs — needs the
+   disasm of FUN_140d69640's loop to get stride/count/entry layout) → walk + harvest all resident.
+4. **On-demand pre-resolve**: when a loot marker needs iconId N and N isn't harvested, only the
+   find-by-name query is unsafe for NON-resident N (it crashes inside FUN_140d63c30, §5/probe) — so
+   this needs a residency pre-check (is sheet N/1000 loaded?) before querying, OR option 1's load.
+
+None blocks the feature (browse-to-fill + PNG fallback is shippable); these are for 100%-coverage
+without browsing. The crash constraint (find-by-name unsafe on non-resident) means option 4 must
+gate on residency; options 1-3 are inherently resident-only and safe.
