@@ -2017,7 +2017,8 @@ void goblin::verify_equip_iconids()
                 ++n;
                 if (icon < mn) mn = icon;
                 if (icon > mx) mx = icon;
-                if (sample < 8)
+                if (sample < 8 && icon != 0)   // skip unused/system rows (iconId 0) so the sample
+                                               // shows REAL iconIds at the new offset
                 {
                     // [EQUIPADDR] = the absolute row-base + name + struct stride, for CE
                     // find-what-accesses: watch <base + iconId-offset> and trigger the menu
