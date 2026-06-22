@@ -153,7 +153,10 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, f
             ImVec2 u0 = (m.dungeon && s_grace_dgn_tex) ? s_grace_dgn_uv0 : s_grace_uv0;
             ImVec2 u1 = (m.dungeon && s_grace_dgn_tex) ? s_grace_dgn_uv1 : s_grace_uv1;
             float gh = half * goblin::config::graceIconScale;
-            fg->AddImage(gt, ImVec2(p.x - gh, p.y - gh), ImVec2(p.x + gh, p.y + gh), u0, u1, t);
+            // Optional px offset → shift the imgui grace beside the game's NATIVE pin for side-by-side
+            // calibration (0 = on top). gx/gy in backbuffer px.
+            float gx = p.x + goblin::config::graceOffsetX, gy = p.y + goblin::config::graceOffsetY;
+            fg->AddImage(gt, ImVec2(gx - gh, gy - gh), ImVec2(gx + gh, gy + gh), u0, u1, t);
             return;
         }
         ImVec2 uv0, uv1;

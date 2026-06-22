@@ -1271,6 +1271,8 @@ namespace
                 ImGui::SliderFloat("Master", &goblin::config::overlayMasterScale, 0.3f, 3.0f, "%.2f");
                 ImGui::SliderFloat("Category icons", &goblin::config::overlayIconScale, 0.3f, 3.0f, "%.2f");
                 ImGui::SliderFloat("Grace icons (calib)", &goblin::config::graceIconScale, 0.2f, 4.0f, "%.2f");
+                ImGui::SliderFloat("Grace offset X (native vs imgui)", &goblin::config::graceOffsetX, -200.0f, 200.0f, "%.0f");
+                ImGui::SliderFloat("Grace offset Y (native vs imgui)", &goblin::config::graceOffsetY, -200.0f, 200.0f, "%.0f");
                 ImGui::SliderFloat("Cluster piles", &goblin::config::overlayClusterScale, 0.3f, 3.0f, "%.2f");
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Reset##scale"))
