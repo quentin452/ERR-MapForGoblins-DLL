@@ -1976,6 +1976,55 @@ void *__fastcall create_image_detour(void *a0, void *a1, void *a2, void *a3, voi
     icon_log_image((uintptr_t)ret, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3);
     return ret;
 }
+
+// ── Loaded-image ENUMERATE (sprite findings §1: FUN_140d69640 walks the loaded movie's image
+// list [movie+0x40]+0x90, entries type +0x88==4) — the SAFE harvest path (only resident images,
+// vs find-by-name which crashes on non-resident). Hook captures the movie ptr (arg0) on the engine
+// thread; a one-time dump reverses the entry layout so we can then harvest name+rect+resource.
+using enum_fn = void *(__fastcall *)(void *, void *, void *, void *);
+enum_fn g_enum_orig = nullptr;
+uintptr_t g_inv_movie = 0;
+bool g_enum_dumped = false;
+
+void enum_dump_once(uintptr_t movie)
+{
+    if (g_enum_dumped || !movie) return;
+    g_enum_dumped = true;
+    uintptr_t p1 = 0; icon_rpm_ptr(movie + 0x40, p1);
+    spdlog::info("[ENUM] movie={:#x} [movie+0x40]={:#x}", movie, p1);
+    if (p1 < 0x10000) return;
+    for (int o = 0x80; o <= 0xC0; o += 8)
+    {
+        uintptr_t q = 0; icon_rpm_ptr(p1 + o, q);
+        spdlog::info("[ENUM]   [p1+0x{:x}] = {:#x}", o, q);
+    }
+    // try a std::vector-style {begin@+0x90, end@+0x98} of entry pointers
+    uintptr_t begin = 0, end = 0;
+    icon_rpm_ptr(p1 + 0x90, begin); icon_rpm_ptr(p1 + 0x98, end);
+    spdlog::info("[ENUM] begin={:#x} end={:#x} span={:#x}", begin, end, (end > begin) ? (end - begin) : 0);
+    if (begin > 0x10000 && end > begin && end - begin < 0x200000)
+    {
+        int n = 0;
+        for (uintptr_t e = begin; e < end && n < 16; e += 8, ++n)
+        {
+            uintptr_t ent = 0; icon_rpm_ptr(e, ent);
+            if (ent < 0x10000) { spdlog::info("[ENUM]   slot[{}] (e={:#x}) = {:#x}", n, e, ent); continue; }
+            int type = 0; icon_rpm_i32(ent + 0x88, type);
+            uintptr_t namep = 0; icon_rpm_ptr(ent + 0x40, namep);
+            std::string nm = icon_try_str(namep);
+            int rx0 = 0; icon_rpm_i32(ent + 0x74, rx0);
+            spdlog::info("[ENUM]   ent[{}]={:#x} type@0x88={} name@0x40='{}' i32@0x74={}", n, ent, type, nm, rx0);
+        }
+    }
+}
+
+void *__fastcall enum_detour(void *movie, void *a1, void *a2, void *a3)
+{
+    g_inv_movie = reinterpret_cast<uintptr_t>(movie);
+    void *ret = g_enum_orig(movie, a1, a2, a3);
+    if (goblin::config::dumpIconTextures) enum_dump_once(reinterpret_cast<uintptr_t>(movie));
+    return ret;
+}
 } // namespace
 
 // Verify item↔iconId↔sprite: iterate the EquipParam* tables LIVE (get_param), read each row's
@@ -2217,6 +2266,22 @@ void goblin::install_icon_texture_probe()
     {
         spdlog::error("[ICONTEX] hook failed: {}", e.what());
         g_create_image_orig = nullptr;
+    }
+
+    // Enumerate-loaded hook: capture the inventory movie ptr + reverse its image-list layout (safe
+    // harvest path; sprite findings §1). Hooked by RVA (FUN_140d69640) — dev probe.
+    try
+    {
+        uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+        void *enumfn = reinterpret_cast<void *>(er + 0xd69640);
+        modutils::hook(enumfn, reinterpret_cast<void *>(&enum_detour),
+                       reinterpret_cast<void **>(&g_enum_orig));
+        spdlog::info("[ENUM] FUN_140d69640 hooked @ {} (open inventory to dump image list)", enumfn);
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("[ENUM] hook failed: {}", e.what());
+        g_enum_orig = nullptr;
     }
 }
 
