@@ -1650,6 +1650,7 @@ create_image_fn g_create_image_orig = nullptr;
 std::atomic<void *> g_ci_p1{nullptr};
 std::atomic<void *> g_ci_p2{nullptr};
 std::atomic<int> g_ci_logn{0};
+char g_ci_last[96] = {0};   // most-recent live symbol name (e.g. "img://KG_R1") for replay control test
 
 inline bool icon_rpm_i32(uintptr_t a, int &out)
 {
@@ -1928,6 +1929,7 @@ void *__fastcall create_image_detour(void *a0, void *a1, void *a2, void *a3, voi
         {
             char nm[96] = {0}; SIZE_T got = 0;
             ReadProcessMemory(GetCurrentProcess(), (void *)((descv & ~uintptr_t(3)) + 0xc), nm, 95, &got);
+            if (nm[0]) strncpy(g_ci_last, nm, sizeof(g_ci_last) - 1);   // remember for replay control
             spdlog::info("[CREATEIMG] live a0={} a1={} *a2={:#x} name='{}' -> img={:#x}",
                          a0, a1, descv, nm, (uintptr_t)ret);
         }
@@ -2479,9 +2481,10 @@ std::atomic<int> g_bind_gid{1};      // group id for the loaders (1 = 01_Common 
 // CSScaleformImageCreator::CreateImage (FUN_140d6bbc0) is hooked above (create_image_detour, the
 // existing probe hook) which captures the live context g_ci_p1/g_ci_p2. Here we replay it: build a
 // synthetic symbol desc for "MENU_ItemIcon_<id>" and call the original via g_create_image_orig.
-std::atomic<int> g_ci_req_icon{INT_MIN};   // queued iconId to force-create (INT_MIN = idle)
-alignas(16) char g_ci_name[64];            // 4-aligned scratch for the synthesized symbol name
-uintptr_t g_ci_desc = 0;                   // synthetic param_3 qword: holds (g_ci_name - 0xc)
+constexpr int CI_REPLAY_LAST = INT_MIN + 1;   // sentinel: replay the last captured live symbol
+std::atomic<int> g_ci_req_icon{INT_MIN};   // queued iconId (INT_MIN = idle, CI_REPLAY_LAST = replay)
+alignas(16) char g_ci_name[96];            // 4-aligned scratch for the synthesized symbol name
+uintptr_t g_ci_desc[4] = {0};              // synthetic param_3: [0] = (g_ci_name - 0xc), rest 0 (pad)
 
 inline bool res_w32(uintptr_t a, uint32_t v)
 {
@@ -2547,11 +2550,21 @@ void run_bind_action(uintptr_t mgr, uintptr_t er, int act, int gid)
 // "<name>_ptl" view resolves against a RESIDENT sheet — pair with "Load files (gid)" if not loaded.
 void run_create_icon(uintptr_t er, int iconId)
 {
+    (void)er;
     if (!g_create_image_orig) { spdlog::warn("[CREATEIMG] no orig (probe hook missing)"); return; }
-    snprintf(g_ci_name, sizeof(g_ci_name), "MENU_ItemIcon_%d", iconId);
-    g_ci_desc = reinterpret_cast<uintptr_t>(g_ci_name) - 0xc;   // (desc & ~3)+0xc == g_ci_name (4-aligned)
+    if (iconId == CI_REPLAY_LAST)
+    {
+        if (!g_ci_last[0]) { spdlog::warn("[CREATEIMG] no live symbol captured yet"); return; }
+        strncpy(g_ci_name, g_ci_last, sizeof(g_ci_name) - 1);   // replay a known-good symbol (control)
+    }
+    else
+    {
+        // GFx import scheme is "img://<name>" (live names showed img://KG_R1 etc.), base = MENU_ItemIcon_<id>.
+        snprintf(g_ci_name, sizeof(g_ci_name), "img://MENU_ItemIcon_%d", iconId);
+    }
+    g_ci_desc[0] = reinterpret_cast<uintptr_t>(g_ci_name) - 0xc;   // (desc[0] & ~3)+0xc == g_ci_name
     size_t before = goblin::harvested_count();
-    void *img = g_create_image_orig(g_ci_p1.load(), g_ci_p2.load(), &g_ci_desc, nullptr, nullptr,
+    void *img = g_create_image_orig(g_ci_p1.load(), g_ci_p2.load(), g_ci_desc, nullptr, nullptr,
                                     nullptr, nullptr, nullptr);
     size_t after = goblin::harvested_count();
     spdlog::info("[CREATEIMG] force '{}' (p1={} p2={}) -> img={:#x}  harvested {}->{}", g_ci_name,
@@ -2604,6 +2617,16 @@ bool goblin::force_create_icon(int iconId)
         return false;
     }
     g_ci_req_icon.store(iconId, std::memory_order_release);
+    return true;
+}
+
+// Control test: replay the LAST captured live symbol (a known-good img:// import) to prove the replay
+// mechanism end-to-end. If this returns a valid img but force_create_icon(id) returns 0, the item-icon
+// base simply isn't a CreateImage import (it's the widget's direct repo find / sblytbnd bind path).
+bool goblin::force_create_last()
+{
+    if (!goblin::config::dumpIconTextures) return false;
+    g_ci_req_icon.store(CI_REPLAY_LAST, std::memory_order_release);
     return true;
 }
 

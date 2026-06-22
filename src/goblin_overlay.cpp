@@ -1001,6 +1001,7 @@ namespace
                 ImGui::InputInt("iconId##ci", &s_ci_icon);
                 ImGui::SameLine();
                 if (ImGui::Button("Force CreateImage")) goblin::force_create_icon(s_ci_icon);
+                if (ImGui::Button("Replay last live symbol (control)")) goblin::force_create_last();
             }
 
             // Grace-sprite GPU debug: draw every harvested SB_ERR_Grace_* frame (full-sheet SRV +

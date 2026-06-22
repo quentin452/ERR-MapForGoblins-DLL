@@ -305,6 +305,10 @@ namespace goblin
     // Gated by dumpIconTextures. Returns false if no manager/context captured yet.
     bool force_create_icon(int iconId);
 
+    // Control for force_create_icon: replay the most-recent live CreateImage symbol (a known-good
+    // "img://…" import) to prove the replay mechanism works end-to-end. Gated by dumpIconTextures.
+    bool force_create_last();
+
     // First `max` harvested iconIds (dev — the P2b test panel draws ACTUAL harvested icons
     // instead of a hardcoded id list that may not match what the player browsed).
     std::vector<int> harvested_ids(size_t max);
