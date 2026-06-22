@@ -1349,10 +1349,11 @@ namespace
             ImGui_ImplWin32_NewFrame();
             g_imgui_reading_cursor = false;
             ImGui::NewFrame();
-            // Draw ImGui's software cursor ONLY while the F1 panel is up. (NewFrame now runs every
-            // frame to draw the overlay markers/minimap — the overlay is the sole map — so the old
-            // init-time MouseDrawCursor=true leaked the cursor into normal gameplay.)
-            ImGui::GetIO().MouseDrawCursor = g_show;
+            // Draw ImGui's software cursor ONLY while the F1 panel is up AND the world map is CLOSED.
+            // (NewFrame now runs every frame for the overlay markers/minimap, so the old init-time
+            // MouseDrawCursor=true leaked it into gameplay; and with the world map open ER already
+            // draws its own cursor → don't double it.)
+            ImGui::GetIO().MouseDrawCursor = g_show && !goblin::world_map_open();
             if (g_show)
                 draw_panel();
             if (proto)
