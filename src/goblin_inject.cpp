@@ -2130,10 +2130,14 @@ void harvest_repo_icons()
     if (head < 0x10000) return;
     int size = 0; icon_rpm_i32(repo + 0x90, size);           // _Mysize (count of ALL resident images)
 
-    // Dedup: only walk when the resident image count grows (or on the first call). enum/find fire
-    // constantly; an unchanged tree must not be re-walked every frame.
+    // Re-walk on ANY change to the resident count, not just growth. _Mysize OSCILLATES as the engine
+    // evicts+loads icons while navigating menus (live monitor: 1074<->1107 churn), so the old
+    // "walk only when it grows past the peak" gate stopped re-walking after the first peak and missed
+    // every icon that loaded below it. Walking on each change + the per-iconId dedup (g_harvest.count
+    // below) accumulates the UNION of everything that ever loads into our permanent cache → far wider
+    // browse-to-fill coverage. Cheap: only fires when the count actually changed, not every frame.
     static int s_last_size = -1;
-    if (size <= s_last_size) return;
+    if (size == s_last_size) return;
     s_last_size = size;
 
     uintptr_t root = 0; icon_rpm_ptr(head + 0x08, root);     // _Myhead._Parent
