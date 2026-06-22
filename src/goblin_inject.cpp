@@ -1998,22 +1998,25 @@ void enum_dump_once(uintptr_t movie)
         uintptr_t q = 0; icon_rpm_ptr(p1 + o, q);
         spdlog::info("[ENUM]   [p1+0x{:x}] = {:#x}", o, q);
     }
-    // try a std::vector-style {begin@+0x90, end@+0x98} of entry pointers
-    uintptr_t begin = 0, end = 0;
-    icon_rpm_ptr(p1 + 0x90, begin); icon_rpm_ptr(p1 + 0x98, end);
-    spdlog::info("[ENUM] begin={:#x} end={:#x} span={:#x}", begin, end, (end > begin) ? (end - begin) : 0);
-    if (begin > 0x10000 && end > begin && end - begin < 0x200000)
+    // The list pointer = [p1+0x90]. Dump the array AT that address (raw qwords) to reverse whether
+    // it's an array of entry POINTERS or INLINE entries, + where the count lives.
+    uintptr_t arr = 0; icon_rpm_ptr(p1 + 0x90, arr);
+    spdlog::info("[ENUM] list array @ {:#x} — raw qwords:", arr);
+    if (arr > 0x10000)
     {
-        int n = 0;
-        for (uintptr_t e = begin; e < end && n < 16; e += 8, ++n)
+        for (int o = 0; o < 0x80; o += 8)
         {
-            uintptr_t ent = 0; icon_rpm_ptr(e, ent);
-            if (ent < 0x10000) { spdlog::info("[ENUM]   slot[{}] (e={:#x}) = {:#x}", n, e, ent); continue; }
-            int type = 0; icon_rpm_i32(ent + 0x88, type);
-            uintptr_t namep = 0; icon_rpm_ptr(ent + 0x40, namep);
-            std::string nm = icon_try_str(namep);
-            int rx0 = 0; icon_rpm_i32(ent + 0x74, rx0);
-            spdlog::info("[ENUM]   ent[{}]={:#x} type@0x88={} name@0x40='{}' i32@0x74={}", n, ent, type, nm, rx0);
+            uintptr_t q = 0; icon_rpm_ptr(arr + o, q);
+            spdlog::info("[ENUM]   arr+0x{:02x} = {:#x}", o, q);
+            // if q looks like a heap object, probe it as a candidate entry (type@+0x88, name@+0x40)
+            if (q > 0x10000 && q < 0x7fffffffffffULL)
+            {
+                int type = 0; uintptr_t namep = 0;
+                icon_rpm_i32(q + 0x88, type); icon_rpm_ptr(q + 0x40, namep);
+                std::string nm = icon_try_str(namep);
+                if (!nm.empty())
+                    spdlog::info("[ENUM]       → as-entry: type@0x88={} name@0x40='{}'", type, nm);
+            }
         }
     }
 }
