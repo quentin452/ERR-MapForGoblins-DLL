@@ -423,6 +423,31 @@ runtime so vtable+0xc8 can't be pinned in Ghidra; group registration is dynamic)
 (dev panel button), VRAM-watch, single group at a time. If the repo gains rects → this is the runtime
 100%-coverage lever; if not → vmethod `+0xc8` is not the parse and offline bake (§5/§5c) stays the path.
 
+**"bind/binding" string sweep (re_v120, `find_bindstr.java` / `out_bindstr.txt`).** Searched defined
+strings for binding/layout/provider/apply/resident/sprite terms + xref source. Useful artifacts:
+- **`ShoeboxLayoutbndFileCap`** (RVA 0x29dc450, name-reg `FUN_1400801f0`) — the **sblytbnd resource
+  capsule class** ("ShoeBox LaYouT bnd" = sblytbnd). This is the resource object whose APPLY parses the
+  layout into `CSTextureImage` repo entries (§5c) — i.e. the likely type of `entry+0x18` for the
+  item-icon group, so `entry+0x18 → vtable+0xc8` is its layout-parse apply. **`GfxFileCap`** (0x29d8610,
+  `FUN_14007f3f0`) = the .gfx capsule. (Both fns only register the RTTI type-name at desc+0x38/+0x40;
+  the concrete FileCap vtable is factory/VMP-built → resolve `+0xc8` at runtime via the dump-groups test.)
+- **`CSScaleformStep::STEP_Init_forResidentTextureLoad` / `..._forResidentResourceLoad` /
+  `..._forGfxFileLoad` / `..._forResidentTextureRELOAD`** (all `FUN_1400ae9e0`, the §5b STEP table) —
+  note the explicit **Reload** step (a built-in re-apply path worth a look if the flag-flip misbehaves).
+- `menu:/%s.sblytbnd` ← `FUN_140d771d0` (confirms our loader); `Failed to bind SWF file "` ←
+  `FUN_141162d30` (the low-level GFx/Scaleform movie bind). The bulk of `*Binding*` hits are Havok
+  (`hkbVariableBindingSet`, animation/skin binding) — irrelevant to menu icons.
+
+**DLL test SHIPPED (commit, 2026-06-22).** `goblin::bind_test(action, gid)` + P2b panel buttons, behind
+`config::dumpIconTextures`. Hooks the ticker `FUN_140d724c0`, captures the live manager (`*param_2`),
+runs one-shot actions inline on the engine thread before the original: (1) dump groups (logs each
+loaded group's `entry+0x18` resource + `apply(vt+0xc8)` RVA + `+0x7c`/`+0x80` flags), (2) load files by
+gid via `FUN_140d77550`+`FUN_140d771d0` (handle cached at `mgr+0xd10/0xd58` — where the bind looks),
+(3) flip-bind all (set `+0x7c=1` + dirty `+0x1e19`), (4) load+flip. RUNTIME-UNVERIFIED (quentin tests):
+sequence = open inventory once → "Dump groups" (read the apply RVAs; does one match the §5c parse
+family?) → "Load files (gid 1)" → "Flip-bind all" → re-check `harvested:`. If it jumps for un-browsed
+items → the flag flip IS the runtime force-residency lever.
+
 ---
 
 ## 6. Handles
