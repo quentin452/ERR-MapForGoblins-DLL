@@ -1912,22 +1912,28 @@ void *__fastcall create_image_detour(void *a0, void *a1, void *a2, void *a3, voi
 // Verify item↔iconId↔sprite: iterate the EquipParam* tables LIVE (get_param), read each row's
 // iconId at its paramdef offset (u16), and log the rows whose iconId matches the sprites we
 // captured from the inventory (MENU_FL_<iconId>). Proves the menu icon = EquipParam.iconId.
-// iconId offsets (from tools/paramdefs/*.xml): Weapon 0xc2, Protector iconIdM 0xaa,
-// Accessory 0x2a, Goods 0x34. row_id == the item-name FMG id.
+// iconId offsets (Ghidra+1, live-corrected): Weapon 0xC0, Protector iconIdM 0xA8,
+// Accessory 0x28, Goods 0x32, Gem 0x06. row_id == the item-name FMG id.
 void goblin::verify_equip_iconids()
 {
     if (!goblin::config::dumpIconTextures)
         return;
     struct P { const wchar_t *name; const char *tag; int off; };
-    // iconId offsets (u16) — AUTHORITATIVE, from the Ghidra findings
-    // (docs/re/windows_menu_item_icon_re_findings.md §0). The earlier XML-summed offsets were
-    // each ~3 bytes too high (bitfield mis-pack) → the probe read garbage.
+    // iconId offsets (u16) are PER-PARAM and the paramdef-derived guesses are unreliable (bitfield
+    // packing differs per param). LIVE result:
+    //   Weapon 0xC0  ✓ CONFIRMED — iconId range 0..999 (the exact weapon-icon range; Ghidra 0xBF
+    //                  read value<<8, e.g. Dagger 0x6400).
+    //   Gem/Protector/Accessory/Goods — NO clean offset found. Gem 0x06=value<<8, 0x07=0xFF<<8|val
+    //     (real byte flanked by a 0xFF field → no aligned u16 is clean); Accessory=all 0xFFFF;
+    //     Protector=garbage(max 45808); Goods=all 0. Left at last guess; NOT chased (probe is
+    //     dev-only, per-item icons not productionized). For real use read iconId via the engine
+    //     resolver FUN_14073d9d0 + iconRef{type@0,id@+4}, NOT hardcoded offsets.
     static const P params[] = {
-        {L"EquipParamWeapon", "Weapon", 0xBF},
-        {L"EquipParamProtector", "Protector", 0xA7}, // iconIdM (iconIdF = 0xA9)
-        {L"EquipParamAccessory", "Accessory", 0x27},
-        {L"EquipParamGoods", "Goods", 0x31},
-        {L"EquipParamGem", "Gem", 0x05},
+        {L"EquipParamWeapon", "Weapon", 0xC0}, // ✓ confirmed (0..999)
+        {L"EquipParamProtector", "Protector", 0xA8}, // ✗ unresolved
+        {L"EquipParamAccessory", "Accessory", 0x28}, // ✗ unresolved (all 0xFFFF)
+        {L"EquipParamGoods", "Goods", 0x32},         // ✗ unresolved (all 0)
+        {L"EquipParamGem", "Gem", 0x07},             // ✗ unresolved (0xFF flank)
     };
     static const uint16_t want[] = {40144, 40147, 40172}; // the 3 inventory-captured iconIds
     for (const P &p : params)
@@ -1942,7 +1948,7 @@ void goblin::verify_equip_iconids()
                 ++n;
                 if (icon < mn) mn = icon;
                 if (icon > mx) mx = icon;
-                if (sample < 4) { spdlog::info("[EQUIPVERIFY] {} SAMPLE row_id={} iconId={}", p.tag, row.first, icon); ++sample; }
+                if (sample < 8) { spdlog::info("[EQUIPVERIFY] {} SAMPLE row_id={} iconId={}", p.tag, row.first, icon); ++sample; }
                 for (uint16_t w : want)
                     if (icon == w)
                     {
