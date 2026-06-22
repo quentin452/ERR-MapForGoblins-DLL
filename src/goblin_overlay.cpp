@@ -280,6 +280,28 @@ namespace
     std::map<int, ItemIconSrv> g_item_icon_srvs;
     UINT g_next_item_srv = 2;   // 0 = ImGui font, 1 = category atlas
 
+    // Icons newly requested this frame: their GPU→GPU copy is RECORDED into a single shared
+    // command list and finalized once per frame in flush_item_icon_batch() — one ExecuteCommandLists
+    // + one fence wait for the WHOLE batch instead of one submit+blocking-wait per icon (the per-icon
+    // WaitForSingleObject(1000) micro-stuttered when many icons appeared at once, e.g. first map open).
+    // A requested icon falls back this frame (ensure_* returns 0) and is drawn next frame once the
+    // batch completes — 1-frame latency, no stall. Render-thread only (no locking).
+    struct PendingIcon { int iconId; ID3D12Resource *tex; DXGI_FORMAT fmt; UINT srv_idx; int w, h; };
+    std::vector<PendingIcon> g_pending_icons;
+    bool g_icon_batch_open = false;
+
+    // Lazily reset the shared command list for this frame's copy batch (once, on the first icon).
+    void begin_icon_batch()
+    {
+        if (g_icon_batch_open) return;
+        g_frames[0].allocator->Reset();
+        g_command_list->Reset(g_frames[0].allocator, nullptr);
+        g_icon_batch_open = true;
+    }
+
+    // Request an item icon SRV. If cached → return its GPU handle (ok) or 0 (known miss).
+    // If new → CREATE the dest texture + RECORD its copy into the frame's batch and return 0
+    // (drawn next frame after flush). Never blocks; never submits per-icon.
     UINT64 ensure_item_icon_srv(int iconId)
     {
         auto it = g_item_icon_srvs.find(iconId);
@@ -304,9 +326,10 @@ namespace
                 if (SUCCEEDED(g_device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &td,
                         D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&slot.tex))))
                 {
-                    g_frames[0].allocator->Reset();
-                    g_command_list->Reset(g_frames[0].allocator, nullptr);
-                    // src sheet: assume PIXEL_SHADER_RESOURCE → COPY_SOURCE (sampled engine texture)
+                    begin_icon_batch();
+                    // src sheet: assume PIXEL_SHADER_RESOURCE → COPY_SOURCE (sampled engine texture).
+                    // Per-icon barriers are fine inside one list even when icons share a sheet (each
+                    // pair restores it to PSR); the win is collapsing N submits+waits into one.
                     D3D12_RESOURCE_BARRIER bs{};
                     bs.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
                     bs.Transition.pResource = src_res; bs.Transition.Subresource = 0;
@@ -332,41 +355,62 @@ namespace
                     after[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
                     after[1].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
                     g_command_list->ResourceBarrier(2, after);
-                    g_command_list->Close();
-                    ID3D12CommandList *lists[] = {g_command_list};
-                    g_command_queue->ExecuteCommandLists(1, lists);
 
-                    ID3D12Fence *fence = nullptr;
-                    if (SUCCEEDED(g_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))))
-                    {
-                        HANDLE ev = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-                        g_command_queue->Signal(fence, 1);
-                        if (ev && fence->GetCompletedValue() < 1)
-                        { fence->SetEventOnCompletion(1, ev); WaitForSingleObject(ev, 1000); }
-                        if (ev) CloseHandle(ev);
-                        fence->Release();
-                    }
-                    const UINT inc = g_device->GetDescriptorHandleIncrementSize(
-                        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                    // Reserve the SRV slot now; the descriptor itself is written at flush (after the
+                    // copy completes). Park the slot as not-ok so it isn't re-enqueued; flush flips it.
                     UINT idx = g_next_item_srv++;
-                    D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
-                    cpu.ptr += static_cast<SIZE_T>(inc) * idx;
-                    D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
-                    sd.Format = fmt; sd.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-                    sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-                    sd.Texture2D.MipLevels = 1;
-                    g_device->CreateShaderResourceView(slot.tex, &sd, cpu);
-                    slot.gpu = g_srv_heap->GetGPUDescriptorHandleForHeapStart();
-                    slot.gpu.ptr += static_cast<SIZE_T>(inc) * idx;
-                    slot.ok = true;
-                    spdlog::info("[ICONSRV] iconId={} {}x{} fmt={} -> slot {} gpu={:#x}",
-                                 iconId, w, h, static_cast<int>(fmt), idx, slot.gpu.ptr);
+                    g_pending_icons.push_back({iconId, slot.tex, fmt, idx, w, h});
+                    g_item_icon_srvs[iconId] = slot;  // ok=false, tex set → pending
+                    return 0;                          // drawn next frame, after flush
                 }
             }
         }
         if (!slot.ok && slot.tex) { slot.tex->Release(); slot.tex = nullptr; }
-        g_item_icon_srvs[iconId] = slot;
-        return slot.ok ? slot.gpu.ptr : 0;
+        g_item_icon_srvs[iconId] = slot;   // known miss → never retried
+        return 0;
+    }
+
+    // Finalize this frame's icon copies: one ExecuteCommandLists + one fence wait for the whole
+    // batch, then create each pending SRV and mark its slot ok. Call once per frame AFTER all
+    // ensure_item_icon_srv() requests and BEFORE g_command_list is reused for the ImGui render.
+    void flush_item_icon_batch()
+    {
+        if (!g_icon_batch_open) return;
+        g_command_list->Close();
+        ID3D12CommandList *lists[] = {g_command_list};
+        g_command_queue->ExecuteCommandLists(1, lists);
+
+        ID3D12Fence *fence = nullptr;
+        if (SUCCEEDED(g_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))))
+        {
+            HANDLE ev = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+            g_command_queue->Signal(fence, 1);
+            if (ev && fence->GetCompletedValue() < 1)
+            { fence->SetEventOnCompletion(1, ev); WaitForSingleObject(ev, 1000); }
+            if (ev) CloseHandle(ev);
+            fence->Release();
+        }
+
+        const UINT inc = g_device->GetDescriptorHandleIncrementSize(
+            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        for (const PendingIcon &p : g_pending_icons)
+        {
+            D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
+            cpu.ptr += static_cast<SIZE_T>(inc) * p.srv_idx;
+            D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
+            sd.Format = p.fmt; sd.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            sd.Texture2D.MipLevels = 1;
+            g_device->CreateShaderResourceView(p.tex, &sd, cpu);
+            ItemIconSrv &s = g_item_icon_srvs[p.iconId];
+            s.gpu = g_srv_heap->GetGPUDescriptorHandleForHeapStart();
+            s.gpu.ptr += static_cast<SIZE_T>(inc) * p.srv_idx;
+            s.ok = true;
+            spdlog::info("[ICONSRV] iconId={} {}x{} fmt={} -> slot {} gpu={:#x} (batched)",
+                         p.iconId, p.w, p.h, static_cast<int>(p.fmt), p.srv_idx, s.gpu.ptr);
+        }
+        g_pending_icons.clear();
+        g_icon_batch_open = false;
     }
 
     // Upload the atlas once g_command_queue is captured. Self-gates; on failure it
@@ -1476,6 +1520,9 @@ namespace
                 draw_worldmap_markers(g_show);
             if (minimap)
                 draw_minimap_hud();   // gameplay HUD (map closed) — self-gates overworld-only
+            // Finalize any item-icon GPU copies requested this frame as ONE batch (one execute +
+            // one fence wait) before g_command_list is reused for the ImGui render below.
+            flush_item_icon_batch();
             ImGui::Render();
 
             UINT idx = swapchain->GetCurrentBackBufferIndex();
