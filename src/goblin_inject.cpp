@@ -1880,7 +1880,10 @@ void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
     std::string name = icon_try_str(name_ptr);
     // Register sheet-sized images so the live dump can re-read img+0x10 once the map is open
     // (the GPU texture binds LAZILY on first render). Icon sheets are 512×512 / 2048×1024.
-    if (w >= 256 && h >= 256 && g_icon_imgs.size() < 512)
+    // Sheet-sized images (≥256), OR any SB_ERR_*/MENU_MAP_* (the grace/pin _ptl may report ICON size
+    // at +0x84/+0x88, not the sheet — don't let the ≥256 gate drop the forced grace candidates).
+    if (((w >= 256 && h >= 256) || name.rfind("SB_ERR_", 0) == 0 || name.rfind("MENU_MAP_", 0) == 0) &&
+        g_icon_imgs.size() < 512)
         g_icon_imgs.push_back({img, x0, y0, x1, y1, w, h, name});
     // Accumulate the UNIQUE name→rect table (skip KG_ button glyphs). Uncapped (dedup set) so
     // it captures whatever menu is open — worldmap (SB_ERR_*) OR inventory/equipment item icons.
@@ -2679,22 +2682,29 @@ void run_create_icon(uintptr_t er, int iconId)
                  g_ci_p1.load(), g_ci_p2.load(), reinterpret_cast<uintptr_t>(img), before, after);
 }
 
-// Force the CANONICAL grace variant (Morning) so the live grace is time-INDEPENDENT. Calls the HOOKED
-// CreateImage entry (er+0xd6bbc0) for "img://SB_ERR_Grace_Morning_Color" so create_image_detour logs
-// the result into g_icon_imgs → dump_icon_textures_live captures it (preferring the canonical name).
-// The Morning cell lives on the same resident world-map sheet as the current-time variant, so this
-// resolves even when it's evening in-game. Engine thread (ticker); throttled by the caller.
+// Force the REAL grace icon (the mod's gfx sprite, NOT the native SB_ERR time-tinted pin). repo+0x80 =
+// MENU_ItemIcon, repo+0xb0 = MENU_MapTile — neither holds the pin sprites, so we force-create the gfx
+// img:// imports via the HOOKED CreateImage (the proven path: KG_/SB_ERR resolved). Each result lands
+// in g_icon_imgs (via create_image_detour) → dump_icon_textures_live captures it as a grace candidate.
+// MENU_MAP_GOBLIN_Grace = canonical; siblings populate the F1 picker. Engine thread; throttled by caller.
 int g_grace_force_tries = 0;
 void run_force_grace(uintptr_t er)
 {
     if (!g_create_image_orig || g_ci_p1.load() == nullptr) return;
-    snprintf(g_ci_name, sizeof(g_ci_name), "img://SB_ERR_Grace_Morning_Color");
-    g_ci_desc[0] = reinterpret_cast<uintptr_t>(g_ci_name) - 0xc;
+    static const char *kCands[] = {
+        "img://MENU_MAP_GOBLIN_Grace", "img://MENU_MAP_GOBLIN_SortaGraceIDK",
+        "img://MENU_MAP_ERR_GraceUnderground", "img://SB_ERR_Grace_Morning_Color",
+    };
     auto CreateImageHooked = reinterpret_cast<create_image_fn>(er + 0xd6bbc0);
-    void *img = CreateImageHooked(g_ci_p1.load(), g_ci_p2.load(), g_ci_desc, nullptr, nullptr,
-                                  nullptr, nullptr, nullptr);
-    spdlog::info("[GRACE-FORCE] CreateImage('{}') -> {:#x} (try {})", g_ci_name,
-                 reinterpret_cast<uintptr_t>(img), g_grace_force_tries);
+    for (const char *c : kCands)
+    {
+        snprintf(g_ci_name, sizeof(g_ci_name), "%s", c);
+        g_ci_desc[0] = reinterpret_cast<uintptr_t>(g_ci_name) - 0xc;
+        void *img = CreateImageHooked(g_ci_p1.load(), g_ci_p2.load(), g_ci_desc, nullptr, nullptr,
+                                      nullptr, nullptr, nullptr);
+        spdlog::info("[GRACE-FORCE] CreateImage('{}') -> {:#x} (try {})", c,
+                     reinterpret_cast<uintptr_t>(img), g_grace_force_tries);
+    }
 }
 
 void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
@@ -2942,25 +2952,24 @@ void goblin::dump_icon_textures_live()
         // 'SB_ERR_*' candidate (dev viewer — to test whether non-grace icons harvest cleanly vs the
         // grace's time-of-day variants), and LOCK the grace sprite on the first LIT '..._Color' frame
         // with a grace-sized rect (any time-of-day; the engine resolves only one per session).
-        if (it.name.rfind("SB_ERR_", 0) == 0)
+        if (it.name.rfind("SB_ERR_", 0) == 0 || it.name.rfind("MENU_MAP_", 0) == 0)
         {
             int gfmt = 0; icon_rpm_i32(res + 0x30, gfmt);
-            bool is_grace = it.name.rfind("SB_ERR_Grace", 0) == 0;
-            bool exact = it.name.find("Morning_Color") != std::string::npos;
-            // The LIT/discovered grace look is any "..._Color" frame (Morning/LateDay/Night — the
-            // engine only ever resolves ONE per session, e.g. SB_ERR_Grace_LateDay_Color_ptl); the
-            // grey "undiscovered" variants lack "Color". Require a grace-sized rect so we never store a
-            // degenerate/empty frame. (The old "Morning_Color"-exact lock never matched at runtime, so
-            // the eager "|| !valid" clause grabbed the first SB_ERR_Grace frame = the wrong-icon bug.)
-            bool lit = it.name.find("Color") != std::string::npos;
+            // The REAL grace = the mod's gfx sprite MENU_MAP_GOBLIN_Grace (force-created via img://);
+            // SB_ERR_Grace_*_Color is the native time-tinted pin (wrong). Lock on the canonical; an
+            // SB_ERR_Grace _Color frame is kept only as an overridable fallback. (MENU_MAP_ sprites have
+            // no time-of-day variants, so they're always "lit".)
+            bool canon = it.name.rfind("MENU_MAP_GOBLIN_Grace", 0) == 0;
+            bool is_grace = canon || it.name.rfind("SB_ERR_Grace", 0) == 0;
+            bool lit = it.name.rfind("MENU_MAP_", 0) == 0 || it.name.find("Color") != std::string::npos;
             int gw = it.x1 - it.x0, gh = it.y1 - it.y0;
-            bool rect_ok = gw >= 16 && gw <= 160 && gh >= 16 && gh <= 160;
+            bool rect_ok = gw >= 8 && gw <= 256 && gh >= 8 && gh <= 256;
             static std::set<std::string> seen_cand;   // dedup across the repeatable re-runs
             std::lock_guard<std::mutex> lk(g_harvest_mtx);
-            if (seen_cand.insert(it.name).second)      // NEW SB_ERR_ name → log + add to the viewer
+            if (seen_cand.insert(it.name).second)      // NEW SB_ERR_/MENU_MAP_ name → log + add to viewer
             {
                 spdlog::info("[ICON-CAND] '{}' rect=({},{})-({},{}) res={:#x} fmt={}{}",
-                             it.name, it.x0, it.y0, it.x1, it.y1, res, gfmt, exact ? " <-Morning_Color" : "");
+                             it.name, it.x0, it.y0, it.x1, it.y1, res, gfmt, canon ? " <-CANONICAL grace" : "");
                 goblin::GraceCandidate gc;
                 gc.name = it.name;
                 gc.spr.sheet = reinterpret_cast<void *>(res);
@@ -2971,11 +2980,7 @@ void goblin::dump_icon_textures_live()
                 gc.spr.valid = true;
                 if (g_grace_cands.size() < 64) g_grace_cands.push_back(gc);
             }
-            // Prefer the CANONICAL variant (Morning_Color) for a time-INDEPENDENT grace look — the
-            // engine only CreateImage's the current-time variant, so run_force_grace force-creates
-            // Morning and we lock on it here. A non-canonical lit frame is stored only as a fallback
-            // (no lock) until the canonical arrives, so it can be overridden.
-            if (is_grace && lit && rect_ok && !g_grace_locked && (exact || !g_grace_sprite.valid))
+            if (is_grace && lit && rect_ok && !g_grace_locked && (canon || !g_grace_sprite.valid))
             {
                 g_grace_sprite.sheet = reinterpret_cast<void *>(res);
                 g_grace_sprite.x0 = it.x0; g_grace_sprite.y0 = it.y0;
@@ -2984,10 +2989,10 @@ void goblin::dump_icon_textures_live()
                 g_grace_sprite.sheetH = static_cast<unsigned>(rh);
                 g_grace_sprite.format = static_cast<unsigned>(gfmt);
                 g_grace_sprite.valid = true;
-                if (exact) g_grace_locked = true;   // canonical wins + locks; fallback stays overridable
+                if (canon) g_grace_locked = true;   // canonical wins + locks; fallback stays overridable
                 spdlog::info("[GRACE-SPRITE] '{}' rect=({},{})-({},{}) {}x{} res={:#x} fmt={} ({})",
                              it.name, it.x0, it.y0, it.x1, it.y1, gw, gh, res, gfmt,
-                             exact ? "LOCKED canonical Morning" : "fallback (awaiting canonical)");
+                             canon ? "LOCKED canonical MENU_MAP_GOBLIN_Grace" : "fallback (awaiting canonical)");
             }
         }
         // Track unique sheet resources (icons on one sheet share a resource).
