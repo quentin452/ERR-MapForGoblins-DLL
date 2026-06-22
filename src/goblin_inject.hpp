@@ -253,6 +253,10 @@ namespace goblin
     // log each worldmap icon image (sprite rect + backing GPU texture) → crack iconId↔image.
     void install_icon_texture_probe();
 
+    // Dev probe (dump_icon_textures): iterate EquipParam* live, log rows whose iconId matches
+    // the inventory-captured MENU_FL_<iconId> sprites → proves item↔iconId↔sprite.
+    void verify_equip_iconids();
+
     // Path A verify (findings §6): on a MAP-OPEN frame, re-read each registered image's
     // img+0x10 (lazily-bound Render::Texture) → GXTexture2D+0x40 = ID3D12Resource. Call from
     // the worldmap probe loop while the map is open; runs once per session after it resolves.

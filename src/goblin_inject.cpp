@@ -1865,10 +1865,7 @@ void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
 {
     if (!goblin::config::dumpIconTextures || !img)
         return;
-    static int logged = 0;
-    if (logged > 40)
-        return;
-    logged++;
+    static int logged = 0; // gates only the verbose [ICONTEX] line; [ICONMAP] is uncapped
     // Rect SOLVED: x0,y0,x1,y1 contiguous at +0x74/+0x78/+0x7c/+0x80; dims +0x84/+0x88.
     int x0 = 0, y0 = 0, x1 = 0, y1 = 0, w = 0, h = 0;
     icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
@@ -1885,14 +1882,21 @@ void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
     // (the GPU texture binds LAZILY on first render). Icon sheets are 512×512 / 2048×1024.
     if (w >= 256 && h >= 256 && g_icon_imgs.size() < 512)
         g_icon_imgs.push_back({img, x0, y0, x1, y1, w, h, name});
-    // Accumulate the UNIQUE name→rect table (skip KG_ button glyphs + the _ptl suffix) — this is
-    // the iconId-equivalent label for each sprite → drives the step-3 category→rect mapping.
+    // Accumulate the UNIQUE name→rect table (skip KG_ button glyphs). Uncapped (dedup set) so
+    // it captures whatever menu is open — worldmap (SB_ERR_*) OR inventory/equipment item icons.
     if (!name.empty() && name.rfind("KG_", 0) != 0)
     {
         static std::set<std::string> seen;
         if (seen.insert(name).second)
             spdlog::info("[ICONMAP] '{}' rect=({},{})-({},{}) sheet={}x{} ({}x{})",
                          name, x0, y0, x1, y1, w, h, x1 - x0, y1 - y0);
+    }
+    // Verbose per-image line, capped (avoid flooding when a busy menu creates hundreds).
+    if (logged < 60)
+    {
+        logged++;
+        spdlog::info("[ICONTEX] img={:#x} name='{}' rect=({},{})-({},{}) sheet={}x{}",
+                     img, name, x0, y0, x1, y1, w, h);
     }
 }
 
@@ -1905,10 +1909,59 @@ void *__fastcall create_image_detour(void *a0, void *a1, void *a2, void *a3, voi
 }
 } // namespace
 
+// Verify item↔iconId↔sprite: iterate the EquipParam* tables LIVE (get_param), read each row's
+// iconId at its paramdef offset (u16), and log the rows whose iconId matches the sprites we
+// captured from the inventory (MENU_FL_<iconId>). Proves the menu icon = EquipParam.iconId.
+// iconId offsets (from tools/paramdefs/*.xml): Weapon 0xc2, Protector iconIdM 0xaa,
+// Accessory 0x2a, Goods 0x34. row_id == the item-name FMG id.
+void goblin::verify_equip_iconids()
+{
+    if (!goblin::config::dumpIconTextures)
+        return;
+    struct P { const wchar_t *name; const char *tag; int off; };
+    static const P params[] = {
+        {L"EquipParamWeapon", "Weapon", 0xc2},
+        {L"EquipParamProtector", "Protector", 0xaa},
+        {L"EquipParamAccessory", "Accessory", 0x2a},
+        {L"EquipParamGoods", "Goods", 0x34},
+        {L"EquipParamGem", "Gem", 0x6},
+    };
+    static const uint16_t want[] = {40144, 40147, 40172}; // the 3 inventory-captured iconIds
+    for (const P &p : params)
+    {
+        try
+        {
+            int n = 0, sample = 0; uint32_t mn = 0xffffffff, mx = 0; int hits = 0;
+            for (auto row : from::params::get_param<uint8_t>(p.name))
+            {
+                uintptr_t base = reinterpret_cast<uintptr_t>(&row.second);
+                uint16_t icon = *reinterpret_cast<uint16_t *>(base + p.off);
+                ++n;
+                if (icon < mn) mn = icon;
+                if (icon > mx) mx = icon;
+                if (sample < 4) { spdlog::info("[EQUIPVERIFY] {} SAMPLE row_id={} iconId={}", p.tag, row.first, icon); ++sample; }
+                for (uint16_t w : want)
+                    if (icon == w)
+                    {
+                        std::string nm = goblin::lookup_text_utf8(static_cast<int>(row.first));
+                        spdlog::info("[EQUIPVERIFY] {} MATCH row_id={} iconId={} name='{}'", p.tag, row.first, icon, nm);
+                        ++hits;
+                    }
+            }
+            spdlog::info("[EQUIPVERIFY] {} rows={} iconId[min={},max={}] hits={}", p.tag, n, mn, mx, hits);
+        }
+        catch (...)
+        {
+            spdlog::info("[EQUIPVERIFY] {} not loaded", p.tag);
+        }
+    }
+}
+
 void goblin::install_icon_texture_probe()
 {
     if (!goblin::config::dumpIconTextures)
         return;
+    goblin::verify_equip_iconids();
     void *fn = modutils::scan<void>({.aob = goblin::sig::WORLDMAP_CREATE_IMAGE});
     if (!fn)
     {
