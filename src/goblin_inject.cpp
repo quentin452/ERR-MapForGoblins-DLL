@@ -1883,7 +1883,7 @@ static void correlate_menu_iconids()
     static const P params[] = {
         {L"EquipParamWeapon", "Weapon"}, {L"EquipParamProtector", "Protector"},
         {L"EquipParamAccessory", "Accessory"}, {L"EquipParamGoods", "Goods"},
-        {L"EquipParamGem", "Gem"}, {L"EquipParamMagic", "Magic"},
+        {L"EquipParamGem", "Gem"}, {L"Magic", "Magic"},
     };
     int totalBest = 0;
     for (const P &p : params)
