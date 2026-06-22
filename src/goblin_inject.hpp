@@ -262,6 +262,13 @@ namespace goblin
     // the worldmap probe loop while the map is open; runs once per session after it resolves.
     void dump_icon_textures_live();
 
+    // Dev runtime-confirm (sprite findings §6): call the engine's draw-free icon
+    // find-by-name FUN_140d63c30(repo, &out, L"MENU_ItemIcon_<id>") for a set of iconIds and
+    // log whether each resolves to a CSTextureImage+rect WITHOUT the icon being drawn. Press
+    // with the inventory OPEN (sheets resident), then CLOSED, to measure the residency limit.
+    // Bound to F8, gated dump_icon_textures. [FIND2] log lines.
+    void probe_icon_find_runtime();
+
     // Request a live icon refresh: the next time the engine runs its build the
     // detour replays it once more with the engine's own captured (this, ctx), so
     // an areaNo edit applied while the map is open re-renders without a reopen.

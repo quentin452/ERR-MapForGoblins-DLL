@@ -666,9 +666,23 @@ static int seh_dump_to_file_invoke()
 void hotkey_loop()
 {
     bool prev_down = false;
+    bool prev_f8 = false;
     while (true)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+        // Dev: draw-free icon find-by-name runtime confirm (F8), gated dump_icon_textures.
+        // Runs independently of the marker-dump hotkey. See goblin::probe_icon_find_runtime.
+        if (config::dumpIconTextures)
+        {
+            bool f8 = (GetAsyncKeyState(0x77) & 0x8000) != 0;  // VK_F8
+            if (f8 && !prev_f8)
+            {
+                try { goblin::probe_icon_find_runtime(); }
+                catch (...) { spdlog::error("[FIND2] probe threw"); }
+            }
+            prev_f8 = f8;
+        }
 
         if (!config::enableMarkerDump) { prev_down = false; continue; }
         SHORT state = GetAsyncKeyState(static_cast<int>(config::markerDumpKey));
