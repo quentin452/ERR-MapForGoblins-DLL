@@ -2933,6 +2933,49 @@ void goblin::dump_icon_textures_live()
     int bound = 0, resolved = 0, logged = 0;
     for (const IconImg &it : g_icon_imgs)
     {
+        // GPU-INDEPENDENT grace/map-sprite capture (fix for fewer candidates on vkd3d/Proton): the
+        // candidate list + grace sprite are built from the CSTextureImage NAME + RECT + img pointer —
+        // NOT gated on the GPU texture being bound (img+0x10 binds lazily on render, which Windows
+        // satisfies broadly but Linux/vkd3d does not → only 1-2 candidates there). `sheet` is left null
+        // and resolved from `img` at copy time (ensure_grace_srv, render thread, bound by then).
+        if (it.name.rfind("SB_ERR_", 0) == 0 || it.name.rfind("MENU_MAP_", 0) == 0)
+        {
+            bool canon = it.name.rfind("MENU_MAP_01_Bonfire", 0) == 0;
+            bool is_grace = canon || it.name.rfind("MENU_MAP_GOBLIN_Grace", 0) == 0 ||
+                            it.name.rfind("SB_ERR_Grace", 0) == 0;
+            int gw = it.x1 - it.x0, gh = it.y1 - it.y0;
+            bool rect_ok = gw >= 8 && gw <= 256 && gh >= 8 && gh <= 256;
+            if (rect_ok)
+            {
+                goblin::ItemSprite hs;
+                hs.img = reinterpret_cast<void *>(it.img);   // sheet resolved lazily at copy time
+                hs.x0 = it.x0; hs.y0 = it.y0; hs.x1 = it.x1; hs.y1 = it.y1; hs.valid = true;
+                std::lock_guard<std::mutex> lk(g_harvest_mtx);
+                bool dup = false;
+                for (const auto &gc : g_grace_cands) if (gc.name == it.name) { dup = true; break; }
+                if (!dup && g_grace_cands.size() < 64)
+                {
+                    goblin::GraceCandidate gc; gc.name = it.name; gc.spr = hs;
+                    g_grace_cands.push_back(gc);
+                    spdlog::info("[ICON-CAND] '{}' rect=({},{})-({},{}) img={:#x}{}", it.name,
+                                 it.x0, it.y0, it.x1, it.y1, it.img, canon ? " <-CANONICAL grace" : "");
+                }
+                if (is_grace && !g_grace_locked && (canon || !g_grace_sprite.valid))
+                {
+                    g_grace_sprite = hs;
+                    if (canon) g_grace_locked = true;
+                    spdlog::info("[GRACE-SPRITE] '{}' rect=({},{})-({},{}) img={:#x} ({})", it.name,
+                                 it.x0, it.y0, it.x1, it.y1, it.img,
+                                 canon ? "LOCKED canonical MENU_MAP_01_Bonfire" : "fallback");
+                }
+                if (it.name.rfind("MENU_MAP_ERR_GraceUnderground", 0) == 0 && !g_grace_dungeon_sprite.valid)
+                {
+                    g_grace_dungeon_sprite = hs;
+                    spdlog::info("[GRACE-SPRITE] DUNGEON (ERR) '{}' rect=({},{})-({},{}) img={:#x}",
+                                 it.name, it.x0, it.y0, it.x1, it.y1, it.img);
+                }
+            }
+        }
         uintptr_t rtex = 0;
         // A REAL Scaleform Render::Texture = heap object (OUTSIDE the ER module) whose vtable
         // is INSIDE the module (.rdata). img+0x10 also takes junk states: 0 (unbound), a small
@@ -2961,73 +3004,8 @@ void goblin::dump_icon_textures_live()
         int dim = 0, rw = 0, rh = 0;
         icon_rpm_i32(res + 0x10, dim); icon_rpm_i32(res + 0x20, rw); icon_rpm_i32(res + 0x28, rh);
         ++resolved;
-        // ERR map sprites (RE e4b3f6a §6): the discovered grace + all other ERR map icons draw through
-        // CreateImage (not the find fn) → captured here with resolved sheet+rect. Collect EVERY
-        // 'SB_ERR_*' candidate (dev viewer — to test whether non-grace icons harvest cleanly vs the
-        // grace's time-of-day variants), and LOCK the grace sprite on the first LIT '..._Color' frame
-        // with a grace-sized rect (any time-of-day; the engine resolves only one per session).
-        if (it.name.rfind("SB_ERR_", 0) == 0 || it.name.rfind("MENU_MAP_", 0) == 0)
-        {
-            int gfmt = 0; icon_rpm_i32(res + 0x30, gfmt);
-            // The REAL grace = the mod's gfx sprite MENU_MAP_GOBLIN_Grace (force-created via img://);
-            // SB_ERR_Grace_*_Color is the native time-tinted pin (wrong). Lock on the canonical; an
-            // SB_ERR_Grace _Color frame is kept only as an overridable fallback. (MENU_MAP_ sprites have
-            // no time-of-day variants, so they're always "lit".)
-            // Canonical (default) grace = the vanilla icon MENU_MAP_01_Bonfire (bonfire = grace). The
-            // ERR dungeon-style grace MENU_MAP_ERR_GraceUnderground is captured separately (below) and
-            // used for dungeon graces when ERR is installed. GOBLIN_Grace/SB_ERR_Grace = F1 candidates.
-            bool canon = it.name.rfind("MENU_MAP_01_Bonfire", 0) == 0;
-            bool is_grace = canon || it.name.rfind("MENU_MAP_GOBLIN_Grace", 0) == 0 ||
-                            it.name.rfind("SB_ERR_Grace", 0) == 0;
-            bool lit = it.name.rfind("MENU_MAP_", 0) == 0 || it.name.find("Color") != std::string::npos;
-            int gw = it.x1 - it.x0, gh = it.y1 - it.y0;
-            bool rect_ok = gw >= 8 && gw <= 256 && gh >= 8 && gh <= 256;
-            static std::set<std::string> seen_cand;   // dedup across the repeatable re-runs
-            std::lock_guard<std::mutex> lk(g_harvest_mtx);
-            if (seen_cand.insert(it.name).second)      // NEW SB_ERR_/MENU_MAP_ name → log + add to viewer
-            {
-                spdlog::info("[ICON-CAND] '{}' rect=({},{})-({},{}) res={:#x} fmt={}{}",
-                             it.name, it.x0, it.y0, it.x1, it.y1, res, gfmt, canon ? " <-CANONICAL grace" : "");
-                goblin::GraceCandidate gc;
-                gc.name = it.name;
-                gc.spr.sheet = reinterpret_cast<void *>(res);
-                gc.spr.x0 = it.x0; gc.spr.y0 = it.y0; gc.spr.x1 = it.x1; gc.spr.y1 = it.y1;
-                gc.spr.sheetW = static_cast<unsigned long long>(rw);
-                gc.spr.sheetH = static_cast<unsigned>(rh);
-                gc.spr.format = static_cast<unsigned>(gfmt);
-                gc.spr.valid = true;
-                if (g_grace_cands.size() < 64) g_grace_cands.push_back(gc);
-            }
-            if (is_grace && lit && rect_ok && !g_grace_locked && (canon || !g_grace_sprite.valid))
-            {
-                g_grace_sprite.sheet = reinterpret_cast<void *>(res);
-                g_grace_sprite.x0 = it.x0; g_grace_sprite.y0 = it.y0;
-                g_grace_sprite.x1 = it.x1; g_grace_sprite.y1 = it.y1;
-                g_grace_sprite.sheetW = static_cast<unsigned long long>(rw);
-                g_grace_sprite.sheetH = static_cast<unsigned>(rh);
-                g_grace_sprite.format = static_cast<unsigned>(gfmt);
-                g_grace_sprite.valid = true;
-                if (canon) g_grace_locked = true;   // canonical wins + locks; fallback stays overridable
-                spdlog::info("[GRACE-SPRITE] '{}' rect=({},{})-({},{}) {}x{} res={:#x} fmt={} ({})",
-                             it.name, it.x0, it.y0, it.x1, it.y1, gw, gh, res, gfmt,
-                             canon ? "LOCKED canonical MENU_MAP_01_Bonfire" : "fallback (awaiting canonical)");
-            }
-            // ERR dungeon-style grace — captured separately; its presence = ERR installed. The renderer
-            // uses it for dungeon graces. Store once (it doesn't change).
-            if (it.name.rfind("MENU_MAP_ERR_GraceUnderground", 0) == 0 && rect_ok &&
-                !g_grace_dungeon_sprite.valid)
-            {
-                g_grace_dungeon_sprite.sheet = reinterpret_cast<void *>(res);
-                g_grace_dungeon_sprite.x0 = it.x0; g_grace_dungeon_sprite.y0 = it.y0;
-                g_grace_dungeon_sprite.x1 = it.x1; g_grace_dungeon_sprite.y1 = it.y1;
-                g_grace_dungeon_sprite.sheetW = static_cast<unsigned long long>(rw);
-                g_grace_dungeon_sprite.sheetH = static_cast<unsigned>(rh);
-                g_grace_dungeon_sprite.format = static_cast<unsigned>(gfmt);
-                g_grace_dungeon_sprite.valid = true;
-                spdlog::info("[GRACE-SPRITE] DUNGEON (ERR) '{}' rect=({},{})-({},{}) res={:#x} stored",
-                             it.name, it.x0, it.y0, it.x1, it.y1, res);
-            }
-        }
+        // (grace/map-sprite candidate capture moved to the top of the loop — GPU-independent, so the
+        // candidate list is consistent across D3D12/vkd3d; sheet resolved lazily at copy time.)
         // Track unique sheet resources (icons on one sheet share a resource).
         bool known = false;
         for (uintptr_t s : g_icon_sheets) if (s == res) { known = true; break; }

@@ -266,7 +266,12 @@ namespace goblin
     // falls back to the baked PNG). Cached per iconId (valid only). Feeds the future DX12 atlas copy.
     struct ItemSprite
     {
-        void *sheet = nullptr;                 // ID3D12Resource* of the loaded sheet
+        void *sheet = nullptr;                 // ID3D12Resource* of the loaded sheet (may be null until
+                                               // the GPU texture binds; resolve from `img` at copy time)
+        void *img = nullptr;                   // CS::CSTextureImage* source — lets the overlay resolve
+                                               // `sheet` lazily (img+0x10 -> Render::Texture +0x70). The
+                                               // GPU texture binds on RENDER (lazy + platform-dependent on
+                                               // vkd3d/Proton), so capture is GPU-independent (rect+img).
         int x0 = 0, y0 = 0, x1 = 0, y1 = 0;    // sub-rect on the sheet
         unsigned long long sheetW = 0;
         unsigned int sheetH = 0, format = 0;   // DXGI_FORMAT (from GetDesc)
