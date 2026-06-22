@@ -2016,6 +2016,8 @@ uintptr_t g_icon_repo = 0;   // FUN_140d63c30 arg0 (repo) — stashed for the pr
 // by the SAME find hook when the open map draws a discovered grace → lets the overlay draw graces
 // itself (discovered = this sprite, undiscovered = grey-tinted) and become the sole grace source.
 goblin::ItemSprite g_grace_sprite{};
+bool g_grace_locked = false;   // true once the exact SB_ERR_Grace_Morning_Color is stored
+std::vector<goblin::GraceCandidate> g_grace_cands;   // all SB_ERR_Grace_* frames (dev F1 viewer)
 
 // Read a resolved CSTextureImage (`img` = the find fn's `out`) and cache its sub-rect + backing
 // sheet resource + DXGI_FORMAT under the iconId parsed from a MENU_ItemIcon_<id> name. Shared by
@@ -2379,6 +2381,12 @@ bool goblin::harvested_grace(ItemSprite &out)
     return true;
 }
 
+std::vector<goblin::GraceCandidate> goblin::grace_candidates()
+{
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    return g_grace_cands;
+}
+
 std::vector<int> goblin::harvested_ids(size_t max)
 {
     std::lock_guard<std::mutex> lk(g_harvest_mtx);
@@ -2497,21 +2505,38 @@ void goblin::dump_icon_textures_live()
         ++resolved;
         // Grace sprite (RE e4b3f6a §6): the discovered/lit grace 'SB_ERR_Grace_Morning_Color' draws
         // through CreateImage (not the find fn) → captured here in g_icon_imgs with its resolved
-        // sheet+rect. Stash it so the overlay can draw graces itself. Prefer the Morning variant.
+        // sheet+rect. Log EVERY candidate (the sheet carries several grace frames) and LOCK the first
+        // exact 'Morning_Color' (deterministic; don't overwrite) — else fall back to the first grace.
         if (it.name.rfind("SB_ERR_Grace", 0) == 0)
         {
-            bool morning = it.name.find("Morning") != std::string::npos;
             int gfmt = 0; icon_rpm_i32(res + 0x30, gfmt);
+            bool exact = it.name.find("Morning_Color") != std::string::npos;
+            spdlog::info("[GRACE-CAND] '{}' rect=({},{})-({},{}) res={:#x} fmt={}{}",
+                         it.name, it.x0, it.y0, it.x1, it.y1, res, gfmt, exact ? " <-Morning_Color" : "");
             std::lock_guard<std::mutex> lk(g_harvest_mtx);
-            if (morning || !g_grace_sprite.valid)
+            {
+                goblin::GraceCandidate gc;
+                gc.name = it.name;
+                gc.spr.sheet = reinterpret_cast<void *>(res);
+                gc.spr.x0 = it.x0; gc.spr.y0 = it.y0; gc.spr.x1 = it.x1; gc.spr.y1 = it.y1;
+                gc.spr.sheetW = static_cast<unsigned long long>(rw);
+                gc.spr.sheetH = static_cast<unsigned>(rh);
+                gc.spr.format = static_cast<unsigned>(gfmt);
+                gc.spr.valid = true;
+                if (g_grace_cands.size() < 32) g_grace_cands.push_back(gc);
+            }
+            if ((exact && !g_grace_locked) || !g_grace_sprite.valid)
             {
                 g_grace_sprite.sheet = reinterpret_cast<void *>(res);
                 g_grace_sprite.x0 = it.x0; g_grace_sprite.y0 = it.y0;
                 g_grace_sprite.x1 = it.x1; g_grace_sprite.y1 = it.y1;
+                g_grace_sprite.sheetW = static_cast<unsigned long long>(rw);
+                g_grace_sprite.sheetH = static_cast<unsigned>(rh);
                 g_grace_sprite.format = static_cast<unsigned>(gfmt);
                 g_grace_sprite.valid = true;
-                spdlog::info("[GRACE-SPRITE] '{}' rect=({},{})-({},{}) res={:#x} fmt={} (live{})",
-                             it.name, it.x0, it.y0, it.x1, it.y1, res, gfmt, morning ? ", Morning" : "");
+                if (exact) g_grace_locked = true;
+                spdlog::info("[GRACE-SPRITE] '{}' rect=({},{})-({},{}) res={:#x} fmt={} (stored{})",
+                             it.name, it.x0, it.y0, it.x1, it.y1, res, gfmt, exact ? ", LOCKED Morning_Color" : "");
             }
         }
         // Track unique sheet resources (icons on one sheet share a resource).

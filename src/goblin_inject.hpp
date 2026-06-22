@@ -293,6 +293,11 @@ namespace goblin
     // graces itself (discovered = this sprite, undiscovered = grey-tinted).
     bool harvested_grace(ItemSprite &out);
 
+    // All SB_ERR_Grace_* sprite frames seen on the sheet (dev debug — the F1 grace viewer draws each
+    // so we can visually pick the correct grace rect). spr carries sheet/rect/dims/format.
+    struct GraceCandidate { ItemSprite spr; std::string name; };
+    std::vector<GraceCandidate> grace_candidates();
+
     // Dev runtime-confirm (sprite findings §6): call the engine's draw-free icon
     // find-by-name FUN_140d63c30(repo, &out, L"MENU_ItemIcon_<id>") for a set of iconIds and
     // log whether each resolves to a CSTextureImage+rect WITHOUT the icon being drawn. Press

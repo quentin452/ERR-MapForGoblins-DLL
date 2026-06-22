@@ -426,6 +426,145 @@ namespace
         g_icon_batch_open = false;
     }
 
+    // ── Grace sprite SRV (RE e4b3f6a §6, step 2) ──────────────────────────────────────
+    // Copy the harvested discovered-grace rect (SB_ERR_Grace_Morning_Color) from the engine sheet
+    // into our own texture, make an SRV, and expose tex+UV to the map renderer so the overlay draws
+    // graces itself (discovered = full colour, undiscovered = grey-tinted). The rect (74x74) isn't
+    // 4-aligned but the sheet is BC7 (block 4x4) → snap the copy box to 4-aligned bounds and inset
+    // the UV onto the exact grace within the slightly-larger copied texture. One-shot synchronous
+    // copy (runs once when the grace sprite is first harvested); retries until then.
+    ID3D12Resource *g_grace_tex = nullptr;
+    D3D12_GPU_DESCRIPTOR_HANDLE g_grace_gpu{};
+    ImVec2 g_grace_uv0{}, g_grace_uv1{};
+    int g_grace_state = 0;   // 0 = not ready (retry), 1 = ok, 2 = failed (give up)
+
+    bool ensure_grace_srv()
+    {
+        if (g_grace_state == 1) return true;
+        if (g_grace_state == 2) return false;
+        goblin::ItemSprite sp;
+        if (!(g_device && g_command_queue && g_srv_heap && g_next_item_srv < 256 &&
+              goblin::harvested_grace(sp) && sp.sheet))
+            return false;   // not harvested yet → retry next frame (do NOT mark failed)
+
+        auto *src_res = reinterpret_cast<ID3D12Resource *>(sp.sheet);
+        DXGI_FORMAT fmt = static_cast<DXGI_FORMAT>(sp.format);
+        int x0 = sp.x0 & ~3, y0 = sp.y0 & ~3;            // snap to 4-aligned blocks (BC7)
+        int x1 = (sp.x1 + 3) & ~3, y1 = (sp.y1 + 3) & ~3;
+        int w = x1 - x0, h = y1 - y0;
+        if (w <= 0 || h <= 0 || w > 1024 || h > 1024) { g_grace_state = 2; return false; }
+
+        D3D12_HEAP_PROPERTIES hp{}; hp.Type = D3D12_HEAP_TYPE_DEFAULT;
+        D3D12_RESOURCE_DESC td{};
+        td.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        td.Width = static_cast<UINT64>(w); td.Height = static_cast<UINT>(h);
+        td.DepthOrArraySize = 1; td.MipLevels = 1; td.Format = fmt;
+        td.SampleDesc.Count = 1; td.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        if (FAILED(g_device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &td,
+                D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&g_grace_tex))))
+        { g_grace_state = 2; return false; }
+
+        g_frames[0].allocator->Reset();
+        g_command_list->Reset(g_frames[0].allocator, nullptr);
+        D3D12_RESOURCE_BARRIER bs{};
+        bs.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        bs.Transition.pResource = src_res; bs.Transition.Subresource = 0;
+        bs.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        bs.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        g_command_list->ResourceBarrier(1, &bs);
+        D3D12_TEXTURE_COPY_LOCATION dst{}; dst.pResource = g_grace_tex;
+        dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; dst.SubresourceIndex = 0;
+        D3D12_TEXTURE_COPY_LOCATION csrc{}; csrc.pResource = src_res;
+        csrc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; csrc.SubresourceIndex = 0;
+        D3D12_BOX box{}; box.left = x0; box.top = y0; box.front = 0;
+        box.right = x1; box.bottom = y1; box.back = 1;
+        g_command_list->CopyTextureRegion(&dst, 0, 0, 0, &csrc, &box);
+        D3D12_RESOURCE_BARRIER after[2]{};
+        after[0] = bs;
+        after[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        after[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        after[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        after[1].Transition.pResource = g_grace_tex; after[1].Transition.Subresource = 0;
+        after[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        after[1].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        g_command_list->ResourceBarrier(2, after);
+        g_command_list->Close();
+        ID3D12CommandList *lists[] = {g_command_list};
+        g_command_queue->ExecuteCommandLists(1, lists);
+        ID3D12Fence *fence = nullptr;
+        if (SUCCEEDED(g_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))))
+        {
+            HANDLE ev = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+            g_command_queue->Signal(fence, 1);
+            if (ev && fence->GetCompletedValue() < 1)
+            { fence->SetEventOnCompletion(1, ev); WaitForSingleObject(ev, 1000); }
+            if (ev) CloseHandle(ev);
+            fence->Release();
+        }
+
+        const UINT inc = g_device->GetDescriptorHandleIncrementSize(
+            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        UINT idx = g_next_item_srv++;
+        D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
+        cpu.ptr += static_cast<SIZE_T>(inc) * idx;
+        D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
+        sd.Format = fmt; sd.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        sd.Texture2D.MipLevels = 1;
+        g_device->CreateShaderResourceView(g_grace_tex, &sd, cpu);
+        g_grace_gpu = g_srv_heap->GetGPUDescriptorHandleForHeapStart();
+        g_grace_gpu.ptr += static_cast<SIZE_T>(inc) * idx;
+        // UV onto the exact grace rect within the snapped copy.
+        g_grace_uv0 = ImVec2(static_cast<float>(sp.x0 - x0) / w, static_cast<float>(sp.y0 - y0) / h);
+        g_grace_uv1 = ImVec2(static_cast<float>(sp.x1 - x0) / w, static_cast<float>(sp.y1 - y0) / h);
+        g_grace_state = 1;
+        spdlog::info("[GRACE-SRV] copied {}x{} (snapped from {},{}-{},{}) fmt={} -> slot {} gpu={:#x}",
+                     w, h, sp.x0, sp.y0, sp.x1, sp.y1, static_cast<int>(fmt), idx, g_grace_gpu.ptr);
+        return true;
+    }
+
+    // ── Grace-sprite GPU debug viewer (dev) ──────────────────────────────────────────
+    // Draws EVERY harvested SB_ERR_Grace_* frame as a GPU image so we can visually pick the correct
+    // grace rect (the captured 'Morning_Color' frame didn't look like a grace). Uses a FULL-SHEET SRV
+    // over the engine resource + per-frame UV (NO copy → shows the exact rect content, isolates a
+    // wrong-rect bug from a copy/UV bug). Engine-owned sheet (don't Release); dev/map-open only.
+    struct GraceDbg { ImTextureID tex; ImVec2 uv0, uv1; std::string name; int w, h; };
+    std::vector<GraceDbg> g_grace_dbg;
+    bool g_grace_dbg_done = false;
+
+    void ensure_grace_debug()
+    {
+        if (g_grace_dbg_done || !g_device || !g_srv_heap) return;
+        std::vector<goblin::GraceCandidate> cands = goblin::grace_candidates();
+        if (cands.empty()) return;
+        const UINT inc = g_device->GetDescriptorHandleIncrementSize(
+            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        for (const goblin::GraceCandidate &c : cands)
+        {
+            if (!c.spr.sheet || c.spr.sheetW == 0 || c.spr.sheetH == 0 || g_next_item_srv >= 256)
+                continue;
+            UINT idx = g_next_item_srv++;
+            D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
+            cpu.ptr += static_cast<SIZE_T>(inc) * idx;
+            D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
+            sd.Format = static_cast<DXGI_FORMAT>(c.spr.format);
+            sd.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            sd.Texture2D.MipLevels = 1;
+            g_device->CreateShaderResourceView(reinterpret_cast<ID3D12Resource *>(c.spr.sheet), &sd, cpu);
+            D3D12_GPU_DESCRIPTOR_HANDLE gpu = g_srv_heap->GetGPUDescriptorHandleForHeapStart();
+            gpu.ptr += static_cast<SIZE_T>(inc) * idx;
+            float W = static_cast<float>(c.spr.sheetW), H = static_cast<float>(c.spr.sheetH);
+            GraceDbg d;
+            d.tex = reinterpret_cast<ImTextureID>(gpu.ptr);
+            d.uv0 = ImVec2(c.spr.x0 / W, c.spr.y0 / H);
+            d.uv1 = ImVec2(c.spr.x1 / W, c.spr.y1 / H);
+            d.name = c.name; d.w = c.spr.x1 - c.spr.x0; d.h = c.spr.y1 - c.spr.y0;
+            g_grace_dbg.push_back(d);
+        }
+        g_grace_dbg_done = true;
+    }
+
     // Upload the atlas once g_command_queue is captured. Self-gates; on failure it
     // marks ready anyway so we don't retry every frame (just falls back to circles).
     void try_upload_atlas()
@@ -707,6 +846,10 @@ namespace
         POINT pt{};
         BOOL ok = o_get_cursor_pos ? o_get_cursor_pos(&pt) : GetCursorPos(&pt);
         if (ok && g_hwnd && ScreenToClient(g_hwnd, &pt)) { mx = (float)pt.x; my = (float)pt.y; }
+        // Hand the renderer the harvested grace sprite (once ready) so it draws graces itself.
+        if (ensure_grace_srv())
+            wm::set_grace_sprite(reinterpret_cast<void *>(g_grace_gpu.ptr),
+                                 g_grace_uv0.x, g_grace_uv0.y, g_grace_uv1.x, g_grace_uv1.y);
         wm::render_markers(s_layers, atlas, mx, my);
     }
 
@@ -717,6 +860,9 @@ namespace
     {
         void *atlas = g_atlas_ready ? reinterpret_cast<void *>(g_atlas_gpu.ptr) : nullptr;
         ImGuiIO &io = ImGui::GetIO();
+        if (ensure_grace_srv())
+            goblin::worldmap::set_grace_sprite(reinterpret_cast<void *>(g_grace_gpu.ptr),
+                                               g_grace_uv0.x, g_grace_uv0.y, g_grace_uv1.x, g_grace_uv1.y);
         goblin::worldmap::draw_minimap(overlay_layers(), atlas, io.DisplaySize.x,
                                        io.DisplaySize.y);
     }
@@ -780,6 +926,23 @@ namespace
                                                     : "harvested icons not ready yet (1-frame batch)...");
             }
 
+            // Grace-sprite GPU debug: draw every harvested SB_ERR_Grace_* frame (full-sheet SRV +
+            // UV, no copy) so we can visually pick the correct grace rect. Open the world map (with a
+            // discovered grace) to populate. The frame that looks like a Site of Grace = the one to lock.
+            if (goblin::config::dumpIconTextures && ImGui::CollapsingHeader("Grace sprites (GPU debug)"))
+            {
+                ensure_grace_debug();
+                if (g_grace_dbg.empty())
+                    ImGui::TextDisabled("open the world map (with a grace) to harvest grace frames");
+                for (const GraceDbg &d : g_grace_dbg)
+                {
+                    ImGui::Image(d.tex, ImVec2(64, 64), d.uv0, d.uv1);
+                    ImGui::SameLine();
+                    ImGui::Text("%s  %dx%d  uv(%.3f,%.3f)-(%.3f,%.3f)", d.name.c_str(), d.w, d.h,
+                                d.uv0.x, d.uv0.y, d.uv1.x, d.uv1.y);
+                }
+            }
+
             // Master on/off + Save.
             bool icons_on = goblin::ui::icons_enabled();
             if (ImGui::Checkbox("Show icons (master)", &icons_on))
@@ -825,6 +988,16 @@ namespace
             // dungeon bosses); collected/cleared graying still takes precedence.
             ImGui::Checkbox("Red boss markers (tint boss icons red)",
                             &goblin::config::redifyBossIcons);
+
+            // Grace rendering: overlay draws all graces (discovered=colour, undiscovered=grey).
+            ImGui::Checkbox("Overlay graces (draw all graces ourselves)",
+                            &goblin::config::graceOverlay);
+            if (goblin::config::graceOverlay)
+            {
+                ImGui::SameLine();
+                ImGui::Checkbox("GPU sprite (engine, time-tinted) vs CPU (baked atlas)",
+                                &goblin::config::graceGpuSprite);
+            }
 
             // Spoiler-free loot (overlay port of anonymous_loot; live, persists via
             // "Save to INI"). Lot-backed loot markers draw as a gray "?" with a generic

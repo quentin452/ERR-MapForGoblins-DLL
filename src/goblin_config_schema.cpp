@@ -47,6 +47,8 @@ namespace goblin::config
     bool anonymousLoot = false;  // opt-in spoiler-free mode (all profiles default off)
 
     bool redifyBossIcons = false;
+    bool graceOverlay = false;
+    bool graceGpuSprite = false;
 
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
@@ -355,6 +357,10 @@ namespace
              ERR, {
                 BE("redify_boss_icons", redifyBossIcons, "false",
                    "Cosmetic: draw boss markers red and auto-hide them once the boss is\ndefeated."),
+                BE("grace_overlay", graceOverlay, "false",
+                   "Draw ALL Sites of Grace in the overlay (discovered = full colour,\nundiscovered = grey) instead of letting the game draw discovered ones.\nNeeds native-pin suppression to avoid doubled grace icons."),
+                BE("grace_gpu_sprite", graceGpuSprite, "false",
+                   "Grace icon source when grace_overlay is on: false = the mod's baked atlas\nicon (clean, constant); true = the live engine sprite (SB_ERR_Grace,\ntinted by in-game time of day)."),
             }},
 
             {"Compatibility",
