@@ -243,6 +243,10 @@ namespace goblin
     // unaffected. See docs/windows_re_live_refresh_capture.md.
     void install_live_refresh_hook();
 
+    // Dev probe (config dump_icon_textures): hook CSScaleformImageCreator::CreateImage to
+    // log each worldmap icon image (sprite rect + backing GPU texture) → crack iconId↔image.
+    void install_icon_texture_probe();
+
     // Request a live icon refresh: the next time the engine runs its build the
     // detour replays it once more with the engine's own captured (this, ctx), so
     // an areaNo edit applied while the map is open re-renders without a reopen.

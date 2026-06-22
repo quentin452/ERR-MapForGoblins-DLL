@@ -58,6 +58,7 @@ namespace goblin::config
     bool debugItemGrants = false;
     bool debugFlagCapture = false;
     bool debugWorldmapProbe = false;
+    bool dumpIconTextures = false;
     bool liveProjection = true;
     bool dumpConverters = false;
     bool overlayMarkersProto = false;
@@ -405,6 +406,8 @@ namespace
                   "Quest Browser death-flag capture tool (overlay Dev tools): arm naming an\nNPC, kill it, finalize -> the persisted flag(s) are written to\nlogs/MapForGoblins_flagcapture.txt as NpcQuest::fail_flag candidates.\nInstalls the SetEventFlag hook in a LIGHT mode (no coverage drain); off by default."),
                 B("debug_worldmap_probe", debugWorldmapProbe, "false",
                   "Dev probe: log the world-map cursor coords (read-only) + the live view\nprojection (pan/zoom @ WorldMapArea+0x378/+0x380, virtual canvas) to confirm\nthe world->screen transform. Open the world map, move the cursor, then PAN\nand ZOOM. Logs to logs/MapForGoblins_wmprobe.log; off by default."),
+                B("dump_icon_textures", dumpIconTextures, "false",
+                  "Dev probe: hook the GFx image creator and log each worldmap icon image\n(sprite rect + backing GPU texture id) as [ICONTEX] when the map opens, to\nmap iconIds to their sprite-sheet sub-rects for runtime icon textures. Off by\ndefault."),
                 B("live_projection", liveProjection, "true",
                   "Project markers with the engine's OWN world->map-space function (the\nlive WorldMapViewModel) instead of our baked LEGACY_CONV + affine + DLC\neyeball. Fixes hundreds of dungeon/underground misplacements via the game's\nreal LegacyConv fold. Falls back to the baked projection when the map is\nclosed or an area isn't placed by the game. On by default; set false to\nforce the old baked projection."),
                 B("dump_converters", dumpConverters, "false",

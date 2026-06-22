@@ -1659,6 +1659,100 @@ void goblin::install_live_refresh_hook()
     }
 }
 
+// ── Icon-texture probe (config dump_icon_textures) ───────────────────────────────────
+// Hooks CSScaleformImageCreator::CreateImage (FUN_140d6bbc0): builds each GFx image from a
+// TPF import → a CS::CSTextureImage carrying the sprite RECT (+0x74/+0x7c/+0x3c/+0x40, dims
+// +0x2c/+0x30) + backing GXTexture2D (+0x38 → ID3D12Resource +0x40). RE findings §2/§7. Logs
+// the created image's rect/dims + backing texture + the import args so we can map iconIds →
+// sprite sub-rects. Read-only (RPM); generous arg list forwarded (x64 caller-clean → extra
+// args are harmless even if CreateImage takes fewer).
+namespace
+{
+using create_image_fn = void *(__fastcall *)(void *, void *, void *, void *, void *, void *,
+                                             void *, void *);
+create_image_fn g_create_image_orig = nullptr;
+
+inline bool icon_rpm_i32(uintptr_t a, int &out)
+{
+    SIZE_T n = 0;
+    return a && ReadProcessMemory(GetCurrentProcess(), (void *)a, &out, 4, &n) && n == 4;
+}
+inline bool icon_rpm_ptr(uintptr_t a, uintptr_t &out)
+{
+    SIZE_T n = 0;
+    return a && ReadProcessMemory(GetCurrentProcess(), (void *)a, &out, 8, &n) && n == 8;
+}
+
+void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
+{
+    if (!goblin::config::dumpIconTextures || !img)
+        return;
+    static int logged = 0;
+    if (logged > 40)
+        return;
+    logged++;
+    // Rect SOLVED: x0,y0,x1,y1 contiguous at +0x74/+0x78/+0x7c/+0x80; dims +0x84/+0x88.
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0, w = 0, h = 0;
+    icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
+    icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
+    icon_rpm_i32(img + 0x84, w);  icon_rpm_i32(img + 0x88, h);
+    // img+0x10 = the backing texture wrapper (vt RVA 0x2c0f318, constant across all images).
+    // Drill it: dump its ptr fields with vtable RVA — fields whose target vtable is OUTSIDE
+    // er_base ("EXT") are dll/COM objects = the ID3D12Resource candidate.
+    uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    uintptr_t tw = 0; icon_rpm_ptr(img + 0x10, tw);
+    char buf[490]; int len = 0; buf[0] = 0;
+    if (tw)
+        for (int o = 0x00; o <= 0xA0; o += 8)
+        {
+            uintptr_t p = 0;
+            if (!icon_rpm_ptr(tw + o, p) || p < 0x10000 || p >= 0x7fffffffffffULL) continue;
+            uintptr_t vt = 0;
+            bool okvt = icon_rpm_ptr(p, vt) && vt >= 0x10000;
+            if (okvt && vt > base && vt < base + 0x6000000)
+                len += std::snprintf(buf + len, sizeof(buf) - len, " +%x=%llx[vt=%lx]", o,
+                                     (unsigned long long)p, (long)(vt - base));
+            else if (okvt)
+                len += std::snprintf(buf + len, sizeof(buf) - len, " +%x=%llx[EXT %llx]", o,
+                                     (unsigned long long)p, (unsigned long long)vt);
+            if (len > (int)sizeof(buf) - 44) break;
+        }
+    spdlog::info("[ICONTEX] img={:#x} rect=({},{})-({},{}) sheet={}x{} tw={:#x} |{}",
+                 img, x0, y0, x1, y1, w, h, tw, buf);
+}
+
+void *__fastcall create_image_detour(void *a0, void *a1, void *a2, void *a3, void *a4, void *a5,
+                                     void *a6, void *a7)
+{
+    void *ret = g_create_image_orig(a0, a1, a2, a3, a4, a5, a6, a7);
+    icon_log_image((uintptr_t)ret, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3);
+    return ret;
+}
+} // namespace
+
+void goblin::install_icon_texture_probe()
+{
+    if (!goblin::config::dumpIconTextures)
+        return;
+    void *fn = modutils::scan<void>({.aob = goblin::sig::WORLDMAP_CREATE_IMAGE});
+    if (!fn)
+    {
+        spdlog::warn("[ICONTEX] CreateImage AOB not found (game patch?) — icon probe disabled");
+        return;
+    }
+    try
+    {
+        modutils::hook(fn, reinterpret_cast<void *>(&create_image_detour),
+                       reinterpret_cast<void **>(&g_create_image_orig));
+        spdlog::info("[ICONTEX] CreateImage hooked @ {} (probe)", fn);
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("[ICONTEX] hook failed: {}", e.what());
+        g_create_image_orig = nullptr;
+    }
+}
+
 void goblin::refresh_world_map_icons()
 {
     if (!g_wm_build_orig) return;           // hook not installed (flag off / AOB miss)
