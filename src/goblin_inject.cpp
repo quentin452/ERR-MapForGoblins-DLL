@@ -14,6 +14,7 @@
 #include "goblin_name_regions.hpp"
 #include "goblin_tile_tabs.hpp"
 #include "goblin_legacy_conv.hpp"
+#include "goblin_legacy_fold.hpp"
 #include "goblin_logic.hpp"
 #include "goblin_markers.hpp"
 #include "goblin_bench.hpp"
@@ -79,7 +80,31 @@ static bool project_dungeon_row_to_overworld(
     if (d->areaNo == 12 && !conv_underground)
         return false;
 
-    // Prefer an EXACT (src_area, src_gx, src_gz) base-point — its local coords share
+    // Prefer the LIVE param fold (goblin_legacy_fold): full-block key (area,gx,gz),
+    // terminal = area in [50,88], chains composed at fold time — fixes the area-16
+    // wrong-region bug + chained dst (m35→11→60) + reads the regulation directly so
+    // it never drifts when a mod edits WorldMapLegacyConvParam. Falls through to the
+    // baked LEGACY_CONV below when the param isn't resident yet or no chain applies.
+    {
+        auto fr = goblin::legacy_fold::fold(d->areaNo, d->gridXNo, d->gridZNo, d->posX, d->posZ);
+        if (fr.matched)
+        {
+            if (out_ent_x) *out_ent_x = fr.ent_x;
+            if (out_ent_z) *out_ent_z = fr.ent_z;
+            d->areaNo = fr.area;
+            d->gridXNo = fr.gx;
+            d->gridZNo = fr.gz;
+            d->posX = fr.posX;
+            d->posZ = fr.posZ;
+            return true;
+        }
+        // Live param resident but no row for this block → genuinely unmappable; the
+        // baked table can't do better, so don't bother scanning it.
+        if (goblin::legacy_fold::available())
+            return false;
+    }
+
+    // BAKED fallback (param not loaded yet). Prefer an EXACT (src_area, src_gx, src_gz) base-point — its local coords share
     // an origin with this row, so we keep the in-dungeon offset. Else fall back to the
     // NEAREST base-point of the same src_area (by grid distance) and cluster at that
     // overworld entrance — visible, region-correct, if without intra-dungeon spread.
