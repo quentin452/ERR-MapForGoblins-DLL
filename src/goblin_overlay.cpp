@@ -276,7 +276,7 @@ namespace
     // the engine's BCn menu sheet into a small dest texture, and makes an SRV (heap slot 2+). Cached
     // per iconId (incl. failures, to not retry every frame). Runs on the render thread. Returns the
     // GPU handle ptr (ImTextureID) or 0 on miss/fail → caller falls back to the baked atlas.
-    struct ItemIconSrv { ID3D12Resource *tex = nullptr; D3D12_GPU_DESCRIPTOR_HANDLE gpu{}; bool ok = false; };
+    struct ItemIconSrv { ID3D12Resource *tex = nullptr; D3D12_GPU_DESCRIPTOR_HANDLE gpu{}; bool ok = false; ImVec2 uv0{0, 0}, uv1{1, 1}; };
     std::map<int, ItemIconSrv> g_item_icon_srvs;
     UINT g_next_item_srv = 2;   // 0 = ImGui font, 1 = category atlas
 
@@ -325,31 +325,29 @@ namespace
         if (g_device && g_command_queue && g_srv_heap && g_next_item_srv < 256 &&
             harvested && sp.sheet)
         {
-            int w = sp.x1 - sp.x0, h = sp.y1 - sp.y0;
             auto *src_res = reinterpret_cast<ID3D12Resource *>(sp.sheet);
             // Authoritative format from D3D12 (render thread, sheet bound) — NOT the RPM-read
-            // sp.format, which is 0 when the sheet was harvested before its texture bound (lazy,
-            // findings §2). If the sheet isn't a ready TEXTURE2D yet, return WITHOUT storing a
-            // permanent miss so a later frame retries.
+            // sp.format (0 pre-bind, findings §2). If the sheet isn't a ready TEXTURE2D yet, return
+            // WITHOUT storing a permanent miss so a later frame retries.
             D3D12_RESOURCE_DESC rd = src_res->GetDesc();
             DXGI_FORMAT fmt = rd.Format;
-            // DIAG (capped): why does an harvested icon NOT produce an SRV? ready = sheet is a bound
-            // TEXTURE2D (GetDesc ok); the rect must be BC-block aligned (4) in BOTH size AND offset.
-            static int s_srv_dbg = 0;
-            bool ready = (rd.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && fmt != DXGI_FORMAT_UNKNOWN);
-            bool size_ok = (w > 0 && h > 0 && w <= 1024 && h <= 1024 && (w % 4) == 0 && (h % 4) == 0);
-            bool off_ok = ((sp.x0 % 4) == 0 && (sp.y0 % 4) == 0);
-            if (s_srv_dbg < 80 && !(ready && size_ok && off_ok))
-            {
-                ++s_srv_dbg;
-                spdlog::info("[ICONSRV-DBG] id={} rect=({},{})-({},{}) w={} h={} ready={} dim={} fmt={} size_ok={} off_ok={}",
-                             iconId, sp.x0, sp.y0, sp.x1, sp.y1, w, h, ready, (int)rd.Dimension,
-                             (int)fmt, size_ok, off_ok);
-            }
             if (rd.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || fmt == DXGI_FORMAT_UNKNOWN)
                 return 0;   // sheet not bound yet → retry next frame (no permanent-miss store)
-            if (w > 0 && h > 0 && w <= 1024 && h <= 1024 && (w % 4) == 0 && (h % 4) == 0)
+            // BC formats (BC1/BC7) copy on 4x4 BLOCKS. Most item cells are 270x270 / 54x54 — NOT
+            // multiples of 4 — so a raw sub-rect copy was rejected (the "131 harvested, 3 drawn" bug:
+            // only the 160x160 cells passed). Snap the rect OUT to 4-aligned bounds (like the grace
+            // path), copy the slightly-larger block-aligned region, and store UVs so ImGui crops back
+            // to the exact icon. Clamp to the sheet (W/H are 4-aligned) so we never read past its edge.
+            int sw = static_cast<int>(rd.Width), sh = static_cast<int>(rd.Height);
+            int x0 = sp.x0 & ~3, y0 = sp.y0 & ~3;
+            int x1 = (sp.x1 + 3) & ~3, y1 = (sp.y1 + 3) & ~3;
+            if (x1 > sw) x1 = sw;
+            if (y1 > sh) y1 = sh;
+            int w = x1 - x0, h = y1 - y0;
+            if (w > 0 && h > 0 && w <= 1024 && h <= 1024)
             {
+                slot.uv0 = ImVec2(static_cast<float>(sp.x0 - x0) / w, static_cast<float>(sp.y0 - y0) / h);
+                slot.uv1 = ImVec2(static_cast<float>(sp.x1 - x0) / w, static_cast<float>(sp.y1 - y0) / h);
                 D3D12_HEAP_PROPERTIES hp{}; hp.Type = D3D12_HEAP_TYPE_DEFAULT;
                 D3D12_RESOURCE_DESC td{};
                 td.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -375,8 +373,8 @@ namespace
                     D3D12_TEXTURE_COPY_LOCATION csrc{}; csrc.pResource = src_res;
                     csrc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; csrc.SubresourceIndex = 0;
                     D3D12_BOX box{};
-                    box.left = sp.x0; box.top = sp.y0; box.front = 0;
-                    box.right = sp.x1; box.bottom = sp.y1; box.back = 1;
+                    box.left = x0; box.top = y0; box.front = 0;
+                    box.right = x1; box.bottom = y1; box.back = 1;
                     g_command_list->CopyTextureRegion(&dst, 0, 0, 0, &csrc, &box);
 
                     D3D12_RESOURCE_BARRIER after[2]{};
@@ -939,7 +937,11 @@ namespace
                     UINT64 h = ensure_item_icon_srv(id);
                     if (!h) continue;
                     if (drawn++ % 8 != 0) ImGui::SameLine();
-                    ImGui::Image(reinterpret_cast<ImTextureID>(h), ImVec2(48, 48));
+                    // The copied tex is the 4-block-snapped region; crop to the exact icon via UVs.
+                    auto sit = g_item_icon_srvs.find(id);
+                    ImVec2 uv0 = sit != g_item_icon_srvs.end() ? sit->second.uv0 : ImVec2(0, 0);
+                    ImVec2 uv1 = sit != g_item_icon_srvs.end() ? sit->second.uv1 : ImVec2(1, 1);
+                    ImGui::Image(reinterpret_cast<ImTextureID>(h), ImVec2(48, 48), uv0, uv1);
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("iconId %d", id);
                 }
                 if (!drawn)
