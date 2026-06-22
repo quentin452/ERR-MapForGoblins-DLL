@@ -309,8 +309,21 @@ namespace
 
         ItemIconSrv slot;  // stored even on failure → no per-frame retry
         goblin::ItemSprite sp;
+        bool harvested = goblin::harvested_icon(iconId, sp);
+        // One-shot per id: log WHY a request fails to enqueue (gate booleans) — distinguishes
+        // "panel not reached" (no log at all) from "harvest empty" / "GPU not ready" / dims.
+        static int s_miss_logged = 0;
+        if (s_miss_logged < 40 &&
+            !(g_device && g_command_queue && g_srv_heap && g_next_item_srv < 256 && harvested && sp.sheet))
+        {
+            ++s_miss_logged;
+            spdlog::info("[ICONSRV] iconId={} no-enqueue: dev={} q={} heap={} slot<256={} harvested={} sheet={:#x}",
+                         iconId, (void *)g_device != nullptr, (void *)g_command_queue != nullptr,
+                         (void *)g_srv_heap != nullptr, g_next_item_srv < 256, harvested,
+                         reinterpret_cast<uintptr_t>(sp.sheet));
+        }
         if (g_device && g_command_queue && g_srv_heap && g_next_item_srv < 256 &&
-            goblin::harvested_icon(iconId, sp) && sp.sheet)
+            harvested && sp.sheet)
         {
             int w = sp.x1 - sp.x0, h = sp.y1 - sp.y0;
             auto *src_res = reinterpret_cast<ID3D12Resource *>(sp.sheet);
@@ -749,17 +762,22 @@ namespace
             // menu sheets). Open the inventory first to harvest, then check here. Dev-gated.
             if (goblin::config::dumpIconTextures && ImGui::CollapsingHeader("Item icons (P2b test)"))
             {
-                static const int test_ids[] = {1013, 18000, 8300, 8307, 45188, 10642, 321, 1010, 594};
+                // Draw the ACTUAL harvested icons (a hardcoded id list may not match what the
+                // player browsed → empty grid even with harvested>0). Exercises the batch path.
+                ImGui::Text("harvested: %zu  (open inventory to fill)", goblin::harvested_count());
+                std::vector<int> ids = goblin::harvested_ids(48);
                 int drawn = 0;
-                for (int id : test_ids)
+                for (int id : ids)
                 {
                     UINT64 h = ensure_item_icon_srv(id);
                     if (!h) continue;
-                    if (drawn++ % 6 != 0) ImGui::SameLine();
+                    if (drawn++ % 8 != 0) ImGui::SameLine();
                     ImGui::Image(reinterpret_cast<ImTextureID>(h), ImVec2(48, 48));
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("iconId %d", id);
                 }
-                if (!drawn) ImGui::TextDisabled("no icons harvested yet — open inventory first");
+                if (!drawn)
+                    ImGui::TextDisabled(ids.empty() ? "no icons harvested yet — open inventory first"
+                                                    : "harvested icons not ready yet (1-frame batch)...");
             }
 
             // Master on/off + Save.

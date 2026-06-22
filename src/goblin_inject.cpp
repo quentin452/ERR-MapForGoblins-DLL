@@ -2270,6 +2270,25 @@ bool goblin::harvested_icon(int iconId, ItemSprite &out)
     return true;
 }
 
+size_t goblin::harvested_count()
+{
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    return g_harvest.size();
+}
+
+std::vector<int> goblin::harvested_ids(size_t max)
+{
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    std::vector<int> out;
+    out.reserve(g_harvest.size() < max ? g_harvest.size() : max);
+    for (const auto &kv : g_harvest)
+    {
+        if (out.size() >= max) break;
+        out.push_back(kv.first);
+    }
+    return out;
+}
+
 void goblin::probe_icon_find_runtime()
 {
     if (!goblin::config::dumpIconTextures)

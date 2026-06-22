@@ -281,6 +281,13 @@ namespace goblin
     // Returns false if that iconId hasn't been seen/loaded yet → caller falls back to the baked PNG.
     bool harvested_icon(int iconId, ItemSprite &out);
 
+    // Count of icons harvested so far (dev/diagnostic — shown in the P2b test panel).
+    size_t harvested_count();
+
+    // First `max` harvested iconIds (dev — the P2b test panel draws ACTUAL harvested icons
+    // instead of a hardcoded id list that may not match what the player browsed).
+    std::vector<int> harvested_ids(size_t max);
+
     // Dev runtime-confirm (sprite findings §6): call the engine's draw-free icon
     // find-by-name FUN_140d63c30(repo, &out, L"MENU_ItemIcon_<id>") for a set of iconIds and
     // log whether each resolves to a CSTextureImage+rect WITHOUT the icon being drawn. Press
