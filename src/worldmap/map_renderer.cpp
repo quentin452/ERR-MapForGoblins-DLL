@@ -669,33 +669,36 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
 
     // Which group's map is OPEN — from the SOLVED region getter (probe reads the
     // WorldMapDialog page+layer): openDlc = DLC map, underground = layer byte.
-    const int open_grp = (lv.openDlc ? 2 : 0) | ((lv.underground != 0) ? 1 : 0);
-    const bool dlc_ug = (open_grp == 3);
+    const int raw_grp = (lv.openDlc ? 2 : 0) | ((lv.underground != 0) ? 1 : 0);
 
-    // Page-transition flicker suppress (option A): on a page change `open_grp` flips at once
-    // but the engine ANIMATES the swap (~0.5s) → new-page markers would appear over the
-    // still-animating old map. Skip the whole overlay until the view stops sweeping (settled
-    // for a few frames), with a hard cap so it never sticks. The cached UV stays valid; this
-    // only gates the DRAW. Not gated by live_projection (the view sync is projection-agnostic).
+    // Page-transition LAG: on a page change `raw_grp` flips at once but the engine ANIMATES
+    // the swap (~0.5s). Instead of blanking, keep DRAWING the OLD page's markers (they ride
+    // the out-going map) and only switch to the new page once the live view stops sweeping
+    // (settled a few frames), hard-capped so it never sticks. So old icons don't vanish too
+    // early, and new ones don't pop over the still-animating old map. The cached UV stays
+    // valid; this only delays the page GATE. Projection-agnostic.
+    static int s_prev_raw = -999, s_draw_grp = -999, s_trans = 0, s_still = 0;
+    static float s_px = 0, s_pz = 0, s_zoom = 0;
     {
-        static int s_prev_grp = -999;
-        static float s_px = 0, s_pz = 0, s_zoom = 0;
-        static int s_trans = 0, s_still = 0;
         const float dpan = std::fabs(lv.panX - s_px) + std::fabs(lv.panZ - s_pz);
         const float dz = std::fabs(lv.zoom - s_zoom);
         s_px = lv.panX; s_pz = lv.panZ; s_zoom = lv.zoom;
         const bool moving = (dpan > 2.0f) || (dz > 0.002f);
-        if (open_grp != s_prev_grp) { s_trans = 40; s_still = 0; } // page flip → arm (~0.6s cap)
-        s_prev_grp = open_grp;
+        if (raw_grp != s_prev_raw) { s_trans = 40; s_still = 0; } // page flip → start the lag
+        s_prev_raw = raw_grp;
+        if (s_draw_grp == -999) s_draw_grp = raw_grp;             // first frame → no lag
         if (s_trans > 0)
         {
             s_trans--;
             s_still = moving ? 0 : (s_still + 1);
-            if (s_still < 3 && s_trans > 0)
-                return;       // still animating → suppress the overlay this frame
-            s_trans = 0;      // view settled (or cap hit) → resume drawing
+            if (s_still >= 3 || s_trans == 0)                     // view settled (or cap) → swap
+            { s_draw_grp = raw_grp; s_trans = 0; }
         }
+        else
+            s_draw_grp = raw_grp;
     }
+    const int open_grp = s_draw_grp; // the page we actually DRAW (lags raw_grp during a swap)
+    const bool dlc_ug = (open_grp == 3);
 
     // The DLC-UG eyeball rotates about the open group's world centroid. Compute it over
     // every visible layer's markers (cheap; only needed for group 3).
