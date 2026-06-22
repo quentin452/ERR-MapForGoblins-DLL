@@ -308,6 +308,40 @@ CSFile lever + offline rects). This short-circuits the fragile runtime binding e
 
 ---
 
+## 5d. WHAT governs residency — the menu resource manager (re_v117–v118)
+
+The object that decides which icons are loaded/evicted is the **menu resource manager** (a
+`CSMenuResourceManager`-like, reached via the task system — `FUN_140d79d90` gets it as param_1 and
+ticks it; context getters `FUN_140d69a60`/`FUN_140d69c20`). It is NOT a flat global. Layout:
+
+```
+manager:
+  +0x9d8   array of loaded resource GROUPS (movies/bundles)  (count @+0xbe0, stride 0x10)
+  +0xda0   lock
+  +0x1df0  LOAD queue        (drained by FUN_140d790a0 er+0xd790a0)
+  +0x1e08  UNLOAD/evict queue (drained by FUN_140d790a0)
+  +0x1e19  dirty flag → triggers queue processing (FUN_140d790a0)
+  per-tick update: FUN_140d78540 (er+0xd78540) loops +0x9d8; entry+0x7c!=0 → FUN_140d70940 (load/evict)
+  tickers: FUN_140d724c0 (er+0xd724c0), FUN_140d78060 (er+0xd78060)
+```
+
+It governs which **resource GROUPS/movies** are resident (= which menu pages are in memory); **icons
+follow their group** (a group loads → its icons enter the repo via the binding §5c; a group evicts →
+its icons leave — the `_Mysize` churn the live monitor showed). The repo `DAT_143d82510` is the
+resulting passive container.
+
+**Live monitor data (browse-to-fill ceiling):** the game streams a window of **~150** item icons; the
+session-UNION of distinct `MENU_ItemIcon` grew 151→216 over ~1 min of browsing (bursts of +11..+14 on
+new tabs/menus). So browse-to-fill accumulates but reaching ALL game items by pure browsing is
+impractical (thousands). The repo+0x80 map is the right one (twin repo+0xb0 has 0 item icons).
+
+**Manipulation levers (if pursued):** grab the manager live by hooking a ticker (`FUN_140d724c0`,
+capture `*param_2`), then either enqueue loads (+0x1df0 + set +0x1e19 — but building valid request
+entries is complex) or **block the unload/evict** (+0x1e08 drain, or neuter `FUN_140d70940`'s evict)
+so the repo ACCUMULATES the browse union instead of evicting — the safer of the two to try.
+
+---
+
 ## 6. Handles
 - repo singleton `DAT_143d82510` `er+0x3D82510` (FD4Singleton); container map `repo+0x80`,
   `_Myhead` `repo+0x88`, `_Mysize` `repo+0x90`.
