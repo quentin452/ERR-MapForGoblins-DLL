@@ -2675,22 +2675,38 @@ warp_pin_fn g_warp_pin_orig = nullptr;
 void *__fastcall warp_pin_detour(void *a1, void *a2, void *warpData, void *a4)
 {
     void *ret = g_warp_pin_orig(a1, a2, warpData, a4);
-    static int logged = 0;
-    if (goblin::config::graceSuppressNative && logged < 40)
+    if (!goblin::config::graceSuppressNative) return ret;
+
+    // Identify the just-built grace pin's draw state (source state byte @ warpData+0x8 +0x1E;
+    // state != 0 = a drawn/registered grace, as confirmed by [WARPPIN]).
+    uintptr_t src = 0; icon_rpm_ptr(reinterpret_cast<uintptr_t>(warpData) + 0x8, src);
+    int state = 0, iconId = -1;
+    if (src > 0x10000)
     {
-        uintptr_t src = 0; icon_rpm_ptr(reinterpret_cast<uintptr_t>(warpData) + 0x8, src);
-        int state = -1, iconId = -1;
-        if (src > 0x10000)
-        {
-            int sb = 0; icon_rpm_i32(src + 0x1C, sb);   // read dword spanning +0x1E; mask the byte
-            state = (sb >> 16) & 0xff;                   // +0x1E = byte 2 of the dword at +0x1C
-            icon_rpm_i32(src + 0x08, iconId);
-        }
+        int sb = 0; icon_rpm_i32(src + 0x1C, sb);   // +0x1E = byte 2 of the dword at +0x1C
+        state = (sb >> 16) & 0xff;
+        icon_rpm_i32(src + 0x08, iconId);
+    }
+
+    static int logged = 0, suppressed = 0;
+    // PHASE B suppression: only when the overlay is drawing graces itself (else the map would have
+    // NO graces). Neutralise the built pin's state byte (pin+0xC, copied from the source state) to 0
+    // — the state-0 warps are exactly the ones the game already doesn't draw → it stops drawing this
+    // discovered pin, leaving the overlay's grace as the sole icon. WriteProcessMemory (crash-safe).
+    if (goblin::config::graceOverlay && ret && (state & 7) != 0)
+    {
+        uint8_t zero = 0; SIZE_T n = 0;
+        WriteProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(ret) + 0xC),
+                           &zero, 1, &n);
+        if (suppressed++ < 20)
+            spdlog::info("[WARPPIN] suppressed pin={:#x} iconId={} (state was {})",
+                         reinterpret_cast<uintptr_t>(ret), iconId, state & 7);
+    }
+    else if (logged < 40)
+    {
         ++logged;
-        spdlog::info("[WARPPIN] build warpData={:#x} src={:#x} stateByte(+0x1E)={:#x} (bits0-2={}) "
-                     "iconId={} pin={:#x}",
-                     reinterpret_cast<uintptr_t>(warpData), src, state & 0xff, state & 7, iconId,
-                     reinterpret_cast<uintptr_t>(ret));
+        spdlog::info("[WARPPIN] build src={:#x} stateByte(+0x1E)={:#x} (bits0-2={}) iconId={} pin={:#x}",
+                     src, state & 0xff, state & 7, iconId, reinterpret_cast<uintptr_t>(ret));
     }
     return ret;
 }
