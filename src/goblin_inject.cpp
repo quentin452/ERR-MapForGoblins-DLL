@@ -1919,17 +1919,19 @@ void goblin::verify_equip_iconids()
     if (!goblin::config::dumpIconTextures)
         return;
     struct P { const wchar_t *name; const char *tag; int off; };
-    // iconId offsets (u16) are PER-PARAM and the paramdef-derived guesses are unreliable (bitfield
-    // packing differs per param). LIVE result:
-    //   Weapon 0xC0  ✓ CONFIRMED — iconId range 0..999 (the exact weapon-icon range; Ghidra 0xBF
-    //                  read value<<8, e.g. Dagger 0x6400).
+    // iconId offsets (u16) are PER-PARAM and NONE are reliably known. The [CALIB] density scan
+    // DISPROVED Weapon 0xC0 (distinct=2 over 6643 rows → a near-constant field, NOT iconId; the
+    // Dagger=100/max=999 match was coincidental). No heuristic finds iconId (low-cardinality +
+    // pre-SOTE paramdef ambiguity). Resolve via CE find-what-accesses anchored on a live [ICONMAP]
+    // value — see docs/re/ce_iconid_offset_procedure.md. Offsets below are STALE guesses, kept only
+    // so the probe still runs; do NOT trust them.
     //   Gem/Protector/Accessory/Goods — NO clean offset found. Gem 0x06=value<<8, 0x07=0xFF<<8|val
     //     (real byte flanked by a 0xFF field → no aligned u16 is clean); Accessory=all 0xFFFF;
     //     Protector=garbage(max 45808); Goods=all 0. Left at last guess; NOT chased (probe is
     //     dev-only, per-item icons not productionized). For real use read iconId via the engine
     //     resolver FUN_14073d9d0 + iconRef{type@0,id@+4}, NOT hardcoded offsets.
     static const P params[] = {
-        {L"EquipParamWeapon", "Weapon", 0xC0}, // ✓ confirmed (0..999)
+        {L"EquipParamWeapon", "Weapon", 0xC0}, // ✗ DISPROVED (distinct=2; coincidental Dagger=100)
         {L"EquipParamProtector", "Protector", 0xA8}, // ✗ unresolved
         {L"EquipParamAccessory", "Accessory", 0x28}, // ✗ unresolved (all 0xFFFF)
         {L"EquipParamGoods", "Goods", 0x32},         // ✗ unresolved (all 0)
@@ -2016,7 +2018,10 @@ static void self_calibrate_iconid()
                 continue;
             }
             int N = static_cast<int>(bases.size());
-            struct Cand { int off, distinct, validPct; uint16_t mn, mx; bool anchor; };
+            // iconId is LOW-cardinality (icons reused across many items) but DENSE in a small
+            // low band — unlike id/price columns (huge sparse range). Rank by density =
+            // distinct/span; that's what separates iconId from the high-distinct id columns.
+            struct Cand { int off, distinct, validPct, density; uint16_t mn, mx; bool anchor; };
             std::vector<Cand> cands;
             for (uintptr_t off = 0; off + 2 <= stride; ++off)
             {
@@ -2029,21 +2034,37 @@ static void self_calibrate_iconid()
                     for (uint16_t a : anchors) if (v == a) anc = true;
                 }
                 int distinct = static_cast<int>(seen.size());
-                if (distinct < 8 || mx > 60000) continue;       // iconId: varied + bounded
-                cands.push_back({(int)off, distinct, valid * 100 / N, mn, mx, anc});
+                int span = (mx >= mn) ? (mx - mn + 1) : 1;
+                int density = distinct * 1000 / span;            // ×1000 to keep ints meaningful
+                if (distinct < 20 || mx > 60000) continue;        // iconId: varied + bounded
+                cands.push_back({(int)off, distinct, valid * 100 / N, density, mn, mx, anc});
             }
             std::sort(cands.begin(), cands.end(), [](const Cand &a, const Cand &b) {
-                if (a.anchor != b.anchor) return a.anchor;       // a captured iconId here = strong
-                return a.distinct > b.distinct;                   // else most-varied column wins
+                if (a.anchor != b.anchor) return a.anchor;        // a captured iconId here = strong
+                return a.density > b.density;                      // else densest low-band column
             });
-            spdlog::info("[CALIB] {} N={} stride={:#x} knownOff=0x{:x} — top offset candidates:",
+            spdlog::info("[CALIB] {} N={} stride={:#x} knownOff=0x{:x} — ranked by density:",
                          p.tag, N, stride, p.known_off);
             for (int i = 0; i < (int)cands.size() && i < 6; ++i)
             {
                 const Cand &c = cands[i];
-                spdlog::info("[CALIB]   off=0x{:x} distinct={} valid={}% range[{},{}]{}{}",
-                             c.off, c.distinct, c.validPct, c.mn, c.mx,
+                spdlog::info("[CALIB]   off=0x{:x} density={} distinct={} valid={}% range[{},{}]{}{}",
+                             c.off, c.density, c.distinct, c.validPct, c.mn, c.mx,
                              c.anchor ? " <ANCHOR>" : "", c.off == p.known_off ? " <KNOWN>" : "");
+            }
+            // Also dump the KNOWN offset's stats verbatim (even if it didn't make top-6) so the
+            // density heuristic can be calibrated against ground truth (Weapon 0xC0).
+            if (p.known_off >= 0)
+            {
+                std::set<uint16_t> seen; uint16_t mn = 0xffff, mx = 0;
+                for (uintptr_t b : bases)
+                {
+                    uint16_t v = *reinterpret_cast<uint16_t *>(b + p.known_off);
+                    if (v >= 1 && v <= 65534) { if (v < mn) mn = v; if (v > mx) mx = v; seen.insert(v); }
+                }
+                int span = (mx >= mn) ? (mx - mn + 1) : 1;
+                spdlog::info("[CALIB]   KNOWN off=0x{:x} density={} distinct={} range[{},{}]",
+                             p.known_off, (int)seen.size() * 1000 / span, (int)seen.size(), mn, mx);
             }
         }
         catch (...) { spdlog::info("[CALIB] {} not loaded", p.tag); }

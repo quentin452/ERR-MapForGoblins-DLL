@@ -1,8 +1,14 @@
 # CE procedure — authoritative iconId offset per EquipParam (find-what-accesses)
 
 Goal: read the COMPILED iconId byte-offset for each `EquipParam*` straight from the disassembly,
-killing the per-param guessing. Weapon is KNOWN (`0xC0`, live-confirmed) → use it to calibrate, then
-repeat for Protector / Accessory / Goods / Gem. App 2.6.2.0 / ERR 2.2.9.6.
+killing the per-param guessing. App 2.6.2.0 / ERR 2.2.9.6.
+
+⚠️ **`0xC0` is NOT confirmed** (correction 2026-06-22): the `[CALIB]` density scan showed Weapon
+`0xC0` has only `distinct=2` nonzero values over 6643 rows → it's a near-constant field, NOT iconId;
+the earlier "Dagger row 1000 = 100 @ 0xC0, max=999" was a COINCIDENCE (some other field = 100 for
+daggers). No heuristic (distinct, density) reliably finds iconId (low-cardinality + near-constant
+fields trap the scorers + the pre-SOTE paramdef is ambiguous). **CE find-what-accesses is the only
+ground truth.** Anchor on a LIVE value, not a guessed offset (below).
 
 CE can't find a "paramdef" (none in memory — fields are compiled offsets). What it CAN read is the
 exact `[reg+0xXX]` the menu uses when it draws an item icon. That `0xXX` IS the offset.
@@ -14,15 +20,7 @@ exact `[reg+0xXX]` the menu uses when it draws an item icon. That `0xXX` IS the 
   `stride` = struct size (the iconId offset is somewhere inside `[base, base+stride)`).
 - Attach Cheat Engine to `eldenring.exe`. Load the Hexinton table too (for ItemGib).
 
-## 1. Calibrate on Weapon (offset KNOWN = 0xC0) — learn the populator
-1. From the log pick a Weapon row (e.g. the first `[EQUIPADDR] Weapon … base=0x… name='Dagger'`).
-2. Own that weapon (Hexinton ItemGib it if needed) so the menu will draw its icon.
-3. CE → memory view → `Ctrl+G` to `base + 0xC0`. Right-click → **"Find out what accesses this address"**.
-4. In game, open Equipment/Inventory so that weapon's icon RENDERS. An instruction appears, e.g.
-   `movzx eax,word ptr [rsi+0xC0]`. ✓ confirms `0xC0` AND identifies the icon-populator function
-   (note its address — it may be shared / sibling code for the other param types).
-
-## 2. Unknown params (Protector / Accessory / Goods / Gem)
+## 1. Method (ALL params, incl. Weapon — value-anchored, no guessed offset)
 Per param, two steps — **value-scan locates, find-what-accesses confirms + reads the exact offset**:
 
 ### 2a. Get the item's REAL iconId value
