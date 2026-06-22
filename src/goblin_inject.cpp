@@ -2692,6 +2692,7 @@ void run_force_grace(uintptr_t er)
 {
     if (!g_create_image_orig || g_ci_p1.load() == nullptr) return;
     static const char *kCands[] = {
+        "img://MENU_MAP_01_Bonfire",            // the REAL vanilla grace icon (bonfire = grace)
         "img://MENU_MAP_GOBLIN_Grace", "img://MENU_MAP_GOBLIN_SortaGraceIDK",
         "img://MENU_MAP_ERR_GraceUnderground", "img://SB_ERR_Grace_Morning_Color",
     };
@@ -2959,8 +2960,10 @@ void goblin::dump_icon_textures_live()
             // SB_ERR_Grace_*_Color is the native time-tinted pin (wrong). Lock on the canonical; an
             // SB_ERR_Grace _Color frame is kept only as an overridable fallback. (MENU_MAP_ sprites have
             // no time-of-day variants, so they're always "lit".)
-            bool canon = it.name.rfind("MENU_MAP_GOBLIN_Grace", 0) == 0;
-            bool is_grace = canon || it.name.rfind("SB_ERR_Grace", 0) == 0;
+            // Canonical = the REAL vanilla grace icon MENU_MAP_01_Bonfire (bonfire = grace internally).
+            bool canon = it.name.rfind("MENU_MAP_01_Bonfire", 0) == 0;
+            bool is_grace = canon || it.name.rfind("MENU_MAP_GOBLIN_Grace", 0) == 0 ||
+                            it.name.rfind("SB_ERR_Grace", 0) == 0;
             bool lit = it.name.rfind("MENU_MAP_", 0) == 0 || it.name.find("Color") != std::string::npos;
             int gw = it.x1 - it.x0, gh = it.y1 - it.y0;
             bool rect_ok = gw >= 8 && gw <= 256 && gh >= 8 && gh <= 256;
