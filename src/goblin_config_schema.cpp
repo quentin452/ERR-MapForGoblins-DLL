@@ -19,7 +19,6 @@ namespace goblin::config
     bool showRegionLabels = true;  // overlay: draw major-region name labels on the map
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
     bool debugLogging = false;
-    bool projectDungeons = true;
     bool showAll = false;
     bool iconsHidden = false;  // master off persisted (menu/F10 "Show icons")
     uint32_t overlayToggleKey = 0x70;  // VK_F1 — overlay menu open/close key
@@ -47,10 +46,7 @@ namespace goblin::config
 #endif
     bool anonymousLoot = false;  // opt-in spoiler-free mode (all profiles default off)
 
-    bool patchOverworldBossIcons = true, patchDungeonBossIcons = true,
-         patchCampIcons = true, patchMerchantIcons = true,
-         redifyBossIcons = false, redifyDungeonIcons = false,
-         hideDungeonIconsOnClear = false;
+    bool redifyBossIcons = false;
 
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
@@ -163,8 +159,6 @@ namespace
                   "flag for the categories the census over-reports. Off by default."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
-                B("project_dungeons", projectDungeons, "true",
-                  "Remap minor-dungeon icons (catacombs, caves, tunnels, hero's graves)\nonto the overworld map near their entrance. ER has no map page for them,\nso without this their icons are injected but never rendered."),
                 B("show_all", showAll, "false",
                   "Master switch: show EVERY category at once, ignoring the individual\nshow_* toggles below. Quick way to reveal everything without flipping ~60 flags."),
                 B("icons_hidden", iconsHidden, "false",
@@ -356,27 +350,10 @@ namespace
             }},
 
             {"ERR Markers",
-             "This section applies this mod's display rules to ERR's OWN pre-placed map\n"
-             "markers (camps, merchants, bosses, dungeon entrances) - NOT the icons this\n"
-             "mod injects - so both icon sets follow the same visibility logic\n"
-             "(map-fragment discovery, hide on clear). Disable a toggle to leave that\n"
-             "marker group exactly as ERR ships it. Our own boss markers are\n"
-             "[World] show_bosses and independent of this section.",
+             "Display options for boss markers on the overlay map.",
              ERR, {
-                BE("patch_overworld_boss_icons", patchOverworldBossIcons, "true",
-                   "Tie ERR-placed overworld field-boss markers (textId2=5100) to\nour map-fragment discovery flag. Combine with redify_boss_icons below."),
-                BE("patch_dungeon_boss_icons", patchDungeonBossIcons, "true",
-                   "Tie ERR-placed dungeon/cave entrance markers (textId3=5100/5300) to\nour map-fragment discovery flag. Required for redify/hide_dungeon below."),
-                BE("patch_camp_icons", patchCampIcons, "true",
-                   "Tie ERR-placed enemy camp markers (textId2=5000) to our discovery flag."),
-                BE("patch_merchant_icons", patchMerchantIcons, "true",
-                   "Tie ERR-placed merchant markers (textId4=8800) to our discovery flag."),
                 BE("redify_boss_icons", redifyBossIcons, "false",
-                   "Cosmetic: when patching overworld bosses, recolour iconId to 374 (red) AND\nauto-hide once the boss is defeated. Requires patch_overworld_boss_icons."),
-                BE("redify_dungeon_icons", redifyDungeonIcons, "false",
-                   "Cosmetic: when patching dungeon entrances, recolour iconId to 374.\nRequires patch_dungeon_boss_icons."),
-                BE("hide_dungeon_icons_on_clear", hideDungeonIconsOnClear, "false",
-                   "When patching dungeon entrances, hide the marker once the boss inside is\ndefeated. Requires patch_dungeon_boss_icons."),
+                   "Cosmetic: draw boss markers red and auto-hide them once the boss is\ndefeated."),
             }},
 
             {"Compatibility",
