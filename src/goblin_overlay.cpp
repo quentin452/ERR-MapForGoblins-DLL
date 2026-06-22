@@ -327,7 +327,14 @@ namespace
         {
             int w = sp.x1 - sp.x0, h = sp.y1 - sp.y0;
             auto *src_res = reinterpret_cast<ID3D12Resource *>(sp.sheet);
-            DXGI_FORMAT fmt = static_cast<DXGI_FORMAT>(sp.format);
+            // Authoritative format from D3D12 (render thread, sheet bound) — NOT the RPM-read
+            // sp.format, which is 0 when the sheet was harvested before its texture bound (lazy,
+            // findings §2). If the sheet isn't a ready TEXTURE2D yet, return WITHOUT storing a
+            // permanent miss so a later frame retries.
+            D3D12_RESOURCE_DESC rd = src_res->GetDesc();
+            DXGI_FORMAT fmt = rd.Format;
+            if (rd.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || fmt == DXGI_FORMAT_UNKNOWN)
+                return 0;   // sheet not bound yet → retry next frame (no permanent-miss store)
             if (w > 0 && h > 0 && w <= 1024 && h <= 1024 && (w % 4) == 0 && (h % 4) == 0)
             {
                 D3D12_HEAP_PROPERTIES hp{}; hp.Type = D3D12_HEAP_TYPE_DEFAULT;

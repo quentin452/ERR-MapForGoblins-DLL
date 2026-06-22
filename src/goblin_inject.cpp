@@ -2036,18 +2036,16 @@ bool cache_icon_from_img(const char *nm, uintptr_t img)
     icon_rpm_ptr(img + 0x10, rtex);
     if (rtex > 0x10000) icon_rpm_ptr(rtex + 0x70, res);
     if (res <= 0x10000) return false;
-    // The GPU texture binds LAZILY (findings §2): at find/resolve time res+0x10 may be unbound and
-    // res+0x30 reads 0 (the old fmt=0 bug). Validate `res` is a REAL bound D3D12 texture before
-    // trusting it — mirror the grace path ([ICON-CAND]): non-module vtable + dim@+0x10 == 3
-    // (D3D12_RESOURCE_DIMENSION_TEXTURE2D) + sane W/H. If not bound yet, return false so a later
-    // resolve / repo-walk retries (don't cache a format=0 entry that breaks the CopyTextureRegion).
-    uintptr_t res_vt = 0; icon_rpm_ptr(res, res_vt);
-    bool non_module_vt = res_vt > 0x10000 && (res_vt < er || res_vt >= er + 0x8000000);
-    int dim = 0, rw = 0, rh = 0;
-    icon_rpm_i32(res + 0x10, dim); icon_rpm_i32(res + 0x20, rw); icon_rpm_i32(res + 0x28, rh);
-    if (!non_module_vt || dim != 3 || rw <= 0 || rh <= 0) return false;   // not bound → retry later
     int iconId = std::atoi(nm + 14);
-    int fmt = 0; icon_rpm_i32(res + 0x30, fmt);
+    // Sheet dims/format live on the bound D3D12 resource, but the GPU texture binds LAZILY
+    // (findings §2) — at find/walk time res+0x10/+0x30 may still be 0. Do NOT gate harvesting on
+    // that (it dropped every not-yet-rendered icon → harvested=0). Cache the rect + sheet ptr now
+    // (the ID3D12Resource* is persistent); the overlay reads the AUTHORITATIVE format/dims via
+    // ID3D12Resource::GetDesc() at copy time (render thread, bound). RPM read here is best-effort
+    // diagnostics only (correct once bound, else 0).
+    int dim = 0, rw = 0, rh = 0, fmt = 0;
+    icon_rpm_i32(res + 0x10, dim); icon_rpm_i32(res + 0x20, rw); icon_rpm_i32(res + 0x28, rh);
+    if (dim == 3) icon_rpm_i32(res + 0x30, fmt);
     goblin::ItemSprite hs;
     hs.sheet = reinterpret_cast<void *>(res);
     hs.x0 = x0; hs.y0 = y0; hs.x1 = x1; hs.y1 = y1;
