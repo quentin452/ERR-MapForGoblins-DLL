@@ -582,7 +582,7 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
     // chests spawn their pickup only at open, placed/dropped world loot is resident at load.
     // GATED on !result.empty() (in a save, not the menu); latches only after a real in-world walk.
     static bool s_pathb_done = false;
-    if (goblin::config::diagFieldinsJoin && !s_pathb_done && !result.empty())
+    if (goblin::config::diagFieldinsJoin && !s_pathb_done && !g_wgm_cache.empty())
     {
         void *reg = nullptr, *sub = nullptr, *container = nullptr, *head = nullptr, *root = nullptr;
         uint64_t map_size = 0;
@@ -621,6 +621,11 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                 uint64_t vt = 0; uint32_t lot = 0;
                 memcpy(&vt,  ib + 0x00, 8);
                 memcpy(&lot, ib + 0x50, 4);
+                // Unconditional sample (first 16): confirm the chain reaches FieldInsBase
+                // subclasses (vt near 0x2a25e68/0x2a8f650/...) vs garbage, regardless of lot.
+                if (instances <= 16)
+                    spdlog::info("[FIELDINS-B] node inst={} vt={:#x} key/lot@+0x50={:#x}",
+                                 inst, vt, lot);
                 if (lot == 0x3dd6fec4) ++lot_hits;
                 // Real ER item-lots are ~1e9 (0x3B9ACA00..); 0 and 0xffffffff are "no lot".
                 bool plausible = lot != 0 && lot != 0xffffffff && lot >= 0x10000000;
@@ -643,6 +648,115 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
             spdlog::info("[FIELDINS-B] registry chain unresolved (reg={} sub={} head={} root={})",
                          reg, sub, head, root);
         }
+    }
+
+    // [LOTSCAN] one-shot structure-agnostic brute scan: is the known chest's lotId resident in
+    // committed PRIVATE memory while the chest is UNOPENED? In-process (we run inside eldenring.exe),
+    // so scan directly via VirtualQuery — no RPM. Answers pre-open residency definitively: hit≥1 →
+    // lotId IS resident somewhere (then chase the offset); 0 → not resident pre-open (premium dead
+    // for sealed chests). Gated in-world, one-shot.
+    // Gate on the PERSISTENT cache (non-empty whenever any tile is loaded), NOT `result` —
+    // `result` only carries this refresh's NEW tiles, so it's empty once tiles are cached
+    // (standing still), and the scan would never fire unless the player happened to be moving.
+    static bool s_lotscan_done = false;
+    if (goblin::config::diagLotMemscan && !s_lotscan_done && !g_wgm_cache.empty())
+    {
+        s_lotscan_done = true;
+        const uint32_t target = 0x3dd6fec4;   // 1037500100 = AEG099_090_9000's ItemLotID
+        // Exclude self-contamination: our own thread stack (holds `target` + the MBI fields +
+        // fmt strings) and our own DLL module both contain the literal we search for and would
+        // show up as bogus "STRUCT" hits. Skip their regions.
+        MEMORY_BASIC_INFORMATION self; VirtualQuery(&self, &self, sizeof(self));
+        uintptr_t self_stack_base = (uintptr_t)self.AllocationBase;
+        HMODULE hself = nullptr;
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCSTR)&read_wgm_snapshot, &hself);
+        uintptr_t self_mod = (uintptr_t)hself;
+        SYSTEM_INFO si; GetSystemInfo(&si);
+        uintptr_t addr = (uintptr_t)si.lpMinimumApplicationAddress;
+        uintptr_t end  = (uintptr_t)si.lpMaximumApplicationAddress;
+        uint64_t scanned = 0, regions = 0; int hits = 0, logged = 0;
+        MEMORY_BASIC_INFORMATION mbi;
+        while (addr < end && VirtualQuery((void *)addr, &mbi, sizeof(mbi)) == sizeof(mbi))
+        {
+            uintptr_t base = (uintptr_t)mbi.BaseAddress;
+            size_t    rsz  = mbi.RegionSize;
+            DWORD p = mbi.Protect;
+            bool readable = (p & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+                                  PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)) != 0;
+            bool blocked  = (p & (PAGE_GUARD | PAGE_NOACCESS)) != 0;
+            bool is_self = (self_stack_base && (uintptr_t)mbi.AllocationBase == self_stack_base) ||
+                           (self_mod && base >= self_mod && base < self_mod + 0x800000);
+            if (mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE && readable && !blocked &&
+                rsz >= 4 && !is_self)
+            {
+                ++regions; scanned += rsz;
+                const uint8_t *q = (const uint8_t *)base;
+                size_t n = rsz - 3;
+                for (size_t i = 0; i < n; i++)   // byte-granular (lotId need not be aligned)
+                {
+                    if (*(const uint32_t *)(q + i) == target)
+                    {
+                        ++hits;
+                        if (logged < 32)
+                        {
+                            uintptr_t hit = base + i;
+                            uintptr_t er0 = game_base, er1 = game_base + 0x5000000;
+                            // Skip the ItemLotParam sorted-lookup array (hits 1/2): a packed
+                            // {lotId, index} table where +0x8 is the next lotId with an
+                            // incrementing high-word index. Those are chest-independent (always
+                            // resident) — not the runtime link. Detect + log briefly, don't deref.
+                            uint64_t nx = (hit + 8 + 8 <= base + rsz) ? *(const uint64_t *)(hit + 8) : 0;
+                            bool param_array = ((nx & 0xffffffff) > 0x10000000) && ((nx >> 48) == 0) &&
+                                               ((nx >> 32) & 0xffff) != 0;   // low=lotId-shaped, high=index
+                            char ctx[700] = {}; int cl = 0;
+                            for (int k = -6; k <= 7 && cl < 300; k++)
+                            {
+                                uintptr_t a = hit + (intptr_t)k * 8;
+                                if (a < base || a + 8 > base + rsz) continue;
+                                uint64_t v = *(const uint64_t *)a;
+                                cl += snprintf(ctx + cl, sizeof(ctx) - cl, "[%+d]=%llx ",
+                                               k * 8, (unsigned long long)v);
+                            }
+                            // Deref neighbour pointers one level → spot a vtable (eldenring.exe
+                            // ptr at offset 0 of the target = an object) and identify the record.
+                            char drf[400] = {}; int dl = 0;
+                            if (!param_array)
+                            {
+                                for (int k = -6; k <= 7 && dl < 300; k++)
+                                {
+                                    uintptr_t a = hit + (intptr_t)k * 8;
+                                    if (a < base || a + 8 > base + rsz) continue;
+                                    uint64_t v = *(const uint64_t *)a;
+                                    if (v < 0x100000 || v >= 0x7fffffffffff) continue;
+                                    MEMORY_BASIC_INFORMATION tb;
+                                    if (VirtualQuery((void *)v, &tb, sizeof(tb)) != sizeof(tb)) continue;
+                                    DWORD tp = tb.Protect;
+                                    if (tb.State != MEM_COMMIT ||
+                                        (tp & (PAGE_GUARD | PAGE_NOACCESS)) ||
+                                        !(tp & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+                                                PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)))
+                                        continue;
+                                    uint64_t t0 = *(const uint64_t *)v;
+                                    bool vt = (t0 >= er0 && t0 < er1);   // ptr-to-code = vtable
+                                    dl += snprintf(drf + dl, sizeof(drf) - dl, "[%+d]->%llx%s ",
+                                                   k * 8, (unsigned long long)t0, vt ? "(VT!)" : "");
+                                }
+                            }
+                            spdlog::info("[LOTSCAN] HIT @ {:#x} region={:#x}+{:#x}{} | {} {}{}",
+                                         hit, base, (uint64_t)rsz,
+                                         param_array ? " PARAM-ARRAY" : " STRUCT", ctx,
+                                         param_array ? "" : "DEREF ", drf);
+                            ++logged;
+                        }
+                    }
+                }
+            }
+            addr = base + rsz;
+        }
+        spdlog::info("[LOTSCAN] DONE target={:#x} hits={} regions={} scannedMB={}",
+                     target, hits, (uint64_t)regions, scanned / (1024 * 1024));
     }
 
     return result;

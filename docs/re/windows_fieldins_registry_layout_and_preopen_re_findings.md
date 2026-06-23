@@ -96,6 +96,20 @@ Scripts: `D:\ghidra_scripts\find_fieldins7.java`, `find_fieldins8.java` (out `ou
 
 ---
 
+## ★ RUNTIME RESULT with the corrected chain — 13 objects, not a loot registry (2026-06-23)
+
+Re-ran `diag_fieldins_join` with §1's corrected offsets (commit 31a5f38: container=*[sub+0x720], map
+@container+0x18, head=*[container+0x20], _Mysize=*[container+0x28], instance=node+0x30):
+
+- Clean finite walk (no more cycle garbage): **`mapSize=13, visited=13, distinctNodes=13,
+  instances=13, realLot=0, targetLotHits=0`.**
+- All 13 instances are the **same type**, `vtable 0x142a86860` (RVA 0x2a86860), `+0x50 = 0`.
+
+This is NOT slot drift — the slot is correct (see §6 live RTTI + an on-disk PE scan confirming both
+be1b018 AOBs are unique and resolve to exactly `0x3d7b0c0`; RTTI from disk gives vt `0x2a86860` =
+`CSWorldGeomStaticIns`, vt `0x2a8f650` = `WorldBlockMap`). §6 explains the 13 objects: this map is a
+**render-side loaded-geom list**, not the field/loot registry.
+
 ## 6. ★★ LIVE RPM VERIFICATION (2026-06-23) — chain confirmed, but it's the RENDER geom list, NOT a loot registry
 `D:\ghidra_scripts\registry_layout_check.py` + `registry_rtti_check.py`, live on pid running ERR.
 
@@ -118,22 +132,16 @@ was bogus), **instance@+0x30**.
 **VERDICT — path (B) REFUTED LIVE.** `[[er+0x3d7b0c0]+0x10]+0x720]` is RendManImp's render-side
 loaded-geom registry, not a loot/FieldIns registry; it holds `CSWorldGeomStaticIns` with positions but
 **zero lotId**. Combined with path (A) (embedded pool empty at load), **the runtime asset→lotId link is
-NOT reachable from any structure found** (asset instance, embedded pool, or this registry). The lotId
-lives only on a **spawned pickup** (open/spawn-time) or in the **baked `ItemLotParam` table**. The
-prior heap-scan hit (`lotId 0x3dd6fec4` resident, "name@+0x00") was therefore the `ItemLotParam`-table
-copy / an already-spawned pickup, **not** a pre-open per-chest FieldIns — there isn't one.
+NOT reachable from any structure found** (asset instance, embedded pool, or this registry).
 
-**Net decision (final): the "ERR-added-loot-with-names from sealed structures" premium is DEAD** — keep
-the baked `partName`-join (works for all baked loot today). Free-standing/dropped world pickups, if any,
-remain catchable only as live spawned geom-items (not pursued). Stop chasing the runtime asset→lot link;
-RPM + Ghidra have exhausted it. Scripts: `registry_layout_check.py`, `registry_rtti_check.py`.
+## 7. ★ live full-mem scan FINDS a lotId + position + MapId record — but POST-SPAWN only (2026-06-23)
+> ⚠️ **Reconciled with §8 below.** This scan's chest state was NOT controlled and (per §8's controlled
+> unopened-chest scan) this record is **only present once the item is SPAWNED** (chest opened / world
+> pickup live). It documents the spawned-item record layout — it does **not** make sealed-chest loot
+> pre-open resident, and does **not** revive the sealed-chest premium. §8 is the definitive verdict.
 
----
-
-## 7. ★★★ REVERSAL — live full-mem scan FINDS lotId + position + MapId co-resident (2026-06-23)
-§6's "dead" verdict was premature: it only checked the RendManImp registry + the asset-embedded pool. A
-**full live-memory scan for the lotId** (`D:\ghidra_scripts\lot_pos_scan.py` → `lot_obj_dump.py` →
-`mapins_enum.py` / `mapins_verify.py` / `mapins_final.py`) found the real resident link.
+A **full live-memory scan for the lotId** (`D:\ghidra_scripts\lot_pos_scan.py` → `lot_obj_dump.py` →
+`mapins_enum.py` / `mapins_verify.py` / `mapins_final.py`) found a resident record (in a post-spawn state):
 
 **The resident loot node (chest `AEG099_090_9000`, lot `1037500100`/`0x3dd6fec4`):**
 - A 16-byte node `{ lotId u32 @+0x00, flag u32 @+0x04 (=1), FieldIns* @+0x08 }` at a heap addr (live
@@ -165,3 +173,46 @@ the records) rather than a full-mem lotId scan. Signature for the mod/cache: a n
 `*(u32)(P+0x50)==L`; then `MapId = *(u32)(node−0xD8)`, `localPos = *(vec3)(node−0xD4)`.
 
 Scripts: `lot_pos_scan.py`, `lot_obj_dump.py`, `mapins_enum.py`, `mapins_verify.py`, `mapins_final.py`.
+
+---
+
+## 8. ★★★ DEFINITIVE — brute memory scan settles pre-open residency: NOT RESIDENT (2026-06-23)
+
+In-process `[LOTSCAN]` (commits ac63c8c..c148fe4): VirtualQuery walk of ALL committed PRIVATE memory,
+byte-granular scan for the known chest's lotId `0x3dd6fec4`, standing at the UNOPENED chest, with the
+scanner's own stack + DLL module excluded (a first pass false-positived on our own `target` literal +
+MBI fields + an spdlog ".2f} ms" string — caught and excluded).
+
+**Clean result — exactly TWO hits, BOTH in the ItemLotParam param heap, ZERO game objects:**
+- the `{lotId, 0x12exxx, 0x18c471}` stride-0x18 param-row table (DEREF of every neighbour = raw byte
+  data `17 18 19 1a…`, no valid pointers → NOT an object);
+- the sorted `{lotId(low u32), index(high u16)}` lookup array (`1a2a..1a35` indices).
+
+Both are **always resident** (the regulation `ItemLotParam`, chest-independent). So the prior heap-scan
+hit (`lotId 0x3dd6fec4` resident, "name@+0x00") was the `ItemLotParam`-table copy / an already-spawned
+pickup, **not** a pre-open per-chest FieldIns — there isn't one.
+
+**VERDICT (closes the make-or-break):** a sealed chest's loot identity (lotId) is **not resident in any
+usable runtime structure pre-open** — confirmed FOUR independent ways: path-A embedded pool empty at
+load, Ghidra taxonomy (no item class, sealed spawns at open), live RTTI (§6: the registry is RendManImp
+render geom, lotId=0), and a structure-agnostic full memory scan finding the lotId only in the param
+tables. **The "ERR-added-loot-with-names" explore-cache PREMIUM is DEAD for sealed chests → keep
+baked-only.** Placed/dropped world loot is a geom-item we already enumerate (CSWorldGeomMan walk) but it
+carries no resident lotId either, so the premium has no viable runtime source. **Investigation CLOSED.**
+Ships: baked-partName-join explore-cache (works today). Diags (`diag_fieldins_join`, `diag_lot_memscan`)
+left dormant in tree (gated, off). Scripts: `registry_layout_check.py`, `registry_rtti_check.py`.
+
+## 9. Reconciliation (§7 vs §8) + final scope
+§7 and §8 are the two halves of the answer, not a contradiction:
+- **§8 (controlled, at the UNOPENED chest):** the lotId is resident ONLY in the always-loaded
+  `ItemLotParam` tables — **no per-chest game object exists pre-open**. Rigorous; this settles it.
+- **§7 (uncontrolled state):** found the lotId in a real `MapIns` record with name + local pos + MapId —
+  because the item was **already spawned** at scan time (post-open / live pickup). That record is
+  transient (exists only while the pickup is live), so it cannot back a "reveal sealed-chest loot as you
+  walk in" feature.
+
+**FINAL DECISION:** sealed-chest loot identity is **not pre-open resident** → the
+"ERR-added-loot-with-names from sealed chests" premium stays **shelved**; ship the baked `partName`-join
+(complete for baked loot today). The §7 spawned-item record layout (`{lotId,flag,FieldIns*}`,
+`FieldIns+0x50==lotId`, `MapId@node−0xD8`, `localPos@node−0xD4`) is documented for any future
+**live-dropped-loot** tagging, but is out of scope for the explore-cache. Investigation CLOSED.
