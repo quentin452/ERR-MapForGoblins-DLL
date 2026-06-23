@@ -2912,6 +2912,7 @@ oodle_decompress_fn g_oodle_orig = nullptr;
 // DDS out IN the hook (while valid) and ACCUMULATE distinct ones — a browser to find the icon sheet.
 std::mutex g_tpf_mtx;
 std::vector<std::vector<uint8_t>> g_dds_list; // all distinct complete DDS captured from decompresses
+std::vector<uint8_t> g_sblytbnd;              // decompressed icon-layout BND4 (the per-icon rects)
 
 long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, void *dst,
                                              long long dstLen, int a5, int a6, int a7, void *a8,
@@ -2955,6 +2956,26 @@ long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, 
                 ++n;
                 spdlog::info("[OODLE-TPF] @{:#x} sz={} files={} plat={} enc={} entry0(off={} size={} fmt={}) dataIsDDS={}",
                              reinterpret_cast<uintptr_t>(dst), r, fc, b[0x0C], b[0x0E], doff, dsz, b[0x18], dataIsDDS);
+            }
+        }
+        // The icon-layout bundle (sblytbnd) decompresses to a BND4 holding .layout XMLs = the per-icon
+        // sub-rects on the sheet. Grab the one that contains '.layout' entries (UTF-16 names), keeping
+        // the largest seen, so we can parse iconId/name -> rect and crop the map-point sheet.
+        else if (b[0] == 'B' && b[1] == 'N' && b[2] == 'D' && b[3] == '4' && r >= 0x40)
+        {
+            size_t scan = (size_t)r < 262144 ? (size_t)r : 262144;
+            bool hasLayout = false;
+            for (size_t i = 0; i + 14 <= scan; ++i)
+                if (b[i] == 'l' && b[i + 2] == 'a' && b[i + 4] == 'y' && b[i + 6] == 'o' &&
+                    b[i + 8] == 'u' && b[i + 10] == 't' && b[i + 1] == 0 && b[i + 3] == 0)
+                { hasLayout = true; break; }
+            static int bn = 0;
+            if (bn < 12) { ++bn; spdlog::info("[OODLE-BND4] @{:#x} size={} hasLayout={}", reinterpret_cast<uintptr_t>(dst), r, hasLayout); }
+            if (hasLayout)
+            {
+                std::lock_guard<std::mutex> lk(g_tpf_mtx);
+                if ((size_t)r > g_sblytbnd.size())
+                    g_sblytbnd.assign(b, b + r);
             }
         }
     }
