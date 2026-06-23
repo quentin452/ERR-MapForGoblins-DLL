@@ -572,20 +572,25 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
         it = seen_tiles.count(it->first) ? std::next(it) : g_wgm_cache.erase(it);
 
     // [FIELDINS-B] one-shot global field-instance registry walk (diag_fieldins_join).
-    // Path A (embedded asset+0x3A8 pool) was empty at tile-load, so probe the GLOBAL
-    // FD4Singleton registry (RE be1b018): reg=[er+0x3d7b0c0], sub=[reg+0x10], map=sub+0x720,
-    // RB-tree header @map+0x8; node +0x00 left/+0x10 right/+0x20 key(u64)/+0x28 value=instance.
-    // Read lotId@+0x50 per instance; report how many carry the known chest's lot 0x3dd6fec4.
-    // GATED on !result.empty() (loaded geom = in a save, not the main menu — the prior run
-    // latched pre-save on a garbage tree), and only LATCHES once it actually walks the in-world
-    // registry, so it can't re-freeze on the empty pre-save tree.
+    // CORRECTED chain (Ghidra da19285): reg=[er+0x3d7b0c0], sub=[reg+0x10],
+    // container=*[sub+0x720] (the prior walk MISSED this deref). The self-register map is at
+    // container+0x18 (std::map: _Myhead @+0x08 → head=*[container+0x20], _Mysize @+0x28).
+    // RB node: +0x00 left / +0x08 parent / +0x10 right / +0x19 _Isnil / +0x20 key(u64);
+    // value is 24B → +0x28 is a per-instance CALLBACK fn ptr, the INSTANCE is at +0x30 (the
+    // prior probe read +0x28 → got a code ptr 0x30308e8). Instance: vtable@+0x00, lotId@+0x50.
+    // No dedicated treasure class — lotId carriers are geom-items (CSWorldGeom*Ins); sealed
+    // chests spawn their pickup only at open, placed/dropped world loot is resident at load.
+    // GATED on !result.empty() (in a save, not the menu); latches only after a real in-world walk.
     static bool s_pathb_done = false;
     if (goblin::config::diagFieldinsJoin && !s_pathb_done && !result.empty())
     {
-        void *reg = nullptr, *sub = nullptr, *head = nullptr, *root = nullptr;
+        void *reg = nullptr, *sub = nullptr, *container = nullptr, *head = nullptr, *root = nullptr;
+        uint64_t map_size = 0;
         if (safe_read((void *)(game_base + 0x3d7b0c0), &reg, 8) && reg &&
             safe_read((char *)reg + 0x10, &sub, 8) && sub &&
-            safe_read((char *)sub + 0x720 + 0x8, &head, 8) && head &&
+            safe_read((char *)sub + 0x720, &container, 8) && container &&
+            safe_read((char *)container + 0x20, &head, 8) && head &&
+            safe_read((char *)container + 0x28, &map_size, 8) &&
             safe_read((char *)head + 0x08, &root, 8) && root && root != head)
         {
             const int kMaxNodes = 400000;
@@ -600,13 +605,13 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                 void *node = stack.back(); stack.pop_back();
                 if (!node || node == head) continue;
                 if (!seen.insert(node).second) continue;   // already walked this node
-                uint8_t nb[0x30] = {};
+                uint8_t nb[0x38] = {};   // need +0x30 (instance ptr)
                 if (!safe_read(node, nb, sizeof(nb))) continue;
                 ++visited;
                 void *left = nullptr, *right = nullptr, *inst = nullptr;
                 memcpy(&left,  nb + 0x00, 8);
                 memcpy(&right, nb + 0x10, 8);
-                memcpy(&inst,  nb + 0x28, 8);
+                memcpy(&inst,  nb + 0x30, 8);   // +0x28 = callback fn ptr; instance is +0x30
                 if (right && right != head) stack.push_back(right);
                 if (left  && left  != head) stack.push_back(left);
                 if (!inst) continue;
@@ -626,9 +631,10 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                     spdlog::info("[FIELDINS-B] inst={} vt={:#x} lotId={:#x}", inst, vt, lot);
             }
             s_pathb_done = true;   // latch only after a real in-world walk
-            spdlog::info("[FIELDINS-B] DONE visited={} distinctNodes={} instances={} "
+            spdlog::info("[FIELDINS-B] DONE mapSize={} visited={} distinctNodes={} instances={} "
                          "realLot={} targetLotHits={} (target=0x3dd6fec4)",
-                         visited, (int)seen.size(), instances, real_lot, lot_hits);
+                         (unsigned long long)map_size, visited, (int)seen.size(),
+                         instances, real_lot, lot_hits);
             for (auto &[vt, n] : vt_hist)
                 spdlog::info("[FIELDINS-B] vtable={:#x} realLotInstances={}", vt, n);
         }
