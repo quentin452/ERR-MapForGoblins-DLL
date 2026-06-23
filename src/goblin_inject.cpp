@@ -2699,6 +2699,7 @@ void run_create_icon(uintptr_t er, int iconId)
 // in g_icon_imgs (via create_image_detour) → dump_icon_textures_live captures it as a grace candidate.
 // MENU_MAP_GOBLIN_Grace = canonical; siblings populate the F1 picker. Engine thread; throttled by caller.
 int g_grace_force_tries = 0;
+std::atomic<bool> g_force_grace_req{false}; // manual F1 "Force graces now" (bypasses the auto cap)
 void run_force_grace(uintptr_t er)
 {
     if (!g_create_image_orig || g_ci_p1.load() == nullptr) return;
@@ -2740,6 +2741,11 @@ void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
                 static int s_gt = 0;
                 if ((s_gt++ % 30) == 0) { ++g_grace_force_tries; run_force_grace(er); }
             }
+            // Manual force (F1 "Force graces now") — re-poke on demand, bypassing the auto
+            // cap/lock/throttle; only needs a captured CreateImage context (g_ci_p1).
+            if (g_force_grace_req.exchange(false, std::memory_order_acq_rel) &&
+                g_ci_p1.load(std::memory_order_relaxed))
+                run_force_grace(er);
         }
     }
     if (g_res_tick_orig) g_res_tick_orig(p1, p2);
@@ -2773,6 +2779,21 @@ bool goblin::force_create_icon(int iconId)
         return false;
     }
     g_ci_req_icon.store(iconId, std::memory_order_release);
+    return true;
+}
+
+// Manually re-run the grace force-CreateImage (F1 dev button) — consumed on the next residency
+// tick (engine thread), bypassing the auto cap/lock. Harvests the MENU_MAP_*/SB_ERR_Grace_*
+// gfx-movie sprites into the candidate list. Returns false if the ticker/context isn't ready yet.
+bool goblin::force_graces()
+{
+    if (!goblin::config::dumpIconTextures) return false;
+    if (g_res_mgr.load(std::memory_order_relaxed) == 0)
+    {
+        spdlog::warn("[GRACE-FORCE] manager not captured yet — open the inventory/map once");
+        return false;
+    }
+    g_force_grace_req.store(true, std::memory_order_release);
     return true;
 }
 

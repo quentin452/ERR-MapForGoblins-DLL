@@ -314,6 +314,10 @@ namespace goblin
     // "img://…" import) to prove the replay mechanism works end-to-end. Gated by dumpIconTextures.
     bool force_create_last();
 
+    // Manually re-run the grace force-CreateImage (F1 "Force graces now") — harvests the
+    // MENU_MAP_*/SB_ERR_Grace_* gfx-movie sprites on demand, bypassing the auto cap/lock.
+    bool force_graces();
+
     // First `max` harvested iconIds (dev — the P2b test panel draws ACTUAL harvested icons
     // instead of a hardcoded id list that may not match what the player browsed).
     std::vector<int> harvested_ids(size_t max);

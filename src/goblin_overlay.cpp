@@ -1152,6 +1152,9 @@ namespace
                 ImGui::SameLine();
                 if (ImGui::Button("Force CreateImage")) goblin::force_create_icon(s_ci_icon);
                 if (ImGui::Button("Replay last live symbol (control)")) goblin::force_create_last();
+                if (ImGui::Button("Force graces now")) goblin::force_graces();
+                ImGui::SameLine();
+                ImGui::TextDisabled("(re-harvest MENU_MAP_*/SB_ERR_Grace_* on demand)");
             }
 
             // Icon migration completion (Baked → GPU): how many category icons still draw from the
