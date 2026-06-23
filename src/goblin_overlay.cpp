@@ -411,26 +411,21 @@ namespace
 
     // Load a DDS file from disk into our own SRV. Returns the gpu handle (0 on fail) + dims + format.
     // Synchronous (submit_and_wait). Allocates an SRV slot from g_next_item_srv.
-    UINT64 create_tex_from_dds_file(const char *path, int &outW, int &outH, DXGI_FORMAT &outFmt)
+    // Upload a raw DDS blob (in memory — file OR the game's decompressed RAM TPF) into our own SRV.
+    UINT64 create_tex_from_dds_mem(const uint8_t *data, size_t len, int &outW, int &outH, DXGI_FORMAT &outFmt)
     {
         outW = outH = 0; outFmt = DXGI_FORMAT_UNKNOWN;
         if (!g_device || !g_command_queue || !g_srv_heap || g_next_item_srv >= 256) return 0;
-        FILE *fp = std::fopen(path, "rb");
-        if (!fp) { spdlog::warn("[TEXMGR] open fail '{}'", path); return 0; }
-        std::fseek(fp, 0, SEEK_END); long sz = std::ftell(fp); std::fseek(fp, 0, SEEK_SET);
-        if (sz < 148) { std::fclose(fp); return 0; }
-        std::vector<uint8_t> buf(static_cast<size_t>(sz));
-        size_t rd = std::fread(buf.data(), 1, buf.size(), fp); std::fclose(fp);
-        if (rd != buf.size() || std::memcmp(buf.data(), "DDS ", 4) != 0) { spdlog::warn("[TEXMGR] not DDS '{}'", path); return 0; }
+        if (!data || len < 148 || std::memcmp(data, "DDS ", 4) != 0) { spdlog::warn("[TEXMGR] not DDS"); return 0; }
 
-        uint32_t h, w; std::memcpy(&h, buf.data() + 12, 4); std::memcpy(&w, buf.data() + 16, 4);
+        uint32_t h, w; std::memcpy(&h, data + 12, 4); std::memcpy(&w, data + 16, 4);
         size_t dataOff = 128;
-        DXGI_FORMAT fmt = dds_fourcc_to_dxgi(buf.data(), buf.size(), dataOff);
-        if (fmt == DXGI_FORMAT_UNKNOWN || w == 0 || h == 0) { spdlog::warn("[TEXMGR] bad fmt '{}'", path); return 0; }
+        DXGI_FORMAT fmt = dds_fourcc_to_dxgi(data, len, dataOff);
+        if (fmt == DXGI_FORMAT_UNKNOWN || w == 0 || h == 0) { spdlog::warn("[TEXMGR] bad fmt"); return 0; }
         const int blockBytes = bc_block_bytes(fmt);
         const UINT blocksW = (w + 3) / 4, blocksH = (h + 3) / 4;
         const UINT srcRowPitch = blocksW * blockBytes;
-        if (dataOff + (size_t)srcRowPitch * blocksH > buf.size()) { spdlog::warn("[TEXMGR] short data '{}'", path); return 0; }
+        if (dataOff + (size_t)srcRowPitch * blocksH > len) { spdlog::warn("[TEXMGR] short data ({} < need)", len); return 0; }
 
         D3D12_HEAP_PROPERTIES dp{}; dp.Type = D3D12_HEAP_TYPE_DEFAULT;
         D3D12_RESOURCE_DESC td{};
@@ -456,7 +451,7 @@ namespace
         if (FAILED(upbuf->Map(0, &nr, reinterpret_cast<void **>(&map)))) { upbuf->Release(); tex->Release(); return 0; }
         for (UINT r = 0; r < numRows; ++r)
             std::memcpy(map + fp0.Offset + (size_t)r * fp0.Footprint.RowPitch,
-                        buf.data() + dataOff + (size_t)r * srcRowPitch, srcRowPitch);
+                        data + dataOff + (size_t)r * srcRowPitch, srcRowPitch);
         upbuf->Unmap(0, nullptr);
 
         begin_icon_batch(); // reuse the shared list (reset once/frame)
@@ -483,7 +478,7 @@ namespace
         sd.Format = fmt; sd.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D; sd.Texture2D.MipLevels = 1;
         g_device->CreateShaderResourceView(tex, &sd, cpu);
         outW = (int)w; outH = (int)h; outFmt = fmt;
-        spdlog::info("[TEXMGR] loaded '{}' {}x{} fmt={} slot={} -> gpu={:#x}", path, w, h, (int)fmt, idx, gpu.ptr);
+        spdlog::info("[TEXMGR] uploaded DDS {}x{} fmt={} slot={} -> gpu={:#x}", w, h, (int)fmt, idx, gpu.ptr);
         return gpu.ptr;
     }
 
@@ -1345,6 +1340,30 @@ namespace
                     float dw = s_dir_w > 320 ? 320.f : (float)s_dir_w;
                     float dh = s_dir_h ? dw * s_dir_h / s_dir_w : dw;
                     ImGui::Image((ImTextureID)s_dir_tex, ImVec2(dw, dh));
+                }
+
+                // LOAD FROM RAM: upload the DDS the Oodle hook captured in the game's decompressed
+                // RAM (FD4 cache) into our own texture — no game GPU bind, mod-agnostic. Proves the
+                // whole chain: DCX→oodle→TPF(RAM)→our SRV→draw.
+                ImGui::Separator();
+                ImGui::TextDisabled("Upload ER's decompressed-RAM DDS into OUR texture:");
+                static UINT64 s_ram_tex = 0; static int s_ram_w = 0, s_ram_h = 0;
+                void *rb = nullptr; size_t roff = 0, rsize = 0;
+                bool ram_ready = goblin::tpf_ram_dds(rb, roff, rsize);
+                ImGui::Text(ram_ready ? "RAM DDS: base=%p off=%zu size=%zu" : "no TPF decompressed yet (open map)",
+                            rb, roff, rsize);
+                if (ram_ready && ImGui::Button("Upload from RAM"))
+                {
+                    DXGI_FORMAT f;
+                    s_ram_tex = create_tex_from_dds_mem(reinterpret_cast<const uint8_t *>(rb) + roff,
+                                                        rsize, s_ram_w, s_ram_h, f);
+                }
+                if (s_ram_tex)
+                {
+                    ImGui::Text("%dx%d (from ER RAM, no bind)", s_ram_w, s_ram_h);
+                    float dw = s_ram_w > 320 ? 320.f : (float)s_ram_w;
+                    float dh = s_ram_h ? dw * s_ram_h / s_ram_w : dw;
+                    ImGui::Image((ImTextureID)s_ram_tex, ImVec2(dw, dh));
                 }
             }
 

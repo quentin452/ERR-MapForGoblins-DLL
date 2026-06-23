@@ -2890,8 +2890,9 @@ using oodle_decompress_fn = long long(__fastcall *)(const void *, long long, voi
                                                     int, int, void *, long long, void *, void *,
                                                     void *, long long, int);
 oodle_decompress_fn g_oodle_orig = nullptr;
-std::atomic<void *> g_tpf_ram{nullptr};  // latest decompressed TPF buffer (RAM-cache probe)
-std::atomic<size_t> g_tpf_ram_size{0};
+std::atomic<void *> g_tpf_ram{nullptr};  // latest headered-DDS TPF buffer (RAM-cache probe)
+std::atomic<size_t> g_tpf_dds_off{0};    // DDS offset within that buffer
+std::atomic<size_t> g_tpf_dds_size{0};   // DDS size (full, spans the contiguous oodle blocks)
 
 long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, void *dst,
                                              long long dstLen, int a5, int a6, int a7, void *a8,
@@ -2904,24 +2905,29 @@ long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, 
         const uint8_t *b = reinterpret_cast<const uint8_t *>(dst);
         // Decompressed menu texture container = a TPF ("TPF\0"). Log its RAM address + size so we can
         // re-read it menu-closed (persistence test) and parse DDS+rects out of it.
-        if (b[0] == 'T' && b[1] == 'P' && b[2] == 'F' && b[3] == 0)
+        if (b[0] == 'T' && b[1] == 'P' && b[2] == 'F' && b[3] == 0 && r >= 0x20)
         {
-            // Stash the latest decompressed TPF for the F1 RAM-uploader (persistence + display test).
-            g_tpf_ram = dst;
-            g_tpf_ram_size = static_cast<size_t>(r);
+            uint32_t fc = 0, doff = 0, dsz = 0;
+            std::memcpy(&fc, b + 0x08, 4);
+            std::memcpy(&doff, b + 0x10, 4);
+            std::memcpy(&dsz, b + 0x14, 4);
+            bool dataIsDDS = (size_t)doff + 4 < (size_t)r && b[doff] == 'D' && b[doff + 1] == 'D' &&
+                             b[doff + 2] == 'S';
+            // Stash a headered-DDS TPF for the F1 RAM-uploader. dst = buffer start (this is the first
+            // 256KB oodle block, which holds the TPF header); the full DDS (doff..doff+dsz) is written
+            // across the following contiguous blocks, so it's complete by the time F1 reads it.
+            if (dataIsDDS)
+            {
+                g_tpf_ram = dst;
+                g_tpf_dds_off = doff;
+                g_tpf_dds_size = dsz;
+            }
             static int n = 0;
-            if (n < 16 && r >= 0x20)
+            if (n < 16)
             {
                 ++n;
-                uint32_t fc = 0, doff = 0, dsz = 0;
-                std::memcpy(&fc, b + 0x08, 4);
-                std::memcpy(&doff, b + 0x10, 4);
-                std::memcpy(&dsz, b + 0x14, 4);
-                uint8_t plat = b[0x0C], enc = b[0x0E], efmt = b[0x18];
-                bool dataIsDDS = (size_t)doff + 4 < (size_t)r && b[doff] == 'D' && b[doff + 1] == 'D' &&
-                                 b[doff + 2] == 'S';
                 spdlog::info("[OODLE-TPF] @{:#x} sz={} files={} plat={} enc={} entry0(off={} size={} fmt={}) dataIsDDS={}",
-                             reinterpret_cast<uintptr_t>(dst), r, fc, plat, enc, doff, dsz, efmt, dataIsDDS);
+                             reinterpret_cast<uintptr_t>(dst), r, fc, b[0x0C], b[0x0E], doff, dsz, b[0x18], dataIsDDS);
             }
         }
     }
@@ -2983,6 +2989,17 @@ void install_oodle_hook()
     else
         spdlog::warn("[OODLE] eldenring.exe has no static IAT import of oo2core!OodleLZ_Decompress "
                      "(dynamically loaded?) — decompress hook not installed");
+}
+
+// Latest decompressed-in-RAM headered DDS captured by the Oodle hook: base buffer + the DDS's
+// offset/size within it. Returns false until a TPF has been decompressed (open the map). The overlay
+// uploads (base+off, size) into its own texture — proves the FD4 RAM cache feeds our texture manager.
+bool goblin::tpf_ram_dds(void *&base, size_t &off, size_t &size)
+{
+    base = g_tpf_ram.load();
+    off = g_tpf_dds_off.load();
+    size = g_tpf_dds_size.load();
+    return base != nullptr && size != 0;
 }
 
 void goblin::install_icon_texture_probe()

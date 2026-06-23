@@ -318,6 +318,11 @@ namespace goblin
     // MENU_MAP_*/SB_ERR_Grace_* gfx-movie sprites on demand, bypassing the auto cap/lock.
     bool force_graces();
 
+    // Latest headered DDS the Oodle hook captured in the game's decompressed RAM (TPF buffer): the
+    // base buffer + the DDS's offset/size within it. False until a menu TPF was decompressed. Lets the
+    // overlay upload (base+off, size) into our own texture — no game GPU bind, mod-agnostic.
+    bool tpf_ram_dds(void *&base, size_t &off, size_t &size);
+
     // First `max` harvested iconIds (dev — the P2b test panel draws ACTUAL harvested icons
     // instead of a hardcoded id list that may not match what the player browsed).
     std::vector<int> harvested_ids(size_t max);
