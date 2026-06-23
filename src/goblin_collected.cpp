@@ -661,10 +661,14 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
     // -> identity (lotId -> resolve_loot_item_textid) + absolute pos (gridXZ*256 + local). EVERY read
     // is crash-safe (safe_read / ReadProcessMemory, never a raw deref) so no AV on unbacked Wine pages,
     // and there is NO full-memory scan. Gated in-world, one-shot.
-    static bool s_mapins_done = false;
-    if (goblin::config::diagLotMemscan && !s_mapins_done && !g_wgm_cache.empty())
+    // RE-ARMABLE (not one-shot): the scan may fire before item-bearing MapIns stream in. Retry
+    // every ~40 refreshes (≈4s) until it finds records, capped at 25 attempts, then latch. Each
+    // pass is heavy (~1.5s vtable-scan) so it's throttled, not per-refresh.
+    static bool s_mapins_found = false; static int s_mapins_attempts = 0, s_mapins_throttle = 0;
+    if (goblin::config::diagLotMemscan && !s_mapins_found && s_mapins_attempts < 25 &&
+        !g_wgm_cache.empty() && (s_mapins_throttle++ % 40 == 0))
     {
-        s_mapins_done = true;
+        ++s_mapins_attempts;
         const uint64_t VT_MGR = game_base + 0x2a8f918, VT_WBM = game_base + 0x2a8f650,
                        VT_MAPINS = game_base + 0x2a8d6d8;
         uint64_t mgr = 0, mgr_vt = 0;
@@ -764,7 +768,8 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                             for (size_t k = 8; i + k + 16 <= want && k < 0x2000; k += 8)
                             {
                                 uint32_t L = *(const uint32_t *)(q + i + k);
-                                if (L < 0x05F5E100u || L > 0x40000000u) continue;
+                                if (L < 0x100000u || L > 0x7FFFFFFFu) continue;   // any plausible lotId
+                                                                                 // (ERR-added IDs vary)
                                 uint32_t flag = *(const uint32_t *)(q + i + k + 4);
                                 if (flag > 1) continue;
                                 uint64_t P = *(const uint64_t *)(q + i + k + 8);
@@ -798,8 +803,9 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                 addr = rbase + rsz;
             }
         }
-        spdlog::info("[MAPINS] DONE chain_ok={} mgr={:#x} blocks={} mapIns={} records={}",
-                     chain_ok, mgr, blocks, mapins, records);
+        if (records > 0) s_mapins_found = true;   // stop retrying once it works
+        spdlog::info("[MAPINS] DONE attempt={} chain_ok={} mgr={:#x} blocks={} mapIns={} records={}",
+                     s_mapins_attempts, chain_ok, mgr, blocks, mapins, records);
     }
 
     return result;
