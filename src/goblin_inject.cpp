@@ -2880,10 +2880,77 @@ void goblin::probe_icon_find_runtime()
                  "switch to enumerate-loaded (FUN_140d69640). See memory.");
 }
 
+// ── OodleLZ_Decompress hook (FD4 RAM-cache RE, windows_fd4_ram_dds_cache_re_prompt.md) ───────────
+// The menu texture file 01_common.tpf.dcx is DCX/KRAK-compressed; the engine decompresses it via
+// oo2core's OodleLZ_Decompress into a CPU buffer (the TPF, whose entries are the icon-sheet DDS).
+// Hooking it logs that buffer's address + size at the moment of decompression — the candidate for a
+// persistent CPU DDS cache (read it again menu-closed to test persistence). dst is in OUR address
+// space (post-decompress) so we read it directly. 14-arg Oodle signature; we pass everything through.
+using oodle_decompress_fn = long long(__fastcall *)(const void *, long long, void *, long long, int,
+                                                    int, int, void *, long long, void *, void *,
+                                                    void *, long long, int);
+oodle_decompress_fn g_oodle_orig = nullptr;
+
+long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, void *dst,
+                                             long long dstLen, int a5, int a6, int a7, void *a8,
+                                             long long a9, void *a10, void *a11, void *a12,
+                                             long long a13, int a14)
+{
+    long long r = g_oodle_orig(src, srcLen, dst, dstLen, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14);
+    if (goblin::config::dumpIconTextures && dst && r >= 0x10000)
+    {
+        const uint8_t *b = reinterpret_cast<const uint8_t *>(dst);
+        // Decompressed menu texture container = a TPF ("TPF\0"). Log its RAM address + size so we can
+        // re-read it menu-closed (persistence test) and parse DDS+rects out of it.
+        if (b[0] == 'T' && b[1] == 'P' && b[2] == 'F' && b[3] == 0)
+        {
+            static int n = 0;
+            if (n < 40)
+            {
+                ++n;
+                spdlog::info("[OODLE] TPF decompressed @ {:#x} size={} (srcLen={}) hdr={:02x}{:02x}{:02x}{:02x}",
+                             reinterpret_cast<uintptr_t>(dst), r, srcLen, b[0], b[1], b[2], b[3]);
+            }
+        }
+    }
+    return r;
+}
+
+void install_oodle_hook()
+{
+    if (!goblin::config::dumpIconTextures || g_oodle_orig)
+        return;
+    HMODULE oo = GetModuleHandleA("oo2core_6_win64.dll");
+    if (!oo) oo = GetModuleHandleA("oo2core_6_win64");
+    if (!oo)
+    {
+        spdlog::warn("[OODLE] oo2core_6_win64 not loaded yet — decompress hook skipped");
+        return;
+    }
+    void *odf = reinterpret_cast<void *>(GetProcAddress(oo, "OodleLZ_Decompress"));
+    if (!odf)
+    {
+        spdlog::warn("[OODLE] OodleLZ_Decompress export not found");
+        return;
+    }
+    try
+    {
+        modutils::hook(odf, reinterpret_cast<void *>(&oodle_decompress_detour),
+                       reinterpret_cast<void **>(&g_oodle_orig));
+        spdlog::info("[OODLE] OodleLZ_Decompress hooked @ {} — open the world map to log the TPF buffer", odf);
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("[OODLE] hook failed: {}", e.what());
+        g_oodle_orig = nullptr;
+    }
+}
+
 void goblin::install_icon_texture_probe()
 {
     if (!goblin::config::dumpIconTextures)
         return;
+    install_oodle_hook();
     goblin::verify_equip_iconids();
     self_calibrate_iconid();
     void *fn = modutils::scan<void>({.aob = goblin::sig::WORLDMAP_CREATE_IMAGE});
