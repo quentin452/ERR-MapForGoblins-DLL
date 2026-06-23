@@ -1112,6 +1112,14 @@ const goblin::generated::ItemIcon *lookup_item_icon(int32_t key)
 }
 } // namespace
 
+// Public wrapper: marker/item key → real inventory iconId (or -1). Lets the overlay map
+// renderer route lot/item markers through the native GPU icon harvest (ensure_item_icon_srv).
+int goblin::item_icon_id(int32_t key)
+{
+    const goblin::generated::ItemIcon *p = lookup_item_icon(key);
+    return p ? (int)p->iconId : -1;
+}
+
 // Master-off intent set by the toggle hotkey. When true the user has
 // explicitly hidden the icons, so the auto-toggle must keep the table vanilla
 // even while the world map is open. Shared between the hotkey and watcher

@@ -40,6 +40,7 @@ namespace goblin
         extern bool hideCollected;
         extern bool clusterDebugRadius;
         extern bool showRegionLabels; // overlay map: draw major-region names (Limgrave, Caelid, ...)
+        extern bool nativeItemIcons;  // overlay map: real game item icon (GPU harvest) when resident
         extern bool diagLootFlags;    // one-shot [LOOTDIAG]: dump all candidate pickup flags per loot lot
         extern bool debugLogging;
         extern bool showAll;  // master switch: show every category (see

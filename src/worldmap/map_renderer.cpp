@@ -4,6 +4,7 @@
 #include "goblin_projection.hpp"     // baked map-space → backbuffer projection
 #include "goblin_worldmap_probe.hpp" // get_live_view()
 #include "goblin_inject.hpp"         // ui::clustering_enabled / global_threshold / category_clustered
+#include "goblin_overlay.hpp"        // overlay::native_item_icon (native GPU item-icon harvest)
 #include "goblin_config.hpp"         // overlay marker scale config
 #include "goblin_messages.hpp"       // lookup_text_utf8 (tooltip names)
 #include "goblin_collected.hpp"      // is_original_row_collected (rune/ember graying)
@@ -119,6 +120,45 @@ struct AtlasProvider : IconProvider
     }
 };
 
+// Native GPU item icon: the game's OWN inventory icon for an item/loot marker, harvested into
+// an ImGui SRV by the overlay. Best-effort — resolves only for RESIDENT items and async (1-2
+// frames), so it sits in FRONT of the atlas in the chain, never replacing it. Resolves an
+// ItemIcon-source key by the marker's real iconId (Marker::icon_id).
+struct ItemIconProvider : IconProvider
+{
+    bool resolve(const IconKey &k, IconHandle &out) const override
+    {
+        if (k.source != IconKey::ItemIcon || k.icon_id < 0)
+            return false;
+        void *tex = nullptr;
+        float u0, v0, u1, v1;
+        if (!goblin::overlay::native_item_icon(k.icon_id, tex, u0, v0, u1, v1))
+            return false;
+        out.tex = reinterpret_cast<ImTextureID>(tex);
+        out.uv0 = ImVec2(u0, v0);
+        out.uv1 = ImVec2(u1, v1);
+        return true;
+    }
+};
+
+// The active provider chain + per-marker resolution policy: native item icon FIRST (the real
+// game icon, when resident + enabled), then the baked category atlas (guaranteed coverage),
+// else the caller draws a circle. One instance per render pass, built from the atlas texture.
+struct IconSet
+{
+    AtlasProvider atlas;
+    ItemIconProvider item;
+    bool native; // config gate (config::nativeItemIcons): try the native harvest first
+    IconSet(ImTextureID a, bool native_on) : atlas(a), native(native_on) {}
+    bool resolve(const Marker &m, IconHandle &out) const
+    {
+        if (native && m.icon_id >= 0 &&
+            item.resolve(IconKey{IconKey::ItemIcon, nullptr, m.icon_id}, out))
+            return true;
+        return atlas.resolve(IconKey{IconKey::Atlas, m.icon_key, -1}, out);
+    }
+};
+
 // Desaturate toward luminance + halve alpha → the "collected" dim tint (packed ABGR).
 unsigned int dim_color(unsigned int abgr)
 {
@@ -195,7 +235,7 @@ constexpr float kGraceZoomRef = 0.25f;
 // half = icon half-size in px (resolution-scaled by the caller). When collected_graying
 // is on, collected/cleared markers dim+desaturate (or hide if hide_collected), and
 // cleared bosses get a green checkmark. Uncollected bosses redden when redify_boss_icons.
-void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconProvider &icons, float half)
+void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons, float half)
 {
     // Grace marker (discover_flag set only on graces): with grace_overlay the overlay draws it
     // itself — discovered (rested) = full colour, undiscovered = grey. Source per grace_gpu_sprite:
@@ -232,7 +272,7 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconProvider &
             return;
         }
         IconHandle ih;
-        if (icons.resolve(IconKey{IconKey::Atlas, m.icon_key, -1}, ih))
+        if (icons.resolve(m, ih))
             fg->AddImage(ih.tex, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
                          ih.uv0, ih.uv1, t);
         else
@@ -269,7 +309,7 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconProvider &
                             : (red ? IM_COL32(255, 70, 70, 255) : IM_COL32(255, 255, 255, 255));
 
     IconHandle ih;
-    if (icons.resolve(IconKey{IconKey::Atlas, m.icon_key, -1}, ih))
+    if (icons.resolve(m, ih))
     {
         fg->AddImage(ih.tex, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
                      ih.uv0, ih.uv1, tint);
@@ -439,7 +479,7 @@ void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n, float r, bool depleted)
 // member screen-centroid; smaller groups draw their members normally. Off-screen
 // piles/markers are culled. realW/realH = backbuffer size for the cull.
 void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int threshold,
-                   const IconProvider &icons, float realW, float realH,
+                   const IconSet &icons, float realW, float realH,
                    const goblin::projection::View &view, bool dist_eligible,
                    float iconHalf, float glyphR, ImVec2 mouse, Hover &hover)
 {
@@ -907,7 +947,8 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                     float mouseY)
 {
     namespace proj = goblin::projection;
-    const AtlasProvider icons(reinterpret_cast<ImTextureID>(atlas_texture));
+    const IconSet icons(reinterpret_cast<ImTextureID>(atlas_texture),
+                        goblin::config::nativeItemIcons);
     const ImVec2 mouse(mouseX, mouseY);
     Hover hover;
     goblin::worldmap_probe::LiveView lv;
@@ -1191,7 +1232,8 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     fg->AddCircle(ctr, R, IM_COL32(230, 220, 180, 200), 64, 2.0f);
 
     fg->PushClipRect(ImVec2(ctr.x - R, ctr.y - R), ImVec2(ctr.x + R, ctr.y + R), true);
-    const AtlasProvider icons(reinterpret_cast<ImTextureID>(atlas_texture));
+    const IconSet icons(reinterpret_cast<ImTextureID>(atlas_texture),
+                        goblin::config::nativeItemIcons);
     const float half = 6.0f; // minimap markers are small + fixed-size
     for (auto *L : layers)
     {

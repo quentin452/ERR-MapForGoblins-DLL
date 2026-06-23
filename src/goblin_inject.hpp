@@ -279,6 +279,11 @@ namespace goblin
     // Returns false if that iconId hasn't been seen/loaded yet → caller falls back to the baked PNG.
     bool harvested_icon(int iconId, ItemSprite &out);
 
+    // Resolve a marker/item key (offset-encoded item id, == the worldmap PlaceName textId for
+    // item markers) to its real inventory iconId via the baked ITEM_ICONS table. Returns -1 if
+    // the key isn't an item (boss/grace/NPC names miss) → the marker keeps its category atlas icon.
+    int item_icon_id(int32_t key);
+
     // Count of icons harvested so far (dev/diagnostic — shown in the P2b test panel).
     size_t harvested_count();
 

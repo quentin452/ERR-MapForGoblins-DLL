@@ -45,11 +45,12 @@ struct Marker
     // BonfireWarpParam), so the renderer DROPS this overlay marker to avoid a double
     // icon. Undiscovered (flag unset) → drawn as the helper marker. 0 = no gate.
     int discover_flag = 0;
-    // The marker's native game map-point icon id (WORLD_MAP_POINT_PARAM_ST.iconId). Promoted
-    // from the baked MapEntry so a future native-DX icon provider (MapPointProvider) can resolve
-    // the game's own sprite for this point instead of the baked category atlas. -1 = unset (the
-    // atlas/category path is used). Set after the aggregate init (kept out of the positional
-    // ctor, which fills through discover_flag in GraceLayer). Set only by MapEntryLayer for now.
+    // Real inventory iconId for an item/loot marker (resolved from its key via goblin::item_icon_id
+    // → the baked ITEM_ICONS table). Lets the renderer draw the game's OWN icon for this item via the
+    // native GPU harvest (overlay::native_item_icon / ensure_item_icon_srv) instead of the
+    // category-representative atlas cell. -1 = not an item (boss/grace/NPC) → use the atlas. Set
+    // after the aggregate init (kept out of the positional ctor, which fills through discover_flag
+    // in GraceLayer). Set only by MapEntryLayer.
     int icon_id = -1;
     // Grace in a DUNGEON (legacy/minor dungeon or DLC dungeon, projected to the overworld — NOT an
     // open-world-surface or underground grace). When ERR is installed, the renderer draws these with

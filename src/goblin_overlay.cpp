@@ -2318,3 +2318,20 @@ void goblin::overlay::shutdown()
 }
 
 bool goblin::overlay::is_ready() { return g_imgui_init; }
+
+bool goblin::overlay::native_item_icon(int iconId, void *&tex, float &u0, float &v0, float &u1,
+                                       float &v1)
+{
+    if (iconId < 0)
+        return false;
+    UINT64 h = ensure_item_icon_srv(iconId); // enqueues the GPU copy on first request (async)
+    if (!h)
+        return false; // not resident/ready yet → caller falls back to the atlas
+    auto it = g_item_icon_srvs.find(iconId);
+    if (it == g_item_icon_srvs.end() || !it->second.ok)
+        return false;
+    tex = reinterpret_cast<void *>(h);
+    u0 = it->second.uv0.x; v0 = it->second.uv0.y;
+    u1 = it->second.uv1.x; v1 = it->second.uv1.y;
+    return true;
+}

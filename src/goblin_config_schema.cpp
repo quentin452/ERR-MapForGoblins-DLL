@@ -17,6 +17,7 @@ namespace goblin::config
     bool collectedGraying = true;
     bool hideCollected = false;
     bool showRegionLabels = true;  // overlay: draw major-region name labels on the map
+    bool nativeItemIcons = true;   // overlay: draw the game's real item icon (GPU harvest) when resident
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
     bool debugLogging = false;
     bool showAll = false;
@@ -161,6 +162,10 @@ namespace
                 B("show_region_labels", showRegionLabels, "true",
                   "Overlay map: draw the major-region names (Limgrave, Caelid, Liurnia,\n"
                   "Altus Plateau, ...) on the open map page, beneath the markers."),
+                B("native_item_icons", nativeItemIcons, "true",
+                  "Overlay map: draw each item/loot marker with the GAME's own inventory icon\n"
+                  "(harvested live from the menu sheet) when that item is resident, instead of\n"
+                  "the category-representative atlas icon. Falls back to the atlas otherwise."),
                 B("diag_loot_flags", diagLootFlags, "false",
                   "RE diagnostic: on map build, log [LOOTDIAG] for a few loot markers per\n"
                   "category — every candidate pickup flag (lot-wide, 8 per-slot, baked) and\n"
