@@ -3198,13 +3198,25 @@ void goblin::probe_baked_vs_runtime()
 {
     using goblin::generated::Category;
 
+    // JOIN KEY = clearedEventFlagId, NOT row_id. MAP_ENTRIES.row_id is a synthetic id from the old
+    // MASSEDIT injection range (e.g. 9400000+), and native injection was removed in Phase 2b — so
+    // none of our row_ids exist in the live param. The stable identity present in BOTH the live ERR
+    // field-boss row AND our baked boss data is clearedEventFlagId (the T3 diag matched 215/215 on it).
+    // Index the live field-boss rows (textId2==5100) by that flag.
     struct LiveRow { uint8_t area, gx, gz; float px, pz; };
-    std::unordered_map<uint64_t, LiveRow> live;
+    std::unordered_map<uint32_t, LiveRow> boss_live;
+    int live_5100 = 0;
     try
     {
         for (auto [rowId, row] :
              from::params::get_param<from::paramdef::WORLD_MAP_POINT_PARAM_ST>(L"WorldMapPointParam"))
-            live[rowId] = LiveRow{row.areaNo, row.gridXNo, row.gridZNo, row.posX, row.posZ};
+        {
+            if (row.textId2 != 5100) continue;           // field-boss marker rows only
+            ++live_5100;
+            if (row.clearedEventFlagId)
+                boss_live[row.clearedEventFlagId] =
+                    LiveRow{row.areaNo, row.gridXNo, row.gridZNo, row.posX, row.posZ};
+        }
     }
     catch (...)
     {
@@ -3212,46 +3224,44 @@ void goblin::probe_baked_vs_runtime()
         return;
     }
 
-    auto cat_name = [](Category c) -> const char * {
-        switch (c)
-        {
-        case Category::WorldBosses:     return "Boss";
-        case Category::WorldHostileNPC: return "HostileNPC";
-        case Category::WorldQuestNPC:   return "QuestNPC";
-        default:                        return nullptr;   // probe the drift-prone mob/boss set only
-        }
-    };
-
-    int probed = 0, exact = 0, drifted = 0, missing = 0;
+    int probed = 0, exact = 0, drifted = 0, missing = 0, noflag = 0, npc_synth = 0;
     for (size_t i = 0; i < goblin::generated::MAP_ENTRY_COUNT; ++i)
     {
         const auto &e = goblin::generated::MAP_ENTRIES[i];
-        const char *cn = cat_name(e.category);
-        if (!cn) continue;
+        // HostileNPC/QuestNPC are MFG-added markers derived from NpcParam/MSB — they have NO live
+        // WorldMapPointParam source by design, so they are not comparable (count them, don't warn).
+        if (e.category == Category::WorldHostileNPC || e.category == Category::WorldQuestNPC)
+        { ++npc_synth; continue; }
+        if (e.category != Category::WorldBosses) continue;
+
         ++probed;
-        auto it = live.find(e.row_id);
-        if (it == live.end())
+        const uint32_t flag = e.data.clearedEventFlagId;
+        if (!flag) { ++noflag; continue; }               // unnamed/special boss with no cleared flag
+        auto it = boss_live.find(flag);
+        if (it == boss_live.end())
         {
             ++missing;
-            spdlog::warn("[DRIFTPROBE] {} row_id={} MISSING from live WMP "
+            spdlog::warn("[DRIFTPROBE] Boss flag={} MISSING from live field-boss rows "
                          "(baked area={} grid=({},{}) pos=({:.1f},{:.1f}))",
-                         cn, e.row_id, e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
-                         e.data.posX, e.data.posZ);
+                         flag, e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.data.posX, e.data.posZ);
             continue;
         }
         const LiveRow &L = it->second;
         const float dx = L.px - e.data.posX, dz = L.pz - e.data.posZ;
-        const bool grid_same = (L.area == e.data.areaNo && L.gx == e.data.gridXNo && L.gz == e.data.gridZNo);
-        const bool pos_same = (dx > -0.05f && dx < 0.05f && dz > -0.05f && dz < 0.05f);
-        if (grid_same && pos_same) { ++exact; continue; }
+        const bool same = (L.area == e.data.areaNo && L.gx == e.data.gridXNo && L.gz == e.data.gridZNo &&
+                           dx > -0.05f && dx < 0.05f && dz > -0.05f && dz < 0.05f);
+        if (same) { ++exact; continue; }
         ++drifted;
-        spdlog::warn("[DRIFTPROBE] {} row_id={} DRIFT baked[area={} grid=({},{}) pos=({:.2f},{:.2f})] "
+        spdlog::warn("[DRIFTPROBE] Boss flag={} DRIFT baked[area={} grid=({},{}) pos=({:.2f},{:.2f})] "
                      "live[area={} grid=({},{}) pos=({:.2f},{:.2f})] d=({:.2f},{:.2f})",
-                     cn, e.row_id, e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.data.posX, e.data.posZ,
+                     flag, e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.data.posX, e.data.posZ,
                      L.area, L.gx, L.gz, L.px, L.pz, dx, dz);
     }
-    spdlog::info("[DRIFTPROBE] boss/enemy baked-vs-live: probed={} exact={} drifted={} missing={} "
-                 "(live WMP rows={})", probed, exact, drifted, missing, live.size());
+    spdlog::info("[DRIFTPROBE] BOSS baked-vs-live (key=clearedEventFlagId): probed={} exact={} "
+                 "drifted={} missing={} no-flag={} (live textId2==5100 rows={})",
+                 probed, exact, drifted, missing, noflag, live_5100);
+    spdlog::info("[DRIFTPROBE] NPC = {} MFG-synthetic markers (HostileNPC+QuestNPC) — no live WMP "
+                 "source by design, not comparable", npc_synth);
 }
 
 void goblin::install_icon_texture_probe()
