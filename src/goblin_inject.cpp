@@ -3132,7 +3132,7 @@ setto_fn g_setto_orig = nullptr;
 // release the stack proxy. Signatures inferred from the RE pseudocode (doc §4).
 void *(__fastcall *g_gfx_get_child)(void *widgetRoot, void *outChild, const char *name) = nullptr;
 void *(__fastcall *g_gfx_set_visible)(void *child, int visible) = nullptr;
-void *(__fastcall *g_gfx_release_proxy)(void *child) = nullptr;
+void *(__fastcall *g_gfx_release_proxy)(void *cssvAtChildPlus0x28) = nullptr;
 void *g_warppin_vftable = nullptr;   // er + 0x2ad8228 (WorldMapWarpPinData::vftable) — grace filter
 
 void *__fastcall warp_setto_detour(void *pin, void *widgetRoot, void *a3, void *a4)
@@ -3149,12 +3149,14 @@ void *__fastcall warp_setto_detour(void *pin, void *widgetRoot, void *a3, void *
     uint32_t state = *reinterpret_cast<uint32_t *>(reinterpret_cast<uintptr_t>(pin) + 0x60);
     if ((state & 7) == 0)
         return ret;
-    // Hide ONLY the Icon_0 child. Over-allocate the GFx stack proxy (RE hint: SetTo locals
-    // local_78[40]/local_50[56] ≈ 96B); zeroed; released right after, as vanilla does.
-    alignas(16) uint8_t child[256] = {};
+    // Hide ONLY the Icon_0 child. The GFx child proxy is ComponentProxy@+0 + CSScaleformValue@+0x28;
+    // get_child fills it, set_visible takes the proxy BASE, release takes the CSScaleformValue at
+    // +0x28 (verified vs SetTo's own disasm: get_child→RSP+0x40, release→RSP+0x68 = +0x28). The
+    // earlier crash (0xC000001D) was releasing the base. See windows_grace_warppin_setto_abi_re_findings.md.
+    alignas(16) uint8_t child[0x60] = {};   // get_child fills it (≥ real proxy size ~0x58)
     g_gfx_get_child(widgetRoot, child, "Icon_0");
-    g_gfx_set_visible(child, 0);
-    g_gfx_release_proxy(child);
+    g_gfx_set_visible(child, 0);                 // proxy base
+    g_gfx_release_proxy(child + 0x28);           // the CSScaleformValue (NOT the base)
     return ret;
 }
 } // namespace
@@ -3178,14 +3180,10 @@ void goblin::install_grace_suppression_hook()
     }
 
     // DRAW-ONLY suppression: hook vt[1] SetTo + resolve the GFx helpers (RE teleport findings §4/§5).
-    // ⚠ DISABLED — the inferred GFx proxy ABI CRASHED in-game (0xC000001D illegal-instruction in the
-    // release path: our detour → get_child(0x74a2f0) → set_visible(0x73334f) → release(0xd7f88c) →
-    // jumped to garbage; the stack proxy / fn signatures / "Icon_0" encoding don't match the engine's
-    // real ABI). Re-enable once a follow-up RE pins the exact getChild/setVisible/release calling
-    // convention + proxy layout (see windows_grace_warppin_seto_abi_re_prompt.md). Until then the
-    // SetTo hook is NOT installed → grace_suppress_native is harmless (builder hook stays log-only,
-    // hybrid draws+teleports discovered graces). Keep the code + resolves for the re-enable.
-    constexpr bool kSetToHookEnabled = false;
+    // The earlier crash (0xC000001D) was a single wrong arg: release must take the CSScaleformValue at
+    // proxy+0x28, not the proxy base. Fixed in warp_setto_detour and verified against SetTo's own
+    // disasm (windows_grace_warppin_setto_abi_re_findings.md). Re-enabled; needs in-game runtime test.
+    constexpr bool kSetToHookEnabled = true;
     if (kSetToHookEnabled)
     {
         g_gfx_get_child = reinterpret_cast<decltype(g_gfx_get_child)>(er + 0x74a2f0);   // FUN_14074a2f0
