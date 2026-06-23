@@ -799,6 +799,8 @@ bool quest_npc_gated_out(const Marker &m)
 }
 } // namespace
 
+bool inworld_hovered() { return s_inworld_hot; }
+
 void set_grace_sprite(void *tex, float u0, float v0, float u1, float v1)
 {
     s_grace_tex = reinterpret_cast<ImTextureID>(tex);

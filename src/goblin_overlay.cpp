@@ -854,6 +854,25 @@ namespace
                 break;
             }
         }
+        // F1 panel CLOSED but the world map is open: feed ImGui the mouse so in-world chips
+        // (region toggles) stay clickable, and consume the L-button PRESS for the game ONLY
+        // when the cursor is over a chip (map pan/select elsewhere is untouched). Releases
+        // always pass through to the game (never swallow an UP → no "held forever" bug).
+        else if (goblin::world_map_open())
+        {
+            switch (msg)
+            {
+            case WM_MOUSEMOVE:
+            case WM_LBUTTONDOWN:
+            case WM_LBUTTONUP:
+                ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
+                if (msg == WM_LBUTTONDOWN && goblin::worldmap::inworld_hovered())
+                    return 1; // chip ate the click; the game must not pan/select
+                break;
+            default:
+                break;
+            }
+        }
         return CallWindowProcW(g_orig_wndproc, hwnd, msg, wp, lp);
     }
 

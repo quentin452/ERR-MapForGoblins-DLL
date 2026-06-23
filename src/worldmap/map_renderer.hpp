@@ -36,4 +36,10 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
 void set_grace_sprite(void *tex, float u0, float v0, float u1, float v1);
 // The ERR dungeon-style grace (for m.dungeon graces; null = fall back to the vanilla grace sprite).
 void set_grace_dungeon_sprite(void *tex, float u0, float v0, float u1, float v1);
+
+// True if the OS cursor was over an in-world control (e.g. a region chip) on the last
+// render_markers pass. The overlay's WndProc reads this to consume the L-button PRESS for
+// the game only when a chip is hovered (so map pan/select elsewhere is untouched), while
+// still feeding the click to ImGui so the chip toggles even with the F1 panel closed.
+bool inworld_hovered();
 } // namespace goblin::worldmap
