@@ -3186,6 +3186,74 @@ void goblin::background_harvest_tick()
     harvest_repo_icons();   // resolves the repo from the static anchor; no-op unless icons wanted
 }
 
+// ─── Baked-vs-runtime data probe (config probe_baked_drift) ──────────────────────────────
+// Our boss/enemy marker positions are BAKED offline (boss_list.json → MAP_ENTRIES). An ERR
+// regulation update can move WorldMapPointParam rows, silently staling the bake. This joins
+// each baked boss/enemy row against the LIVE WMP row it came from (by row_id — the runtime
+// source the RE agent confirmed) and logs any area/grid/pos drift, so we learn whether the
+// runtime data is trustworthy before wiring markers to read it live. Read-only, one-shot.
+// (T3 finding: the WMP row is in the same dungeon-internal frame as the entity — so a delta
+// here means the bake went stale, NOT that the runtime frame differs.)
+void goblin::probe_baked_vs_runtime()
+{
+    using goblin::generated::Category;
+
+    struct LiveRow { uint8_t area, gx, gz; float px, pz; };
+    std::unordered_map<uint64_t, LiveRow> live;
+    try
+    {
+        for (auto [rowId, row] :
+             from::params::get_param<from::paramdef::WORLD_MAP_POINT_PARAM_ST>(L"WorldMapPointParam"))
+            live[rowId] = LiveRow{row.areaNo, row.gridXNo, row.gridZNo, row.posX, row.posZ};
+    }
+    catch (...)
+    {
+        spdlog::warn("[DRIFTPROBE] WorldMapPointParam not readable — aborting probe");
+        return;
+    }
+
+    auto cat_name = [](Category c) -> const char * {
+        switch (c)
+        {
+        case Category::WorldBosses:     return "Boss";
+        case Category::WorldHostileNPC: return "HostileNPC";
+        case Category::WorldQuestNPC:   return "QuestNPC";
+        default:                        return nullptr;   // probe the drift-prone mob/boss set only
+        }
+    };
+
+    int probed = 0, exact = 0, drifted = 0, missing = 0;
+    for (size_t i = 0; i < goblin::generated::MAP_ENTRY_COUNT; ++i)
+    {
+        const auto &e = goblin::generated::MAP_ENTRIES[i];
+        const char *cn = cat_name(e.category);
+        if (!cn) continue;
+        ++probed;
+        auto it = live.find(e.row_id);
+        if (it == live.end())
+        {
+            ++missing;
+            spdlog::warn("[DRIFTPROBE] {} row_id={} MISSING from live WMP "
+                         "(baked area={} grid=({},{}) pos=({:.1f},{:.1f}))",
+                         cn, e.row_id, e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
+                         e.data.posX, e.data.posZ);
+            continue;
+        }
+        const LiveRow &L = it->second;
+        const float dx = L.px - e.data.posX, dz = L.pz - e.data.posZ;
+        const bool grid_same = (L.area == e.data.areaNo && L.gx == e.data.gridXNo && L.gz == e.data.gridZNo);
+        const bool pos_same = (dx > -0.05f && dx < 0.05f && dz > -0.05f && dz < 0.05f);
+        if (grid_same && pos_same) { ++exact; continue; }
+        ++drifted;
+        spdlog::warn("[DRIFTPROBE] {} row_id={} DRIFT baked[area={} grid=({},{}) pos=({:.2f},{:.2f})] "
+                     "live[area={} grid=({},{}) pos=({:.2f},{:.2f})] d=({:.2f},{:.2f})",
+                     cn, e.row_id, e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.data.posX, e.data.posZ,
+                     L.area, L.gx, L.gz, L.px, L.pz, dx, dz);
+    }
+    spdlog::info("[DRIFTPROBE] boss/enemy baked-vs-live: probed={} exact={} drifted={} missing={} "
+                 "(live WMP rows={})", probed, exact, drifted, missing, live.size());
+}
+
 void goblin::install_icon_texture_probe()
 {
     // The find/enum + residency-ticker + CreateImage hooks feed the PRODUCTION native-icon paths

@@ -256,6 +256,12 @@ namespace goblin
     // cost never stalls the engine (see docs/rpm_walk_audit.md, [[linux-rpm-walk-danger]]).
     void background_harvest_tick();
 
+    // Baked-vs-runtime data probe (config probe_baked_drift). One-shot at init: joins each
+    // baked boss/enemy MAP_ENTRY against the live WorldMapPointParam row by row_id and logs
+    // any area/grid/pos drift as [DRIFTPROBE]. Read-only; future-proofs the offline bake
+    // against ERR regulation updates + validates the runtime row source for mob/boss markers.
+    void probe_baked_vs_runtime();
+
     // Hook the WarpPinData builder to suppress native discovered-grace pins (config
     // grace_suppress_native). Phase A logs [WARPPIN] to confirm identification (RE e4b3f6a).
     void install_grace_suppression_hook();

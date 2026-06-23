@@ -65,6 +65,7 @@ namespace goblin::config
     bool liveProjection = true;
     bool dumpConverters = false;
     bool dumpNativePins = false;
+    bool probeBakedDrift = false;
     bool overlayMarkersProto = false;
     bool debugRenderDims = false;
     bool fixMidsessionResolution = false;
@@ -412,6 +413,8 @@ namespace
                   "Dev one-shot RE check: when the world map is open, find the live\nCS::WorldMapViewModel and dump its 8 converter slots (origin/bias/scale/\narea/legacyConvNode @ VM+0xF8) + count to MapForGoblins.log as [CONV]. Open\nthe overworld, then base underground (m12), then the DLC/Realm of Shadows map\nto capture each page's converter (incl. the never-solved DLC constants).\nConfirms the world->map-space projection RE. Off by default."),
                 B("dump_native_pins", dumpNativePins, "false",
                   "Dev one-shot RE check: when the world map is open, walk the native-pin\nicon manager (CSWorldMapPointMan std::map @ mgr+0x398, mgr=[er+0x3D6E9B0])\nand its sibling [er+0x3D6F558], dumping each built pin's key/ins-ptr + a\nfield window as [PINS] to MapForGoblins.log. Identifies WHAT native pins\nstill draw (graces/categories/objectives) + their source, to decide native-\npin suppression (overlay = sole icon source). Read-only. Off by default."),
+                B("probe_baked_drift", probeBakedDrift, "false",
+                  "Dev diagnostic (future-proofing): at init, compare each baked boss/enemy\nmarker (MAP_ENTRIES, from boss_list.json) against the LIVE WorldMapPointParam\nrow it was baked from (joined by row_id) and log any area/grid/pos drift as\n[DRIFTPROBE] to MapForGoblins.log. Catches a stale bake after an ERR\nregulation update + tells us whether the runtime row data is trustworthy\nbefore wiring markers to read it live. Read-only, one-shot. Off by default."),
                 B("overlay_markers_proto", overlayMarkersProto, "false",
                   "Dev prototype (overlay-rendered markers): draw our own marker dot in\nthe ImGui overlay, projected onto the open world map via the live pan/zoom\n(WorldMapArea), to verify the world->screen affine. Starts the cursor probe\nif not already on. Open the F1 menu to tune scale/bias live. Off by default."),
                 B("fix_midsession_resolution", fixMidsessionResolution, "false",

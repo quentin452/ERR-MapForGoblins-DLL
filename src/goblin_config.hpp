@@ -126,6 +126,13 @@ namespace goblin
         // (ReadProcessMemory). See goblin_worldmap_probe.cpp dump_native_pins.
         extern bool dumpNativePins;
 
+        // Dev diagnostic (future-proofing): at init, compare each baked boss/enemy
+        // marker (MAP_ENTRIES) against the live WorldMapPointParam row it was baked
+        // from (joined by row_id) and log area/grid/pos drift as [DRIFTPROBE]. Catches
+        // a stale bake after an ERR regulation update + validates runtime row data.
+        // See goblin::probe_baked_vs_runtime (goblin_inject.cpp).
+        extern bool probeBakedDrift;
+
         // Dev prototype: draw overlay-rendered marker dots projected onto the open
         // world map (verifies the world->screen affine). See goblin_overlay.cpp +
         // goblin_worldmap_probe::get_live_view.
