@@ -830,8 +830,10 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                             // Agent reach (ed8fa0c): the loot node is at MapIns+0x460 ({lotId@+0,
                             // flag@+4, FieldIns*@+8}); MapId@node-0xD8, localPos@node-0xD4. The SOLE
                             // validator is *(u32)(FieldIns+0x50)==lotId — it rejects every false
-                            // positive, so no name/lot-range guess needed. Primary +0x460 + a bounded
-                            // hedge window (+0x100..+0x800, 4-aligned) for items at other offsets.
+                            // positive, so no name/lot-range guess needed. Reach is EXACTLY +0x460
+                            // (verified in-game 2026-06-24): the old +0x100..+0x800 hedge bled across
+                            // adjacent MapIns objects (MapIns_A+0x710 == MapIns_B+0x460, same node),
+                            // double-counting the same FieldIns — dropped.
                             auto emit = [&](size_t k)
                             {
                                 if (k < 0xD8 || i + k + 16 > want) return;
@@ -858,8 +860,6 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                                 }
                             };
                             emit(0x460);
-                            for (size_t k = 0x100; k <= 0x800; k += 4)
-                                if (k != 0x460) emit(k);
                             (void)lim;
                         }
                     }
