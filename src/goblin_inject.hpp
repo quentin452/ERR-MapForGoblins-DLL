@@ -247,6 +247,15 @@ namespace goblin
     // log each worldmap icon image (sprite rect + backing GPU texture) → crack iconId↔image.
     void install_icon_texture_probe();
 
+    // Background icon-harvest tick. Drives the proactive repo-tree walk
+    // (harvest_repo_icons → map_icon_rect rects + grace sprites). SAFE to call from any
+    // thread: read-only RPM on our own process, publishes under g_map_icon_mtx /
+    // g_harvest_mtx. Self-throttled (re-walks only on resident-count change, rate-capped in
+    // production). No-op unless an icon-consuming config is on. Called from the
+    // worldmap_probe background poll instead of the game-thread find hook so Wine's per-RPM
+    // cost never stalls the engine (see docs/rpm_walk_audit.md, [[linux-rpm-walk-danger]]).
+    void background_harvest_tick();
+
     // Hook the WarpPinData builder to suppress native discovered-grace pins (config
     // grace_suppress_native). Phase A logs [WARPPIN] to confirm identification (RE e4b3f6a).
     void install_grace_suppression_hook();

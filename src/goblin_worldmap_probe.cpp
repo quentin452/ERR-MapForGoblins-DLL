@@ -729,6 +729,11 @@ void probe_loop()
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         auto now = clock::now();
 
+        // Proactive icon harvest, relocated off the game-thread find hook (docs/rpm_walk_audit.md).
+        // Self-throttled + read-only RPM on our own process → safe on this background thread; keeps
+        // Wine's per-RPM walk cost off the engine cadence. No-op unless an icon config is on.
+        goblin::background_harvest_tick();
+
         // Drop a dead active cursor so the sticky publish can re-lock a fresh one.
         if (uintptr_t ac = g_active_cursor.load(std::memory_order_relaxed))
         {
