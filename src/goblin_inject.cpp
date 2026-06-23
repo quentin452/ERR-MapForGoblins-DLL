@@ -1973,7 +1973,16 @@ void store_map_icon_rect(const char *nm, int x, int y, int w, int h, void *sheet
     if (std::strncmp(nm, "MENU_MAP_", 9) == 0)
     {
         const char *p = nm + 9;                 // MENU_MAP_<NN> → iconId NN
-        if (*p >= '0' && *p <= '9') g_map_icon_rects[std::atoi(p)] = r;
+        if (*p >= '0' && *p <= '9')
+        {
+            int iid = std::atoi(p);
+            bool fresh = g_map_icon_rects.find(iid) == g_map_icon_rects.end();
+            g_map_icon_rects[iid] = r;
+            // Enumerate available map-point symbols so the category_gpu_iconId table can be
+            // filled from real data (which iconId = which symbol). One line per new iconId.
+            if (fresh && goblin::config::dumpIconTextures)
+                spdlog::info("[MAPICON-AVAIL] iconId={} name={} rect=({},{} {}x{})", iid, nm, x, y, w, h);
+        }
     }
 }
 

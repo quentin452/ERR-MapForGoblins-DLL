@@ -1,4 +1,5 @@
 #include "map_renderer.hpp"
+#include "category_meta.hpp"          // category_gpu_iconId (map-point symbol per category)
 
 #include "goblin_bench.hpp"          // GOBLIN_BENCH_QUIET (per-frame render timing)
 #include "goblin_projection.hpp"     // baked map-space → backbuffer projection
@@ -141,20 +142,50 @@ struct ItemIconProvider : IconProvider
     }
 };
 
-// The active provider chain + per-marker resolution policy: native item icon FIRST (the real
-// game icon, when resident + enabled), then the baked category atlas (guaranteed coverage),
-// else the caller draws a circle. One instance per render pass, built from the atlas texture.
+// Native GPU map-point symbol: the game's OWN world-map symbol (MENU_MAP_<NN>) for a category
+// that maps to one (category_gpu_iconId, sparse). Resolved via the FD4 image-repo rect copied
+// into our SRV. Best-effort: resolves only after the world map opened + the symbol is resident.
+struct MapPointProvider : IconProvider
+{
+    bool resolve(const IconKey &k, IconHandle &out) const override
+    {
+        if (k.source != IconKey::MapPoint || k.icon_id < 0)
+            return false;
+        void *tex = nullptr;
+        float u0, v0, u1, v1;
+        if (!goblin::overlay::native_map_point_icon(k.icon_id, tex, u0, v0, u1, v1))
+            return false;
+        out.tex = reinterpret_cast<ImTextureID>(tex);
+        out.uv0 = ImVec2(u0, v0);
+        out.uv1 = ImVec2(u1, v1);
+        return true;
+    }
+};
+
+// The active provider chain + per-marker resolution policy: native map-point symbol FIRST (for
+// the categories that have a real game symbol via category_gpu_iconId), then the native item
+// icon (the real inventory icon for loot, when resident), then the baked category atlas
+// (guaranteed coverage), else the caller draws a circle. One instance per render pass.
 struct IconSet
 {
     AtlasProvider atlas;
     ItemIconProvider item;
-    bool native; // config gate (config::nativeItemIcons): try the native harvest first
+    MapPointProvider mappoint;
+    bool native; // config gate (config::nativeItemIcons): try the native backends first
     IconSet(ImTextureID a, bool native_on) : atlas(a), native(native_on) {}
     bool resolve(const Marker &m, IconHandle &out) const
     {
-        if (native && m.icon_id >= 0 &&
-            item.resolve(IconKey{IconKey::ItemIcon, nullptr, m.icon_id}, out))
-            return true;
+        if (native)
+        {
+            // World-feature categories with a mapped game symbol (sparse table) → real ER symbol.
+            int gid = goblin::worldmap::category_gpu_iconId(m.category);
+            if (gid > 0 && mappoint.resolve(IconKey{IconKey::MapPoint, nullptr, gid}, out))
+                return true;
+            // Item/loot markers → the game's real inventory icon.
+            if (m.icon_id >= 0 &&
+                item.resolve(IconKey{IconKey::ItemIcon, nullptr, m.icon_id}, out))
+                return true;
+        }
         return atlas.resolve(IconKey{IconKey::Atlas, m.icon_key, -1}, out);
     }
 };
