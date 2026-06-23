@@ -93,3 +93,34 @@ With the corrected chain, one in-process pass settles it:
   the corrected registry walk can surface. Confirm with the §4 test before investing further.
 
 Scripts: `D:\ghidra_scripts\find_fieldins7.java`, `find_fieldins8.java` (out `out_fieldins{7,8}.txt`).
+
+---
+
+## ★ RUNTIME RESULT with the corrected chain — avenue CLOSED in-process (2026-06-23)
+
+Re-ran `diag_fieldins_join` with §1's corrected offsets (commit 31a5f38: container=*[sub+0x720], map
+@container+0x18, head=*[container+0x20], _Mysize=*[container+0x28], instance=node+0x30):
+
+- Clean finite walk (no more cycle garbage): **`mapSize=13, visited=13, distinctNodes=13,
+  instances=13, realLot=0, targetLotHits=0`.**
+- All 13 instances are the **same type**, `vtable 0x142a86860` (RVA 0x2a86860), `+0x50 = 0` —
+  **NOT** `FieldInsBase` (0x2a25e68) nor `MapIns` (0x2a8f650). A small homogeneous pool, **not** the
+  thousands-entry loaded field-instance registry.
+
+**Verdict:** the chain from `er+0x3d7b0c0` resolves consistently but lands on a 13-object list that is
+not the field-instance map in this build (likely the static slot RVA `0x3d7b0c0` drifted — use the
+be1b018 AOBs to re-anchor, not the hardcoded RVA — or this sub-manager isn't the field one). Chasing
+the exact map further is **low-ROI for the loot feature**, because the static conclusion already
+stands regardless:
+
+- No dedicated treasure/item FieldIns class (§2); sealed chests spawn their pickup at OPEN (§3); the
+  loot geom-items that DO exist at load are already enumerated by our `CSWorldGeomMan` walk
+  (`goblin_collected.cpp`) and carry **no resident lotId** (path A's embedded `+0x3A8` pool is empty).
+
+**DECISION — explore-cache loot identity, FINAL:**
+- The "ERR-added-loot-with-names" PREMIUM (runtime lotId for unbaked loot) is **SHELVED** — not
+  resident pre-pickup via any structure reached here.
+- What ships = **baked-partName-join** explore-cache (reveal/fog baked loot as the player walks),
+  which already works today with zero new RE.
+- `diag_fieldins_join` left in tree but OFF (dormant diagnostic; gated, harmless). Re-open only if a
+  future Ghidra pass re-anchors the field-instance map via AOB and proves a pre-open lotId exists.

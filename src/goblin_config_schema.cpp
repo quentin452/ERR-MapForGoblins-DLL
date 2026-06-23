@@ -21,6 +21,7 @@ namespace goblin::config
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
     bool diagLootPos = false;      // one-shot [LOOTPOS] live-vs-baked placement accuracy probe
     bool diagFieldinsJoin = false; // one-shot [FIELDINS] embedded-pool asset→lotId join probe (path A)
+    bool diagLotMemscan = false;   // one-shot [LOTSCAN] brute committed-private memory scan for a lotId
     bool debugLogging = false;
     bool showAll = false;
     bool iconsHidden = false;  // master off persisted (menu/F10 "Show icons")
@@ -186,6 +187,11 @@ namespace
                   "stride+0x3BC, node-array+0x3C0), follow the child FieldIns and log its lotId@+0x50 +\n"
                   "name. Confirms the runtime asset→lot link with no global walk (be1b018). Walk near\n"
                   "loaded loot. Off by default."),
+                B("diag_lot_memscan", diagLotMemscan, "false",
+                  "RE diagnostic: one-shot [LOTSCAN] — brute-scan all committed PRIVATE memory for the\n"
+                  "known chest's lotId (0x3dd6fec4 = 1037500100). Structure-agnostic: answers whether the\n"
+                  "lotId is resident ANYWHERE while standing at the UNOPENED chest (pre-open residency).\n"
+                  "Logs hit count + each hit's address/region. Stand at the chest, walk in. Off by default."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("show_all", showAll, "false",
