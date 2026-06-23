@@ -290,8 +290,10 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
     // native-pin suppression to avoid doubling. Graces aren't collectible → no graying path.
     if (m.discover_flag && goblin::config::graceOverlay)
     {
+        // Discovered = a green check (same "done" language as cleared bosses / collected loot), NOT a
+        // faded tint — ImGui can't desaturate a texture, and a check reads far clearer than low opacity.
         bool disc = goblin::ui::read_event_flag(static_cast<uint32_t>(m.discover_flag));
-        ImU32 t = disc ? IM_COL32(255, 255, 255, 255) : IM_COL32(140, 140, 150, 205);
+        ImU32 t = IM_COL32(255, 255, 255, 255);   // grace icon always full colour
         if (goblin::config::graceGpuSprite && s_grace_tex)
         {
             // SIMPLIFIED: the BASE grace sprite is drawn for EVERY grace (cave/dungeon/overworld
@@ -314,7 +316,7 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
             // the user's overall-size dial on top.
             float zf = s_grace_zoom / kGraceZoomRef;
             if (zf < 0.3f) zf = 0.3f;
-            if (zf > 4.0f) zf = 4.0f;
+            if (zf > 2.0f) zf = 2.0f;          // cap high-zoom growth (graces were too big zoomed in)
             float gh = half * goblin::config::graceIconScale * zf;
             // Optional offset → shift the imgui grace beside the game's NATIVE pin for side-by-side
             // calibration (0 = on top). Scaled by the live projection factor (zoom × canvas) so the
@@ -323,6 +325,8 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
             float gx = p.x + goblin::config::graceOffsetX * s_grace_off_sx,
                   gy = p.y + goblin::config::graceOffsetY * s_grace_off_sy;
             fg->AddImage(gt, ImVec2(gx - gh, gy - gh), ImVec2(gx + gh, gy + gh), u0, u1, t);
+            if (disc)
+                draw_check(fg, ImVec2(gx, gy), gh);   // discovered → green check (same as cleared bosses)
             return;
         }
         IconHandle ih;
