@@ -678,8 +678,6 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
         uintptr_t end  = (uintptr_t)si.lpMaximumApplicationAddress;
         uint64_t scanned = 0, regions = 0; int hits = 0, logged = 0, sig_hits = 0;
         int item_nodes = 0, item_logged = 0;
-        // 1-entry cache for the FieldIns-ptr region validation (avoid a VirtualQuery per candidate).
-        uintptr_t pc_base = 0, pc_end = 0; bool pc_ok = false;
         MEMORY_BASIC_INFORMATION mbi;
         while (addr < end && VirtualQuery((void *)addr, &mbi, sizeof(mbi)) == sizeof(mbi))
         {
@@ -787,46 +785,22 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                         }
                     }
                 }
-                // ── GENERIC resident-loot-node hunt (decoupled from `target`): any 8-aligned
-                // {L u32, flag u32, FieldIns* P} with a plausible lot L and *(u32)(P+0x50)==L.
-                // Finds EVERY loaded loot record near the player → proves the da513922 mechanism
-                // for loaded loot regardless of which chest, and dumps lot+MapId+pos+name.
-                for (size_t i = 0; i + 16 <= rsz; i += 8)
+                // ── GENERIC loot-record hunt via the "アイテム" FieldIns NAME (da513922 marker).
+                // Scan for the 8-byte wide pattern A2 30 A4 30 C6 30 E0 30 (= アイテム) — rare, with
+                // a cheap first-byte reject and NO per-candidate syscall (the stride-8 node scan was
+                // too slow under Wine). Each hit = a resident loot FieldIns → read lotId@+0x50. Proves
+                // the mechanism for loaded loot regardless of which chest.
+                for (size_t i = 0; i + 8 <= rsz; i += 2)   // wchar-aligned
                 {
-                    uint32_t L = *(const uint32_t *)(q + i);
-                    // Real ER map item-lots are ~1e8..1.07e9; exclude filler/pointers/sentinels.
-                    if (L < 0x05F5E100u || L > 0x40000000u) continue;   // ~1e8 .. ~1.07e9
-                    uint64_t P = *(const uint64_t *)(q + i + 8);
-                    if (P <= 0x100000 || P >= 0x7fffffffffffULL) continue;
-                    if (!(P >= pc_base && P + 0x54 <= pc_end))   // cache miss → re-query P's region
-                    {
-                        MEMORY_BASIC_INFORMATION pb;
-                        if (VirtualQuery((void *)P, &pb, sizeof(pb)) != sizeof(pb)) { pc_ok = false; pc_base = P; pc_end = P + 1; continue; }
-                        pc_base = (uintptr_t)pb.BaseAddress;
-                        pc_end  = pc_base + pb.RegionSize;
-                        pc_ok   = (pb.State == MEM_COMMIT) && !(pb.Protect & (PAGE_GUARD | PAGE_NOACCESS));
-                    }
-                    if (!pc_ok || P + 0x54 > pc_end) continue;
-                    if (*(const uint32_t *)(P + 0x50) != L) continue;   // self-validating signature
-                    // Strong filter: the FieldIns name must start with アイテム (U+30A2 U+30A4),
-                    // the da513922 loot-record marker — kills the 0xfffffffe-filler false positives.
-                    const wchar_t *wn = (const wchar_t *)P;
-                    if (wn[0] != 0x30A2 || wn[1] != 0x30A4) continue;
+                    if (q[i] != 0xA2) continue;            // fast reject (first byte of ア)
+                    if (*(const uint64_t *)(q + i) != 0x30E030C630A430A2ULL) continue;  // アイテム
+                    uintptr_t F = base + i;                // FieldIns base (name @+0)
+                    uint32_t lot = (i + 0x54 <= rsz) ? *(const uint32_t *)(q + i + 0x50) : 0;
                     ++item_nodes;
                     if (item_logged < 48)
                     {
-                        uintptr_t H = base + i;
-                        uint32_t flag = *(const uint32_t *)(q + i + 4);
-                        bool hdr = (H - 0xD8 >= base);
-                        uint32_t mapId = hdr ? *(const uint32_t *)(H - 0xD8) : 0;
-                        const float *pos = hdr ? (const float *)(H - 0xD4) : nullptr;
-                        char nn[24] = {};
-                        if (P + 46 <= pc_end)
-                            for (int c = 0; c < 23; c++) nn[c] = (char)(((const wchar_t *)P)[c] & 0xFF);
-                        spdlog::info("[LOTSCAN-ITEM] node @ {:#x} lot={:#x} flag={} FieldIns={:#x} "
-                                     "MapId={:#x} pos=({:.1f},{:.1f},{:.1f}) name='{}' type={}",
-                                     H, L, flag, P, mapId, pos ? pos[0] : 0.f, pos ? pos[1] : 0.f,
-                                     pos ? pos[2] : 0.f, nn, mbi.Type == MEM_MAPPED ? "MAPPED" : "PRIVATE");
+                        spdlog::info("[LOTSCAN-ITEM] FieldIns @ {:#x} lotId@+0x50={:#x} ({}) type={}",
+                                     F, lot, lot, mbi.Type == MEM_MAPPED ? "MAPPED" : "PRIVATE");
                         ++item_logged;
                     }
                 }
