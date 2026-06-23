@@ -37,3 +37,58 @@ owning singleton (`CSFieldInsMan`/gimmick FD4Singleton) + its static load site (
   (pool anchor) and STEP 2 (the entity→FieldIns join), neither resolvable by RPM.
 
 Tools: `D:\ghidra_scripts\fieldins_pos_check.py`, `entityid_join_check.py`, `fieldins_link_check.py`.
+
+---
+
+## ★ GHIDRA PASS (2026-06-23, scripts `find_fieldins.java`..`find_fieldins6.java`, raw out `D:\ghidra_scripts\out_fieldins{3..6}.txt`)
+
+RTTI-walked the pool family and decompiled the FieldIns ctor/dtor + the owning singleton's registry.
+Confirmed names: pool RTTI `CS::CSGrowableNodePool<CS::FieldInsBase*>` (vtable RVA `0x2a84ca0`, TD
+`0x3c8d210`); siblings `<CSWorldGeomIns*>` `0x2a838c8`, `<CSWorldGeomDynamicIns*>` `0x2a838d8`,
+`<MapIns*>` `0x2a8f640`. `FieldInsBase` vtable RVA `0x2a25e68` (vt0 `FUN_14062e5d0`), TD `0x3c7a1e0`.
+Class chain: `FieldInsBase` ← `CSWorldGeomIns`/`MapIns` ← (`CSWorldGeomStaticIns` etc.).
+
+### STEP 1 — SOLVED: static anchor + iterable registry of all loaded field instances
+The FieldIns/geom/MapIns ctors (`FUN_1406c5900` treasure-asset ctor, `FUN_140719f10` MapIns ctor)
+**self-register the instance into a global FD4Singleton-owned registry**, keyed by a 64-bit id built
+from the instance's MSB-part data + `*(short*)(this+0x2c)`. The assert path literally cites
+`...Core/Singleton/FD4Singleton.h`, so the owner is an `FD4Singleton`.
+
+- **Static slot: `er_base + 0x3d7b0c0`** (per-frame field-instance step singleton; its dtor
+  `FUN_140b1bf60` touches `CS::CSGraphicsStep`/`CSStepTask` vtables). Read by the per-frame world step
+  `FUN_140623410` and dozens of field fns.
+- **AOB to pin** (re_signatures.hpp convention = pin code, capture rip-disp@3 → slot RVA):
+  - `48 8B 05 ?? ?? ?? ??` (MOV RAX,[rip+disp]) e.g. @ `0x6c5b78`, bytes `48 8B 05 41 55 6B 03`, disp `0x036B5541`.
+  - `48 83 3D ?? ?? ?? ?? 00` (CMP qword[rip+disp],0) @ `0x72e5d6`, bytes `48 83 3D E2 CA 64 03 00`, disp `0x0364CAE2`.
+- **Chain to the iterable container:**
+  `reg = *(u64*)(er+0x3d7b0c0); sub = *(u64*)(reg+0x10); map = sub + 0x720;` (a `std::map`/RB-tree).
+  - RB-tree header @ `map+0x8`; **iterate** (engine does this per-frame in `FUN_140b32d00`):
+    node `+0x00` left, `+0x08` parent, `+0x10` right, `+0x19` nil/color flag, **`+0x20` key (u64)**,
+    **`+0x28` value = registered instance ptr** (`+0x30` second payload word).
+  - add = `FUN_140b32880`, remove = `FUN_140b32b90`, insert-impl = `FUN_140b32010` (lower_bound on `node+0x20`).
+  - So the resident set of all loaded field instances **IS iterable** from a static base — STEP 1 deliverable met.
+  - A sibling container `sub+0x730` (enable/disable, `FUN_140b96940/950`) — note, not needed.
+
+### STEP 2 — NEW STRUCTURAL LEAD (supersedes the RPM "no link" verdict above)
+The prior RPM link-check probed geom `+0x600`/MsbPart/FieldIns and found no shared key — but it never
+probed the **`CS::CSGrowableNodePool<CS::FieldInsBase*>` embedded INSIDE each geom/asset instance at
+`+0x3A8`**, which `FUN_1406c5900` builds (callers = the real asset subclass ctors `FUN_1406b9880` /
+`FUN_1406db840`). Layout on the instance:
+  - `+0x3A8` pool vtable (`CSGrowableNodePool<FieldInsBase*>`), `+0x3B0` heap, `+0x3B8` capacity(=1),
+    `+0x3BC` stride(=8, i.e. one `FieldInsBase*` per node), **`+0x3C0` node-array ptr** (null until grown).
+  - the pooled child = a `FieldInsBase*` (the asset's loot gimmick); child carries name@+0x00, **lotId@+0x50**.
+
+**Two candidate join paths — both need ONE runtime RPM read to confirm on the known chest
+`AEG099_090_9000` / lot `1037500100`:**
+- **(A) embedded child-pool (cheapest):** walked `CSWorldGeomStaticIns` → read `+0x3A8` pool → node
+  array `+0x3C0` → child FieldIns → `lotId@+0x50`. Validates the asset→lot link with NO global walk.
+  *RPM probe:* on the known chest's geom instance, dump `+0x3A8..+0x3D0`; if `+0x3C0` is a heap ptr to
+  an array of FieldIns*, follow → expect `lotId@+0x50 == 0x3dd6fec4`.
+- **(B) global registry (self-sufficient set):** iterate the STEP-1 RB-tree; each `node+0x28` value is a
+  field instance — read its lotId/pos directly, no geom join. Gives every loaded field instance incl.
+  ERR-added loot, keyed by the 64-bit id.
+
+### Net
+STEP 1 is done (static anchor `er+0x3d7b0c0` + iterable registry chain + node layout). STEP 2 has a
+concrete embedded-pool lead at `instance+0x3A8` that the earlier RPM verdict missed; confirm path (A)
+with one RPM read, else fall back to iterating the registry (B). Scripts `find_fieldins{,2..6}.java`.
