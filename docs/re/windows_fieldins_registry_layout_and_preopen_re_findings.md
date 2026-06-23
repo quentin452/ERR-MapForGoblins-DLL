@@ -93,3 +93,37 @@ With the corrected chain, one in-process pass settles it:
   the corrected registry walk can surface. Confirm with the §4 test before investing further.
 
 Scripts: `D:\ghidra_scripts\find_fieldins7.java`, `find_fieldins8.java` (out `out_fieldins{7,8}.txt`).
+
+---
+
+## 6. ★★ LIVE RPM VERIFICATION (2026-06-23) — chain confirmed, but it's the RENDER geom list, NOT a loot registry
+`D:\ghidra_scripts\registry_layout_check.py` + `registry_rtti_check.py`, live on pid running ERR.
+
+**The chain + node layout from §1 are STRUCTURALLY CORRECT** (resolved live, no guessing):
+`slot=base+0x3d7b0c0 → singleton=[slot] → sub=[singleton+0x10] → container=[sub+0x720]`. Container holds
+the two `std::map`s exactly as documented: map@+0x00 (`_Myhead=[+0x08]`, `_Mysize=[+0x10]`=16) and
+map@+0x18 (`_Myhead=[+0x20]`, `_Mysize=[+0x28]`=13). Node fields confirmed: key u64@+0x20,
+**callback@+0x28 = `FUN_1406c6340`** (a code ptr — exactly why the earlier probe's "vtable 0x30308e8"
+was bogus), **instance@+0x30**.
+
+**But RTTI of the live objects rewrites the interpretation:**
+- **The singleton `0x3d7b0c0` is `CS::RendManImp`** (render manager), vt RVA `0x2b9f148` — NOT a
+  field/gimmick step singleton. The earlier "FD4Singleton field-instance step" label was wrong.
+- **map@+0x18 = 13 × `CS::CSWorldGeomStaticIns`** (instance vt RVA `0x2a86860`), keyed
+  `(index 1..13) | 0x3c000099`. Each carries a **position vec @+0x250** (matches the geom walk) and
+  **`lotId@+0x50 = 0`**. So this is **RendManImp's list of loaded static-geom assets** — the SAME
+  objects `goblin_collected.cpp` already walks via `CSWorldGeomMan`, with **no lotId**.
+- map@+0x00 = 16 entries keyed by MapId (`0x3c0X0Y02`) → per-map-tile render objects. Also render-side.
+
+**VERDICT — path (B) REFUTED LIVE.** `[[er+0x3d7b0c0]+0x10]+0x720]` is RendManImp's render-side
+loaded-geom registry, not a loot/FieldIns registry; it holds `CSWorldGeomStaticIns` with positions but
+**zero lotId**. Combined with path (A) (embedded pool empty at load), **the runtime asset→lotId link is
+NOT reachable from any structure found** (asset instance, embedded pool, or this registry). The lotId
+lives only on a **spawned pickup** (open/spawn-time) or in the **baked `ItemLotParam` table**. The
+prior heap-scan hit (`lotId 0x3dd6fec4` resident, "name@+0x00") was therefore the `ItemLotParam`-table
+copy / an already-spawned pickup, **not** a pre-open per-chest FieldIns — there isn't one.
+
+**Net decision (final): the "ERR-added-loot-with-names from sealed structures" premium is DEAD** — keep
+the baked `partName`-join (works for all baked loot today). Free-standing/dropped world pickups, if any,
+remain catchable only as live spawned geom-items (not pursued). Stop chasing the runtime asset→lot link;
+RPM + Ghidra have exhausted it. Scripts: `registry_layout_check.py`, `registry_rtti_check.py`.
