@@ -469,7 +469,11 @@ static std::vector<NearbyEntry> find_nearby_overworld(float mapX, float mapZ, fl
         float d2 = dx * dx + dz * dz;
         if (d2 > r2) continue;
         int32_t item_tid, loc_tid, enemy_tid;
-        classify_textids(e.data, item_tid, loc_tid, enemy_tid);
+        // Lot-backed loot identity is no longer baked (read live from ItemLotParam) — resolve it
+        // here too so the dump classifies the live item, not the struct default (-1).
+        auto dd = e.data;
+        dd.textId1 = goblin::resolve_loot_item_textid(e.lotId, e.lotType, e.data.textId1);
+        classify_textids(dd, item_tid, loc_tid, enemy_tid);
         out.push_back({
             e.row_id, e.category, item_tid, loc_tid, enemy_tid,
             e.data.textDisableFlagId1,

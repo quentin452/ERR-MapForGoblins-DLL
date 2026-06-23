@@ -350,19 +350,27 @@ def generate_map_data_cpp(entries, output_path, geom_slots=None):
                 formatted = format_value(cpp_field, cpp_type, raw_value)
                 field_dict[cpp_field] = formatted
 
-            field_assignments = []
-            for cpp_field in CPP_FIELD_ORDER:
-                if cpp_field in field_dict:
-                    field_assignments.append((cpp_field, field_dict[cpp_field]))
-
-            for cpp_field, formatted in field_assignments:
-                f.write(f"        .{cpp_field} = {formatted},\n")
-
             meta = geom_slots.get(row_id, {})
             slot = meta.get('geom_slot', -1) if isinstance(meta, dict) else meta
             suffix = meta.get('name_suffix', -1) if isinstance(meta, dict) else -1
             obj_name = meta.get('object_name', '') if isinstance(meta, dict) else ''
             lot_id, lot_type = lot_linkage.get(row_id, (0, 0))
+            lot_backed = lot_id and lot_type
+
+            field_assignments = []
+            for cpp_field in CPP_FIELD_ORDER:
+                if cpp_field in field_dict:
+                    # Lot-backed loot IDENTITY is read LIVE from ItemLotParam at runtime
+                    # (map_entry_layer resolve_loot_item_textid) — don't bake textId1; the
+                    # struct default (-1) is never read for these rows. Keeps the bake free of
+                    # the redundant item key (live == baked verified). See loot docs.
+                    if cpp_field == "textId1" and lot_backed:
+                        continue
+                    field_assignments.append((cpp_field, field_dict[cpp_field]))
+
+            for cpp_field, formatted in field_assignments:
+                f.write(f"        .{cpp_field} = {formatted},\n")
+
             name_field = f'"{obj_name}"' if obj_name else 'nullptr'
             f.write(f"    }}, Category::{category}, {slot}, {suffix}, {name_field}, "
                     f"{lot_id}u, {lot_type}}},\n")
