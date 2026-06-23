@@ -2890,6 +2890,8 @@ using oodle_decompress_fn = long long(__fastcall *)(const void *, long long, voi
                                                     int, int, void *, long long, void *, void *,
                                                     void *, long long, int);
 oodle_decompress_fn g_oodle_orig = nullptr;
+std::atomic<void *> g_tpf_ram{nullptr};  // latest decompressed TPF buffer (RAM-cache probe)
+std::atomic<size_t> g_tpf_ram_size{0};
 
 long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, void *dst,
                                              long long dstLen, int a5, int a6, int a7, void *a8,
@@ -2904,12 +2906,22 @@ long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, 
         // re-read it menu-closed (persistence test) and parse DDS+rects out of it.
         if (b[0] == 'T' && b[1] == 'P' && b[2] == 'F' && b[3] == 0)
         {
+            // Stash the latest decompressed TPF for the F1 RAM-uploader (persistence + display test).
+            g_tpf_ram = dst;
+            g_tpf_ram_size = static_cast<size_t>(r);
             static int n = 0;
-            if (n < 40)
+            if (n < 16 && r >= 0x20)
             {
                 ++n;
-                spdlog::info("[OODLE] TPF decompressed @ {:#x} size={} (srcLen={}) hdr={:02x}{:02x}{:02x}{:02x}",
-                             reinterpret_cast<uintptr_t>(dst), r, srcLen, b[0], b[1], b[2], b[3]);
+                uint32_t fc = 0, doff = 0, dsz = 0;
+                std::memcpy(&fc, b + 0x08, 4);
+                std::memcpy(&doff, b + 0x10, 4);
+                std::memcpy(&dsz, b + 0x14, 4);
+                uint8_t plat = b[0x0C], enc = b[0x0E], efmt = b[0x18];
+                bool dataIsDDS = (size_t)doff + 4 < (size_t)r && b[doff] == 'D' && b[doff + 1] == 'D' &&
+                                 b[doff + 2] == 'S';
+                spdlog::info("[OODLE-TPF] @{:#x} sz={} files={} plat={} enc={} entry0(off={} size={} fmt={}) dataIsDDS={}",
+                             reinterpret_cast<uintptr_t>(dst), r, fc, plat, enc, doff, dsz, efmt, dataIsDDS);
             }
         }
     }
