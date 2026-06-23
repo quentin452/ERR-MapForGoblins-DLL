@@ -8,7 +8,6 @@
 #include "goblin_map_data.hpp"
 #include "goblin_item_icons.hpp"
 #include "goblin_location_alt.hpp"
-#include "goblin_grace_anchors.hpp"
 #include "goblin_region_anchors.hpp"
 #include "goblin_major_regions.hpp"
 #include "goblin_name_regions.hpp"
@@ -22,6 +21,7 @@
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
 #include "from/paramdef/WORLD_MAP_PIECE_PARAM_ST.hpp"
 #include "from/paramdef/BONFIRE_WARP_PARAM_ST.hpp"
+#include "from/paramdef/BONFIRE_WARP_SUB_CATEGORY_PARAM_ST.hpp"
 #include "goblin_quest_gates.hpp"
 #include "goblin_quest_steps.hpp"
 #include "goblin_logic.hpp"
@@ -425,6 +425,57 @@ static constexpr float CLUSTER_CELL = 60.0f;
 static constexpr int CLUSTER_TEXTID_BASE = 952000000;          // + count → "<n>"
 static constexpr int CLUSTER_CATNAME_TEXTID_BASE = 952010000;  // + category → its name
 
+// ── Runtime grace anchors (replacing baked GRACE_ANCHORS) ────────────────────────────
+// Built once from the LIVE grace list (g_live_graces, BonfireWarpParam) + the live
+// BonfireWarpSubCategoryParam (subCat → region PlaceName + map sub-page tabId). Mirrors the
+// old offline tools/build_grace_anchors.py exactly: placename_id = subCat if it resolves to a
+// real PlaceName else 0; tab_id = subcat param's tabId. Removes the baked grace_position_index
+// dependency from the DLL (graces already read live everywhere else). Built lazily on first
+// access so the PlaceName FMG patch (setup_messages, runs after capture_live_graces) is ready.
+static std::vector<goblin::GraceAnchor> g_rt_grace_anchors;
+static bool g_rt_grace_built = false;
+
+static void build_runtime_grace_anchors()
+{
+    g_rt_grace_built = true;
+    g_rt_grace_anchors.clear();
+    // subCategoryId → tabId from the live sub-category param (row id == bonfireSubCategoryId).
+    std::map<int, int> subtab;
+    try
+    {
+        for (auto [rid, row] : from::params::get_param<
+                 from::paramdef::BONFIRE_WARP_SUB_CATEGORY_PARAM_ST>(L"BonfireWarpSubCategoryParam"))
+            subtab[(int)rid] = (int)row.tabId;
+    }
+    catch (...) {}
+
+    for (const goblin::LiveGrace &e : goblin::live_graces())
+    {
+        goblin::GraceAnchor a{};
+        a.area = e.areaNo;
+        a.wx = (float)e.gridXNo * 256.0f + e.posX;
+        a.wz = (float)e.gridZNo * 256.0f + e.posZ;
+        // region label = the subCat, but only when it's a real PlaceName (some underground/DLC
+        // graces store a map TAB id there, not a place name → no label, like the baker dropped).
+        a.placename_id = (e.subCat > 0 && goblin::lookup_text(e.subCat)) ? e.subCat : 0;
+        auto it = subtab.find(e.subCat);
+        a.tab_id = (it != subtab.end()) ? it->second : 0;
+        a.gridX = e.gridXNo;
+        a.gridZ = e.gridZNo;
+        a.posX = e.posX;
+        a.posZ = e.posZ;
+        g_rt_grace_anchors.push_back(a);
+    }
+    spdlog::info("[GRACE-ANCHOR] built {} live anchors from BonfireWarpParam + SubCategoryParam",
+                 g_rt_grace_anchors.size());
+}
+
+const std::vector<goblin::GraceAnchor> &goblin::grace_anchors()
+{
+    if (!g_rt_grace_built) build_runtime_grace_anchors();
+    return g_rt_grace_anchors;
+}
+
 // Nearest Site-of-Grace anchor to a world point WITHIN THE SAME AREA. Graces are
 // the authoritative named-location anchors (BonfireWarpParam); assigning each
 // marker to its nearest grace gives a real, complete location grouping with no
@@ -433,11 +484,12 @@ static constexpr int CLUSTER_CATNAME_TEXTID_BASE = 952010000;  // + category →
 static bool find_nearest_grace(uint8_t area, float wx, float wz,
                                int *out_idx, int *out_pname, int *out_tab)
 {
+    const auto &A = goblin::grace_anchors();
     int best = -1, best_named = -1;
     float bestd = 1e30f, bestnd = 1e30f;
-    for (size_t i = 0; i < goblin::generated::GRACE_ANCHOR_COUNT; i++)
+    for (size_t i = 0; i < A.size(); i++)
     {
-        const auto &g = goblin::generated::GRACE_ANCHORS[i];
+        const auto &g = A[i];
         if (g.area != area) continue;
         float dx = g.wx - wx, dz = g.wz - wz;
         float d = dx * dx + dz * dz;
@@ -446,13 +498,13 @@ static bool find_nearest_grace(uint8_t area, float wx, float wz,
         if (g.placename_id > 0 && d < bestnd) { bestnd = d; best_named = static_cast<int>(i); }
     }
     if (best < 0) return false;
-    const auto &b = goblin::generated::GRACE_ANCHORS[best];
+    const auto &b = A[best];
     *out_idx = best;                      // grouping: physical-nearest grace
     *out_tab = b.tab_id;
     // Label: the grouped grace's name, else borrow the nearest NAMED grace's region
     // name (some underground/DLC graces store a tab id, not a PlaceName → no name).
     *out_pname = (b.placename_id > 0) ? b.placename_id
-               : (best_named >= 0 ? goblin::generated::GRACE_ANCHORS[best_named].placename_id : 0);
+               : (best_named >= 0 ? A[best_named].placename_id : 0);
     return true;
 }
 
@@ -533,9 +585,10 @@ int goblin::marker_cluster_key(uint8_t area, uint8_t gridX, uint8_t gridZ, float
 // or has a mis-projected member). Returns false on a bad key.
 bool goblin::grace_anchor_world(int key, int &out_area, float &wx, float &wz)
 {
-    if (key < 0 || static_cast<size_t>(key) >= goblin::generated::GRACE_ANCHOR_COUNT)
+    const auto &A = goblin::grace_anchors();
+    if (key < 0 || static_cast<size_t>(key) >= A.size())
         return false;
-    const auto &a = goblin::generated::GRACE_ANCHORS[key];
+    const auto &a = A[key];
     int ga;
     marker_world_pos(a.area, a.gridX, a.gridZ, a.posX, a.posZ, ga, wx, wz,
                      /*conv_underground=*/true);
@@ -549,9 +602,10 @@ bool goblin::grace_anchor_world(int key, int &out_area, float &wx, float &wz)
 // gradient there (same sub-page as the player = detail). -1 on a bad key.
 int goblin::grace_anchor_tab(int key)
 {
-    if (key < 0 || static_cast<size_t>(key) >= goblin::generated::GRACE_ANCHOR_COUNT)
+    const auto &A = goblin::grace_anchors();
+    if (key < 0 || static_cast<size_t>(key) >= A.size())
         return -1;
-    return goblin::generated::GRACE_ANCHORS[key].tab_id;
+    return A[key].tab_id;
 }
 
 // Player MapId TILE -> map sub-page (tabId), via the authoritative tile_region_map
@@ -576,9 +630,10 @@ static int tab_for_tile(int area, int gx, int gz)
 // the tile is reliable) within the player's sub-page. false on a bad key.
 bool goblin::grace_anchor_tile(int key, int &out_gx, int &out_gz)
 {
-    if (key < 0 || static_cast<size_t>(key) >= goblin::generated::GRACE_ANCHOR_COUNT)
+    const auto &A = goblin::grace_anchors();
+    if (key < 0 || static_cast<size_t>(key) >= A.size())
         return false;
-    const auto &a = goblin::generated::GRACE_ANCHORS[key];
+    const auto &a = A[key];
     out_gx = a.gridX;
     out_gz = a.gridZ;
     return true;
@@ -868,9 +923,10 @@ bool goblin::get_player_raw_pos(int &out_area, float &wx, float &wz)
 // get_player_raw_pos. area = GRACE_ANCHORS[key].area; wx/wz = gridX*256 + posX/posZ.
 bool goblin::grace_anchor_raw(int key, int &out_area, float &wx, float &wz)
 {
-    if (key < 0 || static_cast<size_t>(key) >= goblin::generated::GRACE_ANCHOR_COUNT)
+    const auto &A = goblin::grace_anchors();
+    if (key < 0 || static_cast<size_t>(key) >= A.size())
         return false;
-    const auto &a = goblin::generated::GRACE_ANCHORS[key];
+    const auto &a = A[key];
     out_area = a.area;
     wx = a.gridX * 256.0f + a.posX;
     wz = a.gridZ * 256.0f + a.posZ;
@@ -933,7 +989,8 @@ void goblin::capture_live_graces()
             if (underground) ++ug;
             g_live_graces.push_back({ row.areaNo, row.gridXNo, row.gridZNo,
                                       row.posX, row.posZ, row.textId1, rowId,
-                                      (int)row.eventflagId, underground });
+                                      (int)row.eventflagId, underground,
+                                      row.bonfireSubCategoryId });
         }
     }
     catch (...) {}

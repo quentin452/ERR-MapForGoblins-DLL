@@ -14,7 +14,6 @@
 #include "goblin_name_regions.hpp"   // NAME_REGIONS (MapNameOverride debug viz)
 #include "goblin_quest_gates.hpp"    // QUEST_GATES (quest-NPC gating)
 #include "goblin_map_data.hpp"       // Category enum (WorldQuestNPC)
-#include "goblin_grace_anchors.hpp"  // GRACE_ANCHOR_COUNT (player-pos debug viz)
 
 #include <string>
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims

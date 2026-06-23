@@ -117,8 +117,6 @@ add_library( MapForGoblins SHARED
   ${GEN_DIR}/goblin_enemy_names.cpp
   ${GEN_DIR}/goblin_location_alt.hpp
   ${GEN_DIR}/goblin_location_alt.cpp
-  ${GEN_DIR}/goblin_grace_anchors.hpp
-  ${GEN_DIR}/goblin_grace_anchors.cpp
   ${GEN_DIR}/goblin_region_anchors.hpp
   ${GEN_DIR}/goblin_region_anchors.cpp
   ${GEN_DIR}/goblin_tile_tabs.hpp

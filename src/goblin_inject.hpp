@@ -124,12 +124,30 @@ namespace goblin
         uint64_t rowId;
         int discoverFlag;  // eventflagId = per-grace discovery flag (set when reached)
         bool underground;  // iconId == 44 → ERR cave/underground grace icon (else normal bonfire)
+        int subCat;        // bonfireSubCategoryId → region PlaceName (when valid) + tab via subcat param
     };
     // Capture all grace rows from the LIVE BonfireWarpParam (the engine's own grace table).
     void capture_live_graces();
     // The captured grace list (empty until capture_live_graces() ran). Used by the
     // ImGui overlay path instead of the baked MAP_ENTRIES graces.
     const std::vector<LiveGrace> &live_graces();
+
+    // An authoritative named-location anchor (a Site of Grace). wx/wz = raw world coords
+    // (gridX*256 + local). placename_id = region PlaceName id rendered as the cluster label
+    // (0 = no name → count-only). Built LIVE from live_graces() + BonfireWarpSubCategoryParam
+    // (replaces the old baked GRACE_ANCHORS / grace_position_index). gridX/gridZ/posX/posZ kept
+    // so the overlay can project an anchor through marker_world_pos (pile placed AT its grace).
+    struct GraceAnchor
+    {
+        uint8_t  area;
+        float    wx, wz;
+        int32_t  placename_id;
+        int32_t  tab_id;     // map sub-page (underground area 12 splits 12000/12001/12002)
+        uint8_t  gridX, gridZ;
+        float    posX, posZ;
+    };
+    // Lazily built on first call (needs the PlaceName FMG patch, which runs after capture).
+    const std::vector<GraceAnchor> &grace_anchors();
 
     // Resolve a lot-backed loot marker's LIVE pickup flag (ItemLotParam getItemFlagId),
     // falling back to baked_flag. Lets the overlay detect collected loot without the
