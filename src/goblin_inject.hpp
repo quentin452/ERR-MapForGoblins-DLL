@@ -324,6 +324,17 @@ namespace goblin
     size_t tpf_dds_count();
     bool tpf_dds_at(size_t i, std::vector<uint8_t> &out);
 
+    // Map-point icon LAYOUT (RAM-captured from the sblytbnd via the Oodle hook; force-load
+    // "menu:/01_common.sblytbnd" to trigger it — it loads at boot before the hook). Resolves a
+    // WORLD_MAP_POINT_PARAM.iconId (the MENU_MAP_<NN> SubTexture) to its rect on the SB_MapCursor
+    // sheet (err=true → the SB_MapCursor_ERR sheet). Named lookup covers MENU_MAP_ERR_*/Church/etc.
+    // Returns false until the layout is captured / if the id|name is absent. RE
+    // windows_map_point_icon_layout_re_findings.md.
+    size_t map_icon_layout_count();
+    // x,y,w,h = sub-rect on the sheet; sheet = the backing ID3D12Resource (crop UV = rect/sheetDims).
+    bool map_icon_rect(int iconId, int &x, int &y, int &w, int &h, void *&sheet);
+    bool map_icon_rect_by_name(const char *name, int &x, int &y, int &w, int &h, void *&sheet);
+
     // First `max` harvested iconIds (dev — the P2b test panel draws ACTUAL harvested icons
     // instead of a hardcoded id list that may not match what the player browsed).
     std::vector<int> harvested_ids(size_t max);

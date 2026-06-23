@@ -1961,6 +1961,27 @@ void harvest_repo_icons();                       // §8b repo-tree walk-all (RE-
 void harvest_twin_map_icons(uintptr_t repo, uintptr_t er);  // §8c twin map repo+0xb0 (pin/grace sprites)
 void cache_map_sprite_from_img(const char *nm, uintptr_t img);
 
+// Map-point icon layout, resolved from the RESIDENT image repo (the RAM source — see the §8c twin
+// walk / cache_map_sprite_from_img). MENU_MAP_<NN> → iconId NN (= WORLD_MAP_POINT_PARAM.iconId, RE
+// windows_map_point_icon_layout_re_findings.md); MENU_MAP_ERR_*/Church/… stay name-keyed. rect =
+// (x,y)+(w,h) on `sheet` (the ID3D12Resource); err = the SB_MapCursor_ERR sheet.
+struct MapIconRect { int x, y, w, h; bool err; void *sheet; };
+std::map<int, MapIconRect> g_map_icon_rects;          // iconId -> rect
+std::map<std::string, MapIconRect> g_map_icon_named;  // full name -> rect
+std::mutex g_map_icon_mtx;
+void store_map_icon_rect(const char *nm, int x, int y, int w, int h, void *sheet)
+{
+    if (!nm || w <= 0 || h <= 0) return;
+    MapIconRect r{x, y, w, h, std::strncmp(nm, "MENU_MAP_ERR", 12) == 0, sheet};
+    std::lock_guard<std::mutex> lk(g_map_icon_mtx);
+    g_map_icon_named[nm] = r;
+    if (std::strncmp(nm, "MENU_MAP_", 9) == 0)
+    {
+        const char *p = nm + 9;                 // MENU_MAP_<NN> → iconId NN
+        if (*p >= '0' && *p <= '9') g_map_icon_rects[std::atoi(p)] = r;
+    }
+}
+
 void *__fastcall enum_detour(void *movie, void *a1, void *a2, void *a3)
 {
     g_inv_movie = reinterpret_cast<uintptr_t>(movie);
@@ -2239,6 +2260,24 @@ void harvest_repo_icons()
                     if (cache_icon_from_img(nm, img)) ++harvested;
                 }
             }
+            // Map-point icons (MENU_MAP_<NN>/_ERR_*) live in THIS by-name tree (repo+0x80), not the
+            // +0xb0 twin (which holds MENU_MapTile_*). Read their rect @img+0x74..0x80 + backing sheet
+            // and cache iconId->rect for the overlay (RE windows_map_point_icon_layout_re_findings.md).
+            else if (std::strncmp(nm, "MENU_MAP_", 9) == 0)
+            {
+                uintptr_t img = 0; icon_rpm_ptr(n + 0x50, img);
+                if (img >= 0x10000)
+                {
+                    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+                    icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
+                    icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
+                    uintptr_t rtex = 0, res = 0;
+                    icon_rpm_ptr(img + 0x10, rtex);
+                    if (rtex >= 0x10000) icon_rpm_ptr(rtex + 0x70, res);
+                    if (x1 - x0 >= 2 && y1 - y0 >= 2 && res >= 0x10000)
+                        store_map_icon_rect(nm, x0, y0, x1 - x0, y1 - y0, reinterpret_cast<void *>(res));
+                }
+            }
         }
 
         uintptr_t l = 0, r = 0;
@@ -2279,6 +2318,11 @@ void cache_map_sprite_from_img(const char *nm, uintptr_t img)
     hs.sheetH = static_cast<unsigned>(rh);
     hs.format = static_cast<unsigned>(fmt);
     hs.valid = true;
+
+    // Map-point icon layout from the RESIDENT repo (the RAM source — no sblytbnd decompress needed):
+    // iconId/name -> rect (x0,y0,x1,y1 = left,top,right,bottom) + the backing sheet. Drives the overlay
+    // MapPointProvider. RE windows_map_point_icon_layout_re_findings.md (§ repo walk).
+    store_map_icon_rect(nm, x0, y0, x1 - x0, y1 - y0, reinterpret_cast<void *>(res));
 
     std::lock_guard<std::mutex> lk(g_harvest_mtx);
     bool dup = false;
@@ -2912,7 +2956,6 @@ oodle_decompress_fn g_oodle_orig = nullptr;
 // DDS out IN the hook (while valid) and ACCUMULATE distinct ones — a browser to find the icon sheet.
 std::mutex g_tpf_mtx;
 std::vector<std::vector<uint8_t>> g_dds_list; // all distinct complete DDS captured from decompresses
-std::vector<uint8_t> g_sblytbnd;              // decompressed icon-layout BND4 (the per-icon rects)
 
 long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, void *dst,
                                              long long dstLen, int a5, int a6, int a7, void *a8,
@@ -2956,26 +2999,6 @@ long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, 
                 ++n;
                 spdlog::info("[OODLE-TPF] @{:#x} sz={} files={} plat={} enc={} entry0(off={} size={} fmt={}) dataIsDDS={}",
                              reinterpret_cast<uintptr_t>(dst), r, fc, b[0x0C], b[0x0E], doff, dsz, b[0x18], dataIsDDS);
-            }
-        }
-        // The icon-layout bundle (sblytbnd) decompresses to a BND4 holding .layout XMLs = the per-icon
-        // sub-rects on the sheet. Grab the one that contains '.layout' entries (UTF-16 names), keeping
-        // the largest seen, so we can parse iconId/name -> rect and crop the map-point sheet.
-        else if (b[0] == 'B' && b[1] == 'N' && b[2] == 'D' && b[3] == '4' && r >= 0x40)
-        {
-            size_t scan = (size_t)r < 262144 ? (size_t)r : 262144;
-            bool hasLayout = false;
-            for (size_t i = 0; i + 14 <= scan; ++i)
-                if (b[i] == 'l' && b[i + 2] == 'a' && b[i + 4] == 'y' && b[i + 6] == 'o' &&
-                    b[i + 8] == 'u' && b[i + 10] == 't' && b[i + 1] == 0 && b[i + 3] == 0)
-                { hasLayout = true; break; }
-            static int bn = 0;
-            if (bn < 12) { ++bn; spdlog::info("[OODLE-BND4] @{:#x} size={} hasLayout={}", reinterpret_cast<uintptr_t>(dst), r, hasLayout); }
-            if (hasLayout)
-            {
-                std::lock_guard<std::mutex> lk(g_tpf_mtx);
-                if ((size_t)r > g_sblytbnd.size())
-                    g_sblytbnd.assign(b, b + r);
             }
         }
     }
@@ -3053,6 +3076,34 @@ bool goblin::tpf_dds_at(size_t i, std::vector<uint8_t> &out)
     if (i >= g_dds_list.size())
         return false;
     out = g_dds_list[i];
+    return true;
+}
+
+// Map-point icon rect lookup (resolved from the resident image repo; see store_map_icon_rect, filled
+// by the repo walk for MENU_MAP_*). Returns the SubTexture rect for a WORLD_MAP_POINT_PARAM.iconId on
+// the SB_MapCursor[_ERR] sheet. false if not captured yet (open the world map) or the id is absent.
+size_t goblin::map_icon_layout_count()
+{
+    std::lock_guard<std::mutex> lk(g_map_icon_mtx);
+    return g_map_icon_rects.size() + g_map_icon_named.size();
+}
+
+bool goblin::map_icon_rect(int iconId, int &x, int &y, int &w, int &h, void *&sheet)
+{
+    std::lock_guard<std::mutex> lk(g_map_icon_mtx);
+    auto it = g_map_icon_rects.find(iconId);
+    if (it == g_map_icon_rects.end()) return false;
+    x = it->second.x; y = it->second.y; w = it->second.w; h = it->second.h; sheet = it->second.sheet;
+    return true;
+}
+
+bool goblin::map_icon_rect_by_name(const char *name, int &x, int &y, int &w, int &h, void *&sheet)
+{
+    if (!name) return false;
+    std::lock_guard<std::mutex> lk(g_map_icon_mtx);
+    auto it = g_map_icon_named.find(name);
+    if (it == g_map_icon_named.end()) return false;
+    x = it->second.x; y = it->second.y; w = it->second.w; h = it->second.h; sheet = it->second.sheet;
     return true;
 }
 

@@ -1349,6 +1349,9 @@ namespace
                     };
                     for (const char *p : kGroups) goblin::force_load_file(p);
                 }
+                // Map-point icon rects (MENU_MAP_* → iconId→rect) are harvested from the resident image
+                // repo by the repo walk when the world map opens — no force-load needed.
+                ImGui::Text("map-icon layout entries: %zu", goblin::map_icon_layout_count());
 
                 // ── Bind-flip test (findings §5e) — does +0x7c flip trigger the per-icon bind? ──
                 // Recommended sequence (watch [BINDTEST] in the log, then "harvested:" above):
