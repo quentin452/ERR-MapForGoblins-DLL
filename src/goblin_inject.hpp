@@ -279,6 +279,11 @@ namespace goblin
     // Returns false if that iconId hasn't been seen/loaded yet → caller falls back to the baked PNG.
     bool harvested_icon(int iconId, ItemSprite &out);
 
+    // Resolve a marker/item key (offset-encoded item id, == the worldmap PlaceName textId for
+    // item markers) to its real inventory iconId via the baked ITEM_ICONS table. Returns -1 if
+    // the key isn't an item (boss/grace/NPC names miss) → the marker keeps its category atlas icon.
+    int item_icon_id(int32_t key);
+
     // Count of icons harvested so far (dev/diagnostic — shown in the P2b test panel).
     size_t harvested_count();
 
@@ -308,6 +313,10 @@ namespace goblin
     // Control for force_create_icon: replay the most-recent live CreateImage symbol (a known-good
     // "img://…" import) to prove the replay mechanism works end-to-end. Gated by dumpIconTextures.
     bool force_create_last();
+
+    // Manually re-run the grace force-CreateImage (F1 "Force graces now") — harvests the
+    // MENU_MAP_*/SB_ERR_Grace_* gfx-movie sprites on demand, bypassing the auto cap/lock.
+    bool force_graces();
 
     // First `max` harvested iconIds (dev — the P2b test panel draws ACTUAL harvested icons
     // instead of a hardcoded id list that may not match what the player browsed).
