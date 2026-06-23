@@ -71,3 +71,16 @@ placed-world-item case live (a glowing ground pickup, not yet taken) once the ga
 
 Tooling: `tools/ghidra/{query.java,rtti_index.txt}`; live `D:\ghidra_scripts\live_mapins_anchor.py`
 (pending re-run), `mapins_enum.py` (343 proven), §7 scripts.
+
+---
+
+## ★ OFFLINE PE VALIDATION (2026-06-23, on-disk `eldenring.exe`, no live process)
+Cross-checked the static chain against the shipped binary (PE RTTI walk + `.text` xref scan):
+- **All 4 vtable RTTI confirmed** from the on-disk image: `0x2a8f918 = CS::WorldMapManImp`,
+  `0x2a8f650 = CS::WorldBlockMap`, `0x2a8f640 = CS::CSGrowableNodePool<CS::MapIns*>`,
+  `0x2a8d6d8 = CS::MapIns`. The chain's type structure is sound.
+- **Singleton slot `er+0x485cbb8` corroborated:** a `.text` scan for rip-relative references found
+  **796 `48 83 3D` (`cmp qword[rip+0x485cbb8], 0`) sites** — the FD4Singleton lazy-init guard inlined
+  at every GetInstance. That many null-checks on one global = definitively a real, hot singleton slot
+  (consistent with WorldMapManImp). Final RTTI-of-`[slot]` confirm still wants the live re-run, but the
+  candidate is high-confidence, not a guess.
