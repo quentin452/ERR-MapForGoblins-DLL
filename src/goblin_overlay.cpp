@@ -487,6 +487,65 @@ namespace
         return gpu.ptr;
     }
 
+    // LOAD DIRECT: copy ER's already-resident sheet (the harvested grace sheet's ID3D12Resource)
+    // WHOLE into our own texture via CopyResource. No file/DCX — we own a copy of the game's live
+    // GPU image. Works once the game has the sheet bound (map open near a grace).
+    UINT64 copy_er_sheet_direct(int &outW, int &outH)
+    {
+        outW = outH = 0;
+        if (!g_device || !g_command_queue || !g_srv_heap || g_next_item_srv >= 256) return 0;
+        goblin::ItemSprite sp;
+        if (!goblin::harvested_grace(sp) || !sp.sheet)
+        {
+            spdlog::warn("[TEXMGR] no harvested ER sheet yet (open the map near a grace first)");
+            return 0;
+        }
+        auto *src = reinterpret_cast<ID3D12Resource *>(sp.sheet);
+        D3D12_RESOURCE_DESC rd = src->GetDesc();
+        if (rd.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || rd.Format == DXGI_FORMAT_UNKNOWN)
+        {
+            spdlog::warn("[TEXMGR] ER sheet not bound (GetDesc UNKNOWN)");
+            return 0;
+        }
+        D3D12_HEAP_PROPERTIES dp{}; dp.Type = D3D12_HEAP_TYPE_DEFAULT;
+        D3D12_RESOURCE_DESC td = rd; td.Flags = D3D12_RESOURCE_FLAG_NONE;
+        ID3D12Resource *tex = nullptr;
+        if (FAILED(g_device->CreateCommittedResource(&dp, D3D12_HEAP_FLAG_NONE, &td,
+                D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&tex)))) return 0;
+
+        begin_icon_batch();
+        D3D12_RESOURCE_BARRIER bs{}; bs.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        bs.Transition.pResource = src; bs.Transition.Subresource = 0;
+        bs.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        bs.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        g_command_list->ResourceBarrier(1, &bs);
+        g_command_list->CopyResource(tex, src);
+        D3D12_RESOURCE_BARRIER after[2]{};
+        after[0] = bs;
+        after[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        after[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        after[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        after[1].Transition.pResource = tex; after[1].Transition.Subresource = 0;
+        after[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        after[1].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        g_command_list->ResourceBarrier(2, after);
+        submit_and_wait();
+
+        UINT idx = g_next_item_srv++;
+        D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
+        D3D12_GPU_DESCRIPTOR_HANDLE gpu = g_srv_heap->GetGPUDescriptorHandleForHeapStart();
+        UINT inc = g_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        cpu.ptr += (SIZE_T)idx * inc; gpu.ptr += (UINT64)idx * inc;
+        D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
+        sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        sd.Format = rd.Format; sd.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D; sd.Texture2D.MipLevels = 1;
+        g_device->CreateShaderResourceView(tex, &sd, cpu);
+        outW = (int)rd.Width; outH = (int)rd.Height;
+        spdlog::info("[TEXMGR] DIRECT-copied ER sheet {}x{} fmt={} -> our gpu={:#x}",
+                     (int)rd.Width, (int)rd.Height, (int)rd.Format, gpu.ptr);
+        return gpu.ptr;
+    }
+
     // Close + submit g_command_list and block until the GPU finishes — the synchronous one-shot
     // path the grace copies use (item icons batch via flush_item_icon_batch instead).
     void submit_and_wait()
@@ -1272,25 +1331,20 @@ namespace
                 ImGui::SameLine();
                 ImGui::TextDisabled("(re-harvest MENU_MAP_*/SB_ERR_Grace_* on demand)");
 
-                // OUR-OWN texture load test: read a raw DDS off disk into our own GPU texture
-                // (no game bind) and draw it here. Proves the "load img on our side" path.
+                // LOAD DIRECT: take ER's OWN already-loaded sheet resource (the harvested grace
+                // sheet's ID3D12Resource) and copy the WHOLE sheet straight into our own texture.
+                // No file, no DCX — the game's resident GPU image, grabbed directly.
                 ImGui::Separator();
-                ImGui::TextDisabled("Load a raw DDS into OUR texture (no game bind):");
-                static char s_dds_path[256] = "Z:\\home\\iamacat\\Games\\ERRv2.2.9.6\\test.dds";
-                static UINT64 s_dds_tex = 0; static int s_dds_w = 0, s_dds_h = 0; static int s_dds_fmt = 0;
-                ImGui::SetNextItemWidth(440);
-                ImGui::InputText("dds path", s_dds_path, sizeof(s_dds_path));
-                if (ImGui::Button("Load DDS (our side)"))
+                ImGui::TextDisabled("Copy ER's loaded sheet DIRECT into our texture:");
+                static UINT64 s_dir_tex = 0; static int s_dir_w = 0, s_dir_h = 0;
+                if (ImGui::Button("Load ER image direct"))
+                    s_dir_tex = copy_er_sheet_direct(s_dir_w, s_dir_h);
+                if (s_dir_tex)
                 {
-                    DXGI_FORMAT f; s_dds_tex = create_tex_from_dds_file(s_dds_path, s_dds_w, s_dds_h, f);
-                    s_dds_fmt = (int)f;
-                }
-                if (s_dds_tex)
-                {
-                    ImGui::Text("%dx%d fmt=%d", s_dds_w, s_dds_h, s_dds_fmt);
-                    float dw = s_dds_w > 256 ? 256.f : (float)s_dds_w;
-                    float dh = s_dds_h ? dw * s_dds_h / s_dds_w : dw;
-                    ImGui::Image((ImTextureID)s_dds_tex, ImVec2(dw, dh));
+                    ImGui::Text("%dx%d (our copy of ER's sheet)", s_dir_w, s_dir_h);
+                    float dw = s_dir_w > 320 ? 320.f : (float)s_dir_w;
+                    float dh = s_dir_h ? dw * s_dir_h / s_dir_w : dw;
+                    ImGui::Image((ImTextureID)s_dir_tex, ImVec2(dw, dh));
                 }
             }
 
