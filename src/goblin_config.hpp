@@ -88,6 +88,7 @@ namespace goblin
         // identify discovered ones — actual suppression is gated behind this once verified.
         extern bool graceSuppressNative;
         extern bool suppressNativeBosses;
+        extern bool liveWorldPoints;  // read World-* categories LIVE from WorldMapPointParam (drift-proof)
 
         // Marker dump (hotkey → dump beacon/stamp coords to file)
         extern bool enableMarkerDump;

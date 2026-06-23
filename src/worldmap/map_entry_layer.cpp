@@ -151,6 +151,66 @@ void build_live_bosses()
     spdlog::info("[BOSSLIVE] built {} boss markers from live WorldMapPointParam (textId2==5100)", n);
 }
 
+// World-* categories that live in WorldMapPointParam, keyed by ERR's row-id range (the generator
+// assigns each "World - X" MASSEDIT a distinct ID block — see generate_data.py). Reading them LIVE
+// gives full coverage + kills per-ERR-version drift, exactly like bosses. KindlingSpirits is NOT here
+// (geom/SFX-tracked, stays baked). Bosses use textId2==5100 (separate, build_live_bosses).
+namespace
+{
+struct WpRange { uint64_t lo, hi; goblin::generated::Category cat; };
+constexpr WpRange kWorldRanges[] = {
+    {7500000, 7599999, goblin::generated::Category::WorldMaps},
+    {7600000, 7699999, goblin::generated::Category::WorldPaintings},
+    {7700000, 7799999, goblin::generated::Category::WorldStakesOfMarika},
+    {7800000, 7899999, goblin::generated::Category::WorldImpStatues},
+    {8600000, 8649999, goblin::generated::Category::WorldSpiritSprings},
+    {8650000, 8699999, goblin::generated::Category::WorldSpiritspringHawks},
+    {8700000, 8799999, goblin::generated::Category::WorldSummoningPools},
+    {8900000, 9199999, goblin::generated::Category::WorldInteractables},  // Seal Puzzles
+    {9200000, 9299999, goblin::generated::Category::WorldHostileNPC},
+    {9300000, 9399999, goblin::generated::Category::WorldInteractables},  // Hero's Tomb Statues
+    {9400000, 9499999, goblin::generated::Category::WorldQuestNPC},
+};
+// True for a category sourced LIVE here (so build_buckets skips its baked rows when the flag is on).
+bool is_live_world_cat(goblin::generated::Category c)
+{
+    for (const auto &r : kWorldRanges)
+        if (r.cat == c) return true;
+    return false;
+}
+} // namespace
+
+// Build the World-* buckets LIVE from WorldMapPointParam by row-id range (config live_world_points).
+void build_live_worldpoints()
+{
+    int n[NUM_CAT] = {};
+    try
+    {
+        for (auto [rowId, row] :
+             from::params::get_param<from::paramdef::WORLD_MAP_POINT_PARAM_ST>(L"WorldMapPointParam"))
+        {
+            if (row.textId2 == 5100) continue;            // field bosses → build_live_bosses
+            for (const auto &r : kWorldRanges)
+                if (rowId >= r.lo && rowId <= r.hi)
+                {
+                    int c = static_cast<int>(r.cat);
+                    push_marker(rowId, row, c, /*lotId=*/0u, /*lotType=*/0u);
+                    ++n[c];
+                    break;
+                }
+        }
+    }
+    catch (...)
+    {
+        spdlog::warn("[WORLDLIVE] WorldMapPointParam not readable — World markers absent this build");
+        return;
+    }
+    for (const auto &r : kWorldRanges)
+        if (n[static_cast<int>(r.cat)])
+            spdlog::info("[WORLDLIVE] {} = {} live rows", goblin::markers::category_name(r.cat),
+                         n[static_cast<int>(r.cat)]);
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
 void build_buckets()
@@ -160,6 +220,7 @@ void build_buckets()
     g_built = true;
     GOBLIN_BENCH("build.buckets");
     namespace gen = goblin::generated;
+    const bool live_world = goblin::config::liveWorldPoints;
     for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
     {
         const gen::MapEntry &e = gen::MAP_ENTRIES[i];
@@ -170,9 +231,14 @@ void build_buckets()
         // rows so they don't double the live ones (the bake is being retired for this category).
         if (e.category == gen::Category::WorldBosses)
             continue;
+        // World-* categories come LIVE when live_world_points is on — skip their baked rows.
+        if (live_world && is_live_world_cat(e.category))
+            continue;
         push_marker(e.row_id, e.data, c, e.lotId, e.lotType);
     }
     build_live_bosses();
+    if (live_world)
+        build_live_worldpoints();
 }
 } // namespace
 

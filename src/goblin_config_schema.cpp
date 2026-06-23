@@ -58,6 +58,7 @@ namespace goblin::config
     bool graceGpuSprite = true;      // live engine grace sprite (validated working)
     bool graceSuppressNative = true; // overlay is the sole grace source — hide native pins
     bool suppressNativeBosses = true; // hide native boss pins (clear dispMask on textId2==5100)
+    bool liveWorldPoints = false;     // read World-* cats live from WorldMapPointParam (under test)
 
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
@@ -402,6 +403,8 @@ namespace
                    "Suppress the game's native discovered-grace map pins so the overlay is the\nsole grace source. Default ON. Keeps teleport working (draw-only hide). Set\nfalse if native grace pins/teleport ever misbehave on your setup."),
                 BE("suppress_native_bosses", suppressNativeBosses, "true",
                    "Hide the game's native boss map icons (ERR's WorldMapPointParam textId2==5100\nrows) by clearing their dispMask, so only the overlay's boss markers show (no\ndouble icon). The overlay ignores dispMask so it keeps drawing them. Default ON;\nset false to let the game draw its own boss icons."),
+                BE("live_world_points", liveWorldPoints, "false",
+                   "Read the World-* marker categories (Stakes, Summoning Pools, Spirit Springs,\nMaps, Paintings, Imp Statues, Hostile/Quest NPC, Interactables) LIVE from\nWorldMapPointParam by their ERR row-id range, instead of the bake — full\ncoverage + drift-proof across ERR versions. Logs [WORLDLIVE] per-category\ncounts. Default OFF while under test (Kindling Spirits stay baked)."),
             }},
 
             {"Compatibility",
