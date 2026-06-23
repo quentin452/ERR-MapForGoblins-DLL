@@ -313,6 +313,7 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
 {
     std::map<uint32_t, WGMSnapshot> result;
     std::set<uint32_t> seen_tiles;   // for pruning unloaded tiles from the cache
+    static int s_fieldins_logged = 0;   // [FIELDINS] path-A probe one-shot budget
 
     uintptr_t game_base = (uintptr_t)GetModuleHandleA("eldenring.exe");
     if (!game_base) return result;
@@ -497,6 +498,45 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
 
                     // Cache the resolved instance (structure) for next refresh's fast path.
                     ctile.insts.push_back({geom_ins, px, py, pz, narrow_str, track_alive});
+
+                    // [FIELDINS] path-A asset→ItemLotID join probe (diag_fieldins_join, one-shot).
+                    // Read the CSGrowableNodePool embedded in this asset instance at geom_ins+0x3A8
+                    // (RE be1b018): cap@+0x3B8, stride@+0x3BC, node-array@+0x3C0; the pooled child is
+                    // a FieldInsBase* carrying lotId@+0x50 + inline wide name. Expect, on the known
+                    // chest AEG099_090_9000, lotId == 0x3dd6fec4 (1037500100). One bulk read.
+                    if (goblin::config::diagFieldinsJoin && s_fieldins_logged < 24)
+                    {
+                        uint8_t pool[0x20] = {};   // geom_ins+0x3A8 .. +0x3C8
+                        if (safe_read((char *)geom_ins + 0x3A8, pool, sizeof(pool)))
+                        {
+                            void *pool_vt = nullptr, *node_arr = nullptr;
+                            uint32_t cap = 0, stride = 0;
+                            memcpy(&pool_vt,  pool + 0x00, 8);   // +0x3A8
+                            memcpy(&cap,      pool + 0x10, 4);   // +0x3B8
+                            memcpy(&stride,   pool + 0x14, 4);   // +0x3BC
+                            memcpy(&node_arr, pool + 0x18, 8);   // +0x3C0
+                            uint32_t lot = 0;
+                            char child_name[64] = {};
+                            bool got_child = false;
+                            if (node_arr)
+                            {
+                                void *child = nullptr;            // node[0] = FieldInsBase*
+                                if (safe_read(node_arr, &child, 8) && child)
+                                {
+                                    got_child = safe_read((char *)child + 0x50, &lot, 4);
+                                    wchar_t cn[32] = {};
+                                    if (safe_read(child, cn, sizeof(cn) - 2))
+                                        for (int c = 0; c < 31 && cn[c]; c++)
+                                            child_name[c] = (char)(cn[c] & 0xFF);
+                                }
+                            }
+                            spdlog::info("[FIELDINS] {} pool_vt={} cap={} stride={} node_arr={} "
+                                         "child={} lotId={:#x} name='{}'",
+                                         narrow_str, pool_vt, cap, stride, node_arr,
+                                         got_child ? "yes" : "no", lot, child_name);
+                            ++s_fieldins_logged;
+                        }
+                    }
                 }
             }
 

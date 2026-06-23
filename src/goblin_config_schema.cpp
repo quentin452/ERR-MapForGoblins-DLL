@@ -20,6 +20,7 @@ namespace goblin::config
     bool nativeItemIcons = true;   // overlay: draw the game's real item icon (GPU harvest) when resident
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
     bool diagLootPos = false;      // one-shot [LOOTPOS] live-vs-baked placement accuracy probe
+    bool diagFieldinsJoin = false; // one-shot [FIELDINS] embedded-pool asset→lotId join probe (path A)
     bool debugLogging = false;
     bool showAll = false;
     bool iconsHidden = false;  // master off persisted (menu/F10 "Show icons")
@@ -179,6 +180,12 @@ namespace
                   "process) against the baked MAP_ENTRY placement. Validates that the data we\n"
                   "collect matches the bake from inside the running DLL (vs an external RPM\n"
                   "script). Logs per-row delta + an aggregate. Walk near loaded loot. Off by default."),
+                B("diag_fieldins_join", diagFieldinsJoin, "false",
+                  "RE diagnostic: one-shot [FIELDINS] — path-A asset→ItemLotID join check. For each\n"
+                  "loaded AEG asset, read the embedded CSGrowableNodePool at geom_ins+0x3A8 (cap+0x3B8,\n"
+                  "stride+0x3BC, node-array+0x3C0), follow the child FieldIns and log its lotId@+0x50 +\n"
+                  "name. Confirms the runtime asset→lot link with no global walk (be1b018). Walk near\n"
+                  "loaded loot. Off by default."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("show_all", showAll, "false",
