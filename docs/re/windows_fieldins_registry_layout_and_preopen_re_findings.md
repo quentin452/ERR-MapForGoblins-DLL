@@ -216,3 +216,34 @@ left dormant in tree (gated, off). Scripts: `registry_layout_check.py`, `registr
 (complete for baked loot today). The §7 spawned-item record layout (`{lotId,flag,FieldIns*}`,
 `FieldIns+0x50==lotId`, `MapId@node−0xD8`, `localPos@node−0xD4`) is documented for any future
 **live-dropped-loot** tagging, but is out of scope for the explore-cache. Investigation CLOSED.
+
+---
+
+## 8. In-process brute-scan FOLLOW-UP to §7 — can't enumerate the records; needs the MapIns anchor (2026-06-23)
+
+Tried to reproduce/enumerate §7's resident loot record from inside the DLL (`diag_lot_memscan`,
+`[LOTSCAN]`/`[LOTSCAN-SIG]`/`[LOTSCAN-ITEM]`, commits a275bde..87f11ab). Results:
+- **Target chest `0x3dd6fec4`:** at the (assumed) chest, full committed scan incl. **MEM_MAPPED** found
+  it **only in the ItemLotParam tables** — `sigNodes=0` (the `{L,flag,P}` with `*(P+0x50)==L` signature
+  matched no resident node). The specific chest's record was NOT resident this session (opened? tile not
+  loaded? open-time? — uncontrolled).
+- **Generic node scan** (`{L,P}`, `*(P+0x50)==L`): too slow under Wine (loose lot prefilter → 100M+
+  per-candidate VirtualQuery → never finished) AND, when it did run, collided on `0xffffffff`-filler.
+- **Generic "アイテム"-name scan:** fast, but `アイテム` (item) is far too common a substring — hits land
+  in arbitrary strings; `lotId@+0x50` came back as text bytes (`0x650074`), repeated non-per-item
+  constants (`0x43b6aa6a` on 4 objects), sentinels, pointers. No clean per-record lotId.
+- **Contradiction noted:** §3 has `FieldInsBase` vtable@+0x00, but §7's record has an inline name@+0x00
+  → §7's `FieldIns*` points to a different inline-name object, not a vtable'd `FieldInsBase`. Identity
+  of that object is unresolved.
+
+**Conclusion:** byte-level brute scanning **cannot reliably enumerate** the loot records — the only solid
+discriminator is the **node↔FieldIns self-validation**, which needs a proper structured walk, not a
+full-mem hunt. This is exactly §7's "remaining work": **a stable enumeration anchor — walk the `CS::MapIns`
+set (343 resident) / the record owner from a static base, then read the per-record lotId+MapId+pos.**
+→ back to the Ghidra/CE track (MapIns manager static base + the record offset within a MapIns). The
+in-process `diag_lot_memscan` probe is left dormant (gated off); re-point it once the anchor + offsets are
+known so it can validate in-process.
+
+**Net (unchanged for shipping):** baked-partName-join explore-cache ships today. The "added-loot-with-
+names" premium for LOADED loot is plausible (§7 found one real record) but NOT yet enumerable/wired —
+blocked on the MapIns anchor RE.
