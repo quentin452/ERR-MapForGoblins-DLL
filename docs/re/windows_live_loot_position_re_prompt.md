@@ -1,43 +1,40 @@
-# RE prompt — live loot/treasure WORLD position (CONDITIONAL — read §0 first)
+# RE prompt — live loot/treasure WORLD position (the last baked loot field)
 
-> **⚠️ This RE is probably NOT what the loot drift needs. Read §0 before starting it.**
-> The dominant loot drift is IDENTITY (what item), which is fixable with NO RE. Live POSITION
-> only matters if ERR physically relocates/adds chests vs the MSB we extracted — verify that
-> first. App = current ERR build; re-anchor every RVA.
-
----
-
-## 0. Decide FIRST: do we even need this? (the drift is identity, not position)
-
-Lot-backed loot markers carry two baked things (see the loot data-flow audit):
-- **Position** `posX/posZ/areaNo/grid` — baked from MSB `Events.Treasure` (chest asset) /
-  `Parts.Enemies` (drop) placement (`tools/extract_all_items.py` → `items_database.json`).
-- **Identity** `textId1` (item name id, category-offset-encoded) — baked from `ItemLotParam`
-  item1..item8 at extraction time.
-
-Under a randomizer-adjacent mod (ERR), the **contents** of a lot change but the **chest/enemy
-stays put**. So:
-- **IDENTITY drifts** (baked textId1 ≠ the live randomized item) — this is the real, large drift.
-- **POSITION is stable** (the chest doesn't move) — so live position is usually unnecessary.
-
-**The identity fix needs NO reverse engineering** — the live source is `ItemLotParam`, a param:
-`resolve_loot_flag()` (goblin_inject.cpp) already reads the live `ItemLotParam` row via the
-`LotReader`/`from::params` path, and already reads `row->b + 0x04` (item2). item1 is at
-`row->b + 0x00`; its category gives the FMG offset (Goods 500M, Weapon 100M, …). The
-`liveLootLabels` FMG preload already copies every item name into PlaceName at its offset-encoded
-id. The only missing piece is the aspirational `refresh_loot_from_itemlot()` — pure code, not RE.
-**Do that before any of the below.**
-
-**So only proceed with this RE if a pre-check shows ERR moves/adds chests vs our extraction:**
-- Pre-check (cheap, no RE): pick ~20 lot-backed markers, compare our baked `(areaNo,grid,pos)`
-  to the live ERR MSB/asset placement for the same `itemLotId` (offline, re-extract from the
-  current ERR regulation+MSB and diff `items_database.json`). If positions match → the bake is
-  fine, **skip this RE entirely** (just re-extract on each ERR version bump). If many differ →
-  ERR relocates content and a runtime live-position read is worth it → continue.
+> **Goal: complete the loot runtime migration.** Loot marker IDENTITY is now read LIVE from
+> ItemLotParam (shipped: `resolve_loot_item_textid`, baked textId1 stripped from lot-backed rows).
+> POSITION is the only loot field still baked (from offline MSB extraction). This RE finds the
+> live treasure/asset world position so position can go runtime too — the cleanest-by-design end
+> state (zero baked loot data). App = current ERR build; re-anchor every RVA.
+>
+> **⚠️ Honesty up front — this is design-purity, NOT a bugfix.** Position does NOT drift: ERR is
+> ADDITIVE (adds items) and a randomizer shuffles lot *contents*, never moving the chest/enemy. So
+> the success criterion is "**live position == the baked position**" (validates the read), not
+> "fixes wrong markers". And it is HIGH effort: unlike identity (a param, no RE), position lives in
+> the runtime MSB/asset placement system → real memory RE. Weigh that before committing fleet time.
 
 ---
 
-## 1. Target (only if §0 says positions actually drift)
+## 0. Cheap pre-check FIRST (may make this RE unnecessary)
+
+The only thing that actually breaks baked positions is ERR **relocating/adding** chests in a newer
+version than the MSB we extracted `items_database.json` from. Check that offline, no RE:
+- Re-extract from the CURRENT ERR regulation+MSB and diff `items_database.json` positions for ~all
+  lot ids. If positions match the committed bake → **skip this RE**; the bake is correct, just
+  re-extract on each ERR version bump (a coverage/position diff is the real future-proof, cheaper
+  than a runtime read). If many differ → ERR moves content → a runtime live-position read earns its
+  keep → proceed below.
+- If the goal is purely runtime-purity (read everything live regardless of drift), skip the
+  pre-check and proceed — but know it buys cleanliness, not correctness.
+
+Context on what's already live (so you reuse, not rebuild): loot identity = `ItemLotParam` slot-1
+(`resolve_loot_item_textid`, goblin_inject.cpp), pickup flag = `resolve_loot_flag` (same LotReader),
+graces = live BonfireWarpParam, bosses = live WorldMapPointParam 5100. Player pos + the block→world
+/ map-UI transforms are RE'd (re_findings_playerpos.md). Position is the one piece with no param
+source.
+
+---
+
+## 1. Target
 
 Read each loaded treasure/drop's **live world position + its ItemLotID** at runtime, so loot
 markers can be placed from the live asset placement instead of the baked MSB coords (analogous
@@ -77,6 +74,7 @@ to the lot) so a live position can be matched back to the right marker.
 ## 3. Notes
 - Reuse what we own: the block→world transform (`FUN_1408775e0`) + `(MapId,local)`→map-UI
   (`FUN_140876140`), WorldChrMan static, the geom manager (`WORLD_GEOM_MAN_SLOT`).
-- This is HIGH-EFFORT (live MSB/asset placement RE) for a drift that is usually zero. The
-  identity-live fix (§0, no RE) is the high-value, low-cost win — prefer it.
+- This is HIGH-EFFORT (live MSB/asset placement RE) for a drift that is usually zero. Loot
+  identity is ALREADY live (shipped, no RE — ItemLotParam param read); position is the only loot
+  field left baked, so this RE is the optional last step to a fully-runtime loot marker.
 - Read params/structs LIVE (ERR row values differ from vanilla); never assume vanilla data.
