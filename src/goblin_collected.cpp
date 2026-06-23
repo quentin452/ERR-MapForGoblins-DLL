@@ -685,8 +685,25 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                         ++hits;
                         if (logged < 32)
                         {
-                            spdlog::info("[LOTSCAN] HIT @ {:#x} (region {:#x}+{:#x} prot={:#x})",
-                                         base + i, base, (uint64_t)rsz, (uint64_t)p);
+                            uintptr_t hit = base + i;
+                            // Context: dump the 8 qwords spanning hit-0x20..hit+0x18 and flag any
+                            // that look like an eldenring.exe code/vtable ptr (object marker) vs
+                            // other large lotId-shaped u32s (param-array marker). Only read within
+                            // this region's bounds to stay safe.
+                            char ctx[256] = {}; int cl = 0; int code_ptrs = 0;
+                            uintptr_t er0 = game_base, er1 = game_base + 0x5000000;
+                            for (int k = -4; k <= 3 && cl < 230; k++)
+                            {
+                                uintptr_t a = hit + (intptr_t)k * 8;
+                                if (a < base || a + 8 > base + rsz) continue;
+                                uint64_t v = *(const uint64_t *)a;
+                                if (v >= er0 && v < er1) ++code_ptrs;
+                                cl += snprintf(ctx + cl, sizeof(ctx) - cl, "[%+d]=%llx ",
+                                               k * 8, (unsigned long long)v);
+                            }
+                            spdlog::info("[LOTSCAN] HIT @ {:#x} region={:#x}+{:#x} prot={:#x} "
+                                         "codePtrsNear={} | {}",
+                                         hit, base, (uint64_t)rsz, (uint64_t)p, code_ptrs, ctx);
                             ++logged;
                         }
                     }
