@@ -2157,6 +2157,10 @@ void harvest_resident_icons(uintptr_t movie)
     uint64_t key = (static_cast<uint64_t>(movie) * 1000003u) ^ static_cast<uint64_t>(count);
     if (!s_done.insert(key).second) return;
 
+    // Game-thread RPM walk (enum_detour) → keep it bench-visible so a Wine RPM-cost regression on
+    // this dev-gated path shows in [BENCH] instead of being an invisible freeze (docs/rpm_walk_audit.md).
+    GOBLIN_BENCH_QUIET("harvest.resident_walk");
+
     int loops = count < 4096 ? count : 4096;   // hard cap (a non-list movie could give a bogus count)
     int harvested = 0, names_menu = 0;
     for (int i = 0; i < loops; ++i)
@@ -2752,6 +2756,9 @@ void res_walk_groups(uintptr_t mgr, uintptr_t er, bool flip)
         return;
     }
     uintptr_t base = (mgr + 0x9d8 + 7) & ~uintptr_t(7);   // engine's (-(addr)&7) 8-byte pad
+    // Game-thread per-node RPM walk (res_tick_detour, F1 BINDTEST) → keep it bench-visible
+    // (docs/rpm_walk_audit.md).
+    GOBLIN_BENCH_QUIET("bindtest.group_walk");
     int flipped = 0;
     for (uintptr_t i = 0; i < count; ++i)
     {

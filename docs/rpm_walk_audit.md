@@ -27,13 +27,17 @@
 | `harvest_twin_map_icons` | goblin_inject.cpp:2396 | BULK (1 RPM/node, 0x58 B) | ✅ `harvest.twin_walk` @2410 |
 | `cache_map_sprite_from_img` | goblin_inject.cpp:2336 | per-field | ❌ |
 | `cache_icon_from_img` | goblin_inject.cpp:1827 | per-field | ❌ |
-| `harvest_resident_icons` | goblin_inject.cpp:1954 | per-field | ❌ |
-| `icon_find_gpu_tex` | goblin_inject.cpp:1673 | **PER-NODE BFS** | ❌ |
-| `res_walk_groups` | goblin_inject.cpp:2744 | **PER-NODE** (test/debug) | ❌ |
-| `get_warp_area` | goblin_inject.cpp:3428 | per-call | ❌ |
+| `harvest_resident_icons` | goblin_inject.cpp:1954 | per-field walk (≤4096) | ✅ `harvest.resident_walk` |
+| `icon_find_gpu_tex` | goblin_inject.cpp:1673 | PER-NODE BFS | n/a — **DEAD CODE, no callers** (superseded by node+0x50 direct read) |
+| `res_walk_groups` | goblin_inject.cpp:2744 | PER-NODE (F1 BINDTEST debug) | ✅ `bindtest.group_walk` |
+| `run_force_grace` | goblin_inject.cpp:~2790 | engine CreateImage calls (not a walk), throttled | n/a — not an RPM cliff |
+| `get_warp_area` / `warp_pin_detour` | goblin_inject.cpp:3428 / ~3445 | per-call, 1-3 reads | not wrapped — too small to matter |
 
-⚠️ Several game-thread harvest fns are **NOT** bench-wrapped → invisible to `[BENCH]`. Wrap
-each in `GOBLIN_BENCH_QUIET` before/during the move (per `linux-rpm-walk-danger`).
+**Wrap status:** every game-thread RPM **walk** is now bench-visible — the relocated
+`harvest_repo_icons`/`harvest_twin_map_icons` (probe thread), plus `harvest.resident_walk` +
+`bindtest.group_walk` (game thread, dev/debug-gated). `icon_find_gpu_tex` is dead; the small
+per-call sites (warp_pin/get_warp_area) and the throttled engine-call grace-force are not Wine
+RPM cliffs, left unwrapped.
 
 ## REFRESH background thread (already off the game thread)
 
