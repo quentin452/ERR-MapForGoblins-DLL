@@ -676,7 +676,7 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
         SYSTEM_INFO si; GetSystemInfo(&si);
         uintptr_t addr = (uintptr_t)si.lpMinimumApplicationAddress;
         uintptr_t end  = (uintptr_t)si.lpMaximumApplicationAddress;
-        uint64_t scanned = 0, regions = 0; int hits = 0, logged = 0;
+        uint64_t scanned = 0, regions = 0; int hits = 0, logged = 0, sig_hits = 0;
         MEMORY_BASIC_INFORMATION mbi;
         while (addr < end && VirtualQuery((void *)addr, &mbi, sizeof(mbi)) == sizeof(mbi))
         {
@@ -688,8 +688,10 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
             bool blocked  = (p & (PAGE_GUARD | PAGE_NOACCESS)) != 0;
             bool is_self = (self_stack_base && (uintptr_t)mbi.AllocationBase == self_stack_base) ||
                            (self_mod && base >= self_mod && base < self_mod + 0x800000);
-            if (mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE && readable && !blocked &&
-                rsz >= 4 && !is_self)
+            // Include MEM_MAPPED too (da513922: the MapIns lot record may live in a mapped
+            // region; a MEM_PRIVATE-only scan would false-negative it).
+            if (mbi.State == MEM_COMMIT && (mbi.Type == MEM_PRIVATE || mbi.Type == MEM_MAPPED) &&
+                readable && !blocked && rsz >= 4 && !is_self)
             {
                 ++regions; scanned += rsz;
                 const uint8_t *q = (const uint8_t *)base;
@@ -698,6 +700,36 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                 {
                     if (*(const uint32_t *)(q + i) == target)
                     {
+                        // ── da513922 SIGNATURE test: is this a resident loot node?
+                        // node{lotId@+0, flag@+4, FieldIns*@+8}, self-validating
+                        // *(u32)(FieldIns+0x50)==lotId; then MapId@node-0xD8, localPos@node-0xD4.
+                        uintptr_t H = base + i;
+                        if (H + 16 <= base + rsz && H - 0xD8 >= base)
+                        {
+                            uint64_t P = *(const uint64_t *)(H + 8);
+                            if (P > 0x100000 && P < 0x7fffffffffff)
+                            {
+                                MEMORY_BASIC_INFORMATION pb;
+                                if (VirtualQuery((void *)P, &pb, sizeof(pb)) == sizeof(pb) &&
+                                    pb.State == MEM_COMMIT &&
+                                    !(pb.Protect & (PAGE_GUARD | PAGE_NOACCESS)) &&
+                                    P + 0x54 <= (uintptr_t)pb.BaseAddress + pb.RegionSize &&
+                                    *(const uint32_t *)(P + 0x50) == target)
+                                {
+                                    ++sig_hits;
+                                    uint32_t flag  = *(const uint32_t *)(H + 4);
+                                    uint32_t mapId = *(const uint32_t *)(H - 0xD8);
+                                    const float *pos = (const float *)(H - 0xD4);
+                                    wchar_t nm[24] = {}; char nn[24] = {};
+                                    if (P + sizeof(nm) <= (uintptr_t)pb.BaseAddress + pb.RegionSize)
+                                        for (int c = 0; c < 23; c++) nn[c] = (char)(((const wchar_t *)P)[c] & 0xFF);
+                                    spdlog::info("[LOTSCAN-SIG] NODE @ {:#x} flag={} FieldIns={:#x} "
+                                                 "MapId={:#x} localPos=({:.2f},{:.2f},{:.2f}) name='{}' type={}",
+                                                 H, flag, P, mapId, pos[0], pos[1], pos[2], nn,
+                                                 mbi.Type == MEM_MAPPED ? "MAPPED" : "PRIVATE");
+                                }
+                            }
+                        }
                         ++hits;
                         if (logged < 32)
                         {
@@ -755,8 +787,8 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
             }
             addr = base + rsz;
         }
-        spdlog::info("[LOTSCAN] DONE target={:#x} hits={} regions={} scannedMB={}",
-                     target, hits, (uint64_t)regions, scanned / (1024 * 1024));
+        spdlog::info("[LOTSCAN] DONE target={:#x} hits={} sigNodes={} regions={} scannedMB={}",
+                     target, hits, sig_hits, (uint64_t)regions, scanned / (1024 * 1024));
     }
 
     return result;
