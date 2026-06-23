@@ -765,38 +765,39 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                         {
                             if (*(const uint64_t *)(q + i) != VT_MAPINS) continue;
                             ++mapins;
-                            for (size_t k = 8; i + k + 16 <= want && k < 0x2000; k += 8)
+                            // Agent reach (ed8fa0c): the loot node is at MapIns+0x460 ({lotId@+0,
+                            // flag@+4, FieldIns*@+8}); MapId@node-0xD8, localPos@node-0xD4. The SOLE
+                            // validator is *(u32)(FieldIns+0x50)==lotId — it rejects every false
+                            // positive, so no name/lot-range guess needed. Primary +0x460 + a bounded
+                            // hedge window (+0x100..+0x800, 4-aligned) for items at other offsets.
+                            auto emit = [&](size_t k)
                             {
+                                if (k < 0xD8 || i + k + 16 > want) return;
                                 uint32_t L = *(const uint32_t *)(q + i + k);
-                                if (L < 0x100000u || L > 0x7FFFFFFFu) continue;   // any plausible lotId
-                                                                                 // (ERR-added IDs vary)
-                                uint32_t flag = *(const uint32_t *)(q + i + k + 4);
-                                if (flag > 1) continue;
+                                if (L == 0 || L == 0xffffffffu) return;
                                 uint64_t P = *(const uint64_t *)(q + i + k + 8);
-                                if (P <= 0x100000 || P >= 0x7fffffffffffULL) continue;
+                                if (P <= 0x100000 || P >= 0x7fffffffffffULL) return;
                                 uint32_t v50 = 0;
-                                if (!safe_read((void *)(P + 0x50), &v50, 4) || v50 != L) continue;
-                                // FieldIns name must start with アイテム — kills false self-validations.
-                                wchar_t nm[16] = {};
-                                if (!safe_read((void *)P, nm, sizeof(nm) - 2)) continue;
-                                if (nm[0] != 0x30A2 || nm[1] != 0x30A4) continue;
+                                if (!safe_read((void *)(P + 0x50), &v50, 4) || v50 != L) return;
                                 ++records;
                                 if (logged < 64)
                                 {
-                                    bool hdr = (k >= 0xD8);
-                                    uint32_t mapId = hdr ? *(const uint32_t *)(q + i + k - 0xD8) : 0;
-                                    const float *pos = hdr ? (const float *)(q + i + k - 0xD4) : nullptr;
-                                    char nn[20] = {};
-                                    for (int c = 0; c < 15; c++) nn[c] = (char)(nm[c] & 0xFF);
+                                    uint32_t flag  = *(const uint32_t *)(q + i + k + 4);
+                                    uint32_t mapId = *(const uint32_t *)(q + i + k - 0xD8);
+                                    const float *pos = (const float *)(q + i + k - 0xD4);
+                                    uint32_t gx = (mapId >> 16) & 0xff, gz = (mapId >> 8) & 0xff;
                                     spdlog::info("[MAPINS] rec MapIns={:#x} node+{:#x} lot={:#x}({}) "
-                                                 "flag={} FieldIns={:#x} MapId={:#x} "
-                                                 "localPos=({:.2f},{:.2f},{:.2f}) name='{}'",
-                                                 rbase + off + i, (uint64_t)k, L, L, flag, P,
-                                                 mapId, pos ? pos[0] : 0.f, pos ? pos[1] : 0.f,
-                                                 pos ? pos[2] : 0.f, nn);
+                                                 "flag={} FieldIns={:#x} MapId={:#x} local=({:.1f},{:.1f},"
+                                                 "{:.1f}) ABS=({:.0f},{:.0f},{:.0f})",
+                                                 rbase + off + i, (uint64_t)k, L, L, flag, P, mapId,
+                                                 pos[0], pos[1], pos[2],
+                                                 gx * 256.f + pos[0], pos[1], gz * 256.f + pos[2]);
                                     ++logged;
                                 }
-                            }
+                            };
+                            emit(0x460);
+                            for (size_t k = 0x100; k <= 0x800; k += 4)
+                                if (k != 0x460) emit(k);
                             (void)lim;
                         }
                     }
