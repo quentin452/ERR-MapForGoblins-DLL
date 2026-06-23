@@ -63,3 +63,35 @@ confirm if the design decision needs the hard datum._
 ## T4 — Unloaded enemies
 _Constraint stands a priori: an un-streamed enemy has no ChrIns → no runtime pos; any runtime fix
 only works while the player is inside the dungeon. Moot if the design fix is chosen._
+
+---
+
+## Runtime coverage probe result (2026-06-23, in-game, config probe_baked_drift)
+
+The in-DLL `goblin::probe_baked_vs_runtime()` (per-area coverage; no per-boss identity-join is
+possible — see below) ran in-game. **Runtime data is sound (217 live textId2==5100 rows); the
+BAKE has 3 anomalies, all attributable to `generate_boss_list.py` matching, not the runtime:**
+
+| area | baked | live(5100) | delta | reading |
+|---|---|---|---|---|
+| 16 | 3 | 4 | −1 | a live field boss we didn't bake here |
+| 31 | 21 | 20 | +1 | a baked boss that isn't a live field boss here |
+| 60 | 86 | 87 | −1 | a live overworld field boss missing from the bake |
+
+- **area16(−1) + area31(+1) = the Flamelost Knights mis-match** already flagged in the T3 verdict
+  (baked from `m31_08` but its 5100 row is area 16) — now CONFIRMED live: it inflates area 31 and
+  starves area 16.
+- **area60(−1) = newly surfaced**: one overworld field boss is absent from `boss_list.json`.
+
+**Why no per-boss identity-join (verified live via [DRIFTDUMP]):** the live 5100 row carries the
+boss's real `clearedEventFlagId` (Godrick=510010) + `wmpTextId1`/rowId (30100000). The baked
+MAP_ENTRIES boss row instead bakes the **kill** flag into `.clearedEventFlagId` (10000800 =
+`boss_list.killEventFlagId`) + synthetic display ids, and drops the WMP identity; `row_id` is a
+removed-injection synthetic (9000000+). No shared field → flag-join is impossible (it produced
+211/216 false MISSING). The DLL probe therefore does per-area coverage; per-boss position drift
+stays in the offline `tools/diag_t3_bossframe.py` (bridges baked↔live through `boss_list.json`:
+clearedEventFlagId↔live, killEventFlagId↔baked).
+
+**Fix target (boss_list.json / generate_boss_list.py):** correct the Flamelost Knights area
+assignment (16, not 31) and add the missing area-60 overworld boss. Run diag_t3_bossframe.py to
+name the exact 3 rows.
