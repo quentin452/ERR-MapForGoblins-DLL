@@ -22,7 +22,6 @@ FMG_DIR = DATA_DIR / 'msg'
 
 # Files that should never be regenerated (non-item or mod-specific)
 PRESERVE_FILES = {
-    'World - Graces.MASSEDIT',
     'World - Imp Statues.MASSEDIT',
     'World - Summoning Pools.MASSEDIT',
     'World - Spirit_Springs.MASSEDIT',

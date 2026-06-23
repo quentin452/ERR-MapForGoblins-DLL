@@ -14,8 +14,12 @@ namespace goblin::config
 {
     uint8_t loadDelay = 5;
     bool requireMapFragments = true;
+    bool collectedGraying = true;
+    bool hideCollected = false;
+    bool showRegionLabels = true;  // overlay: draw major-region name labels on the map
+    bool nativeItemIcons = true;   // overlay: draw the game's real item icon (GPU harvest) when resident
+    bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
     bool debugLogging = false;
-    bool projectDungeons = true;
     bool showAll = false;
     bool iconsHidden = false;  // master off persisted (menu/F10 "Show icons")
     uint32_t overlayToggleKey = 0x70;  // VK_F1 — overlay menu open/close key
@@ -36,17 +40,20 @@ namespace goblin::config
     // and Convergence (opt-in — they add memory/CPU with no benefit without a
     // regulation mod). MFG_PROFILE_VANILLA is set by CMake for the vanilla bake
     // only (MFG_VANILLA covers vanilla AND convergence, so it can't be used here).
+    // live_loot_flags / live_loot_icons removed (Phase 2b): their only consumers were the native
+    // map's param rewriters, deleted with native injection. live_loot_labels survives — it's the
+    // randomizer relabel (copy the whole item-name space into PlaceName, perf-heavy → opt-in).
 #ifdef MFG_PROFILE_VANILLA
-    bool liveLootFlags = true, liveLootLabels = true, liveLootIcons = true;
+    bool liveLootLabels = true;
 #else
-    bool liveLootFlags = false, liveLootLabels = false, liveLootIcons = false;
+    bool liveLootLabels = false;
 #endif
     bool anonymousLoot = false;  // opt-in spoiler-free mode (all profiles default off)
 
-    bool patchOverworldBossIcons = true, patchDungeonBossIcons = true,
-         patchCampIcons = true, patchMerchantIcons = true,
-         redifyBossIcons = false, redifyDungeonIcons = false,
-         hideDungeonIconsOnClear = false;
+    bool redifyBossIcons = false;
+    bool graceOverlay = false;
+    bool graceGpuSprite = false;
+    bool graceSuppressNative = false;
 
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
@@ -54,7 +61,32 @@ namespace goblin::config
     bool debugItemGrants = false;
     bool debugFlagCapture = false;
     bool debugWorldmapProbe = false;
-    bool liveRefreshWorldMap = false;
+    bool dumpIconTextures = false;
+    bool liveProjection = true;
+    bool dumpConverters = false;
+    bool dumpNativePins = false;
+    bool overlayMarkersProto = false;
+    bool debugRenderDims = false;
+    bool fixMidsessionResolution = false;
+    float overlayMasterScale = 1.0f;   // master scale for all overlay markers + piles
+    float overlayIconScale = 1.2f;     // category marker icons (× master)
+    float overlayClusterScale = 1.0f;  // cluster pile glyphs (× master)
+    float graceIconScale = 1.2f;       // grace markers only (× icon scale) — calibration
+    float graceOffsetX = 0.0f;         // px offset of the overlay grace draw — native-vs-imgui compare
+    float graceOffsetY = 0.0f;
+
+    // In-game minimap HUD (corner, north-up, overworld-only — underground player pos
+    // is not yet reliable). Foundation/opt-in; off by default.
+    bool debugClusterAnchors = false; // viz: pile anchor + member lines + name + d/thr
+    bool debugRegionVolumes = false; // viz: draw each MapNameOverride volume + name
+    bool showMinimap = false;
+    float minimapZoom = 0.08f;     // px per world-unit shown on the minimap
+    float minimapSize = 130.0f;    // minimap radius in px
+    float minimapOpacity = 0.85f;  // background disc opacity 0..1
+    bool minimapAnchorRight = true;   // corner: right vs left
+    bool minimapAnchorBottom = false; // corner: bottom vs top
+    float minimapOffsetX = 0.0f;      // px offset from the anchored corner
+    float minimapOffsetY = 0.0f;
 
     // In-game per-section visibility (the 7 display groups). Persisted so an
     // in-game toggle survives relaunch. Default all-visible = no behaviour change.
@@ -77,9 +109,11 @@ namespace goblin::config
     uint8_t clusterNearThreshold = 60; // detail size NEAR player (high = more individual items)
     uint8_t clusterNearRadius    = 1;  // tiles: full-detail radius (tight = just your immediate area)
     uint8_t clusterFarRadius     = 2;  // tiles: at/beyond this, clusterThreshold (clustered)
+    bool clusterDebugRadius = false;  // overlay: draw distance-adaptive zones (player + near/far rings + tabs)
     bool questNpcQuestAware = false;  // gate quest-NPC markers on quest-active flags
     std::string questProgress = "";   // Quest Browser per-step done bits ('0'/'1')
     bool questGreyOnDeath = true;     // grey questlines whose NPC death flag is set
+    std::string regionToggles = "";   // in-world region chips on/off ('0'/'1' per anchor, order)
 }
 
 // ── schema ───────────────────────────────────────────────────────────────
@@ -111,13 +145,34 @@ namespace
         return {
             {"Goblin", nullptr, false, {
                 IniEntry{"load_delay", IniType::U8, &cfg::loadDelay, "5",
-                         "Delay in seconds before loading map icons (wait for game initialization)", false, nullptr},
+                         "MINIMUM seconds to wait before loading map icons. The mod now POLLS\n"
+                         "for the world-map data to finish loading (robust on slow PCs) and\n"
+                         "proceeds as soon as it's ready; this is just a floor/settle margin.\n"
+                         "Leave at 5 unless you want a longer guaranteed settle.", false, nullptr},
                 B("require_map_fragments", requireMapFragments, "true",
-                  "Require map fragment discovery before showing icons in that area"),
+                  "Require map fragment discovery before showing icons in that area\n"
+                  "(overlay map: gates on the game's real fog-of-war reveal state)."),
+                B("collected_graying", collectedGraying, "true",
+                  "Overlay map: dim+desaturate markers for items already collected and\n"
+                  "bosses already cleared (cleared bosses also get a green checkmark).\n"
+                  "FALSE = always draw markers at full brightness."),
+                B("hide_collected", hideCollected, "false",
+                  "Overlay map: when collected_graying is on, HIDE collected/cleared\n"
+                  "markers entirely instead of dimming them (legacy native-map behaviour)."),
+                B("show_region_labels", showRegionLabels, "true",
+                  "Overlay map: draw the major-region names (Limgrave, Caelid, Liurnia,\n"
+                  "Altus Plateau, ...) on the open map page, beneath the markers."),
+                B("native_item_icons", nativeItemIcons, "true",
+                  "Overlay map: draw each item/loot marker with the GAME's own inventory icon\n"
+                  "(harvested live from the menu sheet) when that item is resident, instead of\n"
+                  "the category-representative atlas icon. Falls back to the atlas otherwise."),
+                B("diag_loot_flags", diagLootFlags, "false",
+                  "RE diagnostic: on map build, log [LOOTDIAG] for a few loot markers per\n"
+                  "category — every candidate pickup flag (lot-wide, 8 per-slot, baked) and\n"
+                  "whether each reads SET. Run on a 100% save to find the real collected\n"
+                  "flag for the categories the census over-reports. Off by default."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
-                B("project_dungeons", projectDungeons, "true",
-                  "Remap minor-dungeon icons (catacombs, caves, tunnels, hero's graves)\nonto the overworld map near their entrance. ER has no map page for them,\nso without this their icons are injected but never rendered."),
                 B("show_all", showAll, "false",
                   "Master switch: show EVERY category at once, ignoring the individual\nshow_* toggles below. Quick way to reveal everything without flipping ~60 flags."),
                 B("icons_hidden", iconsHidden, "false",
@@ -134,6 +189,10 @@ namespace
                          "Quest Browser per-step checkmarks (one 0/1 per step, author order).\n"
                          "Managed by the overlay's Quest Browser; saved when you Save.",
                          false, nullptr},
+                IniEntry{"region_toggles", IniType::String, &cfg::regionToggles, "",
+                         "In-world region chips on/off (one 0/1 per major region, anchor order;\n"
+                         "0 = that region's markers hidden). Click a region name on the map to\n"
+                         "toggle; saved when you Save in-game.", false, nullptr},
             }},
 
             {"Display Sections",
@@ -196,6 +255,10 @@ namespace
                          "Distance-adaptive: full-detail radius around the player, in 256-unit tiles.", false, nullptr},
                 IniEntry{"cluster_far_radius", IniType::U8, &cfg::clusterFarRadius, "2",
                          "Distance-adaptive: at/beyond this many tiles, use cluster_threshold (full clustering).", false, nullptr},
+                B("cluster_debug_radius", clusterDebugRadius, "false",
+                  "Overlay DEBUG: draw the distance-adaptive zones — player marker, the\n"
+                  "near/far radius rings (overworld), and each pile's sub-page tab\n"
+                  "(underground) — to see where the ramp engages. Off by default."),
                 IniEntry{"cluster_exclude", IniType::String, &cfg::clusterExclude, "",
                          "Categories that stay EXACT markers and never fold into a cluster\n"
                          "(comma-separated, matched loosely vs the category name, e.g.\n"
@@ -305,40 +368,25 @@ namespace
             }},
 
             {"ERR Markers",
-             "This section applies this mod's display rules to ERR's OWN pre-placed map\n"
-             "markers (camps, merchants, bosses, dungeon entrances) - NOT the icons this\n"
-             "mod injects - so both icon sets follow the same visibility logic\n"
-             "(map-fragment discovery, hide on clear). Disable a toggle to leave that\n"
-             "marker group exactly as ERR ships it. Our own boss markers are\n"
-             "[World] show_bosses and independent of this section.",
+             "Display options for boss markers on the overlay map.",
              ERR, {
-                BE("patch_overworld_boss_icons", patchOverworldBossIcons, "true",
-                   "Tie ERR-placed overworld field-boss markers (textId2=5100) to\nour map-fragment discovery flag. Combine with redify_boss_icons below."),
-                BE("patch_dungeon_boss_icons", patchDungeonBossIcons, "true",
-                   "Tie ERR-placed dungeon/cave entrance markers (textId3=5100/5300) to\nour map-fragment discovery flag. Required for redify/hide_dungeon below."),
-                BE("patch_camp_icons", patchCampIcons, "true",
-                   "Tie ERR-placed enemy camp markers (textId2=5000) to our discovery flag."),
-                BE("patch_merchant_icons", patchMerchantIcons, "true",
-                   "Tie ERR-placed merchant markers (textId4=8800) to our discovery flag."),
                 BE("redify_boss_icons", redifyBossIcons, "false",
-                   "Cosmetic: when patching overworld bosses, recolour iconId to 374 (red) AND\nauto-hide once the boss is defeated. Requires patch_overworld_boss_icons."),
-                BE("redify_dungeon_icons", redifyDungeonIcons, "false",
-                   "Cosmetic: when patching dungeon entrances, recolour iconId to 374.\nRequires patch_dungeon_boss_icons."),
-                BE("hide_dungeon_icons_on_clear", hideDungeonIconsOnClear, "false",
-                   "When patching dungeon entrances, hide the marker once the boss inside is\ndefeated. Requires patch_dungeon_boss_icons."),
+                   "Cosmetic: draw boss markers red and auto-hide them once the boss is\ndefeated."),
+                BE("grace_overlay", graceOverlay, "false",
+                   "Draw ALL Sites of Grace in the overlay (discovered = full colour,\nundiscovered = grey) instead of letting the game draw discovered ones.\nNeeds native-pin suppression to avoid doubled grace icons."),
+                BE("grace_gpu_sprite", graceGpuSprite, "false",
+                   "Grace icon source when grace_overlay is on: false = the mod's baked atlas\nicon (clean, constant); true = the live engine sprite (SB_ERR_Grace,\ntinted by in-game time of day)."),
+                BE("grace_suppress_native", graceSuppressNative, "false",
+                   "Suppress the game's native discovered-grace map pins so the overlay is the\nsole grace source (pair with grace_overlay). Hooks the WarpPinData builder.\nDev/experimental."),
             }},
 
             {"Compatibility",
              "Options for running alongside other mods that change item placement.",
              false, {
-                B("live_loot_flags", liveLootFlags, MFG_LL_DEF,
-                  "Hide loot markers using the pickup flag from the loaded regulation, so they\ndisappear correctly under the Item/Enemy Randomizer or other regulation mods."),
                 B("live_loot_labels", liveLootLabels, MFG_LL_DEF,
                   "Relabel each loot marker with the item its lot currently gives, so names match\nthe randomizer. Uses more memory (copies item names into the map's name table)."),
-                B("live_loot_icons", liveLootIcons, MFG_LL_DEF,
-                  "Give each loot marker the icon and category of the item its lot currently\ngives, so icons and show_* toggles match the randomizer."),
                 B("anonymous_loot", anonymousLoot, "false",
-                  "Spoiler-free: every loot marker shows a gray \"?\" and a generic label instead\nof the real item. Overrides live_loot_labels/icons; markers still hide on pickup."),
+                  "Spoiler-free: every loot marker shows a gray \"?\" and a generic label instead\nof the real item. Overrides live_loot_labels; markers still hide on pickup."),
             }},
 
             {"Debug",
@@ -354,9 +402,53 @@ namespace
                 B("debug_flag_capture", debugFlagCapture, "false",
                   "Quest Browser death-flag capture tool (overlay Dev tools): arm naming an\nNPC, kill it, finalize -> the persisted flag(s) are written to\nlogs/MapForGoblins_flagcapture.txt as NpcQuest::fail_flag candidates.\nInstalls the SetEventFlag hook in a LIGHT mode (no coverage drain); off by default."),
                 B("debug_worldmap_probe", debugWorldmapProbe, "false",
-                  "Dev probe: log the world-map cursor coords (read-only) to confirm the RE\noffsets for proximity clustering. Open the world map + move the cursor.\nLogs to logs/MapForGoblins_wmprobe.log; off by default."),
-                B("live_refresh_world_map", liveRefreshWorldMap, "false",
-                  "EXPERIMENTAL: re-render world-map icons WHILE the map is open when you\ntoggle a section/category (instead of only on the next map open). Hooks the\ngame's own placed-map-point (re)build and replays it with the engine's real\ncontext on its own thread. Off by default -- enable to test; if icons don't\nupdate live or anything misbehaves, set back to false (toggles still apply on\nthe next map open). See docs/windows_re_live_refresh_capture.md."),
+                  "Dev probe: log the world-map cursor coords (read-only) + the live view\nprojection (pan/zoom @ WorldMapArea+0x378/+0x380, virtual canvas) to confirm\nthe world->screen transform. Open the world map, move the cursor, then PAN\nand ZOOM. Logs to logs/MapForGoblins_wmprobe.log; off by default."),
+                B("dump_icon_textures", dumpIconTextures, "false",
+                  "Dev probe: hook the GFx image creator and log each worldmap icon image\n(sprite rect + backing GPU texture id) as [ICONTEX] when the map opens, to\nmap iconIds to their sprite-sheet sub-rects for runtime icon textures. Off by\ndefault."),
+                B("live_projection", liveProjection, "true",
+                  "Project markers with the engine's OWN world->map-space function (the\nlive WorldMapViewModel) instead of our baked LEGACY_CONV + affine + DLC\neyeball. Fixes hundreds of dungeon/underground misplacements via the game's\nreal LegacyConv fold. Falls back to the baked projection when the map is\nclosed or an area isn't placed by the game. On by default; set false to\nforce the old baked projection."),
+                B("dump_converters", dumpConverters, "false",
+                  "Dev one-shot RE check: when the world map is open, find the live\nCS::WorldMapViewModel and dump its 8 converter slots (origin/bias/scale/\narea/legacyConvNode @ VM+0xF8) + count to MapForGoblins.log as [CONV]. Open\nthe overworld, then base underground (m12), then the DLC/Realm of Shadows map\nto capture each page's converter (incl. the never-solved DLC constants).\nConfirms the world->map-space projection RE. Off by default."),
+                B("dump_native_pins", dumpNativePins, "false",
+                  "Dev one-shot RE check: when the world map is open, walk the native-pin\nicon manager (CSWorldMapPointMan std::map @ mgr+0x398, mgr=[er+0x3D6E9B0])\nand its sibling [er+0x3D6F558], dumping each built pin's key/ins-ptr + a\nfield window as [PINS] to MapForGoblins.log. Identifies WHAT native pins\nstill draw (graces/categories/objectives) + their source, to decide native-\npin suppression (overlay = sole icon source). Read-only. Off by default."),
+                B("overlay_markers_proto", overlayMarkersProto, "false",
+                  "Dev prototype (overlay-rendered markers): draw our own marker dot in\nthe ImGui overlay, projected onto the open world map via the live pan/zoom\n(WorldMapArea), to verify the world->screen affine. Starts the cursor probe\nif not already on. Open the F1 menu to tune scale/bias live. Off by default."),
+                B("fix_midsession_resolution", fixMidsessionResolution, "false",
+                  "EXPERIMENTAL no-restart fix for the mid-session resolution-change zoom\n(3D world + map stay zoomed after changing resolution in-game). On a swapchain\nresize, raw-pokes ER's render-output dims to the new size (the engine leaves\nthem stale). Same-aspect changes only (16:9<->16:9, no letterbox). Off by\ndefault; enable + test. If the zoom persists or anything misbehaves, set false\n(restarting ER after a resolution change is the safe fallback)."),
+                B("debug_render_dims", debugRenderDims, "false",
+                  "Dev diagnostic (mid-session resolution bug): every ~2s log ER's render-\noutput dims (active +0x118/+0x11c vs the live backbuffer) + dirty bits to\nMapForGoblins.log as [RENDIMS]. Change the resolution in-game, then read the\nlog: the entry that stays at the OLD resolution is the stale one. Off by default."),
+                IniEntry{"overlay_master_scale", IniType::F32, &cfg::overlayMasterScale, "1.0",
+                  "Master scale for ALL overlay map markers + cluster piles (multiplies the\nper-type scales). 1.0 = default. A resolution-relative base size is applied\nfirst, then ×master×type. Editable live in the F1 menu; persists on Save."},
+                IniEntry{"overlay_icon_scale", IniType::F32, &cfg::overlayIconScale, "1.2",
+                  "Scale for category marker ICONS (x master). 1.2 = default."},
+                IniEntry{"overlay_cluster_scale", IniType::F32, &cfg::overlayClusterScale, "1.0",
+                  "Scale for CLUSTER pile glyphs (x master). 1.0 = default."},
+                IniEntry{"grace_icon_scale", IniType::F32, &cfg::graceIconScale, "1.2",
+                  "Scale for GRACE markers only (x icon scale). 1.2 = default. For calibrating the\ngrace sprite size against the map. NOTE: grace size compounds with overlay_icon_scale."},
+                IniEntry{"grace_offset_x", IniType::F32, &cfg::graceOffsetX, "0.0",
+                  "Pixel X offset of the overlay grace draw — set non-zero to shift the imgui grace\nbeside the game's NATIVE grace pin for side-by-side comparison/calibration."},
+                IniEntry{"grace_offset_y", IniType::F32, &cfg::graceOffsetY, "0.0",
+                  "Pixel Y offset of the overlay grace draw (see grace_offset_x)."},
+                B("debug_cluster_anchors", debugClusterAnchors, "false",
+                  "Debug viz: per cluster pile, draw the anchor + lines to every member + the\nname + distance/threshold. Green = grace anchor, red CENTROID = anchor missing.\nSeparate from the distance rings (cluster_debug_radius). Off by default."),
+                B("debug_region_volumes", debugRegionVolumes, "false",
+                  "Debug viz: draw every MapNameOverride region volume on the open map page at\nits projected centre + its name; RED = the textId does NOT resolve in the FMG\n(the bug), cyan = resolves. Off by default."),
+                B("show_minimap", showMinimap, "false",
+                  "In-game minimap HUD: a small north-up minimap in a screen corner showing\nnearby goblin markers around the player during gameplay (not the pause-screen\nmap). OVERWORLD only for now (underground player position isn't reliable yet).\nFoundation/opt-in; off by default."),
+                IniEntry{"minimap_zoom", IniType::F32, &cfg::minimapZoom, "0.08",
+                  "Minimap zoom = pixels per world-unit. Higher = more zoomed-in (less area\nshown). 0.08 = default."},
+                IniEntry{"minimap_size", IniType::F32, &cfg::minimapSize, "130",
+                  "Minimap radius in pixels. 130 = default."},
+                IniEntry{"minimap_opacity", IniType::F32, &cfg::minimapOpacity, "0.85",
+                  "Minimap background disc opacity, 0..1. 0.85 = default."},
+                B("minimap_anchor_right", minimapAnchorRight, "true",
+                  "Minimap corner: anchor to the RIGHT edge (false = left). Default true."),
+                B("minimap_anchor_bottom", minimapAnchorBottom, "false",
+                  "Minimap corner: anchor to the BOTTOM edge (false = top). Default false."),
+                IniEntry{"minimap_offset_x", IniType::F32, &cfg::minimapOffsetX, "0",
+                  "Minimap X offset (px) from the anchored corner. 0 = default."},
+                IniEntry{"minimap_offset_y", IniType::F32, &cfg::minimapOffsetY, "0",
+                  "Minimap Y offset (px) from the anchored corner. 0 = default."},
             }},
         };
     }

@@ -6,7 +6,14 @@ endif()
 
 project( MapForGoblins
   VERSION   "1.0.18"
-  LANGUAGES CXX)
+  LANGUAGES CXX RC)
+
+# The VERSIONINFO resource (.rc) is preprocessed by clang-cl, which must find
+# <winver.h> from the xwin SDK (the CXX /imsvc dirs don't apply to the RC rule).
+if(DEFINED XWIN)
+  string(APPEND CMAKE_RC_FLAGS
+    " -I ${XWIN}/sdk/include/um -I ${XWIN}/sdk/include/shared -I ${XWIN}/sdk/include/ucrt")
+endif()
 
 if(NOT DEFINED VERSION_PRE)
   set(VERSION_PRE "pre")  # default for dev/snapshot; build.bat release passes -DVERSION_PRE=""
@@ -87,8 +94,13 @@ add_library( MapForGoblins SHARED
   src/from/params.hpp
   src/from/params.cpp
   src/from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp
+  src/from/paramdef/WORLD_MAP_LEGACY_CONV_PARAM_ST.hpp
+  src/goblin_legacy_fold.hpp
+  src/goblin_legacy_fold.cpp
   src/modutils.hpp
   src/modutils.cpp
+  src/goblin_log_archive.hpp
+  src/goblin_log_archive.cpp
   src/goblin/goblin_structs.hpp
   src/goblin/goblin_map_flags.hpp
   src/goblin/goblin_map_tiles.hpp
@@ -113,6 +125,7 @@ add_library( MapForGoblins SHARED
   ${GEN_DIR}/goblin_tile_tabs.cpp
   ${GEN_DIR}/goblin_major_regions.hpp
   ${GEN_DIR}/goblin_major_regions.cpp
+  ${GEN_DIR}/goblin_name_regions.cpp
   ${GEN_DIR}/goblin_geof_models.hpp
   ${GEN_DIR}/goblin_geof_models.cpp
   src/goblin_config_schema.hpp
@@ -137,6 +150,19 @@ add_library( MapForGoblins SHARED
   src/goblin_messages.cpp
   src/goblin_overlay.hpp
   src/goblin_overlay.cpp
+  src/goblin_projection.hpp
+  src/generated_shared/goblin_overlay_icons.hpp
+  src/generated_shared/goblin_overlay_icons.cpp
+  src/stb_image_impl.cpp
+  src/worldmap/marker_layer.hpp
+  src/worldmap/grace_layer.hpp
+  src/worldmap/grace_layer.cpp
+  src/worldmap/category_meta.hpp
+  src/worldmap/category_meta.cpp
+  src/worldmap/map_entry_layer.hpp
+  src/worldmap/map_entry_layer.cpp
+  src/worldmap/map_renderer.hpp
+  src/worldmap/map_renderer.cpp
   src/goblin_crashdump.cpp
   src/dllmain.cpp)
 
@@ -175,9 +201,17 @@ else()
 endif()
 configure_file(${CMAKE_SOURCE_DIR}/src/version.h.in
                ${CMAKE_BINARY_DIR}/generated/version.h @ONLY)
+# Win32 VERSIONINFO resource (CompanyName/FileDescription/versions) so the DLL
+# carries metadata → fewer antivirus false positives on the unsigned binary.
+configure_file(${CMAKE_SOURCE_DIR}/src/version.rc.in
+               ${CMAKE_BINARY_DIR}/generated/version.rc @ONLY)
+target_sources(MapForGoblins PRIVATE ${CMAKE_BINARY_DIR}/generated/version.rc)
+target_include_directories(MapForGoblins PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_include_directories(MapForGoblins PRIVATE ${CMAKE_BINARY_DIR}/generated)
 # Resolve bare `#include "goblin_map_data.hpp"` etc. to the active bake dir.
 target_include_directories(MapForGoblins PRIVATE ${GEN_DIR})
+# stb_image.h (single-header PNG decode for the embedded icon atlas).
+target_include_directories(MapForGoblins PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
 
 # MapForGoblins.ini is no longer copied: build.bat generates it per profile in
 # :package via mfg_inigen, and the DLL self-creates/repairs it at runtime

@@ -24,6 +24,7 @@ namespace goblin
         VkKey,       // -> uint32_t*  (parsed via parse_vk_code)
         GamepadMask, // -> uint16_t*  (parsed via parse_gamepad_combo)
         String,      // -> std::string*  (raw value, stored verbatim)
+        F32,         // -> float*  (parsed via std::stof)
     };
 
     struct IniEntry

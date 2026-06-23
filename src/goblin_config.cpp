@@ -59,6 +59,16 @@ namespace
         case IniType::String:
             *static_cast<std::string *>(e.target) = v;
             break;
+        case IniType::F32:
+        {
+            float f;
+            try { f = std::stof(v); }
+            catch (...) { f = 1.0f; }
+            if (f < 0.1f) f = 0.1f;
+            if (f > 5.0f) f = 5.0f;
+            *static_cast<float *>(e.target) = f;
+            break;
+        }
         }
     }
 
@@ -314,6 +324,8 @@ void goblin::save_all_bool_settings(const std::filesystem::path &ini_path)
                 ini[section.name][e.key] = *reinterpret_cast<std::string *>(e.target);
             else if (e.type == goblin::IniType::U8)
                 ini[section.name][e.key] = std::to_string(*reinterpret_cast<uint8_t *>(e.target));
+            else if (e.type == goblin::IniType::F32)
+                ini[section.name][e.key] = std::to_string(*reinterpret_cast<float *>(e.target));
         }
     }
 

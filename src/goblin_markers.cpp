@@ -14,7 +14,9 @@
 #include "goblin_inject.hpp"
 #include "goblin_messages.hpp"
 #include "modutils.hpp"
+#include "re_signatures.hpp"
 #include "goblin_legacy_conv.hpp"
+#include "goblin_legacy_fold.hpp"
 #include "goblin_map_data.hpp"
 
 #include <windows.h>
@@ -74,7 +76,7 @@ static void resolve_flag_api()
     try
     {
         g_is_event_flag = modutils::scan<bool(void *, uint32_t *)>(
-            { .aob = "48 83 EC 28 8B 12 85 D2" });
+            { .aob = goblin::sig::IS_EVENT_FLAG });
     }
     catch (...) { g_is_event_flag = nullptr; }
 
@@ -82,7 +84,7 @@ static void resolve_flag_api()
     {
         // mov rdi, [rip+disp]; test rdi, rdi — resolve disp to pointer slot.
         g_event_man_slot = modutils::scan<void *>(
-            { .aob = "48 8B 3D ?? ?? ?? ?? 48 85 FF ?? ?? 32 C0 E9",
+            { .aob = goblin::sig::EVENT_FLAG_MAN_SLOT,
               .relative_offsets = { {3, 7} } });
     }
     catch (...) { g_event_man_slot = nullptr; }
@@ -97,6 +99,47 @@ static bool is_flag_set(uint32_t flag_id)
     if (!event_man) return false;
     uint32_t id = flag_id;
     return g_is_event_flag(event_man, &id);
+}
+
+// ── Event-flag WRITER (SetEventFlag) ──
+// Same EventFlagMan singleton as the reader; signature mirrors the SetEventFlag
+// detour in goblin_debug_events (rcx=EventFlagMan*, rdx=uint32_t* id, r8b=value,
+// r9=pad). Resolving the entry independently of that observer hook means writing
+// works whether or not the debug-events feature installed its detour (calling the
+// entry just runs through that detour's tap harmlessly if it is installed).
+using SetEventFlagFn = uint64_t (*)(void *, uint32_t *, uint8_t, uint64_t);
+static SetEventFlagFn g_set_event_flag = nullptr;
+static bool g_set_flag_tried = false;
+
+static void resolve_set_flag()
+{
+    if (g_set_flag_tried) return;
+    g_set_flag_tried = true;
+
+    // EventFlag_C1 (SetEventFlag) entry. NOTE: the full Hexinton signature's TAIL
+    // (after the `41 0F B6 F8` value-capture: `8B 12 48 8B F1 85 D2 0F 84 ...`)
+    // differs in this game version, so we match only the stable prologue through
+    // the r8b value-capture (which distinguishes this SETTER from the getter and is
+    // distinctive enough to be unique). Resolved live to 0x1405d2240 here.
+    try
+    {
+        g_set_event_flag = modutils::scan<uint64_t(void *, uint32_t *, uint8_t, uint64_t)>(
+            { .aob = goblin::sig::SET_EVENT_FLAG });
+    }
+    catch (...) { g_set_event_flag = nullptr; }
+    spdlog::info("Flag WRITER: SetEventFlag={}", (void *)g_set_event_flag);
+}
+
+bool set_event_flag(uint32_t flag_id, uint8_t value)
+{
+    resolve_flag_api();   // resolves g_event_man_slot
+    resolve_set_flag();
+    if (!g_set_event_flag || !g_event_man_slot) return false;
+    void *event_man = *g_event_man_slot;
+    if (!event_man) return false;
+    uint32_t id = flag_id;
+    g_set_event_flag(event_man, &id, value, 0);
+    return true;
 }
 
 
@@ -164,13 +207,12 @@ static uintptr_t marker_resolve(const char *aob)
 }
 static uintptr_t marker_chain_slot()
 {
-    static uintptr_t s = marker_resolve("48 8B 0D ?? ?? ?? ?? 48 8B 49 30 48 8D 55 5F");
+    static uintptr_t s = marker_resolve(goblin::sig::MARKER_CHAIN_SLOT);
     return s;
 }
 static uintptr_t marker_container_vtable()
 {
-    static uintptr_t s = marker_resolve(
-        "48 8D 05 ?? ?? ?? ?? 48 89 07 48 8D 5F 10 48 8D 05 ?? ?? ?? ??");
+    static uintptr_t s = marker_resolve(goblin::sig::MARKER_ARRAY_CTOR);
     return s;
 }
 
@@ -378,7 +420,22 @@ static bool entry_world_coords(const generated::MapEntry &e, float &wx, float &w
         wz = static_cast<float>(e.data.gridZNo) * 256.0f + e.data.posZ;
         return true;
     }
-    // Dungeon: lookup (srcArea, srcGridX) in conv table (takes first match).
+    // Dungeon: fold to the overworld via the LIVE WorldMapLegacyConvParam
+    // (full-block key + chained + [50,88] terminal). Falls back to the baked
+    // LEGACY_CONV when the param isn't resident yet.
+    {
+        auto fr = goblin::legacy_fold::fold(area, e.data.gridXNo, e.data.gridZNo,
+                                            e.data.posX, e.data.posZ);
+        if (fr.matched)
+        {
+            wx = static_cast<float>(fr.gx) * 256.0f + fr.posX;
+            wz = static_cast<float>(fr.gz) * 256.0f + fr.posZ;
+            return true;
+        }
+        if (goblin::legacy_fold::available())
+            return false;  // resident but unmappable
+    }
+    // BAKED fallback: lookup (srcArea, srcGridX) in conv table (takes first match).
     for (size_t i = 0; i < generated::LEGACY_CONV_COUNT; ++i)
     {
         const auto &c = generated::LEGACY_CONV[i];
@@ -438,8 +495,11 @@ static std::vector<NearbyEntry> find_nearby_overworld(float mapX, float mapZ, fl
 // guard means a stale array is skipped, not fatal.
 static bool seh_copy(const void *src, void *dst, size_t n)
 {
-    __try { memcpy(dst, src, n); return true; }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    // clang-cl ELIDES __try/__except around a raw memcpy (proves it "can't fault"),
+    // so a stale src crashes instead of degrading. ReadProcessMemory is a kernel call
+    // it cannot elide — returns false on a bad/freed src. (See goblin_worldmap_probe.)
+    SIZE_T got = 0;
+    return ReadProcessMemory(GetCurrentProcess(), src, dst, n, &got) && got == n;
 }
 
 // Returns the number of marker slots written (beacons + stamps), or -1 if the
@@ -606,9 +666,23 @@ static int seh_dump_to_file_invoke()
 void hotkey_loop()
 {
     bool prev_down = false;
+    bool prev_f8 = false;
     while (true)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+        // Dev: draw-free icon find-by-name runtime confirm (F8), gated dump_icon_textures.
+        // Runs independently of the marker-dump hotkey. See goblin::probe_icon_find_runtime.
+        if (config::dumpIconTextures)
+        {
+            bool f8 = (GetAsyncKeyState(0x77) & 0x8000) != 0;  // VK_F8
+            if (f8 && !prev_f8)
+            {
+                try { goblin::probe_icon_find_runtime(); }
+                catch (...) { spdlog::error("[FIND2] probe threw"); }
+            }
+            prev_f8 = f8;
+        }
 
         if (!config::enableMarkerDump) { prev_down = false; continue; }
         SHORT state = GetAsyncKeyState(static_cast<int>(config::markerDumpKey));

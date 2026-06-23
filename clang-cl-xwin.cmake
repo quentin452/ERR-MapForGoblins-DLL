@@ -35,6 +35,11 @@ set(_extra "/arch:AVX2 /DFMT_CONSTEVAL=")
 set(CMAKE_C_FLAGS_INIT   "${_triple} ${_extra} ${_incs_str}")
 set(CMAKE_CXX_FLAGS_INIT "${_triple} ${_extra} ${_incs_str}")
 
+# llvm-rc needs the SDK include dirs to resolve <winver.h> for the VERSIONINFO
+# resource (src/version.rc.in → antivirus-FP metadata).
+set(CMAKE_RC_FLAGS_INIT
+    "-I ${XWIN}/sdk/include/um -I ${XWIN}/sdk/include/shared -I ${XWIN}/sdk/include/ucrt")
+
 # Library search paths for the linker.
 set(_libs
   "/libpath:${XWIN}/crt/lib/x86_64"

@@ -19,6 +19,7 @@
 #include "goblin_kindling.hpp"
 #include "goblin_map_data.hpp"
 #include "modutils.hpp"
+#include "re_signatures.hpp"
 #include "goblin_bench.hpp"
 
 #include <algorithm>
@@ -94,14 +95,14 @@ void resolve_flag_api()
     try
     {
         g_is_event_flag = modutils::scan<bool(void *, uint32_t *)>(
-            { .aob = "48 83 EC 28 8B 12 85 D2" });
+            { .aob = goblin::sig::IS_EVENT_FLAG });
     }
     catch (...) { g_is_event_flag = nullptr; }
 
     try
     {
         g_event_man_slot = modutils::scan<void *>(
-            { .aob = "48 8B 3D ?? ?? ?? ?? 48 85 FF ?? ?? 32 C0 E9",
+            { .aob = goblin::sig::EVENT_FLAG_MAN_SLOT,
               .relative_offsets = { {3, 7} } });
     }
     catch (...) { g_event_man_slot = nullptr; }
@@ -122,17 +123,15 @@ bool is_flag_set(uint32_t flag_id)
 // otherwise crash the entire refresh tick. Match the safety pattern in
 // goblin_collected.cpp:safe_write_byte.
 
+// NOTE: clang-cl ELIDES __try/__except around plain loads/stores (it proves the
+// access "can't fault" and drops the guard → bad pointers fault unhandled; see
+// goblin_worldmap_probe.cpp). So all the cross-memory access here goes through
+// Read/WriteProcessMemory — opaque kernel calls the optimizer cannot elide; an
+// invalid address returns false instead of crashing.
 bool safe_write_byte(uint8_t *addr, uint8_t val)
 {
-    __try
-    {
-        *addr = val;
-        return true;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER)
-    {
-        return false;
-    }
+    SIZE_T n = 0;
+    return WriteProcessMemory(GetCurrentProcess(), addr, &val, 1, &n) && n == 1;
 }
 
 // ── Liveness via the EcTestDistance condition objects ────────────────
@@ -178,16 +177,14 @@ static uintptr_t kindling_resolve(const char *aob)
 // store. Used to validate per-spirit cond objects ([cond+0] == this vtable).
 static uintptr_t distance_vft()
 {
-    static uintptr_t s = kindling_resolve(
-        "48 8D 05 ?? ?? ?? ?? 48 89 01 48 8D 05 ?? ?? ?? ?? 48 89 01 F6 C2 01 74 ?? "
-        "BA 40 00 00 00 E8 ?? ?? ?? ?? 90 48 8B C3 48 83 C4 30 5B C3 90 78 ??");
+    static uintptr_t s = kindling_resolve(goblin::sig::EC_TEST_DISTANCE_VFT);
     return s;
 }
 // WorldSfxMan singleton slot (was RVA 0x3D6F5F8) — "game world loaded"
 // indicator (the pointer there is NULL at the menu / loading screen).
 static uintptr_t world_sfx_man_slot()
 {
-    static uintptr_t s = kindling_resolve("48 8B 05 ?? ?? ?? ?? 48 8D 4D 98 48 89 4C 24 60");
+    static uintptr_t s = kindling_resolve(goblin::sig::WORLD_SFX_MAN_SLOT);
     return s;
 }
 
@@ -215,26 +212,22 @@ bool g_discovery_requested = false;
 
 static uintptr_t seh_read_qword(uintptr_t addr)
 {
-    __try
-    {
-        return *reinterpret_cast<const uintptr_t *>(addr);
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER)
-    {
-        return 0;
-    }
+    uintptr_t v = 0;
+    SIZE_T n = 0;
+    if (ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(addr), &v, sizeof(v), &n) &&
+        n == sizeof(v))
+        return v;
+    return 0;
 }
 
 static uint32_t seh_read_dword(uintptr_t addr)
 {
-    __try
-    {
-        return *reinterpret_cast<const uint32_t *>(addr);
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER)
-    {
-        return 0;
-    }
+    uint32_t v = 0;
+    SIZE_T n = 0;
+    if (ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(addr), &v, sizeof(v), &n) &&
+        n == sizeof(v))
+        return v;
+    return 0;
 }
 
 static uintptr_t eldenring_base()
@@ -278,28 +271,38 @@ static std::set<uint32_t> revalidate_conds(const std::map<uint32_t, uintptr_t> &
 }
 
 // Scan one VirtualAlloc'd region for the EcTestDistance vftable. Writes
-// matching addresses into `hits` (capped at `hits_max`). Plain C-style:
-// no C++ objects in scope, so MSVC accepts SEH around the raw deref.
-// Returns count of matches written.
+// matching addresses into `hits` (capped at `hits_max`). Returns count written.
+// Reads via chunked ReadProcessMemory (NOT a raw __try-guarded deref): clang-cl
+// elides SEH around plain loads, so a raw scan faults unhandled the moment it
+// hits an unmapped page mid-region (the 0x97Exx crash). RPM returns short/false
+// on a bad page instead of crashing. Bound the inner loop by BYTES ACTUALLY READ
+// (got), never the region size — reading past the buffer is the classic OOB bug.
 static size_t seh_scan_region_for_vft(uintptr_t base, size_t size,
                                        uintptr_t target_vft,
                                        uintptr_t *hits, size_t hits_max,
                                        size_t start_idx)
 {
     size_t out = start_idx;
-    __try
+    HANDLE proc = GetCurrentProcess();
+    static std::vector<uint8_t> buf;
+    constexpr size_t CHUNK = 1u << 20; // 1 MB
+    if (buf.size() < CHUNK) buf.resize(CHUNK);
+    for (size_t off = 0; off < size && out < hits_max; off += CHUNK)
     {
-        const uintptr_t *p = reinterpret_cast<const uintptr_t *>(base);
-        size_t n = size / 8;
+        size_t want = size - off;
+        if (want > CHUNK) want = CHUNK;
+        SIZE_T got = 0;
+        if (!ReadProcessMemory(proc, reinterpret_cast<LPCVOID>(base + off), buf.data(), want, &got) ||
+            got < sizeof(uintptr_t))
+            continue; // unreadable chunk — skip, keep scanning the rest
+        size_t n = got / sizeof(uintptr_t);
+        const uintptr_t *p = reinterpret_cast<const uintptr_t *>(buf.data());
         for (size_t i = 0; i < n && out < hits_max; i++)
-        {
             if (p[i] == target_vft)
-                hits[out++] = reinterpret_cast<uintptr_t>(p + i);
-        }
+                hits[out++] = base + off + i * sizeof(uintptr_t);
     }
-    __except (EXCEPTION_EXECUTE_HANDLER)
     {
-        // unmapped page mid-region — keep what we have, drop the rest
+        // (no SEH needed — RPM cannot fault the caller)
     }
     return out;
 }

@@ -4,6 +4,7 @@
 #include "goblin_map_data.hpp"
 #include "goblin_geof_models.hpp"
 #include "modutils.hpp"
+#include "re_signatures.hpp"
 #include "goblin_bench.hpp"
 
 #include <algorithm>
@@ -115,28 +116,22 @@ static uintptr_t resolve_slot(const char *aob)
 }
 static uintptr_t geom_flag_slot()  // GeomFlagSaveDataManager (was RVA 0x3D69D18)
 {
-    static uintptr_t s = resolve_slot(
-        "48 8B 3D ?? ?? ?? ?? 33 F6 48 85 FF 74 ?? 48 8B CF E8 ?? ?? ?? ?? 4C 8B 07");
+    static uintptr_t s = resolve_slot(goblin::sig::GEOM_FLAG_SLOT);
     return s;
 }
 static uintptr_t world_geom_man_slot()  // CSWorldGeomMan (was RVA 0x3D69BA8)
 {
     static uintptr_t s = resolve_slot(
-        "48 8B 0D ?? ?? ?? ?? 48 8D 53 10 E8 ?? ?? ?? ?? 4C 8B E8");
+        goblin::sig::WORLD_GEOM_MAN_SLOT);
     return s;
 }
 
 static bool safe_read(void *addr, void *out, size_t count)
 {
-    __try
-    {
-        memcpy(out, addr, count);
-        return true;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER)
-    {
-        return false;
-    }
+    // clang-cl ELIDES __try around a raw memcpy → use ReadProcessMemory (kernel call,
+    // not elidable; returns false on a bad/freed addr). See goblin_worldmap_probe.
+    SIZE_T got = 0;
+    return ReadProcessMemory(GetCurrentProcess(), addr, out, count, &got) && got == count;
 }
 
 // SEH-guarded single byte write. Returns true on success, false if the
@@ -146,16 +141,29 @@ static bool safe_read(void *addr, void *out, size_t count)
 // skipping the whole refresh cycle.
 static bool safe_write_byte(uint8_t *addr, uint8_t val)
 {
-    __try
-    {
-        *addr = val;
-        return true;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER)
-    {
-        return false;
-    }
+    // clang-cl ELIDES __try around a raw store → use WriteProcessMemory (kernel call,
+    // not elidable; returns false on a bad/read-only addr). See goblin_worldmap_probe.
+    SIZE_T n = 0;
+    return WriteProcessMemory(GetCurrentProcess(), addr, &val, 1, &n) && n == 1;
 }
+
+// The +0x08 table is a Dantelion2 DLFixedVector (RE: windows_geom_flag_savedata_
+// table_re_findings.md, commit 6d41b0e): inline contiguous, capacity 6300,
+// element stride 0x10 { u32 tile_id; u32 pad; void* block }, sorted by tile_id,
+// with the LIVE element count as a u64 at manager+0x189d0. So the valid elements
+// are exactly [0, count) — no 0x20000/stride-16/256-empty heuristic needed.
+//
+// This collapses the per-refresh ReadProcessMemory count from ~16,000 (2 RPM per
+// 16-byte slot across 128 KB) to 1 + 2·(#valid tiles) (~tens). On native Windows
+// RPM-on-self is a cheap kernel path (the old scan showed ~0 lag); under Wine
+// each RPM is a wineserver IPC round-trip (~10 µs), so the old scan cost ~153 ms
+// (37% wallclock) on Linux/Proton — this is a Linux-only win, no-op on Windows.
+// Block ptrs realloc on load/unload + the vector shifts on insert/evict, so a
+// known-blocks cache is unsafe; a full bulk re-read each refresh is the correct
+// cheap design (see findings §"Mutation model").
+static constexpr uintptr_t GEOF_VEC_OFF = 0x08;       // inline DLFixedVector buffer
+static constexpr uintptr_t GEOF_COUNT_OFF = 0x189d0;  // u64 element count
+static constexpr uint64_t GEOF_CAPACITY = 6300;       // 0x189c fixed capacity
 
 static void read_singleton_entries(uintptr_t slot,
                                     std::vector<GEOFEntry> &out)
@@ -164,78 +172,74 @@ static void read_singleton_entries(uintptr_t slot,
     if (!slot || !safe_read((void *)slot, &gf_ptr, 8) || !gf_ptr)
         return;
 
-    int tiles_found = 0, tiles_skipped = 0, consecutive_empty = 0;
-    for (int off = 0x08; off < 0x20000; off += 16)
+    uint64_t count = 0;
+    if (!safe_read((char *)gf_ptr + GEOF_COUNT_OFF, &count, 8))
+        return;
+    if (count == 0 || count > GEOF_CAPACITY)
+        return; // empty or an implausible count → treat as nothing this refresh
+
+    // One bulk RPM of the whole live region of the inline vector. On the rare
+    // failure (a straddled unmapped page — unlikely for inline manager memory)
+    // fall back to per-element 0x10 reads: still bounded by `count`, not 8192.
+    std::vector<uint8_t> tbl(static_cast<size_t>(count) * 0x10);
+    bool bulk_ok = safe_read((char *)gf_ptr + GEOF_VEC_OFF, tbl.data(), tbl.size());
+
+    for (uint64_t i = 0; i < count; i++)
     {
-        uint64_t id_val = 0, ptr_val = 0;
-        if (!safe_read((char *)gf_ptr + off, &id_val, 8))
-            break;
-        if (!safe_read((char *)gf_ptr + off + 8, &ptr_val, 8))
-            break;
-
-        if (id_val == 0 && ptr_val == 0)
+        uint32_t tile_id = 0;
+        uint64_t blk = 0;
+        if (bulk_ok)
         {
-            if (++consecutive_empty > 256)
-                break;
-            continue;
-        }
-        consecutive_empty = 0;
-
-        uint32_t tile_id = (uint32_t)id_val;
-        uint8_t area = (tile_id >> 24) & 0xFF;
-        if (area < 0x0A || area > 0x3D)
-        {
-            tiles_skipped++;
-            continue;
-        }
-        if (ptr_val < 0x10000 || ptr_val > 0x7FFFFFFFFFFF)
-        {
-            tiles_skipped++;
-            continue;
-        }
-        tiles_found++;
-
-        // Layout A: count @+8, entries @+16 | Layout B: count @+0, entries @+8
-        uint8_t header[16] = {};
-        if (!safe_read((void *)ptr_val, header, 16))
-            continue;
-
-        uint32_t count = 0;
-        uintptr_t entries_start = 0;
-
-        uint32_t countA = 0;
-        memcpy(&countA, header + 8, 4);
-        uint32_t countB = 0;
-        memcpy(&countB, header + 0, 4);
-
-        if (countA > 0 && countA < 100000)
-        {
-            count = countA;
-            entries_start = ptr_val + 16;
-        }
-        else if (countB > 0 && countB < 100000)
-        {
-            count = countB;
-            entries_start = ptr_val + 8;
+            memcpy(&tile_id, tbl.data() + i * 0x10 + 0, 4);
+            memcpy(&blk, tbl.data() + i * 0x10 + 8, 8);
         }
         else
+        {
+            // Per-element fallback (still O(count) RPM, not O(128KB/16)).
+            uint8_t elem[0x10] = {};
+            if (!safe_read((char *)gf_ptr + GEOF_VEC_OFF + i * 0x10, elem, 0x10))
+                continue;
+            memcpy(&tile_id, elem + 0, 4);
+            memcpy(&blk, elem + 8, 8);
+        }
+
+        // Belt-and-suspenders (the vector is dense + sorted, so these rarely fire).
+        uint8_t area = (tile_id >> 24) & 0xFF;
+        if (area < 0x0A || area > 0x3D)
+            continue;
+        if (blk < 0x10000)
             continue;
 
-        for (uint32_t ei = 0; ei < count; ei++)
-        {
-            uint8_t entry[8] = {};
-            if (!safe_read((void *)(entries_start + ei * 8), entry, 8))
-                break;
+        // Per-tile entry block (RE: the real format is the old "Layout A" —
+        // count @+0x08, entries @+0x10 contiguous, stride 8). The "Layout B"
+        // guess never fires; the engine only ever writes Layout A.
+        uint8_t header[16] = {};
+        if (!safe_read((void *)blk, header, 16))
+            continue;
+        uint32_t ecount = 0;
+        memcpy(&ecount, header + 8, 4);
+        if (ecount == 0 || ecount >= 100000)
+            continue;
 
-            uint8_t entry_flags = entry[1];
-            uint16_t geom_idx = entry[2] | (entry[3] << 8);
-            uint32_t model_hash = entry[4] | (entry[5] << 8) | (entry[6] << 16) | (entry[7] << 24);
+        // One bulk RPM of this tile's contiguous entry array.
+        std::vector<uint8_t> ents(static_cast<size_t>(ecount) * 8);
+        if (!safe_read((void *)(blk + 0x10), ents.data(), ents.size()))
+            continue;
+
+        for (uint32_t e = 0; e < ecount; e++)
+        {
+            const uint8_t *p = ents.data() + e * 8;
+            // Decode unchanged + byte-correct (RE: record =
+            // ((geom_idx | model_id<<17)<<15) | present → p[1] = (geom_idx&1)<<7,
+            // hence the 0x00/0x80 filter; aeg099_index_from_geof reconstructs it).
+            uint8_t entry_flags = p[1];
+            uint16_t geom_idx = p[2] | (p[3] << 8);
+            uint32_t model_hash = p[4] | (p[5] << 8) | (p[6] << 16) | (p[7] << 24);
 
             if (g_tracked_model_ids.count(model_hash) && (entry_flags == 0x00 || entry_flags == 0x80))
                 out.push_back({tile_id, entry_flags, geom_idx, model_hash});
         }
     }
-
 }
 
 // ─── Read geom state from CSWorldGeomMan (loaded tiles) ─────────────
@@ -260,9 +264,55 @@ struct WGMSnapshot
     std::vector<std::tuple<float, float, std::string>> alive_occupied;  // (x, z, name)
 };
 
+// PERF cache for read_wgm_snapshot. The per-instance work (MSB-part pointer chain →
+// wide name → family filter → 3 position floats) is the cost, and it grows unbounded as
+// loaded tiles accumulate (CSWorldGeomMan never unloads them mid-session) → 108ms→1089ms.
+// But that structure is STABLE per tile: only the two alive flags (+0x263/+0x26B) change
+// between refreshes. So cache the resolved tracked-family instances per tile (keyed +
+// validated by the tile's geom_ins vector begin/end pointers), and on a hit re-read ONLY
+// the alive flags. Correctness is preserved: alive state is still read live every refresh.
+struct WGMCacheInst
+{
+    void *geom_ins;
+    float px, py, pz;
+    std::string name;   // narrow AEG099_*/AEG463_* part name
+    bool track_alive;   // prefix is in g_tracked_prefixes → read alive flags
+};
+struct WGMCacheTile
+{
+    void *vec_begin = nullptr, *vec_end = nullptr;
+    std::vector<WGMCacheInst> insts;   // only tracked-FAMILY instances (structure)
+};
+static std::map<uint32_t, WGMCacheTile> g_wgm_cache;
+
+// Build the per-tile snapshot from a cached instance list: occupancy from the cached
+// structure, alive state re-read live (the only thing that changes between refreshes).
+static void wgm_snap_from_cache(const WGMCacheTile &ct, WGMSnapshot &snap)
+{
+    for (const WGMCacheInst &ci : ct.insts)
+    {
+        snap.occupied.emplace_back(ci.px, ci.py, ci.pz, ci.name);
+        if (!ci.track_alive) continue;
+        // The two alive flags are at +0x263 / +0x26B → read the 9-byte span in ONE RPM
+        // instead of two (halves the per-instance warm-path cost — the recurring read_wgm
+        // tax under Wine, where every RPM is a wineserver round-trip). f263 = bits[0],
+        // f26B = bits[8]; decode unchanged.
+        uint8_t fl[9] = {};
+        if (!safe_read((char *)ci.geom_ins + 0x263, fl, 9))
+            continue;
+        uint8_t f263 = fl[0], f26B = fl[8];
+        if ((f263 & 0x02) && !(f26B & 0x10))
+        {
+            snap.alive_names.insert(ci.name);
+            snap.alive_occupied.emplace_back(ci.px, ci.pz, ci.name);
+        }
+    }
+}
+
 static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
 {
     std::map<uint32_t, WGMSnapshot> result;
+    std::set<uint32_t> seen_tiles;   // for pruning unloaded tiles from the cache
 
     uintptr_t game_base = (uintptr_t)GetModuleHandleA("eldenring.exe");
     if (!game_base) return result;
@@ -338,23 +388,63 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
             safe_read((char *)block_data + 0x288 + 0x08, &vec_begin, 8);
             safe_read((char *)block_data + 0x288 + 0x10, &vec_end, 8);
 
+            seen_tiles.insert(block_id);
+
+            // CACHE HIT: same tile vector as last walk → reuse resolved structure, only
+            // re-read alive flags (done in wgm_snap_from_cache). Skips the expensive
+            // per-instance name/position resolution.
+            auto cit = g_wgm_cache.find(block_id);
+            bool cache_hit = (cit != g_wgm_cache.end() && cit->second.vec_begin == vec_begin &&
+                              cit->second.vec_end == vec_end && vec_begin);
+            if (cache_hit)
+            {
+                if (!cit->second.insts.empty())
+                    wgm_snap_from_cache(cit->second, result[block_id]);
+            }
+            // CACHE MISS: full resolve + rebuild this tile's cache entry.
+            else if (true)
+            {
+            WGMCacheTile ctile;
+            ctile.vec_begin = vec_begin;
+            ctile.vec_end = vec_end;
+
             if (vec_begin && vec_end && vec_end > vec_begin)
             {
                 size_t count = ((uintptr_t)vec_end - (uintptr_t)vec_begin) / 8;
                 if (count > 10000) count = 10000;
 
+                // Bulk-read the whole contiguous geom_ins POINTER vector in ONE RPM
+                // (instead of one RPM per element). Under Wine each RPM is a wineserver
+                // round-trip, so this cache-MISS path (the felt ~960ms freeze on tile
+                // load) is dominated by raw call count. Fallback: per-element on failure.
+                std::vector<void *> ins_ptrs(count, nullptr);
+                bool vec_bulk = safe_read(vec_begin, ins_ptrs.data(), count * 8);
+
                 for (size_t i = 0; i < count; i++)
                 {
                     void *geom_ins = nullptr;
-                    safe_read((char *)vec_begin + i * 8, &geom_ins, 8);
+                    if (vec_bulk)
+                        geom_ins = ins_ptrs[i];
+                    else
+                        safe_read((char *)vec_begin + i * 8, &geom_ins, 8);
                     if (!geom_ins) continue;
 
+                    // Bulk the geom_ins header (0..0x26C) in ONE RPM: covers the MSB-part
+                    // pointer (+0x48 = +0x18*3) and BOTH alive flags (+0x263 / +0x26B),
+                    // replacing 3 separate reads. geom_ins objects are >0x270, so this
+                    // never straddles past the alloc in practice; skip on a faulted read.
+                    uint8_t gi[0x26C] = {};
+                    if (!safe_read(geom_ins, gi, sizeof(gi))) continue;
                     void *msb_part_ptr = nullptr;
-                    safe_read((char *)geom_ins + 0x18 + 0x18 + 0x18, &msb_part_ptr, 8);
+                    memcpy(&msb_part_ptr, gi + 0x18 + 0x18 + 0x18, 8);
                     if (!msb_part_ptr) continue;
 
+                    // Bulk the MSB-part header (0..0x2C) in ONE RPM: the name pointer
+                    // (+0x00) and the runtime position (+0x20, 3 floats).
+                    uint8_t mp[0x2C] = {};
+                    if (!safe_read(msb_part_ptr, mp, sizeof(mp))) continue;
                     void *name_ptr = nullptr;
-                    safe_read(msb_part_ptr, &name_ptr, 8);
+                    memcpy(&name_ptr, mp + 0, 8);
                     if (!name_ptr) continue;
 
                     wchar_t name_buf[64] = {};
@@ -375,11 +465,12 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                     if (!is_tracked_family)
                         continue;
 
-                    // Runtime position lives in MsbPart +0x20 (3 floats)
+                    // Runtime position lives in MsbPart +0x20 (3 floats) — already in the
+                    // bulked MSB-part blob, no extra RPM.
                     float px = 0, py = 0, pz = 0;
-                    safe_read((char *)msb_part_ptr + 0x20 + 0, &px, 4);
-                    safe_read((char *)msb_part_ptr + 0x20 + 4, &py, 4);
-                    safe_read((char *)msb_part_ptr + 0x20 + 8, &pz, 4);
+                    memcpy(&px, mp + 0x20 + 0, 4);
+                    memcpy(&py, mp + 0x20 + 4, 4);
+                    memcpy(&pz, mp + 0x20 + 8, 4);
 
                     auto &snap = result[block_id];
 
@@ -388,13 +479,13 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
 
                     // Track alive state only for models we're actually hiding on the map
                     std::string prefix = prefix_from_object_name(narrow);
-                    if (!prefix.empty() && g_tracked_prefixes.count(prefix))
+                    bool track_alive = !prefix.empty() && g_tracked_prefixes.count(prefix) != 0;
+                    if (track_alive)
                     {
                         // +0x263 bit1: persistent alive flag (survives restart)
                         // +0x26B bit4: immediate collection flag (lost on tile reload)
-                        uint8_t f263 = 0, f26B = 0;
-                        safe_read((char *)geom_ins + 0x263, &f263, 1);
-                        safe_read((char *)geom_ins + 0x26B, &f26B, 1);
+                        // Both already in the bulked geom_ins blob (gi), no extra RPM.
+                        uint8_t f263 = gi[0x263], f26B = gi[0x26B];
 
                         bool alive = (f263 & 0x02) && !(f26B & 0x10);
                         if (alive)
@@ -403,8 +494,14 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                             snap.alive_occupied.emplace_back(px, pz, narrow_str);
                         }
                     }
+
+                    // Cache the resolved instance (structure) for next refresh's fast path.
+                    ctile.insts.push_back({geom_ins, px, py, pz, narrow_str, track_alive});
                 }
             }
+
+            g_wgm_cache[block_id] = std::move(ctile); // (re)build this tile's cache entry
+            } // end CACHE MISS
         }
 
         // In-order successor
@@ -428,6 +525,10 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
             current = parent;
         }
     }
+
+    // Prune cache entries for tiles no longer loaded (bounds memory across a session).
+    for (auto it = g_wgm_cache.begin(); it != g_wgm_cache.end();)
+        it = seen_tiles.count(it->first) ? std::next(it) : g_wgm_cache.erase(it);
 
     return result;
 }

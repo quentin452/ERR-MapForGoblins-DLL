@@ -14,6 +14,12 @@ struct GraceAnchor {
     float    wz;
     int32_t  placename_id;
     int32_t  tab_id;        // map sub-page (underground area 12 splits into 12000/12001/12002)
+    // Raw param tile + local (gridX*256+pos == wx/wz). Kept so the overlay can project
+    // an anchor through marker_world_pos (placing a cluster pile AT its grace).
+    uint8_t  gridX;
+    uint8_t  gridZ;
+    float    posX;
+    float    posZ;
 };
 
 extern const GraceAnchor GRACE_ANCHORS[];

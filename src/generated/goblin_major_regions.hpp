@@ -9,7 +9,8 @@ namespace goblin::generated {
 // LAST-RESORT cluster label. label_id = a FRESH PlaceName id whose string `name` is
 // injected into our PlaceName bank by setup_messages (the source textId is in the
 // region-banner FMG bank, unusable as a map-point label, so we re-home the string).
-struct MajorRegionAnchor { uint8_t area; float wx; float wz; int32_t label_id; const char *name; };
+// area+gridX+gridZ+posX/posZ = RAW (per-area) — projected at runtime by draw_region_labels.
+struct MajorRegionAnchor { uint8_t area, gx, gz; float px, pz; int32_t label_id; const char *name; };
 
 extern const MajorRegionAnchor MAJOR_REGION_ANCHORS[];
 extern const size_t            MAJOR_REGION_ANCHOR_COUNT;

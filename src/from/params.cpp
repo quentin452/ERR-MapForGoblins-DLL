@@ -3,6 +3,7 @@
 #include <thread>
 
 #include "../modutils.hpp"
+#include "../re_signatures.hpp"
 #include "params.hpp"
 
 using namespace std;
@@ -12,7 +13,7 @@ from::params::ParamList **from::params::param_list_address = nullptr;
 void from::params::initialize()
 {
     param_list_address = modutils::scan<ParamList *>({
-        .aob = "48 8B 0D ?? ?? ?? ?? 48 85 C9 0F 84 ?? ?? ?? ?? 45 33 C0 BA 90",
+        .aob = goblin::sig::SOLO_PARAM_LIST,
         .relative_offsets = {{3, 7}},
     });
 

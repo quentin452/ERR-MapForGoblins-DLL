@@ -36,6 +36,12 @@ namespace goblin
     {
         extern uint8_t loadDelay;
         extern bool requireMapFragments;
+        extern bool collectedGraying;
+        extern bool hideCollected;
+        extern bool clusterDebugRadius;
+        extern bool showRegionLabels; // overlay map: draw major-region names (Limgrave, Caelid, ...)
+        extern bool nativeItemIcons;  // overlay map: real game item icon (GPU harvest) when resident
+        extern bool diagLootFlags;    // one-shot [LOOTDIAG]: dump all candidate pickup flags per loot lot
         extern bool debugLogging;
         extern bool showAll;  // master switch: show every category (see
                               // is_category_enabled) except those listed below
@@ -54,42 +60,30 @@ namespace goblin
         extern bool hideKilledBosses;  // true=hide killed icons, false=green checkmark
 
         // Compatibility
-        extern bool liveLootFlags;  // read live ItemLotParam getItemFlagId at runtime
-                                    // → loot markers hide on the actual light-point
-                                    // pickup for the current regulation (Randomizer-safe)
         extern bool liveLootLabels; // read live ItemLotParam item+category at runtime
                                     // → loot marker name shows the item the lot now
                                     // gives (Randomizer-safe). Needs full-band FMG copy.
-        extern bool liveLootIcons;  // re-icon & re-gate loot markers by the LIVE item's
-                                    // category at inject (so a randomized item shows its
-                                    // own icon under its own show_* toggle).
+                                    // (live_loot_flags/icons removed in Phase 2b — native-only.)
         extern bool anonymousLoot;  // spoiler-free mode: every loot marker shows a
                                     // gray "?" icon + a generic localized label instead
                                     // of the real item (blind randomizer runs).
-        extern bool projectDungeons; // remap minor-dungeon entries (catacombs/caves/
-                                    // tunnels/hero's graves — areaNo with no in-game
-                                    // map page) onto the overworld via the game's own
-                                    // WorldMapLegacyConvParam (baked LEGACY_CONV), so
-                                    // their icons become visible near the entrance.
 
         // ── ERR Markers ─────────────────────────────────────────────────
-        // Patches to ERR's pre-placed WorldMapPointParam entries (camps,
-        // merchants, field bosses, dungeon entrances). Each `patch*` flag
-        // decides whether we rewrite that category's flags so the marker
-        // appears/hides in sync with map-fragment discovery and (for
-        // dungeons) boss completion. `false` = leave the row alone — the
-        // icon still appears with whatever flags ERR ships.
-        extern bool patchOverworldBossIcons;
-        extern bool patchDungeonBossIcons;
-        extern bool patchCampIcons;
-        extern bool patchMerchantIcons;
-        // Cosmetic options layered on top of the patch flags above. Each
-        // requires its corresponding `patch*` flag to be true to take
-        // effect (we only touch the icon when we're already rewriting
-        // the row).
-        extern bool redifyBossIcons;            // overworld bosses: red icon + auto-hide on kill
-        extern bool redifyDungeonIcons;         // dungeon entrances: red icon
-        extern bool hideDungeonIconsOnClear;    // dungeon entrances: hide on boss kill
+        extern bool redifyBossIcons;  // overlay: boss markers drawn red + auto-hide on kill
+
+        // Grace rendering: when graceOverlay is on, the overlay draws ALL graces itself
+        // (discovered = full colour, undiscovered = grey) instead of the hybrid (native draws
+        // discovered). graceGpuSprite picks the icon source: false = baked atlas (clean, constant),
+        // true = the live engine sprite (SB_ERR_Grace, time-of-day tinted). Needs native-pin
+        // suppression to avoid doubling discovered graces.
+        extern bool graceOverlay;
+        extern bool graceGpuSprite;
+
+        // Suppress the game's native discovered-grace map pins (so the overlay is the sole grace
+        // source, paired with graceOverlay). Hooks the WarpPinData builder (RE e4b3f6a). PHASE A:
+        // when on, the hook installs + LOGS each grace pin build ([WARPPIN]) to confirm we can
+        // identify discovered ones — actual suppression is gated behind this once verified.
+        extern bool graceSuppressNative;
 
         // Marker dump (hotkey → dump beacon/stamp coords to file)
         extern bool enableMarkerDump;
@@ -109,11 +103,64 @@ namespace goblin
         // offsets / marker-space). See goblin_worldmap_probe.{hpp,cpp}.
         extern bool debugWorldmapProbe;
 
-        // EXPERIMENTAL live world-map icon refresh. Hooks the engine's placed-
-        // map-point (re)build (FUN_140a82a80) so a section/category toggle re-renders
-        // icons WHILE the map is open instead of only on the next open. Off by
-        // default; needs in-game validation. See docs/windows_re_live_refresh_capture.md.
-        extern bool liveRefreshWorldMap;
+        // Use the engine's own live world->map-space projection (call the native
+        // WorldMapViewModel) instead of our baked LEGACY_CONV + affine + DLC eyeball.
+        // Fixes dungeon/underground marker placement (proper LegacyConv fold). Falls
+        // back to baked when the map is closed / an area isn't placed by the game.
+        extern bool liveProjection;
+
+        // Dev probe: hook CSScaleformImageCreator::CreateImage and log each worldmap
+        // icon image (sprite rect + backing GPU texture) to crack the iconId↔image
+        // mapping for runtime icon textures. See goblin_inject.cpp icon-texture probe.
+        extern bool dumpIconTextures;
+
+        // Dev one-shot: find the live CS::WorldMapViewModel + dump its converter
+        // array (VM+0xF8) — confirms the world->map-space projection RE before we
+        // wire it. See goblin_worldmap_probe.cpp dump_converters_once.
+        extern bool dumpConverters;
+
+        // Dev one-shot: walk the native-pin icon manager (CSWorldMapPointMan
+        // [er+ICON_MGR_SLOT_RVA] std::map @+0x398) and dump each built pin's key/ins
+        // to MapForGoblins.log as [PINS] — identifies WHAT native pins exist + their
+        // source before we suppress them (overlay = sole icon source). Read-only
+        // (ReadProcessMemory). See goblin_worldmap_probe.cpp dump_native_pins.
+        extern bool dumpNativePins;
+
+        // Dev prototype: draw overlay-rendered marker dots projected onto the open
+        // world map (verifies the world->screen affine). See goblin_overlay.cpp +
+        // goblin_worldmap_probe::get_live_view.
+        extern bool overlayMarkersProto;
+
+        // Dev: log ER's render-output dims each ~2s ([RENDIMS]) to diagnose the
+        // mid-session resolution-change zoom corruption. Read-only.
+        extern bool debugRenderDims;
+
+        // EXPERIMENTAL: on a swapchain resize, raw-poke ER's stale render-output dims
+        // to the new size so a mid-session resolution change doesn't leave the world
+        // zoomed (no restart needed). Same-aspect only. Default off.
+        extern bool fixMidsessionResolution;
+
+        // Overlay marker sizes. Final = resolution-base × master × type-scale.
+        extern float overlayMasterScale;   // all overlay markers + piles
+        extern float overlayIconScale;     // category marker icons
+        extern float overlayClusterScale;  // cluster pile glyphs
+        extern float graceIconScale;       // grace markers only (calibration)
+        extern float graceOffsetX, graceOffsetY;  // overlay grace draw px offset (native-vs-imgui compare)
+
+        // Debug viz: cluster pile anchor + member lines + name + d/thr (own toggle).
+        extern bool debugClusterAnchors;
+        // Debug viz: draw each MapNameOverride region volume + name (red = unresolved).
+        extern bool debugRegionVolumes;
+
+        // In-game minimap HUD (corner, north-up, overworld-only). Opt-in.
+        extern bool showMinimap;
+        extern float minimapZoom;     // px per world-unit
+        extern float minimapSize;     // radius px
+        extern float minimapOpacity;  // background opacity 0..1
+        extern bool minimapAnchorRight;
+        extern bool minimapAnchorBottom;
+        extern float minimapOffsetX;
+        extern float minimapOffsetY;
 
         // In-game per-section visibility (the 7 display groups). The section_*
         // bools are the persisted runtime state, driven live by the overlay menu
@@ -149,6 +196,10 @@ namespace goblin
         // Quest Browser per-step progress: one '0'/'1' char per global step index
         // (author order in goblin_quest_steps). Auto-grown; persisted on Save.
         extern std::string questProgress;
+
+        // In-world region chips: one '0'/'1' char per major-region anchor (anchor order;
+        // '0' = region hidden). Managed by the overlay map; persisted on Save.
+        extern std::string regionToggles;
 
         // Quest Browser: grey out + tag a questline ([unfinishable]/[concluded])
         // when the overlay reads its NPC's death/conclusion fail_flag as set.

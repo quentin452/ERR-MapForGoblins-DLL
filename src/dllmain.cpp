@@ -1,7 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <filesystem>
 #include <memory>
-#include <spdlog/sinks/daily_file_sink.h>
+#include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <thread>
@@ -9,6 +9,8 @@
 
 #include "from/params.hpp"
 #include "modutils.hpp"
+#include "re_signatures.hpp"
+#include "goblin_log_archive.hpp"
 
 #include "goblin_collected.hpp"
 #include "goblin_config.hpp"
@@ -67,12 +69,8 @@ static void safe_fragment_eviction_seh()
 {
     __try
     {
-        goblin::refresh_fragment_eviction();
-        goblin::refresh_royal_eviction();  // after frag-evict so the post-burn hide wins
-        goblin::refresh_quest_npc_eviction();  // quest-aware quest-NPC gating (opt-in)
-        goblin::refresh_cluster_depletion();   // green icon when a cluster is fully collected
-        goblin::refresh_category_census();     // per-category uncollected counts (only while menu open)
-        goblin::refresh_quest_finishable();    // Quest Browser: grey out unfinishable lines
+        goblin::refresh_category_census();  // per-category uncollected counts (overlay)
+        goblin::refresh_quest_finishable(); // Quest Browser: grey out unfinishable lines
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
     {
@@ -98,12 +96,10 @@ static void init_modutils()         { modutils::initialize(); }
 static void init_from_params()      { from::params::initialize(); }
 static void init_collected()        { goblin::collected::initialize(); }
 static void init_kindling()         { goblin::kindling::initialize(); }
-static void init_inject_entries()   { goblin::inject_map_entries(); }
-static void init_apply_map_logic()  { goblin::apply_map_logic(); }
 static void init_tutorial_popup()   { goblin::inject_tutorial_popup_rows(); }
 static void init_setup_messages()   { goblin::setup_messages(); }
-static void init_live_refresh()     { goblin::install_live_refresh_hook(); }
-static void init_live_loot()        { goblin::refresh_loot_from_itemlot(); }
+static void init_icon_tex_probe()   { goblin::install_icon_texture_probe(); }
+static void init_grace_suppress()   { goblin::install_grace_suppression_hook(); }
 
 static void safe_init_step(InitFn fn, const char *name)
 {
@@ -115,8 +111,10 @@ static void setup_logger(std::filesystem::path log_file)
 {
     auto logger = std::make_shared<spdlog::logger>("mapforgoblins");
     logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%n] %^[%l]%$ %v");
+    // Truncate: one fresh file per session. Previous sessions are preserved by the
+    // log-archive lifecycle (zipped to logs/archive/ at startup), so no append needed.
     logger->sinks().push_back(
-        std::make_shared<spdlog::sinks::daily_file_sink_st>(log_file.string(), 0, 0, false, 5));
+        std::make_shared<spdlog::sinks::basic_file_sink_st>(log_file.string(), true));
     logger->flush_on(spdlog::level::info);
 
 #if _DEBUG
@@ -142,27 +140,74 @@ static std::filesystem::path g_mod_folder;
 static void setup_mod()
 {
     safe_init_step(&init_modutils,    "modutils::initialize");
-    safe_init_step(&init_from_params, "from::params::initialize");
+    {
+        GOBLIN_BENCH("init.from_params");
+        safe_init_step(&init_from_params, "from::params::initialize");
+    }
 
-    spdlog::info("Waiting {}s for game init...", goblin::config::loadDelay);
-    std::this_thread::sleep_for(std::chrono::seconds(goblin::config::loadDelay));
+    // AOB signature health check — logs PASS/FAIL for every centralized signature
+    // (src/re_signatures.hpp). After a game update, a FAIL line names exactly which
+    // signature broke. Cheap, read-only; runs once at init.
+    {
+        GOBLIN_BENCH("init.signatures");
+        safe_init_step(&goblin::sig::resolve_all_signatures, "AOB signature health check");
+    }
+
+    // Robust init wait: POLL for the WorldMapPointParam table (the real dependency
+    // of inject_map_entries) instead of sleeping a fixed load_delay — on a slow PC
+    // the params can take well over 5s to load, and a too-short fixed delay makes
+    // the inject find nothing / init incorrectly. We still honor load_delay as a
+    // MINIMUM total wait (settle margin + backward-compat), and cap the poll so we
+    // never hang forever if the probe never goes ready.
+    {
+        using namespace std::chrono;
+        GOBLIN_BENCH("init.param_poll");
+        constexpr int POLL_MS = 200;
+        constexpr int HARD_CAP_S = 180;  // never wait longer than this
+        auto t0 = steady_clock::now();
+        spdlog::info("Waiting for WorldMapPointParam to load (min {}s, cap {}s)...",
+                     goblin::config::loadDelay, HARD_CAP_S);
+        bool ready = false;
+        for (int waited = 0; waited < HARD_CAP_S * 1000; waited += POLL_MS)
+        {
+            if (goblin::world_map_param_ready()) { ready = true; break; }
+            std::this_thread::sleep_for(milliseconds(POLL_MS));
+        }
+        auto elapsed = duration_cast<milliseconds>(steady_clock::now() - t0).count();
+        if (ready)
+            spdlog::info("WorldMapPointParam ready after {} ms", elapsed);
+        else
+            spdlog::warn("WorldMapPointParam not ready after {}s cap — proceeding "
+                         "anyway (init may degrade)", HARD_CAP_S);
+        // Honor load_delay as a minimum total wait (settle + old behaviour).
+        auto min_ms = static_cast<long long>(goblin::config::loadDelay) * 1000;
+        if (elapsed < min_ms)
+            std::this_thread::sleep_for(milliseconds(min_ms - elapsed));
+    }
 
     {
         GOBLIN_BENCH("init.heavy.total");
         safe_init_step(&init_collected,       "collected::initialize");
         safe_init_step(&init_kindling,        "kindling::initialize");
-        safe_init_step(&init_inject_entries,  "inject_map_entries");
-        safe_init_step(&init_apply_map_logic, "apply_map_logic");
+        // Snapshot the real graces from the LIVE WorldMapPointParam — the ImGui overlay
+        // draws from this (no baked grace data).
+        safe_init_step(&goblin::capture_live_graces, "capture_live_graces");
+        // Seed the per-category visibility / cluster / threshold + master gates from
+        // config — the overlay reads these.
+        safe_init_step(&goblin::seed_runtime_gates, "seed_runtime_gates");
+        // The ImGui overlay is the sole world map (the native WorldMapPointParam
+        // injection was removed — no native page-build = no freeze, no double-draw).
         safe_init_step(&init_tutorial_popup,  "inject_tutorial_popup_rows");
         safe_init_step(&init_setup_messages,  "setup_messages");
-        safe_init_step(&init_live_loot,       "refresh_loot_from_itemlot");
-        // Queue the experimental live-refresh hook (no-op unless config-enabled);
-        // must precede enable_hooks() below, which applies all queued hooks.
-        safe_init_step(&init_live_refresh,    "install_live_refresh_hook");
+        // Queue the live-refresh hook (FUN_140a82a80) — kept for the native-pin
+        // suppression path; no-op until enabled.
+        safe_init_step(&init_icon_tex_probe,  "install_icon_texture_probe");
+        safe_init_step(&init_grace_suppress,  "install_grace_suppression_hook");
     }
 
     try
     {
+        GOBLIN_BENCH("init.enable_hooks");
         modutils::enable_hooks();
     }
     catch (const std::exception &e)
@@ -179,11 +224,16 @@ static void setup_mod()
     if (GetModuleHandleA("ersc.dll"))
         spdlog::info("Seamless Co-op detected (ersc.dll)");
 
-    if (goblin::config::enableMarkerDump)
+    // hotkey_loop also services the F8 icon find-by-name dev probe (gated dump_icon_textures),
+    // so start it for EITHER flag.
+    if (goblin::config::enableMarkerDump || goblin::config::dumpIconTextures)
     {
         goblin::markers::set_output_path(g_mod_folder / "logs" / "MapForGoblins_markers.log");
         std::thread(goblin::markers::hotkey_loop).detach();
-        spdlog::info("Marker dump hotkey: VK 0x{:X}", goblin::config::markerDumpKey);
+        if (goblin::config::enableMarkerDump)
+            spdlog::info("Marker dump hotkey: VK 0x{:X}", goblin::config::markerDumpKey);
+        if (goblin::config::dumpIconTextures)
+            spdlog::info("[FIND2] icon find-by-name probe armed on F8 (open inventory, press F8)");
     }
 
     // Thread 7 — opt-in coverage-gap observers (SetEventFlag / AddItemFunc). Each
@@ -195,8 +245,9 @@ static void setup_mod()
                                          goblin::config::debugItemGrants,
                                          goblin::config::debugFlagCapture);
 
-    if (goblin::config::debugWorldmapProbe)
-        goblin::worldmap_probe::initialize(g_mod_folder / "logs" / "MapForGoblins_wmprobe.log");
+    // The overlay IS the map now (native injection removed), so the probe loop always runs
+    // — it publishes the active cursor + live view the overlay renders against.
+    goblin::worldmap_probe::initialize(g_mod_folder / "logs" / "MapForGoblins_wmprobe.log");
 
     // The watcher is the single owner of the WorldMapPointParam state — it
     // applies the overlay menu's master-off / per-section / per-category /
@@ -260,6 +311,21 @@ static void setup_mod()
         catch (...)
         {
         }
+
+        // Periodic [BENCH] session report. DLL_PROCESS_DETACH does NOT fire under
+        // Proton/Wine (the game hard-terminates → no clean unload, confirmed: no
+        // deinit/shutdown line ever reaches the log), so an exit-time dump is
+        // impossible. Instead snapshot the aggregate every 30s; spdlog flushes per
+        // line, so the log always ends with a recent full report even on a hard kill.
+        {
+            static auto last_report = std::chrono::steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
+            if (now - last_report >= std::chrono::seconds(30))
+            {
+                goblin::bench::Registry::instance().dump_report();
+                last_report = now;
+            }
+        }
     }
 }
 
@@ -267,10 +333,18 @@ bool WINAPI DllMain(HINSTANCE dll_instance, unsigned int fdw_reason, void *lpv_r
 {
     if (fdw_reason == DLL_PROCESS_ATTACH)
     {
+        // Stamp the load instant so the [BENCH] session report (dumped at detach)
+        // can express each timer's cost as a share of total DLL wallclock.
+        goblin::bench::Registry::instance().mark_load();
+
         wchar_t dll_filename[MAX_PATH] = {0};
         GetModuleFileNameW(dll_instance, dll_filename, MAX_PATH);
         auto folder = std::filesystem::path(dll_filename).parent_path();
         g_mod_folder = folder;
+
+        // Log lifecycle: zip the PREVIOUS session's logs into logs/archive/ and start
+        // clean. MUST run before any logger opens its file. Keep the newest 20 archives.
+        goblin::log_archive::archive_and_rotate(folder / "logs", 20);
 
         setup_logger(folder / "logs" / "MapForGoblins.log");
 
@@ -310,6 +384,9 @@ bool WINAPI DllMain(HINSTANCE dll_instance, unsigned int fdw_reason, void *lpv_r
         {
             spdlog::error("Error deinitializing: {}", e.what());
         }
+        // Full [BENCH] session summary (avg/min/max/total per label + %wall) before
+        // the logger closes — one greppable block instead of scraping per-line timings.
+        goblin::bench::Registry::instance().dump_report();
         spdlog::shutdown();
     }
     return true;

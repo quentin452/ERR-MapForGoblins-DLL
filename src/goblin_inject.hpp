@@ -9,6 +9,41 @@ namespace goblin
 {
     void inject_map_entries();
 
+    // Seed per-category visibility / cluster opt-in / threshold + master gate from
+    // config. Runs in BOTH modes (inject_map_entries also seeds, but is skipped when
+    // native_map_injection is off, so the overlay needs this independent path).
+    void seed_runtime_gates();
+
+    // Nearest-grace cluster key for a marker (source area + raw grid/pos), matching
+    // the native by-location clustering. -1 = no anchor (draw exact). out_pname (opt)
+    // = the group's region PlaceName id for the pile label.
+    int marker_cluster_key(uint8_t area, uint8_t gridX, uint8_t gridZ, float posX,
+                           float posZ, int *out_pname = nullptr);
+
+    // Player + grace position in the RAW per-area frame (NO projection) — for overlap-free
+    // distance-adaptive clustering (gate on same raw area; underground sub-maps stay
+    // distinct via gridX*256). false during a load / on probe failure / bad key.
+    bool get_player_raw_pos(int &out_area, float &wx, float &wz);
+    bool grace_anchor_raw(int key, int &out_area, float &wx, float &wz);
+
+    // Region PlaceName id for a marker via the game's MapNameOverride volumes (point-in-
+    // volume containment in the marker's MSB-local frame). 0 = no volume here. The reliable
+    // location-name source for tooltips + cluster labels (cities, region borders).
+    int region_name_pname(uint8_t area, uint8_t gx, uint8_t gz, float posX, float posZ);
+
+    // Project a grace anchor (GRACE_ANCHORS index = a marker's cluster_key) to unified
+    // world coords, so a cluster pile can be drawn AT its grace. False on a bad key.
+    bool grace_anchor_world(int key, int &out_area, float &wx, float &wz);
+    // Map sub-page (tabId) of a grace anchor by its GRACE_ANCHORS index (cluster_key).
+    // Used for underground distance-adaptive (same-sub-page = detail). -1 = bad key.
+    int grace_anchor_tab(int key);
+    // The player's current sub-page (tabId) from the reliable MapId tile. -1 = overworld
+    // / unresolved. Underground distance-adaptive uses this (not the garbage float).
+    int player_map_tab();
+    // Raw tile (gridX/gridZ) of a grace anchor by index — for underground TILE-distance
+    // distance-adaptive (reliable tile, garbage float). false = bad key.
+    bool grace_anchor_tile(int key, int &out_gx, int &out_gz);
+
     // Cluster label census: (PlaceName textId, label) for each cluster the inject
     // built. The label is "<Region> (<count>)" (region via cluster_region_label) or
     // just "<count>" if the region is unknown. setup_messages injects it as the
@@ -30,56 +65,109 @@ namespace goblin
     // out_gx/out_gz (optional) = the player's reliable map TILE (from MapId, valid
     // even underground where the +0x70 local float is leaf-block-local garbage) —
     // used for tile-distance proximity in non-256 frames (area 12 / DLC underground).
+    // out_group (optional) = the player's overlay marker GROUP (marker_group_from of the
+    // raw + projected area): 0 base-OW, 1 base-UG, 2 DLC-OW, 3 DLC-UG → which map page the
+    // player is on (the minimap / distance-adaptive use it to pick the player's markers).
     bool get_player_map_pos(int &out_area, float &world_x, float &world_z,
-                            int *out_gx = nullptr, int *out_gz = nullptr);
+                            int *out_gx = nullptr, int *out_gz = nullptr,
+                            int *out_group = nullptr);
+
+    // Unified overworld marker-space coord for an arbitrary baked marker (projects
+    // legacy dungeons to area-60 via LEGACY_CONV, then world = grid*256 + local).
+    // Used by the overlay-rendered-markers prototype to place graces etc.
+    // conv_underground=true also unifies base underground (area 12) into overworld
+    // map-space (the underground map shares it; overlay draws it on the UG layer).
+    bool marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,
+                          int &out_area, float &world_x, float &world_z,
+                          bool conv_underground = false);
+
+    // Overlay marker GROUP (which map page it belongs to) from the ORIGINAL areaNo + the
+    // PROJECTED area (`out_area` from marker_world_pos): 0 base-overworld, 1 base-underground,
+    // 2 DLC-overworld, 3 DLC-underground. DLC by the final page (61 / 40-43); UNDERGROUND by
+    // the original areaNo (12 / 40-43) — area 12 projects to overworld map-space (pg 60) so it
+    // must gate by its SOURCE layer, not the final page. ONE place so the grace + map-entry
+    // layers and the player-pos debug gate identically. The renderer draws only open_grp.
+    inline int marker_group_from(uint8_t orig_area, int projected_area)
+    {
+        int pg = projected_area & 63;
+        // The DLC map has NO separate underground sub-page — DLC areas 40-43 share the
+        // ONE Land-of-Shadow page with area 61 (verified in-game: Gravesite Plain and the
+        // "DLC underground" areas render on the same page, no depth toggle). So they group
+        // as plain DLC, NOT DLC-underground. Only base-game area 12 is a true underground
+        // layer. (group 3 = DLC-underground is therefore never produced → the DLC eyeball
+        // projection it gated is dead.)
+        bool isug = (orig_area == 12);
+        bool isdlc = (pg == 61) || (orig_area >= 40 && orig_area <= 43);
+        return (isdlc ? 2 : 0) | (isug ? 1 : 0);
+    }
+
+    // Map-fragment discovery flag for a marker, on the tile the native injection gates
+    // on (projects overworld dungeons to area 60 first, like legacy GetMapFragment).
+    // 0 = no fragment. Use this (not the raw-tile map_fragment_flag) for the overlay
+    // require_map_fragments gate — the raw tile misses dungeon-interior cells → leaks.
+    int marker_fragment_flag(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz);
+
+    // Fog-of-war reveal test (RE: docs/re/windows_fog_reveal_mask_re_findings.md). True
+    // when the marker at MAP-SPACE (mx,my) on the given areaIdx layer (0=overworld,
+    // 1=underground, 10=DLC) sits on a WorldMapPieceParam piece whose reveal event flag is
+    // unset = still fogged. This is the engine's real fog state (replaces marker_fragment_
+    // flag once the map-space↔openTravelArea transform is calibrated). Builds the piece
+    // cache live on first call + logs [FOGCAL] calibration data.
+    bool marker_fogged(int areaIdx, float mx, float my);
+
+    // A Site of Grace read LIVE from BonfireWarpParam — no baked data, no MASSEDIT.
+    struct LiveGrace
+    {
+        uint8_t areaNo, gridXNo, gridZNo;
+        float posX, posZ;
+        int textId;        // textId1 = place-name (resolve via MsgRepository)
+        uint64_t rowId;
+        int discoverFlag;  // eventflagId = per-grace discovery flag (set when reached)
+        bool underground;  // iconId == 44 → ERR cave/underground grace icon (else normal bonfire)
+    };
+    // Capture all grace rows from the LIVE BonfireWarpParam (the engine's own grace table).
+    void capture_live_graces();
+    // The captured grace list (empty until capture_live_graces() ran). Used by the
+    // ImGui overlay path instead of the baked MAP_ENTRIES graces.
+    const std::vector<LiveGrace> &live_graces();
+
+    // Resolve a lot-backed loot marker's LIVE pickup flag (ItemLotParam getItemFlagId),
+    // falling back to baked_flag. Lets the overlay detect collected loot without the
+    // native injection's refresh_loot_from_itemlot. lotType: 1=_map, 2=_enemy, 0=none.
+    uint32_t resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag);
+
+    // One-shot RE diagnostic (config diag_loot_flags): for a sample of loot lots per
+    // category, log every candidate "obtained" flag (lot-wide @0x80, the 8 per-slot
+    // getItemFlagId0N @0x60, baked textDisableFlagId1) AND whether each currently reads
+    // SET — so on a 100% save the column that is SET reveals the real collected flag.
+    void diag_loot_flags(uint32_t lotId, uint8_t lotType, uint32_t baked, int category,
+                         uint32_t nameId);
+
+    // Region gating for the overlay (mirrors the game's native areaNo+tab display).
+    // grace_tab_id: the map sub-page (tabId) of the nearest GRACE_ANCHOR in this
+    // SOURCE area (12000/12001 underground, 6800-6999 DLC, …); -1 if none. Lets the
+    // overlay tell DLC graces (area 22/25/28 project onto base 60/61 but carry a DLC
+    // tab) from base ones. raw_wx/wz = SOURCE-area world (gridXNo*256+posX, pre-conv).
+    int grace_tab_id(uint8_t src_area, float raw_wx, float raw_wz);
+    // True when the PLAYER is currently in the DLC (Land of Shadow / DLC underground),
+    // from the live MapId tile → its tabId (6800-6999) or native DLC area 40-43.
+    bool player_in_dlc();
+
+
+    // True once WorldMapPointParam is loaded — the robust init wait polls this
+    // instead of sleeping a fixed load_delay (slow PCs can take >5s). SEH-guarded.
+    bool world_map_param_ready();
 
     // Data pointers of MFG-injected WorldMapPointParam rows in the expanded
     // table. Populated by inject_map_entries(); consumed by
     // sanitize_injected_textids() after the FMG bank is built.
     const std::vector<uint8_t *> &injected_row_ptrs();
 
-    // True if this injected row is a Leyndell Ashen Capital (m35) marker, which
-    // apply_map_logic gates on StoryErdtreeOnFire (shows only after the burn).
-    bool is_ashen_capital_row(uint64_t row_id);
-
     // Rewrites rows baked with a primary completion flag to its alternative
     // once the alternative flag turns on (quest fights with two mutually-
     // exclusive outcome flags, e.g. the Sellen/Jerren academy battle).
     // Called periodically from the refresh loop.
     void apply_flag_or_pairs();
-
-    // Live-loot (config::liveLootFlags): read each loot marker's source
-    // ItemLotParam row from live memory and set textDisableFlagId1 to the
-    // lot's current getItemFlagId, so markers hide on the actual light-point
-    // pickup for the loaded regulation (Item/Enemy Randomizer compatible).
-    // One-shot, called once after inject_map_entries().
-    void refresh_loot_from_itemlot();
-
-    // Toggle the WorldMapPointParam swap between vanilla and expanded states.
-    // Used as an ERSC-hosting workaround: revert before host, re-apply after.
-    void set_param_injection_active(bool active);
-    bool is_param_injection_active();
-
-    // ── Fragment-eviction (map-open perf) ──────────────────────────────
-    // A row whose gating event flag (map-fragment / story flag) isn't set yet
-    // costs nothing to display but the game STILL processes it on every map
-    // open (the icon is merely hidden at draw time). Parking such a row off-page
-    // (areaNo = 99) removes it from the per-page open cost entirely, the same
-    // 1-byte trick collected/kindling use. apply_map_logic registers each
-    // gate-flagged goblin row here (except those collected/kindling already own
-    // areaNo for); refresh_fragment_eviction() — called from the refresh loop,
-    // where event flags are reliably readable — parks undiscovered rows and
-    // restores them (areaNo back to original) the moment their flag turns on.
-    void register_fragment_gated_row(void *param_data, uint8_t original_area,
-                                     uint32_t gate_flag);
-    int refresh_fragment_eviction();
-
-    // Thread 4: hide Leyndell Royal Capital (areaNo 11) markers once the Erdtree
-    // burns (StoryErdtreeOnFire). Inverse of the ashen gate; park-only. Call from
-    // the refresh loop AFTER refresh_fragment_eviction so the hide wins.
-    int refresh_royal_eviction();
-    int refresh_quest_npc_eviction();
-    int refresh_cluster_depletion();
 
     // Per-category uncollected census. Sweeps g_section_rows, buckets by category,
     // and caches "collectible total" + "remaining (uncollected)" per category for
@@ -155,18 +243,126 @@ namespace goblin
     bool world_map_open();
 
     // ── Live world-map icon refresh (EXPERIMENTAL, config::liveRefreshWorldMap) ──
-    // Resolve + queue the hook on the engine's placed-map-point (re)build
-    // (FUN_140a82a80). Must run BEFORE modutils::enable_hooks() applies the queued
-    // hooks. No-op unless config::liveRefreshWorldMap is set, so default builds are
-    // unaffected. See docs/windows_re_live_refresh_capture.md.
-    void install_live_refresh_hook();
+    // Dev probe (config dump_icon_textures): hook CSScaleformImageCreator::CreateImage to
+    // log each worldmap icon image (sprite rect + backing GPU texture) → crack iconId↔image.
+    void install_icon_texture_probe();
 
-    // Request a live icon refresh: the next time the engine runs its build the
-    // detour replays it once more with the engine's own captured (this, ctx), so
-    // an areaNo edit applied while the map is open re-renders without a reopen.
-    // No-op if the hook isn't installed or the map isn't open. Thread-safe (sets an
-    // atomic; the actual rebuild runs on the engine's thread).
-    void refresh_world_map_icons();
+    // Hook the WarpPinData builder to suppress native discovered-grace pins (config
+    // grace_suppress_native). Phase A logs [WARPPIN] to confirm identification (RE e4b3f6a).
+    void install_grace_suppression_hook();
+
+    // Dev probe (dump_icon_textures): iterate EquipParam* live, log rows whose iconId matches
+    // the inventory-captured MENU_FL_<iconId> sprites → proves item↔iconId↔sprite.
+    void verify_equip_iconids();
+
+    // Path A verify (findings §6): on a MAP-OPEN frame, re-read each registered image's
+    // img+0x10 (lazily-bound Render::Texture) → GXTexture2D+0x40 = ID3D12Resource. Call from
+    // the worldmap probe loop while the map is open; runs once per session after it resolves.
+    void dump_icon_textures_live();
+
+    // A resolved item-icon sprite: the engine's sheet ID3D12Resource + the sub-rect on it + the
+    // sheet's GetDesc() info. `sheet` is engine-owned (do NOT Release). Resolved draw-free via the
+    // find-by-name chain (sprite findings §1/§2). valid=false ⇒ miss / sheet not resident (caller
+    // falls back to the baked PNG). Cached per iconId (valid only). Feeds the future DX12 atlas copy.
+    struct ItemSprite
+    {
+        void *sheet = nullptr;                 // ID3D12Resource* of the loaded sheet
+        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;    // sub-rect on the sheet
+        unsigned long long sheetW = 0;
+        unsigned int sheetH = 0, format = 0;   // DXGI_FORMAT (from GetDesc)
+        bool valid = false;
+    };
+    ItemSprite resolve_item_sprite(int iconId);
+
+    // Look up an item icon HARVESTED live by the find-hook (resident menu icons; their sheet
+    // resource + sub-rect + DXGI_FORMAT). Thread-safe (engine thread writes, render thread reads).
+    // Returns false if that iconId hasn't been seen/loaded yet → caller falls back to the baked PNG.
+    bool harvested_icon(int iconId, ItemSprite &out);
+
+    // Resolve a marker/item key (offset-encoded item id, == the worldmap PlaceName textId for
+    // item markers) to its real inventory iconId via the baked ITEM_ICONS table. Returns -1 if
+    // the key isn't an item (boss/grace/NPC names miss) → the marker keeps its category atlas icon.
+    int item_icon_id(int32_t key);
+
+    // Count of icons harvested so far (dev/diagnostic — shown in the P2b test panel).
+    size_t harvested_count();
+
+    // DEV force-load TEST (RE windows_resident_icon_enumeration_re_findings §5b): stream a TPF/file
+    // RESIDENT by FD4 path via the CSFile singleton — load(CSFile=*(er+0x3d5b0f8), wchar* path, 0, 0)
+    // at er+0x1f5560. Returns the resource handle (0 on miss/null singleton). Lets us test whether a
+    // non-resident icon sheet can be force-loaded on demand. Gated by config::dumpIconTextures; called
+    // from the P2b panel button. utf8_path e.g. "menu:/00_Solo.tpf".
+    void *force_load_file(const char *utf8_path);
+
+    // DEV bind-flip TEST (RE findings §5e): confirm that flipping a loaded resource-GROUP entry's
+    // +0x7c "needs-apply" flag triggers the binding (apply vmethod resource+0xc8) that populates the
+    // repo with per-icon RECTS — i.e. whether a non-resident item-icon group can be forced resident +
+    // bound on demand. Queues a one-shot action consumed on the next residency tick (engine thread,
+    // via the FUN_140d724c0 hook). action: 1=dump groups (log apply-vmethod RVA + flags), 2=load
+    // files(groupId) via the by-id loaders, 3=flip-bind all loaded groups, 4=load+flip(groupId).
+    // Returns false if the manager isn't captured yet (open inventory/map once). Gated by dumpIconTextures.
+    bool bind_test(int action, int groupId);
+
+    // DEV force-bind a single item icon (RE §5g): replay CSScaleformImageCreator::CreateImage
+    // (FUN_140d6bbc0) for the symbol "MENU_ItemIcon_<iconId>" on the engine thread — the GFx per-image
+    // bind callback that find/creates the repo image. Lets us test forcing a non-browsed icon's bind
+    // without driving the menu. Queue-based (needs a captured context — open the inventory once first).
+    // Gated by dumpIconTextures. Returns false if no manager/context captured yet.
+    bool force_create_icon(int iconId);
+
+    // Control for force_create_icon: replay the most-recent live CreateImage symbol (a known-good
+    // "img://…" import) to prove the replay mechanism works end-to-end. Gated by dumpIconTextures.
+    bool force_create_last();
+
+    // Manually re-run the grace force-CreateImage (F1 "Force graces now") — harvests the
+    // MENU_MAP_*/SB_ERR_Grace_* gfx-movie sprites on demand, bypassing the auto cap/lock.
+    bool force_graces();
+
+    // Browser over distinct DDS captured from ER's decompresses (grabbed in the Oodle hook before ER
+    // freed each transient buffer). count + fetch-by-index; the overlay uploads each into its own
+    // texture to locate the icon sheet. No game GPU bind, no read-after-free, mod-agnostic.
+    size_t tpf_dds_count();
+    bool tpf_dds_at(size_t i, std::vector<uint8_t> &out);
+
+    // Map-point icon LAYOUT (RAM-captured from the sblytbnd via the Oodle hook; force-load
+    // "menu:/01_common.sblytbnd" to trigger it — it loads at boot before the hook). Resolves a
+    // WORLD_MAP_POINT_PARAM.iconId (the MENU_MAP_<NN> SubTexture) to its rect on the SB_MapCursor
+    // sheet (err=true → the SB_MapCursor_ERR sheet). Named lookup covers MENU_MAP_ERR_*/Church/etc.
+    // Returns false until the layout is captured / if the id|name is absent. RE
+    // windows_map_point_icon_layout_re_findings.md.
+    size_t map_icon_layout_count();
+    // x,y,w,h = sub-rect on the sheet; sheet = the backing ID3D12Resource (crop UV = rect/sheetDims).
+    bool map_icon_rect(int iconId, int &x, int &y, int &w, int &h, void *&sheet);
+    bool map_icon_rect_by_name(const char *name, int &x, int &y, int &w, int &h, void *&sheet);
+
+    // First `max` harvested iconIds (dev — the P2b test panel draws ACTUAL harvested icons
+    // instead of a hardcoded id list that may not match what the player browsed).
+    std::vector<int> harvested_ids(size_t max);
+
+    // The discovered/lit grace sprite (SB_ERR_Grace_Morning_Color), harvested by the find hook when
+    // the open map draws a discovered grace. False until seen at least once. Lets the overlay draw
+    // graces itself (discovered = this sprite, undiscovered = grey-tinted).
+    bool harvested_grace(ItemSprite &out);
+
+    // The ERR dungeon-style grace sprite (MENU_MAP_ERR_GraceUnderground). False until captured / if
+    // ERR isn't installed. The overlay uses it for DUNGEON graces in place of the vanilla bonfire.
+    bool harvested_grace_dungeon(ItemSprite &out);
+
+    // All SB_ERR_Grace_* sprite frames seen on the sheet (dev debug — the F1 grace viewer draws each
+    // so we can visually pick the correct grace rect). spr carries sheet/rect/dims/format.
+    struct GraceCandidate { ItemSprite spr; std::string name; };
+    std::vector<GraceCandidate> grace_candidates();
+
+    // DEV (F1 grace-debug): set the active grace sprite from a captured candidate index (test which
+    // name maps to the right grace). Locks it; the overlay should then rebuild its SRV. False on bad idx.
+    bool set_grace_from_candidate(size_t idx);
+
+    // Dev runtime-confirm (sprite findings §6): call the engine's draw-free icon
+    // find-by-name FUN_140d63c30(repo, &out, L"MENU_ItemIcon_<id>") for a set of iconIds and
+    // log whether each resolves to a CSTextureImage+rect WITHOUT the icon being drawn. Press
+    // with the inventory OPEN (sheets resident), then CLOSED, to measure the residency limit.
+    // Bound to F8, gated dump_icon_textures. [FIND2] log lines.
+    void probe_icon_find_runtime();
 
     // ── Overlay control API ──────────────────────────────────────────────
     // Read/post the same runtime state the F-key hotkeys drive. Setters only
@@ -198,6 +394,8 @@ namespace goblin
         // must be called each frame the panel is drawn to keep the census warm.
         int category_total(int idx);
         int category_remaining(int idx);
+        // Publish a category's census from the overlay (total collectible + looted).
+        void set_category_census(int idx, int total, int looted);
         void note_menu_visible();
         // ERR integration: hide our boss markers since ERR marks bosses natively.
         bool err_hide_bosses();
@@ -217,7 +415,6 @@ namespace goblin
         // Save button). Posts a request; the watcher thread does the file I/O.
         void request_save();
 
-        bool clustering_active();          // clusters built this session (live controls valid)
         bool clustering_enabled();         // config flag (what a restart would use)
         void set_clustering_enabled(bool on);  // takes effect after Save + restart
         bool clusters_expanded();

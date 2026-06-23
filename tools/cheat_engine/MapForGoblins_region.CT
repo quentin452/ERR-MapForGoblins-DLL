@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CheatTable CheatEngineTableVersion="44">
+  <CheatEntries>
+    <CheatEntry>
+      <ID>0</ID>
+      <Description>"=== MapForGoblins: OPEN-MAP REGION probe ==="</Description>
+      <GroupHeader>1</GroupHeader>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>1</ID>
+      <Description>"open page id  dialog+0xA88 [0x151]  -- PRIMARY (engine decode key)"</Description>
+      <VariableType>4 Bytes</VariableType>
+      <Address>MFG_MENU+A88</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>2</ID>
+      <Description>"view areaNo  view+0x370  (delta-scan 0&lt;-&gt;10)"</Description>
+      <VariableType>4 Bytes</VariableType>
+      <Address>MFG_VIEW+370</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>3</ID>
+      <Description>"view sub-id  view+0x374  (delta-scan 1&lt;-&gt;11)"</Description>
+      <VariableType>4 Bytes</VariableType>
+      <Address>MFG_VIEW+374</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>4</ID>
+      <Description>"dialog+0x98  (delta-scan 1&lt;-&gt;2, clean 2-value)"</Description>
+      <VariableType>4 Bytes</VariableType>
+      <Address>MFG_MENU+98</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>5</ID>
+      <Description>"dialog+0x14  (delta-scan 0&lt;-&gt;3)"</Description>
+      <VariableType>4 Bytes</VariableType>
+      <Address>MFG_MENU+14</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>6</ID>
+      <Description>"dialog+0x5c  (delta-scan 0&lt;-&gt;3)"</Description>
+      <VariableType>4 Bytes</VariableType>
+      <Address>MFG_MENU+5C</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>30</ID>
+      <Description>"*** LAYER = THE OW/UG KEY *** [[dialog+0x2B68]+0xB8]: 0=surface(OW), !=0=underground(UG). Setter FUN_1409c40f0; underground applies page+1 internally. Gating: page==10 DLC, else layer==0 OW(60/61), else UG(12)."</Description>
+      <VariableType>Byte</VariableType>
+      <Address>[MFG_MENU+2B68]+B8</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>7</ID>
+      <Description>"SURFACE/UNDERGROUND flag (DAT_143d6cfc3) -- THE OW/UG KEY: 0=surface, !=0=underground. Set at map-build by FUN_1408855b0; projection branches on it (FUN_1409ce190/cd790: cfc3==0 -> view+0x360 surface rect, else +0x350 underground rect). CLICK 'Afficher souterrains' to flip it."</Description>
+      <VariableType>Byte</VariableType>
+      <Address>eldenring.exe+3D6CFC3</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>9</ID>
+      <Description>"sibling byte DAT_143d6cfc2 (also set at map-build by FUN_1408855b0) -- watch alongside cfc3"</Description>
+      <VariableType>Byte</VariableType>
+      <Address>eldenring.exe+3D6CFC2</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>8</ID>
+      <Description>"map-variation byte (DAT_143d6cfc0) -- CONFIRMED DEAD: read-only, zero writers, always 0"</Description>
+      <VariableType>Byte</VariableType>
+      <Address>eldenring.exe+3D6CFC0</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>20</ID>
+      <Description>"--- diagnostics (resolved pointers) ---"</Description>
+      <GroupHeader>1</GroupHeader>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>21</ID>
+      <Description>"cursor ptr"</Description>
+      <ShowAsHex>1</ShowAsHex>
+      <VariableType>8 Bytes</VariableType>
+      <Address>MFG_CURSOR</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>22</ID>
+      <Description>"dialog ptr (cursor-0x2DB0)"</Description>
+      <ShowAsHex>1</ShowAsHex>
+      <VariableType>8 Bytes</VariableType>
+      <Address>MFG_MENU</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>23</ID>
+      <Description>"view ptr [cursor+0xF0]"</Description>
+      <ShowAsHex>1</ShowAsHex>
+      <VariableType>8 Bytes</VariableType>
+      <Address>MFG_VIEW</Address>
+    </CheatEntry>
+  </CheatEntries>
+  <LuaScript><![CDATA[
+--[[ MapForGoblins OPEN-MAP REGION probe — auto-resolves the live world-map cursor,
+     derives dialog = cursor-0x2DB0 and view = *(cursor+0xF0), and exposes every
+     candidate field for "which map page/region is OPEN" so the value->region table
+     can be read live across the 4 maps (overworld / underground / DLC-OW / DLC-UG).
+
+  WORKFLOW
+    1. Open the world map, MOVE the cursor (resolution needs plausible render coords).
+    2. Press NUMPAD 1 to lock the cursor (or wait ~6 s for auto-scan).
+    3. On EACH of the 4 maps, press NUMPAD 0 to log a snapshot line of all candidate
+       fields to MapForGoblins_region_ct.log. Label each line by the map you were on.
+    4. Pick the field whose value is DISTINCT across the 4 maps (or a (page,sublayer)
+       combo). dialog+0xA88 is the engine's own page key (FUN_1409c4900) -> try first.
+
+  Cursor is found exactly like the in-DLL probe / mapspace CT: scan writable memory
+  for the CS::WorldMapCursorControl vtable (eldenring.exe + 0x2b29a90) and pick the
+  heap instance with plausible +0x104/+0x108 render coords. Re-validates each second.
+
+  Static RE behind this: docs/windows_open_map_region_re_prompt.md (RESULTS).        ]]
+
+local CURSOR_VTABLE_RVA = 0x2b29a90
+local OFF_RX, OFF_RZ    = 0x104, 0x108
+local OFF_VIEW          = 0xF0
+local OFF_MENU          = 0x2DB0   -- dialog = cursor - 0x2DB0
+
+mfg = mfg or {}
+
+local function finite(v) return v ~= nil and v == v and v < 1e30 and v > -1e30 end
+
+local function module_range()
+  local base = getAddress("eldenring.exe")
+  local size = 0
+  if getModuleSize then local ok, s = pcall(getModuleSize, "eldenring.exe"); if ok and s then size = s end end
+  if size == 0 then
+    local mods = enumModules()
+    if mods then for i = 1, #mods do local m = mods[i]
+      if m.Name and string.find(string.lower(m.Name), "eldenring.exe", 1, true) then
+        base = m.Address; size = m.Size; break end
+    end end
+  end
+  if size == 0 then size = 0x8000000 end
+  return base, base + size
+end
+
+local function get_module_range()
+  if mfg.mbase then return mfg.mbase, mfg.mend end
+  local b, e = module_range(); mfg.mbase, mfg.mend = b, e; return b, e
+end
+
+local function plausible_coord(v) return finite(v) and math.abs(v) >= 1.0 and math.abs(v) <= 2.0e4 end
+
+-- reject the in-image static cursor TEMPLATE (its view points in-image with junk coords);
+-- the real map cursor is heap-allocated with a heap view.
+local function valid_cursor(a, vt, mbase, mend)
+  if a == nil or a == 0 then return false end
+  if readQword(a) ~= vt then return false end
+  local x, z = readFloat(a + OFF_RX), readFloat(a + OFF_RZ)
+  if not (plausible_coord(x) and plausible_coord(z)) then return false end
+  local view = readPointer(a + OFF_VIEW)
+  if view == nil or view == 0 then return false end
+  if mbase and view >= mbase and view < mend then return false end
+  local zoom = readFloat(view + 0x380)
+  return finite(zoom) and math.abs(zoom) > 1e-4 and math.abs(zoom) < 1e5
+end
+
+local function publish(cur)
+  mfg.cursor = cur
+  unregisterSymbol("MFG_CURSOR"); registerSymbol("MFG_CURSOR", cur, true)
+  local menu = cur - OFF_MENU
+  mfg.menu = menu
+  unregisterSymbol("MFG_MENU"); registerSymbol("MFG_MENU", menu, true)
+  local view = readPointer(cur + OFF_VIEW)
+  if view ~= nil and view ~= 0 then
+    mfg.view = view
+    unregisterSymbol("MFG_VIEW"); registerSymbol("MFG_VIEW", view, true)
+  end
+  print(string.format("[MFG] locked cursor=%X  dialog=%X  view=%X  page(+0xA88)=%s",
+        cur, menu, view or 0, tostring(readInteger(menu + 0xA88))))
+end
+
+function mfg_scan()
+  local base = getAddress("eldenring.exe"); if base == 0 then return false end
+  local vt = base + CURSOR_VTABLE_RVA
+  local mbase, mend = get_module_range()
+  local b = {}
+  for i = 0, 7 do b[i + 1] = string.format("%02X", (vt >> (i * 8)) & 0xFF) end
+  local res = AOBScan(table.concat(b, " "), "+W-C")
+  if res == nil then return false end
+  local ok = false
+  for i = 0, res.Count - 1 do
+    local a = getAddress(res[i])
+    if valid_cursor(a, vt, mbase, mend) then publish(a); ok = true; break end
+  end
+  res.destroy()
+  return ok
+end
+mfg_rescan = mfg_scan
+
+local SCAN_EVERY = 6
+function mfg_tick()
+  mfg.tick = (mfg.tick or 0) + 1
+  local base = getAddress("eldenring.exe"); if base == 0 then return end
+  local vt = base + CURSOR_VTABLE_RVA
+  local mbase, mend = get_module_range()
+  if valid_cursor(mfg.cursor, vt, mbase, mend) then
+    local view = readPointer(mfg.cursor + OFF_VIEW)
+    if view ~= nil and view ~= 0 and view ~= mfg.view then
+      mfg.view = view; unregisterSymbol("MFG_VIEW"); registerSymbol("MFG_VIEW", view, true)
+    end
+    return
+  end
+  if (mfg.tick % SCAN_EVERY) == 0 then mfg_scan() end
+end
+
+-- snapshot every open-region candidate in one labelled line.
+function mfg_snapshot()
+  local mbase, mend = get_module_range()
+  if not valid_cursor(mfg.cursor, getAddress("eldenring.exe") + CURSOR_VTABLE_RVA, mbase, mend) then
+    print("[MFG] no live cursor — open the map, MOVE the cursor, press NUMPAD 1 to rescan"); return
+  end
+  local d  = mfg.menu          -- dialog
+  local v  = mfg.view
+  local function di(off) return readInteger(d + off) end
+  local function vi(off) return v and readInteger(v + off) or -1 end
+  -- *** THE OW/UG KEY: layer = [[dialog+0x2B68]+0xB8] (0=surface/OW, !=0=underground/UG) ***
+  local sub = readPointer(d + 0x2B68)
+  local layer = (sub and sub ~= 0) and (readByte(sub + 0xB8) or -1) or -1
+  local page = di(0xA88)
+  local region = (page == 10 and "DLC") or (layer == 0 and "OVERWORLD") or (layer ~= -1 and "UNDERGROUND") or "?"
+  local line = string.format(
+    "REGION=%-11s  page[A88]=%-3d LAYER=%-3d  view370=%-3d view374=%-3d",
+    region, page, layer, vi(0x370), vi(0x374))
+  print("[MFG] " .. line)
+  local f = io.open("MapForGoblins_region_ct.log", "a")
+  if f then f:write(os.date("%H:%M:%S ") .. line .. "\n"); f:close() end
+end
+
+-- AREA HUNT: scan the cursor/dialog/view structs for any field holding the current hovered
+-- AREA (MapId area byte: 60/61=OW, 12=UG, 40-43=DLC). Static RE found no single stored region
+-- field, so we find it empirically: run this on the OW map (hovering a known spot), then on the
+-- UG map, and DIFF the two logs -- the field we want is the offset whose value flips 60/61 -> 12.
+--   * packed-MapId int32 (top byte = area, e.g. 0x3C2A2400) is the most specific match.
+--   * lone byte == area is noisier (constant noise cancels in the OW-vs-UG diff).
+function mfg_areahunt()
+  local mbase, mend = get_module_range()
+  if not valid_cursor(mfg.cursor, getAddress("eldenring.exe") + CURSOR_VTABLE_RVA, mbase, mend) then
+    print("[MFG] no live cursor -- open map, hover a known spot, NUMPAD 1 to lock first"); return
+  end
+  local AREA = {[60]=true,[61]=true,[12]=true,[40]=true,[41]=true,[42]=true,[43]=true}
+  local function scan(name, base, lo, hi)
+    local hits = {}
+    if not base or base == 0 then return hits end
+    for off = lo, hi, 4 do                              -- packed MapId: top byte in AREA, lower bytes set
+      local v = readInteger(base + off)
+      if v and v ~= 0 then
+        local top = (v >> 24) & 0xFF
+        if AREA[top] and (v & 0x00FFFF00) ~= 0 then
+          hits[#hits+1] = string.format("  %s+0x%X = MapId 0x%08X  (area=%d gridX=%d gridZ=%d)",
+            name, off, v & 0xFFFFFFFF, top, (v>>16)&0xFF, (v>>8)&0xFF)
+        end
+      end
+    end
+    for off = lo, hi do                                 -- lone byte == area
+      local b = readBytes(base + off, 1, true)
+      if b and AREA[b] then hits[#hits+1] = string.format("  %s+0x%X = byte %d", name, off, b) end
+    end
+    return hits
+  end
+  local all = {}
+  for _, e in ipairs(scan("cursor", mfg.cursor, 0, 0x400)) do all[#all+1] = e end
+  for _, e in ipairs(scan("view",   mfg.view,   0, 0x400)) do all[#all+1] = e end
+  for _, e in ipairs(scan("dialog", mfg.menu,   0, 0x1400)) do all[#all+1] = e end
+  print(string.format("[MFG] areahunt: %d field(s) holding an area value (cursor=%X)", #all, mfg.cursor))
+  local f = io.open("MapForGoblins_areahunt.log", "a")
+  if f then
+    f:write(string.format("\n=== areahunt %s  cursor=%X  page[A88]=%d  <-- LABEL: OW / UG / DLC ===\n",
+            os.date("%H:%M:%S"), mfg.cursor, readInteger(mfg.menu + 0xA88) or -1))
+    for _, e in ipairs(all) do f:write(e .. "\n"); print(e) end
+    f:close()
+  end
+  print("[MFG] -> MapForGoblins_areahunt.log. Run on OW then UG; the offset whose area flips 60/61->12 is the key.")
+end
+
+-- diag: dump every cursor-vtable instance (CE Lua console:  mfg_dump())
+function mfg_dump()
+  local base = getAddress("eldenring.exe"); if base == 0 then print("[MFG] no exe"); return end
+  local vt = base + CURSOR_VTABLE_RVA
+  local mbase, mend = get_module_range()
+  local b = {}; for i = 0, 7 do b[i + 1] = string.format("%02X", (vt >> (i * 8)) & 0xFF) end
+  local res = AOBScan(table.concat(b, " "), "+W-C")
+  if res == nil then print("[MFG] scan: none"); return end
+  print(string.format("[MFG] %d cursor-vtable instance(s):", res.Count))
+  for i = 0, math.min(res.Count - 1, 48) do
+    local a = getAddress(res[i])
+    local x, z = readFloat(a + OFF_RX), readFloat(a + OFF_RZ)
+    local vv = readPointer(a + OFF_VIEW) or 0
+    local inimg = (vv >= mbase and vv < mend)
+    print(string.format("  %X  +0x104/108=(%.4g, %.4g)  view=%X%s",
+          a, x or 0, z or 0, vv, inimg and " [IN-IMAGE/template]" or " [heap]"))
+  end
+  res.destroy()
+end
+
+-- tear down any prior timer/hotkeys + stale symbols so re-running picks up changes.
+if mfg.timer then pcall(function() mfg.timer.destroy() end); mfg.timer = nil end
+if mfg.hk    then pcall(function() mfg.hk.destroy()    end); mfg.hk    = nil end
+if mfg.hk2   then pcall(function() mfg.hk2.destroy()   end); mfg.hk2   = nil end
+if mfg.hk3   then pcall(function() mfg.hk3.destroy()   end); mfg.hk3   = nil end
+mfg.cursor, mfg.view, mfg.menu, mfg.mbase, mfg.mend, mfg.tick = nil, nil, nil, nil, nil, 0
+unregisterSymbol("MFG_CURSOR"); unregisterSymbol("MFG_VIEW"); unregisterSymbol("MFG_MENU")
+
+mfg.timer = createTimer(nil)
+mfg.timer.Interval = 1000
+mfg.timer.OnTimer  = mfg_tick
+mfg.hk  = createHotkey(mfg_snapshot, VK_NUMPAD0)  -- NUMPAD 0 = log region-candidate snapshot
+mfg.hk2 = createHotkey(mfg_rescan,   VK_NUMPAD1)  -- NUMPAD 1 = force cursor rescan
+mfg.hk3 = createHotkey(mfg_areahunt, VK_NUMPAD2)  -- NUMPAD 2 = scan structs for the hovered area byte
+mfg_scan()
+print("[MFG] OPEN-MAP REGION probe armed. NUMPAD 1 = lock cursor, NUMPAD 0 = snapshot fields,")
+print("[MFG] NUMPAD 2 = AREA HUNT (run on OW then UG, hovering a known spot; diff the logs).")
+]]></LuaScript>
+</CheatTable>

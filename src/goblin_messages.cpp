@@ -8,6 +8,7 @@
 #include "goblin_bench.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
 #include "modutils.hpp"
+#include "re_signatures.hpp"
 
 #include <cstring>
 #include <functional>
@@ -481,7 +482,7 @@ void goblin::setup_messages()
                   tutorial_ids_needed.size());
 
     auto msg_repository_address = modutils::scan<from::CS::MsgRepositoryImp *>({
-        .aob = "48 8B 3D ?? ?? ?? ?? 44 0F B6 30 48 85 FF 75",
+        .aob = goblin::sig::MSG_REPOSITORY,
         .relative_offsets = {{3, 7}},
     });
     if (!msg_repository_address) { spdlog::error("MsgRepositoryImp AOB not found"); return; }
@@ -697,6 +698,7 @@ void goblin::setup_messages()
 
     // WeaponName. Ammo IDs are stored as-is (>=50M), weapon IDs are offset by 100M.
     {
+        GOBLIN_BENCH("messages.weapon");
         std::set<int32_t> ammo_ids, weapon_offset_ids;
         for (int32_t tid : weapon_ids_needed)
         {
@@ -724,6 +726,7 @@ void goblin::setup_messages()
     // first-wins by patch_fmg_in_memory). Gated — off by default it adds nothing.
     if (goblin::config::liveLootLabels)
     {
+        GOBLIN_BENCH("messages.live_loot_all");
         copy_fmg_all_layered(goods_slots, 500000000, "GoodsName", false);
         copy_fmg_all_layered(weapon_slots, 100000000, "WeaponName", true);
         copy_fmg_all_layered(protector_slots, 200000000, "ProtectorName", false);
@@ -741,7 +744,10 @@ void goblin::setup_messages()
     // NpcName. Offset 700M.
     // (Was break-on-first-success from base 18 — that missed every id living
     // only in a DLC layer, e.g. The Convergence's added bosses in slot 328.)
-    copy_fmg_layered(npc_slots, npc_name_ids_needed, 700000000, "NpcName");
+    {
+        GOBLIN_BENCH("messages.npc");
+        copy_fmg_layered(npc_slots, npc_name_ids_needed, 700000000, "NpcName");
+    }
 
     // Read ActionButtonText FMG (slots 32 + DLC 365, 465): in-game interact
     // prompts ("Examine statue", "Light bonfire", ...). Offset 800M.
@@ -775,7 +781,10 @@ void goblin::setup_messages()
     // TutorialTitle (ERR Codex enemy names + category labels like "Summoning
     // Pools"). textId in MASSEDIT = real TutorialTitle ID + 900000000 (to
     // avoid collision with GoodsName).
-    copy_fmg_layered(tutorial_slots, tutorial_ids_needed, 900000000, "TutorialTitle");
+    {
+        GOBLIN_BENCH("messages.tutorial");
+        copy_fmg_layered(tutorial_slots, tutorial_ids_needed, 900000000, "TutorialTitle");
+    }
 
     // Non-ERR builds carry their own localized enemy-name table (the runtime
     // FMG has only generic tutorial entries, no enemy names). Inject the names
@@ -1097,4 +1106,17 @@ const wchar_t *goblin::lookup_text(int32_t id)
         }
     }
     return nullptr;
+}
+
+std::string goblin::lookup_text_utf8(int32_t id)
+{
+    const wchar_t *w = lookup_text(id);
+    if (!w || !w[0])
+        return {};
+    int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+    if (n <= 1)
+        return {};
+    std::string s(static_cast<size_t>(n - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w, -1, &s[0], n, nullptr, nullptr);
+    return s;
 }

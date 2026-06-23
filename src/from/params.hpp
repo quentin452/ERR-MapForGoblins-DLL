@@ -146,7 +146,10 @@ template <typename T> class ParamTableSequence
     {
     }
 
-    T &operator[](uint64_t id)
+    // Non-throwing, non-logging lookup. Returns nullptr if the row is absent — use this
+    // for OPTIONAL rows (e.g. a marker's source ItemLotParam that may not exist in the
+    // loaded regulation) so a missing row isn't logged as an error.
+    T *try_get(uint64_t id)
     {
         // Binary search for the param row, assuming all rows are sorted
         ptrdiff_t begin_index = 0;
@@ -160,7 +163,7 @@ template <typename T> class ParamTableSequence
             else if (row->row_id > id)
                 end_index = index - 1;
             else
-                return *get_row_data(param_table, row);
+                return get_row_data(param_table, row);
         }
 
         // Check for out-of-order param rows if we didn't find it with a binary search
@@ -172,16 +175,22 @@ template <typename T> class ParamTableSequence
             {
                 auto row = &param_table->rows[index1];
                 if (row->row_id == id)
-                    return *get_row_data(param_table, row);
+                    return get_row_data(param_table, row);
             }
             if (index2 >= 0 && index2 < param_table->num_rows)
             {
                 auto row = &param_table->rows[index2];
                 if (row->row_id == id)
-                    return *get_row_data(param_table, row);
+                    return get_row_data(param_table, row);
             }
         }
+        return nullptr;
+    }
 
+    T &operator[](uint64_t id)
+    {
+        if (T *row = try_get(id))
+            return *row;
         spdlog::error("Param row {}[{}] not found", internal::wstring_to_string(param_name), id);
         throw std::runtime_error("Row not found");
     }

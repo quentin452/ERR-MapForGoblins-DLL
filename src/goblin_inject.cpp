@@ -4,24 +4,32 @@
 #include "goblin_config.hpp"
 #include "goblin_messages.hpp"
 #include "modutils.hpp"
+#include "re_signatures.hpp"
 #include "goblin_map_data.hpp"
 #include "goblin_item_icons.hpp"
 #include "goblin_location_alt.hpp"
 #include "goblin_grace_anchors.hpp"
 #include "goblin_region_anchors.hpp"
 #include "goblin_major_regions.hpp"
+#include "goblin_name_regions.hpp"
 #include "goblin_tile_tabs.hpp"
 #include "goblin_legacy_conv.hpp"
+#include "goblin_legacy_fold.hpp"
+#include "goblin_logic.hpp"
 #include "goblin_markers.hpp"
 #include "goblin_bench.hpp"
 #include "from/params.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
+#include "from/paramdef/WORLD_MAP_PIECE_PARAM_ST.hpp"
+#include "from/paramdef/BONFIRE_WARP_PARAM_ST.hpp"
 #include "goblin_quest_gates.hpp"
 #include "goblin_quest_steps.hpp"
 #include "goblin_logic.hpp"
 
 #include <algorithm>
 #include <atomic>
+#include <climits>
+#include <cstdio>
 #include <deque>
 #include <cctype>
 #include <chrono>
@@ -57,58 +65,104 @@ static void *allocation = nullptr;
 // entry (legacy dungeons that have their own page / unmappable), are untouched.
 static bool project_dungeon_row_to_overworld(
     from::paramdef::WORLD_MAP_POINT_PARAM_ST *d,
-    float *out_ent_x = nullptr, float *out_ent_z = nullptr)
+    float *out_ent_x = nullptr, float *out_ent_z = nullptr,
+    bool conv_underground = false)
 {
     if (d->areaNo == 60 || d->areaNo == 61)
         return false;
-    // Underground worlds that have their OWN world-map page must NOT be projected
-    // onto the overworld — there is no overworld surface spot for them, so they
-    // land "in the sea". Keep them on their native page instead:
-    //   area 12      = Siofra/Ainsel/Deeproot/Nokron/Mohgwyn/Lake of Rot
-    //   area 40-43   = DLC underground caverns
-    // (Catacombs/caves 30-39 and legacy dungeons 10/11/13/14… DO have overworld
-    //  entrances, so they keep projecting.)
-    if (d->areaNo == 12 || (d->areaNo >= 40 && d->areaNo <= 43))
+    // INJECTION (conv_underground=false): area 12 / 40-43 have their OWN native world-map
+    // page, so keep them native (projecting them onto the overworld surface lands them "in
+    // the sea"). OVERLAY (conv_underground=true): the agent's RE proved underground SHARES
+    // the overworld map-space (one converter, no area-12 converter) — the underground map is
+    // a LAYER of the same space — so area 12 IS projected to unified coords (its conv rows
+    // map area-12-local → area-60 geographic), and the overlay draws it on the UG layer
+    // (gated separately by ORIGINAL areaNo). DLC underground (40-43) stays native for now
+    // (DLC is still on the eyeball path).
+    if (d->areaNo >= 40 && d->areaNo <= 43)
+        return false;
+    if (d->areaNo == 12 && !conv_underground)
         return false;
 
-    // Prefer an exact (src_area, src_gx) base-point — its local coords share an
-    // origin with this row, so we can keep the in-dungeon offset. Some dungeons
-    // (e.g. Fringefolk Hero's Grave m10_01) have NO conv entry of their own in
-    // WorldMapLegacyConvParam; fall back to any base-point of the same src_area
-    // and cluster the rows at that overworld point (entrance) — visible, if
-    // without intra-dungeon spread.
+    // Prefer the LIVE param fold (goblin_legacy_fold): full-block key (area,gx,gz),
+    // terminal = area in [50,88], chains composed at fold time — fixes the area-16
+    // wrong-region bug + chained dst (m35→11→60) + reads the regulation directly so
+    // it never drifts when a mod edits WorldMapLegacyConvParam. Falls through to the
+    // baked LEGACY_CONV below when the param isn't resident yet or no chain applies.
+    {
+        auto fr = goblin::legacy_fold::fold(d->areaNo, d->gridXNo, d->gridZNo, d->posX, d->posZ);
+        if (fr.matched)
+        {
+            if (out_ent_x) *out_ent_x = fr.ent_x;
+            if (out_ent_z) *out_ent_z = fr.ent_z;
+            d->areaNo = fr.area;
+            d->gridXNo = fr.gx;
+            d->gridZNo = fr.gz;
+            d->posX = fr.posX;
+            d->posZ = fr.posZ;
+            return true;
+        }
+        // Live param resident but no row for this block → genuinely unmappable; the
+        // baked table can't do better, so don't bother scanning it.
+        if (goblin::legacy_fold::available())
+            return false;
+    }
+
+    // BAKED fallback (param not loaded yet). Prefer an EXACT (src_area, src_gx, src_gz) base-point — its local coords share
+    // an origin with this row, so we keep the in-dungeon offset. Else fall back to the
+    // NEAREST base-point of the same src_area (by grid distance) and cluster at that
+    // overworld entrance — visible, region-correct, if without intra-dungeon spread.
+    // (Was: the FIRST entry of the area, which sent the few rows whose gridX matches
+    //  no entry — e.g. an m31 cave grace at gx 8 — to an arbitrary far cave mouth.)
     const goblin::generated::LegacyConvEntry *exact = nullptr;
-    const goblin::generated::LegacyConvEntry *area_fb = nullptr;
+    const goblin::generated::LegacyConvEntry *nearest = nullptr;
+    int best_dist = 0x7fffffff;
     for (size_t i = 0; i < goblin::generated::LEGACY_CONV_COUNT; ++i)
     {
         const auto &c = goblin::generated::LEGACY_CONV[i];
         if (c.src_area != d->areaNo)
             continue;
-        if (!area_fb)
-            area_fb = &c;
-        if (c.src_gx == d->gridXNo)
+        int dgx = (int)c.src_gx - (int)d->gridXNo; if (dgx < 0) dgx = -dgx;
+        int dgz = (int)c.src_gz - (int)d->gridZNo; if (dgz < 0) dgz = -dgz;
+        int dist = dgx + dgz;
+        if (dist < best_dist) { best_dist = dist; nearest = &c; }
+        if (c.src_gx == d->gridXNo && c.src_gz == d->gridZNo)
         {
             exact = &c;
             break;
         }
     }
-    const auto *c = exact ? exact : area_fb;
+    const auto *c = exact ? exact : nearest;
     if (!c)
         return false;
 
-    // Exact match: keep the in-dungeon offset. Fallback: cluster at the base
-    // point (mixing local coords across grids would misplace, so we don't).
-    float wx = static_cast<float>(c->dst_gx) * 256.0f + c->dst_pos_x;
-    float wz = static_cast<float>(c->dst_gz) * 256.0f + c->dst_pos_z;
+    // Base-point TRANSLATION (RE: docs/marker_to_mapspace_re_findings.md §2). The
+    // legacy-dungeon→overworld conv is a uniform translation: take the marker's FULL
+    // world offset (grid + pos) from the src base point and apply it to the dst base
+    // point. The previous code added only the LOCAL pos delta (posX-src_pos_x),
+    // dropping the (gridXNo-src_gx)·256 grid term + src_gz entirely → markers in a
+    // different grid cell than the base landed in the wrong region (the area-16 bug).
+    float dst_base_x = static_cast<float>(c->dst_gx) * 256.0f + c->dst_pos_x;
+    float dst_base_z = static_cast<float>(c->dst_gz) * 256.0f + c->dst_pos_z;
     // The conv base point IS the dungeon's overworld ENTRANCE — hand it back so a
     // cluster of this dungeon's markers can sit there instead of at the centroid
     // of their spread-out projected interior (which can drift off into the sea).
-    if (out_ent_x) *out_ent_x = wx;
-    if (out_ent_z) *out_ent_z = wz;
-    if (exact)
+    if (out_ent_x) *out_ent_x = dst_base_x;
+    if (out_ent_z) *out_ent_z = dst_base_z;
+    float marker_x = static_cast<float>(d->gridXNo) * 256.0f + d->posX;
+    float marker_z = static_cast<float>(d->gridZNo) * 256.0f + d->posZ;
+    float src_base_x = static_cast<float>(c->src_gx) * 256.0f + c->src_pos_x;
+    float src_base_z = static_cast<float>(c->src_gz) * 256.0f + c->src_pos_z;
+    float wx = dst_base_x + (marker_x - src_base_x);
+    float wz = dst_base_z + (marker_z - src_base_z);
+    // GUARD: a few baked rows carry abnormal local coords (e.g. area-11 grid(10,0)
+    // posX=-4695) → the translation sends wx/wz out of the overworld tile extent →
+    // gridXNo (uint8) wraps → the game's icon build (FUN_141eb9ed0) indexes an
+    // out-of-range tile and CRASHES on map open. Out of range → fall back to the
+    // entrance base point (the old clustering behaviour, always valid).
+    if (wx < 0.f || wz < 0.f || wx > 0x3F * 256.0f || wz > 0x3F * 256.0f)
     {
-        wx += d->posX - c->src_pos_x;
-        wz += d->posZ - c->src_pos_z;
+        wx = dst_base_x;
+        wz = dst_base_z;
     }
     int gx = static_cast<int>(std::floor(wx / 256.0f));
     int gz = static_cast<int>(std::floor(wz / 256.0f));
@@ -120,62 +174,14 @@ static bool project_dungeon_row_to_overworld(
     return true;
 }
 
-// State for runtime toggle (ERSC-hosting workaround). On hotkey press the
-// pointers stored on the param-res-cap are swapped between vanilla and
-// expanded values. set_param_injection_active() is a no-op until
-// inject_map_entries() has populated these.
-static uint8_t **g_file_ptr_ref = nullptr;
-static int64_t *g_file_size_ref = nullptr;
-static uint8_t *g_vanilla_param_file = nullptr;
-static int64_t g_vanilla_param_size = 0;
-static uint8_t *g_expanded_param_file = nullptr;
-static int64_t g_expanded_param_size = 0;
-static bool g_param_injection_active = false;
 
 // Data pointers of MFG-injected WorldMapPointParam rows in the expanded table.
 // Used by sanitize_injected_textids() (run after the FMG is built) to strip
 // textIds that don't resolve to a real string.
 static std::vector<uint8_t *> g_injected_row_ptrs;
 
-// Live-loot: lot-backed injected rows. refresh_loot_from_itemlot() reads the
-// LIVE ItemLotParam getItemFlagId for each and rewrites textDisableFlagId1 so
-// the marker hides on the actual light-point pickup for the loaded regulation
-// (Randomizer-compatible). g_lot_backed_set lets apply_flag_or_pairs skip them.
-struct LotBackedRow { uint8_t *ptr; uint32_t lotId; uint8_t lotType; };
-static std::vector<LotBackedRow> g_lot_backed_rows;
 static std::set<uint8_t *> g_lot_backed_set;
 
-// Row IDs of Leyndell Ashen Capital (m35) markers — gated on StoryErdtreeOnFire
-// by apply_map_logic so they only appear once the Erdtree has burned.
-static std::set<uint64_t> g_ashen_rows;
-
-// Data pointers of Leyndell Royal Capital (m11_00, areaNo 11) markers — the
-// INVERSE of the ashen gate: hidden (areaNo 99) once StoryErdtreeOnFire sets,
-// because the Royal Capital is consumed by the Ashen Capital after the burn.
-// Park-only (burn is permanent → never restore); refresh_royal_eviction()
-// applies it after fragment-eviction so it wins. Clustered royal rows are NOT
-// registered (the cluster owns their areaNo).
-static std::vector<uint8_t *> g_royal_rows;
-
-// Thread 1 v1.5 — quest-aware quest-NPC gating. Each registered WorldQuestNPC row
-// carries its NPC's quest-active flags (from goblin_quest_gates, joined from the
-// MIT EldenRingQuestLog data). refresh_quest_npc_eviction parks it (areaNo 99)
-// while NONE of those flags is set (quest not active) and restores it when active.
-// Opt-in (config questNpcQuestAware); coordinates with section/category via
-// is_section_hidden_ptr on restore. Clustered rows excluded.
-struct QuestRow { uint8_t *ptr; uint8_t orig_area; uint32_t flags[4]; };
-static std::vector<QuestRow> g_quest_rows;
-
-static const goblin::generated::QuestGate *lookup_quest_gate(uint32_t nameId)
-{
-    const auto *a = goblin::generated::QUEST_GATES;
-    size_t lo = 0, hi = goblin::generated::QUEST_GATE_COUNT;
-    while (lo < hi) { size_t m = (lo + hi) / 2;
-        if (a[m].nameId < nameId) lo = m + 1; else hi = m; }
-    if (lo < goblin::generated::QUEST_GATE_COUNT && a[lo].nameId == nameId)
-        return &a[lo];
-    return nullptr;
-}
 
 // ─── Per-section runtime visibility (in-game family-group toggle) ─────
 //
@@ -312,22 +318,6 @@ static constexpr int64_t TOAST_SPACING_MS = 2500;
 // row's FINAL areaNo (post dungeon-reprojection) so a show restores the right
 // page. Piece/kindling rows may be independently 99-hidden when collected — a
 // section "show" must not resurrect those.
-struct SectionRow
-{
-    uint8_t *ptr;       // → row data in the live expanded blob
-    Section  sec;
-    Category cat;       // fine-grained gate (the 63 show_* categories)
-    uint8_t  orig_area; // areaNo to restore on show
-    bool     is_piece;
-    bool     is_kindling;
-    uint64_t row_id;
-    int      grp_key;   // cluster grouping key: nearest-grace index, or entrance key, or -1 = homeless
-    int      grp_pname; // PlaceName id for the pile label (-1 = count-only)
-    int      grp_tab;   // anchor map sub-page (tabId) — DIAGNOSTIC ONLY (underground 12000/12001/...)
-    float    ent_x;     // projected-dungeon overworld ENTRANCE (world coords); <0 = not a projected dungeon
-    float    ent_z;
-};
-static std::vector<SectionRow> g_section_rows;
 
 // Number of marker categories (enum has no COUNT sentinel; keep in sync).
 static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldInteractables) + 1;
@@ -399,15 +389,6 @@ bool goblin::is_section_hidden_ptr(const void *param_data)
 // Show/hide every injected row of one section in place. Hide = areaNo 99;
 // show = restore orig_area unless the row is an already-collected piece/kindling
 // (those stay evicted, owned by collected::/kindling::).
-// Cluster state (declared before the apply_* visibility fns, which gate clusters).
-// A collectable member of a cluster, with every signal needed to tell if it's been
-// taken: the textDisableFlagId1 event flag (plain loot), or piece/kindling tracking
-// (Reforged Rune Pieces / Kindling Spirits — collected by row id, no event flag).
-struct ClusterMemberRef { uint32_t flag; uint64_t row_id; bool is_piece; bool is_kindling; };
-struct ClusterRow { uint8_t *ptr; uint8_t area; int count_textid; std::vector<ClusterMemberRef> members; Category cat; };
-static std::vector<ClusterRow> g_clusters;        // the synthetic cluster icons
-struct ClusterMember { uint8_t *ptr; uint8_t orig_area; Category cat; };
-static std::vector<ClusterMember> g_cluster_members;  // individuals parked under a cluster
 
 // g_clusters_expanded is declared earlier (near is_section_hidden_ptr).
 // Cluster bubbles ON by default: the checkbox reads this value directly while the
@@ -419,128 +400,13 @@ static std::atomic<bool> g_cluster_debug{true};       // on-map cluster bubbles 
 // owner of game-state mutation), mirroring the section + master toggles.
 static std::atomic<bool> g_cluster_expand_dirty{false};
 static std::atomic<bool> g_cluster_debug_dirty{false};
-static bool g_clustering_active = false;  // clusters built this session
 
 // A cluster icon (and its parked members) belong to ONE category since buckets
 // are per-category. Hide them when that category OR its section is toggled off,
 // so a disabled category doesn't leave its cluster glyphs on the map.
-static bool cluster_should_hide(Category cat)
-{
-    return !g_category_visible[static_cast<int>(cat)].load() ||
-           !g_section_visible[static_cast<int>(section_of(cat))].load();
-}
 
-static void apply_section_visibility(Section s, bool visible)
-{
-    int touched = 0;
-    std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
-    for (const auto &r : g_section_rows)
-    {
-        if (r.sec != s) continue;
-        uint8_t *area = r.ptr + 0x20;  // WORLD_MAP_POINT_PARAM_ST.areaNo
-        if (!visible)
-        {
-            *area = 99;
-            g_section_hidden_ptrs.insert(r.ptr);  // claim authority: keep at 99
-        }
-        else
-        {
-            g_section_hidden_ptrs.erase(r.ptr);   // release this owner
-            bool keep_hidden =
-                g_category_hidden_ptrs.count(r.ptr) ||   // category still hides it
-                (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
-                (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
-            *area = keep_hidden ? 99 : r.orig_area;
-        }
-        touched++;
-    }
-    // Gate cluster icons + members whose category lives in this section.
-    bool expanded = g_clusters_expanded.load();
-    for (const auto &cl : g_clusters)
-        if (section_of(cl.cat) == s)
-            cl.ptr[0x20] = (!visible || expanded || !g_cluster_debug.load() || cluster_should_hide(cl.cat)) ? 99 : cl.area;
-    for (const auto &m : g_cluster_members)
-        if (section_of(m.cat) == s)
-            m.ptr[0x20] = (visible && expanded && !cluster_should_hide(m.cat)) ? m.orig_area : 99;
-    spdlog::info("[SECTION] {} -> {} ({} rows)",
-                 section_name(s), visible ? "SHOWN" : "HIDDEN", touched);
-}
 
-// Per-category visibility — the fine-grained twin of apply_section_visibility.
-// Same areaNo park/restore + two-set coordination so a category hide survives
-// the fragment/collected restore paths and doesn't fight a section toggle.
-static void apply_category_visibility(Category c, bool visible)
-{
-    int touched = 0;
-    std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
-    for (const auto &r : g_section_rows)
-    {
-        if (r.cat != c) continue;
-        uint8_t *area = r.ptr + 0x20;
-        if (!visible)
-        {
-            *area = 99;
-            g_category_hidden_ptrs.insert(r.ptr);
-        }
-        else
-        {
-            g_category_hidden_ptrs.erase(r.ptr);
-            bool keep_hidden =
-                g_section_hidden_ptrs.count(r.ptr) ||   // section still hides it
-                (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
-                (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
-            *area = keep_hidden ? 99 : r.orig_area;
-        }
-        touched++;
-    }
-    // Cluster icons + their parked members belong to one category — gate them too,
-    // else a disabled category leaves its (typed) cluster glyphs on the map.
-    bool expanded = g_clusters_expanded.load();
-    for (const auto &cl : g_clusters)
-        if (cl.cat == c)
-            cl.ptr[0x20] = (!visible || expanded || !g_cluster_debug.load() || cluster_should_hide(c)) ? 99 : cl.area;
-    for (const auto &m : g_cluster_members)
-        if (m.cat == c)
-            m.ptr[0x20] = (visible && expanded && !cluster_should_hide(c)) ? m.orig_area : 99;
-    spdlog::info("[CATEGORY] {} -> {} ({} rows)",
-                 goblin::markers::category_name(c), visible ? "SHOWN" : "HIDDEN", touched);
-}
 
-// Master "Show icons" on/off via the SAME live areaNo lever as sections/
-// categories (not the param-file swap, which only reapplies per-region as the
-// game re-reads the file → icons vanish gradually). Parks/restores every
-// injected row at once; g_master_off makes the restore paths keep them at 99.
-static void apply_master_visibility(bool icons_on)
-{
-    g_master_off.store(!icons_on);
-    std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
-    for (const auto &r : g_section_rows)
-    {
-        uint8_t *area = r.ptr + 0x20;
-        if (!icons_on)
-        {
-            *area = 99;
-        }
-        else
-        {
-            bool keep_hidden =
-                g_section_hidden_ptrs.count(r.ptr) || g_category_hidden_ptrs.count(r.ptr) ||
-                (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
-                (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
-            *area = keep_hidden ? 99 : r.orig_area;
-        }
-    }
-    // Cluster glyphs + their parked members are NOT in g_section_rows — gate them on
-    // master too, else master-off hides the base icons but leaves the cluster piles.
-    bool expanded = g_clusters_expanded.load();
-    for (const auto &cl : g_clusters)
-        cl.ptr[0x20] = (icons_on && !expanded && g_cluster_debug.load() && !cluster_should_hide(cl.cat))
-                       ? cl.area : 99;
-    for (const auto &m : g_cluster_members)
-        m.ptr[0x20] = (icons_on && expanded && !cluster_should_hide(m.cat)) ? m.orig_area : 99;
-    spdlog::info("[MASTER] icons {} ({} injected rows, {} clusters)",
-                 icons_on ? "SHOWN" : "HIDDEN", g_section_rows.size(), g_clusters.size());
-}
 
 // ─── Marker clustering (v1, density-triggered, static) ───────────────
 //
@@ -590,6 +456,104 @@ static bool find_nearest_grace(uint8_t area, float wx, float wz,
     return true;
 }
 
+// Region PlaceName for a marker via the GAME's own logic = point-in-volume containment
+// against the MSB MapNameOverride volumes (goblin_name_regions), in the marker's MSB map
+// LOCAL frame (area+gridX+gridZ keys the map; posX/posZ are that map's local coords, same
+// as the volume's). Returns the PlaceName textId of the SMALLEST (most specific) containing
+// volume, or 0 = no volume here (caller falls back to the nearest-grace pname). Far more
+// reliable than nearest-anchor for tooltips + cluster labels (cities, region borders).
+int goblin::region_name_pname(uint8_t area, uint8_t gx, uint8_t gz, float posX, float posZ)
+{
+    namespace gen = goblin::generated;
+    int near_tid = 0;        // nearest-volume fallback (same map) when nothing contains
+    float near_d = 1e30f;
+    for (size_t i = 0; i < gen::NAME_REGION_COUNT; ++i) // sorted smallest-first per map
+    {
+        const auto &r = gen::NAME_REGIONS[i];
+        if (r.area != area || r.gx != gx || r.gz != gz)
+            continue;
+        // Point into the volume's local frame (inverse yaw about its centre).
+        float dx = posX - r.px, dz = posZ - r.pz;
+        float c = std::cos(r.rot), s = std::sin(r.rot);
+        float lx = dx * c + dz * s;
+        float lz = -dx * s + dz * c;
+        bool inside = (r.shape == 0)
+            ? (std::fabs(lx) <= r.half_w && std::fabs(lz) <= r.half_d)
+            : (lx * lx + lz * lz <= r.radius * r.radius);
+        if (inside)
+            return r.text_id; // contained = smallest (sorted) = most specific
+        // Track the nearest volume's centre as a fallback. The MapNameOverride volumes only
+        // cover specific named sub-areas (small boxes), so most markers sit OUTSIDE every
+        // volume — but the nearest named volume IN THE SAME MSB MAP is almost always the
+        // right region (regions are contiguous; a map with both Nokron + Siofra volumes
+        // disambiguates by proximity). Far better than the nearest-grace heuristic.
+        float d2 = dx * dx + dz * dz;
+        if (d2 < near_d) { near_d = d2; near_tid = r.text_id; }
+    }
+    return near_tid; // 0 only when this map has NO named volume → caller falls back to grace
+}
+
+// Cluster grouping key for a marker = its nearest Site-of-Grace index (within the
+// marker's SOURCE area + raw world gridX*256+pos), matching the native map's
+// by-location clustering (replan_clusters grp_key). Returns -1 when no grace anchor
+// shares the area → the caller draws it exact. out_pname (optional) = the marker's
+// region PlaceName id (MapNameOverride containment, else the group's grace region).
+// LABEL fallbacks (defined below) — nearest MSB region, then nearest major-region
+// anchor (which borrows area 61 for the DLC underground areas 40-43).
+static int find_nearest_region_pname(uint8_t area, float wx, float wz);
+static int find_nearest_major_region_pname(uint8_t area, float wx, float wz);
+
+int goblin::marker_cluster_key(uint8_t area, uint8_t gridX, uint8_t gridZ, float posX,
+                               float posZ, int *out_pname)
+{
+    float mwx = static_cast<float>(gridX) * 256.0f + posX;
+    float mwz = static_cast<float>(gridZ) * 256.0f + posZ;
+    int idx = -1, pname = -1, tab = 0;
+    bool has_grace = find_nearest_grace(area, mwx, mwz, &idx, &pname, &tab);
+    if (out_pname)
+    {
+        // Prefer the game's own region naming (point-in-volume); fall back to the
+        // nearest grace's region when no MapNameOverride volume contains the marker.
+        int region = region_name_pname(area, gridX, gridZ, posX, posZ);
+        int pn = region ? region : (has_grace ? pname : 0);
+        // Last resort (e.g. DLC underground 40-43: no named volume, no in-area grace):
+        // nearest MSB region, then the major-region anchor (borrows area 61 for 40-43),
+        // so the tooltip shows a location like the native map instead of a bare name.
+        if (!pn) pn = find_nearest_region_pname(area, mwx, mwz);
+        if (!pn) pn = find_nearest_major_region_pname(area, mwx, mwz);
+        *out_pname = pn ? pn : -1;
+    }
+    return has_grace ? idx : -1;
+}
+
+// Project a grace anchor (by its GRACE_ANCHORS index = a marker's cluster_key) to
+// UNIFIED world coords via the same marker_world_pos pipeline the markers use, so the
+// overlay can place a cluster pile AT its grace (a real, correctly-placed location)
+// instead of the member centroid (which drifts into the sea when a group spans water
+// or has a mis-projected member). Returns false on a bad key.
+bool goblin::grace_anchor_world(int key, int &out_area, float &wx, float &wz)
+{
+    if (key < 0 || static_cast<size_t>(key) >= goblin::generated::GRACE_ANCHOR_COUNT)
+        return false;
+    const auto &a = goblin::generated::GRACE_ANCHORS[key];
+    int ga;
+    marker_world_pos(a.area, a.gridX, a.gridZ, a.posX, a.posZ, ga, wx, wz,
+                     /*conv_underground=*/true);
+    out_area = ga;
+    return true;
+}
+
+// The map sub-page (tabId) of a grace anchor (by its GRACE_ANCHORS index = a marker's
+// cluster_key). Underground pages split into sub-pages (12000/12001/12002, DLC 6800+),
+// where Euclidean distance is meaningless — distance-adaptive uses this discrete tab
+// gradient there (same sub-page as the player = detail). -1 on a bad key.
+int goblin::grace_anchor_tab(int key)
+{
+    if (key < 0 || static_cast<size_t>(key) >= goblin::generated::GRACE_ANCHOR_COUNT)
+        return -1;
+    return goblin::generated::GRACE_ANCHORS[key].tab_id;
+}
+
 // Player MapId TILE -> map sub-page (tabId), via the authoritative tile_region_map
 // table. Used for UNDERGROUND distance-adaptive: the player's local float is leaf-
 // block-local garbage and the marker param gridXNo is coarse (1/2), so neither
@@ -605,6 +569,32 @@ static int tab_for_tile(int area, int gx, int gz)
         if (t.area == area && t.gx == gx && t.gz == gz) return t.tab;
     }
     return -1;
+}
+
+// Raw tile (gridX/gridZ) of a grace anchor by its GRACE_ANCHORS index (cluster_key).
+// Underground distance-adaptive uses TILE distance (the float is garbage there, but
+// the tile is reliable) within the player's sub-page. false on a bad key.
+bool goblin::grace_anchor_tile(int key, int &out_gx, int &out_gz)
+{
+    if (key < 0 || static_cast<size_t>(key) >= goblin::generated::GRACE_ANCHOR_COUNT)
+        return false;
+    const auto &a = goblin::generated::GRACE_ANCHORS[key];
+    out_gx = a.gridX;
+    out_gz = a.gridZ;
+    return true;
+}
+
+// The player's current map sub-page (tabId) from the RELIABLE MapId tile (gx,gz) —
+// the float is leaf-block-local garbage underground, so coord/nearest-grace tab is
+// unreliable there; this uses tab_for_tile like the native distance-adaptive path.
+// Returns -1 on the overworld (those tiles aren't in the tab table) or if unresolved.
+int goblin::player_map_tab()
+{
+    int area = -1, gx = -1, gz = -1;
+    float wx = 0, wz = 0;
+    if (!get_player_map_pos(area, wx, wz, &gx, &gz))
+        return -1;
+    return tab_for_tile(area, gx, gz);
 }
 
 // Nearest MSB region-volume PlaceName to a world point in the same area — a LABEL
@@ -640,7 +630,7 @@ static int find_nearest_major_region_pname(uint8_t area, float wx, float wz)
     {
         const auto &g = goblin::generated::MAJOR_REGION_ANCHORS[i];
         if (g.area != lookup_area) continue;
-        float dx = g.wx - wx, dz = g.wz - wz;
+        float dx = (g.gx * 256.0f + g.px) - wx, dz = (g.gz * 256.0f + g.pz) - wz;
         float d = dx * dx + dz * dz;
         if (d < bestd) { bestd = d; best = static_cast<int>(i); }
     }
@@ -668,43 +658,12 @@ static std::vector<std::pair<int, std::string>> g_cluster_census;
 // pure grace/boss pile) → never "done".
 // Collapsed: clusters visible (real area), members parked (99).
 // Expanded: clusters parked (99), members restored — the slow, see-everything view.
-static void apply_cluster_expanded(bool expanded)
-{
-    // Collapsed: show the cluster icon (unless its category/section is hidden);
-    // park members. Expanded: park the icon; show members (same gate).
-    int cl_shown = 0, mem_parked = 0;
-    for (const auto &c : g_clusters)
-    {
-        c.ptr[0x20] = (expanded || cluster_should_hide(c.cat)) ? 99 : c.area;
-        if (c.ptr[0x20] != 99) cl_shown++;
-    }
-    for (const auto &m : g_cluster_members)
-    {
-        m.ptr[0x20] = (expanded && !cluster_should_hide(m.cat)) ? m.orig_area : 99;
-        if (m.ptr[0x20] == 99) mem_parked++;
-    }
-    spdlog::info("[CLUSTER] {} -> {}/{} cluster icons shown, {}/{} members parked",
-                 expanded ? "EXPANDED" : "COLLAPSED", cl_shown, g_clusters.size(),
-                 mem_parked, g_cluster_members.size());
-}
 
 // Show / hide the on-map cluster bubbles. ON = the pile glyph is on its page with
 // its count on line 2. OFF = the bubble is parked off-page (areaNo 99) entirely —
 // no phantom numberless glyph; the per-category overlay census is the count source.
 // Members stay parked either way (they only un-park in expanded view), so OFF just
 // removes the pile icon, keeping the freeze-fix parking intact.
-static void apply_cluster_debug(bool show_bubbles)
-{
-    bool expanded = g_clusters_expanded.load();
-    for (const auto &c : g_clusters)
-    {
-        auto *st = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(c.ptr);
-        st->textId2 = show_bubbles ? c.count_textid : -1;  // line 2 = count; textId1 (name) stays
-        bool hide = !show_bubbles || expanded || cluster_should_hide(c.cat);
-        c.ptr[0x20] = hide ? 99 : c.area;
-    }
-    spdlog::info("[CLUSTER] bubbles -> {}", show_bubbles ? "SHOWN(+count)" : "HIDDEN");
-}
 
 // Cluster label census for setup_messages (PlaceName textId → member count).
 const std::vector<std::pair<int, std::string>> &goblin::cluster_label_census()
@@ -712,78 +671,66 @@ const std::vector<std::pair<int, std::string>> &goblin::cluster_label_census()
     return g_cluster_census;
 }
 
-// ─── Player world position (WorldChrMan) — for proximity clustering (v2) ──
-// Chain extracted from Hexinton all-in-one CT v6.0:
-//   WorldChrMan static: AOB `48 8B FA 0F 11 41 70 48 8B 05`; the trailing
-//   `48 8B 05` is `mov rax,[rip+disp32]` at +7 (ends +0xE) → static slot =
-//   finder + 0xE + *(int32*)(finder+0xA).
-//   Global pos floats: [[[WorldChrMan]+0x10EF8]+0]+0x6B0/6B4/6B8 = X/Y/Z.
-// Offsets are game-version specific (CT v6.0); VERIFY in-game before trusting.
+// ─── Player world position (WorldChrMan) ─────────────────────────────────────
+// WorldChrMan static: AOB `48 8B FA 0F 11 41 70 48 8B 05`; the trailing `48 8B 05`
+// is `mov rax,[rip+disp32]` at +7 (ends +0xE) → static slot = finder + 0xE +
+// *(int32*)(finder+0xA).
+// Player position chain RESOLVED (runtime-confirmed, CE find-what-accesses + RPM walk —
+// docs/re/windows_player_pos_RESOLVED_re_findings.md, commit cc53594):
+//   LocalPlayer = [WorldChrMan + 0x1E508]
+//   X/Y/Z       = float [LocalPlayer + 0x6C0 / +0x6C4 / +0x6C8]   (Y = height)
+// Correct on EVERY page (underground included) and updates while the map is CLOSED —
+// the single source for distance-adaptive (map open) AND the minimap (map closed).
+// Supersedes the dead 0x10EF8 → +0x6B0 chain (LocalPlayer offset drifted, field moved).
 static void **g_wcm_static = nullptr;
 static bool g_wcm_tried = false;
 
 static void resolve_world_chr_man()
 {
     g_wcm_tried = true;
-    auto *finder = reinterpret_cast<uint8_t *>(
-        modutils::scan<void>({.aob = "48 8B FA 0F 11 41 70 48 8B 05"}));
-    if (!finder)
+    // Doc-confirmed static slot (runtime RPM walk, windows_player_pos_RESOLVED):
+    // WorldChrMan = [eldenring.exe + 0x3D65F88]. Prefer this exact RVA; keep the WCM_FINDER
+    // AOB as a patch-drift fallback (on this build both resolve to the same slot).
+    uintptr_t er_base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    void **fixed = er_base ? reinterpret_cast<void **>(er_base + 0x3D65F88) : nullptr;
+    void **aob = nullptr;
+    if (auto *finder = reinterpret_cast<uint8_t *>(
+            modutils::scan<void>({.aob = goblin::sig::WCM_FINDER})))
     {
-        spdlog::warn("[PLAYER] WorldChrMan AOB not found");
-        return;
+        int32_t disp = *reinterpret_cast<int32_t *>(finder + 0xA);
+        aob = reinterpret_cast<void **>(finder + 0xE + disp);
     }
-    int32_t disp = *reinterpret_cast<int32_t *>(finder + 0xA);
-    g_wcm_static = reinterpret_cast<void **>(finder + 0xE + disp);
-    spdlog::info("[PLAYER] WorldChrMan static @ {:p}", (void *)g_wcm_static);
+    g_wcm_static = fixed ? fixed : aob;
+    spdlog::info("[PLAYER] WorldChrMan slot: fixed(er+0x3D65F88)={:p} aob={:p} -> using {:p}",
+                 (void *)fixed, (void *)aob, (void *)g_wcm_static);
 }
 
-// DIAGNOSTIC probe (POD-only; no C++ objects in the __try). Fills intermediate
-// pointers + two candidate coordinate chains so one in-game run identifies the
-// correct offsets. Caller logs the result OUTSIDE the SEH frame.
+// Player-position probe (POD-only; no C++ objects in the __try). Caller reads the
+// result OUTSIDE the SEH frame. LocalPlayer = [WorldChrMan+0x1E508]; X/Y/Z =
+// LocalPlayer +0x6C0/+0x6C4/+0x6C8 (a 2nd render copy sits at +0x6D4.. — use +0x6C0).
 struct PlayerProbe
 {
-    void *wcm, *player, *subA;      // [static], [wcm+10EF8], [player+0]
-    float a[3]; bool a_ok;          // candidate A: global = [..+0]+6B0/6B4/6B8
-    void *physMod;                  // candidate B physics module
-    float b[3]; bool b_ok;          // candidate B: pCoordAdr = [[[[[WCM]+1E508]+58]+10]+190]+68
+    void *wcm, *lp;   // [static], [wcm+0x1E508]
+    float p[3];       // X, Y(height), Z at LocalPlayer +0x6C0/+0x6C4/+0x6C8
+    bool ok;
 };
 
 static void probe_player_seh(void **wcm_static, PlayerProbe *pr)
 {
-    pr->wcm = pr->player = pr->subA = pr->physMod = nullptr;
-    pr->a_ok = pr->b_ok = false;
+    pr->wcm = pr->lp = nullptr;
+    pr->ok = false;
     __try
     {
         auto *wcm = *reinterpret_cast<uint8_t **>(wcm_static);
         pr->wcm = wcm;
         if (!wcm) return;
-        // Candidate A: WorldChrMan + LocalPlayerOffset(0x10EF8) + [+0] + 0x6B0..
-        auto *player = *reinterpret_cast<uint8_t **>(wcm + 0x10EF8);
-        pr->player = player;
-        if (player)
-        {
-            auto *subA = *reinterpret_cast<uint8_t **>(player + 0x0);
-            pr->subA = subA;
-            if (subA)
-            {
-                pr->a[0] = *reinterpret_cast<float *>(subA + 0x6B0);
-                pr->a[1] = *reinterpret_cast<float *>(subA + 0x6B4);
-                pr->a[2] = *reinterpret_cast<float *>(subA + 0x6B8);
-                pr->a_ok = true;
-            }
-            // Candidate B: physics chain [[[[player]+58]+10]+190]+68  (pCoordAdr,
-            // but using the LocalPlayerOffset player rather than +1E508).
-            auto *p2 = *reinterpret_cast<uint8_t **>(player + 0x58);
-            if (p2) { auto *p3 = *reinterpret_cast<uint8_t **>(p2 + 0x10);
-            if (p3) { auto *phys = *reinterpret_cast<uint8_t **>(p3 + 0x190);
-            pr->physMod = phys;
-            if (phys) {
-                pr->b[0] = *reinterpret_cast<float *>(phys + 0x68 + 0x0);
-                pr->b[1] = *reinterpret_cast<float *>(phys + 0x68 + 0x4);
-                pr->b[2] = *reinterpret_cast<float *>(phys + 0x68 + 0x8);
-                pr->b_ok = true;
-            } } }
-        }
+        auto *lp = *reinterpret_cast<uint8_t **>(wcm + 0x1E508);
+        pr->lp = lp;
+        if (!lp) return;
+        pr->p[0] = *reinterpret_cast<float *>(lp + 0x6C0); // X (tile-local)
+        pr->p[1] = *reinterpret_cast<float *>(lp + 0x6C4); // Y (height)
+        pr->p[2] = *reinterpret_cast<float *>(lp + 0x6C8); // Z (tile-local)
+        pr->ok = true;
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -794,15 +741,9 @@ bool goblin::get_player_world_pos(float &x, float &y, float &z)
     if (!g_wcm_static) return false;
     PlayerProbe pr{};
     probe_player_seh(g_wcm_static, &pr);
-    spdlog::info("[PLAYER] wcm={:p} player={:p} subA={:p} phys={:p} | "
-                 "A(+0,+6B0)={} X={:.1f} Y={:.1f} Z={:.1f} | "
-                 "B(phys+68)={} X={:.1f} Y={:.1f} Z={:.1f}",
-                 pr.wcm, pr.player, pr.subA, pr.physMod,
-                 pr.a_ok, pr.a[0], pr.a[1], pr.a[2],
-                 pr.b_ok, pr.b[0], pr.b[1], pr.b[2]);
-    if (pr.b_ok) { x = pr.b[0]; y = pr.b[1]; z = pr.b[2]; return true; }
-    if (pr.a_ok) { x = pr.a[0]; y = pr.a[1]; z = pr.a[2]; return true; }
-    return false;
+    if (!pr.ok) return false;
+    x = pr.p[0]; y = pr.p[1]; z = pr.p[2];
+    return true;
 }
 
 // ─── Player MARKER-space position — CONFIRMED Target-A chain (playerpos doc) ──
@@ -820,10 +761,10 @@ static void resolve_player_map_pos_statics()
 {
     g_mappos_tried = true;
     g_mapid_slot = reinterpret_cast<uintptr_t>(modutils::scan<void>({
-        .aob = "48 8B 0D ?? ?? ?? ?? 48 8D 54 24 20 E8 ?? ?? ?? ?? F2 0F 10 05 ?? ?? ?? ??",
+        .aob = goblin::sig::PLAYER_MAPID_SLOT,
         .relative_offsets = {{3, 7}}}));
     g_mappos_mgr_slot = reinterpret_cast<uintptr_t>(modutils::scan<void>({
-        .aob = "48 8B 0D ?? ?? ?? ?? 48 8D 53 10 E8 ?? ?? ?? ?? 4C 8B E8",
+        .aob = goblin::sig::WORLD_GEOM_MAN_SLOT,
         .relative_offsets = {{3, 7}}}));
     spdlog::info("[PLAYER] map-pos statics: mapId-slot {:p}, geomMgr-slot {:p}",
                  (void *)g_mapid_slot, (void *)g_mappos_mgr_slot);
@@ -842,49 +783,262 @@ static void probe_map_pos_seh(uintptr_t mapid_slot, uintptr_t mgr_slot, MapPosPr
         pr->area = (mid >> 24) & 0xff;
         pr->gx   = (mid >> 16) & 0xff;
         pr->gz   = (mid >> 8)  & 0xff;
-        pr->lx = *reinterpret_cast<float *>(mgr + 0x70);  // block-local X
-        pr->lz = *reinterpret_cast<float *>(mgr + 0x74);  // block-local Z (+0x78 = height)
+        // Vec layout (RE FUN_14045e390, doc windows_yellowdot_player_pos): X@+0x70,
+        // Y(HEIGHT)@+0x74, Z@+0x78. The old code read +0x74 as Z = HEIGHT → masked
+        // overworld (flat, Y small), broken underground (deep, Y swings). Z is +0x78.
+        pr->lx = *reinterpret_cast<float *>(mgr + 0x70);  // local X
+        pr->lz = *reinterpret_cast<float *>(mgr + 0x78);  // local Z (NOT +0x74 = height)
         pr->ok = true;
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
 bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
-                                int *out_gx, int *out_gz)
+                                int *out_gx, int *out_gz, int *out_group)
 {
     if (!g_mappos_tried) resolve_player_map_pos_statics();
-    if (!g_mapid_slot || !g_mappos_mgr_slot) return false;
+    if (!g_wcm_tried) resolve_world_chr_man();
+    if (!g_mapid_slot || !g_mappos_mgr_slot || !g_wcm_static) return false;
     MapPosProbe pr{};
-    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
-    if (!pr.ok) return false;
-    // If the player is inside a dungeon that PROJECTS to the overworld (legacy
-    // dungeons like Leyndell/Stormveil, catacombs…), project their position the same
-    // way the markers are projected — else the player reads the dungeon's native
-    // area (e.g. 11) while its piles live on area 60, so distance-adaptive never
-    // engages there and everything stays clustered. (project_* is plain C++; run it
-    // OUTSIDE the SEH frame on the values the probe captured.)
+    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr); // area/tile (+ stale geom local)
+    PlayerProbe pp{};
+    probe_player_seh(g_wcm_static, &pp);                     // live ChrIns world pos
+    if (!pr.ok || !pp.ok) return false;
+    // Player LOCAL = LocalPlayer+0x6C0/+0x6C8 — RUNTIME-CONFIRMED to be the EXACT
+    // WorldMapPointParam posX/posZ frame on every page (RE windows_player_pos_RESOLVED §4:
+    // standing on the Bois-des-Fidèles grace, +0x6C0/+0x6C8 = 1437.8/1519.0 == the grace's
+    // baked posX/posZ). So feed it as posX/posZ and bridge + project EXACTLY like a marker.
+    // The old bug: get_player_map_pos read the local from geomMgr+0x70/+0x74 (a physics-block
+    // frame, off by the block origin underground) — geomLocal is NOT used now. ChrIns reads
+    // (0,0) only during a load before the player is positioned → report no position then.
+    if (pp.p[0] == 0.0f && pp.p[2] == 0.0f) return false;
     from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp{};
     tmp.areaNo  = static_cast<uint8_t>(pr.area);
     tmp.gridXNo = static_cast<uint8_t>(pr.gx);
     tmp.gridZNo = static_cast<uint8_t>(pr.gz);
-    tmp.posX = pr.lx;
-    tmp.posZ = pr.lz;
-    if (project_dungeon_row_to_overworld(&tmp))
+    tmp.posX = pp.p[0]; // LocalPlayer+0x6C0 (param posX frame)
+    tmp.posZ = pp.p[2]; // LocalPlayer+0x6C8 (param posZ frame)
+    // Project dungeons/underground onto the overworld map-space EXACTLY like markers
+    // (conv_underground=true unifies base underground area 12 too) → matches every page.
+    if (project_dungeon_row_to_overworld(&tmp, nullptr, nullptr, /*conv_underground=*/true))
     {
         out_area = tmp.areaNo;
         world_x = tmp.gridXNo * 256.0f + tmp.posX;
         world_z = tmp.gridZNo * 256.0f + tmp.posZ;
         if (out_gx) *out_gx = tmp.gridXNo;
         if (out_gz) *out_gz = tmp.gridZNo;
+        if (out_group) *out_group = goblin::marker_group_from((uint8_t)pr.area, tmp.areaNo);
     }
     else
     {
         out_area = pr.area;
-        world_x = pr.gx * 256.0f + pr.lx;   // marker space: gridX*256 + local
-        world_z = pr.gz * 256.0f + pr.lz;
-        if (out_gx) *out_gx = pr.gx;        // reliable tile (from MapId) — valid even underground
+        world_x = pr.gx * 256.0f + pp.p[0];
+        world_z = pr.gz * 256.0f + pp.p[2];
+        if (out_gx) *out_gx = pr.gx;
         if (out_gz) *out_gz = pr.gz;
+        if (out_group) *out_group = goblin::marker_group_from((uint8_t)pr.area, pr.area);
     }
+    return true;
+}
+
+// Player position in the RAW per-area frame (NO projection): out_area = the real MapId
+// area (60 overworld, 12 base underground, 61/40-43 DLC, …); wx/wz = gridX*256 + the live
+// ChrIns local. Unlike get_player_map_pos (which projects underground into the OVERLAPPING
+// unified overworld map-space), this keeps each area in its own frame — so distance-adaptive
+// can measure player↔grace distance correctly underground (gate on same raw area). Returns
+// false during a load (ChrIns 0) or when the statics/probe fail.
+bool goblin::get_player_raw_pos(int &out_area, float &wx, float &wz)
+{
+    if (!g_mappos_tried) resolve_player_map_pos_statics();
+    if (!g_wcm_tried) resolve_world_chr_man();
+    if (!g_mapid_slot || !g_wcm_static) return false;
+    MapPosProbe pr{};
+    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
+    PlayerProbe pp{};
+    probe_player_seh(g_wcm_static, &pp);
+    if (!pr.ok || !pp.ok) return false;
+    if (pp.p[0] == 0.0f && pp.p[2] == 0.0f) return false;
+    out_area = pr.area;
+    wx = pr.gx * 256.0f + pp.p[0];
+    wz = pr.gz * 256.0f + pp.p[2];
+    return true;
+}
+
+// Grace anchor in its RAW per-area frame (NO projection) — for same-area distance vs
+// get_player_raw_pos. area = GRACE_ANCHORS[key].area; wx/wz = gridX*256 + posX/posZ.
+bool goblin::grace_anchor_raw(int key, int &out_area, float &wx, float &wz)
+{
+    if (key < 0 || static_cast<size_t>(key) >= goblin::generated::GRACE_ANCHOR_COUNT)
+        return false;
+    const auto &a = goblin::generated::GRACE_ANCHORS[key];
+    out_area = a.area;
+    wx = a.gridX * 256.0f + a.posX;
+    wz = a.gridZ * 256.0f + a.posZ;
+    return true;
+}
+
+
+// Region gating helpers for the overlay (mirror the game's native areaNo+tab gating).
+int goblin::grace_tab_id(uint8_t src_area, float raw_wx, float raw_wz)
+{
+    int idx = -1, pname = -1, tab = -1;
+    if (find_nearest_grace(src_area, raw_wx, raw_wz, &idx, &pname, &tab))
+        return tab;
+    return -1;
+}
+
+bool goblin::player_in_dlc()
+{
+    if (!g_mappos_tried) resolve_player_map_pos_statics();
+    if (!g_mapid_slot || !g_mappos_mgr_slot) return false;
+    MapPosProbe pr{};
+    probe_map_pos_seh(g_mapid_slot, g_mappos_mgr_slot, &pr);
+    if (!pr.ok) return false;
+    if (pr.area >= 40 && pr.area <= 43) return true;       // DLC underground (native)
+    int tab = tab_for_tile(pr.area, pr.gx, pr.gz);          // DLC overworld/under → 6800-6999
+    return tab >= 6800 && tab <= 6999;
+}
+
+// Unified overworld marker-space coord for an arbitrary baked marker (overlay-
+// rendered markers need this: a row's native (areaNo, grid, pos) is page-local,
+// but the overworld view projects everything into area-60 space). Mirrors the
+// player path above: project legacy dungeons (area 10/11/30-39…) onto the
+// overworld via LEGACY_CONV, then world = grid*256 + local. Rows already on the
+// overworld (area 60/61) or on their own underground page are returned as-is.
+static std::vector<goblin::LiveGrace> g_live_graces;
+
+void goblin::capture_live_graces()
+{
+    g_live_graces.clear();
+    // Read graces LIVE from the engine's own BonfireWarpParam — no MASSEDIT, no baked
+    // MAP_ENTRIES, no per-update drift. posX/Y/Z + areaNo/grid ARE the grace world position
+    // (the param carries them; no MSB resolve needed). The map icon is per-grace: iconId 1 =
+    // normal bonfire, iconId 44 = ERR cave/underground grace, iconId 48 = unique. Filters
+    // mirror the old offline bake (generate_graces.py): a real reachable grace needs a
+    // discovery flag + a place-name, and is not an ERR intentional hide (all dispMask = 0).
+    int hidden = 0, ug = 0;
+    try
+    {
+        for (auto [rowId, row] :
+             from::params::get_param<from::paramdef::BONFIRE_WARP_PARAM_ST>(L"BonfireWarpParam"))
+        {
+            if (row.areaNo == 0) continue;                 // not a placed grace
+            if ((int)row.eventflagId <= 0 || row.textId1 <= 0) continue; // no flag / no name
+            // dispMask00/01/02 are ALL bits 0/1/2 of the single byte 0x1e (verified in-memory:
+            // dispMask00→0x01, dispMask01→0x02, dispMask02→0x04; byte 0x1f is pad). A grace shown
+            // on NO map layer (all three 0) is an ERR intentional hide (spoiler graces). The
+            // earlier (&0x3) read missed dispMask02 → wrongly hid every DLC grace.
+            if ((row.dispMask0 & 0x7) == 0) { ++hidden; continue; }
+            const bool underground = (row.iconId == 44);
+            if (underground) ++ug;
+            g_live_graces.push_back({ row.areaNo, row.gridXNo, row.gridZNo,
+                                      row.posX, row.posZ, row.textId1, rowId,
+                                      (int)row.eventflagId, underground });
+        }
+    }
+    catch (...) {}
+
+    spdlog::info("[LIVE-GRACE] {} grace rows from live BonfireWarpParam ({} underground/cave, "
+                 "{} ERR-hidden skipped)", g_live_graces.size(), ug, hidden);
+}
+
+const std::vector<goblin::LiveGrace> &goblin::live_graces() { return g_live_graces; }
+
+// ── Fog-of-war reveal gate (RE: docs/re/windows_fog_reveal_mask_re_findings.md) ──
+// A WorldMapPieceParam piece covers the map-space rectangle openTravelArea L/R/T/B and is
+// revealed ⇔ IsEventFlag(openEventFlagId) (flag 0 = always shown). A marker is fogged when
+// the piece whose rect contains it has an unset reveal flag. This is the engine's TRUE fog
+// state — replaces the coarse MapList/marker_fragment_flag approximation once calibrated.
+namespace
+{
+struct FogPiece { int layer; float l, r, t, b; uint32_t flag; };
+std::vector<FogPiece> g_fog_pieces;
+bool g_fog_built = false;
+
+void build_fog_pieces()
+{
+    if (g_fog_built) return;
+    g_fog_built = true;
+    int per_layer[16] = {0};
+    float bbL[16], bbR[16], bbT[16], bbB[16];
+    for (int i = 0; i < 16; ++i) { bbL[i] = 1e30f; bbR[i] = -1e30f; bbT[i] = 1e30f; bbB[i] = -1e30f; }
+    try
+    {
+        for (auto [rowId, row] :
+             from::params::get_param<from::paramdef::WORLD_MAP_PIECE_PARAM_ST>(L"WorldMapPieceParam"))
+        {
+            // rowId = areaIdx*100 + pieceIdx; areaIdx ∈ {0=overworld,1=underground,10=DLC}.
+            int layer = static_cast<int>(rowId / 100);
+            FogPiece p{layer, row.openTravelAreaLeft, row.openTravelAreaRight,
+                       row.openTravelAreaTop, row.openTravelAreaBottom, row.openEventFlagId};
+            g_fog_pieces.push_back(p);
+            int li = (layer >= 0 && layer < 16) ? layer : 0;
+            per_layer[li]++;
+            bbL[li] = std::min(bbL[li], p.l); bbR[li] = std::max(bbR[li], p.r);
+            bbT[li] = std::min(bbT[li], p.t); bbB[li] = std::max(bbB[li], p.b);
+        }
+    }
+    catch (...) {}
+    for (int i = 0; i < 16; ++i)
+        if (per_layer[i])
+            spdlog::info("[FOGCAL] layer {} : {} pieces, rect bbox=({:.1f},{:.1f})-({:.1f},{:.1f})",
+                         i, per_layer[i], bbL[i], bbT[i], bbR[i], bbB[i]);
+    spdlog::info("[FOGCAL] {} WorldMapPieceParam pieces loaded", g_fog_pieces.size());
+}
+} // namespace
+
+bool goblin::marker_fogged(int areaIdx, float mx, float my)
+{
+    if (!g_fog_built) build_fog_pieces();
+    for (const FogPiece &p : g_fog_pieces)
+    {
+        if (p.layer != areaIdx) continue;
+        if (mx < p.l || mx > p.r || my < p.t || my > p.b) continue; // not this piece
+        if (p.flag == 0) return false;                              // ungated piece
+        return !goblin::ui::read_event_flag(p.flag);                // fogged if flag unset
+    }
+    return false; // covered by no piece ⇒ ungated (matches the engine)
+}
+
+// Map-fragment discovery flag for a marker, computed on the SAME tile the native
+// injection gates on. Legacy GetMapFragment runs AFTER inject_map_entries projected the
+// row, so it looks the fragment up by the PROJECTED tile: overworld dungeons (Stormveil
+// m10, catacombs m30…) become area-60 overworld tiles, while underground (m12 / DLC
+// 40-43) stays native (MapList keys those separately) — exactly conv_underground=false.
+// The first overlay port looked up the ORIGINAL baked tile instead, so a dungeon whose
+// interior grid cell isn't enumerated in MapList (deep Stormveil, etc.) returned 0 =
+// "no fragment" = always shown → the islands that leaked into the fog with zero
+// fragments. Projecting first puts them on a MapList-covered overworld tile and gates
+// them like the native map. (ExceptionList per-row overrides still not applied — no
+// rowId here; the tile table covers the vast majority.)
+int goblin::marker_fragment_flag(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz)
+{
+    from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp{};
+    tmp.areaNo = areaNo;
+    tmp.gridXNo = gx;
+    tmp.gridZNo = gz;
+    tmp.posX = px;
+    tmp.posZ = pz;
+    project_dungeon_row_to_overworld(&tmp, nullptr, nullptr, /*conv_underground=*/false);
+    return goblin::map_fragment_flag(tmp.areaNo, tmp.gridXNo, tmp.gridZNo);
+}
+
+bool goblin::marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,
+                              int &out_area, float &world_x, float &world_z,
+                              bool conv_underground)
+{
+    from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp{};
+    tmp.areaNo = areaNo;
+    tmp.gridXNo = gx;
+    tmp.gridZNo = gz;
+    tmp.posX = px;
+    tmp.posZ = pz;
+    // in-place; no-op if already overworld / unmappable. conv_underground=true also unifies
+    // base underground (area 12) into overworld map-space (overlay UG layer).
+    project_dungeon_row_to_overworld(&tmp, nullptr, nullptr, conv_underground);
+    out_area = tmp.areaNo;
+    world_x = tmp.gridXNo * 256.0f + tmp.posX;
+    world_z = tmp.gridZNo * 256.0f + tmp.posZ;
     return true;
 }
 
@@ -911,8 +1065,10 @@ struct LotReader
     {
         auto &pref  = (lot_type == 2) ? enemy_lots : map_lots;
         auto &other = (lot_type == 2) ? map_lots : enemy_lots;
-        if (pref)  { try { return &(*pref)[lot_id]; }  catch (...) {} }
-        if (other) { try { return &(*other)[lot_id]; } catch (...) {} }
+        // try_get = non-throwing, non-logging: a missing lot (ERR/randomizer removed it)
+        // is an expected miss, not an error — just fall back to the other table / baked.
+        if (pref)  { if (RawItemLotRow *r = pref->try_get(lot_id))  return r; }
+        if (other) { if (RawItemLotRow *r = other->try_get(lot_id)) return r; }
         return nullptr;
     }
 };
@@ -950,6 +1106,14 @@ const goblin::generated::ItemIcon *lookup_item_icon(int32_t key)
     return (it != end && it->key == key) ? it : nullptr;
 }
 } // namespace
+
+// Public wrapper: marker/item key → real inventory iconId (or -1). Lets the overlay map
+// renderer route lot/item markers through the native GPU icon harvest (ensure_item_icon_srv).
+int goblin::item_icon_id(int32_t key)
+{
+    const goblin::generated::ItemIcon *p = lookup_item_icon(key);
+    return p ? (int)p->iconId : -1;
+}
 
 // Master-off intent set by the toggle hotkey. When true the user has
 // explicitly hidden the icons, so the auto-toggle must keep the table vanilla
@@ -992,6 +1156,33 @@ static ParamResCap *find_world_map_point_param_res_cap()
         if (name == L"WorldMapPointParam") return prc;
     }
     return nullptr;
+}
+
+// Readiness probe for the robust init wait: true once the WorldMapPointParam table
+// is registered (regulation loaded). Polling THIS instead of a fixed sleep makes
+// init slow-PC-safe (the param can take >5s to load). SEH-guarded — the param list
+// is walked during volatile game init, so a mid-load fault just reads "not ready".
+bool goblin::world_map_param_ready()
+{
+    // Not just "registered" — the ResCap appears almost instantly (the probe logged
+    // "ready after 0 ms") while the regulation FILE + rows load later. Walk to the
+    // param table and require num_rows > 0, else inject runs on an empty/half-loaded
+    // table and the map fails to load on the slow launches. Same chain inject uses.
+    __try
+    {
+        auto *prc = find_world_map_point_param_res_cap();
+        if (!prc)
+            return false;
+        auto *rescap = reinterpret_cast<uint8_t *>(prc->param_header);
+        if (!rescap)
+            return false;
+        auto *file_ptr = *reinterpret_cast<uint8_t **>(rescap + 0x80);
+        if (!file_ptr)
+            return false;
+        auto *table = reinterpret_cast<ParamTable *>(file_ptr);
+        return table->num_rows > 0;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
 // Lowercase + keep only alphanumerics, so "Loot - Smithing Stones (Low)" and a
@@ -1075,290 +1266,6 @@ static int cluster_threshold_for_cfg(Category cat)
 // any enable / soft-hard / threshold / exclude change — NO restart (the map shows
 // it on next open). Counts are live: each pile points its label at a pre-injected
 // number string (CLUSTER_TEXTID_BASE + count). Runs on the watcher thread only.
-static void replan_clusters()
-{
-    using ST = from::paramdef::WORLD_MAP_POINT_PARAM_ST;
-    std::lock_guard<std::mutex> lk(g_section_hidden_mtx);
-
-    // 1. Tear down the previous plan: restore the members we parked, park all pool
-    //    rows, clear the registries.
-    for (const auto &m : g_cluster_members)
-        if (g_cluster_member_ptrs.count(m.ptr)) m.ptr[0x20] = m.orig_area;
-    for (auto *p : g_cluster_pool)
-    {
-        p[0x20] = 99;                                          // park main page
-        reinterpret_cast<ST *>(p)->areaNo_forDistViewMark = 99; // and distant-view page
-    }
-    g_clusters.clear();
-    g_cluster_members.clear();
-    g_cluster_member_ptrs.clear();
-
-    if (!goblin::config::enableClustering || g_cluster_pool.empty())
-    {
-        g_clustering_active = false;
-        return;
-    }
-
-    // 2. Bucket the live rows by their grouping key (nearest grace, or dungeon
-    //    entrance). Rows with no anchor (grp_key < 0) and categories the user left
-    //    unchecked (read LIVE from g_category_cluster) stay exact on the map.
-    struct Bucket { std::vector<size_t> members; double sx = 0, sz = 0; float py = 0;
-                    uint8_t area = 0; float ent_x = -1, ent_z = -1; int pname = -1; int tab = 0; };
-    std::unordered_map<int, Bucket> buckets;        // key = grace index / entrance key
-    int skip_noloc = 0, skip_unchecked = 0;         // diagnostics (why a row stays exact)
-    for (size_t i = 0; i < g_section_rows.size(); i++)
-    {
-        const auto &r = g_section_rows[i];
-        if (r.grp_key < 0) { skip_noloc++; continue; }                    // no anchor → exact
-        if (!g_category_cluster[static_cast<int>(r.cat)].load()) { skip_unchecked++; continue; } // unchecked
-        auto *st = reinterpret_cast<ST *>(r.ptr);
-        // Accumulate the centroid in WORLD coords (grid tile * 256 + tile-local
-        // pos) so a pile whose members straddle grid tiles lands correctly. 256 =
-        // display-grid tile size (matches project_dungeon_row_to_overworld).
-        float wx = static_cast<float>(st->gridXNo) * 256.0f + st->posX;
-        float wz = static_cast<float>(st->gridZNo) * 256.0f + st->posZ;
-        auto &b = buckets[r.grp_key];
-        b.members.push_back(i);
-        b.sx += wx; b.sz += wz; b.py = st->posY;
-        b.area = r.orig_area;
-        b.tab = r.grp_tab;                             // DIAGNOSTIC: anchor sub-page
-        if (b.pname < 0) b.pname = r.grp_pname;        // label = anchor's region name
-        // Projected dungeon → remember its overworld entrance so the pile sits
-        // there (one point) rather than at the centroid of its spread interior.
-        if (r.ent_x >= 0) { b.ent_x = r.ent_x; b.ent_z = r.ent_z; }
-    }
-
-    // 3. Locations over the threshold → fill a pool row, park members. Sparse
-    //    locations (≤ threshold) stay exact. Threshold counts markers per location.
-    int base_thr = static_cast<int>(goblin::config::clusterThreshold);
-    if (base_thr < 1) base_thr = 1;  // defense: 0 would cluster every location → pool blowout
-    // Distance-adaptive: read the player position ONCE (map-open replan). Each pile's
-    // threshold ramps base→far over near→far radius (tiles), SAME map area only, so
-    // distant dense spots merge harder (fewer far icons) while near you stays detailed.
-    const bool dist_adaptive = goblin::config::clusterDistanceAdaptive;
-    int player_area = -1; float player_wx = 0, player_wz = 0;
-    int player_gx = -1, player_gz = -1;
-    const bool have_player =
-        dist_adaptive && goblin::get_player_map_pos(player_area, player_wx, player_wz,
-                                                    &player_gx, &player_gz);
-    // The grid*256+local world frame is only valid on the 256-tiled overworld pages
-    // (60/61) — and projected dungeons resolve the player onto 60. Underground
-    // (area 12 / DLC 40-43) has non-256 tiles AND a leaf-block-local player float,
-    // so Euclidean distance there is garbage. Fall back to TILE distance (player &
-    // pile tiles are reliable from MapId/gridXNo) for those pages.
-    const bool euclid_frame = (player_area == 60 || player_area == 61);
-    // Underground (non-Euclidean frame): the player's reliable MapId tile -> sub-page
-    // (tabId). Piles on the SAME sub-page as the player get near-detail; other
-    // sub-pages cluster. (Tile/Euclidean distance can't separate underground sub-
-    // regions — they share coarse gridXNo 1/2 — so discriminate by sub-page instead.)
-    const int player_tab =
-        (have_player && !euclid_frame) ? tab_for_tile(player_area, player_gx, player_gz) : -1;
-    int near_thr = static_cast<int>(goblin::config::clusterNearThreshold);
-    if (near_thr < 1) near_thr = 1;
-    const float near_u  = goblin::config::clusterNearRadius * 256.0f;
-    const float far_u   = goblin::config::clusterFarRadius * 256.0f;
-    size_t pi = 0;
-    int dropped = 0, sub_threshold = 0;
-    const bool dbg = goblin::config::debugLogging;          // detailed dumps off by default
-    std::map<std::pair<int, int>, int> piles_at;           // (area,tab) -> # piles
-    std::map<std::pair<int, int>, int> subthr_at;          // (area,tab) -> # sub-threshold locations
-    for (auto &kv : buckets)
-    {
-        Bucket &b = kv.second;
-        // Pile position (also its world centroid for distance). Computed BEFORE the
-        // threshold so distance-adaptive can use it; no pool row taken yet. A
-        // projected dungeon sits at its overworld ENTRANCE (256-tiled → world split
-        // valid); otherwise keep a REAL member's grid tile and average posX/posZ over
-        // members in THAT SAME tile — never re-split a world centroid by 256 (area-12
-        // underground tiles aren't 256 wide, so the split invents a bad grid index).
-        // Entrance-key buckets (graceless projected dungeons, key >= 1000000) sit at
-        // the dungeon entrance. Grace buckets — including dungeons WITH graces, whose
-        // members are projected — use the centroid of their (projected) member tiles.
-        uint8_t cgx, cgz; float cpx, cpz;
-        const bool entrance_bucket = (kv.first >= 1000000) && (b.ent_x >= 0);
-        if (entrance_bucket)
-        {
-            int gx = static_cast<int>(std::floor(b.ent_x / 256.0));
-            int gz = static_cast<int>(std::floor(b.ent_z / 256.0));
-            cgx = static_cast<uint8_t>(gx);
-            cgz = static_cast<uint8_t>(gz);
-            cpx = static_cast<float>(b.ent_x - gx * 256.0);
-            cpz = static_cast<float>(b.ent_z - gz * 256.0);
-        }
-        else
-        {
-            auto *seed = reinterpret_cast<ST *>(g_section_rows[b.members[0]].ptr);
-            cgx = seed->gridXNo; cgz = seed->gridZNo;
-            double sx = 0, sz = 0; int n = 0;
-            for (size_t mi : b.members)
-            {
-                auto *m = reinterpret_cast<ST *>(g_section_rows[mi].ptr);
-                if (m->gridXNo == cgx && m->gridZNo == cgz) { sx += m->posX; sz += m->posZ; n++; }
-            }
-            cpx = static_cast<float>(sx / n);
-            cpz = static_cast<float>(sz / n);
-        }
-
-        // Per-pile threshold: HIGH near the player (few piles → detail / real items),
-        // ramping DOWN to base_thr far away (more clustering → fewer distant icons).
-        // Same area only — world coords aren't comparable across pages.
-        int thr = base_thr;
-        if (have_player && b.area == player_area)
-        {
-            if (euclid_frame && far_u > near_u)
-            {
-                // Overworld / projected-dungeon: real Euclidean distance in marker
-                // space, ramped near_thr (detail) -> base_thr (clustered).
-                float dx = (cgx * 256.0f + cpx) - player_wx;
-                float dz = (cgz * 256.0f + cpz) - player_wz;
-                float d = std::sqrt(dx * dx + dz * dz);
-                float t = (d - near_u) / (far_u - near_u);
-                if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
-                thr = static_cast<int>(std::lround(near_thr + t * (base_thr - near_thr)));
-                if (thr < 1) thr = 1;
-            }
-            else if (!euclid_frame && player_tab > 0)
-            {
-                // Underground: sub-page (tabId) gradient. The player's sub-region gets
-                // near-detail (near_thr), every other sub-page clusters (base_thr).
-                // Discrete — no ramp, since sub-pages have no in-between distance.
-                thr = (b.tab == player_tab) ? near_thr : base_thr;
-                if (thr < 1) thr = 1;
-            }
-        }
-
-        if (static_cast<int>(b.members.size()) <= thr)
-        {
-            sub_threshold++;
-            if (dbg) subthr_at[{b.area, b.tab}]++;
-            continue;
-        }
-        if (pi >= g_cluster_pool.size()) { dropped++; continue; }
-
-        uint8_t *cp = g_cluster_pool[pi++];
-        auto *cd = reinterpret_cast<ST *>(cp);
-        // Seed the pile from a REAL member row so it inherits EVERY page-selecting
-        // field (base / DLC / underground); then override position/label/icon below.
-        *cd = *reinterpret_cast<ST *>(g_section_rows[b.members[0]].ptr);
-        // RACE GUARD: the seed-copy just made this pool row an exact copy of an
-        // on-page member (its areaNo, icon, isAreaIcon, size). The game renders on
-        // another thread, so if it reads the row NOW it shows a duplicate, sometimes
-        // OVERSIZED (member isAreaIcon) marker. Keep the row OFF-PAGE while we set its
-        // fields, and publish areaNo (→ visible) LAST, fully formed.
-        cd->areaNo = 99;
-        cd->areaNo_forDistViewMark = 99;
-        cd->eventFlagId = 0; cd->clearedEventFlagId = 0;     // a pile has no appear/clear gate
-        cd->textDisableFlagId1 = cd->textDisableFlagId2 = cd->textDisableFlagId3 = 0;
-        cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
-        cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
-        cd->textId5 = cd->textId6 = cd->textId7 = cd->textId8 = -1;
-        cd->gridXNo = cgx; cd->gridZNo = cgz;
-        cd->posX = cpx; cd->posZ = cpz;
-        cd->posY = b.py;
-        // Mirror the distant-view coords (used by some pages / zoom levels).
-        cd->gridXNo_forDistViewMark = cgx;
-        cd->gridZNo_forDistViewMark = cgz;
-        cd->posX_forDistViewMark = cpx;
-        cd->posY_forDistViewMark = b.py;
-        cd->posZ_forDistViewMark = cpz;
-        cd->iconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID);
-        // The pile is a POINT icon. Seeding from a member can inherit isAreaIcon
-        // (a range icon = "same size as the map") → the pile renders oversized; and
-        // a stale distViewIconId would show the seed's glyph when zoomed out. Force
-        // both to the cluster glyph / point.
-        cd->isAreaIcon = false;
-        cd->distViewIconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID);
-        int cnt = std::min<int>(static_cast<int>(b.members.size()), CLUSTER_MAX_COUNT);
-        int cnt_textid = CLUSTER_TEXTID_BASE + cnt;    // → pre-injected number string
-        // Line 1 = the anchor's region name (its PlaceName id renders directly); if
-        // the anchor has NO name, fall back to the count so the pile ALWAYS has a
-        // hover tooltip (was -1 → no tooltip at all on nameless piles). Line 2 = the
-        // live count when "show counts" is on (apply_cluster_debug toggles it), but
-        // not on nameless piles (the count is already on line 1 there).
-        const bool named = (b.pname > 0);
-        cd->textId1 = named ? b.pname : cnt_textid;
-        cd->textId2 = (named && g_cluster_debug.load()) ? cnt_textid : -1;
-        cd->textId3 = cd->textId4 = -1;
-        // PUBLISH last: every field is now set, so make the row visible only now.
-        // (areaNo is the on-page lever; the render thread sees a fully-formed row.)
-        // Bubbles default OFF (counts live in the overlay census) — park unless the
-        // user has the "Show cluster bubbles" toggle on. apply_cluster_debug flips
-        // this live; the section/category gates re-apply the same g_cluster_debug check.
-        uint8_t pub_area = g_cluster_debug.load() ? b.area : 99;
-        cd->areaNo_forDistViewMark = pub_area;
-        cd->areaNo = pub_area;
-
-        std::vector<ClusterMemberRef> mrefs;
-        Category domcat = g_section_rows[b.members[0]].cat;  // for section gating
-        for (size_t mi : b.members)
-        {
-            const auto &r = g_section_rows[mi];
-            r.ptr[0x20] = 99;                          // park member off-page
-            g_cluster_member_ptrs.insert(r.ptr);
-            g_cluster_members.push_back({r.ptr, r.orig_area, r.cat});
-            uint32_t f = reinterpret_cast<ST *>(r.ptr)->textDisableFlagId1;  // collect flag
-            // Track any member that CAN be collected — plain loot (event flag) AND
-            // Reforged pieces/kindling (row-id tracked, no flag) — so the live count
-            // decrements for ERR items too, not only base flag-loot.
-            if (f || r.is_piece || r.is_kindling)
-                mrefs.push_back({f, r.row_id, r.is_piece, r.is_kindling});
-        }
-        g_clusters.push_back({cp, b.area, cnt_textid, std::move(mrefs), domcat});
-        piles_at[{b.area, b.tab}]++;
-        if (dbg)
-            spdlog::info("[CLUSTER-DUMP] #{} key={} area={} tab={} grid=({},{}) pos=({:.1f},{:.1f}) "
-                         "pname={} members={} mode={}",
-                         g_clusters.size() - 1, kv.first, b.area, b.tab, cgx, cgz,
-                         cd->posX, cd->posZ, b.pname, static_cast<int>(b.members.size()),
-                         (b.ent_x >= 0) ? "ENTRANCE" : "CENTROID");
-    }
-    g_clustering_active = !g_clusters.empty();
-    spdlog::info("[CLUSTER] replan by-location: {} piles, {} members parked, {}/{} pool used, {} dropped",
-                 g_clusters.size(), g_cluster_members.size(),
-                 pi, g_cluster_pool.size(), dropped);
-    spdlog::info("[CLUSTER] stayed-exact: {} no-location, {} unchecked-category, {} locations sub-threshold (base <= {}{})",
-                 skip_noloc, skip_unchecked, sub_threshold, base_thr,
-                 (dist_adaptive && have_player)
-                     ? (euclid_frame ? ", distance-adaptive[euclid]"
-                                     : ", distance-adaptive[subpage tab=" + std::to_string(player_tab) +
-                                       " tile=" + std::to_string(player_gx) + "," + std::to_string(player_gz) + "]")
-                     : "");
-    {
-        // Per-area cluster tally (which map page each pile lands on): 60/61 =
-        // overworld, 12 = underground, others = legacy dungeons. Tells us where the
-        // stray "in the sea" piles live and whether underground gets any clusters.
-        std::map<int, int> per_area;
-        for (const auto &c : g_clusters) per_area[c.area]++;
-        std::string s;
-        for (const auto &kv : per_area)
-            s += " a" + std::to_string(kv.first) + "=" + std::to_string(kv.second);
-        spdlog::info("[CLUSTER] piles per area:{}", s.empty() ? " (none)" : s);
-    }
-    {
-        // Per-(area, sub-page) tally — splits underground area 12 into its real
-        // pages (Ainsel 12000 / Siofra 12001 / Deeproot 12002), so an empty sub-page
-        // (no piles) is visible as the absence of its tab.
-        std::string s;
-        for (const auto &kv : piles_at)
-            s += " a" + std::to_string(kv.first.first) + "t" + std::to_string(kv.first.second) +
-                 "=" + std::to_string(kv.second);
-        spdlog::info("[CLUSTER] piles per area/tab:{}", s.empty() ? " (none)" : s);
-    }
-    if (dbg)
-    {
-        // Which (area, sub-page) had locations that stayed exact for being sub-
-        // threshold — tells "Siofra/Deeproot are just sparse" apart from "mis-paged".
-        std::string s;
-        for (const auto &kv : subthr_at)
-            s += " a" + std::to_string(kv.first.first) + "t" + std::to_string(kv.first.second) +
-                 "=" + std::to_string(kv.second);
-        spdlog::info("[CLUSTER-DUMP] sub-threshold per area/tab:{}", s.empty() ? " (none)" : s);
-    }
-
-    // 4. Apply the current collapsed/expanded view to the new plan.
-    apply_cluster_expanded(g_clusters_expanded.load());
-}
-
 static bool *category_config_ptr(Category cat)
 {
     return &goblin::config::showCategory[static_cast<int>(cat)];
@@ -1372,720 +1279,14 @@ static bool is_category_enabled(Category cat)
     return p ? *p : true;
 }
 
-void goblin::inject_map_entries()
+// Seed the runtime gate atomics from config: per-category visibility + cluster opt-in
+// + threshold, the master on/off, and the cluster collapsed/expanded state. This is
+// the pure config→state step (no native-row park / no cluster replan), so it can run
+// in BOTH modes — crucially when native_map_injection is OFF and inject_map_entries()
+// (which used to be the only seeder) is skipped, the ImGui overlay still needs these
+// gates seeded so its per-category visibility + clustering work.
+void goblin::seed_runtime_gates()
 {
-    GOBLIN_BENCH("map.inject.total");
-    // (The CSFreeListMemorySystem int3-assert NOP patch that used to run here
-    // was removed 2026-05-29: it was an artifact of the old hosting-crash
-    // theory. The real cause was the 16-align bug in the wrapper_row_locator
-    // layout; with that fixed, hosting works with no assert patching —
-    // verified live. See docs/ersc_hosting_and_map_autohide.md.)
-
-    struct InjectedEntry
-    {
-        int32_t row_id;
-        uint64_t original_row_id;
-        const from::paramdef::WORLD_MAP_POINT_PARAM_ST *data;
-        bool is_piece;     // collected::register_param_ptr (CSWorldGeomMan-tracked)
-        bool is_kindling;  // kindling::register_param_ptr  (SFX-region-tracked)
-        Category category;
-        uint32_t lotId;    // live-loot: source ItemLotParam row (0 = none)
-        uint8_t lotType;   // 0=none, 1=ItemLotParam_map, 2=ItemLotParam_enemy
-    };
-
-    // Live-loot icons (config::liveLootIcons): a randomized lot may now hold an
-    // item of a different category than the one baked at this marker. Read the
-    // live item, look up the icon + category it would get as a normal marker,
-    // and gate / re-icon by THAT instead of the baked category. Resolved icons
-    // are keyed by original_row_id and applied when the row is copied below.
-    LotReader lot_reader;
-    if (goblin::config::liveLootIcons)
-        lot_reader.init();
-    std::unordered_map<uint64_t, uint16_t> live_icon_override;
-    size_t live_recat = 0;
-
-    // Filter: only include enabled categories (disabled ones are simply not injected)
-    std::vector<InjectedEntry> entries;
-    entries.reserve(generated::MAP_ENTRY_COUNT);
-
-    size_t skipped_by_config = 0;
-    {
-    GOBLIN_BENCH("map.inject.filter");
-    for (size_t i = 0; i < generated::MAP_ENTRY_COUNT; i++)
-    {
-        const auto &e = generated::MAP_ENTRIES[i];
-        bool is_piece = e.category == Category::ReforgedRunePieces ||
-                        e.category == Category::ReforgedEmberPieces ||
-                        e.category == Category::LootMaterialNodes;
-        bool is_kindling = e.category == Category::WorldKindlingSpirits;
-        // Live-loot linkage: only for lot-backed loot rows, and never for
-        // piece/kindling rows (those are geom/SFX-tracked via collected::).
-        uint32_t lotId = (is_piece || is_kindling) ? 0 : e.lotId;
-        uint8_t lotType = (is_piece || is_kindling) ? 0 : e.lotType;
-
-        // Resolve the gate/icon from the LIVE item when live-loot icons is on.
-        // Spoiler-free mode takes precedence: keep the BAKED category gate (so
-        // visibility doesn't leak the hidden item's type) and force the "?" icon
-        // on every lot-backed marker.
-        Category gate_cat = e.category;
-        const bool is_lot = (lotType != 0 && lotId != 0);
-        if (goblin::config::anonymousLoot && is_lot)
-        {
-            live_icon_override[e.row_id] = goblin::generated::ANON_ICON_ID;
-        }
-        else if (goblin::config::liveLootIcons && is_lot && lot_reader.ok())
-        {
-            if (RawItemLotRow *r = lot_reader.row(lotId, lotType))
-            {
-                int32_t item_id = *reinterpret_cast<int32_t *>(r->b + 0x00);   // lotItemId01
-                int32_t cat     = *reinterpret_cast<int32_t *>(r->b + 0x20);   // lotItemCategory01
-                if (item_id > 0)
-                {
-                    const auto *ic = lookup_item_icon(encode_live_item(item_id, cat));
-                    if (ic)
-                    {
-                        if (ic->category != gate_cat) live_recat++;
-                        gate_cat = ic->category;
-                        live_icon_override[e.row_id] = ic->iconId;
-                    }
-                }
-            }
-        }
-
-        // (park-all) Inject EVERY category's rows. Disabled ones are parked
-        // (areaNo 99 = off-page = free at map-open) at init and stay live-
-        // toggleable from the menu. Store gate_cat (the effective, live-loot-
-        // adjusted category) so the registry/parking/menu all agree.
-        if (!is_category_enabled(gate_cat))
-            skipped_by_config++;   // now "injected but born-hidden"
-        entries.push_back({0, e.row_id, &e.data, is_piece, is_kindling, gate_cat, lotId, lotType});
-    }
-    } // map.inject.filter
-
-    // Clustering plan (density-triggered, static). Bucket injected markers by
-    // their FINAL (projected) area + cell; any cell over the threshold becomes a
-    // single cluster row (appended to `entries`) and its members are recorded
-    // for parking. Pieces/kindling (rune/ember pieces, material nodes) ARE
-    // clustered — they're the densest free-pickup clutter — but their
-    // collected/kindling registration is skipped below when clustered so the two
-    // areaNo owners don't fight.
-    // ── Cluster pool reservation (the plan itself is RUNTIME) ────────────────
-    // The cluster plan is computed at RUNTIME by replan_clusters() so enable /
-    // soft-hard / threshold / exclude all take effect with NO restart. The param
-    // table can't grow at runtime, so reserve a fixed POOL of spare cluster rows
-    // here (parked off-page); replan fills/empties them live. Counts are live too:
-    // pre-inject number strings "1".."MAX" → a pile points its label at
-    // CLUSTER_TEXTID_BASE + count.
-    std::vector<size_t> pool_entry_idx;
-    {
-        GOBLIN_BENCH("map.inject.cluster_pool");
-        for (int n = 1; n <= CLUSTER_MAX_COUNT; n++)
-            g_cluster_census.emplace_back(CLUSTER_TEXTID_BASE + n, std::to_string(n));
-        // Category-name labels (textId1 = the pile's type, e.g. "Smithing Stones").
-        for (int c = 0; c < NUM_CATEGORIES; c++)
-            g_cluster_census.emplace_back(CLUSTER_CATNAME_TEXTID_BASE + c,
-                                          goblin::markers::category_name(static_cast<Category>(c)));
-        from::paramdef::WORLD_MAP_POINT_PARAM_ST tmpl =
-            entries.empty() ? from::paramdef::WORLD_MAP_POINT_PARAM_ST{}
-                            : *entries.front().data;
-        for (size_t k = 0; k < CLUSTER_POOL_SIZE; k++)
-        {
-            auto *cd = new from::paramdef::WORLD_MAP_POINT_PARAM_ST(tmpl);
-            cd->areaNo = 99;             // parked; replan sets the real page + pos
-            cd->areaNo_forDistViewMark = 99;  // also park the distant-view page (template = base 60)
-            cd->iconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID);
-            cd->eventFlagId = 0; cd->clearedEventFlagId = 0;
-            cd->textId1 = -1;            // replan sets the live count label
-            cd->textId2 = cd->textId3 = cd->textId4 = -1;
-            cd->textId5 = cd->textId6 = cd->textId7 = cd->textId8 = -1;
-            cd->textDisableFlagId1 = cd->textDisableFlagId2 = cd->textDisableFlagId3 = 0;
-            cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
-            cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
-            pool_entry_idx.push_back(entries.size());
-            entries.push_back({0, 0, cd, false, false, Category::WorldInteractables, 0, 0});
-        }
-        spdlog::info("[CLUSTER] reserved pool of {} spare rows (+{} count strings); "
-                     "plan is RUNTIME (replan_clusters)", CLUSTER_POOL_SIZE, CLUSTER_MAX_COUNT);
-    }
-#if 0  // OLD init-time plan — replaced by runtime replan_clusters()
-    {
-        struct Bucket { std::vector<size_t> members; double sx = 0, sz = 0; float py = 0;
-                        uint8_t area = 0, gx = 0, gz = 0; Category cat{}; };
-        std::unordered_map<uint64_t, Bucket> buckets;
-        // HARD clustering = bucket a cell's markers regardless of category (ONE mixed
-        // pile per dense cell — far more aggressive declutter). SOFT (default) = per-
-        // category buckets (typed piles). Excluded categories stay exact in both.
-        const bool hard = goblin::config::clusterHard;
-        // Key by category too: each category clusters separately in a cell, so a
-        // per-category threshold is well-defined and the cluster label/icon can be
-        // typed (e.g. "Smithing Stones (12)" + "Golden Runes (9)" instead of one
-        // mixed pile). cat in bits 56-63, area 48-55, cx/cz in 24-bit lanes.
-        auto cell_key = [](Category cat, uint8_t area, int cx, int cz) -> uint64_t {
-            return (static_cast<uint64_t>(static_cast<uint8_t>(cat)) << 56) |
-                   (static_cast<uint64_t>(area) << 48) |
-                   ((static_cast<uint64_t>((cx + 0x400000) & 0xFFFFFF)) << 24) |
-                    (static_cast<uint64_t>((cz + 0x400000) & 0xFFFFFF));
-        };
-        for (size_t i = 0; i < entries.size(); i++)
-        {
-            // Per-category opt-out: excluded categories never join a bucket, so
-            // they stay exact markers (no parking, no cluster row).
-            if (!category_clustered_cfg(entries[i].category))
-                continue;
-            from::paramdef::WORLD_MAP_POINT_PARAM_ST tmp = *entries[i].data;
-            if (goblin::config::projectDungeons)
-                project_dungeon_row_to_overworld(&tmp);
-            int cx = static_cast<int>(std::floor(tmp.posX / CLUSTER_CELL));
-            int cz = static_cast<int>(std::floor(tmp.posZ / CLUSTER_CELL));
-            Category key_cat = hard ? static_cast<Category>(0) : entries[i].category;
-            auto &b = buckets[cell_key(key_cat, tmp.areaNo, cx, cz)];
-            b.members.push_back(i);
-            b.sx += tmp.posX; b.sz += tmp.posZ; b.py = tmp.posY;
-            b.area = tmp.areaNo; b.gx = tmp.gridXNo; b.gz = tmp.gridZNo;
-            b.cat = entries[i].category;  // soft: all same; hard: dominant set below
-        }
-        // Census for the sorted dump below (quantifies each pile so the
-        // Leyndell-area cluster's size can be read off without hovering — used to
-        // test the post-burn overload theory: Royal areaNo-11 + Ashen areaNo-35
-        // both project to the same overworld cell, so one cluster = their sum).
-        struct CensusRow { int count; uint8_t area, gx, gz; float cx, cz; };
-        std::vector<CensusRow> census;
-
-        int cidx = 0;
-        for (auto &kv : buckets)
-        {
-            Bucket &b = kv.second;
-            // HARD uses the global threshold (a mixed pile has no per-category
-            // threshold); SOFT uses the per-category effective threshold.
-            int thr = hard ? static_cast<int>(goblin::config::clusterThreshold)
-                           : cluster_threshold_for_cfg(b.cat);
-            if (static_cast<int>(b.members.size()) <= thr) continue;
-            if (hard)
-            {
-                // Pick the dominant member category for the mixed cluster's icon /
-                // label / section-gating.
-                std::unordered_map<int, int> cc;
-                int best = -1, bestc = 0;
-                for (size_t mi : b.members)
-                {
-                    int c = ++cc[static_cast<int>(entries[mi].category)];
-                    if (c > bestc) { bestc = c; best = static_cast<int>(entries[mi].category); }
-                }
-                if (best >= 0) b.cat = static_cast<Category>(best);
-            }
-            auto *cd = new from::paramdef::WORLD_MAP_POINT_PARAM_ST(*entries[b.members[0]].data);
-            cd->areaNo = b.area; cd->gridXNo = b.gx; cd->gridZNo = b.gz;
-            cd->posX = static_cast<float>(b.sx / b.members.size());
-            cd->posZ = static_cast<float>(b.sz / b.members.size());
-            cd->posY = b.py;
-            cd->iconId = static_cast<uint16_t>(goblin::generated::CLUSTER_ICON_ID); // distinct "stack of dots" glyph
-            // Clean standalone icon: no gates. Label = the member count by default
-            // (shown on hover); the F11 debug toggle flips it to icon-only (-1).
-            cd->eventFlagId = 0; cd->clearedEventFlagId = 0;
-            int textid = CLUSTER_TEXTID_BASE + cidx;
-            cd->textId1 = textid;
-            cd->textId2 = cd->textId3 = cd->textId4 = -1;
-            cd->textId5 = cd->textId6 = cd->textId7 = cd->textId8 = -1;
-            cd->textDisableFlagId1 = cd->textDisableFlagId2 = cd->textDisableFlagId3 = 0;
-            cd->textDisableFlagId4 = cd->textDisableFlagId5 = cd->textDisableFlagId6 = 0;
-            cd->textDisableFlagId7 = cd->textDisableFlagId8 = 0;
-            {
-                // Buckets are now single-category, so label by TYPE (+ region for
-                // context when known): "Smithing Stones — Limgrave (12)".
-                int cnt = static_cast<int>(b.members.size());
-                // HARD = mixed pile → label by region only (no single type).
-                std::string type = hard ? "" : goblin::markers::category_name(b.cat);
-                std::string region = goblin::cluster_region_label(b.area, b.gx, b.gz);
-                if (region.empty())
-                {
-                    // Projected tile maps to no fragment region (Haligtree, the
-                    // underground, Leyndell-legacy…) → name by the dominant member
-                    // ORIGINAL area (pre-projection data here, projection runs later).
-                    std::unordered_map<int, int> acount;
-                    int best = -1, bestc = 0;
-                    for (size_t mi : b.members)
-                    {
-                        int a = entries[mi].data->areaNo;
-                        int c = ++acount[a];
-                        if (c > bestc) { bestc = c; best = a; }
-                    }
-                    region = goblin::area_region_label(best);
-                }
-                std::string label = type.empty() ? region : type;
-                if (!region.empty() && !type.empty()) label += " — " + region;
-                label += " (" + std::to_string(cnt) + ")";
-                g_cluster_census.emplace_back(textid, std::move(label));
-            }
-            {
-                auto &mf = cluster_flags_by_textid[textid];
-                for (size_t mi : b.members)
-                {
-                    clustered_member_ids.insert(entries[mi].original_row_id);
-                    uint32_t f = entries[mi].data->textDisableFlagId1; // collect flag
-                    if (f) mf.push_back(f);
-                }
-            }
-            cluster_entry_idx.push_back(entries.size());
-            cluster_count_textid.push_back(textid);
-            entries.push_back({0, 0, cd, false, false, b.cat, 0, 0});
-            census.push_back({static_cast<int>(b.members.size()), b.area, b.gx, b.gz,
-                              cd->posX, cd->posZ});
-            cidx++;
-        }
-        g_clustering_active = !g_cluster_census.empty();  // any pile over threshold?
-        spdlog::info("[CLUSTER] planned {} clusters covering {} markers (cell={}, threshold={})",
-                     g_cluster_census.size(), clustered_member_ids.size(), CLUSTER_CELL,
-                     static_cast<int>(goblin::config::clusterThreshold));
-        // Sorted census (biggest piles first). area=60/61 overworld, area 11/35 =
-        // Leyndell Royal/Ashen if unprojected. world tile XX=gridX/2, YY=gridZ/2.
-        std::sort(census.begin(), census.end(),
-                  [](const CensusRow &a, const CensusRow &b) { return a.count > b.count; });
-        for (size_t i = 0; i < census.size(); i++)
-        {
-            const auto &c = census[i];
-            spdlog::info("[CLUSTER] #{:<3} count={:<4} area={:<2} tile=({},{}) "
-                         "worldTile=({},{}) pos=({:.0f},{:.0f})",
-                         i + 1, c.count, c.area, c.gx, c.gz, c.gx / 2, c.gz / 2, c.cx, c.cz);
-        }
-    }
-#endif  // OLD init-time plan
-
-    spdlog::info("Injecting {} map entries ({} skipped by config, {} live-recategorized)",
-                 entries.size(), skipped_by_config, live_recat);
-    spdlog::info("[BENCH] map.inject.filter.count: {} kept of {} baked",
-                 entries.size(), generated::MAP_ENTRY_COUNT);
-
-    auto param_res_cap = find_world_map_point_param_res_cap();
-    if (!param_res_cap)
-    {
-        spdlog::error("WorldMapPointParam not found");
-        return;
-    }
-
-    auto *rescap = reinterpret_cast<uint8_t *>(param_res_cap->param_header);
-    auto *&file_ptr_ref = *reinterpret_cast<uint8_t **>(rescap + 0x80);
-    auto &file_size_ref = *reinterpret_cast<int64_t *>(rescap + 0x78);
-
-    auto *old_param_file = file_ptr_ref;
-    auto *old_table = reinterpret_cast<ParamTable *>(old_param_file);
-    uint16_t orig_num_rows = old_table->num_rows;
-
-    spdlog::debug("Original WorldMapPointParam: {} rows", orig_num_rows);
-
-    // Collect vanilla row IDs to avoid collisions
-    std::set<int32_t> vanilla_ids;
-    for (uint16_t i = 0; i < orig_num_rows; i++)
-        vanilla_ids.insert(static_cast<int32_t>(old_table->rows[i].row_id));
-
-    // Assign sequential IDs starting from 1, skipping vanilla IDs
-    std::unordered_map<uint64_t, uint64_t> id_remap;  // original -> dynamic
-    int32_t next_id = 1;
-    for (auto &entry : entries)
-    {
-        while (vanilla_ids.count(next_id))
-            next_id++;
-        id_remap[entry.original_row_id] = static_cast<uint64_t>(next_id);
-        entry.row_id = next_id++;
-    }
-
-    // Update collected + kindling systems with new dynamic IDs
-    collected::remap_row_ids(id_remap);
-    kindling::remap_row_ids(id_remap);
-
-    // Pool row_ids (the reserved spare cluster rows) → the build loop collects
-    // their live ptrs into g_cluster_pool; replan_clusters() fills them at runtime.
-    std::set<int32_t> pool_row_ids;
-    for (size_t idx : pool_entry_idx) pool_row_ids.insert(entries[idx].row_id);
-    g_cluster_pool.clear();
-    g_cluster_pool.reserve(pool_entry_idx.size());
-
-    spdlog::debug("Assigned IDs: {} entries, range {}-{}, remapped {} piece IDs",
-                  entries.size(),
-                  entries.empty() ? 0 : entries.front().row_id,
-                  entries.empty() ? 0 : entries.back().row_id,
-                  id_remap.size());
-
-    uint32_t new_entry_count = static_cast<uint32_t>(entries.size());
-    uint32_t total_rows = orig_num_rows + new_entry_count;
-
-    spdlog::debug("Injecting {} entries ({} total)", new_entry_count, total_rows);
-
-    constexpr size_t WRAPPER_HEADER = 0x10;
-    constexpr size_t HEADER_SIZE = 0x40;
-    constexpr size_t ROW_LOCATOR_SIZE = sizeof(ParamRowInfo);
-    constexpr size_t PARAM_DATA_SIZE = sizeof(from::paramdef::WORLD_MAP_POINT_PARAM_ST);
-    constexpr size_t WRAPPER_ROW_LOC_SIZE = sizeof(WrapperRowLocator);
-
-    const char *type_str = reinterpret_cast<const char *>(old_param_file + old_table->param_type_offset);
-    size_t type_str_len = strlen(type_str) + 1;
-
-    size_t row_locators_start = HEADER_SIZE;
-    size_t data_start = row_locators_start + total_rows * ROW_LOCATOR_SIZE;
-    size_t data_end = data_start + total_rows * PARAM_DATA_SIZE;
-    size_t type_str_start = data_end;
-    size_t after_type_str = type_str_start + type_str_len;
-    // Align wrapper_row_loc to 16: the param lookup-by-id engine reads this
-    // offset from the wrapper header and rounds it UP to 16 (`(x+0xf)&~0xf`)
-    // before using it as the binary-search base. 4-align worked for WMP only
-    // because it's iterated, never id-looked-up — but keep it correct so an
-    // id lookup (or a future engine path) can't read past the array. (This
-    // exact bug crashed TutorialParam save-load; see inject_tutorial_popup_rows.)
-    size_t wrapper_row_loc_start = (after_type_str + 0xf) & ~(size_t)0xf;
-    size_t wrapper_row_loc_end = wrapper_row_loc_start + total_rows * WRAPPER_ROW_LOC_SIZE;
-    size_t param_file_size = wrapper_row_loc_end;
-    size_t total_alloc = WRAPPER_HEADER + param_file_size;
-
-    // HeapAlloc (not VirtualAlloc): Seamless Co-op's `game_memory_unlimiter`
-    // module crashes when hosting if our expanded ParamTable lives on a
-    // dedicated VirtualAlloc'd page region — ERSC apparently expects param
-    // memory to come from the process heap. HEAP_ZERO_MEMORY zero-inits.
-    allocation = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, total_alloc);
-    if (!allocation)
-    {
-        spdlog::error("HeapAlloc failed ({} bytes)", total_alloc);
-        return;
-    }
-
-    auto *new_wrapper = reinterpret_cast<uint8_t *>(allocation);
-    auto *new_param_file = new_wrapper + WRAPPER_HEADER;
-    auto *new_table = reinterpret_cast<ParamTable *>(new_param_file);
-
-    *reinterpret_cast<uint32_t *>(new_wrapper + 0x00) = static_cast<uint32_t>(wrapper_row_loc_start);
-    *reinterpret_cast<int32_t *>(new_wrapper + 0x04) = static_cast<int32_t>(total_rows);
-
-    memcpy(new_param_file, old_param_file, HEADER_SIZE);
-    new_table->num_rows = static_cast<uint16_t>(total_rows);
-    new_table->param_type_offset = type_str_start;
-    *reinterpret_cast<uint32_t *>(new_param_file + 0x00) = static_cast<uint32_t>(type_str_start);
-    *reinterpret_cast<uint16_t *>(new_param_file + 0x04) = static_cast<uint16_t>(data_start);
-    *reinterpret_cast<uint64_t *>(new_param_file + 0x30) = data_start;
-
-    memcpy(new_param_file + type_str_start, type_str, type_str_len);
-
-    struct RowSource
-    {
-        int32_t row_id;
-        const uint8_t *data_ptr;
-        bool is_piece;
-        bool is_kindling;
-        Category category;
-        uint64_t original_row_id;  // pre-remap id (matches locationOverrides keys); 0 for vanilla rows
-        uint32_t lotId;            // live-loot: source ItemLotParam row (0 = none)
-        uint8_t lotType;           // 0=none, 1=ItemLotParam_map, 2=ItemLotParam_enemy
-    };
-
-    std::vector<RowSource> all_rows;
-    all_rows.reserve(total_rows);
-
-    for (uint16_t i = 0; i < orig_num_rows; i++)
-    {
-        auto *data = old_param_file + old_table->rows[i].param_offset;
-        all_rows.push_back({static_cast<int32_t>(old_table->rows[i].row_id), data, false, false, {}, 0, 0, 0});
-    }
-    for (auto &entry : entries)
-    {
-        all_rows.push_back({entry.row_id, reinterpret_cast<const uint8_t *>(entry.data),
-                            entry.is_piece, entry.is_kindling, entry.category, entry.original_row_id,
-                            entry.lotId, entry.lotType});
-    }
-
-    {
-        GOBLIN_BENCH("map.inject.sort");
-        std::sort(all_rows.begin(), all_rows.end(),
-                  [](const RowSource &a, const RowSource &b) { return a.row_id < b.row_id; });
-    }
-    spdlog::info("[BENCH] map.inject.rows.count: {} rows (vanilla {} + injected {})",
-                 all_rows.size(), orig_num_rows, new_entry_count);
-
-    auto *new_locators = reinterpret_cast<ParamRowInfo *>(new_param_file + row_locators_start);
-    auto *new_wrapper_locs = reinterpret_cast<WrapperRowLocator *>(new_param_file + wrapper_row_loc_start);
-    size_t file_end_marker = type_str_start + type_str_len;
-
-    int reprojected_dungeons = 0;
-    {
-    GOBLIN_BENCH("map.inject.build_rows");
-    for (size_t i = 0; i < all_rows.size(); i++)
-    {
-        size_t data_offset = data_start + i * PARAM_DATA_SIZE;
-        new_locators[i].row_id = static_cast<uint64_t>(all_rows[i].row_id);
-        new_locators[i].param_offset = data_offset;
-        new_locators[i].param_end_offset = file_end_marker;
-        memcpy(new_param_file + data_offset, all_rows[i].data_ptr, PARAM_DATA_SIZE);
-        // Nearest-grace anchor — computed on the marker's ORIGINAL (pre-projection)
-        // area + coords, so a catacomb/legacy marker matches a grace inside its OWN
-        // dungeon, not a random surface grace. This is the authoritative location
-        // grouping (replaces the incomplete textId-based location lookup).
-        int grace_idx = -1, grace_pname = -1, grace_tab = 0;
-        if (all_rows[i].original_row_id != 0)
-        {
-            auto *mrow = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(
-                new_param_file + data_offset);
-            float mwx = static_cast<float>(mrow->gridXNo) * 256.0f + mrow->posX;
-            float mwz = static_cast<float>(mrow->gridZNo) * 256.0f + mrow->posZ;
-            find_nearest_grace(mrow->areaNo, mwx, mwz, &grace_idx, &grace_pname, &grace_tab);
-            // No named grace nearby (DLC graces have no PlaceName) → label by the
-            // nearest MSB region volume; if even that misses (anchor coverage gap),
-            // fall back to the coarsest major-region name (never leave count-only).
-            if (grace_pname <= 0)
-                grace_pname = find_nearest_region_pname(mrow->areaNo, mwx, mwz);
-            if (grace_pname <= 0)
-                grace_pname = find_nearest_major_region_pname(mrow->areaNo, mwx, mwz);
-        }
-        // Bug A: reproject injected dungeon rows onto the overworld so minor-
-        // dungeon icons render. original_row_id == 0 ⇒ vanilla row (left as-is).
-        bool was_royal = false;  // Leyndell Royal Capital (m11_00) → hide post-burn
-        float ent_x = -1.0f, ent_z = -1.0f;  // overworld entrance if this row gets projected
-        if (goblin::config::projectDungeons && all_rows[i].original_row_id != 0)
-        {
-            auto *prow = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(
-                new_param_file + data_offset);
-            // Leyndell Ashen Capital (m35) describes the capital AFTER the Erdtree
-            // burns. Tag these rows (before projection clobbers areaNo) so
-            // apply_map_logic can gate their icon on StoryErdtreeOnFire instead of
-            // showing them from the start.
-            if (prow->areaNo == 35)
-                g_ashen_rows.insert(static_cast<uint64_t>(all_rows[i].row_id));
-            // Royal Capital (areaNo 11) is the inverse — visible until the burn,
-            // then hidden. Tag before projection clobbers areaNo; registered below
-            // (only if not clustered).
-            //
-            // areaNo 11 is NOT all Royal Capital. WorldMapLegacyConvParam
-            // (LEGACY_CONV) splits src_area 11 by src_gx into three sub-maps:
-            //   gx 0  = Royal Capital   (m11_00) → hide post-burn  ← only this
-            //   gx 5  = Ashen Capital   (m11_05) → APPEARS post-burn (never hide)
-            //   gx 10 = Shunning-Grounds(m11_10) → persists post-burn (never hide)
-            // Gating on gridXNo==0 keeps the Subterranean Shunning-Grounds (and any
-            // vanilla Ashen rows) visible after the Erdtree burns. gridXNo here is
-            // still the source sub-grid (projection below clobbers it).
-            was_royal = (prow->areaNo == 11 && prow->gridXNo == 0);
-            if (project_dungeon_row_to_overworld(prow, &ent_x, &ent_z))
-                reprojected_dungeons++;
-            // A projected dungeon (catacomb/cave) whose own area had no named grace
-            // or region stays nameless — but its pile sits at the overworld ENTRANCE.
-            // Label it by the overworld region there (prow->areaNo is now 60/61).
-            if (grace_pname <= 0 && ent_x >= 0.0f)
-            {
-                grace_pname = find_nearest_region_pname(prow->areaNo, ent_x, ent_z);
-                if (grace_pname <= 0)
-                    grace_pname = find_nearest_major_region_pname(prow->areaNo, ent_x, ent_z);
-            }
-        }
-        new_wrapper_locs[i].row = all_rows[i].row_id;
-        new_wrapper_locs[i].index = static_cast<int32_t>(i);
-
-        // Record MFG-injected rows (vanilla rows have original_row_id 0) so
-        // sanitize_injected_textids() can later strip any textId that the
-        // expanded PlaceName FMG didn't end up containing.
-        if (all_rows[i].original_row_id)
-            g_injected_row_ptrs.push_back(new_param_file + data_offset);
-
-        // Live-loot: remember lot-backed rows for refresh_loot_from_itemlot().
-        if (all_rows[i].lotType != 0 && all_rows[i].lotId != 0)
-        {
-            uint8_t *rp = new_param_file + data_offset;
-            g_lot_backed_rows.push_back({rp, all_rows[i].lotId, all_rows[i].lotType});
-            g_lot_backed_set.insert(rp);
-
-            // Live-loot icons: re-icon the marker to match the live item's
-            // category (resolved in the filter loop, keyed by original id).
-            auto ico = live_icon_override.find(all_rows[i].original_row_id);
-            if (ico != live_icon_override.end())
-                reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(rp)->iconId =
-                    ico->second;
-        }
-
-        // Hybrid sub-area location naming (PRIMARY): overwrite the marker's location
-        // line (textId2) with the height-aware sub-area name from generated::LOCATION_ALT
-        // (MSB MapPoint/MapNameOverride volume containment, else nearest authored anchor in
-        // 3D). The table only holds rows where the hybrid name differs from the baked one;
-        // rows absent from it keep their baked textId2 = the FALLBACK (tile/nearest-grace
-        // via resolve_location_id_at) for overworld / no-volume / no-anchor spots.
-        // The value may be a synthetic compose id (generated::LOCATION_COMPOSE) for
-        // duplicate-named sub-zones — goblin_messages builds its FMG string.
-        if (all_rows[i].original_row_id)
-        {
-            auto *alt_end = generated::LOCATION_ALT + generated::LOCATION_ALT_COUNT;
-            auto *alt = std::lower_bound(
-                generated::LOCATION_ALT, alt_end, all_rows[i].original_row_id,
-                [](const generated::LocationAlt &a, uint64_t id) { return a.row_id < id; });
-            if (alt != alt_end && alt->row_id == all_rows[i].original_row_id)
-            {
-                auto *p = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(
-                    new_param_file + data_offset);
-                // Overwrite the marker's LOCATION slot (slot picked at generation time:
-                // textId2 for plain loot, textId3 for enemy-drops). slot 0 = no baseline
-                // location → add one in the first free of textId2/textId3.
-                int32_t *tid[9]  = {nullptr, &p->textId1, &p->textId2, &p->textId3, &p->textId4,
-                                    &p->textId5, &p->textId6, &p->textId7, &p->textId8};
-                unsigned int *fl[9] = {nullptr, &p->textDisableFlagId1, &p->textDisableFlagId2,
-                                       &p->textDisableFlagId3, &p->textDisableFlagId4,
-                                       &p->textDisableFlagId5, &p->textDisableFlagId6,
-                                       &p->textDisableFlagId7, &p->textDisableFlagId8};
-                uint8_t s = alt->slot;
-                if (s >= 2 && s <= 8)
-                {
-                    *tid[s] = alt->textId2;   // hide-flag already set on this slot by the generator
-                }
-                else  // s == 0: add a location line where none existed (e.g. gestures)
-                {
-                    int add = (p->textId2 == -1) ? 2 : (p->textId3 == -1 ? 3 : 0);
-                    if (add)
-                    {
-                        *tid[add] = alt->textId2;
-                        *fl[add] = p->textDisableFlagId1;  // hide with the marker on pickup
-                    }
-                }
-            }
-        }
-
-        // Kill display mode (bosses / hawks / NPC invaders): green checkmark
-        // vs hide killed. Without this, rows baked with BOTH clearedEventFlagId
-        // and textDisableFlagId hide all their text on kill and the icon
-        // vanishes before the checkmark can ever show.
-        auto cat = all_rows[i].category;
-        if (cat == Category::WorldBosses || cat == Category::WorldSpiritspringHawks ||
-            cat == Category::WorldHostileNPC)
-        {
-            auto *p = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(
-                new_param_file + data_offset);
-            if (goblin::config::hideKilledBosses)
-            {
-                p->clearedEventFlagId = 0;  // no green checkmark, text hides → icon hides
-            }
-            else
-            {
-                p->textDisableFlagId1 = 0;  // keep green checkmark, don't hide text
-                p->textDisableFlagId2 = 0;  // keep location text visible too
-            }
-        }
-
-        auto *cp = new_param_file + data_offset;
-
-        // Reserved POOL cluster row → collect its ptr for replan_clusters() and
-        // skip the rest (it's not a section/royal/quest row). Parked off-page.
-        if (all_rows[i].original_row_id == 0 && pool_row_ids.count(all_rows[i].row_id))
-        {
-            cp[0x20] = 99;
-            g_cluster_pool.push_back(cp);
-            continue;
-        }
-
-        // Register the row for the in-game per-section toggle (our injected rows
-        // only; vanilla rows have original_row_id 0 and are never group-toggled).
-        // areaNo here is final (post dungeon-reprojection) and pre piece/kindling
-        // 99-hide, so it is the correct value to restore on a section "show".
-        // ALL injected rows are section-registered now; replan_clusters() parks the
-        // ones it folds into a pile and the eviction coordination keeps them parked.
-        if (all_rows[i].original_row_id)
-        {
-            // Cluster grouping key: bucket by the nearest grace (overworld AND
-            // dungeons WITH graces, e.g. Leyndell's 18 — so a high threshold lets
-            // their sub-areas show as individual items instead of one mega-pile).
-            // Only a GRACELESS projected dungeon (most catacombs/caves) folds into a
-            // single entrance pile. Label = the nearest grace's region name.
-            int grp_key, grp_pname = grace_pname;
-            if (grace_idx >= 0)
-                grp_key = grace_idx;                           // nearest-grace pile
-            else if (ent_x >= 0.0f)
-                grp_key = entrance_cluster_key(ent_x, ent_z);  // graceless dungeon → one entrance pile
-            else
-                grp_key = -1;                                  // no grace, not projected → exact
-            g_section_rows.push_back({cp, section_of(all_rows[i].category),
-                                      all_rows[i].category,
-                                      cp[0x20], all_rows[i].is_piece,
-                                      all_rows[i].is_kindling,
-                                      static_cast<uint64_t>(all_rows[i].row_id),
-                                      grp_key, grp_pname, grace_tab, ent_x, ent_z});
-        }
-
-        // Royal Capital row → register for post-burn hide.
-        if (was_royal)
-            g_royal_rows.push_back(cp);
-
-        // Quest-NPC row → register for quest-aware gating (opt-in). nameId from
-        // textId1 (= nameId + 700000000); only rows whose NPC is in the curated
-        // quest-gate table.
-        if (all_rows[i].category == Category::WorldQuestNPC)
-        {
-            auto *st = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(cp);
-            if (st->textId1 >= 700000000)
-            {
-                const auto *g = lookup_quest_gate(
-                    static_cast<uint32_t>(st->textId1) - 700000000u);
-                if (g)
-                    g_quest_rows.push_back(
-                        {cp, cp[0x20], {g->flags[0], g->flags[1], g->flags[2], g->flags[3]}});
-            }
-        }
-    }
-    } // map.inject.build_rows
-
-    spdlog::info("[QUEST-NPC] registered {} marker rows from the {}-gate curated table "
-                 "(quest-aware gating only covers these; other NPCs always show)",
-                 g_quest_rows.size(), goblin::generated::QUEST_GATE_COUNT);
-
-    if (goblin::config::projectDungeons)
-        spdlog::info("Reprojected {} minor-dungeon rows onto the overworld (LEGACY_CONV)",
-                     reprojected_dungeons);
-
-    // Register Rune/Ember piece + kindling-spirit pointers for real-time tracking.
-    // Pieces are CSWorldGeomMan-driven (collected::); kindling spirits are
-    // SFX-region-driven (kindling::). Same hide-trick (areaNo = 99).
-    int registered_pieces = 0, hidden_pieces = 0;
-    int registered_kindling = 0, hidden_kindling = 0;
-    {
-    GOBLIN_BENCH("map.inject.register_pieces");
-    for (size_t i = 0; i < all_rows.size(); i++)
-    {
-        size_t data_offset = data_start + i * PARAM_DATA_SIZE;
-        auto *param_ptr = new_param_file + data_offset;
-        uint64_t row_id = static_cast<uint64_t>(all_rows[i].row_id);
-
-        // Clustering is now RUNTIME: a piece/kindling folded into a pile is kept
-        // parked via the eviction coordination (is_section_hidden_ptr), so no
-        // inject-time skip is needed. Pool rows aren't pieces/kindling.
-        if (all_rows[i].is_piece)
-        {
-            collected::register_param_ptr(row_id, param_ptr);
-            registered_pieces++;
-            if (collected::is_row_collected(row_id))
-            {
-                param_ptr[0x20] = 99;  // areaNo = 99
-                hidden_pieces++;
-            }
-        }
-        else if (all_rows[i].is_kindling)
-        {
-            kindling::register_param_ptr(row_id, param_ptr);
-            registered_kindling++;
-            if (kindling::is_row_collected(row_id))
-            {
-                param_ptr[0x20] = 99;
-                hidden_kindling++;
-            }
-        }
-    }
-    } // map.inject.register_pieces
-
-    spdlog::info("Registered {} piece + {} kindling pointers ({} + {} hidden at inject)",
-                 registered_pieces, registered_kindling, hidden_pieces, hidden_kindling);
-
-    spdlog::debug("Swapping param_file pointer: {:p} -> {:p}", (void *)old_param_file, (void *)new_param_file);
-
-    // Capture state for runtime toggle. Save original size before overwriting.
-    g_file_ptr_ref = &file_ptr_ref;
-    g_file_size_ref = &file_size_ref;
-    g_vanilla_param_file = old_param_file;
-    g_vanilla_param_size = file_size_ref;
-    g_expanded_param_file = new_param_file;
-    g_expanded_param_size = static_cast<int64_t>(param_file_size);
-
-    file_ptr_ref = new_param_file;
-    file_size_ref = static_cast<int64_t>(param_file_size);
-    g_param_injection_active = true;
-
-    // Seed per-section runtime gates from config and apply any that start
-    // hidden (areaNo 99). Default is all-visible → no-op, zero regression.
     const bool sec_cfg[SECTION_COUNT] = {
         goblin::config::sectionEquipment, goblin::config::sectionKeyItems,
         goblin::config::sectionLoot,      goblin::config::sectionMagic,
@@ -2093,61 +1294,15 @@ void goblin::inject_map_entries()
         goblin::config::sectionWorld,
     };
     for (int s = 0; s < SECTION_COUNT; s++)
-    {
         g_section_visible[s].store(sec_cfg[s]);
-        if (!sec_cfg[s])
-            apply_section_visibility(static_cast<Section>(s), false);
-    }
-    spdlog::info("[SECTION] registered {} toggleable rows across {} sections",
-                 g_section_rows.size(), SECTION_COUNT);
-
-    // Seed per-category runtime gates from config (park-all): every category is
-    // now injected; the ones disabled in config start parked (areaNo 99) but
-    // stay live-toggleable from the menu. Default-enabled categories are a no-op.
+    for (int c = 0; c < NUM_CATEGORIES; c++)
     {
-        int born_hidden = 0;
-        for (int c = 0; c < NUM_CATEGORIES; c++)
-        {
-            bool on = is_category_enabled(static_cast<Category>(c));
-            g_category_visible[c].store(on);
-            if (!on)
-            {
-                apply_category_visibility(static_cast<Category>(c), false);
-                born_hidden++;
-            }
-        }
-        spdlog::info("[CATEGORY] seeded {} categories ({} parked at init)",
-                     NUM_CATEGORIES, born_hidden);
+        g_category_visible[c].store(is_category_enabled(static_cast<Category>(c)));
+        g_category_cluster[c].store(category_clustered_cfg(static_cast<Category>(c)));
+        g_category_threshold[c].store(cluster_threshold_for_cfg(static_cast<Category>(c)));
     }
-
-    // Seed per-category cluster opt-in from config::clusterExclude (menu display
-    // only — the cluster plan above already read the same config directly).
-    {
-        int excluded = 0;
-        for (int c = 0; c < NUM_CATEGORIES; c++)
-        {
-            bool on = category_clustered_cfg(static_cast<Category>(c));
-            g_category_cluster[c].store(on);
-            g_category_threshold[c].store(cluster_threshold_for_cfg(static_cast<Category>(c)));
-            if (!on) excluded++;
-        }
-        if (excluded)
-            spdlog::info("[CLUSTER] {} categories excluded from clustering", excluded);
-    }
-
-    // Seed the master on/off from the persisted config (menu 'Show icons' / F10).
-    // Park everything now if it starts hidden (the watcher's change-detector
-    // wouldn't fire, since prev == current at startup).
     g_icons_user_disabled.store(goblin::config::iconsHidden);
-    if (goblin::config::iconsHidden)
-        apply_master_visibility(false);
-
-    // Build the initial cluster plan at RUNTIME from the rows we just registered.
-    // enableClustering ⇔ collapsed (clusters shown); off ⇔ expanded (members shown).
     g_clusters_expanded.store(!goblin::config::enableClustering);
-    replan_clusters();
-
-    spdlog::debug("Injection complete: {} total rows", total_rows);
 }
 
 // ─── TutorialParam row injection ─────────────────────────────────────
@@ -2389,36 +1544,6 @@ bool goblin::inject_tutorial_popup_rows()
 }
 
 
-// ─── Runtime param toggle (drives the F10 personal show/hide) ────────
-
-void goblin::set_param_injection_active(bool active)
-{
-    GOBLIN_BENCH("toggle.param_swap");
-    if (!g_file_ptr_ref)
-    {
-        spdlog::warn("[TOGGLE] Param swap state not initialized — inject_map_entries() didn't run");
-        return;
-    }
-    if (active == g_param_injection_active)
-        return;
-    if (active)
-    {
-        *g_file_ptr_ref = g_expanded_param_file;
-        *g_file_size_ref = g_expanded_param_size;
-    }
-    else
-    {
-        *g_file_ptr_ref = g_vanilla_param_file;
-        *g_file_size_ref = g_vanilla_param_size;
-    }
-    g_param_injection_active = active;
-    spdlog::info("[TOGGLE] WorldMapPointParam -> {}", active ? "EXPANDED" : "VANILLA");
-}
-
-bool goblin::is_param_injection_active()
-{
-    return g_param_injection_active;
-}
 
 // (The old Summon-message path (post_summon) was removed: it depended on five
 // hardcoded RVAs (0x763360/0x11A3E0/0x843860/0x844060/0x843910) that a game
@@ -2452,7 +1577,7 @@ static void show_tutorial_popup_trampoline(uintptr_t /*er*/, int tutorial_id)
     {
         tried = true;
         fn = reinterpret_cast<void (*)(int)>(modutils::scan<void>({
-            .aob = "48 8B 05 ?? ?? ?? ?? 8B D1 48 85 C0 74 17 48 8B 88 80 00 00 00 48 85 C9",
+            .aob = goblin::sig::WORLDMAP_POINT_FN,
         }));
         spdlog::info("[TOAST] trampoline ShowTutorialPopup @ {:p}", (void *)fn);
     }
@@ -2487,7 +1612,7 @@ bool goblin::world_map_open()
         resolved = true;
         // Same CSMenuMan singleton AOB as the toast path below.
         menu_man_slot = reinterpret_cast<void **>(modutils::scan<void *>({
-            .aob = "48 8B 05 ?? ?? ?? ?? 33 DB 48 89 74 24",
+            .aob = goblin::sig::CSMENUMAN_SLOT,
             .relative_offsets = {{3, 7}},
         }));
         spdlog::info("[OVERLAY] world_map_open CSMenuMan_slot={:p}", (void *)menu_man_slot);
@@ -2508,79 +1633,1839 @@ bool goblin::world_map_open()
     return v == 7;
 }
 
-// ── Live world-map icon refresh (EXPERIMENTAL, config::liveRefreshWorldMap) ──
-//
-// The engine (re)builds the placed map-point icons in FUN_140a82a80(PointMan, ctx)
-// (Windows RE, docs/windows_re_live_refresh_capture.md): it news CSWorldMapPointIns
-// (ctor 0xa811e0), evaluates the per-row show-predicate (vtable+0x8), and inserts/
-// updates/removes the std::map<int id, CSWorldMapPointIns*> at PointMan+0x398. Our
-// section/category hide flips WORLD_MAP_POINT_PARAM_ST.areaNo to 99 on the live
-// param blob — correct, but INVISIBLE while the map is open, because the per-frame
-// reconcile (FUN_140a832a0) only UPDATES already-built icons; it never re-evaluates
-// visibility on the +0x398 set. Only the build above does, and it runs off a
-// transient per-frame context (ctx = {+0x34 page filter, +0x48 ParamRepo*}) that we
-// must NOT fabricate — a bogus ctx would crash.
-//
-// So we HOOK the build fn and passively record the engine's own (this, ctx) as it
-// is called naturally. When a refresh is requested (after an areaNo edit, map open)
-// the detour re-invokes the ORIGINAL once more with that captured real pair — a
-// second add/remove reconcile against the freshly-edited params. This keeps ALL
-// game-state mutation on the engine's own thread; the watcher thread only sets a
-// flag. Off unless config::liveRefreshWorldMap; the user runtime-verifies that the
-// build is invoked while the map is open and that the extra pass refreshes icons
-// with no crash (doc "Runtime test plan").
+
+// ── Icon-texture probe (config dump_icon_textures) ───────────────────────────────────
+// Hooks CSScaleformImageCreator::CreateImage (FUN_140d6bbc0): builds each GFx image from a
+// TPF import → a CS::CSTextureImage carrying the sprite RECT (+0x74/+0x7c/+0x3c/+0x40, dims
+// +0x2c/+0x30) + backing GXTexture2D (+0x38 → ID3D12Resource +0x40). RE findings §2/§7. Logs
+// the created image's rect/dims + backing texture + the import args so we can map iconIds →
+// sprite sub-rects. Read-only (RPM); generous arg list forwarded (x64 caller-clean → extra
+// args are harmless even if CreateImage takes fewer).
 namespace
 {
-using world_map_build_fn = void(__fastcall *)(void *pointman, void *ctx);
-world_map_build_fn g_wm_build_orig = nullptr;     // MinHook trampoline (relocated original)
-std::atomic<bool>  g_wm_refresh_request{false};
+using create_image_fn = void *(__fastcall *)(void *, void *, void *, void *, void *, void *,
+                                             void *, void *);
+create_image_fn g_create_image_orig = nullptr;
 
-// Detour over FUN_140a82a80. POD-only body (no C++ unwinding) so the __try is legal.
-// The trampoline is the relocated original — calling it does NOT re-enter this
-// detour, so the extra pass cannot recurse.
-void __fastcall wm_build_detour(void *pointman, void *ctx)
+// CreateImage context capture (RE §5g) — populated by create_image_detour, consumed by
+// run_create_icon to replay the GFx per-image bind for an arbitrary symbol. a0=param_1 (creator this),
+// a1=param_2, a2=param_3 (symbol desc: ASCII name @ (*a2 & ~3)+0xc, format "%hS").
+std::atomic<void *> g_ci_p1{nullptr};
+std::atomic<void *> g_ci_p2{nullptr};
+std::atomic<int> g_ci_logn{0};
+char g_ci_last[96] = {0};   // most-recent live symbol name (e.g. "img://KG_R1") for replay control test
+
+inline bool icon_rpm_i32(uintptr_t a, int &out)
 {
-    g_wm_build_orig(pointman, ctx);
-    if (g_wm_refresh_request.exchange(false))
+    SIZE_T n = 0;
+    return a && ReadProcessMemory(GetCurrentProcess(), (void *)a, &out, 4, &n) && n == 4;
+}
+inline bool icon_rpm_ptr(uintptr_t a, uintptr_t &out)
+{
+    SIZE_T n = 0;
+    return a && ReadProcessMemory(GetCurrentProcess(), (void *)a, &out, 8, &n) && n == 8;
+}
+
+// Bounded BFS over the CS object graph from `root` (follow er-base-vtable'd ptr fields)
+// for the GXTexture2D / CSGxTexture vtable → the backing GPU texture. Returns its addr
+// (+ out vtable/depth), 0 if not found. Used at load (usually fails — texture bound
+// lazily) and on a map-open frame from root = *(img+0x10) (the now-bound Render::Texture).
+uintptr_t icon_find_gpu_tex(uintptr_t root, uintptr_t base, uintptr_t &out_vt, int &out_depth)
+{
+    // ONLY GXTexture2D (0x2f05928) is the terminal — it carries the ID3D12Resource at +0x40.
+    // CSGxTexture (0x2b761b0) is a WRAPPER whose +0x40 is a name string, so we expand THROUGH
+    // it (and every other CS object) rather than stopping on it.
+    const uintptr_t WANT_GX = base + 0x2f05928;
+    std::vector<std::pair<uintptr_t, int>> q;
+    std::vector<uintptr_t> seen;
+    q.push_back({root, 0}); seen.push_back(root);
+    for (size_t qi = 0; qi < q.size() && qi < 600; ++qi)
     {
-        __try { g_wm_build_orig(pointman, ctx); }
-        __except (EXCEPTION_EXECUTE_HANDLER) {}
+        uintptr_t node = q[qi].first; int d = q[qi].second;
+        for (int o = 0x00; o <= 0x120; o += 8)
+        {
+            uintptr_t p = 0;
+            if (!icon_rpm_ptr(node + o, p) || p < 0x10000 || p >= 0x7fffffffffffULL) continue;
+            uintptr_t vt = 0;
+            if (!icon_rpm_ptr(p, vt)) continue;
+            if (vt == WANT_GX) { out_vt = vt; out_depth = d + 1; return p; }
+            if (d < 7 && vt > base && vt < base + 0x6000000 && q.size() < 600)
+            {
+                bool dup = false;
+                for (uintptr_t s : seen) if (s == p) { dup = true; break; }
+                if (!dup) { seen.push_back(p); q.push_back({p, d + 1}); }
+            }
+        }
     }
+    out_vt = 0; out_depth = -1;
+    return 0;
+}
+
+// Try to read a printable string at `addr` — narrow (char) first, then wide (char,0,char,0).
+// Returns "" if no run of >=3 printable ASCII. Used to find the GFx import NAME the image was
+// built from (findings §4: CreateImage builds from an import descriptor; the resolve path
+// formats L"%s_ptl" from its wide name → label iconId by that name).
+std::string icon_try_str(uintptr_t addr)
+{
+    if (!addr || addr < 0x10000 || addr >= 0x7fffffffffffULL) return {};
+    unsigned char buf[96] = {0};
+    SIZE_T n = 0;
+    if (!ReadProcessMemory(GetCurrentProcess(), (void *)addr, buf, sizeof(buf) - 1, &n) || n < 4)
+        return {};
+    auto printable = [](unsigned char c) { return (c >= 0x20 && c < 0x7f); };
+    // narrow
+    int run = 0; for (int i = 0; i < (int)n && printable(buf[i]); ++i) run++;
+    if (run >= 4) return std::string((char *)buf, run);
+    // wide (every other byte 0)
+    std::string w; for (int i = 0; i + 1 < (int)n; i += 2)
+    {
+        if (printable(buf[i]) && buf[i + 1] == 0) w.push_back((char)buf[i]); else break;
+    }
+    if (w.size() >= 4) return w;
+    return {};
+}
+
+// Registry of created CSTextureImages (load-time) so the live dump can re-read each
+// img+0x10 once the world map is open and the GPU texture is bound. Capped; sheet-sized
+// images only (icon sheets are 512×512 / 2048×1024 — skip tiny/huge GFx images).
+struct IconImg { uintptr_t img; int x0, y0, x1, y1, w, h; std::string name; };
+std::vector<IconImg> g_icon_imgs;
+std::vector<uintptr_t> g_icon_sheets; // unique ID3D12Resource per TPF sheet
+bool g_icon_live_done = false;
+bool g_icon_detail_done = false;
+
+// One-shot full dump of the FIRST bound Render::Texture (img+0x10). The BFS proved
+// non-deterministic (wanders into a shared global some runs, misses others), so dump the
+// Scaleform Render::Texture's whole layout: every ptr field (tagged GXTexture2D /
+// CSGxTexture / other CS-obj, + one-level child that points at GXTexture2D) and every
+// small int (dims / the tex+0x3c size). Reveals the DETERMINISTIC renderTex→GPU-texture
+// offset to replace the BFS, and whether all images share one atlas.
+void icon_detail_dump(uintptr_t rtex, uintptr_t base)
+{
+    if (g_icon_detail_done || !rtex) return;
+    g_icon_detail_done = true;
+    const uintptr_t WANT_GX = base + 0x2f05928, WANT_CSGX = base + 0x2b761b0;
+    spdlog::info("[ICONTEX-DET] renderTex={:#x} full layout dump:", rtex);
+    for (int o = 0; o <= 0xB8; o += 8)
+    {
+        uintptr_t p = 0;
+        if (!icon_rpm_ptr(rtex + o, p)) continue;
+        if (p > 0x10000 && p < 0x7fffffffffffULL)
+        {
+            uintptr_t vt = 0; icon_rpm_ptr(p, vt);
+            const char *tag = vt == WANT_GX ? " <GXTexture2D>"
+                            : vt == WANT_CSGX ? " <CSGxTexture>"
+                            : (vt > base && vt < base + 0x6000000) ? " <CSobj>" : "";
+            spdlog::info("[ICONTEX-DET]  rtex+{:#x} = ptr {:#x} vtRVA={:#x}{}",
+                         o, p, vt > base ? vt - base : 0, tag);
+            // one level down: a child field pointing straight at the GXTexture2D
+            if (vt > base && vt < base + 0x6000000)
+                for (int o2 = 0; o2 <= 0x70; o2 += 8)
+                {
+                    uintptr_t c = 0; if (!icon_rpm_ptr(p + o2, c) || c < 0x10000) continue;
+                    uintptr_t cv = 0; icon_rpm_ptr(c, cv);
+                    if (cv == WANT_GX)
+                        spdlog::info("[ICONTEX-DET]    -> [{:#x}+{:#x}] = GXTexture2D {:#x}", p, o2, c);
+                }
+        }
+        else
+        {
+            int lo = (int)(p & 0xffffffff), hi = (int)(p >> 32);
+            if ((lo > 0 && lo <= 8192) || (hi > 0 && hi <= 8192))
+                spdlog::info("[ICONTEX-DET]  rtex+{:#x} = ints ({}, {})", o, lo, hi);
+        }
+    }
+    // rtex+0x70 = the D3D texture HAL object (non-module vtable, repeated across the texture
+    // list → a real D3D/driver type). Deep-dump it: its fields + ints, hunting the actual
+    // ID3D12Resource (a ptr whose vtable is OUTSIDE the ER module = d3d12.dll / vkd3d) and the
+    // texture dims/format. mod range = [base, base+0x6000000).
+    const uintptr_t mod_lo = base, mod_hi = base + 0x6000000;
+    uintptr_t hal = 0;
+    if (icon_rpm_ptr(rtex + 0x70, hal) && hal > 0x10000 && hal < 0x7fffffffffffULL)
+    {
+        uintptr_t halvt = 0; icon_rpm_ptr(hal, halvt);
+        spdlog::info("[ICONTEX-DET] -- HAL tex rtex+0x70 = {:#x} vt={:#x} fields:", hal, halvt);
+        for (int o = 0; o <= 0xC0; o += 8)
+        {
+            uintptr_t p = 0;
+            if (!icon_rpm_ptr(hal + o, p)) continue;
+            if (p > 0x10000 && p < 0x7fffffffffffULL)
+            {
+                uintptr_t vt = 0; bool hasvt = icon_rpm_ptr(p, vt) && vt > 0x10000;
+                bool in_mod = (vt >= mod_lo && vt < mod_hi);
+                const char *tag = !hasvt ? " <data?>"
+                                : in_mod ? " <CSobj>" : " <NON-MODULE vt = D3D12/COM?>";
+                spdlog::info("[ICONTEX-DET]    hal+{:#x} = ptr {:#x} vt={:#x}{}",
+                             o, p, hasvt ? (in_mod ? vt - base : vt) : 0, tag);
+            }
+            else
+            {
+                int lo = (int)(p & 0xffffffff), hi = (int)(p >> 32);
+                if ((lo > 0 && lo <= 8192) || (hi > 0 && hi <= 8192))
+                    spdlog::info("[ICONTEX-DET]    hal+{:#x} = ints ({}, {})", o, lo, hi);
+            }
+        }
+    }
+}
+
+// Live anchors: the numeric iconIds the menu actually DRAW (MENU_FL_<N>) as the user browses.
+static std::vector<uint16_t> g_menu_iconids;
+
+// Correlate the live-captured iconIds against the EquipParam tables: for each param, the offset
+// whose u16 column CONTAINS the most captured iconIds = that param's iconId offset (every drawn
+// item's iconId lives at the same offset). This is the anchored self-calibration that the abstract
+// distinct/density heuristics couldn't do — the anchors are real, drawn items. Hover a few items of
+// each type → [ICONFIND] converges. Dev-only (dump_icon_textures).
+static void correlate_menu_iconids()
+{
+    std::set<uint16_t> ids(g_menu_iconids.begin(), g_menu_iconids.end());
+    if (ids.empty())
+        return;
+    // sample a few captured ids in the log so we can value-scan manually if needed
+    std::string sample;
+    { int k = 0; for (uint16_t v : ids) { if (k++) sample += ","; sample += std::to_string(v); if (k >= 8) break; } }
+    spdlog::info("[ICONFIND] correlating {} captured iconIds (e.g. {}) vs EquipParams:",
+                 (int)ids.size(), sample);
+    struct P { const wchar_t *name; const char *tag; };
+    static const P params[] = {
+        {L"EquipParamWeapon", "Weapon"}, {L"EquipParamProtector", "Protector"},
+        {L"EquipParamAccessory", "Accessory"}, {L"EquipParamGoods", "Goods"},
+        {L"EquipParamGem", "Gem"}, {L"Magic", "Magic"},
+    };
+    int totalBest = 0;
+    for (const P &p : params)
+    {
+        try
+        {
+            std::vector<uintptr_t> bases;
+            for (auto row : from::params::get_param<uint8_t>(p.name))
+                bases.push_back(reinterpret_cast<uintptr_t>(&row.second));
+            if (bases.size() < 2) { spdlog::info("[ICONFIND]   {} not loaded", p.tag); continue; }
+            uintptr_t stride = bases[1] - bases[0];
+            if (stride < 4 || stride > 0x2000) continue;
+            int bestOff = -1, bestHits = 0;
+            for (uintptr_t off = 0; off + 2 <= stride; ++off)
+            {
+                std::set<uint16_t> hit;
+                for (uintptr_t b : bases)
+                {
+                    uint16_t v = *reinterpret_cast<uint16_t *>(b + off);
+                    if (ids.count(v)) hit.insert(v);
+                }
+                if ((int)hit.size() > bestHits) { bestHits = (int)hit.size(); bestOff = (int)off; }
+            }
+            totalBest += bestHits;
+            spdlog::info("[ICONFIND]   {} bestOff=0x{:x} matches {}/{}", p.tag, bestOff, bestHits, (int)ids.size());
+        }
+        catch (...) { spdlog::info("[ICONFIND]   {} not loaded", p.tag); }
+    }
+    if (totalBest == 0)
+        spdlog::info("[ICONFIND] NO captured iconId appears in ANY EquipParam column → MENU_FL_<id> "
+                     "is a TRANSFORMED id, not the raw EquipParam.iconId.");
+}
+
+void icon_log_image(uintptr_t img, uintptr_t a1, uintptr_t a2, uintptr_t a3)
+{
+    if (!goblin::config::dumpIconTextures || !img)
+        return;
+    static int logged = 0; // gates only the verbose [ICONTEX] line; [ICONMAP] is uncapped
+    // Rect SOLVED: x0,y0,x1,y1 contiguous at +0x74/+0x78/+0x7c/+0x80; dims +0x84/+0x88.
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0, w = 0, h = 0;
+    icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
+    icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
+    icon_rpm_i32(img + 0x84, w);  icon_rpm_i32(img + 0x88, h);
+    // Register sheet-sized images so the live dump can re-read img+0x10 once the map is
+    // open (the GPU texture binds LAZILY on first render — findings §2; the BFS here at
+    // load time finds nothing, which is expected). Icon sheets are 512×512 / 2048×1024.
+    // The GFx import NAME (SOLVED): img+0x40 -> '<symbol>_ptl' string (the resolve fn formats
+    // L"%s_ptl"). ERR map icons = 'SB_ERR_*'; 'KG_*' = controller button glyphs (skip).
+    uintptr_t name_ptr = 0; icon_rpm_ptr(img + 0x40, name_ptr);
+    std::string name = icon_try_str(name_ptr);
+    // Register sheet-sized images so the live dump can re-read img+0x10 once the map is open
+    // (the GPU texture binds LAZILY on first render). Icon sheets are 512×512 / 2048×1024.
+    // Sheet-sized images (≥256), OR any SB_ERR_*/MENU_MAP_* (the grace/pin _ptl may report ICON size
+    // at +0x84/+0x88, not the sheet — don't let the ≥256 gate drop the forced grace candidates).
+    if (((w >= 256 && h >= 256) || name.rfind("SB_ERR_", 0) == 0 || name.rfind("MENU_MAP_", 0) == 0) &&
+        g_icon_imgs.size() < 512)
+        g_icon_imgs.push_back({img, x0, y0, x1, y1, w, h, name});
+    // Accumulate the UNIQUE name→rect table (skip KG_ button glyphs). Uncapped (dedup set) so
+    // it captures whatever menu is open — worldmap (SB_ERR_*) OR inventory/equipment item icons.
+    if (!name.empty() && name.rfind("KG_", 0) != 0)
+    {
+        static std::set<std::string> seen;
+        if (seen.insert(name).second)
+        {
+            spdlog::info("[ICONMAP] '{}' rect=({},{})-({},{}) sheet={}x{} ({}x{})",
+                         name, x0, y0, x1, y1, w, h, x1 - x0, y1 - y0);
+            // MENU_FL_<N> = a drawn item icon → N is a live iconId anchor. Accumulate + correlate
+            // against the EquipParam tables to pin the iconId offset per param ([ICONFIND]).
+            if (name.rfind("MENU_FL_", 0) == 0 && name.size() > 8 && name[8] >= '0' && name[8] <= '9')
+            {
+                uint16_t N = static_cast<uint16_t>(std::atoi(name.c_str() + 8));
+                if (std::find(g_menu_iconids.begin(), g_menu_iconids.end(), N) == g_menu_iconids.end())
+                {
+                    g_menu_iconids.push_back(N);
+                    correlate_menu_iconids();   // every new drawn-item iconId → re-correlate
+                }
+            }
+        }
+    }
+    // Verbose per-image line, capped (avoid flooding when a busy menu creates hundreds).
+    if (logged < 60)
+    {
+        logged++;
+        spdlog::info("[ICONTEX] img={:#x} name='{}' rect=({},{})-({},{}) sheet={}x{}",
+                     img, name, x0, y0, x1, y1, w, h);
+    }
+}
+
+void *__fastcall create_image_detour(void *a0, void *a1, void *a2, void *a3, void *a4, void *a5,
+                                     void *a6, void *a7)
+{
+    void *ret = g_create_image_orig(a0, a1, a2, a3, a4, a5, a6, a7);
+    icon_log_image((uintptr_t)ret, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3);
+    // §5g: capture the live creator context (a0/a1) + log the real symbol name (a2 = param_3 →
+    // ASCII @ (*a2 & ~3)+0xc) so we can replay CreateImage for arbitrary item-icon symbols.
+    if (g_ci_p1.load(std::memory_order_relaxed) == nullptr) { g_ci_p1.store(a0); g_ci_p2.store(a1); }
+    int n = g_ci_logn.fetch_add(1, std::memory_order_relaxed);
+    if (n < 60 && a2)
+    {
+        uintptr_t descv = 0;
+        if (icon_rpm_ptr((uintptr_t)a2, descv))
+        {
+            char nm[96] = {0}; SIZE_T got = 0;
+            ReadProcessMemory(GetCurrentProcess(), (void *)((descv & ~uintptr_t(3)) + 0xc), nm, 95, &got);
+            if (nm[0]) strncpy(g_ci_last, nm, sizeof(g_ci_last) - 1);   // remember for replay control
+            spdlog::info("[CREATEIMG] live a0={} a1={} *a2={:#x} name='{}' -> img={:#x}",
+                         a0, a1, descv, nm, (uintptr_t)ret);
+        }
+    }
+    return ret;
+}
+
+// ── Loaded-image ENUMERATE (sprite findings §1: FUN_140d69640 walks the loaded movie's image
+// list [movie+0x40]+0x90, entries type +0x88==4) — the SAFE harvest path (only resident images,
+// vs find-by-name which crashes on non-resident). Hook captures the movie ptr (arg0) on the engine
+// thread; a one-time dump reverses the entry layout so we can then harvest name+rect+resource.
+using enum_fn = void *(__fastcall *)(void *, void *, void *, void *);
+enum_fn g_enum_orig = nullptr;
+uintptr_t g_inv_movie = 0;
+
+void harvest_resident_icons(uintptr_t movie);   // §8 walk-all (defined after find_detour/g_find_orig)
+void harvest_repo_icons();                       // §8b repo-tree walk-all (RE-validated, see below)
+void harvest_twin_map_icons(uintptr_t repo, uintptr_t er);  // §8c twin map repo+0xb0 (pin/grace sprites)
+void cache_map_sprite_from_img(const char *nm, uintptr_t img);
+
+// Map-point icon layout, resolved from the RESIDENT image repo (the RAM source — see the §8c twin
+// walk / cache_map_sprite_from_img). MENU_MAP_<NN> → iconId NN (= WORLD_MAP_POINT_PARAM.iconId, RE
+// windows_map_point_icon_layout_re_findings.md); MENU_MAP_ERR_*/Church/… stay name-keyed. rect =
+// (x,y)+(w,h) on `sheet` (the ID3D12Resource); err = the SB_MapCursor_ERR sheet.
+struct MapIconRect { int x, y, w, h; bool err; void *sheet; };
+std::map<int, MapIconRect> g_map_icon_rects;          // iconId -> rect
+std::map<std::string, MapIconRect> g_map_icon_named;  // full name -> rect
+std::mutex g_map_icon_mtx;
+void store_map_icon_rect(const char *nm, int x, int y, int w, int h, void *sheet)
+{
+    if (!nm || w <= 0 || h <= 0) return;
+    MapIconRect r{x, y, w, h, std::strncmp(nm, "MENU_MAP_ERR", 12) == 0, sheet};
+    std::lock_guard<std::mutex> lk(g_map_icon_mtx);
+    g_map_icon_named[nm] = r;
+    if (std::strncmp(nm, "MENU_MAP_", 9) == 0)
+    {
+        const char *p = nm + 9;                 // MENU_MAP_<NN> → iconId NN
+        if (*p >= '0' && *p <= '9') g_map_icon_rects[std::atoi(p)] = r;
+    }
+}
+
+void *__fastcall enum_detour(void *movie, void *a1, void *a2, void *a3)
+{
+    g_inv_movie = reinterpret_cast<uintptr_t>(movie);
+    void *r = g_enum_orig(movie, a1, a2, a3);
+    // Proactive harvest: walk THIS movie's resident image-list (sprite findings §8) instead of
+    // waiting for the find hook to catch each icon as the player browses. enum_detour fires for
+    // MANY movies (load screens etc.) — we must walk the CURRENT arg, not a stashed global, so the
+    // inventory movie (many MENU_ItemIcon) actually gets processed. Engine thread, post-original.
+    harvest_resident_icons(reinterpret_cast<uintptr_t>(movie));
+    return r;
+}
+
+// ── HARVEST via the find hook (the SAFE path): the engine calls FUN_140d63c30(repo,&out,key) to
+// resolve each LOADED image (during enumeration + menu draws) — so hooking it captures every
+// RESIDENT item icon's name+rect+sheet, on the engine thread, no container-reversing, no risky
+// self-initiated find (the engine only finds what's loaded → never the crashing non-resident path).
+using find_fn2 = void *(__fastcall *)(void *, void **, const wchar_t *);
+find_fn2 g_find_orig = nullptr;
+
+// Harvested icon cache: iconId → {sheet ID3D12Resource, sub-rect, format}. Engine thread (find
+// hook) writes; render thread (overlay) reads → mutex. The render thread CopyTextureRegions from
+// these into our own SRV atlas.
+std::mutex g_harvest_mtx;
+std::unordered_map<int, goblin::ItemSprite> g_harvest;
+uintptr_t g_icon_repo = 0;   // FUN_140d63c30 arg0 (repo) — stashed for the proactive §8 walk
+// Discovered/lit grace sprite (RE e4b3f6a §6: SB_ERR_Grace_Morning_Color, world-map movie). Harvested
+// by the SAME find hook when the open map draws a discovered grace → lets the overlay draw graces
+// itself (discovered = this sprite, undiscovered = grey-tinted) and become the sole grace source.
+goblin::ItemSprite g_grace_sprite{};
+bool g_grace_locked = false;   // true once the canonical grace (MENU_MAP_01_Bonfire) is stored
+std::vector<goblin::GraceCandidate> g_grace_cands;   // all grace candidates (dev F1 viewer)
+// ERR dungeon-style grace (MENU_MAP_ERR_GraceUnderground). Valid iff ERR is installed (the sprite
+// exists in the worldmap gfx). The renderer uses it for DUNGEON graces in place of the vanilla bonfire.
+goblin::ItemSprite g_grace_dungeon_sprite{};
+
+// Read a resolved CSTextureImage (`img` = the find fn's `out`) and cache its sub-rect + backing
+// sheet resource + DXGI_FORMAT under the iconId parsed from a MENU_ItemIcon_<id> name. Shared by
+// the find hook (browse-to-fill) and the §8 proactive walk. Read-only (RPM). Returns true if cached.
+bool cache_icon_from_img(const char *nm, uintptr_t img)
+{
+    if (img < 0x10000 || std::strncmp(nm, "MENU_ItemIcon_", 14) != 0) return false;
+    uintptr_t vt = 0; icon_rpm_ptr(img, vt);
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!(vt > er && vt - er == 0x2bb8910)) return false;   // CSTextureImage vtable guard
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
+    icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
+    uintptr_t rtex = 0, res = 0;
+    icon_rpm_ptr(img + 0x10, rtex);
+    if (rtex > 0x10000) icon_rpm_ptr(rtex + 0x70, res);
+    if (res <= 0x10000) return false;
+    int iconId = std::atoi(nm + 14);
+    // Sheet dims/format live on the bound D3D12 resource, but the GPU texture binds LAZILY
+    // (findings §2) — at find/walk time res+0x10/+0x30 may still be 0. Do NOT gate harvesting on
+    // that (it dropped every not-yet-rendered icon → harvested=0). Cache the rect + sheet ptr now
+    // (the ID3D12Resource* is persistent); the overlay reads the AUTHORITATIVE format/dims via
+    // ID3D12Resource::GetDesc() at copy time (render thread, bound). RPM read here is best-effort
+    // diagnostics only (correct once bound, else 0).
+    int dim = 0, rw = 0, rh = 0, fmt = 0;
+    icon_rpm_i32(res + 0x10, dim); icon_rpm_i32(res + 0x20, rw); icon_rpm_i32(res + 0x28, rh);
+    if (dim == 3) icon_rpm_i32(res + 0x30, fmt);
+    goblin::ItemSprite hs;
+    hs.sheet = reinterpret_cast<void *>(res);
+    hs.x0 = x0; hs.y0 = y0; hs.x1 = x1; hs.y1 = y1;
+    hs.sheetW = static_cast<unsigned long long>(rw);
+    hs.sheetH = static_cast<unsigned>(rh);
+    hs.format = static_cast<unsigned>(fmt);
+    hs.valid = true;
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    g_harvest[iconId] = hs;
+    return true;
+}
+
+void *__fastcall find_detour(void *repo, void **out, const wchar_t *key)
+{
+    if (repo && !g_icon_repo) g_icon_repo = reinterpret_cast<uintptr_t>(repo);
+    void *ret = g_find_orig(repo, out, key);
+    if (goblin::config::dumpIconTextures && key)
+    {
+        char nm[48] = {0};
+        for (int i = 0; i < 47; ++i) { wchar_t c = key[i]; if (!c) break; nm[i] = (c < 128) ? static_cast<char>(c) : '?'; }
+        // DIAG: log EVERY resolved sprite key + rect (deduped) → reveals the map-point naming scheme.
+        // If the key encodes the WorldMapPointParam iconId (numeric) we get iconId→rect for free; if
+        // it's symbolic (MENU_MAP_01_Bonfire) the marker iconId→rect needs a pin-draw hook instead.
+        {
+            uintptr_t img2 = 0; icon_rpm_ptr(reinterpret_cast<uintptr_t>(out), img2);
+            if (img2 < 0x10000) img2 = reinterpret_cast<uintptr_t>(ret);
+            uintptr_t vt2 = 0; icon_rpm_ptr(img2, vt2);
+            uintptr_t er2 = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+            static std::set<std::string> seen2;
+            if (img2 > 0x10000 && vt2 > er2 && vt2 - er2 == 0x2bb8910 && nm[0] &&
+                seen2.size() < 400 && seen2.insert(nm).second)
+            {
+                int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+                icon_rpm_i32(img2 + 0x74, x0); icon_rpm_i32(img2 + 0x78, y0);
+                icon_rpm_i32(img2 + 0x7c, x1); icon_rpm_i32(img2 + 0x80, y1);
+                spdlog::info("[MAPICON] key='{}' rect=({},{})-({},{})", nm, x0, y0, x1, y1);
+            }
+        }
+        if (nm[0] == 'M' && nm[1] == 'E' && nm[2] == 'N' && nm[3] == 'U')   // MENU_* item icons
+        {
+            uintptr_t img = 0; icon_rpm_ptr(reinterpret_cast<uintptr_t>(out), img);
+            if (img < 0x10000) img = reinterpret_cast<uintptr_t>(ret);
+            uintptr_t vt = 0; icon_rpm_ptr(img, vt);
+            uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+            static std::set<std::string> seen;
+            if (img > 0x10000 && vt > er && vt - er == 0x2bb8910 && seen.insert(nm).second)
+            {
+                int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+                icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
+                icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
+                uintptr_t rtex = 0, res = 0;
+                icon_rpm_ptr(img + 0x10, rtex);
+                if (rtex > 0x10000) icon_rpm_ptr(rtex + 0x70, res);
+                spdlog::info("[ENUM2] '{}' img={:#x} rect=({},{})-({},{}) res={:#x}", nm, img, x0, y0, x1, y1, res);
+                // Cache per-iconId for the overlay's CopyTextureRegion (MENU_ItemIcon_<id> only).
+                cache_icon_from_img(nm, img);
+                // P2b: one-time dump of the sheet resource's first 0x60 bytes (i32) to LOCATE the
+                // DXGI_FORMAT field (a small int near W@0x20/H@0x28; e.g. 71=BC1,77=BC3,98=BC7,87=BGRA8).
+                static bool fmt_dumped = false;
+                if (!fmt_dumped && res > 0x10000)
+                {
+                    fmt_dumped = true;
+                    for (int o = 0; o < 0x60; o += 4)
+                    {
+                        int fv = 0; icon_rpm_i32(res + o, fv);
+                        spdlog::info("[ENUM2-FMT] res+0x{:02x} = {} (0x{:x})", o, fv, static_cast<unsigned>(fv));
+                    }
+                }
+            }
+        }
+    }
+    // §8b: proactively harvest ALL resident icons from the repo tree (cheap: no-ops unless the
+    // resident image count grew). Runs here because find_detour fires constantly while a menu is
+    // open. Uses node+0x50 directly (no re-resolve), so it never re-enters g_find_orig.
+    harvest_repo_icons();
+    return ret;
+}
+
+// §8 proactive harvest (sprite findings §8, commit 6913ec4): walk the loaded movie's resident
+// image-list in ONE pass and cache every MENU_ItemIcon_* (vs the find hook, which only catches the
+// one icon the engine happens to resolve while the player browses). Layout (instruction-confirmed):
+//   movie+0x40 -> res ; gate res+0x88 == 4 (image-list) ; res+0x90 -> list
+//   list+0x78 u32 count ; list+0x80 -> arr (entry-ptr array, stride 8)
+//   entry+0x18 = name DLWString (heap iff *(entry+0x30) >= 8, else inline) ; names are GFx symbols.
+// Each name is RESIDENT by construction → re-resolving it via the find fn (g_find_orig, the original
+// trampoline — does NOT re-enter find_detour) is SAFE (the non-resident crash constraint doesn't
+// apply). Read-only walk; runs on the engine thread from enum_detour. Throttled (500ms).
+void harvest_resident_icons(uintptr_t movie)
+{
+    if (!goblin::config::dumpIconTextures || movie < 0x10000 || !g_icon_repo || !g_find_orig)
+        return;
+
+    uintptr_t res = 0; icon_rpm_ptr(movie + 0x40, res);
+    if (res < 0x10000) return;
+    uintptr_t list = 0; icon_rpm_ptr(res + 0x90, list);
+    if (list < 0x10000) return;
+    int count = 0; icon_rpm_i32(list + 0x78, count);
+    uintptr_t arr = 0; icon_rpm_ptr(list + 0x80, arr);
+    if (count <= 0 || count > 100000 || arr < 0x10000) return;
+    // NOTE: the static +0x88==4 type gate from the findings reads garbage live (0x44) → dropped;
+    // we instead filter by entry NAME (only MENU_ItemIcon_* are cached) which is self-validating.
+
+    // Process each distinct (movie,count) once — enum_detour fires every frame for many movies; this
+    // dedup avoids re-walking + re-resolving an unchanged list. A grown list (new count) reprocesses.
+    static std::set<uint64_t> s_done;
+    uint64_t key = (static_cast<uint64_t>(movie) * 1000003u) ^ static_cast<uint64_t>(count);
+    if (!s_done.insert(key).second) return;
+
+    int loops = count < 4096 ? count : 4096;   // hard cap (a non-list movie could give a bogus count)
+    int harvested = 0, names_menu = 0;
+    for (int i = 0; i < loops; ++i)
+    {
+        uintptr_t entry = 0; icon_rpm_ptr(arr + static_cast<uintptr_t>(i) * 8, entry);
+        if (entry < 0x10000) continue;
+        uintptr_t len = 0; icon_rpm_ptr(entry + 0x30, len);          // name length (wchars)
+        uintptr_t namep = (len >= 8) ? 0 : entry + 0x18;             // SSO inline vs heap
+        if (len >= 8) icon_rpm_ptr(entry + 0x18, namep);
+        if (namep < 0x1000) continue;
+
+        wchar_t wbuf[80] = {0}; SIZE_T got = 0;                       // one RPM for the whole name
+        ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(namep), wbuf,
+                          sizeof(wbuf) - sizeof(wchar_t), &got);
+        char nm[80]; int k = 0;
+        for (; k < 79 && wbuf[k]; ++k) nm[k] = (wbuf[k] < 128) ? static_cast<char>(wbuf[k]) : '?';
+        nm[k] = 0;
+        if (std::strncmp(nm, "MENU_ItemIcon_", 14) != 0) continue;
+        ++names_menu;
+        int iconId = std::atoi(nm + 14);
+        { std::lock_guard<std::mutex> lk(g_harvest_mtx); if (g_harvest.count(iconId)) continue; }
+
+        // Resolve the resident image by name (safe; trampoline, not the detour) → read+cache.
+        // The fn writes the image into *out; some paths return it instead.
+        void *out = nullptr;
+        void *ret = g_find_orig(reinterpret_cast<void *>(g_icon_repo), &out, wbuf);
+        uintptr_t img = reinterpret_cast<uintptr_t>(out);
+        if (img < 0x10000) img = reinterpret_cast<uintptr_t>(ret);
+        if (cache_icon_from_img(nm, img)) ++harvested;
+    }
+    if (names_menu || harvested)
+        spdlog::info("[ENUM-WALK] §8 movie={:#x} count={} MENU_ItemIcon_names={} harvested_new={}",
+                     movie, count, names_menu, harvested);
+}
+
+// §8b PROACTIVE repo-walk harvest — SOLVED + validated live (163 icons / 938 images, 2026-06-22).
+// See docs/re/windows_resident_icon_enumeration_re_findings.md. Walk the FD4 image-repo's by-name
+// std::map (a red-black tree) directly and cache EVERY resident MENU_ItemIcon_* in one pass —
+// movie-independent (the §8 movie-walk only saw load-screen movies on this build), reading the
+// CSTextureImage* straight from node+0x50 (NO find-by-name re-resolve, so the §5 non-resident crash
+// can't occur). Read-only RPM, runs on the engine thread from find_detour; reprocesses only when the
+// resident image count (_Mysize) grows, so the steady-state cost is two RPM reads + a compare.
+//   repo    = *(er+0x3d82510)  (DAT_143d82510; fallback to g_icon_repo stashed by find_detour)
+//   _Myhead = *(repo+0x88) ; root = *(_Myhead+0x08) ; _Mysize = *(repo+0x90)
+//   node: _Left+0x00 _Parent+0x08 _Right+0x10 _Isnil(u8)+0x19 ; key DLWString+0x28 (len+0x38,cap+0x40)
+//         value = CS::CSTextureImage* @ node+0x50
+void harvest_repo_icons()
+{
+    if (!goblin::config::dumpIconTextures) return;
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!er) return;
+
+    uintptr_t repo = 0; icon_rpm_ptr(er + 0x3d82510, repo);  // the canonical static anchor
+    if (repo < 0x10000) repo = g_icon_repo;                  // fallback: arg0 stashed by find_detour
+    if (repo < 0x10000) return;
+
+    uintptr_t head = 0; icon_rpm_ptr(repo + 0x88, head);     // _Myhead (nil sentinel == end())
+    if (head < 0x10000) return;
+    int size = 0; icon_rpm_i32(repo + 0x90, size);           // _Mysize (count of ALL resident images)
+
+    // Re-walk on ANY change to the resident count, not just growth. _Mysize OSCILLATES as the engine
+    // evicts+loads icons while navigating menus (live monitor: 1074<->1107 churn), so the old
+    // "walk only when it grows past the peak" gate stopped re-walking after the first peak and missed
+    // every icon that loaded below it. Walking on each change + the per-iconId dedup (g_harvest.count
+    // below) accumulates the UNION of everything that ever loads into our permanent cache → far wider
+    // browse-to-fill coverage. Cheap: only fires when the count actually changed, not every frame.
+    static int s_last_size = -1;
+    if (size == s_last_size) return;
+    s_last_size = size;
+
+    uintptr_t root = 0; icon_rpm_ptr(head + 0x08, root);     // _Myhead._Parent
+    if (root < 0x10000) return;
+
+    // Stack DFS over _Left/_Right, skipping nil sentinels (_Isnil@+0x19 != 0). Tree height is
+    // O(log n) so the frontier stays small; the vector grows if a build ever holds a huge repo.
+    std::vector<uintptr_t> stack; stack.reserve(64); stack.push_back(root);
+    int walked = 0, harvested = 0;
+    while (!stack.empty())
+    {
+        if (walked > 200000) break;                          // runaway guard
+        uintptr_t n = stack.back(); stack.pop_back();
+        if (n < 0x10000) continue;
+        uint8_t isnil = 1; SIZE_T got = 0;
+        ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(n + 0x19), &isnil, 1, &got);
+        if (got != 1 || isnil) continue;
+        ++walked;
+
+        uintptr_t cap = 0; icon_rpm_ptr(n + 0x40, cap);      // key DLWString capacity (heap iff >= 8)
+        uintptr_t namep = (cap >= 8) ? 0 : (n + 0x28);
+        if (cap >= 8) icon_rpm_ptr(n + 0x28, namep);
+        if (namep >= 0x1000)
+        {
+            wchar_t wbuf[80] = {0}; SIZE_T g2 = 0;
+            ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(namep), wbuf,
+                              sizeof(wbuf) - sizeof(wchar_t), &g2);
+            char nm[80]; int k = 0;
+            for (; k < 79 && wbuf[k]; ++k) nm[k] = (wbuf[k] < 128) ? static_cast<char>(wbuf[k]) : '?';
+            nm[k] = 0;
+            if (std::strncmp(nm, "MENU_ItemIcon_", 14) == 0)
+            {
+                int iconId = std::atoi(nm + 14);
+                bool have;
+                { std::lock_guard<std::mutex> lk(g_harvest_mtx); have = g_harvest.count(iconId) != 0; }
+                if (!have)
+                {
+                    uintptr_t img = 0; icon_rpm_ptr(n + 0x50, img);   // value = CSTextureImage* (direct)
+                    if (cache_icon_from_img(nm, img)) ++harvested;
+                }
+            }
+            // Map-point icons (MENU_MAP_<NN>/_ERR_*) live in THIS by-name tree (repo+0x80), not the
+            // +0xb0 twin (which holds MENU_MapTile_*). Read their rect @img+0x74..0x80 + backing sheet
+            // and cache iconId->rect for the overlay (RE windows_map_point_icon_layout_re_findings.md).
+            else if (std::strncmp(nm, "MENU_MAP_", 9) == 0)
+            {
+                uintptr_t img = 0; icon_rpm_ptr(n + 0x50, img);
+                if (img >= 0x10000)
+                {
+                    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+                    icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
+                    icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
+                    uintptr_t rtex = 0, res = 0;
+                    icon_rpm_ptr(img + 0x10, rtex);
+                    if (rtex >= 0x10000) icon_rpm_ptr(rtex + 0x70, res);
+                    if (x1 - x0 >= 2 && y1 - y0 >= 2 && res >= 0x10000)
+                        store_map_icon_rect(nm, x0, y0, x1 - x0, y1 - y0, reinterpret_cast<void *>(res));
+                }
+            }
+        }
+
+        uintptr_t l = 0, r = 0;
+        icon_rpm_ptr(n + 0x00, l); icon_rpm_ptr(n + 0x10, r);
+        if (l >= 0x10000) stack.push_back(l);
+        if (r >= 0x10000) stack.push_back(r);
+    }
+    if (harvested)
+        spdlog::info("[REPO-WALK] §8b images={} walked={} harvested_new={}", size, walked, harvested);
+
+    harvest_twin_map_icons(repo, er);
+}
+
+// Build an ItemSprite from a CSTextureImage* (rect + backing sheet) and register it as a grace
+// CANDIDATE — used by the twin-map walk for the WorldMapPoint pin sprites (MENU_MAP_*). Mirrors
+// cache_icon_from_img but keyed by NAME (not iconId): rect @img+0x74.., sheet = rtex+0x70 (no DIM
+// gate — GetDesc resolves it at copy time). If the name is the canonical grace, set g_grace_sprite.
+void cache_map_sprite_from_img(const char *nm, uintptr_t img)
+{
+    if (img < 0x10000) return;
+    uintptr_t vt = 0; icon_rpm_ptr(img, vt);
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!(vt > er && vt - er == 0x2bb8910)) return;     // CSTextureImage vtable guard
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
+    icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
+    uintptr_t rtex = 0, res = 0;
+    icon_rpm_ptr(img + 0x10, rtex);
+    if (rtex > 0x10000) icon_rpm_ptr(rtex + 0x70, res);
+    if (res <= 0x10000) return;
+    if (x1 - x0 < 2 || y1 - y0 < 2) return;             // need a real rect
+    int rw = 0, rh = 0, fmt = 0;
+    icon_rpm_i32(res + 0x20, rw); icon_rpm_i32(res + 0x28, rh); icon_rpm_i32(res + 0x30, fmt);
+    goblin::ItemSprite hs;
+    hs.sheet = reinterpret_cast<void *>(res);
+    hs.x0 = x0; hs.y0 = y0; hs.x1 = x1; hs.y1 = y1;
+    hs.sheetW = static_cast<unsigned long long>(rw);
+    hs.sheetH = static_cast<unsigned>(rh);
+    hs.format = static_cast<unsigned>(fmt);
+    hs.valid = true;
+
+    // Map-point icon layout from the RESIDENT repo (the RAM source — no sblytbnd decompress needed):
+    // iconId/name -> rect (x0,y0,x1,y1 = left,top,right,bottom) + the backing sheet. Drives the overlay
+    // MapPointProvider. RE windows_map_point_icon_layout_re_findings.md (§ repo walk).
+    store_map_icon_rect(nm, x0, y0, x1 - x0, y1 - y0, reinterpret_cast<void *>(res));
+
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    bool dup = false;
+    for (const auto &gc : g_grace_cands) if (gc.name == nm) { dup = true; break; }
+    if (!dup && g_grace_cands.size() < 64)
+    {
+        goblin::GraceCandidate gc; gc.name = nm; gc.spr = hs;
+        g_grace_cands.push_back(gc);
+        spdlog::info("[TWIN-WALK] candidate '{}' rect=({},{})-({},{}) res={:#x} fmt={}",
+                     nm, x0, y0, x1, y1, res, fmt);
+    }
+    // Canonical grace = the mod's MENU_MAP_GOBLIN_Grace sprite (NOT the native SB_ERR_Grace pin).
+    bool canon = std::strcmp(nm, "MENU_MAP_GOBLIN_Grace") == 0;
+    if (canon || (!g_grace_locked && std::strstr(nm, "Grace") && !std::strstr(nm, "Underground")))
+    {
+        g_grace_sprite = hs;
+        if (canon) g_grace_locked = true;
+        spdlog::info("[GRACE-SPRITE] twin '{}' rect=({},{})-({},{}) res={:#x} ({})",
+                     nm, x0, y0, x1, y1, res, canon ? "LOCKED canonical MENU_MAP_GOBLIN_Grace" : "fallback");
+    }
+}
+
+// §8c TWIN-map walk — the WorldMapPoint PIN icons (the REAL grace) live in the repo's TWIN std::map
+// at repo+0xb0 (head +0xb8, size +0xc0), keyed by the gfx sprite name (MENU_MAP_*), looked up by the
+// icon widget FUN_14074bcc0 via FUN_140d63e50 — NOT in repo+0x80 (MENU_ItemIcon). We never walked it,
+// which is why we only ever found the wrong SB_ERR_Grace native pin. Same RB-tree node shape as §8b.
+void harvest_twin_map_icons(uintptr_t repo, uintptr_t er)
+{
+    (void)er;
+    if (repo < 0x10000) return;
+    uintptr_t head = 0; icon_rpm_ptr(repo + 0xb8, head);
+    if (head < 0x10000) return;
+    int size = 0; icon_rpm_i32(repo + 0xc0, size);
+    static int s_last_twin = -1;
+    if (size == s_last_twin) return;                    // re-walk only when the twin count changes
+    s_last_twin = size;
+    uintptr_t root = 0; icon_rpm_ptr(head + 0x08, root);
+    if (root < 0x10000) return;
+
+    std::vector<uintptr_t> stack; stack.reserve(64); stack.push_back(root);
+    int walked = 0, found = 0;
+    while (!stack.empty())
+    {
+        if (walked > 200000) break;
+        uintptr_t n = stack.back(); stack.pop_back();
+        if (n < 0x10000) continue;
+        uint8_t isnil = 1; SIZE_T got = 0;
+        ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(n + 0x19), &isnil, 1, &got);
+        if (got != 1 || isnil) continue;
+        ++walked;
+        uintptr_t cap = 0; icon_rpm_ptr(n + 0x40, cap);
+        uintptr_t namep = (cap >= 8) ? 0 : (n + 0x28);
+        if (cap >= 8) icon_rpm_ptr(n + 0x28, namep);
+        if (namep >= 0x1000)
+        {
+            wchar_t wbuf[96] = {0}; SIZE_T g2 = 0;
+            ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(namep), wbuf,
+                              sizeof(wbuf) - sizeof(wchar_t), &g2);
+            char nm[96]; int k = 0;
+            for (; k < 95 && wbuf[k]; ++k) nm[k] = (wbuf[k] < 128) ? static_cast<char>(wbuf[k]) : '?';
+            nm[k] = 0;
+            if (nm[0]) ++found;
+            // Capture map-point sprites (MENU_MAP_*) and anything grace-ish into grace candidates.
+            if (std::strncmp(nm, "MENU_MAP_", 9) == 0 || std::strstr(nm, "Grace"))
+            {
+                uintptr_t img = 0; icon_rpm_ptr(n + 0x50, img);
+                cache_map_sprite_from_img(nm, img);
+            }
+        }
+        uintptr_t l = 0, r = 0;
+        icon_rpm_ptr(n + 0x00, l); icon_rpm_ptr(n + 0x10, r);
+        if (l >= 0x10000) stack.push_back(l);
+        if (r >= 0x10000) stack.push_back(r);
+    }
+    spdlog::info("[TWIN-WALK] repo+0xb0 size={} walked={} named={}", size, walked, found);
 }
 } // namespace
 
-void goblin::install_live_refresh_hook()
+// Verify item↔iconId↔sprite: iterate the EquipParam* tables LIVE (get_param), read each row's
+// iconId at its paramdef offset (u16), and log the rows whose iconId matches the sprites we
+// captured from the inventory (MENU_FL_<iconId>). Proves the menu icon = EquipParam.iconId.
+// iconId offsets (Ghidra+1, live-corrected): Weapon 0xC0, Protector iconIdM 0xA8,
+// Accessory 0x28, Goods 0x32, Gem 0x06. row_id == the item-name FMG id.
+void goblin::verify_equip_iconids()
 {
-    if (!goblin::config::liveRefreshWorldMap) return;
-    // Entry AOB of FUN_140a82a80 (verified UNIQUE; no RIP-relative bytes, so the raw
-    // prologue is patch-resilient). this=rcx (PointMan), ctx=rdx ({+0x34,+0x48}).
-    void *fn = modutils::scan<void>({
-        .aob = "40 55 53 56 57 41 54 41 56 41 57 48 8B EC 48 83 EC 60 "
-               "48 C7 45 D0 FE FF FF FF 4C 8B F9 8B 42 34",
-    });
+    if (!goblin::config::dumpIconTextures)
+        return;
+    struct P { const wchar_t *name; const char *tag; int off; };
+    // iconId offsets (u16) — SOLVED + cross-verified (2026-06-22): computed from the CURRENT
+    // (SOTE) Paramdex (Nordgaren/Erd-Tools Defs-English) by tools/paramdef_iconid_offset.py AND
+    // confirmed against the live [CALIB] high-distinct columns. The earlier 0xC0 "confirmation" was
+    // DURABILITY (paramdef order: equipModelId@0xBC, iconId@0xBE, durability@0xC0; Dagger has both
+    // iconId=100 AND durability=100 → coincidence). distinct=2 @ 0xC0 = durability default 100.
+    //   Weapon iconId=0xBE (live distinct=599 range[20,45818]); Protector iconIdM=0xA6 / iconIdF=0xA8
+    //   (distinct=760 range[1097,45808]); Accessory=0x26 (distinct=167/170); Goods=0x30
+    //   (distinct=1573, contains the live-captured 40144); Gem=0x04 (distinct=609).
+    static const P params[] = {
+        {L"EquipParamWeapon", "Weapon", 0xBE},
+        {L"EquipParamProtector", "Protector", 0xA6}, // iconIdM (iconIdF = 0xA8)
+        {L"EquipParamAccessory", "Accessory", 0x26},
+        {L"EquipParamGoods", "Goods", 0x30},
+        {L"EquipParamGem", "Gem", 0x04},
+    };
+    static const uint16_t want[] = {40144, 40147, 40172}; // the 3 inventory-captured iconIds
+    for (const P &p : params)
+    {
+        try
+        {
+            int n = 0, sample = 0; uint32_t mn = 0xffffffff, mx = 0; int hits = 0;
+            uintptr_t prev_base = 0;
+            for (auto row : from::params::get_param<uint8_t>(p.name))
+            {
+                uintptr_t base = reinterpret_cast<uintptr_t>(&row.second);
+                uint16_t icon = *reinterpret_cast<uint16_t *>(base + p.off);
+                ++n;
+                if (icon < mn) mn = icon;
+                if (icon > mx) mx = icon;
+                if (sample < 8 && icon != 0)   // skip unused/system rows (iconId 0) so the sample
+                                               // shows REAL iconIds at the new offset
+                {
+                    // [EQUIPADDR] = the absolute row-base + name + struct stride, for CE
+                    // find-what-accesses: watch <base + iconId-offset> and trigger the menu
+                    // icon draw to capture the compiled `movzx r,[reg+0xXX]` (XX = true offset).
+                    std::string nm = goblin::lookup_text_utf8(static_cast<int>(row.first));
+                    uintptr_t stride = prev_base ? (base - prev_base) : 0;
+                    spdlog::info("[EQUIPADDR] {} row_id={} base={:#x} stride={:#x} u16@0x{:x}={} name='{}'",
+                                 p.tag, row.first, base, stride, p.off, icon, nm);
+                    ++sample;
+                }
+                prev_base = base;
+                for (uint16_t w : want)
+                    if (icon == w)
+                    {
+                        std::string nm = goblin::lookup_text_utf8(static_cast<int>(row.first));
+                        spdlog::info("[EQUIPVERIFY] {} MATCH row_id={} iconId={} name='{}'", p.tag, row.first, icon, nm);
+                        ++hits;
+                    }
+            }
+            spdlog::info("[EQUIPVERIFY] {} rows={} iconId[min={},max={}] hits={}", p.tag, n, mn, mx, hits);
+        }
+        catch (...)
+        {
+            spdlog::info("[EQUIPVERIFY] {} not loaded", p.tag);
+        }
+    }
+}
+
+// Self-calibrating iconId-offset finder (RE §3, windows_live_paramdef_offset_re_findings).
+// For each EquipParam, scan every u16 column across all rows and rank the offsets whose
+// distribution looks like an iconId (many distinct, plausible range, ideally containing a
+// known anchor). Zero offline / zero hardcoded offset / survives ER patches + mod swaps.
+// Anchors: Weapon row 1000 (Dagger) = iconId 100; the live-captured inventory iconIds
+// {40144,40147,40172} ([ICONMAP]) tag whichever param actually owns those items.
+static void self_calibrate_iconid()
+{
+    if (!goblin::config::dumpIconTextures)
+        return;
+    struct P { const wchar_t *name; const char *tag; int known_off; };
+    static const P params[] = {
+        {L"EquipParamWeapon", "Weapon", 0xC0},
+        {L"EquipParamProtector", "Protector", -1},
+        {L"EquipParamAccessory", "Accessory", -1},
+        {L"EquipParamGoods", "Goods", -1},
+        {L"EquipParamGem", "Gem", -1},
+    };
+    static const uint16_t anchors[] = {40144, 40147, 40172};
+    for (const P &p : params)
+    {
+        try
+        {
+            std::vector<uintptr_t> bases;
+            for (auto row : from::params::get_param<uint8_t>(p.name))
+                bases.push_back(reinterpret_cast<uintptr_t>(&row.second));
+            if (bases.size() < 2)
+            {
+                spdlog::info("[CALIB] {} too few rows", p.tag);
+                continue;
+            }
+            uintptr_t stride = bases[1] - bases[0];
+            if (stride < 4 || stride > 0x2000)
+            {
+                spdlog::info("[CALIB] {} non-contiguous rows (stride={:#x}) — skip", p.tag, stride);
+                continue;
+            }
+            int N = static_cast<int>(bases.size());
+            // iconId is LOW-cardinality (icons reused across many items) but DENSE in a small
+            // low band — unlike id/price columns (huge sparse range). Rank by density =
+            // distinct/span; that's what separates iconId from the high-distinct id columns.
+            struct Cand { int off, distinct, validPct, density; uint16_t mn, mx; bool anchor; };
+            std::vector<Cand> cands;
+            for (uintptr_t off = 0; off + 2 <= stride; ++off)
+            {
+                std::set<uint16_t> seen;
+                int valid = 0; uint16_t mn = 0xffff, mx = 0; bool anc = false;
+                for (uintptr_t b : bases)
+                {
+                    uint16_t v = *reinterpret_cast<uint16_t *>(b + off);
+                    if (v >= 1 && v <= 65534) { ++valid; if (v < mn) mn = v; if (v > mx) mx = v; seen.insert(v); }
+                    for (uint16_t a : anchors) if (v == a) anc = true;
+                }
+                int distinct = static_cast<int>(seen.size());
+                int span = (mx >= mn) ? (mx - mn + 1) : 1;
+                int density = distinct * 1000 / span;            // ×1000 to keep ints meaningful
+                if (distinct < 20 || mx > 60000) continue;        // iconId: varied + bounded
+                cands.push_back({(int)off, distinct, valid * 100 / N, density, mn, mx, anc});
+            }
+            std::sort(cands.begin(), cands.end(), [](const Cand &a, const Cand &b) {
+                if (a.anchor != b.anchor) return a.anchor;        // a captured iconId here = strong
+                return a.density > b.density;                      // else densest low-band column
+            });
+            spdlog::info("[CALIB] {} N={} stride={:#x} knownOff=0x{:x} — ranked by density:",
+                         p.tag, N, stride, p.known_off);
+            for (int i = 0; i < (int)cands.size() && i < 6; ++i)
+            {
+                const Cand &c = cands[i];
+                spdlog::info("[CALIB]   off=0x{:x} density={} distinct={} valid={}% range[{},{}]{}{}",
+                             c.off, c.density, c.distinct, c.validPct, c.mn, c.mx,
+                             c.anchor ? " <ANCHOR>" : "", c.off == p.known_off ? " <KNOWN>" : "");
+            }
+            // Also dump the KNOWN offset's stats verbatim (even if it didn't make top-6) so the
+            // density heuristic can be calibrated against ground truth (Weapon 0xC0).
+            if (p.known_off >= 0)
+            {
+                std::set<uint16_t> seen; uint16_t mn = 0xffff, mx = 0;
+                for (uintptr_t b : bases)
+                {
+                    uint16_t v = *reinterpret_cast<uint16_t *>(b + p.known_off);
+                    if (v >= 1 && v <= 65534) { if (v < mn) mn = v; if (v > mx) mx = v; seen.insert(v); }
+                }
+                int span = (mx >= mn) ? (mx - mn + 1) : 1;
+                spdlog::info("[CALIB]   KNOWN off=0x{:x} density={} distinct={} range[{},{}]",
+                             p.known_off, (int)seen.size() * 1000 / span, (int)seen.size(), mn, mx);
+            }
+        }
+        catch (...) { spdlog::info("[CALIB] {} not loaded", p.tag); }
+    }
+}
+
+goblin::ItemSprite goblin::resolve_item_sprite(int iconId)
+{
+    // Cache VALID resolves only (a miss may be "sheet not loaded yet" → retry later).
+    static std::unordered_map<int, ItemSprite> cache;
+    auto it = cache.find(iconId);
+    if (it != cache.end()) return it->second;
+
+    ItemSprite s;
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!er) return s;
+    using FindFn = void *(__fastcall *)(void *, void **, const wchar_t *);  // FUN_140d63c30
+    auto find = reinterpret_cast<FindFn>(er + 0xd63c30);
+    void *repo = *reinterpret_cast<void **>(er + 0x3d82510);  // FD4 image repo singleton
+    if (!repo) return s;                                       // menu not loaded → no sheets resident
+    wchar_t key[40] = L"MENU_ItemIcon_00000";
+    { int v = iconId; for (int i = 18; i >= 14; --i) { key[i] = static_cast<wchar_t>(L'0' + (v % 10)); v /= 10; } }
+    void *out = nullptr;
+    void *ret = find(repo, &out, key);
+    uintptr_t img = reinterpret_cast<uintptr_t>(out ? out : ret);
+    if (img < 0x10000) return s;
+    uintptr_t vt = 0; icon_rpm_ptr(img, vt);
+    if (!(vt > er && vt - er == 0x2bb8910)) return s;          // miss = sentinel (vt != CSTextureImage)
+    icon_rpm_i32(img + 0x74, s.x0); icon_rpm_i32(img + 0x78, s.y0);
+    icon_rpm_i32(img + 0x7c, s.x1); icon_rpm_i32(img + 0x80, s.y1);
+    uintptr_t rtex = 0; icon_rpm_ptr(img + 0x10, rtex);        // Render::Texture (bound)
+    if (rtex < 0x10000) return s;
+    uintptr_t res = 0; icon_rpm_ptr(rtex + 0x70, res);         // ID3D12Resource
+    if (res < 0x10000) return s;
+    s.sheet = reinterpret_cast<void *>(res);
+    // Read W/H from the vkd3d d3d12_resource INTERNAL struct DIRECTLY (proven: dim@+0x10=3,
+    // W@+0x20, H@+0x28) — NOT via GetDesc (the foreign COM call crashed). The DXGI_FORMAT lives
+    // at some internal offset (found by the probe's field dump, then read here once known).
+    int w = 0, h = 0; icon_rpm_i32(res + 0x20, w); icon_rpm_i32(res + 0x28, h);
+    s.sheetW = static_cast<unsigned long long>(w);
+    s.sheetH = static_cast<unsigned int>(h);
+    s.format = 0;  // TODO: read once the internal format offset is identified (probe dump)
+    s.valid = true;
+    cache[iconId] = s;
+    return s;
+}
+
+bool goblin::harvested_icon(int iconId, ItemSprite &out)
+{
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    auto it = g_harvest.find(iconId);
+    if (it == g_harvest.end()) return false;
+    out = it->second;
+    return true;
+}
+
+size_t goblin::harvested_count()
+{
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    return g_harvest.size();
+}
+
+// DEV force-load TEST — see header + findings §5b. Stream a file RESIDENT by FD4 path through the
+// CSFile singleton. The loader (er+0x1f5560) is __fastcall load(CSFile, const wchar_t* path, 0, 0);
+// it allocates a request, fills it from the path, and enqueues into the FD4 file/task system → an
+// async load, so a bad path fails gracefully (returns null) rather than crashing. We log the handle +
+// the harvested count before/after (a force-loaded icon sheet only adds repo entries once its gfx
+// binds, so the count may not move immediately — the returned non-null handle is the primary signal).
+void *goblin::force_load_file(const char *utf8_path)
+{
+    if (!goblin::config::dumpIconTextures || !utf8_path || !utf8_path[0]) return nullptr;
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!er) return nullptr;
+    uintptr_t csfile = 0; icon_rpm_ptr(er + 0x3d5b0f8, csfile);   // CSFile FD4Singleton
+    if (csfile < 0x10000) { spdlog::warn("[FORCELOAD] CSFile singleton null (not init yet)"); return nullptr; }
+
+    wchar_t wpath[192] = {0};
+    if (MultiByteToWideChar(CP_UTF8, 0, utf8_path, -1, wpath, 191) <= 0) return nullptr;
+
+    size_t before; { std::lock_guard<std::mutex> lk(g_harvest_mtx); before = g_harvest.size(); }
+    using LoadFn = void *(__fastcall *)(void *, const wchar_t *, void *, uint32_t);  // FUN_1401f5560
+    auto load = reinterpret_cast<LoadFn>(er + 0x1f5560);
+    void *res = load(reinterpret_cast<void *>(csfile), wpath, nullptr, 0);
+    size_t after; { std::lock_guard<std::mutex> lk(g_harvest_mtx); after = g_harvest.size(); }
+    spdlog::info("[FORCELOAD] load(CSFile={:#x}, '{}') -> {:#x}  harvested {}->{}",
+                 csfile, utf8_path, reinterpret_cast<uintptr_t>(res), before, after);
+    return res;
+}
+
+// ── DEV bind-flip TEST (RE findings §5e) ─────────────────────────────────────────────────────────
+// Question: does setting a loaded resource-GROUP entry's +0x7c "needs-apply" flag trigger the binding
+// (the apply vmethod resource+0xc8) that populates the repo with per-icon RECTS — i.e. can we force a
+// non-resident item-icon group resident + bound on demand? We hook the residency ticker FUN_140d724c0
+// to (a) capture the live menu-resource manager (*param_2 — it is reached via the task system, not a
+// flat singleton) and (b) run a one-shot action INLINE on the engine thread BEFORE calling the
+// original, so the original's per-tick group-apply (FUN_140d78540) consumes our flag THIS tick.
+// All memory access is RPM/WPM (clang-cl elides __try around raw derefs); the by-groupId loaders are
+// called directly (same as force_load_file). Gated by config::dumpIconTextures; driven from the P2b panel.
+namespace
+{
+using res_tick_fn = void(__fastcall *)(uintptr_t, uintptr_t *);
+res_tick_fn g_res_tick_orig = nullptr;
+std::atomic<uintptr_t> g_res_mgr{0};
+std::atomic<int> g_bind_action{0};   // 0 idle | 1 dump | 2 load files | 3 flip-bind | 4 load+flip
+std::atomic<int> g_bind_gid{1};      // group id for the loaders (1 = 01_Common = the item-icon group)
+
+// ── CreateImage force-bind (RE §5g) ──────────────────────────────────────────────────────────────
+// CSScaleformImageCreator::CreateImage (FUN_140d6bbc0) is hooked above (create_image_detour, the
+// existing probe hook) which captures the live context g_ci_p1/g_ci_p2. Here we replay it: build a
+// synthetic symbol desc for "MENU_ItemIcon_<id>" and call the original via g_create_image_orig.
+constexpr int CI_REPLAY_LAST = INT_MIN + 1;   // sentinel: replay the last captured live symbol
+std::atomic<int> g_ci_req_icon{INT_MIN};   // queued iconId (INT_MIN = idle, CI_REPLAY_LAST = replay)
+alignas(16) char g_ci_name[96];            // 4-aligned scratch for the synthesized symbol name
+uintptr_t g_ci_desc[4] = {0};              // synthetic param_3: [0] = (g_ci_name - 0xc), rest 0 (pad)
+
+inline bool res_w32(uintptr_t a, uint32_t v)
+{
+    SIZE_T n = 0;
+    return a && WriteProcessMemory(GetCurrentProcess(), (void *)a, &v, 4, &n) && n == 4;
+}
+
+// Walk the manager's loaded-group array (base = align8(mgr+0x9d8), stride 0x10, count mgr+0xbe0; each
+// slot holds a POINTER to a group entry). Log each entry's resource obj (+0x18), its apply vmethod
+// (resource vtable +0xc8 as an RVA — THIS identifies what the bind does, cf. §5c parse fns), and the
+// flags (+0x7c needs-apply, +0x80 applied). If `flip`, set +0x7c=1 to force a re-apply this tick.
+void res_walk_groups(uintptr_t mgr, uintptr_t er, bool flip)
+{
+    uintptr_t count = 0;
+    if (!icon_rpm_ptr(mgr + 0xbe0, count) || count == 0 || count > 4096)
+    {
+        spdlog::warn("[BINDTEST] implausible group count {} @ mgr={:#x} — aborting (wrong manager?)", count, mgr);
+        return;
+    }
+    uintptr_t base = (mgr + 0x9d8 + 7) & ~uintptr_t(7);   // engine's (-(addr)&7) 8-byte pad
+    int flipped = 0;
+    for (uintptr_t i = 0; i < count; ++i)
+    {
+        uintptr_t entry = 0;
+        if (!icon_rpm_ptr(base + i * 0x10, entry) || entry < 0x10000) continue;
+        int f7c = 0, f80 = 0;
+        icon_rpm_i32(entry + 0x7c, f7c);
+        icon_rpm_i32(entry + 0x80, f80);
+        uintptr_t res = 0, vt = 0, apply = 0;
+        icon_rpm_ptr(entry + 0x18, res);
+        if (res > 0x10000) { icon_rpm_ptr(res, vt); if (vt) icon_rpm_ptr(vt + 0xc8, apply); }
+        spdlog::info("[BINDTEST] grp[{}] entry={:#x} res={:#x} apply(vt+0xc8)={:#x} RVA={:#x} +0x7c={} +0x80={}",
+                     i, entry, res, apply, (apply > er) ? apply - er : 0, f7c, f80);
+        if (flip && res_w32(entry + 0x7c, 1)) ++flipped;
+    }
+    if (flip)
+    {
+        res_w32(mgr + 0x1e19, 1);   // dirty flag (also drains the +0x1df0 load queue next tick)
+        spdlog::info("[BINDTEST] flipped +0x7c on {} groups + set dirty +0x1e19 — orig FUN_140d78540 applies now", flipped);
+    }
+}
+
+void run_bind_action(uintptr_t mgr, uintptr_t er, int act, int gid)
+{
+    spdlog::info("[BINDTEST] action={} gid={} mgr={:#x} harvested={} (before)", act, gid, mgr,
+                 goblin::harvested_count());
+    if ((act == 2 || act == 4) && gid >= 0 && gid <= 8)
+    {
+        // By-groupId loaders (FUN_140d77550 = TPF, FUN_140d771d0 = sblytbnd). UNLIKE force_load_file's
+        // raw CSFile call, these cache the handle at mgr+0xd10/+0xd58+gid*8 — exactly where the bind's
+        // apply vmethod looks for the loaded resource. Guarded internally (no-op if already loaded).
+        reinterpret_cast<void(__fastcall *)(uintptr_t, uint8_t)>(er + 0xd77550)(mgr, (uint8_t)gid);
+        reinterpret_cast<void(__fastcall *)(uintptr_t, uint8_t)>(er + 0xd771d0)(mgr, (uint8_t)gid);
+        spdlog::info("[BINDTEST] called FUN_140d77550 + FUN_140d771d0 (mgr, gid={})", gid);
+    }
+    res_walk_groups(mgr, er, /*flip=*/(act == 3 || act == 4));
+}
+
+// Force-call CreateImage for "MENU_ItemIcon_<iconId>" (engine thread, via the ticker request). Builds a
+// synthetic symbol desc: param_3 → a qword holding (nameAddr-0xc) so (*p3 & ~3)+0xc == nameAddr (the
+// 4-aligned ASCII name). Calls the ORIGINAL via g_create_image_orig (the hook trampoline) with the
+// captured creator context. Logs the returned image + whether the repo grew. Caveat (§5b): the
+// "<name>_ptl" view resolves against a RESIDENT sheet — pair with "Load files (gid)" if not loaded.
+void run_create_icon(uintptr_t er, int iconId)
+{
+    (void)er;
+    if (!g_create_image_orig) { spdlog::warn("[CREATEIMG] no orig (probe hook missing)"); return; }
+    if (iconId == CI_REPLAY_LAST)
+    {
+        if (!g_ci_last[0]) { spdlog::warn("[CREATEIMG] no live symbol captured yet"); return; }
+        strncpy(g_ci_name, g_ci_last, sizeof(g_ci_name) - 1);   // replay a known-good symbol (control)
+    }
+    else
+    {
+        // GFx import scheme is "img://<name>" (live names showed img://KG_R1 etc.), base = MENU_ItemIcon_<id>.
+        snprintf(g_ci_name, sizeof(g_ci_name), "img://MENU_ItemIcon_%d", iconId);
+    }
+    g_ci_desc[0] = reinterpret_cast<uintptr_t>(g_ci_name) - 0xc;   // (desc[0] & ~3)+0xc == g_ci_name
+    size_t before = goblin::harvested_count();
+    void *img = g_create_image_orig(g_ci_p1.load(), g_ci_p2.load(), g_ci_desc, nullptr, nullptr,
+                                    nullptr, nullptr, nullptr);
+    size_t after = goblin::harvested_count();
+    spdlog::info("[CREATEIMG] force '{}' (p1={} p2={}) -> img={:#x}  harvested {}->{}", g_ci_name,
+                 g_ci_p1.load(), g_ci_p2.load(), reinterpret_cast<uintptr_t>(img), before, after);
+}
+
+// Force the REAL grace icon (the mod's gfx sprite, NOT the native SB_ERR time-tinted pin). repo+0x80 =
+// MENU_ItemIcon, repo+0xb0 = MENU_MapTile — neither holds the pin sprites, so we force-create the gfx
+// img:// imports via the HOOKED CreateImage (the proven path: KG_/SB_ERR resolved). Each result lands
+// in g_icon_imgs (via create_image_detour) → dump_icon_textures_live captures it as a grace candidate.
+// MENU_MAP_GOBLIN_Grace = canonical; siblings populate the F1 picker. Engine thread; throttled by caller.
+int g_grace_force_tries = 0;
+std::atomic<bool> g_force_grace_req{false}; // manual F1 "Force graces now" (bypasses the auto cap)
+void run_force_grace(uintptr_t er)
+{
+    if (!g_create_image_orig || g_ci_p1.load() == nullptr) return;
+    static const char *kCands[] = {
+        "img://MENU_MAP_01_Bonfire",            // the REAL vanilla grace icon (bonfire = grace)
+        "img://MENU_MAP_GOBLIN_Grace", "img://MENU_MAP_GOBLIN_SortaGraceIDK",
+        "img://MENU_MAP_ERR_GraceUnderground", "img://SB_ERR_Grace_Morning_Color",
+    };
+    auto CreateImageHooked = reinterpret_cast<create_image_fn>(er + 0xd6bbc0);
+    for (const char *c : kCands)
+    {
+        snprintf(g_ci_name, sizeof(g_ci_name), "%s", c);
+        g_ci_desc[0] = reinterpret_cast<uintptr_t>(g_ci_name) - 0xc;
+        void *img = CreateImageHooked(g_ci_p1.load(), g_ci_p2.load(), g_ci_desc, nullptr, nullptr,
+                                      nullptr, nullptr, nullptr);
+        spdlog::info("[GRACE-FORCE] CreateImage('{}') -> {:#x} (try {})", c,
+                     reinterpret_cast<uintptr_t>(img), g_grace_force_tries);
+    }
+}
+
+void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
+{
+    if (p2)
+    {
+        uintptr_t mgr = *p2;
+        if (mgr > 0x10000)
+        {
+            g_res_mgr.store(mgr, std::memory_order_relaxed);
+            uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+            int act = g_bind_action.exchange(0, std::memory_order_acq_rel);
+            if (act) run_bind_action(mgr, er, act, g_bind_gid.load(std::memory_order_relaxed));
+            int ci = g_ci_req_icon.exchange(INT_MIN, std::memory_order_acq_rel);
+            if (ci != INT_MIN) run_create_icon(er, ci);
+            // Auto force the canonical grace (Morning) for a time-independent live grace. Only while
+            // the GPU-sprite grace is on, until it's canon-locked, context captured, throttled, capped.
+            if (goblin::config::graceOverlay && goblin::config::graceGpuSprite && !g_grace_locked &&
+                g_ci_p1.load(std::memory_order_relaxed) && g_grace_force_tries < 30)
+            {
+                static int s_gt = 0;
+                if ((s_gt++ % 30) == 0) { ++g_grace_force_tries; run_force_grace(er); }
+            }
+            // Manual force (F1 "Force graces now") — re-poke on demand, bypassing the auto
+            // cap/lock/throttle; only needs a captured CreateImage context (g_ci_p1). CreateImage
+            // alone only makes the sprites RESIDENT — the candidates are registered by the twin-map
+            // WALK (harvest_twin_map_icons → cache_map_sprite_from_img → g_grace_cands), so run it
+            // right after (the missing "binding" step), else the F1 viewer shows no candidate.
+            if (g_force_grace_req.exchange(false, std::memory_order_acq_rel) &&
+                g_ci_p1.load(std::memory_order_relaxed))
+            {
+                run_force_grace(er);
+                if (g_icon_repo)
+                    harvest_twin_map_icons(g_icon_repo, er);
+            }
+        }
+    }
+    if (g_res_tick_orig) g_res_tick_orig(p1, p2);
+}
+}  // namespace
+
+// Public driver (P2b panel). Queues a one-shot action consumed on the next residency tick (engine
+// thread). action: 1=dump groups, 2=load files(gid), 3=flip-bind all loaded groups, 4=load+flip(gid).
+// Returns false if the ticker hasn't captured the manager yet (open the inventory/map once).
+bool goblin::bind_test(int action, int groupId)
+{
+    if (!goblin::config::dumpIconTextures) return false;
+    if (g_res_mgr.load(std::memory_order_relaxed) == 0)
+    {
+        spdlog::warn("[BINDTEST] manager not captured yet — open the inventory or map once (ticker must run)");
+        return false;
+    }
+    g_bind_gid.store(groupId, std::memory_order_relaxed);
+    g_bind_action.store(action, std::memory_order_release);
+    return true;
+}
+
+// Queue a force-CreateImage for "MENU_ItemIcon_<iconId>" — consumed on the next residency tick (engine
+// thread). The CreateImage hook must have captured a live context first (open the inventory once).
+bool goblin::force_create_icon(int iconId)
+{
+    if (!goblin::config::dumpIconTextures) return false;
+    if (g_res_mgr.load(std::memory_order_relaxed) == 0)
+    {
+        spdlog::warn("[CREATEIMG] manager not captured yet — open the inventory/map once");
+        return false;
+    }
+    g_ci_req_icon.store(iconId, std::memory_order_release);
+    return true;
+}
+
+// Manually re-run the grace force-CreateImage (F1 dev button) — consumed on the next residency
+// tick (engine thread), bypassing the auto cap/lock. Harvests the MENU_MAP_*/SB_ERR_Grace_*
+// gfx-movie sprites into the candidate list. Returns false if the ticker/context isn't ready yet.
+bool goblin::force_graces()
+{
+    if (!goblin::config::dumpIconTextures) return false;
+    if (g_res_mgr.load(std::memory_order_relaxed) == 0)
+    {
+        spdlog::warn("[GRACE-FORCE] manager not captured yet — open the inventory/map once");
+        return false;
+    }
+    g_force_grace_req.store(true, std::memory_order_release);
+    return true;
+}
+
+// Control test: replay the LAST captured live symbol (a known-good img:// import) to prove the replay
+// mechanism end-to-end. If this returns a valid img but force_create_icon(id) returns 0, the item-icon
+// base simply isn't a CreateImage import (it's the widget's direct repo find / sblytbnd bind path).
+bool goblin::force_create_last()
+{
+    if (!goblin::config::dumpIconTextures) return false;
+    g_ci_req_icon.store(CI_REPLAY_LAST, std::memory_order_release);
+    return true;
+}
+
+bool goblin::harvested_grace(ItemSprite &out)
+{
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    if (!g_grace_sprite.valid) return false;
+    out = g_grace_sprite;
+    return true;
+}
+
+std::vector<goblin::GraceCandidate> goblin::grace_candidates()
+{
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    return g_grace_cands;
+}
+
+// The ERR dungeon-style grace sprite (MENU_MAP_ERR_GraceUnderground). False until captured / if ERR
+// isn't installed (sprite absent) → renderer falls back to the vanilla grace for dungeon graces too.
+bool goblin::harvested_grace_dungeon(ItemSprite &out)
+{
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    if (!g_grace_dungeon_sprite.valid) return false;
+    out = g_grace_dungeon_sprite;
+    return true;
+}
+
+// DEV (F1 grace-debug): set the active grace sprite from a captured candidate by index, so the
+// overlay can test which name maps to the correct grace. Also locks it so the auto-capture won't
+// override. Returns false on a bad index. The overlay must then force_rebuild_grace() to re-copy.
+bool goblin::set_grace_from_candidate(size_t idx)
+{
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    if (idx >= g_grace_cands.size() || !g_grace_cands[idx].spr.valid) return false;
+    g_grace_sprite = g_grace_cands[idx].spr;
+    g_grace_locked = true;
+    spdlog::info("[GRACE-DBG] active grace set to candidate[{}] '{}'", idx, g_grace_cands[idx].name);
+    return true;
+}
+
+std::vector<int> goblin::harvested_ids(size_t max)
+{
+    std::lock_guard<std::mutex> lk(g_harvest_mtx);
+    std::vector<int> out;
+    out.reserve(g_harvest.size() < max ? g_harvest.size() : max);
+    for (const auto &kv : g_harvest)
+    {
+        if (out.size() >= max) break;
+        out.push_back(kv.first);
+    }
+    return out;
+}
+
+void goblin::probe_icon_find_runtime()
+{
+    if (!goblin::config::dumpIconTextures)
+        return;
+    // ⛔ DISABLED: find-by-name (resolve_item_sprite) CRASHES DETERMINISTICALLY inside
+    // FUN_140d63c30 (exe+0xD63E02, fault exe+0x591401F) when the queried icon's sheet is NOT fully
+    // resident — for not-loaded ids it returns a clean miss, but for a partially-referenced id it
+    // derefs an unready field and faults. clang-cl can't SEH-guard the foreign call. The earlier
+    // [FIND2-TEX] successes were a lucky inventory state. → the SAFE path is enumerate-LOADED images
+    // (sprite findings §1: FUN_140d69640 walks the loaded movie's image list — only resident images,
+    // no risky by-name query) + integrate on the RENDER thread, not this hotkey thread. resolve_item_sprite
+    // stays for resident-only use. See [[overlay-icon-atlas]].
+    spdlog::warn("[FIND2] find-by-name probe DISABLED — crashes on non-resident sheets; "
+                 "switch to enumerate-loaded (FUN_140d69640). See memory.");
+}
+
+// ── OodleLZ_Decompress hook (FD4 RAM-cache RE, windows_fd4_ram_dds_cache_re_prompt.md) ───────────
+// The menu texture file 01_common.tpf.dcx is DCX/KRAK-compressed; the engine decompresses it via
+// oo2core's OodleLZ_Decompress into a CPU buffer (the TPF, whose entries are the icon-sheet DDS).
+// Hooking it logs that buffer's address + size at the moment of decompression — the candidate for a
+// persistent CPU DDS cache (read it again menu-closed to test persistence). dst is in OUR address
+// space (post-decompress) so we read it directly. 14-arg Oodle signature; we pass everything through.
+using oodle_decompress_fn = long long(__fastcall *)(const void *, long long, void *, long long, int,
+                                                    int, int, void *, long long, void *, void *,
+                                                    void *, long long, int);
+oodle_decompress_fn g_oodle_orig = nullptr;
+// ER's decompressed TPF buffers are TRANSIENT (freed after it parses them), so we COPY each complete
+// DDS out IN the hook (while valid) and ACCUMULATE distinct ones — a browser to find the icon sheet.
+std::mutex g_tpf_mtx;
+std::vector<std::vector<uint8_t>> g_dds_list; // all distinct complete DDS captured from decompresses
+
+long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, void *dst,
+                                             long long dstLen, int a5, int a6, int a7, void *a8,
+                                             long long a9, void *a10, void *a11, void *a12,
+                                             long long a13, int a14)
+{
+    long long r = g_oodle_orig(src, srcLen, dst, dstLen, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14);
+    if (goblin::config::dumpIconTextures && dst && r >= 0x10000)
+    {
+        const uint8_t *b = reinterpret_cast<const uint8_t *>(dst);
+        // Decompressed menu texture container = a TPF ("TPF\0"). Log its RAM address + size so we can
+        // re-read it menu-closed (persistence test) and parse DDS+rects out of it.
+        if (b[0] == 'T' && b[1] == 'P' && b[2] == 'F' && b[3] == 0 && r >= 0x20)
+        {
+            uint32_t fc = 0, doff = 0, dsz = 0;
+            std::memcpy(&fc, b + 0x08, 4);
+            std::memcpy(&doff, b + 0x10, 4);
+            std::memcpy(&dsz, b + 0x14, 4);
+            bool dataIsDDS = (size_t)doff + 4 < (size_t)r && b[doff] == 'D' && b[doff + 1] == 'D' &&
+                             b[doff + 2] == 'S';
+            // COPY the DDS out NOW (the buffer is freed once ER parses it). Only when the whole DDS
+            // fits in THIS decompressed block (doff+dsz <= r) — small icon TPFs are self-contained;
+            // multi-block sheets need block accumulation (not yet). Our copy is persistent → uploadable
+            // anytime, no game bind, no read-after-free.
+            if (dataIsDDS && (size_t)doff + dsz <= (size_t)r && dsz >= 148)
+            {
+                const uint8_t *d = b + doff;
+                std::lock_guard<std::mutex> lk(g_tpf_mtx);
+                if (g_dds_list.size() < 64)
+                {
+                    bool dup = false;
+                    for (auto &e : g_dds_list)
+                        if (e.size() == dsz && std::memcmp(e.data(), d, 32) == 0) { dup = true; break; }
+                    if (!dup)
+                        g_dds_list.emplace_back(d, d + dsz);
+                }
+            }
+            static int n = 0;
+            if (n < 16)
+            {
+                ++n;
+                spdlog::info("[OODLE-TPF] @{:#x} sz={} files={} plat={} enc={} entry0(off={} size={} fmt={}) dataIsDDS={}",
+                             reinterpret_cast<uintptr_t>(dst), r, fc, b[0x0C], b[0x0E], doff, dsz, b[0x18], dataIsDDS);
+            }
+        }
+    }
+    return r;
+}
+
+// IAT hook: overwrite eldenring.exe's import-table pointer for dll!fn with `detour`, saving the
+// original into *orig. No trampoline/executable alloc (unlike MinHook → no MH_ERROR_MEMORY_ALLOC
+// when oo2core sits >2GB away), and works for a cross-module import. Returns false if the module
+// doesn't statically import dll!fn (e.g. it's resolved dynamically via GetProcAddress).
+bool iat_hook(uintptr_t modBase, const char *dll, const char *fn, void *detour, void **orig)
+{
+    auto *dos = reinterpret_cast<IMAGE_DOS_HEADER *>(modBase);
+    auto *nt = reinterpret_cast<IMAGE_NT_HEADERS *>(modBase + dos->e_lfanew);
+    auto &dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    if (!dir.VirtualAddress)
+        return false;
+    auto *desc = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR *>(modBase + dir.VirtualAddress);
+    for (; desc->Name; ++desc)
+    {
+        const char *name = reinterpret_cast<const char *>(modBase + desc->Name);
+        if (_stricmp(name, dll) != 0)
+            continue;
+        auto *thunk = reinterpret_cast<IMAGE_THUNK_DATA *>(modBase + desc->FirstThunk);
+        DWORD origRva = desc->OriginalFirstThunk ? desc->OriginalFirstThunk : desc->FirstThunk;
+        auto *oThunk = reinterpret_cast<IMAGE_THUNK_DATA *>(modBase + origRva);
+        for (; oThunk->u1.AddressOfData; ++thunk, ++oThunk)
+        {
+            if (oThunk->u1.Ordinal & IMAGE_ORDINAL_FLAG)
+                continue;
+            auto *ibn = reinterpret_cast<IMAGE_IMPORT_BY_NAME *>(modBase + oThunk->u1.AddressOfData);
+            if (std::strcmp(reinterpret_cast<const char *>(ibn->Name), fn) != 0)
+                continue;
+            void **slot = reinterpret_cast<void **>(&thunk->u1.Function);
+            DWORD oldp = 0;
+            if (!VirtualProtect(slot, sizeof(void *), PAGE_READWRITE, &oldp))
+                return false;
+            *orig = *slot;
+            *slot = detour;
+            VirtualProtect(slot, sizeof(void *), oldp, &oldp);
+            return true;
+        }
+    }
+    return false;
+}
+
+void install_oodle_hook()
+{
+    if (!goblin::config::dumpIconTextures || g_oodle_orig)
+        return;
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!er)
+        return;
+    if (iat_hook(er, "oo2core_6_win64.dll", "OodleLZ_Decompress",
+                 reinterpret_cast<void *>(&oodle_decompress_detour),
+                 reinterpret_cast<void **>(&g_oodle_orig)))
+        spdlog::info("[OODLE] IAT-hooked OodleLZ_Decompress (orig={}) — open the world map to log the TPF buffer",
+                     reinterpret_cast<void *>(g_oodle_orig));
+    else
+        spdlog::warn("[OODLE] eldenring.exe has no static IAT import of oo2core!OodleLZ_Decompress "
+                     "(dynamically loaded?) — decompress hook not installed");
+}
+
+// Browser over the distinct DDS captured from ER's decompresses (grabbed in the Oodle hook). count +
+// fetch-by-index; the overlay uploads each into its own texture to find the icon sheet visually.
+size_t goblin::tpf_dds_count()
+{
+    std::lock_guard<std::mutex> lk(g_tpf_mtx);
+    return g_dds_list.size();
+}
+
+bool goblin::tpf_dds_at(size_t i, std::vector<uint8_t> &out)
+{
+    std::lock_guard<std::mutex> lk(g_tpf_mtx);
+    if (i >= g_dds_list.size())
+        return false;
+    out = g_dds_list[i];
+    return true;
+}
+
+// Map-point icon rect lookup (resolved from the resident image repo; see store_map_icon_rect, filled
+// by the repo walk for MENU_MAP_*). Returns the SubTexture rect for a WORLD_MAP_POINT_PARAM.iconId on
+// the SB_MapCursor[_ERR] sheet. false if not captured yet (open the world map) or the id is absent.
+size_t goblin::map_icon_layout_count()
+{
+    std::lock_guard<std::mutex> lk(g_map_icon_mtx);
+    return g_map_icon_rects.size() + g_map_icon_named.size();
+}
+
+bool goblin::map_icon_rect(int iconId, int &x, int &y, int &w, int &h, void *&sheet)
+{
+    std::lock_guard<std::mutex> lk(g_map_icon_mtx);
+    auto it = g_map_icon_rects.find(iconId);
+    if (it == g_map_icon_rects.end()) return false;
+    x = it->second.x; y = it->second.y; w = it->second.w; h = it->second.h; sheet = it->second.sheet;
+    return true;
+}
+
+bool goblin::map_icon_rect_by_name(const char *name, int &x, int &y, int &w, int &h, void *&sheet)
+{
+    if (!name) return false;
+    std::lock_guard<std::mutex> lk(g_map_icon_mtx);
+    auto it = g_map_icon_named.find(name);
+    if (it == g_map_icon_named.end()) return false;
+    x = it->second.x; y = it->second.y; w = it->second.w; h = it->second.h; sheet = it->second.sheet;
+    return true;
+}
+
+void goblin::install_icon_texture_probe()
+{
+    if (!goblin::config::dumpIconTextures)
+        return;
+    install_oodle_hook();
+    goblin::verify_equip_iconids();
+    self_calibrate_iconid();
+    void *fn = modutils::scan<void>({.aob = goblin::sig::WORLDMAP_CREATE_IMAGE});
     if (!fn)
     {
-        spdlog::warn("[LIVE-REFRESH] build-fn AOB not found (game patch?) — live refresh disabled");
+        spdlog::warn("[ICONTEX] CreateImage AOB not found (game patch?) — icon probe disabled");
         return;
     }
     try
     {
-        modutils::hook(fn, reinterpret_cast<void *>(&wm_build_detour),
-                       reinterpret_cast<void **>(&g_wm_build_orig));
-        spdlog::info("[LIVE-REFRESH] world-map build hooked @ {} (experimental)", fn);
+        modutils::hook(fn, reinterpret_cast<void *>(&create_image_detour),
+                       reinterpret_cast<void **>(&g_create_image_orig));
+        spdlog::info("[ICONTEX] CreateImage hooked @ {} (probe)", fn);
     }
     catch (const std::exception &e)
     {
-        spdlog::error("[LIVE-REFRESH] hook failed: {}", e.what());
-        g_wm_build_orig = nullptr;
+        spdlog::error("[ICONTEX] hook failed: {}", e.what());
+        g_create_image_orig = nullptr;
+    }
+
+    // Enumerate-loaded hook: capture the inventory movie ptr + reverse its image-list layout (safe
+    // harvest path; sprite findings §1). Hooked by RVA (FUN_140d69640) — dev probe.
+    try
+    {
+        uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+        void *enumfn = reinterpret_cast<void *>(er + 0xd69640);
+        modutils::hook(enumfn, reinterpret_cast<void *>(&enum_detour),
+                       reinterpret_cast<void **>(&g_enum_orig));
+        void *findfn = reinterpret_cast<void *>(er + 0xd63c30);
+        modutils::hook(findfn, reinterpret_cast<void *>(&find_detour),
+                       reinterpret_cast<void **>(&g_find_orig));
+        spdlog::info("[ENUM2] find-hook (FUN_140d63c30) @ {} + enum @ {} — open inventory to harvest "
+                     "resident item icons", findfn, enumfn);
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("[ENUM] hook failed: {}", e.what());
+        g_enum_orig = nullptr;
+    }
+
+    // Residency-ticker hook (findings §5e): capture the live menu-resource manager (*param_2) for the
+    // bind-flip test + run queued one-shot actions inline on the engine thread. Idle cost = one deref
+    // + one atomic load per tick. Dev-gated (whole probe is behind config::dumpIconTextures).
+    try
+    {
+        uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+        void *tickfn = reinterpret_cast<void *>(er + 0xd724c0);   // FUN_140d724c0
+        modutils::hook(tickfn, reinterpret_cast<void *>(&res_tick_detour),
+                       reinterpret_cast<void **>(&g_res_tick_orig));
+        spdlog::info("[BINDTEST] residency-ticker hooked @ {} — open inventory/map to capture manager", tickfn);
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("[BINDTEST] ticker hook failed: {}", e.what());
+        g_res_tick_orig = nullptr;
+    }
+    // CreateImage context capture + force-replay (§5g) reuses the existing CreateImage probe hook
+    // above (create_image_detour) — no separate hook (MinHook can't double-hook the same fn).
+}
+
+// Path A verify step (findings §6): on a MAP-OPEN frame, re-read each registered image's
+// img+0x10 (the lazily-bound Scaleform::Render::Texture) → BFS to the GXTexture2D → +0x40 =
+// ID3D12Resource. Confirms the load-time-null texture is now bound + reachable. Runs once
+// per session after the chain first resolves. Called from the worldmap probe loop (map-open
+// detector). Read-only RPM (reading the already-bound pointer is thread-safe; we do NOT call
+// GetTexture, which would have to be on the render thread).
+void goblin::dump_icon_textures_live()
+{
+    if (!goblin::config::dumpIconTextures || g_icon_imgs.empty())
+        return;
+    // REPEATABLE (throttled): images bind LAZILY + g_icon_imgs grows as the map draws more sprites,
+    // so re-resolve periodically to accumulate ALL SB_ERR_*/icons (the old one-shot caught only what
+    // was resident at the first run — e.g. a single grace frame). Candidate capture + logs dedup by
+    // name; the verbose [ICONTEX-LIVE] summary stays one-shot (g_icon_live_done).
+    static std::chrono::steady_clock::time_point s_last{};
+    auto now = std::chrono::steady_clock::now();
+    if (g_icon_live_done && now - s_last < std::chrono::milliseconds(500))
+        return;
+    s_last = now;
+    uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base)
+        return;
+    int bound = 0, resolved = 0, logged = 0;
+    for (const IconImg &it : g_icon_imgs)
+    {
+        // ── Resolve the BOUND GPU sheet (binds LAZILY on first render). On vkd3d/Proton far fewer
+        // sprites bind than on native D3D12, so this often fails on Linux even for valid sprites.
+        // We DO NOT `continue` on failure: the candidate LIST is registered below GPU-independently
+        // (fix: the list used to drop 3-4 candidates on Linux because only the 1-2 sprites that
+        // happened to bind ever reached the push_back). Only the DISPLAY paths require sheet_ok.
+        const uintptr_t mod_lo = base, mod_hi = base + 0x6000000;
+        uintptr_t rtex = 0, res = 0, resvt = 0;
+        int dim = 0, rw = 0, rh = 0, gfmt = 0;
+        bool sheet_ok = false;
+        // A REAL Scaleform Render::Texture = heap object (OUTSIDE the ER module) whose vtable is
+        // INSIDE the module (.rdata). img+0x10 also takes junk states: 0 (unbound), a small int
+        // (0x6), or a CODE/module pointer (0x141xxxxxx) — reject all three.
+        if (icon_rpm_ptr(it.img + 0x10, rtex) && rtex >= 0x10000 && rtex < 0x7fffffffffffULL &&
+            !(rtex >= mod_lo && rtex < mod_hi))
+        {
+            uintptr_t rtex_vt = 0;
+            if (icon_rpm_ptr(rtex, rtex_vt) && rtex_vt >= mod_lo && rtex_vt < mod_hi)
+            {
+                ++bound;
+                icon_detail_dump(rtex, base); // one-shot full Render::Texture layout (first bound)
+                // rtex+0x70 = the backing ID3D12Resource. Do NOT gate on the RPM-read DIM at res+0x10:
+                // the vkd3d resource layout drifted (a driver/game update; res+0x10 no longer reads 3) —
+                // but res IS the resource; just validate a non-module vtable (a real COM object). The
+                // overlay reads the authoritative format/dims via ID3D12Resource::GetDesc() at copy time.
+                if (icon_rpm_ptr(rtex + 0x70, res) && res >= 0x10000 && res < 0x7fffffffffffULL &&
+                    icon_rpm_ptr(res, resvt) && !(resvt >= mod_lo && resvt < mod_hi))
+                {
+                    icon_rpm_i32(res + 0x10, dim); icon_rpm_i32(res + 0x20, rw);
+                    icon_rpm_i32(res + 0x28, rh); icon_rpm_i32(res + 0x30, gfmt);
+                    ++resolved;
+                    sheet_ok = true; // a bound, displayable GPU texture
+                }
+            }
+        }
+        // ERR map sprites (RE e4b3f6a §6): the discovered grace + all other ERR map icons draw through
+        // CreateImage (not the find fn) → captured here with resolved sheet+rect. Collect EVERY
+        // 'SB_ERR_*' candidate (dev viewer — to test whether non-grace icons harvest cleanly vs the
+        // grace's time-of-day variants), and LOCK the grace sprite on the first LIT '..._Color' frame
+        // with a grace-sized rect (any time-of-day; the engine resolves only one per session).
+        if (it.name.rfind("SB_ERR_", 0) == 0 || it.name.rfind("MENU_MAP_", 0) == 0)
+        {
+            // The REAL grace = the mod's gfx sprite MENU_MAP_GOBLIN_Grace (force-created via img://);
+            // SB_ERR_Grace_*_Color is the native time-tinted pin (wrong). Lock on the canonical; an
+            // SB_ERR_Grace _Color frame is kept only as an overridable fallback. (MENU_MAP_ sprites have
+            // no time-of-day variants, so they're always "lit".)
+            // Canonical (default) grace = the vanilla icon MENU_MAP_01_Bonfire (bonfire = grace). The
+            // ERR dungeon-style grace MENU_MAP_ERR_GraceUnderground is captured separately (below) and
+            // used for dungeon graces when ERR is installed. GOBLIN_Grace/SB_ERR_Grace = F1 candidates.
+            bool canon = it.name.rfind("MENU_MAP_01_Bonfire", 0) == 0;
+            bool is_grace = canon || it.name.rfind("MENU_MAP_GOBLIN_Grace", 0) == 0 ||
+                            it.name.rfind("SB_ERR_Grace", 0) == 0;
+            bool lit = it.name.rfind("MENU_MAP_", 0) == 0 || it.name.find("Color") != std::string::npos;
+            int gw = it.x1 - it.x0, gh = it.y1 - it.y0;
+            bool rect_ok = gw >= 8 && gw <= 256 && gh >= 8 && gh <= 256;
+            std::lock_guard<std::mutex> lk(g_harvest_mtx);
+            // Candidate LIST is GPU-INDEPENDENT — register by name+rect whether or not the sheet is
+            // bound, so vkd3d/Proton (which binds far fewer sprites) lists the SAME candidates as
+            // native D3D12. Find-or-add by name; when the sheet later binds (sheet_ok), UPGRADE the
+            // stored candidate in place so the F1 picker can actually DISPLAY it. (Sprites the game
+            // never draws — e.g. the vanilla Bonfire on ERR — stay listed but never become displayable;
+            // that's the inherent GPU limitation, not a list bug.)
+            goblin::GraceCandidate *cand = nullptr;
+            for (auto &gc : g_grace_cands) if (gc.name == it.name) { cand = &gc; break; }
+            bool is_new = (cand == nullptr);
+            if (is_new && g_grace_cands.size() < 64)
+            {
+                g_grace_cands.push_back(goblin::GraceCandidate{});
+                cand = &g_grace_cands.back();
+                cand->name = it.name;
+                cand->spr.x0 = it.x0; cand->spr.y0 = it.y0; cand->spr.x1 = it.x1; cand->spr.y1 = it.y1;
+                cand->spr.valid = false;   // listed-only until its texture binds
+            }
+            if (cand && sheet_ok && !cand->spr.valid)   // bound now → resolve sheet so it's displayable
+            {
+                cand->spr.sheet = reinterpret_cast<void *>(res);
+                cand->spr.x0 = it.x0; cand->spr.y0 = it.y0; cand->spr.x1 = it.x1; cand->spr.y1 = it.y1;
+                cand->spr.sheetW = static_cast<unsigned long long>(rw);
+                cand->spr.sheetH = static_cast<unsigned>(rh);
+                cand->spr.format = static_cast<unsigned>(gfmt);
+                cand->spr.valid = true;
+            }
+            if (is_new)
+                spdlog::info("[ICON-CAND] '{}' rect=({},{})-({},{}) res={:#x} fmt={} {}{}",
+                             it.name, it.x0, it.y0, it.x1, it.y1, res, gfmt,
+                             sheet_ok ? "bound" : "LISTED(unbound)", canon ? " <-CANONICAL grace" : "");
+            // ── DISPLAY paths below require a BOUND sheet (only rendered sprites have a GPU texture
+            // to copy). Keeping these gated on sheet_ok is what preserves the Windows display while the
+            // list above is decoupled — the reverted attempt broke display by lazy-resolving these too.
+            if (sheet_ok && is_grace && lit && rect_ok && !g_grace_locked && (canon || !g_grace_sprite.valid))
+            {
+                g_grace_sprite.sheet = reinterpret_cast<void *>(res);
+                g_grace_sprite.x0 = it.x0; g_grace_sprite.y0 = it.y0;
+                g_grace_sprite.x1 = it.x1; g_grace_sprite.y1 = it.y1;
+                g_grace_sprite.sheetW = static_cast<unsigned long long>(rw);
+                g_grace_sprite.sheetH = static_cast<unsigned>(rh);
+                g_grace_sprite.format = static_cast<unsigned>(gfmt);
+                g_grace_sprite.valid = true;
+                if (canon) g_grace_locked = true;   // canonical wins + locks; fallback stays overridable
+                spdlog::info("[GRACE-SPRITE] '{}' rect=({},{})-({},{}) {}x{} res={:#x} fmt={} ({})",
+                             it.name, it.x0, it.y0, it.x1, it.y1, gw, gh, res, gfmt,
+                             canon ? "LOCKED canonical MENU_MAP_01_Bonfire" : "fallback (awaiting canonical)");
+            }
+            // ERR dungeon-style grace — captured separately; its presence = ERR installed. The renderer
+            // uses it for dungeon graces. Store once (it doesn't change).
+            if (sheet_ok && it.name.rfind("MENU_MAP_ERR_GraceUnderground", 0) == 0 && rect_ok &&
+                !g_grace_dungeon_sprite.valid)
+            {
+                g_grace_dungeon_sprite.sheet = reinterpret_cast<void *>(res);
+                g_grace_dungeon_sprite.x0 = it.x0; g_grace_dungeon_sprite.y0 = it.y0;
+                g_grace_dungeon_sprite.x1 = it.x1; g_grace_dungeon_sprite.y1 = it.y1;
+                g_grace_dungeon_sprite.sheetW = static_cast<unsigned long long>(rw);
+                g_grace_dungeon_sprite.sheetH = static_cast<unsigned>(rh);
+                g_grace_dungeon_sprite.format = static_cast<unsigned>(gfmt);
+                g_grace_dungeon_sprite.valid = true;
+                spdlog::info("[GRACE-SPRITE] DUNGEON (ERR) '{}' rect=({},{})-({},{}) res={:#x} stored",
+                             it.name, it.x0, it.y0, it.x1, it.y1, res);
+            }
+        }
+        if (!sheet_ok)
+            continue;   // unbound entry: candidate was listed above; the sheet tracking below needs res
+        // Track unique sheet resources (icons on one sheet share a resource).
+        bool known = false;
+        for (uintptr_t s : g_icon_sheets) if (s == res) { known = true; break; }
+        if (!known && g_icon_sheets.size() < 32)
+        {
+            g_icon_sheets.push_back(res);
+            spdlog::info("[ICONTEX-LIVE] SHEET #{} res={:#x} resVt={:#x} {}x{} (DIM={})",
+                         g_icon_sheets.size(), res, resvt, rw, rh, dim);
+        }
+        if (!g_icon_live_done && logged++ < 16)   // verbose only on the first pass (re-runs are quiet)
+            spdlog::info("[ICONTEX-LIVE] name='{}' rect=({},{})-({},{}) sheet={}x{} | res={:#x} {}x{}",
+                         it.name, it.x0, it.y0, it.x1, it.y1, it.w, it.h, res, rw, rh);
+    }
+    if (bound > 0)
+    {
+        spdlog::info("[ICONTEX-LIVE] summary: {}/{} bound, {} resolved via rtex+0x70, "
+                     "{} unique sheet resources",
+                     bound, g_icon_imgs.size(), resolved, g_icon_sheets.size());
+        // Deterministic hop is solid once several images resolve to a small sheet set.
+        if (resolved >= 5)
+            g_icon_live_done = true;
     }
 }
 
-void goblin::refresh_world_map_icons()
+// ── Native discovered-grace pin suppression (RE e4b3f6a; config grace_suppress_native) ──
+// Graces are WorldMapWarpPinData built by FUN_14088b7b0(this, out, WarpData* param_3) from a
+// WarpData whose source entry (warpData+0x8) holds: state byte @+0x1E (bits 0/1/2 = registered/
+// discovered/visible), iconId @+0x08. PHASE A (now): hook + LOG each build ([WARPPIN] state/iconId)
+// to confirm we can identify discovered graces at build time. Suppression (skip/hide the discovered
+// ones) is added once the log confirms identification. Read-only RPM in the detour; calls the orig.
+namespace
 {
-    if (!g_wm_build_orig) return;           // hook not installed (flag off / AOB miss)
-    if (!goblin::world_map_open()) return;  // only meaningful while the 2D map is up
-    g_wm_refresh_request.store(true);       // engine thread replays on its next build
+using warp_pin_fn = void *(__fastcall *)(void *, void *, void *, void *);
+warp_pin_fn g_warp_pin_orig = nullptr;
+
+void *__fastcall warp_pin_detour(void *a1, void *a2, void *warpData, void *a4)
+{
+    void *ret = g_warp_pin_orig(a1, a2, warpData, a4);
+    if (!goblin::config::graceSuppressNative) return ret;
+
+    // Identify the just-built grace pin's draw state (source state byte @ warpData+0x8 +0x1E;
+    // state != 0 = a drawn/registered grace, as confirmed by [WARPPIN]).
+    uintptr_t src = 0; icon_rpm_ptr(reinterpret_cast<uintptr_t>(warpData) + 0x8, src);
+    int state = 0, iconId = -1;
+    if (src > 0x10000)
+    {
+        int sb = 0; icon_rpm_i32(src + 0x1C, sb);   // +0x1E = byte 2 of the dword at +0x1C
+        state = (sb >> 16) & 0xff;
+        icon_rpm_i32(src + 0x08, iconId);
+    }
+
+    // Suppression now happens at the vt[1] SetTo apply point (warp_setto_detour below) by hiding
+    // the pin's "Icon_0" child — NOT here. Zeroing pin+0x60/+0xC suppressed the draw but also broke
+    // fast-travel (the map cursor only snaps to a _visible widget; draw + click are coupled at
+    // _visible — RE windows_grace_warppin_teleport_re_findings.md). This builder hook is kept
+    // log-only (phase-A diagnostic: confirms discovered-grace identity at build time).
+    static int logged = 0;
+    if (logged < 40)
+    {
+        ++logged;
+        spdlog::info("[WARPPIN] build src={:#x} stateByte(+0x1E)={:#x} (bits0-2={}) iconId={} pin={:#x}",
+                     src, state & 0xff, state & 7, iconId, reinterpret_cast<uintptr_t>(ret));
+    }
+    return ret;
+}
+
+// ── Grace DRAW-ONLY suppression (RE windows_grace_warppin_teleport_re_findings.md §4) ──
+// Hook vt[1] WorldMap(Warp|Point)PinData::SetTo = FUN_14087ae20: the per-refresh widget bind that
+// sets widget._visible from pin+0xC. After the original runs, for a DISCOVERED WarpPinData, hide
+// ONLY the "Icon_0" child of the pin's GFx widget — the outer widget stays _visible, so the map
+// cursor still snaps to it and fast-travel works; only the native icon image is gone (the overlay
+// draws our own). pin+0xC/+0x60 are left untouched (poking them is the layer-trap that re-fills
+// every SetTo). Runs on the engine thread (in-context), so we call the GFx fns directly.
+using setto_fn = void *(__fastcall *)(void *, void *, void *, void *);
+setto_fn g_setto_orig = nullptr;
+// GFx helpers (resolve at hook-install, cached): get a named child proxy / set a widget _visible /
+// release the stack proxy. Signatures inferred from the RE pseudocode (doc §4).
+void *g_warppin_vftable = nullptr;   // er + 0x2ad8228 (WorldMapWarpPinData::vftable) — grace filter
+
+void *__fastcall warp_setto_detour(void *pin, void *widgetRoot, void *a3, void *a4)
+{
+    // Decide suppression BEFORE calling orig. SetTo binds the per-pin GFx row, reading pin+0xC to set
+    // the row's _visible — then RELEASES the (stack) widget proxy at its end (FUN_140d7f850). So poking
+    // the proxy AFTER orig is a no-op on a dead proxy (that was the bug). Instead force pin+0xC=0 around
+    // orig so SetTo's OWN set_visible(widgetRoot,0) runs while the proxy is live → row hidden. Restore
+    // pin+0xC afterward so the cursor's nearest-pin selection (FUN_1409cab60, reads pin+0xC + position,
+    // NOT the row _visible) still treats the grace as selectable → fast-travel survives.
+    bool suppress = false;
+    uint8_t *pVis = nullptr;
+    uint8_t savedVis = 0;
+    if (goblin::config::graceSuppressNative && goblin::config::graceOverlay && pin && widgetRoot
+        && *reinterpret_cast<void **>(pin) == g_warppin_vftable)
+    {
+        uint32_t state = *reinterpret_cast<uint32_t *>(reinterpret_cast<uintptr_t>(pin) + 0x60);
+        if ((state & 7) != 0)   // discovered grace (undiscovered → engine draws nothing anyway)
+        {
+            suppress = true;
+            pVis = reinterpret_cast<uint8_t *>(reinterpret_cast<uintptr_t>(pin) + 0xC);
+            savedVis = *pVis;
+            *pVis = 0;   // SetTo will bind the row _visible = 0
+        }
+    }
+    void *ret = g_setto_orig(pin, widgetRoot, a3, a4);
+    if (suppress)
+        *pVis = savedVis ? savedVis : 1;   // restore so selection vt[6] keeps the grace clickable
+    return ret;
+}
+} // namespace
+
+void goblin::install_grace_suppression_hook()
+{
+    if (!goblin::config::graceSuppressNative) return;
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!er) return;
+    void *fn = reinterpret_cast<void *>(er + 0x88b7b0);   // FUN_14088b7b0 (RE e4b3f6a §1)
+    try
+    {
+        modutils::hook(fn, reinterpret_cast<void *>(&warp_pin_detour),
+                       reinterpret_cast<void **>(&g_warp_pin_orig));
+        spdlog::info("[WARPPIN] WarpPinData builder hooked @ {} (phase A: log only)", fn);
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("[WARPPIN] hook failed: {}", e.what());
+        g_warp_pin_orig = nullptr;
+    }
+
+    // DRAW-ONLY suppression: hook vt[1] SetTo and force pin+0xC=0 around orig so SetTo's own
+    // set_visible hides the per-pin GFx row while its proxy is live (poking after orig hit a released
+    // proxy = no-op, the earlier bug). pin+0xC is restored after orig so the cursor's nearest-pin
+    // selection (FUN_1409cab60, reads pin+0xC + position) keeps the grace clickable → teleport survives.
+    // (RE windows_grace_warppin_cursor_re_findings.md.)
+    constexpr bool kSetToHookEnabled = true;
+    if (kSetToHookEnabled)
+    {
+        g_warppin_vftable = reinterpret_cast<void *>(er + 0x2ad8228); // WorldMapWarpPinData::vftable
+        void *setto = reinterpret_cast<void *>(er + 0x87ae20);   // FUN_14087ae20 (vt[1] SetTo)
+        try
+        {
+            modutils::hook(setto, reinterpret_cast<void *>(&warp_setto_detour),
+                           reinterpret_cast<void **>(&g_setto_orig));
+            spdlog::info("[WARPPIN] SetTo hooked @ {} (draw-only: hide row, keep teleport)", setto);
+        }
+        catch (const std::exception &e)
+        {
+            spdlog::error("[WARPPIN] SetTo hook failed: {}", e.what());
+            g_setto_orig = nullptr;
+        }
+    }
+    else
+    {
+        (void)&warp_setto_detour; // keep referenced while the hook is disabled
+        spdlog::info("[WARPPIN] SetTo draw-only hook DISABLED (proxy ABI crashed; pending RE)");
+    }
 }
 
 // ── Overlay control API (see goblin_inject.hpp) ──────────────────────────
@@ -2778,7 +3663,6 @@ static void persist_settings()
     goblin::save_all_bool_settings(goblin::config_ini_path());
 }
 
-bool goblin::ui::clustering_active() { return g_clustering_active; }
 bool goblin::ui::clustering_enabled() { return goblin::config::enableClustering; }
 void goblin::ui::set_clustering_enabled(bool on)
 {
@@ -2822,11 +3706,11 @@ static void show_toggle_banner(bool icons_on)
         resolved = true;
         er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
         menu_man_slot = reinterpret_cast<void **>(modutils::scan<void *>({
-            .aob = "48 8B 05 ?? ?? ?? ?? 33 DB 48 89 74 24",
+            .aob = goblin::sig::CSMENUMAN_SLOT,
             .relative_offsets = {{3, 7}},
         }));
         fe_man_slot = reinterpret_cast<void **>(modutils::scan<void *>({
-            .aob = "48 8B 05 ?? ?? ?? ?? 48 85 C0 74 11 8B 80 3C 65 00 00",
+            .aob = goblin::sig::EVENT_FLAG_MAN_SLOT_ALT,
             .relative_offsets = {{3, 7}},
         }));
         spdlog::info("[TOAST] resolve er=0x{:X} CSMenuMan_slot={:p} CSFeMan_slot={:p}",
@@ -2892,11 +3776,6 @@ const std::vector<uint8_t *> &goblin::injected_row_ptrs()
     return g_injected_row_ptrs;
 }
 
-bool goblin::is_ashen_capital_row(uint64_t row_id)
-{
-    return g_ashen_rows.count(row_id) != 0;
-}
-
 // ── Either-flag (OR) kill indicators ─────────────────────────────────
 // Some quest fights have two mutually-exclusive completion flags (one per
 // story branch) and no single "battle over" flag. Example: the academy
@@ -2922,9 +3801,9 @@ static bool orp_flag_set(uint32_t flag_id)
         try
         {
             g_orp_is_flag = modutils::scan<bool(void *, uint32_t *)>(
-                { .aob = "48 83 EC 28 8B 12 85 D2" });
+                { .aob = goblin::sig::IS_EVENT_FLAG });
             g_orp_event_man_slot = reinterpret_cast<void **>(modutils::scan<void *>(
-                { .aob = "48 8B 3D ?? ?? ?? ?? 48 85 FF ?? ?? 32 C0 E9",
+                { .aob = goblin::sig::EVENT_FLAG_MAN_SLOT,
                   .relative_offsets = { {3, 7} } }));
         }
         catch (...) { g_orp_is_flag = nullptr; g_orp_event_man_slot = nullptr; }
@@ -2934,134 +3813,6 @@ static bool orp_flag_set(uint32_t flag_id)
     if (!event_man) return false;
     uint32_t id = flag_id;
     return g_orp_is_flag(event_man, &id);
-}
-
-// ── Fragment-eviction registry ───────────────────────────────────────
-// areaNo lives at byte offset 0x20 (uint8) of WORLD_MAP_POINT_PARAM_ST — same
-// offset hide_icon / collected use. 99 = off-page (no map-open cost); orig_area
-// = the real page (60) to restore when the gate flag turns on.
-struct FragGatedRow { uint8_t *ptr; uint8_t orig_area; uint32_t flag; };
-static std::vector<FragGatedRow> g_frag_rows;
-
-void goblin::register_fragment_gated_row(void *param_data, uint8_t original_area,
-                                         uint32_t gate_flag)
-{
-    if (!param_data || gate_flag == 0) return;
-    g_frag_rows.push_back(
-        {reinterpret_cast<uint8_t *>(param_data), original_area, gate_flag});
-}
-
-int goblin::refresh_fragment_eviction()
-{
-    GOBLIN_BENCH("refresh.fragment_eviction");
-    // Safety probe: AlwaysOn (6001) is ER's "always set" flag. If the flag API
-    // can't even read it as true, the IsEventFlag resolution is wrong/unreliable
-    // — parking would hide the WHOLE map. Bail out (restore everything to its
-    // page, defer to the game's native eventFlagId gating) until the API is fixed.
-    bool api_ok = orp_flag_set(6001);
-    int evicted = 0;
-    for (auto &r : g_frag_rows)
-    {
-        bool discovered = api_ok ? orp_flag_set(r.flag) : true;
-        if (discovered)
-        {
-            // Don't un-hide a row a section toggle is keeping hidden (the
-            // cold-API safety would otherwise stomp the user's section choice).
-            if (r.ptr[0x20] == 99 && !goblin::is_section_hidden_ptr(r.ptr))
-                r.ptr[0x20] = r.orig_area;  // discovered → restore
-        }
-        else
-        {
-            if (r.ptr[0x20] != 99) r.ptr[0x20] = 99;            // undiscovered → park
-            evicted++;
-        }
-    }
-    static int last_parked = -1;
-    if (evicted != last_parked)
-    {
-        last_parked = evicted;
-        spdlog::info("[FRAG-EVICT] {} gate-flagged rows; {} parked off-page (api_ok={})",
-                     g_frag_rows.size(), evicted, api_ok);
-    }
-    return evicted;
-}
-
-// Thread 4 — inverse of the ashen gate. Once StoryErdtreeOnFire (flag 118) sets,
-// the Leyndell Royal Capital is consumed by the Ashen Capital, so its markers
-// must vanish. Park-only (the burn is permanent → never restore). Must run AFTER
-// refresh_fragment_eviction so the hide wins over a fragment "discovered" restore.
-int goblin::refresh_royal_eviction()
-{
-    GOBLIN_BENCH("refresh.royal_eviction");
-    if (g_royal_rows.empty()) return 0;
-    // Safety: only act when the flag API is warm (AlwaysOn 6001 reads true), else
-    // leave royal rows to their normal gating — never blank on a cold API.
-    if (!orp_flag_set(6001)) return 0;
-    if (!orp_flag_set(118 /* goblin::flag::StoryErdtreeOnFire */)) return 0;  // not burned → visible
-    int parked = 0;
-    for (auto *p : g_royal_rows)
-        if (p[0x20] != 99) { p[0x20] = 99; parked++; }
-    static bool logged = false;
-    if (!logged && parked)
-    {
-        logged = true;
-        spdlog::info("[ROYAL-EVICT] Erdtree burned → parked {} Royal Capital rows",
-                     g_royal_rows.size());
-    }
-    return parked;
-}
-
-// Thread 1 v1.5 — quest-aware quest-NPC gating. Park a registered quest-NPC row
-// while its questline is inactive (none of its flags set), restore when active.
-// Opt-in. Runs after section/category apply in the loop; respects them on restore.
-int goblin::refresh_quest_npc_eviction()
-{
-    GOBLIN_BENCH("refresh.quest_npc_eviction");
-    if (g_quest_rows.empty()) return 0;
-    // Track enabled-edge so disabling the toggle (e.g. live from the overlay)
-    // restores every row we parked instead of leaving it stuck off-page.
-    static bool was_enabled = false;
-    if (!goblin::config::questNpcQuestAware)
-    {
-        if (!was_enabled) return 0;            // already idle, nothing to undo
-        int restored = 0;
-        for (auto &r : g_quest_rows)
-            if (r.ptr[0x20] == 99 && !goblin::is_section_hidden_ptr(r.ptr))
-            { r.ptr[0x20] = r.orig_area; restored++; }
-        was_enabled = false;
-        return restored;
-    }
-    // Cold-API safety: if AlwaysOn (6001) can't be read true, leave rows as-is —
-    // never blank every quest NPC because the flag API isn't warm yet.
-    if (!orp_flag_set(6001)) return 0;
-    was_enabled = true;
-    int changed = 0;
-    for (auto &r : g_quest_rows)
-    {
-        bool active = false;
-        for (uint32_t f : r.flags)
-            if (f && orp_flag_set(f)) { active = true; break; }
-        if (!active)
-        {
-            if (r.ptr[0x20] != 99) { r.ptr[0x20] = 99; changed++; }
-        }
-        else if (r.ptr[0x20] == 99 && !goblin::is_section_hidden_ptr(r.ptr))
-        {
-            r.ptr[0x20] = r.orig_area; changed++;
-        }
-    }
-    // Log the parked total on change (how many of the registered/covered quest-NPC
-    // rows are currently hidden because their questline is inactive).
-    int parked = 0;
-    for (auto &r : g_quest_rows) if (r.ptr[0x20] == 99) parked++;
-    static int last_parked = -1;
-    if (parked != last_parked)
-    {
-        last_parked = parked;
-        spdlog::info("[QUEST-NPC] {} of {} covered rows parked (inactive questline)",
-                     parked, g_quest_rows.size());
-    }
-    return changed;
 }
 
 // Part 2: per-questline "unfinishable" cache. One byte per QUEST_BROWSER entry,
@@ -3098,103 +3849,16 @@ bool goblin::ui::quest_unfinishable(size_t i)
 // function so it matches the bool(*)(uint32_t) callback the capture tool takes.
 bool goblin::ui::read_event_flag(uint32_t id) { return orp_flag_set(id); }
 
-// Cluster depletion: when every flag-backed member of a cluster is collected, swap
-// the cluster icon to the green CLUSTER_DONE glyph (else keep teal). Only while the
-// clusters are SHOWN (collapsed); throttled (piles don't deplete fast). No RE —
-// iconId is a mutable param field, like the areaNo flips.
-int goblin::refresh_cluster_depletion()
-{
-    GOBLIN_BENCH("refresh.cluster_depletion");
-    if (!g_clustering_active || g_clusters_expanded.load()) return 0;
-    // DIAGNOSTIC: collapsed ⇒ EVERY member must be parked (areaNo 99). If any are
-    // SHOWN, something un-parks them after the COLLAPSED apply (real bug). If 0,
-    // the individual icons on the map are SPARSE markers (sub-threshold cells —
-    // never clustered, shown by design) or excluded categories, NOT cluster members.
-    {
-        int shown = 0;
-        for (const auto &m : g_cluster_members)
-            if (m.ptr[0x20] != 99) shown++;
-        static int last_shown = -1;
-        if (shown != last_shown)
-        {
-            last_shown = shown;
-            spdlog::info("[CLUSTER-CHECK] {} of {} members SHOWN while collapsed "
-                         "(should be 0; >0 = un-park bug, 0 = the loose icons are "
-                         "sub-threshold/excluded, not members)",
-                         shown, g_cluster_members.size());
-        }
-    }
-    if (!orp_flag_set(6001)) return 0; // cold API → never mis-deplete
-    using clock = std::chrono::steady_clock;
-    static clock::time_point last{};
-    auto now = clock::now();
-    if (now != clock::time_point{} && now - last < std::chrono::milliseconds(1000))
-        return 0;
-    last = now;
-    // Diagnostic (debug_logging only): verify the AOB-anchored player map-pos reader
-    // resolves + reads sane marker-space coords, ahead of distance-adaptive clustering.
-    if (goblin::config::debugLogging)
-    {
-        int parea; float pwx, pwz;
-        if (goblin::get_player_map_pos(parea, pwx, pwz))
-            spdlog::info("[PLAYER] map-pos area={} world=({:.1f},{:.1f}) [tile {},{}]",
-                         parea, pwx, pwz, static_cast<int>(pwx / 256.0f), static_cast<int>(pwz / 256.0f));
-        else
-            spdlog::info("[PLAYER] map-pos unavailable (AOB unresolved or chain faulted)");
-    }
-    int changed = 0, with_flags = 0, depleted_n = 0;
-    for (auto &c : g_clusters)
-    {
-        if (c.members.empty()) continue; // no collectible members → never "done"
-        with_flags++;
-        // Count collected members — by event flag (plain loot) OR by piece/kindling
-        // row-id tracking (Reforged items have no event flag). Drives both the
-        // done-icon swap and the live REMAINING count.
-        int collected_n = 0;
-        for (const auto &m : c.members)
-        {
-            bool got = (m.flag && orp_flag_set(m.flag)) ||
-                       (m.is_piece && goblin::collected::is_row_collected(m.row_id)) ||
-                       (m.is_kindling && goblin::kindling::is_row_collected(m.row_id));
-            if (got) collected_n++;
-        }
-        bool depleted = (collected_n == static_cast<int>(c.members.size()));
-        if (depleted) depleted_n++;
-        uint16_t want = depleted ? goblin::generated::CLUSTER_DONE_ICON_ID
-                                 : goblin::generated::CLUSTER_ICON_ID;
-        auto *st = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(c.ptr);
-        if (st->iconId != want) { st->iconId = want; changed++; }
-        // Bug fix: the label count was frozen at replan time (= TOTAL members, incl.
-        // already-collected loot), so it never went down as you looted. Show the
-        // live REMAINING = total - collected. count_textid encodes the total.
-        if (g_cluster_debug.load())
-        {
-            int total = c.count_textid - CLUSTER_TEXTID_BASE;
-            int remaining = total - collected_n;
-            if (remaining < 0) remaining = 0;
-            int want_tid = CLUSTER_TEXTID_BASE + std::min(remaining, CLUSTER_MAX_COUNT);
-            if (st->textId2 != want_tid) { st->textId2 = want_tid; changed++; }
-        }
-    }
-    // Diagnostic: log when the depleted count changes (and the startup state) so we
-    // can tell apart "no collect-flags captured" vs "swapped but icon not re-read".
-    static int last_depleted = -1;
-    if (depleted_n != last_depleted)
-    {
-        last_depleted = depleted_n;
-        spdlog::info("[CLUSTER-DEPLETE] {} clusters, {} with collect-flags, {} depleted, "
-                     "{} icon-swapped this pass", g_clusters.size(), with_flags,
-                     depleted_n, changed);
-    }
-    return changed;
-}
-
 // Per-category uncollected census — feeds the overlay's "<remaining>/<total>"
 // badge next to each category. Gated to "menu on-screen" + throttled to 1s so the
 // 9296-row flag sweep is free when the panel is closed. Collected detection mirrors
 // cluster depletion: plain loot via textDisableFlagId1 + orp_flag_set, Reforged
 // pieces/kindling via row-id tracking. Categories with no collectible rows
 // (graces/NPCs/regions) cache remaining = -1 so the overlay draws no badge.
+// Overlay-only census: implemented in the worldmap module (it owns the marker
+// buckets). Forward-declared here so the refresh entry point can delegate to it.
+namespace goblin::worldmap { void refresh_overlay_census(); }
+
 int goblin::refresh_category_census()
 {
     GOBLIN_BENCH("refresh.category_census");
@@ -3210,26 +3874,12 @@ int goblin::refresh_category_census()
     if (now != clock::time_point{} && now - last < std::chrono::milliseconds(1000)) return 0;
     last = now;
     if (!orp_flag_set(6001)) return 0;  // cold flag API → don't publish bogus counts
-    using ST = from::paramdef::WORLD_MAP_POINT_PARAM_ST;
-    int collectible[NUM_CATEGORIES] = {0};
-    int looted[NUM_CATEGORIES]      = {0};
-    for (const auto &r : g_section_rows)
-    {
-        int ci = static_cast<int>(r.cat);
-        if (ci < 0 || ci >= NUM_CATEGORIES) continue;
-        uint32_t f = reinterpret_cast<ST *>(r.ptr)->textDisableFlagId1;  // collect flag
-        if (!(f || r.is_piece || r.is_kindling)) continue;  // not a collectible row
-        collectible[ci]++;
-        bool taken = (f && orp_flag_set(f)) ||
-                     (r.is_piece && goblin::collected::is_row_collected(r.row_id)) ||
-                     (r.is_kindling && goblin::kindling::is_row_collected(r.row_id));
-        if (taken) looted[ci]++;
-    }
-    for (int c = 0; c < NUM_CATEGORIES; c++)
-    {
-        g_cat_total[c].store(collectible[c]);
-        g_cat_remaining[c].store(collectible[c] > 0 ? (collectible[c] - looted[c]) : -1);
-    }
+
+    // Count from the OVERLAY's OWN marker layers (the exact markers
+    // it draws + grays), so the F1 badge matches the map and can't diverge from a
+    // parallel native-style recompute. refresh_overlay_census writes the census atomics
+    // and logs [OVERLAY-CENSUS] (full dump once, then a line on each change).
+    goblin::worldmap::refresh_overlay_census();
     return 0;
 }
 
@@ -3242,6 +3892,12 @@ int  goblin::ui::category_remaining(int idx)
 {
     if (idx < 0 || idx >= NUM_CATEGORIES) return -1;
     return g_cat_remaining[idx].load();
+}
+void goblin::ui::set_category_census(int idx, int total, int looted)
+{
+    if (idx < 0 || idx >= NUM_CATEGORIES) return;
+    g_cat_total[idx].store(total);
+    g_cat_remaining[idx].store(total > 0 ? (total - looted) : -1);
 }
 void goblin::ui::note_menu_visible()
 {
@@ -3276,111 +3932,98 @@ void goblin::apply_flag_or_pairs()
 }
 
 // ── Live-loot: hide loot markers on the LIVE item-lot pickup flag ──────
-// Reads each lot-backed marker's source ItemLotParam row from memory and sets
-// textDisableFlagId1 to the lot's current getItemFlagId. Because we read the
-// LOADED regulation (vanilla, Randomizer, any file mod), the marker hides on
-// the actual light-point pickup regardless of which item the lot now gives.
-// One-shot at init: the flag VALUE in a row is static post-load; the engine
-// then evaluates textDisableFlagId1 live every frame. See reference_cleared_badge
-// / the randomizer-compat research. Gated by config::liveLootFlags/Labels.
-void goblin::refresh_loot_from_itemlot()
+// Resolve a lot-backed loot marker's LIVE pickup flag from ItemLotParam (same
+// lookup as refresh_loot_from_itemlot below), so the overlay map can detect
+// collected loot WITHOUT the native injection running. ERR/Randomizer reassign
+// loot flags, so the baked textDisableFlagId1 is often stale — the live
+// getItemFlagId is authoritative. Returns baked_flag when the row isn't lot-backed
+// or the lot can't be resolved (graceful fallback). Always on (the old live_loot_flags
+// flag, which gated the NATIVE map's param rewrite, was removed in Phase 2b); this is a
+// read-only resolve for the overlay's collected-detection, which must work regardless
+// (else ERR-remapped loot like Golden Runes never registers as taken).
+// The LotReader is cached after first use (params are loaded by map-open time).
+uint32_t goblin::resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag)
 {
-    const bool do_flags  = goblin::config::liveLootFlags;
-    const bool do_labels = goblin::config::liveLootLabels;
-    const bool do_anon   = goblin::config::anonymousLoot;
-    if ((!do_flags && !do_labels && !do_anon) || g_lot_backed_rows.empty())
-        return;
-    GOBLIN_BENCH("map.live_loot.total");
-
-    LotReader lots;
-    lots.init();
-    if (!lots.ok())
+    if (lotType == 0 || lotId == 0)
+        return baked_flag;
+    static LotReader s_lots;
+    static bool s_init = false, s_ok = false;
+    if (!s_init) { s_init = true; s_lots.init(); s_ok = s_lots.ok(); }
+    if (!s_ok)
+        return baked_flag;
+    RawItemLotRow *row = s_lots.row(lotId, lotType);
+    if (!row)
+        return baked_flag;
+    uint32_t flag = *reinterpret_cast<uint32_t *>(row->b + 0x80);  // lot-wide getItemFlagId
+    if (flag == 0)
     {
-        spdlog::warn("[LIVE-LOOT] ItemLotParam not available — skipped");
+        // Single-item lots only (else a slot-1 flag would mark the whole row taken
+        // while other loot remains) — mirrors refresh_loot_from_itemlot.
+        int32_t item2 = *reinterpret_cast<int32_t *>(row->b + 0x04);
+        if (item2 == 0)
+            flag = *reinterpret_cast<uint32_t *>(row->b + 0x60);  // getItemFlagId01
+    }
+    uint32_t resolved = flag ? flag : baked_flag;
+    // Non-persistent / repeatable flags have NO save-backed "obtained" bit, so they
+    // read false forever (IsEventFlag: a flag whose group isn't in the persistent
+    // manager returns false — the temp/event-local groups never are). -1 = "always
+    // re-droppable" (Paramdex); >=2^30 = the empirical temp range (golden runes /
+    // crafting / consumables — repeatable loot). Treat these as NOT a tracked
+    // collectible: return 0 so the caller skips the marker for graying + census
+    // (instead of counting it perpetually "remaining"). This is the dominant cause of
+    // the 100%-save over-report. See docs/re/windows_collected_loot_flag_re_findings.md.
+    if (resolved == 0xFFFFFFFFu || resolved >= 0x40000000u)
+        return 0;
+    return resolved;
+}
+
+// One-shot field dump to RE the real per-item "obtained" flag (see the findings doc).
+// For up to ~6 markers per category, log every candidate flag and its live SET/unset
+// state. Run on a 100% save: the candidate that reads SET for a known-collected item is
+// the correct field; if NONE is set for whole categories, those lots carry no readable
+// persistent obtained flag (repeatable, or the real flag isn't in the lot/map data).
+void goblin::diag_loot_flags(uint32_t lotId, uint8_t lotType, uint32_t baked, int category,
+                             uint32_t nameId)
+{
+    if (!goblin::config::diagLootFlags) return;
+    static int per_cat[NUM_CATEGORIES] = {0};
+    if (category < 0 || category >= NUM_CATEGORIES || per_cat[category] >= 6) return;
+    auto setstr = [](uint32_t f) -> const char * {
+        return f ? (orp_flag_set(f) ? "(SET)" : "(unset)") : "";
+    };
+    if (lotType == 0 || lotId == 0)
+    {
+        spdlog::info("[LOOTDIAG] cat {:2} name {} NO-LOT baked={}{}", category, nameId, baked,
+                     setstr(baked));
+        per_cat[category]++;
         return;
     }
-    auto read_row = [&](uint32_t lot_id, uint8_t lot_type) { return lots.row(lot_id, lot_type); };
-
-    int updated = 0, relabeled = 0, not_found = 0, no_flag = 0;
-    for (auto &lr : g_lot_backed_rows)
+    static LotReader s_diag;
+    static bool s_init = false, s_ok = false;
+    if (!s_init) { s_init = true; s_diag.init(); s_ok = s_diag.ok(); }
+    RawItemLotRow *row = s_ok ? s_diag.row(lotId, lotType) : nullptr;
+    if (!row)
     {
-        RawItemLotRow *row = read_row(lr.lotId, lr.lotType);
-        if (!row) { not_found++; continue; }
-        auto *p = reinterpret_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(lr.ptr);
-
-        if (do_flags)
-        {
-            uint32_t flag = *reinterpret_cast<uint32_t *>(row->b + 0x80);  // lot-wide getItemFlagId
-            if (flag == 0)
-            {
-                // Fall back to the per-slot flag only for single-item lots
-                // (lotItemId02 @0x04 == 0), else a slot-1 award would hide the
-                // marker while other loot remains.
-                int32_t item2 = *reinterpret_cast<int32_t *>(row->b + 0x04);
-                if (item2 == 0)
-                    flag = *reinterpret_cast<uint32_t *>(row->b + 0x60);  // getItemFlagId01
-            }
-            if (flag)
-            {
-                // Hide the WHOLE marker on the live pickup flag. A loot marker
-                // carries the same disable flag on every populated text line
-                // (item line + location line; verified uniform across all
-                // lot-backed rows) — the engine only drops the icon once ALL
-                // its lines are disabled. Rewriting just slot 1 left the
-                // location line (slot 2) pinned to the stale baked flag, which
-                // never fires under a regulation that reassigns flags (the
-                // randomizer), so the marker never disappeared. Update every
-                // line that had a (non-zero) disable flag baked.
-                int *tids[8] = {&p->textId1, &p->textId2, &p->textId3, &p->textId4,
-                                &p->textId5, &p->textId6, &p->textId7, &p->textId8};
-                unsigned int *fls[8] = {&p->textDisableFlagId1, &p->textDisableFlagId2,
-                                        &p->textDisableFlagId3, &p->textDisableFlagId4,
-                                        &p->textDisableFlagId5, &p->textDisableFlagId6,
-                                        &p->textDisableFlagId7, &p->textDisableFlagId8};
-                for (int i = 0; i < 8; ++i)
-                    if (*tids[i] > 0 && *fls[i] != 0)
-                        *fls[i] = flag;
-                updated++;
-            }
-            else no_flag++;
-        }
-
-        if (do_anon)
-        {
-            // Spoiler-free mode: replace the item name with the generic
-            // localized label. Same slot guard as the live relabel below — only
-            // overwrite an actual item-name slot, never a location/enemy slot.
-            int32_t cur = p->textId1;
-            if (cur >= 50000000 && cur < 600000000 && cur != ANON_LABEL_TEXTID)
-            {
-                p->textId1 = ANON_LABEL_TEXTID;
-                relabeled++;
-            }
-        }
-        else if (do_labels)
-        {
-            // Relabel the item-name slot (textId1) to whatever the lot now
-            // gives. Guard: only touch textId1 if it already holds an
-            // item-name encoded id (50M..600M item bands) — never clobber a
-            // location (<50M) or enemy/npc (>=700M) slot. The encoded id maps
-            // into the full item-name space copied into PlaceName at init.
-            int32_t cur = p->textId1;
-            if (cur >= 50000000 && cur < 600000000)
-            {
-                int32_t item_id = *reinterpret_cast<int32_t *>(row->b + 0x00);  // lotItemId01
-                int32_t cat     = *reinterpret_cast<int32_t *>(row->b + 0x20);  // lotItemCategory01
-                int32_t enc = encode_live_item(item_id, cat);
-                if (item_id > 0 && enc > 0 && enc != cur)
-                {
-                    p->textId1 = enc;
-                    relabeled++;
-                }
-            }
-        }
+        spdlog::info("[LOOTDIAG] cat {:2} name {} lot {}/{} NO-ROW baked={}{}", category, nameId,
+                     lotId, lotType, baked, setstr(baked));
+        per_cat[category]++;
+        return;
     }
-    spdlog::info("[LIVE-LOOT] {} hide-flags, {} relabels set from live ItemLotParam "
-                 "({} lots not found, {} no flag, {} lot-backed total)",
-                 updated, relabeled, not_found, no_flag, g_lot_backed_rows.size());
+    int32_t item2 = *reinterpret_cast<int32_t *>(row->b + 0x04);
+    uint32_t lotwide = *reinterpret_cast<uint32_t *>(row->b + 0x80);
+    std::string slots;
+    for (int i = 0; i < 8; ++i)
+    {
+        uint32_t f = *reinterpret_cast<uint32_t *>(row->b + 0x60 + i * 4);
+        slots += std::to_string(f);
+        slots += setstr(f);
+        slots += ' ';
+    }
+    spdlog::info("[LOOTDIAG] cat {:2} name {} lot {}/{} item2={} | @0x80={}{} | baked={}{} | "
+                 "slots60: {}",
+                 category, nameId, lotId, lotType, item2, lotwide, setstr(lotwide), baked,
+                 setstr(baked), slots);
+    per_cat[category]++;
 }
 
 void goblin::menu_auto_toggle_loop()
@@ -3391,32 +4034,21 @@ void goblin::menu_auto_toggle_loop()
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-        // Show the native banner when the user flips the master-off via hotkey.
-        // Driven from this thread (the param-state owner) so all game-state
-        // mutation happens in one place.
+        // Master-off banner. The overlay itself honours the toggle — goblin_overlay
+        // skips render_markers when ui::icons_enabled() is false — so this thread only
+        // fires the visual banner when the user flips master-off via the F10 hotkey.
         bool user_disabled_now = g_icons_user_disabled.load();
         if (user_disabled_now != prev_user_disabled)
         {
-            apply_master_visibility(!user_disabled_now);  // hide first (instant areaNo park)
-            show_toggle_banner(!user_disabled_now);       // banner after (off the hot path)
+            show_toggle_banner(!user_disabled_now);
             prev_user_disabled = user_disabled_now;
         }
 
-        // Track whether this tick flipped any areaNo on the live blob, so we can ask
-        // the engine for a live icon re-render (experimental; no-op unless the hook
-        // is installed AND the map is open — see install_live_refresh_hook).
-        bool wm_live_edit = false;
-
-        // Per-section toggle requests posted by the hotkey thread. Apply the
-        // areaNo flips on the live blob and persist the choice here (single
-        // owner of game-state mutation), then fire whatever toast was queued.
-        int areq = g_section_apply_req.exchange(-1);
-        if (areq >= 0 && areq < SECTION_COUNT)
-        {
-            apply_section_visibility(static_cast<Section>(areq), g_section_visible[areq].load());
+        // Per-section toggle: persist the choice to the ini (single owner of file I/O,
+        // off the render thread). The overlay reads section_visible() live via the
+        // ui:: getter, so no blob mutation is needed — just save.
+        if (g_section_apply_req.exchange(-1) >= 0)
             goblin::save_section_states(goblin::config_ini_path());
-            wm_live_edit = true;
-        }
 
         // Toast queue: fire one at a time, spaced so consecutive toasts don't
         // overwrite each other on screen.
@@ -3438,109 +4070,14 @@ void goblin::menu_auto_toggle_loop()
                 goblin::show_codex_toast(fire_id);
         }
 
-        // Per-category toggle requests posted by the overlay menu. Applied here
-        // (single owner of game-state mutation). Scans dirty flags so a "toggle
-        // whole section" that flips many at once all land. Persistence to INI is
-        // the Save button's job (P3c) — this just applies live.
-        for (int c = 0; c < NUM_CATEGORIES; c++)
-            if (g_category_dirty[c].exchange(false))
-            {
-                apply_category_visibility(static_cast<Category>(c),
-                                          g_category_visible[c].load());
-                wm_live_edit = true;
-            }
-
-        // If a section/category toggle changed an areaNo while the map is open, ask
-        // the engine to re-render the icons now (instead of only on the next open).
-        // Experimental + self-gating: no-op unless config::liveRefreshWorldMap hooked
-        // the build fn and the 2D map is currently up.
-        if (wm_live_edit)
-            goblin::refresh_world_map_icons();
-
         // Menu "Save" → persist current visibility to the ini (file I/O here, off
         // the render thread).
         if (g_save_req.exchange(false))
             persist_settings();
 
-        // Danger zone: re-seed config from defaults + write the ini (off the
-        // render thread). Runtime visibility is unchanged until a restart.
+        // Danger zone: re-seed config from defaults + write the ini (off the render
+        // thread). Runtime visibility is unchanged until a restart.
         if (g_reset_defaults_req.exchange(false))
             goblin::reset_to_defaults_and_save(goblin::config_ini_path());
-
-        // Distance-adaptive: keep the plan tracking the player. Re-planning AT map-open
-        // wouldn't show until the NEXT open (the game reads the rows at open time), so
-        // instead re-plan IN-WORLD as the player moves — then any open shows current
-        // bands. Throttled; only when the player moved a meaningful distance (or
-        // changed map area) since the last plan, and only while the map is CLOSED
-        // (don't thrash mid-view). Feature-gated.
-        if (goblin::config::clusterDistanceAdaptive && goblin::config::enableClustering)
-        {
-            static std::chrono::steady_clock::time_point s_last_chk{};
-            static int s_last_area = -999;
-            static float s_last_x = 0, s_last_z = 0;
-            static int s_last_gx = -999, s_last_gz = -999;
-            auto now2 = std::chrono::steady_clock::now();
-            if ((now2 == std::chrono::steady_clock::time_point{} || now2 - s_last_chk > std::chrono::milliseconds(2000))
-                && !goblin::world_map_open())
-            {
-                s_last_chk = now2;
-                int pa, pgx = -1, pgz = -1; float px, pz;
-                if (goblin::get_player_map_pos(pa, px, pz, &pgx, &pgz))
-                {
-                    // re-plan on area change, or — underground, where px/pz are leaf-
-                    // block-local garbage — on TILE change (reliable from MapId); else
-                    // (overworld) once the player drifts past ~half the near radius.
-                    float move_gate = std::max(256.0f, goblin::config::clusterNearRadius * 128.0f);
-                    bool tile_changed = (pgx != s_last_gx || pgz != s_last_gz);
-                    float moved = (pa != s_last_area) ? 1e9f : std::sqrt(
-                        (px - s_last_x) * (px - s_last_x) + (pz - s_last_z) * (pz - s_last_z));
-                    if (moved > move_gate || tile_changed)
-                    {
-                        s_last_area = pa; s_last_x = px; s_last_z = pz;
-                        s_last_gx = pgx; s_last_gz = pgz;
-                        g_cluster_replan_dirty.store(true);
-                    }
-                }
-            }
-        }
-
-        // Runtime cluster re-plan (enable / soft-hard / threshold / exclude). Rebuilds
-        // the whole plan from the live rows into the pool, then applies the view.
-        // ONLY while the map is CLOSED: replan's teardown briefly un-parks every old
-        // member then re-parks them into new piles, so applying it mid-render leaves
-        // PHANTOM / duplicate icons. Deferred (keep the dirty flag set) until the map
-        // closes, then it's applied for the next open — matching "reopen to apply".
-        // Likewise the expand/collapse re-park.
-        bool map_open_now = goblin::world_map_open();
-        if (!map_open_now && g_cluster_replan_dirty.load())
-        {
-            g_cluster_replan_dirty.store(false);
-            replan_clusters();
-        }
-        // Cluster expand/collapse + debug-label flips (areaNo / textId on the live blob).
-        if (!map_open_now && g_cluster_expand_dirty.load())
-        {
-            g_cluster_expand_dirty.store(false);
-            apply_cluster_expanded(g_clusters_expanded.load());
-        }
-        // Bubble show/hide now PARKS the cluster glyph (areaNo), not just a textId
-        // flip — so gate it to map-closed like expand/replan (parking the live blob
-        // while the map renders risks the duplicate/oversized race). Applies on next
-        // open. Keep the dirty bit set until then so the toggle isn't lost.
-        if (!map_open_now && g_cluster_debug_dirty.load())
-        {
-            g_cluster_debug_dirty.store(false);
-            apply_cluster_debug(g_cluster_debug.load());
-        }
-
-        // (Player-position probe logging removed — proximity clustering paused:
-        // live player world coords are unstable/chunk-local and the map-cursor /
-        // live-refresh paths both need the blocked CSWorldMapMenu RE. The reader
-        // get_player_world_pos() is kept dormant for when that RE lands.)
-
-        // (Master on/off is applied via apply_master_visibility above — the live
-        // areaNo lever — not the param-file swap, which reflected only per-region
-        // as the game re-read the file. set_param_injection_active stays for the
-        // ERSC-hosting revert path.)
     }
 }

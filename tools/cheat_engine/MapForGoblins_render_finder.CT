@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CheatTable CheatEngineTableVersion="44">
+  <CheatEntries>
+    <CheatEntry>
+      <ID>0</ID>
+      <Description>"=== MapForGoblins: render_out FINDER (no debugger — walks the point map) ==="</Description>
+      <GroupHeader>1</GroupHeader>
+    </CheatEntry>
+  </CheatEntries>
+  <LuaScript><![CDATA[
+--[[ MapForGoblins — find the TRUE render_out the game writes per marker, WITHOUT a
+     debugger (the bp route failed: CE couldn't attach alongside x64dbg / anti-debug).
+
+  The built map-point instances live in a std::map<int, CSWorldMapPointIns*> at
+  CSWorldMapPointMan + 0x398. We walk that tree in memory (pure reads), and for each
+  CSWorldMapPointIns: read its `world` from the param row (point+0x80 area, located by
+  pattern), then brute-scan the point + the objects it points to for the float pair that
+  varies LINEARLY with world across all points. That pair = render_out; the fit hands back
+  M (shared) + T. If nothing correlates -> render_out is VMP-only (use the snapped cursor).
+
+  USE: attach CE to eldenring.exe, load this table, OPEN the world map on a page, press
+  NUMPAD 3. (Read-only; safe to run anytime. No breakpoint, no debugger needed.)            ]]
+
+-- static slots that may hold the CSWorldMapPointMan* (tried in order, validated)
+local POINTMAN_SLOT_RVAS = { 0x3d6e9b0, 0x3d6e9d8 }
+local MAP_OFF           = 0x398       -- std::map<int, CSWorldMapPointIns*>
+local PAGES = {[10]=1,[11]=1,[12]=1,[16]=1,[18]=1,[20]=1,[21]=1,
+               [40]=1,[41]=1,[42]=1,[43]=1,[60]=1,[61]=1}
+local MAXPTS = 80
+
+rf = rf or {}
+
+local function f32(tb, off) if not tb or off+4 > #tb then return nil end
+  return byteTableToFloat({tb[off+1],tb[off+2],tb[off+3],tb[off+4]}) end
+local function fin(v) return v ~= nil and v == v and v < 1e30 and v > -1e30 end
+local function heapptr(p) return p and p > 0x10000 and p < 0x7fffffffffff and (p & 7) == 0 end
+local function isnil(node) if not node then return true end local b = readBytes(node+0x19,1,true); return (not b) or b[1] ~= 0 end
+local function left(n)   return readQword(n+0x00) end
+local function parent(n) return readQword(n+0x08) end
+local function right(n)  return readQword(n+0x10) end
+
+local function tree_first(n) local g=0 while n and not isnil(left(n)) and g<200 do n=left(n); g=g+1 end return n end
+local function tree_next(n)
+  if not isnil(right(n)) then return tree_first(right(n)) end
+  local p = parent(n); local g=0
+  while p and not isnil(p) and n == right(p) and g<200 do n=p; p=parent(p); g=g+1 end
+  return p
+end
+
+-- collect every built map-point instance by scanning writable memory for the THREE
+-- subclass vtables (graces are Discovery points; markers/reentry are subclasses with
+-- their own vtable). Same robust technique as the cursor CT; one-shot.
+local POINT_VTABLE_RVAS = {
+  { rva = 0x2b487a8, name = "Point"     },
+  { rva = 0x2b48440, name = "Discovery" },   -- graces / discovered points (the bulk)
+  { rva = 0x2b48d28, name = "Reentry"   },
+}
+local function collect_points()
+  local base = getAddress("eldenring.exe"); if base==0 then return nil,"no exe" end
+  local pts, counts = {}, {}
+  for _, vd in ipairs(POINT_VTABLE_RVAS) do
+    local vt = base + vd.rva
+    local bb = {}; for i=0,7 do bb[i+1] = string.format("%02X", (vt >> (i*8)) & 0xFF) end
+    local res = AOBScan(table.concat(bb, " "), "+W-C")
+    local c = 0
+    if res ~= nil then
+      for i=0,res.Count-1 do
+        local a = getAddress(res[i])
+        if readQword(a) == vt then pts[#pts+1] = a; c = c + 1; if #pts >= MAXPTS then break end end
+      end
+      res.destroy()
+    end
+    counts[#counts+1] = vd.name .. "=" .. c
+    if #pts >= MAXPTS then break end
+  end
+  if #pts==0 then return nil,"no map-point instances (open the map on a page with icons?)" end
+  return pts, "vtable scan: " .. table.concat(counts, " ") .. "  total=" .. #pts
+end
+
+-- point+0x80 is a POINTER to the WorldMapPointParam row (ctor inits it to 0). Search the
+-- dereferenced row (c.row) first, then the inline point bytes (c.b) as a fallback. areaNo
+-- is a byte mid-struct, so step by 1. Returns (which, off): which=1 row, 2 inline.
+local function getrow(c, which) return (which==1) and c.row or c.b end
+local function find_row(caps)
+  for which = 1, 2 do
+    for off = 0x00, 0x110, 1 do
+      local ok = true
+      for _, c in ipairs(caps) do
+        local tb = getrow(c, which)
+        if not tb then ok=false; break end
+        local a,gx,gz = tb[off+1], tb[off+2], tb[off+3]
+        local px,pz = f32(tb,off+4), f32(tb,off+12)
+        if not (a and PAGES[a] and gx and gx<128 and gz and gz<128 and
+                fin(px) and math.abs(px)<3000 and fin(pz) and math.abs(pz)<3000) then ok=false; break end
+      end
+      if ok then return which, off end
+    end
+  end
+  return nil
+end
+
+local function lstsq(W, r)
+  local Sxx,Sxz,Sx,Szz,Sz,n=0,0,0,0,0,#W local Sxr,Szr,Sr=0,0,0
+  for i=1,n do local wx,wz,ri=W[i][1],W[i][2],r[i]
+    Sxx=Sxx+wx*wx;Sxz=Sxz+wx*wz;Sx=Sx+wx;Szz=Szz+wz*wz;Sz=Sz+wz;Sxr=Sxr+wx*ri;Szr=Szr+wz*ri;Sr=Sr+ri end
+  local M={{Sxx,Sxz,Sx,Sxr},{Sxz,Szz,Sz,Szr},{Sx,Sz,n,Sr}}
+  for col=1,3 do local piv=col
+    for k=col+1,3 do if math.abs(M[k][col])>math.abs(M[piv][col]) then piv=k end end
+    if math.abs(M[piv][col])<1e-9 then return nil end
+    M[col],M[piv]=M[piv],M[col]
+    for k=1,3 do if k~=col then local f=M[k][col]/M[col][col]
+      for j=col,4 do M[k][j]=M[k][j]-f*M[col][j] end end end end
+  local a,b,e=M[1][4]/M[1][1],M[2][4]/M[2][2],M[3][4]/M[3][3]
+  local maxr=0 for i=1,n do local res=math.abs(r[i]-(a*W[i][1]+b*W[i][2]+e)); if res>maxr then maxr=res end end
+  return a,b,e,maxr
+end
+
+function rf_scan()
+  local pts, msg = collect_points()
+  if not pts then print("[RF] "..msg); return end
+  print("[RF] point map: "..msg)
+  -- read each point's bytes + 1-level pointer targets
+  local caps = {}
+  for _, pt in ipairs(pts) do
+    local b = readBytes(pt, 0x400, true)
+    if b then
+      local ptrs = {}
+      for off=0,0x180,8 do local p=readQword(pt+off)
+        if heapptr(p) then local tb=readBytes(p,0x120,true); if tb then ptrs[off]={addr=p,b=tb} end end end
+      local rp = readQword(pt+0x80)
+      local row = heapptr(rp) and readBytes(rp, 0x120, true) or nil
+      caps[#caps+1] = { point=pt, b=b, ptrs=ptrs, row=row }
+    end
+  end
+  if #caps < 4 then print("[RF] only "..#caps.." readable points — need more BUILT markers (inject mode / discovered page)"); return end
+  local which, roff = find_row(caps)
+  if not which then print("[RF] couldn't locate the param row (in [point+0x80] or inline)"); return end
+  print(string.format("[RF] param row in %s @ +0x%X  (%d points)",
+        which==1 and "[point+0x80]" or "point", roff, #caps))
+  local W = {}
+  for i,c in ipairs(caps) do
+    local tb = getrow(c, which)
+    local gx,gz = tb[roff+2], tb[roff+3]
+    local px,pz = f32(tb,roff+4), f32(tb,roff+12)
+    W[i] = { gx*256+px, gz*256+pz, tb[roff+1] }
+  end
+  -- pointer sources common to all caps
+  local sources = { { name="point" } }
+  local common = nil
+  for _,c in ipairs(caps) do local s={} for off,_ in pairs(c.ptrs) do s[off]=true end
+    if common==nil then common=s else for off,_ in pairs(common) do if not s[off] then common[off]=nil end end end end
+  if common then for off,_ in pairs(common) do sources[#sources+1]={name="ptr@0x"..string.format("%X",off),poff=off} end end
+
+  -- group point indices by page (areaNo). M is SHARED across pages; T is PER PAGE
+  -- (the pivot — see pivot clarification). Fit/score M on the dominant page so a
+  -- cross-page T offset can't hide a real render_out field.
+  local pageIdx = {}
+  for i = 1, #W do local p = W[i][3]; pageIdx[p] = pageIdx[p] or {}; table.insert(pageIdx[p], i) end
+  local mainpage, mainIdx = nil, {}
+  for p, idx in pairs(pageIdx) do if #idx > #mainIdx then mainpage = p; mainIdx = idx end end
+  local function sub(arr, idx) local o = {} for _, i in ipairs(idx) do o[#o+1] = arr[i] end return o end
+  print(string.format("[RF] pages: %s ; fitting M on page %s (%d pts)",
+        (function() local s = {} for p, idx in pairs(pageIdx) do s[#s+1] = p .. ":" .. #idx end
+         return table.concat(s, " ") end)(), tostring(mainpage), #mainIdx))
+  if #mainIdx < 4 then print("[RF] dominant page has <4 points — need more BUILT markers (inject mode)"); return end
+  local Wmp = sub(W, mainIdx)
+
+  local best = {}   -- {src, off, a,b,c,d, res, rx, rz}
+  for _,src in ipairs(sources) do
+    local len = src.name=="point" and #caps[1].b or #caps[1].ptrs[src.poff].b
+    for off=0,len-8,4 do
+      local rx,rz={},{} local good,vary=true,false local first
+      for i,c in ipairs(caps) do
+        local tb = src.name=="point" and c.b or c.ptrs[src.poff].b
+        local fx,fz = f32(tb,off), f32(tb,off+4)
+        if not (fin(fx) and fin(fz) and math.abs(fx)<13000 and math.abs(fz)<13000) then good=false;break end
+        rx[i]=fx; rz[i]=fz
+        if first==nil then first=fx elseif math.abs(fx-first)>0.5 then vary=true end
+      end
+      if good and vary then
+        local a,b,e,mr  = lstsq(Wmp, sub(rx, mainIdx))
+        local c2,d,f,mr2 = lstsq(Wmp, sub(rz, mainIdx))
+        if a and c2 then local res=math.max(mr,mr2)
+          if res<8.0 then best[#best+1]={src=src.name,off=off,a=a,b=b,c=c2,d=d,res=res,rx=rx,rz=rz} end end
+      end
+    end
+  end
+  if #best==0 then
+    print("[RF] NO float pair tracks world linearly -> render_out is NOT stored on the point")
+    print("[RF] or its direct pointers (VMP-only). Use the snapped-cursor render_out.")
+    return
+  end
+  table.sort(best, function(x,y) return x.res < y.res end)
+  local w = best[1]
+  print(string.format("[RF] render_out = %s +0x%X  (page-%s resid=%.2f)", w.src, w.off, tostring(mainpage), w.res))
+  print(string.format("[RF] M = [[%.5f, %.5f], [%.5f, %.5f]]  (shared)", w.a, w.b, w.c, w.d))
+  -- per-page T = mean(render - M*world) + on-rect [0,0,10496,10496] sanity
+  for p, idx in pairs(pageIdx) do
+    local se, sf = 0, 0
+    for _, i in ipairs(idx) do
+      se = se + (w.rx[i] - (w.a*W[i][1] + w.b*W[i][2]))
+      sf = sf + (w.rz[i] - (w.c*W[i][1] + w.d*W[i][2]))
+    end
+    local e, f = se/#idx, sf/#idx
+    -- check all this page's points land on-rect with its T
+    local onrect = true
+    for _, i in ipairs(idx) do
+      local rxp = w.a*W[i][1] + w.b*W[i][2] + e
+      local rzp = w.c*W[i][1] + w.d*W[i][2] + f
+      if rxp < -50 or rxp > 10546 or rzp < -50 or rzp > 10546 then onrect = false end
+    end
+    print(string.format("[RF]   T[%s] = (%.1f, %.1f)   (%d pts, on-rect: %s)",
+          tostring(p), e, f, #idx, onrect and "YES" or "NO -- bad fit/page label"))
+  end
+end
+
+if rf.hk then pcall(function() rf.hk.destroy() end) end
+rf.hk = createHotkey(rf_scan, VK_NUMPAD3)
+print("[RF] render_out finder v6 (shared M + per-page T, no debugger). Open the map, NUMPAD 3.")
+]]></LuaScript>
+</CheatTable>
