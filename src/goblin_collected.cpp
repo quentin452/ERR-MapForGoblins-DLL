@@ -582,7 +582,7 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
     // chests spawn their pickup only at open, placed/dropped world loot is resident at load.
     // GATED on !result.empty() (in a save, not the menu); latches only after a real in-world walk.
     static bool s_pathb_done = false;
-    if (goblin::config::diagFieldinsJoin && !s_pathb_done && !result.empty())
+    if (goblin::config::diagFieldinsJoin && !s_pathb_done && !g_wgm_cache.empty())
     {
         void *reg = nullptr, *sub = nullptr, *container = nullptr, *head = nullptr, *root = nullptr;
         uint64_t map_size = 0;
@@ -655,8 +655,11 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
     // so scan directly via VirtualQuery — no RPM. Answers pre-open residency definitively: hit≥1 →
     // lotId IS resident somewhere (then chase the offset); 0 → not resident pre-open (premium dead
     // for sealed chests). Gated in-world, one-shot.
+    // Gate on the PERSISTENT cache (non-empty whenever any tile is loaded), NOT `result` —
+    // `result` only carries this refresh's NEW tiles, so it's empty once tiles are cached
+    // (standing still), and the scan would never fire unless the player happened to be moving.
     static bool s_lotscan_done = false;
-    if (goblin::config::diagLotMemscan && !s_lotscan_done && !result.empty())
+    if (goblin::config::diagLotMemscan && !s_lotscan_done && !g_wgm_cache.empty())
     {
         s_lotscan_done = true;
         const uint32_t target = 0x3dd6fec4;   // 1037500100 = AEG099_090_9000's ItemLotID
