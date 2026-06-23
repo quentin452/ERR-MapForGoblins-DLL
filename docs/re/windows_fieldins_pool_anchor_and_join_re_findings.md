@@ -115,3 +115,39 @@ in the **global** pool/registry, not the per-asset embedded one → **path (B) i
 one-shot probe iterating the STEP-1 registry `er+0x3d7b0c0 → reg → [+0x10] → +0x720` RB-tree, read each
 `node+0x28` instance's vtable + `lotId@+0x50`; confirm a treasure FieldIns with a non-zero lotId is
 resident at tile-load (before open). Bulk/throttle/one-shot (Wine RPM).
+
+---
+
+## ★ RUNTIME RESULT — path (B) global-registry walk INCONCLUSIVE in-process (2026-06-23)
+
+One-shot in-process walk of the documented registry chain `er+0x3d7b0c0 → reg → [reg+0x10] →
+sub+0x720 → map+0x8 (head) → head+0x08 (root)`, treating it as an MSVC RB-tree (node +0x00 left /
++0x10 right / +0x28 value=instance), reading `lotId@+0x50` per instance. (`diag_fieldins_join`,
+commit e63e003, gated in-world.)
+
+**Result, two iterations:**
+- WITHOUT a visited-set: ballooned to the 60k node cap, `instances=29436 nonzeroLot=18580` — but the
+  sample was the **same instance 24×** (a `MapIns`, vt `0x2a8f650`, `lotId@+0x50 = 0xffffffff` = no-lot
+  sentinel). The walk was **revisiting nodes (cycle) / reading garbage as children** — the big counts
+  were noise.
+- WITH a visited-set + real-lot filter (lot ≠0/≠0xffffffff/≥0x10000000): **`distinctNodes=2,
+  instances=2, realLot=1, targetLotHits=0`.** Only ONE real-lot instance reachable (`inst 0x27297880`,
+  vt `0x1430308e8` (RVA 0x30308e8 — NOT the `FieldInsBase` 0x2a25e68 family), `lotId 0x3c8ab7cb`),
+  not the target chest.
+
+**Verdict:** the chain `sub+0x720` as walked resolves to a ~2-node structure, **not** the
+hundreds/thousands-entry field-instance registry the Ghidra pass described — so either an offset
+drifted, the container is not a plain `std::map<u64,ptr>` with this node layout, or `head`/`root` sit
+elsewhere. **Path (B) is NOT confirmable by in-process RPM with the current offsets.** Combined with
+path (A) being empty at tile-load, the runtime asset→lot link for the explore-cache **premium**
+(ERR-added loot with names) is **not reachable from the documented structures in-process** → needs a
+Ghidra pass to nail the exact container + node layout + the treasure FieldIns vtable, AND to settle
+the make-or-break question below.
+
+## ⚠️ The make-or-break question for the whole feature
+Path A proved the loot FieldIns is **NOT parented on the asset at tile-load**. So: **does a treasure's
+lotId-bearing FieldIns exist ANYWHERE resident BEFORE the chest is opened, or only after?** If
+only-after, an explore-cache can only catch loot the player has already OPENED (near-useless — you'd
+have to open everything). The prior heap-scan that found `0x3dd6fec4` resident may have been on an
+already-opened chest, or may have matched the `ItemLotParam` table copy (the other family it noted),
+not a pre-open FieldIns. Ghidra must confirm pre-open residency, else the feature is moot.
