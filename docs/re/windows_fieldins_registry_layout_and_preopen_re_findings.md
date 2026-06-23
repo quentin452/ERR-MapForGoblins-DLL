@@ -124,3 +124,30 @@ stands regardless:
   which already works today with zero new RE.
 - `diag_fieldins_join` left in tree but OFF (dormant diagnostic; gated, harmless). Re-open only if a
   future Ghidra pass re-anchors the field-instance map via AOB and proves a pre-open lotId exists.
+
+---
+
+## ★★ DEFINITIVE — brute memory scan settles pre-open residency: NOT RESIDENT (2026-06-23)
+
+In-process `[LOTSCAN]` (commits ac63c8c..c148fe4): VirtualQuery walk of ALL committed PRIVATE memory,
+byte-granular scan for the known chest's lotId `0x3dd6fec4`, standing at the UNOPENED chest, with the
+scanner's own stack + DLL module excluded (a first pass false-positived on our own `target` literal +
+MBI fields + an spdlog ".2f} ms" string — caught and excluded).
+
+**Clean result — exactly TWO hits, BOTH in the ItemLotParam param heap, ZERO game objects:**
+- the `{lotId, 0x12exxx, 0x18c471}` stride-0x18 param-row table (DEREF of every neighbour = raw byte
+  data `17 18 19 1a…`, no valid pointers → NOT an object);
+- the sorted `{lotId(low u32), index(high u16)}` lookup array (`1a2a..1a35` indices).
+
+Both are **always resident** (the regulation `ItemLotParam`, chest-independent). **No runtime
+instance, no object with a vtable, anywhere in private memory holds the chest's lotId before it is
+opened.**
+
+**VERDICT (closes the make-or-break):** a sealed chest's loot identity (lotId) is **not resident in
+any usable runtime structure pre-open** — confirmed three independent ways: path-A embedded pool empty
+at load, Ghidra taxonomy (no item class, sealed spawns at open), and now a structure-agnostic full
+memory scan finding the lotId only in the param tables. **The "ERR-added-loot-with-names" explore-cache
+PREMIUM is DEAD for sealed chests → keep baked-only.** Placed/dropped world loot is a geom-item we
+already enumerate (CSWorldGeomMan walk) but it carries no resident lotId either (path A), so the premium
+has no viable runtime source. **Investigation CLOSED.** Ships: baked-partName-join explore-cache (works
+today). Diags (`diag_fieldins_join`, `diag_lot_memscan`) left dormant in tree (gated, off).
