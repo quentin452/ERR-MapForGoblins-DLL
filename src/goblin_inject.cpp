@@ -3130,33 +3130,40 @@ using setto_fn = void *(__fastcall *)(void *, void *, void *, void *);
 setto_fn g_setto_orig = nullptr;
 // GFx helpers (resolve at hook-install, cached): get a named child proxy / set a widget _visible /
 // release the stack proxy. Signatures inferred from the RE pseudocode (doc §4).
-void *(__fastcall *g_gfx_get_child)(void *widgetRoot, void *outChild, const char *name) = nullptr;
-void *(__fastcall *g_gfx_set_visible)(void *child, int visible) = nullptr;
-void *(__fastcall *g_gfx_release_proxy)(void *cssvAtChildPlus0x28) = nullptr;
 void *g_warppin_vftable = nullptr;   // er + 0x2ad8228 (WorldMapWarpPinData::vftable) — grace filter
 
 void *__fastcall warp_setto_detour(void *pin, void *widgetRoot, void *a3, void *a4)
 {
+    // Decide suppression BEFORE calling orig. SetTo binds the per-pin GFx row, reading pin+0xC to set
+    // the row's _visible — then RELEASES the (stack) widget proxy at its end (FUN_140d7f850). So poking
+    // the proxy AFTER orig is a no-op on a dead proxy (that was the bug). Instead force pin+0xC=0 around
+    // orig so SetTo's OWN set_visible(widgetRoot,0) runs while the proxy is live → row hidden. Restore
+    // pin+0xC afterward so the cursor's nearest-pin selection (FUN_1409cab60, reads pin+0xC + position,
+    // NOT the row _visible) still treats the grace as selectable → fast-travel survives.
+    bool suppress = false;
+    uint8_t *pVis = nullptr;
+    uint8_t savedVis = 0;
+    if (goblin::config::graceSuppressNative && goblin::config::graceOverlay && pin && widgetRoot
+        && *reinterpret_cast<void **>(pin) == g_warppin_vftable)
+    {
+        uint32_t state = *reinterpret_cast<uint32_t *>(reinterpret_cast<uintptr_t>(pin) + 0x60);
+        if ((state & 7) != 0)   // discovered grace (undiscovered → engine draws nothing anyway)
+        {
+            suppress = true;
+            pVis = reinterpret_cast<uint8_t *>(reinterpret_cast<uintptr_t>(pin) + 0xC);
+            savedVis = *pVis;
+            *pVis = 0;   // SetTo will bind the row _visible = 0
+        }
+    }
     void *ret = g_setto_orig(pin, widgetRoot, a3, a4);
-    if (!goblin::config::graceSuppressNative || !goblin::config::graceOverlay || !pin || !widgetRoot)
-        return ret;
-    if (!g_gfx_get_child || !g_gfx_set_visible || !g_gfx_release_proxy)
-        return ret;
-    // vt[1] is shared by Warp & Point pins → filter to grace warp pins by the object vtable.
-    if (*reinterpret_cast<void **>(pin) != g_warppin_vftable)
-        return ret;
-    // discovered = state bitmask pin+0x60 has any layer bit set (undiscovered → native draws nothing).
-    uint32_t state = *reinterpret_cast<uint32_t *>(reinterpret_cast<uintptr_t>(pin) + 0x60);
-    if ((state & 7) == 0)
-        return ret;
-    // Hide ONLY the Icon_0 child. The GFx child proxy is ComponentProxy@+0 + CSScaleformValue@+0x28;
-    // get_child fills it, set_visible takes the proxy BASE, release takes the CSScaleformValue at
-    // +0x28 (verified vs SetTo's own disasm: get_child→RSP+0x40, release→RSP+0x68 = +0x28). The
-    // earlier crash (0xC000001D) was releasing the base. See windows_grace_warppin_setto_abi_re_findings.md.
-    alignas(16) uint8_t child[0x60] = {};   // get_child fills it (≥ real proxy size ~0x58)
-    g_gfx_get_child(widgetRoot, child, "Icon_0");
-    g_gfx_set_visible(child, 0);                 // proxy base
-    g_gfx_release_proxy(child + 0x28);           // the CSScaleformValue (NOT the base)
+    if (suppress)
+    {
+        *pVis = savedVis ? savedVis : 1;   // restore so selection vt[6] keeps the grace clickable
+        static int s_hidden = 0;
+        if (s_hidden++ < 10)
+            spdlog::info("[SETTO] grace row hidden via pin+0xC toggle (restored {:#x}) pin={:#x}",
+                         *pVis, reinterpret_cast<uintptr_t>(pin));
+    }
     return ret;
 }
 } // namespace
@@ -3179,23 +3186,21 @@ void goblin::install_grace_suppression_hook()
         g_warp_pin_orig = nullptr;
     }
 
-    // DRAW-ONLY suppression: hook vt[1] SetTo + resolve the GFx helpers (RE teleport findings §4/§5).
-    // The earlier crash (0xC000001D) was a single wrong arg: release must take the CSScaleformValue at
-    // proxy+0x28, not the proxy base. Fixed in warp_setto_detour and verified against SetTo's own
-    // disasm (windows_grace_warppin_setto_abi_re_findings.md). Re-enabled; needs in-game runtime test.
+    // DRAW-ONLY suppression: hook vt[1] SetTo and force pin+0xC=0 around orig so SetTo's own
+    // set_visible hides the per-pin GFx row while its proxy is live (poking after orig hit a released
+    // proxy = no-op, the earlier bug). pin+0xC is restored after orig so the cursor's nearest-pin
+    // selection (FUN_1409cab60, reads pin+0xC + position) keeps the grace clickable → teleport survives.
+    // (RE windows_grace_warppin_cursor_re_findings.md.)
     constexpr bool kSetToHookEnabled = true;
     if (kSetToHookEnabled)
     {
-        g_gfx_get_child = reinterpret_cast<decltype(g_gfx_get_child)>(er + 0x74a2f0);   // FUN_14074a2f0
-        g_gfx_set_visible = reinterpret_cast<decltype(g_gfx_set_visible)>(er + 0x733340); // FUN_140733340
-        g_gfx_release_proxy = reinterpret_cast<decltype(g_gfx_release_proxy)>(er + 0xd7f850); // FUN_140d7f850
         g_warppin_vftable = reinterpret_cast<void *>(er + 0x2ad8228); // WorldMapWarpPinData::vftable
         void *setto = reinterpret_cast<void *>(er + 0x87ae20);   // FUN_14087ae20 (vt[1] SetTo)
         try
         {
             modutils::hook(setto, reinterpret_cast<void *>(&warp_setto_detour),
                            reinterpret_cast<void **>(&g_setto_orig));
-            spdlog::info("[WARPPIN] SetTo hooked @ {} (draw-only: hide Icon_0, keep teleport)", setto);
+            spdlog::info("[WARPPIN] SetTo hooked @ {} (draw-only: hide row, keep teleport)", setto);
         }
         catch (const std::exception &e)
         {
