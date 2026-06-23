@@ -83,7 +83,7 @@ detail/legacy MSBs, which are resident when their tile is streamed.
 
 ## ★★★ DISK route validated — non-loaded map decoded from ERR's real files (2026-06-24)
 Decoded Stormveil `m10_00_00_00.msb.dcx` straight from `D:\DOWNLOAD\ERR_mod\map\MapStudio\` while the
-player was in Altus (m10 NOT loaded). `D:ghidra_scriptsdecode_disk_msb.py` → **113 treasures**, e.g.
+player was in Altus (m10 NOT loaded). `D:\ghidra_scripts\decode_disk_msb.py` → **113 treasures**, e.g.
 `lot=10000850 part='AEG099_990_9002' pos=(-298.4,64.3,426.3)` — **exact match to `items_database.json`**
 (`m10_00_00_00`, x=-298.403, y=64.315, z=426.311, partName AEG099_990_9002, itemLotId 10000850). Proves
 full-upfront coverage from the active mod's on-disk files.
@@ -105,4 +105,4 @@ Two decisive findings for the C++ parser:
 
 Net: **both routes proven** — resident MSBs (loaded, offsets absolute) + on-disk `.msb.dcx` (non-loaded,
 zlib + entry-relative). One C++ MSBE parser with a disk/resident offset-base flag covers the whole map
-from the active mod's real files, no committed bake. Probe: `D:ghidra_scriptsdecode_disk_msb.py`, `dbg4.py`.
+from the active mod's real files, no committed bake. Probe: `D:\ghidra_scripts\decode_disk_msb.py`, `dbg4.py`.
