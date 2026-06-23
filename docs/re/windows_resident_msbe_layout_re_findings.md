@@ -80,3 +80,29 @@ detail/legacy MSBs, which are resident when their tile is streamed.
 
 **The C++ MSBE parser can now be written against these exact offsets.** Probes:
 `live_msb_parse{,2,3,4}.py`.
+
+## ★★★ DISK route validated — non-loaded map decoded from ERR's real files (2026-06-24)
+Decoded Stormveil `m10_00_00_00.msb.dcx` straight from `D:\DOWNLOAD\ERR_mod\map\MapStudio\` while the
+player was in Altus (m10 NOT loaded). `D:ghidra_scriptsdecode_disk_msb.py` → **113 treasures**, e.g.
+`lot=10000850 part='AEG099_990_9002' pos=(-298.4,64.3,426.3)` — **exact match to `items_database.json`**
+(`m10_00_00_00`, x=-298.403, y=64.315, z=426.311, partName AEG099_990_9002, itemLotId 10000850). Proves
+full-upfront coverage from the active mod's on-disk files.
+
+Two decisive findings for the C++ parser:
+1. **ERR's loose `.msb.dcx` are `DCX_DFLT` (zlib/Deflate), NOT Oodle.** Header: `DCS\0`→ big-endian
+   uncompressedSize@+4 / compressedSize@+8; `DCP\0 DFLT`; data starts at `find("DCA\0")+8` with a `78 da`
+   zlib stream. So **zlib (miniz) decompresses ERR maps — Oodle only needed for any `DCX_KRAK` maps**
+   (Oodle already callable via the mod, so both are covered).
+2. **★ Offset-base differs disk vs resident:**
+   - **PARAM-level** offsets (section nameOffset, the entry-offset array) are **file-absolute** in BOTH.
+   - **ENTRY-internal** offsets (an entry's nameOffset, entityDataOffset, typeDataOffset) are
+     **ENTRY-RELATIVE on disk** (add the entry start: `td = entryStart + read(entry+0x20)`), but the game
+     **relocates them to absolute VAs in the resident RAM copy** (read directly). So the parser needs two
+     modes: disk = entry-relative; resident = absolute. Inline data (e.g. PARTS position vec3 @+0x20) is
+     not an offset → same in both.
+3. `partIndex == 0xFFFFFFFF` for item-glow / no-physical-part treasures (drops, event items) → skip or
+   fall back to a region/point for position; the chest/corpse treasures all resolve with a real part+pos.
+
+Net: **both routes proven** — resident MSBs (loaded, offsets absolute) + on-disk `.msb.dcx` (non-loaded,
+zlib + entry-relative). One C++ MSBE parser with a disk/resident offset-base flag covers the whole map
+from the active mod's real files, no committed bake. Probe: `D:ghidra_scriptsdecode_disk_msb.py`, `dbg4.py`.
