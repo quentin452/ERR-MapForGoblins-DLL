@@ -979,17 +979,22 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // can snap it (below).
     const int open_grp = lv.openDlc ? 2 : ((lv.underground != 0) ? 1 : 0);
 
-    // Page-transition snap: switching map page (notably OW↔DLC) flips the native map
-    // CANVAS instantly — the engine snaps pan/zoom between fixed per-page values, no ease
-    // (RE findings §7b). The motion-sync delay below, tuned for smooth pans, would instead
-    // project markers from the PREVIOUS frame's view for one frame → the OLD map flashes
-    // for 1 frame at the switch. On a group change, drop the delay history (re-seed to the
-    // live, already-snapped view) so the overlay snaps WITH the canvas instead of lagging
-    // it by a frame. Normal pans (same group) keep the 1-frame delay.
-    static int s_prev_grp = -1;
-    if (open_grp != s_prev_grp)
+    // Page-transition snap: switching map page flips the native map CANVAS instantly — the
+    // engine snaps pan/zoom between fixed per-page values, no ease (RE findings §7b). The
+    // motion-sync delay below, tuned for smooth pans, would instead project markers from the
+    // PREVIOUS frame's view for one frame → the OLD map flashes for 1 frame at the switch.
+    // Drop the delay history (re-seed to the live, already-snapped view) on ANY page change,
+    // not just the OW↔DLC↔UG group: key on the full page identity (group + open area
+    // WorldMapArea+0x6e) so within-group page/area swaps snap too, AND on the engine's own
+    // swap-request edge (dialog+0xA44) so even same-area sub-page tab swaps catch it. The
+    // page id flips instantly at the swap (page_transition findings), so this re-seeds on the
+    // exact snap frame. Normal pans (same page, no swap) keep the 1-frame delay.
+    const long long page_key =
+        (static_cast<long long>(open_grp) << 32) ^ static_cast<uint32_t>(lv.viewArea);
+    static long long s_prev_page = -1;
+    if (page_key != s_prev_page || lv.swapEdge)
         g_view_delay.reset();
-    s_prev_grp = open_grp;
+    s_prev_page = page_key;
 
     // Motion sync: delay the projected view by the baked frame so markers ride the
     // native map layer instead of leading it during a pan.
