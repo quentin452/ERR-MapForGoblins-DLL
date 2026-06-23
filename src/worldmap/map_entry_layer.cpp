@@ -3,6 +3,7 @@
 #include "category_meta.hpp"
 #include "goblin_map_data.hpp" // MAP_ENTRIES / MAP_ENTRY_COUNT / MapEntry / Category
 #include "goblin_inject.hpp"   // marker_world_pos / category_visible / read_event_flag / census
+#include "goblin_config.hpp"   // config::diagLootFlags (phase-1 loot-identity probe gate)
 #include "goblin_logic.hpp"    // map_fragment_flag
 #include "goblin_collected.hpp" // is_original_row_collected (piece graying)
 #include "goblin_kindling.hpp"  // is_row_collected (kindling graying)
@@ -135,6 +136,34 @@ void build_live_bosses()
     spdlog::info("[BOSSLIVE] built {} boss markers from live WorldMapPointParam (textId2==5100)", n);
 }
 
+// PHASE-1 diagnostic (config diag_loot_flags): for every lot-backed marker, compare the BAKED
+// item identity (textId1) against the LIVE ItemLotParam slot-1 item (resolve_loot_item_textid),
+// log a sample of drifts + a summary [LOOTID]. Read-only — does NOT change what's displayed yet;
+// validates the live read (slot-1 id@+0x00 / category@+0x20 encoding) + measures how much ERR
+// actually drifts before we wire the live id into the marker label/icon (phase 2).
+void probe_loot_identity()
+{
+    namespace gen = goblin::generated;
+    int lot_backed = 0, same = 0, drift = 0, miss = 0, logged = 0;
+    for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
+    {
+        const gen::MapEntry &e = gen::MAP_ENTRIES[i];
+        if (e.lotId == 0 || e.lotType == 0)
+            continue;
+        ++lot_backed;
+        const int32_t live = goblin::resolve_loot_item_textid(e.lotId, e.lotType, e.data.textId1);
+        if (live == e.data.textId1) { ++same; continue; }
+        if (live == 0) { ++miss; continue; }
+        ++drift;
+        if (logged++ < 40)
+            spdlog::info("[LOOTID] row={} lot={}/{} baked textId1={} -> live={} (DRIFT)",
+                         e.row_id, e.lotId, (int)e.lotType, e.data.textId1, live);
+    }
+    spdlog::info("[LOOTID] lot-backed identity baked-vs-live: lot_backed={} same={} drifted={} "
+                 "miss={} (live read = ItemLotParam slot-1 id@+0x00 cat@+0x20)",
+                 lot_backed, same, drift, miss);
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
 void build_buckets()
@@ -157,6 +186,10 @@ void build_buckets()
         push_marker(e.row_id, e.data, c, e.lotId, e.lotType);
     }
     build_live_bosses();
+    // Phase-1 loot-identity diagnostic (off by default). Validates the live-item read +
+    // measures ERR drift before phase 2 wires it into the marker label/icon.
+    if (goblin::config::diagLootFlags)
+        probe_loot_identity();
 }
 } // namespace
 

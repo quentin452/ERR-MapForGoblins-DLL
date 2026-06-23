@@ -136,6 +136,12 @@ namespace goblin
     // native injection's refresh_loot_from_itemlot. lotType: 1=_map, 2=_enemy, 0=none.
     uint32_t resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag);
 
+    // Resolve a lot-backed marker's IDENTITY (offset-encoded name/icon key) from the LIVE
+    // ItemLotParam row (slot-1 item id @+0x00 + category @+0x20), so the marker shows the
+    // item ERR/randomizer actually placed instead of the baked vanilla one. Returns the
+    // baked key on any miss. Feeds the marker label (FMG) + item_icon_id().
+    int32_t resolve_loot_item_textid(uint32_t lotId, uint8_t lotType, int32_t baked_textid);
+
     // One-shot RE diagnostic (config diag_loot_flags): for a sample of loot lots per
     // category, log every candidate "obtained" flag (lot-wide @0x80, the 8 per-slot
     // getItemFlagId0N @0x60, baked textDisableFlagId1) AND whether each currently reads

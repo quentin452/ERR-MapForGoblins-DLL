@@ -4072,6 +4072,34 @@ uint32_t goblin::resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t bak
     return resolved;
 }
 
+// Resolve a lot-backed marker's IDENTITY (name/icon key) from the LIVE ItemLotParam row, so the
+// marker shows the item ERR/randomizer actually placed instead of the baked vanilla one. The bake
+// stores the offset-encoded textId1 at extraction time; ERR can swap the lot's item → that bake
+// drifts. We read the live row's slot-1 item (lotItemId01 @ +0x00, lotItemCategory01 @ +0x20 —
+// same row resolve_loot_flag already reads: flag01@0x60, lot flag@0x80) and re-encode it via the
+// shared encode_live_item(). Returns the baked key on any miss (no lot, no row, empty/invalid
+// slot-1, or a multi-item lot where slot-1 doesn't represent the marker). The encoded key feeds
+// both the marker label (FMG via liveLootLabels' PlaceName preload) and item_icon_id().
+int32_t goblin::resolve_loot_item_textid(uint32_t lotId, uint8_t lotType, int32_t baked_textid)
+{
+    if (lotType == 0 || lotId == 0)
+        return baked_textid;
+    static LotReader s_lots;
+    static bool s_init = false, s_ok = false;
+    if (!s_init) { s_init = true; s_lots.init(); s_ok = s_lots.ok(); }
+    if (!s_ok)
+        return baked_textid;
+    RawItemLotRow *row = s_lots.row(lotId, lotType);
+    if (!row)
+        return baked_textid;
+    const int32_t item1 = *reinterpret_cast<int32_t *>(row->b + 0x00);  // lotItemId01
+    const int32_t cat1  = *reinterpret_cast<int32_t *>(row->b + 0x20);  // lotItemCategory01
+    if (item1 <= 0 || cat1 < 1 || cat1 > 5)
+        return baked_textid;
+    const int32_t live = encode_live_item(item1, cat1);
+    return live ? live : baked_textid;
+}
+
 // One-shot field dump to RE the real per-item "obtained" flag (see the findings doc).
 // For up to ~6 markers per category, log every candidate flag and its live SET/unset
 // state. Run on a 100% save: the candidate that reads SET for a known-collected item is
