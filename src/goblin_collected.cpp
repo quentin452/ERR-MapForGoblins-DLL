@@ -677,7 +677,8 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
         uintptr_t addr = (uintptr_t)si.lpMinimumApplicationAddress;
         uintptr_t end  = (uintptr_t)si.lpMaximumApplicationAddress;
         uint64_t scanned = 0, regions = 0; int hits = 0, logged = 0, sig_hits = 0;
-        int item_nodes = 0, item_logged = 0;
+        int item_nodes = 0, item_logged = 0, mapins_count = 0;
+        const uint64_t mapins_vt = (uint64_t)(game_base + 0x2a8d6d8);   // CS::MapIns vtable VA
         MEMORY_BASIC_INFORMATION mbi;
         while (addr < end && VirtualQuery((void *)addr, &mbi, sizeof(mbi)) == sizeof(mbi))
         {
@@ -785,30 +786,45 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                         }
                     }
                 }
-                // ── GENERIC loot-record hunt via the "アイテム" FieldIns NAME (da513922 marker).
-                // Scan for the 8-byte wide pattern A2 30 A4 30 C6 30 E0 30 (= アイテム) — rare, with
-                // a cheap first-byte reject and NO per-candidate syscall (the stride-8 node scan was
-                // too slow under Wine). Each hit = a resident loot FieldIns → read lotId@+0x50. Proves
-                // the mechanism for loaded loot regardless of which chest.
-                for (size_t i = 0; i + 8 <= rsz; i += 2)   // wchar-aligned
+                // ── MapIns-WALKER (188d977): single stride-8 pass over this region doing two things.
+                // (A) Count CS::MapIns by vtable (obj+0x00 == game_base+0x2a8d6d8) → confirms the ~343
+                //     live enumeration (STEP 0).
+                // (B) Find loot records by the FULL node signature, validated WITHOUT a syscall (the
+                //     earlier scan hung because it VirtualQuery'd every candidate): node{L lot-range,
+                //     flag, FieldIns* P}; accept P only when it lands in the SAME committed region we're
+                //     scanning (so the deref is safe with no query — loot FieldIns sit near the node),
+                //     then *(u32)(P+0x50)==L AND the FieldIns name starts with アイテム. Then dump
+                //     lotId + MapId@node-0xD8 + localPos@node-0xD4 + name → identity + absolute pos.
+                for (size_t i = 0; i + 16 <= rsz; i += 8)
                 {
-                    if (q[i] != 0xA2) continue;            // fast reject (first byte of ア)
-                    if (*(const uint64_t *)(q + i) != 0x30E030C630A430A2ULL) continue;  // アイテム
-                    uintptr_t F = base + i;                // FieldIns base (name @+0)
-                    uint32_t lot = (i + 0x54 <= rsz) ? *(const uint32_t *)(q + i + 0x50) : 0;
+                    if (*(const uint64_t *)(q + i) == mapins_vt) { ++mapins_count; continue; }
+                    uint32_t L = *(const uint32_t *)(q + i);
+                    if (L < 0x05F5E100u || L > 0x40000000u) continue;       // ~1e8 .. ~1.07e9
+                    uint64_t P = *(const uint64_t *)(q + i + 8);
+                    if (P < base || P + 0x54 > base + rsz) continue;        // in-region → safe, no syscall
+                    if (*(const uint32_t *)(P + 0x50) != L) continue;       // self-validating
+                    const wchar_t *wn = (const wchar_t *)P;                 // FieldIns name == アイテム
+                    if (wn[0] != 0x30A2 || wn[1] != 0x30A4) continue;
                     ++item_nodes;
                     if (item_logged < 48)
                     {
-                        spdlog::info("[LOTSCAN-ITEM] FieldIns @ {:#x} lotId@+0x50={:#x} ({}) type={}",
-                                     F, lot, lot, mbi.Type == MEM_MAPPED ? "MAPPED" : "PRIVATE");
+                        uintptr_t H = base + i;
+                        uint32_t flag = *(const uint32_t *)(q + i + 4);
+                        bool hdr = (i >= 0xD8);
+                        uint32_t mapId = hdr ? *(const uint32_t *)(q + i - 0xD8) : 0;
+                        const float *pos = hdr ? (const float *)(q + i - 0xD4) : nullptr;
+                        spdlog::info("[LOTSCAN-ITEM] node @ {:#x} lot={:#x} ({}) flag={} FieldIns={:#x} "
+                                     "MapId={:#x} localPos=({:.2f},{:.2f},{:.2f}) type={}",
+                                     H, L, L, flag, P, mapId, pos ? pos[0] : 0.f, pos ? pos[1] : 0.f,
+                                     pos ? pos[2] : 0.f, mbi.Type == MEM_MAPPED ? "MAPPED" : "PRIVATE");
                         ++item_logged;
                     }
                 }
             }
             addr = base + rsz;
         }
-        spdlog::info("[LOTSCAN] DONE target={:#x} hits={} sigNodes={} itemNodes={} regions={} scannedMB={}",
-                     target, hits, sig_hits, item_nodes, (uint64_t)regions, scanned / (1024 * 1024));
+        spdlog::info("[LOTSCAN] DONE target={:#x} hits={} sigNodes={} mapIns={} lootNodes={} regions={} scannedMB={}",
+                     target, hits, sig_hits, mapins_count, item_nodes, (uint64_t)regions, scanned / (1024 * 1024));
     }
 
     return result;
