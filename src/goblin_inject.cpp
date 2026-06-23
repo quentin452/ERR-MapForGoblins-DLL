@@ -2916,34 +2916,61 @@ long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, 
     return r;
 }
 
+// IAT hook: overwrite eldenring.exe's import-table pointer for dll!fn with `detour`, saving the
+// original into *orig. No trampoline/executable alloc (unlike MinHook → no MH_ERROR_MEMORY_ALLOC
+// when oo2core sits >2GB away), and works for a cross-module import. Returns false if the module
+// doesn't statically import dll!fn (e.g. it's resolved dynamically via GetProcAddress).
+bool iat_hook(uintptr_t modBase, const char *dll, const char *fn, void *detour, void **orig)
+{
+    auto *dos = reinterpret_cast<IMAGE_DOS_HEADER *>(modBase);
+    auto *nt = reinterpret_cast<IMAGE_NT_HEADERS *>(modBase + dos->e_lfanew);
+    auto &dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    if (!dir.VirtualAddress)
+        return false;
+    auto *desc = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR *>(modBase + dir.VirtualAddress);
+    for (; desc->Name; ++desc)
+    {
+        const char *name = reinterpret_cast<const char *>(modBase + desc->Name);
+        if (_stricmp(name, dll) != 0)
+            continue;
+        auto *thunk = reinterpret_cast<IMAGE_THUNK_DATA *>(modBase + desc->FirstThunk);
+        DWORD origRva = desc->OriginalFirstThunk ? desc->OriginalFirstThunk : desc->FirstThunk;
+        auto *oThunk = reinterpret_cast<IMAGE_THUNK_DATA *>(modBase + origRva);
+        for (; oThunk->u1.AddressOfData; ++thunk, ++oThunk)
+        {
+            if (oThunk->u1.Ordinal & IMAGE_ORDINAL_FLAG)
+                continue;
+            auto *ibn = reinterpret_cast<IMAGE_IMPORT_BY_NAME *>(modBase + oThunk->u1.AddressOfData);
+            if (std::strcmp(reinterpret_cast<const char *>(ibn->Name), fn) != 0)
+                continue;
+            void **slot = reinterpret_cast<void **>(&thunk->u1.Function);
+            DWORD oldp = 0;
+            if (!VirtualProtect(slot, sizeof(void *), PAGE_READWRITE, &oldp))
+                return false;
+            *orig = *slot;
+            *slot = detour;
+            VirtualProtect(slot, sizeof(void *), oldp, &oldp);
+            return true;
+        }
+    }
+    return false;
+}
+
 void install_oodle_hook()
 {
     if (!goblin::config::dumpIconTextures || g_oodle_orig)
         return;
-    HMODULE oo = GetModuleHandleA("oo2core_6_win64.dll");
-    if (!oo) oo = GetModuleHandleA("oo2core_6_win64");
-    if (!oo)
-    {
-        spdlog::warn("[OODLE] oo2core_6_win64 not loaded yet — decompress hook skipped");
+    uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!er)
         return;
-    }
-    void *odf = reinterpret_cast<void *>(GetProcAddress(oo, "OodleLZ_Decompress"));
-    if (!odf)
-    {
-        spdlog::warn("[OODLE] OodleLZ_Decompress export not found");
-        return;
-    }
-    try
-    {
-        modutils::hook(odf, reinterpret_cast<void *>(&oodle_decompress_detour),
-                       reinterpret_cast<void **>(&g_oodle_orig));
-        spdlog::info("[OODLE] OodleLZ_Decompress hooked @ {} — open the world map to log the TPF buffer", odf);
-    }
-    catch (const std::exception &e)
-    {
-        spdlog::error("[OODLE] hook failed: {}", e.what());
-        g_oodle_orig = nullptr;
-    }
+    if (iat_hook(er, "oo2core_6_win64.dll", "OodleLZ_Decompress",
+                 reinterpret_cast<void *>(&oodle_decompress_detour),
+                 reinterpret_cast<void **>(&g_oodle_orig)))
+        spdlog::info("[OODLE] IAT-hooked OodleLZ_Decompress (orig={}) — open the world map to log the TPF buffer",
+                     reinterpret_cast<void *>(g_oodle_orig));
+    else
+        spdlog::warn("[OODLE] eldenring.exe has no static IAT import of oo2core!OodleLZ_Decompress "
+                     "(dynamically loaded?) — decompress hook not installed");
 }
 
 void goblin::install_icon_texture_probe()
