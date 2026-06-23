@@ -7,6 +7,7 @@
 #include "goblin_collected.hpp" // is_original_row_collected (piece graying)
 #include "goblin_kindling.hpp"  // is_row_collected (kindling graying)
 #include "goblin_markers.hpp"   // category_name (census log)
+#include "goblin_config.hpp"    // config::suppressNativeBosses
 #include "goblin/goblin_map_flags.hpp" // flag::Story* (secondary story gate)
 #include "goblin_bench.hpp"            // GOBLIN_BENCH scoped timers
 #include "from/params.hpp"                            // live WorldMapPointParam (boss source)
@@ -130,6 +131,16 @@ void build_live_bosses()
             if (row.textId2 != 5100) continue;          // field-boss marker rows only
             push_marker(rowId, row, c, /*lotId=*/0u, /*lotType=*/0u);
             ++n;
+            // Suppress the game's NATIVE boss icon: clear dispMask on the live row so the engine
+            // skips drawing it, leaving the overlay as the sole boss source (no double icon). Safe
+            // because push_marker already snapshotted pos/name/icon and it IGNORES dispMask, so our
+            // marker is unaffected. `row` is a reference into live param memory (params.hpp).
+            if (goblin::config::suppressNativeBosses)
+            {
+                row.dispMask00 = false;
+                row.dispMask01 = false;
+                row.dispMask02 = 0;
+            }
         }
     }
     catch (...)

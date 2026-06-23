@@ -87,6 +87,7 @@ namespace goblin
         // when on, the hook installs + LOGS each grace pin build ([WARPPIN]) to confirm we can
         // identify discovered ones — actual suppression is gated behind this once verified.
         extern bool graceSuppressNative;
+        extern bool suppressNativeBosses;
 
         // Marker dump (hotkey → dump beacon/stamp coords to file)
         extern bool enableMarkerDump;
