@@ -19,6 +19,7 @@ namespace goblin::config
     bool showRegionLabels = true;  // overlay: draw major-region name labels on the map
     bool nativeItemIcons = true;   // overlay: draw the game's real item icon (GPU harvest) when resident
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
+    bool diagLootPos = false;      // one-shot [LOOTPOS] live-vs-baked placement accuracy probe
     bool debugLogging = false;
     bool showAll = false;
     bool iconsHidden = false;  // master off persisted (menu/F10 "Show icons")
@@ -172,6 +173,12 @@ namespace
                   "category — every candidate pickup flag (lot-wide, 8 per-slot, baked) and\n"
                   "whether each reads SET. Run on a 100% save to find the real collected\n"
                   "flag for the categories the census over-reports. Off by default."),
+                B("diag_loot_pos", diagLootPos, "false",
+                  "RE diagnostic: one-shot [LOOTPOS] — for each loaded MSB asset the\n"
+                  "collected-state walk sees, compare its LIVE MsbPart position (read in-\n"
+                  "process) against the baked MAP_ENTRY placement. Validates that the data we\n"
+                  "collect matches the bake from inside the running DLL (vs an external RPM\n"
+                  "script). Logs per-row delta + an aggregate. Walk near loaded loot. Off by default."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("show_all", showAll, "false",

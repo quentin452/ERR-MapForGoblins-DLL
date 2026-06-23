@@ -799,6 +799,52 @@ int goblin::collected::refresh()
     }
     std::set<uint32_t> wgm_tiles;
 
+    // [LOOTPOS] one-shot in-process placement-accuracy probe (diag_loot_pos): for every loaded
+    // MSB asset this walk sees, compare its LIVE MsbPart position (px/pz @ MsbPart+0x20, read by
+    // the SHIPPING collected walk) against the baked MAP_ENTRY placement (g_entry_positions, same
+    // MSB-local frame). Proves the data we collect matches the bake from INSIDE the process —
+    // stronger than the external RPM script that re-implements the walk. One-shot per session;
+    // needs loot loaded near the player. X/Z only (baked posY often 0, see pos_key below).
+    static bool s_lootpos_done = false;
+    if (goblin::config::diagLootPos && !s_lootpos_done)
+    {
+        int compared = 0, within = 0, missing_baked = 0;
+        float max_d = 0.f;
+        for (auto &[tile_id, snap] : wgm)
+        {
+            auto name_it = g_tile_name_to_row.find(tile_id);
+            if (name_it == g_tile_name_to_row.end()) continue;
+            for (auto &[lx, ly, lz, lname] : snap.occupied)
+            {
+                (void)ly;
+                auto rit = name_it->second.find(lname);
+                if (rit == name_it->second.end()) continue;
+                for (uint64_t row_id : rit->second)
+                {
+                    auto pit = g_entry_positions.find(row_id);
+                    if (pit == g_entry_positions.end()) { ++missing_baked; continue; }
+                    auto [bx, by, bz] = pit->second;
+                    (void)by;
+                    float dx = lx - bx, dz = lz - bz;
+                    float d = std::sqrt(dx * dx + dz * dz);
+                    ++compared;
+                    if (d <= 0.5f) ++within;
+                    if (d > max_d) max_d = d;
+                    if (d > 0.5f)
+                        spdlog::info("[LOOTPOS] tile={:#x} {} row={} baked=({:.2f},{:.2f}) "
+                                     "live=({:.2f},{:.2f}) dXZ={:.2f}",
+                                     tile_id, lname, row_id, bx, bz, lx, lz, d);
+                }
+            }
+        }
+        if (compared > 0)   // only latch once we actually saw loaded loot
+        {
+            s_lootpos_done = true;
+            spdlog::info("[LOOTPOS] DONE compared={} within0.5={} ({:.1f}%) maxDXZ={:.2f} missingBaked={}",
+                         compared, within, 100.0 * within / compared, max_d, missing_baked);
+        }
+    }
+
     // Rows we positively observed alive in WGM this refresh. Used to override
     // sticky carry-forward below: a row is "uncollected" only when we see its
     // live instance, not just because the tile is unloaded.
