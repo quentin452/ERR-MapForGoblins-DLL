@@ -115,17 +115,17 @@ namespace goblin
     // cache live on first call + logs [FOGCAL] calibration data.
     bool marker_fogged(int areaIdx, float mx, float my);
 
-    // A Site of Grace read LIVE from WorldMapPointParam (iconId 370) — no baked data.
+    // A Site of Grace read LIVE from BonfireWarpParam — no baked data, no MASSEDIT.
     struct LiveGrace
     {
         uint8_t areaNo, gridXNo, gridZNo;
         float posX, posZ;
-        int textId;        // name (resolve via MsgRepository)
+        int textId;        // textId1 = place-name (resolve via MsgRepository)
         uint64_t rowId;
-        int discoverFlag;  // textDisableFlagId1 = per-grace discovery flag (set when rested)
+        int discoverFlag;  // eventflagId = per-grace discovery flag (set when reached)
+        bool underground;  // iconId == 44 → ERR cave/underground grace icon (else normal bonfire)
     };
-    // Capture all grace rows from the LIVE WorldMapPointParam. MUST run at init BEFORE
-    // inject_map_entries() swaps the param backing (else it reads our injected rows).
+    // Capture all grace rows from the LIVE BonfireWarpParam (the engine's own grace table).
     void capture_live_graces();
     // The captured grace list (empty until capture_live_graces() ran). Used by the
     // ImGui overlay path instead of the baked MAP_ENTRIES graces.

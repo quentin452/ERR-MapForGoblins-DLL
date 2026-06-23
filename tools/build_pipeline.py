@@ -284,11 +284,9 @@ STAGES = [
           script='generate_material_nodes.py',
           also_scripts=['massedit_common.py', 'unreachable.py']),
 
-    Stage('generate_graces',
-          inputs=[REGULATION],
-          outputs=[MASSEDIT_OUT / 'World - Graces.MASSEDIT'],
-          script='generate_graces.py',
-          also_scripts=['extract_all_items.py', 'unreachable.py'] + COMMON),
+    # NOTE: graces are no longer baked. The DLL reads them LIVE from BonfireWarpParam
+    # (capture_live_graces), gating the ERR underground/cave icon on iconId==44. The old
+    # 'generate_graces' stage + 'World - Graces.MASSEDIT' were removed.
 
     Stage('generate_summoning_pools',
           inputs=[REGULATION, MSB_DIR],

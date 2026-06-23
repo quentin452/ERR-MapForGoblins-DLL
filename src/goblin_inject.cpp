@@ -21,6 +21,7 @@
 #include "from/params.hpp"
 #include "from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp"
 #include "from/paramdef/WORLD_MAP_PIECE_PARAM_ST.hpp"
+#include "from/paramdef/BONFIRE_WARP_PARAM_ST.hpp"
 #include "goblin_quest_gates.hpp"
 #include "goblin_quest_steps.hpp"
 #include "goblin_logic.hpp"
@@ -909,42 +910,36 @@ static std::vector<goblin::LiveGrace> g_live_graces;
 void goblin::capture_live_graces()
 {
     g_live_graces.clear();
-    // Try the LIVE WorldMapPointParam first (rows with the grace icon). NOTE: vanilla
-    // WorldMapPointParam does NOT contain grace markers — in the base game grace map-pins
-    // are generated from BonfireWarpParam at runtime, not stored here. The project AUTHORS
-    // the grace rows from MASSEDIT (positions extracted offline from MSB / BonfireWarpParam)
-    // and injects them. So pre-injection this finds ~0; we fall back to the baked set, which
-    // IS that offline-extracted game data. (A true live path would read BonfireWarpParam +
-    // resolve each bonfire's MSB position — deferred, see [[live-param-vs-baked-data]].)
+    // Read graces LIVE from the engine's own BonfireWarpParam — no MASSEDIT, no baked
+    // MAP_ENTRIES, no per-update drift. posX/Y/Z + areaNo/grid ARE the grace world position
+    // (the param carries them; no MSB resolve needed). The map icon is per-grace: iconId 1 =
+    // normal bonfire, iconId 44 = ERR cave/underground grace, iconId 48 = unique. Filters
+    // mirror the old offline bake (generate_graces.py): a real reachable grace needs a
+    // discovery flag + a place-name, and is not an ERR intentional hide (all dispMask = 0).
+    int hidden = 0, ug = 0;
     try
     {
         for (auto [rowId, row] :
-             from::params::get_param<from::paramdef::WORLD_MAP_POINT_PARAM_ST>(L"WorldMapPointParam"))
+             from::params::get_param<from::paramdef::BONFIRE_WARP_PARAM_ST>(L"BonfireWarpParam"))
         {
-            if (row.iconId != 370) continue;   // Site of Grace icon (ERR profile)
+            if (row.areaNo == 0) continue;                 // not a placed grace
+            if ((int)row.eventflagId <= 0 || row.textId1 <= 0) continue; // no flag / no name
+            // dispMask00/01/02 are ALL bits 0/1/2 of the single byte 0x1e (verified in-memory:
+            // dispMask00→0x01, dispMask01→0x02, dispMask02→0x04; byte 0x1f is pad). A grace shown
+            // on NO map layer (all three 0) is an ERR intentional hide (spoiler graces). The
+            // earlier (&0x3) read missed dispMask02 → wrongly hid every DLC grace.
+            if ((row.dispMask0 & 0x7) == 0) { ++hidden; continue; }
+            const bool underground = (row.iconId == 44);
+            if (underground) ++ug;
             g_live_graces.push_back({ row.areaNo, row.gridXNo, row.gridZNo,
                                       row.posX, row.posZ, row.textId1, rowId,
-                                      (int)row.textDisableFlagId1 });
+                                      (int)row.eventflagId, underground });
         }
     }
     catch (...) {}
 
-    if (g_live_graces.empty())
-    {
-        for (size_t i = 0; i < goblin::generated::MAP_ENTRY_COUNT; ++i)
-        {
-            const auto &e = goblin::generated::MAP_ENTRIES[i];
-            if (e.category != goblin::generated::Category::WorldGraces) continue;
-            g_live_graces.push_back({ e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
-                                      e.data.posX, e.data.posZ, e.data.textId1, e.row_id,
-                                      (int)e.data.textDisableFlagId1 });
-        }
-        spdlog::info("[LIVE-GRACE] live param has no grace pins (vanilla WMP lacks them) → "
-                     "using {} baked graces (offline MSB/BonfireWarp extraction)",
-                     g_live_graces.size());
-    }
-    else
-        spdlog::info("[LIVE-GRACE] {} grace rows from live WorldMapPointParam", g_live_graces.size());
+    spdlog::info("[LIVE-GRACE] {} grace rows from live BonfireWarpParam ({} underground/cave, "
+                 "{} ERR-hidden skipped)", g_live_graces.size(), ug, hidden);
 }
 
 const std::vector<goblin::LiveGrace> &goblin::live_graces() { return g_live_graces; }

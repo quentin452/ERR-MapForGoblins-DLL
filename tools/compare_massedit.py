@@ -20,7 +20,6 @@ MASSEDIT_DIR = DATA_DIR / 'massedit'
 DB_PATH = DATA_DIR / 'items_database.json'
 
 NON_ITEM_FILES = {
-    'World - Graces.MASSEDIT',
     'World - Imp Statues.MASSEDIT',
     'World - Summoning Pools.MASSEDIT',
     'World - Spirit_Springs.MASSEDIT',
