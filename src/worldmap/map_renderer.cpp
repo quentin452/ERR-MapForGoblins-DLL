@@ -72,6 +72,53 @@ bool icon_uv(const char *key, ImVec2 &uv0, ImVec2 &uv1)
     return false;
 }
 
+// ── Icon provider abstraction ────────────────────────────────────────────────
+// Resolves a logical icon (a source-tagged key) to a drawable texture + UV rect, so
+// draw sites stay backend-agnostic ("give me tex+UV for icon X") instead of hard-wiring
+// the atlas. This is the seam for swapping/stacking pixel SOURCES: the baked atlas today,
+// the game's native GPU item/map-point icons later (each a separate provider). resolve()
+// returns false → the caller falls back (next provider, then a drawlist circle).
+//
+// The key is source-tagged (not a bare scalar) because the codebase has genuinely distinct
+// pixel sources with different lookups: the atlas is keyed by a category string, the native
+// backends by a numeric game IconId. Only the Atlas source exists for now.
+struct IconKey
+{
+    enum Source { Atlas, ItemIcon, MapPoint } source = Atlas;
+    const char *atlas_key = nullptr; // Atlas: category cell key ("show_bosses")
+    int icon_id = -1;                // ItemIcon / MapPoint: numeric game IconId (future)
+};
+
+struct IconHandle
+{
+    ImTextureID tex = nullptr;
+    ImVec2 uv0{}, uv1{};
+};
+
+struct IconProvider
+{
+    virtual ~IconProvider() = default;
+    // Resolve key → handle. false = this provider can't supply it (caller falls back).
+    virtual bool resolve(const IconKey &k, IconHandle &out) const = 0;
+};
+
+// Baked category atlas: holds the atlas texture, resolves Atlas-source keys via the
+// generated ICON_CELLS table (the former icon_uv path). Guaranteed-coverage, synchronous.
+struct AtlasProvider : IconProvider
+{
+    ImTextureID atlas = nullptr;
+    explicit AtlasProvider(ImTextureID a) : atlas(a) {}
+    bool resolve(const IconKey &k, IconHandle &out) const override
+    {
+        if (k.source != IconKey::Atlas || !atlas || !k.atlas_key)
+            return false;
+        if (!icon_uv(k.atlas_key, out.uv0, out.uv1))
+            return false;
+        out.tex = atlas;
+        return true;
+    }
+};
+
 // Desaturate toward luminance + halve alpha → the "collected" dim tint (packed ABGR).
 unsigned int dim_color(unsigned int abgr)
 {
@@ -148,7 +195,7 @@ constexpr float kGraceZoomRef = 0.25f;
 // half = icon half-size in px (resolution-scaled by the caller). When collected_graying
 // is on, collected/cleared markers dim+desaturate (or hide if hide_collected), and
 // cleared bosses get a green checkmark. Uncollected bosses redden when redify_boss_icons.
-void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, float half)
+void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconProvider &icons, float half)
 {
     // Grace marker (discover_flag set only on graces): with grace_overlay the overlay draws it
     // itself — discovered (rested) = full colour, undiscovered = grey. Source per grace_gpu_sprite:
@@ -184,10 +231,10 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, f
             fg->AddImage(gt, ImVec2(gx - gh, gy - gh), ImVec2(gx + gh, gy + gh), u0, u1, t);
             return;
         }
-        ImVec2 uv0, uv1;
-        if (atlas && icon_uv(m.icon_key, uv0, uv1))
-            fg->AddImage(atlas, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
-                         uv0, uv1, t);
+        IconHandle ih;
+        if (icons.resolve(IconKey{IconKey::Atlas, m.icon_key, -1}, ih))
+            fg->AddImage(ih.tex, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
+                         ih.uv0, ih.uv1, t);
         else
         {
             float cr = half * 0.45f;
@@ -221,11 +268,11 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, ImTextureID atlas, f
     const ImU32 tint = done ? IM_COL32(150, 150, 150, 130)
                             : (red ? IM_COL32(255, 70, 70, 255) : IM_COL32(255, 255, 255, 255));
 
-    ImVec2 uv0, uv1;
-    if (atlas && icon_uv(m.icon_key, uv0, uv1))
+    IconHandle ih;
+    if (icons.resolve(IconKey{IconKey::Atlas, m.icon_key, -1}, ih))
     {
-        fg->AddImage(atlas, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
-                     uv0, uv1, tint);
+        fg->AddImage(ih.tex, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
+                     ih.uv0, ih.uv1, tint);
     }
     else
     {
@@ -392,7 +439,7 @@ void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n, float r, bool depleted)
 // member screen-centroid; smaller groups draw their members normally. Off-screen
 // piles/markers are culled. realW/realH = backbuffer size for the cull.
 void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int threshold,
-                   ImTextureID atlas, float realW, float realH,
+                   const IconProvider &icons, float realW, float realH,
                    const goblin::projection::View &view, bool dist_eligible,
                    float iconHalf, float glyphR, ImVec2 mouse, Hover &hover)
 {
@@ -488,7 +535,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
             for (int i : idxs)
                 if (on_screen(items[i].p))
                 {
-                    draw_marker(fg, *items[i].m, items[i].p, atlas, iconHalf);
+                    draw_marker(fg, *items[i].m, items[i].p, icons, iconHalf);
                     hover_test(hover, mouse, items[i].p, iconHalf, marker_label(*items[i].m));
                 }
             continue;
@@ -860,7 +907,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                     float mouseY)
 {
     namespace proj = goblin::projection;
-    ImTextureID atlas = reinterpret_cast<ImTextureID>(atlas_texture);
+    const AtlasProvider icons(reinterpret_cast<ImTextureID>(atlas_texture));
     const ImVec2 mouse(mouseX, mouseY);
     Hover hover;
     goblin::worldmap_probe::LiveView lv;
@@ -1093,14 +1140,14 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                 clustered.push_back({sp, &m});
             else
             {
-                draw_marker(fg, m, sp, atlas, iconHalf);
+                draw_marker(fg, m, sp, icons, iconHalf);
                 hover_test(hover, mouse, sp, iconHalf, marker_label(m));
             }
         }
     }
 
     if (clustering && !clustered.empty())
-        draw_clusters(fg, clustered, threshold, atlas, realW, realH, view,
+        draw_clusters(fg, clustered, threshold, icons, realW, realH, view,
                       /*dist_eligible=*/true, iconHalf, glyphR, mouse, hover);
 
     // Tooltip for the hovered marker / pile (drawn last so it's on top).
@@ -1144,7 +1191,7 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     fg->AddCircle(ctr, R, IM_COL32(230, 220, 180, 200), 64, 2.0f);
 
     fg->PushClipRect(ImVec2(ctr.x - R, ctr.y - R), ImVec2(ctr.x + R, ctr.y + R), true);
-    ImTextureID atlas = reinterpret_cast<ImTextureID>(atlas_texture);
+    const AtlasProvider icons(reinterpret_cast<ImTextureID>(atlas_texture));
     const float half = 6.0f; // minimap markers are small + fixed-size
     for (auto *L : layers)
     {
@@ -1184,7 +1231,7 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
                 if (goblin::marker_fogged(areaIdx, gU, gV))
                     continue;
             }
-            draw_marker(fg, m, ImVec2(ctr.x + dx, ctr.y + dy), atlas, half);
+            draw_marker(fg, m, ImVec2(ctr.x + dx, ctr.y + dy), icons, half);
         }
     }
     fg->PopClipRect();
