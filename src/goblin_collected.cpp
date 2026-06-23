@@ -738,7 +738,7 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
             SYSTEM_INFO si; GetSystemInfo(&si);
             uintptr_t addr = (uintptr_t)si.lpMinimumApplicationAddress;
             uintptr_t aend = (uintptr_t)si.lpMaximumApplicationAddress;
-            const size_t WIN = 8 * 1024 * 1024, OVL = 0x1200;
+            const size_t WIN = 8 * 1024 * 1024, OVL = 0x2200;
             std::vector<uint8_t> buf(WIN + OVL);
             MEMORY_BASIC_INFORMATION mbi;
             while (addr < aend && VirtualQuery((void *)addr, &mbi, sizeof(mbi)) == sizeof(mbi))
@@ -761,7 +761,7 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                         {
                             if (*(const uint64_t *)(q + i) != VT_MAPINS) continue;
                             ++mapins;
-                            for (size_t k = 0xD8; i + k + 16 <= want && k < 0x1200; k += 8)
+                            for (size_t k = 8; i + k + 16 <= want && k < 0x2000; k += 8)
                             {
                                 uint32_t L = *(const uint32_t *)(q + i + k);
                                 if (L < 0x05F5E100u || L > 0x40000000u) continue;
@@ -771,19 +771,24 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                                 if (P <= 0x100000 || P >= 0x7fffffffffffULL) continue;
                                 uint32_t v50 = 0;
                                 if (!safe_read((void *)(P + 0x50), &v50, 4) || v50 != L) continue;
+                                // FieldIns name must start with アイテム — kills false self-validations.
+                                wchar_t nm[16] = {};
+                                if (!safe_read((void *)P, nm, sizeof(nm) - 2)) continue;
+                                if (nm[0] != 0x30A2 || nm[1] != 0x30A4) continue;
                                 ++records;
                                 if (logged < 64)
                                 {
-                                    uint32_t mapId = *(const uint32_t *)(q + i + k - 0xD8);
-                                    const float *pos = (const float *)(q + i + k - 0xD4);
-                                    wchar_t nm[16] = {}; char nn[20] = {};
-                                    if (safe_read((void *)P, nm, sizeof(nm) - 2))
-                                        for (int c = 0; c < 15; c++) nn[c] = (char)(nm[c] & 0xFF);
+                                    bool hdr = (k >= 0xD8);
+                                    uint32_t mapId = hdr ? *(const uint32_t *)(q + i + k - 0xD8) : 0;
+                                    const float *pos = hdr ? (const float *)(q + i + k - 0xD4) : nullptr;
+                                    char nn[20] = {};
+                                    for (int c = 0; c < 15; c++) nn[c] = (char)(nm[c] & 0xFF);
                                     spdlog::info("[MAPINS] rec MapIns={:#x} node+{:#x} lot={:#x}({}) "
                                                  "flag={} FieldIns={:#x} MapId={:#x} "
                                                  "localPos=({:.2f},{:.2f},{:.2f}) name='{}'",
-                                                 rbase + off + i, (uint64_t)k, L, L, flag, P, mapId,
-                                                 pos[0], pos[1], pos[2], nn);
+                                                 rbase + off + i, (uint64_t)k, L, L, flag, P,
+                                                 mapId, pos ? pos[0] : 0.f, pos ? pos[1] : 0.f,
+                                                 pos ? pos[2] : 0.f, nn);
                                     ++logged;
                                 }
                             }
