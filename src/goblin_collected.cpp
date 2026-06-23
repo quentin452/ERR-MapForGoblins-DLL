@@ -686,24 +686,52 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                         if (logged < 32)
                         {
                             uintptr_t hit = base + i;
-                            // Context: dump the 8 qwords spanning hit-0x20..hit+0x18 and flag any
-                            // that look like an eldenring.exe code/vtable ptr (object marker) vs
-                            // other large lotId-shaped u32s (param-array marker). Only read within
-                            // this region's bounds to stay safe.
-                            char ctx[256] = {}; int cl = 0; int code_ptrs = 0;
                             uintptr_t er0 = game_base, er1 = game_base + 0x5000000;
-                            for (int k = -4; k <= 3 && cl < 230; k++)
+                            // Skip the ItemLotParam sorted-lookup array (hits 1/2): a packed
+                            // {lotId, index} table where +0x8 is the next lotId with an
+                            // incrementing high-word index. Those are chest-independent (always
+                            // resident) — not the runtime link. Detect + log briefly, don't deref.
+                            uint64_t nx = (hit + 8 + 8 <= base + rsz) ? *(const uint64_t *)(hit + 8) : 0;
+                            bool param_array = ((nx & 0xffffffff) > 0x10000000) && ((nx >> 48) == 0) &&
+                                               ((nx >> 32) & 0xffff) != 0;   // low=lotId-shaped, high=index
+                            char ctx[700] = {}; int cl = 0;
+                            for (int k = -6; k <= 7 && cl < 300; k++)
                             {
                                 uintptr_t a = hit + (intptr_t)k * 8;
                                 if (a < base || a + 8 > base + rsz) continue;
                                 uint64_t v = *(const uint64_t *)a;
-                                if (v >= er0 && v < er1) ++code_ptrs;
                                 cl += snprintf(ctx + cl, sizeof(ctx) - cl, "[%+d]=%llx ",
                                                k * 8, (unsigned long long)v);
                             }
-                            spdlog::info("[LOTSCAN] HIT @ {:#x} region={:#x}+{:#x} prot={:#x} "
-                                         "codePtrsNear={} | {}",
-                                         hit, base, (uint64_t)rsz, (uint64_t)p, code_ptrs, ctx);
+                            // Deref neighbour pointers one level → spot a vtable (eldenring.exe
+                            // ptr at offset 0 of the target = an object) and identify the record.
+                            char drf[400] = {}; int dl = 0;
+                            if (!param_array)
+                            {
+                                for (int k = -6; k <= 7 && dl < 300; k++)
+                                {
+                                    uintptr_t a = hit + (intptr_t)k * 8;
+                                    if (a < base || a + 8 > base + rsz) continue;
+                                    uint64_t v = *(const uint64_t *)a;
+                                    if (v < 0x100000 || v >= 0x7fffffffffff) continue;
+                                    MEMORY_BASIC_INFORMATION tb;
+                                    if (VirtualQuery((void *)v, &tb, sizeof(tb)) != sizeof(tb)) continue;
+                                    DWORD tp = tb.Protect;
+                                    if (tb.State != MEM_COMMIT ||
+                                        (tp & (PAGE_GUARD | PAGE_NOACCESS)) ||
+                                        !(tp & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+                                                PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)))
+                                        continue;
+                                    uint64_t t0 = *(const uint64_t *)v;
+                                    bool vt = (t0 >= er0 && t0 < er1);   // ptr-to-code = vtable
+                                    dl += snprintf(drf + dl, sizeof(drf) - dl, "[%+d]->%llx%s ",
+                                                   k * 8, (unsigned long long)t0, vt ? "(VT!)" : "");
+                                }
+                            }
+                            spdlog::info("[LOTSCAN] HIT @ {:#x} region={:#x}+{:#x}{} | {} {}{}",
+                                         hit, base, (uint64_t)rsz,
+                                         param_array ? " PARAM-ARRAY" : " STRUCT", ctx,
+                                         param_array ? "" : "DEREF ", drf);
                             ++logged;
                         }
                     }
