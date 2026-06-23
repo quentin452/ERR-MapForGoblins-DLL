@@ -1,5 +1,11 @@
 # Finding — the 81 loot "drifts" are an ammo-ENCODING mismatch, NOT a broken baker
 
+> **RESOLVED (commit 9f4f8f3):** `encode_live_item` cat-2 changed to always `+100M` (drop the
+> `>=50M ? raw`), aligning it to the baker/icon/default-name convention. Re-verified in-game: the
+> `[LOOTID]` probe now reports **4316/4316 same, 0 drifted**. This also proves the live identity
+> read == the bake for every lot-backed marker → de-baking identity to a runtime read is now a
+> zero-regression change. The analysis below is kept for the record.
+
 Code/data investigation (no game-memory RE) of the `[LOOTID]` probe result: 4316 lot-backed
 markers, 4235 same, **81 "drifted" — every one baked == live + exactly 100000000** (e.g. baked
 150010000 → live 50010000). Question: is the baker broken, or is it an encoding bug?
