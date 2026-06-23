@@ -33,6 +33,7 @@
 #include <string>
 #include <cmath>
 #include <cstring>
+#include <cstdio>
 #include <algorithm>
 
 // ImGui's Win32 backend message handler (defined in imgui_impl_win32.cpp).
@@ -369,6 +370,121 @@ namespace
         out.uv0 = ImVec2(static_cast<float>(sp.x0 - x0) / w, static_cast<float>(sp.y0 - y0) / h);
         out.uv1 = ImVec2(static_cast<float>(sp.x1 - x0) / w, static_cast<float>(sp.y1 - y0) / h);
         return true;
+    }
+
+    void submit_and_wait(); // defined just below; used by the DDS loader
+
+    // ── OUR-OWN texture manager: load a raw DDS (BCn) into OUR D3D12 resource, no game bind ───────
+    // The game binds its menu sheets lazily on render (so we can only harvest what it draws). To
+    // escape that, we load the source DDS ourselves: parse the header, CreateCommittedResource in the
+    // file's BC format (GPU samples BCn natively — no CPU decode), upload the blocks, make an SRV.
+    // This is the foundation for drawing ANY icon (crop a rect) without waiting for the game.
+    DXGI_FORMAT dds_fourcc_to_dxgi(const uint8_t *h, size_t len, size_t &dataOff)
+    {
+        uint32_t fourcc; std::memcpy(&fourcc, h + 84, 4);
+        if (fourcc == 0x30315844) // 'DX10'
+        {
+            if (len < 148) return DXGI_FORMAT_UNKNOWN;
+            uint32_t dxgi; std::memcpy(&dxgi, h + 128, 4);
+            dataOff = 148;
+            return static_cast<DXGI_FORMAT>(dxgi);
+        }
+        dataOff = 128;
+        switch (fourcc)
+        {
+        case 0x31545844: return DXGI_FORMAT_BC1_UNORM; // 'DXT1'
+        case 0x33545844: return DXGI_FORMAT_BC2_UNORM; // 'DXT3'
+        case 0x35545844: return DXGI_FORMAT_BC3_UNORM; // 'DXT5'
+        default: return DXGI_FORMAT_UNKNOWN;
+        }
+    }
+
+    int bc_block_bytes(DXGI_FORMAT f)
+    {
+        switch (f)
+        {
+        case DXGI_FORMAT_BC1_UNORM: case DXGI_FORMAT_BC1_UNORM_SRGB:
+        case DXGI_FORMAT_BC4_UNORM: case DXGI_FORMAT_BC4_SNORM: return 8;
+        default: return 16; // BC2/BC3/BC5/BC6H/BC7
+        }
+    }
+
+    // Load a DDS file from disk into our own SRV. Returns the gpu handle (0 on fail) + dims + format.
+    // Synchronous (submit_and_wait). Allocates an SRV slot from g_next_item_srv.
+    UINT64 create_tex_from_dds_file(const char *path, int &outW, int &outH, DXGI_FORMAT &outFmt)
+    {
+        outW = outH = 0; outFmt = DXGI_FORMAT_UNKNOWN;
+        if (!g_device || !g_command_queue || !g_srv_heap || g_next_item_srv >= 256) return 0;
+        FILE *fp = std::fopen(path, "rb");
+        if (!fp) { spdlog::warn("[TEXMGR] open fail '{}'", path); return 0; }
+        std::fseek(fp, 0, SEEK_END); long sz = std::ftell(fp); std::fseek(fp, 0, SEEK_SET);
+        if (sz < 148) { std::fclose(fp); return 0; }
+        std::vector<uint8_t> buf(static_cast<size_t>(sz));
+        size_t rd = std::fread(buf.data(), 1, buf.size(), fp); std::fclose(fp);
+        if (rd != buf.size() || std::memcmp(buf.data(), "DDS ", 4) != 0) { spdlog::warn("[TEXMGR] not DDS '{}'", path); return 0; }
+
+        uint32_t h, w; std::memcpy(&h, buf.data() + 12, 4); std::memcpy(&w, buf.data() + 16, 4);
+        size_t dataOff = 128;
+        DXGI_FORMAT fmt = dds_fourcc_to_dxgi(buf.data(), buf.size(), dataOff);
+        if (fmt == DXGI_FORMAT_UNKNOWN || w == 0 || h == 0) { spdlog::warn("[TEXMGR] bad fmt '{}'", path); return 0; }
+        const int blockBytes = bc_block_bytes(fmt);
+        const UINT blocksW = (w + 3) / 4, blocksH = (h + 3) / 4;
+        const UINT srcRowPitch = blocksW * blockBytes;
+        if (dataOff + (size_t)srcRowPitch * blocksH > buf.size()) { spdlog::warn("[TEXMGR] short data '{}'", path); return 0; }
+
+        D3D12_HEAP_PROPERTIES dp{}; dp.Type = D3D12_HEAP_TYPE_DEFAULT;
+        D3D12_RESOURCE_DESC td{};
+        td.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        td.Width = w; td.Height = h; td.DepthOrArraySize = 1; td.MipLevels = 1;
+        td.Format = fmt; td.SampleDesc.Count = 1; td.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        ID3D12Resource *tex = nullptr;
+        if (FAILED(g_device->CreateCommittedResource(&dp, D3D12_HEAP_FLAG_NONE, &td,
+                D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&tex)))) return 0;
+
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT fp0{}; UINT numRows = 0; UINT64 rowSize = 0, total = 0;
+        g_device->GetCopyableFootprints(&td, 0, 1, 0, &fp0, &numRows, &rowSize, &total);
+
+        D3D12_HEAP_PROPERTIES up{}; up.Type = D3D12_HEAP_TYPE_UPLOAD;
+        D3D12_RESOURCE_DESC ub{};
+        ub.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER; ub.Width = total; ub.Height = 1;
+        ub.DepthOrArraySize = 1; ub.MipLevels = 1; ub.Format = DXGI_FORMAT_UNKNOWN;
+        ub.SampleDesc.Count = 1; ub.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        ID3D12Resource *upbuf = nullptr;
+        if (FAILED(g_device->CreateCommittedResource(&up, D3D12_HEAP_FLAG_NONE, &ub,
+                D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upbuf)))) { tex->Release(); return 0; }
+        uint8_t *map = nullptr; D3D12_RANGE nr{0, 0};
+        if (FAILED(upbuf->Map(0, &nr, reinterpret_cast<void **>(&map)))) { upbuf->Release(); tex->Release(); return 0; }
+        for (UINT r = 0; r < numRows; ++r)
+            std::memcpy(map + fp0.Offset + (size_t)r * fp0.Footprint.RowPitch,
+                        buf.data() + dataOff + (size_t)r * srcRowPitch, srcRowPitch);
+        upbuf->Unmap(0, nullptr);
+
+        begin_icon_batch(); // reuse the shared list (reset once/frame)
+        D3D12_TEXTURE_COPY_LOCATION dst{}; dst.pResource = tex;
+        dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; dst.SubresourceIndex = 0;
+        D3D12_TEXTURE_COPY_LOCATION src{}; src.pResource = upbuf;
+        src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT; src.PlacedFootprint = fp0;
+        g_command_list->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+        D3D12_RESOURCE_BARRIER b{}; b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        b.Transition.pResource = tex; b.Transition.Subresource = 0;
+        b.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        b.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        g_command_list->ResourceBarrier(1, &b);
+        submit_and_wait();
+        upbuf->Release(); // copy done (blocked)
+
+        UINT idx = g_next_item_srv++;
+        D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
+        D3D12_GPU_DESCRIPTOR_HANDLE gpu = g_srv_heap->GetGPUDescriptorHandleForHeapStart();
+        UINT inc = g_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        cpu.ptr += (SIZE_T)idx * inc; gpu.ptr += (UINT64)idx * inc;
+        D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
+        sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        sd.Format = fmt; sd.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D; sd.Texture2D.MipLevels = 1;
+        g_device->CreateShaderResourceView(tex, &sd, cpu);
+        outW = (int)w; outH = (int)h; outFmt = fmt;
+        spdlog::info("[TEXMGR] loaded '{}' {}x{} fmt={} slot={} -> gpu={:#x}", path, w, h, (int)fmt, idx, gpu.ptr);
+        return gpu.ptr;
     }
 
     // Close + submit g_command_list and block until the GPU finishes — the synchronous one-shot
@@ -1155,6 +1271,27 @@ namespace
                 if (ImGui::Button("Force graces now")) goblin::force_graces();
                 ImGui::SameLine();
                 ImGui::TextDisabled("(re-harvest MENU_MAP_*/SB_ERR_Grace_* on demand)");
+
+                // OUR-OWN texture load test: read a raw DDS off disk into our own GPU texture
+                // (no game bind) and draw it here. Proves the "load img on our side" path.
+                ImGui::Separator();
+                ImGui::TextDisabled("Load a raw DDS into OUR texture (no game bind):");
+                static char s_dds_path[256] = "Z:\\home\\iamacat\\Games\\ERRv2.2.9.6\\test.dds";
+                static UINT64 s_dds_tex = 0; static int s_dds_w = 0, s_dds_h = 0; static int s_dds_fmt = 0;
+                ImGui::SetNextItemWidth(440);
+                ImGui::InputText("dds path", s_dds_path, sizeof(s_dds_path));
+                if (ImGui::Button("Load DDS (our side)"))
+                {
+                    DXGI_FORMAT f; s_dds_tex = create_tex_from_dds_file(s_dds_path, s_dds_w, s_dds_h, f);
+                    s_dds_fmt = (int)f;
+                }
+                if (s_dds_tex)
+                {
+                    ImGui::Text("%dx%d fmt=%d", s_dds_w, s_dds_h, s_dds_fmt);
+                    float dw = s_dds_w > 256 ? 256.f : (float)s_dds_w;
+                    float dh = s_dds_h ? dw * s_dds_h / s_dds_w : dw;
+                    ImGui::Image((ImTextureID)s_dds_tex, ImVec2(dw, dh));
+                }
             }
 
             // Icon migration completion (Baked → GPU): how many category icons still draw from the
