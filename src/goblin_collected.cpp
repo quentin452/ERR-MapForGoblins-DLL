@@ -650,181 +650,86 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
         }
     }
 
-    // [LOTSCAN] one-shot structure-agnostic brute scan: is the known chest's lotId resident in
-    // committed PRIVATE memory while the chest is UNOPENED? In-process (we run inside eldenring.exe),
-    // so scan directly via VirtualQuery — no RPM. Answers pre-open residency definitively: hit≥1 →
-    // lotId IS resident somewhere (then chase the offset); 0 → not resident pre-open (premium dead
-    // for sealed chests). Gated in-world, one-shot.
-    // Gate on the PERSISTENT cache (non-empty whenever any tile is loaded), NOT `result` —
-    // `result` only carries this refresh's NEW tiles, so it's empty once tiles are cached
-    // (standing still), and the scan would never fire unless the player happened to be moving.
-    static bool s_lotscan_done = false;
-    if (goblin::config::diagLotMemscan && !s_lotscan_done && !g_wgm_cache.empty())
+    // [MAPINS] one-shot anchor-walk of the loaded loot records — the PRODUCTION strategy that
+    // replaces the retired brute LOTSCAN (brute scan = discovery only; never production). Deterministic
+    // pointer chain from the static base (Ghidra da513922/188d977, offline-validated RTTI + slot):
+    //   WorldMapManImp [er+0x485cbb8] (vt er+0x2a8f918)
+    //     +0x28 count ; +0x5d0 WorldBlockMap[] stride 0x220 (vt er+0x2a8f650)
+    //       +0x120 cap ; +0x128 MapIns*[] stride 8  ->  MapIns (vt er+0x2a8d6d8)
+    // Per MapIns: bounded-scan its body for the loot node {lotId@+0, flag@+4, FieldIns*@+8} via the
+    // self-validating signature *(u32)(FieldIns+0x50)==lotId ; then MapId@node-0xD8, localPos@node-0xD4
+    // -> identity (lotId -> resolve_loot_item_textid) + absolute pos (gridXZ*256 + local). EVERY read
+    // is crash-safe (safe_read / ReadProcessMemory, never a raw deref) so no AV on unbacked Wine pages,
+    // and there is NO full-memory scan. Gated in-world, one-shot.
+    static bool s_mapins_done = false;
+    if (goblin::config::diagLotMemscan && !s_mapins_done && !g_wgm_cache.empty())
     {
-        s_lotscan_done = true;
-        const uint32_t target = 0x3dd6fec4;   // 1037500100 = AEG099_090_9000's ItemLotID
-        // Exclude self-contamination: our own thread stack (holds `target` + the MBI fields +
-        // fmt strings) and our own DLL module both contain the literal we search for and would
-        // show up as bogus "STRUCT" hits. Skip their regions.
-        MEMORY_BASIC_INFORMATION self; VirtualQuery(&self, &self, sizeof(self));
-        uintptr_t self_stack_base = (uintptr_t)self.AllocationBase;
-        HMODULE hself = nullptr;
-        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                           (LPCSTR)&read_wgm_snapshot, &hself);
-        uintptr_t self_mod = (uintptr_t)hself;
-        SYSTEM_INFO si; GetSystemInfo(&si);
-        uintptr_t addr = (uintptr_t)si.lpMinimumApplicationAddress;
-        uintptr_t end  = (uintptr_t)si.lpMaximumApplicationAddress;
-        uint64_t scanned = 0, regions = 0; int hits = 0, logged = 0, sig_hits = 0;
-        int item_nodes = 0, item_logged = 0, mapins_count = 0;
-        const uint64_t mapins_vt = (uint64_t)(game_base + 0x2a8d6d8);   // CS::MapIns vtable VA
-        MEMORY_BASIC_INFORMATION mbi;
-        while (addr < end && VirtualQuery((void *)addr, &mbi, sizeof(mbi)) == sizeof(mbi))
+        s_mapins_done = true;
+        const uint64_t VT_MGR = game_base + 0x2a8f918, VT_WBM = game_base + 0x2a8f650,
+                       VT_MAPINS = game_base + 0x2a8d6d8;
+        uint64_t mgr = 0, mgr_vt = 0;
+        const bool chain_ok =
+            safe_read((void *)(game_base + 0x485cbb8), &mgr, 8) && mgr &&
+            safe_read((void *)mgr, &mgr_vt, 8) && mgr_vt == VT_MGR;
+        int blocks = 0, mapins = 0, records = 0, logged = 0;
+        if (chain_ok)
         {
-            uintptr_t base = (uintptr_t)mbi.BaseAddress;
-            size_t    rsz  = mbi.RegionSize;
-            DWORD p = mbi.Protect;
-            bool readable = (p & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
-                                  PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)) != 0;
-            bool blocked  = (p & (PAGE_GUARD | PAGE_NOACCESS)) != 0;
-            bool is_self = (self_stack_base && (uintptr_t)mbi.AllocationBase == self_stack_base) ||
-                           (self_mod && base >= self_mod && base < self_mod + 0x800000);
-            // Include MEM_MAPPED too (da513922: the MapIns lot record may live in a mapped
-            // region; a MEM_PRIVATE-only scan would false-negative it).
-            if (mbi.State == MEM_COMMIT && (mbi.Type == MEM_PRIVATE || mbi.Type == MEM_MAPPED) &&
-                readable && !blocked && rsz >= 4 && !is_self)
+            int32_t count = 0;
+            safe_read((void *)(mgr + 0x28), &count, 4);
+            if (count < 0 || count > 192) count = 192;   // WorldBlockMap[] array is memset to ~192 slots
+            std::vector<uint8_t> body(0x1200);
+            for (int b = 0; b < count; b++)
             {
-                ++regions; scanned += rsz;
-                const uint8_t *q = (const uint8_t *)base;
-                size_t n = rsz - 3;
-                for (size_t i = 0; i < n; i++)   // byte-granular (lotId need not be aligned)
+                uint64_t wbm = mgr + 0x5d0 + (uint64_t)b * 0x220, wvt = 0;
+                if (!safe_read((void *)wbm, &wvt, 8) || wvt != VT_WBM) continue;
+                ++blocks;
+                uint32_t cap = 0; uint64_t arr = 0;
+                safe_read((void *)(wbm + 0x120), &cap, 4);
+                safe_read((void *)(wbm + 0x128), &arr, 8);
+                if (!arr || cap > 65536) continue;
+                for (uint32_t j = 0; j < cap; j++)
                 {
-                    if (*(const uint32_t *)(q + i) == target)
+                    uint64_t mi = 0;
+                    if (!safe_read((void *)(arr + (uint64_t)j * 8), &mi, 8) || !mi) continue;
+                    uint64_t mvt = 0;
+                    if (!safe_read((void *)mi, &mvt, 8) || mvt != VT_MAPINS) continue;
+                    ++mapins;
+                    // Bulk-read the MapIns body (record-specific offset, so scan it). MapIns size is
+                    // unknown → try decreasing sizes so a small instance near an unmapped page still reads.
+                    size_t bsz = 0;
+                    for (size_t want : {(size_t)0x1200, (size_t)0x800, (size_t)0x400})
+                        if (safe_read((void *)mi, body.data(), want)) { bsz = want; break; }
+                    if (bsz < 0xF0) continue;
+                    const uint8_t *q = body.data();
+                    for (size_t k = 0xD8; k + 16 <= bsz; k += 8)   // k>=0xD8 so node-0xD8 (MapId) is in-body
                     {
-                        // ── da513922 SIGNATURE test: is this a resident loot node?
-                        // node{lotId@+0, flag@+4, FieldIns*@+8}, self-validating
-                        // *(u32)(FieldIns+0x50)==lotId; then MapId@node-0xD8, localPos@node-0xD4.
-                        uintptr_t H = base + i;
-                        if (H + 16 <= base + rsz && H - 0xD8 >= base)
+                        uint32_t L = *(const uint32_t *)(q + k);
+                        if (L < 0x05F5E100u || L > 0x40000000u) continue;   // plausible ER item-lot
+                        uint32_t flag = *(const uint32_t *)(q + k + 4);
+                        if (flag > 1) continue;                              // node flag = 0/1 (cheap pre-filter)
+                        uint64_t P = *(const uint64_t *)(q + k + 8);
+                        if (P <= 0x100000 || P >= 0x7fffffffffffULL) continue;
+                        uint32_t v50 = 0;
+                        if (!safe_read((void *)(P + 0x50), &v50, 4) || v50 != L) continue; // self-validate
+                        ++records;
+                        if (logged < 64)
                         {
-                            uint64_t P = *(const uint64_t *)(H + 8);
-                            if (P > 0x100000 && P < 0x7fffffffffff)
-                            {
-                                MEMORY_BASIC_INFORMATION pb;
-                                if (VirtualQuery((void *)P, &pb, sizeof(pb)) == sizeof(pb) &&
-                                    pb.State == MEM_COMMIT &&
-                                    !(pb.Protect & (PAGE_GUARD | PAGE_NOACCESS)) &&
-                                    P + 0x54 <= (uintptr_t)pb.BaseAddress + pb.RegionSize &&
-                                    *(const uint32_t *)(P + 0x50) == target)
-                                {
-                                    ++sig_hits;
-                                    uint32_t flag  = *(const uint32_t *)(H + 4);
-                                    uint32_t mapId = *(const uint32_t *)(H - 0xD8);
-                                    const float *pos = (const float *)(H - 0xD4);
-                                    wchar_t nm[24] = {}; char nn[24] = {};
-                                    if (P + sizeof(nm) <= (uintptr_t)pb.BaseAddress + pb.RegionSize)
-                                        for (int c = 0; c < 23; c++) nn[c] = (char)(((const wchar_t *)P)[c] & 0xFF);
-                                    spdlog::info("[LOTSCAN-SIG] NODE @ {:#x} flag={} FieldIns={:#x} "
-                                                 "MapId={:#x} localPos=({:.2f},{:.2f},{:.2f}) name='{}' type={}",
-                                                 H, flag, P, mapId, pos[0], pos[1], pos[2], nn,
-                                                 mbi.Type == MEM_MAPPED ? "MAPPED" : "PRIVATE");
-                                }
-                            }
-                        }
-                        ++hits;
-                        if (logged < 32)
-                        {
-                            uintptr_t hit = base + i;
-                            uintptr_t er0 = game_base, er1 = game_base + 0x5000000;
-                            // Skip the ItemLotParam sorted-lookup array (hits 1/2): a packed
-                            // {lotId, index} table where +0x8 is the next lotId with an
-                            // incrementing high-word index. Those are chest-independent (always
-                            // resident) — not the runtime link. Detect + log briefly, don't deref.
-                            uint64_t nx = (hit + 8 + 8 <= base + rsz) ? *(const uint64_t *)(hit + 8) : 0;
-                            bool param_array = ((nx & 0xffffffff) > 0x10000000) && ((nx >> 48) == 0) &&
-                                               ((nx >> 32) & 0xffff) != 0;   // low=lotId-shaped, high=index
-                            char ctx[700] = {}; int cl = 0;
-                            for (int k = -6; k <= 7 && cl < 300; k++)
-                            {
-                                uintptr_t a = hit + (intptr_t)k * 8;
-                                if (a < base || a + 8 > base + rsz) continue;
-                                uint64_t v = *(const uint64_t *)a;
-                                cl += snprintf(ctx + cl, sizeof(ctx) - cl, "[%+d]=%llx ",
-                                               k * 8, (unsigned long long)v);
-                            }
-                            // Deref neighbour pointers one level → spot a vtable (eldenring.exe
-                            // ptr at offset 0 of the target = an object) and identify the record.
-                            char drf[400] = {}; int dl = 0;
-                            if (!param_array)
-                            {
-                                for (int k = -6; k <= 7 && dl < 300; k++)
-                                {
-                                    uintptr_t a = hit + (intptr_t)k * 8;
-                                    if (a < base || a + 8 > base + rsz) continue;
-                                    uint64_t v = *(const uint64_t *)a;
-                                    if (v < 0x100000 || v >= 0x7fffffffffff) continue;
-                                    MEMORY_BASIC_INFORMATION tb;
-                                    if (VirtualQuery((void *)v, &tb, sizeof(tb)) != sizeof(tb)) continue;
-                                    DWORD tp = tb.Protect;
-                                    if (tb.State != MEM_COMMIT ||
-                                        (tp & (PAGE_GUARD | PAGE_NOACCESS)) ||
-                                        !(tp & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
-                                                PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)))
-                                        continue;
-                                    uint64_t t0 = *(const uint64_t *)v;
-                                    bool vt = (t0 >= er0 && t0 < er1);   // ptr-to-code = vtable
-                                    dl += snprintf(drf + dl, sizeof(drf) - dl, "[%+d]->%llx%s ",
-                                                   k * 8, (unsigned long long)t0, vt ? "(VT!)" : "");
-                                }
-                            }
-                            spdlog::info("[LOTSCAN] HIT @ {:#x} region={:#x}+{:#x}{} | {} {}{}",
-                                         hit, base, (uint64_t)rsz,
-                                         param_array ? " PARAM-ARRAY" : " STRUCT", ctx,
-                                         param_array ? "" : "DEREF ", drf);
+                            uint32_t mapId = *(const uint32_t *)(q + k - 0xD8);
+                            const float *pos = (const float *)(q + k - 0xD4);
+                            wchar_t nm[16] = {}; char nn[20] = {};
+                            if (safe_read((void *)P, nm, sizeof(nm) - 2))
+                                for (int c = 0; c < 15; c++) nn[c] = (char)(nm[c] & 0xFF);
+                            spdlog::info("[MAPINS] rec MapIns={:#x} node+{:#x} lot={:#x}({}) flag={} "
+                                         "FieldIns={:#x} MapId={:#x} localPos=({:.2f},{:.2f},{:.2f}) name='{}'",
+                                         mi, (uint64_t)k, L, L, flag, P, mapId, pos[0], pos[1], pos[2], nn);
                             ++logged;
                         }
                     }
                 }
-                // ── MapIns-WALKER (188d977): single stride-8 pass over this region doing two things.
-                // (A) Count CS::MapIns by vtable (obj+0x00 == game_base+0x2a8d6d8) → confirms the ~343
-                //     live enumeration (STEP 0).
-                // (B) Find loot records by the FULL node signature, validated WITHOUT a syscall (the
-                //     earlier scan hung because it VirtualQuery'd every candidate): node{L lot-range,
-                //     flag, FieldIns* P}; accept P only when it lands in the SAME committed region we're
-                //     scanning (so the deref is safe with no query — loot FieldIns sit near the node),
-                //     then *(u32)(P+0x50)==L AND the FieldIns name starts with アイテム. Then dump
-                //     lotId + MapId@node-0xD8 + localPos@node-0xD4 + name → identity + absolute pos.
-                for (size_t i = 0; i + 16 <= rsz; i += 8)
-                {
-                    if (*(const uint64_t *)(q + i) == mapins_vt) { ++mapins_count; continue; }
-                    uint32_t L = *(const uint32_t *)(q + i);
-                    if (L < 0x05F5E100u || L > 0x40000000u) continue;       // ~1e8 .. ~1.07e9
-                    uint64_t P = *(const uint64_t *)(q + i + 8);
-                    if (P < base || P + 0x54 > base + rsz) continue;        // in-region → safe, no syscall
-                    if (*(const uint32_t *)(P + 0x50) != L) continue;       // self-validating
-                    const wchar_t *wn = (const wchar_t *)P;                 // FieldIns name == アイテム
-                    if (wn[0] != 0x30A2 || wn[1] != 0x30A4) continue;
-                    ++item_nodes;
-                    if (item_logged < 48)
-                    {
-                        uintptr_t H = base + i;
-                        uint32_t flag = *(const uint32_t *)(q + i + 4);
-                        bool hdr = (i >= 0xD8);
-                        uint32_t mapId = hdr ? *(const uint32_t *)(q + i - 0xD8) : 0;
-                        const float *pos = hdr ? (const float *)(q + i - 0xD4) : nullptr;
-                        spdlog::info("[LOTSCAN-ITEM] node @ {:#x} lot={:#x} ({}) flag={} FieldIns={:#x} "
-                                     "MapId={:#x} localPos=({:.2f},{:.2f},{:.2f}) type={}",
-                                     H, L, L, flag, P, mapId, pos ? pos[0] : 0.f, pos ? pos[1] : 0.f,
-                                     pos ? pos[2] : 0.f, mbi.Type == MEM_MAPPED ? "MAPPED" : "PRIVATE");
-                        ++item_logged;
-                    }
-                }
             }
-            addr = base + rsz;
         }
-        spdlog::info("[LOTSCAN] DONE target={:#x} hits={} sigNodes={} mapIns={} lootNodes={} regions={} scannedMB={}",
-                     target, hits, sig_hits, mapins_count, item_nodes, (uint64_t)regions, scanned / (1024 * 1024));
+        spdlog::info("[MAPINS] DONE chain_ok={} mgr={:#x} blocks={} mapIns={} records={}",
+                     chain_ok, mgr, blocks, mapins, records);
     }
 
     return result;
