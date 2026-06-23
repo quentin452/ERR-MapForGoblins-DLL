@@ -2742,10 +2742,17 @@ void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
                 if ((s_gt++ % 30) == 0) { ++g_grace_force_tries; run_force_grace(er); }
             }
             // Manual force (F1 "Force graces now") — re-poke on demand, bypassing the auto
-            // cap/lock/throttle; only needs a captured CreateImage context (g_ci_p1).
+            // cap/lock/throttle; only needs a captured CreateImage context (g_ci_p1). CreateImage
+            // alone only makes the sprites RESIDENT — the candidates are registered by the twin-map
+            // WALK (harvest_twin_map_icons → cache_map_sprite_from_img → g_grace_cands), so run it
+            // right after (the missing "binding" step), else the F1 viewer shows no candidate.
             if (g_force_grace_req.exchange(false, std::memory_order_acq_rel) &&
                 g_ci_p1.load(std::memory_order_relaxed))
+            {
                 run_force_grace(er);
+                if (g_icon_repo)
+                    harvest_twin_map_icons(g_icon_repo, er);
+            }
         }
     }
     if (g_res_tick_orig) g_res_tick_orig(p1, p2);
