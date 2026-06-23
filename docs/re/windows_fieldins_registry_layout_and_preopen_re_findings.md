@@ -127,3 +127,41 @@ copy / an already-spawned pickup, **not** a pre-open per-chest FieldIns — ther
 the baked `partName`-join (works for all baked loot today). Free-standing/dropped world pickups, if any,
 remain catchable only as live spawned geom-items (not pursued). Stop chasing the runtime asset→lot link;
 RPM + Ghidra have exhausted it. Scripts: `registry_layout_check.py`, `registry_rtti_check.py`.
+
+---
+
+## 7. ★★★ REVERSAL — live full-mem scan FINDS lotId + position + MapId co-resident (2026-06-23)
+§6's "dead" verdict was premature: it only checked the RendManImp registry + the asset-embedded pool. A
+**full live-memory scan for the lotId** (`D:\ghidra_scripts\lot_pos_scan.py` → `lot_obj_dump.py` →
+`mapins_enum.py` / `mapins_verify.py` / `mapins_final.py`) found the real resident link.
+
+**The resident loot node (chest `AEG099_090_9000`, lot `1037500100`/`0x3dd6fec4`):**
+- A 16-byte node `{ lotId u32 @+0x00, flag u32 @+0x04 (=1), FieldIns* @+0x08 }` at a heap addr (live
+  `0x22d12efeb90`). The `FieldIns*` → object with inline wide name "アイテム…" @+0x00 and **`lotId@+0x50`
+  again** (the self-validating signature: `*(u32)(FieldIns+0x50) == node.lotId`).
+- **In the SAME heap object, at fixed negative offsets from the node:**
+  - `node − 0xD8` = **MapId `0x3c253200` = `m60_37_50_00`** (area 60, gridX 37, gridZ 50).
+  - `node − 0xD4 / −0xD0 / −0xCC` = **local position `(56.32, 238.13, 52.68)`** (matches the baked
+    chest pos). Between pos and the node sits a regular `{ffffffff,00000000}` slot array → the negative
+    offset is a structural record header, not coincidence.
+- **→ absolute world position is computable on the spot:** `worldX = gridX·256 + localX = 37·256+56.32 =
+  9528.3`, `worldZ = gridZ·256+localZ = 50·256+52.68 = 12852.7`, Y `= 238.1`. (Matches the player→map-UI
+  transform `world = gridXZ·256 + local`, [[ghidra-worldmap-re]].)
+
+**Owner = a `CS::MapIns` region** (scan-back RTTI: `MapIns` 0x2a8d6d8, `CSMsbPartsMap` 0x2ba68f0,
+`MapRes` 0x2a8db20, `CSGrowableNodePool<FieldInsBase*>` 0x2a84ca0, repeating ~0x2b0 stride). 343 MapIns
+resident. NB: the chest's pool @MapIns+0x240 is EMPTY (`node_arr=0`) — the lot node is an INLINE record
+field, not a pool entry (so path A's empty-pool result was a red herring, not proof of absence). The
+literal offsets (`+0x460` node, `+0x384` MapId, `+0x38c` pos) are object/record-specific, not a uniform
+MapIns field — only the loaded item-bearing record exposes them, which is why only 1/343 matched a fixed
+offset.
+
+**Status: the link is ALIVE for LOADED loot.** A resident record carries lotId + name + local pos +
+MapId together → full item identity AND absolute position, for loot currently streamed in (the
+explore-cache scope). Residency caveat from §3 still applies (sealed-chest contents may be open-time;
+this scan's state was not controlled — re-test at a known-unopened chest). **Remaining work = a stable
+enumeration anchor:** find all loaded loot nodes from a static base (walk the MapIns set, or the owner of
+the records) rather than a full-mem lotId scan. Signature for the mod/cache: a node `{L, flag, P}` with
+`*(u32)(P+0x50)==L`; then `MapId = *(u32)(node−0xD8)`, `localPos = *(vec3)(node−0xD4)`.
+
+Scripts: `lot_pos_scan.py`, `lot_obj_dump.py`, `mapins_enum.py`, `mapins_verify.py`, `mapins_final.py`.
