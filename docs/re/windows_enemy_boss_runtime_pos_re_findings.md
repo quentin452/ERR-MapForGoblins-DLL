@@ -95,3 +95,19 @@ clearedEventFlagId↔live, killEventFlagId↔baked).
 **Fix target (boss_list.json / generate_boss_list.py):** correct the Flamelost Knights area
 assignment (16, not 31) and add the missing area-60 overworld boss. Run diag_t3_bossframe.py to
 name the exact 3 rows.
+
+---
+
+## RESOLUTION (2026-06-23) — no drift bug; bosses now drawn LIVE
+
+- **The "dungeon-boss drift" was NOT our bug.** User cross-checked in-game: the boss positions
+  MapGenie shows are the wrong reference — our placement is correct / more reliable. So the whole
+  A (collapse-to-entrance) vs B (faithful) decision is **moot: we keep faithful (already right)**.
+  T1/T2 (WorldChrMan enemy enumeration) are **abandoned** — never needed.
+- **Bosses are now built LIVE** from WorldMapPointParam field-boss rows (textId2==5100) in
+  `map_entry_layer.cpp build_live_bosses()` — verified in-game. The baked WorldBosses rows were
+  stripped from `goblin_map_data.cpp` and `generate_data.py` skips the "World - Bosses" MASSEDIT.
+  This auto-fixed the 3 coverage anomalies (Flamelost Knights area16/31, missing area-60 boss) and
+  future-proofs against ERR updates. boss_list.json is kept (loot_massedit / relocating_boss_fix
+  consume it). The `probe_baked_drift` diagnostic that found the anomalies was removed (its target,
+  the boss bake, is gone).
