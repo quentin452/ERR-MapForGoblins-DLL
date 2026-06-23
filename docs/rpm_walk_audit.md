@@ -61,10 +61,13 @@ NB `project` + `get_live_view` are called from the **overlay-render thread** (ma
 
 | Global | File:line | Type | Guard |
 |---|---|---|---|
-| `g_map_icon_rects` | goblin_inject.cpp:1964 | `std::map<int,MapIconRect>` | `g_harvest_mtx` @2296 |
-| `g_grace_sprite` | goblin_inject.cpp:2017 | `goblin::ItemSprite` | `g_grace_locked` (atomic) |
-| `g_harvest` (icon cache set) | goblin_inject.cpp:1954 | `std::unordered_set<int>` | `g_harvest_mtx` |
+| `g_map_icon_rects` / `g_map_icon_named` | goblin_inject.cpp:1964 | `std::map<…,MapIconRect>` | `g_map_icon_mtx` @1966 (writer `store_map_icon_rect` @1971 + getters @3154/3164 all lock it) |
+| `g_grace_sprite` / `g_grace_locked` | goblin_inject.cpp:2017 | `goblin::ItemSprite` + bool | `g_harvest_mtx` (set @2365, getter @2942) |
+| `g_harvest` (icon cache map) | goblin_inject.cpp:2012 | `std::unordered_map<int,ItemSprite>` | `g_harvest_mtx` @2011 |
 | `g_active_cursor` | goblin_worldmap_probe.cpp | atomic | std::atomic |
+
+Writer (was game thread, now probe thread) and reader (render thread) were ALREADY different
+threads, so the locking above already covers the cross-thread case — the move adds no new race.
 
 ## Move plan inputs
 

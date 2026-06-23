@@ -2118,10 +2118,12 @@ void *__fastcall find_detour(void *repo, void **out, const wchar_t *key)
             }
         }
     }
-    // §8b: proactively harvest ALL resident icons from the repo tree (cheap: no-ops unless the
-    // resident image count grew). Runs here because find_detour fires constantly while a menu is
-    // open. Uses node+0x50 directly (no re-resolve), so it never re-enters g_find_orig.
-    harvest_repo_icons();
+    // §8b repo-tree harvest RELOCATED off this game-thread hook → goblin::background_harvest_tick()
+    // on the worldmap_probe background poll (docs/rpm_walk_audit.md). find_detour still fires
+    // constantly while a menu is open, so running the RPM walk here put Wine's per-RPM cost on the
+    // engine thread; the walk is self-throttled + reads the repo from its static anchor, so the
+    // background poll covers it without stalling the engine. We keep stashing g_icon_repo above as
+    // the walk's fallback anchor + the dumpIconTextures diag's per-find cache.
     return ret;
 }
 
@@ -3166,6 +3168,15 @@ bool goblin::map_icon_rect_by_name(const char *name, int &x, int &y, int &w, int
     if (it == g_map_icon_named.end()) return false;
     x = it->second.x; y = it->second.y; w = it->second.w; h = it->second.h; sheet = it->second.sheet;
     return true;
+}
+
+// Background harvest entry point — see goblin_inject.hpp. Relocates the proactive repo walk
+// off the game-thread find hook onto the worldmap_probe background poll: harvest_repo_icons
+// is read-only RPM on our own process and publishes under its mutexes, so it is thread-safe,
+// and its internal throttle keeps the per-RPM Wine cost off the cadence of the engine thread.
+void goblin::background_harvest_tick()
+{
+    harvest_repo_icons();   // resolves the repo from the static anchor; no-op unless icons wanted
 }
 
 void goblin::install_icon_texture_probe()
