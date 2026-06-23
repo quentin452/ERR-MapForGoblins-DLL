@@ -282,6 +282,12 @@ namespace
     std::map<int, ItemIconSrv> g_item_icon_srvs;
     UINT g_next_item_srv = 2;   // 0 = ImGui font, 1 = category atlas
 
+    // Sheet-as-atlas: copy each game icon SHEET WHOLE into our own texture ONCE (cached by the game
+    // resource ptr), then markers draw with a per-icon UV sub-rect into it. All icons on one sheet
+    // share one ImTextureID → ONE ImGui draw call (vs one texture + draw call per cropped icon).
+    struct SheetTex { UINT64 gpu = 0; int w = 0, h = 0; };
+    std::map<ID3D12Resource *, SheetTex> g_sheet_cache;
+
     // Icons newly requested this frame: their GPU→GPU copy is RECORDED into a single shared
     // command list and finalized once per frame in flush_item_icon_batch() — one ExecuteCommandLists
     // + one fence wait for the WHOLE batch instead of one submit+blocking-wait per icon (the per-icon
@@ -539,6 +545,59 @@ namespace
         spdlog::info("[TEXMGR] DIRECT-copied ER sheet {}x{} fmt={} -> our gpu={:#x}",
                      (int)rd.Width, (int)rd.Height, (int)rd.Format, gpu.ptr);
         return gpu.ptr;
+    }
+
+    // Copy a game icon sheet WHOLE into our own texture ONCE, cached by the source ptr (sheet-as-atlas).
+    // Returns our {gpu handle, dims} or nullptr if the sheet isn't a bound TEXTURE2D yet (retry next
+    // frame, not cached as a failure). The copy persists → survives ER unbinding/freeing the sheet.
+    const SheetTex *copy_sheet_cached(ID3D12Resource *src)
+    {
+        auto it = g_sheet_cache.find(src);
+        if (it != g_sheet_cache.end())
+            return it->second.gpu ? &it->second : nullptr;
+        if (!g_device || !g_command_queue || !g_srv_heap || g_next_item_srv >= 256)
+            return nullptr;
+        D3D12_RESOURCE_DESC rd = src->GetDesc();
+        if (rd.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || rd.Format == DXGI_FORMAT_UNKNOWN)
+            return nullptr; // not bound yet → retry (don't poison the cache)
+        D3D12_HEAP_PROPERTIES dp{}; dp.Type = D3D12_HEAP_TYPE_DEFAULT;
+        D3D12_RESOURCE_DESC td = rd; td.Flags = D3D12_RESOURCE_FLAG_NONE;
+        ID3D12Resource *tex = nullptr;
+        if (FAILED(g_device->CreateCommittedResource(&dp, D3D12_HEAP_FLAG_NONE, &td,
+                D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&tex))))
+            return nullptr;
+        begin_icon_batch();
+        D3D12_RESOURCE_BARRIER bs{}; bs.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        bs.Transition.pResource = src; bs.Transition.Subresource = 0;
+        bs.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        bs.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        g_command_list->ResourceBarrier(1, &bs);
+        g_command_list->CopyResource(tex, src);
+        D3D12_RESOURCE_BARRIER after[2]{};
+        after[0] = bs;
+        after[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        after[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        after[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        after[1].Transition.pResource = tex; after[1].Transition.Subresource = 0;
+        after[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        after[1].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        g_command_list->ResourceBarrier(2, after);
+        submit_and_wait();
+
+        UINT idx = g_next_item_srv++;
+        D3D12_CPU_DESCRIPTOR_HANDLE cpu = g_srv_heap->GetCPUDescriptorHandleForHeapStart();
+        D3D12_GPU_DESCRIPTOR_HANDLE gpu = g_srv_heap->GetGPUDescriptorHandleForHeapStart();
+        UINT inc = g_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        cpu.ptr += (SIZE_T)idx * inc; gpu.ptr += (UINT64)idx * inc;
+        D3D12_SHADER_RESOURCE_VIEW_DESC sd{};
+        sd.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        sd.Format = rd.Format; sd.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D; sd.Texture2D.MipLevels = 1;
+        g_device->CreateShaderResourceView(tex, &sd, cpu);
+        SheetTex st{gpu.ptr, (int)rd.Width, (int)rd.Height};
+        g_sheet_cache[src] = st;
+        spdlog::info("[TEXMGR] cached ER sheet {:#x} {}x{} -> our gpu={:#x} (atlas)",
+                     reinterpret_cast<uintptr_t>(src), st.w, st.h, gpu.ptr);
+        return &g_sheet_cache[src];
     }
 
     // Close + submit g_command_list and block until the GPU finishes — the synchronous one-shot
@@ -2550,14 +2609,17 @@ bool goblin::overlay::native_item_icon(int iconId, void *&tex, float &u0, float 
 {
     if (iconId < 0)
         return false;
-    UINT64 h = ensure_item_icon_srv(iconId); // enqueues the GPU copy on first request (async)
-    if (!h)
-        return false; // not resident/ready yet → caller falls back to the atlas
-    auto it = g_item_icon_srvs.find(iconId);
-    if (it == g_item_icon_srvs.end() || !it->second.ok)
+    // Sheet-as-atlas: resolve the icon's harvested sheet + rect, copy the WHOLE sheet once (cached),
+    // and return that shared texture + the icon's UV sub-rect. All icons on a sheet share one
+    // ImTextureID → one ImGui draw call. Falls back (false) until the sheet is harvested + GPU-bound.
+    goblin::ItemSprite sp;
+    if (!goblin::harvested_icon(iconId, sp) || !sp.sheet)
         return false;
-    tex = reinterpret_cast<void *>(h);
-    u0 = it->second.uv0.x; v0 = it->second.uv0.y;
-    u1 = it->second.uv1.x; v1 = it->second.uv1.y;
+    const SheetTex *st = copy_sheet_cached(reinterpret_cast<ID3D12Resource *>(sp.sheet));
+    if (!st || !st->gpu || st->w <= 0 || st->h <= 0)
+        return false;
+    tex = reinterpret_cast<void *>(st->gpu);
+    u0 = (float)sp.x0 / st->w; v0 = (float)sp.y0 / st->h;
+    u1 = (float)sp.x1 / st->w; v1 = (float)sp.y1 / st->h;
     return true;
 }
