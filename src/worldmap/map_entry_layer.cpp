@@ -84,14 +84,19 @@ void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST
     // stale under ERR/randomizer) so collected loot grays + the census decrements.
     int collected_flag = (int)goblin::resolve_loot_flag(lotId, lotType, d.textDisableFlagId1);
     goblin::diag_loot_flags(lotId, lotType, d.textDisableFlagId1, c, d.textId1);
-    Marker m{wx, wz, grp, (int)d.areaNo, c, ckey, pname, d.textId1,
+    // Item IDENTITY (name/icon key) is read LIVE from ItemLotParam for lot-backed markers, so the
+    // marker shows the item ERR actually placed (drift-proof); non-lot rows + any miss fall back to
+    // the baked textId1. setup_messages preloads the FMG name for this SAME resolved key.
+    const int32_t name_id = goblin::resolve_loot_item_textid(lotId, lotType, d.textId1);
+    Marker m{wx, wz, grp, (int)d.areaNo, c, ckey, pname, name_id,
              category_color(c), category_icon_key(c), frag,
              row_id, (int)d.clearedEventFlagId, collected_flag};
     m.secondary_flag = secondary_story_flag(d.areaNo, d.gridXNo, d.gridZNo);
     m.hide_when_flag = hide_when_story_flag(d.areaNo, d.gridXNo, d.gridZNo);
     // Real inventory iconId for item/loot markers → native GPU icon (ItemIconProvider).
     // -1 for non-items (boss/grace/NPC keys miss) → they keep the category atlas icon.
-    m.icon_id = goblin::item_icon_id(d.textId1);
+    // Keyed by the live-resolved identity (same key as the label).
+    m.icon_id = goblin::item_icon_id(name_id);
     // Raw param coords for the engine's live projection (config live_projection).
     m.raw_area = d.areaNo; m.raw_gx = d.gridXNo; m.raw_gz = d.gridZNo;
     m.raw_px = d.posX; m.raw_pz = d.posZ;

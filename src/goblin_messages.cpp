@@ -441,8 +441,12 @@ void goblin::setup_messages()
     for (size_t i = 0; i < generated::MAP_ENTRY_COUNT; i++)
     {
         const auto &e = generated::MAP_ENTRIES[i];
+        // textId1 IDENTITY is read LIVE from ItemLotParam for lot-backed markers (drift-proof) —
+        // preload the FMG name for the SAME key the marker will display (map_entry_layer push_marker
+        // uses the same resolve). Non-lot rows + misses fall back to the baked textId1.
+        const int32_t live_tid1 = goblin::resolve_loot_item_textid(e.lotId, e.lotType, e.data.textId1);
         const int32_t *text_ids[] = {
-            &e.data.textId1, &e.data.textId2, &e.data.textId3, &e.data.textId4,
+            &live_tid1, &e.data.textId2, &e.data.textId3, &e.data.textId4,
             &e.data.textId5, &e.data.textId6, &e.data.textId7, &e.data.textId8,
         };
         for (auto *tidp : text_ids)
