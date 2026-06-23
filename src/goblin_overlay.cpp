@@ -2612,6 +2612,10 @@ bool goblin::overlay::native_item_icon(int iconId, void *&tex, float &u0, float 
     // Sheet-as-atlas: resolve the icon's harvested sheet + rect, copy the WHOLE sheet once (cached),
     // and return that shared texture + the icon's UV sub-rect. All icons on a sheet share one
     // ImTextureID → one ImGui draw call. Falls back (false) until the sheet is harvested + GPU-bound.
+    // NOTE: our markers carry MAP-POINT iconIds (ITEM_ICONS/WORLD_MAP_POINT, e.g. 381 = the armour
+    // map symbol), NOT inventory item-sheet iconIds — so harvested_icon (MENU_ItemIcon_<id>, a
+    // different sheet) misses by construction. This path is a no-op until repointed at the map-point
+    // sheet (1024x2048) + its sblytbnd rects (windows_map_point_icon_layout_re_prompt.md).
     goblin::ItemSprite sp;
     if (!goblin::harvested_icon(iconId, sp) || !sp.sheet)
         return false;
