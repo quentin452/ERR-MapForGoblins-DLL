@@ -92,3 +92,26 @@ probed the **`CS::CSGrowableNodePool<CS::FieldInsBase*>` embedded INSIDE each ge
 STEP 1 is done (static anchor `er+0x3d7b0c0` + iterable registry chain + node layout). STEP 2 has a
 concrete embedded-pool lead at `instance+0x3A8` that the earlier RPM verdict missed; confirm path (A)
 with one RPM read, else fall back to iterating the registry (B). Scripts `find_fieldins{,2..6}.java`.
+
+---
+
+## ★ RUNTIME RESULT — path (A) REFUTED as a passive walk (in-process [FIELDINS] probe, 2026-06-23)
+
+In-process probe `diag_fieldins_join` (commit 295fb1a, `goblin_collected.cpp` read_wgm_snapshot): for
+every loaded AEG asset, read its embedded `+0x3A8` pool and follow the child.
+
+**Result (24 assets incl. the known chest `AEG099_090_9000`):**
+`pool_vt = 0x142a84ca0` (= `CSGrowableNodePool<FieldInsBase*>` RTTI 0x2a84ca0 + imagebase → the
+embedded pool IS correctly identified), `cap=1 stride=8` as RE'd — **but `node_arr = 0x0` on ALL of
+them.** The pool exists on the asset but its node array was never grown → no child FieldIns → no lotId.
+
+**Verdict:** the loot-gimmick FieldIns is **NOT parented onto the asset instance at tile-load** (the
+embedded pool stays empty; it likely grows only when the treasure spawns its content / the chest is
+opened). So **path (A) is open-time-only — dead as a passive resident walk.** (The same-session
+[LOOTPOS] still reads 100% — geom position is fine; only the asset→lot link is absent here.)
+
+The FieldIns that the prior heap-scan found resident (with `lotId@+0x50 == 0x3dd6fec4`) therefore lives
+in the **global** pool/registry, not the per-asset embedded one → **path (B) is the live link.** Next:
+one-shot probe iterating the STEP-1 registry `er+0x3d7b0c0 → reg → [+0x10] → +0x720` RB-tree, read each
+`node+0x28` instance's vtable + `lotId@+0x50`; confirm a treasure FieldIns with a non-zero lotId is
+resident at tile-load (before open). Bulk/throttle/one-shot (Wine RPM).

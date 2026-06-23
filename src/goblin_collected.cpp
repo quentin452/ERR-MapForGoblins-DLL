@@ -318,6 +318,66 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
     uintptr_t game_base = (uintptr_t)GetModuleHandleA("eldenring.exe");
     if (!game_base) return result;
 
+    // [FIELDINS-B] one-shot global field-instance registry walk (diag_fieldins_join).
+    // Path A (embedded asset+0x3A8 pool) came back empty at tile-load, so probe the GLOBAL
+    // FD4Singleton registry instead (RE be1b018): reg=[er+0x3d7b0c0], sub=[reg+0x10],
+    // map=sub+0x720, RB-tree header @map+0x8; node +0x00 left/+0x10 right/+0x20 key(u64)/
+    // +0x28 value=instance ptr. For each registered instance read lotId@+0x50; report how
+    // many carry the known chest's lot 0x3dd6fec4 (1037500100) + a vtable/lot sample.
+    // Answers: is a treasure FieldIns (with lotId) resident at tile-load, before open?
+    static bool s_pathb_done = false;
+    if (goblin::config::diagFieldinsJoin && !s_pathb_done)
+    {
+        void *reg = nullptr, *sub = nullptr, *head = nullptr, *root = nullptr;
+        if (safe_read((void *)(game_base + 0x3d7b0c0), &reg, 8) && reg &&
+            safe_read((char *)reg + 0x10, &sub, 8) && sub &&
+            safe_read((char *)sub + 0x720 + 0x8, &head, 8) && head &&
+            safe_read((char *)head + 0x08, &root, 8) && root && root != head)
+        {
+            const int kMaxNodes = 40000;
+            int visited = 0, instances = 0, lot_hits = 0, nonzero_lot = 0, sampled = 0;
+            std::vector<void *> stack;
+            stack.push_back(root);
+            while (!stack.empty() && visited < kMaxNodes)
+            {
+                void *node = stack.back(); stack.pop_back();
+                if (!node || node == head) continue;
+                uint8_t nb[0x30] = {};
+                if (!safe_read(node, nb, sizeof(nb))) continue;
+                ++visited;
+                void *left = nullptr, *right = nullptr, *inst = nullptr;
+                memcpy(&left,  nb + 0x00, 8);
+                memcpy(&right, nb + 0x10, 8);
+                memcpy(&inst,  nb + 0x28, 8);
+                if (right && right != head) stack.push_back(right);
+                if (left  && left  != head) stack.push_back(left);
+                if (!inst) continue;
+                ++instances;
+                uint8_t ib[0x58] = {};   // vtable@+0x00 + lotId@+0x50
+                if (!safe_read(inst, ib, sizeof(ib))) continue;
+                void *vt = nullptr; uint32_t lot = 0;
+                memcpy(&vt,  ib + 0x00, 8);
+                memcpy(&lot, ib + 0x50, 4);
+                if (lot) ++nonzero_lot;
+                if (lot == 0x3dd6fec4) ++lot_hits;
+                if (lot && sampled < 24)
+                {
+                    spdlog::info("[FIELDINS-B] inst={} vt={} lotId={:#x}", inst, vt, lot);
+                    ++sampled;
+                }
+            }
+            s_pathb_done = true;
+            spdlog::info("[FIELDINS-B] DONE visited={} instances={} nonzeroLot={} "
+                         "targetLotHits={} (target=0x3dd6fec4)",
+                         visited, instances, nonzero_lot, lot_hits);
+        }
+        else
+        {
+            spdlog::info("[FIELDINS-B] registry chain unresolved (reg={} sub={} head={} root={})",
+                         reg, sub, head, root);
+        }
+    }
+
     void *wgm = nullptr;
     if (!safe_read((void *)world_geom_man_slot(), &wgm, 8) || !wgm)
         return result;
