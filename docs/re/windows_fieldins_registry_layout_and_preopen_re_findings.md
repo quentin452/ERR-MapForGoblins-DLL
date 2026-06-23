@@ -96,38 +96,45 @@ Scripts: `D:\ghidra_scripts\find_fieldins7.java`, `find_fieldins8.java` (out `ou
 
 ---
 
-## ★ RUNTIME RESULT with the corrected chain — avenue CLOSED in-process (2026-06-23)
+## ★ RUNTIME RESULT with the corrected chain — 13 objects, not a loot registry (2026-06-23)
 
 Re-ran `diag_fieldins_join` with §1's corrected offsets (commit 31a5f38: container=*[sub+0x720], map
 @container+0x18, head=*[container+0x20], _Mysize=*[container+0x28], instance=node+0x30):
 
 - Clean finite walk (no more cycle garbage): **`mapSize=13, visited=13, distinctNodes=13,
   instances=13, realLot=0, targetLotHits=0`.**
-- All 13 instances are the **same type**, `vtable 0x142a86860` (RVA 0x2a86860), `+0x50 = 0` —
-  **NOT** `FieldInsBase` (0x2a25e68) nor `MapIns` (0x2a8f650). A small homogeneous pool, **not** the
-  thousands-entry loaded field-instance registry.
+- All 13 instances are the **same type**, `vtable 0x142a86860` (RVA 0x2a86860), `+0x50 = 0`.
 
-**Verdict:** the chain from `er+0x3d7b0c0` resolves consistently but lands on a 13-object list that is
-not the field-instance map in this build (likely the static slot RVA `0x3d7b0c0` drifted — use the
-be1b018 AOBs to re-anchor, not the hardcoded RVA — or this sub-manager isn't the field one). Chasing
-the exact map further is **low-ROI for the loot feature**, because the static conclusion already
-stands regardless:
+This is NOT slot drift — the slot is correct (see §6 live RTTI + an on-disk PE scan confirming both
+be1b018 AOBs are unique and resolve to exactly `0x3d7b0c0`; RTTI from disk gives vt `0x2a86860` =
+`CSWorldGeomStaticIns`, vt `0x2a8f650` = `WorldBlockMap`). §6 explains the 13 objects: this map is a
+**render-side loaded-geom list**, not the field/loot registry.
 
-- No dedicated treasure/item FieldIns class (§2); sealed chests spawn their pickup at OPEN (§3); the
-  loot geom-items that DO exist at load are already enumerated by our `CSWorldGeomMan` walk
-  (`goblin_collected.cpp`) and carry **no resident lotId** (path A's embedded `+0x3A8` pool is empty).
+## 6. ★★ LIVE RPM VERIFICATION (2026-06-23) — chain confirmed, but it's the RENDER geom list, NOT a loot registry
+`D:\ghidra_scripts\registry_layout_check.py` + `registry_rtti_check.py`, live on pid running ERR.
 
-**DECISION — explore-cache loot identity, FINAL:**
-- The "ERR-added-loot-with-names" PREMIUM (runtime lotId for unbaked loot) is **SHELVED** — not
-  resident pre-pickup via any structure reached here.
-- What ships = **baked-partName-join** explore-cache (reveal/fog baked loot as the player walks),
-  which already works today with zero new RE.
-- `diag_fieldins_join` left in tree but OFF (dormant diagnostic; gated, harmless). Re-open only if a
-  future Ghidra pass re-anchors the field-instance map via AOB and proves a pre-open lotId exists.
+**The chain + node layout from §1 are STRUCTURALLY CORRECT** (resolved live, no guessing):
+`slot=base+0x3d7b0c0 → singleton=[slot] → sub=[singleton+0x10] → container=[sub+0x720]`. Container holds
+the two `std::map`s exactly as documented: map@+0x00 (`_Myhead=[+0x08]`, `_Mysize=[+0x10]`=16) and
+map@+0x18 (`_Myhead=[+0x20]`, `_Mysize=[+0x28]`=13). Node fields confirmed: key u64@+0x20,
+**callback@+0x28 = `FUN_1406c6340`** (a code ptr — exactly why the earlier probe's "vtable 0x30308e8"
+was bogus), **instance@+0x30**.
 
----
+**But RTTI of the live objects rewrites the interpretation:**
+- **The singleton `0x3d7b0c0` is `CS::RendManImp`** (render manager), vt RVA `0x2b9f148` — NOT a
+  field/gimmick step singleton. The earlier "FD4Singleton field-instance step" label was wrong.
+- **map@+0x18 = 13 × `CS::CSWorldGeomStaticIns`** (instance vt RVA `0x2a86860`), keyed
+  `(index 1..13) | 0x3c000099`. Each carries a **position vec @+0x250** (matches the geom walk) and
+  **`lotId@+0x50 = 0`**. So this is **RendManImp's list of loaded static-geom assets** — the SAME
+  objects `goblin_collected.cpp` already walks via `CSWorldGeomMan`, with **no lotId**.
+- map@+0x00 = 16 entries keyed by MapId (`0x3c0X0Y02`) → per-map-tile render objects. Also render-side.
 
-## ★★ DEFINITIVE — brute memory scan settles pre-open residency: NOT RESIDENT (2026-06-23)
+**VERDICT — path (B) REFUTED LIVE.** `[[er+0x3d7b0c0]+0x10]+0x720]` is RendManImp's render-side
+loaded-geom registry, not a loot/FieldIns registry; it holds `CSWorldGeomStaticIns` with positions but
+**zero lotId**. Combined with path (A) (embedded pool empty at load), **the runtime asset→lotId link is
+NOT reachable from any structure found** (asset instance, embedded pool, or this registry).
+
+## ★★★ DEFINITIVE — brute memory scan settles pre-open residency: NOT RESIDENT (2026-06-23)
 
 In-process `[LOTSCAN]` (commits ac63c8c..c148fe4): VirtualQuery walk of ALL committed PRIVATE memory,
 byte-granular scan for the known chest's lotId `0x3dd6fec4`, standing at the UNOPENED chest, with the
@@ -139,15 +146,16 @@ MBI fields + an spdlog ".2f} ms" string — caught and excluded).
   data `17 18 19 1a…`, no valid pointers → NOT an object);
 - the sorted `{lotId(low u32), index(high u16)}` lookup array (`1a2a..1a35` indices).
 
-Both are **always resident** (the regulation `ItemLotParam`, chest-independent). **No runtime
-instance, no object with a vtable, anywhere in private memory holds the chest's lotId before it is
-opened.**
+Both are **always resident** (the regulation `ItemLotParam`, chest-independent). So the prior heap-scan
+hit (`lotId 0x3dd6fec4` resident, "name@+0x00") was the `ItemLotParam`-table copy / an already-spawned
+pickup, **not** a pre-open per-chest FieldIns — there isn't one.
 
-**VERDICT (closes the make-or-break):** a sealed chest's loot identity (lotId) is **not resident in
-any usable runtime structure pre-open** — confirmed three independent ways: path-A embedded pool empty
-at load, Ghidra taxonomy (no item class, sealed spawns at open), and now a structure-agnostic full
-memory scan finding the lotId only in the param tables. **The "ERR-added-loot-with-names" explore-cache
-PREMIUM is DEAD for sealed chests → keep baked-only.** Placed/dropped world loot is a geom-item we
-already enumerate (CSWorldGeomMan walk) but it carries no resident lotId either (path A), so the premium
-has no viable runtime source. **Investigation CLOSED.** Ships: baked-partName-join explore-cache (works
-today). Diags (`diag_fieldins_join`, `diag_lot_memscan`) left dormant in tree (gated, off).
+**VERDICT (closes the make-or-break):** a sealed chest's loot identity (lotId) is **not resident in any
+usable runtime structure pre-open** — confirmed FOUR independent ways: path-A embedded pool empty at
+load, Ghidra taxonomy (no item class, sealed spawns at open), live RTTI (§6: the registry is RendManImp
+render geom, lotId=0), and a structure-agnostic full memory scan finding the lotId only in the param
+tables. **The "ERR-added-loot-with-names" explore-cache PREMIUM is DEAD for sealed chests → keep
+baked-only.** Placed/dropped world loot is a geom-item we already enumerate (CSWorldGeomMan walk) but it
+carries no resident lotId either, so the premium has no viable runtime source. **Investigation CLOSED.**
+Ships: baked-partName-join explore-cache (works today). Diags (`diag_fieldins_join`, `diag_lot_memscan`)
+left dormant in tree (gated, off). Scripts: `registry_layout_check.py`, `registry_rtti_check.py`.
