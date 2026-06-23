@@ -318,10 +318,11 @@ namespace goblin
     // MENU_MAP_*/SB_ERR_Grace_* gfx-movie sprites on demand, bypassing the auto cap/lock.
     bool force_graces();
 
-    // Our persistent copy of the latest complete icon DDS, grabbed inside the Oodle hook before ER
-    // freed its transient decompress buffer. False until one was captured. The overlay uploads it into
-    // its own texture — no game GPU bind, no read-after-free, mod-agnostic.
-    bool tpf_ram_dds(std::vector<uint8_t> &out);
+    // Browser over distinct DDS captured from ER's decompresses (grabbed in the Oodle hook before ER
+    // freed each transient buffer). count + fetch-by-index; the overlay uploads each into its own
+    // texture to locate the icon sheet. No game GPU bind, no read-after-free, mod-agnostic.
+    size_t tpf_dds_count();
+    bool tpf_dds_at(size_t i, std::vector<uint8_t> &out);
 
     // First `max` harvested iconIds (dev — the P2b test panel draws ACTUAL harvested icons
     // instead of a hardcoded id list that may not match what the player browsed).

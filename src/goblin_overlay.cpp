@@ -1345,24 +1345,35 @@ namespace
                 // LOAD FROM RAM: upload the DDS the Oodle hook captured in the game's decompressed
                 // RAM (FD4 cache) into our own texture — no game GPU bind, mod-agnostic. Proves the
                 // whole chain: DCX→oodle→TPF(RAM)→our SRV→draw.
+                // BROWSE every DDS we grabbed from ER's decompresses (RAM, no game bind). Flip through
+                // them to find the icon sheet. Each "Show" uploads that DDS into our own texture.
                 ImGui::Separator();
-                ImGui::TextDisabled("Upload ER's decompressed-RAM DDS into OUR texture:");
-                static UINT64 s_ram_tex = 0; static int s_ram_w = 0, s_ram_h = 0;
-                if (ImGui::Button("Upload from RAM"))
+                size_t ddsN = goblin::tpf_dds_count();
+                ImGui::TextDisabled("Captured ER DDS in RAM: %zu (browse to find the icon sheet)", ddsN);
+                static int s_idx = 0;
+                static UINT64 s_ram_tex = 0; static int s_ram_w = 0, s_ram_h = 0, s_ram_fmt = 0;
+                if (ddsN)
                 {
-                    static std::vector<uint8_t> ramDds;
-                    if (goblin::tpf_ram_dds(ramDds))
+                    if (s_idx >= (int)ddsN) s_idx = (int)ddsN - 1;
+                    ImGui::SetNextItemWidth(180);
+                    ImGui::SliderInt("##ddsidx", &s_idx, 0, (int)ddsN - 1);
+                    ImGui::SameLine(); if (ImGui::SmallButton("<") && s_idx > 0) --s_idx;
+                    ImGui::SameLine(); if (ImGui::SmallButton(">") && s_idx < (int)ddsN - 1) ++s_idx;
+                    ImGui::SameLine();
+                    if (ImGui::Button("Show"))
                     {
-                        DXGI_FORMAT f;
-                        s_ram_tex = create_tex_from_dds_mem(ramDds.data(), ramDds.size(),
-                                                            s_ram_w, s_ram_h, f);
+                        static std::vector<uint8_t> dds;
+                        if (goblin::tpf_dds_at((size_t)s_idx, dds))
+                        {
+                            DXGI_FORMAT f;
+                            s_ram_tex = create_tex_from_dds_mem(dds.data(), dds.size(), s_ram_w, s_ram_h, f);
+                            s_ram_fmt = (int)f;
+                        }
                     }
-                    else
-                        spdlog::warn("[TEXMGR] no icon DDS captured yet (open the map)");
                 }
                 if (s_ram_tex)
                 {
-                    ImGui::Text("%dx%d (from ER RAM, no bind)", s_ram_w, s_ram_h);
+                    ImGui::Text("#%d  %dx%d fmt=%d (ER RAM, no bind)", s_idx, s_ram_w, s_ram_h, s_ram_fmt);
                     float dw = s_ram_w > 320 ? 320.f : (float)s_ram_w;
                     float dh = s_ram_h ? dw * s_ram_h / s_ram_w : dw;
                     ImGui::Image((ImTextureID)s_ram_tex, ImVec2(dw, dh));

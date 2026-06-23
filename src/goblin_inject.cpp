@@ -2890,10 +2890,10 @@ using oodle_decompress_fn = long long(__fastcall *)(const void *, long long, voi
                                                     int, int, void *, long long, void *, void *,
                                                     void *, long long, int);
 oodle_decompress_fn g_oodle_orig = nullptr;
-// ER's decompressed TPF buffers are TRANSIENT (freed after it parses them), so we can't read them
-// later — we COPY the DDS out IN the hook, while it's still valid, into our own persistent buffer.
+// ER's decompressed TPF buffers are TRANSIENT (freed after it parses them), so we COPY each complete
+// DDS out IN the hook (while valid) and ACCUMULATE distinct ones — a browser to find the icon sheet.
 std::mutex g_tpf_mtx;
-std::vector<uint8_t> g_tpf_dds_copy; // our persistent copy of the latest COMPLETE icon DDS
+std::vector<std::vector<uint8_t>> g_dds_list; // all distinct complete DDS captured from decompresses
 
 long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, void *dst,
                                              long long dstLen, int a5, int a6, int a7, void *a8,
@@ -2918,10 +2918,18 @@ long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, 
             // fits in THIS decompressed block (doff+dsz <= r) — small icon TPFs are self-contained;
             // multi-block sheets need block accumulation (not yet). Our copy is persistent → uploadable
             // anytime, no game bind, no read-after-free.
-            if (dataIsDDS && (size_t)doff + dsz <= (size_t)r)
+            if (dataIsDDS && (size_t)doff + dsz <= (size_t)r && dsz >= 148)
             {
+                const uint8_t *d = b + doff;
                 std::lock_guard<std::mutex> lk(g_tpf_mtx);
-                g_tpf_dds_copy.assign(b + doff, b + doff + dsz);
+                if (g_dds_list.size() < 64)
+                {
+                    bool dup = false;
+                    for (auto &e : g_dds_list)
+                        if (e.size() == dsz && std::memcmp(e.data(), d, 32) == 0) { dup = true; break; }
+                    if (!dup)
+                        g_dds_list.emplace_back(d, d + dsz);
+                }
             }
             static int n = 0;
             if (n < 16)
@@ -2992,15 +3000,20 @@ void install_oodle_hook()
                      "(dynamically loaded?) — decompress hook not installed");
 }
 
-// Copy out our persistent copy of the latest complete icon DDS (grabbed in the Oodle hook before ER
-// freed its buffer). Returns false until one was captured (open the map). The overlay uploads it into
-// its own texture — no game GPU bind, no read-after-free, mod-agnostic.
-bool goblin::tpf_ram_dds(std::vector<uint8_t> &out)
+// Browser over the distinct DDS captured from ER's decompresses (grabbed in the Oodle hook). count +
+// fetch-by-index; the overlay uploads each into its own texture to find the icon sheet visually.
+size_t goblin::tpf_dds_count()
 {
     std::lock_guard<std::mutex> lk(g_tpf_mtx);
-    if (g_tpf_dds_copy.empty())
+    return g_dds_list.size();
+}
+
+bool goblin::tpf_dds_at(size_t i, std::vector<uint8_t> &out)
+{
+    std::lock_guard<std::mutex> lk(g_tpf_mtx);
+    if (i >= g_dds_list.size())
         return false;
-    out = g_tpf_dds_copy;
+    out = g_dds_list[i];
     return true;
 }
 
