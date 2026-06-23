@@ -26,4 +26,8 @@ bool category_has_baked_icon(int category);
 // category's real engine sprite is wired. Combined with harvested_icon() this drives
 // the F1 "X / N icons replaced" completion counter.
 int category_gpu_iconId(int category);
+
+// Name-keyed engine map symbol for the category (ERR custom MENU_MAP_ERR_* / vanilla MENU_MAP_*),
+// or nullptr. Sparse — only categories with a real game symbol. Resolved via map_icon_rect_by_name.
+const char *category_gpu_icon_name(int category);
 } // namespace goblin::worldmap

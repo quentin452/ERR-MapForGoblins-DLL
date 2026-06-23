@@ -2652,3 +2652,23 @@ bool goblin::overlay::native_map_point_icon(int iconId, void *&tex, float &u0, f
     u1 = (float)(x + w) / st->w; v1 = (float)(y + h) / st->h;
     return true;
 }
+
+bool goblin::overlay::native_map_point_icon_by_name(const char *name, void *&tex, float &u0,
+                                                     float &v0, float &u1, float &v1)
+{
+    if (!name)
+        return false;
+    // Name-keyed map symbols (ERR custom: MENU_MAP_ERR_Boss/Camp/…, plus MENU_MAP_Church etc) live
+    // in the same image repo, resolved by name. Same sheet-as-atlas copy as the numeric path.
+    int x = 0, y = 0, w = 0, h = 0;
+    void *sheet = nullptr;
+    if (!goblin::map_icon_rect_by_name(name, x, y, w, h, sheet) || !sheet || w <= 0 || h <= 0)
+        return false;
+    const SheetTex *st = copy_sheet_cached(reinterpret_cast<ID3D12Resource *>(sheet));
+    if (!st || !st->gpu || st->w <= 0 || st->h <= 0)
+        return false;
+    tex = reinterpret_cast<void *>(st->gpu);
+    u0 = (float)x / st->w; v0 = (float)y / st->h;
+    u1 = (float)(x + w) / st->w; v1 = (float)(y + h) / st->h;
+    return true;
+}

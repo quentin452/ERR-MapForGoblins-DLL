@@ -37,4 +37,9 @@ namespace goblin::overlay
     // FD4 image repo (goblin::map_icon_rect), copied into an ImGui SRV (sheet-as-atlas). Returns
     // false until the world map has opened + the symbol is resident. Render-thread only.
     bool native_map_point_icon(int iconId, void *&tex, float &u0, float &v0, float &u1, float &v1);
+
+    // Same, but for NAME-keyed symbols (ERR custom MENU_MAP_ERR_* / MENU_MAP_Church …) via
+    // goblin::map_icon_rect_by_name. Render-thread only.
+    bool native_map_point_icon_by_name(const char *name, void *&tex, float &u0, float &v0,
+                                       float &u1, float &v1);
 }

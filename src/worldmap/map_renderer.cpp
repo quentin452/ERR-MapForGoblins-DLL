@@ -95,6 +95,7 @@ struct IconHandle
 {
     ImTextureID tex = nullptr;
     ImVec2 uv0{}, uv1{};
+    float scale = 1.0f; // draw-size multiplier (native map symbols are bigger than item dots)
 };
 
 struct IconProvider
@@ -177,10 +178,25 @@ struct IconSet
     {
         if (native)
         {
-            // World-feature categories with a mapped game symbol (sparse table) → real ER symbol.
+            // World-feature categories with a mapped game symbol (sparse). Name-keyed first
+            // (ERR custom MENU_MAP_ERR_*), then numeric MENU_MAP_<NN>.
+            if (const char *mn = goblin::worldmap::category_gpu_icon_name(m.category))
+            {
+                void *t = nullptr; float a0, b0, a1, b1;
+                if (goblin::overlay::native_map_point_icon_by_name(mn, t, a0, b0, a1, b1))
+                {
+                    out.tex = reinterpret_cast<ImTextureID>(t);
+                    out.uv0 = ImVec2(a0, b0); out.uv1 = ImVec2(a1, b1);
+                    out.scale = goblin::config::mapSymbolScale;
+                    return true;
+                }
+            }
             int gid = goblin::worldmap::category_gpu_iconId(m.category);
             if (gid > 0 && mappoint.resolve(IconKey{IconKey::MapPoint, nullptr, gid}, out))
+            {
+                out.scale = goblin::config::mapSymbolScale;
                 return true;
+            }
             // Item/loot markers → the game's real inventory icon.
             if (m.icon_id >= 0 &&
                 item.resolve(IconKey{IconKey::ItemIcon, nullptr, m.icon_id}, out))
@@ -342,7 +358,8 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
     IconHandle ih;
     if (icons.resolve(m, ih))
     {
-        fg->AddImage(ih.tex, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
+        const float hh = half * ih.scale;
+        fg->AddImage(ih.tex, ImVec2(p.x - hh, p.y - hh), ImVec2(p.x + hh, p.y + hh),
                      ih.uv0, ih.uv1, tint);
     }
     else
