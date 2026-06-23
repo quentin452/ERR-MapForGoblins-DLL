@@ -728,6 +728,71 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                 }
             }
         }
+        // FALLBACK (STEP 0, proven 343): if the singleton slot is wrong, enumerate MapIns by a
+        // bounded vtable-scan instead — the standard way to enumerate live instances of a class.
+        // Crash-safe windowed safe_read (no raw deref → no AV on unbacked Wine pages, no full-mem
+        // VirtualQuery loop hang). A qword == MapIns vtable at obj+0 marks a MapIns; the body
+        // follows in-window (8MB window + 0x1200 overlap so a hit near the edge still has its body).
+        if (mapins == 0)
+        {
+            SYSTEM_INFO si; GetSystemInfo(&si);
+            uintptr_t addr = (uintptr_t)si.lpMinimumApplicationAddress;
+            uintptr_t aend = (uintptr_t)si.lpMaximumApplicationAddress;
+            const size_t WIN = 8 * 1024 * 1024, OVL = 0x1200;
+            std::vector<uint8_t> buf(WIN + OVL);
+            MEMORY_BASIC_INFORMATION mbi;
+            while (addr < aend && VirtualQuery((void *)addr, &mbi, sizeof(mbi)) == sizeof(mbi))
+            {
+                uintptr_t rbase = (uintptr_t)mbi.BaseAddress; size_t rsz = mbi.RegionSize;
+                DWORD pr = mbi.Protect;
+                bool ok = mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE && rsz >= 16 &&
+                          (pr & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+                                 PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)) &&
+                          !(pr & (PAGE_GUARD | PAGE_NOACCESS));
+                if (ok)
+                    for (size_t off = 0; off < rsz; off += WIN)
+                    {
+                        size_t want = rsz - off; if (want > WIN + OVL) want = WIN + OVL;
+                        if (!safe_read((void *)(rbase + off), buf.data(), want)) continue;
+                        const uint8_t *q = buf.data();
+                        size_t lim = want >= 16 ? want - 16 : 0;
+                        size_t scan_to = (want > WIN) ? WIN : (want >= 8 ? want - 8 : 0);
+                        for (size_t i = 0; i < scan_to; i += 8)
+                        {
+                            if (*(const uint64_t *)(q + i) != VT_MAPINS) continue;
+                            ++mapins;
+                            for (size_t k = 0xD8; i + k + 16 <= want && k < 0x1200; k += 8)
+                            {
+                                uint32_t L = *(const uint32_t *)(q + i + k);
+                                if (L < 0x05F5E100u || L > 0x40000000u) continue;
+                                uint32_t flag = *(const uint32_t *)(q + i + k + 4);
+                                if (flag > 1) continue;
+                                uint64_t P = *(const uint64_t *)(q + i + k + 8);
+                                if (P <= 0x100000 || P >= 0x7fffffffffffULL) continue;
+                                uint32_t v50 = 0;
+                                if (!safe_read((void *)(P + 0x50), &v50, 4) || v50 != L) continue;
+                                ++records;
+                                if (logged < 64)
+                                {
+                                    uint32_t mapId = *(const uint32_t *)(q + i + k - 0xD8);
+                                    const float *pos = (const float *)(q + i + k - 0xD4);
+                                    wchar_t nm[16] = {}; char nn[20] = {};
+                                    if (safe_read((void *)P, nm, sizeof(nm) - 2))
+                                        for (int c = 0; c < 15; c++) nn[c] = (char)(nm[c] & 0xFF);
+                                    spdlog::info("[MAPINS] rec MapIns={:#x} node+{:#x} lot={:#x}({}) "
+                                                 "flag={} FieldIns={:#x} MapId={:#x} "
+                                                 "localPos=({:.2f},{:.2f},{:.2f}) name='{}'",
+                                                 rbase + off + i, (uint64_t)k, L, L, flag, P, mapId,
+                                                 pos[0], pos[1], pos[2], nn);
+                                    ++logged;
+                                }
+                            }
+                            (void)lim;
+                        }
+                    }
+                addr = rbase + rsz;
+            }
+        }
         spdlog::info("[MAPINS] DONE chain_ok={} mgr={:#x} blocks={} mapIns={} records={}",
                      chain_ok, mgr, blocks, mapins, records);
     }
