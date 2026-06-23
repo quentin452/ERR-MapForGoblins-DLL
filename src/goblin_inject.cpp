@@ -2042,6 +2042,24 @@ void *__fastcall find_detour(void *repo, void **out, const wchar_t *key)
     {
         char nm[48] = {0};
         for (int i = 0; i < 47; ++i) { wchar_t c = key[i]; if (!c) break; nm[i] = (c < 128) ? static_cast<char>(c) : '?'; }
+        // DIAG: log EVERY resolved sprite key + rect (deduped) → reveals the map-point naming scheme.
+        // If the key encodes the WorldMapPointParam iconId (numeric) we get iconId→rect for free; if
+        // it's symbolic (MENU_MAP_01_Bonfire) the marker iconId→rect needs a pin-draw hook instead.
+        {
+            uintptr_t img2 = 0; icon_rpm_ptr(reinterpret_cast<uintptr_t>(out), img2);
+            if (img2 < 0x10000) img2 = reinterpret_cast<uintptr_t>(ret);
+            uintptr_t vt2 = 0; icon_rpm_ptr(img2, vt2);
+            uintptr_t er2 = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+            static std::set<std::string> seen2;
+            if (img2 > 0x10000 && vt2 > er2 && vt2 - er2 == 0x2bb8910 && nm[0] &&
+                seen2.size() < 400 && seen2.insert(nm).second)
+            {
+                int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+                icon_rpm_i32(img2 + 0x74, x0); icon_rpm_i32(img2 + 0x78, y0);
+                icon_rpm_i32(img2 + 0x7c, x1); icon_rpm_i32(img2 + 0x80, y1);
+                spdlog::info("[MAPICON] key='{}' rect=({},{})-({},{})", nm, x0, y0, x1, y1);
+            }
+        }
         if (nm[0] == 'M' && nm[1] == 'E' && nm[2] == 'N' && nm[3] == 'U')   // MENU_* item icons
         {
             uintptr_t img = 0; icon_rpm_ptr(reinterpret_cast<uintptr_t>(out), img);
