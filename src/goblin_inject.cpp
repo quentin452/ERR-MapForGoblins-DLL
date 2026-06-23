@@ -3157,13 +3157,7 @@ void *__fastcall warp_setto_detour(void *pin, void *widgetRoot, void *a3, void *
     }
     void *ret = g_setto_orig(pin, widgetRoot, a3, a4);
     if (suppress)
-    {
         *pVis = savedVis ? savedVis : 1;   // restore so selection vt[6] keeps the grace clickable
-        static int s_hidden = 0;
-        if (s_hidden++ < 10)
-            spdlog::info("[SETTO] grace row hidden via pin+0xC toggle (restored {:#x}) pin={:#x}",
-                         *pVis, reinterpret_cast<uintptr_t>(pin));
-    }
     return ret;
 }
 } // namespace
