@@ -92,12 +92,24 @@ is per-loaded-BlockData. Loot in unstreamed regions has no live pos → must kee
    unloaded.
 3. Treasure/map lots only; leave enemy-drop and unloaded markers baked.
 
-### Pending — live confirmation (T2 sample)
-`eldenring.exe` was NOT running this session (`config.find_eldenring_pid()` → None), so no live
-RPM sample was taken. The static chain is fully validated by the shipping collected-state reader,
-but a one-shot live read (pick a loaded chest, compare `MsbPart+0x20` projected vs its baked marker
-pos) should confirm **live == baked** before any wiring — which would re-confirm §0 from the live
-side and, per §0, remove the last reason to wire it.
+### Live confirmation (T2 sample) — DONE: live == baked
+
+Ran a live RPM sample (`D:\ghidra_scripts\loot_pos_sample.py`) that independently replays the
+goblin_collected walk and joins to the baked `items_database.json` by `(map, partName)`:
+
+```
+slot AOB @ 0x7ff79f384373  →  RVA 0x3D69BA8  (matches the WORLD_GEOM_MAN_SLOT note exactly)
+CSWorldGeomMan = 0x1beb2be9b80   tree size=1 (only m12_02 streamed — interior region)
+m12_02_00_00  AEG099_990_9000  live=(1383.85,-777.91,1764.67)
+                               baked=(1383.85,-777.91,1764.67)  lot=12020040  [OK]
+chests found=1  live==baked=1  mismatch=0
+```
+
+The chest's runtime world position (`MsbPart+0x20`) equals the baked `items_database` position to
+2 decimals, and `partName → itemLotId` (12020040) joins cleanly. This confirms the §0 zero-drift
+verdict **from the live side too**: a runtime read would faithfully reproduce the baked value.
+Sample size was 1 (player was in an interior with a single streamed block); the read path itself is
+proven — re-run in an open-world region for broader coverage if ever wiring.
 
 **Bottom line:** the RE is essentially complete and shows the feature is *cheap to build* (reuse the
 geom walk), but §0 already proved it's *unnecessary* (zero drift). Feasible ≠ justified — it stays
