@@ -2890,9 +2890,10 @@ using oodle_decompress_fn = long long(__fastcall *)(const void *, long long, voi
                                                     int, int, void *, long long, void *, void *,
                                                     void *, long long, int);
 oodle_decompress_fn g_oodle_orig = nullptr;
-std::atomic<void *> g_tpf_ram{nullptr};  // latest headered-DDS TPF buffer (RAM-cache probe)
-std::atomic<size_t> g_tpf_dds_off{0};    // DDS offset within that buffer
-std::atomic<size_t> g_tpf_dds_size{0};   // DDS size (full, spans the contiguous oodle blocks)
+// ER's decompressed TPF buffers are TRANSIENT (freed after it parses them), so we can't read them
+// later — we COPY the DDS out IN the hook, while it's still valid, into our own persistent buffer.
+std::mutex g_tpf_mtx;
+std::vector<uint8_t> g_tpf_dds_copy; // our persistent copy of the latest COMPLETE icon DDS
 
 long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, void *dst,
                                              long long dstLen, int a5, int a6, int a7, void *a8,
@@ -2913,14 +2914,14 @@ long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, 
             std::memcpy(&dsz, b + 0x14, 4);
             bool dataIsDDS = (size_t)doff + 4 < (size_t)r && b[doff] == 'D' && b[doff + 1] == 'D' &&
                              b[doff + 2] == 'S';
-            // Stash a headered-DDS TPF for the F1 RAM-uploader. dst = buffer start (this is the first
-            // 256KB oodle block, which holds the TPF header); the full DDS (doff..doff+dsz) is written
-            // across the following contiguous blocks, so it's complete by the time F1 reads it.
-            if (dataIsDDS)
+            // COPY the DDS out NOW (the buffer is freed once ER parses it). Only when the whole DDS
+            // fits in THIS decompressed block (doff+dsz <= r) — small icon TPFs are self-contained;
+            // multi-block sheets need block accumulation (not yet). Our copy is persistent → uploadable
+            // anytime, no game bind, no read-after-free.
+            if (dataIsDDS && (size_t)doff + dsz <= (size_t)r)
             {
-                g_tpf_ram = dst;
-                g_tpf_dds_off = doff;
-                g_tpf_dds_size = dsz;
+                std::lock_guard<std::mutex> lk(g_tpf_mtx);
+                g_tpf_dds_copy.assign(b + doff, b + doff + dsz);
             }
             static int n = 0;
             if (n < 16)
@@ -2991,15 +2992,16 @@ void install_oodle_hook()
                      "(dynamically loaded?) — decompress hook not installed");
 }
 
-// Latest decompressed-in-RAM headered DDS captured by the Oodle hook: base buffer + the DDS's
-// offset/size within it. Returns false until a TPF has been decompressed (open the map). The overlay
-// uploads (base+off, size) into its own texture — proves the FD4 RAM cache feeds our texture manager.
-bool goblin::tpf_ram_dds(void *&base, size_t &off, size_t &size)
+// Copy out our persistent copy of the latest complete icon DDS (grabbed in the Oodle hook before ER
+// freed its buffer). Returns false until one was captured (open the map). The overlay uploads it into
+// its own texture — no game GPU bind, no read-after-free, mod-agnostic.
+bool goblin::tpf_ram_dds(std::vector<uint8_t> &out)
 {
-    base = g_tpf_ram.load();
-    off = g_tpf_dds_off.load();
-    size = g_tpf_dds_size.load();
-    return base != nullptr && size != 0;
+    std::lock_guard<std::mutex> lk(g_tpf_mtx);
+    if (g_tpf_dds_copy.empty())
+        return false;
+    out = g_tpf_dds_copy;
+    return true;
 }
 
 void goblin::install_icon_texture_probe()

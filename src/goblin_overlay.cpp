@@ -1348,15 +1348,17 @@ namespace
                 ImGui::Separator();
                 ImGui::TextDisabled("Upload ER's decompressed-RAM DDS into OUR texture:");
                 static UINT64 s_ram_tex = 0; static int s_ram_w = 0, s_ram_h = 0;
-                void *rb = nullptr; size_t roff = 0, rsize = 0;
-                bool ram_ready = goblin::tpf_ram_dds(rb, roff, rsize);
-                ImGui::Text(ram_ready ? "RAM DDS: base=%p off=%zu size=%zu" : "no TPF decompressed yet (open map)",
-                            rb, roff, rsize);
-                if (ram_ready && ImGui::Button("Upload from RAM"))
+                if (ImGui::Button("Upload from RAM"))
                 {
-                    DXGI_FORMAT f;
-                    s_ram_tex = create_tex_from_dds_mem(reinterpret_cast<const uint8_t *>(rb) + roff,
-                                                        rsize, s_ram_w, s_ram_h, f);
+                    static std::vector<uint8_t> ramDds;
+                    if (goblin::tpf_ram_dds(ramDds))
+                    {
+                        DXGI_FORMAT f;
+                        s_ram_tex = create_tex_from_dds_mem(ramDds.data(), ramDds.size(),
+                                                            s_ram_w, s_ram_h, f);
+                    }
+                    else
+                        spdlog::warn("[TEXMGR] no icon DDS captured yet (open the map)");
                 }
                 if (s_ram_tex)
                 {
