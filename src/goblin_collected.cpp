@@ -660,6 +660,16 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
     {
         s_lotscan_done = true;
         const uint32_t target = 0x3dd6fec4;   // 1037500100 = AEG099_090_9000's ItemLotID
+        // Exclude self-contamination: our own thread stack (holds `target` + the MBI fields +
+        // fmt strings) and our own DLL module both contain the literal we search for and would
+        // show up as bogus "STRUCT" hits. Skip their regions.
+        MEMORY_BASIC_INFORMATION self; VirtualQuery(&self, &self, sizeof(self));
+        uintptr_t self_stack_base = (uintptr_t)self.AllocationBase;
+        HMODULE hself = nullptr;
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCSTR)&read_wgm_snapshot, &hself);
+        uintptr_t self_mod = (uintptr_t)hself;
         SYSTEM_INFO si; GetSystemInfo(&si);
         uintptr_t addr = (uintptr_t)si.lpMinimumApplicationAddress;
         uintptr_t end  = (uintptr_t)si.lpMaximumApplicationAddress;
@@ -673,7 +683,10 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
             bool readable = (p & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
                                   PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)) != 0;
             bool blocked  = (p & (PAGE_GUARD | PAGE_NOACCESS)) != 0;
-            if (mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE && readable && !blocked && rsz >= 4)
+            bool is_self = (self_stack_base && (uintptr_t)mbi.AllocationBase == self_stack_base) ||
+                           (self_mod && base >= self_mod && base < self_mod + 0x800000);
+            if (mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE && readable && !blocked &&
+                rsz >= 4 && !is_self)
             {
                 ++regions; scanned += rsz;
                 const uint8_t *q = (const uint8_t *)base;
