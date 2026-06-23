@@ -734,6 +734,20 @@ void probe_loop()
         // Wine's per-RPM walk cost off the engine cadence. No-op unless an icon config is on.
         goblin::background_harvest_tick();
 
+        // Baked-vs-live boss drift probe (config probe_baked_drift): fire ONCE, in-game — gate on
+        // the player world being loaded (get_player_world_pos = LocalPlayer exists) so we read the
+        // in-game WorldMapPointParam, not the main-menu instance. See goblin::probe_baked_vs_runtime.
+        static bool s_drift_probe_done = false;
+        if (goblin::config::probeBakedDrift && !s_drift_probe_done)
+        {
+            float px, py, pz;
+            if (goblin::get_player_world_pos(px, py, pz))
+            {
+                s_drift_probe_done = true;
+                goblin::probe_baked_vs_runtime();
+            }
+        }
+
         // Drop a dead active cursor so the sticky publish can re-lock a fresh one.
         if (uintptr_t ac = g_active_cursor.load(std::memory_order_relaxed))
         {

@@ -195,10 +195,10 @@ static void setup_mod()
         // Seed the per-category visibility / cluster / threshold + master gates from
         // config — the overlay reads these.
         safe_init_step(&goblin::seed_runtime_gates, "seed_runtime_gates");
-        // Future-proofing diagnostic (config probe_baked_drift): log any drift between our
-        // baked boss/enemy positions and the live WorldMapPointParam rows. Off by default.
-        if (goblin::config::probeBakedDrift)
-            safe_init_step(&goblin::probe_baked_vs_runtime, "probe_baked_vs_runtime");
+        // NOTE: the probe_baked_drift diagnostic is NOT run here — at init we're still in the
+        // main menu and the WorldMapPointParam instance there may not carry the in-game
+        // clearedEventFlagId values. It fires once from the worldmap_probe loop after the player
+        // world loads (gated on get_player_world_pos). See goblin::probe_baked_vs_runtime.
         // The ImGui overlay is the sole world map (the native WorldMapPointParam
         // injection was removed — no native page-build = no freeze, no double-draw).
         safe_init_step(&init_tutorial_popup,  "inject_tutorial_popup_rows");
