@@ -195,6 +195,14 @@ def parse_massedit_files(massedit_dir):
         if config.PROFILE != 'err' and filename in ERR_ONLY_FILES:
             print(f"SKIP (ERR-only): {filename}")
             continue
+        # WorldBosses are no longer baked: the overlay builds them LIVE from the in-game
+        # WorldMapPointParam field-boss rows (textId2==5100) — see map_entry_layer.cpp
+        # build_live_bosses() + windows_enemy_boss_runtime_pos_re_findings.md. Reading live is
+        # authoritative (kills per-ERR-version drift + the boss_list matching anomalies). The
+        # boss_list.json file is kept — generate_loot_massedit / relocating_boss_fix consume it.
+        if filename == "World - Bosses":
+            print(f"SKIP (drawn live, not baked): {filename}")
+            continue
         category = CATEGORY_MAP.get(filename)
         if category is None:
             # Auto-generate category name from filename
