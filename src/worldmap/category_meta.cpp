@@ -160,4 +160,25 @@ int category_gpu_iconId(int category)
             return e.iconId;
     return 0;
 }
+
+namespace
+{
+// NAME-keyed engine map symbol per category (ERR custom MENU_MAP_ERR_* / vanilla MENU_MAP_*).
+// SPARSE — most categories have no real game symbol and stay on the baked atlas. Resolved via
+// goblin::map_icon_rect_by_name → overlay::native_map_point_icon_by_name. Grow as symbols are
+// confirmed resident in-game (see the [MAPICON-AVAIL] log + g_map_icon_named).
+struct CategoryGpuName { int category; const char *name; };
+using C = goblin::generated::Category;
+constexpr CategoryGpuName CATEGORY_GPU_NAMES[] = {
+    {static_cast<int>(C::WorldBosses), "MENU_MAP_ERR_Boss"},
+};
+} // namespace
+
+const char *category_gpu_icon_name(int category)
+{
+    for (const auto &e : CATEGORY_GPU_NAMES)
+        if (e.category == category)
+            return e.name;
+    return nullptr;
+}
 } // namespace goblin::worldmap

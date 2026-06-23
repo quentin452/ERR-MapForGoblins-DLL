@@ -51,9 +51,9 @@ namespace goblin::config
     bool anonymousLoot = false;  // opt-in spoiler-free mode (all profiles default off)
 
     bool redifyBossIcons = false;
-    bool graceOverlay = false;
-    bool graceGpuSprite = false;
-    bool graceSuppressNative = false;
+    bool graceOverlay = true;        // our graces are the default map source now (validated)
+    bool graceGpuSprite = true;      // live engine grace sprite (validated working)
+    bool graceSuppressNative = true; // overlay is the sole grace source — hide native pins
 
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
@@ -72,6 +72,7 @@ namespace goblin::config
     float overlayIconScale = 1.2f;     // category marker icons (× master)
     float overlayClusterScale = 1.0f;  // cluster pile glyphs (× master)
     float graceIconScale = 1.2f;       // grace markers only (× icon scale) — calibration
+    float mapSymbolScale = 2.2f;       // native MENU_MAP_* map symbols (bosses etc) — bigger than item dots
     float graceOffsetX = 0.0f;         // px offset of the overlay grace draw — native-vs-imgui compare
     float graceOffsetY = 0.0f;
 
@@ -372,12 +373,12 @@ namespace
              ERR, {
                 BE("redify_boss_icons", redifyBossIcons, "false",
                    "Cosmetic: draw boss markers red and auto-hide them once the boss is\ndefeated."),
-                BE("grace_overlay", graceOverlay, "false",
-                   "Draw ALL Sites of Grace in the overlay (discovered = full colour,\nundiscovered = grey) instead of letting the game draw discovered ones.\nNeeds native-pin suppression to avoid doubled grace icons."),
-                BE("grace_gpu_sprite", graceGpuSprite, "false",
-                   "Grace icon source when grace_overlay is on: false = the mod's baked atlas\nicon (clean, constant); true = the live engine sprite (SB_ERR_Grace,\ntinted by in-game time of day)."),
-                BE("grace_suppress_native", graceSuppressNative, "false",
-                   "Suppress the game's native discovered-grace map pins so the overlay is the\nsole grace source (pair with grace_overlay). Hooks the WarpPinData builder.\nDev/experimental."),
+                BE("grace_overlay", graceOverlay, "true",
+                   "Draw ALL Sites of Grace in the overlay (discovered = full colour,\nundiscovered = grey) instead of letting the game draw discovered ones.\nDefault ON — the overlay is the grace source. Off-switch only."),
+                BE("grace_gpu_sprite", graceGpuSprite, "true",
+                   "Grace icon source when grace_overlay is on: false = the mod's baked atlas\nicon (clean, constant); true = the live engine sprite (SB_ERR_Grace,\ntinted by in-game time of day). Default ON."),
+                BE("grace_suppress_native", graceSuppressNative, "true",
+                   "Suppress the game's native discovered-grace map pins so the overlay is the\nsole grace source. Default ON. Keeps teleport working (draw-only hide). Set\nfalse if native grace pins/teleport ever misbehave on your setup."),
             }},
 
             {"Compatibility",
@@ -425,6 +426,8 @@ namespace
                   "Scale for CLUSTER pile glyphs (x master). 1.0 = default."},
                 IniEntry{"grace_icon_scale", IniType::F32, &cfg::graceIconScale, "1.2",
                   "Scale for GRACE markers only (x icon scale). 1.2 = default. For calibrating the\ngrace sprite size against the map. NOTE: grace size compounds with overlay_icon_scale."},
+                IniEntry{"map_symbol_scale", IniType::F32, &cfg::mapSymbolScale, "2.2",
+                  "Scale for native ER map symbols (MENU_MAP_*, e.g. bosses) drawn via the GPU\nmap-point path. Bigger than item dots since they're full map symbols. 2.2 = default."},
                 IniEntry{"grace_offset_x", IniType::F32, &cfg::graceOffsetX, "0.0",
                   "Pixel X offset of the overlay grace draw — set non-zero to shift the imgui grace\nbeside the game's NATIVE grace pin for side-by-side comparison/calibration."},
                 IniEntry{"grace_offset_y", IniType::F32, &cfg::graceOffsetY, "0.0",

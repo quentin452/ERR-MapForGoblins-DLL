@@ -1,4 +1,5 @@
 #include "map_renderer.hpp"
+#include "category_meta.hpp"          // category_gpu_iconId (map-point symbol per category)
 
 #include "goblin_bench.hpp"          // GOBLIN_BENCH_QUIET (per-frame render timing)
 #include "goblin_projection.hpp"     // baked map-space → backbuffer projection
@@ -94,6 +95,7 @@ struct IconHandle
 {
     ImTextureID tex = nullptr;
     ImVec2 uv0{}, uv1{};
+    float scale = 1.0f; // draw-size multiplier (native map symbols are bigger than item dots)
 };
 
 struct IconProvider
@@ -141,20 +143,65 @@ struct ItemIconProvider : IconProvider
     }
 };
 
-// The active provider chain + per-marker resolution policy: native item icon FIRST (the real
-// game icon, when resident + enabled), then the baked category atlas (guaranteed coverage),
-// else the caller draws a circle. One instance per render pass, built from the atlas texture.
+// Native GPU map-point symbol: the game's OWN world-map symbol (MENU_MAP_<NN>) for a category
+// that maps to one (category_gpu_iconId, sparse). Resolved via the FD4 image-repo rect copied
+// into our SRV. Best-effort: resolves only after the world map opened + the symbol is resident.
+struct MapPointProvider : IconProvider
+{
+    bool resolve(const IconKey &k, IconHandle &out) const override
+    {
+        if (k.source != IconKey::MapPoint || k.icon_id < 0)
+            return false;
+        void *tex = nullptr;
+        float u0, v0, u1, v1;
+        if (!goblin::overlay::native_map_point_icon(k.icon_id, tex, u0, v0, u1, v1))
+            return false;
+        out.tex = reinterpret_cast<ImTextureID>(tex);
+        out.uv0 = ImVec2(u0, v0);
+        out.uv1 = ImVec2(u1, v1);
+        return true;
+    }
+};
+
+// The active provider chain + per-marker resolution policy: native map-point symbol FIRST (for
+// the categories that have a real game symbol via category_gpu_iconId), then the native item
+// icon (the real inventory icon for loot, when resident), then the baked category atlas
+// (guaranteed coverage), else the caller draws a circle. One instance per render pass.
 struct IconSet
 {
     AtlasProvider atlas;
     ItemIconProvider item;
-    bool native; // config gate (config::nativeItemIcons): try the native harvest first
+    MapPointProvider mappoint;
+    bool native; // config gate (config::nativeItemIcons): try the native backends first
     IconSet(ImTextureID a, bool native_on) : atlas(a), native(native_on) {}
     bool resolve(const Marker &m, IconHandle &out) const
     {
-        if (native && m.icon_id >= 0 &&
-            item.resolve(IconKey{IconKey::ItemIcon, nullptr, m.icon_id}, out))
-            return true;
+        if (native)
+        {
+            // World-feature categories with a mapped game symbol (sparse). Name-keyed first
+            // (ERR custom MENU_MAP_ERR_*), then numeric MENU_MAP_<NN>.
+            if (const char *mn = goblin::worldmap::category_gpu_icon_name(m.category))
+            {
+                void *t = nullptr; float a0, b0, a1, b1;
+                if (goblin::overlay::native_map_point_icon_by_name(mn, t, a0, b0, a1, b1))
+                {
+                    out.tex = reinterpret_cast<ImTextureID>(t);
+                    out.uv0 = ImVec2(a0, b0); out.uv1 = ImVec2(a1, b1);
+                    out.scale = goblin::config::mapSymbolScale;
+                    return true;
+                }
+            }
+            int gid = goblin::worldmap::category_gpu_iconId(m.category);
+            if (gid > 0 && mappoint.resolve(IconKey{IconKey::MapPoint, nullptr, gid}, out))
+            {
+                out.scale = goblin::config::mapSymbolScale;
+                return true;
+            }
+            // Item/loot markers → the game's real inventory icon.
+            if (m.icon_id >= 0 &&
+                item.resolve(IconKey{IconKey::ItemIcon, nullptr, m.icon_id}, out))
+                return true;
+        }
         return atlas.resolve(IconKey{IconKey::Atlas, m.icon_key, -1}, out);
     }
 };
@@ -243,24 +290,33 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
     // native-pin suppression to avoid doubling. Graces aren't collectible → no graying path.
     if (m.discover_flag && goblin::config::graceOverlay)
     {
+        // Discovered = a green check (same "done" language as cleared bosses / collected loot), NOT a
+        // faded tint — ImGui can't desaturate a texture, and a check reads far clearer than low opacity.
         bool disc = goblin::ui::read_event_flag(static_cast<uint32_t>(m.discover_flag));
-        ImU32 t = disc ? IM_COL32(255, 255, 255, 255) : IM_COL32(140, 140, 150, 205);
+        ImU32 t = IM_COL32(255, 255, 255, 255);   // grace icon always full colour
         if (goblin::config::graceGpuSprite && s_grace_tex)
         {
             // SIMPLIFIED: the BASE grace sprite is drawn for EVERY grace (cave/dungeon/overworld
-            // alike). The ERR dungeon-style icon (s_grace_dgn_tex, gated on m.dungeon) is parked for
-            // now — once the GPU/CPU grace paths are unified we'll reintroduce per-type icons as a
-            // deliberate DX feature (e.g. above/below the player) instead of the current branchy gate.
-            // m.dungeon + the [GRACE-AREA] verification log stay so that work has its data ready.
+            // Per-type grace icon (UNPARKED): overworld graces draw the bonfire (s_grace_tex), the
+            // ERR underground/cave graces (m.dungeon = BonfireWarpParam.iconId==44) draw the ERR
+            // dungeon sprite (s_grace_dgn_tex = MENU_MAP_ERR_GraceUnderground). Both now come from the
+            // same harvest path so the old GPU/CPU-unify blocker is gone. Falls back to the bonfire if
+            // the dungeon sprite isn't harvested yet.
             ImTextureID gt = s_grace_tex;
             ImVec2 u0 = s_grace_uv0;
             ImVec2 u1 = s_grace_uv1;
+            if (m.dungeon && s_grace_dgn_tex)
+            {
+                gt = s_grace_dgn_tex;
+                u0 = s_grace_dgn_uv0;
+                u1 = s_grace_dgn_uv1;
+            }
             // Scale WITH the map zoom (clamped so it never vanishes / overflows). zf = 1 at
             // kGraceZoomRef; zoom in → >1 (bigger), zoom out → <1 (smaller). graceIconScale is
             // the user's overall-size dial on top.
             float zf = s_grace_zoom / kGraceZoomRef;
             if (zf < 0.3f) zf = 0.3f;
-            if (zf > 4.0f) zf = 4.0f;
+            if (zf > 2.0f) zf = 2.0f;          // cap high-zoom growth (graces were too big zoomed in)
             float gh = half * goblin::config::graceIconScale * zf;
             // Optional offset → shift the imgui grace beside the game's NATIVE pin for side-by-side
             // calibration (0 = on top). Scaled by the live projection factor (zoom × canvas) so the
@@ -269,6 +325,8 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
             float gx = p.x + goblin::config::graceOffsetX * s_grace_off_sx,
                   gy = p.y + goblin::config::graceOffsetY * s_grace_off_sy;
             fg->AddImage(gt, ImVec2(gx - gh, gy - gh), ImVec2(gx + gh, gy + gh), u0, u1, t);
+            if (disc)
+                draw_check(fg, ImVec2(gx, gy), gh);   // discovered → green check (same as cleared bosses)
             return;
         }
         IconHandle ih;
@@ -311,7 +369,8 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
     IconHandle ih;
     if (icons.resolve(m, ih))
     {
-        fg->AddImage(ih.tex, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
+        const float hh = half * ih.scale;
+        fg->AddImage(ih.tex, ImVec2(p.x - hh, p.y - hh), ImVec2(p.x + hh, p.y + hh),
                      ih.uv0, ih.uv1, tint);
     }
     else

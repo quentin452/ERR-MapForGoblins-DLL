@@ -31,4 +31,15 @@ namespace goblin::overlay
     // (the request is enqueued; it appears in 1-2 frames) → the caller falls back to the atlas.
     // tex = ImGui texture id; (u0,v0)-(u1,v1) = the icon's UV rect. Render-thread only.
     bool native_item_icon(int iconId, void *&tex, float &u0, float &v0, float &u1, float &v1);
+
+    // Resolve a MAP-POINT iconId (a MENU_MAP_<NN> world-map symbol, NN = WORLD_MAP_POINT_PARAM
+    // .iconId) to a drawable native GPU icon: the SB_MapCursor sheet the engine resolved into the
+    // FD4 image repo (goblin::map_icon_rect), copied into an ImGui SRV (sheet-as-atlas). Returns
+    // false until the world map has opened + the symbol is resident. Render-thread only.
+    bool native_map_point_icon(int iconId, void *&tex, float &u0, float &v0, float &u1, float &v1);
+
+    // Same, but for NAME-keyed symbols (ERR custom MENU_MAP_ERR_* / MENU_MAP_Church …) via
+    // goblin::map_icon_rect_by_name. Render-thread only.
+    bool native_map_point_icon_by_name(const char *name, void *&tex, float &u0, float &v0,
+                                       float &u1, float &v1);
 }
