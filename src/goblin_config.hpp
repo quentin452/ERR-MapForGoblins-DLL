@@ -196,6 +196,10 @@ namespace goblin
         // (author order in goblin_quest_steps). Auto-grown; persisted on Save.
         extern std::string questProgress;
 
+        // In-world region chips: one '0'/'1' char per major-region anchor (anchor order;
+        // '0' = region hidden). Managed by the overlay map; persisted on Save.
+        extern std::string regionToggles;
+
         // Quest Browser: grey out + tag a questline ([unfinishable]/[concluded])
         // when the overlay reads its NPC's death/conclusion fail_flag as set.
         // Default true (existing behaviour). EXPERIMENTAL — the per-NPC death

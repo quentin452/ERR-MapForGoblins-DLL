@@ -627,35 +627,69 @@ bool region_in_group(uint8_t area, int open_grp)
     }
 }
 
-// Draw the coarse major-region names (Limgrave, Caelid, ...) on the open page, beneath
-// the markers. Each anchor's world centre projects exactly like a marker; the label is
-// drawn large + shadowed, centred on the anchor. Off-screen labels are culled.
-void draw_region_labels(ImDrawList *fg, int open_grp,
-                        const goblin::projection::View &view, float realW, float realH,
-                        float uiScale)
+// ── In-world region on/off toggles (v1) ──────────────────────────────────────
+// The major-region NAME doubles as a clickable in-world chip: click it to hide that
+// region's markers. This is the first "diegetic" control — projected onto the map
+// (rides pan/zoom) instead of a screen-fixed panel. v1 scope: runtime-only state (not
+// persisted), interactive only while the F1 panel feeds ImGui mouse (g_show); F1-closed
+// clicking is the next step (needs a WndProc mouse feed when the world map is open).
+constexpr int kMaxRegions = 32; // MAJOR_REGION_ANCHOR_COUNT is a runtime const; cap the arrays.
+bool g_region_on[kMaxRegions];
+bool g_region_init = false;
+bool s_inworld_hot = false; // cursor over an in-world control this frame (future input gating)
+
+// Per-frame cache of each major-region anchor's projected map-space (gU,gV) + its map
+// group — filled once by compute_region_proj, reused by the chip drawer AND the marker
+// gate (so the gate doesn't re-project per marker).
+float s_region_u[kMaxRegions], s_region_v[kMaxRegions];
+int s_region_grp[kMaxRegions];
+bool s_region_valid[kMaxRegions];
+
+// Seed g_region_on from the persisted INI blob (config::regionToggles): default all-on,
+// then apply each '0'/'1' char in anchor order. Runs once (first frame, after load_config).
+void ensure_region_init()
 {
-    namespace proj = goblin::projection;
+    if (g_region_init)
+        return;
+    for (int i = 0; i < kMaxRegions; ++i)
+        g_region_on[i] = true;
+    const std::string &s = goblin::config::regionToggles;
+    const int n = (int)goblin::generated::MAJOR_REGION_ANCHOR_COUNT;
+    for (int i = 0; i < n && i < kMaxRegions && i < (int)s.size(); ++i)
+        g_region_on[i] = (s[i] != '0');
+    g_region_init = true;
+}
+
+// Serialize g_region_on back into config::regionToggles (one '0'/'1' per anchor) so the
+// next in-game Save persists it. Called on each toggle (cheap; the file write is Save-gated).
+void persist_regions()
+{
+    const int n = (int)goblin::generated::MAJOR_REGION_ANCHOR_COUNT < kMaxRegions
+                      ? (int)goblin::generated::MAJOR_REGION_ANCHOR_COUNT
+                      : kMaxRegions;
+    std::string s;
+    s.reserve(n);
+    for (int i = 0; i < n; ++i)
+        s.push_back(g_region_on[i] ? '1' : '0');
+    goblin::config::regionToggles = s;
+}
+
+// Project every major-region anchor to map-space for the current frame (same transform as
+// draw_region_labels: legacy-conv world pos → live/baked map-space). group = the anchor's
+// map group, so the gate can match markers to same-group regions only.
+void compute_region_proj()
+{
     using namespace goblin::generated;
-    const float fontSize = ImGui::GetFontSize() * 1.6f * uiScale;
-    const ImU32 col = IM_COL32(238, 226, 188, 205);   // muted gold, semi-transparent
-    const ImU32 shadow = IM_COL32(0, 0, 0, 190);
-    ImFont *font = ImGui::GetFont();
-    for (size_t i = 0; i < MAJOR_REGION_ANCHOR_COUNT; ++i)
+    ensure_region_init(); // before any_region_off()/the gate read g_region_on (frame 1)
+    const int n = (int)MAJOR_REGION_ANCHOR_COUNT < kMaxRegions ? (int)MAJOR_REGION_ANCHOR_COUNT
+                                                               : kMaxRegions;
+    for (int i = 0; i < n; ++i)
     {
         const MajorRegionAnchor &a = MAJOR_REGION_ANCHORS[i];
-        // Project the anchor EXACTLY like a marker (LegacyConv) so legacy-area rows land
-        // right: Limgrave is stored as area 10 (Stormveil) + m10-local coords, underground
-        // as area 12 — both must project to their overworld/UG page, not be used raw.
         int ga;
         float wx, wz;
         goblin::marker_world_pos(a.area, a.gx, a.gz, a.px, a.pz, ga, wx, wz,
                                  /*conv_underground=*/true);
-        if (goblin::marker_group_from(a.area, ga) != open_grp)
-            continue;
-        // Project the anchor's ORIGINAL block (a.gx,a.gz,a.px,a.pz) DIRECTLY — exactly like
-        // project_marker. project_raw decomposed rawX/rawZ via floor/256 into a DIFFERENT block,
-        // which the block-keyed underground LegacyConv fold then mis-folded (Deeproot Depths drifted
-        // to the screen-left edge while Ainsel/Siofra coincidentally survived). Baked fallback.
         float gU, gV;
         bool placed = false;
         if (goblin::config::liveProjection)
@@ -665,13 +699,121 @@ void draw_region_labels(ImDrawList *fg, int open_grp,
         }
         if (!placed)
             world_to_mapspace_xy(wx, wz, gU, gV);
-        proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
+        s_region_u[i] = gU;
+        s_region_v[i] = gV;
+        s_region_grp[i] = goblin::marker_group_from(a.area, ga);
+        s_region_valid[i] = true;
+    }
+}
+
+// Is any region currently toggled OFF? (Skips the per-marker nearest-region gate entirely
+// when everything is on — the common case, zero added cost.)
+bool any_region_off()
+{
+    const int n = (int)goblin::generated::MAJOR_REGION_ANCHOR_COUNT;
+    for (int i = 0; i < n && i < kMaxRegions; ++i)
+        if (!g_region_on[i])
+            return true;
+    return false;
+}
+
+// Nearest same-group region anchor to a marker's map-space point (Voronoi region
+// assignment). Returns its index, or -1 if no same-group anchor exists.
+int nearest_region(int marker_grp, float mu, float mv)
+{
+    const int n = (int)goblin::generated::MAJOR_REGION_ANCHOR_COUNT;
+    int best = -1;
+    float bd = FLT_MAX;
+    for (int i = 0; i < n && i < kMaxRegions; ++i)
+    {
+        if (!s_region_valid[i] || s_region_grp[i] != marker_grp)
+            continue;
+        const float du = s_region_u[i] - mu, dv = s_region_v[i] - mv;
+        const float d = du * du + dv * dv;
+        if (d < bd)
+        {
+            bd = d;
+            best = i;
+        }
+    }
+    return best;
+}
+
+// Draw the coarse major-region names (Limgrave, Caelid, ...) as in-world on/off CHIPS on
+// the open page. Each anchor's world centre projects exactly like a marker; the name is
+// drawn large + shadowed, centred on the anchor, on a pill background. Hovering highlights;
+// clicking (left, F1 open) toggles g_region_on[i] — OFF dims the name + strikes it through,
+// and the marker loop hides that region's markers. Off-screen chips are culled. mouse =
+// OS cursor in backbuffer px (-1 = none).
+void draw_region_labels(ImDrawList *fg, int open_grp,
+                        const goblin::projection::View &view, float realW, float realH,
+                        float uiScale, ImVec2 mouse)
+{
+    namespace proj = goblin::projection;
+    using namespace goblin::generated;
+    ensure_region_init();
+
+    // Zoom-LOD fade: chips are an OVERVIEW control — full at low zoom (whole map), gone once
+    // zoomed in (markers dominate, chips would clutter/overlap). Fade alpha over a band instead
+    // of a hard cutoff (no flicker near the threshold). Map zoom runs ~0.05..1.0.
+    constexpr float kChipZoomFull = 0.20f; // ≤ : full opacity
+    constexpr float kChipZoomHide = 0.40f; // ≥ : invisible
+    float fade = (kChipZoomHide - view.zoom) / (kChipZoomHide - kChipZoomFull);
+    fade = fade < 0.f ? 0.f : (fade > 1.f ? 1.f : fade);
+    if (fade <= 0.f)
+        return; // fully zoomed in → no chips drawn, none clickable
+
+    auto with_alpha = [fade](ImU32 c) {
+        unsigned a = (unsigned)(((c >> IM_COL32_A_SHIFT) & 0xFF) * fade + 0.5f);
+        return (c & ~IM_COL32_A_MASK) | (a << IM_COL32_A_SHIFT);
+    };
+
+    const float fontSize = ImGui::GetFontSize() * 1.6f * uiScale;
+    const ImU32 shadow = with_alpha(IM_COL32(0, 0, 0, 190));
+    const bool clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+    ImFont *font = ImGui::GetFont();
+    const int n = (int)MAJOR_REGION_ANCHOR_COUNT < kMaxRegions ? (int)MAJOR_REGION_ANCHOR_COUNT
+                                                               : kMaxRegions;
+    for (int i = 0; i < n; ++i)
+    {
+        // Only chips on the open page (same group as the cached projection). Map-space comes
+        // from the per-frame cache (compute_region_proj), so the chip and the marker gate
+        // share one projection.
+        if (!s_region_valid[i] || s_region_grp[i] != open_grp)
+            continue;
+        const MajorRegionAnchor &a = MAJOR_REGION_ANCHORS[i];
+        proj::Px p = proj::project_screen(s_region_u[i], s_region_v[i], view, realW, realH);
         if (p.x < -64 || p.y < -32 || p.x > realW + 64 || p.y > realH + 32)
             continue;
+
         ImVec2 ts = font->CalcTextSizeA(fontSize, FLT_MAX, 0.f, a.name);
         ImVec2 tp(p.x - ts.x * 0.5f, p.y - ts.y * 0.5f);
+        const float pad = 6.f;
+        ImVec2 r0(tp.x - pad, tp.y - pad), r1(tp.x + ts.x + pad, tp.y + ts.y + pad);
+        const bool hot = mouse.x >= r0.x && mouse.x <= r1.x && mouse.y >= r0.y && mouse.y <= r1.y;
+        if (hot)
+            s_inworld_hot = true;
+        if (hot && clicked)
+        {
+            g_region_on[i] = !g_region_on[i];
+            persist_regions(); // mirror into config::regionToggles for the next Save
+        }
+        const bool on = g_region_on[i];
+
+        // Pill background (warmer when hovered; reddish when off) + hover outline. All
+        // alphas ride the zoom-LOD fade (with_alpha) so the whole chip dissolves together.
+        const ImU32 bg = on ? with_alpha(IM_COL32(30, 26, 18, hot ? 175 : 120))
+                            : with_alpha(IM_COL32(46, 22, 22, hot ? 175 : 120));
+        fg->AddRectFilled(r0, r1, bg, 4.f);
+        if (hot)
+            fg->AddRect(r0, r1, with_alpha(IM_COL32(238, 226, 188, 220)), 4.f, 0, 1.5f);
+
+        const ImU32 col = on ? with_alpha(IM_COL32(238, 226, 188, 235))   // muted gold (on)
+                             : with_alpha(IM_COL32(150, 140, 120, 160));  // dimmed (off)
         fg->AddText(font, fontSize, ImVec2(tp.x + 1.5f, tp.y + 1.5f), shadow, a.name);
         fg->AddText(font, fontSize, tp, col, a.name);
+        if (!on) // strike-through = region hidden
+            fg->AddLine(ImVec2(tp.x, p.y), ImVec2(tp.x + ts.x, p.y), col, 2.0f);
     }
 }
 
@@ -697,6 +839,8 @@ bool quest_npc_gated_out(const Marker &m)
     return false; // no gate for this NPC → always show
 }
 } // namespace
+
+bool inworld_hovered() { return s_inworld_hot; }
 
 void set_grace_sprite(void *tex, float u0, float v0, float u1, float v1)
 {
@@ -790,9 +934,14 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const float glyphR = kGlyphRBase * uiScale * master * goblin::config::overlayClusterScale;
     std::vector<ScreenMarker> clustered; // markers whose category opted into clustering
 
-    // Region names beneath the markers (major-region anchors for the open page).
+    // In-world region chips: project every major-region anchor once (shared by the chip
+    // drawer + the per-marker region gate), then draw the clickable names. any_region_off
+    // gates the marker loop's nearest-region test (skipped entirely when all-on).
+    s_inworld_hot = false;
+    compute_region_proj();
+    const bool anyRegionOff = any_region_off();
     if (goblin::config::showRegionLabels)
-        draw_region_labels(fg, open_grp, view, realW, realH, uiScale);
+        draw_region_labels(fg, open_grp, view, realW, realH, uiScale, ImVec2(mouseX, mouseY));
 
     // DEBUG (debug_region_volumes): draw every MapNameOverride region volume on the open
     // page at its projected centre + its name. RED = its textId does NOT resolve in the FMG
@@ -891,6 +1040,15 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                 (sp.x < -32 || sp.y < -32 || sp.x > realW + 32 || sp.y > realH + 32);
             if (offscreen && !clustered_eligible)
                 continue; // off-screen + not a pile member → no gates, no draw
+
+            // In-world region toggle: hide markers whose nearest major-region anchor (same
+            // group, map-space) is switched OFF. Skipped when all regions are on.
+            if (anyRegionOff)
+            {
+                const int ri = nearest_region(m.group, gU, gV);
+                if (ri >= 0 && !g_region_on[ri])
+                    continue;
+            }
 
             // ── visibility gates (now only for on-screen markers + all pile members) ──
             // Graces (discover_flag set only on grace markers). With grace_overlay the overlay draws
