@@ -752,8 +752,24 @@ void draw_region_labels(ImDrawList *fg, int open_grp,
     namespace proj = goblin::projection;
     using namespace goblin::generated;
     ensure_region_init();
+
+    // Zoom-LOD fade: chips are an OVERVIEW control — full at low zoom (whole map), gone once
+    // zoomed in (markers dominate, chips would clutter/overlap). Fade alpha over a band instead
+    // of a hard cutoff (no flicker near the threshold). Map zoom runs ~0.05..1.0.
+    constexpr float kChipZoomFull = 0.20f; // ≤ : full opacity
+    constexpr float kChipZoomHide = 0.40f; // ≥ : invisible
+    float fade = (kChipZoomHide - view.zoom) / (kChipZoomHide - kChipZoomFull);
+    fade = fade < 0.f ? 0.f : (fade > 1.f ? 1.f : fade);
+    if (fade <= 0.f)
+        return; // fully zoomed in → no chips drawn, none clickable
+
+    auto with_alpha = [fade](ImU32 c) {
+        unsigned a = (unsigned)(((c >> IM_COL32_A_SHIFT) & 0xFF) * fade + 0.5f);
+        return (c & ~IM_COL32_A_MASK) | (a << IM_COL32_A_SHIFT);
+    };
+
     const float fontSize = ImGui::GetFontSize() * 1.6f * uiScale;
-    const ImU32 shadow = IM_COL32(0, 0, 0, 190);
+    const ImU32 shadow = with_alpha(IM_COL32(0, 0, 0, 190));
     const bool clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
     ImFont *font = ImGui::GetFont();
     const int n = (int)MAJOR_REGION_ANCHOR_COUNT < kMaxRegions ? (int)MAJOR_REGION_ANCHOR_COUNT
@@ -784,15 +800,16 @@ void draw_region_labels(ImDrawList *fg, int open_grp,
         }
         const bool on = g_region_on[i];
 
-        // Pill background (warmer when hovered; reddish when off) + hover outline.
-        const ImU32 bg = on ? IM_COL32(30, 26, 18, hot ? 175 : 120)
-                            : IM_COL32(46, 22, 22, hot ? 175 : 120);
+        // Pill background (warmer when hovered; reddish when off) + hover outline. All
+        // alphas ride the zoom-LOD fade (with_alpha) so the whole chip dissolves together.
+        const ImU32 bg = on ? with_alpha(IM_COL32(30, 26, 18, hot ? 175 : 120))
+                            : with_alpha(IM_COL32(46, 22, 22, hot ? 175 : 120));
         fg->AddRectFilled(r0, r1, bg, 4.f);
         if (hot)
-            fg->AddRect(r0, r1, IM_COL32(238, 226, 188, 220), 4.f, 0, 1.5f);
+            fg->AddRect(r0, r1, with_alpha(IM_COL32(238, 226, 188, 220)), 4.f, 0, 1.5f);
 
-        const ImU32 col = on ? IM_COL32(238, 226, 188, 235)   // muted gold (on)
-                             : IM_COL32(150, 140, 120, 160);  // dimmed (off)
+        const ImU32 col = on ? with_alpha(IM_COL32(238, 226, 188, 235))   // muted gold (on)
+                             : with_alpha(IM_COL32(150, 140, 120, 160));  // dimmed (off)
         fg->AddText(font, fontSize, ImVec2(tp.x + 1.5f, tp.y + 1.5f), shadow, a.name);
         fg->AddText(font, fontSize, tp, col, a.name);
         if (!on) // strike-through = region hidden
