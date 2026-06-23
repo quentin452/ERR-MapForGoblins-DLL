@@ -295,13 +295,20 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
         if (goblin::config::graceGpuSprite && s_grace_tex)
         {
             // SIMPLIFIED: the BASE grace sprite is drawn for EVERY grace (cave/dungeon/overworld
-            // alike). The ERR dungeon-style icon (s_grace_dgn_tex, gated on m.dungeon) is parked for
-            // now — once the GPU/CPU grace paths are unified we'll reintroduce per-type icons as a
-            // deliberate DX feature (e.g. above/below the player) instead of the current branchy gate.
-            // m.dungeon + the [GRACE-AREA] verification log stay so that work has its data ready.
+            // Per-type grace icon (UNPARKED): overworld graces draw the bonfire (s_grace_tex), the
+            // ERR underground/cave graces (m.dungeon = BonfireWarpParam.iconId==44) draw the ERR
+            // dungeon sprite (s_grace_dgn_tex = MENU_MAP_ERR_GraceUnderground). Both now come from the
+            // same harvest path so the old GPU/CPU-unify blocker is gone. Falls back to the bonfire if
+            // the dungeon sprite isn't harvested yet.
             ImTextureID gt = s_grace_tex;
             ImVec2 u0 = s_grace_uv0;
             ImVec2 u1 = s_grace_uv1;
+            if (m.dungeon && s_grace_dgn_tex)
+            {
+                gt = s_grace_dgn_tex;
+                u0 = s_grace_dgn_uv0;
+                u1 = s_grace_dgn_uv1;
+            }
             // Scale WITH the map zoom (clamped so it never vanishes / overflows). zf = 1 at
             // kGraceZoomRef; zoom in → >1 (bigger), zoom out → <1 (smaller). graceIconScale is
             // the user's overall-size dial on top.

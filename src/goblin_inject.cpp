@@ -2203,7 +2203,14 @@ void harvest_resident_icons(uintptr_t movie)
 //         value = CS::CSTextureImage* @ node+0x50
 void harvest_repo_icons()
 {
-    if (!goblin::config::dumpIconTextures) return;
+    // Run whenever native icons are wanted — graces (grace_overlay) and item icons
+    // (native_item_icons) BOTH consume the harvested rects/sprites this walk caches, plus the dev
+    // dump flag. Previously gated dump-only, which forced users onto the laggy debug flag to get
+    // GPU graces. The walk below bulk-reads each node (1 RPM) + is rate-throttled so Wine's
+    // per-RPM cost doesn't stall on icon churn (the old per-field reads were the Linux freeze).
+    if (!goblin::config::dumpIconTextures && !goblin::config::graceOverlay &&
+        !goblin::config::nativeItemIcons)
+        return;
     uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
     if (!er) return;
 
@@ -2222,8 +2229,20 @@ void harvest_repo_icons()
     // below) accumulates the UNION of everything that ever loads into our permanent cache → far wider
     // browse-to-fill coverage. Cheap: only fires when the count actually changed, not every frame.
     static int s_last_size = -1;
+    static DWORD s_last_walk = 0;
     if (size == s_last_size) return;
+    // Wine RPM is ~expensive: in production (no dev dump) cap the re-walk rate so the _Mysize churn
+    // (icons evict/load while navigating, e.g. 1074<->1107) can't trigger a walk-storm freeze. The
+    // map symbols/graces we need load once and persist in our cache, so an occasional walk suffices.
+    // (Skip without updating s_last_size so the next post-throttle change still triggers a walk.)
+    if (!goblin::config::dumpIconTextures && (GetTickCount() - s_last_walk) < 400)
+        return;
     s_last_size = size;
+    s_last_walk = GetTickCount();
+    // BENCH (quiet = aggregate only, no per-call log spam): this runs on the GAME thread (find_detour),
+    // which the per-frame render bench never sees — so a future Linux RPM-walk regression shows up in
+    // the [BENCH] report instead of being an invisible freeze. See [[overlay-rendered-markers]] #11.
+    GOBLIN_BENCH_QUIET("harvest.repo_walk");
 
     uintptr_t root = 0; icon_rpm_ptr(head + 0x08, root);     // _Myhead._Parent
     if (root < 0x10000) return;
@@ -2237,59 +2256,74 @@ void harvest_repo_icons()
         if (walked > 200000) break;                          // runaway guard
         uintptr_t n = stack.back(); stack.pop_back();
         if (n < 0x10000) continue;
-        uint8_t isnil = 1; SIZE_T got = 0;
-        ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(n + 0x19), &isnil, 1, &got);
-        if (got != 1 || isnil) continue;
+        // BULK-READ the node header in ONE RPM (was ~6 per-field reads/node = thousands of RPM/walk
+        // = the Wine freeze). Layout: _Left@0x00 _Right@0x10 _Isnil@0x19 key-DLWString@0x28
+        // (inline chars, or heap ptr iff cap>=8) cap@0x40 value(CSTextureImage*)@0x50.
+        uint8_t nb[0x58]; SIZE_T got = 0;
+        if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(n), nb, sizeof(nb), &got) ||
+            got != sizeof(nb) || nb[0x19])
+            continue;                                        // read fail or nil sentinel
         ++walked;
+        const uintptr_t l = *reinterpret_cast<uintptr_t *>(nb + 0x00);
+        const uintptr_t r = *reinterpret_cast<uintptr_t *>(nb + 0x10);
+        const uint64_t cap = *reinterpret_cast<uint64_t *>(nb + 0x40);
+        const uintptr_t img = *reinterpret_cast<uintptr_t *>(nb + 0x50);
 
-        uintptr_t cap = 0; icon_rpm_ptr(n + 0x40, cap);      // key DLWString capacity (heap iff >= 8)
-        uintptr_t namep = (cap >= 8) ? 0 : (n + 0x28);
-        if (cap >= 8) icon_rpm_ptr(n + 0x28, namep);
-        if (namep >= 0x1000)
+        char nm[80] = {0};
+        if (cap < 8)                                         // inline name (rare for MENU_* — they're long)
         {
-            wchar_t wbuf[80] = {0}; SIZE_T g2 = 0;
-            ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(namep), wbuf,
-                              sizeof(wbuf) - sizeof(wchar_t), &g2);
-            char nm[80]; int k = 0;
-            for (; k < 79 && wbuf[k]; ++k) nm[k] = (wbuf[k] < 128) ? static_cast<char>(wbuf[k]) : '?';
-            nm[k] = 0;
+            const wchar_t *w = reinterpret_cast<const wchar_t *>(nb + 0x28);
+            for (int k = 0; k < 7 && w[k]; ++k) nm[k] = (w[k] < 128) ? static_cast<char>(w[k]) : '?';
+        }
+        else                                                 // heap name → one extra RPM
+        {
+            uintptr_t namep = *reinterpret_cast<uintptr_t *>(nb + 0x28);
+            if (namep >= 0x1000)
+            {
+                wchar_t wbuf[80] = {0}; SIZE_T g2 = 0;
+                ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(namep), wbuf,
+                                  sizeof(wbuf) - sizeof(wchar_t), &g2);
+                for (int k = 0; k < 79 && wbuf[k]; ++k)
+                    nm[k] = (wbuf[k] < 128) ? static_cast<char>(wbuf[k]) : '?';
+            }
+        }
+        if (nm[0])
+        {
             if (std::strncmp(nm, "MENU_ItemIcon_", 14) == 0)
             {
                 int iconId = std::atoi(nm + 14);
                 bool have;
                 { std::lock_guard<std::mutex> lk(g_harvest_mtx); have = g_harvest.count(iconId) != 0; }
-                if (!have)
-                {
-                    uintptr_t img = 0; icon_rpm_ptr(n + 0x50, img);   // value = CSTextureImage* (direct)
-                    if (cache_icon_from_img(nm, img)) ++harvested;
-                }
+                if (!have && cache_icon_from_img(nm, img)) ++harvested;   // value = CSTextureImage*
             }
             // Map-point icons (MENU_MAP_<NN>/_ERR_*) live in THIS by-name tree (repo+0x80), not the
             // +0xb0 twin (which holds MENU_MapTile_*). Read their rect @img+0x74..0x80 + backing sheet
             // and cache iconId->rect for the overlay (RE windows_map_point_icon_layout_re_findings.md).
-            else if (std::strncmp(nm, "MENU_MAP_", 9) == 0)
+            else if (std::strncmp(nm, "MENU_MAP_", 9) == 0 && img >= 0x10000)
             {
-                uintptr_t img = 0; icon_rpm_ptr(n + 0x50, img);
-                if (img >= 0x10000)
-                {
-                    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-                    icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
-                    icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
-                    uintptr_t rtex = 0, res = 0;
-                    icon_rpm_ptr(img + 0x10, rtex);
-                    if (rtex >= 0x10000) icon_rpm_ptr(rtex + 0x70, res);
-                    if (x1 - x0 >= 2 && y1 - y0 >= 2 && res >= 0x10000)
-                        store_map_icon_rect(nm, x0, y0, x1 - x0, y1 - y0, reinterpret_cast<void *>(res));
-                }
+                int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+                icon_rpm_i32(img + 0x74, x0); icon_rpm_i32(img + 0x78, y0);
+                icon_rpm_i32(img + 0x7c, x1); icon_rpm_i32(img + 0x80, y1);
+                uintptr_t rtex = 0, res = 0;
+                icon_rpm_ptr(img + 0x10, rtex);
+                if (rtex >= 0x10000) icon_rpm_ptr(rtex + 0x70, res);
+                if (x1 - x0 >= 2 && y1 - y0 >= 2 && res >= 0x10000)
+                    store_map_icon_rect(nm, x0, y0, x1 - x0, y1 - y0, reinterpret_cast<void *>(res));
+                // The overworld grace (MENU_MAP_01_Bonfire) + the ERR dungeon grace
+                // (MENU_MAP_ERR_GraceUnderground) are the sprites the overlay draws. run_force_grace's
+                // CreateImage lands them in THIS repo+0x80 tree, so route them to cache_map_sprite_from_img
+                // (sets g_grace_sprite / g_grace_dungeon_sprite). NOT the SB_ERR_Grace_*_Color time-of-day
+                // pin variant (that gave the wrong "morning grace"). Map symbols (boss etc) use the rect above.
+                if (std::strcmp(nm, "MENU_MAP_01_Bonfire") == 0 ||
+                    std::strcmp(nm, "MENU_MAP_ERR_GraceUnderground") == 0)
+                    cache_map_sprite_from_img(nm, img);
             }
         }
 
-        uintptr_t l = 0, r = 0;
-        icon_rpm_ptr(n + 0x00, l); icon_rpm_ptr(n + 0x10, r);
         if (l >= 0x10000) stack.push_back(l);
         if (r >= 0x10000) stack.push_back(r);
     }
-    if (harvested)
+    if (harvested && goblin::config::dumpIconTextures)
         spdlog::info("[REPO-WALK] §8b images={} walked={} harvested_new={}", size, walked, harvested);
 
     harvest_twin_map_icons(repo, er);
@@ -2338,14 +2372,20 @@ void cache_map_sprite_from_img(const char *nm, uintptr_t img)
         spdlog::info("[TWIN-WALK] candidate '{}' rect=({},{})-({},{}) res={:#x} fmt={}",
                      nm, x0, y0, x1, y1, res, fmt);
     }
-    // Canonical grace = the mod's MENU_MAP_GOBLIN_Grace sprite (NOT the native SB_ERR_Grace pin).
-    bool canon = std::strcmp(nm, "MENU_MAP_GOBLIN_Grace") == 0;
-    if (canon || (!g_grace_locked && std::strstr(nm, "Grace") && !std::strstr(nm, "Underground")))
+    // Overworld grace = the vanilla bonfire icon MENU_MAP_01_Bonfire (the mod's MENU_MAP_GOBLIN_Grace
+    // doesn't exist → CreateImage returned 0). Dungeon grace = MENU_MAP_ERR_GraceUnderground. NOT the
+    // SB_ERR_Grace_*_Color pin (time-of-day variant = the wrong "morning grace"); no generic fallback.
+    if (std::strcmp(nm, "MENU_MAP_01_Bonfire") == 0)
     {
-        g_grace_sprite = hs;
-        if (canon) g_grace_locked = true;
-        spdlog::info("[GRACE-SPRITE] twin '{}' rect=({},{})-({},{}) res={:#x} ({})",
-                     nm, x0, y0, x1, y1, res, canon ? "LOCKED canonical MENU_MAP_GOBLIN_Grace" : "fallback");
+        g_grace_sprite = hs; g_grace_locked = true;
+        spdlog::info("[GRACE-SPRITE] '{}' LOCKED overworld bonfire rect=({},{})-({},{}) res={:#x}",
+                     nm, x0, y0, x1, y1, res);
+    }
+    else if (std::strcmp(nm, "MENU_MAP_ERR_GraceUnderground") == 0 && !g_grace_dungeon_sprite.valid)
+    {
+        g_grace_dungeon_sprite = hs;
+        spdlog::info("[GRACE-SPRITE] '{}' dungeon rect=({},{})-({},{}) res={:#x}",
+                     nm, x0, y0, x1, y1, res);
     }
 }
 
@@ -2361,8 +2401,13 @@ void harvest_twin_map_icons(uintptr_t repo, uintptr_t er)
     if (head < 0x10000) return;
     int size = 0; icon_rpm_i32(repo + 0xc0, size);
     static int s_last_twin = -1;
+    static DWORD s_last_twin_walk = 0;
     if (size == s_last_twin) return;                    // re-walk only when the twin count changes
+    if (!goblin::config::dumpIconTextures && (GetTickCount() - s_last_twin_walk) < 400)
+        return;                                         // prod: cap re-walk rate (Wine RPM cost)
     s_last_twin = size;
+    s_last_twin_walk = GetTickCount();
+    GOBLIN_BENCH_QUIET("harvest.twin_walk");            // game-thread RPM walk → keep it bench-visible
     uintptr_t root = 0; icon_rpm_ptr(head + 0x08, root);
     if (root < 0x10000) return;
 
@@ -2373,35 +2418,47 @@ void harvest_twin_map_icons(uintptr_t repo, uintptr_t er)
         if (walked > 200000) break;
         uintptr_t n = stack.back(); stack.pop_back();
         if (n < 0x10000) continue;
-        uint8_t isnil = 1; SIZE_T got = 0;
-        ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(n + 0x19), &isnil, 1, &got);
-        if (got != 1 || isnil) continue;
+        // BULK-READ the node header in ONE RPM (was ~6 per-field reads = the Wine freeze). Same RB-tree
+        // node layout as the repo walk: _Left@0x00 _Right@0x10 _Isnil@0x19 key@0x28 cap@0x40 value@0x50.
+        uint8_t nb[0x58]; SIZE_T got = 0;
+        if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(n), nb, sizeof(nb), &got) ||
+            got != sizeof(nb) || nb[0x19])
+            continue;
         ++walked;
-        uintptr_t cap = 0; icon_rpm_ptr(n + 0x40, cap);
-        uintptr_t namep = (cap >= 8) ? 0 : (n + 0x28);
-        if (cap >= 8) icon_rpm_ptr(n + 0x28, namep);
-        if (namep >= 0x1000)
+        const uintptr_t l = *reinterpret_cast<uintptr_t *>(nb + 0x00);
+        const uintptr_t r = *reinterpret_cast<uintptr_t *>(nb + 0x10);
+        const uint64_t cap = *reinterpret_cast<uint64_t *>(nb + 0x40);
+        const uintptr_t img = *reinterpret_cast<uintptr_t *>(nb + 0x50);
+        char nm[96] = {0};
+        if (cap < 8)
         {
-            wchar_t wbuf[96] = {0}; SIZE_T g2 = 0;
-            ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(namep), wbuf,
-                              sizeof(wbuf) - sizeof(wchar_t), &g2);
-            char nm[96]; int k = 0;
-            for (; k < 95 && wbuf[k]; ++k) nm[k] = (wbuf[k] < 128) ? static_cast<char>(wbuf[k]) : '?';
-            nm[k] = 0;
-            if (nm[0]) ++found;
-            // Capture map-point sprites (MENU_MAP_*) and anything grace-ish into grace candidates.
-            if (std::strncmp(nm, "MENU_MAP_", 9) == 0 || std::strstr(nm, "Grace"))
+            const wchar_t *w = reinterpret_cast<const wchar_t *>(nb + 0x28);
+            for (int k = 0; k < 7 && w[k]; ++k) nm[k] = (w[k] < 128) ? static_cast<char>(w[k]) : '?';
+        }
+        else
+        {
+            uintptr_t namep = *reinterpret_cast<uintptr_t *>(nb + 0x28);
+            if (namep >= 0x1000)
             {
-                uintptr_t img = 0; icon_rpm_ptr(n + 0x50, img);
-                cache_map_sprite_from_img(nm, img);
+                wchar_t wbuf[96] = {0}; SIZE_T g2 = 0;
+                ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void *>(namep), wbuf,
+                                  sizeof(wbuf) - sizeof(wchar_t), &g2);
+                for (int k = 0; k < 95 && wbuf[k]; ++k)
+                    nm[k] = (wbuf[k] < 128) ? static_cast<char>(wbuf[k]) : '?';
             }
         }
-        uintptr_t l = 0, r = 0;
-        icon_rpm_ptr(n + 0x00, l); icon_rpm_ptr(n + 0x10, r);
+        if (nm[0])
+        {
+            ++found;
+            // Capture map-point sprites (MENU_MAP_*) and anything grace-ish into grace candidates.
+            if (std::strncmp(nm, "MENU_MAP_", 9) == 0 || std::strstr(nm, "Grace"))
+                cache_map_sprite_from_img(nm, img);
+        }
         if (l >= 0x10000) stack.push_back(l);
         if (r >= 0x10000) stack.push_back(r);
     }
-    spdlog::info("[TWIN-WALK] repo+0xb0 size={} walked={} named={}", size, walked, found);
+    if (goblin::config::dumpIconTextures)
+        spdlog::info("[TWIN-WALK] repo+0xb0 size={} walked={} named={}", size, walked, found);
 }
 } // namespace
 
@@ -3113,11 +3170,22 @@ bool goblin::map_icon_rect_by_name(const char *name, int &x, int &y, int &w, int
 
 void goblin::install_icon_texture_probe()
 {
-    if (!goblin::config::dumpIconTextures)
+    // The find/enum + residency-ticker + CreateImage hooks feed the PRODUCTION native-icon paths
+    // (harvest_repo_icons → grace sprites + map_icon_rect rects), so install them whenever graces
+    // or native item icons are on — NOT only under the dev dump flag (that was the gate that left
+    // GPU graces/boss icons blank without dump_icon_textures). Their heavy work is internally
+    // dump-gated; the light hook path + the throttled bulk-read walk are cheap enough for runtime.
+    const bool dev = goblin::config::dumpIconTextures;
+    const bool native = goblin::config::graceOverlay || goblin::config::nativeItemIcons;
+    if (!dev && !native)
         return;
-    install_oodle_hook();
-    goblin::verify_equip_iconids();
-    self_calibrate_iconid();
+    // DEV-ONLY heavy machinery: Oodle DDS-capture hook + iconId calibration/verification.
+    if (dev)
+    {
+        install_oodle_hook();
+        goblin::verify_equip_iconids();
+        self_calibrate_iconid();
+    }
     void *fn = modutils::scan<void>({.aob = goblin::sig::WORLDMAP_CREATE_IMAGE});
     if (!fn)
     {
