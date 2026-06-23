@@ -794,7 +794,8 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                 for (size_t i = 0; i + 16 <= rsz; i += 8)
                 {
                     uint32_t L = *(const uint32_t *)(q + i);
-                    if (L < 0x10000000u || L == 0xffffffffu) continue;
+                    // Real ER map item-lots are ~1e8..1.07e9; exclude filler/pointers/sentinels.
+                    if (L < 0x05F5E100u || L > 0x40000000u) continue;   // ~1e8 .. ~1.07e9
                     uint64_t P = *(const uint64_t *)(q + i + 8);
                     if (P <= 0x100000 || P >= 0x7fffffffffffULL) continue;
                     if (!(P >= pc_base && P + 0x54 <= pc_end))   // cache miss → re-query P's region
@@ -807,6 +808,10 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                     }
                     if (!pc_ok || P + 0x54 > pc_end) continue;
                     if (*(const uint32_t *)(P + 0x50) != L) continue;   // self-validating signature
+                    // Strong filter: the FieldIns name must start with アイテム (U+30A2 U+30A4),
+                    // the da513922 loot-record marker — kills the 0xfffffffe-filler false positives.
+                    const wchar_t *wn = (const wchar_t *)P;
+                    if (wn[0] != 0x30A2 || wn[1] != 0x30A4) continue;
                     ++item_nodes;
                     if (item_logged < 48)
                     {
