@@ -3198,25 +3198,24 @@ void goblin::probe_baked_vs_runtime()
 {
     using goblin::generated::Category;
 
-    // JOIN KEY = clearedEventFlagId, NOT row_id. MAP_ENTRIES.row_id is a synthetic id from the old
-    // MASSEDIT injection range (e.g. 9400000+), and native injection was removed in Phase 2b — so
-    // none of our row_ids exist in the live param. The stable identity present in BOTH the live ERR
-    // field-boss row AND our baked boss data is clearedEventFlagId (the T3 diag matched 215/215 on it).
-    // Index the live field-boss rows (textId2==5100) by that flag.
-    struct LiveRow { uint8_t area, gx, gz; float px, pz; };
-    std::unordered_map<uint32_t, LiveRow> boss_live;
-    int live_5100 = 0;
+    // NO identity-join is possible boss-by-boss. MAP_ENTRIES boss rows are MFG-CONSTRUCTED injection
+    // rows: they bake the boss's KILL flag into .clearedEventFlagId (e.g. Godrick: baked
+    // clearedEventFlagId=10000800 = boss_list.killEventFlagId) + synthetic display ids (textId1/
+    // textId2), and DROP the live WMP identity (the real clearedEventFlagId=510010 + wmpTextId1=
+    // 30100000 the live field-boss row carries). row_id is a removed-injection synthetic (9000000+).
+    // So no field links a baked boss to its live WorldMapPointParam field-boss row (textId2==5100) —
+    // verified live via [DRIFTDUMP]. Per-boss POSITION validation must go through the offline
+    // tools/diag_t3_bossframe.py, which bridges baked<->live via boss_list.json (cleared<->live,
+    // kill<->baked). What the DLL CAN check cheaply at runtime is COVERAGE per area: ER moving/adding/
+    // removing a field boss in a region shifts that area's 5100-row count away from our baked count
+    // → the bake (boss_list.json) is stale for that area and needs regenerating.
+    std::map<int, int> live_by_area, baked_by_area;
+    int live_total = 0;
     try
     {
         for (auto [rowId, row] :
              from::params::get_param<from::paramdef::WORLD_MAP_POINT_PARAM_ST>(L"WorldMapPointParam"))
-        {
-            if (row.textId2 != 5100) continue;           // field-boss marker rows only
-            ++live_5100;
-            if (row.clearedEventFlagId)
-                boss_live[row.clearedEventFlagId] =
-                    LiveRow{row.areaNo, row.gridXNo, row.gridZNo, row.posX, row.posZ};
-        }
+            if (row.textId2 == 5100) { ++live_by_area[row.areaNo]; ++live_total; }
     }
     catch (...)
     {
@@ -3224,44 +3223,34 @@ void goblin::probe_baked_vs_runtime()
         return;
     }
 
-    int probed = 0, exact = 0, drifted = 0, missing = 0, noflag = 0, npc_synth = 0;
+    int baked_total = 0, npc_synth = 0;
     for (size_t i = 0; i < goblin::generated::MAP_ENTRY_COUNT; ++i)
     {
         const auto &e = goblin::generated::MAP_ENTRIES[i];
-        // HostileNPC/QuestNPC are MFG-added markers derived from NpcParam/MSB — they have NO live
-        // WorldMapPointParam source by design, so they are not comparable (count them, don't warn).
         if (e.category == Category::WorldHostileNPC || e.category == Category::WorldQuestNPC)
-        { ++npc_synth; continue; }
+        { ++npc_synth; continue; }                       // MFG-synthetic NPC markers (no WMP source)
         if (e.category != Category::WorldBosses) continue;
-
-        ++probed;
-        const uint32_t flag = e.data.clearedEventFlagId;
-        if (!flag) { ++noflag; continue; }               // unnamed/special boss with no cleared flag
-        auto it = boss_live.find(flag);
-        if (it == boss_live.end())
-        {
-            ++missing;
-            spdlog::warn("[DRIFTPROBE] Boss flag={} MISSING from live field-boss rows "
-                         "(baked area={} grid=({},{}) pos=({:.1f},{:.1f}))",
-                         flag, e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.data.posX, e.data.posZ);
-            continue;
-        }
-        const LiveRow &L = it->second;
-        const float dx = L.px - e.data.posX, dz = L.pz - e.data.posZ;
-        const bool same = (L.area == e.data.areaNo && L.gx == e.data.gridXNo && L.gz == e.data.gridZNo &&
-                           dx > -0.05f && dx < 0.05f && dz > -0.05f && dz < 0.05f);
-        if (same) { ++exact; continue; }
-        ++drifted;
-        spdlog::warn("[DRIFTPROBE] Boss flag={} DRIFT baked[area={} grid=({},{}) pos=({:.2f},{:.2f})] "
-                     "live[area={} grid=({},{}) pos=({:.2f},{:.2f})] d=({:.2f},{:.2f})",
-                     flag, e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.data.posX, e.data.posZ,
-                     L.area, L.gx, L.gz, L.px, L.pz, dx, dz);
+        ++baked_by_area[e.data.areaNo];
+        ++baked_total;
     }
-    spdlog::info("[DRIFTPROBE] BOSS baked-vs-live (key=clearedEventFlagId): probed={} exact={} "
-                 "drifted={} missing={} no-flag={} (live textId2==5100 rows={})",
-                 probed, exact, drifted, missing, noflag, live_5100);
-    spdlog::info("[DRIFTPROBE] NPC = {} MFG-synthetic markers (HostileNPC+QuestNPC) — no live WMP "
-                 "source by design, not comparable", npc_synth);
+
+    std::set<int> areas;
+    for (auto &kv : live_by_area) areas.insert(kv.first);
+    for (auto &kv : baked_by_area) areas.insert(kv.first);
+    int mismatch_areas = 0;
+    for (int a : areas)
+    {
+        const int lv = live_by_area.count(a) ? live_by_area[a] : 0;
+        const int bk = baked_by_area.count(a) ? baked_by_area[a] : 0;
+        if (lv == bk) continue;
+        ++mismatch_areas;
+        spdlog::warn("[DRIFTPROBE] area={} field-boss count baked={} live(5100)={} (delta={}) "
+                     "→ bake may be stale for this area", a, bk, lv, bk - lv);
+    }
+    spdlog::info("[DRIFTPROBE] boss coverage baked-vs-live: baked={} live(textId2==5100)={} "
+                 "areas-with-mismatch={}  (per-boss position drift → tools/diag_t3_bossframe.py; "
+                 "NPC = {} MFG-synthetic markers, not WMP-backed)",
+                 baked_total, live_total, mismatch_areas, npc_synth);
 }
 
 void goblin::install_icon_texture_probe()
