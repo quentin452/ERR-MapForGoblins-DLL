@@ -49,11 +49,41 @@ chests are absent everywhere in that same representation. A separate global tabl
 (quantized/packed/AABB) encoding is implausible when the engine's own placement buffer is plain
 float. The refute is strong.
 
+### Fresh-session confirmation (the cleanest test) — `global_pos_scan3.py`
+Re-ran in a **fresh game session** standing at **Altus Plateau** (Nokron NEVER loaded this session →
+zero eviction-lag pollution — the failure mode that produced the first false impression). Auto-detected
+the loaded tiles (m60_37–39_49–51 = Altus) and scanned all ~5 GB MEM_PRIVATE for **22 far/unvisited
+tiles in BOTH MSB-local AND world-absolute encodings**:
+
+| target set | hits |
+|---|---|
+| in-session positive control (a live loaded-Altus `CSWorldGeomStaticIns` pos, read then scanned) | **found ✓ (method valid this session)** |
+| 22 far tiles × 2 encodings (incl. Nokron m12_02) | **0 / 44** |
+
+m12_02 now reads **0** (vs the eviction-lag hit earlier) — directly confirming the earlier persistence
+was a not-yet-freed buffer, not a global table.
+
+### What the accessing code is (RTTI-confirmed)
+"Find what accesses" on a persistent position resolved to **`CS::CSWorldGeomStaticIns`** (vtbl
+`eldenring.exe+0x2a86860`) — i.e. exactly the per-block `geom_ins` we already walk
+(windows_live_loot_position_re_findings.md). It carries a **runtime transform vec4 at `+0x250`**
+(x,y,z,1) in addition to the authored `MsbPart+0x20` pos. The reader sites just load that vector; the
+writer site (`eldenring.exe+0x174E298`) is a **SIMD/SoA batch fill** over the loaded instances whose
+coordinates are all clustered in one region's range (a single loaded area, not the whole map). All
+three links — structure, reader, writer — are per-loaded-tile.
+
 ### §2 candidate owners — not pursued (moot)
 With §1 refuted, the §2 hunt (CSWorldGeomMan parent, streaming/tile manager, resident MSB cache,
 geof save table, WorldMapPointParam item rows) is unnecessary — none can hold what doesn't exist
 resident. The only resident position source remains `CSWorldGeomMan` = loaded tiles only
 (windows_live_loot_position_re_findings.md), which is the per-tile buffer above.
+
+### Where the baked data comes from (the source chain)
+The positions are streamed **per-tile from the on-disk MSB** (`map/MapStudio/m60_XX_YY_ZZ.msb.dcx`):
+open archive → read the tile's MSB entry → DCX/oo2core (Kraken) decompress → parse into
+`CSWorldGeomStaticIns` instances (the SIMD writer above). This is the **same MSB our offline
+extraction reads** — so the runtime knows nothing about positions that we don't already have offline,
+for the whole map. That is precisely why baked is both correct and *complete*.
 
 ---
 
@@ -65,4 +95,11 @@ resident. The only resident position source remains `CSWorldGeomMan` = loaded ti
 - **Future-proof** = re-run the offline position diff per ERR version bump
   (windows_live_loot_position_re_findings.md §0), NOT a runtime read.
 - This permanently closes the global-position question. Tools:
-  `D:\ghidra_scripts\global_pos_scan.py` (vec3) and `global_pos_scan2.py` (proximity/per-tile test).
+  `D:\ghidra_scripts\global_pos_scan.py` (vec3), `global_pos_scan2.py` (proximity/per-tile test),
+  `global_pos_scan3.py` (fresh-session, loaded-tile auto-control + local/world encodings).
+
+> **Methodology note for future live-memory RE:** re-checking an OLD address after a teleport is
+> fooled by **eviction lag** (the just-left tile's buffer lingers, mapped, before being freed). A
+> persistent address / surviving Cheat-Engine pointer is NOT proof of a global structure. Always
+> confirm with a **fresh value scan from a far standpoint** (ideally a fresh session), with a
+> positive control, before concluding "resident/global".
