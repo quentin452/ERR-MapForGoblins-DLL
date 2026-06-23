@@ -1079,11 +1079,17 @@ inline int32_t encode_live_item(int32_t item_id, int32_t cat)
 {
     switch (cat)
     {
-        case 1: return item_id + 500000000;                                       // goods
-        case 2: return (item_id >= 50000000) ? item_id : item_id + 100000000;     // ammo / weapon
-        case 3: return item_id + 200000000;                                       // protector
-        case 4: return item_id + 300000000;                                       // accessory
-        case 5: return item_id + 400000000;                                       // gem (ash of war)
+        case 1: return item_id + 500000000;     // goods (GoodsName)
+        // weapon AND ammo both live in WeaponName.fmg and use the +100M offset. The baker's
+        // CATEGORY_OFFSETS, the default per-marker name path (copy_fmg_layered offset_base=100M,
+        // real_id = key-100M → WeaponName), and the generated ITEM_ICONS table ALL key cat-2 at
+        // +100M. The old ">=50M ? raw" matched only the liveLootLabels-all ammo_as_is copy (raw
+        // ammo) — an extra PlaceName entry no marker/icon points at; using it here mis-encoded ammo
+        // (the 81 uniform +100M "drifts" in the [LOOTID] probe). See loot_ammo_encoding_finding.md.
+        case 2: return item_id + 100000000;     // weapon / ammo (WeaponName)
+        case 3: return item_id + 200000000;     // protector (armour)
+        case 4: return item_id + 300000000;     // accessory (talismans)
+        case 5: return item_id + 400000000;     // gem (ashes of war)
         default: return 0;
     }
 }
