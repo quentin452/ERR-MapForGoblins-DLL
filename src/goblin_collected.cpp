@@ -12,6 +12,7 @@
 #include <cstring>
 #include <map>
 #include <set>
+#include <unordered_set>
 #include <spdlog/spdlog.h>
 #include <string>
 #include <tuple>
@@ -587,14 +588,18 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
             safe_read((char *)sub + 0x720 + 0x8, &head, 8) && head &&
             safe_read((char *)head + 0x08, &root, 8) && root && root != head)
         {
-            const int kMaxNodes = 60000;
-            int visited = 0, instances = 0, lot_hits = 0, nonzero_lot = 0, sampled = 0;
+            const int kMaxNodes = 400000;
+            int visited = 0, instances = 0, lot_hits = 0, real_lot = 0;
             std::vector<void *> stack;
+            std::unordered_set<void *> seen;          // kill cycles / garbage revisits
+            std::unordered_set<void *> sampled_inst;  // dedup the sample lines
+            std::map<uint64_t, int> vt_hist;          // distinct vtable → count (for real lots)
             stack.push_back(root);
             while (!stack.empty() && visited < kMaxNodes)
             {
                 void *node = stack.back(); stack.pop_back();
                 if (!node || node == head) continue;
+                if (!seen.insert(node).second) continue;   // already walked this node
                 uint8_t nb[0x30] = {};
                 if (!safe_read(node, nb, sizeof(nb))) continue;
                 ++visited;
@@ -608,21 +613,24 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                 ++instances;
                 uint8_t ib[0x58] = {};   // vtable@+0x00 + lotId@+0x50
                 if (!safe_read(inst, ib, sizeof(ib))) continue;
-                void *vt = nullptr; uint32_t lot = 0;
+                uint64_t vt = 0; uint32_t lot = 0;
                 memcpy(&vt,  ib + 0x00, 8);
                 memcpy(&lot, ib + 0x50, 4);
-                if (lot) ++nonzero_lot;
                 if (lot == 0x3dd6fec4) ++lot_hits;
-                if (lot && sampled < 24)
-                {
-                    spdlog::info("[FIELDINS-B] inst={} vt={} lotId={:#x}", inst, vt, lot);
-                    ++sampled;
-                }
+                // Real ER item-lots are ~1e9 (0x3B9ACA00..); 0 and 0xffffffff are "no lot".
+                bool plausible = lot != 0 && lot != 0xffffffff && lot >= 0x10000000;
+                if (!plausible) continue;
+                ++real_lot;
+                vt_hist[vt]++;
+                if (sampled_inst.insert(inst).second && sampled_inst.size() <= 24)
+                    spdlog::info("[FIELDINS-B] inst={} vt={:#x} lotId={:#x}", inst, vt, lot);
             }
             s_pathb_done = true;   // latch only after a real in-world walk
-            spdlog::info("[FIELDINS-B] DONE visited={} instances={} nonzeroLot={} "
-                         "targetLotHits={} (target=0x3dd6fec4)",
-                         visited, instances, nonzero_lot, lot_hits);
+            spdlog::info("[FIELDINS-B] DONE visited={} distinctNodes={} instances={} "
+                         "realLot={} targetLotHits={} (target=0x3dd6fec4)",
+                         visited, (int)seen.size(), instances, real_lot, lot_hits);
+            for (auto &[vt, n] : vt_hist)
+                spdlog::info("[FIELDINS-B] vtable={:#x} realLotInstances={}", vt, n);
         }
         else
         {
