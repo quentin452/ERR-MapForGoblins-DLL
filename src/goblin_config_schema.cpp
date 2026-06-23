@@ -112,6 +112,7 @@ namespace goblin::config
     bool questNpcQuestAware = false;  // gate quest-NPC markers on quest-active flags
     std::string questProgress = "";   // Quest Browser per-step done bits ('0'/'1')
     bool questGreyOnDeath = true;     // grey questlines whose NPC death flag is set
+    std::string regionToggles = "";   // in-world region chips on/off ('0'/'1' per anchor, order)
 }
 
 // ── schema ───────────────────────────────────────────────────────────────
@@ -183,6 +184,10 @@ namespace
                          "Quest Browser per-step checkmarks (one 0/1 per step, author order).\n"
                          "Managed by the overlay's Quest Browser; saved when you Save.",
                          false, nullptr},
+                IniEntry{"region_toggles", IniType::String, &cfg::regionToggles, "",
+                         "In-world region chips on/off (one 0/1 per major region, anchor order;\n"
+                         "0 = that region's markers hidden). Click a region name on the map to\n"
+                         "toggle; saved when you Save in-game.", false, nullptr},
             }},
 
             {"Display Sections",

@@ -645,13 +645,33 @@ float s_region_u[kMaxRegions], s_region_v[kMaxRegions];
 int s_region_grp[kMaxRegions];
 bool s_region_valid[kMaxRegions];
 
+// Seed g_region_on from the persisted INI blob (config::regionToggles): default all-on,
+// then apply each '0'/'1' char in anchor order. Runs once (first frame, after load_config).
 void ensure_region_init()
 {
     if (g_region_init)
         return;
     for (int i = 0; i < kMaxRegions; ++i)
         g_region_on[i] = true;
+    const std::string &s = goblin::config::regionToggles;
+    const int n = (int)goblin::generated::MAJOR_REGION_ANCHOR_COUNT;
+    for (int i = 0; i < n && i < kMaxRegions && i < (int)s.size(); ++i)
+        g_region_on[i] = (s[i] != '0');
     g_region_init = true;
+}
+
+// Serialize g_region_on back into config::regionToggles (one '0'/'1' per anchor) so the
+// next in-game Save persists it. Called on each toggle (cheap; the file write is Save-gated).
+void persist_regions()
+{
+    const int n = (int)goblin::generated::MAJOR_REGION_ANCHOR_COUNT < kMaxRegions
+                      ? (int)goblin::generated::MAJOR_REGION_ANCHOR_COUNT
+                      : kMaxRegions;
+    std::string s;
+    s.reserve(n);
+    for (int i = 0; i < n; ++i)
+        s.push_back(g_region_on[i] ? '1' : '0');
+    goblin::config::regionToggles = s;
 }
 
 // Project every major-region anchor to map-space for the current frame (same transform as
@@ -660,6 +680,7 @@ void ensure_region_init()
 void compute_region_proj()
 {
     using namespace goblin::generated;
+    ensure_region_init(); // before any_region_off()/the gate read g_region_on (frame 1)
     const int n = (int)MAJOR_REGION_ANCHOR_COUNT < kMaxRegions ? (int)MAJOR_REGION_ANCHOR_COUNT
                                                                : kMaxRegions;
     for (int i = 0; i < n; ++i)
@@ -757,7 +778,10 @@ void draw_region_labels(ImDrawList *fg, int open_grp,
         if (hot)
             s_inworld_hot = true;
         if (hot && clicked)
+        {
             g_region_on[i] = !g_region_on[i];
+            persist_regions(); // mirror into config::regionToggles for the next Save
+        }
         const bool on = g_region_on[i];
 
         // Pill background (warmer when hovered; reddish when off) + hover outline.
