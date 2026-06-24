@@ -4113,8 +4113,12 @@ uint32_t goblin::resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t bak
     if (lotType == 0 || lotId == 0)
         return baked_flag;
     static LotReader s_lots;
-    static bool s_init = false, s_ok = false;
-    if (!s_init) { s_init = true; s_lots.init(); s_ok = s_lots.ok(); }
+    static std::once_flag s_once;
+    static bool s_ok = false;
+    // Thread-safe one-time init: the disk-loot build now resolves on a WORKER
+    // thread (map_entry_layer) concurrently with render-thread callers
+    // (find_nearby_overworld / messages), so the old `if(!s_init)` race is real.
+    std::call_once(s_once, [] { s_lots.init(); s_ok = s_lots.ok(); });
     if (!s_ok)
         return baked_flag;
     RawItemLotRow *row = s_lots.row(lotId, lotType);
@@ -4156,8 +4160,12 @@ int32_t goblin::resolve_loot_item_textid(uint32_t lotId, uint8_t lotType, int32_
     if (lotType == 0 || lotId == 0)
         return baked_textid;
     static LotReader s_lots;
-    static bool s_init = false, s_ok = false;
-    if (!s_init) { s_init = true; s_lots.init(); s_ok = s_lots.ok(); }
+    static std::once_flag s_once;
+    static bool s_ok = false;
+    // Thread-safe one-time init: the disk-loot build now resolves on a WORKER
+    // thread (map_entry_layer) concurrently with render-thread callers
+    // (find_nearby_overworld / messages), so the old `if(!s_init)` race is real.
+    std::call_once(s_once, [] { s_lots.init(); s_ok = s_lots.ok(); });
     if (!s_ok)
         return baked_textid;
     RawItemLotRow *row = s_lots.row(lotId, lotType);
@@ -4193,8 +4201,9 @@ void goblin::diag_loot_flags(uint32_t lotId, uint8_t lotType, uint32_t baked, in
         return;
     }
     static LotReader s_diag;
-    static bool s_init = false, s_ok = false;
-    if (!s_init) { s_init = true; s_diag.init(); s_ok = s_diag.ok(); }
+    static std::once_flag s_diag_once;
+    static bool s_ok = false;
+    std::call_once(s_diag_once, [] { s_diag.init(); s_ok = s_diag.ok(); });
     RawItemLotRow *row = s_ok ? s_diag.row(lotId, lotType) : nullptr;
     if (!row)
     {
