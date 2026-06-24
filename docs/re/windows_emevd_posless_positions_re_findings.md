@@ -54,6 +54,26 @@ optimistic "~430 recoverable"**.
      / common-event templates) fired by quest/area/kill events with no single world
      coordinate, or orphan `ItemLotParam_map` rows the engine never delivers.
 
+### ⚠️ PROOF that `lot==entity` is a coincidence (do NOT place these)
+Traced the actual EMEVD template for a `lot==entity` case (11100900, an item that
+also collides with placed enemy `c2500_9000` @ entity 11100900):
+```js
+$Event(90005774, function(X0_4, X4_4, X8_4) {       // common_func.emevd
+    EndIf(EventFlag(X8_4));
+    WaitFor(ElapsedSeconds(2) && EventFlag(X0_4));    // wait on a TRIGGER flag
+    AwardItemsIncludingClients(X4_4);                 // award the LOT
+});
+// call: InitializeCommonEvent(0, 90005774, 11109656, 11100900, 11107900)
+//   X0_4=11109656 trigger flag, X4_4=11100900 = the LOT, X8_4=11107900 guard flag
+```
+So `11100900` is the **lot** awarded when flag `11109656` is set — **not** a world
+position. The enemy sharing id 11100900 is unrelated. Placing the marker at that
+enemy would be a **phantom** (exactly what the bake's `unreachable_only_lots` guard
+exists to prevent). **Conclusion: the 47 `lot==entity` lots are flag-triggered
+grants, not placements — they are NOT recoverable and must not be force-placed.**
+Recovering them would require multi-hop tracing of the trigger flag (X0_4) to
+whatever sets it (region enter / boss kill / quest step) — usually no single point.
+
 ### The 318 ERR-custom (m60_44_60)
 `lotId 1044600000..`, `eventFlag == itemLotId`, ERR-Reforged additions ("Artifact
 Piece", "Dread Essence"). **Locationless by design** (custom grant/shop mechanic, no
@@ -66,19 +86,21 @@ of its 585 lots intersect the 748 position-less set. So the committed bake's pos
 rows were never enriched. (It also only indexed Parts, never Regions.)
 
 ## Conclusion / recommendation
-- **#1 already nets the only clean, free win here (22 lots).**
-- **#2's incremental yield is ~47 markers** (EMEVD `lot==entity`/coarg not already in
-  #1), and the bulk of those (47 `lot==entity`) are **low-confidence byte
-  coincidences** that risk phantom markers.
-- **361 + 318 = 679 of the 748 have no world position by nature** — they are rewards/
-  grants/duplicates, not placements. No amount of RE puts them on the map honestly.
-- A **runtime** EMEVD parser (517 KRAK/Oodle files, param tracing) is **not worth ~47
-  markers**. If pursued at all, the right shape is a tiny **offline-generated
-  `emevd_positions` table** for only the **high-confidence** subset (the 3 coarg +
-  hand-validated boss drops), kept alongside the (already-baked) EMEVD/enemy slice.
-- The migration plan already keeps the EMEVD + enemy slices baked, so **#2 is NOT a
-  blocker for the no-bake treasure switch (#11)** — it's a marginal coverage
-  improvement, not a prerequisite.
+- **#1 already nets the only clean, free win here: 22 lots** (MSB Treasures the bake
+  missed, now disk-emitted with correct positions — no extra work).
+- **The 47 `lot==entity` are PROVEN coincidences (flag-triggered grants), not
+  placements** — see the 90005774 trace above. Force-placing them = phantom markers.
+  Net real EMEVD-recoverable beyond #1 = **3 reliable coarg lots** — not worth any
+  pipeline/runtime machinery.
+- **~725 of the 748 have no world position by nature** (361 flag-triggered grants /
+  set-piece duplicates / orphan rows + 318 ERR-custom locationless + the 47 false
+  `lot==entity`). No honest RE puts them on the map.
+- A runtime EMEVD parser (517 KRAK/Oodle files + multi-hop trigger-flag tracing) is
+  **not justified**. The existing offline enrich stage is correct to leave them
+  position-less.
+- **#2 is NOT a blocker for the no-bake treasure switch (#11)** — the migration keeps
+  the EMEVD/enemy slices baked anyway. **Verdict: close #2 — the position-less lots
+  are genuinely unplaceable; do not fabricate markers for them.**
 
 ## Files
 `tools/resolve_emevd_positions.py`, `tools/check_posless_in_msb.py` (probes);
