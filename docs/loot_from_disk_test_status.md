@@ -14,15 +14,30 @@ and the [[handoff-loot-from-real-files]] memory for the full RE.
 
 | Item | Tested **runtime** (in-game) | Tested **static** (offline, not runtime) | **Windows** | **Linux** |
 |---|---|---|---|---|
-| **ERR** profile (full disk loot) | ✅ in-game: 3235 replaced, 0 KRAK skipped, no first-open hitch | ✅ | ✅ (game + DLL build) | ◑ parser/build.sh portable, not run |
-| **ERTE** profile | ◑ DLL built, ready (not yet run in-game) | ✅ 458 maps / 3320 asset-lots | ✅ (offline probe + DLL build) | ◑ portable |
-| **Convergence** profile | ◑ DLL built, ready (not yet run in-game) | ✅ 468 maps / 3623 asset-lots | ✅ (offline probe + DLL build) | ◑ portable |
-| **Vanilla** profile | ◑ DLL built, ready (not yet run in-game) | ✅ 949 maps / 3193 asset-lots | ✅ (offline probe + DLL build) | ◑ portable |
+| **ERR** profile (full disk loot) | ✅ in-game: 651 maps, 0 KRAK skip, 3235 replaced, no hitch | ✅ | ✅ (game + DLL build) | ◑ parser/build.sh portable, not run |
+| **ERTE** profile | ✅ in-game: 458 maps, 0 KRAK skip, 3226 replaced | ✅ 458 maps / 3320 asset-lots | ✅ (game via ME3 + build) | ◑ portable |
+| **Convergence** profile | ✅ in-game: 468 maps, 0 KRAK skip, 3227 replaced | ✅ 468 maps / 3623 asset-lots | ✅ (game via ME3 + build) | ◑ portable |
+| **Vanilla** profile | ✅ in-game: 949 maps, 0 KRAK skip, 3062 replaced | ✅ 949 maps / 3193 asset-lots | ✅ (game via ME3 + build) | ◑ portable |
 | **DFLT** decompress (zlib / stb) | ✅ (ERR in-game) | ✅ | ✅ | ✅ (stb in-tree, `tools/msbe_test/build.sh`) |
 | **KRAK** decompress (Oodle / oo2core) | ✅ (ERR in-game, 0 skipped) | ✅ (oo2core via ctypes, 4 profiles) | ✅ | ◑ via Wine + oo2core (`build_oodle.sh`), not run here |
 | **DummyAsset filter** (`PART +0x0c`) | ✅ (178 → 21 in-game) | ✅ (487 maps) | ✅ | ✅ |
 | **recover-later** tracking (3 lots) | ✅ (in-game) | ✅ | ✅ | ✅ |
 | **pre-build at init** (no map-open hitch) | ✅ (in-game) | n/a | ✅ | ◑ |
+
+## In-game runtime results — all 4 profiles (2026-06-24, via the bundled ME3)
+Launched each via `internals/modengine/bin/win64/me3.exe launch -p <profile>.me3` (vanilla =
+DLL-only, no package; ERTE/Convergence = DLL + the staged data package). **0 KRAK skipped on
+every profile** → the game's Oodle covers 100% of maps live. Vanilla went 0 → full coverage.
+
+| profile | `_00` maps | KRAK skipped | replaced | unclassified | disk-only | recover-later |
+|---|---|---|---|---|---|---|
+| ERR | 651 | 0 | 3235 | — | 21 | 3 |
+| ERTE | 458 | 0 | 3226 | 179 | 19 | 7 |
+| Convergence | 468 | 0 | 3227 | 489 | 17 | 4 |
+| Vanilla | 949 | 0 | 3062 | 191 | 14 | 3 |
+
+Note: Convergence shows 489 unclassified (vs ~180 elsewhere) — Convergence items missing from its
+`ITEM_ICONS` classifier; they fall back to the bake (not lost). Worth a look for 100% Convergence.
 
 ## Offline coverage (with Oodle, all `_00` maps, 0 failures)
 | profile | `_00` maps | parsed | asset-lots | DummyAsset |
