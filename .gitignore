@@ -162,3 +162,6 @@ MapForGoblins_*.log
 /tools/msbe_test/msbe_test
 /tools/msbe_test/msbe_oodle_native
 /tools/msbe_test/msbe_oodle.exe
+
+# diagnostic probe output (regenerable via tools/extract_err_collectibles.py)
+data/err_collectibles.json
