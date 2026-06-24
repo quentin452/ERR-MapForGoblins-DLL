@@ -20,6 +20,12 @@ private:
     const char *name_;
 };
 
+// Build every category's marker cache once, up front (thread-safe via call_once).
+// Called from setup_mod after the params are ready so the disk-MSB loot parse +
+// projection happen on the init thread, NOT on the first world-map open — kills
+// the first-open hitch. A no-op if the lazy markers()/census path already built.
+void prebuild_markers();
+
 // Recompute the per-category census (total collectible + looted) from the overlay's
 // OWN marker buckets — the same markers + collected detection the renderer grays — and
 // publish it via goblin::ui::set_category_census. Logs [OVERLAY-CENSUS]. Called by

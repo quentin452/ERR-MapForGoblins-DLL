@@ -523,6 +523,14 @@ def main():
             json.dump(cache, f, indent=1)
         print(f'[OK]      {stage.name}  ({time.time()-t0:.1f}s)')
 
+    # Non-err profiles don't generate the ERR-only tables (quest gates/steps/browser,
+    # region anchors, name regions, model aliases), but the DLL references their
+    # symbols unconditionally — emit empty stubs so a non-err DLL links (the features
+    # are simply absent on that profile; the loot path never touches them).
+    if PROFILE != 'err':
+        import subprocess
+        subprocess.run([sys.executable, str(REPO / 'tools' / 'gen_nonerr_stubs.py'), PROFILE])
+
     print(f'\n[DONE]    pipeline in {time.time()-overall_t0:.1f}s')
     return 0
 

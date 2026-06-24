@@ -1,6 +1,8 @@
 #include "map_entry_layer.hpp"
 
 #include "category_meta.hpp"
+#include "loot_disk.hpp"       // disk-MSB loot source (DiskTreasure / load_disk_treasures)
+#include "goblin_config.hpp"   // config::lootFromDiskMsb
 #include "goblin_map_data.hpp" // MAP_ENTRIES / MAP_ENTRY_COUNT / MapEntry / Category
 #include "goblin_inject.hpp"   // marker_world_pos / category_visible / read_event_flag / census
 #include "goblin_logic.hpp"    // map_fragment_flag
@@ -16,6 +18,8 @@
 
 #include <array>
 #include <string>
+#include <unordered_map>
+#include <mutex>
 #include <unordered_set>
 
 namespace goblin::worldmap
@@ -25,7 +29,11 @@ namespace
 constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldInteractables) + 1;
 
 std::array<std::vector<Marker>, NUM_CAT> g_buckets;
-bool g_built = false;
+// Built exactly once via std::call_once — by the setup_mod prebuild thread
+// (prebuild_markers, kills the first-map-open hitch) OR lazily by the first
+// markers()/census call, whichever runs first. call_once blocks concurrent
+// callers until the build completes, so markers() always sees a full cache.
+std::once_flag g_build_once;
 
 // Post-event "secondary story flag" for a tile (legacy SetSecondaryFlags + Ashen Capital).
 // A marker on a post-event tile — or anywhere in Leyndell, Ashen Capital (area 35) — only
@@ -140,30 +148,166 @@ void build_live_bosses()
     spdlog::info("[BOSSLIVE] built {} boss markers from live WorldMapPointParam (textId2==5100)", n);
 }
 
+// Build the loot markers from the ACTIVE mod's REAL disk MSBs (config
+// loot_from_disk_msb). Each POSITIONED Treasure → one marker via the SAME
+// push_marker path as the bake, so projection/identity/flags are identical: the
+// tile filename gives area/grid, Part+0x20 gives the block-local pos, and the
+// live ItemLotParam (joined by lotId, lotType 1) gives the item identity +
+// category + pickup flag. A lotId may map to MULTIPLE parts → each is emitted.
+// Records every lotId it placed in `covered` so build_buckets DROPS the baked
+// rows the disk now owns (lotId-coverage replace). Logs [LOOTDISK].
+// Packed tile key (area<<16 | gx<<8 | gz) for the diagnostic log below.
+static uint32_t pack_tile(uint8_t a, uint8_t gx, uint8_t gz)
+{
+    return ((uint32_t)a << 16) | ((uint32_t)gx << 8) | gz;
+}
+
+static void build_disk_loot_markers(std::unordered_set<uint32_t> &covered,
+                                     std::unordered_map<uint32_t, uint32_t> &lot_tile,
+                                     std::vector<uint32_t> &droppedDummyLots)
+{
+    GOBLIN_BENCH("build.disk_loot");
+    std::vector<DiskTreasure> treasures = load_disk_treasures(&droppedDummyLots);
+    int emitted = 0, unclassified = 0;
+    for (const DiskTreasure &t : treasures)
+    {
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = t.area;
+        d.gridXNo = t.gx;
+        d.gridZNo = t.gz;
+        d.posX = t.posX;
+        d.posZ = t.posZ;
+        // Identity/category from the LIVE lot (lotType 1 = ItemLotParam_map). textId1
+        // stays -1 and the flags 0, so push_marker resolves the item + pickup flag
+        // live (the lot-backed path) — exactly like a baked lot-backed row.
+        int32_t key = goblin::resolve_loot_item_textid(t.lotId, 1, -1);
+        int c = goblin::item_marker_category(key);
+        if (c < 0 || c >= NUM_CAT)
+        {
+            ++unclassified;  // item not in the ITEM_ICONS classifier → no bucket
+            continue;
+        }
+        push_marker(/*row_id=*/t.lotId, d, c, t.lotId, /*lotType=*/1);
+        covered.insert(t.lotId);
+        lot_tile.emplace(t.lotId, pack_tile(t.area, t.gx, t.gz)); // first tile per lot
+        ++emitted;
+    }
+    spdlog::info("[LOOTDISK] emitted {} disk loot markers, {} lots covered, {} unclassified",
+                 emitted, (int)covered.size(), unclassified);
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
-void build_buckets()
+// Runs exactly once — wrapped by ensure_buckets()/std::call_once.
+void build_buckets_impl()
 {
-    if (g_built)
-        return;
-    g_built = true;
     GOBLIN_BENCH("build.buckets");
     namespace gen = goblin::generated;
+
+    // Disk-MSB loot source (opt-in): build the loot markers from the mod's real
+    // files first + collect which item-lot ids they place, so the baked rows
+    // those lots cover are dropped below (the disk owns the treasure slice;
+    // EMEVD-granted + enemy lots have no MSB part → they stay baked).
+    std::unordered_set<uint32_t> disk_lots;
+    std::unordered_map<uint32_t, uint32_t> disk_lot_tile;  // lotId → packed tile (diag)
+    std::vector<uint32_t> dropped_dummy_lots;              // DummyAsset lots we dropped
+    if (goblin::config::lootFromDiskMsb)
+        build_disk_loot_markers(disk_lots, disk_lot_tile, dropped_dummy_lots);
+
+    // Diagnostic sets: which baked lotIds exist as map-loot (lotType 1) vs as ANY
+    // lot (1 or 2). Lets us explain the disk-only lots below (in the disk but not
+    // the bake's treasure slice): new MSB loot the bake missed, or loot the bake
+    // filed as an enemy drop (lotType 2). Only built when the disk source is on.
+    const bool diag = goblin::config::lootFromDiskMsb;
+    std::unordered_set<uint32_t> baked_lot1, baked_any;
+
+    int replaced = 0;
     for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
     {
         const gen::MapEntry &e = gen::MAP_ENTRIES[i];
         int c = static_cast<int>(e.category);
         if (c < 0 || c >= NUM_CAT)
             continue;
+        if (diag && e.lotId != 0)
+        {
+            if (e.lotType == 1) baked_lot1.insert(e.lotId);
+            if (e.lotType != 0) baked_any.insert(e.lotId);
+        }
         // Bosses come LIVE from the param now (build_live_bosses) — skip any baked WorldBosses
         // rows so they don't double the live ones (the bake is being retired for this category).
         if (e.category == gen::Category::WorldBosses)
             continue;
+        // Disk loot owns this lot → drop the baked placement (lotId-coverage replace).
+        // Only map-loot lots (lotType 1); enemy drops (lotType 2) are untouched.
+        if (!disk_lots.empty() && e.lotType == 1 && e.lotId != 0 && disk_lots.count(e.lotId))
+        {
+            ++replaced;
+            continue;
+        }
         push_marker(e.row_id, e.data, c, e.lotId, e.lotType);
+    }
+    if (diag)
+    {
+        spdlog::info("[LOOTDISK] replaced {} baked lot rows with disk placements", replaced);
+        // Disk-only lots (placed by the disk but NOT in the bake's lotType==1 slice).
+        // Split: filed-as-enemy (in baked_any → the bake had it as a lotType 2 drop)
+        // vs absent-from-bake (genuinely new MSB loot the bake missed). Log a sample
+        // [lotId @ tile → resolved item key] so the values can be eyeballed in-game.
+        int only_enemy = 0, only_absent = 0, shown = 0;
+        for (uint32_t lot : disk_lots)
+        {
+            if (baked_lot1.count(lot)) continue;  // this lot IS in the bake's slice
+            const bool as_enemy = baked_any.count(lot) != 0;
+            (as_enemy ? only_enemy : only_absent)++;
+            if (shown < 25)
+            {
+                uint32_t tk = disk_lot_tile.count(lot) ? disk_lot_tile[lot] : 0;
+                int32_t key = goblin::resolve_loot_item_textid(lot, 1, -1);
+                spdlog::info("[LOOTDISK]   disk-only lot {} @ m{}_{}_{} key={} ({})", lot,
+                             (tk >> 16) & 0xff, (tk >> 8) & 0xff, tk & 0xff, key,
+                             as_enemy ? "baked-as-enemy" : "absent-from-bake");
+                ++shown;
+            }
+        }
+        spdlog::info("[LOOTDISK] disk-only lots: {} total ({} baked-as-enemy, {} absent-from-bake) "
+                     "— vanilla/unmodified-map loot stays baked",
+                     only_enemy + only_absent, only_enemy, only_absent);
+
+        // RECOVER-LATER record: DummyAsset placements we dropped whose lotId the
+        // bake STILL provides (lotType 1) = "reachable_dummy" (a DummyAsset with
+        // an EntityID/group the engine can activate). They render fine TODAY via
+        // their baked marker, but would be LOST the day we drop the bake — so log
+        // each one explicitly. A dropped dummy NOT in the bake is truly inert
+        // (correctly gone). See docs/re/windows_msbe_dummyasset_unreachable_re_findings.md.
+        // True recover-later = bake shows it (baked_lot1) AND the disk does NOT
+        // (not in disk_lots). A dropped dummy whose lotId ALSO has an Asset twin
+        // is in disk_lots → the disk still emits it when the bake is gone → not
+        // lost. Excluding disk_lots is what separates the real ~3 from the lots
+        // that merely have a dummy duplicate alongside a live Asset.
+        std::unordered_set<uint32_t> seen_dummy;
+        int recover = 0;
+        for (uint32_t lot : dropped_dummy_lots)
+        {
+            if (!baked_lot1.count(lot) || disk_lots.count(lot) ||
+                !seen_dummy.insert(lot).second)
+                continue; // inert, disk already emits an Asset twin, or already logged
+            ++recover;
+            int32_t key = goblin::resolve_loot_item_textid(lot, 1, -1);
+            spdlog::info("[LOOTDISK]   RECOVER-LATER reachable_dummy lot {} key={} "
+                         "(bake-backed today; lost when the bake is dropped)", lot, key);
+        }
+        spdlog::info("[LOOTDISK] reachable_dummy (recover-later) lots: {} — currently baked, "
+                     "need Entity/group recovery before the bake can be removed", recover);
     }
     build_live_bosses();
 }
+
+// Build the buckets exactly once (thread-safe). Both the setup_mod prebuild and
+// the lazy markers()/census paths funnel through here; call_once serializes them.
+void ensure_buckets() { std::call_once(g_build_once, build_buckets_impl); }
 } // namespace
+
+void prebuild_markers() { ensure_buckets(); }
 
 MapEntryLayer::MapEntryLayer(int category) : cat_(category)
 {
@@ -179,7 +323,7 @@ bool MapEntryLayer::visible() const
 
 const std::vector<Marker> &MapEntryLayer::markers() const
 {
-    build_buckets();
+    ensure_buckets(); // built at setup_mod prebuild; this is a no-op if already done
     return g_buckets[cat_];
 }
 
@@ -187,7 +331,7 @@ void refresh_overlay_census()
 {
     namespace gen = goblin::generated;
     GOBLIN_BENCH("refresh.overlay_census");
-    build_buckets(); // ensure the overlay markers exist (one-time)
+    ensure_buckets(); // ensure the overlay markers exist (one-time, thread-safe)
 
     static int s_prev_looted[NUM_CAT];
     static bool s_logged_once = false;

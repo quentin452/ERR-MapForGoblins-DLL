@@ -1,0 +1,205 @@
+#include "loot_disk.hpp"
+
+#include "msbe_parser.hpp"
+#include "goblin_config.hpp"
+
+#include <spdlog/spdlog.h>
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+#include <cctype>
+#include <cstdio>
+#include <fstream>
+#include <system_error>
+
+namespace fs = std::filesystem;
+
+namespace goblin::worldmap
+{
+namespace
+{
+fs::path g_mod_folder;
+
+// Resolve the game's loaded oo2core OodleLZ_Decompress (for DCX_KRAK maps — vanilla
+// + the mod's unmodified maps). eldenring.exe imports oo2core_6_win64.dll, so it's
+// already in-process; GetModuleHandle finds it (LoadLibrary as a fallback). Cached.
+msbe::OodleDecompressFn resolve_oodle()
+{
+    static msbe::OodleDecompressFn fn = nullptr;
+    static bool tried = false;
+    if (tried) return fn;
+    tried = true;
+    HMODULE h = GetModuleHandleW(L"oo2core_6_win64.dll");
+    if (!h) h = LoadLibraryW(L"oo2core_6_win64.dll");
+    if (h) fn = (msbe::OodleDecompressFn)GetProcAddress(h, "OodleLZ_Decompress");
+    spdlog::info("[LOOTDISK] Oodle (KRAK maps) {}", fn ? "available" : "NOT found (KRAK skipped)");
+    return fn;
+}
+
+// Parent dir of eldenring.exe (the game install root), or empty.
+fs::path game_dir()
+{
+    HMODULE h = GetModuleHandleW(L"eldenring.exe");
+    if (!h) return {};
+    wchar_t buf[MAX_PATH] = {0};
+    if (!GetModuleFileNameW(h, buf, MAX_PATH)) return {};
+    return fs::path(buf).parent_path();
+}
+
+// Given a candidate root, return its MapStudio dir if present. Accepts a map\
+// root, a mod root (containing map\MapStudio), or the MapStudio dir itself.
+fs::path map_studio_in(const fs::path &root)
+{
+    if (root.empty()) return {};
+    std::error_code ec;
+    if (fs::exists(root / "map" / "MapStudio", ec)) return root / "map" / "MapStudio";
+    if (fs::exists(root / "MapStudio", ec)) return root / "MapStudio";
+    if (fs::exists(root, ec) && root.filename() == "MapStudio") return root;
+    return {};
+}
+
+// First existing of the candidate map dirs. config loot_msb_dir wins (resolved
+// to its MapStudio, or used as-is if it's a loose dir of .msb.dcx); then a DLL-
+// relative search; then the game install dir.
+fs::path resolve_map_dir()
+{
+    if (!config::lootMsbDir.empty())
+    {
+        fs::path cfg(config::lootMsbDir);
+        if (fs::path r = map_studio_in(cfg); !r.empty()) return r;
+        std::error_code ec;
+        if (fs::exists(cfg, ec)) return cfg;  // a custom dir of loose .msb.dcx
+    }
+    // DLL-relative search. g_mod_folder is the DLL's OWN folder (where the INI lives),
+    // which on the ERR/ModEngine layout is <root>/dll/offline while the mod's loose maps
+    // are in <root>/mod/map/MapStudio — so map_studio_in(g_mod_folder) alone misses them.
+    // Walk up a few levels, probing each ancestor AND its "mod" subfolder.
+    fs::path p = g_mod_folder;
+    for (int up = 0; up < 5 && !p.empty() && p != p.root_path(); ++up, p = p.parent_path())
+    {
+        if (fs::path r = map_studio_in(p); !r.empty()) return r;
+        if (fs::path r = map_studio_in(p / "mod"); !r.empty()) return r;
+    }
+    // Game install dir, and its "mod" sibling (ModEngine2 next to eldenring.exe).
+    fs::path g = game_dir();
+    if (fs::path r = map_studio_in(g); !r.empty()) return r;
+    if (fs::path r = map_studio_in(g / "mod"); !r.empty()) return r;
+    return {};
+}
+
+std::vector<uint8_t> slurp(const fs::path &p)
+{
+    std::vector<uint8_t> v;
+    std::ifstream f(p, std::ios::binary);
+    if (!f) return v;
+    f.seekg(0, std::ios::end);
+    std::streamoff n = f.tellg();
+    f.seekg(0, std::ios::beg);
+    if (n > 0)
+    {
+        v.resize((size_t)n);
+        f.read((char *)v.data(), n);
+        if (!f) v.clear();
+    }
+    return v;
+}
+
+// Parse "m{AA}_{BB}_{CC}_00" → area/gx/gz. Only LOD0 (_00). False otherwise so
+// _01/_02 connect proxies and _99 lighting tiles are skipped (rule: _00 only).
+bool parse_tile(const std::string &stem, int &area, int &gx, int &gz)
+{
+    int a = 0, x = 0, z = 0, lod = -1;
+    if (std::sscanf(stem.c_str(), "m%d_%d_%d_%d", &a, &x, &z, &lod) != 4) return false;
+    if (lod != 0) return false;
+    if (a < 0 || a > 255 || x < 0 || x > 255 || z < 0 || z > 255) return false;
+    area = a;
+    gx = x;
+    gz = z;
+    return true;
+}
+} // namespace
+
+void set_mod_folder(const fs::path &p) { g_mod_folder = p; }
+
+std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots)
+{
+    std::vector<DiskTreasure> out;
+    fs::path dir = resolve_map_dir();
+    if (dir.empty())
+    {
+        spdlog::warn("[LOOTDISK] no map\\MapStudio dir found (set loot_msb_dir) — disk loot off");
+        return out;
+    }
+    spdlog::info("[LOOTDISK] reading MSBs from {}", dir.string());
+
+    msbe::OodleDecompressFn oodle = resolve_oodle(); // KRAK support (vanilla/unmodified maps)
+    int parsed = 0, kraks = 0, withPart = 0, dummies = 0;
+    std::error_code ec;
+    for (auto &de : fs::directory_iterator(dir, ec))
+    {
+        if (!de.is_regular_file(ec)) continue;
+        const fs::path &p = de.path();
+        std::string name = p.filename().string();  // e.g. "m60_42_36_00.msb.dcx"
+        std::string lower = name;
+        for (char &c : lower) c = (char)std::tolower((unsigned char)c);
+        if (lower.size() < 8 || lower.compare(lower.size() - 8, 8, ".msb.dcx") != 0) continue;
+        std::string stem = name.substr(0, name.size() - 8);  // strip ".msb.dcx"
+        int area = 0, gx = 0, gz = 0;
+        if (!parse_tile(stem, area, gx, gz)) continue;
+
+        std::vector<uint8_t> dcx = slurp(p);
+        if (dcx.empty())
+        {
+            spdlog::warn("[LOOTDISK] read failed: {}", name);
+            continue;
+        }
+        bool krak = false;
+        std::vector<uint8_t> msb = msbe::dcx_decompress(dcx.data(), dcx.size(), &krak, oodle);
+        if (msb.empty())
+        {
+            if (krak) ++kraks;  // KRAK map but Oodle unavailable / decompress failed
+            else spdlog::warn("[LOOTDISK] decompress failed: {}", name);
+            continue;
+        }
+        msbe::ParseResult r = msbe::parse_msb(msb.data(), msb.size(), /*resident=*/false);
+        if (!r.ok)
+        {
+            spdlog::warn("[LOOTDISK] parse failed: {}", name);
+            continue;
+        }
+        ++parsed;
+
+        int tilePos = 0;
+        for (const auto &t : r.treasures)
+        {
+            if (t.partIndex < 0) continue;  // item-glow / EMEVD-region → no MSB pos
+            // Drop DummyAsset placements: disabled/cut placeholder parts the player
+            // can't reach (305/312 of the pipeline's unreachable lots — validated
+            // offline). Any lot we skip here just stays on its baked marker (the
+            // coverage-replace keeps uncovered baked rows), so no loot is lost.
+            if (t.partType == msbe::PART_DUMMY_ASSET)
+            {
+                ++dummies;
+                if (droppedDummyLots && t.itemLotId) droppedDummyLots->push_back(t.itemLotId);
+                continue;
+            }
+            DiskTreasure d;
+            d.lotId = t.itemLotId;
+            d.area = (uint8_t)area;
+            d.gx = (uint8_t)gx;
+            d.gz = (uint8_t)gz;
+            d.posX = t.pos[0];
+            d.posZ = t.pos[2];  // Part+0x20 X/Z (Y unused for markers)
+            out.push_back(d);
+            ++tilePos;
+        }
+        withPart += tilePos;
+        spdlog::debug("[LOOTDISK] {} -> {} treasures ({} positioned)", name,
+                      r.treasures.size(), tilePos);
+    }
+    spdlog::info("[LOOTDISK] {} _00 MSBs parsed ({} positioned treasures, {} DummyAsset dropped); "
+                 "{} KRAK skipped", parsed, withPart, dummies, kraks);
+    return out;
+}
+} // namespace goblin::worldmap

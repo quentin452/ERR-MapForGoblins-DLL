@@ -69,6 +69,20 @@ namespace goblin
                                     // gray "?" icon + a generic localized label instead
                                     // of the real item (blind randomizer runs).
 
+        // ── Loot source (experimental) ──────────────────────────────────
+        // When true, derive the TREASURE loot slice from the ACTIVE mod's REAL
+        // map/MapStudio/*.msb.dcx files on disk instead of the committed bake:
+        // disk placements REPLACE any baked lot whose itemLotId the MSBs place
+        // (lotId-coverage), while EMEVD-granted + enemy-drop lots stay baked.
+        // Reads loose DCX_DFLT (zlib) maps (ERR's modified ones); KRAK/Oodle-only
+        // maps are skipped for now. Opt-in; see msbe_parser + the RE docs.
+        extern bool lootFromDiskMsb;
+        // Directory holding the active mod's map\MapStudio\*.msb.dcx (or the mod
+        // root, or a map\ root). Empty = auto-detect: the DLL's own mod folder,
+        // then the Elden Ring install dir. Set it to your ModEngine2 mod's map
+        // folder if auto-detect picks the wrong source.
+        extern std::string lootMsbDir;
+
         // ── ERR Markers ─────────────────────────────────────────────────
         extern bool redifyBossIcons;  // overlay: boss markers drawn red + auto-hide on kill
 

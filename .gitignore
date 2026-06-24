@@ -157,3 +157,8 @@ tools/cheat_engine/ExceptionAutoSave_*.ct
 MapForGoblins_*.csv
 MapForGoblins_*.log
 /build-clang
+
+# Offline MSBE verifier build outputs (tools/msbe_test/build*.sh)
+/tools/msbe_test/msbe_test
+/tools/msbe_test/msbe_oodle_native
+/tools/msbe_test/msbe_oodle.exe
