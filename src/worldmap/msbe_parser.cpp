@@ -101,6 +101,7 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             {
                 size_t nm = eio(rd64(buf, pe + 0x00), pe);
                 if (nm < len) t.partName = rd_utf16(buf, nm, len);
+                t.partType = (int32_t)rd32(buf, pe + 0x0c); // 13=Asset, 9=DummyAsset
                 t.pos[0] = rdf(buf, pe + 0x20);
                 t.pos[1] = rdf(buf, pe + 0x24);
                 t.pos[2] = rdf(buf, pe + 0x28);

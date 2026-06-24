@@ -20,7 +20,17 @@ struct Treasure
     int32_t     partIndex = -1;   // index into PARTS; -1 = 0xFFFFFFFF (item-glow / no part)
     std::string partName;         // e.g. "AEG099_990_9002" ("" when partIndex < 0)
     float       pos[3] = {0, 0, 0}; // BLOCK-LOCAL position (valid only when partName set)
+    // MSBE part-type enum at PART entry +0x0c (validated on disk vs the offline
+    // unreachable list): 13 = Asset (reachable placement), 9 = DummyAsset
+    // (disabled/cut placeholder — 305/312 of the pipeline's "unreachable" lots).
+    // -1 when partIndex < 0. The caller drops DummyAsset placements (PART_DUMMY_ASSET).
+    int32_t     partType = -1;
 };
+
+// MSBE PartsParam part-type enum values (subset). A Treasure bound to a
+// DummyAsset is a structurally-inert / cut placement the player can't reach.
+constexpr int32_t PART_ASSET = 13;
+constexpr int32_t PART_DUMMY_ASSET = 9;
 
 struct ParseResult
 {

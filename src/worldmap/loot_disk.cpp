@@ -105,7 +105,7 @@ std::vector<DiskTreasure> load_disk_treasures()
     }
     spdlog::info("[LOOTDISK] reading MSBs from {}", dir.string());
 
-    int parsed = 0, kraks = 0, withPart = 0;
+    int parsed = 0, kraks = 0, withPart = 0, dummies = 0;
     std::error_code ec;
     for (auto &de : fs::directory_iterator(dir, ec))
     {
@@ -145,6 +145,11 @@ std::vector<DiskTreasure> load_disk_treasures()
         for (const auto &t : r.treasures)
         {
             if (t.partIndex < 0) continue;  // item-glow / EMEVD-region → no MSB pos
+            // Drop DummyAsset placements: disabled/cut placeholder parts the player
+            // can't reach (305/312 of the pipeline's unreachable lots — validated
+            // offline). Any lot we skip here just stays on its baked marker (the
+            // coverage-replace keeps uncovered baked rows), so no loot is lost.
+            if (t.partType == msbe::PART_DUMMY_ASSET) { ++dummies; continue; }
             DiskTreasure d;
             d.lotId = t.itemLotId;
             d.area = (uint8_t)area;
@@ -159,8 +164,8 @@ std::vector<DiskTreasure> load_disk_treasures()
         spdlog::debug("[LOOTDISK] {} -> {} treasures ({} positioned)", name,
                       r.treasures.size(), tilePos);
     }
-    spdlog::info("[LOOTDISK] {} _00 MSBs parsed ({} positioned treasures); {} KRAK skipped",
-                 parsed, withPart, kraks);
+    spdlog::info("[LOOTDISK] {} _00 MSBs parsed ({} positioned treasures, {} DummyAsset dropped); "
+                 "{} KRAK skipped", parsed, withPart, dummies, kraks);
     return out;
 }
 } // namespace goblin::worldmap

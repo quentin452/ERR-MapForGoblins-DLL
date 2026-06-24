@@ -18,6 +18,7 @@
 
 #include <array>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace goblin::worldmap
@@ -150,7 +151,14 @@ void build_live_bosses()
 // category + pickup flag. A lotId may map to MULTIPLE parts → each is emitted.
 // Records every lotId it placed in `covered` so build_buckets DROPS the baked
 // rows the disk now owns (lotId-coverage replace). Logs [LOOTDISK].
-static void build_disk_loot_markers(std::unordered_set<uint32_t> &covered)
+// Packed tile key (area<<16 | gx<<8 | gz) for the diagnostic log below.
+static uint32_t pack_tile(uint8_t a, uint8_t gx, uint8_t gz)
+{
+    return ((uint32_t)a << 16) | ((uint32_t)gx << 8) | gz;
+}
+
+static void build_disk_loot_markers(std::unordered_set<uint32_t> &covered,
+                                     std::unordered_map<uint32_t, uint32_t> &lot_tile)
 {
     GOBLIN_BENCH("build.disk_loot");
     std::vector<DiskTreasure> treasures = load_disk_treasures();
@@ -175,6 +183,7 @@ static void build_disk_loot_markers(std::unordered_set<uint32_t> &covered)
         }
         push_marker(/*row_id=*/t.lotId, d, c, t.lotId, /*lotType=*/1);
         covered.insert(t.lotId);
+        lot_tile.emplace(t.lotId, pack_tile(t.area, t.gx, t.gz)); // first tile per lot
         ++emitted;
     }
     spdlog::info("[LOOTDISK] emitted {} disk loot markers, {} lots covered, {} unclassified",
@@ -196,8 +205,16 @@ void build_buckets()
     // those lots cover are dropped below (the disk owns the treasure slice;
     // EMEVD-granted + enemy lots have no MSB part → they stay baked).
     std::unordered_set<uint32_t> disk_lots;
+    std::unordered_map<uint32_t, uint32_t> disk_lot_tile;  // lotId → packed tile (diag)
     if (goblin::config::lootFromDiskMsb)
-        build_disk_loot_markers(disk_lots);
+        build_disk_loot_markers(disk_lots, disk_lot_tile);
+
+    // Diagnostic sets: which baked lotIds exist as map-loot (lotType 1) vs as ANY
+    // lot (1 or 2). Lets us explain the disk-only lots below (in the disk but not
+    // the bake's treasure slice): new MSB loot the bake missed, or loot the bake
+    // filed as an enemy drop (lotType 2). Only built when the disk source is on.
+    const bool diag = goblin::config::lootFromDiskMsb;
+    std::unordered_set<uint32_t> baked_lot1, baked_any;
 
     int replaced = 0;
     for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
@@ -206,6 +223,11 @@ void build_buckets()
         int c = static_cast<int>(e.category);
         if (c < 0 || c >= NUM_CAT)
             continue;
+        if (diag && e.lotId != 0)
+        {
+            if (e.lotType == 1) baked_lot1.insert(e.lotId);
+            if (e.lotType != 0) baked_any.insert(e.lotId);
+        }
         // Bosses come LIVE from the param now (build_live_bosses) — skip any baked WorldBosses
         // rows so they don't double the live ones (the bake is being retired for this category).
         if (e.category == gen::Category::WorldBosses)
@@ -219,8 +241,33 @@ void build_buckets()
         }
         push_marker(e.row_id, e.data, c, e.lotId, e.lotType);
     }
-    if (goblin::config::lootFromDiskMsb)
+    if (diag)
+    {
         spdlog::info("[LOOTDISK] replaced {} baked lot rows with disk placements", replaced);
+        // Disk-only lots (placed by the disk but NOT in the bake's lotType==1 slice).
+        // Split: filed-as-enemy (in baked_any → the bake had it as a lotType 2 drop)
+        // vs absent-from-bake (genuinely new MSB loot the bake missed). Log a sample
+        // [lotId @ tile → resolved item key] so the values can be eyeballed in-game.
+        int only_enemy = 0, only_absent = 0, shown = 0;
+        for (uint32_t lot : disk_lots)
+        {
+            if (baked_lot1.count(lot)) continue;  // this lot IS in the bake's slice
+            const bool as_enemy = baked_any.count(lot) != 0;
+            (as_enemy ? only_enemy : only_absent)++;
+            if (shown < 25)
+            {
+                uint32_t tk = disk_lot_tile.count(lot) ? disk_lot_tile[lot] : 0;
+                int32_t key = goblin::resolve_loot_item_textid(lot, 1, -1);
+                spdlog::info("[LOOTDISK]   disk-only lot {} @ m{}_{}_{} key={} ({})", lot,
+                             (tk >> 16) & 0xff, (tk >> 8) & 0xff, tk & 0xff, key,
+                             as_enemy ? "baked-as-enemy" : "absent-from-bake");
+                ++shown;
+            }
+        }
+        spdlog::info("[LOOTDISK] disk-only lots: {} total ({} baked-as-enemy, {} absent-from-bake) "
+                     "— vanilla/unmodified-map loot stays baked",
+                     only_enemy + only_absent, only_enemy, only_absent);
+    }
     build_live_bosses();
 }
 } // namespace
