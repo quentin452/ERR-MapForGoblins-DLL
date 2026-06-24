@@ -165,6 +165,8 @@ add_library( MapForGoblins SHARED
   src/worldmap/msbe_parser.cpp
   src/worldmap/loot_disk.hpp
   src/worldmap/loot_disk.cpp
+  src/worldmap/loot_open_probe.hpp
+  src/worldmap/loot_open_probe.cpp
   src/goblin_crashdump.cpp
   src/dllmain.cpp)
 

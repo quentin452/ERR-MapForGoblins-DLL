@@ -20,6 +20,7 @@ namespace goblin::config
     bool nativeItemIcons = true;   // overlay: draw the game's real item icon (GPU harvest) when resident
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
     bool diagLootPos = false;      // one-shot [LOOTPOS] live-vs-baked placement accuracy probe
+    bool diagMapOpens = false;     // [MAPOPEN] CreateFileW probe: log map .msb.dcx opens
     bool debugLogging = false;
     bool showAll = false;
     bool iconsHidden = false;  // master off persisted (menu/F10 "Show icons")
@@ -182,6 +183,12 @@ namespace
                   "process) against the baked MAP_ENTRY placement. Validates that the data we\n"
                   "collect matches the bake from inside the running DLL (vs an external RPM\n"
                   "script). Logs per-row delta + an aggregate. Walk near loaded loot. Off by default."),
+                B("diag_map_opens", diagMapOpens, "false",
+                  "RE/diagnostic: [MAPOPEN] — hook kernel32!CreateFileW and log every map\n"
+                  "*.msb.dcx the GAME opens (full resolved OS path AFTER ME3/UXM redirect,\n"
+                  "open latency, time since arming). Shows where maps are really read from\n"
+                  "(loader-agnostic) vs the [LOOTDISK] ancestor-walk dir, and when the first\n"
+                  "open happens vs the init-time build. Throwaway probe. Off by default."),
                 B("loot_from_disk_msb", lootFromDiskMsb, "false",
                   "EXPERIMENTAL. Derive the treasure-loot markers from the ACTIVE mod's\n"
                   "real map files (map\\MapStudio\\*.msb.dcx) on disk instead of the baked\n"

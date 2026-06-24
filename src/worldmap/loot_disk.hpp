@@ -34,4 +34,34 @@ void set_mod_folder(const std::filesystem::path &p);
 // "reachable_dummy" subset (those the bake still backs → recover when the bake
 // is removed). Logs [LOOTDISK] per-map (debug) + totals. Empty when no dir.
 std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots = nullptr);
+
+// ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────
+// With loot_from_disk_msb on, the map dir is resolved by ancestor-walk at init
+// (Found). If that finds nothing we fall back to OBSERVING the game's own map
+// opens via the CreateFileW hook (Searching): the first *.msb.dcx open reveals
+// the real dir, loader-agnostic (the [MAPOPEN] essai proved ME3 opens each map
+// by CreateFileW with the resolved mod path). If no map opens within an in-game
+// timeout the state goes Failed → the overlay shows a red error and builds no
+// markers (the disk source is REQUIRED when the feature is on).
+enum class DiskLootState { Disabled, Found, Searching, Failed };
+
+// Resolve the map dir once (ancestor-walk). Found → cache + state Found; empty →
+// state Searching (the CreateFileW observer completes it). Idempotent / cheap.
+void ensure_map_dir_resolved();
+
+// Current state. Lazily flips Searching→Failed once the in-game timeout elapses
+// (no per-frame tick needed — evaluated on access).
+DiskLootState disk_loot_state();
+
+// The resolved (or last-searched) MapStudio dir, for the build + the error text.
+std::filesystem::path disk_loot_dir();
+
+// Called by the CreateFileW observer for every *.msb.dcx the game opens. While
+// the dir is not yet Found, captures its map\MapStudio parent → flips to Found.
+void on_map_opened_path(const wchar_t *full_path);
+
+// Registered by the marker layer at init: invoked once, the instant the map dir
+// flips to Found via CreateFileW discovery, so the worker build kicks immediately
+// instead of waiting for the next overlay tick (~7s). Set before any map opens.
+void set_build_trigger(void (*fn)());
 } // namespace goblin::worldmap

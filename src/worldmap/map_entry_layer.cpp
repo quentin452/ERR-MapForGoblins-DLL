@@ -17,7 +17,9 @@
 #include <spdlog/spdlog.h>
 
 #include <array>
+#include <atomic>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <mutex>
 #include <unordered_set>
@@ -302,12 +304,59 @@ void build_buckets_impl()
     build_live_bosses();
 }
 
-// Build the buckets exactly once (thread-safe). Both the setup_mod prebuild and
-// the lazy markers()/census paths funnel through here; call_once serializes them.
-void ensure_buckets() { std::call_once(g_build_once, build_buckets_impl); }
+// Disk-loot build is run ONCE on a background WORKER thread (not std::call_once):
+// the map dir can resolve late (CreateFileW discovery), and parsing 651 MSBs
+// (~0.7s) on the render/init thread is a visible hitch. The worker builds into
+// g_buckets, then publishes with a release store of g_disk_built; readers
+// (markers()/census) acquire-load it and return EMPTY until the build completes —
+// so g_buckets is never read mid-write (after Found it's immutable). No hitch at
+// discovery OR init; markers just appear a beat after the dir is known.
+std::atomic<bool> g_disk_built{false};
+std::atomic<bool> g_disk_kicked{false};
+void kick_disk_build()
+{
+    if (g_disk_built.load(std::memory_order_acquire)) return;
+    bool expected = false;
+    if (!g_disk_kicked.compare_exchange_strong(expected, true)) return;  // one worker only
+    std::thread([] {
+        build_buckets_impl();
+        g_disk_built.store(true, std::memory_order_release);
+    }).detach();
+}
+
+// Ensure the buckets are (being) built. Disk source OFF → the bake is the source,
+// built synchronously (std::call_once). Disk source ON → the disk map dir is
+// REQUIRED: kick the background build once it's Found (ancestor-walk or the
+// CreateFileW observer); Searching/Failed leave the buckets empty so the overlay
+// shows its "maps not found" state instead of stale/bake markers.
+void ensure_buckets()
+{
+    if (!goblin::config::lootFromDiskMsb)
+    {
+        std::call_once(g_build_once, build_buckets_impl);
+        return;
+    }
+    ensure_map_dir_resolved();
+    if (disk_loot_state() == DiskLootState::Found)
+        kick_disk_build();  // async — no render/init-thread hitch
+}
+
+// True once the disk markers are safe to read. Always true when the disk source
+// is off (the call_once build is synchronous). Acquire-pairs with the worker's
+// release store so a true result guarantees g_buckets is fully written.
+bool disk_markers_ready()
+{
+    return !goblin::config::lootFromDiskMsb || g_disk_built.load(std::memory_order_acquire);
+}
 } // namespace
 
-void prebuild_markers() { ensure_buckets(); }
+void prebuild_markers()
+{
+    // Wire CreateFileW discovery → kick the worker the instant the dir is Found,
+    // so the fallback build doesn't wait for the next overlay tick (~7s).
+    set_build_trigger(&kick_disk_build);
+    ensure_buckets();
+}
 
 MapEntryLayer::MapEntryLayer(int category) : cat_(category)
 {
@@ -323,7 +372,9 @@ bool MapEntryLayer::visible() const
 
 const std::vector<Marker> &MapEntryLayer::markers() const
 {
-    ensure_buckets(); // built at setup_mod prebuild; this is a no-op if already done
+    ensure_buckets(); // built at setup_mod prebuild (or kicked async for the disk source)
+    static const std::vector<Marker> kEmpty;
+    if (!disk_markers_ready()) return kEmpty;  // disk build still running on the worker
     return g_buckets[cat_];
 }
 
@@ -332,6 +383,7 @@ void refresh_overlay_census()
     namespace gen = goblin::generated;
     GOBLIN_BENCH("refresh.overlay_census");
     ensure_buckets(); // ensure the overlay markers exist (one-time, thread-safe)
+    if (!disk_markers_ready()) return;  // disk build on the worker — census next frame
 
     static int s_prev_looted[NUM_CAT];
     static bool s_logged_once = false;
