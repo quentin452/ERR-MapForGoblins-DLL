@@ -14,7 +14,7 @@ and the [[handoff-loot-from-real-files]] memory for the full RE.
 
 | Item | Tested **runtime** (in-game) | Tested **static** (offline, not runtime) | **Windows** | **Linux** |
 |---|---|---|---|---|
-| **ERR** profile (full disk loot) | ✅ in-game: 651 maps, 0 KRAK skip, 3235 replaced, no hitch | ✅ | ✅ (game + DLL build) | ◑ offline parse ✅ (708 DFLT→4075 tre + 256 KRAK 0-fail; m10=113); **DLL cross-build ✅** (build-clang, PE32+ 5.16MB); runtime not run |
+| **ERR** profile (full disk loot) | ✅ in-game: 651 maps, 0 KRAK skip, 3235 replaced, no hitch | ✅ | ✅ (game + DLL build) | ✅ **full A+B+C** — offline (708 DFLT→4075 tre, m10=113), DLL cross-build (PE32+ 5.16MB), **Proton runtime: 651 maps / 0 KRAK skip / 3235 replaced / 21 disk-only / 3 recover-later — EXACT match to Windows** |
 | **ERTE** profile | ✅ in-game: 458 maps, 0 KRAK skip, 3226 replaced | ✅ 458 maps / 3320 asset-lots | ✅ (game via ME3 + build) | ◑ portable |
 | **Convergence** profile | ✅ in-game: 468 maps, 0 KRAK skip, 3227 replaced | ✅ 468 maps / 3623 asset-lots | ✅ (game via ME3 + build) | ◑ portable |
 | **Vanilla** profile | ✅ in-game: 949 maps, 0 KRAK skip, 3062 replaced | ✅ 949 maps / 3193 asset-lots | ✅ (game via ME3 + build) | ◑ portable |
@@ -68,7 +68,17 @@ Ran the offline parser/Oodle path on the local Linux box against ERR's real file
     the Windows-pipeline tables `goblin_tile_tabs` + `goblin_major_regions` (not ERR-only, so
     `gen_nonerr_stubs.py` doesn't cover them; not loot-related). Needs the Windows data pipeline or a
     copy of those files. ERR-only build is sufficient — the loot path is profile-independent.
-- **Not run on Linux yet:** Part C (in-game via Proton/ME3 — needs the game launched).
+- **Part C (Proton runtime) ✅ ERR (2026-06-24):** deployed `build-clang/MapForGoblins.dll` →
+  `dll/offline/`, set `[Goblin] loot_from_disk_msb=true` + `loot_msb_dir=Z:\home\...\mod` (the ER
+  Proton prefix maps `z: -> /`), launched the ERR offline Linux launcher. `[LOOTDISK]` log:
+  `reading MSBs from Z:\...\mod\map\MapStudio` · `Oodle (KRAK maps) available` · `651 _00 MSBs
+  parsed (3413 positioned treasures, 319 DummyAsset dropped); 0 KRAK skipped` · `emitted 3280
+  markers, 3230 lots covered, 133 unclassified` · `replaced 3235 baked lot rows` · `21 disk-only
+  (absent-from-bake)` · `3 recover-later` · `build.disk_loot 825 ms`. **Replaced/disk-only/
+  recover-later all EXACT-match the Windows ERR run** → the loot-from-disk feature is platform-
+  identical. Auto-detect won't find the loose mod dir (g_mod_folder = the DLL's own dll/offline),
+  so `loot_msb_dir` must be set explicitly (Z: path) on this layout.
+- **Not run on Linux:** Part C for the 3 non-ERR profiles (DLLs not buildable here — see Part B).
 
 ## Non-ERR DLL build — RESOLVED (empty ERR-only stubs)
 The data pipeline bakes 4 profiles (`src/generated_<profile>/`) but does NOT emit the
