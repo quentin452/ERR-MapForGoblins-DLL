@@ -85,7 +85,29 @@ world placement) → correctly excluded from the map.
 of its 585 lots intersect the 748 position-less set. So the committed bake's posless
 rows were never enriched. (It also only indexed Parts, never Regions.)
 
+## Deep 2-hop trace (lot → trigger flag → flag setter → positioned region/entity)
+The only honest recovery route (per the 90005774 finding) is to trace the award's
+**trigger flag** to whatever SETS it, and read a position there.
+`tools/trace_trigger_flags.py` does this generically (award line → candidate flags
+→ `SetEventFlag*`/`BatchSetEventFlags ON` setter events → any int resolving to a
+placed Region/Part, regions included). Result over the 430:
+```
+  353  no-award-line          (lot literal not even on an Award/award-template line)
+   73  award-but-no-settable-flag
+    2  flag-set-but-no-position
+    2  TRACED-to-position      (and BOTH dubious — e.g. via the global flag 6001)
+```
+So the 2-hop chain recovers **~0 reliable positions**. Cross-checked with the
+earlier literal scan (302 lots' id appears NOWHERE in EMEVD) — these are orphan
+`ItemLotParam_map` rows / multi-param-hop grants / quest rewards with no world point.
+
 ## Conclusion / recommendation
+**Three independent measurements converge on ~0 recoverable beyond #1:**
+(1) all-LOD+KRAK MSB scan → only 22/430 are Treasures (all already #1); (2) full-
+corpus EMEVD literal+coarg scan → 3 reliable coarg, 47 proven-coincidence
+`lot==entity`; (3) 2-hop trigger-flag trace → ~0. The posless lots are genuinely
+unplaceable.
+
 - **#1 already nets the only clean, free win here: 22 lots** (MSB Treasures the bake
   missed, now disk-emitted with correct positions — no extra work).
 - **The 47 `lot==entity` are PROVEN coincidences (flag-triggered grants), not
