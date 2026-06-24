@@ -15,9 +15,9 @@ and the [[handoff-loot-from-real-files]] memory for the full RE.
 | Item | Tested **runtime** (in-game) | Tested **static** (offline, not runtime) | **Windows** | **Linux** |
 |---|---|---|---|---|
 | **ERR** profile (full disk loot) | ✅ in-game: 651 maps, 0 KRAK skip, 3235 replaced, no hitch | ✅ | ✅ (game + DLL build) | ✅ **full A+B+C** — offline (708 DFLT→4075 tre, m10=113), DLL cross-build (PE32+ 5.16MB), **Proton runtime: 651 maps / 0 KRAK skip / 3235 replaced / 21 disk-only / 3 recover-later — EXACT match to Windows** |
-| **ERTE** profile | ✅ in-game: 458 maps, 0 KRAK skip, 3226 replaced | ✅ 458 maps / 3320 asset-lots | ✅ (game via ME3 + build) | ◑ **offline parse ✅** 458 _00 maps (458 DFLT, 3731 tre, 0 fail) = exact map match; DLL build/runtime need Windows-gen `generated_erte` |
-| **Convergence** profile | ✅ in-game: 468 maps, 0 KRAK skip, 3227 replaced | ✅ 468 maps / 3623 asset-lots | ✅ (game via ME3 + build) | ◑ **offline parse ✅** 468 _00 maps (346 DFLT + **122 KRAK** via native Oodle, 4044 tre, 0 fail) = exact map match + proves native-Oodle-on-treasure-KRAK; DLL needs `generated_convergence` |
-| **Vanilla** profile | ✅ in-game: 949 maps, 0 KRAK skip, 3062 replaced | ✅ 949 maps / 3193 asset-lots | ✅ (game via ME3 + build) | ◑ offline blocked (no loose maps — Steam BDT-packed, needs extraction); DLL needs complete `generated_vanilla` |
+| **ERTE** profile | ✅ in-game: 458 maps, 0 KRAK skip, 3226 replaced | ✅ 458 maps / 3320 asset-lots | ✅ (game via ME3 + build) | ◑ **offline parse ✅** 458 _00 maps (458 DFLT, 3731 tre, 0 fail) = exact map match; **DLL cross-build ✅** (PE32+ 5.15MB); runtime needs ME3 setup |
+| **Convergence** profile | ✅ in-game: 468 maps, 0 KRAK skip, 3227 replaced | ✅ 468 maps / 3623 asset-lots | ✅ (game via ME3 + build) | ◑ **offline parse ✅** 468 _00 maps (346 DFLT + **122 KRAK** via native Oodle, 4044 tre, 0 fail) = exact map match + proves native-Oodle-on-treasure-KRAK; **DLL cross-build ✅** (PE32+ 5.03MB); runtime needs ME3 setup |
+| **Vanilla** profile | ✅ in-game: 949 maps, 0 KRAK skip, 3062 replaced | ✅ 949 maps / 3193 asset-lots | ✅ (game via ME3 + build) | ◑ **DLL cross-build ✅** (PE32+ 4.89MB); offline blocked (no loose maps — Steam BDT-packed); runtime needs ME3 setup |
 | **DFLT** decompress (zlib / stb) | ✅ (ERR in-game) | ✅ | ✅ | ✅ (stb in-tree, `tools/msbe_test/build.sh`) |
 | **KRAK** decompress (Oodle / oo2core) | ✅ (ERR in-game, 0 skipped) | ✅ (oo2core via ctypes, 4 profiles) | ✅ | ✅ **native** `liboo2corelinux64.so.9` (no Wine), `build_oodle.sh` |
 | **DummyAsset filter** (`PART +0x0c`) | ✅ (178 → 21 in-game) | ✅ (487 maps) | ✅ | ✅ |
@@ -64,10 +64,10 @@ Ran the offline parser/Oodle path on the local Linux box against ERR's real file
   -DXWIN=~/.local/share/xwin -DGENERATED_SUBDIR=generated -DCMAKE_BUILD_TYPE=Release` → `ninja -C
   build-clang MapForGoblins` → `build-clang/MapForGoblins.dll` (PE32+ x86-64, 5.16 MB, all disk-MSB
   loot code in). Only deprecation warnings, no errors.
-  - Non-ERR on Linux: **blocked** — `generated_vanilla/` (the only non-ERR dir on this box) is missing
-    the Windows-pipeline tables `goblin_tile_tabs` + `goblin_major_regions` (not ERR-only, so
-    `gen_nonerr_stubs.py` doesn't cover them; not loot-related). Needs the Windows data pipeline or a
-    copy of those files. ERR-only build is sufficient — the loot path is profile-independent.
+  - Non-ERR on Linux: **RESOLVED** — copied the complete Windows-generated `generated_{erte,convergence,
+    vanilla}/` (25 files each, incl `goblin_tile_tabs` + `goblin_major_regions`) onto the box.
+    All 3 cross-build on Linux: erte PE32+ 5.15MB, convergence 5.03MB, vanilla 4.89MB
+    (`cmake -B build-<p> -DGENERATED_SUBDIR=generated_<p> ...`). No stubs needed (full bakes).
 - **Part C (Proton runtime) ✅ ERR (2026-06-24):** deployed `build-clang/MapForGoblins.dll` →
   `dll/offline/`, set `[Goblin] loot_from_disk_msb=true` + `loot_msb_dir=Z:\home\...\mod` (the ER
   Proton prefix maps `z: -> /`), launched the ERR offline Linux launcher. `[LOOTDISK]` log:
