@@ -4205,6 +4205,9 @@ uint32_t goblin::aeg_pickup_lot(uint32_t aegRow)
     if (!row) return 0;
     uint32_t lot;
     std::memcpy(&lot, row->b + 0xb8, 4);
+    // pickUpItemLotParamId defaults to -1 (0xFFFFFFFF) for non-pickup assets (the
+    // param has a row for EVERY asset model); 0 also = none. Either → not a pickup.
+    if (lot == 0 || lot == 0xffffffffu) return 0;
     return lot;
 }
 
