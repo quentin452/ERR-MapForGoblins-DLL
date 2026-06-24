@@ -47,4 +47,8 @@ it is fully validated **statically** on all four.
 ## Regeneration status (this session)
 - ERR: committed bake (current).
 - ERTE: regenerated 2026-06-24 (449s).
-- Convergence / Vanilla: regeneration in progress (background, ~450s each).
+- Convergence: regenerated 2026-06-24 (421s).
+- Vanilla: regenerated 2026-06-24 (330s).
+- All 3 non-err dirs have 15 files (vs ERR's 25) — confirms the ERR-only generated
+  files (quest_gates/quest_steps/region_anchors/name_regions/model_aliases) are
+  absent off-ERR, i.e. the non-err DLL build blocker stands.
