@@ -15,9 +15,9 @@ and the [[handoff-loot-from-real-files]] memory for the full RE.
 | Item | Tested **runtime** (in-game) | Tested **static** (offline, not runtime) | **Windows** | **Linux** |
 |---|---|---|---|---|
 | **ERR** profile (full disk loot) | ✅ in-game: 3235 replaced, 0 KRAK skipped, no first-open hitch | ✅ | ✅ (game + DLL build) | ◑ parser/build.sh portable, not run |
-| **ERTE** profile | ❌ (non-err DLL build blocked) | ✅ 458 maps / 3320 asset-lots | ✅ (offline probe) | ◑ portable |
-| **Convergence** profile | ❌ (non-err DLL build blocked) | ✅ 468 maps / 3623 asset-lots | ✅ (offline probe) | ◑ portable |
-| **Vanilla** profile | ❌ (non-err DLL build blocked) | ✅ 949 maps / 3193 asset-lots | ✅ (offline probe) | ◑ portable |
+| **ERTE** profile | ◑ DLL built, ready (not yet run in-game) | ✅ 458 maps / 3320 asset-lots | ✅ (offline probe + DLL build) | ◑ portable |
+| **Convergence** profile | ◑ DLL built, ready (not yet run in-game) | ✅ 468 maps / 3623 asset-lots | ✅ (offline probe + DLL build) | ◑ portable |
+| **Vanilla** profile | ◑ DLL built, ready (not yet run in-game) | ✅ 949 maps / 3193 asset-lots | ✅ (offline probe + DLL build) | ◑ portable |
 | **DFLT** decompress (zlib / stb) | ✅ (ERR in-game) | ✅ | ✅ | ✅ (stb in-tree, `tools/msbe_test/build.sh`) |
 | **KRAK** decompress (Oodle / oo2core) | ✅ (ERR in-game, 0 skipped) | ✅ (oo2core via ctypes, 4 profiles) | ✅ | ◑ via Wine + oo2core (`build_oodle.sh`), not run here |
 | **DummyAsset filter** (`PART +0x0c`) | ✅ (178 → 21 in-game) | ✅ (487 maps) | ✅ | ✅ |
@@ -32,17 +32,19 @@ and the [[handoff-loot-from-real-files]] memory for the full RE.
 | Convergence | 468 | 468 | 3623 | 312 |
 | Vanilla | 949 | 949 | 3193 | 315 |
 
-## Why the 3 non-ERR profiles aren't runtime-tested
-The data pipeline bakes 4 profiles (`src/generated_<profile>/`), but only the **ERR
-DLL** is wired to build: `CMakeLists.txt` references ERR-only generated files
-(`goblin_quest_gates`, `goblin_quest_steps`, `goblin_region_anchors`,
-`goblin_name_regions`, `goblin_model_aliases`) that the non-err pipeline doesn't
-emit (those dirs have 11–15 files vs ERR's 25). So a non-err DLL build fails at
-configure ("No SOURCES given"). Making non-err DLLs buildable (conditional CMake
-sources + code that doesn't reference those symbols off-ERR, or stubs) is a
-separate task — it is the only thing blocking in-game testing of ERTE / Convergence
-/ Vanilla. The disk-loot feature itself is profile-independent (reads MSBs live);
-it is fully validated **statically** on all four.
+## Non-ERR DLL build — RESOLVED (empty ERR-only stubs)
+The data pipeline bakes 4 profiles (`src/generated_<profile>/`) but does NOT emit the
+ERR-only tables (`goblin_quest_gates`, `goblin_quest_steps`, `goblin_region_anchors`,
+`goblin_name_regions`, `goblin_model_aliases`), which the DLL references
+unconditionally → a non-err DLL used to fail at configure ("No SOURCES given").
+Fix: `tools/gen_nonerr_stubs.py <profile>` writes EMPTY versions (COUNT=0) of those
+files, making every consumer a no-op (those features are simply absent off-ERR).
+`build_pipeline.py` now runs it automatically at the end of a non-err run, so it
+survives a clean regen. The loot path never touches those symbols, so this does NOT
+affect loot fidelity — the loot bake (`goblin_item_icons` / `goblin_map_data`) is
+real per-profile. **All 4 profile DLLs now build** (build-clang / build-erte /
+build-convergence / build-vanilla). In-game runs of the 3 non-err DLLs are the only
+step left (deploy each to its mod + set loot_msb_dir + open the map).
 
 ## Regeneration status (this session)
 - ERR: committed bake (current).
