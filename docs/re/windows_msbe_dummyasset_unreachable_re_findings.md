@@ -43,16 +43,22 @@ EMEVD activates it and it's a real pickup. Our `type==9 → drop` rule drops it 
 but it renders fine TODAY via its baked marker (coverage-replace keeps uncovered baked rows → **zero
 loss now**). It would be **LOST the day the committed bake is removed**.
 
-Exact set (offline ground truth = type-9-only ∧ not in unreachable; 3 lots):
+Exact set (authoritative = runtime `baked_lot1 ∧ ¬disk_lots`, i.e. bake shows it AND no disk Asset
+twin emits it; **3 lots**, confirmed in-game 2026-06-24):
 
-| lotId | tile | note |
-|---|---|---|
-| `4910` | m12 (Siofra/underground) | recover via Entity/group |
-| `90200` | m60_43_37 (overworld) | recover via Entity/group |
-| `15000990` | m15 (Haligtree/Elphael) | recover via Entity/group |
+| lotId | tile | item key | note |
+|---|---|---|---|
+| `4910` | m12 (Siofra/underground) | 500008183 | recover via Entity/group |
+| `15000990` | m15 (Haligtree/Elphael) | 500002190 | recover via Entity/group |
+| `2046460000` | m61 (DLC overworld) | 502010000 | recover via Entity/group |
+
+(An earlier offline proxy "type-9-only ∧ not-in-unreachable" listed 4910/90200/15000990, but 90200 is
+NOT in the bake's lotType==1 set so it's not actually shown today; the runtime oracle is correct.)
 
 Runtime trace: `[LOOTDISK] RECOVER-LATER reachable_dummy lot <id> key=<k>` is logged for every dropped
-DummyAsset whose lotId is still in the bake's lotType==1 set (the runtime oracle for "bake-backed").
+DummyAsset whose lotId IS in the bake's lotType==1 set AND is NOT disk-covered (no Asset twin) — the
+exact set lost the day the bake is removed. Lots with a live Asset twin are excluded (disk still emits
+them).
 **To remove the bake fully:** pin the EntityID/group offset (above) so the disk path KEEPS type-9
 parts with a non-zero EntityID/group instead of dropping them — that recovers these without the bake.
 
