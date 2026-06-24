@@ -60,8 +60,8 @@ fs::path map_studio_in(const fs::path &root)
 }
 
 // First existing of the candidate map dirs. config loot_msb_dir wins (resolved
-// to its MapStudio, or used as-is if it's a loose dir of .msb.dcx); then the
-// DLL's mod folder, then the game install dir.
+// to its MapStudio, or used as-is if it's a loose dir of .msb.dcx); then a DLL-
+// relative search; then the game install dir.
 fs::path resolve_map_dir()
 {
     if (!config::lootMsbDir.empty())
@@ -71,8 +71,20 @@ fs::path resolve_map_dir()
         std::error_code ec;
         if (fs::exists(cfg, ec)) return cfg;  // a custom dir of loose .msb.dcx
     }
-    if (fs::path r = map_studio_in(g_mod_folder); !r.empty()) return r;
-    if (fs::path r = map_studio_in(game_dir()); !r.empty()) return r;
+    // DLL-relative search. g_mod_folder is the DLL's OWN folder (where the INI lives),
+    // which on the ERR/ModEngine layout is <root>/dll/offline while the mod's loose maps
+    // are in <root>/mod/map/MapStudio — so map_studio_in(g_mod_folder) alone misses them.
+    // Walk up a few levels, probing each ancestor AND its "mod" subfolder.
+    fs::path p = g_mod_folder;
+    for (int up = 0; up < 5 && !p.empty() && p != p.root_path(); ++up, p = p.parent_path())
+    {
+        if (fs::path r = map_studio_in(p); !r.empty()) return r;
+        if (fs::path r = map_studio_in(p / "mod"); !r.empty()) return r;
+    }
+    // Game install dir, and its "mod" sibling (ModEngine2 next to eldenring.exe).
+    fs::path g = game_dir();
+    if (fs::path r = map_studio_in(g); !r.empty()) return r;
+    if (fs::path r = map_studio_in(g / "mod"); !r.empty()) return r;
     return {};
 }
 
