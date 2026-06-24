@@ -19,6 +19,7 @@
 #include <array>
 #include <string>
 #include <unordered_map>
+#include <mutex>
 #include <unordered_set>
 
 namespace goblin::worldmap
@@ -28,7 +29,11 @@ namespace
 constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldInteractables) + 1;
 
 std::array<std::vector<Marker>, NUM_CAT> g_buckets;
-bool g_built = false;
+// Built exactly once via std::call_once — by the setup_mod prebuild thread
+// (prebuild_markers, kills the first-map-open hitch) OR lazily by the first
+// markers()/census call, whichever runs first. call_once blocks concurrent
+// callers until the build completes, so markers() always sees a full cache.
+std::once_flag g_build_once;
 
 // Post-event "secondary story flag" for a tile (legacy SetSecondaryFlags + Ashen Capital).
 // A marker on a post-event tile — or anywhere in Leyndell, Ashen Capital (area 35) — only
@@ -193,11 +198,9 @@ static void build_disk_loot_markers(std::unordered_set<uint32_t> &covered,
 
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
-void build_buckets()
+// Runs exactly once — wrapped by ensure_buckets()/std::call_once.
+void build_buckets_impl()
 {
-    if (g_built)
-        return;
-    g_built = true;
     GOBLIN_BENCH("build.buckets");
     namespace gen = goblin::generated;
 
@@ -298,7 +301,13 @@ void build_buckets()
     }
     build_live_bosses();
 }
+
+// Build the buckets exactly once (thread-safe). Both the setup_mod prebuild and
+// the lazy markers()/census paths funnel through here; call_once serializes them.
+void ensure_buckets() { std::call_once(g_build_once, build_buckets_impl); }
 } // namespace
+
+void prebuild_markers() { ensure_buckets(); }
 
 MapEntryLayer::MapEntryLayer(int category) : cat_(category)
 {
@@ -314,7 +323,7 @@ bool MapEntryLayer::visible() const
 
 const std::vector<Marker> &MapEntryLayer::markers() const
 {
-    build_buckets();
+    ensure_buckets(); // built at setup_mod prebuild; this is a no-op if already done
     return g_buckets[cat_];
 }
 
@@ -322,7 +331,7 @@ void refresh_overlay_census()
 {
     namespace gen = goblin::generated;
     GOBLIN_BENCH("refresh.overlay_census");
-    build_buckets(); // ensure the overlay markers exist (one-time)
+    ensure_buckets(); // ensure the overlay markers exist (one-time, thread-safe)
 
     static int s_prev_looted[NUM_CAT];
     static bool s_logged_once = false;

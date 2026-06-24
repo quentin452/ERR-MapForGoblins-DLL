@@ -25,6 +25,7 @@
 #include "goblin_bench.hpp"
 #include "goblin_crashdump.hpp"
 #include "worldmap/loot_disk.hpp"
+#include "worldmap/map_entry_layer.hpp"
 
 #include "version.h"
 
@@ -97,6 +98,7 @@ static void init_modutils()         { modutils::initialize(); }
 static void init_from_params()      { from::params::initialize(); }
 static void init_collected()        { goblin::collected::initialize(); }
 static void init_kindling()         { goblin::kindling::initialize(); }
+static void init_prebuild_markers() { goblin::worldmap::prebuild_markers(); }
 static void init_tutorial_popup()   { goblin::inject_tutorial_popup_rows(); }
 static void init_setup_messages()   { goblin::setup_messages(); }
 static void init_icon_tex_probe()   { goblin::install_icon_texture_probe(); }
@@ -200,6 +202,11 @@ static void setup_mod()
         // Seed the per-category visibility / cluster / threshold + master gates from
         // config — the overlay reads these.
         safe_init_step(&goblin::seed_runtime_gates, "seed_runtime_gates");
+        // Pre-build the overlay marker buckets now (on this init thread, params
+        // ready) instead of lazily on the first world-map open — the disk-MSB loot
+        // parse + projection (~0.5s) would otherwise hitch that first open. Lazy
+        // markers()/census still work (call_once no-ops if this already ran).
+        safe_init_step(&init_prebuild_markers, "worldmap::prebuild_markers");
         // The ImGui overlay is the sole world map (the native WorldMapPointParam
         // injection was removed — no native page-build = no freeze, no double-draw).
         safe_init_step(&init_tutorial_popup,  "inject_tutorial_popup_rows");
