@@ -1178,6 +1178,43 @@ namespace
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         ImGui::GetIO().IniFilename = nullptr;   // no imgui.ini on disk
+
+        // Fonts: ImGui's default (ProggyClean) only has Latin-1 glyphs (0x20-0xFF), so any
+        // char beyond — œ (U+0153) in French item names, em-dash, Cyrillic, Greek — renders
+        // as the fallback '?'. Keep the default for the ASCII look, then MERGE a broad-coverage
+        // Windows system font for the EXTENDED glyphs only (minimal visual change; FMG labels
+        // are already UTF-8 via lookup_text_utf8). CJK/Thai/Arabic need a far bigger atlas + a
+        // CJK font — out of scope here. Falls back silently to the default if no font is found.
+        {
+            ImGuiIO &io = ImGui::GetIO();
+            io.Fonts->AddFontDefault();  // ProggyClean (preserves the existing ASCII look)
+            static const ImWchar kExtRanges[] = {
+                0x00A0, 0x00FF,  // Latin-1 Supplement (accents) — merge-safe overlap
+                0x0100, 0x024F,  // Latin Extended-A + B (œ ligature, more accents)
+                0x0370, 0x03FF,  // Greek
+                0x0400, 0x04FF,  // Cyrillic
+                0x2010, 0x2027,  // general punctuation (en/em dash, curly quotes, ellipsis)
+                0x20A0, 0x20BF,  // currency symbols
+                0,
+            };
+            const char *kFontCandidates[] = {
+                "C:\\Windows\\Fonts\\segoeui.ttf",
+                "C:\\Windows\\Fonts\\arial.ttf",
+                "C:\\Windows\\Fonts\\tahoma.ttf",
+            };
+            ImFontConfig cfg;
+            cfg.MergeMode = true;            // graft these glyphs onto the default font
+            cfg.PixelSnapH = true;
+            bool merged = false;
+            for (const char *p : kFontCandidates)
+            {
+                if (GetFileAttributesA(p) == INVALID_FILE_ATTRIBUTES) continue;
+                if (io.Fonts->AddFontFromFileTTF(p, 13.0f, &cfg, kExtRanges)) { merged = true;
+                    spdlog::info("[FONT] merged extended Unicode glyphs from {}", p); break; }
+            }
+            if (!merged)
+                spdlog::warn("[FONT] no system font found — non-Latin-1 chars will show '?'");
+        }
         // Software cursor: the game hides the OS cursor, so ImGui draws its own — but ONLY while the
         // F1 panel is up. Set per-frame to g_show in the render loop (NewFrame now runs every frame
         // for the overlay markers, so this can't be a one-time true). Default off.
