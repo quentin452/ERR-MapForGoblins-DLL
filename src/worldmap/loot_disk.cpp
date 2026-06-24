@@ -31,6 +31,7 @@ fs::path                              g_resolved_dir;  // the MapStudio dir (Fou
 std::atomic<bool>                     g_dir_attempted{false};  // ancestor-walk ran once
 std::chrono::steady_clock::time_point g_search_t0;     // when Searching began
 constexpr int kSearchTimeoutSec = 120;  // covers menu+save-load; Failed is recoverable
+void (*g_build_trigger)() = nullptr;    // set at init; kicks the build on discovery
 
 // Resolve the game's loaded oo2core OodleLZ_Decompress (for DCX_KRAK maps — vanilla
 // + the mod's unmodified maps). eldenring.exe imports oo2core_6_win64.dll, so it's
@@ -204,7 +205,10 @@ void on_map_opened_path(const wchar_t *full_path)
     }
     g_state.store(static_cast<int>(DiskLootState::Found));
     spdlog::info("[LOOTDISK] map dir discovered via CreateFileW fallback: {}", dir.string());
+    if (g_build_trigger) g_build_trigger();  // kick the worker now, not at the next overlay tick
 }
+
+void set_build_trigger(void (*fn)()) { g_build_trigger = fn; }
 
 std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots)
 {

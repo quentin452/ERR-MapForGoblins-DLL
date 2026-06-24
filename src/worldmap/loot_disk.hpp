@@ -59,4 +59,9 @@ std::filesystem::path disk_loot_dir();
 // Called by the CreateFileW observer for every *.msb.dcx the game opens. While
 // the dir is not yet Found, captures its map\MapStudio parent → flips to Found.
 void on_map_opened_path(const wchar_t *full_path);
+
+// Registered by the marker layer at init: invoked once, the instant the map dir
+// flips to Found via CreateFileW discovery, so the worker build kicks immediately
+// instead of waiting for the next overlay tick (~7s). Set before any map opens.
+void set_build_trigger(void (*fn)());
 } // namespace goblin::worldmap

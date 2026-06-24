@@ -350,7 +350,13 @@ bool disk_markers_ready()
 }
 } // namespace
 
-void prebuild_markers() { ensure_buckets(); }
+void prebuild_markers()
+{
+    // Wire CreateFileW discovery → kick the worker the instant the dir is Found,
+    // so the fallback build doesn't wait for the next overlay tick (~7s).
+    set_build_trigger(&kick_disk_build);
+    ensure_buckets();
+}
 
 MapEntryLayer::MapEntryLayer(int category) : cat_(category)
 {
