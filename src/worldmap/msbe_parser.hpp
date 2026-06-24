@@ -23,8 +23,20 @@ struct Treasure
     // MSBE part-type enum at PART entry +0x0c (validated on disk vs the offline
     // unreachable list): 13 = Asset (reachable placement), 9 = DummyAsset
     // (disabled/cut placeholder — 305/312 of the pipeline's "unreachable" lots).
-    // -1 when partIndex < 0. The caller drops DummyAsset placements (PART_DUMMY_ASSET).
+    // -1 when partIndex < 0. The caller drops INERT DummyAsset placements (those
+    // with no entity binding); it KEEPS reachable ones (see entityId/entityGroup).
     int32_t     partType = -1;
+    // Entity binding, read from the part's entity sub-struct (pointer @ PART
+    // entry +0x60; EntityID@sub+0x00, EntityGroupIDs[8]@sub+0x1c..+0x38; offsets
+    // pinned over all ERR maps, see docs/re/windows_msbe_dummyasset_unreachable_re_findings.md).
+    // A DummyAsset (type 9) with a non-zero EntityID OR any non-zero
+    // EntityGroupID is "reachable" — an EMEVD can activate the placement, so it's
+    // a real pickup (the offline pipeline's criterion #3: dummy-only-no-Entity =
+    // unreachable). Exactly 3 such lots across ERR; the caller KEEPS them instead
+    // of dropping, recovering reachable_dummy loot without the bake. 0/false when
+    // partIndex < 0 or the part has no entity sub-struct.
+    uint32_t    entityId = 0;
+    bool        entityGroup = false;  // any EntityGroupIDs[i] set (!=0, !=-1)
 };
 
 // MSBE PartsParam part-type enum values (subset). A Treasure bound to a

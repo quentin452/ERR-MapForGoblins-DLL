@@ -30,11 +30,24 @@ Across all maps: **305 of the 312 unreachable lots are type 9.** So:
 > placements. One field read explains **97.8%** of the pipeline's exclusions — no EntityID offset,
 > no baked exclusion list. In-game: disk-only markers collapsed **178 → 21**.
 
-The other 3 part-section offsets seen in a part entry (entry-relative): `+0x18→0xe0`, `+0x50→0xe8`,
-`+0x60→0x270`, `+0x68→0x2b0`, `+0x70→0x2d0`. The `EntityID`/`EntityGroupIDs` live inside one of
-these sub-structs (not inlined; +0xc0..+0xd4 are shared draw/display-group masks) — **offset not yet
-pinned** (a reachable_dummy vs inert compare in m14 didn't surface a clean field). Pinning it is the
-work needed for criterion #3 at runtime if we ever want zero bake dependency.
+### ✅ EntityID / EntityGroupIDs offset — PINNED (2026-06-24)
+The part's **entity sub-struct pointer is at PART entry `+0x60`** (an entry-relative u64 on disk /
+absolute VA resident — same base rule as nameOffset/typeData). Inside that sub-struct:
+- **`+0x00` = `EntityID`** (u32)
+- **`+0x1c` .. `+0x38` = `EntityGroupIDs[8]`** (8× u32; unused slots = 0)
+- (`+0x0c` = 0x01000000 flags, `+0x10` = 0x100, `+0x3c` = 0xffff — unrelated)
+
+Pinned via SoulsFormats (authoritative `EntityID`/`EntityGroupIDs`) cross-referenced against the raw
+blob over the 3 reachable_dummy targets + enemy parts with non-zero groups (`tools/probe_entity_offset.py`,
+`tools/probe_group_offset.py`). The other part-header u64s seen in the same entry (entry-relative):
+`+0x18→sib path (0xe0)`, `+0x50→0xe8`, `+0x68→0x2b0` (display groups), `+0x70→0x2d0`, `+0x88→typeData`.
+
+**RULE NOW IMPLEMENTED (`msbe_parser` reads `Treasure.entityId`/`entityGroup`; `loot_disk` KEEPS a
+type-9 part iff `entityId != 0 || entityGroup`).** Validation over ALL ERR `_00` maps
+(`tools/validate_dummy_entity.py`): exactly **3** type-9 lots are reachable (entity set), **0** of
+them are in `unreachable_msb_lots.json` → the keep-rule re-introduces **zero** false positives (the
+178→21 win holds; 305/315 inert dummies still correctly dropped). Targets **4910 (EntityID 12031490)
++ 15000990 (EntityID 15001810) are recovered** — now disk-emitted, no longer bake-dependent.
 
 ## ⚠️ RECOVER-LATER — reachable_dummy lots the filter DROPS but the bake still backs
 A lot whose ONLY MSB part is a DummyAsset (type-9-only) but that the pipeline KEEPS (not in
@@ -48,9 +61,14 @@ twin emits it; **3 lots**, confirmed in-game 2026-06-24):
 
 | lotId | tile | item key | note |
 |---|---|---|---|
-| `4910` | m12 (Siofra/underground) | 500008183 | recover via Entity/group |
-| `15000990` | m15 (Haligtree/Elphael) | 500002190 | recover via Entity/group |
-| `2046460000` | m61 (DLC overworld) | 502010000 | recover via Entity/group |
+| ~~`4910`~~ | m12 (Siofra/underground) | 500008183 | ✅ RECOVERED — DummyAsset EntityID 12031490, now disk-emitted |
+| ~~`15000990`~~ | m15 (Haligtree/Elphael) | 500002190 | ✅ RECOVERED — DummyAsset EntityID 15001810, now disk-emitted |
+| `2046460000` | m61_46_46 (DLC overworld) | 502010000 | ⚠️ NOT recoverable via this route — its DummyAsset has **EntityID 0 + all groups 0** (no MSB entity binding) AND is itself in `unreachable_msb_lots.json`. Entity-less (EMEVD lotId-direct / cut). Stays bake-backed; the lone residual recover-later lot. |
+
+**Net: recover-later 3 → 1.** The two entity-bound dummies (4910/15000990) are now emitted from the
+disk source like any Asset — identical marker/position as today (disk pos = bake pos), but they
+survive when the committed bake is removed. 2046460000 is the only DummyAsset the bake shows that the
+disk can't reconstruct (no entity); recovering it needs the EMEVD route, not the part offset.
 
 (An earlier offline proxy "type-9-only ∧ not-in-unreachable" listed 4910/90200/15000990, but 90200 is
 NOT in the bake's lotType==1 set so it's not actually shown today; the runtime oracle is correct.)

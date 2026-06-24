@@ -221,6 +221,9 @@ void build_buckets_impl()
     // the bake's treasure slice): new MSB loot the bake missed, or loot the bake
     // filed as an enemy drop (lotType 2). Only built when the disk source is on.
     const bool diag = goblin::config::lootFromDiskMsb;
+    // Per-lot enumeration (disk-only + RECOVER-LATER lines) is verbose; gate it
+    // behind diag_loot_pos so normal feature use only emits the summary totals.
+    const bool verbose = goblin::config::diagLootPos;
     std::unordered_set<uint32_t> baked_lot1, baked_any;
 
     int replaced = 0;
@@ -261,7 +264,7 @@ void build_buckets_impl()
             if (baked_lot1.count(lot)) continue;  // this lot IS in the bake's slice
             const bool as_enemy = baked_any.count(lot) != 0;
             (as_enemy ? only_enemy : only_absent)++;
-            if (shown < 25)
+            if (verbose && shown < 25)
             {
                 uint32_t tk = disk_lot_tile.count(lot) ? disk_lot_tile[lot] : 0;
                 int32_t key = goblin::resolve_loot_item_textid(lot, 1, -1);
@@ -275,17 +278,19 @@ void build_buckets_impl()
                      "— vanilla/unmodified-map loot stays baked",
                      only_enemy + only_absent, only_enemy, only_absent);
 
-        // RECOVER-LATER record: DummyAsset placements we dropped whose lotId the
-        // bake STILL provides (lotType 1) = "reachable_dummy" (a DummyAsset with
-        // an EntityID/group the engine can activate). They render fine TODAY via
-        // their baked marker, but would be LOST the day we drop the bake — so log
-        // each one explicitly. A dropped dummy NOT in the bake is truly inert
-        // (correctly gone). See docs/re/windows_msbe_dummyasset_unreachable_re_findings.md.
+        // RECOVER-LATER record: INERT DummyAsset placements we dropped (no entity
+        // binding) whose lotId the bake STILL provides (lotType 1). The 2 reachable
+        // dummies that carry an EntityID (4910/15000990) are now KEPT + emitted by
+        // the disk source, so they no longer appear here — only entity-LESS dummies
+        // the bake nonetheless shows remain (e.g. 2046460000, which the offline
+        // pipeline itself flags unreachable; it has no MSB entity so it can't be
+        // recovered via the +0x60 entity offset — an EMEVD/cut special).
+        // See docs/re/windows_msbe_dummyasset_unreachable_re_findings.md.
         // True recover-later = bake shows it (baked_lot1) AND the disk does NOT
         // (not in disk_lots). A dropped dummy whose lotId ALSO has an Asset twin
         // is in disk_lots → the disk still emits it when the bake is gone → not
-        // lost. Excluding disk_lots is what separates the real ~3 from the lots
-        // that merely have a dummy duplicate alongside a live Asset.
+        // lost. Excluding disk_lots is what separates the real residue from the
+        // lots that merely have a dummy duplicate alongside a live Asset.
         std::unordered_set<uint32_t> seen_dummy;
         int recover = 0;
         for (uint32_t lot : dropped_dummy_lots)
@@ -294,12 +299,16 @@ void build_buckets_impl()
                 !seen_dummy.insert(lot).second)
                 continue; // inert, disk already emits an Asset twin, or already logged
             ++recover;
-            int32_t key = goblin::resolve_loot_item_textid(lot, 1, -1);
-            spdlog::info("[LOOTDISK]   RECOVER-LATER reachable_dummy lot {} key={} "
-                         "(bake-backed today; lost when the bake is dropped)", lot, key);
+            if (verbose)
+            {
+                int32_t key = goblin::resolve_loot_item_textid(lot, 1, -1);
+                spdlog::info("[LOOTDISK]   RECOVER-LATER inert-dummy lot {} key={} "
+                             "(entity-less; bake-backed today, lost when the bake is dropped)",
+                             lot, key);
+            }
         }
-        spdlog::info("[LOOTDISK] reachable_dummy (recover-later) lots: {} — currently baked, "
-                     "need Entity/group recovery before the bake can be removed", recover);
+        spdlog::info("[LOOTDISK] recover-later (entity-less dropped dummy, still baked) lots: {} "
+                     "— reachable dummies w/ an EntityID are now disk-emitted", recover);
     }
     build_live_bosses();
 }

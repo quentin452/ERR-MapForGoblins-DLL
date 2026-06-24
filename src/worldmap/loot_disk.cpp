@@ -271,11 +271,16 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
         for (const auto &t : r.treasures)
         {
             if (t.partIndex < 0) continue;  // item-glow / EMEVD-region → no MSB pos
-            // Drop DummyAsset placements: disabled/cut placeholder parts the player
-            // can't reach (305/312 of the pipeline's unreachable lots — validated
-            // offline). Any lot we skip here just stays on its baked marker (the
-            // coverage-replace keeps uncovered baked rows), so no loot is lost.
-            if (t.partType == msbe::PART_DUMMY_ASSET)
+            // DummyAsset placements: drop INERT ones (no entity binding) — these
+            // are disabled/cut placeholders the player can't reach (305/315 of the
+            // pipeline's unreachable lots, validated offline). KEEP reachable ones
+            // (EntityID or an EntityGroupID set → an EMEVD can activate the pickup):
+            // exactly the 3 reachable_dummy lots, recovered here without the bake
+            // (4910/15000990 carry an EntityID; the rule re-introduces 0 false
+            // positives — see windows_msbe_dummyasset_unreachable_re_findings.md).
+            // A dropped inert dummy just stays on its baked marker (coverage-replace
+            // keeps uncovered baked rows), so no loot is lost.
+            if (t.partType == msbe::PART_DUMMY_ASSET && t.entityId == 0 && !t.entityGroup)
             {
                 ++dummies;
                 if (droppedDummyLots && t.itemLotId) droppedDummyLots->push_back(t.itemLotId);
@@ -295,8 +300,8 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
         spdlog::debug("[LOOTDISK] {} -> {} treasures ({} positioned)", name,
                       r.treasures.size(), tilePos);
     }
-    spdlog::info("[LOOTDISK] {} _00 MSBs parsed ({} positioned treasures, {} DummyAsset dropped); "
-                 "{} KRAK skipped", parsed, withPart, dummies, kraks);
+    spdlog::info("[LOOTDISK] {} _00 MSBs parsed ({} positioned treasures, {} inert DummyAsset "
+                 "dropped; reachable dummies kept); {} KRAK skipped", parsed, withPart, dummies, kraks);
     return out;
 }
 } // namespace goblin::worldmap

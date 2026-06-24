@@ -29,10 +29,12 @@ void set_mod_folder(const std::filesystem::path &p);
 
 // Resolve the map dir (config loot_msb_dir, else auto-detect) and parse every
 // _00 MSB in it, returning all POSITIONED treasures (partIndex >= 0) on a real
-// Asset part. DummyAsset (cut/inert) placements are dropped; their lotIds are
-// appended to droppedDummyLots (when non-null) so the caller can flag the
-// "reachable_dummy" subset (those the bake still backs → recover when the bake
-// is removed). Logs [LOOTDISK] per-map (debug) + totals. Empty when no dir.
+// Asset part OR a reachable DummyAsset (one with an EntityID/EntityGroupID — an
+// EMEVD can activate it). Only INERT DummyAsset (cut, no entity) placements are
+// dropped; their lotIds are appended to droppedDummyLots (when non-null) so the
+// caller can flag any "recover-later" lot the bake still backs. (The 3 reachable
+// dummies are now emitted here — no longer bake-dependent.) Logs [LOOTDISK]
+// per-map (debug) + totals. Empty when no dir.
 std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots = nullptr);
 
 // ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────

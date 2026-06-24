@@ -105,6 +105,27 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
                 t.pos[0] = rdf(buf, pe + 0x20);
                 t.pos[1] = rdf(buf, pe + 0x24);
                 t.pos[2] = rdf(buf, pe + 0x28);
+                // Entity sub-struct (ptr @ part+0x60, entry-relative on disk /
+                // absolute VA resident): EntityID@+0x00, EntityGroupIDs[8]@+0x1c.
+                // A type-9 DummyAsset with either set is reachable (kept by the
+                // caller). Needs the +0x60..+0x68 u64 in bounds.
+                if (inb(pe, 0x68, len))
+                {
+                    uint64_t entOff = rd64(buf, pe + 0x60);
+                    if (entOff)
+                    {
+                        size_t ent = eio(entOff, pe);
+                        if (inb(ent, 0x3c, len))
+                        {
+                            t.entityId = rd32(buf, ent + 0x00);
+                            for (size_t k = 0x1c; k < 0x3c; k += 4)
+                            {
+                                uint32_t g = rd32(buf, ent + k);
+                                if (g != 0 && g != 0xffffffffu) { t.entityGroup = true; break; }
+                            }
+                        }
+                    }
+                }
             }
         }
         R.treasures.push_back(std::move(t));
