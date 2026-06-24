@@ -201,17 +201,23 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
 // AssetEnvironmentGeometryParam[aegRow].pickUpItemLotParamId is a real lot becomes a
 // marker. Identity/category come LIVE from that lot (resolve_loot_item_textid), exactly
 // like the disk-loot path — no bake, no manual model→item table, works on any mod.
-// Skips lots already placed by the treasure path (covered) to avoid duplicates.
+// EMIT PER PLACEMENT: collectibles share one lot across many world nodes (e.g. every
+// Gaseous Stone = lot 998500), each a distinct pickup at its own position — so we do
+// NOT dedup by lot (that would collapse 505 nodes to 1). We only skip placements whose
+// lot is a real MSB Treasure (the ground-item pickup assets the treasure path already
+// places). Each emitted lot is added to `covered` so the baked-row replace drops any
+// baked duplicate (a lotId there covers all its markers).
 static void build_disk_collectible_markers(const std::vector<DiskCollectible> &collectibles,
+                                           const std::unordered_set<uint32_t> &treasure_lots,
                                            std::unordered_set<uint32_t> &covered)
 {
     GOBLIN_BENCH("build.disk_collectibles");
     int emitted = 0, no_lot = 0, unclassified = 0, dup = 0;
     for (const DiskCollectible &c : collectibles)
     {
-        uint32_t lot = goblin::aeg_pickup_lot(c.aegRow);  // live param chain
-        if (lot == 0) { ++no_lot; continue; }             // asset isn't a pickup
-        if (covered.count(lot)) { ++dup; continue; }      // already placed (treasure twin)
+        uint32_t lot = goblin::aeg_pickup_lot(c.aegRow);  // live param chain (0 = not a pickup)
+        if (lot == 0) { ++no_lot; continue; }
+        if (treasure_lots.count(lot)) { ++dup; continue; }  // a Treasure ground-item, already placed
         int32_t key = goblin::resolve_loot_item_textid(lot, 1, -1);
         int cat = goblin::item_marker_category(key);
         if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
@@ -221,12 +227,12 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         d.gridZNo = c.gz;
         d.posX = c.posX;
         d.posZ = c.posZ;
-        push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/1);
-        covered.insert(lot);
+        push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/1);  // one per placement
+        covered.insert(lot);  // for the baked-row replace (de-dup vs the bake), NOT a skip key
         ++emitted;
     }
     spdlog::info("[LOOTDISK] collectibles: {} markers emitted ({} assets total, {} not-a-pickup, "
-                 "{} dup-of-treasure, {} unclassified)",
+                 "{} treasure-dup, {} unclassified)",
                  emitted, (int)collectibles.size(), no_lot, dup, unclassified);
 }
 
@@ -255,7 +261,14 @@ void build_buckets_impl()
         if (goblin::config::lootFromDiskMsb)
             build_disk_loot_markers(treasures, disk_lots, disk_lot_tile);
         if (goblin::config::lootCollectibles)
-            build_disk_collectible_markers(disk_collectibles, disk_lots);
+        {
+            // All MSB Treasure lots (the ground-item pickup assets) — skip these in
+            // the collectible pass so they aren't double-placed. Built from the parsed
+            // treasures directly, so it's correct even when loot_from_disk_msb is off.
+            std::unordered_set<uint32_t> treasure_lots;
+            for (const DiskTreasure &t : treasures) treasure_lots.insert(t.lotId);
+            build_disk_collectible_markers(disk_collectibles, treasure_lots, disk_lots);
+        }
     }
 
     // Diagnostic sets: which baked lotIds exist as map-loot (lotType 1) vs as ANY
