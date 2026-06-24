@@ -214,6 +214,8 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
 {
     GOBLIN_BENCH("build.disk_collectibles");
     int emitted = 0, no_lot = 0, unclassified = 0, dup = 0;
+    const bool verbose = goblin::config::diagLootPos;
+    std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
     for (const DiskCollectible &c : collectibles)
     {
         uint32_t lot = goblin::aeg_pickup_lot(c.aegRow);  // live param chain (0 = not a pickup)
@@ -232,10 +234,17 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/1);  // one per placement
         covered.insert(lot);  // for the baked-row replace (de-dup vs the bake), NOT a skip key
         ++emitted;
+        if (verbose) ++per_cat[cat];
     }
     spdlog::info("[LOOTDISK] collectibles: {} markers emitted ({} assets total, {} not-a-pickup, "
                  "{} treasure-dup, {} unclassified)",
                  emitted, (int)collectibles.size(), no_lot, dup, unclassified);
+    if (verbose)
+    {
+        for (auto &[cat, n] : per_cat)
+            spdlog::info("[LOOTDISK]   collectible category index {} = {} markers "
+                         "(19=CraftingMaterials,24=SmithingStones,18=Consumables)", cat, n);
+    }
 }
 
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
@@ -494,17 +503,23 @@ void refresh_overlay_census()
             // grays on, so the badge tracks the map (modulo shared-flag groups, which the
             // game itself can't disambiguate).
             std::unordered_set<int> all, taken;
+            int flagless = 0;  // lot-backed markers with no collect flag (respawning
+                               // collectible nodes, getItemFlagId==0) — count per marker
+                               // (each is its own pickup; can't dedup by a flag it lacks).
             for (const Marker &m : g_buckets[c])
             {
                 const int flag = m.collected_flag ? m.collected_flag : m.cleared_flag;
                 if (!flag)
-                    continue; // not a counted item (NPC, spirit spring, stake, …)
+                {
+                    if (m.lot_backed) ++flagless;  // collectible node w/o flag → still a counted item
+                    continue;  // else not a counted item (NPC, spirit spring, stake, …)
+                }
                 all.insert(flag);
                 if (goblin::ui::read_event_flag((uint32_t)flag))
                     taken.insert(flag);
             }
-            total = (int)all.size();
-            looted = (int)taken.size();
+            total = (int)all.size() + flagless;  // distinct flagged items + flag-less nodes
+            looted = (int)taken.size();           // flag-less nodes respawn → never "taken"
             // DEBUG: on the FIRST publish, sample a few still-UNSET flags per category.
             // On a 100% save these should be ~none — any here are flags we check that the
             // game never sets (wrong/non-pickup flag) → the over-count to investigate.
