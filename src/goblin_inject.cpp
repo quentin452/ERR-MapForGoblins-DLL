@@ -4179,6 +4179,35 @@ int32_t goblin::resolve_loot_item_textid(uint32_t lotId, uint8_t lotType, int32_
     return live ? live : baked_textid;
 }
 
+// One AssetEnvironmentGeometryParam row (320 bytes; pickUpItemLotParamId @ +0xb8,
+// s32 — offset confirmed vs the paramdef DetectedSize=320). Read by raw offset
+// like RawItemLotRow.
+struct RawAegRow { uint8_t b[320]; };
+
+// Resolve a placed AEG asset's collectible item-lot LIVE: the disk parser gives the
+// aegRow (AEG{A}_{B} -> A*1000+B); this returns AssetEnvironmentGeometryParam
+// [aegRow].pickUpItemLotParamId (an ItemLotParam_map id), or 0 if the asset isn't a
+// pickup / the row is absent. Item identity then comes from resolve_loot_item_textid.
+// No bake, no manual model->item table — pure live param chain (any mod).
+uint32_t goblin::aeg_pickup_lot(uint32_t aegRow)
+{
+    if (aegRow == 0) return 0;
+    static std::optional<from::params::ParamTableSequence<RawAegRow>> s_seq;
+    static std::once_flag s_once;
+    static bool s_ok = false;
+    // Worker-thread safe (same rationale as resolve_loot_item_textid).
+    std::call_once(s_once, [] {
+        try { s_seq.emplace(from::params::get_param<RawAegRow>(L"AssetEnvironmentGeometryParam"));
+              s_ok = true; } catch (...) { s_ok = false; }
+    });
+    if (!s_ok) return 0;
+    RawAegRow *row = s_seq->try_get(aegRow);
+    if (!row) return 0;
+    uint32_t lot;
+    std::memcpy(&lot, row->b + 0xb8, 4);
+    return lot;
+}
+
 // One-shot field dump to RE the real per-item "obtained" flag (see the findings doc).
 // For up to ~6 markers per category, log every candidate flag and its live SET/unset
 // state. Run on a 100% save: the candidate that reads SET for a known-collected item is

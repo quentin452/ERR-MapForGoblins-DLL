@@ -54,6 +54,7 @@ namespace goblin::config
 
     bool lootFromDiskMsb = false;  // opt-in: loot positions from the mod's real MSBs
     std::string lootMsbDir = "";   // empty = auto-detect map\MapStudio
+    bool lootCollectibles = false; // opt-in: AEG gather/collectible markers from disk MSBs + AssetEnvironmentGeometryParam
 
     bool redifyBossIcons = false;
     bool graceOverlay = true;        // our graces are the default map source now (validated)
@@ -204,6 +205,13 @@ namespace
                          "the DLL's own mod folder, then the Elden Ring install dir. Set this\n"
                          "to your ModEngine2 mod's map folder if auto-detect picks the wrong\n"
                          "source. Only used when loot_from_disk_msb is on.", false, nullptr},
+                B("loot_collectibles", lootCollectibles, "false",
+                  "EXPERIMENTAL. Add markers for the mod's AEG gather/collectible assets\n"
+                  "(Runic/Ember Trace, fireflies, butterflies, mosses, smithing stones, ...)\n"
+                  "read straight from the disk MSBs. Position = the placed Asset; item is\n"
+                  "resolved LIVE via AssetEnvironmentGeometryParam[row].pickUpItemLotParamId\n"
+                  "-> ItemLotParam_map (no bake, no manual model->item table; works on any\n"
+                  "mod). Uses the same map dir as loot_from_disk_msb. Off by default."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("show_all", showAll, "false",

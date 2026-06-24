@@ -44,16 +44,32 @@ struct Treasure
 constexpr int32_t PART_ASSET = 13;
 constexpr int32_t PART_DUMMY_ASSET = 9;
 
+// A placed Asset part (PartsParam type 13) whose name starts with "AEG" — the
+// runtime collectible source. The item it gives is resolved LIVE from
+// AssetEnvironmentGeometryParam[aegRow].pickUpItemLotParamId -> ItemLotParam_map
+// (no bake, no manual model->item table). aegRow is parsed from the name
+// "AEG{A}_{B}_..." as A*1000 + B (e.g. AEG099_821 -> 99821).
+struct Asset
+{
+    std::string name;            // e.g. "AEG099_821_9000"
+    uint32_t    aegRow = 0;      // A*1000+B, = AssetEnvironmentGeometryParam row id
+    float       pos[3] = {0, 0, 0};  // BLOCK-LOCAL position (= bake x/z transform input)
+};
+
 struct ParseResult
 {
     std::vector<Treasure> treasures;
+    std::vector<Asset>    assets;   // AEG Asset placements (collectible candidates)
     bool ok = false;
 };
 
 // Parse a DECOMPRESSED MSB blob.
 //   resident=false (disk): entry-internal offsets are entry-relative (added to entry start).
 //   resident=true:         entry-internal offsets are absolute VAs; pass blobBase = VA of buf[0].
-ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase = 0);
+// wantAssets: also enumerate AEG Asset placements into ParseResult.assets (the
+// runtime collectible source). Off by default (skips an extra PARTS pass).
+ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase = 0,
+                      bool wantAssets = false);
 
 // oo2core's OodleLZ_Decompress (14-arg; x64 ABI unifies __stdcall/__fastcall). Kept as a
 // plain function-pointer typedef so msbe_parser needs no <windows.h>/oo2core link — the DLL

@@ -323,6 +323,12 @@ namespace goblin
     // without the bake. Same lookup as item_icon_id() (ITEM_ICONS carries both).
     int item_marker_category(int32_t key);
 
+    // Placed AEG asset's collectible item-lot, resolved LIVE from
+    // AssetEnvironmentGeometryParam[aegRow].pickUpItemLotParamId (an ItemLotParam_map
+    // id), or 0 if the asset is not a pickup. aegRow = AEG{A}_{B} → A*1000+B. Feeds the
+    // disk collectible source (loot_collectibles) — no bake, no manual model→item map.
+    uint32_t aeg_pickup_lot(uint32_t aegRow);
+
     // Count of icons harvested so far (dev/diagnostic — shown in the P2b test panel).
     size_t harvested_count();
 

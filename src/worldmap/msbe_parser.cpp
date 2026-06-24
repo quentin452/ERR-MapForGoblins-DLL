@@ -45,9 +45,27 @@ constexpr uint32_t EVENT_TYPE_TREASURE = 4;
 constexpr int SEC_EVENT = 1; // PARAM section order: MODEL,EVENT,POINT,ROUTE,LAYER,PARTS
 constexpr int SEC_PARTS = 5;
 
+// Parse "AEG{A}_{B}..." -> A*1000+B (= AssetEnvironmentGeometryParam row id).
+// 0 if the name isn't an AEG asset. e.g. "AEG099_821_9000" -> 99821.
+inline uint32_t aeg_row_from_name(const std::string &n)
+{
+    if (n.size() < 8 || n.compare(0, 3, "AEG") != 0) return 0;
+    size_t i = 3;
+    uint32_t a = 0;
+    while (i < n.size() && n[i] >= '0' && n[i] <= '9') { a = a * 10 + (n[i] - '0'); ++i; }
+    if (i >= n.size() || n[i] != '_') return 0;
+    ++i;
+    uint32_t b = 0;
+    bool any = false;
+    while (i < n.size() && n[i] >= '0' && n[i] <= '9') { b = b * 10 + (n[i] - '0'); ++i; any = true; }
+    if (!any) return 0;
+    return a * 1000 + b;
+}
+
 } // namespace
 
-ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase)
+ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase,
+                      bool wantAssets)
 {
     ParseResult R;
     if (len < 0x10 || std::memcmp(buf, "MSB ", 4) != 0) return R;
@@ -130,6 +148,32 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
         }
         R.treasures.push_back(std::move(t));
     }
+
+    // Collectibles: enumerate every Asset part (type 13) named "AEG..." with its
+    // block-local position. The caller resolves each aegRow ->
+    // AssetEnvironmentGeometryParam.pickUpItemLotParamId -> ItemLotParam_map LIVE.
+    if (wantAssets)
+    {
+        for (uint32_t i = 0; i < PT.entries; i++)
+        {
+            size_t pe = (size_t)rd64(buf, PT.entryArr + (size_t)i * 8);
+            if (!inb(pe, 0x2c, len)) continue;
+            if ((int32_t)rd32(buf, pe + 0x0c) != PART_ASSET) continue;
+            size_t nm = eio(rd64(buf, pe + 0x00), pe);
+            if (nm >= len) continue;
+            std::string name = rd_utf16(buf, nm, len);
+            uint32_t row = aeg_row_from_name(name);
+            if (row == 0) continue;
+            Asset a;
+            a.name = std::move(name);
+            a.aegRow = row;
+            a.pos[0] = rdf(buf, pe + 0x20);
+            a.pos[1] = rdf(buf, pe + 0x24);
+            a.pos[2] = rdf(buf, pe + 0x28);
+            R.assets.push_back(std::move(a));
+        }
+    }
+
     R.ok = true;
     return R;
 }

@@ -141,9 +141,11 @@ bool parse_tile(const std::string &stem, int &area, int &gx, int &gz)
 
 void set_mod_folder(const fs::path &p) { g_mod_folder = p; }
 
+bool disk_source_enabled() { return config::lootFromDiskMsb || config::lootCollectibles; }
+
 void ensure_map_dir_resolved()
 {
-    if (!config::lootFromDiskMsb)
+    if (!disk_source_enabled())
     {
         g_state.store(static_cast<int>(DiskLootState::Disabled));
         return;
@@ -176,7 +178,7 @@ void ensure_map_dir_resolved()
 
 DiskLootState disk_loot_state()
 {
-    if (!config::lootFromDiskMsb) return DiskLootState::Disabled;
+    if (!disk_source_enabled()) return DiskLootState::Disabled;
     DiskLootState s = static_cast<DiskLootState>(g_state.load());
     if (s == DiskLootState::Searching)
     {
@@ -200,7 +202,7 @@ fs::path disk_loot_dir()
 
 void on_map_opened_path(const wchar_t *full_path)
 {
-    if (!full_path || !config::lootFromDiskMsb) return;
+    if (!full_path || !disk_source_enabled()) return;
     if (config::lootMsbDir == "__test_error__") return;  // test: keep Failed, suppress discovery
     if (static_cast<DiskLootState>(g_state.load()) == DiskLootState::Found) return;  // already have it
     std::error_code ec;
@@ -217,9 +219,11 @@ void on_map_opened_path(const wchar_t *full_path)
 
 void set_build_trigger(void (*fn)()) { g_build_trigger = fn; }
 
-std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots)
+std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots,
+                                              std::vector<DiskCollectible> *collectibles)
 {
     std::vector<DiskTreasure> out;
+    const bool wantAssets = collectibles != nullptr;
     ensure_map_dir_resolved();      // ancestor-walk → Found/Searching (CreateFileW completes it)
     fs::path dir = disk_loot_dir(); // empty until Found (ancestor-walk or the observer)
     if (dir.empty())
@@ -259,13 +263,29 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
             else spdlog::warn("[LOOTDISK] decompress failed: {}", name);
             continue;
         }
-        msbe::ParseResult r = msbe::parse_msb(msb.data(), msb.size(), /*resident=*/false);
+        msbe::ParseResult r = msbe::parse_msb(msb.data(), msb.size(), /*resident=*/false,
+                                              /*blobBase=*/0, wantAssets);
         if (!r.ok)
         {
             spdlog::warn("[LOOTDISK] parse failed: {}", name);
             continue;
         }
         ++parsed;
+
+        if (wantAssets)
+        {
+            for (const auto &a : r.assets)
+            {
+                DiskCollectible c;
+                c.aegRow = a.aegRow;
+                c.area = (uint8_t)area;
+                c.gx = (uint8_t)gx;
+                c.gz = (uint8_t)gz;
+                c.posX = a.pos[0];
+                c.posZ = a.pos[2];
+                collectibles->push_back(c);
+            }
+        }
 
         int tilePos = 0;
         for (const auto &t : r.treasures)

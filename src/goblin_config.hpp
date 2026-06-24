@@ -78,6 +78,10 @@ namespace goblin
         // Reads loose DCX_DFLT (zlib) maps (ERR's modified ones); KRAK/Oodle-only
         // maps are skipped for now. Opt-in; see msbe_parser + the RE docs.
         extern bool lootFromDiskMsb;
+        // When true, also emit markers for the mod's AEG gather/collectible assets
+        // (read from the same disk MSBs as lootFromDiskMsb). Item identity resolved
+        // live via AssetEnvironmentGeometryParam.pickUpItemLotParamId → ItemLotParam.
+        extern bool lootCollectibles;
         // Directory holding the active mod's map\MapStudio\*.msb.dcx (or the mod
         // root, or a map\ root). Empty = auto-detect: the DLL's own mod folder,
         // then the Elden Ring install dir. Set it to your ModEngine2 mod's map

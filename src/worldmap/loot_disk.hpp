@@ -23,6 +23,20 @@ struct DiskTreasure
     float    posX = 0.0f, posZ = 0.0f;  // Part+0x20 X/Z (block-local; = bake x/z)
 };
 
+// One placed AEG collectible asset read from a disk MSB. The item is resolved
+// LIVE by the caller: goblin::aeg_pickup_lot(aegRow) →
+// AssetEnvironmentGeometryParam.pickUpItemLotParamId → ItemLotParam_map → goods.
+struct DiskCollectible
+{
+    uint32_t aegRow = 0;                // AEG{A}_{B} → A*1000+B (param row id)
+    uint8_t  area = 0, gx = 0, gz = 0;  // from the tile filename
+    float    posX = 0.0f, posZ = 0.0f;  // Part+0x20 X/Z (block-local; = bake x/z)
+};
+
+// True when any disk-MSB source is enabled (treasure loot OR collectibles); both
+// share the same map-dir discovery + parse pass.
+bool disk_source_enabled();
+
 // Record the DLL's own mod folder (parent of MapForGoblins.dll) for map-dir
 // auto-detect. Call once at init, before load_disk_treasures().
 void set_mod_folder(const std::filesystem::path &p);
@@ -35,7 +49,10 @@ void set_mod_folder(const std::filesystem::path &p);
 // caller can flag any "recover-later" lot the bake still backs. (The 3 reachable
 // dummies are now emitted here — no longer bake-dependent.) Logs [LOOTDISK]
 // per-map (debug) + totals. Empty when no dir.
-std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots = nullptr);
+// When `collectibles` is non-null, also enumerate AEG collectible assets into it
+// (one disk read pass for both sources).
+std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots = nullptr,
+                                              std::vector<DiskCollectible> *collectibles = nullptr);
 
 // ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────
 // With loot_from_disk_msb on, the map dir is resolved by ancestor-walk at init

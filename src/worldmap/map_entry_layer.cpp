@@ -164,12 +164,11 @@ static uint32_t pack_tile(uint8_t a, uint8_t gx, uint8_t gz)
     return ((uint32_t)a << 16) | ((uint32_t)gx << 8) | gz;
 }
 
-static void build_disk_loot_markers(std::unordered_set<uint32_t> &covered,
-                                     std::unordered_map<uint32_t, uint32_t> &lot_tile,
-                                     std::vector<uint32_t> &droppedDummyLots)
+static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
+                                     std::unordered_set<uint32_t> &covered,
+                                     std::unordered_map<uint32_t, uint32_t> &lot_tile)
 {
     GOBLIN_BENCH("build.disk_loot");
-    std::vector<DiskTreasure> treasures = load_disk_treasures(&droppedDummyLots);
     int emitted = 0, unclassified = 0;
     for (const DiskTreasure &t : treasures)
     {
@@ -198,6 +197,39 @@ static void build_disk_loot_markers(std::unordered_set<uint32_t> &covered,
                  emitted, (int)covered.size(), unclassified);
 }
 
+// AEG collectible markers (config loot_collectibles): each placed AEG Asset whose
+// AssetEnvironmentGeometryParam[aegRow].pickUpItemLotParamId is a real lot becomes a
+// marker. Identity/category come LIVE from that lot (resolve_loot_item_textid), exactly
+// like the disk-loot path — no bake, no manual model→item table, works on any mod.
+// Skips lots already placed by the treasure path (covered) to avoid duplicates.
+static void build_disk_collectible_markers(const std::vector<DiskCollectible> &collectibles,
+                                           std::unordered_set<uint32_t> &covered)
+{
+    GOBLIN_BENCH("build.disk_collectibles");
+    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0;
+    for (const DiskCollectible &c : collectibles)
+    {
+        uint32_t lot = goblin::aeg_pickup_lot(c.aegRow);  // live param chain
+        if (lot == 0) { ++no_lot; continue; }             // asset isn't a pickup
+        if (covered.count(lot)) { ++dup; continue; }      // already placed (treasure twin)
+        int32_t key = goblin::resolve_loot_item_textid(lot, 1, -1);
+        int cat = goblin::item_marker_category(key);
+        if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = c.area;
+        d.gridXNo = c.gx;
+        d.gridZNo = c.gz;
+        d.posX = c.posX;
+        d.posZ = c.posZ;
+        push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/1);
+        covered.insert(lot);
+        ++emitted;
+    }
+    spdlog::info("[LOOTDISK] collectibles: {} markers emitted ({} assets total, {} not-a-pickup, "
+                 "{} dup-of-treasure, {} unclassified)",
+                 emitted, (int)collectibles.size(), no_lot, dup, unclassified);
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
 // Runs exactly once — wrapped by ensure_buckets()/std::call_once.
@@ -213,8 +245,18 @@ void build_buckets_impl()
     std::unordered_set<uint32_t> disk_lots;
     std::unordered_map<uint32_t, uint32_t> disk_lot_tile;  // lotId → packed tile (diag)
     std::vector<uint32_t> dropped_dummy_lots;              // DummyAsset lots we dropped
-    if (goblin::config::lootFromDiskMsb)
-        build_disk_loot_markers(disk_lots, disk_lot_tile, dropped_dummy_lots);
+    if (disk_source_enabled())
+    {
+        // One disk read pass for both sources. Collectibles requested only when on.
+        std::vector<DiskCollectible> disk_collectibles;
+        std::vector<DiskTreasure> treasures = load_disk_treasures(
+            &dropped_dummy_lots,
+            goblin::config::lootCollectibles ? &disk_collectibles : nullptr);
+        if (goblin::config::lootFromDiskMsb)
+            build_disk_loot_markers(treasures, disk_lots, disk_lot_tile);
+        if (goblin::config::lootCollectibles)
+            build_disk_collectible_markers(disk_collectibles, disk_lots);
+    }
 
     // Diagnostic sets: which baked lotIds exist as map-loot (lotType 1) vs as ANY
     // lot (1 or 2). Lets us explain the disk-only lots below (in the disk but not
@@ -340,7 +382,7 @@ void kick_disk_build()
 // shows its "maps not found" state instead of stale/bake markers.
 void ensure_buckets()
 {
-    if (!goblin::config::lootFromDiskMsb)
+    if (!disk_source_enabled())
     {
         std::call_once(g_build_once, build_buckets_impl);
         return;
@@ -355,7 +397,7 @@ void ensure_buckets()
 // release store so a true result guarantees g_buckets is fully written.
 bool disk_markers_ready()
 {
-    return !goblin::config::lootFromDiskMsb || g_disk_built.load(std::memory_order_acquire);
+    return !disk_source_enabled() || g_disk_built.load(std::memory_order_acquire);
 }
 } // namespace
 
