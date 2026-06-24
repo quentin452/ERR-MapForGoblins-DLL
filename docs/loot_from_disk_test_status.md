@@ -15,9 +15,9 @@ and the [[handoff-loot-from-real-files]] memory for the full RE.
 | Item | Tested **runtime** (in-game) | Tested **static** (offline, not runtime) | **Windows** | **Linux** |
 |---|---|---|---|---|
 | **ERR** profile (full disk loot) | ✅ in-game: 651 maps, 0 KRAK skip, 3235 replaced, no hitch | ✅ | ✅ (game + DLL build) | ✅ **full A+B+C** — offline (708 DFLT→4075 tre, m10=113), DLL cross-build (PE32+ 5.16MB), **Proton runtime: 651 maps / 0 KRAK skip / 3235 replaced / 21 disk-only / 3 recover-later — EXACT match to Windows** |
-| **ERTE** profile | ✅ in-game: 458 maps, 0 KRAK skip, 3226 replaced | ✅ 458 maps / 3320 asset-lots | ✅ (game via ME3 + build) | ◑ portable |
-| **Convergence** profile | ✅ in-game: 468 maps, 0 KRAK skip, 3227 replaced | ✅ 468 maps / 3623 asset-lots | ✅ (game via ME3 + build) | ◑ portable |
-| **Vanilla** profile | ✅ in-game: 949 maps, 0 KRAK skip, 3062 replaced | ✅ 949 maps / 3193 asset-lots | ✅ (game via ME3 + build) | ◑ portable |
+| **ERTE** profile | ✅ in-game: 458 maps, 0 KRAK skip, 3226 replaced | ✅ 458 maps / 3320 asset-lots | ✅ (game via ME3 + build) | ◑ **offline parse ✅** 458 _00 maps (458 DFLT, 3731 tre, 0 fail) = exact map match; DLL build/runtime need Windows-gen `generated_erte` |
+| **Convergence** profile | ✅ in-game: 468 maps, 0 KRAK skip, 3227 replaced | ✅ 468 maps / 3623 asset-lots | ✅ (game via ME3 + build) | ◑ **offline parse ✅** 468 _00 maps (346 DFLT + **122 KRAK** via native Oodle, 4044 tre, 0 fail) = exact map match + proves native-Oodle-on-treasure-KRAK; DLL needs `generated_convergence` |
+| **Vanilla** profile | ✅ in-game: 949 maps, 0 KRAK skip, 3062 replaced | ✅ 949 maps / 3193 asset-lots | ✅ (game via ME3 + build) | ◑ offline blocked (no loose maps — Steam BDT-packed, needs extraction); DLL needs complete `generated_vanilla` |
 | **DFLT** decompress (zlib / stb) | ✅ (ERR in-game) | ✅ | ✅ | ✅ (stb in-tree, `tools/msbe_test/build.sh`) |
 | **KRAK** decompress (Oodle / oo2core) | ✅ (ERR in-game, 0 skipped) | ✅ (oo2core via ctypes, 4 profiles) | ✅ | ✅ **native** `liboo2corelinux64.so.9` (no Wine), `build_oodle.sh` |
 | **DummyAsset filter** (`PART +0x0c`) | ✅ (178 → 21 in-game) | ✅ (487 maps) | ✅ | ✅ |
