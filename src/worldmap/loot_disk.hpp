@@ -28,7 +28,10 @@ struct DiskTreasure
 void set_mod_folder(const std::filesystem::path &p);
 
 // Resolve the map dir (config loot_msb_dir, else auto-detect) and parse every
-// _00 MSB in it, returning all POSITIONED treasures (partIndex >= 0). Logs
-// [LOOTDISK] per-map (debug) + totals. Empty when no dir resolves or none parse.
-std::vector<DiskTreasure> load_disk_treasures();
+// _00 MSB in it, returning all POSITIONED treasures (partIndex >= 0) on a real
+// Asset part. DummyAsset (cut/inert) placements are dropped; their lotIds are
+// appended to droppedDummyLots (when non-null) so the caller can flag the
+// "reachable_dummy" subset (those the bake still backs → recover when the bake
+// is removed). Logs [LOOTDISK] per-map (debug) + totals. Empty when no dir.
+std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots = nullptr);
 } // namespace goblin::worldmap

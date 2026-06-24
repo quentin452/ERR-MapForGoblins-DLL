@@ -158,10 +158,11 @@ static uint32_t pack_tile(uint8_t a, uint8_t gx, uint8_t gz)
 }
 
 static void build_disk_loot_markers(std::unordered_set<uint32_t> &covered,
-                                     std::unordered_map<uint32_t, uint32_t> &lot_tile)
+                                     std::unordered_map<uint32_t, uint32_t> &lot_tile,
+                                     std::vector<uint32_t> &droppedDummyLots)
 {
     GOBLIN_BENCH("build.disk_loot");
-    std::vector<DiskTreasure> treasures = load_disk_treasures();
+    std::vector<DiskTreasure> treasures = load_disk_treasures(&droppedDummyLots);
     int emitted = 0, unclassified = 0;
     for (const DiskTreasure &t : treasures)
     {
@@ -206,8 +207,9 @@ void build_buckets()
     // EMEVD-granted + enemy lots have no MSB part → they stay baked).
     std::unordered_set<uint32_t> disk_lots;
     std::unordered_map<uint32_t, uint32_t> disk_lot_tile;  // lotId → packed tile (diag)
+    std::vector<uint32_t> dropped_dummy_lots;              // DummyAsset lots we dropped
     if (goblin::config::lootFromDiskMsb)
-        build_disk_loot_markers(disk_lots, disk_lot_tile);
+        build_disk_loot_markers(disk_lots, disk_lot_tile, dropped_dummy_lots);
 
     // Diagnostic sets: which baked lotIds exist as map-loot (lotType 1) vs as ANY
     // lot (1 or 2). Lets us explain the disk-only lots below (in the disk but not
@@ -267,6 +269,26 @@ void build_buckets()
         spdlog::info("[LOOTDISK] disk-only lots: {} total ({} baked-as-enemy, {} absent-from-bake) "
                      "— vanilla/unmodified-map loot stays baked",
                      only_enemy + only_absent, only_enemy, only_absent);
+
+        // RECOVER-LATER record: DummyAsset placements we dropped whose lotId the
+        // bake STILL provides (lotType 1) = "reachable_dummy" (a DummyAsset with
+        // an EntityID/group the engine can activate). They render fine TODAY via
+        // their baked marker, but would be LOST the day we drop the bake — so log
+        // each one explicitly. A dropped dummy NOT in the bake is truly inert
+        // (correctly gone). See docs/re/windows_msbe_dummyasset_unreachable_re_findings.md.
+        std::unordered_set<uint32_t> seen_dummy;
+        int recover = 0;
+        for (uint32_t lot : dropped_dummy_lots)
+        {
+            if (!baked_lot1.count(lot) || !seen_dummy.insert(lot).second)
+                continue; // inert (not bake-backed) or already logged
+            ++recover;
+            int32_t key = goblin::resolve_loot_item_textid(lot, 1, -1);
+            spdlog::info("[LOOTDISK]   RECOVER-LATER reachable_dummy lot {} key={} "
+                         "(bake-backed today; lost when the bake is dropped)", lot, key);
+        }
+        spdlog::info("[LOOTDISK] reachable_dummy (recover-later) lots: {} — currently baked, "
+                     "need Entity/group recovery before the bake can be removed", recover);
     }
     build_live_bosses();
 }

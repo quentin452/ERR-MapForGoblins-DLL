@@ -94,7 +94,7 @@ bool parse_tile(const std::string &stem, int &area, int &gx, int &gz)
 
 void set_mod_folder(const fs::path &p) { g_mod_folder = p; }
 
-std::vector<DiskTreasure> load_disk_treasures()
+std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots)
 {
     std::vector<DiskTreasure> out;
     fs::path dir = resolve_map_dir();
@@ -149,7 +149,12 @@ std::vector<DiskTreasure> load_disk_treasures()
             // can't reach (305/312 of the pipeline's unreachable lots — validated
             // offline). Any lot we skip here just stays on its baked marker (the
             // coverage-replace keeps uncovered baked rows), so no loot is lost.
-            if (t.partType == msbe::PART_DUMMY_ASSET) { ++dummies; continue; }
+            if (t.partType == msbe::PART_DUMMY_ASSET)
+            {
+                ++dummies;
+                if (droppedDummyLots && t.itemLotId) droppedDummyLots->push_back(t.itemLotId);
+                continue;
+            }
             DiskTreasure d;
             d.lotId = t.itemLotId;
             d.area = (uint8_t)area;
