@@ -76,8 +76,9 @@ Ran the offline parser/Oodle path on the local Linux box against ERR's real file
   markers, 3230 lots covered, 133 unclassified` · `replaced 3235 baked lot rows` · `21 disk-only
   (absent-from-bake)` · `3 recover-later` · `build.disk_loot 825 ms`. **Replaced/disk-only/
   recover-later all EXACT-match the Windows ERR run** → the loot-from-disk feature is platform-
-  identical. Auto-detect won't find the loose mod dir (g_mod_folder = the DLL's own dll/offline),
-  so `loot_msb_dir` must be set explicitly (Z: path) on this layout.
+  identical. **Auto-detect fix (commit `14897b5`) VERIFIED in-game:** with `loot_msb_dir` empty the
+  DLL walks up from its own folder (`dll/offline` → `<root>` → `<root>/mod/map/MapStudio`) and logs
+  `reading MSBs from Z:\...\mod\map\MapStudio` with identical counts — no manual path needed.
 - **Not run on Linux:** Part C for the 3 non-ERR profiles (DLLs not buildable here — see Part B).
 
 ## Non-ERR DLL build — RESOLVED (empty ERR-only stubs)
