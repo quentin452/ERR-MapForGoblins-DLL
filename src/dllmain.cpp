@@ -25,6 +25,7 @@
 #include "goblin_bench.hpp"
 #include "goblin_crashdump.hpp"
 #include "worldmap/loot_disk.hpp"
+#include "worldmap/loot_open_probe.hpp"
 #include "worldmap/map_entry_layer.hpp"
 
 #include "version.h"
@@ -151,6 +152,11 @@ static void setup_mod()
     // Hand the disk-MSB loot source our mod folder for map-dir auto-detect (used
     // lazily on first map build when config loot_from_disk_msb is on).
     goblin::worldmap::set_mod_folder(g_mod_folder);
+
+    // Diagnostic (config diag_map_opens, default off): arm the CreateFileW probe now
+    // — BEFORE enable_hooks() applies the queued batch and before the game streams
+    // any map — so it captures the real .msb.dcx open paths + timing.
+    goblin::worldmap::install_map_open_probe();
 
     // AOB signature health check — logs PASS/FAIL for every centralized signature
     // (src/re_signatures.hpp). After a game update, a FAIL line names exactly which
