@@ -211,7 +211,13 @@ namespace
                   "read straight from the disk MSBs. Position = the placed Asset; item is\n"
                   "resolved LIVE via AssetEnvironmentGeometryParam[row].pickUpItemLotParamId\n"
                   "-> ItemLotParam_map (no bake, no manual model->item table; works on any\n"
-                  "mod). Uses the same map dir as loot_from_disk_msb. Off by default."),
+                  "mod). Uses the same map dir as loot_from_disk_msb. Off by default.\n"
+                  "DENSITY: this adds a LOT of markers. Each collectible is classified by its\n"
+                  "item's goodsType into a normal category, so the per-category show_* toggles\n"
+                  "below double as a goodsType filter -- e.g. show_crafting_materials=false\n"
+                  "hides the gather clutter (fireflies, excrement, mosses; goodsType 2) while\n"
+                  "show_smithing_stones keeps the stones (goodsType 14), show_consumables the\n"
+                  "consumables (goodsType 0). Toggle them live in the overlay panel too."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("show_all", showAll, "false",

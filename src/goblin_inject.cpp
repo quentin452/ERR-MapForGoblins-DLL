@@ -4242,11 +4242,19 @@ int goblin::classify_item_live(int32_t key)
     if (key >= 500000000) // goods
     {
         int32_t gid = key - 500000000;
+        // GOODS_TYPE values per the repo's own extractor (tools/extract_goods_categories.py).
+        // Routing each known type to its real category makes the per-category show_* toggles a
+        // fine-grained goodsType filter for collectibles (e.g. show_crafting_materials = false
+        // hides goodsType-2 gather clutter like fireflies/excrement while show_smithing_stones
+        // keeps goodsType-14 stones). The default catch-all stays LootCraftingMaterials.
         switch (goods_type_live(gid))
         {
             case 2:  return (int)C::LootCraftingMaterials;  // gather mats (Bloodrose, fireflies, ...)
             case 14: return (int)C::LootSmithingStones;     // reinforcement (Smithing Stones, Golden Ore)
             case 0:  return (int)C::LootConsumables;        // normal consumable
+            case 8:  return (int)C::EquipSpirits;           // spirit ash summon
+            case 5:  case 17: return (int)C::MagicSorceries;     // sorceries
+            case 16: case 18: return (int)C::MagicIncantations;  // incantations
             default: return (int)C::LootCraftingMaterials;  // catch-all (currencies, misc gather)
         }
     }
