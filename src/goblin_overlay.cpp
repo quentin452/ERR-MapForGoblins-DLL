@@ -1279,7 +1279,7 @@ namespace
             ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
             ImGui::Begin("Map for Goblins##error", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.25f, 0.25f, 1.0f));
-            ImGui::TextUnformatted("Map for Goblins — ERREUR");
+            ImGui::TextUnformatted("Map for Goblins - ERREUR");
             ImGui::Separator();
             ImGui::TextWrapped("Le dossier des cartes du mod (map\\MapStudio\\*.msb.dcx) est "
                                "introuvable. Le mod ne peut pas charger ses marqueurs.");
