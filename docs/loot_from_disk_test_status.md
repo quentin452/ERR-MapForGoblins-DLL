@@ -14,12 +14,12 @@ and the [[handoff-loot-from-real-files]] memory for the full RE.
 
 | Item | Tested **runtime** (in-game) | Tested **static** (offline, not runtime) | **Windows** | **Linux** |
 |---|---|---|---|---|
-| **ERR** profile (full disk loot) | ✅ in-game: 651 maps, 0 KRAK skip, 3235 replaced, no hitch | ✅ | ✅ (game + DLL build) | ◑ parser/build.sh portable, not run |
+| **ERR** profile (full disk loot) | ✅ in-game: 651 maps, 0 KRAK skip, 3235 replaced, no hitch | ✅ | ✅ (game + DLL build) | ◑ offline parse ✅ (708 DFLT maps→4075 tre + 256 KRAK 0-fail; m10=113); DLL build+runtime not run |
 | **ERTE** profile | ✅ in-game: 458 maps, 0 KRAK skip, 3226 replaced | ✅ 458 maps / 3320 asset-lots | ✅ (game via ME3 + build) | ◑ portable |
 | **Convergence** profile | ✅ in-game: 468 maps, 0 KRAK skip, 3227 replaced | ✅ 468 maps / 3623 asset-lots | ✅ (game via ME3 + build) | ◑ portable |
 | **Vanilla** profile | ✅ in-game: 949 maps, 0 KRAK skip, 3062 replaced | ✅ 949 maps / 3193 asset-lots | ✅ (game via ME3 + build) | ◑ portable |
 | **DFLT** decompress (zlib / stb) | ✅ (ERR in-game) | ✅ | ✅ | ✅ (stb in-tree, `tools/msbe_test/build.sh`) |
-| **KRAK** decompress (Oodle / oo2core) | ✅ (ERR in-game, 0 skipped) | ✅ (oo2core via ctypes, 4 profiles) | ✅ | ◑ via Wine + oo2core (`build_oodle.sh`), not run here |
+| **KRAK** decompress (Oodle / oo2core) | ✅ (ERR in-game, 0 skipped) | ✅ (oo2core via ctypes, 4 profiles) | ✅ | ✅ **native** `liboo2corelinux64.so.9` (no Wine), `build_oodle.sh` |
 | **DummyAsset filter** (`PART +0x0c`) | ✅ (178 → 21 in-game) | ✅ (487 maps) | ✅ | ✅ |
 | **recover-later** tracking (3 lots) | ✅ (in-game) | ✅ | ✅ | ✅ |
 | **pre-build at init** (no map-open hitch) | ✅ (in-game) | n/a | ✅ | ◑ |
@@ -46,6 +46,21 @@ Note: Convergence shows 489 unclassified (vs ~180 elsewhere) — Convergence ite
 | ERTE | 458 | 458 | 3320 | 307 |
 | Convergence | 468 | 468 | 3623 | 312 |
 | Vanilla | 949 | 949 | 3193 | 315 |
+
+## Linux offline results (2026-06-24, Part A) — native, no game, no Wine
+Ran the offline parser/Oodle path on the local Linux box against ERR's real files
+(`<ERR>/mod/map/MapStudio`, 964 `.msb.dcx`):
+- **DFLT** (`tools/msbe_test/build.sh`, native clang++/stb): `m10_00_00_00` → **113 treasures**
+  (107 with part), exact `items_database.json` match. Full sweep: 708 DFLT maps → **4075 treasures,
+  0 failures**.
+- **KRAK** (`tools/msbe_test/build_oodle.sh` → `msbe_oodle_native`): **NATIVE**
+  `liboo2corelinux64.so.9` via `dlopen` (System-V ABI) — **no Wine**. `m45_01_00_00` decompressed
+  17604 → 840384 bytes, parsed ok. All 256 ERR KRAK maps decompress+parse, 0 failures (ERR's KRAK
+  maps are treasureless — ERR re-saves its loot maps as DFLT; KRAK loot appears on the
+  vanilla/non-ERR profiles, where the native `.so` covers it the same way).
+- Correction to the brief: the native `.so` path is now wired (`msbe_oodle_native.cpp`), so offline
+  KRAK on Linux does **not** need Wine. The Wine exe (`msbe_oodle_test.cpp`) remains as a fallback.
+- **Not run on Linux yet:** Part B (cross-build the DLL) + Part C (in-game via Proton/ME3).
 
 ## Non-ERR DLL build — RESOLVED (empty ERR-only stubs)
 The data pipeline bakes 4 profiles (`src/generated_<profile>/`) but does NOT emit the
