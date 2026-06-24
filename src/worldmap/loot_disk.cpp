@@ -76,10 +76,11 @@ fs::path map_studio_in(const fs::path &root)
 // relative search; then the game install dir.
 fs::path resolve_map_dir()
 {
-    // Test affordance: force the ancestor-walk to find nothing, to exercise the
-    // CreateFileW discovery (Tier 2) + the Failed red-error (Tier 3) on a normal
-    // install. Load a save → a real map open recovers to Found; stay at the menu
-    // >120s → Failed → the F1 error.
+    // Test affordance: __test_fallback__ forces the ancestor-walk to find nothing →
+    // Searching → the CreateFileW discovery (Tier 2) takes over (ERR opens maps within
+    // seconds, so it recovers to Found fast). To see the Tier-3 Failed red-error on a
+    // normal install, use __test_error__ (handled in ensure_map_dir_resolved — it can't
+    // be reached by timeout here because the game always opens a map first).
     if (config::lootMsbDir == "__test_fallback__") return {};
 
     if (!config::lootMsbDir.empty())
@@ -147,6 +148,11 @@ void ensure_map_dir_resolved()
         g_state.store(static_cast<int>(DiskLootState::Disabled));
         return;
     }
+    if (config::lootMsbDir == "__test_error__")  // test: force the F1 red-error directly
+    {
+        g_state.store(static_cast<int>(DiskLootState::Failed));
+        return;
+    }
     if (g_dir_attempted.exchange(true)) return;  // ancestor-walk runs exactly once
     if (static_cast<DiskLootState>(g_state.load()) == DiskLootState::Found) return;  // discovery beat us
     fs::path d = resolve_map_dir();
@@ -195,6 +201,7 @@ fs::path disk_loot_dir()
 void on_map_opened_path(const wchar_t *full_path)
 {
     if (!full_path || !config::lootFromDiskMsb) return;
+    if (config::lootMsbDir == "__test_error__") return;  // test: keep Failed, suppress discovery
     if (static_cast<DiskLootState>(g_state.load()) == DiskLootState::Found) return;  // already have it
     std::error_code ec;
     fs::path dir = fs::path(full_path).lexically_normal().parent_path();  // ...\map\MapStudio
