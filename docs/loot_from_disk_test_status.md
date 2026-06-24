@@ -14,7 +14,7 @@ and the [[handoff-loot-from-real-files]] memory for the full RE.
 
 | Item | Tested **runtime** (in-game) | Tested **static** (offline, not runtime) | **Windows** | **Linux** |
 |---|---|---|---|---|
-| **ERR** profile (full disk loot) | ✅ in-game: 651 maps, 0 KRAK skip, 3235 replaced, no hitch | ✅ | ✅ (game + DLL build) | ◑ offline parse ✅ (708 DFLT maps→4075 tre + 256 KRAK 0-fail; m10=113); DLL build+runtime not run |
+| **ERR** profile (full disk loot) | ✅ in-game: 651 maps, 0 KRAK skip, 3235 replaced, no hitch | ✅ | ✅ (game + DLL build) | ◑ offline parse ✅ (708 DFLT→4075 tre + 256 KRAK 0-fail; m10=113); **DLL cross-build ✅** (build-clang, PE32+ 5.16MB); runtime not run |
 | **ERTE** profile | ✅ in-game: 458 maps, 0 KRAK skip, 3226 replaced | ✅ 458 maps / 3320 asset-lots | ✅ (game via ME3 + build) | ◑ portable |
 | **Convergence** profile | ✅ in-game: 468 maps, 0 KRAK skip, 3227 replaced | ✅ 468 maps / 3623 asset-lots | ✅ (game via ME3 + build) | ◑ portable |
 | **Vanilla** profile | ✅ in-game: 949 maps, 0 KRAK skip, 3062 replaced | ✅ 949 maps / 3193 asset-lots | ✅ (game via ME3 + build) | ◑ portable |
@@ -60,7 +60,15 @@ Ran the offline parser/Oodle path on the local Linux box against ERR's real file
   vanilla/non-ERR profiles, where the native `.so` covers it the same way).
 - Correction to the brief: the native `.so` path is now wired (`msbe_oodle_native.cpp`), so offline
   KRAK on Linux does **not** need Wine. The Wine exe (`msbe_oodle_test.cpp`) remains as a fallback.
-- **Not run on Linux yet:** Part B (cross-build the DLL) + Part C (in-game via Proton/ME3).
+- **Part B (cross-build) ✅ ERR:** `cmake -B build-clang -DCMAKE_TOOLCHAIN_FILE=clang-cl-xwin.cmake
+  -DXWIN=~/.local/share/xwin -DGENERATED_SUBDIR=generated -DCMAKE_BUILD_TYPE=Release` → `ninja -C
+  build-clang MapForGoblins` → `build-clang/MapForGoblins.dll` (PE32+ x86-64, 5.16 MB, all disk-MSB
+  loot code in). Only deprecation warnings, no errors.
+  - Non-ERR on Linux: **blocked** — `generated_vanilla/` (the only non-ERR dir on this box) is missing
+    the Windows-pipeline tables `goblin_tile_tabs` + `goblin_major_regions` (not ERR-only, so
+    `gen_nonerr_stubs.py` doesn't cover them; not loot-related). Needs the Windows data pipeline or a
+    copy of those files. ERR-only build is sufficient — the loot path is profile-independent.
+- **Not run on Linux yet:** Part C (in-game via Proton/ME3 — needs the game launched).
 
 ## Non-ERR DLL build — RESOLVED (empty ERR-only stubs)
 The data pipeline bakes 4 profiles (`src/generated_<profile>/`) but does NOT emit the
