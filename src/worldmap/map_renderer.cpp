@@ -475,11 +475,21 @@ struct Hover
     std::string text;
 };
 // If `mouse` is within radius r of p and closer than the current best, take it.
-void hover_test(Hover &h, ImVec2 mouse, ImVec2 p, float r, const std::string &text)
+// PERF: the label is built LAZILY (make_label is only invoked when this point is a new
+// closest-within-radius candidate), so we don't construct an FMG/UTF8 string for every
+// marker every frame — only the handful near the cursor. make_label() returns the label
+// std::string; an empty result is skipped (same as the old text.empty() guard), so a
+// label-less marker never blocks a farther named one. Behaviour is identical to building
+// the string eagerly; only the work moved behind the cheap distance test.
+template <class MakeLabel>
+void hover_test(Hover &h, ImVec2 mouse, ImVec2 p, float r, MakeLabel make_label)
 {
-    if (mouse.x < 0 || text.empty()) return;
+    if (mouse.x < 0) return;
     float dx = mouse.x - p.x, dy = mouse.y - p.y, d = dx * dx + dy * dy;
-    if (d <= r * r && d < h.bestd) { h.bestd = d; h.pos = p; h.text = text; }
+    if (d > r * r || d >= h.bestd) return;   // not within radius, or not a new best → no label build
+    std::string t = make_label();
+    if (t.empty()) return;
+    h.bestd = d; h.pos = p; h.text = std::move(t);
 }
 // One marker's tooltip = its item/marker name + its location (nearest-grace region),
 // like the native map. Either may be empty; empty if both are.
@@ -634,7 +644,9 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
                 if (on_screen(items[i].p))
                 {
                     draw_marker(fg, *items[i].m, items[i].p, icons, iconHalf);
-                    hover_test(hover, mouse, items[i].p, iconHalf, marker_label(*items[i].m));
+                    const Marker *mm = items[i].m;
+                    hover_test(hover, mouse, items[i].p, iconHalf,
+                               [&] { return marker_label(*mm); });
                 }
             continue;
         }
@@ -743,8 +755,9 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
                 fg->AddText(ImVec2(best.x - glyphR, best.y - glyphR - 14.f),
                             IM_COL32(80, 230, 255, 255), tb);
             }
+            const Pile &pl = piles[i];
             hover_test(hover, mouse, best, glyphR,
-                       pile_label(piles[i].loc_pname, piles[i].count, piles[i].total));
+                       [&] { return pile_label(pl.loc_pname, pl.count, pl.total); });
             // Location name centred under the glyph (shadowed for readability on the busy map).
             std::string loc = goblin::lookup_text_utf8(piles[i].loc_pname);
             if (!loc.empty())
@@ -1162,12 +1175,21 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
         }
     }
 
+    // Per-frame render-cost breakdown (aggregate-only — shows in the [BENCH] session report
+    // as render.worldmap.markers = the main project+cull+gate+draw loop, render.worldmap.clusters
+    // = the pile pass). Counters feed a throttled debug log so the felt lag at high marker counts
+    // can be attributed (raw iteration vs actual draws). n_iter counts EVERY marker the loop
+    // touches across visible categories (the true O(n) cost), before the page/cull gates.
+    int n_iter = 0, n_drawn = 0, n_deferred = 0;
+    {
+    GOBLIN_BENCH_QUIET("render.worldmap.markers");
     for (auto *L : layers)
     {
         if (!L || !L->visible())
             continue;
         for (const Marker &m : L->markers())
         {
+            ++n_iter;
             if (m.group != open_grp)
                 continue; // draw only the open map group
 
@@ -1241,18 +1263,36 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // Clustered-eligible markers are deferred (uncull'd) to the pile pass;
             // everything else (already on-screen here) draws now.
             if (clustered_eligible)
+            {
                 clustered.push_back({sp, &m});
+                ++n_deferred;
+            }
             else
             {
                 draw_marker(fg, m, sp, icons, iconHalf);
-                hover_test(hover, mouse, sp, iconHalf, marker_label(m));
+                hover_test(hover, mouse, sp, iconHalf, [&] { return marker_label(m); });
+                ++n_drawn;
             }
         }
     }
+    } // render.worldmap.markers
 
-    if (clustering && !clustered.empty())
-        draw_clusters(fg, clustered, threshold, icons, realW, realH, view,
-                      /*dist_eligible=*/true, iconHalf, glyphR, mouse, hover);
+    {
+        GOBLIN_BENCH_QUIET("render.worldmap.clusters");
+        if (clustering && !clustered.empty())
+            draw_clusters(fg, clustered, threshold, icons, realW, realH, view,
+                          /*dist_eligible=*/true, iconHalf, glyphR, mouse, hover);
+    }
+
+    // Throttled cost attribution (debug_logging only; ~every 300 frames). Read with
+    // grep "\[RENDERPERF\]" alongside the [BENCH] render.worldmap.* timings.
+    if (goblin::config::debugLogging)
+    {
+        static int s_fc = 0;
+        if (++s_fc % 300 == 0)
+            spdlog::debug("[RENDERPERF] iterated={} drawn={} deferred(cluster)={} group={}",
+                          n_iter, n_drawn, n_deferred, open_grp);
+    }
 
     // Tooltip for the hovered marker / pile (drawn last so it's on top).
     if (hover.bestd < 1e30f)
