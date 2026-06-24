@@ -161,6 +161,10 @@ add_library( MapForGoblins SHARED
   src/worldmap/map_entry_layer.cpp
   src/worldmap/map_renderer.hpp
   src/worldmap/map_renderer.cpp
+  src/worldmap/msbe_parser.hpp
+  src/worldmap/msbe_parser.cpp
+  src/worldmap/loot_disk.hpp
+  src/worldmap/loot_disk.cpp
   src/goblin_crashdump.cpp
   src/dllmain.cpp)
 

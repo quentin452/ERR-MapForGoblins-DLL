@@ -1,6 +1,8 @@
 #include "map_entry_layer.hpp"
 
 #include "category_meta.hpp"
+#include "loot_disk.hpp"       // disk-MSB loot source (DiskTreasure / load_disk_treasures)
+#include "goblin_config.hpp"   // config::lootFromDiskMsb
 #include "goblin_map_data.hpp" // MAP_ENTRIES / MAP_ENTRY_COUNT / MapEntry / Category
 #include "goblin_inject.hpp"   // marker_world_pos / category_visible / read_event_flag / census
 #include "goblin_logic.hpp"    // map_fragment_flag
@@ -140,6 +142,45 @@ void build_live_bosses()
     spdlog::info("[BOSSLIVE] built {} boss markers from live WorldMapPointParam (textId2==5100)", n);
 }
 
+// Build the loot markers from the ACTIVE mod's REAL disk MSBs (config
+// loot_from_disk_msb). Each POSITIONED Treasure → one marker via the SAME
+// push_marker path as the bake, so projection/identity/flags are identical: the
+// tile filename gives area/grid, Part+0x20 gives the block-local pos, and the
+// live ItemLotParam (joined by lotId, lotType 1) gives the item identity +
+// category + pickup flag. A lotId may map to MULTIPLE parts → each is emitted.
+// Records every lotId it placed in `covered` so build_buckets DROPS the baked
+// rows the disk now owns (lotId-coverage replace). Logs [LOOTDISK].
+static void build_disk_loot_markers(std::unordered_set<uint32_t> &covered)
+{
+    GOBLIN_BENCH("build.disk_loot");
+    std::vector<DiskTreasure> treasures = load_disk_treasures();
+    int emitted = 0, unclassified = 0;
+    for (const DiskTreasure &t : treasures)
+    {
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = t.area;
+        d.gridXNo = t.gx;
+        d.gridZNo = t.gz;
+        d.posX = t.posX;
+        d.posZ = t.posZ;
+        // Identity/category from the LIVE lot (lotType 1 = ItemLotParam_map). textId1
+        // stays -1 and the flags 0, so push_marker resolves the item + pickup flag
+        // live (the lot-backed path) — exactly like a baked lot-backed row.
+        int32_t key = goblin::resolve_loot_item_textid(t.lotId, 1, -1);
+        int c = goblin::item_marker_category(key);
+        if (c < 0 || c >= NUM_CAT)
+        {
+            ++unclassified;  // item not in the ITEM_ICONS classifier → no bucket
+            continue;
+        }
+        push_marker(/*row_id=*/t.lotId, d, c, t.lotId, /*lotType=*/1);
+        covered.insert(t.lotId);
+        ++emitted;
+    }
+    spdlog::info("[LOOTDISK] emitted {} disk loot markers, {} lots covered, {} unclassified",
+                 emitted, (int)covered.size(), unclassified);
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
 void build_buckets()
@@ -149,6 +190,16 @@ void build_buckets()
     g_built = true;
     GOBLIN_BENCH("build.buckets");
     namespace gen = goblin::generated;
+
+    // Disk-MSB loot source (opt-in): build the loot markers from the mod's real
+    // files first + collect which item-lot ids they place, so the baked rows
+    // those lots cover are dropped below (the disk owns the treasure slice;
+    // EMEVD-granted + enemy lots have no MSB part → they stay baked).
+    std::unordered_set<uint32_t> disk_lots;
+    if (goblin::config::lootFromDiskMsb)
+        build_disk_loot_markers(disk_lots);
+
+    int replaced = 0;
     for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
     {
         const gen::MapEntry &e = gen::MAP_ENTRIES[i];
@@ -159,8 +210,17 @@ void build_buckets()
         // rows so they don't double the live ones (the bake is being retired for this category).
         if (e.category == gen::Category::WorldBosses)
             continue;
+        // Disk loot owns this lot → drop the baked placement (lotId-coverage replace).
+        // Only map-loot lots (lotType 1); enemy drops (lotType 2) are untouched.
+        if (!disk_lots.empty() && e.lotType == 1 && e.lotId != 0 && disk_lots.count(e.lotId))
+        {
+            ++replaced;
+            continue;
+        }
         push_marker(e.row_id, e.data, c, e.lotId, e.lotType);
     }
+    if (goblin::config::lootFromDiskMsb)
+        spdlog::info("[LOOTDISK] replaced {} baked lot rows with disk placements", replaced);
     build_live_bosses();
 }
 } // namespace

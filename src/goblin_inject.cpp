@@ -1178,6 +1178,14 @@ int goblin::item_icon_id(int32_t key)
     return p ? (int)p->iconId : -1;
 }
 
+// Same baked table, the category column: lets the disk-MSB loot path bucket a
+// live-resolved lot item (lotId → resolve_loot_item_textid → key → here).
+int goblin::item_marker_category(int32_t key)
+{
+    const goblin::generated::ItemIcon *p = lookup_item_icon(key);
+    return p ? (int)p->category : -1;
+}
+
 // Master-off intent set by the toggle hotkey. When true the user has
 // explicitly hidden the icons, so the auto-toggle must keep the table vanilla
 // even while the world map is open. Shared between the hotkey and watcher

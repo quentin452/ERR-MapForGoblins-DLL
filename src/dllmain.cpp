@@ -24,6 +24,7 @@
 #include "goblin_overlay.hpp"
 #include "goblin_bench.hpp"
 #include "goblin_crashdump.hpp"
+#include "worldmap/loot_disk.hpp"
 
 #include "version.h"
 
@@ -144,6 +145,10 @@ static void setup_mod()
         GOBLIN_BENCH("init.from_params");
         safe_init_step(&init_from_params, "from::params::initialize");
     }
+
+    // Hand the disk-MSB loot source our mod folder for map-dir auto-detect (used
+    // lazily on first map build when config loot_from_disk_msb is on).
+    goblin::worldmap::set_mod_folder(g_mod_folder);
 
     // AOB signature health check — logs PASS/FAIL for every centralized signature
     // (src/re_signatures.hpp). After a game update, a FAIL line names exactly which

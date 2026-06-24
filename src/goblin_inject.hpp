@@ -317,6 +317,12 @@ namespace goblin
     // the key isn't an item (boss/grace/NPC names miss) → the marker keeps its category atlas icon.
     int item_icon_id(int32_t key);
 
+    // Marker/item key → the MFG Category that item would get as a normal marker
+    // (static_cast<int>), or -1 if the item isn't in the baked ITEM_ICONS
+    // classifier. Lets the disk-MSB loot path bucket a live-resolved lot item
+    // without the bake. Same lookup as item_icon_id() (ITEM_ICONS carries both).
+    int item_marker_category(int32_t key);
+
     // Count of icons harvested so far (dev/diagnostic — shown in the P2b test panel).
     size_t harvested_count();
 

@@ -51,6 +51,9 @@ namespace goblin::config
 #endif
     bool anonymousLoot = false;  // opt-in spoiler-free mode (all profiles default off)
 
+    bool lootFromDiskMsb = false;  // opt-in: loot positions from the mod's real MSBs
+    std::string lootMsbDir = "";   // empty = auto-detect map\MapStudio
+
     bool redifyBossIcons = false;
     bool graceOverlay = true;        // our graces are the default map source now (validated)
     bool graceGpuSprite = true;      // live engine grace sprite (validated working)
@@ -179,6 +182,21 @@ namespace
                   "process) against the baked MAP_ENTRY placement. Validates that the data we\n"
                   "collect matches the bake from inside the running DLL (vs an external RPM\n"
                   "script). Logs per-row delta + an aggregate. Walk near loaded loot. Off by default."),
+                B("loot_from_disk_msb", lootFromDiskMsb, "false",
+                  "EXPERIMENTAL. Derive the treasure-loot markers from the ACTIVE mod's\n"
+                  "real map files (map\\MapStudio\\*.msb.dcx) on disk instead of the baked\n"
+                  "database. Disk placements REPLACE any baked lot they cover (by item-lot\n"
+                  "id); EMEVD-granted and enemy-drop lots stay baked. Reads loose DCX_DFLT\n"
+                  "(zlib) maps (ERR's modified maps); KRAK/Oodle-only maps are skipped for\n"
+                  "now (logged [LOOTDISK]). Off by default; enable to test loot from a\n"
+                  "mod's own files. Item identity/icon/flag are still read live from the\n"
+                  "regulation's ItemLotParam, so a regulation-only mod is unaffected."),
+                IniEntry{"loot_msb_dir", IniType::String, &cfg::lootMsbDir, "",
+                         "Folder with the active mod's map\\MapStudio\\*.msb.dcx (or the mod\n"
+                         "root containing map\\MapStudio, or a map\\ root). Empty = auto-detect:\n"
+                         "the DLL's own mod folder, then the Elden Ring install dir. Set this\n"
+                         "to your ModEngine2 mod's map folder if auto-detect picks the wrong\n"
+                         "source. Only used when loot_from_disk_msb is on.", false, nullptr},
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("show_all", showAll, "false",
