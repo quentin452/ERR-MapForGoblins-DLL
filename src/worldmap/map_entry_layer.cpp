@@ -213,11 +213,18 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
                                            std::unordered_set<uint32_t> &covered)
 {
     GOBLIN_BENCH("build.disk_collectibles");
-    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0;
+    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, baked_skip = 0;
     const bool verbose = goblin::config::diagLootPos;
     std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
     for (const DiskCollectible &c : collectibles)
     {
+        // Skip models already covered by a baked Reforged category with proper GEOM
+        // collected-tracking: AEG099_821 = Rune Piece, AEG099_822 = Ember Piece. Their
+        // pickUpItemLotParamId is the shared "Runic/Ember Trace" COUNTER lot (one lot for
+        // all 1164/316 placements), so emitting them here just duplicates the baked
+        // "Reforged - Rune/Ember Pieces" markers, mislabeled as the counter. (See the
+        // Rune-Piece↔Runic-Trace relation in windows_aeg_collectible_source_re_findings.md.)
+        if (c.aegRow == 99821 || c.aegRow == 99822) { ++baked_skip; continue; }
         uint32_t lot = goblin::aeg_pickup_lot(c.aegRow);  // live param chain (0 = not a pickup)
         if (lot == 0) { ++no_lot; continue; }
         if (treasure_lots.count(lot)) { ++dup; continue; }  // a Treasure ground-item, already placed
@@ -237,8 +244,8 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         if (verbose) ++per_cat[cat];
     }
     spdlog::info("[LOOTDISK] collectibles: {} markers emitted ({} assets total, {} not-a-pickup, "
-                 "{} treasure-dup, {} unclassified)",
-                 emitted, (int)collectibles.size(), no_lot, dup, unclassified);
+                 "{} treasure-dup, {} unclassified, {} baked-rune/ember-skip)",
+                 emitted, (int)collectibles.size(), no_lot, dup, unclassified, baked_skip);
     if (verbose)
     {
         for (auto &[cat, n] : per_cat)
