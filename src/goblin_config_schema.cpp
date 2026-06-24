@@ -186,9 +186,9 @@ namespace
                   "EXPERIMENTAL. Derive the treasure-loot markers from the ACTIVE mod's\n"
                   "real map files (map\\MapStudio\\*.msb.dcx) on disk instead of the baked\n"
                   "database. Disk placements REPLACE any baked lot they cover (by item-lot\n"
-                  "id); EMEVD-granted and enemy-drop lots stay baked. Reads loose DCX_DFLT\n"
-                  "(zlib) maps (ERR's modified maps); KRAK/Oodle-only maps are skipped for\n"
-                  "now (logged [LOOTDISK]). Off by default; enable to test loot from a\n"
+                  "id); EMEVD-granted and enemy-drop lots stay baked. Reads both DCX_DFLT\n"
+                  "(zlib, in-tree) and DCX_KRAK (Oodle, via the game's oo2core) maps, so it\n"
+                  "covers modified AND vanilla-untouched tiles. Off by default; enable to\n"
                   "mod's own files. Item identity/icon/flag are still read live from the\n"
                   "regulation's ItemLotParam, so a regulation-only mod is unaffected."),
                 IniEntry{"loot_msb_dir", IniType::String, &cfg::lootMsbDir, "",

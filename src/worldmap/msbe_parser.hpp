@@ -43,8 +43,18 @@ struct ParseResult
 //   resident=true:         entry-internal offsets are absolute VAs; pass blobBase = VA of buf[0].
 ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase = 0);
 
-// DCX_DFLT (zlib/Deflate) -> raw MSB bytes. Empty on failure or unsupported. Sets *isKrak
-// true when the DCX is Oodle/KRAK (decompress via the game's Oodle elsewhere).
-std::vector<uint8_t> dcx_decompress(const uint8_t *dcx, size_t len, bool *isKrak = nullptr);
+// oo2core's OodleLZ_Decompress (14-arg; x64 ABI unifies __stdcall/__fastcall). Kept as a
+// plain function-pointer typedef so msbe_parser needs no <windows.h>/oo2core link — the DLL
+// resolves the real export (GetProcAddress) and passes it in; offline tools can too.
+using OodleDecompressFn = long long (*)(const void *src, long long srcLen, void *dst,
+                                        long long dstLen, int fuzz, int crc, int verbose,
+                                        void *dbase, long long dsize, void *cb, void *cbctx,
+                                        void *scratch, long long scratchSize, int threadPhase);
+
+// DCX -> raw MSB bytes. DCX_DFLT (zlib/Deflate) is decompressed in-tree (stb). DCX_KRAK
+// (Oodle) needs `oodle`: when given, the KRAK stream is decompressed via it; when null, the
+// call sets *isKrak true and returns empty (caller skips / counts it). Empty on any failure.
+std::vector<uint8_t> dcx_decompress(const uint8_t *dcx, size_t len, bool *isKrak = nullptr,
+                                    OodleDecompressFn oodle = nullptr);
 
 } // namespace goblin::msbe

@@ -113,7 +113,8 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
     return R;
 }
 
-std::vector<uint8_t> dcx_decompress(const uint8_t *d, size_t len, bool *isKrak)
+std::vector<uint8_t> dcx_decompress(const uint8_t *d, size_t len, bool *isKrak,
+                                    OodleDecompressFn oodle)
 {
     if (isKrak) *isKrak = false;
     std::vector<uint8_t> out;
@@ -127,17 +128,15 @@ std::vector<uint8_t> dcx_decompress(const uint8_t *d, size_t len, bool *isKrak)
     uint32_t uncomp = be32(0x1c); // DCS +4 = uncompressed size (big-endian)
 
     // Format block: "DCP\0" tag @0x24, 4-char format @0x28 ("DFLT" zlib | "KRAK" Oodle).
+    bool krak = false;
     if (std::memcmp(d + 0x24, "DCP\0", 4) == 0)
     {
-        if (std::memcmp(d + 0x28, "KRAK", 4) == 0)
-        {
-            if (isKrak) *isKrak = true; // caller routes to the game's Oodle (g_oodle_orig)
-            return out;
-        }
-        if (std::memcmp(d + 0x28, "DFLT", 4) != 0) return out;
+        if (std::memcmp(d + 0x28, "KRAK", 4) == 0) krak = true;
+        else if (std::memcmp(d + 0x28, "DFLT", 4) != 0) return out;
     }
+    if (krak && isKrak) *isKrak = true;
 
-    // zlib stream starts at find("DCA\0") + 8
+    // Compressed stream starts at find("DCA\0") + 8 (DFLT zlib or KRAK Oodle alike).
     size_t dca = SIZE_MAX;
     for (size_t i = 0x28; i + 4 <= len; i++)
         if (d[i] == 'D' && d[i + 1] == 'C' && d[i + 2] == 'A' && d[i + 3] == 0) { dca = i; break; }
@@ -146,6 +145,17 @@ std::vector<uint8_t> dcx_decompress(const uint8_t *d, size_t len, bool *isKrak)
     if (zoff >= len || uncomp == 0 || uncomp > 256u * 1024 * 1024) return out;
 
     out.resize(uncomp);
+    if (krak)
+    {
+        // KRAK needs the game's Oodle; without it the caller skips this map (isKrak set).
+        if (!oodle) { out.clear(); return out; }
+        long long got = oodle(d + zoff, (long long)(len - zoff), out.data(), (long long)uncomp,
+                              /*fuzz=*/1, /*crc=*/0, /*verbose=*/0, nullptr, 0, nullptr, nullptr,
+                              nullptr, 0, /*threadPhase=*/3 /* OodleLZ_Decode_Unthreaded */);
+        if (got != (long long)uncomp) { out.clear(); return out; }
+        return out;
+    }
+
     int got = stbi_zlib_decode_buffer((char *)out.data(), (int)uncomp,
                                       (const char *)(d + zoff), (int)(len - zoff));
     if (got <= 0) { out.clear(); return out; }

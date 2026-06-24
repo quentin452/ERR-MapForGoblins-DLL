@@ -21,6 +21,22 @@ namespace
 {
 fs::path g_mod_folder;
 
+// Resolve the game's loaded oo2core OodleLZ_Decompress (for DCX_KRAK maps — vanilla
+// + the mod's unmodified maps). eldenring.exe imports oo2core_6_win64.dll, so it's
+// already in-process; GetModuleHandle finds it (LoadLibrary as a fallback). Cached.
+msbe::OodleDecompressFn resolve_oodle()
+{
+    static msbe::OodleDecompressFn fn = nullptr;
+    static bool tried = false;
+    if (tried) return fn;
+    tried = true;
+    HMODULE h = GetModuleHandleW(L"oo2core_6_win64.dll");
+    if (!h) h = LoadLibraryW(L"oo2core_6_win64.dll");
+    if (h) fn = (msbe::OodleDecompressFn)GetProcAddress(h, "OodleLZ_Decompress");
+    spdlog::info("[LOOTDISK] Oodle (KRAK maps) {}", fn ? "available" : "NOT found (KRAK skipped)");
+    return fn;
+}
+
 // Parent dir of eldenring.exe (the game install root), or empty.
 fs::path game_dir()
 {
@@ -105,6 +121,7 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
     }
     spdlog::info("[LOOTDISK] reading MSBs from {}", dir.string());
 
+    msbe::OodleDecompressFn oodle = resolve_oodle(); // KRAK support (vanilla/unmodified maps)
     int parsed = 0, kraks = 0, withPart = 0, dummies = 0;
     std::error_code ec;
     for (auto &de : fs::directory_iterator(dir, ec))
@@ -126,10 +143,10 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
             continue;
         }
         bool krak = false;
-        std::vector<uint8_t> msb = msbe::dcx_decompress(dcx.data(), dcx.size(), &krak);
+        std::vector<uint8_t> msb = msbe::dcx_decompress(dcx.data(), dcx.size(), &krak, oodle);
         if (msb.empty())
         {
-            if (krak) ++kraks;  // vanilla/other KRAK map — needs Oodle (not wired yet)
+            if (krak) ++kraks;  // KRAK map but Oodle unavailable / decompress failed
             else spdlog::warn("[LOOTDISK] decompress failed: {}", name);
             continue;
         }
