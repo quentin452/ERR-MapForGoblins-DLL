@@ -276,12 +276,18 @@ void build_buckets()
         // their baked marker, but would be LOST the day we drop the bake — so log
         // each one explicitly. A dropped dummy NOT in the bake is truly inert
         // (correctly gone). See docs/re/windows_msbe_dummyasset_unreachable_re_findings.md.
+        // True recover-later = bake shows it (baked_lot1) AND the disk does NOT
+        // (not in disk_lots). A dropped dummy whose lotId ALSO has an Asset twin
+        // is in disk_lots → the disk still emits it when the bake is gone → not
+        // lost. Excluding disk_lots is what separates the real ~3 from the lots
+        // that merely have a dummy duplicate alongside a live Asset.
         std::unordered_set<uint32_t> seen_dummy;
         int recover = 0;
         for (uint32_t lot : dropped_dummy_lots)
         {
-            if (!baked_lot1.count(lot) || !seen_dummy.insert(lot).second)
-                continue; // inert (not bake-backed) or already logged
+            if (!baked_lot1.count(lot) || disk_lots.count(lot) ||
+                !seen_dummy.insert(lot).second)
+                continue; // inert, disk already emits an Asset twin, or already logged
             ++recover;
             int32_t key = goblin::resolve_loot_item_textid(lot, 1, -1);
             spdlog::info("[LOOTDISK]   RECOVER-LATER reachable_dummy lot {} key={} "
