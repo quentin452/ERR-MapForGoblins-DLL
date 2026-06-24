@@ -8,9 +8,12 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <mutex>
 #include <system_error>
 
 namespace fs = std::filesystem;
@@ -20,6 +23,14 @@ namespace goblin::worldmap
 namespace
 {
 fs::path g_mod_folder;
+
+// ── Map-dir discovery state (see loot_disk.hpp) ───────────────────────────────
+std::atomic<int>                      g_state{static_cast<int>(DiskLootState::Disabled)};
+std::mutex                            g_dir_mtx;       // guards g_resolved_dir
+fs::path                              g_resolved_dir;  // the MapStudio dir (Found)
+std::atomic<bool>                     g_dir_attempted{false};  // ancestor-walk ran once
+std::chrono::steady_clock::time_point g_search_t0;     // when Searching began
+constexpr int kSearchTimeoutSec = 120;  // covers menu+save-load; Failed is recoverable
 
 // Resolve the game's loaded oo2core OodleLZ_Decompress (for DCX_KRAK maps — vanilla
 // + the mod's unmodified maps). eldenring.exe imports oo2core_6_win64.dll, so it's
@@ -64,6 +75,12 @@ fs::path map_studio_in(const fs::path &root)
 // relative search; then the game install dir.
 fs::path resolve_map_dir()
 {
+    // Test affordance: force the ancestor-walk to find nothing, to exercise the
+    // CreateFileW discovery (Tier 2) + the Failed red-error (Tier 3) on a normal
+    // install. Load a save → a real map open recovers to Found; stay at the menu
+    // >120s → Failed → the F1 error.
+    if (config::lootMsbDir == "__test_fallback__") return {};
+
     if (!config::lootMsbDir.empty())
     {
         fs::path cfg(config::lootMsbDir);
@@ -122,13 +139,82 @@ bool parse_tile(const std::string &stem, int &area, int &gx, int &gz)
 
 void set_mod_folder(const fs::path &p) { g_mod_folder = p; }
 
+void ensure_map_dir_resolved()
+{
+    if (!config::lootFromDiskMsb)
+    {
+        g_state.store(static_cast<int>(DiskLootState::Disabled));
+        return;
+    }
+    if (g_dir_attempted.exchange(true)) return;  // ancestor-walk runs exactly once
+    if (static_cast<DiskLootState>(g_state.load()) == DiskLootState::Found) return;  // discovery beat us
+    fs::path d = resolve_map_dir();
+    if (!d.empty())
+    {
+        {
+            std::lock_guard<std::mutex> lk(g_dir_mtx);
+            g_resolved_dir = d;
+        }
+        g_state.store(static_cast<int>(DiskLootState::Found));
+    }
+    else
+    {
+        g_search_t0 = std::chrono::steady_clock::now();
+        g_state.store(static_cast<int>(DiskLootState::Searching));
+        spdlog::warn("[LOOTDISK] map dir not found by ancestor-walk — falling back to the "
+                     "CreateFileW observer (waiting for the game to open a map; {}s timeout).",
+                     kSearchTimeoutSec);
+    }
+}
+
+DiskLootState disk_loot_state()
+{
+    if (!config::lootFromDiskMsb) return DiskLootState::Disabled;
+    DiskLootState s = static_cast<DiskLootState>(g_state.load());
+    if (s == DiskLootState::Searching)
+    {
+        auto el = std::chrono::duration_cast<std::chrono::seconds>(
+                      std::chrono::steady_clock::now() - g_search_t0)
+                      .count();
+        if (el > kSearchTimeoutSec)
+        {
+            g_state.store(static_cast<int>(DiskLootState::Failed));
+            return DiskLootState::Failed;
+        }
+    }
+    return s;
+}
+
+fs::path disk_loot_dir()
+{
+    std::lock_guard<std::mutex> lk(g_dir_mtx);
+    return g_resolved_dir;
+}
+
+void on_map_opened_path(const wchar_t *full_path)
+{
+    if (!full_path || !config::lootFromDiskMsb) return;
+    if (static_cast<DiskLootState>(g_state.load()) == DiskLootState::Found) return;  // already have it
+    std::error_code ec;
+    fs::path dir = fs::path(full_path).lexically_normal().parent_path();  // ...\map\MapStudio
+    if (dir.empty()) return;
+    {
+        std::lock_guard<std::mutex> lk(g_dir_mtx);
+        g_resolved_dir = dir;
+    }
+    g_state.store(static_cast<int>(DiskLootState::Found));
+    spdlog::info("[LOOTDISK] map dir discovered via CreateFileW fallback: {}", dir.string());
+}
+
 std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots)
 {
     std::vector<DiskTreasure> out;
-    fs::path dir = resolve_map_dir();
+    ensure_map_dir_resolved();      // ancestor-walk → Found/Searching (CreateFileW completes it)
+    fs::path dir = disk_loot_dir(); // empty until Found (ancestor-walk or the observer)
     if (dir.empty())
     {
-        spdlog::warn("[LOOTDISK] no map\\MapStudio dir found (set loot_msb_dir) — disk loot off");
+        spdlog::warn("[LOOTDISK] no map\\MapStudio dir yet (ancestor-walk empty; awaiting "
+                     "CreateFileW discovery or set loot_msb_dir) — disk loot deferred");
         return out;
     }
     spdlog::info("[LOOTDISK] reading MSBs from {}", dir.string());

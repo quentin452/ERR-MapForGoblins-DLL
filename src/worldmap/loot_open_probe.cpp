@@ -2,6 +2,7 @@
 
 #include "../goblin_config.hpp"
 #include "../modutils.hpp"
+#include "loot_disk.hpp"  // on_map_opened_path — CreateFileW map-dir discovery
 
 #include <spdlog/spdlog.h>
 
@@ -58,24 +59,33 @@ HANDLE WINAPI hk_create_file_w(LPCWSTR name, DWORD access, DWORD share, LPSECURI
                                DWORD disp, DWORD flags, HANDLE tmpl)
 {
     const bool is_map = ends_msb_dcx(name);
+    const bool verbose = is_map && config::diagMapOpens;
     LARGE_INTEGER t0{};
-    if (is_map) QueryPerformanceCounter(&t0);
+    if (verbose) QueryPerformanceCounter(&t0);
 
     HANDLE h = o_create_file_w(name, access, share, sa, disp, flags, tmpl);
 
     if (is_map)
     {
-        LARGE_INTEGER t1{};
-        QueryPerformanceCounter(&t1);
-        const double open_us =
-            g_qpf.QuadPart ? (double)(t1.QuadPart - t0.QuadPart) * 1e6 / (double)g_qpf.QuadPart : 0.0;
-        const long n = ++g_map_opens;
-        const bool ok = (h != INVALID_HANDLE_VALUE);
-        if (n <= 30)
-            spdlog::info("[MAPOPEN #{}] +{:.0f}ms  open={:.0f}us  {}  {}", n, ms_since_armed(t1),
-                         open_us, ok ? "ok" : "FAIL", to_utf8(name));
-        else if (n == 31)
-            spdlog::info("[MAPOPEN] (further .msb.dcx opens suppressed; still counting)");
+        // Discovery: feed the real resolved path to the disk-loot map-dir fallback
+        // (cheap no-op once the dir is Found). This is what completes a Searching
+        // state when the ancestor-walk missed the mod's map folder.
+        on_map_opened_path(name);
+        if (verbose)
+        {
+            LARGE_INTEGER t1{};
+            QueryPerformanceCounter(&t1);
+            const double open_us = g_qpf.QuadPart
+                                       ? (double)(t1.QuadPart - t0.QuadPart) * 1e6 / (double)g_qpf.QuadPart
+                                       : 0.0;
+            const long n = ++g_map_opens;
+            const bool ok = (h != INVALID_HANDLE_VALUE);
+            if (n <= 30)
+                spdlog::info("[MAPOPEN #{}] +{:.0f}ms  open={:.0f}us  {}  {}", n, ms_since_armed(t1),
+                             open_us, ok ? "ok" : "FAIL", to_utf8(name));
+            else if (n == 31)
+                spdlog::info("[MAPOPEN] (further .msb.dcx opens suppressed; still counting)");
+        }
     }
     return h;
 }
@@ -83,7 +93,9 @@ HANDLE WINAPI hk_create_file_w(LPCWSTR name, DWORD access, DWORD share, LPSECURI
 
 void install_map_open_probe()
 {
-    if (!config::diagMapOpens) return;
+    // Armed when the verbose probe is on OR the disk-loot feature is on (the
+    // observer doubles as the map-dir discovery fallback — see on_map_opened_path).
+    if (!config::diagMapOpens && !config::lootFromDiskMsb) return;
     QueryPerformanceFrequency(&g_qpf);
     QueryPerformanceCounter(&g_armed);
     HMODULE k = GetModuleHandleW(L"kernel32.dll");
@@ -96,9 +108,10 @@ void install_map_open_probe()
     try
     {
         modutils::hook(fn, (void *)&hk_create_file_w, (void **)&o_create_file_w);
-        spdlog::info("[MAPOPEN] probe armed — hooking kernel32!CreateFileW, logging *.msb.dcx opens. "
-                     "If you see ZERO [MAPOPEN] lines after opening the map, the engine bypasses "
-                     "CreateFileW (retry via NtCreateFile).");
+        spdlog::info("[MAPOPEN] CreateFileW observer armed ({}{}). Watches *.msb.dcx opens.",
+                     config::lootFromDiskMsb ? "map-dir discovery" : "",
+                     config::diagMapOpens ? (config::lootFromDiskMsb ? " + verbose log" : "verbose log")
+                                          : "");
     }
     catch (const std::exception &e)
     {

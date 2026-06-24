@@ -17,6 +17,7 @@
 #include <spdlog/spdlog.h>
 
 #include <array>
+#include <atomic>
 #include <string>
 #include <unordered_map>
 #include <mutex>
@@ -302,9 +303,38 @@ void build_buckets_impl()
     build_live_bosses();
 }
 
-// Build the buckets exactly once (thread-safe). Both the setup_mod prebuild and
-// the lazy markers()/census paths funnel through here; call_once serializes them.
-void ensure_buckets() { std::call_once(g_build_once, build_buckets_impl); }
+// Disk-loot build guard. The disk source may resolve its map dir LATE (CreateFileW
+// discovery, ~30s after init) — std::call_once can't model "build when the dir is
+// finally Found", so the feature-on path uses this manual once-guard instead. The
+// build is re-attempted by every ensure_buckets() call (markers()/census, per map
+// frame) and fires the moment the state reaches Found.
+std::atomic<bool> g_disk_built{false};
+std::mutex        g_disk_build_mtx;
+void build_disk_once()
+{
+    if (g_disk_built.load()) return;
+    std::lock_guard<std::mutex> lk(g_disk_build_mtx);
+    if (g_disk_built.load()) return;
+    build_buckets_impl();
+    g_disk_built.store(true);
+}
+
+// Build the buckets exactly once (thread-safe). When the disk source is OFF, the
+// bake is the source and the build runs immediately (std::call_once). When it's
+// ON, the disk map dir is REQUIRED: build only once it's Found (ancestor-walk or
+// the CreateFileW observer); Searching/Failed leave the buckets empty so the
+// overlay shows its "maps not found" state instead of stale/bake markers.
+void ensure_buckets()
+{
+    if (!goblin::config::lootFromDiskMsb)
+    {
+        std::call_once(g_build_once, build_buckets_impl);
+        return;
+    }
+    ensure_map_dir_resolved();
+    if (disk_loot_state() == DiskLootState::Found)
+        build_disk_once();
+}
 } // namespace
 
 void prebuild_markers() { ensure_buckets(); }

@@ -153,9 +153,11 @@ static void setup_mod()
     // lazily on first map build when config loot_from_disk_msb is on).
     goblin::worldmap::set_mod_folder(g_mod_folder);
 
-    // Diagnostic (config diag_map_opens, default off): arm the CreateFileW probe now
-    // — BEFORE enable_hooks() applies the queued batch and before the game streams
-    // any map — so it captures the real .msb.dcx open paths + timing.
+    // Arm the CreateFileW map-open observer now — BEFORE enable_hooks() applies the
+    // queued batch and before the game streams any map. It serves two roles (armed
+    // when loot_from_disk_msb OR diag_map_opens is on): the map-dir DISCOVERY
+    // fallback (completes a Searching state when the ancestor-walk missed the mod's
+    // map folder) and the verbose [MAPOPEN] diagnostic log.
     goblin::worldmap::install_map_open_probe();
 
     // AOB signature health check — logs PASS/FAIL for every centralized signature

@@ -24,6 +24,7 @@
 #include "worldmap/map_entry_layer.hpp"  // goblin::worldmap::MapEntryLayer
 #include "worldmap/map_renderer.hpp"     // goblin::worldmap::render_markers
 #include "worldmap/category_meta.hpp"    // baked→GPU icon migration counters (F1 panel)
+#include "worldmap/loot_disk.hpp"        // disk_loot_state — F1 "maps not found" error
 #include "generated_shared/goblin_overlay_icons.hpp" // ATLAS_PNG category-icon atlas
 #include "stb_image.h"                                // stbi_load_from_memory (PNG decode)
 #include "goblin_bench.hpp"                           // GOBLIN_BENCH scoped timers
@@ -1268,6 +1269,31 @@ namespace
     void draw_panel()
     {
         ImGuiIO &io = ImGui::GetIO();
+
+        // Disk-loot maps definitively not found (ancestor-walk AND the CreateFileW
+        // observer came up empty within the timeout) → the disk source is REQUIRED
+        // when loot_from_disk_msb is on, so replace the whole panel with a red error
+        // instead of drawing an empty/misleading map.
+        if (goblin::worldmap::disk_loot_state() == goblin::worldmap::DiskLootState::Failed)
+        {
+            ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
+            ImGui::Begin("Map for Goblins##error", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.25f, 0.25f, 1.0f));
+            ImGui::TextUnformatted("Map for Goblins — ERREUR");
+            ImGui::Separator();
+            ImGui::TextWrapped("Le dossier des cartes du mod (map\\MapStudio\\*.msb.dcx) est "
+                               "introuvable. Le mod ne peut pas charger ses marqueurs.");
+            ImGui::PopStyleColor();
+            ImGui::Spacing();
+            std::string sd = goblin::worldmap::disk_loot_dir().string();
+            if (!sd.empty())
+                ImGui::TextDisabled("Dernier chemin cherché: %s", sd.c_str());
+            ImGui::TextDisabled("Renseigne 'loot_msb_dir' dans MapForGoblins.ini, ou mets");
+            ImGui::TextDisabled("'loot_from_disk_msb = false' pour la base intégrée.");
+            ImGui::End();
+            return;
+        }
+
         if (!g_large)
         {
             // Compact widget: a small corner pill that expands to the full panel.
