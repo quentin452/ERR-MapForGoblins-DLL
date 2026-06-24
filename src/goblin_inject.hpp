@@ -329,6 +329,13 @@ namespace goblin
     // disk collectible source (loot_collectibles) — no bake, no manual model→item map.
     uint32_t aeg_pickup_lot(uint32_t aegRow);
 
+    // Live category fallback when item_marker_category() (baked ITEM_ICONS) misses:
+    // derives a GENERIC MFG Category from the LIVE item type (EquipParamGoods.goodsType
+    // for goods, the lot category for equipment). Takes the offset-encoded item key
+    // (encode_live_item). -1 if unknown. Makes the disk loot/collectible source work for
+    // any mod's items, not just ones the ERR bake classified.
+    int classify_item_live(int32_t key);
+
     // Count of icons harvested so far (dev/diagnostic — shown in the P2b test panel).
     size_t harvested_count();
 

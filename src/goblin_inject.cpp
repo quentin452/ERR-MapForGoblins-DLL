@@ -4211,6 +4211,52 @@ uint32_t goblin::aeg_pickup_lot(uint32_t aegRow)
     return lot;
 }
 
+// EquipParamGoods row (176 bytes; goodsType u8 @ +0x3e — offset confirmed vs raw rows).
+struct RawGoodsRow { uint8_t b[176]; };
+
+// goodsType of an EquipParamGoods row (ER EQUIP_GOODS_TYPE), or -1 if absent.
+static int goods_type_live(int32_t goods_id)
+{
+    static std::optional<from::params::ParamTableSequence<RawGoodsRow>> s_seq;
+    static std::once_flag s_once;
+    static bool s_ok = false;
+    std::call_once(s_once, [] {
+        try { s_seq.emplace(from::params::get_param<RawGoodsRow>(L"EquipParamGoods"));
+              s_ok = true; } catch (...) { s_ok = false; }
+    });
+    if (!s_ok || goods_id <= 0) return -1;
+    RawGoodsRow *r = s_seq->try_get((uint64_t)goods_id);
+    return r ? (int)r->b[0x3e] : -1;
+}
+
+// Live category fallback for the disk-loot path: when the baked ITEM_ICONS classifier
+// misses (an item the ERR bake didn't include, or ANY item from another mod), derive a
+// GENERIC category from the LIVE item type so the marker still shows. Takes the
+// offset-encoded item key (encode_live_item) and decodes it back. Returns -1 only when
+// the item type is genuinely unknown. Makes the collectible source truly mod-agnostic.
+int goblin::classify_item_live(int32_t key)
+{
+    using C = goblin::generated::Category;
+    if (key <= 0) return -1;
+    // Decode the +Nx100M offset encoding back to (item_id, ItemLotParam category).
+    if (key >= 500000000) // goods
+    {
+        int32_t gid = key - 500000000;
+        switch (goods_type_live(gid))
+        {
+            case 2:  return (int)C::LootCraftingMaterials;  // gather mats (Bloodrose, fireflies, ...)
+            case 14: return (int)C::LootSmithingStones;     // reinforcement (Smithing Stones, Golden Ore)
+            case 0:  return (int)C::LootConsumables;        // normal consumable
+            default: return (int)C::LootCraftingMaterials;  // catch-all (currencies, misc gather)
+        }
+    }
+    if (key >= 400000000) return (int)C::EquipAshesOfWar;   // gem
+    if (key >= 300000000) return (int)C::EquipTalismans;    // accessory
+    if (key >= 200000000) return (int)C::EquipArmour;       // protector
+    if (key >= 100000000) return (int)C::EquipArmaments;    // weapon (ammo folds here too)
+    return -1;
+}
+
 // One-shot field dump to RE the real per-item "obtained" flag (see the findings doc).
 // For up to ~6 markers per category, log every candidate flag and its live SET/unset
 // state. Run on a 100% save: the candidate that reads SET for a known-collected item is

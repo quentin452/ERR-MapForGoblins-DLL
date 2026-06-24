@@ -183,9 +183,10 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
         // live (the lot-backed path) — exactly like a baked lot-backed row.
         int32_t key = goblin::resolve_loot_item_textid(t.lotId, 1, -1);
         int c = goblin::item_marker_category(key);
+        if (c < 0) c = goblin::classify_item_live(key);  // live fallback (any mod / unbaked item)
         if (c < 0 || c >= NUM_CAT)
         {
-            ++unclassified;  // item not in the ITEM_ICONS classifier → no bucket
+            ++unclassified;  // item type genuinely unknown → no bucket
             continue;
         }
         push_marker(/*row_id=*/t.lotId, d, c, t.lotId, /*lotType=*/1);
@@ -220,6 +221,7 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         if (treasure_lots.count(lot)) { ++dup; continue; }  // a Treasure ground-item, already placed
         int32_t key = goblin::resolve_loot_item_textid(lot, 1, -1);
         int cat = goblin::item_marker_category(key);
+        if (cat < 0) cat = goblin::classify_item_live(key);  // live fallback (any mod / unbaked item)
         if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
         d.areaNo = c.area;
