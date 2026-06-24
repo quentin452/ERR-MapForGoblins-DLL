@@ -728,7 +728,16 @@ void goblin::setup_messages()
     // marker can be relabeled to any randomized item at runtime. Offsets match
     // the encoding above; the targeted copies stay (they're a subset, deduped
     // first-wins by patch_fmg_in_memory). Gated — off by default it adds nothing.
-    if (goblin::config::liveLootLabels)
+    //
+    // Disk loot sources (loot_from_disk_msb / loot_collectibles) need the same
+    // preload for a different reason: they resolve item identity LIVE from
+    // ItemLotParam and are discovered later on the build worker, so they can
+    // point a marker at ANY item id — AEG gather goods, randomized equip in a
+    // pot — that the bake never referenced. goods_ids_needed above walks only
+    // baked MAP_ENTRIES, so those ids were never collected and the tooltip label
+    // resolves to "" (no name). Preloading the whole name-space here covers them.
+    if (goblin::config::liveLootLabels ||
+        goblin::config::lootFromDiskMsb || goblin::config::lootCollectibles)
     {
         GOBLIN_BENCH("messages.live_loot_all");
         copy_fmg_all_layered(goods_slots, 500000000, "GoodsName", false);
