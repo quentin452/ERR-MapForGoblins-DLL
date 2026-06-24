@@ -75,9 +75,14 @@ Recovering them would require multi-hop tracing of the trigger flag (X0_4) to
 whatever sets it (region enter / boss kill / quest step) — usually no single point.
 
 ### The 318 ERR-custom (m60_44_60)
-`lotId 1044600000..`, `eventFlag == itemLotId`, ERR-Reforged additions ("Artifact
-Piece", "Dread Essence"). **Locationless by design** (custom grant/shop mechanic, no
-world placement) → correctly excluded from the map.
+`lotId 1044600000..1044604591`, `eventFlag == itemLotId`, all in the virtual
+container tile `m60_44_60_00`, all consumables — exactly **3 ERR-Reforged currency
+items**: **Dread Essence ×159, Artifact Piece ×128, Artifact Enhancer Piece ×31**.
+This is a **distribution pool**: ~318 `ItemLotParam_map` rows that hand out the 3
+craft/upgrade currencies; the real in-world instance (if any) is delivered by the ERR
+drop/grant mechanic — the position lives in whatever drops them (enemy/treasure lots),
+not in these virtual rows. **Locationless by design** → correctly excluded (318
+"Dread Essence" pins at map origin would be nonsense).
 
 ## Why the existing #2 tooling resolved 0/748
 `tools/scan_emevd_awards.py` → `data/emevd_lot_mapping.json` (585 lots) +
