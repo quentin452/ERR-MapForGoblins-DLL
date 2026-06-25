@@ -4211,6 +4211,39 @@ uint32_t goblin::aeg_pickup_lot(uint32_t aegRow)
     return lot;
 }
 
+// NpcParam row (736 bytes = NPC_PARAM_ST DetectedSize; itemLotId_enemy s32 @ +0x30,
+// itemLotId_map s32 @ +0x34 — offsets pinned vs the applied paramdef, see memory
+// msbe-enemy-loot-offsets / docs/re/windows_enemy_loot_nobake_analysis.md).
+struct RawNpcRow { uint8_t b[736]; };
+
+// Resolve a placed enemy's drop lot LIVE: the disk parser gives the npcParamId (from
+// MSB Parts.Enemies); this returns its NpcParam item lot, preferring itemLotId_map
+// (an ItemLotParam_map row, *lotType=1) over itemLotId_enemy (ItemLotParam_enemy,
+// *lotType=2) — the same precedence as the offline pipeline. 0 if the NPC drops
+// nothing / the row is absent. Item identity then comes from resolve_loot_item_textid.
+uint32_t goblin::npc_loot_lot(uint32_t npcParamId, uint8_t *lotTypeOut)
+{
+    if (lotTypeOut) *lotTypeOut = 0;
+    if (npcParamId == 0) return 0;
+    static std::optional<from::params::ParamTableSequence<RawNpcRow>> s_seq;
+    static std::once_flag s_once;
+    static bool s_ok = false;
+    // Worker-thread safe (same rationale as resolve_loot_item_textid / aeg_pickup_lot).
+    std::call_once(s_once, [] {
+        try { s_seq.emplace(from::params::get_param<RawNpcRow>(L"NpcParam"));
+              s_ok = true; } catch (...) { s_ok = false; }
+    });
+    if (!s_ok) return 0;
+    RawNpcRow *row = s_seq->try_get((uint64_t)npcParamId);
+    if (!row) return 0;
+    int32_t lotMap, lotEnemy;
+    std::memcpy(&lotMap, row->b + 0x34, 4);
+    std::memcpy(&lotEnemy, row->b + 0x30, 4);
+    if (lotMap > 0) { if (lotTypeOut) *lotTypeOut = 1; return (uint32_t)lotMap; }
+    if (lotEnemy > 0) { if (lotTypeOut) *lotTypeOut = 2; return (uint32_t)lotEnemy; }
+    return 0;
+}
+
 // EquipParamGoods row (176 bytes; goodsType u8 @ +0x3e — offset confirmed vs raw rows).
 struct RawGoodsRow { uint8_t b[176]; };
 

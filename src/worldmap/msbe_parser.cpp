@@ -44,6 +44,8 @@ std::string rd_utf16(const uint8_t *b, size_t o, size_t len)
 constexpr uint32_t EVENT_TYPE_TREASURE = 4;
 constexpr int SEC_EVENT = 1; // PARAM section order: MODEL,EVENT,POINT,ROUTE,LAYER,PARTS
 constexpr int SEC_PARTS = 5;
+// MSBE PartsParam part-type (@ PART entry +0x0c). 2 = Enemy (the enemy-drop source).
+constexpr int32_t PART_ENEMY = 2;
 
 // Parse "AEG{A}_{B}..." -> A*1000+B (= AssetEnvironmentGeometryParam row id).
 // 0 if the name isn't an AEG asset. e.g. "AEG099_821_9000" -> 99821.
@@ -65,7 +67,7 @@ inline uint32_t aeg_row_from_name(const std::string &n)
 } // namespace
 
 ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase,
-                      bool wantAssets)
+                      bool wantAssets, bool wantEnemies)
 {
     ParseResult R;
     if (len < 0x10 || std::memcmp(buf, "MSB ", 4) != 0) return R;
@@ -171,6 +173,36 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             a.pos[1] = rdf(buf, pe + 0x24);
             a.pos[2] = rdf(buf, pe + 0x28);
             R.assets.push_back(std::move(a));
+        }
+    }
+
+    // Enemy drops: enumerate every Enemy part (type 2) with its NPCParamID + block-local
+    // position. The caller resolves each npcParamId -> NpcParam.itemLotId_map/_enemy ->
+    // ItemLotParam LIVE. NPCParamID lives in the Enemy typeData sub-struct: the u64 pointer
+    // @ part+0x68 (entry-relative on disk / absolute VA resident, same eio() rule), then the
+    // u32 @ +0x0c inside it. Pinned 26277/26277 vs SoulsFormats (probe_enemy_npc_offset.py).
+    if (wantEnemies)
+    {
+        for (uint32_t i = 0; i < PT.entries; i++)
+        {
+            size_t pe = (size_t)rd64(buf, PT.entryArr + (size_t)i * 8);
+            if (!inb(pe, 0x70, len)) continue;
+            if ((int32_t)rd32(buf, pe + 0x0c) != PART_ENEMY) continue;
+            uint64_t tdOff = rd64(buf, pe + 0x68);
+            if (tdOff == 0) continue;
+            size_t tdp = eio(tdOff, pe);
+            if (!inb(tdp, 0x10, len)) continue;
+            uint32_t npc = rd32(buf, tdp + 0x0c);
+            if (npc == 0 || npc == 0xffffffffu) continue;
+            size_t nm = eio(rd64(buf, pe + 0x00), pe);
+            if (nm >= len) continue;
+            Enemy en;
+            en.name = rd_utf16(buf, nm, len);
+            en.npcParamId = npc;
+            en.pos[0] = rdf(buf, pe + 0x20);
+            en.pos[1] = rdf(buf, pe + 0x24);
+            en.pos[2] = rdf(buf, pe + 0x28);
+            R.enemies.push_back(std::move(en));
         }
     }
 

@@ -141,7 +141,10 @@ bool parse_tile(const std::string &stem, int &area, int &gx, int &gz)
 
 void set_mod_folder(const fs::path &p) { g_mod_folder = p; }
 
-bool disk_source_enabled() { return config::lootFromDiskMsb || config::lootCollectibles; }
+bool disk_source_enabled()
+{
+    return config::lootFromDiskMsb || config::lootCollectibles || config::lootEnemyDrops;
+}
 
 void ensure_map_dir_resolved()
 {
@@ -220,10 +223,12 @@ void on_map_opened_path(const wchar_t *full_path)
 void set_build_trigger(void (*fn)()) { g_build_trigger = fn; }
 
 std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots,
-                                              std::vector<DiskCollectible> *collectibles)
+                                              std::vector<DiskCollectible> *collectibles,
+                                              std::vector<DiskEnemy> *enemies)
 {
     std::vector<DiskTreasure> out;
     const bool wantAssets = collectibles != nullptr;
+    const bool wantEnemies = enemies != nullptr;
     ensure_map_dir_resolved();      // ancestor-walk → Found/Searching (CreateFileW completes it)
     fs::path dir = disk_loot_dir(); // empty until Found (ancestor-walk or the observer)
     if (dir.empty())
@@ -264,7 +269,7 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
             continue;
         }
         msbe::ParseResult r = msbe::parse_msb(msb.data(), msb.size(), /*resident=*/false,
-                                              /*blobBase=*/0, wantAssets);
+                                              /*blobBase=*/0, wantAssets, wantEnemies);
         if (!r.ok)
         {
             spdlog::warn("[LOOTDISK] parse failed: {}", name);
@@ -284,6 +289,21 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
                 c.posX = a.pos[0];
                 c.posZ = a.pos[2];
                 collectibles->push_back(c);
+            }
+        }
+
+        if (wantEnemies)
+        {
+            for (const auto &en : r.enemies)
+            {
+                DiskEnemy e;
+                e.npcParamId = en.npcParamId;
+                e.area = (uint8_t)area;
+                e.gx = (uint8_t)gx;
+                e.gz = (uint8_t)gz;
+                e.posX = en.pos[0];
+                e.posZ = en.pos[2];
+                enemies->push_back(e);
             }
         }
 
@@ -322,6 +342,8 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
     }
     spdlog::info("[LOOTDISK] {} _00 MSBs parsed ({} positioned treasures, {} inert DummyAsset "
                  "dropped; reachable dummies kept); {} KRAK skipped", parsed, withPart, dummies, kraks);
+    if (wantEnemies)
+        spdlog::info("[LOOTDISK] {} enemy placements parsed (with NPCParamID)", enemies->size());
     return out;
 }
 } // namespace goblin::worldmap

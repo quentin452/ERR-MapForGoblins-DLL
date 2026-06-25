@@ -55,6 +55,7 @@ namespace goblin::config
     bool lootFromDiskMsb = false;  // opt-in: loot positions from the mod's real MSBs
     std::string lootMsbDir = "";   // empty = auto-detect map\MapStudio
     bool lootCollectibles = false; // opt-in: AEG gather/collectible markers from disk MSBs + AssetEnvironmentGeometryParam
+    bool lootEnemyDrops = false;   // opt-in: enemy-drop markers from disk MSBs (Parts.Enemies → NpcParam → ItemLotParam)
 
     bool redifyBossIcons = false;
     bool graceOverlay = true;        // our graces are the default map source now (validated)
@@ -218,6 +219,12 @@ namespace
                   "hides the gather clutter (fireflies, excrement, mosses; goodsType 2) while\n"
                   "show_smithing_stones keeps the stones (goodsType 14), show_consumables the\n"
                   "consumables (goodsType 0). Toggle them live in the overlay panel too."),
+                B("loot_enemy_drops", lootEnemyDrops, "false",
+                  "EXPERIMENTAL. Add markers for enemy-drop loot read straight from the disk\n"
+                  "MSBs: each Enemy placement's NPCParamID -> NpcParam.itemLotId_map (pref) /\n"
+                  "itemLotId_enemy -> ItemLotParam (all live, no bake). Position = the enemy\n"
+                  "placement. Replaces the matching baked enemy markers. Uses the same map dir\n"
+                  "as loot_from_disk_msb. Off by default."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("show_all", showAll, "false",

@@ -292,6 +292,50 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
     }
 }
 
+// Enemy-drop markers (config loot_enemy_drops): each placed Enemy part whose
+// NPCParamID resolves a NpcParam item lot becomes a marker. Identity/category come
+// LIVE from that lot (resolve_loot_item_textid), exactly like the treasure/collectible
+// paths — no bake. The position is the enemy placement (same world transform). Each
+// placed lot is added to `covered` so the baked LootSource::Enemy row it covers is
+// dropped below (an enemy provenance guard). One marker PER placement (a roaming-rune
+// enemy type shares one npc/lot across many placements, each its own spot).
+static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
+                                     const std::unordered_set<uint32_t> &treasure_lots,
+                                     std::unordered_set<uint32_t> &covered)
+{
+    GOBLIN_BENCH("build.disk_enemies");
+    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0;
+    const bool verbose = goblin::config::diagLootPos;
+    std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
+    for (const DiskEnemy &en : enemies)
+    {
+        uint8_t lt = 0;
+        uint32_t lot = goblin::npc_loot_lot(en.npcParamId, &lt);  // live NpcParam chain
+        if (lot == 0) { ++no_lot; continue; }
+        if (treasure_lots.count(lot)) { ++dup; continue; }  // already a Treasure ground item
+        int32_t key = goblin::resolve_loot_item_textid(lot, lt, -1);
+        int cat = goblin::item_marker_category(key);
+        if (cat < 0) cat = goblin::classify_item_live(key);  // live fallback (any mod / unbaked)
+        if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = en.area;
+        d.gridXNo = en.gx;
+        d.gridZNo = en.gz;
+        d.posX = en.posX;
+        d.posZ = en.posZ;
+        push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/lt);  // one per placement
+        covered.insert(lot);  // drops the matching baked LootSource::Enemy row
+        ++emitted;
+        if (verbose) ++per_cat[cat];
+    }
+    spdlog::info("[LOOTDISK] enemy drops: {} markers emitted ({} placements total, {} npc-has-no-lot, "
+                 "{} treasure-dup, {} unclassified)",
+                 emitted, (int)enemies.size(), no_lot, dup, unclassified);
+    if (verbose)
+        for (auto &[cat, n] : per_cat)
+            spdlog::info("[LOOTDISK]   enemy-drop category index {} = {} markers", cat, n);
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
 // Runs exactly once — wrapped by ensure_buckets()/std::call_once.
@@ -307,24 +351,31 @@ void build_buckets_impl()
     std::unordered_set<uint32_t> disk_lots;
     std::unordered_map<uint32_t, uint32_t> disk_lot_tile;  // lotId → packed tile (diag)
     std::vector<uint32_t> dropped_dummy_lots;              // DummyAsset lots we dropped
+    // Enemy-drop lots the disk enemy pass placed (lootEnemyDrops). Kept SEPARATE from
+    // disk_lots: baked enemy rows are lotType 2, dropped by their own provenance guard
+    // below — never via the lotType-1 treasure-replace path.
+    std::unordered_set<uint32_t> enemy_disk_lots;
     if (disk_source_enabled())
     {
-        // One disk read pass for both sources. Collectibles requested only when on.
+        // One disk read pass for all sources. Each out-vector requested only when on.
         std::vector<DiskCollectible> disk_collectibles;
+        std::vector<DiskEnemy> disk_enemies;
         std::vector<DiskTreasure> treasures = load_disk_treasures(
             &dropped_dummy_lots,
-            goblin::config::lootCollectibles ? &disk_collectibles : nullptr);
+            goblin::config::lootCollectibles ? &disk_collectibles : nullptr,
+            goblin::config::lootEnemyDrops ? &disk_enemies : nullptr);
         if (goblin::config::lootFromDiskMsb)
             build_disk_loot_markers(treasures, disk_lots, disk_lot_tile);
-        if (goblin::config::lootCollectibles)
-        {
-            // All MSB Treasure lots (the ground-item pickup assets) — skip these in
-            // the collectible pass so they aren't double-placed. Built from the parsed
-            // treasures directly, so it's correct even when loot_from_disk_msb is off.
-            std::unordered_set<uint32_t> treasure_lots;
+        // All MSB Treasure lots (the ground-item pickup assets) — used to skip
+        // double-placing in the collectible/enemy passes. Built from the parsed
+        // treasures directly, so it's correct even when loot_from_disk_msb is off.
+        std::unordered_set<uint32_t> treasure_lots;
+        if (goblin::config::lootCollectibles || goblin::config::lootEnemyDrops)
             for (const DiskTreasure &t : treasures) treasure_lots.insert(t.lotId);
+        if (goblin::config::lootCollectibles)
             build_disk_collectible_markers(disk_collectibles, treasure_lots, disk_lots);
-        }
+        if (goblin::config::lootEnemyDrops)
+            build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots);
     }
 
     // Diagnostic sets: which baked lotIds exist as map-loot (lotType 1) vs as ANY
@@ -338,8 +389,9 @@ void build_buckets_impl()
     std::unordered_set<uint32_t> baked_lot1, baked_any;
 
     int replaced = 0;
+    int replaced_enemy = 0;  // baked Enemy rows dropped because the disk enemy pass covers them
     int debake_gap = 0;  // Treasure-sourced baked rows the disk did NOT cover (de-bake blocker)
-    int enemy_markers = 0;  // [ENEMY-MARKERS] baked enemy-drop rows (LootSource::Enemy)
+    int enemy_markers = 0;  // [ENEMY-MARKERS] baked enemy-drop rows NOT covered by the disk pass
     for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
     {
         const gen::MapEntry &e = gen::MAP_ENTRIES[i];
@@ -370,6 +422,15 @@ void build_buckets_impl()
             ++replaced;
             continue;
         }
+        // Enemy-drop disk source (loot_enemy_drops) owns this lot → drop the baked
+        // LootSource::Enemy row (lotType 2). Its own guard, separate from the lotType-1
+        // treasure-replace: the live Parts.Enemies + NpcParam pass reproduces this drop.
+        if (!enemy_disk_lots.empty() && e.loot_source == gen::LootSource::Enemy &&
+            e.lotId != 0 && enemy_disk_lots.count(e.lotId))
+        {
+            ++replaced_enemy;
+            continue;
+        }
         // [DEBAKE-GAP] diag (de-bake readiness): a Treasure-sourced row that reaches HERE was
         // NOT replaced — its lot isn't in disk_lots, so the disk source does not reproduce it.
         // These are exactly the rows that would be LOST if the bake's Treasure slice is dropped
@@ -389,31 +450,32 @@ void build_buckets_impl()
             }
         }
         // [ENEMY-MARKERS] diag (de-bake census of the enemy slice): enumerate the baked
-        // enemy-drop rows. Provenance Enemy is ALWAYS lotType 2 (ItemLotParam_enemy), has
-        // NO MSB Treasure event, and the PROVENANCE GUARD above never lets the disk treasure
-        // pass evict it — so today the 119 enemy markers stay baked. The CLEAN no-bake route
-        // is a SEPARATE disk pass (not yet built): MSB Parts.Enemies → NPCParamID →
-        // NpcParam.itemLotId_enemy → ItemLotParam_enemy, with the position taken from the
-        // resident enemy Part (offline-proven in tools/extract_all_items.py, the same chain
-        // that produced these rows). The loaded-loot walker (MapIns+0x460 node {lotId,flag,
-        // FieldIns*}) does NOT pre-locate them: that node only holds SPAWNED/opened loot
-        // (post-kill ground drops), never the resident enemy ChrIns binding — so it is the
-        // wrong runtime tool here. Gated on diag_loot_pos, independent of the disk source.
+        // enemy-drop rows that REACH HERE — i.e. the ones the disk enemy pass did NOT cover
+        // (an enemy DEBAKE-GAP). Provenance Enemy is ALWAYS lotType 2 (ItemLotParam_enemy).
+        // With loot_enemy_drops ON, the MSB Parts.Enemies → NPCParamID → NpcParam pass
+        // reproduces most of them live (dropped by the enemy guard above); whatever survives
+        // is the residual the live pass can't place (npc with no lot, spawn-disabled, or a
+        // lot the bake categorised differently). With the pass OFF, this lists all 119 (the
+        // whole baked enemy slice). The loaded-loot walker (MapIns+0x460 node) does NOT
+        // pre-locate enemy drops — it only holds SPAWNED/opened loot — so the resident
+        // Parts.Enemies pass is the right tool. Gated on diag_loot_pos.
         if (goblin::config::diagLootPos && e.loot_source == gen::LootSource::Enemy)
         {
             ++enemy_markers;
             int32_t key = goblin::resolve_loot_item_textid(e.lotId, e.lotType, -1);
-            spdlog::info("[ENEMY-MARKERS] lot={} m{}_{}_{} cat={} key={} npc={}",
+            spdlog::info("[ENEMY-MARKERS] uncovered lot={} m{}_{}_{} cat={} key={} npc={}",
                          e.lotId, e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
                          static_cast<int>(e.category), key,
                          e.object_name ? e.object_name : "(none baked)");
         }
         push_marker(e.row_id, e.data, c, e.lotId, e.lotType);
     }
+    if (goblin::config::lootEnemyDrops)
+        spdlog::info("[LOOTDISK] replaced {} baked enemy rows with disk enemy placements", replaced_enemy);
     if (goblin::config::diagLootPos)
-        spdlog::info("[ENEMY-MARKERS] {} baked enemy-drop rows (LootSource::Enemy, lotType 2) "
-                     "— no MSB Treasure; no-bakeable only via a future Parts.Enemies + NpcParam pass",
-                     enemy_markers);
+        spdlog::info("[ENEMY-MARKERS] {} baked enemy-drop rows NOT covered by the disk enemy pass "
+                     "(loot_enemy_drops {}); {} covered+replaced",
+                     enemy_markers, goblin::config::lootEnemyDrops ? "ON" : "OFF", replaced_enemy);
     if (diag)
     {
         spdlog::info("[LOOTDISK] replaced {} baked lot rows with disk placements", replaced);

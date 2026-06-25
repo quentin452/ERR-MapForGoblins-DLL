@@ -33,6 +33,16 @@ struct DiskCollectible
     float    posX = 0.0f, posZ = 0.0f;  // Part+0x20 X/Z (block-local; = bake x/z)
 };
 
+// One placed Enemy read from a disk MSB. The drop lot is resolved LIVE by the
+// caller: goblin::npc_loot_lot(npcParamId) → NpcParam.itemLotId_map/_enemy →
+// ItemLotParam → goods. Position = the enemy part (same transform as treasures).
+struct DiskEnemy
+{
+    uint32_t npcParamId = 0;            // MSB Enemy part's NPCParamID (NpcParam row id)
+    uint8_t  area = 0, gx = 0, gz = 0;  // from the tile filename
+    float    posX = 0.0f, posZ = 0.0f;  // Part+0x20 X/Z (block-local; = bake x/z)
+};
+
 // True when any disk-MSB source is enabled (treasure loot OR collectibles); both
 // share the same map-dir discovery + parse pass.
 bool disk_source_enabled();
@@ -49,10 +59,12 @@ void set_mod_folder(const std::filesystem::path &p);
 // caller can flag any "recover-later" lot the bake still backs. (The 3 reachable
 // dummies are now emitted here — no longer bake-dependent.) Logs [LOOTDISK]
 // per-map (debug) + totals. Empty when no dir.
-// When `collectibles` is non-null, also enumerate AEG collectible assets into it
-// (one disk read pass for both sources).
+// When `collectibles` is non-null, also enumerate AEG collectible assets into it.
+// When `enemies` is non-null, also enumerate Enemy placements into it. All sources
+// share one disk read + parse pass.
 std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots = nullptr,
-                                              std::vector<DiskCollectible> *collectibles = nullptr);
+                                              std::vector<DiskCollectible> *collectibles = nullptr,
+                                              std::vector<DiskEnemy> *enemies = nullptr);
 
 // ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────
 // With loot_from_disk_msb on, the map dir is resolved by ancestor-walk at init

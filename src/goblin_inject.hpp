@@ -329,6 +329,12 @@ namespace goblin
     // disk collectible source (loot_collectibles) — no bake, no manual model→item map.
     uint32_t aeg_pickup_lot(uint32_t aegRow);
 
+    // Placed enemy's drop item-lot, resolved LIVE from NpcParam[npcParamId]: prefers
+    // itemLotId_map (sets *lotTypeOut=1) over itemLotId_enemy (sets *lotTypeOut=2), 0 if
+    // none. npcParamId = the MSB Enemy part's NPCParamID. Feeds the disk enemy-drop source
+    // (loot_enemy_drops) — no bake. See memory msbe-enemy-loot-offsets.
+    uint32_t npc_loot_lot(uint32_t npcParamId, uint8_t *lotTypeOut);
+
     // Live category fallback when item_marker_category() (baked ITEM_ICONS) misses:
     // derives a GENERIC MFG Category from the LIVE item type (EquipParamGoods.goodsType
     // for goods, the lot category for equipment). Takes the offset-encoded item key

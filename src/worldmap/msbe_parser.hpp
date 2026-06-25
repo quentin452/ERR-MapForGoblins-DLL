@@ -56,10 +56,23 @@ struct Asset
     float       pos[3] = {0, 0, 0};  // BLOCK-LOCAL position (= bake x/z transform input)
 };
 
+// A placed Enemy part (PartsParam type 2) — the no-bake source for enemy-drop loot.
+// The drop is resolved LIVE: npcParamId -> NpcParam.itemLotId_map (pref) / itemLotId_enemy
+// -> ItemLotParam (no bake). Position = the enemy part's block-local pos (same transform as
+// treasures). Chain pinned over all ERR maps, see docs/re/windows_enemy_loot_nobake_analysis.md
+// + memory msbe-enemy-loot-offsets.
+struct Enemy
+{
+    std::string name;            // e.g. "c3670_9000" (the ChrIns placement)
+    uint32_t    npcParamId = 0;  // = *(u32)( *(u64)(part+0x68) + 0x0c )  (NpcParam row id)
+    float       pos[3] = {0, 0, 0};  // BLOCK-LOCAL position (part+0x20)
+};
+
 struct ParseResult
 {
     std::vector<Treasure> treasures;
     std::vector<Asset>    assets;   // AEG Asset placements (collectible candidates)
+    std::vector<Enemy>    enemies;  // Enemy placements (enemy-drop candidates)
     bool ok = false;
 };
 
@@ -68,8 +81,10 @@ struct ParseResult
 //   resident=true:         entry-internal offsets are absolute VAs; pass blobBase = VA of buf[0].
 // wantAssets: also enumerate AEG Asset placements into ParseResult.assets (the
 // runtime collectible source). Off by default (skips an extra PARTS pass).
+// wantEnemies: also enumerate Enemy placements (type 2) into ParseResult.enemies
+// (the runtime enemy-drop source). Off by default.
 ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase = 0,
-                      bool wantAssets = false);
+                      bool wantAssets = false, bool wantEnemies = false);
 
 // oo2core's OodleLZ_Decompress (14-arg; x64 ABI unifies __stdcall/__fastcall). Kept as a
 // plain function-pointer typedef so msbe_parser needs no <windows.h>/oo2core link — the DLL

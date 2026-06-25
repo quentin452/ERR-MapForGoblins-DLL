@@ -82,6 +82,11 @@ namespace goblin
         // (read from the same disk MSBs as lootFromDiskMsb). Item identity resolved
         // live via AssetEnvironmentGeometryParam.pickUpItemLotParamId → ItemLotParam.
         extern bool lootCollectibles;
+        // When true, also emit markers for enemy-drop loot derived from the mod's
+        // MSB Parts.Enemies (NPCParamID → NpcParam.itemLotId_map/_enemy → ItemLotParam,
+        // all live). Replaces the matching baked LootSource::Enemy rows. Opt-in; see
+        // memory msbe-enemy-loot-offsets + docs/re/windows_enemy_loot_nobake_analysis.md.
+        extern bool lootEnemyDrops;
         // Directory holding the active mod's map\MapStudio\*.msb.dcx (or the mod
         // root, or a map\ root). Empty = auto-detect: the DLL's own mod folder,
         // then the Elden Ring install dir. Set it to your ModEngine2 mod's map
