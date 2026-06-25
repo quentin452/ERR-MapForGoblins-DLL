@@ -295,13 +295,13 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
     std::unordered_set<uint32_t> rec_flag_lots;
     for (const DiskCollectible &c : collectibles)
     {
-        // Scope to the ERR collectible family ONLY: the gather assets ERR added all use the
-        // "_8xx" model sub-number (AEG{A}_8{BB}, e.g. AEG099_850 Gaseous Stone) and are 100%
-        // ERR-new (0 in vanilla). Everything else with a pickUpItemLotParamId is generic
-        // breakable clutter — pots/jars/corpses (AEG099_68x/72x/73x, AEG463_65x, ~16k of them)
-        // — which would flood the map. (sub = the 3-digit model id; 800-899 = the ERR range.)
-        uint32_t sub = c.aegRow % 1000;
-        if (sub < 800 || sub > 899)
+        // Scope to GATHER NODES via the LIVE native signal (isEnableRepick) — replaces the old
+        // "_8xx model range" heuristic. A gather node respawns + hides until then (the bake's
+        // exact filter); one-shot breakable clutter (pots/jars/corpses, AEG099_68x/72x/73x,
+        // AEG463_65x) is isEnableRepick=false → skipped. This emits EVERY gather node, including
+        // the _6xx/_7xx/_9xx ones the bake's "Material Nodes" category covered (no model table).
+        uint32_t sub = c.aegRow % 1000;  // still used to flag the Rune/Ember Pieces (821/822) below
+        if (!goblin::aeg_is_gather(c.aegRow))
         {
             ++clutter_skip;
             if (verbose)  // size the recoverable corpse-loot inside the excluded clutter
