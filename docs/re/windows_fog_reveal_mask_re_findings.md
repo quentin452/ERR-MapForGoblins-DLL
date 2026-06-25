@@ -1,5 +1,13 @@
 # RE findings — map-fragment FOG-OF-WAR reveal state (gate the overlay markers)
 
+> ⚠️ CORRECTION (2026-06-25): this doc's "踏破エリア / fog-of-war" label is WRONG. Live dump
+> proved every `WorldMapPieceParam.openEventFlagId` is a 62xxx MAP-FRAGMENT flag — so this is the
+> map-fragment REGION reveal (un-grays the art), REDUNDANT with the item-fragment gate, NOT the
+> per-tile walk-explored fog. The real binary per-tile fog (black tile unless discovered) lives in
+> `CS::WorldMapTiledLayer` / `CS::WorldMapTile`. See `windows_worldmap_tile_fog_re_prompt.md`.
+> Everything below is still CORRECT for what it actually is (fragment-region reveal).
+
+
 Answers `docs/re/windows_fog_reveal_mask_re_prompt.md`. Static Ghidra (`D:\ghidra_proj2\ER`,
 scripts `find_fogmask.java` / `find_fogmask2.java`, headless `-process`) + Paramdex cross-ref.
 App 2.6.2.0 / ERR 2.2.9.6, imagebase `0x140000000`. Resolve by AOB.
