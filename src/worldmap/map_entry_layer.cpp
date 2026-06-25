@@ -1494,6 +1494,20 @@ void build_buckets_impl()
                     entities_by_tile[tile].insert(en.entityId);
                 }
             std::vector<DiskEmevd> awards = load_emevd_awards(known_entities, entities_by_tile);
+            // Cause-B recovery (LOD-scope): a DIRECT template award whose entity is NOT a _00
+            // enemy lives only as an overworld LOD proxy in a non-_00 tile (e.g. lot 2045460500's
+            // c5170 in m61_11_11_02). The _00-only enemy scan missed it → the award never placed
+            // (entity-not-an-msb-enemy) → the baked Emevd row stayed residual. Scan the non-_00
+            // tiles for JUST those missing entities and append them to disk_enemies — consumed ONLY
+            // by the emevd join below (the enemy pass + known_entities/boss resolution are already
+            // built, so this adds no LOD phantoms there).
+            std::unordered_set<uint32_t> missing_award_entities;
+            for (const DiskEmevd &a : awards)
+                if (a.lotType == 1 && !a.bossReward && a.entityId &&
+                    !known_entities.count(a.entityId))
+                    missing_award_entities.insert(a.entityId);
+            for (DiskEnemy &e : load_lod_award_entities(missing_award_entities))
+                disk_enemies.push_back(std::move(e));
             build_disk_emevd_markers(awards, disk_enemies, treasure_lots, emevd_disk_lots,
                                      piece_disk_keys);
         }

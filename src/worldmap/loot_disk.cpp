@@ -404,6 +404,66 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
     return out;
 }
 
+std::vector<DiskEnemy> load_lod_award_entities(const std::unordered_set<uint32_t> &wanted)
+{
+    std::vector<DiskEnemy> out;
+    if (wanted.empty()) return out;
+    fs::path dir = disk_loot_dir();
+    if (dir.empty()) return out;
+    msbe::OodleDecompressFn oodle = resolve_oodle();
+    std::unordered_set<uint32_t> remaining = wanted;  // first-occurrence wins; stop once all found
+    int scanned = 0;
+    std::error_code ec;
+    for (auto &de : fs::directory_iterator(dir, ec))
+    {
+        if (remaining.empty()) break;  // all resolved → skip the rest of the non-_00 tiles
+        if (!de.is_regular_file(ec)) continue;
+        const fs::path &p = de.path();
+        std::string name = p.filename().string();
+        std::string lower = name;
+        for (char &c : lower) c = (char)std::tolower((unsigned char)c);
+        if (lower.size() < 8 || lower.compare(lower.size() - 8, 8, ".msb.dcx") != 0) continue;
+        std::string stem = name.substr(0, name.size() - 8);
+        // Non-_00 LOD tiers ONLY: the _00 enemies are already in disk_enemies; this fills the
+        // gap for award entities that exist solely as overworld LOD proxies (_01/_02/_10/_11/_12).
+        // Skip _99 lighting tiles (no parts). The marker tile = the LOD tile (= what the bake used).
+        int a = 0, x = 0, z = 0, lod = -1;
+        if (std::sscanf(stem.c_str(), "m%d_%d_%d_%d", &a, &x, &z, &lod) != 4) continue;
+        if (lod == 0 || lod == 99) continue;
+        if (a < 0 || a > 255 || x < 0 || x > 255 || z < 0 || z > 255) continue;
+        std::vector<uint8_t> dcx = slurp(p);
+        if (dcx.empty()) continue;
+        bool krak = false;
+        std::vector<uint8_t> msb = msbe::dcx_decompress(dcx.data(), dcx.size(), &krak, oodle);
+        if (msb.empty()) continue;
+        // Enemy section only (no assets/regions) — minimal parse for the EntityID → pos join.
+        msbe::ParseResult r = msbe::parse_msb(msb.data(), msb.size(), /*resident=*/false,
+                                              /*blobBase=*/0, /*wantAssets=*/false,
+                                              /*wantEnemies=*/true, /*wantRegions=*/false);
+        if (!r.ok) continue;
+        ++scanned;
+        for (const auto &en : r.enemies)
+        {
+            if (en.entityId == 0 || !remaining.count(en.entityId)) continue;
+            DiskEnemy e;
+            e.npcParamId = en.npcParamId;
+            e.entityId = en.entityId;
+            e.area = (uint8_t)a;
+            e.gx = (uint8_t)x;
+            e.gz = (uint8_t)z;
+            e.posX = en.pos[0];
+            e.posZ = en.pos[2];
+            e.name = en.name;
+            out.push_back(std::move(e));
+            remaining.erase(en.entityId);  // first MSB occurrence wins (mirrors the bake's join)
+        }
+    }
+    spdlog::info("[LOOTDISK] LOD award-entity scan: {}/{} resolved in non-_00 tiles ({} tiles parsed, "
+                 "{} unresolved)", (int)(wanted.size() - remaining.size()), (int)wanted.size(),
+                 scanned, (int)remaining.size());
+    return out;
+}
+
 namespace
 {
 // The mod's event\ dir (sibling of map\MapStudio), holding *.emevd.dcx. Derived from the
