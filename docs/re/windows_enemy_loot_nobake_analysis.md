@@ -230,6 +230,25 @@ cross-tile), and the lot→entity link is in the EMEVD files on disk (`event/*.e
   block-local position. A provenance guard drops the **307** baked `LootSource::Emevd` rows it covers.
   The **222** residual (sequence-base + event-1200) stays baked — future work: ItemLotParam-chain RE
   (shared with the enemy 35 / corpse 30) + the event-1200 flag→lot mechanism.
+  > **★ THE 222 RESIDUAL — FULLY CHARACTERIZED (2026-06-25, `tools/datamine_emevd_residual.py`).** The
+  > 222 split with **0 unrecoverable** = **55 event-1200** + **167 sequence-sibling**:
+  > - **(B) event-1200 (55):** boss unique drops (Catacomb spirit ashes etc.). `common.emevd` ev0 has
+  >   `RunEvent(2000:00, callee=1200, [trigger_flag, lot_id])` → flag→lot. A per-map emevd
+  >   `SetEventFlag(2003:66/69, flag, state=1)` on boss death fires it; that setter event's instructions
+  >   reference the boss's MSB EntityID (boss-preferred, `eid%1000 ∈ 800..899`) = the position. e.g. lot
+  >   20000 (Lhutel) ← entity 30000800. Resolved via **ItemLotParam_enemy (lotType 2)**.
+  > - **(C) sequence-sibling (167):** the contiguous `base+1, base+2, …` rows in ItemLotParam_enemy of a
+  >   base lot from the direct (A) OR event-1200 (B) tier — each is its own award (e.g. 20000 Lhutel →
+  >   20001 Smithing Stone [2]; 20080 → 20081/20082). Walk stops at the first gap (the bake's rule, so a
+  >   chain never bleeds into another NPC's lots).
+  > - **Risk: LOW.** 0 ambiguous boss picks (no setter with >1 ref and no boss-like entity); sibling
+  >   chains are short (histogram 1:102 2:92 3:33 4:14 5:7 6:5).
+  > **Runtime cost:** a 2nd pass on top of the direct one — (B) needs the SetEventFlag scan + a
+  > per-event EntityID cross-reference (the entity set is already the DiskEnemy entityIds), (C) needs a
+  > live ItemLotParam contiguity walk (param try_get) + lotType-2 resolution. NOTE the bake stores ALL
+  > 529 Emevd rows as lotType 1, so the existing lot-only provenance guard already covers them; only the
+  > marker IDENTITY resolve needs lotType 2 (try enemy, fall back to map). Building (C)'s sibling walker
+  > ALSO unblocks the enemy-35 + corpse-30 sibling residuals (SHARED). **DECISION PENDING (quentin).**
   > **RUNTIME-VALIDATED (2026-06-25):** live log with `loot_emevd_drops=true` — 517 EMEVD files →
   > **500 template awards** (exact vs SoulsFormats) → **308 markers emitted** (filtered 163
   > entity-not-an-MSB-enemy, 23 (entity,lot)-dedup, 2 treasure-dup, 4 unclassified) → **300 baked
