@@ -500,7 +500,8 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
 static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
                                      const std::unordered_set<uint32_t> &treasure_lots,
                                      std::unordered_set<uint32_t> &covered,
-                                     std::unordered_set<uint32_t> *parsed_enemy_lots = nullptr)
+                                     std::unordered_set<uint32_t> *parsed_enemy_lots = nullptr,
+                                     std::unordered_set<uint32_t> *parsed_enemy_lots_map = nullptr)
 {
     GOBLIN_BENCH("build.disk_enemies");
     int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, respawn = 0, lot_dup = 0;
@@ -516,6 +517,9 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
         if (parsed_enemy_lots)
             if (int32_t el = goblin::npc_item_lot_enemy(en.npcParamId); el > 0)
                 parsed_enemy_lots->insert((uint32_t)el);
+        if (parsed_enemy_lots_map)
+            if (int32_t ml = goblin::npc_item_lot_map(en.npcParamId); ml > 0)
+                parsed_enemy_lots_map->insert((uint32_t)ml);
         uint8_t lt = 0;
         uint32_t lot = goblin::npc_loot_lot(en.npcParamId, &lt);  // live NpcParam chain
         if (lot == 0) { ++no_lot; continue; }
@@ -1377,7 +1381,8 @@ void build_buckets_impl()
     std::unordered_set<uint32_t> enemy_disk_lots;
     // [ENEMY-MARKERS] diag (lootFromDiskMsb): every parsed enemy's raw itemLotId_enemy — lets the
     // uncovered-baked-Enemy triage split "parsed but uncovered" (recoverable) from "not parsed".
-    std::unordered_set<uint32_t> parsed_enemy_lots;
+    std::unordered_set<uint32_t> parsed_enemy_lots;      // _00 enemies' raw itemLotId_enemy (0x30)
+    std::unordered_set<uint32_t> parsed_enemy_lots_map;  // _00 enemies' raw itemLotId_map (0x34)
     // EMEVD-scripted award lots the disk EMEVD pass placed (lootEmevdDrops). Like the
     // enemy guard, kept SEPARATE: baked Emevd rows are dropped by their own provenance
     // guard below (LootSource::Emevd), never via the lotType-1 treasure-replace.
@@ -1476,7 +1481,8 @@ void build_buckets_impl()
         }
         if (goblin::config::lootEnemyDrops)
             build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots,
-                                     goblin::config::lootFromDiskMsb ? &parsed_enemy_lots : nullptr);
+                                     goblin::config::lootFromDiskMsb ? &parsed_enemy_lots : nullptr,
+                                     goblin::config::lootFromDiskMsb ? &parsed_enemy_lots_map : nullptr);
         if (goblin::config::lootEmevdDrops)
         {
             // The event-1200 (mechanism B) join needs the MSB enemy EntityIDs to resolve
@@ -1734,37 +1740,33 @@ void build_buckets_impl()
     if (goblin::config::diagEnemyAllTiers)
     {
         std::vector<DiskEnemy> nonlod = load_disk_enemies_nonlod();
-        // CLEAN intersection test (no npc_loot_lot map-preference, no respawn pre-filter): is each of
-        // the 35 uncovered baked-Enemy lots the RAW itemLotId_enemy (0x30) of ANY parsed enemy — _00
-        // OR non-_00? parsed_enemy_lots already holds every _00 enemy's 0x30; add the non-_00 ones.
-        std::unordered_set<uint32_t> all_enemy_lots = parsed_enemy_lots;  // _00 raw 0x30 set
+        // The raw-0x30 intersection came back 0/35 → no parsed enemy references these lots via
+        // itemLotId_enemy. Two remaining hypotheses: (a) the deployed regulation moved the drop to
+        // itemLotId_map (0x34) → recoverable via the map-lot; (b) the enemy NpcParam isn't placed in
+        // the deployed mod at all (bake-vs-deployed version drift) → not recoverable here. Test BOTH
+        // fields (0x30 + 0x34) over EVERY parsed enemy (_00 disk_enemies + non-_00) to settle it.
+        std::unordered_set<uint32_t> lots30 = parsed_enemy_lots;      // _00 0x30 (captured in the pass)
+        std::unordered_set<uint32_t> lots34 = parsed_enemy_lots_map;  // _00 0x34 (captured in the pass)
         std::unordered_set<uint32_t> npc_seen;
-        for (const DiskEnemy &en : nonlod)
+        for (const DiskEnemy &en : nonlod)  // add the non-_00 enemies' both fields
         {
             if (!npc_seen.insert(en.npcParamId).second) continue;  // one NpcParam read per id
-            if (int32_t el = goblin::npc_item_lot_enemy(en.npcParamId); el > 0)
-                all_enemy_lots.insert((uint32_t)el);
+            if (int32_t e = goblin::npc_item_lot_enemy(en.npcParamId); e > 0) lots30.insert((uint32_t)e);
+            if (int32_t m = goblin::npc_item_lot_map(en.npcParamId);  m > 0) lots34.insert((uint32_t)m);
         }
-        int in_00 = 0, in_nonlod = 0, nowhere = 0, lot_unresolved = 0;
-        std::map<int, int> nowhere_area;
+        int in30 = 0, in34 = 0, nowhere = 0;
         for (uint32_t L : uncovered_enemy_lots)
         {
-            const bool i0 = parsed_enemy_lots.count(L) != 0;
-            const bool iN = !i0 && all_enemy_lots.count(L) != 0;  // only in the non-_00 addition
-            if (i0) ++in_00;
-            else if (iN) ++in_nonlod;
-            else
-            {
-                ++nowhere;
-                // Does this lot even resolve in ItemLotParam_enemy? (-1 key ⇒ the lot row is gone too)
-                if (goblin::resolve_loot_item_textid(L, 2, -1) < 0) ++lot_unresolved;
-            }
+            if (lots30.count(L)) ++in30;
+            else if (lots34.count(L)) ++in34;
+            else ++nowhere;
         }
-        spdlog::info("[ENEMY-NONLOD] {} non-_00 enemies ({} distinct NpcParam). RAW-0x30 intersection of "
-                     "the {} uncovered baked-Enemy lots: {} in _00, {} in non-_00 (NEW recover), {} in "
-                     "NEITHER ({} of which no longer resolve in ItemLotParam_enemy)",
-                     (int)nonlod.size(), (int)npc_seen.size(), (int)uncovered_enemy_lots.size(),
-                     in_00, in_nonlod, nowhere, lot_unresolved);
+        spdlog::info("[ENEMY-NONLOD] {} non-_00 enemies (+{} distinct NpcParam); enemy-lot sets: {} via "
+                     "0x30, {} via 0x34. Of the {} uncovered baked-Enemy lots: {} match itemLotId_enemy "
+                     "(0x30), {} match itemLotId_MAP(0x34) [recoverable via map-lot], {} match NEITHER "
+                     "field of ANY placed enemy (NpcParam absent from the deployed mod → version drift).",
+                     (int)nonlod.size(), (int)npc_seen.size(), (int)lots30.size(), (int)lots34.size(),
+                     (int)uncovered_enemy_lots.size(), in30, in34, nowhere);
     }
     if (diag)
     {
