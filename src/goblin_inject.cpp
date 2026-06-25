@@ -4350,12 +4350,12 @@ uint32_t goblin::aeg_pickup_lot(uint32_t aegRow)
     return lot;
 }
 
-// isEnableRepick = AssetGeometryParam byte 0x3c bit 6 (mask 0x40). Offset derived from the
-// paramdef bit-packing (dummy8 Reserve_2 packs into the u8 isBreak* byte) + anchored on the
-// known pickUpItemLotParamId @ 0xb8.
-// A gather node respawns (isEnableRepick) + hides until then (isHiddenOnRepick) — and those two
-// flags are equal for every pickup asset (82 gather / 239 clutter, 0 split — checked offline), so
-// this one bit is the bake's gather filter. Same RawAegRow param table as aeg_pickup_lot.
+// isEnableRepick = AssetGeometryParam byte 0x3c **bit 5** (mask 0x20). EMPIRICALLY pinned by
+// dumping raw param rows: gather (en=1) byte0x3c=0x60, pot (en=0/break=1) byte0x3c=0x40 → bit 5
+// (0x20) = isEnableRepick, bit 6 (0x40) = isBreakOnPickUp. (dummy8 Reserve_2 takes no bit slot, so
+// it's bit 5 not 6.) Reading 0x40 by mistake matched EVERY breakable pickup (~18k pots/jars) → the
+// Crafting-Materials 16k leak. isEnableRepick ⇔ isHiddenOnRepick for every pickup asset (checked
+// offline), so this one bit is the bake's gather filter. Same RawAegRow param table as aeg_pickup_lot.
 bool goblin::aeg_is_gather(uint32_t aegRow)
 {
     if (aegRow == 0) return false;
@@ -4369,7 +4369,7 @@ bool goblin::aeg_is_gather(uint32_t aegRow)
     if (!s_ok) return false;
     RawAegRow *row = s_seq->try_get(aegRow);
     if (!row) return false;
-    return (row->b[0x3c] & 0x40) != 0;
+    return (row->b[0x3c] & 0x20) != 0;  // isEnableRepick (bit 5), NOT isBreakOnPickUp (bit 6)
 }
 
 // NpcParam row (736 bytes = NPC_PARAM_ST DetectedSize; itemLotId_enemy s32 @ +0x30,
