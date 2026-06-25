@@ -95,9 +95,12 @@ namespace goblin
         // position. Replaces the matching baked LootSource::Emevd rows. Opt-in; see
         // docs/re/windows_enemy_loot_nobake_analysis.md §5b + msbe::parse_emevd.
         extern bool lootEmevdDrops;
-        // When true, also emit World-feature markers (Stakes of Marika, …) sourced
-        // straight from the disk MSBs by their AEG asset model — no committed bake.
-        // The matching baked rows are dropped (position-keyed). See build_disk_stakes_markers.
+        // When true, also emit World-feature markers (Stakes of Marika, Imp Statues,
+        // Hero's Tomb, …) sourced straight from the disk MSBs by their AEG asset model —
+        // no committed bake. The model→category map is the generated WORLD_FEATURE_MODELS
+        // table (tools/world_feature_assets.py); baked twins are dropped at finalize
+        // (category-wipe for dedicated categories, cell-dedup for shared ones). See
+        // build_disk_world_feature_markers.
         extern bool worldFeaturesFromDisk;
         // Directory holding the active mod's map\MapStudio\*.msb.dcx (or the mod
         // root, or a map\ root). Empty = auto-detect: the DLL's own mod folder,

@@ -161,6 +161,12 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             size_t pe = (size_t)rd64(buf, PT.entryArr + (size_t)i * 8);
             if (!inb(pe, 0x2c, len)) continue;
             if ((int32_t)rd32(buf, pe + 0x0c) != PART_ASSET) continue;
+            // GameEditionDisable (int @ part+0x44 — inline, same offset disk/resident; pinned
+            // vs SoulsFormats 6612/6612 incl. 30 positives, tools/probe_gameedition_offset.py):
+            // a disabled placement the engine never spawns. The bake's generators skip these
+            // (GameEditionDisable==1), so drop them too — else e.g. the m60_45_39 Imp seal draws
+            // a phantom marker the player can't interact with.
+            if (inb(pe, 0x48, len) && rd32(buf, pe + 0x44) == 1) continue;
             size_t nm = eio(rd64(buf, pe + 0x00), pe);
             if (nm >= len) continue;
             std::string name = rd_utf16(buf, nm, len);
@@ -172,6 +178,22 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             a.pos[0] = rdf(buf, pe + 0x20);
             a.pos[1] = rdf(buf, pe + 0x24);
             a.pos[2] = rdf(buf, pe + 0x28);
+            // EntityID (entity sub-struct ptr @ part+0x60, EntityID@+0x00 — identical to
+            // the treasure/enemy read). Interactive World-feature assets (Imp seals,
+            // Hero's Tomb statues) carry one; plain decoration does not. 0xffffffff = unset.
+            if (inb(pe, 0x68, len))
+            {
+                uint64_t entOff = rd64(buf, pe + 0x60);
+                if (entOff)
+                {
+                    size_t ent = eio(entOff, pe);
+                    if (inb(ent, 0x04, len))
+                    {
+                        uint32_t eid = rd32(buf, ent + 0x00);
+                        if (eid != 0xffffffffu) a.entityId = eid;
+                    }
+                }
+            }
             R.assets.push_back(std::move(a));
         }
     }
@@ -297,6 +319,65 @@ std::vector<EmevdAward> parse_emevd(const uint8_t *buf, size_t len)
             uint32_t lot    = rd32(buf, a + t->lotOff);
             if ((int32_t)lot > 0 && (int32_t)entity > 0)
                 out.push_back({entity, lot});
+        }
+    }
+    return out;
+}
+
+// Flag-award templates (World-feature graying) — distinct from the item-lot templates above:
+// the event init carries (entity, FLAG) instead of (entity, lot). Hero's Tomb instruction
+// statue = template 90005683 (args: visgate@8, entity@12, sfx@16, activated_flag@20; matches
+// tools/generate_hero_tomb_statues.py). EmevdTemplate's `lotOff` field is reused as the flag offset.
+namespace {
+constexpr EmevdTemplate kEmevdFlagTemplates[] = {
+    {90005683, 12, 20, 24},  // Hero's Tomb statue: entity@+12, activated flag@+20, minLen 24
+};
+const EmevdTemplate *find_emevd_flag_template(uint32_t eventId)
+{
+    for (const auto &t : kEmevdFlagTemplates)
+        if (t.eventId == eventId) return &t;
+    return nullptr;
+}
+} // namespace
+
+std::vector<std::pair<uint32_t, uint32_t>> parse_emevd_flag_awards(const uint8_t *buf, size_t len)
+{
+    std::vector<std::pair<uint32_t, uint32_t>> out;
+    if (len < 0x80 || std::memcmp(buf, "EVD\0", 4) != 0) return out;
+
+    uint64_t eventCount  = rd64(buf, 0x10);
+    uint64_t eventsOff   = rd64(buf, 0x18);
+    uint64_t instrTblOff = rd64(buf, 0x28);
+    uint64_t argsOff     = rd64(buf, 0x78);
+    if (eventCount > 1000000u) return out;
+    constexpr size_t EVENT_SZ = 0x30, INSTR_SZ = 0x20;
+
+    for (uint64_t i = 0; i < eventCount; ++i)
+    {
+        size_t e = (size_t)eventsOff + (size_t)i * EVENT_SZ;
+        if (!inb(e, EVENT_SZ, len)) break;
+        uint64_t instrCount  = rd64(buf, e + 0x08);
+        uint64_t instrOffset = rd64(buf, e + 0x10);
+        size_t base = (size_t)instrTblOff + (size_t)instrOffset;
+        if (instrCount > 1000000u) continue;
+        for (uint64_t j = 0; j < instrCount; ++j)
+        {
+            size_t ins = base + (size_t)j * INSTR_SZ;
+            if (!inb(ins, INSTR_SZ, len)) break;
+            if (rd32(buf, ins + 0x00) != EMEVD_INIT_BANK) continue;
+            uint64_t argLen = rd64(buf, ins + 0x08);
+            int32_t  argOff = (int32_t)rd32(buf, ins + 0x10);
+            if (argOff < 0 || argLen < 8) continue;
+            size_t a = (size_t)argsOff + (size_t)argOff;
+            if (!inb(a, (size_t)argLen, len)) continue;
+            uint32_t eventId = rd32(buf, a + 4);
+            const EmevdTemplate *t = find_emevd_flag_template(eventId);
+            if (!t) continue;
+            if (argLen < t->minLen) continue;
+            uint32_t entity = rd32(buf, a + t->entityOff);
+            uint32_t flag   = rd32(buf, a + t->lotOff);  // lotOff reused as the flag offset
+            if ((int32_t)entity > 0 && (int32_t)flag > 0)
+                out.emplace_back(entity, flag);
         }
     }
     return out;

@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -31,6 +32,7 @@ struct DiskTreasure
 struct DiskCollectible
 {
     uint32_t aegRow = 0;                // AEG{A}_{B} → A*1000+B (param row id)
+    uint32_t entityId = 0;             // MSB EntityID (0 if unset) — World-feature interactive split
     uint8_t  area = 0, gx = 0, gz = 0;  // from the tile filename
     float    posX = 0.0f, posY = 0.0f, posZ = 0.0f;  // Part+0x20 (block-local; = bake x/y/z)
     std::string name;                   // full MSB part name, e.g. "AEG099_821_9003" (geom tracking)
@@ -95,6 +97,13 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
 // The caller joins each entityId to an MSB Enemy position (DiskEnemy::entityId) to place
 // the marker. Empty when no event dir is found. See docs §5b (mechanisms A + B).
 std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &knownEntities);
+
+// Parse the active mod's event\*.emevd.dcx and return the World-feature graying flags:
+// (entityId -> activated event flag) for each EMEVD flag-template (Hero's Tomb statue
+// 90005683). The World-feature disk pass joins an interactive asset's EntityID to its flag so
+// an activated statue grays/hides like the bake did — no committed bake. Empty when no event
+// dir is found. Shares resolve_event_dir + the Oodle/KRAK path with load_emevd_awards.
+std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags();
 
 // ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────
 // With loot_from_disk_msb on, the map dir is resolved by ancestor-walk at init

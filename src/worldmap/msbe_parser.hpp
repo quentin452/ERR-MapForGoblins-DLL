@@ -55,6 +55,12 @@ struct Asset
     std::string name;            // e.g. "AEG099_821_9000"
     uint32_t    aegRow = 0;      // A*1000+B, = AssetEnvironmentGeometryParam row id
     float       pos[3] = {0, 0, 0};  // BLOCK-LOCAL position (= bake x/z transform input)
+    // EntityID (entity sub-struct @ part+0x60, EntityID@+0x00 — same offset as the
+    // treasure/enemy paths). 0 when unset. The World-feature disk pass uses it to split
+    // INTERACTIVE asset features (Imp Statue seals, Hero's Tomb statues carry an EntityID)
+    // from non-interactive DECORATION (the same model placed without one) — see
+    // build_disk_world_feature_markers / world_feature_assets entity_required.
+    uint32_t    entityId = 0;
 };
 
 // A placed Enemy part (PartsParam type 2) — the no-bake source for enemy-drop loot.
@@ -141,6 +147,13 @@ std::vector<EmevdAward> parse_emevd(const uint8_t *buf, size_t len);
 // (mechanism A). Same pinned layout as parse_emevd. Returns direct awards, RunEvent(1200)
 // (flag,lot) pairs, and per-event SetEventFlag(.,1) records with their entity candidates.
 EmevdParse parse_emevd_full(const uint8_t *buf, size_t len);
+
+// World-feature graying: a bank-2000 init whose eventId is a FLAG template (Hero's Tomb
+// statue 90005683) carries (entity, FLAG) — the activated-state event flag, NOT an item lot.
+// Returns (entity -> flag), both filtered > 0. The World-feature disk pass joins an
+// interactive asset's EntityID to its flag → marker textDisableFlagId1 (an activated statue
+// grays/hides like the bake). Same pinned 64-bit layout as parse_emevd. Empty on malformed.
+std::vector<std::pair<uint32_t, uint32_t>> parse_emevd_flag_awards(const uint8_t *buf, size_t len);
 
 // oo2core's OodleLZ_Decompress (14-arg; x64 ABI unifies __stdcall/__fastcall). Kept as a
 // plain function-pointer typedef so msbe_parser needs no <windows.h>/oo2core link — the DLL

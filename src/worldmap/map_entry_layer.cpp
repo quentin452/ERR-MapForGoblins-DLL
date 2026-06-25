@@ -4,6 +4,7 @@
 #include "loot_disk.hpp"       // disk-MSB loot source (DiskTreasure / load_disk_treasures)
 #include "goblin_config.hpp"   // config::lootFromDiskMsb
 #include "goblin_map_data.hpp" // MAP_ENTRIES / MAP_ENTRY_COUNT / MapEntry / Category
+#include "goblin_world_feature_models.hpp" // WORLD_FEATURE_MODELS (asset-model World features)
 #include "goblin_inject.hpp"   // marker_world_pos / category_visible / read_event_flag / census
 #include "goblin_logic.hpp"    // map_fragment_flag
 #include "goblin_collected.hpp" // is_original_row_collected (piece graying)
@@ -614,47 +615,109 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
             spdlog::info("[LOOTDISK]   emevd-drop category index {} = {} markers", cat, n);
 }
 
-// World feature: Stakes of Marika (config world_features_from_disk). A Stake is placed in
-// the MSB as an AEG099_060 asset — the SAME source tools/generate_stakes.py baked from, so
-// reading it live reproduces the bake on any mod with no committed table. Stakes carry no
-// item/lot/flag (respawn points, never "completed"), so we just project each placement and
-// emit a marker (textId1 = "Stakes of Marika" for the tooltip; icon/category from the
-// category). Each placed 0.5u cell is recorded in `out_cells` so the finalize dedup drops the
-// baked twin (position-keyed, like the geom dedup — the disk + bake share marker_world_pos, so
-// a stake's cells coincide). A stake placed in two overlapping LOD0 tiles dedups to one here.
-static int build_disk_stakes_markers(const std::vector<DiskCollectible> &assets,
-                                     std::unordered_set<Cell, CellHash> &out_cells)
+// World features from disk MSBs (config world_features_from_disk). A World feature is an
+// AEG asset placement whose model maps to a marker category in the GENERATED
+// WORLD_FEATURE_MODELS table (Stakes of Marika, Imp Statues, Hero's Tomb, …) — the SAME
+// source tools/generate_*.py baked from, so reading it live reproduces the bake on any mod
+// with no per-feature C++. This is ONE generic pass: adding an asset-model World feature =
+// ONE row in tools/world_feature_assets.py (regen the table), zero code here.
+//
+// Per placement: look the asset's aegRow up in the table; if found, emit a marker
+// (textId1 from the table for the tooltip; icon/category from the category). An
+// `entity_required` row keeps ONLY placements that carry an MSB EntityID — the INTERACTIVE
+// instances (Imp seals, Hero's Tomb statues); the same model placed as decoration carries
+// none. The row's `flag_rule` resolves the graying flag (so an activated/looted instance
+// hides like the bake) LIVE from the mod's files — no committed bake: Imp seals derive it
+// arithmetically (+ a seal-suffix filter and a per-suffix key label), Hero's Tomb joins
+// `emevd_flags` (entityId → EMEVD activated flag). Each placed 0.5u cell is recorded
+// per-category in `out_cells` for (a) disk-internal dedup (a feature in two overlapping LOD0
+// tiles → one marker) and (b) the finalize pass (category-wipe vs cell-dedup).
+static int build_disk_world_feature_markers(
+    const std::vector<DiskCollectible> &assets,
+    const std::unordered_map<uint32_t, uint32_t> &emevd_flags,
+    std::unordered_map<int, std::unordered_set<Cell, CellHash>> &out_cells)
 {
     namespace gen = goblin::generated;
-    GOBLIN_BENCH("build.disk_stakes");
-    constexpr uint32_t kStakeAeg = 99060;  // AEG099_060 = Stake of Marika
-    const int cat = static_cast<int>(gen::Category::WorldStakesOfMarika);
-    int emitted = 0, dup = 0;
+    GOBLIN_BENCH("build.disk_world_features");
+    int emitted = 0, dup = 0, no_entity = 0, rule_skipped = 0, no_flag = 0;
+    std::unordered_map<int, int> per_cat;
     for (const DiskCollectible &a : assets)
     {
-        if (a.aegRow != kStakeAeg) continue;
+        // Editorial model→feature lookup (tiny table → linear scan).
+        const gen::WorldFeatureModel *wf = nullptr;
+        for (size_t k = 0; k < gen::WORLD_FEATURE_MODEL_COUNT; ++k)
+            if (gen::WORLD_FEATURE_MODELS[k].aeg_row == a.aegRow)
+            {
+                wf = &gen::WORLD_FEATURE_MODELS[k];
+                break;
+            }
+        if (!wf) continue;
+        // Interactive-only features: skip decoration copies of the model (no EntityID).
+        if (wf->entity_required && a.entityId == 0) { ++no_entity; continue; }
+
+        // Resolve the graying flag (+ optional label override / reject) from the flag rule.
+        uint32_t collect_flag = 0;
+        int32_t  text_override = 0;
+        switch (wf->flag_rule)
+        {
+        case gen::FlagRule::ImpSeal:
+        {
+            // Only the 4 real seal entity-suffixes are interactive seals (matches the bake's
+            // filter — also drops the non-seal AEG027_078/079 the entity gate alone let in).
+            const uint32_t suffix = a.entityId % 1000;
+            if (suffix != 570 && suffix != 575 && suffix != 565 && suffix != 611)
+            { ++rule_skipped; continue; }
+            // Activation flag = tile_base + suffix (NOT the entity id). m60/m61 (DLC) tile
+            // their flags differently. Mirrors tools/generate_imp_statues.py exactly.
+            const uint32_t tile_base =
+                (a.area == 60 || a.area == 61)
+                    ? ((a.area == 60 ? 10u : 20u) * 100000000u + (uint32_t)a.gx * 1000000u +
+                       (uint32_t)a.gz * 10000u)
+                    : ((uint32_t)a.area * 1000000u + (uint32_t)a.gx * 10000u);
+            collect_flag = tile_base + suffix;
+            text_override = (suffix == 565) ? 500008186 : 500008000;  // Imbued vs Stonesword Key
+            break;
+        }
+        case gen::FlagRule::HeroTombEmevd:
+        {
+            auto it = emevd_flags.find(a.entityId);
+            if (it != emevd_flags.end()) collect_flag = it->second;
+            else ++no_flag;  // statue absent from the EMEVD scan → drawn, just no graying
+            break;
+        }
+        case gen::FlagRule::None:
+        default:
+            break;
+        }
+
+        const int cat = static_cast<int>(wf->category);
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
         d.areaNo = a.area;
         d.gridXNo = a.gx;
         d.gridZNo = a.gz;
         d.posX = a.posX;
         d.posZ = a.posZ;
-        d.textId1 = 900301540;  // tutorial text "Stakes of Marika" (no lot identity to resolve)
+        d.textId1 = text_override ? text_override : wf->text_id;  // tutorial / FMG / ActionButtonText
+        d.textDisableFlagId1 = collect_flag;  // → push_marker collected_flag (graying/census), 0 = never grays
         push_marker(/*row_id=*/0ull, d, cat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
         // Dedup by projected cell (same key the baked drop uses). Insert AFTER push so the
         // projection is the marker's own; a duplicate placement → drop the just-pushed copy
         // but KEEP the cell recorded (the baked twin must still be dropped at finalize).
         const Cell cell = cell_of(g_buckets[cat].back());
-        if (!out_cells.insert(cell).second)
+        if (!out_cells[cat].insert(cell).second)
         {
             g_buckets[cat].pop_back();
             ++dup;
             continue;
         }
         ++emitted;
+        ++per_cat[cat];
     }
-    spdlog::info("[LOOTDISK] world features: {} Stakes of Marika from disk (AEG099_060){}",
-                 emitted, dup ? (" (+" + std::to_string(dup) + " dup-cell skipped)") : std::string());
+    spdlog::info("[LOOTDISK] world features: {} markers from disk across {} categories ({} dup-cell, "
+                 "{} no-entity, {} rule-rejected, {} interactive-without-emevd-flag)",
+                 emitted, (int)per_cat.size(), dup, no_entity, rule_skipped, no_flag);
+    for (const auto &[c, n] : per_cat)
+        spdlog::info("[LOOTDISK]   world-feature category {} = {} markers", c, n);
     return emitted;
 }
 
@@ -691,9 +754,11 @@ void build_buckets_impl()
     // the collectible pass re-emits gather assets, so keying on it (not all disk markers)
     // stops an unrelated treasure/enemy coincidence from evicting a baked piece.
     std::unordered_set<Cell, CellHash> collectible_cells;
-    // Projected cells of the disk-placed World features (Stakes of Marika) — the finalize dedup
-    // drops the baked twin on these cells (same position-key as the geom dedup). worldFeaturesFromDisk.
-    std::unordered_set<Cell, CellHash> stakes_cells;
+    // Projected cells of the disk-placed World features, keyed by category — the finalize
+    // pass uses them to drop the baked twins (category-wipe for dedicated categories like
+    // Stakes/Imp; cell-dedup for shared ones like Hero's Tomb in WorldInteractables).
+    // worldFeaturesFromDisk. See build_disk_world_feature_markers.
+    std::unordered_map<int, std::unordered_set<Cell, CellHash>> world_feature_cells;
     // (tile, object_name) of every disk-placed Rune/Ember Piece — drops the baked twin by IDENTITY
     // (position-independent; see piece_key). Built by the collectible pass, consumed in the baked loop.
     std::unordered_set<std::string> piece_disk_keys;
@@ -724,7 +789,19 @@ void build_buckets_impl()
             build_disk_collectible_markers(disk_collectibles, treasure_lots, disk_lots,
                                            collectible_cells, piece_disk_keys);
         if (goblin::config::worldFeaturesFromDisk)
-            build_disk_stakes_markers(disk_collectibles, stakes_cells);
+        {
+            // EMEVD-sourced graying flags (Hero's Tomb activated flag): only scan the event
+            // dir if a flag-rule feature in the table actually needs it (the arithmetic Imp
+            // rule + Stakes don't), so the common case skips an extra ~500-file read.
+            std::unordered_map<uint32_t, uint32_t> world_feature_flags;
+            bool needsEmevd = false;
+            for (size_t k = 0; k < gen::WORLD_FEATURE_MODEL_COUNT; ++k)
+                if (gen::WORLD_FEATURE_MODELS[k].flag_rule == gen::FlagRule::HeroTombEmevd)
+                { needsEmevd = true; break; }
+            if (needsEmevd)
+                world_feature_flags = load_emevd_world_feature_flags();
+            build_disk_world_feature_markers(disk_collectibles, world_feature_flags, world_feature_cells);
+        }
         if (goblin::config::lootEnemyDrops)
             build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots);
         if (goblin::config::lootEmevdDrops)
@@ -971,26 +1048,48 @@ void build_buckets_impl()
                          "pass already covers (position-keyed; geom categories only)", deduped);
     }
 
-    // ── Finalize: drop ALL baked Stakes when the disk pass placed any (category-wipe) ──
-    // The disk _00 pass is the AUTHORITATIVE Stakes source — one world-cell-distinct marker per
-    // AEG099_060 placement, correctly projected. The bake is NOT a reliable oracle here:
-    // generate_stakes.py scans EVERY tile incl. LOD-coarse _02 (which proxy objects at a 128/256
-    // offset — [[runtime-msb-resident-plan]] says parse _00 only) AND its dedup key omits gx,gz
-    // (block-local x,z only), so the baked rows are inflated with offset LOD-phantoms (validated
-    // 2026-06-25: 226 AEG099_060 in _00 vs 250 in non-_00; bake total=439 but disk world-cells=219).
-    // A positional dedup only drops the ~half that coincide, leaving the phantoms drawn at wrong
-    // spots. So when the disk pass placed ≥1 stake, drop EVERY baked Stake (same pattern as live
-    // bosses) — safe because all 651 _00 MSBs parse (0 fail/0 KRAK) and a ground stake always lives
-    // in a _00 tile. stakes_cells non-empty ⇔ the disk pass ran and found stakes.
-    if (goblin::config::worldFeaturesFromDisk && !stakes_cells.empty())
+    // ── Finalize: drop the baked twins of every World-feature category the disk pass populated ──
+    // Two modes, per the generated table's category_wipe flag:
+    //  • category_wipe (dedicated category — Stakes, Imp): drop EVERY baked row of the category.
+    //    The disk _00 pass is AUTHORITATIVE; the bake is NOT a reliable oracle — generate_*.py
+    //    scans every tile incl. LOD-coarse _02 (proxies at a 128/256 offset — [[runtime-msb-
+    //    resident-plan]] says parse _00 only) AND its dedup key omits gx,gz, so the baked rows are
+    //    inflated with offset LOD-phantoms (Stakes: 226 in _00 vs 250 non-_00, bake 439 but disk
+    //    world-cells 219). A positional dedup leaves the phantoms drawn at wrong spots → wipe all
+    //    (same pattern as live bosses). Safe: all 651 _00 MSBs parse (0 fail/0 KRAK) and a ground
+    //    feature always lives in a _00 tile.
+    //  • cell-dedup (SHARED category — Hero's Tomb shares WorldInteractables with Seal Puzzles):
+    //    drop only the baked twin sitting on a disk-placed cell, KEEPING the sibling features the
+    //    disk pass doesn't reproduce. Cross-tile-remapped statues may miss the cell → a harmless
+    //    baked duplicate stays (the rare edge case generate_hero_tomb_statues.py re-tiles).
+    if (goblin::config::worldFeaturesFromDisk)
     {
-        auto &bucket = g_buckets[static_cast<int>(gen::Category::WorldStakesOfMarika)];
-        const size_t before = bucket.size();
-        bucket.erase(std::remove_if(bucket.begin(), bucket.end(),
-                                    [](const Marker &m) { return m.source == Source::Baked; }),
-                     bucket.end());
-        spdlog::info("[LOOTDISK] world features: dropped {} baked Stakes (category-wipe; disk pass "
-                     "is authoritative, bake has LOD-phantoms)", (int)(before - bucket.size()));
+        for (auto &[cat, cells] : world_feature_cells)
+        {
+            if (cells.empty()) continue;
+            // The feature's finalize mode = the table row's category_wipe (a category is single-mode).
+            bool wipe = false;
+            for (size_t k = 0; k < gen::WORLD_FEATURE_MODEL_COUNT; ++k)
+                if (static_cast<int>(gen::WORLD_FEATURE_MODELS[k].category) == cat)
+                {
+                    wipe = gen::WORLD_FEATURE_MODELS[k].category_wipe;
+                    break;
+                }
+            auto &bucket = g_buckets[cat];
+            const size_t before = bucket.size();
+            if (wipe)
+                bucket.erase(std::remove_if(bucket.begin(), bucket.end(),
+                                            [](const Marker &m) { return m.source == Source::Baked; }),
+                             bucket.end());
+            else
+                bucket.erase(std::remove_if(bucket.begin(), bucket.end(),
+                                            [&](const Marker &m) {
+                                                return m.source == Source::Baked && cells.count(cell_of(m));
+                                            }),
+                             bucket.end());
+            spdlog::info("[LOOTDISK] world features: category {} dropped {} baked twins ({})",
+                         cat, (int)(before - bucket.size()), wipe ? "category-wipe" : "cell-dedup");
+        }
     }
 
     // [PIECE-RESIDUAL] diag: of the baked AEG world Pieces (AEG099_821/822), which were NOT placed

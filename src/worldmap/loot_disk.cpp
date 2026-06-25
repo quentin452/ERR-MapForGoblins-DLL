@@ -287,6 +287,7 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
             {
                 DiskCollectible c;
                 c.aegRow = a.aegRow;
+                c.entityId = a.entityId;
                 c.area = (uint8_t)area;
                 c.gx = (uint8_t)gx;
                 c.gz = (uint8_t)gz;
@@ -459,6 +460,45 @@ std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &kno
                  "({} flag→lot binds, {} setters, {} setter-flags with no MSB entity); {} KRAK skipped",
                  parsed, direct, ev1200, (int)flag_to_lot.size(), (int)setters.size(),
                  ev1200_no_entity, kraks);
+    return out;
+}
+
+std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags()
+{
+    std::unordered_map<uint32_t, uint32_t> out;
+    ensure_map_dir_resolved();
+    fs::path mapStudio = disk_loot_dir();
+    fs::path evdir = resolve_event_dir(mapStudio);
+    if (evdir.empty())
+    {
+        spdlog::warn("[LOOTDISK] no event\\ dir for World-feature flags — graying deferred");
+        return out;
+    }
+    spdlog::info("[LOOTDISK] reading World-feature graying flags from EMEVD {}", evdir.string());
+
+    msbe::OodleDecompressFn oodle = resolve_oodle();  // KRAK events (unmodified vanilla)
+    int parsed = 0, kraks = 0;
+    std::error_code ec;
+    for (auto &de : fs::directory_iterator(evdir, ec))
+    {
+        if (!de.is_regular_file(ec)) continue;
+        std::string name = de.path().filename().string();
+        std::string lower = name;
+        for (char &c : lower) c = (char)std::tolower((unsigned char)c);
+        if (lower.size() < 10 || lower.compare(lower.size() - 10, 10, ".emevd.dcx") != 0)
+            continue;
+        std::vector<uint8_t> dcx = slurp(de.path());
+        if (dcx.empty()) { spdlog::warn("[LOOTDISK] read failed: {}", name); continue; }
+        bool krak = false;
+        std::vector<uint8_t> evd = msbe::dcx_decompress(dcx.data(), dcx.size(), &krak, oodle);
+        if (evd.empty()) { if (krak) ++kraks; continue; }
+        // entity→flag; first writer wins (phase-variant events _00/_10 share the same entity).
+        for (const auto &ef : msbe::parse_emevd_flag_awards(evd.data(), evd.size()))
+            out.emplace(ef.first, ef.second);
+        ++parsed;
+    }
+    spdlog::info("[LOOTDISK] World-feature flags: {} entity→flag from {} EMEVD files ({} KRAK skipped)",
+                 (int)out.size(), parsed, kraks);
     return out;
 }
 } // namespace goblin::worldmap

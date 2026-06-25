@@ -402,6 +402,17 @@ STAGES = [
                    GENERATED_CPP / 'goblin_geof_models.hpp'],
           script='generate_geof_models.py'),
 
+    # Editorial AEG-model -> marker-category table for the generic World-feature disk
+    # pass (Stakes/Imp/Hero's Tomb …). Pure transcode of tools/world_feature_assets.py
+    # (no MSB/regulation read) — profile-independent, but written per-profile generated
+    # dir so the vanilla/convergence bakes have it too. Add a feature = a row there.
+    Stage('generate_world_feature_models',
+          inputs=[TOOLS / 'world_feature_assets.py'],
+          outputs=[GENERATED_CPP / 'goblin_world_feature_models.cpp',
+                   GENERATED_CPP / 'goblin_world_feature_models.hpp'],
+          script='generate_world_feature_models.py',
+          also_scripts=['config.py']),
+
     # Alternative (hybrid) loot-location naming, baked as generated::LOCATION_ALT
     # (row_id -> textId2). Shown via INI [Goblin] show_location_compare = true.
     # Must run AFTER generate_data (reads the baked goblin_map_data.cpp).
