@@ -324,7 +324,8 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
                 e.gz = (uint8_t)gz;
                 e.posX = en.pos[0];
                 e.posZ = en.pos[2];
-                enemies->push_back(e);
+                e.name = en.name;
+                enemies->push_back(std::move(e));
             }
         }
 

@@ -935,6 +935,45 @@ static int build_disk_spirit_springs_markers(
     return emitted;
 }
 
+// World feature: Spiritspring Hawks (config world_features_from_disk). Each is a placed MSB Enemy
+// of model c4210 (the Stormhawk) with EntityID%10000 ∈ {980,971} — the hawk whose death unlocks a
+// sealed spirit spring. No bake: from disk enemies; model identified by the part name (starts with
+// "c4210"); the clearedEventFlagId = the hawk's EntityID (set on kill = spring unlocked → checkmark
+// / hide). textId1 = "Spiritspring Stormhawk". Dedup by EntityID. Dedicated category → category-wipe.
+static int build_disk_spiritspring_hawks_markers(
+    const std::vector<DiskEnemy> &enemies,
+    std::unordered_set<Cell, CellHash> &out_cells)
+{
+    namespace gen = goblin::generated;
+    GOBLIN_BENCH("build.disk_hawks");
+    const int cat = static_cast<int>(gen::Category::WorldSpiritspringHawks);
+    int emitted = 0, dup = 0;
+    std::unordered_set<uint32_t> seen;  // by EntityID (the bake key)
+    for (const DiskEnemy &e : enemies)
+    {
+        if (e.entityId == 0) continue;
+        const uint32_t suf = e.entityId % 10000;
+        if (suf != 980 && suf != 971) continue;
+        if (e.name.compare(0, 5, "c4210") != 0) continue;  // Stormhawk model (part name prefix)
+        if (!seen.insert(e.entityId).second) { ++dup; continue; }
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = e.area;
+        d.gridXNo = e.gx;
+        d.gridZNo = e.gz;
+        d.posX = e.posX;
+        d.posZ = e.posZ;
+        d.textId1 = 904210304;              // "Spiritspring Stormhawk"
+        d.clearedEventFlagId = e.entityId;  // hawk-kill flag = spring unlock (checkmark/hide)
+        d.textDisableFlagId1 = e.entityId;  // also the collected_flag graying path
+        push_marker(/*row_id=*/e.entityId, d, cat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
+        out_cells.insert(cell_of(g_buckets[cat].back()));
+        ++emitted;
+    }
+    spdlog::info("[LOOTDISK] world features: {} Spiritspring Hawks from disk enemies "
+                 "(c4210, EntityID suffix 980/971; {} dup)", emitted, dup);
+    return emitted;
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
 // NOTE (2026-06-23): a "World-* categories live from WorldMapPointParam by row-id range" experiment
@@ -1029,6 +1068,10 @@ void build_buckets_impl()
             build_disk_spirit_springs_markers(
                 disk_regions, disk_collectibles,
                 world_feature_cells[static_cast<int>(gen::Category::WorldSpiritSprings)]);
+            // Spiritspring Hawks: c4210 disk enemies, EntityID suffix 980/971, flag = EntityID.
+            build_disk_spiritspring_hawks_markers(
+                disk_enemies,
+                world_feature_cells[static_cast<int>(gen::Category::WorldSpiritspringHawks)]);
         }
         if (goblin::config::lootEnemyDrops)
             build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots);
