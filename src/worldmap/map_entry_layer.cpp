@@ -29,6 +29,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <map>
 #include <mutex>
 #include <unordered_set>
 
@@ -1351,18 +1352,35 @@ void build_buckets_impl()
     int replaced_enemy = 0;  // baked Enemy rows dropped because the disk enemy pass covers them
     int replaced_emevd = 0;  // baked Emevd rows dropped because the disk EMEVD pass covers them
     int debake_gap = 0;  // Treasure-sourced baked rows the disk did NOT cover (de-bake blocker)
+    // [DEBAKE-GAP] cause classification (diag): the baked Treasure rows carry NO object_name
+    // (nullptr — corpse-asset identity lives only in the offline pipeline), so we sample the
+    // CAUSES at runtime via four cheap cuts: (1) sequence-sibling = disk_lots holds a base just
+    // below this lot → a multi-lot/ItemLotParam-chain treasure the parser under-read (a CLEAN
+    // lever if it dominates); (2) baked-as-enemy = the bake also filed this lot as a lotType-2
+    // drop (mis-tagged source); (3) per-category and (4) per-area histograms (corpse loot is
+    // ~65% m60 overworld per the offline data-mine). If none dominates → diffuse corpse residual.
+    int gap_sibling = 0;        // disk-covered base at lotId-1..lotId-N (multi-lot candidate)
+    int gap_baked_as_enemy = 0; // lot also present in the bake as a lotType-2 enemy drop
+    std::map<int, int> gap_by_cat;   // category enum -> uncovered count
+    std::map<int, int> gap_by_area;  // areaNo (m<area>) -> uncovered count
     int enemy_markers = 0;  // [ENEMY-MARKERS] baked enemy-drop rows NOT covered by the disk pass
+    // Pre-pass: fully populate baked_lot1/baked_any BEFORE the main loop so the DEBAKE-GAP
+    // baked-as-enemy classification (and the disk-only summary below) see the COMPLETE baked
+    // lot sets — building them incrementally inside the loop would leave them partial mid-row.
+    if (diag)
+        for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
+        {
+            const gen::MapEntry &e = gen::MAP_ENTRIES[i];
+            if (e.lotId == 0) continue;
+            if (e.lotType == 1) baked_lot1.insert(e.lotId);
+            if (e.lotType != 0) baked_any.insert(e.lotId);
+        }
     for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
     {
         const gen::MapEntry &e = gen::MAP_ENTRIES[i];
         int c = static_cast<int>(e.category);
         if (c < 0 || c >= NUM_CAT)
             continue;
-        if (diag && e.lotId != 0)
-        {
-            if (e.lotType == 1) baked_lot1.insert(e.lotId);
-            if (e.lotType != 0) baked_any.insert(e.lotId);
-        }
         // Bosses come LIVE from the param now (build_live_bosses) — skip any baked WorldBosses
         // rows so they don't double the live ones (the bake is being retired for this category).
         if (e.category == gen::Category::WorldBosses)
@@ -1422,12 +1440,26 @@ void build_buckets_impl()
         if (diag && e.loot_source == gen::LootSource::Treasure && e.lotType == 1 && e.lotId != 0)
         {
             ++debake_gap;
+            // Sequence-sibling probe: is a disk-covered base just below this lot? ItemLotParam
+            // treasure chains run base..base+k (e.g. smithing-stone 200X0..200X9); if the MSB
+            // Treasure carried only the base, the bake's expanded siblings reach here while the
+            // base sits in disk_lots. A wide window (16) covers the long stone/rune sequences.
+            bool sib = false;
+            for (uint32_t d = 1; d <= 16 && !sib; ++d)
+                if (e.lotId > d && disk_lots.count(e.lotId - d)) sib = true;
+            if (sib) ++gap_sibling;
+            const bool as_enemy = baked_any.count(e.lotId) && !baked_lot1.count(e.lotId);
+            if (as_enemy) ++gap_baked_as_enemy;
+            ++gap_by_cat[c];
+            ++gap_by_area[e.data.areaNo];
             if (verbose)
             {
                 int32_t key = goblin::resolve_loot_item_textid(e.lotId, 1, -1);
-                spdlog::info("[DEBAKE-GAP] uncovered Treasure lot {} @ m{}_{}_{} key={} "
+                spdlog::info("[DEBAKE-GAP] uncovered Treasure lot {} @ m{}_{}_{} key={} cat={}{}{} "
                              "(baked-only; disk did not place it)",
-                             e.lotId, e.data.areaNo, e.data.gridXNo, e.data.gridZNo, key);
+                             e.lotId, e.data.areaNo, e.data.gridXNo, e.data.gridZNo, key, c,
+                             sib ? " [sibling-of-disk-base]" : "",
+                             as_enemy ? " [also-baked-as-enemy]" : "");
             }
         }
         // [ENEMY-MARKERS] diag (de-bake census of the enemy slice): enumerate the baked
@@ -1472,6 +1504,27 @@ void build_buckets_impl()
         spdlog::info("[DEBAKE-GAP] {} baked Treasure rows NOT covered by the disk source "
                      "(would be lost if the treasure slice is de-baked; set diag_loot_pos for the list)",
                      debake_gap);
+        // Cause sample (does one lever dominate?): sequence-sibling = recoverable via an
+        // ItemLotParam-chain walk (the multi-lot-treasure hypothesis); baked-as-enemy = a
+        // source mis-tag; per-category + per-area show whether the residual is concentrated
+        // (corpse loot, ~m60) or diffuse. If sibling is small and m60 dominates → accept the
+        // residual; if sibling is large → build the chain walk for the treasure slice.
+        spdlog::info("[DEBAKE-GAP] cause sample: {} sequence-sibling-of-disk-base (multi-lot/chain "
+                     "candidate), {} also-baked-as-enemy (source mis-tag), {} neither",
+                     gap_sibling, gap_baked_as_enemy,
+                     debake_gap - gap_sibling - gap_baked_as_enemy);
+        {
+            std::string cat_hist, area_hist;
+            for (const auto &kv : gap_by_cat)
+            {
+                cat_hist += goblin::markers::category_name(static_cast<gen::Category>(kv.first));
+                cat_hist += '=' + std::to_string(kv.second) + ' ';
+            }
+            for (const auto &kv : gap_by_area)
+                area_hist += 'm' + std::to_string(kv.first) + '=' + std::to_string(kv.second) + ' ';
+            spdlog::info("[DEBAKE-GAP] by category: {}", cat_hist);
+            spdlog::info("[DEBAKE-GAP] by area: {}", area_hist);
+        }
         // Disk-only lots (placed by the disk but NOT in the bake's lotType==1 slice).
         // Split: filed-as-enemy (in baked_any → the bake had it as a lotType 2 drop)
         // vs absent-from-bake (genuinely new MSB loot the bake missed). Log a sample
