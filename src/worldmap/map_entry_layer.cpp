@@ -302,63 +302,58 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
 // NOTABILITY FILTER (the key to not flooding): a raw "every enemy with a drop lot"
 // emit = the 25608-placement universe (mostly Sliver of Meat / Thin Beast Bones
 // respawning clutter). The game's own one-time-loot signal cleanly separates the
-// notable drops: a lot with **getItemFlagId != 0** (a persistent obtain flag — the
-// game remembers you took it; respawning clutter has flag 0) placed on a **UNIQUE
-// enemy** (the lot appears on exactly one placement). Datamined offline
-// (tools/datamine_enemy_notability.py): the 119 curated baked enemy markers are ALL
-// flag!=0 && placements==1; this filter yields 349 lots = a perfect SUPERSET of the
-// 119 plus 230 notable drops the bake's manual LOOT_CATEGORIES curation MISSED
-// (Blaidd's/Ronin's armour sets, Hoslow's Petal Whip, Patches'/Miriel's Bell
-// Bearing, ...). So this is a clean LIVE filter — strictly better coverage than the
-// bake, no porting of the pipeline's ~60 category rules. See
+// notable drops: a lot with a persistent **getItemFlagId** (the game remembers you
+// took it — `resolve_loot_flag` already returns 0 for respawning/repeatable loot
+// like golden runes / gloveworts whose flag is in the temp range). We emit ONE
+// marker per such lot (dedup by lot: a notable item shared across a few placements
+// is one obtainable pickup). Datamined offline (tools/datamine_enemy_notability.py +
+// sim_enemy_pass.py): every one of the 119 curated baked enemy lots carries a
+// persistent flag; this filter yields ~124 notable lots = the baked notable drops
+// PLUS ~43 the bake's manual LOOT_CATEGORIES curation missed (Blaidd's/Ronin's
+// armour sets, Hoslow's Petal Whip, Patches'/Miriel's Bell Bearing, ...). A clean
+// LIVE filter, no porting of the pipeline's ~60 category rules; better coverage than
+// the bake. NOTE on the lot-exact provenance guard below: a few baked enemy rows use
+// a sibling ItemLotParam row (npcParam → base lot, bake → the item row), so they are
+// NOT lot-matched and stay baked — preserving the 3 DLC one-time drops whose flag is
+// in a high range resolve_loot_flag treats as repeatable (Blessed Bone Shard, Iris of
+// Occultation); the measured duplicate overlap is only ~3. See
 // docs/re/windows_enemy_loot_nobake_analysis.md.
 static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
                                      const std::unordered_set<uint32_t> &treasure_lots,
                                      std::unordered_set<uint32_t> &covered)
 {
     GOBLIN_BENCH("build.disk_enemies");
-    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, swarm = 0, respawn = 0;
+    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, respawn = 0, lot_dup = 0;
     const bool verbose = goblin::config::diagLootPos;
     std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
-
-    // Resolve each placement's lot once, and count placements per lot (the uniqueness
-    // signal — a lot on many enemies = respawning swarm clutter, one obtainable item).
-    struct Resolved { uint32_t lot; uint8_t lt; const DiskEnemy *e; };
-    std::vector<Resolved> rs;
-    rs.reserve(enemies.size());
-    std::unordered_map<uint32_t, int> lot_count;
+    std::unordered_set<uint32_t> seen;      // dedup by lot (one marker per notable lot)
     for (const DiskEnemy &en : enemies)
     {
         uint8_t lt = 0;
         uint32_t lot = goblin::npc_loot_lot(en.npcParamId, &lt);  // live NpcParam chain
         if (lot == 0) { ++no_lot; continue; }
-        rs.push_back({lot, lt, &en});
-        ++lot_count[lot];
-    }
-    for (const Resolved &r : rs)
-    {
-        if (treasure_lots.count(r.lot)) { ++dup; continue; }  // already a Treasure ground item
-        if (lot_count[r.lot] != 1) { ++swarm; continue; }     // shared across placements = clutter
-        if (goblin::resolve_loot_flag(r.lot, r.lt, 0) == 0) { ++respawn; continue; }  // no one-time flag
-        int32_t key = goblin::resolve_loot_item_textid(r.lot, r.lt, -1);
+        if (treasure_lots.count(lot)) { ++dup; continue; }  // already a Treasure ground item
+        if (goblin::resolve_loot_flag(lot, lt, 0) == 0) { ++respawn; continue; }  // not a one-time drop
+        if (!seen.insert(lot).second) { ++lot_dup; continue; }  // a notable lot already placed
+        int32_t key = goblin::resolve_loot_item_textid(lot, lt, -1);
         int cat = goblin::item_marker_category(key);
         if (cat < 0) cat = goblin::classify_item_live(key);  // live fallback (any mod / unbaked)
         if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
-        d.areaNo = r.e->area;
-        d.gridXNo = r.e->gx;
-        d.gridZNo = r.e->gz;
-        d.posX = r.e->posX;
-        d.posZ = r.e->posZ;
-        push_marker(/*row_id=*/r.lot, d, cat, r.lot, /*lotType=*/r.lt);
-        covered.insert(r.lot);  // drops the matching baked LootSource::Enemy row
+        d.areaNo = en.area;
+        d.gridXNo = en.gx;
+        d.gridZNo = en.gz;
+        d.posX = en.posX;
+        d.posZ = en.posZ;
+        push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/lt);
+        covered.insert(lot);  // drops the matching baked LootSource::Enemy row
         ++emitted;
         if (verbose) ++per_cat[cat];
     }
     spdlog::info("[LOOTDISK] enemy drops: {} notable markers emitted ({} placements total; filtered: "
-                 "{} npc-has-no-lot, {} treasure-dup, {} swarm(>1 placement), {} no-one-time-flag, "
+                 "{} npc-has-no-lot, {} treasure-dup, {} no-one-time-flag, {} same-lot-dedup, "
                  "{} unclassified)",
-                 emitted, (int)enemies.size(), no_lot, dup, swarm, respawn, unclassified);
+                 emitted, (int)enemies.size(), no_lot, dup, respawn, lot_dup, unclassified);
     if (verbose)
         for (auto &[cat, n] : per_cat)
             spdlog::info("[LOOTDISK]   enemy-drop category index {} = {} markers", cat, n);

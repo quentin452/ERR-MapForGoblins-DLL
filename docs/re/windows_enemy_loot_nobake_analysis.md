@@ -88,26 +88,34 @@ clutter: Sliver of Meat ×3480, Thin Beast Bones ×2902, mushrooms…). The bake
 pipeline's ~60 manual `LOOT_CATEGORIES` notability filters — but the game already encodes notability
 in a **live-readable** signal, so porting those filters is unnecessary:
 
-| filter (over the 25608 universe) | distinct lots | placements | misses any of baked-119? |
+The raw `getItemFlagId` counts (`datamine_enemy_notability.py`) first looked like 349 lots, but that
+used the RAW flag. The shipped filter applies the **runtime** flag semantics: `resolve_loot_flag`
+returns 0 for repeatable/temp flags (`== -1` or `>= 0x40000000` — golden runes, gloveworts, crafting
+that re-drops), which is exactly the notability cut. With that applied (`sim_enemy_pass.py`, mirrors
+`build_disk_enemy_markers` over the disk `Parts.Enemies` parse):
+
+| filter (runtime flag semantics) | markers | covers baked-119 (by lot) | extra notable |
 |---|---|---|---|
-| `getItemFlagId != 0` (one-time persistent obtain flag) | 559 | 1475 | no |
-| `placements == 1` (lot on a unique enemy) | 489 | 489 | no |
-| **`getItemFlagId != 0` AND `placements == 1`** | **349** | **349** | **no (perfect superset)** |
+| `persistent flag` only, **dedup by lot** (SHIPPED) | **~124** | 81 | +43 |
+| `persistent flag` AND `placements == 1` | ~101 | 81 | +20 |
 
 - **`getItemFlagId`** (on the `ItemLotParam_enemy/_map` row) is the game's persistent "you took this"
   flag. Respawning clutter has flag 0; one-time named drops have a real flag. **All 119 baked enemy
-  lots have flag != 0** (100%); only 5.8% of universe placements do.
-- **placements-per-lot == 1**: the 119 are each placed on exactly one enemy; clutter lots are shared
-  across swarms (median 3, max 1917 placements/lot). The disk pass counts this during its parse.
-- The combined filter yields **349 lots, a perfect superset of the 119**, plus **230 notable drops the
-  bake's manual curation MISSED** — Blaidd's & Ronin's armour sets, Hoslow's Petal Whip, Royal
-  Greatsword, Patches'/Miriel's Bell Bearing, Inseparable Sword + Twinned set, Irina's Letter,
-  Dancer's Castanets, etc. So the live filter is **strictly better coverage** than the curated bake.
+  lots carry a persistent flag**; only ~5.8% of universe placements do.
+- The +43 extra are notable drops the bake's manual curation MISSED — Blaidd's & Ronin's armour sets,
+  Hoslow's Petal Whip, Patches'/Miriel's Bell Bearing, Inseparable Sword + Twinned set, etc.
+- **Coverage caveat (81/119 by lot, not 119):** 35 baked enemy lots use a *sibling* `ItemLotParam`
+  row — the npc's `itemLotId` is the base lot, the bake resolved the item-bearing row in the same lot
+  sequence (e.g. base `333062020` → item `333062021`). The disk pass resolves the base, so it does NOT
+  lot-match those 35 (they stay baked; the measured duplicate overlap with disk markers is only ~3).
+  Exact 119-match would need RE of the `ItemLotParam` row chain — marginal. 3 more (m61 DLC: Blessed
+  Bone Shard ×2, **Iris of Occultation**) have a one-time flag in a high range `resolve_loot_flag`
+  treats as repeatable, so the disk pass skips them and the bake keeps them — correct (no loss).
 
-Both signals are runtime-derivable (`resolve_loot_flag(lot)` already exists; placement-count is
-counted in the disk pass), so `build_disk_enemy_markers` filters live — no `LOOT_CATEGORIES` port.
-SHIPPED in the pass (config `loot_enemy_drops`): emits ~349 notable enemy markers, drops the matching
-baked Enemy rows, adds the 230 the bake missed.
+The notability signal is runtime-readable (`resolve_loot_flag(lot)` already exists), so
+`build_disk_enemy_markers` filters live — no `LOOT_CATEGORIES` port. SHIPPED in the pass (config
+`loot_enemy_drops`): ~124 notable enemy markers, drops the lot-matched baked Enemy rows, adds the ~43
+the bake missed; the lot-exact provenance guard keeps the sibling-row + DLC-flag baked rows.
 
 Full 119-row table: see [`enemy_markers_table.md`](enemy_markers_table.md) (this dir).
 
