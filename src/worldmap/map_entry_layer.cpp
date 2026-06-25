@@ -811,9 +811,23 @@ static int build_disk_world_feature_markers(
             else ++no_flag;  // statue absent from the EMEVD scan → drawn, just no graying
             break;
         }
-        case gen::FlagRule::None:
-        default:
+        case gen::FlagRule::SealEmevd:
+        {
+            // Seal Puzzles: the activation flag is the EMEVD template-90006051 flag joined by
+            // EntityID. SELF-GATING — AEG099_090 is a common model also placed as decoration; a
+            // placement with NO 90006051 binding is not an interactive seal, so SKIP it (stronger
+            // than entity_required alone, avoids phantom non-seal markers). Mirrors the bake, which
+            // only emitted seals the 90006050/51 template pair referenced (extract_seal_puzzles.py).
+            auto it = emevd_flags.find(a.entityId);
+            if (it == emevd_flags.end()) { ++rule_skipped; continue; }
+            collect_flag = it->second;
             break;
+        }
+        case gen::FlagRule::None:
+            break;  // respawn points (Stakes): no graying flag, by design.
+            // NO default: — the switch is exhaustive over FlagRule, so adding a new rule
+            // without a case here is a clang-cl -Wswitch warning (compile-time), not a silent
+            // no-flag marker at runtime.
         }
 
         const int cat = static_cast<int>(wf->category);

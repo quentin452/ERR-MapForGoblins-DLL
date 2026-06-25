@@ -25,7 +25,8 @@ os.makedirs(GEN, exist_ok=True)
 rows = sorted(WORLD_FEATURE_ASSETS, key=lambda r: r['aeg_row'])
 
 # python flag_rule string -> C++ FlagRule enumerator
-FLAG_RULE_CPP = {'none': 'None', 'imp_seal': 'ImpSeal', 'hero_tomb_emevd': 'HeroTombEmevd'}
+FLAG_RULE_CPP = {'none': 'None', 'imp_seal': 'ImpSeal', 'hero_tomb_emevd': 'HeroTombEmevd',
+                 'seal_emevd': 'SealEmevd'}
 
 HPP = """#pragma once
 
@@ -44,7 +45,9 @@ namespace goblin::generated
 //                 placements whose entity suffix isn't a real seal {570,575,565,611} and picks
 //                 the key label by suffix (565 = Imbued Sword Key, else Stonesword Key).
 //   HeroTombEmevd flag = the EMEVD template-90005683 activated flag, joined to the asset by EntityID.
-enum class FlagRule : uint8_t { None, ImpSeal, HeroTombEmevd };
+//   SealEmevd     flag = the EMEVD template-90006051 activation flag, joined by EntityID; the pass
+//                 SELF-GATES (skips placements with no 90006051 binding = decoration / non-seal use).
+enum class FlagRule : uint8_t { None, ImpSeal, HeroTombEmevd, SealEmevd };
 
 // One asset-model World feature: an AEG ModelName that maps to a marker category.
 // The runtime's generic disk pass (build_disk_world_feature_markers) emits a marker
