@@ -339,6 +339,7 @@ void build_buckets_impl()
 
     int replaced = 0;
     int debake_gap = 0;  // Treasure-sourced baked rows the disk did NOT cover (de-bake blocker)
+    int enemy_markers = 0;  // [ENEMY-MARKERS] baked enemy-drop rows (LootSource::Enemy)
     for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
     {
         const gen::MapEntry &e = gen::MAP_ENTRIES[i];
@@ -387,8 +388,32 @@ void build_buckets_impl()
                              e.lotId, e.data.areaNo, e.data.gridXNo, e.data.gridZNo, key);
             }
         }
+        // [ENEMY-MARKERS] diag (de-bake census of the enemy slice): enumerate the baked
+        // enemy-drop rows. Provenance Enemy is ALWAYS lotType 2 (ItemLotParam_enemy), has
+        // NO MSB Treasure event, and the PROVENANCE GUARD above never lets the disk treasure
+        // pass evict it — so today the 119 enemy markers stay baked. The CLEAN no-bake route
+        // is a SEPARATE disk pass (not yet built): MSB Parts.Enemies → NPCParamID →
+        // NpcParam.itemLotId_enemy → ItemLotParam_enemy, with the position taken from the
+        // resident enemy Part (offline-proven in tools/extract_all_items.py, the same chain
+        // that produced these rows). The loaded-loot walker (MapIns+0x460 node {lotId,flag,
+        // FieldIns*}) does NOT pre-locate them: that node only holds SPAWNED/opened loot
+        // (post-kill ground drops), never the resident enemy ChrIns binding — so it is the
+        // wrong runtime tool here. Gated on diag_loot_pos, independent of the disk source.
+        if (goblin::config::diagLootPos && e.loot_source == gen::LootSource::Enemy)
+        {
+            ++enemy_markers;
+            int32_t key = goblin::resolve_loot_item_textid(e.lotId, e.lotType, -1);
+            spdlog::info("[ENEMY-MARKERS] lot={} m{}_{}_{} cat={} key={} npc={}",
+                         e.lotId, e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
+                         static_cast<int>(e.category), key,
+                         e.object_name ? e.object_name : "(none baked)");
+        }
         push_marker(e.row_id, e.data, c, e.lotId, e.lotType);
     }
+    if (goblin::config::diagLootPos)
+        spdlog::info("[ENEMY-MARKERS] {} baked enemy-drop rows (LootSource::Enemy, lotType 2) "
+                     "— no MSB Treasure; no-bakeable only via a future Parts.Enemies + NpcParam pass",
+                     enemy_markers);
     if (diag)
     {
         spdlog::info("[LOOTDISK] replaced {} baked lot rows with disk placements", replaced);
