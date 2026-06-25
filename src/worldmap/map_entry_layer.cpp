@@ -1145,6 +1145,65 @@ static int build_disk_gesture_markers(
     return emitted;
 }
 
+// World feature: Great Runes (config world_features_from_disk). Each of the 6 demigod great runes
+// is shown at its boss's location and grays when the boss is defeated (= rune obtained — great runes
+// are auto-awarded on demigod death and can't be dropped/sold). No bake: the position AND the graying
+// flag come LIVE from the matching boss marker (build_live_bosses → WorldMapPointParam), joined by the
+// boss's clearedEventFlagId. Runs AFTER build_live_bosses (needs its markers); category-wipe finalize.
+//
+// The rune→boss link is the one irreducibly editorial bit (which demigod drops which rune), but it was
+// DERIVED, not hand-curated: EquipParamGoods.goodsType==15 identifies EXACTLY these 6 runes; each rune's
+// GoodsName shares its demigod's proper noun with the boss name; the lone collision (Radahn = Starscourge
+// vs the DLC "Consort of Miquella") resolves by "great runes are base-game" → exclude DLC-area bosses.
+// That offline match produced the {rune_goods_id → boss_clearedEventFlagId} pairs below, so the runtime
+// needs only a NUMERIC flag-join — no FMG strings, locale-independent, build-order safe.
+//
+// TODO(zero-manual-table): to drop even these 6 pairs, do the name-match LIVE — iterate EquipParamGoods
+// (goodsType==15), resolve each rune's GoodsName + each live boss's name via the game MsgRepository, match
+// on the shared proper noun (excluding DLC areas), then join. Deferred: the marker-build pass runs BEFORE
+// the DLL's expanded-FMG is built (lookup_text would miss), so it needs a direct MsgRepository read +
+// locale-robust matching — not worth the fragility for 6 markers ER is very unlikely to ever extend with
+// a new great-rune demigod.
+static int build_great_rune_markers(std::unordered_set<Cell, CellHash> &out_cells)
+{
+    namespace gen = goblin::generated;
+    GOBLIN_BENCH("build.great_runes");
+    const int cat = static_cast<int>(gen::Category::KeyGreatRunes);
+    struct RuneLink { int32_t rune_id; int cleared_flag; };
+    static constexpr RuneLink GREAT_RUNES[] = {
+        {191, 510010},  // Godrick's Great Rune  — Godrick the Grafted
+        {192, 510300},  // Radahn's Great Rune   — Starscourge Radahn (base; NOT the DLC Consort)
+        {193, 510040},  // Morgott's Great Rune  — Morgott, the Omen King
+        {194, 510220},  // Rykard's Great Rune   — Rykard, Lord of Blasphemy
+        {195, 510120},  // Mohg's Great Rune     — Mohg, Lord of Blood
+        {196, 510200},  // Malenia's Great Rune  — Malenia, Blade of Miquella
+    };
+    const auto &bosses = g_buckets[static_cast<int>(gen::Category::WorldBosses)];
+    int emitted = 0, no_boss = 0;
+    for (const RuneLink &r : GREAT_RUNES)
+    {
+        // The live boss marker carrying this cleared flag → its position is the rune's location.
+        const Marker *boss = nullptr;
+        for (const Marker &m : bosses)
+            if (m.cleared_flag == r.cleared_flag) { boss = &m; break; }
+        if (!boss) { ++no_boss; continue; }  // boss absent from the live param this build (title screen)
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = static_cast<uint8_t>(boss->raw_area);
+        d.gridXNo = static_cast<uint8_t>(boss->raw_gx);
+        d.gridZNo = static_cast<uint8_t>(boss->raw_gz);
+        d.posX = boss->raw_px;
+        d.posZ = boss->raw_pz;
+        d.textId1 = 500000000 + r.rune_id;      // GoodsName (the great rune's name)
+        d.textDisableFlagId1 = r.cleared_flag;  // boss defeated → rune obtained → gray (same flag as the boss)
+        push_marker(/*row_id=*/(uint64_t)r.rune_id, d, cat, /*lotId=*/0u, /*lotType=*/0u, Source::Live);
+        out_cells.insert(cell_of(g_buckets[cat].back()));
+        ++emitted;
+    }
+    spdlog::info("[LOOTDISK] world features: {} Great Runes from live boss positions ({} boss-not-live)",
+                 emitted, no_boss);
+    return emitted;
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
 // NOTE (2026-06-23): a "World-* categories live from WorldMapPointParam by row-id range" experiment
@@ -1470,6 +1529,11 @@ void build_buckets_impl()
                      "— reachable dummies w/ an EntityID are now disk-emitted", recover);
     }
     build_live_bosses();
+
+    // Great Runes: the 6 demigod runes shown at their LIVE boss positions (joined by cleared flag).
+    // Must run after build_live_bosses (reads its markers); feeds the world-feature category-wipe below.
+    if (goblin::config::worldFeaturesFromDisk)
+        build_great_rune_markers(world_feature_cells[static_cast<int>(gen::Category::KeyGreatRunes)]);
 
     // ── Finalize dedup: drop baked geom markers the disk collectible pass re-placed ──
     // The lotId-coverage replace (in the loop above) removes a baked TREASURE row when a
