@@ -16,6 +16,14 @@ if (resolved == 0xFFFFFFFFu || resolved >= 0x40000000u)   // L4145
     return 0;   // treat as repeatable → not a tracked collectible
 ```
 
+> **⚠ The same numeric cut lives in TWO functions** — both must be fixed or the bug only
+> half-goes-away:
+> 1. `goblin::resolve_loot_flag` — `goblin_inject.cpp:4145` (graying/census/de-bake flag).
+> 2. `goblin::lot_row_in_table` — `goblin_inject.cpp:4207` (the **notability** resolver, comment
+>    literally reads *"same semantics as resolve_loot_flag … repeatable/temp range → not notable"*).
+>    This is the only OTHER `>= 0x40000000` in `src/` (`grep -rn 0x40000000 src/` = exactly these 2).
+> Route BOTH through the new helper.
+
 **This wrongly drops legit SOTE-DLC one-time loot.** Datamined over ItemLotParam_map/_enemy
 (`tools/probe_flag_ranges.py`):
 
@@ -34,6 +42,38 @@ if (resolved == 0xFFFFFFFFu || resolved >= 0x40000000u)   // L4145
 isn't counted). Secondary: the no-bake passes drop a few DLC one-time sub-lots (~2 emevd:
 Crucible Hammer Helm + Royal Magic Grease; ~3 enemy: Blessed Bone Shard ×2, Iris of Occultation)
 → they stay baked (no loss, but not de-baked).
+
+## ✅ RUNTIME-VALIDATED 2026-06-25 (live RPM, eldenring.exe running)
+
+The whole mechanism below was **proven live** — script `D:\ghidra_scripts\flag_group_persistent.py`
+(reusable; reads `D:\ghidra_scripts\loot_flags_dump.txt` from `tools/dump_loot_flags.py`).
+
+- **Manager resolve:** the **PRIMARY** `EVENT_FLAG_MAN_SLOT` AOB
+  (`48 8B 3D ?? ?? ?? ?? 48 85 FF ?? ?? 32 C0 E9`, rip-disp `{{3,7}}`) **is present in this build**
+  and resolves the correct manager. ⚠ **Do NOT use `EVENT_FLAG_MAN_SLOT_ALT`** — it resolves a
+  *different* singleton (reads `+0x653c`; gave `divisor=551`, garbage map → every lookup wrong).
+  The PRIMARY gives a clean **`divisor (mgr+0x1c) = 1000`** and a valid `_Myhead (mgr+0x38)`.
+- **Offsets confirmed live** (std::map<uint group, Block>): node `_Left@0, _Parent@+0x08,
+  `_Right@+0x10`, `_Isnil@+0x19 (byte)`, key `group @ +0x20 (uint)`. The walk == `std::map::find`:
+  `group = flagId/1000`; lower_bound then exact-key test; **group node exists ⇒ persistent**.
+- **Sweep over all 5496 distinct nonzero loot flags:**
+  - **DLC (≥0x40000000): 506/506 persistent, 0 absent** → the live query KEEPS every DLC one-time
+    flag. **Bug fixed**, and no nonzero DLC flag is wrongly kept-as-repeatable.
+  - **base (<0x40000000): 4979/4990 persistent, only 11 absent.** Near-100% presence on a
+    mid-progress save **PROVES persistent groups are pre-allocated at save load, NOT lazily per
+    area** — so "group absent ⇒ non-persistent" is reliable (no lazy-allocation false-drops).
+- **⚠ Cerulean Sea is NOT repeatable — the brief's old label was WRONG.** It is the *only* "repeatable"
+  in `probe_flag_ranges.py`'s hand-curated name list that has a **nonzero** flag; every genuine
+  repeatable (Mushroom, Dewgem, Ghost Glovewort, Deep-Purple Lily, Shadow Realm Rune) has
+  **`getItemFlagId == 0`** and is already handled by the existing `resolved == 0` path — it never
+  reaches the persistence test. So the real signal is **flag 0 = repeatable**, and the live query
+  correctly classifies Cerulean Sea (group 2047367 allocated) as **persistent/one-time**.
+- **⚠ NEW caveat (the brief originally said base-game is unaffected — it isn't, slightly):** the 11
+  absent base flags flip **keep→drop** vs the old numeric cut. They sit in 5 non-standard groups
+  (53000, 59930, 59931, 59990, 99997 — "Veteran's Helm", "Cracked Pot", "Perfume Bottle", "Soft
+  Cotton", …), none referenced anywhere in the repo → ERR custom/merchant/placeholder lots the
+  game itself does NOT persist. Dropping them is correct (they're not trackable one-time loot), but
+  **eyeball this list when wiring** in case a real one-time hides there.
 
 ## The fix (ground truth = live persistent-group query, not a value range)
 
@@ -69,18 +109,27 @@ flag too, so it can't be used to classify; you need the **group-allocated** chec
    - All reads are RPM/guarded (clang-cl elides `__try` on raw loads — see memory
      `build-toolchain-clang-xwin` gotcha #5; use ReadProcessMemory or the existing safe-read
      helpers, NOT raw `*ptr`).
-2. **Wire into `resolve_loot_flag`** (`goblin_inject.cpp` ~L4136-4147): replace the numeric cut
-   with the live query, keeping cheap short-circuits + a safe fallback:
+2. **Factor the cut into ONE predicate, then wire BOTH call sites through it.** Don't inline the
+   query twice — make a small `bool flag_is_repeatable(uint32_t flag)` that both `resolve_loot_flag`
+   and `lot_row_in_table` call, so the fallback + memoization live in one place:
    ```cpp
-   if (resolved == 0)            return baked_flag ? ... : 0;  // keep existing 0 handling
-   if (resolved == 0xFFFFFFFFu)  return 0;                     // -1 = always re-droppable (keep)
-   // live ground truth: a flag whose group isn't persistent is repeatable
-   if (g_flagman_ok && !flag_group_persistent(resolved)) return 0;
-   // fallback when the manager isn't resolved yet: keep the old numeric heuristic so behaviour
-   // never regresses pre-resolve (or on a profile where the manager AOB misses).
-   if (!g_flagman_ok && resolved >= 0x40000000u) return 0;
-   return resolved;
+   // returns true ⇒ treat as repeatable/temp (drop). Folds the old -1/0x40000000 short-circuits
+   // and the live group query + safe pre-resolve fallback into one spot.
+   bool goblin::flag_is_repeatable(uint32_t flag) {
+       if (flag == 0xFFFFFFFFu) return true;              // -1 = always re-droppable
+       if (g_flagman_ok)        return !flag_group_persistent(flag);  // live ground truth
+       return flag >= 0x40000000u;                        // fallback: old numeric heuristic
+   }
    ```
+   - **`resolve_loot_flag`** (`goblin_inject.cpp:4145`), replace
+     `if (resolved == 0xFFFFFFFFu || resolved >= 0x40000000u) return 0;` with
+     `if (flag_is_repeatable(resolved)) return 0;` (keep the existing `resolved == 0` handling
+     above it untouched).
+   - **`lot_row_in_table`** (`goblin_inject.cpp:4207`), replace
+     `if (flag == 0xFFFFFFFFu || flag >= 0x40000000u) flag = 0;` with
+     `if (flag_is_repeatable(flag)) flag = 0;`.
+   - Note `flag == 0` is NOT repeatable (Rune Arc is flag 0 = persistent); both sites already treat
+     0 specially before the cut — preserve that, `flag_is_repeatable(0)` must return **false**.
 3. **Performance/threading:** `resolve_loot_flag` is called per-marker (census/graying, ~hundreds
    per refresh) AND on the disk-build worker thread concurrently with render-thread callers.
    - Memoize: a thread-safe `flagId → persistent?` cache (or cache by `group`), guarded like the
@@ -96,21 +145,25 @@ flag too, so it can't be used to classify; you need the **group-allocated** chec
 - **Specific test flags** (the helper MUST classify these correctly):
   | flag | item | expected |
   |---|---|---|
-  | `0x79eb8218` (2045477400) | Crucible Hammer Helm | **persistent** (keep) |
-  | `0x7a0990a0` (2047447200) | Royal Magic Grease | **persistent** (keep) |
-  | `0x7a085adc` (2047367900) | Cerulean Sea | **repeatable** (drop) |
-  | `0x3e9030ec` (Smithing Stone [1]) | base-game | **persistent** (keep) |
-  | `0` / `0xffffffff` | — | drop (unchanged) |
+  | `0x79eb8218` (2045477400) | Crucible Hammer Helm | **persistent** (keep) — live ✓ |
+  | `0x7a0990a0` (2047447200) | Royal Magic Grease | **persistent** (keep) — live ✓ |
+  | `0x7a085adc` (2047367900) | Cerulean Sea | **persistent** (keep) — live ✓ (NOT repeatable; old label was wrong) |
+  | `0x3e9030ec` (1049637xxx, Smithing Stone [1]) | base-game | **persistent** (keep) — live ✓ |
+  | `6001` / `120` | AlwaysOn / Prologue | **persistent** — live ✓ (sanity) |
+  | `0` / `0xffffffff` | — | drop (unchanged; `flag==0` IS the real repeatable signal) |
 - **Runtime:** `loot_emevd_drops=true` + `diag_loot_pos` → `[LOOTDISK] emevd drops … replaced N` should
   rise past 512/529 (the 2 DLC equipment now de-baked). Also re-check the census/graying over-report
   (`docs/re/windows_collected_loot_flag_re_findings.md` §1 was tuned around the numeric cut — confirm
-  the live query doesn't re-introduce the 100%-save over-report it fixed: repeatable DLC goods like
-  Shadow Realm Rune / Cerulean Sea must STILL drop).
+  the live query doesn't re-introduce the 100%-save over-report it fixed: the true repeatables that
+  must STILL drop are the **`flag==0`** goods — Shadow Realm Rune, Mushroom, Dewgem, Ghost Glovewort,
+  Deep-Purple Lily — already dropped by the `resolved==0` path (NOT by the persistence test).
+  Cerulean Sea is **one-time** and is now correctly KEPT — that is intended, not a regression).
 
 ## Files
 
-- `src/goblin_inject.cpp` — `resolve_loot_flag` (~L4111) + the new `flag_group_persistent`.
-- `src/goblin_inject.hpp` — declare `flag_group_persistent`.
+- `src/goblin_inject.cpp` — the new `flag_group_persistent` + `flag_is_repeatable`, then wire
+  **both** sites: `resolve_loot_flag` (L4145) AND `lot_row_in_table` (L4207).
+- `src/goblin_inject.hpp` — declare `flag_group_persistent` + `flag_is_repeatable`.
 - `src/re_signatures.hpp` — `EVENT_FLAG_MAN_SLOT*` already present; add a sig only if the rbtree
   walk needs a dedicated sub-fn (likely not — replicate the walk in C++).
 - Reuse: `goblin_markers.cpp` / `goblin_kindling.cpp` (manager + IsEventFlag resolve),
