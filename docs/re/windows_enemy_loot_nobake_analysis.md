@@ -230,6 +230,11 @@ cross-tile), and the lot→entity link is in the EMEVD files on disk (`event/*.e
   block-local position. A provenance guard drops the **307** baked `LootSource::Emevd` rows it covers.
   The **222** residual (sequence-base + event-1200) stays baked — future work: ItemLotParam-chain RE
   (shared with the enemy 35 / corpse 30) + the event-1200 flag→lot mechanism.
+  > **RUNTIME-VALIDATED (2026-06-25):** live log with `loot_emevd_drops=true` — 517 EMEVD files →
+  > **500 template awards** (exact vs SoulsFormats) → **308 markers emitted** (filtered 163
+  > entity-not-an-MSB-enemy, 23 (entity,lot)-dedup, 2 treasure-dup, 4 unclassified) → **300 baked
+  > LootSource::Emevd rows de-baked**. Matches this analysis (300 vs 307 covered = the 2 treasure-dup
+  > + 4 unclassified the offline join didn't filter). No crash from the pass.
 - **Corpse Treasure residual (312, partBucket≠live) → NOT EMEVD**: only 47 EMEVD-recoverable (17
   direct + 30 base), **265 have no EMEVD link** — they are the `enrich_fallback_with_emevd` heuristic
   bindings (AEG099_990/090 corpses: "Sign of the All-Knowing", Juvenile Scholar Robe, …). These are
