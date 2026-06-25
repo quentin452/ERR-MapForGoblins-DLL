@@ -2,7 +2,7 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 17:53:57.729
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 19:50:44.804
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - **`drawn`** = real markers the renderer draws (= total). **`census`** = the ImGui badge denominator (completable spots) — distinct collect flags for flag-based categories, row count for geom/SFX pieces, 0 for graces; it EXCLUDES respawnable flag-less gather, so `census < drawn` wherever markers share a flag or respawn.
@@ -12,13 +12,13 @@
 
 ## ▶ Baked markers remaining
 
-# **322**  ← drive this to **0**
+# **198**  ← drive this to **0**
 
 | | baked | disk | live | live-cls | total |
 |---|--:|--:|--:|--:|--:|
-| **all categories** | **322** | 7692 | 469 | 190 | 8483 |
+| **all categories** | **198** | 7810 | 469 | 188 | 8477 |
 
-🔴 baked-only: **1**  ·  🟡 partial: **25**  ·  🟢 off-bake: **35**  (of 61 active categories)
+🔴 baked-only: **1**  ·  🟡 partial: **24**  ·  🟢 off-bake: **36**  (of 61 active categories)
 
 ## Tile coverage (`_00`-only parser)
 
@@ -38,11 +38,11 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 
 | category | baked | disk | live | live-cls | total | icon | status |
 |---|--:|--:|--:|--:|--:|---|---|
-| Equipment - Armaments | 21 | 291 | 0 | 0 | 312 | atlas 69% | 🟡 partial |
+| Equipment - Armaments | 21 | 289 | 0 | 0 | 310 | atlas 69% | 🟡 partial |
 | Equipment - Armour | 3 | 243 | 0 | 0 | 246 | atlas 69% | 🟡 partial |
 | Equipment - Ashes of War | 3 | 76 | 0 | 0 | 79 | atlas 69% | 🟡 partial |
-| Equipment - Spirits | 2 | 79 | 0 | 0 | 81 | atlas 69% | 🟡 partial |
-| Equipment - Talismans | 5 | 144 | 0 | 0 | 149 | circle | 🟡 partial |
+| Equipment - Spirits | 2 | 71 | 0 | 0 | 73 | atlas 69% | 🟡 partial |
+| Equipment - Talismans | 5 | 136 | 0 | 0 | 141 | circle | 🟡 partial |
 | Key - Celestial Dew | 0 | 9 | 0 | 0 | 9 | atlas 69% | 🟢 off-bake |
 | Key - Cookbooks | 0 | 87 | 0 | 0 | 87 | atlas 69% | 🟢 off-bake |
 | Key - Crystal Tears | 4 | 35 | 0 | 0 | 39 | atlas 69% | 🟡 partial |
@@ -57,8 +57,8 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | Loot - Ammo | 0 | 81 | 0 | 81 | 81 | atlas 69% | 🟢 off-bake |
 | Loot - Bell-Bearings | 0 | 50 | 0 | 0 | 50 | atlas 69% | 🟢 off-bake |
 | Loot - Consumables | 1 | 186 | 0 | 6 | 187 | atlas 69% | 🟡 partial |
-| Loot - Crafting Materials | 5 | 1696 | 0 | 101 | 1701 | atlas 69% | 🟡 partial |
-| Loot - Dragon Hearts | 1 | 20 | 0 | 0 | 21 | atlas 69% | 🟡 partial |
+| Loot - Crafting Materials | 5 | 1694 | 0 | 99 | 1699 | atlas 69% | 🟡 partial |
+| Loot - Dragon Hearts | 1 | 19 | 0 | 0 | 20 | atlas 69% | 🟡 partial |
 | Loot - Gestures | 0 | 7 | 0 | 0 | 7 | atlas 69% | 🟢 off-bake |
 | Loot - Gloveworts | 11 | 271 | 0 | 0 | 282 | atlas 69% | 🟡 partial |
 | Loot - Golden Runes | 9 | 217 | 0 | 0 | 226 | atlas 69% | 🟡 partial |
@@ -80,14 +80,14 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | Magic - Incantations | 0 | 70 | 0 | 0 | 70 | atlas 69% | 🟢 off-bake |
 | Magic - Memory Stones | 0 | 6 | 0 | 0 | 6 | atlas 69% | 🟢 off-bake |
 | Magic - Prayerbooks | 0 | 17 | 0 | 0 | 17 | atlas 69% | 🟢 off-bake |
-| Magic - Sorceries | 0 | 72 | 0 | 0 | 72 | atlas 69% | 🟢 off-bake |
+| Magic - Sorceries | 0 | 71 | 0 | 0 | 71 | atlas 69% | 🟢 off-bake |
 | Quest - Deathroot | 0 | 9 | 0 | 0 | 9 | atlas 69% | 🟢 off-bake |
 | Quest - Progression | 0 | 44 | 0 | 0 | 44 | atlas 69% | 🟢 off-bake |
 | Quest - Seedbed Curses | 0 | 6 | 0 | 0 | 6 | atlas 69% | 🟢 off-bake |
-| Reforged - Ember Pieces | 19 | 279 | 0 | 0 | 298 | atlas 30% | 🟡 partial |
+| Reforged - Ember Pieces | 0 | 302 | 0 | 0 | 302 | atlas 30% | 🟢 off-bake |
 | Reforged - Fortunes | 3 | 58 | 0 | 0 | 61 | atlas 69% | 🟡 partial |
 | Reforged - Items | 2 | 74 | 0 | 0 | 76 | atlas 69% | 🟡 partial |
-| Reforged - Rune Pieces | 114 | 1118 | 0 | 0 | 1232 | atlas 30% | 🟡 partial |
+| Reforged - Rune Pieces | 9 | 1235 | 0 | 0 | 1244 | atlas 30% | 🟡 partial |
 | World - Bosses | 0 | 0 | 217 | 0 | 217 | symbol | 🟢 off-bake |
 | World - Hostile NPC | 0 | 50 | 0 | 0 | 50 | atlas 83% | 🟢 off-bake |
 | World - Imp Statues | 0 | 37 | 0 | 0 | 37 | atlas 30% | 🟢 off-bake |
@@ -106,11 +106,11 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 
 | category | drawn | census | flag (have/drawn) | respawn | nonloot |
 |---|--:|--:|--:|--:|--:|
-| Equipment - Armaments | 312 | 285 | 312/312 | 0 | 0 |
+| Equipment - Armaments | 310 | 285 | 310/310 | 0 | 0 |
 | Equipment - Armour | 246 | 119 | 246/246 | 0 | 0 |
 | Equipment - Ashes of War | 79 | 79 | 79/79 | 0 | 0 |
-| Equipment - Spirits | 81 | 73 | 81/81 | 0 | 0 |
-| Equipment - Talismans | 149 | 138 | 149/149 | 0 | 0 |
+| Equipment - Spirits | 73 | 73 | 73/73 | 0 | 0 |
+| Equipment - Talismans | 141 | 138 | 141/141 | 0 | 0 |
 | Key - Celestial Dew | 9 | 8 | 9/9 | 0 | 0 |
 | Key - Cookbooks | 87 | 85 | 87/87 | 0 | 0 |
 | Key - Crystal Tears | 39 | 38 | 39/39 | 0 | 0 |
@@ -125,8 +125,8 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | Loot - Ammo | 81 | 81 | 81/81 | 0 | 0 |
 | Loot - Bell-Bearings | 50 | 49 | 50/50 | 0 | 0 |
 | Loot - Consumables | 187 | 183 | 187/187 | 0 | 0 |
-| Loot - Crafting Materials | 1701 | 593 | 598/1701 | 1103 | 0 |
-| Loot - Dragon Hearts | 21 | 20 | 21/21 | 0 | 0 |
+| Loot - Crafting Materials | 1699 | 593 | 596/1699 | 1103 | 0 |
+| Loot - Dragon Hearts | 20 | 20 | 20/20 | 0 | 0 |
 | Loot - Gestures | 7 | 6 | 7/7 | 0 | 0 |
 | Loot - Gloveworts | 282 | 50 | 50/282 | 232 | 0 |
 | Loot - Golden Runes | 226 | 222 | 226/226 | 0 | 0 |
@@ -148,14 +148,14 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | Magic - Incantations | 70 | 68 | 70/70 | 0 | 0 |
 | Magic - Memory Stones | 6 | 6 | 6/6 | 0 | 0 |
 | Magic - Prayerbooks | 17 | 14 | 17/17 | 0 | 0 |
-| Magic - Sorceries | 72 | 68 | 72/72 | 0 | 0 |
+| Magic - Sorceries | 71 | 68 | 71/71 | 0 | 0 |
 | Quest - Deathroot | 9 | 9 | 9/9 | 0 | 0 |
 | Quest - Progression | 44 | 33 | 44/44 | 0 | 0 |
 | Quest - Seedbed Curses | 6 | 5 | 6/6 | 0 | 0 |
-| Reforged - Ember Pieces | 298 | 298 | 19/298 | 0 | 279 |
+| Reforged - Ember Pieces | 302 | 302 | 23/302 | 0 | 279 |
 | Reforged - Fortunes | 61 | 8 | 61/61 | 0 | 0 |
 | Reforged - Items | 76 | 58 | 76/76 | 0 | 0 |
-| Reforged - Rune Pieces | 1232 | 1232 | 114/1232 | 0 | 1118 |
+| Reforged - Rune Pieces | 1244 | 1244 | 126/1244 | 0 | 1118 |
 | World - Bosses | 217 | 215 | 217/217 | 0 | 0 |
 | World - Hostile NPC | 50 | 26 | 27/50 | 0 | 23 |
 | World - Imp Statues | 37 | 37 | 37/37 | 0 | 0 |

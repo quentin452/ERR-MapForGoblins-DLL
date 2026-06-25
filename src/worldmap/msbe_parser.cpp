@@ -602,6 +602,16 @@ EmevdParse parse_emevd_full(const uint8_t *buf, size_t len)
                     if ((int32_t)flag > 0 && (int32_t)lot > 0)
                         R.runEvent1200.push_back({flag, lot});
                 }
+                // Boss-reward templates 90005860/61/80: FLAG-keyed (defeatFlag@8, baseLot@24, NO
+                // entity). Collected here (per-map) so the caller joins defeatFlag→boss via the
+                // setter candidates + walks baseLot's chain for the Rune/Ember Piece. minLen 28.
+                if ((eventId == 90005860 || eventId == 90005861 || eventId == 90005880) && argLen >= 28)
+                {
+                    uint32_t flag = rd32(buf, a + 8);   // X0_4 = boss defeat flag
+                    uint32_t lot  = rd32(buf, a + 24);  // base ItemLotParam (piece = base+1/+2)
+                    if ((int32_t)flag > 0 && (int32_t)lot > 0)
+                        R.bossFlagLot.push_back({flag, lot});
+                }
             }
             // mechanism B input: SetEventFlag(2003:66) / SetNetworkEventFlag(2003:69), state==1
             else if (bank == 2003 && (iid == 66 || iid == 69) && argLen >= 12)

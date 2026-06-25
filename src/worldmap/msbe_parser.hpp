@@ -103,6 +103,13 @@ struct EmevdSetter
 {
     std::vector<uint32_t> flags;       // flags this event SetEventFlag(., state=1)
     std::vector<uint32_t> candidates;  // entity-range int32 values referenced in the event
+    // The tile (area<<16 | gx<<8 | gz) of the emevd file this setter came from, stamped by
+    // load_emevd_awards from the filename (parse_emevd_full has no filename). 0 if the file
+    // isn't a single tile (e.g. the overworld-common "m60.emevd.dcx"). The caller resolves the
+    // boss entity from `candidates` intersected with THIS tile's MSB enemies only — a global
+    // intersection mis-picks a numerically-lower boss-like EntityID from a DIFFERENT dungeon
+    // that merely appears as a 4-byte window in this event (the per-dungeon Rune Piece bug).
+    uint32_t mapTile = 0;
 };
 
 // Full EMEVD parse: direct template awards (mechanism A, the shipped pass) PLUS the
@@ -114,6 +121,14 @@ struct EmevdParse
     std::vector<EmevdAward>                       direct;        // (entity, lot) — mechanism A
     std::vector<std::pair<uint32_t, uint32_t>>    runEvent1200;  // (flag, lot) — RunEvent(1200)
     std::vector<EmevdSetter>                      setters;       // SetEventFlag(.,1) events
+    // Boss-reward templates 90005860/61/80: init args (defeatFlag@8 = X0_4, bossEntity@16 = X8_4,
+    // baseLot@24 = X16_4). We parse (defeatFlag, baseLot) — not the entity offset, because the
+    // Reforged convention is defeatFlag == the boss's MSB EntityID, so the caller resolves the
+    // position directly from the flag (with a map-scoped setter-candidate fallback for the few binds
+    // where it doesn't). Collected from EVERY map's emevd (the binds are per-map, unlike RunEvent(1200)
+    // which is common-only); then walk the baseLot ItemLotParam chain (piece = baseLot+1/+2) for the
+    // Rune/Ember Piece.
+    std::vector<std::pair<uint32_t, uint32_t>>    bossFlagLot;   // (defeatFlag, baseLot) — 90005860/61/80
 };
 
 // A placed Region (PointParam / POINT section) — the no-bake Spirit Springs source. The POINT

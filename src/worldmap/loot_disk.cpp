@@ -425,7 +425,9 @@ fs::path resolve_event_dir(const fs::path &mapStudio)
 }
 } // namespace
 
-std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &knownEntities)
+std::vector<DiskEmevd> load_emevd_awards(
+    const std::unordered_set<uint32_t> &knownEntities,
+    const std::unordered_map<uint32_t, std::unordered_set<uint32_t>> &entitiesByTile)
 {
     std::vector<DiskEmevd> out;
     ensure_map_dir_resolved();
@@ -444,6 +446,9 @@ std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &kno
     // Mechanism B inputs, accumulated across all files: flag→lot (from common.emevd's
     // RunEvent(1200)) and every SetEventFlag(.,1) event's flags+entity candidates.
     std::unordered_map<uint32_t, uint32_t> flag_to_lot;
+    // Boss-reward (90005860/61/80) defeatFlag→baseLot binds, accumulated from EVERY map (the binds
+    // are per-map, unlike the common-only RunEvent(1200) ones). Joined to a boss entity below.
+    std::unordered_map<uint32_t, uint32_t> boss_flag_to_lot;
     std::vector<msbe::EmevdSetter> setters;
     std::error_code ec;
     for (auto &de : fs::directory_iterator(evdir, ec))
@@ -471,10 +476,47 @@ std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &kno
         // matches the bake and avoids a stray per-map RunEvent(1200) re-binding a flag).
         if (lower == "common.emevd.dcx")
             for (const auto &fl : p.runEvent1200) flag_to_lot[fl.first] = fl.second;
-        for (auto &s : p.setters) setters.push_back(std::move(s));
+        // Boss-reward binds come from EVERY map's emevd (each dungeon inits 90005860 with its own
+        // boss flag + lot), so collect them unconditionally.
+        for (const auto &fl : p.bossFlagLot) boss_flag_to_lot[fl.first] = fl.second;
+        // Stamp each setter with its emevd file's tile (area<<16|gx<<8|gz) so the boss-candidate
+        // resolution below stays map-scoped. "m30_12_00_00.emevd.dcx" → (30,12,0); files that
+        // aren't a single tile (e.g. "common.emevd.dcx", "m60.emevd.dcx") leave mapTile=0 and fall
+        // back to the global set (their setters are overworld-common, handled by other mechanisms).
+        uint32_t setterTile = 0;
+        {
+            int a = 0, x = 0, z = 0, lod = 0;
+            if (std::sscanf(name.c_str(), "m%d_%d_%d_%d", &a, &x, &z, &lod) == 4 &&
+                a >= 0 && a < 256 && x >= 0 && x < 256 && z >= 0 && z < 256)
+                setterTile = ((uint32_t)a << 16) | ((uint32_t)x << 8) | (uint32_t)z;
+        }
+        for (auto &s : p.setters) { s.mapTile = setterTile; setters.push_back(std::move(s)); }
         ++parsed;
         spdlog::debug("[LOOTDISK] {} -> {} direct awards", name, p.direct.size());
     }
+
+    // Resolve a setter's referenced boss entity, intersecting its candidates with the entities of
+    // its OWN tile (entitiesByTile[s.mapTile]) when that tile is known, else the global set. Scoping
+    // to the tile is what stops a numerically-lower boss-like EntityID from a neighbouring dungeon
+    // (present in the global set, coincidentally a 4-byte window here) from being picked — the bug
+    // that mislocated ~23 per-dungeon Rune Pieces. Boss-preferred (eid%1000 ∈ 800..899), else lowest.
+    auto resolve_boss = [&](const msbe::EmevdSetter &s) -> uint32_t {
+        const std::unordered_set<uint32_t> *scope = &knownEntities;
+        if (s.mapTile)
+        {
+            auto mit = entitiesByTile.find(s.mapTile);
+            if (mit != entitiesByTile.end()) scope = &mit->second;
+        }
+        uint32_t boss = 0, any = 0;
+        for (uint32_t c : s.candidates)
+        {
+            if (!scope->count(c)) continue;
+            uint32_t last3 = c % 1000;
+            if (last3 >= 800 && last3 <= 899) { if (!boss || c < boss) boss = c; }
+            else if (!any || c < any) any = c;
+        }
+        return boss ? boss : any;
+    };
 
     // Mechanism B: resolve each setter event whose flag is bound to a lot → pick the boss
     // entity it references (boss-preferred eid%1000 ∈ 800..899, else lowest), dedup by
@@ -488,16 +530,7 @@ std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &kno
             auto it = flag_to_lot.find(flag);
             if (it == flag_to_lot.end()) continue;
             uint32_t lot = it->second;
-            // candidate ∩ known MSB entities, boss-preferred
-            uint32_t boss = 0, any = 0;
-            for (uint32_t c : s.candidates)
-            {
-                if (!knownEntities.count(c)) continue;
-                uint32_t last3 = c % 1000;
-                if (last3 >= 800 && last3 <= 899) { if (!boss || c < boss) boss = c; }
-                else if (!any || c < any) any = c;
-            }
-            uint32_t chosen = boss ? boss : any;
+            uint32_t chosen = resolve_boss(s);  // candidate ∩ this tile's MSB entities, boss-preferred
             if (!chosen) { ++ev1200_no_entity; continue; }
             uint64_t key = ((uint64_t)chosen << 32) | lot;
             if (!seen.insert(key).second) continue;
@@ -505,10 +538,39 @@ std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &kno
             ++ev1200;
         }
     }
-    spdlog::info("[LOOTDISK] {} EMEVD files parsed; {} direct + {} event-1200 awards "
-                 "({} flag→lot binds, {} setters, {} setter-flags with no MSB entity); {} KRAK skipped",
-                 parsed, direct, ev1200, (int)flag_to_lot.size(), (int)setters.size(),
-                 ev1200_no_entity, kraks);
+    // Boss-reward join (90005860/61/80): SAME setter→entity machinery, but keyed on the per-map
+    // boss defeatFlag→baseLot binds. The award's lot is a BASE (_map, lotType 1); bossReward=true
+    // tells the marker pass to walk the chain (base+1/+2) for the Rune/Ember Piece and emit it
+    // under the Reforged category (the rune/ember sibling suppression is lifted for these).
+    // Reforged convention (~83/92 binds): the boss defeatFlag IS the boss's MSB EntityID, so use it
+    // directly. The minority without flag==entity fall back to a (map-scoped) setter-event candidate
+    // join (the event-1200 mechanism). Loop the BINDS (not setters) so flag-as-entity is tried first.
+    int boss_ev = 0, boss_no_entity = 0;
+    for (const auto &fl : boss_flag_to_lot)
+    {
+        const uint32_t flag = fl.first, lot = fl.second;
+        uint32_t chosen = knownEntities.count(flag) ? flag : 0;  // defeatFlag == boss EntityID
+        if (!chosen)
+            for (const msbe::EmevdSetter &s : setters)  // fallback: setter that sets this flag
+            {
+                bool sets = false;
+                for (uint32_t f : s.flags) if (f == flag) { sets = true; break; }
+                if (!sets) continue;
+                chosen = resolve_boss(s);  // map-scoped (same as the ev1200 join)
+                if (chosen) break;
+            }
+        if (!chosen) { ++boss_no_entity; continue; }
+        uint64_t key = ((uint64_t)chosen << 32) | lot;
+        if (!seen.insert(key).second) continue;
+        out.push_back({chosen, lot, /*lotType=*/1, /*bossReward=*/true});
+        ++boss_ev;
+    }
+    spdlog::info("[LOOTDISK] {} EMEVD files parsed; {} direct + {} event-1200 + {} boss-reward awards "
+                 "({} flag→lot binds, {} boss-flag binds, {} setters, {} ev1200-no-entity, {} "
+                 "boss-no-entity); {} KRAK skipped",
+                 parsed, direct, ev1200, boss_ev, (int)flag_to_lot.size(),
+                 (int)boss_flag_to_lot.size(), (int)setters.size(), ev1200_no_entity, boss_no_entity,
+                 kraks);
     return out;
 }
 
