@@ -499,7 +499,8 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
 // docs/re/windows_enemy_loot_nobake_analysis.md.
 static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
                                      const std::unordered_set<uint32_t> &treasure_lots,
-                                     std::unordered_set<uint32_t> &covered)
+                                     std::unordered_set<uint32_t> &covered,
+                                     std::unordered_set<uint32_t> *parsed_enemy_lots = nullptr)
 {
     GOBLIN_BENCH("build.disk_enemies");
     int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, respawn = 0, lot_dup = 0;
@@ -508,6 +509,13 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
     std::unordered_set<uint32_t> seen;      // dedup by lot (one marker per notable lot)
     for (const DiskEnemy &en : enemies)
     {
+        // [ENEMY-MARKERS] de-bake triage: record EVERY parsed enemy's raw itemLotId_enemy (0x30),
+        // BEFORE the map-preference pick / filters, so the uncovered-baked-Enemy diag can tell a
+        // parsed-but-uncovered lot (map-preferred or filtered → recoverable) from a never-parsed
+        // one (MSB scope miss). Diag-only (set passed only when lootFromDiskMsb).
+        if (parsed_enemy_lots)
+            if (int32_t el = goblin::npc_item_lot_enemy(en.npcParamId); el > 0)
+                parsed_enemy_lots->insert((uint32_t)el);
         uint8_t lt = 0;
         uint32_t lot = goblin::npc_loot_lot(en.npcParamId, &lt);  // live NpcParam chain
         if (lot == 0) { ++no_lot; continue; }
@@ -1367,6 +1375,9 @@ void build_buckets_impl()
     // disk_lots: baked enemy rows are lotType 2, dropped by their own provenance guard
     // below — never via the lotType-1 treasure-replace path.
     std::unordered_set<uint32_t> enemy_disk_lots;
+    // [ENEMY-MARKERS] diag (lootFromDiskMsb): every parsed enemy's raw itemLotId_enemy — lets the
+    // uncovered-baked-Enemy triage split "parsed but uncovered" (recoverable) from "not parsed".
+    std::unordered_set<uint32_t> parsed_enemy_lots;
     // EMEVD-scripted award lots the disk EMEVD pass placed (lootEmevdDrops). Like the
     // enemy guard, kept SEPARATE: baked Emevd rows are dropped by their own provenance
     // guard below (LootSource::Emevd), never via the lotType-1 treasure-replace.
@@ -1464,7 +1475,8 @@ void build_buckets_impl()
                 world_feature_cells[static_cast<int>(gen::Category::LootGestures)]);
         }
         if (goblin::config::lootEnemyDrops)
-            build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots);
+            build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots,
+                                     goblin::config::lootFromDiskMsb ? &parsed_enemy_lots : nullptr);
         if (goblin::config::lootEmevdDrops)
         {
             // The event-1200 (mechanism B) join needs the MSB enemy EntityIDs to resolve
@@ -1515,6 +1527,9 @@ void build_buckets_impl()
     std::map<int, int> gap_by_cat;   // category enum -> uncovered count
     std::map<int, int> gap_by_area;  // areaNo (m<area>) -> uncovered count
     int enemy_markers = 0;  // [ENEMY-MARKERS] baked enemy-drop rows NOT covered by the disk pass
+    int enemy_parsed_uncov = 0;  // …of those: enemy WAS parsed (lot in parsed_enemy_lots) → recoverable
+    int enemy_not_parsed = 0;    // …enemy NOT parsed (MSB scope miss: dungeon / non-_00 tile / filtered out)
+    std::map<int, int> enemy_uncov_by_area;  // areaNo histogram of the uncovered enemy slice
     // [RESIDUAL-SRC] full triage of the surviving baked-loot residual by provenance: every baked
     // row that REACHES push_marker (not replaced by any disk pass) is tallied as cat*4+loot_source.
     // The DEBAKE-GAP (Treasure) + ENEMY-MARKERS (Enemy) diags only cover 2 of the 4 sources; this
@@ -1655,14 +1670,26 @@ void build_buckets_impl()
         // whole baked enemy slice). The loaded-loot walker (MapIns+0x460 node) does NOT
         // pre-locate enemy drops — it only holds SPAWNED/opened loot — so the resident
         // Parts.Enemies pass is the right tool. Gated on diag_loot_pos.
-        if (goblin::config::diagLootPos && e.loot_source == gen::LootSource::Enemy)
+        if (diag && e.loot_source == gen::LootSource::Enemy)
         {
             ++enemy_markers;
-            int32_t key = goblin::resolve_loot_item_textid(e.lotId, e.lotType, -1);
-            spdlog::info("[ENEMY-MARKERS] uncovered lot={} m{}_{}_{} cat={} key={} npc={}",
-                         e.lotId, e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
-                         static_cast<int>(e.category), key,
-                         e.object_name ? e.object_name : "(none baked)");
+            // Recovery-lever classification: is this uncovered baked Enemy lot the enemy-lot of an
+            // enemy the disk pass actually PARSED? If yes → the pass saw the enemy but didn't cover
+            // this lot (npc_loot_lot map-preferred the 0x34 lot, or a filter dropped it) = RECOVERABLE
+            // by also covering itemLotId_enemy. If no → the enemy isn't in the parsed MSB set at all
+            // (dungeon / non-_00 scope, or part-filtered) = needs an MSB-scope fix, not a lot tweak.
+            const bool parsed = e.lotId != 0 && parsed_enemy_lots.count(e.lotId) != 0;
+            if (parsed) ++enemy_parsed_uncov; else ++enemy_not_parsed;
+            ++enemy_uncov_by_area[e.data.areaNo];
+            if (verbose)
+            {
+                int32_t key = goblin::resolve_loot_item_textid(e.lotId, e.lotType, -1);
+                spdlog::info("[ENEMY-MARKERS] uncovered lot={} m{}_{}_{} cat={} key={} npc={} [{}]",
+                             e.lotId, e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
+                             static_cast<int>(e.category), key,
+                             e.object_name ? e.object_name : "(none baked)",
+                             parsed ? "parsed-but-uncovered(map-pref/filtered)" : "not-parsed(scope)");
+            }
         }
         // [RESIDUAL-SRC] survivor reached here = not replaced by any disk pass. Tally lot-backed
         // (or formerly-lot) loot rows by category+source for the full residual triage below.
@@ -1680,10 +1707,22 @@ void build_buckets_impl()
         spdlog::info("[LOOTDISK] replaced {} baked enemy rows with disk enemy placements", replaced_enemy);
     if (goblin::config::lootEmevdDrops)
         spdlog::info("[LOOTDISK] replaced {} baked emevd rows with disk EMEVD placements", replaced_emevd);
-    if (goblin::config::diagLootPos)
+    if (diag)
+    {
         spdlog::info("[ENEMY-MARKERS] {} baked enemy-drop rows NOT covered by the disk enemy pass "
                      "(loot_enemy_drops {}); {} covered+replaced",
                      enemy_markers, goblin::config::lootEnemyDrops ? "ON" : "OFF", replaced_enemy);
+        // Recovery-lever split of the uncovered enemy slice (see the per-row classification above):
+        //   parsed-but-uncovered → the enemy IS in the parsed MSBs; npc_loot_lot map-preferred the
+        //     0x34 lot (or a filter dropped it) so its 0x30 enemy-lot wasn't covered → a LOT fix.
+        //   not-parsed → the enemy is absent from the parsed _00 MSB set → an MSB-SCOPE fix.
+        std::string area_hist;
+        for (const auto &kv : enemy_uncov_by_area)
+            area_hist += 'm' + std::to_string(kv.first) + '=' + std::to_string(kv.second) + ' ';
+        spdlog::info("[ENEMY-MARKERS] uncovered split: {} parsed-but-uncovered (map-pref/filtered → "
+                     "recoverable via the 0x30 enemy-lot) + {} not-parsed (MSB scope) | by area: {}",
+                     enemy_parsed_uncov, enemy_not_parsed, area_hist);
+    }
     if (diag)
     {
         spdlog::info("[LOOTDISK] replaced {} baked lot rows with disk placements", replaced);
