@@ -824,8 +824,10 @@ static int build_disk_world_feature_markers(
             break;
         }
         case gen::FlagRule::None:
-        default:
-            break;
+            break;  // respawn points (Stakes): no graying flag, by design.
+            // NO default: — the switch is exhaustive over FlagRule, so adding a new rule
+            // without a case here is a clang-cl -Wswitch warning (compile-time), not a silent
+            // no-flag marker at runtime.
         }
 
         const int cat = static_cast<int>(wf->category);
