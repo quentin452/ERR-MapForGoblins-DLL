@@ -2,7 +2,7 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 17:53:57.729
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 19:08:30.365
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - **`drawn`** = real markers the renderer draws (= total). **`census`** = the ImGui badge denominator (completable spots) — distinct collect flags for flag-based categories, row count for geom/SFX pieces, 0 for graces; it EXCLUDES respawnable flag-less gather, so `census < drawn` wherever markers share a flag or respawn.
@@ -12,13 +12,13 @@
 
 ## ▶ Baked markers remaining
 
-# **322**  ← drive this to **0**
+# **220**  ← drive this to **0**
 
 | | baked | disk | live | live-cls | total |
 |---|--:|--:|--:|--:|--:|
-| **all categories** | **322** | 7692 | 469 | 190 | 8483 |
+| **all categories** | **220** | 7832 | 469 | 190 | 8521 |
 
-🔴 baked-only: **1**  ·  🟡 partial: **25**  ·  🟢 off-bake: **35**  (of 61 active categories)
+🔴 baked-only: **1**  ·  🟡 partial: **24**  ·  🟢 off-bake: **36**  (of 61 active categories)
 
 ## Tile coverage (`_00`-only parser)
 
@@ -84,10 +84,10 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | Quest - Deathroot | 0 | 9 | 0 | 0 | 9 | atlas 69% | 🟢 off-bake |
 | Quest - Progression | 0 | 44 | 0 | 0 | 44 | atlas 69% | 🟢 off-bake |
 | Quest - Seedbed Curses | 0 | 6 | 0 | 0 | 6 | atlas 69% | 🟢 off-bake |
-| Reforged - Ember Pieces | 19 | 279 | 0 | 0 | 298 | atlas 30% | 🟡 partial |
+| Reforged - Ember Pieces | 0 | 302 | 0 | 0 | 302 | atlas 30% | 🟢 off-bake |
 | Reforged - Fortunes | 3 | 58 | 0 | 0 | 61 | atlas 69% | 🟡 partial |
 | Reforged - Items | 2 | 74 | 0 | 0 | 76 | atlas 69% | 🟡 partial |
-| Reforged - Rune Pieces | 114 | 1118 | 0 | 0 | 1232 | atlas 30% | 🟡 partial |
+| Reforged - Rune Pieces | 31 | 1235 | 0 | 0 | 1266 | atlas 30% | 🟡 partial |
 | World - Bosses | 0 | 0 | 217 | 0 | 217 | symbol | 🟢 off-bake |
 | World - Hostile NPC | 0 | 50 | 0 | 0 | 50 | atlas 83% | 🟢 off-bake |
 | World - Imp Statues | 0 | 37 | 0 | 0 | 37 | atlas 30% | 🟢 off-bake |
@@ -152,10 +152,10 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | Quest - Deathroot | 9 | 9 | 9/9 | 0 | 0 |
 | Quest - Progression | 44 | 33 | 44/44 | 0 | 0 |
 | Quest - Seedbed Curses | 6 | 5 | 6/6 | 0 | 0 |
-| Reforged - Ember Pieces | 298 | 298 | 19/298 | 0 | 279 |
+| Reforged - Ember Pieces | 302 | 302 | 23/302 | 0 | 279 |
 | Reforged - Fortunes | 61 | 8 | 61/61 | 0 | 0 |
 | Reforged - Items | 76 | 58 | 76/76 | 0 | 0 |
-| Reforged - Rune Pieces | 1232 | 1232 | 114/1232 | 0 | 1118 |
+| Reforged - Rune Pieces | 1266 | 1266 | 148/1266 | 0 | 1118 |
 | World - Bosses | 217 | 215 | 217/217 | 0 | 0 |
 | World - Hostile NPC | 50 | 26 | 27/50 | 0 | 23 |
 | World - Imp Statues | 37 | 37 | 37/37 | 0 | 0 |

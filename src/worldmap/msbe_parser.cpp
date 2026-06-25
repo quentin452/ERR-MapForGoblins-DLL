@@ -1,6 +1,9 @@
 #include "msbe_parser.hpp"
 
 #include <cstring>
+#include <cstdio>
+#include <string>
+#include <spdlog/spdlog.h>  // TEMP [EMEVD-ARGDUMP] diag
 
 #include "stb_image.h" // stbi_zlib_decode_buffer (raw zlib inflate, already in tree)
 
@@ -581,6 +584,25 @@ EmevdParse parse_emevd_full(const uint8_t *buf, size_t len)
             }
             if (argLen < 8) continue;
             uint32_t eventId = rd32(buf, a + 4);
+            // TEMP [EMEVD-ARGDUMP]: for boss-reward template inits, dump the raw arg dwords so we
+            // can SEE where the real lot lives (offset bug vs parameter-substitution placeholder).
+            if (bank == EMEVD_INIT_BANK &&
+                (eventId == 90005860 || eventId == 90005861 || eventId == 90005880))
+            {
+                static int s_dump = 0;
+                if (s_dump < 24)
+                {
+                    ++s_dump;
+                    std::string hex;
+                    for (size_t k = 0; k + 4 <= (size_t)argLen && k < 64; k += 4)
+                    {
+                        char b[16];
+                        std::snprintf(b, sizeof b, "[%zu]=%d ", k, (int32_t)rd32(buf, a + k));
+                        hex += b;
+                    }
+                    spdlog::info("[EMEVD-ARGDUMP] ev={} argLen={} : {}", eventId, (unsigned)argLen, hex);
+                }
+            }
             if (bank == EMEVD_INIT_BANK)
             {
                 // mechanism A: direct template award
@@ -601,6 +623,16 @@ EmevdParse parse_emevd_full(const uint8_t *buf, size_t len)
                     uint32_t lot  = rd32(buf, a + 12);
                     if ((int32_t)flag > 0 && (int32_t)lot > 0)
                         R.runEvent1200.push_back({flag, lot});
+                }
+                // Boss-reward templates 90005860/61/80: FLAG-keyed (defeatFlag@8, baseLot@24, NO
+                // entity). Collected here (per-map) so the caller joins defeatFlag→boss via the
+                // setter candidates + walks baseLot's chain for the Rune/Ember Piece. minLen 28.
+                if ((eventId == 90005860 || eventId == 90005861 || eventId == 90005880) && argLen >= 28)
+                {
+                    uint32_t flag = rd32(buf, a + 8);   // X0_4 = boss defeat flag
+                    uint32_t lot  = rd32(buf, a + 24);  // base ItemLotParam (piece = base+1/+2)
+                    if ((int32_t)flag > 0 && (int32_t)lot > 0)
+                        R.bossFlagLot.push_back({flag, lot});
                 }
             }
             // mechanism B input: SetEventFlag(2003:66) / SetNetworkEventFlag(2003:69), state==1

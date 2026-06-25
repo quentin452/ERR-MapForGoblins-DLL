@@ -114,6 +114,13 @@ struct EmevdParse
     std::vector<EmevdAward>                       direct;        // (entity, lot) — mechanism A
     std::vector<std::pair<uint32_t, uint32_t>>    runEvent1200;  // (flag, lot) — RunEvent(1200)
     std::vector<EmevdSetter>                      setters;       // SetEventFlag(.,1) events
+    // Boss-reward templates 90005860/61/80 are FLAG-keyed, not entity-keyed: their init args are
+    // (defeatFlag@8, …, baseLot@24) with NO entity (arg@16 is the flag, not an EntityID — confirmed
+    // by [EMEVD-ARGDUMP]). So they can't go through the direct (entity@16) path. Collect (defeatFlag,
+    // baseLot) here from EVERY map's emevd (the binds are per-map, unlike RunEvent(1200) which is
+    // common-only); the caller joins defeatFlag→boss entity via the setter candidates, then walks the
+    // baseLot's ItemLotParam chain (the piece is baseLot+1/+2) to find the Rune/Ember Piece.
+    std::vector<std::pair<uint32_t, uint32_t>>    bossFlagLot;   // (defeatFlag, baseLot) — 90005860/61/80
 };
 
 // A placed Region (PointParam / POINT section) — the no-bake Spirit Springs source. The POINT

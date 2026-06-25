@@ -444,6 +444,9 @@ std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &kno
     // Mechanism B inputs, accumulated across all files: flag→lot (from common.emevd's
     // RunEvent(1200)) and every SetEventFlag(.,1) event's flags+entity candidates.
     std::unordered_map<uint32_t, uint32_t> flag_to_lot;
+    // Boss-reward (90005860/61/80) defeatFlag→baseLot binds, accumulated from EVERY map (the binds
+    // are per-map, unlike the common-only RunEvent(1200) ones). Joined to a boss entity below.
+    std::unordered_map<uint32_t, uint32_t> boss_flag_to_lot;
     std::vector<msbe::EmevdSetter> setters;
     std::error_code ec;
     for (auto &de : fs::directory_iterator(evdir, ec))
@@ -471,6 +474,9 @@ std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &kno
         // matches the bake and avoids a stray per-map RunEvent(1200) re-binding a flag).
         if (lower == "common.emevd.dcx")
             for (const auto &fl : p.runEvent1200) flag_to_lot[fl.first] = fl.second;
+        // Boss-reward binds come from EVERY map's emevd (each dungeon inits 90005860 with its own
+        // boss flag + lot), so collect them unconditionally.
+        for (const auto &fl : p.bossFlagLot) boss_flag_to_lot[fl.first] = fl.second;
         for (auto &s : p.setters) setters.push_back(std::move(s));
         ++parsed;
         spdlog::debug("[LOOTDISK] {} -> {} direct awards", name, p.direct.size());
@@ -505,10 +511,76 @@ std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &kno
             ++ev1200;
         }
     }
-    spdlog::info("[LOOTDISK] {} EMEVD files parsed; {} direct + {} event-1200 awards "
-                 "({} flag→lot binds, {} setters, {} setter-flags with no MSB entity); {} KRAK skipped",
-                 parsed, direct, ev1200, (int)flag_to_lot.size(), (int)setters.size(),
-                 ev1200_no_entity, kraks);
+    // Boss-reward join (90005860/61/80): SAME setter→entity machinery, but keyed on the per-map
+    // boss defeatFlag→baseLot binds. The award's lot is a BASE (_map, lotType 1); bossReward=true
+    // tells the marker pass to walk the chain (base+1/+2) for the Rune/Ember Piece and emit it
+    // under the Reforged category (the rune/ember sibling suppression is lifted for these).
+    // Reforged convention (BOSSBIND diag: 83/92): the boss defeatFlag IS the boss's MSB EntityID,
+    // so use it directly. The minority without flag==entity fall back to a setter-event candidate
+    // join (the event-1200 mechanism). Loop the BINDS (not setters) so flag-as-entity is tried first.
+    int boss_ev = 0, boss_no_entity = 0;
+    for (const auto &fl : boss_flag_to_lot)
+    {
+        const uint32_t flag = fl.first, lot = fl.second;
+        uint32_t chosen = knownEntities.count(flag) ? flag : 0;  // defeatFlag == boss EntityID
+        if (!chosen)
+            for (const msbe::EmevdSetter &s : setters)  // fallback: setter that sets this flag
+            {
+                bool sets = false;
+                for (uint32_t f : s.flags) if (f == flag) { sets = true; break; }
+                if (!sets) continue;
+                uint32_t boss = 0, any = 0;
+                for (uint32_t c : s.candidates)
+                {
+                    if (!knownEntities.count(c)) continue;
+                    uint32_t last3 = c % 1000;
+                    if (last3 >= 800 && last3 <= 899) { if (!boss || c < boss) boss = c; }
+                    else if (!any || c < any) any = c;
+                }
+                chosen = boss ? boss : any;
+                if (chosen) break;
+            }
+        if (!chosen) { ++boss_no_entity; continue; }
+        uint64_t key = ((uint64_t)chosen << 32) | lot;
+        if (!seen.insert(key).second) continue;
+        out.push_back({chosen, lot, /*lotType=*/1, /*bossReward=*/true});
+        ++boss_ev;
+    }
+    // [EV1200BIND] TEMP diag: dump the RunEvent(1200) flag→lot binds — are the per-map dungeon boss
+    // piece binds (small flags ~9200, lots ~20002) present? (the 60 per-map residual go through here)
+    {
+        int shown = 0;
+        for (const auto &fl : flag_to_lot)
+            if (shown++ < 24)
+                spdlog::info("[EV1200BIND] flag={} lot={}", fl.first, fl.second);
+        spdlog::info("[EV1200BIND] SUMMARY: {} RunEvent(1200) binds total", (int)flag_to_lot.size());
+    }
+    // [BOSSBIND] TEMP diag: for each boss defeatFlag→baseLot bind, is the flag itself an MSB entity
+    // (flag==boss EntityID convention → use it directly), and how many setters set it?
+    {
+        int flag_is_entity = 0, has_setter = 0;
+        std::unordered_map<uint32_t,int> setter_flag_count;
+        for (const auto &s : setters) for (uint32_t f : s.flags) ++setter_flag_count[f];
+        int shown = 0;
+        for (const auto &fl : boss_flag_to_lot)
+        {
+            const bool fe = knownEntities.count(fl.first) != 0;
+            const int sc = setter_flag_count.count(fl.first) ? setter_flag_count[fl.first] : 0;
+            if (fe) ++flag_is_entity;
+            if (sc) ++has_setter;
+            if (shown++ < 16)
+                spdlog::info("[BOSSBIND] flag={} baseLot={} flag_is_msb_entity={} setters_with_flag={}",
+                             fl.first, fl.second, fe, sc);
+        }
+        spdlog::info("[BOSSBIND] SUMMARY: {} binds; {} have flag==MSB-entity; {} have a setter event",
+                     (int)boss_flag_to_lot.size(), flag_is_entity, has_setter);
+    }
+    spdlog::info("[LOOTDISK] {} EMEVD files parsed; {} direct + {} event-1200 + {} boss-reward awards "
+                 "({} flag→lot binds, {} boss-flag binds, {} setters, {} ev1200-no-entity, {} "
+                 "boss-no-entity); {} KRAK skipped",
+                 parsed, direct, ev1200, boss_ev, (int)flag_to_lot.size(),
+                 (int)boss_flag_to_lot.size(), (int)setters.size(), ev1200_no_entity, boss_no_entity,
+                 kraks);
     return out;
 }
 

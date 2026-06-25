@@ -77,6 +77,11 @@ struct DiskEmevd
     // boss drops resolve via NpcParam.itemLotId_enemy's table). The caller resolves with
     // this hint, falling back to the other table if it yields no item.
     uint8_t  lotType = 1;
+    // True when this award is a boss-reward template (90005860/61/80): its lot is a BASE whose
+    // ItemLotParam chain (base+1/+2) holds a Rune/Ember Piece. The marker pass walks the chain +
+    // emits the piece under the Reforged category (the rune/ember sibling suppression is lifted
+    // for these). See build_disk_emevd_markers + [[nobake-coverage-scoreboard]].
+    bool     bossReward = false;
 };
 
 // True when any disk-MSB source is enabled (treasure loot OR collectibles); both

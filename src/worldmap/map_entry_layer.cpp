@@ -555,7 +555,8 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
 static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
                                      const std::vector<DiskEnemy> &enemies,
                                      const std::unordered_set<uint32_t> &treasure_lots,
-                                     std::unordered_set<uint32_t> &covered)
+                                     std::unordered_set<uint32_t> &covered,
+                                     std::unordered_set<std::string> &out_piece_keys)
 {
     GOBLIN_BENCH("build.disk_emevd");
     // EntityID → enemy placement (position anchor). First occurrence wins, matching the
@@ -565,14 +566,41 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
     for (const DiskEnemy &en : enemies)
         if (en.entityId != 0) ent_to_pos.emplace(en.entityId, &en);
 
+    // [EV1200-PIECE] TEMP probe: resolve KNOWN bake boss-piece lots (from items_database) via the
+    // live mod-agnostic path directly — does the lot live-resolve to the Rune/Ember goods? Settles
+    // whether parse_emevd fails to EXTRACT these (fixable) or the live regulation differs (stale).
+    if (goblin::config::diagLootPos)
+    {
+        static const uint32_t kProbeLots[] = {20002, 20012, 20022, 20032, 20052, 30262,
+                                              30301, 1051570722, 1052410201, 2045470402};
+        for (uint32_t pl : kProbeLots)
+        {
+            int32_t k1 = goblin::resolve_loot_item_textid(pl, 1, -1);
+            int32_t k2 = goblin::resolve_loot_item_textid(pl, 2, -1);
+            uint32_t f1 = 0, f2 = 0; int32_t kk1 = 0, kk2 = 0;
+            bool e1 = goblin::lot_row_in_table(pl, 1, &f1, &kk1);
+            bool e2 = goblin::lot_row_in_table(pl, 2, &f2, &kk2);
+            spdlog::info("[EV1200-PROBE] lot={} map_resolve={} enemy_resolve={} | row_in_map={}(flag={} "
+                         "key={}) row_in_enemy={}(flag={} key={})",
+                         pl, k1, k2, e1, f1, kk1, e2, f2, kk2);
+        }
+    }
     int emitted = 0, no_entity = 0, dup = 0, treasure_dup = 0, unclassified = 0;
     int emit_direct = 0, emit_ev1200 = 0;  // by mechanism (lotType 1 = direct, 2 = event-1200)
+    int boss_piece_emitted = 0, boss_piece_no_piece = 0;  // boss-reward Rune/Ember Piece recovery
     // Mechanism C (sequence-sibling) diag.
     int sib_emitted = 0, sib_runeember = 0, sib_unclassified = 0;
+    // [EV1200-PIECE] TEMP diag: characterize the boss-drop Rune/Ember Pieces (goods 800010/850010)
+    // the EMEVD pass sees — the 133 baked c-model residual. How many awards resolve to a piece, how
+    // many have a boss MSB position, what category they fall into now. Drives the off-bake decision.
+    int evp_total = 0, evp_pos = 0, evp_reforged_cat = 0, evp_generic_cat = 0;
     const bool verbose = goblin::config::diagLootPos;
     std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
     std::unordered_set<uint64_t> seen;      // dedup by (entity<<32 | lot)
     std::unordered_set<uint32_t> sib_seen;  // sub-lots already emitted (mechanism C dedup)
+    std::unordered_set<uint32_t> boss_piece_seen;  // boss-reward Rune/Ember Piece subs (own dedup,
+                                                   // NOT shared with sib_seen which the suppressed
+                                                   // mechanism-C rune/ember subs pollute)
     // Every award lot is a "base" — a sibling that equals another base is emitted as that
     // base (its own entity/pos), so don't double it in the sibling walk.
     std::unordered_set<uint32_t> base_lots;
@@ -580,6 +608,91 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
     for (const DiskEmevd &a : awards) base_lots.insert(a.lotId);
     for (const DiskEmevd &a : awards)
     {
+        // [EV1200-PIECE] TEMP diag — count/log every award resolving to a Rune/Ember Piece goods,
+        // BEFORE any disposition filter, so we see total + boss-position coverage + current category.
+        if (verbose)
+        {
+            int32_t dk = goblin::resolve_loot_item_textid(a.lotId, a.lotType, -1);
+            int32_t gid = (dk >= 500000000 && dk < 600000000) ? dk - 500000000 : -1;
+            if (gid != 800010 && gid != 850010)
+            {
+                int32_t dk2 = goblin::resolve_loot_item_textid(a.lotId, a.lotType == 1 ? 2 : 1, -1);
+                if (dk2 >= 500000000 && dk2 < 600000000) gid = dk2 - 500000000;
+            }
+            if (gid == 800010 || gid == 850010)
+            {
+                ++evp_total;
+                const bool haspos = ent_to_pos.count(a.entityId) != 0;
+                if (haspos) ++evp_pos;
+                int32_t k = goblin::resolve_loot_item_textid(a.lotId, a.lotType, -1);
+                int cc = goblin::item_marker_category(k);
+                if (cc < 0) cc = goblin::classify_item_live(k);
+                const bool reforged = (cc == (int)goblin::generated::Category::ReforgedRunePieces ||
+                                       cc == (int)goblin::generated::Category::ReforgedEmberPieces);
+                (reforged ? evp_reforged_cat : evp_generic_cat)++;
+                spdlog::info("[EV1200-PIECE] {} lot={} entity={} lotType={} has_boss_pos={} cat_now={} "
+                             "treasure_dup={}",
+                             gid == 800010 ? "Rune" : "Ember", a.lotId, a.entityId, a.lotType,
+                             haspos, cc, (int)treasure_lots.count(a.lotId));
+            }
+        }
+        // Rune/Ember Piece boss-drop recovery — applies to BOTH flag-keyed boss-reward templates
+        // (a.bossReward = 90005860/61/80, defeatFlag==EntityID) AND event-1200 awards (lotType 2,
+        // small defeatFlag joined to the boss via its setter). Both carry the piece as a base+k
+        // ItemLotParam_map chain entry (the bind lot is a BASE; the piece is base+1/+2). Walk the
+        // chain for the piece goods (800010 Rune / 850010 Ember) and emit it under the Reforged
+        // category at the boss position (gray via the piece's own getItemFlagId), registering the boss
+        // part-name identity so the baked c-model twin is dropped by the existing Reforged dedup. A
+        // non-piece event-1200 award (e.g. Lhutel) finds no piece in the chain → falls through to the
+        // normal award handling below; a bossReward award that finds none is dropped.
+        if (a.bossReward || a.lotType == 2)
+        {
+            bool placed = false;
+            auto bit = ent_to_pos.find(a.entityId);
+            if (bit != ent_to_pos.end())
+            {
+                const DiskEnemy *bpos = bit->second;
+                for (uint32_t off = 0; off <= 8 && !placed; ++off)
+                {
+                    uint32_t sub = a.lotId + off;
+                    uint32_t sflag = 0; int32_t skey = 0;
+                    if (!goblin::lot_row_in_table(sub, 1, &sflag, &skey)) continue;
+                    if (skey < 500000000 || skey >= 600000000) continue;
+                    int32_t gid = skey - 500000000;
+                    if (gid != 800010 && gid != 850010) continue;
+                    if (!boss_piece_seen.insert(sub).second) { placed = true; break; }  // claimed already
+                    const bool rune = (gid == 800010);
+                    const int pcat = static_cast<int>(rune ? goblin::generated::Category::ReforgedRunePieces
+                                                           : goblin::generated::Category::ReforgedEmberPieces);
+                    from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+                    d.areaNo = bpos->area;
+                    d.gridXNo = bpos->gx;
+                    d.gridZNo = bpos->gz;
+                    d.posX = bpos->posX;
+                    d.posZ = bpos->posZ;
+                    d.textId1 = (rune ? 800010 : 850010) + 500000000;  // GoodsName "Rune/Ember Piece"
+                    d.textDisableFlagId1 = sflag;                      // obtain flag → graying
+                    push_marker(/*row_id=*/sub, d, pcat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
+                    // Dedup the baked c-model twin two ways: (1) exact identity (tile + boss part
+                    // name) — works when the runtime's chosen entity == the bake's part; (2) a
+                    // tile+type key — the ev1200 setter-join can pick a DIFFERENT boss entity than the
+                    // bake recorded (so the part names differ), but a dungeon has ONE piece of each
+                    // type per tile, so dropping the baked piece of the same type in the same tile is
+                    // safe and clears the residual that the exact key leaves as a wrong-spot double.
+                    if (!bpos->name.empty())
+                        out_piece_keys.insert(piece_key(bpos->area, bpos->gx, bpos->gz, bpos->name.c_str()));
+                    out_piece_keys.insert(piece_key(bpos->area, bpos->gx, bpos->gz,
+                                                    rune ? "__BOSSRUNE__" : "__BOSSEMBER__"));
+                    ++boss_piece_emitted;
+                    placed = true;
+                }
+            }
+            // bossReward (90005860): the piece IS the whole award → consume it (emit done above, or
+            // drop if the chain had none). event-1200: the piece is a BONUS alongside the award's
+            // OWN item drop — fall through to the normal handling so the award still emits + de-bakes
+            // its lot (consuming all lotType-2 awards regressed ~135 baked emevd rows).
+            if (a.bossReward) { if (!placed) ++boss_piece_no_piece; continue; }
+        }
         auto it = ent_to_pos.find(a.entityId);
         if (it == ent_to_pos.end()) { ++no_entity; continue; }  // entity not an MSB enemy part
         uint64_t key2 = ((uint64_t)a.entityId << 32) | a.lotId;
@@ -671,9 +784,19 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
                  emitted, emit_direct, emit_ev1200, sib_emitted, emitted + sib_emitted,
                  (int)awards.size(), no_entity, dup, treasure_dup, unclassified, sib_runeember,
                  sib_unclassified);
+    spdlog::info("[LOOTDISK] emevd boss-reward pieces: {} Rune/Ember Pieces emitted (Reforged, at boss "
+                 "pos, flag-gray); {} boss awards with no piece in base..base+8",
+                 boss_piece_emitted, boss_piece_no_piece);
     if (verbose)
         for (auto &[cat, n] : per_cat)
             spdlog::info("[LOOTDISK]   emevd-drop category index {} = {} markers", cat, n);
+    if (verbose)
+        spdlog::info("[EV1200-PIECE] SUMMARY: {} award(s) resolve to a Rune/Ember Piece goods; {} have "
+                     "a boss MSB position (off-bakeable); current category: {} Reforged / {} generic "
+                     "(baked c-model residual ≈ 133). ReforgedRunePieces idx={} EmberPieces idx={}",
+                     evp_total, evp_pos, evp_reforged_cat, evp_generic_cat,
+                     (int)goblin::generated::Category::ReforgedRunePieces,
+                     (int)goblin::generated::Category::ReforgedEmberPieces);
 }
 
 // World features from disk MSBs (config world_features_from_disk). A World feature is an
@@ -1395,7 +1518,8 @@ void build_buckets_impl()
             for (const DiskEnemy &en : disk_enemies)
                 if (en.entityId) known_entities.insert(en.entityId);
             std::vector<DiskEmevd> awards = load_emevd_awards(known_entities);
-            build_disk_emevd_markers(awards, disk_enemies, treasure_lots, emevd_disk_lots);
+            build_disk_emevd_markers(awards, disk_enemies, treasure_lots, emevd_disk_lots,
+                                     piece_disk_keys);
         }
     }
 
@@ -1461,14 +1585,25 @@ void build_buckets_impl()
         // piece (matched by tile + part name, NOT position — robust to the m11_10 offset anomaly).
         // Drop the baked twin; the disk marker carries the real MSB position + runtime geom graying.
         // Boss-flag pieces (c-model object_names) are absent from piece_disk_keys → correctly kept.
-        if (!piece_disk_keys.empty() && e.object_name &&
+        if (!piece_disk_keys.empty() &&
             (e.category == gen::Category::ReforgedRunePieces ||
              e.category == gen::Category::ReforgedEmberPieces) &&
-            piece_disk_keys.count(piece_key(e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.object_name)))
+            ((e.object_name &&
+              piece_disk_keys.count(piece_key(e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.object_name))) ||
+             piece_disk_keys.count(piece_key(e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
+                 e.category == gen::Category::ReforgedRunePieces ? "__BOSSRUNE__" : "__BOSSEMBER__"))))
         {
             ++replaced_piece;
             continue;
         }
+        // [PIECE-RESIDUAL] TEMP diag: a baked Reforged piece that SURVIVES the dedup — why? (boss not
+        // recovered vs identity mismatch). Log tile + object_name to characterize the 32 residual.
+        if (verbose && e.object_name &&
+            (e.category == gen::Category::ReforgedRunePieces ||
+             e.category == gen::Category::ReforgedEmberPieces))
+            spdlog::info("[PIECE-RESIDUAL] baked {} survives: m{}_{}_{} obj={}",
+                         e.category == gen::Category::ReforgedRunePieces ? "Rune" : "Ember",
+                         e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.object_name);
         // Material Node IDENTITY dedup: same idea as the pieces above, and now the PRIMARY dedup
         // for this category. The disk collectible pass re-places every AEG gather node; matching
         // by (tile + MSB part name) catches ALL of them (runtime: 1455/1455) — strictly better
