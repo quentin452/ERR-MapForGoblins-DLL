@@ -1,9 +1,6 @@
 #include "msbe_parser.hpp"
 
 #include <cstring>
-#include <cstdio>
-#include <string>
-#include <spdlog/spdlog.h>  // TEMP [EMEVD-ARGDUMP] diag
 
 #include "stb_image.h" // stbi_zlib_decode_buffer (raw zlib inflate, already in tree)
 
@@ -584,25 +581,6 @@ EmevdParse parse_emevd_full(const uint8_t *buf, size_t len)
             }
             if (argLen < 8) continue;
             uint32_t eventId = rd32(buf, a + 4);
-            // TEMP [EMEVD-ARGDUMP]: for boss-reward template inits, dump the raw arg dwords so we
-            // can SEE where the real lot lives (offset bug vs parameter-substitution placeholder).
-            if (bank == EMEVD_INIT_BANK &&
-                (eventId == 90005860 || eventId == 90005861 || eventId == 90005880))
-            {
-                static int s_dump = 0;
-                if (s_dump < 24)
-                {
-                    ++s_dump;
-                    std::string hex;
-                    for (size_t k = 0; k + 4 <= (size_t)argLen && k < 64; k += 4)
-                    {
-                        char b[16];
-                        std::snprintf(b, sizeof b, "[%zu]=%d ", k, (int32_t)rd32(buf, a + k));
-                        hex += b;
-                    }
-                    spdlog::info("[EMEVD-ARGDUMP] ev={} argLen={} : {}", eventId, (unsigned)argLen, hex);
-                }
-            }
             if (bank == EMEVD_INIT_BANK)
             {
                 // mechanism A: direct template award

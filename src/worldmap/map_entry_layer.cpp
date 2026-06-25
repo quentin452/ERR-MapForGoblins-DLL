@@ -566,34 +566,11 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
     for (const DiskEnemy &en : enemies)
         if (en.entityId != 0) ent_to_pos.emplace(en.entityId, &en);
 
-    // [EV1200-PIECE] TEMP probe: resolve KNOWN bake boss-piece lots (from items_database) via the
-    // live mod-agnostic path directly — does the lot live-resolve to the Rune/Ember goods? Settles
-    // whether parse_emevd fails to EXTRACT these (fixable) or the live regulation differs (stale).
-    if (goblin::config::diagLootPos)
-    {
-        static const uint32_t kProbeLots[] = {20002, 20012, 20022, 20032, 20052, 30262,
-                                              30301, 1051570722, 1052410201, 2045470402};
-        for (uint32_t pl : kProbeLots)
-        {
-            int32_t k1 = goblin::resolve_loot_item_textid(pl, 1, -1);
-            int32_t k2 = goblin::resolve_loot_item_textid(pl, 2, -1);
-            uint32_t f1 = 0, f2 = 0; int32_t kk1 = 0, kk2 = 0;
-            bool e1 = goblin::lot_row_in_table(pl, 1, &f1, &kk1);
-            bool e2 = goblin::lot_row_in_table(pl, 2, &f2, &kk2);
-            spdlog::info("[EV1200-PROBE] lot={} map_resolve={} enemy_resolve={} | row_in_map={}(flag={} "
-                         "key={}) row_in_enemy={}(flag={} key={})",
-                         pl, k1, k2, e1, f1, kk1, e2, f2, kk2);
-        }
-    }
     int emitted = 0, no_entity = 0, dup = 0, treasure_dup = 0, unclassified = 0;
     int emit_direct = 0, emit_ev1200 = 0;  // by mechanism (lotType 1 = direct, 2 = event-1200)
     int boss_piece_emitted = 0, boss_piece_no_piece = 0;  // boss-reward Rune/Ember Piece recovery
     // Mechanism C (sequence-sibling) diag.
     int sib_emitted = 0, sib_runeember = 0, sib_unclassified = 0;
-    // [EV1200-PIECE] TEMP diag: characterize the boss-drop Rune/Ember Pieces (goods 800010/850010)
-    // the EMEVD pass sees — the 133 baked c-model residual. How many awards resolve to a piece, how
-    // many have a boss MSB position, what category they fall into now. Drives the off-bake decision.
-    int evp_total = 0, evp_pos = 0, evp_reforged_cat = 0, evp_generic_cat = 0;
     const bool verbose = goblin::config::diagLootPos;
     std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
     std::unordered_set<uint64_t> seen;      // dedup by (entity<<32 | lot)
@@ -608,34 +585,6 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
     for (const DiskEmevd &a : awards) base_lots.insert(a.lotId);
     for (const DiskEmevd &a : awards)
     {
-        // [EV1200-PIECE] TEMP diag — count/log every award resolving to a Rune/Ember Piece goods,
-        // BEFORE any disposition filter, so we see total + boss-position coverage + current category.
-        if (verbose)
-        {
-            int32_t dk = goblin::resolve_loot_item_textid(a.lotId, a.lotType, -1);
-            int32_t gid = (dk >= 500000000 && dk < 600000000) ? dk - 500000000 : -1;
-            if (gid != 800010 && gid != 850010)
-            {
-                int32_t dk2 = goblin::resolve_loot_item_textid(a.lotId, a.lotType == 1 ? 2 : 1, -1);
-                if (dk2 >= 500000000 && dk2 < 600000000) gid = dk2 - 500000000;
-            }
-            if (gid == 800010 || gid == 850010)
-            {
-                ++evp_total;
-                const bool haspos = ent_to_pos.count(a.entityId) != 0;
-                if (haspos) ++evp_pos;
-                int32_t k = goblin::resolve_loot_item_textid(a.lotId, a.lotType, -1);
-                int cc = goblin::item_marker_category(k);
-                if (cc < 0) cc = goblin::classify_item_live(k);
-                const bool reforged = (cc == (int)goblin::generated::Category::ReforgedRunePieces ||
-                                       cc == (int)goblin::generated::Category::ReforgedEmberPieces);
-                (reforged ? evp_reforged_cat : evp_generic_cat)++;
-                spdlog::info("[EV1200-PIECE] {} lot={} entity={} lotType={} has_boss_pos={} cat_now={} "
-                             "treasure_dup={}",
-                             gid == 800010 ? "Rune" : "Ember", a.lotId, a.entityId, a.lotType,
-                             haspos, cc, (int)treasure_lots.count(a.lotId));
-            }
-        }
         // Rune/Ember Piece boss-drop recovery — applies to BOTH flag-keyed boss-reward templates
         // (a.bossReward = 90005860/61/80, defeatFlag==EntityID) AND event-1200 awards (lotType 2,
         // small defeatFlag joined to the boss via its setter). Both carry the piece as a base+k
@@ -790,13 +739,6 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
     if (verbose)
         for (auto &[cat, n] : per_cat)
             spdlog::info("[LOOTDISK]   emevd-drop category index {} = {} markers", cat, n);
-    if (verbose)
-        spdlog::info("[EV1200-PIECE] SUMMARY: {} award(s) resolve to a Rune/Ember Piece goods; {} have "
-                     "a boss MSB position (off-bakeable); current category: {} Reforged / {} generic "
-                     "(baked c-model residual ≈ 133). ReforgedRunePieces idx={} EmberPieces idx={}",
-                     evp_total, evp_pos, evp_reforged_cat, evp_generic_cat,
-                     (int)goblin::generated::Category::ReforgedRunePieces,
-                     (int)goblin::generated::Category::ReforgedEmberPieces);
 }
 
 // World features from disk MSBs (config world_features_from_disk). A World feature is an
@@ -1604,14 +1546,6 @@ void build_buckets_impl()
             ++replaced_piece;
             continue;
         }
-        // [PIECE-RESIDUAL] TEMP diag: a baked Reforged piece that SURVIVES the dedup — why? (boss not
-        // recovered vs identity mismatch). Log tile + object_name to characterize the 32 residual.
-        if (verbose && e.object_name &&
-            (e.category == gen::Category::ReforgedRunePieces ||
-             e.category == gen::Category::ReforgedEmberPieces))
-            spdlog::info("[PIECE-RESIDUAL] baked {} survives: m{}_{}_{} obj={}",
-                         e.category == gen::Category::ReforgedRunePieces ? "Rune" : "Ember",
-                         e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.object_name);
         // Material Node IDENTITY dedup: same idea as the pieces above, and now the PRIMARY dedup
         // for this category. The disk collectible pass re-places every AEG gather node; matching
         // by (tile + MSB part name) catches ALL of them (runtime: 1455/1455) — strictly better
@@ -1906,38 +1840,6 @@ void build_buckets_impl()
             spdlog::info("[LOOTDISK] world features: category {} dropped {} baked twins ({})",
                          cat, (int)(before - bucket.size()), wipe ? "category-wipe" : "cell-dedup");
         }
-    }
-
-    // [PIECE-RESIDUAL] diag: of the baked AEG world Pieces (AEG099_821/822), which were NOT placed
-    // by the disk pass (identity key absent from piece_disk_keys) — the true migration gap (disk
-    // didn't parse the tile, or a name mismatch). Boss-flag pieces (c-model names) are excluded —
-    // they correctly stay baked (EMEVD event 1200, no AEG twin). Runs once/build; capped list.
-    if (goblin::config::lootCollectibles)
-    {
-        int rune_world = 0, rune_miss = 0, ember_world = 0, ember_miss = 0, shown = 0;
-        for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
-        {
-            const gen::MapEntry &e = gen::MAP_ENTRIES[i];
-            const bool isR = e.category == gen::Category::ReforgedRunePieces;
-            const bool isE = e.category == gen::Category::ReforgedEmberPieces;
-            if ((!isR && !isE) || !e.object_name)
-                continue;
-            if ((isR && std::strncmp(e.object_name, "AEG099_821", 10) != 0) ||
-                (isE && std::strncmp(e.object_name, "AEG099_822", 10) != 0))
-                continue;  // boss-flag piece (c-model) — correctly stays baked
-            (isR ? rune_world : ember_world)++;
-            if (piece_disk_keys.count(
-                    piece_key(e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.object_name)))
-                continue;  // disk placed it (identity match) — dropped by the baked-loop dedup
-            (isR ? rune_miss : ember_miss)++;
-            if (shown++ < 40)
-                spdlog::info("[PIECE-RESIDUAL] {} {} m{}_{}_{} — no disk twin (disk didn't place this name)",
-                             isR ? "Rune" : "Ember", e.object_name, e.data.areaNo, e.data.gridXNo,
-                             e.data.gridZNo);
-        }
-        spdlog::info("[PIECE-RESIDUAL] AEG world Pieces NOT disk-covered: Rune {}/{}, Ember {}/{} "
-                     "(boss-flag pieces excluded; identity-keyed)",
-                     rune_miss, rune_world, ember_miss, ember_world);
     }
 
     // ── [COVERAGE] no-bake scoreboard ────────────────────────────────────────────
