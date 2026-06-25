@@ -2,7 +2,7 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 22:36:00.757
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 23:27:25.174
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - **`drawn`** = real markers the renderer draws (= total). **`census`** = the ImGui badge denominator (completable spots) — distinct collect flags for flag-based categories, row count for geom/SFX pieces, 0 for graces; it EXCLUDES respawnable flag-less gather, so `census < drawn` wherever markers share a flag or respawn.
@@ -99,6 +99,41 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | World - Spiritspring Hawks | 0 | 14 | 0 | 0 | 14 | atlas 69% | 🟢 off-bake |
 | World - Stakes of Marika | 0 | 219 | 0 | 0 | 219 | atlas 19% ⚠ | 🟢 off-bake |
 | World - Summoning Pools | 0 | 0 | 246 | 0 | 246 | atlas 69% | 🟢 off-bake |
+
+## Baked residual by provenance — why each baked marker survives
+
+Every surviving baked **loot** row (not replaced by any disk pass), tallied by its bake `loot_source`. This is the **recovery lever per category** — and the result of the 2026-06-25 deep-dive into the residual (see `memory/msbe-enemy-loot-offsets.md`):
+
+- **`treasure`** — an MSB Treasure the disk pass didn't reproduce: the **corpse debake-gap**, items whose ItemLotParam chain is absent from the mod's loot linkage. Accepted residual (~0.4% of the treasure slice).
+- **`enemy`** — ✅ **INVESTIGATED & CLOSED: a bake MIS-LABEL, not recoverable here.** These lots are referenced by **NO `NpcParam.itemLotId`** — proven irrefutably against every parsed enemy, the FULL NpcParam table, the paramdef-authoritative offline scan, AND the **vanilla** regulation (all **0** matches). mapgenie shows them on *corpses/bodies* → they are corpse/EMEVD-scripted loot the bake wrongly tagged `Enemy`. The NpcParam enemy pass is COMPLETE; the items appear elsewhere via the treasure/emevd passes (or are phantom dupes). A bake regen would re-tag them.
+- **`emevd`** — an EMEVD award the disk EMEVD pass didn't reproduce: a **still-open, genuinely recoverable** lever (extend the EMEVD template coverage).
+- **`unknown`** — pre-provenance bake rows (the `loot_source` field predates the tagging and wasn't regenerated); could be any source. A regen reclassifies them.
+
+Residual loot total **95** = unknown 29 · treasure 16 (accepted) · enemy 35 (bake mis-label) · emevd 15 (recoverable).
+
+| category | unknown | treasure (accepted) | enemy (mis-label) | emevd (recoverable) |
+|---|--:|--:|--:|--:|
+| Equipment - Armaments | 6 | 11 | 4 | 0 |
+| Equipment - Armour | 0 | 0 | 3 | 0 |
+| Equipment - Ashes of War | 1 | 0 | 1 | 1 |
+| Equipment - Spirits | 2 | 0 | 0 | 0 |
+| Equipment - Talismans | 2 | 1 | 2 | 0 |
+| Key - Crystal Tears | 0 | 0 | 0 | 4 |
+| Key - Larval Tears | 2 | 0 | 2 | 0 |
+| Key - Seeds Tears Ashes | 0 | 0 | 1 | 0 |
+| Loot - Consumables | 0 | 1 | 0 | 0 |
+| Loot - Crafting Materials | 0 | 1 | 0 | 4 |
+| Loot - Dragon Hearts | 0 | 0 | 0 | 1 |
+| Loot - Gloveworts | 0 | 0 | 11 | 0 |
+| Loot - Golden Runes | 3 | 0 | 6 | 0 |
+| Loot - Golden Runes (Low) | 11 | 0 | 3 | 0 |
+| Loot - Greases | 0 | 1 | 0 | 0 |
+| Loot - Reusables | 0 | 0 | 1 | 0 |
+| Loot - Smithing Stones | 2 | 0 | 0 | 0 |
+| Loot - Stat Boosts | 0 | 0 | 1 | 0 |
+| Loot - Throwables | 0 | 1 | 0 | 0 |
+| Reforged - Fortunes | 0 | 0 | 0 | 3 |
+| Reforged - Items | 0 | 0 | 0 | 2 |
 
 ## Census (badge vs drawn) + collect-flag coverage
 
