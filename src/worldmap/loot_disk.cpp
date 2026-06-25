@@ -404,6 +404,57 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
     return out;
 }
 
+std::vector<DiskEnemy> load_disk_enemies_nonlod()
+{
+    std::vector<DiskEnemy> out;
+    ensure_map_dir_resolved();
+    fs::path dir = disk_loot_dir();
+    if (dir.empty()) return out;
+    msbe::OodleDecompressFn oodle = resolve_oodle();
+    int parsed = 0, kraks = 0;
+    std::error_code ec;
+    for (auto &de : fs::directory_iterator(dir, ec))
+    {
+        if (!de.is_regular_file(ec)) continue;
+        const fs::path &p = de.path();
+        std::string name = p.filename().string();
+        std::string lower = name;
+        for (char &c : lower) c = (char)std::tolower((unsigned char)c);
+        if (lower.size() < 8 || lower.compare(lower.size() - 8, 8, ".msb.dcx") != 0) continue;
+        std::string stem = name.substr(0, name.size() - 8);
+        int area = 0, gx = 0, gz = 0, lod = -1;
+        if (std::sscanf(stem.c_str(), "m%d_%d_%d_%d", &area, &gx, &gz, &lod) != 4) continue;
+        if (lod == 0 || lod == 99) continue;  // _00 already parsed; _99 = lighting (no enemies)
+        if (area < 0 || area > 255 || gx < 0 || gx > 255 || gz < 0 || gz > 255) continue;
+        std::vector<uint8_t> dcx = slurp(p);
+        if (dcx.empty()) continue;
+        bool krak = false;
+        std::vector<uint8_t> msb = msbe::dcx_decompress(dcx.data(), dcx.size(), &krak, oodle);
+        if (msb.empty()) { if (krak) ++kraks; continue; }
+        msbe::ParseResult r = msbe::parse_msb(msb.data(), msb.size(), /*resident=*/false,
+                                              /*blobBase=*/0, /*wantAssets=*/false,
+                                              /*wantEnemies=*/true, /*wantRegions=*/false);
+        if (!r.ok) continue;
+        ++parsed;
+        for (const auto &en : r.enemies)
+        {
+            DiskEnemy e;
+            e.npcParamId = en.npcParamId;
+            e.entityId = en.entityId;
+            e.area = (uint8_t)area;
+            e.gx = (uint8_t)gx;
+            e.gz = (uint8_t)gz;
+            e.posX = en.pos[0];
+            e.posZ = en.pos[2];
+            e.name = en.name;
+            out.push_back(std::move(e));
+        }
+    }
+    spdlog::info("[ENEMY-NONLOD] {} enemies parsed from {} non-_00 tiles ({} KRAK skipped)",
+                 (int)out.size(), parsed, kraks);
+    return out;
+}
+
 namespace
 {
 // The mod's event\ dir (sibling of map\MapStudio), holding *.emevd.dcx. Derived from the

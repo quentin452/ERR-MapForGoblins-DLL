@@ -1530,6 +1530,7 @@ void build_buckets_impl()
     int enemy_parsed_uncov = 0;  // …of those: enemy WAS parsed (lot in parsed_enemy_lots) → recoverable
     int enemy_not_parsed = 0;    // …enemy NOT parsed (MSB scope miss: dungeon / non-_00 tile / filtered out)
     std::map<int, int> enemy_uncov_by_area;  // areaNo histogram of the uncovered enemy slice
+    std::unordered_set<uint32_t> uncovered_enemy_lots;  // the uncovered baked-Enemy lots (for the non-_00 measure)
     // [RESIDUAL-SRC] full triage of the surviving baked-loot residual by provenance: every baked
     // row that REACHES push_marker (not replaced by any disk pass) is tallied as cat*4+loot_source.
     // The DEBAKE-GAP (Treasure) + ENEMY-MARKERS (Enemy) diags only cover 2 of the 4 sources; this
@@ -1681,6 +1682,7 @@ void build_buckets_impl()
             const bool parsed = e.lotId != 0 && parsed_enemy_lots.count(e.lotId) != 0;
             if (parsed) ++enemy_parsed_uncov; else ++enemy_not_parsed;
             ++enemy_uncov_by_area[e.data.areaNo];
+            if (e.lotId != 0) uncovered_enemy_lots.insert(e.lotId);  // for the non-_00 recovery measure
             if (verbose)
             {
                 int32_t key = goblin::resolve_loot_item_textid(e.lotId, e.lotType, -1);
@@ -1722,6 +1724,50 @@ void build_buckets_impl()
         spdlog::info("[ENEMY-MARKERS] uncovered split: {} parsed-but-uncovered (map-pref/filtered → "
                      "recoverable via the 0x30 enemy-lot) + {} not-parsed (MSB scope) | by area: {}",
                      enemy_parsed_uncov, enemy_not_parsed, area_hist);
+    }
+    // [ENEMY-NONLOD] measure-only (diag_enemy_all_tiers): parse enemies from the non-_00 tiles and
+    // classify what EXTENDING the enemy de-bake to them WOULD place — WITHOUT drawing anything. Each
+    // notable (one-time-flag) non-_00 enemy lot is: already-covered (a _00 co-located dupe), a RECOVER
+    // (matches one of the uncovered baked-Enemy lots → the win), or a NEW candidate (not in the bake's
+    // enemy slice → the GED-disabled over-emission risk to eyeball before shipping). See the AskUser
+    // "mesurer d'abord" decision + [[msbe-enemy-loot-offsets]].
+    if (goblin::config::diagEnemyAllTiers)
+    {
+        std::vector<DiskEnemy> nonlod = load_disk_enemies_nonlod();
+        std::unordered_set<uint32_t> seen;
+        int recovers = 0, new_cand = 0, dup_cov = 0, respawn = 0, no_lot = 0, shown = 0;
+        std::map<int, int> recover_area, newcand_area;
+        for (const DiskEnemy &en : nonlod)
+        {
+            uint8_t lt = 0;
+            uint32_t lot = goblin::npc_loot_lot(en.npcParamId, &lt);
+            if (lot == 0) { ++no_lot; continue; }
+            if (goblin::resolve_loot_flag(lot, lt, 0) == 0) { ++respawn; continue; }  // not one-time → filtered
+            if (!seen.insert(lot).second) continue;                                   // dedup within non-_00
+            if (enemy_disk_lots.count(lot)) { ++dup_cov; continue; }                  // already a _00 placement
+            if (uncovered_enemy_lots.count(lot)) { ++recovers; ++recover_area[en.area]; }
+            else
+            {
+                ++new_cand; ++newcand_area[en.area];
+                if (shown < 25)
+                {
+                    int32_t key = goblin::resolve_loot_item_textid(lot, lt, -1);
+                    spdlog::info("[ENEMY-NONLOD] NEW candidate lot={} m{}_{}_{} key={} npc={}",
+                                 lot, en.area, en.gx, en.gz, key, en.name);
+                    ++shown;
+                }
+            }
+        }
+        std::string rec_hist, new_hist;
+        for (const auto &kv : recover_area)
+            rec_hist += 'm' + std::to_string(kv.first) + '=' + std::to_string(kv.second) + ' ';
+        for (const auto &kv : newcand_area)
+            new_hist += 'm' + std::to_string(kv.first) + '=' + std::to_string(kv.second) + ' ';
+        spdlog::info("[ENEMY-NONLOD] measure: would RECOVER {}/{} uncovered baked-Enemy lots + {} NEW "
+                     "candidate markers (over-emission to eyeball) | {} dup-of-_00, {} respawn-filtered, "
+                     "{} npc-no-lot",
+                     recovers, (int)uncovered_enemy_lots.size(), new_cand, dup_cov, respawn, no_lot);
+        spdlog::info("[ENEMY-NONLOD] recover by area: {} | new-candidate by area: {}", rec_hist, new_hist);
     }
     if (diag)
     {
