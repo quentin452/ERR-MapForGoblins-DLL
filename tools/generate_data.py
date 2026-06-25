@@ -304,14 +304,22 @@ def load_piece_metadata(massedit_dir):
 
 
 def _load_lot_linkage():
-    """row_id(int) -> (lotId, lotType) from generate_loot_massedit's side file."""
+    """row_id(int) -> (lotId, lotType, source) from generate_loot_massedit's side file.
+    `source` is the provenance string (treasure/enemy/emevd); '' for legacy 2-element
+    linkage files written before provenance was added."""
     import config
     p = config.DATA_DIR / 'loot_lot_linkage.json'
     if not p.exists():
         return {}
     with open(p, encoding='utf-8') as f:
         raw = json.load(f)
-    return {int(k): (int(v[0]), int(v[1])) for k, v in raw.items()}
+    return {int(k): (int(v[0]), int(v[1]), (v[2] if len(v) > 2 else ''))
+            for k, v in raw.items()}
+
+
+# Provenance string (extract_all_items 'source') -> MapEntry LootSource enumerator.
+# Unknown for anything unmapped (incl. legacy linkage with no source).
+_LOOT_SRC_ENUM = {'treasure': 'Treasure', 'enemy': 'Enemy', 'emevd': 'Emevd'}
 
 
 def generate_map_data_cpp(entries, output_path, geom_slots=None):
@@ -354,8 +362,9 @@ def generate_map_data_cpp(entries, output_path, geom_slots=None):
             slot = meta.get('geom_slot', -1) if isinstance(meta, dict) else meta
             suffix = meta.get('name_suffix', -1) if isinstance(meta, dict) else -1
             obj_name = meta.get('object_name', '') if isinstance(meta, dict) else ''
-            lot_id, lot_type = lot_linkage.get(row_id, (0, 0))
+            lot_id, lot_type, lot_src = lot_linkage.get(row_id, (0, 0, ''))
             lot_backed = lot_id and lot_type
+            src_enum = _LOOT_SRC_ENUM.get(lot_src, 'Unknown')
 
             field_assignments = []
             for cpp_field in CPP_FIELD_ORDER:
@@ -373,7 +382,7 @@ def generate_map_data_cpp(entries, output_path, geom_slots=None):
 
             name_field = f'"{obj_name}"' if obj_name else 'nullptr'
             f.write(f"    }}, Category::{category}, {slot}, {suffix}, {name_field}, "
-                    f"{lot_id}u, {lot_type}}},\n")
+                    f"{lot_id}u, {lot_type}, LootSource::{src_enum}}},\n")
 
         f.write("};\n\n")
         f.write("} // namespace goblin::generated\n")

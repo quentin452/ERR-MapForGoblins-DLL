@@ -322,7 +322,15 @@ void build_buckets_impl()
             continue;
         // Disk loot owns this lot → drop the baked placement (lotId-coverage replace).
         // Only map-loot lots (lotType 1); enemy drops (lotType 2) are untouched.
-        if (!disk_lots.empty() && e.lotType == 1 && e.lotId != 0 && disk_lots.count(e.lotId))
+        // PROVENANCE GUARD: only drop a baked row the disk can legitimately reproduce — a
+        // Treasure-sourced placement. Enemy/Emevd rows have no MSB Treasure (the disk source
+        // never derives them), so a lotId collision with a disk treasure must NOT evict them.
+        // Unknown = a pre-provenance bake (field not yet regenerated) → keep the prior
+        // behaviour (treat as replaceable) so this change is inert until the data is rebuilt.
+        const bool disk_replaceable = e.loot_source == gen::LootSource::Treasure ||
+                                      e.loot_source == gen::LootSource::Unknown;
+        if (!disk_lots.empty() && e.lotType == 1 && e.lotId != 0 && disk_replaceable &&
+            disk_lots.count(e.lotId))
         {
             ++replaced;
             continue;

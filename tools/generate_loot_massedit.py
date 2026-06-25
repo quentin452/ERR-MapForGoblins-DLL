@@ -698,12 +698,16 @@ def write_massedit(records, filepath, icon_id, start_id, lot_linkage=None):
         gx = rec['gridX']
         gz = rec['gridZ']
 
-        # Live-loot linkage: bake the source lot id + which param it's in.
+        # Live-loot linkage: bake the source lot id + which param it's in + the PROVENANCE
+        # (extract_all_items 'source': treasure / enemy / emevd). generate_data.py maps the
+        # provenance string to MapEntry.loot_source so the runtime knows which baked rows the
+        # disk source may replace (treasure) vs which must stay baked (enemy/emevd).
         if lot_linkage is not None:
             _lot = rec.get('itemLotId', 0) or 0
             if _lot > 0:
-                _lt = 2 if rec.get('source') == 'enemy' else 1  # enemy vs map(treasure/emevd)
-                lot_linkage[row_id] = [int(_lot), _lt]
+                _src = rec.get('source') or ''
+                _lt = 2 if _src == 'enemy' else 1  # enemy vs map(treasure/emevd)
+                lot_linkage[row_id] = [int(_lot), _lt, _src]
 
         # Primary item ID for localized text, offset-encoded by item category:
         #   cat=1 (goods):    id as-is         → DLL reads GoodsName FMG
