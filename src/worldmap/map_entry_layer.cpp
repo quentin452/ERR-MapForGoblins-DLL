@@ -1512,12 +1512,20 @@ void build_buckets_impl()
         if (goblin::config::lootEmevdDrops)
         {
             // The event-1200 (mechanism B) join needs the MSB enemy EntityIDs to resolve
-            // which boss entity a setter event references.
+            // which boss entity a setter event references — both as a global set (the
+            // flag==EntityID boss-reward shortcut) AND grouped per tile (the setter→boss
+            // candidate resolution must stay map-scoped, see load_emevd_awards).
             std::unordered_set<uint32_t> known_entities;
+            std::unordered_map<uint32_t, std::unordered_set<uint32_t>> entities_by_tile;
             known_entities.reserve(disk_enemies.size());
             for (const DiskEnemy &en : disk_enemies)
-                if (en.entityId) known_entities.insert(en.entityId);
-            std::vector<DiskEmevd> awards = load_emevd_awards(known_entities);
+                if (en.entityId)
+                {
+                    known_entities.insert(en.entityId);
+                    uint32_t tile = ((uint32_t)en.area << 16) | ((uint32_t)en.gx << 8) | en.gz;
+                    entities_by_tile[tile].insert(en.entityId);
+                }
+            std::vector<DiskEmevd> awards = load_emevd_awards(known_entities, entities_by_tile);
             build_disk_emevd_markers(awards, disk_enemies, treasure_lots, emevd_disk_lots,
                                      piece_disk_keys);
         }

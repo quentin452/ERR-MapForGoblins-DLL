@@ -103,6 +103,13 @@ struct EmevdSetter
 {
     std::vector<uint32_t> flags;       // flags this event SetEventFlag(., state=1)
     std::vector<uint32_t> candidates;  // entity-range int32 values referenced in the event
+    // The tile (area<<16 | gx<<8 | gz) of the emevd file this setter came from, stamped by
+    // load_emevd_awards from the filename (parse_emevd_full has no filename). 0 if the file
+    // isn't a single tile (e.g. the overworld-common "m60.emevd.dcx"). The caller resolves the
+    // boss entity from `candidates` intersected with THIS tile's MSB enemies only — a global
+    // intersection mis-picks a numerically-lower boss-like EntityID from a DIFFERENT dungeon
+    // that merely appears as a 4-byte window in this event (the per-dungeon Rune Piece bug).
+    uint32_t mapTile = 0;
 };
 
 // Full EMEVD parse: direct template awards (mechanism A, the shipped pass) PLUS the

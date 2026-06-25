@@ -425,7 +425,9 @@ fs::path resolve_event_dir(const fs::path &mapStudio)
 }
 } // namespace
 
-std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &knownEntities)
+std::vector<DiskEmevd> load_emevd_awards(
+    const std::unordered_set<uint32_t> &knownEntities,
+    const std::unordered_map<uint32_t, std::unordered_set<uint32_t>> &entitiesByTile)
 {
     std::vector<DiskEmevd> out;
     ensure_map_dir_resolved();
@@ -477,10 +479,44 @@ std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &kno
         // Boss-reward binds come from EVERY map's emevd (each dungeon inits 90005860 with its own
         // boss flag + lot), so collect them unconditionally.
         for (const auto &fl : p.bossFlagLot) boss_flag_to_lot[fl.first] = fl.second;
-        for (auto &s : p.setters) setters.push_back(std::move(s));
+        // Stamp each setter with its emevd file's tile (area<<16|gx<<8|gz) so the boss-candidate
+        // resolution below stays map-scoped. "m30_12_00_00.emevd.dcx" → (30,12,0); files that
+        // aren't a single tile (e.g. "common.emevd.dcx", "m60.emevd.dcx") leave mapTile=0 and fall
+        // back to the global set (their setters are overworld-common, handled by other mechanisms).
+        uint32_t setterTile = 0;
+        {
+            int a = 0, x = 0, z = 0, lod = 0;
+            if (std::sscanf(name.c_str(), "m%d_%d_%d_%d", &a, &x, &z, &lod) == 4 &&
+                a >= 0 && a < 256 && x >= 0 && x < 256 && z >= 0 && z < 256)
+                setterTile = ((uint32_t)a << 16) | ((uint32_t)x << 8) | (uint32_t)z;
+        }
+        for (auto &s : p.setters) { s.mapTile = setterTile; setters.push_back(std::move(s)); }
         ++parsed;
         spdlog::debug("[LOOTDISK] {} -> {} direct awards", name, p.direct.size());
     }
+
+    // Resolve a setter's referenced boss entity, intersecting its candidates with the entities of
+    // its OWN tile (entitiesByTile[s.mapTile]) when that tile is known, else the global set. Scoping
+    // to the tile is what stops a numerically-lower boss-like EntityID from a neighbouring dungeon
+    // (present in the global set, coincidentally a 4-byte window here) from being picked — the bug
+    // that mislocated ~23 per-dungeon Rune Pieces. Boss-preferred (eid%1000 ∈ 800..899), else lowest.
+    auto resolve_boss = [&](const msbe::EmevdSetter &s) -> uint32_t {
+        const std::unordered_set<uint32_t> *scope = &knownEntities;
+        if (s.mapTile)
+        {
+            auto mit = entitiesByTile.find(s.mapTile);
+            if (mit != entitiesByTile.end()) scope = &mit->second;
+        }
+        uint32_t boss = 0, any = 0;
+        for (uint32_t c : s.candidates)
+        {
+            if (!scope->count(c)) continue;
+            uint32_t last3 = c % 1000;
+            if (last3 >= 800 && last3 <= 899) { if (!boss || c < boss) boss = c; }
+            else if (!any || c < any) any = c;
+        }
+        return boss ? boss : any;
+    };
 
     // Mechanism B: resolve each setter event whose flag is bound to a lot → pick the boss
     // entity it references (boss-preferred eid%1000 ∈ 800..899, else lowest), dedup by
@@ -494,16 +530,7 @@ std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &kno
             auto it = flag_to_lot.find(flag);
             if (it == flag_to_lot.end()) continue;
             uint32_t lot = it->second;
-            // candidate ∩ known MSB entities, boss-preferred
-            uint32_t boss = 0, any = 0;
-            for (uint32_t c : s.candidates)
-            {
-                if (!knownEntities.count(c)) continue;
-                uint32_t last3 = c % 1000;
-                if (last3 >= 800 && last3 <= 899) { if (!boss || c < boss) boss = c; }
-                else if (!any || c < any) any = c;
-            }
-            uint32_t chosen = boss ? boss : any;
+            uint32_t chosen = resolve_boss(s);  // candidate ∩ this tile's MSB entities, boss-preferred
             if (!chosen) { ++ev1200_no_entity; continue; }
             uint64_t key = ((uint64_t)chosen << 32) | lot;
             if (!seen.insert(key).second) continue;
@@ -529,15 +556,7 @@ std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &kno
                 bool sets = false;
                 for (uint32_t f : s.flags) if (f == flag) { sets = true; break; }
                 if (!sets) continue;
-                uint32_t boss = 0, any = 0;
-                for (uint32_t c : s.candidates)
-                {
-                    if (!knownEntities.count(c)) continue;
-                    uint32_t last3 = c % 1000;
-                    if (last3 >= 800 && last3 <= 899) { if (!boss || c < boss) boss = c; }
-                    else if (!any || c < any) any = c;
-                }
-                chosen = boss ? boss : any;
+                chosen = resolve_boss(s);  // map-scoped (same as the ev1200 join)
                 if (chosen) break;
             }
         if (!chosen) { ++boss_no_entity; continue; }

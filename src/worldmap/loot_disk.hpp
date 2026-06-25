@@ -118,7 +118,16 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
 // referenced entity is one of `knownEntities` (the MSB enemy EntityIDs, boss-preferred).
 // The caller joins each entityId to an MSB Enemy position (DiskEnemy::entityId) to place
 // the marker. Empty when no event dir is found. See docs §5b (mechanisms A + B).
-std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &knownEntities);
+//
+// `entitiesByTile` (tile key area<<16|gx<<8|gz → that tile's MSB enemy EntityIDs) scopes the
+// setter→boss candidate resolution to the setter's OWN map, matching the offline bake's
+// per-map `valid_entities`. Without it a global intersection picks a lower-numbered boss-like
+// EntityID from a different dungeon that coincides with a 4-byte window in the event, mislocating
+// the per-dungeon Rune Piece (see [[nobake-coverage-scoreboard]]). `knownEntities` is still used
+// for the flag==EntityID boss-reward shortcut (a globally-unique id, no map needed).
+std::vector<DiskEmevd> load_emevd_awards(
+    const std::unordered_set<uint32_t> &knownEntities,
+    const std::unordered_map<uint32_t, std::unordered_set<uint32_t>> &entitiesByTile);
 
 // Parse the active mod's event\*.emevd.dcx and return the World-feature graying flags:
 // (entityId -> activated event flag) for each EMEVD flag-template (Hero's Tomb statue
