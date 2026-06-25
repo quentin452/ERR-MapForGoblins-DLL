@@ -335,7 +335,8 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
                                            const std::unordered_set<uint32_t> &treasure_lots,
                                            std::unordered_set<uint32_t> &covered,
                                            std::unordered_set<Cell, CellHash> &out_cells,
-                                           std::unordered_set<std::string> &out_piece_keys)
+                                           std::unordered_set<std::string> &out_piece_keys,
+                                           std::unordered_set<std::string> &out_gather_keys)
 {
     GOBLIN_BENCH("build.disk_collectibles");
     int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, piece_emitted = 0, clutter_skip = 0;
@@ -438,10 +439,14 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         d.posX = c.posX;
         d.posZ = c.posZ;
         push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/1, Source::DiskMSB, lc);  // one per placement
-        // Record this gather-asset's projected cell so the finalize dedup can drop a
-        // baked geom marker sitting on it — keyed to the COLLECTIBLE pass only, so an
-        // unrelated treasure/enemy that merely coincides never evicts a baked piece.
+        // Record this gather-asset's projected cell AND its IDENTITY (tile + MSB part name)
+        // so the finalize dedup can drop the baked Material Node twin. Positional cell catches
+        // most; IDENTITY catches the ones whose baked position is offset by >0.5u from the live
+        // MSB pos (the same near-miss the Rune/Ember pieces hit → the 11 baked-only survivors).
+        // Both keyed to the COLLECTIBLE pass only, so an unrelated coincidence never evicts a node.
         out_cells.insert(cell_of(g_buckets[cat].back()));
+        if (!c.name.empty())
+            out_gather_keys.insert(piece_key(c.area, c.gx, c.gz, c.name.c_str()));
         covered.insert(lot);  // for the baked-row replace (de-dup vs the bake), NOT a skip key
         ++emitted;
         if (verbose) ++per_cat[cat];
@@ -1300,6 +1305,9 @@ void build_buckets_impl()
     // (tile, object_name) of every disk-placed Rune/Ember Piece — drops the baked twin by IDENTITY
     // (position-independent; see piece_key). Built by the collectible pass, consumed in the baked loop.
     std::unordered_set<std::string> piece_disk_keys;
+    // (tile, object_name) of every disk-placed gather node — drops the baked Material Node twin by
+    // IDENTITY when the positional cell-dedup misses it (baked pos offset >0.5u from the live MSB).
+    std::unordered_set<std::string> gather_disk_keys;
     if (disk_source_enabled())
     {
         // One disk read pass for all sources. Each out-vector requested only when on.
@@ -1331,7 +1339,7 @@ void build_buckets_impl()
             for (const DiskTreasure &t : treasures) treasure_lots.insert(t.lotId);
         if (goblin::config::lootCollectibles)
             build_disk_collectible_markers(disk_collectibles, treasure_lots, disk_lots,
-                                           collectible_cells, piece_disk_keys);
+                                           collectible_cells, piece_disk_keys, gather_disk_keys);
         if (goblin::config::worldFeaturesFromDisk)
         {
             // EMEVD-sourced graying flags (entity → flag) for Hero's Tomb (template 90005683)
@@ -1403,6 +1411,7 @@ void build_buckets_impl()
 
     int replaced = 0;
     int replaced_piece = 0;  // baked Rune/Ember Pieces dropped because the disk pass placed them
+    int replaced_matnode = 0; // baked Material Nodes dropped by IDENTITY (gather offset near-miss)
     int replaced_enemy = 0;  // baked Enemy rows dropped because the disk enemy pass covers them
     int replaced_emevd = 0;  // baked Emevd rows dropped because the disk EMEVD pass covers them
     int debake_gap = 0;  // Treasure-sourced baked rows the disk did NOT cover (de-bake blocker)
@@ -1458,6 +1467,18 @@ void build_buckets_impl()
             piece_disk_keys.count(piece_key(e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.object_name)))
         {
             ++replaced_piece;
+            continue;
+        }
+        // Material Node IDENTITY dedup: same idea as the pieces above. The disk collectible pass
+        // re-placed this exact AEG gather node (tile + MSB part name); the finalize positional
+        // cell-dedup drops most, but offset near-misses (baked pos >0.5u off the live MSB pos)
+        // survive as the 11 baked-only residual. Drop by identity here — safe by construction
+        // (only matches an object the gather pass PROVABLY emitted). Disk pass owns the position.
+        if (!gather_disk_keys.empty() && e.object_name &&
+            e.category == gen::Category::LootMaterialNodes &&
+            gather_disk_keys.count(piece_key(e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.object_name)))
+        {
+            ++replaced_matnode;
             continue;
         }
         // Disk loot owns this lot → drop the baked placement (lotId-coverage replace).
@@ -1549,6 +1570,9 @@ void build_buckets_impl()
     if (goblin::config::lootCollectibles)
         spdlog::info("[LOOTDISK] replaced {} baked Rune/Ember Pieces with disk placements (identity dedup)",
                      replaced_piece);
+    if (goblin::config::lootCollectibles)
+        spdlog::info("[LOOTDISK] replaced {} baked Material Nodes by identity (offset near-miss the "
+                     "positional dedup left)", replaced_matnode);
     if (goblin::config::lootEnemyDrops)
         spdlog::info("[LOOTDISK] replaced {} baked enemy rows with disk enemy placements", replaced_enemy);
     if (goblin::config::lootEmevdDrops)
