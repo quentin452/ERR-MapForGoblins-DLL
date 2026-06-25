@@ -295,42 +295,70 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
 // Enemy-drop markers (config loot_enemy_drops): each placed Enemy part whose
 // NPCParamID resolves a NpcParam item lot becomes a marker. Identity/category come
 // LIVE from that lot (resolve_loot_item_textid), exactly like the treasure/collectible
-// paths — no bake. The position is the enemy placement (same world transform). Each
+// paths — no bake. The position is the enemy placement (same world transform). The
 // placed lot is added to `covered` so the baked LootSource::Enemy row it covers is
-// dropped below (an enemy provenance guard). One marker PER placement (a roaming-rune
-// enemy type shares one npc/lot across many placements, each its own spot).
+// dropped below (an enemy provenance guard).
+//
+// NOTABILITY FILTER (the key to not flooding): a raw "every enemy with a drop lot"
+// emit = the 25608-placement universe (mostly Sliver of Meat / Thin Beast Bones
+// respawning clutter). The game's own one-time-loot signal cleanly separates the
+// notable drops: a lot with **getItemFlagId != 0** (a persistent obtain flag — the
+// game remembers you took it; respawning clutter has flag 0) placed on a **UNIQUE
+// enemy** (the lot appears on exactly one placement). Datamined offline
+// (tools/datamine_enemy_notability.py): the 119 curated baked enemy markers are ALL
+// flag!=0 && placements==1; this filter yields 349 lots = a perfect SUPERSET of the
+// 119 plus 230 notable drops the bake's manual LOOT_CATEGORIES curation MISSED
+// (Blaidd's/Ronin's armour sets, Hoslow's Petal Whip, Patches'/Miriel's Bell
+// Bearing, ...). So this is a clean LIVE filter — strictly better coverage than the
+// bake, no porting of the pipeline's ~60 category rules. See
+// docs/re/windows_enemy_loot_nobake_analysis.md.
 static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
                                      const std::unordered_set<uint32_t> &treasure_lots,
                                      std::unordered_set<uint32_t> &covered)
 {
     GOBLIN_BENCH("build.disk_enemies");
-    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0;
+    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, swarm = 0, respawn = 0;
     const bool verbose = goblin::config::diagLootPos;
     std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
+
+    // Resolve each placement's lot once, and count placements per lot (the uniqueness
+    // signal — a lot on many enemies = respawning swarm clutter, one obtainable item).
+    struct Resolved { uint32_t lot; uint8_t lt; const DiskEnemy *e; };
+    std::vector<Resolved> rs;
+    rs.reserve(enemies.size());
+    std::unordered_map<uint32_t, int> lot_count;
     for (const DiskEnemy &en : enemies)
     {
         uint8_t lt = 0;
         uint32_t lot = goblin::npc_loot_lot(en.npcParamId, &lt);  // live NpcParam chain
         if (lot == 0) { ++no_lot; continue; }
-        if (treasure_lots.count(lot)) { ++dup; continue; }  // already a Treasure ground item
-        int32_t key = goblin::resolve_loot_item_textid(lot, lt, -1);
+        rs.push_back({lot, lt, &en});
+        ++lot_count[lot];
+    }
+    for (const Resolved &r : rs)
+    {
+        if (treasure_lots.count(r.lot)) { ++dup; continue; }  // already a Treasure ground item
+        if (lot_count[r.lot] != 1) { ++swarm; continue; }     // shared across placements = clutter
+        if (goblin::resolve_loot_flag(r.lot, r.lt, 0) == 0) { ++respawn; continue; }  // no one-time flag
+        int32_t key = goblin::resolve_loot_item_textid(r.lot, r.lt, -1);
         int cat = goblin::item_marker_category(key);
         if (cat < 0) cat = goblin::classify_item_live(key);  // live fallback (any mod / unbaked)
         if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
-        d.areaNo = en.area;
-        d.gridXNo = en.gx;
-        d.gridZNo = en.gz;
-        d.posX = en.posX;
-        d.posZ = en.posZ;
-        push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/lt);  // one per placement
-        covered.insert(lot);  // drops the matching baked LootSource::Enemy row
+        d.areaNo = r.e->area;
+        d.gridXNo = r.e->gx;
+        d.gridZNo = r.e->gz;
+        d.posX = r.e->posX;
+        d.posZ = r.e->posZ;
+        push_marker(/*row_id=*/r.lot, d, cat, r.lot, /*lotType=*/r.lt);
+        covered.insert(r.lot);  // drops the matching baked LootSource::Enemy row
         ++emitted;
         if (verbose) ++per_cat[cat];
     }
-    spdlog::info("[LOOTDISK] enemy drops: {} markers emitted ({} placements total, {} npc-has-no-lot, "
-                 "{} treasure-dup, {} unclassified)",
-                 emitted, (int)enemies.size(), no_lot, dup, unclassified);
+    spdlog::info("[LOOTDISK] enemy drops: {} notable markers emitted ({} placements total; filtered: "
+                 "{} npc-has-no-lot, {} treasure-dup, {} swarm(>1 placement), {} no-one-time-flag, "
+                 "{} unclassified)",
+                 emitted, (int)enemies.size(), no_lot, dup, swarm, respawn, unclassified);
     if (verbose)
         for (auto &[cat, n] : per_cat)
             spdlog::info("[LOOTDISK]   enemy-drop category index {} = {} markers", cat, n);

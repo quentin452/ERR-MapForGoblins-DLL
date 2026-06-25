@@ -81,6 +81,34 @@ after you kill it. Pre-kill the runtime evidence is the **resident enemy Part** 
 **Verdict:** enemy is no-bakeable, but via a resident-MSB `Parts.Enemies` + `NpcParam` pass, not
 via the spawned-loot walker.
 
+### ★ The runtime NOTABILITY signal (datamined 2026-06-25, `tools/datamine_enemy_notability.py`)
+
+A naive "every enemy with a drop lot" emit = the **25608-placement** universe (mostly respawning
+clutter: Sliver of Meat ×3480, Thin Beast Bones ×2902, mushrooms…). The bake cures 25608→119 via the
+pipeline's ~60 manual `LOOT_CATEGORIES` notability filters — but the game already encodes notability
+in a **live-readable** signal, so porting those filters is unnecessary:
+
+| filter (over the 25608 universe) | distinct lots | placements | misses any of baked-119? |
+|---|---|---|---|
+| `getItemFlagId != 0` (one-time persistent obtain flag) | 559 | 1475 | no |
+| `placements == 1` (lot on a unique enemy) | 489 | 489 | no |
+| **`getItemFlagId != 0` AND `placements == 1`** | **349** | **349** | **no (perfect superset)** |
+
+- **`getItemFlagId`** (on the `ItemLotParam_enemy/_map` row) is the game's persistent "you took this"
+  flag. Respawning clutter has flag 0; one-time named drops have a real flag. **All 119 baked enemy
+  lots have flag != 0** (100%); only 5.8% of universe placements do.
+- **placements-per-lot == 1**: the 119 are each placed on exactly one enemy; clutter lots are shared
+  across swarms (median 3, max 1917 placements/lot). The disk pass counts this during its parse.
+- The combined filter yields **349 lots, a perfect superset of the 119**, plus **230 notable drops the
+  bake's manual curation MISSED** — Blaidd's & Ronin's armour sets, Hoslow's Petal Whip, Royal
+  Greatsword, Patches'/Miriel's Bell Bearing, Inseparable Sword + Twinned set, Irina's Letter,
+  Dancer's Castanets, etc. So the live filter is **strictly better coverage** than the curated bake.
+
+Both signals are runtime-derivable (`resolve_loot_flag(lot)` already exists; placement-count is
+counted in the disk pass), so `build_disk_enemy_markers` filters live — no `LOOT_CATEGORIES` port.
+SHIPPED in the pass (config `loot_enemy_drops`): emits ~349 notable enemy markers, drops the matching
+baked Enemy rows, adds the 230 the bake missed.
+
 Full 119-row table: see [`enemy_markers_table.md`](enemy_markers_table.md) (this dir).
 
 ---

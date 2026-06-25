@@ -220,11 +220,14 @@ namespace
                   "show_smithing_stones keeps the stones (goodsType 14), show_consumables the\n"
                   "consumables (goodsType 0). Toggle them live in the overlay panel too."),
                 B("loot_enemy_drops", lootEnemyDrops, "false",
-                  "EXPERIMENTAL. Add markers for enemy-drop loot read straight from the disk\n"
-                  "MSBs: each Enemy placement's NPCParamID -> NpcParam.itemLotId_map (pref) /\n"
-                  "itemLotId_enemy -> ItemLotParam (all live, no bake). Position = the enemy\n"
-                  "placement. Replaces the matching baked enemy markers. Uses the same map dir\n"
-                  "as loot_from_disk_msb. Off by default."),
+                  "EXPERIMENTAL. Add markers for NOTABLE enemy-drop loot read straight from the\n"
+                  "disk MSBs: each Enemy placement's NPCParamID -> NpcParam.itemLotId_map (pref)\n"
+                  "/ itemLotId_enemy -> ItemLotParam (all live, no bake). Position = the enemy\n"
+                  "placement. Filtered to the game's own one-time-loot signal (getItemFlagId!=0\n"
+                  "on a uniquely-placed lot) so it shows named weapons/armour sets, bell\n"
+                  "bearings, key items -- NOT respawning crafting clutter (meat/bones). Replaces\n"
+                  "the matching baked enemy markers (and adds notable drops the bake missed).\n"
+                  "Uses the same map dir as loot_from_disk_msb. Off by default."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("show_all", showAll, "false",
