@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <vector>
 #include <atomic>
 #include <string>
@@ -522,6 +523,26 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
 // textId2==5100 bosses + ~523 structural iconId=83/textId=-1 nav points); the Stakes/SummoningPools/
 // SpiritSprings/Maps/etc. rows the bake expects are NOT present live. So only bosses (textId2==5100)
 // and graces (BonfireWarpParam) are live-portable; every other category stays baked.
+// True for an ERR collectible gather node placed as an AEG{A}_{B}_{suffix} model
+// whose sub-number B is 800-899 ("_8xx"). These are EXACTLY the placements the
+// disk collectible pass (loot_collectibles) re-emits per-placement with live
+// per-item classification, so a baked LootMaterialNodes copy of the same node
+// (lotId=0, GEOM-tracked → the lotId-replace can't drop it) double-counts on the
+// map. The disk pass deliberately skips B<800/>899 as clutter, so the _6xx/_7xx/
+// _9xx baked nodes are distinct and must stay. See [[aeg-collectible-source]].
+bool is_collectible_8xx_node(const char *name)
+{
+    if (!name)
+        return false;
+    const char *u = std::strchr(name, '_'); // after the AEG{A} prefix
+    if (!u || u[1] < '0' || u[1] > '9')
+        return false;
+    int b = 0;
+    for (const char *p = u + 1; *p >= '0' && *p <= '9'; ++p)
+        b = b * 10 + (*p - '0');
+    return b >= 800 && b <= 899;
+}
+
 // Runs exactly once — wrapped by ensure_buckets()/std::call_once.
 void build_buckets_impl()
 {
@@ -591,6 +612,7 @@ void build_buckets_impl()
     std::unordered_set<uint32_t> baked_lot1, baked_any;
 
     int replaced = 0;
+    int replaced_collectible = 0;  // baked _8xx Material Node rows the disk collectible pass owns
     int replaced_enemy = 0;  // baked Enemy rows dropped because the disk enemy pass covers them
     int replaced_emevd = 0;  // baked Emevd rows dropped because the disk EMEVD pass covers them
     int debake_gap = 0;  // Treasure-sourced baked rows the disk did NOT cover (de-bake blocker)
@@ -610,6 +632,19 @@ void build_buckets_impl()
         // rows so they don't double the live ones (the bake is being retired for this category).
         if (e.category == gen::Category::WorldBosses)
             continue;
+        // Disk collectible source (loot_collectibles) re-emits every AEG..._8xx gather
+        // node per-placement with live per-item classification (→ Crafting Materials,
+        // Consumables, …). The baked LootMaterialNodes table also carries those _8xx
+        // nodes (lotId=0, GEOM-tracked) so they'd draw TWICE. Drop the baked _8xx copy
+        // when the collectible pass owns them; the _6xx/_7xx/_9xx nodes the disk pass
+        // skips as clutter stay baked. Off-collectibles users keep the full baked set.
+        if (goblin::config::lootCollectibles &&
+            e.category == gen::Category::LootMaterialNodes &&
+            is_collectible_8xx_node(e.object_name))
+        {
+            ++replaced_collectible;
+            continue;
+        }
         // Disk loot owns this lot → drop the baked placement (lotId-coverage replace).
         // Only map-loot lots (lotType 1); enemy drops (lotType 2) are untouched.
         // PROVENANCE GUARD: only drop a baked row the disk can legitimately reproduce — a
@@ -682,6 +717,9 @@ void build_buckets_impl()
         }
         push_marker(e.row_id, e.data, c, e.lotId, e.lotType);
     }
+    if (goblin::config::lootCollectibles)
+        spdlog::info("[LOOTDISK] dropped {} baked _8xx Material Node rows (disk collectible pass owns them)",
+                     replaced_collectible);
     if (goblin::config::lootEnemyDrops)
         spdlog::info("[LOOTDISK] replaced {} baked enemy rows with disk enemy placements", replaced_enemy);
     if (goblin::config::lootEmevdDrops)
