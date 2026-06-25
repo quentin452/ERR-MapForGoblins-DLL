@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <map>
 #include <mutex>
 #include <system_error>
 #include <unordered_map>
@@ -245,6 +246,7 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
 
     msbe::OodleDecompressFn oodle = resolve_oodle(); // KRAK support (vanilla/unmodified maps)
     int parsed = 0, kraks = 0, withPart = 0, dummies = 0;
+    std::map<int, int> tier_files;  // LOD suffix → file count (tile coverage diag)
     std::error_code ec;
     for (auto &de : fs::directory_iterator(dir, ec))
     {
@@ -255,6 +257,15 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
         for (char &c : lower) c = (char)std::tolower((unsigned char)c);
         if (lower.size() < 8 || lower.compare(lower.size() - 8, 8, ".msb.dcx") != 0) continue;
         std::string stem = name.substr(0, name.size() - 8);  // strip ".msb.dcx"
+        // Tile coverage: tally the LOD suffix of EVERY tile (parsed or not) so the scoreboard
+        // can show what the _00-only rule covers vs skips. _01/_02 are LOD connect-proxies and
+        // _10/_11/_12 hold mostly GED-tier DUPLICATES of _00 (validated tools/tier_coverage.py),
+        // so skipping them loses ~no unique markers — but the count makes the scope explicit.
+        {
+            int a = 0, x = 0, z = 0, lod = -1;
+            if (std::sscanf(stem.c_str(), "m%d_%d_%d_%d", &a, &x, &z, &lod) == 4)
+                ++tier_files[lod];
+        }
         int area = 0, gx = 0, gz = 0;
         if (!parse_tile(stem, area, gx, gz)) continue;
 
@@ -352,6 +363,21 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
                  "dropped; reachable dummies kept); {} KRAK skipped", parsed, withPart, dummies, kraks);
     if (wantEnemies)
         spdlog::info("[LOOTDISK] {} enemy placements parsed (with NPCParamID)", enemies->size());
+    // Tile coverage: parsed _00 vs skipped LOD/duplicate tiers, for the scoreboard.
+    {
+        int total = 0, skipped = 0;
+        std::string by_tier;
+        for (auto &[lod, n] : tier_files)
+        {
+            total += n;
+            if (lod != 0) skipped += n;
+            if (!by_tier.empty()) by_tier += " ";
+            by_tier += "_" + std::string(lod < 10 ? "0" : "") + std::to_string(lod) + "=" +
+                       std::to_string(n);
+        }
+        spdlog::info("[COVERAGE-TILES] parsed {}/{} tiles (_00 only); skipped {} non-_00 [{}]",
+                     tier_files.count(0) ? tier_files[0] : 0, total, skipped, by_tier);
+    }
     return out;
 }
 

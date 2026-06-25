@@ -109,12 +109,21 @@ def icon_metadata():
     return {disp: desc(enum) for enum, disp in enum2disp.items()}
 
 
+TILES = re.compile(
+    r"\[COVERAGE-TILES\] parsed (?P<parsed>\d+)/(?P<total>\d+) tiles.*?"
+    r"skipped (?P<skipped>\d+) non-_00 \[(?P<bytier>[^\]]*)\]")
+
+
 def parse_last_block(path):
-    rows, ts = {}, None
+    rows, ts, tiles = {}, None, None
     with open(path, encoding="utf-8", errors="replace") as fh:
         for line in fh:
             t = TS.match(line)
             block_ts = t.group("ts") if t else None
+            tl = TILES.search(line)
+            if tl:
+                tiles = {"parsed": int(tl.group("parsed")), "total": int(tl.group("total")),
+                         "skipped": int(tl.group("skipped")), "bytier": tl.group("bytier")}
             m = ROW.search(line)
             if m:
                 cat = m.group("cat").strip()
@@ -133,10 +142,10 @@ def parse_last_block(path):
                     {k: int(c.group(k))
                      for k in ("drawn", "census", "flagged", "respawn", "nonloot")})
                 ts = block_ts or ts
-    return rows, ts
+    return rows, ts, tiles
 
 
-def emit(rows, ts):
+def emit(rows, ts, tiles=None):
     tot = {k: sum(r[k] for r in rows.values()) for k in ("baked", "disk", "live", "lc", "total")}
     icons = icon_metadata()
 
@@ -198,6 +207,30 @@ def emit(rows, ts):
     lines.append(f"🔴 baked-only: **{nbaked}**  ·  🟡 partial: **{npart}**  ·  🟢 off-bake: **{ngreen}**  "
                  f"(of {len(rows)} active categories)")
     lines.append("")
+    if tiles:
+        lines.append("## Tile coverage (`_00`-only parser)")
+        lines.append("")
+        lines.append(f"The disk pass parses only **`_00`** tiles (LOD0). It reads "
+                     f"**{tiles['parsed']} / {tiles['total']}** tiles; the **{tiles['skipped']}** "
+                     f"non-`_00` are skipped. `_01`/`_02` are LOD connect-proxies (proxy objects at "
+                     f"a 128/256 offset → the Stakes/Imp phantom source); `_10`/`_11`/`_12` hold "
+                     f"mostly GED-tier **duplicates** of `_00` (e.g. the 3 Hostile-NPC invaders the "
+                     f"bake double-counted), so skipping them loses ~no unique markers. "
+                     f"`tools/tier_coverage.py` audits per-tier unique content.")
+        lines.append("")
+        lines.append("| tier | files | role |")
+        lines.append("|---|--:|---|")
+        ROLE = {0: "parsed (LOD0 content)", 1: "skipped — LOD proxy", 2: "skipped — LOD proxy",
+                10: "skipped — mostly _00 dupes", 11: "skipped — mostly _00 dupes",
+                12: "skipped — mostly _00 dupes", 99: "skipped — lighting"}
+        for tok in tiles["bytier"].split():
+            try:
+                key, n = tok.split("=")
+                lod = int(key.lstrip("_"))
+            except ValueError:
+                continue
+            lines.append(f"| `{key}` | {n} | {ROLE.get(lod, 'skipped')} |")
+        lines.append("")
     lines.append("## Per category")
     lines.append("")
     lines.append("| category | baked | disk | live | live-cls | total | icon | status |")
@@ -230,11 +263,11 @@ def main():
     log = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_LOG
     if not os.path.isfile(log):
         sys.exit(f"log not found: {log}\nPass the path as arg 1.")
-    rows, ts = parse_last_block(log)
+    rows, ts, tiles = parse_last_block(log)
     if not rows:
         sys.exit("no [COVERAGE] rows found in the log — run the game + open the map first.")
     with open(OUT, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(emit(rows, ts))
+        fh.write(emit(rows, ts, tiles))
     print(f"wrote {OUT}  ({len(rows)} categories, baked remaining = "
           f"{sum(r['baked'] for r in rows.values())})")
 
