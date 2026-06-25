@@ -177,16 +177,33 @@ def main():
         ev1200_base.setdefault(flag_to_lot[flag], chosen)
     print(f'(B) event-1200 base lots recovered with an entity: {len(ev1200_base)}')
 
-    # ── (C) sequence siblings: walk base+offset contiguously in the lot table ──
+    # treasure base lots (MSB treasure) — the bake stops a MAP-table sibling walk at these.
+    treasure_base_lots = set()
+    try:
+        db = json.load(open('data/items_database.json'))
+        treasure_base_lots = {r['itemLotId'] for r in db if r.get('source') == 'treasure'}
+    except Exception:
+        pass
+
+    # ── (C) sequence siblings — EXACT bake rule (extract_all_items.py:974-997 + 1014-1021):
+    #   enemy-table base: walk base+1.. in ItemLotParam_enemy, stop at first gap.
+    #   map-table base:   walk base+1.. in ItemLotParam_map, stop at gap OR a treasure base lot.
+    #   a sibling is EMITTED only if getItemFlagId > 0 (raw) AND it has a non-empty item.
     def siblings(base):
-        tbl = item_lots_enemy if base in item_lots_enemy else (
-              item_lots_map if base in item_lots_map else None)
-        if tbl is None: return []
         out = []
-        off = 1
-        while base + off in tbl:
-            out.append(base + off); off += 1
-            if off > 50: break
+        if base in item_lots_enemy:
+            off = 1
+            while base + off in item_lots_enemy:
+                out.append(base + off); off += 1
+                if off > 50: break
+        elif base in item_lots_map:
+            off = 1
+            while True:
+                sid = base + off
+                if sid in treasure_base_lots: break
+                if sid not in item_lots_map: break
+                out.append(sid); off += 1
+                if off > 20: break
         return out
     sib_to_base = {}
     for base in list(direct_lots) + list(ev1200_base.keys()):
@@ -224,6 +241,104 @@ def main():
         n = len(siblings(base))
         if n: chain_len[n] += 1
     print(f'  sibling chain-length histogram (base->#siblings): {dict(sorted(chain_len.items()))}')
+
+    # ── mechanism-C emission sizing: what would the runtime sibling scan emit? ──
+    # The runtime walks base+offset for EVERY placed base (direct + ev1200), emitting each
+    # NON-EMPTY sibling. Measure that universe vs the baked-167 to decide if a notability
+    # filter (persistent getItemFlagId, like the enemy pass) is needed for parity.
+    def lot_nonempty(lot):
+        l = item_lots_enemy.get(lot) or item_lots_map.get(lot)
+        if not l: return False
+        return any(l.get(f'lotItemId0{s}', 0) > 0 and l.get(f'lotItemCategory0{s}', 0) > 0
+                   for s in range(1, 9))
+    def lot_flag(lot):
+        l = item_lots_enemy.get(lot) or item_lots_map.get(lot)
+        return int(l.get('getItemFlagId', 0)) if l else 0
+    placed_bases = set(direct_lots) | set(ev1200_base.keys())
+    all_sibs = set(sib_to_base.keys()) - placed_bases
+    # the bake's exact emit rule: getItemFlagId > 0 (RAW) AND non-empty item
+    sib_emit = {s for s in all_sibs if lot_flag(s) > 0 and lot_nonempty(s)}
+    print('\n=== mechanism-C emission sizing (exact bake rule: raw flag>0 + non-empty) ===')
+    print(f'  total siblings of placed bases (excl bases): {len(all_sibs)}')
+    print(f'  ...emitted (flag>0 + non-empty):             {len(sib_emit)}')
+    print(f'  baked-167 covered by emitted siblings:       {len(by_sib & sib_emit)} / {len(by_sib)}')
+    print(f'  emitted siblings NOT in baked Emevd (over-emit): {len(sib_emit - baked_emevd)}')
+    # TRUE new-marker count: a sibling already placed by ANOTHER runtime pass (its lot is an
+    # MSB treasure, an enemy-disk lot, or a baked row of ANY source) is dedup'd away, not a flood.
+    baked_any = {e['lotId'] for e in baked if e.get('lotId')}
+    baked_by_src = defaultdict(set)
+    for e in baked:
+        if e.get('lotId'): baked_by_src[e.get('src')].add(e['lotId'])
+    truly_new = sib_emit - baked_any - direct_lots - set(ev1200_base) - treasure_base_lots
+    print(f'  emitted siblings already baked under SOME source: {len(sib_emit & baked_any)}')
+    for s in ('Treasure', 'Enemy', 'Emevd', 'Unknown'):
+        print(f'      ...as {s}: {len(sib_emit & baked_by_src[s])}')
+    print(f'  emitted siblings that are MSB treasure lots:      {len(sib_emit & treasure_base_lots)}')
+    print(f'  >>> TRULY NEW markers (not baked anywhere, not a treasure/ev1200/direct base): {len(truly_new)}')
+    # what ARE the over-emit markers? Resolve REAL names from item.msgbnd (NOT regulation)
+    # and classify by lotItemCategory (1 goods / 2 weapon / 3 armor / 4 talisman / 5 gem) so we
+    # can tell "bake forgot real notable gear" from "low-value goods clutter".
+    from System.Reflection import Assembly as _A  # noqa
+    import SoulsFormats as _SF
+    msgbnd = E._read_from_bytes(E._bnd4_read, _SF.DCX.Decompress(str(E.MSGBND_PATH)), '.bnd')
+    name_dbs = {
+        1: E.read_fmg_names(msgbnd, 'GoodsName.fmg'),
+        2: E.read_fmg_names(msgbnd, 'WeaponName.fmg'),
+        3: E.read_fmg_names(msgbnd, 'ProtectorName.fmg'),
+        4: E.read_fmg_names(msgbnd, 'AccessoryName.fmg'),
+        5: E.read_fmg_names(msgbnd, 'GemName.fmg'),
+    }
+    CATNAME = {1: 'goods', 2: 'weapon', 3: 'armor', 4: 'talisman', 5: 'gem'}
+    def first_item(lot):
+        l = item_lots_enemy.get(lot) or item_lots_map.get(lot)
+        if not l: return (0, 0, '(no-lot)')
+        for s in range(1, 9):
+            iid = l.get(f'lotItemId0{s}', 0); cat = l.get(f'lotItemCategory0{s}', 0)
+            if iid > 0 and cat > 0:
+                nm = name_dbs.get(cat, {}).get(iid) or f'cat{cat}_id{iid}'
+                return (cat, iid, nm)
+        return (0, 0, '(empty)')
+    over_by_cat = Counter()
+    over_names = Counter()
+    equip_over = []   # weapon/armor/talisman/gem the bake skipped (= real notable gear?)
+    for s in truly_new:
+        cat, iid, nm = first_item(s)
+        over_by_cat[CATNAME.get(cat, f'cat{cat}')] += 1
+        over_names[nm] += 1
+        if cat in (2, 3, 4, 5):
+            equip_over.append((s, nm))
+    print(f'\n  over-emit ({len(truly_new)}) by lotItemCategory:')
+    for cn, c in over_by_cat.most_common():
+        print(f'    {c:4} {cn}')
+    print(f'  over-emit by item NAME (top 30):')
+    for nm, c in over_names.most_common(30):
+        print(f'    {c:4} {nm}')
+    print(f'\n  EQUIPMENT over-emit (weapon/armor/talisman/gem the bake did NOT show) = {len(equip_over)}:')
+    eq_names = Counter(nm for _, nm in equip_over)
+    for nm, c in eq_names.most_common(30):
+        print(f'    {c:4} {nm}')
+
+    # ── REFINEMENT: restrict C to ev1200 (boss) bases only — does it keep the 162
+    #    baked siblings while cutting the direct-template-base over-emit? ──
+    sib_ev_only = set()
+    for base in ev1200_base:
+        for s in siblings(base):
+            if lot_flag(s) > 0 and lot_nonempty(s):
+                sib_ev_only.add(s)
+    sib_ev_only -= placed_bases
+    sib_direct_only = set()
+    for base in direct_lots:
+        for s in siblings(base):
+            if lot_flag(s) > 0 and lot_nonempty(s):
+                sib_direct_only.add(s)
+    sib_direct_only -= placed_bases
+    print('\n=== REFINEMENT: ev1200-base siblings vs direct-base siblings ===')
+    print(f'  ev1200-base siblings emitted:   {len(sib_ev_only)} '
+          f'(covers {len(by_sib & sib_ev_only)}/162 baked, '
+          f'over-emit {len(sib_ev_only - baked_any)})')
+    print(f'  direct-base siblings emitted:   {len(sib_direct_only)} '
+          f'(covers {len(by_sib & sib_direct_only)}/162 baked, '
+          f'over-emit {len(sib_direct_only - baked_any)})')
 
     # samples
     print('\n=== samples ===')
