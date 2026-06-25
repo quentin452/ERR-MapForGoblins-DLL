@@ -853,6 +853,11 @@ static int build_disk_hostile_npc_markers(
     GOBLIN_BENCH("build.disk_hostile_npc");
     const int cat = static_cast<int>(gen::Category::WorldHostileNPC);
     int emitted = 0, dup = 0, not_invader = 0, no_entity = 0, no_flag = 0;
+    // Dedup by the bake's key — per tile + 0.1u-rounded RAW position (stacked invader variants
+    // at one trigger spot collapse). Keyed on raw pos (NOT the projected cell): a 0.5u world
+    // cell wrongly merges two distinct invaders a few decimetres apart that the engine places
+    // separately. out_cells still gets each emitted cell, only as the finalize "ran" signal.
+    std::unordered_set<std::string> seen_pos;
     for (const DiskEnemy &e : enemies)
     {
         if (e.entityId == 0) { ++no_entity; continue; }  // placed only (not script-spawned)
@@ -860,6 +865,10 @@ static int build_disk_hostile_npc_markers(
         int32_t name = 0;
         if (!goblin::npc_team_and_name(e.npcParamId, &team, &name)) { ++not_invader; continue; }
         if ((team != 24 && team != 27) || name <= 0) { ++not_invader; continue; }
+        std::string pk = std::to_string(e.area) + "_" + std::to_string(e.gx) + "_" +
+                         std::to_string(e.gz) + "_" + std::to_string((long)std::lround(e.posX * 10.0f)) +
+                         "_" + std::to_string((long)std::lround(e.posZ * 10.0f));
+        if (!seen_pos.insert(pk).second) { ++dup; continue; }
         uint32_t flag = 0;
         if (auto it = emevd_flags.find(e.entityId); it != emevd_flags.end()) flag = it->second;
         else ++no_flag;  // invader with no 90005792 defeat flag (drawn, just no kill-tracking)
@@ -874,13 +883,7 @@ static int build_disk_hostile_npc_markers(
         d.clearedEventFlagId = flag;           // defeated → checkmark / hide (like bosses)
         d.textDisableFlagId1 = flag;           // also the collected_flag graying path
         push_marker(/*row_id=*/e.entityId, d, cat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
-        const Cell cell = cell_of(g_buckets[cat].back());
-        if (!out_cells.insert(cell).second)
-        {
-            g_buckets[cat].pop_back();
-            ++dup;
-            continue;
-        }
+        out_cells.insert(cell_of(g_buckets[cat].back()));  // finalize "pass ran" signal
         ++emitted;
     }
     spdlog::info("[LOOTDISK] world features: {} Hostile NPC invaders from disk enemies + live NpcParam "
