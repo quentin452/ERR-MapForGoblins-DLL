@@ -512,7 +512,8 @@ std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &kno
     return out;
 }
 
-std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags()
+std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags(
+    std::unordered_map<uint32_t, uint32_t> *paintings_out)
 {
     std::unordered_map<uint32_t, uint32_t> out;
     ensure_map_dir_resolved();
@@ -544,10 +545,17 @@ std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags()
         // entity→flag; first writer wins (phase-variant events _00/_10 share the same entity).
         for (const auto &ef : msbe::parse_emevd_flag_awards(evd.data(), evd.size()))
             out.emplace(ef.first, ef.second);
+        // Painting collection events (entity→flag 580000-580199) from the SAME decompressed blob.
+        if (paintings_out)
+            for (const auto &pf : msbe::parse_emevd_paintings(evd.data(), evd.size()))
+                paintings_out->emplace(pf.first, pf.second);
         ++parsed;
     }
     spdlog::info("[LOOTDISK] World-feature flags: {} entity→flag from {} EMEVD files ({} KRAK skipped)",
                  (int)out.size(), parsed, kraks);
+    if (paintings_out)
+        spdlog::info("[LOOTDISK] World-feature flags: {} painting events (entity→flag 580000-580199)",
+                     (int)paintings_out->size());
     return out;
 }
 } // namespace goblin::worldmap

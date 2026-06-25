@@ -115,10 +115,16 @@ std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &kno
 
 // Parse the active mod's event\*.emevd.dcx and return the World-feature graying flags:
 // (entityId -> activated event flag) for each EMEVD flag-template (Hero's Tomb statue
-// 90005683). The World-feature disk pass joins an interactive asset's EntityID to its flag so
-// an activated statue grays/hides like the bake did — no committed bake. Empty when no event
-// dir is found. Shares resolve_event_dir + the Oodle/KRAK path with load_emevd_awards.
-std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags();
+// 90005683, Hostile NPC defeat 90005792). The World-feature disk pass joins an interactive
+// asset's/enemy's EntityID to its flag so an activated/defeated instance grays/hides like the
+// bake did — no committed bake. Empty when no event dir is found. Shares resolve_event_dir +
+// the Oodle/KRAK path with load_emevd_awards.
+//
+// `paintings_out` (optional): filled in the SAME scan with the painting events (entityId ->
+// collection flag 580000-580199; parse_emevd_paintings) so the painting disk pass needs no
+// second ~550-file event-dir read. nullptr = skip the extra per-file parse.
+std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags(
+    std::unordered_map<uint32_t, uint32_t> *paintings_out = nullptr);
 
 // ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────
 // With loot_from_disk_msb on, the map dir is resolved by ancestor-walk at init

@@ -171,6 +171,14 @@ EmevdParse parse_emevd_full(const uint8_t *buf, size_t len);
 // grays/hides like the bake). Same pinned 64-bit layout as parse_emevd. Empty on malformed.
 std::vector<std::pair<uint32_t, uint32_t>> parse_emevd_flag_awards(const uint8_t *buf, size_t len);
 
+// World-feature Paintings: a bank-2000 init that registers a painting collection (flag in
+// 580000-580199) carries (entity, FLAG). Detected by the flag RANGE, not a fixed template, since
+// the DLC paintings each use a unique map-specific template id (e.g. 2045432550). Two arg shapes
+// (matches tools/generate_paintings.py): template 90005632 → flag@idx2/entity@idx3 (Asset
+// paintings); else flag@idx3 (if in range)/entity@idx4 (ghost-painter Enemy paintings). Returns
+// (entity -> flag), both > 0. The disk pass joins the entity to its MSB Asset or Enemy position.
+std::vector<std::pair<uint32_t, uint32_t>> parse_emevd_paintings(const uint8_t *buf, size_t len);
+
 // oo2core's OodleLZ_Decompress (14-arg; x64 ABI unifies __stdcall/__fastcall). Kept as a
 // plain function-pointer typedef so msbe_parser needs no <windows.h>/oo2core link — the DLL
 // resolves the real export (GetProcAddress) and passes it in; offline tools can too.
