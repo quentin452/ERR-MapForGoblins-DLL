@@ -216,6 +216,13 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
     int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, baked_skip = 0, clutter_skip = 0;
     const bool verbose = goblin::config::diagLootPos;
     std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
+    // [DEBAKE-RECOVER] sizing (verbose only): how much of the non-_8xx "clutter" actually carries
+    // recoverable loot. The 328 DEBAKE-GAP = corpse/body pickups (AEG099_630/090, …) the _8xx filter
+    // drops along with the pot/jar clutter. Measure pickups-with-a-lot, of those how many are FLAGGED
+    // (getItemFlagId!=0 → one-time loot spot, not respawning clutter) or equipment, to gauge the
+    // re-flood before widening the filter. Per-placement (≈ markers added if recovered).
+    int rec_pickup = 0, rec_flagged = 0, rec_equip = 0, rec_dup = 0;
+    std::unordered_set<uint32_t> rec_flag_lots;
     for (const DiskCollectible &c : collectibles)
     {
         // Scope to the ERR collectible family ONLY: the gather assets ERR added all use the
@@ -224,7 +231,28 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         // breakable clutter — pots/jars/corpses (AEG099_68x/72x/73x, AEG463_65x, ~16k of them)
         // — which would flood the map. (sub = the 3-digit model id; 800-899 = the ERR range.)
         uint32_t sub = c.aegRow % 1000;
-        if (sub < 800 || sub > 899) { ++clutter_skip; continue; }
+        if (sub < 800 || sub > 899)
+        {
+            ++clutter_skip;
+            if (verbose)  // size the recoverable corpse-loot inside the excluded clutter
+            {
+                uint32_t clot = goblin::aeg_pickup_lot(c.aegRow);
+                if (clot != 0)
+                {
+                    ++rec_pickup;
+                    if (treasure_lots.count(clot)) ++rec_dup;  // already placed by the treasure pass
+                    if (goblin::resolve_loot_flag(clot, 1, 0) != 0)
+                    { ++rec_flagged; rec_flag_lots.insert(clot); }   // one-time loot spot
+                    int32_t ckey = goblin::resolve_loot_item_textid(clot, 1, -1);
+                    int ccat = goblin::item_marker_category(ckey);
+                    if (ccat < 0) ccat = goblin::classify_item_live(ckey);
+                    // Equip* = the first 5 Category enumerators (Armaments..Talismans).
+                    if (ccat >= 0 && ccat <= (int)goblin::generated::Category::EquipTalismans)
+                        ++rec_equip;
+                }
+            }
+            continue;
+        }
         // Skip the two already covered by a baked Reforged category (GEOM-tracked): AEG_821 =
         // Rune Piece, AEG_822 = Ember Piece. Their pickUpItemLotParamId is the shared Runic/
         // Ember TRACE counter lot, so emitting them here just duplicates the baked markers
@@ -256,6 +284,11 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         for (auto &[cat, n] : per_cat)
             spdlog::info("[LOOTDISK]   collectible category index {} = {} markers "
                          "(19=CraftingMaterials,24=SmithingStones,18=Consumables)", cat, n);
+        spdlog::info("[DEBAKE-RECOVER] excluded non-_8xx clutter: {} total; {} are pickups w/ a lot; "
+                     "of those {} FLAGGED one-time ({} distinct lots), {} equipment, {} already "
+                     "treasure-placed. Widening to flagged would ADD ~{} markers (equip-only ~{}).",
+                     clutter_skip, rec_pickup, rec_flagged, (int)rec_flag_lots.size(), rec_equip,
+                     rec_dup, rec_flagged - rec_dup, rec_equip);
     }
 }
 
