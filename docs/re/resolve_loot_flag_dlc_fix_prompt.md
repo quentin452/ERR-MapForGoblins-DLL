@@ -1,5 +1,10 @@
 # RE TASK — fix `resolve_loot_flag` to not drop DLC one-time loot (live persistent-group query)
 
+> ✅ **IMPLEMENTED 2026-06-25 (commit c244ac9).** `flag_query_persistent` + `flag_is_repeatable`
+> in `goblin_inject.cpp`, wired into both `resolve_loot_flag` (L4145) and `lot_row_in_table` (L4207).
+> Built (build-clang) — pending in-game runtime test (deploy blocked while the game is running).
+> Kept below as the design record + runtime-validation log.
+
 > **Self-contained brief for a future session.** Branch `feat/msbe-entity-recover-dummy`.
 > Read alongside `windows_collected_loot_flag_re_findings.md` (the original flag RE) and the
 > memory `resolve-loot-flag-dlc-bug`. Datamined + scoped 2026-06-25; deferred for context size.
