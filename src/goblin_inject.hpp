@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -338,6 +339,11 @@ namespace goblin
     // none. npcParamId = the MSB Enemy part's NPCParamID. Feeds the disk enemy-drop source
     // (loot_enemy_drops) — no bake. See memory msbe-enemy-loot-offsets.
     uint32_t npc_loot_lot(uint32_t npcParamId, uint8_t *lotTypeOut);
+
+    // Diag-only: the RAW itemLotId_enemy (s32 @ +0x30) for an MSB enemy's NpcParam, ignoring the
+    // map-lot preference npc_loot_lot applies. Used by the [ENEMY-MARKERS] de-bake triage to tell
+    // "enemy parsed but its enemy-lot wasn't covered (map-preferred / filtered)" from "not parsed".
+    int32_t npc_item_lot_enemy(uint32_t npcParamId);
 
     // Live NpcParam teamType (u8 @ +0x133) + nameId (s32 @ +0xc) for an MSB enemy's
     // npcParamId. The no-bake Hostile NPC pass uses it: a named invader = teamType ∈ {24,27}

@@ -31,6 +31,16 @@ CENSUS = re.compile(
     r"\[COVERAGE-CENSUS\]\s+(?P<cat>.+?)\s+drawn=(?P<drawn>\d+)\s+census=(?P<census>\d+)\s+"
     r"flagged=(?P<flagged>\d+)\s+respawn=(?P<respawn>\d+)\s+nonloot=(?P<nonloot>\d+)\s+total=\d+")
 TS = re.compile(r"^\[(?P<ts>[\d\-: .]+)\]")
+# [RESIDUAL-SRC] full provenance triage of the surviving baked-loot residual (build_buckets_impl):
+# every baked loot row NOT replaced by a disk pass, tallied by its bake loot_source. This is WHY
+# each leftover baked marker survives = the recovery lever per category. See the enemy investigation
+# verdict below (memory msbe-enemy-loot-offsets): the `enemy` column is a CLOSED bake-mislabel, the
+# `treasure` column is the corpse debake-gap, `emevd` is the one still-open recoverable lever.
+RESID_TOT = re.compile(
+    r"\[RESIDUAL-SRC\] surviving baked loot by source: unknown=(?P<unk>\d+) treasure=(?P<trea>\d+) "
+    r"enemy=(?P<enem>\d+) emevd=(?P<emev>\d+) \(total=(?P<total>\d+)\)")
+RESID_CAT = re.compile(
+    r"\[RESIDUAL-SRC\]\s+(?P<cat>.+?): unk=(?P<unk>\d+) trea=(?P<trea>\d+) enem=(?P<enem>\d+) emev=(?P<emev>\d+)")
 
 SRC = os.path.join(ROOT, "src")
 COV_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "atlas_coverage.json")
@@ -116,6 +126,7 @@ TILES = re.compile(
 
 def parse_last_block(path):
     rows, ts, tiles = {}, None, None
+    resid, resid_tot = {}, None
     with open(path, encoding="utf-8", errors="replace") as fh:
         for line in fh:
             t = TS.match(line)
@@ -124,6 +135,16 @@ def parse_last_block(path):
             if tl:
                 tiles = {"parsed": int(tl.group("parsed")), "total": int(tl.group("total")),
                          "skipped": int(tl.group("skipped")), "bytier": tl.group("bytier")}
+            rt = RESID_TOT.search(line)
+            if rt:
+                resid_tot = {k: int(rt.group(k)) for k in ("unk", "trea", "enem", "emev", "total")}
+                resid = {}  # a fresh [RESIDUAL-SRC] block starts → reset the per-cat accumulation
+                continue
+            rc = RESID_CAT.search(line)
+            if rc:
+                resid[rc.group("cat").strip()] = {k: int(rc.group(k))
+                                                  for k in ("unk", "trea", "enem", "emev")}
+                continue
             m = ROW.search(line)
             if m:
                 cat = m.group("cat").strip()
@@ -142,10 +163,10 @@ def parse_last_block(path):
                     {k: int(c.group(k))
                      for k in ("drawn", "census", "flagged", "respawn", "nonloot")})
                 ts = block_ts or ts
-    return rows, ts, tiles
+    return rows, ts, tiles, resid, resid_tot
 
 
-def emit(rows, ts, tiles=None):
+def emit(rows, ts, tiles=None, resid=None, resid_tot=None):
     tot = {k: sum(r[k] for r in rows.values()) for k in ("baked", "disk", "live", "lc", "total")}
     icons = icon_metadata()
 
@@ -240,6 +261,39 @@ def emit(rows, ts, tiles=None):
         lines.append(f"| {cat} | {r['baked']} | {r['disk']} | {r['live']} | {r['lc']} "
                      f"| {r['total']} | {icons.get(cat, '?')} | {badge(r)} |")
     lines.append("")
+    if resid:
+        lines.append("## Baked residual by provenance — why each baked marker survives")
+        lines.append("")
+        lines.append("Every surviving baked **loot** row (not replaced by any disk pass), tallied by its "
+                     "bake `loot_source`. This is the **recovery lever per category** — and the result of "
+                     "the 2026-06-25 deep-dive into the residual (see `memory/msbe-enemy-loot-offsets.md`):")
+        lines.append("")
+        lines.append("- **`treasure`** — an MSB Treasure the disk pass didn't reproduce: the **corpse "
+                     "debake-gap**, items whose ItemLotParam chain is absent from the mod's loot linkage. "
+                     "Accepted residual (~0.4% of the treasure slice).")
+        lines.append("- **`enemy`** — ✅ **INVESTIGATED & CLOSED: a bake MIS-LABEL, not recoverable here.** "
+                     "These lots are referenced by **NO `NpcParam.itemLotId`** — proven irrefutably against "
+                     "every parsed enemy, the FULL NpcParam table, the paramdef-authoritative offline scan, "
+                     "AND the **vanilla** regulation (all **0** matches). mapgenie shows them on *corpses/"
+                     "bodies* → they are corpse/EMEVD-scripted loot the bake wrongly tagged `Enemy`. The "
+                     "NpcParam enemy pass is COMPLETE; the items appear elsewhere via the treasure/emevd "
+                     "passes (or are phantom dupes). A bake regen would re-tag them.")
+        lines.append("- **`emevd`** — an EMEVD award the disk EMEVD pass didn't reproduce: a **still-open, "
+                     "genuinely recoverable** lever (extend the EMEVD template coverage).")
+        lines.append("- **`unknown`** — pre-provenance bake rows (the `loot_source` field predates the "
+                     "tagging and wasn't regenerated); could be any source. A regen reclassifies them.")
+        lines.append("")
+        if resid_tot:
+            lines.append(f"Residual loot total **{resid_tot['total']}** = unknown {resid_tot['unk']} · "
+                         f"treasure {resid_tot['trea']} (accepted) · enemy {resid_tot['enem']} "
+                         f"(bake mis-label) · emevd {resid_tot['emev']} (recoverable).")
+            lines.append("")
+        lines.append("| category | unknown | treasure (accepted) | enemy (mis-label) | emevd (recoverable) |")
+        lines.append("|---|--:|--:|--:|--:|")
+        for cat in sorted(resid, key=str.lower):
+            d = resid[cat]
+            lines.append(f"| {cat} | {d['unk']} | {d['trea']} | {d['enem']} | {d['emev']} |")
+        lines.append("")
     lines.append("## Census (badge vs drawn) + collect-flag coverage")
     lines.append("")
     lines.append("`drawn` = markers drawn · `census` = completable-spots badge · "
@@ -263,11 +317,11 @@ def main():
     log = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_LOG
     if not os.path.isfile(log):
         sys.exit(f"log not found: {log}\nPass the path as arg 1.")
-    rows, ts, tiles = parse_last_block(log)
+    rows, ts, tiles, resid, resid_tot = parse_last_block(log)
     if not rows:
         sys.exit("no [COVERAGE] rows found in the log — run the game + open the map first.")
     with open(OUT, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(emit(rows, ts, tiles))
+        fh.write(emit(rows, ts, tiles, resid, resid_tot))
     print(f"wrote {OUT}  ({len(rows)} categories, baked remaining = "
           f"{sum(r['baked'] for r in rows.values())})")
 

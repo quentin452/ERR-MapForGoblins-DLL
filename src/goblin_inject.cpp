@@ -4354,6 +4354,24 @@ uint32_t goblin::npc_loot_lot(uint32_t npcParamId, uint8_t *lotTypeOut)
     return 0;
 }
 
+int32_t goblin::npc_item_lot_enemy(uint32_t npcParamId)
+{
+    if (npcParamId == 0) return 0;
+    static std::optional<from::params::ParamTableSequence<RawNpcRow>> s_seq;
+    static std::once_flag s_once;
+    static bool s_ok = false;
+    std::call_once(s_once, [] {
+        try { s_seq.emplace(from::params::get_param<RawNpcRow>(L"NpcParam"));
+              s_ok = true; } catch (...) { s_ok = false; }
+    });
+    if (!s_ok) return 0;
+    RawNpcRow *row = s_seq->try_get((uint64_t)npcParamId);
+    if (!row) return 0;
+    int32_t lotEnemy;
+    std::memcpy(&lotEnemy, row->b + 0x30, 4);
+    return lotEnemy > 0 ? lotEnemy : 0;
+}
+
 bool goblin::npc_team_and_name(uint32_t npcParamId, uint8_t *teamOut, int32_t *nameOut)
 {
     if (npcParamId == 0) return false;
