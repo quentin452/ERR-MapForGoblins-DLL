@@ -344,11 +344,6 @@ namespace goblin
     // map-lot preference npc_loot_lot applies. Used by the [ENEMY-MARKERS] de-bake triage to tell
     // "enemy parsed but its enemy-lot wasn't covered (map-preferred / filtered)" from "not parsed".
     int32_t npc_item_lot_enemy(uint32_t npcParamId);
-    int32_t npc_item_lot_map(uint32_t npcParamId);  // raw itemLotId_map (s32 @ +0x34), same diag use
-
-    // Diag-only: collect itemLotId_enemy(0x30)/itemLotId_map(0x34) over the ENTIRE NpcParam table
-    // (placed or not) — for the [ENEMY-NONLOD] offset-bug-vs-placement-drift triage.
-    void npc_all_lot_sets(std::unordered_set<uint32_t> &enemyLots, std::unordered_set<uint32_t> &mapLots);
 
     // Live NpcParam teamType (u8 @ +0x133) + nameId (s32 @ +0xc) for an MSB enemy's
     // npcParamId. The no-bake Hostile NPC pass uses it: a named invader = teamType ∈ {24,27}

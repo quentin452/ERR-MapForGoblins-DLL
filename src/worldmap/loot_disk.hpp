@@ -109,14 +109,6 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
                                               std::vector<DiskEnemy> *enemies = nullptr,
                                               std::vector<DiskRegion> *regions = nullptr);
 
-// Parse ENEMIES ONLY from the non-`_00` LOD/GED-variant tiles (`_01/_02/_10/_11/_12`, skipping
-// `_99` lighting) that load_disk_treasures' `_00`-only rule skips. These hold the GED-variant
-// enemies whose npcParamId never appears in a `_00` tile — the source of the ~35 baked-Enemy
-// de-bake-gap rows (see [[msbe-enemy-loot-offsets]]). Enemies are lot-deduped downstream by
-// build_disk_enemy_markers, so feeding these alongside the `_00` enemies adds no marker phantoms
-// for co-located `_00`/`_10` duplicates. Diag/opt-in (extra MSB decompress cost). Empty when no dir.
-std::vector<DiskEnemy> load_disk_enemies_nonlod();
-
 // Parse every event\*.emevd.dcx in the active mod (sibling of the resolved map\MapStudio
 // dir) and return the EMEVD item-award references the runtime can position:
 //   (A) direct template awards            → (entityId, lotId, lotType 1)

@@ -500,8 +500,7 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
 static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
                                      const std::unordered_set<uint32_t> &treasure_lots,
                                      std::unordered_set<uint32_t> &covered,
-                                     std::unordered_set<uint32_t> *parsed_enemy_lots = nullptr,
-                                     std::unordered_set<uint32_t> *parsed_enemy_lots_map = nullptr)
+                                     std::unordered_set<uint32_t> *parsed_enemy_lots = nullptr)
 {
     GOBLIN_BENCH("build.disk_enemies");
     int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, respawn = 0, lot_dup = 0;
@@ -517,9 +516,6 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
         if (parsed_enemy_lots)
             if (int32_t el = goblin::npc_item_lot_enemy(en.npcParamId); el > 0)
                 parsed_enemy_lots->insert((uint32_t)el);
-        if (parsed_enemy_lots_map)
-            if (int32_t ml = goblin::npc_item_lot_map(en.npcParamId); ml > 0)
-                parsed_enemy_lots_map->insert((uint32_t)ml);
         uint8_t lt = 0;
         uint32_t lot = goblin::npc_loot_lot(en.npcParamId, &lt);  // live NpcParam chain
         if (lot == 0) { ++no_lot; continue; }
@@ -1381,8 +1377,7 @@ void build_buckets_impl()
     std::unordered_set<uint32_t> enemy_disk_lots;
     // [ENEMY-MARKERS] diag (lootFromDiskMsb): every parsed enemy's raw itemLotId_enemy — lets the
     // uncovered-baked-Enemy triage split "parsed but uncovered" (recoverable) from "not parsed".
-    std::unordered_set<uint32_t> parsed_enemy_lots;      // _00 enemies' raw itemLotId_enemy (0x30)
-    std::unordered_set<uint32_t> parsed_enemy_lots_map;  // _00 enemies' raw itemLotId_map (0x34)
+    std::unordered_set<uint32_t> parsed_enemy_lots;  // _00 enemies' raw itemLotId_enemy (0x30) — for the split diag
     // EMEVD-scripted award lots the disk EMEVD pass placed (lootEmevdDrops). Like the
     // enemy guard, kept SEPARATE: baked Emevd rows are dropped by their own provenance
     // guard below (LootSource::Emevd), never via the lotType-1 treasure-replace.
@@ -1481,8 +1476,7 @@ void build_buckets_impl()
         }
         if (goblin::config::lootEnemyDrops)
             build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots,
-                                     goblin::config::lootFromDiskMsb ? &parsed_enemy_lots : nullptr,
-                                     goblin::config::lootFromDiskMsb ? &parsed_enemy_lots_map : nullptr);
+                                     goblin::config::lootFromDiskMsb ? &parsed_enemy_lots : nullptr);
         if (goblin::config::lootEmevdDrops)
         {
             // The event-1200 (mechanism B) join needs the MSB enemy EntityIDs to resolve
@@ -1536,7 +1530,6 @@ void build_buckets_impl()
     int enemy_parsed_uncov = 0;  // …of those: enemy WAS parsed (lot in parsed_enemy_lots) → recoverable
     int enemy_not_parsed = 0;    // …enemy NOT parsed (MSB scope miss: dungeon / non-_00 tile / filtered out)
     std::map<int, int> enemy_uncov_by_area;  // areaNo histogram of the uncovered enemy slice
-    std::unordered_set<uint32_t> uncovered_enemy_lots;  // the uncovered baked-Enemy lots (for the non-_00 measure)
     // [RESIDUAL-SRC] full triage of the surviving baked-loot residual by provenance: every baked
     // row that REACHES push_marker (not replaced by any disk pass) is tallied as cat*4+loot_source.
     // The DEBAKE-GAP (Treasure) + ENEMY-MARKERS (Enemy) diags only cover 2 of the 4 sources; this
@@ -1688,7 +1681,6 @@ void build_buckets_impl()
             const bool parsed = e.lotId != 0 && parsed_enemy_lots.count(e.lotId) != 0;
             if (parsed) ++enemy_parsed_uncov; else ++enemy_not_parsed;
             ++enemy_uncov_by_area[e.data.areaNo];
-            if (e.lotId != 0) uncovered_enemy_lots.insert(e.lotId);  // for the non-_00 recovery measure
             if (verbose)
             {
                 int32_t key = goblin::resolve_loot_item_textid(e.lotId, e.lotType, -1);
@@ -1720,60 +1712,19 @@ void build_buckets_impl()
         spdlog::info("[ENEMY-MARKERS] {} baked enemy-drop rows NOT covered by the disk enemy pass "
                      "(loot_enemy_drops {}); {} covered+replaced",
                      enemy_markers, goblin::config::lootEnemyDrops ? "ON" : "OFF", replaced_enemy);
-        // Recovery-lever split of the uncovered enemy slice (see the per-row classification above):
-        //   parsed-but-uncovered → the enemy IS in the parsed MSBs; npc_loot_lot map-preferred the
-        //     0x34 lot (or a filter dropped it) so its 0x30 enemy-lot wasn't covered → a LOT fix.
-        //   not-parsed → the enemy is absent from the parsed _00 MSB set → an MSB-SCOPE fix.
+        // Split of the uncovered enemy slice. INVESTIGATED EXHAUSTIVELY 2026-06-25 (see
+        // [[msbe-enemy-loot-offsets]]): the residual (35 on ERR) is "not-parsed" = the baked lot is
+        // referenced by NO NpcParam.itemLotId at all — confirmed against EVERY parsed enemy, the FULL
+        // NpcParam table, the paramdef-authoritative offline scan, AND the vanilla regulation (all 0/35).
+        // So these are NOT NpcParam enemy drops in any version — the bake MIS-LABELED corpse/EMEVD-scripted
+        // loot as LootSource::Enemy (mapgenie shows them on "bodies"). The NpcParam enemy pass is COMPLETE;
+        // the residual is a bake mis-tag, reproduced elsewhere by the treasure/emevd passes or phantom.
         std::string area_hist;
         for (const auto &kv : enemy_uncov_by_area)
             area_hist += 'm' + std::to_string(kv.first) + '=' + std::to_string(kv.second) + ' ';
-        spdlog::info("[ENEMY-MARKERS] uncovered split: {} parsed-but-uncovered (map-pref/filtered → "
-                     "recoverable via the 0x30 enemy-lot) + {} not-parsed (MSB scope) | by area: {}",
+        spdlog::info("[ENEMY-MARKERS] uncovered split: {} parsed-but-uncovered + {} not-parsed "
+                     "(= bake mis-labeled non-NpcParam loot, not recoverable here) | by area: {}",
                      enemy_parsed_uncov, enemy_not_parsed, area_hist);
-    }
-    // [ENEMY-NONLOD] measure-only (diag_enemy_all_tiers): parse enemies from the non-_00 tiles and
-    // classify what EXTENDING the enemy de-bake to them WOULD place — WITHOUT drawing anything. Each
-    // notable (one-time-flag) non-_00 enemy lot is: already-covered (a _00 co-located dupe), a RECOVER
-    // (matches one of the uncovered baked-Enemy lots → the win), or a NEW candidate (not in the bake's
-    // enemy slice → the GED-disabled over-emission risk to eyeball before shipping). See the AskUser
-    // "mesurer d'abord" decision + [[msbe-enemy-loot-offsets]].
-    if (goblin::config::diagEnemyAllTiers)
-    {
-        std::vector<DiskEnemy> nonlod = load_disk_enemies_nonlod();
-        // The raw-0x30 intersection came back 0/35 → no parsed enemy references these lots via
-        // itemLotId_enemy. Two remaining hypotheses: (a) the deployed regulation moved the drop to
-        // itemLotId_map (0x34) → recoverable via the map-lot; (b) the enemy NpcParam isn't placed in
-        // the deployed mod at all (bake-vs-deployed version drift) → not recoverable here. Test BOTH
-        // fields (0x30 + 0x34) over EVERY parsed enemy (_00 disk_enemies + non-_00) to settle it.
-        std::unordered_set<uint32_t> lots30 = parsed_enemy_lots;      // _00 0x30 (captured in the pass)
-        std::unordered_set<uint32_t> lots34 = parsed_enemy_lots_map;  // _00 0x34 (captured in the pass)
-        std::unordered_set<uint32_t> npc_seen;
-        for (const DiskEnemy &en : nonlod)  // add the non-_00 enemies' both fields
-        {
-            if (!npc_seen.insert(en.npcParamId).second) continue;  // one NpcParam read per id
-            if (int32_t e = goblin::npc_item_lot_enemy(en.npcParamId); e > 0) lots30.insert((uint32_t)e);
-            if (int32_t m = goblin::npc_item_lot_map(en.npcParamId);  m > 0) lots34.insert((uint32_t)m);
-        }
-        // FULL NpcParam table (every row, placed or not) → separates an OFFSET bug from a PLACEMENT gap.
-        std::unordered_set<uint32_t> tbl30, tbl34;
-        goblin::npc_all_lot_sets(tbl30, tbl34);
-        int placed30 = 0, placed34 = 0, tableOnly30 = 0, tableOnly34 = 0, nowhere = 0;
-        for (uint32_t L : uncovered_enemy_lots)
-        {
-            if (lots30.count(L)) ++placed30;               // a PLACED enemy drops it via 0x30 (recoverable)
-            else if (lots34.count(L)) ++placed34;          // a PLACED enemy drops it via 0x34 (recoverable)
-            else if (tbl30.count(L)) ++tableOnly30;        // some NpcParam has it @0x30 but it's NOT placed
-            else if (tbl34.count(L)) ++tableOnly34;        // some NpcParam has it @0x34 but it's NOT placed
-            else ++nowhere;                                // at NEITHER field of ANY row → offset bug / not-npc
-        }
-        spdlog::info("[ENEMY-NONLOD] {} non-_00 enemies; placed enemy-lot sets {}x0x30 {}x0x34; FULL "
-                     "NpcParam table {}x0x30 {}x0x34. Of the {} uncovered baked-Enemy lots:",
-                     (int)nonlod.size(), (int)lots30.size(), (int)lots34.size(),
-                     (int)tbl30.size(), (int)tbl34.size(), (int)uncovered_enemy_lots.size());
-        spdlog::info("[ENEMY-NONLOD]   placed: {} via 0x30 + {} via 0x34 (RECOVERABLE) | not-placed but in "
-                     "table: {} @0x30 + {} @0x34 (npc exists, MSB parse misses its placement) | {} at "
-                     "NEITHER field of ANY row (OFFSET BUG: lot lives elsewhere, or not npc-derived)",
-                     placed30, placed34, tableOnly30, tableOnly34, nowhere);
     }
     if (diag)
     {

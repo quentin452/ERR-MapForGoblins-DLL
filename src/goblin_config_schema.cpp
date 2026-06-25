@@ -20,7 +20,6 @@ namespace goblin::config
     bool nativeItemIcons = true;   // overlay: draw the game's real item icon (GPU harvest) when resident
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
     bool diagLootPos = false;      // one-shot [LOOTPOS] live-vs-baked placement accuracy probe
-    bool diagEnemyAllTiers = false; // [ENEMY-NONLOD] measure non-_00 enemy parse: recovers vs new candidates
     bool diagMapOpens = false;     // [MAPOPEN] CreateFileW probe: log map .msb.dcx opens
     bool diagFieldinsJoin = false; // one-shot [FIELDINS] embedded-pool asset→lotId join probe (path A)
     bool diagLotMemscan = false;   // one-shot [LOTSCAN] brute committed-private memory scan for a lotId
@@ -191,12 +190,6 @@ namespace
                   "process) against the baked MAP_ENTRY placement. Validates that the data we\n"
                   "collect matches the bake from inside the running DLL (vs an external RPM\n"
                   "script). Logs per-row delta + an aggregate. Walk near loaded loot. Off by default."),
-                B("diag_enemy_all_tiers", diagEnemyAllTiers, "false",
-                  "RE diagnostic (no draw change): parse ENEMIES from the non-_00 LOD/GED-variant\n"
-                  "tiles too and measure what extending the enemy de-bake to them WOULD do — how\n"
-                  "many of the ~35 uncovered baked-Enemy lots it recovers vs how many NEW marker\n"
-                  "candidates it introduces (the GED-disabled over-emission risk to eyeball). Logs\n"
-                  "[ENEMY-NONLOD] totals + area split + a sample. Off by default."),
                 B("diag_map_opens", diagMapOpens, "false",
                   "RE/diagnostic: [MAPOPEN] — hook kernel32!CreateFileW and log every map\n"
                   "*.msb.dcx the GAME opens (full resolved OS path AFTER ME3/UXM redirect,\n"

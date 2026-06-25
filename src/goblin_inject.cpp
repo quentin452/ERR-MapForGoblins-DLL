@@ -4372,50 +4372,6 @@ int32_t goblin::npc_item_lot_enemy(uint32_t npcParamId)
     return lotEnemy > 0 ? lotEnemy : 0;
 }
 
-int32_t goblin::npc_item_lot_map(uint32_t npcParamId)
-{
-    if (npcParamId == 0) return 0;
-    static std::optional<from::params::ParamTableSequence<RawNpcRow>> s_seq;
-    static std::once_flag s_once;
-    static bool s_ok = false;
-    std::call_once(s_once, [] {
-        try { s_seq.emplace(from::params::get_param<RawNpcRow>(L"NpcParam"));
-              s_ok = true; } catch (...) { s_ok = false; }
-    });
-    if (!s_ok) return 0;
-    RawNpcRow *row = s_seq->try_get((uint64_t)npcParamId);
-    if (!row) return 0;
-    int32_t lotMap;
-    std::memcpy(&lotMap, row->b + 0x34, 4);
-    return lotMap > 0 ? lotMap : 0;
-}
-
-// Diag-only: scan the WHOLE NpcParam table (every row, placed or not) and collect every
-// itemLotId_enemy (0x30) into `enemyLots` and itemLotId_map (0x34) into `mapLots`. Lets the
-// [ENEMY-NONLOD] triage separate an OFFSET bug (a baked enemy-lot matches NO row at 0x30/0x34 →
-// it lives at a different field) from a PLACEMENT/drift gap (the lot IS at 0x30 of some row, that
-// NpcParam just isn't placed in the deployed MSBs).
-void goblin::npc_all_lot_sets(std::unordered_set<uint32_t> &enemyLots,
-                              std::unordered_set<uint32_t> &mapLots)
-{
-    try
-    {
-        auto seq = from::params::get_param<RawNpcRow>(L"NpcParam");
-        for (auto &&kv : seq)
-        {
-            RawNpcRow &row = kv.second;
-            int32_t le, lm;
-            std::memcpy(&le, row.b + 0x30, 4);
-            std::memcpy(&lm, row.b + 0x34, 4);
-            if (le > 0) enemyLots.insert((uint32_t)le);
-            if (lm > 0) mapLots.insert((uint32_t)lm);
-        }
-    }
-    catch (...)
-    {
-    }
-}
-
 bool goblin::npc_team_and_name(uint32_t npcParamId, uint8_t *teamOut, int32_t *nameOut)
 {
     if (npcParamId == 0) return false;

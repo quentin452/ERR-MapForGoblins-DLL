@@ -43,7 +43,6 @@ namespace goblin
         extern bool nativeItemIcons;  // overlay map: real game item icon (GPU harvest) when resident
         extern bool diagLootFlags;    // one-shot [LOOTDIAG]: dump all candidate pickup flags per loot lot
         extern bool diagLootPos;      // one-shot [LOOTPOS]: live MsbPart pos vs baked MAP_ENTRY placement
-        extern bool diagEnemyAllTiers; // [ENEMY-NONLOD]: measure non-_00 enemy parse (recover vs new candidates)
         extern bool diagMapOpens;     // [MAPOPEN]: hook CreateFileW, log map .msb.dcx opens (path+latency)
         extern bool diagFieldinsJoin; // one-shot [FIELDINS]: geom+0x3A8 embedded pool → child FieldIns lotId@+0x50
         extern bool diagLotMemscan;   // one-shot [LOTSCAN]: brute scan of committed private mem for a known lotId
