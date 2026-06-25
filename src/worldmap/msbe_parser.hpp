@@ -116,11 +116,25 @@ struct EmevdParse
     std::vector<EmevdSetter>                      setters;       // SetEventFlag(.,1) events
 };
 
+// A placed Region (PointParam / POINT section) — the no-bake Spirit Springs source. The POINT
+// section is secs[2] (order MODEL,EVENT,POINT,ROUTE,LAYER,PARTS). Entry layout pinned vs
+// SoulsFormats over 651 tiles (tools/probe_region_layout.py): name@+0x00 (offset), subtype@+0x08
+// (i32), position@+0x14 (Vec3 — NOTE: ≠ Parts' +0x20). Only the spirit-spring-relevant regions
+// are emitted: MountJump (subtype 46) + LockedMountJump (54) launch points, and Others (-1) whose
+// name contains "FakeSpiritSpringJump" (ERR's manual springs).
+struct Region
+{
+    std::string name;            // region name (FakeSpiritSpring filter / diag)
+    int32_t     subtype = 0;     // +0x08: 46=MountJump, 54=LockedMountJump, -1=Others
+    float       pos[3] = {0, 0, 0};  // +0x14 BLOCK-LOCAL position
+};
+
 struct ParseResult
 {
     std::vector<Treasure> treasures;
     std::vector<Asset>    assets;   // AEG Asset placements (collectible candidates)
     std::vector<Enemy>    enemies;  // Enemy placements (enemy-drop candidates)
+    std::vector<Region>   regions;  // Spirit-spring POINT regions (MountJump/Locked/FakeSpiring)
     bool ok = false;
 };
 
@@ -131,8 +145,10 @@ struct ParseResult
 // runtime collectible source). Off by default (skips an extra PARTS pass).
 // wantEnemies: also enumerate Enemy placements (type 2) into ParseResult.enemies
 // (the runtime enemy-drop source). Off by default.
+// wantRegions: also enumerate the spirit-spring POINT regions (MountJump/Locked/FakeSpiring)
+// into ParseResult.regions. Off by default (skips an extra POINT-section pass).
 ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase = 0,
-                      bool wantAssets = false, bool wantEnemies = false);
+                      bool wantAssets = false, bool wantEnemies = false, bool wantRegions = false);
 
 // Parse a DECOMPRESSED EMEVD (.emevd) blob and return every template item-award
 // reference (bank-2000 event init whose eventId is one of the 13 award templates),

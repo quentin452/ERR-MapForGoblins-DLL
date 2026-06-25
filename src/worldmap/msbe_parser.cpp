@@ -43,7 +43,12 @@ std::string rd_utf16(const uint8_t *b, size_t o, size_t len)
 
 constexpr uint32_t EVENT_TYPE_TREASURE = 4;
 constexpr int SEC_EVENT = 1; // PARAM section order: MODEL,EVENT,POINT,ROUTE,LAYER,PARTS
+constexpr int SEC_POINT = 2; // POINT = Regions (the Spirit Springs source)
 constexpr int SEC_PARTS = 5;
+// MSBE region subtypes (@ region entry +0x08) — pinned tools/probe_region_layout.py.
+constexpr int32_t REGION_MOUNT_JUMP = 46;
+constexpr int32_t REGION_LOCKED_MOUNT_JUMP = 54;
+constexpr int32_t REGION_OTHERS = -1;
 // MSBE PartsParam part-type (@ PART entry +0x0c). 2 = Enemy (the enemy-drop source).
 constexpr int32_t PART_ENEMY = 2;
 
@@ -67,7 +72,7 @@ inline uint32_t aeg_row_from_name(const std::string &n)
 } // namespace
 
 ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase,
-                      bool wantAssets, bool wantEnemies)
+                      bool wantAssets, bool wantEnemies, bool wantRegions)
 {
     ParseResult R;
     if (len < 0x10 || std::memcmp(buf, "MSB ", 4) != 0) return R;
@@ -247,6 +252,38 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             en.pos[1] = rdf(buf, pe + 0x24);
             en.pos[2] = rdf(buf, pe + 0x28);
             R.enemies.push_back(std::move(en));
+        }
+    }
+
+    // Spirit-spring regions: enumerate the POINT section (secs[2]) keeping only MountJump (46) /
+    // LockedMountJump (54) launch points + Others (-1) named "FakeSpiritSpringJump". Entry layout
+    // pinned: subtype@+0x08, name@+0x00 (offset), pos@+0x14. The caller projects each like a part.
+    if (wantRegions)
+    {
+        const Sec &RG = secs[SEC_POINT];
+        for (uint32_t i = 0; i < RG.entries; i++)
+        {
+            size_t re = (size_t)rd64(buf, RG.entryArr + (size_t)i * 8);
+            if (!inb(re, 0x20, len)) continue;
+            int32_t sub = (int32_t)rd32(buf, re + 0x08);
+            bool keep = (sub == REGION_MOUNT_JUMP || sub == REGION_LOCKED_MOUNT_JUMP);
+            std::string name;
+            if (keep || sub == REGION_OTHERS)
+            {
+                size_t nm = eio(rd64(buf, re + 0x00), re);
+                if (nm < len) name = rd_utf16(buf, nm, len);
+            }
+            if (!keep && sub == REGION_OTHERS &&
+                name.find("FakeSpiritSpringJump") != std::string::npos)
+                keep = true;
+            if (!keep) continue;
+            Region rg;
+            rg.subtype = sub;
+            rg.name = std::move(name);
+            rg.pos[0] = rdf(buf, re + 0x14);
+            rg.pos[1] = rdf(buf, re + 0x18);
+            rg.pos[2] = rdf(buf, re + 0x1c);
+            R.regions.push_back(std::move(rg));
         }
     }
 
