@@ -257,9 +257,20 @@ cross-tile), and the lot→entity link is in the EMEVD files on disk (`event/*.e
   > via ItemLotParam_enemy (lotType 2, _map fallback). **Validated pure-bytes == SoulsFormats: 59 base
   > lots / 55 residual covered** (`tools/probe_emevd_format.py`). `loot_emevd_drops` now de-bakes **~362**
   > Emevd rows (307 direct + 55 event-1200); only mechanism C (167 sequence-siblings) stays baked.
-  > **C DEFERRED — over-emits +316 vs the bake (no clean runtime signal; same LOOT_CATEGORIES arch-debt
-  > as enemy/collectible clutter). Bound the flood before building (per-category toggles, or ev1200-base-
-  > only siblings = +61 over-emit for 80 covered).**
+  > **C — the +316 "over-emit" is NOT flood (datamined 2026-06-25, names from item.msgbnd):**
+  > - **181 = Rune Piece (goods 800010) + Ember Piece (850010)** — already on the map via the Reforged
+  >   GEOM category (lotId-0 baked rows), so emitting the lot-backed sibling DOUBLES them → suppress by
+  >   category (ReforgedRune/EmberPieces) when scanning siblings.
+  > - **102 = EQUIPMENT the bake never showed** — full armour sets + weapons from named NPCs/bosses
+  >   (Ansbach, Igon, Millicent, Twinned, Omen, Verdigris, Raging Wolf, Hoslow, Iji, Ansbach's Longbow…).
+  >   The bake only scanned siblings of the bases IT recovered; the runtime scans siblings of all its
+  >   placed bases → finds these. = real notable loot, runtime is STRICTLY BETTER (like enemy +43).
+  > - **~33 = goods** (extra smithing stones / scadushards) — density-controlled by show_* toggles.
+  > So C ≈ 162 baked + ~135 legitimate additions (incl. 102 forgotten equipment) once the 181 rune/ember
+  > dupes are dropped. **PLAN: build C scanning siblings of every placed base (direct + ev1200), emit
+  > flag>0 + non-empty + non-Rune/Ember siblings, route through live classify → per-category toggles
+  > handle density. Needs a live ItemLotParam contiguity walk (param try_get) — SHARED with enemy-35 +
+  > corpse-30.** 5 truly-unrecoverable = ERR-custom (Oracle Effigy, 3 Fortunes, Viridian Hidden Tear).
   > **RUNTIME-VALIDATED (2026-06-25):** live log with `loot_emevd_drops=true` — 517 EMEVD files →
   > **500 template awards** (exact vs SoulsFormats) → **308 markers emitted** (filtered 163
   > entity-not-an-MSB-enemy, 23 (entity,lot)-dedup, 2 treasure-dup, 4 unclassified) → **300 baked
