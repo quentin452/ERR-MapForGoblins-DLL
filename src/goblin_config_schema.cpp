@@ -164,7 +164,7 @@ namespace
                          "Leave at 5 unless you want a longer guaranteed settle.", false, nullptr},
                 B("require_map_fragments", requireMapFragments, "true",
                   "Require map fragment discovery before showing icons in that area\n"
-                  "(overlay map: gates on the game's real fog-of-war reveal state)."),
+                  "(overlay map: gates on the area's map-fragment event flag)."),
                 B("collected_graying", collectedGraying, "true",
                   "Overlay map: dim+desaturate markers for items already collected and\n"
                   "bosses already cleared (cleared bosses also get a green checkmark).\n"

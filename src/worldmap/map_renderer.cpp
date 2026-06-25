@@ -1245,20 +1245,11 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // the moment its flag fires (the Ashen Capital replaces it).
             if (m.hide_when_flag && goblin::ui::read_event_flag((uint32_t)m.hide_when_flag))
                 continue;
-            // Discovery gate (require_map_fragments) — TWO distinct reveal conditions, both must
-            // pass (fog-of-war != map fragment): (a) the region's MAP FRAGMENT item must be acquired
-            // (m.fragment_flag = GetMapFlagFromTile, read live); (b) the tile must not be FOGGED
-            // (marker_fogged = WorldMapPieceParam reveal state). group bits = isDLC*2 | isUG → fog
-            // layer areaIdx {0 OW, 1 UG, 10 DLC}.
-            if (goblin::config::requireMapFragments)
-            {
-                if (m.fragment_flag &&
-                    !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)))
-                    continue; // map fragment not acquired yet
-                const int areaIdx = (m.group & 2) ? 10 : (m.group & 1);
-                if (goblin::marker_fogged(areaIdx, gU, gV))
-                    continue; // tile still fogged
-            }
+            // Map-fragment gate (require_map_fragments): the region's MAP FRAGMENT item must be
+            // acquired (m.fragment_flag = GetMapFlagFromTile, read live).
+            if (goblin::config::requireMapFragments && m.fragment_flag &&
+                !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)))
+                continue; // map fragment not acquired yet
 
             // Clustered-eligible markers are deferred (uncull'd) to the pile pass;
             // everything else (already on-screen here) draws now.
@@ -1363,19 +1354,10 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             float dy = -(m.worldZ - pwz) * scale;
             if (dx * dx + dy * dy > cullR * cullR)
                 continue; // outside the HUD radius
-            // Discovery gate (require_map_fragments): map FRAGMENT acquired AND tile not fogged
-            // (the two are distinct — see the worldmap loop).
-            if (cfg::requireMapFragments)
-            {
-                if (m.fragment_flag &&
-                    !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)))
-                    continue;
-                float gU, gV;
-                world_to_mapspace(m, gU, gV);
-                const int areaIdx = (m.group & 2) ? 10 : (m.group & 1);
-                if (goblin::marker_fogged(areaIdx, gU, gV))
-                    continue;
-            }
+            // Map-fragment gate (require_map_fragments): the FRAGMENT item must be acquired.
+            if (cfg::requireMapFragments && m.fragment_flag &&
+                !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)))
+                continue;
             draw_marker(fg, m, ImVec2(ctr.x + dx, ctr.y + dy), icons, half);
         }
     }
