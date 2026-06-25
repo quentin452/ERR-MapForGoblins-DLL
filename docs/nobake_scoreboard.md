@@ -2,18 +2,18 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 08:48:11.672
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 09:32:52.664
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - Graces are `Live` (BonfireWarpParam) but tallied separately in GraceLayer — not in this table.
 
 ## ▶ Baked markers remaining
 
-# **4744**  ← drive this to **0**
+# **4198**  ← drive this to **0**
 
 | | baked | disk | live | live-cls | total |
 |---|--:|--:|--:|--:|--:|
-| **all categories** | **4744** | 6409 | 217 | 217 | 11370 |
+| **all categories** | **4198** | 6409 | 217 | 217 | 10824 |
 
 🔴 baked-only: **17**  ·  🟡 partial: **29**  ·  🟢 off-bake: **17**  (of 63 active categories)
 
@@ -48,7 +48,7 @@
 | Loot - Golden Runes (Low) | 14 | 430 | 0 | 0 | 444 | 🟡 partial |
 | Loot - Greases | 1 | 138 | 0 | 0 | 139 | 🟡 partial |
 | Loot - Great Gloveworts | 0 | 20 | 0 | 0 | 20 | 🟢 off-bake |
-| Loot - Material Nodes | 1455 | 0 | 0 | 0 | 1455 | 🔴 baked-only |
+| Loot - Material Nodes | 909 | 0 | 0 | 0 | 909 | 🔴 baked-only |
 | Loot - MP-Fingers | 2 | 7 | 0 | 0 | 9 | 🟡 partial |
 | Loot - Prattling Pates | 0 | 9 | 0 | 0 | 9 | 🟢 off-bake |
 | Loot - Rada Fruit | 0 | 14 | 0 | 0 | 14 | 🟢 off-bake |

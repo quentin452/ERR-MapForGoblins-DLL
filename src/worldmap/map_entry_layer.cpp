@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <vector>
 #include <atomic>
 #include <string>
@@ -39,6 +40,35 @@ std::array<std::vector<Marker>, NUM_CAT> g_buckets;
 // markers()/census call, whichever runs first. call_once blocks concurrent
 // callers until the build completes, so markers() always sees a full cache.
 std::once_flag g_build_once;
+
+// ── Position cell for the finalize geom dedup ─────────────────────────────────
+// A quantized projected-position bucket: (group, 0.5-unit world X/Z). worldX/Z are
+// produced by the SAME marker_world_pos projection for every source (push_marker),
+// so a baked gather node and the disk collectible that re-emits it share a cell
+// (the bake's 1e-3 position rounding is far below the 0.5 grid). Exact tuple key
+// (not a pre-mixed hash) so distinct cells never collide into a false drop.
+struct Cell
+{
+    int group, qx, qz;
+    bool operator==(const Cell &o) const
+    { return group == o.group && qx == o.qx && qz == o.qz; }
+};
+struct CellHash
+{
+    size_t operator()(const Cell &c) const
+    {
+        size_t h = 1469598103934665603ULL;
+        for (int v : {c.group, c.qx, c.qz})
+        { h ^= static_cast<uint32_t>(v); h *= 1099511628211ULL; }
+        return h;
+    }
+};
+inline Cell cell_of(const Marker &m)
+{
+    return Cell{m.group,
+                static_cast<int>(std::lround(m.worldX * 2.0f)),
+                static_cast<int>(std::lround(m.worldZ * 2.0f))};
+}
 
 // Post-event "secondary story flag" for a tile (legacy SetSecondaryFlags + Ashen Capital).
 // A marker on a post-event tile — or anywhere in Leyndell, Ashen Capital (area 35) — only
@@ -227,7 +257,8 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
 // baked duplicate (a lotId there covers all its markers).
 static void build_disk_collectible_markers(const std::vector<DiskCollectible> &collectibles,
                                            const std::unordered_set<uint32_t> &treasure_lots,
-                                           std::unordered_set<uint32_t> &covered)
+                                           std::unordered_set<uint32_t> &covered,
+                                           std::unordered_set<Cell, CellHash> &out_cells)
 {
     GOBLIN_BENCH("build.disk_collectibles");
     int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, baked_skip = 0, clutter_skip = 0;
@@ -290,6 +321,10 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         d.posX = c.posX;
         d.posZ = c.posZ;
         push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/1, Source::DiskMSB, lc);  // one per placement
+        // Record this gather-asset's projected cell so the finalize dedup can drop a
+        // baked geom marker sitting on it — keyed to the COLLECTIBLE pass only, so an
+        // unrelated treasure/enemy that merely coincides never evicts a baked piece.
+        out_cells.insert(cell_of(g_buckets[cat].back()));
         covered.insert(lot);  // for the baked-row replace (de-dup vs the bake), NOT a skip key
         ++emitted;
         if (verbose) ++per_cat[cat];
@@ -543,6 +578,11 @@ void build_buckets_impl()
     // enemy guard, kept SEPARATE: baked Emevd rows are dropped by their own provenance
     // guard below (LootSource::Emevd), never via the lotType-1 treasure-replace.
     std::unordered_set<uint32_t> emevd_disk_lots;
+    // Projected cells of the disk COLLECTIBLE placements (gather assets) — the finalize
+    // geom dedup drops a baked Material/Rune/Ember marker that sits on one of these. Only
+    // the collectible pass re-emits gather assets, so keying on it (not all disk markers)
+    // stops an unrelated treasure/enemy coincidence from evicting a baked piece.
+    std::unordered_set<Cell, CellHash> collectible_cells;
     if (disk_source_enabled())
     {
         // One disk read pass for all sources. Each out-vector requested only when on.
@@ -564,7 +604,7 @@ void build_buckets_impl()
         if (goblin::config::lootCollectibles || wantEnemies)
             for (const DiskTreasure &t : treasures) treasure_lots.insert(t.lotId);
         if (goblin::config::lootCollectibles)
-            build_disk_collectible_markers(disk_collectibles, treasure_lots, disk_lots);
+            build_disk_collectible_markers(disk_collectibles, treasure_lots, disk_lots, collectible_cells);
         if (goblin::config::lootEnemyDrops)
             build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots);
         if (goblin::config::lootEmevdDrops)
@@ -757,6 +797,44 @@ void build_buckets_impl()
                      "— reachable dummies w/ an EntityID are now disk-emitted", recover);
     }
     build_live_bosses();
+
+    // ── Finalize dedup: drop baked geom markers the disk collectible pass re-placed ──
+    // The lotId-coverage replace (in the loop above) removes a baked TREASURE row when a
+    // disk lot owns it — but the geom/SFX-tracked categories (Material Nodes / Rune /
+    // Ember Pieces) carry lotId=0, so that path structurally CAN'T see them. When the disk
+    // collectible pass (loot_collectibles) re-emits the SAME physical AEG gather node —
+    // same world spot, but classified per-item into a DIFFERENT category — the baked copy
+    // double-draws on the map and double-counts in the scoreboard.
+    //
+    // Rather than a per-model guard (which only catches today's _8xx scope and silently
+    // re-regresses if the disk scope ever widens), dedup by POSITION at finalize: drop any
+    // Baked marker in the geom categories that lands on a cell the collectible pass placed
+    // (collectible_cells). This auto-covers any future double-count of this kind with no new
+    // code, and only ever removes a baked marker a gather-asset placement PROVABLY re-drew at
+    // the same spot. Keyed to the collectible pass (NOT all disk markers) so an unrelated
+    // treasure/enemy that merely coincides can't evict a baked piece; scoped to the 3 lotId=0
+    // geom categories (the exact complement of the lotId-replace). See [[aeg-collectible-source]].
+    {
+        int deduped = 0;
+        const gen::Category kGeom[] = {gen::Category::LootMaterialNodes,
+                                       gen::Category::ReforgedRunePieces,
+                                       gen::Category::ReforgedEmberPieces};
+        for (gen::Category gc : kGeom)
+        {
+            auto &bucket = g_buckets[static_cast<int>(gc)];
+            const size_t before = bucket.size();
+            bucket.erase(std::remove_if(bucket.begin(), bucket.end(),
+                                        [&](const Marker &m) {
+                                            return m.source == Source::Baked &&
+                                                   collectible_cells.count(cell_of(m));
+                                        }),
+                         bucket.end());
+            deduped += static_cast<int>(before - bucket.size());
+        }
+        if (goblin::config::lootCollectibles)
+            spdlog::info("[LOOTDISK] finalize dedup: dropped {} baked geom markers the disk collectible "
+                         "pass already covers (position-keyed; geom categories only)", deduped);
+    }
 
     // ── [COVERAGE] no-bake scoreboard ────────────────────────────────────────────
     // Per category: how many markers came from the static bake (Baked) vs the active
