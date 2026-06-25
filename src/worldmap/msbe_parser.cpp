@@ -161,6 +161,12 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             size_t pe = (size_t)rd64(buf, PT.entryArr + (size_t)i * 8);
             if (!inb(pe, 0x2c, len)) continue;
             if ((int32_t)rd32(buf, pe + 0x0c) != PART_ASSET) continue;
+            // GameEditionDisable (int @ part+0x44 — inline, same offset disk/resident; pinned
+            // vs SoulsFormats 6612/6612 incl. 30 positives, tools/probe_gameedition_offset.py):
+            // a disabled placement the engine never spawns. The bake's generators skip these
+            // (GameEditionDisable==1), so drop them too — else e.g. the m60_45_39 Imp seal draws
+            // a phantom marker the player can't interact with.
+            if (inb(pe, 0x48, len) && rd32(buf, pe + 0x44) == 1) continue;
             size_t nm = eio(rd64(buf, pe + 0x00), pe);
             if (nm >= len) continue;
             std::string name = rd_utf16(buf, nm, len);
