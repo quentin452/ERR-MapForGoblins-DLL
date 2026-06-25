@@ -2,20 +2,20 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 09:32:52.664
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 10:13:31.063
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - Graces are `Live` (BonfireWarpParam) but tallied separately in GraceLayer — not in this table.
 
 ## ▶ Baked markers remaining
 
-# **4198**  ← drive this to **0**
+# **2818**  ← drive this to **0**
 
 | | baked | disk | live | live-cls | total |
 |---|--:|--:|--:|--:|--:|
-| **all categories** | **4198** | 6409 | 217 | 217 | 10824 |
+| **all categories** | **2818** | 8398 | 217 | 217 | 11433 |
 
-🔴 baked-only: **17**  ·  🟡 partial: **29**  ·  🟢 off-bake: **17**  (of 63 active categories)
+🔴 baked-only: **15**  ·  🟡 partial: **31**  ·  🟢 off-bake: **17**  (of 63 active categories)
 
 ## Per category
 
@@ -68,10 +68,10 @@
 | Quest - Deathroot | 0 | 9 | 0 | 0 | 9 | 🟢 off-bake |
 | Quest - Progression | 0 | 44 | 0 | 0 | 44 | 🟢 off-bake |
 | Quest - Seedbed Curses | 0 | 6 | 0 | 0 | 6 | 🟢 off-bake |
-| Reforged - Ember Pieces | 298 | 0 | 0 | 0 | 298 | 🔴 baked-only |
+| Reforged - Ember Pieces | 19 | 410 | 0 | 0 | 429 | 🟡 partial |
 | Reforged - Fortunes | 54 | 7 | 0 | 0 | 61 | 🟡 partial |
 | Reforged - Items | 29 | 47 | 0 | 0 | 76 | 🟡 partial |
-| Reforged - Rune Pieces | 1227 | 0 | 0 | 0 | 1227 | 🔴 baked-only |
+| Reforged - Rune Pieces | 126 | 1579 | 0 | 0 | 1705 | 🟡 partial |
 | World - Bosses | 0 | 0 | 217 | 0 | 217 | 🟢 off-bake |
 | World - Hostile NPC | 53 | 0 | 0 | 0 | 53 | 🔴 baked-only |
 | World - Imp Statues | 36 | 0 | 0 | 0 | 36 | 🔴 baked-only |

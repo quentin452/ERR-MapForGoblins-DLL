@@ -21,6 +21,7 @@
 #include <array>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <vector>
 #include <atomic>
 #include <string>
@@ -69,6 +70,17 @@ inline Cell cell_of(const Marker &m)
     return Cell{m.group,
                 static_cast<int>(std::lround(m.worldX * 2.0f)),
                 static_cast<int>(std::lround(m.worldZ * 2.0f))};
+}
+
+// Identity key for piece dedup = tile + MSB part name. Pieces carry an exact, unique name per
+// placement (AEG099_821_90NN), so matching a baked piece to its disk twin by (tile, name) is
+// position-INDEPENDENT — it survives tiles where the bake stored an anomalous offset position
+// (e.g. m11_10 Leyndell Ashen Capital: bake pos = raw MSB pos + (-2195,-352)), which a positional
+// dedup can't match. See [[aeg-collectible-source]].
+inline std::string piece_key(uint32_t area, uint32_t gx, uint32_t gz, const char *name)
+{
+    const uint32_t tile = (area << 24) | (gx << 16) | (gz << 8);
+    return std::to_string(tile) + "|" + name;
 }
 
 // Synthetic row_id base for runtime (disk-pass) geom markers that need GEOF/WGM collected-
@@ -265,7 +277,8 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
 static void build_disk_collectible_markers(const std::vector<DiskCollectible> &collectibles,
                                            const std::unordered_set<uint32_t> &treasure_lots,
                                            std::unordered_set<uint32_t> &covered,
-                                           std::unordered_set<Cell, CellHash> &out_cells)
+                                           std::unordered_set<Cell, CellHash> &out_cells,
+                                           std::unordered_set<std::string> &out_piece_keys)
 {
     GOBLIN_BENCH("build.disk_collectibles");
     int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, piece_emitted = 0, clutter_skip = 0;
@@ -332,7 +345,9 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
             d.textId1 = (rune ? 800010 : 850010) + 500000000;  // GoodsName "Rune/Ember Piece"
             const uint64_t rid = kRuntimeGeomRowBase + (next_rt++);
             push_marker(/*row_id=*/rid, d, pcat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
-            out_cells.insert(cell_of(g_buckets[pcat].back()));
+            // (pieces dedup by IDENTITY via out_piece_keys, not by position — so they are NOT added
+            // to out_cells; that keeps the positional material-node dedup from wrongly dropping a
+            // baked boss-flag piece that merely sits near a world piece.)
             // geom_slot = MSB InstanceID suffix - 9000 (e.g. "AEG099_821_9003" → 3); -1 if absent.
             int slot = -1;
             const size_t us = c.name.rfind('_');
@@ -344,6 +359,7 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
             }
             rt_entries.push_back(goblin::collected::RuntimeEntry{
                 rid, c.area, c.gx, c.gz, slot, c.posX, c.posY, c.posZ, c.name});
+            out_piece_keys.insert(piece_key(c.area, c.gx, c.gz, c.name.c_str()));
             ++piece_emitted;
             continue;
         }
@@ -628,6 +644,9 @@ void build_buckets_impl()
     // the collectible pass re-emits gather assets, so keying on it (not all disk markers)
     // stops an unrelated treasure/enemy coincidence from evicting a baked piece.
     std::unordered_set<Cell, CellHash> collectible_cells;
+    // (tile, object_name) of every disk-placed Rune/Ember Piece — drops the baked twin by IDENTITY
+    // (position-independent; see piece_key). Built by the collectible pass, consumed in the baked loop.
+    std::unordered_set<std::string> piece_disk_keys;
     if (disk_source_enabled())
     {
         // One disk read pass for all sources. Each out-vector requested only when on.
@@ -649,7 +668,8 @@ void build_buckets_impl()
         if (goblin::config::lootCollectibles || wantEnemies)
             for (const DiskTreasure &t : treasures) treasure_lots.insert(t.lotId);
         if (goblin::config::lootCollectibles)
-            build_disk_collectible_markers(disk_collectibles, treasure_lots, disk_lots, collectible_cells);
+            build_disk_collectible_markers(disk_collectibles, treasure_lots, disk_lots,
+                                           collectible_cells, piece_disk_keys);
         if (goblin::config::lootEnemyDrops)
             build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots);
         if (goblin::config::lootEmevdDrops)
@@ -676,6 +696,7 @@ void build_buckets_impl()
     std::unordered_set<uint32_t> baked_lot1, baked_any;
 
     int replaced = 0;
+    int replaced_piece = 0;  // baked Rune/Ember Pieces dropped because the disk pass placed them
     int replaced_enemy = 0;  // baked Enemy rows dropped because the disk enemy pass covers them
     int replaced_emevd = 0;  // baked Emevd rows dropped because the disk EMEVD pass covers them
     int debake_gap = 0;  // Treasure-sourced baked rows the disk did NOT cover (de-bake blocker)
@@ -695,6 +716,18 @@ void build_buckets_impl()
         // rows so they don't double the live ones (the bake is being retired for this category).
         if (e.category == gen::Category::WorldBosses)
             continue;
+        // Rune/Ember Piece IDENTITY dedup: the disk collectible pass placed this exact AEG world
+        // piece (matched by tile + part name, NOT position — robust to the m11_10 offset anomaly).
+        // Drop the baked twin; the disk marker carries the real MSB position + runtime geom graying.
+        // Boss-flag pieces (c-model object_names) are absent from piece_disk_keys → correctly kept.
+        if (!piece_disk_keys.empty() && e.object_name &&
+            (e.category == gen::Category::ReforgedRunePieces ||
+             e.category == gen::Category::ReforgedEmberPieces) &&
+            piece_disk_keys.count(piece_key(e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.object_name)))
+        {
+            ++replaced_piece;
+            continue;
+        }
         // Disk loot owns this lot → drop the baked placement (lotId-coverage replace).
         // Only map-loot lots (lotType 1); enemy drops (lotType 2) are untouched.
         // PROVENANCE GUARD: only drop a baked row the disk can legitimately reproduce — a
@@ -767,6 +800,9 @@ void build_buckets_impl()
         }
         push_marker(e.row_id, e.data, c, e.lotId, e.lotType);
     }
+    if (goblin::config::lootCollectibles)
+        spdlog::info("[LOOTDISK] replaced {} baked Rune/Ember Pieces with disk placements (identity dedup)",
+                     replaced_piece);
     if (goblin::config::lootEnemyDrops)
         spdlog::info("[LOOTDISK] replaced {} baked enemy rows with disk enemy placements", replaced_enemy);
     if (goblin::config::lootEmevdDrops)
@@ -861,9 +897,8 @@ void build_buckets_impl()
     // geom categories (the exact complement of the lotId-replace). See [[aeg-collectible-source]].
     {
         int deduped = 0;
-        const gen::Category kGeom[] = {gen::Category::LootMaterialNodes,
-                                       gen::Category::ReforgedRunePieces,
-                                       gen::Category::ReforgedEmberPieces};
+        // Material Nodes only — Rune/Ember Pieces dedup by IDENTITY in the baked loop (piece_disk_keys).
+        const gen::Category kGeom[] = {gen::Category::LootMaterialNodes};
         for (gen::Category gc : kGeom)
         {
             auto &bucket = g_buckets[static_cast<int>(gc)];
@@ -879,6 +914,38 @@ void build_buckets_impl()
         if (goblin::config::lootCollectibles)
             spdlog::info("[LOOTDISK] finalize dedup: dropped {} baked geom markers the disk collectible "
                          "pass already covers (position-keyed; geom categories only)", deduped);
+    }
+
+    // [PIECE-RESIDUAL] diag: of the baked AEG world Pieces (AEG099_821/822), which were NOT placed
+    // by the disk pass (identity key absent from piece_disk_keys) — the true migration gap (disk
+    // didn't parse the tile, or a name mismatch). Boss-flag pieces (c-model names) are excluded —
+    // they correctly stay baked (EMEVD event 1200, no AEG twin). Runs once/build; capped list.
+    if (goblin::config::lootCollectibles)
+    {
+        int rune_world = 0, rune_miss = 0, ember_world = 0, ember_miss = 0, shown = 0;
+        for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
+        {
+            const gen::MapEntry &e = gen::MAP_ENTRIES[i];
+            const bool isR = e.category == gen::Category::ReforgedRunePieces;
+            const bool isE = e.category == gen::Category::ReforgedEmberPieces;
+            if ((!isR && !isE) || !e.object_name)
+                continue;
+            if ((isR && std::strncmp(e.object_name, "AEG099_821", 10) != 0) ||
+                (isE && std::strncmp(e.object_name, "AEG099_822", 10) != 0))
+                continue;  // boss-flag piece (c-model) — correctly stays baked
+            (isR ? rune_world : ember_world)++;
+            if (piece_disk_keys.count(
+                    piece_key(e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.object_name)))
+                continue;  // disk placed it (identity match) — dropped by the baked-loop dedup
+            (isR ? rune_miss : ember_miss)++;
+            if (shown++ < 40)
+                spdlog::info("[PIECE-RESIDUAL] {} {} m{}_{}_{} — no disk twin (disk didn't place this name)",
+                             isR ? "Rune" : "Ember", e.object_name, e.data.areaNo, e.data.gridXNo,
+                             e.data.gridZNo);
+        }
+        spdlog::info("[PIECE-RESIDUAL] AEG world Pieces NOT disk-covered: Rune {}/{}, Ember {}/{} "
+                     "(boss-flag pieces excluded; identity-keyed)",
+                     rune_miss, rune_world, ember_miss, ember_world);
     }
 
     // ── [COVERAGE] no-bake scoreboard ────────────────────────────────────────────
