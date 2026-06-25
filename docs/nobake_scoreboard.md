@@ -2,7 +2,7 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 10:53:08.046
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 11:40:40.221
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - Graces are `Live` (BonfireWarpParam) but tallied separately in GraceLayer — not in this table.
@@ -13,7 +13,7 @@
 
 | | baked | disk | live | live-cls | total |
 |---|--:|--:|--:|--:|--:|
-| **all categories** | **1908** | 23379 | 217 | 3657 | 25504 |
+| **all categories** | **1908** | 6938 | 217 | 186 | 9063 |
 
 🔴 baked-only: **15**  ·  🟡 partial: **31**  ·  🟢 off-bake: **17**  (of 63 active categories)
 
@@ -39,8 +39,8 @@
 | Key - Whetblades | 0 | 5 | 0 | 0 | 5 | 🟢 off-bake |
 | Loot - Ammo | 3 | 0 | 0 | 0 | 3 | 🔴 baked-only |
 | Loot - Bell-Bearings | 0 | 50 | 0 | 0 | 50 | 🟢 off-bake |
-| Loot - Consumables | 1 | 231 | 0 | 52 | 232 | 🟡 partial |
-| Loot - Crafting Materials | 5 | 16800 | 0 | 3525 | 16805 | 🟡 partial |
+| Loot - Consumables | 1 | 185 | 0 | 6 | 186 | 🟡 partial |
+| Loot - Crafting Materials | 5 | 1697 | 0 | 100 | 1702 | 🟡 partial |
 | Loot - Dragon Hearts | 1 | 20 | 0 | 0 | 21 | 🟡 partial |
 | Loot - Gestures | 7 | 0 | 0 | 0 | 7 | 🔴 baked-only |
 | Loot - Gloveworts | 11 | 271 | 0 | 0 | 282 | 🟡 partial |
@@ -51,7 +51,7 @@
 | Loot - Material Nodes | 11 | 0 | 0 | 0 | 11 | 🔴 baked-only |
 | Loot - MP-Fingers | 2 | 7 | 0 | 0 | 9 | 🟡 partial |
 | Loot - Prattling Pates | 0 | 9 | 0 | 0 | 9 | 🟢 off-bake |
-| Loot - Rada Fruit | 0 | 1306 | 0 | 0 | 1306 | 🟢 off-bake |
+| Loot - Rada Fruit | 0 | 14 | 0 | 0 | 14 | 🟢 off-bake |
 | Loot - Reusables | 1 | 10 | 0 | 0 | 11 | 🟡 partial |
 | Loot - Rune Arcs | 0 | 75 | 0 | 0 | 75 | 🟢 off-bake |
 | Loot - Smithing Stones | 8 | 316 | 0 | 2 | 324 | 🟡 partial |
