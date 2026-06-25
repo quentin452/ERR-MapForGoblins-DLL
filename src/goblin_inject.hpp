@@ -351,7 +351,7 @@ namespace goblin
     // itemLot 0x30/0x34 cross-check + 25/25 invaders confirmed).
     bool npc_team_and_name(uint32_t npcParamId, uint8_t *teamOut, int32_t *nameOut);
 
-    // True iff an EquipParamGoods row is a region Map fragment (sortGroupId s16 @ +0x72 ∈
+    // True iff an EquipParamGoods row is a region Map fragment (sortGroupId u8 @ +0x72 ∈
     // {190 base, 191 DLC}). The no-bake World-Maps pass routes map-good pickups to WorldMaps.
     bool goods_is_map(int32_t goods_id);
 

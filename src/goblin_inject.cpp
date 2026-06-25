@@ -4441,10 +4441,11 @@ static int goods_type_live(int32_t goods_id)
     return r ? (int)r->b[0x3e] : -1;
 }
 
-// True iff an EquipParamGoods row is a region Map fragment — sortGroupId (s16 @ +0x72) ∈
-// {190 (base game), 191 (DLC)}. Offset pinned via the paramdef field-layout walk (which
-// reproduces the known goodsType@0x3e), tools probe_*. Used by the no-bake World - Maps pass to
-// route map-good treasure pickups to the WorldMaps category instead of a generic Loot bucket.
+// True iff an EquipParamGoods row is a region Map fragment — sortGroupId (u8 @ +0x72) ∈
+// {190 (base game), 191 (DLC)}. Offset+type pinned via the paramdef field-layout walk (which
+// reproduces the known goodsType@0x3e); sortGroupId is a 1-byte field (NOT s16 — reading 2 bytes
+// folds in the 0x73 bitfield). Used by the no-bake World - Maps pass to route map-good treasure
+// pickups to the WorldMaps category instead of a generic Loot bucket.
 bool goblin::goods_is_map(int32_t goods_id)
 {
     static std::optional<from::params::ParamTableSequence<RawGoodsRow>> s_seq;
@@ -4457,8 +4458,7 @@ bool goblin::goods_is_map(int32_t goods_id)
     if (!s_ok || goods_id <= 0) return false;
     RawGoodsRow *r = s_seq->try_get((uint64_t)goods_id);
     if (!r) return false;
-    int16_t sg;
-    std::memcpy(&sg, r->b + 0x72, 2);   // sortGroupId (s16)
+    const uint8_t sg = r->b[0x72];   // sortGroupId (u8)
     return sg == 190 || sg == 191;
 }
 
