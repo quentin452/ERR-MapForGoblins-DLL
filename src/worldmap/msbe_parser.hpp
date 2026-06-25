@@ -129,6 +129,18 @@ struct Region
     float       pos[3] = {0, 0, 0};  // +0x14 BLOCK-LOCAL position
 };
 
+// One EMEVD gesture-spawn reference (the no-bake Loot - Gestures source). Common template
+// 90005570 registers a gesture pickup: args = [_, tmpl, flag@idx2, gestureParam@idx3,
+// entity@idx4, ...]. The flag is the gesture-learned event flag (graying); the gestureParam is
+// a GestureParam row id whose itemId field (read LIVE) gives the gesture's goods name; the
+// entity resolves to an MSB Asset position. See parse_emevd_gestures + build_disk_gesture_markers.
+struct GestureRef
+{
+    uint32_t entityId     = 0;  // MSB Asset EntityID this gesture is positioned by
+    uint32_t flag         = 0;  // gesture-learned event flag (graying / census)
+    uint32_t gestureParam = 0;  // GestureParam row id → itemId (live) → goods name
+};
+
 struct ParseResult
 {
     std::vector<Treasure> treasures;
@@ -178,6 +190,12 @@ std::vector<std::pair<uint32_t, uint32_t>> parse_emevd_flag_awards(const uint8_t
 // paintings); else flag@idx3 (if in range)/entity@idx4 (ghost-painter Enemy paintings). Returns
 // (entity -> flag), both > 0. The disk pass joins the entity to its MSB Asset or Enemy position.
 std::vector<std::pair<uint32_t, uint32_t>> parse_emevd_paintings(const uint8_t *buf, size_t len);
+
+// World-feature Gestures: a bank-2000 init of common template 90005570 (ER's gesture-spawn)
+// carries (flag, gestureParam, entity) at idx2/idx3/idx4. Returns one GestureRef per call with
+// entity > 0; the disk pass joins the entity to its MSB Asset position and reads the gesture's
+// name LIVE from GestureParam[gestureParam].itemId. Same pinned 64-bit layout. Empty on malformed.
+std::vector<GestureRef> parse_emevd_gestures(const uint8_t *buf, size_t len);
 
 // oo2core's OodleLZ_Decompress (14-arg; x64 ABI unifies __stdcall/__fastcall). Kept as a
 // plain function-pointer typedef so msbe_parser needs no <windows.h>/oo2core link — the DLL

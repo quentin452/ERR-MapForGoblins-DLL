@@ -14,6 +14,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "msbe_parser.hpp"  // msbe::GestureRef (World-feature gesture refs from the EMEVD scan)
+
 namespace goblin::worldmap
 {
 // One positioned treasure read from a disk MSB: an itemLotId at a block-local
@@ -123,8 +125,11 @@ std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &kno
 // `paintings_out` (optional): filled in the SAME scan with the painting events (entityId ->
 // collection flag 580000-580199; parse_emevd_paintings) so the painting disk pass needs no
 // second ~550-file event-dir read. nullptr = skip the extra per-file parse.
+// `gestures_out` (optional): likewise filled with the gesture-spawn refs (template 90005570;
+// parse_emevd_gestures) — one msbe::GestureRef per call — so the gesture pass shares this scan.
 std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags(
-    std::unordered_map<uint32_t, uint32_t> *paintings_out = nullptr);
+    std::unordered_map<uint32_t, uint32_t> *paintings_out = nullptr,
+    std::vector<msbe::GestureRef> *gestures_out = nullptr);
 
 // ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────
 // With loot_from_disk_msb on, the map dir is resolved by ancestor-walk at init

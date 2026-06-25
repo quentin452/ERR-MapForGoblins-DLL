@@ -487,6 +487,53 @@ std::vector<std::pair<uint32_t, uint32_t>> parse_emevd_paintings(const uint8_t *
     return out;
 }
 
+// Gesture-spawn events (the no-bake Loot - Gestures source). Fixed common template 90005570,
+// args = [_, tmpl, flag@idx2, gestureParam@idx3, entity@idx4, ...]. Mirrors tools/generate_gestures.py.
+// Returns one GestureRef per call with entity > 0; the caller joins the entity to its MSB Asset
+// position and resolves the name via GestureParam[gestureParam].itemId (live). Same pinned layout.
+std::vector<GestureRef> parse_emevd_gestures(const uint8_t *buf, size_t len)
+{
+    std::vector<GestureRef> out;
+    if (len < 0x80 || std::memcmp(buf, "EVD\0", 4) != 0) return out;
+
+    constexpr uint32_t kGestureTemplate = 90005570u;
+    uint64_t eventCount  = rd64(buf, 0x10);
+    uint64_t eventsOff   = rd64(buf, 0x18);
+    uint64_t instrTblOff = rd64(buf, 0x28);
+    uint64_t argsOff     = rd64(buf, 0x78);
+    if (eventCount > 1000000u) return out;
+    constexpr size_t EVENT_SZ = 0x30, INSTR_SZ = 0x20;
+
+    for (uint64_t i = 0; i < eventCount; ++i)
+    {
+        size_t e = (size_t)eventsOff + (size_t)i * EVENT_SZ;
+        if (!inb(e, EVENT_SZ, len)) break;
+        uint64_t instrCount  = rd64(buf, e + 0x08);
+        uint64_t instrOffset = rd64(buf, e + 0x10);
+        size_t base = (size_t)instrTblOff + (size_t)instrOffset;
+        if (instrCount > 1000000u) continue;
+        for (uint64_t j = 0; j < instrCount; ++j)
+        {
+            size_t ins = base + (size_t)j * INSTR_SZ;
+            if (!inb(ins, INSTR_SZ, len)) break;
+            if (rd32(buf, ins + 0x00) != EMEVD_INIT_BANK) continue;
+            uint64_t argLen = rd64(buf, ins + 0x08);
+            int32_t  argOff = (int32_t)rd32(buf, ins + 0x10);
+            if (argOff < 0 || argLen < 20) continue;  // need 5 int32 args (entity@idx4 = byte 16)
+            size_t a = (size_t)argsOff + (size_t)argOff;
+            if (!inb(a, (size_t)argLen, len)) continue;
+            if (rd32(buf, a + 4) != kGestureTemplate) continue;  // args[1] = template / eventId
+            GestureRef g;
+            g.flag         = rd32(buf, a + 8);   // args[2]
+            g.gestureParam = rd32(buf, a + 12);  // args[3]
+            g.entityId     = rd32(buf, a + 16);  // args[4]
+            if ((int32_t)g.entityId > 0)
+                out.push_back(g);
+        }
+    }
+    return out;
+}
+
 EmevdParse parse_emevd_full(const uint8_t *buf, size_t len)
 {
     EmevdParse R;

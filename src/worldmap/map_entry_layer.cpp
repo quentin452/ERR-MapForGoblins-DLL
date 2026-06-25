@@ -740,6 +740,19 @@ static_assert(offsetof(SignPuddleRow, mapRef) == 0x10 && offsetof(SignPuddleRow,
                   offsetof(SignPuddleRow, posZ) == 0x1c,
               "SignPuddleParam offsets");
 
+// Minimal raw-offset view of a GestureParam row (the no-bake Loot - Gestures name source).
+// Layout: byte 0 = disableParam bitfield, bytes 1-3 = reserve, then s32 itemId @ +0x04 (the
+// gesture's goods id; its name lives in GoodsName FMG, copied to PlaceName at the 500M offset).
+// itemId@+0x04 pinned EMPIRICALLY vs the raw regulation row (row 0 dataOffset 0x598 → bytes
+// 00 00 00 00 | 28 23 00 00 = 0x2328 = 9000 @ +0x04, matches the paramdef-resolved value;
+// tools probe). The paramdef field NAMES are labels — this is the validated byte offset.
+struct GestureParamRow
+{
+    uint8_t _pad[0x04];
+    int32_t itemId;  // +0x04  gesture goods id → name (textId1 = 500000000 + itemId)
+};
+static_assert(offsetof(GestureParamRow, itemId) == 0x04, "GestureParam.itemId offset");
+
 // World feature: Summoning Pools (config world_features_from_disk). Each pool is a live
 // SignPuddleParam row (no committed bake) — the SAME source tools/generate_summoning_pools.py
 // baked from. The row gives the world position (posX/Z) + a map reference: dungeon pools
@@ -1070,6 +1083,68 @@ static int build_disk_painting_markers(
     return emitted;
 }
 
+// World feature: Gestures (config world_features_from_disk). Each gesture pickup is an MSB Asset
+// REFERENCED by a common-template-90005570 EMEVD init (the gesture-spawn template): the event
+// carries (flag, gestureParam, entity). No bake: `refs` come from the EMEVD gesture scan
+// (parse_emevd_gestures, folded into the World-feature flag scan); the position from the matching
+// disk Asset; the NAME from GestureParam[gestureParam].itemId read LIVE (a goods id → GoodsName
+// FMG at the 500M offset). textDisableFlagId1 = the gesture-learned flag (graying/census). Dedup
+// by entity (one icon per placed asset). Dedicated category → category-wipe finalize.
+static int build_disk_gesture_markers(
+    const std::vector<DiskCollectible> &assets,
+    const std::vector<msbe::GestureRef> &refs,
+    std::unordered_set<Cell, CellHash> &out_cells)
+{
+    namespace gen = goblin::generated;
+    GOBLIN_BENCH("build.disk_gestures");
+    const int cat = static_cast<int>(gen::Category::LootGestures);
+
+    // gestureParam → itemId, read LIVE from GestureParam (no bake). Empty until the in-game build
+    // (try/catch, like Summoning Pools / bosses) — a gesture with no live itemId still draws, just
+    // nameless (which the engine hides), so the live param is required for the marker to render.
+    std::unordered_map<uint32_t, int32_t> gparam_item;
+    try
+    {
+        for (auto [rid, row] : from::params::get_param<GestureParamRow>(L"GestureParam"))
+            if (row.itemId > 0) gparam_item.emplace((uint32_t)rid, row.itemId);
+    }
+    catch (...) {}
+
+    // entity → Asset position (the gesture assets are all type-13 Assets). First writer wins.
+    struct GPos { uint8_t area, gx, gz; float x, z; };
+    std::unordered_map<uint32_t, GPos> entity_pos;
+    for (const DiskCollectible &a : assets)
+        if (a.entityId) entity_pos.emplace(a.entityId, GPos{a.area, a.gx, a.gz, a.posX, a.posZ});
+
+    int emitted = 0, no_pos = 0, dup = 0, no_name = 0;
+    std::unordered_set<uint32_t> seen;  // by entity (one icon per placed asset)
+    for (const msbe::GestureRef &g : refs)
+    {
+        auto it = entity_pos.find(g.entityId);
+        if (it == entity_pos.end()) { ++no_pos; continue; }  // entity not a placed _00 asset
+        if (!seen.insert(g.entityId).second) { ++dup; continue; }
+        auto ni = gparam_item.find(g.gestureParam);
+        const int32_t item_id = (ni != gparam_item.end()) ? ni->second : 0;
+        if (item_id <= 0) ++no_name;  // drawn, but nameless (live param not ready / unknown row)
+        const GPos &p = it->second;
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = p.area;
+        d.gridXNo = p.gx;
+        d.gridZNo = p.gz;
+        d.posX = p.x;
+        d.posZ = p.z;
+        d.textId1 = item_id > 0 ? (500000000 + item_id) : 0;  // gesture goods name (GoodsName FMG)
+        d.textDisableFlagId1 = g.flag;                         // learned → graying/census
+        push_marker(/*row_id=*/g.entityId, d, cat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
+        out_cells.insert(cell_of(g_buckets[cat].back()));
+        ++emitted;
+    }
+    spdlog::info("[LOOTDISK] world features: {} Gestures from EMEVD events + disk assets "
+                 "({} no-position, {} dup-entity, {} nameless; {} live GestureParam rows)",
+                 emitted, no_pos, dup, no_name, (int)gparam_item.size());
+    return emitted;
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
 // NOTE (2026-06-23): a "World-* categories live from WorldMapPointParam by row-id range" experiment
@@ -1150,8 +1225,9 @@ void build_buckets_impl()
             // SAME scan also harvests painting collection events (entity → flag 580000-580199)
             // into `painting_flags`, so the painting pass needs no second event-dir read.
             std::unordered_map<uint32_t, uint32_t> painting_flags;
+            std::vector<msbe::GestureRef> gesture_refs;
             std::unordered_map<uint32_t, uint32_t> world_feature_flags =
-                load_emevd_world_feature_flags(&painting_flags);
+                load_emevd_world_feature_flags(&painting_flags, &gesture_refs);
             build_disk_world_feature_markers(disk_collectibles, world_feature_flags, world_feature_cells);
             // Summoning Pools: bespoke live-SignPuddleParam pass (param feature, not an asset
             // model). Rides the same category-wipe finalize via world_feature_cells.
@@ -1180,6 +1256,11 @@ void build_buckets_impl()
             build_disk_painting_markers(
                 disk_collectibles, disk_enemies, painting_flags,
                 world_feature_cells[static_cast<int>(gen::Category::WorldPaintings)]);
+            // Gestures: MSB Asset referenced by a gesture-spawn EMEVD event (template 90005570);
+            // name from GestureParam.itemId (live), position from the disk asset.
+            build_disk_gesture_markers(
+                disk_collectibles, gesture_refs,
+                world_feature_cells[static_cast<int>(gen::Category::LootGestures)]);
         }
         if (goblin::config::lootEnemyDrops)
             build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots);
