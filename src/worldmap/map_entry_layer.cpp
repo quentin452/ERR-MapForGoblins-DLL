@@ -1694,7 +1694,22 @@ void build_buckets_impl()
         // [RESIDUAL-SRC] survivor reached here = not replaced by any disk pass. Tally lot-backed
         // (or formerly-lot) loot rows by category+source for the full residual triage below.
         if (diag && (e.lotId != 0 || e.loot_source != gen::LootSource::Unknown))
+        {
             ++resid_by_cat_src[c * 4 + static_cast<int>(e.loot_source)];
+            // [RESIDUAL-ROW] per-row dump (diag_loot_pos) of EVERY surviving baked loot row, uniform
+            // across sources — feeds the offline by-family orphan-lot batch probe (tools/_probe_enemy_
+            // residual.py). Supersedes the source-specific [DEBAKE-GAP]/[ENEMY-MARKERS] per-row dumps
+            // for a single grep-able feed: cat name (family = prefix), source, lot+lotType, tile, key.
+            if (goblin::config::diagLootPos && e.lotId != 0)
+            {
+                static const char *SRCN[4] = {"unknown", "treasure", "enemy", "emevd"};
+                int32_t rkey = goblin::resolve_loot_item_textid(e.lotId, e.lotType, e.data.textId1);
+                spdlog::info("[RESIDUAL-ROW] cat=\"{}\" src={} lot={} lt={} m{}_{}_{} key={}",
+                             goblin::markers::category_name(static_cast<gen::Category>(c)),
+                             SRCN[static_cast<int>(e.loot_source) & 3], e.lotId, (int)e.lotType,
+                             e.data.areaNo, e.data.gridXNo, e.data.gridZNo, rkey);
+            }
+        }
         push_marker(e.row_id, e.data, c, e.lotId, e.lotType);
     }
     if (goblin::config::lootCollectibles)
