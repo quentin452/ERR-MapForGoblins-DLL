@@ -974,6 +974,44 @@ static int build_disk_spiritspring_hawks_markers(
     return emitted;
 }
 
+// World feature: Maps (config world_features_from_disk). Each region map fragment is a goods
+// pickup placed as an MSB Treasure (a map-stele AEG asset). No bake: scan the disk treasures,
+// resolve each lot's item, keep the map goods (goods_is_map: sortGroupId ∈ {190,191}). The label
+// (map name), inventory icon, and collected flag come LIVE from the lot via push_marker — exactly
+// like disk loot but routed to WorldMaps. Dedup by goods id (one icon per map). The 1 EMEVD-granted
+// map (Altus Plateau) has no MSB Treasure → the finalize CELL-dedup keeps its baked row, so all 24
+// show (23 disk + 1 baked).
+static int build_disk_maps_markers(const std::vector<DiskTreasure> &treasures,
+                                   std::unordered_set<Cell, CellHash> &out_cells)
+{
+    namespace gen = goblin::generated;
+    GOBLIN_BENCH("build.disk_maps");
+    const int cat = static_cast<int>(gen::Category::WorldMaps);
+    int emitted = 0, dup = 0;
+    std::unordered_set<int32_t> seen;  // by goods id (one icon per map)
+    for (const DiskTreasure &t : treasures)
+    {
+        const int32_t key = goblin::resolve_loot_item_textid(t.lotId, 1, -1);
+        if (key < 500000000) continue;             // not a goods item (goods = +500M encoding)
+        const int32_t gid = key - 500000000;
+        if (!goblin::goods_is_map(gid)) continue;  // not a region map fragment
+        if (!seen.insert(gid).second) { ++dup; continue; }
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = t.area;
+        d.gridXNo = t.gx;
+        d.gridZNo = t.gz;
+        d.posX = t.posX;
+        d.posZ = t.posZ;
+        // textId1 left -1 → push_marker resolves the map's name + icon + collected flag from the lot.
+        push_marker(/*row_id=*/t.lotId, d, cat, t.lotId, /*lotType=*/1, Source::DiskMSB);
+        out_cells.insert(cell_of(g_buckets[cat].back()));
+        ++emitted;
+    }
+    spdlog::info("[LOOTDISK] world features: {} Maps from disk treasures (sortGroupId 190/191; {} dup)",
+                 emitted, dup);
+    return emitted;
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
 // NOTE (2026-06-23): a "World-* categories live from WorldMapPointParam by row-id range" experiment
@@ -1072,6 +1110,9 @@ void build_buckets_impl()
             build_disk_spiritspring_hawks_markers(
                 disk_enemies,
                 world_feature_cells[static_cast<int>(gen::Category::WorldSpiritspringHawks)]);
+            // Maps: region map fragments (goods sortGroupId 190/191) placed as MSB treasures.
+            build_disk_maps_markers(
+                treasures, world_feature_cells[static_cast<int>(gen::Category::WorldMaps)]);
         }
         if (goblin::config::lootEnemyDrops)
             build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots);
@@ -1348,6 +1389,10 @@ void build_buckets_impl()
                     wipe = gen::WORLD_FEATURE_MODELS[k].category_wipe;
                     break;
                 }
+            // Maps: the disk treasure pass covers 23/24; the 1 EMEVD-granted map (Altus Plateau)
+            // has no MSB treasure → cell-dedup keeps its baked row instead of wiping it.
+            if (cat == static_cast<int>(gen::Category::WorldMaps))
+                wipe = false;
             auto &bucket = g_buckets[cat];
             const size_t before = bucket.size();
             if (wipe)

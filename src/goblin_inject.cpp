@@ -4441,6 +4441,27 @@ static int goods_type_live(int32_t goods_id)
     return r ? (int)r->b[0x3e] : -1;
 }
 
+// True iff an EquipParamGoods row is a region Map fragment — sortGroupId (s16 @ +0x72) ∈
+// {190 (base game), 191 (DLC)}. Offset pinned via the paramdef field-layout walk (which
+// reproduces the known goodsType@0x3e), tools probe_*. Used by the no-bake World - Maps pass to
+// route map-good treasure pickups to the WorldMaps category instead of a generic Loot bucket.
+bool goblin::goods_is_map(int32_t goods_id)
+{
+    static std::optional<from::params::ParamTableSequence<RawGoodsRow>> s_seq;
+    static std::once_flag s_once;
+    static bool s_ok = false;
+    std::call_once(s_once, [] {
+        try { s_seq.emplace(from::params::get_param<RawGoodsRow>(L"EquipParamGoods"));
+              s_ok = true; } catch (...) { s_ok = false; }
+    });
+    if (!s_ok || goods_id <= 0) return false;
+    RawGoodsRow *r = s_seq->try_get((uint64_t)goods_id);
+    if (!r) return false;
+    int16_t sg;
+    std::memcpy(&sg, r->b + 0x72, 2);   // sortGroupId (s16)
+    return sg == 190 || sg == 191;
+}
+
 // Live category fallback for the disk-loot path: when the baked ITEM_ICONS classifier
 // misses (an item the ERR bake didn't include, or ANY item from another mod), derive a
 // GENERIC category from the LIVE item type so the marker still shows. Takes the
