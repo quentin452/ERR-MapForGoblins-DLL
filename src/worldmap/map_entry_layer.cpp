@@ -300,7 +300,6 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         // exact filter); one-shot breakable clutter (pots/jars/corpses, AEG099_68x/72x/73x,
         // AEG463_65x) is isEnableRepick=false → skipped. This emits EVERY gather node, including
         // the _6xx/_7xx/_9xx ones the bake's "Material Nodes" category covered (no model table).
-        uint32_t sub = c.aegRow % 1000;  // still used to flag the Rune/Ember Pieces (821/822) below
         if (!goblin::aeg_is_gather(c.aegRow))
         {
             ++clutter_skip;
@@ -323,17 +322,21 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
             }
             continue;
         }
-        // Rune (821) / Ember (822) Pieces — the REAL placed objects. Their pickUpItemLotParamId
-        // points only at the shared Runic/Ember TRACE counter (a "shadow reward" tally you gain on
-        // pickup, NOT the object's identity), so resolving the lot mislabels them "Runic Trace".
-        // The native identity is the object itself (ActionButtonText "Collect rune/ember piece");
-        // place them from disk under the Reforged categories using the same goods-name encoding the
-        // bake used (800010/850010 → "Rune/Ember Piece" + star icon). They carry NO event flag —
-        // collection is geom-state — so register the placement with goblin::collected for GEOF/WGM
-        // graying, exactly like the baked pieces. The finalize geom-dedup drops the baked twin.
-        if (sub == 821 || sub == 822)
+        // Rune (AEG099_821) / Ember (AEG099_822) Pieces — the REAL placed objects. Their
+        // pickUpItemLotParamId points only at the shared Runic/Ember TRACE counter (a "shadow reward"
+        // tally you gain on pickup, NOT the object's identity), so resolving the lot mislabels them
+        // "Runic Trace". The native identity is the object itself (ActionButtonText "Collect rune/
+        // ember piece"); place them from disk under the Reforged categories using the same goods-name
+        // encoding the bake used (800010/850010 → "Rune/Ember Piece" + star icon). They carry NO event
+        // flag — collection is geom-state — so register the placement with goblin::collected for GEOF/
+        // WGM graying, like the baked pieces. The finalize geom-dedup drops the baked twin.
+        //
+        // Match the FULL aegRow (99821/99822), NOT sub==821/822: sub = aegRow%1000 also matches OTHER
+        // AEG groups' _821/_822 (AEG023_822, AEG230_821, …) which are unrelated DLC assets — emitting
+        // those mislabeled 461 Rune + 131 Ember phantom pieces (e.g. the "Éclat calciné" clusters).
+        if (c.aegRow == 99821 || c.aegRow == 99822)
         {
-            const bool rune = (sub == 821);
+            const bool rune = (c.aegRow == 99821);
             const int pcat = static_cast<int>(rune ? goblin::generated::Category::ReforgedRunePieces
                                                    : goblin::generated::Category::ReforgedEmberPieces);
             from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
