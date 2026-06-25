@@ -1628,6 +1628,21 @@ void build_buckets_impl()
             ++replaced_emevd;
             continue;
         }
+        // An EMEVD-baked lot can ALSO be an MSB Treasure — the chest/ground item IS the scripted
+        // award (e.g. the m31_8 chest chain 31080700+, the m61 scarab+Crystal-Tear pairs, the
+        // Reforged m60_36_49 chest 1036490010..014). The emevd pass deliberately SKIPS such a lot
+        // (treasure_dup → not in emevd_disk_lots) because the treasure pass already drew it (it's in
+        // disk_lots, base + its sequence-sibling chain). But the PROVENANCE GUARD above won't evict an
+        // Emevd-sourced row via disk_lots, so the baked Emevd twin survived as a residual + a DOUBLE
+        // marker. ItemLotParam_map ids are GLOBALLY UNIQUE, so a disk treasure carrying this exact lot
+        // is the SAME single pickup — drop the redundant baked Emevd twin. (lotType-1 only: an
+        // ItemLotParam_enemy collision would be a different table / different drop.)
+        if (!disk_lots.empty() && e.loot_source == gen::LootSource::Emevd &&
+            e.lotType == 1 && e.lotId != 0 && disk_lots.count(e.lotId))
+        {
+            ++replaced_emevd;
+            continue;
+        }
         // [DEBAKE-GAP] diag (de-bake readiness): a Treasure-sourced row that reaches HERE was
         // NOT replaced — its lot isn't in disk_lots, so the disk source does not reproduce it.
         // These are exactly the rows that would be LOST if the bake's Treasure slice is dropped

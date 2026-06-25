@@ -2,7 +2,7 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 23:27:25.174
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-26 00:34:51.934
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - **`drawn`** = real markers the renderer draws (= total). **`census`** = the ImGui badge denominator (completable spots) — distinct collect flags for flag-based categories, row count for geom/SFX pieces, 0 for graces; it EXCLUDES respawnable flag-less gather, so `census < drawn` wherever markers share a flag or respawn.
@@ -12,13 +12,13 @@
 
 ## ▶ Baked markers remaining
 
-# **133**  ← drive this to **0**
+# **126**  ← drive this to **0**
 
 | | baked | disk | live | live-cls | total |
 |---|--:|--:|--:|--:|--:|
-| **all categories** | **133** | 7875 | 469 | 188 | 8477 |
+| **all categories** | **126** | 7875 | 469 | 188 | 8470 |
 
-🔴 baked-only: **1**  ·  🟡 partial: **24**  ·  🟢 off-bake: **36**  (of 61 active categories)
+🔴 baked-only: **1**  ·  🟡 partial: **22**  ·  🟢 off-bake: **38**  (of 61 active categories)
 
 ## Tile coverage (`_00`-only parser)
 
@@ -45,7 +45,7 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | Equipment - Talismans | 5 | 136 | 0 | 0 | 141 | circle | 🟡 partial |
 | Key - Celestial Dew | 0 | 9 | 0 | 0 | 9 | atlas 69% | 🟢 off-bake |
 | Key - Cookbooks | 0 | 87 | 0 | 0 | 87 | atlas 69% | 🟢 off-bake |
-| Key - Crystal Tears | 4 | 35 | 0 | 0 | 39 | atlas 69% | 🟡 partial |
+| Key - Crystal Tears | 3 | 35 | 0 | 0 | 38 | atlas 69% | 🟡 partial |
 | Key - Great Runes | 0 | 0 | 6 | 0 | 6 | atlas 69% | 🟢 off-bake |
 | Key - Imbued Sword Keys | 0 | 4 | 0 | 0 | 4 | atlas 69% | 🟢 off-bake |
 | Key - Larval Tears | 4 | 16 | 0 | 0 | 20 | atlas 69% | 🟡 partial |
@@ -57,7 +57,7 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | Loot - Ammo | 0 | 81 | 0 | 81 | 81 | atlas 69% | 🟢 off-bake |
 | Loot - Bell-Bearings | 0 | 50 | 0 | 0 | 50 | atlas 69% | 🟢 off-bake |
 | Loot - Consumables | 1 | 186 | 0 | 6 | 187 | atlas 69% | 🟡 partial |
-| Loot - Crafting Materials | 5 | 1694 | 0 | 99 | 1699 | atlas 69% | 🟡 partial |
+| Loot - Crafting Materials | 4 | 1694 | 0 | 99 | 1698 | atlas 69% | 🟡 partial |
 | Loot - Dragon Hearts | 1 | 19 | 0 | 0 | 20 | atlas 69% | 🟡 partial |
 | Loot - Gestures | 0 | 7 | 0 | 0 | 7 | atlas 69% | 🟢 off-bake |
 | Loot - Gloveworts | 11 | 271 | 0 | 0 | 282 | atlas 69% | 🟡 partial |
@@ -85,8 +85,8 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | Quest - Progression | 0 | 44 | 0 | 0 | 44 | atlas 69% | 🟢 off-bake |
 | Quest - Seedbed Curses | 0 | 6 | 0 | 0 | 6 | atlas 69% | 🟢 off-bake |
 | Reforged - Ember Pieces | 0 | 302 | 0 | 0 | 302 | atlas 30% | 🟢 off-bake |
-| Reforged - Fortunes | 3 | 58 | 0 | 0 | 61 | atlas 69% | 🟡 partial |
-| Reforged - Items | 2 | 74 | 0 | 0 | 76 | atlas 69% | 🟡 partial |
+| Reforged - Fortunes | 0 | 58 | 0 | 0 | 58 | atlas 69% | 🟢 off-bake |
+| Reforged - Items | 0 | 74 | 0 | 0 | 74 | atlas 69% | 🟢 off-bake |
 | Reforged - Rune Pieces | 9 | 1235 | 0 | 0 | 1244 | atlas 30% | 🟡 partial |
 | World - Bosses | 0 | 0 | 217 | 0 | 217 | symbol | 🟢 off-bake |
 | World - Hostile NPC | 0 | 50 | 0 | 0 | 50 | atlas 83% | 🟢 off-bake |
@@ -109,7 +109,7 @@ Every surviving baked **loot** row (not replaced by any disk pass), tallied by i
 - **`emevd`** — an EMEVD award the disk EMEVD pass didn't reproduce: a **still-open, genuinely recoverable** lever (extend the EMEVD template coverage).
 - **`unknown`** — pre-provenance bake rows (the `loot_source` field predates the tagging and wasn't regenerated); could be any source. A regen reclassifies them.
 
-Residual loot total **95** = unknown 29 · treasure 16 (accepted) · enemy 35 (bake mis-label) · emevd 15 (recoverable).
+Residual loot total **88** = unknown 29 · treasure 16 (accepted) · enemy 35 (bake mis-label) · emevd 8 (recoverable).
 
 | category | unknown | treasure (accepted) | enemy (mis-label) | emevd (recoverable) |
 |---|--:|--:|--:|--:|
@@ -118,11 +118,11 @@ Residual loot total **95** = unknown 29 · treasure 16 (accepted) · enemy 35 (b
 | Equipment - Ashes of War | 1 | 0 | 1 | 1 |
 | Equipment - Spirits | 2 | 0 | 0 | 0 |
 | Equipment - Talismans | 2 | 1 | 2 | 0 |
-| Key - Crystal Tears | 0 | 0 | 0 | 4 |
+| Key - Crystal Tears | 0 | 0 | 0 | 3 |
 | Key - Larval Tears | 2 | 0 | 2 | 0 |
 | Key - Seeds Tears Ashes | 0 | 0 | 1 | 0 |
 | Loot - Consumables | 0 | 1 | 0 | 0 |
-| Loot - Crafting Materials | 0 | 1 | 0 | 4 |
+| Loot - Crafting Materials | 0 | 1 | 0 | 3 |
 | Loot - Dragon Hearts | 0 | 0 | 0 | 1 |
 | Loot - Gloveworts | 0 | 0 | 11 | 0 |
 | Loot - Golden Runes | 3 | 0 | 6 | 0 |
@@ -132,8 +132,6 @@ Residual loot total **95** = unknown 29 · treasure 16 (accepted) · enemy 35 (b
 | Loot - Smithing Stones | 2 | 0 | 0 | 0 |
 | Loot - Stat Boosts | 0 | 0 | 1 | 0 |
 | Loot - Throwables | 0 | 1 | 0 | 0 |
-| Reforged - Fortunes | 0 | 0 | 0 | 3 |
-| Reforged - Items | 0 | 0 | 0 | 2 |
 
 ## Census (badge vs drawn) + collect-flag coverage
 
@@ -148,7 +146,7 @@ Residual loot total **95** = unknown 29 · treasure 16 (accepted) · enemy 35 (b
 | Equipment - Talismans | 141 | 138 | 141/141 | 0 | 0 |
 | Key - Celestial Dew | 9 | 8 | 9/9 | 0 | 0 |
 | Key - Cookbooks | 87 | 85 | 87/87 | 0 | 0 |
-| Key - Crystal Tears | 39 | 38 | 39/39 | 0 | 0 |
+| Key - Crystal Tears | 38 | 38 | 38/38 | 0 | 0 |
 | Key - Great Runes | 6 | 6 | 6/6 | 0 | 0 |
 | Key - Imbued Sword Keys | 4 | 4 | 4/4 | 0 | 0 |
 | Key - Larval Tears | 20 | 20 | 20/20 | 0 | 0 |
@@ -160,7 +158,7 @@ Residual loot total **95** = unknown 29 · treasure 16 (accepted) · enemy 35 (b
 | Loot - Ammo | 81 | 81 | 81/81 | 0 | 0 |
 | Loot - Bell-Bearings | 50 | 49 | 50/50 | 0 | 0 |
 | Loot - Consumables | 187 | 183 | 187/187 | 0 | 0 |
-| Loot - Crafting Materials | 1699 | 593 | 596/1699 | 1103 | 0 |
+| Loot - Crafting Materials | 1698 | 593 | 595/1698 | 1103 | 0 |
 | Loot - Dragon Hearts | 20 | 20 | 20/20 | 0 | 0 |
 | Loot - Gestures | 7 | 6 | 7/7 | 0 | 0 |
 | Loot - Gloveworts | 282 | 50 | 50/282 | 232 | 0 |
@@ -188,8 +186,8 @@ Residual loot total **95** = unknown 29 · treasure 16 (accepted) · enemy 35 (b
 | Quest - Progression | 44 | 33 | 44/44 | 0 | 0 |
 | Quest - Seedbed Curses | 6 | 5 | 6/6 | 0 | 0 |
 | Reforged - Ember Pieces | 302 | 302 | 23/302 | 0 | 279 |
-| Reforged - Fortunes | 61 | 8 | 61/61 | 0 | 0 |
-| Reforged - Items | 76 | 58 | 76/76 | 0 | 0 |
+| Reforged - Fortunes | 58 | 8 | 58/58 | 0 | 0 |
+| Reforged - Items | 74 | 58 | 74/74 | 0 | 0 |
 | Reforged - Rune Pieces | 1244 | 1244 | 126/1244 | 0 | 1118 |
 | World - Bosses | 217 | 215 | 217/217 | 0 | 0 |
 | World - Hostile NPC | 50 | 26 | 27/50 | 0 | 23 |
