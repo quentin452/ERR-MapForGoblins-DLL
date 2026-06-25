@@ -59,6 +59,7 @@ namespace goblin::config
     bool lootCollectibles = false; // opt-in: AEG gather/collectible markers from disk MSBs + AssetEnvironmentGeometryParam
     bool lootEnemyDrops = false;   // opt-in: enemy-drop markers from disk MSBs (Parts.Enemies → NpcParam → ItemLotParam)
     bool lootEmevdDrops = false;   // opt-in: EMEVD-scripted award markers from disk event\*.emevd.dcx (template inits → entity/lot → MSB Enemy pos)
+    bool worldFeaturesFromDisk = false; // opt-in: World features (Stakes of Marika, …) from disk MSBs by AEG model — no bake
 
     bool redifyBossIcons = false;
     bool graceOverlay = true;        // our graces are the default map source now (validated)
@@ -241,6 +242,12 @@ namespace
                   "boss rewards, scarabs, painting pickups, NPC quest/invasion rewards, great\n"
                   "runes, larval tears). Replaces the matching baked LootSource::Emevd markers.\n"
                   "Uses the event\\ folder beside loot_msb_dir's map dir. Off by default."),
+                B("world_features_from_disk", worldFeaturesFromDisk, "false",
+                  "EXPERIMENTAL. Add World-feature markers read straight from the disk MSBs by\n"
+                  "their AEG asset model -- no committed bake. Currently: Stakes of Marika\n"
+                  "(AEG099_060 respawn points). Position = the placed Asset; the matching baked\n"
+                  "Stakes are dropped (position-keyed) so this reproduces the bake live on any\n"
+                  "mod. Uses the same map dir as loot_from_disk_msb. Off by default."),
                 B("diag_fieldins_join", diagFieldinsJoin, "false",
                   "RE diagnostic: one-shot [FIELDINS] — path-A asset→ItemLotID join check. For each\n"
                   "loaded AEG asset, read the embedded CSGrowableNodePool at geom_ins+0x3A8 (cap+0x3B8,\n"

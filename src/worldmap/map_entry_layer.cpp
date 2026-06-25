@@ -614,6 +614,50 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
             spdlog::info("[LOOTDISK]   emevd-drop category index {} = {} markers", cat, n);
 }
 
+// World feature: Stakes of Marika (config world_features_from_disk). A Stake is placed in
+// the MSB as an AEG099_060 asset — the SAME source tools/generate_stakes.py baked from, so
+// reading it live reproduces the bake on any mod with no committed table. Stakes carry no
+// item/lot/flag (respawn points, never "completed"), so we just project each placement and
+// emit a marker (textId1 = "Stakes of Marika" for the tooltip; icon/category from the
+// category). Each placed 0.5u cell is recorded in `out_cells` so the finalize dedup drops the
+// baked twin (position-keyed, like the geom dedup — the disk + bake share marker_world_pos, so
+// a stake's cells coincide). A stake placed in two overlapping LOD0 tiles dedups to one here.
+static int build_disk_stakes_markers(const std::vector<DiskCollectible> &assets,
+                                     std::unordered_set<Cell, CellHash> &out_cells)
+{
+    namespace gen = goblin::generated;
+    GOBLIN_BENCH("build.disk_stakes");
+    constexpr uint32_t kStakeAeg = 99060;  // AEG099_060 = Stake of Marika
+    const int cat = static_cast<int>(gen::Category::WorldStakesOfMarika);
+    int emitted = 0, dup = 0;
+    for (const DiskCollectible &a : assets)
+    {
+        if (a.aegRow != kStakeAeg) continue;
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = a.area;
+        d.gridXNo = a.gx;
+        d.gridZNo = a.gz;
+        d.posX = a.posX;
+        d.posZ = a.posZ;
+        d.textId1 = 900301540;  // tutorial text "Stakes of Marika" (no lot identity to resolve)
+        push_marker(/*row_id=*/0ull, d, cat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
+        // Dedup by projected cell (same key the baked drop uses). Insert AFTER push so the
+        // projection is the marker's own; a duplicate placement → drop the just-pushed copy
+        // but KEEP the cell recorded (the baked twin must still be dropped at finalize).
+        const Cell cell = cell_of(g_buckets[cat].back());
+        if (!out_cells.insert(cell).second)
+        {
+            g_buckets[cat].pop_back();
+            ++dup;
+            continue;
+        }
+        ++emitted;
+    }
+    spdlog::info("[LOOTDISK] world features: {} Stakes of Marika from disk (AEG099_060){}",
+                 emitted, dup ? (" (+" + std::to_string(dup) + " dup-cell skipped)") : std::string());
+    return emitted;
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
 // NOTE (2026-06-23): a "World-* categories live from WorldMapPointParam by row-id range" experiment
@@ -647,6 +691,9 @@ void build_buckets_impl()
     // the collectible pass re-emits gather assets, so keying on it (not all disk markers)
     // stops an unrelated treasure/enemy coincidence from evicting a baked piece.
     std::unordered_set<Cell, CellHash> collectible_cells;
+    // Projected cells of the disk-placed World features (Stakes of Marika) — the finalize dedup
+    // drops the baked twin on these cells (same position-key as the geom dedup). worldFeaturesFromDisk.
+    std::unordered_set<Cell, CellHash> stakes_cells;
     // (tile, object_name) of every disk-placed Rune/Ember Piece — drops the baked twin by IDENTITY
     // (position-independent; see piece_key). Built by the collectible pass, consumed in the baked loop.
     std::unordered_set<std::string> piece_disk_keys;
@@ -658,9 +705,12 @@ void build_buckets_impl()
         std::vector<DiskCollectible> disk_collectibles;
         std::vector<DiskEnemy> disk_enemies;
         const bool wantEnemies = goblin::config::lootEnemyDrops || goblin::config::lootEmevdDrops;
+        // World features (Stakes) are AEG asset placements → they ride the SAME asset
+        // enumeration as collectibles (disk_collectibles), so request it when either is on.
+        const bool wantAssets = goblin::config::lootCollectibles || goblin::config::worldFeaturesFromDisk;
         std::vector<DiskTreasure> treasures = load_disk_treasures(
             &dropped_dummy_lots,
-            goblin::config::lootCollectibles ? &disk_collectibles : nullptr,
+            wantAssets ? &disk_collectibles : nullptr,
             wantEnemies ? &disk_enemies : nullptr);
         if (goblin::config::lootFromDiskMsb)
             build_disk_loot_markers(treasures, disk_lots, disk_lot_tile);
@@ -673,6 +723,8 @@ void build_buckets_impl()
         if (goblin::config::lootCollectibles)
             build_disk_collectible_markers(disk_collectibles, treasure_lots, disk_lots,
                                            collectible_cells, piece_disk_keys);
+        if (goblin::config::worldFeaturesFromDisk)
+            build_disk_stakes_markers(disk_collectibles, stakes_cells);
         if (goblin::config::lootEnemyDrops)
             build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots);
         if (goblin::config::lootEmevdDrops)
@@ -917,6 +969,28 @@ void build_buckets_impl()
         if (goblin::config::lootCollectibles)
             spdlog::info("[LOOTDISK] finalize dedup: dropped {} baked geom markers the disk collectible "
                          "pass already covers (position-keyed; geom categories only)", deduped);
+    }
+
+    // ── Finalize: drop ALL baked Stakes when the disk pass placed any (category-wipe) ──
+    // The disk _00 pass is the AUTHORITATIVE Stakes source — one world-cell-distinct marker per
+    // AEG099_060 placement, correctly projected. The bake is NOT a reliable oracle here:
+    // generate_stakes.py scans EVERY tile incl. LOD-coarse _02 (which proxy objects at a 128/256
+    // offset — [[runtime-msb-resident-plan]] says parse _00 only) AND its dedup key omits gx,gz
+    // (block-local x,z only), so the baked rows are inflated with offset LOD-phantoms (validated
+    // 2026-06-25: 226 AEG099_060 in _00 vs 250 in non-_00; bake total=439 but disk world-cells=219).
+    // A positional dedup only drops the ~half that coincide, leaving the phantoms drawn at wrong
+    // spots. So when the disk pass placed ≥1 stake, drop EVERY baked Stake (same pattern as live
+    // bosses) — safe because all 651 _00 MSBs parse (0 fail/0 KRAK) and a ground stake always lives
+    // in a _00 tile. stakes_cells non-empty ⇔ the disk pass ran and found stakes.
+    if (goblin::config::worldFeaturesFromDisk && !stakes_cells.empty())
+    {
+        auto &bucket = g_buckets[static_cast<int>(gen::Category::WorldStakesOfMarika)];
+        const size_t before = bucket.size();
+        bucket.erase(std::remove_if(bucket.begin(), bucket.end(),
+                                    [](const Marker &m) { return m.source == Source::Baked; }),
+                     bucket.end());
+        spdlog::info("[LOOTDISK] world features: dropped {} baked Stakes (category-wipe; disk pass "
+                     "is authoritative, bake has LOD-phantoms)", (int)(before - bucket.size()));
     }
 
     // [PIECE-RESIDUAL] diag: of the baked AEG world Pieces (AEG099_821/822), which were NOT placed
