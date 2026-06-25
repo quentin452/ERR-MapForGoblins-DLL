@@ -15,6 +15,9 @@
 #include <fstream>
 #include <mutex>
 #include <system_error>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 
 namespace fs = std::filesystem;
 
@@ -370,7 +373,7 @@ fs::path resolve_event_dir(const fs::path &mapStudio)
 }
 } // namespace
 
-std::vector<DiskEmevd> load_emevd_awards()
+std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &knownEntities)
 {
     std::vector<DiskEmevd> out;
     ensure_map_dir_resolved();
@@ -385,7 +388,11 @@ std::vector<DiskEmevd> load_emevd_awards()
     spdlog::info("[LOOTDISK] reading EMEVD from {}", evdir.string());
 
     msbe::OodleDecompressFn oodle = resolve_oodle();  // KRAK events (unmodified vanilla)
-    int parsed = 0, kraks = 0;
+    int parsed = 0, kraks = 0, direct = 0;
+    // Mechanism B inputs, accumulated across all files: flag→lot (from common.emevd's
+    // RunEvent(1200)) and every SetEventFlag(.,1) event's flags+entity candidates.
+    std::unordered_map<uint32_t, uint32_t> flag_to_lot;
+    std::vector<msbe::EmevdSetter> setters;
     std::error_code ec;
     for (auto &de : fs::directory_iterator(evdir, ec))
     {
@@ -405,13 +412,51 @@ std::vector<DiskEmevd> load_emevd_awards()
             else spdlog::warn("[LOOTDISK] EMEVD decompress failed: {}", name);
             continue;
         }
-        std::vector<msbe::EmevdAward> aw = msbe::parse_emevd(evd.data(), evd.size());
-        for (const auto &a : aw) out.push_back({a.entityId, a.lotId});
+        msbe::EmevdParse p = msbe::parse_emevd_full(evd.data(), evd.size());
+        for (const auto &a : p.direct) out.push_back({a.entityId, a.lotId, /*lotType=*/1});
+        direct += (int)p.direct.size();
+        // flag→lot only from common.emevd (the engine binding lives there; restricting
+        // matches the bake and avoids a stray per-map RunEvent(1200) re-binding a flag).
+        if (lower == "common.emevd.dcx")
+            for (const auto &fl : p.runEvent1200) flag_to_lot[fl.first] = fl.second;
+        for (auto &s : p.setters) setters.push_back(std::move(s));
         ++parsed;
-        spdlog::debug("[LOOTDISK] {} -> {} EMEVD awards", name, aw.size());
+        spdlog::debug("[LOOTDISK] {} -> {} direct awards", name, p.direct.size());
     }
-    spdlog::info("[LOOTDISK] {} EMEVD files parsed; {} template awards; {} KRAK skipped",
-                 parsed, (int)out.size(), kraks);
+
+    // Mechanism B: resolve each setter event whose flag is bound to a lot → pick the boss
+    // entity it references (boss-preferred eid%1000 ∈ 800..899, else lowest), dedup by
+    // (entity,lot). Lot resolves via ItemLotParam_enemy (lotType 2).
+    int ev1200 = 0, ev1200_no_entity = 0;
+    std::unordered_set<uint64_t> seen;  // (entity<<32 | lot)
+    for (const msbe::EmevdSetter &s : setters)
+    {
+        for (uint32_t flag : s.flags)
+        {
+            auto it = flag_to_lot.find(flag);
+            if (it == flag_to_lot.end()) continue;
+            uint32_t lot = it->second;
+            // candidate ∩ known MSB entities, boss-preferred
+            uint32_t boss = 0, any = 0;
+            for (uint32_t c : s.candidates)
+            {
+                if (!knownEntities.count(c)) continue;
+                uint32_t last3 = c % 1000;
+                if (last3 >= 800 && last3 <= 899) { if (!boss || c < boss) boss = c; }
+                else if (!any || c < any) any = c;
+            }
+            uint32_t chosen = boss ? boss : any;
+            if (!chosen) { ++ev1200_no_entity; continue; }
+            uint64_t key = ((uint64_t)chosen << 32) | lot;
+            if (!seen.insert(key).second) continue;
+            out.push_back({chosen, lot, /*lotType=*/2});
+            ++ev1200;
+        }
+    }
+    spdlog::info("[LOOTDISK] {} EMEVD files parsed; {} direct + {} event-1200 awards "
+                 "({} flag→lot binds, {} setters, {} setter-flags with no MSB entity); {} KRAK skipped",
+                 parsed, direct, ev1200, (int)flag_to_lot.size(), (int)setters.size(),
+                 ev1200_no_entity, kraks);
     return out;
 }
 } // namespace goblin::worldmap

@@ -248,7 +248,18 @@ cross-tile), and the lot→entity link is in the EMEVD files on disk (`event/*.e
   > live ItemLotParam contiguity walk (param try_get) + lotType-2 resolution. NOTE the bake stores ALL
   > 529 Emevd rows as lotType 1, so the existing lot-only provenance guard already covers them; only the
   > marker IDENTITY resolve needs lotType 2 (try enemy, fall back to map). Building (C)'s sibling walker
-  > ALSO unblocks the enemy-35 + corpse-30 sibling residuals (SHARED). **DECISION PENDING (quentin).**
+  > ALSO unblocks the enemy-35 + corpse-30 sibling residuals (SHARED).
+  > **★ MECHANISM B SHIPPED (2026-06-25, folded into `loot_emevd_drops`).** `msbe::parse_emevd_full`
+  > additionally extracts `RunEvent(2000:00, callee=1200, [flag,lot])` (flag→lot, common.emevd only) +
+  > each `SetEventFlag(2003:66/69, ., state=1)` event's flags + entity-range candidates;
+  > `loot_disk::load_emevd_awards(knownEntities)` joins them — for each setter flag bound to a lot, the
+  > candidate ∩ MSB enemy EntityIDs (boss-preferred `eid%1000∈800..899`) gives the position; lot resolves
+  > via ItemLotParam_enemy (lotType 2, _map fallback). **Validated pure-bytes == SoulsFormats: 59 base
+  > lots / 55 residual covered** (`tools/probe_emevd_format.py`). `loot_emevd_drops` now de-bakes **~362**
+  > Emevd rows (307 direct + 55 event-1200); only mechanism C (167 sequence-siblings) stays baked.
+  > **C DEFERRED — over-emits +316 vs the bake (no clean runtime signal; same LOOT_CATEGORIES arch-debt
+  > as enemy/collectible clutter). Bound the flood before building (per-category toggles, or ev1200-base-
+  > only siblings = +61 over-emit for 80 covered).**
   > **RUNTIME-VALIDATED (2026-06-25):** live log with `loot_emevd_drops=true` — 517 EMEVD files →
   > **500 template awards** (exact vs SoulsFormats) → **308 markers emitted** (filtered 163
   > entity-not-an-MSB-enemy, 23 (entity,lot)-dedup, 2 treasure-dup, 4 unclassified) → **300 baked

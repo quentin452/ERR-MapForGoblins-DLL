@@ -302,6 +302,89 @@ std::vector<EmevdAward> parse_emevd(const uint8_t *buf, size_t len)
     return out;
 }
 
+EmevdParse parse_emevd_full(const uint8_t *buf, size_t len)
+{
+    EmevdParse R;
+    if (len < 0x80 || std::memcmp(buf, "EVD\0", 4) != 0) return R;
+
+    uint64_t eventCount  = rd64(buf, 0x10);
+    uint64_t eventsOff   = rd64(buf, 0x18);
+    uint64_t instrTblOff = rd64(buf, 0x28);
+    uint64_t argsOff     = rd64(buf, 0x78);
+    if (eventCount > 1000000u) return R;
+    constexpr size_t EVENT_SZ = 0x30, INSTR_SZ = 0x20;
+    // entity-id range filter for setter-event candidates (the caller intersects with the
+    // real MSB enemy entities, so this only needs to drop obvious non-entities: flags,
+    // small enums, item ids stay possible but get filtered out by the intersection).
+    constexpr uint32_t kEntMin = 1000u, kEntMax = 0x7fffffffu;
+
+    for (uint64_t i = 0; i < eventCount; ++i)
+    {
+        size_t e = (size_t)eventsOff + (size_t)i * EVENT_SZ;
+        if (!inb(e, EVENT_SZ, len)) break;
+        uint64_t instrCount  = rd64(buf, e + 0x08);
+        uint64_t instrOffset = rd64(buf, e + 0x10);
+        size_t base = (size_t)instrTblOff + (size_t)instrOffset;
+        if (instrCount > 1000000u) continue;
+
+        std::vector<uint32_t> setFlags;     // SetEventFlag(.,1) in this event
+        std::vector<uint32_t> candidates;   // entity-range values referenced in this event
+        for (uint64_t j = 0; j < instrCount; ++j)
+        {
+            size_t ins = base + (size_t)j * INSTR_SZ;
+            if (!inb(ins, INSTR_SZ, len)) break;
+            uint32_t bank = rd32(buf, ins + 0x00);
+            uint32_t iid  = rd32(buf, ins + 0x04);
+            uint64_t argLen = rd64(buf, ins + 0x08);
+            int32_t  argOff = (int32_t)rd32(buf, ins + 0x10);
+            if (argOff < 0 || argLen < 4) continue;
+            size_t a = (size_t)argsOff + (size_t)argOff;
+            if (!inb(a, (size_t)argLen, len)) continue;
+
+            // candidate entity values: every 4-byte window in this instruction's args
+            for (size_t k = 0; k + 4 <= (size_t)argLen; k += 4)
+            {
+                uint32_t v = rd32(buf, a + k);
+                if (v >= kEntMin && v <= kEntMax) candidates.push_back(v);
+            }
+            if (argLen < 8) continue;
+            uint32_t eventId = rd32(buf, a + 4);
+            if (bank == EMEVD_INIT_BANK)
+            {
+                // mechanism A: direct template award
+                if (const EmevdTemplate *t = find_emevd_template(eventId))
+                {
+                    if (argLen >= t->minLen)
+                    {
+                        uint32_t entity = rd32(buf, a + t->entityOff);
+                        uint32_t lot    = rd32(buf, a + t->lotOff);
+                        if ((int32_t)lot > 0 && (int32_t)entity > 0)
+                            R.direct.push_back({entity, lot});
+                    }
+                }
+                // mechanism B input: RunEvent(2000:00) binding flag→lot via callee 1200
+                if (iid == 0 && eventId == 1200 && argLen >= 16)
+                {
+                    uint32_t flag = rd32(buf, a + 8);
+                    uint32_t lot  = rd32(buf, a + 12);
+                    if ((int32_t)flag > 0 && (int32_t)lot > 0)
+                        R.runEvent1200.push_back({flag, lot});
+                }
+            }
+            // mechanism B input: SetEventFlag(2003:66) / SetNetworkEventFlag(2003:69), state==1
+            else if (bank == 2003 && (iid == 66 || iid == 69) && argLen >= 12)
+            {
+                uint32_t flag  = rd32(buf, a + 4);
+                int32_t  state = (int32_t)rd32(buf, a + 8);
+                if (state == 1 && (int32_t)flag > 0) setFlags.push_back(flag);
+            }
+        }
+        if (!setFlags.empty())
+            R.setters.push_back({std::move(setFlags), std::move(candidates)});
+    }
+    return R;
+}
+
 std::vector<uint8_t> dcx_decompress(const uint8_t *d, size_t len, bool *isKrak,
                                     OodleDecompressFn oodle)
 {

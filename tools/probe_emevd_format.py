@@ -226,5 +226,85 @@ def main():
     print(f'  baked Emevd lots: {len(baked_emevd_lots)}; COVERED by EMEVD pass: {len(covered)} '
           f'({len(baked_emevd_lots)-len(covered)} stay baked)')
 
+    # ── Validate mechanism B (event-1200) pure-bytes == the C++ parse_emevd_full path ──
+    # Mirrors loot_disk::load_emevd_awards: pure-bytes scan of RunEvent(2000:00,callee=1200)
+    # -> flag->lot (common.emevd only) + SetEventFlag(2003:66/69,state=1) events with their
+    # entity candidates; join candidates to the MSB enemy entity set (boss-preferred).
+    print('\n=== Validate mechanism B (event-1200) pure-bytes reproduction ===')
+    def parse_full(b):
+        if len(b) < 0x80 or b[:4] != b'EVD\x00': return [], []
+        ev_count = struct.unpack_from('<q', b, 0x10)[0]
+        ev_off   = struct.unpack_from('<q', b, 0x18)[0]
+        instr_tbl= struct.unpack_from('<q', b, 0x28)[0]
+        arg_off  = struct.unpack_from('<q', b, 0x78)[0]
+        run1200 = []   # (flag, lot)
+        setters = []   # (flags[], candidates[])
+        for i in range(ev_count):
+            e = ev_off + i*0x30
+            ic = struct.unpack_from('<q', b, e+0x08)[0]
+            io = struct.unpack_from('<q', b, e+0x10)[0]
+            base = instr_tbl + io
+            flags=[]; cand=[]
+            for j in range(ic):
+                ins = base + j*0x20
+                bank = struct.unpack_from('<i', b, ins+0)[0]
+                iid  = struct.unpack_from('<i', b, ins+4)[0]
+                alen = struct.unpack_from('<q', b, ins+8)[0]
+                aoff = struct.unpack_from('<i', b, ins+0x10)[0]
+                if aoff < 0 or alen < 4: continue
+                a = arg_off + aoff
+                for k in range(0, alen-3, 4):
+                    v = struct.unpack_from('<I', b, a+k)[0]
+                    if 1000 <= v <= 0x7fffffff: cand.append(v)
+                if alen < 8: continue
+                eid = struct.unpack_from('<i', b, a+4)[0]
+                if bank == 2000 and iid == 0 and eid == 1200 and alen >= 16:
+                    fl = struct.unpack_from('<i', b, a+8)[0]; lo = struct.unpack_from('<i', b, a+12)[0]
+                    if fl > 0 and lo > 0: run1200.append((fl, lo))
+                elif bank == 2003 and iid in (66, 69) and alen >= 12:
+                    fl = struct.unpack_from('<i', b, a+4)[0]; st = struct.unpack_from('<i', b, a+8)[0]
+                    if st == 1 and fl > 0: flags.append(fl)
+            if flags: setters.append((flags, cand))
+        return run1200, setters
+    flag_to_lot = {}; all_setters = []
+    for p in files:
+        try: r = bytes(SoulsFormats.DCX.Decompress(str(p)).ToArray())
+        except Exception: continue
+        run1200, setters = parse_full(r)
+        if p.name == 'common.emevd.dcx':
+            for fl, lo in run1200: flag_to_lot[fl] = lo
+        all_setters += setters
+    # all MSB enemy entity ids (the runtime's knownEntities)
+    known = set(ent_pos)  # ent_pos already collected above is only award-referenced; rebuild full set
+    known = set()
+    for mp in sorted((moddir/'map'/'MapStudio').glob('*.msb.dcx')):
+        if mp.name.endswith('_99.msb.dcx'): continue
+        try:
+            tmp = os.path.join(tempfile.gettempdir(), str(os.getpid())+'_pk.tmp')
+            SysFile.WriteAllBytes(tmp, SoulsFormats.DCX.Decompress(str(mp)).ToArray())
+            msb = _msbe_read.Invoke(None, Array[Object]([tmp])); os.unlink(tmp)
+        except Exception: continue
+        for q in (getattr(msb.Parts, 'Enemies', []) or []):
+            if int(getattr(q, 'GameEditionDisable', 0) or 0) == 1: continue
+            eid = int(getattr(q, 'EntityID', 0) or 0)
+            if eid > 0: known.add(eid)
+    seenB = set(); ev1200 = []
+    for flags, cand in all_setters:
+        for fl in flags:
+            if fl not in flag_to_lot: continue
+            lot = flag_to_lot[fl]
+            boss = sorted(c for c in cand if c in known and 800 <= c % 1000 <= 899)
+            other = sorted(c for c in cand if c in known)
+            chosen = boss[0] if boss else (other[0] if other else 0)
+            if not chosen: continue
+            k = (chosen, lot)
+            if k in seenB: continue
+            seenB.add(k); ev1200.append((chosen, lot))
+    ev1200_lots = {l for _, l in ev1200}
+    print(f'  pure-bytes event-1200: {len(ev1200)} unique (entity,lot); {len(ev1200_lots)} distinct lots')
+    print(f'  of the baked Emevd residual, covered by event-1200: '
+          f'{len((baked_emevd_lots - emevd_lots) & ev1200_lots)} '
+          f'(datamine SoulsFormats reference = 55)')
+
 if __name__ == '__main__':
     main()

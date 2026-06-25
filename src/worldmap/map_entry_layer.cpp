@@ -359,9 +359,12 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
             spdlog::info("[LOOTDISK]   enemy-drop category index {} = {} markers", cat, n);
 }
 
-// EMEVD-scripted award markers (config loot_emevd_drops): the mod's event\*.emevd.dcx
-// template-award inits give (entityId, lotId); we join the entityId to its MSB Enemy
-// part for the world position and resolve the lot (ItemLotParam_map, lotType 1) LIVE.
+// EMEVD-scripted award markers (config loot_emevd_drops). load_emevd_awards returns two
+// kinds, distinguished by DiskEmevd::lotType: (A) direct template awards (lotType 1,
+// ItemLotParam_map — the entity is carried in the event init) and (B) event-1200 boss
+// drops (lotType 2, ItemLotParam_enemy — the entity is the boss the setter event
+// references). Either way we join the entityId to its MSB Enemy part for the world
+// position and resolve the lot LIVE (with the lotType hint, falling back to the other table).
 // This places scripted drops the MSB Treasure/Enemy passes structurally CAN'T see —
 // field/dungeon boss rewards, scarabs, painting pickups, NPC quest/invasion rewards,
 // great runes, larval tears (the 13 templates in tools/extract_all_items.py:646). Each
@@ -383,6 +386,7 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
         if (en.entityId != 0) ent_to_pos.emplace(en.entityId, &en);
 
     int emitted = 0, no_entity = 0, dup = 0, treasure_dup = 0, unclassified = 0;
+    int emit_direct = 0, emit_ev1200 = 0;  // by mechanism (lotType 1 = direct, 2 = event-1200)
     const bool verbose = goblin::config::diagLootPos;
     std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
     std::unordered_set<uint64_t> seen;      // dedup by (entity<<32 | lot)
@@ -394,9 +398,20 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
         if (!seen.insert(key2).second) { ++dup; continue; }
         if (treasure_lots.count(a.lotId)) { ++treasure_dup; continue; }  // physical pickup already placed
         const DiskEnemy *pos = it->second;
-        int32_t key = goblin::resolve_loot_item_textid(a.lotId, 1, -1);  // EMEVD lots = ItemLotParam_map
+        // Resolve identity with the award's lotType hint (1 = ItemLotParam_map / direct,
+        // 2 = ItemLotParam_enemy / event-1200 boss drop), falling back to the other table.
+        uint8_t lt = a.lotType;
+        int32_t key = goblin::resolve_loot_item_textid(a.lotId, lt, -1);
         int cat = goblin::item_marker_category(key);
-        if (cat < 0) cat = goblin::classify_item_live(key);  // live fallback (any mod / unbaked)
+        if (cat < 0) cat = goblin::classify_item_live(key);
+        if (cat < 0 || cat >= NUM_CAT)
+        {
+            uint8_t other = (uint8_t)(a.lotType == 1 ? 2 : 1);
+            int32_t key2b = goblin::resolve_loot_item_textid(a.lotId, other, -1);
+            int cat2 = goblin::item_marker_category(key2b);
+            if (cat2 < 0) cat2 = goblin::classify_item_live(key2b);
+            if (cat2 >= 0 && cat2 < NUM_CAT) { lt = other; key = key2b; cat = cat2; }
+        }
         if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
         d.areaNo = pos->area;
@@ -404,14 +419,17 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
         d.gridZNo = pos->gz;
         d.posX = pos->posX;
         d.posZ = pos->posZ;
-        push_marker(/*row_id=*/a.lotId, d, cat, a.lotId, /*lotType=*/1);
+        push_marker(/*row_id=*/a.lotId, d, cat, a.lotId, lt);
         covered.insert(a.lotId);  // drops the matching baked LootSource::Emevd row
         ++emitted;
+        (a.lotType == 2 ? emit_ev1200 : emit_direct)++;
         if (verbose) ++per_cat[cat];
     }
-    spdlog::info("[LOOTDISK] emevd drops: {} markers emitted ({} template awards total; filtered: "
-                 "{} entity-not-an-msb-enemy, {} (entity,lot)-dedup, {} treasure-dup, {} unclassified)",
-                 emitted, (int)awards.size(), no_entity, dup, treasure_dup, unclassified);
+    spdlog::info("[LOOTDISK] emevd drops: {} markers emitted ({} direct + {} event-1200; {} awards "
+                 "total; filtered: {} entity-not-an-msb-enemy, {} (entity,lot)-dedup, {} treasure-dup, "
+                 "{} unclassified)",
+                 emitted, emit_direct, emit_ev1200, (int)awards.size(), no_entity, dup, treasure_dup,
+                 unclassified);
     if (verbose)
         for (auto &[cat, n] : per_cat)
             spdlog::info("[LOOTDISK]   emevd-drop category index {} = {} markers", cat, n);
@@ -466,7 +484,13 @@ void build_buckets_impl()
             build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots);
         if (goblin::config::lootEmevdDrops)
         {
-            std::vector<DiskEmevd> awards = load_emevd_awards();
+            // The event-1200 (mechanism B) join needs the MSB enemy EntityIDs to resolve
+            // which boss entity a setter event references.
+            std::unordered_set<uint32_t> known_entities;
+            known_entities.reserve(disk_enemies.size());
+            for (const DiskEnemy &en : disk_enemies)
+                if (en.entityId) known_entities.insert(en.entityId);
+            std::vector<DiskEmevd> awards = load_emevd_awards(known_entities);
             build_disk_emevd_markers(awards, disk_enemies, treasure_lots, emevd_disk_lots);
         }
     }

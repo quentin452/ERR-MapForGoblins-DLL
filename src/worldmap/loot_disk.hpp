@@ -9,6 +9,7 @@
 // runtime reuses the SAME marker_world_pos transform downstream (no new RE).
 #include <cstdint>
 #include <filesystem>
+#include <unordered_set>
 #include <vector>
 
 namespace goblin::worldmap
@@ -52,6 +53,11 @@ struct DiskEmevd
 {
     uint32_t entityId = 0;
     uint32_t lotId = 0;
+    // Which ItemLotParam the lot lives in for the LIVE identity resolve: 1 = _map
+    // (mechanism A, direct template awards), 2 = _enemy (mechanism B, the event-1200
+    // boss drops resolve via NpcParam.itemLotId_enemy's table). The caller resolves with
+    // this hint, falling back to the other table if it yields no item.
+    uint8_t  lotType = 1;
 };
 
 // True when any disk-MSB source is enabled (treasure loot OR collectibles); both
@@ -78,10 +84,15 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
                                               std::vector<DiskEnemy> *enemies = nullptr);
 
 // Parse every event\*.emevd.dcx in the active mod (sibling of the resolved map\MapStudio
-// dir) and return all template item-award references (entityId, lotId). The caller joins
-// each entityId to an MSB Enemy position (DiskEnemy::entityId) to place the marker. Empty
-// when no event dir is found. Uses the same DiskLootState dir discovery as the MSB pass.
-std::vector<DiskEmevd> load_emevd_awards();
+// dir) and return the EMEVD item-award references the runtime can position:
+//   (A) direct template awards            → (entityId, lotId, lotType 1)
+//   (B) event-1200 boss drops             → (entityId, lotId, lotType 2)
+// (A) is the bank-2000 template inits (entity carried in the init). (B) joins
+// common.emevd's RunEvent(1200,[flag,lot]) with a per-map SetEventFlag(flag,1) event whose
+// referenced entity is one of `knownEntities` (the MSB enemy EntityIDs, boss-preferred).
+// The caller joins each entityId to an MSB Enemy position (DiskEnemy::entityId) to place
+// the marker. Empty when no event dir is found. See docs §5b (mechanisms A + B).
+std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &knownEntities);
 
 // ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────
 // With loot_from_disk_msb on, the map dir is resolved by ancestor-walk at init

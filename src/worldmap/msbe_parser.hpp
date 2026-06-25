@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 // MSBE (.msb) parser — sources loot placement (Treasure events) straight from the active
@@ -85,6 +86,30 @@ struct EmevdAward
     uint32_t lotId    = 0;  // ItemLotParam_map row id (lotType 1) awarded
 };
 
+// One EMEVD event that SetEventFlag(flag,1)s — the "event-1200" boss-drop mechanism.
+// `common.emevd` ev0 binds a trigger flag to an ItemLotParam_enemy lot via
+// RunEvent(1200,[flag,lot]); a per-map event then SetEventFlag(flag,1) on boss death. The
+// boss's MSB EntityID is referenced somewhere in that same event, so `candidates` carries
+// every entity-range value the event references; the caller intersects it with the known
+// MSB enemy entities (boss-preferred) to get the position. See loot_disk::load_emevd_awards
+// + docs/re/windows_enemy_loot_nobake_analysis.md §5b (mechanism B).
+struct EmevdSetter
+{
+    std::vector<uint32_t> flags;       // flags this event SetEventFlag(., state=1)
+    std::vector<uint32_t> candidates;  // entity-range int32 values referenced in the event
+};
+
+// Full EMEVD parse: direct template awards (mechanism A, the shipped pass) PLUS the
+// event-1200 inputs (mechanism B). RunEvent(2000:00) inits with callee 1200 give (flag,lot);
+// the setters give (flag-set, entity candidates). The caller resolves B by joining
+// flag→lot (from common.emevd) with the setter's candidate entities.
+struct EmevdParse
+{
+    std::vector<EmevdAward>                       direct;        // (entity, lot) — mechanism A
+    std::vector<std::pair<uint32_t, uint32_t>>    runEvent1200;  // (flag, lot) — RunEvent(1200)
+    std::vector<EmevdSetter>                      setters;       // SetEventFlag(.,1) events
+};
+
 struct ParseResult
 {
     std::vector<Treasure> treasures;
@@ -111,6 +136,11 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
 // EntityID to an MSB Enemy position (Enemy::entityId) to place the marker. Empty on any
 // malformed blob.
 std::vector<EmevdAward> parse_emevd(const uint8_t *buf, size_t len);
+
+// Richer EMEVD parse for the event-1200 recovery (mechanism B) on top of the direct awards
+// (mechanism A). Same pinned layout as parse_emevd. Returns direct awards, RunEvent(1200)
+// (flag,lot) pairs, and per-event SetEventFlag(.,1) records with their entity candidates.
+EmevdParse parse_emevd_full(const uint8_t *buf, size_t len);
 
 // oo2core's OodleLZ_Decompress (14-arg; x64 ABI unifies __stdcall/__fastcall). Kept as a
 // plain function-pointer typedef so msbe_parser needs no <windows.h>/oo2core link — the DLL
