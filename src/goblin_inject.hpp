@@ -335,6 +335,14 @@ namespace goblin
     // (loot_enemy_drops) — no bake. See memory msbe-enemy-loot-offsets.
     uint32_t npc_loot_lot(uint32_t npcParamId, uint8_t *lotTypeOut);
 
+    // Probe one ItemLotParam row in a SPECIFIC table (lotType 1=_map, 2=_enemy; NO
+    // fallback to the other), for the EMEVD sequence-sibling walk (loot_emevd_drops
+    // mechanism C). Returns true iff the row EXISTS in that table (false = a GAP → stop the
+    // walk). When it exists: *flagOut = the notability flag (resolve_loot_flag semantics —
+    // 0 for none/repeatable), *keyOut = the slot-1 encoded item key (0 if empty/invalid).
+    // The caller emits a sub-lot marker when the row exists with flag != 0 and a real item.
+    bool lot_row_in_table(uint32_t lot, uint8_t lotType, uint32_t *flagOut, int32_t *keyOut);
+
     // Live category fallback when item_marker_category() (baked ITEM_ICONS) misses:
     // derives a GENERIC MFG Category from the LIVE item type (EquipParamGoods.goodsType
     // for goods, the lot category for equipment). Takes the offset-encoded item key

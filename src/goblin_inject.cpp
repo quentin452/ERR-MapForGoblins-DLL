@@ -4179,6 +4179,44 @@ int32_t goblin::resolve_loot_item_textid(uint32_t lotId, uint8_t lotType, int32_
     return live ? live : baked_textid;
 }
 
+// EMEVD sequence-sibling walk primitive (loot_emevd_drops mechanism C). Probes a single
+// ItemLotParam table (no fallback) so the caller can detect the gap that ends a sub-lot
+// chain. See build_disk_emevd_markers + docs/re/windows_enemy_loot_nobake_analysis.md §5b.
+bool goblin::lot_row_in_table(uint32_t lot, uint8_t lotType, uint32_t *flagOut, int32_t *keyOut)
+{
+    if (flagOut) *flagOut = 0;
+    if (keyOut) *keyOut = 0;
+    if (lotType == 0 || lot == 0) return false;
+    static LotReader s_lots;
+    static std::once_flag s_once;
+    static bool s_ok = false;
+    std::call_once(s_once, [] { s_lots.init(); s_ok = s_lots.ok(); });
+    if (!s_ok) return false;
+    auto &tbl = (lotType == 2) ? s_lots.enemy_lots : s_lots.map_lots;  // SPECIFIC table only
+    if (!tbl) return false;
+    RawItemLotRow *row = tbl->try_get(lot);
+    if (!row) return false;  // gap — the contiguous sub-lot chain ends here
+    // Notability flag, same semantics as resolve_loot_flag (lot-wide @+0x80, single-item
+    // fallback to getItemFlagId01 @+0x60; repeatable/temp range → not notable).
+    uint32_t flag = *reinterpret_cast<uint32_t *>(row->b + 0x80);
+    if (flag == 0)
+    {
+        int32_t item2 = *reinterpret_cast<int32_t *>(row->b + 0x04);
+        if (item2 == 0) flag = *reinterpret_cast<uint32_t *>(row->b + 0x60);
+    }
+    if (flag == 0xFFFFFFFFu || flag >= 0x40000000u) flag = 0;
+    if (flagOut) *flagOut = flag;
+    // Slot-1 item → encoded key (same as resolve_loot_item_textid).
+    int32_t item1 = *reinterpret_cast<int32_t *>(row->b + 0x00);
+    int32_t cat1  = *reinterpret_cast<int32_t *>(row->b + 0x20);
+    if (item1 > 0 && cat1 >= 1 && cat1 <= 5)
+    {
+        int32_t k = encode_live_item(item1, cat1);
+        if (keyOut) *keyOut = k;
+    }
+    return true;
+}
+
 // One AssetEnvironmentGeometryParam row (320 bytes; pickUpItemLotParamId @ +0xb8,
 // s32 — offset confirmed vs the paramdef DetectedSize=320). Read by raw offset
 // like RawItemLotRow.

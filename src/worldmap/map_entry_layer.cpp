@@ -385,11 +385,20 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
     for (const DiskEnemy &en : enemies)
         if (en.entityId != 0) ent_to_pos.emplace(en.entityId, &en);
 
+    namespace gen = goblin::generated;
     int emitted = 0, no_entity = 0, dup = 0, treasure_dup = 0, unclassified = 0;
     int emit_direct = 0, emit_ev1200 = 0;  // by mechanism (lotType 1 = direct, 2 = event-1200)
+    // Mechanism C (sequence-sibling) diag.
+    int sib_emitted = 0, sib_runeember = 0, sib_unclassified = 0;
     const bool verbose = goblin::config::diagLootPos;
     std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
     std::unordered_set<uint64_t> seen;      // dedup by (entity<<32 | lot)
+    std::unordered_set<uint32_t> sib_seen;  // sub-lots already emitted (mechanism C dedup)
+    // Every award lot is a "base" — a sibling that equals another base is emitted as that
+    // base (its own entity/pos), so don't double it in the sibling walk.
+    std::unordered_set<uint32_t> base_lots;
+    base_lots.reserve(awards.size());
+    for (const DiskEmevd &a : awards) base_lots.insert(a.lotId);
     for (const DiskEmevd &a : awards)
     {
         auto it = ent_to_pos.find(a.entityId);
@@ -424,12 +433,55 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
         ++emitted;
         (a.lotType == 2 ? emit_ev1200 : emit_direct)++;
         if (verbose) ++per_cat[cat];
+
+        // ── Mechanism C: sequence-sibling expansion ──
+        // The ItemLotParam row sequence base, base+1, base+2, … is one award bundle (e.g. a
+        // boss drops Lhutel + Smithing Stone [2], or the Oracle Effigy + 3 Fortunes set). The
+        // bake only emits the base; we walk the contiguous sub-lots and emit each notable one
+        // at the SAME position. Walk BOTH ItemLotParam tables (some bundles cross tables — the
+        // base is in _enemy, the reward sub-lots in _map), stopping at the first gap per table.
+        // The _map branch additionally stops at a treasure base lot (otherwise consecutive _map
+        // rows are unrelated placements). Skip rune/ember pieces (already on the map via the
+        // Reforged GEOM category) and anything already placed.
+        constexpr uint32_t kMaxSib = 50;
+        for (uint8_t tbl = 1; tbl <= 2; ++tbl)
+        {
+            for (uint32_t off = 1; off <= kMaxSib; ++off)
+            {
+                uint32_t sub = a.lotId + off;
+                if (tbl == 1 && treasure_lots.count(sub)) break;  // another treasure → chain ends
+                uint32_t sflag = 0;
+                int32_t skey = 0;
+                if (!goblin::lot_row_in_table(sub, tbl, &sflag, &skey)) break;  // gap → chain ends
+                if (sflag == 0 || skey == 0) continue;  // exists, but not a notable item drop
+                if (base_lots.count(sub) || treasure_lots.count(sub)) continue;  // placed elsewhere
+                if (!sib_seen.insert(sub).second) continue;  // already emitted as a sibling
+                int scat = goblin::item_marker_category(skey);
+                if (scat < 0) scat = goblin::classify_item_live(skey);
+                if (scat < 0 || scat >= NUM_CAT) { ++sib_unclassified; continue; }
+                // Rune/Ember pieces already show via the Reforged GEOM category → don't double.
+                if (scat == (int)gen::Category::ReforgedRunePieces ||
+                    scat == (int)gen::Category::ReforgedEmberPieces) { ++sib_runeember; continue; }
+                from::paramdef::WORLD_MAP_POINT_PARAM_ST sd{};
+                sd.areaNo = pos->area;
+                sd.gridXNo = pos->gx;
+                sd.gridZNo = pos->gz;
+                sd.posX = pos->posX;
+                sd.posZ = pos->posZ;
+                push_marker(/*row_id=*/sub, sd, scat, sub, /*lotType=*/tbl);
+                covered.insert(sub);  // drops the matching baked LootSource::Emevd sub-lot row
+                ++sib_emitted;
+                if (verbose) ++per_cat[scat];
+            }
+        }
     }
-    spdlog::info("[LOOTDISK] emevd drops: {} markers emitted ({} direct + {} event-1200; {} awards "
-                 "total; filtered: {} entity-not-an-msb-enemy, {} (entity,lot)-dedup, {} treasure-dup, "
-                 "{} unclassified)",
-                 emitted, emit_direct, emit_ev1200, (int)awards.size(), no_entity, dup, treasure_dup,
-                 unclassified);
+    spdlog::info("[LOOTDISK] emevd drops: {} base markers ({} direct + {} event-1200) + {} sequence-"
+                 "siblings = {} total ({} awards; filtered: {} entity-not-an-msb-enemy, {} "
+                 "(entity,lot)-dedup, {} treasure-dup, {} base-unclassified; siblings: {} rune/ember-"
+                 "skipped, {} unclassified)",
+                 emitted, emit_direct, emit_ev1200, sib_emitted, emitted + sib_emitted,
+                 (int)awards.size(), no_entity, dup, treasure_dup, unclassified, sib_runeember,
+                 sib_unclassified);
     if (verbose)
         for (auto &[cat, n] : per_cat)
             spdlog::info("[LOOTDISK]   emevd-drop category index {} = {} markers", cat, n);
