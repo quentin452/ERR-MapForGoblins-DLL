@@ -2,18 +2,18 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 10:32:26.858
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 10:53:08.046
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - Graces are `Live` (BonfireWarpParam) but tallied separately in GraceLayer — not in this table.
 
 ## ▶ Baked markers remaining
 
-# **2806**  ← drive this to **0**
+# **1908**  ← drive this to **0**
 
 | | baked | disk | live | live-cls | total |
 |---|--:|--:|--:|--:|--:|
-| **all categories** | **2806** | 8398 | 217 | 217 | 11421 |
+| **all categories** | **1908** | 23379 | 217 | 3657 | 25504 |
 
 🔴 baked-only: **15**  ·  🟡 partial: **31**  ·  🟢 off-bake: **17**  (of 63 active categories)
 
@@ -40,18 +40,18 @@
 | Loot - Ammo | 3 | 0 | 0 | 0 | 3 | 🔴 baked-only |
 | Loot - Bell-Bearings | 0 | 50 | 0 | 0 | 50 | 🟢 off-bake |
 | Loot - Consumables | 1 | 231 | 0 | 52 | 232 | 🟡 partial |
-| Loot - Crafting Materials | 5 | 2754 | 0 | 85 | 2759 | 🟡 partial |
+| Loot - Crafting Materials | 5 | 16800 | 0 | 3525 | 16805 | 🟡 partial |
 | Loot - Dragon Hearts | 1 | 20 | 0 | 0 | 21 | 🟡 partial |
 | Loot - Gestures | 7 | 0 | 0 | 0 | 7 | 🔴 baked-only |
-| Loot - Gloveworts | 11 | 39 | 0 | 0 | 50 | 🟡 partial |
+| Loot - Gloveworts | 11 | 271 | 0 | 0 | 282 | 🟡 partial |
 | Loot - Golden Runes | 9 | 217 | 0 | 0 | 226 | 🟡 partial |
 | Loot - Golden Runes (Low) | 14 | 430 | 0 | 0 | 444 | 🟡 partial |
 | Loot - Greases | 1 | 138 | 0 | 0 | 139 | 🟡 partial |
-| Loot - Great Gloveworts | 0 | 20 | 0 | 0 | 20 | 🟢 off-bake |
-| Loot - Material Nodes | 909 | 0 | 0 | 0 | 909 | 🔴 baked-only |
+| Loot - Great Gloveworts | 0 | 23 | 0 | 0 | 23 | 🟢 off-bake |
+| Loot - Material Nodes | 11 | 0 | 0 | 0 | 11 | 🔴 baked-only |
 | Loot - MP-Fingers | 2 | 7 | 0 | 0 | 9 | 🟡 partial |
 | Loot - Prattling Pates | 0 | 9 | 0 | 0 | 9 | 🟢 off-bake |
-| Loot - Rada Fruit | 0 | 14 | 0 | 0 | 14 | 🟢 off-bake |
+| Loot - Rada Fruit | 0 | 1306 | 0 | 0 | 1306 | 🟢 off-bake |
 | Loot - Reusables | 1 | 10 | 0 | 0 | 11 | 🟡 partial |
 | Loot - Rune Arcs | 0 | 75 | 0 | 0 | 75 | 🟢 off-bake |
 | Loot - Smithing Stones | 8 | 316 | 0 | 2 | 324 | 🟡 partial |
@@ -68,10 +68,10 @@
 | Quest - Deathroot | 0 | 9 | 0 | 0 | 9 | 🟢 off-bake |
 | Quest - Progression | 0 | 44 | 0 | 0 | 44 | 🟢 off-bake |
 | Quest - Seedbed Curses | 0 | 6 | 0 | 0 | 6 | 🟢 off-bake |
-| Reforged - Ember Pieces | 19 | 410 | 0 | 0 | 429 | 🟡 partial |
+| Reforged - Ember Pieces | 19 | 279 | 0 | 0 | 298 | 🟡 partial |
 | Reforged - Fortunes | 54 | 7 | 0 | 0 | 61 | 🟡 partial |
 | Reforged - Items | 29 | 47 | 0 | 0 | 76 | 🟡 partial |
-| Reforged - Rune Pieces | 114 | 1579 | 0 | 0 | 1693 | 🟡 partial |
+| Reforged - Rune Pieces | 114 | 1118 | 0 | 0 | 1232 | 🟡 partial |
 | World - Bosses | 0 | 0 | 217 | 0 | 217 | 🟢 off-bake |
 | World - Hostile NPC | 53 | 0 | 0 | 0 | 53 | 🔴 baked-only |
 | World - Imp Statues | 36 | 0 | 0 | 0 | 36 | 🔴 baked-only |
