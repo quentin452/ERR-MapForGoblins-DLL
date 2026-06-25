@@ -513,7 +513,8 @@ std::vector<DiskEmevd> load_emevd_awards(const std::unordered_set<uint32_t> &kno
 }
 
 std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags(
-    std::unordered_map<uint32_t, uint32_t> *paintings_out)
+    std::unordered_map<uint32_t, uint32_t> *paintings_out,
+    std::vector<msbe::GestureRef> *gestures_out)
 {
     std::unordered_map<uint32_t, uint32_t> out;
     ensure_map_dir_resolved();
@@ -549,6 +550,10 @@ std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags(
         if (paintings_out)
             for (const auto &pf : msbe::parse_emevd_paintings(evd.data(), evd.size()))
                 paintings_out->emplace(pf.first, pf.second);
+        // Gesture-spawn refs (template 90005570) from the SAME blob (one per call; dedup at the pass).
+        if (gestures_out)
+            for (const auto &gr : msbe::parse_emevd_gestures(evd.data(), evd.size()))
+                gestures_out->push_back(gr);
         ++parsed;
     }
     spdlog::info("[LOOTDISK] World-feature flags: {} entity→flag from {} EMEVD files ({} KRAK skipped)",
@@ -556,6 +561,9 @@ std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags(
     if (paintings_out)
         spdlog::info("[LOOTDISK] World-feature flags: {} painting events (entity→flag 580000-580199)",
                      (int)paintings_out->size());
+    if (gestures_out)
+        spdlog::info("[LOOTDISK] World-feature flags: {} gesture-spawn refs (template 90005570)",
+                     (int)gestures_out->size());
     return out;
 }
 } // namespace goblin::worldmap
