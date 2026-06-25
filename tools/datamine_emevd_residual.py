@@ -340,6 +340,73 @@ def main():
           f'(covers {len(by_sib & sib_direct_only)}/162 baked, '
           f'over-emit {len(sib_direct_only - baked_any)})')
 
+    # ── detail the UNREC residual: where do they come from, can the LIVE fallback help? ──
+    print(f'\n=== UNREC detail ({len(unrec)}) — table / flag / base / why ===')
+    placed = set(direct_lots) | set(ev1200_base.keys())
+    for lot in sorted(unrec):
+        tbl = 'enemy' if lot in item_lots_enemy else ('map' if lot in item_lots_map else 'NEITHER')
+        l = item_lots_enemy.get(lot) or item_lots_map.get(lot) or {}
+        flag = int(l.get('getItemFlagId', 0))
+        cat, iid, nm = first_item(lot)
+        # find the nearest lower base in the same table (within 50) and whether it's placed
+        base_found = None
+        src = item_lots_enemy if lot in item_lots_enemy else item_lots_map
+        for off in range(1, 51):
+            b = lot - off
+            if b in placed: base_found = (b, 'PLACED'); break
+            if b in baked_emevd: base_found = (b, 'baked-emevd-not-placed'); break
+            if b not in src: base_found = (None, f'gap@-{off}'); break
+        # would the runtime live classifier handle the identity? (goods/weapon/etc. all do)
+        live_ok = cat in (1, 2, 3, 4, 5)
+        print(f'  lot {lot} [{tbl}] flag={flag} item={nm!r} (cat{cat}/id{iid}) '
+              f'base={base_found} live_classify={"OK" if live_ok else "NO"}')
+
+    # ── Reproduce the RUNTIME's uncovered residual + check resolve_loot_flag ──
+    # resolve_loot_flag sim: 0 / -1 / >=0x40000000 -> 0 (treated repeatable, sub-lot dropped).
+    def rlf(flag):
+        f = flag & 0xffffffff
+        if f == 0 or f == 0xffffffff or f >= 0x40000000:
+            return 0
+        return f
+    def lot_flag_u(lot):
+        l = item_lots_enemy.get(lot) or item_lots_map.get(lot)
+        return int(l.get('getItemFlagId', 0)) if l else 0
+    def sibs_both(base):
+        out = []
+        for tbl, is_map in ((item_lots_enemy, False), (item_lots_map, True)):
+            off = 1
+            while off <= 50:
+                sid = base + off
+                if is_map and sid in treasure_base_lots: break
+                if sid not in tbl: break
+                out.append(sid); off += 1
+        return out
+    covered_rt = set(direct_lots) | set(ev1200_base.keys())  # base awards emit unconditionally
+    for base in list(direct_lots) + list(ev1200_base.keys()):
+        for s in sibs_both(base):
+            if rlf(lot_flag_u(s)) == 0 or not lot_nonempty(s):
+                continue
+            _, iid, _ = first_item(s)
+            if iid in (800010, 850010):  # rune/ember suppressed
+                continue
+            covered_rt.add(s)
+    uncovered_rt = baked_emevd - covered_rt
+    print(f'\n=== RUNTIME residual reproduction (resolve_loot_flag applied) ===')
+    print(f'  baked Emevd covered by the runtime A+B+C: {len(baked_emevd & covered_rt)} / {len(baked_emevd)}')
+    print(f'  UNCOVERED (stay baked): {len(uncovered_rt)}')
+    hi = 0
+    for lot in sorted(uncovered_rt):
+        f = lot_flag_u(lot) & 0xffffffff
+        cat, iid, nm = first_item(lot)
+        why = ('flag>=0x40000000 (DROPPED as repeatable)' if (f >= 0x40000000 and f != 0xffffffff)
+               else 'flag=-1 (re-droppable)' if f == 0xffffffff
+               else 'flag=0 (no persistent flag)' if f == 0
+               else 'covered? (base/edge)')
+        if f >= 0x40000000 and f != 0xffffffff: hi += 1
+        print(f'    lot {lot} flag={f}(0x{f:x}) item={nm!r} -> {why}')
+    print(f'  >>> of the uncovered, {hi} have a HIGH flag (>=0x40000000) — candidates wrongly '
+          f'treated as repeatable by resolve_loot_flag')
+
     # samples
     print('\n=== samples ===')
     for tag, s in (('ev1200', by_ev1200), ('sibling', by_sib), ('UNREC', unrec)):
