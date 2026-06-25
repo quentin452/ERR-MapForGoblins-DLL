@@ -1655,6 +1655,17 @@ namespace
             ImGui::Checkbox("Require map fragments (hide an area's icons until its fragment is found)",
                             &goblin::config::requireMapFragments);
 
+            // DIAG: draw ONLY the no-bake residual (Baked-source markers; disk/live twins already
+            // deduped away). Fly the world + eyeball each spot — real loot the live pass misses
+            // (coverage gap) vs a phantom the bake invented (bake bug). See nobake_scoreboard.md.
+            ImGui::Checkbox("Baked-only (diag: show just the no-bake residual)",
+                            &goblin::config::bakedOnly);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Hides every marker the live disk/memory passes already cover,\n"
+                                  "leaving only the markers still coming from the static bake.\n"
+                                  "Use it to judge each leftover: real loot we fail to source live\n"
+                                  "(coverage miss) vs a stale/invented spot (bake bug).");
+
             // Collected/cleared graying (overlay map; live, persists via "Save to INI").
             // On = dim looted items / killed bosses (cleared bosses get a checkmark);
             // hide_collected switches dim → remove (legacy native-map behaviour).
