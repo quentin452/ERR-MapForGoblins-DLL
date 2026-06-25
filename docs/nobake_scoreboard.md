@@ -2,7 +2,7 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 15:15:05.782
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 15:21:53.439
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - **`drawn`** = real markers the renderer draws (= total). **`census`** = the ImGui badge denominator (completable spots) — distinct collect flags for flag-based categories, row count for geom/SFX pieces, 0 for graces; it EXCLUDES respawnable flag-less gather, so `census < drawn` wherever markers share a flag or respawn.
@@ -12,13 +12,13 @@
 
 ## ▶ Baked markers remaining
 
-# **1050**  ← drive this to **0**
+# **1036**  ← drive this to **0**
 
 | | baked | disk | live | live-cls | total |
 |---|--:|--:|--:|--:|--:|
-| **all categories** | **1050** | 7324 | 463 | 186 | 8837 |
+| **all categories** | **1036** | 7338 | 463 | 186 | 8837 |
 
-🔴 baked-only: **9**  ·  🟡 partial: **32**  ·  🟢 off-bake: **22**  (of 63 active categories)
+🔴 baked-only: **8**  ·  🟡 partial: **32**  ·  🟢 off-bake: **23**  (of 63 active categories)
 
 ## Tile coverage (`_00`-only parser)
 
@@ -98,7 +98,7 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | World - Paintings | 11 | 0 | 0 | 0 | 11 | atlas 65% | 🔴 baked-only |
 | World - Quest NPC | 344 | 0 | 0 | 0 | 344 | circle | 🔴 baked-only |
 | World - Spirit Springs | 0 | 72 | 0 | 0 | 72 | atlas 96% | 🟢 off-bake |
-| World - Spiritspring Hawks | 14 | 0 | 0 | 0 | 14 | atlas 69% | 🔴 baked-only |
+| World - Spiritspring Hawks | 0 | 14 | 0 | 0 | 14 | atlas 69% | 🟢 off-bake |
 | World - Stakes of Marika | 0 | 219 | 0 | 0 | 219 | atlas 19% ⚠ | 🟢 off-bake |
 | World - Summoning Pools | 0 | 0 | 246 | 0 | 246 | atlas 69% | 🟢 off-bake |
 
