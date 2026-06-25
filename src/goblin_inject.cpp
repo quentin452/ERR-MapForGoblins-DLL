@@ -4350,6 +4350,28 @@ uint32_t goblin::aeg_pickup_lot(uint32_t aegRow)
     return lot;
 }
 
+// isEnableRepick = AssetGeometryParam byte 0x3c bit 6 (mask 0x40). Offset derived from the
+// paramdef bit-packing (dummy8 Reserve_2 packs into the u8 isBreak* byte) + anchored on the
+// known pickUpItemLotParamId @ 0xb8.
+// A gather node respawns (isEnableRepick) + hides until then (isHiddenOnRepick) — and those two
+// flags are equal for every pickup asset (82 gather / 239 clutter, 0 split — checked offline), so
+// this one bit is the bake's gather filter. Same RawAegRow param table as aeg_pickup_lot.
+bool goblin::aeg_is_gather(uint32_t aegRow)
+{
+    if (aegRow == 0) return false;
+    static std::optional<from::params::ParamTableSequence<RawAegRow>> s_seq;
+    static std::once_flag s_once;
+    static bool s_ok = false;
+    std::call_once(s_once, [] {
+        try { s_seq.emplace(from::params::get_param<RawAegRow>(L"AssetEnvironmentGeometryParam"));
+              s_ok = true; } catch (...) { s_ok = false; }
+    });
+    if (!s_ok) return false;
+    RawAegRow *row = s_seq->try_get(aegRow);
+    if (!row) return false;
+    return (row->b[0x3c] & 0x40) != 0;
+}
+
 // NpcParam row (736 bytes = NPC_PARAM_ST DetectedSize; itemLotId_enemy s32 @ +0x30,
 // itemLotId_map s32 @ +0x34 — offsets pinned vs the applied paramdef, see memory
 // msbe-enemy-loot-offsets / docs/re/windows_enemy_loot_nobake_analysis.md).

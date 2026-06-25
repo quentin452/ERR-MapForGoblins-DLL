@@ -329,6 +329,14 @@ namespace goblin
     // disk collectible source (loot_collectibles) — no bake, no manual model→item map.
     uint32_t aeg_pickup_lot(uint32_t aegRow);
 
+    // True if the AEG asset is a one-time GATHER node (AssetEnvironmentGeometryParam
+    // [aegRow].isEnableRepick, byte 0x3c bit 6). This is the bake's gather filter
+    // (isEnableRepick ⇔ isHiddenOnRepick for every pickup asset — verified), so the
+    // collectible pass can place every gather node generically instead of the _8xx
+    // model-range heuristic — separating gather nodes from one-shot clutter (pots/jars/
+    // corpses, isEnableRepick=false). No bake. aegRow = AEG{A}_{B} → A*1000+B.
+    bool aeg_is_gather(uint32_t aegRow);
+
     // Placed enemy's drop item-lot, resolved LIVE from NpcParam[npcParamId]: prefers
     // itemLotId_map (sets *lotTypeOut=1) over itemLotId_enemy (sets *lotTypeOut=2), 0 if
     // none. npcParamId = the MSB Enemy part's NPCParamID. Feeds the disk enemy-drop source
