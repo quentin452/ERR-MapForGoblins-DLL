@@ -238,6 +238,11 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
 {
     GOBLIN_BENCH("build.disk_loot");
     int emitted = 0, unclassified = 0;
+    // All Treasure base lots (the lotId each MSB Treasure carries @td+0x10), built up front so
+    // the sibling walk below can stop a chain at the next treasure base regardless of emit order.
+    std::unordered_set<uint32_t> bases;
+    bases.reserve(treasures.size());
+    for (const DiskTreasure &t : treasures) bases.insert(t.lotId);
     for (const DiskTreasure &t : treasures)
     {
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
@@ -263,8 +268,57 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
         lot_tile.emplace(t.lotId, pack_tile(t.area, t.gx, t.gz)); // first tile per lot
         ++emitted;
     }
-    spdlog::info("[LOOTDISK] emitted {} disk loot markers, {} lots covered, {} unclassified",
-                 emitted, (int)covered.size(), unclassified);
+
+    // ── Sequence-sibling expansion (multi-lot treasures; mirrors EMEVD mechanism C) ──
+    // A physical MSB Treasure carries ONE itemLotId@td+0x10 (the chain BASE), but ER bundles a
+    // multi-item reward as a CONTIGUOUS ItemLotParam_map sequence base, base+1, base+2, … (e.g.
+    // a corpse grants a full armour set = 4 rows; an Oracle Effigy + Fortunes bundle). The MSB
+    // parser reads only the base, so the bake's expanded sibling rows are exactly the DEBAKE-GAP
+    // (~310/328 measured: Armour sets dominate). Walk the contiguous _map sub-lots and emit each
+    // NOTABLE one (flag != 0, real item) at the SAME treasure position, classified live. Stop at
+    // the first param gap or the next treasure base. Skip Rune/Ember pieces (already on the map
+    // via the Reforged GEOM category — suppress by goods id; they are GEOM-tracked / absent from
+    // ITEM_ICONS so the category check would miss them). Same lot_row_in_table walker as EMEVD C.
+    int sib_emitted = 0, sib_runeember = 0, sib_unclassified = 0;
+    constexpr uint32_t kMaxSib = 50;
+    std::unordered_set<uint32_t> sib_seen;
+    for (const DiskTreasure &t : treasures)
+    {
+        for (uint32_t off = 1; off <= kMaxSib; ++off)
+        {
+            uint32_t sub = t.lotId + off;
+            if (bases.count(sub)) break;          // next treasure base → this chain ends
+            uint32_t sflag = 0;
+            int32_t skey = 0;
+            if (!goblin::lot_row_in_table(sub, 1, &sflag, &skey)) break;  // param gap → chain ends
+            if (sflag == 0 || skey == 0) continue; // exists but repeatable/empty → not notable
+            if (!sib_seen.insert(sub).second) continue;  // already claimed by an earlier base
+            if (skey >= 500000000 && skey < 600000000)
+            {
+                int32_t gid = skey - 500000000;
+                if (gid == 800010 || gid == 850010) { ++sib_runeember; continue; }  // Rune/Ember
+            }
+            int scat = goblin::item_marker_category(skey);
+            bool slc = false;
+            if (scat < 0) { scat = goblin::classify_item_live(skey); slc = (scat >= 0); }
+            if (scat < 0 || scat >= NUM_CAT) { ++sib_unclassified; continue; }
+            from::paramdef::WORLD_MAP_POINT_PARAM_ST sd{};
+            sd.areaNo = t.area;
+            sd.gridXNo = t.gx;
+            sd.gridZNo = t.gz;
+            sd.posX = t.posX;
+            sd.posZ = t.posZ;
+            push_marker(/*row_id=*/sub, sd, scat, sub, /*lotType=*/1, Source::DiskMSB, slc);
+            covered.insert(sub);  // drops the matching baked LootSource::Treasure sibling row
+            lot_tile.emplace(sub, pack_tile(t.area, t.gx, t.gz));
+            ++sib_emitted;
+        }
+    }
+    spdlog::info("[LOOTDISK] emitted {} disk loot markers + {} sequence-siblings (multi-lot "
+                 "treasures), {} lots covered, {} base-unclassified ({} sibling rune/ember-skipped, "
+                 "{} sibling-unclassified)",
+                 emitted, sib_emitted, (int)covered.size(), unclassified, sib_runeember,
+                 sib_unclassified);
 }
 
 // AEG collectible markers (config loot_collectibles): each placed AEG Asset whose
