@@ -385,7 +385,6 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
     for (const DiskEnemy &en : enemies)
         if (en.entityId != 0) ent_to_pos.emplace(en.entityId, &en);
 
-    namespace gen = goblin::generated;
     int emitted = 0, no_entity = 0, dup = 0, treasure_dup = 0, unclassified = 0;
     int emit_direct = 0, emit_ev1200 = 0;  // by mechanism (lotType 1 = direct, 2 = event-1200)
     // Mechanism C (sequence-sibling) diag.
@@ -456,12 +455,19 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
                 if (sflag == 0 || skey == 0) continue;  // exists, but not a notable item drop
                 if (base_lots.count(sub) || treasure_lots.count(sub)) continue;  // placed elsewhere
                 if (!sib_seen.insert(sub).second) continue;  // already emitted as a sibling
+                // ERR Rune/Ember Pieces already show via the Reforged GEOM category at their real
+                // scattered locations; their lot bleeds into a boss/scarab sub-lot chain here, which
+                // would draw a DUPLICATE at the wrong (boss) position. Suppress by goods id — they
+                // are NOT in the baked ITEM_ICONS classifier (GEOM-tracked), so the category check
+                // misses them. ERR-specific ids (no-op on other profiles): 800010 Rune, 850010 Ember.
+                if (skey >= 500000000 && skey < 600000000)
+                {
+                    int32_t gid = skey - 500000000;
+                    if (gid == 800010 || gid == 850010) { ++sib_runeember; continue; }
+                }
                 int scat = goblin::item_marker_category(skey);
                 if (scat < 0) scat = goblin::classify_item_live(skey);
                 if (scat < 0 || scat >= NUM_CAT) { ++sib_unclassified; continue; }
-                // Rune/Ember pieces already show via the Reforged GEOM category → don't double.
-                if (scat == (int)gen::Category::ReforgedRunePieces ||
-                    scat == (int)gen::Category::ReforgedEmberPieces) { ++sib_runeember; continue; }
                 from::paramdef::WORLD_MAP_POINT_PARAM_ST sd{};
                 sd.areaNo = pos->area;
                 sd.gridXNo = pos->gx;
