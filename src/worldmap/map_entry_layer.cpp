@@ -1754,19 +1754,26 @@ void build_buckets_impl()
             if (int32_t e = goblin::npc_item_lot_enemy(en.npcParamId); e > 0) lots30.insert((uint32_t)e);
             if (int32_t m = goblin::npc_item_lot_map(en.npcParamId);  m > 0) lots34.insert((uint32_t)m);
         }
-        int in30 = 0, in34 = 0, nowhere = 0;
+        // FULL NpcParam table (every row, placed or not) → separates an OFFSET bug from a PLACEMENT gap.
+        std::unordered_set<uint32_t> tbl30, tbl34;
+        goblin::npc_all_lot_sets(tbl30, tbl34);
+        int placed30 = 0, placed34 = 0, tableOnly30 = 0, tableOnly34 = 0, nowhere = 0;
         for (uint32_t L : uncovered_enemy_lots)
         {
-            if (lots30.count(L)) ++in30;
-            else if (lots34.count(L)) ++in34;
-            else ++nowhere;
+            if (lots30.count(L)) ++placed30;               // a PLACED enemy drops it via 0x30 (recoverable)
+            else if (lots34.count(L)) ++placed34;          // a PLACED enemy drops it via 0x34 (recoverable)
+            else if (tbl30.count(L)) ++tableOnly30;        // some NpcParam has it @0x30 but it's NOT placed
+            else if (tbl34.count(L)) ++tableOnly34;        // some NpcParam has it @0x34 but it's NOT placed
+            else ++nowhere;                                // at NEITHER field of ANY row → offset bug / not-npc
         }
-        spdlog::info("[ENEMY-NONLOD] {} non-_00 enemies (+{} distinct NpcParam); enemy-lot sets: {} via "
-                     "0x30, {} via 0x34. Of the {} uncovered baked-Enemy lots: {} match itemLotId_enemy "
-                     "(0x30), {} match itemLotId_MAP(0x34) [recoverable via map-lot], {} match NEITHER "
-                     "field of ANY placed enemy (NpcParam absent from the deployed mod → version drift).",
-                     (int)nonlod.size(), (int)npc_seen.size(), (int)lots30.size(), (int)lots34.size(),
-                     (int)uncovered_enemy_lots.size(), in30, in34, nowhere);
+        spdlog::info("[ENEMY-NONLOD] {} non-_00 enemies; placed enemy-lot sets {}x0x30 {}x0x34; FULL "
+                     "NpcParam table {}x0x30 {}x0x34. Of the {} uncovered baked-Enemy lots:",
+                     (int)nonlod.size(), (int)lots30.size(), (int)lots34.size(),
+                     (int)tbl30.size(), (int)tbl34.size(), (int)uncovered_enemy_lots.size());
+        spdlog::info("[ENEMY-NONLOD]   placed: {} via 0x30 + {} via 0x34 (RECOVERABLE) | not-placed but in "
+                     "table: {} @0x30 + {} @0x34 (npc exists, MSB parse misses its placement) | {} at "
+                     "NEITHER field of ANY row (OFFSET BUG: lot lives elsewhere, or not npc-derived)",
+                     placed30, placed34, tableOnly30, tableOnly34, nowhere);
     }
     if (diag)
     {
