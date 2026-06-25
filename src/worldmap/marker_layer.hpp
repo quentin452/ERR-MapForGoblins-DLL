@@ -14,6 +14,14 @@
 
 namespace goblin::worldmap
 {
+// Provenance of a marker — where its existence + position actually came from, for the
+// [COVERAGE] no-bake scoreboard (how much still depends on the static bake vs the live
+// mod files / game memory). Baked = the static goblin_map_data bake (MAP_ENTRIES);
+// DiskMSB = parsed from the ACTIVE mod's real MSB files (the disk loot/collectible/enemy/
+// emevd passes); Live = read from live game params (field bosses via WorldMapPointParam,
+// graces via BonfireWarpParam). Default Baked.
+enum class Source : uint8_t { Baked, DiskMSB, Live };
+
 // A single marker in UNIFIED world space, pre-classified to a map group.
 struct Marker
 {
@@ -84,6 +92,14 @@ struct Marker
     // Cached live PAGE (0 overworld, 1 base-UG, 10 DLC; -1 untried). Lets the group be
     // derived without the baked fold: group = (page==10?2:0)|((area==12||40-43)?1:0).
     mutable int live_page = -1;
+    // ── Provenance (for the [COVERAGE] no-bake scoreboard) ────────────────────────
+    // Where this marker came from. Set by the build sites (push_marker param); default
+    // Baked so any unstamped path is conservatively counted as still-baked.
+    Source source = Source::Baked;
+    // True when this marker's CATEGORY was resolved via the LIVE classify_item_live
+    // fallback (the baked item→category table missed it — an unbaked / new mod item).
+    // Orthogonal to `source`: a DiskMSB marker may or may not be live-classified.
+    bool live_classified = false;
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the

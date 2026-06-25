@@ -59,6 +59,7 @@ const std::vector<Marker> &GraceLayer::markers() const
         // graces; m12/legacy stay normal = own map layer). Replaces the old areaNo==31 proxy (which
         // missed catacombs, tunnels, the overworld set, etc).
         m.dungeon = e.underground;
+        m.source = Source::Live;   // graces come LIVE from BonfireWarpParam (no bake)
         cache_.push_back(m);
     }
     // Verification (dev, gated by dump_icon_textures): one-shot histogram of grace raw areaNos +

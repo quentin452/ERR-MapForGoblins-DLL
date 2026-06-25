@@ -16,7 +16,9 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <array>
+#include <vector>
 #include <atomic>
 #include <string>
 #include <thread>
@@ -78,7 +80,8 @@ int hide_when_story_flag(int area, int gx, int gz)
 // param) + its row_id + lot linkage, and push it to its bucket. Shared by the MAP_ENTRIES pass and
 // the live-boss pass so both produce identical markers.
 void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST &d, int c,
-                 uint32_t lotId, uint8_t lotType)
+                 uint32_t lotId, uint8_t lotType,
+                 Source source = Source::Baked, bool live_classified = false)
 {
     namespace gen = goblin::generated;
     int ga;
@@ -117,6 +120,8 @@ void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST
                        cat == gen::Category::LootMaterialNodes;
     const bool kind = cat == gen::Category::WorldKindlingSpirits;
     m.lot_backed = !piece && !kind && lotId != 0 && lotType != 0;
+    m.source = source;
+    m.live_classified = live_classified;
     g_buckets[c].push_back(m);
 }
 
@@ -138,7 +143,7 @@ void build_live_bosses()
              from::params::get_param<from::paramdef::WORLD_MAP_POINT_PARAM_ST>(L"WorldMapPointParam"))
         {
             if (row.textId2 != 5100) continue;          // field-boss marker rows only
-            push_marker(rowId, row, c, /*lotId=*/0u, /*lotType=*/0u);
+            push_marker(rowId, row, c, /*lotId=*/0u, /*lotType=*/0u, Source::Live);
             ++n;
         }
     }
@@ -183,13 +188,14 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
         // live (the lot-backed path) — exactly like a baked lot-backed row.
         int32_t key = goblin::resolve_loot_item_textid(t.lotId, 1, -1);
         int c = goblin::item_marker_category(key);
-        if (c < 0) c = goblin::classify_item_live(key);  // live fallback (any mod / unbaked item)
+        bool lc = false;
+        if (c < 0) { c = goblin::classify_item_live(key); lc = (c >= 0); }  // live fallback (any mod / unbaked item)
         if (c < 0 || c >= NUM_CAT)
         {
             ++unclassified;  // item type genuinely unknown → no bucket
             continue;
         }
-        push_marker(/*row_id=*/t.lotId, d, c, t.lotId, /*lotType=*/1);
+        push_marker(/*row_id=*/t.lotId, d, c, t.lotId, /*lotType=*/1, Source::DiskMSB, lc);
         covered.insert(t.lotId);
         lot_tile.emplace(t.lotId, pack_tile(t.area, t.gx, t.gz)); // first tile per lot
         ++emitted;
@@ -263,7 +269,8 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         if (treasure_lots.count(lot)) { ++dup; continue; }  // a Treasure ground-item, already placed
         int32_t key = goblin::resolve_loot_item_textid(lot, 1, -1);
         int cat = goblin::item_marker_category(key);
-        if (cat < 0) cat = goblin::classify_item_live(key);  // live fallback (any mod / unbaked item)
+        bool lc = false;
+        if (cat < 0) { cat = goblin::classify_item_live(key); lc = (cat >= 0); }  // live fallback (any mod / unbaked item)
         if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
         d.areaNo = c.area;
@@ -271,7 +278,7 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         d.gridZNo = c.gz;
         d.posX = c.posX;
         d.posZ = c.posZ;
-        push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/1);  // one per placement
+        push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/1, Source::DiskMSB, lc);  // one per placement
         covered.insert(lot);  // for the baked-row replace (de-dup vs the bake), NOT a skip key
         ++emitted;
         if (verbose) ++per_cat[cat];
@@ -337,7 +344,8 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
         if (!seen.insert(lot).second) { ++lot_dup; continue; }  // a notable lot already placed
         int32_t key = goblin::resolve_loot_item_textid(lot, lt, -1);
         int cat = goblin::item_marker_category(key);
-        if (cat < 0) cat = goblin::classify_item_live(key);  // live fallback (any mod / unbaked)
+        bool lc = false;
+        if (cat < 0) { cat = goblin::classify_item_live(key); lc = (cat >= 0); }  // live fallback (any mod / unbaked)
         if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
         d.areaNo = en.area;
@@ -345,7 +353,7 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
         d.gridZNo = en.gz;
         d.posX = en.posX;
         d.posZ = en.posZ;
-        push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/lt);
+        push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/lt, Source::DiskMSB, lc);
         covered.insert(lot);  // drops the matching baked LootSource::Enemy row
         ++emitted;
         if (verbose) ++per_cat[cat];
@@ -411,14 +419,16 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
         uint8_t lt = a.lotType;
         int32_t key = goblin::resolve_loot_item_textid(a.lotId, lt, -1);
         int cat = goblin::item_marker_category(key);
-        if (cat < 0) cat = goblin::classify_item_live(key);
+        bool lc = false;
+        if (cat < 0) { cat = goblin::classify_item_live(key); lc = (cat >= 0); }
         if (cat < 0 || cat >= NUM_CAT)
         {
             uint8_t other = (uint8_t)(a.lotType == 1 ? 2 : 1);
             int32_t key2b = goblin::resolve_loot_item_textid(a.lotId, other, -1);
             int cat2 = goblin::item_marker_category(key2b);
-            if (cat2 < 0) cat2 = goblin::classify_item_live(key2b);
-            if (cat2 >= 0 && cat2 < NUM_CAT) { lt = other; key = key2b; cat = cat2; }
+            bool lc2 = false;
+            if (cat2 < 0) { cat2 = goblin::classify_item_live(key2b); lc2 = (cat2 >= 0); }
+            if (cat2 >= 0 && cat2 < NUM_CAT) { lt = other; key = key2b; cat = cat2; lc = lc2; }
         }
         if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
@@ -427,7 +437,7 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
         d.gridZNo = pos->gz;
         d.posX = pos->posX;
         d.posZ = pos->posZ;
-        push_marker(/*row_id=*/a.lotId, d, cat, a.lotId, lt);
+        push_marker(/*row_id=*/a.lotId, d, cat, a.lotId, lt, Source::DiskMSB, lc);
         covered.insert(a.lotId);  // drops the matching baked LootSource::Emevd row
         ++emitted;
         (a.lotType == 2 ? emit_ev1200 : emit_direct)++;
@@ -466,7 +476,8 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
                     if (gid == 800010 || gid == 850010) { ++sib_runeember; continue; }
                 }
                 int scat = goblin::item_marker_category(skey);
-                if (scat < 0) scat = goblin::classify_item_live(skey);
+                bool slc = false;
+                if (scat < 0) { scat = goblin::classify_item_live(skey); slc = (scat >= 0); }
                 if (scat < 0 || scat >= NUM_CAT) { ++sib_unclassified; continue; }
                 from::paramdef::WORLD_MAP_POINT_PARAM_ST sd{};
                 sd.areaNo = pos->area;
@@ -474,7 +485,7 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
                 sd.gridZNo = pos->gz;
                 sd.posX = pos->posX;
                 sd.posZ = pos->posZ;
-                push_marker(/*row_id=*/sub, sd, scat, sub, /*lotType=*/tbl);
+                push_marker(/*row_id=*/sub, sd, scat, sub, /*lotType=*/tbl, Source::DiskMSB, slc);
                 covered.insert(sub);  // drops the matching baked LootSource::Emevd sub-lot row
                 ++sib_emitted;
                 if (verbose) ++per_cat[scat];
@@ -730,6 +741,50 @@ void build_buckets_impl()
                      "— reachable dummies w/ an EntityID are now disk-emitted", recover);
     }
     build_live_bosses();
+
+    // ── [COVERAGE] no-bake scoreboard ────────────────────────────────────────────
+    // Per category: how many markers came from the static bake (Baked) vs the active
+    // mod's REAL disk MSBs (DiskMSB) vs live game params (Live), + how many needed the
+    // live category fallback (classify_item_live = an item the baked table didn't know).
+    // This is the "what still depends on the bake" view that drives the no-bake migration:
+    // big BAKED-ONLY rows are the next categories to move off the bake. Logged once/build.
+    {
+        struct CovRow { int c, baked, disk, live, lc; };
+        std::vector<CovRow> rows;
+        int tB = 0, tD = 0, tL = 0, tC = 0;
+        for (int c = 0; c < NUM_CAT; ++c)
+        {
+            CovRow r{c, 0, 0, 0, 0};
+            for (const Marker &m : g_buckets[c])
+            {
+                switch (m.source)
+                {
+                case Source::Baked:   ++r.baked; break;
+                case Source::DiskMSB: ++r.disk;  break;
+                case Source::Live:    ++r.live;  break;
+                }
+                if (m.live_classified) ++r.lc;
+            }
+            tB += r.baked; tD += r.disk; tL += r.live; tC += r.lc;
+            if (r.baked || r.disk || r.live) rows.push_back(r);
+        }
+        std::sort(rows.begin(), rows.end(),
+                  [](const CovRow &a, const CovRow &b) { return a.baked > b.baked; });
+        spdlog::info("[COVERAGE] no-bake scoreboard (markers by provenance, baked-heavy first):");
+        for (const CovRow &r : rows)
+        {
+            const int tot = r.baked + r.disk + r.live;
+            const char *status = (r.disk == 0 && r.live == 0) ? "BAKED-ONLY"
+                                 : (r.baked == 0) ? (r.disk ? "disk" : "live")
+                                                  : "partial";
+            spdlog::info("[COVERAGE]   {:<24} baked={:<4} disk={:<4} live={:<4} live-cls={:<3} total={:<4} [{}]",
+                         goblin::markers::category_name(static_cast<gen::Category>(r.c)),
+                         r.baked, r.disk, r.live, r.lc, tot, status);
+        }
+        spdlog::info("[COVERAGE] TOTAL baked={} disk={} live={} live-classified={} "
+                     "(graces counted live separately in GraceLayer)",
+                     tB, tD, tL, tC);
+    }
 }
 
 // Disk-loot build is run ONCE on a background WORKER thread (not std::call_once):
