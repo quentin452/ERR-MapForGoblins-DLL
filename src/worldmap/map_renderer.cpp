@@ -1193,6 +1193,12 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             if (m.group != open_grp)
                 continue; // draw only the open map group
 
+            // [diag] baked-only filter: show ONLY surviving Baked-source markers (= the no-bake
+            // residual; disk/live twins were already dropped at finalize). Lets each spot be
+            // eyeballed in-world — real loot the live pass misses vs a phantom the bake invented.
+            if (goblin::config::bakedOnly && m.source != Source::Baked)
+                continue;
+
             // PROJECT + CULL FIRST, gates LAST. The per-marker visibility gates below
             // (discover/quest/secondary/hide_when/fragment/fog) each call into the game's
             // event-flag lookup — cheap individually but run thousands of times per frame.

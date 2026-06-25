@@ -14,6 +14,7 @@ namespace goblin::config
 {
     uint8_t loadDelay = 5;
     bool requireMapFragments = true;
+    bool bakedOnly = false;  // diag overlay: draw ONLY Baked-source markers (the no-bake residual)
     bool collectedGraying = true;
     bool hideCollected = false;
     bool showRegionLabels = true;  // overlay: draw major-region name labels on the map
@@ -165,6 +166,11 @@ namespace
                 B("require_map_fragments", requireMapFragments, "true",
                   "Require map fragment discovery before showing icons in that area\n"
                   "(overlay map: gates on the area's map-fragment event flag)."),
+                B("baked_only", bakedOnly, "false",
+                  "DIAG: draw ONLY markers still sourced from the static bake (the no-bake\n"
+                  "RESIDUAL) — disk/live-covered spots are hidden. Lets you fly the world and\n"
+                  "eyeball each baked-only spot: real loot the live pass misses (coverage gap)\n"
+                  "vs a phantom the bake invented (bake bug). FALSE = draw everything."),
                 B("collected_graying", collectedGraying, "true",
                   "Overlay map: dim+desaturate markers for items already collected and\n"
                   "bosses already cleared (cleared bosses also get a green checkmark).\n"
