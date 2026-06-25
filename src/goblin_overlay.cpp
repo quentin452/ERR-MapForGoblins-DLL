@@ -26,6 +26,7 @@
 #include "worldmap/category_meta.hpp"    // baked→GPU icon migration counters (F1 panel)
 #include "worldmap/loot_disk.hpp"        // disk_loot_state — F1 "maps not found" error
 #include "generated_shared/goblin_overlay_icons.hpp" // ATLAS_PNG category-icon atlas
+#include "generated_shared/dejavu_sans_ttf.h"         // embedded DejaVu Sans (extended-Latin glyphs)
 #include "stb_image.h"                                // stbi_load_from_memory (PNG decode)
 #include "goblin_bench.hpp"                           // GOBLIN_BENCH scoped timers
 
@@ -1181,10 +1182,13 @@ namespace
 
         // Fonts: ImGui's default (ProggyClean) only has Latin-1 glyphs (0x20-0xFF), so any
         // char beyond — œ (U+0153) in French item names, em-dash, Cyrillic, Greek — renders
-        // as the fallback '?'. Keep the default for the ASCII look, then MERGE a broad-coverage
-        // Windows system font for the EXTENDED glyphs only (minimal visual change; FMG labels
-        // are already UTF-8 via lookup_text_utf8). CJK/Thai/Arabic need a far bigger atlas + a
-        // CJK font — out of scope here. Falls back silently to the default if no font is found.
+        // as the fallback '?'. Keep the default for the ASCII look, then MERGE an EMBEDDED
+        // broad-Latin font (DejaVu Sans, compressed into the DLL via dejavu_sans_ttf.h) for the
+        // EXTENDED glyphs only. Embedded — NOT C:\Windows\Fonts — so it renders identically under
+        // Wine/Proton/Linux where the Windows font paths differ or are absent. FMG labels are
+        // already UTF-8 via lookup_text_utf8. CJK/Thai/Arabic need a far bigger atlas + a CJK
+        // font — out of scope here (European coverage only). A system-font merge stays as a
+        // last-ditch fallback if the embedded decompress ever fails.
         {
             ImGuiIO &io = ImGui::GetIO();
             io.Fonts->AddFontDefault();  // ProggyClean (preserves the existing ASCII look)
@@ -1197,23 +1201,35 @@ namespace
                 0x20A0, 0x20BF,  // currency symbols
                 0,
             };
-            const char *kFontCandidates[] = {
-                "C:\\Windows\\Fonts\\segoeui.ttf",
-                "C:\\Windows\\Fonts\\arial.ttf",
-                "C:\\Windows\\Fonts\\tahoma.ttf",
-            };
             ImFontConfig cfg;
             cfg.MergeMode = true;            // graft these glyphs onto the default font
             cfg.PixelSnapH = true;
-            bool merged = false;
-            for (const char *p : kFontCandidates)
+            // DejaVu Sans (Bitstream Vera / Arev license — freely redistributable, embeddable).
+            // AddFontFromMemoryCompressedTTF decompresses into an atlas-owned buffer; the static
+            // compressed array is only read, never retained.
+            if (io.Fonts->AddFontFromMemoryCompressedTTF(
+                    DejaVuSans_compressed_data, DejaVuSans_compressed_size, 13.0f, &cfg, kExtRanges))
             {
-                if (GetFileAttributesA(p) == INVALID_FILE_ATTRIBUTES) continue;
-                if (io.Fonts->AddFontFromFileTTF(p, 13.0f, &cfg, kExtRanges)) { merged = true;
-                    spdlog::info("[FONT] merged extended Unicode glyphs from {}", p); break; }
+                spdlog::info("[FONT] merged extended Unicode glyphs from embedded DejaVu Sans");
             }
-            if (!merged)
-                spdlog::warn("[FONT] no system font found — non-Latin-1 chars will show '?'");
+            else
+            {
+                // Only reachable if the embedded decompress failed — fall back to a system font.
+                const char *kFontCandidates[] = {
+                    "C:\\Windows\\Fonts\\segoeui.ttf",
+                    "C:\\Windows\\Fonts\\arial.ttf",
+                    "C:\\Windows\\Fonts\\tahoma.ttf",
+                };
+                bool merged = false;
+                for (const char *p : kFontCandidates)
+                {
+                    if (GetFileAttributesA(p) == INVALID_FILE_ATTRIBUTES) continue;
+                    if (io.Fonts->AddFontFromFileTTF(p, 13.0f, &cfg, kExtRanges)) { merged = true;
+                        spdlog::info("[FONT] embedded font failed; merged from {}", p); break; }
+                }
+                if (!merged)
+                    spdlog::warn("[FONT] embedded + system font merge failed — non-Latin-1 chars will show '?'");
+            }
         }
         // Software cursor: the game hides the OS cursor, so ImGui draws its own — but ONLY while the
         // F1 panel is up. Set per-frame to g_show in the render loop (NewFrame now runs every frame
