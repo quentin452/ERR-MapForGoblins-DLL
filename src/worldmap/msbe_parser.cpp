@@ -210,6 +210,9 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             size_t pe = (size_t)rd64(buf, PT.entryArr + (size_t)i * 8);
             if (!inb(pe, 0x70, len)) continue;
             if ((int32_t)rd32(buf, pe + 0x0c) != PART_ENEMY) continue;
+            // GameEditionDisable (int @ +0x44; same pin as assets) — drop disabled placements
+            // the engine never spawns, so the no-bake enemy/hostile-NPC passes match the bake.
+            if (inb(pe, 0x48, len) && rd32(buf, pe + 0x44) == 1) continue;
             uint32_t npc = 0;
             uint64_t tdOff = rd64(buf, pe + 0x68);
             if (tdOff)
@@ -331,6 +334,7 @@ std::vector<EmevdAward> parse_emevd(const uint8_t *buf, size_t len)
 namespace {
 constexpr EmevdTemplate kEmevdFlagTemplates[] = {
     {90005683, 12, 20, 24},  // Hero's Tomb statue: entity@+12, activated flag@+20, minLen 24
+    {90005792, 20, 8, 24},   // Hostile NPC defeated: entity@+20 (X12_4), defeat flag@+8 (X0_4)
 };
 const EmevdTemplate *find_emevd_flag_template(uint32_t eventId)
 {

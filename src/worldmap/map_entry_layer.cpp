@@ -835,6 +835,63 @@ static int build_live_summoning_pools(const std::vector<DiskCollectible> &assets
     return emitted;
 }
 
+// World feature: Hostile NPC invaders (config world_features_from_disk). Each is a placed MSB
+// Enemy (entityId > 0) whose LIVE NpcParam marks it a NAMED invader — teamType ∈ {24,27} AND
+// nameId > 0. The nameId>0 gate is the canonical signal that separates real invaders from mobs
+// sharing the team (bloodfiends c4280, dungeon battlemages, scarabs c419x — none have an
+// NpcName entry). No bake: identity/filter from live NpcParam, the defeat flag from EMEVD
+// template 90005792 (entity→flag in `emevd_flags`), the position from the disk enemy part.
+// textId1 = nameId + 700000000 (NpcName FMG, runtime-localized); the defeat flag drives the
+// cleared checkmark / hide-on-kill (clearedEventFlagId, like live bosses). Dedup by projected
+// cell (invader variants stacked at one trigger spot collapse). Dedicated category → wipe.
+static int build_disk_hostile_npc_markers(
+    const std::vector<DiskEnemy> &enemies,
+    const std::unordered_map<uint32_t, uint32_t> &emevd_flags,
+    std::unordered_set<Cell, CellHash> &out_cells)
+{
+    namespace gen = goblin::generated;
+    GOBLIN_BENCH("build.disk_hostile_npc");
+    const int cat = static_cast<int>(gen::Category::WorldHostileNPC);
+    int emitted = 0, dup = 0, not_invader = 0, no_entity = 0, no_flag = 0;
+    // Dedup by the bake's key — per tile + 0.1u-rounded RAW position (stacked invader variants
+    // at one trigger spot collapse). Keyed on raw pos (NOT the projected cell): a 0.5u world
+    // cell wrongly merges two distinct invaders a few decimetres apart that the engine places
+    // separately. out_cells still gets each emitted cell, only as the finalize "ran" signal.
+    std::unordered_set<std::string> seen_pos;
+    for (const DiskEnemy &e : enemies)
+    {
+        if (e.entityId == 0) { ++no_entity; continue; }  // placed only (not script-spawned)
+        uint8_t team = 0;
+        int32_t name = 0;
+        if (!goblin::npc_team_and_name(e.npcParamId, &team, &name)) { ++not_invader; continue; }
+        if ((team != 24 && team != 27) || name <= 0) { ++not_invader; continue; }
+        std::string pk = std::to_string(e.area) + "_" + std::to_string(e.gx) + "_" +
+                         std::to_string(e.gz) + "_" + std::to_string((long)std::lround(e.posX * 10.0f)) +
+                         "_" + std::to_string((long)std::lround(e.posZ * 10.0f));
+        if (!seen_pos.insert(pk).second) { ++dup; continue; }
+        uint32_t flag = 0;
+        if (auto it = emevd_flags.find(e.entityId); it != emevd_flags.end()) flag = it->second;
+        else ++no_flag;  // invader with no 90005792 defeat flag (drawn, just no kill-tracking)
+
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = e.area;
+        d.gridXNo = e.gx;
+        d.gridZNo = e.gz;
+        d.posX = e.posX;
+        d.posZ = e.posZ;
+        d.textId1 = name + 700000000;          // NpcName FMG (runtime-localized)
+        d.clearedEventFlagId = flag;           // defeated → checkmark / hide (like bosses)
+        d.textDisableFlagId1 = flag;           // also the collected_flag graying path
+        push_marker(/*row_id=*/e.entityId, d, cat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
+        out_cells.insert(cell_of(g_buckets[cat].back()));  // finalize "pass ran" signal
+        ++emitted;
+    }
+    spdlog::info("[LOOTDISK] world features: {} Hostile NPC invaders from disk enemies + live NpcParam "
+                 "({} dup-cell, {} not-named-invader, {} no-entity, {} no-defeat-flag)",
+                 emitted, dup, not_invader, no_entity, no_flag);
+    return emitted;
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
 // NOTE (2026-06-23): a "World-* categories live from WorldMapPointParam by row-id range" experiment
@@ -883,7 +940,9 @@ void build_buckets_impl()
         // join), so parse enemies whenever the enemy OR emevd source is on.
         std::vector<DiskCollectible> disk_collectibles;
         std::vector<DiskEnemy> disk_enemies;
-        const bool wantEnemies = goblin::config::lootEnemyDrops || goblin::config::lootEmevdDrops;
+        // World features need enemies too (Hostile NPC invaders ride the enemy enumeration).
+        const bool wantEnemies = goblin::config::lootEnemyDrops || goblin::config::lootEmevdDrops ||
+                                 goblin::config::worldFeaturesFromDisk;
         // World features (Stakes) are AEG asset placements → they ride the SAME asset
         // enumeration as collectibles (disk_collectibles), so request it when either is on.
         const bool wantAssets = goblin::config::lootCollectibles || goblin::config::worldFeaturesFromDisk;
@@ -904,22 +963,21 @@ void build_buckets_impl()
                                            collectible_cells, piece_disk_keys);
         if (goblin::config::worldFeaturesFromDisk)
         {
-            // EMEVD-sourced graying flags (Hero's Tomb activated flag): only scan the event
-            // dir if a flag-rule feature in the table actually needs it (the arithmetic Imp
-            // rule + Stakes don't), so the common case skips an extra ~500-file read.
-            std::unordered_map<uint32_t, uint32_t> world_feature_flags;
-            bool needsEmevd = false;
-            for (size_t k = 0; k < gen::WORLD_FEATURE_MODEL_COUNT; ++k)
-                if (gen::WORLD_FEATURE_MODELS[k].flag_rule == gen::FlagRule::HeroTombEmevd)
-                { needsEmevd = true; break; }
-            if (needsEmevd)
-                world_feature_flags = load_emevd_world_feature_flags();
+            // EMEVD-sourced graying flags (entity → flag) for Hero's Tomb (template 90005683)
+            // AND Hostile NPC defeat (90005792) — one event-dir scan feeds both passes.
+            std::unordered_map<uint32_t, uint32_t> world_feature_flags =
+                load_emevd_world_feature_flags();
             build_disk_world_feature_markers(disk_collectibles, world_feature_flags, world_feature_cells);
             // Summoning Pools: bespoke live-SignPuddleParam pass (param feature, not an asset
             // model). Rides the same category-wipe finalize via world_feature_cells.
             build_live_summoning_pools(
                 disk_collectibles,
                 world_feature_cells[static_cast<int>(gen::Category::WorldSummoningPools)]);
+            // Hostile NPC invaders: disk enemy placements filtered by live NpcParam (named
+            // invader = teamType ∈ {24,27} ∧ nameId>0), defeat flag from EMEVD 90005792.
+            build_disk_hostile_npc_markers(
+                disk_enemies, world_feature_flags,
+                world_feature_cells[static_cast<int>(gen::Category::WorldHostileNPC)]);
         }
         if (goblin::config::lootEnemyDrops)
             build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots);

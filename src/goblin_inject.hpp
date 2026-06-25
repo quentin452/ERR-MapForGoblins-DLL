@@ -343,6 +343,14 @@ namespace goblin
     // (loot_enemy_drops) — no bake. See memory msbe-enemy-loot-offsets.
     uint32_t npc_loot_lot(uint32_t npcParamId, uint8_t *lotTypeOut);
 
+    // Live NpcParam teamType (u8 @ +0x133) + nameId (s32 @ +0xc) for an MSB enemy's
+    // npcParamId. The no-bake Hostile NPC pass uses it: a named invader = teamType ∈ {24,27}
+    // AND nameId > 0 (a real NpcName entry — the canonical signal separating invaders from
+    // mobs that merely share the team). Returns false if the row is absent / params not ready.
+    // Offsets pinned vs the paramdef layout + raw rows (tools/probe_npcparam_offsets.py:
+    // itemLot 0x30/0x34 cross-check + 25/25 invaders confirmed).
+    bool npc_team_and_name(uint32_t npcParamId, uint8_t *teamOut, int32_t *nameOut);
+
     // Probe one ItemLotParam row in a SPECIFIC table (lotType 1=_map, 2=_enemy; NO
     // fallback to the other), for the EMEVD sequence-sibling walk (loot_emevd_drops
     // mechanism C). Returns true iff the row EXISTS in that table (false = a GAP → stop the
