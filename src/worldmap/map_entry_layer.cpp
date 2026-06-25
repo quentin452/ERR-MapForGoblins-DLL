@@ -1469,11 +1469,14 @@ void build_buckets_impl()
             ++replaced_piece;
             continue;
         }
-        // Material Node IDENTITY dedup: same idea as the pieces above. The disk collectible pass
-        // re-placed this exact AEG gather node (tile + MSB part name); the finalize positional
-        // cell-dedup drops most, but offset near-misses (baked pos >0.5u off the live MSB pos)
-        // survive as the 11 baked-only residual. Drop by identity here — safe by construction
-        // (only matches an object the gather pass PROVABLY emitted). Disk pass owns the position.
+        // Material Node IDENTITY dedup: same idea as the pieces above, and now the PRIMARY dedup
+        // for this category. The disk collectible pass re-places every AEG gather node; matching
+        // by (tile + MSB part name) catches ALL of them (runtime: 1455/1455) — strictly better
+        // than the finalize positional cell-dedup, which left 11 offset near-misses (baked pos
+        // >0.5u off the live MSB pos) as baked-only residual. Safe by construction (only matches an
+        // object the gather pass PROVABLY emitted; the disk marker owns the real position + the
+        // item's real per-item category). The finalize positional pass stays as a fallback for any
+        // gather node whose MSB part name is empty (→ not in gather_disk_keys).
         if (!gather_disk_keys.empty() && e.object_name &&
             e.category == gen::Category::LootMaterialNodes &&
             gather_disk_keys.count(piece_key(e.data.areaNo, e.data.gridXNo, e.data.gridZNo, e.object_name)))
@@ -1571,8 +1574,8 @@ void build_buckets_impl()
         spdlog::info("[LOOTDISK] replaced {} baked Rune/Ember Pieces with disk placements (identity dedup)",
                      replaced_piece);
     if (goblin::config::lootCollectibles)
-        spdlog::info("[LOOTDISK] replaced {} baked Material Nodes by identity (offset near-miss the "
-                     "positional dedup left)", replaced_matnode);
+        spdlog::info("[LOOTDISK] replaced {} baked Material Nodes by identity (tile+part-name; primary "
+                     "dedup — catches the offset near-misses the positional pass left)", replaced_matnode);
     if (goblin::config::lootEnemyDrops)
         spdlog::info("[LOOTDISK] replaced {} baked enemy rows with disk enemy placements", replaced_enemy);
     if (goblin::config::lootEmevdDrops)
