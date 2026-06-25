@@ -270,7 +270,24 @@ cross-tile), and the lot→entity link is in the EMEVD files on disk (`event/*.e
   > dupes are dropped. **PLAN: build C scanning siblings of every placed base (direct + ev1200), emit
   > flag>0 + non-empty + non-Rune/Ember siblings, route through live classify → per-category toggles
   > handle density. Needs a live ItemLotParam contiguity walk (param try_get) — SHARED with enemy-35 +
-  > corpse-30.** 5 truly-unrecoverable = ERR-custom (Oracle Effigy, 3 Fortunes, Viridian Hidden Tear).
+  > corpse-30.**
+  > **★ THE "5 unrecoverable" ARE recoverable (cross-table siblings) — EMEVD = 0 irreducible.** Detailed:
+  > the 5 (Oracle Effigy + 3 Fortunes bundle @ flag 60320, Viridian Hidden Tear) all `live_classify=OK`
+  > (cat1 goods — the live mod-agnostic classifier resolves their identity) AND all have a PLACED base
+  > (Oracle/Viridian bases 1036490010 / 2048400020 are positioned; the 3 Fortunes chain off the Oracle
+  > base, same flag). The ONLY catch: the base is in ItemLotParam_**enemy** but its reward bundle is in
+  > ItemLotParam_**map** — a CROSS-TABLE sibling. So mechanism C must walk siblings of each placed base in
+  > BOTH tables (enemy + map; map branch keeps the stop-at-treasure-base guard). With that, **EMEVD 529 →
+  > 100% no-bakeable, 0 irreducible.**
+  > **★ A+B+C SHIPPED + RUNTIME-VALIDATED (2026-06-25).** `goblin::lot_row_in_table` (probe one
+  > ItemLotParam table, no fallback → exists/flag/key) drives the both-tables sibling walk in
+  > `build_disk_emevd_markers`. Runtime: `388 base (308 direct + 80 ev1200) + 160 sequence-siblings = 548
+  > total; 155 rune/ember-skipped` → **512/529 baked Emevd rows de-baked = 97%** (the 160 clean siblings =
+  > the ~102 boss/NPC armour sets + smithing-stone secondaries the bake never showed). GOTCHA: rune/ember
+  > suppression by Category fails (Rune 800010 / Ember 850010 are GEOM-tracked, absent from ITEM_ICONS) →
+  > suppress by goods id instead. Remaining 17/529 (3%) = sub-lots whose flag resolve_loot_flag treats as
+  > repeatable + edge cases. `lot_row_in_table` is the reusable sibling walker for the enemy-35 + corpse-30
+  > residuals.
   > **RUNTIME-VALIDATED (2026-06-25):** live log with `loot_emevd_drops=true` — 517 EMEVD files →
   > **500 template awards** (exact vs SoulsFormats) → **308 markers emitted** (filtered 163
   > entity-not-an-MSB-enemy, 23 (entity,lot)-dedup, 2 treasure-dup, 4 unclassified) → **300 baked
