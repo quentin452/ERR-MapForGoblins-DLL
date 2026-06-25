@@ -1072,7 +1072,11 @@ def main():
     # Key = offset-encoded item id (identical to the marker textId encoding).
     def _encode_item(iid, cat):
         if cat == 1: return iid + 500000000          # goods
-        if cat == 2: return iid if iid >= 50000000 else iid + 100000000  # ammo / weapon
+        # weapon AND ammo (ids >= 50M) both live in WeaponName.fmg at the +100M offset and MUST
+        # key here identically to the DLL's encode_live_item (goblin_inject.cpp) — the old
+        # `iid if iid >= 50M` raw-keyed ammo, which item_marker_category(+100M) then missed at
+        # runtime, dumping ammo into Equipment - Armaments instead of Loot - Ammo.
+        if cat == 2: return iid + 100000000          # weapon / ammo (WeaponName)
         if cat == 3: return iid + 200000000          # protector
         if cat == 4: return iid + 300000000          # accessory
         if cat == 5: return iid + 400000000          # gem (ash of war)

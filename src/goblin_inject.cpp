@@ -4494,7 +4494,16 @@ int goblin::classify_item_live(int32_t key)
     if (key >= 400000000) return (int)C::EquipAshesOfWar;   // gem
     if (key >= 300000000) return (int)C::EquipTalismans;    // accessory
     if (key >= 200000000) return (int)C::EquipArmour;       // protector
-    if (key >= 100000000) return (int)C::EquipArmaments;    // weapon (ammo folds here too)
+    if (key >= 100000000)  // weapon range (cat 2, key = item id + 100M; ammo + melee/ranged share it)
+    {
+        // Ammo (arrows/bolts/greatbolts = weapon ids >= 50M) is its own marker type, NOT a
+        // melee/ranged armament. The disk loot pass keys it +100M like any cat-2 item (the live
+        // encode_live_item path), but the baked ITEM_ICONS table stores ammo at a LEGACY raw-50M
+        // key that item_marker_category(+100M) misses — so this live fallback owns the routing.
+        // (Root cause also fixed in tools/generate_loot_massedit.py so a regen keys ammo +100M.)
+        if (key - 100000000 >= 50000000) return (int)C::LootAmmo;
+        return (int)C::EquipArmaments;                       // weapon
+    }
     return -1;
 }
 
