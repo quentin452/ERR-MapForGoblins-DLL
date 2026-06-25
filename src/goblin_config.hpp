@@ -36,6 +36,7 @@ namespace goblin
     {
         extern uint8_t loadDelay;
         extern bool requireMapFragments;
+        extern bool requireExplored;
         extern bool collectedGraying;
         extern bool hideCollected;
         extern bool clusterDebugRadius;

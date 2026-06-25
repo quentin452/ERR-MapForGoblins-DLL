@@ -71,6 +71,15 @@ namespace goblin::worldmap_probe
     bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU,
                  float &mapV, int &page);
 
+    // Walk-fog (踏破) per-tile reveal gate (RE: docs/re/windows_worldmap_tile_fog_re_findings.md §7).
+    // The engine keeps a sorted {u32 tileId, u32 flags, u32 extra} table per layer at VM+0x288;
+    // tileId = group*10000 + gridX*100 + gridZ, and a tile is revealed (NOT fog) iff
+    // (flags & 0x17fff)==0 (layer 0 = overworld/DLC). refresh_reveal_set() snapshots the layer-0
+    // table once per overlay pass; tile_fogged() is then an O(1) lookup on the marker's raw grid.
+    // Map must be OPEN (live VM). tile_fogged returns false (show) when no table data is available.
+    void refresh_reveal_set();
+    bool tile_fogged(int gridX, int gridZ);
+
     // DIAG: the currently-published active cursor address (0 = none). Lets the
     // overlay tell apart "probe hasn't found a cursor yet" (0) from "found but the
     // live read failed" (non-0 but get_live_view false) when chasing open latency.

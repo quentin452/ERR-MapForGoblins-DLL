@@ -14,6 +14,7 @@ namespace goblin::config
 {
     uint8_t loadDelay = 5;
     bool requireMapFragments = true;
+    bool requireExplored = false;
     bool collectedGraying = true;
     bool hideCollected = false;
     bool showRegionLabels = true;  // overlay: draw major-region name labels on the map
@@ -163,8 +164,13 @@ namespace
                          "proceeds as soon as it's ready; this is just a floor/settle margin.\n"
                          "Leave at 5 unless you want a longer guaranteed settle.", false, nullptr},
                 B("require_map_fragments", requireMapFragments, "true",
-                  "Require map fragment discovery before showing icons in that area\n"
-                  "(overlay map: gates on the game's real fog-of-war reveal state)."),
+                  "Require the area's MAP FRAGMENT item before showing its icons (gates on\n"
+                  "the fragment event flag only; for the walk-explored fog see require_explored)."),
+                B("require_explored", requireExplored, "false",
+                  "Overlay map: hide icons on tiles you have NOT physically explored yet\n"
+                  "(the game's per-tile fog-of-war, 踏破). Reads the live reveal table\n"
+                  "(RE: windows_worldmap_tile_fog_re_findings.md). Independent of\n"
+                  "require_map_fragments. Default off while the tile mapping is validated."),
                 B("collected_graying", collectedGraying, "true",
                   "Overlay map: dim+desaturate markers for items already collected and\n"
                   "bosses already cleared (cleared bosses also get a green checkmark).\n"
