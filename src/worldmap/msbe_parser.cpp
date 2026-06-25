@@ -372,6 +372,8 @@ namespace {
 constexpr EmevdTemplate kEmevdFlagTemplates[] = {
     {90005683, 12, 20, 24},  // Hero's Tomb statue: entity@+12, activated flag@+20, minLen 24
     {90005792, 20, 8, 24},   // Hostile NPC defeated: entity@+20 (X12_4), defeat flag@+8 (X0_4)
+    {90006051, 8, 12, 16},   // Seal puzzle per-seal: seal entity@+8 (X0_4), activation flag@+12
+                             // (X4_4); params (seal_eid, flag, sfx, group) — tools/extract_seal_puzzles.py
 };
 const EmevdTemplate *find_emevd_flag_template(uint32_t eventId)
 {

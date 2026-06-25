@@ -46,6 +46,9 @@ Row fields:
                                        label by suffix (565 = Imbued Sword Key, else Stonesword).
                      'hero_tomb_emevd' flag = the activated flag from EMEVD template 90005683,
                                        joined to the asset by EntityID (the mod's event\\*.emevd).
+                     'seal_emevd'      flag = the activation flag from EMEVD template 90006051,
+                                       joined by EntityID. SELF-GATES: a placement with no 90006051
+                                       binding is decoration / non-seal use of the model → skipped.
 """
 
 WORLD_FEATURE_ASSETS = [
@@ -74,4 +77,16 @@ WORLD_FEATURE_ASSETS = [
     dict(aeg_row=99055, model='AEG099_055', category='WorldInteractables',
          text_id=800000000 + 7041,  # ActionButtonText[7041] "Examine statue" (runtime-localized)
          entity_required=True, category_wipe=False, flag_rule='hero_tomb_emevd'),
+
+    # Seal Puzzles — the AEG099_090 "Examine seal" object (the multi-seal puzzles that unlock
+    # a fog door). 77/98 of the bake's seal interact-points; the remaining 21 (Sellia chalices
+    # AEG099_047, Siofra lanterns AEG110_029, Snow Town statues AEG237_055) use bespoke non-template
+    # events and stay baked for now. SHARES WorldInteractables with Hero's Tomb → cell-dedup, NOT
+    # category-wipe (only the AEG099_090 cells drop their baked twin; specials + Hero Tomb keep theirs).
+    # The seal_emevd rule joins each seal's EntityID to the EMEVD template-90006051 activation flag and
+    # SELF-GATES: a placed AEG099_090 with no 90006051 binding is decoration / non-seal use → skipped
+    # (stronger than entity_required, avoids phantom non-seal placements of this common model).
+    dict(aeg_row=99090, model='AEG099_090', category='WorldInteractables',
+         text_id=800000000 + 9503,  # ActionButtonText[9503] "Examine seal" (runtime-localized)
+         entity_required=True, category_wipe=False, flag_rule='seal_emevd'),
 ]
