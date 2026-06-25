@@ -12,6 +12,7 @@
 #include <cstring>
 #include <map>
 #include <set>
+#include <unordered_set>
 #include <spdlog/spdlog.h>
 #include <string>
 #include <tuple>
@@ -313,6 +314,7 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
 {
     std::map<uint32_t, WGMSnapshot> result;
     std::set<uint32_t> seen_tiles;   // for pruning unloaded tiles from the cache
+    static int s_fieldins_logged = 0;   // [FIELDINS] path-A probe one-shot budget
 
     uintptr_t game_base = (uintptr_t)GetModuleHandleA("eldenring.exe");
     if (!game_base) return result;
@@ -497,6 +499,45 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
 
                     // Cache the resolved instance (structure) for next refresh's fast path.
                     ctile.insts.push_back({geom_ins, px, py, pz, narrow_str, track_alive});
+
+                    // [FIELDINS] path-A asset→ItemLotID join probe (diag_fieldins_join, one-shot).
+                    // Read the CSGrowableNodePool embedded in this asset instance at geom_ins+0x3A8
+                    // (RE be1b018): cap@+0x3B8, stride@+0x3BC, node-array@+0x3C0; the pooled child is
+                    // a FieldInsBase* carrying lotId@+0x50 + inline wide name. Expect, on the known
+                    // chest AEG099_090_9000, lotId == 0x3dd6fec4 (1037500100). One bulk read.
+                    if (goblin::config::diagFieldinsJoin && s_fieldins_logged < 24)
+                    {
+                        uint8_t pool[0x20] = {};   // geom_ins+0x3A8 .. +0x3C8
+                        if (safe_read((char *)geom_ins + 0x3A8, pool, sizeof(pool)))
+                        {
+                            void *pool_vt = nullptr, *node_arr = nullptr;
+                            uint32_t cap = 0, stride = 0;
+                            memcpy(&pool_vt,  pool + 0x00, 8);   // +0x3A8
+                            memcpy(&cap,      pool + 0x10, 4);   // +0x3B8
+                            memcpy(&stride,   pool + 0x14, 4);   // +0x3BC
+                            memcpy(&node_arr, pool + 0x18, 8);   // +0x3C0
+                            uint32_t lot = 0;
+                            char child_name[64] = {};
+                            bool got_child = false;
+                            if (node_arr)
+                            {
+                                void *child = nullptr;            // node[0] = FieldInsBase*
+                                if (safe_read(node_arr, &child, 8) && child)
+                                {
+                                    got_child = safe_read((char *)child + 0x50, &lot, 4);
+                                    wchar_t cn[32] = {};
+                                    if (safe_read(child, cn, sizeof(cn) - 2))
+                                        for (int c = 0; c < 31 && cn[c]; c++)
+                                            child_name[c] = (char)(cn[c] & 0xFF);
+                                }
+                            }
+                            spdlog::info("[FIELDINS] {} pool_vt={} cap={} stride={} node_arr={} "
+                                         "child={} lotId={:#x} name='{}'",
+                                         narrow_str, pool_vt, cap, stride, node_arr,
+                                         got_child ? "yes" : "no", lot, child_name);
+                            ++s_fieldins_logged;
+                        }
+                    }
                 }
             }
 
@@ -529,6 +570,244 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
     // Prune cache entries for tiles no longer loaded (bounds memory across a session).
     for (auto it = g_wgm_cache.begin(); it != g_wgm_cache.end();)
         it = seen_tiles.count(it->first) ? std::next(it) : g_wgm_cache.erase(it);
+
+    // [FIELDINS-B] one-shot global field-instance registry walk (diag_fieldins_join).
+    // CORRECTED chain (Ghidra da19285): reg=[er+0x3d7b0c0], sub=[reg+0x10],
+    // container=*[sub+0x720] (the prior walk MISSED this deref). The self-register map is at
+    // container+0x18 (std::map: _Myhead @+0x08 → head=*[container+0x20], _Mysize @+0x28).
+    // RB node: +0x00 left / +0x08 parent / +0x10 right / +0x19 _Isnil / +0x20 key(u64);
+    // value is 24B → +0x28 is a per-instance CALLBACK fn ptr, the INSTANCE is at +0x30 (the
+    // prior probe read +0x28 → got a code ptr 0x30308e8). Instance: vtable@+0x00, lotId@+0x50.
+    // No dedicated treasure class — lotId carriers are geom-items (CSWorldGeom*Ins); sealed
+    // chests spawn their pickup only at open, placed/dropped world loot is resident at load.
+    // GATED on !result.empty() (in a save, not the menu); latches only after a real in-world walk.
+    static bool s_pathb_done = false;
+    if (goblin::config::diagFieldinsJoin && !s_pathb_done && !g_wgm_cache.empty())
+    {
+        void *reg = nullptr, *sub = nullptr, *container = nullptr, *head = nullptr, *root = nullptr;
+        uint64_t map_size = 0;
+        if (safe_read((void *)(game_base + 0x3d7b0c0), &reg, 8) && reg &&
+            safe_read((char *)reg + 0x10, &sub, 8) && sub &&
+            safe_read((char *)sub + 0x720, &container, 8) && container &&
+            safe_read((char *)container + 0x20, &head, 8) && head &&
+            safe_read((char *)container + 0x28, &map_size, 8) &&
+            safe_read((char *)head + 0x08, &root, 8) && root && root != head)
+        {
+            const int kMaxNodes = 400000;
+            int visited = 0, instances = 0, lot_hits = 0, real_lot = 0;
+            std::vector<void *> stack;
+            std::unordered_set<void *> seen;          // kill cycles / garbage revisits
+            std::unordered_set<void *> sampled_inst;  // dedup the sample lines
+            std::map<uint64_t, int> vt_hist;          // distinct vtable → count (for real lots)
+            stack.push_back(root);
+            while (!stack.empty() && visited < kMaxNodes)
+            {
+                void *node = stack.back(); stack.pop_back();
+                if (!node || node == head) continue;
+                if (!seen.insert(node).second) continue;   // already walked this node
+                uint8_t nb[0x38] = {};   // need +0x30 (instance ptr)
+                if (!safe_read(node, nb, sizeof(nb))) continue;
+                ++visited;
+                void *left = nullptr, *right = nullptr, *inst = nullptr;
+                memcpy(&left,  nb + 0x00, 8);
+                memcpy(&right, nb + 0x10, 8);
+                memcpy(&inst,  nb + 0x30, 8);   // +0x28 = callback fn ptr; instance is +0x30
+                if (right && right != head) stack.push_back(right);
+                if (left  && left  != head) stack.push_back(left);
+                if (!inst) continue;
+                ++instances;
+                uint8_t ib[0x58] = {};   // vtable@+0x00 + lotId@+0x50
+                if (!safe_read(inst, ib, sizeof(ib))) continue;
+                uint64_t vt = 0; uint32_t lot = 0;
+                memcpy(&vt,  ib + 0x00, 8);
+                memcpy(&lot, ib + 0x50, 4);
+                // Unconditional sample (first 16): confirm the chain reaches FieldInsBase
+                // subclasses (vt near 0x2a25e68/0x2a8f650/...) vs garbage, regardless of lot.
+                if (instances <= 16)
+                    spdlog::info("[FIELDINS-B] node inst={} vt={:#x} key/lot@+0x50={:#x}",
+                                 inst, vt, lot);
+                if (lot == 0x3dd6fec4) ++lot_hits;
+                // Real ER item-lots are ~1e9 (0x3B9ACA00..); 0 and 0xffffffff are "no lot".
+                bool plausible = lot != 0 && lot != 0xffffffff && lot >= 0x10000000;
+                if (!plausible) continue;
+                ++real_lot;
+                vt_hist[vt]++;
+                if (sampled_inst.insert(inst).second && sampled_inst.size() <= 24)
+                    spdlog::info("[FIELDINS-B] inst={} vt={:#x} lotId={:#x}", inst, vt, lot);
+            }
+            s_pathb_done = true;   // latch only after a real in-world walk
+            spdlog::info("[FIELDINS-B] DONE mapSize={} visited={} distinctNodes={} instances={} "
+                         "realLot={} targetLotHits={} (target=0x3dd6fec4)",
+                         (unsigned long long)map_size, visited, (int)seen.size(),
+                         instances, real_lot, lot_hits);
+            for (auto &[vt, n] : vt_hist)
+                spdlog::info("[FIELDINS-B] vtable={:#x} realLotInstances={}", vt, n);
+        }
+        else
+        {
+            spdlog::info("[FIELDINS-B] registry chain unresolved (reg={} sub={} head={} root={})",
+                         reg, sub, head, root);
+        }
+    }
+
+    // [MAPINS] one-shot anchor-walk of the loaded loot records — the PRODUCTION strategy that
+    // replaces the retired brute LOTSCAN (brute scan = discovery only; never production). Deterministic
+    // pointer chain from the static base (Ghidra da513922/188d977, offline-validated RTTI + slot):
+    //   WorldMapManImp [er+0x485cbb8] (vt er+0x2a8f918)
+    //     +0x28 count ; +0x5d0 WorldBlockMap[] stride 0x220 (vt er+0x2a8f650)
+    //       +0x120 cap ; +0x128 MapIns*[] stride 8  ->  MapIns (vt er+0x2a8d6d8)
+    // Per MapIns: bounded-scan its body for the loot node {lotId@+0, flag@+4, FieldIns*@+8} via the
+    // self-validating signature *(u32)(FieldIns+0x50)==lotId ; then MapId@node-0xD8, localPos@node-0xD4
+    // -> identity (lotId -> resolve_loot_item_textid) + absolute pos (gridXZ*256 + local). EVERY read
+    // is crash-safe (safe_read / ReadProcessMemory, never a raw deref) so no AV on unbacked Wine pages,
+    // and there is NO full-memory scan. Gated in-world, one-shot.
+    // RE-ARMABLE (not one-shot): the scan may fire before item-bearing MapIns stream in. Retry
+    // every ~40 refreshes (≈4s) until it finds records, capped at 25 attempts, then latch. Each
+    // pass is heavy (~1.5s vtable-scan) so it's throttled, not per-refresh.
+    static bool s_mapins_found = false; static int s_mapins_attempts = 0, s_mapins_throttle = 0;
+    if (goblin::config::diagLotMemscan && !s_mapins_found && s_mapins_attempts < 25 &&
+        !g_wgm_cache.empty() && (s_mapins_throttle++ % 40 == 0))
+    {
+        ++s_mapins_attempts;
+        const uint64_t VT_MGR = game_base + 0x2a8f918, VT_WBM = game_base + 0x2a8f650,
+                       VT_MAPINS = game_base + 0x2a8d6d8;
+        uint64_t mgr = 0, mgr_vt = 0;
+        const bool chain_ok =
+            safe_read((void *)(game_base + 0x485cbb8), &mgr, 8) && mgr &&
+            safe_read((void *)mgr, &mgr_vt, 8) && mgr_vt == VT_MGR;
+        int blocks = 0, mapins = 0, records = 0, logged = 0;
+        if (chain_ok)
+        {
+            int32_t count = 0;
+            safe_read((void *)(mgr + 0x28), &count, 4);
+            if (count < 0 || count > 192) count = 192;   // WorldBlockMap[] array is memset to ~192 slots
+            std::vector<uint8_t> body(0x1200);
+            for (int b = 0; b < count; b++)
+            {
+                uint64_t wbm = mgr + 0x5d0 + (uint64_t)b * 0x220, wvt = 0;
+                if (!safe_read((void *)wbm, &wvt, 8) || wvt != VT_WBM) continue;
+                ++blocks;
+                uint32_t cap = 0; uint64_t arr = 0;
+                safe_read((void *)(wbm + 0x120), &cap, 4);
+                safe_read((void *)(wbm + 0x128), &arr, 8);
+                if (!arr || cap > 65536) continue;
+                for (uint32_t j = 0; j < cap; j++)
+                {
+                    uint64_t mi = 0;
+                    if (!safe_read((void *)(arr + (uint64_t)j * 8), &mi, 8) || !mi) continue;
+                    uint64_t mvt = 0;
+                    if (!safe_read((void *)mi, &mvt, 8) || mvt != VT_MAPINS) continue;
+                    ++mapins;
+                    // Bulk-read the MapIns body (record-specific offset, so scan it). MapIns size is
+                    // unknown → try decreasing sizes so a small instance near an unmapped page still reads.
+                    size_t bsz = 0;
+                    for (size_t want : {(size_t)0x1200, (size_t)0x800, (size_t)0x400})
+                        if (safe_read((void *)mi, body.data(), want)) { bsz = want; break; }
+                    if (bsz < 0xF0) continue;
+                    const uint8_t *q = body.data();
+                    for (size_t k = 0xD8; k + 16 <= bsz; k += 8)   // k>=0xD8 so node-0xD8 (MapId) is in-body
+                    {
+                        uint32_t L = *(const uint32_t *)(q + k);
+                        if (L < 0x05F5E100u || L > 0x40000000u) continue;   // plausible ER item-lot
+                        uint32_t flag = *(const uint32_t *)(q + k + 4);
+                        if (flag > 1) continue;                              // node flag = 0/1 (cheap pre-filter)
+                        uint64_t P = *(const uint64_t *)(q + k + 8);
+                        if (P <= 0x100000 || P >= 0x7fffffffffffULL) continue;
+                        uint32_t v50 = 0;
+                        if (!safe_read((void *)(P + 0x50), &v50, 4) || v50 != L) continue; // self-validate
+                        ++records;
+                        if (logged < 64)
+                        {
+                            uint32_t mapId = *(const uint32_t *)(q + k - 0xD8);
+                            const float *pos = (const float *)(q + k - 0xD4);
+                            wchar_t nm[16] = {}; char nn[20] = {};
+                            if (safe_read((void *)P, nm, sizeof(nm) - 2))
+                                for (int c = 0; c < 15; c++) nn[c] = (char)(nm[c] & 0xFF);
+                            spdlog::info("[MAPINS] rec MapIns={:#x} node+{:#x} lot={:#x}({}) flag={} "
+                                         "FieldIns={:#x} MapId={:#x} localPos=({:.2f},{:.2f},{:.2f}) name='{}'",
+                                         mi, (uint64_t)k, L, L, flag, P, mapId, pos[0], pos[1], pos[2], nn);
+                            ++logged;
+                        }
+                    }
+                }
+            }
+        }
+        // FALLBACK (STEP 0, proven 343): if the singleton slot is wrong, enumerate MapIns by a
+        // bounded vtable-scan instead — the standard way to enumerate live instances of a class.
+        // Crash-safe windowed safe_read (no raw deref → no AV on unbacked Wine pages, no full-mem
+        // VirtualQuery loop hang). A qword == MapIns vtable at obj+0 marks a MapIns; the body
+        // follows in-window (8MB window + 0x1200 overlap so a hit near the edge still has its body).
+        if (mapins == 0)
+        {
+            SYSTEM_INFO si; GetSystemInfo(&si);
+            uintptr_t addr = (uintptr_t)si.lpMinimumApplicationAddress;
+            uintptr_t aend = (uintptr_t)si.lpMaximumApplicationAddress;
+            const size_t WIN = 8 * 1024 * 1024, OVL = 0x2200;
+            std::vector<uint8_t> buf(WIN + OVL);
+            MEMORY_BASIC_INFORMATION mbi;
+            while (addr < aend && VirtualQuery((void *)addr, &mbi, sizeof(mbi)) == sizeof(mbi))
+            {
+                uintptr_t rbase = (uintptr_t)mbi.BaseAddress; size_t rsz = mbi.RegionSize;
+                DWORD pr = mbi.Protect;
+                bool ok = mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE && rsz >= 16 &&
+                          (pr & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+                                 PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)) &&
+                          !(pr & (PAGE_GUARD | PAGE_NOACCESS));
+                if (ok)
+                    for (size_t off = 0; off < rsz; off += WIN)
+                    {
+                        size_t want = rsz - off; if (want > WIN + OVL) want = WIN + OVL;
+                        if (!safe_read((void *)(rbase + off), buf.data(), want)) continue;
+                        const uint8_t *q = buf.data();
+                        size_t lim = want >= 16 ? want - 16 : 0;
+                        size_t scan_to = (want > WIN) ? WIN : (want >= 8 ? want - 8 : 0);
+                        for (size_t i = 0; i < scan_to; i += 8)
+                        {
+                            if (*(const uint64_t *)(q + i) != VT_MAPINS) continue;
+                            ++mapins;
+                            // Agent reach (ed8fa0c): the loot node is at MapIns+0x460 ({lotId@+0,
+                            // flag@+4, FieldIns*@+8}); MapId@node-0xD8, localPos@node-0xD4. The SOLE
+                            // validator is *(u32)(FieldIns+0x50)==lotId — it rejects every false
+                            // positive, so no name/lot-range guess needed. Primary +0x460 + a bounded
+                            // hedge window (+0x100..+0x800, 4-aligned) for items at other offsets.
+                            auto emit = [&](size_t k)
+                            {
+                                if (k < 0xD8 || i + k + 16 > want) return;
+                                uint32_t L = *(const uint32_t *)(q + i + k);
+                                if (L == 0 || L == 0xffffffffu) return;
+                                uint64_t P = *(const uint64_t *)(q + i + k + 8);
+                                if (P <= 0x100000 || P >= 0x7fffffffffffULL) return;
+                                uint32_t v50 = 0;
+                                if (!safe_read((void *)(P + 0x50), &v50, 4) || v50 != L) return;
+                                ++records;
+                                if (logged < 64)
+                                {
+                                    uint32_t flag  = *(const uint32_t *)(q + i + k + 4);
+                                    uint32_t mapId = *(const uint32_t *)(q + i + k - 0xD8);
+                                    const float *pos = (const float *)(q + i + k - 0xD4);
+                                    uint32_t gx = (mapId >> 16) & 0xff, gz = (mapId >> 8) & 0xff;
+                                    spdlog::info("[MAPINS] rec MapIns={:#x} node+{:#x} lot={:#x}({}) "
+                                                 "flag={} FieldIns={:#x} MapId={:#x} local=({:.1f},{:.1f},"
+                                                 "{:.1f}) ABS=({:.0f},{:.0f},{:.0f})",
+                                                 rbase + off + i, (uint64_t)k, L, L, flag, P, mapId,
+                                                 pos[0], pos[1], pos[2],
+                                                 gx * 256.f + pos[0], pos[1], gz * 256.f + pos[2]);
+                                    ++logged;
+                                }
+                            };
+                            emit(0x460);
+                            for (size_t k = 0x100; k <= 0x800; k += 4)
+                                if (k != 0x460) emit(k);
+                            (void)lim;
+                        }
+                    }
+                addr = rbase + rsz;
+            }
+        }
+        if (records > 0) s_mapins_found = true;   // stop retrying once it works
+        spdlog::info("[MAPINS] DONE attempt={} chain_ok={} mgr={:#x} blocks={} mapIns={} records={}",
+                     s_mapins_attempts, chain_ok, mgr, blocks, mapins, records);
+    }
 
     return result;
 }

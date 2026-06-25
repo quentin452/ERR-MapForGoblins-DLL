@@ -9,6 +9,7 @@
 #include "goblin_collected.hpp" // is_original_row_collected (piece graying)
 #include "goblin_kindling.hpp"  // is_row_collected (kindling graying)
 #include "goblin_markers.hpp"   // category_name (census log)
+#include "goblin_config.hpp"    // config::suppressNativeBosses
 #include "goblin/goblin_map_flags.hpp" // flag::Story* (secondary story gate)
 #include "goblin_bench.hpp"            // GOBLIN_BENCH scoped timers
 #include "from/params.hpp"                            // live WorldMapPointParam (boss source)
@@ -145,6 +146,16 @@ void build_live_bosses()
             if (row.textId2 != 5100) continue;          // field-boss marker rows only
             push_marker(rowId, row, c, /*lotId=*/0u, /*lotType=*/0u, Source::Live);
             ++n;
+            // Suppress the game's NATIVE boss icon: clear dispMask on the live row so the engine
+            // skips drawing it, leaving the overlay as the sole boss source (no double icon). Safe
+            // because push_marker already snapshotted pos/name/icon and it IGNORES dispMask, so our
+            // marker is unaffected. `row` is a reference into live param memory (params.hpp).
+            if (goblin::config::suppressNativeBosses)
+            {
+                row.dispMask00 = false;
+                row.dispMask01 = false;
+                row.dispMask02 = 0;
+            }
         }
     }
     catch (...)
@@ -506,6 +517,11 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
 
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
+// NOTE (2026-06-23): a "World-* categories live from WorldMapPointParam by row-id range" experiment
+// was REVERTED — the deployed ERR regulation's live WorldMapPointParam holds only 740 rows (217
+// textId2==5100 bosses + ~523 structural iconId=83/textId=-1 nav points); the Stakes/SummoningPools/
+// SpiritSprings/Maps/etc. rows the bake expects are NOT present live. So only bosses (textId2==5100)
+// and graces (BonfireWarpParam) are live-portable; every other category stays baked.
 // Runs exactly once — wrapped by ensure_buckets()/std::call_once.
 void build_buckets_impl()
 {

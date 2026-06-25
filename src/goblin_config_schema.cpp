@@ -21,6 +21,8 @@ namespace goblin::config
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
     bool diagLootPos = false;      // one-shot [LOOTPOS] live-vs-baked placement accuracy probe
     bool diagMapOpens = false;     // [MAPOPEN] CreateFileW probe: log map .msb.dcx opens
+    bool diagFieldinsJoin = false; // one-shot [FIELDINS] embedded-pool asset→lotId join probe (path A)
+    bool diagLotMemscan = false;   // one-shot [LOTSCAN] brute committed-private memory scan for a lotId
     bool debugLogging = false;
     bool showAll = false;
     bool iconsHidden = false;  // master off persisted (menu/F10 "Show icons")
@@ -62,6 +64,7 @@ namespace goblin::config
     bool graceOverlay = true;        // our graces are the default map source now (validated)
     bool graceGpuSprite = true;      // live engine grace sprite (validated working)
     bool graceSuppressNative = true; // overlay is the sole grace source — hide native pins
+    bool suppressNativeBosses = true; // hide native boss pins (clear dispMask on textId2==5100)
 
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
@@ -238,6 +241,17 @@ namespace
                   "boss rewards, scarabs, painting pickups, NPC quest/invasion rewards, great\n"
                   "runes, larval tears). Replaces the matching baked LootSource::Emevd markers.\n"
                   "Uses the event\\ folder beside loot_msb_dir's map dir. Off by default."),
+                B("diag_fieldins_join", diagFieldinsJoin, "false",
+                  "RE diagnostic: one-shot [FIELDINS] — path-A asset→ItemLotID join check. For each\n"
+                  "loaded AEG asset, read the embedded CSGrowableNodePool at geom_ins+0x3A8 (cap+0x3B8,\n"
+                  "stride+0x3BC, node-array+0x3C0), follow the child FieldIns and log its lotId@+0x50 +\n"
+                  "name. Confirms the runtime asset→lot link with no global walk (be1b018). Walk near\n"
+                  "loaded loot. Off by default."),
+                B("diag_lot_memscan", diagLotMemscan, "false",
+                  "RE diagnostic: one-shot [LOTSCAN] — brute-scan all committed PRIVATE memory for the\n"
+                  "known chest's lotId (0x3dd6fec4 = 1037500100). Structure-agnostic: answers whether the\n"
+                  "lotId is resident ANYWHERE while standing at the UNOPENED chest (pre-open residency).\n"
+                  "Logs hit count + each hit's address/region. Stand at the chest, walk in. Off by default."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("show_all", showAll, "false",
@@ -445,6 +459,8 @@ namespace
                    "Grace icon source when grace_overlay is on: false = the mod's baked atlas\nicon (clean, constant); true = the live engine sprite (SB_ERR_Grace,\ntinted by in-game time of day). Default ON."),
                 BE("grace_suppress_native", graceSuppressNative, "true",
                    "Suppress the game's native discovered-grace map pins so the overlay is the\nsole grace source. Default ON. Keeps teleport working (draw-only hide). Set\nfalse if native grace pins/teleport ever misbehave on your setup."),
+                BE("suppress_native_bosses", suppressNativeBosses, "true",
+                   "Hide the game's native boss map icons (ERR's WorldMapPointParam textId2==5100\nrows) by clearing their dispMask, so only the overlay's boss markers show (no\ndouble icon). The overlay ignores dispMask so it keeps drawing them. Default ON;\nset false to let the game draw its own boss icons."),
             }},
 
             {"Compatibility",
