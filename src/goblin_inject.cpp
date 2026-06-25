@@ -4405,6 +4405,24 @@ uint32_t goblin::npc_loot_lot(uint32_t npcParamId, uint8_t *lotTypeOut)
     return 0;
 }
 
+bool goblin::npc_team_and_name(uint32_t npcParamId, uint8_t *teamOut, int32_t *nameOut)
+{
+    if (npcParamId == 0) return false;
+    static std::optional<from::params::ParamTableSequence<RawNpcRow>> s_seq;
+    static std::once_flag s_once;
+    static bool s_ok = false;
+    std::call_once(s_once, [] {
+        try { s_seq.emplace(from::params::get_param<RawNpcRow>(L"NpcParam"));
+              s_ok = true; } catch (...) { s_ok = false; }
+    });
+    if (!s_ok) return false;
+    RawNpcRow *row = s_seq->try_get((uint64_t)npcParamId);
+    if (!row) return false;
+    if (teamOut) *teamOut = row->b[0x133];          // teamType u8
+    if (nameOut) std::memcpy(nameOut, row->b + 0x0c, 4);  // nameId s32
+    return true;
+}
+
 // EquipParamGoods row (176 bytes; goodsType u8 @ +0x3e — offset confirmed vs raw rows).
 struct RawGoodsRow { uint8_t b[176]; };
 
