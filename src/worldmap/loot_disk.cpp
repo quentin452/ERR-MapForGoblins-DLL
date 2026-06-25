@@ -147,7 +147,7 @@ void set_mod_folder(const fs::path &p) { g_mod_folder = p; }
 bool disk_source_enabled()
 {
     return config::lootFromDiskMsb || config::lootCollectibles || config::lootEnemyDrops ||
-           config::lootEmevdDrops;
+           config::lootEmevdDrops || config::worldFeaturesFromDisk;
 }
 
 void ensure_map_dir_resolved()

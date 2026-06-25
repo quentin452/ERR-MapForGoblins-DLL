@@ -95,6 +95,10 @@ namespace goblin
         // position. Replaces the matching baked LootSource::Emevd rows. Opt-in; see
         // docs/re/windows_enemy_loot_nobake_analysis.md §5b + msbe::parse_emevd.
         extern bool lootEmevdDrops;
+        // When true, also emit World-feature markers (Stakes of Marika, …) sourced
+        // straight from the disk MSBs by their AEG asset model — no committed bake.
+        // The matching baked rows are dropped (position-keyed). See build_disk_stakes_markers.
+        extern bool worldFeaturesFromDisk;
         // Directory holding the active mod's map\MapStudio\*.msb.dcx (or the mod
         // root, or a map\ root). Empty = auto-detect: the DLL's own mod folder,
         // then the Elden Ring install dir. Set it to your ModEngine2 mod's map
