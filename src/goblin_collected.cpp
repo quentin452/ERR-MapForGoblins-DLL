@@ -8,9 +8,11 @@
 #include "goblin_bench.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <map>
+#include <mutex>
 #include <set>
 #include <unordered_set>
 #include <spdlog/spdlog.h>
@@ -85,6 +87,36 @@ static std::map<uint32_t, std::map<std::string, std::map<int, std::vector<uint64
 // "replacement" where a different AEG099_* spawns at the same coords.
 static std::map<uint64_t, std::tuple<float, float, float>> g_entry_positions;
 static bool g_initialized = false;
+
+// ─── runtime (non-baked) geom entries ───────────────────────────────
+// Disk passes (e.g. the AEG collectible pass placing Rune/Ember Pieces) register their
+// geom-tracked markers here so refresh() grays them like baked pieces. The disk build runs
+// on a detached worker, refresh() on its own polling thread → the worker only ever appends to
+// this staging vector (mutex-guarded); the live tracking maps are mutated EXCLUSIVELY on the
+// refresh thread when it drains the staging vector. One-time merge, no hot-path locking.
+static std::mutex g_pending_mutex;
+static std::vector<goblin::collected::RuntimeEntry> g_pending_runtime;
+static std::atomic<bool> g_has_pending{false};
+
+// Insert one tracked entry into the live maps — the shared body of initialize()'s per-MAP_ENTRY
+// loop and the runtime drain. (GEOF model-override remap is baked-only, so runtime entries use
+// the name prefix directly; the AEG pieces/gather models don't substitute — name prefix == model.)
+static void insert_tracked_entry(uint64_t row_id, uint32_t tile, const std::string &object_name,
+                                 int geom_slot, float px, float py, float pz)
+{
+    std::string prefix = prefix_from_object_name(object_name.c_str());
+    if (prefix.empty())
+        return;
+    g_tracked_prefixes.insert(prefix);
+    g_tile_to_rows[tile].push_back(row_id);
+    if (geom_slot >= 0)
+        g_tile_slot_to_row[tile][prefix][geom_slot].push_back(row_id);
+    g_tile_name_to_row[tile][object_name].push_back(row_id);
+    g_entry_positions[row_id] = {px, py, pz};
+    uint32_t mid = model_id_from_prefix(prefix);
+    if (mid)
+        g_tracked_model_ids.insert(mid);
+}
 
 
 struct GEOFEntry
@@ -931,6 +963,42 @@ void goblin::collected::initialize()
     spdlog::info("[COLLECTED] Initialized, awaiting refresh()");
 }
 
+// ─── runtime geom entry registration (off-thread) ──────────────────
+
+void goblin::collected::register_runtime_entries(std::vector<RuntimeEntry> entries)
+{
+    if (entries.empty())
+        return;
+    std::lock_guard<std::mutex> lk(g_pending_mutex);
+    if (g_pending_runtime.empty())
+        g_pending_runtime = std::move(entries);
+    else
+        for (auto &e : entries)
+            g_pending_runtime.push_back(std::move(e));
+    g_has_pending.store(true, std::memory_order_release);
+}
+
+// Drain staged runtime entries into the live tracking maps. MUST run on the refresh
+// thread (the only mutator of the maps). Returns count merged.
+static int drain_pending_runtime()
+{
+    if (!g_has_pending.load(std::memory_order_acquire))
+        return 0;
+    std::vector<goblin::collected::RuntimeEntry> drained;
+    {
+        std::lock_guard<std::mutex> lk(g_pending_mutex);
+        drained.swap(g_pending_runtime);
+        g_has_pending.store(false, std::memory_order_release);
+    }
+    for (const auto &e : drained)
+        insert_tracked_entry(e.row_id, encode_tile(e.area, e.gridX, e.gridZ),
+                             e.object_name, e.geom_slot, e.px, e.py, e.pz);
+    if (!drained.empty())
+        spdlog::info("[COLLECTED] merged {} runtime geom entries ({} prefixes, {} model ids)",
+                     drained.size(), g_tracked_prefixes.size(), g_tracked_model_ids.size());
+    return (int)drained.size();
+}
+
 // ─── remap row IDs after dynamic assignment ────────────────────────
 
 static std::unordered_map<uint64_t, uint64_t> g_original_to_dynamic;
@@ -1030,6 +1098,12 @@ int goblin::collected::refresh()
     safe_read((void *)geom_flag_slot(), &geof_check, 8);
     if (!wgm_check && !geof_check)
         return 0;
+
+    // Merge any runtime (disk-pass) geom entries staged by the worker — on THIS (refresh)
+    // thread, the only mutator of the tracking maps. Before the empty-check so a profile whose
+    // pieces come purely from disk still populates the maps.
+    if (g_initialized)
+        drain_pending_runtime();
 
     if (!g_initialized || g_tile_to_rows.empty())
         return 0;

@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <vector>
 #include <atomic>
 #include <string>
@@ -69,6 +70,12 @@ inline Cell cell_of(const Marker &m)
                 static_cast<int>(std::lround(m.worldX * 2.0f)),
                 static_cast<int>(std::lround(m.worldZ * 2.0f))};
 }
+
+// Synthetic row_id base for runtime (disk-pass) geom markers that need GEOF/WGM collected-
+// graying (Rune/Ember Pieces). Above the 32-bit WorldMapPointParam/MASSEDIT id space so it
+// never collides with a baked (dynamic) row_id; the same id is set on the Marker AND registered
+// in goblin::collected so is_*_row_collected(row_id) resolves. See [[aeg-collectible-source]].
+constexpr uint64_t kRuntimeGeomRowBase = 0x1'0000'0000ULL;
 
 // Post-event "secondary story flag" for a tile (legacy SetSecondaryFlags + Ashen Capital).
 // A marker on a post-event tile — or anywhere in Leyndell, Ashen Capital (area 35) — only
@@ -261,7 +268,9 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
                                            std::unordered_set<Cell, CellHash> &out_cells)
 {
     GOBLIN_BENCH("build.disk_collectibles");
-    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, baked_skip = 0, clutter_skip = 0;
+    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, piece_emitted = 0, clutter_skip = 0;
+    uint64_t next_rt = 0;  // running index for synthetic runtime geom row_ids (pieces)
+    std::vector<goblin::collected::RuntimeEntry> rt_entries;  // pieces to register for graying
     const bool verbose = goblin::config::diagLootPos;
     std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
     // [DEBAKE-RECOVER] sizing (verbose only): how much of the non-_8xx "clutter" actually carries
@@ -301,11 +310,43 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
             }
             continue;
         }
-        // Skip the two already covered by a baked Reforged category (GEOM-tracked): AEG_821 =
-        // Rune Piece, AEG_822 = Ember Piece. Their pickUpItemLotParamId is the shared Runic/
-        // Ember TRACE counter lot, so emitting them here just duplicates the baked markers
-        // (mislabeled as the counter). See windows_aeg_collectible_source_re_findings.md.
-        if (sub == 821 || sub == 822) { ++baked_skip; continue; }
+        // Rune (821) / Ember (822) Pieces — the REAL placed objects. Their pickUpItemLotParamId
+        // points only at the shared Runic/Ember TRACE counter (a "shadow reward" tally you gain on
+        // pickup, NOT the object's identity), so resolving the lot mislabels them "Runic Trace".
+        // The native identity is the object itself (ActionButtonText "Collect rune/ember piece");
+        // place them from disk under the Reforged categories using the same goods-name encoding the
+        // bake used (800010/850010 → "Rune/Ember Piece" + star icon). They carry NO event flag —
+        // collection is geom-state — so register the placement with goblin::collected for GEOF/WGM
+        // graying, exactly like the baked pieces. The finalize geom-dedup drops the baked twin.
+        if (sub == 821 || sub == 822)
+        {
+            const bool rune = (sub == 821);
+            const int pcat = static_cast<int>(rune ? goblin::generated::Category::ReforgedRunePieces
+                                                   : goblin::generated::Category::ReforgedEmberPieces);
+            from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+            d.areaNo = c.area;
+            d.gridXNo = c.gx;
+            d.gridZNo = c.gz;
+            d.posX = c.posX;
+            d.posZ = c.posZ;
+            d.textId1 = (rune ? 800010 : 850010) + 500000000;  // GoodsName "Rune/Ember Piece"
+            const uint64_t rid = kRuntimeGeomRowBase + (next_rt++);
+            push_marker(/*row_id=*/rid, d, pcat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
+            out_cells.insert(cell_of(g_buckets[pcat].back()));
+            // geom_slot = MSB InstanceID suffix - 9000 (e.g. "AEG099_821_9003" → 3); -1 if absent.
+            int slot = -1;
+            const size_t us = c.name.rfind('_');
+            if (us != std::string::npos && us + 1 < c.name.size())
+            {
+                const int suf = std::atoi(c.name.c_str() + us + 1);
+                if (suf >= 9000)
+                    slot = suf - 9000;
+            }
+            rt_entries.push_back(goblin::collected::RuntimeEntry{
+                rid, c.area, c.gx, c.gz, slot, c.posX, c.posY, c.posZ, c.name});
+            ++piece_emitted;
+            continue;
+        }
         uint32_t lot = goblin::aeg_pickup_lot(c.aegRow);  // live param chain (0 = not a pickup)
         if (lot == 0) { ++no_lot; continue; }
         if (treasure_lots.count(lot)) { ++dup; continue; }  // a Treasure ground-item, already placed
@@ -329,9 +370,13 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         ++emitted;
         if (verbose) ++per_cat[cat];
     }
+    // Register the Rune/Ember Piece placements for GEOF/WGM collected-graying (drained into the
+    // tracking maps on the refresh thread — see goblin_collected). One-time per disk build.
+    goblin::collected::register_runtime_entries(std::move(rt_entries));
+
     spdlog::info("[LOOTDISK] collectibles: {} markers emitted ({} assets total, {} non-ERR clutter "
-                 "(pots/jars), {} not-a-pickup, {} treasure-dup, {} unclassified, {} baked rune/ember)",
-                 emitted, (int)collectibles.size(), clutter_skip, no_lot, dup, unclassified, baked_skip);
+                 "(pots/jars), {} not-a-pickup, {} treasure-dup, {} unclassified, {} rune/ember pieces)",
+                 emitted, (int)collectibles.size(), clutter_skip, no_lot, dup, unclassified, piece_emitted);
     if (verbose)
     {
         for (auto &[cat, n] : per_cat)
