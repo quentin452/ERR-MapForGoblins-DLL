@@ -1734,40 +1734,37 @@ void build_buckets_impl()
     if (goblin::config::diagEnemyAllTiers)
     {
         std::vector<DiskEnemy> nonlod = load_disk_enemies_nonlod();
-        std::unordered_set<uint32_t> seen;
-        int recovers = 0, new_cand = 0, dup_cov = 0, respawn = 0, no_lot = 0, shown = 0;
-        std::map<int, int> recover_area, newcand_area;
+        // CLEAN intersection test (no npc_loot_lot map-preference, no respawn pre-filter): is each of
+        // the 35 uncovered baked-Enemy lots the RAW itemLotId_enemy (0x30) of ANY parsed enemy — _00
+        // OR non-_00? parsed_enemy_lots already holds every _00 enemy's 0x30; add the non-_00 ones.
+        std::unordered_set<uint32_t> all_enemy_lots = parsed_enemy_lots;  // _00 raw 0x30 set
+        std::unordered_set<uint32_t> npc_seen;
         for (const DiskEnemy &en : nonlod)
         {
-            uint8_t lt = 0;
-            uint32_t lot = goblin::npc_loot_lot(en.npcParamId, &lt);
-            if (lot == 0) { ++no_lot; continue; }
-            if (goblin::resolve_loot_flag(lot, lt, 0) == 0) { ++respawn; continue; }  // not one-time → filtered
-            if (!seen.insert(lot).second) continue;                                   // dedup within non-_00
-            if (enemy_disk_lots.count(lot)) { ++dup_cov; continue; }                  // already a _00 placement
-            if (uncovered_enemy_lots.count(lot)) { ++recovers; ++recover_area[en.area]; }
+            if (!npc_seen.insert(en.npcParamId).second) continue;  // one NpcParam read per id
+            if (int32_t el = goblin::npc_item_lot_enemy(en.npcParamId); el > 0)
+                all_enemy_lots.insert((uint32_t)el);
+        }
+        int in_00 = 0, in_nonlod = 0, nowhere = 0, lot_unresolved = 0;
+        std::map<int, int> nowhere_area;
+        for (uint32_t L : uncovered_enemy_lots)
+        {
+            const bool i0 = parsed_enemy_lots.count(L) != 0;
+            const bool iN = !i0 && all_enemy_lots.count(L) != 0;  // only in the non-_00 addition
+            if (i0) ++in_00;
+            else if (iN) ++in_nonlod;
             else
             {
-                ++new_cand; ++newcand_area[en.area];
-                if (shown < 25)
-                {
-                    int32_t key = goblin::resolve_loot_item_textid(lot, lt, -1);
-                    spdlog::info("[ENEMY-NONLOD] NEW candidate lot={} m{}_{}_{} key={} npc={}",
-                                 lot, en.area, en.gx, en.gz, key, en.name);
-                    ++shown;
-                }
+                ++nowhere;
+                // Does this lot even resolve in ItemLotParam_enemy? (-1 key ⇒ the lot row is gone too)
+                if (goblin::resolve_loot_item_textid(L, 2, -1) < 0) ++lot_unresolved;
             }
         }
-        std::string rec_hist, new_hist;
-        for (const auto &kv : recover_area)
-            rec_hist += 'm' + std::to_string(kv.first) + '=' + std::to_string(kv.second) + ' ';
-        for (const auto &kv : newcand_area)
-            new_hist += 'm' + std::to_string(kv.first) + '=' + std::to_string(kv.second) + ' ';
-        spdlog::info("[ENEMY-NONLOD] measure: would RECOVER {}/{} uncovered baked-Enemy lots + {} NEW "
-                     "candidate markers (over-emission to eyeball) | {} dup-of-_00, {} respawn-filtered, "
-                     "{} npc-no-lot",
-                     recovers, (int)uncovered_enemy_lots.size(), new_cand, dup_cov, respawn, no_lot);
-        spdlog::info("[ENEMY-NONLOD] recover by area: {} | new-candidate by area: {}", rec_hist, new_hist);
+        spdlog::info("[ENEMY-NONLOD] {} non-_00 enemies ({} distinct NpcParam). RAW-0x30 intersection of "
+                     "the {} uncovered baked-Enemy lots: {} in _00, {} in non-_00 (NEW recover), {} in "
+                     "NEITHER ({} of which no longer resolve in ItemLotParam_enemy)",
+                     (int)nonlod.size(), (int)npc_seen.size(), (int)uncovered_enemy_lots.size(),
+                     in_00, in_nonlod, nowhere, lot_unresolved);
     }
     if (diag)
     {
