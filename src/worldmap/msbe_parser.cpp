@@ -188,17 +188,36 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             size_t pe = (size_t)rd64(buf, PT.entryArr + (size_t)i * 8);
             if (!inb(pe, 0x70, len)) continue;
             if ((int32_t)rd32(buf, pe + 0x0c) != PART_ENEMY) continue;
+            uint32_t npc = 0;
             uint64_t tdOff = rd64(buf, pe + 0x68);
-            if (tdOff == 0) continue;
-            size_t tdp = eio(tdOff, pe);
-            if (!inb(tdp, 0x10, len)) continue;
-            uint32_t npc = rd32(buf, tdp + 0x0c);
-            if (npc == 0 || npc == 0xffffffffu) continue;
+            if (tdOff)
+            {
+                size_t tdp = eio(tdOff, pe);
+                if (inb(tdp, 0x10, len))
+                {
+                    uint32_t v = rd32(buf, tdp + 0x0c);
+                    if (v != 0xffffffffu) npc = v;
+                }
+            }
+            // EntityID: entity sub-struct ptr @ part+0x60, EntityID@+0x00 (same as the
+            // treasure path). The EMEVD pass joins on this; an enemy with no npc lot but
+            // a non-zero EntityID is still a valid EMEVD position anchor (e.g. a scripted
+            // boss reward), so we keep the part when EITHER is set.
+            uint32_t entityId = 0;
+            uint64_t entOff = rd64(buf, pe + 0x60);
+            if (entOff)
+            {
+                size_t ent = eio(entOff, pe);
+                if (inb(ent, 0x04, len)) entityId = rd32(buf, ent + 0x00);
+            }
+            if (entityId == 0xffffffffu) entityId = 0;
+            if (npc == 0 && entityId == 0) continue;
             size_t nm = eio(rd64(buf, pe + 0x00), pe);
             if (nm >= len) continue;
             Enemy en;
             en.name = rd_utf16(buf, nm, len);
             en.npcParamId = npc;
+            en.entityId = entityId;
             en.pos[0] = rdf(buf, pe + 0x20);
             en.pos[1] = rdf(buf, pe + 0x24);
             en.pos[2] = rdf(buf, pe + 0x28);
@@ -208,6 +227,79 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
 
     R.ok = true;
     return R;
+}
+
+// ── EMEVD parse (no-bake EMEVD loot pass, loot_emevd_drops) ───────────────────────────
+// 13 template events that award an item lot, each with the (entity, lot) byte offsets into
+// the event-init ArgData + the minimum ArgData length. Datamined + DarkScript3-verified in
+// tools/extract_all_items.py:646 (TEMPLATE_EVENTS); the pure-bytes parse here matches
+// SoulsFormats 500/500 over all ERR event files (tools/probe_emevd_format.py).
+namespace {
+struct EmevdTemplate { uint32_t eventId; uint16_t entityOff, lotOff, minLen; };
+constexpr EmevdTemplate kEmevdTemplates[] = {
+    {90005300, 8, 16, 20}, {90005301, 8, 16, 20},                   // scarab / enemy drops
+    {90005860, 16, 24, 28}, {90005861, 16, 24, 28}, {90005880, 16, 24, 28}, // boss rewards
+    {90005750, 8, 16, 20}, {90005753, 8, 16, 20},                   // NPC quest/dialog rewards
+    {90005774, 8, 12, 16},                                          // NPC invasion (pseudo multi)
+    {90005792, 20, 24, 28},                                         // hostile NPC defeat
+    {90005632, 8, 16, 20},                                          // painting pickups
+    {90005110, 8, 20, 24},                                          // great runes
+    {90005390, 8, 28, 32},                                          // larval tears (boss morph)
+    {90005555, 8, 12, 16},                                          // DLC forging / special
+};
+const EmevdTemplate *find_emevd_template(uint32_t eventId)
+{
+    for (const auto &t : kEmevdTemplates)
+        if (t.eventId == eventId) return &t;
+    return nullptr;
+}
+constexpr uint32_t EMEVD_INIT_BANK = 2000; // RunEvent / RunCommonEvent instruction bank
+} // namespace
+
+std::vector<EmevdAward> parse_emevd(const uint8_t *buf, size_t len)
+{
+    std::vector<EmevdAward> out;
+    if (len < 0x80 || std::memcmp(buf, "EVD\0", 4) != 0) return out;
+
+    // Header (64-bit EMEVD; all offsets are plain file offsets). Pinned in probe_emevd_format.py.
+    uint64_t eventCount   = rd64(buf, 0x10);
+    uint64_t eventsOff    = rd64(buf, 0x18);
+    uint64_t instrTblOff  = rd64(buf, 0x28);
+    uint64_t argsOff      = rd64(buf, 0x78);
+    if (eventCount > 1000000u) return out;
+
+    constexpr size_t EVENT_SZ = 0x30;  // {id@0, instrCount@8, instrOffset@10, ...}
+    constexpr size_t INSTR_SZ = 0x20;  // {bank@0, id@4, argLen@8, argOffset@10(int32), ...}
+
+    for (uint64_t i = 0; i < eventCount; ++i)
+    {
+        size_t e = (size_t)eventsOff + (size_t)i * EVENT_SZ;
+        if (!inb(e, EVENT_SZ, len)) break;
+        uint64_t instrCount  = rd64(buf, e + 0x08);
+        uint64_t instrOffset = rd64(buf, e + 0x10);  // byte offset into the instruction table
+        size_t base = (size_t)instrTblOff + (size_t)instrOffset;
+        if (instrCount > 1000000u) continue;
+        for (uint64_t j = 0; j < instrCount; ++j)
+        {
+            size_t ins = base + (size_t)j * INSTR_SZ;
+            if (!inb(ins, INSTR_SZ, len)) break;
+            if (rd32(buf, ins + 0x00) != EMEVD_INIT_BANK) continue;
+            uint64_t argLen = rd64(buf, ins + 0x08);
+            int32_t  argOff = (int32_t)rd32(buf, ins + 0x10);  // -1 when no args
+            if (argOff < 0 || argLen < 8) continue;
+            size_t a = (size_t)argsOff + (size_t)argOff;
+            if (!inb(a, (size_t)argLen, len)) continue;
+            uint32_t eventId = rd32(buf, a + 4);  // arg[4..8] = the invoked event id
+            const EmevdTemplate *t = find_emevd_template(eventId);
+            if (!t) continue;
+            if (argLen < t->minLen) continue;
+            uint32_t entity = rd32(buf, a + t->entityOff);
+            uint32_t lot    = rd32(buf, a + t->lotOff);
+            if ((int32_t)lot > 0 && (int32_t)entity > 0)
+                out.push_back({entity, lot});
+        }
+    }
+    return out;
 }
 
 std::vector<uint8_t> dcx_decompress(const uint8_t *d, size_t len, bool *isKrak,

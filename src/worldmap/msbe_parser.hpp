@@ -66,6 +66,23 @@ struct Enemy
     std::string name;            // e.g. "c3670_9000" (the ChrIns placement)
     uint32_t    npcParamId = 0;  // = *(u32)( *(u64)(part+0x68) + 0x0c )  (NpcParam row id)
     float       pos[3] = {0, 0, 0};  // BLOCK-LOCAL position (part+0x20)
+    // EntityID (entity sub-struct @ part+0x60, EntityID@+0x00 — same offset as the
+    // treasure path). 0 when unset. This is the anchor the EMEVD pass joins on: an
+    // EMEVD template award co-carries (entity_id, lot_id), and the enemy part with
+    // that EntityID gives the world position. See parse_emevd / loot_emevd_drops.
+    uint32_t    entityId = 0;
+};
+
+// One EMEVD template-award reference: a bank-2000 event init whose eventId is a known
+// item-award template carries (entity_id, lot_id) at fixed arg offsets. The lot is an
+// ItemLotParam_map row (lotType 1); the entity_id resolves to an MSB Enemy part's
+// position (the marker location). The 13 templates + their (entity,lot) arg offsets are
+// datamined in tools/extract_all_items.py:646 (validated 500/500 vs SoulsFormats by
+// tools/probe_emevd_format.py). Both > 0 (filtered). See docs/re/windows_enemy_loot_nobake_analysis.md §5b.
+struct EmevdAward
+{
+    uint32_t entityId = 0;  // MSB Enemy EntityID this award is positioned by
+    uint32_t lotId    = 0;  // ItemLotParam_map row id (lotType 1) awarded
 };
 
 struct ParseResult
@@ -85,6 +102,15 @@ struct ParseResult
 // (the runtime enemy-drop source). Off by default.
 ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase = 0,
                       bool wantAssets = false, bool wantEnemies = false);
+
+// Parse a DECOMPRESSED EMEVD (.emevd) blob and return every template item-award
+// reference (bank-2000 event init whose eventId is one of the 13 award templates),
+// already filtered to entity_id > 0 && lot_id > 0. The 64-bit EMEVD layout is pinned in
+// tools/probe_emevd_format.py (eventCount@0x10, eventsOffset@0x18, instrTableOffset@0x28,
+// argsOffset@0x78; event stride 0x30, instruction stride 0x20). The caller joins each
+// EntityID to an MSB Enemy position (Enemy::entityId) to place the marker. Empty on any
+// malformed blob.
+std::vector<EmevdAward> parse_emevd(const uint8_t *buf, size_t len);
 
 // oo2core's OodleLZ_Decompress (14-arg; x64 ABI unifies __stdcall/__fastcall). Kept as a
 // plain function-pointer typedef so msbe_parser needs no <windows.h>/oo2core link — the DLL

@@ -56,6 +56,7 @@ namespace goblin::config
     std::string lootMsbDir = "";   // empty = auto-detect map\MapStudio
     bool lootCollectibles = false; // opt-in: AEG gather/collectible markers from disk MSBs + AssetEnvironmentGeometryParam
     bool lootEnemyDrops = false;   // opt-in: enemy-drop markers from disk MSBs (Parts.Enemies → NpcParam → ItemLotParam)
+    bool lootEmevdDrops = false;   // opt-in: EMEVD-scripted award markers from disk event\*.emevd.dcx (template inits → entity/lot → MSB Enemy pos)
 
     bool redifyBossIcons = false;
     bool graceOverlay = true;        // our graces are the default map source now (validated)
@@ -228,6 +229,15 @@ namespace
                   "bearings, key items -- NOT respawning crafting clutter (meat/bones). Replaces\n"
                   "the matching baked enemy markers (and adds notable drops the bake missed).\n"
                   "Uses the same map dir as loot_from_disk_msb. Off by default."),
+                B("loot_emevd_drops", lootEmevdDrops, "false",
+                  "EXPERIMENTAL. Add markers for EMEVD-scripted item awards read straight from\n"
+                  "the mod's event\\*.emevd.dcx files. Each bank-2000 template-award event init\n"
+                  "carries (entity_id, lot_id); the entity_id is joined to its MSB Enemy part\n"
+                  "for the world position, and the lot (ItemLotParam_map) is resolved LIVE. This\n"
+                  "covers scripted drops the MSB Treasure/Enemy passes can't see (field/dungeon\n"
+                  "boss rewards, scarabs, painting pickups, NPC quest/invasion rewards, great\n"
+                  "runes, larval tears). Replaces the matching baked LootSource::Emevd markers.\n"
+                  "Uses the event\\ folder beside loot_msb_dir's map dir. Off by default."),
                 B("debug_logging", debugLogging, "false",
                   "Enable verbose debug logging (memory addresses, param details, FMG internals)"),
                 B("show_all", showAll, "false",

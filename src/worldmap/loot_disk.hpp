@@ -39,8 +39,19 @@ struct DiskCollectible
 struct DiskEnemy
 {
     uint32_t npcParamId = 0;            // MSB Enemy part's NPCParamID (NpcParam row id)
+    uint32_t entityId = 0;             // MSB EntityID (the EMEVD-award join key; 0 if unset)
     uint8_t  area = 0, gx = 0, gz = 0;  // from the tile filename
     float    posX = 0.0f, posZ = 0.0f;  // Part+0x20 X/Z (block-local; = bake x/z)
+};
+
+// One EMEVD template item-award (loot_emevd_drops): a bank-2000 event init carries
+// (entityId, lotId). The lot is an ItemLotParam_map row (lotType 1); the position comes
+// from the MSB Enemy part with this entityId (join via DiskEnemy::entityId). Parsed from
+// the mod's event\*.emevd.dcx by load_emevd_awards(). See msbe::parse_emevd.
+struct DiskEmevd
+{
+    uint32_t entityId = 0;
+    uint32_t lotId = 0;
 };
 
 // True when any disk-MSB source is enabled (treasure loot OR collectibles); both
@@ -65,6 +76,12 @@ void set_mod_folder(const std::filesystem::path &p);
 std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots = nullptr,
                                               std::vector<DiskCollectible> *collectibles = nullptr,
                                               std::vector<DiskEnemy> *enemies = nullptr);
+
+// Parse every event\*.emevd.dcx in the active mod (sibling of the resolved map\MapStudio
+// dir) and return all template item-award references (entityId, lotId). The caller joins
+// each entityId to an MSB Enemy position (DiskEnemy::entityId) to place the marker. Empty
+// when no event dir is found. Uses the same DiskLootState dir discovery as the MSB pass.
+std::vector<DiskEmevd> load_emevd_awards();
 
 // ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────
 // With loot_from_disk_msb on, the map dir is resolved by ancestor-walk at init

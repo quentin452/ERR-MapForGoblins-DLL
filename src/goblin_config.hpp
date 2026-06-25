@@ -87,6 +87,12 @@ namespace goblin
         // all live). Replaces the matching baked LootSource::Enemy rows. Opt-in; see
         // memory msbe-enemy-loot-offsets + docs/re/windows_enemy_loot_nobake_analysis.md.
         extern bool lootEnemyDrops;
+        // When true, also emit markers for EMEVD-scripted item awards: the mod's
+        // event\*.emevd.dcx files are parsed, bank-2000 template-award inits give
+        // (entityId, lotId), and the entityId is joined to its MSB Enemy part for the
+        // position. Replaces the matching baked LootSource::Emevd rows. Opt-in; see
+        // docs/re/windows_enemy_loot_nobake_analysis.md §5b + msbe::parse_emevd.
+        extern bool lootEmevdDrops;
         // Directory holding the active mod's map\MapStudio\*.msb.dcx (or the mod
         // root, or a map\ root). Empty = auto-detect: the DLL's own mod folder,
         // then the Elden Ring install dir. Set it to your ModEngine2 mod's map

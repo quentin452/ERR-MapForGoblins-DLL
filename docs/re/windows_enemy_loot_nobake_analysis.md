@@ -178,7 +178,8 @@ the loot no-bake goal.**
 | Treasure reachable_dummy | 2 | ✅ YES | +0x60 EntityID recovery | **SHIPPED** |
 | Treasure NONE (corpse) | ~312–328 | ❌ NO | offline corpse heuristic, no clean MSB structure | **STAYS BAKED** (curated residual) |
 | Enemy | 119 | 🔶 YES *if built* | `Parts.Enemies`+`NpcParam` pass (offline-proven) | **NOT YET BUILT** |
-| Emevd | 529 | ❌ mostly NO | scripted grants, no MSB world pos (#2 CLOSED: ~unplaceable) | **STAYS BAKED** |
+| Emevd (direct template) | 307 | ✅ YES | `parse_emevd` template inits → EntityID→MSB Enemy pos | **SHIPPED** (`loot_emevd_drops`) |
+| Emevd (sequence-base / event-1200) | 222 | 🔶 YES *if built* | ItemLotParam-chain RE + event-1200 flag→lot | **STAYS BAKED** (residual) |
 | Collectibles | (runtime) | ✅ YES | AEG_8xx `pickUpItemLotParamId` pass | **SHIPPED** (`loot_collectibles`) |
 
 ### NON-loot features (inherently baked — not a de-bake target)
@@ -209,11 +210,26 @@ already runtime-derivable today.
 WRONG. All 529 baked Emevd rows already have a position from an MSB part (521 c-prefix ChrIns, 8
 cross-tile), and the lot→entity link is in the EMEVD files on disk (`event/*.emevd.dcx`).
 
-- **Emevd 529 → ~100% recoverable** with a runtime EMEVD parser: **373 directly** (a bank-2000 event
-  init co-carries the lot + a reachable MSB EntityID/group), **156 via a sequence-base lot** (the
-  ItemLotParam-chain rows like `20081-85` = Tree Sentinel set, whose base `20080` IS EMEVD-bound), **0
-  unrecoverable**. The 13 named templates (`90005300/860/750/…`, see `extract_all_items.py:646`) cover
-  the bulk; the co-occurrence scan confirms full coverage.
+- **Emevd 529 → ~100% recoverable** with a runtime EMEVD parser, in two tiers: **307 directly** (a
+  bank-2000 event init co-carries the lot + an MSB Enemy EntityID that gives the position) + **222 via a
+  sequence-base lot / event-1200** (the ItemLotParam-chain rows like `200X1` smithing-stone siblings,
+  whose base `200X0` IS EMEVD-bound; and the `common.emevd` event-1200 flag→lot drops like Lhutel the
+  Headless), **0 unrecoverable**. The 13 named templates (`90005300/860/750/…`, see
+  `extract_all_items.py:646`) carry the direct tier.
+  > **NUMBER CORRECTION (2026-06-25, validated):** the direct-template tier is **307**, not the "373"
+  > an earlier estimate gave. `tools/datamine_emevd_recover.py` and `tools/probe_emevd_format.py`'s
+  > end-to-end reproduction both report 307/529 baked Emevd lots covered by an EntityID-joined direct
+  > template award (318 unique (entity,lot) markers placed; 222 baked lots stay — they need the
+  > sequence-base / event-1200 recovery, not implemented in this pass).
+- **★ SHIPPED — the direct-template EMEVD pass (config `loot_emevd_drops`).** `msbe::parse_emevd`
+  (64-bit EMEVD layout pinned by `tools/probe_emevd_format.py`, **500/500 vs SoulsFormats**) reads the
+  bank-2000 template-award inits; `loot_disk::load_emevd_awards` parses `event\*.emevd.dcx` (sibling of
+  `map\MapStudio`); `map_entry_layer::build_disk_emevd_markers` joins each EntityID to an MSB Enemy part
+  (`Enemy::entityId`, the `+0x60` entity sub-struct, EntityID@+0x00 — same offset as the treasure path),
+  dedups by (entity,lot), resolves the lot LIVE (ItemLotParam_map, lotType 1) and emits at the enemy's
+  block-local position. A provenance guard drops the **307** baked `LootSource::Emevd` rows it covers.
+  The **222** residual (sequence-base + event-1200) stays baked — future work: ItemLotParam-chain RE
+  (shared with the enemy 35 / corpse 30) + the event-1200 flag→lot mechanism.
 - **Corpse Treasure residual (312, partBucket≠live) → NOT EMEVD**: only 47 EMEVD-recoverable (17
   direct + 30 base), **265 have no EMEVD link** — they are the `enrich_fallback_with_emevd` heuristic
   bindings (AEG099_990/090 corpses: "Sign of the All-Knowing", Juvenile Scholar Robe, …). These are

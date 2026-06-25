@@ -359,6 +359,64 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
             spdlog::info("[LOOTDISK]   enemy-drop category index {} = {} markers", cat, n);
 }
 
+// EMEVD-scripted award markers (config loot_emevd_drops): the mod's event\*.emevd.dcx
+// template-award inits give (entityId, lotId); we join the entityId to its MSB Enemy
+// part for the world position and resolve the lot (ItemLotParam_map, lotType 1) LIVE.
+// This places scripted drops the MSB Treasure/Enemy passes structurally CAN'T see —
+// field/dungeon boss rewards, scarabs, painting pickups, NPC quest/invasion rewards,
+// great runes, larval tears (the 13 templates in tools/extract_all_items.py:646). Each
+// placed lot is added to `covered` so the baked LootSource::Emevd row it reproduces is
+// dropped below. Dedup by (entity, lot) — the same award can appear across event files,
+// and a lot shared by several scripted entities is one obtainable pickup PER entity (its
+// own position). See docs/re/windows_enemy_loot_nobake_analysis.md §5b.
+static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
+                                     const std::vector<DiskEnemy> &enemies,
+                                     const std::unordered_set<uint32_t> &treasure_lots,
+                                     std::unordered_set<uint32_t> &covered)
+{
+    GOBLIN_BENCH("build.disk_emevd");
+    // EntityID → enemy placement (position anchor). First occurrence wins, matching the
+    // offline join (extract_all_items.py: `eid not in entity_to_pos`).
+    std::unordered_map<uint32_t, const DiskEnemy *> ent_to_pos;
+    ent_to_pos.reserve(enemies.size());
+    for (const DiskEnemy &en : enemies)
+        if (en.entityId != 0) ent_to_pos.emplace(en.entityId, &en);
+
+    int emitted = 0, no_entity = 0, dup = 0, treasure_dup = 0, unclassified = 0;
+    const bool verbose = goblin::config::diagLootPos;
+    std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
+    std::unordered_set<uint64_t> seen;      // dedup by (entity<<32 | lot)
+    for (const DiskEmevd &a : awards)
+    {
+        auto it = ent_to_pos.find(a.entityId);
+        if (it == ent_to_pos.end()) { ++no_entity; continue; }  // entity not an MSB enemy part
+        uint64_t key2 = ((uint64_t)a.entityId << 32) | a.lotId;
+        if (!seen.insert(key2).second) { ++dup; continue; }
+        if (treasure_lots.count(a.lotId)) { ++treasure_dup; continue; }  // physical pickup already placed
+        const DiskEnemy *pos = it->second;
+        int32_t key = goblin::resolve_loot_item_textid(a.lotId, 1, -1);  // EMEVD lots = ItemLotParam_map
+        int cat = goblin::item_marker_category(key);
+        if (cat < 0) cat = goblin::classify_item_live(key);  // live fallback (any mod / unbaked)
+        if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = pos->area;
+        d.gridXNo = pos->gx;
+        d.gridZNo = pos->gz;
+        d.posX = pos->posX;
+        d.posZ = pos->posZ;
+        push_marker(/*row_id=*/a.lotId, d, cat, a.lotId, /*lotType=*/1);
+        covered.insert(a.lotId);  // drops the matching baked LootSource::Emevd row
+        ++emitted;
+        if (verbose) ++per_cat[cat];
+    }
+    spdlog::info("[LOOTDISK] emevd drops: {} markers emitted ({} template awards total; filtered: "
+                 "{} entity-not-an-msb-enemy, {} (entity,lot)-dedup, {} treasure-dup, {} unclassified)",
+                 emitted, (int)awards.size(), no_entity, dup, treasure_dup, unclassified);
+    if (verbose)
+        for (auto &[cat, n] : per_cat)
+            spdlog::info("[LOOTDISK]   emevd-drop category index {} = {} markers", cat, n);
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
 // Runs exactly once — wrapped by ensure_buckets()/std::call_once.
@@ -378,27 +436,39 @@ void build_buckets_impl()
     // disk_lots: baked enemy rows are lotType 2, dropped by their own provenance guard
     // below — never via the lotType-1 treasure-replace path.
     std::unordered_set<uint32_t> enemy_disk_lots;
+    // EMEVD-scripted award lots the disk EMEVD pass placed (lootEmevdDrops). Like the
+    // enemy guard, kept SEPARATE: baked Emevd rows are dropped by their own provenance
+    // guard below (LootSource::Emevd), never via the lotType-1 treasure-replace.
+    std::unordered_set<uint32_t> emevd_disk_lots;
     if (disk_source_enabled())
     {
         // One disk read pass for all sources. Each out-vector requested only when on.
+        // The EMEVD pass needs the enemy placements too (for the EntityID → position
+        // join), so parse enemies whenever the enemy OR emevd source is on.
         std::vector<DiskCollectible> disk_collectibles;
         std::vector<DiskEnemy> disk_enemies;
+        const bool wantEnemies = goblin::config::lootEnemyDrops || goblin::config::lootEmevdDrops;
         std::vector<DiskTreasure> treasures = load_disk_treasures(
             &dropped_dummy_lots,
             goblin::config::lootCollectibles ? &disk_collectibles : nullptr,
-            goblin::config::lootEnemyDrops ? &disk_enemies : nullptr);
+            wantEnemies ? &disk_enemies : nullptr);
         if (goblin::config::lootFromDiskMsb)
             build_disk_loot_markers(treasures, disk_lots, disk_lot_tile);
         // All MSB Treasure lots (the ground-item pickup assets) — used to skip
-        // double-placing in the collectible/enemy passes. Built from the parsed
+        // double-placing in the collectible/enemy/emevd passes. Built from the parsed
         // treasures directly, so it's correct even when loot_from_disk_msb is off.
         std::unordered_set<uint32_t> treasure_lots;
-        if (goblin::config::lootCollectibles || goblin::config::lootEnemyDrops)
+        if (goblin::config::lootCollectibles || wantEnemies)
             for (const DiskTreasure &t : treasures) treasure_lots.insert(t.lotId);
         if (goblin::config::lootCollectibles)
             build_disk_collectible_markers(disk_collectibles, treasure_lots, disk_lots);
         if (goblin::config::lootEnemyDrops)
             build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots);
+        if (goblin::config::lootEmevdDrops)
+        {
+            std::vector<DiskEmevd> awards = load_emevd_awards();
+            build_disk_emevd_markers(awards, disk_enemies, treasure_lots, emevd_disk_lots);
+        }
     }
 
     // Diagnostic sets: which baked lotIds exist as map-loot (lotType 1) vs as ANY
@@ -413,6 +483,7 @@ void build_buckets_impl()
 
     int replaced = 0;
     int replaced_enemy = 0;  // baked Enemy rows dropped because the disk enemy pass covers them
+    int replaced_emevd = 0;  // baked Emevd rows dropped because the disk EMEVD pass covers them
     int debake_gap = 0;  // Treasure-sourced baked rows the disk did NOT cover (de-bake blocker)
     int enemy_markers = 0;  // [ENEMY-MARKERS] baked enemy-drop rows NOT covered by the disk pass
     for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
@@ -452,6 +523,15 @@ void build_buckets_impl()
             e.lotId != 0 && enemy_disk_lots.count(e.lotId))
         {
             ++replaced_enemy;
+            continue;
+        }
+        // EMEVD-scripted disk source (loot_emevd_drops) owns this lot → drop the baked
+        // LootSource::Emevd row (lotType 1). Its own guard: the live event\*.emevd.dcx
+        // template-award parse + EntityID→MSB-Enemy join reproduces this scripted drop.
+        if (!emevd_disk_lots.empty() && e.loot_source == gen::LootSource::Emevd &&
+            e.lotId != 0 && emevd_disk_lots.count(e.lotId))
+        {
+            ++replaced_emevd;
             continue;
         }
         // [DEBAKE-GAP] diag (de-bake readiness): a Treasure-sourced row that reaches HERE was
@@ -495,6 +575,8 @@ void build_buckets_impl()
     }
     if (goblin::config::lootEnemyDrops)
         spdlog::info("[LOOTDISK] replaced {} baked enemy rows with disk enemy placements", replaced_enemy);
+    if (goblin::config::lootEmevdDrops)
+        spdlog::info("[LOOTDISK] replaced {} baked emevd rows with disk EMEVD placements", replaced_emevd);
     if (goblin::config::diagLootPos)
         spdlog::info("[ENEMY-MARKERS] {} baked enemy-drop rows NOT covered by the disk enemy pass "
                      "(loot_enemy_drops {}); {} covered+replaced",

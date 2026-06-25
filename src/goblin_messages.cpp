@@ -737,7 +737,8 @@ void goblin::setup_messages()
     // baked MAP_ENTRIES, so those ids were never collected and the tooltip label
     // resolves to "" (no name). Preloading the whole name-space here covers them.
     if (goblin::config::liveLootLabels ||
-        goblin::config::lootFromDiskMsb || goblin::config::lootCollectibles)
+        goblin::config::lootFromDiskMsb || goblin::config::lootCollectibles ||
+        goblin::config::lootEnemyDrops || goblin::config::lootEmevdDrops)
     {
         GOBLIN_BENCH("messages.live_loot_all");
         copy_fmg_all_layered(goods_slots, 500000000, "GoodsName", false);

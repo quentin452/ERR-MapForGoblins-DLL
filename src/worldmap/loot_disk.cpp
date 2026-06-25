@@ -143,7 +143,8 @@ void set_mod_folder(const fs::path &p) { g_mod_folder = p; }
 
 bool disk_source_enabled()
 {
-    return config::lootFromDiskMsb || config::lootCollectibles || config::lootEnemyDrops;
+    return config::lootFromDiskMsb || config::lootCollectibles || config::lootEnemyDrops ||
+           config::lootEmevdDrops;
 }
 
 void ensure_map_dir_resolved()
@@ -298,6 +299,7 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
             {
                 DiskEnemy e;
                 e.npcParamId = en.npcParamId;
+                e.entityId = en.entityId;
                 e.area = (uint8_t)area;
                 e.gx = (uint8_t)gx;
                 e.gz = (uint8_t)gz;
@@ -344,6 +346,72 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
                  "dropped; reachable dummies kept); {} KRAK skipped", parsed, withPart, dummies, kraks);
     if (wantEnemies)
         spdlog::info("[LOOTDISK] {} enemy placements parsed (with NPCParamID)", enemies->size());
+    return out;
+}
+
+namespace
+{
+// The mod's event\ dir (sibling of map\MapStudio), holding *.emevd.dcx. Derived from the
+// resolved MapStudio dir: <root>\map\MapStudio → <root>\event. Falls back across a couple
+// of layouts (a map\ root, or the dir itself) so a custom loot_msb_dir still works when it
+// sits beside an event\ folder. Empty if none found.
+fs::path resolve_event_dir(const fs::path &mapStudio)
+{
+    if (mapStudio.empty()) return {};
+    std::error_code ec;
+    // <root>\map\MapStudio → <root>\event  (the normal ERR/ModEngine layout)
+    fs::path root = mapStudio.parent_path().parent_path();
+    if (fs::path e = root / "event"; fs::exists(e, ec)) return e;
+    // <root>\map → <root>\event
+    if (fs::path e = mapStudio.parent_path() / "event"; fs::exists(e, ec)) return e;
+    // a flat custom dir that itself contains an event\ subfolder
+    if (fs::path e = mapStudio / "event"; fs::exists(e, ec)) return e;
+    return {};
+}
+} // namespace
+
+std::vector<DiskEmevd> load_emevd_awards()
+{
+    std::vector<DiskEmevd> out;
+    ensure_map_dir_resolved();
+    fs::path mapStudio = disk_loot_dir();
+    fs::path evdir = resolve_event_dir(mapStudio);
+    if (evdir.empty())
+    {
+        spdlog::warn("[LOOTDISK] no event\\ dir found beside {} — EMEVD loot deferred",
+                     mapStudio.empty() ? "(no map dir yet)" : mapStudio.string());
+        return out;
+    }
+    spdlog::info("[LOOTDISK] reading EMEVD from {}", evdir.string());
+
+    msbe::OodleDecompressFn oodle = resolve_oodle();  // KRAK events (unmodified vanilla)
+    int parsed = 0, kraks = 0;
+    std::error_code ec;
+    for (auto &de : fs::directory_iterator(evdir, ec))
+    {
+        if (!de.is_regular_file(ec)) continue;
+        std::string name = de.path().filename().string();  // e.g. "m60.emevd.dcx"
+        std::string lower = name;
+        for (char &c : lower) c = (char)std::tolower((unsigned char)c);
+        if (lower.size() < 10 || lower.compare(lower.size() - 10, 10, ".emevd.dcx") != 0)
+            continue;
+        std::vector<uint8_t> dcx = slurp(de.path());
+        if (dcx.empty()) { spdlog::warn("[LOOTDISK] read failed: {}", name); continue; }
+        bool krak = false;
+        std::vector<uint8_t> evd = msbe::dcx_decompress(dcx.data(), dcx.size(), &krak, oodle);
+        if (evd.empty())
+        {
+            if (krak) ++kraks;
+            else spdlog::warn("[LOOTDISK] EMEVD decompress failed: {}", name);
+            continue;
+        }
+        std::vector<msbe::EmevdAward> aw = msbe::parse_emevd(evd.data(), evd.size());
+        for (const auto &a : aw) out.push_back({a.entityId, a.lotId});
+        ++parsed;
+        spdlog::debug("[LOOTDISK] {} -> {} EMEVD awards", name, aw.size());
+    }
+    spdlog::info("[LOOTDISK] {} EMEVD files parsed; {} template awards; {} KRAK skipped",
+                 parsed, (int)out.size(), kraks);
     return out;
 }
 } // namespace goblin::worldmap
