@@ -892,6 +892,49 @@ static int build_disk_hostile_npc_markers(
     return emitted;
 }
 
+// World feature: Spirit Springs (config world_features_from_disk). A spring is a MountJump
+// (region subtype 46) / LockedMountJump (54) LAUNCH point, an Others region named
+// "FakeSpiritSpringJump" (ERR's manual springs), or a DLC AEG463_200 asset (springs without a
+// region). All from disk MSBs — no bake. `regions` is already filtered to those three by the
+// parser; AEG463_200 comes from the asset enumeration. Springs carry no flag (a spring never
+// "completes" — the unlock flag lives on its Spiritspring Hawk), so no graying. textId1 =
+// "Spiritspring Jumping". Dedup by the bake key (area + 1u-rounded pos) so the launch point +
+// any co-located asset/region collapse to one icon. Dedicated category → category-wipe.
+static int build_disk_spirit_springs_markers(
+    const std::vector<DiskRegion> &regions,
+    const std::vector<DiskCollectible> &assets,
+    std::unordered_set<Cell, CellHash> &out_cells)
+{
+    namespace gen = goblin::generated;
+    GOBLIN_BENCH("build.disk_spirit_springs");
+    const int cat = static_cast<int>(gen::Category::WorldSpiritSprings);
+    constexpr uint32_t kSpringAeg = 463200;  // AEG463_200 = DLC spirit-spring asset
+    int emitted = 0, dup = 0;
+    std::unordered_set<std::string> seen;  // bake dedup: (area, round x, round z)
+    auto emit = [&](uint8_t area, uint8_t gx, uint8_t gz, float x, float z) {
+        std::string k = std::to_string(area) + "_" + std::to_string((long)std::lround(x)) + "_" +
+                        std::to_string((long)std::lround(z));
+        if (!seen.insert(k).second) { ++dup; return; }
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = area;
+        d.gridXNo = gx;
+        d.gridZNo = gz;
+        d.posX = x;
+        d.posZ = z;
+        d.textId1 = 900301620;  // tutorial text "Spiritspring Jumping"
+        push_marker(/*row_id=*/0ull, d, cat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
+        out_cells.insert(cell_of(g_buckets[cat].back()));
+        ++emitted;
+    };
+    for (const DiskRegion &r : regions)  // pre-filtered to MountJump/Locked/FakeSpiring
+        emit(r.area, r.gx, r.gz, r.posX, r.posZ);
+    for (const DiskCollectible &a : assets)
+        if (a.aegRow == kSpringAeg) emit(a.area, a.gx, a.gz, a.posX, a.posZ);
+    spdlog::info("[LOOTDISK] world features: {} Spirit Springs from disk ({} regions + AEG463_200 "
+                 "assets; {} pos-dedup)", emitted, (int)regions.size(), dup);
+    return emitted;
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
 // NOTE (2026-06-23): a "World-* categories live from WorldMapPointParam by row-id range" experiment
@@ -940,16 +983,20 @@ void build_buckets_impl()
         // join), so parse enemies whenever the enemy OR emevd source is on.
         std::vector<DiskCollectible> disk_collectibles;
         std::vector<DiskEnemy> disk_enemies;
+        std::vector<DiskRegion> disk_regions;
         // World features need enemies too (Hostile NPC invaders ride the enemy enumeration).
         const bool wantEnemies = goblin::config::lootEnemyDrops || goblin::config::lootEmevdDrops ||
                                  goblin::config::worldFeaturesFromDisk;
         // World features (Stakes) are AEG asset placements → they ride the SAME asset
         // enumeration as collectibles (disk_collectibles), so request it when either is on.
         const bool wantAssets = goblin::config::lootCollectibles || goblin::config::worldFeaturesFromDisk;
+        // Spirit Springs are POINT regions → request the region enumeration for world features.
+        const bool wantRegions = goblin::config::worldFeaturesFromDisk;
         std::vector<DiskTreasure> treasures = load_disk_treasures(
             &dropped_dummy_lots,
             wantAssets ? &disk_collectibles : nullptr,
-            wantEnemies ? &disk_enemies : nullptr);
+            wantEnemies ? &disk_enemies : nullptr,
+            wantRegions ? &disk_regions : nullptr);
         if (goblin::config::lootFromDiskMsb)
             build_disk_loot_markers(treasures, disk_lots, disk_lot_tile);
         // All MSB Treasure lots (the ground-item pickup assets) — used to skip
@@ -978,6 +1025,10 @@ void build_buckets_impl()
             build_disk_hostile_npc_markers(
                 disk_enemies, world_feature_flags,
                 world_feature_cells[static_cast<int>(gen::Category::WorldHostileNPC)]);
+            // Spirit Springs: POINT regions (MountJump/Locked/FakeSpiring) + AEG463_200 assets.
+            build_disk_spirit_springs_markers(
+                disk_regions, disk_collectibles,
+                world_feature_cells[static_cast<int>(gen::Category::WorldSpiritSprings)]);
         }
         if (goblin::config::lootEnemyDrops)
             build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots);

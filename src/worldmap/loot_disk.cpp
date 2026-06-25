@@ -229,11 +229,13 @@ void set_build_trigger(void (*fn)()) { g_build_trigger = fn; }
 
 std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots,
                                               std::vector<DiskCollectible> *collectibles,
-                                              std::vector<DiskEnemy> *enemies)
+                                              std::vector<DiskEnemy> *enemies,
+                                              std::vector<DiskRegion> *regions)
 {
     std::vector<DiskTreasure> out;
     const bool wantAssets = collectibles != nullptr;
     const bool wantEnemies = enemies != nullptr;
+    const bool wantRegions = regions != nullptr;
     ensure_map_dir_resolved();      // ancestor-walk → Found/Searching (CreateFileW completes it)
     fs::path dir = disk_loot_dir(); // empty until Found (ancestor-walk or the observer)
     if (dir.empty())
@@ -284,7 +286,7 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
             continue;
         }
         msbe::ParseResult r = msbe::parse_msb(msb.data(), msb.size(), /*resident=*/false,
-                                              /*blobBase=*/0, wantAssets, wantEnemies);
+                                              /*blobBase=*/0, wantAssets, wantEnemies, wantRegions);
         if (!r.ok)
         {
             spdlog::warn("[LOOTDISK] parse failed: {}", name);
@@ -326,6 +328,23 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
             }
         }
 
+        if (wantRegions)
+        {
+            for (const auto &rg : r.regions)
+            {
+                DiskRegion d;
+                d.subtype = rg.subtype;
+                d.area = (uint8_t)area;
+                d.gx = (uint8_t)gx;
+                d.gz = (uint8_t)gz;
+                d.posX = rg.pos[0];
+                d.posY = rg.pos[1];
+                d.posZ = rg.pos[2];
+                d.name = rg.name;
+                regions->push_back(std::move(d));
+            }
+        }
+
         int tilePos = 0;
         for (const auto &t : r.treasures)
         {
@@ -363,6 +382,9 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
                  "dropped; reachable dummies kept); {} KRAK skipped", parsed, withPart, dummies, kraks);
     if (wantEnemies)
         spdlog::info("[LOOTDISK] {} enemy placements parsed (with NPCParamID)", enemies->size());
+    if (wantRegions)
+        spdlog::info("[LOOTDISK] {} spirit-spring regions parsed (MountJump/Locked/FakeSpiring)",
+                     regions->size());
     // Tile coverage: parsed _00 vs skipped LOD/duplicate tiers, for the scoreboard.
     {
         int total = 0, skipped = 0;

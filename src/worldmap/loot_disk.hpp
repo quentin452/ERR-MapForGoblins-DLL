@@ -49,6 +49,17 @@ struct DiskEnemy
     float    posX = 0.0f, posZ = 0.0f;  // Part+0x20 X/Z (block-local; = bake x/z)
 };
 
+// One placed spirit-spring Region read from a disk MSB (worldFeaturesFromDisk). subtype
+// 46=MountJump / 54=LockedMountJump launch point, or -1=Others named "FakeSpiritSpringJump".
+// Position = the region's block-local pos (same transform as parts). See msbe::Region.
+struct DiskRegion
+{
+    int32_t  subtype = 0;
+    uint8_t  area = 0, gx = 0, gz = 0;  // from the tile filename
+    float    posX = 0.0f, posY = 0.0f, posZ = 0.0f;  // region+0x14 (block-local; = bake x/y/z)
+    std::string name;                   // for diag / future name-based filters
+};
+
 // One EMEVD template item-award (loot_emevd_drops): a bank-2000 event init carries
 // (entityId, lotId). The lot is an ItemLotParam_map row (lotType 1); the position comes
 // from the MSB Enemy part with this entityId (join via DiskEnemy::entityId). Parsed from
@@ -81,11 +92,13 @@ void set_mod_folder(const std::filesystem::path &p);
 // dummies are now emitted here — no longer bake-dependent.) Logs [LOOTDISK]
 // per-map (debug) + totals. Empty when no dir.
 // When `collectibles` is non-null, also enumerate AEG collectible assets into it.
-// When `enemies` is non-null, also enumerate Enemy placements into it. All sources
-// share one disk read + parse pass.
+// When `enemies` is non-null, also enumerate Enemy placements into it.
+// When `regions` is non-null, also enumerate spirit-spring POINT regions into it.
+// All sources share one disk read + parse pass.
 std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots = nullptr,
                                               std::vector<DiskCollectible> *collectibles = nullptr,
-                                              std::vector<DiskEnemy> *enemies = nullptr);
+                                              std::vector<DiskEnemy> *enemies = nullptr,
+                                              std::vector<DiskRegion> *regions = nullptr);
 
 // Parse every event\*.emevd.dcx in the active mod (sibling of the resolved map\MapStudio
 // dir) and return the EMEVD item-award references the runtime can position:
