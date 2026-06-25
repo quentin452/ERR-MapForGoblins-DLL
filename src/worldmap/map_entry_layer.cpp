@@ -723,20 +723,21 @@ static int build_disk_world_feature_markers(
 }
 
 // Minimal raw-offset view of a SignPuddleParam row (the no-bake Summoning Pools source).
-// Only the fields the marker needs; get_param<T> casts T* over the live row bytes. Offsets
-// pinned vs the paramdef + the working bake (tools/probe_signpuddle_offsets.py: 247 rows,
-// paramdef value == raw[off]; 0x28 is 4-aligned so no packing needed). The marker's graying
-// flag is the ROW ID itself (670XXX), which the EMEVD sets when the pool is unlocked.
+// Only the fields the marker needs; get_param<T> casts T* over the live row bytes. ⚠ The
+// paramdef field NAMES (unknown_0x28 etc.) are LABELS, not byte offsets — the REAL offsets,
+// pinned from the paramdef field layout AND a raw-row scan (row 670099: int 45 @ +0x10, pos
+// (4.69,1.12,-25.95) @ +0x14; tools/probe_signpuddle_offsets.py), are 0x18 lower. The marker's
+// graying flag is the ROW ID itself (670XXX), which the EMEVD sets when the pool is unlocked.
 struct SignPuddleRow
 {
-    uint8_t _pad[0x28];
-    int32_t mapRef;  // +0x28  dungeon: area + block*256 ; overworld: >=100000 (position-join)
-    float   posX;    // +0x2c
-    float   posY;    // +0x30
-    float   posZ;    // +0x34
+    uint8_t _pad[0x10];
+    int32_t mapRef;  // +0x10  dungeon: area + block*256 ; overworld: >=100000 (position-join)
+    float   posX;    // +0x14
+    float   posY;    // +0x18
+    float   posZ;    // +0x1c
 };
-static_assert(offsetof(SignPuddleRow, mapRef) == 0x28 && offsetof(SignPuddleRow, posX) == 0x2c &&
-                  offsetof(SignPuddleRow, posZ) == 0x34,
+static_assert(offsetof(SignPuddleRow, mapRef) == 0x10 && offsetof(SignPuddleRow, posX) == 0x14 &&
+                  offsetof(SignPuddleRow, posZ) == 0x1c,
               "SignPuddleParam offsets");
 
 // World feature: Summoning Pools (config world_features_from_disk). Each pool is a live

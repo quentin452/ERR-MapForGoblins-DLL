@@ -60,4 +60,8 @@ for row in rows:
 
 print(f"\nrid range: {rid_min}..{rid_max}")
 print(f"dungeon (map_ref<100000): {dungeon}   overworld (need AEG099_015 join): {overworld}")
-print(f"row offsets used: map_ref@0x28(int) x@0x2c y@0x30 z@0x34 (float); flag = rid itself")
+print("\n⚠ The paramdef field NAMES (unknown_0x28 …) are LABELS, not byte offsets. The REAL row")
+print("byte offsets (validated vs a raw-serialized row: rid 670099 = int 45 @+0x10, pos")
+print("(4.69,1.12,-25.95) @+0x14) are 0x18 LOWER — the C++ SignPuddleRow struct uses these:")
+print("  map_ref @ +0x10 (int)   posX @ +0x14   posY @ +0x18   posZ @ +0x1c (float)")
+print("  graying flag = the ROW ID itself (the EMEVD sets it on unlock), NOT a row field")
