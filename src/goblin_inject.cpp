@@ -4097,6 +4097,108 @@ void goblin::apply_flag_or_pairs()
     }
 }
 
+// ── Live persistence classifier (replaces the >=0x40000000 numeric repeatable-cut) ──
+// A loot flag is a tracked one-time collectible IFF its GROUP node is allocated in the
+// persistent EventFlagMan's std::map<uint group, Block> (mgr+0x38). This ports the game's
+// own FUN_1405f9400 (IsEventFlag's bit-lookup) — group = flagId / divisor(mgr+0x1c), then a
+// std::map::find on the group. RUNTIME-VALIDATED 2026-06-25 via live RPM (divisor=1000; node
+// layout left@0/right@+0x10/_Isnil@+0x19(byte)/key@+0x20(uint); sweep: DLC 506/506 persistent,
+// base 4979/4990 — proves groups are pre-allocated at save load, not lazy). The old numeric cut
+// wrongly dropped ALL DLC one-time loot (its flags are >=0x40000000 too); this is the ground
+// truth. See docs/re/resolve_loot_flag_dlc_fix_prompt.md + memory resolve-loot-flag-dlc-bug.
+//
+// Reuses orp_flag_set's manager resolve (g_orp_event_man_slot = the PRIMARY EVENT_FLAG_MAN_SLOT,
+// NOT _ALT which is a different singleton). All reads RPM-guarded (clang-cl elides __try on raw
+// loads). Memoized by group — resolve_loot_flag is per-marker on hot census/graying refreshes,
+// called from both the render thread and the disk-build worker.
+static std::mutex g_flag_persist_mtx;
+static std::unordered_map<uint32_t, uint8_t> g_flag_persist_cache;  // group -> 1 persistent / 0 not
+static bool g_flag_div_ok = false;
+static uint32_t g_flag_div = 0;
+
+// One RPM read of a std::_Tree node's fields we need (left@0x00, right@0x10, _Isnil@0x19, key@0x20).
+static bool fg_read_node(uintptr_t n, uintptr_t &left, uintptr_t &right, uint8_t &isnil, uint32_t &key)
+{
+    if (!n) return false;
+    uint8_t buf[0x24];
+    SIZE_T got = 0;
+    if (!ReadProcessMemory(GetCurrentProcess(), (void *)n, buf, sizeof(buf), &got) || got != sizeof(buf))
+        return false;
+    left  = *reinterpret_cast<uintptr_t *>(buf + 0x00);
+    right = *reinterpret_cast<uintptr_t *>(buf + 0x10);
+    isnil = buf[0x19];
+    key   = *reinterpret_cast<uint32_t *>(buf + 0x20);
+    return true;
+}
+
+// Returns true if the query could be computed (manager + divisor resolved + walk completed),
+// writing the verdict to `persistent`. Returns false when the manager isn't resolvable yet, so
+// the caller can fall back to the legacy numeric heuristic without regressing.
+static bool flag_query_persistent(uint32_t flagId, bool &persistent)
+{
+    if (!g_orp_resolve_tried) orp_flag_set(6001);  // warm the shared manager resolve once
+    if (!g_orp_event_man_slot) return false;
+    uintptr_t mgr = 0;
+    if (!icon_rpm_ptr((uintptr_t)g_orp_event_man_slot, mgr) || !mgr) return false;
+    if (!g_flag_div_ok)
+    {
+        int d = 0;
+        if (!icon_rpm_i32(mgr + 0x1c, d) || d <= 0) return false;
+        g_flag_div = (uint32_t)d;
+        g_flag_div_ok = true;
+    }
+    const uint32_t group = flagId / g_flag_div;
+    {
+        std::lock_guard<std::mutex> lk(g_flag_persist_mtx);
+        auto it = g_flag_persist_cache.find(group);
+        if (it != g_flag_persist_cache.end()) { persistent = it->second != 0; return true; }
+    }
+    // std::map::find(group): descend to lower_bound, then exact-key test.
+    uintptr_t head = 0;
+    if (!icon_rpm_ptr(mgr + 0x38, head) || !head) return false;
+    uintptr_t node = 0;
+    if (!icon_rpm_ptr(head + 0x08, node) || !node) return false;  // root = head->_Parent
+    uintptr_t result = head;
+    bool ok = false;
+    for (int guard = 0; guard < 128; ++guard)
+    {
+        uintptr_t left = 0, right = 0; uint8_t isnil = 1; uint32_t key = 0;
+        if (!fg_read_node(node, left, right, isnil, key)) { return false; }
+        if (isnil) { ok = true; break; }
+        if (key < group) node = right;
+        else { result = node; node = left; }
+        if (!node) { ok = true; break; }
+    }
+    if (!ok) return false;
+    bool found = false;
+    if (result != head)
+    {
+        uintptr_t l = 0, r = 0; uint8_t ni = 1; uint32_t rk = 0;
+        if (!fg_read_node(result, l, r, ni, rk)) return false;
+        found = (rk == group);   // lower_bound gives key>=group; equal ⇒ exact match
+    }
+    persistent = found;
+    {
+        std::lock_guard<std::mutex> lk(g_flag_persist_mtx);
+        g_flag_persist_cache.emplace(group, (uint8_t)(found ? 1 : 0));
+    }
+    return true;
+}
+
+// Should this loot flag be treated as repeatable/temp (NOT a tracked one-time collectible)?
+// -1 = always re-droppable; flag 0 is NOT repeatable (Rune Arc is flag 0, and callers handle 0
+// via their own "no flag" path before this). Otherwise the live group query is ground truth, with
+// the old numeric cut kept ONLY as a pre-resolve fallback so behaviour never regresses.
+static bool flag_is_repeatable(uint32_t flag)
+{
+    if (flag == 0xFFFFFFFFu) return true;
+    if (flag == 0) return false;
+    bool persistent = false;
+    if (flag_query_persistent(flag, persistent))
+        return !persistent;
+    return flag >= 0x40000000u;  // manager not resolved yet → legacy heuristic
+}
+
 // ── Live-loot: hide loot markers on the LIVE item-lot pickup flag ──────
 // Resolve a lot-backed loot marker's LIVE pickup flag from ItemLotParam (same
 // lookup as refresh_loot_from_itemlot below), so the overlay map can detect
@@ -4134,15 +4236,13 @@ uint32_t goblin::resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t bak
             flag = *reinterpret_cast<uint32_t *>(row->b + 0x60);  // getItemFlagId01
     }
     uint32_t resolved = flag ? flag : baked_flag;
-    // Non-persistent / repeatable flags have NO save-backed "obtained" bit, so they
-    // read false forever (IsEventFlag: a flag whose group isn't in the persistent
-    // manager returns false — the temp/event-local groups never are). -1 = "always
-    // re-droppable" (Paramdex); >=2^30 = the empirical temp range (golden runes /
-    // crafting / consumables — repeatable loot). Treat these as NOT a tracked
-    // collectible: return 0 so the caller skips the marker for graying + census
-    // (instead of counting it perpetually "remaining"). This is the dominant cause of
-    // the 100%-save over-report. See docs/re/windows_collected_loot_flag_re_findings.md.
-    if (resolved == 0xFFFFFFFFu || resolved >= 0x40000000u)
+    // Non-persistent / repeatable flags have NO save-backed "obtained" bit, so they read false
+    // forever. Treat them as NOT a tracked collectible: return 0 so the caller skips the marker
+    // for graying + census (the dominant cause of the 100%-save over-report). Ground truth is the
+    // LIVE group-allocation query (flag_is_repeatable) — the old `>=0x40000000` numeric cut
+    // wrongly dropped all DLC one-time loot and survives only as a pre-resolve fallback inside it.
+    // See docs/re/windows_collected_loot_flag_re_findings.md + resolve_loot_flag_dlc_fix_prompt.md.
+    if (flag_is_repeatable(resolved))
         return 0;
     return resolved;
 }
@@ -4197,14 +4297,15 @@ bool goblin::lot_row_in_table(uint32_t lot, uint8_t lotType, uint32_t *flagOut, 
     RawItemLotRow *row = tbl->try_get(lot);
     if (!row) return false;  // gap — the contiguous sub-lot chain ends here
     // Notability flag, same semantics as resolve_loot_flag (lot-wide @+0x80, single-item
-    // fallback to getItemFlagId01 @+0x60; repeatable/temp range → not notable).
+    // fallback to getItemFlagId01 @+0x60; repeatable/temp → not notable, via the same live
+    // group query so DLC one-time loot stays notable).
     uint32_t flag = *reinterpret_cast<uint32_t *>(row->b + 0x80);
     if (flag == 0)
     {
         int32_t item2 = *reinterpret_cast<int32_t *>(row->b + 0x04);
         if (item2 == 0) flag = *reinterpret_cast<uint32_t *>(row->b + 0x60);
     }
-    if (flag == 0xFFFFFFFFu || flag >= 0x40000000u) flag = 0;
+    if (flag_is_repeatable(flag)) flag = 0;
     if (flagOut) *flagOut = flag;
     // Slot-1 item → encoded key (same as resolve_loot_item_textid).
     int32_t item1 = *reinterpret_cast<int32_t *>(row->b + 0x00);
