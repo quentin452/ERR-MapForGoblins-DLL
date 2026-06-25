@@ -1012,6 +1012,64 @@ static int build_disk_maps_markers(const std::vector<DiskTreasure> &treasures,
     return emitted;
 }
 
+// World feature: Paintings (config world_features_from_disk). Each painting is an MSB part —
+// 4 are Asset frames (AEG099_386/388/389/391), 7 are ghost-painter Enemies (c4300/c6320) —
+// REFERENCED by an EMEVD painting-collection event (flag 580000-580199). No bake: the
+// (entity→flag) map comes from the EMEVD painting scan (parse_emevd_paintings, folded into the
+// World-feature flag scan), the position from the matching disk Asset/Enemy part (both carry
+// EntityID). textId1 = the painting's GoodsName FMG, DERIVED from the flag exactly like
+// tools/generate_paintings.py (so the marker is icon+name-identical to the bake it replaces);
+// textDisableFlagId1 = the collection flag (graying/census). Dedup by flag (one icon per
+// painting). Dedicated category → category-wipe finalize (the default for a non-asset-table cat).
+static int build_disk_painting_markers(
+    const std::vector<DiskCollectible> &assets,
+    const std::vector<DiskEnemy> &enemies,
+    const std::unordered_map<uint32_t, uint32_t> &painting_flags,  // entity → flag
+    std::unordered_set<Cell, CellHash> &out_cells)
+{
+    namespace gen = goblin::generated;
+    GOBLIN_BENCH("build.disk_paintings");
+    const int cat = static_cast<int>(gen::Category::WorldPaintings);
+    // entity → position, from BOTH part types (the 11 split 4 Asset / 7 Enemy). First writer
+    // wins (a phase-variant tile reuses the same EntityID). posY unused (map is 2D).
+    struct PaintPos { uint8_t area, gx, gz; float x, z; };
+    std::unordered_map<uint32_t, PaintPos> entity_pos;
+    for (const DiskCollectible &a : assets)
+        if (a.entityId) entity_pos.emplace(a.entityId, PaintPos{a.area, a.gx, a.gz, a.posX, a.posZ});
+    for (const DiskEnemy &e : enemies)
+        if (e.entityId) entity_pos.emplace(e.entityId, PaintPos{e.area, e.gx, e.gz, e.posX, e.posZ});
+
+    int emitted = 0, no_pos = 0, dup = 0;
+    std::unordered_set<uint32_t> seen;  // by flag (one icon per painting)
+    for (const auto &pf : painting_flags)
+    {
+        const uint32_t entity = pf.first, flag = pf.second;
+        auto it = entity_pos.find(entity);
+        if (it == entity_pos.end()) { ++no_pos; continue; }  // painting entity not in a parsed _00 tile
+        if (!seen.insert(flag).second) { ++dup; continue; }
+        const PaintPos &p = it->second;
+        // GoodsName FMG id, derived from the flag (mirrors tools/generate_paintings.py):
+        //   base (580000-580099): goods 8200    + (flag-580000)/10
+        //   DLC  (580100-580199): goods 2008200 + (flag-580100)/10
+        const int32_t goods = (flag >= 580100) ? (2008200 + (int32_t)(flag - 580100) / 10)
+                                               : (8200 + (int32_t)(flag - 580000) / 10);
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = p.area;
+        d.gridXNo = p.gx;
+        d.gridZNo = p.gz;
+        d.posX = p.x;
+        d.posZ = p.z;
+        d.textId1 = 500000000 + goods;   // painting name (GoodsName FMG) — same value the bake stores
+        d.textDisableFlagId1 = flag;     // collected → graying/census (push_marker collected_flag path)
+        push_marker(/*row_id=*/entity, d, cat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
+        out_cells.insert(cell_of(g_buckets[cat].back()));
+        ++emitted;
+    }
+    spdlog::info("[LOOTDISK] world features: {} Paintings from EMEVD events + disk parts "
+                 "({} no-position, {} dup-flag)", emitted, no_pos, dup);
+    return emitted;
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
 // NOTE (2026-06-23): a "World-* categories live from WorldMapPointParam by row-id range" experiment
@@ -1088,9 +1146,12 @@ void build_buckets_impl()
         if (goblin::config::worldFeaturesFromDisk)
         {
             // EMEVD-sourced graying flags (entity → flag) for Hero's Tomb (template 90005683)
-            // AND Hostile NPC defeat (90005792) — one event-dir scan feeds both passes.
+            // AND Hostile NPC defeat (90005792) — one event-dir scan feeds both passes. The
+            // SAME scan also harvests painting collection events (entity → flag 580000-580199)
+            // into `painting_flags`, so the painting pass needs no second event-dir read.
+            std::unordered_map<uint32_t, uint32_t> painting_flags;
             std::unordered_map<uint32_t, uint32_t> world_feature_flags =
-                load_emevd_world_feature_flags();
+                load_emevd_world_feature_flags(&painting_flags);
             build_disk_world_feature_markers(disk_collectibles, world_feature_flags, world_feature_cells);
             // Summoning Pools: bespoke live-SignPuddleParam pass (param feature, not an asset
             // model). Rides the same category-wipe finalize via world_feature_cells.
@@ -1113,6 +1174,12 @@ void build_buckets_impl()
             // Maps: region map fragments (goods sortGroupId 190/191) placed as MSB treasures.
             build_disk_maps_markers(
                 treasures, world_feature_cells[static_cast<int>(gen::Category::WorldMaps)]);
+            // Paintings: MSB parts (Asset AEG099_38x/39x or ghost-painter Enemy c4300/c6320)
+            // referenced by an EMEVD painting event (flag 580000-580199). entity→flag from the
+            // painting EMEVD scan; position from the matching disk asset/enemy part.
+            build_disk_painting_markers(
+                disk_collectibles, disk_enemies, painting_flags,
+                world_feature_cells[static_cast<int>(gen::Category::WorldPaintings)]);
         }
         if (goblin::config::lootEnemyDrops)
             build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots);

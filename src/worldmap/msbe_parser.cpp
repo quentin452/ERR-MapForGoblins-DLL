@@ -424,6 +424,69 @@ std::vector<std::pair<uint32_t, uint32_t>> parse_emevd_flag_awards(const uint8_t
     return out;
 }
 
+// Painting events (World-feature graying) — like parse_emevd_flag_awards but the eventId is
+// NOT a fixed template id: the DLC paintings each have a UNIQUE map-specific template (e.g.
+// 2045432550), so a template TABLE can't catch them. Instead detect by the FLAG range. Two
+// shapes (mirrors tools/generate_paintings.py exactly):
+//   • base template 90005632: args = [_, tmpl, FLAG@idx2, entity@idx3, ...]  (the 4 Asset paintings)
+//   • everything else (90005633 + DLC): args = [_, tmpl, _, FLAG@idx3, entity@idx4, ...]
+//     kept only when args[idx3] is itself in the painting-flag range (the 7 ghost-painter Enemies).
+// Returns (entity -> flag), both > 0, flag in [580000,580199]. The painting disk pass joins the
+// entity to its MSB Asset OR Enemy position (both carry EntityID). Same pinned 64-bit layout.
+std::vector<std::pair<uint32_t, uint32_t>> parse_emevd_paintings(const uint8_t *buf, size_t len)
+{
+    std::vector<std::pair<uint32_t, uint32_t>> out;
+    if (len < 0x80 || std::memcmp(buf, "EVD\0", 4) != 0) return out;
+
+    constexpr uint32_t kFlagMin = 580000u, kFlagMax = 580199u;
+    uint64_t eventCount  = rd64(buf, 0x10);
+    uint64_t eventsOff   = rd64(buf, 0x18);
+    uint64_t instrTblOff = rd64(buf, 0x28);
+    uint64_t argsOff     = rd64(buf, 0x78);
+    if (eventCount > 1000000u) return out;
+    constexpr size_t EVENT_SZ = 0x30, INSTR_SZ = 0x20;
+
+    for (uint64_t i = 0; i < eventCount; ++i)
+    {
+        size_t e = (size_t)eventsOff + (size_t)i * EVENT_SZ;
+        if (!inb(e, EVENT_SZ, len)) break;
+        uint64_t instrCount  = rd64(buf, e + 0x08);
+        uint64_t instrOffset = rd64(buf, e + 0x10);
+        size_t base = (size_t)instrTblOff + (size_t)instrOffset;
+        if (instrCount > 1000000u) continue;
+        for (uint64_t j = 0; j < instrCount; ++j)
+        {
+            size_t ins = base + (size_t)j * INSTR_SZ;
+            if (!inb(ins, INSTR_SZ, len)) break;
+            if (rd32(buf, ins + 0x00) != EMEVD_INIT_BANK) continue;
+            uint64_t argLen = rd64(buf, ins + 0x08);
+            int32_t  argOff = (int32_t)rd32(buf, ins + 0x10);
+            if (argOff < 0 || argLen < 20) continue;  // need 5 int32 args (entity@idx4 = byte 16)
+            size_t a = (size_t)argsOff + (size_t)argOff;
+            if (!inb(a, (size_t)argLen, len)) continue;
+            uint32_t tmpl = rd32(buf, a + 4);  // args[1] = template / eventId
+            uint32_t flag = 0, entity = 0;
+            if (tmpl == 90005632)
+            {
+                flag   = rd32(buf, a + 8);   // args[2]
+                entity = rd32(buf, a + 12);  // args[3]
+            }
+            else
+            {
+                uint32_t cand = rd32(buf, a + 12);  // args[3]
+                if (cand >= kFlagMin && cand <= kFlagMax)
+                {
+                    flag   = cand;
+                    entity = rd32(buf, a + 16);  // args[4]
+                }
+            }
+            if (flag >= kFlagMin && flag <= kFlagMax && (int32_t)entity > 0)
+                out.emplace_back(entity, flag);
+        }
+    }
+    return out;
+}
+
 EmevdParse parse_emevd_full(const uint8_t *buf, size_t len)
 {
     EmevdParse R;
