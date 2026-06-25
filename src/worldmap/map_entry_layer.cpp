@@ -515,23 +515,32 @@ void refresh_overlay_census()
             // grays on, so the badge tracks the map (modulo shared-flag groups, which the
             // game itself can't disambiguate).
             std::unordered_set<int> all, taken;
-            int flagless = 0;  // lot-backed markers with no collect flag (respawning
-                               // collectible nodes, getItemFlagId==0) — count per marker
-                               // (each is its own pickup; can't dedup by a flag it lacks).
+            int respawning = 0;  // lot-backed nodes with NO collect flag (getItemFlagId==0):
+                                 // respawnable gather clutter (fireflies/stones, isEnableRepick).
+                                 // They have no permanent "done" state by design, so they are
+                                 // EXCLUDED from the completion counter — counting them would
+                                 // inflate "remaining" forever (they can never reach looted).
             for (const Marker &m : g_buckets[c])
             {
                 const int flag = m.collected_flag ? m.collected_flag : m.cleared_flag;
                 if (!flag)
                 {
-                    if (m.lot_backed) ++flagless;  // collectible node w/o flag → still a counted item
+                    if (m.lot_backed) ++respawning;  // respawning node → not a completion spot
                     continue;  // else not a counted item (NPC, spirit spring, stake, …)
                 }
                 all.insert(flag);
                 if (goblin::ui::read_event_flag((uint32_t)flag))
                     taken.insert(flag);
             }
-            total = (int)all.size() + flagless;  // distinct flagged items + flag-less nodes
-            looted = (int)taken.size();           // flag-less nodes respawn → never "taken"
+            total = (int)all.size();   // completable spots only (distinct persistent flags)
+            looted = (int)taken.size();
+            // The respawning nodes are intentionally absent from total/looted (excluded from
+            // the "spots remaining" tally). Surface how many were dropped for transparency.
+            if (!s_logged_once && respawning > 0)
+                spdlog::info("[CENSUS] cat {:2} '{}' excluded {} respawning (flag-less) node(s) "
+                             "from the completion counter",
+                             c, goblin::markers::category_name(static_cast<gen::Category>(c)),
+                             respawning);
             // DEBUG: on the FIRST publish, sample a few still-UNSET flags per category.
             // On a 100% save these should be ~none — any here are flags we check that the
             // game never sets (wrong/non-pickup flag) → the over-count to investigate.
