@@ -305,6 +305,7 @@ void build_buckets_impl()
     std::unordered_set<uint32_t> baked_lot1, baked_any;
 
     int replaced = 0;
+    int debake_gap = 0;  // Treasure-sourced baked rows the disk did NOT cover (de-bake blocker)
     for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
     {
         const gen::MapEntry &e = gen::MAP_ENTRIES[i];
@@ -335,11 +336,36 @@ void build_buckets_impl()
             ++replaced;
             continue;
         }
+        // [DEBAKE-GAP] diag (de-bake readiness): a Treasure-sourced row that reaches HERE was
+        // NOT replaced — its lot isn't in disk_lots, so the disk source does not reproduce it.
+        // These are exactly the rows that would be LOST if the bake's Treasure slice is dropped
+        // (#11 final switch): multi-lot treasures (parser reads one itemLotId), DummyAsset edge
+        // cases, or rows mis-tagged 'treasure' that are really EMEVD-positioned. Characterize
+        // this list (drive it to zero or explicitly accept it) BEFORE de-baking. Gated on diag
+        // (lootFromDiskMsb, so disk_lots is populated); per-row detail under diag_loot_pos.
+        if (diag && e.loot_source == gen::LootSource::Treasure && e.lotType == 1 && e.lotId != 0)
+        {
+            ++debake_gap;
+            if (verbose)
+            {
+                int32_t key = goblin::resolve_loot_item_textid(e.lotId, 1, -1);
+                spdlog::info("[DEBAKE-GAP] uncovered Treasure lot {} @ m{}_{}_{} key={} "
+                             "(baked-only; disk did not place it)",
+                             e.lotId, e.data.areaNo, e.data.gridXNo, e.data.gridZNo, key);
+            }
+        }
         push_marker(e.row_id, e.data, c, e.lotId, e.lotType);
     }
     if (diag)
     {
         spdlog::info("[LOOTDISK] replaced {} baked lot rows with disk placements", replaced);
+        // De-bake readiness gauge: how much of the baked Treasure slice the disk does NOT yet
+        // reproduce. This must reach 0 (or be an explicitly-accepted residue) before the
+        // Treasure slice can be dropped from the committed bake. Per-row list above under
+        // diag_loot_pos. See docs / [[handoff-loot-from-real-files]] #11.
+        spdlog::info("[DEBAKE-GAP] {} baked Treasure rows NOT covered by the disk source "
+                     "(would be lost if the treasure slice is de-baked; set diag_loot_pos for the list)",
+                     debake_gap);
         // Disk-only lots (placed by the disk but NOT in the bake's lotType==1 slice).
         // Split: filed-as-enemy (in baked_any → the bake had it as a lotType 2 drop)
         // vs absent-from-bake (genuinely new MSB loot the bake missed). Log a sample
