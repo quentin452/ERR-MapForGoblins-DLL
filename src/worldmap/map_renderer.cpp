@@ -1183,8 +1183,6 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     int n_iter = 0, n_drawn = 0, n_deferred = 0;
     {
     GOBLIN_BENCH_QUIET("render.worldmap.markers");
-    if (goblin::config::requireExplored)
-        goblin::worldmap_probe::refresh_reveal_set(); // snapshot live walk-fog table once per pass
     for (auto *L : layers)
     {
         if (!L || !L->visible())
@@ -1248,17 +1246,10 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             if (m.hide_when_flag && goblin::ui::read_event_flag((uint32_t)m.hide_when_flag))
                 continue;
             // Map-fragment gate (require_map_fragments): the region's MAP FRAGMENT item must be
-            // acquired (m.fragment_flag = GetMapFlagFromTile, read live). This is the item gate ONLY;
-            // the walk-explored fog is the separate require_explored gate below.
+            // acquired (m.fragment_flag = GetMapFlagFromTile, read live).
             if (goblin::config::requireMapFragments && m.fragment_flag &&
                 !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)))
                 continue; // map fragment not acquired yet
-            // Walk-fog gate (require_explored): hide markers on tiles not yet physically explored —
-            // the engine's per-tile fog-of-war (踏破), read live (RE §7). Table snapshotted once per
-            // pass by refresh_reveal_set(); keyed on the marker's raw tile (gridX*100+gridZ).
-            if (goblin::config::requireExplored && m.raw_area >= 0 &&
-                goblin::worldmap_probe::tile_fogged(m.raw_gx, m.raw_gz))
-                continue;
 
             // Clustered-eligible markers are deferred (uncull'd) to the pile pass;
             // everything else (already on-screen here) draws now.
@@ -1338,8 +1329,6 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     const IconSet icons(reinterpret_cast<ImTextureID>(atlas_texture),
                         goblin::config::nativeItemIcons);
     const float half = 6.0f; // minimap markers are small + fixed-size
-    if (cfg::requireExplored)
-        goblin::worldmap_probe::refresh_reveal_set(); // snapshot live walk-fog table once per pass
     for (auto *L : layers)
     {
         if (!L || !L->visible())
@@ -1366,12 +1355,8 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             if (dx * dx + dy * dy > cullR * cullR)
                 continue; // outside the HUD radius
             // Map-fragment gate (require_map_fragments): the FRAGMENT item must be acquired.
-            // Walk-explored fog is the separate require_explored gate (see the worldmap loop).
             if (cfg::requireMapFragments && m.fragment_flag &&
                 !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)))
-                continue;
-            if (cfg::requireExplored && m.raw_area >= 0 &&
-                goblin::worldmap_probe::tile_fogged(m.raw_gx, m.raw_gz))
                 continue;
             draw_marker(fg, m, ImVec2(ctr.x + dx, ctr.y + dy), icons, half);
         }

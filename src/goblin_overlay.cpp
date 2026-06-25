@@ -1651,16 +1651,9 @@ namespace
             }
 
             // Map-fragment gate (live; persists via "Save to INI"). When on, a marker stays hidden
-            // until the player has acquired that area's map-fragment ITEM (fragment event flag only;
-            // the walk-explored fog is the separate "Require explored tiles" toggle below).
+            // until the player has acquired that area's map-fragment ITEM (fragment event flag).
             ImGui::Checkbox("Require map fragments (hide an area's icons until its fragment is found)",
                             &goblin::config::requireMapFragments);
-
-            // Walk-explored fog gate (live; persists via "Save to INI"). When on, a marker stays
-            // hidden until the player has physically explored that tile — the game's per-tile
-            // fog-of-war (踏破), read live from the reveal table. Independent of map fragments.
-            ImGui::Checkbox("Require explored tiles (hide icons in unexplored fog-of-war)",
-                            &goblin::config::requireExplored);
 
             // Collected/cleared graying (overlay map; live, persists via "Save to INI").
             // On = dim looted items / killed bosses (cleared bosses get a checkmark);

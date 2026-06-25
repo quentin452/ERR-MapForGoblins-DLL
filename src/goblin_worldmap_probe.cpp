@@ -20,7 +20,6 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #define WIN32_LEAN_AND_MEAN
@@ -962,68 +961,6 @@ bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU
         }
     }
     return false; // no converter accepts it
-}
-
-// ── Walk-fog (踏破) reveal gate (RE: docs/re/windows_worldmap_tile_fog_re_findings.md §7) ──
-// The authoritative per-tile reveal state is a sorted {u32 tileId, u32 flags, u32 extra} table at
-// VM+0x288[layer] (FUN_140886560 binary-searches it). tileId = group*10000 + gridX*100 + gridZ, and
-// a tile is REVEALED (not fog) iff (flags & 0x17fff)==0 (layer 0 = overworld/DLC; masks lifted from
-// the mask builder FUN_140888440). A tileId ABSENT from the table is treated as revealed (the engine
-// returns flags 0 for a miss → (0 & mask)==0). We snapshot the layer-0 table once per overlay pass
-// into two sets; tile_fogged() is then O(1). NOT the WorldMapTile (= map-art streaming) nor the
-// frozen 31×31 WorldMapUnsearchedMask bit-grid (a save-time coarse copy built from this table).
-namespace
-{
-std::unordered_set<int> g_reveal_present, g_reveal_revealed;
-} // namespace
-
-void refresh_reveal_set()
-{
-    g_reveal_present.clear();
-    g_reveal_revealed.clear();
-    uintptr_t vm = find_view_model();
-    if (!vm)
-        return;
-    uint64_t cont = 0; // layer-0 container (overworld + DLC sheets)
-    if (!seh_read8(reinterpret_cast<void *>(vm + 0x288), &cont) || !plausible_ptr(cont))
-        return;
-    uint64_t begin = 0, end = 0; // sorted 12-byte records in [cont+0x88 .. cont+0x90)
-    if (!seh_read8(reinterpret_cast<void *>(cont + 0x88), &begin) ||
-        !seh_read8(reinterpret_cast<void *>(cont + 0x90), &end) || end <= begin ||
-        !plausible_ptr(begin))
-        return;
-    uint64_t n = (end - begin) / 12;
-    if (n > 200000) // sanity: the real table is a few thousand rows
-        return;
-    for (uint64_t i = 0; i < n; ++i)
-    {
-        int tid = 0, flags = 0;
-        if (!seh_read_i32(reinterpret_cast<void *>(begin + i * 12), &tid) ||
-            !seh_read_i32(reinterpret_cast<void *>(begin + i * 12 + 4), &flags))
-            continue;
-        g_reveal_present.insert(tid);
-        if ((flags & 0x17fff) == 0)
-            g_reveal_revealed.insert(tid);
-    }
-}
-
-bool tile_fogged(int gridX, int gridZ)
-{
-    if (g_reveal_present.empty())
-        return false; // no table data (map closed / read failed / refresh not run) → fail-open (show)
-    // The marker's map SHEET (the *10000 group) isn't known here, so try the base/DLC sheets and let
-    // "revealed wins": a stray (gridX,gridZ) collision biases toward SHOWING — never worse than the
-    // pre-oracle leak. (Sheets are spatially disjoint so collisions are rare/edge.)
-    bool present = false;
-    for (int g = 0; g < 3; ++g)
-    {
-        const int tid = g * 10000 + gridX * 100 + gridZ;
-        if (g_reveal_revealed.count(tid))
-            return false; // revealed in some sheet → show
-        if (g_reveal_present.count(tid))
-            present = true;
-    }
-    return present; // present in a sheet but never revealed → fogged
 }
 
 bool get_live_view(LiveView &out)

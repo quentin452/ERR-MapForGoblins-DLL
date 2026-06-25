@@ -1002,9 +1002,9 @@ void goblin::capture_live_graces()
 const std::vector<goblin::LiveGrace> &goblin::live_graces() { return g_live_graces; }
 
 // (Removed: marker_fogged + WorldMapPieceParam build_fog_pieces. That "fog" was the map-FRAGMENT
-// REGION reveal (openEventFlagId = 62xxx), redundant with the require_map_fragments item gate — NOT
-// the walk-explored fog. The real per-tile fog-of-war (踏破) is now goblin::worldmap_probe::tile_fogged
-// under require_explored. RE: docs/re/windows_worldmap_tile_fog_re_findings.md §7.)
+// REGION reveal (openEventFlagId = 62xxx), redundant with the require_map_fragments item gate.
+// A per-tile walk-fog gate was prototyped and dropped: it's a non-issue in normal play (the fog
+// clears as you acquire map fragments while exploring). RE kept in docs/re/windows_worldmap_tile_fog_re_findings.md.)
 
 // Map-fragment discovery flag for a marker, computed on the SAME tile the native
 // injection gates on. Legacy GetMapFragment runs AFTER inject_map_entries projected the

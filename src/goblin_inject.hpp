@@ -108,8 +108,8 @@ namespace goblin
     int marker_fragment_flag(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz);
 
     // (marker_fogged removed — the WorldMapPieceParam "fog" was the map-fragment region reveal,
-    // redundant with require_map_fragments. Walk-explored fog is now
-    // goblin::worldmap_probe::tile_fogged (require_explored). RE: windows_worldmap_tile_fog_re_findings.md.)
+    // redundant with require_map_fragments. A per-tile walk-fog gate was prototyped and dropped
+    // (non-issue in normal play). RE kept in docs/re/windows_worldmap_tile_fog_re_findings.md.)
 
     // A Site of Grace read LIVE from BonfireWarpParam — no baked data, no MASSEDIT.
     struct LiveGrace
