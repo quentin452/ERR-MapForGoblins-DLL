@@ -1515,6 +1515,11 @@ void build_buckets_impl()
     std::map<int, int> gap_by_cat;   // category enum -> uncovered count
     std::map<int, int> gap_by_area;  // areaNo (m<area>) -> uncovered count
     int enemy_markers = 0;  // [ENEMY-MARKERS] baked enemy-drop rows NOT covered by the disk pass
+    // [RESIDUAL-SRC] full triage of the surviving baked-loot residual by provenance: every baked
+    // row that REACHES push_marker (not replaced by any disk pass) is tallied as cat*4+loot_source.
+    // The DEBAKE-GAP (Treasure) + ENEMY-MARKERS (Enemy) diags only cover 2 of the 4 sources; this
+    // closes the gap (Emevd + Unknown) so a glance shows which lever recovers each leftover category.
+    std::map<int, int> resid_by_cat_src;  // key = category*4 + (int)loot_source
     // Pre-pass: fully populate baked_lot1/baked_any BEFORE the main loop so the DEBAKE-GAP
     // baked-as-enemy classification (and the disk-only summary below) see the COMPLETE baked
     // lot sets — building them incrementally inside the loop would leave them partial mid-row.
@@ -1659,6 +1664,10 @@ void build_buckets_impl()
                          static_cast<int>(e.category), key,
                          e.object_name ? e.object_name : "(none baked)");
         }
+        // [RESIDUAL-SRC] survivor reached here = not replaced by any disk pass. Tally lot-backed
+        // (or formerly-lot) loot rows by category+source for the full residual triage below.
+        if (diag && (e.lotId != 0 || e.loot_source != gen::LootSource::Unknown))
+            ++resid_by_cat_src[c * 4 + static_cast<int>(e.loot_source)];
         push_marker(e.row_id, e.data, c, e.lotId, e.lotType);
     }
     if (goblin::config::lootCollectibles)
@@ -1705,6 +1714,30 @@ void build_buckets_impl()
                 area_hist += 'm' + std::to_string(kv.first) + '=' + std::to_string(kv.second) + ' ';
             spdlog::info("[DEBAKE-GAP] by category: {}", cat_hist);
             spdlog::info("[DEBAKE-GAP] by area: {}", area_hist);
+        }
+        // [RESIDUAL-SRC] the COMPLETE surviving-baked-loot triage by provenance — every leftover
+        // baked loot row split by source, so the recovery lever per category is obvious:
+        //   Treasure → de-bake-gap (corpse loot absent from the mod's loot linkage; ~accepted).
+        //   Enemy    → the disk Parts.Enemies + NpcParam pass (loot_enemy_drops) didn't place it.
+        //   Emevd    → the disk EMEVD award pass (loot_emevd_drops) didn't reproduce it.
+        //   Unknown  → pre-provenance bake row (field not regenerated) — needs a data rebuild.
+        {
+            const char *SRC[4] = {"unknown", "treasure", "enemy", "emevd"};
+            int tot[4] = {0, 0, 0, 0};
+            std::map<int, std::array<int, 4>> per_cat;  // category -> per-source split
+            for (const auto &kv : resid_by_cat_src)
+            {
+                const int cat = kv.first / 4, src = kv.first % 4;
+                per_cat[cat][src] += kv.second;
+                tot[src] += kv.second;
+            }
+            spdlog::info("[RESIDUAL-SRC] surviving baked loot by source: unknown={} treasure={} "
+                         "enemy={} emevd={} (total={})",
+                         tot[0], tot[1], tot[2], tot[3], tot[0] + tot[1] + tot[2] + tot[3]);
+            for (const auto &kv : per_cat)
+                spdlog::info("[RESIDUAL-SRC]   {}: unk={} trea={} enem={} emev={}",
+                             goblin::markers::category_name(static_cast<gen::Category>(kv.first)),
+                             kv.second[0], kv.second[1], kv.second[2], kv.second[3]);
         }
         // Disk-only lots (placed by the disk but NOT in the bake's lotType==1 slice).
         // Split: filed-as-enemy (in baked_any → the bake had it as a lotType 2 drop)
