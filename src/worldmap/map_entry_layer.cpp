@@ -958,12 +958,31 @@ void build_buckets_impl()
     // This is the "what still depends on the bake" view that drives the no-bake migration:
     // big BAKED-ONLY rows are the next categories to move off the bake. Logged once/build.
     {
-        struct CovRow { int c, baked, disk, live, lc; };
+        // r.drawn   = RAW markers actually pushed to g_buckets (one per placement) = what
+        //             the renderer draws. This is baked+disk+live.
+        // r.census  = the ImGui badge denominator (completable spots), computed the SAME way
+        //             as refresh_overlay_census so the two agree: distinct collect/cleared
+        //             flags for flag-based categories, the row count for the geom/SFX-tracked
+        //             piece+kindling categories (each row is its own collectible), 0 for
+        //             graces (no badge). drawn >> census wherever many markers share a flag
+        //             or are respawnable (flag-less, EXCLUDED from the badge).
+        // r.flag_*  = collect-flag COVERAGE: how many markers carry a collect/cleared flag
+        //             (flagged, can be collect-tracked) vs none. Of the flag-less, respawn =
+        //             lot-backed respawnable gather (no permanent done-state by design),
+        //             nonloot = everything else (NPC/stake/spring/region — TYPES with no
+        //             collect flag at all, the rows that can never gray/complete).
+        struct CovRow { int c, baked, disk, live, lc, drawn, census, flagged, respawn, nonloot; };
         std::vector<CovRow> rows;
         int tB = 0, tD = 0, tL = 0, tC = 0;
         for (int c = 0; c < NUM_CAT; ++c)
         {
-            CovRow r{c, 0, 0, 0, 0};
+            CovRow r{c, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+            const bool piece = c == static_cast<int>(gen::Category::ReforgedRunePieces) ||
+                               c == static_cast<int>(gen::Category::ReforgedEmberPieces) ||
+                               c == static_cast<int>(gen::Category::LootMaterialNodes);
+            const bool kind  = c == static_cast<int>(gen::Category::WorldKindlingSpirits);
+            const bool grace = c == static_cast<int>(gen::Category::WorldGraces);
+            std::unordered_set<int> census_flags;  // distinct collect/cleared flags (flag-based census)
             for (const Marker &m : g_buckets[c])
             {
                 switch (m.source)
@@ -973,23 +992,44 @@ void build_buckets_impl()
                 case Source::Live:    ++r.live;  break;
                 }
                 if (m.live_classified) ++r.lc;
+                const int flag = m.collected_flag ? m.collected_flag : m.cleared_flag;
+                if (flag)
+                {
+                    ++r.flagged;
+                    census_flags.insert(flag);
+                }
+                else if (m.lot_backed)
+                    ++r.respawn;   // respawnable gather node — flag-less by design
+                else
+                    ++r.nonloot;   // NPC/stake/spring/region — no collect flag (TYPE gap)
             }
+            r.drawn = r.baked + r.disk + r.live;
+            // Match refresh_overlay_census's badge denominator exactly.
+            r.census = grace ? 0 : (piece || kind) ? r.drawn : static_cast<int>(census_flags.size());
             tB += r.baked; tD += r.disk; tL += r.live; tC += r.lc;
-            if (r.baked || r.disk || r.live) rows.push_back(r);
+            if (r.drawn) rows.push_back(r);
         }
         std::sort(rows.begin(), rows.end(),
                   [](const CovRow &a, const CovRow &b) { return a.baked > b.baked; });
         spdlog::info("[COVERAGE] no-bake scoreboard (markers by provenance, baked-heavy first):");
         for (const CovRow &r : rows)
         {
-            const int tot = r.baked + r.disk + r.live;
             const char *status = (r.disk == 0 && r.live == 0) ? "BAKED-ONLY"
                                  : (r.baked == 0) ? (r.disk ? "disk" : "live")
                                                   : "partial";
             spdlog::info("[COVERAGE]   {:<24} baked={:<4} disk={:<4} live={:<4} live-cls={:<3} total={:<4} [{}]",
                          goblin::markers::category_name(static_cast<gen::Category>(r.c)),
-                         r.baked, r.disk, r.live, r.lc, tot, status);
+                         r.baked, r.disk, r.live, r.lc, r.drawn, status);
         }
+        // Census-vs-drawn + collect-flag coverage, keyed by the same category name so the
+        // py generator can merge it into the same scoreboard row. drawn = real markers; census
+        // = completable spots the badge shows; flag = flagged/drawn (rest = respawn + nonloot).
+        spdlog::info("[COVERAGE-CENSUS] drawn vs badge census + collect-flag coverage:");
+        for (const CovRow &r : rows)
+            spdlog::info("[COVERAGE-CENSUS]   {:<24} drawn={:<4} census={:<4} flagged={:<4} "
+                         "respawn={:<4} nonloot={:<4} total={:<4}",
+                         goblin::markers::category_name(static_cast<gen::Category>(r.c)),
+                         r.drawn, r.census, r.flagged, r.respawn, r.nonloot, r.drawn);
         spdlog::info("[COVERAGE] TOTAL baked={} disk={} live={} live-classified={} "
                      "(graces counted live separately in GraceLayer)",
                      tB, tD, tL, tC);
