@@ -2,9 +2,43 @@
 
 Answers `docs/re/windows_worldmap_tile_fog_re_prompt.md`. Static Ghidra (`D:\ghidra_proj2\ER`,
 `tools/ghidra/query.java` + `rtti_index.txt`) + live RPM (`D:\ghidra_scripts\*.py`).
-App 2.6.2.0 / ERR 2.2.9.6, imagebase `0x140000000`. **Status: SOLVED — the per-tile reveal oracle is
-`FUN_140886560` (§7). The bit-grid (§3) is a derived/coarse copy; the authoritative per-tile state is
-a sorted flags table at `VM+0x288` (§7).**
+App 2.6.2.0 / ERR 2.2.9.6, imagebase `0x140000000`. **Status: SOLVED (RE) but the feature was
+PROTOTYPED AND DROPPED — see §0.** The per-tile reveal oracle is `FUN_140886560` (§7); the bit-grid
+(§3) is a derived/coarse copy; the authoritative per-tile state is a sorted flags table at `VM+0x288`
+(§7).
+
+## §0 — CONCLUSION: a per-tile walk-fog gate is unnecessary in normal play (feature dropped)
+
+A mod gate that hides overlay icons on un-explored tiles (`require_explored`) was built on this RE and
+then **removed** (commit `df61a2f`). Reason: **in normal play the problem it solves never occurs.**
+
+ER removes a tile's fog when a `WorldMapPieceParam` piece covering it has its `openEventFlagId`
+event flag set (§8) — i.e. **the fog clears as you acquire map fragments while exploring.** So by the
+time you can *see* an area's icons on the map, that area is already un-fogged. The only way to get
+icons sitting on still-black tiles is an **artificial "unlock all maps" save** (every fragment flag
+forced on, while the tiles were never physically streamed/visited) — not a real playthrough.
+
+On top of that, the gate needed a full-heap scan to resolve the live tile grid (one-shot hitch on
+map-open) and was view-dependent (incomplete when cached before tiles streamed). Cost > benefit for a
+case real players never hit. `require_map_fragments` (gate on the fragment-item event flag) already
+covers the realistic case. The RE below is kept as reference in case it's ever needed.
+
+## §8 — when ER removes the fog (the reveal condition)
+
+`FUN_1408882d0(toggleByte, areaIdx)` builds the per-tile reveal flag bitmask:
+```c
+flags = 0;
+for (pieceIdx = 0; pieceIdx < 32; pieceIdx++) {
+    row = WorldMapPieceParam[areaIdx*100 + pieceIdx];     // piece = openTravelArea rect + openEventFlagId
+    if (row exists && IsEventFlag(row.openEventFlagId))   // FUN_1405d1330; flag==0 ⇒ always revealed
+        flags |= (1 << pieceIdx);                         // this covering piece is revealed
+}
+// (toggleByte NewMenuSystemWarp2 != 0 ⇒ flags = 0xffffffff = everything revealed)
+```
+`FUN_140884c50` rasterises each piece into the tile grid (`0x28`=40 cells) by its rect. So **a tile is
+revealed (fog gone) iff ≥1 piece covering it has its `openEventFlagId` set** — the map-fragment /
+region-discovery flags, set as you explore. This is exactly the per-tile flags `FUN_140886560` (§7)
+returns, and the same `openEventFlagId` family the old `marker_fogged` / `require_map_fragments` read.
 
 ## TL;DR — the brief's premise was half-wrong, but the real store is found
 
