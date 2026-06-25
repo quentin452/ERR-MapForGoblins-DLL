@@ -2,7 +2,7 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 16:06:06.819
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 16:22:35.210
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - **`drawn`** = real markers the renderer draws (= total). **`census`** = the ImGui badge denominator (completable spots) — distinct collect flags for flag-based categories, row count for geom/SFX pieces, 0 for graces; it EXCLUDES respawnable flag-less gather, so `census < drawn` wherever markers share a flag or respawn.
@@ -18,7 +18,7 @@
 |---|--:|--:|--:|--:|--:|
 | **all categories** | **995** | 7379 | 463 | 186 | 8837 |
 
-🔴 baked-only: **5**  ·  🟡 partial: **33**  ·  🟢 off-bake: **25**  (of 63 active categories)
+🔴 baked-only: **4**  ·  🟡 partial: **34**  ·  🟢 off-bake: **25**  (of 63 active categories)
 
 ## Tile coverage (`_00`-only parser)
 
@@ -38,7 +38,7 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 
 | category | baked | disk | live | live-cls | total | icon | status |
 |---|--:|--:|--:|--:|--:|---|---|
-| Equipment - Armaments | 34 | 356 | 0 | 78 | 390 | atlas 69% | 🟡 partial |
+| Equipment - Armaments | 34 | 278 | 0 | 0 | 312 | atlas 69% | 🟡 partial |
 | Equipment - Armour | 129 | 117 | 0 | 0 | 246 | atlas 69% | 🟡 partial |
 | Equipment - Ashes of War | 3 | 76 | 0 | 0 | 79 | atlas 69% | 🟡 partial |
 | Equipment - Spirits | 2 | 78 | 0 | 0 | 80 | atlas 69% | 🟡 partial |
@@ -54,7 +54,7 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | Key - Scadutree Fragments | 0 | 45 | 0 | 0 | 45 | atlas 30% | 🟢 off-bake |
 | Key - Seeds Tears Ashes | 1 | 74 | 0 | 0 | 75 | atlas 69% | 🟡 partial |
 | Key - Whetblades | 0 | 5 | 0 | 0 | 5 | circle | 🟢 off-bake |
-| Loot - Ammo | 3 | 0 | 0 | 0 | 3 | atlas 69% | 🔴 baked-only |
+| Loot - Ammo | 3 | 78 | 0 | 78 | 81 | atlas 69% | 🟡 partial |
 | Loot - Bell-Bearings | 0 | 50 | 0 | 0 | 50 | atlas 69% | 🟢 off-bake |
 | Loot - Consumables | 1 | 185 | 0 | 6 | 186 | atlas 69% | 🟡 partial |
 | Loot - Crafting Materials | 5 | 1695 | 0 | 100 | 1700 | atlas 69% | 🟡 partial |
@@ -108,7 +108,7 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 
 | category | drawn | census | flag (have/drawn) | respawn | nonloot |
 |---|--:|--:|--:|--:|--:|
-| Equipment - Armaments | 390 | 362 | 390/390 | 0 | 0 |
+| Equipment - Armaments | 312 | 285 | 312/312 | 0 | 0 |
 | Equipment - Armour | 246 | 119 | 246/246 | 0 | 0 |
 | Equipment - Ashes of War | 79 | 79 | 79/79 | 0 | 0 |
 | Equipment - Spirits | 80 | 72 | 80/80 | 0 | 0 |
@@ -124,7 +124,7 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | Key - Scadutree Fragments | 45 | 45 | 45/45 | 0 | 0 |
 | Key - Seeds Tears Ashes | 75 | 74 | 75/75 | 0 | 0 |
 | Key - Whetblades | 5 | 5 | 5/5 | 0 | 0 |
-| Loot - Ammo | 3 | 3 | 3/3 | 0 | 0 |
+| Loot - Ammo | 81 | 81 | 81/81 | 0 | 0 |
 | Loot - Bell-Bearings | 50 | 49 | 50/50 | 0 | 0 |
 | Loot - Consumables | 186 | 183 | 186/186 | 0 | 0 |
 | Loot - Crafting Materials | 1700 | 592 | 597/1700 | 1103 | 0 |
