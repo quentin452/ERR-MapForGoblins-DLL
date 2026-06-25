@@ -1439,6 +1439,15 @@ void build_buckets_impl()
         // rows so they don't double the live ones (the bake is being retired for this category).
         if (e.category == gen::Category::WorldBosses)
             continue;
+        // Quest NPCs are RETIRED from the map: the category was location-only (no quest-state
+        // graying) and is superseded by the in-overlay Quest Browser. Neither a disk MSB pass nor
+        // live RPM can revive it usefully — quest progress lives in ER's ESD + thousands of
+        // scattered event flags (no queryable per-NPC structure; the Quest Browser is hand-authored),
+        // and live ChrIns/EnemyIns are resident only for the streamed tiles around the player (RPM
+        // probe: ~108 positioned near-player of 461, never the ~344 world-spread NPCs). So drop the
+        // baked rows here (like WorldBosses) — zero regen, reversible. Quest Browser is the UX now.
+        if (e.category == gen::Category::WorldQuestNPC)
+            continue;
         // Rune/Ember Piece IDENTITY dedup: the disk collectible pass placed this exact AEG world
         // piece (matched by tile + part name, NOT position — robust to the m11_10 offset anomaly).
         // Drop the baked twin; the disk marker carries the real MSB position + runtime geom graying.

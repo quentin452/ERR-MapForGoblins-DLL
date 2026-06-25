@@ -2,7 +2,7 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 17:19:50.897
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-25 17:43:04.631
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - **`drawn`** = real markers the renderer draws (= total). **`census`** = the ImGui badge denominator (completable spots) — distinct collect flags for flag-based categories, row count for geom/SFX pieces, 0 for graces; it EXCLUDES respawnable flag-less gather, so `census < drawn` wherever markers share a flag or respawn.
@@ -12,13 +12,13 @@
 
 ## ▶ Baked markers remaining
 
-# **677**  ← drive this to **0**
+# **333**  ← drive this to **0**
 
 | | baked | disk | live | live-cls | total |
 |---|--:|--:|--:|--:|--:|
-| **all categories** | **677** | 7692 | 469 | 190 | 8838 |
+| **all categories** | **333** | 7692 | 469 | 190 | 8494 |
 
-🔴 baked-only: **3**  ·  🟡 partial: **25**  ·  🟢 off-bake: **35**  (of 63 active categories)
+🔴 baked-only: **2**  ·  🟡 partial: **25**  ·  🟢 off-bake: **35**  (of 62 active categories)
 
 ## Tile coverage (`_00`-only parser)
 
@@ -96,7 +96,6 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | World - Kindling Spirits | 5 | 0 | 0 | 0 | 5 | atlas 69% | 🔴 baked-only |
 | World - Maps | 1 | 23 | 0 | 0 | 24 | circle | 🟡 partial |
 | World - Paintings | 0 | 11 | 0 | 0 | 11 | atlas 65% | 🟢 off-bake |
-| World - Quest NPC | 344 | 0 | 0 | 0 | 344 | circle | 🔴 baked-only |
 | World - Spirit Springs | 0 | 72 | 0 | 0 | 72 | atlas 96% | 🟢 off-bake |
 | World - Spiritspring Hawks | 0 | 14 | 0 | 0 | 14 | atlas 69% | 🟢 off-bake |
 | World - Stakes of Marika | 0 | 219 | 0 | 0 | 219 | atlas 19% ⚠ | 🟢 off-bake |
@@ -166,7 +165,6 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | World - Kindling Spirits | 5 | 5 | 5/5 | 0 | 0 |
 | World - Maps | 24 | 24 | 24/24 | 0 | 0 |
 | World - Paintings | 11 | 11 | 11/11 | 0 | 0 |
-| World - Quest NPC | 344 | 0 | 0/344 | 0 | 344 |
 | World - Spirit Springs | 72 | 0 | 0/72 | 0 | 72 |
 | World - Spiritspring Hawks | 14 | 14 | 14/14 | 0 | 0 |
 | World - Stakes of Marika | 219 | 0 | 0/219 | 0 | 219 |
