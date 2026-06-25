@@ -203,6 +203,27 @@ already runtime-derivable today.
 
 ---
 
+## 5b. Emevd + corpse residual recoverability (datamined 2026-06-25)
+
+`tools/datamine_emevd_recover{,2}.py` — earlier "Emevd is unplaceable / ~460 irreducible" was
+WRONG. All 529 baked Emevd rows already have a position from an MSB part (521 c-prefix ChrIns, 8
+cross-tile), and the lot→entity link is in the EMEVD files on disk (`event/*.emevd.dcx`).
+
+- **Emevd 529 → ~100% recoverable** with a runtime EMEVD parser: **373 directly** (a bank-2000 event
+  init co-carries the lot + a reachable MSB EntityID/group), **156 via a sequence-base lot** (the
+  ItemLotParam-chain rows like `20081-85` = Tree Sentinel set, whose base `20080` IS EMEVD-bound), **0
+  unrecoverable**. The 13 named templates (`90005300/860/750/…`, see `extract_all_items.py:646`) cover
+  the bulk; the co-occurrence scan confirms full coverage.
+- **Corpse Treasure residual (312, partBucket≠live) → NOT EMEVD**: only 47 EMEVD-recoverable (17
+  direct + 30 base), **265 have no EMEVD link** — they are the `enrich_fallback_with_emevd` heuristic
+  bindings (AEG099_990/090 corpses: "Sign of the All-Knowing", Juvenile Scholar Robe, …). These are
+  the TRUE irreducible residual.
+
+**Corrected zero-bake floor:** ~**265 corpse markers** (~6% of the loot slice), not ~788. Reaching it
+needs (in ROI order): (1) a **runtime EMEVD parser** (unblocks all 529 Emevd; 373 direct), (2)
+**ItemLotParam-chain RE** (base lot → item row — shared: enemy 35 + emevd 156 + corpse 30), (3) a
+DLC-flag-range fix (enemy 3). The ~265 heuristic-bound corpse rows stay baked as the curated residual.
+
 ## 6. Verdict & next step
 
 **A quasi-complete no-bake of the LOOT tranche is reachable.** After building the enemy
