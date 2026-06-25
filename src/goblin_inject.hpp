@@ -351,6 +351,10 @@ namespace goblin
     // itemLot 0x30/0x34 cross-check + 25/25 invaders confirmed).
     bool npc_team_and_name(uint32_t npcParamId, uint8_t *teamOut, int32_t *nameOut);
 
+    // True iff an EquipParamGoods row is a region Map fragment (sortGroupId u8 @ +0x72 ∈
+    // {190 base, 191 DLC}). The no-bake World-Maps pass routes map-good pickups to WorldMaps.
+    bool goods_is_map(int32_t goods_id);
+
     // Probe one ItemLotParam row in a SPECIFIC table (lotType 1=_map, 2=_enemy; NO
     // fallback to the other), for the EMEVD sequence-sibling walk (loot_emevd_drops
     // mechanism C). Returns true iff the row EXISTS in that table (false = a GAP → stop the
