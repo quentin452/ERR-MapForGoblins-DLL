@@ -9,6 +9,7 @@
 // runtime reuses the SAME marker_world_pos transform downstream (no new RE).
 #include <cstdint>
 #include <filesystem>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -31,7 +32,8 @@ struct DiskCollectible
 {
     uint32_t aegRow = 0;                // AEG{A}_{B} → A*1000+B (param row id)
     uint8_t  area = 0, gx = 0, gz = 0;  // from the tile filename
-    float    posX = 0.0f, posZ = 0.0f;  // Part+0x20 X/Z (block-local; = bake x/z)
+    float    posX = 0.0f, posY = 0.0f, posZ = 0.0f;  // Part+0x20 (block-local; = bake x/y/z)
+    std::string name;                   // full MSB part name, e.g. "AEG099_821_9003" (geom tracking)
 };
 
 // One placed Enemy read from a disk MSB. The drop lot is resolved LIVE by the
