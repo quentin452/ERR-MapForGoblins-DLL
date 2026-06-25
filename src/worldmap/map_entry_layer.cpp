@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
@@ -721,6 +722,118 @@ static int build_disk_world_feature_markers(
     return emitted;
 }
 
+// Minimal raw-offset view of a SignPuddleParam row (the no-bake Summoning Pools source).
+// Only the fields the marker needs; get_param<T> casts T* over the live row bytes. Offsets
+// pinned vs the paramdef + the working bake (tools/probe_signpuddle_offsets.py: 247 rows,
+// paramdef value == raw[off]; 0x28 is 4-aligned so no packing needed). The marker's graying
+// flag is the ROW ID itself (670XXX), which the EMEVD sets when the pool is unlocked.
+struct SignPuddleRow
+{
+    uint8_t _pad[0x28];
+    int32_t mapRef;  // +0x28  dungeon: area + block*256 ; overworld: >=100000 (position-join)
+    float   posX;    // +0x2c
+    float   posY;    // +0x30
+    float   posZ;    // +0x34
+};
+static_assert(offsetof(SignPuddleRow, mapRef) == 0x28 && offsetof(SignPuddleRow, posX) == 0x2c &&
+                  offsetof(SignPuddleRow, posZ) == 0x34,
+              "SignPuddleParam offsets");
+
+// World feature: Summoning Pools (config world_features_from_disk). Each pool is a live
+// SignPuddleParam row (no committed bake) — the SAME source tools/generate_summoning_pools.py
+// baked from. The row gives the world position (posX/Z) + a map reference: dungeon pools
+// (mapRef < 100000) decode their tile arithmetically (area + block*256); overworld pools
+// (mapRef >= 100000) carry no tile, so we position-join to the nearest AEG099_015 puddle asset
+// (already parsed into `assets` by the disk enumeration) within 10u. The row id is the graying
+// flag (textDisableFlagId1 → push_marker collected_flag; the pool's icon hides once unlocked).
+// SignPuddleParam has per-context duplicate rows for one physical pool (different rid, near-
+// identical pos), so dedup within 3u per tile (matches the bake). Source::Live (param-sourced,
+// like bosses); needs live params → empty until the in-game build (try/catch, same as bosses).
+static int build_live_summoning_pools(const std::vector<DiskCollectible> &assets,
+                                      std::unordered_set<Cell, CellHash> &out_cells)
+{
+    namespace gen = goblin::generated;
+    GOBLIN_BENCH("build.summoning_pools");
+    const int cat = static_cast<int>(gen::Category::WorldSummoningPools);
+    constexpr uint32_t kPuddleAeg = 99015;  // AEG099_015 = the summoning sign-puddle asset
+
+    // Overworld puddle asset positions for the position-join (dungeon pools skip this).
+    struct PuddleAsset { uint8_t area, gx, gz; float x, z; };
+    std::vector<PuddleAsset> puddles;
+    for (const DiskCollectible &a : assets)
+        if (a.aegRow == kPuddleAeg)
+            puddles.push_back({a.area, a.gx, a.gz, a.posX, a.posZ});
+
+    // Resolve each row to a tile, collect, then dedup by position before emitting.
+    struct Pool { uint64_t rid; uint8_t area, gx, gz; float x, z; };
+    std::vector<Pool> pools;
+    int unresolved = 0, total = 0;
+    try
+    {
+        for (auto [rid, row] : from::params::get_param<SignPuddleRow>(L"SignPuddleParam"))
+        {
+            if (rid == 0) continue;
+            ++total;
+            uint8_t area, gx = 0, gz = 0;
+            if (row.mapRef > 0 && row.mapRef < 100000)
+            {
+                area = static_cast<uint8_t>(row.mapRef % 256);
+                const uint32_t block = static_cast<uint32_t>(row.mapRef) / 256;
+                if (area != 60 && area != 61 && block > 0) gx = static_cast<uint8_t>(block);
+            }
+            else
+            {
+                float best = 10.0f;  // join radius (matches the bake's < 10u)
+                const PuddleAsset *bm = nullptr;
+                for (const PuddleAsset &p : puddles)
+                {
+                    const float dx = row.posX - p.x, dz = row.posZ - p.z;
+                    const float d = std::sqrt(dx * dx + dz * dz);
+                    if (d < best) { best = d; bm = &p; }
+                }
+                if (!bm) { ++unresolved; continue; }
+                area = bm->area; gx = bm->gx; gz = bm->gz;
+            }
+            pools.push_back({rid, area, gx, gz, row.posX, row.posZ});
+        }
+    }
+    catch (...)
+    {
+        spdlog::warn("[LOOTDISK] SignPuddleParam not readable — Summoning Pools deferred this build");
+        return 0;
+    }
+
+    int emitted = 0, dup = 0;
+    std::vector<Pool> kept;
+    for (const Pool &p : pools)
+    {
+        // Per-context dup rows: same physical pool, near-identical pos (bake dedup, 3u/tile).
+        bool is_dup = false;
+        for (const Pool &q : kept)
+            if (p.area == q.area && p.gx == q.gx && p.gz == q.gz &&
+                std::fabs(p.x - q.x) < 3.0f && std::fabs(p.z - q.z) < 3.0f)
+            { is_dup = true; break; }
+        if (is_dup) { ++dup; continue; }
+        kept.push_back(p);
+
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = p.area;
+        d.gridXNo = p.gx;
+        d.gridZNo = p.gz;
+        d.posX = p.x;
+        d.posZ = p.z;
+        d.textId1 = 900301690;          // tutorial text "Summoning Pool"
+        d.textDisableFlagId1 = static_cast<int>(p.rid);  // graying: rid is the unlock flag
+        push_marker(/*row_id=*/p.rid, d, cat, /*lotId=*/0u, /*lotType=*/0u, Source::Live);
+        out_cells.insert(cell_of(g_buckets[cat].back()));
+        ++emitted;
+    }
+    spdlog::info("[LOOTDISK] world features: {} Summoning Pools from live SignPuddleParam "
+                 "({} rows: {} pos-dedup, {} overworld-unresolved, {} puddle assets)",
+                 emitted, total, dup, unresolved, (int)puddles.size());
+    return emitted;
+}
+
 // Build every category's marker cache in ONE pass over MAP_ENTRIES (9k rows), then the WorldBosses
 // bucket LIVE from the param. Same world-projection + group classification as the grace layer.
 // NOTE (2026-06-23): a "World-* categories live from WorldMapPointParam by row-id range" experiment
@@ -801,6 +914,11 @@ void build_buckets_impl()
             if (needsEmevd)
                 world_feature_flags = load_emevd_world_feature_flags();
             build_disk_world_feature_markers(disk_collectibles, world_feature_flags, world_feature_cells);
+            // Summoning Pools: bespoke live-SignPuddleParam pass (param feature, not an asset
+            // model). Rides the same category-wipe finalize via world_feature_cells.
+            build_live_summoning_pools(
+                disk_collectibles,
+                world_feature_cells[static_cast<int>(gen::Category::WorldSummoningPools)]);
         }
         if (goblin::config::lootEnemyDrops)
             build_disk_enemy_markers(disk_enemies, treasure_lots, enemy_disk_lots);
@@ -1067,8 +1185,10 @@ void build_buckets_impl()
         for (auto &[cat, cells] : world_feature_cells)
         {
             if (cells.empty()) continue;
-            // The feature's finalize mode = the table row's category_wipe (a category is single-mode).
-            bool wipe = false;
+            // The feature's finalize mode = the table row's category_wipe (a category is
+            // single-mode). A category NOT in the asset table is a bespoke dedicated pass that
+            // OWNS its category (Summoning Pools, live-param) → default category-wipe.
+            bool wipe = true;
             for (size_t k = 0; k < gen::WORLD_FEATURE_MODEL_COUNT; ++k)
                 if (static_cast<int>(gen::WORLD_FEATURE_MODELS[k].category) == cat)
                 {
