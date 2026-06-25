@@ -47,6 +47,8 @@ struct DiskEnemy
     uint32_t entityId = 0;             // MSB EntityID (the EMEVD-award join key; 0 if unset)
     uint8_t  area = 0, gx = 0, gz = 0;  // from the tile filename
     float    posX = 0.0f, posZ = 0.0f;  // Part+0x20 X/Z (block-local; = bake x/z)
+    std::string name;                   // part name (starts with the model, e.g. "c4210_9000")
+                                        // — the no-bake Spiritspring Hawk model filter (SSO, cheap)
 };
 
 // One placed spirit-spring Region read from a disk MSB (worldFeaturesFromDisk). subtype
