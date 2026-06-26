@@ -2,7 +2,7 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-26 23:55:38.941
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-27 00:21:16.162
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - **`drawn`** = real markers the renderer draws (= total). **`census`** = the ImGui badge denominator (completable spots) — distinct collect flags for flag-based categories, row count for geom/SFX pieces, 0 for graces; it EXCLUDES respawnable flag-less gather, so `census < drawn` wherever markers share a flag or respawn.
@@ -12,13 +12,13 @@
 
 ## ▶ Baked markers remaining
 
-# **18**  ← drive this to **0**
+# **16**  ← drive this to **0**
 
 | | baked | disk | live | live-cls | total |
 |---|--:|--:|--:|--:|--:|
-| **all categories** | **18** | 8143 | 469 | 72 | 8630 |
+| **all categories** | **16** | 8146 | 469 | 72 | 8631 |
 
-🔴 baked-only: **0**  ·  🟡 partial: **8**  ·  🟢 off-bake: **53**  (of 61 active categories)
+🔴 baked-only: **0**  ·  🟡 partial: **7**  ·  🟢 off-bake: **54**  (of 61 active categories)
 
 ## Tile coverage (`_00`-only parser)
 
@@ -91,7 +91,7 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | World - Bosses | 0 | 0 | 217 | 0 | 217 | symbol | 🟢 off-bake |
 | World - Hostile NPC | 0 | 50 | 0 | 0 | 50 | atlas 83% | 🟢 off-bake |
 | World - Imp Statues | 0 | 37 | 0 | 0 | 37 | atlas 30% | 🟢 off-bake |
-| World - Interactables | 2 | 100 | 0 | 0 | 102 | atlas 74% | 🟡 partial |
+| World - Interactables | 0 | 103 | 0 | 0 | 103 | atlas 74% | 🟢 off-bake |
 | World - Kindling Spirits | 0 | 5 | 0 | 0 | 5 | atlas 69% | 🟢 off-bake |
 | World - Maps | 0 | 24 | 0 | 0 | 24 | circle | 🟢 off-bake |
 | World - Paintings | 0 | 11 | 0 | 0 | 11 | atlas 65% | 🟢 off-bake |
@@ -180,7 +180,7 @@ Residual loot total **16** = unknown 1 · treasure 0 (accepted) · enemy 15 (bak
 | World - Bosses | 217 | 215 | 217/217 | 0 | 0 |
 | World - Hostile NPC | 50 | 26 | 27/50 | 0 | 23 |
 | World - Imp Statues | 37 | 37 | 37/37 | 0 | 0 |
-| World - Interactables | 102 | 102 | 102/102 | 0 | 0 |
+| World - Interactables | 103 | 102 | 102/103 | 0 | 1 |
 | World - Kindling Spirits | 5 | 5 | 5/5 | 0 | 0 |
 | World - Maps | 24 | 24 | 24/24 | 0 | 0 |
 | World - Paintings | 11 | 11 | 11/11 | 0 | 0 |
