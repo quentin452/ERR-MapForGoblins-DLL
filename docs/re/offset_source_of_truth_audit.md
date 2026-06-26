@@ -69,6 +69,30 @@ WHERE is the source of truth obtained? (a) the external generator + Paramdex the
 (b) a SoulsFormats Paramdex checkout, or (c) parse the paramdef from the loaded regulation at runtime.
 This choice determines the implementation path.
 
+## SHIPPED (2026-06-26) — all 5 param-field offsets now read LIVE from the exe
+
+The runtime offset-read is no longer a prototype: the DLL resolves these offsets from the game's own
+access instructions at init, with the pinned constant kept only as a logged fallback. Engine =
+`modutils::resolve_field_offset` (unique-match, or `consensus` for shared getters). Read-site capture
+tool = `goblin_field_probe` (embedded find-what-accesses: hardware breakpoint on a live param row+
+offset, vectored handler logs only RIPs inside `eldenring.exe` so all loaded mods are filtered; multi-
+hit so a bitfield byte's per-bit reads all surface). `tools/check_param_offsets.py` is now the build-time
+Paramdex cross-check, as planned — not the source.
+
+| Field | offset | AOB anchor (re_signatures.hpp) | mode | commit |
+|---|---|---|---|---|
+| EquipParamGoods.goodsType | +0x3e | GOODS_TYPE_ACCESS (`cmp [rcx+0x3e],0Dh`) | unique | 72c765d |
+| EquipParamGoods.sortGroupId | +0x72 | GOODS_SORT_GROUP_ACCESS (`movzx ebx,[rax+0x72]`) | unique | 13a1107 |
+| AssetEnvironmentGeometryParam.pickUpItemLotParamId | +0xb8 | AEG_PICKUP_LOT_ACCESS (`mov eax,[rax+0xb8]`) | unique | 1ca8e79 |
+| AssetEnvironmentGeometryParam.isEnableRepick | +0x3c **bit 5** | AEG_REPICK_BIT_ACCESS (`movzx;shr 5;and 1`) | unique (offset+bit) | 90ee351 |
+| BonfireWarpParam.textId1 | +0x30 | BONFIRE_TEXTID1_ACCESS (switch getter, 4 sites) | consensus | ccdcbbc |
+
+Lessons: static read-site discovery is a dead end for these fields (the game decouples row-fetch from
+field-read; displacements like 0x72/0xb8 are ubiquitous — 72 / 6507 lookalikes). The embedded probe (data-
+anchored on a live row, RIP-filtered to the exe) is what made capture tractable where Cheat Engine drowns
+in multi-mod noise. A bitfield BIT is semantic (which bit = which field) — only recoverable by anchoring
+on the game's bit-N extraction (multi-hit probe). A generic/shared getter has no unique site → consensus.
+
 ## PROTOTYPE (2026-06-26) — runtime offset-read mechanism PROVEN live (`D:\ghidra_scripts\offset_resolver.py`)
 
 quentin's clarified goal: don't extract-and-hardcode; have the DLL READ the offset from the game's own
