@@ -1836,6 +1836,9 @@ namespace
                                            "%zu match%s - open the world map to locate them",
                                            s_hits.size(), s_hits.size() == 1 ? "" : "es");
 
+                    // DLC results are greyed + unclickable until the player has discovered the DLC map
+                    // (so we never teleport to an undiscovered page). bit1 = DLC page.
+                    const bool dlc_ok = map_open && goblin::worldmap_probe::page_dlc_available();
                     if (ImGui::BeginChild("##itemhits", ImVec2(0, 150), true))
                     {
                         if (!map_open) ImGui::BeginDisabled();
@@ -1843,22 +1846,30 @@ namespace
                         {
                             const Hit &h = s_hits[i];
                             const bool off_page = (h.group & 3) != (open_grp & 3);
+                            const bool dlc_locked = (h.group & 2) && !dlc_ok;  // DLC item, DLC not found
                             char row[200];
-                            std::snprintf(row, sizeof(row), "%s  (x%d) - %s##h%zu", h.label.c_str(),
-                                          h.count, page_label(h.group), i);
+                            std::snprintf(row, sizeof(row), "%s  (x%d) - %s%s##h%zu", h.label.c_str(),
+                                          h.count, page_label(h.group),
+                                          dlc_locked ? " [undiscovered]" : "", i);
+                            if (dlc_locked) ImGui::BeginDisabled();
                             if (ImGui::Selectable(row) && map_open)
                             {
                                 s_pending_locate = h.name_id;  // click → pan the map onto it
                                 s_locate_label = h.label;      // remembered for the pending banner
                                 s_locate_group = h.group;
-                                // Cross-page: ask the game to switch to its page (marshalled onto the
-                                // game thread). The persistent locate then pans the instant it opens.
-                                if ((h.group & 3) != (open_grp & 3))
+                                // Cross-page: ask the game to switch to its PAGE (overworld<->DLC,
+                                // gated on availability in the marshal). The underground layer is NOT
+                                // auto-toggled (no availability gate) — the persistent locate pans once
+                                // you switch underground manually.
+                                if (off_page)
                                     goblin::worldmap_probe::request_switch_to_page(h.group);
                             }
-                            if (map_open && off_page && ImGui::IsItemHovered())
+                            if (dlc_locked) ImGui::EndDisabled();
+                            if (map_open && !dlc_locked && off_page && ImGui::IsItemHovered())
                                 ImGui::SetTooltip("On the %s map — click to switch there + centre on it.",
                                                   page_label(h.group));
+                            if (dlc_locked && ImGui::IsItemHovered())
+                                ImGui::SetTooltip("On the Realm of Shadow (DLC) map — not discovered yet.");
                         }
                         if (!map_open) ImGui::EndDisabled();
                         if (s_hits.empty())

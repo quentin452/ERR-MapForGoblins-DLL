@@ -77,6 +77,13 @@ namespace goblin::worldmap_probe
     // holds its pan until this is false so its set_view_center lands last and sticks.
     bool page_switch_busy();
 
+    // True iff the DLC (Realm of Shadow) map page is DISCOVERED / selectable for the player — byte
+    // dialog+0x27c8 (RPM-diffed across saves; 0 until the DLC map is unlocked). The item-search grays
+    // DLC results + the auto-switch refuses the DLC page when this is false, so we never teleport to an
+    // undiscovered page. (The underground LAYER has no equivalent stable flag, so it is never
+    // auto-toggled.) Returns false when the map is closed / no live cursor.
+    bool page_dlc_available();
+
     // Live world→map-space projection: call the engine's own per-icon projection
     // (FUN_1408877d0 on the live CS::WorldMapViewModel) to map a raw (area, gridX,
     // gridZ, posX, posZ) to map-space UV — folds WorldMapLegacyConvParam + applies the

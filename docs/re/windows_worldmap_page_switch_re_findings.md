@@ -61,3 +61,26 @@ void request_switch(int targetGroup) {
   `debug_page_switch`). RVAs in `PS_HANDLERS[]`. Logs `[PAGESW]` to MapForGoblins_wmprobe.log.
 - Confirmed entries: `c1fc0` `0x9c1fc0` (page/DLC), `c7900` `0x9c7900` (layer/UG); sub-call `c8120`
   `0x9c8120`. dialog = `cursor − 0x2DB0`; cursor via the CSMenuMan walk.
+
+## 6. page_selectable — RPM-diff result (instrument-first, 2026-06-26)
+
+Method: `D:\ghidra_scripts\page_avail_dump.py` / `page_full_dump.py` RPM-dump the WorldMapDialog
+(dialog = active_cursor − 0x2DB0, read from the wmprobe `resolve: cursor` log line), on THREE saves all
+viewed on the **overworld page (page=0, so no current-page confound)**, then diff:
+- overworld-only (nothing discovered), underground-only (UG, no DLC), all-3-discovered.
+
+**DLC availability = `dialog+0x27c8` (u8): 0 until the DLC map is discovered, 1 after.** Truth table
+across the three saves: OW=0, UG-only=0, all=1 — i.e. set ONLY when the DLC (Realm of Shadow) map is
+unlocked, NOT for underground. (`dialog+0x3e69` shows the identical pattern — a parallel [overworld,
+DLC] page-enable pair right after an "…eName" field — but 0x27c8 is the one we read.)
+
+**Underground has NO equivalent stable dialog byte.** No offset in dialog+0..0x4000 matched the
+expected `OW=0, UG=1, all=1`; the bytes that differed UG-vs-OW were transient (per-save floats/handles)
+or `UG=1` but `all=0` (noise). The "Afficher souterrains" toggle availability is therefore contextual
+(per-region / per-frame query), not a single dialog flag — so we DON'T auto-toggle the layer.
+
+**Wired (commit pending):** `page_dlc_available()` reads 0x27c8; the c32f0 marshal refuses a DLC page
+switch when it's 0; the item-search greys + disables DLC results ("[undiscovered]") until then. The
+auto-switch drives ONLY the page axis (overworld↔DLC); the underground layer is never auto-toggled
+(its items keep the persistent-locate = manual toggle). Other candidates (0x1b10/0x2790 "5", 0x1c6a/
+0x298a "12", 0x1d08/0x2f00 "1") were per-save transients, not availability.
