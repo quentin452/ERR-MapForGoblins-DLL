@@ -255,6 +255,12 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
         // stays -1 and the flags 0, so push_marker resolves the item + pickup flag
         // live (the lot-backed path) — exactly like a baked lot-backed row.
         int32_t key = goblin::resolve_loot_item_textid(t.lotId, 1, -1);
+        // Region Map fragments are owned by the dedicated build_disk_maps_markers pass (routed to
+        // WorldMaps). Skip them here so the same pickup isn't ALSO emitted into a generic Loot bucket
+        // — without this the live fallback (no map case) filed every disk-placed map under Crafting
+        // Materials, drawing each map twice (surfaced by docs/item_classification.md). ER's own
+        // sortGroupId 190/191 via goods_is_map; map goods carry the +500M goods encoding.
+        if (key >= 500000000 && goblin::goods_is_map(key - 500000000)) continue;
         int c = goblin::item_marker_category(key);
         bool lc = false;
         if (c < 0) { c = goblin::classify_item_live(key); lc = (c >= 0); }  // live fallback (any mod / unbaked item)
