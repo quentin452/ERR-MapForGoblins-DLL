@@ -61,6 +61,7 @@ namespace goblin::config
     bool lootEnemyDrops = false;   // opt-in: enemy-drop markers from disk MSBs (Parts.Enemies → NpcParam → ItemLotParam)
     bool lootEmevdDrops = false;   // opt-in: EMEVD-scripted award markers from disk event\*.emevd.dcx (template inits → entity/lot → MSB Enemy pos)
     bool worldFeaturesFromDisk = false; // opt-in: World features (Stakes of Marika, …) from disk MSBs by AEG model — no bake
+    bool dropMerchantPhantoms = true;   // drop baked loot markers whose item is sold infinite-stock in ShopLineupParam (merchant phantoms the bake's unmatched-ItemLotParam fallback placed at (0,0,0))
 
     bool redifyBossIcons = false;
     bool graceOverlay = true;        // our graces are the default map source now (validated)
@@ -254,6 +255,13 @@ namespace
                   "(AEG099_060 respawn points). Position = the placed Asset; the matching baked\n"
                   "Stakes are dropped (position-keyed) so this reproduces the bake live on any\n"
                   "mod. Uses the same map dir as loot_from_disk_msb. Off by default."),
+                B("drop_merchant_phantoms", dropMerchantPhantoms, "true",
+                  "Drop baked loot markers whose item is sold INFINITE-stock (sellQuantity=-1) in\n"
+                  "the live ShopLineupParam. The bake's unmatched-ItemLotParam fallback places a\n"
+                  "phantom marker at the tile corner (0,0,0) for items that have NO world placement\n"
+                  "but ARE sold by a merchant (ERR's shop sells most weapons/gloveworts/etc.) -- so\n"
+                  "the player flies to an empty tile corner. Reads ShopLineupParam live (any mod);\n"
+                  "only drops a marker no disk pass reproduced. On by default."),
                 B("diag_fieldins_join", diagFieldinsJoin, "false",
                   "RE diagnostic: one-shot [FIELDINS] — path-A asset→ItemLotID join check. For each\n"
                   "loaded AEG asset, read the embedded CSGrowableNodePool at geom_ins+0x3A8 (cap+0x3B8,\n"

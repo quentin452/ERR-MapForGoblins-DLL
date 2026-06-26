@@ -103,6 +103,12 @@ namespace goblin
         // (category-wipe for dedicated categories, cell-dedup for shared ones). See
         // build_disk_world_feature_markers.
         extern bool worldFeaturesFromDisk;
+        // When true, drop baked loot markers whose item is sold infinite-stock
+        // (sellQuantity == -1) in the live ShopLineupParam. These are merchant items
+        // with NO world placement that the bake's unmatched-ItemLotParam fallback put on
+        // the map at the tile corner (0,0,0) — a phantom the player can't find. Reads
+        // ShopLineupParam live (any mod); only drops a still-baked marker (no disk twin).
+        extern bool dropMerchantPhantoms;
         // Directory holding the active mod's map\MapStudio\*.msb.dcx (or the mod
         // root, or a map\ root). Empty = auto-detect: the DLL's own mod folder,
         // then the Elden Ring install dir. Set it to your ModEngine2 mod's map
