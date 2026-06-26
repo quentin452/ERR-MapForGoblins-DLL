@@ -15,9 +15,10 @@ listed so the exception table's size is explicit.
 Run:  py -3.14 tools/_validate_taxonomy_map.py   (no SoulsFormats needed — pure json)
 """
 import os
-import sys
 import json
 from collections import Counter, defaultdict
+
+import taxonomy_classifier as TC  # the shared offline mirror of the DLL classifier
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, 'data')
@@ -25,96 +26,11 @@ DATA = os.path.join(ROOT, 'data')
 icon_table = json.load(open(os.path.join(DATA, 'item_icon_table.json'), encoding='utf-8'))
 gts = json.load(open(os.path.join(DATA, 'goods_type_sortgroup.json'), encoding='utf-8'))
 GTS = {int(k): tuple(v) for k, v in gts.items()}
-
-# ── Proposed scheme ───────────────────────────────────────────────────────
-# Categories handled ONLY by a curated id-list (the splits / grab-bags ER doesn't encode).
-EXCEPTION_CATS = {
-    'Loot - Golden Runes (Low)',
-    'Loot - Smithing Stones (Low)', 'Loot - Smithing Stones (Rare)',
-    'Loot - Great Gloveworts',
-    'Loot - Rune Arcs', 'Loot - Prattling Pates', 'Loot - MP-Fingers', 'Loot - Rada Fruit',
-    'Key - Celestial Dew', 'Key - Imbued Sword Keys', 'Loot - Stonesword Keys',
-    'Quest - Deathroot', 'Quest - Seedbed Curses',
-    'Key - Whetblades', 'Key - Larval Tears', 'Key - Lost Ashes', 'Loot - Dragon Hearts',
-    'Key - Scadutree Fragments', 'Key - Seeds Tears Ashes',
-    'Magic - Memory Stones', 'Magic - Prayerbooks',
-    'Quest - Progression',
-    'Reforged - Items', 'Reforged - Fortunes', 'Reforged - Sealed Curios',
-}
-
-# (gType, sg) -> category for the BULK (mono-category cells; tails ride the default).
-CELL_MAP = {
-    (0, 20): 'Loot - Consumables', (0, 61): 'Loot - Consumables',
-    (0, 50): 'Loot - Throwables',
-    (0, 70): 'Loot - Greases',
-    (0, 60): 'Loot - Reusables',
-    (0, 80): 'Loot - Utilities',                 # Pates = exception
-    (0, 10): 'Loot - Stat Boosts',               # Rune Arc 150 = exception
-    (0, 100): 'Loot - Golden Runes', (0, 101): 'Loot - Golden Runes',  # Low = exception
-    # NOTE: ERR spirit-ash goods (gType0 sg15) are classified by id range below, NOT this cell —
-    # sg15 is contaminated by a few non-spirits (Codex, Steed Whistle, Memory of Grace).
-    (1, 80): 'Loot - Bell-Bearings', (1, 90): 'Loot - Bell-Bearings',
-    (1, 200): 'Key - Cookbooks', (1, 205): 'Key - Cookbooks',
-    (1, 100): 'Magic - Prayerbooks',             # 8867 = exception
-    (10, 20): 'Key - Crystal Tears',
-    (11, 30): 'Key - Pots n Perfumes',
-    (14, 40): 'Loot - Gloveworts', (14, 41): 'Loot - Gloveworts',     # Great = exception
-    (14, 19): 'Loot - Smithing Stones', (14, 20): 'Loot - Smithing Stones',
-    (14, 30): 'Loot - Smithing Stones',          # Low/Rare = exception
-}
-# goodsType -> category fallback (broadest families).
-GTYPE_MAP = {
-    2: 'Loot - Crafting Materials',
-    5: 'Magic - Sorceries', 17: 'Magic - Sorceries',
-    16: 'Magic - Incantations', 18: 'Magic - Incantations',
-    7: 'Equipment - Spirits', 8: 'Equipment - Spirits',
-}
-GTYPE_DEFAULT = {1: 'Quest - Progression'}  # key-item tail -> Quest/Key Items bucket
-
-# Non-goods equip categories by encoded-key range (mirrors classify_item_live; no params needed).
-def nongoods_cat(key):
-    if key >= 500000000:
-        return None  # goods
-    if key >= 400000000:
-        return 'Equipment - Ashes of War'
-    if key >= 300000000:
-        return 'Equipment - Talismans'
-    if key >= 200000000:
-        return 'Equipment - Armour'
-    if key >= 100000000:
-        return 'Loot - Ammo' if (key - 100000000) >= 50000000 else 'Equipment - Armaments'
-    # Legacy raw-50M ammo key (the bake stores ammo here; the live runtime uses +100M).
-    if key >= 50000000:
-        return 'Loot - Ammo'
-    return None
-
-
-# Build the curated exception id-set from the bake (the items whose baked category is exception-only).
-EXCEPTION_IDS = {}
-for k, (icon, cat) in icon_table.items():
-    key = int(k)
-    if key >= 500000000 and cat in EXCEPTION_CATS:
-        EXCEPTION_IDS[key - 500000000] = cat
+EXCEPTION_IDS = TC.load_exception_ids(icon_table)
 
 
 def proposed_cat(key):
-    ng = nongoods_cat(key)
-    if ng is not None:
-        return ng
-    gid = key - 500000000
-    if gid in EXCEPTION_IDS:
-        return EXCEPTION_IDS[gid]
-    if 300000 <= gid <= 399999:
-        return 'Equipment - Spirits'  # ERR renumbered spirit-ash goods (id range, not the sg15 cell)
-    cell = GTS.get(gid)
-    if cell is not None:
-        if cell in CELL_MAP:
-            return CELL_MAP[cell]
-        if cell[0] in GTYPE_MAP:
-            return GTYPE_MAP[cell[0]]
-        if cell[0] in GTYPE_DEFAULT:
-            return GTYPE_DEFAULT[cell[0]]
-    return None  # catch-all (LootCraftingMaterials)
+    return TC.classify(key, GTS, EXCEPTION_IDS)[0]
 
 
 # ── Diff proposed vs baked ────────────────────────────────────────────────
