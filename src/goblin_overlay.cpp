@@ -114,6 +114,28 @@ namespace
         return fold_ci(hay).find(fold_ci(need)) != std::string::npos;
     }
 
+    // Word-order-independent match for the item search: every whitespace-separated
+    // token of `query` must appear (case/accent-insensitive substring) somewhere in
+    // `hay`. So "Claw Talisman", "Talisman Claw" and "griffe claw" all match the same
+    // marker when `hay` is its combined game-language + English text. Empty query (no
+    // tokens) returns false — callers guard the empty box separately.
+    bool matches_all_tokens(const std::string &hay, const char *query)
+    {
+        const std::string fh = fold_ci(hay.c_str());
+        bool any = false;
+        for (const char *p = query; *p;)
+        {
+            while (*p == ' ' || *p == '\t') ++p;
+            const char *start = p;
+            while (*p && *p != ' ' && *p != '\t') ++p;
+            if (p == start) break;
+            any = true;
+            if (fh.find(fold_ci(std::string(start, p - start).c_str())) == std::string::npos)
+                return false;
+        }
+        return any;
+    }
+
     // ── Hooked function typedefs ──────────────────────────────────────────
     using PresentFn = HRESULT(STDMETHODCALLTYPE *)(IDXGISwapChain3 *, UINT, UINT);
     using ResizeBuffersFn =
@@ -1977,8 +1999,14 @@ namespace
                     s_hits.clear();
                     if (item_q[0] != '\0')
                     {
-                        // Resolve each distinct name_id once (cache), substring-match the query.
-                        std::unordered_map<int32_t, std::string> name_cache;
+                        // Resolve each distinct name_id once (cache), substring-match the query
+                        // against BOTH the live (game-language) label AND the bundled English
+                        // alias — so a player on a French/other game can type the English/wiki
+                        // name and still find it. The displayed label stays the game-language
+                        // name, with the English in parens when it differs (e.g. on a non-EN
+                        // game) to confirm the match.
+                        struct Names { std::string loc, en, label; };
+                        std::unordered_map<int32_t, Names> name_cache;
                         std::map<int32_t, int> hit_count;  // matched name_id -> marker count (ordered)
                         for (auto *L : overlay_layers())
                         {
@@ -1988,12 +2016,26 @@ namespace
                                 if (m.name_id < 0) continue;
                                 auto it = name_cache.find(m.name_id);
                                 if (it == name_cache.end())
-                                    it = name_cache.emplace(m.name_id,
-                                                            goblin::lookup_text_utf8(m.name_id)).first;
-                                if (it->second.empty()) continue;
-                                if (!contains_ci(it->second.c_str(), item_q)) continue;
+                                {
+                                    Names n;
+                                    n.loc = goblin::lookup_text_utf8(m.name_id);
+                                    n.en = goblin::lookup_name_alias_en_utf8(m.name_id);
+                                    // Label = game-language name; fall back to English if the
+                                    // live FMG had no entry. Append "(English)" only when it adds
+                                    // information (present and different from the shown name).
+                                    n.label = n.loc.empty() ? n.en : n.loc;
+                                    if (!n.en.empty() && n.en != n.label)
+                                        n.label += " (" + n.en + ")";
+                                    it = name_cache.emplace(m.name_id, std::move(n)).first;
+                                }
+                                const Names &nm = it->second;
+                                if (nm.label.empty()) continue;
+                                // Word-order-independent: each query token must appear in the
+                                // combined game-language + English text (so "Claw Talisman" and
+                                // "Talisman Claw" both match, and FR/EN words can be mixed).
+                                if (!matches_all_tokens(nm.loc + " " + nm.en, item_q)) continue;
                                 if (s_match.insert(m.name_id).second)
-                                    s_hits.push_back({it->second, m.name_id, 0, m.group});
+                                    s_hits.push_back({nm.label, m.name_id, 0, m.group});
                                 ++hit_count[m.name_id];
                             }
                         }
