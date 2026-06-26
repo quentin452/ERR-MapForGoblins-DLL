@@ -278,6 +278,16 @@ float s_grace_zoom = 1.f;
 // size feels off across the zoom range.
 constexpr float kGraceZoomRef = 0.25f;
 
+// Vanilla parity: a grace the player has already DISCOVERED (rested at) shows on the
+// world map regardless of map-fragment ownership — the base game reveals lit graces even
+// without the region's fragment. Only grace markers carry discover_flag, so this is false
+// for every other category. Used to let discovered graces skip the require_fragment gate
+// (undiscovered graces stay gated). Read live so it flips the instant the player rests.
+static inline bool is_discovered_grace(const Marker &m)
+{
+    return m.discover_flag && goblin::ui::read_event_flag(static_cast<uint32_t>(m.discover_flag));
+}
+
 // Draw one marker at backbuffer px p: the atlas icon if available, else a circle.
 // half = icon half-size in px (resolution-scaled by the caller). When collected_graying
 // is on, collected/cleared markers dim+desaturate (or hide if hide_collected), and
@@ -1335,10 +1345,12 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             if (m.hide_when_flag && goblin::ui::read_event_flag((uint32_t)m.hide_when_flag))
                 continue;
             // Map-fragment gate (require_map_fragments): the region's MAP FRAGMENT item must be
-            // acquired (m.fragment_flag = GetMapFlagFromTile, read live).
+            // acquired (m.fragment_flag = GetMapFlagFromTile, read live). Exception (vanilla
+            // parity): an already-DISCOVERED grace shows regardless of fragment ownership.
             if (goblin::config::requireMapFragments && m.fragment_flag &&
-                !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)))
-                continue; // map fragment not acquired yet
+                !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
+                !is_discovered_grace(m))
+                continue; // map fragment not acquired yet (and not an already-discovered grace)
 
             // Clustered-eligible markers are deferred (uncull'd) to the pile pass;
             // everything else (already on-screen here) draws now.
@@ -1457,8 +1469,10 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             if (dx * dx + dy * dy > cullR * cullR)
                 continue; // outside the HUD radius
             // Map-fragment gate (require_map_fragments): the FRAGMENT item must be acquired.
+            // Vanilla parity: an already-discovered grace bypasses this gate.
             if (cfg::requireMapFragments && m.fragment_flag &&
-                !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)))
+                !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
+                !is_discovered_grace(m))
                 continue;
             draw_marker(fg, m, ImVec2(ctr.x + dx, ctr.y + dy), icons, half);
         }
