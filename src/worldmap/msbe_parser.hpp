@@ -129,6 +129,14 @@ struct EmevdParse
     // which is common-only); then walk the baseLot ItemLotParam chain (piece = baseLot+1/+2) for the
     // Rune/Ember Piece.
     std::vector<std::pair<uint32_t, uint32_t>>    bossFlagLot;   // (defeatFlag, baseLot) — 90005860/61/80
+    // Per-tile "enemy-death item award" inits: a bank-2000 InitializeEvent whose callee is a per-tile
+    // template (eventId >= 1e9, NOT a kEmevdTemplate) that awards an ItemLotParam when an enemy dies.
+    // Layout (verified on the 12 uncovered Golden Runes + tools/_probe_emevd_precise.py): entity@X0_4
+    // (a+8) = the MSB enemy; lot@idx(n-2) (a+argLen-8) = the awarded lot. The downstream entity→disk-
+    // ENEMY join enforces "positionable enemy" (asset-entity chests don't join → excluded, which is
+    // what keeps this off the 395-chest over-match), and the lot-coverage dedup drops any lot another
+    // pass already placed. Treated as a lotType-1 direct award by the caller.
+    std::vector<EmevdAward>                       perTileEnemyAward;
 };
 
 // A placed Region (PointParam / POINT section) — the no-bake Spirit Springs source. The POINT

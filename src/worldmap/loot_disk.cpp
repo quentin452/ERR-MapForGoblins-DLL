@@ -570,7 +570,7 @@ std::vector<DiskEmevd> load_emevd_awards(
     spdlog::info("[LOOTDISK] reading EMEVD from {}", evdir.string());
 
     msbe::OodleDecompressFn oodle = resolve_oodle();  // KRAK events (unmodified vanilla)
-    int parsed = 0, kraks = 0, direct = 0;
+    int parsed = 0, kraks = 0, direct = 0, per_tile_award = 0;
     // Mechanism B inputs, accumulated across all files: flag→lot (from common.emevd's
     // RunEvent(1200)) and every SetEventFlag(.,1) event's flags+entity candidates.
     std::unordered_map<uint32_t, uint32_t> flag_to_lot;
@@ -600,6 +600,11 @@ std::vector<DiskEmevd> load_emevd_awards(
         msbe::EmevdParse p = msbe::parse_emevd_full(evd.data(), evd.size());
         for (const auto &a : p.direct) out.push_back({a.entityId, a.lotId, /*lotType=*/1});
         direct += (int)p.direct.size();
+        // Per-tile enemy-death awards (callee >= 1e9, NOT a kEmevdTemplate): join entity→disk-ENEMY
+        // pos like a direct award (lotType 1, fallback to _enemy downstream). The enemy join filters
+        // asset-entity chests; the lot-coverage dedup in build_disk_emevd_markers drops covered lots.
+        for (const auto &a : p.perTileEnemyAward) out.push_back({a.entityId, a.lotId, /*lotType=*/1});
+        per_tile_award += (int)p.perTileEnemyAward.size();
         // flag→lot only from common.emevd (the engine binding lives there; restricting
         // matches the bake and avoids a stray per-map RunEvent(1200) re-binding a flag).
         if (lower == "common.emevd.dcx")
@@ -693,10 +698,10 @@ std::vector<DiskEmevd> load_emevd_awards(
         out.push_back({chosen, lot, /*lotType=*/1, /*bossReward=*/true});
         ++boss_ev;
     }
-    spdlog::info("[LOOTDISK] {} EMEVD files parsed; {} direct + {} event-1200 + {} boss-reward awards "
-                 "({} flag→lot binds, {} boss-flag binds, {} setters, {} ev1200-no-entity, {} "
-                 "boss-no-entity); {} KRAK skipped",
-                 parsed, direct, ev1200, boss_ev, (int)flag_to_lot.size(),
+    spdlog::info("[LOOTDISK] {} EMEVD files parsed; {} direct + {} per-tile-enemy + {} event-1200 + {} "
+                 "boss-reward awards ({} flag→lot binds, {} boss-flag binds, {} setters, {} "
+                 "ev1200-no-entity, {} boss-no-entity); {} KRAK skipped",
+                 parsed, direct, per_tile_award, ev1200, boss_ev, (int)flag_to_lot.size(),
                  (int)boss_flag_to_lot.size(), (int)setters.size(), ev1200_no_entity, boss_no_entity,
                  kraks);
     return out;

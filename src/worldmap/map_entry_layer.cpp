@@ -1736,10 +1736,14 @@ void build_buckets_impl()
             ++replaced_enemy;
             continue;
         }
-        // EMEVD-scripted disk source (loot_emevd_drops) owns this lot → drop the baked
-        // LootSource::Emevd row (lotType 1). Its own guard: the live event\*.emevd.dcx
-        // template-award parse + EntityID→MSB-Enemy join reproduces this scripted drop.
-        if (!emevd_disk_lots.empty() && e.loot_source == gen::LootSource::Emevd &&
+        // EMEVD-scripted disk source (loot_emevd_drops) owns this lot → drop the baked row the
+        // EMEVD pass reproduced (live event\*.emevd.dcx template/per-tile-enemy award + EntityID→
+        // MSB-Enemy join). Drops both LootSource::Emevd AND Unknown rows: the per-tile enemy-death
+        // awards (the uncovered Golden Runes etc.) are baked as src=Unknown (pre-provenance), and
+        // Unknown is replaceable by design (same as the treasure guard above) — a globally-unique
+        // lotId the EMEVD pass placed is the SAME pickup, so the baked twin must go (else a double).
+        if (!emevd_disk_lots.empty() &&
+            (e.loot_source == gen::LootSource::Emevd || e.loot_source == gen::LootSource::Unknown) &&
             e.lotId != 0 && emevd_disk_lots.count(e.lotId))
         {
             ++replaced_emevd;

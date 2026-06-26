@@ -625,6 +625,20 @@ EmevdParse parse_emevd_full(const uint8_t *buf, size_t len)
                             R.direct.push_back({entity, lot});
                     }
                 }
+                // Per-tile "enemy-death item award": a callee >= 1e9 (a per-tile event id, NOT a
+                // kEmevdTemplate) awards a lot when an enemy dies. entity@X0_4 (a+8), lot@idx(n-2)
+                // (a+argLen-8) — a consistent single-pair layout (verified on the 12 uncovered Golden
+                // Runes, tools/_probe_emevd_precise.py: 21 lots, 0 already-covered, 12/12 GR). The
+                // downstream entity→disk-ENEMY join filters out asset-entity chests (the 395 over-match)
+                // and the lot-coverage dedup drops anything another pass placed → only the uncovered
+                // enemy-death awards survive as markers. Kept separate from R.direct for an observable count.
+                else if (eventId >= 1000000000u && argLen >= 16)
+                {
+                    uint32_t entity = rd32(buf, a + 8);
+                    uint32_t lot    = rd32(buf, a + (size_t)argLen - 8);
+                    if ((int32_t)entity > 0 && (int32_t)lot > 0 && entity != lot)
+                        R.perTileEnemyAward.push_back({entity, lot});
+                }
                 // mechanism B input: RunEvent(2000:00) binding flag→lot via callee 1200
                 if (iid == 0 && eventId == 1200 && argLen >= 16)
                 {
