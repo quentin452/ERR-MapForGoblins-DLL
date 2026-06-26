@@ -25,6 +25,7 @@
 #include "worldmap/map_renderer.hpp"     // goblin::worldmap::render_markers
 #include "worldmap/category_meta.hpp"    // baked→GPU icon migration counters (F1 panel)
 #include "worldmap/loot_disk.hpp"        // disk_loot_state — F1 "maps not found" error
+#include "re_signatures.hpp"             // sig_health — F1 "signatures unresolved" error
 #include "goblin_messages.hpp"           // lookup_text_utf8 (item-search name resolution)
 #include "generated_shared/goblin_overlay_icons.hpp" // ATLAS_PNG category-icon atlas
 #include "generated_shared/dejavu_sans_ttf.h"         // embedded DejaVu Sans (extended-Latin glyphs)
@@ -1405,6 +1406,35 @@ namespace
             ImGui::TextDisabled("'loot_from_disk_msb = false' pour la base intégrée.");
             ImGui::End();
             return;
+        }
+
+        // One or more RE signatures (AOB) failed to resolve uniquely at init → the mod
+        // hooked the wrong function or nothing at all, so markers/graces/loot will be
+        // wrong or absent. Surface it instead of silently rendering a broken map (the
+        // [SIG] log is invisible mid-game). MULTI = ambiguous (likely-wrong function),
+        // FAIL = gone (needs re-find after a game update).
+        {
+            const goblin::sig::SigHealth &sh = goblin::sig::sig_health();
+            if (sh.ran && (sh.fail > 0 || sh.multi > 0))
+            {
+                ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
+                ImGui::Begin("Map for Goblins##sigerror", nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.15f, 1.0f));
+                ImGui::TextUnformatted("Map for Goblins - AVERTISSEMENT");
+                ImGui::Separator();
+                ImGui::TextWrapped("Les signatures (RE) n'ont pas été résolues correctement. "
+                                   "Le mod ne fonctionnera probablement pas correctement "
+                                   "(marqueurs, graces ou butin manquants ou erronés).");
+                ImGui::PopStyleColor();
+                ImGui::Spacing();
+                ImGui::TextDisabled("%d manquante(s), %d ambiguë(s) sur %d signatures.",
+                                    sh.fail, sh.multi, sh.total);
+                ImGui::TextDisabled("Probablement cassé par une mise à jour du jeu — voir le");
+                ImGui::TextDisabled("log [SIG] pour le détail (re-find des AOB nécessaire).");
+                ImGui::End();
+                return;
+            }
         }
 
         if (!g_large)
