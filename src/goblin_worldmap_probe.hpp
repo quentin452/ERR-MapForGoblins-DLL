@@ -62,6 +62,16 @@ namespace goblin::worldmap_probe
     // map is closed / no live cursor / the write faulted. Map must be OPEN.
     bool set_view_center(float mU, float mV);
 
+    // Request the live map to switch to a target PAGE GROUP (bit1 = DLC, bit0 = underground), so the
+    // item-search locate can reach a cross-page result. The switch is marshalled onto the GAME thread
+    // (executed inside the hooked per-frame map step FUN_1409c32f0) so it never races the UI — calling
+    // the switch handlers (c1fc0 page / c7900 layer) from our render thread would corrupt the dialog.
+    // Drains over a few frames (one axis per step). No-op if the marshal hook didn't install. The
+    // persistent locate then pans the instant the page opens.
+    // NOTE: does NOT yet gate on page availability — pinning page_selectable (don't switch to a page
+    // the player hasn't unlocked) is the next RE pass; see windows_worldmap_page_switch_re_prompt.md.
+    void request_switch_to_page(int group);
+
     // Live world→map-space projection: call the engine's own per-icon projection
     // (FUN_1408877d0 on the live CS::WorldMapViewModel) to map a raw (area, gridX,
     // gridZ, posX, posZ) to map-space UV — folds WorldMapLegacyConvParam + applies the

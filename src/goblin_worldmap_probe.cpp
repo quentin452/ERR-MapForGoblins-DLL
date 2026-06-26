@@ -1170,7 +1170,77 @@ void install_page_switch_probe()
     spdlog::info("[PAGESW] page-switch probe: {}/{} hooks installed (switch pages on the open map)", n,
                  PS_COUNT);
 }
+
+// ── Auto page-switch marshal ─────────────────────────────────────────────────────────────────────
+// Switch the map page from the GAME thread, never the render thread. We hook the per-frame map step
+// FUN_1409c32f0 (runs on the UI thread, receives the WorldMapDialog) and, inside it, drain a pending
+// "switch to group G" request by calling the pinned switch handlers — exactly where the engine itself
+// calls them. (Instrumentation pinned: c1fc0 = base↔DLC page arg2∈{0,10}; c7900 = surface↔UG layer
+// arg2∈{0,1}; the observed r8/r9 = {0x40,1}. See windows_worldmap_page_switch_re_findings.md.)
+// Page (c1fc0) first, then layer (c7900) — one axis per step so the engine settles between.
+constexpr uint32_t RVA_C1FC0 = 0x9c1fc0;   // base↔DLC: (dialog, page 0/10, _, force)
+constexpr uint32_t RVA_C7900 = 0x9c7900;   // surface↔UG: (dialog, layer 0/1, 0x40, force)
+constexpr uint32_t RVA_C32F0 = 0x9c32f0;   // per-frame map step (game thread)
+using SwitchFn = uintptr_t (*)(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
+// FUN_1409c32f0(dialog, float dt, …): dt is a FLOAT (xmm1), so the detour MUST type it as float to
+// preserve it across the forward call — a uintptr_t there would drop dt and break the UI step.
+using StepFn = uintptr_t (*)(uintptr_t, float, uintptr_t, uintptr_t);
+SwitchFn g_c1fc0 = nullptr, g_c7900 = nullptr;
+StepFn g_c32f0_orig = nullptr;
+std::atomic<int> g_pending_group{-1};  // target group (bit1=DLC, bit0=UG); -1 = none
+
+uintptr_t hk_c32f0(uintptr_t dialog, float dt, uintptr_t a3, uintptr_t a4)
+{
+    uintptr_t r = g_c32f0_orig ? g_c32f0_orig(dialog, dt, a3, a4) : 0;
+    const int want = g_pending_group.load(std::memory_order_relaxed);
+    if (want >= 0 && dialog)
+    {
+        int curPage = -1, curLayer = -1;
+        seh_read_i32(reinterpret_cast<void *>(dialog + 0xA88), &curPage);
+        uint64_t sub = 0;
+        if (seh_read8(reinterpret_cast<void *>(dialog + 0x2B68), &sub) && sub)
+        {
+            int b = -1;
+            if (seh_read_i32(reinterpret_cast<void *>(sub + 0xB8), &b)) curLayer = b & 0xFF;
+        }
+        const int wantPage = (want & 2) ? 10 : 0;
+        const int wantLayer = (want & 1) ? 1 : 0;
+        if (curPage != wantPage && g_c1fc0)
+            g_c1fc0(dialog, (uintptr_t)wantPage, 0, 1);          // switch page this step
+        else if (curLayer != wantLayer && g_c7900)
+            g_c7900(dialog, (uintptr_t)wantLayer, 0x40, 1);      // then layer next step
+        else
+            g_pending_group.store(-1, std::memory_order_relaxed); // reached target → done
+    }
+    return r;
+}
+
+void install_auto_page_switch()
+{
+    uintptr_t base = g_exe_base ? g_exe_base
+                                : reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base) return;
+    g_c1fc0 = reinterpret_cast<SwitchFn>(base + RVA_C1FC0);
+    g_c7900 = reinterpret_cast<SwitchFn>(base + RVA_C7900);
+    try
+    {
+        modutils::hook(reinterpret_cast<void *>(base + RVA_C32F0),
+                       reinterpret_cast<void *>(&hk_c32f0),
+                       reinterpret_cast<void **>(&g_c32f0_orig));
+        modutils::enable_hooks();
+        spdlog::info("[PAGESW] auto page-switch marshal installed (c32f0 game-thread hook)");
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::warn("[PAGESW] auto page-switch install failed: {}", e.what());
+    }
+}
 } // namespace
+
+void request_switch_to_page(int group)
+{
+    g_pending_group.store(group, std::memory_order_relaxed);
+}
 
 void initialize(const std::filesystem::path &log_path)
 {
@@ -1186,6 +1256,7 @@ void initialize(const std::filesystem::path &log_path)
         return;
     }
     install_page_switch_probe();  // gated on config::debugPageSwitch
+    install_auto_page_switch();   // game-thread marshal for request_switch_to_page (item-search locate)
     std::thread(probe_loop).detach();
     spdlog::info("[WM-PROBE] world-map cursor probe active → {}", log_path.string());
 }

@@ -1842,22 +1842,25 @@ namespace
                                 s_pending_locate = h.name_id;  // click → pan the map onto it
                                 s_locate_label = h.label;      // remembered for the pending banner
                                 s_locate_group = h.group;
+                                // Cross-page: ask the game to switch to its page (marshalled onto the
+                                // game thread). The persistent locate then pans the instant it opens.
+                                if ((h.group & 3) != (open_grp & 3))
+                                    goblin::worldmap_probe::request_switch_to_page(h.group);
                             }
                             if (off_page && ImGui::IsItemHovered())
-                                ImGui::SetTooltip("On the %s map — click anyway; it centres the moment "
-                                                  "you switch to that page.", page_label(h.group));
+                                ImGui::SetTooltip("On the %s map — click to switch there + centre on it.",
+                                                  page_label(h.group));
                         }
                         if (s_hits.empty())
                             ImGui::TextDisabled("no marker matches");
                     }
                     ImGui::EndChild();
 
-                    // Cross-page locate: the click is remembered and fires the instant the target page
-                    // opens (we don't drive ER's native page swap — that's an off-thread game call).
+                    // Cross-page locate: the switch is marshalled to the game thread + the locate pans
+                    // the instant that page opens. The banner shows until it lands.
                     if (goblin::worldmap::locate_pending())
                         ImGui::TextColored(ImVec4(1.f, 0.85f, 0.2f, 1.f),
-                                           "> Locating \"%s\" - switch to the %s map; it centres "
-                                           "automatically.", s_locate_label.c_str(),
+                                           "> Locating \"%s\" on the %s map...", s_locate_label.c_str(),
                                            page_label(s_locate_group));
                 }
                 // Hand the renderer the live match set + any pending locate (consumed once).
