@@ -4408,12 +4408,14 @@ static int goods_type_live(int32_t goods_id)
     return r ? (int)r->b[0x3e] : -1;
 }
 
-// True iff an EquipParamGoods row is a region Map fragment — sortGroupId (u8 @ +0x72) ∈
-// {190 (base game), 191 (DLC)}. Offset+type pinned via the paramdef field-layout walk (which
-// reproduces the known goodsType@0x3e); sortGroupId is a 1-byte field (NOT s16 — reading 2 bytes
-// folds in the 0x73 bitfield). Used by the no-bake World - Maps pass to route map-good treasure
-// pickups to the WorldMaps category instead of a generic Loot bucket.
-bool goblin::goods_is_map(int32_t goods_id)
+// sortGroupId (u8 @ +0x72) of an EquipParamGoods row, or -1 if absent. This is ER's OWN
+// fine-grained item taxonomy — the field that groups the inventory menu — so it classifies
+// every item (incl. DLC / mod-added) with ZERO per-item table and zero drift. Offset+type pinned
+// via the paramdef field-layout walk (reproduces the known goodsType@0x3e); it is a 1-byte field
+// (NOT s16 — reading 2 bytes folds in the 0x73 bitfield). Known rune groups: 100 = base
+// Golden/Numen's/Hero's/Lord's Runes, 101 = DLC Broken/Shadow Realm Runes, 102 = ERR high-NG
+// variants (Golden One's/Ancient's/…); map fragments: 190 base, 191 DLC.
+static int goods_sort_group(int32_t goods_id)
 {
     static std::optional<from::params::ParamTableSequence<RawGoodsRow>> s_seq;
     static std::once_flag s_once;
@@ -4422,10 +4424,16 @@ bool goblin::goods_is_map(int32_t goods_id)
         try { s_seq.emplace(from::params::get_param<RawGoodsRow>(L"EquipParamGoods"));
               s_ok = true; } catch (...) { s_ok = false; }
     });
-    if (!s_ok || goods_id <= 0) return false;
+    if (!s_ok || goods_id <= 0) return -1;
     RawGoodsRow *r = s_seq->try_get((uint64_t)goods_id);
-    if (!r) return false;
-    const uint8_t sg = r->b[0x72];   // sortGroupId (u8)
+    return r ? (int)r->b[0x72] : -1;
+}
+
+// True iff an EquipParamGoods row is a region Map fragment — sortGroupId ∈ {190 (base), 191 (DLC)}.
+// Used by the no-bake World - Maps pass to route map-good treasure pickups to the WorldMaps category.
+bool goblin::goods_is_map(int32_t goods_id)
+{
+    const int sg = goods_sort_group(goods_id);
     return sg == 190 || sg == 191;
 }
 
@@ -4442,15 +4450,18 @@ int goblin::classify_item_live(int32_t key)
     if (key >= 500000000) // goods
     {
         int32_t gid = key - 500000000;
-        // ERR-variant rune currency absent from ITEM_ICONS → route to the Golden Rune category so a
-        // disk-placed one isn't mis-bucketed. The base runes (goods 2900-2919) AND the DLC runes
-        // (Shadow Realm / Broken / Unsung Hero, goods 2002951-2002959, keys 502002951-502002959) ARE in
-        // ITEM_ICONS, so item_marker_category catches them first and they never reach here. But the ERR
-        // high-NG rune block goods 82909-82919 — Golden One's [10000]-[13000] / Ancient's [14000]-[25000]
-        // / Numen's [30000] / Hero's [35000] / Lord's [50000] — has no ITEM_ICONS entry AND no baked
-        // MAP_ENTRY (the bake never places it), so without this it falls to the goods_type catch-all
-        // below (CraftingMaterials). All eleven are unambiguously high-value runes → LootGoldenRunes.
-        if (gid >= 82909 && gid <= 82919) return (int)C::LootGoldenRunes;
+        // Use ER's OWN item taxonomy (EquipParamGoods.sortGroupId) for the families the per-item
+        // ITEM_ICONS table doesn't cover — drift-free, mod/DLC-agnostic, no hardcoded id list. Rune
+        // currency = sortGroupId 100 (base Golden/Numen's/Hero's/Lord's) / 101 (DLC Broken/Shadow
+        // Realm) / 102 (ERR high-NG variants: Golden One's/Ancient's/…). The base + DLC runes are in
+        // ITEM_ICONS so item_marker_category catches them first (keeping the Low/normal split); this
+        // owns whatever the table misses — e.g. the 82909-82919 block — which is unambiguously a rune
+        // → LootGoldenRunes (else it fell to the goods_type catch-all = CraftingMaterials).
+        switch (goods_sort_group(gid))
+        {
+            case 100: case 101: case 102: return (int)C::LootGoldenRunes;
+            default: break;
+        }
         // GOODS_TYPE values per the repo's own extractor (tools/extract_goods_categories.py).
         // Routing each known type to its real category makes the per-category show_* toggles a
         // fine-grained goodsType filter for collectibles (e.g. show_crafting_materials = false
