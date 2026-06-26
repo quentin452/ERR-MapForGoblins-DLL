@@ -55,6 +55,19 @@ namespace goblin::sig
     inline constexpr const char *MSG_REPOSITORY =
         "48 8B 3D ?? ?? ?? ?? 44 0F B6 30 48 85 FF 75";
 
+    // ── Param FIELD-OFFSET access sites (read the offset live from the game's code) ──
+    // The "industrial offset-free" mechanism: instead of hardcoding `row->b[0x3e]`, AOB the game's
+    // own field-access instruction and read the offset out of its ModRM displacement at init — the
+    // value is then self-correcting across patches (memory param-offset-source-of-truth; prototype +
+    // authoring tool D:\ghidra_scripts\offset_resolver.py). Use with modutils::resolve_field_offset.
+    //
+    // EquipParamGoods.goodsType: read site `cmp byte ptr [rcx+0x3e],0Dh` (a goodsType==13 category
+    // check) guarded by `test rcx,rcx; je`. PARAM-ANCHORED + verified live (CE find-what-accesses:
+    // RCX = goods row 0x…2c150, RDX = EquipParamGoods table 0x…00090). The disp8 at AOB position 7
+    // IS goodsType's offset. Jump rel8 + disp wildcarded → only opcodes/ModRM/the semantic imm 0x0D
+    // remain (patch-stable). Authored 2026-06-26 (unique in .text). disp_pos=7, disp_size=1.
+    inline constexpr const char *GOODS_TYPE_ACCESS = "48 85 C9 74 ?? 80 79 ?? 0D";
+
     // ── World geometry / collected-state (goblin_collected, goblin_inject map-pos) ──
     // GeomFlagSaveDataManager slot (was RVA 0x3D69D18).
     inline constexpr const char *GEOM_FLAG_SLOT =
@@ -172,6 +185,7 @@ namespace goblin::sig
             {"ADD_ITEM_FUNC", ADD_ITEM_FUNC},
             {"SOLO_PARAM_LIST", SOLO_PARAM_LIST},
             {"MSG_REPOSITORY", MSG_REPOSITORY},
+            {"GOODS_TYPE_ACCESS", GOODS_TYPE_ACCESS},
             {"GEOM_FLAG_SLOT", GEOM_FLAG_SLOT},
             {"WORLD_GEOM_MAN_SLOT", WORLD_GEOM_MAN_SLOT},
             {"WCM_FINDER", WCM_FINDER},

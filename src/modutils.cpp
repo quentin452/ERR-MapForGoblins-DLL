@@ -132,6 +132,30 @@ size_t modutils::scan_count(const std::string &aob)
     return count;
 }
 
+std::optional<ptrdiff_t> modutils::resolve_field_offset(const FieldOffsetArgs &args)
+{
+    // A field offset resolved from the WRONG instruction is silently catastrophic, so demand the
+    // AOB be unique before trusting it (mirrors the [SIG] uniqueness check). 0 = patch broke it.
+    size_t cnt = scan_count(args.aob);
+    if (cnt != 1)
+    {
+        spdlog::warn("[FIELDOFF] AOB matched {} sites (need exactly 1) — refusing to resolve [{}]",
+                     cnt, args.aob);
+        return std::nullopt;
+    }
+
+    auto *match = reinterpret_cast<const unsigned char *>(scan({.aob = args.aob}));
+    if (match == nullptr)
+        return std::nullopt;
+
+    const unsigned char *d = match + args.disp_pos;
+    ptrdiff_t off = (args.disp_size == 1) ? static_cast<ptrdiff_t>(*reinterpret_cast<const int8_t *>(d))
+                                          : static_cast<ptrdiff_t>(*reinterpret_cast<const int32_t *>(d));
+    spdlog::info("[FIELDOFF] resolved offset 0x{:x} live from access site {}",
+                 off, static_cast<const void *>(match));
+    return off;
+}
+
 void modutils::hook(void *function, void *detour, void **trampoline)
 {
     auto mh_status = MH_CreateHook(function, detour, trampoline);

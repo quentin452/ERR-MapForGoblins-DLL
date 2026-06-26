@@ -69,6 +69,39 @@ WHERE is the source of truth obtained? (a) the external generator + Paramdex the
 (b) a SoulsFormats Paramdex checkout, or (c) parse the paramdef from the loaded regulation at runtime.
 This choice determines the implementation path.
 
+## PROTOTYPE (2026-06-26) — runtime offset-read mechanism PROVEN live (`D:\ghidra_scripts\offset_resolver.py`)
+
+quentin's clarified goal: don't extract-and-hardcode; have the DLL READ the offset from the game's own
+access instruction at init (`movzx eax,byte [row+0x3e]` carries 0x3e as its ModRM displacement). AOB the
+read site → extract the displacement → self-correcting, zero offset constants.
+
+Built + ran the prototype against the live game (2.6.2.0). Three parts, all green:
+- **Part A — displacement decoder.** `decode_disp()` parses prefixes→REX→1/2-byte opcode→ModRM→[SIB]→
+  disp8/disp32 and returns `(offset, disp_pos, disp_size)`. Self-test 6/6 (write/read forms, disp8/disp32,
+  negative disp8). The runtime extraction itself is **trivial** — it is a sibling of the DLL's existing
+  `modutils` `relative_offsets` (read N bytes at a fixed pattern position), just RETURN the value instead
+  of using it as a pointer delta. No disassembler needed at runtime; the authored AOB pins the disp position.
+- **Part B — live param oracle.** Ported `from::params::get_param` to RPM: `SOLO_PARAM_LIST` AOB → param_list
+  → `EquipParamGoods` table (7126 rows) → any row's bytes. e.g. goods 8000 `goodsType[+0x3e]=1` (key item),
+  goods 1000 `sortGroupId[+0x72]=10`. This is the ground-truth value any resolved offset must explain.
+- **Part C — author→resolve round-trip.** `author_aob_from_rip()` turns a captured read-site RIP into a
+  uniqueness-checked AOB with the disp wildcarded; `resolve_offset()` is the exact runtime path (scan +
+  read disp). Proven end-to-end on a real exe instruction (the SOLO_PARAM_LIST site): authored a UNIQUE
+  24-byte AOB, runtime-resolved its displacement = live value (`0x3053605`, round-trip OK). The uniqueness
+  gate also fires correctly (an 11-byte AOB → 339 matches → flagged NOT UNIQUE).
+
+**Net:** the engine + oracle are done and proven. The ONLY remaining per-field cost is **capturing the
+read site** — a blind 0x3e scan is noise (`find_goods_access` → 4 hits, all WRITES/ctors), so each field
+needs a param-anchored capture. The fast loop on this box = CE **"find what accesses"** on a LIVE row
+address (Part B prints the exact `rowAddr+fieldOff` target). Then `offset_resolver.py author 0x<RIP>`
+emits the AOB. Handoff CLI: `author` / `resolve` / `groundtruth`.
+
+**Value vs. the shipped Paramdex guard:** both turn silent drift into a loud failure. The runtime-read's
+unique advantage is the COMMON drift case — a field inserted earlier shifts later offsets but leaves the
+read instruction's encoding identical except the disp; the AOB still matches and resolves the NEW offset
+with **zero human action**. The Paramdex guard would instead fail the build and need a manual two-place
+update. So runtime-read genuinely reduces maintenance — at the cost of ~6 one-time read-site captures.
+
 ## RESULT (2026-06-26) — the source of truth is LIVE bytes, not the Paramdex
 
 Tried the cheapest authoritative route first: read the offset from the exe's compiled code (AOB the

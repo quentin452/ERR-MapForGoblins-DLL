@@ -4485,6 +4485,27 @@ bool goblin::npc_team_and_name(uint32_t npcParamId, uint8_t *teamOut, int32_t *n
 // EquipParamGoods row (176 bytes; goodsType u8 @ +0x3e — offset confirmed vs raw rows).
 struct RawGoodsRow { uint8_t b[176]; };
 
+// goodsType field offset, READ LIVE from the game's own access instruction (the "industrial
+// offset-free" mechanism): modutils::resolve_field_offset AOB-scans `cmp byte [rcx+0x3e],0Dh` and
+// extracts the disp8 — so the offset is authoritative + self-correcting across patches, no hardcoded
+// constant. Resolved once. The pinned 0x3e is only a LOGGED safety net for the case where a patch
+// breaks the AOB (the [SIG] health check flags it too). See docs/re/offset_source_of_truth_audit.md.
+static ptrdiff_t goods_type_offset()
+{
+    static const ptrdiff_t off = [] {
+        auto r = modutils::resolve_field_offset(
+            {.aob = goblin::sig::GOODS_TYPE_ACCESS, .disp_pos = 7, .disp_size = 1});
+        if (r)
+        {
+            spdlog::info("[FIELDOFF] EquipParamGoods.goodsType = +0x{:x} (live from exe)", *r);
+            return *r;
+        }
+        spdlog::warn("[FIELDOFF] goodsType access AOB unresolved — falling back to pinned +0x3e");
+        return static_cast<ptrdiff_t>(0x3e);
+    }();
+    return off;
+}
+
 // goodsType of an EquipParamGoods row (ER EQUIP_GOODS_TYPE), or -1 if absent.
 static int goods_type_live(int32_t goods_id)
 {
@@ -4497,7 +4518,7 @@ static int goods_type_live(int32_t goods_id)
     });
     if (!s_ok || goods_id <= 0) return -1;
     RawGoodsRow *r = s_seq->try_get((uint64_t)goods_id);
-    return r ? (int)r->b[0x3e] : -1;
+    return r ? (int)r->b[goods_type_offset()] : -1;
 }
 
 // sortGroupId (u8 @ +0x72) of an EquipParamGoods row, or -1 if absent. This is ER's OWN

@@ -2,6 +2,7 @@
 #define WIN32_LEAN_AND_MEAN
 
 #include <cstddef>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -27,6 +28,28 @@ void *scan(const ScanArgs &args);
 // health check to flag NON-UNIQUE signatures (>1 → scan() may resolve the wrong
 // function, a latent bug). 0 = gone, 1 = unique, >1 = ambiguous.
 size_t scan_count(const std::string &aob);
+
+// ── Read a struct FIELD OFFSET live from the game's own code ──────────────────────────────
+// The game compiles param/struct field offsets into its access instructions as the ModRM
+// displacement, e.g. `movzx eax, byte ptr [row+0x3e]` carries 0x3e. Instead of hardcoding the
+// constant (silently wrong after a patch that shifts the field), AOB the read site with the
+// displacement bytes WILDCARDED, then read the live displacement out of the match — the offset
+// becomes self-correcting: as long as the AOB still matches, the value is authoritative; if a
+// patch moves the code the AOB FAILS loudly (resolve returns nullopt) instead of reading wrong.
+//
+// This is the displacement sibling of `relative_offsets` (which reads a rip-disp and uses it as a
+// pointer delta); here we just RETURN the displacement as the field offset. `disp_pos` = byte
+// position of the displacement within the AOB match; `disp_size` = 1 (disp8) or 4 (disp32).
+// Refuses to resolve unless the AOB is UNIQUE (a wrong-site offset would be catastrophic).
+//   Prototype + authoring tool: D:\ghidra_scripts\offset_resolver.py
+struct FieldOffsetArgs
+{
+    const std::string aob;
+    ptrdiff_t disp_pos = 0;
+    int disp_size = 1; // 1 = disp8, 4 = disp32
+};
+
+std::optional<ptrdiff_t> resolve_field_offset(const FieldOffsetArgs &args);
 
 void hook(void *function, void *detour, void **trampoline);
 
