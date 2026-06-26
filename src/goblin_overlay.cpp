@@ -36,6 +36,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <string>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <cstdio>
@@ -131,6 +132,11 @@ namespace
     bool g_imgui_init = false;   // ImGui + D3D resources built against live swapchain
     bool g_failed = false;       // gave up (no overlay), mod continues
     bool g_show = false;         // panel visible this frame
+    // Item-search nav window: while > 0, a locate/page-switch is in flight and the input hooks inject a
+    // tiny net-zero mouse jitter so the game keeps processing its world-map (otherwise, with the panel
+    // open, input is blanked -> the map's view/page step doesn't run -> our switch+pan only apply once
+    // F1 closes). Set on a result click, counted down each Present frame.
+    std::atomic<int> g_nav_frames{0};
     bool g_user_show = false;    // F1 master open/close (works anywhere = the menu keybind)
     bool g_large = true;         // false = compact widget, true = full panel
     bool g_prev_toggle_down = false;
@@ -1006,8 +1012,22 @@ namespace
             auto *ri = reinterpret_cast<RAWINPUT *>(data);
             if (ri->header.dwType == RIM_TYPEMOUSE)
             {
-                ri->data.mouse.lLastX = 0;
-                ri->data.mouse.lLastY = 0;
+                // During an item-search nav, feed a 1px net-zero (±1 alternating) delta so the game
+                // keeps stepping/rendering its world map (which is otherwise frozen by the input blank)
+                // — lets our page/layer switch + pan actually take effect with the F1 panel open. The
+                // map cursor jitters 1px (negligible, nets to zero); clicks/keys stay suppressed.
+                if (g_nav_frames.load(std::memory_order_relaxed) > 0)
+                {
+                    static int s_jit = 0;
+                    s_jit ^= 1;
+                    ri->data.mouse.lLastX = s_jit ? 1 : -1;
+                    ri->data.mouse.lLastY = 0;
+                }
+                else
+                {
+                    ri->data.mouse.lLastX = 0;
+                    ri->data.mouse.lLastY = 0;
+                }
                 ri->data.mouse.usButtonFlags = 0;
                 ri->data.mouse.usButtonData = 0;
             }
@@ -1888,6 +1908,8 @@ namespace
                                 s_pending_locate = h.name_id;  // click → pan the map onto it
                                 s_locate_label = h.label;      // remembered for the pending banner
                                 s_locate_group = h.group;
+                                g_nav_frames.store(90, std::memory_order_relaxed);  // wake the map so
+                                                  // the switch+pan apply with the F1 panel still open
                                 // Cross-page: switch to its page+layer (overworld<->DLC + surface<->UG),
                                 // marshalled onto the game thread. Requesting an off-page group also
                                 // switches the LAYER back to surface for an overworld item found while
@@ -2546,6 +2568,10 @@ namespace
         if (down && !g_prev_toggle_down) g_user_show = !g_user_show;
         g_prev_toggle_down = down;
         g_show = g_user_show && fg;   // lose focus → hooks deactivate; regain → panel restores
+        // Count down the item-search nav window (set on a result click) — keeps the map "awake" for the
+        // switch+pan, then lets the cursor re-freeze so the map stops drifting.
+        if (int nf = g_nav_frames.load(std::memory_order_relaxed))
+            g_nav_frames.store(nf - 1, std::memory_order_relaxed);
 
         // Falling edge (menu JUST closed): restore state the open-state hooks left
         // dangling. While open, hk_clip_cursor forced the cursor UNclipped on every
