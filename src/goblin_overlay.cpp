@@ -996,6 +996,16 @@ namespace
         {
             p->x = GetSystemMetrics(SM_CXSCREEN) / 2;
             p->y = GetSystemMetrics(SM_CYSCREEN) / 2;
+            // ER drives the 2D map camera off GetCursorPos. While a search-locate is in flight, jitter
+            // the reported cursor ±1px (net zero) so the game SEES the cursor move and actually steps
+            // its map — applying our page/layer switch + pan with the F1 panel still open (the panel
+            // otherwise freezes the cursor → the map never updates until you close it). 1px = no drift.
+            if (g_nav_frames.load(std::memory_order_relaxed) > 0)
+            {
+                static int s_cjit = 0;
+                s_cjit ^= 1;
+                p->x += s_cjit ? 1 : -1;
+            }
         }
         return r;
     }
