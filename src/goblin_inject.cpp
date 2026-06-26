@@ -1156,6 +1156,11 @@ static int lookup_category_exception(int32_t goods_id)
 static int category_from_taxonomy(int32_t goods_id)
 {
     using C = goblin::generated::Category;
+    // ERR renumbers spirit-ash goods into id 300000-399999 (gType0 sortGroupId 15) — the same range
+    // generate_loot_massedit classifies on. Key on the RANGE, not the sg15 cell: that cell is
+    // contaminated by a few non-spirit items (Codex of the All-Knowing, Spectral Steed Whistle,
+    // Memory of Grace) which would otherwise be mislabelled as Spirits. Vanilla spirits stay gType 7/8.
+    if (goods_id >= 300000 && goods_id <= 399999) return (int)C::EquipSpirits;
     const int gt = goods_type_live(goods_id);
     const int sg = goods_sort_group(goods_id);
     switch (gt)
@@ -1171,7 +1176,6 @@ static int category_from_taxonomy(int32_t goods_id)
                 case 10:          return (int)C::LootStatBoosts;       // Rune Arc 150 = exception
                 case 100: case 101: case 102: return (int)C::LootGoldenRunes;  // Low = exception;
                                                                                // 102 = ERR high-NG variants
-                case 15:          return (int)C::EquipSpirits;         // ERR renumbered spirit-ash goods
             }
             break;
         case 1:  // key/important item — split by sortGroupId; tail handled by the gType1 default below

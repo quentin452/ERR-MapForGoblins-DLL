@@ -4,65 +4,9 @@
 
 Every **distinct item** the runtime classified via the **live fallback** (`classify_item_live`) — i.e. items NOT in the static `ITEM_ICONS` table, so `item_marker_category` missed them. This is the drift-prone surface: a mis-classified item appears below in the wrong category. **Regression guard:** after a classification change, regenerate and `git diff` this file — a row only moves when an item's category changes. Table-backed items are pinned in `src/generated/goblin_item_icons.cpp` (diff there).
 
-_75 distinct live-classified items across 6 categories (log 2026-06-26 13:59:49.887)._
+_34 distinct live-classified items across 2 categories (log 2026-06-26 14:31:22.756)._
 
-## Equipment - Armaments  (2)
-
-| item | key | id |
-|---|---|---|
-| Sentry's Torch | 124070000 | 24070000 |
-| Erdtree Greatshield | 132080000 | 32080000 |
-
-## Loot - Ammo  (35)
-
-| item | key | id |
-|---|---|---|
-| Arrow | 150000000 | 50000000 |
-| Fire Arrow | 150010000 | 50010000 |
-| Serpent Arrow | 150020000 | 50020000 |
-| St. Trina's Arrow | 150040000 | 50040000 |
-| Golden Arrow | 150090000 | 50090000 |
-| Dwelling Arrow | 150100000 | 50100000 |
-| Rainbow Stone Arrow | 150220000 | 50220000 |
-| Shattershard Arrow | 150230000 | 50230000 |
-| Spiritflame Arrow | 150240000 | 50240000 |
-| Great Arrow | 151000000 | 51000000 |
-| Golden Great Arrow | 151020000 | 51020000 |
-| Radahn's Spear | 151040000 | 51040000 |
-| Bolt | 152000000 | 52000000 |
-| Black-Key Bolt | 152030000 | 52030000 |
-| Burred Bolt | 152040000 | 52040000 |
-| Meteor Bolt | 152050000 | 52050000 |
-| Explosive Bolt | 152060000 | 52060000 |
-| Golden Bolt | 152070000 | 52070000 |
-| Lordsworn's Bolt | 152080000 | 52080000 |
-| Flaming Bolt | 152190000 | 52190000 |
-| Ballista Bolt | 153000000 | 53000000 |
-| Lightning Greatbolt | 153010000 | 53010000 |
-| Explosive Greatbolt | 153020000 | 53020000 |
-| Firespark Perfume Bottle | 161500000 | 61500000 |
-| Chilling Perfume Bottle | 161510000 | 61510000 |
-| Frenzyflame Perfume Bottle | 161520000 | 61520000 |
-| Lightning Perfume Bottle | 161530000 | 61530000 |
-| Dueling Shield | 162500000 | 62500000 |
-| Carian Thrusting Shield | 162510000 | 62510000 |
-| Smithscript Dagger | 163500000 | 63500000 |
-| Smithscript Cirques | 164510000 | 64510000 |
-| Crystal Ringblade | 164530000 | 64530000 |
-| Rotten Crystal Ringblade | 164540000 | 64540000 |
-| Dragon-Hunter's Great Katana | 166510000 | 66510000 |
-| Milady | 167500000 | 67500000 |
-
-## Loot - Consumables  (4)
-
-| item | key | id |
-|---|---|---|
-| Potent Dreambrew | 500002170 | 2170 |
-| Codex of the All-Knowing | 501000000 | 1000000 |
-| Rock Heart | 502002010 | 2002010 |
-| Lamenter's Mask | 502002030 | 2002030 |
-
-## Loot - Crafting Materials  (17)
+## Loot - Crafting Materials  (18)
 
 | item | key | id |
 |---|---|---|
@@ -71,8 +15,12 @@ _75 distinct live-classified items across 6 categories (log 2026-06-26 13:59:49.
 | ? | 500000310 | 310 |
 | ? | 500000375 | 375 |
 | ? | 500000401 | 401 |
+| Potent Dreambrew | 500002170 | 2170 |
 | Map: Altus Plateau | 500008606 | 8606 |
 | ? | 500009800 | 9800 |
+| Ember Piece | 500850010 | 850010 |
+| Rock Heart | 502002010 | 2002010 |
+| Lamenter's Mask | 502002030 | 2002030 |
 | Furnace Keeper's Note | 502008025 | 2008025 |
 | Castle Cross Message | 502008027 | 2008027 |
 | Ancient Ruins Cross Message | 502008028 | 2008028 |
@@ -80,15 +28,6 @@ _75 distinct live-classified items across 6 categories (log 2026-06-26 13:59:49.
 | Storehouse Cross Message | 502008030 | 2008030 |
 | Torn Diary Page | 502008032 | 2008032 |
 | Tower of Shadow Message | 502008037 | 2008037 |
-| Nectarblood Burgeon | 502020015 | 2020015 |
-| Dragon's Calorbloom | 502020023 | 2020023 |
-| Finger Mimic | 502020024 | 2020024 |
-
-## Loot - Smithing Stones  (1)
-
-| item | key | id |
-|---|---|---|
-| Ember Piece | 500850010 | 850010 |
 
 ## Quest - Progression  (16)
 

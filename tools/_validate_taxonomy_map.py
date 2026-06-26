@@ -51,7 +51,8 @@ CELL_MAP = {
     (0, 80): 'Loot - Utilities',                 # Pates = exception
     (0, 10): 'Loot - Stat Boosts',               # Rune Arc 150 = exception
     (0, 100): 'Loot - Golden Runes', (0, 101): 'Loot - Golden Runes',  # Low = exception
-    (0, 15): 'Equipment - Spirits',              # ERR renumbered spirit-ash goods
+    # NOTE: ERR spirit-ash goods (gType0 sg15) are classified by id range below, NOT this cell —
+    # sg15 is contaminated by a few non-spirits (Codex, Steed Whistle, Memory of Grace).
     (1, 80): 'Loot - Bell-Bearings', (1, 90): 'Loot - Bell-Bearings',
     (1, 200): 'Key - Cookbooks', (1, 205): 'Key - Cookbooks',
     (1, 100): 'Magic - Prayerbooks',             # 8867 = exception
@@ -103,6 +104,8 @@ def proposed_cat(key):
     gid = key - 500000000
     if gid in EXCEPTION_IDS:
         return EXCEPTION_IDS[gid]
+    if 300000 <= gid <= 399999:
+        return 'Equipment - Spirits'  # ERR renumbered spirit-ash goods (id range, not the sg15 cell)
     cell = GTS.get(gid)
     if cell is not None:
         if cell in CELL_MAP:
