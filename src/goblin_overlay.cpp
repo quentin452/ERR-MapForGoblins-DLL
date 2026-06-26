@@ -114,6 +114,28 @@ namespace
         return fold_ci(hay).find(fold_ci(need)) != std::string::npos;
     }
 
+    // Word-order-independent match for the item search: every whitespace-separated
+    // token of `query` must appear (case/accent-insensitive substring) somewhere in
+    // `hay`. So "Claw Talisman", "Talisman Claw" and "griffe claw" all match the same
+    // marker when `hay` is its combined game-language + English text. Empty query (no
+    // tokens) returns false — callers guard the empty box separately.
+    bool matches_all_tokens(const std::string &hay, const char *query)
+    {
+        const std::string fh = fold_ci(hay.c_str());
+        bool any = false;
+        for (const char *p = query; *p;)
+        {
+            while (*p == ' ' || *p == '\t') ++p;
+            const char *start = p;
+            while (*p && *p != ' ' && *p != '\t') ++p;
+            if (p == start) break;
+            any = true;
+            if (fh.find(fold_ci(std::string(start, p - start).c_str())) == std::string::npos)
+                return false;
+        }
+        return any;
+    }
+
     // ── Hooked function typedefs ──────────────────────────────────────────
     using PresentFn = HRESULT(STDMETHODCALLTYPE *)(IDXGISwapChain3 *, UINT, UINT);
     using ResizeBuffersFn =
@@ -2008,8 +2030,10 @@ namespace
                                 }
                                 const Names &nm = it->second;
                                 if (nm.label.empty()) continue;
-                                if (!contains_ci(nm.loc.c_str(), item_q) &&
-                                    !contains_ci(nm.en.c_str(), item_q)) continue;
+                                // Word-order-independent: each query token must appear in the
+                                // combined game-language + English text (so "Claw Talisman" and
+                                // "Talisman Claw" both match, and FR/EN words can be mixed).
+                                if (!matches_all_tokens(nm.loc + " " + nm.en, item_q)) continue;
                                 if (s_match.insert(m.name_id).second)
                                     s_hits.push_back({nm.label, m.name_id, 0, m.group});
                                 ++hit_count[m.name_id];
