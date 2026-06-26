@@ -1820,16 +1820,25 @@ namespace
 
                 if (item_q[0] != '\0')
                 {
-                    // The open map page (group) so off-page hits can be flagged ("switch page first").
-                    int open_grp = 0;
+                    // Locate (pan / page-switch) needs the world map OPEN — the live view + the
+                    // game-thread switch step only exist then. When closed, the list stays browsable
+                    // (what exists + which region) but the rows are disabled with a hint, so a click
+                    // can't leave a locate dangling forever.
                     goblin::worldmap_probe::LiveView lv{};
-                    if (goblin::worldmap_probe::get_live_view(lv))
-                        open_grp = (lv.openDlc ? 2 : 0) | (lv.underground ? 1 : 0);
+                    const bool map_open = goblin::worldmap_probe::get_live_view(lv);
+                    const int open_grp = map_open ? ((lv.openDlc ? 2 : 0) | (lv.underground ? 1 : 0)) : 0;
 
-                    ImGui::TextDisabled("%zu match%s (ringed on map; click = pan map onto it)",
-                                        s_hits.size(), s_hits.size() == 1 ? "" : "es");
+                    if (map_open)
+                        ImGui::TextDisabled("%zu match%s (ringed on map; click = pan map onto it)",
+                                            s_hits.size(), s_hits.size() == 1 ? "" : "es");
+                    else
+                        ImGui::TextColored(ImVec4(1.f, 0.85f, 0.2f, 1.f),
+                                           "%zu match%s - open the world map to locate them",
+                                           s_hits.size(), s_hits.size() == 1 ? "" : "es");
+
                     if (ImGui::BeginChild("##itemhits", ImVec2(0, 150), true))
                     {
+                        if (!map_open) ImGui::BeginDisabled();
                         for (size_t i = 0; i < s_hits.size(); i++)
                         {
                             const Hit &h = s_hits[i];
@@ -1837,7 +1846,7 @@ namespace
                             char row[200];
                             std::snprintf(row, sizeof(row), "%s  (x%d) - %s##h%zu", h.label.c_str(),
                                           h.count, page_label(h.group), i);
-                            if (ImGui::Selectable(row))
+                            if (ImGui::Selectable(row) && map_open)
                             {
                                 s_pending_locate = h.name_id;  // click → pan the map onto it
                                 s_locate_label = h.label;      // remembered for the pending banner
@@ -1847,10 +1856,11 @@ namespace
                                 if ((h.group & 3) != (open_grp & 3))
                                     goblin::worldmap_probe::request_switch_to_page(h.group);
                             }
-                            if (off_page && ImGui::IsItemHovered())
+                            if (map_open && off_page && ImGui::IsItemHovered())
                                 ImGui::SetTooltip("On the %s map — click to switch there + centre on it.",
                                                   page_label(h.group));
                         }
+                        if (!map_open) ImGui::EndDisabled();
                         if (s_hits.empty())
                             ImGui::TextDisabled("no marker matches");
                     }
@@ -1858,7 +1868,7 @@ namespace
 
                     // Cross-page locate: the switch is marshalled to the game thread + the locate pans
                     // the instant that page opens. The banner shows until it lands.
-                    if (goblin::worldmap::locate_pending())
+                    if (map_open && goblin::worldmap::locate_pending())
                         ImGui::TextColored(ImVec4(1.f, 0.85f, 0.2f, 1.f),
                                            "> Locating \"%s\" on the %s map...", s_locate_label.c_str(),
                                            page_label(s_locate_group));
