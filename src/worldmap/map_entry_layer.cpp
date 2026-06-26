@@ -571,7 +571,8 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
                                      const std::vector<DiskCollectible> &assets,
                                      const std::unordered_set<uint32_t> &treasure_lots,
                                      std::unordered_set<uint32_t> &covered,
-                                     std::unordered_set<std::string> &out_piece_keys)
+                                     std::unordered_set<std::string> &out_piece_keys,
+                                     std::unordered_set<Cell, CellHash> *maps_cells = nullptr)
 {
     GOBLIN_BENCH("build.disk_emevd");
     // Enemy-only position map (perTile + ev1200 awards stay strictly entity→ENEMY — an asset-join
@@ -714,6 +715,24 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
         // 2 = ItemLotParam_enemy / event-1200 boss drop), falling back to the other table.
         uint8_t lt = a.lotType;
         int32_t key = goblin::resolve_loot_item_textid(a.lotId, lt, -1);
+        // Region Map fragment granted by an EMEVD award (the Altus Plateau map dropped by a scarab,
+        // 90005300 @m60_39_51): no MSB Treasure, so build_disk_maps_markers misses it, and the loot
+        // classifier deliberately skips map goods (→ it would otherwise fall to unclassified and stay
+        // baked). Route it to WorldMaps here + record its cell so the finalize cell-dedup drops the
+        // baked twin (bake pos == the scarab pos → same cell). Only when the maps pass is active
+        // (maps_cells != null), else there's no dedup target and we'd draw a duplicate.
+        if (maps_cells && key >= 500000000 && goblin::goods_is_map(key - 500000000))
+        {
+            const int mcat = static_cast<int>(goblin::generated::Category::WorldMaps);
+            from::paramdef::WORLD_MAP_POINT_PARAM_ST md{};
+            md.areaNo = pos->area; md.gridXNo = pos->gx; md.gridZNo = pos->gz;
+            md.posX = pos->posX; md.posZ = pos->posZ;
+            push_marker(/*row_id=*/a.lotId, md, mcat, a.lotId, lt, Source::DiskMSB);
+            maps_cells->insert(cell_of(g_buckets[mcat].back()));
+            covered.insert(a.lotId);
+            ++emitted;
+            continue;
+        }
         int cat = goblin::item_marker_category(key);
         bool lc = false;
         if (cat < 0) { cat = goblin::classify_item_live(key); lc = (cat >= 0); }
@@ -1654,7 +1673,10 @@ void build_buckets_impl()
             for (DiskEnemy &e : load_lod_award_entities(missing_award_entities))
                 disk_enemies.push_back(std::move(e));
             build_disk_emevd_markers(awards, disk_enemies, disk_collectibles, treasure_lots,
-                                     emevd_disk_lots, piece_disk_keys);
+                                     emevd_disk_lots, piece_disk_keys,
+                                     goblin::config::worldFeaturesFromDisk
+                                         ? &world_feature_cells[static_cast<int>(gen::Category::WorldMaps)]
+                                         : nullptr);
         }
     }
 
@@ -2194,8 +2216,10 @@ void build_buckets_impl()
                     wipe = gen::WORLD_FEATURE_MODELS[k].category_wipe;
                     break;
                 }
-            // Maps: the disk treasure pass covers 23/24; the 1 EMEVD-granted map (Altus Plateau)
-            // has no MSB treasure → cell-dedup keeps its baked row instead of wiping it.
+            // Maps stay cell-dedup (not category-wipe): the disk treasure pass covers 23/24 + the
+            // emevd pass now recovers the 1 EMEVD-granted map (Altus Plateau, scarab-dropped) and
+            // records its cell, so all 24 disk cells are present → every baked twin drops, baked→0.
+            // Cell-dedup (vs wipe) keeps it safe if a future map lacks any disk source.
             if (cat == static_cast<int>(gen::Category::WorldMaps))
                 wipe = false;
             auto &bucket = g_buckets[cat];
