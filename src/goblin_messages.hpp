@@ -26,4 +26,11 @@ namespace goblin
     /// lookup_text + UTF-8 conversion (for ImGui, which wants UTF-8). Empty string if
     /// the id has no entry. Used by the overlay marker tooltips.
     std::string lookup_text_utf8(int32_t id);
+
+    /// English alias for an encoded marker name id (the bundled
+    /// goblin_name_aliases_en table: items, NPCs, enemies, bosses), UTF-8. Empty
+    /// if the id has no alias. Lets the F1 search match the English/wiki name on
+    /// a non-English game (the live PlaceName label is in the game's language).
+    /// Independent of the game's current language.
+    std::string lookup_name_alias_en_utf8(int32_t id);
 }

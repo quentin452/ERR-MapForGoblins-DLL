@@ -1,6 +1,7 @@
 #include "goblin_messages.hpp"
 #include "goblin_map_data.hpp"
 #include "goblin_enemy_names.hpp"
+#include "goblin_name_aliases_en.hpp"
 #include "goblin_location_alt.hpp"
 #include "goblin_major_regions.hpp"
 #include "goblin_config.hpp"
@@ -1132,5 +1133,22 @@ std::string goblin::lookup_text_utf8(int32_t id)
         return {};
     std::string s(static_cast<size_t>(n - 1), '\0');
     WideCharToMultiByte(CP_UTF8, 0, w, -1, &s[0], n, nullptr, nullptr);
+    return s;
+}
+
+std::string goblin::lookup_name_alias_en_utf8(int32_t id)
+{
+    // Binary-search the bundled English alias table (sorted ascending by id).
+    const auto *begin = goblin::generated::NAME_ALIASES_EN;
+    const auto *end = begin + goblin::generated::NAME_ALIAS_EN_COUNT;
+    const auto *it = std::lower_bound(begin, end, id,
+        [](const goblin::generated::NameAliasEn &e, int32_t key) { return e.id < key; });
+    if (it == end || it->id != id || !it->name || !it->name[0])
+        return {};
+    int n = WideCharToMultiByte(CP_UTF8, 0, it->name, -1, nullptr, 0, nullptr, nullptr);
+    if (n <= 1)
+        return {};
+    std::string s(static_cast<size_t>(n - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, it->name, -1, &s[0], n, nullptr, nullptr);
     return s;
 }
