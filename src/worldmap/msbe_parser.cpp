@@ -1,5 +1,6 @@
 #include "msbe_parser.hpp"
 
+#include <algorithm>
 #include <cstring>
 
 #include "stb_image.h" // stbi_zlib_decode_buffer (raw zlib inflate, already in tree)
@@ -325,6 +326,13 @@ constexpr EmevdTemplate kEmevdTemplates[] = {
     {90005110, 8, 20, 24},                                          // great runes
     {90005390, 8, 28, 32},                                          // larval tears (boss morph)
     {90005555, 8, 12, 16},                                          // DLC forging / special
+    // Multi-reward "scarab cluster" templates: the FIRST reward is (lot@8, anchorAsset@20). The
+    // anchor is an MSB Asset (a scarab/ground object), resolved via the asset-join. Most calls'
+    // lot@8 is a non-notable placeholder (filtered by the lot_row_in_table gate downstream), so
+    // adding these emits only the few notable first-rewards — the Golden Rune[200] m12_05 (12050510)
+    // + Somber Smithing Scadushard m20_01 (20010520) residuals (tools/_probe_loose_blast.py: 0
+    // notable collateral). minLen 24 to read @20.
+    {90005500, 20, 8, 24}, {90005501, 20, 8, 24},
 };
 const EmevdTemplate *find_emevd_template(uint32_t eventId)
 {
@@ -622,7 +630,28 @@ EmevdParse parse_emevd_full(const uint8_t *buf, size_t len)
                         uint32_t entity = rd32(buf, a + t->entityOff);
                         uint32_t lot    = rd32(buf, a + t->lotOff);
                         if ((int32_t)lot > 0 && (int32_t)entity > 0)
-                            R.direct.push_back({entity, lot});
+                        {
+                            EmevdAward aw{entity, lot, {}};
+                            // Loose-anchor candidates: the init's OTHER map-entity-range windows,
+                            // nearest to the lot arg first. Used only if `entity` doesn't resolve to
+                            // a position (the documented entity is a non-positionable logic id, the
+                            // real anchor is elsewhere — Taylew/Viridian). Map entity ids are ≥ 1e6.
+                            const size_t nWin = (size_t)argLen / 4, lotIdx = t->lotOff / 4;
+                            std::vector<std::pair<size_t, uint32_t>> cand;  // (distance to lot, value)
+                            for (size_t k = 0; k < nWin; ++k)
+                            {
+                                if (k == lotIdx || k == 1) continue;  // skip the lot + the eventId arg
+                                uint32_t v = rd32(buf, a + k * 4);
+                                if (v < 1000000u || v == entity || v == lot) continue;
+                                cand.emplace_back(k > lotIdx ? k - lotIdx : lotIdx - k, v);
+                            }
+                            std::sort(cand.begin(), cand.end());
+                            for (auto &c : cand)
+                                if (std::find(aw.anchors.begin(), aw.anchors.end(), c.second) ==
+                                    aw.anchors.end())
+                                    aw.anchors.push_back(c.second);
+                            R.direct.push_back(std::move(aw));
+                        }
                     }
                 }
                 // Per-tile "enemy-death item award": a callee >= 1e9 (a per-tile event id, NOT a

@@ -568,17 +568,59 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
 // own position). See docs/re/windows_enemy_loot_nobake_analysis.md §5b.
 static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
                                      const std::vector<DiskEnemy> &enemies,
+                                     const std::vector<DiskCollectible> &assets,
                                      const std::unordered_set<uint32_t> &treasure_lots,
                                      std::unordered_set<uint32_t> &covered,
                                      std::unordered_set<std::string> &out_piece_keys)
 {
     GOBLIN_BENCH("build.disk_emevd");
-    // EntityID → enemy placement (position anchor). First occurrence wins, matching the
-    // offline join (extract_all_items.py: `eid not in entity_to_pos`).
-    std::unordered_map<uint32_t, const DiskEnemy *> ent_to_pos;
-    ent_to_pos.reserve(enemies.size());
+    // Enemy-only position map (perTile + ev1200 awards stay strictly entity→ENEMY — an asset-join
+    // there re-introduces the ~395 asset-entity-chest over-match, see [[nobake-coverage-scoreboard]]).
+    // First occurrence wins, matching the offline join (extract_all_items.py: `eid not in pos`).
+    std::unordered_map<uint32_t, const DiskEnemy *> ent_enemy;
+    ent_enemy.reserve(enemies.size());
     for (const DiskEnemy &en : enemies)
-        if (en.entityId != 0) ent_to_pos.emplace(en.entityId, &en);
+        if (en.entityId != 0) ent_enemy.emplace(en.entityId, &en);
+    // Enemy+asset map for direct template + boss awards (allowAsset). An emevd reward can be anchored
+    // to an MSB Asset, not an Enemy — Blaidd's spirit ash on AEG099_090, the scarab-cluster runes on
+    // an AEG ground object — which the enemy-only join structurally can't see. Each asset is adapted to
+    // a DiskEnemy (npcParamId 0) so the emit path is uniform; asset_enemies backs the ent_any pointers
+    // so it must outlive the map. Enemies are added first → an id that is both keeps its enemy pos.
+    std::vector<DiskEnemy> asset_enemies;
+    asset_enemies.reserve(assets.size());
+    for (const DiskCollectible &as : assets)
+    {
+        if (as.entityId == 0) continue;
+        DiskEnemy e;
+        e.entityId = as.entityId;
+        e.area = as.area; e.gx = as.gx; e.gz = as.gz;
+        e.posX = as.posX; e.posZ = as.posZ;
+        e.name = as.name;
+        asset_enemies.push_back(std::move(e));
+    }
+    std::unordered_map<uint32_t, const DiskEnemy *> ent_any = ent_enemy;  // copy enemy entries
+    for (const DiskEnemy &e : asset_enemies)
+        ent_any.emplace(e.entityId, &e);  // emplace → enemy already present wins
+    int dbg_asset = 0, dbg_loose = 0, boss_base = 0;  // recovery diag
+    // Resolve an award's world anchor: documented entity (in its allowed map), else — for allowAsset
+    // (direct/boss) awards only — the nearest loose-anchor window that resolves (the documented entity
+    // is a non-positionable logic id; the real anchor sits at another arg — Taylew/Viridian).
+    auto resolve_pos = [&](const DiskEmevd &a) -> const DiskEnemy * {
+        const auto &m = a.allowAsset ? ent_any : ent_enemy;
+        auto it = m.find(a.entityId);
+        if (it != m.end())
+        {
+            if (a.allowAsset && !ent_enemy.count(a.entityId)) ++dbg_asset;  // resolved as an ASSET
+            return it->second;
+        }
+        if (a.allowAsset)
+            for (uint32_t anc : a.anchors)
+            {
+                auto ai = ent_any.find(anc);
+                if (ai != ent_any.end()) { ++dbg_loose; return ai->second; }
+            }
+        return nullptr;
+    };
 
     int emitted = 0, no_entity = 0, dup = 0, treasure_dup = 0, unclassified = 0;
     int emit_direct = 0, emit_ev1200 = 0;  // by mechanism (lotType 1 = direct, 2 = event-1200)
@@ -599,6 +641,9 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
     for (const DiskEmevd &a : awards) base_lots.insert(a.lotId);
     for (const DiskEmevd &a : awards)
     {
+        // Resolve the world anchor ONCE (asset-aware for direct/boss awards + loose-anchor fallback).
+        // Shared by the boss-piece walk and the normal emit so it's computed/counted a single time.
+        const DiskEnemy *pos = resolve_pos(a);
         // Rune/Ember Piece boss-drop recovery — applies to BOTH flag-keyed boss-reward templates
         // (a.bossReward = 90005860/61/80, defeatFlag==EntityID) AND event-1200 awards (lotType 2,
         // small defeatFlag joined to the boss via its setter). Both carry the piece as a base+k
@@ -611,10 +656,9 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
         if (a.bossReward || a.lotType == 2)
         {
             bool placed = false;
-            auto bit = ent_to_pos.find(a.entityId);
-            if (bit != ent_to_pos.end())
+            if (pos)
             {
-                const DiskEnemy *bpos = bit->second;
+                const DiskEnemy *bpos = pos;
                 for (uint32_t off = 0; off <= 8 && !placed; ++off)
                 {
                     uint32_t sub = a.lotId + off;
@@ -650,18 +694,20 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
                     placed = true;
                 }
             }
-            // bossReward (90005860): the piece IS the whole award → consume it (emit done above, or
-            // drop if the chain had none). event-1200: the piece is a BONUS alongside the award's
-            // OWN item drop — fall through to the normal handling so the award still emits + de-bakes
-            // its lot (consuming all lotType-2 awards regressed ~135 baked emevd rows).
-            if (a.bossReward) { if (!placed) ++boss_piece_no_piece; continue; }
+            // event-1200: the piece is a BONUS alongside the award's OWN drop → always fall through to
+            // the normal handling so the award still emits + de-bakes its lot (consuming all lotType-2
+            // awards regressed ~135 baked emevd rows). bossReward: historically dropped on no-piece;
+            // now it ALSO falls through so the BASE lot emits as a normal marker when it's a notable
+            // non-piece item (the boss/scarab drops a piece AND a real reward — Radagon's Scarseal
+            // beside its Rune Piece). The notability gate below filters pure-piece / non-item bases
+            // (→ unclassified → skipped), so this adds only real boss-base drops + Radagon
+            // (tools/_probe_loose_blast.py: 8 collateral, all notable boss drops).
+            if (a.bossReward && !placed) ++boss_piece_no_piece;
         }
-        auto it = ent_to_pos.find(a.entityId);
-        if (it == ent_to_pos.end()) { ++no_entity; continue; }  // entity not an MSB enemy part
+        if (!pos) { ++no_entity; continue; }  // no enemy/asset/loose-anchor position for this award
         uint64_t key2 = ((uint64_t)a.entityId << 32) | a.lotId;
         if (!seen.insert(key2).second) { ++dup; continue; }
         if (treasure_lots.count(a.lotId)) { ++treasure_dup; continue; }  // physical pickup already placed
-        const DiskEnemy *pos = it->second;
         // Resolve identity with the award's lotType hint (1 = ItemLotParam_map / direct,
         // 2 = ItemLotParam_enemy / event-1200 boss drop), falling back to the other table.
         uint8_t lt = a.lotType;
@@ -689,6 +735,7 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
         covered.insert(a.lotId);  // drops the matching baked LootSource::Emevd row
         ++emitted;
         (a.lotType == 2 ? emit_ev1200 : emit_direct)++;
+        if (a.bossReward) ++boss_base;  // bossReward base emitted alongside its piece (Radagon)
         if (verbose) ++per_cat[cat];
 
         // ── Mechanism C: sequence-sibling expansion ──
@@ -750,6 +797,9 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
     spdlog::info("[LOOTDISK] emevd boss-reward pieces: {} Rune/Ember Pieces emitted (Reforged, at boss "
                  "pos, flag-gray); {} boss awards with no piece in base..base+8",
                  boss_piece_emitted, boss_piece_no_piece);
+    spdlog::info("[LOOTDISK] emevd loose-recovery: {} via asset-anchor, {} via loose-anchor window, "
+                 "{} boss-base lots emitted (e.g. Radagon's Scarseal beside its piece); {} MSB assets indexed",
+                 dbg_asset, dbg_loose, boss_base, (int)asset_enemies.size());
     if (verbose)
         for (auto &[cat, n] : per_cat)
             spdlog::info("[LOOTDISK]   emevd-drop category index {} = {} markers", cat, n);
@@ -1470,7 +1520,10 @@ void build_buckets_impl()
                                  goblin::config::worldFeaturesFromDisk;
         // World features (Stakes) are AEG asset placements → they ride the SAME asset
         // enumeration as collectibles (disk_collectibles), so request it when either is on.
-        const bool wantAssets = goblin::config::lootCollectibles || goblin::config::worldFeaturesFromDisk;
+        // The EMEVD pass also needs asset positions (asset-anchored awards: Blaidd's spirit ash,
+        // the scarab-cluster runes) → request it when emevd drops are on too.
+        const bool wantAssets = goblin::config::lootCollectibles || goblin::config::worldFeaturesFromDisk ||
+                                goblin::config::lootEmevdDrops;
         // Spirit Springs are POINT regions → request the region enumeration for world features.
         const bool wantRegions = goblin::config::worldFeaturesFromDisk;
         std::vector<DiskTreasure> treasures = load_disk_treasures(
@@ -1598,8 +1651,8 @@ void build_buckets_impl()
                     missing_award_entities.insert(a.entityId);
             for (DiskEnemy &e : load_lod_award_entities(missing_award_entities))
                 disk_enemies.push_back(std::move(e));
-            build_disk_emevd_markers(awards, disk_enemies, treasure_lots, emevd_disk_lots,
-                                     piece_disk_keys);
+            build_disk_emevd_markers(awards, disk_enemies, disk_collectibles, treasure_lots,
+                                     emevd_disk_lots, piece_disk_keys);
         }
     }
 
