@@ -133,6 +133,11 @@ inline bool seh_write_f32(void *dst, float v)
     SIZE_T n = 0;
     return WriteProcessMemory(GetCurrentProcess(), dst, &v, sizeof(v), &n) && n == sizeof(v);
 }
+inline bool seh_write_u8(void *dst, uint8_t v)
+{
+    SIZE_T n = 0;
+    return WriteProcessMemory(GetCurrentProcess(), dst, &v, 1, &n) && n == 1;
+}
 
 // (The whole-address-space vtable scan was removed — it was O(GB), crashed at
 // startup, and is superseded by the O(KB) CSMenuMan walk below.)
@@ -1230,12 +1235,16 @@ uintptr_t hk_c32f0(uintptr_t dialog, float dt, uintptr_t a3, uintptr_t a4)
         }
         else if (curPage != wantPage && g_c1fc0)
         {
-            g_c1fc0(dialog, (uintptr_t)wantPage, 0, 1);            // switch page this step
+            g_c1fc0(dialog, (uintptr_t)wantPage, 0, 1);            // switch page (c1fc0 is reliable both ways)
             g_switch_settle.store(SWITCH_SETTLE_FRAMES, std::memory_order_relaxed);
         }
-        else if (curLayer != wantLayer && g_c7900)
+        else if (curLayer != wantLayer && sub)
         {
-            g_c7900(dialog, (uintptr_t)wantLayer, 0x40, 1);        // then layer next step
+            // LAYER: there's no reliable handler for UG→surface (c7900 only does surface→UG; the
+            // reverse goes through an unhooked path), so WRITE the layer byte directly — the per-frame
+            // c32f0 step (which we just called) reads it and cross-fades. (quentin's idea: we already
+            // have the flag, just use it.) [dialog+0x2B68]+0xB8 = 0 surface / 1 underground.
+            seh_write_u8(reinterpret_cast<void *>(sub + 0xB8), (uint8_t)wantLayer);
             g_switch_settle.store(SWITCH_SETTLE_FRAMES, std::memory_order_relaxed);
         }
         else
