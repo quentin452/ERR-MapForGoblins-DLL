@@ -2,7 +2,7 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-27 00:21:16.162
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-27 00:53:41.771
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - **`drawn`** = real markers the renderer draws (= total). **`census`** = the ImGui badge denominator (completable spots) — distinct collect flags for flag-based categories, row count for geom/SFX pieces, 0 for graces; it EXCLUDES respawnable flag-less gather, so `census < drawn` wherever markers share a flag or respawn.
@@ -125,67 +125,93 @@ Residual loot total **16** = unknown 1 · treasure 0 (accepted) · enemy 15 (bak
 
 `drawn` = markers drawn · `census` = completable-spots badge · `flag` = flagged/drawn · `respawn`/`nonloot` = the flag-less split. A large `nonloot` marks a feature whose objects carry no collect flag (can't gray/complete). Categories missing here weren't in the census log.
 
-| category | drawn | census | flag (have/drawn) | respawn | nonloot |
-|---|--:|--:|--:|--:|--:|
-| Equipment - Armaments | 317 | 283 | 317/317 | 0 | 0 |
-| Equipment - Armour | 332 | 142 | 332/332 | 0 | 0 |
-| Equipment - Ashes of War | 80 | 80 | 80/80 | 0 | 0 |
-| Equipment - Spirits | 86 | 80 | 86/86 | 0 | 0 |
-| Equipment - Talismans | 145 | 140 | 145/145 | 0 | 0 |
-| Key - Celestial Dew | 9 | 8 | 9/9 | 0 | 0 |
-| Key - Cookbooks | 87 | 85 | 87/87 | 0 | 0 |
-| Key - Crystal Tears | 38 | 38 | 38/38 | 0 | 0 |
-| Key - Great Runes | 6 | 6 | 6/6 | 0 | 0 |
-| Key - Imbued Sword Keys | 4 | 4 | 4/4 | 0 | 0 |
-| Key - Larval Tears | 21 | 21 | 21/21 | 0 | 0 |
-| Key - Lost Ashes | 81 | 81 | 81/81 | 0 | 0 |
-| Key - Pots n Perfumes | 40 | 40 | 40/40 | 0 | 0 |
-| Key - Scadutree Fragments | 45 | 45 | 45/45 | 0 | 0 |
-| Key - Seeds Tears Ashes | 75 | 74 | 75/75 | 0 | 0 |
-| Key - Whetblades | 5 | 5 | 5/5 | 0 | 0 |
-| Loot - Ammo | 82 | 82 | 82/82 | 0 | 0 |
-| Loot - Bell-Bearings | 63 | 56 | 63/63 | 0 | 0 |
-| Loot - Consumables | 182 | 179 | 181/182 | 1 | 0 |
-| Loot - Crafting Materials | 1691 | 578 | 582/1691 | 1109 | 0 |
-| Loot - Dragon Hearts | 20 | 20 | 20/20 | 0 | 0 |
-| Loot - Gestures | 7 | 6 | 7/7 | 0 | 0 |
-| Loot - Gloveworts | 271 | 39 | 39/271 | 232 | 0 |
-| Loot - Golden Runes | 226 | 222 | 226/226 | 0 | 0 |
-| Loot - Golden Runes (Low) | 445 | 442 | 445/445 | 0 | 0 |
-| Loot - Greases | 139 | 135 | 139/139 | 0 | 0 |
-| Loot - Great Gloveworts | 24 | 21 | 21/24 | 3 | 0 |
-| Loot - MP-Fingers | 10 | 9 | 10/10 | 0 | 0 |
-| Loot - Prattling Pates | 9 | 9 | 9/9 | 0 | 0 |
-| Loot - Rada Fruit | 18 | 18 | 18/18 | 0 | 0 |
-| Loot - Reusables | 11 | 11 | 11/11 | 0 | 0 |
-| Loot - Rune Arcs | 75 | 73 | 75/75 | 0 | 0 |
-| Loot - Smithing Stones | 324 | 243 | 249/324 | 75 | 0 |
-| Loot - Smithing Stones (Low) | 403 | 346 | 355/403 | 48 | 0 |
-| Loot - Smithing Stones (Rare) | 11 | 11 | 11/11 | 0 | 0 |
-| Loot - Stat Boosts | 85 | 85 | 85/85 | 0 | 0 |
-| Loot - Stonesword Keys | 48 | 48 | 48/48 | 0 | 0 |
-| Loot - Throwables | 124 | 121 | 124/124 | 0 | 0 |
-| Loot - Utilities | 46 | 46 | 46/46 | 0 | 0 |
-| Magic - Incantations | 77 | 72 | 77/77 | 0 | 0 |
-| Magic - Memory Stones | 6 | 6 | 6/6 | 0 | 0 |
-| Magic - Prayerbooks | 17 | 14 | 17/17 | 0 | 0 |
-| Magic - Sorceries | 80 | 75 | 80/80 | 0 | 0 |
-| Quest - Deathroot | 9 | 9 | 9/9 | 0 | 0 |
-| Quest - Progression | 73 | 58 | 73/73 | 0 | 0 |
-| Quest - Seedbed Curses | 7 | 6 | 7/7 | 0 | 0 |
-| Reforged - Ember Pieces | 302 | 302 | 23/302 | 0 | 279 |
-| Reforged - Fortunes | 59 | 9 | 59/59 | 0 | 0 |
-| Reforged - Items | 74 | 58 | 74/74 | 0 | 0 |
-| Reforged - Rune Pieces | 1244 | 1244 | 126/1244 | 0 | 1118 |
-| World - Bosses | 217 | 215 | 217/217 | 0 | 0 |
-| World - Hostile NPC | 50 | 26 | 27/50 | 0 | 23 |
-| World - Imp Statues | 37 | 37 | 37/37 | 0 | 0 |
-| World - Interactables | 103 | 102 | 102/103 | 0 | 1 |
-| World - Kindling Spirits | 5 | 5 | 5/5 | 0 | 0 |
-| World - Maps | 24 | 24 | 24/24 | 0 | 0 |
-| World - Paintings | 11 | 11 | 11/11 | 0 | 0 |
-| World - Spirit Springs | 72 | 0 | 0/72 | 0 | 72 |
-| World - Spiritspring Hawks | 14 | 14 | 14/14 | 0 | 0 |
-| World - Stakes of Marika | 219 | 0 | 0/219 | 0 | 219 |
-| World - Summoning Pools | 246 | 246 | 246/246 | 0 | 0 |
+`flag-src` (#3) = of the flagged markers, where the live collect-flag came from: **live** (drift-proof game memory) · **disk** (read from the mod's real files) · **baked** (the static-bake fallback = stale-risk). `flag-baked` should trend to 0 alongside the baked total — it IS the residual that hasn't migrated.
+
+| category | drawn | census | flag (have/drawn) | respawn | nonloot | flag-live | flag-disk | flag-baked |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|
+| Equipment - Armaments | 317 | 283 | 317/317 | 0 | 0 | 0 | 317 | 0 |
+| Equipment - Armour | 332 | 142 | 332/332 | 0 | 0 | 0 | 331 | 1 |
+| Equipment - Ashes of War | 80 | 80 | 80/80 | 0 | 0 | 0 | 79 | 1 |
+| Equipment - Spirits | 86 | 80 | 86/86 | 0 | 0 | 0 | 86 | 0 |
+| Equipment - Talismans | 145 | 140 | 145/145 | 0 | 0 | 0 | 145 | 0 |
+| Key - Celestial Dew | 9 | 8 | 9/9 | 0 | 0 | 0 | 9 | 0 |
+| Key - Cookbooks | 87 | 85 | 87/87 | 0 | 0 | 0 | 87 | 0 |
+| Key - Crystal Tears | 38 | 38 | 38/38 | 0 | 0 | 0 | 38 | 0 |
+| Key - Great Runes | 6 | 6 | 6/6 | 0 | 0 | 6 | 0 | 0 |
+| Key - Imbued Sword Keys | 4 | 4 | 4/4 | 0 | 0 | 0 | 4 | 0 |
+| Key - Larval Tears | 21 | 21 | 21/21 | 0 | 0 | 0 | 19 | 2 |
+| Key - Lost Ashes | 81 | 81 | 81/81 | 0 | 0 | 0 | 81 | 0 |
+| Key - Pots n Perfumes | 40 | 40 | 40/40 | 0 | 0 | 0 | 40 | 0 |
+| Key - Scadutree Fragments | 45 | 45 | 45/45 | 0 | 0 | 0 | 45 | 0 |
+| Key - Seeds Tears Ashes | 75 | 74 | 75/75 | 0 | 0 | 0 | 74 | 1 |
+| Key - Whetblades | 5 | 5 | 5/5 | 0 | 0 | 0 | 5 | 0 |
+| Loot - Ammo | 82 | 82 | 82/82 | 0 | 0 | 0 | 82 | 0 |
+| Loot - Bell-Bearings | 63 | 56 | 63/63 | 0 | 0 | 0 | 63 | 0 |
+| Loot - Consumables | 182 | 179 | 181/182 | 1 | 0 | 0 | 181 | 0 |
+| Loot - Crafting Materials | 1691 | 578 | 582/1691 | 1109 | 0 | 0 | 582 | 0 |
+| Loot - Dragon Hearts | 20 | 20 | 20/20 | 0 | 0 | 0 | 20 | 0 |
+| Loot - Gestures | 7 | 6 | 7/7 | 0 | 0 | 0 | 7 | 0 |
+| Loot - Gloveworts | 271 | 39 | 39/271 | 232 | 0 | 0 | 39 | 0 |
+| Loot - Golden Runes | 226 | 222 | 226/226 | 0 | 0 | 0 | 220 | 6 |
+| Loot - Golden Runes (Low) | 445 | 442 | 445/445 | 0 | 0 | 0 | 441 | 4 |
+| Loot - Greases | 139 | 135 | 139/139 | 0 | 0 | 0 | 139 | 0 |
+| Loot - Great Gloveworts | 24 | 21 | 21/24 | 3 | 0 | 0 | 21 | 0 |
+| Loot - MP-Fingers | 10 | 9 | 10/10 | 0 | 0 | 0 | 10 | 0 |
+| Loot - Prattling Pates | 9 | 9 | 9/9 | 0 | 0 | 0 | 9 | 0 |
+| Loot - Rada Fruit | 18 | 18 | 18/18 | 0 | 0 | 0 | 18 | 0 |
+| Loot - Reusables | 11 | 11 | 11/11 | 0 | 0 | 0 | 10 | 1 |
+| Loot - Rune Arcs | 75 | 73 | 75/75 | 0 | 0 | 0 | 75 | 0 |
+| Loot - Smithing Stones | 324 | 243 | 249/324 | 75 | 0 | 0 | 249 | 0 |
+| Loot - Smithing Stones (Low) | 403 | 346 | 355/403 | 48 | 0 | 0 | 355 | 0 |
+| Loot - Smithing Stones (Rare) | 11 | 11 | 11/11 | 0 | 0 | 0 | 11 | 0 |
+| Loot - Stat Boosts | 85 | 85 | 85/85 | 0 | 0 | 0 | 85 | 0 |
+| Loot - Stonesword Keys | 48 | 48 | 48/48 | 0 | 0 | 0 | 48 | 0 |
+| Loot - Throwables | 124 | 121 | 124/124 | 0 | 0 | 0 | 124 | 0 |
+| Loot - Utilities | 46 | 46 | 46/46 | 0 | 0 | 0 | 46 | 0 |
+| Magic - Incantations | 77 | 72 | 77/77 | 0 | 0 | 0 | 77 | 0 |
+| Magic - Memory Stones | 6 | 6 | 6/6 | 0 | 0 | 0 | 6 | 0 |
+| Magic - Prayerbooks | 17 | 14 | 17/17 | 0 | 0 | 0 | 17 | 0 |
+| Magic - Sorceries | 80 | 75 | 80/80 | 0 | 0 | 0 | 80 | 0 |
+| Quest - Deathroot | 9 | 9 | 9/9 | 0 | 0 | 0 | 9 | 0 |
+| Quest - Progression | 73 | 58 | 73/73 | 0 | 0 | 0 | 73 | 0 |
+| Quest - Seedbed Curses | 7 | 6 | 7/7 | 0 | 0 | 0 | 7 | 0 |
+| Reforged - Ember Pieces | 302 | 302 | 23/302 | 0 | 279 | 0 | 23 | 0 |
+| Reforged - Fortunes | 59 | 9 | 59/59 | 0 | 0 | 0 | 59 | 0 |
+| Reforged - Items | 74 | 58 | 74/74 | 0 | 0 | 0 | 74 | 0 |
+| Reforged - Rune Pieces | 1244 | 1244 | 126/1244 | 0 | 1118 | 0 | 126 | 0 |
+| World - Bosses | 217 | 215 | 217/217 | 0 | 0 | 217 | 0 | 0 |
+| World - Hostile NPC | 50 | 26 | 27/50 | 0 | 23 | 0 | 27 | 0 |
+| World - Imp Statues | 37 | 37 | 37/37 | 0 | 0 | 0 | 37 | 0 |
+| World - Interactables | 103 | 102 | 102/103 | 0 | 1 | 0 | 102 | 0 |
+| World - Kindling Spirits | 5 | 5 | 5/5 | 0 | 0 | 0 | 5 | 0 |
+| World - Maps | 24 | 24 | 24/24 | 0 | 0 | 0 | 24 | 0 |
+| World - Paintings | 11 | 11 | 11/11 | 0 | 0 | 0 | 11 | 0 |
+| World - Spirit Springs | 72 | 0 | 0/72 | 0 | 72 | 0 | 0 | 0 |
+| World - Spiritspring Hawks | 14 | 14 | 14/14 | 0 | 0 | 0 | 14 | 0 |
+| World - Stakes of Marika | 219 | 0 | 0/219 | 0 | 219 | 0 | 0 | 0 |
+| World - Summoning Pools | 246 | 246 | 246/246 | 0 | 0 | 246 | 0 | 0 |
+| **all** | | | | | | **469** | **4966** | **16** |
+
+_Collect-flag provenance: **469** live · **4966** disk · **16** baked (baked = the un-migrated residual — should equal the baked-loot total)._
+
+## Skipped — disk placements parsed but NOT drawn (#2)
+
+The inverse of the coverage table: of everything the disk passes parsed from the mod's files, how many became markers vs were filtered, grouped by **why**. `unclassified` + `no_anchor` are the **real coverage gaps** (an item we couldn't categorise / place); the rest are **correct** skips (already placed, by-design suppressed, bake phantoms, cut assets).
+
+**TOTAL skipped 510091** vs **drawn 8631**.
+
+| reason | count | kind | meaning |
+|---|--:|---|---|
+| `unclassified` | 883 | ⚠️ gap | item type unknown → no category |
+| `no_anchor` | 8809 | ⚠️ gap | no lot / no positionable MSB entity |
+| `dedup` | 958 | ✅ correct | already placed by another pass |
+| `by_design` | 499086 | ✅ correct | rune/ember GEOM-tracked, anti-flood clutter, respawnable no-flag enemy drops |
+| `merchant_phantom` | 39 | ✅ correct | shop-∞ bake fallback, dropped |
+| `dummy_inert` | 316 | ✅ correct | cut DummyAsset, no EntityID |
+
+## MapGenie coverage gaps — categories not parsed (#1)
+
+Vs MapGenie (base+DLC). Full table: `docs/coverage_vs_mapgenie.md`. **31 categories NOT WIRED** (no mod category at all) · **17 DRIFT** (drawn < MapGenie, partly ERR≠vanilla).
+
+**❌ NOT WIRED:** Martyr Effigy (212), Elite Enemy (184), Landmark (172), Character (127), Key Item (generic) (85), Enemy (82), Dungeon (64), Hidden Passage (59), Ghost (57), Merchant (43), Elevator (40), Crimson Scarab (40), Portal (39), Tool (30), Remembrance (25), Cerulean Scarab (21), Miquella's Cross (13), Item (generic) (13), Evergaol (11), Minor Erdtree (11), Miscellaneous (9), Legacy Dungeon (7), Wandering Mausoleum (7), Quest (steps) (7), Divine Tower (6), Lore (6), Stone Cairn (5), Talisman Pouch (3), Dragon Shrine (2), Smithing Table (1), Trainer (1)
 

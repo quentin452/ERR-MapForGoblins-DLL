@@ -29,7 +29,13 @@ ROW = re.compile(
 # split into respawn (lot-backed respawnable) + nonloot (TYPES with no collect flag).
 CENSUS = re.compile(
     r"\[COVERAGE-CENSUS\]\s+(?P<cat>.+?)\s+drawn=(?P<drawn>\d+)\s+census=(?P<census>\d+)\s+"
-    r"flagged=(?P<flagged>\d+)\s+respawn=(?P<respawn>\d+)\s+nonloot=(?P<nonloot>\d+)\s+total=\d+")
+    r"flagged=(?P<flagged>\d+)\s+respawn=(?P<respawn>\d+)\s+nonloot=(?P<nonloot>\d+)"
+    r"(?:\s+flag-live=(?P<flive>\d+)\s+flag-disk=(?P<fdisk>\d+)\s+flag-baked=(?P<fbaked>\d+))?"
+    r"\s+total=\d+")
+# [SKIPPED] (#2): disk placements parsed but NOT drawn, by reason — the inverse of [COVERAGE].
+SKIP_TOT = re.compile(r"\[SKIPPED\] TOTAL skipped=(?P<skipped>\d+) vs drawn=(?P<drawn>\d+)")
+SKIP_ROW = re.compile(r"\[SKIPPED\]\s+(?P<reason>unclassified|dedup|no_anchor|by_design|"
+                      r"merchant_phantom|dummy_inert)=(?P<n>\d+)\s+\((?P<note>[^)]*)\)")
 TS = re.compile(r"^\[(?P<ts>[\d\-: .]+)\]")
 # [RESIDUAL-SRC] full provenance triage of the surviving baked-loot residual (build_buckets_impl):
 # every baked loot row NOT replaced by a disk pass, tallied by its bake loot_source. This is WHY
@@ -127,10 +133,21 @@ TILES = re.compile(
 def parse_last_block(path):
     rows, ts, tiles = {}, None, None
     resid, resid_tot = {}, None
+    skip, skip_tot = {}, None  # #2 [SKIPPED]: {reason: (n, note)}, {skipped, drawn}
     with open(path, encoding="utf-8", errors="replace") as fh:
         for line in fh:
             t = TS.match(line)
             block_ts = t.group("ts") if t else None
+            st = SKIP_TOT.search(line)
+            if st:
+                # TOTAL is the LAST line of the block (after the reasons) → don't reset here; the 6
+                # reasons are always re-emitted, so dict-overwrite naturally keeps the last build's.
+                skip_tot = {"skipped": int(st.group("skipped")), "drawn": int(st.group("drawn"))}
+                continue
+            sr = SKIP_ROW.search(line)
+            if sr:
+                skip[sr.group("reason")] = (int(sr.group("n")), sr.group("note"))
+                continue
             tl = TILES.search(line)
             if tl:
                 tiles = {"parsed": int(tl.group("parsed")), "total": int(tl.group("total")),
@@ -159,14 +176,17 @@ def parse_last_block(path):
             c = CENSUS.search(line)
             if c:
                 cat = c.group("cat").strip()
-                rows.setdefault(cat, {}).update(
-                    {k: int(c.group(k))
-                     for k in ("drawn", "census", "flagged", "respawn", "nonloot")})
+                d = {k: int(c.group(k)) for k in ("drawn", "census", "flagged", "respawn", "nonloot")}
+                # #3 collect-flag source split (optional — absent in pre-flag-src logs → 0).
+                d["flive"] = int(c.group("flive")) if c.group("flive") else 0
+                d["fdisk"] = int(c.group("fdisk")) if c.group("fdisk") else 0
+                d["fbaked"] = int(c.group("fbaked")) if c.group("fbaked") else 0
+                rows.setdefault(cat, {}).update(d)
                 ts = block_ts or ts
-    return rows, ts, tiles, resid, resid_tot
+    return rows, ts, tiles, resid, resid_tot, skip, skip_tot
 
 
-def emit(rows, ts, tiles=None, resid=None, resid_tot=None):
+def emit(rows, ts, tiles=None, resid=None, resid_tot=None, skip=None, skip_tot=None):
     tot = {k: sum(r[k] for r in rows.values()) for k in ("baked", "disk", "live", "lc", "total")}
     icons = icon_metadata()
 
@@ -301,15 +321,86 @@ def emit(rows, ts, tiles=None, resid=None, resid_tot=None):
                  "A large `nonloot` marks a feature whose objects carry no collect flag "
                  "(can't gray/complete). Categories missing here weren't in the census log.")
     lines.append("")
-    lines.append("| category | drawn | census | flag (have/drawn) | respawn | nonloot |")
-    lines.append("|---|--:|--:|--:|--:|--:|")
+    lines.append("`flag-src` (#3) = of the flagged markers, where the live collect-flag came from: "
+                 "**live** (drift-proof game memory) · **disk** (read from the mod's real files) · "
+                 "**baked** (the static-bake fallback = stale-risk). `flag-baked` should trend to 0 "
+                 "alongside the baked total — it IS the residual that hasn't migrated.")
+    lines.append("")
+    lines.append("| category | drawn | census | flag (have/drawn) | respawn | nonloot "
+                 "| flag-live | flag-disk | flag-baked |")
+    lines.append("|---|--:|--:|--:|--:|--:|--:|--:|--:|")
     for cat in sorted(rows, key=str.lower):
         r = rows[cat]
         if "drawn" not in r:
             continue
         lines.append(f"| {cat} | {r['drawn']} | {r['census']} | {r['flagged']}/{r['drawn']} "
-                     f"| {r['respawn']} | {r['nonloot']} |")
+                     f"| {r['respawn']} | {r['nonloot']} | {r.get('flive', 0)} | {r.get('fdisk', 0)} "
+                     f"| {r.get('fbaked', 0)} |")
+    tfl = sum(r.get('flive', 0) for r in rows.values())
+    tfd = sum(r.get('fdisk', 0) for r in rows.values())
+    tfb = sum(r.get('fbaked', 0) for r in rows.values())
+    lines.append(f"| **all** | | | | | | **{tfl}** | **{tfd}** | **{tfb}** |")
     lines.append("")
+    lines.append(f"_Collect-flag provenance: **{tfl}** live · **{tfd}** disk · **{tfb}** baked "
+                 "(baked = the un-migrated residual — should equal the baked-loot total)._")
+    lines.append("")
+    # ── #2 [SKIPPED] — shown vs skipped ──────────────────────────────────────────
+    if skip:
+        lines.append("## Skipped — disk placements parsed but NOT drawn (#2)")
+        lines.append("")
+        lines.append("The inverse of the coverage table: of everything the disk passes parsed from the "
+                     "mod's files, how many became markers vs were filtered, grouped by **why**. "
+                     "`unclassified` + `no_anchor` are the **real coverage gaps** (an item we couldn't "
+                     "categorise / place); the rest are **correct** skips (already placed, by-design "
+                     "suppressed, bake phantoms, cut assets).")
+        lines.append("")
+        if skip_tot:
+            lines.append(f"**TOTAL skipped {skip_tot['skipped']}** vs **drawn {skip_tot['drawn']}**.")
+            lines.append("")
+        REAL_GAP = {"unclassified", "no_anchor"}
+        lines.append("| reason | count | kind | meaning |")
+        lines.append("|---|--:|---|---|")
+        for reason in ("unclassified", "no_anchor", "dedup", "by_design", "merchant_phantom",
+                       "dummy_inert"):
+            if reason not in skip:
+                continue
+            n, note = skip[reason]
+            kind = "⚠️ gap" if reason in REAL_GAP else "✅ correct"
+            lines.append(f"| `{reason}` | {n} | {kind} | {note} |")
+        lines.append("")
+    # ── #1 MapGenie coverage gaps (categories not parsed) ────────────────────────
+    try:
+        import coverage_vs_mapgenie as cvm
+        mg = {}
+        for area in (60, 61):
+            for k, v in cvm.MAPGENIE[area].items():
+                mg[k] = mg.get(k, 0) + v
+        not_wired, drift = [], []
+        for section, rws in cvm.SECTIONS.items():
+            for disp, labs, cats in rws:
+                mgc = sum(mg.get(l, 0) for l in labs)
+                if not any(l in mg for l in labs):
+                    continue
+                if not cats:
+                    if mgc:
+                        not_wired.append((disp, mgc))
+                else:
+                    md = sum(rows.get(cvm.ENUM2DISPLAY.get(c, c), {}).get("total", 0) for c in cats)
+                    if md and md < mgc:
+                        drift.append((disp, mgc - md))
+        lines.append("## MapGenie coverage gaps — categories not parsed (#1)")
+        lines.append("")
+        lines.append(f"Vs MapGenie (base+DLC). Full table: `docs/coverage_vs_mapgenie.md`. "
+                     f"**{len(not_wired)} categories NOT WIRED** (no mod category at all) · "
+                     f"**{len(drift)} DRIFT** (drawn < MapGenie, partly ERR≠vanilla).")
+        lines.append("")
+        if not_wired:
+            lines.append("**❌ NOT WIRED:** " +
+                         ", ".join(f"{d} ({n})" for d, n in sorted(not_wired, key=lambda x: -x[1])))
+            lines.append("")
+    except Exception as e:
+        lines.append(f"_(MapGenie gap section skipped: {e})_")
+        lines.append("")
     return "\n".join(lines) + "\n"
 
 
@@ -317,11 +408,11 @@ def main():
     log = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_LOG
     if not os.path.isfile(log):
         sys.exit(f"log not found: {log}\nPass the path as arg 1.")
-    rows, ts, tiles, resid, resid_tot = parse_last_block(log)
+    rows, ts, tiles, resid, resid_tot, skip, skip_tot = parse_last_block(log)
     if not rows:
         sys.exit("no [COVERAGE] rows found in the log — run the game + open the map first.")
     with open(OUT, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(emit(rows, ts, tiles, resid, resid_tot))
+        fh.write(emit(rows, ts, tiles, resid, resid_tot, skip, skip_tot))
     print(f"wrote {OUT}  ({len(rows)} categories, baked remaining = "
           f"{sum(r['baked'] for r in rows.values())})")
 
