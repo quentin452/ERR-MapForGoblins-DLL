@@ -1303,12 +1303,22 @@ namespace
             wm::set_grace_dungeon_sprite(reinterpret_cast<void *>(g_grace_dgn_gpu.ptr),
                                          g_grace_dgn_uv0.x, g_grace_dgn_uv0.y, g_grace_dgn_uv1.x, g_grace_dgn_uv1.y);
         wm::render_markers(s_layers, atlas, mx, my);
-        // Item-search "locate": if a clicked result was projected this frame, pan the live map so its
-        // view centres on that marker (the real camera move — writes WorldMapArea pan). Only works for
-        // a marker on the currently-open page; cross-page results need the user to switch pages first.
+        // Item-search "locate": pan the live map so its view centres on the located marker (writes
+        // WorldMapArea pan). HOLD it for a window of frames, re-applying the SAME map-space centre
+        // every frame: while the F1 panel is open the game freezes the cursor (to stop map drift),
+        // which re-asserts a static view and overwrites a one-shot pan — so we keep writing it (our
+        // write is the last each frame -> it sticks) until the user lets go. (gU,gV are view-INDEPENDENT
+        // map coords, so re-applying is stable.) g_show false (panel closed) -> the single write already
+        // sufficed, but the hold is harmless.
+        static float s_hold_u = 0.f, s_hold_v = 0.f;
+        static int s_hold_frames = 0;
         float lu = 0.f, lv = 0.f;
-        if (wm::take_locate_pos(&lu, &lv))
-            goblin::worldmap_probe::set_view_center(lu, lv);
+        if (wm::take_locate_pos(&lu, &lv)) { s_hold_u = lu; s_hold_v = lv; s_hold_frames = 45; }
+        if (s_hold_frames > 0)
+        {
+            goblin::worldmap_probe::set_view_center(s_hold_u, s_hold_v);
+            --s_hold_frames;
+        }
     }
 
     // In-game minimap HUD (corner, north-up, overworld). Drawn during gameplay (map
