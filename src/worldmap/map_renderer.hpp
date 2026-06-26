@@ -6,6 +6,8 @@
 
 #include "marker_layer.hpp"
 
+#include <cstdint>
+#include <unordered_set>
 #include <vector>
 
 namespace goblin::worldmap
@@ -42,4 +44,26 @@ void set_grace_dungeon_sprite(void *tex, float u0, float v0, float u1, float v1)
 // the game only when a chip is hovered (so map pan/select elsewhere is untouched), while
 // still feeding the click to ImGui so the chip toggles even with the F1 panel closed.
 bool inworld_hovered();
+
+// ── Item search (F1 search bar) ──────────────────────────────────────────────
+// Hand render_markers the set of marker name_ids whose resolved name matches the search query
+// (null/empty = search inactive). Matching markers are ringed and pulled out of cluster piles.
+// locateNameId (non-zero) latches a "point the cursor here" request for ONE marker; the next
+// render captures that marker's backbuffer screen pos. Call each frame before render_markers.
+void set_item_search(const std::unordered_set<int32_t> *matchNameIds, int32_t locateNameId);
+
+// True while an item search is active (a non-empty match set was handed in). The overlay keeps
+// drawing markers even with the icon master / a category toggled OFF so search hits stay revealed.
+bool item_search_active();
+
+// True while a clicked "locate" hasn't been satisfied yet — its marker is on a page that isn't open,
+// so the request waits. The overlay shows a "switch to that page" banner; the pan fires automatically
+// the frame that page opens. Cleared when satisfied or when the search is cleared.
+bool locate_pending();
+
+// After render_markers: if a locate request was satisfied this frame, returns true once and writes
+// the matched marker's MARKER-SPACE coord (gU, gV) — the overlay pans the live map's view centre onto
+// it (worldmap_probe::set_view_center). Returns false when no locate is pending / the marker wasn't
+// on the open page this frame.
+bool take_locate_pos(float *u, float *v);
 } // namespace goblin::worldmap

@@ -25,6 +25,7 @@
 #include "worldmap/map_renderer.hpp"     // goblin::worldmap::render_markers
 #include "worldmap/category_meta.hpp"    // baked→GPU icon migration counters (F1 panel)
 #include "worldmap/loot_disk.hpp"        // disk_loot_state — F1 "maps not found" error
+#include "goblin_messages.hpp"           // lookup_text_utf8 (item-search name resolution)
 #include "generated_shared/goblin_overlay_icons.hpp" // ATLAS_PNG category-icon atlas
 #include "generated_shared/dejavu_sans_ttf.h"         // embedded DejaVu Sans (extended-Latin glyphs)
 #include "stb_image.h"                                // stbi_load_from_memory (PNG decode)
@@ -32,7 +33,10 @@
 
 #include <vector>
 #include <map>
+#include <unordered_set>
+#include <unordered_map>
 #include <string>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <cstdio>
@@ -128,6 +132,11 @@ namespace
     bool g_imgui_init = false;   // ImGui + D3D resources built against live swapchain
     bool g_failed = false;       // gave up (no overlay), mod continues
     bool g_show = false;         // panel visible this frame
+    // Item-search nav window: while > 0, a locate/page-switch is in flight and the input hooks inject a
+    // tiny net-zero mouse jitter so the game keeps processing its world-map (otherwise, with the panel
+    // open, input is blanked -> the map's view/page step doesn't run -> our switch+pan only apply once
+    // F1 closes). Set on a result click, counted down each Present frame.
+    std::atomic<int> g_nav_frames{0};
     bool g_user_show = false;    // F1 master open/close (works anywhere = the menu keybind)
     bool g_large = true;         // false = compact widget, true = full panel
     bool g_prev_toggle_down = false;
@@ -987,6 +996,17 @@ namespace
         {
             p->x = GetSystemMetrics(SM_CXSCREEN) / 2;
             p->y = GetSystemMetrics(SM_CYSCREEN) / 2;
+            // ER drives the 2D map camera off GetCursorPos. While a search-locate / page-switch is in
+            // flight, jitter the reported cursor ±1px (net zero) so the game keeps STEPPING its map
+            // (the per-frame c32f0 step, where our locate reticle-write + page switch apply) with the F1
+            // panel still open. 1px = no drift. (Centring itself is driven on the game thread via the
+            // c32f0 reticle-target write, not from this cursor position.)
+            if (g_nav_frames.load(std::memory_order_relaxed) > 0)
+            {
+                static int s_cjit = 0;
+                s_cjit ^= 1;
+                p->x += s_cjit ? 1 : -1;
+            }
         }
         return r;
     }
@@ -1003,8 +1023,22 @@ namespace
             auto *ri = reinterpret_cast<RAWINPUT *>(data);
             if (ri->header.dwType == RIM_TYPEMOUSE)
             {
-                ri->data.mouse.lLastX = 0;
-                ri->data.mouse.lLastY = 0;
+                // During an item-search nav, feed a 1px net-zero (±1 alternating) delta so the game
+                // keeps stepping/rendering its world map (which is otherwise frozen by the input blank)
+                // — lets our page/layer switch + pan actually take effect with the F1 panel open. The
+                // map cursor jitters 1px (negligible, nets to zero); clicks/keys stay suppressed.
+                if (g_nav_frames.load(std::memory_order_relaxed) > 0)
+                {
+                    static int s_jit = 0;
+                    s_jit ^= 1;
+                    ri->data.mouse.lLastX = s_jit ? 1 : -1;
+                    ri->data.mouse.lLastY = 0;
+                }
+                else
+                {
+                    ri->data.mouse.lLastX = 0;
+                    ri->data.mouse.lLastY = 0;
+                }
                 ri->data.mouse.usButtonFlags = 0;
                 ri->data.mouse.usButtonData = 0;
             }
@@ -1282,9 +1316,9 @@ namespace
 
     void draw_worldmap_markers(bool /*menu_open*/)
     {
-        if (!goblin::ui::icons_enabled())
-            return; // master off → draw no overlay markers
         namespace wm = goblin::worldmap;
+        if (!goblin::ui::icons_enabled() && !wm::item_search_active())
+            return; // master off (and no active search) → draw no overlay markers
         std::vector<wm::MarkerLayer *> &s_layers = overlay_layers();
         void *atlas = g_atlas_ready ? reinterpret_cast<void *>(g_atlas_gpu.ptr) : nullptr;
         // OS cursor in client/backbuffer px for marker tooltips (the map cursor tracks it).
@@ -1300,6 +1334,32 @@ namespace
             wm::set_grace_dungeon_sprite(reinterpret_cast<void *>(g_grace_dgn_gpu.ptr),
                                          g_grace_dgn_uv0.x, g_grace_dgn_uv0.y, g_grace_dgn_uv1.x, g_grace_dgn_uv1.y);
         wm::render_markers(s_layers, atlas, mx, my);
+        // Item-search "locate": centre the live map on the located marker. The engine re-derives the
+        // pan from the cursor reticle every frame (a Present-thread pan write is reverted), so the actual
+        // centring is driven on the GAME thread inside the c32f0 step hook: set_locate_target() hands it
+        // the marker, and the hook writes the reticle target each frame just before the engine's easer
+        // pans toward it. HELD over a window of frames (the freeze re-asserts the static view), and the
+        // nav jitter is kept alive so the c32f0 step keeps running with F1 open. set_view_center writes
+        // the ZOOM-in + the debug snapshot.
+        static float s_hold_u = 0.f, s_hold_v = 0.f;
+        static int s_hold_frames = 0;
+        float lu = 0.f, lvv = 0.f;
+        if (wm::take_locate_pos(&lu, &lvv)) { s_hold_u = lu; s_hold_v = lvv; s_hold_frames = 90; }
+        if (s_hold_frames > 0)
+        {
+            // Zoom in if the view is too far-out (else the item is a speck). kLocateZoom is calibration
+            // (map zoom ~0.05..1.0; kGraceZoomRef in map_renderer is 0.25 "mid") — bump if still too wide.
+            constexpr float kLocateZoom = 0.5f;
+            goblin::worldmap_probe::set_view_center(s_hold_u, s_hold_v, kLocateZoom);
+            goblin::worldmap_probe::set_locate_target(s_hold_u, s_hold_v); // game-thread c32f0 centres on it
+            // Keep the map STEPPING (c32f0 runs) with F1 open: the per-frame step is gated on perceived
+            // input, so keep the nav jitter alive for the whole hold.
+            if (g_nav_frames.load(std::memory_order_relaxed) < s_hold_frames)
+                g_nav_frames.store(s_hold_frames, std::memory_order_relaxed);
+            --s_hold_frames;
+            if (s_hold_frames == 0)
+                goblin::worldmap_probe::clear_locate_target(); // release the map (mouse pan resumes)
+        }
     }
 
     // In-game minimap HUD (corner, north-up, overworld). Drawn during gameplay (map
@@ -1749,6 +1809,229 @@ namespace
                 ImGui::SliderFloat("Offset X", &goblin::config::minimapOffsetX, 0.0f, 600.0f, "%.0f");
                 ImGui::SliderFloat("Offset Y", &goblin::config::minimapOffsetY, 0.0f, 600.0f, "%.0f");
                 ImGui::TextDisabled("North-up. Hidden while the world map is open. Save to INI to persist.");
+            }
+
+            // ── Find item / object ────────────────────────────────────────────────────────────
+            // Search markers by NAME: type a fragment, get a results list; the matching markers are
+            // ringed on the map (and pulled out of cluster piles). Click a result to point the map
+            // cursor at it (cursor = the 2D map camera). The match set is rebuilt only when the query
+            // changes (resolving ~thousands of FMG names per frame would be too costly), so the hot
+            // render loop just does an O(1) name_id set lookup.
+            ImGui::SeparatorText("Find item / object");
+            {
+                // group bits (marker_layer): bit0 = underground, bit1 = DLC. Label the page so the
+                // user knows where a hit is — locate only pans WITHIN the open page (cross-page needs
+                // a manual page switch first; auto-switch would need page-transition RE).
+                auto page_label = [](int g) -> const char * {
+                    switch (g & 3) { case 1: return "Underground"; case 2: return "DLC";
+                                     case 3: return "DLC Underground"; default: return "Overworld"; }
+                };
+                struct Hit { std::string label; int32_t name_id; int count; int group; };
+                static char item_q[64] = "";
+                static std::string s_last_q;
+                static std::unordered_set<int32_t> s_match;   // name_ids whose name matches (rendered ring)
+                static std::vector<Hit> s_hits;               // deduped results for the list
+                static int32_t s_pending_locate = 0;
+                static std::string s_locate_label;            // clicked item name (pending banner)
+                static int s_locate_group = 0;                // clicked item page (pending banner)
+
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                ImGui::InputTextWithHint("##itemsearch", "find item/object by name... (e.g. larval, bolt of)",
+                                         item_q, sizeof(item_q));
+
+                // ── Locate debug (dev) — gated behind Verbose logging (debug_logging). Diagnoses the
+                // item-search centring: LIVE view vs the target the engine should ease the pan toward
+                // ("live-vs-target dPan" → CENTERED OK once converged). Kept for future locate issues.
+                if (goblin::config::debugLogging && ImGui::TreeNode("Locate debug (dev)"))
+                {
+                    goblin::worldmap_probe::LiveView dlv{};
+                    const bool dbg_open = goblin::worldmap_probe::get_live_view(dlv);
+                    const auto &d = goblin::worldmap_probe::last_locate_debug();
+                    if (dbg_open && dlv.zoom != 0.f)
+                    {
+                        const float cu = (dlv.panX + dlv.snapMidX) / dlv.zoom;
+                        const float cv = (dlv.panZ + dlv.snapMidZ) / dlv.zoom;
+                        ImGui::Text("LIVE pan=(%.1f, %.1f) zoom=%.3f  centre(marker)=(%.1f, %.1f)",
+                                    dlv.panX, dlv.panZ, dlv.zoom, cu, cv);
+                        ImGui::Text("LIVE snapMid=(%.1f, %.1f)", dlv.snapMidX, dlv.snapMidZ);
+                    }
+                    else
+                        ImGui::TextDisabled("map closed / no live view (open the world map)");
+                    ImGui::Separator();
+                    if (!d.ran)
+                        ImGui::TextDisabled("no locate yet — click a result");
+                    else
+                    {
+                        ImGui::Text("cursorOk=%d  wrote=%d  rectOk=%d", d.cursorOk, d.wrote, d.rectOk);
+                        ImGui::Text("req centre   = (%.1f, %.1f)", d.reqU, d.reqV);
+                        ImGui::TextColored(d.clamped ? ImVec4(1, 0.7f, 0.2f, 1) : ImVec4(0.6f, 0.6f, 0.6f, 1),
+                                           "clamp centre = (%.1f, %.1f)  %s", d.clampU, d.clampV,
+                                           d.clamped ? "[CLAMPED -> near edge]" : "[no clamp]");
+                        ImGui::Text("zoom %.3f -> %.3f   world=[%.0f,%.0f .. %.0f,%.0f]",
+                                    d.zoomBefore, d.zoomUsed, d.wMinX, d.wMinZ, d.wMaxX, d.wMaxZ);
+                        ImGui::Text("pan TARGET   = (%.1f, %.1f)  (driven via cursor, not written)",
+                                    d.panWroteX, d.panWroteZ);
+                        if (dbg_open)
+                        {
+                            const float dx = dlv.panX - d.panWroteX, dz = dlv.panZ - d.panWroteZ;
+                            const bool off = (dx > 8.f || dx < -8.f || dz > 8.f || dz < -8.f);
+                            ImGui::TextColored(off ? ImVec4(1, 0.7f, 0.2f, 1) : ImVec4(0.3f, 1, 0.3f, 1),
+                                               "live-vs-target dPan=(%.1f, %.1f)  %s", dx, dz,
+                                               off ? "<- converging / not there yet" : "<- CENTERED OK");
+                        }
+                    }
+                    ImGui::TreePop();
+                }
+
+                if (s_last_q != item_q)
+                {
+                    s_last_q = item_q;
+                    s_match.clear();
+                    s_hits.clear();
+                    if (item_q[0] != '\0')
+                    {
+                        // Resolve each distinct name_id once (cache), substring-match the query.
+                        std::unordered_map<int32_t, std::string> name_cache;
+                        std::map<int32_t, int> hit_count;  // matched name_id -> marker count (ordered)
+                        for (auto *L : overlay_layers())
+                        {
+                            if (!L) continue;
+                            for (const auto &m : L->markers())
+                            {
+                                if (m.name_id < 0) continue;
+                                auto it = name_cache.find(m.name_id);
+                                if (it == name_cache.end())
+                                    it = name_cache.emplace(m.name_id,
+                                                            goblin::lookup_text_utf8(m.name_id)).first;
+                                if (it->second.empty()) continue;
+                                if (!contains_ci(it->second.c_str(), item_q)) continue;
+                                if (s_match.insert(m.name_id).second)
+                                    s_hits.push_back({it->second, m.name_id, 0, m.group});
+                                ++hit_count[m.name_id];
+                            }
+                        }
+                        for (auto &h : s_hits) h.count = hit_count[h.name_id];
+                    }
+                }
+
+                if (item_q[0] != '\0')
+                {
+                    // Locate (pan / page-switch) needs the world map OPEN — the live view + the
+                    // game-thread switch step only exist then. When closed, the list stays browsable
+                    // (what exists + which region) but the rows are disabled with a hint, so a click
+                    // can't leave a locate dangling forever.
+                    goblin::worldmap_probe::LiveView lv{};
+                    const bool map_open = goblin::worldmap_probe::get_live_view(lv);
+                    const int open_grp = map_open ? ((lv.openDlc ? 2 : 0) | (lv.underground ? 1 : 0)) : 0;
+
+                    if (map_open)
+                        ImGui::TextDisabled("%zu match%s (ringed on map; click = pan map onto it)",
+                                            s_hits.size(), s_hits.size() == 1 ? "" : "es");
+                    else
+                        ImGui::TextColored(ImVec4(1.f, 0.85f, 0.2f, 1.f),
+                                           "%zu match%s - open the world map to locate them",
+                                           s_hits.size(), s_hits.size() == 1 ? "" : "es");
+
+                    // Region-visited gate from GRACE DISCOVERY (robust, save-backed — supersedes the
+                    // fragile dialog availability byte): if NO grace in a region has been rested at, the
+                    // player has never been there, so its map is undiscovered — grey those results +
+                    // don't teleport in. Covers DLC (bit1) AND underground (bit0). bit1=DLC, bit0=UG.
+                    // Recomputed LIVE every throttled tick (NOT latched) so DISCOVERING a new grace mid-
+                    // session unlocks its page within ~0.5s, and a save/character switch re-locks it.
+                    // There is NO reliable native O(1) "page discovered" flag (the dialog DLC byte
+                    // read unreliably; the UG flag was never found — see goblin_worldmap_probe.hpp
+                    // TODO(page_og_underground_available)). read_event_flag() IS O(1), though: harvest
+                    // the grace discover-flags per page group ONCE (the flag IDs are save-independent —
+                    // every grace ROW exists in BonfireWarpParam regardless of discovery), then each
+                    // throttled tick read only that small list.
+                    // DO NOT LATCH seen=true: these statics outlive the DLL, so a save/character switch
+                    // within one game session (graces un-discover) would keep a latched page wrongly
+                    // unlocked — the "I rested at no grace yet nothing blocks" bug. We recompute seen
+                    // LIVE every tick instead (the list is tiny, so it's free).
+                    static bool s_dlc_seen = false, s_ug_seen = false;
+                    static std::vector<uint32_t> s_dlc_grace_flags, s_ug_grace_flags;
+                    static bool s_grace_flags_built = false;
+                    static int s_visit_tick = 0;
+                    if (map_open && (++s_visit_tick % 30 == 0))
+                    {
+                        // Only fires during an active search (map open, 1 tick in 30). The first run
+                        // also builds the flag lists (one ~8477-marker pass); steady-state is just a
+                        // few-dozen flag reads — the bench line shows both.
+                        GOBLIN_BENCH("overlay.item_search.gate_scan");
+                        if (!s_grace_flags_built)
+                        {
+                            for (auto *L : overlay_layers())
+                            {
+                                if (!L) continue;
+                                for (const auto &m : L->markers())
+                                {
+                                    if (!m.discover_flag) continue;  // graces only carry a discover flag
+                                    if (m.group & 2) s_dlc_grace_flags.push_back((uint32_t)m.discover_flag);
+                                    if (m.group & 1) s_ug_grace_flags.push_back((uint32_t)m.discover_flag);
+                                }
+                            }
+                            s_grace_flags_built = true;
+                        }
+                        s_dlc_seen = false;
+                        for (uint32_t f : s_dlc_grace_flags)
+                            if (goblin::ui::read_event_flag(f)) { s_dlc_seen = true; break; }
+                        s_ug_seen = false;
+                        for (uint32_t f : s_ug_grace_flags)
+                            if (goblin::ui::read_event_flag(f)) { s_ug_seen = true; break; }
+                    }
+                    if (ImGui::BeginChild("##itemhits", ImVec2(0, 150), true))
+                    {
+                        if (!map_open) ImGui::BeginDisabled();
+                        for (size_t i = 0; i < s_hits.size(); i++)
+                        {
+                            const Hit &h = s_hits[i];
+                            const bool off_page = (h.group & 3) != (open_grp & 3);
+                            // Locked = item on a region the player hasn't visited (no grace there).
+                            const bool locked = map_open && (((h.group & 2) && !s_dlc_seen) ||
+                                                             ((h.group & 1) && !s_ug_seen));
+                            char row[200];
+                            std::snprintf(row, sizeof(row), "%s  (x%d) - %s%s##h%zu", h.label.c_str(),
+                                          h.count, page_label(h.group),
+                                          locked ? " [undiscovered]" : "", i);
+                            if (locked) ImGui::BeginDisabled();
+                            if (ImGui::Selectable(row) && map_open)
+                            {
+                                s_pending_locate = h.name_id;  // click → pan the map onto it
+                                s_locate_label = h.label;      // remembered for the pending banner
+                                s_locate_group = h.group;
+                                g_nav_frames.store(90, std::memory_order_relaxed);  // wake the map so
+                                                  // the switch+pan apply with the F1 panel still open
+                                // Cross-page: switch to its page+layer (overworld<->DLC + surface<->UG),
+                                // marshalled onto the game thread. Requesting an off-page group also
+                                // switches the LAYER back to surface for an overworld item found while
+                                // underground (the "Godrick from the underground" fix).
+                                if (off_page)
+                                    goblin::worldmap_probe::request_switch_to_page(h.group);
+                            }
+                            if (locked) ImGui::EndDisabled();
+                            if (map_open && !locked && off_page && ImGui::IsItemHovered())
+                                ImGui::SetTooltip("On the %s map — click to switch there + centre on it.",
+                                                  page_label(h.group));
+                            if (locked && ImGui::IsItemHovered())
+                                ImGui::SetTooltip("On the %s map — you haven't discovered it yet.",
+                                                  page_label(h.group));
+                        }
+                        if (!map_open) ImGui::EndDisabled();
+                        if (s_hits.empty())
+                            ImGui::TextDisabled("no marker matches");
+                    }
+                    ImGui::EndChild();
+
+                    // Cross-page locate: the switch is marshalled to the game thread + the locate pans
+                    // the instant that page opens. The banner shows until it lands.
+                    if (map_open && goblin::worldmap::locate_pending())
+                        ImGui::TextColored(ImVec4(1.f, 0.85f, 0.2f, 1.f),
+                                           "> Locating \"%s\" on the %s map...", s_locate_label.c_str(),
+                                           page_label(s_locate_group));
+                }
+                // Hand the renderer the live match set + any pending locate (consumed once).
+                goblin::worldmap::set_item_search(item_q[0] ? &s_match : nullptr, s_pending_locate);
+                s_pending_locate = 0;
             }
 
             // Sections (coarse) + their categories (fine). A row shows only if
@@ -2366,10 +2649,20 @@ namespace
         // anywhere, incl. over the 2D map. Edge-detected. (The CSMenuMan+0xCD
         // auto-show signal proved dead on this build — reads 0 even with the map
         // open — so this key is the sole trigger; the intended keybind-driven UX.)
-        bool down = (GetAsyncKeyState(static_cast<int>(goblin::config::overlayToggleKey)) & 0x8000) != 0;
+        // GetAsyncKeyState is GLOBAL (focus-independent): without this guard, pressing F1 while the
+        // game is alt-tabbed / on another monitor would still toggle the overlay AND activate the
+        // cursor hooks (free/freeze the cursor, blank input) off-screen — bug report "F1 offscreen
+        // active le hook cursor". Gate BOTH the toggle and the active state on the game window being
+        // foreground: the hooks only ever run while you're actually in the game.
+        const bool fg = (g_hwnd && GetForegroundWindow() == g_hwnd);
+        bool down = fg && (GetAsyncKeyState(static_cast<int>(goblin::config::overlayToggleKey)) & 0x8000) != 0;
         if (down && !g_prev_toggle_down) g_user_show = !g_user_show;
         g_prev_toggle_down = down;
-        g_show = g_user_show;
+        g_show = g_user_show && fg;   // lose focus → hooks deactivate; regain → panel restores
+        // Count down the item-search nav window (set on a result click) — keeps the map "awake" for the
+        // switch+pan, then lets the cursor re-freeze so the map stops drifting.
+        if (int nf = g_nav_frames.load(std::memory_order_relaxed))
+            g_nav_frames.store(nf - 1, std::memory_order_relaxed);
 
         // Falling edge (menu JUST closed): restore state the open-state hooks left
         // dangling. While open, hk_clip_cursor forced the cursor UNclipped on every
@@ -2378,8 +2671,11 @@ namespace
         // bad state until the next refocus. Re-confine to the window client rect (what
         // the game does during play) so input is never left dangling. Idempotent and
         // safe whether the map is open or in gameplay (ER is window-confined in both).
+        // Only re-clip on a real CLOSE (still foreground) — NOT when g_show dropped because focus was
+        // lost (the cursor then belongs to the other window; clipping it into the background game
+        // window would trap it there).
         static bool s_prev_show = false;
-        if (s_prev_show && !g_show && o_clip_cursor && g_hwnd)
+        if (s_prev_show && !g_show && fg && o_clip_cursor && g_hwnd)
         {
             RECT rc;
             if (GetClientRect(g_hwnd, &rc))

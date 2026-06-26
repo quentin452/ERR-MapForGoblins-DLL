@@ -7,6 +7,7 @@
 #include "re_signatures.hpp"
 #include "goblin_map_data.hpp"
 #include "goblin_item_icons.hpp"
+#include "goblin_category_exceptions.hpp"
 #include "goblin_location_alt.hpp"
 #include "goblin_region_anchors.hpp"
 #include "goblin_major_regions.hpp"
@@ -1127,12 +1128,103 @@ int goblin::item_icon_id(int32_t key)
     return p ? (int)p->iconId : -1;
 }
 
-// Same baked table, the category column: lets the disk-MSB loot path bucket a
-// live-resolved lot item (lotId → resolve_loot_item_textid → key → here).
+// ── Phase-3 item classification (ER's OWN taxonomy, no per-item drift) ─────────────────────────
+// EquipParamGoods.goodsType@+0x3e + sortGroupId@+0x72 classify every goods (incl. any mod/DLC item)
+// live, with ZERO per-item table. Defined later (~goods_sort_group); forward-declared here so the
+// public classifier below can use them.
+static int goods_type_live(int32_t goods_id);
+static int goods_sort_group(int32_t goods_id);
+
+// Curated id → Category exception (binary search the generated table). These are the splits/grab-bags
+// the mod assigns by a deliberate id-list rule that (goodsType, sortGroupId) cannot express (runes /
+// smithing Low-normal-Rare, Gloveworts vs Great, the gType1-sg50 grab-bag, Quest-Progression +
+// Prayerbook id-lists, Reforged families). Returns the Category int, or -1 if the id has no exception.
+static int lookup_category_exception(int32_t goods_id)
+{
+    const auto *begin = goblin::generated::CATEGORY_EXCEPTIONS;
+    const auto *end   = begin + goblin::generated::CATEGORY_EXCEPTION_COUNT;
+    const auto *it = std::lower_bound(begin, end, goods_id,
+        [](const goblin::generated::CategoryException &a, int32_t k) { return a.id < k; });
+    return (it != end && it->id == goods_id) ? (int)it->category : -1;
+}
+
+// Confident category from ER's live taxonomy for a goods id: the explicit (goodsType, sortGroupId)
+// cells + the broad goodsType families. Returns -1 when only the DEFAULT/catch-all bucket applies
+// (gType1 key-item tail → QuestProgression, or the LootCraftingMaterials catch-all) — those are the
+// "uncertain" surface, left to classify_item_live so the [ITEMCLASS] census still tracks them.
+// Validated to reproduce the old ITEM_ICONS category column exactly (tools/_validate_taxonomy_map.py).
+static int category_from_taxonomy(int32_t goods_id)
+{
+    using C = goblin::generated::Category;
+    // ERR renumbers spirit-ash goods into id 300000-399999 (gType0 sortGroupId 15) — the same range
+    // generate_loot_massedit classifies on. Key on the RANGE, not the sg15 cell: that cell is
+    // contaminated by a few non-spirit items (Codex of the All-Knowing, Spectral Steed Whistle,
+    // Memory of Grace) which would otherwise be mislabelled as Spirits. Vanilla spirits stay gType 7/8.
+    if (goods_id >= 300000 && goods_id <= 399999) return (int)C::EquipSpirits;
+    const int gt = goods_type_live(goods_id);
+    const int sg = goods_sort_group(goods_id);
+    switch (gt)
+    {
+        case 0:  // normal goods — split by sortGroupId
+            switch (sg)
+            {
+                case 20: case 61: return (int)C::LootConsumables;
+                case 50:          return (int)C::LootThrowables;
+                case 70:          return (int)C::LootGreases;
+                case 60:          return (int)C::LootReusables;
+                case 80:          return (int)C::LootUtilities;        // Pates = exception
+                case 10:          return (int)C::LootStatBoosts;       // Rune Arc 150 = exception
+                case 100: case 101: case 102: return (int)C::LootGoldenRunes;  // Low = exception;
+                                                                               // 102 = ERR high-NG variants
+            }
+            break;
+        case 1:  // key/important item — split by sortGroupId; tail handled by the gType1 default below
+            switch (sg)
+            {
+                case 80: case 90:   return (int)C::LootBellBearings;
+                case 200: case 205: return (int)C::KeyCookbooks;
+                case 100:           return (int)C::MagicPrayerbooks;   // 8867 = exception
+            }
+            break;
+        case 2:  return (int)C::LootCraftingMaterials;   // gather materials
+        case 5:  case 17: return (int)C::MagicSorceries;
+        case 16: case 18: return (int)C::MagicIncantations;
+        case 7:  case 8:  return (int)C::EquipSpirits;
+        case 10: if (sg == 20) return (int)C::KeyCrystalTears; break;
+        case 11: if (sg == 30) return (int)C::KeyPotsNPerfumes; break;
+        case 14: // upgrade material
+            switch (sg)
+            {
+                case 40: case 41:           return (int)C::LootGloveworts;     // Great = exception
+                case 19: case 20: case 30:  return (int)C::LootSmithingStones; // Low/Rare = exception
+            }
+            break;
+    }
+    return -1;  // only the default/catch-all applies
+}
+
+// Primary item → Category classifier (Phase-3). Deterministic, drift-free, no per-item table:
+//   1. non-goods → ItemLotParam category by key range (weapon/armour/talisman/AoW + ammo id≥50M)
+//   2. curated id exception (the splits ER's taxonomy can't express)
+//   3. ER's live taxonomy (goodsType, sortGroupId) — the bulk
+//   4. returns -1 for the default/catch-all tail → classify_item_live owns it (and flags it live).
 int goblin::item_marker_category(int32_t key)
 {
-    const goblin::generated::ItemIcon *p = lookup_item_icon(key);
-    return p ? (int)p->category : -1;
+    if (key <= 0) return -1;
+    if (key < 500000000)  // non-goods (offset-encoded equip category)
+    {
+        if (key >= 400000000) return (int)goblin::generated::Category::EquipAshesOfWar;   // gem
+        if (key >= 300000000) return (int)goblin::generated::Category::EquipTalismans;    // accessory
+        if (key >= 200000000) return (int)goblin::generated::Category::EquipArmour;       // protector
+        if (key >= 100000000)  // weapon / ammo (WeaponName.fmg, +100M)
+            return (key - 100000000 >= 50000000) ? (int)goblin::generated::Category::LootAmmo
+                                                 : (int)goblin::generated::Category::EquipArmaments;
+        return -1;  // unknown encoding
+    }
+    const int32_t gid = key - 500000000;
+    const int ex = lookup_category_exception(gid);
+    if (ex >= 0) return ex;
+    return category_from_taxonomy(gid);  // -1 → default/catch-all, handled by classify_item_live
 }
 
 // Master-off intent set by the toggle hotkey. When true the user has
@@ -4437,70 +4529,34 @@ bool goblin::goods_is_map(int32_t goods_id)
     return sg == 190 || sg == 191;
 }
 
-// Live category fallback for the disk-loot path: when the baked ITEM_ICONS classifier
-// misses (an item the ERR bake didn't include, or ANY item from another mod), derive a
-// GENERIC category from the LIVE item type so the marker still shows. Takes the
-// offset-encoded item key (encode_live_item) and decodes it back. Returns -1 only when
-// the item type is genuinely unknown. Makes the collectible source truly mod-agnostic.
+// Live category fallback for the disk-loot path — Phase-3 TAIL classifier. item_marker_category()
+// now classifies the bulk in confidence (non-goods key-range + curated exceptions + ER's live
+// (goodsType, sortGroupId) taxonomy) and returns -1 only for the DEFAULT/catch-all tail. This owns
+// that tail so the marker still shows, AND flags it as live_classified so the [ITEMCLASS] census /
+// docs/item_classification.md track exactly the uncertain surface (the catch-all bucket). Returns -1
+// only when the item is genuinely unknown.
 int goblin::classify_item_live(int32_t key)
 {
     using C = goblin::generated::Category;
     if (key <= 0) return -1;
-    // Decode the +Nx100M offset encoding back to (item_id, ItemLotParam category).
-    if (key >= 500000000) // goods
+    if (key >= 500000000) // goods — only the default/catch-all tail reaches here
     {
-        int32_t gid = key - 500000000;
-        // Use ER's OWN item taxonomy (EquipParamGoods.sortGroupId) for the families the per-item
-        // ITEM_ICONS table doesn't cover — drift-free, mod/DLC-agnostic, no hardcoded id list. Rune
-        // currency = sortGroupId 100 (base Golden/Numen's/Hero's/Lord's) / 101 (DLC Broken/Shadow
-        // Realm) / 102 (ERR high-NG variants: Golden One's/Ancient's/…). The base + DLC runes are in
-        // ITEM_ICONS so item_marker_category catches them first (keeping the Low/normal split); this
-        // owns whatever the table misses — e.g. the 82909-82919 block — which is unambiguously a rune
-        // → LootGoldenRunes (else it fell to the goods_type catch-all = CraftingMaterials).
+        const int32_t gid = key - 500000000;
         const int sg = goods_sort_group(gid);
-        switch (sg)
-        {
-            case 100: case 101: case 102: return (int)C::LootGoldenRunes;
-            default: break;
-        }
-        // Quest/key items the curated ITEM_ICONS table MISSES (gaps: e.g. Haligtree Medallion 8175 is
-        // absent while its neighbours 8174/8176 are mapped) → the existing QuestProgression bucket (its
-        // 'medallions, keys, Needles, quest-specific goods' intent), NOT the Crafting Materials catch-all.
-        // Keyed on ER's goodsType 1 = key/important item. Maps are goodsType 1 too but owned by the
-        // dedicated WorldMaps pass — exclude them (sortGroupId 190/191). The specific Key* sub-buckets
-        // (Cookbooks/Crystal Tears/…) are in ITEM_ICONS so item_marker_category catches them first; this
-        // only owns the unmapped tail.
+        // Key/important-item tail (medallions, keys, Needles, quest goods) that ER's taxonomy leaves
+        // without a fine sub-bucket → the QuestProgression ("Key Items") category, NOT the Crafting
+        // Materials catch-all. Keyed on goodsType 1 = key/important item. Maps are goodsType 1 too but
+        // owned by the dedicated WorldMaps pass — never re-bucket them here (sortGroupId 190/191).
         if (sg != 190 && sg != 191 && goods_type_live(gid) == 1)
             return (int)C::QuestProgression;
-        // GOODS_TYPE values per the repo's own extractor (tools/extract_goods_categories.py).
-        // Routing each known type to its real category makes the per-category show_* toggles a
-        // fine-grained goodsType filter for collectibles (e.g. show_crafting_materials = false
-        // hides goodsType-2 gather clutter like fireflies/excrement while show_smithing_stones
-        // keeps goodsType-14 stones). The default catch-all stays LootCraftingMaterials.
-        switch (goods_type_live(gid))
-        {
-            case 2:  return (int)C::LootCraftingMaterials;  // gather mats (Bloodrose, fireflies, ...)
-            case 14: return (int)C::LootSmithingStones;     // reinforcement (Smithing Stones, Golden Ore)
-            case 0:  return (int)C::LootConsumables;        // normal consumable
-            case 8:  return (int)C::EquipSpirits;           // spirit ash summon
-            case 5:  case 17: return (int)C::MagicSorceries;     // sorceries
-            case 16: case 18: return (int)C::MagicIncantations;  // incantations
-            default: return (int)C::LootCraftingMaterials;  // catch-all (currencies, misc gather)
-        }
+        return (int)C::LootCraftingMaterials;  // generic catch-all (currencies, misc gather, ...)
     }
+    // Non-goods are fully resolved by item_marker_category's key-range; kept as a defensive fallback.
     if (key >= 400000000) return (int)C::EquipAshesOfWar;   // gem
     if (key >= 300000000) return (int)C::EquipTalismans;    // accessory
     if (key >= 200000000) return (int)C::EquipArmour;       // protector
-    if (key >= 100000000)  // weapon range (cat 2, key = item id + 100M; ammo + melee/ranged share it)
-    {
-        // Ammo (arrows/bolts/greatbolts = weapon ids >= 50M) is its own marker type, NOT a
-        // melee/ranged armament. The disk loot pass keys it +100M like any cat-2 item (the live
-        // encode_live_item path), but the baked ITEM_ICONS table stores ammo at a LEGACY raw-50M
-        // key that item_marker_category(+100M) misses — so this live fallback owns the routing.
-        // (Root cause also fixed in tools/generate_loot_massedit.py so a regen keys ammo +100M.)
-        if (key - 100000000 >= 50000000) return (int)C::LootAmmo;
-        return (int)C::EquipArmaments;                       // weapon
-    }
+    if (key >= 100000000)
+        return (key - 100000000 >= 50000000) ? (int)C::LootAmmo : (int)C::EquipArmaments;
     return -1;
 }
 

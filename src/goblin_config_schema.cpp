@@ -75,6 +75,7 @@ namespace goblin::config
     bool debugItemGrants = false;
     bool debugFlagCapture = false;
     bool debugWorldmapProbe = false;
+    bool debugPageSwitch = false;
     bool dumpIconTextures = false;
     bool liveProjection = true;
     bool dumpConverters = false;
@@ -507,6 +508,8 @@ namespace
                   "Quest Browser death-flag capture tool (overlay Dev tools): arm naming an\nNPC, kill it, finalize -> the persisted flag(s) are written to\nlogs/MapForGoblins_flagcapture.txt as NpcQuest::fail_flag candidates.\nInstalls the SetEventFlag hook in a LIGHT mode (no coverage drain); off by default."),
                 B("debug_worldmap_probe", debugWorldmapProbe, "false",
                   "Dev probe: log the world-map cursor coords (read-only) + the live view\nprojection (pan/zoom @ WorldMapArea+0x378/+0x380, virtual canvas) to confirm\nthe world->screen transform. Open the world map, move the cursor, then PAN\nand ZOOM. Logs to logs/MapForGoblins_wmprobe.log; off by default."),
+                B("debug_page_switch", debugPageSwitch, "false",
+                  "Dev probe: hook the world-map page-switch handlers and log [PAGESW] each\ntime one fires (which fn + args + page before->after) so the base<->DLC\nsibling is pinned + args confirmed. Open the map, switch overworld->underground\n->overworld->DLC->overworld. Logs to the wmprobe log; off by default."),
                 B("dump_icon_textures", dumpIconTextures, "false",
                   "Dev probe: hook the GFx image creator and log each worldmap icon image\n(sprite rect + backing GPU texture id) as [ICONTEX] when the map opens, to\nmap iconIds to their sprite-sheet sub-rects for runtime icon textures. Off by\ndefault."),
                 B("live_projection", liveProjection, "true",

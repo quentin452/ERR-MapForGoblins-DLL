@@ -55,6 +55,63 @@ namespace goblin::worldmap_probe
     };
     bool get_live_view(LiveView &out);
 
+    // Pan the live world map so its view centres on a marker-space point (mU, mV) — same space as
+    // project()'s output / WorldMapPointParam posX/posZ. Used by the F1 item-search "locate" to scroll
+    // the map onto a clicked result (the real camera move, not a cursor nudge). Writes WorldMapArea
+    // pan (+0x378/+0x37C); valid only for a point on the currently-open page. Returns false if the
+    // map is closed / no live cursor / the write faulted. Map must be OPEN.
+    // minZoom > 0: also ZOOM IN (write +0x380) if the view is currently more zoomed-OUT than minZoom,
+    // so the located marker isn't lost in a tiny far-out view; never zooms OUT (respects a user who
+    // zoomed in further). minZoom = 0 → pan only (legacy). Map zoom runs ~0.05 (whole map)..1.0.
+    bool set_view_center(float mU, float mV, float minZoom = 0.f);
+
+    // Diagnostic snapshot of the LAST set_view_center call — drives the F1 "Locate debug" overlay so
+    // the edge-of-world "no centering" case can be compared live against a normal one. Written on the
+    // render thread inside set_view_center, read by the overlay on the same thread.
+    struct LocateDebug
+    {
+        bool ran = false;       // set_view_center was called at least once
+        bool cursorOk = false;  // g_active_cursor live + view read OK (else everything below is stale)
+        float reqU = 0, reqV = 0;        // requested centre (marker space, the clicked marker)
+        float clampU = 0, clampV = 0;    // centre after the world-rect clamp
+        bool clamped = false;            // clamp actually moved the centre (→ near an edge)
+        bool rectOk = false;             // full-map rect (+0x350) read OK
+        float wMinX = 0, wMinZ = 0, wMaxX = 0, wMaxZ = 0; // world rect used for the clamp
+        float zoomBefore = 0, zoomUsed = 0;               // live zoom vs post zoom-in
+        float snapMidX = 0, snapMidZ = 0;
+        float panWroteX = 0, panWroteZ = 0;  // pan we computed + tried to write
+        bool wrote = false;                  // both pan writes succeeded
+    };
+    const LocateDebug &last_locate_debug();
+
+    // Request the live map to switch to a target PAGE GROUP (bit1 = DLC, bit0 = underground), so the
+    // item-search locate can reach a cross-page result. The switch is marshalled onto the GAME thread
+    // (executed inside the hooked per-frame map step FUN_1409c32f0) so it never races the UI — calling
+    // the switch handlers (c1fc0 page / c7900 layer) from our render thread would corrupt the dialog.
+    // Drains over a few frames (one axis per step). No-op if the marshal hook didn't install. The
+    // persistent locate then pans the instant the page opens.
+    // NOTE: does NOT yet gate on page availability — pinning page_selectable (don't switch to a page
+    // the player hasn't unlocked) is the next RE pass; see windows_worldmap_page_switch_re_prompt.md.
+    void request_switch_to_page(int group);
+
+    // Item-search locate: drive the live map to CENTRE on a marker-space point. The per-frame map-step
+    // hook (c32f0, game thread) writes this to the cursor reticle target each frame, so the engine's own
+    // easer pans the view onto it and the write isn't reverted (RE §5b) — unlike a Present-thread pan
+    // write, which the engine overwrites. Call every frame while the locate is held; clear when done.
+    void set_locate_target(float u, float v);
+    void clear_locate_target();
+
+    // True while an auto page-switch is in progress OR still settling (the engine SNAPS the view to
+    // the new page's default, which would clobber an item-locate pan issued too early). The locate
+    // holds its pan until this is false so its set_view_center lands last and sticks.
+    bool page_switch_busy();
+
+    // TODO(page_og_underground_available): a clean per-page DIALOG availability flag is only HALF found
+    // — DLC = dialog+0x27c8 (RPM-diffed, but read UNRELIABLY at runtime), underground = never located
+    // (contextual). The overlay instead gates the auto-switch on GRACE DISCOVERY (no grace rested in a
+    // region => never visited => don't teleport there), which is robust + covers both. If a clean
+    // dialog flag is wanted later, finish 0x27c8 + find the UG one (page_full_dump.py diff tooling).
+
     // Live world→map-space projection: call the engine's own per-icon projection
     // (FUN_1408877d0 on the live CS::WorldMapViewModel) to map a raw (area, gridX,
     // gridZ, posX, posZ) to map-space UV — folds WorldMapLegacyConvParam + applies the

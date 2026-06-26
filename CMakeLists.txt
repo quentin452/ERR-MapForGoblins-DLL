@@ -109,6 +109,8 @@ add_library( MapForGoblins SHARED
   ${GEN_DIR}/goblin_map_data.cpp
   ${GEN_DIR}/goblin_item_icons.hpp
   ${GEN_DIR}/goblin_item_icons.cpp
+  ${GEN_DIR}/goblin_category_exceptions.hpp
+  ${GEN_DIR}/goblin_category_exceptions.cpp
   ${GEN_DIR}/goblin_quest_gates.hpp
   ${GEN_DIR}/goblin_quest_gates.cpp
   ${GEN_DIR}/goblin_quest_steps.hpp

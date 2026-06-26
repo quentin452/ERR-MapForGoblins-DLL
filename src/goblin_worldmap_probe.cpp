@@ -20,6 +20,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #define WIN32_LEAN_AND_MEAN
@@ -95,6 +96,7 @@ constexpr uintptr_t MENU_WALK_WINDOW = 0x10000; // dialog ptr "in the first few 
 // +0x350 rect should stay put. All reads are SEH-guarded + read-only.
 constexpr ptrdiff_t OFF_VIEW_PTR = 0xF0;     // cursor -> WorldMapArea
 constexpr ptrdiff_t VIEW_PAN_X = 0x378, VIEW_PAN_Z = 0x37C, VIEW_ZOOM = 0x380;
+constexpr ptrdiff_t VIEW_FULLRECT = 0x350; // static full-map rect [minX,minZ,maxX,maxZ] (clamp bound)
 // Virtual UI canvas singleton: [DAT_1447ef360 + 0x128] -> {+0x110 originX, +0x114
 // originY, +0x118 width, +0x11c height}. RVA, patch-fragile (debug only).
 constexpr uintptr_t CANVAS_SINGLETON_RVA = goblin::sig::CANVAS_SINGLETON_RVA;
@@ -131,6 +133,11 @@ inline bool seh_write_f32(void *dst, float v)
 {
     SIZE_T n = 0;
     return WriteProcessMemory(GetCurrentProcess(), dst, &v, sizeof(v), &n) && n == sizeof(v);
+}
+inline bool seh_write_u8(void *dst, uint8_t v)
+{
+    SIZE_T n = 0;
+    return WriteProcessMemory(GetCurrentProcess(), dst, &v, 1, &n) && n == 1;
 }
 
 // (The whole-address-space vtable scan was removed — it was O(GB), crashed at
@@ -1047,6 +1054,337 @@ bool get_live_view(LiveView &out)
     return true;
 }
 
+// Pan the live world map so its view CENTRES on a marker-space point (mU, mV) — the same space as
+// project_marker's gU/gV and WorldMapPointParam posX/posZ. Inverts the engine pan setter
+// (FUN_1409cd100): pan = viewCentre·zoom − snapMid (identical to goblin_projection ViewDelay's
+// centre→pan). Writes WorldMapArea +0x378/+0x37C via WriteProcessMemory (bad/RO dst → false, never
+// crashes). Only valid for a point on the CURRENTLY-OPEN page (cross-page needs a page switch first).
+// Returns false if the map is closed / no live cursor / a read or write faulted.
+static LocateDebug g_locate_dbg;
+const LocateDebug &last_locate_debug() { return g_locate_dbg; }
+
+bool set_view_center(float mU, float mV, float minZoom)
+{
+    // Reset the diagnostic snapshot for this call (the F1 "Locate debug" overlay reads it).
+    g_locate_dbg = LocateDebug{};
+    g_locate_dbg.ran = true;
+    g_locate_dbg.reqU = mU;
+    g_locate_dbg.reqV = mV;
+    uintptr_t a = g_active_cursor.load(std::memory_order_relaxed);
+    if (!a)
+        return false;
+    static uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base)
+        return false;
+    uint64_t vt = 0, view = 0;
+    if (!seh_read8(reinterpret_cast<void *>(a), &vt) || vt != base + CURSOR_VTABLE_RVA)
+        return false;
+    if (!seh_read8(reinterpret_cast<void *>(a + OFF_VIEW_PTR), &view) || !view ||
+        !plausible_ptr(view) || view_is_static(view))
+        return false;
+    g_locate_dbg.cursorOk = true;
+    float zoom = 0.f, sminx = 0, sminz = 0, smaxx = 0, smaxz = 0;
+    if (!seh_read4(reinterpret_cast<void *>(view + VIEW_ZOOM), &zoom) || zoom == 0.f ||
+        !seh_read4(reinterpret_cast<void *>(view + 0x340), &sminx) ||
+        !seh_read4(reinterpret_cast<void *>(view + 0x344), &sminz) ||
+        !seh_read4(reinterpret_cast<void *>(view + 0x348), &smaxx) ||
+        !seh_read4(reinterpret_cast<void *>(view + 0x34c), &smaxz))
+        return false;
+    // Zoom IN if the live view is more zoomed-OUT than requested (a far-out view would leave the
+    // located marker a tiny speck). Write the live zoom (+0x380) directly so it snaps; we never zoom
+    // OUT (a user who zoomed in further keeps it). snapMid is the map-extent midpoint (zoom-independent),
+    // so the pan below uses the post-zoom value and the centre stays exact even while the engine eases
+    // — and the per-frame locate hold re-asserts it, self-correcting any one-frame ease lag.
+    g_locate_dbg.zoomBefore = zoom;
+    if (minZoom > 0.f && zoom < minZoom)
+    {
+        seh_write_f32(reinterpret_cast<void *>(view + VIEW_ZOOM), minZoom);
+        zoom = minZoom;
+    }
+    g_locate_dbg.zoomUsed = zoom;
+    const float snapMidX = (sminx + smaxx) * 0.5f;
+    const float snapMidZ = (sminz + smaxz) * 0.5f;
+    g_locate_dbg.snapMidX = snapMidX;
+    g_locate_dbg.snapMidZ = snapMidZ;
+    // Clamp the target view-CENTRE so the written pan keeps the view INSIDE the world. The engine
+    // REVERTS a pan that would show void past the map edge, so a marker near the border (e.g. Godrick
+    // at Stormveil — top-left of the map) otherwise never centres at all: the OOB pan is rejected and
+    // the map doesn't move. Bound = the static full-map rect (+0x350 = [minX,minZ,maxX,maxZ]). The
+    // visible half-extent in marker space is resolution-INDEPENDENT — the map renders in a fixed
+    // 1920×1080 virtual canvas so the realW/1920 factor cancels → half = 960/zoom (X), 540/zoom (Z).
+    // Inclusive (<=): when an axis has exactly one valid centre we clamp to it instead of snapping to
+    // the midpoint; when the whole map fits (lo>hi, zoomed out) we centre on the map midpoint.
+    float cU = mU, cV = mV;
+    float wMinX = 0, wMinZ = 0, wMaxX = 0, wMaxZ = 0;
+    if (seh_read4(reinterpret_cast<void *>(view + VIEW_FULLRECT + 0), &wMinX) &&
+        seh_read4(reinterpret_cast<void *>(view + VIEW_FULLRECT + 4), &wMinZ) &&
+        seh_read4(reinterpret_cast<void *>(view + VIEW_FULLRECT + 8), &wMaxX) &&
+        seh_read4(reinterpret_cast<void *>(view + VIEW_FULLRECT + 12), &wMaxZ) &&
+        wMaxX > wMinX && wMaxZ > wMinZ)
+    {
+        const float halfU = 960.f / zoom, halfV = 540.f / zoom;
+        const float loU = wMinX + halfU, hiU = wMaxX - halfU;
+        const float loV = wMinZ + halfV, hiV = wMaxZ - halfV;
+        cU = (loU <= hiU) ? (cU < loU ? loU : (cU > hiU ? hiU : cU)) : (wMinX + wMaxX) * 0.5f;
+        cV = (loV <= hiV) ? (cV < loV ? loV : (cV > hiV ? hiV : cV)) : (wMinZ + wMaxZ) * 0.5f;
+        g_locate_dbg.rectOk = true;
+        g_locate_dbg.wMinX = wMinX; g_locate_dbg.wMinZ = wMinZ;
+        g_locate_dbg.wMaxX = wMaxX; g_locate_dbg.wMaxZ = wMaxZ;
+    }
+    g_locate_dbg.clampU = cU;
+    g_locate_dbg.clampV = cV;
+    g_locate_dbg.clamped = (cU != mU || cV != mV);
+    // The "intended" pan = where the view SHOULD end up. We DON'T write it: the engine re-derives the
+    // pan from the cursor every frame (runtime-confirmed via the Locate debug overlay — a raw pan write,
+    // and a reticle +0xFC write, are both reverted). The actual centring is DRIVEN overlay-side by
+    // feeding GetCursorPos the marker's projected screen offset (the engine's own pan, converges + works
+    // at edges). This panX/panZ is kept only as the debug "target" the live pan should converge to.
+    const float panX = cU * zoom - snapMidX;
+    const float panZ = cV * zoom - snapMidZ;
+    g_locate_dbg.panWroteX = panX;
+    g_locate_dbg.panWroteZ = panZ;
+    g_locate_dbg.wrote = true; // zoom written + target prepared (no pan write by design)
+    return true;
+}
+
+// ── Page-switch instrumentation (config debug_page_switch) ───────────────────────────────────────
+// Hook each world-map page/layer switch handler and log [PAGESW] when it fires: which fn, its 4
+// register args (rcx/rdx/r8/r9 = dialog + up to 3 ints), and the page state (openDlc / layer)
+// BEFORE→AFTER. Run it once (overworld→underground→overworld→DLC→overworld) to (a) pin which of the 6
+// base↔DLC siblings does each direction, (b) confirm the layer/force arg values, and (c) feed the
+// safe-trigger design (docs/re/windows_worldmap_page_switch_re_prompt.md). Read-only besides the hooks
+// (calls the original, never alters args) — purely diagnostic, off by default.
+namespace
+{
+struct PsHandler { uint32_t rva; const char *name; };
+// RVAs from docs/re/windows_worldmap_page_transition_re_findings.md §6 (imagebase 0x140000000).
+constexpr PsHandler PS_HANDLERS[] = {
+    {0x9c40f0, "c40f0(layer surface<->UG)"},
+    {0x9c5d20, "c5d20(map?)"}, {0x9c7900, "c7900(map?)"}, {0x9c1fc0, "c1fc0(map?)"},
+    {0x9c23d0, "c23d0(map?)"}, {0x9c2c00, "c2c00(map?)"}, {0x9c3280, "c3280(map?)"},
+    {0x9c8120, "c8120(page-apply)"},
+};
+constexpr int PS_COUNT = (int)(sizeof(PS_HANDLERS) / sizeof(PS_HANDLERS[0]));
+using PsFn = uintptr_t (*)(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
+PsFn g_ps_orig[PS_COUNT] = {};
+
+// dialog = the handler's 1st arg (rcx). page id @ +0xA88, layer byte @ [+0x2B68]+0xB8.
+inline void ps_read_page(uintptr_t dialog, int &openDlc, int &layer)
+{
+    openDlc = layer = -1;
+    if (!dialog) return;
+    seh_read_i32(reinterpret_cast<void *>(dialog + 0xA88), &openDlc);
+    uint64_t sub = 0;
+    if (seh_read8(reinterpret_cast<void *>(dialog + 0x2B68), &sub) && sub)
+    {
+        int b = -1;
+        if (seh_read_i32(reinterpret_cast<void *>(sub + 0xB8), &b)) layer = b & 0xFF;
+    }
+}
+
+template <int N>
+uintptr_t ps_detour(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4)
+{
+    int bd = -1, bl = -1;
+    ps_read_page(a1, bd, bl);
+    uintptr_t r = g_ps_orig[N] ? g_ps_orig[N](a1, a2, a3, a4) : 0;
+    int ad = -1, al = -1;
+    ps_read_page(a1, ad, al);
+    if (g_log)
+        g_log->info("[PAGESW] {} dialog={:#x} a2={:#x} a3={:#x} a4={:#x} | page {}->{} layer {}->{}",
+                    PS_HANDLERS[N].name, a1, a2, a3, a4, bd, ad, bl, al);
+    return r;
+}
+
+template <int N>
+int ps_try_hook(uintptr_t base)
+{
+    try
+    {
+        modutils::hook(reinterpret_cast<void *>(base + PS_HANDLERS[N].rva),
+                       reinterpret_cast<void *>(&ps_detour<N>),
+                       reinterpret_cast<void **>(&g_ps_orig[N]));
+        return 1;
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::warn("[PAGESW] hook {} (+{:#x}) failed: {}", PS_HANDLERS[N].name,
+                     PS_HANDLERS[N].rva, e.what());
+        return 0;
+    }
+}
+
+template <int... Is>
+int ps_install_seq(uintptr_t base, std::integer_sequence<int, Is...>)
+{
+    int n = 0;
+    (void)std::initializer_list<int>{(n += ps_try_hook<Is>(base), 0)...};
+    return n;
+}
+
+void install_page_switch_probe()
+{
+    if (!goblin::config::debugPageSwitch) return;
+    uintptr_t base = g_exe_base ? g_exe_base
+                                : reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base) { spdlog::warn("[PAGESW] no eldenring.exe base — probe not installed"); return; }
+    int n = ps_install_seq(base, std::make_integer_sequence<int, PS_COUNT>{});
+    try { modutils::enable_hooks(); } catch (const std::exception &) {}
+    spdlog::info("[PAGESW] page-switch probe: {}/{} hooks installed (switch pages on the open map)", n,
+                 PS_COUNT);
+}
+
+// ── Auto page-switch marshal ─────────────────────────────────────────────────────────────────────
+// Switch the map page from the GAME thread, never the render thread. We hook the per-frame map step
+// FUN_1409c32f0 (runs on the UI thread, receives the WorldMapDialog) and, inside it, drain a pending
+// "switch to group G" request by calling the pinned switch handlers — exactly where the engine itself
+// calls them. (Instrumentation pinned: c1fc0 = base↔DLC page arg2∈{0,10}; c7900 = surface↔UG layer
+// arg2∈{0,1}; the observed r8/r9 = {0x40,1}. See windows_worldmap_page_switch_re_findings.md.)
+// Page (c1fc0) first, then layer (c7900) — one axis per step so the engine settles between.
+constexpr uint32_t RVA_C1FC0 = 0x9c1fc0;   // base↔DLC: (dialog, page 0/10, _, force)
+constexpr uint32_t RVA_C7900 = 0x9c7900;   // surface↔UG: (dialog, layer 0/1, 0x40, force)
+constexpr uint32_t RVA_C32F0 = 0x9c32f0;   // per-frame map step (game thread)
+using SwitchFn = uintptr_t (*)(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
+// FUN_1409c32f0(dialog, float dt, …): dt is a FLOAT (xmm1), so the detour MUST type it as float to
+// preserve it across the forward call — a uintptr_t there would drop dt and break the UI step.
+using StepFn = uintptr_t (*)(uintptr_t, float, uintptr_t, uintptr_t);
+SwitchFn g_c1fc0 = nullptr, g_c7900 = nullptr;
+StepFn g_c32f0_orig = nullptr;
+std::atomic<int> g_pending_group{-1};  // target group (bit1=DLC, bit0=UG); -1 = none
+// LOCATE DRIVE (structural fix): the per-frame map step c32f0 eases the pan toward the cursor RETICLE
+// target (= cursor+0xFC, RE §5b). We write that reticle to the located marker INSIDE the c32f0 detour
+// (game thread, just before the original's easer reads it) so the engine centres on it and our write
+// isn't reverted by the cursor tick. Set by the overlay locate hold; cleared when it ends.
+std::atomic<bool> g_locate_active{false};
+std::atomic<float> g_locate_u{0.f}, g_locate_v{0.f}; // target marker-space centre
+// Frames to keep "busy" after the last switch: a page swap SNAPS the view to the new page's default
+// (page-transition findings §7b), which would CLOBBER an item-locate pan issued too early. The locate
+// waits until this settles (page_switch_busy) so its set_view_center is the LAST write and sticks.
+std::atomic<int> g_switch_settle{0};
+constexpr int SWITCH_SETTLE_FRAMES = 20;  // ~0.33s @60fps > the ~0.2s page cross-fade/snap
+
+// Switch both axes toward the target group: PAGE (overworld<->DLC, c1fc0) then LAYER (surface<->UG,
+// c7900). Availability gating lives in the CALLER (the overlay only requests a group whose pages the
+// player has visited — grace-based, robust); the marshal just executes, so e.g. an overworld item
+// found while underground switches the layer back to surface (the "Godrick from underground" fix).
+// TODO(page_og_underground_available): the per-page DIALOG availability flag is only half-solved — DLC
+// = dialog+0x27c8 (read UNRELIABLY at runtime: greyed even on a discovered save), underground = never
+// found (contextual). Abandoned in favour of grace-discovery in the overlay; revisit if a clean dialog
+// flag is wanted. See docs/re/windows_worldmap_page_switch_re_findings.md §6.
+uintptr_t hk_c32f0(uintptr_t dialog, float dt, uintptr_t a3, uintptr_t a4)
+{
+    // LOCATE DRIVE: write the cursor RETICLE target = the located marker BEFORE the original step, so
+    // its easer pans the view onto our marker (RE §5b: c32f0 eases pan toward dialog+0x2EAC = cursor+0xFC).
+    // The cursor tick rewrites the reticle from input each frame, but here — game thread, last write
+    // before the easer — ours wins. All three reticle pairs (snap-clamped +0xFC, full-clamped +0x104,
+    // snap-lerp +0x10C) are set so whichever the easer reads centres on the target. Re-asserted every
+    // frame for the locate hold's duration (the nav jitter keeps this step running with F1 open).
+    if (g_locate_active.load(std::memory_order_relaxed) && dialog)
+    {
+        const float u = g_locate_u.load(std::memory_order_relaxed);
+        const float v = g_locate_v.load(std::memory_order_relaxed);
+        const uintptr_t cur = dialog + CURSOR_OFF_IN_MENU;
+        seh_write_f32(reinterpret_cast<void *>(cur + 0xFC), u);
+        seh_write_f32(reinterpret_cast<void *>(cur + 0x100), v);
+        seh_write_f32(reinterpret_cast<void *>(cur + 0x104), u);
+        seh_write_f32(reinterpret_cast<void *>(cur + 0x108), v);
+        seh_write_f32(reinterpret_cast<void *>(cur + 0x10C), u);
+        seh_write_f32(reinterpret_cast<void *>(cur + 0x110), v);
+    }
+    uintptr_t r = g_c32f0_orig ? g_c32f0_orig(dialog, dt, a3, a4) : 0;
+    const int want = g_pending_group.load(std::memory_order_relaxed);
+    // GIVE-UP guard: if a requested switch never reaches its target (e.g. a handler that doesn't take
+    // the expected direction), DON'T loop forever — that would pin page_switch_busy() true and block
+    // EVERY locate pan. Bound the attempts; on timeout, drop the request so pans unblock.
+    static int s_last_want = -2, s_age = 0;
+    if (want != s_last_want) { s_last_want = want; s_age = 0; }
+    if (want >= 0 && dialog)
+    {
+        int curPage = -1, curLayer = -1;
+        seh_read_i32(reinterpret_cast<void *>(dialog + 0xA88), &curPage);
+        uint64_t sub = 0;
+        if (seh_read8(reinterpret_cast<void *>(dialog + 0x2B68), &sub) && sub)
+        {
+            int b = -1;
+            if (seh_read_i32(reinterpret_cast<void *>(sub + 0xB8), &b)) curLayer = b & 0xFF;
+        }
+        const int wantPage = (want & 2) ? 10 : 0;
+        const int wantLayer = (want & 1) ? 1 : 0;
+        if (++s_age > 120)  // ~2s: the switch isn't landing → give up so we never block pans
+        {
+            g_pending_group.store(-1, std::memory_order_relaxed);
+            g_switch_settle.store(0, std::memory_order_relaxed);
+        }
+        else if (curPage != wantPage && g_c1fc0)
+        {
+            g_c1fc0(dialog, (uintptr_t)wantPage, 0, 1);            // switch page (c1fc0 is reliable both ways)
+            g_switch_settle.store(SWITCH_SETTLE_FRAMES, std::memory_order_relaxed);
+        }
+        else if (curLayer != wantLayer && sub)
+        {
+            // LAYER: there's no reliable handler for UG→surface (c7900 only does surface→UG; the
+            // reverse goes through an unhooked path), so WRITE the layer byte directly — the per-frame
+            // c32f0 step (which we just called) reads it and cross-fades. (quentin's idea: we already
+            // have the flag, just use it.) [dialog+0x2B68]+0xB8 = 0 surface / 1 underground.
+            seh_write_u8(reinterpret_cast<void *>(sub + 0xB8), (uint8_t)wantLayer);
+            g_switch_settle.store(SWITCH_SETTLE_FRAMES, std::memory_order_relaxed);
+        }
+        else
+        {
+            g_pending_group.store(-1, std::memory_order_relaxed);  // reached target → settle, then pan
+            g_switch_settle.store(SWITCH_SETTLE_FRAMES, std::memory_order_relaxed);
+        }
+    }
+    int s = g_switch_settle.load(std::memory_order_relaxed);
+    if (s > 0) g_switch_settle.store(s - 1, std::memory_order_relaxed);
+    return r;
+}
+
+void install_auto_page_switch()
+{
+    uintptr_t base = g_exe_base ? g_exe_base
+                                : reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base) return;
+    g_c1fc0 = reinterpret_cast<SwitchFn>(base + RVA_C1FC0);
+    g_c7900 = reinterpret_cast<SwitchFn>(base + RVA_C7900);
+    try
+    {
+        modutils::hook(reinterpret_cast<void *>(base + RVA_C32F0),
+                       reinterpret_cast<void *>(&hk_c32f0),
+                       reinterpret_cast<void **>(&g_c32f0_orig));
+        modutils::enable_hooks();
+        spdlog::info("[PAGESW] auto page-switch marshal installed (c32f0 game-thread hook)");
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::warn("[PAGESW] auto page-switch install failed: {}", e.what());
+    }
+}
+} // namespace
+
+void request_switch_to_page(int group)
+{
+    g_pending_group.store(group, std::memory_order_relaxed);
+}
+
+// Drive the live map to CENTRE on a marker-space point (the item-search locate). The c32f0 detour
+// writes this to the cursor reticle each game frame so the engine eases the pan onto it (works at
+// world edges, not reverted — unlike a raw pan write). Call every frame during the locate hold;
+// clear_locate_target() when done (else the map stays pinned to the marker).
+void set_locate_target(float u, float v)
+{
+    g_locate_u.store(u, std::memory_order_relaxed);
+    g_locate_v.store(v, std::memory_order_relaxed);
+    g_locate_active.store(true, std::memory_order_relaxed);
+}
+void clear_locate_target() { g_locate_active.store(false, std::memory_order_relaxed); }
+
+bool page_switch_busy()
+{
+    return g_pending_group.load(std::memory_order_relaxed) >= 0 ||
+           g_switch_settle.load(std::memory_order_relaxed) > 0;
+}
+
 void initialize(const std::filesystem::path &log_path)
 {
     try
@@ -1060,6 +1398,8 @@ void initialize(const std::filesystem::path &log_path)
         spdlog::error("[WM-PROBE] could not open log {}: {}", log_path.string(), e.what());
         return;
     }
+    install_page_switch_probe();  // gated on config::debugPageSwitch
+    install_auto_page_switch();   // game-thread marshal for request_switch_to_page (item-search locate)
     std::thread(probe_loop).detach();
     spdlog::info("[WM-PROBE] world-map cursor probe active → {}", log_path.string());
 }

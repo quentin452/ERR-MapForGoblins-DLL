@@ -151,6 +151,12 @@ namespace goblin
         // offsets / marker-space). See goblin_worldmap_probe.{hpp,cpp}.
         extern bool debugWorldmapProbe;
 
+        // Dev probe: hook the world-map page-switch handlers and log which fires +
+        // its args + the resulting page on each manual page change. Pins which DLC
+        // sibling does base<->DLC + confirms args (docs/re/windows_worldmap_page_
+        // switch_re_prompt.md). See goblin_worldmap_probe.cpp.
+        extern bool debugPageSwitch;
+
         // Use the engine's own live world->map-space projection (call the native
         // WorldMapViewModel) instead of our baked LEGACY_CONV + affine + DLC eyeball.
         // Fixes dungeon/underground marker placement (proper LegacyConv fold). Falls

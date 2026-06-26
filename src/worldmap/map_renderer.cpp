@@ -16,6 +16,7 @@
 #include "goblin_map_data.hpp"       // Category enum (WorldQuestNPC)
 
 #include <string>
+#include <unordered_set>
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
 
 #include <imgui.h>
@@ -1000,6 +1001,45 @@ bool quest_npc_gated_out(const Marker &m)
 
 bool inworld_hovered() { return s_inworld_hot; }
 
+// ── Item search highlight (F1 search bar) ───────────────────────────────────────────────────────
+// The overlay resolves which marker name_ids match the search query (rebuilt only when the query
+// changes) and hands a pointer to that set here each frame; render_markers rings those markers and
+// pulls them out of any cluster pile so each is individually visible. A "locate" request (a clicked
+// result) latches a name_id; the loop captures that marker's backbuffer screen pos so the overlay can
+// point the OS cursor at it (cursor = the 2D map camera). All cheap: one set lookup per marker.
+static const std::unordered_set<int32_t> *s_search_set = nullptr;
+static int32_t s_locate_nameid = 0;     // latched until the loop finds it
+static bool s_locate_have = false;      // a captured marker-space coord is waiting for the overlay
+static ImVec2 s_locate_pos{};           // (gU, gV) marker space of the located marker
+
+void set_item_search(const std::unordered_set<int32_t> *matchNameIds, int32_t locateNameId)
+{
+    const bool active = matchNameIds && !matchNameIds->empty();
+    s_search_set = active ? matchNameIds : nullptr;
+    if (locateNameId) s_locate_nameid = locateNameId;
+    else if (!active) s_locate_nameid = 0; // search cleared → cancel any pending locate
+}
+
+bool item_search_active() { return s_search_set != nullptr; }
+
+// A locate is still WAITING for its marker — the clicked result is on a page that isn't open yet, so
+// the loop hasn't found it. Lets the panel show "switch to that page; it'll centre automatically".
+bool locate_pending() { return s_locate_nameid != 0; }
+
+bool take_locate_pos(float *u, float *v)
+{
+    if (!s_locate_have) return false;
+    s_locate_have = false;
+    if (u) *u = s_locate_pos.x;
+    if (v) *v = s_locate_pos.y;
+    return true;
+}
+
+static inline bool search_hit(const Marker &m)
+{
+    return s_search_set && m.name_id >= 0 && s_search_set->count(m.name_id) != 0;
+}
+
 void set_grace_sprite(void *tex, float u0, float v0, float u1, float v1)
 {
     s_grace_tex = reinterpret_cast<ImTextureID>(tex);
@@ -1183,10 +1223,27 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     int n_iter = 0, n_drawn = 0, n_deferred = 0;
     {
     GOBLIN_BENCH_QUIET("render.worldmap.markers");
+    // Master-off / hidden categories normally skip drawing — but an active item search REVEALS its
+    // hits regardless (else "hide everything then search" finds nothing). master_on folds the icon
+    // master into the per-layer visibility; a hidden layer is still iterated while searching so its
+    // hits can draw, and non-hit markers in it stay hidden (the !layer_vis && !is_hit skip below).
+    const bool master_on = goblin::ui::icons_enabled();
+    // Locate-candidate selection: a searched name can have many markers across the page. Pick the
+    // best one to pan onto — UNCOLLECTED first (the useful ones), then nearest to the current view
+    // centre. If every instance is already collected, the nearest collected one wins (it draws greyed,
+    // so the user sees it's done). View centre in marker space = (pan + snapMid)/zoom.
+    const float locCenU = (view.panX + view.snapMidX) / view.zoom;
+    const float locCenV = (view.panZ + view.snapMidZ) / view.zoom;
+    bool loc_have = false, loc_best_uncollected = false;
+    float loc_best_d = 1e30f;
+    ImVec2 loc_best{};
     for (auto *L : layers)
     {
-        if (!L || !L->visible())
+        if (!L)
             continue;
+        const bool layer_vis = master_on && L->visible();
+        if (!layer_vis && !s_search_set)
+            continue; // hidden layer + not searching → skip entirely
         for (const Marker &m : L->markers())
         {
             ++n_iter;
@@ -1199,6 +1256,11 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             if (goblin::config::bakedOnly && m.source != Source::Baked)
                 continue;
 
+            // In a hidden layer (category off / master off) only an active search HIT draws.
+            const bool is_hit = search_hit(m);
+            if (!layer_vis && !is_hit)
+                continue;
+
             // PROJECT + CULL FIRST, gates LAST. The per-marker visibility gates below
             // (discover/quest/secondary/hide_when/fragment/fog) each call into the game's
             // event-flag lookup — cheap individually but run thousands of times per frame.
@@ -1207,14 +1269,35 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // (this was the dominant render.worldmap cost). Clustered-eligible markers are
             // NOT culled — an off-screen member still counts toward its grace pile/centroid
             // — but their eligibility doesn't depend on any flag, so we can test it early.
+            // A search hit is pulled OUT of any cluster pile so each match draws individually
+            // (and gets its highlight ring), instead of hiding inside a location pile.
             const bool clustered_eligible =
-                clustering && m.category >= 0 && m.cluster_key >= 0 &&
+                clustering && !is_hit && m.category >= 0 && m.cluster_key >= 0 &&
                 (dist_adaptive || goblin::ui::category_clustered(m.category));
 
             float gU, gV;
             project_marker(m, gU, gV);
             proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
             ImVec2 sp(p.x, p.y);
+            // Locate request (a clicked search result): consider this marker as a pan candidate (even
+            // if off-screen — same page, so panning brings it into view). Best = uncollected-first,
+            // then nearest to the view centre; finalised after the loop.
+            if (s_locate_nameid && m.name_id == s_locate_nameid)
+            {
+                bool cleared_only = false;
+                const bool uncollected = !marker_done(m, cleared_only);
+                const float dd = (gU - locCenU) * (gU - locCenU) + (gV - locCenV) * (gV - locCenV);
+                const bool better = !loc_have ||
+                                    (uncollected && !loc_best_uncollected) ||
+                                    (uncollected == loc_best_uncollected && dd < loc_best_d);
+                if (better)
+                {
+                    loc_have = true;
+                    loc_best_uncollected = uncollected;
+                    loc_best_d = dd;
+                    loc_best = ImVec2(gU, gV);
+                }
+            }
             const bool offscreen =
                 (sp.x < -32 || sp.y < -32 || sp.x > realW + 32 || sp.y > realH + 32);
             if (offscreen && !clustered_eligible)
@@ -1267,10 +1350,23 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             else
             {
                 draw_marker(fg, m, sp, icons, iconHalf);
+                // Search highlight: ring the matching markers so they stand out on the page.
+                if (is_hit)
+                    fg->AddCircle(sp, iconHalf * 1.7f, IM_COL32(255, 226, 40, 255), 0, 2.5f);
                 hover_test(hover, mouse, sp, iconHalf, [&] { return marker_label(m); });
                 ++n_drawn;
             }
         }
+    }
+    // Finalise the locate: pan onto the chosen candidate (best uncollected / nearest). If NO candidate
+    // was found, the marker is on a page that isn't open — KEEP the request pending so it fires the
+    // moment that page opens (the auto-switch marshal is bringing it). HOLD the pan while a page switch
+    // is still settling: the engine snaps the new page's view, which would clobber a too-early pan.
+    if (s_locate_nameid && loc_have && !goblin::worldmap_probe::page_switch_busy())
+    {
+        s_locate_pos = loc_best;
+        s_locate_have = true;
+        s_locate_nameid = 0; // satisfied
     }
     } // render.worldmap.markers
 
