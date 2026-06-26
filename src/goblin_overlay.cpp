@@ -1935,8 +1935,9 @@ namespace
                     // Region-visited gate from GRACE DISCOVERY (robust, save-backed — supersedes the
                     // fragile dialog availability byte): if NO grace in a region has been rested at, the
                     // player has never been there, so its map is undiscovered — grey those results +
-                    // don't teleport in. Covers DLC (bit1) AND underground (bit0). Cached; recomputed
-                    // (throttled) only while still false (graces don't un-discover). bit1=DLC, bit0=UG.
+                    // don't teleport in. Covers DLC (bit1) AND underground (bit0). bit1=DLC, bit0=UG.
+                    // Recomputed LIVE every throttled tick (NOT latched) so DISCOVERING a new grace mid-
+                    // session unlocks its page within ~0.5s, and a save/character switch re-locks it.
                     // There is NO reliable native O(1) "page discovered" flag (the dialog DLC byte
                     // read unreliably; the UG flag was never found — see goblin_worldmap_probe.hpp
                     // TODO(page_og_underground_available)). read_event_flag() IS O(1), though: harvest
