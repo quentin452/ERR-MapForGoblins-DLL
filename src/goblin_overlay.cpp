@@ -25,6 +25,7 @@
 #include "worldmap/map_renderer.hpp"     // goblin::worldmap::render_markers
 #include "worldmap/category_meta.hpp"    // baked→GPU icon migration counters (F1 panel)
 #include "worldmap/loot_disk.hpp"        // disk_loot_state — F1 "maps not found" error
+#include "re_signatures.hpp"             // sig_health — F1 "signatures unresolved" error
 #include "goblin_messages.hpp"           // lookup_text_utf8 (item-search name resolution)
 #include "generated_shared/goblin_overlay_icons.hpp" // ATLAS_PNG category-icon atlas
 #include "generated_shared/dejavu_sans_ttf.h"         // embedded DejaVu Sans (extended-Latin glyphs)
@@ -1392,19 +1393,48 @@ namespace
             ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
             ImGui::Begin("Map for Goblins##error", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.25f, 0.25f, 1.0f));
-            ImGui::TextUnformatted("Map for Goblins - ERREUR");
+            ImGui::TextUnformatted("Map for Goblins - ERROR");
             ImGui::Separator();
-            ImGui::TextWrapped("Le dossier des cartes du mod (map\\MapStudio\\*.msb.dcx) est "
-                               "introuvable. Le mod ne peut pas charger ses marqueurs.");
+            ImGui::TextWrapped("The mod's map folder (map\\MapStudio\\*.msb.dcx) could not be "
+                               "found. The mod cannot load its markers.");
             ImGui::PopStyleColor();
             ImGui::Spacing();
             std::string sd = goblin::worldmap::disk_loot_dir().string();
             if (!sd.empty())
-                ImGui::TextDisabled("Dernier chemin cherché: %s", sd.c_str());
-            ImGui::TextDisabled("Renseigne 'loot_msb_dir' dans MapForGoblins.ini, ou mets");
-            ImGui::TextDisabled("'loot_from_disk_msb = false' pour la base intégrée.");
+                ImGui::TextDisabled("Last path searched: %s", sd.c_str());
+            ImGui::TextDisabled("Set 'loot_msb_dir' in MapForGoblins.ini, or set");
+            ImGui::TextDisabled("'loot_from_disk_msb = false' to use the built-in database.");
             ImGui::End();
             return;
+        }
+
+        // One or more RE signatures (AOB) failed to resolve uniquely at init → the mod
+        // hooked the wrong function or nothing at all, so markers/graces/loot will be
+        // wrong or absent. Surface it instead of silently rendering a broken map (the
+        // [SIG] log is invisible mid-game). MULTI = ambiguous (likely-wrong function),
+        // FAIL = gone (needs re-find after a game update).
+        {
+            const goblin::sig::SigHealth &sh = goblin::sig::sig_health();
+            if (sh.ran && (sh.fail > 0 || sh.multi > 0))
+            {
+                ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
+                ImGui::Begin("Map for Goblins##sigerror", nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.15f, 1.0f));
+                ImGui::TextUnformatted("Map for Goblins - WARNING");
+                ImGui::Separator();
+                ImGui::TextWrapped("The RE signatures were not resolved correctly. The mod "
+                                   "will probably not work correctly (markers, graces or "
+                                   "loot missing or wrong).");
+                ImGui::PopStyleColor();
+                ImGui::Spacing();
+                ImGui::TextDisabled("%d missing, %d ambiguous out of %d signatures.",
+                                    sh.fail, sh.multi, sh.total);
+                ImGui::TextDisabled("Likely broken by a game update — see the [SIG] log");
+                ImGui::TextDisabled("for details (the AOBs need to be re-found).");
+                ImGui::End();
+                return;
+            }
         }
 
         if (!g_large)

@@ -254,6 +254,16 @@ namespace goblin::sig
         return table;
     }
 
+    // Persistent result of the last resolve_all_signatures() pass. Lets the overlay
+    // surface a "signatures unresolved" error to the user instead of only logging it
+    // (the log is invisible mid-game). `ran` distinguishes "no failures" from "never ran".
+    struct SigHealth { int total = 0, pass = 0, multi = 0, fail = 0; bool ran = false; };
+    inline SigHealth &sig_health()
+    {
+        static SigHealth h;
+        return h;
+    }
+
     // Logs one line per AOB + a summary. Checks both PRESENCE and UNIQUENESS — a
     // signature that matches >1 site (MULTI) is a latent wrong-function bug: scan()
     // returns only the first match, so it may resolve a sibling instead of the real
@@ -299,5 +309,12 @@ namespace goblin::sig
         spdlog::info("[SIG] {} unique / {} ambiguous / {} missing  (of {}){}",
                      pass, multi, fail, n,
                      (multi || fail) ? "  <-- see warnings above" : "  — all clean");
+
+        SigHealth &h = sig_health();
+        h.total = static_cast<int>(n);
+        h.pass = pass;
+        h.multi = multi;
+        h.fail = fail;
+        h.ran = true;
     }
 }
