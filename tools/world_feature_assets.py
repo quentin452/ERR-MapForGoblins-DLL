@@ -85,6 +85,13 @@ WORLD_FEATURE_ASSETS = [
     dict(aeg_row=99055, model='AEG099_055', category='WorldInteractables',
          text_id=800000000 + 7041,  # ActionButtonText[7041] "Examine statue" (runtime-localized)
          entity_required=True, category_wipe=False, flag_rule='hero_tomb_emevd', lod_scan=False),
+    # AEG099_057 = a second model variant of the SAME Hero's Tomb instruction statue (template
+    # 90005683). The disk pass keyed only on AEG099_055 → missed the 2 AEG099_057 statues (Caelid
+    # m60_49_55 + m60_50_53, entities 1049551600/1050531600) which stayed baked. Same self-gated
+    # hero_tomb_emevd join → only the EMEVD-bound statues emit (decorative copies have no flag).
+    dict(aeg_row=99057, model='AEG099_057', category='WorldInteractables',
+         text_id=800000000 + 7041,
+         entity_required=True, category_wipe=False, flag_rule='hero_tomb_emevd', lod_scan=False),
 
     # Seal Puzzles — the AEG099_090 "Examine seal" object (the multi-seal puzzles that unlock
     # a fog door). 77/98 of the bake's seal interact-points. SHARES WorldInteractables with Hero's

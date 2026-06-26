@@ -90,6 +90,13 @@ struct EmevdAward
 {
     uint32_t entityId = 0;  // MSB Enemy EntityID this award is positioned by
     uint32_t lotId    = 0;  // ItemLotParam_map row id (lotType 1) awarded
+    // Loose-anchor fallback (direct template awards only): the init's other entity-range 4-byte
+    // windows, ordered by nearness to the lot arg. Many ERR template inits carry the documented
+    // `entityId` as a NON-positionable id (a logic/flag entity), while the real placeable anchor —
+    // an MSB Enemy OR Asset — sits at a different arg. When `entityId` doesn't resolve to a position,
+    // the caller (build_disk_emevd_markers) walks `anchors` for the nearest one that does. Empty for
+    // perTile awards (those stay strictly entity@8→ENEMY to avoid the asset-chest over-match).
+    std::vector<uint32_t> anchors;
 };
 
 // One EMEVD event that SetEventFlag(flag,1)s — the "event-1200" boss-drop mechanism.

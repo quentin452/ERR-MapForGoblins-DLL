@@ -657,12 +657,22 @@ std::vector<DiskEmevd> load_emevd_awards(
             continue;
         }
         msbe::EmevdParse p = msbe::parse_emevd_full(evd.data(), evd.size());
-        for (const auto &a : p.direct) out.push_back({a.entityId, a.lotId, /*lotType=*/1});
+        // Direct template awards: allowAsset=true (some are asset-anchored — Blaidd's spirit ash,
+        // the scarab-cluster runes) + carry the loose-anchor fallback windows.
+        for (const auto &a : p.direct)
+            out.push_back({a.entityId, a.lotId, /*lotType=*/1, /*bossReward=*/false,
+                           /*allowAsset=*/true, a.anchors});
         direct += (int)p.direct.size();
         // Per-tile enemy-death awards (callee >= 1e9, NOT a kEmevdTemplate): join entity→disk-ENEMY
         // pos like a direct award (lotType 1, fallback to _enemy downstream). The enemy join filters
         // asset-entity chests; the lot-coverage dedup in build_disk_emevd_markers drops covered lots.
-        for (const auto &a : p.perTileEnemyAward) out.push_back({a.entityId, a.lotId, /*lotType=*/1});
+        // perTile enemy-death awards: allowAsset=FALSE — strictly entity/anchors→ENEMY (an asset-join
+        // here re-introduces the ~395 asset-entity-chest over-match, see [[nobake-coverage-scoreboard]]).
+        // The lot@idx(n-1) "kill-the-group" variant carries loose anchors (entity 0) resolved
+        // enemy-only by the join.
+        for (const auto &a : p.perTileEnemyAward)
+            out.push_back({a.entityId, a.lotId, /*lotType=*/1, /*bossReward=*/false,
+                           /*allowAsset=*/false, a.anchors});
         per_tile_award += (int)p.perTileEnemyAward.size();
         // flag→lot only from common.emevd (the engine binding lives there; restricting
         // matches the bake and avoids a stray per-map RunEvent(1200) re-binding a flag).
@@ -726,7 +736,8 @@ std::vector<DiskEmevd> load_emevd_awards(
             if (!chosen) { ++ev1200_no_entity; continue; }
             uint64_t key = ((uint64_t)chosen << 32) | lot;
             if (!seen.insert(key).second) continue;
-            out.push_back({chosen, lot, /*lotType=*/2});
+            out.push_back({chosen, lot, /*lotType=*/2, /*bossReward=*/false,
+                           /*allowAsset=*/false, {}});
             ++ev1200;
         }
     }
@@ -763,7 +774,8 @@ std::vector<DiskEmevd> load_emevd_awards(
         if (!chosen) { ++boss_no_entity; continue; }
         uint64_t key = ((uint64_t)chosen << 32) | lot;
         if (!seen.insert(key).second) continue;
-        out.push_back({chosen, lot, /*lotType=*/1, /*bossReward=*/true});
+        out.push_back({chosen, lot, /*lotType=*/1, /*bossReward=*/true,
+                       /*allowAsset=*/true, {}});
         ++boss_ev;
     }
     spdlog::info("[LOOTDISK] {} EMEVD files parsed; {} direct + {} per-tile-enemy + {} event-1200 + {} "

@@ -82,6 +82,16 @@ struct DiskEmevd
     // emits the piece under the Reforged category (the rune/ember sibling suppression is lifted
     // for these). See build_disk_emevd_markers + [[nobake-coverage-scoreboard]].
     bool     bossReward = false;
+    // True for awards whose anchor MAY be an MSB Asset, not just an Enemy: direct template awards
+    // (some carry an asset-anchored reward — Blaidd's spirit ash, the scarab-cluster runes) and
+    // boss rewards. FALSE for perTile enemy-death awards, which stay strictly entity→ENEMY: an
+    // asset-join there re-introduces the ~395 asset-entity-chest over-match (see [[nobake-coverage-
+    // scoreboard]]). The join (build_disk_emevd_markers) picks the enemy-only vs enemy+asset position
+    // map by this flag.
+    bool     allowAsset = false;
+    // Loose-anchor fallback windows (direct awards only) — see msbe::EmevdAward::anchors. The join
+    // tries `entityId` first, then these in order when it doesn't resolve to a position.
+    std::vector<uint32_t> anchors;
 };
 
 // True when any disk-MSB source is enabled (treasure loot OR collectibles); both
