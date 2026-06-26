@@ -2237,6 +2237,31 @@ void build_buckets_impl()
                      "(graces counted live separately in GraceLayer)",
                      tB, tD, tL, tC);
     }
+    // ── [ITEMCLASS] live-fallback classification census ──────────────────────────
+    // Every DISTINCT item that reached its category via the LIVE fallback (classify_item_live —
+    // i.e. NOT found in the static ITEM_ICONS table, so item_marker_category missed it). This is
+    // the drift-prone surface: a mis-classified item — like the ERR high-NG rune variants that fell
+    // to Crafting Materials before goods 82909-82919 was routed to GoldenRunes — shows up here in
+    // the wrong bucket. tools/item_classification.py → docs/item_classification.md turns it into a
+    // versioned regression guard (git diff catches a future move). Table-backed items don't appear
+    // here — they're pinned in the generated goblin_item_icons.cpp (diffable there). Sorted by key
+    // for a stable diff. Unconditional + bounded (only the ~live-classified items, one line each).
+    {
+        std::map<int32_t, std::pair<int, int>> itemclass;  // item key (name_id) → (category, count)
+        for (int c = 0; c < NUM_CAT; ++c)
+            for (const Marker &m : g_buckets[c])
+                if (m.live_classified && m.name_id > 0)
+                {
+                    auto &e = itemclass[m.name_id];
+                    e.first = c;
+                    ++e.second;
+                }
+        spdlog::info("[ITEMCLASS] live-fallback classifications ({} distinct items; the no-ITEM_ICONS surface):",
+                     itemclass.size());
+        for (const auto &[key, cv] : itemclass)
+            spdlog::info("[ITEMCLASS] key={} cat=\"{}\" count={}", key,
+                         goblin::markers::category_name(static_cast<gen::Category>(cv.first)), cv.second);
+    }
 }
 
 // Disk-loot build is run ONCE on a background WORKER thread (not std::call_once):
