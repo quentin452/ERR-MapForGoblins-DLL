@@ -25,6 +25,7 @@
 #include "worldmap/map_renderer.hpp"     // goblin::worldmap::render_markers
 #include "worldmap/category_meta.hpp"    // baked→GPU icon migration counters (F1 panel)
 #include "worldmap/loot_disk.hpp"        // disk_loot_state — F1 "maps not found" error
+#include "goblin_messages.hpp"           // lookup_text_utf8 (item-search name resolution)
 #include "generated_shared/goblin_overlay_icons.hpp" // ATLAS_PNG category-icon atlas
 #include "generated_shared/dejavu_sans_ttf.h"         // embedded DejaVu Sans (extended-Latin glyphs)
 #include "stb_image.h"                                // stbi_load_from_memory (PNG decode)
@@ -32,6 +33,8 @@
 
 #include <vector>
 #include <map>
+#include <unordered_set>
+#include <unordered_map>
 #include <string>
 #include <cmath>
 #include <cstring>
@@ -1300,6 +1303,19 @@ namespace
             wm::set_grace_dungeon_sprite(reinterpret_cast<void *>(g_grace_dgn_gpu.ptr),
                                          g_grace_dgn_uv0.x, g_grace_dgn_uv0.y, g_grace_dgn_uv1.x, g_grace_dgn_uv1.y);
         wm::render_markers(s_layers, atlas, mx, my);
+        // Item-search "locate": if a clicked result was projected this frame, point the OS cursor at
+        // it (the 2D map cursor = the camera, so this scrolls the map onto the item). Uses the real
+        // SetCursorPos (o_set_cursor_pos) so it isn't swallowed by the game's per-frame recentering.
+        float lx = 0.f, ly = 0.f;
+        if (wm::take_locate_pos(&lx, &ly) && g_hwnd)
+        {
+            POINT lp{ (LONG)lx, (LONG)ly };
+            if (ClientToScreen(g_hwnd, &lp))
+            {
+                if (o_set_cursor_pos) o_set_cursor_pos(lp.x, lp.y);
+                else SetCursorPos(lp.x, lp.y);
+            }
+        }
     }
 
     // In-game minimap HUD (corner, north-up, overworld). Drawn during gameplay (map
@@ -1749,6 +1765,79 @@ namespace
                 ImGui::SliderFloat("Offset X", &goblin::config::minimapOffsetX, 0.0f, 600.0f, "%.0f");
                 ImGui::SliderFloat("Offset Y", &goblin::config::minimapOffsetY, 0.0f, 600.0f, "%.0f");
                 ImGui::TextDisabled("North-up. Hidden while the world map is open. Save to INI to persist.");
+            }
+
+            // ── Find item / object ────────────────────────────────────────────────────────────
+            // Search markers by NAME: type a fragment, get a results list; the matching markers are
+            // ringed on the map (and pulled out of cluster piles). Click a result to point the map
+            // cursor at it (cursor = the 2D map camera). The match set is rebuilt only when the query
+            // changes (resolving ~thousands of FMG names per frame would be too costly), so the hot
+            // render loop just does an O(1) name_id set lookup.
+            ImGui::SeparatorText("Find item / object");
+            {
+                struct Hit { std::string label; int32_t name_id; int count; };
+                static char item_q[64] = "";
+                static std::string s_last_q;
+                static std::unordered_set<int32_t> s_match;   // name_ids whose name matches (rendered ring)
+                static std::vector<Hit> s_hits;               // deduped results for the list
+                static int32_t s_pending_locate = 0;
+
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                ImGui::InputTextWithHint("##itemsearch", "find item/object by name... (e.g. larval, bolt of)",
+                                         item_q, sizeof(item_q));
+                if (s_last_q != item_q)
+                {
+                    s_last_q = item_q;
+                    s_match.clear();
+                    s_hits.clear();
+                    if (item_q[0] != '\0')
+                    {
+                        // Resolve each distinct name_id once (cache), substring-match the query.
+                        std::unordered_map<int32_t, std::string> name_cache;
+                        std::map<int32_t, int> hit_count;  // matched name_id -> marker count (ordered)
+                        for (auto *L : overlay_layers())
+                        {
+                            if (!L) continue;
+                            for (const auto &m : L->markers())
+                            {
+                                if (m.name_id < 0) continue;
+                                auto it = name_cache.find(m.name_id);
+                                if (it == name_cache.end())
+                                    it = name_cache.emplace(m.name_id,
+                                                            goblin::lookup_text_utf8(m.name_id)).first;
+                                if (it->second.empty()) continue;
+                                if (!contains_ci(it->second.c_str(), item_q)) continue;
+                                if (s_match.insert(m.name_id).second)
+                                    s_hits.push_back({it->second, m.name_id, 0});
+                                ++hit_count[m.name_id];
+                            }
+                        }
+                        for (auto &h : s_hits) h.count = hit_count[h.name_id];
+                    }
+                }
+
+                if (item_q[0] != '\0')
+                {
+                    ImGui::TextDisabled("%zu match%s (ringed on map)", s_hits.size(),
+                                        s_hits.size() == 1 ? "" : "es");
+                    if (ImGui::BeginChild("##itemhits", ImVec2(0, 150), true))
+                    {
+                        for (size_t i = 0; i < s_hits.size(); i++)
+                        {
+                            const Hit &h = s_hits[i];
+                            char row[160];
+                            std::snprintf(row, sizeof(row), "%s  (x%d)##h%zu", h.label.c_str(), h.count, i);
+                            if (ImGui::Selectable(row))
+                                s_pending_locate = h.name_id;  // click → point the cursor at it
+                        }
+                        if (s_hits.empty())
+                            ImGui::TextDisabled("no marker matches");
+                    }
+                    ImGui::EndChild();
+                }
+                // Hand the renderer the live match set + any pending locate (consumed once).
+                goblin::worldmap::set_item_search(item_q[0] ? &s_match : nullptr, s_pending_locate);
+                s_pending_locate = 0;
             }
 
             // Sections (coarse) + their categories (fine). A row shows only if

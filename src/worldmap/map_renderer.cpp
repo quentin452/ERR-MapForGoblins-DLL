@@ -16,6 +16,7 @@
 #include "goblin_map_data.hpp"       // Category enum (WorldQuestNPC)
 
 #include <string>
+#include <unordered_set>
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
 
 #include <imgui.h>
@@ -1000,6 +1001,37 @@ bool quest_npc_gated_out(const Marker &m)
 
 bool inworld_hovered() { return s_inworld_hot; }
 
+// ── Item search highlight (F1 search bar) ───────────────────────────────────────────────────────
+// The overlay resolves which marker name_ids match the search query (rebuilt only when the query
+// changes) and hands a pointer to that set here each frame; render_markers rings those markers and
+// pulls them out of any cluster pile so each is individually visible. A "locate" request (a clicked
+// result) latches a name_id; the loop captures that marker's backbuffer screen pos so the overlay can
+// point the OS cursor at it (cursor = the 2D map camera). All cheap: one set lookup per marker.
+static const std::unordered_set<int32_t> *s_search_set = nullptr;
+static int32_t s_locate_nameid = 0;     // latched until the loop finds it
+static bool s_locate_have = false;      // a captured pos is waiting for the overlay
+static ImVec2 s_locate_pos{};
+
+void set_item_search(const std::unordered_set<int32_t> *matchNameIds, int32_t locateNameId)
+{
+    s_search_set = (matchNameIds && !matchNameIds->empty()) ? matchNameIds : nullptr;
+    if (locateNameId) s_locate_nameid = locateNameId;
+}
+
+bool take_locate_pos(float *x, float *y)
+{
+    if (!s_locate_have) return false;
+    s_locate_have = false;
+    if (x) *x = s_locate_pos.x;
+    if (y) *y = s_locate_pos.y;
+    return true;
+}
+
+static inline bool search_hit(const Marker &m)
+{
+    return s_search_set && m.name_id >= 0 && s_search_set->count(m.name_id) != 0;
+}
+
 void set_grace_sprite(void *tex, float u0, float v0, float u1, float v1)
 {
     s_grace_tex = reinterpret_cast<ImTextureID>(tex);
@@ -1207,14 +1239,25 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // (this was the dominant render.worldmap cost). Clustered-eligible markers are
             // NOT culled — an off-screen member still counts toward its grace pile/centroid
             // — but their eligibility doesn't depend on any flag, so we can test it early.
+            // A search hit is pulled OUT of any cluster pile so each match draws individually
+            // (and gets its highlight ring), instead of hiding inside a location pile.
+            const bool is_hit = search_hit(m);
             const bool clustered_eligible =
-                clustering && m.category >= 0 && m.cluster_key >= 0 &&
+                clustering && !is_hit && m.category >= 0 && m.cluster_key >= 0 &&
                 (dist_adaptive || goblin::ui::category_clustered(m.category));
 
             float gU, gV;
             project_marker(m, gU, gV);
             proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
             ImVec2 sp(p.x, p.y);
+            // Locate request (a clicked search result): capture this marker's screen pos — even if
+            // off-screen, so the overlay can point the cursor toward an on-page-but-scrolled match.
+            if (s_locate_nameid && m.name_id == s_locate_nameid)
+            {
+                s_locate_pos = sp;
+                s_locate_have = true;
+                s_locate_nameid = 0; // fire once
+            }
             const bool offscreen =
                 (sp.x < -32 || sp.y < -32 || sp.x > realW + 32 || sp.y > realH + 32);
             if (offscreen && !clustered_eligible)
@@ -1267,6 +1310,9 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             else
             {
                 draw_marker(fg, m, sp, icons, iconHalf);
+                // Search highlight: ring the matching markers so they stand out on the page.
+                if (is_hit)
+                    fg->AddCircle(sp, iconHalf * 1.7f, IM_COL32(255, 226, 40, 255), 0, 2.5f);
                 hover_test(hover, mouse, sp, iconHalf, [&] { return marker_label(m); });
                 ++n_drawn;
             }

@@ -6,6 +6,8 @@
 
 #include "marker_layer.hpp"
 
+#include <cstdint>
+#include <unordered_set>
 #include <vector>
 
 namespace goblin::worldmap
@@ -42,4 +44,16 @@ void set_grace_dungeon_sprite(void *tex, float u0, float v0, float u1, float v1)
 // the game only when a chip is hovered (so map pan/select elsewhere is untouched), while
 // still feeding the click to ImGui so the chip toggles even with the F1 panel closed.
 bool inworld_hovered();
+
+// ── Item search (F1 search bar) ──────────────────────────────────────────────
+// Hand render_markers the set of marker name_ids whose resolved name matches the search query
+// (null/empty = search inactive). Matching markers are ringed and pulled out of cluster piles.
+// locateNameId (non-zero) latches a "point the cursor here" request for ONE marker; the next
+// render captures that marker's backbuffer screen pos. Call each frame before render_markers.
+void set_item_search(const std::unordered_set<int32_t> *matchNameIds, int32_t locateNameId);
+
+// After render_markers: if a locate request was satisfied this frame, returns true once and writes
+// the matched marker's backbuffer (client-px) position — the overlay maps it to screen + moves the
+// OS cursor there (cursor = 2D map camera). Returns false when no locate is pending.
+bool take_locate_pos(float *x, float *y);
 } // namespace goblin::worldmap
