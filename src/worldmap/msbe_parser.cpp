@@ -54,10 +54,21 @@ constexpr int32_t PART_ENEMY = 2;
 
 // Parse "AEG{A}_{B}..." -> A*1000+B (= AssetEnvironmentGeometryParam row id).
 // 0 if the name isn't an AEG asset. e.g. "AEG099_821_9000" -> 99821.
-inline uint32_t aeg_row_from_name(const std::string &n)
+inline uint32_t aeg_row_from_name(const std::string &n, bool crossTile = false)
 {
-    if (n.size() < 8 || n.compare(0, 3, "AEG") != 0) return 0;
-    size_t i = 3;
+    // Model token "AEG{A}_{B}_…". Normally start-anchored. Cross-tile LOD proxies in a supertile
+    // carry a "m{AA}_{BB}_{CC}_{LOD}-" tile prefix before the model (e.g.
+    // "m60_48_57_00-AEG110_029_2000"); when crossTile, accept the model token after a "-AEG".
+    size_t s = 0;
+    if (n.compare(0, 3, "AEG") != 0)
+    {
+        if (!crossTile) return 0;
+        size_t dash = n.find("-AEG");
+        if (dash == std::string::npos) return 0;
+        s = dash + 1;  // points at "AEG…"
+    }
+    if (n.size() < s + 8) return 0;
+    size_t i = s + 3;
     uint32_t a = 0;
     while (i < n.size() && n[i] >= '0' && n[i] <= '9') { a = a * 10 + (n[i] - '0'); ++i; }
     if (i >= n.size() || n[i] != '_') return 0;
@@ -72,7 +83,7 @@ inline uint32_t aeg_row_from_name(const std::string &n)
 } // namespace
 
 ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase,
-                      bool wantAssets, bool wantEnemies, bool wantRegions)
+                      bool wantAssets, bool wantEnemies, bool wantRegions, bool crossTileAssets)
 {
     ParseResult R;
     if (len < 0x10 || std::memcmp(buf, "MSB ", 4) != 0) return R;
@@ -175,7 +186,7 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             size_t nm = eio(rd64(buf, pe + 0x00), pe);
             if (nm >= len) continue;
             std::string name = rd_utf16(buf, nm, len);
-            uint32_t row = aeg_row_from_name(name);
+            uint32_t row = aeg_row_from_name(name, crossTileAssets);
             if (row == 0) continue;
             Asset a;
             a.name = std::move(name);

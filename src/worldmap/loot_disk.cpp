@@ -496,9 +496,12 @@ std::vector<DiskCollectible> load_lod_feature_assets(const std::unordered_set<ui
         std::vector<uint8_t> msb = msbe::dcx_decompress(dcx.data(), dcx.size(), &krak, oodle);
         if (msb.empty()) continue;
         // Asset section only — the World-feature pass keys on aegRow + EntityID + position.
+        // crossTileAssets=true: these LOD proxies carry a "m{tile}-AEG…" cross-tile part name, which
+        // the start-anchored model parse would skip (the very reason the _00 enumeration misses them).
         msbe::ParseResult r = msbe::parse_msb(msb.data(), msb.size(), /*resident=*/false,
                                               /*blobBase=*/0, /*wantAssets=*/true,
-                                              /*wantEnemies=*/false, /*wantRegions=*/false);
+                                              /*wantEnemies=*/false, /*wantRegions=*/false,
+                                              /*crossTileAssets=*/true);
         if (!r.ok) continue;
         ++scanned;
         for (const auto &as : r.assets)

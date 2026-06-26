@@ -174,8 +174,13 @@ struct ParseResult
 // (the runtime enemy-drop source). Off by default.
 // wantRegions: also enumerate the spirit-spring POINT regions (MountJump/Locked/FakeSpiring)
 // into ParseResult.regions. Off by default (skips an extra POINT-section pass).
+// crossTileAssets: accept Asset part names carrying a cross-tile LOD prefix
+// ("m{AA}_{BB}_{CC}_{LOD}-AEG…", e.g. the Snow Town statues in a supertile) — off by default so the
+// _00 passes keep the strict start-anchored model parse (a handful of _00 assets carry such a prefix
+// and must NOT newly emit). Only the non-_00 LOD feature-asset scan opts in. See load_lod_feature_assets.
 ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase = 0,
-                      bool wantAssets = false, bool wantEnemies = false, bool wantRegions = false);
+                      bool wantAssets = false, bool wantEnemies = false, bool wantRegions = false,
+                      bool crossTileAssets = false);
 
 // Parse a DECOMPRESSED EMEVD (.emevd) blob and return every template item-award
 // reference (bank-2000 event init whose eventId is one of the 13 award templates),
