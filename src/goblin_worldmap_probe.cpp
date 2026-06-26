@@ -1059,7 +1059,7 @@ bool get_live_view(LiveView &out)
 // centre→pan). Writes WorldMapArea +0x378/+0x37C via WriteProcessMemory (bad/RO dst → false, never
 // crashes). Only valid for a point on the CURRENTLY-OPEN page (cross-page needs a page switch first).
 // Returns false if the map is closed / no live cursor / a read or write faulted.
-bool set_view_center(float mU, float mV)
+bool set_view_center(float mU, float mV, float minZoom)
 {
     uintptr_t a = g_active_cursor.load(std::memory_order_relaxed);
     if (!a)
@@ -1080,6 +1080,16 @@ bool set_view_center(float mU, float mV)
         !seh_read4(reinterpret_cast<void *>(view + 0x348), &smaxx) ||
         !seh_read4(reinterpret_cast<void *>(view + 0x34c), &smaxz))
         return false;
+    // Zoom IN if the live view is more zoomed-OUT than requested (a far-out view would leave the
+    // located marker a tiny speck). Write the live zoom (+0x380) directly so it snaps; we never zoom
+    // OUT (a user who zoomed in further keeps it). snapMid is the map-extent midpoint (zoom-independent),
+    // so the pan below uses the post-zoom value and the centre stays exact even while the engine eases
+    // — and the per-frame locate hold re-asserts it, self-correcting any one-frame ease lag.
+    if (minZoom > 0.f && zoom < minZoom)
+    {
+        seh_write_f32(reinterpret_cast<void *>(view + VIEW_ZOOM), minZoom);
+        zoom = minZoom;
+    }
     const float snapMidX = (sminx + smaxx) * 0.5f;
     const float snapMidZ = (sminz + smaxz) * 0.5f;
     const float panX = mU * zoom - snapMidX;

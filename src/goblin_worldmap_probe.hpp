@@ -60,7 +60,10 @@ namespace goblin::worldmap_probe
     // the map onto a clicked result (the real camera move, not a cursor nudge). Writes WorldMapArea
     // pan (+0x378/+0x37C); valid only for a point on the currently-open page. Returns false if the
     // map is closed / no live cursor / the write faulted. Map must be OPEN.
-    bool set_view_center(float mU, float mV);
+    // minZoom > 0: also ZOOM IN (write +0x380) if the view is currently more zoomed-OUT than minZoom,
+    // so the located marker isn't lost in a tiny far-out view; never zooms OUT (respects a user who
+    // zoomed in further). minZoom = 0 → pan only (legacy). Map zoom runs ~0.05 (whole map)..1.0.
+    bool set_view_center(float mU, float mV, float minZoom = 0.f);
 
     // Request the live map to switch to a target PAGE GROUP (bit1 = DLC, bit0 = underground), so the
     // item-search locate can reach a cross-page result. The switch is marshalled onto the GAME thread
