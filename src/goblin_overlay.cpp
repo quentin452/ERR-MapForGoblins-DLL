@@ -1393,17 +1393,17 @@ namespace
             ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
             ImGui::Begin("Map for Goblins##error", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.25f, 0.25f, 1.0f));
-            ImGui::TextUnformatted("Map for Goblins - ERREUR");
+            ImGui::TextUnformatted("Map for Goblins - ERROR");
             ImGui::Separator();
-            ImGui::TextWrapped("Le dossier des cartes du mod (map\\MapStudio\\*.msb.dcx) est "
-                               "introuvable. Le mod ne peut pas charger ses marqueurs.");
+            ImGui::TextWrapped("The mod's map folder (map\\MapStudio\\*.msb.dcx) could not be "
+                               "found. The mod cannot load its markers.");
             ImGui::PopStyleColor();
             ImGui::Spacing();
             std::string sd = goblin::worldmap::disk_loot_dir().string();
             if (!sd.empty())
-                ImGui::TextDisabled("Dernier chemin cherché: %s", sd.c_str());
-            ImGui::TextDisabled("Renseigne 'loot_msb_dir' dans MapForGoblins.ini, ou mets");
-            ImGui::TextDisabled("'loot_from_disk_msb = false' pour la base intégrée.");
+                ImGui::TextDisabled("Last path searched: %s", sd.c_str());
+            ImGui::TextDisabled("Set 'loot_msb_dir' in MapForGoblins.ini, or set");
+            ImGui::TextDisabled("'loot_from_disk_msb = false' to use the built-in database.");
             ImGui::End();
             return;
         }
@@ -1421,17 +1421,17 @@ namespace
                 ImGui::Begin("Map for Goblins##sigerror", nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize);
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.15f, 1.0f));
-                ImGui::TextUnformatted("Map for Goblins - AVERTISSEMENT");
+                ImGui::TextUnformatted("Map for Goblins - WARNING");
                 ImGui::Separator();
-                ImGui::TextWrapped("Les signatures (RE) n'ont pas été résolues correctement. "
-                                   "Le mod ne fonctionnera probablement pas correctement "
-                                   "(marqueurs, graces ou butin manquants ou erronés).");
+                ImGui::TextWrapped("The RE signatures were not resolved correctly. The mod "
+                                   "will probably not work correctly (markers, graces or "
+                                   "loot missing or wrong).");
                 ImGui::PopStyleColor();
                 ImGui::Spacing();
-                ImGui::TextDisabled("%d manquante(s), %d ambiguë(s) sur %d signatures.",
+                ImGui::TextDisabled("%d missing, %d ambiguous out of %d signatures.",
                                     sh.fail, sh.multi, sh.total);
-                ImGui::TextDisabled("Probablement cassé par une mise à jour du jeu — voir le");
-                ImGui::TextDisabled("log [SIG] pour le détail (re-find des AOB nécessaire).");
+                ImGui::TextDisabled("Likely broken by a game update — see the [SIG] log");
+                ImGui::TextDisabled("for details (the AOBs need to be re-found).");
                 ImGui::End();
                 return;
             }
