@@ -1194,36 +1194,38 @@ std::atomic<int> g_pending_group{-1};  // target group (bit1=DLC, bit0=UG); -1 =
 std::atomic<int> g_switch_settle{0};
 constexpr int SWITCH_SETTLE_FRAMES = 20;  // ~0.33s @60fps > the ~0.2s page cross-fade/snap
 
-// DLC map page availability: byte dialog+0x27c8 == 1 iff the player has discovered the DLC map (so the
-// "show Realm of Shadow" tab is selectable). Found by RPM-diffing three saves on the same page —
-// overworld-only=0, underground-only=0, all-discovered=1 (docs/re/windows_worldmap_page_switch_re_
-// findings.md §6). The UNDERGROUND layer has no equivalent stable dialog flag (contextual), so we
-// never auto-toggle the layer — only the page (overworld<->DLC) is driven, gated by this.
-constexpr uint32_t OFF_DLC_AVAIL = 0x27c8;
-inline bool dlc_available_at(uintptr_t dialog)
-{
-    int v = 0;
-    return dialog && seh_read_i32(reinterpret_cast<void *>(dialog + OFF_DLC_AVAIL), &v) &&
-           (v & 0xFF) == 1;
-}
-
+// Switch both axes toward the target group: PAGE (overworld<->DLC, c1fc0) then LAYER (surface<->UG,
+// c7900). Availability gating lives in the CALLER (the overlay only requests a group whose pages the
+// player has visited — grace-based, robust); the marshal just executes, so e.g. an overworld item
+// found while underground switches the layer back to surface (the "Godrick from underground" fix).
+// TODO(page_og_underground_available): the per-page DIALOG availability flag is only half-solved — DLC
+// = dialog+0x27c8 (read UNRELIABLY at runtime: greyed even on a discovered save), underground = never
+// found (contextual). Abandoned in favour of grace-discovery in the overlay; revisit if a clean dialog
+// flag is wanted. See docs/re/windows_worldmap_page_switch_re_findings.md §6.
 uintptr_t hk_c32f0(uintptr_t dialog, float dt, uintptr_t a3, uintptr_t a4)
 {
     uintptr_t r = g_c32f0_orig ? g_c32f0_orig(dialog, dt, a3, a4) : 0;
     const int want = g_pending_group.load(std::memory_order_relaxed);
     if (want >= 0 && dialog)
     {
-        int curPage = -1;
+        int curPage = -1, curLayer = -1;
         seh_read_i32(reinterpret_cast<void *>(dialog + 0xA88), &curPage);
-        const int wantPage = (want & 2) ? 10 : 0;  // only the PAGE axis (overworld<->DLC); never the
-                                                    // underground LAYER (no availability gate for it)
-        if (wantPage == 10 && !dlc_available_at(dialog))
+        uint64_t sub = 0;
+        if (seh_read8(reinterpret_cast<void *>(dialog + 0x2B68), &sub) && sub)
         {
-            g_pending_group.store(-1, std::memory_order_relaxed);  // DLC not discovered → refuse switch
+            int b = -1;
+            if (seh_read_i32(reinterpret_cast<void *>(sub + 0xB8), &b)) curLayer = b & 0xFF;
         }
-        else if (curPage != wantPage && g_c1fc0)
+        const int wantPage = (want & 2) ? 10 : 0;
+        const int wantLayer = (want & 1) ? 1 : 0;
+        if (curPage != wantPage && g_c1fc0)
         {
             g_c1fc0(dialog, (uintptr_t)wantPage, 0, 1);            // switch page this step
+            g_switch_settle.store(SWITCH_SETTLE_FRAMES, std::memory_order_relaxed);
+        }
+        else if (curLayer != wantLayer && g_c7900)
+        {
+            g_c7900(dialog, (uintptr_t)wantLayer, 0x40, 1);        // then layer next step
             g_switch_settle.store(SWITCH_SETTLE_FRAMES, std::memory_order_relaxed);
         }
         else
@@ -1268,12 +1270,6 @@ bool page_switch_busy()
 {
     return g_pending_group.load(std::memory_order_relaxed) >= 0 ||
            g_switch_settle.load(std::memory_order_relaxed) > 0;
-}
-
-bool page_dlc_available()
-{
-    uintptr_t a = g_active_cursor.load(std::memory_order_relaxed);
-    return a ? dlc_available_at(a - CURSOR_OFF_IN_MENU) : false;
 }
 
 void initialize(const std::filesystem::path &log_path)

@@ -77,12 +77,11 @@ namespace goblin::worldmap_probe
     // holds its pan until this is false so its set_view_center lands last and sticks.
     bool page_switch_busy();
 
-    // True iff the DLC (Realm of Shadow) map page is DISCOVERED / selectable for the player — byte
-    // dialog+0x27c8 (RPM-diffed across saves; 0 until the DLC map is unlocked). The item-search grays
-    // DLC results + the auto-switch refuses the DLC page when this is false, so we never teleport to an
-    // undiscovered page. (The underground LAYER has no equivalent stable flag, so it is never
-    // auto-toggled.) Returns false when the map is closed / no live cursor.
-    bool page_dlc_available();
+    // TODO(page_og_underground_available): a clean per-page DIALOG availability flag is only HALF found
+    // — DLC = dialog+0x27c8 (RPM-diffed, but read UNRELIABLY at runtime), underground = never located
+    // (contextual). The overlay instead gates the auto-switch on GRACE DISCOVERY (no grace rested in a
+    // region => never visited => don't teleport there), which is robust + covers both. If a clean
+    // dialog flag is wanted later, finish 0x27c8 + find the UG one (page_full_dump.py diff tooling).
 
     // Live world→map-space projection: call the engine's own per-icon projection
     // (FUN_1408877d0 on the live CS::WorldMapViewModel) to map a raw (area, gridX,
