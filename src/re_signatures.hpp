@@ -76,6 +76,14 @@ namespace goblin::sig
     // Authored 2026-06-26 (unique in .text). disp_pos=3, disp_size=1.
     inline constexpr const char *GOODS_SORT_GROUP_ACCESS = "0F B6 58 ?? EB ?? B3 FF 85 FF";
 
+    // AssetEnvironmentGeometryParam.pickUpItemLotParamId: read site `mov eax,[rax+0xb8]` (er+0x6c4c11)
+    // — the asset-pickup lot resolve. Found by the embedded find-what-accesses (goblin_field_probe)
+    // by looting a Runic Trace (AEG099_821 → row 99821); RAX = the AEG row (verified live, +0xb8 =
+    // 998210). Static scan was hopeless here (6507 `[reg+0xb8]` reads, none param-anchored). disp32 at
+    // AOB position 2 IS pickUpItemLotParamId's offset; the jns rel8 is wildcarded. Authored 2026-06-26
+    // (unique in .text). disp_pos=2, disp_size=4.
+    inline constexpr const char *AEG_PICKUP_LOT_ACCESS = "8B 80 ?? ?? ?? ?? 85 C0 79 ?? 48 8B 43 08";
+
     // ── World geometry / collected-state (goblin_collected, goblin_inject map-pos) ──
     // GeomFlagSaveDataManager slot (was RVA 0x3D69D18).
     inline constexpr const char *GEOM_FLAG_SLOT =
@@ -195,6 +203,7 @@ namespace goblin::sig
             {"MSG_REPOSITORY", MSG_REPOSITORY},
             {"GOODS_TYPE_ACCESS", GOODS_TYPE_ACCESS},
             {"GOODS_SORT_GROUP_ACCESS", GOODS_SORT_GROUP_ACCESS},
+            {"AEG_PICKUP_LOT_ACCESS", AEG_PICKUP_LOT_ACCESS},
             {"GEOM_FLAG_SLOT", GEOM_FLAG_SLOT},
             {"WORLD_GEOM_MAN_SLOT", WORLD_GEOM_MAN_SLOT},
             {"WCM_FINDER", WCM_FINDER},

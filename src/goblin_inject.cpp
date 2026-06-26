@@ -4383,8 +4383,18 @@ uint32_t goblin::aeg_pickup_lot(uint32_t aegRow)
     if (!s_ok) return 0;
     RawAegRow *row = s_seq->try_get(aegRow);
     if (!row) return 0;
+    // pickUpItemLotParamId offset, READ LIVE from the game's own `mov eax,[rax+0xb8]` (the asset-
+    // pickup lot resolve; pinned by the embedded find-what-accesses). Pinned 0xb8 = logged fallback.
+    static const ptrdiff_t s_off = [] {
+        auto r = modutils::resolve_field_offset(
+            {.aob = goblin::sig::AEG_PICKUP_LOT_ACCESS, .disp_pos = 2, .disp_size = 4});
+        if (r) { spdlog::info("[FIELDOFF] AssetEnvironmentGeometryParam.pickUpItemLotParamId = "
+                              "+0x{:x} (live from exe)", *r); return *r; }
+        spdlog::warn("[FIELDOFF] AEG pickUpItemLotParamId AOB unresolved — falling back to pinned +0xb8");
+        return static_cast<ptrdiff_t>(0xb8);
+    }();
     uint32_t lot;
-    std::memcpy(&lot, row->b + 0xb8, 4);
+    std::memcpy(&lot, row->b + s_off, 4);
     // pickUpItemLotParamId defaults to -1 (0xFFFFFFFF) for non-pickup assets (the
     // param has a row for EVERY asset model); 0 also = none. Either → not a pickup.
     if (lot == 0 || lot == 0xffffffffu) return 0;
