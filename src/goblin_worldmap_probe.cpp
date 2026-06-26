@@ -1206,6 +1206,11 @@ uintptr_t hk_c32f0(uintptr_t dialog, float dt, uintptr_t a3, uintptr_t a4)
 {
     uintptr_t r = g_c32f0_orig ? g_c32f0_orig(dialog, dt, a3, a4) : 0;
     const int want = g_pending_group.load(std::memory_order_relaxed);
+    // GIVE-UP guard: if a requested switch never reaches its target (e.g. a handler that doesn't take
+    // the expected direction), DON'T loop forever — that would pin page_switch_busy() true and block
+    // EVERY locate pan. Bound the attempts; on timeout, drop the request so pans unblock.
+    static int s_last_want = -2, s_age = 0;
+    if (want != s_last_want) { s_last_want = want; s_age = 0; }
     if (want >= 0 && dialog)
     {
         int curPage = -1, curLayer = -1;
@@ -1218,7 +1223,12 @@ uintptr_t hk_c32f0(uintptr_t dialog, float dt, uintptr_t a3, uintptr_t a4)
         }
         const int wantPage = (want & 2) ? 10 : 0;
         const int wantLayer = (want & 1) ? 1 : 0;
-        if (curPage != wantPage && g_c1fc0)
+        if (++s_age > 120)  // ~2s: the switch isn't landing → give up so we never block pans
+        {
+            g_pending_group.store(-1, std::memory_order_relaxed);
+            g_switch_settle.store(0, std::memory_order_relaxed);
+        }
+        else if (curPage != wantPage && g_c1fc0)
         {
             g_c1fc0(dialog, (uintptr_t)wantPage, 0, 1);            // switch page this step
             g_switch_settle.store(SWITCH_SETTLE_FRAMES, std::memory_order_relaxed);
