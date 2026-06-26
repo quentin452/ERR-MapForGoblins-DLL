@@ -4420,7 +4420,25 @@ bool goblin::aeg_is_gather(uint32_t aegRow)
     if (!s_ok) return false;
     RawAegRow *row = s_seq->try_get(aegRow);
     if (!row) return false;
-    return (row->b[0x3c] & 0x20) != 0;  // isEnableRepick (bit 5), NOT isBreakOnPickUp (bit 6)
+    // isEnableRepick: BOTH the byte offset (0x3c) AND the bit (5) are READ LIVE from the game's own
+    // `movzx eax,[rax+0x3c]; shr eax,5; and eax,1` repick-eligibility read (pinned by the embedded
+    // find-what-accesses). Zero magic numbers — and it live-re-confirms the 16k-leak fix is bit 5,
+    // not the Paramdex's bit 6. Pinned 0x3c/bit5 = logged fallback if the AOB breaks after a patch.
+    static const std::pair<ptrdiff_t, int> s_repick = [] {
+        auto off = modutils::resolve_field_offset(
+            {.aob = goblin::sig::AEG_REPICK_BIT_ACCESS, .disp_pos = 3, .disp_size = 1});
+        auto bit = modutils::resolve_field_offset(
+            {.aob = goblin::sig::AEG_REPICK_BIT_ACCESS, .disp_pos = 6, .disp_size = 1});
+        if (off && bit)
+        {
+            spdlog::info("[FIELDOFF] AssetEnvironmentGeometryParam.isEnableRepick = +0x{:x} bit{} "
+                         "(live from exe)", *off, (int)*bit);
+            return std::make_pair(*off, (int)*bit);
+        }
+        spdlog::warn("[FIELDOFF] AEG isEnableRepick AOB unresolved — falling back to pinned +0x3c bit5");
+        return std::make_pair(static_cast<ptrdiff_t>(0x3c), 5);
+    }();
+    return ((row->b[s_repick.first] >> s_repick.second) & 1) != 0;
 }
 
 // NpcParam row (736 bytes = NPC_PARAM_ST DetectedSize; itemLotId_enemy s32 @ +0x30,

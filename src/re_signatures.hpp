@@ -84,6 +84,16 @@ namespace goblin::sig
     // (unique in .text). disp_pos=2, disp_size=4.
     inline constexpr const char *AEG_PICKUP_LOT_ACCESS = "8B 80 ?? ?? ?? ?? 85 C0 79 ?? 48 8B 43 08";
 
+    // AssetEnvironmentGeometryParam.isEnableRepick: the repick-eligibility read site
+    // `movzx eax,[rax+0x3c]; shr eax,5; and eax,1` (er+0x6c4c59) — extracts BIT 5 of byte 0x3c. The
+    // multi-hit field-probe surfaced 7 distinct sites reading byte 0x3c (one per bitfield bit: bit0/3/
+    // 6/7…); THIS is the bit-5 one = isEnableRepick. It LIVE-RE-CONFIRMS the 16k-leak fix (bit 5, not
+    // the Paramdex's bit 6). Both the field offset AND the bit are read from this instruction: the disp8
+    // at AOB position 3 (=0x3c) and the `shr` immediate at position 6 (=5). The disp is wildcarded (so
+    // the offset resolves live); the `05` is KEPT to pin THE bit-5 site (the bit-6 sibling is otherwise
+    // byte-identical). Trailing `C3 C3` = the accessor epilogue (stable). Authored 2026-06-26 (unique).
+    inline constexpr const char *AEG_REPICK_BIT_ACCESS = "0F B6 40 ?? C1 E8 05 83 E0 01 C3 C3";
+
     // ── World geometry / collected-state (goblin_collected, goblin_inject map-pos) ──
     // GeomFlagSaveDataManager slot (was RVA 0x3D69D18).
     inline constexpr const char *GEOM_FLAG_SLOT =
@@ -204,6 +214,7 @@ namespace goblin::sig
             {"GOODS_TYPE_ACCESS", GOODS_TYPE_ACCESS},
             {"GOODS_SORT_GROUP_ACCESS", GOODS_SORT_GROUP_ACCESS},
             {"AEG_PICKUP_LOT_ACCESS", AEG_PICKUP_LOT_ACCESS},
+            {"AEG_REPICK_BIT_ACCESS", AEG_REPICK_BIT_ACCESS},
             {"GEOM_FLAG_SLOT", GEOM_FLAG_SLOT},
             {"WORLD_GEOM_MAN_SLOT", WORLD_GEOM_MAN_SLOT},
             {"WCM_FINDER", WCM_FINDER},

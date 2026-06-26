@@ -1,5 +1,6 @@
 #include "goblin_field_probe.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
@@ -18,12 +19,17 @@ namespace
 {
 // eldenring.exe image bounds (set at arm time) — the RIP filter that auto-skips every mod read.
 uintptr_t g_exe_base = 0, g_exe_end = 0;
-// The watched address + a one-shot guard so we log a single clean hit then disarm.
 uintptr_t g_watch_addr = 0;
-std::atomic<bool> g_done{false};
 PVOID g_veh = nullptr;
 std::vector<DWORD> g_armed_tids;   // threads we set DR0 on (to disarm)
 uint64_t g_dr7 = 0;
+// Multi-hit log: a field may be read by SEVERAL instructions (e.g. a bitfield byte tested bit-by-
+// bit — bit0 by one site, bit5/isEnableRepick by another). Collect DISTINCT eldenring.exe access
+// RIPs (deduped) and log each, disarming only after N, so one capture surfaces all of them.
+constexpr int FWA_MAX_HITS = 16;
+std::vector<uintptr_t> g_seen;     // distinct game RIPs logged
+CRITICAL_SECTION g_cs;
+std::atomic<bool> g_disarmed{false};
 
 void compute_exe_bounds()
 {
@@ -103,25 +109,35 @@ LONG CALLBACK veh(EXCEPTION_POINTERS *ep)
     // reforged, exposers, …) reads the same field — skip those and keep watching.
     if (rip < g_exe_base || rip >= g_exe_end)
         return EXCEPTION_CONTINUE_EXECUTION;
-    if (g_done.exchange(true))                 // already logged one clean hit
-        return EXCEPTION_CONTINUE_EXECUTION;
 
-    // For DATA breakpoints the saved RIP is the NEXT instruction; the accessing instruction ENDS
-    // here. Dump a window before+after so offset_resolver.py can back-decode + author the AOB.
-    uint8_t buf[40] = {0};
-    uintptr_t start = rip - 24;
-    std::memcpy(buf, reinterpret_cast<void *>(start), sizeof(buf));
-    char hex[40 * 3 + 1];
-    int n = 0;
-    for (int i = 0; i < (int)sizeof(buf); ++i) n += std::snprintf(hex + n, sizeof(hex) - n, "%02X ", buf[i]);
+    // Dedup by RIP (the same instruction fires every time the byte is read); only log NEW sites.
+    EnterCriticalSection(&g_cs);
+    bool is_new = std::find(g_seen.begin(), g_seen.end(), rip) == g_seen.end() &&
+                  (int)g_seen.size() < FWA_MAX_HITS;
+    int idx = (int)g_seen.size();
+    if (is_new) g_seen.push_back(rip);
+    bool full = (int)g_seen.size() >= FWA_MAX_HITS;
+    LeaveCriticalSection(&g_cs);
 
-    spdlog::warn("[FWA] eldenring.exe READ of {:#x} by rip=er+0x{:x} (RVA; access is the instr ENDING "
-                 "at this rip)", g_watch_addr, rip - g_exe_base);
-    spdlog::warn("[FWA]   bytes[rip-24 .. rip+16) = {}", hex);
-    spdlog::warn("[FWA]   -> author: py D:\\ghidra_scripts\\offset_resolver.py author 0x<accessing-rip>"
-                 "  (the instr just before er+0x{:x})", rip - g_exe_base);
-
-    disarm();                                  // one-shot
+    if (is_new)
+    {
+        // For DATA breakpoints the saved RIP is the NEXT instruction; the accessing instruction ENDS
+        // here. Dump a window before+after so offset_resolver.py can back-decode + author the AOB.
+        uint8_t buf[40] = {0};
+        std::memcpy(buf, reinterpret_cast<void *>(rip - 24), sizeof(buf));
+        char hex[40 * 3 + 1];
+        int n = 0;
+        for (int i = 0; i < (int)sizeof(buf); ++i) n += std::snprintf(hex + n, sizeof(hex) - n, "%02X ", buf[i]);
+        spdlog::warn("[FWA] hit #{}: eldenring.exe READ of {:#x} by rip=er+0x{:x} (access ENDS at this rip)",
+                     idx, g_watch_addr, rip - g_exe_base);
+        spdlog::warn("[FWA]   bytes[rip-24 .. rip+16) = {}", hex);
+    }
+    if (full && !g_disarmed.exchange(true))
+    {
+        disarm();
+        spdlog::warn("[FWA] logged {} distinct sites — disarmed. Author each with offset_resolver.py.",
+                     FWA_MAX_HITS);
+    }
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 
@@ -198,6 +214,7 @@ void goblin::field_probe::initialize(const std::string &spec)
 
     g_watch_addr = addr;
     g_dr7 = make_dr7(len, write_only);
+    InitializeCriticalSection(&g_cs);
     g_veh = AddVectoredExceptionHandler(1, veh);
     for_each_thread(addr, g_dr7, /*record=*/true);
 
