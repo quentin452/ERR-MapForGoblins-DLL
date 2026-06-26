@@ -1346,7 +1346,11 @@ namespace
         if (wm::take_locate_pos(&lu, &lv)) { s_hold_u = lu; s_hold_v = lv; s_hold_frames = 45; }
         if (s_hold_frames > 0)
         {
-            goblin::worldmap_probe::set_view_center(s_hold_u, s_hold_v);
+            // Pan onto the marker AND zoom in if the view is too far-out (else the located item is a
+            // speck in a whole-map view). kLocateZoom is a calibration constant (map zoom ~0.05..1.0;
+            // kGraceZoomRef in map_renderer is 0.25 "mid") — bump it if locate still feels too wide.
+            constexpr float kLocateZoom = 0.5f;
+            goblin::worldmap_probe::set_view_center(s_hold_u, s_hold_v, kLocateZoom);
             --s_hold_frames;
         }
     }
@@ -1881,22 +1885,46 @@ namespace
                     // player has never been there, so its map is undiscovered — grey those results +
                     // don't teleport in. Covers DLC (bit1) AND underground (bit0). Cached; recomputed
                     // (throttled) only while still false (graces don't un-discover). bit1=DLC, bit0=UG.
+                    // There is NO reliable native O(1) "page discovered" flag (the dialog DLC byte
+                    // read unreliably; the UG flag was never found — see goblin_worldmap_probe.hpp
+                    // TODO(page_og_underground_available)). read_event_flag() IS O(1), though: harvest
+                    // the grace discover-flags per page group ONCE (the flag IDs are save-independent —
+                    // every grace ROW exists in BonfireWarpParam regardless of discovery), then each
+                    // throttled tick read only that small list.
+                    // DO NOT LATCH seen=true: these statics outlive the DLL, so a save/character switch
+                    // within one game session (graces un-discover) would keep a latched page wrongly
+                    // unlocked — the "I rested at no grace yet nothing blocks" bug. We recompute seen
+                    // LIVE every tick instead (the list is tiny, so it's free).
                     static bool s_dlc_seen = false, s_ug_seen = false;
+                    static std::vector<uint32_t> s_dlc_grace_flags, s_ug_grace_flags;
+                    static bool s_grace_flags_built = false;
                     static int s_visit_tick = 0;
-                    if (map_open && (!s_dlc_seen || !s_ug_seen) && (++s_visit_tick % 30 == 0))
+                    if (map_open && (++s_visit_tick % 30 == 0))
                     {
-                        for (auto *L : overlay_layers())
+                        // Only fires during an active search (map open, 1 tick in 30). The first run
+                        // also builds the flag lists (one ~8477-marker pass); steady-state is just a
+                        // few-dozen flag reads — the bench line shows both.
+                        GOBLIN_BENCH("overlay.item_search.gate_scan");
+                        if (!s_grace_flags_built)
                         {
-                            if (!L) continue;
-                            for (const auto &m : L->markers())
+                            for (auto *L : overlay_layers())
                             {
-                                if (!m.discover_flag) continue;  // graces only carry a discover flag
-                                if (!goblin::ui::read_event_flag((uint32_t)m.discover_flag)) continue;
-                                if (m.group & 2) s_dlc_seen = true;
-                                if (m.group & 1) s_ug_seen = true;
+                                if (!L) continue;
+                                for (const auto &m : L->markers())
+                                {
+                                    if (!m.discover_flag) continue;  // graces only carry a discover flag
+                                    if (m.group & 2) s_dlc_grace_flags.push_back((uint32_t)m.discover_flag);
+                                    if (m.group & 1) s_ug_grace_flags.push_back((uint32_t)m.discover_flag);
+                                }
                             }
-                            if (s_dlc_seen && s_ug_seen) break;
+                            s_grace_flags_built = true;
                         }
+                        s_dlc_seen = false;
+                        for (uint32_t f : s_dlc_grace_flags)
+                            if (goblin::ui::read_event_flag(f)) { s_dlc_seen = true; break; }
+                        s_ug_seen = false;
+                        for (uint32_t f : s_ug_grace_flags)
+                            if (goblin::ui::read_event_flag(f)) { s_ug_seen = true; break; }
                     }
                     if (ImGui::BeginChild("##itemhits", ImVec2(0, 150), true))
                     {
