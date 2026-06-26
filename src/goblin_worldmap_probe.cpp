@@ -20,6 +20,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #define WIN32_LEAN_AND_MEAN
@@ -1083,6 +1084,94 @@ bool set_view_center(float mU, float mV)
     return ok;
 }
 
+// ── Page-switch instrumentation (config debug_page_switch) ───────────────────────────────────────
+// Hook each world-map page/layer switch handler and log [PAGESW] when it fires: which fn, its 4
+// register args (rcx/rdx/r8/r9 = dialog + up to 3 ints), and the page state (openDlc / layer)
+// BEFORE→AFTER. Run it once (overworld→underground→overworld→DLC→overworld) to (a) pin which of the 6
+// base↔DLC siblings does each direction, (b) confirm the layer/force arg values, and (c) feed the
+// safe-trigger design (docs/re/windows_worldmap_page_switch_re_prompt.md). Read-only besides the hooks
+// (calls the original, never alters args) — purely diagnostic, off by default.
+namespace
+{
+struct PsHandler { uint32_t rva; const char *name; };
+// RVAs from docs/re/windows_worldmap_page_transition_re_findings.md §6 (imagebase 0x140000000).
+constexpr PsHandler PS_HANDLERS[] = {
+    {0x9c40f0, "c40f0(layer surface<->UG)"},
+    {0x9c5d20, "c5d20(map?)"}, {0x9c7900, "c7900(map?)"}, {0x9c1fc0, "c1fc0(map?)"},
+    {0x9c23d0, "c23d0(map?)"}, {0x9c2c00, "c2c00(map?)"}, {0x9c3280, "c3280(map?)"},
+    {0x9c8120, "c8120(page-apply)"},
+};
+constexpr int PS_COUNT = (int)(sizeof(PS_HANDLERS) / sizeof(PS_HANDLERS[0]));
+using PsFn = uintptr_t (*)(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
+PsFn g_ps_orig[PS_COUNT] = {};
+
+// dialog = the handler's 1st arg (rcx). page id @ +0xA88, layer byte @ [+0x2B68]+0xB8.
+inline void ps_read_page(uintptr_t dialog, int &openDlc, int &layer)
+{
+    openDlc = layer = -1;
+    if (!dialog) return;
+    seh_read_i32(reinterpret_cast<void *>(dialog + 0xA88), &openDlc);
+    uint64_t sub = 0;
+    if (seh_read8(reinterpret_cast<void *>(dialog + 0x2B68), &sub) && sub)
+    {
+        int b = -1;
+        if (seh_read_i32(reinterpret_cast<void *>(sub + 0xB8), &b)) layer = b & 0xFF;
+    }
+}
+
+template <int N>
+uintptr_t ps_detour(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4)
+{
+    int bd = -1, bl = -1;
+    ps_read_page(a1, bd, bl);
+    uintptr_t r = g_ps_orig[N] ? g_ps_orig[N](a1, a2, a3, a4) : 0;
+    int ad = -1, al = -1;
+    ps_read_page(a1, ad, al);
+    if (g_log)
+        g_log->info("[PAGESW] {} dialog={:#x} a2={:#x} a3={:#x} a4={:#x} | page {}->{} layer {}->{}",
+                    PS_HANDLERS[N].name, a1, a2, a3, a4, bd, ad, bl, al);
+    return r;
+}
+
+template <int N>
+int ps_try_hook(uintptr_t base)
+{
+    try
+    {
+        modutils::hook(reinterpret_cast<void *>(base + PS_HANDLERS[N].rva),
+                       reinterpret_cast<void *>(&ps_detour<N>),
+                       reinterpret_cast<void **>(&g_ps_orig[N]));
+        return 1;
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::warn("[PAGESW] hook {} (+{:#x}) failed: {}", PS_HANDLERS[N].name,
+                     PS_HANDLERS[N].rva, e.what());
+        return 0;
+    }
+}
+
+template <int... Is>
+int ps_install_seq(uintptr_t base, std::integer_sequence<int, Is...>)
+{
+    int n = 0;
+    (void)std::initializer_list<int>{(n += ps_try_hook<Is>(base), 0)...};
+    return n;
+}
+
+void install_page_switch_probe()
+{
+    if (!goblin::config::debugPageSwitch) return;
+    uintptr_t base = g_exe_base ? g_exe_base
+                                : reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base) { spdlog::warn("[PAGESW] no eldenring.exe base — probe not installed"); return; }
+    int n = ps_install_seq(base, std::make_integer_sequence<int, PS_COUNT>{});
+    try { modutils::enable_hooks(); } catch (const std::exception &) {}
+    spdlog::info("[PAGESW] page-switch probe: {}/{} hooks installed (switch pages on the open map)", n,
+                 PS_COUNT);
+}
+} // namespace
+
 void initialize(const std::filesystem::path &log_path)
 {
     try
@@ -1096,6 +1185,7 @@ void initialize(const std::filesystem::path &log_path)
         spdlog::error("[WM-PROBE] could not open log {}: {}", log_path.string(), e.what());
         return;
     }
+    install_page_switch_probe();  // gated on config::debugPageSwitch
     std::thread(probe_loop).detach();
     spdlog::info("[WM-PROBE] world-map cursor probe active → {}", log_path.string());
 }
