@@ -606,19 +606,21 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
     // (direct/boss) awards only — the nearest loose-anchor window that resolves (the documented entity
     // is a non-positionable logic id; the real anchor sits at another arg — Taylew/Viridian).
     auto resolve_pos = [&](const DiskEmevd &a) -> const DiskEnemy * {
-        const auto &m = a.allowAsset ? ent_any : ent_enemy;
+        const auto &m = a.allowAsset ? ent_any : ent_enemy;  // perTile/ev1200 stay enemy-only
         auto it = m.find(a.entityId);
         if (it != m.end())
         {
             if (a.allowAsset && !ent_enemy.count(a.entityId)) ++dbg_asset;  // resolved as an ASSET
             return it->second;
         }
-        if (a.allowAsset)
-            for (uint32_t anc : a.anchors)
-            {
-                auto ai = ent_any.find(anc);
-                if (ai != ent_any.end()) { ++dbg_loose; return ai->second; }
-            }
+        // Loose-anchor fallback (direct-template + the perTile lot@idx(n-1) variant): the nearest
+        // window that resolves IN THE AWARD'S ALLOWED MAP — enemy+asset for direct, enemy-only for
+        // perTile (so the asset-chest over-match stays closed).
+        for (uint32_t anc : a.anchors)
+        {
+            auto ai = m.find(anc);
+            if (ai != m.end()) { ++dbg_loose; return ai->second; }
+        }
         return nullptr;
     };
 

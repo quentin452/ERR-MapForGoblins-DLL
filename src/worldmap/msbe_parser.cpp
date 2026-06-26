@@ -663,10 +663,40 @@ EmevdParse parse_emevd_full(const uint8_t *buf, size_t len)
                 // enemy-death awards survive as markers. Kept separate from R.direct for an observable count.
                 else if (eventId >= 1000000000u && argLen >= 16)
                 {
+                    const size_t nWin = (size_t)argLen / 4;
+                    // (a) the calibrated single-pair award: entity@8, lot@idx(n-2).
                     uint32_t entity = rd32(buf, a + 8);
                     uint32_t lot    = rd32(buf, a + (size_t)argLen - 8);
                     if ((int32_t)entity > 0 && (int32_t)lot > 0 && entity != lot)
-                        R.perTileEnemyAward.push_back({entity, lot});
+                        R.perTileEnemyAward.push_back({entity, lot, {}});
+                    // (b) the "kill-the-group → award" variant puts the lot at the LAST arg (idx n-1)
+                    // and a constant 1 at idx(n-2), so (a) reads junk and misses it. Its anchor is NOT
+                    // at a fixed offset → carry the nearest enemy-range windows as loose anchors; the
+                    // join resolves them ENEMY-ONLY (allowAsset=false for perTile — an asset anchor here
+                    // re-opens the ~395 asset-entity-chest over-match). Recovers the 2 Larval Tear
+                    // residuals + 2 more real items (another Larval Tear + an armour), 0 notable phantoms
+                    // — the lot_row_in_table gate filters the 370 non-item idx(n-1) values
+                    // (tools/_probe_pertile_lastlot.py). entity 0 → the join uses the anchors directly.
+                    uint32_t lotLast = rd32(buf, a + (size_t)argLen - 4);
+                    if ((int32_t)lotLast > 0 && lotLast != lot)
+                    {
+                        EmevdAward aw{0u, lotLast, {}};
+                        const size_t lotIdx = nWin - 1;
+                        std::vector<std::pair<size_t, uint32_t>> cand;  // (distance to lot, value)
+                        for (size_t k = 0; k < nWin; ++k)
+                        {
+                            if (k == lotIdx || k == 1) continue;  // skip the lot + the eventId arg
+                            uint32_t v = rd32(buf, a + k * 4);
+                            if (v < 1000000u || v == lotLast) continue;
+                            cand.emplace_back(lotIdx - k, v);  // k < lotIdx (lot is last)
+                        }
+                        std::sort(cand.begin(), cand.end());
+                        for (auto &c : cand)
+                            if (std::find(aw.anchors.begin(), aw.anchors.end(), c.second) ==
+                                aw.anchors.end())
+                                aw.anchors.push_back(c.second);
+                        if (!aw.anchors.empty()) R.perTileEnemyAward.push_back(std::move(aw));
+                    }
                 }
                 // mechanism B input: RunEvent(2000:00) binding flag→lot via callee 1200
                 if (iid == 0 && eventId == 1200 && argLen >= 16)

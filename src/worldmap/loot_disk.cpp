@@ -666,11 +666,13 @@ std::vector<DiskEmevd> load_emevd_awards(
         // Per-tile enemy-death awards (callee >= 1e9, NOT a kEmevdTemplate): join entity→disk-ENEMY
         // pos like a direct award (lotType 1, fallback to _enemy downstream). The enemy join filters
         // asset-entity chests; the lot-coverage dedup in build_disk_emevd_markers drops covered lots.
-        // perTile enemy-death awards: allowAsset=FALSE — strictly entity@8→ENEMY. An asset-join here
-        // re-introduces the ~395 asset-entity-chest over-match (see [[nobake-coverage-scoreboard]]).
+        // perTile enemy-death awards: allowAsset=FALSE — strictly entity/anchors→ENEMY (an asset-join
+        // here re-introduces the ~395 asset-entity-chest over-match, see [[nobake-coverage-scoreboard]]).
+        // The lot@idx(n-1) "kill-the-group" variant carries loose anchors (entity 0) resolved
+        // enemy-only by the join.
         for (const auto &a : p.perTileEnemyAward)
             out.push_back({a.entityId, a.lotId, /*lotType=*/1, /*bossReward=*/false,
-                           /*allowAsset=*/false, {}});
+                           /*allowAsset=*/false, a.anchors});
         per_tile_award += (int)p.perTileEnemyAward.size();
         // flag→lot only from common.emevd (the engine binding lives there; restricting
         // matches the bake and avoids a stray per-map RunEvent(1200) re-binding a flag).
