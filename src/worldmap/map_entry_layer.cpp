@@ -41,6 +41,20 @@ namespace
 constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldInteractables) + 1;
 
 std::array<std::vector<Marker>, NUM_CAT> g_buckets;
+
+// [SKIPPED] diag (config diag_loot_pos): disk placements PARSED from the mod's files but NOT drawn,
+// aggregated by reason across all passes (each pass adds its local filtered counts at its log line).
+// "shown vs skipped" visibility — the inverse of [COVERAGE]. Reset at the top of build_buckets_impl.
+struct SkipTally {
+    int unclassified = 0;   // item type genuinely unknown → no category bucket
+    int dedup = 0;          // already placed by another pass (treasure-dup / (entity,lot) / pos dedup)
+    int no_anchor = 0;      // no lot / no positionable MSB entity to place it
+    int by_design = 0;      // intentionally suppressed: rune/ember GEOM-tracked, anti-flood clutter,
+                            // respawnable/no-one-time-flag enemy drops
+    int merchant_phantom = 0; // shop-∞ bake fallback at the tile corner (dropped)
+    int dummy_inert = 0;    // cut DummyAsset (no EntityID → not reachable)
+};
+SkipTally g_skip;
 // Built exactly once via std::call_once — by the setup_mod prebuild thread
 // (prebuild_markers, kills the first-map-open hitch) OR lazily by the first
 // markers()/census call, whichever runs first. call_once blocks concurrent
@@ -328,6 +342,8 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
                  "{} sibling-unclassified)",
                  emitted, sib_emitted, (int)covered.size(), unclassified, sib_runeember,
                  sib_unclassified);
+    g_skip.unclassified += unclassified + sib_unclassified;
+    g_skip.by_design += sib_runeember;
 }
 
 // AEG collectible markers (config loot_collectibles): each placed AEG Asset whose
@@ -467,6 +483,10 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
     spdlog::info("[LOOTDISK] collectibles: {} markers emitted ({} assets total, {} non-ERR clutter "
                  "(pots/jars), {} not-a-pickup, {} treasure-dup, {} unclassified, {} rune/ember pieces)",
                  emitted, (int)collectibles.size(), clutter_skip, no_lot, dup, unclassified, piece_emitted);
+    g_skip.by_design += clutter_skip;  // non-ERR pot/jar clutter, anti-flood
+    g_skip.no_anchor += no_lot;
+    g_skip.dedup += dup;
+    g_skip.unclassified += unclassified;
     if (verbose)
     {
         for (auto &[cat, n] : per_cat)
@@ -551,6 +571,10 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
                  "{} npc-has-no-lot, {} treasure-dup, {} no-one-time-flag, {} same-lot-dedup, "
                  "{} unclassified)",
                  emitted, (int)enemies.size(), no_lot, dup, respawn, lot_dup, unclassified);
+    g_skip.no_anchor += no_lot;
+    g_skip.dedup += dup + lot_dup;
+    g_skip.by_design += respawn;  // enemy drop with no persistent one-time flag (respawnable)
+    g_skip.unclassified += unclassified;
     if (verbose)
         for (auto &[cat, n] : per_cat)
             spdlog::info("[LOOTDISK]   enemy-drop category index {} = {} markers", cat, n);
@@ -818,6 +842,10 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
                  emitted, emit_direct, emit_ev1200, sib_emitted, emitted + sib_emitted,
                  (int)awards.size(), no_entity, dup, treasure_dup, unclassified, sib_runeember,
                  sib_unclassified);
+    g_skip.no_anchor += no_entity;
+    g_skip.dedup += dup + treasure_dup;
+    g_skip.unclassified += unclassified + sib_unclassified;
+    g_skip.by_design += sib_runeember;
     spdlog::info("[LOOTDISK] emevd boss-reward pieces: {} Rune/Ember Pieces emitted (Reforged, at boss "
                  "pos, flag-gray); {} boss awards with no piece in base..base+8",
                  boss_piece_emitted, boss_piece_no_piece);
@@ -1485,6 +1513,7 @@ void build_buckets_impl()
 {
     GOBLIN_BENCH("build.buckets");
     namespace gen = goblin::generated;
+    g_skip = SkipTally{};  // reset the [SKIPPED] tally for this build
 
     // Disk-MSB loot source (opt-in): build the loot markers from the mod's real
     // files first + collect which item-lot ids they place, so the baked rows
@@ -2016,6 +2045,7 @@ void build_buckets_impl()
     if (goblin::config::dropMerchantPhantoms)
         spdlog::info("[LOOTDISK] dropped {} baked merchant-phantom markers (item sold infinite-stock in "
                      "ShopLineupParam, no disk twin — bake fallback at tile corner)", dropped_merchant);
+    g_skip.merchant_phantom = dropped_merchant;
     if (diag)
     {
         spdlog::info("[ENEMY-MARKERS] {} baked enemy-drop rows NOT covered by the disk enemy pass "
@@ -2242,6 +2272,30 @@ void build_buckets_impl()
         }
     }
 
+    // ── [SKIPPED] shown vs skipped: disk placements parsed but NOT drawn, by reason ─
+    // The inverse of [COVERAGE]: of everything the passes parsed from the mod's files, how many
+    // became markers vs were filtered, grouped by WHY. Each pass added its local filtered counts to
+    // g_skip at its log line; dummy_inert comes from the load. Gated by diag_loot_pos.
+    if (goblin::config::diagLootPos)
+    {
+        g_skip.dummy_inert = (int)dropped_dummy_lots.size();
+        int drawn = 0;
+        for (int c = 0; c < NUM_CAT; ++c) drawn += (int)g_buckets[c].size();
+        const int skipped = g_skip.unclassified + g_skip.dedup + g_skip.no_anchor +
+                            g_skip.by_design + g_skip.merchant_phantom + g_skip.dummy_inert;
+        spdlog::info("[SKIPPED] disk placements parsed but NOT drawn (by reason):");
+        spdlog::info("[SKIPPED]   unclassified={} (item type unknown → no category)", g_skip.unclassified);
+        spdlog::info("[SKIPPED]   dedup={} (already placed by another pass)", g_skip.dedup);
+        spdlog::info("[SKIPPED]   no_anchor={} (no lot / no positionable MSB entity)", g_skip.no_anchor);
+        spdlog::info("[SKIPPED]   by_design={} (rune/ember GEOM-tracked, anti-flood clutter, "
+                     "respawnable no-flag enemy drops)", g_skip.by_design);
+        spdlog::info("[SKIPPED]   merchant_phantom={} (shop-∞ bake fallback, dropped)", g_skip.merchant_phantom);
+        spdlog::info("[SKIPPED]   dummy_inert={} (cut DummyAsset, no EntityID)", g_skip.dummy_inert);
+        spdlog::info("[SKIPPED] TOTAL skipped={} vs drawn={} (drawn = all g_buckets markers; "
+                     "unclassified/no_anchor = real coverage gaps, dedup/by_design/phantom/inert = correct)",
+                     skipped, drawn);
+    }
+
     // ── [BAKED-RESIDUAL] bulk diag: the AUTHORITATIVE no-bake residual ─────────────
     // One self-describing line per SURVIVING Baked marker across EVERY category, scanned from
     // g_buckets AFTER all passes + the world-feature finalize — so it reflects what the renderer
@@ -2298,12 +2352,16 @@ void build_buckets_impl()
         //             lot-backed respawnable gather (no permanent done-state by design),
         //             nonloot = everything else (NPC/stake/spring/region — TYPES with no
         //             collect flag at all, the rows that can never gray/complete).
-        struct CovRow { int c, baked, disk, live, lc, drawn, census, flagged, respawn, nonloot; };
+        // flag_live/disk/baked = of the flagged markers, where the marker (and thus its live-resolved
+        // collect flag) came from — live read vs disk parse vs baked fallback. Shows collect-flag QUALITY:
+        // live = drift-proof, baked = stale-risk (#3).
+        struct CovRow { int c, baked, disk, live, lc, drawn, census, flagged, respawn, nonloot,
+                            flag_live, flag_disk, flag_baked; };
         std::vector<CovRow> rows;
         int tB = 0, tD = 0, tL = 0, tC = 0;
         for (int c = 0; c < NUM_CAT; ++c)
         {
-            CovRow r{c, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+            CovRow r{c, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
             const bool piece = c == static_cast<int>(gen::Category::ReforgedRunePieces) ||
                                c == static_cast<int>(gen::Category::ReforgedEmberPieces) ||
                                c == static_cast<int>(gen::Category::LootMaterialNodes);
@@ -2323,6 +2381,12 @@ void build_buckets_impl()
                 if (flag)
                 {
                     ++r.flagged;
+                    switch (m.source)
+                    {
+                    case Source::Live:    ++r.flag_live;  break;
+                    case Source::DiskMSB: ++r.flag_disk;  break;
+                    default:              ++r.flag_baked; break;
+                    }
                     census_flags.insert(flag);
                 }
                 else if (m.lot_backed)
@@ -2351,12 +2415,14 @@ void build_buckets_impl()
         // Census-vs-drawn + collect-flag coverage, keyed by the same category name so the
         // py generator can merge it into the same scoreboard row. drawn = real markers; census
         // = completable spots the badge shows; flag = flagged/drawn (rest = respawn + nonloot).
-        spdlog::info("[COVERAGE-CENSUS] drawn vs badge census + collect-flag coverage:");
+        spdlog::info("[COVERAGE-CENSUS] drawn vs badge census + collect-flag coverage "
+                     "(flag-src = where the flagged markers' live collect-flag came from):");
         for (const CovRow &r : rows)
             spdlog::info("[COVERAGE-CENSUS]   {:<24} drawn={:<4} census={:<4} flagged={:<4} "
-                         "respawn={:<4} nonloot={:<4} total={:<4}",
+                         "respawn={:<4} nonloot={:<4} flag-live={:<4} flag-disk={:<4} flag-baked={:<4} total={:<4}",
                          goblin::markers::category_name(static_cast<gen::Category>(r.c)),
-                         r.drawn, r.census, r.flagged, r.respawn, r.nonloot, r.drawn);
+                         r.drawn, r.census, r.flagged, r.respawn, r.nonloot,
+                         r.flag_live, r.flag_disk, r.flag_baked, r.drawn);
         spdlog::info("[COVERAGE] TOTAL baked={} disk={} live={} live-classified={} "
                      "(graces counted live separately in GraceLayer)",
                      tB, tD, tL, tC);
