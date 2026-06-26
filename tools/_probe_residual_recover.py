@@ -3,7 +3,7 @@
 
 Generalizes the per-category one-off probes (_probe_unknown_chests / _probe_resid_shop /
 _probe_treasure_part / _probe_boss_piece_entity / _probe_emevd_join) into ONE pass: for every
-surviving baked-loot [RESIDUAL-ROW] (diag_loot_pos dump), cross-reference the lot against EVERY
+surviving baked residual ([BAKED-RESIDUAL-ROW] dump, diag_loot_pos), cross-reference the lot against EVERY
 known disk placement mechanism and print a verdict. The recurring no-bake lesson is that an
 "accepted/irreducible" residual is usually a disk-parse gap — a position the OFFLINE bake reads
 that a runtime disk pass doesn't (the bossEntity@16 case, the treasure sibling-walk, the merchant
@@ -36,18 +36,44 @@ from System.IO import File as SysFile
 
 DEFAULT_LOG = Path(r"D:\DOWNLOAD\ERRv2.2.9.6-541-2-2-9-6-1780861369\ERRv2.2.9.6\dll\offline\logs\MapForGoblins.log")
 log = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_LOG
+
+# PRIMARY feed: [BAKED-RESIDUAL-ROW] — the authoritative post-finalize, all-category, live-named dump
+# (every source==Baked marker the renderer actually draws). Supersedes the loot-only, pre-finalize
+# [RESIDUAL-ROW] (kept as a fallback for older logs). The new line carries the live-resolved item NAME
+# + the obtain flag; it has no `src`/`key` (loot_source/encoded-key) — we re-derive recoverability
+# from the regulation below anyway, and lt==2 (ItemLotParam_enemy) is the orphan-enemy signal `src`
+# used to give. row_id 0-lot rows (pieces/world features) carry lot=0 → skipped (nothing to classify).
+BR = re.compile(r'\[BAKED-RESIDUAL-ROW\] cat="(?P<cat>[^"]+)" name="(?P<name>[^"]*)" '
+                r'lot=(?P<lot>\d+) lt=(?P<lt>\d+) row_id=(?P<row>\d+) flag=(?P<flag>-?\d+) '
+                r'cleared=(?P<cleared>-?\d+) m(?P<a>\d+)_(?P<gx>\d+)_(?P<gz>\d+)')
 ROW = re.compile(r'\[RESIDUAL-ROW\] cat="(?P<cat>[^"]+)" src=(?P<src>\w+) lot=(?P<lot>\d+) '
                  r'lt=(?P<lt>\d+) m(?P<a>\d+)_(?P<gx>\d+)_(?P<gz>\d+) key=(?P<key>-?\d+)')
 rows = {}
+feed = None
 for line in open(log, encoding='utf-8', errors='replace'):
-    m = ROW.search(line)
+    m = BR.search(line)
     if m:
-        rows[int(m.group('lot'))] = dict(cat=m.group('cat'), src=m.group('src'), lt=int(m.group('lt')),
-                                         tile=f"m{m.group('a')}_{m.group('gx')}_{m.group('gz')}")
+        feed = 'BAKED-RESIDUAL'
+        lot = int(m.group('lot'))
+        if lot == 0:
+            continue  # non-lot residual (piece / world feature) — no ItemLotParam to triage
+        rows[lot] = dict(cat=m.group('cat'), lt=int(m.group('lt')), src=None,
+                         tile=f"m{m.group('a')}_{m.group('gx')}_{m.group('gz')}",
+                         live_name=m.group('name'), flag=int(m.group('flag')))
+if not rows:  # fallback: older log without the bulk dump
+    for line in open(log, encoding='utf-8', errors='replace'):
+        m = ROW.search(line)
+        if m:
+            feed = 'RESIDUAL-ROW'
+            rows[int(m.group('lot'))] = dict(cat=m.group('cat'), src=m.group('src'),
+                                             lt=int(m.group('lt')),
+                                             tile=f"m{m.group('a')}_{m.group('gx')}_{m.group('gz')}",
+                                             live_name=None, flag=None)
 if not rows:
-    sys.exit("no [RESIDUAL-ROW] lines — run the game with diag_loot_pos=true + open the map.")
+    sys.exit("no [BAKED-RESIDUAL-ROW] or [RESIDUAL-ROW] lines — run the game with diag_loot_pos=true "
+             "+ open the map (the bulk dump is logged once per build).")
 targets = set(rows)
-print(f"[{len(targets)} residual lots from {log.name}]")
+print(f"[{len(targets)} residual lots from {log.name} via {feed}]")
 
 ERR = Path(config.require_err_mod_dir())
 MSB_DIR = ERR / 'map' / 'MapStudio'
@@ -239,7 +265,7 @@ for lot in sorted(targets, key=lambda l: (rows[l]['cat'], l)):
         bits = []
         if eh: bits.append(f'emevd-ref(no positionable ent, tmpl={sorted({h[1] for h in eh})})')
         if shop_fin: bits.append('finite-shop')
-        if r['src'] == 'enemy' and not npcref: bits.append('orphan-enemy(no NpcParam)')
+        if r['lt'] == 2 and not npcref: bits.append('orphan-enemy(no NpcParam)')  # lt2 = ItemLotParam_enemy
         v, detail = 'IRREDUCIBLE', '; '.join(bits) or 'no MSB/EMEVD/asset/shop placement'
     verdict_tally[v] += 1
     if v.startswith('RECOVER') or v == 'BOSS-CHAIN':
