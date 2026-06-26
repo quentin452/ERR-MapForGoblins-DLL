@@ -2,7 +2,7 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-26 10:41:39.565
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-26 11:13:03.700
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - **`drawn`** = real markers the renderer draws (= total). **`census`** = the ImGui badge denominator (completable spots) — distinct collect flags for flag-based categories, row count for geom/SFX pieces, 0 for graces; it EXCLUDES respawnable flag-less gather, so `census < drawn` wherever markers share a flag or respawn.
@@ -12,11 +12,11 @@
 
 ## ▶ Baked markers remaining
 
-# **96**  ← drive this to **0**
+# **92**  ← drive this to **0**
 
 | | baked | disk | live | live-cls | total |
 |---|--:|--:|--:|--:|--:|
-| **all categories** | **96** | 7905 | 469 | 188 | 8470 |
+| **all categories** | **92** | 7909 | 469 | 188 | 8470 |
 
 🔴 baked-only: **0**  ·  🟡 partial: **20**  ·  🟢 off-bake: **41**  (of 61 active categories)
 
@@ -91,7 +91,7 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | World - Bosses | 0 | 0 | 217 | 0 | 217 | symbol | 🟢 off-bake |
 | World - Hostile NPC | 0 | 50 | 0 | 0 | 50 | atlas 83% | 🟢 off-bake |
 | World - Imp Statues | 0 | 37 | 0 | 0 | 37 | atlas 30% | 🟢 off-bake |
-| World - Interactables | 6 | 96 | 0 | 0 | 102 | atlas 74% | 🟡 partial |
+| World - Interactables | 2 | 100 | 0 | 0 | 102 | atlas 74% | 🟡 partial |
 | World - Kindling Spirits | 0 | 5 | 0 | 0 | 5 | atlas 69% | 🟢 off-bake |
 | World - Maps | 1 | 23 | 0 | 0 | 24 | circle | 🟡 partial |
 | World - Paintings | 0 | 11 | 0 | 0 | 11 | atlas 65% | 🟢 off-bake |
