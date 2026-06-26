@@ -267,14 +267,20 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             if (!inb(re, 0x20, len)) continue;
             int32_t sub = (int32_t)rd32(buf, re + 0x08);
             bool keep = (sub == REGION_MOUNT_JUMP || sub == REGION_LOCKED_MOUNT_JUMP);
+            // Read the name for every region: the spirit-spring "Others" filter AND the Kindling
+            // Spirit filter (SFX region named "KindlingSpirit_000N", any subtype) both key on it.
             std::string name;
-            if (keep || sub == REGION_OTHERS)
             {
                 size_t nm = eio(rd64(buf, re + 0x00), re);
                 if (nm < len) name = rd_utf16(buf, nm, len);
             }
             if (!keep && sub == REGION_OTHERS &&
                 name.find("FakeSpiritSpringJump") != std::string::npos)
+                keep = true;
+            // Kindling Spirits: SFX region "KindlingSpirit_000N" (NOT the lit-variant
+            // "KindlingSpiritX_..." — the '_' after "Spirit" excludes it). The caller routes by
+            // this name prefix; position = the region pos (= the bake's kindling pos). No flag.
+            if (!keep && name.rfind("KindlingSpirit_", 0) == 0)
                 keep = true;
             if (!keep) continue;
             Region rg;
