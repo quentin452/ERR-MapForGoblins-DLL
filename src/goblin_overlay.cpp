@@ -48,15 +48,70 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM,
 
 namespace
 {
-    // Case-insensitive substring match (empty needle = match all). Used by the
-    // Sections & categories search box (the Quest Browser has its own local copy).
+    // Append codepoint `cp`, folded to lowercase ASCII, to `out`. Maps Latin-1 and a
+    // few Latin-Extended accented letters to their base letter so a query typed without
+    // accents (or in another locale) still matches the localized name. Non-Latin code
+    // points that have no ASCII base are dropped (harmless for substring search).
+    void append_folded(std::string &out, uint32_t cp)
+    {
+        if (cp < 0x80) { out += (char)tolower((int)cp); return; }
+        switch (cp)
+        {
+        case 0xC0: case 0xC1: case 0xC2: case 0xC3: case 0xC4: case 0xC5:
+        case 0xE0: case 0xE1: case 0xE2: case 0xE3: case 0xE4: case 0xE5: out += 'a'; break;
+        case 0xC6: case 0xE6: out += "ae"; break;
+        case 0xC7: case 0xE7: out += 'c'; break;
+        case 0xC8: case 0xC9: case 0xCA: case 0xCB:
+        case 0xE8: case 0xE9: case 0xEA: case 0xEB: out += 'e'; break;
+        case 0xCC: case 0xCD: case 0xCE: case 0xCF:
+        case 0xEC: case 0xED: case 0xEE: case 0xEF: out += 'i'; break;
+        case 0xD0: case 0xF0: out += 'd'; break;
+        case 0xD1: case 0xF1: out += 'n'; break;
+        case 0xD2: case 0xD3: case 0xD4: case 0xD5: case 0xD6: case 0xD8:
+        case 0xF2: case 0xF3: case 0xF4: case 0xF5: case 0xF6: case 0xF8: out += 'o'; break;
+        case 0xD9: case 0xDA: case 0xDB: case 0xDC:
+        case 0xF9: case 0xFA: case 0xFB: case 0xFC: out += 'u'; break;
+        case 0xDD: case 0xFD: case 0xFF: out += 'y'; break;
+        case 0xDE: case 0xFE: out += "th"; break;
+        case 0xDF: out += "ss"; break;
+        case 0x152: case 0x153: out += "oe"; break;  // Œ / œ
+        default: break;  // no ASCII base — drop
+        }
+    }
+
+    // Decode UTF-8 `s` into a lowercase, accent-folded ASCII string (see append_folded).
+    std::string fold_ci(const char *s)
+    {
+        std::string out;
+        const unsigned char *p = (const unsigned char *)s;
+        while (p && *p)
+        {
+            unsigned char c = *p;
+            uint32_t cp;
+            int len;
+            if (c < 0x80)            { cp = c;        len = 1; }
+            else if ((c >> 5) == 0x6)  { cp = c & 0x1F; len = 2; }
+            else if ((c >> 4) == 0xE)  { cp = c & 0x0F; len = 3; }
+            else if ((c >> 3) == 0x1E) { cp = c & 0x07; len = 4; }
+            else { ++p; continue; }  // stray continuation / invalid lead — skip
+            int i = 1;
+            for (; i < len; ++i)
+            {
+                if ((p[i] & 0xC0) != 0x80) break;  // truncated sequence
+                cp = (cp << 6) | (p[i] & 0x3F);
+            }
+            p += i;  // advance by bytes actually consumed
+            append_folded(out, cp);
+        }
+        return out;
+    }
+
+    // Case-insensitive, accent-insensitive substring match (empty needle = match all).
+    // Used by the Sections & categories search box (Quest Browser has its own copy).
     bool contains_ci(const char *hay, const char *need)
     {
         if (!need || !need[0]) return true;
-        std::string h, n;
-        for (const char *p = hay; p && *p; ++p) h += (char)tolower((unsigned char)*p);
-        for (const char *p = need; *p; ++p)     n += (char)tolower((unsigned char)*p);
-        return h.find(n) != std::string::npos;
+        return fold_ci(hay).find(fold_ci(need)) != std::string::npos;
     }
 
     // ── Hooked function typedefs ──────────────────────────────────────────
