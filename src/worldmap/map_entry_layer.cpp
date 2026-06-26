@@ -10,6 +10,7 @@
 #include "goblin_collected.hpp" // is_original_row_collected (piece graying)
 #include "goblin_kindling.hpp"  // is_row_collected (kindling graying)
 #include "goblin_markers.hpp"   // category_name (census log)
+#include "goblin_messages.hpp"  // lookup_text_utf8 ([BAKED-RESIDUAL] self-describing names)
 #include "goblin_config.hpp"    // config::suppressNativeBosses
 #include "goblin/goblin_map_flags.hpp" // flag::Story* (secondary story gate)
 #include "goblin_bench.hpp"            // GOBLIN_BENCH scoped timers
@@ -175,6 +176,8 @@ void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST
     m.lot_backed = !piece && !kind && lotId != 0 && lotType != 0;
     m.source = source;
     m.live_classified = live_classified;
+    m.lotId = lotId;
+    m.lotType = lotType;
     g_buckets[c].push_back(m);
 }
 
@@ -2237,6 +2240,42 @@ void build_buckets_impl()
             spdlog::info("[LOOTDISK] world features: category {} dropped {} baked twins ({})",
                          cat, (int)(before - bucket.size()), wipe ? "category-wipe" : "cell-dedup");
         }
+    }
+
+    // ── [BAKED-RESIDUAL] bulk diag: the AUTHORITATIVE no-bake residual ─────────────
+    // One self-describing line per SURVIVING Baked marker across EVERY category, scanned from
+    // g_buckets AFTER all passes + the world-feature finalize — so it reflects what the renderer
+    // actually draws from the static bake, not the pre-finalize MAP_ENTRIES rows. This supersedes the
+    // offline goblin_map_data parse (which mis-identified residuals: it doesn't see runtime
+    // recategorize/drop, and a row's textId1 ≠ its live-resolved item). The name is resolved LIVE
+    // (lookup_text_utf8 of the marker's live key) so each residual is human-identifiable with no
+    // offline step — covers loot AND world features (the old [RESIDUAL-ROW] was loot-only). Gated by
+    // diag_loot_pos. Companion offline tool: tools/_probe_residual_recover.py (recovery verdicts).
+    if (goblin::config::diagLootPos)
+    {
+        int total = 0;
+        for (int c = 0; c < NUM_CAT; ++c)
+        {
+            int baked = 0;
+            for (const Marker &m : g_buckets[c])
+            {
+                if (m.source != Source::Baked) continue;
+                ++baked;
+                std::string nm = m.name_id > 0 ? goblin::lookup_text_utf8(m.name_id) : std::string();
+                spdlog::info("[BAKED-RESIDUAL-ROW] cat=\"{}\" name=\"{}\" lot={} lt={} row_id={} "
+                             "flag={} cleared={} m{}_{}_{} pos=({:.1f},{:.1f})",
+                             goblin::markers::category_name(static_cast<gen::Category>(c)),
+                             nm.c_str(), m.lotId, (int)m.lotType, (unsigned long long)m.row_id,
+                             m.collected_flag, m.cleared_flag,
+                             m.raw_area, m.raw_gx, m.raw_gz, m.raw_px, m.raw_pz);
+            }
+            if (baked)
+                spdlog::info("[BAKED-RESIDUAL] cat=\"{}\" baked={}",
+                             goblin::markers::category_name(static_cast<gen::Category>(c)), baked);
+            total += baked;
+        }
+        spdlog::info("[BAKED-RESIDUAL] TOTAL surviving baked markers = {} (authoritative, post-finalize, "
+                     "all categories)", total);
     }
 
     // ── [COVERAGE] no-bake scoreboard ────────────────────────────────────────────

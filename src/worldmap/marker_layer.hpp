@@ -100,6 +100,11 @@ struct Marker
     // fallback (the baked item→category table missed it — an unbaked / new mod item).
     // Orthogonal to `source`: a DiskMSB marker may or may not be live-classified.
     bool live_classified = false;
+    // Source ItemLotParam lot (loot markers) — for the [BAKED-RESIDUAL] bulk diag + offline
+    // recovery cross-ref. 0 for non-lot markers (pieces / world features / graces). Set by
+    // MapEntryLayer push_marker (after the aggregate init; default keeps other ctors intact).
+    uint32_t lotId = 0;
+    uint8_t  lotType = 0;
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the
