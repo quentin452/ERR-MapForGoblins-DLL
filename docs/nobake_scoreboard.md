@@ -2,7 +2,7 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-26 23:42:08.154
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-26 23:55:38.941
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - **`drawn`** = real markers the renderer draws (= total). **`census`** = the ImGui badge denominator (completable spots) — distinct collect flags for flag-based categories, row count for geom/SFX pieces, 0 for graces; it EXCLUDES respawnable flag-less gather, so `census < drawn` wherever markers share a flag or respawn.
@@ -12,13 +12,13 @@
 
 ## ▶ Baked markers remaining
 
-# **19**  ← drive this to **0**
+# **18**  ← drive this to **0**
 
 | | baked | disk | live | live-cls | total |
 |---|--:|--:|--:|--:|--:|
-| **all categories** | **19** | 8143 | 469 | 73 | 8631 |
+| **all categories** | **18** | 8143 | 469 | 72 | 8630 |
 
-🔴 baked-only: **0**  ·  🟡 partial: **9**  ·  🟢 off-bake: **52**  (of 61 active categories)
+🔴 baked-only: **0**  ·  🟡 partial: **8**  ·  🟢 off-bake: **53**  (of 61 active categories)
 
 ## Tile coverage (`_00`-only parser)
 
@@ -57,7 +57,7 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | Loot - Ammo | 0 | 82 | 0 | 0 | 82 | atlas 69% | 🟢 off-bake |
 | Loot - Bell-Bearings | 0 | 63 | 0 | 0 | 63 | atlas 69% | 🟢 off-bake |
 | Loot - Consumables | 0 | 182 | 0 | 0 | 182 | atlas 69% | 🟢 off-bake |
-| Loot - Crafting Materials | 0 | 1692 | 0 | 48 | 1692 | atlas 69% | 🟢 off-bake |
+| Loot - Crafting Materials | 0 | 1691 | 0 | 47 | 1691 | atlas 69% | 🟢 off-bake |
 | Loot - Dragon Hearts | 0 | 20 | 0 | 0 | 20 | atlas 69% | 🟢 off-bake |
 | Loot - Gestures | 0 | 7 | 0 | 0 | 7 | atlas 69% | 🟢 off-bake |
 | Loot - Gloveworts | 0 | 271 | 0 | 0 | 271 | atlas 69% | 🟢 off-bake |
@@ -93,7 +93,7 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | World - Imp Statues | 0 | 37 | 0 | 0 | 37 | atlas 30% | 🟢 off-bake |
 | World - Interactables | 2 | 100 | 0 | 0 | 102 | atlas 74% | 🟡 partial |
 | World - Kindling Spirits | 0 | 5 | 0 | 0 | 5 | atlas 69% | 🟢 off-bake |
-| World - Maps | 1 | 23 | 0 | 0 | 24 | circle | 🟡 partial |
+| World - Maps | 0 | 24 | 0 | 0 | 24 | circle | 🟢 off-bake |
 | World - Paintings | 0 | 11 | 0 | 0 | 11 | atlas 65% | 🟢 off-bake |
 | World - Spirit Springs | 0 | 72 | 0 | 0 | 72 | atlas 96% | 🟢 off-bake |
 | World - Spiritspring Hawks | 0 | 14 | 0 | 0 | 14 | atlas 69% | 🟢 off-bake |
@@ -146,7 +146,7 @@ Residual loot total **16** = unknown 1 · treasure 0 (accepted) · enemy 15 (bak
 | Loot - Ammo | 82 | 82 | 82/82 | 0 | 0 |
 | Loot - Bell-Bearings | 63 | 56 | 63/63 | 0 | 0 |
 | Loot - Consumables | 182 | 179 | 181/182 | 1 | 0 |
-| Loot - Crafting Materials | 1692 | 579 | 583/1692 | 1109 | 0 |
+| Loot - Crafting Materials | 1691 | 578 | 582/1691 | 1109 | 0 |
 | Loot - Dragon Hearts | 20 | 20 | 20/20 | 0 | 0 |
 | Loot - Gestures | 7 | 6 | 7/7 | 0 | 0 |
 | Loot - Gloveworts | 271 | 39 | 39/271 | 232 | 0 |
