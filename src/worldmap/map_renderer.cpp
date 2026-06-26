@@ -1222,6 +1222,15 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // master into the per-layer visibility; a hidden layer is still iterated while searching so its
     // hits can draw, and non-hit markers in it stay hidden (the !layer_vis && !is_hit skip below).
     const bool master_on = goblin::ui::icons_enabled();
+    // Locate-candidate selection: a searched name can have many markers across the page. Pick the
+    // best one to pan onto — UNCOLLECTED first (the useful ones), then nearest to the current view
+    // centre. If every instance is already collected, the nearest collected one wins (it draws greyed,
+    // so the user sees it's done). View centre in marker space = (pan + snapMid)/zoom.
+    const float locCenU = (view.panX + view.snapMidX) / view.zoom;
+    const float locCenV = (view.panZ + view.snapMidZ) / view.zoom;
+    bool loc_have = false, loc_best_uncollected = false;
+    float loc_best_d = 1e30f;
+    ImVec2 loc_best{};
     for (auto *L : layers)
     {
         if (!L)
@@ -1264,14 +1273,24 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             project_marker(m, gU, gV);
             proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
             ImVec2 sp(p.x, p.y);
-            // Locate request (a clicked search result): capture this marker's MARKER-SPACE coord so the
-            // overlay can pan the live map's view centre onto it (the real camera move). Captured even
-            // if off-screen — the point is on the open page, so panning brings it into view.
+            // Locate request (a clicked search result): consider this marker as a pan candidate (even
+            // if off-screen — same page, so panning brings it into view). Best = uncollected-first,
+            // then nearest to the view centre; finalised after the loop.
             if (s_locate_nameid && m.name_id == s_locate_nameid)
             {
-                s_locate_pos = ImVec2(gU, gV);
-                s_locate_have = true;
-                s_locate_nameid = 0; // fire once
+                bool cleared_only = false;
+                const bool uncollected = !marker_done(m, cleared_only);
+                const float dd = (gU - locCenU) * (gU - locCenU) + (gV - locCenV) * (gV - locCenV);
+                const bool better = !loc_have ||
+                                    (uncollected && !loc_best_uncollected) ||
+                                    (uncollected == loc_best_uncollected && dd < loc_best_d);
+                if (better)
+                {
+                    loc_have = true;
+                    loc_best_uncollected = uncollected;
+                    loc_best_d = dd;
+                    loc_best = ImVec2(gU, gV);
+                }
             }
             const bool offscreen =
                 (sp.x < -32 || sp.y < -32 || sp.x > realW + 32 || sp.y > realH + 32);
@@ -1332,6 +1351,18 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                 ++n_drawn;
             }
         }
+    }
+    // Finalise the locate: pan onto the chosen candidate (best uncollected / nearest). Clear the
+    // request whether or not one was found — if every match was off-page, no candidate exists and the
+    // user was already told (results list) to switch pages, so don't keep retrying.
+    if (s_locate_nameid)
+    {
+        if (loc_have)
+        {
+            s_locate_pos = loc_best;
+            s_locate_have = true;
+        }
+        s_locate_nameid = 0;
     }
     } // render.worldmap.markers
 
