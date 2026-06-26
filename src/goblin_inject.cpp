@@ -4457,11 +4457,21 @@ int goblin::classify_item_live(int32_t key)
         // ITEM_ICONS so item_marker_category catches them first (keeping the Low/normal split); this
         // owns whatever the table misses — e.g. the 82909-82919 block — which is unambiguously a rune
         // → LootGoldenRunes (else it fell to the goods_type catch-all = CraftingMaterials).
-        switch (goods_sort_group(gid))
+        const int sg = goods_sort_group(gid);
+        switch (sg)
         {
             case 100: case 101: case 102: return (int)C::LootGoldenRunes;
             default: break;
         }
+        // Quest/key items the curated ITEM_ICONS table MISSES (gaps: e.g. Haligtree Medallion 8175 is
+        // absent while its neighbours 8174/8176 are mapped) → the existing QuestProgression bucket (its
+        // 'medallions, keys, Needles, quest-specific goods' intent), NOT the Crafting Materials catch-all.
+        // Keyed on ER's goodsType 1 = key/important item. Maps are goodsType 1 too but owned by the
+        // dedicated WorldMaps pass — exclude them (sortGroupId 190/191). The specific Key* sub-buckets
+        // (Cookbooks/Crystal Tears/…) are in ITEM_ICONS so item_marker_category catches them first; this
+        // only owns the unmapped tail.
+        if (sg != 190 && sg != 191 && goods_type_live(gid) == 1)
+            return (int)C::QuestProgression;
         // GOODS_TYPE values per the repo's own extractor (tools/extract_goods_categories.py).
         // Routing each known type to its real category makes the per-category show_* toggles a
         // fine-grained goodsType filter for collectibles (e.g. show_crafting_materials = false
