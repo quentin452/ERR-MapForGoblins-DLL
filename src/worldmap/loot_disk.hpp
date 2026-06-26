@@ -154,6 +154,20 @@ std::vector<DiskEnemy> load_lod_award_entities(const std::unordered_set<uint32_t
 // `wanted` is empty or no dir is resolved.
 std::vector<DiskCollectible> load_lod_feature_assets(const std::unordered_set<uint32_t> &wanted);
 
+// Targeted non-_00 scan for cross-tile LOD TREASURES — the treasure analogue of
+// load_lod_feature_assets. A handful of MSB Treasure events (18 across ERR, all Caelid m60)
+// exist ONLY in an overworld LOD supertile, bound to a cross-tile asset part named
+// "m{AA}_{BB}_{CC}_00-AEG…" (e.g. lot 1040540050 Dragonwound Grease lives only in m60_10_13_02 /
+// part m60_40_54_00-AEG099_620_9000). The _00-only load_disk_treasures misses them; most are
+// covered anyway as the contiguous-sibling of a _00 base, but a few sit past a chain gap and stay
+// baked residual (the oracle's RECOVER-TREASURE class, tools/_probe_residual_recover.py). This
+// returns each as a DiskTreasure whose marker tile comes from the cross-tile part-name PREFIX (= the
+// fine tile the supertile stores the part relative to; the bake parses the same prefix). The caller
+// uses it to RE-SOURCE a baked residual treasure's position from disk (kindling pattern) — it does
+// NOT emit new markers, so the sibling-covered lots are untouched (no double-place). Empty when no
+// dir is resolved. Skips GameEditionDisable parts via the same path as the _00 treasure scan.
+std::vector<DiskTreasure> load_lod_treasures();
+
 // Parse the active mod's event\*.emevd.dcx and return the World-feature graying flags:
 // (entityId -> activated event flag) for each EMEVD flag-template (Hero's Tomb statue
 // 90005683, Hostile NPC defeat 90005792). The World-feature disk pass joins an interactive

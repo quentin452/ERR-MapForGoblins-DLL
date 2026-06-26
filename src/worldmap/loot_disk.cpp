@@ -532,6 +532,64 @@ std::vector<DiskCollectible> load_lod_feature_assets(const std::unordered_set<ui
     return out;
 }
 
+std::vector<DiskTreasure> load_lod_treasures()
+{
+    std::vector<DiskTreasure> out;
+    fs::path dir = disk_loot_dir();
+    if (dir.empty()) return out;
+    msbe::OodleDecompressFn oodle = resolve_oodle();
+    int scanned = 0;
+    std::error_code ec;
+    for (auto &de : fs::directory_iterator(dir, ec))
+    {
+        if (!de.is_regular_file(ec)) continue;
+        const fs::path &p = de.path();
+        std::string name = p.filename().string();
+        std::string lower = name;
+        for (char &c : lower) c = (char)std::tolower((unsigned char)c);
+        if (lower.size() < 8 || lower.compare(lower.size() - 8, 8, ".msb.dcx") != 0) continue;
+        std::string stem = name.substr(0, name.size() - 8);
+        int a = 0, x = 0, z = 0, lod = -1;
+        if (std::sscanf(stem.c_str(), "m%d_%d_%d_%d", &a, &x, &z, &lod) != 4) continue;
+        if (lod == 0 || lod == 99) continue;  // non-_00 LOD tiers only (_00 done by load_disk_treasures)
+        std::vector<uint8_t> dcx = slurp(p);
+        if (dcx.empty()) continue;
+        bool krak = false;
+        std::vector<uint8_t> msb = msbe::dcx_decompress(dcx.data(), dcx.size(), &krak, oodle);
+        if (msb.empty()) continue;
+        // Treasures are parsed unconditionally; no asset/enemy/region sections needed.
+        msbe::ParseResult r = msbe::parse_msb(msb.data(), msb.size(), /*resident=*/false,
+                                              /*blobBase=*/0, /*wantAssets=*/false,
+                                              /*wantEnemies=*/false, /*wantRegions=*/false);
+        if (!r.ok) continue;
+        ++scanned;
+        for (const auto &t : r.treasures)
+        {
+            if (t.partIndex < 0 || t.itemLotId == 0) continue;  // item-glow / no part
+            // Drop inert DummyAsset placements (same rule as the _00 scan).
+            if (t.partType == msbe::PART_DUMMY_ASSET && t.entityId == 0 && !t.entityGroup) continue;
+            // CROSS-TILE only: the part name must carry an "m{AA}_{BB}_{CC}_00-…" prefix pointing to a
+            // DIFFERENT fine tile than this LOD file. A same-tile-named part in a LOD tier is just a
+            // lower-detail copy of a _00 placement → skip it (the _00 scan owns it). The prefix tile is
+            // where the bake places the marker (the supertile stores the part relative to that origin).
+            int fa = 0, fx = 0, fz = 0, flod = 0;
+            if (std::sscanf(t.partName.c_str(), "m%d_%d_%d_%d", &fa, &fx, &fz, &flod) != 4) continue;
+            if (fa == a && fx == x && fz == z) continue;  // same-tile LOD copy, not cross-tile
+            DiskTreasure d;
+            d.lotId = t.itemLotId;
+            d.area = (uint8_t)fa;
+            d.gx = (uint8_t)fx;
+            d.gz = (uint8_t)fz;
+            d.posX = t.pos[0];
+            d.posZ = t.pos[2];
+            out.push_back(d);
+        }
+    }
+    spdlog::info("[LOOTDISK] LOD treasure scan: {} cross-tile LOD treasures ({} non-_00 tiles parsed)",
+                 (int)out.size(), scanned);
+    return out;
+}
+
 namespace
 {
 // The mod's event\ dir (sibling of map\MapStudio), holding *.emevd.dcx. Derived from the
