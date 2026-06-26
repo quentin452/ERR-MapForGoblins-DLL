@@ -140,6 +140,20 @@ std::vector<DiskEmevd> load_emevd_awards(
 // early once every wanted id is resolved. Empty when `wanted` is empty or no dir is resolved.
 std::vector<DiskEnemy> load_lod_award_entities(const std::unordered_set<uint32_t> &wanted);
 
+// Targeted non-_00 scan for World-feature ASSETS whose model lives ONLY in LOD supertiles (the
+// asset analogue of load_lod_award_entities). Some asset-model features — the Snow Town
+// seal-release statues AEG110_029 — exist solely as cross-tile proxies in a non-_00 supertile
+// (m60_24_28_01, part name "m60_48_57_00-AEG110_029_…"), so the _00-only asset enumeration in
+// load_disk_treasures misses them and the world-feature pass never places them. This parses the
+// non-_00 tiles' Asset section ONLY for the given aegRows, returning each as a DiskCollectible whose
+// marker tile comes from the CROSS-TILE part-name prefix "m{AA}_{BB}_{CC}_00-…" (= the fine tile the
+// supertile stores the part relative to; the bake parses the same prefix). Caller appends the result
+// to disk_collectibles BEFORE build_disk_world_feature_markers (after build_disk_collectible_markers,
+// so these never count as loot collectibles). `wanted` = the WORLD_FEATURE_MODELS rows with lod_scan;
+// set lod_scan ONLY on models with no _00 placements (else _00 + LOD copies double-count). Empty when
+// `wanted` is empty or no dir is resolved.
+std::vector<DiskCollectible> load_lod_feature_assets(const std::unordered_set<uint32_t> &wanted);
+
 // Parse the active mod's event\*.emevd.dcx and return the World-feature graying flags:
 // (entityId -> activated event flag) for each EMEVD flag-template (Hero's Tomb statue
 // 90005683, Hostile NPC defeat 90005792). The World-feature disk pass joins an interactive

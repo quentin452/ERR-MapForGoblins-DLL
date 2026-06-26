@@ -1446,6 +1446,20 @@ void build_buckets_impl()
             std::vector<msbe::GestureRef> gesture_refs;
             std::unordered_map<uint32_t, uint32_t> world_feature_flags =
                 load_emevd_world_feature_flags(&painting_flags, &gesture_refs);
+            // LOD-only asset features: a few World-feature models (the Snow Town seal-release statues
+            // AEG110_029) are placed ONLY in non-_00 LOD supertiles, which the _00 asset enumeration in
+            // load_disk_treasures skips. Scan those models out of the non-_00 tiles and append to
+            // disk_collectibles BEFORE the world-feature pass — AFTER build_disk_collectible_markers
+            // (above), so they never count as loot collectibles. The wanted set = the editorial rows
+            // flagged lod_scan (tools/world_feature_assets.py). The asset analogue of the emevd
+            // load_lod_award_entities recovery; the other world-feature passes filter by their own model
+            // so these added assets are inert to them.
+            std::unordered_set<uint32_t> lod_feature_models;
+            for (size_t k = 0; k < gen::WORLD_FEATURE_MODEL_COUNT; ++k)
+                if (gen::WORLD_FEATURE_MODELS[k].lod_scan)
+                    lod_feature_models.insert(gen::WORLD_FEATURE_MODELS[k].aeg_row);
+            for (DiskCollectible &c : load_lod_feature_assets(lod_feature_models))
+                disk_collectibles.push_back(std::move(c));
             build_disk_world_feature_markers(disk_collectibles, world_feature_flags, world_feature_cells);
             // Summoning Pools: bespoke live-SignPuddleParam pass (param feature, not an asset
             // model). Rides the same category-wipe finalize via world_feature_cells.

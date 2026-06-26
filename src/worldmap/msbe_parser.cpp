@@ -389,6 +389,9 @@ constexpr EmevdTemplate kEmevdFlagTemplates[] = {
     {1050392303, 8, 12, 16}, // Sellia chalice (m60_50)
     {12022601, 12, 8, 16},   // Siofra lower-layer lantern: anchor asset@X4_4(+12), lit flag@X0_4(+8)
     {12022621, 12, 8, 16},   // Siofra upper-layer lantern
+    {1048572370, 8, 16, 20}, // Snow Town seal-release statue (4×): entity@X0_4(+8), lit flag@X8_4(+16);
+                             // arglen 20, params (entity, sfx_eid, lit_flag). The AEG110_029 assets live
+                             // ONLY in LOD supertile m60_24_28_01 → recovered by load_lod_feature_assets.
 };
 const EmevdTemplate *find_emevd_flag_template(uint32_t eventId)
 {

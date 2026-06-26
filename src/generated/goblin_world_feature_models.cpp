@@ -6,16 +6,17 @@
 namespace goblin::generated
 {
 
-const size_t WORLD_FEATURE_MODEL_COUNT = 7;
+const size_t WORLD_FEATURE_MODEL_COUNT = 8;
 
 const WorldFeatureModel WORLD_FEATURE_MODELS[] = {
-    {27078u, Category::WorldImpStatues, 500008000, true, true, FlagRule::ImpSeal},  // AEG027_078 WorldImpStatues
-    {27079u, Category::WorldImpStatues, 500008000, true, true, FlagRule::ImpSeal},  // AEG027_079 WorldImpStatues
-    {99047u, Category::WorldInteractables, 800009520, true, false, FlagRule::SealEmevd},  // AEG099_047 WorldInteractables
-    {99055u, Category::WorldInteractables, 800007041, true, false, FlagRule::HeroTombEmevd},  // AEG099_055 WorldInteractables
-    {99060u, Category::WorldStakesOfMarika, 900301540, false, true, FlagRule::None},  // AEG099_060 WorldStakesOfMarika
-    {99090u, Category::WorldInteractables, 800009503, true, false, FlagRule::SealEmevd},  // AEG099_090 WorldInteractables
-    {237055u, Category::WorldInteractables, 800009520, true, false, FlagRule::SealEmevd},  // AEG237_055 WorldInteractables
+    {27078u, Category::WorldImpStatues, 500008000, true, true, FlagRule::ImpSeal, false},  // AEG027_078 WorldImpStatues
+    {27079u, Category::WorldImpStatues, 500008000, true, true, FlagRule::ImpSeal, false},  // AEG027_079 WorldImpStatues
+    {99047u, Category::WorldInteractables, 800009520, true, false, FlagRule::SealEmevd, false},  // AEG099_047 WorldInteractables
+    {99055u, Category::WorldInteractables, 800007041, true, false, FlagRule::HeroTombEmevd, false},  // AEG099_055 WorldInteractables
+    {99060u, Category::WorldStakesOfMarika, 900301540, false, true, FlagRule::None, false},  // AEG099_060 WorldStakesOfMarika
+    {99090u, Category::WorldInteractables, 800009503, true, false, FlagRule::SealEmevd, false},  // AEG099_090 WorldInteractables
+    {110029u, Category::WorldInteractables, 800009520, true, false, FlagRule::SealEmevd, true},  // AEG110_029 WorldInteractables
+    {237055u, Category::WorldInteractables, 800009520, true, false, FlagRule::SealEmevd, false},  // AEG237_055 WorldInteractables
 };
 
 } // namespace goblin::generated

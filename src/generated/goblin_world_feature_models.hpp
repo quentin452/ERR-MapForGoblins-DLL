@@ -31,6 +31,8 @@ struct WorldFeatureModel
     bool     entity_required;  // true = emit only placements carrying an MSB EntityID (interactive)
     bool     category_wipe;    // true = drop ALL baked of this category (dedicated); false = cell-dedup (shared)
     FlagRule flag_rule;        // how the pass resolves the graying flag (+ Imp suffix filter/label)
+    bool     lod_scan;         // true = model lives only in non-_00 LOD supertiles; the world-feature
+                               // pass adds a targeted non-_00 asset scan (load_lod_feature_assets)
 };
 
 extern const WorldFeatureModel WORLD_FEATURE_MODELS[];  // sorted by aeg_row
