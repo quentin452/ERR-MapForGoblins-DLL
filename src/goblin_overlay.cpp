@@ -1288,6 +1288,8 @@ namespace
                 0x0370, 0x03FF,  // Greek
                 0x0400, 0x04FF,  // Cyrillic
                 0x2010, 0x2027,  // general punctuation (en/em dash, curly quotes, ellipsis)
+                0x2190, 0x21FF,  // arrows (→ used in overlay labels e.g. "world→map fn")
+                0x2200, 0x22FF,  // math operators (≤ ≥ ≠ × ÷ used in labels)
                 0x20A0, 0x20BF,  // currency symbols
                 0,
             };
