@@ -380,6 +380,15 @@ constexpr EmevdTemplate kEmevdFlagTemplates[] = {
     {90005792, 20, 8, 24},   // Hostile NPC defeated: entity@+20 (X12_4), defeat flag@+8 (X0_4)
     {90006051, 8, 12, 16},   // Seal puzzle per-seal: seal entity@+8 (X0_4), activation flag@+12
                              // (X4_4); params (seal_eid, flag, sfx, group) — tools/extract_seal_puzzles.py
+    // Bespoke "extra puzzle" events — no shared template id (each is a per-map event), same
+    // (entity, flag) shape as the seals. Params are 0-based from byte 8 (X0_4=+8). Mirrors
+    // tools/extract_seal_puzzles.py:_EXTRA_PUZZLES. The world-feature pass joins entity→flag
+    // for the chalice/lantern asset models (AEG099_047 / AEG237_055) via seal_emevd self-gate.
+    {1049392302, 8, 12, 16}, // Sellia chalice (big):   entity@X0_4(+8), lit flag@X4_4(+12)
+    {1049392303, 8, 12, 16}, // Sellia chalice (small)
+    {1050392303, 8, 12, 16}, // Sellia chalice (m60_50)
+    {12022601, 12, 8, 16},   // Siofra lower-layer lantern: anchor asset@X4_4(+12), lit flag@X0_4(+8)
+    {12022621, 12, 8, 16},   // Siofra upper-layer lantern
 };
 const EmevdTemplate *find_emevd_flag_template(uint32_t eventId)
 {
