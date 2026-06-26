@@ -1445,6 +1445,12 @@ void build_buckets_impl()
     // marker's POSITION with the disk one + flips source→DiskMSB (keeps the baked row_id/identity so
     // goblin_kindling's row_id-keyed graying still works). Off-bakes the last 🔴 loot/world category.
     std::unordered_map<std::string, DiskRegion> kindling_disk;
+    // Cross-tile LOD treasures (lot → disk position): a few MSB Treasures live ONLY in an overworld
+    // LOD supertile (bound to a "m{AA}_{BB}_{CC}_00-AEG…" cross-tile part), which the _00-only
+    // load_disk_treasures misses. Most are covered as a contiguous-sibling of a _00 base; the few past
+    // a chain gap stay baked residual. The baked loop RE-SOURCES such a residual row's position from
+    // here + flips source→DiskMSB (kindling pattern: no new marker → sibling-covered lots untouched).
+    std::unordered_map<uint32_t, DiskTreasure> lod_treasure_pos;
     if (disk_source_enabled())
     {
         // One disk read pass for all sources. Each out-vector requested only when on.
@@ -1468,6 +1474,14 @@ void build_buckets_impl()
             wantRegions ? &disk_regions : nullptr);
         if (goblin::config::lootFromDiskMsb)
             build_disk_loot_markers(treasures, disk_lots, disk_lot_tile);
+        // Cross-tile LOD treasures (non-_00 supertiles), indexed by lot for the baked-residual
+        // re-source below. Only lots NOT covered by the _00 pass/sibling-walk (∉ disk_lots) are
+        // kept — a covered lot is already drawn, so re-sourcing it would double-place. First
+        // occurrence wins (one position per lot). Only when the treasure source is on.
+        if (goblin::config::lootFromDiskMsb)
+            for (DiskTreasure &t : load_lod_treasures())
+                if (!disk_lots.count(t.lotId))
+                    lod_treasure_pos.emplace(t.lotId, t);
         // All MSB Treasure lots (the ground-item pickup assets) — used to skip
         // double-placing in the collectible/enemy/emevd passes. Built from the parsed
         // treasures directly, so it's correct even when loot_from_disk_msb is off.
@@ -1597,6 +1611,7 @@ void build_buckets_impl()
     int replaced_piece = 0;  // baked Rune/Ember Pieces dropped because the disk pass placed them
     int replaced_matnode = 0; // baked Material Nodes dropped by IDENTITY (gather offset near-miss)
     int kindling_disk_pos = 0; // baked Kindling markers re-sourced to a disk SFX-region position
+    int lod_treasure_pos_count = 0; // baked treasure markers re-sourced to a cross-tile LOD position
     int replaced_enemy = 0;  // baked Enemy rows dropped because the disk enemy pass covers them
     int replaced_emevd = 0;  // baked Emevd rows dropped because the disk EMEVD pass covers them
     int dropped_merchant = 0; // baked loot rows dropped as merchant phantoms (shop-infinite item, no disk twin)
@@ -1789,6 +1804,29 @@ void build_buckets_impl()
                 continue;
             }
         }
+        // Cross-tile LOD treasure RE-SOURCE: this baked row survived every disk-coverage drop above
+        // (its lot ∉ disk_lots — the contiguous-sibling walk didn't reach it past a chain gap), but
+        // the lot IS an MSB Treasure that lives only in an overworld LOD supertile (bound to a
+        // "m{AA}_{BB}_{CC}_00-AEG…" cross-tile part), which the _00-only load_disk_treasures missed.
+        // Read its real position from that LOD part and tag the marker DiskMSB (kindling pattern: keep
+        // the baked row_id/lot/category, just disk-source the position — no new marker, so the
+        // sibling-covered LOD lots, dropped above, are never doubled). lotType-1 (map) only.
+        if (!lod_treasure_pos.empty() && e.lotType == 1 && e.lotId != 0)
+        {
+            auto lit = lod_treasure_pos.find(e.lotId);
+            if (lit != lod_treasure_pos.end())
+            {
+                from::paramdef::WORLD_MAP_POINT_PARAM_ST d = e.data;
+                d.areaNo = lit->second.area;
+                d.gridXNo = lit->second.gx;
+                d.gridZNo = lit->second.gz;
+                d.posX = lit->second.posX;
+                d.posZ = lit->second.posZ;
+                push_marker(e.row_id, d, c, e.lotId, e.lotType, Source::DiskMSB);
+                ++lod_treasure_pos_count;
+                continue;
+            }
+        }
         // [DEBAKE-GAP] diag (de-bake readiness): a Treasure-sourced row that reaches HERE was
         // NOT replaced — its lot isn't in disk_lots, so the disk source does not reproduce it.
         // These are exactly the rows that would be LOST if the bake's Treasure slice is dropped
@@ -1882,6 +1920,9 @@ void build_buckets_impl()
     if (goblin::config::worldFeaturesFromDisk)
         spdlog::info("[LOOTDISK] re-sourced {} baked Kindling Spirit markers to disk SFX-region "
                      "positions (DiskMSB; graying unchanged)", kindling_disk_pos);
+    if (goblin::config::lootFromDiskMsb)
+        spdlog::info("[LOOTDISK] re-sourced {} baked treasure markers to cross-tile LOD positions "
+                     "(DiskMSB; uncovered LOD-only treasures past a sibling-chain gap)", lod_treasure_pos_count);
     if (goblin::config::lootEnemyDrops)
         spdlog::info("[LOOTDISK] replaced {} baked enemy rows with disk enemy placements", replaced_enemy);
     if (goblin::config::lootEmevdDrops)
