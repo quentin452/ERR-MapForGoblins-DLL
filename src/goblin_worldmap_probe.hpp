@@ -65,6 +65,25 @@ namespace goblin::worldmap_probe
     // zoomed in further). minZoom = 0 → pan only (legacy). Map zoom runs ~0.05 (whole map)..1.0.
     bool set_view_center(float mU, float mV, float minZoom = 0.f);
 
+    // Diagnostic snapshot of the LAST set_view_center call — drives the F1 "Locate debug" overlay so
+    // the edge-of-world "no centering" case can be compared live against a normal one. Written on the
+    // render thread inside set_view_center, read by the overlay on the same thread.
+    struct LocateDebug
+    {
+        bool ran = false;       // set_view_center was called at least once
+        bool cursorOk = false;  // g_active_cursor live + view read OK (else everything below is stale)
+        float reqU = 0, reqV = 0;        // requested centre (marker space, the clicked marker)
+        float clampU = 0, clampV = 0;    // centre after the world-rect clamp
+        bool clamped = false;            // clamp actually moved the centre (→ near an edge)
+        bool rectOk = false;             // full-map rect (+0x350) read OK
+        float wMinX = 0, wMinZ = 0, wMaxX = 0, wMaxZ = 0; // world rect used for the clamp
+        float zoomBefore = 0, zoomUsed = 0;               // live zoom vs post zoom-in
+        float snapMidX = 0, snapMidZ = 0;
+        float panWroteX = 0, panWroteZ = 0;  // pan we computed + tried to write
+        bool wrote = false;                  // both pan writes succeeded
+    };
+    const LocateDebug &last_locate_debug();
+
     // Request the live map to switch to a target PAGE GROUP (bit1 = DLC, bit0 = underground), so the
     // item-search locate can reach a cross-page result. The switch is marshalled onto the GAME thread
     // (executed inside the hooked per-frame map step FUN_1409c32f0) so it never races the UI — calling
@@ -74,6 +93,13 @@ namespace goblin::worldmap_probe
     // NOTE: does NOT yet gate on page availability — pinning page_selectable (don't switch to a page
     // the player hasn't unlocked) is the next RE pass; see windows_worldmap_page_switch_re_prompt.md.
     void request_switch_to_page(int group);
+
+    // Item-search locate: drive the live map to CENTRE on a marker-space point. The per-frame map-step
+    // hook (c32f0, game thread) writes this to the cursor reticle target each frame, so the engine's own
+    // easer pans the view onto it and the write isn't reverted (RE §5b) — unlike a Present-thread pan
+    // write, which the engine overwrites. Call every frame while the locate is held; clear when done.
+    void set_locate_target(float u, float v);
+    void clear_locate_target();
 
     // True while an auto page-switch is in progress OR still settling (the engine SNAPS the view to
     // the new page's default, which would clobber an item-locate pan issued too early). The locate

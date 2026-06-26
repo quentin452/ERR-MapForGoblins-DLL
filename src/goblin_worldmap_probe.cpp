@@ -96,6 +96,7 @@ constexpr uintptr_t MENU_WALK_WINDOW = 0x10000; // dialog ptr "in the first few 
 // +0x350 rect should stay put. All reads are SEH-guarded + read-only.
 constexpr ptrdiff_t OFF_VIEW_PTR = 0xF0;     // cursor -> WorldMapArea
 constexpr ptrdiff_t VIEW_PAN_X = 0x378, VIEW_PAN_Z = 0x37C, VIEW_ZOOM = 0x380;
+constexpr ptrdiff_t VIEW_FULLRECT = 0x350; // static full-map rect [minX,minZ,maxX,maxZ] (clamp bound)
 // Virtual UI canvas singleton: [DAT_1447ef360 + 0x128] -> {+0x110 originX, +0x114
 // originY, +0x118 width, +0x11c height}. RVA, patch-fragile (debug only).
 constexpr uintptr_t CANVAS_SINGLETON_RVA = goblin::sig::CANVAS_SINGLETON_RVA;
@@ -1059,8 +1060,16 @@ bool get_live_view(LiveView &out)
 // centre→pan). Writes WorldMapArea +0x378/+0x37C via WriteProcessMemory (bad/RO dst → false, never
 // crashes). Only valid for a point on the CURRENTLY-OPEN page (cross-page needs a page switch first).
 // Returns false if the map is closed / no live cursor / a read or write faulted.
+static LocateDebug g_locate_dbg;
+const LocateDebug &last_locate_debug() { return g_locate_dbg; }
+
 bool set_view_center(float mU, float mV, float minZoom)
 {
+    // Reset the diagnostic snapshot for this call (the F1 "Locate debug" overlay reads it).
+    g_locate_dbg = LocateDebug{};
+    g_locate_dbg.ran = true;
+    g_locate_dbg.reqU = mU;
+    g_locate_dbg.reqV = mV;
     uintptr_t a = g_active_cursor.load(std::memory_order_relaxed);
     if (!a)
         return false;
@@ -1073,6 +1082,7 @@ bool set_view_center(float mU, float mV, float minZoom)
     if (!seh_read8(reinterpret_cast<void *>(a + OFF_VIEW_PTR), &view) || !view ||
         !plausible_ptr(view) || view_is_static(view))
         return false;
+    g_locate_dbg.cursorOk = true;
     float zoom = 0.f, sminx = 0, sminz = 0, smaxx = 0, smaxz = 0;
     if (!seh_read4(reinterpret_cast<void *>(view + VIEW_ZOOM), &zoom) || zoom == 0.f ||
         !seh_read4(reinterpret_cast<void *>(view + 0x340), &sminx) ||
@@ -1085,18 +1095,56 @@ bool set_view_center(float mU, float mV, float minZoom)
     // OUT (a user who zoomed in further keeps it). snapMid is the map-extent midpoint (zoom-independent),
     // so the pan below uses the post-zoom value and the centre stays exact even while the engine eases
     // — and the per-frame locate hold re-asserts it, self-correcting any one-frame ease lag.
+    g_locate_dbg.zoomBefore = zoom;
     if (minZoom > 0.f && zoom < minZoom)
     {
         seh_write_f32(reinterpret_cast<void *>(view + VIEW_ZOOM), minZoom);
         zoom = minZoom;
     }
+    g_locate_dbg.zoomUsed = zoom;
     const float snapMidX = (sminx + smaxx) * 0.5f;
     const float snapMidZ = (sminz + smaxz) * 0.5f;
-    const float panX = mU * zoom - snapMidX;
-    const float panZ = mV * zoom - snapMidZ;
-    bool ok = seh_write_f32(reinterpret_cast<void *>(view + VIEW_PAN_X), panX);
-    ok = seh_write_f32(reinterpret_cast<void *>(view + VIEW_PAN_Z), panZ) && ok;
-    return ok;
+    g_locate_dbg.snapMidX = snapMidX;
+    g_locate_dbg.snapMidZ = snapMidZ;
+    // Clamp the target view-CENTRE so the written pan keeps the view INSIDE the world. The engine
+    // REVERTS a pan that would show void past the map edge, so a marker near the border (e.g. Godrick
+    // at Stormveil — top-left of the map) otherwise never centres at all: the OOB pan is rejected and
+    // the map doesn't move. Bound = the static full-map rect (+0x350 = [minX,minZ,maxX,maxZ]). The
+    // visible half-extent in marker space is resolution-INDEPENDENT — the map renders in a fixed
+    // 1920×1080 virtual canvas so the realW/1920 factor cancels → half = 960/zoom (X), 540/zoom (Z).
+    // Inclusive (<=): when an axis has exactly one valid centre we clamp to it instead of snapping to
+    // the midpoint; when the whole map fits (lo>hi, zoomed out) we centre on the map midpoint.
+    float cU = mU, cV = mV;
+    float wMinX = 0, wMinZ = 0, wMaxX = 0, wMaxZ = 0;
+    if (seh_read4(reinterpret_cast<void *>(view + VIEW_FULLRECT + 0), &wMinX) &&
+        seh_read4(reinterpret_cast<void *>(view + VIEW_FULLRECT + 4), &wMinZ) &&
+        seh_read4(reinterpret_cast<void *>(view + VIEW_FULLRECT + 8), &wMaxX) &&
+        seh_read4(reinterpret_cast<void *>(view + VIEW_FULLRECT + 12), &wMaxZ) &&
+        wMaxX > wMinX && wMaxZ > wMinZ)
+    {
+        const float halfU = 960.f / zoom, halfV = 540.f / zoom;
+        const float loU = wMinX + halfU, hiU = wMaxX - halfU;
+        const float loV = wMinZ + halfV, hiV = wMaxZ - halfV;
+        cU = (loU <= hiU) ? (cU < loU ? loU : (cU > hiU ? hiU : cU)) : (wMinX + wMaxX) * 0.5f;
+        cV = (loV <= hiV) ? (cV < loV ? loV : (cV > hiV ? hiV : cV)) : (wMinZ + wMaxZ) * 0.5f;
+        g_locate_dbg.rectOk = true;
+        g_locate_dbg.wMinX = wMinX; g_locate_dbg.wMinZ = wMinZ;
+        g_locate_dbg.wMaxX = wMaxX; g_locate_dbg.wMaxZ = wMaxZ;
+    }
+    g_locate_dbg.clampU = cU;
+    g_locate_dbg.clampV = cV;
+    g_locate_dbg.clamped = (cU != mU || cV != mV);
+    // The "intended" pan = where the view SHOULD end up. We DON'T write it: the engine re-derives the
+    // pan from the cursor every frame (runtime-confirmed via the Locate debug overlay — a raw pan write,
+    // and a reticle +0xFC write, are both reverted). The actual centring is DRIVEN overlay-side by
+    // feeding GetCursorPos the marker's projected screen offset (the engine's own pan, converges + works
+    // at edges). This panX/panZ is kept only as the debug "target" the live pan should converge to.
+    const float panX = cU * zoom - snapMidX;
+    const float panZ = cV * zoom - snapMidZ;
+    g_locate_dbg.panWroteX = panX;
+    g_locate_dbg.panWroteZ = panZ;
+    g_locate_dbg.wrote = true; // zoom written + target prepared (no pan write by design)
+    return true;
 }
 
 // ── Page-switch instrumentation (config debug_page_switch) ───────────────────────────────────────
@@ -1203,6 +1251,12 @@ using StepFn = uintptr_t (*)(uintptr_t, float, uintptr_t, uintptr_t);
 SwitchFn g_c1fc0 = nullptr, g_c7900 = nullptr;
 StepFn g_c32f0_orig = nullptr;
 std::atomic<int> g_pending_group{-1};  // target group (bit1=DLC, bit0=UG); -1 = none
+// LOCATE DRIVE (structural fix): the per-frame map step c32f0 eases the pan toward the cursor RETICLE
+// target (= cursor+0xFC, RE §5b). We write that reticle to the located marker INSIDE the c32f0 detour
+// (game thread, just before the original's easer reads it) so the engine centres on it and our write
+// isn't reverted by the cursor tick. Set by the overlay locate hold; cleared when it ends.
+std::atomic<bool> g_locate_active{false};
+std::atomic<float> g_locate_u{0.f}, g_locate_v{0.f}; // target marker-space centre
 // Frames to keep "busy" after the last switch: a page swap SNAPS the view to the new page's default
 // (page-transition findings §7b), which would CLOBBER an item-locate pan issued too early. The locate
 // waits until this settles (page_switch_busy) so its set_view_center is the LAST write and sticks.
@@ -1219,6 +1273,24 @@ constexpr int SWITCH_SETTLE_FRAMES = 20;  // ~0.33s @60fps > the ~0.2s page cros
 // flag is wanted. See docs/re/windows_worldmap_page_switch_re_findings.md §6.
 uintptr_t hk_c32f0(uintptr_t dialog, float dt, uintptr_t a3, uintptr_t a4)
 {
+    // LOCATE DRIVE: write the cursor RETICLE target = the located marker BEFORE the original step, so
+    // its easer pans the view onto our marker (RE §5b: c32f0 eases pan toward dialog+0x2EAC = cursor+0xFC).
+    // The cursor tick rewrites the reticle from input each frame, but here — game thread, last write
+    // before the easer — ours wins. All three reticle pairs (snap-clamped +0xFC, full-clamped +0x104,
+    // snap-lerp +0x10C) are set so whichever the easer reads centres on the target. Re-asserted every
+    // frame for the locate hold's duration (the nav jitter keeps this step running with F1 open).
+    if (g_locate_active.load(std::memory_order_relaxed) && dialog)
+    {
+        const float u = g_locate_u.load(std::memory_order_relaxed);
+        const float v = g_locate_v.load(std::memory_order_relaxed);
+        const uintptr_t cur = dialog + CURSOR_OFF_IN_MENU;
+        seh_write_f32(reinterpret_cast<void *>(cur + 0xFC), u);
+        seh_write_f32(reinterpret_cast<void *>(cur + 0x100), v);
+        seh_write_f32(reinterpret_cast<void *>(cur + 0x104), u);
+        seh_write_f32(reinterpret_cast<void *>(cur + 0x108), v);
+        seh_write_f32(reinterpret_cast<void *>(cur + 0x10C), u);
+        seh_write_f32(reinterpret_cast<void *>(cur + 0x110), v);
+    }
     uintptr_t r = g_c32f0_orig ? g_c32f0_orig(dialog, dt, a3, a4) : 0;
     const int want = g_pending_group.load(std::memory_order_relaxed);
     // GIVE-UP guard: if a requested switch never reaches its target (e.g. a handler that doesn't take
@@ -1294,6 +1366,18 @@ void request_switch_to_page(int group)
 {
     g_pending_group.store(group, std::memory_order_relaxed);
 }
+
+// Drive the live map to CENTRE on a marker-space point (the item-search locate). The c32f0 detour
+// writes this to the cursor reticle each game frame so the engine eases the pan onto it (works at
+// world edges, not reverted — unlike a raw pan write). Call every frame during the locate hold;
+// clear_locate_target() when done (else the map stays pinned to the marker).
+void set_locate_target(float u, float v)
+{
+    g_locate_u.store(u, std::memory_order_relaxed);
+    g_locate_v.store(v, std::memory_order_relaxed);
+    g_locate_active.store(true, std::memory_order_relaxed);
+}
+void clear_locate_target() { g_locate_active.store(false, std::memory_order_relaxed); }
 
 bool page_switch_busy()
 {

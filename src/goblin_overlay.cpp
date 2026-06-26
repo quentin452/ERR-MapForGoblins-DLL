@@ -996,10 +996,11 @@ namespace
         {
             p->x = GetSystemMetrics(SM_CXSCREEN) / 2;
             p->y = GetSystemMetrics(SM_CYSCREEN) / 2;
-            // ER drives the 2D map camera off GetCursorPos. While a search-locate is in flight, jitter
-            // the reported cursor ±1px (net zero) so the game SEES the cursor move and actually steps
-            // its map — applying our page/layer switch + pan with the F1 panel still open (the panel
-            // otherwise freezes the cursor → the map never updates until you close it). 1px = no drift.
+            // ER drives the 2D map camera off GetCursorPos. While a search-locate / page-switch is in
+            // flight, jitter the reported cursor ±1px (net zero) so the game keeps STEPPING its map
+            // (the per-frame c32f0 step, where our locate reticle-write + page switch apply) with the F1
+            // panel still open. 1px = no drift. (Centring itself is driven on the game thread via the
+            // c32f0 reticle-target write, not from this cursor position.)
             if (g_nav_frames.load(std::memory_order_relaxed) > 0)
             {
                 static int s_cjit = 0;
@@ -1333,25 +1334,31 @@ namespace
             wm::set_grace_dungeon_sprite(reinterpret_cast<void *>(g_grace_dgn_gpu.ptr),
                                          g_grace_dgn_uv0.x, g_grace_dgn_uv0.y, g_grace_dgn_uv1.x, g_grace_dgn_uv1.y);
         wm::render_markers(s_layers, atlas, mx, my);
-        // Item-search "locate": pan the live map so its view centres on the located marker (writes
-        // WorldMapArea pan). HOLD it for a window of frames, re-applying the SAME map-space centre
-        // every frame: while the F1 panel is open the game freezes the cursor (to stop map drift),
-        // which re-asserts a static view and overwrites a one-shot pan — so we keep writing it (our
-        // write is the last each frame -> it sticks) until the user lets go. (gU,gV are view-INDEPENDENT
-        // map coords, so re-applying is stable.) g_show false (panel closed) -> the single write already
-        // sufficed, but the hold is harmless.
+        // Item-search "locate": centre the live map on the located marker. The engine re-derives the
+        // pan from the cursor reticle every frame (a Present-thread pan write is reverted), so the actual
+        // centring is driven on the GAME thread inside the c32f0 step hook: set_locate_target() hands it
+        // the marker, and the hook writes the reticle target each frame just before the engine's easer
+        // pans toward it. HELD over a window of frames (the freeze re-asserts the static view), and the
+        // nav jitter is kept alive so the c32f0 step keeps running with F1 open. set_view_center writes
+        // the ZOOM-in + the debug snapshot.
         static float s_hold_u = 0.f, s_hold_v = 0.f;
         static int s_hold_frames = 0;
-        float lu = 0.f, lv = 0.f;
-        if (wm::take_locate_pos(&lu, &lv)) { s_hold_u = lu; s_hold_v = lv; s_hold_frames = 45; }
+        float lu = 0.f, lvv = 0.f;
+        if (wm::take_locate_pos(&lu, &lvv)) { s_hold_u = lu; s_hold_v = lvv; s_hold_frames = 90; }
         if (s_hold_frames > 0)
         {
-            // Pan onto the marker AND zoom in if the view is too far-out (else the located item is a
-            // speck in a whole-map view). kLocateZoom is a calibration constant (map zoom ~0.05..1.0;
-            // kGraceZoomRef in map_renderer is 0.25 "mid") — bump it if locate still feels too wide.
+            // Zoom in if the view is too far-out (else the item is a speck). kLocateZoom is calibration
+            // (map zoom ~0.05..1.0; kGraceZoomRef in map_renderer is 0.25 "mid") — bump if still too wide.
             constexpr float kLocateZoom = 0.5f;
             goblin::worldmap_probe::set_view_center(s_hold_u, s_hold_v, kLocateZoom);
+            goblin::worldmap_probe::set_locate_target(s_hold_u, s_hold_v); // game-thread c32f0 centres on it
+            // Keep the map STEPPING (c32f0 runs) with F1 open: the per-frame step is gated on perceived
+            // input, so keep the nav jitter alive for the whole hold.
+            if (g_nav_frames.load(std::memory_order_relaxed) < s_hold_frames)
+                g_nav_frames.store(s_hold_frames, std::memory_order_relaxed);
             --s_hold_frames;
+            if (s_hold_frames == 0)
+                goblin::worldmap_probe::clear_locate_target(); // release the map (mouse pan resumes)
         }
     }
 
@@ -1831,6 +1838,51 @@ namespace
                 ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::InputTextWithHint("##itemsearch", "find item/object by name... (e.g. larval, bolt of)",
                                          item_q, sizeof(item_q));
+
+                // ── Locate debug (dev) — gated behind Verbose logging (debug_logging). Diagnoses the
+                // item-search centring: LIVE view vs the target the engine should ease the pan toward
+                // ("live-vs-target dPan" → CENTERED OK once converged). Kept for future locate issues.
+                if (goblin::config::debugLogging && ImGui::TreeNode("Locate debug (dev)"))
+                {
+                    goblin::worldmap_probe::LiveView dlv{};
+                    const bool dbg_open = goblin::worldmap_probe::get_live_view(dlv);
+                    const auto &d = goblin::worldmap_probe::last_locate_debug();
+                    if (dbg_open && dlv.zoom != 0.f)
+                    {
+                        const float cu = (dlv.panX + dlv.snapMidX) / dlv.zoom;
+                        const float cv = (dlv.panZ + dlv.snapMidZ) / dlv.zoom;
+                        ImGui::Text("LIVE pan=(%.1f, %.1f) zoom=%.3f  centre(marker)=(%.1f, %.1f)",
+                                    dlv.panX, dlv.panZ, dlv.zoom, cu, cv);
+                        ImGui::Text("LIVE snapMid=(%.1f, %.1f)", dlv.snapMidX, dlv.snapMidZ);
+                    }
+                    else
+                        ImGui::TextDisabled("map closed / no live view (open the world map)");
+                    ImGui::Separator();
+                    if (!d.ran)
+                        ImGui::TextDisabled("no locate yet — click a result");
+                    else
+                    {
+                        ImGui::Text("cursorOk=%d  wrote=%d  rectOk=%d", d.cursorOk, d.wrote, d.rectOk);
+                        ImGui::Text("req centre   = (%.1f, %.1f)", d.reqU, d.reqV);
+                        ImGui::TextColored(d.clamped ? ImVec4(1, 0.7f, 0.2f, 1) : ImVec4(0.6f, 0.6f, 0.6f, 1),
+                                           "clamp centre = (%.1f, %.1f)  %s", d.clampU, d.clampV,
+                                           d.clamped ? "[CLAMPED -> near edge]" : "[no clamp]");
+                        ImGui::Text("zoom %.3f -> %.3f   world=[%.0f,%.0f .. %.0f,%.0f]",
+                                    d.zoomBefore, d.zoomUsed, d.wMinX, d.wMinZ, d.wMaxX, d.wMaxZ);
+                        ImGui::Text("pan TARGET   = (%.1f, %.1f)  (driven via cursor, not written)",
+                                    d.panWroteX, d.panWroteZ);
+                        if (dbg_open)
+                        {
+                            const float dx = dlv.panX - d.panWroteX, dz = dlv.panZ - d.panWroteZ;
+                            const bool off = (dx > 8.f || dx < -8.f || dz > 8.f || dz < -8.f);
+                            ImGui::TextColored(off ? ImVec4(1, 0.7f, 0.2f, 1) : ImVec4(0.3f, 1, 0.3f, 1),
+                                               "live-vs-target dPan=(%.1f, %.1f)  %s", dx, dz,
+                                               off ? "<- converging / not there yet" : "<- CENTERED OK");
+                        }
+                    }
+                    ImGui::TreePop();
+                }
+
                 if (s_last_q != item_q)
                 {
                     s_last_q = item_q;
