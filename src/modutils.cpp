@@ -132,8 +132,52 @@ size_t modutils::scan_count(const std::string &aob)
     return count;
 }
 
+static ptrdiff_t read_disp(const unsigned char *m, ptrdiff_t pos, int size)
+{
+    const unsigned char *d = m + pos;
+    return (size == 1) ? static_cast<ptrdiff_t>(*reinterpret_cast<const int8_t *>(d))
+                       : static_cast<ptrdiff_t>(*reinterpret_cast<const int32_t *>(d));
+}
+
 std::optional<ptrdiff_t> modutils::resolve_field_offset(const FieldOffsetArgs &args)
 {
+    if (args.consensus)
+    {
+        // Generic/shared getter: accept N matches IFF they all carry the same displacement.
+        ptrdiff_t val = 0;
+        bool have = false;
+        size_t n = 0;
+        unsigned char *start = &memory.front();
+        size_t remaining = memory.size();
+        while (remaining)
+        {
+            auto *m = reinterpret_cast<unsigned char *>(Pattern16::scan(start, remaining, args.aob));
+            if (!m)
+                break;
+            ptrdiff_t off = read_disp(m, args.disp_pos, args.disp_size);
+            if (!have) { val = off; have = true; }
+            else if (off != val)
+            {
+                spdlog::warn("[FIELDOFF] consensus AOB sites disagree (0x{:x} vs 0x{:x}) — refusing [{}]",
+                             val, off, args.aob);
+                return std::nullopt;
+            }
+            ++n;
+            size_t consumed = static_cast<size_t>(m - start) + 1;
+            if (consumed >= remaining)
+                break;
+            start = m + 1;
+            remaining -= consumed;
+        }
+        if (!have)
+        {
+            spdlog::warn("[FIELDOFF] consensus AOB matched 0 sites — refusing [{}]", args.aob);
+            return std::nullopt;
+        }
+        spdlog::info("[FIELDOFF] resolved offset 0x{:x} live (consensus over {} sites)", val, n);
+        return val;
+    }
+
     // A field offset resolved from the WRONG instruction is silently catastrophic, so demand the
     // AOB be unique before trusting it (mirrors the [SIG] uniqueness check). 0 = patch broke it.
     size_t cnt = scan_count(args.aob);
@@ -148,9 +192,7 @@ std::optional<ptrdiff_t> modutils::resolve_field_offset(const FieldOffsetArgs &a
     if (match == nullptr)
         return std::nullopt;
 
-    const unsigned char *d = match + args.disp_pos;
-    ptrdiff_t off = (args.disp_size == 1) ? static_cast<ptrdiff_t>(*reinterpret_cast<const int8_t *>(d))
-                                          : static_cast<ptrdiff_t>(*reinterpret_cast<const int32_t *>(d));
+    ptrdiff_t off = read_disp(match, args.disp_pos, args.disp_size);
     spdlog::info("[FIELDOFF] resolved offset 0x{:x} live from access site {}",
                  off, static_cast<const void *>(match));
     return off;

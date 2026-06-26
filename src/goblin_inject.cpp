@@ -974,13 +974,31 @@ void goblin::capture_live_graces()
     // mirror the old offline bake (generate_graces.py): a real reachable grace needs a
     // discovery flag + a place-name, and is not an ERR intentional hide (all dispMask = 0).
     int hidden = 0, ug = 0;
+    // textId1 field offset, READ LIVE from the game's own text getter `mov reg,[base+0x30]` — a
+    // GENERIC switch dispatcher reused across several param types (4 matching sites, all disp 0x30,
+    // resolved by consensus). Read textId1 via this offset instead of the struct field so no offset
+    // constant survives in the hot path. Pinned 0x30 = logged fallback if the AOB breaks.
+    static const ptrdiff_t s_textid1_off = [] {
+        auto r = modutils::resolve_field_offset({.aob = goblin::sig::BONFIRE_TEXTID1_ACCESS,
+                                                 .disp_pos = 3, .disp_size = 1, .consensus = true});
+        if (r)
+        {
+            spdlog::info("[FIELDOFF] BonfireWarpParam.textId1 = +0x{:x} (live from exe, consensus)", *r);
+            return *r;
+        }
+        spdlog::warn("[FIELDOFF] BonfireWarp textId1 AOB unresolved — falling back to pinned +0x30");
+        return static_cast<ptrdiff_t>(0x30);
+    }();
+    auto textid1_of = [](const from::paramdef::BONFIRE_WARP_PARAM_ST &rw) -> int32_t {
+        return *reinterpret_cast<const int32_t *>(reinterpret_cast<const uint8_t *>(&rw) + s_textid1_off);
+    };
     try
     {
         for (auto [rowId, row] :
              from::params::get_param<from::paramdef::BONFIRE_WARP_PARAM_ST>(L"BonfireWarpParam"))
         {
             if (row.areaNo == 0) continue;                 // not a placed grace
-            if ((int)row.eventflagId <= 0 || row.textId1 <= 0) continue; // no flag / no name
+            if ((int)row.eventflagId <= 0 || textid1_of(row) <= 0) continue; // no flag / no name
             // dispMask00/01/02 are ALL bits 0/1/2 of the single byte 0x1e (verified in-memory:
             // dispMask00→0x01, dispMask01→0x02, dispMask02→0x04; byte 0x1f is pad). A grace shown
             // on NO map layer (all three 0) is an ERR intentional hide (spoiler graces). The
@@ -989,7 +1007,7 @@ void goblin::capture_live_graces()
             const bool underground = (row.iconId == 44);
             if (underground) ++ug;
             g_live_graces.push_back({ row.areaNo, row.gridXNo, row.gridZNo,
-                                      row.posX, row.posZ, row.textId1, rowId,
+                                      row.posX, row.posZ, textid1_of(row), rowId,
                                       (int)row.eventflagId, underground,
                                       row.bonfireSubCategoryId });
         }

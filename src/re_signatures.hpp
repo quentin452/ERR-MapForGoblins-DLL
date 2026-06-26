@@ -94,6 +94,17 @@ namespace goblin::sig
     // byte-identical). Trailing `C3 C3` = the accessor epilogue (stable). Authored 2026-06-26 (unique).
     inline constexpr const char *AEG_REPICK_BIT_ACCESS = "0F B6 40 ?? C1 E8 05 83 E0 01 C3 C3";
 
+    // BonfireWarpParam.textId1: read via a GENERIC switch-dispatcher text getter — the cases read
+    // consecutive text fields `mov reg,[base+0x30]` (textId1) / `+0x3c` / `+0x48`, and this exact
+    // dispatcher shape is REUSED across several param types that share the text block, so the AOB
+    // matches 4 sites — all carrying disp 0x30 (resolve with consensus=true). Found by the embedded
+    // find-what-accesses (looking at "The First Step" grace row 61423601 textId1 in the warp menu).
+    // disp8 at AOB position 3 = textId1's offset (the 0x3c/0x48 cases anchor the field block; the
+    // `EB 2b/25/1f` are the per-case jmps to the common tail). NOT in the SIG table (intentionally
+    // multi-match; the health check flags MULTI as a bug). Authored 2026-06-26. disp_pos=3, size=1.
+    inline constexpr const char *BONFIRE_TEXTID1_ACCESS =
+        "41 8B ?? ?? EB 2B 41 8B ?? 3C EB 25 41 8B ?? 48 EB 1F";
+
     // ── World geometry / collected-state (goblin_collected, goblin_inject map-pos) ──
     // GeomFlagSaveDataManager slot (was RVA 0x3D69D18).
     inline constexpr const char *GEOM_FLAG_SLOT =

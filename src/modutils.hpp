@@ -47,6 +47,11 @@ struct FieldOffsetArgs
     const std::string aob;
     ptrdiff_t disp_pos = 0;
     int disp_size = 1; // 1 = disp8, 4 = disp32
+    // When the field is read by a GENERIC/shared getter (e.g. one switch dispatcher reused across
+    // several param types that share a text-field block), the AOB legitimately matches N>1 sites.
+    // With consensus=true, resolve accepts N matches IFF every one reads the SAME displacement
+    // (and returns it); a single disagreeing site → nullopt. Default false = require a unique match.
+    bool consensus = false;
 };
 
 std::optional<ptrdiff_t> resolve_field_offset(const FieldOffsetArgs &args);
