@@ -56,6 +56,11 @@ void set_item_search(const std::unordered_set<int32_t> *matchNameIds, int32_t lo
 // drawing markers even with the icon master / a category toggled OFF so search hits stay revealed.
 bool item_search_active();
 
+// True while a clicked "locate" hasn't been satisfied yet — its marker is on a page that isn't open,
+// so the request waits. The overlay shows a "switch to that page" banner; the pan fires automatically
+// the frame that page opens. Cleared when satisfied or when the search is cleared.
+bool locate_pending();
+
 // After render_markers: if a locate request was satisfied this frame, returns true once and writes
 // the matched marker's MARKER-SPACE coord (gU, gV) — the overlay pans the live map's view centre onto
 // it (worldmap_probe::set_view_center). Returns false when no locate is pending / the marker wasn't

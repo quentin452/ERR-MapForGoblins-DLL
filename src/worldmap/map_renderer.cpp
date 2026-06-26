@@ -1014,11 +1014,17 @@ static ImVec2 s_locate_pos{};           // (gU, gV) marker space of the located 
 
 void set_item_search(const std::unordered_set<int32_t> *matchNameIds, int32_t locateNameId)
 {
-    s_search_set = (matchNameIds && !matchNameIds->empty()) ? matchNameIds : nullptr;
+    const bool active = matchNameIds && !matchNameIds->empty();
+    s_search_set = active ? matchNameIds : nullptr;
     if (locateNameId) s_locate_nameid = locateNameId;
+    else if (!active) s_locate_nameid = 0; // search cleared → cancel any pending locate
 }
 
 bool item_search_active() { return s_search_set != nullptr; }
+
+// A locate is still WAITING for its marker — the clicked result is on a page that isn't open yet, so
+// the loop hasn't found it. Lets the panel show "switch to that page; it'll centre automatically".
+bool locate_pending() { return s_locate_nameid != 0; }
 
 bool take_locate_pos(float *u, float *v)
 {
@@ -1352,17 +1358,14 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             }
         }
     }
-    // Finalise the locate: pan onto the chosen candidate (best uncollected / nearest). Clear the
-    // request whether or not one was found — if every match was off-page, no candidate exists and the
-    // user was already told (results list) to switch pages, so don't keep retrying.
-    if (s_locate_nameid)
+    // Finalise the locate: pan onto the chosen candidate (best uncollected / nearest). If NO candidate
+    // was found, the marker is on a page that isn't open — KEEP the request pending so it fires the
+    // moment the user switches to that page (cross-page locate without driving the native page swap).
+    if (s_locate_nameid && loc_have)
     {
-        if (loc_have)
-        {
-            s_locate_pos = loc_best;
-            s_locate_have = true;
-        }
-        s_locate_nameid = 0;
+        s_locate_pos = loc_best;
+        s_locate_have = true;
+        s_locate_nameid = 0; // satisfied
     }
     } // render.worldmap.markers
 

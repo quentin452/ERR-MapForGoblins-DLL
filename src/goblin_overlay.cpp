@@ -1781,6 +1781,8 @@ namespace
                 static std::unordered_set<int32_t> s_match;   // name_ids whose name matches (rendered ring)
                 static std::vector<Hit> s_hits;               // deduped results for the list
                 static int32_t s_pending_locate = 0;
+                static std::string s_locate_label;            // clicked item name (pending banner)
+                static int s_locate_group = 0;                // clicked item page (pending banner)
 
                 ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::InputTextWithHint("##itemsearch", "find item/object by name... (e.g. larval, bolt of)",
@@ -1836,15 +1838,27 @@ namespace
                             std::snprintf(row, sizeof(row), "%s  (x%d) - %s##h%zu", h.label.c_str(),
                                           h.count, page_label(h.group), i);
                             if (ImGui::Selectable(row))
+                            {
                                 s_pending_locate = h.name_id;  // click → pan the map onto it
+                                s_locate_label = h.label;      // remembered for the pending banner
+                                s_locate_group = h.group;
+                            }
                             if (off_page && ImGui::IsItemHovered())
-                                ImGui::SetTooltip("On the %s map — switch to that page, then click.",
-                                                  page_label(h.group));
+                                ImGui::SetTooltip("On the %s map — click anyway; it centres the moment "
+                                                  "you switch to that page.", page_label(h.group));
                         }
                         if (s_hits.empty())
                             ImGui::TextDisabled("no marker matches");
                     }
                     ImGui::EndChild();
+
+                    // Cross-page locate: the click is remembered and fires the instant the target page
+                    // opens (we don't drive ER's native page swap — that's an off-thread game call).
+                    if (goblin::worldmap::locate_pending())
+                        ImGui::TextColored(ImVec4(1.f, 0.85f, 0.2f, 1.f),
+                                           "> Locating \"%s\" - switch to the %s map; it centres "
+                                           "automatically.", s_locate_label.c_str(),
+                                           page_label(s_locate_group));
                 }
                 // Hand the renderer the live match set + any pending locate (consumed once).
                 goblin::worldmap::set_item_search(item_q[0] ? &s_match : nullptr, s_pending_locate);
@@ -2466,10 +2480,16 @@ namespace
         // anywhere, incl. over the 2D map. Edge-detected. (The CSMenuMan+0xCD
         // auto-show signal proved dead on this build — reads 0 even with the map
         // open — so this key is the sole trigger; the intended keybind-driven UX.)
-        bool down = (GetAsyncKeyState(static_cast<int>(goblin::config::overlayToggleKey)) & 0x8000) != 0;
+        // GetAsyncKeyState is GLOBAL (focus-independent): without this guard, pressing F1 while the
+        // game is alt-tabbed / on another monitor would still toggle the overlay AND activate the
+        // cursor hooks (free/freeze the cursor, blank input) off-screen — bug report "F1 offscreen
+        // active le hook cursor". Gate BOTH the toggle and the active state on the game window being
+        // foreground: the hooks only ever run while you're actually in the game.
+        const bool fg = (g_hwnd && GetForegroundWindow() == g_hwnd);
+        bool down = fg && (GetAsyncKeyState(static_cast<int>(goblin::config::overlayToggleKey)) & 0x8000) != 0;
         if (down && !g_prev_toggle_down) g_user_show = !g_user_show;
         g_prev_toggle_down = down;
-        g_show = g_user_show;
+        g_show = g_user_show && fg;   // lose focus → hooks deactivate; regain → panel restores
 
         // Falling edge (menu JUST closed): restore state the open-state hooks left
         // dangling. While open, hk_clip_cursor forced the cursor UNclipped on every
@@ -2478,8 +2498,11 @@ namespace
         // bad state until the next refocus. Re-confine to the window client rect (what
         // the game does during play) so input is never left dangling. Idempotent and
         // safe whether the map is open or in gameplay (ER is window-confined in both).
+        // Only re-clip on a real CLOSE (still foreground) — NOT when g_show dropped because focus was
+        // lost (the cursor then belongs to the other window; clipping it into the background game
+        // window would trap it there).
         static bool s_prev_show = false;
-        if (s_prev_show && !g_show && o_clip_cursor && g_hwnd)
+        if (s_prev_show && !g_show && fg && o_clip_cursor && g_hwnd)
         {
             RECT rc;
             if (GetClientRect(g_hwnd, &rc))
