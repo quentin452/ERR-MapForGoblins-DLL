@@ -1285,9 +1285,9 @@ namespace
 
     void draw_worldmap_markers(bool /*menu_open*/)
     {
-        if (!goblin::ui::icons_enabled())
-            return; // master off → draw no overlay markers
         namespace wm = goblin::worldmap;
+        if (!goblin::ui::icons_enabled() && !wm::item_search_active())
+            return; // master off (and no active search) → draw no overlay markers
         std::vector<wm::MarkerLayer *> &s_layers = overlay_layers();
         void *atlas = g_atlas_ready ? reinterpret_cast<void *>(g_atlas_gpu.ptr) : nullptr;
         // OS cursor in client/backbuffer px for marker tooltips (the map cursor tracks it).
@@ -1303,19 +1303,12 @@ namespace
             wm::set_grace_dungeon_sprite(reinterpret_cast<void *>(g_grace_dgn_gpu.ptr),
                                          g_grace_dgn_uv0.x, g_grace_dgn_uv0.y, g_grace_dgn_uv1.x, g_grace_dgn_uv1.y);
         wm::render_markers(s_layers, atlas, mx, my);
-        // Item-search "locate": if a clicked result was projected this frame, point the OS cursor at
-        // it (the 2D map cursor = the camera, so this scrolls the map onto the item). Uses the real
-        // SetCursorPos (o_set_cursor_pos) so it isn't swallowed by the game's per-frame recentering.
-        float lx = 0.f, ly = 0.f;
-        if (wm::take_locate_pos(&lx, &ly) && g_hwnd)
-        {
-            POINT lp{ (LONG)lx, (LONG)ly };
-            if (ClientToScreen(g_hwnd, &lp))
-            {
-                if (o_set_cursor_pos) o_set_cursor_pos(lp.x, lp.y);
-                else SetCursorPos(lp.x, lp.y);
-            }
-        }
+        // Item-search "locate": if a clicked result was projected this frame, pan the live map so its
+        // view centres on that marker (the real camera move — writes WorldMapArea pan). Only works for
+        // a marker on the currently-open page; cross-page results need the user to switch pages first.
+        float lu = 0.f, lv = 0.f;
+        if (wm::take_locate_pos(&lu, &lv))
+            goblin::worldmap_probe::set_view_center(lu, lv);
     }
 
     // In-game minimap HUD (corner, north-up, overworld). Drawn during gameplay (map
@@ -1775,7 +1768,14 @@ namespace
             // render loop just does an O(1) name_id set lookup.
             ImGui::SeparatorText("Find item / object");
             {
-                struct Hit { std::string label; int32_t name_id; int count; };
+                // group bits (marker_layer): bit0 = underground, bit1 = DLC. Label the page so the
+                // user knows where a hit is — locate only pans WITHIN the open page (cross-page needs
+                // a manual page switch first; auto-switch would need page-transition RE).
+                auto page_label = [](int g) -> const char * {
+                    switch (g & 3) { case 1: return "Underground"; case 2: return "DLC";
+                                     case 3: return "DLC Underground"; default: return "Overworld"; }
+                };
+                struct Hit { std::string label; int32_t name_id; int count; int group; };
                 static char item_q[64] = "";
                 static std::string s_last_q;
                 static std::unordered_set<int32_t> s_match;   // name_ids whose name matches (rendered ring)
@@ -1808,7 +1808,7 @@ namespace
                                 if (it->second.empty()) continue;
                                 if (!contains_ci(it->second.c_str(), item_q)) continue;
                                 if (s_match.insert(m.name_id).second)
-                                    s_hits.push_back({it->second, m.name_id, 0});
+                                    s_hits.push_back({it->second, m.name_id, 0, m.group});
                                 ++hit_count[m.name_id];
                             }
                         }
@@ -1818,17 +1818,28 @@ namespace
 
                 if (item_q[0] != '\0')
                 {
-                    ImGui::TextDisabled("%zu match%s (ringed on map)", s_hits.size(),
-                                        s_hits.size() == 1 ? "" : "es");
+                    // The open map page (group) so off-page hits can be flagged ("switch page first").
+                    int open_grp = 0;
+                    goblin::worldmap_probe::LiveView lv{};
+                    if (goblin::worldmap_probe::get_live_view(lv))
+                        open_grp = (lv.openDlc ? 2 : 0) | (lv.underground ? 1 : 0);
+
+                    ImGui::TextDisabled("%zu match%s (ringed on map; click = pan map onto it)",
+                                        s_hits.size(), s_hits.size() == 1 ? "" : "es");
                     if (ImGui::BeginChild("##itemhits", ImVec2(0, 150), true))
                     {
                         for (size_t i = 0; i < s_hits.size(); i++)
                         {
                             const Hit &h = s_hits[i];
-                            char row[160];
-                            std::snprintf(row, sizeof(row), "%s  (x%d)##h%zu", h.label.c_str(), h.count, i);
+                            const bool off_page = (h.group & 3) != (open_grp & 3);
+                            char row[200];
+                            std::snprintf(row, sizeof(row), "%s  (x%d) - %s##h%zu", h.label.c_str(),
+                                          h.count, page_label(h.group), i);
                             if (ImGui::Selectable(row))
-                                s_pending_locate = h.name_id;  // click → point the cursor at it
+                                s_pending_locate = h.name_id;  // click → pan the map onto it
+                            if (off_page && ImGui::IsItemHovered())
+                                ImGui::SetTooltip("On the %s map — switch to that page, then click.",
+                                                  page_label(h.group));
                         }
                         if (s_hits.empty())
                             ImGui::TextDisabled("no marker matches");

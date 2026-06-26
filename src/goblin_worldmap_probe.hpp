@@ -55,6 +55,13 @@ namespace goblin::worldmap_probe
     };
     bool get_live_view(LiveView &out);
 
+    // Pan the live world map so its view centres on a marker-space point (mU, mV) — same space as
+    // project()'s output / WorldMapPointParam posX/posZ. Used by the F1 item-search "locate" to scroll
+    // the map onto a clicked result (the real camera move, not a cursor nudge). Writes WorldMapArea
+    // pan (+0x378/+0x37C); valid only for a point on the currently-open page. Returns false if the
+    // map is closed / no live cursor / the write faulted. Map must be OPEN.
+    bool set_view_center(float mU, float mV);
+
     // Live world→map-space projection: call the engine's own per-icon projection
     // (FUN_1408877d0 on the live CS::WorldMapViewModel) to map a raw (area, gridX,
     // gridZ, posX, posZ) to map-space UV — folds WorldMapLegacyConvParam + applies the

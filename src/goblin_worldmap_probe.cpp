@@ -1047,6 +1047,42 @@ bool get_live_view(LiveView &out)
     return true;
 }
 
+// Pan the live world map so its view CENTRES on a marker-space point (mU, mV) — the same space as
+// project_marker's gU/gV and WorldMapPointParam posX/posZ. Inverts the engine pan setter
+// (FUN_1409cd100): pan = viewCentre·zoom − snapMid (identical to goblin_projection ViewDelay's
+// centre→pan). Writes WorldMapArea +0x378/+0x37C via WriteProcessMemory (bad/RO dst → false, never
+// crashes). Only valid for a point on the CURRENTLY-OPEN page (cross-page needs a page switch first).
+// Returns false if the map is closed / no live cursor / a read or write faulted.
+bool set_view_center(float mU, float mV)
+{
+    uintptr_t a = g_active_cursor.load(std::memory_order_relaxed);
+    if (!a)
+        return false;
+    static uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base)
+        return false;
+    uint64_t vt = 0, view = 0;
+    if (!seh_read8(reinterpret_cast<void *>(a), &vt) || vt != base + CURSOR_VTABLE_RVA)
+        return false;
+    if (!seh_read8(reinterpret_cast<void *>(a + OFF_VIEW_PTR), &view) || !view ||
+        !plausible_ptr(view) || view_is_static(view))
+        return false;
+    float zoom = 0.f, sminx = 0, sminz = 0, smaxx = 0, smaxz = 0;
+    if (!seh_read4(reinterpret_cast<void *>(view + VIEW_ZOOM), &zoom) || zoom == 0.f ||
+        !seh_read4(reinterpret_cast<void *>(view + 0x340), &sminx) ||
+        !seh_read4(reinterpret_cast<void *>(view + 0x344), &sminz) ||
+        !seh_read4(reinterpret_cast<void *>(view + 0x348), &smaxx) ||
+        !seh_read4(reinterpret_cast<void *>(view + 0x34c), &smaxz))
+        return false;
+    const float snapMidX = (sminx + smaxx) * 0.5f;
+    const float snapMidZ = (sminz + smaxz) * 0.5f;
+    const float panX = mU * zoom - snapMidX;
+    const float panZ = mV * zoom - snapMidZ;
+    bool ok = seh_write_f32(reinterpret_cast<void *>(view + VIEW_PAN_X), panX);
+    ok = seh_write_f32(reinterpret_cast<void *>(view + VIEW_PAN_Z), panZ) && ok;
+    return ok;
+}
+
 void initialize(const std::filesystem::path &log_path)
 {
     try

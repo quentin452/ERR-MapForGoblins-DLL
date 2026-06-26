@@ -52,8 +52,13 @@ bool inworld_hovered();
 // render captures that marker's backbuffer screen pos. Call each frame before render_markers.
 void set_item_search(const std::unordered_set<int32_t> *matchNameIds, int32_t locateNameId);
 
+// True while an item search is active (a non-empty match set was handed in). The overlay keeps
+// drawing markers even with the icon master / a category toggled OFF so search hits stay revealed.
+bool item_search_active();
+
 // After render_markers: if a locate request was satisfied this frame, returns true once and writes
-// the matched marker's backbuffer (client-px) position — the overlay maps it to screen + moves the
-// OS cursor there (cursor = 2D map camera). Returns false when no locate is pending.
-bool take_locate_pos(float *x, float *y);
+// the matched marker's MARKER-SPACE coord (gU, gV) — the overlay pans the live map's view centre onto
+// it (worldmap_probe::set_view_center). Returns false when no locate is pending / the marker wasn't
+// on the open page this frame.
+bool take_locate_pos(float *u, float *v);
 } // namespace goblin::worldmap

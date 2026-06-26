@@ -1009,8 +1009,8 @@ bool inworld_hovered() { return s_inworld_hot; }
 // point the OS cursor at it (cursor = the 2D map camera). All cheap: one set lookup per marker.
 static const std::unordered_set<int32_t> *s_search_set = nullptr;
 static int32_t s_locate_nameid = 0;     // latched until the loop finds it
-static bool s_locate_have = false;      // a captured pos is waiting for the overlay
-static ImVec2 s_locate_pos{};
+static bool s_locate_have = false;      // a captured marker-space coord is waiting for the overlay
+static ImVec2 s_locate_pos{};           // (gU, gV) marker space of the located marker
 
 void set_item_search(const std::unordered_set<int32_t> *matchNameIds, int32_t locateNameId)
 {
@@ -1018,12 +1018,14 @@ void set_item_search(const std::unordered_set<int32_t> *matchNameIds, int32_t lo
     if (locateNameId) s_locate_nameid = locateNameId;
 }
 
-bool take_locate_pos(float *x, float *y)
+bool item_search_active() { return s_search_set != nullptr; }
+
+bool take_locate_pos(float *u, float *v)
 {
     if (!s_locate_have) return false;
     s_locate_have = false;
-    if (x) *x = s_locate_pos.x;
-    if (y) *y = s_locate_pos.y;
+    if (u) *u = s_locate_pos.x;
+    if (v) *v = s_locate_pos.y;
     return true;
 }
 
@@ -1215,10 +1217,18 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     int n_iter = 0, n_drawn = 0, n_deferred = 0;
     {
     GOBLIN_BENCH_QUIET("render.worldmap.markers");
+    // Master-off / hidden categories normally skip drawing — but an active item search REVEALS its
+    // hits regardless (else "hide everything then search" finds nothing). master_on folds the icon
+    // master into the per-layer visibility; a hidden layer is still iterated while searching so its
+    // hits can draw, and non-hit markers in it stay hidden (the !layer_vis && !is_hit skip below).
+    const bool master_on = goblin::ui::icons_enabled();
     for (auto *L : layers)
     {
-        if (!L || !L->visible())
+        if (!L)
             continue;
+        const bool layer_vis = master_on && L->visible();
+        if (!layer_vis && !s_search_set)
+            continue; // hidden layer + not searching → skip entirely
         for (const Marker &m : L->markers())
         {
             ++n_iter;
@@ -1231,6 +1241,11 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             if (goblin::config::bakedOnly && m.source != Source::Baked)
                 continue;
 
+            // In a hidden layer (category off / master off) only an active search HIT draws.
+            const bool is_hit = search_hit(m);
+            if (!layer_vis && !is_hit)
+                continue;
+
             // PROJECT + CULL FIRST, gates LAST. The per-marker visibility gates below
             // (discover/quest/secondary/hide_when/fragment/fog) each call into the game's
             // event-flag lookup — cheap individually but run thousands of times per frame.
@@ -1241,7 +1256,6 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // — but their eligibility doesn't depend on any flag, so we can test it early.
             // A search hit is pulled OUT of any cluster pile so each match draws individually
             // (and gets its highlight ring), instead of hiding inside a location pile.
-            const bool is_hit = search_hit(m);
             const bool clustered_eligible =
                 clustering && !is_hit && m.category >= 0 && m.cluster_key >= 0 &&
                 (dist_adaptive || goblin::ui::category_clustered(m.category));
@@ -1250,11 +1264,12 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             project_marker(m, gU, gV);
             proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
             ImVec2 sp(p.x, p.y);
-            // Locate request (a clicked search result): capture this marker's screen pos — even if
-            // off-screen, so the overlay can point the cursor toward an on-page-but-scrolled match.
+            // Locate request (a clicked search result): capture this marker's MARKER-SPACE coord so the
+            // overlay can pan the live map's view centre onto it (the real camera move). Captured even
+            // if off-screen — the point is on the open page, so panning brings it into view.
             if (s_locate_nameid && m.name_id == s_locate_nameid)
             {
-                s_locate_pos = sp;
+                s_locate_pos = ImVec2(gU, gV);
                 s_locate_have = true;
                 s_locate_nameid = 0; // fire once
             }
