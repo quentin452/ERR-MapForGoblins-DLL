@@ -54,10 +54,21 @@ constexpr int32_t PART_ENEMY = 2;
 
 // Parse "AEG{A}_{B}..." -> A*1000+B (= AssetEnvironmentGeometryParam row id).
 // 0 if the name isn't an AEG asset. e.g. "AEG099_821_9000" -> 99821.
-inline uint32_t aeg_row_from_name(const std::string &n)
+inline uint32_t aeg_row_from_name(const std::string &n, bool crossTile = false)
 {
-    if (n.size() < 8 || n.compare(0, 3, "AEG") != 0) return 0;
-    size_t i = 3;
+    // Model token "AEG{A}_{B}_…". Normally start-anchored. Cross-tile LOD proxies in a supertile
+    // carry a "m{AA}_{BB}_{CC}_{LOD}-" tile prefix before the model (e.g.
+    // "m60_48_57_00-AEG110_029_2000"); when crossTile, accept the model token after a "-AEG".
+    size_t s = 0;
+    if (n.compare(0, 3, "AEG") != 0)
+    {
+        if (!crossTile) return 0;
+        size_t dash = n.find("-AEG");
+        if (dash == std::string::npos) return 0;
+        s = dash + 1;  // points at "AEG…"
+    }
+    if (n.size() < s + 8) return 0;
+    size_t i = s + 3;
     uint32_t a = 0;
     while (i < n.size() && n[i] >= '0' && n[i] <= '9') { a = a * 10 + (n[i] - '0'); ++i; }
     if (i >= n.size() || n[i] != '_') return 0;
@@ -72,7 +83,7 @@ inline uint32_t aeg_row_from_name(const std::string &n)
 } // namespace
 
 ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase,
-                      bool wantAssets, bool wantEnemies, bool wantRegions)
+                      bool wantAssets, bool wantEnemies, bool wantRegions, bool crossTileAssets)
 {
     ParseResult R;
     if (len < 0x10 || std::memcmp(buf, "MSB ", 4) != 0) return R;
@@ -175,7 +186,7 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             size_t nm = eio(rd64(buf, pe + 0x00), pe);
             if (nm >= len) continue;
             std::string name = rd_utf16(buf, nm, len);
-            uint32_t row = aeg_row_from_name(name);
+            uint32_t row = aeg_row_from_name(name, crossTileAssets);
             if (row == 0) continue;
             Asset a;
             a.name = std::move(name);
@@ -389,6 +400,9 @@ constexpr EmevdTemplate kEmevdFlagTemplates[] = {
     {1050392303, 8, 12, 16}, // Sellia chalice (m60_50)
     {12022601, 12, 8, 16},   // Siofra lower-layer lantern: anchor asset@X4_4(+12), lit flag@X0_4(+8)
     {12022621, 12, 8, 16},   // Siofra upper-layer lantern
+    {1048572370, 8, 16, 20}, // Snow Town seal-release statue (4×): entity@X0_4(+8), lit flag@X8_4(+16);
+                             // arglen 20, params (entity, sfx_eid, lit_flag). The AEG110_029 assets live
+                             // ONLY in LOD supertile m60_24_28_01 → recovered by load_lod_feature_assets.
 };
 const EmevdTemplate *find_emevd_flag_template(uint32_t eventId)
 {
@@ -610,6 +624,20 @@ EmevdParse parse_emevd_full(const uint8_t *buf, size_t len)
                         if ((int32_t)lot > 0 && (int32_t)entity > 0)
                             R.direct.push_back({entity, lot});
                     }
+                }
+                // Per-tile "enemy-death item award": a callee >= 1e9 (a per-tile event id, NOT a
+                // kEmevdTemplate) awards a lot when an enemy dies. entity@X0_4 (a+8), lot@idx(n-2)
+                // (a+argLen-8) — a consistent single-pair layout (verified on the 12 uncovered Golden
+                // Runes, tools/_probe_emevd_precise.py: 21 lots, 0 already-covered, 12/12 GR). The
+                // downstream entity→disk-ENEMY join filters out asset-entity chests (the 395 over-match)
+                // and the lot-coverage dedup drops anything another pass placed → only the uncovered
+                // enemy-death awards survive as markers. Kept separate from R.direct for an observable count.
+                else if (eventId >= 1000000000u && argLen >= 16)
+                {
+                    uint32_t entity = rd32(buf, a + 8);
+                    uint32_t lot    = rd32(buf, a + (size_t)argLen - 8);
+                    if ((int32_t)entity > 0 && (int32_t)lot > 0 && entity != lot)
+                        R.perTileEnemyAward.push_back({entity, lot});
                 }
                 // mechanism B input: RunEvent(2000:00) binding flag→lot via callee 1200
                 if (iid == 0 && eventId == 1200 && argLen >= 16)

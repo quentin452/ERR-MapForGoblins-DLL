@@ -464,6 +464,74 @@ std::vector<DiskEnemy> load_lod_award_entities(const std::unordered_set<uint32_t
     return out;
 }
 
+std::vector<DiskCollectible> load_lod_feature_assets(const std::unordered_set<uint32_t> &wanted)
+{
+    std::vector<DiskCollectible> out;
+    if (wanted.empty()) return out;
+    fs::path dir = disk_loot_dir();
+    if (dir.empty()) return out;
+    msbe::OodleDecompressFn oodle = resolve_oodle();
+    int scanned = 0;
+    std::error_code ec;
+    for (auto &de : fs::directory_iterator(dir, ec))
+    {
+        if (!de.is_regular_file(ec)) continue;
+        const fs::path &p = de.path();
+        std::string name = p.filename().string();
+        std::string lower = name;
+        for (char &c : lower) c = (char)std::tolower((unsigned char)c);
+        if (lower.size() < 8 || lower.compare(lower.size() - 8, 8, ".msb.dcx") != 0) continue;
+        std::string stem = name.substr(0, name.size() - 8);
+        // Non-_00 LOD tiers ONLY: _00 assets are already in disk_collectibles; this fills the gap for
+        // World-feature assets that exist solely as cross-tile LOD proxies (Snow Town statues live only
+        // in the supertile m60_24_28_01). Skip _99 lighting tiles. Cannot stop early (a model has many
+        // placements, no "all found"), so every non-_00 tile is parsed — same ~25ms budget as the LOD
+        // award-entity scan, and only when worldFeaturesFromDisk is on.
+        int a = 0, x = 0, z = 0, lod = -1;
+        if (std::sscanf(stem.c_str(), "m%d_%d_%d_%d", &a, &x, &z, &lod) != 4) continue;
+        if (lod == 0 || lod == 99) continue;
+        std::vector<uint8_t> dcx = slurp(p);
+        if (dcx.empty()) continue;
+        bool krak = false;
+        std::vector<uint8_t> msb = msbe::dcx_decompress(dcx.data(), dcx.size(), &krak, oodle);
+        if (msb.empty()) continue;
+        // Asset section only — the World-feature pass keys on aegRow + EntityID + position.
+        // crossTileAssets=true: these LOD proxies carry a "m{tile}-AEG…" cross-tile part name, which
+        // the start-anchored model parse would skip (the very reason the _00 enumeration misses them).
+        msbe::ParseResult r = msbe::parse_msb(msb.data(), msb.size(), /*resident=*/false,
+                                              /*blobBase=*/0, /*wantAssets=*/true,
+                                              /*wantEnemies=*/false, /*wantRegions=*/false,
+                                              /*crossTileAssets=*/true);
+        if (!r.ok) continue;
+        ++scanned;
+        for (const auto &as : r.assets)
+        {
+            if (!wanted.count(as.aegRow) || as.entityId == 0) continue;
+            DiskCollectible c;
+            c.aegRow = as.aegRow;
+            c.entityId = as.entityId;
+            // Marker tile = the asset's TRUE fine tile, from the cross-tile part-name prefix
+            // "m{AA}_{BB}_{CC}_00-…" — the supertile stores the part RELATIVE to that fine tile's
+            // origin, so grid(fine)+pos lands correctly (the bake parses the same prefix,
+            // generate_seal_puzzles.py). Fall back to the LOD file's own tile if there's no prefix.
+            int fa = a, fx = x, fz = z, flod = 0;
+            if (std::sscanf(as.name.c_str(), "m%d_%d_%d_%d", &fa, &fx, &fz, &flod) != 4)
+            { fa = a; fx = x; fz = z; }
+            c.area = (uint8_t)fa;
+            c.gx = (uint8_t)fx;
+            c.gz = (uint8_t)fz;
+            c.posX = as.pos[0];
+            c.posY = as.pos[1];
+            c.posZ = as.pos[2];
+            c.name = as.name;
+            out.push_back(std::move(c));
+        }
+    }
+    spdlog::info("[LOOTDISK] LOD feature-asset scan: {} placements in non-_00 tiles ({} tiles parsed)",
+                 (int)out.size(), scanned);
+    return out;
+}
+
 namespace
 {
 // The mod's event\ dir (sibling of map\MapStudio), holding *.emevd.dcx. Derived from the
@@ -502,7 +570,7 @@ std::vector<DiskEmevd> load_emevd_awards(
     spdlog::info("[LOOTDISK] reading EMEVD from {}", evdir.string());
 
     msbe::OodleDecompressFn oodle = resolve_oodle();  // KRAK events (unmodified vanilla)
-    int parsed = 0, kraks = 0, direct = 0;
+    int parsed = 0, kraks = 0, direct = 0, per_tile_award = 0;
     // Mechanism B inputs, accumulated across all files: flag→lot (from common.emevd's
     // RunEvent(1200)) and every SetEventFlag(.,1) event's flags+entity candidates.
     std::unordered_map<uint32_t, uint32_t> flag_to_lot;
@@ -532,6 +600,11 @@ std::vector<DiskEmevd> load_emevd_awards(
         msbe::EmevdParse p = msbe::parse_emevd_full(evd.data(), evd.size());
         for (const auto &a : p.direct) out.push_back({a.entityId, a.lotId, /*lotType=*/1});
         direct += (int)p.direct.size();
+        // Per-tile enemy-death awards (callee >= 1e9, NOT a kEmevdTemplate): join entity→disk-ENEMY
+        // pos like a direct award (lotType 1, fallback to _enemy downstream). The enemy join filters
+        // asset-entity chests; the lot-coverage dedup in build_disk_emevd_markers drops covered lots.
+        for (const auto &a : p.perTileEnemyAward) out.push_back({a.entityId, a.lotId, /*lotType=*/1});
+        per_tile_award += (int)p.perTileEnemyAward.size();
         // flag→lot only from common.emevd (the engine binding lives there; restricting
         // matches the bake and avoids a stray per-map RunEvent(1200) re-binding a flag).
         if (lower == "common.emevd.dcx")
@@ -625,10 +698,10 @@ std::vector<DiskEmevd> load_emevd_awards(
         out.push_back({chosen, lot, /*lotType=*/1, /*bossReward=*/true});
         ++boss_ev;
     }
-    spdlog::info("[LOOTDISK] {} EMEVD files parsed; {} direct + {} event-1200 + {} boss-reward awards "
-                 "({} flag→lot binds, {} boss-flag binds, {} setters, {} ev1200-no-entity, {} "
-                 "boss-no-entity); {} KRAK skipped",
-                 parsed, direct, ev1200, boss_ev, (int)flag_to_lot.size(),
+    spdlog::info("[LOOTDISK] {} EMEVD files parsed; {} direct + {} per-tile-enemy + {} event-1200 + {} "
+                 "boss-reward awards ({} flag→lot binds, {} boss-flag binds, {} setters, {} "
+                 "ev1200-no-entity, {} boss-no-entity); {} KRAK skipped",
+                 parsed, direct, per_tile_award, ev1200, boss_ev, (int)flag_to_lot.size(),
                  (int)boss_flag_to_lot.size(), (int)setters.size(), ev1200_no_entity, boss_no_entity,
                  kraks);
     return out;

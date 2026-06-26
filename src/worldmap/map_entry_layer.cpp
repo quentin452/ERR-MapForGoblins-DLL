@@ -869,6 +869,47 @@ static int build_disk_world_feature_markers(
     return emitted;
 }
 
+// One ShopLineupParam_ST row, raw bytes (row size 0x34 = 52, pinned from the paramdef field walk
+// + GetRowSize()==52, tools/_probe_shop_offsets.py). Fields read by validated byte offset:
+//   equipId @+0x00 (s32) · sellQuantity @+0x14 (s16) · equipType @+0x17 (u8).
+struct RawShopRow { uint8_t b[0x34]; };
+
+// Build the set of marker item-keys for items sold INFINITE-stock (sellQuantity == -1) in the live
+// ShopLineupParam — the merchant inventory. The key encoding mirrors resolve_loot_item_textid /
+// encode_live_item (item id + category offset), so it compares directly against a baked loot
+// marker's resolved key. equipType → ItemLotParam category: 0 weapon→+100M, 1 protector→+200M,
+// 2 accessory→+300M, 3 goods→+500M (gem/other skipped — none of the phantom set are gems). Used to
+// drop the bake's unmatched-ItemLotParam fallback phantoms (items with NO world placement that the
+// bake dumped at the tile corner). Empty on any failure (param absent) → the drop pass no-ops.
+static std::unordered_set<int32_t> build_shop_infinite_keys()
+{
+    std::unordered_set<int32_t> keys;
+    try
+    {
+        auto shop = from::params::get_param<RawShopRow>(L"ShopLineupParam");
+        for (auto entry : shop)
+        {
+            const RawShopRow &r = entry.second;
+            int32_t equipId      = *reinterpret_cast<const int32_t *>(r.b + 0x00);
+            int16_t sellQuantity = *reinterpret_cast<const int16_t *>(r.b + 0x14);
+            uint8_t equipType    = r.b[0x17];
+            if (sellQuantity != -1 || equipId <= 0) continue;  // only infinite-stock merchant items
+            int32_t off;
+            switch (equipType)
+            {
+                case 0: off = 100000000; break;  // weapon  (ItemLot cat 2)
+                case 1: off = 200000000; break;  // protector / armour (cat 3)
+                case 2: off = 300000000; break;  // accessory / talisman (cat 4)
+                case 3: off = 500000000; break;  // goods (cat 1)
+                default: continue;               // gem / ash-of-war etc. — not a phantom category
+            }
+            keys.insert(equipId + off);
+        }
+    }
+    catch (...) {}
+    return keys;
+}
+
 // Minimal raw-offset view of a SignPuddleParam row (the no-bake Summoning Pools source).
 // Only the fields the marker needs; get_param<T> casts T* over the live row bytes. ⚠ The
 // paramdef field NAMES (unknown_0x28 etc.) are LABELS, not byte offsets — the REAL offsets,
@@ -1446,6 +1487,20 @@ void build_buckets_impl()
             std::vector<msbe::GestureRef> gesture_refs;
             std::unordered_map<uint32_t, uint32_t> world_feature_flags =
                 load_emevd_world_feature_flags(&painting_flags, &gesture_refs);
+            // LOD-only asset features: a few World-feature models (the Snow Town seal-release statues
+            // AEG110_029) are placed ONLY in non-_00 LOD supertiles, which the _00 asset enumeration in
+            // load_disk_treasures skips. Scan those models out of the non-_00 tiles and append to
+            // disk_collectibles BEFORE the world-feature pass — AFTER build_disk_collectible_markers
+            // (above), so they never count as loot collectibles. The wanted set = the editorial rows
+            // flagged lod_scan (tools/world_feature_assets.py). The asset analogue of the emevd
+            // load_lod_award_entities recovery; the other world-feature passes filter by their own model
+            // so these added assets are inert to them.
+            std::unordered_set<uint32_t> lod_feature_models;
+            for (size_t k = 0; k < gen::WORLD_FEATURE_MODEL_COUNT; ++k)
+                if (gen::WORLD_FEATURE_MODELS[k].lod_scan)
+                    lod_feature_models.insert(gen::WORLD_FEATURE_MODELS[k].aeg_row);
+            for (DiskCollectible &c : load_lod_feature_assets(lod_feature_models))
+                disk_collectibles.push_back(std::move(c));
             build_disk_world_feature_markers(disk_collectibles, world_feature_flags, world_feature_cells);
             // Summoning Pools: bespoke live-SignPuddleParam pass (param feature, not an asset
             // model). Rides the same category-wipe finalize via world_feature_cells.
@@ -1541,6 +1596,7 @@ void build_buckets_impl()
     int kindling_disk_pos = 0; // baked Kindling markers re-sourced to a disk SFX-region position
     int replaced_enemy = 0;  // baked Enemy rows dropped because the disk enemy pass covers them
     int replaced_emevd = 0;  // baked Emevd rows dropped because the disk EMEVD pass covers them
+    int dropped_merchant = 0; // baked loot rows dropped as merchant phantoms (shop-infinite item, no disk twin)
     int debake_gap = 0;  // Treasure-sourced baked rows the disk did NOT cover (de-bake blocker)
     // [DEBAKE-GAP] cause classification (diag): the baked Treasure rows carry NO object_name
     // (nullptr — corpse-asset identity lives only in the offline pipeline), so we sample the
@@ -1573,6 +1629,17 @@ void build_buckets_impl()
             if (e.lotType == 1) baked_lot1.insert(e.lotId);
             if (e.lotType != 0) baked_any.insert(e.lotId);
         }
+    // Merchant-phantom drop set (config drop_merchant_phantoms): items sold infinite-stock in the
+    // live ShopLineupParam. The bake's unmatched-ItemLotParam fallback (extract_all_items.py) places
+    // a phantom marker at the tile corner (0,0,0) for items with NO world placement that ARE sold by
+    // a merchant (ERR's shop sells most weapons / gloveworts / etc.). Built once; a baked loot row
+    // whose resolved item key is in here AND reached this loop (no disk pass reproduced it) is dropped.
+    const std::unordered_set<int32_t> shop_inf_keys =
+        goblin::config::dropMerchantPhantoms ? build_shop_infinite_keys()
+                                             : std::unordered_set<int32_t>{};
+    if (goblin::config::dropMerchantPhantoms)
+        spdlog::info("[LOOTDISK] merchant-phantom drop: {} infinite-stock shop item keys (live ShopLineupParam)",
+                     (int)shop_inf_keys.size());
     for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
     {
         const gen::MapEntry &e = gen::MAP_ENTRIES[i];
@@ -1669,10 +1736,14 @@ void build_buckets_impl()
             ++replaced_enemy;
             continue;
         }
-        // EMEVD-scripted disk source (loot_emevd_drops) owns this lot → drop the baked
-        // LootSource::Emevd row (lotType 1). Its own guard: the live event\*.emevd.dcx
-        // template-award parse + EntityID→MSB-Enemy join reproduces this scripted drop.
-        if (!emevd_disk_lots.empty() && e.loot_source == gen::LootSource::Emevd &&
+        // EMEVD-scripted disk source (loot_emevd_drops) owns this lot → drop the baked row the
+        // EMEVD pass reproduced (live event\*.emevd.dcx template/per-tile-enemy award + EntityID→
+        // MSB-Enemy join). Drops both LootSource::Emevd AND Unknown rows: the per-tile enemy-death
+        // awards (the uncovered Golden Runes etc.) are baked as src=Unknown (pre-provenance), and
+        // Unknown is replaceable by design (same as the treasure guard above) — a globally-unique
+        // lotId the EMEVD pass placed is the SAME pickup, so the baked twin must go (else a double).
+        if (!emevd_disk_lots.empty() &&
+            (e.loot_source == gen::LootSource::Emevd || e.loot_source == gen::LootSource::Unknown) &&
             e.lotId != 0 && emevd_disk_lots.count(e.lotId))
         {
             ++replaced_emevd;
@@ -1692,6 +1763,28 @@ void build_buckets_impl()
         {
             ++replaced_emevd;
             continue;
+        }
+        // Merchant-phantom drop (config drop_merchant_phantoms): this baked loot row reached here =
+        // NO disk pass (treasure / asset / enemy / emevd) reproduced it. If its item is sold
+        // infinite-stock by a live merchant, it is the bake's unmatched-ItemLotParam fallback
+        // phantom — an item with no world placement that the bake put at the tile corner (0,0,0), so
+        // the player flies to an empty spot (proven: tools/_probe_find_item + _probe_resid_shop;
+        // the 16 treasure-fallback + the orphan-enemy survivors are all shop-infinite, 0 world
+        // placement). Drop it. Gated on a live shop key (any mod); the resolved key matches the
+        // marker's own item key (resolve_loot_item_textid). lotId != 0 keeps World features safe.
+        if (!shop_inf_keys.empty() && e.lotId != 0)
+        {
+            int32_t mkey = goblin::resolve_loot_item_textid(e.lotId, e.lotType, e.data.textId1);
+            if (mkey != 0 && shop_inf_keys.count(mkey))
+            {
+                ++dropped_merchant;
+                if (verbose)
+                    spdlog::info("[MERCHANT-PHANTOM] drop cat=\"{}\" lot={} lt={} key={} m{}_{}_{}",
+                                 goblin::markers::category_name(static_cast<gen::Category>(c)),
+                                 e.lotId, (int)e.lotType, mkey, e.data.areaNo, e.data.gridXNo,
+                                 e.data.gridZNo);
+                continue;
+            }
         }
         // [DEBAKE-GAP] diag (de-bake readiness): a Treasure-sourced row that reaches HERE was
         // NOT replaced — its lot isn't in disk_lots, so the disk source does not reproduce it.
@@ -1790,6 +1883,9 @@ void build_buckets_impl()
         spdlog::info("[LOOTDISK] replaced {} baked enemy rows with disk enemy placements", replaced_enemy);
     if (goblin::config::lootEmevdDrops)
         spdlog::info("[LOOTDISK] replaced {} baked emevd rows with disk EMEVD placements", replaced_emevd);
+    if (goblin::config::dropMerchantPhantoms)
+        spdlog::info("[LOOTDISK] dropped {} baked merchant-phantom markers (item sold infinite-stock in "
+                     "ShopLineupParam, no disk twin — bake fallback at tile corner)", dropped_merchant);
     if (diag)
     {
         spdlog::info("[ENEMY-MARKERS] {} baked enemy-drop rows NOT covered by the disk enemy pass "

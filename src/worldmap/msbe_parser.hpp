@@ -129,6 +129,14 @@ struct EmevdParse
     // which is common-only); then walk the baseLot ItemLotParam chain (piece = baseLot+1/+2) for the
     // Rune/Ember Piece.
     std::vector<std::pair<uint32_t, uint32_t>>    bossFlagLot;   // (defeatFlag, baseLot) — 90005860/61/80
+    // Per-tile "enemy-death item award" inits: a bank-2000 InitializeEvent whose callee is a per-tile
+    // template (eventId >= 1e9, NOT a kEmevdTemplate) that awards an ItemLotParam when an enemy dies.
+    // Layout (verified on the 12 uncovered Golden Runes + tools/_probe_emevd_precise.py): entity@X0_4
+    // (a+8) = the MSB enemy; lot@idx(n-2) (a+argLen-8) = the awarded lot. The downstream entity→disk-
+    // ENEMY join enforces "positionable enemy" (asset-entity chests don't join → excluded, which is
+    // what keeps this off the 395-chest over-match), and the lot-coverage dedup drops any lot another
+    // pass already placed. Treated as a lotType-1 direct award by the caller.
+    std::vector<EmevdAward>                       perTileEnemyAward;
 };
 
 // A placed Region (PointParam / POINT section) — the no-bake Spirit Springs source. The POINT
@@ -174,8 +182,13 @@ struct ParseResult
 // (the runtime enemy-drop source). Off by default.
 // wantRegions: also enumerate the spirit-spring POINT regions (MountJump/Locked/FakeSpiring)
 // into ParseResult.regions. Off by default (skips an extra POINT-section pass).
+// crossTileAssets: accept Asset part names carrying a cross-tile LOD prefix
+// ("m{AA}_{BB}_{CC}_{LOD}-AEG…", e.g. the Snow Town statues in a supertile) — off by default so the
+// _00 passes keep the strict start-anchored model parse (a handful of _00 assets carry such a prefix
+// and must NOT newly emit). Only the non-_00 LOD feature-asset scan opts in. See load_lod_feature_assets.
 ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase = 0,
-                      bool wantAssets = false, bool wantEnemies = false, bool wantRegions = false);
+                      bool wantAssets = false, bool wantEnemies = false, bool wantRegions = false,
+                      bool crossTileAssets = false);
 
 // Parse a DECOMPRESSED EMEVD (.emevd) blob and return every template item-award
 // reference (bank-2000 event init whose eventId is one of the 13 award templates),

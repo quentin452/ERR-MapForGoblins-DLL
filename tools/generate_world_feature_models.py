@@ -61,6 +61,8 @@ struct WorldFeatureModel
     bool     entity_required;  // true = emit only placements carrying an MSB EntityID (interactive)
     bool     category_wipe;    // true = drop ALL baked of this category (dedicated); false = cell-dedup (shared)
     FlagRule flag_rule;        // how the pass resolves the graying flag (+ Imp suffix filter/label)
+    bool     lod_scan;         // true = model lives only in non-_00 LOD supertiles; the world-feature
+                               // pass adds a targeted non-_00 asset scan (load_lod_feature_assets)
 };
 
 extern const WorldFeatureModel WORLD_FEATURE_MODELS[];  // sorted by aeg_row
@@ -80,11 +82,12 @@ with open(os.path.join(GEN, "goblin_world_feature_models.cpp"), "w", encoding="u
     f.write(f"const size_t WORLD_FEATURE_MODEL_COUNT = {len(rows)};\n\n")
     f.write("const WorldFeatureModel WORLD_FEATURE_MODELS[] = {\n")
     for r in rows:
-        f.write("    {{{row}u, Category::{cat}, {tid}, {ent}, {wipe}, FlagRule::{rule}}},  // {model} {feat}\n".format(
+        f.write("    {{{row}u, Category::{cat}, {tid}, {ent}, {wipe}, FlagRule::{rule}, {lod}}},  // {model} {feat}\n".format(
             row=r['aeg_row'], cat=r['category'], tid=r['text_id'],
             ent='true' if r['entity_required'] else 'false',
             wipe='true' if r['category_wipe'] else 'false',
             rule=FLAG_RULE_CPP[r['flag_rule']],
+            lod='true' if r.get('lod_scan') else 'false',
             model=r['model'], feat=r['category']))
     f.write("};\n\n} // namespace goblin::generated\n")
 
@@ -92,4 +95,5 @@ print(f"wrote {len(rows)} world-feature models -> {GEN}/goblin_world_feature_mod
 for r in rows:
     print(f"  {r['model']:14s} aegRow={r['aeg_row']:<6} -> {r['category']:22s} "
           f"entity={'Y' if r['entity_required'] else 'n'} "
-          f"{'wipe' if r['category_wipe'] else 'cell'} flag={r['flag_rule']}")
+          f"{'wipe' if r['category_wipe'] else 'cell'} flag={r['flag_rule']}"
+          f"{' LOD-scan' if r.get('lod_scan') else ''}")
