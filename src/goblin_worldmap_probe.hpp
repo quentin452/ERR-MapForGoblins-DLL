@@ -72,6 +72,11 @@ namespace goblin::worldmap_probe
     // the player hasn't unlocked) is the next RE pass; see windows_worldmap_page_switch_re_prompt.md.
     void request_switch_to_page(int group);
 
+    // True while an auto page-switch is in progress OR still settling (the engine SNAPS the view to
+    // the new page's default, which would clobber an item-locate pan issued too early). The locate
+    // holds its pan until this is false so its set_view_center lands last and sticks.
+    bool page_switch_busy();
+
     // Live world→map-space projection: call the engine's own per-icon projection
     // (FUN_1408877d0 on the live CS::WorldMapViewModel) to map a raw (area, gridX,
     // gridZ, posX, posZ) to map-space UV — folds WorldMapLegacyConvParam + applies the

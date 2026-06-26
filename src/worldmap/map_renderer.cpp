@@ -1360,8 +1360,9 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     }
     // Finalise the locate: pan onto the chosen candidate (best uncollected / nearest). If NO candidate
     // was found, the marker is on a page that isn't open — KEEP the request pending so it fires the
-    // moment the user switches to that page (cross-page locate without driving the native page swap).
-    if (s_locate_nameid && loc_have)
+    // moment that page opens (the auto-switch marshal is bringing it). HOLD the pan while a page switch
+    // is still settling: the engine snaps the new page's view, which would clobber a too-early pan.
+    if (s_locate_nameid && loc_have && !goblin::worldmap_probe::page_switch_busy())
     {
         s_locate_pos = loc_best;
         s_locate_have = true;

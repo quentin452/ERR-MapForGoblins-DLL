@@ -1188,6 +1188,11 @@ using StepFn = uintptr_t (*)(uintptr_t, float, uintptr_t, uintptr_t);
 SwitchFn g_c1fc0 = nullptr, g_c7900 = nullptr;
 StepFn g_c32f0_orig = nullptr;
 std::atomic<int> g_pending_group{-1};  // target group (bit1=DLC, bit0=UG); -1 = none
+// Frames to keep "busy" after the last switch: a page swap SNAPS the view to the new page's default
+// (page-transition findings §7b), which would CLOBBER an item-locate pan issued too early. The locate
+// waits until this settles (page_switch_busy) so its set_view_center is the LAST write and sticks.
+std::atomic<int> g_switch_settle{0};
+constexpr int SWITCH_SETTLE_FRAMES = 20;  // ~0.33s @60fps > the ~0.2s page cross-fade/snap
 
 uintptr_t hk_c32f0(uintptr_t dialog, float dt, uintptr_t a3, uintptr_t a4)
 {
@@ -1206,12 +1211,23 @@ uintptr_t hk_c32f0(uintptr_t dialog, float dt, uintptr_t a3, uintptr_t a4)
         const int wantPage = (want & 2) ? 10 : 0;
         const int wantLayer = (want & 1) ? 1 : 0;
         if (curPage != wantPage && g_c1fc0)
-            g_c1fc0(dialog, (uintptr_t)wantPage, 0, 1);          // switch page this step
+        {
+            g_c1fc0(dialog, (uintptr_t)wantPage, 0, 1);           // switch page this step
+            g_switch_settle.store(SWITCH_SETTLE_FRAMES, std::memory_order_relaxed);
+        }
         else if (curLayer != wantLayer && g_c7900)
-            g_c7900(dialog, (uintptr_t)wantLayer, 0x40, 1);      // then layer next step
+        {
+            g_c7900(dialog, (uintptr_t)wantLayer, 0x40, 1);       // then layer next step
+            g_switch_settle.store(SWITCH_SETTLE_FRAMES, std::memory_order_relaxed);
+        }
         else
-            g_pending_group.store(-1, std::memory_order_relaxed); // reached target → done
+        {
+            g_pending_group.store(-1, std::memory_order_relaxed);  // reached target → settle, then pan
+            g_switch_settle.store(SWITCH_SETTLE_FRAMES, std::memory_order_relaxed);
+        }
     }
+    int s = g_switch_settle.load(std::memory_order_relaxed);
+    if (s > 0) g_switch_settle.store(s - 1, std::memory_order_relaxed);
     return r;
 }
 
@@ -1240,6 +1256,12 @@ void install_auto_page_switch()
 void request_switch_to_page(int group)
 {
     g_pending_group.store(group, std::memory_order_relaxed);
+}
+
+bool page_switch_busy()
+{
+    return g_pending_group.load(std::memory_order_relaxed) >= 0 ||
+           g_switch_settle.load(std::memory_order_relaxed) > 0;
 }
 
 void initialize(const std::filesystem::path &log_path)
