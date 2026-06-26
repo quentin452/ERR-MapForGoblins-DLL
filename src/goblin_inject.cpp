@@ -4528,6 +4528,25 @@ static int goods_type_live(int32_t goods_id)
 // (NOT s16 — reading 2 bytes folds in the 0x73 bitfield). Known rune groups: 100 = base
 // Golden/Numen's/Hero's/Lord's Runes, 101 = DLC Broken/Shadow Realm Runes, 102 = ERR high-NG
 // variants (Golden One's/Ancient's/…); map fragments: 190 base, 191 DLC.
+// sortGroupId field offset, READ LIVE from the game's own `movzx ebx,[rax+0x72]` (the inventory
+// item-grouping read; pinned by the embedded find-what-accesses). Same self-correcting contract as
+// goods_type_offset(): the pinned 0x72 is only a logged fallback if the AOB breaks after a patch.
+static ptrdiff_t goods_sort_group_offset()
+{
+    static const ptrdiff_t off = [] {
+        auto r = modutils::resolve_field_offset(
+            {.aob = goblin::sig::GOODS_SORT_GROUP_ACCESS, .disp_pos = 3, .disp_size = 1});
+        if (r)
+        {
+            spdlog::info("[FIELDOFF] EquipParamGoods.sortGroupId = +0x{:x} (live from exe)", *r);
+            return *r;
+        }
+        spdlog::warn("[FIELDOFF] sortGroupId access AOB unresolved — falling back to pinned +0x72");
+        return static_cast<ptrdiff_t>(0x72);
+    }();
+    return off;
+}
+
 static int goods_sort_group(int32_t goods_id)
 {
     static std::optional<from::params::ParamTableSequence<RawGoodsRow>> s_seq;
@@ -4539,7 +4558,7 @@ static int goods_sort_group(int32_t goods_id)
     });
     if (!s_ok || goods_id <= 0) return -1;
     RawGoodsRow *r = s_seq->try_get((uint64_t)goods_id);
-    return r ? (int)r->b[0x72] : -1;
+    return r ? (int)r->b[goods_sort_group_offset()] : -1;
 }
 
 // True iff an EquipParamGoods row is a region Map fragment — sortGroupId ∈ {190 (base), 191 (DLC)}.

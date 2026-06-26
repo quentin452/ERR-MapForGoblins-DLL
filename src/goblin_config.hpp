@@ -194,6 +194,13 @@ namespace goblin
         // zoomed (no restart needed). Same-aspect only. Default off.
         extern bool fixMidsessionResolution;
 
+        // Dev RE tool (offset source-of-truth): embedded find-what-accesses filtered to
+        // eldenring.exe. Arms a HW breakpoint on a live param row+offset (probeFieldSpec =
+        // "ParamName:rowId:offset[:len[:rw]]") and logs [FWA] the game's own access site,
+        // skipping every mod read. See goblin_field_probe.{hpp,cpp}. Off by default.
+        extern bool probeFieldAccess;
+        extern std::string probeFieldSpec;
+
         // Overlay marker sizes. Final = resolution-base × master × type-scale.
         extern float overlayMasterScale;   // all overlay markers + piles
         extern float overlayIconScale;     // category marker icons

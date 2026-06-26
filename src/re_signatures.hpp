@@ -68,6 +68,14 @@ namespace goblin::sig
     // remain (patch-stable). Authored 2026-06-26 (unique in .text). disp_pos=7, disp_size=1.
     inline constexpr const char *GOODS_TYPE_ACCESS = "48 85 C9 74 ?? 80 79 ?? 0D";
 
+    // EquipParamGoods.sortGroupId: read site `movzx ebx, byte ptr [rax+0x72]` (er+0x86eeeb) — the
+    // inventory item-grouping read. Found by the embedded find-what-accesses (goblin_field_probe):
+    // RAX = goods row 10105 (verified live); the 72 static lookalikes couldn't be disambiguated, the
+    // HW-breakpoint pinned THE one. disp8 at AOB position 3 IS sortGroupId's offset. The two short-jump
+    // rel8s are wildcarded so only opcodes + the semantic `mov bl,0xFF` (not-found default) remain.
+    // Authored 2026-06-26 (unique in .text). disp_pos=3, disp_size=1.
+    inline constexpr const char *GOODS_SORT_GROUP_ACCESS = "0F B6 58 ?? EB ?? B3 FF 85 FF";
+
     // ── World geometry / collected-state (goblin_collected, goblin_inject map-pos) ──
     // GeomFlagSaveDataManager slot (was RVA 0x3D69D18).
     inline constexpr const char *GEOM_FLAG_SLOT =
@@ -186,6 +194,7 @@ namespace goblin::sig
             {"SOLO_PARAM_LIST", SOLO_PARAM_LIST},
             {"MSG_REPOSITORY", MSG_REPOSITORY},
             {"GOODS_TYPE_ACCESS", GOODS_TYPE_ACCESS},
+            {"GOODS_SORT_GROUP_ACCESS", GOODS_SORT_GROUP_ACCESS},
             {"GEOM_FLAG_SLOT", GEOM_FLAG_SLOT},
             {"WORLD_GEOM_MAN_SLOT", WORLD_GEOM_MAN_SLOT},
             {"WCM_FINDER", WCM_FINDER},

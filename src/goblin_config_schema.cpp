@@ -83,6 +83,8 @@ namespace goblin::config
     bool overlayMarkersProto = false;
     bool debugRenderDims = false;
     bool fixMidsessionResolution = false;
+    bool probeFieldAccess = false;
+    std::string probeFieldSpec = "";
     float overlayMasterScale = 1.0f;   // master scale for all overlay markers + piles
     float overlayIconScale = 1.2f;     // category marker icons (× master)
     float overlayClusterScale = 1.0f;  // cluster pile glyphs (× master)
@@ -524,6 +526,10 @@ namespace
                   "EXPERIMENTAL no-restart fix for the mid-session resolution-change zoom\n(3D world + map stay zoomed after changing resolution in-game). On a swapchain\nresize, raw-pokes ER's render-output dims to the new size (the engine leaves\nthem stale). Same-aspect changes only (16:9<->16:9, no letterbox). Off by\ndefault; enable + test. If the zoom persists or anything misbehaves, set false\n(restarting ER after a resolution change is the safe fallback)."),
                 B("debug_render_dims", debugRenderDims, "false",
                   "Dev diagnostic (mid-session resolution bug): every ~2s log ER's render-\noutput dims (active +0x118/+0x11c vs the live backbuffer) + dirty bits to\nMapForGoblins.log as [RENDIMS]. Change the resolution in-game, then read the\nlog: the entry that stays at the OLD resolution is the stale one. Off by default."),
+                B("probe_field_access", probeFieldAccess, "false",
+                  "Dev RE tool (offset source-of-truth): embedded 'find out what accesses this\naddress', FILTERED to the game's code. Arms a hardware breakpoint on a live\nparam row+offset and logs [FWA] the FIRST accessing instruction whose RIP is\ninside eldenring.exe -- every mod read (incl. ours) is skipped automatically,\nso it works where Cheat Engine drowns in multi-mod noise. Set probe_field_spec,\ntrigger the field's read in-game, read the RIP from the log, author the AOB\nwith offset_resolver.py. Writes debug registers (EAC-bypassed/offline only).\nOff by default."),
+                IniEntry{"probe_field_spec", IniType::String, &cfg::probeFieldSpec, "",
+                         "Target for probe_field_access: ParamName:rowId:offset[:len[:rw]] (len\n1|2|4|8 default 4; rw r|w default r). The DLL resolves the LIVE row via the\nparam chain, so the spec is session-independent. Examples:\nEquipParamGoods:1000:0x72:1:r (sortGroupId on the Crimson flask -- open the\ninventory to trigger) or AssetEnvironmentGeometryParam:99821:0xb8:4:r\n(pickUpItemLotParamId -- loot the matching collectible). Only used when\nprobe_field_access is on.", false, nullptr},
                 IniEntry{"overlay_master_scale", IniType::F32, &cfg::overlayMasterScale, "1.0",
                   "Master scale for ALL overlay map markers + cluster piles (multiplies the\nper-type scales). 1.0 = default. A resolution-relative base size is applied\nfirst, then ×master×type. Editable live in the F1 menu; persists on Save."},
                 IniEntry{"overlay_icon_scale", IniType::F32, &cfg::overlayIconScale, "1.2",
