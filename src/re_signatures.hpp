@@ -105,6 +105,12 @@ namespace goblin::sig
     inline constexpr const char *BONFIRE_TEXTID1_ACCESS =
         "41 8B ?? ?? EB 2B 41 8B ?? 3C EB 25 41 8B ?? 48 EB 1F";
 
+    // NOTE — ItemLotParam.getItemFlagId (+0x80) was investigated for runtime-resolution but its read
+    // site is a generic tiny getter (`mov eax,[row+0x80]; cmp eax,-1; cmove; ret`) BYTE-IDENTICAL to
+    // its 0x84-field sibling, so no disp-wildcarded AOB disambiguates it (the offset is the only diff —
+    // circular; consensus fails too since they read different fields). Left PINNED at 0x80 (live-
+    // confirmed via the embedded find-what-accesses + guarded by tools/check_param_offsets.py).
+
     // ── World geometry / collected-state (goblin_collected, goblin_inject map-pos) ──
     // GeomFlagSaveDataManager slot (was RVA 0x3D69D18).
     inline constexpr const char *GEOM_FLAG_SLOT =

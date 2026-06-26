@@ -4285,6 +4285,10 @@ uint32_t goblin::resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t bak
     RawItemLotRow *row = s_lots.row(lotId, lotType);
     if (!row)
         return baked_flag;
+    // getItemFlagId @ +0x80 (lot-wide). Live-CONFIRMED via the embedded find-what-accesses (the game's
+    // getter `mov eax,[row+0x80]; cmp eax,-1`), but NOT runtime-resolved: that getter is byte-identical
+    // to its 0x84-field sibling, so no disp-wildcarded AOB can disambiguate it (the offset is the only
+    // difference — circular). Stays pinned, cross-validated live + guarded by check_param_offsets.py.
     uint32_t flag = *reinterpret_cast<uint32_t *>(row->b + 0x80);  // lot-wide getItemFlagId
     if (flag == 0)
     {
