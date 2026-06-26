@@ -2,7 +2,7 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-26 23:30:32.388
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-26 23:42:08.154
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - **`drawn`** = real markers the renderer draws (= total). **`census`** = the ImGui badge denominator (completable spots) — distinct collect flags for flag-based categories, row count for geom/SFX pieces, 0 for graces; it EXCLUDES respawnable flag-less gather, so `census < drawn` wherever markers share a flag or respawn.
@@ -12,11 +12,11 @@
 
 ## ▶ Baked markers remaining
 
-# **21**  ← drive this to **0**
+# **19**  ← drive this to **0**
 
 | | baked | disk | live | live-cls | total |
 |---|--:|--:|--:|--:|--:|
-| **all categories** | **21** | 8134 | 469 | 71 | 8624 |
+| **all categories** | **19** | 8143 | 469 | 73 | 8631 |
 
 🔴 baked-only: **0**  ·  🟡 partial: **9**  ·  🟢 off-bake: **52**  (of 61 active categories)
 
@@ -39,7 +39,7 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | category | baked | disk | live | live-cls | total | icon | status |
 |---|--:|--:|--:|--:|--:|---|---|
 | Equipment - Armaments | 0 | 317 | 0 | 0 | 317 | atlas 69% | 🟢 off-bake |
-| Equipment - Armour | 1 | 327 | 0 | 0 | 328 | atlas 69% | 🟡 partial |
+| Equipment - Armour | 1 | 331 | 0 | 0 | 332 | atlas 69% | 🟡 partial |
 | Equipment - Ashes of War | 1 | 79 | 0 | 0 | 80 | atlas 69% | 🟡 partial |
 | Equipment - Spirits | 0 | 86 | 0 | 0 | 86 | atlas 69% | 🟢 off-bake |
 | Equipment - Talismans | 0 | 145 | 0 | 0 | 145 | circle | 🟢 off-bake |
@@ -48,7 +48,7 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | Key - Crystal Tears | 0 | 38 | 0 | 0 | 38 | atlas 69% | 🟢 off-bake |
 | Key - Great Runes | 0 | 0 | 6 | 0 | 6 | atlas 69% | 🟢 off-bake |
 | Key - Imbued Sword Keys | 0 | 4 | 0 | 0 | 4 | atlas 69% | 🟢 off-bake |
-| Key - Larval Tears | 4 | 16 | 0 | 0 | 20 | atlas 69% | 🟡 partial |
+| Key - Larval Tears | 2 | 19 | 0 | 0 | 21 | atlas 69% | 🟡 partial |
 | Key - Lost Ashes | 0 | 81 | 0 | 0 | 81 | atlas 69% | 🟢 off-bake |
 | Key - Pots n Perfumes | 0 | 40 | 0 | 0 | 40 | atlas 69% | 🟢 off-bake |
 | Key - Scadutree Fragments | 0 | 45 | 0 | 0 | 45 | atlas 30% | 🟢 off-bake |
@@ -57,7 +57,7 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | Loot - Ammo | 0 | 82 | 0 | 0 | 82 | atlas 69% | 🟢 off-bake |
 | Loot - Bell-Bearings | 0 | 63 | 0 | 0 | 63 | atlas 69% | 🟢 off-bake |
 | Loot - Consumables | 0 | 182 | 0 | 0 | 182 | atlas 69% | 🟢 off-bake |
-| Loot - Crafting Materials | 0 | 1690 | 0 | 46 | 1690 | atlas 69% | 🟢 off-bake |
+| Loot - Crafting Materials | 0 | 1692 | 0 | 48 | 1692 | atlas 69% | 🟢 off-bake |
 | Loot - Dragon Hearts | 0 | 20 | 0 | 0 | 20 | atlas 69% | 🟢 off-bake |
 | Loot - Gestures | 0 | 7 | 0 | 0 | 7 | atlas 69% | 🟢 off-bake |
 | Loot - Gloveworts | 0 | 271 | 0 | 0 | 271 | atlas 69% | 🟢 off-bake |
@@ -109,13 +109,13 @@ Every surviving baked **loot** row (not replaced by any disk pass), tallied by i
 - **`emevd`** — an EMEVD award the disk EMEVD pass didn't reproduce: a **still-open, genuinely recoverable** lever (extend the EMEVD template coverage).
 - **`unknown`** — pre-provenance bake rows (the `loot_source` field predates the tagging and wasn't regenerated); could be any source. A regen reclassifies them.
 
-Residual loot total **18** = unknown 3 · treasure 0 (accepted) · enemy 15 (bake mis-label) · emevd 0 (recoverable).
+Residual loot total **16** = unknown 1 · treasure 0 (accepted) · enemy 15 (bake mis-label) · emevd 0 (recoverable).
 
 | category | unknown | treasure (accepted) | enemy (mis-label) | emevd (recoverable) |
 |---|--:|--:|--:|--:|
 | Equipment - Armour | 0 | 0 | 1 | 0 |
 | Equipment - Ashes of War | 0 | 0 | 1 | 0 |
-| Key - Larval Tears | 2 | 0 | 2 | 0 |
+| Key - Larval Tears | 0 | 0 | 2 | 0 |
 | Key - Seeds Tears Ashes | 0 | 0 | 1 | 0 |
 | Loot - Golden Runes | 0 | 0 | 6 | 0 |
 | Loot - Golden Runes (Low) | 1 | 0 | 3 | 0 |
@@ -128,7 +128,7 @@ Residual loot total **18** = unknown 3 · treasure 0 (accepted) · enemy 15 (bak
 | category | drawn | census | flag (have/drawn) | respawn | nonloot |
 |---|--:|--:|--:|--:|--:|
 | Equipment - Armaments | 317 | 283 | 317/317 | 0 | 0 |
-| Equipment - Armour | 328 | 141 | 328/328 | 0 | 0 |
+| Equipment - Armour | 332 | 142 | 332/332 | 0 | 0 |
 | Equipment - Ashes of War | 80 | 80 | 80/80 | 0 | 0 |
 | Equipment - Spirits | 86 | 80 | 86/86 | 0 | 0 |
 | Equipment - Talismans | 145 | 140 | 145/145 | 0 | 0 |
@@ -137,7 +137,7 @@ Residual loot total **18** = unknown 3 · treasure 0 (accepted) · enemy 15 (bak
 | Key - Crystal Tears | 38 | 38 | 38/38 | 0 | 0 |
 | Key - Great Runes | 6 | 6 | 6/6 | 0 | 0 |
 | Key - Imbued Sword Keys | 4 | 4 | 4/4 | 0 | 0 |
-| Key - Larval Tears | 20 | 20 | 20/20 | 0 | 0 |
+| Key - Larval Tears | 21 | 21 | 21/21 | 0 | 0 |
 | Key - Lost Ashes | 81 | 81 | 81/81 | 0 | 0 |
 | Key - Pots n Perfumes | 40 | 40 | 40/40 | 0 | 0 |
 | Key - Scadutree Fragments | 45 | 45 | 45/45 | 0 | 0 |
@@ -146,7 +146,7 @@ Residual loot total **18** = unknown 3 · treasure 0 (accepted) · enemy 15 (bak
 | Loot - Ammo | 82 | 82 | 82/82 | 0 | 0 |
 | Loot - Bell-Bearings | 63 | 56 | 63/63 | 0 | 0 |
 | Loot - Consumables | 182 | 179 | 181/182 | 1 | 0 |
-| Loot - Crafting Materials | 1690 | 579 | 583/1690 | 1107 | 0 |
+| Loot - Crafting Materials | 1692 | 579 | 583/1692 | 1109 | 0 |
 | Loot - Dragon Hearts | 20 | 20 | 20/20 | 0 | 0 |
 | Loot - Gestures | 7 | 6 | 7/7 | 0 | 0 |
 | Loot - Gloveworts | 271 | 39 | 39/271 | 232 | 0 |
