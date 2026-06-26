@@ -79,14 +79,29 @@ WORLD_FEATURE_ASSETS = [
          entity_required=True, category_wipe=False, flag_rule='hero_tomb_emevd'),
 
     # Seal Puzzles — the AEG099_090 "Examine seal" object (the multi-seal puzzles that unlock
-    # a fog door). 77/98 of the bake's seal interact-points; the remaining 21 (Sellia chalices
-    # AEG099_047, Siofra lanterns AEG110_029, Snow Town statues AEG237_055) use bespoke non-template
-    # events and stay baked for now. SHARES WorldInteractables with Hero's Tomb → cell-dedup, NOT
-    # category-wipe (only the AEG099_090 cells drop their baked twin; specials + Hero Tomb keep theirs).
-    # The seal_emevd rule joins each seal's EntityID to the EMEVD template-90006051 activation flag and
-    # SELF-GATES: a placed AEG099_090 with no 90006051 binding is decoration / non-seal use → skipped
-    # (stronger than entity_required, avoids phantom non-seal placements of this common model).
+    # a fog door). 77/98 of the bake's seal interact-points. SHARES WorldInteractables with Hero's
+    # Tomb → cell-dedup, NOT category-wipe (only the AEG099_090 cells drop their baked twin; specials
+    # + Hero Tomb keep theirs). The seal_emevd rule joins each seal's EntityID to the EMEVD
+    # template-90006051 activation flag and SELF-GATES: a placed AEG099_090 with no 90006051 binding
+    # is decoration / non-seal use → skipped (stronger than entity_required, avoids phantom non-seal
+    # placements of this common model).
     dict(aeg_row=99090, model='AEG099_090', category='WorldInteractables',
          text_id=800000000 + 9503,  # ActionButtonText[9503] "Examine seal" (runtime-localized)
+         entity_required=True, category_wipe=False, flag_rule='seal_emevd'),
+
+    # "Extra puzzle" interact-points — bespoke (non-90006051) EMEVD events, same seal_emevd shape
+    # (entity→lit-flag, self-gating). The per-event (entity,flag) offsets are registered in
+    # msbe_parser kEmevdFlagTemplates (Sellia chalices 1049392302/303 + 1050392303; Siofra lanterns
+    # 12022601/12022621). All carry the "Light flame" ActionButtonText[9520]. Both models are _00-tile
+    # assets (chalices m60_49/50_39, lanterns m12_02) → the _00 asset enumeration sees them.
+    #   ⚠ Snow Town seal-release statues (AEG110_029, event 1048572370) are NOT here yet: their assets
+    #   live ONLY in the LOD supertile m60_24_28_01 (cross-tile "m60_48_57_00-"), which the _00-only
+    #   asset scan misses — they need a targeted non-_00 asset scan (like the emevd LOD-entity fix).
+    #   Those 4 stay baked until then.
+    dict(aeg_row=99047, model='AEG099_047', category='WorldInteractables',
+         text_id=800000000 + 9520,  # ActionButtonText[9520] "Light flame" — Sellia chalices
+         entity_required=True, category_wipe=False, flag_rule='seal_emevd'),
+    dict(aeg_row=237055, model='AEG237_055', category='WorldInteractables',
+         text_id=800000000 + 9520,  # ActionButtonText[9520] "Light flame" — Siofra lanterns
          entity_required=True, category_wipe=False, flag_rule='seal_emevd'),
 ]

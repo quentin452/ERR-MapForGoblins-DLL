@@ -129,6 +129,17 @@ std::vector<DiskEmevd> load_emevd_awards(
     const std::unordered_set<uint32_t> &knownEntities,
     const std::unordered_map<uint32_t, std::unordered_set<uint32_t>> &entitiesByTile);
 
+// Targeted non-_00 scan for EMEVD-award entities that are NOT _00 enemies. Some direct
+// template awards reference an entity that exists only as an overworld LOD proxy in a
+// non-_00 tile (e.g. lot 2045460500's c5170 lives in m61_11_11_02, not any _00 tile), so the
+// _00-only enemy enumeration in load_disk_treasures misses it and the award never places.
+// This parses the non-_00 tiles' Enemy section ONLY for the given entity ids, returning each
+// as a DiskEnemy at its LOD-tile position (= the position the bake used). Caller appends the
+// result to disk_enemies for the EMEVD join ONLY (after build_disk_enemy_markers + known_entities
+// are built, so it adds no LOD phantoms to the enemy pass or the boss/setter resolution). Stops
+// early once every wanted id is resolved. Empty when `wanted` is empty or no dir is resolved.
+std::vector<DiskEnemy> load_lod_award_entities(const std::unordered_set<uint32_t> &wanted);
+
 // Parse the active mod's event\*.emevd.dcx and return the World-feature graying flags:
 // (entityId -> activated event flag) for each EMEVD flag-template (Hero's Tomb statue
 // 90005683, Hostile NPC defeat 90005792). The World-feature disk pass joins an interactive

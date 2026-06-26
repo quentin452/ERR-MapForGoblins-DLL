@@ -267,14 +267,20 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             if (!inb(re, 0x20, len)) continue;
             int32_t sub = (int32_t)rd32(buf, re + 0x08);
             bool keep = (sub == REGION_MOUNT_JUMP || sub == REGION_LOCKED_MOUNT_JUMP);
+            // Read the name for every region: the spirit-spring "Others" filter AND the Kindling
+            // Spirit filter (SFX region named "KindlingSpirit_000N", any subtype) both key on it.
             std::string name;
-            if (keep || sub == REGION_OTHERS)
             {
                 size_t nm = eio(rd64(buf, re + 0x00), re);
                 if (nm < len) name = rd_utf16(buf, nm, len);
             }
             if (!keep && sub == REGION_OTHERS &&
                 name.find("FakeSpiritSpringJump") != std::string::npos)
+                keep = true;
+            // Kindling Spirits: SFX region "KindlingSpirit_000N" (NOT the lit-variant
+            // "KindlingSpiritX_..." — the '_' after "Spirit" excludes it). The caller routes by
+            // this name prefix; position = the region pos (= the bake's kindling pos). No flag.
+            if (!keep && name.rfind("KindlingSpirit_", 0) == 0)
                 keep = true;
             if (!keep) continue;
             Region rg;
@@ -374,6 +380,15 @@ constexpr EmevdTemplate kEmevdFlagTemplates[] = {
     {90005792, 20, 8, 24},   // Hostile NPC defeated: entity@+20 (X12_4), defeat flag@+8 (X0_4)
     {90006051, 8, 12, 16},   // Seal puzzle per-seal: seal entity@+8 (X0_4), activation flag@+12
                              // (X4_4); params (seal_eid, flag, sfx, group) — tools/extract_seal_puzzles.py
+    // Bespoke "extra puzzle" events — no shared template id (each is a per-map event), same
+    // (entity, flag) shape as the seals. Params are 0-based from byte 8 (X0_4=+8). Mirrors
+    // tools/extract_seal_puzzles.py:_EXTRA_PUZZLES. The world-feature pass joins entity→flag
+    // for the chalice/lantern asset models (AEG099_047 / AEG237_055) via seal_emevd self-gate.
+    {1049392302, 8, 12, 16}, // Sellia chalice (big):   entity@X0_4(+8), lit flag@X4_4(+12)
+    {1049392303, 8, 12, 16}, // Sellia chalice (small)
+    {1050392303, 8, 12, 16}, // Sellia chalice (m60_50)
+    {12022601, 12, 8, 16},   // Siofra lower-layer lantern: anchor asset@X4_4(+12), lit flag@X0_4(+8)
+    {12022621, 12, 8, 16},   // Siofra upper-layer lantern
 };
 const EmevdTemplate *find_emevd_flag_template(uint32_t eventId)
 {
