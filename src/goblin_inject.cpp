@@ -4442,6 +4442,15 @@ int goblin::classify_item_live(int32_t key)
     if (key >= 500000000) // goods
     {
         int32_t gid = key - 500000000;
+        // ERR-variant rune currency absent from ITEM_ICONS → route to the Golden Rune category so a
+        // disk-placed one isn't mis-bucketed. The base runes (goods 2900-2919) AND the DLC runes
+        // (Shadow Realm / Broken / Unsung Hero, goods 2002951-2002959, keys 502002951-502002959) ARE in
+        // ITEM_ICONS, so item_marker_category catches them first and they never reach here. But the ERR
+        // high-NG rune block goods 82909-82919 — Golden One's [10000]-[13000] / Ancient's [14000]-[25000]
+        // / Numen's [30000] / Hero's [35000] / Lord's [50000] — has no ITEM_ICONS entry AND no baked
+        // MAP_ENTRY (the bake never places it), so without this it falls to the goods_type catch-all
+        // below (CraftingMaterials). All eleven are unambiguously high-value runes → LootGoldenRunes.
+        if (gid >= 82909 && gid <= 82919) return (int)C::LootGoldenRunes;
         // GOODS_TYPE values per the repo's own extractor (tools/extract_goods_categories.py).
         // Routing each known type to its real category makes the per-category show_* toggles a
         // fine-grained goodsType filter for collectibles (e.g. show_crafting_materials = false
