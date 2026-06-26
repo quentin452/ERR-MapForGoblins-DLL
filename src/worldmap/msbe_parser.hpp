@@ -112,6 +112,15 @@ struct EmevdSetter
     uint32_t mapTile = 0;
 };
 
+// A boss-reward (90005860/61/80) init: the defeat flag, the awarded base lot, and the EXPLICIT
+// boss entity (arg X8_4 @16). entity is 0 when the arg is absent/zero. See EmevdParse::bossFlagLot.
+struct BossFlagLot
+{
+    uint32_t flag   = 0;  // defeatFlag (X0_4 @8) — gray flag comes from the lot's getItemFlagId, not this
+    uint32_t lot    = 0;  // baseLot (X16_4 @24) — piece = base+1/+2
+    uint32_t entity = 0;  // bossEntity (X8_4 @16) — explicit boss MSB EntityID (position fallback)
+};
+
 // Full EMEVD parse: direct template awards (mechanism A, the shipped pass) PLUS the
 // event-1200 inputs (mechanism B). RunEvent(2000:00) inits with callee 1200 give (flag,lot);
 // the setters give (flag-set, entity candidates). The caller resolves B by joining
@@ -122,13 +131,15 @@ struct EmevdParse
     std::vector<std::pair<uint32_t, uint32_t>>    runEvent1200;  // (flag, lot) — RunEvent(1200)
     std::vector<EmevdSetter>                      setters;       // SetEventFlag(.,1) events
     // Boss-reward templates 90005860/61/80: init args (defeatFlag@8 = X0_4, bossEntity@16 = X8_4,
-    // baseLot@24 = X16_4). We parse (defeatFlag, baseLot) — not the entity offset, because the
-    // Reforged convention is defeatFlag == the boss's MSB EntityID, so the caller resolves the
-    // position directly from the flag (with a map-scoped setter-candidate fallback for the few binds
-    // where it doesn't). Collected from EVERY map's emevd (the binds are per-map, unlike RunEvent(1200)
-    // which is common-only); then walk the baseLot ItemLotParam chain (piece = baseLot+1/+2) for the
-    // Rune/Ember Piece.
-    std::vector<std::pair<uint32_t, uint32_t>>    bossFlagLot;   // (defeatFlag, baseLot) — 90005860/61/80
+    // baseLot@24 = X16_4). We parse all three. The caller resolves the boss position from defeatFlag
+    // first (Reforged convention: defeatFlag == the boss's MSB EntityID for ~83/92 binds), then falls
+    // back to the EXPLICIT bossEntity@16 (what the offline bake reads — extract_all_items.py:651), then
+    // to a map-scoped setter-candidate join. The @16 fallback recovers the 9 overworld field-boss binds
+    // where defeatFlag != EntityID (c4980/c3150/c4950 + the cross-tile c4503), which the flag-only path
+    // left baked (tools/_probe_boss_piece_entity.py: 9 ENTITY-only). Collected from EVERY map's emevd
+    // (the binds are per-map, unlike RunEvent(1200) which is common-only); then walk the baseLot
+    // ItemLotParam chain (piece = baseLot+1/+2) for the Rune/Ember Piece.
+    std::vector<BossFlagLot>                      bossFlagLot;   // (defeatFlag, baseLot, bossEntity) — 90005860/61/80
     // Per-tile "enemy-death item award" inits: a bank-2000 InitializeEvent whose callee is a per-tile
     // template (eventId >= 1e9, NOT a kEmevdTemplate) that awards an ItemLotParam when an enemy dies.
     // Layout (verified on the 12 uncovered Golden Runes + tools/_probe_emevd_precise.py): entity@X0_4

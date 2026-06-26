@@ -1568,10 +1568,13 @@ void build_buckets_impl()
             // tiles for JUST those missing entities and append them to disk_enemies — consumed ONLY
             // by the emevd join below (the enemy pass + known_entities/boss resolution are already
             // built, so this adds no LOD phantoms there).
+            // Includes bossReward awards: the explicit bossEntity@16 of an overworld field-boss bind
+            // can live ONLY in a LOD supertile (the cross-tile c4503 entity 1054560800 in m60_13_14_02,
+            // bind in m60_54_56) — the _00 scan misses it, so it's recovered here exactly like a direct
+            // LOD-scope award. The 8 other entity@16 binds resolve in _00 and never reach this set.
             std::unordered_set<uint32_t> missing_award_entities;
             for (const DiskEmevd &a : awards)
-                if (a.lotType == 1 && !a.bossReward && a.entityId &&
-                    !known_entities.count(a.entityId))
+                if (a.lotType == 1 && a.entityId && !known_entities.count(a.entityId))
                     missing_award_entities.insert(a.entityId);
             for (DiskEnemy &e : load_lod_award_entities(missing_award_entities))
                 disk_enemies.push_back(std::move(e));

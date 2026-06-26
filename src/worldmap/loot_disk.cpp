@@ -574,9 +574,10 @@ std::vector<DiskEmevd> load_emevd_awards(
     // Mechanism B inputs, accumulated across all files: flag→lot (from common.emevd's
     // RunEvent(1200)) and every SetEventFlag(.,1) event's flags+entity candidates.
     std::unordered_map<uint32_t, uint32_t> flag_to_lot;
-    // Boss-reward (90005860/61/80) defeatFlag→baseLot binds, accumulated from EVERY map (the binds
-    // are per-map, unlike the common-only RunEvent(1200) ones). Joined to a boss entity below.
-    std::unordered_map<uint32_t, uint32_t> boss_flag_to_lot;
+    // Boss-reward (90005860/61/80) defeatFlag→(baseLot, bossEntity@16) binds, accumulated from EVERY
+    // map (the binds are per-map, unlike the common-only RunEvent(1200) ones). Joined to a boss entity
+    // below — defeatFlag first, then the explicit bossEntity@16, then a setter-candidate fallback.
+    std::unordered_map<uint32_t, std::pair<uint32_t, uint32_t>> boss_flag_to_lot;  // flag → (lot, entity)
     std::vector<msbe::EmevdSetter> setters;
     std::error_code ec;
     for (auto &de : fs::directory_iterator(evdir, ec))
@@ -611,7 +612,7 @@ std::vector<DiskEmevd> load_emevd_awards(
             for (const auto &fl : p.runEvent1200) flag_to_lot[fl.first] = fl.second;
         // Boss-reward binds come from EVERY map's emevd (each dungeon inits 90005860 with its own
         // boss flag + lot), so collect them unconditionally.
-        for (const auto &fl : p.bossFlagLot) boss_flag_to_lot[fl.first] = fl.second;
+        for (const auto &fl : p.bossFlagLot) boss_flag_to_lot[fl.flag] = {fl.lot, fl.entity};
         // Stamp each setter with its emevd file's tile (area<<16|gx<<8|gz) so the boss-candidate
         // resolution below stays map-scoped. "m30_12_00_00.emevd.dcx" → (30,12,0); files that
         // aren't a single tile (e.g. "common.emevd.dcx", "m60.emevd.dcx") leave mapTile=0 and fall
@@ -676,13 +677,22 @@ std::vector<DiskEmevd> load_emevd_awards(
     // tells the marker pass to walk the chain (base+1/+2) for the Rune/Ember Piece and emit it
     // under the Reforged category (the rune/ember sibling suppression is lifted for these).
     // Reforged convention (~83/92 binds): the boss defeatFlag IS the boss's MSB EntityID, so use it
-    // directly. The minority without flag==entity fall back to a (map-scoped) setter-event candidate
-    // join (the event-1200 mechanism). Loop the BINDS (not setters) so flag-as-entity is tried first.
-    int boss_ev = 0, boss_no_entity = 0;
+    // directly. The minority without flag==entity fall back to (1) the EXPLICIT bossEntity@16 the init
+    // carries — what the offline bake reads (extract_all_items.py:651) — which recovers the 9 overworld
+    // field-boss binds where defeatFlag != EntityID (c4980/c3150/c4950 + cross-tile c4503; flag==entity
+    // for all 83 binds where both resolve, so flag-first never shifts a validated marker — verified by
+    // tools/_probe_boss_piece_entity.py), then (2) a map-scoped setter-event candidate join. Loop the
+    // BINDS (not setters) so flag-as-entity is tried first.
+    int boss_ev = 0, boss_no_entity = 0, boss_via_entity16 = 0;
     for (const auto &fl : boss_flag_to_lot)
     {
-        const uint32_t flag = fl.first, lot = fl.second;
+        const uint32_t flag = fl.first, lot = fl.second.first, entity16 = fl.second.second;
         uint32_t chosen = knownEntities.count(flag) ? flag : 0;  // defeatFlag == boss EntityID
+        if (!chosen && entity16)  // explicit bossEntity@16 (bake path) — authoritative over the setter
+        {                         // heuristic, even when it resolves only in a LOD tile (8 of 9 are _00
+            chosen = entity16;    // enemies; the 1 cross-tile c4503 is recovered by the LOD-award scan
+            ++boss_via_entity16;  // in map_entry_layer.cpp, which now includes bossReward entities).
+        }
         if (!chosen)
             for (const msbe::EmevdSetter &s : setters)  // fallback: setter that sets this flag
             {
@@ -700,10 +710,10 @@ std::vector<DiskEmevd> load_emevd_awards(
     }
     spdlog::info("[LOOTDISK] {} EMEVD files parsed; {} direct + {} per-tile-enemy + {} event-1200 + {} "
                  "boss-reward awards ({} flag→lot binds, {} boss-flag binds, {} setters, {} "
-                 "ev1200-no-entity, {} boss-no-entity); {} KRAK skipped",
+                 "ev1200-no-entity, {} boss-no-entity, {} boss-via-entity@16); {} KRAK skipped",
                  parsed, direct, per_tile_award, ev1200, boss_ev, (int)flag_to_lot.size(),
                  (int)boss_flag_to_lot.size(), (int)setters.size(), ev1200_no_entity, boss_no_entity,
-                 kraks);
+                 boss_via_entity16, kraks);
     return out;
 }
 
