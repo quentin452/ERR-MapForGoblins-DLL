@@ -174,6 +174,20 @@ struct IconSet
                 out.scale = goblin::config::mapSymbolScale;
                 return true;
             }
+            // Item categories → the game's real inventory icon for a representative member
+            // (category_rep_icon, derived live at build). Harvested from the 00_Solo atlas; falls
+            // through to the baked atlas until that icon is resident.
+            int rep = goblin::worldmap::category_rep_icon(m.category);
+            if (rep > 0)
+            {
+                void *t = nullptr; float a0, b0, a1, b1;
+                if (goblin::overlay::native_item_icon(rep, t, a0, b0, a1, b1))
+                {
+                    out.tex = reinterpret_cast<ImTextureID>(t);
+                    out.uv0 = ImVec2(a0, b0); out.uv1 = ImVec2(a1, b1);
+                    return true;
+                }
+            }
         }
         return atlas.resolve(IconKey{IconKey::Atlas, m.icon_key, -1}, out);
     }

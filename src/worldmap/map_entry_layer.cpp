@@ -2570,6 +2570,37 @@ void build_buckets_impl()
             spdlog::info("[ITEMCLASS] key={} cat=\"{}\" count={}", key,
                          goblin::markers::category_name(static_cast<gen::Category>(cv.first)), cv.second);
     }
+    // ── Representative item-icon per category (live, no bake) ─────────────────────
+    // For each ITEM category pick the most-common item key in its bucket and resolve that item's
+    // REAL inventory iconId (item_real_icon_id → EquipParam.iconId). That iconId is the category's
+    // representative game icon; the renderer draws it (harvested from the 00_Solo atlas) once
+    // resident, falling back to the baked atlas otherwise. Drift-proof: no hardcoded item ids — the
+    // representative follows whatever the live/disk pass actually placed (any mod/DLC).
+    {
+        int wired = 0;
+        for (int c = 0; c < NUM_CAT; ++c)
+        {
+            std::map<int32_t, int> freq;  // item key → marker count
+            for (const Marker &m : g_buckets[c])
+                if (m.name_id > 0)
+                    ++freq[m.name_id];
+            // Most-common key (ties: lowest key, for a stable pick across runs).
+            int32_t best_key = 0; int best_n = 0;
+            for (const auto &[k, n] : freq)
+                if (n > best_n) { best_n = n; best_key = k; }
+            const int icon = best_key ? goblin::item_real_icon_id(best_key) : -1;
+            goblin::worldmap::set_category_rep_icon(c, icon);
+            if (icon > 0)
+            {
+                ++wired;
+                goblin::queue_force_item_icon(icon);  // make it resident → harvestable by the renderer
+                spdlog::info("[CATICON] cat=\"{}\" rep_key={} iconId={} (from {} markers)",
+                             goblin::markers::category_name(static_cast<gen::Category>(c)),
+                             best_key, icon, best_n);
+            }
+        }
+        spdlog::info("[CATICON] representative item-icons resolved for {} / {} categories", wired, NUM_CAT);
+    }
 }
 
 // Disk-loot build is run ONCE on a background WORKER thread (not std::call_once):

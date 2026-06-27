@@ -26,6 +26,11 @@ namespace goblin::overlay
     // True once the first frame has initialised ImGui against the live swapchain.
     bool is_ready();
 
+    // Resolve a real inventory iconId (MENU_ItemIcon_<id>, the 00_Solo atlas) to a drawable native
+    // GPU icon (harvested sheet copied into an ImGui SRV, sheet-as-atlas). Returns false until the
+    // icon is resident/harvested → the caller falls back to the baked atlas. Render-thread only.
+    bool native_item_icon(int iconId, void *&tex, float &u0, float &v0, float &u1, float &v1);
+
     // Resolve a MAP-POINT iconId (a MENU_MAP_<NN> world-map symbol, NN = WORLD_MAP_POINT_PARAM
     // .iconId) to a drawable native GPU icon: the SB_MapCursor sheet the engine resolved into the
     // FD4 image repo (goblin::map_icon_rect), copied into an ImGui SRV (sheet-as-atlas). Returns

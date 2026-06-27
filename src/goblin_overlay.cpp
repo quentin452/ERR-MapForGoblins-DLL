@@ -1715,8 +1715,9 @@ namespace
             // the categories that HAVE a baked icon (the by-design circle-fallback ones are excluded —
             // they have no baked cell to replace). "GPU" = category_is_gpu_native (the single source
             // of truth that mirrors the actual render: name-keyed map symbols like bosses, numeric
-            // map-point iconIds, and the GraceLayer grace-sprite path). Counting the WIRING (not live
-            // residency) keeps this in lock-step with what draws — no desync.
+            // map-point iconIds, the per-category representative item icon (00_Solo atlas), and the
+            // GraceLayer grace-sprite path). Counting the WIRING (not live residency) keeps this in
+            // lock-step with what draws — no desync.
             if (ImGui::CollapsingHeader("Icon migration (Baked \xE2\x86\x92 GPU)"))
             {
                 namespace wm = goblin::worldmap;
@@ -1757,6 +1758,12 @@ namespace
                         {
                             via = "map-point id";
                             resident = goblin::map_icon_rect(iid, x, y, w, h, sheet);
+                        }
+                        else if (int rep = wm::category_rep_icon(c))
+                        {
+                            via = "item icon";       // representative item from the 00_Solo atlas
+                            goblin::ItemSprite sp;
+                            resident = goblin::harvested_icon(rep, sp) && sp.sheet;
                         }
                         else
                         {
@@ -3190,6 +3197,27 @@ void goblin::overlay::shutdown()
 }
 
 bool goblin::overlay::is_ready() { return g_imgui_init; }
+
+bool goblin::overlay::native_item_icon(int iconId, void *&tex, float &u0, float &v0, float &u1,
+                                       float &v1)
+{
+    if (iconId < 0)
+        return false;
+    // Sheet-as-atlas: resolve the icon's harvested sheet + rect (the MENU_ItemIcon_<id> inventory
+    // atlas — the 00_Solo TPFs), copy the WHOLE sheet once (cached), and return that shared texture
+    // + the icon's UV sub-rect. Falls back (false) until the sheet is harvested + GPU-bound, so the
+    // caller keeps the baked atlas icon meanwhile. Drives the per-CATEGORY representative item icon.
+    goblin::ItemSprite sp;
+    if (!goblin::harvested_icon(iconId, sp) || !sp.sheet)
+        return false;
+    const SheetTex *st = copy_sheet_cached(reinterpret_cast<ID3D12Resource *>(sp.sheet));
+    if (!st || !st->gpu || st->w <= 0 || st->h <= 0)
+        return false;
+    tex = reinterpret_cast<void *>(st->gpu);
+    u0 = (float)sp.x0 / st->w; v0 = (float)sp.y0 / st->h;
+    u1 = (float)sp.x1 / st->w; v1 = (float)sp.y1 / st->h;
+    return true;
+}
 
 bool goblin::overlay::native_map_point_icon(int iconId, void *&tex, float &u0, float &v0, float &u1,
                                             float &v1)

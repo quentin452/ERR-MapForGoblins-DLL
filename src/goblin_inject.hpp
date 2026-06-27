@@ -316,6 +316,18 @@ namespace goblin
     // Lets the disk-MSB loot path bucket a live-resolved lot item without the bake.
     int item_marker_category(int32_t key);
 
+    // Real inventory iconId (MENU_ItemIcon_<id> atlas index) for an offset-encoded item key, read
+    // LIVE from the owning EquipParam at the cross-verified iconId offset (Goods@0x30, Weapon@0xBE,
+    // Protector@0xA6, Accessory@0x26, Gem@0x04 — see verify_equip_iconids / self_calibrate_iconid).
+    // -1 if the key isn't an item or its row/param is absent. Feeds the category GPU icon (a
+    // representative item per category → its real game icon, harvested from the 00_Solo atlas).
+    int item_real_icon_id(int32_t key);
+
+    // Queue a representative item-icon (MENU_ItemIcon_<id>) to be force-made-resident on the engine
+    // thread, so the overlay can harvest + draw it for its category. Bounded/deduped, thread-safe;
+    // no-op until a CreateImage context is captured (open inventory/map once). Called by map build.
+    void queue_force_item_icon(int iconId);
+
     // Placed AEG asset's collectible item-lot, resolved LIVE from
     // AssetEnvironmentGeometryParam[aegRow].pickUpItemLotParamId (an ItemLotParam_map
     // id), or 0 if the asset is not a pickup. aegRow = AEG{A}_{B} → A*1000+B. Feeds the

@@ -3,6 +3,7 @@
 #include "goblin_map_data.hpp" // Category enum
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS (baked-cell resolve)
 
+#include <atomic>
 #include <cstring>
 
 namespace goblin::worldmap
@@ -182,6 +183,39 @@ const char *category_gpu_icon_name(int category)
     return nullptr;
 }
 
+namespace
+{
+// Representative item iconId per category, in enum order. -1/0 = none. std::atomic so the map-build
+// thread (writer) and the render/panel/load threads (readers) don't tear on the int.
+std::atomic<int> g_rep_icon[CAT_COUNT];
+} // namespace
+
+void set_category_rep_icon(int category, int iconId)
+{
+    if (category < 0 || category >= CAT_COUNT)
+        return;
+    g_rep_icon[category].store(iconId > 0 ? iconId : 0, std::memory_order_relaxed);
+}
+
+int category_rep_icon(int category)
+{
+    if (category < 0 || category >= CAT_COUNT)
+        return 0;
+    return g_rep_icon[category].load(std::memory_order_relaxed);
+}
+
+int category_rep_icons(int (&out)[128])
+{
+    int n = 0;
+    for (int c = 0; c < CAT_COUNT && n < 128; ++c)
+    {
+        int id = g_rep_icon[c].load(std::memory_order_relaxed);
+        if (id > 0)
+            out[n++] = id;
+    }
+    return n;
+}
+
 bool category_is_gpu_native(int category)
 {
     // Mirror map_renderer's IconSet::resolve order + GraceLayer's dedicated grace draw. Any of
@@ -189,6 +223,8 @@ bool category_is_gpu_native(int category)
     if (category_gpu_icon_name(category) != nullptr)  // name-keyed symbol (e.g. bosses)
         return true;
     if (category_gpu_iconId(category) > 0)            // numeric MENU_MAP_<NN> map-point symbol
+        return true;
+    if (category_rep_icon(category) > 0)              // representative item-icon (00_Solo atlas)
         return true;
     if (category == static_cast<int>(goblin::generated::Category::WorldGraces))
         return true;                                  // graces: GraceLayer s_grace_tex / dungeon sprite

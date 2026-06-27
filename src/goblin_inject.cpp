@@ -2845,6 +2845,13 @@ std::atomic<int> g_ci_req_icon{INT_MIN};   // queued iconId (INT_MIN = idle, CI_
 alignas(16) char g_ci_name[96];            // 4-aligned scratch for the synthesized symbol name
 uintptr_t g_ci_desc[4] = {0};              // synthetic param_3: [0] = (g_ci_name - 0xc), rest 0 (pad)
 
+// Pending per-category representative item-icons to force-resident (filled by the map build via
+// goblin::queue_force_item_icon, drained ONE-per-tick on the engine thread in res_tick_detour using
+// the SAME run_create_icon path as graces). Bounded + deduped; no-op until a CreateImage context is
+// captured (open the inventory/map once) → the renderer falls back to the baked atlas meanwhile.
+std::vector<int> g_caticon_pending;
+std::mutex g_caticon_mx;
+
 inline bool res_w32(uintptr_t a, uint32_t v)
 {
     SIZE_T n = 0;
@@ -2993,6 +3000,17 @@ void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
                 if (g_icon_repo)
                     harvest_twin_map_icons(g_icon_repo, er);
             }
+            // Drain ONE queued per-category representative item-icon per tick → make it resident so
+            // the renderer can harvest it (same CreateImage path as graces). Needs a captured context.
+            if (goblin::config::nativeItemIcons && g_ci_p1.load(std::memory_order_relaxed))
+            {
+                int id = 0;
+                {
+                    std::lock_guard<std::mutex> lk(g_caticon_mx);
+                    if (!g_caticon_pending.empty()) { id = g_caticon_pending.back(); g_caticon_pending.pop_back(); }
+                }
+                if (id > 0) run_create_icon(er, id);
+            }
         }
     }
     if (g_res_tick_orig) g_res_tick_orig(p1, p2);
@@ -3027,6 +3045,19 @@ bool goblin::force_create_icon(int iconId)
     }
     g_ci_req_icon.store(iconId, std::memory_order_release);
     return true;
+}
+
+// Queue a per-category representative item-icon to be force-made-resident on the engine thread (the
+// res_tick drain above). Called by the map build for each category's resolved iconId. Bounded +
+// deduped; safe to call from any thread. Not gated by dumpIconTextures — this is a shipping feature
+// path (the drain itself no-ops until a CreateImage context is captured).
+void goblin::queue_force_item_icon(int iconId)
+{
+    if (iconId <= 0) return;
+    std::lock_guard<std::mutex> lk(g_caticon_mx);
+    if (g_caticon_pending.size() < 256 &&
+        std::find(g_caticon_pending.begin(), g_caticon_pending.end(), iconId) == g_caticon_pending.end())
+        g_caticon_pending.push_back(iconId);
 }
 
 // Manually re-run the grace force-CreateImage (F1 dev button) — consumed on the next residency
@@ -4587,6 +4618,47 @@ static int goods_sort_group(int32_t goods_id)
     if (!s_ok || goods_id <= 0) return -1;
     RawGoodsRow *r = s_seq->try_get((uint64_t)goods_id);
     return r ? (int)r->b[goods_sort_group_offset()] : -1;
+}
+
+// Real inventory iconId (the MENU_ItemIcon_<id> atlas index) for an offset-encoded marker/item key,
+// read LIVE from the owning EquipParam at the iconId offset cross-verified in verify_equip_iconids()
+// (self_calibrate_iconid() finds the same offsets with zero hardcoding — survives patches/mod swaps):
+//   goods+500M     → EquipParamGoods.iconId      @0x30
+//   weapon/ammo+100M → EquipParamWeapon.iconId    @0xBE
+//   protector+200M → EquipParamProtector.iconIdM  @0xA6
+//   accessory+300M → EquipParamAccessory.iconId   @0x26
+//   gem+400M       → EquipParamGem.iconId         @0x04
+// Returns -1 if the key isn't an item or the row/param is absent. Drives the category GPU icon
+// (a representative item per category → its real game icon, harvested from the 00_Solo atlas).
+struct RawEquipRow { uint8_t b[0x200]; };  // ≥ the largest equip row stride (Protector 0x1a0)
+
+static int read_equip_icon(const wchar_t *param, int32_t real_id, ptrdiff_t off)
+{
+    static std::mutex s_mx;
+    static std::map<std::wstring, std::optional<from::params::ParamTableSequence<RawEquipRow>>> s_seqs;
+    if (real_id <= 0) return -1;
+    std::lock_guard<std::mutex> lk(s_mx);
+    auto it = s_seqs.find(param);
+    if (it == s_seqs.end())
+    {
+        std::optional<from::params::ParamTableSequence<RawEquipRow>> seq;
+        try { seq.emplace(from::params::get_param<RawEquipRow>(param)); } catch (...) {}
+        it = s_seqs.emplace(param, std::move(seq)).first;
+    }
+    if (!it->second) return -1;
+    RawEquipRow *r = it->second->try_get((uint64_t)real_id);
+    return r ? (int)*reinterpret_cast<uint16_t *>(r->b + off) : -1;
+}
+
+int goblin::item_real_icon_id(int32_t key)
+{
+    if (key <= 0) return -1;
+    if (key >= 500000000) return read_equip_icon(L"EquipParamGoods",     key - 500000000, 0x30);
+    if (key >= 400000000) return read_equip_icon(L"EquipParamGem",       key - 400000000, 0x04);
+    if (key >= 300000000) return read_equip_icon(L"EquipParamAccessory", key - 300000000, 0x26);
+    if (key >= 200000000) return read_equip_icon(L"EquipParamProtector", key - 200000000, 0xA6);
+    if (key >= 100000000) return read_equip_icon(L"EquipParamWeapon",    key - 100000000, 0xBE); // weapon/ammo
+    return -1;
 }
 
 // True iff an EquipParamGoods row is a region Map fragment — sortGroupId ∈ {190 (base), 191 (DLC)}.
