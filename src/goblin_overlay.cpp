@@ -2133,13 +2133,6 @@ namespace
                         }
                         for (auto &h : s_hits)
                             h.count = hit_count[((int64_t)h.name_id << 2) | h.group];
-                        // Force-load each matched item's OWN native icon (the 00_Solo item-icon atlas)
-                        // so a revealed/located hit draws its real game icon instead of the baked
-                        // fallback. Drained on the engine tick; bounded+deduped by queue_force_item_icon.
-                        // Only fires on query change (this block), not per frame.
-                        if (goblin::config::nativeItemIcons)
-                            for (int32_t nid : s_match)
-                                goblin::queue_force_item_icon(goblin::item_real_icon_id(nid));
                         // Group same-name rows together, pages in order (Overworld, Underground, DLC).
                         std::sort(s_hits.begin(), s_hits.end(), [](const Hit &a, const Hit &b) {
                             int c = a.label.compare(b.label);

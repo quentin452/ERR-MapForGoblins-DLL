@@ -191,20 +191,6 @@ struct IconSet
         }
         return atlas.resolve(IconKey{IconKey::Atlas, m.icon_key, -1}, out);
     }
-    // Resolve a SPECIFIC inventory iconId to its native sprite (the 00_Solo item-icon atlas), for the
-    // search-bar reveal: a searched item draws its OWN icon, not the category representative. false
-    // when native is off or the icon isn't resident → caller falls back to the normal resolve.
-    bool resolve_item_icon(int iconId, IconHandle &out) const
-    {
-        if (!native || iconId < 0)
-            return false;
-        void *t = nullptr; float u0, v0, u1, v1;
-        if (!goblin::overlay::native_item_icon(iconId, t, u0, v0, u1, v1))
-            return false;
-        out.tex = reinterpret_cast<ImTextureID>(t);
-        out.uv0 = ImVec2(u0, v0); out.uv1 = ImVec2(u1, v1);
-        return true;
-    }
 };
 
 // Desaturate toward luminance + halve alpha → the "collected" dim tint (packed ABGR).
@@ -293,8 +279,7 @@ static inline bool is_discovered_grace(const Marker &m)
 // half = icon half-size in px (resolution-scaled by the caller). When collected_graying
 // is on, collected/cleared markers dim+desaturate (or hide if hide_collected), and
 // cleared bosses get a green checkmark. Uncollected bosses redden when redify_boss_icons.
-void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons, float half,
-                 int item_override = -1)
+void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons, float half)
 {
     // Grace marker (discover_flag set only on graces): with grace_overlay the overlay draws it
     // itself — discovered (rested) = full colour, undiscovered = grey. Source per grace_gpu_sprite:
@@ -379,10 +364,7 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
                             : (red ? IM_COL32(255, 70, 70, 255) : IM_COL32(255, 255, 255, 255));
 
     IconHandle ih;
-    // Search reveal: draw the searched item's OWN native icon (item_override) when resident, else the
-    // normal per-category resolve. Makes a located item show its real game icon instead of the
-    // category-representative / baked fallback.
-    if ((item_override >= 0 && icons.resolve_item_icon(item_override, ih)) || icons.resolve(m, ih))
+    if (icons.resolve(m, ih))
     {
         const float hh = half * ih.scale;
         fg->AddImage(ih.tex, ImVec2(p.x - hh, p.y - hh), ImVec2(p.x + hh, p.y + hh),
@@ -1366,10 +1348,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             }
             else
             {
-                // Search hit → draw the searched item's OWN native icon (resident-gated; the query
-                // change force-loads it). Non-hits pass -1 = normal per-category resolve.
-                const int item_ov = is_hit ? goblin::item_real_icon_id(m.name_id) : -1;
-                draw_marker(fg, m, sp, icons, iconHalf, item_ov);
+                draw_marker(fg, m, sp, icons, iconHalf);
                 // Search highlight: ring the matching markers so they stand out on the page.
                 if (is_hit)
                     fg->AddCircle(sp, iconHalf * 1.7f, IM_COL32(255, 226, 40, 255), 0, 2.5f);
