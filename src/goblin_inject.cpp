@@ -3354,7 +3354,15 @@ bool goblin::map_icon_rect_by_name(const char *name, int &x, int &y, int &w, int
     if (!name) return false;
     std::lock_guard<std::mutex> lk(g_map_icon_mtx);
     auto it = g_map_icon_named.find(name);
-    if (it == g_map_icon_named.end()) return false;
+    if (it == g_map_icon_named.end())
+    {
+        // The GFx import/resolve formats "<symbol>_ptl" (the point-layout view), so the resident
+        // sprite is registered under the _ptl name (e.g. MENU_MAP_ERR_Boss_ptl) while callers look
+        // up the bare symbol (category_gpu_icon_name = "MENU_MAP_ERR_Boss"). Retry with the suffix so
+        // the bare name still resolves — this was the gate hiding the boss (and other) map symbols.
+        it = g_map_icon_named.find(std::string(name) + "_ptl");
+        if (it == g_map_icon_named.end()) return false;
+    }
     x = it->second.x; y = it->second.y; w = it->second.w; h = it->second.h; sheet = it->second.sheet;
     return true;
 }
