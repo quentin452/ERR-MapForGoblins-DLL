@@ -42,6 +42,8 @@
 #include <cstring>
 #include <cstdio>
 #include <algorithm>
+#include <mutex>
+#include <thread>
 
 // ImGui's Win32 backend message handler (defined in imgui_impl_win32.cpp).
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
@@ -549,7 +551,12 @@ namespace
                         data + dataOff + (size_t)r * srcRowPitch, srcRowPitch);
         upbuf->Unmap(0, nullptr);
 
-        begin_icon_batch(); // reuse the shared list (reset once/frame)
+        // DEDICATED reset (NOT begin_icon_batch): this path always submit_and_wait()s synchronously,
+        // so it owns the shared list for one self-contained copy — mirroring ensure_map_sym_srv. Using
+        // begin_icon_batch here would record onto (then Close) the per-frame harvested-icon batch and
+        // corrupt it (the shared-command-list bug). Callers run after flush_item_icon_batch (ImGui draw).
+        g_frames[0].allocator->Reset();
+        g_command_list->Reset(g_frames[0].allocator, nullptr);
         D3D12_TEXTURE_COPY_LOCATION dst{}; dst.pResource = tex;
         dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; dst.SubresourceIndex = 0;
         D3D12_TEXTURE_COPY_LOCATION src{}; src.pResource = upbuf;
@@ -561,6 +568,7 @@ namespace
         b.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         g_command_list->ResourceBarrier(1, &b);
         submit_and_wait();
+        g_icon_batch_open = false;  // list is closed/idle now — keep the invariant (next begin resets)
         upbuf->Release(); // copy done (blocked)
 
         UINT idx = g_next_item_srv++;
@@ -970,6 +978,77 @@ namespace
         spdlog::info("[MAPSYM-SRV] '{}' copied {}x{} fmt={} -> slot {} gpu={:#x}", name, cp.w, cp.h,
                      (int)fmt, s.srv_idx, s.gpu.ptr);
         return true;
+    }
+
+    // ── No-bake item-icon sheet from disk (GAP #2 WIRE) ──────────────────────────────
+    // When an item icon's atlas sheet isn't resident in-game (harvested_icon misses — the common
+    // case for non-equipment icons), draw it from the sheet DDS we read out of the menu texture pack
+    // ourselves (worldmap::read_item_icon_sheets → menu/hi/01_common.tpf, via the loose mod overlay
+    // or the packed dvdbnd). The heavy read+decompress (~194 MB TPF) runs on a one-shot background
+    // thread; the GPU upload happens on the render thread (dedicated reset, like ensure_map_sym_srv).
+    // Cached per sheet name. See [[category-icons-00solo-atlas]] GAP #2 + [[dvdbnd-packed-reader]].
+    struct DiskSheet { int state = 0; UINT64 gpu = 0; int w = 0, h = 0; };  // 0 pending,1 ready,2 failed
+    std::map<std::string, DiskSheet>            g_disk_sheets;     // sheet name (no ext) -> uploaded SRV
+    std::map<std::string, std::vector<uint8_t>> g_disk_sheet_dds;  // bg-loaded DDS awaiting GPU upload
+    std::unordered_set<std::string>             g_disk_sheet_want; // names the renderer has asked for
+    std::mutex                                  g_disk_sheet_mtx;
+    std::atomic<bool>                           g_disk_sheet_loading{false};
+
+    // Kick the one-shot background loader (no-op if one is already running — it re-scans the want set
+    // before exiting): reads every wanted-but-unloaded sheet from the texture pack ONCE and parks the
+    // DDS for the render thread to upload. The 194 MB decompress must never run on the render thread.
+    void request_disk_sheets()
+    {
+        if (g_disk_sheet_loading.exchange(true)) return;
+        std::thread([] {
+            for (;;)
+            {
+                std::vector<std::string> names;
+                {
+                    std::lock_guard<std::mutex> lk(g_disk_sheet_mtx);
+                    for (const std::string &n : g_disk_sheet_want)
+                        if (g_disk_sheet_dds.find(n) == g_disk_sheet_dds.end() &&
+                            g_disk_sheets[n].state == 0)
+                            names.push_back(n);
+                }
+                if (names.empty()) break;
+                auto got = goblin::worldmap::read_item_icon_sheets(names);  // heavy (read + decompress)
+                {
+                    std::lock_guard<std::mutex> lk(g_disk_sheet_mtx);
+                    for (auto &kv : got)
+                        g_disk_sheet_dds[kv.first] = std::move(kv.second);
+                    for (const std::string &n : names)  // absent from the pack → don't retry forever
+                        if (got.find(n) == got.end())
+                            g_disk_sheets[n].state = 2;
+                }
+            }
+            g_disk_sheet_loading.store(false);
+        }).detach();
+    }
+
+    // Render-thread: ensure `name`'s sheet is GPU-uploaded; on success copy it into `out` (true).
+    // Returns false while the DDS is still being read (registers the want + kicks the loader) or if
+    // the sheet can't be sourced — the caller keeps the baked atlas meanwhile.
+    bool ensure_disk_sheet(const std::string &name, DiskSheet &out)
+    {
+        std::lock_guard<std::mutex> lk(g_disk_sheet_mtx);
+        DiskSheet &ds = g_disk_sheets[name];
+        if (ds.state == 1) { out = ds; return true; }
+        if (ds.state == 2) return false;
+        auto it = g_disk_sheet_dds.find(name);
+        if (it != g_disk_sheet_dds.end())
+        {
+            int sw = 0, sh = 0; DXGI_FORMAT f = DXGI_FORMAT_UNKNOWN;
+            UINT64 gpu = create_tex_from_dds_mem(it->second.data(), it->second.size(), sw, sh, f);
+            g_disk_sheet_dds.erase(it);  // free the ~8 MB CPU DDS either way
+            if (gpu && sw > 0 && sh > 0)
+            { ds.gpu = gpu; ds.w = sw; ds.h = sh; ds.state = 1; out = ds; return true; }
+            ds.state = 2;  // upload failed → don't retry
+            return false;
+        }
+        g_disk_sheet_want.insert(name);  // not read yet → request + baked fallback this frame
+        request_disk_sheets();
+        return false;
     }
 
     // ── Grace-sprite GPU debug viewer (dev) ──────────────────────────────────────────
@@ -3269,19 +3348,37 @@ bool goblin::overlay::native_item_icon(int iconId, void *&tex, float &u0, float 
 {
     if (iconId < 0)
         return false;
-    // Sheet-as-atlas: resolve the icon's harvested sheet + rect (the MENU_ItemIcon_<id> inventory
-    // atlas — the 00_Solo TPFs), copy the WHOLE sheet once (cached), and return that shared texture
-    // + the icon's UV sub-rect. Falls back (false) until the sheet is harvested + GPU-bound, so the
-    // caller keeps the baked atlas icon meanwhile. Drives the per-CATEGORY representative item icon.
+    // 1) Preferred: the icon's sheet is already RESIDENT in-game (equipment icons stream their
+    //    SB_Icon sheet). Sheet-as-atlas: copy the whole harvested sheet once (cached) + return the
+    //    icon's UV sub-rect.
     goblin::ItemSprite sp;
-    if (!goblin::harvested_icon(iconId, sp) || !sp.sheet)
+    if (goblin::harvested_icon(iconId, sp) && sp.sheet)
+    {
+        const SheetTex *st = copy_sheet_cached(reinterpret_cast<ID3D12Resource *>(sp.sheet));
+        if (st && st->gpu && st->w > 0 && st->h > 0)
+        {
+            tex = reinterpret_cast<void *>(st->gpu);
+            u0 = (float)sp.x0 / st->w; v0 = (float)sp.y0 / st->h;
+            u1 = (float)sp.x1 / st->w; v1 = (float)sp.y1 / st->h;
+            return true;
+        }
+    }
+    // 2) No-bake fallback: the sheet ISN'T resident (the common non-equipment case → CreateImage
+    //    returns 0x0). Draw the icon from the sheet DDS we read out of the menu texture pack
+    //    ourselves: layout iconId → sheet name + pixel rect, upload that sheet's DDS once, crop the
+    //    rect as UV. Returns false until the DDS is read off-thread + uploaded (baked atlas meanwhile).
+    int x = 0, y = 0, w = 0, h = 0;
+    std::string sheet;
+    if (!goblin::item_icon_layout_rect(iconId, x, y, w, h, sheet) || w <= 0 || h <= 0)
         return false;
-    const SheetTex *st = copy_sheet_cached(reinterpret_cast<ID3D12Resource *>(sp.sheet));
-    if (!st || !st->gpu || st->w <= 0 || st->h <= 0)
+    if (size_t dot = sheet.rfind('.'); dot != std::string::npos)  // "SB_Icon_00.png" → "SB_Icon_00"
+        sheet.resize(dot);
+    DiskSheet ds;
+    if (!ensure_disk_sheet(sheet, ds) || ds.w <= 0 || ds.h <= 0)
         return false;
-    tex = reinterpret_cast<void *>(st->gpu);
-    u0 = (float)sp.x0 / st->w; v0 = (float)sp.y0 / st->h;
-    u1 = (float)sp.x1 / st->w; v1 = (float)sp.y1 / st->h;
+    tex = reinterpret_cast<void *>(ds.gpu);
+    u0 = (float)x / ds.w; v0 = (float)y / ds.h;
+    u1 = (float)(x + w) / ds.w; v1 = (float)(y + h) / ds.h;
     return true;
 }
 
