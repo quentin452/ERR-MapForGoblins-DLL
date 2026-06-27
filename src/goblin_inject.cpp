@@ -8,7 +8,6 @@
 #include "goblin_map_data.hpp"
 #include "goblin_item_icons.hpp"
 #include "goblin_category_exceptions.hpp"
-#include "goblin_location_alt.hpp"
 #include "goblin_region_anchors.hpp"
 #include "goblin_major_regions.hpp"
 #include "goblin_name_regions.hpp"

@@ -22,6 +22,8 @@ namespace goblin::collected
         int geom_slot = -1;        // MSB InstanceID - 9000, or -1 if N/A
         float px = 0, py = 0, pz = 0;  // MSB-local position
         std::string object_name;   // MSB part name, e.g. "AEG099_821_9003"
+        std::string model_name;    // ACTUAL model (ERR substitutes some gather models); GEOF
+                                   // graying keys on this, falls back to the name prefix if empty
     };
 
     /// Stage runtime geom entries to be merged into the tracking tables on the next refresh().

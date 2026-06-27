@@ -38,6 +38,8 @@ struct DiskCollectible
     uint8_t  area = 0, gx = 0, gz = 0;  // from the tile filename
     float    posX = 0.0f, posY = 0.0f, posZ = 0.0f;  // Part+0x20 (block-local; = bake x/y/z)
     std::string name;                   // full MSB part name, e.g. "AEG099_821_9003" (geom tracking)
+    std::string modelName;              // ACTUAL model (msbe::Asset::modelName) — ERR substitutes
+                                        // some gather models; GEOF graying buckets by THIS, not name
 };
 
 // One placed Enemy read from a disk MSB. The drop lot is resolved LIVE by the
