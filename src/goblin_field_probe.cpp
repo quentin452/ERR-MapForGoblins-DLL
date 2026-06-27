@@ -23,6 +23,13 @@ uintptr_t g_watch_addr = 0;
 PVOID g_veh = nullptr;
 std::vector<DWORD> g_armed_tids;   // threads we set DR0 on (to disarm)
 uint64_t g_dr7 = 0;
+std::atomic<bool> g_armed{false};  // one-shot guard: arm DR0 / install the VEH exactly once
+// "@geom" deferred-arm state: initialize() parsed an @geom spec but has no live address yet; a geom
+// subsystem feeds one via arm_raw(). Cleared once armed.
+std::atomic<bool> g_await_geom{false};
+ptrdiff_t g_geom_off = 0x263;
+int g_geom_len = 1;
+bool g_geom_wo = false;
 // Multi-hit log: a field may be read by SEVERAL instructions (e.g. a bitfield byte tested bit-by-
 // bit — bit0 by one site, bit5/isEnableRepick by another). Collect DISTINCT eldenring.exe access
 // RIPs (deduped) and log each, disarming only after N, so one capture surfaces all of them.
@@ -141,6 +148,41 @@ LONG CALLBACK veh(EXCEPTION_POINTERS *ep)
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 
+// Shared arming primitive: pin DR0 on `addr` across every thread + install the VEH, exactly ONCE.
+// Used by both the param-row path (initialize) and the raw-address path (arm_raw). Returns false if
+// already armed or the exe bounds can't be resolved.
+bool arm(uintptr_t addr, int len, bool write_only, const char *label)
+{
+    if (g_armed.exchange(true))
+    {
+        spdlog::warn("[FWA] already armed on {:#x} — ignoring arm request for {:#x}", g_watch_addr, addr);
+        return false;
+    }
+    if (len != 1 && len != 2 && len != 4 && len != 8) len = 1;
+    if (len != 1 && (addr % len) != 0)
+    {
+        spdlog::warn("[FWA] addr {:#x} not {}-aligned — HW bp needs alignment; falling back to len=1", addr, len);
+        len = 1;
+    }
+    compute_exe_bounds();
+    if (!g_exe_base)
+    {
+        spdlog::error("[FWA] could not resolve eldenring.exe bounds");
+        g_armed.store(false);
+        return false;
+    }
+    g_await_geom.store(false);
+    g_watch_addr = addr;
+    g_dr7 = make_dr7(len, write_only);
+    InitializeCriticalSection(&g_cs);
+    g_veh = AddVectoredExceptionHandler(1, veh);
+    for_each_thread(addr, g_dr7, /*record=*/true);
+    spdlog::warn("[FWA] ARMED hw-bp on {} = {:#x} (len={} {}) — {} threads. Trigger the game's read "
+                 "in-game; the first eldenring.exe access logs [FWA] (mod reads are filtered).",
+                 label, addr, len, write_only ? "write" : "read|write", (int)g_armed_tids.size());
+    return true;
+}
+
 bool parse_spec(const std::string &spec, std::wstring &param, uint64_t &row, ptrdiff_t &off,
                 int &len, bool &write_only)
 {
@@ -168,6 +210,38 @@ bool parse_spec(const std::string &spec, std::wstring &param, uint64_t &row, ptr
 
 void goblin::field_probe::initialize(const std::string &spec)
 {
+    // RAW geom mode: "@geom[:offset[:len[:rw]]]" — the target is a live CSWorldGeomIns alive byte
+    // (ASLR'd, not a param row), so DEFER arming. goblin_collected's WGM walk polls geom_arm_pending()
+    // and feeds the first tracked alive instance's address via arm_raw().
+    if (spec.rfind("@geom", 0) == 0)
+    {
+        std::vector<std::string> parts;
+        size_t p = 0;
+        while (p <= spec.size())
+        {
+            size_t c = spec.find(':', p);
+            if (c == std::string::npos) c = spec.size();
+            parts.push_back(spec.substr(p, c - p));
+            p = c + 1;
+            if (c == spec.size()) break;
+        }
+        if (parts.size() > 1 && !parts[1].empty())
+            g_geom_off = static_cast<ptrdiff_t>(std::strtoll(parts[1].c_str(), nullptr, 0));
+        if (parts.size() > 2 && !parts[2].empty())
+        {
+            int l = std::atoi(parts[2].c_str());
+            g_geom_len = (l == 1 || l == 2 || l == 4 || l == 8) ? l : 1;
+        }
+        if (parts.size() > 3)
+            g_geom_wo = (parts[3] == "w" || parts[3] == "write");
+        g_await_geom.store(true);
+        spdlog::warn("[FWA] @geom mode (arm-pending): awaiting a live CSWorldGeomIns address (+{:#x}, "
+                     "len {}, {}). The collected WGM walk arms DR0 on the first tracked alive instance; "
+                     "collect/reload that asset → the [FWA] hit RIP is the game's own getter.",
+                     (uint64_t)g_geom_off, g_geom_len, g_geom_wo ? "write" : "read|write");
+        return;
+    }
+
     std::wstring param;
     uint64_t row = 0;
     ptrdiff_t off = 0;
@@ -175,7 +249,8 @@ void goblin::field_probe::initialize(const std::string &spec)
     bool write_only = false;
     if (!parse_spec(spec, param, row, off, len, write_only))
     {
-        spdlog::error("[FWA] bad probe_field_spec '{}' — expected ParamName:rowId:offset[:len[:rw]]", spec);
+        spdlog::error("[FWA] bad probe_field_spec '{}' — expected ParamName:rowId:offset[:len[:rw]] "
+                      "or @geom[:offset[:len[:rw]]]", spec);
         return;
     }
 
@@ -199,27 +274,24 @@ void goblin::field_probe::initialize(const std::string &spec)
         return;
     }
 
-    if (len != 1 && (addr % len) != 0)
-    {
-        spdlog::warn("[FWA] addr {:#x} not {}-aligned — HW bp needs alignment; falling back to len=1", addr, len);
-        len = 1;
-    }
+    char label[192];
+    std::snprintf(label, sizeof(label), "%s[%llu]+0x%llx",
+                  std::string(param.begin(), param.end()).c_str(),
+                  (unsigned long long)row, (unsigned long long)off);
+    arm(addr, len, write_only, label);
+}
 
-    compute_exe_bounds();
-    if (!g_exe_base)
-    {
-        spdlog::error("[FWA] could not resolve eldenring.exe bounds");
-        return;
-    }
+bool goblin::field_probe::arm_raw(std::uintptr_t addr, int len, bool write_only, const char *label)
+{
+    return arm(addr, len, write_only, label ? label : "raw");
+}
 
-    g_watch_addr = addr;
-    g_dr7 = make_dr7(len, write_only);
-    InitializeCriticalSection(&g_cs);
-    g_veh = AddVectoredExceptionHandler(1, veh);
-    for_each_thread(addr, g_dr7, /*record=*/true);
-
-    spdlog::warn("[FWA] ARMED hw-bp on {}[{}]+{:#x} = {:#x} (len={} {}) — {} threads. Trigger the game's "
-                 "read in-game; the first eldenring.exe access logs [FWA] (mod reads are filtered).",
-                 std::string(param.begin(), param.end()), row, (uint64_t)off, addr, len,
-                 write_only ? "write" : "read|write", (int)g_armed_tids.size());
+bool goblin::field_probe::geom_arm_pending(std::ptrdiff_t &off, int &len, bool &write_only)
+{
+    if (!g_await_geom.load() || g_armed.load())
+        return false;
+    off = g_geom_off;
+    len = g_geom_len;
+    write_only = g_geom_wo;
+    return true;
 }
