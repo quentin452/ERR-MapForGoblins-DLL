@@ -168,10 +168,13 @@ namespace
 // SPARSE — most categories have no real game symbol and stay on the baked atlas. Resolved via
 // goblin::map_icon_rect_by_name → overlay::native_map_point_icon_by_name. Grow as symbols are
 // confirmed resident in-game (see the [MAPICON-AVAIL] log + g_map_icon_named).
-struct CategoryGpuName { int category; const char *name; };
+struct CategoryGpuName { int category; const char *name; float scale; };
 using C = goblin::generated::Category;
 constexpr CategoryGpuName CATEGORY_GPU_NAMES[] = {
-    {static_cast<int>(C::WorldBosses), "MENU_MAP_ERR_Boss"},
+    {static_cast<int>(C::WorldBosses), "MENU_MAP_ERR_Boss", 1.0f},
+    // Normal hostile entities reuse the boss symbol, drawn smaller so a real boss still reads as the
+    // bigger pin. Same symbol → the central pump already keeps it resident (no extra want).
+    {static_cast<int>(C::WorldHostileNPC), "MENU_MAP_ERR_Boss", 0.65f},
 };
 } // namespace
 
@@ -181,6 +184,14 @@ const char *category_gpu_icon_name(int category)
         if (e.category == category)
             return e.name;
     return nullptr;
+}
+
+float category_gpu_icon_scale(int category)
+{
+    for (const auto &e : CATEGORY_GPU_NAMES)
+        if (e.category == category)
+            return e.scale;
+    return 1.0f;
 }
 
 namespace

@@ -31,6 +31,11 @@ int category_gpu_iconId(int category);
 // or nullptr. Sparse — only categories with a real game symbol. Resolved via map_icon_rect_by_name.
 const char *category_gpu_icon_name(int category);
 
+// Per-category scale multiplier for the name-keyed symbol (1.0 = the config map-symbol size). Lets a
+// category reuse another's symbol at a different size — e.g. normal hostile entities draw the boss
+// symbol smaller so a real boss still reads as the larger pin. 1.0 when the category has no override.
+float category_gpu_icon_scale(int category);
+
 // True when the category draws via a NATIVE engine sprite instead of the baked atlas — i.e. it is
 // already migrated off the bake. SINGLE SOURCE OF TRUTH mirroring what the renderer actually draws
 // (map_renderer IconSet::resolve + GraceLayer): a name-keyed map symbol (category_gpu_icon_name),

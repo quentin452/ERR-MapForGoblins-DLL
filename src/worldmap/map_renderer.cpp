@@ -164,7 +164,9 @@ struct IconSet
                 {
                     out.tex = reinterpret_cast<ImTextureID>(t);
                     out.uv0 = ImVec2(a0, b0); out.uv1 = ImVec2(a1, b1);
-                    out.scale = goblin::config::mapSymbolScale;
+                    // Per-category multiplier: normal hostile entities reuse the boss symbol smaller.
+                    out.scale = goblin::config::mapSymbolScale *
+                                goblin::worldmap::category_gpu_icon_scale(m.category);
                     return true;
                 }
             }
