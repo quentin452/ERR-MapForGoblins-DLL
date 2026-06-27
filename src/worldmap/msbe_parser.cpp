@@ -807,4 +807,63 @@ std::vector<uint8_t> dcx_decompress(const uint8_t *d, size_t len, bool *isKrak,
     return out;
 }
 
+bool tpf_find_texture(const uint8_t *buf, size_t n, const char *name, size_t &ddsOff,
+                      size_t &ddsLen)
+{
+    ddsOff = ddsLen = 0;
+    if (!buf || !name || n < 16 || !(buf[0] == 'T' && buf[1] == 'P' && buf[2] == 'F' && buf[3] == 0))
+        return false;
+    auto rd32 = [&](size_t p) -> uint32_t {
+        uint32_t v;
+        std::memcpy(&v, buf + p, 4);
+        return v;
+    };
+    uint32_t fileCount = rd32(8);
+    uint8_t  platform = buf[12];
+    uint8_t  encoding = buf[14];
+    if (platform != 0 || fileCount == 0 || fileCount > 100000)  // 0 = PC only
+        return false;
+
+    size_t pos = 16;
+    for (uint32_t i = 0; i < fileCount; ++i)
+    {
+        if (pos + 20 > n)
+            return false;
+        uint32_t fileOffset = rd32(pos);
+        uint32_t fileSize   = rd32(pos + 4);
+        uint8_t  flags1     = buf[pos + 11];
+        uint32_t nameOffset = rd32(pos + 12);
+        uint32_t hasFloat   = rd32(pos + 16);
+        pos += 20;
+        if (hasFloat)  // FloatStruct: i32 Unk00, i32 length, float[length]
+        {
+            if (pos + 8 > n)
+                return false;
+            uint32_t flen = rd32(pos + 4);
+            pos += 8 + (size_t)flen * 4;
+        }
+        // Compare the UTF-16LE name at nameOffset to the ASCII `name` (low byte == char,
+        // high byte == 0 for ASCII names like SB_Icon_00).
+        bool match = true;
+        for (const char *c = name;; ++c)
+        {
+            size_t np = (size_t)nameOffset + (size_t)(c - name) * 2;
+            if (np + 1 >= n) { match = false; break; }
+            uint8_t lo = buf[np], hi = buf[np + 1];
+            if (*c == '\0') { match = (lo == 0 && hi == 0); break; }
+            if (lo != (uint8_t)*c || hi != 0) { match = false; break; }
+        }
+        if (!match)
+            continue;
+        if (flags1 == 2 || flags1 == 3)  // per-entry DCP_EDGE — not supported (menu sheets are raw)
+            return false;
+        if ((size_t)fileOffset + fileSize > n || fileSize < 4)
+            return false;
+        ddsOff = fileOffset;
+        ddsLen = fileSize;
+        return true;
+    }
+    return false;
+}
+
 } // namespace goblin::msbe

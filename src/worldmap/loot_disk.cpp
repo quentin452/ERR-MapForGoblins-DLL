@@ -229,6 +229,36 @@ std::vector<uint8_t> read_game_file_decompressed(const std::string &rel_path)
     return out;
 }
 
+std::map<std::string, std::vector<uint8_t>>
+read_item_icon_sheets(const std::vector<std::string> &names)
+{
+    std::map<std::string, std::vector<uint8_t>> out;
+    if (names.empty())
+        return out;
+    // Read + decompress the menu texture pack ONCE (loose mod overlay first, then packed dvdbnd).
+    std::vector<uint8_t> tpf = read_game_file_decompressed("menu/hi/01_common.tpf.dcx");
+    if (tpf.size() < 16)
+    {
+        spdlog::warn("[ITEMSHEET] 01_common.tpf unavailable ({} bytes)", tpf.size());
+        return out;
+    }
+    int found = 0;
+    for (const std::string &name : names)
+    {
+        size_t off = 0, len = 0;
+        if (msbe::tpf_find_texture(tpf.data(), tpf.size(), name.c_str(), off, len))
+        {
+            out.emplace(name, std::vector<uint8_t>(tpf.begin() + off, tpf.begin() + off + len));
+            ++found;
+        }
+        else
+            spdlog::warn("[ITEMSHEET] '{}' not in 01_common.tpf", name);
+    }
+    spdlog::info("[ITEMSHEET] extracted {}/{} sheet DDS from 01_common.tpf ({} MB)", found,
+                 names.size(), tpf.size() / (1024 * 1024));
+    return out;  // the big TPF buffer frees here; only the small per-sheet DDS copies survive
+}
+
 void ensure_map_dir_resolved()
 {
     if (!disk_source_enabled())

@@ -264,4 +264,16 @@ using OodleDecompressFn = long long (*)(const void *src, long long srcLen, void 
 std::vector<uint8_t> dcx_decompress(const uint8_t *dcx, size_t len, bool *isKrak = nullptr,
                                     OodleDecompressFn oodle = nullptr);
 
+// Find a named texture in a decompressed PC TPF buffer (the menu item-icon atlas
+// menu/hi/01_common.tpf — magic "TPF\0", platform PC, encoding 1 = UTF-16 texture names)
+// and set ddsOff/ddsLen to that texture's DDS slice within `buf` (a full "DDS " file, the
+// SB_Icon_* sheets are BC7 / DX10-header). `name` is ASCII (e.g. "SB_Icon_00"); the TPF's
+// UTF-16 name is compared case-sensitively. Returns false on a name miss, a malformed/short
+// TPF, a non-PC platform, or a per-entry-DCX texture (flags1 2/3 = DCP_EDGE — the menu icon
+// sheets are stored raw, flags1 0, so this isn't supported). The TPF format is from
+// SoulsFormats TPF.cs (PC Texture = u32 off, i32 size, byte fmt/type/mips/flags1, u32
+// nameOff, i32 hasFloatStruct[+FloatStruct]); validated byte-exact extracting SB_Icon_00.
+bool tpf_find_texture(const uint8_t *buf, size_t n, const char *name, size_t &ddsOff,
+                      size_t &ddsLen);
+
 } // namespace goblin::msbe

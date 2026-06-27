@@ -9,6 +9,7 @@
 // runtime reuses the SAME marker_world_pos transform downstream (no new RE).
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -235,4 +236,16 @@ void set_build_trigger(void (*fn)());
 // the item-icon layout now and the item-icon DDS sheets (00_Solo.tpfbhd) later. Does
 // disk I/O — call off the engine thread / once.
 std::vector<uint8_t> read_game_file_decompressed(const std::string &rel_path);
+
+// Extract one or more item-icon ATLAS SHEET DDS images from the menu texture pack
+// menu/hi/01_common.tpf.dcx (read via read_game_file_decompressed, so loose mod overlay
+// first, then the packed dvdbnd). The pack decompresses to a ~194 MB PC TPF holding the
+// SB_Icon_* sheets (BC7 / DX10, 4096x2048); this reads + decompresses it ONCE and copies out
+// each requested sheet's DDS bytes, then frees the big buffer. Returns sheetName -> DDS blob
+// (a full "DDS " file, ready for create_tex_from_dds_mem); a name absent from the pack is
+// omitted from the map. `names` are bare sheet names from the layout's imagePath, e.g.
+// {"SB_Icon_00", "SB_Icon_ERR_Gem_01"}. Empty when the pack can't be read. Heavy (decompress
+// + copies) — call once off the engine thread. This is GAP #2: the no-bake item-icon pixels.
+std::map<std::string, std::vector<uint8_t>>
+read_item_icon_sheets(const std::vector<std::string> &names);
 } // namespace goblin::worldmap
