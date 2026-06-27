@@ -30,4 +30,12 @@ int category_gpu_iconId(int category);
 // Name-keyed engine map symbol for the category (ERR custom MENU_MAP_ERR_* / vanilla MENU_MAP_*),
 // or nullptr. Sparse — only categories with a real game symbol. Resolved via map_icon_rect_by_name.
 const char *category_gpu_icon_name(int category);
+
+// True when the category draws via a NATIVE engine sprite instead of the baked atlas — i.e. it is
+// already migrated off the bake. SINGLE SOURCE OF TRUTH mirroring what the renderer actually draws
+// (map_renderer IconSet::resolve + GraceLayer): a name-keyed map symbol (category_gpu_icon_name),
+// a numeric map-point iconId (category_gpu_iconId), OR the dedicated grace-sprite path (WorldGraces,
+// drawn by GraceLayer from s_grace_tex / MENU_MAP_ERR_GraceUnderground). Drives the F1 migration
+// panel — keep in lock-step with the render policy so the count never desyncs from reality.
+bool category_is_gpu_native(int category);
 } // namespace goblin::worldmap

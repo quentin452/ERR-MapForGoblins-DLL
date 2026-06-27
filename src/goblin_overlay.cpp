@@ -1711,10 +1711,12 @@ namespace
             }
 
             // Icon migration completion (Baked → GPU): how many category icons still draw from the
-            // baked PNG atlas vs have a real engine GPU sprite wired. The denominator is the
-            // categories that HAVE a baked icon (the by-design circle-fallback ones are excluded —
-            // they have no baked cell to replace). A category counts as "GPU" once it's mapped to an
-            // engine iconId (category_gpu_iconId) AND that sprite has been harvested.
+            // baked PNG atlas vs already render as a real native engine sprite. The denominator is
+            // the categories that HAVE a baked icon (the by-design circle-fallback ones are excluded —
+            // they have no baked cell to replace). "GPU" = category_is_gpu_native (the single source
+            // of truth that mirrors the actual render: name-keyed map symbols like bosses, numeric
+            // map-point iconIds, and the GraceLayer grace-sprite path). Counting the WIRING (not live
+            // residency) keeps this in lock-step with what draws — no desync.
             if (ImGui::CollapsingHeader("Icon migration (Baked \xE2\x86\x92 GPU)"))
             {
                 namespace wm = goblin::worldmap;
@@ -1725,9 +1727,7 @@ namespace
                     if (!wm::category_has_baked_icon(c))
                         continue;
                     ++baked;
-                    int iid = wm::category_gpu_iconId(c);
-                    goblin::ItemSprite sp;
-                    if (iid && goblin::harvested_icon(iid, sp))
+                    if (wm::category_is_gpu_native(c))
                         ++gpu;
                 }
                 const float frac = baked ? static_cast<float>(gpu) / baked : 0.f;
@@ -1736,20 +1736,47 @@ namespace
                 ImGui::Text("Remaining to replace: %d   |   circle-fallback (no baked): %d",
                             baked - gpu, total - baked);
                 ImGui::Separator();
-                ImGui::TextDisabled("Still baked (to replace):");
-                if (ImGui::BeginChild("iconmig_list", ImVec2(0, 180), true))
+                ImGui::TextDisabled("Migrated to native engine sprite:");
+                if (ImGui::BeginChild("iconmig_gpu", ImVec2(0, 90), true))
                 {
                     for (int c = 0; c < total; ++c)
                     {
-                        if (!wm::category_has_baked_icon(c))
+                        if (!wm::category_has_baked_icon(c) || !wm::category_is_gpu_native(c))
                             continue;
-                        int iid = wm::category_gpu_iconId(c);
-                        goblin::ItemSprite sp;
-                        if (iid && goblin::harvested_icon(iid, sp))
-                            continue; // only list the ones NOT yet replaced
                         const char *name = goblin::ui::category_label(c);
-                        ImGui::BulletText("%s%s", name ? name : "?",
-                                          iid ? "  (mapped, sprite not harvested yet)" : "");
+                        // Show WHICH native source + (for the resolvable backends) its live residency.
+                        const char *via;
+                        bool resident;
+                        int x, y, w, h; void *sheet = nullptr;
+                        if (const char *sym = wm::category_gpu_icon_name(c))
+                        {
+                            via = "name symbol";
+                            resident = goblin::map_icon_rect_by_name(sym, x, y, w, h, sheet);
+                        }
+                        else if (int iid = wm::category_gpu_iconId(c))
+                        {
+                            via = "map-point id";
+                            resident = goblin::map_icon_rect(iid, x, y, w, h, sheet);
+                        }
+                        else
+                        {
+                            via = "grace sprite";
+                            resident = true; // GraceLayer-drawn; residency tracked in its own panel
+                        }
+                        ImGui::BulletText("%s  (%s%s)", name ? name : "?", via,
+                                          resident ? "" : ", not resident yet");
+                    }
+                }
+                ImGui::EndChild();
+                ImGui::TextDisabled("Still on baked atlas (to replace):");
+                if (ImGui::BeginChild("iconmig_list", ImVec2(0, 150), true))
+                {
+                    for (int c = 0; c < total; ++c)
+                    {
+                        if (!wm::category_has_baked_icon(c) || wm::category_is_gpu_native(c))
+                            continue; // only list the ones NOT yet migrated
+                        const char *name = goblin::ui::category_label(c);
+                        ImGui::BulletText("%s", name ? name : "?");
                     }
                 }
                 ImGui::EndChild();

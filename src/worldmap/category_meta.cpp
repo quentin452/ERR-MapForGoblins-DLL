@@ -181,4 +181,17 @@ const char *category_gpu_icon_name(int category)
             return e.name;
     return nullptr;
 }
+
+bool category_is_gpu_native(int category)
+{
+    // Mirror map_renderer's IconSet::resolve order + GraceLayer's dedicated grace draw. Any of
+    // these means the category renders as a real engine sprite, not the baked atlas cell.
+    if (category_gpu_icon_name(category) != nullptr)  // name-keyed symbol (e.g. bosses)
+        return true;
+    if (category_gpu_iconId(category) > 0)            // numeric MENU_MAP_<NN> map-point symbol
+        return true;
+    if (category == static_cast<int>(goblin::generated::Category::WorldGraces))
+        return true;                                  // graces: GraceLayer s_grace_tex / dungeon sprite
+    return false;
+}
 } // namespace goblin::worldmap
