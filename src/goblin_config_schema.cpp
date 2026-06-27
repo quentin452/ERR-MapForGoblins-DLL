@@ -55,12 +55,9 @@ namespace goblin::config
 #endif
     bool anonymousLoot = false;  // opt-in spoiler-free mode (all profiles default off)
 
-    bool lootFromDiskMsb = false;  // opt-in: loot positions from the mod's real MSBs
+    // loot{FromDiskMsb,Collectibles,EnemyDrops,EmevdDrops} + worldFeaturesFromDisk are now
+    // compile-time `true` constants in goblin_config.hpp (bake retired → always-on, no INI key).
     std::string lootMsbDir = "";   // empty = auto-detect map\MapStudio
-    bool lootCollectibles = false; // opt-in: AEG gather/collectible markers from disk MSBs + AssetEnvironmentGeometryParam
-    bool lootEnemyDrops = false;   // opt-in: enemy-drop markers from disk MSBs (Parts.Enemies → NpcParam → ItemLotParam)
-    bool lootEmevdDrops = false;   // opt-in: EMEVD-scripted award markers from disk event\*.emevd.dcx (template inits → entity/lot → MSB Enemy pos)
-    bool worldFeaturesFromDisk = false; // opt-in: World features (Stakes of Marika, …) from disk MSBs by AEG model — no bake
     bool dropMerchantPhantoms = true;   // drop baked loot markers whose item is sold infinite-stock in ShopLineupParam (merchant phantoms the bake's unmatched-ItemLotParam fallback placed at (0,0,0))
 
     bool redifyBossIcons = false;
@@ -206,58 +203,12 @@ namespace
                   "open latency, time since arming). Shows where maps are really read from\n"
                   "(loader-agnostic) vs the [LOOTDISK] ancestor-walk dir, and when the first\n"
                   "open happens vs the init-time build. Throwaway probe. Off by default."),
-                B("loot_from_disk_msb", lootFromDiskMsb, "false",
-                  "EXPERIMENTAL. Derive the treasure-loot markers from the ACTIVE mod's\n"
-                  "real map files (map\\MapStudio\\*.msb.dcx) on disk instead of the baked\n"
-                  "database. Disk placements REPLACE any baked lot they cover (by item-lot\n"
-                  "id); EMEVD-granted and enemy-drop lots stay baked. Reads both DCX_DFLT\n"
-                  "(zlib, in-tree) and DCX_KRAK (Oodle, via the game's oo2core) maps, so it\n"
-                  "covers modified AND vanilla-untouched tiles. Off by default; enable to\n"
-                  "mod's own files. Item identity/icon/flag are still read live from the\n"
-                  "regulation's ItemLotParam, so a regulation-only mod is unaffected."),
                 IniEntry{"loot_msb_dir", IniType::String, &cfg::lootMsbDir, "",
                          "Folder with the active mod's map\\MapStudio\\*.msb.dcx (or the mod\n"
                          "root containing map\\MapStudio, or a map\\ root). Empty = auto-detect:\n"
                          "the DLL's own mod folder, then the Elden Ring install dir. Set this\n"
                          "to your ModEngine2 mod's map folder if auto-detect picks the wrong\n"
                          "source. Only used when loot_from_disk_msb is on.", false, nullptr},
-                B("loot_collectibles", lootCollectibles, "false",
-                  "EXPERIMENTAL. Add markers for the mod's AEG gather/collectible assets\n"
-                  "(Runic/Ember Trace, fireflies, butterflies, mosses, smithing stones, ...)\n"
-                  "read straight from the disk MSBs. Position = the placed Asset; item is\n"
-                  "resolved LIVE via AssetEnvironmentGeometryParam[row].pickUpItemLotParamId\n"
-                  "-> ItemLotParam_map (no bake, no manual model->item table; works on any\n"
-                  "mod). Uses the same map dir as loot_from_disk_msb. Off by default.\n"
-                  "DENSITY: this adds a LOT of markers. Each collectible is classified by its\n"
-                  "item's goodsType into a normal category, so the per-category show_* toggles\n"
-                  "below double as a goodsType filter -- e.g. show_crafting_materials=false\n"
-                  "hides the gather clutter (fireflies, excrement, mosses; goodsType 2) while\n"
-                  "show_smithing_stones keeps the stones (goodsType 14), show_consumables the\n"
-                  "consumables (goodsType 0). Toggle them live in the overlay panel too."),
-                B("loot_enemy_drops", lootEnemyDrops, "false",
-                  "EXPERIMENTAL. Add markers for NOTABLE enemy-drop loot read straight from the\n"
-                  "disk MSBs: each Enemy placement's NPCParamID -> NpcParam.itemLotId_map (pref)\n"
-                  "/ itemLotId_enemy -> ItemLotParam (all live, no bake). Position = the enemy\n"
-                  "placement. Filtered to the game's own one-time-loot signal (getItemFlagId!=0\n"
-                  "on a uniquely-placed lot) so it shows named weapons/armour sets, bell\n"
-                  "bearings, key items -- NOT respawning crafting clutter (meat/bones). Replaces\n"
-                  "the matching baked enemy markers (and adds notable drops the bake missed).\n"
-                  "Uses the same map dir as loot_from_disk_msb. Off by default."),
-                B("loot_emevd_drops", lootEmevdDrops, "false",
-                  "EXPERIMENTAL. Add markers for EMEVD-scripted item awards read straight from\n"
-                  "the mod's event\\*.emevd.dcx files. Each bank-2000 template-award event init\n"
-                  "carries (entity_id, lot_id); the entity_id is joined to its MSB Enemy part\n"
-                  "for the world position, and the lot (ItemLotParam_map) is resolved LIVE. This\n"
-                  "covers scripted drops the MSB Treasure/Enemy passes can't see (field/dungeon\n"
-                  "boss rewards, scarabs, painting pickups, NPC quest/invasion rewards, great\n"
-                  "runes, larval tears). Replaces the matching baked LootSource::Emevd markers.\n"
-                  "Uses the event\\ folder beside loot_msb_dir's map dir. Off by default."),
-                B("world_features_from_disk", worldFeaturesFromDisk, "false",
-                  "EXPERIMENTAL. Add World-feature markers read straight from the disk MSBs by\n"
-                  "their AEG asset model -- no committed bake. Currently: Stakes of Marika\n"
-                  "(AEG099_060 respawn points). Position = the placed Asset; the matching baked\n"
-                  "Stakes are dropped (position-keyed) so this reproduces the bake live on any\n"
-                  "mod. Uses the same map dir as loot_from_disk_msb. Off by default."),
                 B("drop_merchant_phantoms", dropMerchantPhantoms, "true",
                   "Drop baked loot markers whose item is sold INFINITE-stock (sellQuantity=-1) in\n"
                   "the live ShopLineupParam. The bake's unmatched-ItemLotParam fallback places a\n"

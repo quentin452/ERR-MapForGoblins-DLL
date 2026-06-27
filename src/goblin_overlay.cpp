@@ -1501,8 +1501,8 @@ namespace
             std::string sd = goblin::worldmap::disk_loot_dir().string();
             if (!sd.empty())
                 ImGui::TextDisabled("Last path searched: %s", sd.c_str());
-            ImGui::TextDisabled("Set 'loot_msb_dir' in MapForGoblins.ini, or set");
-            ImGui::TextDisabled("'loot_from_disk_msb = false' to use the built-in database.");
+            ImGui::TextDisabled("Set 'loot_msb_dir' in MapForGoblins.ini to your mod's");
+            ImGui::TextDisabled("map\\MapStudio folder (the markers are read from it live).");
             ImGui::End();
             return;
         }

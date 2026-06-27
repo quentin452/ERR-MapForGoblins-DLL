@@ -80,29 +80,34 @@ namespace goblin
         // (lotId-coverage), while EMEVD-granted + enemy-drop lots stay baked.
         // Reads loose DCX_DFLT (zlib) maps (ERR's modified ones); KRAK/Oodle-only
         // maps are skipped for now. Opt-in; see msbe_parser + the RE docs.
-        extern bool lootFromDiskMsb;
+        // ALWAYS ON (no longer an INI toggle): the static bake is retired, so the disk
+        // MSB + live passes are the ONLY marker source — turning them off would empty the
+        // map. Kept as compile-time constants so every existing `config::loot*` call site
+        // is unchanged. (Baked variants merge disk over their bake; dedup is provenance-
+        // exclusive, no double-marking — see map_entry_layer finalize.)
+        inline constexpr bool lootFromDiskMsb = true;
         // When true, also emit markers for the mod's AEG gather/collectible assets
         // (read from the same disk MSBs as lootFromDiskMsb). Item identity resolved
         // live via AssetEnvironmentGeometryParam.pickUpItemLotParamId → ItemLotParam.
-        extern bool lootCollectibles;
+        inline constexpr bool lootCollectibles = true;
         // When true, also emit markers for enemy-drop loot derived from the mod's
         // MSB Parts.Enemies (NPCParamID → NpcParam.itemLotId_map/_enemy → ItemLotParam,
         // all live). Replaces the matching baked LootSource::Enemy rows. Opt-in; see
         // memory msbe-enemy-loot-offsets + docs/re/windows_enemy_loot_nobake_analysis.md.
-        extern bool lootEnemyDrops;
+        inline constexpr bool lootEnemyDrops = true;
         // When true, also emit markers for EMEVD-scripted item awards: the mod's
         // event\*.emevd.dcx files are parsed, bank-2000 template-award inits give
         // (entityId, lotId), and the entityId is joined to its MSB Enemy part for the
         // position. Replaces the matching baked LootSource::Emevd rows. Opt-in; see
         // docs/re/windows_enemy_loot_nobake_analysis.md §5b + msbe::parse_emevd.
-        extern bool lootEmevdDrops;
+        inline constexpr bool lootEmevdDrops = true;
         // When true, also emit World-feature markers (Stakes of Marika, Imp Statues,
         // Hero's Tomb, …) sourced straight from the disk MSBs by their AEG asset model —
         // no committed bake. The model→category map is the generated WORLD_FEATURE_MODELS
         // table (tools/world_feature_assets.py); baked twins are dropped at finalize
         // (category-wipe for dedicated categories, cell-dedup for shared ones). See
         // build_disk_world_feature_markers.
-        extern bool worldFeaturesFromDisk;
+        inline constexpr bool worldFeaturesFromDisk = true;
         // When true, drop baked loot markers whose item is sold infinite-stock
         // (sellQuantity == -1) in the live ShopLineupParam. These are merchant items
         // with NO world placement that the bake's unmatched-ItemLotParam fallback put on
