@@ -1423,8 +1423,9 @@ namespace
         // the ZOOM-in + the debug snapshot.
         static float s_hold_u = 0.f, s_hold_v = 0.f;
         static int s_hold_frames = 0;
+        static int s_settle_hits = 0;
         float lu = 0.f, lvv = 0.f;
-        if (wm::take_locate_pos(&lu, &lvv)) { s_hold_u = lu; s_hold_v = lvv; s_hold_frames = 90; }
+        if (wm::take_locate_pos(&lu, &lvv)) { s_hold_u = lu; s_hold_v = lvv; s_hold_frames = 90; s_settle_hits = 0; }
         if (s_hold_frames > 0)
         {
             // Zoom in if the view is too far-out (else the item is a speck). kLocateZoom is calibration
@@ -1437,6 +1438,25 @@ namespace
             if (g_nav_frames.load(std::memory_order_relaxed) < s_hold_frames)
                 g_nav_frames.store(s_hold_frames, std::memory_order_relaxed);
             --s_hold_frames;
+            // EARLY RELEASE (perf): each hold-frame forces ER to step + re-composite its WHOLE Scaleform
+            // world map — that engine cost (~tens of ms, NOT our ~0.1ms render) is the FPS drop after a
+            // locate click. The 90-frame cap is only a fallback for a slow/far pan; the moment the live
+            // view CONVERGES on the target (centre within a few map-units, 2 frames running to skip a
+            // mid-ease false hit) we cut the hold to a short settle so the stepping stops early.
+            constexpr int kSettle = 3;
+            constexpr float kConvergeEps2 = 1024.f;  // ~32 marker-units off the screen centre
+            goblin::worldmap_probe::LiveView lv2{};
+            if (s_hold_frames > kSettle && goblin::worldmap_probe::get_live_view(lv2) && lv2.zoom > 0.f)
+            {
+                const float du = (lv2.panX + lv2.snapMidX) / lv2.zoom - s_hold_u;
+                const float dv = (lv2.panZ + lv2.snapMidZ) / lv2.zoom - s_hold_v;
+                if (du * du + dv * dv < kConvergeEps2)
+                {
+                    if (++s_settle_hits >= 2) s_hold_frames = kSettle;
+                }
+                else
+                    s_settle_hits = 0;
+            }
             if (s_hold_frames == 0)
                 goblin::worldmap_probe::clear_locate_target(); // release the map (mouse pan resumes)
         }
@@ -1935,6 +1955,10 @@ namespace
                     switch (g & 3) { case 1: return "Underground"; case 2: return "DLC";
                                      case 3: return "DLC Underground"; default: return "Overworld"; }
                 };
+                // One result row per (name, PAGE): an item on several pages (e.g. a Larval Tear on
+                // Overworld + Underground + DLC) gets a separate row per page, so clicking a row locates
+                // on THAT page. (Deduping by name_id alone collapsed them into one row carrying only the
+                // first marker's group — the "shows only Underground" bug.)
                 struct Hit { std::string label; int32_t name_id; int count; int group; };
                 static char item_q[64] = "";
                 static std::string s_last_q;
@@ -2007,7 +2031,10 @@ namespace
                         // game) to confirm the match.
                         struct Names { std::string loc, en, label; };
                         std::unordered_map<int32_t, Names> name_cache;
-                        std::map<int32_t, int> hit_count;  // matched name_id -> marker count (ordered)
+                        // Dedup result rows by (name_id, page) via a composite key (name_id<<2 | group),
+                        // so each page an item is on becomes its own row. s_match stays keyed by name_id
+                        // so EVERY instance still highlights/rings on the map.
+                        std::map<int64_t, int> hit_count;  // (name_id<<2 | group) -> marker count
                         for (auto *L : overlay_layers())
                         {
                             if (!L) continue;
@@ -2034,12 +2061,20 @@ namespace
                                 // combined game-language + English text (so "Claw Talisman" and
                                 // "Talisman Claw" both match, and FR/EN words can be mixed).
                                 if (!matches_all_tokens(nm.loc + " " + nm.en, item_q)) continue;
-                                if (s_match.insert(m.name_id).second)
-                                    s_hits.push_back({nm.label, m.name_id, 0, m.group});
-                                ++hit_count[m.name_id];
+                                const int g = m.group & 3;
+                                s_match.insert(m.name_id);                       // ring every instance
+                                const int64_t k = ((int64_t)m.name_id << 2) | g; // per (name, page)
+                                if (++hit_count[k] == 1)
+                                    s_hits.push_back({nm.label, m.name_id, 0, g});
                             }
                         }
-                        for (auto &h : s_hits) h.count = hit_count[h.name_id];
+                        for (auto &h : s_hits)
+                            h.count = hit_count[((int64_t)h.name_id << 2) | h.group];
+                        // Group same-name rows together, pages in order (Overworld, Underground, DLC).
+                        std::sort(s_hits.begin(), s_hits.end(), [](const Hit &a, const Hit &b) {
+                            int c = a.label.compare(b.label);
+                            return c != 0 ? c < 0 : a.group < b.group;
+                        });
                     }
                 }
 
@@ -2115,7 +2150,7 @@ namespace
                         {
                             const Hit &h = s_hits[i];
                             const bool off_page = (h.group & 3) != (open_grp & 3);
-                            // Locked = item on a region the player hasn't visited (no grace there).
+                            // Locked = this row's page is a region the player hasn't visited (no grace).
                             const bool locked = map_open && (((h.group & 2) && !s_dlc_seen) ||
                                                              ((h.group & 1) && !s_ug_seen));
                             char row[200];
@@ -2127,13 +2162,11 @@ namespace
                             {
                                 s_pending_locate = h.name_id;  // click → pan the map onto it
                                 s_locate_label = h.label;      // remembered for the pending banner
-                                s_locate_group = h.group;
+                                s_locate_group = h.group;      // this row's page
                                 g_nav_frames.store(90, std::memory_order_relaxed);  // wake the map so
                                                   // the switch+pan apply with the F1 panel still open
-                                // Cross-page: switch to its page+layer (overworld<->DLC + surface<->UG),
-                                // marshalled onto the game thread. Requesting an off-page group also
-                                // switches the LAYER back to surface for an overworld item found while
-                                // underground (the "Godrick from the underground" fix).
+                                // Cross-page: switch to this row's page+layer (overworld<->DLC +
+                                // surface<->UG), marshalled onto the game thread, then the locate pans.
                                 if (off_page)
                                     goblin::worldmap_probe::request_switch_to_page(h.group);
                             }
