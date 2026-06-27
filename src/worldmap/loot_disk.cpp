@@ -308,6 +308,7 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
                 c.posY = a.pos[1];
                 c.posZ = a.pos[2];
                 c.name = a.name;
+                c.modelName = a.modelName;
                 collectibles->push_back(std::move(c));
             }
         }
@@ -524,6 +525,7 @@ std::vector<DiskCollectible> load_lod_feature_assets(const std::unordered_set<ui
             c.posY = as.pos[1];
             c.posZ = as.pos[2];
             c.name = as.name;
+            c.modelName = as.modelName;
             out.push_back(std::move(c));
         }
     }

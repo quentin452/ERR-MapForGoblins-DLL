@@ -74,7 +74,8 @@ data/_*.done
 # One-off research outputs + intermediate versions (not used by current pipeline)
 data/_*.json
 data/_*.txt
-# Phase-2 no-bake: full MapEntry table intermediate (_map_entries_full.cpp; uncompiled, regenerated)
+# Uncompiled intermediate / scratch C++ under data/ (none currently — the Phase-2 MapEntry
+# table intermediate that used to live here was retired with its last two consumers)
 data/_*.cpp
 data/all_gathering_nodes_clean.json
 data/all_gathering_nodes_complete.json

@@ -43,6 +43,7 @@ std::string rd_utf16(const uint8_t *b, size_t o, size_t len)
 }
 
 constexpr uint32_t EVENT_TYPE_TREASURE = 4;
+constexpr int SEC_MODEL = 0; // PARAM section order: MODEL,EVENT,POINT,ROUTE,LAYER,PARTS
 constexpr int SEC_EVENT = 1; // PARAM section order: MODEL,EVENT,POINT,ROUTE,LAYER,PARTS
 constexpr int SEC_POINT = 2; // POINT = Regions (the Spirit Springs source)
 constexpr int SEC_PARTS = 5;
@@ -113,6 +114,23 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
 
     const Sec &EV = secs[SEC_EVENT];
     const Sec &PT = secs[SEC_PARTS];
+
+    // MODEL section names (index -> name), only needed for the Asset modelIndex resolution.
+    // Each MODEL entry stores its name at entry+0x00 (offset; entry-relative on disk, absolute
+    // VA resident — same eio as parts). ERR substitutes some gather models (see Asset::modelName).
+    std::vector<std::string> modelNames;
+    if (wantAssets)
+    {
+        const Sec &MD = secs[SEC_MODEL];
+        modelNames.reserve(MD.entries);
+        for (uint32_t i = 0; i < MD.entries; i++)
+        {
+            size_t me = (size_t)rd64(buf, MD.entryArr + (size_t)i * 8);
+            if (!inb(me, 0x08, len)) { modelNames.emplace_back(); continue; }
+            size_t nm = eio(rd64(buf, me + 0x00), me);
+            modelNames.push_back(nm < len ? rd_utf16(buf, nm, len) : std::string());
+        }
+    }
 
     for (uint32_t i = 0; i < EV.entries; i++)
     {
@@ -192,6 +210,13 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             Asset a;
             a.name = std::move(name);
             a.aegRow = row;
+            // Actual model (modelIndex u32 @ part+0x14 -> MODEL names). Picks up ERR's model
+            // substitution (vanilla part name, DLC model) so GEOF graying buckets by the real
+            // model. The inb(pe,0x2c) check above already covers +0x14.
+            {
+                uint32_t mi = rd32(buf, pe + 0x14);
+                if (mi < modelNames.size()) a.modelName = modelNames[mi];
+            }
             a.pos[0] = rdf(buf, pe + 0x20);
             a.pos[1] = rdf(buf, pe + 0x24);
             a.pos[2] = rdf(buf, pe + 0x28);

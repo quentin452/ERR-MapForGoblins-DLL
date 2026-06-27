@@ -126,8 +126,6 @@ add_library( MapForGoblins SHARED
   ${GEN_DIR}/goblin_major_regions.hpp
   ${GEN_DIR}/goblin_major_regions.cpp
   ${GEN_DIR}/goblin_name_regions.cpp
-  ${GEN_DIR}/goblin_geof_models.hpp
-  ${GEN_DIR}/goblin_geof_models.cpp
   ${GEN_DIR}/goblin_world_feature_models.hpp
   ${GEN_DIR}/goblin_world_feature_models.cpp
   src/goblin_config_schema.hpp

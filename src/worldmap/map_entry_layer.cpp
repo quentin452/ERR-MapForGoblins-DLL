@@ -500,7 +500,7 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
                     slot = suf - 9000;
             }
             rt_entries.push_back(goblin::collected::RuntimeEntry{
-                rid, c.area, c.gx, c.gz, slot, c.posX, c.posY, c.posZ, c.name});
+                rid, c.area, c.gx, c.gz, slot, c.posX, c.posY, c.posZ, c.name, c.modelName});
             out_piece_keys.insert(piece_key(c.area, c.gx, c.gz, c.name.c_str()));
             ++piece_emitted;
             continue;
@@ -540,7 +540,7 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
                 if (suf >= 9000) gslot = suf - 9000;
             }
             rt_entries.push_back(goblin::collected::RuntimeEntry{
-                rid, c.area, c.gx, c.gz, gslot, c.posX, c.posY, c.posZ, c.name});
+                rid, c.area, c.gx, c.gz, gslot, c.posX, c.posY, c.posZ, c.name, c.modelName});
         }
         // Record this gather-asset's projected cell AND its IDENTITY (tile + MSB part name)
         // so the finalize dedup can drop the baked Material Node twin. Positional cell catches

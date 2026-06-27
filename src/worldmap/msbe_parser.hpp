@@ -54,6 +54,13 @@ struct Asset
 {
     std::string name;            // e.g. "AEG099_821_9000"
     uint32_t    aegRow = 0;      // A*1000+B, = AssetEnvironmentGeometryParam row id
+    // The part's ACTUAL model name. ERR sometimes substitutes a gather node's model while
+    // keeping its vanilla NAME (part "AEG099_753_9000" instantiating DLC model "AEG463_860").
+    // The game writes GeomFlagSaveData (GEOF) entries under the ACTUAL model's hash, so
+    // collected-graying must bucket by THIS, not the name prefix. Read from the part's
+    // modelIndex (u32 @ part+0x14) -> MODEL section name list. Empty if the index is OOB.
+    // Offset pinned 11415/11415 on m12_02 + m60_40_52 vs SoulsFormats (probe_modelindex.py).
+    std::string modelName;       // e.g. "AEG463_860" (== name prefix for non-substituted)
     float       pos[3] = {0, 0, 0};  // BLOCK-LOCAL position (= bake x/z transform input)
     // EntityID (entity sub-struct @ part+0x60, EntityID@+0x00 — same offset as the
     // treasure/enemy paths). 0 when unset. The World-feature disk pass uses it to split

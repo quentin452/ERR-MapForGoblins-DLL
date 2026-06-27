@@ -2,7 +2,6 @@
 #include "goblin_config.hpp"
 #include "goblin_inject.hpp"  // goblin::is_section_hidden_ptr
 #include "goblin_map_data.hpp"
-#include "goblin_geof_models.hpp"
 #include "modutils.hpp"
 #include "re_signatures.hpp"
 #include "goblin_bench.hpp"
@@ -99,23 +98,31 @@ static std::vector<goblin::collected::RuntimeEntry> g_pending_runtime;
 static std::atomic<bool> g_has_pending{false};
 
 // Insert one tracked entry into the live maps — the shared body of initialize()'s per-MAP_ENTRY
-// loop and the runtime drain. (GEOF model-override remap is baked-only, so runtime entries use
-// the name prefix directly; the AEG pieces/gather models don't substitute — name prefix == model.)
+// loop and the runtime drain. GEOF buckets must use the part's ACTUAL model, which ERR sometimes
+// substitutes (part "AEG099_753_9000" instantiating DLC model "AEG463_860"): the game writes GEOF
+// entries under the actual model's hash, so matching by the part-NAME prefix misses them and the
+// collected node stays visible on an unloaded tile after a restart. `model_name` is the part's real
+// model (msbe::Asset::modelName, read from the MSB modelIndex); empty -> no substitution, use the
+// name prefix. WGM alive-tracking still keys on the part NAME (g_tile_name_to_row), so we track BOTH
+// prefixes (name + model) — same as the retired GEOF_MODEL_OVERRIDES bake did.
 static void insert_tracked_entry(uint64_t row_id, uint32_t tile, const std::string &object_name,
-                                 int geom_slot, float px, float py, float pz)
+                                 int geom_slot, float px, float py, float pz,
+                                 const std::string &model_name)
 {
     std::string prefix = prefix_from_object_name(object_name.c_str());
     if (prefix.empty())
         return;
-    g_tracked_prefixes.insert(prefix);
+    // GEOF key = the actual model (already in "AEG{A}_{B}" prefix form), name prefix if absent.
+    const std::string &geof_prefix = model_name.empty() ? prefix : model_name;
+    g_tracked_prefixes.insert(prefix);       // name prefix -> WGM alive tracking
+    g_tracked_prefixes.insert(geof_prefix);  // model prefix -> GEOF slot key + model-id filter
     g_tile_to_rows[tile].push_back(row_id);
     if (geom_slot >= 0)
-        g_tile_slot_to_row[tile][prefix][geom_slot].push_back(row_id);
+        g_tile_slot_to_row[tile][geof_prefix][geom_slot].push_back(row_id);
     g_tile_name_to_row[tile][object_name].push_back(row_id);
     g_entry_positions[row_id] = {px, py, pz};
-    uint32_t mid = model_id_from_prefix(prefix);
-    if (mid)
-        g_tracked_model_ids.insert(mid);
+    if (uint32_t mid = model_id_from_prefix(prefix))       g_tracked_model_ids.insert(mid);
+    if (uint32_t gmid = model_id_from_prefix(geof_prefix)) g_tracked_model_ids.insert(gmid);
 }
 
 
@@ -895,58 +902,12 @@ void goblin::collected::initialize()
     g_tracked_model_ids.clear();
     g_entry_positions.clear();
 
-    // Build tracking tables from MAP_ENTRIES — any entry with object_name is tracked.
-    // Adding a new model type only requires adding entries + _slots.json.
-    for (size_t i = 0; i < generated::MAP_ENTRY_COUNT; i++)
-    {
-        const auto &e = generated::MAP_ENTRIES[i];
-        if (!e.object_name || !e.object_name[0])
-            continue;
-
-        std::string prefix = prefix_from_object_name(e.object_name);
-        if (prefix.empty())
-            continue;
-
-        g_tracked_prefixes.insert(prefix);
-
-        // GEOF buckets must use the part's ACTUAL model, which ERR sometimes substitutes
-        // (part AEG099_753_9000 instantiating DLC model AEG463_860): the game writes GEOF
-        // entries under the actual model's hash, so matching by the NAME prefix misses
-        // them and collected flowers stay visible on unloaded tiles after a restart.
-        std::string geof_prefix = prefix;
-        {
-            auto *end = generated::GEOF_MODEL_OVERRIDES + generated::GEOF_MODEL_OVERRIDE_COUNT;
-            auto *ov = std::lower_bound(
-                generated::GEOF_MODEL_OVERRIDES, end, e.row_id,
-                [](const generated::GeofModelOverride &o, uint64_t id) { return o.row_id < id; });
-            if (ov != end && ov->row_id == e.row_id)
-            {
-                geof_prefix = prefix_from_model_id(ov->model_id);
-                g_tracked_prefixes.insert(geof_prefix);  // feeds g_tracked_model_ids (GEOF filter)
-            }
-        }
-
-        uint32_t tile = encode_tile(e.data.areaNo, e.data.gridXNo, e.data.gridZNo);
-        g_tile_to_rows[tile].push_back(e.row_id);
-
-        // 3D slot map: tile → ACTUAL-model prefix → geom_slot → row_ids
-        if (e.geom_slot >= 0)
-            g_tile_slot_to_row[tile][geof_prefix][e.geom_slot].push_back(e.row_id);
-
-        // WGM name tracking: full object name for accurate alive matching
-        g_tile_name_to_row[tile][e.object_name].push_back(e.row_id);
-
-        // MSB-local position for replacement detection via WGM occupancy
-        g_entry_positions[e.row_id] = {e.data.posX, e.data.posY, e.data.posZ};
-    }
-
-    // Build model_id set for GEOF filtering
-    for (auto &prefix : g_tracked_prefixes)
-    {
-        uint32_t mid = model_id_from_prefix(prefix);
-        if (mid)
-            g_tracked_model_ids.insert(mid);
-    }
+    // The tracking tables are populated entirely from the runtime disk pass (the AEG
+    // collectible pass stages RuntimeEntry's via register_runtime_entries, drained into the
+    // maps on the refresh thread — see insert_tracked_entry / drain_pending_runtime). The old
+    // MAP_ENTRIES seed loop (+ its GEOF_MODEL_OVERRIDES model-substitution table) was retired
+    // with the static bake: MAP_ENTRIES is an empty stub and the actual gather model now comes
+    // live from the MSB part's modelIndex (msbe::Asset::modelName). So initialize() just resets.
 
     int total_piece_entries = 0;
     for (auto &[t, rows] : g_tile_to_rows)
@@ -992,7 +953,7 @@ static int drain_pending_runtime()
     }
     for (const auto &e : drained)
         insert_tracked_entry(e.row_id, encode_tile(e.area, e.gridX, e.gridZ),
-                             e.object_name, e.geom_slot, e.px, e.py, e.pz);
+                             e.object_name, e.geom_slot, e.px, e.py, e.pz, e.model_name);
     if (!drained.empty())
         spdlog::info("[COLLECTED] merged {} runtime geom entries ({} prefixes, {} model ids)",
                      drained.size(), g_tracked_prefixes.size(), g_tracked_model_ids.size());
