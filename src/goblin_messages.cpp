@@ -2,7 +2,6 @@
 #include "goblin_map_data.hpp"
 #include "goblin_enemy_names.hpp"
 #include "goblin_name_aliases_en.hpp"
-#include "goblin_location_alt.hpp"
 #include "goblin_major_regions.hpp"
 #include "goblin_config.hpp"
 #include "goblin_inject.hpp"
@@ -851,64 +850,6 @@ void goblin::setup_messages()
     }
 
     spdlog::debug("PlaceName FMG at {:p}", (void *)fmg_ptr);
-
-    // Composed labels for duplicate-named sub-zones (e.g. the two Hallowhorn Grounds):
-    // synthesize "<sub> (<super>)" from the game's OWN PlaceName strings so the text is
-    // correct in any language. Storage is a function-local static deque — pointer-stable.
-    {
-        auto fmg_find = [&](uint8_t *fmg, int32_t id) -> const wchar_t *
-        {
-            uint32_t grp_cnt = *reinterpret_cast<uint32_t *>(fmg + 0x0C);
-            uint32_t str_cnt = *reinterpret_cast<uint32_t *>(fmg + 0x10);
-            uint64_t raw_off = *reinterpret_cast<uint64_t *>(fmg + 0x18);
-            uint8_t *off_ptr = (raw_off > 0x1000000) ? reinterpret_cast<uint8_t *>(raw_off) : fmg + raw_off;
-            auto *groups = reinterpret_cast<FmgGroup *>(fmg + 0x28);
-            auto *str_offs = reinterpret_cast<uint64_t *>(off_ptr);
-            for (uint32_t g = 0; g < grp_cnt; g++)
-            {
-                if (id < groups[g].first_id || id > groups[g].last_id) continue;
-                int32_t si = groups[g].string_index + (id - groups[g].first_id);
-                if (si < 0 || si >= (int32_t)str_cnt) return nullptr;
-                uint64_t s_off = str_offs[si];
-                if (s_off == 0) return nullptr;
-                return (s_off > 0x1000000) ? reinterpret_cast<const wchar_t *>(s_off)
-                                           : reinterpret_cast<const wchar_t *>(fmg + s_off);
-            }
-            return nullptr;
-        };
-        // Look the parts up the way the game does: DLC PlaceName layers first
-        // (429, 329), then the base slot — overhauls keep reworked zone names
-        // in the DLC layers only. ERR build: base slot only (its DLC slot
-        // pointers can be stale — see the slot-list comment above).
-        auto find_layered = [&](int32_t id) -> const wchar_t *
-        {
-#ifdef MFG_VANILLA
-            for (int slot : {429, 329})
-                if (slot < count2 && sub[slot])
-                    if (const wchar_t *t = fmg_find(sub[slot], id); t && t[0])
-                        return t;
-#endif
-            return fmg_find(fmg_ptr, id);
-        };
-        static std::deque<std::wstring> compose_storage;
-        int composed = 0;
-        for (size_t i = 0; i < generated::LOCATION_COMPOSE_COUNT; i++)
-        {
-            const auto &c = generated::LOCATION_COMPOSE[i];
-            const wchar_t *sub_txt = find_layered(c.subId);
-            const wchar_t *sup_txt = find_layered(c.superId);
-            if (!sub_txt || !sup_txt)
-            {
-                spdlog::warn("Compose label {}: PlaceName {} or {} not found in FMG", c.id, c.subId, c.superId);
-                continue;
-            }
-            compose_storage.emplace_back(std::wstring(sub_txt) + L" (" + sup_txt + L")");
-            new_entries.push_back({c.id, compose_storage.back().c_str()});
-            composed++;
-        }
-        if (composed)
-            spdlog::info("Composed {} duplicate-zone labels into PlaceName", composed);
-    }
 
     // Cluster labels: one static "<count>" string per cluster (clusters are
     // icon-only by default; the F11 debug toggle points a cluster's textId1 here).

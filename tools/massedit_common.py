@@ -119,15 +119,12 @@ STACKED_REGION_TILES = {(12, 2), (12, 7)}
 
 
 def resolve_location_id_at(map_name, x, y, z):
-    """Per-marker location resolution — the FALLBACK layer (since 2026-06).
+    """Per-marker location resolution — the coarse baseline textId2.
 
-    NO LONGER the primary location name. The primary is the HYBRID sub-area
-    resolver in tools/generate_location_overrides.py (MSB MapPoint/MapNameOverride
-    volume containment + nearest authored anchor in 3D), which overwrites textId2
-    at runtime via generated::LOCATION_ALT. This function bakes the BASELINE
-    textId2 that the hybrid overrides where it has an opinion; the baseline
-    REMAINS for overworld / no-volume / no-anchor spots where the hybrid is
-    silent. Keep as the coarse fallback (do not delete).
+    Bakes the BASELINE location name from the tile/grace fallback. (A hybrid
+    sub-area resolver that overrode this at runtime via generated::LOCATION_ALT
+    was retired with the static bake — the table had no runtime consumer once
+    MAP_ENTRIES became an empty stub. See the Phase-2 pipeline cleanup.)
 
     For tiles in STACKED_REGION_TILES, finds the nearest grace in the SAME
     MSB tile by 3D Euclidean distance and returns its subCategoryId — a
