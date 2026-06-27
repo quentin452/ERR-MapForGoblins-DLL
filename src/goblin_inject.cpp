@@ -2839,22 +2839,48 @@ void *goblin::force_load_file(const char *utf8_path)
     {
         uintptr_t rp = reinterpret_cast<uintptr_t>(res);
         HANDLE self = GetCurrentProcess();
-        for (int off = 0; off <= 0x400; off += 8)
-        {
-            uintptr_t cand = 0; icon_rpm_ptr(rp + off, cand);
-            if (cand < 0x10000) continue;
+        auto try_bnd4 = [&](uintptr_t cand, uintptr_t szAt) -> bool {
             char hdr[4] = {0}; SIZE_T got = 0;
-            if (!ReadProcessMemory(self, reinterpret_cast<void *>(cand), hdr, 4, &got) || got < 4)
-                continue;
-            if (std::memcmp(hdr, "BND4", 4) != 0) continue;
-            uintptr_t sz = 0; icon_rpm_ptr(rp + off + 8, sz);   // common {ptr,size} layout
-            if (sz < 0x40 || sz > 0x2000000) sz = 0x200000;     // fallback 2 MB bound
+            if (cand < 0x10000 ||
+                !ReadProcessMemory(self, reinterpret_cast<void *>(cand), hdr, 4, &got) || got < 4 ||
+                std::memcmp(hdr, "BND4", 4) != 0)
+                return false;
+            uintptr_t sz = 0; if (szAt) icon_rpm_ptr(szAt, sz);
+            if (sz < 0x40 || sz > 0x2000000) sz = 0x200000;
             std::vector<uint8_t> buf(sz);
             SIZE_T rd = 0;
-            ReadProcessMemory(self, reinterpret_cast<void *>(cand), buf.data(), sz, &rd); // partial ok
-            spdlog::info("[FORCELOAD] sblyt BND4 @res+0x{:x} -> {:#x} size~{} read={}", off, cand, sz, rd);
+            ReadProcessMemory(self, reinterpret_cast<void *>(cand), buf.data(), sz, &rd);
+            spdlog::info("[FORCELOAD] sblyt BND4 @{:#x} size~{} read={}", cand, sz, rd);
             if (rd >= 0x40) parse_item_icon_layout(buf.data(), rd);
-            break;
+            return true;
+        };
+        bool found = false;
+        // Level 1: res+off → BND4.  Level 2: res+off → obj → obj+off2 → BND4.
+        for (int off = 0; off <= 0x400 && !found; off += 8)
+        {
+            uintptr_t c1 = 0; icon_rpm_ptr(rp + off, c1);
+            if (c1 < 0x10000) continue;
+            if (try_bnd4(c1, rp + off + 8)) { found = true; break; }
+            for (int o2 = 0; o2 <= 0x200 && !found; o2 += 8)
+            {
+                uintptr_t c2 = 0; icon_rpm_ptr(c1 + o2, c2);
+                if (c2 >= 0x10000 && try_bnd4(c2, c1 + o2 + 8)) found = true;
+            }
+        }
+        if (!found)   // DIAG: dump the handle's first words so we can see where the data lives
+        {
+            std::string dump;
+            for (int off = 0; off <= 0x80; off += 8)
+            {
+                uintptr_t c = 0; icon_rpm_ptr(rp + off, c);
+                char mg[5] = {0}; SIZE_T g = 0;
+                if (c >= 0x10000) ReadProcessMemory(self, reinterpret_cast<void *>(c), mg, 4, &g);
+                for (int k = 0; k < 4; ++k) if (mg[k] < 0x20 || mg[k] > 0x7e) mg[k] = '.';
+                char line[64];
+                snprintf(line, sizeof(line), "+%x:%#llx[%s] ", off, (unsigned long long)c, mg);
+                dump += line;
+            }
+            spdlog::info("[FORCELOAD] sblyt BND4 NOT in handle {:#x}; struct: {}", rp, dump);
         }
     }
     return res;
