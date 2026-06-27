@@ -1,4 +1,6 @@
 #pragma once
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 // Embedded "find out what accesses this address", filtered to the GAME's code.
@@ -19,5 +21,22 @@ namespace goblin::field_probe
     //   e.g. "AssetEnvironmentGeometryParam:99821:0xb8:4:r"  or  "EquipParamGoods:1000:0x72:1:r".
     // Resolves the live row via get_param, arms DR0 on every current thread, installs the VEH.
     // Logs the resolved address + arms; the [FWA] hit line appears once the game reads the field.
+    //
+    // RAW-ADDRESS mode — spec = "@geom[:offset[:len[:rw]]]" (defaults +0x263, len 1, read):
+    //   the watched address isn't a param row but a LIVE heap object the static INI can't name
+    //   (ASLR): a CSWorldGeomIns alive byte, for the "find the native collected getter" RE. The
+    //   probe DEFERS arming; a geom subsystem (goblin_collected's WGM walk) polls geom_arm_pending()
+    //   and calls arm_raw() with the first tracked alive instance's address. Then approach/reload
+    //   that asset in-game and the [FWA] hit RIP is the game's own collected/alive read site.
     void initialize(const std::string &spec);
+
+    // Arm DR0 on a RAW absolute address resolved at runtime. Reusable by any subsystem holding a
+    // live address the INI can't express. No-op (returns false) if already armed or bounds fail.
+    // `label` names the target in the [FWA] log.
+    bool arm_raw(std::uintptr_t addr, int len, bool write_only, const char *label);
+
+    // True while initialize() parsed an "@geom" spec but no live address has been fed yet. Out-params
+    // carry the requested offset/len/rw to add to a resolved CSWorldGeomIns*. The caller resolves a
+    // live instance and calls arm_raw(instance + off, len, write_only, ...). One-shot (arm clears it).
+    bool geom_arm_pending(std::ptrdiff_t &off, int &len, bool &write_only);
 }

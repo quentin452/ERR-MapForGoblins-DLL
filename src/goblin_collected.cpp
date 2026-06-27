@@ -1,5 +1,6 @@
 #include "goblin_collected.hpp"
 #include "goblin_config.hpp"
+#include "goblin_field_probe.hpp"  // @geom getter-RE: arm DR0 on a live CSWorldGeomIns alive byte
 #include "goblin_inject.hpp"  // goblin::is_section_hidden_ptr
 #include "goblin_map_data.hpp"
 #include "modutils.hpp"
@@ -533,6 +534,23 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
                         {
                             snap.alive_names.insert(narrow_str);
                             snap.alive_occupied.emplace_back(px, pz, narrow_str);
+
+                            // One-shot (probe_field_spec = "@geom"): arm the field probe's DR0 on this
+                            // LIVE alive byte so the [FWA] handler captures the game's OWN collected/
+                            // alive read site — the native O(1) getter we want to AOB-pin and call
+                            // in-process (replaces this RPM-heavy snapshot). An ALIVE (uncollected)
+                            // instance is chosen so the player can collect/reload it to trigger the
+                            // read. geom_arm_pending() self-clears once armed → fires exactly once.
+                            ptrdiff_t goff;
+                            int glen;
+                            bool gwo;
+                            if (goblin::field_probe::geom_arm_pending(goff, glen, gwo) &&
+                                goblin::field_probe::arm_raw((uintptr_t)geom_ins + goff, glen, gwo,
+                                                             "CSWorldGeomIns.alive"))
+                                spdlog::warn("[GEOMPROBE] armed DR0 on {} geom_ins={:p}+{:#x} (tile {:#x}) "
+                                             "— collect/reload THIS asset; the [FWA] hit RIP = the "
+                                             "collected getter.",
+                                             narrow_str, geom_ins, (uint64_t)goff, block_id);
                         }
                     }
 
