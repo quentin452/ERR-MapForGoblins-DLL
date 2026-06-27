@@ -22,10 +22,6 @@
 
 namespace fs = std::filesystem;
 
-// Live ItemLotParam row probe (defined in goblin_inject.cpp) — used to GATE the 2009[00] asset-lot
-// awards to real-item rows before forwarding (keeps placeholder args out of the unclassified diag).
-namespace goblin { bool lot_row_in_table(uint32_t lot, uint8_t lotType, uint32_t *flagOut, int32_t *keyOut); }
-
 namespace goblin::worldmap
 {
 namespace
@@ -632,7 +628,7 @@ std::vector<DiskEmevd> load_emevd_awards(
     spdlog::info("[LOOTDISK] reading EMEVD from {}", evdir.string());
 
     msbe::OodleDecompressFn oodle = resolve_oodle();  // KRAK events (unmodified vanilla)
-    int parsed = 0, kraks = 0, direct = 0, per_tile_award = 0, asset_lot_award = 0;
+    int parsed = 0, kraks = 0, direct = 0, per_tile_award = 0;
     // Mechanism B inputs, accumulated across all files: flag→lot (from common.emevd's
     // RunEvent(1200)) and every SetEventFlag(.,1) event's flags+entity candidates.
     std::unordered_map<uint32_t, uint32_t> flag_to_lot;
@@ -678,22 +674,6 @@ std::vector<DiskEmevd> load_emevd_awards(
             out.push_back({a.entityId, a.lotId, /*lotType=*/1, /*bossReward=*/false,
                            /*allowAsset=*/false, a.anchors});
         per_tile_award += (int)p.perTileEnemyAward.size();
-        // 2009[00] item-lot-placed-at-asset awards: GATE each to a real-item ItemLotParam row HERE
-        // (param access) so the frequent non-item placeholder arg never reaches the classifier (it
-        // would otherwise inflate the emevd pass's `unclassified` diag by ~hundreds). lotType = the
-        // table that actually carries the item. allowAsset → the anchor joins to its MSB Asset pos;
-        // the lot-coverage dedup drops the ~21 lots already placed as MSB treasures.
-        for (const auto &al : p.assetLotAwards)
-        {
-            uint32_t f = 0;
-            int32_t k = 0;
-            uint8_t lt = 0;
-            if (goblin::lot_row_in_table(al.second, 1, &f, &k) && k != 0) lt = 1;
-            else if (goblin::lot_row_in_table(al.second, 2, &f, &k) && k != 0) lt = 2;
-            if (!lt) continue;  // placeholder / non-item arg → not an award
-            out.push_back({al.first, al.second, lt, /*bossReward=*/false, /*allowAsset=*/true, {}});
-            ++asset_lot_award;
-        }
         // flag→lot only from common.emevd (the engine binding lives there; restricting
         // matches the bake and avoids a stray per-map RunEvent(1200) re-binding a flag).
         if (lower == "common.emevd.dcx")
@@ -798,10 +778,10 @@ std::vector<DiskEmevd> load_emevd_awards(
                        /*allowAsset=*/true, {}});
         ++boss_ev;
     }
-    spdlog::info("[LOOTDISK] {} EMEVD files parsed; {} direct + {} per-tile-enemy + {} asset-lot(2009) + "
-                 "{} event-1200 + {} boss-reward awards ({} flag→lot binds, {} boss-flag binds, {} "
-                 "setters, {} ev1200-no-entity, {} boss-no-entity, {} boss-via-entity@16); {} KRAK skipped",
-                 parsed, direct, per_tile_award, asset_lot_award, ev1200, boss_ev, (int)flag_to_lot.size(),
+    spdlog::info("[LOOTDISK] {} EMEVD files parsed; {} direct + {} per-tile-enemy + {} event-1200 + {} "
+                 "boss-reward awards ({} flag→lot binds, {} boss-flag binds, {} setters, {} "
+                 "ev1200-no-entity, {} boss-no-entity, {} boss-via-entity@16); {} KRAK skipped",
+                 parsed, direct, per_tile_award, ev1200, boss_ev, (int)flag_to_lot.size(),
                  (int)boss_flag_to_lot.size(), (int)setters.size(), ev1200_no_entity, boss_no_entity,
                  boss_via_entity16, kraks);
     return out;

@@ -65,8 +65,6 @@ SkipTally g_skip;
 const std::unordered_set<uint32_t> kWatchLots = {
     12070500, 12070320, 1038490030,                          // Ghostflame Torch / Burred Bolt (treasures)
     333062001, 333062011, 333062021, 333065001, 337000805,   // Larval Tears / boss armour (enemy base+k)
-    35000580,                                                // Golden Rune — last baked residual (2009 asset-lot)
-    12010531, 12010532, 12010533,                            // Siofra goods recovered by the 2009 asset-lot pass
 };
 inline void watch_lot(uint32_t lot, const char *stage, const std::string &detail = "")
 {
