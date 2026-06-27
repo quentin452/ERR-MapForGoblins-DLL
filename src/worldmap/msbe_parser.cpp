@@ -725,6 +725,25 @@ EmevdParse parse_emevd_full(const uint8_t *buf, size_t len)
                 int32_t  state = (int32_t)rd32(buf, a + 8);
                 if (state == 1 && (int32_t)flag > 0) setFlags.push_back(flag);
             }
+            // Item lot(s) PLACED AT AN MSB ASSET anchor: 2009[00](lotA@0, lotB@4, anchorEntity@8).
+            // A direct-body award the bank-2000 template scan can't see (it only reads RunCommonEvent
+            // inits). Both arg lots are recorded against the anchor; load_emevd_awards GATES each to a
+            // real-item ItemLotParam row (param access) before forwarding as an allowAsset award, so
+            // the frequent non-item placeholder arg doesn't reach the classifier. The asset-join +
+            // notability/lot-coverage gates then keep only the UNCOVERED notable lots: the m35 Ashen
+            // Capital Golden Rune (the last baked residual) + 3 Siofra goods; the ~21 other notable
+            // 2009 lots are already MSB treasures and dedup out. tools/_probe_missing_lots.py.
+            else if (bank == 2009 && iid == 0 && argLen >= 12)
+            {
+                uint32_t anchor = rd32(buf, a + 8);
+                if ((int32_t)anchor > 0)
+                {
+                    uint32_t l0 = rd32(buf, a + 0);
+                    uint32_t l1 = rd32(buf, a + 4);
+                    if ((int32_t)l0 > 0)             R.assetLotAwards.emplace_back(anchor, l0);
+                    if ((int32_t)l1 > 0 && l1 != l0) R.assetLotAwards.emplace_back(anchor, l1);
+                }
+            }
         }
         if (!setFlags.empty())
             R.setters.push_back({std::move(setFlags), std::move(candidates)});
