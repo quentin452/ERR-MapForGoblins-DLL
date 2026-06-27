@@ -2079,6 +2079,15 @@ void store_map_icon_rect(const char *nm, int x, int y, int w, int h, void *sheet
     MapIconRect r{x, y, w, h, std::strncmp(nm, "MENU_MAP_ERR", 12) == 0, sheet};
     std::lock_guard<std::mutex> lk(g_map_icon_mtx);
     g_map_icon_named[nm] = r;
+    // The GFx import/resolve formats "<symbol>_ptl", so the resident name often carries that suffix
+    // (MENU_MAP_ERR_Boss_ptl) while callers look up the bare symbol (category_gpu_icon_name =
+    // "MENU_MAP_ERR_Boss"). Register the bare name TOO so the exact lookup hits — this was the gate
+    // hiding the boss/world map symbols.
+    {
+        size_t n = std::strlen(nm);
+        if (n > 4 && std::strcmp(nm + n - 4, "_ptl") == 0)
+            g_map_icon_named[std::string(nm, n - 4)] = r;
+    }
     if (std::strncmp(nm, "MENU_MAP_", 9) == 0)
     {
         const char *p = nm + 9;                 // MENU_MAP_<NN> → iconId NN
@@ -3016,10 +3025,36 @@ void gpu_icon_tick(uintptr_t er)
     for (int k = 0; k < 6 && !items.empty(); ++k) force_item_hooked(er, items[ri++ % items.size()]);
     for (int k = 0; k < 3 && !syms.empty(); ++k)  force_symbol_hooked(er, syms[rs++ % syms.size()].c_str());
 
-    // Re-register the resident map-point symbols (boss/grace) into g_map_icon_named/g_grace_cands.
-    // RPM-heavy (full repo walk) → run it less often than the cheap CreateImage forces above.
+    // Re-register the resident map symbols into g_map_icon_named/_rects. The MENU_MAP_* pins (boss!)
+    // live in repo+0x80 → harvest_repo_icons; the MapTile twin is repo+0xb0 → harvest_twin_map_icons.
+    // RPM-heavy (full repo walks) → run them less often than the cheap CreateImage forces above.
     static int s_harvest = 0;
-    if (g_icon_repo && (s_harvest++ % 5) == 0) harvest_twin_map_icons(g_icon_repo, er);
+    if ((s_harvest++ % 5) == 0)
+    {
+        harvest_repo_icons();                                   // repo+0x80: MENU_MAP_* + MENU_ItemIcon_*
+        if (g_icon_repo) harvest_twin_map_icons(g_icon_repo, er); // repo+0xb0: MapTile twin
+    }
+
+    // [BOSSDIAG] one-shot-ish census of the boss map symbol: is it registered, under which key, and
+    // does the bare-name lookup resolve? Pinpoints registration-vs-lookup-vs-copy. Throttled + gated.
+    if (goblin::config::dumpIconTextures)
+    {
+        static int s_bd = 0;
+        if ((s_bd++ % 20) == 0)
+        {
+            int n = 0; std::string keys;
+            {
+                std::lock_guard<std::mutex> lk(g_map_icon_mtx);
+                for (const auto &kv : g_map_icon_named)
+                    if (kv.first.find("Boss") != std::string::npos)
+                    { if (n++ < 6) { keys += kv.first; keys += ' '; } }
+            }
+            int bx, by, bw, bh; void *bsheet = nullptr;
+            bool hit = goblin::map_icon_rect_by_name("MENU_MAP_ERR_Boss", bx, by, bw, bh, bsheet);
+            spdlog::info("[BOSSDIAG] named_keys_with_Boss={} [{}] bare_lookup_hit={} sheet={:#x}",
+                         n, keys, hit, reinterpret_cast<uintptr_t>(bsheet));
+        }
+    }
 }
 
 void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
