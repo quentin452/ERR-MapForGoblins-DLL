@@ -2593,10 +2593,18 @@ void build_buckets_impl()
             if (icon > 0)
             {
                 ++wired;
-                goblin::queue_force_item_icon(icon);  // make it resident → harvestable by the renderer
+                goblin::gpu_want_item(icon);  // central registry → pump keeps it resident
                 spdlog::info("[CATICON] cat=\"{}\" rep_key={} iconId={} (from {} markers)",
                              goblin::markers::category_name(static_cast<gen::Category>(c)),
                              best_key, icon, best_n);
+            }
+            // World-feature categories with a named map symbol (boss …) → want the symbol too, so
+            // the central pump keeps it force-resident (it draws via native_map_point_icon_by_name).
+            if (const char *sym = goblin::worldmap::category_gpu_icon_name(c))
+            {
+                char img[96];
+                snprintf(img, sizeof(img), "img://%s", sym);
+                goblin::gpu_want_symbol(img);
             }
         }
         spdlog::info("[CATICON] representative item-icons resolved for {} / {} categories", wired, NUM_CAT);

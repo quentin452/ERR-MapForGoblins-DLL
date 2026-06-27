@@ -36,6 +36,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <string>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
@@ -2845,12 +2846,16 @@ std::atomic<int> g_ci_req_icon{INT_MIN};   // queued iconId (INT_MIN = idle, CI_
 alignas(16) char g_ci_name[96];            // 4-aligned scratch for the synthesized symbol name
 uintptr_t g_ci_desc[4] = {0};              // synthetic param_3: [0] = (g_ci_name - 0xc), rest 0 (pad)
 
-// Pending per-category representative item-icons to force-resident (filled by the map build via
-// goblin::queue_force_item_icon, drained ONE-per-tick on the engine thread in res_tick_detour using
-// the SAME run_create_icon path as graces). Bounded + deduped; no-op until a CreateImage context is
-// captured (open the inventory/map once) → the renderer falls back to the baked atlas meanwhile.
-std::vector<int> g_caticon_pending;
-std::mutex g_caticon_mx;
+// ── CENTRAL GPU-ICON REGISTRY (the one place that owns "which native icons must be resident") ──────
+// The render side REGISTERS what it wants (item iconIds for category/loot icons, MENU_MAP_* /
+// SB_ERR_* symbol names for world-feature pins like bosses & graces). The engine-thread tick
+// (gpu_icon_tick, in res_tick_detour) ALWAYS re-forces the whole wanted set in a round-robin —
+// no try-cap, no "harvest once then hope" — so an icon evicted by repo churn self-heals on the next
+// pass. Forcing goes through the HOOKED CreateImage (er+0xd6bbc0) so create_image_detour actually
+// harvests the result (the old run_create_icon used the ORIG → never harvested → the 129->129 bug).
+std::mutex g_want_mx;
+std::set<int> g_want_items;            // wanted MENU_ItemIcon_<id>
+std::set<std::string> g_want_symbols;  // wanted img://MENU_MAP_* / SB_ERR_* symbol names
 
 inline bool res_w32(uintptr_t a, uint32_t v)
 {
@@ -2962,9 +2967,59 @@ void run_force_grace(uintptr_t er)
         g_ci_desc[0] = reinterpret_cast<uintptr_t>(g_ci_name) - 0xc;
         void *img = CreateImageHooked(g_ci_p1.load(), g_ci_p2.load(), g_ci_desc, nullptr, nullptr,
                                       nullptr, nullptr, nullptr);
-        spdlog::info("[GRACE-FORCE] CreateImage('{}') -> {:#x} (try {})", c,
-                     reinterpret_cast<uintptr_t>(img), g_grace_force_tries);
+        if (goblin::config::dumpIconTextures)   // gated: the central pump calls this continuously
+            spdlog::info("[GRACE-FORCE] CreateImage('{}') -> {:#x}", c, reinterpret_cast<uintptr_t>(img));
     }
+}
+
+// ── Central force primitives (HOOKED CreateImage → result is harvested by create_image_detour) ─────
+// Force one GFx image symbol resident via the hooked CreateImage. Engine thread; needs a captured
+// context (g_ci_p1). This is the SINGLE force path for everything (items + map symbols).
+static void force_symbol_hooked(uintptr_t er, const char *imgname)
+{
+    if (!g_create_image_orig || g_ci_p1.load(std::memory_order_relaxed) == nullptr || !imgname) return;
+    auto CreateImageHooked = reinterpret_cast<create_image_fn>(er + 0xd6bbc0);
+    snprintf(g_ci_name, sizeof(g_ci_name), "%s", imgname);
+    g_ci_desc[0] = reinterpret_cast<uintptr_t>(g_ci_name) - 0xc;
+    CreateImageHooked(g_ci_p1.load(), g_ci_p2.load(), g_ci_desc, nullptr, nullptr, nullptr, nullptr, nullptr);
+}
+static void force_item_hooked(uintptr_t er, int iconId)
+{
+    char buf[64];
+    snprintf(buf, sizeof(buf), "img://MENU_ItemIcon_%d", iconId);
+    force_symbol_hooked(er, buf);
+}
+
+// THE central engine-thread pump (called every res tick): ALWAYS re-force the whole wanted set in a
+// round-robin so anything evicted by repo churn comes back, + re-harvest the twin-map symbols
+// (boss/grace pins) so their rects stay registered. No try-cap. Throttled so it costs little.
+void gpu_icon_tick(uintptr_t er)
+{
+    if (g_ci_p1.load(std::memory_order_relaxed) == nullptr) return;  // no CreateImage context yet
+    static int s_tick = 0;
+    if ((s_tick++ % 6) != 0) return;  // act ~every 6 ticks (cheap; still continuous)
+
+    // Grace candidates (their own hardcoded set) — always, no cap.
+    if (goblin::config::graceOverlay && goblin::config::graceGpuSprite)
+        run_force_grace(er);
+
+    // Snapshot the wanted set (brief lock; force calls happen unlocked).
+    std::vector<int> items;
+    std::vector<std::string> syms;
+    {
+        std::lock_guard<std::mutex> lk(g_want_mx);
+        items.assign(g_want_items.begin(), g_want_items.end());
+        syms.assign(g_want_symbols.begin(), g_want_symbols.end());
+    }
+    // Round-robin: force a handful per pass so we cycle the whole set over a few passes (continuous).
+    static size_t ri = 0, rs = 0;
+    for (int k = 0; k < 6 && !items.empty(); ++k) force_item_hooked(er, items[ri++ % items.size()]);
+    for (int k = 0; k < 3 && !syms.empty(); ++k)  force_symbol_hooked(er, syms[rs++ % syms.size()].c_str());
+
+    // Re-register the resident map-point symbols (boss/grace) into g_map_icon_named/g_grace_cands.
+    // RPM-heavy (full repo walk) → run it less often than the cheap CreateImage forces above.
+    static int s_harvest = 0;
+    if (g_icon_repo && (s_harvest++ % 5) == 0) harvest_twin_map_icons(g_icon_repo, er);
 }
 
 void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
@@ -2979,20 +3034,8 @@ void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
             int act = g_bind_action.exchange(0, std::memory_order_acq_rel);
             if (act) run_bind_action(mgr, er, act, g_bind_gid.load(std::memory_order_relaxed));
             int ci = g_ci_req_icon.exchange(INT_MIN, std::memory_order_acq_rel);
-            if (ci != INT_MIN) run_create_icon(er, ci);
-            // Auto force the canonical grace (Morning) for a time-independent live grace. Only while
-            // the GPU-sprite grace is on, until it's canon-locked, context captured, throttled, capped.
-            if (goblin::config::graceOverlay && goblin::config::graceGpuSprite && !g_grace_locked &&
-                g_ci_p1.load(std::memory_order_relaxed) && g_grace_force_tries < 30)
-            {
-                static int s_gt = 0;
-                if ((s_gt++ % 30) == 0) { ++g_grace_force_tries; run_force_grace(er); }
-            }
-            // Manual force (F1 "Force graces now") — re-poke on demand, bypassing the auto
-            // cap/lock/throttle; only needs a captured CreateImage context (g_ci_p1). CreateImage
-            // alone only makes the sprites RESIDENT — the candidates are registered by the twin-map
-            // WALK (harvest_twin_map_icons → cache_map_sprite_from_img → g_grace_cands), so run it
-            // right after (the missing "binding" step), else the F1 viewer shows no candidate.
+            if (ci != INT_MIN) run_create_icon(er, ci);   // F1 dev probe (orig call, control)
+            // Manual F1 "Force graces now" — one-shot poke (bypasses the auto pump's throttle).
             if (g_force_grace_req.exchange(false, std::memory_order_acq_rel) &&
                 g_ci_p1.load(std::memory_order_relaxed))
             {
@@ -3000,17 +3043,10 @@ void __fastcall res_tick_detour(uintptr_t p1, uintptr_t *p2)
                 if (g_icon_repo)
                     harvest_twin_map_icons(g_icon_repo, er);
             }
-            // Drain ONE queued per-category representative item-icon per tick → make it resident so
-            // the renderer can harvest it (same CreateImage path as graces). Needs a captured context.
-            if (goblin::config::nativeItemIcons && g_ci_p1.load(std::memory_order_relaxed))
-            {
-                int id = 0;
-                {
-                    std::lock_guard<std::mutex> lk(g_caticon_mx);
-                    if (!g_caticon_pending.empty()) { id = g_caticon_pending.back(); g_caticon_pending.pop_back(); }
-                }
-                if (id > 0) run_create_icon(er, id);
-            }
+            // THE central GPU-icon pump: always re-force the whole wanted set (items + map symbols)
+            // + re-harvest, so nothing stays evicted. Replaces the old capped grace force + the
+            // per-category drain (both folded in here). Self-throttled.
+            gpu_icon_tick(er);
         }
     }
     if (g_res_tick_orig) g_res_tick_orig(p1, p2);
@@ -3051,13 +3087,20 @@ bool goblin::force_create_icon(int iconId)
 // res_tick drain above). Called by the map build for each category's resolved iconId. Bounded +
 // deduped; safe to call from any thread. Not gated by dumpIconTextures — this is a shipping feature
 // path (the drain itself no-ops until a CreateImage context is captured).
-void goblin::queue_force_item_icon(int iconId)
+// Register an item iconId (MENU_ItemIcon_<id>) the renderer wants resident. The central pump
+// (gpu_icon_tick) keeps it force-loaded. Idempotent, thread-safe, bounded.
+void goblin::gpu_want_item(int iconId)
 {
     if (iconId <= 0) return;
-    std::lock_guard<std::mutex> lk(g_caticon_mx);
-    if (g_caticon_pending.size() < 256 &&
-        std::find(g_caticon_pending.begin(), g_caticon_pending.end(), iconId) == g_caticon_pending.end())
-        g_caticon_pending.push_back(iconId);
+    std::lock_guard<std::mutex> lk(g_want_mx);
+    if (g_want_items.size() < 1024) g_want_items.insert(iconId);
+}
+// Register a named map symbol (e.g. "img://MENU_MAP_ERR_Boss") the renderer wants resident.
+void goblin::gpu_want_symbol(const char *imgName)
+{
+    if (!imgName || !imgName[0]) return;
+    std::lock_guard<std::mutex> lk(g_want_mx);
+    if (g_want_symbols.size() < 256) g_want_symbols.insert(imgName);
 }
 
 // Manually re-run the grace force-CreateImage (F1 dev button) — consumed on the next residency

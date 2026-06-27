@@ -323,10 +323,14 @@ namespace goblin
     // representative item per category → its real game icon, harvested from the 00_Solo atlas).
     int item_real_icon_id(int32_t key);
 
-    // Queue a representative item-icon (MENU_ItemIcon_<id>) to be force-made-resident on the engine
-    // thread, so the overlay can harvest + draw it for its category. Bounded/deduped, thread-safe;
-    // no-op until a CreateImage context is captured (open inventory/map once). Called by map build.
-    void queue_force_item_icon(int iconId);
+    // ── Central GPU-icon registry ───────────────────────────────────────────────────────────────
+    // The render side REGISTERS what native icons it needs resident; the engine-thread pump
+    // (gpu_icon_tick, in res_tick_detour) ALWAYS re-forces the whole set in a round-robin so an icon
+    // evicted by repo churn self-heals. Thread-safe, idempotent, bounded; no-op until a CreateImage
+    // context is captured (open inventory/map once). Resolve via overlay::native_item_icon /
+    // native_map_point_icon_by_name once the pump has made the icon resident.
+    void gpu_want_item(int iconId);          // a MENU_ItemIcon_<id> (category/loot icon)
+    void gpu_want_symbol(const char *imgName); // e.g. "img://MENU_MAP_ERR_Boss" (world-feature pin)
 
     // Placed AEG asset's collectible item-lot, resolved LIVE from
     // AssetEnvironmentGeometryParam[aegRow].pickUpItemLotParamId (an ItemLotParam_map
