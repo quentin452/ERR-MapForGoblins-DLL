@@ -1720,60 +1720,99 @@ namespace
             {
                 namespace wm = goblin::worldmap;
                 const bool native_on = goblin::config::nativeItemIcons;
-                // Classify a category's CURRENT render source (mirror IconSet::resolve). via = the GPU
-                // backend when src==GPU. src: 2=GPU, 1=Atlas, 0=Circle.
-                auto live_source = [&](int c, const char *&via) -> int {
-                    via = "";
-                    int x, y, w, h; void *sheet = nullptr;
-                    if (native_on)
-                    {
-                        if (const char *sym = wm::category_gpu_icon_name(c))
-                            if (goblin::map_icon_rect_by_name(sym, x, y, w, h, sheet)) { via = "name symbol"; return 2; }
-                        if (int iid = wm::category_gpu_iconId(c))
-                            if (goblin::map_icon_rect(iid, x, y, w, h, sheet)) { via = "map-point id"; return 2; }
-                        if (int rep = wm::category_rep_icon(c))
-                        {
-                            goblin::ItemSprite sp;
-                            if (goblin::harvested_icon(rep, sp) && sp.sheet) { via = "item icon"; return 2; }
-                        }
-                        if (c == static_cast<int>(goblin::generated::Category::WorldGraces) &&
-                            goblin::config::graceOverlay && goblin::config::graceGpuSprite)
-                        { via = "grace sprite"; return 2; }
-                    }
-                    return wm::category_has_baked_icon(c) ? 1 : 0;  // Atlas vs Circle
+                const float SZ = 22.f;
+                const ImVec4 GREEN(0.40f, 0.85f, 0.45f, 1), YEL(0.90f, 0.80f, 0.35f, 1),
+                             GRAY(0.62f, 0.62f, 0.62f, 1);
+                // Runtime native sprite (tex+UV) for a category, using the SAME overlay backends the
+                // renderer draws with → the panel shows the EXACT runtime icon. false = none right now.
+                auto runtime_tex = [&](int c, ImTextureID &tex, ImVec2 &uv0, ImVec2 &uv1,
+                                       const char *&via) -> bool {
+                    via = ""; if (!native_on) return false;
+                    void *t = nullptr; float u0, v0, u1, v1; bool ok = false;
+                    if (const char *sym = wm::category_gpu_icon_name(c))
+                        ok = goblin::overlay::native_map_point_icon_by_name(sym, t, u0, v0, u1, v1), via = "name symbol";
+                    if (!ok) if (int iid = wm::category_gpu_iconId(c))
+                        ok = goblin::overlay::native_map_point_icon(iid, t, u0, v0, u1, v1), via = "map-point id";
+                    if (!ok) if (int rep = wm::category_rep_icon(c))
+                        ok = goblin::overlay::native_item_icon(rep, t, u0, v0, u1, v1), via = "item icon";
+                    if (!ok) { via = ""; return false; }
+                    tex = reinterpret_cast<ImTextureID>(t); uv0 = ImVec2(u0, v0); uv1 = ImVec2(u1, v1);
+                    return true;
                 };
+                // Baked atlas UV for a category's cell (mirror map_renderer's icon_uv). false = no cell.
+                auto baked_uv = [&](int c, ImVec2 &uv0, ImVec2 &uv1) -> bool {
+                    using namespace goblin::overlay_icons;
+                    const char *key = wm::category_icon_key(c);
+                    if (!key) return false;
+                    for (int i = 0; i < ICON_CELL_COUNT; ++i)
+                        if (std::strcmp(ICON_CELLS[i].key, key) == 0)
+                        {
+                            const IconCell &cell = ICON_CELLS[i];
+                            uv0 = ImVec2((cell.col * CELL) / (float)ATLAS_W, (cell.row * CELL) / (float)ATLAS_H);
+                            uv1 = ImVec2(((cell.col + 1) * CELL) / (float)ATLAS_W, ((cell.row + 1) * CELL) / (float)ATLAS_H);
+                            return true;
+                        }
+                    return false;
+                };
+                const bool grace_gpu = native_on && goblin::config::graceOverlay && goblin::config::graceGpuSprite;
                 const int total = wm::category_count();
+                struct Row { int s; const char *via; bool hasRt; ImTextureID rt; ImVec2 ra, rb; };
+                std::vector<Row> rows(total);
                 int gpu = 0, atlas = 0, circle = 0;
                 for (int c = 0; c < total; ++c)
                 {
-                    const char *via;
-                    switch (live_source(c, via)) { case 2: ++gpu; break; case 1: ++atlas; break; default: ++circle; }
+                    Row &r = rows[c];
+                    r.hasRt = runtime_tex(c, r.rt, r.ra, r.rb, r.via);
+                    if (r.hasRt) r.s = 2;
+                    else if (grace_gpu && c == static_cast<int>(goblin::generated::Category::WorldGraces))
+                    { r.s = 2; r.via = "grace sprite"; }
+                    else r.s = wm::category_has_baked_icon(c) ? 1 : 0;
+                    switch (r.s) { case 2: ++gpu; break; case 1: ++atlas; break; default: ++circle; }
                 }
                 ImGui::Text("Live render source (of %d categories)%s:", total,
                             native_on ? "" : "  [native_item_icons OFF]");
-                ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.45f, 1), "  GPU icon : %d", gpu);
-                ImGui::SameLine(); ImGui::TextColored(ImVec4(0.90f, 0.80f, 0.35f, 1), "   Atlas : %d", atlas);
-                ImGui::SameLine(); ImGui::TextColored(ImVec4(0.65f, 0.65f, 0.65f, 1), "   Circle : %d", circle);
+                ImGui::TextColored(GREEN, "  GPU icon : %d", gpu);
+                ImGui::SameLine(); ImGui::TextColored(YEL, "   Atlas : %d", atlas);
+                ImGui::SameLine(); ImGui::TextColored(GRAY, "   Circle : %d", circle);
                 ImGui::ProgressBar(total ? (float)gpu / total : 0.f, ImVec2(-1, 0));
+                ImGui::TextDisabled("A/B: [baked]  [runtime]   category  (source)");
                 ImGui::Separator();
-                if (ImGui::BeginChild("iconmig_census", ImVec2(0, 260), true))
+                if (ImGui::BeginChild("iconmig_census", ImVec2(0, 320), true))
                 {
+                    ImDrawList *dl = ImGui::GetWindowDrawList();
                     for (int c = 0; c < total; ++c)
                     {
-                        const char *via;
-                        const int s = live_source(c, via);
+                        const Row &r = rows[c];
                         const char *name = goblin::ui::category_label(c);
-                        // Annotate a category that is WIRED for GPU but not yet resident (so we can see
-                        // it's "almost there" vs genuinely atlas-only).
-                        const bool wired = wm::category_is_gpu_native(c);
-                        if (s == 2)
-                            ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.45f, 1), "GPU     %s  (%s)", name ? name : "?", via);
-                        else if (s == 1)
-                            ImGui::TextColored(ImVec4(0.90f, 0.80f, 0.35f, 1), "Atlas   %s%s", name ? name : "?",
-                                               (native_on && wired) ? "  (GPU wired, not resident yet)" : "");
+                        // [baked] thumbnail (atlas cell, or a coloured circle for the no-cell categories).
+                        ImVec2 bu0, bu1, p = ImGui::GetCursorScreenPos();
+                        if (g_atlas_ready && baked_uv(c, bu0, bu1))
+                            ImGui::Image(reinterpret_cast<ImTextureID>(g_atlas_gpu.ptr), ImVec2(SZ, SZ), bu0, bu1);
                         else
-                            ImGui::TextColored(ImVec4(0.65f, 0.65f, 0.65f, 1), "Circle  %s%s", name ? name : "?",
-                                               (native_on && wired) ? "  (GPU wired, not resident yet)" : "");
+                        {
+                            ImGui::Dummy(ImVec2(SZ, SZ));
+                            dl->AddCircleFilled(ImVec2(p.x + SZ / 2, p.y + SZ / 2), SZ * 0.34f,
+                                                goblin::worldmap::category_color(c));
+                        }
+                        ImGui::SameLine();
+                        // [runtime] thumbnail (the real native sprite) or an empty slot if not resident.
+                        ImVec2 q = ImGui::GetCursorScreenPos();
+                        if (r.hasRt)
+                            ImGui::Image(r.rt, ImVec2(SZ, SZ), r.ra, r.rb);
+                        else
+                        {
+                            ImGui::Dummy(ImVec2(SZ, SZ));
+                            dl->AddRect(q, ImVec2(q.x + SZ, q.y + SZ), IM_COL32(110, 110, 110, 90));
+                        }
+                        ImGui::SameLine();
+                        ImGui::AlignTextToFramePadding();
+                        const ImVec4 col = r.s == 2 ? GREEN : r.s == 1 ? YEL : GRAY;
+                        const bool wired = wm::category_is_gpu_native(c);
+                        if (r.s == 2)
+                            ImGui::TextColored(col, "%s  (%s)", name ? name : "?", r.via);
+                        else
+                            ImGui::TextColored(col, "%s%s", name ? name : "?",
+                                               (native_on && wired) ? "  (wired, not resident)" : "");
                     }
                 }
                 ImGui::EndChild();
