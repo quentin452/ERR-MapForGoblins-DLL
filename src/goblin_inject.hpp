@@ -440,6 +440,13 @@ namespace goblin
     // (the 00_Solo atlas) without the engine streaming it. Returns false until captured / id absent.
     size_t item_icon_layout_count();
     bool item_icon_layout_rect(int iconId, int &x, int &y, int &w, int &h, std::string &sheet);
+    // No-bake item-icon LAYOUT source: read the active mod's (or UXM game's) real
+    // menu/hi/01_common.sblytbnd.dcx off disk, decompress, and parse its MENU_ItemIcon_<id>
+    // SubTexture rects into g_item_icon_layout. Complete + mod-aware (the ERR file carries
+    // base+ERR ≈ 4845 rects), unlike the resident-RAM capture which only sees loaded atlases.
+    // Idempotent (no-op once the layout is populated). Does disk I/O — call off the engine
+    // thread / once. Returns true if the layout map is non-empty afterwards.
+    bool load_item_icon_layout_from_disk();
 
     // First `max` harvested iconIds (dev — the P2b test panel draws ACTUAL harvested icons
     // instead of a hardcoded id list that may not match what the player browsed).

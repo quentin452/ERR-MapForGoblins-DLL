@@ -225,4 +225,14 @@ void on_map_opened_path(const wchar_t *full_path);
 // flips to Found via CreateFileW discovery, so the worker build kicks immediately
 // instead of waiting for the next overlay tick (~7s). Set before any map opens.
 void set_build_trigger(void (*fn)());
+
+// Read + DCX-decompress an arbitrary game data file, given relative to the active
+// install/mod root (e.g. "menu/hi/01_common.sblytbnd.dcx"). Resolves the root via the
+// SAME ancestor-walk as the map dir (mod overlay first, then the UXM-unpacked game),
+// reads the file, and Oodle/zlib-decompresses it (no-op if it isn't a DCX). Returns the
+// raw decompressed bytes (BND4/TPF/…), or empty on any failure. INDEPENDENT of the loot
+// map-dir state — the generic no-bake "give me a real game file" primitive, reusable by
+// the item-icon layout now and the item-icon DDS sheets (00_Solo.tpfbhd) later. Does
+// disk I/O — call off the engine thread / once.
+std::vector<uint8_t> read_game_file_decompressed(const std::string &rel_path);
 } // namespace goblin::worldmap

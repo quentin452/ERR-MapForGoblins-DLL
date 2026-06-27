@@ -24,6 +24,7 @@
 #include "goblin_quest_gates.hpp"
 #include "goblin_quest_steps.hpp"
 #include "goblin_logic.hpp"
+#include "worldmap/loot_disk.hpp"  // read_game_file_decompressed (no-bake item-icon layout source)
 
 #include <algorithm>
 #include <atomic>
@@ -3090,13 +3091,22 @@ void gpu_icon_tick(uintptr_t er)
     static int s_tick = 0;
     if ((s_tick++ % 6) != 0) return;  // act ~every 6 ticks (cheap; still continuous)
 
-    // One-shot: re-load the menu sblytbnd so the Oodle hook captures its item-icon LAYOUT XML (it
-    // loads at boot, before our hook). Retried a few times until the layout map is populated.
-    static int s_sblyt_tries = 0;
-    if (s_sblyt_tries < 10 && goblin::item_icon_layout_count() == 0)
+    // Item-icon LAYOUT (iconId→sheet+rect), no-bake from the active mod's real
+    // menu/hi/01_common.sblytbnd.dcx on disk (decompress + parse). Complete + mod-aware; replaces
+    // the old force_load("menu:/01_Common.sblytbnd")+Oodle-recapture, which returned the CACHED
+    // resident resource and never re-fired the Oodle hook (the layout stayed empty). Runs on a
+    // detached thread so the small (~50KB→~660KB) read+decompress never hitches the engine frame;
+    // a few spaced retries cover early-init (mod dir not resolvable on the very first tick).
+    static std::atomic<int> s_layout_tries{0};
+    static std::atomic<bool> s_layout_inflight{false};
+    if (goblin::item_icon_layout_count() == 0 && s_layout_tries.load() < 5 &&
+        !s_layout_inflight.exchange(true))
     {
-        ++s_sblyt_tries;
-        goblin::force_load_file("menu:/01_Common.sblytbnd");
+        s_layout_tries.fetch_add(1);
+        std::thread([] {
+            goblin::load_item_icon_layout_from_disk();
+            s_layout_inflight.store(false);
+        }).detach();
     }
 
     // Grace candidates (their own hardcoded set) — always, no cap.
@@ -3419,6 +3429,30 @@ bool goblin::item_icon_layout_rect(int iconId, int &x, int &y, int &w, int &h, s
     if (it == g_item_icon_layout.end()) return false;
     x = it->second.x; y = it->second.y; w = it->second.w; h = it->second.h; sheet = it->second.sheet;
     return true;
+}
+
+bool goblin::load_item_icon_layout_from_disk()
+{
+    if (item_icon_layout_count() > 0) return true;  // already captured (this path or the RAM hook)
+    // Read the active mod's (overlay) or the UXM-unpacked game's real menu sblytbnd → decompressed
+    // BND4 whose .layout entries are plaintext TextureAtlas XML. parse_item_icon_layout string-scans
+    // the MENU_ItemIcon_<id> SubTextures straight out of it (no BND4 entry walk needed).
+    std::vector<uint8_t> bnd =
+        goblin::worldmap::read_game_file_decompressed("menu/hi/01_common.sblytbnd.dcx");
+    if (bnd.size() < 0x40)
+    {
+        spdlog::warn("[ITEMLAYOUT] disk sblytbnd unavailable ({} bytes) — layout not loaded",
+                     bnd.size());
+        return false;
+    }
+    if (!(bnd[0] == 'B' && bnd[1] == 'N' && bnd[2] == 'D' && bnd[3] == '4'))
+        spdlog::warn("[ITEMLAYOUT] disk sblytbnd decompressed but not BND4 "
+                     "({:02x}{:02x}{:02x}{:02x}) — parsing the XML anyway",
+                     bnd[0], bnd[1], bnd[2], bnd[3]);
+    parse_item_icon_layout(bnd.data(), bnd.size());
+    size_t n = item_icon_layout_count();
+    spdlog::info("[ITEMLAYOUT] from disk sblytbnd: {} MENU_ItemIcon rects", n);
+    return n > 0;
 }
 
 long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, void *dst,

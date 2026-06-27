@@ -111,6 +111,27 @@ fs::path resolve_map_dir()
     return {};
 }
 
+// First existing <root>/rel over the candidate roots (mod overlay first so a mod's own
+// file wins, then the UXM-unpacked game install). Mirrors resolve_map_dir's ancestor-walk
+// but for an arbitrary file path — independent of the loot map-dir state. Empty if none.
+fs::path resolve_root_file(const fs::path &rel)
+{
+    std::error_code ec;
+    fs::path p = g_mod_folder;
+    for (int up = 0; up < 5 && !p.empty() && p != p.root_path(); ++up, p = p.parent_path())
+    {
+        if (fs::exists(p / "mod" / rel, ec)) return p / "mod" / rel;  // ModEngine overlay
+        if (fs::exists(p / rel, ec)) return p / rel;
+    }
+    fs::path g = game_dir();
+    if (!g.empty())
+    {
+        if (fs::exists(g / "mod" / rel, ec)) return g / "mod" / rel;  // ME2 next to the exe
+        if (fs::exists(g / rel, ec)) return g / rel;                  // UXM-unpacked base
+    }
+    return {};
+}
+
 std::vector<uint8_t> slurp(const fs::path &p)
 {
     std::vector<uint8_t> v;
@@ -149,6 +170,44 @@ bool disk_source_enabled()
 {
     return config::lootFromDiskMsb || config::lootCollectibles || config::lootEnemyDrops ||
            config::lootEmevdDrops || config::worldFeaturesFromDisk;
+}
+
+std::vector<uint8_t> read_game_file_decompressed(const std::string &rel_path)
+{
+    // Test affordance (mirrors the map-dir __test_fallback__): set env MFG_TEST_NO_GAMEFILE=1 to
+    // force "file not found" WITHOUT touching the game's own loose files — simulates a packed-vanilla
+    // install (no loose .dcx for us to read) so the graceful no-layout fallback can be verified on an
+    // unpacked dev box. The game still loads its own UI normally; only OUR reader pretends to miss.
+    if (char e[8]{}; GetEnvironmentVariableA("MFG_TEST_NO_GAMEFILE", e, sizeof(e)) && e[0] == '1')
+    {
+        spdlog::warn("[GAMEFILE] MFG_TEST_NO_GAMEFILE=1 → simulating packed (not found): {}", rel_path);
+        return {};
+    }
+    fs::path full = resolve_root_file(fs::path(rel_path));
+    if (full.empty())
+    {
+        spdlog::warn("[GAMEFILE] '{}' not found on any mod/game root", rel_path);
+        return {};
+    }
+    std::vector<uint8_t> raw = slurp(full);
+    if (raw.size() < 4)
+    {
+        spdlog::warn("[GAMEFILE] read failed/empty: {}", full.string());
+        return {};
+    }
+    // Loose-uncompressed (not wrapped in DCX) → return as-is.
+    if (!(raw[0] == 'D' && raw[1] == 'C' && raw[2] == 'X' && raw[3] == 0))
+        return raw;
+    bool krak = false;
+    std::vector<uint8_t> out =
+        msbe::dcx_decompress(raw.data(), raw.size(), &krak, resolve_oodle());
+    if (out.empty())
+        spdlog::warn("[GAMEFILE] DCX decompress failed ({}): {}", krak ? "KRAK" : "DFLT",
+                     full.string());
+    else
+        spdlog::info("[GAMEFILE] {} -> {} bytes ({})", full.string(), out.size(),
+                     krak ? "KRAK" : "DFLT");
+    return out;
 }
 
 void ensure_map_dir_resolved()
