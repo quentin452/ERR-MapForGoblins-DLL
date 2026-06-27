@@ -3282,7 +3282,24 @@ bool goblin::overlay::native_map_point_icon_by_name(const char *name, void *&tex
     if (!goblin::map_icon_rect_by_name(name, x, y, w, h, sheet) || !sheet || w <= 0 || h <= 0)
         return false;
     const SheetTex *st = copy_sheet_cached(reinterpret_cast<ID3D12Resource *>(sheet));
-    if (!st || !st->gpu || st->w <= 0 || st->h <= 0)
+    const bool ok = st && st->gpu && st->w > 0 && st->h > 0;
+    // [SYMDRAW] diag: confirm the name-symbol resolve is REACHED + its sheet format/dims/rect/UV, so
+    // we can tell invisible = blank-copy vs wrong-format vs wrong-UV vs not-called. Throttled + gated.
+    if (goblin::config::dumpIconTextures && std::strstr(name, "Boss"))
+    {
+        static DWORD s_last = 0; DWORD now = GetTickCount();
+        if (now - s_last > 1500)
+        {
+            s_last = now;
+            DXGI_FORMAT fmt = DXGI_FORMAT_UNKNOWN;
+            auto *res = reinterpret_cast<ID3D12Resource *>(sheet);
+            if (res) { D3D12_RESOURCE_DESC rd = res->GetDesc(); fmt = rd.Format; }
+            spdlog::info("[SYMDRAW] '{}' rect=({},{} {}x{}) sheet={:#x} fmt={} copied={} st={}x{} gpu={:#x}",
+                         name, x, y, w, h, reinterpret_cast<uintptr_t>(sheet), (int)fmt, ok,
+                         ok ? st->w : 0, ok ? st->h : 0, ok ? st->gpu : 0);
+        }
+    }
+    if (!ok)
         return false;
     tex = reinterpret_cast<void *>(st->gpu);
     u0 = (float)x / st->w; v0 = (float)y / st->h;
