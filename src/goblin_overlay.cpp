@@ -935,6 +935,43 @@ namespace
         return true;
     }
 
+    // ── Generalized map-symbol SRV (boss & other MENU_MAP_* pins) ────────────────────────────────
+    // The EXACT grace path (record_sprite_copy of the sub-rect + write_inline_srv), per-name cached
+    // slot, retry-until-ready. Replaces the whole-sheet copy_sheet_cached path for named symbols
+    // (which drew the boss invisible) so map symbols use the proven, grace-identical pipeline.
+    struct MapSymSrv { int state = 0; int srv_idx = -1; ID3D12Resource *tex = nullptr;
+                       D3D12_GPU_DESCRIPTOR_HANDLE gpu{}; ImVec2 uv0{}, uv1{}; };
+    std::map<std::string, MapSymSrv> g_map_sym_srv;
+
+    bool ensure_map_sym_srv(const char *name, MapSymSrv *&out)
+    {
+        MapSymSrv &s = g_map_sym_srv[name];
+        out = &s;
+        if (s.state == 1) return true;
+        int x = 0, y = 0, w = 0, h = 0; void *sheet = nullptr;
+        if (!goblin::map_icon_rect_by_name(name, x, y, w, h, sheet) || !sheet || w <= 0 || h <= 0)
+            return false;
+        if (!(g_device && g_command_queue && g_srv_heap && g_next_item_srv < 256))
+            return false;
+        auto *src = reinterpret_cast<ID3D12Resource *>(sheet);
+        D3D12_RESOURCE_DESC rd = src->GetDesc();
+        DXGI_FORMAT fmt = rd.Format;
+        if (rd.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || fmt == DXGI_FORMAT_UNKNOWN)
+            return false;                                  // not bound yet → retry next frame
+        goblin::ItemSprite sp{}; sp.sheet = sheet; sp.x0 = x; sp.y0 = y; sp.x1 = x + w; sp.y1 = y + h;
+        g_frames[0].allocator->Reset();
+        g_command_list->Reset(g_frames[0].allocator, nullptr);
+        SrvCopy cp;
+        if (!record_sprite_copy(src, fmt, sp, cp)) return false;  // retry (do NOT mark failed)
+        s.tex = cp.tex;
+        submit_and_wait();
+        s.gpu = write_inline_srv(s.tex, fmt, s.srv_idx, D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING);
+        s.uv0 = cp.uv0; s.uv1 = cp.uv1; s.state = 1;
+        spdlog::info("[MAPSYM-SRV] '{}' copied {}x{} fmt={} -> slot {} gpu={:#x}", name, cp.w, cp.h,
+                     (int)fmt, s.srv_idx, s.gpu.ptr);
+        return true;
+    }
+
     // ── Grace-sprite GPU debug viewer (dev) ──────────────────────────────────────────
     // Draws EVERY harvested SB_ERR_Grace_* frame as a GPU image so we can visually pick the correct
     // grace rect (the captured 'Morning_Color' frame didn't look like a grace). Uses a FULL-SHEET SRV
@@ -3277,32 +3314,12 @@ bool goblin::overlay::native_map_point_icon_by_name(const char *name, void *&tex
         return false;
     // Name-keyed map symbols (ERR custom: MENU_MAP_ERR_Boss/Camp/…, plus MENU_MAP_Church etc) live
     // in the same image repo, resolved by name. Same sheet-as-atlas copy as the numeric path.
-    int x = 0, y = 0, w = 0, h = 0;
-    void *sheet = nullptr;
-    if (!goblin::map_icon_rect_by_name(name, x, y, w, h, sheet) || !sheet || w <= 0 || h <= 0)
+    // Route through the grace-identical pipeline (record_sprite_copy sub-rect + write_inline_srv),
+    // per-name cached. The old whole-sheet copy_sheet_cached path drew the boss invisible.
+    MapSymSrv *s = nullptr;
+    if (!ensure_map_sym_srv(name, s) || !s || !s->gpu.ptr)
         return false;
-    const SheetTex *st = copy_sheet_cached(reinterpret_cast<ID3D12Resource *>(sheet));
-    const bool ok = st && st->gpu && st->w > 0 && st->h > 0;
-    // [SYMDRAW] diag: confirm the name-symbol resolve is REACHED + its sheet format/dims/rect/UV, so
-    // we can tell invisible = blank-copy vs wrong-format vs wrong-UV vs not-called. Throttled + gated.
-    if (goblin::config::dumpIconTextures && std::strstr(name, "Boss"))
-    {
-        static DWORD s_last = 0; DWORD now = GetTickCount();
-        if (now - s_last > 1500)
-        {
-            s_last = now;
-            DXGI_FORMAT fmt = DXGI_FORMAT_UNKNOWN;
-            auto *res = reinterpret_cast<ID3D12Resource *>(sheet);
-            if (res) { D3D12_RESOURCE_DESC rd = res->GetDesc(); fmt = rd.Format; }
-            spdlog::info("[SYMDRAW] '{}' rect=({},{} {}x{}) sheet={:#x} fmt={} copied={} st={}x{} gpu={:#x}",
-                         name, x, y, w, h, reinterpret_cast<uintptr_t>(sheet), (int)fmt, ok,
-                         ok ? st->w : 0, ok ? st->h : 0, ok ? st->gpu : 0);
-        }
-    }
-    if (!ok)
-        return false;
-    tex = reinterpret_cast<void *>(st->gpu);
-    u0 = (float)x / st->w; v0 = (float)y / st->h;
-    u1 = (float)(x + w) / st->w; v1 = (float)(y + h) / st->h;
+    tex = reinterpret_cast<void *>(s->gpu.ptr);
+    u0 = s->uv0.x; v0 = s->uv0.y; u1 = s->uv1.x; v1 = s->uv1.y;
     return true;
 }
