@@ -2586,6 +2586,10 @@ void harvest_twin_map_icons(uintptr_t repo, uintptr_t er)
 }
 } // namespace
 
+// Global-scope forward decl (definition is at file scope, ~g_dds_list) so goblin::force_load_file
+// can scan a force-loaded sblytbnd's resident BND4 for the item-icon layout.
+void parse_item_icon_layout(const uint8_t *buf, size_t n);
+
 // Verify item↔iconId↔sprite: iterate the EquipParam* tables LIVE (get_param), read each row's
 // iconId at its paramdef offset (u16), and log the rows whose iconId matches the sprites we
 // captured from the inventory (MENU_FL_<iconId>). Proves the menu icon = EquipParam.iconId.
@@ -2826,6 +2830,33 @@ void *goblin::force_load_file(const char *utf8_path)
     size_t after; { std::lock_guard<std::mutex> lk(g_harvest_mtx); after = g_harvest.size(); }
     spdlog::info("[FORCELOAD] load(CSFile={:#x}, '{}') -> {:#x}  harvested {}->{}",
                  csfile, utf8_path, reinterpret_cast<uintptr_t>(res), before, after);
+
+    // sblytbnd is resident-from-boot → the load returns its cached resource WITHOUT re-decompressing
+    // (Oodle hook never fires). So read the decompressed BND4 buffer straight out of the resource: it
+    // holds a pointer to the BND4 bytes; probe the handle's first words via RPM (safe — bad address →
+    // false, no crash), find the "BND4" buffer, RPM-copy it, and parse the item-icon layout XML.
+    if (res && std::strstr(utf8_path, "sblyt") && goblin::item_icon_layout_count() == 0)
+    {
+        uintptr_t rp = reinterpret_cast<uintptr_t>(res);
+        HANDLE self = GetCurrentProcess();
+        for (int off = 0; off <= 0x400; off += 8)
+        {
+            uintptr_t cand = 0; icon_rpm_ptr(rp + off, cand);
+            if (cand < 0x10000) continue;
+            char hdr[4] = {0}; SIZE_T got = 0;
+            if (!ReadProcessMemory(self, reinterpret_cast<void *>(cand), hdr, 4, &got) || got < 4)
+                continue;
+            if (std::memcmp(hdr, "BND4", 4) != 0) continue;
+            uintptr_t sz = 0; icon_rpm_ptr(rp + off + 8, sz);   // common {ptr,size} layout
+            if (sz < 0x40 || sz > 0x2000000) sz = 0x200000;     // fallback 2 MB bound
+            std::vector<uint8_t> buf(sz);
+            SIZE_T rd = 0;
+            ReadProcessMemory(self, reinterpret_cast<void *>(cand), buf.data(), sz, &rd); // partial ok
+            spdlog::info("[FORCELOAD] sblyt BND4 @res+0x{:x} -> {:#x} size~{} read={}", off, cand, sz, rd);
+            if (rd >= 0x40) parse_item_icon_layout(buf.data(), rd);
+            break;
+        }
+    }
     return res;
 }
 
