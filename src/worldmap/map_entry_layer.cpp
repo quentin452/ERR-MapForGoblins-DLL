@@ -55,6 +55,23 @@ struct SkipTally {
     int dummy_inert = 0;    // cut DummyAsset (no EntityID → not reachable)
 };
 SkipTally g_skip;
+
+// ── [WATCH] per-lot trace (config diag_loot_pos) ──────────────────────────────
+// Follow specific lotIds through the disk passes to answer "was lot X parsed / emitted / skipped
+// (why) / dropped at finalize" — the offline tools/_probe_missing_lots.py oracle made runtime-
+// observable. A watched lot that produces NO [WATCH] line at all was never reached by any pass
+// (parser scope miss); one that emits but is then ABSENT from the final buckets was dropped
+// downstream. Edit this set to chase a new report. See [[disk-parser-coverage-gaps]].
+const std::unordered_set<uint32_t> kWatchLots = {
+    12070500, 12070320, 1038490030,                          // Ghostflame Torch / Burred Bolt (treasures)
+    333062001, 333062011, 333062021, 333065001, 337000805,   // Larval Tears / boss armour (enemy base+k)
+};
+inline void watch_lot(uint32_t lot, const char *stage, const std::string &detail = "")
+{
+    if (!goblin::config::diagLootPos || !kWatchLots.count(lot)) return;
+    spdlog::info("[WATCH] lot={} {}{}{}", lot, stage, detail.empty() ? "" : " ", detail);
+}
+
 // Built exactly once via std::call_once — by the setup_mod prebuild thread
 // (prebuild_markers, kills the first-map-open hitch) OR lazily by the first
 // markers()/census call, whichever runs first. call_once blocks concurrent
@@ -195,6 +212,68 @@ void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST
     g_buckets[c].push_back(m);
 }
 
+// ── Mechanism C: shared ItemLotParam sequence-sibling expansion ───────────────────────────
+// ER bundles a multi-item GUARANTEED reward as a CONTIGUOUS ItemLotParam run base, base+1, base+2, …
+// but every disk SOURCE (MSB Treasure, NpcParam enemy drop, EMEVD award) carries only the chain BASE;
+// the engine awards the whole contiguous run until a param gap. This helper places each NOTABLE
+// sibling base+1..base+kMaxSib at the base's world position `at`, classified live. It is the SINGLE
+// source of the sibling rule — previously copy-pasted into the treasure + emevd passes, and ABSENT
+// from the enemy pass, which silently dropped boss-bundle items (e.g. the m12 Larval Tears that sit
+// at base+1 of a placed enemy's itemLotId_enemy; tools/_probe_missing_lots.py).
+//
+// Per requested table (`SibTable.tbl`: 1=ItemLotParam_map, 2=_enemy) a chain ENDS at the first param
+// gap or the first sub in that table's `stopSet` (the next bundle's base). A sub already owned by
+// another pass (`skipA`/`skipB`) or already emitted this build (`sib_seen`) is skipped. Rune/Ember
+// Pieces are suppressed (shown via the Reforged GEOM category at their real scattered spots). Counts
+// land in `out`; `lot_tile`(+`tile_pack`) and `per_cat` are optional (treasure tile map / verbose).
+struct SibCounts { int emitted = 0, runeember = 0, unclassified = 0; };
+struct SibTable { uint8_t tbl; const std::unordered_set<uint32_t> *stopSet; };
+
+void emit_lot_siblings(uint32_t baseLot,
+                       const from::paramdef::WORLD_MAP_POINT_PARAM_ST &at,
+                       std::initializer_list<SibTable> tables,
+                       const std::unordered_set<uint32_t> *skipA,
+                       const std::unordered_set<uint32_t> *skipB,
+                       std::unordered_set<uint32_t> &covered,
+                       std::unordered_set<uint32_t> &sib_seen,
+                       SibCounts &out,
+                       std::unordered_map<uint32_t, uint32_t> *lot_tile = nullptr,
+                       uint32_t tile_pack = 0,
+                       std::unordered_map<int, int> *per_cat = nullptr)
+{
+    constexpr uint32_t kMaxSib = 50;
+    for (const SibTable &st : tables)
+    {
+        for (uint32_t off = 1; off <= kMaxSib; ++off)
+        {
+            uint32_t sub = baseLot + off;
+            if (st.stopSet && st.stopSet->count(sub)) break;      // next bundle's base → chain ends
+            uint32_t sflag = 0;
+            int32_t skey = 0;
+            if (!goblin::lot_row_in_table(sub, st.tbl, &sflag, &skey)) break;  // param gap → chain ends
+            if (sflag == 0 || skey == 0) continue;                // exists but repeatable/empty
+            if ((skipA && skipA->count(sub)) || (skipB && skipB->count(sub))) continue;  // owned elsewhere
+            if (!sib_seen.insert(sub).second) continue;           // already emitted as a sibling
+            if (skey >= 500000000 && skey < 600000000)
+            {
+                int32_t gid = skey - 500000000;
+                if (gid == 800010 || gid == 850010) { ++out.runeember; watch_lot(sub, "skip-sibling", "rune/ember"); continue; }
+            }
+            int scat = goblin::item_marker_category(skey);
+            bool slc = false;
+            if (scat < 0) { scat = goblin::classify_item_live(skey); slc = (scat >= 0); }
+            if (scat < 0 || scat >= NUM_CAT) { ++out.unclassified; watch_lot(sub, "skip-sibling", "unclassified"); continue; }
+            from::paramdef::WORLD_MAP_POINT_PARAM_ST sd = at;
+            push_marker(/*row_id=*/sub, sd, scat, sub, /*lotType=*/st.tbl, Source::DiskMSB, slc);
+            covered.insert(sub);
+            if (lot_tile) lot_tile->emplace(sub, tile_pack);
+            ++out.emitted;
+            if (per_cat) ++(*per_cat)[scat];
+            watch_lot(sub, "emit-sibling", "tbl=" + std::to_string(st.tbl) + " cat=" + std::to_string(scat));
+        }
+    }
+}
+
 // Build the WorldBosses bucket LIVE from WorldMapPointParam field-boss rows (textId2==5100),
 // not from the bake. The live row is the authoritative source (correct position +
 // clearedEventFlagId + textId1 name + iconId); reading it kills per-ERR-version drift and the
@@ -277,73 +356,50 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
         // — without this the live fallback (no map case) filed every disk-placed map under Crafting
         // Materials, drawing each map twice (surfaced by docs/item_classification.md). ER's own
         // sortGroupId 190/191 via goods_is_map; map goods carry the +500M goods encoding.
-        if (key >= 500000000 && goblin::goods_is_map(key - 500000000)) continue;
+        if (key >= 500000000 && goblin::goods_is_map(key - 500000000))
+        { watch_lot(t.lotId, "skip-treasure", "map-routed"); continue; }
         int c = goblin::item_marker_category(key);
         bool lc = false;
         if (c < 0) { c = goblin::classify_item_live(key); lc = (c >= 0); }  // live fallback (any mod / unbaked item)
         if (c < 0 || c >= NUM_CAT)
         {
             ++unclassified;  // item type genuinely unknown → no bucket
+            watch_lot(t.lotId, "skip-treasure", "unclassified");
             continue;
         }
         push_marker(/*row_id=*/t.lotId, d, c, t.lotId, /*lotType=*/1, Source::DiskMSB, lc);
         covered.insert(t.lotId);
         lot_tile.emplace(t.lotId, pack_tile(t.area, t.gx, t.gz)); // first tile per lot
         ++emitted;
+        watch_lot(t.lotId, "emit-treasure", "cat=" + std::to_string(c));
     }
 
-    // ── Sequence-sibling expansion (multi-lot treasures; mirrors EMEVD mechanism C) ──
+    // ── Sequence-sibling expansion (multi-lot treasures) — shared emit_lot_siblings ──
     // A physical MSB Treasure carries ONE itemLotId@td+0x10 (the chain BASE), but ER bundles a
-    // multi-item reward as a CONTIGUOUS ItemLotParam_map sequence base, base+1, base+2, … (e.g.
-    // a corpse grants a full armour set = 4 rows; an Oracle Effigy + Fortunes bundle). The MSB
-    // parser reads only the base, so the bake's expanded sibling rows are exactly the DEBAKE-GAP
-    // (~310/328 measured: Armour sets dominate). Walk the contiguous _map sub-lots and emit each
-    // NOTABLE one (flag != 0, real item) at the SAME treasure position, classified live. Stop at
-    // the first param gap or the next treasure base. Skip Rune/Ember pieces (already on the map
-    // via the Reforged GEOM category — suppress by goods id; they are GEOM-tracked / absent from
-    // ITEM_ICONS so the category check would miss them). Same lot_row_in_table walker as EMEVD C.
-    int sib_emitted = 0, sib_runeember = 0, sib_unclassified = 0;
-    constexpr uint32_t kMaxSib = 50;
+    // multi-item reward as a CONTIGUOUS ItemLotParam_map sequence base, base+1, base+2, … (e.g. a
+    // corpse grants a full armour set = 4 rows). The MSB parser reads only the base, so the bake's
+    // expanded sibling rows are exactly the DEBAKE-GAP (~310/328 measured: Armour sets dominate).
+    // Table 1 (_map) only; a chain stops at the next treasure base (`bases`).
+    SibCounts sib;
     std::unordered_set<uint32_t> sib_seen;
     for (const DiskTreasure &t : treasures)
     {
-        for (uint32_t off = 1; off <= kMaxSib; ++off)
-        {
-            uint32_t sub = t.lotId + off;
-            if (bases.count(sub)) break;          // next treasure base → this chain ends
-            uint32_t sflag = 0;
-            int32_t skey = 0;
-            if (!goblin::lot_row_in_table(sub, 1, &sflag, &skey)) break;  // param gap → chain ends
-            if (sflag == 0 || skey == 0) continue; // exists but repeatable/empty → not notable
-            if (!sib_seen.insert(sub).second) continue;  // already claimed by an earlier base
-            if (skey >= 500000000 && skey < 600000000)
-            {
-                int32_t gid = skey - 500000000;
-                if (gid == 800010 || gid == 850010) { ++sib_runeember; continue; }  // Rune/Ember
-            }
-            int scat = goblin::item_marker_category(skey);
-            bool slc = false;
-            if (scat < 0) { scat = goblin::classify_item_live(skey); slc = (scat >= 0); }
-            if (scat < 0 || scat >= NUM_CAT) { ++sib_unclassified; continue; }
-            from::paramdef::WORLD_MAP_POINT_PARAM_ST sd{};
-            sd.areaNo = t.area;
-            sd.gridXNo = t.gx;
-            sd.gridZNo = t.gz;
-            sd.posX = t.posX;
-            sd.posZ = t.posZ;
-            push_marker(/*row_id=*/sub, sd, scat, sub, /*lotType=*/1, Source::DiskMSB, slc);
-            covered.insert(sub);  // drops the matching baked LootSource::Treasure sibling row
-            lot_tile.emplace(sub, pack_tile(t.area, t.gx, t.gz));
-            ++sib_emitted;
-        }
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST at{};
+        at.areaNo = t.area;
+        at.gridXNo = t.gx;
+        at.gridZNo = t.gz;
+        at.posX = t.posX;
+        at.posZ = t.posZ;
+        emit_lot_siblings(t.lotId, at, {{1, &bases}}, /*skipA=*/nullptr, /*skipB=*/nullptr,
+                          covered, sib_seen, sib, &lot_tile, pack_tile(t.area, t.gx, t.gz));
     }
     spdlog::info("[LOOTDISK] emitted {} disk loot markers + {} sequence-siblings (multi-lot "
                  "treasures), {} lots covered, {} base-unclassified ({} sibling rune/ember-skipped, "
                  "{} sibling-unclassified)",
-                 emitted, sib_emitted, (int)covered.size(), unclassified, sib_runeember,
-                 sib_unclassified);
-    g_skip.unclassified += unclassified + sib_unclassified;
-    g_skip.by_design += sib_runeember;
+                 emitted, sib.emitted, (int)covered.size(), unclassified, sib.runeember,
+                 sib.unclassified);
+    g_skip.unclassified += unclassified + sib.unclassified;
+    g_skip.by_design += sib.runeember;
 }
 
 // AEG collectible markers (config loot_collectibles): each placed AEG Asset whose
@@ -548,14 +604,14 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
         uint8_t lt = 0;
         uint32_t lot = goblin::npc_loot_lot(en.npcParamId, &lt);  // live NpcParam chain
         if (lot == 0) { ++no_lot; continue; }
-        if (treasure_lots.count(lot)) { ++dup; continue; }  // already a Treasure ground item
-        if (goblin::resolve_loot_flag(lot, lt, 0) == 0) { ++respawn; continue; }  // not a one-time drop
+        if (treasure_lots.count(lot)) { ++dup; watch_lot(lot, "skip-enemy", "treasure-dup"); continue; }  // already a Treasure ground item
+        if (goblin::resolve_loot_flag(lot, lt, 0) == 0) { ++respawn; watch_lot(lot, "skip-enemy", "no-one-time-flag"); continue; }  // not a one-time drop
         if (!seen.insert(lot).second) { ++lot_dup; continue; }  // a notable lot already placed
         int32_t key = goblin::resolve_loot_item_textid(lot, lt, -1);
         int cat = goblin::item_marker_category(key);
         bool lc = false;
         if (cat < 0) { cat = goblin::classify_item_live(key); lc = (cat >= 0); }  // live fallback (any mod / unbaked)
-        if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
+        if (cat < 0 || cat >= NUM_CAT) { ++unclassified; watch_lot(lot, "skip-enemy", "unclassified"); continue; }
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
         d.areaNo = en.area;
         d.gridXNo = en.gx;
@@ -565,16 +621,51 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
         push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/lt, Source::DiskMSB, lc);
         covered.insert(lot);  // drops the matching baked LootSource::Enemy row
         ++emitted;
+        watch_lot(lot, "emit-enemy", "cat=" + std::to_string(cat));
         if (verbose) ++per_cat[cat];
     }
-    spdlog::info("[LOOTDISK] enemy drops: {} notable markers emitted ({} placements total; filtered: "
-                 "{} npc-has-no-lot, {} treasure-dup, {} no-one-time-flag, {} same-lot-dedup, "
-                 "{} unclassified)",
-                 emitted, (int)enemies.size(), no_lot, dup, respawn, lot_dup, unclassified);
+
+    // ── Sequence-sibling expansion (multi-item enemy/boss bundles) — shared emit_lot_siblings ──
+    // ER awards a boss/enemy a CONTIGUOUS ItemLotParam run base, base+1, … but NpcParam carries only
+    // the base. The loop above placed (at most) the base; this walks base+1.. so the bundled drops
+    // show too — the m12 Larval Tears + boss armour sit at base+1/+5 of a placed enemy's lot and were
+    // silently dropped before this pass existed (tools/_probe_missing_lots.py: 333062001 = 333062000+1,
+    // NpcParam 33300662 on c3330_9006; 337000805 = 337000800+5, NpcParam 33700865 on c3370_9102).
+    // Runs INDEPENDENT of the base's notability filters (a respawning base whose +1 is a one-time tear
+    // still yields the tear). Walks the base's OWN table (lt); a chain stops at the next enemy base
+    // (enemy_bases); a sub that's already a Treasure ground item is skipped. Dedup by base + by sub.
+    std::unordered_set<uint32_t> enemy_bases;
+    for (const DiskEnemy &en : enemies)
+    {
+        uint8_t blt = 0;
+        if (uint32_t l = goblin::npc_loot_lot(en.npcParamId, &blt)) enemy_bases.insert(l);
+    }
+    SibCounts sib;
+    std::unordered_set<uint32_t> sib_seen, walked_bases;
+    for (const DiskEnemy &en : enemies)
+    {
+        uint8_t lt = 0;
+        uint32_t lot = goblin::npc_loot_lot(en.npcParamId, &lt);
+        if (lot == 0 || !walked_bases.insert(lot).second) continue;  // no lot / base already walked
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST at{};
+        at.areaNo = en.area;
+        at.gridXNo = en.gx;
+        at.gridZNo = en.gz;
+        at.posX = en.posX;
+        at.posZ = en.posZ;
+        emit_lot_siblings(lot, at, {{lt, &enemy_bases}}, /*skipA=*/&treasure_lots, /*skipB=*/nullptr,
+                          covered, sib_seen, sib, /*lot_tile=*/nullptr, /*tile_pack=*/0,
+                          verbose ? &per_cat : nullptr);
+    }
+    spdlog::info("[LOOTDISK] enemy drops: {} notable markers emitted + {} sequence-siblings ({} "
+                 "placements total; filtered: {} npc-has-no-lot, {} treasure-dup, {} no-one-time-flag, "
+                 "{} same-lot-dedup, {} unclassified; siblings: {} rune/ember-skip, {} unclassified)",
+                 emitted, sib.emitted, (int)enemies.size(), no_lot, dup, respawn, lot_dup, unclassified,
+                 sib.runeember, sib.unclassified);
     g_skip.no_anchor += no_lot;
     g_skip.dedup += dup + lot_dup;
-    g_skip.by_design += respawn;  // enemy drop with no persistent one-time flag (respawnable)
-    g_skip.unclassified += unclassified;
+    g_skip.by_design += respawn + sib.runeember;  // respawnable base + GEOM-tracked rune/ember siblings
+    g_skip.unclassified += unclassified + sib.unclassified;
     if (verbose)
         for (auto &[cat, n] : per_cat)
             spdlog::info("[LOOTDISK]   enemy-drop category index {} = {} markers", cat, n);
@@ -656,7 +747,7 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
     int emit_direct = 0, emit_ev1200 = 0;  // by mechanism (lotType 1 = direct, 2 = event-1200)
     int boss_piece_emitted = 0, boss_piece_no_piece = 0;  // boss-reward Rune/Ember Piece recovery
     // Mechanism C (sequence-sibling) diag.
-    int sib_emitted = 0, sib_runeember = 0, sib_unclassified = 0;
+    SibCounts sib;
     const bool verbose = goblin::config::diagLootPos;
     std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
     std::unordered_set<uint64_t> seen;      // dedup by (entity<<32 | lot)
@@ -784,68 +875,36 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
         ++emitted;
         (a.lotType == 2 ? emit_ev1200 : emit_direct)++;
         if (a.bossReward) ++boss_base;  // bossReward base emitted alongside its piece (Radagon)
+        watch_lot(a.lotId, "emit-emevd", "cat=" + std::to_string(cat));
         if (verbose) ++per_cat[cat];
 
-        // ── Mechanism C: sequence-sibling expansion ──
-        // The ItemLotParam row sequence base, base+1, base+2, … is one award bundle (e.g. a
-        // boss drops Lhutel + Smithing Stone [2], or the Oracle Effigy + 3 Fortunes set). The
-        // bake only emits the base; we walk the contiguous sub-lots and emit each notable one
-        // at the SAME position. Walk BOTH ItemLotParam tables (some bundles cross tables — the
-        // base is in _enemy, the reward sub-lots in _map), stopping at the first gap per table.
-        // The _map branch additionally stops at a treasure base lot (otherwise consecutive _map
-        // rows are unrelated placements). Skip rune/ember pieces (already on the map via the
-        // Reforged GEOM category) and anything already placed.
-        constexpr uint32_t kMaxSib = 50;
-        for (uint8_t tbl = 1; tbl <= 2; ++tbl)
-        {
-            for (uint32_t off = 1; off <= kMaxSib; ++off)
-            {
-                uint32_t sub = a.lotId + off;
-                if (tbl == 1 && treasure_lots.count(sub)) break;  // another treasure → chain ends
-                uint32_t sflag = 0;
-                int32_t skey = 0;
-                if (!goblin::lot_row_in_table(sub, tbl, &sflag, &skey)) break;  // gap → chain ends
-                if (sflag == 0 || skey == 0) continue;  // exists, but not a notable item drop
-                if (base_lots.count(sub) || treasure_lots.count(sub)) continue;  // placed elsewhere
-                if (!sib_seen.insert(sub).second) continue;  // already emitted as a sibling
-                // ERR Rune/Ember Pieces already show via the Reforged GEOM category at their real
-                // scattered locations; their lot bleeds into a boss/scarab sub-lot chain here, which
-                // would draw a DUPLICATE at the wrong (boss) position. Suppress by goods id — they
-                // are NOT in the baked ITEM_ICONS classifier (GEOM-tracked), so the category check
-                // misses them. ERR-specific ids (no-op on other profiles): 800010 Rune, 850010 Ember.
-                if (skey >= 500000000 && skey < 600000000)
-                {
-                    int32_t gid = skey - 500000000;
-                    if (gid == 800010 || gid == 850010) { ++sib_runeember; continue; }
-                }
-                int scat = goblin::item_marker_category(skey);
-                bool slc = false;
-                if (scat < 0) { scat = goblin::classify_item_live(skey); slc = (scat >= 0); }
-                if (scat < 0 || scat >= NUM_CAT) { ++sib_unclassified; continue; }
-                from::paramdef::WORLD_MAP_POINT_PARAM_ST sd{};
-                sd.areaNo = pos->area;
-                sd.gridXNo = pos->gx;
-                sd.gridZNo = pos->gz;
-                sd.posX = pos->posX;
-                sd.posZ = pos->posZ;
-                push_marker(/*row_id=*/sub, sd, scat, sub, /*lotType=*/tbl, Source::DiskMSB, slc);
-                covered.insert(sub);  // drops the matching baked LootSource::Emevd sub-lot row
-                ++sib_emitted;
-                if (verbose) ++per_cat[scat];
-            }
-        }
+        // ── Mechanism C: sequence-sibling expansion — shared emit_lot_siblings ──
+        // The ItemLotParam row sequence base, base+1, base+2, … is one award bundle (e.g. a boss drops
+        // Lhutel + Smithing Stone [2], or the Oracle Effigy + 3 Fortunes set). Walk BOTH tables (some
+        // bundles cross tables — base in _enemy, reward sub-lots in _map). The _map (tbl 1) chain stops
+        // at a treasure base; both skip award bases + treasure ground items already placed elsewhere.
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST at{};
+        at.areaNo = pos->area;
+        at.gridXNo = pos->gx;
+        at.gridZNo = pos->gz;
+        at.posX = pos->posX;
+        at.posZ = pos->posZ;
+        emit_lot_siblings(a.lotId, at, {{1, &treasure_lots}, {2, nullptr}},
+                          /*skipA=*/&base_lots, /*skipB=*/&treasure_lots,
+                          covered, sib_seen, sib, /*lot_tile=*/nullptr, /*tile_pack=*/0,
+                          verbose ? &per_cat : nullptr);
     }
     spdlog::info("[LOOTDISK] emevd drops: {} base markers ({} direct + {} event-1200) + {} sequence-"
                  "siblings = {} total ({} awards; filtered: {} entity-not-an-msb-enemy, {} "
                  "(entity,lot)-dedup, {} treasure-dup, {} base-unclassified; siblings: {} rune/ember-"
                  "skipped, {} unclassified)",
-                 emitted, emit_direct, emit_ev1200, sib_emitted, emitted + sib_emitted,
-                 (int)awards.size(), no_entity, dup, treasure_dup, unclassified, sib_runeember,
-                 sib_unclassified);
+                 emitted, emit_direct, emit_ev1200, sib.emitted, emitted + sib.emitted,
+                 (int)awards.size(), no_entity, dup, treasure_dup, unclassified, sib.runeember,
+                 sib.unclassified);
     g_skip.no_anchor += no_entity;
     g_skip.dedup += dup + treasure_dup;
-    g_skip.unclassified += unclassified + sib_unclassified;
-    g_skip.by_design += sib_runeember;
+    g_skip.unclassified += unclassified + sib.unclassified;
+    g_skip.by_design += sib.runeember;
     spdlog::info("[LOOTDISK] emevd boss-reward pieces: {} Rune/Ember Pieces emitted (Reforged, at boss "
                  "pos, flag-gray); {} boss awards with no piece in base..base+8",
                  boss_piece_emitted, boss_piece_no_piece);
@@ -2294,6 +2353,28 @@ void build_buckets_impl()
         spdlog::info("[SKIPPED] TOTAL skipped={} vs drawn={} (drawn = all g_buckets markers; "
                      "unclassified/no_anchor = real coverage gaps, dedup/by_design/phantom/inert = correct)",
                      skipped, drawn);
+    }
+
+    // ── [WATCH] finalize-survival: did each watched lot reach the final buckets? ────
+    // Closes the loop on the per-pass [WATCH] emit/skip lines: a watched lot that emitted but is
+    // ABSENT here was dropped by a downstream finalize (cell-dedup / category-wipe / replace). For
+    // the Group-B treasures (Ghostflame Torch / Burred Bolt) this distinguishes "on the underground
+    // page, just unchecked" (survived) from "parsed then dropped" (absent). Gated by diag_loot_pos.
+    if (goblin::config::diagLootPos && !kWatchLots.empty())
+    {
+        for (uint32_t lot : kWatchLots)
+        {
+            int found_cat = -1, count = 0;
+            for (int c = 0; c < NUM_CAT && found_cat < 0; ++c)
+                for (const Marker &m : g_buckets[c])
+                    if (m.lotId == lot) { found_cat = c; ++count; }
+            if (found_cat >= 0)
+                spdlog::info("[WATCH] lot={} SURVIVED in cat=\"{}\" (×{})", lot,
+                             goblin::markers::category_name(static_cast<gen::Category>(found_cat)), count);
+            else
+                spdlog::info("[WATCH] lot={} ABSENT from final buckets (never emitted, or dropped at "
+                             "finalize)", lot);
+        }
     }
 
     // ── [BAKED-RESIDUAL] bulk diag: the AUTHORITATIVE no-bake residual ─────────────
