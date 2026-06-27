@@ -414,17 +414,6 @@ STAGES = [
           script='generate_world_feature_models.py',
           also_scripts=['config.py']),
 
-    # Alternative (hybrid) loot-location naming, baked as generated::LOCATION_ALT
-    # (row_id -> textId2). Shown via INI [Goblin] show_location_compare = true.
-    # Must run AFTER generate_data (reads the baked goblin_map_data.cpp).
-    Stage('generate_location_overrides',
-          inputs=[DATA / '_map_entries_full.cpp', MSB_DIR,   # Phase 2: full table intermediate (not the stub)
-                  DATA / 'WorldMapPointParam.json', DATA / 'grace_position_index.json',
-                  DATA / 'PlaceName_engus.json'],
-          outputs=[GENERATED_CPP / 'goblin_location_alt.cpp',
-                   GENERATED_CPP / 'goblin_location_alt.hpp'],
-          script='generate_location_overrides.py',
-          also_scripts=['massedit_common.py', 'config.py']),
 ]
 
 
