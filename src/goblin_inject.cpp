@@ -6,7 +6,6 @@
 #include "modutils.hpp"
 #include "re_signatures.hpp"
 #include "goblin_map_data.hpp"
-#include "goblin_item_icons.hpp"
 #include "goblin_category_exceptions.hpp"
 #include "goblin_region_anchors.hpp"
 #include "goblin_major_regions.hpp"
@@ -708,8 +707,8 @@ static std::vector<std::pair<int, std::string>> g_cluster_census;
 
 // Runtime registries (filled during inject build).
 // member_flags = the collect-flags (textDisableFlagId1) of this cluster's
-// flag-backed members; when ALL are set the pile is depleted → the refresh swaps
-// the icon to CLUSTER_DONE_ICON_ID (green). Empty = no collectible members (a
+// flag-backed members; when ALL are set the pile is depleted → the overlay draws
+// the pile glyph in its depleted/green style. Empty = no collectible members (a
 // pure grace/boss pile) → never "done".
 // Collapsed: clusters visible (real area), members parked (99).
 // Expanded: clusters parked (99), members restored — the slow, see-everything view.
@@ -1098,15 +1097,15 @@ struct LotReader
 };
 
 // Encode a live item (id + ItemLotParam category 1-5) into the offset-encoded
-// key used by both marker textIds and the generated ITEM_ICONS table.
+// key used by marker textIds (and item_marker_category's key-range classifier).
 inline int32_t encode_live_item(int32_t item_id, int32_t cat)
 {
     switch (cat)
     {
         case 1: return item_id + 500000000;     // goods (GoodsName)
         // weapon AND ammo both live in WeaponName.fmg and use the +100M offset. The baker's
-        // CATEGORY_OFFSETS, the default per-marker name path (copy_fmg_layered offset_base=100M,
-        // real_id = key-100M → WeaponName), and the generated ITEM_ICONS table ALL key cat-2 at
+        // CATEGORY_OFFSETS and the default per-marker name path (copy_fmg_layered offset_base=100M,
+        // real_id = key-100M → WeaponName) both key cat-2 at
         // +100M. The old ">=50M ? raw" matched only the liveLootLabels-all ammo_as_is copy (raw
         // ammo) — an extra PlaceName entry no marker/icon points at; using it here mis-encoded ammo
         // (the 81 uniform +100M "drifts" in the [LOOTID] probe). See loot_ammo_encoding_finding.md.
@@ -1123,27 +1122,7 @@ inline int32_t encode_live_item(int32_t item_id, int32_t cat)
 // into PlaceName by setup_messages). The icon is our gray "?" frame added to
 // sprite 171 of the worldmap gfx (next free frame after the tinted variants).
 constexpr int32_t ANON_LABEL_TEXTID = 950000000 + 32004;  // "something"
-// gray "?" frame — generated per profile (goblin::generated::ANON_ICON_ID),
-// 440 on a vanilla-base gfx, shifted by the icon-frame offset on Convergence.
-
-// Binary-search the baked item-icon table (sorted by key).
-const goblin::generated::ItemIcon *lookup_item_icon(int32_t key)
-{
-    const auto *begin = goblin::generated::ITEM_ICONS;
-    const auto *end   = begin + goblin::generated::ITEM_ICON_COUNT;
-    const auto *it = std::lower_bound(begin, end, key,
-        [](const goblin::generated::ItemIcon &a, int32_t k) { return a.key < k; });
-    return (it != end && it->key == key) ? it : nullptr;
-}
 } // namespace
-
-// Public wrapper: marker/item key → real inventory iconId (or -1). Lets the overlay map
-// renderer route lot/item markers through the native GPU icon harvest (ensure_item_icon_srv).
-int goblin::item_icon_id(int32_t key)
-{
-    const goblin::generated::ItemIcon *p = lookup_item_icon(key);
-    return p ? (int)p->iconId : -1;
-}
 
 // ── Phase-3 item classification (ER's OWN taxonomy, no per-item drift) ─────────────────────────
 // EquipParamGoods.goodsType@+0x3e + sortGroupId@+0x72 classify every goods (incl. any mod/DLC item)
@@ -4316,7 +4295,7 @@ uint32_t goblin::resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t bak
 // same row resolve_loot_flag already reads: flag01@0x60, lot flag@0x80) and re-encode it via the
 // shared encode_live_item(). Returns the baked key on any miss (no lot, no row, empty/invalid
 // slot-1, or a multi-item lot where slot-1 doesn't represent the marker). The encoded key feeds
-// both the marker label (FMG via liveLootLabels' PlaceName preload) and item_icon_id().
+// both the marker label (FMG via liveLootLabels' PlaceName preload) and item_marker_category().
 int32_t goblin::resolve_loot_item_textid(uint32_t lotId, uint8_t lotType, int32_t baked_textid)
 {
     if (lotType == 0 || lotId == 0)

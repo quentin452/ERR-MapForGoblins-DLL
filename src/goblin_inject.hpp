@@ -154,7 +154,7 @@ namespace goblin
     // Resolve a lot-backed marker's IDENTITY (offset-encoded name/icon key) from the LIVE
     // ItemLotParam row (slot-1 item id @+0x00 + category @+0x20), so the marker shows the
     // item ERR/randomizer actually placed instead of the baked vanilla one. Returns the
-    // baked key on any miss. Feeds the marker label (FMG) + item_icon_id().
+    // baked key on any miss. Feeds the marker label (FMG) + item_marker_category().
     int32_t resolve_loot_item_textid(uint32_t lotId, uint8_t lotType, int32_t baked_textid);
 
     // One-shot RE diagnostic (config diag_loot_flags): for a sample of loot lots per
@@ -309,15 +309,11 @@ namespace goblin
     // Returns false if that iconId hasn't been seen/loaded yet → caller falls back to the baked PNG.
     bool harvested_icon(int iconId, ItemSprite &out);
 
-    // Resolve a marker/item key (offset-encoded item id, == the worldmap PlaceName textId for
-    // item markers) to its real inventory iconId via the baked ITEM_ICONS table. Returns -1 if
-    // the key isn't an item (boss/grace/NPC names miss) → the marker keeps its category atlas icon.
-    int item_icon_id(int32_t key);
-
     // Marker/item key → the MFG Category that item would get as a normal marker
-    // (static_cast<int>), or -1 if the item isn't in the baked ITEM_ICONS
-    // classifier. Lets the disk-MSB loot path bucket a live-resolved lot item
-    // without the bake. Same lookup as item_icon_id() (ITEM_ICONS carries both).
+    // (static_cast<int>), or -1 if the item is the default/catch-all tail (owned by
+    // classify_item_live). Classifies LIVE from ER's own taxonomy (goodsType,
+    // sortGroupId) + the curated goblin_category_exceptions table — no per-item bake.
+    // Lets the disk-MSB loot path bucket a live-resolved lot item without the bake.
     int item_marker_category(int32_t key);
 
     // Placed AEG asset's collectible item-lot, resolved LIVE from
@@ -365,7 +361,7 @@ namespace goblin
     // The caller emits a sub-lot marker when the row exists with flag != 0 and a real item.
     bool lot_row_in_table(uint32_t lot, uint8_t lotType, uint32_t *flagOut, int32_t *keyOut);
 
-    // Live category fallback when item_marker_category() (baked ITEM_ICONS) misses:
+    // Live category fallback for item_marker_category()'s default/catch-all tail:
     // derives a GENERIC MFG Category from the LIVE item type (EquipParamGoods.goodsType
     // for goods, the lot category for equipment). Takes the offset-encoded item key
     // (encode_live_item). -1 if unknown. Makes the disk loot/collectible source work for
