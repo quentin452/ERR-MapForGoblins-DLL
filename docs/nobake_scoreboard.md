@@ -2,7 +2,7 @@
 
 **Goal: zero baked.** Every marker should come from the live mod files (`DiskMSB`) or live game memory (`Live`), never the static `goblin_map_data` bake. This doc is the versioned baseline — after a change, rerun `tools/nobake_scoreboard.py` and `git diff` this file to see **regressions (baked ↑)** or **progress (baked ↓)**. Rows sorted by category name (stable) so a count change touches only its own row.
 
-- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-27 03:28:59.618
+- **Source**: runtime `[COVERAGE]` log (ERR profile), build 2026-06-27 14:13:23.190
 - **`live-cls`** = category resolved via the live `classify_item_live` fallback (item the baked table didn't know).
 - `disk`/`live` counts are **per-placement** (collectibles emit one marker per world node) → `total` is not directly comparable to deduped baked counts. For the migration what matters is **does a category still have baked>0**.
 - **`drawn`** = real markers the renderer draws (= total). **`census`** = the ImGui badge denominator (completable spots) — distinct collect flags for flag-based categories, row count for geom/SFX pieces, 0 for graces; it EXCLUDES respawnable flag-less gather, so `census < drawn` wherever markers share a flag or respawn.
@@ -12,13 +12,13 @@
 
 ## ▶ Baked markers remaining
 
-# **1**  ← drive this to **0**
+# **0**  ← drive this to **0**
 
 | | baked | disk | live | live-cls | total |
 |---|--:|--:|--:|--:|--:|
-| **all categories** | **1** | 8382 | 469 | 74 | 8852 |
+| **all categories** | **0** | 8381 | 469 | 74 | 8850 |
 
-🔴 baked-only: **0**  ·  🟡 partial: **1**  ·  🟢 off-bake: **60**  (of 61 active categories)
+🔴 baked-only: **0**  ·  🟡 partial: **0**  ·  🟢 off-bake: **61**  (of 61 active categories)
 
 ## Tile coverage (`_00`-only parser)
 
@@ -62,8 +62,8 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | Loot - Gestures | 0 | 7 | 0 | 0 | 7 | atlas 69% | 🟢 off-bake |
 | Loot - Gloveworts | 0 | 286 | 0 | 0 | 286 | atlas 69% | 🟢 off-bake |
 | Loot - Golden Runes | 0 | 226 | 0 | 0 | 226 | atlas 69% | 🟢 off-bake |
-| Loot - Golden Runes (Low) | 1 | 444 | 0 | 0 | 445 | atlas 69% | 🟡 partial |
-| Loot - Greases | 0 | 139 | 0 | 0 | 139 | atlas 69% | 🟢 off-bake |
+| Loot - Golden Runes (Low) | 0 | 444 | 0 | 0 | 444 | atlas 69% | 🟢 off-bake |
+| Loot - Greases | 0 | 138 | 0 | 0 | 138 | atlas 69% | 🟢 off-bake |
 | Loot - Great Gloveworts | 0 | 24 | 0 | 0 | 24 | atlas 69% | 🟢 off-bake |
 | Loot - MP-Fingers | 0 | 10 | 0 | 0 | 10 | atlas 69% | 🟢 off-bake |
 | Loot - Prattling Pates | 0 | 9 | 0 | 0 | 9 | atlas 69% | 🟢 off-bake |
@@ -100,21 +100,6 @@ The disk pass parses only **`_00`** tiles (LOD0). It reads **651 / 964** tiles; 
 | World - Stakes of Marika | 0 | 219 | 0 | 0 | 219 | atlas 19% ⚠ | 🟢 off-bake |
 | World - Summoning Pools | 0 | 0 | 246 | 0 | 246 | atlas 69% | 🟢 off-bake |
 
-## Baked residual by provenance — why each baked marker survives
-
-Every surviving baked **loot** row (not replaced by any disk pass), tallied by its bake `loot_source`. This is the **recovery lever per category** — and the result of the 2026-06-25 deep-dive into the residual (see `memory/msbe-enemy-loot-offsets.md`):
-
-- **`treasure`** — an MSB Treasure the disk pass didn't reproduce: the **corpse debake-gap**, items whose ItemLotParam chain is absent from the mod's loot linkage. Accepted residual (~0.4% of the treasure slice).
-- **`enemy`** — ✅ **INVESTIGATED & CLOSED: a bake MIS-LABEL, not recoverable here.** These lots are referenced by **NO `NpcParam.itemLotId`** — proven irrefutably against every parsed enemy, the FULL NpcParam table, the paramdef-authoritative offline scan, AND the **vanilla** regulation (all **0** matches). mapgenie shows them on *corpses/bodies* → they are corpse/EMEVD-scripted loot the bake wrongly tagged `Enemy`. The NpcParam enemy pass is COMPLETE; the items appear elsewhere via the treasure/emevd passes (or are phantom dupes). A bake regen would re-tag them.
-- **`emevd`** — an EMEVD award the disk EMEVD pass didn't reproduce: a **still-open, genuinely recoverable** lever (extend the EMEVD template coverage).
-- **`unknown`** — pre-provenance bake rows (the `loot_source` field predates the tagging and wasn't regenerated); could be any source. A regen reclassifies them.
-
-Residual loot total **1** = unknown 1 · treasure 0 (accepted) · enemy 0 (bake mis-label) · emevd 0 (recoverable).
-
-| category | unknown | treasure (accepted) | enemy (mis-label) | emevd (recoverable) |
-|---|--:|--:|--:|--:|
-| Loot - Golden Runes (Low) | 1 | 0 | 0 | 0 |
-
 ## Census (badge vs drawn) + collect-flag coverage
 
 `drawn` = markers drawn · `census` = completable-spots badge · `flag` = flagged/drawn · `respawn`/`nonloot` = the flag-less split. A large `nonloot` marks a feature whose objects carry no collect flag (can't gray/complete). Categories missing here weren't in the census log.
@@ -147,8 +132,8 @@ Residual loot total **1** = unknown 1 · treasure 0 (accepted) · enemy 0 (bake 
 | Loot - Gestures | 7 | 6 | 7/7 | 0 | 0 | 0 | 7 | 0 |
 | Loot - Gloveworts | 286 | 53 | 54/286 | 232 | 0 | 0 | 54 | 0 |
 | Loot - Golden Runes | 226 | 222 | 226/226 | 0 | 0 | 0 | 226 | 0 |
-| Loot - Golden Runes (Low) | 445 | 442 | 445/445 | 0 | 0 | 0 | 444 | 1 |
-| Loot - Greases | 139 | 135 | 139/139 | 0 | 0 | 0 | 139 | 0 |
+| Loot - Golden Runes (Low) | 444 | 441 | 444/444 | 0 | 0 | 0 | 444 | 0 |
+| Loot - Greases | 138 | 134 | 138/138 | 0 | 0 | 0 | 138 | 0 |
 | Loot - Great Gloveworts | 24 | 21 | 21/24 | 3 | 0 | 0 | 21 | 0 |
 | Loot - MP-Fingers | 10 | 9 | 10/10 | 0 | 0 | 0 | 10 | 0 |
 | Loot - Prattling Pates | 9 | 9 | 9/9 | 0 | 0 | 0 | 9 | 0 |
@@ -177,22 +162,22 @@ Residual loot total **1** = unknown 1 · treasure 0 (accepted) · enemy 0 (bake 
 | World - Hostile NPC | 50 | 26 | 27/50 | 0 | 23 | 0 | 27 | 0 |
 | World - Imp Statues | 37 | 37 | 37/37 | 0 | 0 | 0 | 37 | 0 |
 | World - Interactables | 103 | 102 | 102/103 | 0 | 1 | 0 | 102 | 0 |
-| World - Kindling Spirits | 5 | 5 | 5/5 | 0 | 0 | 0 | 5 | 0 |
+| World - Kindling Spirits | 5 | 5 | 0/5 | 0 | 5 | 0 | 0 | 0 |
 | World - Maps | 24 | 24 | 24/24 | 0 | 0 | 0 | 24 | 0 |
 | World - Paintings | 11 | 11 | 11/11 | 0 | 0 | 0 | 11 | 0 |
 | World - Spirit Springs | 72 | 0 | 0/72 | 0 | 72 | 0 | 0 | 0 |
 | World - Spiritspring Hawks | 14 | 14 | 14/14 | 0 | 0 | 0 | 14 | 0 |
 | World - Stakes of Marika | 219 | 0 | 0/219 | 0 | 219 | 0 | 0 | 0 |
 | World - Summoning Pools | 246 | 246 | 246/246 | 0 | 0 | 246 | 0 | 0 |
-| **all** | | | | | | **469** | **5202** | **1** |
+| **all** | | | | | | **469** | **5196** | **0** |
 
-_Collect-flag provenance: **469** live · **5202** disk · **1** baked (baked = the un-migrated residual — should equal the baked-loot total)._
+_Collect-flag provenance: **469** live · **5196** disk · **0** baked (baked = the un-migrated residual — should equal the baked-loot total)._
 
 ## Skipped — disk placements parsed but NOT drawn (#2)
 
 The inverse of the coverage table: of everything the disk passes parsed from the mod's files, how many became markers vs were filtered, grouped by **why**. `unclassified` + `no_anchor` are the **real coverage gaps** (an item we couldn't categorise / place); the rest are **correct** skips (already placed, by-design suppressed, bake phantoms, cut assets).
 
-**TOTAL skipped 510071** vs **drawn 8852**.
+**TOTAL skipped 510052** vs **drawn 8850**.
 
 | reason | count | kind | meaning |
 |---|--:|---|---|
@@ -200,7 +185,7 @@ The inverse of the coverage table: of everything the disk passes parsed from the
 | `no_anchor` | 8809 | ⚠️ gap | no lot / no positionable MSB entity |
 | `dedup` | 958 | ✅ correct | already placed by another pass |
 | `by_design` | 499086 | ✅ correct | rune/ember GEOM-tracked, anti-flood clutter, respawnable no-flag enemy drops |
-| `merchant_phantom` | 19 | ✅ correct | shop-∞ bake fallback, dropped |
+| `merchant_phantom` | 0 | ✅ correct | shop-∞ bake fallback, dropped |
 | `dummy_inert` | 316 | ✅ correct | cut DummyAsset, no EntityID |
 
 ## MapGenie coverage gaps — categories not parsed (#1)
