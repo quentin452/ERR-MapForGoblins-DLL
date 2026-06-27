@@ -749,6 +749,24 @@ void goblin::setup_messages()
         copy_fmg_all_layered(gem_slots, 400000000, "GemName", false);
     }
 
+    // Phase 2 (no-bake): the boss / world-feature / enemy-drop NAME families are ALSO preloaded
+    // whole-namespace here, not collected from the walk over the baked MAP_ENTRIES textIds above —
+    // so the labels survive the bake's deletion (an empty MAP_ENTRIES yields no walked ids, and the
+    // targeted copies below then no-op). Bosses are always live and world-features/enemy drops come
+    // from disk, so these load unconditionally — same one-time init cost shape as the item all-copy
+    // above, and matches the (previously unconditional) MAP_ENTRIES walk it replaces. Offsets match
+    // the marker textId encoding (npc 700M, action 800M, tutorial 900M, bloodmsg 950M). The targeted
+    // copies that follow stay as a harmless subset (patch_fmg_in_memory dedups first-wins).
+    // EventTextForMap (600M) stays unsupported (separate menu bank — see the TODO below).
+    {
+        GOBLIN_BENCH("messages.live_names_all");
+        copy_fmg_all_layered(npc_slots, 700000000, "NpcName", false);
+        if (32 < count2 && sub[32])
+            copy_fmg_all_layered({32}, 800000000, "ActionButtonText", false);
+        copy_fmg_all_layered(tutorial_slots, 900000000, "TutorialTitle", false);
+        copy_fmg_all_layered(bloodmsg_slots, 950000000, "BloodMsg", false);
+    }
+
     // TODO: EventTextForMap FMG (slots 34/367/467) is in a separate MsgRepository bank
     // (menu msgbnd, not item msgbnd). Need to find the menu bank pointer to access it.
     // For now, 600M+ textIds will show as ?PlaceName? until this is implemented.
