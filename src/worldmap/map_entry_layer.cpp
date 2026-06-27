@@ -519,7 +519,29 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         d.gridZNo = c.gz;
         d.posX = c.posX;
         d.posZ = c.posZ;
-        push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/1, Source::DiskMSB, lc);  // one per placement
+        // Gather nodes are COLLECTED GEOM (GEOF/WGM-tracked, like the Rune/Ember pieces) — NOT
+        // event-flag loot. So the marker's graying key must be a synthetic geom row_id REGISTERED with
+        // goblin::collected (keyed by tile + part-name + slot), not the lot — `row_id=lot` was never in
+        // the tracking maps, so a disk gather marker never grayed. Emit with the synthetic rid + register
+        // it below (the lot stays the lotId arg for identity/census). Required for Phase 2 (the
+        // MAP_ENTRIES seed that used to track these in goblin_collected::initialize goes away with the bake).
+        const uint64_t rid = kRuntimeGeomRowBase + (next_rt++);
+        push_marker(/*row_id=*/rid, d, cat, lot, /*lotType=*/1, Source::DiskMSB, lc);  // one per placement
+        // Register for GEOF/WGM collected-graying — only when the MSB part name is known (the WGM
+        // alive-match keys on it; a nameless placement can't be tracked, its synthetic rid never grays).
+        // geom_slot = MSB InstanceID suffix - 9000 ("AEG099_840_9002" → 2), same parse as the pieces.
+        if (!c.name.empty())
+        {
+            int gslot = -1;
+            const size_t us = c.name.rfind('_');
+            if (us != std::string::npos && us + 1 < c.name.size())
+            {
+                const int suf = std::atoi(c.name.c_str() + us + 1);
+                if (suf >= 9000) gslot = suf - 9000;
+            }
+            rt_entries.push_back(goblin::collected::RuntimeEntry{
+                rid, c.area, c.gx, c.gz, gslot, c.posX, c.posY, c.posZ, c.name});
+        }
         // Record this gather-asset's projected cell AND its IDENTITY (tile + MSB part name)
         // so the finalize dedup can drop the baked Material Node twin. Positional cell catches
         // most; IDENTITY catches the ones whose baked position is offset by >0.5u from the live
@@ -532,8 +554,10 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         ++emitted;
         if (verbose) ++per_cat[cat];
     }
-    // Register the Rune/Ember Piece placements for GEOF/WGM collected-graying (drained into the
-    // tracking maps on the refresh thread — see goblin_collected). One-time per disk build.
+    // Register the Rune/Ember Piece AND gather-node placements for GEOF/WGM collected-graying (drained
+    // into the tracking maps on the refresh thread — see goblin_collected). One-time per disk build.
+    // After Phase 2 (bake deleted) this is the SOLE source of the geom tracking — the MAP_ENTRIES seed
+    // in goblin_collected::initialize is gone, so every geom-grayed marker must register here.
     goblin::collected::register_runtime_entries(std::move(rt_entries));
 
     spdlog::info("[LOOTDISK] collectibles: {} markers emitted ({} assets total, {} non-ERR clutter "
