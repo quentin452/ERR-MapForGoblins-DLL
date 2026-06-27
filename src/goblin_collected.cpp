@@ -167,12 +167,17 @@ static uintptr_t world_geom_man_slot()  // CSWorldGeomMan (was RVA 0x3D69BA8)
     return s;
 }
 
+// In-process direct reads — NO ReadProcessMemory. RPM-to-self is a wineserver IPC on Proton
+// (~10µs each) and the per-refresh flood is the constant-stutter source; a raw deref is free.
+// clang-cl elides __try around a raw load (proves it "can't fault"), but it PRESERVES __try
+// around a CALL — so the faulting access lives in a noinline helper and the SEH wraps the call.
+__declspec(noinline) static void raw_copy(void *dst, const void *src, size_t n) { memcpy(dst, src, n); }
+__declspec(noinline) static void raw_store8(uint8_t *dst, uint8_t v) { *dst = v; }
+
 static bool safe_read(void *addr, void *out, size_t count)
 {
-    // clang-cl ELIDES __try around a raw memcpy → use ReadProcessMemory (kernel call,
-    // not elidable; returns false on a bad/freed addr). See goblin_worldmap_probe.
-    SIZE_T got = 0;
-    return ReadProcessMemory(GetCurrentProcess(), addr, out, count, &got) && got == count;
+    __try { raw_copy(out, addr, count); return true; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
 // SEH-guarded single byte write. Returns true on success, false if the
@@ -182,10 +187,10 @@ static bool safe_read(void *addr, void *out, size_t count)
 // skipping the whole refresh cycle.
 static bool safe_write_byte(uint8_t *addr, uint8_t val)
 {
-    // clang-cl ELIDES __try around a raw store → use WriteProcessMemory (kernel call,
-    // not elidable; returns false on a bad/read-only addr). See goblin_worldmap_probe.
-    SIZE_T n = 0;
-    return WriteProcessMemory(GetCurrentProcess(), addr, &val, 1, &n) && n == 1;
+    // In-process direct store (no WriteProcessMemory) — same clang-cl-safe __try-around-a-CALL
+    // pattern as safe_read (raw_store8 is noinline so the SEH is preserved).
+    __try { raw_store8(addr, val); return true; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
 // The +0x08 table is a Dantelion2 DLFixedVector (RE: windows_geom_flag_savedata_
