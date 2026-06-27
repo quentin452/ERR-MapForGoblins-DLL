@@ -30,6 +30,9 @@ TARGETS = [
     (333062021,  'enemy', 'Larval Tear (boss)'),
     (333065001,  'enemy', 'Larval Tear (boss)'),
     (337000805,  'enemy', 'armor (boss)'),
+    # The last baked residual — RESOLVED 2026-06-27 as a 2009:00 (place-lot-at-asset) gap, not
+    # irreducible: anchor 35001580 = Asset AEG027_210_0503 (-152,-98,-187) == bake pos (-152,-187).
+    (35000580,   'map',   'Golden Rune (200) — last baked residual, EMEVD 2009:00 asset-anchor'),
 ]
 TARGET_LOTS = {t[0] for t in TARGETS}
 # Window around each target: the engine may reference a BASE and award base+k, so the literal

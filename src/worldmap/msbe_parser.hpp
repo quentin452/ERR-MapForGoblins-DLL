@@ -155,6 +155,13 @@ struct EmevdParse
     // what keeps this off the 395-chest over-match), and the lot-coverage dedup drops any lot another
     // pass already placed. Treated as a lotType-1 direct award by the caller.
     std::vector<EmevdAward>                       perTileEnemyAward;
+    // Item lot(s) PLACED AT AN MSB ASSET anchor: 2009[00](lotA@0, lotB@4, anchorEntity@8) — a direct-
+    // body award the bank-2000 template scan can't see. Stored as (anchorEntity, lot) pairs; both arg
+    // lots are pushed (one is often a non-item placeholder). The caller (load_emevd_awards) GATES each
+    // to a real-item ItemLotParam row before forwarding as an allowAsset award — so the placeholder
+    // args don't inflate the emevd pass's `unclassified` diag. Recovers the m35 Ashen Capital Golden
+    // Rune (the last baked residual) + 3 Siofra goods; tools/_probe_missing_lots.py.
+    std::vector<std::pair<uint32_t, uint32_t>>    assetLotAwards;  // (anchorEntity, lot) — 2009[00]
 };
 
 // A placed Region (PointParam / POINT section) — the no-bake Spirit Springs source. The POINT
