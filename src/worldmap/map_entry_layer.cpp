@@ -190,10 +190,6 @@ void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST
              row_id, (int)d.clearedEventFlagId, collected_flag};
     m.secondary_flag = secondary_story_flag(d.areaNo, d.gridXNo, d.gridZNo);
     m.hide_when_flag = hide_when_story_flag(d.areaNo, d.gridXNo, d.gridZNo);
-    // Real inventory iconId for item/loot markers → native GPU icon (ItemIconProvider).
-    // -1 for non-items (boss/grace/NPC keys miss) → they keep the category atlas icon.
-    // Keyed by the live-resolved identity (same key as the label).
-    m.icon_id = goblin::item_icon_id(name_id);
     // Raw param coords for the engine's live projection (config live_projection).
     m.raw_area = d.areaNo; m.raw_gx = d.gridXNo; m.raw_gz = d.gridZNo;
     m.raw_px = d.posX; m.raw_pz = d.posZ;
@@ -2550,14 +2546,14 @@ void build_buckets_impl()
                      tB, tD, tL, tC);
     }
     // ── [ITEMCLASS] live-fallback classification census ──────────────────────────
-    // Every DISTINCT item that reached its category via the LIVE fallback (classify_item_live —
-    // i.e. NOT found in the static ITEM_ICONS table, so item_marker_category missed it). This is
-    // the drift-prone surface: a mis-classified item — like the ERR high-NG rune variants that fell
-    // to Crafting Materials before goods 82909-82919 was routed to GoldenRunes — shows up here in
-    // the wrong bucket. tools/item_classification.py → docs/item_classification.md turns it into a
-    // versioned regression guard (git diff catches a future move). Table-backed items don't appear
-    // here — they're pinned in the generated goblin_item_icons.cpp (diffable there). Sorted by key
-    // for a stable diff. Unconditional + bounded (only the ~live-classified items, one line each).
+    // Every DISTINCT item that reached its category via the LIVE TAIL fallback (classify_item_live —
+    // i.e. item_marker_category's confident taxonomy + curated exceptions returned -1, so only the
+    // default/catch-all applied). This is the drift-prone surface: a mis-classified item — like the
+    // ERR high-NG rune variants that fell to Crafting Materials before goods 82909-82919 was routed
+    // to GoldenRunes — shows up here in the wrong bucket. tools/item_classification.py →
+    // docs/item_classification.md turns it into a versioned regression guard (git diff catches a
+    // future move). Items the confident classifier (taxonomy/exceptions) handles don't appear here.
+    // Sorted by key for a stable diff. Unconditional + bounded (only the live-classified tail).
     {
         std::map<int32_t, std::pair<int, int>> itemclass;  // item key (name_id) → (category, count)
         for (int c = 0; c < NUM_CAT; ++c)
@@ -2568,7 +2564,7 @@ void build_buckets_impl()
                     e.first = c;
                     ++e.second;
                 }
-        spdlog::info("[ITEMCLASS] live-fallback classifications ({} distinct items; the no-ITEM_ICONS surface):",
+        spdlog::info("[ITEMCLASS] live-fallback classifications ({} distinct items; the catch-all tail surface):",
                      itemclass.size());
         for (const auto &[key, cv] : itemclass)
             spdlog::info("[ITEMCLASS] key={} cat=\"{}\" count={}", key,

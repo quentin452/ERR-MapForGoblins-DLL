@@ -6,7 +6,7 @@ but goblin_inject/map_renderer/goblin_overlay reference their symbols unconditio
 A COUNT=0 stub makes every consumer a no-op (loops/lower_bound over an empty range),
 which is correct: those features are simply absent on the profile. The loot path is
 untouched (it never reads these), so this does NOT affect loot static-vs-runtime
-fidelity — ITEM_ICONS / MAP_ENTRIES (the loot bake) are real per-profile files.
+fidelity — loot markers come live (params) / from disk (MSB/EMEVD), not a bake.
 
 Usage:  py gen_nonerr_stubs.py <profile>      # erte | convergence | vanilla
 The .hpp is copied verbatim from src/generated/ (struct defs are profile-independent);

@@ -5,7 +5,7 @@
 #include "goblin_projection.hpp"     // baked map-space → backbuffer projection
 #include "goblin_worldmap_probe.hpp" // get_live_view()
 #include "goblin_inject.hpp"         // ui::clustering_enabled / global_threshold / category_clustered
-#include "goblin_overlay.hpp"        // overlay::native_item_icon (native GPU item-icon harvest)
+#include "goblin_overlay.hpp"        // overlay::native_map_point_icon (native GPU map-symbol harvest)
 #include "goblin_config.hpp"         // overlay marker scale config
 #include "goblin_messages.hpp"       // lookup_text_utf8 (tooltip names)
 #include "goblin_collected.hpp"      // is_original_row_collected (rune/ember graying)
@@ -86,9 +86,9 @@ bool icon_uv(const char *key, ImVec2 &uv0, ImVec2 &uv1)
 // backends by a numeric game IconId. Only the Atlas source exists for now.
 struct IconKey
 {
-    enum Source { Atlas, ItemIcon, MapPoint } source = Atlas;
+    enum Source { Atlas, MapPoint } source = Atlas;
     const char *atlas_key = nullptr; // Atlas: category cell key ("show_bosses")
-    int icon_id = -1;                // ItemIcon / MapPoint: numeric game IconId (future)
+    int icon_id = -1;                // MapPoint: numeric game IconId (MENU_MAP_<NN>)
 };
 
 struct IconHandle
@@ -122,27 +122,6 @@ struct AtlasProvider : IconProvider
     }
 };
 
-// Native GPU item icon: the game's OWN inventory icon for an item/loot marker, harvested into
-// an ImGui SRV by the overlay. Best-effort — resolves only for RESIDENT items and async (1-2
-// frames), so it sits in FRONT of the atlas in the chain, never replacing it. Resolves an
-// ItemIcon-source key by the marker's real iconId (Marker::icon_id).
-struct ItemIconProvider : IconProvider
-{
-    bool resolve(const IconKey &k, IconHandle &out) const override
-    {
-        if (k.source != IconKey::ItemIcon || k.icon_id < 0)
-            return false;
-        void *tex = nullptr;
-        float u0, v0, u1, v1;
-        if (!goblin::overlay::native_item_icon(k.icon_id, tex, u0, v0, u1, v1))
-            return false;
-        out.tex = reinterpret_cast<ImTextureID>(tex);
-        out.uv0 = ImVec2(u0, v0);
-        out.uv1 = ImVec2(u1, v1);
-        return true;
-    }
-};
-
 // Native GPU map-point symbol: the game's OWN world-map symbol (MENU_MAP_<NN>) for a category
 // that maps to one (category_gpu_iconId, sparse). Resolved via the FD4 image-repo rect copied
 // into our SRV. Best-effort: resolves only after the world map opened + the symbol is resident.
@@ -164,13 +143,11 @@ struct MapPointProvider : IconProvider
 };
 
 // The active provider chain + per-marker resolution policy: native map-point symbol FIRST (for
-// the categories that have a real game symbol via category_gpu_iconId), then the native item
-// icon (the real inventory icon for loot, when resident), then the baked category atlas
-// (guaranteed coverage), else the caller draws a circle. One instance per render pass.
+// the categories that have a real game symbol via category_gpu_iconId), then the baked category
+// atlas (guaranteed coverage), else the caller draws a circle. One instance per render pass.
 struct IconSet
 {
     AtlasProvider atlas;
-    ItemIconProvider item;
     MapPointProvider mappoint;
     bool native; // config gate (config::nativeItemIcons): try the native backends first
     IconSet(ImTextureID a, bool native_on) : atlas(a), native(native_on) {}
@@ -197,10 +174,6 @@ struct IconSet
                 out.scale = goblin::config::mapSymbolScale;
                 return true;
             }
-            // Item/loot markers → the game's real inventory icon.
-            if (m.icon_id >= 0 &&
-                item.resolve(IconKey{IconKey::ItemIcon, nullptr, m.icon_id}, out))
-                return true;
         }
         return atlas.resolve(IconKey{IconKey::Atlas, m.icon_key, -1}, out);
     }

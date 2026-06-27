@@ -183,8 +183,8 @@ namespace
                   "Overlay map: draw the major-region names (Limgrave, Caelid, Liurnia,\n"
                   "Altus Plateau, ...) on the open map page, beneath the markers."),
                 B("native_item_icons", nativeItemIcons, "true",
-                  "Overlay map: draw each item/loot marker with the GAME's own inventory icon\n"
-                  "(harvested live from the menu sheet) when that item is resident, instead of\n"
+                  "Overlay map: for categories that have a real in-game world-map symbol\n"
+                  "(MENU_MAP_<NN>), draw that native GPU symbol when it is resident, instead of\n"
                   "the category-representative atlas icon. Falls back to the atlas otherwise."),
                 B("diag_loot_flags", diagLootFlags, "false",
                   "RE diagnostic: on map build, log [LOOTDIAG] for a few loot markers per\n"

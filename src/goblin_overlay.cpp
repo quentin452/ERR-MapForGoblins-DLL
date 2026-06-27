@@ -3164,30 +3164,6 @@ void goblin::overlay::shutdown()
 
 bool goblin::overlay::is_ready() { return g_imgui_init; }
 
-bool goblin::overlay::native_item_icon(int iconId, void *&tex, float &u0, float &v0, float &u1,
-                                       float &v1)
-{
-    if (iconId < 0)
-        return false;
-    // Sheet-as-atlas: resolve the icon's harvested sheet + rect, copy the WHOLE sheet once (cached),
-    // and return that shared texture + the icon's UV sub-rect. All icons on a sheet share one
-    // ImTextureID → one ImGui draw call. Falls back (false) until the sheet is harvested + GPU-bound.
-    // NOTE: our markers carry MAP-POINT iconIds (ITEM_ICONS/WORLD_MAP_POINT, e.g. 381 = the armour
-    // map symbol), NOT inventory item-sheet iconIds — so harvested_icon (MENU_ItemIcon_<id>, a
-    // different sheet) misses by construction. This path is a no-op until repointed at the map-point
-    // sheet (1024x2048) + its sblytbnd rects (windows_map_point_icon_layout_re_prompt.md).
-    goblin::ItemSprite sp;
-    if (!goblin::harvested_icon(iconId, sp) || !sp.sheet)
-        return false;
-    const SheetTex *st = copy_sheet_cached(reinterpret_cast<ID3D12Resource *>(sp.sheet));
-    if (!st || !st->gpu || st->w <= 0 || st->h <= 0)
-        return false;
-    tex = reinterpret_cast<void *>(st->gpu);
-    u0 = (float)sp.x0 / st->w; v0 = (float)sp.y0 / st->h;
-    u1 = (float)sp.x1 / st->w; v1 = (float)sp.y1 / st->h;
-    return true;
-}
-
 bool goblin::overlay::native_map_point_icon(int iconId, void *&tex, float &u0, float &v0, float &u1,
                                             float &v1)
 {
@@ -3195,8 +3171,8 @@ bool goblin::overlay::native_map_point_icon(int iconId, void *&tex, float &u0, f
         return false;
     // map_icon_rect resolves the MENU_MAP_<NN> symbol's rect + backing sheet from the FD4 image
     // repo (RE: windows_map_point_icon_layout_re_findings.md). Copy the whole sheet once (cached)
-    // and return the UV sub-rect — same sheet-as-atlas path as native_item_icon. No-op (false)
-    // until the world map opened and the symbol is resident.
+    // and return the UV sub-rect — sheet-as-atlas (whole sheet copied once, icons share one SRV).
+    // No-op (false) until the world map opened and the symbol is resident.
     int x = 0, y = 0, w = 0, h = 0;
     void *sheet = nullptr;
     if (!goblin::map_icon_rect(iconId, x, y, w, h, sheet) || !sheet || w <= 0 || h <= 0)
