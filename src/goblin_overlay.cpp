@@ -1710,80 +1710,70 @@ namespace
                 }
             }
 
-            // Icon migration completion (Baked → GPU): how many category icons still draw from the
-            // baked PNG atlas vs already render as a real native engine sprite. The denominator is
-            // the categories that HAVE a baked icon (the by-design circle-fallback ones are excluded —
-            // they have no baked cell to replace). "GPU" = category_is_gpu_native (the single source
-            // of truth that mirrors the actual render: name-keyed map symbols like bosses, numeric
-            // map-point iconIds, the per-category representative item icon (00_Solo atlas), and the
-            // GraceLayer grace-sprite path). Counting the WIRING (not live residency) keeps this in
-            // lock-step with what draws — no desync.
+            // Icon migration (Baked → GPU): a LIVE three-way census of what each category ACTUALLY
+            // draws RIGHT NOW — GPU icon (a real native engine sprite), Atlas (the baked PNG cell), or
+            // Circle (no cell → coloured circle). This mirrors map_renderer's IconSet::resolve order,
+            // including live residency (the GPU path only "wins" once its sprite is harvested), so the
+            // panel shows the truth — not just what's WIRED. Lets us verify the per-category item icon
+            // (00_Solo atlas) is correct before committing to the group-load that makes it resident.
             if (ImGui::CollapsingHeader("Icon migration (Baked \xE2\x86\x92 GPU)"))
             {
                 namespace wm = goblin::worldmap;
+                const bool native_on = goblin::config::nativeItemIcons;
+                // Classify a category's CURRENT render source (mirror IconSet::resolve). via = the GPU
+                // backend when src==GPU. src: 2=GPU, 1=Atlas, 0=Circle.
+                auto live_source = [&](int c, const char *&via) -> int {
+                    via = "";
+                    int x, y, w, h; void *sheet = nullptr;
+                    if (native_on)
+                    {
+                        if (const char *sym = wm::category_gpu_icon_name(c))
+                            if (goblin::map_icon_rect_by_name(sym, x, y, w, h, sheet)) { via = "name symbol"; return 2; }
+                        if (int iid = wm::category_gpu_iconId(c))
+                            if (goblin::map_icon_rect(iid, x, y, w, h, sheet)) { via = "map-point id"; return 2; }
+                        if (int rep = wm::category_rep_icon(c))
+                        {
+                            goblin::ItemSprite sp;
+                            if (goblin::harvested_icon(rep, sp) && sp.sheet) { via = "item icon"; return 2; }
+                        }
+                        if (c == static_cast<int>(goblin::generated::Category::WorldGraces) &&
+                            goblin::config::graceOverlay && goblin::config::graceGpuSprite)
+                        { via = "grace sprite"; return 2; }
+                    }
+                    return wm::category_has_baked_icon(c) ? 1 : 0;  // Atlas vs Circle
+                };
                 const int total = wm::category_count();
-                int baked = 0, gpu = 0;
+                int gpu = 0, atlas = 0, circle = 0;
                 for (int c = 0; c < total; ++c)
                 {
-                    if (!wm::category_has_baked_icon(c))
-                        continue;
-                    ++baked;
-                    if (wm::category_is_gpu_native(c))
-                        ++gpu;
+                    const char *via;
+                    switch (live_source(c, via)) { case 2: ++gpu; break; case 1: ++atlas; break; default: ++circle; }
                 }
-                const float frac = baked ? static_cast<float>(gpu) / baked : 0.f;
-                ImGui::Text("GPU sprites: %d / %d baked categories (%.0f%%)", gpu, baked, frac * 100.f);
-                ImGui::ProgressBar(frac, ImVec2(-1, 0));
-                ImGui::Text("Remaining to replace: %d   |   circle-fallback (no baked): %d",
-                            baked - gpu, total - baked);
+                ImGui::Text("Live render source (of %d categories)%s:", total,
+                            native_on ? "" : "  [native_item_icons OFF]");
+                ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.45f, 1), "  GPU icon : %d", gpu);
+                ImGui::SameLine(); ImGui::TextColored(ImVec4(0.90f, 0.80f, 0.35f, 1), "   Atlas : %d", atlas);
+                ImGui::SameLine(); ImGui::TextColored(ImVec4(0.65f, 0.65f, 0.65f, 1), "   Circle : %d", circle);
+                ImGui::ProgressBar(total ? (float)gpu / total : 0.f, ImVec2(-1, 0));
                 ImGui::Separator();
-                ImGui::TextDisabled("Migrated to native engine sprite:");
-                if (ImGui::BeginChild("iconmig_gpu", ImVec2(0, 90), true))
+                if (ImGui::BeginChild("iconmig_census", ImVec2(0, 260), true))
                 {
                     for (int c = 0; c < total; ++c)
                     {
-                        if (!wm::category_has_baked_icon(c) || !wm::category_is_gpu_native(c))
-                            continue;
-                        const char *name = goblin::ui::category_label(c);
-                        // Show WHICH native source + (for the resolvable backends) its live residency.
                         const char *via;
-                        bool resident;
-                        int x, y, w, h; void *sheet = nullptr;
-                        if (const char *sym = wm::category_gpu_icon_name(c))
-                        {
-                            via = "name symbol";
-                            resident = goblin::map_icon_rect_by_name(sym, x, y, w, h, sheet);
-                        }
-                        else if (int iid = wm::category_gpu_iconId(c))
-                        {
-                            via = "map-point id";
-                            resident = goblin::map_icon_rect(iid, x, y, w, h, sheet);
-                        }
-                        else if (int rep = wm::category_rep_icon(c))
-                        {
-                            via = "item icon";       // representative item from the 00_Solo atlas
-                            goblin::ItemSprite sp;
-                            resident = goblin::harvested_icon(rep, sp) && sp.sheet;
-                        }
-                        else
-                        {
-                            via = "grace sprite";
-                            resident = true; // GraceLayer-drawn; residency tracked in its own panel
-                        }
-                        ImGui::BulletText("%s  (%s%s)", name ? name : "?", via,
-                                          resident ? "" : ", not resident yet");
-                    }
-                }
-                ImGui::EndChild();
-                ImGui::TextDisabled("Still on baked atlas (to replace):");
-                if (ImGui::BeginChild("iconmig_list", ImVec2(0, 150), true))
-                {
-                    for (int c = 0; c < total; ++c)
-                    {
-                        if (!wm::category_has_baked_icon(c) || wm::category_is_gpu_native(c))
-                            continue; // only list the ones NOT yet migrated
+                        const int s = live_source(c, via);
                         const char *name = goblin::ui::category_label(c);
-                        ImGui::BulletText("%s", name ? name : "?");
+                        // Annotate a category that is WIRED for GPU but not yet resident (so we can see
+                        // it's "almost there" vs genuinely atlas-only).
+                        const bool wired = wm::category_is_gpu_native(c);
+                        if (s == 2)
+                            ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.45f, 1), "GPU     %s  (%s)", name ? name : "?", via);
+                        else if (s == 1)
+                            ImGui::TextColored(ImVec4(0.90f, 0.80f, 0.35f, 1), "Atlas   %s%s", name ? name : "?",
+                                               (native_on && wired) ? "  (GPU wired, not resident yet)" : "");
+                        else
+                            ImGui::TextColored(ImVec4(0.65f, 0.65f, 0.65f, 1), "Circle  %s%s", name ? name : "?",
+                                               (native_on && wired) ? "  (GPU wired, not resident yet)" : "");
                     }
                 }
                 ImGui::EndChild();
