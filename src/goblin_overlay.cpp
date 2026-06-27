@@ -3084,26 +3084,35 @@ void goblin::overlay::initialize()
     // neutralising the game's per-frame recenter/clip while the panel is open.
     if (HMODULE u32 = GetModuleHandleW(L"user32.dll"))
     {
-        void *scp = reinterpret_cast<void *>(GetProcAddress(u32, "SetCursorPos"));
-        void *clp = reinterpret_cast<void *>(GetProcAddress(u32, "ClipCursor"));
-        if (scp && MH_CreateHook(scp, reinterpret_cast<void *>(&hk_set_cursor_pos),
-                                 reinterpret_cast<void **>(&o_set_cursor_pos)) == MH_OK)
-            MH_EnableHook(scp);
-        if (clp && MH_CreateHook(clp, reinterpret_cast<void *>(&hk_clip_cursor),
-                                 reinterpret_cast<void **>(&o_clip_cursor)) == MH_OK)
-            MH_EnableHook(clp);
-        void *grid = reinterpret_cast<void *>(GetProcAddress(u32, "GetRawInputData"));
-        if (grid && MH_CreateHook(grid, reinterpret_cast<void *>(&hk_get_raw_input_data),
-                                  reinterpret_cast<void **>(&o_get_raw_input_data)) == MH_OK)
-            MH_EnableHook(grid);
-        void *grib = reinterpret_cast<void *>(GetProcAddress(u32, "GetRawInputBuffer"));
-        if (grib && MH_CreateHook(grib, reinterpret_cast<void *>(&hk_get_raw_input_buffer),
-                                  reinterpret_cast<void **>(&o_get_raw_input_buffer)) == MH_OK)
-            MH_EnableHook(grib);
-        void *gcp = reinterpret_cast<void *>(GetProcAddress(u32, "GetCursorPos"));
-        if (gcp && MH_CreateHook(gcp, reinterpret_cast<void *>(&hk_get_cursor_pos),
-                                 reinterpret_cast<void **>(&o_get_cursor_pos)) == MH_OK)
-            MH_EnableHook(gcp);
+        // Install + LOG each user32 hook. A silent failure here is the suspected cause of the
+        // "click the search box → it never focuses" bug on some launches: if SetCursorPos or
+        // GetCursorPos fails to hook (e.g. another mod / the Steam overlay trampolined user32
+        // first, or a MinHook race), the game's per-frame recenter-to-middle is NOT swallowed →
+        // ImGui_ImplWin32_NewFrame reads the cursor at screen centre → every click lands at the
+        // centre, never on the InputText. The GetCursorPos + SetCursorPos lines are the ones to
+        // watch in the log on a "bad" launch.
+        auto hook_u32 = [&](const char *name, void *detour, void **orig) {
+            void *tgt = reinterpret_cast<void *>(GetProcAddress(u32, name));
+            if (!tgt) { spdlog::error("[OVERLAY] user32!{} not found — hook skipped", name); return; }
+            MH_STATUS cs = MH_CreateHook(tgt, detour, orig);
+            MH_STATUS es = (cs == MH_OK) ? MH_EnableHook(tgt) : cs;
+            if (cs != MH_OK || es != MH_OK)
+                spdlog::error("[OVERLAY] user32!{} HOOK FAILED (create={}, enable={}) — cursor/input "
+                              "may misbehave (search box may not take focus)",
+                              name, MH_StatusToString(cs), MH_StatusToString(es));
+            else
+                spdlog::info("[OVERLAY] user32!{} hook installed", name);
+        };
+        hook_u32("SetCursorPos", reinterpret_cast<void *>(&hk_set_cursor_pos),
+                 reinterpret_cast<void **>(&o_set_cursor_pos));
+        hook_u32("ClipCursor", reinterpret_cast<void *>(&hk_clip_cursor),
+                 reinterpret_cast<void **>(&o_clip_cursor));
+        hook_u32("GetRawInputData", reinterpret_cast<void *>(&hk_get_raw_input_data),
+                 reinterpret_cast<void **>(&o_get_raw_input_data));
+        hook_u32("GetRawInputBuffer", reinterpret_cast<void *>(&hk_get_raw_input_buffer),
+                 reinterpret_cast<void **>(&o_get_raw_input_buffer));
+        hook_u32("GetCursorPos", reinterpret_cast<void *>(&hk_get_cursor_pos),
+                 reinterpret_cast<void **>(&o_get_cursor_pos));
     }
 
     // DirectInput8 mouse/keyboard hook (ER's primary input path). Resolve the

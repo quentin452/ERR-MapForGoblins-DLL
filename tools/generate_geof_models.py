@@ -28,7 +28,9 @@ nodes = {}
 for n in json.load(open(os.path.join(D, "all_gathering_nodes_final.json"), encoding="utf-8")):
     nodes[(n["map"], n["name"].split(" {")[0])] = n["model"]  # strip ' {N}' dup decoration
 
-txt = open(os.path.join(GEN, "goblin_map_data.cpp"), encoding="utf-8").read()
+# Phase 2: the compiled goblin_map_data.cpp is an empty stub; read the FULL table from the
+# uncompiled pipeline intermediate generate_data.py writes (same '// Row ID' .cpp format).
+txt = open(os.path.join(D, "_map_entries_full.cpp"), encoding="utf-8").read()
 rows = []
 for b in txt.split("// Row ID ")[1:]:
     rid = b.split("\n", 1)[0].strip()
