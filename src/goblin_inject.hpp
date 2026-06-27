@@ -435,6 +435,12 @@ namespace goblin
     bool map_icon_rect(int iconId, int &x, int &y, int &w, int &h, void *&sheet);
     bool map_icon_rect_by_name(const char *name, int &x, int &y, int &w, int &h, void *&sheet);
 
+    // ITEM-icon LAYOUT, captured no-bake from the menu sblytbnd XML (Oodle hook → MENU_ItemIcon_<id>
+    // SubTexture rect + its sheet name). Lets us crop a NON-resident item icon from its sheet DDS
+    // (the 00_Solo atlas) without the engine streaming it. Returns false until captured / id absent.
+    size_t item_icon_layout_count();
+    bool item_icon_layout_rect(int iconId, int &x, int &y, int &w, int &h, std::string &sheet);
+
     // First `max` harvested iconIds (dev — the P2b test panel draws ACTUAL harvested icons
     // instead of a hardcoded id list that may not match what the player browsed).
     std::vector<int> harvested_ids(size_t max);

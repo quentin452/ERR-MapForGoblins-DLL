@@ -3008,6 +3008,15 @@ void gpu_icon_tick(uintptr_t er)
     static int s_tick = 0;
     if ((s_tick++ % 6) != 0) return;  // act ~every 6 ticks (cheap; still continuous)
 
+    // One-shot: re-load the menu sblytbnd so the Oodle hook captures its item-icon LAYOUT XML (it
+    // loads at boot, before our hook). Retried a few times until the layout map is populated.
+    static int s_sblyt_tries = 0;
+    if (s_sblyt_tries < 10 && goblin::item_icon_layout_count() == 0)
+    {
+        ++s_sblyt_tries;
+        goblin::force_load_file("menu:/01_Common.sblytbnd");
+    }
+
     // Grace candidates (their own hardcoded set) — always, no cap.
     if (goblin::config::graceOverlay && goblin::config::graceGpuSprite)
         run_force_grace(er);
@@ -3244,12 +3253,107 @@ oodle_decompress_fn g_oodle_orig = nullptr;
 std::mutex g_tpf_mtx;
 std::vector<std::vector<uint8_t>> g_dds_list; // all distinct complete DDS captured from decompresses
 
+// ── Item-icon LAYOUT, captured no-bake from the sblytbnd XML ─────────────────────────────────────
+// The menu sblytbnd (decompressed by Oodle) holds TextureAtlas XML: <SubTexture name="MENU_ItemIcon_
+// <id>.png" x= y= width= height=/> under an enclosing imagePath="<sheet>". We string-scan that out
+// of the decompressed buffer → iconId → (sheet, rect), so we can crop a NON-resident item icon from
+// its sheet DDS without the engine streaming it. Mirrors what extract_subtextures.py does offline.
+struct ItemIconRect { int x, y, w, h; std::string sheet; };
+std::mutex g_item_layout_mtx;
+std::map<int, ItemIconRect> g_item_icon_layout;   // iconId -> rect+sheet (from sblytbnd)
+
+// Find `needle` in [hay, hay+n). Returns nullptr if absent (no memmem on Windows CRT).
+static const char *find_sub(const char *hay, size_t n, const char *needle, size_t nl)
+{
+    if (nl == 0 || n < nl) return nullptr;
+    for (const char *p = hay; p <= hay + n - nl; ++p)
+        if (p[0] == needle[0] && std::memcmp(p, needle, nl) == 0) return p;
+    return nullptr;
+}
+// Parse `attr="NNN"` (integer) within [p, endp). -1 if absent.
+static int xml_int_attr(const char *p, const char *endp, const char *attr)
+{
+    const size_t al = std::strlen(attr);
+    for (const char *q = p; q + al + 2 < endp; ++q)
+        if (q[0] == attr[0] && std::memcmp(q, attr, al) == 0 && q[al] == '=' && q[al + 1] == '"')
+            return std::atoi(q + al + 2);
+    return -1;
+}
+
+// Scan a decompressed sblytbnd BND4 blob for MENU_ItemIcon_<id> SubTextures → g_item_icon_layout.
+void parse_item_icon_layout(const uint8_t *buf, size_t n)
+{
+    const char *b = reinterpret_cast<const char *>(buf);
+    const char *end = b + n;
+    static const char NEEDLE[] = "MENU_ItemIcon_";
+    const size_t NL = sizeof(NEEDLE) - 1;
+    int added = 0;
+    std::lock_guard<std::mutex> lk(g_item_layout_mtx);
+    for (const char *p = b; p + NL < end; )
+    {
+        const char *m = find_sub(p, end - p, NEEDLE, NL);
+        if (!m) break;
+        const char *tagEnd = static_cast<const char *>(std::memchr(m, '>', end - m));
+        int id = std::atoi(m + NL);
+        if (id > 0 && tagEnd)
+        {
+            int x = xml_int_attr(m, tagEnd, "x"), y = xml_int_attr(m, tagEnd, "y");
+            int w = xml_int_attr(m, tagEnd, "width"), h = xml_int_attr(m, tagEnd, "height");
+            if (w > 0 && h > 0)
+            {
+                // Sheet = the nearest preceding imagePath=" (within one TextureAtlas, ~bounded back-scan).
+                std::string sheet;
+                const char *lo = (m - b > 16384) ? m - 16384 : b;
+                for (const char *q = m - 1; q > lo; --q)
+                    if (q[0] == 'i' && (size_t)(end - q) > 11 && std::memcmp(q, "imagePath=\"", 11) == 0)
+                    {
+                        const char *s = q + 11;
+                        const char *e = static_cast<const char *>(std::memchr(s, '"', end - s));
+                        if (e && e > s) sheet.assign(s, e);
+                        break;
+                    }
+                ItemIconRect &r = g_item_icon_layout[id];
+                r.x = x; r.y = y; r.w = w; r.h = h; r.sheet = std::move(sheet);
+                ++added;
+            }
+        }
+        p = tagEnd ? tagEnd + 1 : m + NL;
+    }
+    if (added)
+        spdlog::info("[ITEMLAYOUT] parsed {} MENU_ItemIcon rects (total distinct {})",
+                     added, g_item_icon_layout.size());
+}
+
+size_t goblin::item_icon_layout_count()
+{
+    std::lock_guard<std::mutex> lk(g_item_layout_mtx);
+    return g_item_icon_layout.size();
+}
+
+bool goblin::item_icon_layout_rect(int iconId, int &x, int &y, int &w, int &h, std::string &sheet)
+{
+    std::lock_guard<std::mutex> lk(g_item_layout_mtx);
+    auto it = g_item_icon_layout.find(iconId);
+    if (it == g_item_icon_layout.end()) return false;
+    x = it->second.x; y = it->second.y; w = it->second.w; h = it->second.h; sheet = it->second.sheet;
+    return true;
+}
+
 long long __fastcall oodle_decompress_detour(const void *src, long long srcLen, void *dst,
                                              long long dstLen, int a5, int a6, int a7, void *a8,
                                              long long a9, void *a10, void *a11, void *a12,
                                              long long a13, int a14)
 {
     long long r = g_oodle_orig(src, srcLen, dst, dstLen, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14);
+    // No-bake item-icon LAYOUT capture: the sblytbnd decompresses to a BND4 holding the TextureAtlas
+    // XML. Scan it for MENU_ItemIcon rects (cheap: only BND4 blobs, only when item icons are on).
+    if ((goblin::config::nativeItemIcons || goblin::config::dumpIconTextures) && dst && r >= 0x40)
+    {
+        const uint8_t *bb = reinterpret_cast<const uint8_t *>(dst);
+        if (bb[0] == 'B' && bb[1] == 'N' && bb[2] == 'D' && bb[3] == '4' &&
+            find_sub(reinterpret_cast<const char *>(bb), (size_t)r, "MENU_ItemIcon_", 14))
+            parse_item_icon_layout(bb, (size_t)r);
+    }
     if (goblin::config::dumpIconTextures && dst && r >= 0x10000)
     {
         const uint8_t *b = reinterpret_cast<const uint8_t *>(dst);
