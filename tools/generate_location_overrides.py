@@ -231,8 +231,10 @@ for fn,key in (("rune_pieces.json","map"),("ember_pieces.json","map")):
 # COORD_SHIFTS mirror of generate_data.py — unshift baked coords for spatial lookup
 COORD_SHIFTS={(11,10):(-2195.0,-352.0)}
 
-# ---- parse baked cpp ----
-CPP=str(config.GENERATED_DIR / "goblin_map_data.cpp")
+# ---- parse the full MapEntry table ----
+# Phase 2: the compiled goblin_map_data.cpp is an empty stub; the FULL table lives in the
+# uncompiled pipeline intermediate generate_data.py emits (same '// Row ID' .cpp format).
+CPP=str(config.DATA_DIR / "_map_entries_full.cpp")
 txt=open(CPP,encoding="utf-8").read()
 # split per entry: "{<id>ull, {" ... "}, Category::<cat>, <geom>, <suffix>, "name"|nullptr, <lotId>u, <lotType>},"
 # (the trailing lotId/lotType pair is optional for backward compat)
