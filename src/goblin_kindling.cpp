@@ -17,7 +17,6 @@
 //   4. Write `areaNo = 99` on collected rows, restore on respawned rows.
 
 #include "goblin_kindling.hpp"
-#include "goblin_map_data.hpp"
 #include "modutils.hpp"
 #include "re_signatures.hpp"
 #include "goblin_bench.hpp"
@@ -40,8 +39,6 @@
 #define NOMINMAX
 #include <windows.h>
 
-using Category = goblin::generated::Category;
-
 namespace
 {
 
@@ -62,7 +59,7 @@ constexpr uint8_t  HIDDEN_AREA = 99;
 struct KindlingSlot
 {
     uint64_t row_id;     // current (post-remap) WorldMapPointParam row ID
-    uint64_t orig_id;    // original ID from MAP_ENTRIES (pre-remap)
+    uint64_t orig_id;    // == row_id now (vestigial: pre-remap id; remap_row_ids is dead code)
     int slot;            // 1..5 (kindling slot)
     uint32_t entity_id;  // 1045373501..505
 };
@@ -527,6 +524,13 @@ uint32_t entity_id_for_slot(int slot)
 
 // ── Public API ───────────────────────────────────────────────────────
 
+uint64_t goblin::kindling::region_row_id(const char *region_name)
+{
+    int slot = parse_kindling_slot(region_name);
+    if (slot < 0) return 0;
+    return entity_id_for_slot(slot);
+}
+
 void goblin::kindling::initialize()
 {
     GOBLIN_BENCH("init.kindling_initialize");
@@ -540,24 +544,16 @@ void goblin::kindling::initialize()
         g_conds_discovered = false;
     }
 
-    for (size_t i = 0; i < generated::MAP_ENTRY_COUNT; i++)
+    // Build the 5 slots from the fixed ERR constant set (Phase 2 no-bake): slots 1..5,
+    // entity 1045373501..505 in m60_45_37_00. row_id == entity_id so the disk-emitted
+    // marker (map_entry_layer, keyed via goblin::kindling::region_row_id) grays here —
+    // no MAP_ENTRIES dependency. The MARKER position is now disk-sourced; this table
+    // only needs the (slot, entity_id, graying row_id) triple, all constant.
+    for (int slot = 1; slot <= SPIRIT_COUNT; ++slot)
     {
-        const auto &e = generated::MAP_ENTRIES[i];
-        if (e.category != Category::WorldKindlingSpirits) continue;
-
-        int slot = parse_kindling_slot(e.object_name);
-        if (slot < 0)
-        {
-            spdlog::warn("[KINDLING] Unparseable object_name on row {}: '{}'",
-                         e.row_id, e.object_name ? e.object_name : "(null)");
-            continue;
-        }
-
-        g_slots.push_back({e.row_id, e.row_id, slot, entity_id_for_slot(slot)});
+        uint64_t rid = entity_id_for_slot(slot);
+        g_slots.push_back({rid, rid, slot, entity_id_for_slot(slot)});
     }
-
-    std::sort(g_slots.begin(), g_slots.end(),
-              [](const auto &a, const auto &b) { return a.slot < b.slot; });
 
     spdlog::info("[KINDLING] Initialized: {} slot(s) tracked", g_slots.size());
     for (const auto &s : g_slots)

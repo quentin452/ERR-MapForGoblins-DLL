@@ -1608,11 +1608,13 @@ void build_buckets_impl()
     // (tile, object_name) of every disk-placed gather node — drops the baked Material Node twin by
     // IDENTITY when the positional cell-dedup misses it (baked pos offset >0.5u from the live MSB).
     std::unordered_set<std::string> gather_disk_keys;
-    // Kindling Spirits: disk SFX-region position keyed by the region NAME ("KindlingSpirit_000N"),
-    // which equals the baked entry's object_name. The baked loop overrides the baked kindling
-    // marker's POSITION with the disk one + flips source→DiskMSB (keeps the baked row_id/identity so
-    // goblin_kindling's row_id-keyed graying still works). Off-bakes the last 🔴 loot/world category.
-    std::unordered_map<std::string, DiskRegion> kindling_disk;
+    // Kindling Spirits (Phase 2, no-bake): emitted as markers DIRECTLY from the disk SFX regions
+    // ("KindlingSpirit_000N") — no longer sourced from the static bake. Each marker's row_id = the
+    // constant entity-id slot key (goblin::kindling::region_row_id), which goblin_kindling's slot
+    // table (built from the same constants) uses for graying. This set holds the region names emitted
+    // so the baked loop drops the baked twin; a baked row with no disk twin re-keys to the same
+    // entity-id row_id, keeping graying correct when the disk pass is off / a region is missing.
+    std::unordered_set<std::string> kindling_disk_names;
     // Cross-tile LOD treasures (lot → disk position): a few MSB Treasures live ONLY in an overworld
     // LOD supertile (bound to a "m{AA}_{BB}_{CC}_00-AEG…" cross-tile part), which the _00-only
     // load_disk_treasures misses. Most are covered as a contiguous-sibling of a _00 base; the few past
@@ -1701,12 +1703,25 @@ void build_buckets_impl()
             build_disk_spirit_springs_markers(
                 disk_regions, disk_collectibles,
                 world_feature_cells[static_cast<int>(gen::Category::WorldSpiritSprings)]);
-            // Kindling Spirits: index the disk SFX regions ("KindlingSpirit_000N") by name so the
-            // baked loop can override each baked kindling marker's position from disk (the 5 are
-            // ERR-specific in m60_45_37; positions on disk, identity/state stay baked-driven).
+            // Kindling Spirits (Phase 2, no-bake): emit each disk SFX region ("KindlingSpirit_000N")
+            // as its own marker. row_id = the constant entity-id slot key so goblin_kindling grays it
+            // (its slot table is built from the same constants, decoupled from MAP_ENTRIES). The baked
+            // WorldKindlingSpirits twin is dropped in the baked loop below.
             for (const DiskRegion &r : disk_regions)
-                if (r.name.rfind("KindlingSpirit_", 0) == 0)
-                    kindling_disk.emplace(r.name, r);
+            {
+                if (r.name.rfind("KindlingSpirit_", 0) != 0) continue;
+                uint64_t rid = goblin::kindling::region_row_id(r.name.c_str());
+                if (!rid) continue;
+                from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+                d.areaNo = r.area;
+                d.gridXNo = r.gx;
+                d.gridZNo = r.gz;
+                d.posX = r.posX;
+                d.posZ = r.posZ;
+                push_marker(rid, d, static_cast<int>(gen::Category::WorldKindlingSpirits),
+                            /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
+                kindling_disk_names.insert(r.name);
+            }
             // Spiritspring Hawks: c4210 disk enemies, EntityID suffix 980/971, flag = EntityID.
             build_disk_spiritspring_hawks_markers(
                 disk_enemies,
@@ -1784,7 +1799,7 @@ void build_buckets_impl()
     int replaced = 0;
     int replaced_piece = 0;  // baked Rune/Ember Pieces dropped because the disk pass placed them
     int replaced_matnode = 0; // baked Material Nodes dropped by IDENTITY (gather offset near-miss)
-    int kindling_disk_pos = 0; // baked Kindling markers re-sourced to a disk SFX-region position
+    int replaced_kindling = 0; // baked Kindling twins dropped because the disk SFX-region pass placed them
     int lod_treasure_pos_count = 0; // baked treasure markers re-sourced to a cross-tile LOD position
     int replaced_enemy = 0;  // baked Enemy rows dropped because the disk enemy pass covers them
     int replaced_emevd = 0;  // baked Emevd rows dropped because the disk EMEVD pass covers them
@@ -1881,28 +1896,25 @@ void build_buckets_impl()
             ++replaced_matnode;
             continue;
         }
-        // Kindling Spirits OFF-BAKE: source the marker POSITION from the disk SFX region of the same
-        // name ("KindlingSpirit_000N") instead of the static bake, and tag it DiskMSB. The baked
-        // row_id/object_name are KEPT (goblin_kindling's row_id-keyed graying + its MAP_ENTRIES slot
-        // table are untouched) — only the position is now disk-derived (robust to a mod's own kindling
-        // layout). If the disk region is missing (other mod / parse miss), fall through to the baked
-        // marker unchanged. The last 🔴 baked-only loot/world category → 🟢.
-        if (!kindling_disk.empty() && e.object_name &&
-            e.category == gen::Category::WorldKindlingSpirits)
+        // Kindling Spirits (Phase 2): the markers come from the disk SFX regions directly (emitted
+        // above). Drop the baked twin when the disk pass placed this spirit. If the disk pass is off
+        // or this region was missing, keep the baked marker but RE-KEY its row_id to the same constant
+        // entity-id slot (goblin::kindling::region_row_id) so graying still matches goblin_kindling's
+        // slot table (which is no longer MAP_ENTRIES-derived). Fully decouples the category from the bake.
+        if (e.category == gen::Category::WorldKindlingSpirits)
         {
-            auto kit = kindling_disk.find(e.object_name);
-            if (kit != kindling_disk.end())
+            if (e.object_name && kindling_disk_names.count(e.object_name))
             {
-                from::paramdef::WORLD_MAP_POINT_PARAM_ST d = e.data;
-                d.areaNo = kit->second.area;
-                d.gridXNo = kit->second.gx;
-                d.gridZNo = kit->second.gz;
-                d.posX = kit->second.posX;
-                d.posZ = kit->second.posZ;
-                push_marker(e.row_id, d, c, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
-                ++kindling_disk_pos;
+                ++replaced_kindling;
+                continue;  // disk twin owns it
+            }
+            uint64_t rid = e.object_name ? goblin::kindling::region_row_id(e.object_name) : 0;
+            if (rid)
+            {
+                push_marker(rid, e.data, c, /*lotId=*/0u, /*lotType=*/0u, Source::Baked);
                 continue;
             }
+            // unparseable object_name (shouldn't happen) → fall through to generic handling
         }
         // Disk loot owns this lot → drop the baked placement (lotId-coverage replace).
         // Only map-loot lots (lotType 1); enemy drops (lotType 2) are untouched.
@@ -2092,8 +2104,9 @@ void build_buckets_impl()
         spdlog::info("[LOOTDISK] replaced {} baked Material Nodes by identity (tile+part-name; primary "
                      "dedup — catches the offset near-misses the positional pass left)", replaced_matnode);
     if (goblin::config::worldFeaturesFromDisk)
-        spdlog::info("[LOOTDISK] re-sourced {} baked Kindling Spirit markers to disk SFX-region "
-                     "positions (DiskMSB; graying unchanged)", kindling_disk_pos);
+        spdlog::info("[LOOTDISK] kindling: {} markers emitted from disk SFX regions, {} baked twins "
+                     "dropped (DiskMSB; graying via constant entity-id slot key)",
+                     (int)kindling_disk_names.size(), replaced_kindling);
     if (goblin::config::lootFromDiskMsb)
         spdlog::info("[LOOTDISK] re-sourced {} baked treasure markers to cross-tile LOD positions "
                      "(DiskMSB; uncovered LOD-only treasures past a sibling-chain gap)", lod_treasure_pos_count);
