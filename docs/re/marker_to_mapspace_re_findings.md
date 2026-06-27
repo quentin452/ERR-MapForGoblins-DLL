@@ -1,5 +1,25 @@
 # RE findings — WorldMapPointParam row → RENDER marker space
 
+> ## ⛔ SUPERSEDED (2026-06-27) — read `windows_world_to_mapspace_projection_re_findings.md`
+>
+> This whole document is the **RE-era hypothesis** and is **wrong on the key points**. The
+> projection was fully solved later (the engine's own `FUN_140876140` + the live
+> `WorldMapViewModel` converter array). The actual model:
+>
+> - **Single affine, scale `1.0` (NOT 0.5), no rotation**, Z-flipped:
+>   `mapX = worldX − 7040 ; mapZ = −worldZ + 16512` (origin 7168/16384, bias 128/128).
+> - **There are NO separate per-page origins.** Overworld (area 60), **DLC overworld (area 61)**
+>   and **base underground (area 12)** all use the **SAME affine** — empirically confirmed by
+>   the live converter dump (slots seen as area 60 & 61 carry identical constants; UG shares the
+>   overworld converter and only the *page* byte differs). Only the **page** (`[0=OW, 1=UG, 10=DLC]`)
+>   changes, not the world→map-space transform. So the "per-page origin / SCALE 0.5 / rotation /
+>   DLC own origin" claims below are **false**.
+> - The only real per-dungeon translation is the **live LegacyConv fold** (`FUN_1408775e0`) for
+>   legacy/DLC-legacy dungeons — not a per-page affine. `config::liveProjection` does this live.
+>
+> ⇒ There is **no unsolved "DLC eyeball"**: the DLC-overworld affine equals the overworld one.
+> Everything below is kept only as RE history.
+
 Answers `docs/windows_marker_to_mapspace_re_prompt.md`. Static Ghidra RE
 (`D:\ghidra_proj2\ER`, scripts `re_v51..v55`) + the two live reticle measurements in
 the prompt. App 2.6.2.0 / ERR 2.2.9.6, imagebase `0x140000000`. Builds on

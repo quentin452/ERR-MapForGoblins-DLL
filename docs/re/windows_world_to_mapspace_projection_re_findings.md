@@ -36,7 +36,13 @@ affine. So:
 - **Q3 constants** → per-converter `scale/origin/bias` (overworld 60/61 = `scale 1`,
   `originX 7168`, `originZ 16384`, `bias 128/128` → our `−7040 / +16512`). DLC + base-UG
   are **other slots in the same array**, loaded when their map is open → **read live, no
-  baked DLC eyeball.**
+  baked DLC eyeball.** **RESOLVED (2026-06-27):** area **61 = DLC overworld** and the dump
+  shows it carries the **same** constants as area 60, and base-UG (area 12) shares the
+  overworld converter (only the *page* byte differs) → the DLC-overworld affine **equals**
+  the overworld one. There is **no separate "DLC eyeball" to solve**; the baked
+  `−7040 / +16512` fallback already projects DLC overworld correctly. The only genuinely
+  per-page-specific step is the **legacy-dungeon fold** (DLC-legacy areas 40–43), done live
+  by LegacyConv — not a per-page affine. See §7.1.
 - **Q4 callable entry** → call `FUN_1408877d0(VM, &outMapXZ, &packedId, &worldLocal)` (or
   loop `FUN_140876140` yourself), on the live VM. Signatures + arg layout in §4.
 - **Q5 page/group** → the matched slot index indexes `(&DAT_142ad82f8)` → page id
@@ -196,12 +202,14 @@ the RVAs are plain readable code (not VMP-wrapped) at these addresses.**
 
 ## 7. Open / runtime-confirm (quentin runs — game not running during this RE)
 
-1. **Read the live array per page.** With the overworld map open, dump `VM+0xF8` × `VM+0x280`
-   (CT `MapForGoblins_converter_dump.CT`): confirm slot0/1 = the 60/61 constants and the
-   `+0x28` legacy node is non-null. Then open **base underground (m12)** and the **DLC /
-   Realm of Shadows** map and re-dump — capture the slot2 (DLC, page 10) `origin/bias/scale`
-   that we never solved (the "eyeball"). These are the only missing constants and they're
-   just *there* in the live array.
+1. **Read the live array per page.** ✅ **RESOLVED (2026-06-27)** — the dump shows area **60 and
+   61 carry identical** `origin/bias/scale`, and 61 is the **DLC overworld**, so the
+   DLC-overworld affine **= overworld** (`−7040 / +16512`); base-UG (area 12) shares the
+   overworld converter. **There is no missing "eyeball"** — it was a stale assumption from the
+   superseded `marker_to_mapspace_re_findings.md`. A re-dump with the DLC map open is only
+   needed if someone wants to confirm the DLC *legacy-dungeon* (40–43) fold rows, which
+   `config::liveProjection` already applies via LegacyConv at runtime. (Original task, kept for
+   context: dump `VM+0xF8` × `VM+0x280` via CT `MapForGoblins_converter_dump.CT`.)
 2. **Confirm slot↔area↔page.** The live CT saw two entries (areas 60, 61); the static page
    table is `[0,1,10]`. Confirm whether 60/61 are slots 0/1 (and how 61 maps to a page) vs a
    single overworld slot — read the matched index live for a known 60 grace and a known 61
