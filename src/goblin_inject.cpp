@@ -2867,20 +2867,45 @@ void *goblin::force_load_file(const char *utf8_path)
                 if (c2 >= 0x10000 && try_bnd4(c2, c1 + o2 + 8)) found = true;
             }
         }
-        if (!found)   // DIAG: dump the handle's first words so we can see where the data lives
+        if (!found)
         {
-            std::string dump;
-            for (int off = 0; off <= 0x80; off += 8)
-            {
-                uintptr_t c = 0; icon_rpm_ptr(rp + off, c);
-                char mg[5] = {0}; SIZE_T g = 0;
-                if (c >= 0x10000) ReadProcessMemory(self, reinterpret_cast<void *>(c), mg, 4, &g);
-                for (int k = 0; k < 4; ++k) if (mg[k] < 0x20 || mg[k] > 0x7e) mg[k] = '.';
-                char line[64];
-                snprintf(line, sizeof(line), "+%x:%#llx[%s] ", off, (unsigned long long)c, mg);
-                dump += line;
-            }
-            spdlog::info("[FORCELOAD] sblyt BND4 NOT in handle {:#x}; struct: {}", rp, dump);
+            // The raw BND4 is freed after parse. Probe whether the PARSED layout (SubTexture names +
+            // rects) is persistent in RAM: follow each data pointer off the resource and scan a window
+            // for "MENU_ItemIcon" (ASCII and UTF-16). Logs hits + the 24 bytes after the name (likely
+            // x/y/w/h) so we can RE the rect layout. SEH-safe via ReadProcessMemory.
+            auto scan_window = [&](uintptr_t base, size_t win, const char *tag) -> int {
+                if (base < 0x10000) return 0;
+                std::vector<uint8_t> buf(win);
+                SIZE_T rd = 0;
+                ReadProcessMemory(self, reinterpret_cast<void *>(base), buf.data(), win, &rd);
+                if (rd < 16) return 0;
+                int hits = 0;
+                const char *a = "MENU_ItemIcon_";   // ASCII
+                for (size_t i = 0; i + 14 < rd && hits < 4; ++i)
+                    if (std::memcmp(buf.data() + i, a, 14) == 0)
+                    {
+                        char around[80] = {0};
+                        for (int k = 0; k < 48 && i + k < rd; ++k)
+                        { uint8_t c = buf[i + k]; around[k] = (c >= 0x20 && c < 0x7f) ? (char)c : '.'; }
+                        spdlog::info("[LAYOUT-PROBE] {} +{:#x} ASCII hit: '{}'", tag, i, around);
+                        ++hits;
+                    }
+                // UTF-16: 'M',0,'E',0,'N',0,'U',0 ...
+                static const uint8_t w[] = {'M',0,'E',0,'N',0,'U',0,'_',0,'I',0};
+                for (size_t i = 0; i + sizeof(w) < rd && hits < 8; ++i)
+                    if (std::memcmp(buf.data() + i, w, sizeof(w)) == 0)
+                    { spdlog::info("[LAYOUT-PROBE] {} +{:#x} UTF16 'MENU_I...' hit", tag, i); ++hits; }
+                return hits;
+            };
+            int total = 0;
+            uintptr_t p48 = 0; icon_rpm_ptr(rp + 0x48, p48);
+            total += scan_window(p48, 0x40000, "res+0x48");
+            // also follow one level: each pointer inside the +48 object
+            for (int o = 0; o <= 0x80 && total == 0; o += 8)
+            { uintptr_t pp = 0; icon_rpm_ptr(p48 + o, pp); total += scan_window(pp, 0x40000, "res+0x48->"); }
+            if (total == 0)
+                spdlog::info("[LAYOUT-PROBE] no MENU_ItemIcon names found near the resource — parsed layout "
+                             "is hashed or elsewhere (handle {:#x}, +48={:#x})", rp, p48);
         }
     }
     return res;
