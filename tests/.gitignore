@@ -1,4 +1,5 @@
 # compiled test binaries
 /tests/test_lag_capture
 /tests/test_projection
+/tests/test_msbe_coverage
 *.o

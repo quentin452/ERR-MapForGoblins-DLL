@@ -264,4 +264,10 @@ using OodleDecompressFn = long long (*)(const void *src, long long srcLen, void 
 std::vector<uint8_t> dcx_decompress(const uint8_t *dcx, size_t len, bool *isKrak = nullptr,
                                     OodleDecompressFn oodle = nullptr);
 
+#ifdef PARSER_COVERAGE
+void start_coverage(const uint8_t *buf, size_t len);
+std::vector<uint8_t> get_coverage();
+void stop_coverage();
+#endif
+
 } // namespace goblin::msbe
