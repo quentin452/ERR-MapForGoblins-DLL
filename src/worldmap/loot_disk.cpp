@@ -1,5 +1,6 @@
 #include "loot_disk.hpp"
 
+#include "dvdbnd_reader.hpp"
 #include "msbe_parser.hpp"
 #include "goblin_config.hpp"
 
@@ -174,25 +175,45 @@ bool disk_source_enabled()
 
 std::vector<uint8_t> read_game_file_decompressed(const std::string &rel_path)
 {
-    // Test affordance (mirrors the map-dir __test_fallback__): set env MFG_TEST_NO_GAMEFILE=1 to
-    // force "file not found" WITHOUT touching the game's own loose files — simulates a packed-vanilla
-    // install (no loose .dcx for us to read) so the graceful no-layout fallback can be verified on an
-    // unpacked dev box. The game still loads its own UI normally; only OUR reader pretends to miss.
+    // Test affordance: set env MFG_TEST_NO_GAMEFILE=1 to force "file unavailable" WITHOUT touching
+    // any game file — disables BOTH the loose reader AND the packed dvdbnd fallback so the graceful
+    // no-data path can be verified on a dev box. The game still loads its UI normally; only OUR
+    // reader pretends to miss.
+    bool test_no_file = false;
     if (char e[8]{}; GetEnvironmentVariableA("MFG_TEST_NO_GAMEFILE", e, sizeof(e)) && e[0] == '1')
+        test_no_file = true;
+    // Test affordance: MFG_TEST_FORCE_PACKED=1 SKIPS the loose reader so the packed dvdbnd path is
+    // exercised even on an install that HAS the loose file (e.g. ERR via ME3). Proves the packed
+    // chain in-game — expect the VANILLA sblytbnd from Data0, not the mod's loose override.
+    bool force_packed = false;
+    if (char e[8]{}; GetEnvironmentVariableA("MFG_TEST_FORCE_PACKED", e, sizeof(e)) && e[0] == '1')
+        force_packed = true;
+
+    // 1) Loose file first — a mod overlay's own .dcx (ME3/ModEngine/native mod/) or a UXM-unpacked
+    //    install. This is the mod-AWARE source, so it wins when present.
+    std::vector<uint8_t> raw;
+    fs::path             full;
+    if (!test_no_file && !force_packed)
     {
-        spdlog::warn("[GAMEFILE] MFG_TEST_NO_GAMEFILE=1 → simulating packed (not found): {}", rel_path);
-        return {};
+        full = resolve_root_file(fs::path(rel_path));
+        if (!full.empty())
+            raw = slurp(full);
     }
-    fs::path full = resolve_root_file(fs::path(rel_path));
-    if (full.empty())
+    if (force_packed)
+        spdlog::warn("[GAMEFILE] MFG_TEST_FORCE_PACKED=1 → skipping loose, forcing dvdbnd: {}",
+                     rel_path);
+    // 2) Packed fallback — read straight out of the encrypted dvdbnd (Data*.bhd/.bdt) next to
+    //    eldenring.exe. Works on a genuinely packed install where there's no loose .dcx for us to
+    //    slurp; pure data + crypto, no game call. See [[dvdbnd-packed-reader]].
+    std::string src = full.empty() ? std::string("dvdbnd") : full.string();
+    if (raw.empty() && !test_no_file)
     {
-        spdlog::warn("[GAMEFILE] '{}' not found on any mod/game root", rel_path);
-        return {};
+        raw = dvdbnd::read_packed_file(game_dir(), rel_path);
+        src = "dvdbnd:" + rel_path;
     }
-    std::vector<uint8_t> raw = slurp(full);
     if (raw.size() < 4)
     {
-        spdlog::warn("[GAMEFILE] read failed/empty: {}", full.string());
+        spdlog::warn("[GAMEFILE] '{}' not found loose or in the packed dvdbnd", rel_path);
         return {};
     }
     // Loose-uncompressed (not wrapped in DCX) → return as-is.
@@ -202,11 +223,9 @@ std::vector<uint8_t> read_game_file_decompressed(const std::string &rel_path)
     std::vector<uint8_t> out =
         msbe::dcx_decompress(raw.data(), raw.size(), &krak, resolve_oodle());
     if (out.empty())
-        spdlog::warn("[GAMEFILE] DCX decompress failed ({}): {}", krak ? "KRAK" : "DFLT",
-                     full.string());
+        spdlog::warn("[GAMEFILE] DCX decompress failed ({}): {}", krak ? "KRAK" : "DFLT", src);
     else
-        spdlog::info("[GAMEFILE] {} -> {} bytes ({})", full.string(), out.size(),
-                     krak ? "KRAK" : "DFLT");
+        spdlog::info("[GAMEFILE] {} -> {} bytes ({})", src, out.size(), krak ? "KRAK" : "DFLT");
     return out;
 }
 

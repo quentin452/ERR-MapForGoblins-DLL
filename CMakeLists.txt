@@ -167,6 +167,8 @@ add_library( MapForGoblins SHARED
   src/worldmap/msbe_parser.cpp
   src/worldmap/loot_disk.hpp
   src/worldmap/loot_disk.cpp
+  src/worldmap/dvdbnd_reader.hpp
+  src/worldmap/dvdbnd_reader.cpp
   src/worldmap/loot_open_probe.hpp
   src/worldmap/loot_open_probe.cpp
   src/goblin_crashdump.cpp
@@ -235,4 +237,5 @@ target_link_libraries( MapForGoblins
   dxgi
   dinput8
   dxguid
-  dbghelp)
+  dbghelp
+  bcrypt)
