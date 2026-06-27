@@ -1718,6 +1718,10 @@ void build_buckets_impl()
                 d.gridZNo = r.gz;
                 d.posX = r.posX;
                 d.posZ = r.posZ;
+                // Label = "Kindling Spirit", the awarded incantation's GoodsName (Goods 6610 + the
+                // 500M GoodsName offset), exactly what the bake's WorldMapPointParam row used. Without
+                // it the marker is anonymous → empty tooltip + the F1 item-search can't match it.
+                d.textId1 = 500006610;  // 6610 (Goods "Kindling Spirit") + GOODS_NAME_OFFSET
                 push_marker(rid, d, static_cast<int>(gen::Category::WorldKindlingSpirits),
                             /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
                 kindling_disk_names.insert(r.name);
