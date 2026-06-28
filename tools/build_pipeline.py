@@ -231,7 +231,6 @@ STAGES = [
 
     Stage('generate_loot_massedit',
           inputs=[REPO / 'data' / 'enemy_bloodmsg_mapping.json',
-                  REPO / 'data' / 'enemy_names_i18n.json',
                   DATA / 'items_database.json',
                   DATA / 'goods_sort_groups.json',
                   DATA / 'goods_crafting_ids.json',
@@ -384,7 +383,6 @@ STAGES = [
     Stage('generate_data',
           inputs=[MASSEDIT_OUT, DATA / 'loot_lot_linkage.json',
                   DATA / 'item_icon_table.json',
-                  config.PROJECT_DIR / 'data' / 'enemy_names_i18n.json',
                   DATA / '_relocating_boss_fix.done'],
           outputs=[GENERATED_CPP / 'goblin_map_data.cpp',          # Phase-2 empty no-bake stub
                    GENERATED_CPP / 'goblin_enemy_names.cpp'],
