@@ -1,17 +1,17 @@
-# Memory Archive
+# Memory
 
-Imported 2026-06-28 from:
+This directory keeps project memory for future agents. Read the short active files first; use the archive only when you need detail.
 
-- Linux agent archive: `<downloads>/memoryagentlinux.tar.gz`
-- Windows agent archive: `<downloads>/memoryagentwindows.rar`
+Active files:
 
-Layout:
+- [common.md](common.md): shared project state and rules that apply on every machine.
+- [linux.md](linux.md): Linux/Proton agent notes.
+- [windows.md](windows.md): Windows agent notes, especially Ghidra/RPM/runtime RE.
 
-- `linux/` contains Linux-side Codex/session memories.
-- `windows/` contains Windows-side agent memories.
+Historical archive:
 
-These files are historical working memory, not canonical project documentation.
-When a memory conflicts with committed code or docs, prefer the checked-out repo.
+- `archive/linux/`: sanitized import from `<downloads>/memoryagentlinux.tar.gz`.
+- `archive/windows/`: sanitized import from `<downloads>/memoryagentwindows.rar`.
 
 Privacy scrub before first commit:
 
@@ -26,3 +26,5 @@ Local reconciliation at import:
 - No-bake Phase 2 for ERR is already on `master`; `src/generated/goblin_map_data.cpp` is a stub and `docs/nobake_scoreboard.md` is the current coverage source.
 - Windows `next-session-resume.md` was stale for this checkout: it described four branches above master and an unmerged local `feat/dvdbnd-packed-reader`. In this repo, `feat/quests`, `feature/spatial-grid-opti`, and `feature/dx-bugs-backlog` are not ahead of master; `origin/feat/dvdbnd-packed-reader` exists remotely but is not merged into master.
 - Linux memories that mention `HEAD 4a7716d` predate the current master tip; treat the no-bake facts as still relevant, but not the commit pointer.
+
+Use checked-out code and committed docs as source of truth when archive notes conflict with reality.
