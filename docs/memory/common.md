@@ -22,6 +22,8 @@ Collaboration rules:
 Memory update rule:
 
 - After a completed task, update memory if the task changed durable project state.
+- **Do NOT update files in the `archive/` directory.** The archive is strictly read-only historical context.
+- If a task changes or invalidates information found in the archive, document the new single source of truth in the active memory (`common.md`, `linux.md`, `windows.md`) or in normal documentation, thereby superseding the archive.
 - Update `common.md` for shared state, workflow rules, blockers, branch/merge status, or cross-platform facts.
 - Update `linux.md` only for Linux/Proton-specific capabilities, limitations, build/deploy notes, or gotchas.
 - Update `windows.md` only for Windows-specific Ghidra/RPM/runtime RE tooling, paths, capabilities, or gotchas.

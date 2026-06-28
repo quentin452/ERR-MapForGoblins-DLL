@@ -10,8 +10,8 @@ Active files:
 
 Historical archive:
 
-- `archive/linux/`: sanitized import from `<downloads>/memoryagentlinux.tar.gz`.
-- `archive/windows/`: sanitized import from `<downloads>/memoryagentwindows.rar`.
+- `archive/linux/`: sanitized import from `<downloads>/memoryagentlinux.tar.gz` (Read-only).
+- `archive/windows/`: sanitized import from `<downloads>/memoryagentwindows.rar` (Read-only).
 
 Privacy scrub before first commit:
 
