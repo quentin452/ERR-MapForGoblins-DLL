@@ -19,6 +19,16 @@ Collaboration rules:
 - Runtime/gameplay visual validation is usually user-owned; agents can prepare builds, logs, probes, and clear test instructions.
 - When the user names a direct fix, implement it with minimal debate.
 
+Memory update rule:
+
+- After a completed task, update memory if the task changed durable project state.
+- Update `common.md` for shared state, workflow rules, blockers, branch/merge status, or cross-platform facts.
+- Update `linux.md` only for Linux/Proton-specific capabilities, limitations, build/deploy notes, or gotchas.
+- Update `windows.md` only for Windows-specific Ghidra/RPM/runtime RE tooling, paths, capabilities, or gotchas.
+- Do not copy every detail into active memory. Keep active memory short; put long investigations in normal docs
+  (`docs/re/*`, feature docs, or committed code comments) and link them from memory when useful.
+- If a task only edits code without changing durable context, a memory update is not required.
+
 Useful archive entry points:
 
 - `archive/linux/MEMORY.md`: Linux-side historical index.

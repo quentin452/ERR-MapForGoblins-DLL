@@ -21,4 +21,6 @@ Workflow:
 - Work on a feature branch unless told otherwise.
 - Do not push unless explicitly asked.
 - Keep changes scoped.
+- At the end of a completed task, update `docs/memory/` when the result changes project state, workflow,
+  blockers, machine capabilities, or important next steps.
 - For RE handoffs, write clear prompts/findings under `docs/re/`.
