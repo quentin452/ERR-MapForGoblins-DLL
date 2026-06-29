@@ -3091,23 +3091,9 @@ void gpu_icon_tick(uintptr_t er)
     static int s_tick = 0;
     if ((s_tick++ % 6) != 0) return;  // act ~every 6 ticks (cheap; still continuous)
 
-    // Item-icon LAYOUT (iconId→sheet+rect), no-bake from the active mod's real
-    // menu/hi/01_common.sblytbnd.dcx on disk (decompress + parse). Complete + mod-aware; replaces
-    // the old force_load("menu:/01_Common.sblytbnd")+Oodle-recapture, which returned the CACHED
-    // resident resource and never re-fired the Oodle hook (the layout stayed empty). Runs on a
-    // detached thread so the small (~50KB→~660KB) read+decompress never hitches the engine frame;
-    // a few spaced retries cover early-init (mod dir not resolvable on the very first tick).
-    static std::atomic<int> s_layout_tries{0};
-    static std::atomic<bool> s_layout_inflight{false};
-    if (goblin::item_icon_layout_count() == 0 && s_layout_tries.load() < 5 &&
-        !s_layout_inflight.exchange(true))
-    {
-        s_layout_tries.fetch_add(1);
-        std::thread([] {
-            goblin::load_item_icon_layout_from_disk();
-            s_layout_inflight.store(false);
-        }).detach();
-    }
+    // Item-icon LAYOUT (iconId→sheet+rect) disk-load was HOISTED to background_harvest_tick() (worldmap
+    // probe thread) — it is pure file IO with no CreateImage/manager dependency, so it must not wait for
+    // this res_tick-gated path (map-only sessions never reach here). See background_harvest_tick().
 
     // Grace candidates (their own hardcoded set) — always, no cap.
     if (goblin::config::graceOverlay && goblin::config::graceGpuSprite)
@@ -3629,6 +3615,29 @@ bool goblin::map_icon_rect_by_name(const char *name, int &x, int &y, int &w, int
 void goblin::background_harvest_tick()
 {
     harvest_repo_icons();   // resolves the repo from the static anchor; no-op unless icons wanted
+
+    // Item-icon LAYOUT bootstrap (iconId→sheet+rect), HOISTED off the residency-ticker path. The disk
+    // read+decompress of menu/hi/01_common.sblytbnd.dcx is pure file IO with NO dependency on the
+    // CreateImage context or the menu-resource manager — so it must NOT wait for gpu_icon_tick, which
+    // only runs once res_tick_detour captures the manager (an INVENTORY/menu event). A map-only session
+    // never fires that, so every item icon stayed on the baked fallback (zero [ITEMLAYOUT], GAP#2 dead).
+    // Kick it here on the worldmap-probe thread instead: runs from init, every 100ms, regardless of menu
+    // state. Detached thread so the ~660KB decompress never hitches; a few spaced retries cover early
+    // init before the mod dir resolves. load_item_icon_layout_from_disk() self-guards on count>0.
+    if (goblin::config::nativeItemIcons)
+    {
+        static std::atomic<int> s_layout_tries{0};
+        static std::atomic<bool> s_layout_inflight{false};
+        if (goblin::item_icon_layout_count() == 0 && s_layout_tries.load() < 5 &&
+            !s_layout_inflight.exchange(true))
+        {
+            s_layout_tries.fetch_add(1);
+            std::thread([] {
+                goblin::load_item_icon_layout_from_disk();
+                s_layout_inflight.store(false);
+            }).detach();
+        }
+    }
 }
 
 void goblin::install_icon_texture_probe()
