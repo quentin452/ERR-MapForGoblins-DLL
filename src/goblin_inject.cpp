@@ -3340,6 +3340,15 @@ struct ItemIconRect { int x, y, w, h; std::string sheet; };
 std::mutex g_item_layout_mtx;
 std::map<int, ItemIconRect> g_item_icon_layout;   // iconId -> rect+sheet (from sblytbnd)
 
+// Map-point glyphs (SB_MapCursor[_ERR]) parsed from the SAME disk sblytbnd. Standard points are
+// MENU_MAP_<NN> (NN = WorldMapPointParam.iconId) → keyed by iconId; ERR custom points are named
+// (MENU_MAP_ERR_Boss …) → keyed by full name. Lets native_map_point_icon draw a POI pin from disk
+// (Oodle no-bake) without waiting for the engine to make the symbol resident. See
+// docs/re/windows_map_point_icon_layout_re_findings.md.
+struct MapPointRect { int x, y, w, h; std::string sheet; };
+std::map<int, MapPointRect> g_map_point_layout;          // numeric MENU_MAP_<id> → rect+sheet
+std::map<std::string, MapPointRect> g_map_point_named;    // "MENU_MAP_ERR_*" → rect+sheet
+
 // Find `needle` in [hay, hay+n). Returns nullptr if absent (no memmem on Windows CRT).
 static const char *find_sub(const char *hay, size_t n, const char *needle, size_t nl)
 {
@@ -3418,6 +3427,71 @@ void parse_item_icon_layout(const uint8_t *buf, size_t n)
                      added, g_item_icon_layout.size(), skipped_nosheet);
 }
 
+// Scan the SAME decompressed sblytbnd blob for MENU_MAP_* SubTextures (SB_MapCursor[_ERR] glyphs).
+// Standard MENU_MAP_<NN> (NN = WorldMapPointParam.iconId) → g_map_point_layout[iconId]; ERR custom
+// MENU_MAP_ERR_* → g_map_point_named. Same forward imagePath-tracking scan as the item parser. The
+// per-entry [MAPPTLAYOUT] log is a one-shot discovery trace (reveals the ERR iconId↔name↔sheet map);
+// trim it to a summary once the POI wiring is settled.
+void parse_map_point_layout(const uint8_t *buf, size_t n)
+{
+    const char *b = reinterpret_cast<const char *>(buf);
+    const char *end = b + n;
+    static const char NEEDLE[] = "MENU_MAP_";
+    const size_t NL = sizeof(NEEDLE) - 1;
+    static const char IP[] = "imagePath=\"";
+    const size_t IPL = sizeof(IP) - 1;
+    int num = 0, named = 0;
+    std::lock_guard<std::mutex> lk(g_item_layout_mtx);
+    std::string cur_sheet;
+    const char *ip_scan = b;
+    for (const char *p = b; p + NL < end; )
+    {
+        const char *m = find_sub(p, end - p, NEEDLE, NL);
+        if (!m) break;
+        while (ip_scan < m)
+        {
+            const char *ip = find_sub(ip_scan, m - ip_scan, IP, IPL);
+            if (!ip) break;
+            const char *s = ip + IPL;
+            const char *e = static_cast<const char *>(std::memchr(s, '"', end - s));
+            cur_sheet = (e && e > s) ? std::string(s, e) : std::string();
+            ip_scan = e ? e + 1 : ip + IPL;
+        }
+        const char *tagEnd = static_cast<const char *>(std::memchr(m, '>', end - m));
+        // token = chars after "MENU_MAP_" up to the '.' in name="MENU_MAP_<token>.png"
+        const char *t = m + NL, *te = t;
+        while (te < end && (std::isalnum(static_cast<unsigned char>(*te)) || *te == '_')) ++te;
+        std::string token(t, te);
+        if (tagEnd && !token.empty() && !cur_sheet.empty())
+        {
+            int x = xml_int_attr(m, tagEnd, "x"), y = xml_int_attr(m, tagEnd, "y");
+            int w = xml_int_attr(m, tagEnd, "width"), h = xml_int_attr(m, tagEnd, "height");
+            if (w > 0 && h > 0)
+            {
+                bool numeric = token.find_first_not_of("0123456789") == std::string::npos;
+                if (numeric)
+                {
+                    MapPointRect &r = g_map_point_layout[std::atoi(token.c_str())];
+                    r.x = x; r.y = y; r.w = w; r.h = h; r.sheet = cur_sheet;
+                    ++num;
+                }
+                else
+                {
+                    MapPointRect &r = g_map_point_named["MENU_MAP_" + token];
+                    r.x = x; r.y = y; r.w = w; r.h = h; r.sheet = cur_sheet;
+                    ++named;
+                }
+                spdlog::debug("[MAPPTLAYOUT] MENU_MAP_{} sheet={} rect=({},{},{},{})",
+                              token, cur_sheet, x, y, w, h);
+            }
+        }
+        p = tagEnd ? tagEnd + 1 : m + NL;
+    }
+    if (num || named)
+        spdlog::info("[MAPPTLAYOUT] parsed {} numeric + {} named MENU_MAP rects (distinct {}/{})",
+                     num, named, g_map_point_layout.size(), g_map_point_named.size());
+}
+
 size_t goblin::item_icon_layout_count()
 {
     std::lock_guard<std::mutex> lk(g_item_layout_mtx);
@@ -3452,6 +3526,7 @@ bool goblin::load_item_icon_layout_from_disk()
                      "({:02x}{:02x}{:02x}{:02x}) — parsing the XML anyway",
                      bnd[0], bnd[1], bnd[2], bnd[3]);
     parse_item_icon_layout(bnd.data(), bnd.size());
+    parse_map_point_layout(bnd.data(), bnd.size());   // same blob also holds SB_MapCursor[_ERR] glyphs
     size_t n = item_icon_layout_count();
     spdlog::info("[ITEMLAYOUT] from disk sblytbnd: {} MENU_ItemIcon rects", n);
     return n > 0;
