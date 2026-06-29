@@ -6,7 +6,12 @@ named releases, so everything fork-specific lives under **[Unreleased]** until t
 
 ## Changelog workflow
 
-- Every completed task that **adds a feature or fixes a bug** must add a line to **[Unreleased]**.
+- Every completed task that **adds a feature** must add a line to **[Unreleased]**.
+- Do **not** log a bug fix for a defect that was introduced *and* fixed within the current unreleased
+  cycle — the fork has no prior release, so such bugs never reached a user and net to zero against
+  upstream. Only log a `Fixed`/`Performance` entry when it repairs a defect present in **upstream** (or
+  a future shipped release), i.e. a difference a migrating user would actually perceive. Deep technical
+  post-mortems of intra-cycle churn belong in `docs/memory/`, not here.
 - Group entries under the standard headings: `Added`, `Changed`, `Fixed`, `Performance`, `Removed`.
 - On an official release, move the accumulated `[Unreleased]` entries under a new named version
   (e.g. `## [v1.0.0] - YYYY-MM-DD`) and leave `[Unreleased]` empty for the next cycle.
@@ -21,7 +26,8 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
 - **Self-rendered map overlay** — all goblin markers drawn by an in-process ImGui/DX12 overlay
-  projected onto ER's world map, replacing native `WorldMapPointParam` injection (the sole shipped map path).
+  projected onto ER's world map, replacing native `WorldMapPointParam` injection (the sole shipped map path);
+  this also eliminates upstream's map-open freeze, since the engine no longer walks thousands of injected rows.
 - **In-game settings overlay** — DXGI-Present-hooked ImGui UI (F1) for live per-section / per-category
   toggles, clustering, and save-to-INI; replaces the old F-key + INI-restart workflow.
 - **Player-centred minimap HUD** — corner minimap reusing the overlay/atlas chain, on every map page.
@@ -47,25 +53,9 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 - **Loot repeatable-flag test** — live `EventFlagMan` group-allocation query replaces the numeric
   `>= 0x40000000` cut that wrongly dropped DLC one-time loot.
 
-### Fixed
-- **Map-open freeze** — fully resolved by the ImGui/DX overlay backend: markers are no longer injected as
-  native `WorldMapPointParam` rows, so the engine doesn't walk them at open. (`areaNo=99` eviction +
-  clustering was the pre-overlay mitigation.)
-- **`require_map_fragments` leak** — interior overworld tiles inherit the majority fragment of their 8 neighbours.
-- **Page-transition flicker** — re-seed the view-delay ring buffer on page-group change.
-- **Gamepad / mouse-still map drift** — projection re-centred on the cursor-independent pan/zoom midpoint.
-- **DummyAsset over-emission** — disk loot walk drops MSBE part-type 9 (kept only when entity-bound).
-- **Disk-parser coverage gaps** — shared `emit_lot_siblings()` across treasure / enemy / EMEVD passes.
-- **Clustering live-test bugs** — location-anchored clusters with live re-plan on toggle.
-
-### Performance
-- **Proton collected-refresh stutter** — dropped in-process `ReadProcessMemory`-to-self for `__try`-guarded
-  noinline raw reads (read_wgm max 581ms → 4ms; killed the ~20fps stutter). Documents the clang-cl `__try`-elision trap.
-
 ### Removed
 - **`ITEM_ICONS` table + dead per-item icon path** — redundant with the live category classifier.
 - **`_map_entries_full.cpp` intermediate** and the static map-data bake (DLL 6.19 MB → 3.76 MB).
-- **5 disk loot-source toggles** — loot sources always on (breaking config change).
 
 ### Cross-platform
 - **Linux/Proton build** — DLL cross-compiles on Linux via clang-cl + xwin + ninja (no MSVC/Wine).
