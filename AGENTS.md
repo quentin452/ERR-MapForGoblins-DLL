@@ -10,6 +10,23 @@ Read first:
 
 Drill into the topic folders for detail: `docs/memory/{features,bugs,tooling,process}/` (each has a `README.md` index). See `docs/changelog.md` for the fork's feature/change/fix list. Notes are sanitized and may contain stale pointers; checked-out code and committed docs win on conflict.
 
+## Design principles (prime directive)
+
+- **Mod-agnostic first.** MapForGoblins must work on ANY Elden Ring mod (and vanilla), not just ELDEN
+  RING Reforged. ERR is the dev install, NOT the target boundary. Anything ERR-specific (hardcoded names
+  like `MENU_MAP_ERR_*`, ERR-tuned constants, ERR-only assets) is acceptable only as an additive layer on
+  top of a mod-agnostic base — never as the only path.
+- **Runtime/Disk over baked.** Read icons, glyphs, markers, and param data from the ACTIVE install's real
+  files — resident GPU textures, or disk via the Oodle/dvdbnd no-bake path — so they are automatically
+  correct for whatever mod is loaded. A baked snapshot (the overlay icon atlas, static map-data bakes) is
+  an ERR-frozen artifact: stale or wrong under any other mod. Baked is a transitional fallback to be
+  eliminated, not a source of truth.
+- **Circle is the universal fallback.** When no glyph resolves from the active files, draw the plain
+  circle (needs no art, correct for every mod). Prefer `native-from-disk → circle` over
+  `native → baked → circle`; the baked middle tier only masks mod-agnostic gaps.
+- **Acceptance test for any icon/data path:** "does this still produce a correct result on a DIFFERENT mod
+  with different params/textures?" If it only works because the values happen to match ERR, it is not done.
+
 Single memory store (important):
 
 - Project memory lives ONLY in `docs/memory/` (committed, shared across machines) + `docs/changelog.md`.
