@@ -197,9 +197,17 @@ decompressed DDS → g_dds_list; create_tex_from_dds_mem uploads a DDS blob → 
   the disk load is pure file IO (no CreateImage/manager dep) → hoisted to background_harvest_tick()
   (worldmap-probe thread, runs from init every 100ms regardless of menu), gated nativeItemIcons +
   count==0/tries<5/!inflight detached thread. RULE: any menu-independent bootstrap (disk reads, layout
-  parse) belongs on the worldmap-probe thread, NOT behind the res_tick/g_ci_p1 gates. ⏳ minor follow-up:
-  one `[ITEMSHEET] '' not in 01_common.tpf` (a rep with empty/missing imagePath → ".png"-strip yields "")
-  → 4/5 that pass; harmless, the rep just stays baked. Track down the empty-sheet layout entry.
+  parse) belongs on the worldmap-probe thread, NOT behind the res_tick/g_ci_p1 gates.
+- ✅ PARSER COVERAGE BUG FIXED 2026-06-30 (commit d572ffc) — the `[ITEMSHEET] '' not in 01_common.tpf`
+  warning was the tip of a real coverage loss: parse_item_icon_layout resolved each SubTexture's sheet
+  via a BACKWARD scan capped at 16KB, but a 4096x2048 / 160px atlas holds ~300 SubTextures (~22KB XML),
+  so entries late in a big atlas sat past the window → empty sheet → STORED ANYWAY → drawn from the baked
+  atlas forever (silent; only drawn reps surfaced the ''). Rewrote as an O(n) forward pass tracking the
+  current TextureAtlas imagePath (correct at any atlas size) + drop no-sheet entries + defensive
+  sheet.empty() guard in native_item_icon. In-game: `[ITEMLAYOUT] parsed 4858 rects (4844 distinct; 0
+  skipped, no sheet)`, `[ITEMSHEET] extracted 12/12` (was 2/2 + 4/5 with one ''), zero '' warnings — more
+  category reps now draw real art. LESSON: a fixed-size back-scan for an enclosing XML attr silently
+  breaks on large containers; track the attr forward instead.
 - ⚠️ DEV-HOOK GATING (still true): force_load_file + install_oodle_hook are dumpIconTextures-gated; the
   Oodle-detour layout-capture (oodle_decompress_detour) is therefore OFF in production, so the disk
   load above is the SOLE production layout source. Fine now that it is hoisted + menu-independent.
