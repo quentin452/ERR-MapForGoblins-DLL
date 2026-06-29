@@ -167,6 +167,10 @@ MapForGoblins_*.log
 /tools/msbe_test/msbe_oodle_native
 /tools/msbe_test/msbe_oodle.exe
 
+# Offline menu texture extractor (tools/build_menu_tex_extract.sh) — binary + extracted DDS/PNG scratch
+/tools/menu_tex_extract
+/tools/extracted/
+
 # diagnostic probe output (regenerable via tools/extract_err_collectibles.py)
 data/err_collectibles.json
 .scratch/
