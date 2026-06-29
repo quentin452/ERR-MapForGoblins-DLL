@@ -714,6 +714,12 @@ namespace
             if (ev) CloseHandle(ev);
             fence->Release();
         }
+        // The list is now Closed + drained. Drop the batch-open flag so the NEXT begin_icon_batch()
+        // actually Reset()s it. Without this, a second one-shot caller (e.g. copy_sheet_cached on the
+        // 2nd map sheet at map-open) sees open==true, skips Reset, and records onto a CLOSED list →
+        // vkd3d device-removed hard crash, no SEH dump. (Was previously cleared only at the two manual
+        // call sites; centralizing here covers every submit path. See dvdbnd/category-icon notes.)
+        g_icon_batch_open = false;
     }
 
     // Create an inline TEXTURE2D SRV for `tex` at SRV slot `*idx` (allocated from g_next_item_srv

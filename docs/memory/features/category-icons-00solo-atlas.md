@@ -62,10 +62,17 @@ the copy frequently never executed → dest texture stayed undefined → transpa
 (depended on whether item icons opened the batch that frame). Grace always worked because
 ensure_grace_srv does its OWN unconditional g_command_list->Reset() (bypasses begin_icon_batch). FIX =
 new ensure_map_sym_srv mirrors the grace path exactly (record_sprite_copy sub-rect + write_inline_srv,
-dedicated reset, retry-until-ready); native_map_point_icon_by_name uses it. ⚠️ native_item_icon STILL
-uses the buggy copy_sheet_cached → same latent flaky-copy bug for item icons; give it the dedicated
-reset too (or fix submit_and_wait to clear g_icon_batch_open). LESSON: invisible-but-resolves = suspect
-the GPU COPY/command-list, not the texture.
+dedicated reset, retry-until-ready); native_map_point_icon_by_name uses it. ✅ FIXED 2026-06-29 (build
+fa25ab7, deployed): the latent copy_sheet_cached hazard CRASHED at map-open — the harvest path copies 2
+ER atlas sheets back-to-back via begin_icon_batch()+submit_and_wait(); submit_and_wait Close()d the list
+but left g_icon_batch_open=true, so sheet #2's begin_icon_batch() no-op'd (no Reset) and recorded
+CopyTextureRegion/ResourceBarrier onto a CLOSED list → vkd3d-proton device-removed HARD crash, NO SEH
+dump (log died right after two `[TEXMGR] cached ER sheet 4096x2048 ... (atlas)` lines, no
+MapForGoblins_crash_*.txt produced). FIX = clear g_icon_batch_open at the END of submit_and_wait() itself
+(one place, covers every one-shot caller); the manual clears in create_tex_from_dds_mem (line 571) and
+flush_item_icon_batch (823) are now redundant but harmless. LESSON: invisible-but-resolves = suspect the
+GPU COPY/command-list, not the texture; AND a missing-SEH-dump crash right after a TEXMGR copy = a
+closed-command-list record, not a game-code fault.
 
 ROADMAP (<user>, 2026-06-27, AFTER GAP#2 wire + entity-icon shipped on feat/dvdbnd-packed-reader —
 commits 704147a data / b8c417e wire / 0e9016b entity-boss-icon; NOT pushed):
