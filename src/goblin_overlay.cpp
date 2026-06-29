@@ -3375,8 +3375,8 @@ bool goblin::overlay::native_item_icon(int iconId, void *&tex, float &u0, float 
     //    rect as UV. Returns false until the DDS is read off-thread + uploaded (baked atlas meanwhile).
     int x = 0, y = 0, w = 0, h = 0;
     std::string sheet;
-    if (!goblin::item_icon_layout_rect(iconId, x, y, w, h, sheet) || w <= 0 || h <= 0)
-        return false;
+    if (!goblin::item_icon_layout_rect(iconId, x, y, w, h, sheet) || w <= 0 || h <= 0 || sheet.empty())
+        return false;  // empty sheet = unparsed atlas → baked fallback (parser now drops these upstream)
     if (size_t dot = sheet.rfind('.'); dot != std::string::npos)  // "SB_Icon_00.png" → "SB_Icon_00"
         sheet.resize(dot);
     DiskSheet ds;

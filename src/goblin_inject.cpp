@@ -3365,12 +3365,30 @@ void parse_item_icon_layout(const uint8_t *buf, size_t n)
     const char *end = b + n;
     static const char NEEDLE[] = "MENU_ItemIcon_";
     const size_t NL = sizeof(NEEDLE) - 1;
-    int added = 0;
+    static const char IP[] = "imagePath=\"";
+    const size_t IPL = sizeof(IP) - 1;
+    int added = 0, skipped_nosheet = 0;
     std::lock_guard<std::mutex> lk(g_item_layout_mtx);
+    // Forward pass tracking the CURRENT atlas imagePath. The old per-SubTexture backward scan was capped
+    // at 16KB, but a 4096x2048 / 160px sheet holds ~300 SubTextures (~22KB of XML), so entries late in a
+    // big atlas sat past the window → empty sheet → stored anyway → drawn from the baked atlas forever.
+    // Tracking imagePath as we advance is O(n) and correct regardless of atlas size.
+    std::string cur_sheet;
+    const char *ip_scan = b;   // imagePath tags consumed up to here
     for (const char *p = b; p + NL < end; )
     {
         const char *m = find_sub(p, end - p, NEEDLE, NL);
         if (!m) break;
+        // Consume every imagePath=" tag in [ip_scan, m) so cur_sheet = the atlas this SubTexture is under.
+        while (ip_scan < m)
+        {
+            const char *ip = find_sub(ip_scan, m - ip_scan, IP, IPL);
+            if (!ip) break;
+            const char *s = ip + IPL;
+            const char *e = static_cast<const char *>(std::memchr(s, '"', end - s));
+            cur_sheet = (e && e > s) ? std::string(s, e) : std::string();
+            ip_scan = e ? e + 1 : ip + IPL;
+        }
         const char *tagEnd = static_cast<const char *>(std::memchr(m, '>', end - m));
         int id = std::atoi(m + NL);
         if (id > 0 && tagEnd)
@@ -3379,27 +3397,25 @@ void parse_item_icon_layout(const uint8_t *buf, size_t n)
             int w = xml_int_attr(m, tagEnd, "width"), h = xml_int_attr(m, tagEnd, "height");
             if (w > 0 && h > 0)
             {
-                // Sheet = the nearest preceding imagePath=" (within one TextureAtlas, ~bounded back-scan).
-                std::string sheet;
-                const char *lo = (m - b > 16384) ? m - 16384 : b;
-                for (const char *q = m - 1; q > lo; --q)
-                    if (q[0] == 'i' && (size_t)(end - q) > 11 && std::memcmp(q, "imagePath=\"", 11) == 0)
-                    {
-                        const char *s = q + 11;
-                        const char *e = static_cast<const char *>(std::memchr(s, '"', end - s));
-                        if (e && e > s) sheet.assign(s, e);
-                        break;
-                    }
-                ItemIconRect &r = g_item_icon_layout[id];
-                r.x = x; r.y = y; r.w = w; r.h = h; r.sheet = std::move(sheet);
-                ++added;
+                if (cur_sheet.empty())
+                {
+                    // No resolvable sheet → can't draw it natively; leave it out so item_icon_layout_rect
+                    // returns false and native_item_icon falls cleanly to the baked atlas (no '' request).
+                    ++skipped_nosheet;
+                }
+                else
+                {
+                    ItemIconRect &r = g_item_icon_layout[id];
+                    r.x = x; r.y = y; r.w = w; r.h = h; r.sheet = cur_sheet;
+                    ++added;
+                }
             }
         }
         p = tagEnd ? tagEnd + 1 : m + NL;
     }
-    if (added)
-        spdlog::info("[ITEMLAYOUT] parsed {} MENU_ItemIcon rects (total distinct {})",
-                     added, g_item_icon_layout.size());
+    if (added || skipped_nosheet)
+        spdlog::info("[ITEMLAYOUT] parsed {} MENU_ItemIcon rects (total distinct {}; {} skipped, no sheet)",
+                     added, g_item_icon_layout.size(), skipped_nosheet);
 }
 
 size_t goblin::item_icon_layout_count()
