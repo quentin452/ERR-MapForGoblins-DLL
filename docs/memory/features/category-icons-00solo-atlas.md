@@ -185,7 +185,24 @@ decompressed DDS → g_dds_list; create_tex_from_dds_mem uploads a DDS blob → 
   [TEXMGR] uploaded DDS 4096x2048 fmt=98; non-equipment category icons now draw real art. RISKS to
   check in-game: UV alignment (layout rect res vs DDS res), SRV slot budget (<256), 1-frame hitch on
   first sheet upload.
-NOTE: force_load_file is dumpIconTextures-gated → needs an ungated internal variant for production.
+- ✅ GAP #2 RUNTIME-VALIDATED IN-GAME 2026-06-30 (commit e4fc128) — map-only, NO inventory: log
+  `[ITEMLAYOUT] from disk sblytbnd: 4844 rects` → `[ITEMSHEET] extracted 2/2, 4/5` → `[TEXMGR] uploaded
+  DDS 4096x2048 fmt=98` ×6, ~47 item icons recovered, NO crash. The crash that blocked the first attempt
+  was the copy_sheet_cached closed-command-list bug (now fixed, commit 0df36a3 — see the ✅ FIXED note
+  above). ⚠️ BOOTSTRAP-PATH TRAP (was the "no icons resolved" symptom): load_item_icon_layout_from_disk()
+  lived inside gpu_icon_tick, which only runs once res_tick_detour (FUN_140d724c0) captures the
+  menu-resource manager — an INVENTORY/menu event. A map-only session never fires it (CreateImage hook +
+  g_ci_p1 capture is a DIFFERENT hook and fires from the map, so [CREATEIMG] is NOT proof the layout path
+  ran), so the rect table stayed empty (zero [ITEMLAYOUT]) and every rep fell to the baked atlas. FIX =
+  the disk load is pure file IO (no CreateImage/manager dep) → hoisted to background_harvest_tick()
+  (worldmap-probe thread, runs from init every 100ms regardless of menu), gated nativeItemIcons +
+  count==0/tries<5/!inflight detached thread. RULE: any menu-independent bootstrap (disk reads, layout
+  parse) belongs on the worldmap-probe thread, NOT behind the res_tick/g_ci_p1 gates. ⏳ minor follow-up:
+  one `[ITEMSHEET] '' not in 01_common.tpf` (a rep with empty/missing imagePath → ".png"-strip yields "")
+  → 4/5 that pass; harmless, the rep just stays baked. Track down the empty-sheet layout entry.
+- ⚠️ DEV-HOOK GATING (still true): force_load_file + install_oodle_hook are dumpIconTextures-gated; the
+  Oodle-detour layout-capture (oodle_decompress_detour) is therefore OFF in production, so the disk
+  load above is the SOLE production layout source. Fine now that it is hoisted + menu-independent.
 
 OPEN QUESTION for the runtime test: does the manual force-load (run_create_icon on MENU_ItemIcon
 without an explicit 00_Solo group-load) actually make item-icon SHEETS resident → harvestable? The
