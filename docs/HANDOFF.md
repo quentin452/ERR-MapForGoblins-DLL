@@ -2,7 +2,9 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01 (F1 cursor-lock-after-Alt+Tab bug FIXED + MERGED to master, user-confirmed).
+Last updated: 2026-07-01 (F1 cursor-lock-after-Alt+Tab bug FIXED + MERGED to master, user-confirmed;
+also scrubbed stale `feat/native-poi-icons` + `feat/spatial-grid-cull` sections — both fully merged,
+branches deleted, confirmed via reflog).
 
 ## Session recap (2026-07-01) — F1 cursor lock after Alt+Tab: found + fixed + merged
 
@@ -170,17 +172,12 @@ OPEN INVESTIGATION — "Unknown item" name resolution (followup #1 in `docs/plan
   `loc='...Aeonia...'` → its key decodes (absent from vanilla data ⇒ ERR-custom; present ⇒ lookup bug).
   Deployed diag build md5 `c76044fa` (confirm the game loaded that md5 first).
 
-IN PROGRESS — `feat/spatial-grid-cull` (perf, NOT merged, needs rebase on master):
-- Viewport-cull the marker hot loop: clustered-eligible markers are NOT screen-culled (off-screen members
-  feed their pile), so the whole page pays the visibility GATES every frame. Baseline measured:
-  `render.worldmap.markers` avg **3.58 ms** (max 11.65), `.clusters` ~0. Added `proj::unproject_screen`
-  (inverse of project_screen) + a map-space viewport rect (+1 tile) → skip a clustered marker's gates when
-  its map-space cell is off that rect. Also added bench timers `present.frame_wall` (real fps) +
-  `present.overlay_total` (our share, parent of render.* — `overlay_total − Σchildren` = unlabelled hole).
-- TODO: rebase on master (it predates the stacking-render-time / crash-fix / altitude merges), redeploy,
-  RE-MEASURE in-game (zoomed in + out), confirm no markers vanish at edges. Plan
-  `docs/plans/spatial_grid_opti_plan.md`. The full persistent-grid version is a later step if the cheap
-  O(N) scan still shows up (measurement says it won't).
+RESOLVED — `feat/spatial-grid-cull` MERGED to master (`8f7ef91`), branch deleted post-merge:
+Viewport-cull the marker hot loop landed and was verified in-game: `render.worldmap.markers`
+**3.58 → 1.28 ms (~64%)** (see "Session recap (2026-06-30 NIGHT)" above for full detail). The
+follow-on tile-based clustering work (a separate branch, `feat/spatial-grid`, implementing
+`docs/plans/spatial_grid_opti_plan.md`) has also since merged (`c13caef`/`6df9866`), also deleted
+post-merge. Plan doc's own status header is current; no open work tracked here.
 
 INPUT SOFTLOCK — CAUSE FOUND (external): the map-exit "soft key lock" is actually triggered by the mouse
 hitting a SCREEN EDGE and is caused by **Deskflow** (cursor-sharing KVM), not ER / not us. Fix is
@@ -256,22 +253,14 @@ Gate before deleting the baked overlay atlas: prove which categories actually ne
    cleanup edge for ImGui (mouse-dead half). Needs Windows runtime RE before patching →
    `docs/re/windows_input_softlock_re_prompt.md`.
 
-## Active branch
-`feat/native-poi-icons` (off `feat/dvdbnd-packed-reader` off `master`). NOT pushed. Build+deploy on Linux
-run **sandbox-disabled**; deploy target `<ERR_ROOT>/dll/offline/MapForGoblins.dll` ONLY (ERR_ROOT=
-`/home/iamacat/Games/ERRv2.2.9.6`; do NOT also touch `MapForGoblins_vanilla.dll` — see double-load bug).
-Verify deployed md5 == build output after every deploy. Last build deployed: `352b586` (bonus-1).
-**Uncommitted on the branch:** bonus-1 src (5 files: goblin_inject.cpp/.hpp, goblin_overlay.cpp/.hpp,
-worldmap/map_renderer.cpp) — built + deployed, NOT committed (was pending in-game test; bonus-1 is now
-exonerated of the grace bug, so it is commit-ready once a single-DLL run confirms it draws).
-
-## feat/native-poi-icons — FOLLOWUP to finish this branch
-1. ✅ DONE — bonus-1 retested single-DLL + committed (`6e45986`): undiscovered grace draws
-   `MENU_MAP_Player_02` from disk (`[GRACEUNDISC]` tex=0x33000001c0, UV correct), discovered = bonfire+check
-   (GRACE-SPRITE LOCKED ×32, fine on single-DLL). The disk map-point render path (`map_point_glyph_uv` +
-   accessors) is now in — bonus-2/3 reuse it.
-2. NEXT — bonus-2 (summon glyph), then per-item icons, then baked removal (see QUEUE below).
-3. Push when the user says so (nothing pushed yet this whole arc).
+## `feat/native-poi-icons` — RESOLVED, MERGED to master, branch deleted
+Fast-forward merged (`887890b`) same arc this section used to describe as active; branch no longer
+exists locally/remote (deleted post-merge per the merged-branch-hygiene rule). All bonus work landed and
+is committed: bonus-1 undiscovered-grace icon (`6e45986`), bonus-2 SummoningPools glyph (`07b3904`),
+per-item loot icons (`caed7ef`), `[ICONTIER]` census (`92d300c`). Baked-atlas removal was evaluated and
+explicitly DEFERRED (see "Baked-atlas removal (#4)" section above) — gate not passed, ~15 categories
+still depend on it. Bonus-3 (quest NPC → `MENU_MAP_80`) was deferred to the quest-NPC-layer work, see
+"Parallel workstreams" below.
 
 ## Prime directive (see AGENTS.md → Design principles)
 Mod-agnostic first. Read icons/glyphs/markers/params from the ACTIVE install's real files (resident or
@@ -294,25 +283,10 @@ disk via Oodle/dvdbnd). Baked atlas = ERR-frozen artifact → eliminate. Circle 
   Built (`352b586`), deployed, NOT committed. The undiscovered figurine renders; the "discovered grace
   disappears" report was a DOUBLE-LOAD artifact (now understood). Needs a clean single-DLL retest, then commit.
 
-## QUEUE (ordered)
-1. ~~**Bonus-2: SummoningPools → native glyph.**~~ DONE (uncommitted). `MENU_MAP_89` (Martyr Effigy)
-   chosen. category_meta.cpp: `WorldSummoningPools → 89` in `CATEGORY_GPU_ICONS`. Plus a generic disk
-   fallback in `MapPointProvider::resolve` (map_renderer.cpp) — resident GPU symbol, else `map_point_glyph_uv`
-   by iconId, mod-agnostic. Verified in-game (246 pools, live param, Martyr Effigy shows). Committed
-   `07b3904`. NOT pushed.
-2. **Bonus-3: quest NPC → `MENU_MAP_80`.** Belongs on the `feature/quests` branch, not here. Defer.
-3. **Per-item icons (interactive map).** Draw each loot marker's ACTUAL item iconId (not the category
-   rep) via the existing native_item_icon path. VERIFIED FEASIBLE + ~free VRAM: item icons are atlased
-   into ~14 shared 4096×2048 BC7 sheets (8MB each, ~112MB all-resident); cost is per-SHEET not per-icon,
-   and the rep system already uploads whole sheets, so per-item = different UV rect into an already-
-   resident sheet (~0 extra VRAM, +16MB worst case). SRV budget fine (1 slot/sheet, 14«256). g_item_icon_
-   layout already holds all 4844 iconId→rect. Caveat: ER GPU streaming not shareable → we keep our own
-   sheet copy, but that's already paid by the rep system.
-4. **Baked atlas removal** (`generated_shared/goblin_overlay_icons.{hpp,cpp}` ATLAS_PNG ~135KB + ICON_CELLS
-   + the stbi_load_from_memory at goblin_overlay.cpp:1163 + tier-3 in IconSet::resolve). GATED on proving
-   mod-agnostic native coverage first (the 7 POI + ERR-named map symbols are ERR-only; on vanilla they'd
-   fall to circle — acceptable under the directive, but confirm intent). Keep stb_image (msbe_parser needs
-   stbi_zlib_decode_buffer). Circle becomes the sole fallback.
+## QUEUE — all items resolved (see `feat/native-poi-icons` section above)
+Bonus-2, per-item icons, and the baked-atlas decision are all DONE/committed/merged (detail above + in
+the "Baked-atlas removal (#4)" section). Only real remaining item: **Bonus-3 quest NPC → `MENU_MAP_80`**,
+deferred to the quest-browser work — see "Parallel workstreams" below.
 
 ## Known bugs (priority)
 - **ROOT CAUSE — DOUBLE-LOAD of two DLL variants.** The install ships `MapForGoblins.dll` (ERR build) AND
@@ -361,12 +335,14 @@ disk via Oodle/dvdbnd). Baked atlas = ERR-frozen artifact → eliminate. Circle 
     Makes the double-patch structurally impossible AND removes all PlaceName mutation (pure runtime lookup,
     directive-compliant). Overlay labels (self-rendered AddText) keep working. Not urgent now that single-DLL fixes it.
 
-## Parallel workstreams (plan-only branches — NOT this branch)
-These branches exist with a plan attached but little/no implementation; pick up via their plan docs.
-- `feature/dx-bugs-backlog` → `docs/memory/process/plan-dx-bugs-audit.md`, `docs/memory/bugs/dx-bugs-backlog.md`
-- `feature/spatial-grid-opti` → `docs/memory/process/plan-spatial-grid-audit.md`
-- `feat/quests` (quest NPC layer; bonus-3 `MENU_MAP_80` lands here) → `docs/memory/process/plan-quests-audit.md`,
-  `docs/plans/feat_quests_implementation_plan.md`, `docs/memory/features/quest-browser.md`
+## Parallel workstreams (no branch yet — fork fresh from master when starting, see policy above)
+`feature/dx-bugs-backlog` and `feature/spatial-grid-opti` branches no longer exist (the spatial-grid work
+already shipped — see `feat/spatial-grid-cull` resolution above; dx-bugs was never implemented and its
+plan now lives on master per the "Plans live on master" policy). Pick up via the plan docs, forking a
+fresh branch when implementation actually starts:
+- DX bugs backlog → `docs/plans/dx_bugs_backlog_plan.md`, `docs/memory/bugs/dx-bugs-backlog.md`
+- Quest browser + NPC layer (bonus-3 `MENU_MAP_80` lands here) → `docs/plans/feat_quests_implementation_plan.md`,
+  `docs/memory/features/quest-browser.md`
 - Plan registry: `docs/memory/process/plans-to-audit.md`.
 
 ## Debake candidates (apply the prime directive — replace ERR-frozen bakes with active-file reads)
