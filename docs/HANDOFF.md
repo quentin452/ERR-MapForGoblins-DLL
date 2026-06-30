@@ -14,10 +14,11 @@ worldmap/map_renderer.cpp) — built + deployed, NOT committed (was pending in-g
 exonerated of the grace bug, so it is commit-ready once a single-DLL run confirms it draws).
 
 ## feat/native-poi-icons — FOLLOWUP to finish this branch
-1. **Re-test bonus-1 on a single-DLL run** (the earlier "discovered grace disappears" was a double-load
-   artifact, NOT bonus-1). Expect: undiscovered grace = gold figurine (`[GRACEUNDISC]` log), discovered =
-   bonfire + green check. If good → commit the 5 uncommitted bonus-1 files.
-2. Then QUEUE bonus-2 (summon glyph), then per-item icons, then baked removal (see QUEUE below).
+1. ✅ DONE — bonus-1 retested single-DLL + committed (`6e45986`): undiscovered grace draws
+   `MENU_MAP_Player_02` from disk (`[GRACEUNDISC]` tex=0x33000001c0, UV correct), discovered = bonfire+check
+   (GRACE-SPRITE LOCKED ×32, fine on single-DLL). The disk map-point render path (`map_point_glyph_uv` +
+   accessors) is now in — bonus-2/3 reuse it.
+2. NEXT — bonus-2 (summon glyph), then per-item icons, then baked removal (see QUEUE below).
 3. Push when the user says so (nothing pushed yet this whole arc).
 
 ## Prime directive (see AGENTS.md → Design principles)
