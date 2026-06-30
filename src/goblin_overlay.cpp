@@ -1589,6 +1589,10 @@ namespace
     // the icons master is off, or the player is underground (pos not yet reliable).
     void draw_minimap_hud()
     {
+        // Instrumented: the world-map close edge hands off to this minimap HUD, whose marker loop
+        // does a read_event_flag() per marker. That first-closed-frame cost was previously unbenched,
+        // so the "map-close lag" never showed up in the report or the spike warn. Now it does.
+        GOBLIN_BENCH("render.minimap");
         void *atlas = g_atlas_ready ? reinterpret_cast<void *>(g_atlas_gpu.ptr) : nullptr;
         ImGuiIO &io = ImGui::GetIO();
         if (ensure_grace_srv())
