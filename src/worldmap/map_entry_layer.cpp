@@ -2520,17 +2520,19 @@ void build_buckets_impl()
     if (goblin::config::diagLootFlags)
     {
         int noname = 0;
-        for (const auto &bucket : g_buckets)
-            for (const Marker &m : bucket)
+        for (int c = 0; c < (int)g_buckets.size(); ++c)
+            for (const Marker &m : g_buckets[c])
             {
-                if (!m.lot_backed || m.name_id == 0) continue;
-                if (!goblin::lookup_text_utf8(m.name_id).empty()) continue;
-                if (++noname <= 25)
-                    spdlog::info("[NONAME] name_id={} lot={} loc='{}'", m.name_id, m.lotId,
+                if (m.name_id == 0) continue;                              // no resolved key at all
+                if (!goblin::lookup_text_utf8(m.name_id).empty()) continue; // name resolved fine
+                if (++noname <= 40)
+                    spdlog::info("[NONAME] cat={} lot_backed={} name_id={} lot={} loc='{}'", c,
+                                 (int)m.lot_backed, m.name_id, m.lotId,
                                  goblin::lookup_text_utf8(m.loc_pname));
             }
         if (noname)
-            spdlog::info("[NONAME] {} lot markers have a resolved key but no FMG name (ERR-custom?)", noname);
+            spdlog::info("[NONAME] {} markers have a resolved key but no FMG name "
+                         "(ammo FMG gap / ERR-custom — see loot_ammo_encoding_finding.md)", noname);
     }
 
     // ── [SKIPPED] shown vs skipped: disk placements parsed but NOT drawn, by reason ─
