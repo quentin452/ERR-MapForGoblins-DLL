@@ -59,8 +59,9 @@ the same data pre-extracted if you want raw lookup instead of rerunning the tool
 internal model-instance name (e.g. `c0000_9032`), not "Boc", so `_find_npc.py`'s NAME-based search is the
 practical entry point, not a manual grep of that file.
 
-**2 candidate values already exist** in `goblin_quest_steps.cpp` (lines ~399-405 region, the fail_flag
-verification comment): `Boc 3943 (11050730)`, `Thops 3803 (1039390700)`. These were captured for a
+**2 candidate values already exist** in `goblin_quest_steps.cpp` (lines 364-368, the `Confirmed:`
+fail_flag verification comment; re-stated per-NPC at lines 405-406 (Boc) and 457 (Thops)):
+`Boc 3943 (11050730)`, `Thops 3803 (1039390700)`. These were captured for a
 DIFFERENT purpose (death/conclusion-flag verification) and the comment doesn't say which of the 6/4 steps
 above that single MSB placement corresponds to. Verify which step it belongs to (likely an early one,
 since most NPCs are first encountered at a fixed spot) before reusing it as that step's `entity_id` — do
