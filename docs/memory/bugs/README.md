@@ -4,6 +4,11 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
 **current code**, verified during the 2026-06-29 reorg. Open items are the real backlog.
 
 ## Resolved
+- **Overlay input-hook freeze** [resolved 2026-06-30] — a `ShowCursor` detour that swallowed the game's
+  hide with a constant `>=0` return made ER's `while(ShowCursor(FALSE)>=0)` loop spin forever on the game
+  thread; the overlay (present thread) kept rendering → "game frozen, DLL alive". Reverted. Guardrail:
+  input-API detours run on the game thread and must never loop/block or trap a game spin-loop. Open watch:
+  confirm no Fullscreen freeze recurs (now Borderless + button-polling). → [overlay-input-hook-freeze](overlay-input-hook-freeze.md)
 - **Item-stack toggle rebuild race** [resolved 2026-06-30] — toggling `stack_identical_items` re-kicked
   a bucket build without waiting for the previous worker → two threads mutating `g_buckets` / a shared
   `unordered_map` → AV in rehash (`crash_320`, `+0x6B265`). Now serialized to one worker + pending flag.
