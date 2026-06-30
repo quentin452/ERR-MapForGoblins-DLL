@@ -692,13 +692,18 @@ void hover_test(Hover &h, ImVec2 mouse, ImVec2 p, float r, MakeLabel make_label)
 std::string marker_label(const Marker &m)
 {
     std::string loc = goblin::lookup_text_utf8(m.loc_pname);
-    // Spoiler-free: don't leak the item name — just "?" (+ its location, like native).
+    // " xN" quantity suffix when this lot bundles more than one item (Marker.count). ASCII 'x'
+    // (not '×') so it can't tofu on a font missing the multiply glyph. Empty for single items.
+    const std::string qty = (m.count > 1) ? (" x" + std::to_string(m.count)) : std::string();
+    // Spoiler-free: don't leak the item name — just "?" (+ its location, like native). Quantity is
+    // not an identity spoiler, so it still shows.
     if (goblin::config::anonymousLoot && m.lot_backed)
-        return loc.empty() ? std::string("?") : ("?\n" + loc);
+        return loc.empty() ? ("?" + qty) : ("?" + qty + "\n" + loc);
     std::string name = goblin::lookup_text_utf8(m.name_id);
     if (name.empty()) return loc;
+    name += qty;
     if (loc.empty()) return name;
-    return name + "\n" + loc; // item name, then its location on the next line
+    return name + "\n" + loc; // item name (+ qty), then its location on the next line
 }
 // A cluster pile's tooltip = its location name (if any) + the member count. Shows
 // "<remaining>/<total> left" while some are uncollected, "<total> markers" otherwise.
@@ -887,6 +892,8 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         // Pile count = UNCOLLECTED members (depletion), so the glyph reflects progress
         // instead of the static total. When collected_graying is off, show the full
         // total. marker_done = the same collected/cleared predicate used for graying.
+        // This counts MARKERS (one per lot), not items — per-lot quantity lives in each
+        // marker's hover tooltip (Marker.count), not the pile glyph.
         int total = (int)idxs.size();
         int remaining = total;
         if (goblin::config::collectedGraying)

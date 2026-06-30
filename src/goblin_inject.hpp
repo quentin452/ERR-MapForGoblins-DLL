@@ -377,6 +377,10 @@ namespace goblin
     // The caller emits a sub-lot marker when the row exists with flag != 0 and a real item.
     bool lot_row_in_table(uint32_t lot, uint8_t lotType, uint32_t *flagOut, int32_t *keyOut);
 
+    // Total items a lot carries: Σ max(lotItemNum0N,1) over the lot's non-empty, valid-category
+    // slots 01–08. Returns 1 on any miss. Drives the marker "×N" stacking badge.
+    int lot_item_count(uint32_t lotId, uint8_t lotType);
+
     // Live category fallback for item_marker_category()'s default/catch-all tail:
     // derives a GENERIC MFG Category from the LIVE item type (EquipParamGoods.goodsType
     // for goods, the lot category for equipment). Takes the offset-encoded item key

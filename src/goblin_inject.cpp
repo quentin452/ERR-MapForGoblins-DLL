@@ -4816,6 +4816,39 @@ bool goblin::lot_row_in_table(uint32_t lot, uint8_t lotType, uint32_t *flagOut, 
     return true;
 }
 
+// Total item count a single ItemLotParam lot carries. An ItemLotParam row has 8 item slots
+// (lotItemId01..08 @ +0x00, lotItemCategory01..08 @ +0x20, lotItemNum01..08 (u8) @ +0x8A), but
+// the readers above only resolve slot 01 — so a lot bundling several items (3× Sliver of Meat,
+// or three distinct goods in slots 01–03) was undercounted to 1. This sums max(lotItemNum0N,1)
+// over every non-empty, valid-category slot (num 0 means 1, the param default). Returns 1 on any
+// miss (no lot, no reader, no row) so the caller's marker keeps its default count. Same param
+// chain as resolve_loot_item_textid — works on any mod, no bake. See docs/plans/loot_item_count_plan.md.
+int goblin::lot_item_count(uint32_t lotId, uint8_t lotType)
+{
+    if (lotType == 0 || lotId == 0)
+        return 1;
+    static LotReader s_lots;
+    static std::once_flag s_once;
+    static bool s_ok = false;
+    std::call_once(s_once, [] { s_lots.init(); s_ok = s_lots.ok(); });
+    if (!s_ok)
+        return 1;
+    RawItemLotRow *row = s_lots.row(lotId, lotType);
+    if (!row)
+        return 1;
+    int total = 0;
+    for (int i = 0; i < 8; ++i)
+    {
+        const int32_t item = *reinterpret_cast<int32_t *>(row->b + 0x00 + i * 4);  // lotItemId0(i+1)
+        const int32_t cat  = *reinterpret_cast<int32_t *>(row->b + 0x20 + i * 4);  // lotItemCategory0(i+1)
+        if (item <= 0 || cat < 1 || cat > 5)
+            continue;
+        const uint8_t num = *(row->b + 0x8A + i);                                  // lotItemNum0(i+1)
+        total += (num > 0) ? num : 1;
+    }
+    return total > 0 ? total : 1;
+}
+
 // One AssetEnvironmentGeometryParam row (320 bytes; pickUpItemLotParamId @ +0xb8,
 // s32 — offset confirmed vs the paramdef DetectedSize=320). Read by raw offset
 // like RawItemLotRow.

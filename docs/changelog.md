@@ -25,6 +25,12 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Loot item count** — a single ItemLotParam lot bundling several items (multiple slots, or a slot
+  quantity >1) now reads the real count instead of collapsing to 1. Each lot marker carries
+  `Marker.count` (Σ max(lotItemNum0N,1) over the lot's non-empty slots 01–08, `lotItemNum01 @ +0x8A`,
+  live param chain — any mod) and the hover tooltip shows the item name with an ` xN` quantity suffix.
+  Fixes the undercount (e.g. "Below The Well" 3× Sliver of Meat showing as 1).
+  See `docs/plans/loot_item_count_plan.md`.
 - **Tile-based clustering** — map markers now cluster by their map-space 256-unit tile (+ map layer)
   instead of the old nearest-grace heuristic: deterministic, zoom-aware, and piles can't drift since
   each group is bounded to one tile. Graces are never piled (vanilla parity), clustering only uses

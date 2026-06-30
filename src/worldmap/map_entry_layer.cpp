@@ -217,6 +217,9 @@ void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST
             const int icon = goblin::item_real_icon_id(key);
             if (icon > 0) m.item_icon_id = icon;
         }
+        // Stacking: a lot can bundle several items (multiple slots, or qty>1 on slot 01) — the
+        // marker still draws slot-01's icon/name but carries the total count for the "×N" badge.
+        m.count = goblin::lot_item_count(lotId, lotType);
     }
     g_buckets[c].push_back(m);
 }

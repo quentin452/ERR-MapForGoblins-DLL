@@ -105,6 +105,12 @@ struct Marker
     // DX item 7: block-local altitude (MSB pos[1]); ≈ world Y on the overworld. Set by push_marker after
     // the aggregate init (default 0 keeps other ctors intact). Drives the above/below-player altitude badge.
     float worldY = 0.0f;
+    // Number of items this single lot-backed marker represents: Σ over the lot's 8 slots of
+    // max(lotItemNum0N,1) for each non-empty slot (so a lot carrying 3× Sliver of Meat, or three
+    // distinct items in slots 01–03, shows count=3). 1 for non-lot markers and single-item lots.
+    // Set by push_marker (after the aggregate init, like item_icon_id/worldY). Drives the "×N"
+    // render badge and the cluster pile sum.
+    int count = 1;
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the

@@ -1,7 +1,10 @@
 # Plan: loot item count (undercount fix + ×N stacking)
 
-Status: NOT STARTED (deferred 2026-06-30 for a fresh context window). Root cause confirmed by
-investigation; this is fixable wiring + a small render addition, no missing data.
+Status: IMPLEMENTED 2026-06-30 on branch `feat/loot-item-count` (builds + deploys clean).
+`goblin::lot_item_count()` sums slots 01–08 (`lotItemNum01 @ +0x8A` — +0x89 was lotItem_Rarity, an
+off-by-one that read 0xFF=255), `Marker.count` threads it through push_marker, and the hover tooltip
+shows the item name + ` xN` quantity suffix (no separate on-map badge — see iteration below). Cluster
+pile glyph still counts markers. Runtime in-game visual confirm ("Below The Well" 3×) still pending.
 
 ## The two bugs (same root → one feature)
 
