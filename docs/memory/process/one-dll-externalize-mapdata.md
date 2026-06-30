@@ -1,6 +1,6 @@
 ---
 name: one-dll-externalize-mapdata
-description: "Plan to kill the N-DLL-per-mod problem by externalizing baked map data. PARTLY MOOTED 2026-06-27: ERR has NO bake anymore (no-bake Phase 2 done) so it needs no externalize; vanilla/ERTE/Convergence still baked — convert those to live DiskMSB too rather than externalize"
+description: "Plan to kill the N-DLL-per-mod problem. SUPERSEDED 2026-06-30: no per-mod data file (externalized or baked) will exist once vanilla/ERTE/Convergence migrate to live DiskMSB like ERR — so the runtime-pick decision (A/B/C/D below) is dead, not just parked. Next step is the migration itself, see docs/HANDOFF.md."
 metadata: 
   node_type: memory
   type: project
@@ -44,12 +44,15 @@ struct, `category` u8, `geom_slot`/`name_suffix` i16, `lotId` u32, `lotType` u8)
 `object_name` → record array + offset into a string pool. ~8653 records ≈ few hundred KB, same-platform
 endianness.
 
-**OPEN DECISION — how the single DLL picks which .bin at runtime (user wants options recorded, decide later):**
-- **A (recommended): auto by `regulation.bin` hash** → maps to the matching bundled `.bin`. Zero config,
-  "just works"; needs a known-hash table (update on mod version bump; fallback to INI/Vanilla on unknown).
-- **B: INI key `map_data_file=`** — dead simple, manual; good as the fallback override regardless.
-- **C: auto-detect by mod folder/files** (path name, marker files, ReforgedLauncher config) — no
-  regulation parse but fragile vs install layouts.
-- **D: bundle all `.bin` + try-match** (hash → INI → Vanilla) — largest install, most robust; combines A+B.
+**DEAD DECISION — how the single DLL picks which .bin at runtime (A/B/C/D below), confirmed dead 2026-06-30:**
+- **A: auto by `regulation.bin` hash.** **B: INI key `map_data_file=`.** **C: auto-detect by mod folder/files.**
+  **D: bundle all `.bin` + try-match.** (kept for the record only — see below for why none apply)
 
-Status: PARKED (design only, nothing built). User said "pour le moment on save en mémoire les options".
+**Why dead, not parked:** all four options assume a per-mod data FILE that the runtime must pick between.
+Once vanilla/ERTE/Convergence migrate onto the same live-DiskMSB pipeline ERR already uses (no-bake
+Phase 2, see [[msbe-parser-supersedes-bake]]), there is no per-mod file left to pick — one binary reads
+whatever mod's `map/MapStudio/*.msb.dcx` + regulation is on disk at runtime, same code path for every
+mod. "Pick a data file" stops being a question because there's no data file. User confirmed 2026-06-30:
+"pas besoin de runtime detection, un dll est suffisant pour tout" (no runtime detection needed, one DLL
+suffices for everything). Next step is the migration itself (vanilla first, then ERTE, then Convergence),
+tracked in `docs/HANDOFF.md`.

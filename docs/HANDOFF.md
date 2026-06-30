@@ -37,6 +37,13 @@ Last updated: 2026-06-30 LATE (native GetMessage refactor IMPLEMENTED + VISUALLY
      via the real DLC slots) is logically sound but untested. Build/deploy the vanilla profile and eyeball a DLC item.
      Also re-confirm EventTextForMap (600M / slot 34) actually resolves via GetMessage now that the dead
      per-profile machinery is gone (was unsupported before the refactor).
+  2. **One-DLL map-data thread (separate from the above) — runtime-detection decision DROPPED, not needed.**
+     [[one-dll-externalize-mapdata]]: once vanilla/ERTE/Convergence move onto the same live-DiskMSB pipeline
+     ERR already uses, there's no per-mod data file left to pick at runtime — one binary, reads whatever
+     mod's files are on disk. So skip straight to migration, one branch/PR per profile: vanilla first
+     (simplest, proves the pipeline) → ERTE → Convergence → then collapse the `GENERATED_SUBDIR` CMake
+     switch to a single target and delete the per-profile generator scripts + `generated_vanilla/erte/
+     convergence/` dirs (708K/3.7M/3.5M).
 
 
 ## Session recap (2026-06-30 NIGHT) — spatial cull verified + loot NONAME closed + ViewDelay bug spawned
