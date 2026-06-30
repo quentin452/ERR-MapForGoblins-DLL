@@ -92,6 +92,11 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   `>= 0x40000000` cut that wrongly dropped DLC one-time loot.
 
 ### Fixed
+- **Item-stack toggle crash** — toggling `stack_identical_items` (esp. rapidly, or with require-fragment)
+  could crash (access violation in an `unordered_map` rehash). `rebuild_markers()` re-kicked a bucket
+  build without waiting for the previous one, so two workers mutated `g_buckets` / a shared map
+  concurrently. Builds are now serialized (single worker; a mid-build re-toggle is queued via a pending
+  flag) and the worker is the only thread that clears/refills `g_buckets`.
 - **Map-open freeze** — fully resolved by the ImGui/DX overlay backend: markers are no longer injected as
   native `WorldMapPointParam` rows, so the engine doesn't walk them at open. (`areaNo=99` eviction +
   clustering was the pre-overlay mitigation.)

@@ -4,6 +4,10 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
 **current code**, verified during the 2026-06-29 reorg. Open items are the real backlog.
 
 ## Resolved
+- **Item-stack toggle rebuild race** [resolved 2026-06-30] — toggling `stack_identical_items` re-kicked
+  a bucket build without waiting for the previous worker → two threads mutating `g_buckets` / a shared
+  `unordered_map` → AV in rehash (`crash_320`, `+0x6B265`). Now serialized to one worker + pending flag.
+  → [item-stack-toggle-rebuild-race](item-stack-toggle-rebuild-race.md)
 - **Map-open freeze** [resolved 100%] — **fixed by switching to the ImGui/DX overlay backend.** Markers
   are now drawn by our own overlay instead of being injected as native `WorldMapPointParam` rows, so the
   engine no longer walks any extra on-page rows at map open and the multi-second freeze is gone entirely.
