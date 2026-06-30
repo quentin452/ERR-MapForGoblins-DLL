@@ -46,7 +46,8 @@ disk via Oodle/dvdbnd). Baked atlas = ERR-frozen artifact → eliminate. Circle 
 1. ~~**Bonus-2: SummoningPools → native glyph.**~~ DONE (uncommitted). `MENU_MAP_89` (Martyr Effigy)
    chosen. category_meta.cpp: `WorldSummoningPools → 89` in `CATEGORY_GPU_ICONS`. Plus a generic disk
    fallback in `MapPointProvider::resolve` (map_renderer.cpp) — resident GPU symbol, else `map_point_glyph_uv`
-   by iconId, mod-agnostic. Builds clean (build-linux). NOT YET committed/pushed. Needs in-game verify.
+   by iconId, mod-agnostic. Verified in-game (246 pools, live param, Martyr Effigy shows). Committed
+   `07b3904`. NOT pushed.
 2. **Bonus-3: quest NPC → `MENU_MAP_80`.** Belongs on the `feature/quests` branch, not here. Defer.
 3. **Per-item icons (interactive map).** Draw each loot marker's ACTUAL item iconId (not the category
    rep) via the existing native_item_icon path. VERIFIED FEASIBLE + ~free VRAM: item icons are atlased
