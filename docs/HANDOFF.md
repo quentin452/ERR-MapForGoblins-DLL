@@ -39,6 +39,15 @@ Gate before deleting the baked overlay atlas: prove which categories actually ne
     removing it now regresses them to circle. KEEP the atlas.
   - Follow-ups before re-auditing: (1) loot cats hitting atlas instead of the per-item/rep tier
     (Bell-Bearings, Crafting Materials, Rune Arcs…) — per-item coverage gap? possibly free wins.
+    INVESTIGATED (2026-06-30): all 9 are lot-backed treasures (push_marker lotType=1,
+    map_entry_layer.cpp:378), so the per-item resolution DOES run for them but yields item_icon_id=0.
+    Miss is one of two — `resolve_loot_item_textid` returns a baked textid <100M (lot not resolving to
+    a live item) OR it resolves but `item_real_icon_id` returns -1 (the goods row's EquipParam.iconId
+    is 0). Rep also misses (category_meta has no static rep for these). DISAMBIGUATOR = the tooltip:
+    real item name → key resolves → iconId=0 (often fundamental); generic/baked label → lot-resolution
+    gap (fixable, lotType/empty-lot). RESUME PROBE: add a one-shot debug log in push_marker for
+    lot_backed markers where item_icon_id==0, dumping lotId/lotType + the resolved key + item_real_icon_id
+    result, run ERR over an affected region, read the truth. Not started — belongs with the atlas PR.
     (2) wire numeric `category_gpu_iconId` for the world-feature cats (like summoning-pools→89).
     (3) `World - Maps` has no native glyph. Re-audit on a MATCHED map view once coverage widens.
 
