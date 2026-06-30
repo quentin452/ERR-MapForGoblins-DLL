@@ -20,7 +20,13 @@ Last updated: 2026-06-30 NIGHT (spatial cull verified+landed-on-branch, loot NON
 - **NEW BUG (separate from cull): zoom/pan marker re-adjust.** User sees markers re-adjust ~1 frame on
   zoom+pan. NOT the cull (invariant). Cause = pre-existing `ViewDelay` fixed-frame motion-sync
   (`kViewDelayFrames=1.0`) that can't track variable frame time (15 spikes ~7ms in the run). Full writeup
-  + fix candidates in `docs/memory/bugs/overlay-render-perf-followups.md` (SEPARATE BUG section). NEXT.
+  + fix candidates in `docs/memory/bugs/overlay-render-perf-followups.md` (SEPARATE BUG section).
+  - **Fix candidate (a) DONE & deployed:** branch `feat/view-delay-tune` (stacked on `feat/spatial-grid-cull`,
+    commit `4fe36ef`) turns `kViewDelayFrames` into live config `view_delay_frames` + an F1 "Marker motion
+    delay (frames)" slider [0..7] (live, no restart, Save-to-INI). Deployed `4ec98027` (cull + knob + slider).
+  - **NEXT (user, in-game):** pan the map, drag the slider to find the value that kills the re-adjust; if a
+    fixed frame count works at all fps keep it as default, else escalate to time-based ease (candidate b).
+    Record the chosen value in the memory note.
 
 ## Plans live on master — fork implementation branches fresh (2026-06-30)
 Policy: **plan-only branches are not kept.** A plan-only branch drifts as master's memory evolves (the

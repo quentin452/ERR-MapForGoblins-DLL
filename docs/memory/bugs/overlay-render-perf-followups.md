@@ -46,6 +46,14 @@ ease → markers snap on stop. FIX candidates: (a) make `kViewDelayFrames` a liv
 in-game; (b) switch to a *time-based* (ms) ease instead of frame-count; (c) match the engine's actual
 basemap interpolation curve. Reproduces on master (cull off).
 
+**STATUS 2026-06-30 NIGHT: fix candidate (a) IMPLEMENTED** on branch `feat/view-delay-tune` (stacked on
+`feat/spatial-grid-cull`): `kViewDelayFrames` constexpr → live config `view_delay_frames` (default 1.0,
+`apply()` clamps to ring `[0, N-1]`) + an F1 **"Marker motion delay (frames)"** slider [0..7]
+(`goblin_overlay.cpp`, "Marker scale" header) so it's tunable live (no restart) and Save-to-INI persists.
+Deployed `4ec98027` (cull + knob + slider). NEXT: pan the map and tune the slider — if one fixed frame
+count kills the re-adjust at all frame rates, keep it as the new default; if it only holds at steady fps
+and drifts on spikes, escalate to candidate (b) time-based ease. Record the chosen value here.
+
 Related UX backlog (separate, spawned as a task this session): a per-category **density slider** +
 **item search bar** for the same ~8477-marker pressure — see [[nobake-coverage-scoreboard]] context and
 the `baked_only` diag toggle (also a marker-loop filter). These are overlay-UX, the two above are pure
