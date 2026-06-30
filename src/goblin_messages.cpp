@@ -35,6 +35,51 @@ class MsgRepositoryImp;
 static from::CS::MsgRepositoryImp *msg_repository = nullptr;
 static void *fmg_allocation = nullptr;
 
+// Native message getter (CS::MsgRepositoryImp::GetMessage, FUN_14266d3c0):
+//   wchar_t* GetMessage(repo, group, fmgId, msgId);  group=0, fmgId=physical slot.
+// Bounds- and null-checks internally, so calling it is crash-safe on every slot
+// (incl. ERR's stub DLC slots); under ERR it returns base+DLC-merged content
+// because ERR hooks it. Resolved in setup_messages; used by lookup_text on demand
+// instead of hand-walking slot internals. RE: docs/re/windows_native_msg_getter_re_findings.md
+using GetMessageFn = const wchar_t *(*)(void *repo, uint32_t group, uint32_t fmgId,
+                                        uint32_t msgId);
+static GetMessageFn g_get_message = nullptr;
+
+// Decode a marker textId into its FMG layer slots (tried dlc02 -> dlc01 -> base)
+// and the real FMG id. Inverse of encode_live_item (goblin_inject.cpp) + the
+// marker offset bands in setup_messages. Mod-agnostic: GetMessage safely returns
+// null for absent/stub slots, so the full layered slot list is always safe.
+struct DecodedTextId { const int *slots; int n; int32_t real_id; };
+static DecodedTextId decode_textid(int32_t id)
+{
+    static const int kWeapon[]    = {410, 310, 11};
+    static const int kProtector[] = {413, 313, 12};
+    static const int kAccessory[] = {416, 316, 13};
+    static const int kGem[]       = {422, 322, 35, 42};
+    static const int kGoods[]     = {419, 319, 10};
+    static const int kEvent[]     = {467, 367, 34};
+    static const int kNpc[]       = {428, 328, 18};
+    static const int kAction[]    = {32};
+    static const int kTutorial[]  = {475, 375, 207};
+    static const int kBlood[]     = {461, 361, 2};
+    static const int kPlace[]     = {429, 329, 19};
+#define MFG_DEC(arr, rid) DecodedTextId{(arr), static_cast<int>(sizeof(arr) / sizeof((arr)[0])), (rid)}
+    if (id >= 1600000000 && id < 1700000000) return MFG_DEC(kNpc,       id - 700000000); // NpcName hi-range
+    if (id >=  950000000 && id <  960000000) return MFG_DEC(kBlood,     id - 950000000); // BloodMsg
+    if (id >=  900000000 && id <  950000000) return MFG_DEC(kTutorial,  id - 900000000); // TutorialTitle
+    if (id >=  800000000 && id <  900000000) return MFG_DEC(kAction,    id - 800000000); // ActionButtonText
+    if (id >=  700000000 && id <  800000000) return MFG_DEC(kNpc,       id - 700000000); // NpcName
+    if (id >=  600000000 && id <  700000000) return MFG_DEC(kEvent,     id - 600000000); // EventTextForMap
+    if (id >=  500000000 && id <  600000000) return MFG_DEC(kGoods,     id - 500000000); // GoodsName
+    if (id >=  400000000 && id <  500000000) return MFG_DEC(kGem,       id - 400000000); // GemName + ArtsName
+    if (id >=  300000000 && id <  400000000) return MFG_DEC(kAccessory, id - 300000000); // AccessoryName
+    if (id >=  200000000 && id <  300000000) return MFG_DEC(kProtector, id - 200000000); // ProtectorName
+    if (id >=  100000000 && id <  200000000) return MFG_DEC(kWeapon,    id - 100000000); // WeaponName
+    if (id >=   50000000 && id <  100000000) return MFG_DEC(kWeapon,    id);             // WeaponName ammo (as-is)
+    return MFG_DEC(kPlace, id);                                                          // PlaceName (< 50M)
+#undef MFG_DEC
+}
+
 // Every PlaceName id that resolves to a real string after the FMG patch.
 // Populated in patch_fmg_in_memory; read by sanitize_injected_textids().
 static std::unordered_set<int32_t> g_placename_valid_ids;
@@ -496,6 +541,17 @@ void goblin::setup_messages()
 
     spdlog::debug("MsgRepositoryImp at {:p}", (void *)msg_repository);
 
+    // Resolve the native getter. The AOB anchors the INTERIOR (entry+5) because
+    // ERR's MinHook overwrites the prologue, so the entry is (match - 5). Once we
+    // have it, lookup_text resolves loot/place/npc names on demand — crash-safe on
+    // every slot and mod-agnostic, which is why we no longer hand-walk FMG slots.
+    g_get_message = modutils::scan<const wchar_t *(void *, uint32_t, uint32_t, uint32_t)>(
+        {.aob = goblin::sig::GETMESSAGE, .offset = -5});
+    if (g_get_message)
+        spdlog::info("GetMessage resolved at {:p}", (void *)g_get_message);
+    else
+        spdlog::error("GetMessage AOB not found — loot/DLC names will be unavailable");
+
     // PlaceName = bnd index 19 in MsgRepositoryImp
     auto *repo = reinterpret_cast<uint8_t *>(msg_repository);
     auto base_array = *reinterpret_cast<uint8_t ***>(repo + 0x08);
@@ -516,6 +572,9 @@ void goblin::setup_messages()
     auto copy_fmg_entries = [&](uint8_t *fmg_ptr, std::set<int32_t> &needed_ids,
                                 int32_t offset_base, const char *label, int slot) -> int
     {
+        // DISABLED: names are now resolved on demand via the native GetMessage in
+        // lookup_text (crash-safe, DLC-merged under ERR). No eager FMG slot-walk.
+        return 0;
         if (needed_ids.empty() || !fmg_ptr) return 0;
 
         uint32_t grp_cnt = *reinterpret_cast<uint32_t *>(fmg_ptr + 0x0C);
@@ -625,6 +684,9 @@ void goblin::setup_messages()
     auto copy_fmg_all_layered = [&](std::initializer_list<int> slots, int32_t offset_base,
                                     const char *label, bool ammo_as_is) -> int
     {
+        // DISABLED: names are now resolved on demand via the native GetMessage in
+        // lookup_text (crash-safe, DLC-merged under ERR). No eager FMG slot-walk.
+        return 0;
         std::unordered_set<int32_t> seen;
         int total = 0;
         for (int slot : slots)
@@ -1006,15 +1068,18 @@ void goblin::setup_messages()
 
 void goblin::sanitize_injected_textids()
 {
-    if (g_placename_valid_ids.empty())
+    if (!g_expanded_placename_fmg && !g_get_message)
     {
-        spdlog::warn("[SANITIZE] PlaceName valid-id set empty — skipping (FMG patch ran?)");
+        spdlog::warn("[SANITIZE] no PlaceName FMG and no GetMessage — skipping");
         return;
     }
     auto valid = [](int32_t id) {
         // Logic sentinels the DLL/engine special-case (camp/boss markers) — leave alone.
         if (id == 5000 || id == 5100 || id == 5300 || id == 8800) return true;
-        return g_placename_valid_ids.count(id) != 0;
+        // Valid iff a real string resolves — expanded FMG (mod content) or the
+        // native getter (game/DLC names). Mirrors exactly what markers render.
+        const wchar_t *s = goblin::lookup_text(id);
+        return s != nullptr && s[0] != L'\0';
     };
     const auto &rows = goblin::injected_row_ptrs();
     int cleared = 0, scanned = 0;
@@ -1062,7 +1127,9 @@ bool goblin::is_fmg_injection_active()
     return g_fmg_injection_active;
 }
 
-const wchar_t *goblin::lookup_text(int32_t id)
+// Mod-injected content only (real PlaceName locations + injected cluster /
+// major-region / enemy-name labels) — these live in our expanded PlaceName FMG.
+static const wchar_t *lookup_expanded(int32_t id)
 {
     uint8_t *fmg = g_expanded_placename_fmg;
     if (!fmg || id <= 0)
@@ -1091,6 +1158,40 @@ const wchar_t *goblin::lookup_text(int32_t id)
         }
     }
     return nullptr;
+}
+
+const wchar_t *goblin::lookup_text(int32_t id)
+{
+    if (id <= 0)
+        return nullptr;
+    // 1) Mod-injected content (real PlaceName locations + cluster/region/enemy
+    //    labels) lives only in our expanded PlaceName FMG.
+    if (const wchar_t *s = lookup_expanded(id))
+        return s;
+    // 2) Game FMG strings (loot/place/npc/...) via the native getter — DLC-merged
+    //    under ERR, and crash-safe (GetMessage bounds- and null-checks every slot
+    //    internally). Cached per-thread; misses are cached too.
+    if (!g_get_message || !msg_repository)
+        return nullptr;
+    static thread_local std::unordered_map<int32_t, const wchar_t *> cache;
+    auto it = cache.find(id);
+    if (it != cache.end())
+        return it->second;
+    const wchar_t *res = nullptr;
+    DecodedTextId d = decode_textid(id);
+    for (int i = 0; i < d.n; i++)
+    {
+        const wchar_t *s = g_get_message(msg_repository, 0,
+                                         static_cast<uint32_t>(d.slots[i]),
+                                         static_cast<uint32_t>(d.real_id));
+        if (s && s[0])
+        {
+            res = s;
+            break;
+        }
+    }
+    cache[id] = res;
+    return res;
 }
 
 std::string goblin::lookup_text_utf8(int32_t id)
