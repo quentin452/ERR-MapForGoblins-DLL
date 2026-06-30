@@ -3,6 +3,8 @@
 #include "goblin_quest_steps.hpp"
 #include "goblin_debug_events.hpp"
 
+#include <chrono>
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <d3d12.h>
@@ -213,6 +215,16 @@ namespace
     bool g_failed = false;       // gave up (no overlay), mod continues
     bool g_show = false;         // panel visible this frame
     std::atomic<unsigned> g_wndproc_lbdown_while_open{0};  // diag: real WM_LBUTTONDOWN reaching us while the panel is open (0 ⇒ ER raw-input swallows legacy click messages → poll buttons instead)
+    // diag (docs/re/proton11_cursor_lock_re_prompt.md step 1): call counts for the 5 cursor/raw-input
+    // detours, logged once/sec while the panel is open. On Proton 11 the F1 cursor can be frozen at
+    // screen-centre with no hover/click/move at all -- these counters tell us whether ER's mouse
+    // capture even reaches the user32 exports we hook (0 calls while ER clearly captures the mouse =
+    // it's bypassing user32 entirely, e.g. native Wayland pointer-lock or a win32u-only path).
+    std::atomic<unsigned> g_diag_set_cursor_pos{0};
+    std::atomic<unsigned> g_diag_clip_cursor{0};
+    std::atomic<unsigned> g_diag_get_cursor_pos{0};
+    std::atomic<unsigned> g_diag_get_raw_input_data{0};
+    std::atomic<unsigned> g_diag_get_raw_input_buffer{0};
     // Item-search nav window: while > 0, a locate/page-switch is in flight and the input hooks inject a
     // tiny net-zero mouse jitter so the game keeps processing its world-map (otherwise, with the panel
     // open, input is blanked -> the map's view/page step doesn't run -> our switch+pan only apply once
@@ -1175,17 +1187,20 @@ namespace
     // ── Cursor hooks (free the OS cursor while the menu is open) ──────────
     BOOL WINAPI hk_set_cursor_pos(int x, int y)
     {
+        g_diag_set_cursor_pos.fetch_add(1, std::memory_order_relaxed);
         if (g_show) return TRUE;            // swallow the game's recenter-to-middle
         return o_set_cursor_pos(x, y);
     }
     BOOL WINAPI hk_clip_cursor(const RECT *rc)
     {
+        g_diag_clip_cursor.fetch_add(1, std::memory_order_relaxed);
         if (g_show) return o_clip_cursor(nullptr);   // unclip while menu is up
         return o_clip_cursor(rc);
     }
 
     BOOL WINAPI hk_get_cursor_pos(LPPOINT p)
     {
+        g_diag_get_cursor_pos.fetch_add(1, std::memory_order_relaxed);
         BOOL r = o_get_cursor_pos(p);
         // Freeze the cursor the GAME sees while the menu is open (so the 2D map
         // stops following it). ImGui's own NewFrame read gets the real position.
@@ -1215,6 +1230,7 @@ namespace
     UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size,
                                       UINT hdr)
     {
+        g_diag_get_raw_input_data.fetch_add(1, std::memory_order_relaxed);
         UINT ret = o_get_raw_input_data(h, cmd, data, size, hdr);
         // While the menu is open, blank the raw event so the game sees no mouse
         // movement / clicks / key presses. (ImGui's input comes from the
@@ -1256,6 +1272,7 @@ namespace
 
     UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
     {
+        g_diag_get_raw_input_buffer.fetch_add(1, std::memory_order_relaxed);
         // Batched raw input. While the menu is open, report zero buffered events
         // for actual reads (data != null); pass size-queries through so the
         // game's buffer sizing stays correct.
@@ -3144,6 +3161,22 @@ namespace
                     s_logged_click = true;
                     spdlog::info("[CLICKDIAG] L-button delivered to ImGui via GetAsyncKeyState poll "
                                  "(WndProc WM_LBUTTONDOWN seen while open: {})", g_wndproc_lbdown_while_open.load());
+                }
+                // docs/re/proton11_cursor_lock_re_prompt.md step 1: once/sec while the panel is open,
+                // log how many times each cursor/raw-input detour fired since last logged. If these
+                // stay at 0 while the OS-level mouse is clearly captured (the Proton-11-frozen-cursor
+                // symptom), ER's capture is bypassing the user32 exports we hook entirely (H1 native
+                // Wayland pointer-lock, or H2 win32u-only path) -- decides which fix branch applies.
+                static auto s_diag_last = std::chrono::steady_clock::now();
+                auto now = std::chrono::steady_clock::now();
+                if (now - s_diag_last >= std::chrono::seconds(1))
+                {
+                    s_diag_last = now;
+                    spdlog::info("[CURSORDIAG] hooks/sec: set_cursor_pos={} clip_cursor={} get_cursor_pos={} "
+                                 "raw_input_data={} raw_input_buffer={}",
+                                 g_diag_set_cursor_pos.exchange(0), g_diag_clip_cursor.exchange(0),
+                                 g_diag_get_cursor_pos.exchange(0), g_diag_get_raw_input_data.exchange(0),
+                                 g_diag_get_raw_input_buffer.exchange(0));
                 }
             }
 
