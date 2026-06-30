@@ -23,6 +23,12 @@ Branches still open (NOT plan-only, left as-is): `fix/marker-bugs` (~290 files, 
 `diag/fieldins-join-probe` (1-file probe).
 
 ## Session recap (2026-06-30 PM) — shipped + open
+- DONE `37f3239` (merge) loot item count + item stacking, verified in-game. (1) per-lot count in tooltip
+  `xN`, weighted-roll aware (ItemLotParam slots = one weighted roll, not additive — sum was wrong);
+  (2) item stacking: co-located identical-item markers within 5m merge → one `xN` (build-time, world-pos,
+  works underground; toggle `stack_identical_items`); (3) depletion: `xN` counts down as gathered,
+  stack grays only when all collected; (4) item Researcher counts instances (invariant to stacking).
+  Plans: `docs/plans/loot_item_count_plan.md` (DONE), `docs/plans/item_stacking_plan.md` (v2 DONE).
 - DONE `07b3904` bonus-2: SummoningPools → MENU_MAP_89 (Martyr Effigy), verified in-game (246 pools, live param).
 - DONE `caed7ef` per-item loot icons: lot → real EquipParam iconId, native_item_icon → rep → atlas → circle. Verified working.
 - DONE `8c16b60` bench lag-spike WARN (relative-to-baseline, even for quiet timers) + spikes column.
