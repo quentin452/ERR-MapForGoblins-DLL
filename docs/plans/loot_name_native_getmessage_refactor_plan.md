@@ -1,8 +1,12 @@
 # Plan — Replace the FMG slot-walk with the native `GetMessage`, kill `#ifdef MFG_VANILLA`
 
-**Status:** sig landed; refactor DEFERRED to a Windows session (NOT runtime-verifiable on Linux).
-**Do this on Windows + live ERR (and a vanilla+DLC install).** Linux disk-verify is Oodle-blocked
-and the failure mode (wrong decode → blank label for a whole category) is invisible without the game.
+**Status:** IMPLEMENTED + VISUALLY VERIFIED on ERR (`a64f4e1`, 2026-06-30). On-demand `lookup_text`
++ `decode_textid` landed; eager copies neutralized; sanitizer uses live validity. Log: `[SIG] PASS
+GETMESSAGE` (unique), `GetMessage resolved at …d3c0` (= match−5), `setup_messages 11.26 ms`, no crash;
+user confirmed labels render. **Remaining:** (1) cleanup commit — physically delete the dead collection
+loop / copy lambdas+calls / both `#ifdef MFG_VANILLA` blocks (currently only neutralized); (2) verify the
+vanilla+DLC profile (one-DLL-for-all is untested off ERR); (3) re-confirm EventTextForMap (600M/slot 34).
+Build infra fixed in `fa75402` (libzstd.dll + tools/sitecustomize.py).
 
 Prereqs already on master:
 - `re_signatures.hpp` — `GETMESSAGE` AOB + health-check entry (interior anchor, `entry = match-5`).

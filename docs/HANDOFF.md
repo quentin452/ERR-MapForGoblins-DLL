@@ -2,7 +2,36 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-06-30 NIGHT (spatial cull verified+landed-on-branch, loot NONAME Aeonia resolved, new ViewDelay bug).
+Last updated: 2026-06-30 LATE (native GetMessage refactor IMPLEMENTED + VISUALLY VERIFIED on ERR; Windows build unblocked).
+
+## Session recap (2026-06-30 LATE) — native GetMessage: RE resolved → refactor landed → visually confirmed on ERR
+
+- **Native message getter RE — RESOLVED + IMPLEMENTED + VISUALLY VERIFIED (ERR).** `CS::MsgRepositoryImp::GetMessage`
+  = `FUN_14266d3c0` @ RVA `0x266d3c0`, `wchar_t* GetMessage(repo, group, fmgId, msgId)` (group=0, fmgId=physical
+  slot, NULL on miss). It does NOT merge layers itself (repo `groupCount==1`); under ERR the loader folds DLC
+  strings into the BASE slot and stubs the vanilla DLC slots, and **ERR hooks GetMessage** (live entry = MinHook
+  `E9` trampoline). Full RE: `docs/re/windows_native_msg_getter_re_findings.md`. Verified read-only against the
+  live process — no rebuild needed for the RE.
+- **Refactor landed (`a64f4e1`).** `lookup_text` now resolves names on demand via GetMessage (per-id, cached),
+  with `decode_textid()` mapping each marker band → layered slots `{dlc02,dlc01,base}` + real id. Eager FMG
+  copies (`copy_fmg_entries`/`copy_fmg_all_layered`) NEUTRALIZED (no-op) so nothing hand-walks slots; sanitizer
+  validity now = "lookup_text resolves a real string". Crash class structurally gone (GetMessage bounds-checks).
+  In-game log (ERR, this session): `[SIG] PASS GETMESSAGE` (unique), `GetMessage resolved at 0x…d3c0` (= match−5,
+  interior anchor correct), `setup_messages 11.26 ms`, `[SANITIZE] cleared 0`, no crash/`?PlaceName?`. **User
+  confirmed labels render correctly in-game.**
+- **AOB sig (`94fdff3`):** `GETMESSAGE` in `re_signatures.hpp` (interior-anchored, `entry = match-5`, since ERR's
+  hook clobbers the prologue) + health-check entry.
+- **Windows build UNBLOCKED (`fa75402`).** Two infra blockers fixed: `tools/lib` was missing `libzstd.dll`
+  (ZstdNet regulation-decrypt) → added; SoulsFormats temp-`.bnd` unlink raced on Windows (PermissionError aborted
+  generators) → `tools/sitecustomize.py` makes `os.unlink` retry-then-swallow. Run codegen with
+  `PYTHONPATH=tools py tools/build_pipeline.py --profile erte`; then `cmake --build build-erte` (~13s incremental).
+- **STILL OPEN / NEXT:**
+  1. **Cleanup commit** — physically delete the now-dead collection loop, copy lambdas/calls, and BOTH
+     `#ifdef MFG_VANILLA` blocks in `goblin_messages.cpp` (currently only neutralized, not deleted).
+  2. **vanilla+DLC verification** — only ERR is visually verified; the one-DLL-for-all claim (vanilla resolves DLC
+     via the real DLC slots) is logically sound but untested. Build/deploy the vanilla profile and eyeball a DLC item.
+  3. Re-confirm EventTextForMap (600M / slot 34) now resolves via GetMessage (was unsupported before).
+
 
 ## Session recap (2026-06-30 NIGHT) — spatial cull verified + loot NONAME closed + ViewDelay bug spawned
 

@@ -32,10 +32,11 @@ described the DECOY. Lesson: a non-unique AOB is a latent wrong-function bug; th
 shows address drift across sessions when one exists. See [[mapforgoblins-map-open-freeze]],
 [[overlay-rendered-markers]].
 
-**Discovered but not yet wired — `GETMESSAGE`** (2026-06-30, RESOLVED, see
-`docs/re/windows_native_msg_getter_re_findings.md`): the native loot-name getter
-`wchar_t* GetMessage(repo, group, fmgId, msgId)` @ RVA `0x266d3c0`. Add it when implementing the
-`#ifdef MFG_VANILLA` removal. **Caveat — anchor the AOB on the interior, not the prologue:** ERR
+**`GETMESSAGE` — WIRED + VERIFIED LIVE on ERR** (2026-06-30, see
+`docs/re/windows_native_msg_getter_re_findings.md`, landed `a64f4e1`): the native loot-name getter
+`wchar_t* GetMessage(repo, group, fmgId, msgId)` @ RVA `0x266d3c0`. `lookup_text` resolves names through
+it on demand; log confirms `[SIG] PASS GETMESSAGE` (unique) + `GetMessage resolved at …d3c0` (= match−5)
+and user-confirmed labels render. **Caveat — anchor the AOB on the interior, not the prologue:** ERR
 hooks this function (live entry = MinHook `E9` trampoline), so the prologue bytes are clobbered at
 runtime. Interior AOB `44 3B 41 14 73 ?? 48 8B 41 08 8B D2 48 8B 0C D0 48 85 C9 74 ?? 41 8B C0 48 8B
 0C C1 48 85 C9 74 ?? 41 8B D1 E9`, **entry = match − 5**. This is a new general rule for the registry:
