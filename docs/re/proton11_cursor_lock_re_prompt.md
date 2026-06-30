@@ -3,6 +3,12 @@
 Status: OPEN. Environment-side RE (Proton/wine on Linux, NOT Windows-game RE). Durable code fix scoped
 below, GATED on a disambiguation step that must run first.
 
+**Step 1 instrumentation DONE 2026-07-01 (`diag/cursor-hook-call-counters`, not merged).** The 5 detours
+now log `[CURSORDIAG] hooks/sec: set_cursor_pos=... clip_cursor=... get_cursor_pos=... raw_input_data=...
+raw_input_buffer=...` once/sec while the panel is open (`src/goblin_overlay.cpp`). Build, deploy, repro
+the frozen-cursor symptom, and read the counts from `logs/MapForGoblins.log` — that's disambiguation
+step 1 done; step 2 (the `PROTON_ENABLE_WAYLAND=0` env toggle test) still needs running manually.
+
 ## Symptom
 
 After switching ELDEN RING (ERR / MapForGoblins) from **Proton 8.0 → Proton 11.0-100**, pressing **F1**
