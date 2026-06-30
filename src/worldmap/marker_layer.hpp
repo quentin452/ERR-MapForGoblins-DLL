@@ -22,6 +22,16 @@ namespace goblin::worldmap
 // graces via BonfireWarpParam). Default Baked.
 enum class Source : uint8_t { Baked, DiskMSB, Live };
 
+// One absorbed member of an item-stack (see Marker.stacked). Holds just enough to recompute the
+// member's collected state at render (mirrors marker_done's loot branch) so the stack's "xN" can
+// deplete as nodes are gathered, and the stack grays only when EVERY member is collected.
+struct StackedMember
+{
+    uint64_t row_id = 0;       // geom/kindling collected check
+    int collected_flag = 0;    // event flag: this member's item picked up
+    int count = 1;             // this member's own item count (lot_item_count)
+};
+
 // A single marker in UNIFIED world space, pre-classified to a map group.
 struct Marker
 {
@@ -105,12 +115,17 @@ struct Marker
     // DX item 7: block-local altitude (MSB pos[1]); ≈ world Y on the overworld. Set by push_marker after
     // the aggregate init (default 0 keeps other ctors intact). Drives the above/below-player altitude badge.
     float worldY = 0.0f;
-    // Number of items this single lot-backed marker represents: Σ over the lot's 8 slots of
-    // max(lotItemNum0N,1) for each non-empty slot (so a lot carrying 3× Sliver of Meat, or three
-    // distinct items in slots 01–03, shows count=3). 1 for non-lot markers and single-item lots.
-    // Set by push_marker (after the aggregate init, like item_icon_id/worldY). Drives the "×N"
-    // render badge and the cluster pile sum.
+    // Item count this marker represents. For a single lot-backed marker: the lot's deterministic
+    // quantity (goblin::lot_item_count — a slot's num when one slot is live, else 1; see that fn).
+    // For an item-STACK representative (stacked non-empty): the SUM of all merged members' counts —
+    // the total, shown as " xN" in the tooltip. 1 for non-lot markers. Set by push_marker, then
+    // recomputed by stack_identical_markers on merge.
     int count = 1;
+    // Item stacking: when this marker absorbed co-located identical-item neighbours, the per-member
+    // collected state of EVERY member (including this representative). Empty for a normal/unstacked
+    // marker. Lets marker_done gray the stack only when all members are collected, and the tooltip
+    // show the remaining (uncollected) count. Populated by stack_identical_markers.
+    std::vector<StackedMember> stacked;
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the

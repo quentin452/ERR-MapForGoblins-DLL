@@ -8,9 +8,15 @@ v1 done: `stack_identical_markers()` in `map_entry_layer.cpp` runs at the end of
 (gated on the toggle), connected-components over same-(area,item) markers within 5 m of MSB-local
 (px,pz), collapses each component to its first member and SUMS `count` (4 Formic nodes × x1 → x4).
 `rebuild_markers()` re-runs the build on toggle (disk source). Menu checkbox in `goblin_overlay.cpp`.
-v1 LIMITATIONS (deferred): the representative keeps its OWN collected-graying (no per-member depletion
-of the xN as you gather each node — material nodes respawn, so low impact); rebuild on toggle may
-re-register graying-tracking entries (set-deduped, minor).
+v2 (2026-06-30): per-member depletion DONE. The representative records every member's collected
+state (`Marker.stacked` = `StackedMember{row_id, collected_flag, count}`). `marker_done` is now
+stack-aware (the stack grays/checks only when ALL members are collected), and the tooltip shows the
+REMAINING uncollected count when `collected_graying` is on (x4→x2 after gathering 2; back up on
+respawn), the full total when off. Helpers `loot_member_collected` / `stacked_remaining_count` in
+`map_renderer.cpp`.
+
+Remaining LIMITATION (minor): rebuild on toggle may re-register graying-tracking entries
+(set-deduped, harmless).
 
 ## Problem
 

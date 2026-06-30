@@ -1652,17 +1652,32 @@ void stack_identical_markers()
                 if (dx * dx + dz * dz <= kR2) parent[find(i)] = find(j);
             }
         }
-        // Collapse each component to its first member; sum the others' counts into it, drop them.
-        std::unordered_map<int, int> rep;   // union root → index in the new bucket
+        // Collapse each component to its first member. The representative's count becomes the SUM of
+        // all members' counts, and it records every member's collected state so the render can deplete
+        // the "xN" and gray the stack only when all members are gathered (see Marker.stacked).
+        std::unordered_map<int, int> repIdx;   // union root → index in the new bucket
         std::vector<Marker> out;
         out.reserve(n);
-        for (int i = 0; i < n; ++i)
+        for (int i = 0; i < n; ++i)   // pass 1: one representative per component (count zeroed, refilled below)
         {
             const int r = find(i);
-            auto it = rep.find(r);
-            if (it == rep.end()) { rep[r] = (int)out.size(); out.push_back(bucket[i]); }
-            else { out[it->second].count += bucket[i].count; ++merged_total; }
+            if (repIdx.find(r) == repIdx.end())
+            {
+                repIdx[r] = (int)out.size();
+                out.push_back(bucket[i]);
+                out.back().count = 0;
+                out.back().stacked.clear();
+            }
         }
+        for (int i = 0; i < n; ++i)   // pass 2: fold every member into its representative
+        {
+            Marker &R = out[repIdx[find(i)]];
+            R.count += bucket[i].count;
+            R.stacked.push_back({bucket[i].row_id, bucket[i].collected_flag, bucket[i].count});
+        }
+        for (Marker &R : out)         // pass 3: a lone member isn't a stack — drop the bookkeeping
+            if (R.stacked.size() <= 1) R.stacked.clear();
+        merged_total += n - (int)out.size();
         bucket.swap(out);
     }
     if (merged_total)
