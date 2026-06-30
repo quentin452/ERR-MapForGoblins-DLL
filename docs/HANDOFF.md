@@ -30,6 +30,17 @@ Last updated: 2026-06-30 NIGHT (spatial cull verified+landed-on-branch, loot NON
   zero ammo left. Closes cause (a) of `docs/plans/loot_name_dx_followups.md` #1. Cause (b) (vanilla goods
   with names failing — Ember Piece etc.) did NOT reproduce on these pages — STILL OPEN if it shows elsewhere.
 
+- **RE QUEUED — native message getter, to kill `#ifdef MFG_VANILLA` + the FMG slot-walk.** Wrote
+  `docs/re/windows_native_msg_getter_re_prompt.md`. Context: loot-name resolution is already param-side &
+  mod-agnostic up to the name FMG id (`resolve_loot_item_textid` `goblin_inject.cpp:4756` + `encode_live_item`
+  `:1103`); the ONLY remaining per-mod dependency is name-id→string, done by hand-walking the MsgRepository
+  slot array (`copy_fmg_layered` `goblin_messages.cpp:586`, `lookup_text` `:1079`). That hand-walk is why the
+  `#ifdef MFG_VANILLA` (`:697`) pins ERR to base-only `{10}`: vanilla DLC slot numbers are ERR-wrong →
+  v1.0.15 `?PlaceName?` = binder index/layout **corruption, NOT an AV** (seh_call can't catch it). Find the
+  engine's own `GetMessage(category,msgId)` (merges base/dlc01/dlc02 internally, loader-correct) → call it
+  instead → ifdef + slot table + ~100 lines deleted, DLC items resolve on every mod, corruption structurally
+  impossible. Anchor: `MSG_REPOSITORY` sig `re_signatures.hpp:55`. Windows RE (Linux disk-verify Oodle-blocked).
+  Independent of the runtime profile-detection chantier (the other half of the one-DLL goal).
 - **Overlay menu unclickable on Wine/Proton — FIXED + MERGED (`9d6a261`).** F1 panel showed + hover worked
   but clicks didn't register. NOT cursor-lock/fullscreen (those theories were wrong, reverted): ER reads
   Raw Input, so newer wine/Proton posts NO legacy `WM_LBUTTONDOWN` → ImGui's message path saw no presses
