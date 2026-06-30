@@ -2055,10 +2055,10 @@ namespace
                 ImGui::Checkbox("hide instead", &goblin::config::hideCollected);
             }
 
-            // Merge co-located identical-item loot markers into one "xN" (rebuilds buckets on toggle).
-            if (ImGui::Checkbox("Stack identical items (merge same-item nodes within ~5m)",
-                                &goblin::config::stackIdenticalItems))
-                goblin::worldmap::rebuild_markers();
+            // Merge co-located identical-item loot markers into one "xN". Pure render decision (the
+            // grouping is annotated once at build) → instant toggle, no bucket rebuild.
+            ImGui::Checkbox("Stack identical items (merge same-item nodes within ~5m)",
+                            &goblin::config::stackIdenticalItems);
 
             // Major-region name labels (overlay map; live, persists via "Save to INI").
             ImGui::Checkbox("Show region labels (major-region names on the map)",
@@ -2262,13 +2262,13 @@ namespace
                                 const int g = m.group & 3;
                                 s_match.insert(m.name_id);                       // ring every instance
                                 const int64_t k = ((int64_t)m.name_id << 2) | g; // per (name, page)
-                                // Count INSTANCES, not markers: an item-stack representative stands in
-                                // for all its merged co-located members, so the search count stays
-                                // invariant to stacking (4 Formic Rock nodes read 4 whether merged or
-                                // not). stacked is empty for a normal marker → contributes 1.
-                                const int inst = m.stacked.empty() ? 1 : (int)m.stacked.size();
+                                // One marker = one instance. Item stacking is now a non-destructive
+                                // RENDER annotation (every co-located node stays a real marker in the
+                                // bucket, reps + members alike), so a plain +1 per marker already gives
+                                // the true on-map count (4 Formic Rock nodes read 4) regardless of the
+                                // stack toggle — no per-stack adjustment needed.
                                 const bool first = (hit_count[k] == 0);
-                                hit_count[k] += inst;
+                                hit_count[k] += 1;
                                 if (first)
                                     s_hits.push_back({nm.label, m.name_id, 0, g});
                             }

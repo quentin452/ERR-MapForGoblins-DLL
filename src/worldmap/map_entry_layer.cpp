@@ -1612,20 +1612,22 @@ static int build_great_rune_markers(std::unordered_set<Cell, CellHash> &out_cell
 // SpiritSprings/Maps/etc. rows the bake expects are NOT present live. So only bosses (textId2==5100)
 // and graces (BonfireWarpParam) are live-portable; every other category stays baked.
 // Runs exactly once — wrapped by ensure_buckets()/std::call_once.
-// Item stacking: merge loot markers of the SAME item sitting within kStackRadius of each other (in
-// MSB-local world space, same area) into ONE marker whose count is the sum. Build-time and
-// projection-independent, so it works UNDERGROUND (Siofra) where the render-time tile clustering
-// can't (that gates on a live map projection). Only G_LOOT-section categories (gather nodes, crafting
-// materials, consumables) — never bosses/graces/NPCs, which are unique waypoints. Grouping is
-// connected-components within the radius, so a transitive 1m chain still links a spread-out cluster
-// (the Siofra Formic Rock nodes span ~6m but pairwise-bridge under 5m). Gated by stackIdenticalItems.
-// v1: the representative keeps its own collected-graying; per-member depletion is a later pass.
-// See docs/plans/item_stacking_plan.md.
-void stack_identical_markers()
+// Item stacking: identify loot markers of the SAME item sitting within kStackRadius of each other (in
+// MSB-local world space, same area) and ANNOTATE them — one representative per group carries the whole
+// group's per-member collected state in `stacked`, the rest are flagged `stack_member`. This is
+// NON-DESTRUCTIVE (the bucket keeps every marker) and config-INDEPENDENT, run once per build: the
+// stack_identical_items toggle is then a pure RENDER decision (draw the rep with a summed " xN" and
+// hide the members, or draw them all individually) — instant, no bucket rebuild, like require-fragment.
+// Build-time + projection-independent, so it works UNDERGROUND (Siofra) where render-time tile
+// clustering can't. Only G_LOOT-section categories (gather nodes, crafting materials, consumables) —
+// never bosses/graces/NPCs (unique waypoints). Grouping is connected-components within the radius, so a
+// transitive 1m chain still links a spread-out cluster (the Siofra Formic Rock nodes span ~6m but
+// pairwise-bridge under 5m). See docs/plans/item_stacking_plan.md.
+void annotate_item_stacks()
 {
     constexpr float kStackRadius = 5.0f;            // metres in MSB-local (px,pz)
     constexpr float kR2 = kStackRadius * kStackRadius;
-    int merged_total = 0;
+    int grouped_total = 0, group_count = 0;
     for (int c = 0; c < (int)g_buckets.size(); ++c)
     {
         if (goblin::ui::category_section(c) != /*G_LOOT*/ 2) continue;
@@ -1652,37 +1654,29 @@ void stack_identical_markers()
                 if (dx * dx + dz * dz <= kR2) parent[find(i)] = find(j);
             }
         }
-        // Collapse each component to its first member. The representative's count becomes the SUM of
-        // all members' counts, and it records every member's collected state so the render can deplete
-        // the "xN" and gray the stack only when all members are gathered (see Marker.stacked).
-        std::unordered_map<int, int> repIdx;   // union root → index in the new bucket
-        std::vector<Marker> out;
-        out.reserve(n);
-        for (int i = 0; i < n; ++i)   // pass 1: one representative per component (count zeroed, refilled below)
+        // Gather members per component root, then annotate: first member = representative (records all
+        // members' collected state in `stacked`); the rest are flagged `stack_member` (hidden when the
+        // toggle is on). NOTHING is summed or erased — render computes the stack total from `stacked`.
+        std::unordered_map<int, std::vector<int>> comps;
+        for (int i = 0; i < n; ++i) comps[find(i)].push_back(i);
+        for (auto &kv : comps)
         {
-            const int r = find(i);
-            if (repIdx.find(r) == repIdx.end())
+            const std::vector<int> &members = kv.second;
+            if (members.size() < 2) continue;                   // a lone marker isn't a stack
+            Marker &rep = bucket[members[0]];
+            rep.stacked.clear();
+            for (int mi : members)
             {
-                repIdx[r] = (int)out.size();
-                out.push_back(bucket[i]);
-                out.back().count = 0;
-                out.back().stacked.clear();
+                rep.stacked.push_back({bucket[mi].row_id, bucket[mi].collected_flag, bucket[mi].count});
+                if (mi != members[0]) bucket[mi].stack_member = true;
             }
+            ++group_count;
+            grouped_total += (int)members.size();
         }
-        for (int i = 0; i < n; ++i)   // pass 2: fold every member into its representative
-        {
-            Marker &R = out[repIdx[find(i)]];
-            R.count += bucket[i].count;
-            R.stacked.push_back({bucket[i].row_id, bucket[i].collected_flag, bucket[i].count});
-        }
-        for (Marker &R : out)         // pass 3: a lone member isn't a stack — drop the bookkeeping
-            if (R.stacked.size() <= 1) R.stacked.clear();
-        merged_total += n - (int)out.size();
-        bucket.swap(out);
     }
-    if (merged_total)
-        spdlog::info("[ITEMSTACK] merged {} co-located identical-item markers (r={}m)",
-                     merged_total, (int)kStackRadius);
+    if (group_count)
+        spdlog::info("[ITEMSTACK] {} co-located identical-item markers in {} groups (r={}m)",
+                     grouped_total, group_count, (int)kStackRadius);
 }
 
 void build_buckets_impl()
@@ -2466,11 +2460,11 @@ void build_buckets_impl()
         }
     }
 
-    // Item stacking: collapse co-located identical-item loot markers (e.g. a Formic Rock node
-    // cluster) into one "xN". After all finalize passes so it sees the final marker set; before the
-    // census so [SKIPPED]/[OVERLAY-CENSUS] reflect what the renderer actually draws.
-    if (goblin::config::stackIdenticalItems)
-        stack_identical_markers();
+    // Item stacking: ANNOTATE co-located identical-item loot groups (e.g. a Formic Rock node cluster).
+    // Always run, config-independent — the stack_identical_items toggle is a render decision, so the
+    // grouping must exist regardless and the toggle stays instant (no rebuild). After all finalize
+    // passes so it sees the final marker set.
+    annotate_item_stacks();
 
     // ── [SKIPPED] shown vs skipped: disk placements parsed but NOT drawn, by reason ─
     // The inverse of [COVERAGE]: of everything the passes parsed from the mod's files, how many
