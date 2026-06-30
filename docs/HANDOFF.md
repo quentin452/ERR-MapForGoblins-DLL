@@ -79,6 +79,18 @@ disk via Oodle/dvdbnd). Baked atlas = ERR-frozen artifact → eliminate. Circle 
     mod-agnostic (the prime directive: read the active install's files at runtime) means ONE build serves ERR
     + vanilla + any mod → `_vanilla.dll` becomes unnecessary → no variant → no double-load. "Sole DLL" is a
     direct consequence/goal of the prime directive; "DLL per mod" IS the anti-pattern.
+  - **FIX (hardening, TODO) = runtime HARD double-load check.** Turn silent double-load chaos into a clear
+    user-facing error instead of double-draw/`?PlaceName?`. At init (DllMain/early), acquire a named mutex
+    (e.g. `CreateMutexW(Local\\MapForGoblins.instance)`); if `GetLastError()==ERROR_ALREADY_EXISTS`, this is
+    a SECOND instance → **early-return from init: install NO hooks, NO ImGui, NO MsgRepository/PlaceName
+    patch** (so nothing is doubled), and set a shared "double-load detected" flag. The single ACTIVE
+    instance, on F1/overlay open, renders a prominent error banner instead of the map:
+    "⚠ Double load detected — two MapForGoblins instances loaded (likely `MapForGoblins.dll` +
+    `MapForGoblins_vanilla.dll`). Check your me3/launcher config and remove the duplicate." Player DX: one
+    clean ImGui instance (the surviving one) + an actionable message, never a corrupted double overlay.
+    (Alternative "keep-last, disable-earlier" is more fragile than "first-wins, second-bails" — prefer the
+    mutex bail.) This is defensive insurance; the real fix is sole-dll, but the guard protects users with
+    a misconfigured install.
 - **`?PlaceName?` everywhere = a DOUBLE-LOAD artifact (root cause above), NOT an FMG-scale bug.** Evidence:
   a SINGLE-DLL run patches PlaceName ONCE (36096 entries) and shows NO `?PlaceName?`; a DOUBLE-load run
   patches TWICE (36096→36624) and shows `?PlaceName?`. The 2nd instance re-patches the slot-19 FMG that the
