@@ -4816,6 +4816,46 @@ bool goblin::lot_row_in_table(uint32_t lot, uint8_t lotType, uint32_t *flagOut, 
     return true;
 }
 
+// Deterministic item quantity a single ItemLotParam lot grants. An ItemLotParam row has 8 item
+// slots (lotItemId01..08 @ +0x00, lotItemCategory01..08 @ +0x20, lotItemBasePoint01..08 (u16,
+// weight) @ +0x40, lotItemNum01..08 (u8) @ +0x8A) but the slots are a SINGLE WEIGHTED ROLL, not an
+// additive bundle: the game picks one slot by basePoint weight and grants its (item × num). So
+// summing the slots is wrong — a lot with slots (Formic num1, Formic num2) grants 1 OR 2, never 3.
+// Several GUARANTEED items are encoded as sibling lot rows (base+1, base+2 — see emit_lot_siblings),
+// each a separate one-slot lot, NOT as multiple slots of one row. Therefore a fixed quantity exists
+// only when exactly one slot is live (item>0, valid category, basePoint>0); then it's that slot's
+// num (e.g. a single-slot "5× arrows" lot → 5). Multiple live slots = RNG alternatives, so there is
+// no fixed count → 1 (the guaranteed floor). Returns 1 on any miss. Live param chain, any mod, no
+// bake — same reader as resolve_loot_item_textid. See docs/plans/loot_item_count_plan.md.
+int goblin::lot_item_count(uint32_t lotId, uint8_t lotType)
+{
+    if (lotType == 0 || lotId == 0)
+        return 1;
+    static LotReader s_lots;
+    static std::once_flag s_once;
+    static bool s_ok = false;
+    std::call_once(s_once, [] { s_lots.init(); s_ok = s_lots.ok(); });
+    if (!s_ok)
+        return 1;
+    RawItemLotRow *row = s_lots.row(lotId, lotType);
+    if (!row)
+        return 1;
+    int live = 0;        // number of weighted (basePoint>0) item slots
+    int singleNum = 1;   // num of the sole live slot, used only when live == 1
+    for (int i = 0; i < 8; ++i)
+    {
+        const int32_t item = *reinterpret_cast<int32_t *>(row->b + 0x00 + i * 4);   // lotItemId0(i+1)
+        const int32_t cat  = *reinterpret_cast<int32_t *>(row->b + 0x20 + i * 4);   // lotItemCategory0(i+1)
+        const uint16_t base = *reinterpret_cast<uint16_t *>(row->b + 0x40 + i * 2); // lotItemBasePoint0(i+1)
+        if (item <= 0 || cat < 1 || cat > 5 || base == 0)
+            continue;
+        const uint8_t num = *(row->b + 0x8A + i);                                   // lotItemNum0(i+1)
+        singleNum = (num > 0) ? num : 1;
+        ++live;
+    }
+    return (live == 1) ? singleNum : 1;
+}
+
 // One AssetEnvironmentGeometryParam row (320 bytes; pickUpItemLotParamId @ +0xb8,
 // s32 — offset confirmed vs the paramdef DetectedSize=320). Read by raw offset
 // like RawItemLotRow.

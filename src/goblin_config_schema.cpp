@@ -17,6 +17,7 @@ namespace goblin::config
     bool bakedOnly = false;  // diag overlay: draw ONLY Baked-source markers (the no-bake residual)
     bool collectedGraying = true;
     bool hideCollected = false;
+    bool stackIdenticalItems = true;  // merge co-located identical-item loot markers into one "xN"
     bool showRegionLabels = true;  // overlay: draw major-region name labels on the map
     bool nativeItemIcons = true;   // overlay: draw the game's real item icon (GPU harvest) when resident
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
@@ -184,6 +185,10 @@ namespace
                 B("hide_collected", hideCollected, "false",
                   "Overlay map: when collected_graying is on, HIDE collected/cleared\n"
                   "markers entirely instead of dimming them (legacy native-map behaviour)."),
+                B("stack_identical_items", stackIdenticalItems, "true",
+                  "Overlay map: merge loot markers of the SAME item sitting within ~5m of\n"
+                  "each other (e.g. a cluster of identical gather nodes) into ONE marker whose\n"
+                  "tooltip shows the combined ' xN' count. FALSE = draw each node separately."),
                 B("show_region_labels", showRegionLabels, "true",
                   "Overlay map: draw the major-region names (Limgrave, Caelid, Liurnia,\n"
                   "Altus Plateau, ...) on the open map page, beneath the markers."),

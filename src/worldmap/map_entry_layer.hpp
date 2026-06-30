@@ -26,6 +26,10 @@ private:
 // the first-open hitch. A no-op if the lazy markers()/census path already built.
 void prebuild_markers();
 
+// Force a fresh bucket rebuild (disk source only) so a config change affecting bucket content —
+// e.g. stackIdenticalItems — applies without a map reload. Called from the F1 menu on toggle.
+void rebuild_markers();
+
 // Recompute the per-category census (total collectible + looted) from the overlay's
 // OWN marker buckets — the same markers + collected detection the renderer grays — and
 // publish it via goblin::ui::set_category_census. Logs [OVERLAY-CENSUS]. Called by

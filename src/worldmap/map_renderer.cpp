@@ -370,14 +370,47 @@ unsigned int dim_color(unsigned int abgr)
     return ((unsigned)a << 24) | ((unsigned)b << 16) | ((unsigned)g << 8) | (unsigned)r;
 }
 
+// Is a single loot member collected? Same predicate as marker_done's loot branch (event flag +
+// geom/kindling tracking), factored so an item-stack can test each absorbed member.
+static bool loot_member_collected(uint64_t row_id, int collected_flag)
+{
+    if (collected_flag && goblin::ui::read_event_flag((uint32_t)collected_flag))
+        return true;
+    if (row_id && (goblin::collected::is_original_row_collected(row_id) ||
+                   goblin::kindling::is_row_collected(row_id)))
+        return true;
+    return false;
+}
+
+// Remaining (uncollected) item count of an item-stack representative: Σ member.count over members
+// not yet collected. For an unstacked marker (stacked empty) returns its own count.
+int stacked_remaining_count(const Marker &m)
+{
+    if (m.stacked.empty())
+        return m.count;
+    int rem = 0;
+    for (const StackedMember &sm : m.stacked)
+        if (!loot_member_collected(sm.row_id, sm.collected_flag))
+            rem += sm.count;
+    return rem;
+}
+
 // Is this marker's item collected / boss cleared? cleared_only reports the boss-clear
 // sub-case (gets a checkmark). Event flags (cleared/loot) read the live game state;
 // rune/ember/kindling use the collected-tracking sets (refreshed by the mod thread).
+// An item-stack (stacked non-empty) is "done" only when EVERY merged member is collected.
 bool marker_done(const Marker &m, bool &cleared_only)
 {
     cleared_only = m.cleared_flag && goblin::ui::read_event_flag((uint32_t)m.cleared_flag);
     if (cleared_only)
         return true;
+    if (!m.stacked.empty())
+    {
+        for (const StackedMember &sm : m.stacked)
+            if (!loot_member_collected(sm.row_id, sm.collected_flag))
+                return false;
+        return true;
+    }
     if (m.collected_flag && goblin::ui::read_event_flag((uint32_t)m.collected_flag))
         return true;
     if (m.row_id && (goblin::collected::is_original_row_collected(m.row_id) ||
@@ -692,13 +725,22 @@ void hover_test(Hover &h, ImVec2 mouse, ImVec2 p, float r, MakeLabel make_label)
 std::string marker_label(const Marker &m)
 {
     std::string loc = goblin::lookup_text_utf8(m.loc_pname);
-    // Spoiler-free: don't leak the item name — just "?" (+ its location, like native).
+    // " xN" quantity suffix: a multi-item lot, or an item-stack of co-located identical markers.
+    // With collected_graying on, an item-stack shows the REMAINING (uncollected) count so it
+    // depletes as nodes are gathered (xN→…→1); off, it shows the total. ASCII 'x' (not '×') so it
+    // can't tofu on a font missing the multiply glyph. Empty for single items.
+    const int shown = (!m.stacked.empty() && goblin::config::collectedGraying)
+                          ? stacked_remaining_count(m) : m.count;
+    const std::string qty = (shown > 1) ? (" x" + std::to_string(shown)) : std::string();
+    // Spoiler-free: don't leak the item name — just "?" (+ its location, like native). Quantity is
+    // not an identity spoiler, so it still shows.
     if (goblin::config::anonymousLoot && m.lot_backed)
-        return loc.empty() ? std::string("?") : ("?\n" + loc);
+        return loc.empty() ? ("?" + qty) : ("?" + qty + "\n" + loc);
     std::string name = goblin::lookup_text_utf8(m.name_id);
     if (name.empty()) return loc;
+    name += qty;
     if (loc.empty()) return name;
-    return name + "\n" + loc; // item name, then its location on the next line
+    return name + "\n" + loc; // item name (+ qty), then its location on the next line
 }
 // A cluster pile's tooltip = its location name (if any) + the member count. Shows
 // "<remaining>/<total> left" while some are uncollected, "<total> markers" otherwise.
@@ -887,6 +929,8 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         // Pile count = UNCOLLECTED members (depletion), so the glyph reflects progress
         // instead of the static total. When collected_graying is off, show the full
         // total. marker_done = the same collected/cleared predicate used for graying.
+        // This counts MARKERS (one per lot), not items — per-lot quantity lives in each
+        // marker's hover tooltip (Marker.count), not the pile glyph.
         int total = (int)idxs.size();
         int remaining = total;
         if (goblin::config::collectedGraying)

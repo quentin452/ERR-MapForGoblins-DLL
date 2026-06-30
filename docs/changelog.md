@@ -25,6 +25,17 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Item stacking** — loot markers of the SAME item within ~5 m of each other (e.g. a cluster of
+  identical gather nodes like the 4 Siofra River Formic Rock nodes) merge into ONE marker whose
+  tooltip shows the combined ` xN` count. Build-time, keyed on MSB-local world position, so it works
+  underground where the render-time tile clustering can't. Toggle `stack_identical_items` (F1 menu,
+  default ON). See `docs/plans/item_stacking_plan.md`.
+- **Loot item count** — a lot-backed loot marker now shows the deterministic item quantity in its
+  hover tooltip as an ` xN` suffix (e.g. a single-slot "5× arrows" lot → `x5`). `Marker.count` reads
+  it live from `ItemLotParam` (`lotItemNum01 @ +0x8A`, `lotItemBasePoint01 @ +0x40`) — any mod, no
+  bake. Slots are a SINGLE WEIGHTED ROLL, not additive, so the count is a slot's num only when one
+  slot is live (basePoint>0); multiple live slots = RNG → `x1`. (Several guaranteed items are sibling
+  lot rows, each its own marker — not multiple slots.) See `docs/plans/loot_item_count_plan.md`.
 - **Tile-based clustering** — map markers now cluster by their map-space 256-unit tile (+ map layer)
   instead of the old nearest-grace heuristic: deterministic, zoom-aware, and piles can't drift since
   each group is bounded to one tile. Graces are never piled (vanilla parity), clustering only uses
