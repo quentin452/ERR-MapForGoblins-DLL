@@ -15,7 +15,8 @@ map.
 > defaults flag handling to **read-only**.
 
 > **PHASE 1 LANDED 2026-07-01, branch `feat/quest-npc-layer` (built clean on `build-linux`
-> ERR profile, NOT yet runtime-verified in-game).** Two of this doc's §0 infrastructure
+> ERR profile; log-confirmed crash-free in-game, NOT visually verified — see HANDOFF).** Two
+> of this doc's §0 infrastructure
 > claims were wrong when implementation actually started — corrected in §0 below, not
 > just noted here. Summary: the "legacy `WorldQuestNPC` emission ~L1891" was already gone
 > before Phase 1 started (only a dead skip-rule remained); there was no existing

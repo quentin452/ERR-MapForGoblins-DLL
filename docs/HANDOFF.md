@@ -3,14 +3,19 @@
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
 Last updated: 2026-07-01 (Quest Browser automation + QuestNpcLayer Phase 1 landed, branch
-`feat/quest-npc-layer`, NOT merged, NOT runtime-verified).
+`feat/quest-npc-layer`, NOT merged; log-confirmed crash-free in-game, NOT visually verified).
 
 ## Session recap (2026-07-01) — feat_quests Phase 1: schema + entity-position cache + flag wiring + QuestNpcLayer
 
 - **Implemented `docs/plans/feat_quests_implementation_plan.md` Phase 1 on `feat/quest-npc-layer`
   (forked from master, not merged).** Builds clean on `build-linux` (ERR profile); deployed to
-  `dll/offline/MapForGoblins.dll`; **NOT yet runtime-verified** — no way to launch/observe the game from
-  this session. Before coding, re-verified the plan's §0 infra claims against current master and found 2
+  `dll/offline/MapForGoblins.dll`. **Log-checked after the user ran it** (`dll/offline/logs/
+  MapForGoblins.log`, 2026-07-01 01:08-01:09): all AOB signatures PASS, zero errors/exceptions/AV,
+  `[BENCH] build.quest_npc: 0.01 ms` fired exactly once (not every refresh cycle) confirming `QuestNpcLayer`
+  is wired correctly and its cache/signature rebuild-skip works (no per-frame flag re-read). No regressions
+  detected elsewhere in ~25s of normal overlay activity. Still NOT *visually* verified (no map pins exist
+  yet to look at — see the unsourced-data note below) — this is a crash/wiring smoke-test, not a feature
+  verification. Before coding, re-verified the plan's §0 infra claims against current master and found 2
   wrong (both corrected in the plan doc itself, not just here):
   1. The "legacy `WorldQuestNPC` emission ~L1891" the plan wanted to retire was already gone — only a dead
      skip-rule remained (`map_entry_layer.cpp`). Kept that skip-rule (didn't delete it, diverging from the
@@ -39,10 +44,11 @@ Last updated: 2026-07-01 (Quest Browser automation + QuestNpcLayer Phase 1 lande
   `data/npc_name_text_map.json`). Two candidate `entity_id` values exist in a pre-existing comment in
   `goblin_quest_steps.cpp` (Boc `11050730`, Thops `1039390700`) but weren't wired — unclear which of
   their multiple steps (they relocate across the map) the placement belongs to; wiring blind risks pinning
-  the wrong location. **NEXT (Windows, EMEVD+MSB tooling):** source + verify real per-step `progress_flag`/
-  `entity_id` for Boc/Alexander/Thops at minimum, then runtime-verify (exactly one marker, correct
-  position, `questAllowFlagWrite` OFF read-only behavior, no per-frame flag re-read). Changelog entry
-  deferred until this makes the feature actually user-visible (0 pins = nothing to announce yet).
+  the wrong location. Crash/wiring safety already confirmed (log above) — what's left is purely the
+  DATA. **NEXT (Windows, EMEVD+MSB tooling):** source + verify real per-step `progress_flag`/`entity_id`
+  for Boc/Alexander/Thops at minimum, then visually verify in-game (exactly one marker, correct position,
+  `questAllowFlagWrite` OFF read-only behavior). Changelog entry deferred until this makes the feature
+  actually user-visible (0 pins = nothing to announce yet).
 
 ## Session recap (2026-06-30 LATE) — native GetMessage: RE resolved → refactor landed → visually confirmed on ERR
 
