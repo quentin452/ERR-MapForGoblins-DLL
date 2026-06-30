@@ -214,6 +214,8 @@ namespace goblin
         extern float mapSymbolScale;       // native MENU_MAP_* map symbols (bosses etc)
         extern bool  iconLegibility;       // DX item 1: clamp min icon size + dark backing disc for contrast
         extern float iconMinHalfPx;        // min icon half-extent (px) when iconLegibility is on
+        extern bool  altitudeCue;          // DX item 7: ▲/▼ badge when a marker is above/below the player
+        extern float altitudeDeadzone;     // world-Y diff (units) below which no badge is drawn
         extern float graceOffsetX, graceOffsetY;  // overlay grace draw px offset (native-vs-imgui compare)
 
         // Debug viz: cluster pile anchor + member lines + name + d/thr (own toggle).

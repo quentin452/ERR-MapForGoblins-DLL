@@ -89,6 +89,8 @@ namespace goblin::config
     float mapSymbolScale = 2.2f;       // native MENU_MAP_* map symbols (bosses etc) — bigger than item dots
     bool  iconLegibility = true;       // DX item 1: clamp min icon size + dark backing disc for contrast
     float iconMinHalfPx = 8.0f;        // min icon half-extent (px) when iconLegibility is on
+    bool  altitudeCue = true;          // DX item 7: ▲/▼ badge when a marker is above/below the player
+    float altitudeDeadzone = 5.0f;     // world-Y diff (units) below which no badge is drawn
     float graceOffsetX = 0.0f;         // px offset of the overlay grace draw — native-vs-imgui compare
     float graceOffsetY = 0.0f;
 
@@ -497,6 +499,10 @@ namespace
                   "Legibility pass for marker icons: clamp them to a minimum on-screen size and draw a\ndark backing disc behind each so small icons don't vanish into the map art. Set false\nto restore the raw icon draw."},
                 IniEntry{"icon_min_half_px", IniType::F32, &cfg::iconMinHalfPx, "8.0",
                   "Minimum icon half-extent in pixels when icon_legibility is on (full icon >= 2x this).\nGraces use a slightly larger floor. 8.0 = default."},
+                IniEntry{"altitude_cue", IniType::Bool, &cfg::altitudeCue, "true",
+                  "Draw a small up/down triangle on a marker when it is well above / below the player's\naltitude, so you don't search the wrong floor. Set false to hide it."},
+                IniEntry{"altitude_deadzone", IniType::F32, &cfg::altitudeDeadzone, "5.0",
+                  "World-Y difference (game units) within which a marker counts as 'same level' and gets\nno altitude triangle. Raise it if badges appear on near-level markers. 5.0 = default."},
                 IniEntry{"grace_offset_x", IniType::F32, &cfg::graceOffsetX, "0.0",
                   "Pixel X offset of the overlay grace draw — set non-zero to shift the imgui grace\nbeside the game's NATIVE grace pin for side-by-side comparison/calibration."},
                 IniEntry{"grace_offset_y", IniType::F32, &cfg::graceOffsetY, "0.0",

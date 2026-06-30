@@ -326,6 +326,34 @@ static inline void draw_legible_icon(ImDrawList *fg, ImVec2 center, float half, 
 // Backing only for the small inventory-style icons (item / category-rep), never native map symbols.
 static inline bool tier_wants_backing(int tier) { return tier == TIER_ITEM || tier == TIER_REP; }
 
+// DX item 7 (altitude cue): player world-Y cached once per render pass (block-local marker Y ≈ world Y
+// on the overworld, so the diff is meaningful there; legacy-dungeon Y offset is a known caveat).
+static float g_player_world_y = 0.0f;
+static bool  g_player_world_y_valid = false;
+
+// Small ▲ (above) / ▼ (below) triangle in the marker's top-right corner when it sits well above/below
+// the player. Drawn as primitives (AddTriangleFilled) — no font dependency, can't tofu. worldY==0 = no
+// altitude data → skip. Warm = above, cool = below; thin dark outline for contrast on any background.
+static inline void draw_altitude_badge(ImDrawList *fg, ImVec2 center, float half, float worldY)
+{
+    if (!goblin::config::altitudeCue || !g_player_world_y_valid || worldY == 0.0f)
+        return;
+    const float d = worldY - g_player_world_y;
+    if (d > -goblin::config::altitudeDeadzone && d < goblin::config::altitudeDeadzone)
+        return; // same level
+    const bool above = d > 0.0f;
+    const float s = 4.0f;                              // half-size of the triangle
+    const float cx = center.x + half;                 // top-right corner anchor
+    const float cy = center.y - half;
+    const ImU32 fill = above ? IM_COL32(255, 205, 90, 255) : IM_COL32(110, 185, 255, 255);
+    const ImU32 line = IM_COL32(0, 0, 0, 220);
+    ImVec2 a, b, c;
+    if (above) { a = ImVec2(cx, cy - s); b = ImVec2(cx - s, cy + s); c = ImVec2(cx + s, cy + s); }
+    else       { a = ImVec2(cx, cy + s); b = ImVec2(cx - s, cy - s); c = ImVec2(cx + s, cy - s); }
+    fg->AddTriangleFilled(a, b, c, fill);
+    fg->AddTriangle(a, b, c, line, 1.0f);
+}
+
 // Desaturate toward luminance + halve alpha → the "collected" dim tint (packed ABGR).
 unsigned int dim_color(unsigned int abgr)
 {
@@ -495,6 +523,7 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
             fg->AddCircleFilled(p, cr, disc ? m.color : dim_color(m.color));
             fg->AddCircle(p, cr, IM_COL32(0, 0, 0, 220), 0, 1.5f);
         }
+        draw_altitude_badge(fg, p, half, m.worldY);
         return;
     }
     bool cleared = false, done = false;
@@ -540,6 +569,7 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
     }
     if (cleared)
         draw_check(fg, p, half);
+    draw_altitude_badge(fg, p, half, m.worldY);
 }
 
 // Unified world coords → map-space (the frame project_screen expects).
@@ -1231,6 +1261,13 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // open). Diagnoses whether the felt map lag is THIS render path vs the background
     // refresh thread (read_wgm). Shows as render.worldmap in the [BENCH] session report.
     GOBLIN_BENCH_QUIET("render.worldmap");
+
+    // DX item 7: cache the player's world-Y once for this pass, for the per-marker altitude badge.
+    {
+        float px = 0.0f, py = 0.0f, pz = 0.0f;
+        g_player_world_y_valid = goblin::get_player_world_pos(px, py, pz);
+        g_player_world_y = py;
+    }
 
     ImGuiIO &io = ImGui::GetIO();
     // Background draw list (above the game map, BELOW the F1 ImGui window) so the F1 menu

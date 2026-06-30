@@ -205,6 +205,7 @@ void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST
     m.live_classified = live_classified;
     m.lotId = lotId;
     m.lotType = lotType;
+    m.worldY = d.posY;  // DX item 7: block-local altitude for the above/below-player badge
     // Per-item icon: resolve THIS lot's real inventory iconId from the live ItemLotParam -> EquipParam,
     // so a loot marker draws its OWN item icon instead of the category representative. Mod-agnostic
     // (reads the active install's live params). resolve_loot_item_textid with baked_textid=0 returns the

@@ -102,6 +102,9 @@ struct Marker
     // per-item icon instead of the category representative. Set by MapEntryLayer push_marker after
     // the aggregate init (default 0 keeps other ctors intact).
     int item_icon_id = 0;
+    // DX item 7: block-local altitude (MSB pos[1]); ≈ world Y on the overworld. Set by push_marker after
+    // the aggregate init (default 0 keeps other ctors intact). Drives the above/below-player altitude badge.
+    float worldY = 0.0f;
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the
