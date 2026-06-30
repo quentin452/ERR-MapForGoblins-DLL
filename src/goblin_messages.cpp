@@ -656,8 +656,19 @@ void goblin::setup_messages()
                             ? reinterpret_cast<const wchar_t *>(s_off)
                             : reinterpret_cast<const wchar_t *>(f + s_off);
                         if (!text || !text[0]) continue;
-                        int32_t enc = (ammo_as_is && id >= 50000000) ? id : id + offset_base;
-                        new_entries.push_back({enc, text});
+                        if (ammo_as_is && id >= 50000000)
+                        {
+                            // WeaponName ammo (arrows/bolts, id >= 50M): the legacy convention stores
+                            // it UNSHIFTED, but the overlay marker encodes ammo at +100M (cat 2, same as
+                            // weapons — see encode_live_item / goblin_inject). Disk-loot ammo markers are
+                            // discovered after the targeted walk, so they only land here; emit BOTH keys
+                            // — raw (legacy / icon parity) AND +100M — so lookup_text_utf8(name_id) hits.
+                            new_entries.push_back({id, text});
+                            new_entries.push_back({id + offset_base, text});
+                            copied += 2;
+                            continue;
+                        }
+                        new_entries.push_back({id + offset_base, text});
                         copied++;
                     }
                 }
