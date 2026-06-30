@@ -47,14 +47,12 @@ in-game; (b) switch to a *time-based* (ms) ease instead of frame-count; (c) matc
 basemap interpolation curve. Reproduces on master (cull off).
 
 **STATUS 2026-06-30 NIGHT: FIXED + merged to master** (`0c82f98` docs / `31f29c0` fix). Root cause was
-the ZOOM half of the motion-sync, not the frame count. `view_delay_frames=1.0` is correct (pan sync,
-user-confirmed perfect). The teleport was `ViewDelay` delaying ZOOM: mouse-wheel zoom is discrete and ER
-applies it to the basemap instantly, so a 1-frame-old zoom put markers at the previous scale for one
-frame = a radial teleport per notch. Fix: `view_delay_zoom` config (`ViewDelay::apply(..., bool
-delayZoom)`) — **default OFF** → markers use the LIVE zoom while still delaying pan; user-confirmed kills
-the teleport. F1 "Delay zoom too" checkbox + slider remain (the toggle is the mod-agnostic escape hatch
-if some engine EASES zoom instead of stepping it). Final settings: `view_delay_frames=1.0`,
-`view_delay_zoom=false`.
+the ZOOM half of the motion-sync. `view_delay_frames=1.0` is correct (pan sync, user-confirmed perfect).
+Fix: `view_delay_zoom` config (`ViewDelay::apply(..., bool delayZoom)`) — **must be ON (true, the
+default)**: the basemap's zoom is composited with the same ~1-frame lag as pan, so markers must delay
+ZOOM too (not just pan) to ride it — delaying pan alone left zoom mismatched and teleporting. User-
+confirmed `view_delay_zoom=true` kills the teleport. F1 "Delay zoom too" checkbox + slider remain. Final
+settings: `view_delay_frames=1.0`, `view_delay_zoom=true`.
 
 Related UX backlog (separate, spawned as a task this session): a per-category **density slider** +
 **item search bar** for the same ~8477-marker pressure — see [[nobake-coverage-scoreboard]] context and

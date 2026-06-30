@@ -17,10 +17,10 @@ Last updated: 2026-06-30 NIGHT (spatial cull verified+landed-on-branch, loot NON
   `render.worldmap.markers` **3.58 → 1.28 ms (~64%)**, clusters ~0.34ms. Proven visually invariant
   (margin == 256-unit pile cell ⇒ on-screen-centroid piles keep every member). Changelog + memory updated.
   Commit the doc updates on the branch, then it's mergeable.
-- **FIXED + merged: zoom marker teleport.** Was `ViewDelay` delaying ZOOM — discrete wheel-zoom applies
-  to the basemap instantly, so a 1-frame-old zoom teleported markers one frame per notch. Fix:
-  `view_delay_zoom` (default OFF) uses live zoom, delays only pan; `view_delay_frames=1.0` kept (pan sync,
-  user-confirmed). F1 slider + "Delay zoom too" checkbox remain. Merged to master (`31f29c0`, with the
+- **FIXED + merged: zoom marker teleport.** Fix = `view_delay_zoom=true` (ON, the default): the basemap
+  zoom is composited with the same ~1-frame lag as pan, so markers must delay ZOOM too (not just pan) to
+  ride it — delaying pan alone left zoom mismatched and teleporting. `view_delay_frames=1.0` kept
+  (user-confirmed). F1 slider + "Delay zoom too" checkbox remain. Merged to master (`31f29c0`, with the
   cull `8f7ef91`). Detail in `docs/memory/bugs/overlay-render-perf-followups.md`.
 
 ## Plans live on master — fork implementation branches fresh (2026-06-30)
