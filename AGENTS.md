@@ -46,7 +46,18 @@ Platform rule:
 Workflow:
 
 - Work on a feature branch unless told otherwise.
-- Do not push unless explicitly asked.
+- **The USER pushes.** Committing is fine; pushing to a remote is the user's job. Do not push unless
+  explicitly asked, and do NOT end messages reminding the user to push — assume they will. State the
+  local state (e.g. "committed, local master is ahead of origin") once and move on; no nagging.
+- **Merged-branch hygiene.** When a branch's work has landed on `master`, the branch is disposable —
+  delete it (local + remote) so refs don't pile up. Detect "already merged" two ways, because identity
+  alone misses squashed/rebased branches:
+  - `git branch --merged master` — catches fast-forward / true-merge branches (commit identity).
+  - `git cherry master <branch>` — every line prefixed `-` means that patch is ALREADY in master by
+    patch-id (squash/rebase lands content under new SHAs, so `--merged` won't see it). All `-` ⇒ safe.
+  Keep only `master`, long-lived branches, and branches with genuinely-new commits (`git cherry` `+`).
+  Local delete `git branch -d` (use `-D` only after confirming via cherry); remote delete
+  `git push origin --delete <b>`. Never delete a branch with `+` (unmerged) work or the default branch.
 - Keep changes scoped.
 - At the end of a completed task, update `docs/memory/` when the result changes project state, workflow,
   blockers, machine capabilities, or important next steps. If it adds a feature or fixes a bug, also add
