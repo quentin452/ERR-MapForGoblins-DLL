@@ -99,6 +99,11 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   `>= 0x40000000` cut that wrongly dropped DLC one-time loot.
 
 ### Fixed
+- **Marker teleport on zoom** — overlay markers jumped for a single frame on each mouse-wheel zoom step.
+  The marker motion-sync (which projects markers ~1 frame behind to ride the GFx-composited basemap) now
+  delays zoom together with pan (`view_delay_zoom`, on by default); delaying pan alone left the zoom a
+  frame out of step with the basemap, snapping markers radially per notch. Live-tunable via the F1
+  "Marker motion delay (frames)" slider + "Delay zoom too" toggle.
 - **Cross-tile false item stacks** — item stacking compared block-local positions (0–256 within a grid
   tile), so same-item markers in different grid tiles of one area merged (a Trina's Lily at Fort Haight
   stacked with one at Mistwood Ruins). Proximity now uses full area-local coords (grid·256 + pos), so
