@@ -2055,6 +2055,11 @@ namespace
                 ImGui::Checkbox("hide instead", &goblin::config::hideCollected);
             }
 
+            // Merge co-located identical-item loot markers into one "xN" (rebuilds buckets on toggle).
+            if (ImGui::Checkbox("Stack identical items (merge same-item nodes within ~5m)",
+                                &goblin::config::stackIdenticalItems))
+                goblin::worldmap::rebuild_markers();
+
             // Major-region name labels (overlay map; live, persists via "Save to INI").
             ImGui::Checkbox("Show region labels (major-region names on the map)",
                             &goblin::config::showRegionLabels);

@@ -39,6 +39,7 @@ namespace goblin
         extern bool bakedOnly;  // diag overlay: draw ONLY Baked-source markers (the no-bake residual)
         extern bool collectedGraying;
         extern bool hideCollected;
+        extern bool stackIdenticalItems;  // merge co-located identical-item loot markers into one "xN"
         extern bool clusterDebugRadius;
         extern bool clusterDebugMarkers;   // per-marker projection/tile state dots (cluster diagnosis)
         extern bool showRegionLabels; // overlay map: draw major-region names (Limgrave, Caelid, ...)

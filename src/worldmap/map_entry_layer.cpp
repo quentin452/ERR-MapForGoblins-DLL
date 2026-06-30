@@ -1612,6 +1612,64 @@ static int build_great_rune_markers(std::unordered_set<Cell, CellHash> &out_cell
 // SpiritSprings/Maps/etc. rows the bake expects are NOT present live. So only bosses (textId2==5100)
 // and graces (BonfireWarpParam) are live-portable; every other category stays baked.
 // Runs exactly once — wrapped by ensure_buckets()/std::call_once.
+// Item stacking: merge loot markers of the SAME item sitting within kStackRadius of each other (in
+// MSB-local world space, same area) into ONE marker whose count is the sum. Build-time and
+// projection-independent, so it works UNDERGROUND (Siofra) where the render-time tile clustering
+// can't (that gates on a live map projection). Only G_LOOT-section categories (gather nodes, crafting
+// materials, consumables) — never bosses/graces/NPCs, which are unique waypoints. Grouping is
+// connected-components within the radius, so a transitive 1m chain still links a spread-out cluster
+// (the Siofra Formic Rock nodes span ~6m but pairwise-bridge under 5m). Gated by stackIdenticalItems.
+// v1: the representative keeps its own collected-graying; per-member depletion is a later pass.
+// See docs/plans/item_stacking_plan.md.
+void stack_identical_markers()
+{
+    constexpr float kStackRadius = 5.0f;            // metres in MSB-local (px,pz)
+    constexpr float kR2 = kStackRadius * kStackRadius;
+    int merged_total = 0;
+    for (int c = 0; c < (int)g_buckets.size(); ++c)
+    {
+        if (goblin::ui::category_section(c) != /*G_LOOT*/ 2) continue;
+        auto &bucket = g_buckets[c];
+        const int n = (int)bucket.size();
+        if (n < 2) continue;
+        std::vector<int> parent(n);
+        for (int i = 0; i < n; ++i) parent[i] = i;
+        auto find = [&parent](int a) {
+            while (parent[a] != a) { parent[a] = parent[parent[a]]; a = parent[a]; }
+            return a;
+        };
+        // O(n^2) within a bucket — loot buckets are small (tens to low hundreds).
+        for (int i = 0; i < n; ++i)
+        {
+            const Marker &a = bucket[i];
+            if (a.name_id == 0) continue;                       // need a real item identity to compare
+            for (int j = i + 1; j < n; ++j)
+            {
+                const Marker &b = bucket[j];
+                if (b.name_id != a.name_id) continue;           // same item only
+                if (b.raw_area != a.raw_area) continue;         // same MSB area (local coords are per-area)
+                const float dx = b.raw_px - a.raw_px, dz = b.raw_pz - a.raw_pz;
+                if (dx * dx + dz * dz <= kR2) parent[find(i)] = find(j);
+            }
+        }
+        // Collapse each component to its first member; sum the others' counts into it, drop them.
+        std::unordered_map<int, int> rep;   // union root → index in the new bucket
+        std::vector<Marker> out;
+        out.reserve(n);
+        for (int i = 0; i < n; ++i)
+        {
+            const int r = find(i);
+            auto it = rep.find(r);
+            if (it == rep.end()) { rep[r] = (int)out.size(); out.push_back(bucket[i]); }
+            else { out[it->second].count += bucket[i].count; ++merged_total; }
+        }
+        bucket.swap(out);
+    }
+    if (merged_total)
+        spdlog::info("[ITEMSTACK] merged {} co-located identical-item markers (r={}m)",
+                     merged_total, (int)kStackRadius);
+}
+
 void build_buckets_impl()
 {
     GOBLIN_BENCH("build.buckets");
@@ -2393,6 +2451,12 @@ void build_buckets_impl()
         }
     }
 
+    // Item stacking: collapse co-located identical-item loot markers (e.g. a Formic Rock node
+    // cluster) into one "xN". After all finalize passes so it sees the final marker set; before the
+    // census so [SKIPPED]/[OVERLAY-CENSUS] reflect what the renderer actually draws.
+    if (goblin::config::stackIdenticalItems)
+        stack_identical_markers();
+
     // ── [SKIPPED] shown vs skipped: disk placements parsed but NOT drawn, by reason ─
     // The inverse of [COVERAGE]: of everything the passes parsed from the mod's files, how many
     // became markers vs were filtered, grouped by WHY. Each pass added its local filtered counts to
@@ -2687,6 +2751,20 @@ void prebuild_markers()
     // Wire CreateFileW discovery → kick the worker the instant the dir is Found,
     // so the fallback build doesn't wait for the next overlay tick (~7s).
     set_build_trigger(&kick_disk_build);
+    ensure_buckets();
+}
+
+// Force a fresh bucket build so a config change that affects bucket CONTENT (e.g.
+// stackIdenticalItems) takes effect without a map reload. Disk source only — the bake path builds
+// via call_once and can't re-run; that's fine, the disk source is the live one. Safe because the
+// caller toggles from the UI thread when no build is running (g_disk_built is already true): drop
+// the latch so readers return empty, clear the buckets, then re-kick the worker.
+void rebuild_markers()
+{
+    if (!disk_source_enabled()) return;
+    g_disk_built.store(false, std::memory_order_release);
+    g_disk_kicked.store(false, std::memory_order_release);
+    for (auto &b : g_buckets) b.clear();
     ensure_buckets();
 }
 
