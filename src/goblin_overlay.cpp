@@ -3002,6 +3002,21 @@ namespace
     // ── Present hook (renders the overlay) ────────────────────────────────
     HRESULT STDMETHODCALLTYPE hk_present(IDXGISwapChain3 *swapchain, UINT sync, UINT flags)
     {
+        // Real frame time = wall delta between consecutive Present calls (the WHOLE frame: game
+        // engine + our overlay + GPU present). Lets the [BENCH] report answer "are we even the
+        // bottleneck": compare present.frame_wall (≈33ms at 30fps) against present.overlay_total
+        // (our share) — if overlay_total ≪ frame_wall, the engine/GPU is the cap, not our markers.
+        // Skip the first sample and absurd gaps (alt-tab / pause / loading) so the avg isn't polluted.
+        {
+            using clk = std::chrono::steady_clock;
+            static auto s_last = clk::now();
+            const auto now = clk::now();
+            const double ms = std::chrono::duration<double, std::milli>(now - s_last).count();
+            s_last = now;
+            if (ms > 0.0 && ms < 1000.0)
+                goblin::bench::Registry::instance().record("present.frame_wall", ms);
+        }
+
         if (!g_imgui_init)
         {
             if (!init_imgui(swapchain))
@@ -3084,6 +3099,11 @@ namespace
         bool minimap = goblin::config::showMinimap;
         if ((g_show || proto || minimap) && g_command_queue)
         {
+            // Our TOTAL per-frame overlay CPU cost (NewFrame + markers + minimap + ImGui render +
+            // command-list submit), excluding the game's own Present (o_present, called after this
+            // block). Parent of render.worldmap / render.minimap in the [BENCH] report — the gap
+            // present.overlay_total − Σ(those children) is UNLABELLED our-code (a benchmarking hole).
+            GOBLIN_BENCH_QUIET("present.overlay_total");
             try_upload_atlas();   // one-time; needs the captured command queue
             g_imgui_reading_cursor = true;   // let ImGui's NewFrame see the real cursor
             ImGui_ImplDX12_NewFrame();
