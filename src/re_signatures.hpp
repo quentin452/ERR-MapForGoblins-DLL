@@ -54,6 +54,18 @@ namespace goblin::sig
     // MsgRepositoryImp singleton. relative_offsets {{3,7}}.
     inline constexpr const char *MSG_REPOSITORY =
         "48 8B 3D ?? ?? ?? ?? 44 0F B6 30 48 85 FF 75";
+    // MsgRepositoryImp::GetMessage(repo, group, fmgId, msgId) -> wchar_t* (NULL on miss).
+    // FUN_14266d3c0 @ RVA 0x266d3c0; RCX=repo EDX=group(=0) R8D=fmgId(=slot) R9D=msgId.
+    // Internally bounds- and null-checks (fmgId<count2, base_array[group][fmgId]) then
+    // FmgFile_lookup — so calling it is crash-safe even on ERR's stub DLC slots, and on
+    // ERR it returns base+DLC-merged content (ERR hooks this fn). Lets us resolve names
+    // WITHOUT hand-walking slot internals → kills #ifdef MFG_VANILLA + copy_fmg_*.
+    // The AOB anchors on the INTERIOR (entry+5): under ERR the first 5 prologue bytes are
+    // overwritten by ERR's own MinHook E9 trampoline, so an entry-prologue AOB fails.
+    // Resolve as: entry = (match address) - 5.  RE: docs/re/windows_native_msg_getter_re_findings.md
+    inline constexpr const char *GETMESSAGE =
+        "44 3B 41 14 73 ?? 48 8B 41 08 8B D2 48 8B 0C D0 48 85 C9 74 ?? 41 8B C0 "
+        "48 8B 0C C1 48 85 C9 74 ?? 41 8B D1 E9";
 
     // ── Param FIELD-OFFSET access sites (read the offset live from the game's code) ──
     // The "industrial offset-free" mechanism: instead of hardcoding `row->b[0x3e]`, AOB the game's
@@ -228,6 +240,7 @@ namespace goblin::sig
             {"ADD_ITEM_FUNC", ADD_ITEM_FUNC},
             {"SOLO_PARAM_LIST", SOLO_PARAM_LIST},
             {"MSG_REPOSITORY", MSG_REPOSITORY},
+            {"GETMESSAGE", GETMESSAGE},
             {"GOODS_TYPE_ACCESS", GOODS_TYPE_ACCESS},
             {"GOODS_SORT_GROUP_ACCESS", GOODS_SORT_GROUP_ACCESS},
             {"AEG_PICKUP_LOT_ACCESS", AEG_PICKUP_LOT_ACCESS},

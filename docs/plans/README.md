@@ -14,3 +14,4 @@ or `docs/memory/`.)
 | [dx_bugs_backlog_plan.md](dx_bugs_backlog_plan.md) — DX bug/QoL backlog (PRs A–E) | items 1, 7, 8, 9 done; C/D/E open |
 | [spatial_grid_opti_plan.md](spatial_grid_opti_plan.md) — spatial grid: clustering + viewport-cull perf | clustering done; perf half open |
 | [loot_item_count_plan.md](loot_item_count_plan.md) — loot undercount fix + ×N stacking | not started |
+| [loot_name_native_getmessage_refactor_plan.md](loot_name_native_getmessage_refactor_plan.md) — native GetMessage → kill FMG slot-walk + #ifdef MFG_VANILLA | sig landed; refactor deferred to Windows (runtime-verify) |
