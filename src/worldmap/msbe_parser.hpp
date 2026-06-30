@@ -276,4 +276,10 @@ std::vector<uint8_t> dcx_decompress(const uint8_t *dcx, size_t len, bool *isKrak
 bool tpf_find_texture(const uint8_t *buf, size_t n, const char *name, size_t &ddsOff,
                       size_t &ddsLen);
 
+#ifdef PARSER_COVERAGE
+void start_coverage(const uint8_t *buf, size_t len);
+std::vector<uint8_t> get_coverage();
+void stop_coverage();
+#endif
+
 } // namespace goblin::msbe

@@ -2,10 +2,49 @@
 
 #include <algorithm>
 #include <cstring>
+#include <vector>
+#ifdef PARSER_COVERAGE
+#include <memory>
+#endif
 
 #include "stb_image.h" // stbi_zlib_decode_buffer (raw zlib inflate, already in tree)
 
 namespace goblin::msbe {
+
+#ifdef PARSER_COVERAGE
+namespace {
+struct CoverageTracker {
+    const uint8_t* buffer = nullptr;
+    size_t size = 0;
+    std::vector<uint8_t> accessed;
+
+    CoverageTracker(const uint8_t* buf, size_t sz) : buffer(buf), size(sz), accessed(sz, 0) {}
+    void mark(const uint8_t* p, size_t len) {
+        if (p >= buffer && p + len <= buffer + size) {
+            size_t offset = p - buffer;
+            for (size_t i = 0; i < len; ++i) {
+                accessed[offset + i] = 1;
+            }
+        }
+    }
+};
+thread_local std::unique_ptr<CoverageTracker> g_tracker = nullptr;
+} // namespace
+
+void start_coverage(const uint8_t *buf, size_t len) {
+    g_tracker = std::make_unique<CoverageTracker>(buf, len);
+}
+
+std::vector<uint8_t> get_coverage() {
+    if (g_tracker) return g_tracker->accessed;
+    return {};
+}
+
+void stop_coverage() {
+    g_tracker.reset();
+}
+#endif
+
 namespace {
 
 // --- little-endian, bounds-checked readers over the decompressed blob -------------------
@@ -13,6 +52,9 @@ inline bool inb(size_t off, size_t need, size_t len) { return need <= len && off
 
 inline uint32_t rd32(const uint8_t *b, size_t o)
 {
+#ifdef PARSER_COVERAGE
+    if (g_tracker) g_tracker->mark(b + o, 4);
+#endif
     return (uint32_t)b[o] | (uint32_t)b[o + 1] << 8 | (uint32_t)b[o + 2] << 16 |
            (uint32_t)b[o + 3] << 24;
 }
@@ -31,14 +73,21 @@ inline float rdf(const uint8_t *b, size_t o)
 std::string rd_utf16(const uint8_t *b, size_t o, size_t len)
 {
     std::string s;
+    size_t start = o;
     while (o + 1 < len)
     {
         uint16_t c = (uint16_t)b[o] | (uint16_t)b[o + 1] << 8;
-        if (!c) break;
+        if (!c) {
+            o += 2; // include the null-terminator in coverage
+            break;
+        }
         s.push_back(c < 0x80 ? (char)c : '?');
         o += 2;
         if (s.size() > 256) break;
     }
+#ifdef PARSER_COVERAGE
+    if (g_tracker) g_tracker->mark(b + start, o - start);
+#endif
     return s;
 }
 
