@@ -30,6 +30,30 @@
 
 namespace goblin::bench
 {
+    // ---- Lag-spike detection -------------------------------------------------
+    // The naive aggregate (avg/min/max) hides one-off hitches: a single 200 ms
+    // frame buried in 800 sub-ms frames only nudges the average and is invisible
+    // in the live log (the hot render path is GOBLIN_BENCH_QUIET — no per-line
+    // log at all). So a real "map-close micro-freeze" is near-impossible to spot.
+    //
+    // Spike = a sample that DWARFS that label's OWN running average. This is
+    // relative, so it auto-adapts per label: a 0.3 ms/frame render path flags a
+    // 12 ms hitch, while a one-shot 166 ms build span (no steady baseline) does
+    // NOT spam — it never accrues enough samples to have an average to dwarf.
+    // When a spike fires we emit a timestamped WARN immediately, EVEN for quiet
+    // timers, so the freeze lands in the log right next to the action that caused
+    // it:  grep "\[SPIKE\]" logs/MapForGoblins.log
+    inline constexpr std::uint64_t kSpikeWarmup = 30;   // samples before a label can spike
+    inline constexpr double        kSpikeFactor = 4.0;  // ms > factor*avg → spike
+    inline constexpr double        kSpikeFloorMs = 2.0; // ...and ms > this, to skip sub-ms noise
+
+    // Result of recording one sample, so the timer can decide whether to WARN.
+    struct RecordResult
+    {
+        bool   spike = false;
+        double over  = 0.0; // ms / avg at detection (how many× the baseline), for the WARN line
+    };
+
     // Per-label running aggregate.
     struct Stat
     {
@@ -37,6 +61,7 @@ namespace goblin::bench
         double total = 0.0;
         double min = (std::numeric_limits<double>::max)(); // parens: dodge windows.h max macro
         double max = 0.0;
+        std::uint64_t spikes = 0; // samples flagged as a lag spike (see above)
     };
 
     // Process-wide singleton accumulating every ScopedTimer sample. Inline static
@@ -60,16 +85,32 @@ namespace goblin::bench
             have_load_ = true;
         }
 
-        void record(const char *label, double ms)
+        RecordResult record(const char *label, double ms)
         {
             std::lock_guard<std::mutex> lk(mu_);
             Stat &s = stats_[label];
+
+            // Detect the spike against the baseline BUILT SO FAR (i.e. excluding this
+            // sample), so a hitch is measured relative to the label's normal cost.
+            RecordResult res;
+            if (s.count >= kSpikeWarmup)
+            {
+                const double avg = s.total / s.count;
+                if (avg > 0.0 && ms > kSpikeFloorMs && ms > avg * kSpikeFactor)
+                {
+                    res.spike = true;
+                    res.over = ms / avg;
+                    s.spikes++;
+                }
+            }
+
             s.count++;
             s.total += ms;
             if (ms < s.min)
                 s.min = ms;
             if (ms > s.max)
                 s.max = ms;
+            return res;
         }
 
         // Dump a sorted (by total time desc) report. Safe to call once at detach.
@@ -90,15 +131,15 @@ namespace goblin::bench
 
             spdlog::info("[BENCH] ===== SESSION REPORT — DLL wallclock {:.1f} ms, {} labels =====",
                          wall, v.size());
-            spdlog::info("[BENCH] {:<36}{:>7}{:>12}{:>11}{:>11}{:>11}{:>8}", "label", "count",
-                         "total ms", "avg ms", "min ms", "max ms", "%wall");
+            spdlog::info("[BENCH] {:<36}{:>7}{:>12}{:>11}{:>11}{:>11}{:>8}{:>8}", "label", "count",
+                         "total ms", "avg ms", "min ms", "max ms", "%wall", "spikes");
             for (const auto &[label, s] : v)
             {
                 const double avg = s.count ? s.total / s.count : 0.0;
                 const double mn = (s.count ? s.min : 0.0);
                 const double pct = wall > 0.0 ? s.total / wall * 100.0 : 0.0;
-                spdlog::info("[BENCH] {:<36}{:>7}{:>12.2f}{:>11.2f}{:>11.2f}{:>11.2f}{:>7.2f}%", label,
-                             s.count, s.total, avg, mn, s.max, pct);
+                spdlog::info("[BENCH] {:<36}{:>7}{:>12.2f}{:>11.2f}{:>11.2f}{:>11.2f}{:>7.2f}%{:>8}", label,
+                             s.count, s.total, avg, mn, s.max, pct, s.spikes);
             }
             spdlog::info("[BENCH] ===== END REPORT =====");
         }
@@ -130,9 +171,14 @@ namespace goblin::bench
             const auto ms = std::chrono::duration<double, std::milli>(
                                 std::chrono::steady_clock::now() - start_)
                                 .count();
-            if (!quiet_)
+            const RecordResult r = Registry::instance().record(label_, ms);
+            if (r.spike)
+                // A lag spike fires a WARN even for quiet timers — this is the whole point: the
+                // hitch lands in the log, timestamped, right next to whatever triggered it.
+                spdlog::warn("[BENCH][SPIKE] {}: {:.2f} ms (~{:.0f}x its {:.2f} ms avg) — frame hitch",
+                             label_, ms, r.over, (r.over > 0.0 ? ms / r.over : ms));
+            else if (!quiet_)
                 spdlog::info("[BENCH] {}: {:.2f} ms", label_, ms);
-            Registry::instance().record(label_, ms);
         }
 
         ScopedTimer(const ScopedTimer &) = delete;
