@@ -24,7 +24,20 @@ Gate before deleting the baked overlay atlas: prove which categories actually ne
 - RUN: ERR (normal launch) → open map ~5s → grep `[ICONTIER]`. Then vanilla:
   `cd internals/modengine && ./bin/me3 launch -g eldenring -e "<steam eldenring.exe>" -p vanilla.me3`
   → open map ~5s → grep `[ICONTIER]`. DIFF the two: native/rep in ERR but atlas/circle in vanilla =
-  what removing the baked atlas regresses. NOT YET RUN — awaiting the two logs.
+  what removing the baked atlas regresses.
+- RAN both (2026-06-30 13:29 vanilla / 13:32 ERR). Census is PER-VIEW (only on-screen markers), so the
+  two runs sampled different regions → not a clean per-category diff; use the UNION.
+  - Vanilla steady: `mp_name=0 mp_id=540 item=13282 rep=397 atlas=1064 circle=0`. Atlas-dependent:
+    Hostile NPC, Spirit Springs, Spiritspring Hawks, Stakes of Marika, Kindling Spirits, Interactables.
+  - ERR: `mp_name=4 mp_id=1 item=2099 rep=539 atlas=100 circle=7`. Atlas-dependent: Cookbooks,
+    Crystal Tears, Consumables, Scadutree Fragments, Pots-n-Perfumes, Bell-Bearings, Crafting Materials,
+    Golden Runes (Low), Rune Arcs, Stakes of Marika. circle: **World - Maps** (no glyph anywhere).
+  - VERDICT: **gate NOT passed** — ~15 categories across both runs still depend on the baked atlas;
+    removing it now regresses them to circle. KEEP the atlas.
+  - Follow-ups before re-auditing: (1) loot cats hitting atlas instead of the per-item/rep tier
+    (Bell-Bearings, Crafting Materials, Rune Arcs…) — per-item coverage gap? possibly free wins.
+    (2) wire numeric `category_gpu_iconId` for the world-feature cats (like summoning-pools→89).
+    (3) `World - Maps` has no native glyph. Re-audit on a MATCHED map view once coverage widens.
 
 ## OPEN — deferred for later (2026-06-30)
 1. **Lag-spike hunt — real suspect `refresh.collected.*`.** The minimap was a red herring. The collected-
