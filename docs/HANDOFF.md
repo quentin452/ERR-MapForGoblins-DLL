@@ -11,7 +11,10 @@ Last updated: 2026-06-30 (per-item icons + bench spike + map-exit bug triage ses
 - DONE `d792a3a` instrument `draw_minimap_hud` as `render.minimap`. RESULT (run 13:10): spikes only
   ~3ms (`~600x` a 0.01ms avg) — **minimap EXONERATED**, not the felt map-close lag.
 
-## Baked-atlas removal (#4) — AUDIT IN PROGRESS (2026-06-30)
+## Baked-atlas removal (#4) — DEFERRED to a future PR (2026-06-30)
+Decision: do NOT remove the baked atlas on `feat/native-poi-icons`. Audit proved it's still load-bearing
+(~15 categories). The `[ICONTIER]` census tool stays in the tree for re-auditing. Revisit in a dedicated
+PR after native coverage widens (see follow-ups below). Audit detail:
 Gate before deleting the baked overlay atlas: prove which categories actually need it per mod.
 - DONE `92d300c` `[ICONTIER]` census in map_renderer.cpp: tags each IconHandle's resolve tier
   (mp_name / mp_id / item / rep / atlas / circle), tallies per draw pass, logs a throttled summary
