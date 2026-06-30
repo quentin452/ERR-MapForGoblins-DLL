@@ -2,6 +2,19 @@
 
 Spun off while fixing the nameless-loot tooltip (`fix/noname-loot-label`). Not started; ordered by value.
 
+> **#1 STATUS 2026-06-30 — RESOLVED/CLOSED.**
+> - **Cause (a) AMMO — FIXED + merged** (`aa373eb`). Ammo (WeaponName id ≥50M) was preloaded UNSHIFTED but
+>   markers encode it at +100M; `copy_fmg_all_layered` now emits both keys. `[NONAME]` dropped dozens → 5.
+> - **Cause (b) the 5 remaining GOODS (240/310/375/401/9800) — NOT a bug; genuinely ERR-custom nameless.**
+>   Tested walking the DLC GoodsName slots (`goods_slots {419,319,10}` on the ERR build): the names did
+>   NOT resolve — so they're absent from base AND dlc01 AND dlc02 GoodsName, i.e. no FMG name at all
+>   (ERR-custom param with no name string, or named only in regulation). "Unknown item" placeholder is
+>   correct. **DO NOT re-enable DLC item-name slots on the ERR build:** doing so reintroduced the v1.0.15
+>   `?PlaceName?` crash even WITH the per-slot `seh_call` guard (it's binder index/layout corruption from
+>   the wrong slot numbers under ERR's loader, not an AV SEH can catch). Base-only (`{10}`) is required.
+>   Disk-verify is blocked on Linux (ERR `item_dlc02.msgbnd.dcx` is DCX **KRAK/Oodle**). If ever revisited,
+>   resolve these from the regulation/param side, NOT the FMG DLC slots.
+
 ## 1. Resolve real names for the [NONAME] markers (vanilla AMMO)
 
 Most `[NONAME]` hits are **vanilla ammo** (arrows/bolts: id 50000000 "Arrow", 52030000, 64540000 …, cat 2,
