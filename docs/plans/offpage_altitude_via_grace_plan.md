@@ -1,6 +1,12 @@
 # Plan: off-page altitude badge via nearest grace
 
-Status: NOT STARTED — design locked, ready to implement. Created 2026-06-30.
+Status: IMPLEMENTED 2026-06-30 on branch `feat/offpage-altitude-grace` (builds + deploys clean; runtime
+visual confirm pending). All 6 steps done: LiveGrace.posY captured (BonfireWarpParam, unfolded), grace
+marker worldY set, Marker.ref_grace_y/has_ref_grace, assign_grace_altitude_refs() at build (nearest
+same-area grace by area-local XZ), draw_altitude_badge dual-reference with distinct grace tint
+(green above / teal below). BonfireWarpParam posY confirmed present (paramdef f32 posY). Ordering
+confirmed: capture_live_graces (dllmain:211) runs before prebuild_markers (219). Tooltip note (step 6,
+optional) NOT done — left to a follow-up. Not merged to master pending in-game check.
 
 ## Problem
 
