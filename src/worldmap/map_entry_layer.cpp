@@ -2723,16 +2723,47 @@ void build_buckets_impl()
 // so g_buckets is never read mid-write (after Found it's immutable). No hitch at
 // discovery OR init; markers just appear a beat after the dir is known.
 std::atomic<bool> g_disk_built{false};
-std::atomic<bool> g_disk_kicked{false};
+std::atomic<bool> g_disk_running{false};    // a build worker is actively mutating g_buckets
+std::atomic<bool> g_rebuild_pending{false}; // a fresh build was requested (e.g. a config toggle)
+
+// Spawn THE single build worker if none is running. g_buckets and the build's shared maps have
+// exactly one mutator at a time: the CAS on g_disk_running guarantees a second caller (a rapid
+// second toggle, or a kick racing a rebuild) never starts a parallel build — the bug behind the
+// item-stack-toggle crash, where two workers append to g_buckets / rehash the same unordered_map
+// concurrently. A request that arrives mid-build sets g_rebuild_pending and the running worker
+// loops once more, so the latest config still wins. The worker is the ONLY thing that clears +
+// refills g_buckets (never the render/UI thread), and it holds g_disk_built=false for the whole
+// mutation so readers (markers()) get the empty set instead of a half-written one.
+void start_build_worker()
+{
+    bool expected = false;
+    if (!g_disk_running.compare_exchange_strong(expected, true))
+        return;  // a worker is already running; it will pick up g_rebuild_pending
+    std::thread([] {
+        for (;;)
+        {
+            g_rebuild_pending.store(false, std::memory_order_release);
+            g_disk_built.store(false, std::memory_order_release);   // readers return empty during the build
+            for (auto &b : g_buckets) b.clear();                    // sole mutator: clear then refill
+            build_buckets_impl();
+            g_disk_built.store(true, std::memory_order_release);
+            if (g_rebuild_pending.load(std::memory_order_acquire))
+                continue;                                           // toggled again mid-build → redo
+            g_disk_running.store(false, std::memory_order_release);
+            // Re-check after releasing: a request that landed in the gap would otherwise be lost.
+            if (!g_rebuild_pending.load(std::memory_order_acquire))
+                return;
+            bool e2 = false;
+            if (!g_disk_running.compare_exchange_strong(e2, true))
+                return;  // another caller re-acquired the worker slot; let it handle the request
+        }
+    }).detach();
+}
+
 void kick_disk_build()
 {
     if (g_disk_built.load(std::memory_order_acquire)) return;
-    bool expected = false;
-    if (!g_disk_kicked.compare_exchange_strong(expected, true)) return;  // one worker only
-    std::thread([] {
-        build_buckets_impl();
-        g_disk_built.store(true, std::memory_order_release);
-    }).detach();
+    start_build_worker();
 }
 
 // Ensure the buckets are (being) built. Disk source OFF → the bake is the source,
@@ -2771,16 +2802,16 @@ void prebuild_markers()
 
 // Force a fresh bucket build so a config change that affects bucket CONTENT (e.g.
 // stackIdenticalItems) takes effect without a map reload. Disk source only — the bake path builds
-// via call_once and can't re-run; that's fine, the disk source is the live one. Safe because the
-// caller toggles from the UI thread when no build is running (g_disk_built is already true): drop
-// the latch so readers return empty, clear the buckets, then re-kick the worker.
+// via call_once and can't re-run; that's fine, the disk source is the live one. Thread-safe against
+// rapid re-toggles: it does NOT touch g_buckets itself (that's the worker's job) and never starts a
+// parallel build — it just drops the ready latch so readers stop, flags a rebuild, and asks the
+// single worker machinery to (re)build. If a worker is mid-build, it loops once more for this request.
 void rebuild_markers()
 {
     if (!disk_source_enabled()) return;
-    g_disk_built.store(false, std::memory_order_release);
-    g_disk_kicked.store(false, std::memory_order_release);
-    for (auto &b : g_buckets) b.clear();
-    ensure_buckets();
+    g_rebuild_pending.store(true, std::memory_order_release);  // ask for a fresh build
+    g_disk_built.store(false, std::memory_order_release);      // readers return empty until it lands
+    start_build_worker();                                      // start one iff none running
 }
 
 MapEntryLayer::MapEntryLayer(int category) : cat_(category)
