@@ -174,3 +174,6 @@ MapForGoblins_*.log
 # diagnostic probe output (regenerable via tools/extract_err_collectibles.py)
 data/err_collectibles.json
 .scratch/
+
+# serena tool config/cache (per-machine; project memory lives in docs/memory/ only)
+.serena/
