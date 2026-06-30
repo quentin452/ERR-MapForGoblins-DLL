@@ -432,6 +432,7 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
                 e.gx = (uint8_t)gx;
                 e.gz = (uint8_t)gz;
                 e.posX = en.pos[0];
+                e.posY = en.pos[1];  // altitude for the above/below-player badge
                 e.posZ = en.pos[2];
                 e.name = en.name;
                 enemies->push_back(std::move(e));
@@ -480,7 +481,8 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
             d.gx = (uint8_t)gx;
             d.gz = (uint8_t)gz;
             d.posX = t.pos[0];
-            d.posZ = t.pos[2];  // Part+0x20 X/Z (Y unused for markers)
+            d.posY = t.pos[1];  // altitude for the above/below-player badge
+            d.posZ = t.pos[2];  // Part+0x20 X/Z
             out.push_back(d);
             ++tilePos;
         }

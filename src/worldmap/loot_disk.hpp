@@ -26,7 +26,7 @@ struct DiskTreasure
 {
     uint32_t lotId = 0;
     uint8_t  area = 0, gx = 0, gz = 0;  // from the m{AA}_{BB}_{CC}_00 filename
-    float    posX = 0.0f, posZ = 0.0f;  // Part+0x20 X/Z (block-local; = bake x/z)
+    float    posX = 0.0f, posY = 0.0f, posZ = 0.0f;  // Part+0x20 (block-local; Y for the altitude badge)
 };
 
 // One placed AEG collectible asset read from a disk MSB. The item is resolved
@@ -51,7 +51,7 @@ struct DiskEnemy
     uint32_t npcParamId = 0;            // MSB Enemy part's NPCParamID (NpcParam row id)
     uint32_t entityId = 0;             // MSB EntityID (the EMEVD-award join key; 0 if unset)
     uint8_t  area = 0, gx = 0, gz = 0;  // from the tile filename
-    float    posX = 0.0f, posZ = 0.0f;  // Part+0x20 X/Z (block-local; = bake x/z)
+    float    posX = 0.0f, posY = 0.0f, posZ = 0.0f;  // Part+0x20 (block-local; Y for the altitude badge)
     std::string name;                   // part name (starts with the model, e.g. "c4210_9000")
                                         // — the no-bake Spiritspring Hawk model filter (SSO, cheap)
 };

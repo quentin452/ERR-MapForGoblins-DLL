@@ -356,6 +356,7 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
         d.gridZNo = t.gz;
         d.posX = t.posX;
         d.posZ = t.posZ;
+        d.posY = t.posY;  // DX item 7: altitude badge
         // Identity/category from the LIVE lot (lotType 1 = ItemLotParam_map). textId1
         // stays -1 and the flags 0, so push_marker resolves the item + pickup flag
         // live (the lot-backed path) — exactly like a baked lot-backed row.
@@ -493,6 +494,7 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
             d.gridZNo = c.gz;
             d.posX = c.posX;
             d.posZ = c.posZ;
+            d.posY = c.posY;  // DX item 7: altitude (block-local Y) for the above/below-player badge
             d.textId1 = (rune ? 800010 : 850010) + 500000000;  // GoodsName "Rune/Ember Piece"
             const uint64_t rid = kRuntimeGeomRowBase + (next_rt++);
             push_marker(/*row_id=*/rid, d, pcat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
@@ -528,6 +530,7 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         d.gridZNo = c.gz;
         d.posX = c.posX;
         d.posZ = c.posZ;
+        d.posY = c.posY;  // DX item 7: altitude (block-local Y) for the above/below-player badge
         // Gather nodes are COLLECTED GEOM (GEOF/WGM-tracked, like the Rune/Ember pieces) — NOT
         // event-flag loot. So the marker's graying key must be a synthetic geom row_id REGISTERED with
         // goblin::collected (keyed by tile + part-name + slot), not the lot — `row_id=lot` was never in
@@ -651,6 +654,7 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
         d.gridZNo = en.gz;
         d.posX = en.posX;
         d.posZ = en.posZ;
+        d.posY = en.posY;  // DX item 7: altitude badge
         push_marker(/*row_id=*/lot, d, cat, lot, /*lotType=*/lt, Source::DiskMSB, lc);
         covered.insert(lot);  // drops the matching baked LootSource::Enemy row
         ++emitted;
@@ -1045,6 +1049,7 @@ static int build_disk_world_feature_markers(
         d.gridZNo = a.gz;
         d.posX = a.posX;
         d.posZ = a.posZ;
+        d.posY = a.posY;  // DX item 7: altitude badge
         d.textId1 = text_override ? text_override : wf->text_id;  // tutorial / FMG / ActionButtonText
         d.textDisableFlagId1 = collect_flag;  // → push_marker collected_flag (graying/census), 0 = never grays
         push_marker(/*row_id=*/0ull, d, cat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
@@ -1280,6 +1285,7 @@ static int build_disk_hostile_npc_markers(
         d.gridZNo = e.gz;
         d.posX = e.posX;
         d.posZ = e.posZ;
+        d.posY = e.posY;  // DX item 7: altitude badge
         d.textId1 = name + 700000000;          // NpcName FMG (runtime-localized)
         d.clearedEventFlagId = flag;           // defeated → checkmark / hide (like bosses)
         d.textDisableFlagId1 = flag;           // also the collected_flag graying path
@@ -1364,6 +1370,7 @@ static int build_disk_spiritspring_hawks_markers(
         d.gridZNo = e.gz;
         d.posX = e.posX;
         d.posZ = e.posZ;
+        d.posY = e.posY;  // DX item 7: altitude badge
         d.textId1 = 904210304;              // "Spiritspring Stormhawk"
         d.clearedEventFlagId = e.entityId;  // hawk-kill flag = spring unlock (checkmark/hide)
         d.textDisableFlagId1 = e.entityId;  // also the collected_flag graying path
@@ -1404,6 +1411,7 @@ static int build_disk_maps_markers(const std::vector<DiskTreasure> &treasures,
         d.gridZNo = t.gz;
         d.posX = t.posX;
         d.posZ = t.posZ;
+        d.posY = t.posY;  // DX item 7: altitude badge
         // textId1 left -1 → push_marker resolves the map's name + icon + collected flag from the lot.
         push_marker(/*row_id=*/t.lotId, d, cat, t.lotId, /*lotType=*/1, Source::DiskMSB);
         out_cells.insert(cell_of(g_buckets[cat].back()));
@@ -1751,6 +1759,7 @@ void build_buckets_impl()
                 d.gridZNo = r.gz;
                 d.posX = r.posX;
                 d.posZ = r.posZ;
+                d.posY = r.posY;  // DX item 7: altitude badge
                 // Label = "Kindling Spirit", the awarded incantation's GoodsName (Goods 6610 + the
                 // 500M GoodsName offset), exactly what the bake's WorldMapPointParam row used. Without
                 // it the marker is anonymous → empty tooltip + the F1 item-search can't match it.

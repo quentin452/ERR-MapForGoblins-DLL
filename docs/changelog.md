@@ -25,6 +25,11 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Altitude cue** — markers above/below the player's elevation get a small ▲ (above) / ▼ (below)
+  triangle, so you don't search the wrong floor/cliff. Drawn as primitives (no font dependency); only
+  shown for markers on the player's current map layer (a dead-zone hides near-level ones). The MSB
+  block-local Y (`pos[1]`), previously parsed-but-dropped, is now threaded onto markers. Toggle in F1
+  ("Altitude arrows") or `altitude_cue` / `altitude_deadzone` in the ini.
 - **Icon legibility pass** — small loot/item map icons no longer blend into the map art: they get a
   minimum on-screen size plus a dark backing disc (only when actually small). Native map symbols
   (graces, bosses, summons) are left untouched. Config: `icon_legibility` (default on) +

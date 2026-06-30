@@ -2065,6 +2065,10 @@ namespace
             ImGui::Checkbox("Red boss markers (tint boss icons red)",
                             &goblin::config::redifyBossIcons);
 
+            // DX item 7: up/down altitude badge for markers above/below the player (player's map only).
+            ImGui::Checkbox("Altitude arrows (up = above / down = below player)",
+                            &goblin::config::altitudeCue);
+
             // Grace rendering: overlay draws all graces (discovered=colour, undiscovered=grey).
             ImGui::Checkbox("Overlay graces (draw all graces ourselves)",
                             &goblin::config::graceOverlay);

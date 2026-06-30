@@ -18,7 +18,14 @@ Backlog DX + bugs relevé par <user> le 2026-06-28 (à traiter plus tard, pas en
 4. **Intégrer le mod "Pause in game" directement dans MapForGoblins** — une case en plus dans F1. Évite tout conflit de touche possible avec le mod externe.
 5. **Setting ImGui "pause à l'ouverture de F1"** — quand on ouvre F1 (manette ou clavier), proposer un setting pour choisir si le jeu se met en pause automatiquement à l'ouverture des settings MapForGoblins. Hypothèse DX : quand le menu F1 est ouvert on ne veut pas forcément jouer en même temps → peut-être meilleure DX qu'une simple case ImGui à long terme. Lié au point 4.
 6. **Desync curseur ImGui ↔ ER au restart de la map** — quand on restart la map, le curseur devrait être recentré au milieu pour que les ToolTips s'affichent au même endroit que le curseur ER. Lié à [[overlay-item-search-bar]] (cursor-locate = caméra map 2D).
-7. **DX pour icône plus haut/bas que le joueur (axe Y)** — trouver une indication visuelle quand une icône sur la map est à un Y différent du joueur, pour que le joueur ne cherche pas au mauvais étage/altitude.
+7. ✅ **FIXED 2026-06-30** (`feat/dx-altitude-cue`, PR B) — ▲/▼ triangle badge (AddTriangleFilled, no
+   font dep) when a marker's Y differs from the player's, gated to the player's current map layer
+   (group match) so cross-map viewing doesn't badge everything. MSB block-local Y (`pos[1]`) threaded
+   onto markers (added posY to DiskTreasure/DiskEnemy + captured in the parser). F1 toggle + ini
+   `altitude_cue`/`altitude_deadzone`. Validated in-game (direction tracks player altitude). FOLLOW-UP:
+   3 niche sources still drop posY (ReforgedRune/EmberPieces `bpos`, scarab/maps-pass `pos`, sibling-LOD
+   `lit`) → those markers get no badge; thread if needed.
+   **DX pour icône plus haut/bas que le joueur (axe Y)** — trouver une indication visuelle quand une icône sur la map est à un Y différent du joueur, pour que le joueur ne cherche pas au mauvais étage/altitude.
 8. **Clustering d'icônes dépassé** — en mode icon clustering, beaucoup d'icônes ne sont toujours pas clusterisées. L'algo actuel (heuristique?) est dépassé → envisager un clustering par tiles plutôt que par heuristique. Voir [[overlay-render-perf-followups]] (spatial grid déjà envisagé).
 9. **Mode "Distance adaptative clustering" à améliorer aussi** — corollaire du point 8.
 

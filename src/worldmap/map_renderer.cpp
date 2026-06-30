@@ -330,13 +330,18 @@ static inline bool tier_wants_backing(int tier) { return tier == TIER_ITEM || ti
 // on the overworld, so the diff is meaningful there; legacy-dungeon Y offset is a known caveat).
 static float g_player_world_y = 0.0f;
 static bool  g_player_world_y_valid = false;
+static int   g_player_group = -1;   // player's current map layer (base/DLC × over/under); -1 = unknown
 
 // Small ▲ (above) / ▼ (below) triangle in the marker's top-right corner when it sits well above/below
 // the player. Drawn as primitives (AddTriangleFilled) — no font dependency, can't tofu. worldY==0 = no
 // altitude data → skip. Warm = above, cool = below; thin dark outline for contrast on any background.
-static inline void draw_altitude_badge(ImDrawList *fg, ImVec2 center, float half, float worldY)
+static inline void draw_altitude_badge(ImDrawList *fg, ImVec2 center, float half, float worldY, int group)
 {
-    if (!goblin::config::altitudeCue || !g_player_world_y_valid || worldY == 0.0f)
+    if (!goblin::config::altitudeCue || worldY == 0.0f)
+        return;
+    // Only meaningful when the marker is on the player's current map layer (same Y frame); viewing a
+    // different map (DLC↔base, underground↔overworld) would otherwise badge everything spuriously.
+    if (!g_player_world_y_valid || g_player_group < 0 || group != g_player_group)
         return;
     const float d = worldY - g_player_world_y;
     if (d > -goblin::config::altitudeDeadzone && d < goblin::config::altitudeDeadzone)
@@ -523,7 +528,7 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
             fg->AddCircleFilled(p, cr, disc ? m.color : dim_color(m.color));
             fg->AddCircle(p, cr, IM_COL32(0, 0, 0, 220), 0, 1.5f);
         }
-        draw_altitude_badge(fg, p, half, m.worldY);
+        draw_altitude_badge(fg, p, half, m.worldY, m.group);
         return;
     }
     bool cleared = false, done = false;
@@ -569,7 +574,7 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
     }
     if (cleared)
         draw_check(fg, p, half);
-    draw_altitude_badge(fg, p, half, m.worldY);
+    draw_altitude_badge(fg, p, half, m.worldY, m.group);
 }
 
 // Unified world coords → map-space (the frame project_screen expects).
@@ -1262,11 +1267,17 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // refresh thread (read_wgm). Shows as render.worldmap in the [BENCH] session report.
     GOBLIN_BENCH_QUIET("render.worldmap");
 
-    // DX item 7: cache the player's world-Y once for this pass, for the per-marker altitude badge.
+    // DX item 7: cache the player's world-Y + map GROUP once for this pass. The altitude badge is only
+    // meaningful when the marker shares the player's coordinate frame, i.e. the SAME map layer (base/DLC
+    // × overworld/underground). When you view a different map than where the player physically is, the
+    // Y values are in unrelated frames (everything would read "below"), so we gate on group match.
     {
         float px = 0.0f, py = 0.0f, pz = 0.0f;
         g_player_world_y_valid = goblin::get_player_world_pos(px, py, pz);
         g_player_world_y = py;
+        int parea = 0, pgrp = -1;
+        float mwx = 0.0f, mwz = 0.0f;
+        g_player_group = goblin::get_player_map_pos(parea, mwx, mwz, nullptr, nullptr, &pgrp) ? pgrp : -1;
     }
 
     ImGuiIO &io = ImGui::GetIO();
