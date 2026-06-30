@@ -1486,6 +1486,24 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             project_marker(m, gU, gV);
             proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
             ImVec2 sp(p.x, p.y);
+            // DEBUG (cluster_debug_markers): why a marker does/doesn't cluster. Dot colour = projection
+            // state (green live / red baked-fallback / grey untried); text = its map-space tile (tu,tv)
+            // and group. Same-tile+same-colour neighbours cluster; scattered tiles or red dots explain a
+            // miss. Drawn for on-screen markers only.
+            if (goblin::config::clusterDebugMarkers &&
+                sp.x > -32 && sp.x < realW + 32 && sp.y > -32 && sp.y < realH + 32)
+            {
+                const ImU32 dc = m.live_state == 1 ? IM_COL32(60, 230, 90, 255)
+                               : m.live_state == -1 ? IM_COL32(235, 70, 70, 255)
+                                                    : IM_COL32(160, 160, 160, 255);
+                fg->AddCircleFilled(ImVec2(sp.x + 6, sp.y - 6), 3.0f, dc);
+                fg->AddCircle(ImVec2(sp.x + 6, sp.y - 6), 3.0f, IM_COL32(0, 0, 0, 200), 0, 1.0f);
+                const int tu = (int)(gU / goblin::worldmap::kTileSize);
+                const int tv = (int)(gV / goblin::worldmap::kTileSize);
+                char tb[48];
+                std::snprintf(tb, sizeof(tb), "%d,%d g%d", tu, tv, m.group);
+                fg->AddText(ImVec2(sp.x + 10, sp.y - 12), IM_COL32(255, 255, 255, 230), tb);
+            }
             // Locate request (a clicked search result): consider this marker as a pan candidate (even
             // if off-screen — same page, so panning brings it into view). Best = uncollected-first,
             // then nearest to the view centre; finalised after the loop.

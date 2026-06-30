@@ -129,6 +129,7 @@ namespace goblin::config
     uint8_t clusterNearRadius    = 1;  // tiles: full-detail radius (tight = just your immediate area)
     uint8_t clusterFarRadius     = 2;  // tiles: at/beyond this, clusterThreshold (clustered)
     bool clusterDebugRadius = false;  // overlay: draw distance-adaptive zones (player + near/far rings + tabs)
+    bool clusterDebugMarkers = false; // overlay: per-marker projection/tile state dots (cluster diagnosis)
     bool questNpcQuestAware = false;  // gate quest-NPC markers on quest-active flags
     std::string questProgress = "";   // Quest Browser per-step done bits ('0'/'1')
     bool questGreyOnDeath = true;     // grey questlines whose NPC death flag is set
@@ -319,6 +320,10 @@ namespace
                   "Overlay DEBUG: draw the distance-adaptive zones — player marker, the\n"
                   "near/far radius rings (overworld), and each pile's sub-page tab\n"
                   "(underground) — to see where the ramp engages. Off by default."),
+                B("cluster_debug_markers", clusterDebugMarkers, "false",
+                  "Overlay DEBUG: draw a small dot on every marker coloured by its projection state\n"
+                  "(green = live-projected, red = baked-fallback, grey = untried) plus its map-space\n"
+                  "tile, so you can see why some items don't cluster. Off by default."),
                 IniEntry{"cluster_exclude", IniType::String, &cfg::clusterExclude, "",
                          "Categories that stay EXACT markers and never fold into a cluster\n"
                          "(comma-separated, matched loosely vs the category name, e.g.\n"

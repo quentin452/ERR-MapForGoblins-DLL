@@ -2806,6 +2806,8 @@ namespace
                         // distance ramp engages and pin the bug.
                         ImGui::Checkbox("DEBUG: distance zones (player + near/far rings)",
                                         &goblin::config::clusterDebugRadius);
+                        ImGui::Checkbox("DEBUG: marker projection/tile (green=live red=baked + tile)",
+                                        &goblin::config::clusterDebugMarkers);
                         ImGui::Checkbox("DEBUG: cluster anchors (pile→member lines + name)",
                                         &goblin::config::debugClusterAnchors);
                         ImGui::Checkbox("DEBUG: region volumes (names; red = unresolved)",
