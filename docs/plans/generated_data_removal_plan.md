@@ -81,3 +81,31 @@ there's no stub left — just nothing.
 Do **not** attempt Phase C before Phase A is verified on all 3 non-ERR profiles in-game — these call sites
 are the only thing currently gating marker behavior to "do nothing" vs "do something" per profile; deleting
 them blind would be removing an untested safety net, not just dead code.
+
+**Phase C / `feat_quests_implementation_plan.md` overlap (checked 2026-07-01):** one of the dead
+`MAP_ENTRIES` consumer sites Phase C deletes is `src/worldmap/map_entry_layer.cpp:2027`
+(`if (e.category == gen::Category::WorldQuestNPC) continue;`). The quest plan's §0/§5 describe this as a
+still-live "legacy `WorldQuestNPC` emission (~L1891)" that `QuestNpcLayer` must retire — that's now
+**stale**: current master already dropped the emission (only this dead skip-rule + a `nullptr`-icon
+`category_meta.cpp:87` entry remain; `map_renderer.cpp`'s `questNpcQuestAware` gate has nothing left to
+gate). Whichever plan lands first should delete this line; the other should drop that step from its own
+scope rather than re-touch it. Same overlap risk doesn't apply elsewhere in Phase C's file list.
+
+## Cross-reference — `docs/plans/feat_quests_implementation_plan.md` (read 2026-07-01)
+
+Don't duplicate that plan's already-scoped work here:
+- `goblin_quest_steps.cpp`'s `title`/`desc`/`zone` fields are genuinely permanent (hand-authored prose,
+  confirmed above) — but `progress_flag`/`entity_id` are **not** meant to stay hand-coded long-term. The
+  quest plan's §2 already specifies deriving them from parsed MSB Enemy parts + EMEVD (DarkScript3
+  decompile / the in-overlay event-flag hook), explicitly calling hand-authoring "a bootstrap exception"
+  for a demo set only. That's this removal plan's Phase-D-shaped idea (live MSB/EMEVD instead of a static
+  bake) — already owned by the quest plan, don't re-propose it here.
+- `goblin_quest_gates.cpp` (the *visibility-gating* table, sourced from the external EldenRingQuestLog
+  project + `npc_name_text_map.json` — separate from `goblin_quest_steps.cpp`) is **not mentioned** by the
+  quest plan at all. Open question for whoever implements that plan: does `QuestNpcLayer`'s
+  `progress_flag`-driven step logic make `quest_gates.cpp`'s gating redundant? If so it's a 6th
+  permanently-baked table that becomes removable as a side effect of that plan, not this one. Flagging
+  here so it isn't missed; not resolving it in this plan.
+- `tools/generate_quest_npcs.py` (the OLD static per-profile NPC generator, distinct from
+  `generate_quest_gates.py`) is already noted in the quest plan's Appendix as superseded by the runtime
+  `QuestNpcLayer` — its hand-curated denylist is salvaged there. Nothing for this plan to do.
