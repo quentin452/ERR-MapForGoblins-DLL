@@ -58,4 +58,4 @@ F2. **Locate/recherche ne recentre pas sur une cible dans le Fog of War.** Quand
     `lot_row_in_table`, goblin_inject.cpp:4772/4809) ne lisent QUE le slot 01 d'`ItemLotParam` et ignorent
     les slots 02-08 + toutes les quantités `lotItemNum01..08`. `Marker` n'a aucun champ count. Fix = lire
     les 8 slots + quantités → `Marker.count` → badge "×N" dans draw_marker. Plan détaillé :
-    `docs/loot_item_count_plan.md`. Fixable wiring, pas de donnée manquante. DEFERRED (fresh session).
+    `docs/plans/loot_item_count_plan.md`. Fixable wiring, pas de donnée manquante. DEFERRED (fresh session).

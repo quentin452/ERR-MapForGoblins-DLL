@@ -6,7 +6,7 @@ metadata:
   type: project
 ---
 
-Audit (2026-06-28) de `docs/spatial_grid_opti_plan.md` (branche origin/**feature**/spatial-grid-opti, PAS feat/ ; 2 commits : plan + "Phase 2 Quadtree"). 2D spatial grid (cellule 256m = tile ER) pour culler les markers off-screen → boucle de rendu O(N)→O(visible).
+Audit (2026-06-28) de `docs/plans/spatial_grid_opti_plan.md` (branche origin/**feature**/spatial-grid-opti, PAS feat/ ; 2 commits : plan + "Phase 2 Quadtree"). 2D spatial grid (cellule 256m = tile ER) pour culler les markers off-screen → boucle de rendu O(N)→O(visible).
 
 ✅ **PLAN RÉÉCRIT v2 + commité 2026-06-28 (commit 6e08f9c, branche locale feature/spatial-grid-opti, non pushé).** v2 corrige : keying en MAP-SPACE (option B → query = unproject_local pur des 4 coins, pas d'inverse world→mapspace) ; noms corrigés (markers()/cache_ pas finalize/collect) ; règle d'invalidation grille=rebuild-on-cache-rebuild (anti dangling Marker* vs QuestNpcLayer dynamique) ; alimenter les DEUX passes ; mesure-first. ⭐ Ajout du contexte SCALING : ~8000 markers AUJOURD'HUI → **>10k dès qu'on câble les 31 catégories MapGenie "missing" (docs/coverage_vs_mapgenie.md, backlog feature)** → c'est CE qui justifie O(visible) + le quadtree différé.
 

@@ -23,11 +23,11 @@ feature will double-draw markers and fork the progress source of truth.
 
 | Concern | Already in tree | v2 decision |
 | --- | --- | --- |
-| Quest-NPC map category | `Category::WorldQuestNPC`, emitted in [map_entry_layer.cpp](../src/worldmap/map_entry_layer.cpp) (~L1891); meta in [category_meta.cpp](../src/worldmap/category_meta.cpp) (~L87) | **Retire** the legacy emission; the new `QuestNpcLayer` becomes the sole producer of `WorldQuestNPC` markers. |
-| Quest-aware gate | `config::questNpcQuestAware` + `is_quest_npc_hidden()` in [map_renderer.cpp](../src/worldmap/map_renderer.cpp) (~L985); `quest_aware()`/`set_quest_aware()` in [goblin_inject.cpp](../src/goblin_inject.cpp) (~L4217) | Keep the toggle, but it now gates the new layer. The overlay already labels the legacy pins "legacy / unfinished — superseded by the Quest Browser"; that wording goes away once the layer is real. |
-| Per-step progress | `config::questProgress` blob keyed by NPC name; `qp_get`/`qp_set` lambdas in [goblin_overlay.cpp](../src/goblin_overlay.cpp) (~L2608) | Keep the ini blob as the **manual** layer; flags become an optional *reflection* on top (see §4). |
-| Entity → position index | `ent_enemy` / `ent_any` maps built once in `prebuild_markers()` ([map_entry_layer.cpp](../src/worldmap/map_entry_layer.cpp) L722–742) | **Reuse** via an exposed lookup function — do NOT add parallel global maps. |
-| Flag read/write helpers | `goblin::ui::read_event_flag(id)` ([goblin_inject.cpp](../src/goblin_inject.cpp) L4390); `goblin::markers::set_event_flag(id,val)` ([goblin_markers.cpp](../src/goblin_markers.cpp) L133) | Read freely; **write only behind an explicit opt-in cheat gate** (see §4). |
+| Quest-NPC map category | `Category::WorldQuestNPC`, emitted in [map_entry_layer.cpp](../../src/worldmap/map_entry_layer.cpp) (~L1891); meta in [category_meta.cpp](../../src/worldmap/category_meta.cpp) (~L87) | **Retire** the legacy emission; the new `QuestNpcLayer` becomes the sole producer of `WorldQuestNPC` markers. |
+| Quest-aware gate | `config::questNpcQuestAware` + `is_quest_npc_hidden()` in [map_renderer.cpp](../../src/worldmap/map_renderer.cpp) (~L985); `quest_aware()`/`set_quest_aware()` in [goblin_inject.cpp](../../src/goblin_inject.cpp) (~L4217) | Keep the toggle, but it now gates the new layer. The overlay already labels the legacy pins "legacy / unfinished — superseded by the Quest Browser"; that wording goes away once the layer is real. |
+| Per-step progress | `config::questProgress` blob keyed by NPC name; `qp_get`/`qp_set` lambdas in [goblin_overlay.cpp](../../src/goblin_overlay.cpp) (~L2608) | Keep the ini blob as the **manual** layer; flags become an optional *reflection* on top (see §4). |
+| Entity → position index | `ent_enemy` / `ent_any` maps built once in `prebuild_markers()` ([map_entry_layer.cpp](../../src/worldmap/map_entry_layer.cpp) L722–742) | **Reuse** via an exposed lookup function — do NOT add parallel global maps. |
+| Flag read/write helpers | `goblin::ui::read_event_flag(id)` ([goblin_inject.cpp](../../src/goblin_inject.cpp) L4390); `goblin::markers::set_event_flag(id,val)` ([goblin_markers.cpp](../../src/goblin_markers.cpp) L133) | Read freely; **write only behind an explicit opt-in cheat gate** (see §4). |
 
 ---
 
@@ -57,7 +57,7 @@ pin shows regardless of in-game time.
 
 ## 2. Quest Metadata
 
-#### [MODIFY] [src/generated/goblin_quest_steps.hpp](../src/generated/goblin_quest_steps.hpp)
+#### [MODIFY] [src/generated/goblin_quest_steps.hpp](../../src/generated/goblin_quest_steps.hpp)
 Additive, trailing default-initialised members (same pattern as the existing
 `warning` / `fail_flag` / `fail_conclusion` additions — unspecified entries default to 0).
 
@@ -97,7 +97,7 @@ must be **derived**, not hard-coded long-term:
   (see the `darkscript3-emevd-decompile` notes) and/or the in-overlay **event-flag hook**
   (already wired as a coverage-gap detector) while playing the step.
 * **Bootstrap exception:** it is acceptable to hand-author a small demo set (Boc,
-  Alexander, Thops) in [goblin_quest_steps.cpp](../src/generated/goblin_quest_steps.cpp)
+  Alexander, Thops) in [goblin_quest_steps.cpp](../../src/generated/goblin_quest_steps.cpp)
   to prove the pipeline end-to-end — but the plan must land a *generator/derivation* path
   for the full 34 questlines, mirroring `tools/generate_*.py`. Tag any hand-authored row
   so a later derivation pass can replace it.
@@ -106,7 +106,7 @@ must be **derived**, not hard-coded long-term:
 
 ## 3. Entity → Position Lookup (REUSE, don't duplicate)
 
-#### [MODIFY] [src/worldmap/map_entry_layer.cpp](../src/worldmap/map_entry_layer.cpp) / [.hpp](../src/worldmap/map_entry_layer.hpp)
+#### [MODIFY] [src/worldmap/map_entry_layer.cpp](../../src/worldmap/map_entry_layer.cpp) / [.hpp](../../src/worldmap/map_entry_layer.hpp)
 `prebuild_markers()` already builds `ent_enemy` (entity→DiskEnemy) and `ent_any`
 (entity→enemy-or-asset) at L722–742. Rather than adding parallel
 `g_enemies_by_entity_id` / `g_assets_by_entity_id` globals, **promote the existing index
@@ -146,7 +146,7 @@ a dialogue/cutscene, with side effects we don't reproduce). v2 therefore splits 
   cheat gate is on). Flag-less step (`progress_flag == 0`) → unchanged manual ini bit.
   This keeps a clear per-step rule instead of a silent hybrid.
 
-#### [MODIFY] [src/goblin_overlay.cpp](../src/goblin_overlay.cpp) (Quest Browser, ~L2608+)
+#### [MODIFY] [src/goblin_overlay.cpp](../../src/goblin_overlay.cpp) (Quest Browser, ~L2608+)
 * `qp_get(name, s)`: if `steps[s].progress_flag` → `read_event_flag(flag)`; else existing
   ini-bit read.
 * `qp_set(name, s, v)`: if `progress_flag` → only act when `questAllowFlagWrite`, then
@@ -160,7 +160,7 @@ a dialogue/cutscene, with side effects we don't reproduce). v2 therefore splits 
 
 ## 5. Map Rendering — replace the legacy emission with a layer
 
-#### [NEW] [src/worldmap/quest_npc_layer.hpp](../src/worldmap/quest_npc_layer.hpp)
+#### [NEW] [src/worldmap/quest_npc_layer.hpp](../../src/worldmap/quest_npc_layer.hpp)
 ```cpp
 #pragma once
 #include "marker_layer.hpp"
@@ -182,7 +182,7 @@ private:
 }
 ```
 
-#### [NEW] [src/worldmap/quest_npc_layer.cpp](../src/worldmap/quest_npc_layer.cpp)
+#### [NEW] [src/worldmap/quest_npc_layer.cpp](../../src/worldmap/quest_npc_layer.cpp)
 * For each questline, find the first step not done (per §4's `qp_get` rule).
 * If that step has an `entity_id`, resolve its position via `entity_world_pos()` (§3);
   build one `Marker { category = WorldQuestNPC, icon_key = "show_quest_npc", name_id }`.
@@ -194,7 +194,7 @@ private:
   page gates); otherwise serve the cache. Do **not** re-read every quest flag per frame in
   the marker hot loop — see the `overlay-render-perf-followups` perf notes.
 
-#### [MODIFY] [src/worldmap/map_entry_layer.cpp](../src/worldmap/map_entry_layer.cpp)
+#### [MODIFY] [src/worldmap/map_entry_layer.cpp](../../src/worldmap/map_entry_layer.cpp)
 * **Remove** the legacy `WorldQuestNPC` marker emission (~L1891) — the layer is now the
   sole producer, preventing double-draw.
 
@@ -202,7 +202,7 @@ private:
 
 ## 6. Overlay wiring
 
-#### [MODIFY] [src/goblin_overlay.cpp](../src/goblin_overlay.cpp)
+#### [MODIFY] [src/goblin_overlay.cpp](../../src/goblin_overlay.cpp)
 * Register `QuestNpcLayer` in the active-layers list.
 * Drop the "legacy / unfinished" tooltip wording on the `World - Quest NPC` category row
   (it is no longer legacy). Keep the `questNpcQuestAware` toggle as the layer's gate.

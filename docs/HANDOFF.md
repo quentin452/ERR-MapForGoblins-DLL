@@ -11,12 +11,12 @@ here; when implementation actually starts, fork a fresh branch from master. This
 divergence we cleaned up this session.
 
 Plans currently on master, ready to start (fork from master when you do):
-- **`docs/feat_quests_implementation_plan.md`** (v2, audited) — quest browser automation + runtime
+- **`docs/plans/feat_quests_implementation_plan.md`** (v2, audited) — quest browser automation + runtime
   `QuestNpcLayer`. Includes the salvaged NPC denylist appendix (from the retired `feat/quest-npc-layer`).
-- **`docs/dx_bugs_backlog_plan.md`** — DX bug/QoL backlog as PRs A–E, with a Reconciliation section vs
+- **`docs/plans/dx_bugs_backlog_plan.md`** — DX bug/QoL backlog as PRs A–E, with a Reconciliation section vs
   the live inventory (`docs/memory/bugs/dx-bugs-backlog.md`, items 1–14 + F1/F2). Items 11/12/6 = the
   map-exit input softlock → see `docs/re/windows_input_softlock_re_prompt.md` (Windows RE, do that first).
-- **`docs/spatial_grid_opti_plan.md`** — clustering / spatial-grid optimization (PR E of dx-bugs depends
+- **`docs/plans/spatial_grid_opti_plan.md`** — clustering / spatial-grid optimization (PR E of dx-bugs depends
   on this).
 
 Branches still open (NOT plan-only, left as-is): `fix/marker-bugs` (~290 files, large parallel work),
@@ -73,7 +73,7 @@ Gate before deleting the baked overlay atlas: prove which categories actually ne
 0. **Loot item count (undercount + ×N stacking).** Root-caused: lot readers fetch only `ItemLotParam`
    slot 01, dropping slots 02-08 + `lotItemNum` quantities → multi-item lots show as 1 (e.g. "Below The
    Well" 1 vs 3 Sliver of Meat). Fix = read all 8 slots + quantities → `Marker.count` → "×N" badge. Full
-   plan: `docs/loot_item_count_plan.md`. Bounded multi-file wiring; deferred for a fresh context window.
+   plan: `docs/plans/loot_item_count_plan.md`. Bounded multi-file wiring; deferred for a fresh context window.
 1. **Lag-spike hunt — real suspect `refresh.collected.*`.** The minimap was a red herring. The collected-
    state refresh spikes in the SPIKE log (earlier run: `refresh.collected.read_wgm` 2–5ms, ~30x its avg).
    It is SUPPOSED to already use a good lookup, but the spikes say otherwise — re-audit the collected
@@ -196,7 +196,7 @@ These branches exist with a plan attached but little/no implementation; pick up 
 - `feature/dx-bugs-backlog` → `docs/memory/process/plan-dx-bugs-audit.md`, `docs/memory/bugs/dx-bugs-backlog.md`
 - `feature/spatial-grid-opti` → `docs/memory/process/plan-spatial-grid-audit.md`
 - `feat/quests` (quest NPC layer; bonus-3 `MENU_MAP_80` lands here) → `docs/memory/process/plan-quests-audit.md`,
-  `docs/feat_quests_implementation_plan.md`, `docs/memory/features/quest-browser.md`
+  `docs/plans/feat_quests_implementation_plan.md`, `docs/memory/features/quest-browser.md`
 - Plan registry: `docs/memory/process/plans-to-audit.md`.
 
 ## Debake candidates (apply the prime directive — replace ERR-frozen bakes with active-file reads)

@@ -6,7 +6,7 @@ metadata:
   type: project
 ---
 
-<user> (2026-06-28) : **3 plans à auditer** puis remettre en mémoire — ✅ LES 3 SONT AUDITÉS. ⚠️ Noms de branches réels : `feat/quests` mais `feature/dx-bugs-backlog` + `feature/spatial-grid-opti` (préfixe `feature/`, pas `feat/`). Docs : docs/feat_quests_implementation_plan.md, docs/dx_bugs_backlog_plan.md, docs/spatial_grid_opti_plan.md.
+<user> (2026-06-28) : **3 plans à auditer** puis remettre en mémoire — ✅ LES 3 SONT AUDITÉS. ⚠️ Noms de branches réels : `feat/quests` mais `feature/dx-bugs-backlog` + `feature/spatial-grid-opti` (préfixe `feature/`, pas `feat/`). Docs : docs/plans/feat_quests_implementation_plan.md, docs/plans/dx_bugs_backlog_plan.md, docs/plans/spatial_grid_opti_plan.md.
 
 1. **feat/quests** — ✅ AUDITÉ, verdict [[plan-quests-audit]] (directionnel OK mais périmé/risqué/sous-scopé). PLAN RÉÉCRIT EN v2 + commité (6f0b6fb sur branche locale feat/quests, non pushé).
 2. **feature/dx-bugs-backlog** — ✅ AUDITÉ + RÉÉCRIT v2 (commit b5b4d53). Verdict [[plan-dx-bugs-audit]]. Couvre le backlog [[dx-bugs-backlog]].

@@ -6,7 +6,7 @@ metadata:
   type: project
 ---
 
-Audit (2026-06-28) de `docs/dx_bugs_backlog_plan.md` (branche origin/**feature**/dx-bugs-backlog, PAS feat/). Couvre les 9 items de [[dx-bugs-backlog]].
+Audit (2026-06-28) de `docs/plans/dx_bugs_backlog_plan.md` (branche origin/**feature**/dx-bugs-backlog, PAS feat/). Couvre les 9 items de [[dx-bugs-backlog]].
 
 ✅ **PLAN RÉÉCRIT v2 + commité 2026-06-28 (commit b5b4d53, branche locale feature/dx-bugs-backlog, non pushé).** v2 : DÉCOUPÉ EN 5 PRs (A icônes / B Y-offset / C manette+curseur / D pause / E clustering) ; pause QPC-global REJETÉE par défaut → RE-spike d'abord pour trouver le timestep/flag pause du jeu (QPC = fallback scopé only) ; clustering[8,9] séquencé APRÈS + SUR feature/spatial-grid-opti (cellules grille = piles tile, scale aux >10k markers attendus avec les 31 cats MapGenie) ; réutilise parse_gamepad_combo+GamepadMask+SetCursorPos hooké ; noms corrigés ; chemins repo-relatifs.
 

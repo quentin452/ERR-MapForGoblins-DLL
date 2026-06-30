@@ -41,11 +41,11 @@ only the cells intersecting the visible viewport → O(visible) (typically 100�
 
 | Need | Already in tree |
 | --- | --- |
-| Render loop to replace | `for (auto *L : layers) { … for (const Marker &m : L->markers()) … }` at [map_renderer.cpp](../src/worldmap/map_renderer.cpp) L1223 (marker pass) + L1359 (cluster pass) |
+| Render loop to replace | `for (auto *L : layers) { … for (const Marker &m : L->markers()) … }` at [map_renderer.cpp](../../src/worldmap/map_renderer.cpp) L1223 (marker pass) + L1359 (cluster pass) |
 | Timing | `GOBLIN_BENCH_QUIET("render.worldmap.markers")` / `…clusters` already split the two passes |
-| Forward projection | `proj::project_screen(mU, mV, view, realW, realH)` in [goblin_projection.hpp](../src/goblin_projection.hpp) (consumes **map-space**, not unified world) |
+| Forward projection | `proj::project_screen(mU, mV, view, realW, realH)` in [goblin_projection.hpp](../../src/goblin_projection.hpp) (consumes **map-space**, not unified world) |
 | **Inverse** projection | `proj::unproject_local(localX, localZ, zoom, panX, panZ, …)` → map-space = (screen+pan)/zoom — **already exists**, de-risks the viewport query |
-| World→map-space step | "Unified world coords → map-space" conversion at [map_renderer.cpp](../src/worldmap/map_renderer.cpp) L370 (markers store unified `worldX/worldZ`; the projector wants map-space) |
+| World→map-space step | "Unified world coords → map-space" conversion at [map_renderer.cpp](../../src/worldmap/map_renderer.cpp) L370 (markers store unified `worldX/worldZ`; the projector wants map-space) |
 | Layer marker storage | each layer caches into `mutable std::vector<Marker> cache_`, built lazily in `markers()` (`GraceLayer`, `MapEntryLayer`) — NOT a `collect()`/`finalize()` method |
 
 ---
@@ -76,7 +76,7 @@ Document this choice in the header; it removes the v1 ambiguity.
 
 ## 3. Spatial grid data structure
 
-#### [NEW] [src/worldmap/spatial_grid.hpp](../src/worldmap/spatial_grid.hpp) / [.cpp](../src/worldmap/spatial_grid.cpp)
+#### [NEW] [src/worldmap/spatial_grid.hpp](../../src/worldmap/spatial_grid.hpp) / [.cpp](../../src/worldmap/spatial_grid.cpp)
 ```cpp
 namespace goblin::worldmap {
 class SpatialGrid {
@@ -110,12 +110,12 @@ free consequence of which cells we touch — no per-marker group branch in the h
 base interface a non-virtual accessor returning a `const SpatialGrid&`, plus a protected
 `rebuild_grid_from_cache()` helper the layers call right after they (re)build `cache_`.
 
-#### [MODIFY] [src/worldmap/marker_layer.hpp](../src/worldmap/marker_layer.hpp)
+#### [MODIFY] [src/worldmap/marker_layer.hpp](../../src/worldmap/marker_layer.hpp)
 * Add `SpatialGrid grid_;` (mutable) and `const SpatialGrid &grid() const { return grid_; }`.
 * Add `protected: void rebuild_grid_from_cache();` — clears `grid_` and re-inserts every
   marker in `cache_`, computing each `(mU,mV)` via the shared unified→map-space conversion.
 
-#### [MODIFY] [src/worldmap/grace_layer.cpp](../src/worldmap/grace_layer.cpp) / [map_entry_layer.cpp](../src/worldmap/map_entry_layer.cpp)
+#### [MODIFY] [src/worldmap/grace_layer.cpp](../../src/worldmap/grace_layer.cpp) / [map_entry_layer.cpp](../../src/worldmap/map_entry_layer.cpp)
 * In the existing `markers()` body, **after** `cache_` is populated (the lazy build that
   already runs once via the call-once / cache guard), call `rebuild_grid_from_cache()`.
 * For `MapEntryLayer`, whose cache is built once up front, the grid is likewise built once.
@@ -140,7 +140,7 @@ rebuilt or its storage may reallocate, the grid MUST be rebuilt in the same step
 
 ## 6. Optimized render loop
 
-#### [MODIFY] [src/worldmap/map_renderer.cpp](../src/worldmap/map_renderer.cpp)
+#### [MODIFY] [src/worldmap/map_renderer.cpp](../../src/worldmap/map_renderer.cpp)
 * **Viewport bounds (map-space):** `visible_map_bounds(view, realW, realH, …)` =
   `unproject_local` of the 4 screen corners (handles rotation/zoom), take min/max of (mU,mV).
 * **Marker pass (L1223):** replace the full scan with a grid query:

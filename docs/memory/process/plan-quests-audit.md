@@ -6,11 +6,11 @@ metadata:
   type: project
 ---
 
-Audit (2026-06-28) du plan `docs/feat_quests_implementation_plan.md` (commit origin/feat/quests 2257ce6 = ancêtre de master ; pas de code, doc seul). Plan = (A) automatiser le Quest Browser via read/write Event Flags + (B) afficher le NPC/asset de l'étape active sur la map (QuestNpcLayer).
+Audit (2026-06-28) du plan `docs/plans/feat_quests_implementation_plan.md` (commit origin/feat/quests 2257ce6 = ancêtre de master ; pas de code, doc seul). Plan = (A) automatiser le Quest Browser via read/write Event Flags + (B) afficher le NPC/asset de l'étape active sur la map (QuestNpcLayer).
 
 **VERDICT v1 : directionnellement bon, mais partiellement périmé (ignore l'infra déjà livrée), risqué sur A (écriture de flags = mutation save), sous-scopé sur la DATA.**
 
-✅ **PLAN RÉÉCRIT EN v2 le 2026-06-28** (branche locale feat/quests, doc docs/feat_quests_implementation_plan.md, NON commité — <user> push lui-même). v2 corrige les 7 points : §0 tableau "infra à réconcilier" ; §5 retire l'émission legacy WorldQuestNPC (layer = seule productrice) ; §3 réutilise ent_enemy/ent_any via entity_world_pos() ; §4 READ-only par défaut + write derrière config::questAllowFlagWrite (cheat gate) + priorité par étape ; §2 data dérivée EMEVD/MSB (démo bootstrap seulement) ; §5 invalidation cache (epoch+triggers) ; chemins repo-relatifs ; §7.6 test write sur save jetable.
+✅ **PLAN RÉÉCRIT EN v2 le 2026-06-28** (branche locale feat/quests, doc docs/plans/feat_quests_implementation_plan.md, NON commité — <user> push lui-même). v2 corrige les 7 points : §0 tableau "infra à réconcilier" ; §5 retire l'émission legacy WorldQuestNPC (layer = seule productrice) ; §3 réutilise ent_enemy/ent_any via entity_world_pos() ; §4 READ-only par défaut + write derrière config::questAllowFlagWrite (cheat gate) + priorité par étape ; §2 data dérivée EMEVD/MSB (démo bootstrap seulement) ; §5 invalidation cache (epoch+triggers) ; chemins repo-relatifs ; §7.6 test write sur save jetable.
 
 ✅ Tient :
 - Helpers existent : `goblin::ui::read_event_flag(id)` (goblin_inject.cpp:4390) + `goblin::markers::set_event_flag(id,val)` (goblin_markers.cpp:133).

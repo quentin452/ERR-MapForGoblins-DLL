@@ -44,13 +44,13 @@ it reuses the grid cells instead of inventing a parallel tile index.
 
 | Need | Already in tree |
 | --- | --- |
-| Present / WndProc / SetCursorPos hooks | all in [goblin_overlay.cpp](../src/goblin_overlay.cpp) (`hk_present`, `hk_wndproc`, `o_set_cursor_pos` — SetCursorPos is **already hooked**) |
-| Gamepad combo parsing | `goblin::parse_gamepad_combo("Y+R3")` ([goblin_config.cpp](../src/goblin_config.cpp) L225) + `IniType::GamepadMask` in [goblin_config_schema.cpp](../src/goblin_config_schema.cpp) — **already exist**; no `XInputGetState` anywhere yet |
-| Keyboard toggle | `config::overlayToggleKey` (VK_F1) used at [goblin_overlay.cpp](../src/goblin_overlay.cpp) L2820 via `GetAsyncKeyState` |
-| Player position | `goblin::get_player_world_pos(x, y, z)` ([goblin_inject.hpp](../src/goblin_inject.hpp) L57) |
-| Marker fields | `Marker` has `worldX/worldZ` only ([marker_layer.hpp](../src/worldmap/marker_layer.hpp) L28) — `worldY` must be ADDED |
-| Marker build site | a free function `push_marker(...)` in [map_entry_layer.cpp](../src/worldmap/map_entry_layer.cpp) L167; grace markers built in `GraceLayer::markers()` into `cache_` |
-| Clustering today | `draw_clusters` groups by `cluster_key` (nearest-grace) via `unordered_map<int,vector<int>>` at [map_renderer.cpp](../src/worldmap/map_renderer.cpp) L533 |
+| Present / WndProc / SetCursorPos hooks | all in [goblin_overlay.cpp](../../src/goblin_overlay.cpp) (`hk_present`, `hk_wndproc`, `o_set_cursor_pos` — SetCursorPos is **already hooked**) |
+| Gamepad combo parsing | `goblin::parse_gamepad_combo("Y+R3")` ([goblin_config.cpp](../../src/goblin_config.cpp) L225) + `IniType::GamepadMask` in [goblin_config_schema.cpp](../../src/goblin_config_schema.cpp) — **already exist**; no `XInputGetState` anywhere yet |
+| Keyboard toggle | `config::overlayToggleKey` (VK_F1) used at [goblin_overlay.cpp](../../src/goblin_overlay.cpp) L2820 via `GetAsyncKeyState` |
+| Player position | `goblin::get_player_world_pos(x, y, z)` ([goblin_inject.hpp](../../src/goblin_inject.hpp) L57) |
+| Marker fields | `Marker` has `worldX/worldZ` only ([marker_layer.hpp](../../src/worldmap/marker_layer.hpp) L28) — `worldY` must be ADDED |
+| Marker build site | a free function `push_marker(...)` in [map_entry_layer.cpp](../../src/worldmap/map_entry_layer.cpp) L167; grace markers built in `GraceLayer::markers()` into `cache_` |
+| Clustering today | `draw_clusters` groups by `cluster_key` (nearest-grace) via `unordered_map<int,vector<int>>` at [map_renderer.cpp](../../src/worldmap/map_renderer.cpp) L533 |
 
 ---
 
@@ -60,7 +60,7 @@ The bug is **systemic to rendering**, not a DDS-sampling issue (it shows on the 
 icons too). Two causes: icons too small, and icon colour blending into the world-map art
 behind. Fix is contrast + minimum size — **do NOT touch DDS sampling**.
 
-#### [MODIFY] [src/worldmap/map_renderer.cpp](../src/worldmap/map_renderer.cpp) — `draw_marker`
+#### [MODIFY] [src/worldmap/map_renderer.cpp](../../src/worldmap/map_renderer.cpp) — `draw_marker`
 * **Minimum size:** clamp the half-extent so icons never shrink below readability
   (e.g. `half = max(half, 8.f)`; graces `max(…, 10.f)`).
 * **Contrast backing:** draw a **single** dark disc (`AddCircleFilled`, radius `half + 1.5f`,
@@ -72,15 +72,15 @@ behind. Fix is contrast + minimum size — **do NOT touch DDS sampling**.
 
 ## PR B — Y-offset / altitude cue (item 7)
 
-#### [MODIFY] [src/worldmap/marker_layer.hpp](../src/worldmap/marker_layer.hpp)
+#### [MODIFY] [src/worldmap/marker_layer.hpp](../../src/worldmap/marker_layer.hpp)
 * Add `float worldY = 0.0f;` to `Marker`.
 
 #### [MODIFY] marker build sites (NOT `collect`/member `push_marker` — those don't exist)
-* In the free `push_marker(...)` ([map_entry_layer.cpp](../src/worldmap/map_entry_layer.cpp) L167), set `m.worldY = d.posY;`.
-* In `GraceLayer::markers()` where `cache_.push_back(m)` runs ([grace_layer.cpp](../src/worldmap/grace_layer.cpp)), set `m.worldY` from the live grace `posY`.
+* In the free `push_marker(...)` ([map_entry_layer.cpp](../../src/worldmap/map_entry_layer.cpp) L167), set `m.worldY = d.posY;`.
+* In `GraceLayer::markers()` where `cache_.push_back(m)` runs ([grace_layer.cpp](../../src/worldmap/grace_layer.cpp)), set `m.worldY` from the live grace `posY`.
 * If `LiveGrace` lacks `posY`, add it and populate it from `row.posY` in the grace capture.
 
-#### [MODIFY] [src/worldmap/map_renderer.cpp](../src/worldmap/map_renderer.cpp) — `draw_marker`
+#### [MODIFY] [src/worldmap/map_renderer.cpp](../../src/worldmap/map_renderer.cpp) — `draw_marker`
 * If `get_player_world_pos(px,py,pz)` succeeds, `diff = m.worldY - py`.
 * If `diff > 15.f` draw a small ▲ (higher) badge top-right; `diff < -15.f` a ▼ (lower) badge.
   Tune the threshold; suppress the badge for graces/world features where altitude is moot.
@@ -89,12 +89,12 @@ behind. Fix is contrast + minimum size — **do NOT touch DDS sampling**.
 
 ## PR C — Controller binding + cursor recentering (items 2, 3, 6)
 
-#### [MODIFY] [src/goblin_config.hpp](../src/goblin_config.hpp) / [src/goblin_config_schema.cpp](../src/goblin_config_schema.cpp)
+#### [MODIFY] [src/goblin_config.hpp](../../src/goblin_config.hpp) / [src/goblin_config_schema.cpp](../../src/goblin_config_schema.cpp)
 * Add `overlayToggleGamepad` (uint16_t) wired through the **existing** `IniType::GamepadMask`
   (parsed by the existing `parse_gamepad_combo`, default e.g. `"Y+R3"`). Do not write new
   parsing.
 
-#### [MODIFY] [src/goblin_overlay.cpp](../src/goblin_overlay.cpp)
+#### [MODIFY] [src/goblin_overlay.cpp](../../src/goblin_overlay.cpp)
 * **Gamepad poll (new):** in `hk_present`, `XInputGetState` for pads 0..3; edge-detect the
   `overlayToggleGamepad` combo → toggle the overlay (same path `overlayToggleKey` drives).
   This is the only genuinely new subsystem here (no XInput in tree yet).
@@ -156,7 +156,7 @@ do not reinvent a parallel tile index here.
   cells), and it scales to the >10k markers we expect once the 31 MapGenie categories land
   (see the spatial-grid plan §0).
 
-#### [MODIFY] [src/worldmap/map_renderer.cpp](../src/worldmap/map_renderer.cpp) — `draw_clusters`
+#### [MODIFY] [src/worldmap/map_renderer.cpp](../../src/worldmap/map_renderer.cpp) — `draw_clusters`
 * Add a `clusterMode` config: `"tile"` (new default) vs `"grace"` (legacy nearest-grace).
 * Tile mode: draw each cell's pile at the centroid of its members.
 * **Adaptive distance (item 9):** in tile mode, compute distance from the player to the tile
@@ -201,7 +201,7 @@ starting, fold the newer items in; several are already partly addressed or scope
   item/rep icons only (native map symbols untouched). Config `icon_legibility` / `icon_min_half_px`.
   Visually confirmed. Also dropped the redundant discovered green-check on graces.
 - **Items 8 + 10 (clustering / fragment heuristic).** Depend on `feature/spatial-grid-opti`
-  (`docs/spatial_grid_opti_plan.md`, now also on master). Sequence **PR E** after that lands.
+  (`docs/plans/spatial_grid_opti_plan.md`, now also on master). Sequence **PR E** after that lands.
 - **Item F1 (native map icons leak underground; `isDLC*2|isUG` gating).** Tied to baked-atlas removal;
   the `[ICONTIER]` ERR-vs-vanilla audit (see HANDOFF) is the data source for whether this is still live.
 - **Items F2, 14** and any others not mapped above: still need a PR home — assign when refreshing.
