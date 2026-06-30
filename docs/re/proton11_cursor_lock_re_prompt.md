@@ -1,15 +1,58 @@
 # RE prompt — Proton 11 F1-menu cursor lock (user32 cursor hooks bypassed)
 
-Status: OPEN. Environment-side RE (Proton/wine on Linux, NOT Windows-game RE). Durable code fix scoped
-below, GATED on a disambiguation step that must run first.
+Status: **H3 found + FIXED 2026-07-01, branch `diag/cursor-hook-call-counters` (built, NOT yet
+in-game-verified).** H1/H2 below are now believed WRONG for the reliable repro (refuted by log
+data — see H3). Re-test after the fix below to confirm H3 was the whole story; H1/H2 may still
+explain a *different* trigger if the bug still reproduces under different conditions.
 
-**Step 1 instrumentation DONE 2026-07-01 (`diag/cursor-hook-call-counters`, not merged).** The 5 detours
-now log `[CURSORDIAG] hooks/sec: set_cursor_pos=... clip_cursor=... get_cursor_pos=... raw_input_data=...
-raw_input_buffer=...` once/sec while the panel is open (`src/goblin_overlay.cpp`). Build, deploy, repro
-the frozen-cursor symptom, and read the counts from `logs/MapForGoblins.log` — that's disambiguation
-step 1 done; step 2 (the `PROTON_ENABLE_WAYLAND=0` env toggle test) still needs running manually.
+**Step 1 instrumentation DONE 2026-07-01 (`diag/cursor-hook-call-counters`).** The 5 detours log
+`[CURSORDIAG] hooks/sec: set_cursor_pos=... clip_cursor=... get_cursor_pos=... raw_input_data=...
+raw_input_buffer=...` once/sec while the panel is open (`src/goblin_overlay.cpp`).
 
-## Symptom
+## H3 — reliable repro found, root cause confirmed by code (not just log data)
+
+**User's repro (2026-07-01), 100% reliable:** (1) open the F1 ImGui panel, (2) Alt+Tab away from the
+game, (3) Alt+Tab back to refocus, (4) cursor is lost forever — no hover/click/move, matches the
+original symptom exactly.
+
+**This REFUTES H1/H2 as the explanation for this repro.** Both hypothesized "0 calls reaching user32 at
+all" (compositor-level lock or win32u bypass). The `[CURSORDIAG]` log from this exact repro shows the
+opposite: `clip_cursor`/`get_cursor_pos`/`raw_input_data` keep firing throughout, including during the
+"lost forever" tail (e.g. `clip_cursor=11..27`, `get_cursor_pos=44..108` per second while stuck) — only
+`set_cursor_pos` drops to 0 after the alt-tab-back, while the others keep going. The hooks are NOT being
+bypassed; something downstream of them is wrong.
+
+**Root cause, found by reading the actual WndProc + focus-gate code (`src/goblin_overlay.cpp`):**
+- `g_show = g_user_show && fg;` (`:3076` area) — recomputed **once per frame** from a foreground-window
+  check. Comment: "lose focus → hooks deactivate; regain → panel restores."
+- `hk_wndproc` (`:1296` area) only forwards messages to `ImGui_ImplWin32_WndProcHandler` in two cases:
+  unconditionally for every message when `g_show` is true, or — when `g_show` is false but
+  `world_map_open()` is true — **only** `WM_MOUSEMOVE`/`WM_LBUTTONDOWN`/`WM_LBUTTONUP`. **`WM_SETFOCUS`
+  and `WM_KILLFOCUS` were never forwarded in that second branch.**
+- Alt+Tab away: `WM_KILLFOCUS` likely arrives while `g_show` is still true (one frame stale) → forwarded
+  fine, ImGui correctly registers focus lost.
+- Alt+Tab back: `WM_SETFOCUS` arrives from the OS essentially immediately on refocus — very plausibly
+  **before** the next Present-hook call has re-run the `fg` check and flipped `g_show` back to true. If
+  so, `WM_SETFOCUS` falls into the `world_map_open()`-only branch, which doesn't forward it →
+  `io.AddFocusEvent(true)` is never called → ImGui's internal focus-lost state never clears →
+  `ImGui_ImplWin32_UpdateMouseData()` (standard ImGui Win32 backend behavior) permanently stops writing
+  the mouse position from then on. Cursor "lost forever" — independent of Proton/Wayland/win32u entirely,
+  a pure message-forwarding gap in our own WndProc hook.
+
+**Fix applied:** forward `WM_SETFOCUS`/`WM_KILLFOCUS` to `ImGui_ImplWin32_WndProcHandler`
+**unconditionally**, before the `g_show` branch, so ImGui's internal focus tracking can never desync from
+real OS focus regardless of our panel-visibility gating. Safe: `hk_wndproc` can't be invoked before
+`ImGui::CreateContext()`/`ImGui_ImplWin32_Init()` (both run earlier in the same `init_imgui()` that
+installs the WndProc hook), and double-forwarding the same focus message when `g_show` is also true is
+idempotent (`io.AddFocusEvent` just sets a bool).
+
+**Still needed:** in-game verification of the fix using the user's exact repro (F1 → alt-tab → alt-tab
+back → confirm cursor responds). If it does NOT fully fix it, H1/H2 below may still be a contributing
+factor for some Proton/Wayland configs — re-run the `[CURSORDIAG]` capture against the SPECIFIC remaining
+failure to check.
+
+## Symptom (original framing — H1/H2 below; see H3 above for what's now believed to actually explain
+## the reliable alt-tab repro)
 
 After switching ELDEN RING (ERR / MapForGoblins) from **Proton 8.0 → Proton 11.0-100**, pressing **F1**
 opens the ImGui panel but the **mouse cursor is frozen at screen-centre** — ImGui can't be moved or

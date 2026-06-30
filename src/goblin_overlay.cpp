@@ -1304,6 +1304,20 @@ namespace
     // ── WndProc hook (input capture) ──────────────────────────────────────
     LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     {
+        // Focus messages MUST always reach ImGui, independent of g_show. g_show is
+        // recomputed once/frame from a foreground-window check (":3076" area), so it can
+        // still be FALSE for a frame or two right after the OS delivers WM_SETFOCUS on
+        // alt-tab-back — if that message only reached ImGui_ImplWin32_WndProcHandler
+        // inside the `if (g_show)` branch below, ImGui's internal focus-lost state never
+        // clears and UpdateMouseData() permanently stops writing the mouse position
+        // (the "F1 opens but the cursor never responds again" bug after alt-tab+back —
+        // see docs/re/proton11_cursor_lock_re_prompt.md's H3). Cheap and side-effect-free
+        // to forward unconditionally: ImGui's own handler no-ops these when its context
+        // isn't initialized yet (init_imgui not run), and forwarding while the panel is
+        // closed only updates ImGui's idle io.AddFocusEvent state, nothing visible.
+        if (msg == WM_SETFOCUS || msg == WM_KILLFOCUS)
+            ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
+
         if (g_show)
         {
             ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
