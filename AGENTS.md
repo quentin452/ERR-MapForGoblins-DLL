@@ -46,6 +46,10 @@ Platform rule:
 Workflow:
 
 - Work on a feature branch unless told otherwise.
+- **Plans live on `master`, not on plan-only branches.** A branch that only holds a planning/design doc
+  drifts as master's memory/inventory evolves (a plan goes stale against `docs/memory/`). So land the
+  plan on `master` under `docs/`, note it in `docs/HANDOFF.md`, and fork a fresh implementation branch
+  from master only when the work actually starts. Don't keep a long-lived plan-only branch.
 - **The USER pushes.** Committing is fine; pushing to a remote is the user's job. Do not push unless
   explicitly asked, and do NOT end messages reminding the user to push — assume they will. State the
   local state (e.g. "committed, local master is ahead of origin") once and move on; no nagging.
