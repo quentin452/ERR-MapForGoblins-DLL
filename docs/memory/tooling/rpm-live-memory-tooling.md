@@ -28,3 +28,12 @@ to a static. CE find-what-accesses output (RIP + register dump) is gold: subtrac
 RVA, and `RBX`/`this` = the struct base. Caveat: heap addrs are session-specific (need the chain);
 I can read memory but **can't see the screen / drive gameplay** — <user> still does the visual
 in-game validation, and the game must be running for any RPM read.
+
+**RPM alone can settle struct/hook questions — no CE needed** (2026-06-30, native msg getter RE,
+see `docs/re/windows_native_msg_getter_re_findings.md` + [[ghidra-re-tooling]]): read a live singleton
+→ walk its fields to answer a "does the engine merge X internally?" question read-only (here:
+`MsgRepositoryImp` `groupCount@+0x10 == 1`, base FMG slots already hold merged DLC, vanilla DLC slots
+are 1-string stubs). Also: **detect hooks by RPM-reading a function's entry bytes** — a leading
+`E9 <rel32>` (jmp to a trampoline just below the module base) = the function is MinHook'd (here ERR
+hooks the message getter). Consequence: AOBs for hookable functions must anchor on the **interior**,
+not the prologue (entry = interior_match − 5).

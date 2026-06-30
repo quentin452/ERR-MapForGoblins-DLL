@@ -31,3 +31,12 @@ after: REAL has short `74` (jz), DECOY has `0F 84` (jz near). The fixed AOB ends
 described the DECOY. Lesson: a non-unique AOB is a latent wrong-function bug; the [SIG] log
 shows address drift across sessions when one exists. See [[mapforgoblins-map-open-freeze]],
 [[overlay-rendered-markers]].
+
+**Discovered but not yet wired — `GETMESSAGE`** (2026-06-30, RESOLVED, see
+`docs/re/windows_native_msg_getter_re_findings.md`): the native loot-name getter
+`wchar_t* GetMessage(repo, group, fmgId, msgId)` @ RVA `0x266d3c0`. Add it when implementing the
+`#ifdef MFG_VANILLA` removal. **Caveat — anchor the AOB on the interior, not the prologue:** ERR
+hooks this function (live entry = MinHook `E9` trampoline), so the prologue bytes are clobbered at
+runtime. Interior AOB `44 3B 41 14 73 ?? 48 8B 41 08 8B D2 48 8B 0C D0 48 85 C9 74 ?? 41 8B C0 48 8B
+0C C1 48 85 C9 74 ?? 41 8B D1 E9`, **entry = match − 5**. This is a new general rule for the registry:
+hookable engine functions need interior anchors. See [[rpm-live-memory-tooling]], [[ghidra-re-tooling]].
