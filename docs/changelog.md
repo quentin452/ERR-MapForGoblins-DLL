@@ -99,6 +99,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   `>= 0x40000000` cut that wrongly dropped DLC one-time loot.
 
 ### Fixed
+- **Overlay menu unclickable on Wine/Proton** — the F1 panel showed and hover worked, but clicks on
+  buttons/sliders/dropdowns didn't register. ER reads input via Raw Input, so under newer wine/Proton no
+  legacy mouse-button window messages (`WM_LBUTTONDOWN`…) are posted — ImGui's message path saw no presses
+  (the cursor *position* still worked because it's polled). Mouse buttons are now polled directly
+  (`GetAsyncKeyState`, like the menu toggle key) and fed to ImGui each frame, independent of message
+  delivery and of fullscreen/borderless. (Confirmed: zero `WM_LBUTTONDOWN` reached the overlay while open.)
 - **Marker teleport on zoom** — overlay markers jumped for a single frame on each mouse-wheel zoom step.
   The marker motion-sync (which projects markers ~1 frame behind to ride the GFx-composited basemap) now
   delays zoom together with pan (`view_delay_zoom`, on by default); delaying pan alone left the zoom a
