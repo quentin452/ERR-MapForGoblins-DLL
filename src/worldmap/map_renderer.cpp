@@ -1,5 +1,6 @@
 #include "map_renderer.hpp"
 #include "category_meta.hpp"          // category_gpu_iconId (map-point symbol per category)
+#include "spatial_grid.hpp"           // tile-based clustering (grid_cell_key)
 
 #include "goblin_bench.hpp"          // GOBLIN_BENCH_QUIET (per-frame render timing)
 #include "goblin_projection.hpp"     // baked map-space → backbuffer projection
@@ -657,8 +658,9 @@ inline void project_raw(int area, float rawX, float rawZ, float bakedWX, float b
 // A projected marker awaiting the clustering decision.
 struct ScreenMarker
 {
-    ImVec2 p;
+    ImVec2 p;        // screen position
     const Marker *m;
+    float u = 0, v = 0;  // map-space position (for tile clustering)
 };
 
 // Best hovered item this frame (for the tooltip). bestd = squared px distance.
@@ -749,10 +751,13 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     auto on_screen = [&](const ImVec2 &p) {
         return !(p.x < -32 || p.y < -32 || p.x > realW + 32 || p.y > realH + 32);
     };
-    std::unordered_map<int, std::vector<int>> groups; // cluster_key → member indices
+    // Tile clustering: group by the marker's MAP-SPACE tile (+ map group), not the nearest-grace key.
+    // Deterministic + zoom-aware, and every group is bounded to one 256-unit tile, so a pile's centroid
+    // can't drift across the map the way the old grace-key centroid fallback could.
+    std::unordered_map<uint32_t, std::vector<int>> groups; // tile cell key → member indices
     groups.reserve(items.size());
     for (int i = 0; i < (int)items.size(); ++i)
-        groups[items[i].m->cluster_key].push_back(i);
+        groups[grid_cell_key(items[i].m->group, items[i].u, items[i].v)].push_back(i);
 
     // Distance-adaptive: when on, the per-location threshold ramps from near_thr (full
     // detail around the player) to base_thr (clustered far away) over near→far radius,
@@ -771,13 +776,17 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     float pwx = 0, pwz = 0;
     const bool have_player =
         dist_adaptive && goblin::get_player_map_pos(player_area, pwx, pwz); // projected (debug rings)
-    // The distance ramp measures player↔grace in the RAW per-area frame (gridX*256+pos, NO
-    // projection) so it's correct on EVERY page — the projected unified frame OVERLAPS
-    // overworld↔underground, which gave garbage distances in Siofra. Gate on same raw area.
-    int raw_pa = -1;
-    float raw_pwx = 0, raw_pwz = 0;
-    const bool have_raw = dist_adaptive && goblin::get_player_raw_pos(raw_pa, raw_pwx, raw_pwz);
-
+    // Tile clustering measures player↔tile in MAP-SPACE, gated to the player's own map layer (group).
+    // Group-keyed tiles never share a cell across layers, so this avoids the overworld↔underground
+    // overlap without needing the raw-area frame the old grace-key ramp relied on.
+    int player_grp = -1;
+    float pmU = 0, pmV = 0;
+    if (have_player)
+    {
+        int pgx_ = 0, pgz_ = 0;
+        goblin::get_player_map_pos(player_area, pwx, pwz, &pgx_, &pgz_, &player_grp);
+        world_to_mapspace_xy(pwx, pwz, pmU, pmV);
+    }
     // DEBUG viz (config cluster_debug_radius): player marker + near/far rings so you can
     // SEE where the distance ramp engages. Draws on every page the ramp runs (incl. the
     // projected underground); per-pile d=/thr= below shows the ramp's decision.
@@ -810,22 +819,21 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     for (auto &kv : groups)
     {
         const auto &idxs = kv.second;
-        // Grace anchor (projected world + page) for the pile PLACEMENT below.
-        int garea = -1;
-        float gwx = 0, gwz = 0;
-        const bool has_anchor = goblin::grace_anchor_world(kv.first, garea, gwx, gwz);
-        // Per-location threshold. Distance-adaptive: Euclidean ramp near_thr→base_thr over
-        // the near→far radius, measured in the RAW per-area frame (player + grace must share
-        // the same raw area; underground sub-maps stay distinct via gridX*256). Otherwise
-        // flat base_thr (normal threshold clustering).
+        // Tile centroid in MAP-SPACE. All members share one 256-unit tile, so this is a tight, bounded
+        // anchor for both the threshold distance and the pile placement — no cross-map drift.
+        float cu = 0, cv = 0;
+        for (int i : idxs) { cu += items[i].u; cv += items[i].v; }
+        cu /= (float)idxs.size(); cv /= (float)idxs.size();
+        // Per-tile threshold. Distance-adaptive: Euclidean ramp near_thr→base_thr over the near→far
+        // radius, measured in MAP-SPACE and gated to the player's own map layer (the tile's group, from
+        // the high bits of the cell key, must equal the player's group). Otherwise flat base_thr.
         int thr = base_thr;
-        float dbg_d = -1.f; // raw euclid distance player→grace (for the debug viz)
-        int graw_a = -1; float graw_x = 0, graw_z = 0;
-        if (have_raw && goblin::grace_anchor_raw(kv.first, graw_a, graw_x, graw_z) &&
-            graw_a == raw_pa && far_u > near_u)
+        float dbg_d = -1.f; // map-space distance player→tile (for the debug viz)
+        const int tile_grp = (int)((kv.first >> 28) & 0xF);
+        if (have_player && tile_grp == player_grp && far_u > near_u)
         {
-            const float dx = graw_x - raw_pwx, dz = graw_z - raw_pwz;
-            const float d = std::sqrt(dx * dx + dz * dz);
+            const float du = cu - pmU, dv = cv - pmV;
+            const float d = std::sqrt(du * du + dv * dv);
             dbg_d = d;
             float t = (d - near_u) / (far_u - near_u);
             if (t < 0.f) t = 0.f; else if (t > 1.f) t = 1.f;
@@ -844,21 +852,9 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
                 }
             continue;
         }
-        // Pile AT its grace (correctly placed), not the member centroid (which drifts
-        // into the sea). Fall back to the centroid only if the anchor is bad.
+        // Pile at the member SCREEN CENTROID. Members are bounded to one map tile, so the centroid is
+        // tight and central — no cross-map drift (the reason the old grace-anchored placement existed).
         ImVec2 c;
-        if (has_anchor)
-        {
-            // Place the pile at its grace via the live engine projection (from the grace's
-            // RAW per-area frame, so legacy/UG graces fold correctly); baked fallback.
-            float gU, gV;
-            int ra = -1; float rx = 0, rz = 0;
-            bool raw_ok = goblin::grace_anchor_raw(kv.first, ra, rx, rz);
-            project_raw(raw_ok ? ra : -1, rx, rz, gwx, gwz, gU, gV);
-            proj::Px gp = proj::project_screen(gU, gV, view, realW, realH);
-            c = ImVec2(gp.x, gp.y);
-        }
-        else
         {
             float sx = 0, sy = 0;
             for (int i : idxs) { sx += items[i].p.x; sy += items[i].p.y; }
@@ -871,8 +867,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         // the pile sits far from its members.
         if (goblin::config::debugClusterAnchors)
         {
-            const ImU32 dcol = has_anchor ? IM_COL32(40, 230, 170, 170)
-                                          : IM_COL32(255, 70, 70, 220);
+            const ImU32 dcol = IM_COL32(40, 230, 170, 170); // tile pile = centroid placed
             for (int i : idxs)
                 fg->AddLine(c, items[i].p, dcol, 1.0f);
             fg->AddCircleFilled(c, 4.f, dcol);
@@ -880,12 +875,11 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
             std::string nm = goblin::lookup_text_utf8(items[idxs[0]].m->loc_pname);
             char db[140];
             if (dbg_d >= 0.f) // distance-adaptive engaged: show dist + chosen threshold
-                std::snprintf(db, sizeof(db), "%s%s [%d] d=%.0f thr=%d",
-                              has_anchor ? "" : "CENTROID ", nm.c_str(), (int)idxs.size(),
-                              dbg_d, thr);
+                std::snprintf(db, sizeof(db), "%s [%d] d=%.0f thr=%d",
+                              nm.c_str(), (int)idxs.size(), dbg_d, thr);
             else
-                std::snprintf(db, sizeof(db), "%s%s [%d] thr=%d",
-                              has_anchor ? "" : "CENTROID ", nm.c_str(), (int)idxs.size(), thr);
+                std::snprintf(db, sizeof(db), "%s [%d] thr=%d",
+                              nm.c_str(), (int)idxs.size(), thr);
             fg->AddText(ImVec2(c.x + 7, c.y + 5), dcol, db);
         }
         // Pile count = UNCOLLECTED members (depletion), so the glyph reflects progress
@@ -1479,6 +1473,13 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // (and gets its highlight ring), instead of hiding inside a location pile.
             const bool clustered_eligible =
                 clustering && !is_hit && m.category >= 0 && m.cluster_key >= 0 &&
+                // Graces are major waypoints — vanilla shows each individually, so never pile them.
+                m.category != (int)goblin::generated::Category::WorldGraces &&
+                // Only tile-cluster on LIVE-projected map-space. A marker still on the baked overworld
+                // affine (e.g. an underground area the map VM hasn't resolved) has wrong map-space and
+                // would scatter across tiles — draw it individually until its live projection lands.
+                // (live_state is from last frame's project_marker; converges after one frame.)
+                (m.live_state == 1 || !goblin::config::liveProjection) &&
                 (dist_adaptive || goblin::ui::category_clustered(m.category));
 
             float gU, gV;
@@ -1552,7 +1553,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // everything else (already on-screen here) draws now.
             if (clustered_eligible)
             {
-                clustered.push_back({sp, &m});
+                clustered.push_back({sp, &m, gU, gV});
                 ++n_deferred;
             }
             else
