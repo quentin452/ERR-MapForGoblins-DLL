@@ -105,6 +105,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   (the cursor *position* still worked because it's polled). Mouse buttons are now polled directly
   (`GetAsyncKeyState`, like the menu toggle key) and fed to ImGui each frame, independent of message
   delivery and of fullscreen/borderless. (Confirmed: zero `WM_LBUTTONDOWN` reached the overlay while open.)
+- **F1 panel cursor permanently unresponsive after Alt+Tab** — open the panel, Alt+Tab away, Alt+Tab
+  back: no hover/click/move ever registered again until restart. `WM_SETFOCUS`/`WM_KILLFOCUS` were only
+  forwarded to ImGui while the panel was already visible (`g_show`), which is recomputed once/frame from
+  a foreground-window check — `WM_SETFOCUS` on refocus can arrive a frame before that recompute, so it
+  fell through unforwarded and ImGui's internal focus-lost state never cleared. Now forwarded
+  unconditionally, independent of panel visibility. (`docs/re/proton11_cursor_lock_re_prompt.md`)
 - **Marker teleport on zoom** — overlay markers jumped for a single frame on each mouse-wheel zoom step.
   The marker motion-sync (which projects markers ~1 frame behind to ride the GFx-composited basemap) now
   delays zoom together with pan (`view_delay_zoom`, on by default); delaying pan alone left the zoom a
