@@ -2,7 +2,23 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-06-30 LATE (native GetMessage refactor IMPLEMENTED + VISUALLY VERIFIED on ERR; Windows build unblocked).
+Last updated: 2026-07-01 (F1 cursor-lock-after-Alt+Tab bug FIXED + MERGED to master, user-confirmed).
+
+## Session recap (2026-07-01) — F1 cursor lock after Alt+Tab: found + fixed + merged
+
+- **RESOLVED + MERGED to master.** User found a 100% reliable repro for the long-standing "F1 panel
+  cursor sometimes frozen" complaint: open F1 → Alt+Tab away → Alt+Tab back → cursor never responds
+  again (no hover/click/move). Root cause + fix + full writeup: `docs/re/proton11_cursor_lock_re_prompt.md`
+  (now marked RESOLVED). Short version: `hk_wndproc` only forwarded `WM_SETFOCUS`/`WM_KILLFOCUS` to
+  ImGui while the panel was already visible (`g_show`, recomputed once/frame) — `WM_SETFOCUS` on
+  refocus can arrive a frame early and fall through unforwarded, permanently desyncing ImGui's internal
+  focus state. Fixed by forwarding those two messages unconditionally. Along the way, added
+  `[CURSORDIAG]` call-counter logging on the 5 cursor/raw-input hooks (still in master, harmless/cheap)
+  — this is what let the log evidence refute the doc's original H1/H2 hypotheses (Wayland/win32u bypass)
+  before the real cause was found by reading the code.
+- User-confirmed fixed in-game via the exact repro. Changelog entry added.
+- Unrelated to this session's other branch (`feat/quest-npc-layer`, not touched/not merged) — that work
+  is exactly where the prior session left it, see the recap below for its own status.
 
 ## Session recap (2026-06-30 LATE) — native GetMessage: RE resolved → refactor landed → visually confirmed on ERR
 
