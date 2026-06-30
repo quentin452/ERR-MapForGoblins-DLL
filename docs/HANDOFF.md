@@ -17,16 +17,11 @@ Last updated: 2026-06-30 NIGHT (spatial cull verified+landed-on-branch, loot NON
   `render.worldmap.markers` **3.58 → 1.28 ms (~64%)**, clusters ~0.34ms. Proven visually invariant
   (margin == 256-unit pile cell ⇒ on-screen-centroid piles keep every member). Changelog + memory updated.
   Commit the doc updates on the branch, then it's mergeable.
-- **NEW BUG (separate from cull): zoom/pan marker re-adjust.** User sees markers re-adjust ~1 frame on
-  zoom+pan. NOT the cull (invariant). Cause = pre-existing `ViewDelay` fixed-frame motion-sync
-  (`kViewDelayFrames=1.0`) that can't track variable frame time (15 spikes ~7ms in the run). Full writeup
-  + fix candidates in `docs/memory/bugs/overlay-render-perf-followups.md` (SEPARATE BUG section).
-  - **Fix candidate (a) DONE & deployed:** branch `feat/view-delay-tune` (stacked on `feat/spatial-grid-cull`,
-    commit `4fe36ef`) turns `kViewDelayFrames` into live config `view_delay_frames` + an F1 "Marker motion
-    delay (frames)" slider [0..7] (live, no restart, Save-to-INI). Deployed `4ec98027` (cull + knob + slider).
-  - **NEXT (user, in-game):** pan the map, drag the slider to find the value that kills the re-adjust; if a
-    fixed frame count works at all fps keep it as default, else escalate to time-based ease (candidate b).
-    Record the chosen value in the memory note.
+- **FIXED + merged: zoom marker teleport.** Was `ViewDelay` delaying ZOOM — discrete wheel-zoom applies
+  to the basemap instantly, so a 1-frame-old zoom teleported markers one frame per notch. Fix:
+  `view_delay_zoom` (default OFF) uses live zoom, delays only pan; `view_delay_frames=1.0` kept (pan sync,
+  user-confirmed). F1 slider + "Delay zoom too" checkbox remain. Merged to master (`31f29c0`, with the
+  cull `8f7ef91`). Detail in `docs/memory/bugs/overlay-render-perf-followups.md`.
 
 ## Plans live on master — fork implementation branches fresh (2026-06-30)
 Policy: **plan-only branches are not kept.** A plan-only branch drifts as master's memory evolves (the
