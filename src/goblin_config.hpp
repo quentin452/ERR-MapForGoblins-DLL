@@ -212,6 +212,8 @@ namespace goblin
         extern float overlayClusterScale;  // cluster pile glyphs
         extern float graceIconScale;       // grace markers only (calibration)
         extern float mapSymbolScale;       // native MENU_MAP_* map symbols (bosses etc)
+        extern bool  iconLegibility;       // DX item 1: clamp min icon size + dark backing disc for contrast
+        extern float iconMinHalfPx;        // min icon half-extent (px) when iconLegibility is on
         extern float graceOffsetX, graceOffsetY;  // overlay grace draw px offset (native-vs-imgui compare)
 
         // Debug viz: cluster pile anchor + member lines + name + d/thr (own toggle).

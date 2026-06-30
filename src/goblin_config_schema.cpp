@@ -87,6 +87,8 @@ namespace goblin::config
     float overlayClusterScale = 1.0f;  // cluster pile glyphs (× master)
     float graceIconScale = 1.2f;       // grace markers only (× icon scale) — calibration
     float mapSymbolScale = 2.2f;       // native MENU_MAP_* map symbols (bosses etc) — bigger than item dots
+    bool  iconLegibility = true;       // DX item 1: clamp min icon size + dark backing disc for contrast
+    float iconMinHalfPx = 8.0f;        // min icon half-extent (px) when iconLegibility is on
     float graceOffsetX = 0.0f;         // px offset of the overlay grace draw — native-vs-imgui compare
     float graceOffsetY = 0.0f;
 
@@ -491,6 +493,10 @@ namespace
                   "Scale for GRACE markers only (x icon scale). 1.2 = default. For calibrating the\ngrace sprite size against the map. NOTE: grace size compounds with overlay_icon_scale."},
                 IniEntry{"map_symbol_scale", IniType::F32, &cfg::mapSymbolScale, "2.2",
                   "Scale for native ER map symbols (MENU_MAP_*, e.g. bosses) drawn via the GPU\nmap-point path. Bigger than item dots since they're full map symbols. 2.2 = default."},
+                IniEntry{"icon_legibility", IniType::Bool, &cfg::iconLegibility, "true",
+                  "Legibility pass for marker icons: clamp them to a minimum on-screen size and draw a\ndark backing disc behind each so small icons don't vanish into the map art. Set false\nto restore the raw icon draw."},
+                IniEntry{"icon_min_half_px", IniType::F32, &cfg::iconMinHalfPx, "8.0",
+                  "Minimum icon half-extent in pixels when icon_legibility is on (full icon >= 2x this).\nGraces use a slightly larger floor. 8.0 = default."},
                 IniEntry{"grace_offset_x", IniType::F32, &cfg::graceOffsetX, "0.0",
                   "Pixel X offset of the overlay grace draw — set non-zero to shift the imgui grace\nbeside the game's NATIVE grace pin for side-by-side comparison/calibration."},
                 IniEntry{"grace_offset_y", IniType::F32, &cfg::graceOffsetY, "0.0",

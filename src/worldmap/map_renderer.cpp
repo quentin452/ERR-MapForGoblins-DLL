@@ -298,6 +298,31 @@ static void tier_census_flush()
     g_tier_census = TierCensus{};
 }
 
+// DX item 1 (legibility): draw a marker icon centered at `center` with a minimum on-screen size and
+// (for small inventory-style icons only) a dark backing disc, so they don't vanish into the map art.
+//
+// `backing` MUST be false for native map symbols (tiers mp_name / mp_id — boss/grace/summon MENU_MAP_*):
+// those are full map glyphs authored to read on the map at their own scale, and a disc behind them is
+// just an ugly halo. Pass true only for the small item/rep inventory icons that actually blend in.
+// `minHalf` is a harmless floor (native symbols are already larger, so it rarely triggers for them).
+// Honors config::iconLegibility (off ⇒ raw image, original behaviour). One filled circle — no DDS touch.
+static inline void draw_legible_icon(ImDrawList *fg, ImVec2 center, float half, ImTextureID tex,
+                                     ImVec2 uv0, ImVec2 uv1, ImU32 tint, float minHalf, bool backing)
+{
+    if (goblin::config::iconLegibility)
+    {
+        if (half < minHalf)
+            half = minHalf;
+        if (backing)
+            fg->AddCircleFilled(center, half + 1.5f, IM_COL32(0, 0, 0, 165)); // contrast backing
+    }
+    fg->AddImage(tex, ImVec2(center.x - half, center.y - half), ImVec2(center.x + half, center.y + half),
+                 uv0, uv1, tint);
+}
+
+// Backing only for the small inventory-style icons (item / category-rep), never native map symbols.
+static inline bool tier_wants_backing(int tier) { return tier == TIER_ITEM || tier == TIER_REP; }
+
 // Desaturate toward luminance + halve alpha → the "collected" dim tint (packed ABGR).
 unsigned int dim_color(unsigned int abgr)
 {
@@ -446,7 +471,9 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
                     }
                 }
             }
-            fg->AddImage(gt, ImVec2(gx - gh, gy - gh), ImVec2(gx + gh, gy + gh), u0, u1, t);
+            draw_legible_icon(fg, ImVec2(gx, gy), gh, gt, u0, u1, t,
+                              goblin::config::iconMinHalfPx > 10.0f ? goblin::config::iconMinHalfPx : 10.0f,
+                              /*backing=*/false); // grace = native MENU_MAP symbol, no halo
             if (disc)
                 draw_check(fg, ImVec2(gx, gy), gh);   // discovered → green check (same as cleared bosses)
             return;
@@ -455,8 +482,8 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
         if (icons.resolve(m, ih))
         {
             tier_tally(ih.tier, m.category);
-            fg->AddImage(ih.tex, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
-                         ih.uv0, ih.uv1, t);
+            draw_legible_icon(fg, p, half, ih.tex, ih.uv0, ih.uv1, t, goblin::config::iconMinHalfPx,
+                              tier_wants_backing(ih.tier));
         }
         else
         {
@@ -497,8 +524,8 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
     {
         tier_tally(ih.tier, m.category);
         const float hh = half * ih.scale;
-        fg->AddImage(ih.tex, ImVec2(p.x - hh, p.y - hh), ImVec2(p.x + hh, p.y + hh),
-                     ih.uv0, ih.uv1, tint);
+        draw_legible_icon(fg, p, hh, ih.tex, ih.uv0, ih.uv1, tint, goblin::config::iconMinHalfPx,
+                          tier_wants_backing(ih.tier));
     }
     else
     {
