@@ -8,12 +8,21 @@ Last updated: 2026-06-30 (per-item icons + bench spike + map-exit bug triage ses
 - DONE `07b3904` bonus-2: SummoningPools → MENU_MAP_89 (Martyr Effigy), verified in-game (246 pools, live param).
 - DONE `caed7ef` per-item loot icons: lot → real EquipParam iconId, native_item_icon → rep → atlas → circle. Verified working.
 - DONE `8c16b60` bench lag-spike WARN (relative-to-baseline, even for quiet timers) + spikes column.
-- DONE `d792a3a` instrument `draw_minimap_hud` as `render.minimap` — the map-CLOSE lag is here (first
-  closed frame: per-marker read_event_flag), previously unbenched. NEXT RUN: close map, grep `[SPIKE]`
-  + check the `render.minimap` row to confirm/quantify the close hitch.
-- OPEN bug — **map-exit input softlock + F1 mouse-dead**. Root NOT WndProc (keyup passes). Prime suspect:
-  DI hooks blank buffered key-UP while F1 open → game misses release → stuck movement. Plus no map-close
-  cleanup edge for ImGui. Needs Windows runtime RE → `docs/re/windows_input_softlock_re_prompt.md`.
+- DONE `d792a3a` instrument `draw_minimap_hud` as `render.minimap`. RESULT (run 13:10): spikes only
+  ~3ms (`~600x` a 0.01ms avg) — **minimap EXONERATED**, not the felt map-close lag.
+
+## OPEN — deferred for later (2026-06-30)
+1. **Lag-spike hunt — real suspect `refresh.collected.*`.** The minimap was a red herring. The collected-
+   state refresh spikes in the SPIKE log (earlier run: `refresh.collected.read_wgm` 2–5ms, ~30x its avg).
+   It is SUPPOSED to already use a good lookup, but the spikes say otherwise — re-audit the collected
+   lookup (read_wgm path) for a per-marker / per-frame O(n) hidden cost or a cache miss. Use the new
+   `[SPIKE]` warns + the spikes column to localize. Not yet root-caused.
+   - Cosmetic: spike ratio prints `~600x its 0.01 ms avg` when the baseline rounds to ~0 — divide-by-tiny.
+     Harmless (still a real spike), tidy later (floor the avg in the ratio display).
+2. **Map-exit input softlock + F1 mouse-dead.** Root NOT WndProc (keyup passes). Prime suspect: DI hooks
+   blank buffered key-UP while F1 open → game misses release → stuck movement "à vie". Plus no map-close
+   cleanup edge for ImGui (mouse-dead half). Needs Windows runtime RE before patching →
+   `docs/re/windows_input_softlock_re_prompt.md`.
 
 ## Active branch
 `feat/native-poi-icons` (off `feat/dvdbnd-packed-reader` off `master`). NOT pushed. Build+deploy on Linux
