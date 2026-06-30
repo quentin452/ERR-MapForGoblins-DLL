@@ -477,8 +477,8 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
             draw_legible_icon(fg, ImVec2(gx, gy), gh, gt, u0, u1, t,
                               goblin::config::iconMinHalfPx > 10.0f ? goblin::config::iconMinHalfPx : 10.0f,
                               /*backing=*/false); // grace = native MENU_MAP symbol, no halo
-            if (disc)
-                draw_check(fg, ImVec2(gx, gy), gh);   // discovered → green check (same as cleared bosses)
+            // No discovered-check on graces: the icon already encodes it (undiscovered = yellow
+            // MENU_MAP_Player_02 cursor, discovered = the gold effigy sprite), so a check is redundant.
             return;
         }
         IconHandle ih;
