@@ -334,24 +334,39 @@ static bool  g_player_world_y_valid = false;
 static int   g_player_group = -1;   // player's current map layer (base/DLC × over/under); -1 = unknown
 
 // Small ▲ (above) / ▼ (below) triangle in the marker's top-right corner when it sits well above/below
-// the player. Drawn as primitives (AddTriangleFilled) — no font dependency, can't tofu. worldY==0 = no
-// altitude data → skip. Warm = above, cool = below; thin dark outline for contrast on any background.
-static inline void draw_altitude_badge(ImDrawList *fg, ImVec2 center, float half, float worldY, int group)
+// its altitude REFERENCE. Drawn as primitives (AddTriangleFilled) — no font dependency, can't tofu.
+// worldY==0 = no altitude data → skip. Reference:
+//   • on the player's current page → the PLAYER (same Y frame); warm = above / cool = below.
+//   • on any OTHER page → the nearest grace in the marker's own area (has_ref_grace; the player Y is in
+//     a different frame there). DISTINCT tint (green above / teal below) so the changed reference reads
+//     at a glance. No same-area grace → no badge. See offpage_altitude_via_grace_plan.md.
+static inline void draw_altitude_badge(ImDrawList *fg, ImVec2 center, float half, const Marker &m)
 {
-    if (!goblin::config::altitudeCue || worldY == 0.0f)
+    if (!goblin::config::altitudeCue || m.worldY == 0.0f)
         return;
-    // Only meaningful when the marker is on the player's current map layer (same Y frame); viewing a
-    // different map (DLC↔base, underground↔overworld) would otherwise badge everything spuriously.
-    if (!g_player_world_y_valid || g_player_group < 0 || group != g_player_group)
-        return;
-    const float d = worldY - g_player_world_y;
+    float d;
+    bool grace_ref;
+    if (g_player_world_y_valid && g_player_group >= 0 && m.group == g_player_group)
+    {
+        d = m.worldY - g_player_world_y;   // on the player's page → relative to the player
+        grace_ref = false;
+    }
+    else if (m.has_ref_grace)
+    {
+        d = m.worldY - m.ref_grace_y;      // off-page → relative to the nearest same-area grace
+        grace_ref = true;
+    }
+    else
+        return;                            // off-page with no grace reference → nothing meaningful
     if (d > -goblin::config::altitudeDeadzone && d < goblin::config::altitudeDeadzone)
         return; // same level
     const bool above = d > 0.0f;
     const float s = 4.0f;                              // half-size of the triangle
     const float cx = center.x + half;                 // top-right corner anchor
     const float cy = center.y - half;
-    const ImU32 fill = above ? IM_COL32(255, 205, 90, 255) : IM_COL32(110, 185, 255, 255);
+    const ImU32 fill = grace_ref
+                           ? (above ? IM_COL32(140, 230, 120, 255) : IM_COL32(90, 200, 180, 255))
+                           : (above ? IM_COL32(255, 205, 90, 255) : IM_COL32(110, 185, 255, 255));
     const ImU32 line = IM_COL32(0, 0, 0, 220);
     ImVec2 a, b, c;
     if (above) { a = ImVec2(cx, cy - s); b = ImVec2(cx - s, cy + s); c = ImVec2(cx + s, cy + s); }
@@ -583,7 +598,7 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
             fg->AddCircleFilled(p, cr, disc ? m.color : dim_color(m.color));
             fg->AddCircle(p, cr, IM_COL32(0, 0, 0, 220), 0, 1.5f);
         }
-        draw_altitude_badge(fg, p, half, m.worldY, m.group);
+        draw_altitude_badge(fg, p, half, m);
         return;
     }
     bool cleared = false, done = false;
@@ -629,7 +644,7 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
     }
     if (cleared)
         draw_check(fg, p, half);
-    draw_altitude_badge(fg, p, half, m.worldY, m.group);
+    draw_altitude_badge(fg, p, half, m);
 }
 
 // Unified world coords → map-space (the frame project_screen expects).

@@ -1007,7 +1007,7 @@ void goblin::capture_live_graces()
             const bool underground = (row.iconId == 44);
             if (underground) ++ug;
             g_live_graces.push_back({ row.areaNo, row.gridXNo, row.gridZNo,
-                                      row.posX, row.posZ, textid1_of(row), rowId,
+                                      row.posX, row.posY, row.posZ, textid1_of(row), rowId,
                                       (int)row.eventflagId, underground,
                                       row.bonfireSubCategoryId });
         }

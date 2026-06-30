@@ -116,7 +116,7 @@ namespace goblin
     struct LiveGrace
     {
         uint8_t areaNo, gridXNo, gridZNo;
-        float posX, posZ;
+        float posX, posY, posZ;  // posY = block-local altitude (NOT XZ-folded); altitude-badge reference
         int textId;        // textId1 = place-name (resolve via MsgRepository)
         uint64_t rowId;
         int discoverFlag;  // eventflagId = per-grace discovery flag (set when reached)
