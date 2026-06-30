@@ -212,6 +212,7 @@ namespace
     bool g_imgui_init = false;   // ImGui + D3D resources built against live swapchain
     bool g_failed = false;       // gave up (no overlay), mod continues
     bool g_show = false;         // panel visible this frame
+    std::atomic<unsigned> g_wndproc_lbdown_while_open{0};  // diag: real WM_LBUTTONDOWN reaching us while the panel is open (0 ⇒ ER raw-input swallows legacy click messages → poll buttons instead)
     // Item-search nav window: while > 0, a locate/page-switch is in flight and the input hooks inject a
     // tiny net-zero mouse jitter so the game keeps processing its world-map (otherwise, with the panel
     // open, input is blanked -> the map's view/page step doesn't run -> our switch+pan only apply once
@@ -1289,6 +1290,7 @@ namespace
         if (g_show)
         {
             ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
+            if (msg == WM_LBUTTONDOWN) g_wndproc_lbdown_while_open.fetch_add(1, std::memory_order_relaxed);
             // While the menu is open, swallow ALL mouse/keyboard input so the
             // game gets none of it — regardless of where the cursor is (over the
             // map, the panel, anywhere). ImGui was already fed above, so the
@@ -3121,6 +3123,30 @@ namespace
             ImGui_ImplDX12_NewFrame();
             ImGui_ImplWin32_NewFrame();
             g_imgui_reading_cursor = false;
+
+            // Mouse BUTTONS via polling, not window messages. ER reads input through Raw Input
+            // (RIDEV_NOLEGACY under newer wine/Proton), so WM_LBUTTONDOWN/UP are never posted to our
+            // WndProc → ImGui's message path sees no clicks, even though hover works (NewFrame polls
+            // GetCursorPos for the position). Poll the async button state — exactly how the F1 toggle
+            // key is already read (GetAsyncKeyState, focus/message-independent) — and feed ImGui. Only
+            // while the panel is up, foreground-guarded so a background click can't leak in.
+            if (g_show)
+            {
+                const bool fgw = (g_hwnd && GetForegroundWindow() == g_hwnd);
+                ImGuiIO &io = ImGui::GetIO();
+                const bool lb = fgw && (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+                io.AddMouseButtonEvent(0, lb);
+                io.AddMouseButtonEvent(1, fgw && (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
+                io.AddMouseButtonEvent(2, fgw && (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0);
+                static bool s_logged_click = false;
+                if (lb && !s_logged_click)
+                {
+                    s_logged_click = true;
+                    spdlog::info("[CLICKDIAG] L-button delivered to ImGui via GetAsyncKeyState poll "
+                                 "(WndProc WM_LBUTTONDOWN seen while open: {})", g_wndproc_lbdown_while_open.load());
+                }
+            }
+
             ImGui::NewFrame();
             // Draw ImGui's software cursor ONLY while the F1 panel is up AND the world map is CLOSED.
             // (NewFrame now runs every frame for the overlay markers/minimap, so the old init-time
