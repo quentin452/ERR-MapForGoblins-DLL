@@ -2514,6 +2514,25 @@ void build_buckets_impl()
     // works on pages the player isn't on (grace replaces the out-of-frame player Y as the reference).
     assign_grace_altitude_refs();
 
+    // [NONAME] diag: loot markers whose item key RESOLVED (icon works) but whose FMG name is EMPTY —
+    // typically ERR-custom items missing from the (vanilla-derived) name preload. These now render
+    // "Unknown item" + their count; this dump lists their keys/locations so the real names can be wired.
+    if (goblin::config::diagLootFlags)
+    {
+        int noname = 0;
+        for (const auto &bucket : g_buckets)
+            for (const Marker &m : bucket)
+            {
+                if (!m.lot_backed || m.name_id == 0) continue;
+                if (!goblin::lookup_text_utf8(m.name_id).empty()) continue;
+                if (++noname <= 25)
+                    spdlog::info("[NONAME] name_id={} lot={} loc='{}'", m.name_id, m.lotId,
+                                 goblin::lookup_text_utf8(m.loc_pname));
+            }
+        if (noname)
+            spdlog::info("[NONAME] {} lot markers have a resolved key but no FMG name (ERR-custom?)", noname);
+    }
+
     // ── [SKIPPED] shown vs skipped: disk placements parsed but NOT drawn, by reason ─
     // The inverse of [COVERAGE]: of everything the passes parsed from the mod's files, how many
     // became markers vs were filtered, grouped by WHY. Each pass added its local filtered counts to

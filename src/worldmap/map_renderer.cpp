@@ -775,7 +775,18 @@ std::string marker_label(const Marker &m)
     if (goblin::config::anonymousLoot && m.lot_backed)
         return loc.empty() ? ("?" + qty) : ("?" + qty + "\n" + loc);
     std::string name = goblin::lookup_text_utf8(m.name_id);
-    if (name.empty()) return loc;
+    if (name.empty())
+    {
+        // The FMG name resolved to nothing — common for ERR-custom loot whose live EquipParam ICON
+        // resolves but whose name string isn't in the (vanilla-derived) preloaded FMG. For a loot/stack
+        // marker, show a placeholder so it still has a label AND keeps its " xN" count (returning just
+        // the location here used to silently drop the stack count). Non-loot nameless markers are
+        // unchanged (location only).
+        if (m.lot_backed || !m.stacked.empty() || !qty.empty())
+            name = "Unknown item";
+        else
+            return loc;
+    }
     name += qty;
     if (loc.empty()) return name;
     return name + "\n" + loc; // item name (+ qty), then its location on the next line
