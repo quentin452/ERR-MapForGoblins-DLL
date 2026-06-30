@@ -2,7 +2,25 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-06-30 (per-item icons + bench spike + map-exit bug triage session).
+Last updated: 2026-06-30 (per-item icons + bench spike + map-exit bug triage + branch/plan consolidation).
+
+## Plans live on master — fork implementation branches fresh (2026-06-30)
+Policy: **plan-only branches are not kept.** A plan-only branch drifts as master's memory evolves (the
+dx-bugs plan had already fallen behind the bug inventory). So plans live ON master under `docs/`, tracked
+here; when implementation actually starts, fork a fresh branch from master. This avoids the data
+divergence we cleaned up this session.
+
+Plans currently on master, ready to start (fork from master when you do):
+- **`docs/feat_quests_implementation_plan.md`** (v2, audited) — quest browser automation + runtime
+  `QuestNpcLayer`. Includes the salvaged NPC denylist appendix (from the retired `feat/quest-npc-layer`).
+- **`docs/dx_bugs_backlog_plan.md`** — DX bug/QoL backlog as PRs A–E, with a Reconciliation section vs
+  the live inventory (`docs/memory/bugs/dx-bugs-backlog.md`, items 1–14 + F1/F2). Items 11/12/6 = the
+  map-exit input softlock → see `docs/re/windows_input_softlock_re_prompt.md` (Windows RE, do that first).
+- **`docs/spatial_grid_opti_plan.md`** — clustering / spatial-grid optimization (PR E of dx-bugs depends
+  on this).
+
+Branches still open (NOT plan-only, left as-is): `fix/marker-bugs` (~290 files, large parallel work),
+`diag/fieldins-join-probe` (1-file probe).
 
 ## Session recap (2026-06-30 PM) — shipped + open
 - DONE `07b3904` bonus-2: SummoningPools → MENU_MAP_89 (Martyr Effigy), verified in-game (246 pools, live param).
