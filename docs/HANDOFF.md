@@ -2,7 +2,18 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-06-30 (end of double-load-diagnosis session).
+Last updated: 2026-06-30 (per-item icons + bench spike + map-exit bug triage session).
+
+## Session recap (2026-06-30 PM) — shipped + open
+- DONE `07b3904` bonus-2: SummoningPools → MENU_MAP_89 (Martyr Effigy), verified in-game (246 pools, live param).
+- DONE `caed7ef` per-item loot icons: lot → real EquipParam iconId, native_item_icon → rep → atlas → circle. Verified working.
+- DONE `8c16b60` bench lag-spike WARN (relative-to-baseline, even for quiet timers) + spikes column.
+- DONE `d792a3a` instrument `draw_minimap_hud` as `render.minimap` — the map-CLOSE lag is here (first
+  closed frame: per-marker read_event_flag), previously unbenched. NEXT RUN: close map, grep `[SPIKE]`
+  + check the `render.minimap` row to confirm/quantify the close hitch.
+- OPEN bug — **map-exit input softlock + F1 mouse-dead**. Root NOT WndProc (keyup passes). Prime suspect:
+  DI hooks blank buffered key-UP while F1 open → game misses release → stuck movement. Plus no map-close
+  cleanup edge for ImGui. Needs Windows runtime RE → `docs/re/windows_input_softlock_re_prompt.md`.
 
 ## Active branch
 `feat/native-poi-icons` (off `feat/dvdbnd-packed-reader` off `master`). NOT pushed. Build+deploy on Linux
