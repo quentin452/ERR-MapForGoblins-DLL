@@ -2262,7 +2262,14 @@ namespace
                                 const int g = m.group & 3;
                                 s_match.insert(m.name_id);                       // ring every instance
                                 const int64_t k = ((int64_t)m.name_id << 2) | g; // per (name, page)
-                                if (++hit_count[k] == 1)
+                                // Count INSTANCES, not markers: an item-stack representative stands in
+                                // for all its merged co-located members, so the search count stays
+                                // invariant to stacking (4 Formic Rock nodes read 4 whether merged or
+                                // not). stacked is empty for a normal marker → contributes 1.
+                                const int inst = m.stacked.empty() ? 1 : (int)m.stacked.size();
+                                const bool first = (hit_count[k] == 0);
+                                hit_count[k] += inst;
+                                if (first)
                                     s_hits.push_back({nm.label, m.name_id, 0, g});
                             }
                         }
