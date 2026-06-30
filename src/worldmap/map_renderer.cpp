@@ -1533,6 +1533,27 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     bool loc_have = false, loc_best_uncollected = false;
     float loc_best_d = 1e30f;
     ImVec2 loc_best{};
+
+    // Viewport in MAP-SPACE: unproject the 4 screen corners → bounding rect, expanded by one tile.
+    // Clustered-eligible markers are not screen-culled (an off-screen member counts toward its pile),
+    // so on a zoomed-in map they otherwise pay the expensive per-marker visibility gates for the whole
+    // page every frame (the dominant render.worldmap.markers cost). A clustered marker whose map-space
+    // lies outside this rect has an OFF-SCREEN pile cell → skip its gates. The one-tile margin keeps
+    // every member of a cell that straddles the screen edge, so on-screen piles/centroids are intact.
+    float vMinU = 1e30f, vMinV = 1e30f, vMaxU = -1e30f, vMaxV = -1e30f;
+    {
+        const float cx[4] = {0.f, realW, 0.f, realW}, cy[4] = {0.f, 0.f, realH, realH};
+        for (int i = 0; i < 4; ++i)
+        {
+            float u, v;
+            proj::unproject_screen(cx[i], cy[i], view, realW, realH, u, v);
+            vMinU = std::min(vMinU, u); vMaxU = std::max(vMaxU, u);
+            vMinV = std::min(vMinV, v); vMaxV = std::max(vMaxV, v);
+        }
+        const float margin = goblin::worldmap::kTileSize;
+        vMinU -= margin; vMinV -= margin; vMaxU += margin; vMaxV += margin;
+    }
+
     for (auto *L : layers)
     {
         if (!L)
@@ -1631,8 +1652,17 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             }
             const bool offscreen =
                 (sp.x < -32 || sp.y < -32 || sp.x > realW + 32 || sp.y > realH + 32);
-            if (offscreen && !clustered_eligible)
-                continue; // off-screen + not a pile member → no gates, no draw
+            if (offscreen)
+            {
+                if (!clustered_eligible)
+                    continue; // off-screen + not a pile member → no gates, no draw
+                // Clustered pile member: keep it only if its map-space cell can be on screen
+                // (viewport rect + one-tile margin). A member further off than that lands in a cell
+                // the viewport never touches, so its pile is off-screen too — skip the gates. Members
+                // within the margin stay, so a cell straddling the edge keeps every member.
+                if (gU < vMinU || gU > vMaxU || gV < vMinV || gV > vMaxV)
+                    continue;
+            }
 
             // In-world region toggle: hide markers whose nearest major-region anchor (same
             // group, map-space) is switched OFF. Skipped when all regions are on.

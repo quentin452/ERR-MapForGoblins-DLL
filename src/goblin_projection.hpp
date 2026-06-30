@@ -69,6 +69,21 @@ inline Px project_screen(float mU, float mV, const View &v, float realW, float r
               (mV - cV) * v.zoom * ky * c.scaleY + realH * 0.5f + c.biasY * ky};
 }
 
+// Inverse of project_screen: backbuffer pixels → marker/map space. Used to unproject the screen
+// viewport corners into a map-space rect for viewport culling (the marker hot loop skips markers
+// whose map-space cell is off that rect). Exact inverse of the affine above; degenerate scales
+// (zoom/scale ~0) are guarded so a closed/uninitialised view can't divide by zero.
+inline void unproject_screen(float px, float py, const View &v, float realW, float realH,
+                             float &mU, float &mV, const Calib &c = {})
+{
+    float cU, cV;
+    view_center(v, cU, cV);
+    const float kx = realW / 1920.f, ky = realH / 1080.f;
+    const float dx = v.zoom * kx * c.scaleX, dy = v.zoom * ky * c.scaleY;
+    mU = (dx != 0.f) ? cU + (px - realW * 0.5f - c.biasX * kx) / dx : cU;
+    mV = (dy != 0.f) ? cV + (py - realH * 0.5f - c.biasY * ky) / dy : cV;
+}
+
 // MOTION-SYNC frame delay. The whole game frame (map AND its cursor) is composited
 // ~1 frame behind our Present sample, so map-bound markers need a −1.0-frame view
 // DELAY to sit on the map. Implemented as a frame-history ring buffer: sample

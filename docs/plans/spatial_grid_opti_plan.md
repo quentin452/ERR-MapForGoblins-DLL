@@ -6,6 +6,17 @@
 > (`for L : layers → for m : markers()`); the `SpatialGrid` is built/queried only for clustering, not
 > yet wired into a viewport-culling marker pass. That viewport-cull optimization is the remaining work
 > below.
+>
+> **STATUS 2026-06-30 PM — perf half, step 1 done (`feat/spatial-grid-cull`).** Measured baseline first
+> (step 7): `render.worldmap.markers` avg **3.58 ms** (max 11.65), `render.worldmap.clusters` ~**0 ms**
+> — so the cost is the per-marker **visibility gates**, and `project_marker` is already cached. Chose
+> the **minimal viewport-cull** over a persistent grid: clustered-eligible markers (which are NOT
+> screen-culled, since off-screen members feed their pile) now skip their gates when their map-space
+> falls outside the unprojected viewport rect (+1 tile). New `unproject_screen` in `goblin_projection.hpp`;
+> rect computed once/frame; ~15-line loop change, no persistent grid / invalidation state. Pile centroids
+> intact (one-tile margin keeps edge-straddling cells whole). AWAITING in-game re-measure + visual check
+> (no markers vanish). If the residual cheap O(N) iteration still shows up, the full persistent-grid
+> version below is the follow-up; the measurement says it likely won't.
 
 This plan removes the per-frame O(N) marker scan from the world-map render loop. Today
 every visible layer is iterated in full (`for L : layers → for m : L->markers()`) on every
