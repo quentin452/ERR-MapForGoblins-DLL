@@ -25,6 +25,11 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Per-item loot icons** — lot-backed loot markers now draw their OWN inventory icon instead of one
+  shared category-representative icon. At marker build, the live ItemLotParam row is resolved to the
+  item's real `EquipParam` iconId (`resolve_loot_item_textid` → `item_real_icon_id`) and stored on the
+  marker; the renderer prefers `native_item_icon(item_icon_id)` (resident GPU → disk), falling back to
+  the category rep → baked atlas → circle on any miss. Mod-agnostic (reads the active install's params).
 - **Summoning Pool glyph (Martyr Effigy)** — `World - Summoning Pools` markers now draw the native
   `MENU_MAP_89` glyph. Resolved by iconId from the active install's map-point layout, with a disk
   (no-bake) fallback when the resident GPU symbol isn't loaded — mod-agnostic, not an ERR bake.

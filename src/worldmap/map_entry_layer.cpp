@@ -205,6 +205,18 @@ void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST
     m.live_classified = live_classified;
     m.lotId = lotId;
     m.lotType = lotType;
+    // Per-item icon: resolve THIS lot's real inventory iconId from the live ItemLotParam -> EquipParam,
+    // so a loot marker draws its OWN item icon instead of the category representative. Mod-agnostic
+    // (reads the active install's live params). resolve_loot_item_textid with baked_textid=0 returns the
+    // offset-encoded item key (>=100M) on a live hit, 0 on a miss; item_real_icon_id maps that key to the
+    // EquipParam iconId. Any miss leaves item_icon_id=0 so the renderer falls back to the category rep.
+    if (m.lot_backed) {
+        const int32_t key = goblin::resolve_loot_item_textid(lotId, lotType, 0);
+        if (key >= 100000000) {
+            const int icon = goblin::item_real_icon_id(key);
+            if (icon > 0) m.item_icon_id = icon;
+        }
+    }
     g_buckets[c].push_back(m);
 }
 

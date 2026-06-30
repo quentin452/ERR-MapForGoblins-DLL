@@ -98,6 +98,10 @@ struct Marker
     // MapEntryLayer push_marker (after the aggregate init; default keeps other ctors intact).
     uint32_t lotId = 0;
     uint8_t  lotType = 0;
+    // This loot's OWN inventory iconId (MapEntry.iconId); 0 = none. Lets the renderer draw the real
+    // per-item icon instead of the category representative. Set by MapEntryLayer push_marker after
+    // the aggregate init (default 0 keeps other ctors intact).
+    int item_icon_id = 0;
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the

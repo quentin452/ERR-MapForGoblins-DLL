@@ -181,6 +181,19 @@ struct IconSet
                 out.scale = goblin::config::mapSymbolScale;
                 return true;
             }
+            // Per-item: this loot's OWN inventory icon (resolved at build from the live lot, stored on
+            // the marker). Preferred over the category representative so each drop shows its real icon.
+            // native_item_icon is resident-GPU-then-disk; on a miss we fall through to the rep below.
+            if (m.item_icon_id > 0)
+            {
+                void *t = nullptr; float a0, b0, a1, b1;
+                if (goblin::overlay::native_item_icon(m.item_icon_id, t, a0, b0, a1, b1))
+                {
+                    out.tex = reinterpret_cast<ImTextureID>(t);
+                    out.uv0 = ImVec2(a0, b0); out.uv1 = ImVec2(a1, b1);
+                    return true;
+                }
+            }
             // Item categories → the game's real inventory icon for a representative member
             // (category_rep_icon, derived live at build). Harvested from the 00_Solo atlas; falls
             // through to the baked atlas until that icon is resident.
