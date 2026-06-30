@@ -2519,20 +2519,26 @@ void build_buckets_impl()
     // "Unknown item" + their count; this dump lists their keys/locations so the real names can be wired.
     if (goblin::config::diagLootFlags)
     {
-        int noname = 0;
+        // Dedup by name_id: thousands of ammo markers share one key (Arrow = 150000000 everywhere), so
+        // print each DISTINCT unresolved key once — that surfaces rare keys (e.g. an ERR-custom item)
+        // instead of burying them under ammo. name_id==0 = no key at all (logged separately as a count).
+        std::unordered_map<int32_t, int> distinct;   // unresolved name_id → instance count
+        int zero_key = 0;
         for (int c = 0; c < (int)g_buckets.size(); ++c)
             for (const Marker &m : g_buckets[c])
             {
-                if (m.name_id == 0) continue;                              // no resolved key at all
-                if (!goblin::lookup_text_utf8(m.name_id).empty()) continue; // name resolved fine
-                if (++noname <= 40)
-                    spdlog::info("[NONAME] cat={} lot_backed={} name_id={} lot={} loc='{}'", c,
-                                 (int)m.lot_backed, m.name_id, m.lotId,
+                if (m.name_id == 0) { ++zero_key; continue; }
+                if (!goblin::lookup_text_utf8(m.name_id).empty()) continue;
+                if (distinct.find(m.name_id) == distinct.end())
+                    spdlog::info("[NONAME] name_id={} (key-100M={}) cat_bucket={} lot_backed={} lot={} loc='{}'",
+                                 m.name_id, m.name_id - 100000000, c, (int)m.lot_backed, m.lotId,
                                  goblin::lookup_text_utf8(m.loc_pname));
+                distinct[m.name_id]++;
             }
-        if (noname)
-            spdlog::info("[NONAME] {} markers have a resolved key but no FMG name "
-                         "(ammo FMG gap / ERR-custom — see loot_ammo_encoding_finding.md)", noname);
+        if (!distinct.empty() || zero_key)
+            spdlog::info("[NONAME] {} DISTINCT unresolved keys; {} markers with name_id==0 (no key). "
+                         "Ammo keys 15xxxxxxx are the known FMG gap; non-ammo = ERR-custom suspects.",
+                         (int)distinct.size(), zero_key);
     }
 
     // ── [SKIPPED] shown vs skipped: disk placements parsed but NOT drawn, by reason ─
