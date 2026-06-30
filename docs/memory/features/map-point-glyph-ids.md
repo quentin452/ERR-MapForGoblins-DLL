@@ -15,6 +15,7 @@ exist in any current menu file (numeric glyphs cap at 261). So this visual map i
 | Use | Glyph | name/NN | sheet | rect (x,y,w,h) |
 |-----|-------|---------|-------|----------------|
 | Grace (discovered) | gold sigil | `MENU_MAP_01_Bonfire` | SB_MapCursor_02 | 718,524,156,156 |
+| Grace (UNDISCOVERED, "cursor nu") | gold ornate figurine/effigy | `MENU_MAP_Player_02` | SB_MapCursor | 286,956,42,62 |
 | Summoning Pool | Martyr Effigy (crucified figure) | `MENU_MAP_89` | SB_MapCursor_02 | 792,916,106,176 |
 | Quest NPC (framed hood) | NPC | `MENU_MAP_80` (+ `MENU_MAP_80_Add` small) | SB_MapCursor_02 | 554,364,124,124 |
 | NPC (full silhouette, alt) | bare hood | `MENU_MAP_86` | SB_MapCursor_02 | 0,1008,366,370 |
