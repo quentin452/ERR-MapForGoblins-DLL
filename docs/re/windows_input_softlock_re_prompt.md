@@ -1,5 +1,22 @@
 # Windows RE prompt — map-exit input softlock + F1 mouse-dead
 
+Status: LIKELY EXTERNAL (not our bug) — see cause below. RE prompt kept for the F1 mouse-dead half only.
+
+## CAUSE FOUND 2026-06-30 — Deskflow, not ELDEN RING / not MapForGoblins
+
+The "soft key lock" is **NOT triggered by closing the map** — it's triggered by the **mouse cursor
+hitting a SCREEN EDGE**, and the root cause is **Deskflow** (the cursor/keyboard sharing tool — KVM
+over network). When the cursor crosses a screen edge Deskflow switches the active machine and the
+key/movement state held at that moment is never released on the ER side → permanent movement latch.
+So this is an external-tool input-routing artifact, reproducible with Deskflow running and gone
+without it. Fix is on the Deskflow side (edge config / dead-corner), NOT in the DLL. The game movement
+latch hypothesis below is moot for this half; do not spend DLL/RE effort on the stuck-key.
+
+The **F1 mouse-dead** half (ImGui panel stops taking mouse after the sequence) may still be ours (the
+missing map-close falling-edge cleanup, secondary hypothesis below) — that part remains worth a look.
+
+Original prompt (stuck-key half now superseded by the Deskflow finding):
+
 Status: OPEN. Needs runtime RE on Windows (Cheat Engine / x64dbg / Ghidra against a running game).
 Linux/Proton can read code but cannot confirm which input path ELDEN RING latches.
 
