@@ -115,17 +115,21 @@ struct Marker
     // DX item 7: block-local altitude (MSB pos[1]); ≈ world Y on the overworld. Set by push_marker after
     // the aggregate init (default 0 keeps other ctors intact). Drives the above/below-player altitude badge.
     float worldY = 0.0f;
-    // Item count this marker represents. For a single lot-backed marker: the lot's deterministic
-    // quantity (goblin::lot_item_count — a slot's num when one slot is live, else 1; see that fn).
-    // For an item-STACK representative (stacked non-empty): the SUM of all merged members' counts —
-    // the total, shown as " xN" in the tooltip. 1 for non-lot markers. Set by push_marker, then
-    // recomputed by stack_identical_markers on merge.
+    // Item count this marker represents on its OWN: the lot's deterministic quantity
+    // (goblin::lot_item_count — a slot's num when one slot is live, else 1; see that fn). 1 for
+    // non-lot markers. This stays the marker's own count even when it is a stack representative — the
+    // STACK total/remaining is computed from `stacked` at render, so the stack toggle needs no rebuild.
     int count = 1;
-    // Item stacking: when this marker absorbed co-located identical-item neighbours, the per-member
-    // collected state of EVERY member (including this representative). Empty for a normal/unstacked
-    // marker. Lets marker_done gray the stack only when all members are collected, and the tooltip
-    // show the remaining (uncollected) count. Populated by stack_identical_markers.
+    // Item stacking (computed ONCE at build by annotate_item_stacks, NON-destructively — the toggle
+    // is a pure render decision, like clustering, so it's instant and needs no bucket rebuild):
+    //   • Representative of a co-located identical-item group: `stacked` holds the per-member collected
+    //     state of EVERY member (incl. itself); `stack_member` is false. When the stack toggle is ON it
+    //     draws once with the group's summed/remaining " xN"; when OFF it draws as its own marker.
+    //   • Non-representative member of a group: `stack_member` is true, `stacked` empty. HIDDEN when the
+    //     toggle is ON (the representative stands in); drawn individually when OFF.
+    //   • Marker in no group: both empty/false → always drawn with its own count.
     std::vector<StackedMember> stacked;
+    bool stack_member = false;
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the

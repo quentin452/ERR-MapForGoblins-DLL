@@ -382,6 +382,18 @@ static bool loot_member_collected(uint64_t row_id, int collected_flag)
     return false;
 }
 
+// Total item count of an item-stack representative: Σ member.count over ALL members. For an
+// unstacked marker (stacked empty) returns its own count.
+int stacked_total_count(const Marker &m)
+{
+    if (m.stacked.empty())
+        return m.count;
+    int t = 0;
+    for (const StackedMember &sm : m.stacked)
+        t += sm.count;
+    return t;
+}
+
 // Remaining (uncollected) item count of an item-stack representative: Σ member.count over members
 // not yet collected. For an unstacked marker (stacked empty) returns its own count.
 int stacked_remaining_count(const Marker &m)
@@ -395,16 +407,25 @@ int stacked_remaining_count(const Marker &m)
     return rem;
 }
 
+// True when this marker should be treated as a STACK representative right now: it has merged members
+// AND the stack toggle is on. When the toggle is off, a representative behaves as its own plain marker
+// (and its members draw individually), so stacking adds/removes nothing without a rebuild.
+static inline bool is_active_stack(const Marker &m)
+{
+    return goblin::config::stackIdenticalItems && !m.stacked.empty();
+}
+
 // Is this marker's item collected / boss cleared? cleared_only reports the boss-clear
 // sub-case (gets a checkmark). Event flags (cleared/loot) read the live game state;
 // rune/ember/kindling use the collected-tracking sets (refreshed by the mod thread).
-// An item-stack (stacked non-empty) is "done" only when EVERY merged member is collected.
+// An ACTIVE item-stack is "done" only when EVERY merged member is collected; with the toggle off it
+// falls through to the plain single-marker check (its members are drawn/judged individually).
 bool marker_done(const Marker &m, bool &cleared_only)
 {
     cleared_only = m.cleared_flag && goblin::ui::read_event_flag((uint32_t)m.cleared_flag);
     if (cleared_only)
         return true;
-    if (!m.stacked.empty())
+    if (is_active_stack(m))
     {
         for (const StackedMember &sm : m.stacked)
             if (!loot_member_collected(sm.row_id, sm.collected_flag))
@@ -725,12 +746,14 @@ void hover_test(Hover &h, ImVec2 mouse, ImVec2 p, float r, MakeLabel make_label)
 std::string marker_label(const Marker &m)
 {
     std::string loc = goblin::lookup_text_utf8(m.loc_pname);
-    // " xN" quantity suffix: a multi-item lot, or an item-stack of co-located identical markers.
-    // With collected_graying on, an item-stack shows the REMAINING (uncollected) count so it
-    // depletes as nodes are gathered (xN→…→1); off, it shows the total. ASCII 'x' (not '×') so it
+    // " xN" quantity suffix: a multi-item lot, or an ACTIVE item-stack of co-located identical markers
+    // (only when the stack toggle is on — off, a representative shows its own count like any marker).
+    // For an active stack with collected_graying on, show the REMAINING (uncollected) count so it
+    // depletes as nodes are gathered (xN→…→1); otherwise the stack total. ASCII 'x' (not '×') so it
     // can't tofu on a font missing the multiply glyph. Empty for single items.
-    const int shown = (!m.stacked.empty() && goblin::config::collectedGraying)
-                          ? stacked_remaining_count(m) : m.count;
+    int shown = m.count;
+    if (is_active_stack(m))
+        shown = goblin::config::collectedGraying ? stacked_remaining_count(m) : stacked_total_count(m);
     const std::string qty = (shown > 1) ? (" x" + std::to_string(shown)) : std::string();
     // Spoiler-free: don't leak the item name — just "?" (+ its location, like native). Quantity is
     // not an identity spoiler, so it still shows.
@@ -1496,6 +1519,12 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             ++n_iter;
             if (m.group != open_grp)
                 continue; // draw only the open map group
+
+            // Item stacking (render-time, instant toggle): a non-representative member of a co-located
+            // identical-item group is hidden while the toggle is on — its representative draws once for
+            // the whole group with the summed " xN". Toggle off → fall through and draw it individually.
+            if (m.stack_member && goblin::config::stackIdenticalItems)
+                continue;
 
             // [diag] baked-only filter: show ONLY surviving Baked-source markers (= the no-bake
             // residual; disk/live twins were already dropped at finalize). Lets each spot be
