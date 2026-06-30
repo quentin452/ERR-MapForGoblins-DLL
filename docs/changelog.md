@@ -113,6 +113,14 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   clustering was the pre-overlay mitigation.)
 
 ### Performance
+- **World-map marker viewport-cull** — clustered-eligible markers used to pay the per-frame visibility
+  gates even when their pile cell sits off-screen (off-screen members feed the pile). Now a map-space
+  viewport rect (`proj::unproject_screen` of the 4 corners, +1 tile margin) skips a clustered marker's
+  gates when its 256-unit pile cell can't be on screen. `render.worldmap.markers` avg **3.58 ms → 1.28 ms
+  (~64%)**, verified in-game. Provably visually invariant: a pile is drawn iff its screen-centroid is
+  on-screen, and every member of an on-screen-centroid cell is within rect±256 = the margin, so no pile
+  loses a member (centroid + `xN` unchanged). Added `present.frame_wall` / `present.overlay_total` bench
+  timers to locate unlabelled frame cost.
 - **Proton collected-refresh stutter** — dropped in-process `ReadProcessMemory`-to-self for `__try`-guarded
   noinline raw reads (read_wgm max 581ms → 4ms; killed the ~20fps stutter). Documents the clang-cl `__try`-elision trap.
 

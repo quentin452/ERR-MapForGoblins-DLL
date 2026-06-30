@@ -2,7 +2,25 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-06-30 (per-item icons + bench spike + map-exit bug triage + branch/plan consolidation).
+Last updated: 2026-06-30 NIGHT (spatial cull verified+landed-on-branch, loot NONAME Aeonia resolved, new ViewDelay bug).
+
+## Session recap (2026-06-30 NIGHT) — spatial cull verified + loot NONAME closed + ViewDelay bug spawned
+
+- **Loot "Unknown item" / NONAME followup #1 — RESOLVED (Aeonia = ERR-custom, not a bug).** Decoded the
+  deployed-diag `[NONAME]` line `loc='Swamp of Aeonia'`: goods id **401**, lot **948380010** — BOTH absent
+  from `data/items_database.json` ⇒ ERR-custom, so "Unknown item" is correct. Siblings 240/310/375 also
+  absent; 9800 (Limgrave) present but `name=''` at source (nameless data, not a runtime preload bug).
+  cat_bucket=16 NONAME lines (name_id 15xxxxxxx) = the known vanilla ammo FMG gap. So the live-fallback
+  goods that show "Unknown" are genuinely ERR-custom, not a lookup regression. Followup #1 closed.
+- **`feat/spatial-grid-cull` — VERIFIED + REBASED, ready to merge (not pushed; USER pushes).** Rebased
+  clean onto master `838e388`, built+deployed `41199a6a`. In-game (run 2026-06-30 ~19:50):
+  `render.worldmap.markers` **3.58 → 1.28 ms (~64%)**, clusters ~0.34ms. Proven visually invariant
+  (margin == 256-unit pile cell ⇒ on-screen-centroid piles keep every member). Changelog + memory updated.
+  Commit the doc updates on the branch, then it's mergeable.
+- **NEW BUG (separate from cull): zoom/pan marker re-adjust.** User sees markers re-adjust ~1 frame on
+  zoom+pan. NOT the cull (invariant). Cause = pre-existing `ViewDelay` fixed-frame motion-sync
+  (`kViewDelayFrames=1.0`) that can't track variable frame time (15 spikes ~7ms in the run). Full writeup
+  + fix candidates in `docs/memory/bugs/overlay-render-perf-followups.md` (SEPARATE BUG section). NEXT.
 
 ## Plans live on master — fork implementation branches fresh (2026-06-30)
 Policy: **plan-only branches are not kept.** A plan-only branch drifts as master's memory evolves (the

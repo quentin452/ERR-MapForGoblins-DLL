@@ -25,12 +25,26 @@ map-open), so either (a) also invalidate on a cheap flag-generation tick, or (b)
 throttle (e.g. every N frames) while caching projection+cull+cluster between. Biggest win for the
 common case: the map sits open, nothing moving.
 
-**FOLLOW-UP #2 (LATER): spatial grid / index to make the per-frame loop O(visible) not O(n).** Bucket
-markers by map-space cell (per group/page) once at build; per frame, only visit buckets overlapping
-the viewport (for cull/draw) + the bucket under the mouse (for hover). Turns the full O(n) sweep into
-O(markers near screen), the real fix when zoomed in with thousands of markers. Composes with #1 (the
-grid is rebuilt only on camera move; #1 skips even that on idle). Also helps the cluster/pile pass
-(`render.worldmap.clusters`) and `nearest_region`.
+**FOLLOW-UP #2 (DONE 2026-06-30, branch `feat/spatial-grid-cull`): viewport-cull of the clustered hot
+path.** The cheap variant landed first: instead of a persistent per-cell index, the loop still sweeps
+O(n) but skips the expensive *gates* for clustered-eligible markers whose 256-unit pile cell
+(`spatial_grid.hpp` `grid_cell_key`, kTileSize=256) can't be on screen — `proj::unproject_screen` of the
+4 screen corners → map-space rect, +1 tile margin (`map_renderer.cpp` ~1543), cull at ~1663. Result:
+`render.worldmap.markers` **3.58 → 1.28 ms (~64%)**, verified in-game (zoom in/out, no markers vanish at
+edges). Proven visually invariant (margin == cell size, so on-screen-centroid piles keep every member).
+The full *persistent-grid* version (O(visible) sweep via `SpatialGrid::for_cells_in_rect`) is the later
+step IF the O(n) scan still shows up — measurement says it won't, so it's parked. Composes with #1.
+
+**SEPARATE BUG (spawned 2026-06-30, NOT the cull): zoom/pan marker re-adjust.** User sees markers
+"re-adjust for a fraction of a second" on zoom + pan. Decoupled from the cull (which is provably
+visually invariant — see above). Cause is the pre-existing **`ViewDelay` motion-sync**
+(`goblin_projection.hpp` `ViewDelay`, `map_renderer.cpp` `kViewDelayFrames=1.0f`, `g_view_delay.apply`
+~1408): markers are projected from the view **1 frame in the past** to match the engine's eased basemap,
+but it's a fixed *frame-count* delay — it can't track *variable* frame time. With frame spikes (run
+2026-06-30: 15 spikes ~7ms, `present.frame_wall` max 356ms) the 1-frame offset drifts from the basemap
+ease → markers snap on stop. FIX candidates: (a) make `kViewDelayFrames` a live config to A/B tune
+in-game; (b) switch to a *time-based* (ms) ease instead of frame-count; (c) match the engine's actual
+basemap interpolation curve. Reproduces on master (cull off).
 
 Related UX backlog (separate, spawned as a task this session): a per-category **density slider** +
 **item search bar** for the same ~8477-marker pressure — see [[nobake-coverage-scoreboard]] context and
