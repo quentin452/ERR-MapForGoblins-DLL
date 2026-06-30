@@ -45,10 +45,13 @@ Last updated: 2026-07-01 (Quest Browser automation + QuestNpcLayer Phase 1 lande
   `goblin_quest_steps.cpp` (Boc `11050730`, Thops `1039390700`) but weren't wired — unclear which of
   their multiple steps (they relocate across the map) the placement belongs to; wiring blind risks pinning
   the wrong location. Crash/wiring safety already confirmed (log above) — what's left is purely the
-  DATA. **NEXT (Windows, EMEVD+MSB tooling):** source + verify real per-step `progress_flag`/`entity_id`
-  for Boc/Alexander/Thops at minimum, then visually verify in-game (exactly one marker, correct position,
-  `questAllowFlagWrite` OFF read-only behavior). Changelog entry deferred until this makes the feature
-  actually user-visible (0 pins = nothing to announce yet).
+  DATA. **NEXT (Windows, EMEVD+MSB tooling):** `docs/re/windows_quest_npc_progress_flags_re_prompt.md` —
+  source + verify real per-step `progress_flag`/`entity_id` for Boc/Alexander/Thops's 15 steps (uses the
+  existing `tools/_find_npc.py` MSB lookup + the in-overlay `debugEventFlags` coverage-gap hook
+  empirically, not blind reuse of the 2 unverified candidate ids or `quest_gates.py`'s wrong-semantics
+  flags), then visually verify in-game (exactly one marker, correct position, `questAllowFlagWrite` OFF
+  read-only behavior). Changelog entry deferred until this makes the feature actually user-visible (0 pins
+  = nothing to announce yet).
 
 ## Session recap (2026-06-30 LATE) — native GetMessage: RE resolved → refactor landed → visually confirmed on ERR
 
