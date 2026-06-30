@@ -1649,8 +1649,14 @@ void annotate_item_stacks()
             {
                 const Marker &b = bucket[j];
                 if (b.name_id != a.name_id) continue;           // same item only
-                if (b.raw_area != a.raw_area) continue;         // same MSB area (local coords are per-area)
-                const float dx = b.raw_px - a.raw_px, dz = b.raw_pz - a.raw_pz;
+                if (b.raw_area != a.raw_area) continue;         // same MSB area
+                // Distance in FULL area-local coords (grid*256 + pos). raw_px/raw_pz are block-local
+                // (0..256 within one grid tile), so comparing them directly stacks items in DIFFERENT
+                // grid tiles that happen to share a local offset — e.g. a Trina's Lily at Fort Haight
+                // wrongly merging with one at Mistwood Ruins (same overworld area, different grids).
+                const float ax = a.raw_gx * 256.0f + a.raw_px, az = a.raw_gz * 256.0f + a.raw_pz;
+                const float bx = b.raw_gx * 256.0f + b.raw_px, bz = b.raw_gz * 256.0f + b.raw_pz;
+                const float dx = bx - ax, dz = bz - az;
                 if (dx * dx + dz * dz <= kR2) parent[find(i)] = find(j);
             }
         }
