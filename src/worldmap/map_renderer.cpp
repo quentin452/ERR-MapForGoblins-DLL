@@ -37,10 +37,9 @@ namespace goblin::worldmap
 {
 namespace
 {
-// Baked: the native GFx map layer is composited exactly 1 frame behind our Present
-// sample, so map-bound markers need a 1-frame view delay to ride the map.
-constexpr float kViewDelayFrames = 1.0f;
-
+// Baked: the native GFx map layer is composited ~1 frame behind our Present sample, so map-bound
+// markers need a view delay to ride the map. The delay amount is the live config view_delay_frames
+// (default 1.0) — A/B-tunable in-game to fix the pan/zoom marker re-adjust; see g_view_delay.apply.
 goblin::projection::ViewDelay<> g_view_delay;
 
 // Probe LiveView → the pure projection View (keeps goblin_projection.hpp probe-free).
@@ -1403,9 +1402,10 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
         g_view_delay.reset();
     s_prev_page = page_key;
 
-    // Motion sync: delay the projected view by the baked frame so markers ride the
-    // native map layer instead of leading it during a pan.
-    g_view_delay.apply(view, kViewDelayFrames);
+    // Motion sync: delay the projected view by the configured frame count so markers ride the
+    // native map layer instead of leading it during a pan. Live config (view_delay_frames) so the
+    // pan/zoom re-adjust can be A/B-tuned in-game; apply() clamps to the ring's [0, N-1] capacity.
+    g_view_delay.apply(view, goblin::config::viewDelayFrames);
 
     // Grace GPU offset rides the SAME projection as the markers (zoom × canvas factor), so the
     // native-vs-imgui calibration nudge stays aligned across zoom. Sampled here, after the delay

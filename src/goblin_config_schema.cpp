@@ -94,6 +94,7 @@ namespace goblin::config
     float altitudeDeadzone = 5.0f;     // world-Y diff (units) below which no badge is drawn
     float graceOffsetX = 0.0f;         // px offset of the overlay grace draw — native-vs-imgui compare
     float graceOffsetY = 0.0f;
+    float viewDelayFrames = 1.0f;      // marker motion-sync: project markers this many present-frames back to match the eased basemap
 
     // In-game minimap HUD (corner, north-up, overworld-only — underground player pos
     // is not yet reliable). Foundation/opt-in; off by default.
@@ -517,6 +518,8 @@ namespace
                   "Pixel X offset of the overlay grace draw — set non-zero to shift the imgui grace\nbeside the game's NATIVE grace pin for side-by-side comparison/calibration."},
                 IniEntry{"grace_offset_y", IniType::F32, &cfg::graceOffsetY, "0.0",
                   "Pixel Y offset of the overlay grace draw (see grace_offset_x)."},
+                IniEntry{"view_delay_frames", IniType::F32, &cfg::viewDelayFrames, "1.0",
+                  "Marker motion-sync: project overlay markers this many PRESENT-frames in the past so they\ntrack the engine's eased basemap during pan/zoom. 1.0 = default. Raise if markers LEAD the\nbasemap (snap back on stop); lower toward 0 if they TRAIL. A/B this to kill pan/zoom re-adjust."},
                 B("debug_cluster_anchors", debugClusterAnchors, "false",
                   "Debug viz: per cluster pile, draw the anchor + lines to every member + the\nname + distance/threshold. Green = grace anchor, red CENTROID = anchor missing.\nSeparate from the distance rings (cluster_debug_radius). Off by default."),
                 B("debug_region_volumes", debugRegionVolumes, "false",

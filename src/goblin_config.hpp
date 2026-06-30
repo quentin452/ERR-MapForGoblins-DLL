@@ -219,6 +219,7 @@ namespace goblin
         extern bool  altitudeCue;          // DX item 7: ▲/▼ badge when a marker is above/below the player
         extern float altitudeDeadzone;     // world-Y diff (units) below which no badge is drawn
         extern float graceOffsetX, graceOffsetY;  // overlay grace draw px offset (native-vs-imgui compare)
+        extern float viewDelayFrames;      // marker motion-sync delay in present-frames (A/B the pan/zoom re-adjust)
 
         // Debug viz: cluster pile anchor + member lines + name + d/thr (own toggle).
         extern bool debugClusterAnchors;

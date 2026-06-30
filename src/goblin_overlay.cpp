@@ -2104,6 +2104,11 @@ namespace
                 scale_control("Grace offset X (native vs imgui)", &goblin::config::graceOffsetX, -200.0f, 200.0f, 1.0f, 10.0f, "%.0f");
                 scale_control("Grace offset Y (native vs imgui)", &goblin::config::graceOffsetY, -200.0f, 200.0f, 1.0f, 10.0f, "%.0f");
                 scale_control("Cluster piles", &goblin::config::overlayClusterScale, 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
+                scale_control("Marker motion delay (frames)", &goblin::config::viewDelayFrames, 0.0f, 7.0f, 0.1f, 0.5f, "%.1f");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Project markers this many present-frames behind the eased basemap.\n"
+                                      "Pan the map: raise if markers LEAD (snap back on stop), lower if they TRAIL.\n"
+                                      "1.0 = default. Tune to kill the pan/zoom re-adjust, then Save to INI.");
                 if (ImGui::SmallButton("Reset##scale"))
                 {
                     goblin::config::overlayMasterScale = 1.0f;
@@ -2112,6 +2117,7 @@ namespace
                     goblin::config::graceIconScale = 1.2f;
                     goblin::config::graceOffsetX = 0.0f;
                     goblin::config::graceOffsetY = 0.0f;
+                    goblin::config::viewDelayFrames = 1.0f;
                 }
                 ImGui::TextDisabled("Slider = coarse; type in the box or use its +/- arrows for an exact\n"
                                     "value (Ctrl+Click the slider also types). × a resolution-relative\n"
