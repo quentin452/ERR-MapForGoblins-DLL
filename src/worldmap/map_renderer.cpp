@@ -14,7 +14,9 @@
 #include "goblin_name_regions.hpp"   // NAME_REGIONS (MapNameOverride debug viz)
 #include "goblin_quest_gates.hpp"    // QUEST_GATES (quest-NPC gating)
 #include "goblin_map_data.hpp"       // Category enum (WorldQuestNPC)
+#include "goblin_markers.hpp"        // markers::category_name (readable [ICONTIER] audit output)
 
+#include <chrono>
 #include <string>
 #include <unordered_set>
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS / ATLAS dims
@@ -91,11 +93,26 @@ struct IconKey
     int icon_id = -1;                // MapPoint: numeric game IconId (MENU_MAP_<NN>)
 };
 
+// Which tier of the provider chain supplied a glyph. Drives the [ICONTIER] audit census so we can
+// see — per mod (ERR vs vanilla) — exactly which categories rely on the baked atlas or fall to a
+// circle, i.e. what removing the baked atlas would regress.
+enum IconTier
+{
+    TIER_MP_NAME = 0, // native map-point symbol by ERR name (category_gpu_icon_name)
+    TIER_MP_ID,       // native map-point symbol by numeric id (category_gpu_iconId, e.g. 89)
+    TIER_ITEM,        // per-item inventory icon (native_item_icon, m.item_icon_id)
+    TIER_REP,         // category representative inventory icon (category_rep_icon)
+    TIER_ATLAS,       // baked overlay atlas (the transitional fallback we want to drop)
+    TIER_CIRCLE,      // no glyph resolved → plain circle (universal fallback)
+    TIER_COUNT
+};
+
 struct IconHandle
 {
     ImTextureID tex = nullptr;
     ImVec2 uv0{}, uv1{};
     float scale = 1.0f; // draw-size multiplier (native map symbols are bigger than item dots)
+    int tier = TIER_CIRCLE; // tier of the provider chain that resolved this handle (audit census)
 };
 
 struct IconProvider
@@ -118,6 +135,7 @@ struct AtlasProvider : IconProvider
         if (!icon_uv(k.atlas_key, out.uv0, out.uv1))
             return false;
         out.tex = atlas;
+        out.tier = TIER_ATLAS;
         return true;
     }
 };
@@ -172,6 +190,7 @@ struct IconSet
                     // Per-category multiplier: normal hostile entities reuse the boss symbol smaller.
                     out.scale = goblin::config::mapSymbolScale *
                                 goblin::worldmap::category_gpu_icon_scale(m.category);
+                    out.tier = TIER_MP_NAME;
                     return true;
                 }
             }
@@ -179,6 +198,7 @@ struct IconSet
             if (gid > 0 && mappoint.resolve(IconKey{IconKey::MapPoint, nullptr, gid}, out))
             {
                 out.scale = goblin::config::mapSymbolScale;
+                out.tier = TIER_MP_ID;
                 return true;
             }
             // Per-item: this loot's OWN inventory icon (resolved at build from the live lot, stored on
@@ -191,6 +211,7 @@ struct IconSet
                 {
                     out.tex = reinterpret_cast<ImTextureID>(t);
                     out.uv0 = ImVec2(a0, b0); out.uv1 = ImVec2(a1, b1);
+                    out.tier = TIER_ITEM;
                     return true;
                 }
             }
@@ -205,6 +226,7 @@ struct IconSet
                 {
                     out.tex = reinterpret_cast<ImTextureID>(t);
                     out.uv0 = ImVec2(a0, b0); out.uv1 = ImVec2(a1, b1);
+                    out.tier = TIER_REP;
                     return true;
                 }
             }
@@ -212,6 +234,69 @@ struct IconSet
         return atlas.resolve(IconKey{IconKey::Atlas, m.icon_key, -1}, out);
     }
 };
+
+// ---- [ICONTIER] audit census -------------------------------------------------
+// Counts how many drawn markers each tier of the chain resolved, and records WHICH categories fell
+// through to the baked atlas or to a plain circle. Run the game in ERR, then in a vanilla profile
+// (ModEngine3 CLI, custom path), grep "[ICONTIER]" in both logs, and diff: any category that is
+// native/rep in ERR but atlas/circle in vanilla is what dropping the baked atlas would regress.
+// Throttled to one line every few seconds so it never spams the per-frame draw path.
+struct TierCensus
+{
+    long counts[TIER_COUNT] = {0};
+    std::unordered_set<int> atlas_cats;  // categories that resolved via the baked atlas
+    std::unordered_set<int> circle_cats; // categories that fell all the way to a circle
+};
+static TierCensus g_tier_census;
+static std::chrono::steady_clock::time_point g_tier_last_log{};
+
+static void tier_tally(int tier, int category)
+{
+    if (tier < 0 || tier >= TIER_COUNT)
+        return;
+    g_tier_census.counts[tier]++;
+    if (tier == TIER_ATLAS)
+        g_tier_census.atlas_cats.insert(category);
+    else if (tier == TIER_CIRCLE)
+        g_tier_census.circle_cats.insert(category);
+}
+
+static std::string tier_cat_list(const std::unordered_set<int> &cats)
+{
+    if (cats.empty())
+        return "-";
+    std::string s;
+    for (int c : cats)
+    {
+        if (!s.empty())
+            s += ", ";
+        s += goblin::markers::category_name(static_cast<goblin::generated::Category>(c));
+    }
+    return s;
+}
+
+// Flush a throttled summary. Called once per render pass; emits at most one line every ~3s, then
+// resets the accumulator so each line reflects a fresh window of frames.
+static void tier_census_flush()
+{
+    long total = 0;
+    for (int i = 0; i < TIER_COUNT; ++i)
+        total += g_tier_census.counts[i];
+    if (total == 0)
+        return;
+    const auto now = std::chrono::steady_clock::now();
+    if (g_tier_last_log.time_since_epoch().count() != 0 &&
+        now - g_tier_last_log < std::chrono::seconds(3))
+        return;
+    g_tier_last_log = now;
+    spdlog::info("[ICONTIER] mp_name={} mp_id={} item={} rep={} atlas={} circle={} (total={})",
+                 g_tier_census.counts[TIER_MP_NAME], g_tier_census.counts[TIER_MP_ID],
+                 g_tier_census.counts[TIER_ITEM], g_tier_census.counts[TIER_REP],
+                 g_tier_census.counts[TIER_ATLAS], g_tier_census.counts[TIER_CIRCLE], total);
+    spdlog::info("[ICONTIER]   atlas-only categories : {}", tier_cat_list(g_tier_census.atlas_cats));
+    spdlog::info("[ICONTIER]   circle categories     : {}", tier_cat_list(g_tier_census.circle_cats));
+    g_tier_census = TierCensus{};
+}
 
 // Desaturate toward luminance + halve alpha → the "collected" dim tint (packed ABGR).
 unsigned int dim_color(unsigned int abgr)
@@ -368,10 +453,14 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
         }
         IconHandle ih;
         if (icons.resolve(m, ih))
+        {
+            tier_tally(ih.tier, m.category);
             fg->AddImage(ih.tex, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
                          ih.uv0, ih.uv1, t);
+        }
         else
         {
+            tier_tally(TIER_CIRCLE, m.category);
             float cr = half * 0.45f;
             fg->AddCircleFilled(p, cr, disc ? m.color : dim_color(m.color));
             fg->AddCircle(p, cr, IM_COL32(0, 0, 0, 220), 0, 1.5f);
@@ -406,12 +495,14 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
     IconHandle ih;
     if (icons.resolve(m, ih))
     {
+        tier_tally(ih.tier, m.category);
         const float hh = half * ih.scale;
         fg->AddImage(ih.tex, ImVec2(p.x - hh, p.y - hh), ImVec2(p.x + hh, p.y + hh),
                      ih.uv0, ih.uv1, tint);
     }
     else
     {
+        tier_tally(TIER_CIRCLE, m.category);
         float cr = half * 0.45f;
         const ImU32 fill = done ? dim_color(m.color) : (red ? IM_COL32(235, 70, 70, 255) : m.color);
         fg->AddCircleFilled(p, cr, fill);
@@ -1429,6 +1520,9 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // Tooltip for the hovered marker / pile (drawn last so it's on top).
     if (hover.bestd < 1e30f)
         draw_tooltip(fg, mouse, hover.text);
+
+    // [ICONTIER] audit: throttled summary of how this pass's markers resolved across the tier chain.
+    tier_census_flush();
 }
 
 void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture, float screenW,
