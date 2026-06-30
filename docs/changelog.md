@@ -99,6 +99,10 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   `>= 0x40000000` cut that wrongly dropped DLC one-time loot.
 
 ### Fixed
+- **Cross-tile false item stacks** — item stacking compared block-local positions (0–256 within a grid
+  tile), so same-item markers in different grid tiles of one area merged (a Trina's Lily at Fort Haight
+  stacked with one at Mistwood Ruins). Proximity now uses full area-local coords (grid·256 + pos), so
+  the ~5 m radius is real distance.
 - **Item-stack toggle crash** — toggling `stack_identical_items` (esp. rapidly, or with require-fragment)
   could crash (access violation in an `unordered_map` rehash). `rebuild_markers()` re-kicked a bucket
   build without waiting for the previous one, so two workers mutated `g_buckets` / a shared map
