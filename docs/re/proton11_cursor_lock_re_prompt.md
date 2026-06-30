@@ -1,9 +1,11 @@
 # RE prompt — Proton 11 F1-menu cursor lock (user32 cursor hooks bypassed)
 
-Status: **H3 found + FIXED 2026-07-01, branch `diag/cursor-hook-call-counters` (built, NOT yet
-in-game-verified).** H1/H2 below are now believed WRONG for the reliable repro (refuted by log
-data — see H3). Re-test after the fix below to confirm H3 was the whole story; H1/H2 may still
-explain a *different* trigger if the bug still reproduces under different conditions.
+Status: **RESOLVED 2026-07-01, merged to master (`fix/focus-message-cursor-lock`).** H3 was the whole
+story — user-confirmed fixed via the exact alt-tab repro after the WM_SETFOCUS/WM_KILLFOCUS forwarding
+fix. H1/H2 below were never confirmed and are now believed wrong for this repro (refuted by the
+`[CURSORDIAG]` log data — see H3). Leaving H1/H2 in this doc only in case a *different* trigger
+(no alt-tab involved) ever reproduces a similar-looking freeze — re-open with fresh `[CURSORDIAG]` data
+against that specific case before assuming it's the same bug.
 
 **Step 1 instrumentation DONE 2026-07-01 (`diag/cursor-hook-call-counters`).** The 5 detours log
 `[CURSORDIAG] hooks/sec: set_cursor_pos=... clip_cursor=... get_cursor_pos=... raw_input_data=...
@@ -46,10 +48,8 @@ real OS focus regardless of our panel-visibility gating. Safe: `hk_wndproc` can'
 installs the WndProc hook), and double-forwarding the same focus message when `g_show` is also true is
 idempotent (`io.AddFocusEvent` just sets a bool).
 
-**Still needed:** in-game verification of the fix using the user's exact repro (F1 → alt-tab → alt-tab
-back → confirm cursor responds). If it does NOT fully fix it, H1/H2 below may still be a contributing
-factor for some Proton/Wayland configs — re-run the `[CURSORDIAG]` capture against the SPECIFIC remaining
-failure to check.
+**VERIFIED 2026-07-01 — user confirmed fixed** using the exact repro (F1 → alt-tab → alt-tab back →
+cursor responds normally now). Done.
 
 ## Symptom (original framing — H1/H2 below; see H3 above for what's now believed to actually explain
 ## the reliable alt-tab repro)
