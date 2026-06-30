@@ -25,12 +25,18 @@ Last updated: 2026-06-30 LATE (native GetMessage refactor IMPLEMENTED + VISUALLY
   (ZstdNet regulation-decrypt) → added; SoulsFormats temp-`.bnd` unlink raced on Windows (PermissionError aborted
   generators) → `tools/sitecustomize.py` makes `os.unlink` retry-then-swallow. Run codegen with
   `PYTHONPATH=tools py tools/build_pipeline.py --profile erte`; then `cmake --build build-erte` (~13s incremental).
+- **Cleanup commit — DONE (`c99b938`).** Deleted the dead id-collection loop, `copy_fmg_entries/_layered/
+  _all_layered` lambdas + call sites, both `#ifdef MFG_VANILLA` slot-list/DLC-whitelist blocks, the stale
+  EventTextForMap "unsupported" warning (decode_textid already covers the 600M/34/367/467 band — same
+  GetMessage path as everything else), and the now-orphaned `seh_call`/`seh_run_job_thunk` helpers
+  (`<functional>`/`<set>` includes too). `setup_messages()` ~625 → ~165 lines. Builds clean on the ERR
+  (`build-linux`) profile, no unused-symbol warnings. `build-vanilla`/`build-erte`/`build-convergence` have
+  no configured CMakeCache on this machine — recheck on Windows alongside item 2 below.
 - **STILL OPEN / NEXT:**
-  1. **Cleanup commit** — physically delete the now-dead collection loop, copy lambdas/calls, and BOTH
-     `#ifdef MFG_VANILLA` blocks in `goblin_messages.cpp` (currently only neutralized, not deleted).
-  2. **vanilla+DLC verification** — only ERR is visually verified; the one-DLL-for-all claim (vanilla resolves DLC
+  1. **vanilla+DLC verification** — only ERR is visually verified; the one-DLL-for-all claim (vanilla resolves DLC
      via the real DLC slots) is logically sound but untested. Build/deploy the vanilla profile and eyeball a DLC item.
-  3. Re-confirm EventTextForMap (600M / slot 34) now resolves via GetMessage (was unsupported before).
+     Also re-confirm EventTextForMap (600M / slot 34) actually resolves via GetMessage now that the dead
+     per-profile machinery is gone (was unsupported before the refactor).
 
 
 ## Session recap (2026-06-30 NIGHT) — spatial cull verified + loot NONAME closed + ViewDelay bug spawned
