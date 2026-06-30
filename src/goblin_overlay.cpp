@@ -2109,6 +2109,11 @@ namespace
                     ImGui::SetTooltip("Project markers this many present-frames behind the eased basemap.\n"
                                       "Pan the map: raise if markers LEAD (snap back on stop), lower if they TRAIL.\n"
                                       "1.0 = default. Tune to kill the pan/zoom re-adjust, then Save to INI.");
+                ImGui::Checkbox("Delay zoom too", &goblin::config::viewDelayZoom);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("ON (default): the motion delay applies to zoom as well as pan.\n"
+                                      "If markers TELEPORT for one frame on each mouse-wheel zoom step,\n"
+                                      "turn this OFF — markers then use the live zoom while still delaying pan.");
                 if (ImGui::SmallButton("Reset##scale"))
                 {
                     goblin::config::overlayMasterScale = 1.0f;
@@ -2118,6 +2123,7 @@ namespace
                     goblin::config::graceOffsetX = 0.0f;
                     goblin::config::graceOffsetY = 0.0f;
                     goblin::config::viewDelayFrames = 1.0f;
+                    goblin::config::viewDelayZoom = true;
                 }
                 ImGui::TextDisabled("Slider = coarse; type in the box or use its +/- arrows for an exact\n"
                                     "value (Ctrl+Click the slider also types). × a resolution-relative\n"

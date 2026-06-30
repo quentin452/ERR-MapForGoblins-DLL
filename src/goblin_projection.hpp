@@ -100,7 +100,13 @@ struct ViewDelay
     void reset() { init = false; }
 
     // Push the live view, rewrite v to the delayed view (centre+zoom back into pan).
-    void apply(View &v, float delay)
+    // delayZoom: when false, the CENTER (pan) is delayed but ZOOM uses the current frame's value.
+    // Zoom on the map is a discrete wheel step that the engine applies to the basemap immediately,
+    // so delaying zoom holds markers at the previous scale for one frame = a radial teleport per
+    // notch. Delaying only the center keeps pan-sync without the zoom-step teleport. (If the engine
+    // instead EASES zoom over several frames, the read value is the target and no frame-delay matches
+    // — that needs reading the eased zoom, a separate fix.)
+    void apply(View &v, float delay, bool delayZoom = true)
     {
         float liveU, liveV;
         view_center(v, liveU, liveV);
@@ -120,7 +126,7 @@ struct ViewDelay
         int i1 = (head - d0 - 1 + 2 * N) % N;
         float eU = cU[i0] * (1 - fr) + cU[i1] * fr;
         float eV = cV[i0] * (1 - fr) + cV[i1] * fr;
-        float eZ = z[i0] * (1 - fr) + z[i1] * fr;
+        float eZ = delayZoom ? (z[i0] * (1 - fr) + z[i1] * fr) : v.zoom;
         v.zoom = eZ;
         v.panX = eU * eZ - v.snapMidX;
         v.panZ = eV * eZ - v.snapMidZ;

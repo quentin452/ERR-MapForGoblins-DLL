@@ -95,6 +95,7 @@ namespace goblin::config
     float graceOffsetX = 0.0f;         // px offset of the overlay grace draw — native-vs-imgui compare
     float graceOffsetY = 0.0f;
     float viewDelayFrames = 1.0f;      // marker motion-sync: project markers this many present-frames back to match the eased basemap
+    bool  viewDelayZoom = true;        // also delay ZOOM (not just center) in the motion-sync; off = current zoom, fixes wheel-step teleport if zoom applies instantly
 
     // In-game minimap HUD (corner, north-up, overworld-only — underground player pos
     // is not yet reliable). Foundation/opt-in; off by default.
@@ -520,6 +521,8 @@ namespace
                   "Pixel Y offset of the overlay grace draw (see grace_offset_x)."},
                 IniEntry{"view_delay_frames", IniType::F32, &cfg::viewDelayFrames, "1.0",
                   "Marker motion-sync: project overlay markers this many PRESENT-frames in the past so they\ntrack the engine's eased basemap during pan/zoom. 1.0 = default. Raise if markers LEAD the\nbasemap (snap back on stop); lower toward 0 if they TRAIL. A/B this to kill pan/zoom re-adjust."},
+                B("view_delay_zoom", viewDelayZoom, "true",
+                  "Whether the motion-sync delay also applies to ZOOM (not just pan/center). ON = current.\nIf zoom teleports markers for one frame per wheel-step, turn this OFF: markers then use the\nLIVE zoom while still delaying pan. Off helps when the engine applies wheel-zoom instantly."),
                 B("debug_cluster_anchors", debugClusterAnchors, "false",
                   "Debug viz: per cluster pile, draw the anchor + lines to every member + the\nname + distance/threshold. Green = grace anchor, red CENTROID = anchor missing.\nSeparate from the distance rings (cluster_debug_radius). Off by default."),
                 B("debug_region_volumes", debugRegionVolumes, "false",

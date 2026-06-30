@@ -1405,7 +1405,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // Motion sync: delay the projected view by the configured frame count so markers ride the
     // native map layer instead of leading it during a pan. Live config (view_delay_frames) so the
     // pan/zoom re-adjust can be A/B-tuned in-game; apply() clamps to the ring's [0, N-1] capacity.
-    g_view_delay.apply(view, goblin::config::viewDelayFrames);
+    g_view_delay.apply(view, goblin::config::viewDelayFrames, goblin::config::viewDelayZoom);
 
     // Grace GPU offset rides the SAME projection as the markers (zoom × canvas factor), so the
     // native-vs-imgui calibration nudge stays aligned across zoom. Sampled here, after the delay
