@@ -41,4 +41,9 @@ namespace goblin::overlay
     // goblin::map_icon_rect_by_name. Render-thread only.
     bool native_map_point_icon_by_name(const char *name, void *&tex, float &u0, float &v0,
                                        float &u1, float &v1);
+
+    // Mod-agnostic DISK map-point glyph (SB_MapCursor[_02] from the live 01_common.tpf): resolve by
+    // name first, else numeric iconId (pass -1 to skip). Render-thread only; false until DDS uploaded.
+    bool map_point_glyph_uv(const char *name, int iconId, void *&tex, float &u0, float &v0,
+                            float &u1, float &v1);
 }

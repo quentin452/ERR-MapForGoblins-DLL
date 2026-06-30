@@ -440,6 +440,9 @@ namespace goblin
     // (the 00_Solo atlas) without the engine streaming it. Returns false until captured / id absent.
     size_t item_icon_layout_count();
     bool item_icon_layout_rect(int iconId, int &x, int &y, int &w, int &h, std::string &sheet);
+    // Map-point glyph rects (SB_MapCursor[_02]) parsed from the disk sblytbnd.
+    bool map_point_rect_by_name(const std::string &name, int &x, int &y, int &w, int &h, std::string &sheet);
+    bool map_point_rect(int iconId, int &x, int &y, int &w, int &h, std::string &sheet);
     // No-bake item-icon LAYOUT source: read the active mod's (or UXM game's) real
     // menu/hi/01_common.sblytbnd.dcx off disk, decompress, and parse its MENU_ItemIcon_<id>
     // SubTexture rects into g_item_icon_layout. Complete + mod-aware (the ERR file carries

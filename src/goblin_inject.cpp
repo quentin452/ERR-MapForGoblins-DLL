@@ -3507,6 +3507,26 @@ bool goblin::item_icon_layout_rect(int iconId, int &x, int &y, int &w, int &h, s
     return true;
 }
 
+// Map-point glyph rect lookups (SB_MapCursor[_02] from the disk sblytbnd). By full name
+// ("MENU_MAP_Player_02", "MENU_MAP_ERR_Boss") or by numeric WorldMapPointParam iconId.
+bool goblin::map_point_rect_by_name(const std::string &name, int &x, int &y, int &w, int &h, std::string &sheet)
+{
+    std::lock_guard<std::mutex> lk(g_item_layout_mtx);
+    auto it = g_map_point_named.find(name);
+    if (it == g_map_point_named.end() || it->second.sheet.empty()) return false;
+    x = it->second.x; y = it->second.y; w = it->second.w; h = it->second.h; sheet = it->second.sheet;
+    return true;
+}
+
+bool goblin::map_point_rect(int iconId, int &x, int &y, int &w, int &h, std::string &sheet)
+{
+    std::lock_guard<std::mutex> lk(g_item_layout_mtx);
+    auto it = g_map_point_layout.find(iconId);
+    if (it == g_map_point_layout.end() || it->second.sheet.empty()) return false;
+    x = it->second.x; y = it->second.y; w = it->second.w; h = it->second.h; sheet = it->second.sheet;
+    return true;
+}
+
 bool goblin::load_item_icon_layout_from_disk()
 {
     if (item_icon_layout_count() > 0) return true;  // already captured (this path or the RAM hook)

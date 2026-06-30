@@ -323,6 +323,26 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
             // 1920×1080-reference px, same convention as the projection bias).
             float gx = p.x + goblin::config::graceOffsetX * s_grace_off_sx,
                   gy = p.y + goblin::config::graceOffsetY * s_grace_off_sy;
+            // UNDISCOVERED grace → mod-agnostic DISK glyph (gold effigy MENU_MAP_Player_02 from the
+            // active SB_MapCursor) instead of the bonfire sprite. Falls back to the sprite until the
+            // DDS is read+uploaded, so nothing regresses. Discovered graces keep the sprite + check.
+            if (!disc)
+            {
+                void *ut = nullptr; float gu0, gv0, gu1, gv1;
+                if (goblin::overlay::map_point_glyph_uv("MENU_MAP_Player_02", -1, ut, gu0, gv0, gu1, gv1))
+                {
+                    gt = (ImTextureID)ut;
+                    u0 = ImVec2(gu0, gv0);
+                    u1 = ImVec2(gu1, gv1);
+                    static bool s_logged = false;
+                    if (!s_logged)
+                    {
+                        s_logged = true;
+                        spdlog::info("[GRACEUNDISC] undiscovered grace -> MENU_MAP_Player_02 disk glyph "
+                                     "tex={} uv=({},{})-({},{})", ut, gu0, gv0, gu1, gv1);
+                    }
+                }
+            }
             fg->AddImage(gt, ImVec2(gx - gh, gy - gh), ImVec2(gx + gh, gy + gh), u0, u1, t);
             if (disc)
                 draw_check(fg, ImVec2(gx, gy), gh);   // discovered → green check (same as cleared bosses)

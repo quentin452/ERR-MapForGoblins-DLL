@@ -3426,3 +3426,28 @@ bool goblin::overlay::native_map_point_icon_by_name(const char *name, void *&tex
     u0 = s->uv0.x; v0 = s->uv0.y; u1 = s->uv1.x; v1 = s->uv1.y;
     return true;
 }
+
+// Mod-agnostic DISK map-point glyph: resolve a SB_MapCursor[_02] rect (by name, else numeric iconId)
+// from the active install's parsed layout, upload that sheet's DDS once off the live 01_common.tpf, and
+// return tex + UV sub-rect. Mirrors native_item_icon's GAP#2 disk branch. Returns false until the DDS is
+// read+uploaded (caller falls back to its previous icon). No baked dependency → correct on any mod.
+bool goblin::overlay::map_point_glyph_uv(const char *name, int iconId, void *&tex,
+                                         float &u0, float &v0, float &u1, float &v1)
+{
+    int x = 0, y = 0, w = 0, h = 0;
+    std::string sheet;
+    bool got = (name && name[0] && goblin::map_point_rect_by_name(name, x, y, w, h, sheet));
+    if (!got && iconId >= 0)
+        got = goblin::map_point_rect(iconId, x, y, w, h, sheet);
+    if (!got || w <= 0 || h <= 0 || sheet.empty())
+        return false;
+    if (size_t dot = sheet.rfind('.'); dot != std::string::npos)  // "SB_MapCursor.png" → "SB_MapCursor"
+        sheet.resize(dot);
+    DiskSheet ds;
+    if (!ensure_disk_sheet(sheet, ds) || ds.w <= 0 || ds.h <= 0)
+        return false;
+    tex = reinterpret_cast<void *>(ds.gpu);
+    u0 = (float)x / ds.w; v0 = (float)y / ds.h;
+    u1 = (float)(x + w) / ds.w; v1 = (float)(y + h) / ds.h;
+    return true;
+}
