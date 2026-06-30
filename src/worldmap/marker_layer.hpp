@@ -115,6 +115,13 @@ struct Marker
     // DX item 7: block-local altitude (MSB pos[1]); ≈ world Y on the overworld. Set by push_marker after
     // the aggregate init (default 0 keeps other ctors intact). Drives the above/below-player altitude badge.
     float worldY = 0.0f;
+    // Off-page altitude reference: the block-local Y of the nearest grace in this marker's SAME area
+    // (precomputed at build from live_graces). When the marker is on a DIFFERENT page than the player,
+    // the altitude badge compares worldY against this grace instead of the player (whose Y is in another
+    // frame). has_ref_grace=false → no grace in the area → no off-page badge. Same-area only: worldY is
+    // block-local, so the reference must share the frame. See docs/plans/offpage_altitude_via_grace_plan.md.
+    float ref_grace_y = 0.0f;
+    bool has_ref_grace = false;
     // Item count this marker represents on its OWN: the lot's deterministic quantity
     // (goblin::lot_item_count — a slot's num when one slot is live, else 1; see that fn). 1 for
     // non-lot markers. This stays the marker's own count even when it is a stack representative — the

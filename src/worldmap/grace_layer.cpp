@@ -52,6 +52,7 @@ const std::vector<Marker> &GraceLayer::markers() const
                  0ull, 0, 0, e.discoverFlag};
         m.raw_area = e.areaNo; m.raw_gx = e.gridXNo; m.raw_gz = e.gridZNo;
         m.raw_px = e.posX; m.raw_pz = e.posZ;
+        m.worldY = e.posY;  // block-local grace altitude → reference for off-page markers' altitude badge
         // Underground/cave grace = ERR's own per-grace gate, read LIVE from BonfireWarpParam.iconId
         // (1 = normal bonfire, 44 = ERR cave/underground grace → MENU_MAP_ERR_GraceUnderground),
         // captured into LiveGrace.underground. This is ERR's authored set (93 graces: all catacombs

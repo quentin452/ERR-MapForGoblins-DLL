@@ -1679,6 +1679,44 @@ void annotate_item_stacks()
                      grouped_total, group_count, (int)kStackRadius);
 }
 
+// Off-page altitude reference: for every g_buckets marker (loot/bosses/…), record the block-local Y of
+// the NEAREST grace in its SAME area (live BonfireWarpParam). The altitude badge uses this when the
+// marker is on a page the player isn't on — there the player's Y is in a different frame, but a grace
+// in the marker's own area shares its block-local frame. Same-area only; areas with no grace get no
+// off-page badge. XZ distance uses full area-local coords (grid*256 + pos). Run once at build, after
+// capture_live_graces (dllmain orders it before the build). See offpage_altitude_via_grace_plan.md.
+void assign_grace_altitude_refs()
+{
+    const auto &graces = goblin::live_graces();
+    if (graces.empty()) return;
+    struct G { float x, z, y; };
+    std::unordered_map<int, std::vector<G>> by_area;   // areaNo → graces (area-local x/z, block-local y)
+    for (const auto &g : graces)
+        by_area[(int)g.areaNo].push_back({g.gridXNo * 256.0f + g.posX,
+                                          g.gridZNo * 256.0f + g.posZ, g.posY});
+    int assigned = 0;
+    for (auto &bucket : g_buckets)
+        for (Marker &m : bucket)
+        {
+            if (m.raw_area < 0) continue;                       // no live area → no reference
+            auto it = by_area.find(m.raw_area);
+            if (it == by_area.end()) continue;                  // no grace in this area
+            const float mx = m.raw_gx * 256.0f + m.raw_px, mz = m.raw_gz * 256.0f + m.raw_pz;
+            float best = 1e30f, bestY = 0.0f;
+            for (const G &g : it->second)
+            {
+                const float dx = g.x - mx, dz = g.z - mz;
+                const float d2 = dx * dx + dz * dz;
+                if (d2 < best) { best = d2; bestY = g.y; }
+            }
+            m.ref_grace_y = bestY;
+            m.has_ref_grace = true;
+            ++assigned;
+        }
+    if (assigned)
+        spdlog::info("[ALT-REF] {} markers referenced to a same-area grace (off-page altitude)", assigned);
+}
+
 void build_buckets_impl()
 {
     GOBLIN_BENCH("build.buckets");
@@ -2465,6 +2503,10 @@ void build_buckets_impl()
     // grouping must exist regardless and the toggle stays instant (no rebuild). After all finalize
     // passes so it sees the final marker set.
     annotate_item_stacks();
+
+    // Off-page altitude: tag each marker with the nearest same-area grace's Y so the altitude badge
+    // works on pages the player isn't on (grace replaces the out-of-frame player Y as the reference).
+    assign_grace_altitude_refs();
 
     // ── [SKIPPED] shown vs skipped: disk placements parsed but NOT drawn, by reason ─
     // The inverse of [COVERAGE]: of everything the passes parsed from the mod's files, how many
