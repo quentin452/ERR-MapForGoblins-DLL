@@ -311,9 +311,12 @@ static inline void draw_legible_icon(ImDrawList *fg, ImVec2 center, float half, 
 {
     if (goblin::config::iconLegibility)
     {
+        // Only the genuinely SMALL icons blend into the map and need a disc; a big item icon reads on
+        // its own, so backing it just darkens the map. Decide on the icon's natural (pre-clamp) size.
+        const bool small = half < minHalf * 1.6f;
         if (half < minHalf)
             half = minHalf;
-        if (backing)
+        if (backing && small)
             fg->AddCircleFilled(center, half + 1.5f, IM_COL32(0, 0, 0, 165)); // contrast backing
     }
     fg->AddImage(tex, ImVec2(center.x - half, center.y - half), ImVec2(center.x + half, center.y + half),
