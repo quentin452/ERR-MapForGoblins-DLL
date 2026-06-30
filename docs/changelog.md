@@ -68,12 +68,6 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 - **Map-open freeze** — fully resolved by the ImGui/DX overlay backend: markers are no longer injected as
   native `WorldMapPointParam` rows, so the engine doesn't walk them at open. (`areaNo=99` eviction +
   clustering was the pre-overlay mitigation.)
-- **`require_map_fragments` leak** — interior overworld tiles inherit the majority fragment of their 8 neighbours.
-- **Page-transition flicker** — re-seed the view-delay ring buffer on page-group change.
-- **Gamepad / mouse-still map drift** — projection re-centred on the cursor-independent pan/zoom midpoint.
-- **DummyAsset over-emission** — disk loot walk drops MSBE part-type 9 (kept only when entity-bound).
-- **Disk-parser coverage gaps** — shared `emit_lot_siblings()` across treasure / enemy / EMEVD passes.
-- **Clustering live-test bugs** — location-anchored clusters with live re-plan on toggle.
 
 ### Performance
 - **Proton collected-refresh stutter** — dropped in-process `ReadProcessMemory`-to-self for `__try`-guarded
