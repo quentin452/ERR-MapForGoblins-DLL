@@ -37,13 +37,18 @@ Last updated: 2026-06-30 LATE (native GetMessage refactor IMPLEMENTED + VISUALLY
      via the real DLC slots) is logically sound but untested. Build/deploy the vanilla profile and eyeball a DLC item.
      Also re-confirm EventTextForMap (600M / slot 34) actually resolves via GetMessage now that the dead
      per-profile machinery is gone (was unsupported before the refactor).
-  2. **One-DLL map-data thread (separate from the above) — runtime-detection decision DROPPED, not needed.**
-     [[one-dll-externalize-mapdata]]: once vanilla/ERTE/Convergence move onto the same live-DiskMSB pipeline
-     ERR already uses, there's no per-mod data file left to pick at runtime — one binary, reads whatever
-     mod's files are on disk. So skip straight to migration, one branch/PR per profile: vanilla first
-     (simplest, proves the pipeline) → ERTE → Convergence → then collapse the `GENERATED_SUBDIR` CMake
-     switch to a single target and delete the per-profile generator scripts + `generated_vanilla/erte/
-     convergence/` dirs (708K/3.7M/3.5M).
+  2. **One-DLL map-data thread — plan written, not started: `docs/plans/generated_data_removal_plan.md`.**
+     Correction vs the old framing: `goblin_map_data.cpp` (marker positions) is **already** an unconditional
+     0-length stub in `tools/generate_data.py` for every profile — ERR and vanilla prove it on disk; erte/
+     convergence's large local `generated_erte|convergence/goblin_map_data.cpp` (3.2 MB/3.0 MB) are just
+     STALE pre-change artifacts (also missing newer generated files — confirms staleness, not "unmigrated").
+     `generated_vanilla/erte/convergence/` are gitignored/untracked — nothing to delete from git. Real next
+     step is Phase A of the plan: regenerate+rebuild+verify all 3 non-ERR profiles on Windows (closes the
+     vanilla+DLC-verify item above in the same pass), THEN Phase B (dedup the now-identical stub +
+     category_exceptions/name_aliases into `generated_shared/`), THEN Phase C (delete the dead
+     `MAP_ENTRIES` consumer call sites for real, once C0 confirms 0 entries everywhere). Most of
+     `generated_*` (enemy_names, region_anchors, quest_steps, ...) is MapForGoblins' own authored content,
+     not a mod bake — **not** removable; full plan explains why.
 
 
 ## Session recap (2026-06-30 NIGHT) — spatial cull verified + loot NONAME closed + ViewDelay bug spawned

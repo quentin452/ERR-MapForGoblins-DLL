@@ -1,10 +1,21 @@
 ---
 name: one-dll-externalize-mapdata
-description: "Plan to kill the N-DLL-per-mod problem. SUPERSEDED 2026-06-30: no per-mod data file (externalized or baked) will exist once vanilla/ERTE/Convergence migrate to live DiskMSB like ERR — so the runtime-pick decision (A/B/C/D below) is dead, not just parked. Next step is the migration itself, see docs/HANDOFF.md."
+description: "HISTORICAL — fully superseded 2026-06-30 by `docs/plans/generated_data_removal_plan.md`. Kept for the original problem statement + why A/B/C/D died. Do not act on the 'migrate vanilla/ERTE/Convergence to live DiskMSB' framing below as if it were still open work — investigation found `goblin_map_data.cpp` is ALREADY an unconditional no-bake stub in `tools/generate_data.py` for every profile; read the plan doc instead."
 metadata: 
   node_type: memory
   type: project
 ---
+
+**SUPERSEDED 2026-06-30 — read `docs/plans/generated_data_removal_plan.md` instead of acting on anything
+below.** This memory's "migrate vanilla/ERTE/Convergence onto live DiskMSB"
+framing (2026-06-27 update) turned out to be stale: `tools/generate_data.py`'s map-data stub is already
+unconditional (no per-profile branch), verified on disk for ERR AND vanilla. erte/convergence's large
+local `goblin_map_data.cpp` files are leftover pre-change build artifacts, not evidence of unmigrated code
+— and those three `generated_vanilla/erte/convergence/` dirs are gitignored/untracked anyway, so there was
+never anything to migrate in git. The plan doc has the verified per-file breakdown of what's actually
+removable (just the marker-position bake) vs what's permanently-authored content that must stay compiled
+(enemy_names, region_anchors, quest_steps, ...). Everything from here down is the ORIGINAL (2026-06-23 to
+2026-06-27) problem statement, kept for context only.
 
 **UPDATE 2026-06-27 — RE-FRAMED by no-bake.** The premise (a 3.37MB compile-time bake to
 externalize) is gone for ERR: no-bake Phase 2 shipped (older note: HEAD `4a7716d`; import checkout
