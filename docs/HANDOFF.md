@@ -23,22 +23,21 @@ Last updated: 2026-06-30 NIGHT (spatial cull verified+landed-on-branch, loot NON
   (user-confirmed). F1 slider + "Delay zoom too" checkbox remain. Merged to master (`31f29c0`, with the
   cull `8f7ef91`). Detail in `docs/memory/bugs/overlay-render-perf-followups.md`.
 
-- **Loot ammo names — FIXED on branch `fix/loot-ammo-name` (`7b2bf40`, NOT merged, verified in-game).**
-  Ammo (WeaponName id ≥50M) was preloaded UNSHIFTED but markers encode ammo at +100M → `lookup_text_utf8`
-  missed → "Unknown item". The whole-namespace preload (`copy_fmg_all_layered`, `goblin_messages.cpp:659`)
-  now emits BOTH keys (raw + 100M) for ammo. Verified: `[NONAME]` dropped from dozens → 5, all cat19
-  GOODS (310/9800/401/240/375 = ERR-custom suspects, placeholder correct), zero ammo left. Closes cause
-  (a) of `docs/plans/loot_name_dx_followups.md` #1. Cause (b) (vanilla goods failing) did NOT reproduce
-  here. Deployed `f2e69799`. Merge when ready.
+- **Loot ammo names — FIXED + MERGED (`aa373eb`).** Ammo (WeaponName id ≥50M) was preloaded UNSHIFTED but
+  markers encode ammo at +100M → `lookup_text_utf8` missed → "Unknown item". The whole-namespace preload
+  (`copy_fmg_all_layered`, `goblin_messages.cpp:659`) now emits BOTH keys (raw + 100M). Verified: `[NONAME]`
+  dropped dozens → 5, all cat19 GOODS (310/9800/401/240/375 = ERR-custom suspects, placeholder correct),
+  zero ammo left. Closes cause (a) of `docs/plans/loot_name_dx_followups.md` #1. Cause (b) (vanilla goods
+  with names failing — Ember Piece etc.) did NOT reproduce on these pages — STILL OPEN if it shows elsewhere.
 
-- **NEW BLOCKER — Proton 11 F1-menu cursor lock.** After switching ER 8.0→Proton 11.0-100 (for fps), the
-  F1 ImGui cursor is frozen at screen-centre (unclickable). Our user32 SetCursorPos/ClipCursor/GetCursorPos
-  MinHooks install OK but ER's mouse-capture under Proton 11 bypasses them (win32u/NtUser path, or
-  Wayland compositor pointer-lock — session is Wayland). WORKAROUND: run ER on **Proton 9.0 / GE-Proton10-34**
-  (user32 path intact, still big fps gain over 8.0), or `PROTON_ENABLE_WAYLAND=0 %command%`. Durable code
-  fix scoped: `docs/re/proton11_cursor_lock_re_prompt.md` (disambiguate compositor-lock vs win32u bypass
-  FIRST, then hook win32u NtUser* exports). Proton 8.0 was the fps culprit (old VKD3D, 83× frame_wall
-  spikes ≤514ms); hardware (i5-10400F/RTX3060/32GB) is fine.
+- **Overlay menu unclickable on Wine/Proton — FIXED + MERGED (`9d6a261`).** F1 panel showed + hover worked
+  but clicks didn't register. NOT cursor-lock/fullscreen (those theories were wrong, reverted): ER reads
+  Raw Input, so newer wine/Proton posts NO legacy `WM_LBUTTONDOWN` → ImGui's message path saw no presses
+  (position works because it's polled). Fix: poll buttons via `GetAsyncKeyState` and feed
+  `io.AddMouseButtonEvent` each frame. Confirmed in log: `WM_LBUTTONDOWN seen while open: 0`. Branch
+  `fix/proton11-cursor-win32u` (win32u/cursor diag, wrong theory) DELETED. Freeze guardrail recorded:
+  `docs/memory/bugs/overlay-input-hook-freeze.md` (input detours run on the game thread — never block/loop).
+  Proton note: 8.0 = bad fps (old VKD3D); 9/GE10/11 fine. Borderless still preferred for frame pacing.
 
 ## Plans live on master — fork implementation branches fresh (2026-06-30)
 Policy: **plan-only branches are not kept.** A plan-only branch drifts as master's memory evolves (the
