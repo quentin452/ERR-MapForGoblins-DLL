@@ -6,8 +6,10 @@ Status: not started. Supersedes the "migrate vanilla/ERTE/Convergence onto live 
 ## Why this plan exists
 
 User asked (2026-06-30) to fully remove `generated_*`. Investigation before writing this plan found the
-premise was wrong: it is **not** all removable, and **most of what looked unmigrated already isn't**.
-Don't re-derive this — read this section first.
+original framing was wrong twice over — first that vanilla/ERTE/Convergence needed a live-DiskMSB
+migration (they don't, see Finding below), then a second correction below: most of the *other* baked
+tables already use the exact same "ERR-only feature, auto-stub elsewhere" pattern as the marker-position
+bake. Don't re-derive this — read this section first.
 
 ## Finding (verified against the actual files + `tools/generate_data.py`, not the stale memory note)
 
@@ -22,13 +24,18 @@ Per-file reality (sizes verified 2026-06-30):
 | `goblin_map_data.cpp` (marker positions) | 644 B stub | 644 B stub | 3.2 MB **stale real bake** | 3.0 MB **stale real bake** | `tools/generate_data.py`'s `generate_map_data_cpp` is **already unconditional** — it emits the 0-length stub for every profile, no per-profile branch. ERR and vanilla already prove this. erte/convergence's large files are leftover from before that change and are also each **missing** `category_exceptions`/`name_aliases_en`/`world_feature_models` (added later) — i.e. those two dirs are just out of date, not "not yet migrated." A regen replaces them with the same stub. |
 | `goblin_enemy_names.cpp` | 627 B stub | 370 KB real | 370 KB real | 370 KB real | Byte-identical across vanilla/erte/convergence. Genuinely can't go live: non-ERR mods have no equivalent of ERR's Codex (the in-game source ERR's runtime path reads), so this is MapForGoblins' own authored localization table, not a bake of mod content. **Stays compiled. Not removable** — but the 3× duplication (vanilla==erte==convergence) is a dedup opportunity. |
 | `goblin_category_exceptions.cpp`, `goblin_name_aliases_en.cpp` | identical to vanilla | — | missing (stale) | missing (stale) | ERR==vanilla byte-identical. Authored content, not mod-derived. **Stays compiled, dedup into `generated_shared/`.** |
-| `goblin_region_anchors.cpp`, `goblin_quest_steps.cpp`, `goblin_model_aliases.cpp`, `goblin_tile_tabs.cpp`, `goblin_quest_gates.cpp`, `goblin_major_regions.cpp`, `goblin_name_regions.cpp` | differs from non-ERR | identical across vanilla/erte/convergence | same | same | Real per-mod-family content (ERR's extra regions/dungeons vs vanilla layout) — **not removable**, but the non-ERR three are identical to each other, so a "non-ERR" shared bucket would dedup 3× → 1×. Low priority (files are 0.4–2.5 KB each; this is a maintainability win, not a size win). |
+| `goblin_quest_gates.cpp`, `goblin_quest_steps.cpp`, `goblin_region_anchors.cpp`, `goblin_name_regions.cpp`, `goblin_model_aliases.cpp` | real (3.4–44 KB, ERR Codex quest browser + ERR's reworked regions) | **388–398 B stub** | missing (stale — see below) | missing (stale) | **CORRECTION (caught by user pushback, re-verified):** these are explicitly **ERR-only features** per `tools/gen_nonerr_stubs.py`'s own docstring ("non-err gates/steps/browser, region... NOT goblin_inject/map_renderer/goblin_overlay" — i.e. these never feed the live marker/render path on non-ERR). `gen_nonerr_stubs.py` already writes the empty stub for any profile missing the file, and `build_pipeline.py:519` already calls it for non-ERR profiles. Verified: vanilla's copies ARE the stub already. erte/convergence are simply **missing** these files (not "real data not yet migrated") because their local `generated_*/` predates this script — same staleness as `goblin_map_data.cpp`. **Already removable for non-ERR; Phase A's regen does it automatically, zero extra code.** For ERR itself these stay (real, used feature, additive-layer-on-mod-agnostic-base is the documented acceptable pattern per `AGENTS.md`). |
+| `goblin_tile_tabs.cpp`, `goblin_major_regions.cpp` | ~2.4 KB / ~0.9 KB, real | identical to ERR | identical | identical | Genuinely profile-independent (base-game world-map tab layout + major-region list, not mod-specific) and real on **every** profile, including ERR — not a stub anywhere. Small (≤2.5 KB), duplicated 4× as a build artifact. Dedup into `generated_shared/` is pure housekeeping, not a removal. |
+| `goblin_enemy_names.cpp`, `goblin_category_exceptions.cpp`, `goblin_name_aliases_en.cpp` | stub / identical-to-vanilla / identical-to-vanilla | real, identical across the 3 non-ERR profiles | same | same | The one category that's genuinely authored, not MSB/regulation-derived (enemy_names: non-ERR mods have no Codex-equivalent live source; the other two are curated text-mapping dicts in `generate_data.py`, no param/MSB source at all). **Stays compiled** — dedup the 3× non-ERR duplication into `generated_shared/`, nothing more. |
 
-**Conclusion: "fully remove `generated_*`" is not the right end-state.** Only the marker-position bake
-(`goblin_map_data.cpp`/`.hpp`) and its 3-4 dead consumer call sites are fully removable. Everything else in
-`generated_*` is MapForGoblins' own authored data (localization, region anchors, quest text, UI labels) —
-not derived from the active mod's files, so there's nothing on disk to read live instead. The
-`GENERATED_SUBDIR` CMake mechanism stays; it just stops carrying marker-position data.
+**Revised conclusion: almost everything in `generated_*` already follows the "ERR-only feature → auto-stub
+elsewhere" pattern** (`gen_nonerr_stubs.py`), same as the marker-position bake. Phase A's regen alone closes
+nearly the whole gap — the erte/convergence "still baked" appearance was staleness, not unmigrated code, for
+*every* table, not just `goblin_map_data.cpp`. The only content that's genuinely permanent everywhere is
+enemy_names/category_exceptions/name_aliases_en (no live source exists for it on non-ERR mods) plus
+tile_tabs/major_regions (real but tiny and identical across all 4, pure dedup). The `GENERATED_SUBDIR`
+mechanism stays — ERR still needs its own real quest/region tables — but it shrinks to carrying only
+genuinely ERR-specific content once Phase B dedups the rest into `generated_shared/`.
 
 ## Phase A — regenerate + verify (closes the open "vanilla+DLC verify" HANDOFF item too)
 
@@ -49,12 +56,18 @@ Windows required (regulation decrypt / SoulsFormats, per `docs/memory/linux.md` 
 
 1. Move `goblin_map_data.cpp`/`.hpp` (now a byte-identical stub on every profile) into `generated_shared/`;
    drop the per-profile `GEN_DIR` source entry in `CMakeLists.txt` for it specifically (the switch itself
-   stays for the tables in the table above).
-2. Move `goblin_category_exceptions.cpp` + `goblin_name_aliases_en.cpp` into `generated_shared/` too
+   stays for ERR's genuinely-real tables).
+2. Move `goblin_tile_tabs.cpp` + `goblin_major_regions.cpp` into `generated_shared/` (real + identical on
+   all 4 profiles, confirmed).
+3. Move `goblin_category_exceptions.cpp` + `goblin_name_aliases_en.cpp` into `generated_shared/`
    (confirmed ERR==vanilla; confirm ==erte==convergence once Phase A regenerates them).
-3. (Optional, low priority) dedup the non-ERR-identical tables (region_anchors/quest_steps/model_aliases/
-   tile_tabs/quest_gates/major_regions/name_regions) into a "non-ERR shared" bucket if it's not more
-   complexity than it's worth — these are tiny files, skip unless touching this area for another reason.
+4. `goblin_enemy_names.cpp` stays per-profile-bucketed but only needs 2 buckets, not 4: ERR (627 B stub)
+   vs "non-ERR" (370 KB, identical across vanilla/erte/convergence) — fold the 3 non-ERR copies into one
+   shared non-ERR table if `generated_shared/` gains an `MFG_VANILLA`-gated variant, or leave as-is if not
+   worth the CMake complexity (pure dedup, no behavior change either way).
+5. `quest_gates/quest_steps/region_anchors/name_regions/model_aliases` need **no Phase B work** — they're
+   already correctly profile-gated by `gen_nonerr_stubs.py` (stub for non-ERR, real for ERR). Nothing to
+   move; this row exists to record that it was checked, not skipped.
 
 ## Phase C — the actual full removal of marker-position machinery (end state)
 
