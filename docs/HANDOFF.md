@@ -43,9 +43,10 @@ disk via Oodle/dvdbnd). Baked atlas = ERR-frozen artifact → eliminate. Circle 
   disappears" report was a DOUBLE-LOAD artifact (now understood). Needs a clean single-DLL retest, then commit.
 
 ## QUEUE (ordered)
-1. **Bonus-2: SummoningPools → native glyph.** Wire `category_gpu_iconId(WorldSummoningPools)` to
-   `MENU_MAP_89` (Martyr Effigy, SB_MapCursor_02) — OR `MENU_MAP_21` (2 figures, SB_MapCursor). DECISION
-   PENDING: which glyph. Uses the same disk path as bonus-1.
+1. ~~**Bonus-2: SummoningPools → native glyph.**~~ DONE (uncommitted). `MENU_MAP_89` (Martyr Effigy)
+   chosen. category_meta.cpp: `WorldSummoningPools → 89` in `CATEGORY_GPU_ICONS`. Plus a generic disk
+   fallback in `MapPointProvider::resolve` (map_renderer.cpp) — resident GPU symbol, else `map_point_glyph_uv`
+   by iconId, mod-agnostic. Builds clean (build-linux). NOT YET committed/pushed. Needs in-game verify.
 2. **Bonus-3: quest NPC → `MENU_MAP_80`.** Belongs on the `feature/quests` branch, not here. Defer.
 3. **Per-item icons (interactive map).** Draw each loot marker's ACTUAL item iconId (not the category
    rep) via the existing native_item_icon path. VERIFIED FEASIBLE + ~free VRAM: item icons are atlased
@@ -136,5 +137,5 @@ These branches exist with a plan attached but little/no implementation; pick up 
   `bash tools/build_menu_tex_extract.sh && ./tools/menu_tex_extract`.
 
 ## Open decisions
-- Bonus-2 summon glyph: `MENU_MAP_89` vs `MENU_MAP_21`.
+- ~~Bonus-2 summon glyph: `MENU_MAP_89` vs `MENU_MAP_21`.~~ RESOLVED → `MENU_MAP_89` (Martyr Effigy).
 - Is non-ERR/vanilla a hard support target? (decides whether baked can fully go or stays as non-ERR net.)

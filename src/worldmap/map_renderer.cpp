@@ -134,7 +134,12 @@ struct MapPointProvider : IconProvider
         void *tex = nullptr;
         float u0, v0, u1, v1;
         if (!goblin::overlay::native_map_point_icon(k.icon_id, tex, u0, v0, u1, v1))
-            return false;
+        {
+            // Resident GPU symbol not loaded (map closed, or this mod has no such symbol resident) ->
+            // mod-agnostic DISK glyph by iconId (same no-bake path as the undiscovered-grace render).
+            if (!goblin::overlay::map_point_glyph_uv(nullptr, k.icon_id, tex, u0, v0, u1, v1))
+                return false;
+        }
         out.tex = reinterpret_cast<ImTextureID>(tex);
         out.uv0 = ImVec2(u0, v0);
         out.uv1 = ImVec2(u1, v1);

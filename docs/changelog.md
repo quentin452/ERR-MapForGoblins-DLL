@@ -25,6 +25,12 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Summoning Pool glyph (Martyr Effigy)** — `World - Summoning Pools` markers now draw the native
+  `MENU_MAP_89` glyph. Resolved by iconId from the active install's map-point layout, with a disk
+  (no-bake) fallback when the resident GPU symbol isn't loaded — mod-agnostic, not an ERR bake.
+- **Map-point disk fallback (mod-agnostic)** — `MapPointProvider` now falls back to the on-disk glyph
+  by iconId when the resident GPU symbol is unavailable, so any category with a map-point iconId renders
+  correctly even before/without the world map loading that symbol.
 - **Self-rendered map overlay** — all goblin markers drawn by an in-process ImGui/DX12 overlay
   projected onto ER's world map, replacing native `WorldMapPointParam` injection (the sole shipped map path);
   this also eliminates upstream's map-open freeze, since the engine no longer walks thousands of injected rows.

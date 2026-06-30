@@ -151,6 +151,9 @@ struct CategoryGpuIcon { int category; int iconId; };
 constexpr CategoryGpuIcon CATEGORY_GPU_ICONS[] = {
     {-1, 0},  // sentinel (never matches a real category) — keeps the array non-empty;
               // add {static_cast<int>(Category::X), iconId} entries as categories migrate
+    // Summoning Pool → Martyr Effigy glyph (MENU_MAP_89, SB_MapCursor_02). Resolved by iconId via
+    // map_point_rect(89) → disk fallback in MapPointProvider, so it is mod-agnostic (not ERR-baked).
+    {static_cast<int>(goblin::generated::Category::WorldSummoningPools), 89},
 };
 } // namespace
 
