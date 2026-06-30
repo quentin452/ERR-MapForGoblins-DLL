@@ -25,6 +25,11 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Icon legibility pass** — small loot/item map icons no longer blend into the map art: they get a
+  minimum on-screen size plus a dark backing disc (only when actually small). Native map symbols
+  (graces, bosses, summons) are left untouched. Config: `icon_legibility` (default on) +
+  `icon_min_half_px`. Also dropped the now-redundant discovered green-check on graces (the
+  undiscovered-cursor vs discovered-effigy icon already encodes that state).
 - **Per-item loot icons** — lot-backed loot markers now draw their OWN inventory icon instead of one
   shared category-representative icon. At marker build, the live ItemLotParam row is resolved to the
   item's real `EquipParam` iconId (`resolve_loot_item_textid` → `item_real_icon_id`) and stored on the

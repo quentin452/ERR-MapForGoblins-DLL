@@ -196,9 +196,10 @@ starting, fold the newer items in; several are already partly addressed or scope
   soft-lock "à vie") as the highest-severity item — do the RE confirm before patching the DI hook.
 - **Item 13 (minimap ignores marker-scale + clustering).** The minimap HUD is now benchmarked as
   `render.minimap` (commit d792a3a) — use it to verify any minimap fix. Belongs near **PR E**.
-- **Item 1 (icons quasi-invisible / blend / too small).** Adjacent to this session's per-item icons +
-  `[ICONTIER]` census (caed7ef / 92d300c) — those change *which* icon resolves and expose circle/atlas
-  fallbacks, but the visibility/size/contrast defect itself is still open. **PR A stands.**
+- **Item 1 (icons quasi-invisible / blend / too small). ✅ DONE 2026-06-30** (`feat/dx-icon-visibility`,
+  PR A) — legibility pass in `draw_marker`: min on-screen size + a dark backing disc gated to *small*
+  item/rep icons only (native map symbols untouched). Config `icon_legibility` / `icon_min_half_px`.
+  Visually confirmed. Also dropped the redundant discovered green-check on graces.
 - **Items 8 + 10 (clustering / fragment heuristic).** Depend on `feature/spatial-grid-opti`
   (`docs/spatial_grid_opti_plan.md`, now also on master). Sequence **PR E** after that lands.
 - **Item F1 (native map icons leak underground; `isDLC*2|isUG` gating).** Tied to baked-atlas removal;
