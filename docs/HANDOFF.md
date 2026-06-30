@@ -22,7 +22,59 @@ Plans currently on master, ready to start (fork from master when you do):
 Branches still open (NOT plan-only, left as-is): `fix/marker-bugs` (~290 files, large parallel work),
 `diag/fieldins-join-probe` (1-file probe).
 
-## Session recap (2026-06-30 PM) — shipped + open
+## Session recap (2026-06-30 EVE) — loot naming + stacking + altitude + crash fix
+
+LANDED ON MASTER this session (all built+deployed to ERRv2.2.9.6/dll/offline, several runtime-verified):
+- **Item stacking → render-time** (`e1644c9`): was build-time (collapsed g_buckets, needed a rebuild on
+  toggle). Now annotated once at build (non-destructive: rep + `stack_member` flags), toggle is a pure
+  render decision → INSTANT, no rebuild. `annotate_item_stacks` + `is_active_stack` + Researcher counts
+  +1/marker. Plan `docs/plans/item_stacking_plan.md`.
+- **Crash fix — rebuild race** (`15c864e`): the old stack-toggle `rebuild_markers()` re-kicked a worker
+  without waiting → two builds mutating g_buckets / a shared unordered_map → AV in rehash (`crash_320`,
+  `+0x6B265`). Now serialized (single worker via `g_disk_running` CAS + `g_rebuild_pending`); worker is
+  the only g_buckets mutator. `docs/memory/bugs/item-stack-toggle-rebuild-race.md`. (Render-time stacking
+  also removed the toggle's rebuild path entirely.)
+- **Off-page altitude via grace** (`ce2d8ce`): the ▲/▼ altitude badge now works on pages the player isn't
+  on, referenced to the nearest grace in the marker's OWN area (player Y is out-of-frame there). Distinct
+  tint (green/teal) vs warm/cool player-relative. `LiveGrace.posY` captured; `assign_grace_altitude_refs`
+  at build. Plan `docs/plans/offpage_altitude_via_grace_plan.md` (DONE).
+- **Cross-tile false-stack fix** (`f6faf6c`): stacking compared block-local raw_px/pz (0..256 per grid
+  tile) → same-item markers in different tiles merged (Trina's Lily Fort Haight + Mistwood). Now full
+  area-local coords (grid·256+pos).
+- **Nameless loot placeholder** (`7616f21`, branch `fix/noname-loot-label`, NOT merged): `marker_label`
+  returned only the location when the FMG name was empty → nameless AND dropped the `xN`. Now "Unknown
+  item" + qty for loot/stacks. + `[NONAME]` build diag (behind `diag_loot_flags`, deduped by key,
+  `c0c2a71`) listing resolved-key-but-empty-name markers.
+
+OPEN INVESTIGATION — "Unknown item" name resolution (followup #1 in `docs/plans/loot_name_dx_followups.md`):
+- Two distinct causes behind empty names: (a) **vanilla AMMO** (id 50000000 "Arrow" etc., cat2 +100M) —
+  name exists in data but `lookup_text_utf8` returns empty at runtime = known ammo FMG gap
+  (`docs/re/loot_ammo_encoding_finding.md`); (b) **live-fallback goods** (`[ITEMCLASS]` log, cat1 +500M) —
+  MIXED: some genuinely ERR-custom (goods 240/401/2008015 absent from vanilla data), some VANILLA with
+  names (Ember Piece 850010, Rock Heart 2002010, Haima Crown 1000000) whose runtime lookup STILL fails
+  (preload gap). Goods names ARE whole-namespace preloaded (`copy_fmg_all_layered` GoodsName) when loot
+  flags on, so a vanilla item showing "Unknown" = a real lookup bug, not ERR-custom.
+- NEXT to pin "Swamp of Aeonia": user re-runs with `diag_loot_flags`, grabs the `[NONAME]` line with
+  `loc='...Aeonia...'` → its key decodes (absent from vanilla data ⇒ ERR-custom; present ⇒ lookup bug).
+  Deployed diag build md5 `c76044fa` (confirm the game loaded that md5 first).
+
+IN PROGRESS — `feat/spatial-grid-cull` (perf, NOT merged, needs rebase on master):
+- Viewport-cull the marker hot loop: clustered-eligible markers are NOT screen-culled (off-screen members
+  feed their pile), so the whole page pays the visibility GATES every frame. Baseline measured:
+  `render.worldmap.markers` avg **3.58 ms** (max 11.65), `.clusters` ~0. Added `proj::unproject_screen`
+  (inverse of project_screen) + a map-space viewport rect (+1 tile) → skip a clustered marker's gates when
+  its map-space cell is off that rect. Also added bench timers `present.frame_wall` (real fps) +
+  `present.overlay_total` (our share, parent of render.* — `overlay_total − Σchildren` = unlabelled hole).
+- TODO: rebase on master (it predates the stacking-render-time / crash-fix / altitude merges), redeploy,
+  RE-MEASURE in-game (zoomed in + out), confirm no markers vanish at edges. Plan
+  `docs/plans/spatial_grid_opti_plan.md`. The full persistent-grid version is a later step if the cheap
+  O(N) scan still shows up (measurement says it won't).
+
+INPUT SOFTLOCK — CAUSE FOUND (external): the map-exit "soft key lock" is actually triggered by the mouse
+hitting a SCREEN EDGE and is caused by **Deskflow** (cursor-sharing KVM), not ER / not us. Fix is
+Deskflow-side. See `docs/re/windows_input_softlock_re_prompt.md` (the F1 mouse-dead half may still be ours).
+
+## Session recap (2026-06-30 PM) — loot count + stacking (superseded above; kept for detail)
 - DONE `37f3239` (merge) loot item count + item stacking, verified in-game. (1) per-lot count in tooltip
   `xN`, weighted-roll aware (ItemLotParam slots = one weighted roll, not additive — sum was wrong);
   (2) item stacking: co-located identical-item markers within 5m merge → one `xN` (build-time, world-pos,
