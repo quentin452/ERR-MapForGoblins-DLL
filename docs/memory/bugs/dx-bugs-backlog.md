@@ -53,3 +53,9 @@ F2. **Locate/recherche ne recentre pas sur une cible dans le Fog of War.** Quand
 12. **Inputs souris fuient vers ER à travers F1 + curseur ancré au centre.** Quand F1 est ouvert, ER continue de recevoir les inputs souris (le menu ne capture pas exclusivement) ; en plus ER ré-ancre/force le curseur au milieu de l'écran. Besoin : à l'ouverture de F1, **forcer l'unlock du curseur** et **capturer les inputs souris** pour ImGui (bloquer le passthrough vers ER). Probablement lié au double-draw (point 11) et au desync curseur (point 6). Lié [[input-device-active-flag]].
 13. **Minimap ignore le marker-scale ET le clustering.** Le réglage d'échelle des markers et le clustering n'affectent QUE la worldmap, pas la minimap. La minimap devrait honorer les mêmes réglages (ou avoir les siens). Lié [[minimap-future-feature]].
 14. **DX minimap : afficher l'objet sélectionné par le searcher sur la minimap.** Quand l'item-search sélectionne une cible, l'afficher sur la minimap avec le même cercle/anneau que sur la worldmap (= "game changer" DX selon <user>). Lié [[overlay-item-search-bar]], [[minimap-future-feature]].
+15. **Loot undercount + pas de ×N stacking** (détecté 2026-06-30) — "Below The Well" montre 1 Sliver of
+    Meat alors que Mapgenie en liste 3. ROOT CAUSE confirmée : les readers de lot (`resolve_loot_item_textid`,
+    `lot_row_in_table`, goblin_inject.cpp:4772/4809) ne lisent QUE le slot 01 d'`ItemLotParam` et ignorent
+    les slots 02-08 + toutes les quantités `lotItemNum01..08`. `Marker` n'a aucun champ count. Fix = lire
+    les 8 slots + quantités → `Marker.count` → badge "×N" dans draw_marker. Plan détaillé :
+    `docs/loot_item_count_plan.md`. Fixable wiring, pas de donnée manquante. DEFERRED (fresh session).

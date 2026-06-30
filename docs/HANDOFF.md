@@ -70,6 +70,10 @@ Gate before deleting the baked overlay atlas: prove which categories actually ne
     (3) `World - Maps` has no native glyph. Re-audit on a MATCHED map view once coverage widens.
 
 ## OPEN — deferred for later (2026-06-30)
+0. **Loot item count (undercount + ×N stacking).** Root-caused: lot readers fetch only `ItemLotParam`
+   slot 01, dropping slots 02-08 + `lotItemNum` quantities → multi-item lots show as 1 (e.g. "Below The
+   Well" 1 vs 3 Sliver of Meat). Fix = read all 8 slots + quantities → `Marker.count` → "×N" badge. Full
+   plan: `docs/loot_item_count_plan.md`. Bounded multi-file wiring; deferred for a fresh context window.
 1. **Lag-spike hunt — real suspect `refresh.collected.*`.** The minimap was a red herring. The collected-
    state refresh spikes in the SPIKE log (earlier run: `refresh.collected.read_wgm` 2–5ms, ~30x its avg).
    It is SUPPOSED to already use a good lookup, but the spikes say otherwise — re-audit the collected
