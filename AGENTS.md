@@ -4,6 +4,8 @@ This repo uses `docs/memory/` for project memory.
 
 Read first:
 
+- `docs/HANDOFF.md` — live cross-session work queue (in-progress + what's next + why). Read this FIRST to
+  resume; update it at the end of a session.
 - `docs/memory/common.md`
 - `docs/memory/linux.md` when running on Linux/Proton.
 - `docs/memory/windows.md` when running on Windows.
