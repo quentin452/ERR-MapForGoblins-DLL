@@ -11,6 +11,21 @@ Last updated: 2026-06-30 (per-item icons + bench spike + map-exit bug triage ses
 - DONE `d792a3a` instrument `draw_minimap_hud` as `render.minimap`. RESULT (run 13:10): spikes only
   ~3ms (`~600x` a 0.01ms avg) — **minimap EXONERATED**, not the felt map-close lag.
 
+## Baked-atlas removal (#4) — AUDIT IN PROGRESS (2026-06-30)
+Gate before deleting the baked overlay atlas: prove which categories actually need it per mod.
+- DONE `92d300c` `[ICONTIER]` census in map_renderer.cpp: tags each IconHandle's resolve tier
+  (mp_name / mp_id / item / rep / atlas / circle), tallies per draw pass, logs a throttled summary
+  + the category names that hit the baked atlas or a circle. Audit-only, no behavior change.
+- FIXED `internals/modengine/vanilla.me3` (game dir, not repo): was loading the forbidden stale
+  `MapForGoblins_vanilla.dll` → now `MapForGoblins.dll` (single-DLL rule). Both ERR + vanilla use the
+  one deployed DLL.
+- Vanilla = clean Steam copy: `/home/iamacat/.local/share/Steam/steamapps/common/ELDEN RING/Game/eldenring.exe`
+  (ERR injects via ModEngine, does not touch the Steam base files).
+- RUN: ERR (normal launch) → open map ~5s → grep `[ICONTIER]`. Then vanilla:
+  `cd internals/modengine && ./bin/me3 launch -g eldenring -e "<steam eldenring.exe>" -p vanilla.me3`
+  → open map ~5s → grep `[ICONTIER]`. DIFF the two: native/rep in ERR but atlas/circle in vanilla =
+  what removing the baked atlas regresses. NOT YET RUN — awaiting the two logs.
+
 ## OPEN — deferred for later (2026-06-30)
 1. **Lag-spike hunt — real suspect `refresh.collected.*`.** The minimap was a red herring. The collected-
    state refresh spikes in the SPIKE log (earlier run: `refresh.collected.read_wgm` 2–5ms, ~30x its avg).
