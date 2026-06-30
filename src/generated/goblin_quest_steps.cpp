@@ -5,6 +5,9 @@
 // COVERAGE: 36 base-game + 14 DLC = 50 questlines. Entries with step_count==0 are
 // PLACEHOLDERS, filled one NPC at a time (see memory: quest-browser strategy).
 #include "goblin_quest_steps.hpp"
+#include "goblin_inject.hpp" // goblin::ui::read_event_flag
+#include "goblin_config.hpp" // goblin::config::questProgress
+#include <string>
 
 namespace goblin::generated
 {
@@ -396,7 +399,18 @@ const NpcQuest QUEST_BROWSER[] = {
      4163u, true},
     // Standalone-ish
     {"Rya", "Rya's Quest", "Leads into Volcano Manor (Tanith)", steps_rya, 3},
-    {"Boc the Seamster", "Boc's Quest", nullptr, steps_boc, 6, false, nullptr, 3943u, true},
+    // name_id 122310 = "Boc the Seamster" FMG NpcName id (data/npc_name_text_map.json).
+    // progress_flag/entity_id intentionally left at 0 (default) for every step below:
+    // no offline-derivable per-step EMEVD flag or MSB EntityID source on this machine.
+    // A CANDIDATE entity_id (11050730) exists in the fail_flag verification comment
+    // 2 lines above ("Confirmed: ... Boc 3943 (11050730)") but it's unclear which of
+    // Boc's 6 steps (he relocates Stormveil->Liurnia->...) that placement belongs to
+    // -- wiring it to the wrong step would pin the wrong location, so deliberately
+    // NOT used here without that confirmation. (quest_gates.py's curated flags are
+    // whole-questline "is active" gates, not per-step "is done" flags -- also wrong
+    // semantics to reuse for progress_flag.) Phase 2 / docs/HANDOFF.md: source +
+    // verify these on Windows with EMEVD+MSB tooling before wiring.
+    {"Boc the Seamster", "Boc's Quest", nullptr, steps_boc, 6, false, nullptr, 3943u, true, 122310u},
     {"Patches", "Patches' Quest", "Joins Volcano Manor (Tanith)", steps_patches, 5, false,
      "Attacking or killing him at the wrong moment ends his merchant questline early.",
      3683u, true},
@@ -426,8 +440,11 @@ const NpcQuest QUEST_BROWSER[] = {
      nullptr, 1042369205u},
     {"Hyetta", "Hyetta's Quest", "Frenzied Flame; crosses Shabriri/Yura", steps_hyetta, 4, false,
      "Frenzied Flame path -- the final step is a point of no return that changes your ending."},
+    // name_id 122000 = "Alexander, Warrior Jar" FMG NpcName id (data/npc_name_text_map.json).
+    // progress_flag/entity_id at default 0 for every step -- see the Boc entry above for why.
     {"Iron Fist Alexander", "Alexander's Quest", "Gives Alexander's Innards to Jar-Bairn", steps_alexander, 5, false,
-     "Free him at each spot before that area's story moves on, or you can miss a step."},
+     "Free him at each spot before that area's story moves on, or you can miss a step.",
+     0u, false, 122000u},
     // fail_flag 3443 = Diallos dead/gone (EMEVD 90005702 death handler, entity
     // 1039440710 at Jarburg; persistent). Death-distinct (he falls defending Jarburg).
     {"Diallos", "Diallos's Quest", "Crosses Jar-Bairn (Jarburg)", steps_diallos, 5, false, nullptr, 3443u},
@@ -435,7 +452,11 @@ const NpcQuest QUEST_BROWSER[] = {
      "His outcome is tied to Diallos and to giving Alexander's Innards -- order matters across the three."},
     {"Latenna", "Latenna's Quest", "Albinauric / Haligtree path", steps_latenna, 4, false,
      "Needs the right Haligtree medallion half from Albus first."},
-    {"Sorcerer Thops", "Thops's Quest", nullptr, steps_thops, 4, false, nullptr, 3803u, true},
+    // name_id 133300 = "Sorcerer Thops" FMG NpcName id (data/npc_name_text_map.json).
+    // progress_flag/entity_id at default 0 -- same rationale as the Boc entry above
+    // (candidate entity_id 1039390700 exists in the fail_flag verification comment,
+    // unclear which of Thops's 4 steps it maps to -- deliberately not wired blind).
+    {"Sorcerer Thops", "Thops's Quest", nullptr, steps_thops, 4, false, nullptr, 3803u, true, 133300u},
     // fail_flag 1051430800 = Gurranq dead (EMEVD 90005860 boss death handler,
     // entity 1051430800 at the Bestial Sanctum; flag id == entity id, persistent).
     {"Gurranq, Beast Clergyman", "Gurranq's Quest", "Deathroot deliveries", steps_gurranq, 4, false, nullptr, 1051430800u},
@@ -484,4 +505,30 @@ const NpcQuest QUEST_BROWSER[] = {
 };
 const size_t QUEST_BROWSER_COUNT = sizeof(QUEST_BROWSER) / sizeof(QUEST_BROWSER[0]);
 
-} // namespace
+} // namespace goblin::generated
+
+namespace goblin
+{
+bool quest_step_done(const generated::NpcQuest &q, size_t s)
+{
+    if (s >= q.step_count)
+        return false;
+    if (uint32_t flag = q.steps[s].progress_flag)
+        return goblin::ui::read_event_flag(flag);
+    // Manual ini blob: "name=bits;name2=bits2;..." one '0'/'1' char per step. Assumes
+    // the modern keyed format -- the Quest Browser UI (goblin_overlay.cpp) one-shot
+    // migrates an OLD un-keyed global bit-string blob to this format the first time it
+    // runs each session, but only writes it back on an edit. A legacy blob that hasn't
+    // been migrated yet this session won't parse here (no '=' found -> empty result for
+    // every questline, same as "nothing done"); opening the Quest Browser once fixes it.
+    const std::string &blob = goblin::config::questProgress;
+    const std::string key = std::string(q.name) + "=";
+    size_t p = blob.find(key);
+    if (p == std::string::npos)
+        return false;
+    p += key.size();
+    size_t semi = blob.find(';', p);
+    size_t end = (semi == std::string::npos) ? blob.size() : semi;
+    return s < (end - p) && blob[p + s] == '1';
+}
+} // namespace goblin

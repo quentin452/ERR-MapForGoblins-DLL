@@ -84,7 +84,7 @@ const CatMeta CAT[] = {
     {"show_stat_boosts", G_LOOT},         // LootStatBoosts
     {"show_fortunes", G_REFORGED},        // ReforgedFortunes
     {"show_hostile_npc", G_WORLD},        // WorldHostileNPC
-    {nullptr, G_WORLD},                   // WorldQuestNPC (legacy; Quest Browser)
+    {"show_quest_npc", G_WORLD},          // WorldQuestNPC (QuestNpcLayer; no atlas art yet -> circle fallback)
     {"show_incantations", G_MAGIC},       // MagicIncantations
     {"show_memory_stones", G_MAGIC},      // MagicMemoryStones
     {"show_prayerbooks", G_MAGIC},        // MagicPrayerbooks

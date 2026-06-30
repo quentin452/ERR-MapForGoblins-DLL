@@ -157,6 +157,8 @@ add_library( MapForGoblins SHARED
   src/worldmap/marker_layer.hpp
   src/worldmap/grace_layer.hpp
   src/worldmap/grace_layer.cpp
+  src/worldmap/quest_npc_layer.hpp
+  src/worldmap/quest_npc_layer.cpp
   src/worldmap/category_meta.hpp
   src/worldmap/category_meta.cpp
   src/worldmap/map_entry_layer.hpp

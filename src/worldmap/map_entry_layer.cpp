@@ -42,6 +42,12 @@ constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldInter
 
 std::array<std::vector<Marker>, NUM_CAT> g_buckets;
 
+// MSB EntityID -> projected world position, for QuestNpcLayer's entity_world_pos().
+// Built once per build_buckets_impl() pass (same lifecycle as g_buckets, cleared and
+// repopulated together) from disk_enemies/disk_collectibles -- NOT a second parse.
+struct EntityPos { float wx, wz; int group; };
+std::unordered_map<uint32_t, EntityPos> g_entity_pos;
+
 // [SKIPPED] diag (config diag_loot_pos): disk placements PARSED from the mod's files but NOT drawn,
 // aggregated by reason across all passes (each pass adds its local filtered counts at its log line).
 // "shown vs skipped" visibility — the inverse of [COVERAGE]. Reset at the top of build_buckets_impl.
@@ -1784,15 +1790,21 @@ void build_buckets_impl()
         std::vector<DiskCollectible> disk_collectibles;
         std::vector<DiskEnemy> disk_enemies;
         std::vector<DiskRegion> disk_regions;
+        // QuestNpcLayer resolves its pin position via entity_world_pos(), which reads the
+        // g_entity_pos cache built below from these SAME disk_enemies/disk_collectibles
+        // vectors — so the enemy/asset enumeration must run whenever that layer is active,
+        // independent of the unrelated loot toggles (otherwise quest pins would silently
+        // stop resolving whenever the user has all 3 loot sources off).
+        const bool wantQuestNpcs = goblin::config::showCategory[static_cast<int>(gen::Category::WorldQuestNPC)];
         // World features need enemies too (Hostile NPC invaders ride the enemy enumeration).
         const bool wantEnemies = goblin::config::lootEnemyDrops || goblin::config::lootEmevdDrops ||
-                                 goblin::config::worldFeaturesFromDisk;
+                                 goblin::config::worldFeaturesFromDisk || wantQuestNpcs;
         // World features (Stakes) are AEG asset placements → they ride the SAME asset
         // enumeration as collectibles (disk_collectibles), so request it when either is on.
         // The EMEVD pass also needs asset positions (asset-anchored awards: Blaidd's spirit ash,
         // the scarab-cluster runes) → request it when emevd drops are on too.
         const bool wantAssets = goblin::config::lootCollectibles || goblin::config::worldFeaturesFromDisk ||
-                                goblin::config::lootEmevdDrops;
+                                goblin::config::lootEmevdDrops || wantQuestNpcs;
         // Spirit Springs are POINT regions → request the region enumeration for world features.
         const bool wantRegions = goblin::config::worldFeaturesFromDisk;
         std::vector<DiskTreasure> treasures = load_disk_treasures(
@@ -1938,6 +1950,25 @@ void build_buckets_impl()
                     missing_award_entities.insert(a.entityId);
             for (DiskEnemy &e : load_lod_award_entities(missing_award_entities))
                 disk_enemies.push_back(std::move(e));
+            // entity_world_pos() cache for QuestNpcLayer. Enemy entities first, then
+            // collectible/asset entities for any entityId not already an enemy (matches
+            // the documented enemy->asset precedence) -- same disk_enemies/disk_collectibles
+            // this pass already built, no extra parse.
+            for (const auto &en : disk_enemies)
+            {
+                if (!en.entityId) continue;
+                int ga = 0; float wx = 0.0f, wz = 0.0f;
+                if (!goblin::marker_world_pos(en.area, en.gx, en.gz, en.posX, en.posZ, ga, wx, wz)) continue;
+                g_entity_pos[en.entityId] = {wx, wz, goblin::marker_group_from(en.area, ga)};
+            }
+            for (const auto &as : disk_collectibles)
+            {
+                if (!as.entityId || g_entity_pos.count(as.entityId)) continue;
+                int ga = 0; float wx = 0.0f, wz = 0.0f;
+                if (!goblin::marker_world_pos(as.area, as.gx, as.gz, as.posX, as.posZ, ga, wx, wz)) continue;
+                g_entity_pos[as.entityId] = {wx, wz, goblin::marker_group_from(as.area, ga)};
+            }
+
             build_disk_emevd_markers(awards, disk_enemies, disk_collectibles, treasure_lots,
                                      emevd_disk_lots, piece_disk_keys,
                                      goblin::config::worldFeaturesFromDisk
@@ -2017,13 +2048,9 @@ void build_buckets_impl()
         // rows so they don't double the live ones (the bake is being retired for this category).
         if (e.category == gen::Category::WorldBosses)
             continue;
-        // Quest NPCs are RETIRED from the map: the category was location-only (no quest-state
-        // graying) and is superseded by the in-overlay Quest Browser. Neither a disk MSB pass nor
-        // live RPM can revive it usefully — quest progress lives in ER's ESD + thousands of
-        // scattered event flags (no queryable per-NPC structure; the Quest Browser is hand-authored),
-        // and live ChrIns/EnemyIns are resident only for the streamed tiles around the player (RPM
-        // probe: ~108 positioned near-player of 461, never the ~344 world-spread NPCs). So drop the
-        // baked rows here (like WorldBosses) — zero regen, reversible. Quest Browser is the UX now.
+        // Quest NPCs: QuestNpcLayer (quest_npc_layer.cpp) is the sole producer of
+        // WorldQuestNPC markers now (entity_id + live EMEVD flag driven, not this bake) —
+        // drop any baked rows here so it doesn't double-draw, same as WorldBosses above.
         if (e.category == gen::Category::WorldQuestNPC)
             continue;
         // Rune/Ember Piece IDENTITY dedup: the disk collectible pass placed this exact AEG world
@@ -2814,6 +2841,7 @@ void start_build_worker()
             g_rebuild_pending.store(false, std::memory_order_release);
             g_disk_built.store(false, std::memory_order_release);   // readers return empty during the build
             for (auto &b : g_buckets) b.clear();                    // sole mutator: clear then refill
+            g_entity_pos.clear();
             build_buckets_impl();
             g_disk_built.store(true, std::memory_order_release);
             if (g_rebuild_pending.load(std::memory_order_acquire))
@@ -3005,5 +3033,16 @@ void refresh_overlay_census()
         s_prev_looted[c] = looted;
     }
     s_logged_once = true;
+}
+
+bool entity_world_pos(uint32_t entity_id, float &worldX, float &worldZ, int &group)
+{
+    auto it = g_entity_pos.find(entity_id);
+    if (it == g_entity_pos.end())
+        return false;
+    worldX = it->second.wx;
+    worldZ = it->second.wz;
+    group = it->second.group;
+    return true;
 }
 } // namespace goblin::worldmap

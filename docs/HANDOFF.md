@@ -2,7 +2,47 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-06-30 LATE (native GetMessage refactor IMPLEMENTED + VISUALLY VERIFIED on ERR; Windows build unblocked).
+Last updated: 2026-07-01 (Quest Browser automation + QuestNpcLayer Phase 1 landed, branch
+`feat/quest-npc-layer`, NOT merged, NOT runtime-verified).
+
+## Session recap (2026-07-01) — feat_quests Phase 1: schema + entity-position cache + flag wiring + QuestNpcLayer
+
+- **Implemented `docs/plans/feat_quests_implementation_plan.md` Phase 1 on `feat/quest-npc-layer`
+  (forked from master, not merged).** Builds clean on `build-linux` (ERR profile); deployed to
+  `dll/offline/MapForGoblins.dll`; **NOT yet runtime-verified** — no way to launch/observe the game from
+  this session. Before coding, re-verified the plan's §0 infra claims against current master and found 2
+  wrong (both corrected in the plan doc itself, not just here):
+  1. The "legacy `WorldQuestNPC` emission ~L1891" the plan wanted to retire was already gone — only a dead
+     skip-rule remained (`map_entry_layer.cpp`). Kept that skip-rule (didn't delete it, diverging from the
+     plan's literal text) as a guard: `erte`/`convergence`'s local bake is stale and not yet regenerated
+     (see `generated_data_removal_plan.md` Phase A), so deleting it now risks double-draw on those 2
+     profiles until that separate plan's regen lands.
+  2. "`prebuild_markers()` already builds a reusable entity→position index, REUSE don't duplicate" was
+     false — verified `prebuild_markers()` is a thin trigger shim; the `ent_enemy`/`ent_any` maps that do
+     exist are local to one disk-marker helper, not file-scope. Built a new `g_entity_pos` cache instead
+     (populated inside the EXISTING disk-worker pass, still zero extra parsing) — exposed as
+     `goblin::worldmap::entity_world_pos()`.
+  3. **New bug found + fixed, not in the original plan:** the disk-worker's enemy/asset enumeration was
+     gated behind unrelated loot toggles (`lootEnemyDrops`/`lootEmevdDrops`/`worldFeaturesFromDisk` etc) —
+     would have silently broken quest pins for anyone with all of those off. Forced enumeration on
+     whenever `show_quest_npc` is enabled.
+- **What's real and working:** schema (`QuestStep::progress_flag/entity_id`, `NpcQuest::name_id/
+  hostility_flag`), `entity_world_pos()` cache, `goblin::quest_step_done()` (shared by `qp_get`/`qp_set`
+  AND `QuestNpcLayer` so they can't disagree), `config::questAllowFlagWrite` cheat gate (default off,
+  read-only flag mirror with `[auto]` tag otherwise), hostility amber note, `QuestNpcLayer` itself
+  (epoch-signature cache, sole `WorldQuestNPC` producer, excluded from the generic category loop like
+  `GraceLayer`).
+- **What's deliberately NOT done — the actual next task:** `progress_flag`/`entity_id` are 0 for every
+  step of the bootstrap demo set (Boc/Alexander/Thops) → **QuestNpcLayer currently produces zero map
+  pins.** No EMEVD/MSB cross-reference tooling was available offline (Linux, no decrypted regulation) to
+  source real values safely. `name_id` WAS sourced for real (122310/122000/133300 from
+  `data/npc_name_text_map.json`). Two candidate `entity_id` values exist in a pre-existing comment in
+  `goblin_quest_steps.cpp` (Boc `11050730`, Thops `1039390700`) but weren't wired — unclear which of
+  their multiple steps (they relocate across the map) the placement belongs to; wiring blind risks pinning
+  the wrong location. **NEXT (Windows, EMEVD+MSB tooling):** source + verify real per-step `progress_flag`/
+  `entity_id` for Boc/Alexander/Thops at minimum, then runtime-verify (exactly one marker, correct
+  position, `questAllowFlagWrite` OFF read-only behavior, no per-frame flag re-read). Changelog entry
+  deferred until this makes the feature actually user-visible (0 pins = nothing to announce yet).
 
 ## Session recap (2026-06-30 LATE) — native GetMessage: RE resolved → refactor landed → visually confirmed on ERR
 

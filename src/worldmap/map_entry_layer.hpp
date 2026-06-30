@@ -35,4 +35,13 @@ void rebuild_markers();
 // publish it via goblin::ui::set_category_census. Logs [OVERLAY-CENSUS]. Called by
 // refresh_category_census in overlay-only mode so the F1 badge matches the map.
 void refresh_overlay_census();
+
+// Resolve an MSB EntityID to a projected world position, from the cache built during
+// the disk-marker worker pass (enemy entities first, then asset/collectible entities —
+// same precedence the disk loot pipeline uses). Returns false if the entity is unknown
+// (not placed on the loaded map, or the worker hasn't built buckets yet). worldX/worldZ
+// are already projected (marker_world_pos), group is the overlay marker group
+// (marker_group_from) — both ready to assign onto a Marker directly, no extra
+// transform needed by the caller.
+bool entity_world_pos(uint32_t entity_id, float &worldX, float &worldZ, int &group);
 } // namespace goblin::worldmap

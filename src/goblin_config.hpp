@@ -268,6 +268,14 @@ namespace goblin
         // active (its event flag set); off = all quest-NPC markers always shown.
         extern bool questNpcQuestAware;
 
+        // Quest Browser cheat gate: when a step has a QuestStep::progress_flag, the
+        // checkbox is normally a READ-ONLY mirror of that live EMEVD flag (default).
+        // Turning this on makes it editable and calls set_event_flag() on toggle.
+        // Writing EMEVD progress flags mutates the save and can soft-lock a questline,
+        // skip a reward, or trigger an unintended event -- off by default, use a
+        // throwaway save when testing it on.
+        extern bool questAllowFlagWrite;
+
         // Quest Browser per-step progress: one '0'/'1' char per global step index
         // (author order in goblin_quest_steps). Auto-grown; persisted on Save.
         extern std::string questProgress;

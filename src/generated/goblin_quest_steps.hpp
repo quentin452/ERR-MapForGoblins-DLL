@@ -8,7 +8,15 @@ namespace goblin::generated
 {
 // One quest step. `zone` is the region name (e.g. "Altus Plateau") used later by
 // Phase B to match a marker region for a "show on map" reveal; null if unknown.
-struct QuestStep { const char *title; const char *desc; const char *zone; };
+// `progress_flag` (optional): the EMEVD event-flag id whose SET state means this
+// step is done. 0 = manual-only (the ini checkbox is the only source of truth).
+// When set, the Quest Browser checkbox becomes a read-only mirror of the live
+// flag (see goblin_overlay.cpp qp_get/qp_set) unless config::questAllowFlagWrite
+// is on. `entity_id` (optional): the MSB EntityID of the NPC/asset QuestNpcLayer
+// pins on the world map while this is the active (first not-done) step. 0 = no
+// marker for this step.
+struct QuestStep { const char *title; const char *desc; const char *zone;
+                   uint32_t progress_flag = 0; uint32_t entity_id = 0; };
 
 // One NPC questline. `related` = a short note on interconnections ("Start after
 // Kenneth's quest", "Part of Ranni's questline") or null. steps==null / count==0
@@ -28,12 +36,32 @@ struct QuestStep { const char *title; const char *desc; const char *zone; };
 // The line still greys (no longer actionable) but the overlay labels it
 // "[concluded]" with a neutral note instead of "[unfinishable] ... is dead",
 // since the flag does not prove the NPC died. Default false = death-exclusive.
+// `name_id` (optional): FMG NPC name id for the Quest Browser tooltip label.
+// 0 = use `name` (the hand-authored string) as-is.
+// `hostility_flag` (optional): an event-flag id that, when SET in memory, means
+// the player angered this NPC (e.g. attacked Ranni) and they (and dependents)
+// are hidden until absolution. The overlay shows an amber
+// "[Hostile — obtain absolution...]" note on the questline header. NOTE:
+// entity_world_pos() resolves from the static MSB placement (always present),
+// not live NPC aliveness, so QuestNpcLayer does NOT automatically stop drawing
+// a hostile-hidden NPC on its own — this flag exists so the Browser note can
+// warn the player even though the map pin may still show. 0 = none/not tracked.
 struct NpcQuest { const char *name; const char *quest_title; const char *related;
                   const QuestStep *steps; size_t step_count; bool dlc = false;
                   const char *warning = nullptr; uint32_t fail_flag = 0;
-                  bool fail_conclusion = false; };
+                  bool fail_conclusion = false; uint32_t name_id = 0;
+                  uint32_t hostility_flag = 0; };
 
 extern const NpcQuest QUEST_BROWSER[];
 extern const size_t QUEST_BROWSER_COUNT;
 
-} // namespace
+} // namespace goblin::generated
+
+namespace goblin
+{
+// Shared "is step s of questline q done?" rule, used by BOTH the Quest Browser
+// checkbox (goblin_overlay.cpp qp_get) and QuestNpcLayer (which step to pin) so the
+// two never disagree. Flag-backed step (progress_flag != 0): live EMEVD flag wins.
+// Flag-less step: the manual config::questProgress ini bit (q.name-keyed).
+bool quest_step_done(const generated::NpcQuest &q, size_t s);
+} // namespace goblin

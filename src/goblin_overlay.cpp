@@ -18,9 +18,11 @@
 #include <backends/imgui_impl_win32.h>
 
 #include "goblin_inject.hpp"   // goblin::world_map_open()
+#include "goblin_markers.hpp"   // goblin::markers::set_event_flag()
 #include "goblin_worldmap_probe.hpp"   // get_live_view() for the marker prototype
 #include "goblin_map_data.hpp"         // generated::MAP_ENTRIES (graces for Phase 1)
 #include "worldmap/grace_layer.hpp"      // goblin::worldmap::GraceLayer
+#include "worldmap/quest_npc_layer.hpp"  // goblin::worldmap::QuestNpcLayer
 #include "worldmap/map_entry_layer.hpp"  // goblin::worldmap::MapEntryLayer
 #include "worldmap/map_renderer.hpp"     // goblin::worldmap::render_markers
 #include "worldmap/category_meta.hpp"    // baked→GPU icon migration counters (F1 panel)
@@ -1501,17 +1503,21 @@ namespace
         namespace wm = goblin::worldmap;
         namespace gen = goblin::generated;
         static wm::GraceLayer s_graces;
+        static wm::QuestNpcLayer s_quest_npc;
         static std::vector<wm::MapEntryLayer> s_cat;     // stable storage
         static std::vector<wm::MarkerLayer *> s_layers;  // pointers into the above
         if (s_layers.empty())
         {
             const int N = static_cast<int>(gen::Category::WorldInteractables) + 1;
             const int graces = static_cast<int>(gen::Category::WorldGraces);
+            const int quest_npc = static_cast<int>(gen::Category::WorldQuestNPC);
             s_cat.reserve(N); // reserve → no realloc, so the pointers below stay valid
             for (int c = 0; c < N; ++c)
-                if (c != graces) // graces come from the live GraceLayer, not MAP_ENTRIES
+                if (c != graces &&     // graces come from the live GraceLayer, not MAP_ENTRIES
+                    c != quest_npc)    // quest NPCs come from QuestNpcLayer, not MAP_ENTRIES
                     s_cat.emplace_back(c);
             s_layers.push_back(&s_graces);
+            s_layers.push_back(&s_quest_npc);
             for (auto &L : s_cat)
                 s_layers.push_back(&L);
         }
@@ -2482,27 +2488,13 @@ namespace
                     if (!show_all_cats && !contains_ci(goblin::ui::category_label(c), cat_filter))
                         continue;   // search box: hide non-matching category rows
                     ImGui::PushID(c);
-                    // The raw Quest-NPC map pins are legacy/unfinished — the Quest
-                    // Browser below is the supported quest-navigation path. Tag the
-                    // label and explain on hover. Off by default.
                     const char *clabel = goblin::ui::category_label(c);
-                    bool legacy_quest = std::string(clabel) == "World - Quest NPC";
-                    char clbuf[96];
-                    if (legacy_quest)
-                    {
-                        snprintf(clbuf, sizeof(clbuf), "%s  (legacy)", clabel);
-                        clabel = clbuf;
-                    }
                     bool cv = goblin::ui::category_visible(c);
                     if (ImGui::Checkbox(clabel, &cv))
                         goblin::ui::set_category_visible(c, cv);
                     // Capture row width once, before any SameLine, so the badge and
                     // the cluster checkbox both position from a stable origin.
                     float row_avail = ImGui::GetContentRegionAvail().x;
-                    if (legacy_quest && ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Legacy / unfinished: raw quest-NPC map pins.\n"
-                                          "Use the Quest Browser (below) for quest navigation.\n"
-                                          "Off by default.");
                     // Uncollected badge: "<remaining>/<total>" of collectible items in
                     // this category. Skipped for categories with no collectible rows
                     // (graces/NPCs/regions → total 0). Green once fully looted.
@@ -2645,12 +2637,29 @@ namespace
                                 out += kv.first + "=" + kv.second + ";";
                         qp = out;
                     };
-                    auto qp_get = [&](const char *name, size_t s) {
-                        auto it = prog.find(name);
+                    // Flag-backed steps (QuestStep::progress_flag != 0) read straight from
+                    // the live EMEVD flag -- the manual ini bit is ignored for that step
+                    // (flag wins; see goblin_quest_steps.hpp). Flag-less steps (the common
+                    // case today -- per-step flags aren't sourced for most questlines yet,
+                    // see feat_quests Phase 2) keep the existing manual ini-blob behavior.
+                    auto qp_get = [&](const goblin::generated::NpcQuest &q, size_t s) {
+                        uint32_t flag = q.steps[s].progress_flag;
+                        if (flag) return goblin::ui::read_event_flag(flag);
+                        auto it = prog.find(q.name);
                         return it != prog.end() && s < it->second.size() && it->second[s] == '1';
                     };
-                    auto qp_set = [&](const char *name, size_t s, bool v) {
-                        std::string &bits = prog[name];
+                    auto qp_set = [&](const goblin::generated::NpcQuest &q, size_t s, bool v) {
+                        uint32_t flag = q.steps[s].progress_flag;
+                        if (flag)
+                        {
+                            // Read-only mirror unless the user explicitly opted into the
+                            // write cheat -- writing EMEVD flags can soft-lock a questline
+                            // or skip a reward (see config::questAllowFlagWrite's tooltip).
+                            if (goblin::config::questAllowFlagWrite)
+                                goblin::markers::set_event_flag(flag, v ? 1 : 0);
+                            return;
+                        }
+                        std::string &bits = prog[q.name];
                         if (bits.size() <= s) bits.resize(s + 1, '0');
                         bits[s] = v ? '1' : '0';
                         reserialize();
@@ -2664,7 +2673,7 @@ namespace
                         if (!contains_ci(q.name, filter)) return;
                         int done = 0;
                         for (size_t s = 0; s < q.step_count; s++)
-                            if (qp_get(q.name, s)) done++;
+                            if (qp_get(q, s)) done++;
                         // Visual state: grey "[unfinishable]" (NPC dead, fail_flag
                         // set) takes precedence over amber "(!)" (order-sensitive /
                         // missable). Both push a text tint over the whole subtree.
@@ -2675,16 +2684,22 @@ namespace
                         // it [concluded] rather than asserting the NPC is dead.
                         bool concl = dead && q.fail_conclusion;
                         bool warn = q.warning && q.warning[0];
-                        bool tint = dead || warn;
+                        // Hostility (the "Ranni" effect): attacking this NPC sets a
+                        // faction-hostility flag -- they vanish until absolution. Doesn't
+                        // override dead/warn (those already win the tint), just adds its
+                        // own header tag + note so the player knows why pins disappeared.
+                        bool hostile = q.hostility_flag && goblin::ui::read_event_flag(q.hostility_flag);
+                        bool tint = dead || warn || hostile;
                         if (tint)
                             ImGui::PushStyleColor(ImGuiCol_Text,
                                 dead ? ImVec4(0.55f, 0.55f, 0.55f, 1.0f)
                                      : ImVec4(1.0f, 0.78f, 0.35f, 1.0f));
-                        bool open = ImGui::TreeNode((void *)(intptr_t)id, "%s  (%d/%zu)%s",
+                        bool open = ImGui::TreeNode((void *)(intptr_t)id, "%s  (%d/%zu)%s%s",
                                                     q.name, done, q.step_count,
                                                     dead ? (concl ? "  [concluded]"
                                                                   : "  [unfinishable]")
-                                                         : warn ? "  (!)" : "");
+                                                         : warn ? "  (!)" : "",
+                                                    hostile ? "  [Hostile]" : "");
                         if (tint)
                             ImGui::PopStyleColor();
                         if (open)
@@ -2710,6 +2725,13 @@ namespace
                                 ImGui::TextWrapped("(!) %s", q.warning);
                                 ImGui::PopStyleColor();
                             }
+                            if (hostile)
+                            {
+                                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.66f, 0.28f, 1.0f));
+                                ImGui::TextWrapped("[Hostile -- obtain absolution at the Church of Vows "
+                                                   "to restore this NPC.]");
+                                ImGui::PopStyleColor();
+                            }
                             if (q.related)
                             {
                                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.8f, 1.0f, 1.0f));
@@ -2719,10 +2741,23 @@ namespace
                             for (size_t s = 0; s < q.step_count; s++)
                             {
                                 ImGui::PushID((int)s);
-                                bool d = qp_get(q.name, s);
-                                if (ImGui::Checkbox("##done", &d))
-                                    qp_set(q.name, s, d);
+                                bool d = qp_get(q, s);
+                                bool flag_backed = q.steps[s].progress_flag != 0;
+                                bool editable = !flag_backed || goblin::config::questAllowFlagWrite;
+                                if (!editable) ImGui::BeginDisabled();
+                                if (ImGui::Checkbox("##done", &d) && editable)
+                                    qp_set(q, s, d);
+                                if (!editable) ImGui::EndDisabled();
                                 ImGui::SameLine();
+                                if (flag_backed)
+                                {
+                                    ImGui::TextDisabled("[auto]");
+                                    if (ImGui::IsItemHovered())
+                                        ImGui::SetTooltip(goblin::config::questAllowFlagWrite
+                                            ? "Mirrors + can write the live EMEVD flag (cheat ON) -- can break this questline."
+                                            : "Read-only mirror of the live EMEVD flag. Enable 'Allow writing quest flags' to edit.");
+                                    ImGui::SameLine();
+                                }
                                 ImGui::TextWrapped("%zu. %s", s + 1, q.steps[s].title);
                                 ImGui::Indent();
                                 if (q.steps[s].desc && q.steps[s].desc[0])
