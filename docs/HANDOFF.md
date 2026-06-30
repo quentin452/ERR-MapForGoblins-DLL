@@ -54,8 +54,11 @@ Plans currently on master, ready to start (fork from master when you do):
 - **`docs/plans/spatial_grid_opti_plan.md`** — clustering / spatial-grid optimization (PR E of dx-bugs depends
   on this).
 
-Branches still open (NOT plan-only, left as-is): `fix/marker-bugs` (~290 files, large parallel work),
-`diag/fieldins-join-probe` (1-file probe).
+Branches still open (NOT plan-only): `diag/fieldins-join-probe` (ours — 1 quentin452 commit `a6a5ce6`,
+4-line MAPINS-walker diag in `goblin_collected.cpp`; left as-is). NOTE: `fix/marker-bugs` was NOT ours —
+it was a local copy of `upstream/fix/marker-bugs` (VirusAlex's v2.0.x + yun-wulian Chinese localization,
+0 quentin commits) on a divergent lineage; deleted 2026-06-30. Re-fetch only if cherry-picking an upstream
+feature: `git fetch upstream fix/marker-bugs`.
 
 ## Session recap (2026-06-30 EVE) — loot naming + stacking + altitude + crash fix
 
