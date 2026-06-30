@@ -827,7 +827,9 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         // Per-tile threshold. Distance-adaptive: Euclidean ramp near_thr→base_thr over the near→far
         // radius, measured in MAP-SPACE and gated to the player's own map layer (the tile's group, from
         // the high bits of the cell key, must equal the player's group). Otherwise flat base_thr.
-        int thr = base_thr;
+        // The size threshold is an ADAPTIVE-only knob: with plain clustering, any tile holding more than
+        // one marker piles (thr=1). With distance-adaptive on, thr starts at base_thr and ramps below.
+        int thr = dist_adaptive ? base_thr : 1;
         float dbg_d = -1.f; // map-space distance player→tile (for the debug viz)
         const int tile_grp = (int)((kv.first >> 28) & 0xF);
         if (have_player && tile_grp == player_grp && far_u > near_u)
@@ -957,6 +959,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
             }
         }
     }
+
 }
 
 // Does a major-region anchor (its `area` page id) belong to the currently OPEN map
@@ -1472,7 +1475,11 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // A search hit is pulled OUT of any cluster pile so each match draws individually
             // (and gets its highlight ring), instead of hiding inside a location pile.
             const bool clustered_eligible =
-                clustering && !is_hit && m.category >= 0 && m.cluster_key >= 0 &&
+                clustering && !is_hit && m.category >= 0 &&
+                // NB: do NOT gate on cluster_key>=0 here. cluster_key is the old nearest-grace id
+                // (-1 when no grace is near, e.g. underground items whose grace lookup misses), and
+                // tile clustering groups by map-space tile, not grace proximity — gating on it would
+                // wrongly exclude grace-less items (the Siofra "won't cluster" bug).
                 // Graces are major waypoints — vanilla shows each individually, so never pile them.
                 m.category != (int)goblin::generated::Category::WorldGraces &&
                 // Only tile-cluster on LIVE-projected map-space. A marker still on the baked overworld

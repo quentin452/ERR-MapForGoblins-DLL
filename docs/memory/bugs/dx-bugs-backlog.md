@@ -26,8 +26,15 @@ Backlog DX + bugs relevé par <user> le 2026-06-28 (à traiter plus tard, pas en
    3 niche sources still drop posY (ReforgedRune/EmberPieces `bpos`, scarab/maps-pass `pos`, sibling-LOD
    `lit`) → those markers get no badge; thread if needed.
    **DX pour icône plus haut/bas que le joueur (axe Y)** — trouver une indication visuelle quand une icône sur la map est à un Y différent du joueur, pour que le joueur ne cherche pas au mauvais étage/altitude.
-8. **Clustering d'icônes dépassé** — en mode icon clustering, beaucoup d'icônes ne sont toujours pas clusterisées. L'algo actuel (heuristique?) est dépassé → envisager un clustering par tiles plutôt que par heuristique. Voir [[overlay-render-perf-followups]] (spatial grid déjà envisagé).
-9. **Mode "Distance adaptative clustering" à améliorer aussi** — corollaire du point 8.
+8. ✅ **FIXED 2026-06-30** (`feat/spatial-grid`, PR E) — replaced the nearest-grace heuristic with
+   **tile-based clustering**: group by the marker's map-space 256-unit tile (+ map layer, `spatial_grid.hpp`).
+   Root causes of the "icônes pas clusterisées" found via diagnostics: (a) the old `cluster_key>=0`
+   (grace-proximity) gate excluded grace-less items — removed; (b) baked-fallback underground positions
+   scattered across tiles — clustering now uses live-projected map-space only; (c) the size threshold was
+   gating PLAIN clustering — it's now adaptive-only (plain clustering piles any co-located tile, thr=1).
+   Graces never pile (vanilla parity). **Clustering dépassé** — original report below.
+9. ✅ **FIXED 2026-06-30** (same) — distance-adaptive ramp recomputed in map-space, gated to the player's
+   own map layer; near=detail, far=denser. Corollaire du point 8, resolved with it.
 
 ---
 

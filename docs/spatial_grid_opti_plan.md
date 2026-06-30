@@ -1,5 +1,12 @@
 # Spatial Grid Rendering Optimization Plan (v2)
 
+> **STATUS 2026-06-30:** the **clustering half is DONE** (`feat/spatial-grid`, PR E, merged) —
+> `spatial_grid.hpp` + `grid_cell_key` exist and `draw_clusters` now groups by map-space tile (DX
+> items 8/9). The **perf half is NOT done yet**: the render hot loop still scans every marker per frame
+> (`for L : layers → for m : markers()`); the `SpatialGrid` is built/queried only for clustering, not
+> yet wired into a viewport-culling marker pass. That viewport-cull optimization is the remaining work
+> below.
+
 This plan removes the per-frame O(N) marker scan from the world-map render loop. Today
 every visible layer is iterated in full (`for L : layers → for m : L->markers()`) on every
 frame in the Present-thread hot loop; when zoomed in, ~95% of those markers are off-screen.

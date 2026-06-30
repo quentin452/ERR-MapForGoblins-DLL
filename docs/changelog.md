@@ -25,6 +25,12 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Tile-based clustering** — map markers now cluster by their map-space 256-unit tile (+ map layer)
+  instead of the old nearest-grace heuristic: deterministic, zoom-aware, and piles can't drift since
+  each group is bounded to one tile. Graces are never piled (vanilla parity), clustering only uses
+  live-projected positions (no baked scatter underground), and with plain clustering any co-located
+  tile piles — the size threshold is an adaptive-only knob (distance ramp: detail near the player,
+  denser far away). New `cluster_debug_markers` overlay shows each marker's projection/tile state.
 - **Altitude cue** — markers above/below the player's elevation get a small ▲ (above) / ▼ (below)
   triangle, so you don't search the wrong floor/cliff. Drawn as primitives (no font dependency); only
   shown for markers on the player's current map layer (a dead-zone hides near-level ones). The MSB
