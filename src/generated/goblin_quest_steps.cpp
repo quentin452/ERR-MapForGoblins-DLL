@@ -108,19 +108,22 @@ static const QuestStep steps_rya[] = {
 // Redmane).
 // progress_flag: state register 3665..3671 (EMEVD common.emevd ev3679; see
 // docs/memory/features/quest-browser.md "PROGRESS_FLAG STRUCTURAL FINDING"). Mapped
-// by the transitions' LOCATION side-effects: >=3666 = left Stormhill (step1 done);
-// >=3669 = left the festival / placed at Gelmir (step3 done); >=3670 = freed at
-// Gelmir (step4 done). Step5 (his end) = 3663, the death flag set at m13 Farum (a
-// terminal top-of-register flag, plain check). Step2 (Gael Tunnel) = 32009203, a
-// PERSISTENT per-location flag (SetEventFlag ON in m32_07, never cleared; live
-// RPM-confirmed ON on a Gael-freed save) -- Gael is missable so the register alone
-// can't flag it; flag_floor in quest_npc_layer absorbs it if skipped. (Stormhill has
-// no equivalent: its 1043399314 toggles ON/OFF = transient, so step1 uses the register.)
+// by the transitions' LOCATION side-effects: >=3666 = past initial (Stormhill OR Gael;
+// step1 done); >=3669 = left the festival / placed at Gelmir (step3 done). Step5 (his
+// end) = 3663, the death flag set at m13 Farum (a terminal top-of-register flag).
+// Steps 2 and 4 use PERSISTENT per-location flags instead of the register (cleaner,
+// direct "did the action here", and each GATES the register so it's an input not an
+// output): step2 Gael = 32009203 (m32_07 set-once, RPM-confirmed), step4 Gelmir =
+// 1035539204 (m60_35_53 set-once). Both locations are on the register's OR-paths so the
+// register alone conflates them; flag_floor in quest_npc_layer absorbs a skipped one.
+// Stormhill / Redmane / Farum have NO usable literal flag (Stormhill's 1043399314 and
+// Redmane's 1051369266 are transient/ESD-set; Farum's 1052520800 is a BOSS entity-death,
+// not a location flag), so those stay on the register / death flag.
 static const QuestStep steps_alexander[] = {
     {"Stuck in Stormhill", "Free Alexander, the Warrior Jar, from a hole in northern Stormhill by striking him.", "Limgrave", /*progress_flag=*/3666u, /*entity_id=*/1043390710u, /*progress_flag_max=*/3671u}, // reg>=3666 (past initial; no persistent per-loc flag for Stormhill)
     {"Gael Tunnel", "Find him wedged before a door in Gael Tunnel and free him again.", "Caelid", /*progress_flag=*/32009203u, /*entity_id=*/32070700u}, // persistent Gael flag (m32_07 set-once, RPM+EMEVD confirmed)
-    {"Radahn Festival", "Meet him at Redmane Castle, eager for the battle against Radahn.", "Caelid", /*progress_flag=*/3669u, /*entity_id=*/1051360705u, /*progress_flag_max=*/3671u}, // reg>=3669 (left festival for Gelmir)
-    {"Lava pot", "Free him once more from a hole on a lava slope of Mt. Gelmir.", "Mt. Gelmir", /*progress_flag=*/3670u, /*entity_id=*/1035530700u, /*progress_flag_max=*/3671u}, // reg>=3670 (freed at Gelmir)
+    {"Radahn Festival", "Meet him at Redmane Castle, eager for the battle against Radahn.", "Caelid", /*progress_flag=*/3669u, /*entity_id=*/1051360705u, /*progress_flag_max=*/3671u}, // reg>=3669 (left festival for Gelmir); Redmane gate 1051369266 is ESD-set, no literal persistent flag
+    {"Lava pot", "Free him once more from a hole on a lava slope of Mt. Gelmir.", "Mt. Gelmir", /*progress_flag=*/1035539204u, /*entity_id=*/1035530700u}, // persistent Gelmir flag (m60_35_53 set-once) = freed at Gelmir
     {"His end", "Find him dying at Crumbling Farum Azula; the duel yields Alexander's Innards and the Shard of Alexander talisman.", "Crumbling Farum Azula", /*progress_flag=*/3663u, /*entity_id=*/13000700u}, // death flag @ m13 Farum (terminal, plain check)
 };
 static const QuestStep steps_diallos[] = {
