@@ -1,9 +1,10 @@
 # Overlay hot-reload + AI Playwright loop (plan)
 
-**Status:** Phase 1 COMPLETE + MERGED to `master` for all 3 draw functions (2026-07-01). Phase 2
-(DLL split): Slice A (CMake option scaffold) IN-GAME CONFIRMED + MERGED; Slice B (draw layer
-extracted to `src/goblin_overlay_render.cpp`) IN-GAME CONFIRMED, not yet merged; Slices C/D not
-started. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
+**Status:** Phase 1 COMPLETE + MERGED to `master` (2026-07-01). Phase 2 (DLL split): Slice A (CMake
+scaffold) and Slice B (draw layer extracted to `src/goblin_overlay_render.cpp`) both IN-GAME
+CONFIRMED + MERGED. Slice C (export-API layer + call-site rewiring) IN-GAME CONFIRMED + MERGED —
+remaining: `native_item_icon` reverse ctx table + the actual `LoadLibrary` vtable mechanism (not
+started). Slice D not started. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
 render code while ERR keeps running (no full restart), paired with the already-proposed Route B
 debug RPC so an AI agent can script the REAL running game — screenshot, spot a DX or functional
 bug in the minimap/worldmap/icons overlay, fix the overlay source, hot-reload just that piece,
