@@ -45,14 +45,28 @@ against the real game to verify the render DLL actually loads/renders). Next ses
 either do the Windows in-game confirm or move straight to Slice D (file-watcher + real reload) —
 full detail in `docs/plans/overlay_hot_reload_playwright_plan.md`.
 
-## Clang-only Phase 1 IMPLEMENTED — needs ONE Windows validation run (2026-07-02)
+## Clang-only Phase 1 — WINDOWS BUILD VALIDATED (2026-07-02) → Phase 2 (in-game matrix + docs flip) is next
 
 `build.bat` is now ninja+clang-cl (no VS/msbuild; tool paths env-overridable, defaults = the
 Windows box per `build-toolchain-clang-xwin.md`); `/Brepro` determinism PROVEN on Linux (relink →
 identical md5); PDB pairs archived to `pdb-archive/<ver>-<profile>/`; `tools/lint_seh.py` guards
-the SEH-elision regression. **Next Windows session: run `build.bat` (default) + `build.bat
-snapshot` once** — on pass, Phase 2 (in-game matrix + docs flip). Old `build/` msbuild dir is
-disposable (`build-err/` replaces it). See `docs/plans/clang_only_toolchain_plan.md` Phase 1.
+the SEH-elision regression. Old `build/` msbuild dir is disposable (`build-err/` replaces it).
+
+**VALIDATED on the Windows box (2026-07-02):** `build.bat` (default = ERR profile) ran clean end to
+end — auto-configure (CMake 4.1 + Ninja + `clang-cl-xwin.cmake`, Clang 22.1.8), `[80/80]` compile +
+link → `[SUCCESS] MapForGoblins`, artifacts produced in `build-err/` (`MapForGoblins.dll` 4.6 MB +
+`.lib` + `.pdb`). Points to note:
+- **0 real errors.** The only `Failed` line is `Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed` —
+  expected on Windows (no pthread), CMake falls back correctly.
+- **340 warnings, all benign / third-party**, two dominant recurring sources: (1)
+  `-Wdeprecated-literal-operator` on `operator"" _a` inside vendored spdlog bundled-fmt; (2)
+  `-Wdeprecated-declarations` on `std::wstring_convert`/`<codecvt>` in `src/from/params.hpp:17`
+  (deprecated C++17, still functional). Both suppressible if we ever want a clean log
+  (`_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING`); not worth churn now.
+
+**Still open for Phase 1/2:** `build.bat snapshot` (full pipeline + packaging path) not yet exercised
+on Windows this session; then Phase 2 = in-game validation matrix + docs flip (clang = canonical) +
+delete `steam_api64.lib`. See `docs/plans/clang_only_toolchain_plan.md` Phase 1/2.
 
 ## Two new plans scoped (2026-07-01): big-files refactor + clang-only toolchain
 

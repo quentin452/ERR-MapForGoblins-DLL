@@ -18,9 +18,22 @@ clang-cl without a fresh MSVC-parity validation pass first. No Mac build-HOST ne
 up (Mac is a runtime/play target only, via Wine/Proton-equivalent, not a dev host anyone uses
 here) — don't invest in Mac-host support speculatively.
 
-**This box has NO Visual Studio / MSVC** (vswhere absent, `cl` absent) so `build.bat` (which
-needs VS2022) does NOT work here. The repo is designed for **clang-cl + xwin** (toolchain file
-`clang-cl-xwin.cmake`). Toolchain installed 2026-06-20 (non-admin):
+**UPDATE 2026-07-02 — `build.bat` is now the clang-cl path and VALIDATED on this box.** Per the
+clang-only toolchain plan (`docs/plans/clang_only_toolchain_plan.md`, Phase 1), `build.bat` was
+ported off VS2022/msbuild to ninja + `clang-cl-xwin.cmake` (tool paths env-overridable via
+`MFG_LLVM_BIN`/`MFG_NINJA`/`MFG_CMAKE`/`MFG_XWIN`, defaults = this box's layout below). Ran clean
+end to end here 2026-07-02: default `build.bat` (ERR) → auto-configure + `[80/80]` compile+link →
+`[SUCCESS]`, `build-err/{MapForGoblins.dll 4.6 MB,.lib,.pdb}`. 0 real errors (only benign
+`CMAKE_HAVE_LIBC_PTHREAD - Failed` probe); 340 warnings, all third-party/deprecation
+(`operator"" _a` in spdlog bundled fmt; `std::wstring_convert`/`<codecvt>` in
+`src/from/params.hpp:17`). The "MSVC stays release-canonical" policy note above is being retired by
+that plan — flip it to "clang = canonical" when Phase 2 (in-game matrix) lands. `build.bat snapshot`
+not yet exercised on Windows.
+
+**This box has NO Visual Studio / MSVC** (vswhere absent, `cl` absent) — historically `build.bat`
+needed VS2022 and did NOT work here (no longer true, see the 2026-07-02 update above). The repo is
+designed for **clang-cl + xwin** (toolchain file `clang-cl-xwin.cmake`). Toolchain installed
+2026-06-20 (non-admin):
 
 - **LLVM 22.1.8** (clang-cl, lld-link, llvm-rc, llvm-mt) via **scoop** (user-scope, no admin):
   `~\scoop\apps\llvm\current\bin`. (winget LLVM upgrade fails: needs admin. scoop is the way.)

@@ -60,7 +60,7 @@ table (CALL-wrapped=OK / raw-deref=convert); spot-verify the hot sites in the bu
 
 ## Phase 1 — port the build entry point
 
-**STATUS 2026-07-02: IMPLEMENTED, Windows validation PENDING.** Done on Linux:
+**STATUS 2026-07-02: IMPLEMENTED + WINDOWS DEFAULT-BUILD VALIDATED.** Done on Linux:
 - `/Z7` + `/debug` + **`/Brepro`** in `clang-cl-xwin.cmake` — determinism PROVEN (relink → identical
   md5) on the Linux cross-build.
 - `build.bat` fully ported: vswhere/VsDevCmd/msbuild/.sln GONE → ninja + the same toolchain file
@@ -73,8 +73,17 @@ table (CALL-wrapped=OK / raw-deref=convert); spot-verify the hot sites in the bu
   (git-ignored, NOT shipped) for `tools/resolve_crash.py`.
 - Guardrail: `tools/lint_seh.py` — flags any `__try` body containing a raw deref (comment/string
   aware); currently clean, verified it catches the bad shape.
-**Remaining for Phase 1 close-out: run `build.bat` on the Windows box once** (snapshot + one
-profile), then Phase 2 (in-game validation matrix + docs flip + delete `steam_api64.lib`).
+**Windows validation (2026-07-02):** `build.bat` (default = ERR profile) ran clean end to end on the
+Windows box — auto-configure (CMake 4.1 + Ninja + `clang-cl-xwin.cmake`, Clang 22.1.8), `[80/80]`
+compile+link → `[SUCCESS] MapForGoblins`, `build-err/{MapForGoblins.dll 4.6 MB,.lib,.pdb}` produced.
+0 real errors (the sole `Failed` = `CMAKE_HAVE_LIBC_PTHREAD` probe, expected/no-op on Windows). 340
+warnings, all benign third-party/deprecation: `-Wdeprecated-literal-operator` (spdlog bundled fmt
+`operator"" _a`) + `-Wdeprecated-declarations` (`std::wstring_convert`/`<codecvt>` in
+`src/from/params.hpp:17`, still functional) — suppressible via
+`_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING` if a clean log is ever wanted.
+**Remaining for Phase 1 close-out: run `build.bat snapshot` on the Windows box once** (full pipeline
++ packaging path, not yet exercised this session), then Phase 2 (in-game validation matrix + docs
+flip + delete `steam_api64.lib`).
 - Replace `build.bat`'s configure/build (vswhere+VsDevCmd+`.sln`+msbuild) with Ninja + the existing
   `clang-cl-xwin.cmake` on Windows (paths per `build-toolchain-clang-xwin.md`: scoop LLVM,
   `D:\mfg_toolchain\xwin-sdk`, `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`, Release-only).
