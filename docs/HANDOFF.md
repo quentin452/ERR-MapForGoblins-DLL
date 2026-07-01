@@ -70,11 +70,21 @@ catch-all (colliding in-cell sortIds) — need dedicated `sortId` rules or accep
 offline mirror (`tools/taxonomy_classifier.py`, `_validate_taxonomy_map.py`) still applies the
 deleted exceptions — resync or retire. `generate_loot_massedit` still emits a now-unread
 `.MASSEDIT` alongside its live JSON — drop that emission when convenient.
+**DONE 2026-07-01:** the tracked dead `.MASSEDIT` artifacts (`data/massedit` + `data/massedit_generated`,
+113 files / ~9.9 MB) were purged + gitignored — the chain is proven dead (no runtime/pipeline consumer;
+category-test tools read `regulation.bin`/params + `items_database.json`, not `.MASSEDIT`, so this is
+safe for the pending MapGenie-coverage work). `generate_loot_massedit` still (re)writes
+`data/massedit_generated` locally each run — now ignored, not tracked.
+
+`goblin_name_aliases_en` migrated + bake DELETED (2026-07-01, `feat/name-aliases-runtime`): F1 English
+search aliases now resolve live from the active install's `msg/engus/*.msgbnd.dcx` off disk
+(`src/worldmap/name_fmg_en.cpp`; two-pass loose-mod-wins / packed-vanilla-fills; FMG-v2 group-table
+lookup keyed on marker `name_id`), replacing the ERR-frozen table. Offline 2754/2756 vs the old bake;
+**IN-GAME verified on ERR (cross-language) AND vanilla** via the me3 CLI (`[NAMEEN] 9877` vanilla names,
+≠ ERR's count → reads the active install — see `docs/memory/tooling/me3-cli-nonerr-launch.md`).
 
 **Next session — pick the next baked artifact to eliminate** (easiest→hardest, per the plan's
-inventory): `goblin_name_aliases_en.cpp` (F1 English search aliases, 2756 rows — names already
-resolve live via `GetMessage`, candidate to make the alias-lookup runtime too) **(recommended
-next)**; `goblin_tile_tabs`/`goblin_major_regions` (real + identical on all 4 profiles → dedup into
+inventory): `goblin_tile_tabs`/`goblin_major_regions` (real + identical on all 4 profiles → dedup into
 `generated_shared/`, pure housekeeping); `goblin_region_anchors`/`goblin_name_regions` (assess vs
 `WorldMapPointParam`+`WorldMapPlaceName`); the icon atlas (baked overlay atlas, the prime-directive
 example, biggest remaining item — see "Baked-atlas removal" below for why it's deferred). The regen
@@ -110,11 +120,11 @@ resolved key would disambiguate "fundamentally iconId=0" from "a fixable lot-res
   to be **external** — Deskflow (cursor-sharing KVM), not ER or this mod; fix is Deskflow-side, see
   `docs/re/windows_input_softlock_re_prompt.md`. The F1-mouse-dead half of the original report was a
   separate, already-fixed bug (see the Alt+Tab fix chain in `changelog.md`). Low priority to revisit.
-- **Item-name localization (FR/EN) — investigated, decision: keep the bake.** Item names already
-  resolve from the active-language FMG at runtime; only the cross-language ENGLISH alias is baked
-  (`goblin_name_aliases_en.cpp`, ~3276 entries) because showing FR+EN simultaneously would need
-  reading a non-resident msgbnd off disk (~10MB Oodle decompress, real latency cost) — small,
-  battle-tested bake, not worth removing. Don't re-investigate without a reason this tradeoff changed.
+- **Item-name localization (FR/EN) — DONE 2026-07-01, the bake is gone.** (Superseded the earlier
+  "keep the bake" call.) The cross-language English alias no longer ships baked: it's read live from
+  the active install's engus msgbnd off disk at init (`name_fmg_en.cpp`). The feared ~10 MB Oodle cost
+  is a one-time init decompress (~1.5 MB retained index), not per-frame — acceptable, and it's the only
+  mod-agnostic option (baked shipped ERR's names into every profile). See the baked-data section above.
 - **Is non-ERR/vanilla a hard support target?** Still an open policy question — decides whether the
   baked atlas (and similar ERR-leaning bakes) can eventually go fully or must stay as a permanent
   vanilla-compat net.
