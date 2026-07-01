@@ -2,10 +2,30 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01h (new plan scoped: overlay-only hot-reload + AI Playwright RPC loop — see
-directly below. Earlier same day recaps follow: `feat/input-module` MERGED to master, F3 Alt+Tab
+Last updated: 2026-07-01i (`feat/inject-module` branch: PR 0 of the goblin_inject.cpp god-file
+split landed, builds clean on Linux, NOT YET in-game verified — see directly below. Earlier same
+day: overlay-only hot-reload + AI Playwright RPC loop plan scoped (not started); MSVC-canonical /
+clang-cl-alt build toolchain policy formalized; `feat/input-module` MERGED to master, F3 Alt+Tab
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint text fix,
 `feat/quest-npc-layer` and `feat/minimap-scale-cluster-search` also MERGED.)
+
+## RESUME HERE (2026-07-01i) — `feat/inject-module` PR 0 landed, needs in-game verify before merge
+
+Branch `feat/inject-module` (forked from `master`, 1 commit `94958e2`), implementing PR 0 of
+`docs/plans/goblin_inject_refactor_plan.md`. Extracted `LotReader` + the live-persistence
+classifier + its 4 consumer functions (`resolve_loot_flag`, `resolve_loot_item_textid`,
+`lot_row_in_table`, `lot_item_count`) + `diag_loot_flags` out of `goblin_inject.cpp` into new
+`src/goblin_loot_resolve.cpp`, with a 3-accessor shared header (`goblin_inject_shared.hpp`) for
+the one genuine cross-file dependency (`orp_flag_set`, which stays in `goblin_inject.cpp` since
+other sections there still need it). Pure relocation, no logic changes. Builds clean via
+clang-cl+xwin on this Linux box (`build-linux/MapForGoblins.dll`, PE32+ confirmed) — **NOT deployed
+or in-game tested yet** (this session is Linux-only). This is loot-marker-adjacent code
+(pickup-flag/identity resolution feeds marker graying/labels), so a regression here would show up
+as wrong/missing loot-collected state or wrong marker names/counts — needs a real ERR session
+before merging to `master`. Plan doc updated in place with the PR-0 findings (LotReader turned out
+NOT to need the separate "shared extraction first" step the plan originally called for — see the
+plan's own "PR 0 finding" note). Next: deploy + verify in-game (Windows), then merge; PRs 1-4 of
+the same plan remain unstarted.
 
 ## NEW PLAN (2026-07-01h) — overlay-only hot-reload + Route B AI Playwright loop, scoped not started
 
