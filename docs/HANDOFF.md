@@ -45,28 +45,36 @@ against the real game to verify the render DLL actually loads/renders). Next ses
 either do the Windows in-game confirm or move straight to Slice D (file-watcher + real reload) —
 full detail in `docs/plans/overlay_hot_reload_playwright_plan.md`.
 
-## Clang-only Phase 1 — WINDOWS BUILD VALIDATED (2026-07-02) → Phase 2 (in-game matrix + docs flip) is next
+## Clang-only Phase 1 — WINDOWS BUILD + SNAPSHOT VALIDATED (2026-07-02) → only the in-game matrix left
 
 `build.bat` is now ninja+clang-cl (no VS/msbuild; tool paths env-overridable, defaults = the
 Windows box per `build-toolchain-clang-xwin.md`); `/Brepro` determinism PROVEN on Linux (relink →
 identical md5); PDB pairs archived to `pdb-archive/<ver>-<profile>/`; `tools/lint_seh.py` guards
 the SEH-elision regression. Old `build/` msbuild dir is disposable (`build-err/` replaces it).
 
-**VALIDATED on the Windows box (2026-07-02):** `build.bat` (default = ERR profile) ran clean end to
-end — auto-configure (CMake 4.1 + Ninja + `clang-cl-xwin.cmake`, Clang 22.1.8), `[80/80]` compile +
-link → `[SUCCESS] MapForGoblins`, artifacts produced in `build-err/` (`MapForGoblins.dll` 4.6 MB +
-`.lib` + `.pdb`). Points to note:
+**Default build VALIDATED on Windows (2026-07-02):** `build.bat` (ERR) ran clean end to end —
+auto-configure (CMake 4.1 + Ninja + `clang-cl-xwin.cmake`, Clang 22.1.8), `[80/80]` compile+link →
+`[SUCCESS]`, `build-err/{MapForGoblins.dll 4.6 MB,.lib,.pdb}`. Points to note:
 - **0 real errors.** The only `Failed` line is `Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed` —
   expected on Windows (no pthread), CMake falls back correctly.
 - **340 warnings, all benign / third-party**, two dominant recurring sources: (1)
   `-Wdeprecated-literal-operator` on `operator"" _a` inside vendored spdlog bundled-fmt; (2)
   `-Wdeprecated-declarations` on `std::wstring_convert`/`<codecvt>` in `src/from/params.hpp:17`
   (deprecated C++17, still functional). Both suppressible if we ever want a clean log
-  (`_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING`); not worth churn now.
+  (`_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING`); not worth churn now. (`snapshot` adds imgui
+  `-Wnontrivial-memcall` on its `memset(this,…)` ctors — same benign class.)
 
-**Still open for Phase 1/2:** `build.bat snapshot` (full pipeline + packaging path) not yet exercised
-on Windows this session; then Phase 2 = in-game validation matrix + docs flip (clang = canonical) +
-delete `steam_api64.lib`. See `docs/plans/clang_only_toolchain_plan.md` Phase 1/2.
+**`build.bat snapshot` VALIDATED on Windows (2026-07-02) — packaging + PDB archive proven.** Full
+`pre-1.0.18` (ERR) snapshot ran end to end: data pipeline (964 MSB, 28313 placements, 0 MSB errors)
+→ reconfigure `-DVERSION_PRE=pre` → `[64/64]` link `[SUCCESS]` → `mfg_inigen` INI → package under
+`pre-release/` (`dll/offline/{dll,ini}` + `addons/MapForGoblins/menu/02_120_worldmap.gfx` + LICENSE)
+→ **PDB pair archived to `pdb-archive/pre-1.0.18-err/` (DLL + 27 MB PDB, NOT shipped in the package)**
+→ README version-substituted (`vpre-1.0.18`). Crash-symbolication chain verified: shipped DLL is
+**byte-identical (SHA-256)** across `pre-release/`, `pdb-archive/`, `build-err/`.
+
+**Still open:** `build.bat release` (version-bump path) un-exercised; then Phase 2's real in-game
+validation matrix. Docs already flipped to "clang = canonical" + `steam_api64.lib` removed. See
+`docs/plans/clang_only_toolchain_plan.md` Phase 1/2.
 
 ## Two new plans scoped (2026-07-01): big-files refactor + clang-only toolchain
 

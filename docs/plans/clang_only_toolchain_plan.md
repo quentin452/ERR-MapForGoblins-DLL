@@ -81,9 +81,15 @@ warnings, all benign third-party/deprecation: `-Wdeprecated-literal-operator` (s
 `operator"" _a`) + `-Wdeprecated-declarations` (`std::wstring_convert`/`<codecvt>` in
 `src/from/params.hpp:17`, still functional) — suppressible via
 `_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING` if a clean log is ever wanted.
-**Remaining for Phase 1 close-out: run `build.bat snapshot` on the Windows box once** (full pipeline
-+ packaging path, not yet exercised this session), then Phase 2 (in-game validation matrix + docs
-flip + delete `steam_api64.lib`).
+**Phase 1 close-out DONE 2026-07-02 — `build.bat snapshot` VALIDATED on Windows.** Full snapshot
+(`pre-1.0.18`, ERR) ran clean end to end: data pipeline (964 MSB, 28313 placements, 0 MSB errors) →
+reconfigure `-DVERSION_PRE=pre` → `[64/64]` link `[SUCCESS]` → `mfg_inigen` wrote the INI → package
+laid out under `pre-release/` (`dll/offline/{dll,ini}` + `addons/MapForGoblins/menu/02_120_worldmap.gfx`
++ LICENSE) → **PDB pair archived to `pdb-archive/pre-1.0.18-err/` (DLL + 27 MB PDB)** → README version
+substituted (`vpre-1.0.18`). Crash-symbolication chain verified: the shipped DLL is **byte-identical**
+(SHA-256) across `pre-release/`, `pdb-archive/`, and `build-err/`, and the PDB is archived but NOT
+shipped in the package. All that remains is Phase 2 (in-game validation matrix + docs flip + delete
+`steam_api64.lib`).
 - Replace `build.bat`'s configure/build (vswhere+VsDevCmd+`.sln`+msbuild) with Ninja + the existing
   `clang-cl-xwin.cmake` on Windows (paths per `build-toolchain-clang-xwin.md`: scoop LLVM,
   `D:\mfg_toolchain\xwin-sdk`, `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`, Release-only).
@@ -102,8 +108,10 @@ flip + delete `steam_api64.lib`).
 satisfied — the clang DLL is the daily-played build and today's session exercised the historical
 SEH sites (collected refresh, probe page transitions, icon harvest, minimap/altitude). README
 build instructions rewritten (clang/ninja/xwin, both hosts); memory policy note flipped to
-"clang = THE toolchain". Remaining: `build.bat snapshot`/`release` un-exercised on Windows
-(first real release run will prove packaging + pdb-archive), optional CI guardrail.
+"clang = THE toolchain". `build.bat snapshot` now VALIDATED on Windows (2026-07-02, `pre-1.0.18`):
+packaging + `pdb-archive` proven, shipped DLL byte-identical across package/archive/build-err (see
+Phase 1 close-out above). Remaining: `build.bat release` un-exercised (first real release run will
+prove the version-bump path), the ACTUAL in-game matrix, optional CI guardrail.
 - In-game pass on ERR + a spot-check profile, exercising the historical SEH crash sites:
   kindling heap scan, collected refresh (tile churn), worldmap probe across a DLC/underground page
   transition, icon harvest with inventory/map churn, altitude arrows + minimap on (Phase 0 sites).

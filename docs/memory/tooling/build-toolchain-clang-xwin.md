@@ -24,9 +24,12 @@ end to end here 2026-07-02: default `build.bat` (ERR) → auto-configure + `[80/
 `[SUCCESS]`, `build-err/{MapForGoblins.dll 4.6 MB,.lib,.pdb}`. 0 real errors (only benign
 `CMAKE_HAVE_LIBC_PTHREAD - Failed` probe); 340 warnings, all third-party/deprecation
 (`operator"" _a` in spdlog bundled fmt; `std::wstring_convert`/`<codecvt>` in
-`src/from/params.hpp:17`). The "MSVC stays release-canonical" policy note above is being retired by
-that plan — flip it to "clang = canonical" when Phase 2 (in-game matrix) lands. `build.bat snapshot`
-not yet exercised on Windows.
+`src/from/params.hpp:17`). **`build.bat snapshot` ALSO validated on Windows 2026-07-02**
+(`pre-1.0.18`, ERR): data pipeline → `[64/64]` link → `mfg_inigen` INI → package under `pre-release/`
+→ PDB pair archived to `pdb-archive/pre-1.0.18-err/` (DLL+27 MB PDB, not shipped) → README version
+substituted. Shipped DLL byte-identical (SHA-256) across package / pdb-archive / `build-err/` — the
+crash-symbolication pair matches the delivered binary, as `tools/resolve_crash.py` needs. `release`
+(version-bump path) still un-exercised.
 
 **This box has NO Visual Studio / MSVC** (vswhere absent, `cl` absent) — historically `build.bat`
 needed VS2022 and did NOT work here (no longer true, see the 2026-07-02 update above). The repo is
