@@ -171,8 +171,15 @@ F2. **Locate/recherche ne recentre pas sur une cible dans le Fog of War.** Quand
     cursor while the menu is open", tous deux **2026-06-18 — antérieurs au report du 2026-06-28/29**,
     donc <user> a probablement reporté contre un build pas à jour. Trouvé en auditant les commits vs
     le backlog. **Inputs souris fuient vers ER à travers F1 + curseur ancré au centre.** Quand F1 est ouvert, ER continue de recevoir les inputs souris (le menu ne capture pas exclusivement) ; en plus ER ré-ancre/force le curseur au milieu de l'écran. Lié [[input-device-active-flag]].
-13. **Minimap ignore le marker-scale ET le clustering.** Le réglage d'échelle des markers et le clustering n'affectent QUE la worldmap, pas la minimap. La minimap devrait honorer les mêmes réglages (ou avoir les siens). Lié [[minimap-future-feature]].
-14. **DX minimap : afficher l'objet sélectionné par le searcher sur la minimap.** Quand l'item-search sélectionne une cible, l'afficher sur la minimap avec le même cercle/anneau que sur la worldmap (= "game changer" DX selon <user>). Lié [[overlay-item-search-bar]], [[minimap-future-feature]].
+13. ✅ **FIXED 2026-07-01** (branche `feat/minimap-scale-cluster-search`, pas encore mergée/vérifiée
+    en jeu) — `draw_minimap` (`map_renderer.cpp`) honore maintenant `overlayMasterScale`/
+    `overlayIconScale` (était un `half=6.0f` codé en dur) et fait un clustering léger propre à la
+    minimap (bucket par cellule écran fixe `kCellPx=14px`, pas le `draw_clusters` du worldmap —
+    celui-ci est couplé au hover/tooltips/zoom-adaptatif qui n'a pas de sens sur un HUD de rayon
+    fixe). **Minimap ignore le marker-scale ET le clustering.** Le réglage d'échelle des markers et le clustering n'affectent QUE la worldmap, pas la minimap. Lié [[minimap-future-feature]].
+14. ✅ **FIXED 2026-07-01** (même branche) — même boucle : dessine l'anneau jaune
+    `IM_COL32(255,226,40,255)` autour de tout marker/pile qui contient un `search_hit()`, même
+    style visuel que le worldmap. **DX minimap : afficher l'objet sélectionné par le searcher sur la minimap.** Lié [[overlay-item-search-bar]], [[minimap-future-feature]].
 15. ✅ **FIXED** (`62eb9a9` "per-lot item count in tooltip" — lit maintenant les 8 slots
     `ItemLotParam` + `lotItemNum01..08` via `goblin::lot_item_count`, per le plan). Doc marquée
     DEFERRED n'avait jamais été mise à jour ; trouvé en auditant les commits vs le backlog.

@@ -1796,7 +1796,21 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     fg->PushClipRect(ImVec2(ctr.x - R, ctr.y - R), ImVec2(ctr.x + R, ctr.y + R), true);
     const IconSet icons(reinterpret_cast<ImTextureID>(atlas_texture),
                         goblin::config::nativeItemIcons);
-    const float half = 6.0f; // minimap markers are small + fixed-size
+    // Item 13 (dx-bugs-backlog): the minimap used to hardcode half=6.0f, completely ignoring the
+    // same scale settings the worldmap honors. Clamped so an extreme scale setting can't make the
+    // small fixed-radius HUD unreadable or blow past its own icons.
+    constexpr float kMinimapIconHalfBase = 6.0f; // matches the old fixed size at scale=1
+    float half = kMinimapIconHalfBase * cfg::overlayMasterScale * cfg::overlayIconScale;
+    half = half < 3.0f ? 3.0f : (half > 10.0f ? 10.0f : half);
+
+    // Item 13: lightweight screen-space clustering. The minimap's projection is a simple local,
+    // player-centred Euclidean one (not the worldmap's pan/zoom u,v system), so this buckets by
+    // rounding each marker's screen offset to a fixed-size cell instead of reusing the worldmap's
+    // draw_clusters — that's coupled to hover/tooltips/distance-adaptive zoom logic that doesn't
+    // apply to a small fixed-radius HUD widget.
+    struct MiniHit { const Marker *m; ImVec2 pos; };
+    std::unordered_map<uint64_t, std::vector<MiniHit>> cells;
+    constexpr float kCellPx = 14.0f;
     for (auto *L : layers)
     {
         if (!L || !L->visible())
@@ -1828,8 +1842,46 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
                 !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
                 !is_discovered_grace(m))
                 continue;
-            draw_marker(fg, m, ImVec2(ctr.x + dx, ctr.y + dy), icons, half);
+            const auto cx = static_cast<int32_t>(std::floor(dx / kCellPx));
+            const auto cy = static_cast<int32_t>(std::floor(dy / kCellPx));
+            const uint64_t key = (static_cast<uint64_t>(static_cast<uint32_t>(m.group)) << 40) ^
+                                  (static_cast<uint64_t>(static_cast<uint32_t>(cx)) << 20) ^
+                                  static_cast<uint64_t>(static_cast<uint32_t>(cy));
+            cells[key].push_back({&m, ImVec2(ctr.x + dx, ctr.y + dy)});
         }
+    }
+    // Item 14: same yellow ring the worldmap draws around an active item-search "locate" target
+    // (search_hit is a TU-local helper, already visible here — no plumbing needed).
+    for (auto &cell : cells)
+    {
+        const std::vector<MiniHit> &hits = cell.second;
+        bool any_search_hit = false;
+        ImVec2 avg(0.f, 0.f);
+        for (const MiniHit &h : hits)
+        {
+            avg.x += h.pos.x;
+            avg.y += h.pos.y;
+            if (search_hit(*h.m))
+                any_search_hit = true;
+        }
+        avg.x /= static_cast<float>(hits.size());
+        avg.y /= static_cast<float>(hits.size());
+        if (hits.size() == 1)
+        {
+            draw_marker(fg, *hits[0].m, hits[0].pos, icons, half);
+        }
+        else
+        {
+            fg->AddCircleFilled(avg, half + 1.5f, IM_COL32(40, 42, 60, 220));
+            fg->AddCircle(avg, half + 1.5f, IM_COL32(230, 220, 180, 200), 0, 1.5f);
+            char countBuf[8];
+            std::snprintf(countBuf, sizeof(countBuf), "%d", static_cast<int>(hits.size()));
+            const ImVec2 ts = ImGui::CalcTextSize(countBuf);
+            fg->AddText(ImVec2(avg.x - ts.x * 0.5f, avg.y - ts.y * 0.5f),
+                       IM_COL32(255, 255, 255, 255), countBuf);
+        }
+        if (any_search_hit)
+            fg->AddCircle(avg, half * 1.7f, IM_COL32(255, 226, 40, 255), 0, 2.0f);
     }
     fg->PopClipRect();
 

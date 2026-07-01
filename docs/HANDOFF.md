@@ -2,10 +2,10 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01 (Linux session — the Alt+Tab bug (see recap below) took 3 rounds of
-fix-log-fix before the real root cause was found; user-confirmed fixed in-game, merging
-`diag/alt-tab-click-toggle` to master now. `feat/minimap-scale-cluster-search` still open,
-not yet verified in-game).
+Last updated: 2026-07-01 (Linux session — the Alt+Tab bug took 3 rounds of fix-log-fix before the
+real root cause was found; user-confirmed fixed in-game, merged to master. Separately,
+`feat/minimap-scale-cluster-search` (items 13/14 + a zoom default/range bump from user feedback)
+is rebased on top of that merge, still not in-game verified — see recaps below).
 
 ## Session recap (2026-07-01) — Alt+Tab F1 input dead: root-caused after 3 rounds, fixed
 
@@ -44,6 +44,46 @@ not yet verified in-game).
   different bug (MousePos never refreshing) was hiding behind it and only surfaced once the
   flapping stopped. A log confirming one hypothesis is not the same as the user confirming the
   original complaint is gone — get the live "yes it's fixed" before declaring done.
+## Session recap (2026-07-01) — minimap honors marker-scale, gets its own clustering + search-ring (items 13/14)
+
+- <user> picked items 13/14 as the next bug after this session's earlier fixes + doc audit.
+  `draw_minimap` (`src/worldmap/map_renderer.cpp`) had a hardcoded `half=6.0f` (ignored
+  `overlayMasterScale`/`overlayIconScale` entirely) and drew every marker individually with no
+  grouping — a wall of icons at any real density, and no visual indicator for an active
+  item-search "locate" target the way the worldmap has (a yellow ring around `search_hit()`
+  markers).
+- Investigated first: the minimap's projection is NOT the worldmap's pan/zoom `u,v` map-space
+  system — it's a simple local, player-centred, north-up Euclidean projection
+  (`dx=(worldX-px)*scale`, `dy=-(worldZ-pz)*scale`). So the worldmap's `draw_clusters` (coupled to
+  hover/tooltips/distance-adaptive zoom) wasn't reusable/worth porting — wrote a lightweight
+  screen-space bucket instead (round each marker's screen offset to a 14px cell, keyed by
+  `(group, cellX, cellY)`; 1 member draws normally, 2+ draws a pile dot + count label).
+- Fix: `half` now scales with the same two configs (clamped 3-10px so extreme settings can't break
+  the small fixed-radius HUD); the same bucket loop draws the yellow search-hit ring
+  (`search_hit()` is a `static inline` helper already in the same TU, no plumbing needed) around
+  any cell containing a search-matched marker.
+- Built clean (`build-linux`), deployed to `/home/iamacat/Games/ERRv2.2.9.6/dll/offline/`.
+  Plan: `/home/iamacat/.claude/plans/federated-painting-aho.md` (session-local path, not in-repo).
+  **NEXT: <user> to verify in-game** — scale slider visibly resizes minimap icons, dense marker
+  clumps pile with a count, item-search "locate" shows the yellow ring on the minimap too. Commit
+  + merge after confirmation, same loop as every fix this session.
+
+## Session recap (2026-07-01) — dx-bugs backlog audited against git log, 5 items already fixed but docs never updated
+
+- <user> asked to check which "still open" backlog items were actually already fixed in code.
+  Cross-referenced `git log` against items 2/6/10/11/12/15: **2** (partial — cursor-recenter done
+  via PR C `4ec2aa7`, key-hint auto-switch UI never built), **6** (cursor recenter on map reopen,
+  same PR C commit), **10** (RequireFragment/Region heuristic, `fix(fragment-gate)` commits
+  2026-06-27/29 — already in `docs/memory/bugs/README.md` as resolved but never crossed off the
+  numbered backlog), **12** (mouse passthrough + cursor anchor, `b10e50e`+`2854600`, both
+  **2026-06-18 — predate the 2026-06-28/29 bug report**, so <user> likely reported against a stale
+  build), **15** (loot undercount/no ×N stacking, `62eb9a9`, reads all 8 `ItemLotParam` slots per
+  the existing plan). **11** (double-draw) clarified as root-caused (double-DLL-load artifact per
+  the "Known bugs" section below, not an open code bug) rather than flatly open.
+  `docs/memory/bugs/dx-bugs-backlog.md` and `README.md` updated to reflect this. Real remaining
+  open items after the audit: 4/5 (pause, needs an RE spike first), 13/14 (minimap — see recap
+  above, now also fixed), 16 (native ER right-stick zoom, not investigated), F1 (native
+  overworld→underground icon leak), F2 (locate pan clamped at fog-of-war boundary).
 
 ## Session recap (2026-07-01, Linux + <user> live-testing) — 4 post-PR-C-2 bug reports — DONE, log-confirmed + in-game verified
 
