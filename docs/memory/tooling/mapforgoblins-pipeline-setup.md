@@ -19,10 +19,15 @@ regenerated. The data pipeline is **Windows-only** (needs pythonnet + Andre.Soul
   over vanilla by `prepare_merged_src.py`; ERR is a full overlay.
 - **`oo2core_6_win64.dll`** copied into `tools/` AND `tools/lib/` (SoulsFormats needs it to
   decompress KRAK `.dcx`; it searches the cwd, so run with cwd=`tools/` when standalone).
-- **mmap shim** at `<windows_temp>\mfg_aux\sitecustomize.py` — REQUIRED:
-  the bundled Andre.SoulsFormats memory-maps temp files, so the scripts' `os.unlink` fails and
-  reused pid-scoped temp names collide. The shim makes `os.getpid()` unique-per-call + tolerates
-  unlink. Run the pipeline with `PYTHONPATH` pointed at that dir.
+- **mmap shim — now self-contained (2026-07-01h).** Andre.SoulsFormats memory-maps temp files, so
+  the scripts' `os.unlink` fails on Windows (WinError 5, AV/mmap holds a brief handle). The repo ships
+  `tools/sitecustomize.py` (retry-then-swallow tolerant `os.unlink`, process-wide). It was NOT loading
+  before — `site` imports sitecustomize BEFORE the script dir is on `sys.path`, so `sys.path[0]` alone
+  never triggers it (the file's own header comment was wrong). **`build_pipeline.py` now prepends
+  `tools/` to child `PYTHONPATH` itself** (`fe8d28c`), so every stage auto-loads it — no external
+  `PYTHONPATH`/`mfg_aux` shim needed anymore. Tolerant-unlink alone was empirically sufficient: all 4
+  profiles regenerated clean this way on 2026-07-01h (no unique-name shim required). If you invoke a
+  standalone MSB/param script directly (not via build_pipeline.py), still pass `PYTHONPATH=tools`.
 
 **Run a profile** (build.bat gates on VS2022 + has the cmd-banner bug, so call Python directly).
 **Python gotcha:** use **`py -3.14`** (C:\Python314, has **pythonnet**) for any pipeline/MSB

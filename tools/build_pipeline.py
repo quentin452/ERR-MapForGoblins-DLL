@@ -29,6 +29,17 @@ if PROFILE not in ('err', 'vanilla', 'convergence', 'erte'):
     PROFILE = 'err'
 os.environ['MFG_PROFILE'] = PROFILE  # propagate to every child subprocess
 
+# Ensure tools/ is on PYTHONPATH for every child so CPython's site init
+# auto-imports tools/sitecustomize.py (the process-wide tolerant os.unlink).
+# Without this the just-read SoulsFormats temp files can't be unlinked on
+# Windows (WinError 5, AV/mmap holds a brief handle) and stages abort on
+# cleanup. sys.path[0] alone does NOT trigger sitecustomize — site runs
+# before the script dir is inserted — so PYTHONPATH is required.
+_TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
+os.environ['PYTHONPATH'] = (
+    _TOOLS_DIR + os.pathsep + os.environ['PYTHONPATH']
+    if os.environ.get('PYTHONPATH') else _TOOLS_DIR)
+
 import config
 
 REPO = Path(__file__).resolve().parent.parent
