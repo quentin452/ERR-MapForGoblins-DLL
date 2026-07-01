@@ -194,10 +194,21 @@ already tracks exactly that signal, so hint-icon switching is a cheap follow-on 
 
 **Spike (RE, ~half a day) before committing to an approach.** Investigate, in order of
 preference:
-1. **Game's own pause / timestep.** Find the field or function the engine uses to advance
-   the world simulation (a global game-speed float, or a frame-advance step) and zero/patch
-   it while paused. This is how the established ER pause mod works and is far more surgical
-   than faking the clock. Use the Ghidra tooling (`ghidra-re-tooling`) to locate it.
+1. **Game's own pause / timestep — precedent studied 2026-07-01.**
+   [`iArtorias/elden_pause`](https://github.com/iArtorias/elden_pause) (MIT) does NOT hook QPC
+   or patch a global speed float; it flips a single existing conditional jump. Its `main.cpp`
+   AOB-scans (own pattern lib, same idiom as our `re_signatures.hpp`) for a `je` opcode
+   (`0F 84 ? ? ? ? C6 83 ? ? 00 00 00 48 8D ? ? ? ? ? 48 89 ? ? 89`) that already gates some
+   per-object/world update, then toggles ONLY that opcode's 2-byte condition
+   (`0F 84` je ↔ `0F 85` jne) via `VirtualProtect` + `memcpy` — forcing the branch to always or
+   never fall into the update, reusing a check the engine already performs rather than writing
+   a new flag or faking the clock. This sidesteps our QPC objection entirely (nothing reads a
+   fake tick) and shouldn't touch Present/ImGui responsiveness since the branch isn't in the
+   render path. **Their AOB is for base ER's exe layout — do NOT assume it holds for our pinned
+   ERR build; independently confirm via Ghidra same as any other entry in
+   `re_signatures.hpp`.** Prefer wiring the toggle into our existing `hk_present`/hotkey
+   plumbing rather than copying their spawned-thread poll (we already have a poll loop there).
+   **Standalone RE recipe for the Windows spike:** `docs/re/windows_ingame_pause_re_prompt.md`.
 2. **Engine pause/cutscene flag.** ER already freezes the world during cutscenes/menus;
    reusing that state (if reachable) gives a clean, engine-sanctioned pause.
 3. **QPC hook — only as a last-resort fallback,** and if used, scope it as narrowly as

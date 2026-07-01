@@ -2,10 +2,30 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01h (Phase A regen DONE — all 4 profiles now MAP_ENTRY_COUNT 0, non-ERR
-DLLs rebuilt clean on THIS Windows box via clang/ninja; Phase-1 enemy-name landmine closed at build
-level. See STATUS block below. Earlier same day: `feat/input-module` MERGED, F3 Alt+Tab keyboard-dead
-bug FIXED, minimap fixes, `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
+Last updated: 2026-07-01h (Phase A regen DONE — all 4 profiles now MAP_ENTRY_COUNT 0, non-ERR DLLs
+rebuilt clean on THIS Windows box via clang/ninja, Phase-1 enemy-name landmine closed at build level
+(see the baked-data STATUS block below); PR2 dead-MASSEDIT cull is next. Also scoped this day:
+overlay-only hot-reload + AI Playwright RPC loop (NEW PLAN directly below). Earlier same day:
+`feat/input-module` MERGED, F3 Alt+Tab keyboard-dead bug FIXED + user-confirmed, minimap search-hit
+edge-clamp + search-hint fixes, `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
+
+## NEW PLAN (2026-07-01h) — overlay-only hot-reload + Route B AI Playwright loop, scoped not started
+
+`docs/plans/overlay_hot_reload_playwright_plan.md` — <user> wants to reload ONLY the ImGui overlay
+draw code live (no ERR restart) so an AI can screenshot the real running game via the already-
+proposed Route B debug RPC (`docs/memory/tooling/overlay-test-harness.md`), spot a DX or functional
+bug in minimap/worldmap/icons, fix it, hot-reload just that piece, and re-verify — a tight iterate
+loop against the real game (not the offline Route A mock harness, which is unaffected). 4 phases:
+(1) extract `draw_panel`/`draw_worldmap_markers`/`draw_minimap_hud` out of `goblin_overlay.cpp`
+behind a context-struct interface, no reload yet — pure refactor, verify zero behavior change; (2)
+split into its own DLL loaded via `LoadLibrary` + dev-only file-watch reload (ImGui-context-sharing
+and thread-safety are the real risks, not the LoadLibrary mechanics); (3) greenfield Route B RPC
+(no IPC exists in `src/` today) with commands incl. new `reload_overlay`; (4) wire the actual AI
+loop. `dx-bugs-backlog` items 11/12 are explicitly NOT good first loop targets (11 = deploy-hygiene
+double-DLL issue not a code bug, 12 already fixed) — pick a live backlog item once Phases 1–3 land.
+Windows-only (LoadLibrary/MinHook). Not started — fork an implementation branch when work begins,
+per `AGENTS.md`.
+>>>>>>> 603a27e47a0b7887911c3add1ccb6e20b6563a83
 
 ## ⚠️ IN PROGRESS (2026-07-01h) — baked-data → runtime/disk migration (build_pipeline.py deletion is the END state)
 

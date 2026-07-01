@@ -6,6 +6,18 @@ metadata:
   type: project
 ---
 
+**Toolchain policy (decided 2026-07-01, tracking a "should we unify to one build path"
+question):** MSVC/VS2022 via `build.bat` (`snapshot`/`release` targets) stays the ONLY
+release-canonical toolchain — that's what ships. clang-cl+xwin is the officially-supported
+**dev/cross-compile alt**, not a release path: it's genuinely portable (proven from Linux and
+from a Windows box with no VS install; LLVM-based so plausibly Mac-hostable too, though nobody's
+tried), but it is documented as "functionally equivalent, NOT byte-identical" to MSVC output —
+see the SEH-elision gotcha below, a REAL semantic divergence already hit once (clang-cl silently
+drops `__try` guards around raw loads that MSVC honors). Do not build a release artifact with
+clang-cl without a fresh MSVC-parity validation pass first. No Mac build-HOST need has ever come
+up (Mac is a runtime/play target only, via Wine/Proton-equivalent, not a dev host anyone uses
+here) — don't invest in Mac-host support speculatively.
+
 **This box has NO Visual Studio / MSVC** (vswhere absent, `cl` absent) so `build.bat` (which
 needs VS2022) does NOT work here. The repo is designed for **clang-cl + xwin** (toolchain file
 `clang-cl-xwin.cmake`). Toolchain installed 2026-06-20 (non-admin):
