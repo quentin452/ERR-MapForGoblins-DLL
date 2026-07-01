@@ -1,7 +1,7 @@
 # Overlay hot-reload + AI Playwright loop (plan)
 
-**Status:** Phase 1 STARTED (2026-07-01, `feat/overlay-draw-context`) — first slice landed, build-
-verified, awaiting in-game log check. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
+**Status:** Phase 1 STARTED (2026-07-01, `feat/overlay-draw-context`) — first slice landed,
+build-verified + IN-GAME CONFIRMED (log check), not yet merged. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
 render code while ERR keeps running (no full restart), paired with the already-proposed Route B
 debug RPC so an AI agent can script the REAL running game — screenshot, spot a DX or functional
 bug in the minimap/worldmap/icons overlay, fix the overlay source, hot-reload just that piece,
@@ -74,9 +74,11 @@ and `draw_minimap_hud` now take `const OverlayFrameCtx &` instead of reading `g_
 passes it to both call sites. `draw_panel` is UNCHANGED in this slice — its own coupling (panel-UI
 cluster + host-shared globals above) needs its own PR-boundary audit pass before touching, same as
 the inject plan treated its biggest/messiest section last. Cross-build (clang-cl+xwin) clean, only
-pre-existing unrelated warnings (codecvt deprecation, ImGui memset-on-non-trivial). In-game log
-check still needed before this slice counts as the Phase-1 correctness gate passed for these 2 fns.
-Next slice: `draw_panel`'s own coupling audit + extraction (biggest remaining risk in Phase 1).
+pre-existing unrelated warnings (codecvt deprecation, ImGui memset-on-non-trivial). Deployed +
+**IN-GAME CONFIRMED 2026-07-01**: `[SIG]` 29/29 clean, atlas loaded, `render.minimap` bench firing
+every frame for the whole session, no crash/error — Phase-1 correctness gate passed for these 2
+fns. Not yet merged to `master`. Next slice: `draw_panel`'s own coupling audit + extraction
+(biggest remaining risk in Phase 1).
 
 **Phase 2 — split into a reloadable module + host-side reload mechanism.**
 Move the extracted draw layer into its own DLL (e.g. `goblin_overlay_render.dll`), loaded via

@@ -5,8 +5,8 @@ Committed code + `docs/changelog.md` are the record of DONE; this file tracks WH
 Last updated: 2026-07-01w (`feat/overlay-draw-context`, Phase 1 slice 1 of the
 overlay_hot_reload_playwright_plan — `draw_worldmap_markers`/`draw_minimap_hud` now take an
 explicit `OverlayFrameCtx` instead of reading file-statics directly; `draw_panel` deferred to its
-own coupling audit. Build-verified via clang-cl+xwin, NOT yet in-game confirmed — see directly
-below. Earlier same day: `feat/inject-grace-suppression` PR 4c of the goblin_inject.cpp
+own coupling audit. Build-verified via clang-cl+xwin, IN-GAME CONFIRMED (log check, see below).
+Earlier same day: `feat/inject-grace-suppression` PR 4c of the goblin_inject.cpp
 god-file split — IN-GAME CONFIRMED + MERGED. This was the LAST planned extraction PR — the whole
 goblin_inject_refactor_plan is now COMPLETE (only 4d, an intentional non-PR stay-behind, remains).
 Earlier same day: PR 4b
@@ -23,7 +23,7 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01w) — overlay_hot_reload_playwright_plan Phase 1 slice 1 landed, awaiting in-game check
+## RESUME HERE (2026-07-01w) — overlay_hot_reload_playwright_plan Phase 1 slice 1 IN-GAME CONFIRMED, not yet merged
 
 Branch `feat/overlay-draw-context` (forked from `master`), first slice of Phase 1 of
 `docs/plans/overlay_hot_reload_playwright_plan.md`. Coupling audit first (mirrors the inject-
@@ -41,11 +41,13 @@ originals every frame) right above `draw_worldmap_markers` in `goblin_overlay.cp
 now take `const OverlayFrameCtx &ctx` instead of reading `g_atlas_gpu`/`g_atlas_ready`/`g_hwnd`/
 `g_nav_frames` directly; `hk_present` builds one `frame_ctx` per frame (`:3629-3633`) and passes it
 to both call sites. `draw_panel` UNCHANGED this slice. Cross-build clean (clang-cl+xwin,
-`ninja -C build-linux MapForGoblins`, only pre-existing unrelated warnings). **NOT yet deployed/
-in-game confirmed** — this machine is Linux-only right now; next session (ideally Windows) should
-deploy + confirm zero visual/behavior change in worldmap markers + minimap HUD before merging, then
-either continue with `draw_panel`'s own coupling audit (next slice) or merge this slice standalone
-first — plan doc + this entry already reflect the scoping decision, just need the in-game check.
+`ninja -C build-linux MapForGoblins`, only pre-existing unrelated warnings). Deployed to
+`~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior DLL backed up as
+`.bak-pre-overlay-draw-context`). **IN-GAME CONFIRMED 2026-07-01 20:35 via log check**: fresh
+`NEW SESSION`, `[SIG]` 29/29 PASS, icon atlas decoded/uploaded, `render.minimap` bench firing every
+frame for the whole ~20s session, no error/exception/crash (no new crash dump past deploy time).
+Not yet merged to `master` — next: either continue with `draw_panel`'s own coupling audit (next
+slice of Phase 1) or merge this slice standalone first.
 
 ## RESUME HERE (2026-07-01v) — `feat/inject-grace-suppression` PR 4c IN-GAME CONFIRMED + MERGED — goblin_inject.cpp refactor plan COMPLETE
 
