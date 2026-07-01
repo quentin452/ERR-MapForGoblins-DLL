@@ -919,7 +919,8 @@ std::vector<DiskEmevd> load_emevd_awards(
 
 std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags(
     std::unordered_map<uint32_t, uint32_t> *paintings_out,
-    std::vector<msbe::GestureRef> *gestures_out)
+    std::vector<msbe::GestureRef> *gestures_out,
+    std::unordered_set<uint32_t> *portals_out)
 {
     std::unordered_map<uint32_t, uint32_t> out;
     ensure_map_dir_resolved();
@@ -959,6 +960,11 @@ std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags(
         if (gestures_out)
             for (const auto &gr : msbe::parse_emevd_gestures(evd.data(), evd.size()))
                 gestures_out->push_back(gr);
+        // Portal / sending-gate entities (warp template 90005605, entity@arg[2]) from the SAME blob.
+        // Set-insert dedups the LOD _00/_10 duplicate inits automatically.
+        if (portals_out)
+            for (uint32_t ent : msbe::parse_emevd_portal_gates(evd.data(), evd.size()))
+                portals_out->insert(ent);
         ++parsed;
     }
     spdlog::info("[LOOTDISK] World-feature flags: {} entity→flag from {} EMEVD files ({} KRAK skipped)",
@@ -969,6 +975,9 @@ std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags(
     if (gestures_out)
         spdlog::info("[LOOTDISK] World-feature flags: {} gesture-spawn refs (template 90005570)",
                      (int)gestures_out->size());
+    if (portals_out)
+        spdlog::info("[LOOTDISK] World-feature flags: {} portal gates (warp template 90005605)",
+                     (int)portals_out->size());
     return out;
 }
 

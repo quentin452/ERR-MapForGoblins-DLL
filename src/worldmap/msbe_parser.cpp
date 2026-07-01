@@ -580,6 +580,48 @@ std::vector<std::pair<uint32_t, uint32_t>> parse_emevd_flag_awards(const uint8_t
     return out;
 }
 
+// Portal / sending-gate entities — a bank-2000 init of common warp template 90005605 carries the
+// gate entity at arg[2] (X0_4 @ +8). No flag (portals never "complete"), so this returns just the
+// entity id per call. RE-verified: 23 distinct AEG099_510 gates across the world (tools/
+// _probe_portal_verify.py). Same pinned 64-bit layout as parse_emevd_flag_awards. The disk pass
+// dedups by entity (LOD _00/_10 tiles repeat the same call). See windows_portal_aeg_re_findings.md.
+std::vector<uint32_t> parse_emevd_portal_gates(const uint8_t *buf, size_t len)
+{
+    std::vector<uint32_t> out;
+    if (len < 0x80 || std::memcmp(buf, "EVD\0", 4) != 0) return out;
+    constexpr uint32_t kPortalTemplate = 90005605u;
+    uint64_t eventCount  = rd64(buf, 0x10);
+    uint64_t eventsOff   = rd64(buf, 0x18);
+    uint64_t instrTblOff = rd64(buf, 0x28);
+    uint64_t argsOff     = rd64(buf, 0x78);
+    if (eventCount > 1000000u) return out;
+    constexpr size_t EVENT_SZ = 0x30, INSTR_SZ = 0x20;
+    for (uint64_t i = 0; i < eventCount; ++i)
+    {
+        size_t e = (size_t)eventsOff + (size_t)i * EVENT_SZ;
+        if (!inb(e, EVENT_SZ, len)) break;
+        uint64_t instrCount  = rd64(buf, e + 0x08);
+        uint64_t instrOffset = rd64(buf, e + 0x10);
+        size_t base = (size_t)instrTblOff + (size_t)instrOffset;
+        if (instrCount > 1000000u) continue;
+        for (uint64_t j = 0; j < instrCount; ++j)
+        {
+            size_t ins = base + (size_t)j * INSTR_SZ;
+            if (!inb(ins, INSTR_SZ, len)) break;
+            if (rd32(buf, ins + 0x00) != EMEVD_INIT_BANK) continue;
+            uint64_t argLen = rd64(buf, ins + 0x08);
+            int32_t  argOff = (int32_t)rd32(buf, ins + 0x10);
+            if (argOff < 0 || argLen < 12) continue;   // need arg[2] @ a+8..12
+            size_t a = (size_t)argsOff + (size_t)argOff;
+            if (!inb(a, (size_t)argLen, len)) continue;
+            if (rd32(buf, a + 4) != kPortalTemplate) continue;
+            uint32_t entity = rd32(buf, a + 8);        // arg[2] = gate entity (X0_4)
+            if ((int32_t)entity > 0) out.push_back(entity);
+        }
+    }
+    return out;
+}
+
 // Painting events (World-feature graying) — like parse_emevd_flag_awards but the eventId is
 // NOT a fixed template id: the DLC paintings each have a UNIQUE map-specific template (e.g.
 // 2045432550), so a template TABLE can't catch them. Instead detect by the FLAG range. Two

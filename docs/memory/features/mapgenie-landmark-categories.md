@@ -48,6 +48,22 @@ false); `tools/coverage_vs_mapgenie.py`. No atlas glyph → circle fallback (G_W
 Expected in-game counts (ERR, `[LANDMARKLIVE]` log): DivineTower 6, Evergaol 16, MinorErdtree 11,
 GrandLift 2, Dungeon 66, LegacyDungeon 13 (~114 total).
 
+## Miquella's Cross + GROUP 2 Portal (added same cycle)
+
+- **`WorldMiquellaCross`** — DLC iconId **208** (13 rows), a clean WMPP key → reuses `build_live_landmarks`
+  (its `per_cat` is now enum-derived `kLandmarkCount`, so the contiguous landmark block grows freely).
+- **`WorldPortal`** — the FIRST MapGenie Group 2 (non-WMPP) category. A portal = an **`AEG099_510`**
+  sending-gate asset whose EntityID is bound as **arg[2] of EMEVD warp template `90005605`**. That
+  template binding is the mod-agnostic "actually warps the player" signal — it isolates the ~23 real
+  gates from `AEG099_510`'s ~180 total placements (mostly decorative/anchor, incl. a 94-member Leyndell
+  cluster). Runtime, no bake: `msbe::parse_emevd_portal_gates` harvests the gate entity set from the
+  active install's `event/*.emevd` (shared with the world-feature flag scan in
+  `load_emevd_world_feature_flags`); `build_disk_portal_markers` emits each `AEG099_510` disk asset
+  (aegRow 99510) whose EntityID is in that set, deduped by entity across LOD tiles. Label = PlaceName
+  6108700 "Sending Gate". No graying. Full RE: `docs/re/windows_portal_aeg_re_findings.md`
+  (+ `tools/_probe_portal_{aeg,aeg2,emevd,verify}.py`). **Model + template facts are the reusable pattern
+  for the rest of Group 2** — find the AEG model, find its EMEVD template binding, one harvest + one pass.
+
 ## Deferred (user decision, 2026-07-01)
 
 The 2 MFG-original respawn categories `WorldFarmableEnemy` + `WorldFarmableCollectible` were

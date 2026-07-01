@@ -38,7 +38,7 @@ namespace goblin::config
     // "true"/"false" defaults live on the B(...) entries below); the zero-init
     // here is just a sane fallback before load_config() runs.
     static constexpr int NUM_CATEGORIES =
-        static_cast<int>(goblin::generated::Category::WorldLegacyDungeon) + 1;
+        static_cast<int>(goblin::generated::Category::WorldPortal) + 1;
     bool showCategory[NUM_CATEGORIES] = {};
 
     bool hideKilledBosses = false;
@@ -462,6 +462,8 @@ namespace
                 B("show_grand_lifts", showCategory[static_cast<int>(Cat::WorldGrandLift)], "false", "Grand Lift locations (Dectus, Rold; iconId 21)"),
                 B("show_dungeons", showCategory[static_cast<int>(Cat::WorldDungeon)], "false", "Minor dungeon entrances (Catacombs/Caves/Tunnels/Wells/Hero's Graves; iconIds 4,13,14,15,16,230,231,234)"),
                 B("show_legacy_dungeons", showCategory[static_cast<int>(Cat::WorldLegacyDungeon)], "false", "Legacy dungeon locations (Stormveil, Raya Lucaria, Leyndell, etc.; per-site iconIds)"),
+                B("show_miquella_crosses", showCategory[static_cast<int>(Cat::WorldMiquellaCross)], "false", "Miquella's Cross locations (DLC; iconId 208)"),
+                B("show_portals", showCategory[static_cast<int>(Cat::WorldPortal)], "false", "Sending Gate / waygate portals (AEG099_510 bound to EMEVD warp template 90005605)"),
                 B("hide_killed_bosses", hideKilledBosses, "false", "Hide boss/invader/hawk markers after defeat (false = show green checkmark instead)"),
             }},
 

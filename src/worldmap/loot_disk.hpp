@@ -199,9 +199,12 @@ GOBLIN_RENDER_API std::vector<DiskTreasure> load_lod_treasures();
 // second ~550-file event-dir read. nullptr = skip the extra per-file parse.
 // `gestures_out` (optional): likewise filled with the gesture-spawn refs (template 90005570;
 // parse_emevd_gestures) — one msbe::GestureRef per call — so the gesture pass shares this scan.
+// `portals_out` (optional): likewise filled with the sending-gate entity ids (warp template
+// 90005605, entity@arg[2]; parse_emevd_portal_gates), deduped — the Portal disk pass shares this scan.
 GOBLIN_RENDER_API std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags(
     std::unordered_map<uint32_t, uint32_t> *paintings_out = nullptr,
-    std::vector<msbe::GestureRef> *gestures_out = nullptr);
+    std::vector<msbe::GestureRef> *gestures_out = nullptr,
+    std::unordered_set<uint32_t> *portals_out = nullptr);
 
 // One quest NPC, mined at runtime from the ACTIVE install's emevds (mod-agnostic; the runtime
 // port of tools/extract_quest_npcs.py). `concluded` = its _q99 fail flag; [regLo,regHi] = its

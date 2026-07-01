@@ -25,6 +25,14 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **World - Portals category** (MapGenie Group 2, first non-`WorldMapPointParam` category) — Sending
+  Gate / waygate locations, resolved fully at runtime with no bake. A portal is an `AEG099_510`
+  sending-gate asset whose EntityID is bound as arg[2] of EMEVD warp template `90005605` — the
+  mod-agnostic signal that isolates the ~23 real player-usable gates from that model's ~180
+  decorative/anchor placements. Harvested live from the active install's `event/*.emevd` +
+  `map/MapStudio` MSBs, so it is correct on any install. Off by default; labelled "Sending Gate".
+- **World - Miquella's Cross category** — the 13 DLC Miquella's Crosses, a clean
+  `WorldMapPointParam.iconId` (208), wired through the same live landmark pass. Off by default.
 - **6 landmark map categories** (`World - Divine Towers`, `Evergaols`, `Minor Erdtrees`,
   `Grand Lifts`, `Dungeons`, `Legacy Dungeons`) — closes the MapGenie landmark gaps that are a clean
   `WorldMapPointParam.iconId` key. Read LIVE from the active install's `WorldMapPointParam` (same

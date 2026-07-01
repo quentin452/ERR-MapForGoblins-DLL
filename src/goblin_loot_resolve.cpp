@@ -28,7 +28,7 @@ using Category = goblin::generated::Category;
 // Number of marker categories (enum has no COUNT sentinel; keep in sync).
 // Local duplicate of goblin_inject.cpp's NUM_CATEGORIES (same convention already
 // used there for per-file AOB/RPM helper copies) — only diag_loot_flags needs it.
-static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldLegacyDungeon) + 1;
+static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldPortal) + 1;
 
 // Local duplicate of goblin_inject.cpp's icon_rpm_i32/icon_rpm_ptr (same small
 // RPM-wrapper helpers, same per-file-copy convention as e.g. goblin_markers.cpp /

@@ -55,34 +55,55 @@ Phase 0 is standalone-urgent even if the rest waits: 3 live clang-cl `__try`-eli
 (`goblin_world_position.cpp:511`/`:566` — per-frame player probes; `goblin_tutorial_popup.cpp:69` —
 init-time param poll) are latent unhandled-0xC0000005 sites in the clang DLL currently deployed.
 
-## MapGenie category coverage — GROUP 1: landmarks landed, farmables deferred (2026-07-01)
+## MapGenie category coverage — GROUP 1 MERGED; GROUP 2 (Portal) RE in progress (2026-07-01)
 
-Branch `feat/mapgenie-group1-landmarks` (off master, 1 commit). Adds 6 landmark map categories
-(`World - Divine Towers / Evergaols / Minor Erdtrees / Grand Lifts / Dungeons / Legacy Dungeons`)
-built LIVE from `WorldMapPointParam.iconId` — `build_live_landmarks()` in
-`src/worldmap/map_entry_layer.cpp`, same pattern as `build_live_bosses()`. Mod-agnostic, no bake;
-iconId map + zero-overlap-with-bosses re-verified off-disk (`tools/verify_worldmap_iconids.py`).
-clang-cl+xwin cross-build links clean. All 6 default OFF (World-section `show_*` toggles). Ghost =
-NPC invader = existing `WorldHostileNPC` (already shipped, no new work). **IN-GAME CONFIRMED on ERR
-(2026-07-01):** deployed to `dll/offline/`, `[LANDMARKLIVE] built 114` (counts match off-disk exactly),
-`[SIG] 29/29 clean`, `[BOSSLIVE] 217` unchanged, no crash; **positions correct in-game (user).**
+**GROUP 1 landmarks — MERGED to master + ERR in-game confirmed.** 6 `World -
+DivineTowers/Evergaols/MinorErdtrees/GrandLifts/Dungeons/LegacyDungeons` built LIVE from
+`WorldMapPointParam.iconId` (`build_live_landmarks()`, `src/worldmap/map_entry_layer.cpp`). `[LANDMARKLIVE]
+built 114` (counts match off-disk), positions correct. Ghost = existing `WorldHostileNPC` (no work). All
+default OFF. Circle-glyph followup outstanding (task chip spawned; see memory note).
+
+**Miquella's Cross — added (branch `feat/mapgenie-group2-portal`).** DLC iconId 208 (13 rows) reuses the
+same landmark pass — one enum entry + iconId branch. Built clean, deployed to `dll/offline/`. Restart ERR
++ grep `[LANDMARKLIVE]` (should now show `MiquellaCross 13`). Default OFF.
+
+**Miquella's Cross + GROUP 1 landmarks — MERGED to master** (`5febe5f`).
+
+**Portal (Group 2) — IMPLEMENTED on branch `feat/mapgenie-portal`, build-clean + deployed, NOT yet
+in-game verified.** RE fully solved (`docs/re/windows_portal_aeg_re_findings.md`): a portal = an
+**`AEG099_510`** sending-gate asset whose EntityID is bound as **arg[2] of EMEVD warp template
+`90005605`** (the mod-agnostic "actually warps" signal; isolates ~23 real gates from the model's ~180
+placements). Runtime pass: `msbe::parse_emevd_portal_gates` harvests the gate entity set from
+`event/*.emevd` (shared with `load_emevd_world_feature_flags`), `build_disk_portal_markers` emits each
+`AEG099_510` disk asset (aegRow 99510) in that set, dedup by entity. Label = PlaceName 6108700 "Sending
+Gate". Default OFF.
 
 **Next, in order:**
-1. **Non-ERR mod-agnostic check + merge.** ERR positions confirmed. Still open: verify on a non-ERR
-   install (me3 CLI, `docs/memory/tooling/me3-cli-nonerr-launch.md`) — landmark counts should track
-   that install's WMPP (vanilla has different rows, same iconId semantics). On pass, merge to master.
-2. **Followup (user "for later") — landmark GLYPHS.** They draw as plain teal circles now. Each WMPP
-   row carries a real iconId → resolvable via disk `map_point_rect(iconId)` (`SB_MapCursor`, mod-
-   agnostic). Quick win: `category_gpu_iconId` rows for the 4 single-value categories (DivineTower→23,
-   Evergaol→9, MinorErdtree→30, GrandLift→21). Dungeon/LegacyDungeon are multi-iconId → need the
-   marker's own source iconId plumbed through `push_marker` (bosses share this gap). See the memory note.
-3. **GROUP 2** — the ~half of MapGenie categories NOT in `WorldMapPointParam` (Smithing Table,
-   Portal, Hidden Passage, Martyr Effigy, Stone Cairn, …): disk MSB/AEG pass, category by category.
-   See RE findings Tier 2(B).
-4. **Deferred (user) — the 2 Farmable categories** (`WorldFarmableEnemy` +
-   `WorldFarmableCollectible`). MFG-original; each hit a real design fork (no clean live boss signal
-   → FarmableEnemy floods + can't exclude fog-gated bosses; FarmableCollectible is a routing choice).
-   Gate mechanics stay valid. Full rationale in `docs/plans/mapgenie_category_coverage_plan.md`.
+1. **In-game verify Portal (user).** Restart ERR, toggle `World - Portals`; grep `[LOOTDISK] ... Portal
+   markers (AEG099_510 bound to warp template 90005605; N entities harvested, M LOD-dup collapsed)` —
+   expect ~23 gates at real sending-gate spots (Four Belfries, Siofra, Leyndell, DLC, …). On pass, merge
+   `feat/mapgenie-portal` to master.
+2. **Landmark GLYPHS followup (user "for later").** Circle now; each WMPP row has a real iconId →
+   `map_point_rect(iconId)` (`SB_MapCursor`). Quick win: `category_gpu_iconId` for the 4 single-value
+   categories (DivineTower→23/Evergaol→9/MinorErdtree→30/GrandLift→21). Dungeon/LegacyDungeon/MiquellaCross
+   need per-marker source iconId through `push_marker` (bosses share this gap). Task chip spawned.
+   Portals could reuse `AEG099_510`'s SB_MapCursor glyph too if one exists.
+3. **Rest of GROUP 2 — recon done, NOT quick wins. See `docs/re/windows_group2_landscape_re_findings.md`.**
+   Portal was the clean one *because* it had a harvestable EMEVD template (`90005605`). The rest do NOT:
+   - **Elevator / Smithing Table are ObjAct-bound, not EMEVD-template-bound.** Anchors found:
+     Smithing Table = ActionButtonText 7030 / ActionButtonParam **6250**; Elevator = "Descend" 3301 /
+     ActionButtonParam **5010**. But those ABP ids do NOT co-occur with their assets in EMEVD args
+     (`_probe_g2_actionbtn.py`), and no candidate AEG model matches the counts (`AEG099_630` = 235 broad
+     placements, not 40 lifts). Next step = an **ObjActParam/AssetObjActParam** parse (ObjAct row whose
+     button=5010/6250 → MSB assets carrying that ObjAct), a new param path per category — bigger than Portal.
+   - **Hidden Passage** = hit-detected illusory walls, NO action button → no static signal (hardest).
+   - **Wandering Mausoleum** = dynamic moving entity (hard). Martyr Effigy = already `WorldSummoningPools`;
+     Dragon Shrine folds into Churches; Landmark(172) = editorial → skip.
+   Recon artifacts: `tools/_probe_g2_templates.py` (template→model map), `_probe_g2_actionbtn.py`.
+   NB: offline SoulsFormats probes now need temp files in the REPO dir (`os.path.abspath('.')`), not
+   `%TEMP%` — Defender started denying `%TEMP%` writes mid-session (`WinError 5`).
+4. **Deferred (user) — the 2 Farmable categories** (`WorldFarmableEnemy` + `WorldFarmableCollectible`).
+   Real design forks. Full rationale in `docs/plans/mapgenie_category_coverage_plan.md`.
 
 ## RESUME HERE (2026-07-01z9) — overlay_hot_reload_playwright_plan Slice C nearly done, only LoadLibrary mechanism left
 
