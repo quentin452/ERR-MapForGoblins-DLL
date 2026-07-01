@@ -49,11 +49,20 @@ Gate". Default OFF.
    categories (DivineTower→23/Evergaol→9/MinorErdtree→30/GrandLift→21). Dungeon/LegacyDungeon/MiquellaCross
    need per-marker source iconId through `push_marker` (bosses share this gap). Task chip spawned.
    Portals could reuse `AEG099_510`'s SB_MapCursor glyph too if one exists.
-3. **Rest of GROUP 2** — the Portal pattern (find AEG model → find its EMEVD template binding → one
-   harvest + one pass) is the template. Remaining: Smithing Table (1, one AEG model), Elevator (40, AEG
-   lift models), Hidden Passage (59, illusory walls — likely EMEVD/hit, hard), Wandering Mausoleum
-   (dynamic, hard). Martyr Effigy = already `WorldSummoningPools`; Dragon Shrine folds into Churches;
-   Landmark(172) = editorial → skip.
+3. **Rest of GROUP 2 — recon done, NOT quick wins. See `docs/re/windows_group2_landscape_re_findings.md`.**
+   Portal was the clean one *because* it had a harvestable EMEVD template (`90005605`). The rest do NOT:
+   - **Elevator / Smithing Table are ObjAct-bound, not EMEVD-template-bound.** Anchors found:
+     Smithing Table = ActionButtonText 7030 / ActionButtonParam **6250**; Elevator = "Descend" 3301 /
+     ActionButtonParam **5010**. But those ABP ids do NOT co-occur with their assets in EMEVD args
+     (`_probe_g2_actionbtn.py`), and no candidate AEG model matches the counts (`AEG099_630` = 235 broad
+     placements, not 40 lifts). Next step = an **ObjActParam/AssetObjActParam** parse (ObjAct row whose
+     button=5010/6250 → MSB assets carrying that ObjAct), a new param path per category — bigger than Portal.
+   - **Hidden Passage** = hit-detected illusory walls, NO action button → no static signal (hardest).
+   - **Wandering Mausoleum** = dynamic moving entity (hard). Martyr Effigy = already `WorldSummoningPools`;
+     Dragon Shrine folds into Churches; Landmark(172) = editorial → skip.
+   Recon artifacts: `tools/_probe_g2_templates.py` (template→model map), `_probe_g2_actionbtn.py`.
+   NB: offline SoulsFormats probes now need temp files in the REPO dir (`os.path.abspath('.')`), not
+   `%TEMP%` — Defender started denying `%TEMP%` writes mid-session (`WinError 5`).
 4. **Deferred (user) — the 2 Farmable categories** (`WorldFarmableEnemy` + `WorldFarmableCollectible`).
    Real design forks. Full rationale in `docs/plans/mapgenie_category_coverage_plan.md`.
 
