@@ -28,26 +28,32 @@ default OFF. Circle-glyph followup outstanding (task chip spawned; see memory no
 same landmark pass — one enum entry + iconId branch. Built clean, deployed to `dll/offline/`. Restart ERR
 + grep `[LANDMARKLIVE]` (should now show `MiquellaCross 13`). Default OFF.
 
-**Portal (39) — RE done, NOT a clean add. See `docs/re/windows_portal_aeg_re_findings.md`.** Model
-IDENTIFIED: **`AEG099_510`** = the sending-gate asset (WMPP "Sending Gate" row sits 0.4u on it). BUT it
-has 180 placements (all entity-bearing): only ~13 are map-scripted interactive gates; ~148 are a shared
-`10456xxxx` range dominated by a 94-member decorative cluster in Leyndell. `entity_required` does NOT
-filter it. Isolating the ~39 real portals needs an **EMEVD warp-template join** (find the sending-gate
-warp event's entity arg — same shape as the existing `seal_emevd`/`hero_tomb_emevd` joins). NOT wired yet.
+**Miquella's Cross + GROUP 1 landmarks — MERGED to master** (`5febe5f`).
+
+**Portal (Group 2) — IMPLEMENTED on branch `feat/mapgenie-portal`, build-clean + deployed, NOT yet
+in-game verified.** RE fully solved (`docs/re/windows_portal_aeg_re_findings.md`): a portal = an
+**`AEG099_510`** sending-gate asset whose EntityID is bound as **arg[2] of EMEVD warp template
+`90005605`** (the mod-agnostic "actually warps" signal; isolates ~23 real gates from the model's ~180
+placements). Runtime pass: `msbe::parse_emevd_portal_gates` harvests the gate entity set from
+`event/*.emevd` (shared with `load_emevd_world_feature_flags`), `build_disk_portal_markers` emits each
+`AEG099_510` disk asset (aegRow 99510) in that set, dedup by entity. Label = PlaceName 6108700 "Sending
+Gate". Default OFF.
 
 **Next, in order:**
-1. **Merge Miquella's Cross + decide Portal depth.** Miquella's Cross is a clean, buildable add — merge
-   `feat/mapgenie-group2-portal` once its `[LANDMARKLIVE] MiquellaCross 13` is confirmed in-game. For
-   Portal, pick: (a) do the EMEVD warp-template scan (`tools/datamine_emevd_*.py` style) to isolate the
-   ~39, or (b) pivot to an easier Group-2 category first (Smithing Table = 1 AEG model; Elevator = AEG
-   lift models) and return to Portal with the EMEVD tooling. Model fact `AEG099_510` is solid either way.
+1. **In-game verify Portal (user).** Restart ERR, toggle `World - Portals`; grep `[LOOTDISK] ... Portal
+   markers (AEG099_510 bound to warp template 90005605; N entities harvested, M LOD-dup collapsed)` —
+   expect ~23 gates at real sending-gate spots (Four Belfries, Siofra, Leyndell, DLC, …). On pass, merge
+   `feat/mapgenie-portal` to master.
 2. **Landmark GLYPHS followup (user "for later").** Circle now; each WMPP row has a real iconId →
    `map_point_rect(iconId)` (`SB_MapCursor`). Quick win: `category_gpu_iconId` for the 4 single-value
    categories (DivineTower→23/Evergaol→9/MinorErdtree→30/GrandLift→21). Dungeon/LegacyDungeon/MiquellaCross
    need per-marker source iconId through `push_marker` (bosses share this gap). Task chip spawned.
-3. **Rest of GROUP 2** — Smithing Table (1, one AEG model), Elevator (40, AEG lift models), Hidden Passage
-   (59, illusory walls — likely EMEVD/hit, hard), Wandering Mausoleum (dynamic, hard). Martyr Effigy =
-   already `WorldSummoningPools`; Dragon Shrine folds into Churches; Landmark(172) = editorial → skip.
+   Portals could reuse `AEG099_510`'s SB_MapCursor glyph too if one exists.
+3. **Rest of GROUP 2** — the Portal pattern (find AEG model → find its EMEVD template binding → one
+   harvest + one pass) is the template. Remaining: Smithing Table (1, one AEG model), Elevator (40, AEG
+   lift models), Hidden Passage (59, illusory walls — likely EMEVD/hit, hard), Wandering Mausoleum
+   (dynamic, hard). Martyr Effigy = already `WorldSummoningPools`; Dragon Shrine folds into Churches;
+   Landmark(172) = editorial → skip.
 4. **Deferred (user) — the 2 Farmable categories** (`WorldFarmableEnemy` + `WorldFarmableCollectible`).
    Real design forks. Full rationale in `docs/plans/mapgenie_category_coverage_plan.md`.
 
