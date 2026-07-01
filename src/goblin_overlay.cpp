@@ -3613,6 +3613,24 @@ namespace
                 // independent GetForegroundWindow() poll, same flapping-under-Wine risk.
                 const bool fgw = g_hwnd && g_has_focus.load(std::memory_order_relaxed);
                 ImGuiIO &io = ImGui::GetIO();
+                // ROOT CAUSE (confirmed via [KBDIAG], <user> 2026-07-01 "after Alt+Tab, can't
+                // click in F1"): ImGui_ImplWin32's own NewFrame mouse-position update
+                // (ImGui_ImplWin32_UpdateMouseData) only feeds io.MousePos when its internal
+                // ::GetFocus()==hwnd check passes, and otherwise defers to WM_MOUSEMOVE — but
+                // this game suppresses legacy WM_MOUSEMOVE during normal gameplay (raw input),
+                // same reason the left-button click below is polled instead of read from
+                // WM_LBUTTONDOWN. After a real Alt+Tab, WM_KILLFOCUS invalidates io.MousePos
+                // (ImGui's own AddFocusEvent(false) behavior) and nothing ever refreshes it again
+                // — the log showed MousePos pinned at ImGui's -FLT_MAX sentinel for 26+ seconds
+                // straight, so WantCaptureMouse stayed false (nothing to hit-test against) even
+                // though the button poll below correctly saw real clicks. Poll position the same
+                // way we already poll the button, bypassing ImGui's own focus-gated update.
+                if (fgw && g_hwnd)
+                {
+                    POINT pt;
+                    if (::GetCursorPos(&pt) && ::ScreenToClient(g_hwnd, &pt))
+                        io.AddMousePosEvent(static_cast<float>(pt.x), static_cast<float>(pt.y));
+                }
                 const bool lb = fgw && (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
                 io.AddMouseButtonEvent(0, lb);
                 io.AddMouseButtonEvent(1, fgw && (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
