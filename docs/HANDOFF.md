@@ -2,12 +2,77 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01h (Phase A regen DONE — all 4 profiles now MAP_ENTRY_COUNT 0, non-ERR DLLs
-rebuilt clean on THIS Windows box via clang/ninja, Phase-1 enemy-name landmine closed at build level
-(see the baked-data STATUS block below); PR2 dead-MASSEDIT cull is next. Also scoped this day:
-overlay-only hot-reload + AI Playwright RPC loop (NEW PLAN directly below). Earlier same day:
-`feat/input-module` MERGED, F3 Alt+Tab keyboard-dead bug FIXED + user-confirmed, minimap search-hit
-edge-clamp + search-hint fixes, `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
+Last updated: 2026-07-01n (`feat/inject-item-classify` PR 2 of the goblin_inject.cpp god-file
+split — IN-GAME CONFIRMED via log check, ready to merge — see directly below. Earlier same day:
+PR 1 (icon-harvest) IN-GAME CONFIRMED + MERGED; PR 0 — MERGED, in-game confirmed via log check;
+Phase A regen DONE on the Windows box (parallel session) — all 4 profiles now MAP_ENTRY_COUNT 0,
+non-ERR DLLs rebuilt clean via clang/ninja, Phase-1 enemy-name landmine closed at build level (see
+the baked-data STATUS block below), dead `goblin_massedit.{cpp,hpp}` culled. Also scoped this day:
+overlay-only hot-reload + AI Playwright RPC loop plan (not started); MSVC-canonical / clang-cl-alt
+build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED, F3 Alt+Tab
+keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
+`feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
+
+## RESUME HERE (2026-07-01n) — `feat/inject-item-classify` PR 2 IN-GAME CONFIRMED, ready to merge
+
+Branch `feat/inject-item-classify` (forked from `master` after PR 0+1 merged), implementing PR 2
+of `docs/plans/goblin_inject_refactor_plan.md`. Extracted taxonomy-based item/loot classification
+into new `src/goblin_item_classify.cpp` (~430 lines) — distinct from PR 0's ItemLotParam-ROW-based
+loot resolve, this classifies by ER's own (goodsType, sortGroupId) taxonomy. **Non-contiguous in
+the original file**: taxonomy helpers forward-declared/defined at `:1070-1167`, the actual public
+API at `:2299-2607` (~1130 unrelated lines between them — TutorialParam injection, native grace
+suppression, overlay control API, kill indicators). Both spans moved together (only depend on each
+other, zero coupling to the gap) — no accessor header needed, the cleanest PR yet despite the
+non-contiguous shape. Scope grew from the plan's 5-function estimate to 9 — `aeg_is_gather`,
+`npc_item_lot_enemy`, `item_real_icon_id` were physically wedged into the same span sharing
+structs (`RawAegRow`/`RawNpcRow`/`RawEquipRow`) with the 5 named ones, couldn't be split out
+separately. Declarations in `goblin_inject.hpp` unchanged (facade kept). Builds clean via
+clang-cl+xwin, deployed to `~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior DLL backed up as
+`.bak-pre-item-classify`). **IN-GAME CONFIRMED 2026-07-01 19:37 via log check**: fresh `NEW SESSION`
+19s after deploy, `[SIG]` 29/29 PASS, no crash/error, and `[ITEMCLASS]` census (the moved
+`classify_item_live` chain) producing correct live output (e.g. `key=500008975 cat="Quest -
+Progression"`) — directly exercises the whole moved taxonomy path. **PR 2 is done and verified —
+merged to `master`.** PRs 3-4 of the same plan remain unstarted.
+
+## OLDER RESUME (2026-07-01l) — `feat/inject-icon-harvest` PR 1 IN-GAME CONFIRMED, MERGED
+
+Branch `feat/inject-icon-harvest` (forked from `master` after PR 0 merged), implementing PR 1 of
+`docs/plans/goblin_inject_refactor_plan.md`. Extracted the icon-texture harvest/GPU-icon-registry
+block (`:1688-3939`, ~2252 lines — bigger than the plan's original ~1500-1600 estimate) out of
+`goblin_inject.cpp` into new `src/goblin_icon_harvest.cpp`. Audit (forked, same rigor as PR 0)
+found exactly ONE cross-boundary coupling: `goblin_inject.cpp`'s `warp_pin_detour` (native
+discovered-grace pin suppression, stays behind) needs `icon_rpm_i32`/`icon_rpm_ptr` — fixed with a
+local duplicate in `goblin_inject.cpp`, same per-file-copy convention PR 0 established. 30 public
+functions declared in `goblin_inject.hpp` unchanged (facade kept, zero call-site churn across
+`goblin_overlay.cpp`/`goblin_worldmap_probe.cpp`/`goblin_markers.cpp`/`goblin_messages.cpp`/
+`dllmain.cpp`/`worldmap/*`). Needed 2 include fixes not caught by the audit (missing `<set>`,
+missing `from/params.hpp` + `goblin_messages.hpp` for `lookup_text_utf8`) — build caught these
+immediately, nothing subtle. Builds clean via clang-cl+xwin, deployed to
+`~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior DLL backed up as
+`.bak-pre-icon-harvest`). **IN-GAME CONFIRMED 2026-07-01 19:28 via log check**: fresh `NEW SESSION`
+22s after deploy, `[SIG]` 29/29 PASS, `[GRACE-SPRITE] 'MENU_MAP_01_Bonfire' LOCKED ...` (exercises
+the moved icon-harvest code directly), no crash/error/exception. **PR 1 is done and verified —
+merged to `master`.** PRs 2-4 of the same plan remain unstarted.
+
+## OLDER RESUME (2026-07-01i) — `feat/inject-module` PR 0 done + in-game CONFIRMED, MERGED
+
+Branch `feat/inject-module` (forked from `master`), implementing PR 0 of
+`docs/plans/goblin_inject_refactor_plan.md`. Extracted `LotReader` + the live-persistence
+classifier + its 4 consumer functions (`resolve_loot_flag`, `resolve_loot_item_textid`,
+`lot_row_in_table`, `lot_item_count`) + `diag_loot_flags` out of `goblin_inject.cpp` into new
+`src/goblin_loot_resolve.cpp`, with a 3-accessor shared header (`goblin_inject_shared.hpp`) for
+the one genuine cross-file dependency (`orp_flag_set`, which stays in `goblin_inject.cpp` since
+other sections there still need it). Pure relocation, no logic changes. Builds clean via
+clang-cl+xwin on this Linux box and DEPLOYED to `~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll`
+(md5-verified, prior deployed DLL backed up as `.bak-pre-inject-module`). **IN-GAME CONFIRMED
+2026-07-01 19:20 via log check**: fresh `NEW SESSION` right after deploy, `[SIG]` health check
+29/29 PASS (incl. `IS_EVENT_FLAG`/`EVENT_FLAG_MAN_SLOT`, the AOBs the new shared-header accessor
+depends on), `diag_loot_flags` (the moved function) producing correct-looking live `[LOOTDIAG]`
+output, no crash dump/error/exception after session start. **PR 0 is done, verified, and MERGED to
+`master`** (fast-forward, branch `feat/inject-module` deleted post-merge). Plan doc updated in
+place with the PR-0 findings (LotReader turned out NOT to need the separate "shared extraction
+first" step the plan originally called for — see the plan's own "PR 0 finding" note). Next: PR 1
+(icon-texture harvest/GPU registry, `:1688-3939` in the current file) — coupling audit in progress.
 
 ## NEW PLAN (2026-07-01h) — overlay-only hot-reload + Route B AI Playwright loop, scoped not started
 

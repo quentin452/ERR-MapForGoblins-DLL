@@ -1,8 +1,29 @@
 # Plan — extract subsystems out of `goblin_inject.cpp` (biggest hand-written god file)
 
-**Status:** scoped, not started. Modeled on the already-landed
-[input_module_refactor_plan.md](input_module_refactor_plan.md) precedent (`feat/input-module`,
-merged 2026-07-01, pure relocation + thin accessor plumbing, no logic changes).
+**Status:** PR 0 + PR 1 DONE + IN-GAME CONFIRMED + MERGED to `master`. **PR 2 DONE + IN-GAME CONFIRMED + MERGED** (`feat/inject-item-classify`) —
+taxonomy-based item/loot classification (9 functions, non-contiguous span) extracted to
+`src/goblin_item_classify.cpp`. PRs 3-4 not started. Modeled
+on the already-landed [input_module_refactor_plan.md](input_module_refactor_plan.md) precedent
+(`feat/input-module`, merged 2026-07-01, pure relocation + thin accessor plumbing, no logic
+changes).
+
+**PR 0 finding (revises the table below):** the line-by-line audit found `LotReader` is NOT
+shared with `inject_map_entries` as its own comment claimed — that comment described a CALL
+relationship (the functions that use it are themselves called from the map-entry-injection flow),
+not shared instantiation; every `LotReader` use is a function-local `static` inside 5 functions,
+all already textually adjacent. So **PR 0 and PR 2 collapsed into one clean extraction** —
+new files `src/goblin_loot_resolve.cpp` (LotReader + `encode_live_item` + the whole
+"Live persistence classifier" section, which turned out to exist ONLY to support
+`flag_is_repeatable`/`LotReader`'s 5 consumer functions — moved together, not split) +
+`src/goblin_inject_shared.hpp` (3 tiny accessors: `orp_flag_set`, `orp_manager_resolve_tried`,
+`orp_event_man_slot_ptr` — the ONE genuine cross-boundary dependency found, since
+`flag_query_persistent` piggybacks on the kill-indicators section's already-resolved
+EventFlagMan slot rather than re-resolving its own). Also duplicated two trivial helpers
+(`icon_rpm_i32`/`icon_rpm_ptr`, `NUM_CATEGORIES`) into the new file rather than reaching into the
+icon-harvest block for them — same per-file-copy convention the codebase already uses for small
+AOB/RPM helpers (`goblin_markers.cpp`/`goblin_kindling.cpp` each keep their own). `classify_item_live`/
+`npc_loot_lot`/`aeg_pickup_lot`/`goods_is_map`/`npc_team_and_name` (taxonomy-based, NOT LotReader-based)
+remain unmoved — genuinely separate concern, still a real future PR (renumber as PR "next" below).
 
 ## Why
 
@@ -59,13 +80,13 @@ finding/touching one subsystem means reading past ten others first.
 
 ## Scope — sequencing, biggest/cleanest win first
 
-| PR | Content | Depends on | Size (~lines) | Risk |
+| PR | Content | Depends on | Size (~lines) | Risk / Status |
 | --- | --- | --- | --- | --- |
-| **0. Shared `LotReader` extraction** | Pull the `:1069` anonymous-namespace `LotReader` into its own small shared header/unit (e.g. `src/worldmap/lot_reader.hpp`) | — | small | low — pure move, but MUST land before PR 1/2 below |
-| **1. Icon-texture harvest/GPU registry** | `:1746`–`:4130`ish minus classification functions minus `LotReader` (now shared via PR 0): icon probe, image enumerate, harvest-via-find-hook, proactive repo-walk harvest, TWIN-map walk, CreateImage force-bind, central GPU-icon registry, OodleLZ_Decompress hook, item-icon XML layout | PR 0 | ~1500-1600, the single biggest chunk | medium — self-contained per research, but not yet line-audited for OTHER cross-section reads beyond the 4 anonymous namespaces found |
-| **2. Item/loot classification-live** | `classify_item_live`, `npc_loot_lot`, `aeg_pickup_lot`, `lot_row_in_table`, `lot_item_count`, `goods_is_map`, `npc_team_and_name` | PR 0 | small-medium | low-medium |
+| **0. `LotReader` + live-persistence classifier + 4 consumer fns + diag** ✅ DONE | `src/goblin_loot_resolve.cpp` (new): `LotReader`, `encode_live_item`, `ANON_LABEL_TEXTID`, the whole "Live persistence classifier" (`flag_query_persistent`/`fg_read_node`/`flag_is_repeatable`), `resolve_loot_flag`, `resolve_loot_item_textid`, `lot_row_in_table`, `lot_item_count`, `diag_loot_flags`. `src/goblin_inject_shared.hpp` (new): 3-fn accessor surface for `orp_flag_set` (stays in `goblin_inject.cpp`, genuinely shared with other sections there). Declarations UNCHANGED in `goblin_inject.hpp` (facade kept, lower call-site churn). | — | 425 lines moved | DONE + IN-GAME CONFIRMED 2026-07-01, `feat/inject-module`, builds clean (clang-cl+xwin), ready to merge |
+| **1. Icon-texture harvest/GPU registry** ✅ DONE | `src/goblin_icon_harvest.cpp` (new, ~2290 lines incl. header): icon probe, image enumerate, harvest-via-find-hook, proactive repo-walk harvest, TWIN-map walk, CreateImage force-bind, central GPU-icon registry, OodleLZ_Decompress hook, item-icon XML layout. Full audit found the real block was `:1688-3939` (~2252 lines, bigger than the original ~1500-1600 estimate) and exactly ONE cross-boundary coupling: `icon_rpm_i32`/`icon_rpm_ptr` needed by `goblin_inject.cpp`'s `warp_pin_detour` (stays behind) — fixed with a local duplicate, same per-file-copy convention as PR 0. Declarations UNCHANGED in `goblin_inject.hpp` (30 public functions, facade kept). | PR 0 landed | 2252 lines moved | DONE + IN-GAME CONFIRMED + MERGED 2026-07-01, `feat/inject-icon-harvest` |
+| **2. Item/loot classification-live (taxonomy-based)** ✅ DONE | `src/goblin_item_classify.cpp` (new, ~430 lines): `classify_item_live`, `npc_loot_lot`, `aeg_pickup_lot`, `goods_is_map`, `npc_team_and_name`, `item_marker_category`, plus 3 more found during audit that were physically wedged into the same span sharing structs — `aeg_is_gather`, `npc_item_lot_enemy`, `item_real_icon_id`. Non-contiguous in the original file (taxonomy helpers `:1070-1167`, public API `:2299-2607`, ~1130-line unrelated gap between them, e.g. TutorialParam injection) — both spans moved together, zero coupling to the gap or elsewhere, no accessor header needed. | — | ~430 lines moved (two spans) | DONE + IN-GAME CONFIRMED + MERGED 2026-07-01, `feat/inject-item-classify` ([ITEMCLASS] census correct live) |
 | **3. Visibility + marker-clustering (as ONE unit)** | `:186`–`:411`ish + grace anchors `:428`–`:729`ish | — | medium | medium (shared-mutex coupling already mapped, but still the riskiest single move since two "sections" become one file) |
-| **4. Remaining sections** (player position, item classification `:1128`, TutorialParam, native grace suppression, overlay control API, kill indicators, live-persistence classifier, live-loot hide) | Second-pass audit first (see Ground truth above), THEN scope exact PR boundaries — do not batch all of these into one commit | PRs 0-3 landed + audit done | large in total, unknown per-piece until audited | unknown until audited — don't guess a table entry here |
+| **4. Remaining sections** (player position, item classification `:1128`, TutorialParam, native grace suppression, overlay control API, kill indicators) | Second-pass audit first (see Ground truth above), THEN scope exact PR boundaries — do not batch all of these into one commit | PRs 0-3 landed + audit done | large in total, unknown per-piece until audited | unknown until audited — don't guess a table entry here |
 
 Land 0→1→2→3 in order (0 is a hard prerequisite for 1 and 2). PR 4 gets its own scoping pass —
 same discipline as this plan's own Ground-truth section — before any code moves.
