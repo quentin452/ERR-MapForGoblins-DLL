@@ -37,6 +37,7 @@
 #include "input/input_shared.hpp"                     // goblin::input::menu_open()
 #include "input/input_directinput.hpp"                // goblin::input::install_directinput_hooks()
 #include "input/input_gamepad.hpp"                    // goblin::input::install_xinput_hook() etc.
+#include "input/input_cursor.hpp"                     // goblin::input::install_cursor_hooks() etc.
 
 #include <vector>
 #include <map>
@@ -155,25 +156,14 @@ namespace
     ResizeBuffersFn o_resize_buffers = nullptr;
     ExecuteCommandListsFn o_execute_command_lists = nullptr;
 
-    // user32 cursor calls — the game recenters/clips the cursor every frame for
-    // raw-input mouse-look. We neutralise them while the menu is open so the OS
-    // cursor can move freely over the panel.
-    using SetCursorPosFn = BOOL(WINAPI *)(int, int);
-    using ClipCursorFn = BOOL(WINAPI *)(const RECT *);
-    SetCursorPosFn o_set_cursor_pos = nullptr;
-    ClipCursorFn o_clip_cursor = nullptr;
+    // Cursor hooks (SetCursorPos/ClipCursor/GetCursorPos) moved to src/input/input_cursor.cpp
+    // (goblin::input::install_cursor_hooks() / set_cursor_pos_real() / clip_cursor_real() /
+    // get_cursor_pos_real() / set_imgui_reading_cursor()) — third slice of
+    // docs/plans/input_module_refactor_plan.md.
 
     // XInputGetState hook moved to src/input/input_gamepad.cpp (goblin::input::
     // install_xinput_hook() / xinput_available() / xinput_get_state_real()) — second slice
     // of docs/plans/input_module_refactor_plan.md.
-
-    // The 2D world map cursor follows the absolute OS cursor via GetCursorPos
-    // (a different path from the 3D camera's DirectInput). We can't freeze it
-    // globally — ImGui needs the real position. So return a frozen position to
-    // the GAME, the real one to ImGui (flag set only around ImGui's NewFrame).
-    using GetCursorPosFn = BOOL(WINAPI *)(LPPOINT);
-    GetCursorPosFn o_get_cursor_pos = nullptr;
-    bool g_imgui_reading_cursor = false;
 
     // Raw input — ER reads gameplay keyboard/mouse here (not via window
     // messages), so we neutralise it while the menu is open to fully disable
@@ -233,16 +223,8 @@ namespace
     // screen-centre with no hover/click/move at all -- these counters tell us whether ER's mouse
     // capture even reaches the user32 exports we hook (0 calls while ER clearly captures the mouse =
     // it's bypassing user32 entirely, e.g. native Wayland pointer-lock or a win32u-only path).
-    std::atomic<unsigned> g_diag_set_cursor_pos{0};
-    // Separate counter for the live [DIAG] on-screen readout (config::debugCursorDiagnostic) —
-    // NOT the same one [CURSORDIAG] resets every ~1s in dump-to-log, so reading/resetting this
-    // one every frame doesn't starve that log's own accounting.
-    std::atomic<unsigned> g_diag_set_cursor_pos_live{0};
-    std::atomic<int> g_diag_last_set_cursor_pos_x{-1};
-    std::atomic<int> g_diag_last_set_cursor_pos_y{-1};
-    std::atomic<bool> g_diag_set_cursor_pos_swallowed{false};
-    std::atomic<unsigned> g_diag_clip_cursor{0};
-    std::atomic<unsigned> g_diag_get_cursor_pos{0};
+    // (The 3 cursor-hook counters moved to src/input/input_cursor.cpp's diag_*_exchange()
+    // accessors along with their owning hooks — only the raw-input pair stays here.)
     std::atomic<unsigned> g_diag_get_raw_input_data{0};
     std::atomic<unsigned> g_diag_get_raw_input_buffer{0};
     // [KBDIAG] dx-bugs 2026-07-01 followup: <user> reports the keyboard can lose the "hook"
@@ -1380,56 +1362,8 @@ namespace
         g_atlas_ready = true;
     }
 
-    // ── Cursor hooks (free the OS cursor while the menu is open) ──────────
-    BOOL WINAPI hk_set_cursor_pos(int x, int y)
-    {
-        g_diag_set_cursor_pos.fetch_add(1, std::memory_order_relaxed);
-        g_diag_set_cursor_pos_live.fetch_add(1, std::memory_order_relaxed);
-        g_diag_last_set_cursor_pos_x.store(x, std::memory_order_relaxed);
-        g_diag_last_set_cursor_pos_y.store(y, std::memory_order_relaxed);
-        if (g_show)
-        {
-            g_diag_set_cursor_pos_swallowed.store(true, std::memory_order_relaxed);
-            return TRUE;                    // swallow the game's recenter-to-middle
-        }
-        g_diag_set_cursor_pos_swallowed.store(false, std::memory_order_relaxed);
-        return o_set_cursor_pos(x, y);
-    }
-    BOOL WINAPI hk_clip_cursor(const RECT *rc)
-    {
-        g_diag_clip_cursor.fetch_add(1, std::memory_order_relaxed);
-        if (g_show) return o_clip_cursor(nullptr);   // unclip while menu is up
-        return o_clip_cursor(rc);
-    }
-
-    BOOL WINAPI hk_get_cursor_pos(LPPOINT p)
-    {
-        g_diag_get_cursor_pos.fetch_add(1, std::memory_order_relaxed);
-        BOOL r = o_get_cursor_pos(p);
-        // Freeze the cursor the GAME sees while the menu is open (so the 2D map
-        // stops following it). ImGui's own NewFrame read gets the real position.
-        // Report the SCREEN CENTRE (not the open-time point): the map pans on
-        // (cursor - centre) delta, so a static off-centre point = a constant
-        // non-zero delta = the map drifts forever (softlock). Centre = zero
-        // delta = no pan.
-        if (g_show && !g_imgui_reading_cursor && p)
-        {
-            p->x = GetSystemMetrics(SM_CXSCREEN) / 2;
-            p->y = GetSystemMetrics(SM_CYSCREEN) / 2;
-            // ER drives the 2D map camera off GetCursorPos. While a search-locate / page-switch is in
-            // flight, jitter the reported cursor ±1px (net zero) so the game keeps STEPPING its map
-            // (the per-frame c32f0 step, where our locate reticle-write + page switch apply) with the F1
-            // panel still open. 1px = no drift. (Centring itself is driven on the game thread via the
-            // c32f0 reticle-target write, not from this cursor position.)
-            if (g_nav_frames.load(std::memory_order_relaxed) > 0)
-            {
-                static int s_cjit = 0;
-                s_cjit ^= 1;
-                p->x += s_cjit ? 1 : -1;
-            }
-        }
-        return r;
-    }
+    // Cursor hooks (hk_set_cursor_pos/hk_clip_cursor/hk_get_cursor_pos) moved to
+    // src/input/input_cursor.cpp — third slice of docs/plans/input_module_refactor_plan.md.
 
     UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size,
                                       UINT hdr)
@@ -1853,7 +1787,7 @@ namespace
         // OS cursor in client/backbuffer px for marker tooltips (the map cursor tracks it).
         float mx = -1.f, my = -1.f;
         POINT pt{};
-        BOOL ok = o_get_cursor_pos ? o_get_cursor_pos(&pt) : GetCursorPos(&pt);
+        BOOL ok = goblin::input::get_cursor_pos_real(&pt);
         if (ok && g_hwnd && ScreenToClient(g_hwnd, &pt)) { mx = (float)pt.x; my = (float)pt.y; }
         // Hand the renderer the harvested grace sprite (once ready) so it draws graces itself.
         if (ensure_grace_srv())
@@ -3579,7 +3513,7 @@ namespace
         // hooked SetCursorPos so it round-trips the same path as everything else touching the cursor.
         auto recenter_cursor_to_window = [&]()
         {
-            if (!o_set_cursor_pos || !g_hwnd) return;
+            if (!g_hwnd) return;
             RECT rc;
             if (!GetClientRect(g_hwnd, &rc)) return;
             POINT c{(rc.left + rc.right) / 2, (rc.top + rc.bottom) / 2};
@@ -3591,7 +3525,7 @@ namespace
             // an infinite recenter-every-frame loop that pins the cursor and locks out the mouse
             // entirely. Consumed once in hk_wndproc, not just skipped here.
             g_ignore_next_mousemove_for_gamepad_flag = true;
-            o_set_cursor_pos(c.x, c.y);
+            goblin::input::set_cursor_pos_real(c.x, c.y);
         };
 
         if (goblin::input::xinput_available())
@@ -3759,7 +3693,7 @@ namespace
         // lost (the cursor then belongs to the other window; clipping it into the background game
         // window would trap it there).
         static bool s_prev_show = false;
-        if (s_prev_show && !g_show && fg && o_clip_cursor && g_hwnd)
+        if (s_prev_show && !g_show && fg && goblin::input::clip_cursor_hooked() && g_hwnd)
         {
             RECT rc;
             if (GetClientRect(g_hwnd, &rc))
@@ -3768,7 +3702,7 @@ namespace
                 ClientToScreen(g_hwnd, &tl);
                 ClientToScreen(g_hwnd, &br);
                 RECT screen{tl.x, tl.y, br.x, br.y};
-                o_clip_cursor(&screen); // ORIGINAL ClipCursor (g_show already false here)
+                goblin::input::clip_cursor_real(&screen); // ORIGINAL ClipCursor (g_show already false here)
             }
         }
         s_prev_show = g_show;
@@ -3813,10 +3747,10 @@ namespace
             // present.overlay_total − Σ(those children) is UNLABELLED our-code (a benchmarking hole).
             GOBLIN_BENCH_QUIET("present.overlay_total");
             try_upload_atlas();   // one-time; needs the captured command queue
-            g_imgui_reading_cursor = true;   // let ImGui's NewFrame see the real cursor
+            goblin::input::set_imgui_reading_cursor(true);   // let ImGui's NewFrame see the real cursor
             ImGui_ImplDX12_NewFrame();
             ImGui_ImplWin32_NewFrame();
-            g_imgui_reading_cursor = false;
+            goblin::input::set_imgui_reading_cursor(false);
 
             // Mouse BUTTONS via polling, not window messages. ER reads input through Raw Input
             // (RIDEV_NOLEGACY under newer wine/Proton), so WM_LBUTTONDOWN/UP are never posted to our
@@ -3855,9 +3789,9 @@ namespace
                 if (fgw && g_hwnd)
                 {
                     POINT pt;
-                    g_imgui_reading_cursor = true;
+                    goblin::input::set_imgui_reading_cursor(true);
                     const BOOL gotPos = ::GetCursorPos(&pt);
-                    g_imgui_reading_cursor = false;
+                    goblin::input::set_imgui_reading_cursor(false);
                     if (gotPos && ::ScreenToClient(g_hwnd, &pt))
                     {
                         io.AddMousePosEvent(static_cast<float>(pt.x), static_cast<float>(pt.y));
@@ -3892,8 +3826,10 @@ namespace
                     s_diag_last = now;
                     spdlog::info("[CURSORDIAG] hooks/sec: set_cursor_pos={} clip_cursor={} get_cursor_pos={} "
                                  "raw_input_data={} raw_input_buffer={}",
-                                 g_diag_set_cursor_pos.exchange(0), g_diag_clip_cursor.exchange(0),
-                                 g_diag_get_cursor_pos.exchange(0), g_diag_get_raw_input_data.exchange(0),
+                                 goblin::input::diag_set_cursor_pos_exchange(),
+                                 goblin::input::diag_clip_cursor_exchange(),
+                                 goblin::input::diag_get_cursor_pos_exchange(),
+                                 g_diag_get_raw_input_data.exchange(0),
                                  g_diag_get_raw_input_buffer.exchange(0));
                     // [KBDIAG] dx-bugs 2026-07-01 followup: <user> — keyboard loses the "hook" while
                     // typing in the search bar, WITHOUT any Alt+Tab. `wm_char`/`wm_keydown` = raw
@@ -3957,10 +3893,10 @@ namespace
                               g_virtual_cursor_x.load(std::memory_order_relaxed),
                               g_virtual_cursor_y.load(std::memory_order_relaxed),
                               g_has_focus.load(std::memory_order_relaxed), diagIo.WantCaptureMouse,
-                              g_diag_set_cursor_pos_live.exchange(0, std::memory_order_relaxed),
-                              g_diag_last_set_cursor_pos_x.load(std::memory_order_relaxed),
-                              g_diag_last_set_cursor_pos_y.load(std::memory_order_relaxed),
-                              g_diag_set_cursor_pos_swallowed.load(std::memory_order_relaxed));
+                              goblin::input::diag_set_cursor_pos_live_exchange(),
+                              goblin::input::diag_last_set_cursor_pos_x(),
+                              goblin::input::diag_last_set_cursor_pos_y(),
+                              goblin::input::diag_set_cursor_pos_swallowed());
                 diagDl->AddText(ImVec2(10, 10), IM_COL32(255, 255, 255, 255), diagBuf);
             }
             // Draw ImGui's software cursor ONLY while the F1 panel is up AND the world map is CLOSED.
@@ -4132,6 +4068,7 @@ namespace
 }
 
 bool goblin::input::menu_open() { return g_show; }
+int goblin::input::nav_frames_active() { return g_nav_frames.load(std::memory_order_relaxed); }
 
 void goblin::overlay::initialize()
 {
@@ -4162,17 +4099,15 @@ void goblin::overlay::initialize()
     MH_EnableHook(resize_addr);
     MH_EnableHook(eclist_addr);
 
-    // Cursor hooks (user32) — let the OS cursor move freely over the menu by
-    // neutralising the game's per-frame recenter/clip while the panel is open.
+    // Cursor hooks (SetCursorPos/ClipCursor/GetCursorPos) — extracted to
+    // src/input/input_cursor.cpp (docs/plans/input_module_refactor_plan.md).
+    goblin::input::install_cursor_hooks();
+
+    // Raw input (user32) — GetRawInputData/GetRawInputBuffer. Neutralised while the menu is
+    // open, same idea as the cursor hooks above (not yet extracted — still shares this file's
+    // g_diag_get_raw_input_data/buffer + accumulate_virtual_cursor).
     if (HMODULE u32 = GetModuleHandleW(L"user32.dll"))
     {
-        // Install + LOG each user32 hook. A silent failure here is the suspected cause of the
-        // "click the search box → it never focuses" bug on some launches: if SetCursorPos or
-        // GetCursorPos fails to hook (e.g. another mod / the Steam overlay trampolined user32
-        // first, or a MinHook race), the game's per-frame recenter-to-middle is NOT swallowed →
-        // ImGui_ImplWin32_NewFrame reads the cursor at screen centre → every click lands at the
-        // centre, never on the InputText. The GetCursorPos + SetCursorPos lines are the ones to
-        // watch in the log on a "bad" launch.
         auto hook_u32 = [&](const char *name, void *detour, void **orig) {
             void *tgt = reinterpret_cast<void *>(GetProcAddress(u32, name));
             if (!tgt) { spdlog::error("[OVERLAY] user32!{} not found — hook skipped", name); return; }
@@ -4185,16 +4120,10 @@ void goblin::overlay::initialize()
             else
                 spdlog::info("[OVERLAY] user32!{} hook installed", name);
         };
-        hook_u32("SetCursorPos", reinterpret_cast<void *>(&hk_set_cursor_pos),
-                 reinterpret_cast<void **>(&o_set_cursor_pos));
-        hook_u32("ClipCursor", reinterpret_cast<void *>(&hk_clip_cursor),
-                 reinterpret_cast<void **>(&o_clip_cursor));
         hook_u32("GetRawInputData", reinterpret_cast<void *>(&hk_get_raw_input_data),
                  reinterpret_cast<void **>(&o_get_raw_input_data));
         hook_u32("GetRawInputBuffer", reinterpret_cast<void *>(&hk_get_raw_input_buffer),
                  reinterpret_cast<void **>(&o_get_raw_input_buffer));
-        hook_u32("GetCursorPos", reinterpret_cast<void *>(&hk_get_cursor_pos),
-                 reinterpret_cast<void **>(&o_get_cursor_pos));
     }
 
     // XInputGetState (dx-bugs-backlog PR C / PR C-2) — extracted to

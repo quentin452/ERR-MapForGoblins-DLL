@@ -12,4 +12,9 @@ namespace goblin::input
 // internal g_show). Input hooks use this to decide whether to blank the game's view of a
 // device.
 bool menu_open();
+
+// > 0 while an item-search locate/page-switch is in flight (mirrors goblin_overlay.cpp's
+// internal g_nav_frames) — hooks that would otherwise fully blank the game's input jitter a
+// net-zero 1px instead, so the game keeps stepping its world-map camera with the panel open.
+int nav_frames_active();
 } // namespace goblin::input
