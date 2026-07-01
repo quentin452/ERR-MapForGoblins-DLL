@@ -2324,6 +2324,13 @@ namespace
                     if (map_open)
                         ImGui::TextDisabled("%zu match%s (ringed on map; click = pan map onto it)",
                                             s_hits.size(), s_hits.size() == 1 ? "" : "es");
+                    else if (goblin::config::showMinimap)
+                        // <user> 2026-07-01: this used to always say "open the world map to
+                        // locate them" even with the minimap on — wrong, the minimap already
+                        // rings a hit (including off-range ones, clamped to the HUD edge).
+                        ImGui::TextColored(ImVec4(0.6f, 0.9f, 0.6f, 1.f),
+                                           "%zu match%s (ringed on the minimap)",
+                                           s_hits.size(), s_hits.size() == 1 ? "" : "es");
                     else
                         ImGui::TextColored(ImVec4(1.f, 0.85f, 0.2f, 1.f),
                                            "%zu match%s - open the world map to locate them",
