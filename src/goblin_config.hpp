@@ -203,6 +203,13 @@ namespace goblin
         // zoomed (no restart needed). Same-aspect only. Default off.
         extern bool fixMidsessionResolution;
 
+        // [BENCH] logging gates (goblin_bench.hpp). Independent — both true by default (matches
+        // prior behavior unchanged); set both false to silence [BENCH] entirely. Does NOT affect
+        // [BENCH][SPIKE] lag-hitch warnings, which always fire regardless (anomaly alert, not
+        // routine noise).
+        extern bool benchLogIndividual;  // per-call "[BENCH] label: X ms" lines
+        extern bool benchLogSession;     // the "[BENCH] SESSION REPORT" dump at detach
+
         // Dev RE tool (offset source-of-truth): embedded find-what-accesses filtered to
         // eldenring.exe. Arms a HW breakpoint on a live param row+offset (probeFieldSpec =
         // "ParamName:rowId:offset[:len[:rw]]") and logs [FWA] the game's own access site,
