@@ -96,6 +96,22 @@ metadata:
   bug: Kalé is NOT in the hand table (runtime-only), so a hand-table nameId join misses him; keying on
   vetted flag VALUES is the correct signal. New Marker field `quest_concluded_flag` (LAST member) carries
   the flag for the live read; `tip_quest="Auto-detected quest"` marks a fallback pin for marker_label.
+- **PIN PLACEMENT — prefer base-overworld (fixed the "Blaidd underground / garbage pan" bug 2026-07-01,
+  live-confirmed via `[QUESTNPC-PIN]` log).** A quest NPC's runtime group often has STRAY underground/DLC
+  c-model instances besides its real spot (Blaidd concluded=3603 has a Nokstella `m12_02` copy `12020720`
+  AND his Mistwood overworld `1045370700`). The pin picker took the first placement with a position →
+  landed Blaidd on the UG page at a garbage coord (search showed "Blaidd ... Underground [quest]", locate
+  panned bottom-left). FIX: the disk worker now PREFERS a base-overworld placement (`g_entity_pos` group 0)
+  and only uses UG/DLC as fallback (a genuinely-underground NPC with no overworld placement, e.g. Deeproot
+  Fia 4123 / D 4063, correctly stays UG). Diagnostic log `[QUESTNPC-PIN] N pins: X overworld, Y underground,
+  Z dlc` + one `OFF-OW concluded=.. pin=.. grp=.. pos=..` per off-overworld pin surfaces future mis-pins;
+  after the fix Blaidd left the OFF-OW list (46→48 overworld). NOTE: the offline `emevd_js/err` JS corpus
+  did NOT list the m12 Blaidd instance under 3603, but the RUNTIME binary-emevd parse DID — trust the
+  runtime `[QUESTNPC-PIN]` log over the offline JS grep for pin-placement questions.
+- **SEARCH `[quest]` BADGE (goblin_overlay.cpp item search).** The Hit struct gained `bool quest`; the
+  build loop records keys `(name_id<<2|page)` that have ≥1 `WorldQuestNPC` marker (`quest_keys`), OR'd
+  across markers; the row renders `[quest]` (like `[undiscovered]`). Lets the player spot which search hit
+  is a quest pin without clicking each. Category compared to `Category::WorldQuestNPC`.
 - **KNOWN GAP (not done, decided against):** boss-handler NPCs (`90005860`, e.g. Gurranq) are NOT
   extracted — 90005860 is EVERY boss's reward handler (Margit/Godrick/...), so parsing it would flood the
   quest pins with all field bosses. Needs a different quest-vs-plain-boss signal. `parse_emevd_quest_npcs`

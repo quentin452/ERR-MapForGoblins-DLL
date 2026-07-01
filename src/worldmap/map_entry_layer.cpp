@@ -1877,13 +1877,19 @@ void build_buckets_impl()
             {
                 if (q.concluded == 0 || q.concluded >= 100000u) { ++filtered; continue; } // 10-digit = entity-death variant
                 QuestFallbackNpc n;
+                int pinGrp = -1;
                 for (uint32_t e : q.entities)
                 {
-                    // PIN at the first placement that has a world position (g_entity_pos, built just
-                    // above from disk enemies+assets). Position is REQUIRED; a name is best-effort —
-                    // decoupled so a quest NPC whose placement is an asset (not a named enemy, e.g.
-                    // Blaidd-class) still pins, just unnamed ("Quest NPC").
-                    if (!n.pinEntity && g_entity_pos.count(e)) n.pinEntity = e;
+                    // PIN at a placement that has a world position (g_entity_pos, built just above from
+                    // disk enemies+assets). Position is REQUIRED; a name is best-effort (decoupled so an
+                    // asset-placed NPC still pins, just unnamed). PREFER a base-overworld placement
+                    // (group 0): a quest NPC often has stray underground/DLC c-model instances (Blaidd
+                    // has a Nokstella copy besides his Mistwood spot) — picking the first-any landed the
+                    // pin on the wrong page at a garbage spot. Overworld wins; UG/DLC only as fallback.
+                    auto pit = g_entity_pos.find(e);
+                    if (pit != g_entity_pos.end() &&
+                        (n.pinEntity == 0 || (pit->second.group == 0 && pinGrp != 0)))
+                    { n.pinEntity = e; pinGrp = pit->second.group; }
                     auto it = ent2param.find(e);  // NAME source: a named disk enemy at this placement
                     if (it != ent2param.end() && it->second &&
                         std::find(n.npcParamIds.begin(), n.npcParamIds.end(), it->second) == n.npcParamIds.end())
@@ -1898,6 +1904,23 @@ void build_buckets_impl()
             spdlog::info("[QUESTNPC] runtime: {} NPCs -> {} pinnable, {} flag-covered, {} filtered (10-digit), "
                          "{} no-position (extracted but no placement resolved; needs its MSB source)",
                          (int)qnpcs.size(), (int)cand.size(), covered, filtered, noPos);
+            // [QUESTNPC-PIN] diag: any pin landing OFF the base overworld (grp!=0) is suspect — the
+            // picked placement's map isn't where the NPC's quest is (e.g. an underground c-model
+            // instance). Logs the concluded flag + pinEntity so it cross-refs to the MSB index.
+            {
+                int g0 = 0, gUG = 0, gDLC = 0;
+                for (const QuestFallbackNpc &n : cand)
+                {
+                    auto it = g_entity_pos.find(n.pinEntity);
+                    int g = (it != g_entity_pos.end()) ? it->second.group : -1;
+                    if (g == 0) ++g0; else if (g & 1) ++gUG; else ++gDLC;
+                    if (g != 0 && it != g_entity_pos.end())
+                        spdlog::info("[QUESTNPC-PIN] OFF-OW concluded={} pin={} grp={} pos=({:.0f},{:.0f})",
+                                     n.concluded, n.pinEntity, g, it->second.wx, it->second.wz);
+                }
+                spdlog::info("[QUESTNPC-PIN] {} pins: {} overworld, {} underground, {} dlc",
+                             (int)cand.size(), g0, gUG, gDLC);
+            }
             set_quest_fallback_npcs(std::move(cand));
         }
         if (goblin::config::worldFeaturesFromDisk)

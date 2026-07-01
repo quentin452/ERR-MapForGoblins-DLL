@@ -2177,7 +2177,7 @@ namespace
                 // Overworld + Underground + DLC) gets a separate row per page, so clicking a row locates
                 // on THAT page. (Deduping by name_id alone collapsed them into one row carrying only the
                 // first marker's group — the "shows only Underground" bug.)
-                struct Hit { std::string label; int32_t name_id; int count; int group; };
+                struct Hit { std::string label; int32_t name_id; int count; int group; bool quest = false; };
                 static char item_q[64] = "";
                 static std::string s_last_q;
                 static std::unordered_set<int32_t> s_match;   // name_ids whose name matches (rendered ring)
@@ -2253,6 +2253,12 @@ namespace
                         // so each page an item is on becomes its own row. s_match stays keyed by name_id
                         // so EVERY instance still highlights/rings on the map.
                         std::map<int64_t, int> hit_count;  // (name_id<<2 | group) -> marker count
+                        // Keys (name<<2|page) that have at least ONE quest-NPC marker → badge the row
+                        // "[quest]" so the player can tell which search hit is a quest pin on the map
+                        // without clicking each one. OR'd across all markers of the key (a name_id could
+                        // appear as both a quest pin and something else).
+                        std::unordered_set<int64_t> quest_keys;
+                        const int questCat = static_cast<int>(goblin::generated::Category::WorldQuestNPC);
                         for (auto *L : overlay_layers())
                         {
                             if (!L) continue;
@@ -2289,12 +2295,17 @@ namespace
                                 // stack toggle — no per-stack adjustment needed.
                                 const bool first = (hit_count[k] == 0);
                                 hit_count[k] += 1;
+                                if (m.category == questCat) quest_keys.insert(k);
                                 if (first)
                                     s_hits.push_back({nm.label, m.name_id, 0, g});
                             }
                         }
                         for (auto &h : s_hits)
-                            h.count = hit_count[((int64_t)h.name_id << 2) | h.group];
+                        {
+                            const int64_t k = ((int64_t)h.name_id << 2) | h.group;
+                            h.count = hit_count[k];
+                            h.quest = quest_keys.count(k) != 0;
+                        }
                         // Group same-name rows together, pages in order (Overworld, Underground, DLC).
                         std::sort(s_hits.begin(), s_hits.end(), [](const Hit &a, const Hit &b) {
                             int c = a.label.compare(b.label);
@@ -2379,8 +2390,9 @@ namespace
                             const bool locked = map_open && (((h.group & 2) && !s_dlc_seen) ||
                                                              ((h.group & 1) && !s_ug_seen));
                             char row[200];
-                            std::snprintf(row, sizeof(row), "%s  (x%d) - %s%s##h%zu", h.label.c_str(),
+                            std::snprintf(row, sizeof(row), "%s  (x%d) - %s%s%s##h%zu", h.label.c_str(),
                                           h.count, page_label(h.group),
+                                          h.quest ? " [quest]" : "",
                                           locked ? " [undiscovered]" : "", i);
                             if (locked) ImGui::BeginDisabled();
                             if (ImGui::Selectable(row) && map_open)

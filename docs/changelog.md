@@ -25,6 +25,8 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **`[quest]` badge in the item search** — search results that correspond to a quest-NPC map pin now
+  show a `[quest]` tag, so you can tell which hit is the quest NPC on the map without clicking each one.
 - **All quest NPCs pinned (runtime, mod-agnostic)** — the map now pins EVERY quest NPC the active
   mod's EMEVD exposes (not just the 3 hand-authored ones), each resolved by a single
   `entity_world_pos(pinEntity)` lookup from the runtime extractor. The 3 authored NPCs
