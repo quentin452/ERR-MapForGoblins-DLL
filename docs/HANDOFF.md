@@ -9,6 +9,52 @@ INI-clamp bug fix, and a grace-icon auto-scale fix) also MERGED to master — se
 below for that arc; the original Alt+Tab root-cause recap (3 sessions down) covers the FIRST round,
 merged separately earlier.)
 
+## Session recap (2026-07-01) — MapGenie coverage RE: FULLY DISCHARGED (Part A + Tiers 2/3/4 verified)
+
+- Started executing `docs/re/windows_mapgenie_category_coverage_re_prompt.md` (verify-only, no impl
+  ahead of `generated_data_removal_plan.md` Phase B). Key method finding: params are baked verbatim
+  into `regulation.bin` and NOT streamed — reading it off disk via SoulsFormats is value-identical to
+  the live `from::params::get_param` path, so **no running game / memory attach needed** for any
+  param-based tier. New tool: `tools/verify_disablerespawn.py`.
+- **Part A(a) `WorldFarmableEnemy` = `NpcParam.disableRespawn` — VERIFIED, partially wrong.** `dr=1`
+  reliably = one-time/not-farmable (invaders, quest NPCs, prop dummies). But `dr=0` does NOT mean
+  farmable: the fog-gated main bosses (Rennala, Draconic Tree Sentinel, …) read `0` in BOTH vanilla
+  and ERR — their non-respawn is enforced by boss-defeat event flags, not this field. So the gate is
+  `dr==0 AND already-classified-non-boss` (reuse existing `WorldBosses` classification; do NOT rely on
+  `dr==1` to exclude bosses). Findings + citations: `docs/re/windows_mapgenie_category_coverage_re_findings.md`;
+  plan + Open-Q #2 updated in place.
+- **Part A(b) `WorldFarmableCollectible` = ItemLotParam flag — VERIFIED, field guess wrong.** Plan said
+  `getItemFlagId01/02/03`; actually the per-slot `01..08` fields are ALWAYS 0 (unused), and the
+  authoritative field is the single master `getItemFlagId` (already read live @ +0x80 in
+  `resolve_loot_flag`, `goblin_inject.cpp:4720`). Polarity: `==0` = farmable, `!=0` = tracked — but
+  nonzero≠one-time, some are *repeatable* (`flag_is_repeatable`, `:4679`). Gate:
+  `getItemFlagId==0 OR flag_is_repeatable(...)`. Zero new plumbing (field + helper already exist). Tool:
+  `tools/verify_farmable_collectible.py`. Both Part A items now done; findings + plan updated in place.
+- **Tier 2 `WorldMapPointParam.iconId` landmarks — VERIFIED, big finding.** The plan's Tier-2 "numbers"
+  were MapGenie pin-COUNTS, not iconIds. Real iconIds (stable vanilla↔ERR, `tools/verify_worldmap_iconids.py`):
+  Divine Tower=**23**, Evergaol=**9**, Minor Erdtree=**30**, Grand Lift=**21**; "Dungeon"=union of typed
+  icons {4 catacombs,13 caves,14 tunnels,16 hero graves,15 wells,230/231/234}; "Legacy Dungeon"=per-site
+  unique icons {50,51,55,56,58,59,60,61,66,210,211,213,218}. BUT ~half the requested categories are NOT
+  in WorldMapPointParam at all (Smithing Table, Martyr Effigy, Stone Cairn, Hidden Passage, Portal,
+  Wandering Mausoleum, Dragon Shrine, Landmark) — they're AEG/MSB interactables, summoning pools, dynamic
+  entities, or catch-alls → different source, must NOT be scoped as WMPP work. ERR only decorates the
+  point *text* (boss status); iconId itself unchanged → mod-agnostic. Findings + plan updated in place.
+- **Tier 3 `NpcParam` teamType/npcType — VERIFIED, hypothesis mostly collapses.** `teamType` is a
+  per-ROW combat allegiance (each NPC spans 3–6 teams across state rows), `npcType` is ~all-0 (==1 set is
+  4 named rows) — neither is a per-NPC category key. Only clean signal: **Ghost = invader = teamType∈
+  {24,27} ∧ nameId>0 = the ALREADY-SHIPPED WorldHostileNPC** (`goblin_inject.hpp:360`), no new work. The
+  other 5 need non-teamType sources: Merchant→ShopLineupParam, Character→existing QuestNpcLayer,
+  Trainer→1 hand-ID'd NPC, Elite Enemy/Enemy→`datamine_enemy_notability.py`. Tool:
+  `tools/verify_npc_teamtype.py`.
+- **Tier 4 — INVESTIGATED (no tool needed).** Lore (6) + Miscellaneous (9) are MapGenie "Other (guide
+  annotations)" = human editorial pins with NO game-data source; the only source (MapGenie) is rejected
+  (ToS + coord-space). Recommend dropping as permanently-uncovered. Quest (7) already covered (mod draws
+  73 Quest-Progression + 7 Seedbed-Curses + 71 runtime QuestNpcLayer pins). No code.
+- **RE BRIEF DISCHARGED.** All tiers turned from hypothesis → cited fact; every correct mechanism already
+  exists in shipped code. Implementation still gated on `generated_data_removal_plan.md` Phase B (plan's
+  sequencing). Findings doc has the full per-tier writeup + an "Overall status" summary; plan + all 3
+  Open-Questions updated in place. 4 `tools/verify_*.py` added.
+
 ## Session recap (2026-07-01) — minimap branch: cursor tracking rebuilt (4 rounds), F32 INI clamp bug fixed, grace auto-scale
 
 - **Cursor tracking — round 2 of the Alt+Tab saga, much longer this time.** After the first
