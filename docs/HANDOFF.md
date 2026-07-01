@@ -2,10 +2,13 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01t (`feat/inject-tutorial-popup` PR 4b of the goblin_inject.cpp
-god-file split — IN-GAME CONFIRMED via log check, ready to merge — see directly below. Earlier
-same day: PR 4a (world-position) IN-GAME CONFIRMED + MERGED (a crash occurred that session but is a known
-pre-existing bug, NOT a regression); PR 3 (section-visibility) IN-GAME CONFIRMED + MERGED; PR 2
+Last updated: 2026-07-01u (`feat/inject-grace-suppression` branch: PR 4c of the goblin_inject.cpp
+god-file split — native grace-pin suppression extracted, builds clean, deployed + md5-verified,
+NOT YET in-game log-checked. This is the LAST planned extraction PR — only 4d (intentional
+stay-behind) remains after this merges — see directly below. Earlier same day: PR 4b
+(tutorial-popup) IN-GAME CONFIRMED + MERGED; PR 4a (world-position) IN-GAME CONFIRMED + MERGED (a
+crash occurred that session but is a known pre-existing bug, NOT a regression); PR 3
+(section-visibility) IN-GAME CONFIRMED + MERGED; PR 2
 (item-classify) IN-GAME CONFIRMED + MERGED; PR 1 (icon-harvest) IN-GAME CONFIRMED +
 MERGED; PR 0 — MERGED, in-game confirmed via log check; Phase A regen DONE on the Windows box
 (parallel session) — all 4 profiles now MAP_ENTRY_COUNT 0,
@@ -16,7 +19,27 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01t) — `feat/inject-tutorial-popup` PR 4b IN-GAME CONFIRMED, ready to merge
+## RESUME HERE (2026-07-01u) — `feat/inject-grace-suppression` PR 4c built+deployed, needs in-game log check
+
+Branch `feat/inject-grace-suppression` (forked from `master` after PR 0-3+4a+4b merged),
+implementing PR 4c — **the LAST planned extraction PR of this whole plan.** Extracted the native
+WarpPinData builder log hook + the DRAW-ONLY SetTo suppression hook (RE e4b3f6a /
+windows_grace_warppin_teleport_re_findings.md §4) into new `src/goblin_grace_suppression.cpp`
+(`:152-297`, ~146 lines). Already known-independent since before PR 3's audit; a fresh file-wide
+grep confirmed zero coupling to anything else in `goblin_inject.cpp` — cleanest PR of the whole
+plan, first-try clean build (no missing-include fixes needed, unlike every prior PR). Public entry
+point (`install_grace_suppression_hook`, called from `dllmain.cpp`) unchanged, facade kept. Builds
+clean via clang-cl+xwin, deployed to `~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll`
+(md5-verified, prior DLL backed up as `.bak-pre-grace-suppression`) — **game wasn't running at
+deploy time, so NOT yet in-game log-checked** (same check as prior PRs: fresh `NEW SESSION` +
+`[SIG]` PASS + no crash; look for `[WARPPIN]` log lines to confirm the moved hooks installed and
+fired). Next: launch ERR, check logs, then merge to `master` — **after this merges,
+`goblin_inject.cpp` reaches its final PR-4d resting state** (~260 lines: `orp_flag_set` event-flag
+hub + `menu_auto_toggle_loop` + save/reset/toast subsystem + kill-indicators — intentional
+permanent glue, not a gap). `goblin_inject.cpp` is now 419 lines, down from the original 5266
+across this whole plan (PRs 0-4c combined).
+
+## OLDER RESUME (2026-07-01t) — `feat/inject-tutorial-popup` PR 4b IN-GAME CONFIRMED, MERGED
 
 Branch `feat/inject-tutorial-popup` (forked from `master` after PR 0-3+4a merged), implementing
 PR 4b. Extracted the WorldMapPointParam readiness probe, TutorialParam row injection (F10 banner
