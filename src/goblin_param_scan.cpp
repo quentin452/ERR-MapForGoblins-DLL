@@ -217,25 +217,31 @@ void emevd_scan_file(const std::filesystem::path &p, int &hit_lines)
             if (argOff < 0 || argLen < 4 || argLen > 0x10000) continue;
             const size_t a = (size_t)argsOff + (size_t)argOff;
             if (!inb(a, (size_t)argLen)) continue;
-            // Round-2 harvest: any init (2000[0]) of a known prompt template — log its
-            // full u32 args (the entities). 1030 = the common lift event (3×
-            // IfActionButton ABP 5010 in its body, found round 1).
-            if (bank == 2000 && id == 0 && argLen >= 8)
+            // Round-3 harvest: inits of known prompt templates, BOTH opcodes —
+            // 2000[0] InitializeEvent(slot@0, eventId@4, args@8...) and
+            // 2000[6] InitializeCommonEvent(eventId@0, args@4...) (round 2 showed
+            // the lifts do NOT come in via 2000[0]; 1030's only [0]-init is
+            // common.emevd's own with arg 0). 1030 = common lift event (3×
+            // IfActionButton ABP 5010); 1042582000 = the generic (ABP, entity)
+            // prompt template Roundtable's smithing init revealed.
+            if (bank == 2000 && (id == 0 || id == 6) && argLen >= 8)
             {
-                const uint32_t initEventId = [&] { uint32_t v; std::memcpy(&v, buf + a + 4, 4); return v; }();
-                static constexpr uint32_t kHarvestTemplates[] = {1030};
+                const uint64_t idOff = (id == 0) ? 4 : 0;
+                const uint64_t argsStart = idOff + 4;
+                const uint32_t initEventId = [&] { uint32_t v; std::memcpy(&v, buf + a + idOff, 4); return v; }();
+                static constexpr uint32_t kHarvestTemplates[] = {1030, 1042582000};
                 for (uint32_t ht : kHarvestTemplates)
                     if (initEventId == ht && hit_lines++ < 120)
                     {
                         std::string args;
-                        for (uint64_t o = 8; o + 4 <= argLen && o < 8 + 8 * 4; o += 4)
+                        for (uint64_t o = argsStart; o + 4 <= argLen && o < argsStart + 8 * 4; o += 4)
                         {
                             uint32_t v;
                             std::memcpy(&v, buf + a + o, 4);
                             args += " " + std::to_string(v);
                         }
-                        spdlog::info("[EMEVDSCAN] {} INIT of template {}: args{}",
-                                     p.filename().string(), initEventId, args);
+                        spdlog::info("[EMEVDSCAN] {} 2000[{}] INIT of template {}: args{}",
+                                     p.filename().string(), id, initEventId, args);
                     }
             }
             for (uint64_t off = 0; off + 4 <= argLen; off++)
