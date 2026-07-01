@@ -105,12 +105,13 @@ shipped:
 - Original count list (reference): Character — 127 · Ghost — 57 · Merchant — 43 · Trainer — 1 ·
   Elite Enemy — 184 · Enemy — 82
 
-**Tier 4 — unresolved / cross-plan, do not start blind:**
-- Lore — 6, Miscellaneous — 9: no hypothesis yet, needs its own short investigation pass before scoping.
-- Quest (steps) — 7: **don't implement here** — this is very likely what
-  `docs/plans/feat_quests_implementation_plan.md`'s `QuestNpcLayer` already produces once that plan lands
-  (per-step markers for the active quest step). Check after that plan ships whether this MapGenie category
-  is already satisfied before writing new code for it.
+**Tier 4 — INVESTIGATED 2026-07-01 (see findings doc). Verdict: not RE-able / already covered.**
+- **Lore — 6, Miscellaneous — 9: NO game-data source — do not scope as RE work.** Both are MapGenie
+  "Other (guide annotations)" = human editorial pins, not derived from any param/MSB/EMEVD field. The
+  only source (MapGenie's content) is explicitly rejected (ToS/scraping + MapGenie-space coords, see
+  `quest-browser.md`). Recommend dropping from the coverage target as permanently-uncovered wiki notes.
+- **Quest (steps) — 7: ALREADY COVERED, no new code.** The mod already draws Quest-Progression (73) +
+  Seedbed-Curses (7) + the runtime `QuestNpcLayer` (71 NPCs, live-verified). MapGenie's 7 are a subset.
 
 ## Open questions before implementation starts
 

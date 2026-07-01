@@ -199,4 +199,49 @@ Merchant, Trainer, Elite Enemy, Enemy). It does not — **neither field is a sta
 **Confidence:** HIGH. The negative (teamType/npcType are not category keys) is direct from the data;
 the positive (Ghost=invader) is already shipped and cross-validated live in production code.
 
-## Tier 4 — Lore / Miscellaneous / Quest — PENDING (Quest = spot-check only)
+## Tier 4 — Lore / Miscellaneous / Quest — INVESTIGATED (Lore+Misc: no game-data source; Quest: already covered)
+
+Short pass only (prompt forbids implementation here). Source: `docs/coverage_vs_mapgenie.md`.
+
+**Lore (6) and Miscellaneous (9) — NO in-game data source exists; HYPOTHESIS = not implementable
+mod-agnostically.** Both are classified in the coverage doc under **"Other (guide annotations)"** — they
+are MapGenie *editorial* pins (a human wiki editor dropped a marker and wrote a note), not derived from
+any param/MSB/EMEVD field. There is nothing in the game files that says "this point is Lore". The only
+source is MapGenie's own annotation content, and that is explicitly OFF-LIMITS per
+`docs/memory/features/quest-browser.md`: "MapGenie rejected as the step/location source: proprietary
+commercial data (ToS forbids scraping) + its coords are MapGenie-space not ER-space." ⇒ Recommend these
+two stay permanently uncovered (drop from the coverage target as "wiki annotation, no game data"), not
+scoped as RE work. 15 pins total.
+
+**Quest (steps) (7) — ALREADY COVERED; confirm, do not implement (matches prompt).** The mod already
+draws its own quest content well beyond MapGenie's 7: `docs/coverage_vs_mapgenie.md` lists
+**Quest - Progression = 73** and **Quest - Seedbed Curses = 7** as mod-drawn categories, plus the
+runtime `QuestNpcLayer` pins **71 quest NPCs** (mod-agnostic EMEVD extractor, live-verified on ERR
+v2.2.9.6 — `docs/memory/features/quest-browser.md`). MapGenie's "Quest (steps) — 7" is a small editorial
+subset of this (the count even matches the 7 Seedbed Curses exactly, a plausible identity though not the
+load-bearing claim). Belief HOLDS: no new code needed for MapGenie Quest — the mod's quest coverage
+(150+ markers + browser) already exceeds it.
+
+_Note: MapGenie's "Stone Cairn (5)" is also an "Other (guide annotations)" location and was already
+covered under Tier 2(B) as a non-WorldMapPointParam interactable._
+
+**Confidence:** HIGH for the negative (Lore/Misc have no game-data source — direct from the taxonomy
+grouping + the documented MapGenie-source rejection). Quest = confirmed-already-covered.
+
+---
+
+## Overall status — RE brief DISCHARGED
+
+All tiers verified against real disk data (vanilla + ERR), every plan hypothesis was wrong or imprecise
+but the correct mechanism in each case already exists in shipped code:
+- **A(a)** `disableRespawn`: gate = `dr==0 AND non-boss` (not `dr==1`=boss).
+- **A(b)** farmable collectible: single master `getItemFlagId==0 OR flag_is_repeatable` (not the 01/02/03
+  slots), already read at `resolve_loot_flag`.
+- **Tier 2** landmarks: iconId key for the named-location subset (Divine Tower 23 / Evergaol 9 / Minor
+  Erdtree 30 / Grand Lift 21 / Dungeon & Legacy sets); the rest aren't WorldMapPointParam.
+- **Tier 3** NPCs: only Ghost=invader is param-clean (= existing `WorldHostileNPC`); the other 5 need
+  ShopLineupParam / QuestNpcLayer / notability-datamine.
+- **Tier 4** Lore/Misc: no game-data source (MapGenie editorial); Quest already covered.
+
+Implementation remains gated on `generated_data_removal_plan.md` Phase B (per the plan's sequencing) —
+this pass only turned hypotheses into cited facts so that Phase-B implementation is copy-paste-confident.

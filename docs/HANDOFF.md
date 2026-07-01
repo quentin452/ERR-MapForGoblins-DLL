@@ -9,7 +9,7 @@ INI-clamp bug fix, and a grace-icon auto-scale fix) also MERGED to master — se
 below for that arc; the original Alt+Tab root-cause recap (3 sessions down) covers the FIRST round,
 merged separately earlier.)
 
-## Session recap (2026-07-01) — MapGenie coverage RE: Part A(a)+A(b)+Tier 2+Tier 3 verified (Tier 4 left)
+## Session recap (2026-07-01) — MapGenie coverage RE: FULLY DISCHARGED (Part A + Tiers 2/3/4 verified)
 
 - Started executing `docs/re/windows_mapgenie_category_coverage_re_prompt.md` (verify-only, no impl
   ahead of `generated_data_removal_plan.md` Phase B). Key method finding: params are baked verbatim
@@ -45,9 +45,15 @@ merged separately earlier.)
   {24,27} ∧ nameId>0 = the ALREADY-SHIPPED WorldHostileNPC** (`goblin_inject.hpp:360`), no new work. The
   other 5 need non-teamType sources: Merchant→ShopLineupParam, Character→existing QuestNpcLayer,
   Trainer→1 hand-ID'd NPC, Elite Enemy/Enemy→`datamine_enemy_notability.py`. Tool:
-  `tools/verify_npc_teamtype.py`. Findings + plan + Open-Q #1 updated.
-- **NEXT (same prompt):** Tier 4 — Lore (6) / Miscellaneous (9) short hypothesis pass +
-  Quest (7) spot-check vs QuestNpcLayer (do NOT implement). Then the RE brief is fully discharged.
+  `tools/verify_npc_teamtype.py`.
+- **Tier 4 — INVESTIGATED (no tool needed).** Lore (6) + Miscellaneous (9) are MapGenie "Other (guide
+  annotations)" = human editorial pins with NO game-data source; the only source (MapGenie) is rejected
+  (ToS + coord-space). Recommend dropping as permanently-uncovered. Quest (7) already covered (mod draws
+  73 Quest-Progression + 7 Seedbed-Curses + 71 runtime QuestNpcLayer pins). No code.
+- **RE BRIEF DISCHARGED.** All tiers turned from hypothesis → cited fact; every correct mechanism already
+  exists in shipped code. Implementation still gated on `generated_data_removal_plan.md` Phase B (plan's
+  sequencing). Findings doc has the full per-tier writeup + an "Overall status" summary; plan + all 3
+  Open-Questions updated in place. 4 `tools/verify_*.py` added.
 
 ## Session recap (2026-07-01) — minimap branch: cursor tracking rebuilt (4 rounds), F32 INI clamp bug fixed, grace auto-scale
 
