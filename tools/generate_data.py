@@ -261,19 +261,13 @@ def generate_name_aliases_en_cpp(output_path):
 
 
 def main():
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--massedit-dir", type=str, default=None,
-                        help="Path to MASSEDIT directory (default: data/massedit)")
-    args = parser.parse_args()
-
+    # NOTE: this generator no longer reads any MASSEDIT input. The marker bake
+    # was retired (generate_map_data_cpp writes an unconditional empty stub), so
+    # the old --massedit-dir arg is gone; the real outputs (category_exceptions,
+    # name_aliases, legacy_conv) are built from JSON tables, not .MASSEDIT.
     script_dir = Path(__file__).parent
     project_dir = script_dir.parent
 
-    if args.massedit_dir:
-        massedit_dir = Path(args.massedit_dir)
-    else:
-        massedit_dir = project_dir / "data" / "massedit"
     import config
     output_dir = config.GENERATED_DIR  # src/generated or src/generated_vanilla
 
