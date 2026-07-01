@@ -15,6 +15,7 @@ or `docs/memory/`.)
 | [spatial_grid_opti_plan.md](spatial_grid_opti_plan.md) — spatial grid: clustering + viewport-cull perf | DONE (both halves merged; full persistent-grid step deemed unnecessary by measurement) |
 | [loot_item_count_plan.md](loot_item_count_plan.md) — loot undercount fix + ×N stacking | DONE 2026-06-30, runtime-confirmed |
 | [loot_name_native_getmessage_refactor_plan.md](loot_name_native_getmessage_refactor_plan.md) — native GetMessage → kill FMG slot-walk + #ifdef MFG_VANILLA | refactor landed + ERR-verified + dead-code cleanup landed; vanilla+DLC verify open |
-| [generated_data_removal_plan.md](generated_data_removal_plan.md) — remove the per-profile map-data bake (`generated_*`) | not started |
+| [baked_data_full_removal_plan.md](baked_data_full_removal_plan.md) — replace ALL baked data with the runtime/disk path (subsumes the map-data-bake plan as Phase 0) | scoped, not started |
+| [generated_data_removal_plan.md](generated_data_removal_plan.md) — remove the per-profile map-data bake (`generated_*`) | not started (= Phase 0 of the full-removal plan) |
 | [mapgenie_category_coverage_plan.md](mapgenie_category_coverage_plan.md) — 31 missing MapGenie categories + 2 custom respawn categories | scoped; depends on generated_data_removal_plan Phase B |
 | [input_module_refactor_plan.md](input_module_refactor_plan.md) — extract input hooks (mouse/kb/gamepad/raw/DirectInput) out of `goblin_overlay.cpp` into `src/input/` | scoped, not started; motivated by the 2026-07-01 keyboard-input bug needing yet another hand-threaded counter |
