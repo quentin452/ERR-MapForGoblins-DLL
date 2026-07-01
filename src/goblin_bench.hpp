@@ -28,6 +28,17 @@
 
 #include <spdlog/spdlog.h>
 
+namespace goblin::config
+{
+    // Forward-declared (not #include "goblin_config.hpp") to keep this header's dependency
+    // light, matching its own "no heavy macros" design note above. Independent gates: both
+    // default true (matches pre-existing behavior unchanged); set both false to silence [BENCH]
+    // entirely. [BENCH][SPIKE] lag-hitch warnings are NOT gated by either — those are anomaly
+    // alerts, not routine noise, and fire even for quiet timers by design (see ScopedTimer).
+    extern bool benchLogIndividual;  // per-call "[BENCH] label: X ms" lines
+    extern bool benchLogSession;     // the "[BENCH] SESSION REPORT" dump at detach
+}
+
 namespace goblin::bench
 {
     // ---- Lag-spike detection -------------------------------------------------
@@ -116,6 +127,8 @@ namespace goblin::bench
         // Dump a sorted (by total time desc) report. Safe to call once at detach.
         void dump_report()
         {
+            if (!goblin::config::benchLogSession)
+                return;
             std::lock_guard<std::mutex> lk(mu_);
             if (stats_.empty())
                 return;
@@ -177,7 +190,7 @@ namespace goblin::bench
                 // hitch lands in the log, timestamped, right next to whatever triggered it.
                 spdlog::warn("[BENCH][SPIKE] {}: {:.2f} ms (~{:.0f}x its {:.2f} ms avg) — frame hitch",
                              label_, ms, r.over, (r.over > 0.0 ? ms / r.over : ms));
-            else if (!quiet_)
+            else if (!quiet_ && goblin::config::benchLogIndividual)
                 spdlog::info("[BENCH] {}: {:.2f} ms", label_, ms);
         }
 

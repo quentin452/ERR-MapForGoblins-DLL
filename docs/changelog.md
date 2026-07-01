@@ -25,6 +25,11 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **`[BENCH]` logging gates** — two new independent INI settings, `bench_log_individual` and
+  `bench_log_session` (both default `true`, matching prior behavior). Turn either off to keep
+  only the per-call timing lines or only the end-of-session summary table; turn both off to
+  silence `[BENCH]` entirely. Does not affect `[BENCH][SPIKE]` lag-hitch warnings, which always
+  fire regardless (anomaly alert, not routine noise).
 - **On-screen keyboard for gamepad text entry** — the item search, category filter, and quest NPC
   filter fields each get a "Kbd" button opening a popup keyboard (Alphabetical or QWERTY, pick in
   settings) built from ordinary buttons, so ImGui's existing gamepad nav drives it for free. Also
