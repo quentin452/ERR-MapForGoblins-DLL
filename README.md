@@ -114,7 +114,6 @@ MapForGoblins/
 │   ├── generated/          Auto-generated data (from Python pipeline)
 │   ├── from/               Game engine structures (params, paramdefs)
 │   └── goblin/             Mod-specific headers (structs, flags, tiles)
-├── tracker/                RunePieceTracker - standalone piece tracking DLL
 ├── data/
 │   ├── massedit_generated/ MASSEDIT files (auto-generated map icon definitions)
 │   └── *.json, *.csv       Extracted game data (items, entity index, EMEVD map, ...)
@@ -124,8 +123,6 @@ MapForGoblins/
 │   └── fmg_patcher/        C++ tool for FMG binary patching
 ├── assets/                 Modified game assets (worldmap GFX)
 ├── docs/                   Technical documentation
-│   ├── KNOWLEDGE_EN.md     Knowledge base (English)
-│   ├── KNOWLEDGE_RU.md     Knowledge base (Russian)
 │   └── geom_collection_tracking.md  Geom object collection detection
 ├── CMakeLists.txt
 ├── build.bat
@@ -135,7 +132,6 @@ MapForGoblins/
 
 ## Documentation
 
-- [Knowledge Base (EN)](docs/KNOWLEDGE_EN.md) / [База знаний (RU)](docs/KNOWLEDGE_RU.md) - DLL architecture, data formats, research notes
 - [Geom Collection Tracking](docs/geom_collection_tracking.md) - how collected Rune Pieces are detected from process memory
 - [Tools README](tools/README.md) - Python script documentation and usage
 
