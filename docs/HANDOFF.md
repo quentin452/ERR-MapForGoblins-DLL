@@ -2,10 +2,10 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01u (`feat/inject-grace-suppression` branch: PR 4c of the goblin_inject.cpp
-god-file split — native grace-pin suppression extracted, builds clean, deployed + md5-verified,
-NOT YET in-game log-checked. This is the LAST planned extraction PR — only 4d (intentional
-stay-behind) remains after this merges — see directly below. Earlier same day: PR 4b
+Last updated: 2026-07-01v (`feat/inject-grace-suppression` PR 4c of the goblin_inject.cpp
+god-file split — IN-GAME CONFIRMED + MERGED. This was the LAST planned extraction PR — the whole
+goblin_inject_refactor_plan is now COMPLETE (only 4d, an intentional non-PR stay-behind, remains)
+— see directly below. Earlier same day: PR 4b
 (tutorial-popup) IN-GAME CONFIRMED + MERGED; PR 4a (world-position) IN-GAME CONFIRMED + MERGED (a
 crash occurred that session but is a known pre-existing bug, NOT a regression); PR 3
 (section-visibility) IN-GAME CONFIRMED + MERGED; PR 2
@@ -19,7 +19,7 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01u) — `feat/inject-grace-suppression` PR 4c built+deployed, needs in-game log check
+## RESUME HERE (2026-07-01v) — `feat/inject-grace-suppression` PR 4c IN-GAME CONFIRMED + MERGED — goblin_inject.cpp refactor plan COMPLETE
 
 Branch `feat/inject-grace-suppression` (forked from `master` after PR 0-3+4a+4b merged),
 implementing PR 4c — **the LAST planned extraction PR of this whole plan.** Extracted the native
@@ -30,14 +30,16 @@ grep confirmed zero coupling to anything else in `goblin_inject.cpp` — cleanes
 plan, first-try clean build (no missing-include fixes needed, unlike every prior PR). Public entry
 point (`install_grace_suppression_hook`, called from `dllmain.cpp`) unchanged, facade kept. Builds
 clean via clang-cl+xwin, deployed to `~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll`
-(md5-verified, prior DLL backed up as `.bak-pre-grace-suppression`) — **game wasn't running at
-deploy time, so NOT yet in-game log-checked** (same check as prior PRs: fresh `NEW SESSION` +
-`[SIG]` PASS + no crash; look for `[WARPPIN]` log lines to confirm the moved hooks installed and
-fired). Next: launch ERR, check logs, then merge to `master` — **after this merges,
-`goblin_inject.cpp` reaches its final PR-4d resting state** (~260 lines: `orp_flag_set` event-flag
-hub + `menu_auto_toggle_loop` + save/reset/toast subsystem + kill-indicators — intentional
-permanent glue, not a gap). `goblin_inject.cpp` is now 419 lines, down from the original 5266
-across this whole plan (PRs 0-4c combined).
+(md5-verified, prior DLL backed up as `.bak-pre-grace-suppression`). **IN-GAME CONFIRMED
+2026-07-01 20:22 via log check**: fresh `NEW SESSION`, `[SIG]` 29/29 PASS, `[WARPPIN] WarpPinData
+builder hooked` + `[WARPPIN] SetTo hooked` (both moved hooks installed), 20+ `[WARPPIN] build ...`
+lines firing with correct state/iconId data live, no error/exception. Same known pre-existing
+unrelated `eldenring.exe` crash fired again (identical `+0x1EB9999` offset) — not a regression.
+**PR 4c is done, verified, and MERGED to `master`. This was the LAST planned extraction PR — the
+goblin_inject_refactor_plan is now COMPLETE** except for 4d, which is not a PR (intentional
+permanent stay-behind: `orp_flag_set` event-flag hub + `menu_auto_toggle_loop` + save/reset/toast
+subsystem + kill-indicators, ~260 lines). `goblin_inject.cpp` is now 419 lines, down from the
+original 5266 across PRs 0-4c.
 
 ## OLDER RESUME (2026-07-01t) — `feat/inject-tutorial-popup` PR 4b IN-GAME CONFIRMED, MERGED
 
