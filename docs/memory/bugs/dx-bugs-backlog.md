@@ -14,13 +14,16 @@ Backlog DX + bugs relevé par <user> le 2026-06-28 (à traiter plus tard, pas en
    confirmed. Original report kept below.
    **Icônes quasi-invisibles pour certaines couleurs (BUG SYSTÉMIQUE)** — ex. "Doigt racorni de sans éclat" (Withered Dappled Finger?) et "Stake of Marika". ⚠️ PRÉCISION <user> : le bug apparaît AUSSI sur les icônes de l'atlas CPU, donc ce N'EST PAS spécifique au pipeline DDS disque — c'est systémique au rendu. Dans certaines configs de couleur, combinées avec la worldmap ER affichée derrière, certaines icônes deviennent quasi invisibles. DEUX cas distincts : (1) icône trop petite ; (2) couleur de l'icône qui se fond dans le décor de la map ER derrière (contraste insuffisant). → piste fix : outline/contour, halo/ombre portée, ou taille minimale garantie — pas un problème de crop rect ni de sampling DDS. Touche [[dvdbnd-packed-reader]] mais aussi tout le rendu marker.
 2. **Bug ER natif manette (DX upstream)** — quand on déplace le curseur à la souris puis qu'on repasse à la manette, ER devrait recentrer le curseur au milieu mais ne le fait pas. (Bug du jeu, pas le nôtre — DX à compenser éventuellement.) ➕ <user> veut aussi auto-switcher les hints de touche (manette/souris) selon le device actif → LIRE le flag "active input device" d'ER, cf. [[input-device-active-flag]] (= MÊME flag que le drift worldmap-manette ; recette CE memory-diff dans le brief RE).
-3. 🟡 **PARTIEL — FIXED 2026-07-01** (`feat/gamepad-toggle-cursor-recenter`, PR C, items 2/3/6) — combo
-   XInput configurable (défaut `Y+R3`) ouvre/ferme F1, edge-detected + foreground-gated comme la touche
-   clavier. Recorder en jeu (settings) pour changer le combo. Vérifié en jeu 2026-07-01. **Reste ouvert :**
-   une fois F1 ouvert, naviguer dans le panel (boutons/listes) et surtout **taper dans la search bar**
-   nécessite toujours souris/clavier — donc "jouer end-to-end uniquement à la manette" pas encore
-   atteint. Followup tracké : `docs/plans/dx_bugs_backlog_plan.md` PR C-2 (nav gamepad ImGui +
-   recherche texte). Original report ci-dessous.
+3. 🟡 **PARTIEL — FIXED** (PR C `feat/gamepad-toggle-cursor-recenter` 2026-07-01, PR C-2 part 1
+   `feat/gamepad-nav-input-isolation` 2026-07-01) — combo XInput configurable (défaut `Y+R3`)
+   ouvre/ferme F1 (PR C), ET navigation complète des widgets (boutons/checkboxes/listes) via D-pad/
+   stick + A/B, avec isolation d'input (le jeu ne reçoit RIEN de la manette tant que F1 est ouvert —
+   hook `XInputGetState`, voir PR C-2 part 1 dans `docs/plans/dx_bugs_backlog_plan.md`). Recorder en
+   jeu pour changer le combo, avec garde anti-lockout (rejette un combo à 1 seul bouton nav A/B/X/Y/
+   D-pad). Vérifié en jeu 2026-07-01. **Reste ouvert :** **taper dans la search bar** nécessite
+   toujours clavier (ImGui nav ne gère pas le texte libre) — donc "jouer end-to-end uniquement à la
+   manette" presque atteint, sauf la recherche texte. Followup tracké : PR C-2 part 2 dans
+   `docs/plans/dx_bugs_backlog_plan.md`. Original report ci-dessous.
    **Bug DX chez nous — F1 inaccessible à la manette** — impossible d'ouvrir les menus via F1 (équivalent manette). Donc impossible de jouer MapForGoblins end-to-end uniquement à la manette. → besoin d'un binding manette pour l'ouverture du menu.
 4. **Intégrer le mod "Pause in game" directement dans MapForGoblins** — une case en plus dans F1. Évite tout conflit de touche possible avec le mod externe.
 5. **Setting ImGui "pause à l'ouverture de F1"** — quand on ouvre F1 (manette ou clavier), proposer un setting pour choisir si le jeu se met en pause automatiquement à l'ouverture des settings MapForGoblins. Hypothèse DX : quand le menu F1 est ouvert on ne veut pas forcément jouer en même temps → peut-être meilleure DX qu'une simple case ImGui à long terme. Lié au point 4.
@@ -66,3 +69,16 @@ F2. **Locate/recherche ne recentre pas sur une cible dans le Fog of War.** Quand
     les slots 02-08 + toutes les quantités `lotItemNum01..08`. `Marker` n'a aucun champ count. Fix = lire
     les 8 slots + quantités → `Marker.count` → badge "×N" dans draw_marker. Plan détaillé :
     `docs/plans/loot_item_count_plan.md`. Fixable wiring, pas de donnée manquante. DEFERRED (fresh session).
+
+16. **Bug ER natif — zoom/dézoom stick droit parfois impossible** (relevé <user> 2026-07-01, pendant les
+    tests PR C-2). Parfois le zoom/dézoom de la caméra worldmap via le stick droit de la manette cesse de
+    répondre en jeu (bug natif ER, pas encore RE). Hypothèse <user> : hooker le zoom stick-droit
+    nous-mêmes pour contourner/fixer, similaire à l'item 2 (ER ne recentre pas le curseur nativement à la
+    manette — même famille de "bug ER qu'on compense depuis notre hook XInputGetState", PR C-2 part 1).
+    Pas encore investigué : repro exacte inconnue (systématique ? lié à un état du jeu — carte
+    ouverte/fermée, focus perdu ? lié au double-poll XInput maintenant que PR C-2 hook la fonction ?).
+    Vu qu'on hook déjà `XInputGetState` (`hk_xinput_get_state`, PR C-2 part 1), on a déjà le point
+    d'interception nécessaire si la fix passe par là — mais il faut D'ABORD confirmer la repro et la
+    cause avant de coder quoi que ce soit (pourrait être un bug ER pur, sans rapport avec notre hook, ou
+    au contraire une régression introduite PAR notre hook — à vérifier en premier : reproduit-il aussi
+    SANS le hook XInput, càd sur une build d'avant PR C-2 ?).

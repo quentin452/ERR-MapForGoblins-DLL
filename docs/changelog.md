@@ -33,6 +33,17 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   dependency). New in-menu "Record gamepad combo" button captures a held multi-button combo (on
   release, not on the first button pressed) and saves it to the ini immediately. dx-bugs-backlog
   PR C (items 2, 3, 6) — see `docs/plans/dx_bugs_backlog_plan.md`.
+- **Full gamepad navigation inside the F1 panel** — D-pad/left-stick moves widget focus, A/B
+  activate/cancel, using ImGui's own built-in gamepad-nav backend (`ImGuiConfigFlags_
+  NavEnableGamepad`, one line — the vendored Win32 backend already polls XInput for this). The
+  actual work: `XInputGetState` is polled, not message-based, so it can't be swallowed like mouse/
+  keyboard input while F1 is open — hooked it (MinHook, same idiom as the existing `SetCursorPos`/
+  `ClipCursor` hooks) so the game gets a connected-but-idle controller state while the panel has
+  nav focus, while ImGui's own nav (and our own poll) still see the real state. Also fixes the
+  combo recorder capturing the very button used to click it, and adds a guard against recording a
+  single nav-reserved button (A/B/X/Y/D-pad) as the toggle, which would otherwise close the panel
+  on every ordinary widget click. dx-bugs-backlog PR C-2 part 1 (item 3) — search-bar text entry is
+  a separate, not-yet-started follow-up (PR C-2 part 2).
 - **Off-page altitude badge** — the ▲/▼ altitude cue now also appears on map pages the player isn't on,
   referenced to the nearest grace in the marker's own area (the player's Y is in a different frame
   there). Grace-relative badges use a distinct tint (green above / teal below) vs the warm/cool

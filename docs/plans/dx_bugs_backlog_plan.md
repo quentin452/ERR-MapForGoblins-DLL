@@ -120,22 +120,42 @@ closed the panel mid-record — fixed by gating the toggle check on `!g_gamepad_
 
 ---
 
-## PR C-2 — Followup: full gamepad navigation inside the F1 panel (item 3, gap) — NOT STARTED
+## PR C-2 — Followup: full gamepad navigation inside the F1 panel (item 3, gap)
 
-Item 3 originally asked to "play MapForGoblins end-to-end on a gamepad only." PR C only covers
+Item 3 originally asked to "play MapForGoblins end-to-end on a gamepad only." PR C only covered
 opening/closing the panel (the toggle combo) — once open, buttons/checkboxes/lists and the item
-search bar still require a mouse/keyboard. Two distinct sub-problems:
+search bar still required a mouse/keyboard. Two distinct sub-problems:
 
-1. **Widget navigation (buttons, checkboxes, lists).** ImGui has a built-in gamepad nav mode
-   (`ImGuiConfigFlags_NavEnableGamepad` + `io.BackendFlags |= ImGuiBackendFlags_HasGamepad`, fed via
-   `ImGui::GetIO().AddKeyEvent(ImGuiKey_GamepadDpadUp/…/FaceDown, …)` each frame from the same
-   `XINPUT_STATE` the toggle poll in `hk_present` already reads — no second XInput read needed).
-   D-pad/left-stick to move focus, a face button to activate. Should compose cleanly with the
-   existing poll rather than duplicate it.
-2. **Search bar free-text entry.** ImGui's gamepad nav does NOT solve typing into `ImGui::InputText`
-   — that needs either an on-screen virtual keyboard (D-pad letter grid, most native-feeling but
-   more UI work) or falls back to requiring a keyboard for that one widget. Decide the approach
-   before implementing; likely its own small design pass rather than a drop-in.
+1. ✅ **DONE 2026-07-01** (`feat/gamepad-nav-input-isolation`) — **Widget navigation** (buttons,
+   checkboxes, lists). Turned out to be one line (`ImGuiConfigFlags_NavEnableGamepad`) since the
+   vendored ImGui Win32 backend already has its own built-in XInput gamepad-nav polling
+   (`ImGui_ImplWin32_UpdateGamepads`) — no hand-rolled button→`ImGuiKey` feed needed. The real work
+   was **input isolation**: XInput is polled, not message-based, so the game and ImGui's nav read
+   the same physical controller — hooked `XInputGetState` itself (MinHook, same idiom as the
+   existing `SetCursorPos`/`ClipCursor` hooks) so a caller inside our own module (ImGui, our own
+   poll) gets the real state while a caller outside it (the game) gets a connected-but-zeroed
+   `Gamepad` struct while F1 is open — real `dwPacketNumber` progression, not
+   `ERROR_DEVICE_NOT_CONNECTED` (that was tried first; it simulates an actual unplug and some games
+   back off / debounce reconnect-polling a "disconnected" slot, observed in testing as the
+   controller feeling unresponsive to the game for a bit after closing F1). Caller identity via
+   `_ReturnAddress()` + `goblin::self_module_range()` (new accessor, reusing
+   `g_self_base`/`g_self_end` already computed once in `goblin_crashdump.cpp` for crash triage).
+   In-game verified: nav highlight/D-pad/stick move focus, A/B activate/cancel, character does NOT
+   move/act while F1 open, normal controls restored on close.
+   **Bugs found + fixed during verification** (beyond the input-isolation design above):
+   - Recorder captured the very button used to CLICK "Record gamepad combo" via nav (A) as the
+     whole combo, before the user could press anything else — fixed with a "wait for full release
+     before listening" gate (`g_gamepad_combo_ready`), same pattern every rebind UI uses.
+   - **Single-nav-button combo lockout**: recording e.g. just `A` alone meant EVERY ordinary
+     button-click-via-nav (A = ImGui's Activate) also matched the toggle mask and closed F1 —
+     breaking normal menu use entirely, not just the recorder. Fixed by rejecting single-button
+     combos where that button is A/B/X/Y or a D-pad direction (ImGui-nav-reserved); multi-button
+     combos are unaffected. Also had to hand-fix one user's already-saved `overlay_toggle_gamepad =
+     A` back to the default in the ini (validation only guards new recordings).
+2. **NOT STARTED — Search bar free-text entry.** ImGui's gamepad nav does NOT solve typing into
+   `ImGui::InputText` — that needs either an on-screen virtual keyboard (D-pad letter grid, most
+   native-feeling but more UI work) or falls back to requiring a keyboard for that one widget.
+   Decide the approach before implementing; likely its own small design pass rather than a drop-in.
 
 Related but distinct: item 2's other ask (auto-switch on-screen key-hints between
 keyboard/gamepad icons based on the last-active input device) — `g_last_input_was_gamepad` from PR C

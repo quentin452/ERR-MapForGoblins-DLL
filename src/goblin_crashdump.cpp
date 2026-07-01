@@ -267,4 +267,9 @@ void install_crash_handler(const std::filesystem::path &dump_dir)
     // SetUnhandledExceptionFilter returns the prior filter; keep it to chain.
     g_prev_filter = SetUnhandledExceptionFilter(goblin_crash_filter);
 }
+
+std::pair<uintptr_t, uintptr_t> self_module_range()
+{
+    return {g_self_base, g_self_end};
+}
 } // namespace goblin

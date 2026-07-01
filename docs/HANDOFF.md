@@ -2,8 +2,47 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01 (dx-bugs-backlog PR C — gamepad toggle + cursor recenter — DONE, in-game
-verified, committed on `feat/gamepad-toggle-cursor-recenter`, NOT merged/pushed yet).
+Last updated: 2026-07-01 (dx-bugs-backlog PR C-2 part 1 — full gamepad widget nav + input isolation
+— DONE, in-game verified, committed on `feat/gamepad-nav-input-isolation`, about to merge to master).
+
+## Session recap (2026-07-01) — PR C-2 part 1: gamepad widget nav + input isolation — DONE, in-game verified
+
+- Done in parallel with a separate Windows RE agent working `feat/quest-npc-layer`, off master.
+  Follows directly from PR C (below) in the same session.
+- Implements dx-bugs-backlog item 3's remaining gap (widget navigation, not just the F1 toggle) —
+  `docs/plans/dx_bugs_backlog_plan.md` PR C-2 part 1, now marked DONE there. Turned out to be a
+  one-line flag (`ImGuiConfigFlags_NavEnableGamepad`): the vendored ImGui Win32 backend already
+  polls XInput and feeds `ImGuiKey_Gamepad*` every frame, no hand-rolled button mapping needed.
+- The real work was **input isolation**: XInput is polled, not message-based, so simply enabling
+  nav would let the game ALSO react to the same stick/buttons in the background (camera spin,
+  character actions) while browsing the menu. Fixed by hooking `XInputGetState` itself (MinHook,
+  same idiom as the existing `SetCursorPos`/`ClipCursor` hooks): a caller inside our own module
+  (ImGui's nav, our own PR C poll) gets the real state; a caller outside it (the game) gets a
+  connected-but-zeroed `Gamepad` struct while F1 is open. Caller identity via `_ReturnAddress()` +
+  a new `goblin::self_module_range()` accessor (reuses `g_self_base`/`g_self_end`, already computed
+  once in `goblin_crashdump.cpp` for crash triage — no second self-module lookup).
+- First attempt returned `ERROR_DEVICE_NOT_CONNECTED` to swallow — WRONG, found in testing: that
+  simulates an actual unplug, and games commonly back off / debounce reconnect-polling a
+  "disconnected" slot, felt as the controller being unresponsive to the game for a bit after
+  closing F1. Fixed to report SUCCESS with a real, advancing `dwPacketNumber` but a zeroed
+  `Gamepad` struct — connected, just nothing held; any button released while F1 was open is
+  delivered as a real release, so nothing can look "stuck held" once F1 closes.
+- In-game verified (user, 2026-07-01): nav highlight, D-pad/stick move focus, A/B activate/cancel,
+  character does NOT move/act while F1 open, normal controller behavior fully restored on close.
+- Two more bugs found + fixed live during verification: (1) the combo recorder captured the very
+  button used to click "Record gamepad combo" via nav (A) as the whole combo, before the user
+  could press their intended buttons — fixed with a "wait for full release before listening" gate;
+  (2) recording a SINGLE nav-reserved button (A/B/X/Y/D-pad) as the toggle meant every ordinary
+  button click via nav ALSO closed F1 (not just the recorder — reported as breaking normal menu use
+  entirely) — fixed by rejecting single-button combos where that button is nav-reserved. Also had
+  to hand-fix one already-saved bad `overlay_toggle_gamepad = A` back to default in the ini
+  (validation only guards NEW recordings, not what's already on disk).
+- New followup opened during this session (not investigated yet): sometimes the worldmap zoom via
+  the right stick stops responding — `docs/memory/bugs/dx-bugs-backlog.md` item 16. Unknown repro/
+  cause; **first thing to check is whether it reproduces on a pre-PR-C-2 build** (i.e. whether our
+  new `XInputGetState` hook is an unrelated pre-existing ER bug or a regression we introduced) —
+  do NOT assume it needs a code fix from us before that's confirmed.
+- Branch `feat/gamepad-nav-input-isolation` off master, committed — merging to master this session.
 
 ## Session recap (2026-07-01) — PR C: gamepad toggle + cursor recenter — DONE, in-game verified
 

@@ -12,6 +12,7 @@
 #define DIRECTINPUT_VERSION 0x0800
 #include <dinput.h>
 #include <Xinput.h>   // struct/constant defs only — XInputGetState resolved dynamically below, no link dep
+#include <intrin.h>   // _ReturnAddress() — caller-range check in hk_xinput_get_state
 
 #include <MinHook.h>
 #include <spdlog/spdlog.h>
@@ -21,6 +22,7 @@
 #include <backends/imgui_impl_win32.h>
 
 #include "goblin_inject.hpp"   // goblin::world_map_open()
+#include "goblin_crashdump.hpp"   // goblin::self_module_range() — XInputGetState hook caller check
 #include "goblin_worldmap_probe.hpp"   // get_live_view() for the marker prototype
 #include "goblin_map_data.hpp"         // generated::MAP_ENTRIES (graces for Phase 1)
 #include "worldmap/grace_layer.hpp"      // goblin::worldmap::GraceLayer
@@ -160,6 +162,12 @@ namespace
     SetCursorPosFn o_set_cursor_pos = nullptr;
     ClipCursorFn o_clip_cursor = nullptr;
 
+    // XInputGetState — hooked (PR C-2) so the game gets no controller input while F1 is open
+    // (ImGui's own gamepad nav needs the real state; see hk_xinput_get_state).
+    using XInputGetStateFn = DWORD(WINAPI *)(DWORD, XINPUT_STATE *);
+    XInputGetStateFn o_xinput_get_state = nullptr;
+    bool g_xinput_available = false;
+
     // The 2D world map cursor follows the absolute OS cursor via GetCursorPos
     // (a different path from the 3D camera's DirectInput). We can't freeze it
     // globally — ImGui needs the real position. So return a frozen position to
@@ -237,6 +245,8 @@ namespace
     bool g_prev_gamepad_toggle_down = false;
     bool g_last_input_was_gamepad = false;   // cleared on mouse/kb msgs in hk_wndproc
     bool g_gamepad_combo_recording = false;  // armed by the settings "Record gamepad combo" button
+    bool g_gamepad_combo_ready = false;      // false = still waiting for the arming press to release
+    std::string g_gamepad_combo_reject_reason;   // non-empty = last recording attempt was rejected, shown in settings
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -1202,6 +1212,32 @@ namespace
         return o_clip_cursor(rc);
     }
 
+    // XInputGetState is polled, not message-based, so unlike mouse/keyboard it can't be
+    // swallowed via hk_wndproc — the game and ImGui's own gamepad-nav backend read the SAME
+    // physical controller state. While F1 is open: a caller inside OUR OWN module (ImGui's
+    // vendored backend, or our own toggle/recenter poll if it ever goes through this entry
+    // point) gets the real data; a caller outside it (the game) gets a REAL, CONNECTED result
+    // with the Gamepad struct zeroed. NOT ERROR_DEVICE_NOT_CONNECTED: that simulates an actual
+    // unplug, and games commonly back off / debounce reconnect-polling a "disconnected" slot —
+    // reported in testing as the controller feeling unresponsive to the game for a bit after
+    // closing F1. Reporting SUCCESS with zeroed buttons/sticks each poll also means any button
+    // released while F1 was open is delivered as a real release (dwPacketNumber still advances
+    // from the real state), so nothing can look "stuck held" once F1 closes — same class of bug
+    // already fixed for keyboard releases in hk_wndproc (never swallow an UP/release).
+    DWORD WINAPI hk_xinput_get_state(DWORD user_index, XINPUT_STATE *state)
+    {
+        const DWORD result = o_xinput_get_state(user_index, state);
+        if (result == ERROR_SUCCESS && g_show && state)
+        {
+            const auto [self_base, self_end] = goblin::self_module_range();
+            const uintptr_t ret = reinterpret_cast<uintptr_t>(_ReturnAddress());
+            const bool caller_is_us = self_base && ret >= self_base && ret < self_end;
+            if (!caller_is_us)
+                state->Gamepad = {};   // connected, real packet number, but nothing held
+        }
+        return result;
+    }
+
     BOOL WINAPI hk_get_cursor_pos(LPPOINT p)
     {
         g_diag_get_cursor_pos.fetch_add(1, std::memory_order_relaxed);
@@ -1464,6 +1500,12 @@ namespace
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         ImGui::GetIO().IniFilename = nullptr;   // no imgui.ini on disk
+        // Widget navigation via gamepad (dx-bugs-backlog PR C-2). The vendored Win32 backend
+        // already polls XInput and feeds ImGuiKey_Gamepad* every frame (ImGui_ImplWin32_
+        // UpdateGamepads, called unconditionally from NewFrame) — this flag is the only line
+        // needed to turn that into actual focus/highlight navigation. See the XInputGetState
+        // hook below for why the game doesn't ALSO react to the same stick/button input.
+        ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 
         // Fonts: ImGui's default (ProggyClean) only has Latin-1 glyphs (0x20-0xFF), so any
         // char beyond — œ (U+0153) in French item names, em-dash, Cyrillic, Greek — renders
@@ -2152,15 +2194,22 @@ namespace
             ImGui::SameLine();
             if (g_gamepad_combo_recording)
             {
-                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Press buttons now…");
+                // Two phases: first wait for the button that ARMED recording (e.g. gamepad-nav A
+                // on this very widget) to fully release, THEN start listening — otherwise that
+                // same activating press gets captured as the whole combo.
+                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f),
+                                    g_gamepad_combo_ready ? "Press buttons now…" : "Release all buttons…");
             }
             else if (ImGui::SmallButton("Record gamepad combo"))
             {
                 g_gamepad_combo_recording = true;
+                g_gamepad_combo_reject_reason.clear();
             }
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Click, then press the button combo on your controller (default Y+R3).\n"
                                   "The first combo read is captured and saved to the ini immediately.");
+            if (!g_gamepad_combo_reject_reason.empty())
+                ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "%s", g_gamepad_combo_reject_reason.c_str());
 
             // Overlay marker scale (live preview; persists via "Save to INI"). Final
             // size = resolution-relative base × master × per-type scale.
@@ -3125,24 +3174,10 @@ namespace
 
         // Gamepad support (dx-bugs-backlog PR C, items 2/3/6): combo toggle + cursor recenter.
         // XInput has no window messages, so — like the keyboard key above — it must be polled
-        // here every frame rather than driven off hk_wndproc.
-        using XInputGetStateFn = DWORD(WINAPI *)(DWORD, XINPUT_STATE *);
-        static bool s_xinput_tried = false;
-        static XInputGetStateFn s_xinput_get_state = nullptr;
-        if (!s_xinput_tried)
-        {
-            s_xinput_tried = true;
-            for (const char *dll : {"xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"})
-            {
-                if (HMODULE h = LoadLibraryA(dll))
-                {
-                    s_xinput_get_state = reinterpret_cast<XInputGetStateFn>(GetProcAddress(h, "XInputGetState"));
-                    if (s_xinput_get_state) { spdlog::info("[OVERLAY] XInput loaded: {}", dll); break; }
-                }
-            }
-            if (!s_xinput_get_state)
-                spdlog::warn("[OVERLAY] No XInput DLL found — gamepad toggle/recenter disabled");
-        }
+        // here every frame rather than driven off hk_wndproc. Loaded + hooked once in
+        // goblin::overlay::initialize() (g_xinput_available / o_xinput_get_state); always read
+        // through the trampoline here so our own poll sees real data even while F1 is open (the
+        // hook only swallows callers OUTSIDE our module — see hk_xinput_get_state).
 
         // Shared cursor-recenter (items 2 + 6): center of the game window client rect, via the
         // hooked SetCursorPos so it round-trips the same path as everything else touching the cursor.
@@ -3156,14 +3191,14 @@ namespace
             o_set_cursor_pos(c.x, c.y);
         };
 
-        if (s_xinput_get_state)
+        if (g_xinput_available)
         {
             WORD combined = 0;
             bool active = false;
             for (DWORD i = 0; i < 4; ++i)
             {
                 XINPUT_STATE state{};
-                if (s_xinput_get_state(i, &state) != ERROR_SUCCESS) continue;
+                if (o_xinput_get_state(i, &state) != ERROR_SUCCESS) continue;
                 const auto &pad = state.Gamepad;
                 combined |= pad.wButtons;
                 if (pad.wButtons != 0
@@ -3190,23 +3225,52 @@ namespace
             // another while held (e.g. Y then R3 while still holding Y) all count — capture the
             // UNION of everything held during the press, and finalize on release (not on the
             // first single button), so a multi-button combo has time to actually form.
+            // Gate: with gamepad nav (PR C-2), the SAME button press that activates the
+            // "Record gamepad combo" button via ImGui nav (A) is still physically held the
+            // instant we arm — without waiting for a full release first, that click was itself
+            // getting captured as the combo ("A"), before the user could press anything else.
             static WORD s_record_union = 0;
             if (g_gamepad_combo_recording)
             {
-                if (combined != 0)
+                if (!g_gamepad_combo_ready)
+                {
+                    if (combined == 0) g_gamepad_combo_ready = true;  // activating press fully released
+                }
+                else if (combined != 0)
                     s_record_union |= combined;
                 else if (s_record_union != 0)
                 {
-                    goblin::config::overlayToggleGamepad = s_record_union;
-                    g_gamepad_combo_recording = false;
-                    goblin::save_all_bool_settings(goblin::config_ini_path());
-                    spdlog::info("[OVERLAY] Gamepad combo recorded: {}", goblin::mask_to_combo_string(s_record_union));
-                    s_record_union = 0;
+                    // Reject a combo that's a SINGLE ImGui-nav-reserved button (A/B/X/Y or a
+                    // D-pad direction): those alone drive normal widget interaction/navigation
+                    // (A = Activate, etc.), so using just one of them as the toggle means every
+                    // ordinary button click ALSO closes F1 — precisely the "pressed A to click
+                    // Record, closed the menu instead" bug. Multi-button combos are fine even if
+                    // they include one of these; only a lone nav button is rejected.
+                    constexpr WORD NAV_RESERVED = 0x1000 /*A*/ | 0x2000 /*B*/ | 0x4000 /*X*/ | 0x8000 /*Y*/
+                                                  | 0x0001 /*Up*/ | 0x0002 /*Down*/ | 0x0004 /*Left*/ | 0x0008 /*Right*/;
+                    const bool is_single_button = (s_record_union & (s_record_union - 1)) == 0;
+                    if (is_single_button && (s_record_union & NAV_RESERVED))
+                    {
+                        g_gamepad_combo_recording = false;
+                        g_gamepad_combo_reject_reason = "Can't use " + goblin::mask_to_combo_string(s_record_union)
+                                                         + " alone — it's needed for menu navigation. "
+                                                           "Add a second button (e.g. +LB/RB/L3/R3/Back/Start).";
+                        spdlog::warn("[OVERLAY] Gamepad combo rejected (single nav button): {}",
+                                     goblin::mask_to_combo_string(s_record_union));
+                    }
+                    else
+                    {
+                        goblin::config::overlayToggleGamepad = s_record_union;
+                        g_gamepad_combo_recording = false;
+                        goblin::save_all_bool_settings(goblin::config_ini_path());
+                        spdlog::info("[OVERLAY] Gamepad combo recorded: {}", goblin::mask_to_combo_string(s_record_union));
+                    }
                 }
             }
             else
             {
-                s_record_union = 0;  // reset so a freshly-armed recording starts clean
+                s_record_union = 0;          // reset so a freshly-armed recording starts clean
+                g_gamepad_combo_ready = false;
             }
 
             // Item 2: recenter the cursor the instant input switches from mouse/kb to pad — ER
@@ -3563,6 +3627,40 @@ void goblin::overlay::initialize()
                  reinterpret_cast<void **>(&o_get_raw_input_buffer));
         hook_u32("GetCursorPos", reinterpret_cast<void *>(&hk_get_cursor_pos),
                  reinterpret_cast<void **>(&o_get_cursor_pos));
+    }
+
+    // XInputGetState (dx-bugs-backlog PR C / PR C-2): resolved dynamically (no static link dep),
+    // then hooked so the game gets no controller input while F1 is open — see hk_xinput_get_state.
+    // Same load order PR C's original poll used: newest-to-oldest so a system that only has the
+    // older redistributable still works.
+    {
+        XInputGetStateFn raw = nullptr;
+        for (const char *dll : {"xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"})
+        {
+            if (HMODULE h = LoadLibraryA(dll))
+            {
+                raw = reinterpret_cast<XInputGetStateFn>(GetProcAddress(h, "XInputGetState"));
+                if (raw) { spdlog::info("[OVERLAY] XInput loaded: {}", dll); break; }
+            }
+        }
+        if (!raw)
+            spdlog::warn("[OVERLAY] No XInput DLL found — gamepad toggle/recenter/nav disabled");
+        else
+        {
+            MH_STATUS cs = MH_CreateHook(reinterpret_cast<void *>(raw),
+                                          reinterpret_cast<void *>(&hk_xinput_get_state),
+                                          reinterpret_cast<void **>(&o_xinput_get_state));
+            MH_STATUS es = (cs == MH_OK) ? MH_EnableHook(reinterpret_cast<void *>(raw)) : cs;
+            if (cs != MH_OK || es != MH_OK)
+                spdlog::error("[OVERLAY] XInputGetState HOOK FAILED (create={}, enable={}) — "
+                              "gamepad toggle/recenter/nav disabled",
+                              MH_StatusToString(cs), MH_StatusToString(es));
+            else
+            {
+                g_xinput_available = true;
+                spdlog::info("[OVERLAY] XInputGetState hook installed");
+            }
+        }
     }
 
     // DirectInput8 mouse/keyboard hook (ER's primary input path). Resolve the
