@@ -263,7 +263,16 @@ namespace
     std::atomic<int> g_nav_frames{0};
     bool g_user_show = false;    // F1 master open/close (works anywhere = the menu keybind)
     bool g_large = true;         // false = compact widget, true = full panel
-    bool g_prev_toggle_down = false;
+    // Debounce for the VK_F1 toggle READ itself (dx-bugs 2026-07-01 "after Alt+Tab, can't click
+    // in F1" followup — [FOCUSDIAG] showed the SAME repeated-g_show-flapping-with-no-focus-event
+    // signature already found+fixed for the gamepad combo below, but on a session that already
+    // has that fix — so either the user is mashing F1 out of frustration at the click bug, or
+    // this GetAsyncKeyState poll has an analogous glitch. Debounce is cheap insurance either way
+    // (2 frames, ~33ms, not perceptible as a real press); the [TOGGLEDIAG] log on commit (see the
+    // two commit sites below) tells them apart definitively next time it happens.
+    int g_toggle_kb_streak = 0;
+    bool g_toggle_kb_armed = true;
+    static constexpr int kToggleKbDebounceFrames = 2;
     // Debounce for the gamepad toggle-combo READ itself (dx-bugs 2026-07-01 "search bar loses
     // keyboard, no alt-tab" followup). [KBDIAG]/[FOCUSDIAG] logs showed g_show flapping 4+ MORE
     // times after a single WM_SETFOCUS with NO further focus message in between — meaning
@@ -3338,8 +3347,20 @@ namespace
         // the poll was flapping during Alt+Tab under Wine and breaking input on refocus.
         const bool fg = g_hwnd && g_has_focus.load(std::memory_order_relaxed);
         bool down = fg && (GetAsyncKeyState(static_cast<int>(goblin::config::overlayToggleKey)) & 0x8000) != 0;
-        if (down && !g_prev_toggle_down) g_user_show = !g_user_show;
-        g_prev_toggle_down = down;
+        if (down)
+        {
+            if (++g_toggle_kb_streak >= kToggleKbDebounceFrames && g_toggle_kb_armed)
+            {
+                g_user_show = !g_user_show;
+                g_toggle_kb_armed = false;
+                spdlog::info("[TOGGLEDIAG] KEYBOARD toggle fired, g_user_show now {}", g_user_show);
+            }
+        }
+        else
+        {
+            g_toggle_kb_streak = 0;
+            g_toggle_kb_armed = true;
+        }
 
         // Gamepad support (dx-bugs-backlog PR C, items 2/3/6): combo toggle + cursor recenter.
         // XInput has no window messages, so — like the keyboard key above — it must be polled
@@ -3404,6 +3425,7 @@ namespace
                     {
                         g_user_show = !g_user_show;
                         g_toggle_gamepad_armed = false;
+                        spdlog::info("[TOGGLEDIAG] GAMEPAD toggle fired, g_user_show now {}", g_user_show);
                     }
                 }
                 else
@@ -3503,7 +3525,18 @@ namespace
             }
             s_prev_show_diag = new_show;
         }
-        g_show = g_user_show && fg;   // lose focus → hooks deactivate; regain → panel restores
+        // <user> 2026-07-01: dropped the `&& fg` gate. This whole session's Alt+Tab bugs (cursor
+        // stuck at centre, MousePos permanently invalid, WantCaptureMouse never recovering) all
+        // stemmed from state that got reset/invalidated on the focus-loss/regain transition —
+        // removing the transition itself (g_show no longer tracks OS focus at all) removes the
+        // whole bug class instead of patching each edge case it produces. Tradeoff: F1 now stays
+        // fully active (drawing + input capture) even while the game window is in the
+        // background — fine for the common "always maximized/borderless" case, but if the user
+        // ever alt-tabs to interact with a DIFFERENT window while F1 is open, our input-swallow
+        // hooks (hk_wndproc, hk_set_cursor_pos, hk_clip_cursor — all gated on g_show) will still
+        // be active and could interfere with that other window. Close F1 before alt-tabbing to
+        // avoid that.
+        g_show = g_user_show;
         // Count down the item-search nav window (set on a result click) — keeps the map "awake" for the
         // switch+pan, then lets the cursor re-freeze so the map stops drifting.
         if (int nf = g_nav_frames.load(std::memory_order_relaxed))
@@ -3591,6 +3624,49 @@ namespace
                 // independent GetForegroundWindow() poll, same flapping-under-Wine risk.
                 const bool fgw = g_hwnd && g_has_focus.load(std::memory_order_relaxed);
                 ImGuiIO &io = ImGui::GetIO();
+                // ROOT CAUSE (confirmed via [KBDIAG], <user> 2026-07-01 "after Alt+Tab, can't
+                // click in F1"): ImGui_ImplWin32's own NewFrame mouse-position update only feeds
+                // io.MousePos via WM_MOUSEMOVE, which this game suppresses during normal gameplay
+                // (raw input) — same reason the left-button click below is polled instead of read
+                // from WM_LBUTTONDOWN. After a real Alt+Tab, WM_KILLFOCUS invalidates io.MousePos
+                // and nothing ever refreshes it again, so WantCaptureMouse stayed false forever
+                // even though the button poll correctly saw real clicks.
+                //
+                // Unconditionally feeding every GetCursorPos read caused a second bug (<user>,
+                // same day): the cursor visibly snapped to / stuck at screen centre the instant
+                // F1 opened. This game keeps the OS cursor warped to centre continuously during
+                // normal play as part of its raw-input camera (same behavior described by
+                // hk_set_cursor_pos's "swallow the game's recenter-to-middle" comment) — so the
+                // very FIRST poll right after opening genuinely reads back centre, and feeding
+                // that stale gameplay-parked value into ImGui is what showed up as a
+                // recentered/stuck cursor. Fix: capture the first read as a baseline WITHOUT
+                // feeding it, and only start feeding positions once the poll reports something
+                // DIFFERENT from that baseline — i.e. once the player has genuinely moved the
+                // physical mouse. Still fixes the original "can't click" bug (any real movement
+                // to interact with the panel triggers it) without ever reporting the stale centre
+                // value. Re-baselines every time F1 closes so the next open starts clean.
+                static POINT s_mouse_poll_baseline{};
+                static bool s_mouse_poll_have_baseline = false;
+                if (fgw && g_hwnd)
+                {
+                    POINT pt;
+                    if (::GetCursorPos(&pt) && ::ScreenToClient(g_hwnd, &pt))
+                    {
+                        if (!s_mouse_poll_have_baseline)
+                        {
+                            s_mouse_poll_baseline = pt;
+                            s_mouse_poll_have_baseline = true;
+                        }
+                        else if (pt.x != s_mouse_poll_baseline.x || pt.y != s_mouse_poll_baseline.y)
+                        {
+                            io.AddMousePosEvent(static_cast<float>(pt.x), static_cast<float>(pt.y));
+                        }
+                    }
+                }
+                else
+                {
+                    s_mouse_poll_have_baseline = false;
+                }
                 const bool lb = fgw && (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
                 io.AddMouseButtonEvent(0, lb);
                 io.AddMouseButtonEvent(1, fgw && (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
@@ -3625,12 +3701,20 @@ namespace
                     // keys (look at nav/gamepad-flag territory instead — the ImGuiIO snapshot here is
                     // last-frame's, since this runs just before ImGui::NewFrame()).
                     {
-                        const ImGuiIO &io = ImGui::GetIO();
+                        // Reuses the outer `io`/`lb` already in scope (the click-poll block just
+                        // above, ~L3593) — extended with [KBDIAG] following <user>'s "after
+                        // Alt+Tab, can't click in F1" report: `lb` = current polled left-button
+                        // state (the Proton/Wine click workaround), `WantCaptureMouse` = whether
+                        // ImGui is actually claiming it. lb=true + WantCaptureMouse=false at the
+                        // same sample = a real click IS being read but ImGui isn't capturing it
+                        // (mouse pos / hover territory); lb never true while clicking = the poll
+                        // itself isn't seeing the button (fgw/GetAsyncKeyState territory).
                         spdlog::info("[KBDIAG] wm_char/sec={} wm_keydown/sec={} WantCaptureKeyboard={} "
-                                     "WantTextInput={} NavActive={} last_input_was_gamepad={} "
-                                     "gamepad_active_streak={}",
+                                     "WantTextInput={} WantCaptureMouse={} lb={} MousePos=({:.0f},{:.0f}) "
+                                     "NavActive={} last_input_was_gamepad={} gamepad_active_streak={}",
                                      g_diag_wm_char.exchange(0), g_diag_wm_keydown.exchange(0),
-                                     io.WantCaptureKeyboard, io.WantTextInput, io.NavActive,
+                                     io.WantCaptureKeyboard, io.WantTextInput, io.WantCaptureMouse, lb,
+                                     io.MousePos.x, io.MousePos.y, io.NavActive,
                                      g_last_input_was_gamepad, g_gamepad_active_streak);
                     }
                 }

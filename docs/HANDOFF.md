@@ -2,9 +2,48 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01 (Linux session, follow-on to PR C-2 — 4 bugs reported after playing with the
-gamepad-nav/kbd PRs; all 4 resolved, 3 log-confirmed fixed + visually confirmed by <user>, on
-`fix/gamepad-input-flag-debounce` off master, about to commit — see recap just below).
+Last updated: 2026-07-01 (Linux session — the Alt+Tab bug (see recap below) took 3 rounds of
+fix-log-fix before the real root cause was found; user-confirmed fixed in-game, merging
+`diag/alt-tab-click-toggle` to master now. `feat/minimap-scale-cluster-search` still open,
+not yet verified in-game).
+
+## Session recap (2026-07-01) — Alt+Tab F1 input dead: root-caused after 3 rounds, fixed
+
+- Continuation of the gamepad-nav/kbd bug session below. After that session's fix (event-driven
+  `g_has_focus`) was merged, <user> found Alt+Tab STILL killed F1 input in a fresh test. Rather
+  than guess again, added `[KBDIAG]` logging (wm_char/keydown counts, WantCaptureKeyboard/
+  WantTextInput/WantCaptureMouse, MousePos, the polled left-button state) and had the user repro.
+- **Round 1 root cause (log-confirmed):** ImGui_ImplWin32 only refreshes `io.MousePos` via
+  `WM_MOUSEMOVE`, which this game suppresses during normal gameplay (raw input) — same reason the
+  left-button click is already polled via `GetAsyncKeyState` instead of read from
+  `WM_LBUTTONDOWN`. A real Alt+Tab's `WM_KILLFOCUS` invalidates `io.MousePos` and nothing ever
+  refreshes it again — log showed it pinned at ImGui's `-FLT_MAX` sentinel for 26+ seconds
+  straight, so `WantCaptureMouse` stayed false even though the button poll correctly saw real
+  clicks. Fix: poll `GetCursorPos`+`ScreenToClient` alongside the button, same pattern.
+- **Round 2 regression (found by <user> in-game, not from a log):** that fix caused the cursor to
+  visibly snap to / stay stuck at screen centre the instant F1 opened. Cause: this game keeps the
+  OS cursor warped to centre continuously during normal play as part of its raw-input camera
+  (same behavior `hk_set_cursor_pos`'s existing "swallow the game's recenter-to-middle" comment
+  already described) — so the very first poll after opening genuinely reads back centre, and
+  feeding that stale value into ImGui is what showed up as a stuck cursor. First attempted fix
+  (baseline: don't feed a position until it differs from the first read) was judged insufficient
+  by <user> — the centering persisted.
+- **Final fix, user-confirmed working in-game:** stopped gating `g_show` (drives drawing AND
+  every input-capture hook) on OS focus (`fg`) at all — it now depends only on `g_user_show`, the
+  F1 toggle itself. This removes the focus TRANSITION entirely instead of continuing to patch
+  each bug it produced (invalid MousePos, WantCaptureMouse never recovering, cursor pinned at
+  centre) — a root fix for the whole bug class, not another edge-case patch. **Tradeoff (by
+  design, accepted):** F1 now stays fully active, including input-swallow, even if the game
+  window loses OS focus — if the user Alt+Tabs to interact with a DIFFERENT window while F1 is
+  still open, our hooks can interfere with that window. Close F1 first in that case.
+- Branch `diag/alt-tab-click-toggle` off master (despite the name, ended up being the real fix,
+  not just diagnostics) — docs updated (`dx-bugs-backlog.md` item 3 followup, `changelog.md`),
+  about to merge to master.
+- **Lesson for next time:** the earlier "log-confirmed fixed" claim (gamepad-toggle debounce
+  session, below) was premature — it fixed the FLAPPING signature it was diagnosing, but a
+  different bug (MousePos never refreshing) was hiding behind it and only surfaced once the
+  flapping stopped. A log confirming one hypothesis is not the same as the user confirming the
+  original complaint is gone — get the live "yes it's fixed" before declaring done.
 
 ## Session recap (2026-07-01, Linux + <user> live-testing) — 4 post-PR-C-2 bug reports — DONE, log-confirmed + in-game verified
 
