@@ -137,6 +137,22 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   a foreground-window check — `WM_SETFOCUS` on refocus can arrive a frame before that recompute, so it
   fell through unforwarded and ImGui's internal focus-lost state never cleared. Now forwarded
   unconditionally, independent of panel visibility. (`docs/re/proton11_cursor_lock_re_prompt.md`)
+- **F1 panel mouse/keyboard input lost after Alt+Tab (regression), and the item/category search
+  bar could lose keyboard focus with no Alt+Tab at all.** Two distinct causes, both confirmed via
+  new `[FOCUSDIAG]`/`[KBDIAG]` diagnostic logging (added this session) rather than guessed: (1)
+  window-focus state (`fg`) was re-polled every present frame via `GetForegroundWindow()==g_hwnd`
+  — under Wine, that call transiently returns something other than the game window for a few
+  frames during the Alt+Tab compositor transition, so the poll caught those and flapped the panel
+  closed/reopened several times per real Alt+Tab, resetting ImGui's focus state each time and
+  leaving input dead. Fixed by tracking focus from `WM_SETFOCUS`/`WM_KILLFOCUS` messages
+  (event-driven, only fire on real transitions) instead of polling. (2) The gamepad toggle-combo
+  read had no debounce — a single stray frame of "combo held" (a known XInput behavior: reads
+  right after an app regains focus from background can be a stale/glitchy resync burst) could
+  flip the panel open/closed on its own, with no Alt+Tab involved, same focus-reset side effect on
+  the search bar's `InputText`. Fixed by requiring the combo to read as held for 3 consecutive
+  frames before committing the toggle. Log-confirmed fixed: a real Alt+Tab now produces exactly
+  one panel-reopen with keyboard input flowing again within ~2s, and no more unexplained
+  panel-reopens without a matching focus event.
 - **Marker teleport on zoom** — overlay markers jumped for a single frame on each mouse-wheel zoom step.
   The marker motion-sync (which projects markers ~1 frame behind to ride the GFx-composited basemap) now
   delays zoom together with pan (`view_delay_zoom`, on by default); delaying pan alone left the zoom a

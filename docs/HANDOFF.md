@@ -2,9 +2,59 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01 (dx-bugs-backlog PR C-2 part 2 — on-screen gamepad keyboard — DONE, in-game
-verified, committed on `feat/gamepad-virtual-keyboard`, about to merge to master. Gamepad-only play
-of MapForGoblins is now fully supported end to end — item 3's original ask, closed).
+Last updated: 2026-07-01 (Linux session, follow-on to PR C-2 — 4 bugs reported after playing with the
+gamepad-nav/kbd PRs; all 4 resolved, 3 log-confirmed fixed + visually confirmed by <user>, on
+`fix/gamepad-input-flag-debounce` off master, about to commit — see recap just below).
+
+## Session recap (2026-07-01, Linux + <user> live-testing) — 4 post-PR-C-2 bug reports — DONE, log-confirmed + in-game verified
+
+- <user> reported 4 issues after playing with `3bd9530`/`b12618f` (gamepad nav + virtual keyboard,
+  both already merged to master): (1) wanted an ImGui flags/settings research doc; (2) mouse/ImGui
+  dead after Alt+Tab away+back; (3) since the on-screen kbd landed, mouse couldn't scroll and
+  keyboard couldn't type in the item/category search panels; (4) locate/pan on Item research felt
+  stuck on the player's tile ("bug already tracked" per <user>).
+- **This session is Linux (no local Windows game/controller)**, so instead of guessing blind the
+  loop was: ship a fix → <user> builds+tests on Windows → report back → add targeted diagnostic
+  logging (`[FOCUSDIAG]`/`[KBDIAG]`) when a guess turned out wrong → read the actual log → fix the
+  now-evidenced root cause → re-verify. Two guesses were wrong before the log pinned the real
+  causes; documenting the trail below since it's the more instructive part.
+- **Bug 2 (Alt+Tab kills input) + a 2nd related bug (search bar loses keyboard with NO Alt+Tab) —
+  3 distinct fixes, all on `goblin_overlay.cpp`:**
+  1. *(Real fix, but not THIS bug's cause)* `g_last_input_was_gamepad` had no `fg` gate on its
+     write and no debounce on the mouse→pad switch edge — a single frame of pad "active" (stick
+     drift) could re-arm `recenter_cursor_to_window()` almost every frame, fighting mouse use.
+     Fixed with a `fg`-gate + `kGamepadSwitchDebounceFrames` (5-frame) debounce. <user> re-tested:
+     Alt+Tab still broken → not the actual cause of that bug, but a legitimate fix kept anyway.
+  2. **Root cause of the Alt+Tab bug, found via `[FOCUSDIAG]` log:** a single genuine focus cycle
+     produced **7 `g_show` rising-edges** in ~20s. `fg` was re-polled every present frame via
+     `GetForegroundWindow()==g_hwnd`; under Wine that call transiently returns something else for
+     a few frames during the Alt+Tab compositor transition, so the poll caught those and flapped
+     `g_show`, closing+reopening the ImGui window and resetting all its focus state each time.
+     Fixed: new `std::atomic<bool> g_has_focus`, set only by `WM_SETFOCUS`/`WM_KILLFOCUS`
+     (event-driven, real transitions only), consumed by `fg` and the redundant `fgw` poll in the
+     Proton click-workaround block.
+  3. **A 2nd, distinct bug found via `[KBDIAG]` log** (<user>: "even without unfocus/refocus, the
+     keyboard can lose the hook while searching"): same `g_show`-flapping signature but with **no**
+     `WM_SETFOCUS`/`WM_KILLFOCUS` between the edges — `g_user_show` itself (the toggle) was
+     flapping. Cause: the gamepad toggle-combo read (`combo_down && !g_prev_gamepad_toggle_down`)
+     had zero debounce; a known XInput behavior (stale/glitchy read burst right after an app
+     regains focus) could bounce it, each bounce closing/reopening the panel and losing the search
+     `InputText`'s keyboard focus. Fixed: `kToggleGamepadDebounceFrames` (3-frame) debounce, armed
+     once per press. Removed the now-dead `g_prev_gamepad_toggle_down`.
+  - **Confirmed via log** (<user> repro'd again): a real Alt+Tab now produces exactly one
+    `g_show` rising-edge matching the `WM_SETFOCUS`, with `wm_keydown` nonzero again within ~2s
+    (was stuck at 0 for 15+s before); other rising-edges in the log (deliberate F1 opens/closes)
+    are isolated, no more repeated bouncing. **<user> also confirmed visually: keyboard, mouse,
+    and gamepad all work correctly now.**
+- **Bug 4 — no code change, ruled out as a regression.** Read `take_locate_pos`/`loc_best` in
+  `map_renderer.cpp`; already keys off the target marker's own projected coords, not the player's.
+  Symptom matches the already-tracked **F2** (pan clamped at fog-of-war boundary) instead;
+  cross-linked in the backlog doc, no new item opened.
+- **Bug 1 — done.** Wrote `docs/re/imgui_config_flags_research.md`, a checklist of ImGui
+  `IO.ConfigFlags`/settings tied to the gamepad/mouse/keyboard-coexistence bugs above, for future
+  sessions to try one at a time instead of re-deriving ImGui's flag surface.
+- Changelog entry added. **NEXT: commit on `fix/gamepad-input-flag-debounce`, then merge to
+  master** (branch not yet merged as of this recap).
 
 ## Session recap (2026-07-01) — PR C-2 part 2: on-screen gamepad keyboard — DONE, in-game verified
 
