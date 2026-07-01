@@ -423,9 +423,11 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Gideon Ofnir", "Gideon's Quest", "Touches many quests (Roundtable info-broker)", steps_gideon, 4},
     // Deathbed / Black Knife cluster
     {"Fia, Deathbed Companion", "Fia's Quest", "Crosses D and Rogier (Deathroot/Godwyn)", steps_fia, 5, false,
-     "Crosses D and Rogier; the Cursemark of Death order and whether Fia slays D gate her ending."},
+     "Crosses D and Rogier; the Cursemark of Death order and whether Fia slays D gate her ending.",
+     4123u, true},
     {"D, Hunter of the Dead", "D's Quest", "Crosses Fia; D's brother continues it", steps_dhunter, 3, false,
-     "Conflicts with Fia -- if Fia slays D his armor passes to his brother, branching the thread."},
+     "Conflicts with Fia -- if Fia slays D his armor passes to his brother, branching the thread.",
+     4043u, true},
     {"Sorcerer Rogier", "Rogier's Quest", "Feeds Fia's quest (Black Knife)", steps_rogier, 4, false,
      "Advance before the deathblight claims him; his notes are needed to push Fia's quest."},
     // Golden Order
@@ -433,7 +435,8 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Brother Corhyn", "Corhyn's Quest", "Searches for Goldmask", steps_corhyn, 5},
     // Millicent
     {"Millicent", "Millicent's Quest", "Started by Gowry (Scarlet Rot)", steps_millicent, 5, false,
-     "Time/order-sensitive: needs Gowry's repaired needle, and her ending hinges on a late choice at the Haligtree."},
+     "Time/order-sensitive: needs Gowry's repaired needle, and her ending hinges on a late choice at the Haligtree.",
+     4183u, true},
     {"Sage Gowry", "Gowry's Quest", "Starts Millicent's quest", steps_gowry, 3, false,
      "Finish the needle repair before progressing Millicent too far, or her thread can stall.",
      4163u, true},
@@ -502,7 +505,8 @@ const NpcQuest QUEST_BROWSER[] = {
     // entity 1051430800 at the Bestial Sanctum; flag id == entity id, persistent).
     {"Gurranq, Beast Clergyman", "Gurranq's Quest", "Deathroot deliveries", steps_gurranq, 4, false, nullptr, 1051430800u},
     {"Dung Eater", "Dung Eater's Quest", "Crosses Nepheli (Seedbed Curses)", steps_dungeater, 4, false,
-     "Mutually exclusive ending -- empower him OR hunt him down, not both."},
+     "Mutually exclusive ending -- empower him OR hunt him down, not both.",
+     4243u, true},
     // fail_flag 3883 = Bernahl dead/gone (= bernahl_q99). His CharacterDead(16000800)
     // boss death (Farum Azula) gates the persistent conclusion flag 3883 set in
     // common.emevd. Death-distinct (recusant turn ends his recruitable thread).
@@ -533,8 +537,9 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Fire Knight Queelign", "Queelign's Quest", "Messmer's flame; Iris of Grace/Occultation", steps_queelign, 3, true,
      "Exclusive reward: Iris of Grace gives his spirit ash, Iris of Occultation gives his weapon -- not both."},
     {"Igon", "Igon's Quest", "Bayle the Dread; crosses Florissax (concoction)", steps_igon, 5, true,
-     "Summon him at Bayle's arena before finishing the fight, or you miss his send-off."},
-    {"Hornsent Grandam", "Grandam's Quest", "Belurat storeroom (NOT the Hornsent companion)", steps_grandam, 3, true},
+     "Summon him at Bayle's arena before finishing the fight, or you miss his send-off.",
+     4263u, true},
+    {"Hornsent Grandam", "Grandam's Quest", "Belurat storeroom (NOT the Hornsent companion)", steps_grandam, 3, true, nullptr, 4483u, true},
     {"Dryleaf Dane", "Dane's Quest", "Leda's group; bare-handed duel at Moorth", steps_dane, 5, true, nullptr, 4563u},
     {"Dragon Communion Priestess", "Florissax's Quest", "Dragon path; crosses Igon and Thiollier", steps_florissax, 4, true,
      "Her true reward needs Thiollier's Concoction given at night BEFORE you kill Bayle."},
