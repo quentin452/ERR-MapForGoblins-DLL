@@ -25,7 +25,6 @@ loop. `dx-bugs-backlog` items 11/12 are explicitly NOT good first loop targets (
 double-DLL issue not a code bug, 12 already fixed) — pick a live backlog item once Phases 1–3 land.
 Windows-only (LoadLibrary/MinHook). Not started — fork an implementation branch when work begins,
 per `AGENTS.md`.
->>>>>>> 603a27e47a0b7887911c3add1ccb6e20b6563a83
 
 ## ⚠️ IN PROGRESS (2026-07-01h) — baked-data → runtime/disk migration (build_pipeline.py deletion is the END state)
 
