@@ -9,6 +9,24 @@ INI-clamp bug fix, and a grace-icon auto-scale fix) also MERGED to master — se
 below for that arc; the original Alt+Tab root-cause recap (3 sessions down) covers the FIRST round,
 merged separately earlier.)
 
+## Session recap (2026-07-01) — MapGenie coverage RE: Part A(a) `disableRespawn` verified (hypothesis half-wrong)
+
+- Started executing `docs/re/windows_mapgenie_category_coverage_re_prompt.md` (verify-only, no impl
+  ahead of `generated_data_removal_plan.md` Phase B). Key method finding: params are baked verbatim
+  into `regulation.bin` and NOT streamed — reading it off disk via SoulsFormats is value-identical to
+  the live `from::params::get_param` path, so **no running game / memory attach needed** for any
+  param-based tier. New tool: `tools/verify_disablerespawn.py`.
+- **Part A(a) `WorldFarmableEnemy` = `NpcParam.disableRespawn` — VERIFIED, partially wrong.** `dr=1`
+  reliably = one-time/not-farmable (invaders, quest NPCs, prop dummies). But `dr=0` does NOT mean
+  farmable: the fog-gated main bosses (Rennala, Draconic Tree Sentinel, …) read `0` in BOTH vanilla
+  and ERR — their non-respawn is enforced by boss-defeat event flags, not this field. So the gate is
+  `dr==0 AND already-classified-non-boss` (reuse existing `WorldBosses` classification; do NOT rely on
+  `dr==1` to exclude bosses). Findings + citations: `docs/re/windows_mapgenie_category_coverage_re_findings.md`;
+  plan + Open-Q #2 updated in place.
+- **NEXT (same prompt):** Part A(b) `ItemLotParam*.getItemFlagId01/02/03`, then Tier 2
+  `WorldMapPointParam.iconId` landmarks, then Tier 3 `NpcParam` teamType/npcType (shares the A(a) read
+  site). All disk-verifiable the same way.
+
 ## Session recap (2026-07-01) — minimap branch: cursor tracking rebuilt (4 rounds), F32 INI clamp bug fixed, grace auto-scale
 
 - **Cursor tracking — round 2 of the Alt+Tab saga, much longer this time.** After the first

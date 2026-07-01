@@ -17,14 +17,24 @@ infinitely-farmable ones.
 
 **(a) `WorldFarmableEnemy`** — enemy that respawns when you rest at a Site of Grace.
 - Field: `tools/paramdefs/NpcParam.xml` → `disableRespawn` (u8 bitfield, Japanese label "リスポン禁止か" =
-  "respawn prohibited?"). `0` = respawns (farmable) · `1` = unique/one-time (bosses, named NPCs).
+  "respawn prohibited?").
+- **VERIFIED 2026-07-01** (`tools/verify_disablerespawn.py`, vanilla+ERR — see
+  `docs/re/windows_mapgenie_category_coverage_re_findings.md`). Polarity is only half as clean as the
+  original hypothesis:
+  - `disableRespawn == 1` → reliably one-time / NOT farmable (invaders, questline NPCs, prop dummies).
+    Safe hard short-circuit.
+  - `disableRespawn == 0` → **NOT a farmable signal on its own.** The fog-gated main bosses (Rennala
+    `20300000`, Draconic Tree Sentinel `32500072`, …) read `0` in BOTH vanilla and ERR — their
+    non-respawn is enforced by the boss-defeat event flag + fog gate, not by this field. So `0`
+    over-includes bosses.
 - `NpcParam` is already read live in `src/goblin_inject.cpp` (existing enemy classification path) — this
   is one additive field read on data already in hand, not a new param scan.
-- Implementation: at whichever `goblin_inject.cpp` site currently assigns `Category::WorldHostileNPC` /
-  `WorldBosses`, branch on `disableRespawn == 0` → `WorldFarmableEnemy` instead (probably want this
-  to apply only to non-boss/non-named trash mobs — bosses already have their own category and
-  `disableRespawn` should always be 1 for those anyway, but verify against a real boss row before relying
-  on that as the sole gate).
+- Implementation gate (corrected): `WorldFarmableEnemy ⇔ disableRespawn == 0 AND already classified as
+  non-boss/non-named-NPC`. Reuse the existing `WorldBosses` / named-NPC classification to exclude those
+  first, THEN treat `dr==0` on remaining trash as farmable. Do NOT rely on `dr==1` to auto-exclude
+  bosses — bosses read 0. Read `disableRespawn` from the `NPCParamID` of the *placed* enemy (the same
+  name can map to a friendly row `dr=0` and a boss row `dr=1`, e.g. Castellan Edgar `523110000` vs
+  `533110000`).
 
 **(b) `WorldFarmableCollectible`** — gatherable/killable-drop object that respawns on grace rest.
 - Field: `tools/paramdefs/ItemLotParam*.xml` → `getItemFlagId01/02/03` (u32). Japanese description:
@@ -79,6 +89,7 @@ Site of Grace `row.iconId` read).** Needs per-category iconId value lookup, not 
 1. Tier 2/3 are mechanism *hypotheses* from pattern-matching existing code, not verified against the
    actual param/MSB rows for each of the 20 categories in them — budget an RE/verification pass per
    category (or per cluster, if several share one source) before estimating real effort.
-2. Confirm `disableRespawn` actually varies as expected on a real trash-mob row vs a boss row before
-   wiring Part A(a) — the hypothesis is strong (field name + JP label match exactly) but unverified live.
+2. ~~Confirm `disableRespawn` varies as expected on trash vs boss rows before wiring Part A(a).~~
+   **RESOLVED 2026-07-01:** it does NOT vary as hoped — bosses read `dr=0`, not `1` (gated by event
+   flags, not this field). Gate corrected above to `dr==0 AND non-boss`. See findings doc.
 3. For Part A(b), confirm which of `getItemFlagId01/02/03` to check (one canonical slot vs "any of three").
