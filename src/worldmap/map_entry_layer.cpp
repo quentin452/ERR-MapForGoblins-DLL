@@ -1831,6 +1831,22 @@ void build_buckets_impl()
         if (goblin::config::lootCollectibles)
             build_disk_collectible_markers(disk_collectibles, treasure_lots, disk_lots,
                                            collectible_cells, piece_disk_keys, gather_disk_keys);
+        // Runtime quest-NPC extractor (mod-agnostic EMEVD 90005702 mine, the runtime port of
+        // tools/extract_quest_npcs.py): log the grouped table for validation. One-time on this
+        // disk worker; gated on the quest feature so non-quest users don't pay the emevd scan.
+        if (goblin::config::showCategory[static_cast<int>(gen::Category::WorldQuestNPC)])
+        {
+            std::vector<QuestNpcRuntime> qnpcs = load_quest_npcs();
+            spdlog::info("[QUESTNPC] runtime EMEVD extractor: {} quest NPCs (90005702)", (int)qnpcs.size());
+            int shown = 0;
+            for (const auto &q : qnpcs)
+            {
+                if (shown++ >= 12) break;
+                spdlog::info("[QUESTNPC]   concluded={} reg={}-{} placements={} e.g.={}",
+                             q.concluded, q.regLo, q.regHi, (int)q.entities.size(),
+                             q.entities.empty() ? 0u : q.entities.front());
+            }
+        }
         if (goblin::config::worldFeaturesFromDisk)
         {
             // EMEVD-sourced graying flags (entity → flag) for Hero's Tomb (template 90005683)
