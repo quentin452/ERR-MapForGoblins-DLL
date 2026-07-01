@@ -186,7 +186,12 @@ std::filesystem::path emevd_dir()
 // instructions; 1042582000 is the generic (ABP,entity) prompt template whose
 // exact arg-substitution slots we need). One line per instruction:
 // bank[id] + raw arg hex → decoded offline against EMEDF.
-constexpr uint64_t kBodyDumpEvents[] = {1030, 1042582000};
+// Round-5: 1030 decoded — it's the GLOBAL asset-prompt dispatcher (19 generic
+// ABP waits incl. 5010, no entities — the asset↔prompt binding lives engine-
+// side), so no per-lift harvest exists there. The two Siofra one-off events
+// DO reference their lift entities though: dump them, grep the entity ids in
+// the MSBs, and the lift AEG MODEL falls out.
+constexpr uint64_t kBodyDumpEvents[] = {1030, 1042582000, 12022820, 12022822};
 
 void dump_event_body(const std::filesystem::path &src, uint64_t eventId,
                      const uint8_t *buf, size_t len, size_t base, uint64_t instrCount,
