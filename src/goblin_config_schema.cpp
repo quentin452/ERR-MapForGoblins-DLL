@@ -465,6 +465,8 @@ namespace
                 B("show_legacy_dungeons", showCategory[static_cast<int>(Cat::WorldLegacyDungeon)], "false", "Legacy dungeon locations (Stormveil, Raya Lucaria, Leyndell, etc.; per-site iconIds)"),
                 B("show_miquella_crosses", showCategory[static_cast<int>(Cat::WorldMiquellaCross)], "false", "Miquella's Cross locations (DLC; iconId 208)"),
                 B("show_portals", showCategory[static_cast<int>(Cat::WorldPortal)], "false", "Sending Gate / waygate portals (AEG099_510 bound to EMEVD warp template 90005605)"),
+                B("show_elevators", showCategory[static_cast<int>(Cat::WorldElevator)], "false", "Elevator / lever-lift locations (MSB ObjAct events whose ObjActParam prompt is a lever)"),
+                B("show_smithing_tables", showCategory[static_cast<int>(Cat::WorldSmithingTable)], "false", "Smithing Table locations (AEG099_308 assets; 3 in the base game)"),
                 B("hide_killed_bosses", hideKilledBosses, "false", "Hide boss/invader/hawk markers after defeat (false = show green checkmark instead)"),
             }},
 

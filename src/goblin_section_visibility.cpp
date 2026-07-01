@@ -159,6 +159,8 @@ static Section section_of(Category c)
     case Category::WorldLegacyDungeon:
     case Category::WorldMiquellaCross:
     case Category::WorldPortal:
+    case Category::WorldElevator:
+    case Category::WorldSmithingTable:
         return Section::World;
     }
     return Section::World;  // unreachable; keeps the compiler happy

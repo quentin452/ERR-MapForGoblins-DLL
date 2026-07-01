@@ -49,6 +49,19 @@ struct DiskCollectible
                                         // some gather models; GEOF graying buckets by THIS, not name
 };
 
+// One MSB ObjAct EVENT read from a disk MSB (worldFeaturesFromDisk) — the no-bake Elevator /
+// lever-lift source. The caller filters objActParamId to the "lever" ObjActParam rows (live
+// ActionButtonParam text "Pull/Push lever"; collect_lever_objact_ids) and places a marker at the
+// resolved part position. See msbe::ObjActEv + build_disk_elevator_markers.
+struct DiskObjAct
+{
+    uint32_t objActParamId = 0;
+    uint32_t entityId = 0;              // objActEntityId, falling back to partEntityId when 0
+    uint8_t  area = 0, gx = 0, gz = 0;  // from the tile filename (same as DiskCollectible)
+    float    posX = 0, posY = 0, posZ = 0;  // part block-local
+    std::string partName;
+};
+
 // One placed Enemy read from a disk MSB. The drop lot is resolved LIVE by the
 // caller: goblin::npc_loot_lot(npcParamId) → NpcParam.itemLotId_map/_enemy →
 // ItemLotParam → goods. Position = the enemy part (same transform as treasures).
@@ -122,11 +135,13 @@ void set_mod_folder(const std::filesystem::path &p);
 // When `collectibles` is non-null, also enumerate AEG collectible assets into it.
 // When `enemies` is non-null, also enumerate Enemy placements into it.
 // When `regions` is non-null, also enumerate spirit-spring POINT regions into it.
+// When `objacts` is non-null, also enumerate ObjAct EVENTs (Elevator / lever-lift source) into it.
 // All sources share one disk read + parse pass.
 GOBLIN_RENDER_API std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots = nullptr,
                                               std::vector<DiskCollectible> *collectibles = nullptr,
                                               std::vector<DiskEnemy> *enemies = nullptr,
-                                              std::vector<DiskRegion> *regions = nullptr);
+                                              std::vector<DiskRegion> *regions = nullptr,
+                                              std::vector<DiskObjAct> *objacts = nullptr);
 
 // Parse every event\*.emevd.dcx in the active mod (sibling of the resolved map\MapStudio
 // dir) and return the EMEVD item-award references the runtime can position:

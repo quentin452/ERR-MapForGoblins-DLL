@@ -189,12 +189,28 @@ struct GestureRef
     uint32_t gestureParam = 0;  // GestureParam row id → itemId (live) → goods name
 };
 
+// One MSB ObjAct EVENT (event subtype 7) — the no-bake Elevator / lever-lift source. An ObjAct binds
+// an asset placement to an ObjActParam prompt: the event's typeData carries objActEntityId, the part
+// INDEX, and the objActParamId. The caller filters objActParamId to the "lever" ObjActParam rows (live
+// ActionButtonParam text "Pull/Push lever") and joins the resolved part for the marker position. See
+// build_disk_elevator_markers + docs/re/linux_group2_prompt_binding_re_findings.md.
+struct ObjActEv
+{
+    uint32_t objActParamId = 0;
+    uint32_t objActEntityId = 0;   // typeData +0x00 (may be 0)
+    int32_t  partIndex = -1;
+    std::string partName;
+    float    pos[3] = {0, 0, 0};   // part block-local (valid only when partIndex resolved)
+    uint32_t partEntityId = 0;
+};
+
 struct ParseResult
 {
     std::vector<Treasure> treasures;
     std::vector<Asset>    assets;   // AEG Asset placements (collectible candidates)
     std::vector<Enemy>    enemies;  // Enemy placements (enemy-drop candidates)
     std::vector<Region>   regions;  // Spirit-spring POINT regions (MountJump/Locked/FakeSpiring)
+    std::vector<ObjActEv> objacts;  // ObjAct EVENTs (Elevator / lever-lift candidates)
     bool ok = false;
 };
 
@@ -207,13 +223,15 @@ struct ParseResult
 // (the runtime enemy-drop source). Off by default.
 // wantRegions: also enumerate the spirit-spring POINT regions (MountJump/Locked/FakeSpiring)
 // into ParseResult.regions. Off by default (skips an extra POINT-section pass).
+// wantObjActs: also enumerate ObjAct EVENTs (event subtype 7) into ParseResult.objacts (the
+// Elevator / lever-lift source). Off by default (skips an extra EVENT-section pass).
 // crossTileAssets: accept Asset part names carrying a cross-tile LOD prefix
 // ("m{AA}_{BB}_{CC}_{LOD}-AEG…", e.g. the Snow Town statues in a supertile) — off by default so the
 // _00 passes keep the strict start-anchored model parse (a handful of _00 assets carry such a prefix
 // and must NOT newly emit). Only the non-_00 LOD feature-asset scan opts in. See load_lod_feature_assets.
 ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase = 0,
                       bool wantAssets = false, bool wantEnemies = false, bool wantRegions = false,
-                      bool crossTileAssets = false);
+                      bool crossTileAssets = false, bool wantObjActs = false);
 
 // Parse a DECOMPRESSED EMEVD (.emevd) blob and return every template item-award
 // reference (bank-2000 event init whose eventId is one of the 13 award templates),
