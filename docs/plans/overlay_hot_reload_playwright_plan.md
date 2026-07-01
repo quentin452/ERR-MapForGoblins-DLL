@@ -169,6 +169,26 @@ boundary). Moving only the 3 functions and leaving `native_item_icon`/etc. host-
 marker draw crosses the DLL boundary anyway, defeating hot-reload's point if icon-resolution logic
 needs iteration too (likely, given how much RE/tuning work already lives there).
 
+**Follow-up audit (2026-07-01) — the 4 remaining `src/worldmap/*.cpp` files, resolved:** all 4 are
+pure data-layer `MarkerLayer` subclasses — ZERO D3D12 (`ID3D12*`/`CreateCommittedResource`/
+`CreateShaderResourceView`/`D3D12_GPU_DESCRIPTOR_HANDLE`: no hits in any of them) and ZERO calls
+into `goblin::overlay::*` or any `goblin_overlay.cpp` D3D12 global. `map_entry_layer.cpp`/
+`grace_layer.cpp`/`quest_npc_layer.cpp` each include `goblin_inject.hpp` for stable read-only
+accessors (`marker_world_pos`/`category_visible`/`read_event_flag`/`goblin::live_graces`/
+`section_visible`/`category_section`, etc.) — a MUCH easier cross-boundary shape than the D3D12
+problem: these are ordinary functions, so they can cross via normal `dllexport`/`dllimport` (host
+exports the accessors, render DLL imports them), no ctx-pointer/vtable scheme needed.
+`category_meta.cpp` has ZERO reverse coupling of any kind (its only "host" include is a generated
+baked-icon header, not `goblin_overlay.cpp`). **Net: the only genuinely hard cross-boundary problem
+in all of Phase 2 remains the single `native_item_icon`/`native_map_point_icon`/
+`native_map_point_icon_by_name`/`map_point_glyph_uv` family** (owns/mutates D3D12 resources, must
+stay host-side, needs the reverse ctx/pointer table) — every other file in `src/worldmap/*.cpp`
+either moves wholesale with zero coupling (`category_meta.cpp`) or just needs its
+`goblin_inject.hpp` accessor calls declared `dllexport`/`dllimport` across the new boundary
+(`map_entry_layer.cpp`/`grace_layer.cpp`/`quest_npc_layer.cpp`/`map_renderer.cpp`). Slice-B's
+render-DLL source list is now fully scoped: `goblin_overlay_render.cpp` (new) + all 5
+`src/worldmap/*.cpp` files.
+
 **CMakeLists restructuring (no `option()` exists today — this introduces the first one):**
 ```cmake
 option(GOBLIN_OVERLAY_HOTRELOAD "Build overlay draw layer as separate hot-reloadable DLL" OFF)
