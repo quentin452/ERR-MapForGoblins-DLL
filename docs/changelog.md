@@ -167,6 +167,15 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   panel by keyword: it matches section titles AND the setting labels inside them (e.g. "opacity"
   finds Minimap), hides everything that doesn't match, auto-expands what does, and says so when
   nothing matches. Clear the box to restore the full panel.
+- **World - Elevators category** — lever-lift locations built live from disk MSB ObjAct events
+  (subtype 7) filtered to the AEG027_* lift family whose ObjActParam prompt is "Pull/Push lever"
+  (live ActionButtonParam text join), top/bottom lever pairs folded by proximity. 54 markers,
+  in-game verified. Mod-agnostic, no bake, default OFF.
+- **World - Smithing Tables category** — AEG099_308 assets from the disk MSB enumeration (4
+  markers). Mod-agnostic, no bake, default OFF.
+- **Sections & categories rows sorted A→Z** — category rows in the F1 panel now sort
+  alphabetically by label instead of enum order (new categories used to pile up unsorted at each
+  section's end).
 - **Symbolized crash triage** — the build emits `MapForGoblins.pdb` (`/Z7` + lld `/debug`) and the
   crash handler resolves fault + stack addresses to function names via dbghelp when the .pdb sits
   next to the DLL; `tools/resolve_crash.py` symbolizes a triage .txt offline (function + file:line)

@@ -62,9 +62,11 @@ LADDERS; real lever-lifts = ABP 8200-8501 "Pull/Push lever" -> ~55 ObjActParam r
 +0x28) -> **MSB ObjAct EVENT section binds {asset entity, objActParamId}** => Elevator category is
 a pure mod-agnostic disk parse (msbe: parse ObjAct events, filter param ids whose ABP text is a
 lever, join asset position; refine by anim-id groups if gates over-capture). Smithing Table
-SOLVED too (2026-07-02): [ASSETRADAR]+[ASSETCOUNT] -> model filter **AEG099_308** (3 world
-placements: m33_00, m60_38_51, m60_42_36 Elleh; companion AEG099_309). Both Group-2 categories
-are now mechanically resolved and ready to implement as mod-agnostic disk passes. Probes live in `src/goblin_param_scan.cpp`
+SOLVED too (2026-07-02): [ASSETRADAR]+[ASSETCOUNT] -> model filter **AEG099_308**.
+**BOTH IMPLEMENTED + MERGED to master + in-game verified (user, 2026-07-02)**: 54 Elevator markers
+(AEG027_* lift family, positions near-perfect), 4 Smithing Tables. Branch
+feat/mapgenie-group2-elevator-smithing merged; worktree cleaned. Group 2 remaining per the recon
+doc: whatever the next MapGenie diff lists (see coverage_vs_mapgenie.py). Probes live in `src/goblin_param_scan.cpp`
 ([PARAMSCAN]/[EMEVDSCAN]/[ABPTEXT], debug_logging-gated).
 
 ## Linux runtime-RE path — investigate to stop the two-PC switch (2026-07-01, not started)
