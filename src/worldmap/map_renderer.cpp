@@ -774,6 +774,16 @@ std::string marker_label(const Marker &m)
     if (goblin::config::anonymousLoot && m.lot_backed)
         return loc.empty() ? ("?" + qty) : ("?" + qty + "\n" + loc);
     std::string name = goblin::lookup_text_utf8(m.name_id);
+    // Quest-NPC pin (QuestNpcLayer): NPC name + "quest — current step" + coarse zone.
+    if (m.tip_quest)
+    {
+        std::string t = name.empty() ? std::string("Quest NPC") : name;
+        t += "\n";
+        t += m.tip_quest;
+        if (m.tip_step && m.tip_step[0]) { t += " \xE2\x80\x94 "; t += m.tip_step; }  // em dash
+        if (m.tip_zone && m.tip_zone[0]) { t += "\n"; t += m.tip_zone; }
+        return t;
+    }
     if (name.empty())
     {
         // The FMG name resolved to nothing — common for ERR-custom loot whose live EquipParam ICON
@@ -1270,8 +1280,11 @@ bool quest_npc_gated_out(const Marker &m)
     // Cold-API safety: until AlwaysOn (6001) reads true the flag manager isn't warm —
     // never blank every quest NPC on map open. Show as-is.
     if (!goblin::ui::read_event_flag(6001)) return false;
+    // m.name_id is FMG-routed (+700000000, for tooltip/search); QUEST_GATES.nameId is the
+    // raw NpcName id, so undo the offset before the join.
+    uint32_t rawName = m.name_id >= 700000000 ? (uint32_t)m.name_id - 700000000u : (uint32_t)m.name_id;
     for (size_t i = 0; i < QUEST_GATE_COUNT; ++i)
-        if (QUEST_GATES[i].nameId == (uint32_t)m.name_id)
+        if (QUEST_GATES[i].nameId == rawName)
         {
             for (uint32_t f : QUEST_GATES[i].flags)
                 if (f && goblin::ui::read_event_flag(f)) return false; // quest active → show

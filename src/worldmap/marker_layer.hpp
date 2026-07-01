@@ -137,6 +137,13 @@ struct Marker
     //   • Marker in no group: both empty/false → always drawn with its own count.
     std::vector<StackedMember> stacked;
     bool stack_member = false;
+    // Quest-NPC tooltip extras (QuestNpcLayer only; static hand-table strings, so plain
+    // pointers — no allocation). marker_label() appends "quest — step\nzone" under the name.
+    // MUST stay LAST: several Markers are built with positional aggregate init, so a new
+    // field can only be appended (not inserted mid-struct).
+    const char *tip_quest = nullptr; // NpcQuest::quest_title
+    const char *tip_step = nullptr;  // active QuestStep::title (the current "palier")
+    const char *tip_zone = nullptr;  // active QuestStep::zone (coarse location)
 };
 
 // A data source of markers. markers() returns the layer's cache (built lazily by the
