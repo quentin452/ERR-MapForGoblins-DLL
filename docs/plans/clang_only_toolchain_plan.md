@@ -97,6 +97,13 @@ flip + delete `steam_api64.lib`).
   `build-linux`/`build-clang` naming.
 
 ## Phase 2 — validation + flip
+
+**STATUS 2026-07-02: docs flipped + steam_api64.lib removed.** In-game validation is de-facto
+satisfied — the clang DLL is the daily-played build and today's session exercised the historical
+SEH sites (collected refresh, probe page transitions, icon harvest, minimap/altitude). README
+build instructions rewritten (clang/ninja/xwin, both hosts); memory policy note flipped to
+"clang = THE toolchain". Remaining: `build.bat snapshot`/`release` un-exercised on Windows
+(first real release run will prove packaging + pdb-archive), optional CI guardrail.
 - In-game pass on ERR + a spot-check profile, exercising the historical SEH crash sites:
   kindling heap scan, collected refresh (tile churn), worldmap probe across a DLC/underground page
   transition, icon harvest with inventory/map churn, altitude arrows + minimap on (Phase 0 sites).

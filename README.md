@@ -22,10 +22,21 @@ Collected Rune Pieces, Ember Pieces and gathering nodes are automatically hidden
 
 ## Building
 
-Requirements:
-- Visual Studio 2022 (Build Tools or Community)
-- CMake 3.28+
+One toolchain everywhere: **clang-cl + lld-link + ninja** against an
+[xwin](https://github.com/Jake-Shadle/xwin)-splatted MSVC CRT/SDK — no Visual
+Studio. Identical sources produce byte-identical DLLs (`/Brepro`), and every
+build emits a matching `MapForGoblins.pdb` for crash symbolication
+(`tools/resolve_crash.py`).
+
+Requirements (Windows):
+- LLVM (clang-cl, lld-link, llvm-rc) — e.g. `scoop install llvm`
+- ninja, CMake 3.28+
+- an xwin splat of the MSVC CRT + Windows SDK
+  (`xwin --accept-license --arch x86_64 splat --output <dir>`)
 - Internet connection (CMake fetches dependencies on first configure)
+
+Tool locations are env-overridable: `MFG_LLVM_BIN`, `MFG_NINJA`, `MFG_CMAKE`,
+`MFG_XWIN` (see the defaults at the top of `build.bat`).
 
 ```bash
 build.bat              # configure + build
@@ -41,7 +52,15 @@ package dirs; see `tools/config.ini.example` for the required paths). The
 Convergence and ERTE profiles stage a merged overlay-over-vanilla source view
 first, since those overhauls ship a partial ModEngine overlay.
 
-Output: `build/Release/MapForGoblins.dll` + `MapForGoblins.ini`
+Output: `build-err/MapForGoblins.dll` (+ `.pdb`) + a generated `MapForGoblins.ini`
+
+The same toolchain cross-builds from Linux (same `clang-cl-xwin.cmake`):
+
+```bash
+cmake -B build-linux -G Ninja -DCMAKE_TOOLCHAIN_FILE=clang-cl-xwin.cmake \
+      -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+ninja -C build-linux MapForGoblins
+```
 
 ## Installation
 

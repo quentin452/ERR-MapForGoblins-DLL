@@ -6,17 +6,15 @@ metadata:
   type: project
 ---
 
-**Toolchain policy (decided 2026-07-01, tracking a "should we unify to one build path"
-question):** MSVC/VS2022 via `build.bat` (`snapshot`/`release` targets) stays the ONLY
-release-canonical toolchain — that's what ships. clang-cl+xwin is the officially-supported
-**dev/cross-compile alt**, not a release path: it's genuinely portable (proven from Linux and
-from a Windows box with no VS install; LLVM-based so plausibly Mac-hostable too, though nobody's
-tried), but it is documented as "functionally equivalent, NOT byte-identical" to MSVC output —
-see the SEH-elision gotcha below, a REAL semantic divergence already hit once (clang-cl silently
-drops `__try` guards around raw loads that MSVC honors). Do not build a release artifact with
-clang-cl without a fresh MSVC-parity validation pass first. No Mac build-HOST need has ever come
-up (Mac is a runtime/play target only, via Wine/Proton-equivalent, not a dev host anyone uses
-here) — don't invest in Mac-host support speculatively.
+**Toolchain policy (FLIPPED 2026-07-02 — supersedes the 2026-07-01 "MSVC canonical" note):**
+**clang-cl + lld-link + ninja + xwin is THE toolchain**, dev AND release, on both Windows and
+Linux — MSVC/VS2022 is retired (`build.bat` no longer uses it; no machine in use has it).
+Reproducibility story: `/Brepro` (identical sources → byte-identical DLLs, proven by relink-md5)
++ the PDB pair archived per release under `pdb-archive/` — "byte-identical to MSVC" is obsolete.
+The SEH-elision divergence (clang-cl drops `__try` around raw loads) is handled: repo-wide
+noinline-body conversion done (clang_only_toolchain_plan Phase 0) and `tools/lint_seh.py` guards
+regressions. Old shipped MSVC releases stay decodable only via their archived binaries — keep
+them. (Mac build-host: still no need; don't invest speculatively.)
 
 **UPDATE 2026-07-02 — `build.bat` is now the clang-cl path and VALIDATED on this box.** Per the
 clang-only toolchain plan (`docs/plans/clang_only_toolchain_plan.md`, Phase 1), `build.bat` was
