@@ -669,9 +669,8 @@ const wchar_t *goblin::lookup_text(int32_t id)
     return res;
 }
 
-std::string goblin::lookup_text_utf8(int32_t id)
+static std::string wide_to_utf8(const wchar_t *w)
 {
-    const wchar_t *w = lookup_text(id);
     if (!w || !w[0])
         return {};
     int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
@@ -680,4 +679,20 @@ std::string goblin::lookup_text_utf8(int32_t id)
     std::string s(static_cast<size_t>(n - 1), '\0');
     WideCharToMultiByte(CP_UTF8, 0, w, -1, &s[0], n, nullptr, nullptr);
     return s;
+}
+
+std::string goblin::lookup_text_utf8(int32_t id)
+{
+    return wide_to_utf8(lookup_text(id));
+}
+
+// RAW native GetMessage by PHYSICAL fmg slot — RE probe surface (goblin_param_scan's
+// [ABPTEXT] slot discovery), NOT for normal text lookup (use lookup_text_utf8: it
+// knows the category bands + the expanded FMG). Empty when the getter/repo isn't
+// resolved yet or the slot/id has no entry (GetMessage bounds-checks internally).
+std::string goblin::raw_message_utf8(uint32_t fmg_slot, uint32_t msg_id)
+{
+    if (!g_get_message || !msg_repository)
+        return {};
+    return wide_to_utf8(g_get_message(msg_repository, 0, fmg_slot, msg_id));
 }

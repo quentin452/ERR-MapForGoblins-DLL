@@ -16,6 +16,7 @@
 
 #include "from/params.hpp"
 #include "goblin_config.hpp"
+#include "goblin_messages.hpp"            // goblin::raw_message_utf8 (ABPTEXT probe)
 #include "goblin_overlay_render_api.hpp"  // overlay_api::disk_loot_dir()
 #include "worldmap/msbe_parser.hpp"       // goblin::msbe::dcx_decompress
 
@@ -326,6 +327,59 @@ void emevd_scan_file(const std::filesystem::path &p, int &hit_lines)
     }
 }
 
+// ── [ABPTEXT] — resolve every ActionButtonParam row's prompt TEXT ────────────
+// Ground truth (user, in-game): world smithing tables prompt "Use smithing
+// table" — a DIFFERENT text from Roundtable's ABP 6250. Find the ABP-text FMG's
+// physical slot (the one that resolves 6250's textId 7030), then dump
+// (rowId, textId, text) for all 584 ABP rows → grep "smithing" offline gives
+// the world-table ABP id = the next needle.
+void abp_text_probe()
+{
+    auto *param_list = *from::params::param_list_address;
+    if (!param_list) return;
+    from::params::ParamTable *abp = nullptr;
+    constexpr size_t kEntries = sizeof(param_list->entries) / sizeof(param_list->entries[0]);
+    for (size_t i = 0; i < kEntries && !abp; i++)
+    {
+        auto *prc = param_list->entries[i].param_res_cap;
+        if (!prc || !prc->param_header || !prc->param_header->param_table) continue;
+        if (std::wstring_view(from::params::dlw_c_str(&prc->param_name)) == L"ActionButtonParam")
+            abp = prc->param_header->param_table;
+    }
+    if (!abp) { spdlog::warn("[ABPTEXT] ActionButtonParam not found"); return; }
+    auto *base = reinterpret_cast<uint8_t *>(abp);
+    constexpr uint64_t kTextOff = 0x34;  // textId column (verified vs rows 6250/5010)
+    // Slot discovery: which physical FMG slot resolves textId 7030 ("Smithing")?
+    int slots[5];
+    int nslots = 0;
+    for (uint32_t slot = 0; slot < 200 && nslots < 5; slot++)
+    {
+        const std::string s = goblin::raw_message_utf8(slot, 7030);
+        if (s.empty()) continue;
+        spdlog::info("[ABPTEXT] slot {} resolves 7030 = \"{}\"", slot, s);
+        slots[nslots++] = (int)slot;
+    }
+    const auto dir = own_logs_dir();
+    if (dir.empty()) return;
+    for (int si = 0; si < nslots; si++)
+    {
+        const auto path = dir / ("abptext_slot" + std::to_string(slots[si]) + ".txt");
+        FILE *f = _wfopen(path.wstring().c_str(), L"wb");
+        if (!f) continue;
+        for (uint16_t r = 0; r < abp->num_rows; r++)
+        {
+            const auto &ri = abp->rows[r];
+            if (ri.param_end_offset <= ri.param_offset && r + 1 >= abp->num_rows) continue;
+            int32_t textId;
+            std::memcpy(&textId, base + ri.param_offset + kTextOff, 4);
+            const std::string s = goblin::raw_message_utf8((uint32_t)slots[si], (uint32_t)textId);
+            std::fprintf(f, "%llu\t%d\t%s\n", (unsigned long long)ri.row_id, textId, s.c_str());
+        }
+        std::fclose(f);
+        spdlog::info("[ABPTEXT] dumped ABP texts via slot {} -> {}", slots[si], path.string());
+    }
+}
+
 void emevd_needle_scan_deferred()
 {
     // Discovery (CreateFileW hook) fills disk_loot_dir asynchronously — poll for it.
@@ -354,6 +408,9 @@ void emevd_needle_scan_deferred()
     }
     spdlog::info("[EMEVDSCAN] done ({} files, {} hit lines{})", files, hit_lines,
                  hit_lines > 120 ? ", capped" : "");
+    // GetMessage/msg-repo are resolved long before map discovery completes, so
+    // this late point is safe for the raw-slot text probe.
+    abp_text_probe();
 }
 } // namespace
 

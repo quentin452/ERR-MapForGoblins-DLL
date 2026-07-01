@@ -27,6 +27,10 @@ namespace goblin
     /// the id has no entry. Used by the overlay marker tooltips.
     std::string lookup_text_utf8(int32_t id);
 
+    /// RAW native GetMessage by PHYSICAL fmg slot — RE probe surface only
+    /// (goblin_param_scan [ABPTEXT]); normal lookups go through lookup_text_utf8.
+    std::string raw_message_utf8(uint32_t fmg_slot, uint32_t msg_id);
+
     // The F1-search English alias (formerly lookup_name_alias_en_utf8, backed by
     // the baked goblin_name_aliases_en table) now resolves live from the active
     // install's engus FMGs on disk — see goblin::lookup_name_en_disk_utf8 in
