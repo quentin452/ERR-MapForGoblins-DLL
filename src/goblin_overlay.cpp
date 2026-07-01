@@ -241,6 +241,13 @@ namespace
     // capture even reaches the user32 exports we hook (0 calls while ER clearly captures the mouse =
     // it's bypassing user32 entirely, e.g. native Wayland pointer-lock or a win32u-only path).
     std::atomic<unsigned> g_diag_set_cursor_pos{0};
+    // Separate counter for the live [DIAG] on-screen readout (config::debugCursorDiagnostic) —
+    // NOT the same one [CURSORDIAG] resets every ~1s in dump-to-log, so reading/resetting this
+    // one every frame doesn't starve that log's own accounting.
+    std::atomic<unsigned> g_diag_set_cursor_pos_live{0};
+    std::atomic<int> g_diag_last_set_cursor_pos_x{-1};
+    std::atomic<int> g_diag_last_set_cursor_pos_y{-1};
+    std::atomic<bool> g_diag_set_cursor_pos_swallowed{false};
     std::atomic<unsigned> g_diag_clip_cursor{0};
     std::atomic<unsigned> g_diag_get_cursor_pos{0};
     std::atomic<unsigned> g_diag_get_raw_input_data{0};
@@ -1311,7 +1318,15 @@ namespace
     BOOL WINAPI hk_set_cursor_pos(int x, int y)
     {
         g_diag_set_cursor_pos.fetch_add(1, std::memory_order_relaxed);
-        if (g_show) return TRUE;            // swallow the game's recenter-to-middle
+        g_diag_set_cursor_pos_live.fetch_add(1, std::memory_order_relaxed);
+        g_diag_last_set_cursor_pos_x.store(x, std::memory_order_relaxed);
+        g_diag_last_set_cursor_pos_y.store(y, std::memory_order_relaxed);
+        if (g_show)
+        {
+            g_diag_set_cursor_pos_swallowed.store(true, std::memory_order_relaxed);
+            return TRUE;                    // swallow the game's recenter-to-middle
+        }
+        g_diag_set_cursor_pos_swallowed.store(false, std::memory_order_relaxed);
         return o_set_cursor_pos(x, y);
     }
     BOOL WINAPI hk_clip_cursor(const RECT *rc)
@@ -3755,14 +3770,19 @@ namespace
                                       static_cast<float>(g_diag_raw_cursor_client.y)),
                               IM_COL32(0, 255, 255, 255));
                 crosshair(diagIo.MousePos, IM_COL32(255, 0, 255, 255));
-                char diagBuf[256];
+                char diagBuf[384];
                 std::snprintf(diagBuf, sizeof(diagBuf),
                               "[DIAG] raw(cyan)=(%ld,%ld) valid=%d  ImGui(magenta)=(%.0f,%.0f)\n"
-                              "g_has_focus=%d WantCaptureMouse=%d",
+                              "g_has_focus=%d WantCaptureMouse=%d\n"
+                              "SetCursorPos/frame=%u last_call=(%d,%d) swallowed=%d",
                               g_diag_raw_cursor_valid ? static_cast<long>(g_diag_raw_cursor_client.x) : -1,
                               g_diag_raw_cursor_valid ? static_cast<long>(g_diag_raw_cursor_client.y) : -1,
                               g_diag_raw_cursor_valid, diagIo.MousePos.x, diagIo.MousePos.y,
-                              g_has_focus.load(std::memory_order_relaxed), diagIo.WantCaptureMouse);
+                              g_has_focus.load(std::memory_order_relaxed), diagIo.WantCaptureMouse,
+                              g_diag_set_cursor_pos_live.exchange(0, std::memory_order_relaxed),
+                              g_diag_last_set_cursor_pos_x.load(std::memory_order_relaxed),
+                              g_diag_last_set_cursor_pos_y.load(std::memory_order_relaxed),
+                              g_diag_set_cursor_pos_swallowed.load(std::memory_order_relaxed));
                 diagDl->AddText(ImVec2(10, 10), IM_COL32(255, 255, 255, 255), diagBuf);
             }
             // Draw ImGui's software cursor ONLY while the F1 panel is up AND the world map is CLOSED.
