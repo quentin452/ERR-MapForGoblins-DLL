@@ -2,11 +2,10 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01w (`feat/overlay-draw-context`, Phase 1 slice 1 of the
-overlay_hot_reload_playwright_plan — `draw_worldmap_markers`/`draw_minimap_hud` now take an
-explicit `OverlayFrameCtx` instead of reading file-statics directly; `draw_panel` deferred to its
-own coupling audit. Build-verified via clang-cl+xwin, IN-GAME CONFIRMED (log check, see below).
-Earlier same day: `feat/inject-grace-suppression` PR 4c of the goblin_inject.cpp
+Last updated: 2026-07-01x (overlay_hot_reload_playwright_plan Phase 1 slice 1 — `OverlayFrameCtx`
+for `draw_worldmap_markers`/`draw_minimap_hud` — build-verified + IN-GAME CONFIRMED, MERGED to
+`master` (`feat/overlay-draw-context` deleted post-merge). Slice 2's `draw_panel` coupling audit
+DONE, code not started — see below). Earlier same day: `feat/inject-grace-suppression` PR 4c of the goblin_inject.cpp
 god-file split — IN-GAME CONFIRMED + MERGED. This was the LAST planned extraction PR — the whole
 goblin_inject_refactor_plan is now COMPLETE (only 4d, an intentional non-PR stay-behind, remains).
 Earlier same day: PR 4b
@@ -23,31 +22,42 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01w) — overlay_hot_reload_playwright_plan Phase 1 slice 1 IN-GAME CONFIRMED, not yet merged
+## RESUME HERE (2026-07-01x) — overlay_hot_reload_playwright_plan Phase 1 slice 1 MERGED, slice 2 (`draw_panel`) audit DONE, code not started
 
-Branch `feat/overlay-draw-context` (forked from `master`), first slice of Phase 1 of
-`docs/plans/overlay_hot_reload_playwright_plan.md`. Coupling audit first (mirrors the inject-
-refactor plan's discipline): grepped/read `draw_worldmap_markers` (`:1478`), `draw_minimap_hud`
-(`:1550`), `draw_panel` (`:1569`, ~1600 lines) for every file-static they touch. Found
-`draw_worldmap_markers`/`draw_minimap_hud` are cleanly self-contained (their only host-shared
-direct reads are `g_atlas_gpu`/`g_atlas_ready`/`g_hwnd`/`g_nav_frames`; `overlay_layers()` and the
-grace-sprite `ensure_grace_srv()`/`ensure_grace_dungeon_srv()` helpers own their state privately) —
-`draw_panel` is NOT (owns a big panel-UI cluster + touches host-shared `g_gamepad_combo_ready`/
-`g_item_icon_srvs`/`g_grace_state`, not yet audited to PR-boundary precision). Scoped this slice to
-the two clean functions only (biggest/cleanest-win-first, same convention the inject plan used).
+Slice 1 (`feat/overlay-draw-context`, forked from `master`): coupling audit first (mirrors the
+inject-refactor plan's discipline) found `draw_worldmap_markers`/`draw_minimap_hud` cleanly self-
+contained (only host-shared direct reads are `g_atlas_gpu`/`g_atlas_ready`/`g_hwnd`/`g_nav_frames`;
+`overlay_layers()`/`ensure_grace_srv()`/`ensure_grace_dungeon_srv()` own their state privately).
 Added `OverlayFrameCtx` struct (`atlas_srv`/`hwnd`/`nav_frames`, the latter two as pointers into
-the host statics, not copies — other code outside these 2 functions still reads/writes the
-originals every frame) right above `draw_worldmap_markers` in `goblin_overlay.cpp`. Both functions
-now take `const OverlayFrameCtx &ctx` instead of reading `g_atlas_gpu`/`g_atlas_ready`/`g_hwnd`/
-`g_nav_frames` directly; `hk_present` builds one `frame_ctx` per frame (`:3629-3633`) and passes it
-to both call sites. `draw_panel` UNCHANGED this slice. Cross-build clean (clang-cl+xwin,
-`ninja -C build-linux MapForGoblins`, only pre-existing unrelated warnings). Deployed to
-`~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior DLL backed up as
-`.bak-pre-overlay-draw-context`). **IN-GAME CONFIRMED 2026-07-01 20:35 via log check**: fresh
-`NEW SESSION`, `[SIG]` 29/29 PASS, icon atlas decoded/uploaded, `render.minimap` bench firing every
-frame for the whole ~20s session, no error/exception/crash (no new crash dump past deploy time).
-Not yet merged to `master` — next: either continue with `draw_panel`'s own coupling audit (next
-slice of Phase 1) or merge this slice standalone first.
+host statics, not copies) right above `draw_worldmap_markers`; both functions now take
+`const OverlayFrameCtx &ctx` instead of reading those 4 globals directly; `hk_present` builds one
+`frame_ctx` per frame (`:3629-3633`). `draw_panel` UNCHANGED this slice. Cross-build clean
+(clang-cl+xwin). Deployed to `~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified,
+backup `.bak-pre-overlay-draw-context`). **IN-GAME CONFIRMED 2026-07-01 20:35 via log check**:
+fresh `NEW SESSION`, `[SIG]` 29/29 PASS, atlas decoded/uploaded, `render.minimap` bench firing every
+frame the whole ~20s session, no error/exception/crash. **MERGED to `master`** (fast-forward,
+branch deleted).
+
+**Slice 2 — `draw_panel` coupling audit DONE (2026-07-01), code not started.** Full 4-chunk read
+of `draw_panel` (`:1581-3159`, ~1580 lines) cross-checked with repo-wide grep. 13 globals + 1
+genuinely-split helper cluster found (bigger in volume than slice 1, same kind of split). Panel-
+owned (safe to encapsulate in a `PanelCtx`): `g_large`, and the grace-debug-override family
+(`g_grace_dbg_srgb`/`_swiz`/`_fmt_used`, `g_grace_state`, `g_grace_gpu`+uv, `g_grace_dbg` vector —
+panel is sole direct writer of the two override ints, rest round-trips through the already-self-
+contained `ensure_grace_srv`/`ensure_grace_debug`). Host-shared (must stay pointer/ref, NOT panel-
+owned): gamepad-combo recording UI (`g_gamepad_combo_recording`/`_ready`/`_reject_reason`, also
+touched by `hk_present`'s XInput poll), `g_nav_frames` (reuse slice-1's existing field), and the
+D3D12/atlas render-infra cluster (`g_atlas_ready`/`g_atlas_gpu` same as slice 1, **plus a new
+riskier find**: the icon-batch cache `g_device`/`g_command_queue`/`g_srv_heap`/`g_next_item_srv`/
+`g_pending_icons`/`g_icon_batch_open`/`g_item_icon_srvs` — genuinely split across host and panel,
+`ensure_item_icon_srv()` is called from `draw_panel` but `flush_item_icon_batch()` (same cluster) is
+called directly from `hk_present` right after the draw calls, not from inside any of the 3 draw
+functions). Open design decision before coding (not a blocker): either move both icon-batch
+functions into the draw layer with D3D12 handles passed in as ctx refs, or keep
+`flush_item_icon_batch` host-side calling back via a ctx-held pointer. No new struct SHAPE needed —
+extends `OverlayFrameCtx` with a `PanelCtx` sub-struct, same `RenderCtx`/panel-owned split slice 1
+established. Next: pick the icon-batch design, then extract `draw_panel`'s signature the same way
+slice 1 did, build+deploy+in-game confirm before merging.
 
 ## RESUME HERE (2026-07-01v) — `feat/inject-grace-suppression` PR 4c IN-GAME CONFIRMED + MERGED — goblin_inject.cpp refactor plan COMPLETE
 
