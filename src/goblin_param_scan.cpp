@@ -1,7 +1,12 @@
 #include "goblin_param_scan.hpp"
 
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <string>
 
 #include <spdlog/spdlog.h>
@@ -24,6 +29,64 @@ namespace
 // This scan finds every table+offset that stores those ids.
 constexpr uint32_t kNeedles[] = {6250, 5010};
 constexpr int kMaxHitLinesPerTable = 40;
+
+// Tables to dump RAW (row id + hex) into logs/paramdump_<name>.txt for offline
+// analysis — the needle scan proved no param table stores the Group-2 ABP ids
+// as a field VALUE, so the next question is what ObjActParam/ActionButtonParam
+// rows actually contain (row IDS are in the descriptors, not the data — a
+// needle scan can't see them). regulation.bin is encrypted on disk; the live
+// tables are the easiest clean source, then python the .txt on this machine.
+constexpr const char *kDumpTables[] = {"ObjActParam", "ActionButtonParam"};
+
+// Directory of the DLL itself (same trick as goblin_crashdump) → logs/ next to it.
+std::filesystem::path own_logs_dir()
+{
+    HMODULE self = nullptr;
+    wchar_t buf[MAX_PATH] = {0};
+    if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           reinterpret_cast<LPCWSTR>(&own_logs_dir), &self) &&
+        GetModuleFileNameW(self, buf, MAX_PATH))
+        return std::filesystem::path(buf).parent_path() / "logs";
+    return {};
+}
+
+void dump_table(const char *name, from::params::ParamTable *table)
+{
+    const auto dir = own_logs_dir();
+    if (dir.empty()) return;
+    const auto path = dir / (std::string("paramdump_") + name + ".txt");
+    FILE *f = _wfopen(path.wstring().c_str(), L"wb");
+    if (!f)
+    {
+        spdlog::warn("[PARAMSCAN] dump: cannot open {}", path.string());
+        return;
+    }
+    auto *base = reinterpret_cast<uint8_t *>(table);
+    uint64_t row_size = 0;
+    for (uint16_t r = 0; r < table->num_rows; r++)
+    {
+        const auto &ri = table->rows[r];
+        uint64_t len;
+        if (r + 1 < table->num_rows && table->rows[r + 1].param_offset > ri.param_offset)
+            len = table->rows[r + 1].param_offset - ri.param_offset;
+        else if (row_size)
+            len = row_size;
+        else if (ri.param_end_offset > ri.param_offset)
+            len = ri.param_end_offset - ri.param_offset;
+        else
+            continue;
+        if (len > 0x1000) continue;
+        if (!row_size) row_size = len;
+        std::fprintf(f, "%llu :", (unsigned long long)ri.row_id);
+        const uint8_t *p = base + ri.param_offset;
+        for (uint64_t b = 0; b < len; b++) std::fprintf(f, " %02X", p[b]);
+        std::fprintf(f, "\n");
+    }
+    std::fclose(f);
+    spdlog::info("[PARAMSCAN] dumped {} ({} rows, row size {}) -> {}", name,
+                 table->num_rows, row_size, path.string());
+}
 
 // SEH note: called via dllmain's safe_init_step (__try around a fn-pointer call —
 // the preserved shape), so a stale/half-loaded table faults into that guard.
@@ -99,6 +162,9 @@ void param_needle_scan()
         const std::string name = from::params::internal::wstring_to_string(
             from::params::dlw_c_str(&prc->param_name));
         scan_table(name.c_str(), prc->param_header->param_table);
+        for (const char *dt : kDumpTables)
+            if (name == dt)
+                dump_table(name.c_str(), prc->param_header->param_table);
     }
     spdlog::info("[PARAMSCAN] done");
 }
