@@ -7,6 +7,42 @@ FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint text fix bot
 recap directly below. Earlier same day: `feat/quest-npc-layer` and
 `feat/minimap-scale-cluster-search` also MERGED — their recaps follow below.)
 
+## ⚠️ IN PROGRESS ELSEWHERE (2026-07-01g) — build_pipeline.py deletion/migration running in a SEPARATE agent session right now
+
+**Do not edit `tools/build_pipeline.py`, `build.bat`, or `tools/generate_data.py` in this
+session/branch — a parallel agent is actively doing this deletion/migration per direct user
+instruction ("supprimer build_pipeline.py, on a déjà une path disk").** Recording findings here
+so nothing gets lost / re-derived, and so this session's own work (input-module refactor, F3 fix,
+minimap fixes below) doesn't collide with whatever lands there.
+
+**Findings gathered here before handing off (not yet acted on):**
+- `build_pipeline.py` (526 lines) is called from **3 places in `build.bat`**: the `:generate`
+  label (`build.bat:93`), `:snapshot` (`build.bat:135`), and `:release` (`build.bat:183`). Simply
+  `rm`-ing the file without touching these leaves `build.bat` broken (file-not-found) for every
+  profile, including ERR's own daily-driver build — this is NOT scoped only to the
+  vanilla/erte/convergence regen path `generated_data_removal_plan.md` Phase A describes.
+- `build_pipeline.py` orchestrates ~30 individual generator/extractor scripts (grep `script=` in
+  the file — `extract_goods_categories.py`, `extract_itemlot_csv.py`, `generate_boss_list.py`,
+  `generate_data.py` itself, `generate_world_feature_models.py`, etc.), not just the marker-position
+  bake `generated_data_removal_plan.md` targets. Per that plan's own audit, SOME of what it
+  produces is genuinely non-derivable-from-disk authored content on non-ERR profiles (enemy_names
+  — no Codex-equivalent live source; category_exceptions/name_aliases_en — curated dicts, no
+  param/MSB source at all) — full removal of the orchestrator has a wider blast radius than just
+  the map-data stub this plan was originally about. Whoever finishes this migration should
+  reconcile `docs/plans/generated_data_removal_plan.md` against whatever actually survives (it may
+  need a rewrite or a "superseded by direct deletion" status update once this lands).
+- User's stated reasoning: the live-DiskMSB/on-disk read path already covers what this baked
+  pipeline was for, so keeping the orchestrator (and the profile-specific baked tables it
+  produces) is no longer justified. This is a stronger claim than what
+  `generated_data_removal_plan.md` itself verified (that plan found several tables ARE genuinely
+  permanent/non-disk-derivable) — if the other agent's migration disagrees with that plan's
+  conclusions, that's an intentional user call, not a bug to "fix" back.
+- **Next session / whoever picks this up:** check `git log`/`git status` for what the parallel
+  agent actually did, verify `build.bat` still works (or was intentionally retired/replaced) for
+  at least the ERR profile, and update `docs/plans/generated_data_removal_plan.md` +
+  `docs/plans/README.md` + `docs/memory/tooling/mapforgoblins-pipeline-setup.md` to match new
+  reality (all three currently describe `build_pipeline.py` as the active pipeline).
+
 ## RESUME HERE (2026-07-01f) — input-module refactor + F3 keyboard fix + 2 minimap/search DX fixes, all landed + confirmed
 
 - **`feat/input-module` merged to master** (6 commits, fast-forward, no conflicts). All 5 input
