@@ -31,11 +31,17 @@ sequencing + the post-Phase-1 findings that reframe Phase 2). What landed / what
   `generated_data_removal_plan.md` **Phase A (regen non-ERR) is the immediate next step**, no longer
   optional. Blocked on a machine that can build non-ERR (2026-07-01 dev machine can't — CMake configure
   fails there).
+- **`.MASSEDIT` chain PROVEN DEAD (not just baked=0), `239b1ec`:** nothing reads `.MASSEDIT` anywhere —
+  the DLL loader `goblin_massedit.{cpp,hpp}` was orphaned (not in CMake, never compiled) and is now
+  deleted; `generate_data`'s `massedit_dir` is a dead param (map_data stubbed unconditionally); the only
+  pipeline reader `relocating_boss_fix` just edits MASSEDIT files that feed the empty stub. So the ~14
+  `generate_*_massedit` stages produce output read by nothing.
 - **NEXT PRs (evidence-based, in the plan):** (1) Phase A regen non-ERR + vanilla in-game sanity;
-  (2) cull the ~14 dead `generate_*_massedit` stages (`generate_map_data_cpp` is an unconditional empty
-  stub → their `.MASSEDIT` output is read by nothing) — but KEEP `generate_loot_massedit`'s JSON half
-  (`loot_lot_linkage.json`/`item_icon_table.json` still feed compiled tables); (3) migrate
-  `item_icon_table.json` (ERR-frozen placed-item set) to runtime; (4) Phase 5 retire the pipeline.
+  (2) cull the ~14 dead `generate_*_massedit` stages + `relocating_boss_fix` + the dead `massedit_dir`
+  param — but KEEP `generate_loot_massedit`'s JSON half (`loot_lot_linkage.json`/`item_icon_table.json`
+  still feed compiled tables). Empirical confirm = regen ERR + rebuild + run + diff log vs the clean
+  baseline (identical ⇒ dead confirmed); (3) migrate `item_icon_table.json` (ERR-frozen placed-item set)
+  to runtime; (4) Phase 5 retire the pipeline.
 
 **Findings gathered before handing off (historical context; Phase 1 above now acted on):**
 - `build_pipeline.py` (526 lines) is called from **3 places in `build.bat`**: the `:generate`
