@@ -1790,6 +1790,17 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     if (!goblin::get_player_map_pos(parea, pwx, pwz, nullptr, nullptr, &pgroup))
         return; // no position (e.g. during a load) → no minimap this frame
 
+    // DX (altitude badge stale on minimap): render_markers() only refreshes g_player_world_y/
+    // g_player_group while the worldmap is OPEN, but draw_altitude_badge() (called below via
+    // draw_marker) always reads those same statics — so the minimap badge froze at whatever Y
+    // was cached on last map-close. Refresh live here too, every minimap frame.
+    {
+        float px = 0.f, py = 0.f, pz = 0.f;
+        g_player_world_y_valid = goblin::get_player_world_pos(px, py, pz);
+        g_player_world_y = py;
+        g_player_group = pgroup;
+    }
+
     // <user> 2026-07-01: minimap size/icons were fixed pixel values, not scaled to the live
     // resolution, unlike the worldmap's own marker icons (which already use this exact
     // `uiScale = realH / 1080.f` pattern, see the worldmap draw loop above). At 4K the minimap

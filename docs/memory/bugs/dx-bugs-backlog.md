@@ -122,6 +122,17 @@ Backlog DX + bugs relevé par <user> le 2026-06-28 (à traiter plus tard, pas en
    3 niche sources still drop posY (ReforgedRune/EmberPieces `bpos`, scarab/maps-pass `pos`, sibling-LOD
    `lit`) → those markers get no badge; thread if needed.
    **DX pour icône plus haut/bas que le joueur (axe Y)** — trouver une indication visuelle quand une icône sur la map est à un Y différent du joueur, pour que le joueur ne cherche pas au mauvais étage/altitude.
+   **FOLLOWUP 2026-07-01, FIXED** (<user>: badge only updated on worldmap open, frozen on minimap) —
+   `g_player_world_y`/`g_player_group` (`map_renderer.cpp:330-332`) were only refreshed inside
+   `render_markers()`, which only runs while the worldmap is OPEN; `draw_minimap()` (map closed)
+   reads those same statics via `draw_altitude_badge()` but never refreshed them itself, so the
+   minimap badge froze at whatever Y was cached on last map-close. Fixed by sampling
+   `get_player_world_pos()` live inside `draw_minimap()` too, every frame it draws. Audited other
+   per-marker attributes for the same "cached, never refreshed" pattern while investigating — no
+   wider issue found: live-state gates (collected/graying, story/fragment flags, search-hit, region
+   toggles) all already re-read every frame; only spatial/structural stuff (clustering, stacking,
+   `ref_grace_y`) is build-cached by design (correct, since it's static geometry). Player Y was the
+   one true outlier. Built clean, deployed — pending in-game re-confirm.
 8. ✅ **FIXED 2026-06-30** (`feat/spatial-grid`, PR E) — replaced the nearest-grace heuristic with
    **tile-based clustering**: group by the marker's map-space 256-unit tile (+ map layer, `spatial_grid.hpp`).
    Root causes of the "icônes pas clusterisées" found via diagnostics: (a) the old `cluster_key>=0`
