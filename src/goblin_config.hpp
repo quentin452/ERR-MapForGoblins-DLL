@@ -198,6 +198,13 @@ namespace goblin
         // mid-session resolution-change zoom corruption. Read-only.
         extern bool debugRenderDims;
 
+        // Dev (dx-bugs 2026-07-01 Alt+Tab followup): draw two live on-screen crosshairs while F1
+        // is open -- cyan at the raw polled OS cursor position (GetCursorPos), magenta at what
+        // ImGui itself thinks the mouse position is (io.MousePos). If they diverge (ImGui's stays
+        // put while the real one moves), THAT is the stale cursor visually, in real time --
+        // no log round-trip needed to see it happen. Read-only, off by default.
+        extern bool debugCursorDiagnostic;
+
         // EXPERIMENTAL: on a swapchain resize, raw-poke ER's stale render-output dims
         // to the new size so a mid-session resolution change doesn't leave the world
         // zoomed (no restart needed). Same-aspect only. Default off.

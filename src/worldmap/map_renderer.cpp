@@ -1803,14 +1803,12 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     float half = kMinimapIconHalfBase * cfg::overlayMasterScale * cfg::overlayIconScale;
     half = half < 3.0f ? 3.0f : (half > 10.0f ? 10.0f : half);
 
-    // Item 13: lightweight screen-space clustering. The minimap's projection is a simple local,
-    // player-centred Euclidean one (not the worldmap's pan/zoom u,v system), so this buckets by
-    // rounding each marker's screen offset to a fixed-size cell instead of reusing the worldmap's
-    // draw_clusters — that's coupled to hover/tooltips/distance-adaptive zoom logic that doesn't
-    // apply to a small fixed-radius HUD widget.
+    // Item 13 tried screen-space clustering here; disabled by user feedback 2026-07-01 (see the
+    // key-computation comment below) — piles popped in/out too jarringly on the small HUD. Kept
+    // the cells/ map (each marker now gets its own unique key) so the search-hit ring loop below
+    // doesn't need a second code path.
     struct MiniHit { const Marker *m; ImVec2 pos; };
     std::unordered_map<uint64_t, std::vector<MiniHit>> cells;
-    constexpr float kCellPx = 14.0f;
     for (auto *L : layers)
     {
         if (!L || !L->visible())
@@ -1842,14 +1840,13 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
                 !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
                 !is_discovered_grace(m))
                 continue;
-            // Respect the same clustering toggle the worldmap uses — piling was unconditional
-            // before, ignoring `enableClustering=false`. Disabled: give every marker its own
-            // unique key (its address) so it always lands alone in its cell, i.e. never piles.
-            const uint64_t key = cfg::enableClustering
-                ? ((static_cast<uint64_t>(static_cast<uint32_t>(m.group)) << 40) ^
-                   (static_cast<uint64_t>(static_cast<uint32_t>(std::floor(dx / kCellPx))) << 20) ^
-                   static_cast<uint64_t>(static_cast<uint32_t>(std::floor(dy / kCellPx))))
-                : reinterpret_cast<uint64_t>(&m);
+            // Clustering DISABLED on the minimap (user-tuned 2026-07-01: piles kept popping in
+            // and out as markers crossed cell boundaries while panning/moving — visually jarring
+            // on a small HUD in a way it isn't on the full worldmap). Every marker gets a unique
+            // key (its address) so it always lands alone in its own "cell" — the cells/ map is
+            // kept only so the rest of this loop (search-hit ring below) doesn't need a second
+            // code path.
+            const uint64_t key = reinterpret_cast<uint64_t>(&m);
             cells[key].push_back({&m, ImVec2(ctr.x + dx, ctr.y + dy)});
         }
     }

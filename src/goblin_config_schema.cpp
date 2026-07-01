@@ -82,6 +82,7 @@ namespace goblin::config
     bool dumpNativePins = false;
     bool overlayMarkersProto = false;
     bool debugRenderDims = false;
+    bool debugCursorDiagnostic = false;
     bool fixMidsessionResolution = false;
     bool benchLogIndividual = true;
     bool benchLogSession = true;
@@ -106,8 +107,8 @@ namespace goblin::config
     bool debugClusterAnchors = false; // viz: pile anchor + member lines + name + d/thr
     bool debugRegionVolumes = false; // viz: draw each MapNameOverride volume + name
     bool showMinimap = false;
-    float minimapZoom = 0.15f;     // px per world-unit shown on the minimap
-    float minimapSize = 130.0f;    // minimap radius in px
+    float minimapZoom = 2.0f;      // px per world-unit shown on the minimap
+    float minimapSize = 100.0f;    // minimap radius in px
     float minimapOpacity = 0.85f;  // background disc opacity 0..1
     bool minimapAnchorRight = true;   // corner: right vs left
     bool minimapAnchorBottom = false; // corner: bottom vs top
@@ -505,6 +506,8 @@ namespace
                   "EXPERIMENTAL no-restart fix for the mid-session resolution-change zoom\n(3D world + map stay zoomed after changing resolution in-game). On a swapchain\nresize, raw-pokes ER's render-output dims to the new size (the engine leaves\nthem stale). Same-aspect changes only (16:9<->16:9, no letterbox). Off by\ndefault; enable + test. If the zoom persists or anything misbehaves, set false\n(restarting ER after a resolution change is the safe fallback)."),
                 B("debug_render_dims", debugRenderDims, "false",
                   "Dev diagnostic (mid-session resolution bug): every ~2s log ER's render-\noutput dims (active +0x118/+0x11c vs the live backbuffer) + dirty bits to\nMapForGoblins.log as [RENDIMS]. Change the resolution in-game, then read the\nlog: the entry that stays at the OLD resolution is the stale one. Off by default."),
+                B("debug_cursor_diagnostic", debugCursorDiagnostic, "false",
+                  "Dev diagnostic (Alt+Tab cursor bug): while F1 is open, draw two live\ncrosshairs -- cyan at the raw polled OS cursor position, magenta at what\nImGui itself thinks the mouse position is. If they diverge, that IS the\nstale cursor, visible live instead of needing a log round-trip. Off by default."),
                 B("bench_log_individual", benchLogIndividual, "true",
                   "Log each individual '[BENCH] label: X ms' timing line to MapForGoblins.log\nas it happens. Independent of bench_log_session -- turn off to keep only the\nend-of-session summary table, or turn both off to silence [BENCH] entirely.\nDoes not affect [BENCH][SPIKE] lag-hitch warnings, which always fire. On by\ndefault."),
                 B("bench_log_session", benchLogSession, "true",
@@ -545,10 +548,10 @@ namespace
                   "Debug viz: draw every MapNameOverride region volume on the open map page at\nits projected centre + its name; RED = the textId does NOT resolve in the FMG\n(the bug), cyan = resolves. Off by default."),
                 B("show_minimap", showMinimap, "false",
                   "In-game minimap HUD: a small north-up minimap in a screen corner showing\nnearby goblin markers around the player during gameplay (not the pause-screen\nmap). OVERWORLD only for now (underground player position isn't reliable yet).\nFoundation/opt-in; off by default."),
-                IniEntry{"minimap_zoom", IniType::F32, &cfg::minimapZoom, "0.15",
-                  "Minimap zoom = pixels per world-unit. Higher = more zoomed-in (less area\nshown). 0.15 = default (raised from 0.08 -- user feedback 2026-07-01: the old\ndefault, and the old 0.30 slider max, both read as too zoomed-out/small)."},
-                IniEntry{"minimap_size", IniType::F32, &cfg::minimapSize, "130",
-                  "Minimap radius in pixels. 130 = default."},
+                IniEntry{"minimap_zoom", IniType::F32, &cfg::minimapZoom, "2.0",
+                  "Minimap zoom = pixels per world-unit. Higher = more zoomed-in (less area\nshown). 2.0 = default (raised from 0.08 through live user tuning 2026-07-01 --\nthe old default and the old 0.30 slider max both read as too zoomed-out/small)."},
+                IniEntry{"minimap_size", IniType::F32, &cfg::minimapSize, "100",
+                  "Minimap radius in pixels. 100 = default (down from 130, user-tuned 2026-07-01)."},
                 IniEntry{"minimap_opacity", IniType::F32, &cfg::minimapOpacity, "0.85",
                   "Minimap background disc opacity, 0..1. 0.85 = default."},
                 B("minimap_anchor_right", minimapAnchorRight, "true",

@@ -256,6 +256,13 @@ namespace
     // focus away from the InputText).
     std::atomic<unsigned> g_diag_wm_char{0};
     std::atomic<unsigned> g_diag_wm_keydown{0};
+    // Visual cursor diagnostic (dx-bugs 2026-07-01 Alt+Tab followup, config::debugCursorDiagnostic).
+    // Set in the mouse-poll block (client-relative, always captured regardless of whether the
+    // baseline gate feeds it to ImGui) and drawn as a crosshair after ImGui::NewFrame(), further
+    // down in the same function — file-scope so it survives across that gap without threading it
+    // through as a parameter.
+    POINT g_diag_raw_cursor_client{};
+    bool g_diag_raw_cursor_valid = false;
     // Item-search nav window: while > 0, a locate/page-switch is in flight and the input hooks inject a
     // tiny net-zero mouse jitter so the game keeps processing its world-map (otherwise, with the panel
     // open, input is blanked -> the map's view/page step doesn't run -> our switch+pan only apply once
@@ -2430,7 +2437,7 @@ namespace
                                       "(underground player position isn't reliable yet).");
                 // Max raised 0.30 -> 0.60 (user feedback 2026-07-01: 0.30 was still too
                 // zoomed-out/small at max). Default also raised, see minimapZoom's declaration.
-                ImGui::SliderFloat("Zoom (px/world)", &goblin::config::minimapZoom, 0.02f, 0.60f, "%.3f");
+                ImGui::SliderFloat("Zoom (px/world)", &goblin::config::minimapZoom, 0.02f, 5.0f, "%.3f");
                 ImGui::SliderFloat("Radius (px)", &goblin::config::minimapSize, 60.0f, 300.0f, "%.0f");
                 ImGui::SliderFloat("Opacity", &goblin::config::minimapOpacity, 0.0f, 1.0f, "%.2f");
                 ImGui::Checkbox("Anchor right", &goblin::config::minimapAnchorRight);
@@ -3654,6 +3661,8 @@ namespace
                     POINT pt;
                     if (::GetCursorPos(&pt) && ::ScreenToClient(g_hwnd, &pt))
                     {
+                        g_diag_raw_cursor_client = pt;   // always captured, independent of the
+                        g_diag_raw_cursor_valid = true;  // baseline gate below (see [DIAG] draw)
                         if (!s_mouse_poll_have_baseline)
                         {
                             s_mouse_poll_baseline = pt;
@@ -3668,6 +3677,7 @@ namespace
                 else
                 {
                     s_mouse_poll_have_baseline = false;
+                    g_diag_raw_cursor_valid = false;
                 }
                 const bool lb = fgw && (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
                 io.AddMouseButtonEvent(0, lb);
@@ -3723,6 +3733,38 @@ namespace
             }
 
             ImGui::NewFrame();
+            // [DIAG] dx-bugs 2026-07-01 Alt+Tab followup, config::debugCursorDiagnostic: two live
+            // crosshairs so a recurrence is visible in real time instead of needing another log
+            // round-trip. Cyan = raw polled OS cursor (g_diag_raw_cursor_client, captured in the
+            // mouse-poll block above regardless of whether it passed the baseline gate). Magenta
+            // = io.MousePos, what ImGui itself currently thinks the position is (reflects this
+            // frame's AddMousePosEvent, since NewFrame() just processed the input queue). If
+            // magenta stops tracking cyan (freezes while cyan keeps moving), THAT is the stale
+            // cursor. A text readout also dumps the raw numbers + the relevant gate states.
+            if (g_show && goblin::config::debugCursorDiagnostic)
+            {
+                ImDrawList *diagDl = ImGui::GetBackgroundDrawList();
+                const ImGuiIO &diagIo = ImGui::GetIO();
+                auto crosshair = [diagDl](ImVec2 p, ImU32 col) {
+                    diagDl->AddLine(ImVec2(p.x - 12, p.y), ImVec2(p.x + 12, p.y), col, 2.0f);
+                    diagDl->AddLine(ImVec2(p.x, p.y - 12), ImVec2(p.x, p.y + 12), col, 2.0f);
+                    diagDl->AddCircle(p, 14.0f, col, 0, 2.0f);
+                };
+                if (g_diag_raw_cursor_valid)
+                    crosshair(ImVec2(static_cast<float>(g_diag_raw_cursor_client.x),
+                                      static_cast<float>(g_diag_raw_cursor_client.y)),
+                              IM_COL32(0, 255, 255, 255));
+                crosshair(diagIo.MousePos, IM_COL32(255, 0, 255, 255));
+                char diagBuf[256];
+                std::snprintf(diagBuf, sizeof(diagBuf),
+                              "[DIAG] raw(cyan)=(%ld,%ld) valid=%d  ImGui(magenta)=(%.0f,%.0f)\n"
+                              "g_has_focus=%d WantCaptureMouse=%d",
+                              g_diag_raw_cursor_valid ? static_cast<long>(g_diag_raw_cursor_client.x) : -1,
+                              g_diag_raw_cursor_valid ? static_cast<long>(g_diag_raw_cursor_client.y) : -1,
+                              g_diag_raw_cursor_valid, diagIo.MousePos.x, diagIo.MousePos.y,
+                              g_has_focus.load(std::memory_order_relaxed), diagIo.WantCaptureMouse);
+                diagDl->AddText(ImVec2(10, 10), IM_COL32(255, 255, 255, 255), diagBuf);
+            }
             // Draw ImGui's software cursor ONLY while the F1 panel is up AND the world map is CLOSED.
             // (NewFrame now runs every frame for the overlay markers/minimap, so the old init-time
             // MouseDrawCursor=true leaked it into gameplay; and with the world map open ER already
