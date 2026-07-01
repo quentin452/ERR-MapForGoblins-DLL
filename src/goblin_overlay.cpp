@@ -305,8 +305,24 @@ namespace
             g_virtual_cursor_y.store((static_cast<float>(dy) / 65535.f) * dispH, std::memory_order_relaxed);
             return;
         }
-        float nx = g_virtual_cursor_x.load(std::memory_order_relaxed) + static_cast<float>(dx);
-        float ny = g_virtual_cursor_y.load(std::memory_order_relaxed) + static_cast<float>(dy);
+        // <user> 2026-07-01: virtual cursor drifted away from the real mouse the farther it
+        // moved (worse near the bottom of the screen than the top in their testing — consistent
+        // with error growing with total travel, not a fixed offset). Root cause: raw input
+        // lLastX/lLastY are raw hardware "mickeys", NOT screen pixels — feeding them 1:1 assumed
+        // a mapping that doesn't hold. Scale by the user's actual Windows pointer-speed setting
+        // (SPI_GETMOUSESPEED, 1..20, Windows default 10 == "1 mickey per pixel" baseline) instead
+        // of guessing a constant — self-adjusts to their real OS config. Doesn't replicate
+        // Windows' full non-linear "enhance pointer precision" acceleration curve if that's
+        // enabled; a linear approximation is a large improvement over the prior flat 1:1 either
+        // way and doesn't need another calibration round-trip.
+        static float s_speedScale = []() {
+            int mouseSpeed = 10;
+            ::SystemParametersInfoW(SPI_GETMOUSESPEED, 0, &mouseSpeed, 0);
+            return static_cast<float>(mouseSpeed) / 10.0f;
+        }();  // queried once (not per-event -- this can fire many times/frame during fast
+              // movement) since the OS pointer-speed setting essentially never changes mid-session
+        float nx = g_virtual_cursor_x.load(std::memory_order_relaxed) + static_cast<float>(dx) * s_speedScale;
+        float ny = g_virtual_cursor_y.load(std::memory_order_relaxed) + static_cast<float>(dy) * s_speedScale;
         nx = nx < 0.f ? 0.f : (nx > dispW ? dispW : nx);
         ny = ny < 0.f ? 0.f : (ny > dispH ? dispH : ny);
         g_virtual_cursor_x.store(nx, std::memory_order_relaxed);
