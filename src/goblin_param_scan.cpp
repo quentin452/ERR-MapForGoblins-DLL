@@ -349,15 +349,21 @@ void abp_text_probe()
     if (!abp) { spdlog::warn("[ABPTEXT] ActionButtonParam not found"); return; }
     auto *base = reinterpret_cast<uint8_t *>(abp);
     constexpr uint64_t kTextOff = 0x34;  // textId column (verified vs rows 6250/5010)
-    // Slot discovery: which physical FMG slot resolves textId 7030 ("Smithing")?
+    // Slot discovery v2: v1 keyed on "resolves 7030" and got item-name FMGs
+    // (GoodsName has a 7030 too). Key on textId 3301 instead and require a
+    // SHORT "Descend"-like string — the prompt FMG is the only plausible owner.
+    // Log every candidate so the pick is auditable.
     int slots[5];
     int nslots = 0;
-    for (uint32_t slot = 0; slot < 200 && nslots < 5; slot++)
+    for (uint32_t slot = 0; slot < 250 && nslots < 5; slot++)
     {
-        const std::string s = goblin::raw_message_utf8(slot, 7030);
-        if (s.empty()) continue;
-        spdlog::info("[ABPTEXT] slot {} resolves 7030 = \"{}\"", slot, s);
-        slots[nslots++] = (int)slot;
+        const std::string s3301 = goblin::raw_message_utf8(slot, 3301);
+        if (s3301.empty()) continue;
+        const std::string s7030 = goblin::raw_message_utf8(slot, 7030);
+        spdlog::info("[ABPTEXT] slot {}: 3301=\"{}\" 7030=\"{}\"", slot,
+                     s3301.substr(0, 60), s7030.substr(0, 60));
+        if (s3301.size() < 32 && s3301.find("escend") != std::string::npos)
+            slots[nslots++] = (int)slot;
     }
     const auto dir = own_logs_dir();
     if (dir.empty()) return;
