@@ -1775,7 +1775,14 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     if (!goblin::get_player_map_pos(parea, pwx, pwz, nullptr, nullptr, &pgroup))
         return; // no position (e.g. during a load) → no minimap this frame
 
-    const float R = cfg::minimapSize > 24.f ? cfg::minimapSize : 24.f;
+    // <user> 2026-07-01: minimap size/icons were fixed pixel values, not scaled to the live
+    // resolution, unlike the worldmap's own marker icons (which already use this exact
+    // `uiScale = realH / 1080.f` pattern, see the worldmap draw loop above). At 4K the minimap
+    // would read proportionally tiny; at 720p proportionally huge. `minimapZoom` (world-units
+    // shown) is intentionally left un-scaled — that's a "how much world detail" preference,
+    // independent of screen resolution, same as the worldmap's pan/zoom is independent of uiScale.
+    const float uiScale = screenH / 1080.f;
+    const float R = (cfg::minimapSize > 24.f ? cfg::minimapSize : 24.f) * uiScale;
     const float scale = cfg::minimapZoom > 0.0001f ? cfg::minimapZoom : 0.08f;
     const float margin = 24.f;
     // Configurable corner + pixel offset.
@@ -1800,8 +1807,8 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     // same scale settings the worldmap honors. Clamped so an extreme scale setting can't make the
     // small fixed-radius HUD unreadable or blow past its own icons.
     constexpr float kMinimapIconHalfBase = 6.0f; // matches the old fixed size at scale=1
-    float half = kMinimapIconHalfBase * cfg::overlayMasterScale * cfg::overlayIconScale;
-    half = half < 3.0f ? 3.0f : (half > 10.0f ? 10.0f : half);
+    float half = kMinimapIconHalfBase * uiScale * cfg::overlayMasterScale * cfg::overlayIconScale;
+    half = half < 3.0f * uiScale ? 3.0f * uiScale : (half > 10.0f * uiScale ? 10.0f * uiScale : half);
 
     // Item 13 tried screen-space clustering here; disabled by user feedback 2026-07-01 (see the
     // key-computation comment below) — piles popped in/out too jarringly on the small HUD. Kept
