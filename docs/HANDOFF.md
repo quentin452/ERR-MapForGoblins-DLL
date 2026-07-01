@@ -2,6 +2,23 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
+
+## Housekeeping TODO (2026-07-01, not yet done) — compact this file
+
+This file has grown to 1247+ lines, mostly stale entries for work that's long since merged +
+in-game confirmed. Per this file's own header, DONE work belongs in committed code +
+`docs/changelog.md`, not here — but a first pass (grep for `input-module`/`F3`/`quest-npc-layer`/
+etc. in `docs/changelog.md`) found **`changelog.md` is missing at least 2 real user-facing fixes
+that HANDOFF entries claim are done**: the F3 Alt+Tab keyboard-dead fix (`RIDEV_NOLEGACY` family,
+`90b3e2b`) and the minimap search-hit edge-clamp + search-hint fixes (same `feat/input-module` day).
+**Do NOT prune a HANDOFF entry until its user-facing content is confirmed present in
+`changelog.md`** (pure internal refactors — e.g. the goblin_inject_refactor_plan's PR list, already
+fully described in `docs/plans/goblin_inject_refactor_plan.md` — don't need a changelog line at
+all, since no user-facing behavior changed; those entries can just be deleted once the plan doc
+itself says COMPLETE). Plan: (1) diff every HANDOFF entry for a merged/confirmed feature or fix
+against `changelog.md`'s `[Unreleased]` section, backfill any gap found (the 2 above at minimum),
+(2) then delete the HANDOFF entries whose content now lives in changelog/plan docs, keeping only
+genuinely live/in-progress/not-yet-decided items.
 Last updated: 2026-07-01z3 (overlay_hot_reload_playwright_plan Phase 2 Slice A — CMake
 `GOBLIN_OVERLAY_HOTRELOAD` scaffold — build-verified both OFF/ON, deployed, not yet merged; Slice B
 (physical file move) not started — see below). Earlier same day: `feat/inject-grace-suppression` PR 4c of the goblin_inject.cpp
