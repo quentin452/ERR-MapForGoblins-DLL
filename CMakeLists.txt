@@ -156,6 +156,8 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_debug_events.cpp
   src/goblin_field_probe.hpp
   src/goblin_field_probe.cpp
+  src/goblin_param_scan.hpp
+  src/goblin_param_scan.cpp
   src/goblin_worldmap_probe.hpp
   src/goblin_worldmap_probe.cpp
   src/goblin_inject.hpp

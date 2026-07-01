@@ -16,6 +16,7 @@
 #include "goblin_config.hpp"
 #include "goblin_debug_events.hpp"
 #include "goblin_field_probe.hpp"
+#include "goblin_param_scan.hpp"
 #include "goblin_worldmap_probe.hpp"
 #include "goblin_inject.hpp"
 #include "goblin_kindling.hpp"
@@ -218,6 +219,9 @@ static void setup_mod()
         // Read the English (engus) Name FMGs off disk for the F1 search's English
         // aliases — mod-agnostic, replaces the ERR-frozen baked alias table.
         safe_init_step(&goblin::load_english_name_index, "load_english_name_index");
+        // Dev RE probe (no-op unless debug_logging): [PARAMSCAN] needle search across
+        // every loaded param table — see goblin_param_scan.hpp.
+        safe_init_step(&goblin::param_needle_scan, "param_needle_scan");
         // Seed the per-category visibility / cluster / threshold + master gates from
         // config — the overlay reads these.
         safe_init_step(&goblin::seed_runtime_gates, "seed_runtime_gates");
