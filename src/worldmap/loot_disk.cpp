@@ -11,11 +11,13 @@
 
 #include <atomic>
 #include <cctype>
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <map>
 #include <mutex>
+#include <tuple>
 #include <system_error>
 #include <unordered_map>
 #include <unordered_set>
@@ -951,6 +953,58 @@ std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags(
     if (gestures_out)
         spdlog::info("[LOOTDISK] World-feature flags: {} gesture-spawn refs (template 90005570)",
                      (int)gestures_out->size());
+    return out;
+}
+
+std::vector<QuestNpcRuntime> load_quest_npcs()
+{
+    std::vector<QuestNpcRuntime> out;
+    ensure_map_dir_resolved();
+    fs::path evdir = resolve_event_dir(disk_loot_dir());
+    if (evdir.empty())
+    {
+        spdlog::warn("[LOOTDISK] no event\\ dir for quest NPCs — deferred");
+        return out;
+    }
+    spdlog::info("[LOOTDISK] reading quest NPCs (90005702) from EMEVD {}", evdir.string());
+
+    msbe::OodleDecompressFn oodle = resolve_oodle();
+    std::map<std::tuple<uint32_t, uint32_t, uint32_t>, size_t> byKey;  // (concluded,lo,hi) -> out idx
+    int parsed = 0, kraks = 0, calls = 0;
+    std::error_code ec;
+    for (auto &de : fs::directory_iterator(evdir, ec))
+    {
+        if (!de.is_regular_file(ec)) continue;
+        std::string lower = de.path().filename().string();
+        for (char &c : lower) c = (char)std::tolower((unsigned char)c);
+        if (lower.size() < 10 || lower.compare(lower.size() - 10, 10, ".emevd.dcx") != 0)
+            continue;
+        std::vector<uint8_t> dcx = slurp(de.path());
+        if (dcx.empty()) continue;
+        bool krak = false;
+        std::vector<uint8_t> evd = msbe::dcx_decompress(dcx.data(), dcx.size(), &krak, oodle);
+        if (evd.empty()) { if (krak) ++kraks; continue; }
+        for (const auto &q : msbe::parse_emevd_quest_npcs(evd.data(), evd.size()))
+        {
+            ++calls;
+            auto key = std::make_tuple(q.concluded, q.regLo, q.regHi);
+            auto it = byKey.find(key);
+            if (it == byKey.end())
+            {
+                byKey.emplace(key, out.size());
+                out.push_back({q.concluded, q.regLo, q.regHi, {q.entity}});
+            }
+            else
+            {
+                auto &ents = out[it->second].entities;
+                if (std::find(ents.begin(), ents.end(), q.entity) == ents.end())
+                    ents.push_back(q.entity);
+            }
+        }
+        ++parsed;
+    }
+    spdlog::info("[LOOTDISK] quest NPCs: {} grouped (from {} 90005702 calls over {} EMEVD files, {} KRAK skipped)",
+                 (int)out.size(), calls, parsed, kraks);
     return out;
 }
 } // namespace goblin::worldmap
