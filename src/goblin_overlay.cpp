@@ -3525,7 +3525,18 @@ namespace
             }
             s_prev_show_diag = new_show;
         }
-        g_show = g_user_show && fg;   // lose focus → hooks deactivate; regain → panel restores
+        // <user> 2026-07-01: dropped the `&& fg` gate. This whole session's Alt+Tab bugs (cursor
+        // stuck at centre, MousePos permanently invalid, WantCaptureMouse never recovering) all
+        // stemmed from state that got reset/invalidated on the focus-loss/regain transition —
+        // removing the transition itself (g_show no longer tracks OS focus at all) removes the
+        // whole bug class instead of patching each edge case it produces. Tradeoff: F1 now stays
+        // fully active (drawing + input capture) even while the game window is in the
+        // background — fine for the common "always maximized/borderless" case, but if the user
+        // ever alt-tabs to interact with a DIFFERENT window while F1 is open, our input-swallow
+        // hooks (hk_wndproc, hk_set_cursor_pos, hk_clip_cursor — all gated on g_show) will still
+        // be active and could interfere with that other window. Close F1 before alt-tabbing to
+        // avoid that.
+        g_show = g_user_show;
         // Count down the item-search nav window (set on a result click) — keeps the map "awake" for the
         // switch+pan, then lets the cursor re-freeze so the map stops drifting.
         if (int nf = g_nav_frames.load(std::memory_order_relaxed))
@@ -3614,22 +3625,47 @@ namespace
                 const bool fgw = g_hwnd && g_has_focus.load(std::memory_order_relaxed);
                 ImGuiIO &io = ImGui::GetIO();
                 // ROOT CAUSE (confirmed via [KBDIAG], <user> 2026-07-01 "after Alt+Tab, can't
-                // click in F1"): ImGui_ImplWin32's own NewFrame mouse-position update
-                // (ImGui_ImplWin32_UpdateMouseData) only feeds io.MousePos when its internal
-                // ::GetFocus()==hwnd check passes, and otherwise defers to WM_MOUSEMOVE — but
-                // this game suppresses legacy WM_MOUSEMOVE during normal gameplay (raw input),
-                // same reason the left-button click below is polled instead of read from
-                // WM_LBUTTONDOWN. After a real Alt+Tab, WM_KILLFOCUS invalidates io.MousePos
-                // (ImGui's own AddFocusEvent(false) behavior) and nothing ever refreshes it again
-                // — the log showed MousePos pinned at ImGui's -FLT_MAX sentinel for 26+ seconds
-                // straight, so WantCaptureMouse stayed false (nothing to hit-test against) even
-                // though the button poll below correctly saw real clicks. Poll position the same
-                // way we already poll the button, bypassing ImGui's own focus-gated update.
+                // click in F1"): ImGui_ImplWin32's own NewFrame mouse-position update only feeds
+                // io.MousePos via WM_MOUSEMOVE, which this game suppresses during normal gameplay
+                // (raw input) — same reason the left-button click below is polled instead of read
+                // from WM_LBUTTONDOWN. After a real Alt+Tab, WM_KILLFOCUS invalidates io.MousePos
+                // and nothing ever refreshes it again, so WantCaptureMouse stayed false forever
+                // even though the button poll correctly saw real clicks.
+                //
+                // Unconditionally feeding every GetCursorPos read caused a second bug (<user>,
+                // same day): the cursor visibly snapped to / stuck at screen centre the instant
+                // F1 opened. This game keeps the OS cursor warped to centre continuously during
+                // normal play as part of its raw-input camera (same behavior described by
+                // hk_set_cursor_pos's "swallow the game's recenter-to-middle" comment) — so the
+                // very FIRST poll right after opening genuinely reads back centre, and feeding
+                // that stale gameplay-parked value into ImGui is what showed up as a
+                // recentered/stuck cursor. Fix: capture the first read as a baseline WITHOUT
+                // feeding it, and only start feeding positions once the poll reports something
+                // DIFFERENT from that baseline — i.e. once the player has genuinely moved the
+                // physical mouse. Still fixes the original "can't click" bug (any real movement
+                // to interact with the panel triggers it) without ever reporting the stale centre
+                // value. Re-baselines every time F1 closes so the next open starts clean.
+                static POINT s_mouse_poll_baseline{};
+                static bool s_mouse_poll_have_baseline = false;
                 if (fgw && g_hwnd)
                 {
                     POINT pt;
                     if (::GetCursorPos(&pt) && ::ScreenToClient(g_hwnd, &pt))
-                        io.AddMousePosEvent(static_cast<float>(pt.x), static_cast<float>(pt.y));
+                    {
+                        if (!s_mouse_poll_have_baseline)
+                        {
+                            s_mouse_poll_baseline = pt;
+                            s_mouse_poll_have_baseline = true;
+                        }
+                        else if (pt.x != s_mouse_poll_baseline.x || pt.y != s_mouse_poll_baseline.y)
+                        {
+                            io.AddMousePosEvent(static_cast<float>(pt.x), static_cast<float>(pt.y));
+                        }
+                    }
+                }
+                else
+                {
+                    s_mouse_poll_have_baseline = false;
                 }
                 const bool lb = fgw && (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
                 io.AddMouseButtonEvent(0, lb);
