@@ -300,15 +300,24 @@ both modes; a `GOBLIN_OVERLAY_HOTRELOAD` build additionally needs it to `LoadLib
    layer is currently dead code (not called from anywhere) — zero runtime risk, verified by
    standalone compile only, no in-game check needed until it's actually wired in.
 
-   **Still remaining for Slice C:** (1) rewire the 6 render-side files
-   (`goblin_overlay_render.cpp` + all 5 `worldmap/*.cpp`) to call `goblin::overlay_api::*` instead
-   of `goblin::config::*`/`goblin::ui::*`/etc. directly — mechanical but large (~110 call-site
-   groups, config needs the address-of-vs-dereference distinction handled per site), build+in-game
-   confirm after (this DOES change runtime code paths, unlike the API layer itself); (2)
-   `native_item_icon`-family reverse ctx/pointer table (host owns `g_device` etc., doesn't change);
-   (3) vtable/function-pointer resolution for the host→render call direction (`draw_panel`/
-   `draw_worldmap_markers`/`draw_minimap_hud`, via `LoadLibrary`+`GetProcAddress` since render is
-   the module that gets reloaded).
+   **Call-site rewiring — DONE, build-verified + IN-GAME CONFIRMED (2026-07-01,
+   `feat/overlay-render-api-wired`, not yet merged).** All 6 render-side files now call
+   `goblin::overlay_api::*` instead of `goblin::config::*`/`goblin::ui::*`/etc. directly, generated
+   via a ~180-rule sed script (per-symbol, not blanket-namespace, to avoid rewriting TYPE references
+   that must stay untouched): config address-of sites → `cfg_X_ptr()`, bare reads →
+   `(*cfg_X_ptr())`, `showCategory`/`questProgress`/`regionToggles` via their dedicated getters; the
+   5 `inline constexpr` config globals, `goblin::overlay::*` (the 3 draw functions + `native_item_icon`
+   family), and render-internal `goblin::worldmap::*` all correctly left untouched. Found ONE
+   export-audit gap while rewiring: `goblin::ui::section_label` was missing from the API entirely
+   (added). Cross-build clean. **IN-GAME CONFIRMED 2026-07-01 22:12**: `[SIG]` 29/29 clean, both
+   grace SRVs built, `render.minimap`/`refresh.collected`/`refresh.category_census`/
+   `refresh.flag_or_pairs` all firing correctly the whole session — confirms config, `ui::`, and
+   `collected::` wrappers all work live, no crash/error. Not yet merged.
+
+   **Still remaining for Slice C:** (1) `native_item_icon`-family reverse ctx/pointer table (host
+   owns `g_device` etc., doesn't change); (2) vtable/function-pointer resolution for the
+   host→render call direction (`draw_panel`/`draw_worldmap_markers`/`draw_minimap_hud`, via
+   `LoadLibrary`+`GetProcAddress` since render is the module that gets reloaded).
 4. Slice D — file-watcher + actual hot reload.
   - **ImGui context sharing across the DLL boundary.** Both DLLs must share the SAME `ImGuiContext*`
     (`ImGui::SetCurrentContext` on entry to every cross-DLL call) and be built against the same

@@ -13,11 +13,11 @@ Kept: genuinely live/in-progress work, open questions, and standing knowledge (g
 decisions, non-obvious facts) not fully captured anywhere else. If you're looking for the history of
 something not below, check `docs/changelog.md` first, then the relevant `docs/plans/*.md`.
 
-Last updated: 2026-07-01z6 (overlay_hot_reload_playwright_plan Phase 2 Slice B MERGED to `master`;
-Slice C's export-API layer DONE, build-verified standalone (`feat/overlay-render-api`, not yet
-wired into the render-side call sites, not yet merged) — see below).
+Last updated: 2026-07-01z7 (overlay_hot_reload_playwright_plan Phase 2 Slice B MERGED to `master`;
+Slice C's export-API layer + call-site rewiring both DONE, build-verified + IN-GAME CONFIRMED
+(`feat/overlay-render-api-wired`, not yet merged) — see below).
 
-## RESUME HERE (2026-07-01z6) — overlay_hot_reload_playwright_plan Phase 2 Slice B MERGED, Slice C export-API layer built, not yet wired
+## RESUME HERE (2026-07-01z7) — overlay_hot_reload_playwright_plan Slice C API layer + rewiring landed, LoadLibrary mechanism not started
 
 Phase 1, Phase 2 Slice A, and Phase 2 Slice B are all COMPLETE + MERGED to `master` (Slice B:
 draw layer extracted to `src/goblin_overlay_render.{cpp,hpp}`, grace/icon-SRV helpers stayed
@@ -41,12 +41,20 @@ different header entirely, `gpu_want_symbol`/`gpu_want_item` return `void` not `
 infer from a name.** This layer is dead code right now (not called from anywhere) — zero runtime
 risk, build-verified only, no in-game check needed yet.
 
-**Still remaining for Slice C** (full detail in the plan doc): (1) rewire the 6 render-side files
-(`goblin_overlay_render.cpp` + all 5 `worldmap/*.cpp`) to call `goblin::overlay_api::*` — large
-mechanical change (~110 call-site groups, config needs address-of-vs-dereference handled per
-site), DOES need build+in-game confirm after (unlike the API layer itself); (2) `native_item_icon`
-reverse ctx/pointer table; (3) `LoadLibrary`+`GetProcAddress` vtable resolution for the
-host→render call direction. Next session: start with (1).
+**Call-site rewiring — DONE, build-verified + IN-GAME CONFIRMED (2026-07-01, same branch, not yet
+merged).** All 6 render-side files now call `goblin::overlay_api::*` instead of `goblin::config::*`/
+`goblin::ui::*`/etc. directly (generated via a ~180-rule per-symbol sed script, not a blanket
+namespace replace, to avoid rewriting TYPE references like `goblin::worldmap::DiskLootState` that
+must stay untouched). Found + fixed one export-audit gap while rewiring: `goblin::ui::section_label`
+was missing from the API entirely. **IN-GAME CONFIRMED 2026-07-01 22:12**: `[SIG]` 29/29 clean,
+both grace SRVs built, `render.minimap`/`refresh.collected`/`refresh.category_census`/
+`refresh.flag_or_pairs` all firing correctly the whole session, no crash/error — config/`ui::`/
+`collected::` wrappers all confirmed working live.
+
+**Still remaining for Slice C:** (1) `native_item_icon`-family reverse ctx/pointer table (host owns
+`g_device` etc., doesn't change); (2) `LoadLibrary`+`GetProcAddress` vtable resolution for the
+host→render call direction (`draw_panel`/`draw_worldmap_markers`/`draw_minimap_hud`). Next session:
+start with (1) — full detail in the plan doc.
 
 ## ⚠️ IN PROGRESS — baked-data → runtime/disk migration (build_pipeline.py deletion is the END state)
 
