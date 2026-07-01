@@ -2542,16 +2542,7 @@ namespace
 
             ImGui::SeparatorText("Quest navigation");
             {
-                ImGui::TextDisabled("Use the Quest Browser below. The map-pin options here are");
-                ImGui::TextDisabled("legacy / unfinished and off by default.");
-                bool qa = goblin::ui::quest_aware();
-                if (ImGui::Checkbox("Quest-aware NPCs (legacy / unfinished)", &qa))
-                    goblin::ui::set_quest_aware(qa);
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("LEGACY / UNFINISHED — superseded by the Quest Browser below.\n"
-                                      "Gates the legacy quest-NPC map pins on their questline flag\n"
-                                      "(show a pin only while its quest is active). Needs the Quest\n"
-                                      "NPC (legacy) category enabled. Off by default.");
+                ImGui::TextDisabled("Enable \"World - Quest NPC\" above to pin quest NPCs on the map.");
 
                 // Quest Browser: ordered steps per NPC (hand-authored, original
                 // text). Each step names its location/zone for manual navigation.
@@ -2831,6 +2822,8 @@ namespace
                             std::vector<std::pair<std::string, int32_t>> resolved(cand.size());
                             std::unordered_map<std::string, int> freq;  // by TEXT: merchants share distinct nameIds but identical text
                             for (size_t i = 0; i < cand.size(); i++)
+                            {
+                                if (cand[i].handCovered) continue;  // pinned on the map, but not an "Other quest"
                                 for (uint32_t param : cand[i].npcParamIds)
                                 {
                                     uint8_t team = 0;
@@ -2841,9 +2834,11 @@ namespace
                                         if (!nm.empty()) { freq[nm]++; resolved[i] = {std::move(nm), nameId}; break; }
                                     }
                                 }
+                            }
                             // Pass 2: keep only named, non-generic, hand-uncovered candidates.
                             for (size_t i = 0; i < cand.size(); i++)
                             {
+                                if (cand[i].handCovered) continue;  // pinned on the map, but not an "Other quest"
                                 const std::string &nm = resolved[i].first;
                                 int32_t nameId = resolved[i].second;
                                 if (nm.empty()) continue;

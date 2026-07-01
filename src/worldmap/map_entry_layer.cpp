@@ -1867,31 +1867,37 @@ void build_buckets_impl()
             std::unordered_map<uint32_t, uint32_t> ent2param;
             for (const DiskEnemy &en : disk_enemies)
                 if (en.entityId) ent2param.emplace(en.entityId, en.npcParamId);
-            // Candidates = runtime NPCs NOT covered by a hand fail_flag, with a valid _q99 and a
-            // named-enemy placement (npcParamId) so the render side can resolve a name. Name +
-            // secondary name-coverage + the [concluded] state happen in the Quest Browser.
+            // ALL runtime quest NPCs with a valid _q99 and a named-enemy placement (npcParamId, so the
+            // render side can resolve a name). Runtime = SOLE map source, so we keep the hand-covered
+            // ones too (QuestNpcLayer pins them; only the Browser's "Other quests" list hides them via
+            // `handCovered`). Name + the [concluded] state are resolved at render.
             std::vector<QuestFallbackNpc> cand;
-            int covered = 0, filtered = 0;
+            int covered = 0, filtered = 0, noPos = 0;
             for (const QuestNpcRuntime &q : qnpcs)
             {
                 if (q.concluded == 0 || q.concluded >= 100000u) { ++filtered; continue; } // 10-digit = entity-death variant
-                if (handFail.count(q.concluded)) { ++covered; continue; }                 // hand entry handles it
                 QuestFallbackNpc n;
                 for (uint32_t e : q.entities)
                 {
-                    auto it = ent2param.find(e);
-                    if (it == ent2param.end() || !it->second) continue;
-                    if (!n.pinEntity) n.pinEntity = e;  // first placeable entity → map pin
-                    if (std::find(n.npcParamIds.begin(), n.npcParamIds.end(), it->second) == n.npcParamIds.end())
+                    // PIN at the first placement that has a world position (g_entity_pos, built just
+                    // above from disk enemies+assets). Position is REQUIRED; a name is best-effort —
+                    // decoupled so a quest NPC whose placement is an asset (not a named enemy, e.g.
+                    // Blaidd-class) still pins, just unnamed ("Quest NPC").
+                    if (!n.pinEntity && g_entity_pos.count(e)) n.pinEntity = e;
+                    auto it = ent2param.find(e);  // NAME source: a named disk enemy at this placement
+                    if (it != ent2param.end() && it->second &&
+                        std::find(n.npcParamIds.begin(), n.npcParamIds.end(), it->second) == n.npcParamIds.end())
                         n.npcParamIds.push_back(it->second);
                 }
-                if (n.npcParamIds.empty()) { ++filtered; continue; }  // no enemy placement → can't name it
+                if (!n.pinEntity) { ++noPos; continue; }  // no placement resolves to a map position → can't pin
                 n.concluded = q.concluded; n.regLo = q.regLo; n.regHi = q.regHi;
+                n.handCovered = handFail.count(q.concluded) != 0;  // still pinned; hidden from the Browser's "Other" list
+                if (n.handCovered) ++covered;
                 cand.push_back(std::move(n));
             }
-            spdlog::info("[QUESTNPC] runtime: {} NPCs → {} fallback-candidates, {} flag-covered, {} filtered "
-                         "(names + name-coverage resolved at render)",
-                         (int)qnpcs.size(), (int)cand.size(), covered, filtered);
+            spdlog::info("[QUESTNPC] runtime: {} NPCs -> {} pinnable, {} flag-covered, {} filtered (10-digit), "
+                         "{} no-position (extracted but no placement resolved; needs its MSB source)",
+                         (int)qnpcs.size(), (int)cand.size(), covered, filtered, noPos);
             set_quest_fallback_npcs(std::move(cand));
         }
         if (goblin::config::worldFeaturesFromDisk)

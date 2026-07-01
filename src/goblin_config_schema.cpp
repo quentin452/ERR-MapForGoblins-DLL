@@ -133,7 +133,6 @@ namespace goblin::config
     uint8_t clusterFarRadius     = 2;  // tiles: at/beyond this, clusterThreshold (clustered)
     bool clusterDebugRadius = false;  // overlay: draw distance-adaptive zones (player + near/far rings + tabs)
     bool clusterDebugMarkers = false; // overlay: per-marker projection/tile state dots (cluster diagnosis)
-    bool questNpcQuestAware = false;  // gate quest-NPC markers on quest-active flags
     bool questAllowFlagWrite = false; // cheat: allow editing flag-backed Quest Browser steps
     std::string questProgress = "";   // Quest Browser per-step done bits ('0'/'1')
     bool questGreyOnDeath = true;     // grey questlines whose NPC death flag is set
@@ -431,8 +430,7 @@ namespace
                 B("show_bosses", showCategory[static_cast<int>(Cat::WorldBosses)], "false", "Boss markers (field bosses, dungeon bosses)"),
                 B("show_graces", showCategory[static_cast<int>(Cat::WorldGraces)], "false", "Sites of Grace"),
                 B("show_hostile_npc", showCategory[static_cast<int>(Cat::WorldHostileNPC)], "false", "Hostile NPC invader spawn locations (auto-discovered via teamType 24/27)"),
-                B("show_quest_npc", showCategory[static_cast<int>(Cat::WorldQuestNPC)], "false", "Pin the NPC/asset of each questline's current active step on the map (driven by the Quest Browser's tracked progress). Off by default."),
-                B("quest_npc_quest_aware", questNpcQuestAware, "false", "Only pin questlines already in progress (at least one step done), instead of every questline's first step. Needs show_quest_npc. Off by default."),
+                B("show_quest_npc", showCategory[static_cast<int>(Cat::WorldQuestNPC)], "false", "Pin quest NPCs on the map (all quest NPCs the mod exposes, mod-agnostic; the 3 authored ones follow their active quest step). Off by default."),
                 B("show_imp_statues", showCategory[static_cast<int>(Cat::WorldImpStatues)], "false", "Imp Statue (Stonesword Key fog gate) locations"),
                 B("show_paintings", showCategory[static_cast<int>(Cat::WorldPaintings)], "false", "Painting locations"),
                 B("show_spirit_springs", showCategory[static_cast<int>(Cat::WorldSpiritSprings)], "false", "Spirit Spring (horse jump) locations"),

@@ -546,10 +546,6 @@ namespace goblin
         // Re-plan request (overlay writes the distance-adaptive knobs/presets to
         // config::* directly, then asks for a live re-plan on next map open).
         void request_cluster_replan();
-        // Quest-aware NPC gating (live; persisted on Save). Show a curated
-        // questline NPC's marker only while its quest is active.
-        bool quest_aware();
-        void set_quest_aware(bool on);
         bool cluster_debug();
         void set_cluster_debug(bool on);
         // Danger zone. reset_quest_progress clears all quest-step checkmarks live

@@ -4331,12 +4331,6 @@ void goblin::ui::set_clustering_enabled(bool on)
     g_cluster_replan_dirty.store(true);   // re-plan live: off tears down, on rebuilds
 }
 
-// Quest-aware NPC gating. LIVE: the refresh loop reads config every tick and
-// parks/restores accordingly (disabling restores via the was_enabled edge), so
-// no restart needed. Persisted by Save (quest_npc_quest_aware is a Bool entry).
-bool goblin::ui::quest_aware() { return goblin::config::questNpcQuestAware; }
-void goblin::ui::set_quest_aware(bool on) { goblin::config::questNpcQuestAware = on; }
-
 bool goblin::ui::clusters_expanded() { return g_clusters_expanded.load(); }
 void goblin::ui::set_clusters_expanded(bool expanded)
 {

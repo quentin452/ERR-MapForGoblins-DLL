@@ -25,6 +25,14 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **All quest NPCs pinned (runtime, mod-agnostic)** — the map now pins EVERY quest NPC the active
+  mod's EMEVD exposes (not just the 3 hand-authored ones), each resolved by a single
+  `entity_world_pos(pinEntity)` lookup from the runtime extractor. The 3 authored NPCs
+  (Boc/Alexander/Thops) keep their step-following pin + rich tooltip; the rest are pinned statically
+  at their first placement with a localized-name tooltip. Boss/asset-placed NPCs (e.g. Blaidd) pin
+  even when unnamed. A pin shows a live `[concluded]`/`[in progress]` state only when its flag is a
+  hand-vetted "dead/gone" flag; unvetted runtime flags (merchants like Kalé, whose `_q99` is shared
+  between death and completion) show a neutral `optional` tag instead of a misleading state.
 - **Quest-NPC map glyph** — quest NPC pins now draw the game's real NPC map symbol (the framed-hood
   glyph, `MENU_MAP_80`) instead of a plain circle. Resolved mod-agnostically by iconId via the same
   native-then-disk path as the summoning-pool effigy — reads the ACTIVE install's `SB_MapCursor`, no
@@ -141,6 +149,9 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   noinline raw reads (read_wgm max 581ms → 4ms; killed the ~20fps stutter). Documents the clang-cl `__try`-elision trap.
 
 ### Removed
+- **`quest_npc_quest_aware` toggle + the legacy quest-NPC gate** — the quest-NPC feature is now
+  runtime-driven (all NPCs pinned, live state), so the broken/unfinished "Quest-aware NPCs" checkbox
+  and its `QUEST_GATES`-based marker hiding were removed. `show_quest_npc` (the category toggle) stays.
 - **`ITEM_ICONS` table + dead per-item icon path** — redundant with the live category classifier.
 - **`_map_entries_full.cpp` intermediate** and the static map-data bake (DLL 6.19 MB → 3.76 MB).
 - **5 disk loot-source toggles** — loot sources always on (breaking config change).

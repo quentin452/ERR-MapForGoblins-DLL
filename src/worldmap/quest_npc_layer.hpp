@@ -26,6 +26,10 @@ struct QuestFallbackNpc
     // logic param with nameId 0; the named row is a different phase's placement.
     std::vector<uint32_t> npcParamIds;
     std::string name;  // empty from the disk worker; filled at render
+    // True when this runtime NPC's `concluded` matches a hand-authored QUEST_BROWSER fail_flag.
+    // The map layer STILL pins it (runtime = sole source for the map), but the Quest Browser's
+    // "Other quests — auto-detected" list HIDES it (it's not an extra the curated list lacks).
+    bool handCovered = false;
 };
 std::vector<QuestFallbackNpc> quest_fallback_npcs();          // render-thread: returns a copy
 void set_quest_fallback_npcs(std::vector<QuestFallbackNpc> v); // disk-worker: replaces the set
@@ -35,14 +39,15 @@ class QuestNpcLayer : public MarkerLayer
 {
 public:
     const char *category() const override { return "World - Quest NPC"; }
-    bool visible() const override;                       // master show_quest_npc + questNpcQuestAware
+    bool visible() const override;                       // master show_quest_npc category toggle
     const std::vector<Marker> &markers() const override; // returns the cached vector, rebuilt on demand
 
 private:
     mutable std::vector<Marker> cache_;
     // Cheap signature of "what could change the active step": questProgress content,
-    // questNpcQuestAware, and the live value of every QuestStep::progress_flag in the
-    // roster (reading a few dozen event flags once per markers() call is NOT the same
+    // the live value of every QuestStep::progress_flag in the roster, plus the runtime
+    // fallback set's size + how many entities resolve to a position (reading a few dozen
+    // event flags once per markers() call is NOT the same
     // cost class as the per-marker render hot loop -- this only runs when the layer is
     // actually queried, i.e. roughly once per frame while the map is open, not once per
     // marker). Rebuild only when the signature changes from the last build.

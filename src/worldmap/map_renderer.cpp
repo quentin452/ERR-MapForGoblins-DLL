@@ -13,7 +13,6 @@
 #include "goblin_kindling.hpp"       // is_row_collected (kindling graying)
 #include "goblin_major_regions.hpp"  // MAJOR_REGION_ANCHORS (region labels)
 #include "goblin_name_regions.hpp"   // NAME_REGIONS (MapNameOverride debug viz)
-#include "goblin_quest_gates.hpp"    // QUEST_GATES (quest-NPC gating)
 #include "goblin_map_data.hpp"       // Category enum (WorldQuestNPC)
 #include "goblin_markers.hpp"        // markers::category_name (readable [ICONTIER] audit output)
 
@@ -782,6 +781,11 @@ std::string marker_label(const Marker &m)
         t += m.tip_quest;
         if (m.tip_step && m.tip_step[0]) { t += " \xE2\x80\x94 "; t += m.tip_step; }  // em dash
         if (m.tip_zone && m.tip_zone[0]) { t += "\n"; t += m.tip_zone; }
+        // Runtime fallback pin (no hand step data) → append the LIVE quest state. Read at hover
+        // only (one flag, when this marker is the hovered one), so it never re-reads per frame.
+        if (m.quest_concluded_flag)
+            t += goblin::ui::read_event_flag((uint32_t)m.quest_concluded_flag) ? "  [concluded]"
+                                                                               : "  [in progress]";
         return t;
     }
     if (name.empty())
@@ -1268,30 +1272,6 @@ void draw_region_labels(ImDrawList *fg, int open_grp,
     }
 }
 
-// Quest-aware gating: a WorldQuestNPC marker is hidden while its questline is
-// inactive (NONE of its quest-active flags is set). Mirrors the legacy native gate
-// (refresh_quest_npc_eviction, goblin_inject.cpp). An NPC with no QuestGate entry is
-// always shown. Gate join is by name_id (== QuestGate.nameId).
-bool quest_npc_gated_out(const Marker &m)
-{
-    using namespace goblin::generated;
-    if (!goblin::config::questNpcQuestAware) return false;
-    if (m.category != (int)Category::WorldQuestNPC) return false;
-    // Cold-API safety: until AlwaysOn (6001) reads true the flag manager isn't warm —
-    // never blank every quest NPC on map open. Show as-is.
-    if (!goblin::ui::read_event_flag(6001)) return false;
-    // m.name_id is FMG-routed (+700000000, for tooltip/search); QUEST_GATES.nameId is the
-    // raw NpcName id, so undo the offset before the join.
-    uint32_t rawName = m.name_id >= 700000000 ? (uint32_t)m.name_id - 700000000u : (uint32_t)m.name_id;
-    for (size_t i = 0; i < QUEST_GATE_COUNT; ++i)
-        if (QUEST_GATES[i].nameId == rawName)
-        {
-            for (uint32_t f : QUEST_GATES[i].flags)
-                if (f && goblin::ui::read_event_flag(f)) return false; // quest active → show
-            return true; // gate found, none of its flags active → hide
-        }
-    return false; // no gate for this NPC → always show
-}
 } // namespace
 
 bool inworld_hovered() { return s_inworld_hot; }
@@ -1694,9 +1674,6 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             if (m.discover_flag && !goblin::config::graceOverlay &&
                 goblin::ui::read_event_flag((uint32_t)m.discover_flag))
                 continue;
-            // Quest-aware gating: hide a quest-NPC whose questline is currently inactive.
-            if (quest_npc_gated_out(m))
-                continue;
             // Post-event story gate: a marker tagged with a secondary story flag (post-burn
             // Leyndell / Chapel, Ashen Capital, Charm-broken, Sealing-tree-burnt) is a
             // post-event variant and appears only once that flag is set. Read live so it
@@ -1818,11 +1795,9 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
         {
             if (m.group != pgroup)
                 continue; // only the player's current map page
-            // Same hide-gates as the worldmap (discovered grace, quest-NPC, post-event story).
+            // Same hide-gates as the worldmap (discovered grace, post-event story).
             if (m.discover_flag && !goblin::config::graceOverlay &&
                 goblin::ui::read_event_flag((uint32_t)m.discover_flag))
-                continue;
-            if (quest_npc_gated_out(m))
                 continue;
             if (m.secondary_flag && !goblin::ui::read_event_flag((uint32_t)m.secondary_flag))
                 continue;

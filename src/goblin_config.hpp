@@ -264,9 +264,6 @@ namespace goblin
         extern std::string clusterThresholdOverrides;
 
         // Thread 1 v1.5 — quest-aware quest-NPC markers. When true, a WorldQuestNPC
-        // marker for one of the 34 curated questlines shows only while that quest is
-        // active (its event flag set); off = all quest-NPC markers always shown.
-        extern bool questNpcQuestAware;
 
         // Quest Browser cheat gate: when a step has a QuestStep::progress_flag, the
         // checkbox is normally a READ-ONLY mirror of that live EMEVD flag (default).
