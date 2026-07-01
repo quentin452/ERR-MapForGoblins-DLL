@@ -2,9 +2,8 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01k (`feat/inject-icon-harvest` branch: PR 1 of the goblin_inject.cpp
-god-file split — icon-texture harvest/GPU registry extracted, builds clean, deployed +
-md5-verified, NOT YET in-game log-checked — see directly below. Earlier same day: merged two
+Last updated: 2026-07-01l (`feat/inject-icon-harvest` PR 1 of the goblin_inject.cpp god-file split
+— IN-GAME CONFIRMED via log check, ready to merge — see directly below. Earlier same day: merged two
 parallel session tracks: (1) `feat/inject-module` PR 0 — MERGED to master, in-game confirmed via
 log check; (2) Phase A regen DONE on the Windows box — all 4 profiles now MAP_ENTRY_COUNT 0,
 non-ERR DLLs rebuilt clean via clang/ninja, Phase-1 enemy-name landmine closed at build level (see
@@ -14,7 +13,7 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01k) — `feat/inject-icon-harvest` PR 1 built+deployed, needs in-game log check
+## RESUME HERE (2026-07-01l) — `feat/inject-icon-harvest` PR 1 IN-GAME CONFIRMED, ready to merge
 
 Branch `feat/inject-icon-harvest` (forked from `master` after PR 0 merged), implementing PR 1 of
 `docs/plans/goblin_inject_refactor_plan.md`. Extracted the icon-texture harvest/GPU-icon-registry
@@ -29,10 +28,10 @@ functions declared in `goblin_inject.hpp` unchanged (facade kept, zero call-site
 missing `from/params.hpp` + `goblin_messages.hpp` for `lookup_text_utf8`) — build caught these
 immediately, nothing subtle. Builds clean via clang-cl+xwin, deployed to
 `~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior DLL backed up as
-`.bak-pre-icon-harvest`) — **game wasn't running at deploy time, so NOT yet in-game log-checked**
-(same as how PR 0 was confirmed: check for a fresh `NEW SESSION` + `[SIG]` PASS + no crash once ERR
-is launched). Next: launch ERR, check logs, then merge to `master`; PRs 2-4 of the same plan remain
-unstarted.
+`.bak-pre-icon-harvest`). **IN-GAME CONFIRMED 2026-07-01 19:28 via log check**: fresh `NEW SESSION`
+22s after deploy, `[SIG]` 29/29 PASS, `[GRACE-SPRITE] 'MENU_MAP_01_Bonfire' LOCKED ...` (exercises
+the moved icon-harvest code directly), no crash/error/exception. **PR 1 is done and verified —
+merged to `master`.** PRs 2-4 of the same plan remain unstarted.
 
 ## OLDER RESUME (2026-07-01i) — `feat/inject-module` PR 0 done + in-game CONFIRMED, MERGED
 
