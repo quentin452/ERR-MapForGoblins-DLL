@@ -2,10 +2,9 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01s (`feat/inject-tutorial-popup` branch: PR 4b of the goblin_inject.cpp
-god-file split — TutorialParam row injection + world_map_open() extracted, builds clean, deployed
-+ md5-verified, NOT YET in-game log-checked — see directly below. Earlier same day: PR 4a
-(world-position) IN-GAME CONFIRMED + MERGED (a crash occurred that session but is a known
+Last updated: 2026-07-01t (`feat/inject-tutorial-popup` PR 4b of the goblin_inject.cpp
+god-file split — IN-GAME CONFIRMED via log check, ready to merge — see directly below. Earlier
+same day: PR 4a (world-position) IN-GAME CONFIRMED + MERGED (a crash occurred that session but is a known
 pre-existing bug, NOT a regression); PR 3 (section-visibility) IN-GAME CONFIRMED + MERGED; PR 2
 (item-classify) IN-GAME CONFIRMED + MERGED; PR 1 (icon-harvest) IN-GAME CONFIRMED +
 MERGED; PR 0 — MERGED, in-game confirmed via log check; Phase A regen DONE on the Windows box
@@ -17,7 +16,7 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01s) — `feat/inject-tutorial-popup` PR 4b built+deployed, needs in-game log check
+## RESUME HERE (2026-07-01t) — `feat/inject-tutorial-popup` PR 4b IN-GAME CONFIRMED, ready to merge
 
 Branch `feat/inject-tutorial-popup` (forked from `master` after PR 0-3+4a merged), implementing
 PR 4b. Extracted the WorldMapPointParam readiness probe, TutorialParam row injection (F10 banner
@@ -34,10 +33,14 @@ zero coupling reduction. Side finding (not fixed, pure relocation): the comment 
 `world_map_open` — a pre-existing stale/misplaced comment, moved as-is. Declarations in
 `goblin_inject.hpp` unchanged (facade kept). Builds clean via clang-cl+xwin, deployed to
 `~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior DLL backed up as
-`.bak-pre-tutorial-popup`) — **game wasn't running at deploy time, so NOT yet in-game log-checked**
-(same check as prior PRs: fresh `NEW SESSION` + `[SIG]` PASS + no crash; this PR touches the F10
-banner toggle path so ideally confirm that still fires). Next: launch ERR, check logs, then merge
-to `master`; PR 4c remains unstarted, 4d is the intended final resting state of `goblin_inject.cpp`.
+`.bak-pre-tutorial-popup`). **IN-GAME CONFIRMED 2026-07-01 20:16 via log check**: fresh
+`NEW SESSION`, `[SIG]` 29/29 PASS, `[TOAST] TutorialParam expanded: 11057 -> 11068 rows` (the moved
+`inject_tutorial_popup_rows()` ran correctly), `[OVERLAY] world_map_open CSMenuMan_slot=0x...` +
+repeated `CSMenuMan+0xCD changed -> 0/3/7/3/0` over ~40s (the moved `world_map_open()` resolving and
+driving map open/close correctly), no error/exception. Same known pre-existing unrelated
+`eldenring.exe` crash fired again this session (same `+0x1EB9999` offset, zero `MapForGoblins.dll`
+frames) — not a regression. **PR 4b is done and verified — merged to `master`.** PR 4c remains
+unstarted, 4d is the intended final resting state of `goblin_inject.cpp`.
 
 ## OLDER RESUME (2026-07-01r) — `feat/inject-world-position` PR 4a IN-GAME CONFIRMED, MERGED
 
