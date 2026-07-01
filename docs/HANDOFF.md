@@ -2,10 +2,14 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01v (`feat/inject-grace-suppression` PR 4c of the goblin_inject.cpp
+Last updated: 2026-07-01w (`feat/overlay-draw-context`, Phase 1 slice 1 of the
+overlay_hot_reload_playwright_plan — `draw_worldmap_markers`/`draw_minimap_hud` now take an
+explicit `OverlayFrameCtx` instead of reading file-statics directly; `draw_panel` deferred to its
+own coupling audit. Build-verified via clang-cl+xwin, NOT yet in-game confirmed — see directly
+below. Earlier same day: `feat/inject-grace-suppression` PR 4c of the goblin_inject.cpp
 god-file split — IN-GAME CONFIRMED + MERGED. This was the LAST planned extraction PR — the whole
-goblin_inject_refactor_plan is now COMPLETE (only 4d, an intentional non-PR stay-behind, remains)
-— see directly below. Earlier same day: PR 4b
+goblin_inject_refactor_plan is now COMPLETE (only 4d, an intentional non-PR stay-behind, remains).
+Earlier same day: PR 4b
 (tutorial-popup) IN-GAME CONFIRMED + MERGED; PR 4a (world-position) IN-GAME CONFIRMED + MERGED (a
 crash occurred that session but is a known pre-existing bug, NOT a regression); PR 3
 (section-visibility) IN-GAME CONFIRMED + MERGED; PR 2
@@ -18,6 +22,30 @@ overlay-only hot-reload + AI Playwright RPC loop plan (not started); MSVC-canoni
 build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED, F3 Alt+Tab
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
+
+## RESUME HERE (2026-07-01w) — overlay_hot_reload_playwright_plan Phase 1 slice 1 landed, awaiting in-game check
+
+Branch `feat/overlay-draw-context` (forked from `master`), first slice of Phase 1 of
+`docs/plans/overlay_hot_reload_playwright_plan.md`. Coupling audit first (mirrors the inject-
+refactor plan's discipline): grepped/read `draw_worldmap_markers` (`:1478`), `draw_minimap_hud`
+(`:1550`), `draw_panel` (`:1569`, ~1600 lines) for every file-static they touch. Found
+`draw_worldmap_markers`/`draw_minimap_hud` are cleanly self-contained (their only host-shared
+direct reads are `g_atlas_gpu`/`g_atlas_ready`/`g_hwnd`/`g_nav_frames`; `overlay_layers()` and the
+grace-sprite `ensure_grace_srv()`/`ensure_grace_dungeon_srv()` helpers own their state privately) —
+`draw_panel` is NOT (owns a big panel-UI cluster + touches host-shared `g_gamepad_combo_ready`/
+`g_item_icon_srvs`/`g_grace_state`, not yet audited to PR-boundary precision). Scoped this slice to
+the two clean functions only (biggest/cleanest-win-first, same convention the inject plan used).
+Added `OverlayFrameCtx` struct (`atlas_srv`/`hwnd`/`nav_frames`, the latter two as pointers into
+the host statics, not copies — other code outside these 2 functions still reads/writes the
+originals every frame) right above `draw_worldmap_markers` in `goblin_overlay.cpp`. Both functions
+now take `const OverlayFrameCtx &ctx` instead of reading `g_atlas_gpu`/`g_atlas_ready`/`g_hwnd`/
+`g_nav_frames` directly; `hk_present` builds one `frame_ctx` per frame (`:3629-3633`) and passes it
+to both call sites. `draw_panel` UNCHANGED this slice. Cross-build clean (clang-cl+xwin,
+`ninja -C build-linux MapForGoblins`, only pre-existing unrelated warnings). **NOT yet deployed/
+in-game confirmed** — this machine is Linux-only right now; next session (ideally Windows) should
+deploy + confirm zero visual/behavior change in worldmap markers + minimap HUD before merging, then
+either continue with `draw_panel`'s own coupling audit (next slice) or merge this slice standalone
+first — plan doc + this entry already reflect the scoping decision, just need the in-game check.
 
 ## RESUME HERE (2026-07-01v) — `feat/inject-grace-suppression` PR 4c IN-GAME CONFIRMED + MERGED — goblin_inject.cpp refactor plan COMPLETE
 

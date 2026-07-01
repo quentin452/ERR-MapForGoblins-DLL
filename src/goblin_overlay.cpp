@@ -1475,18 +1475,30 @@ namespace
         return s_layers;
     }
 
-    void draw_worldmap_markers(bool /*menu_open*/)
+    // Phase 1 of docs/plans/overlay_hot_reload_playwright_plan.md: draw functions take this
+    // explicit context instead of reading host file-statics directly, so a future host/draw-layer
+    // split (Phase 2) has a known, audited boundary instead of a guessed one. Fields are pointers/
+    // handles into host-owned statics (not copies) since other code outside these draw functions
+    // still reads/writes the originals every frame.
+    struct OverlayFrameCtx
+    {
+        void *atlas_srv;              // g_atlas_ready ? g_atlas_gpu.ptr : nullptr, host-resolved
+        HWND hwnd;                    // g_hwnd, host-owned window handle
+        std::atomic<int> *nav_frames; // &g_nav_frames, host-owned nav-jitter keepalive counter
+    };
+
+    void draw_worldmap_markers(bool /*menu_open*/, const OverlayFrameCtx &ctx)
     {
         namespace wm = goblin::worldmap;
         if (!goblin::ui::icons_enabled() && !wm::item_search_active())
             return; // master off (and no active search) → draw no overlay markers
         std::vector<wm::MarkerLayer *> &s_layers = overlay_layers();
-        void *atlas = g_atlas_ready ? reinterpret_cast<void *>(g_atlas_gpu.ptr) : nullptr;
+        void *atlas = ctx.atlas_srv;
         // OS cursor in client/backbuffer px for marker tooltips (the map cursor tracks it).
         float mx = -1.f, my = -1.f;
         POINT pt{};
         BOOL ok = goblin::input::get_cursor_pos_real(&pt);
-        if (ok && g_hwnd && ScreenToClient(g_hwnd, &pt)) { mx = (float)pt.x; my = (float)pt.y; }
+        if (ok && ctx.hwnd && ScreenToClient(ctx.hwnd, &pt)) { mx = (float)pt.x; my = (float)pt.y; }
         // Hand the renderer the harvested grace sprite (once ready) so it draws graces itself.
         if (ensure_grace_srv())
             wm::set_grace_sprite(reinterpret_cast<void *>(g_grace_gpu.ptr),
@@ -1517,8 +1529,8 @@ namespace
             goblin::worldmap_probe::set_locate_target(s_hold_u, s_hold_v); // game-thread c32f0 centres on it
             // Keep the map STEPPING (c32f0 runs) with F1 open: the per-frame step is gated on perceived
             // input, so keep the nav jitter alive for the whole hold.
-            if (g_nav_frames.load(std::memory_order_relaxed) < s_hold_frames)
-                g_nav_frames.store(s_hold_frames, std::memory_order_relaxed);
+            if (ctx.nav_frames->load(std::memory_order_relaxed) < s_hold_frames)
+                ctx.nav_frames->store(s_hold_frames, std::memory_order_relaxed);
             --s_hold_frames;
             // EARLY RELEASE (perf): each hold-frame forces ER to step + re-composite its WHOLE Scaleform
             // world map — that engine cost (~tens of ms, NOT our ~0.1ms render) is the FPS drop after a
@@ -1547,13 +1559,13 @@ namespace
     // In-game minimap HUD (corner, north-up, overworld). Drawn during gameplay (map
     // closed) on the foreground draw list. No-ops internally when show_minimap is off,
     // the icons master is off, or the player is underground (pos not yet reliable).
-    void draw_minimap_hud()
+    void draw_minimap_hud(const OverlayFrameCtx &ctx)
     {
         // Instrumented: the world-map close edge hands off to this minimap HUD, whose marker loop
         // does a read_event_flag() per marker. That first-closed-frame cost was previously unbenched,
         // so the "map-close lag" never showed up in the report or the spike warn. Now it does.
         GOBLIN_BENCH("render.minimap");
-        void *atlas = g_atlas_ready ? reinterpret_cast<void *>(g_atlas_gpu.ptr) : nullptr;
+        void *atlas = ctx.atlas_srv;
         ImGuiIO &io = ImGui::GetIO();
         if (ensure_grace_srv())
             goblin::worldmap::set_grace_sprite(reinterpret_cast<void *>(g_grace_gpu.ptr),
@@ -3617,12 +3629,17 @@ namespace
             // MouseDrawCursor=true leaked it into gameplay; and with the world map open ER already
             // draws its own cursor → don't double it.)
             ImGui::GetIO().MouseDrawCursor = g_show && !goblin::world_map_open();
+            const OverlayFrameCtx frame_ctx{
+                g_atlas_ready ? reinterpret_cast<void *>(g_atlas_gpu.ptr) : nullptr,
+                g_hwnd,
+                &g_nav_frames,
+            };
             if (g_show)
                 draw_panel();
             if (proto)
-                draw_worldmap_markers(g_show);
+                draw_worldmap_markers(g_show, frame_ctx);
             if (minimap)
-                draw_minimap_hud();   // gameplay HUD (map closed) — self-gates overworld-only
+                draw_minimap_hud(frame_ctx);   // gameplay HUD (map closed) — self-gates overworld-only
             // Finalize any item-icon GPU copies requested this frame as ONE batch (one execute +
             // one fence wait) before g_command_list is reused for the ImGui render below.
             flush_item_icon_batch();

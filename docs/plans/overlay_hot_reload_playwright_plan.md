@@ -1,6 +1,7 @@
 # Overlay hot-reload + AI Playwright loop (plan)
 
-**Status:** scoped, not started. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
+**Status:** Phase 1 STARTED (2026-07-01, `feat/overlay-draw-context`) — first slice landed, build-
+verified, awaiting in-game log check. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
 render code while ERR keeps running (no full restart), paired with the already-proposed Route B
 debug RPC so an AI agent can script the REAL running game — screenshot, spot a DX or functional
 bug in the minimap/worldmap/icons overlay, fix the overlay source, hot-reload just that piece,
@@ -48,6 +49,34 @@ ImGui context pointer, marker-layer data, panel state) instead of reading file-s
 Land this as a pure refactor — build + run, confirm zero visual/behavior change before touching
 reload mechanics. This is the correctness gate: if the interface leaks a hidden global, hot-reload
 will silently misbehave later and be hard to attribute.
+
+**Phase 1 coupling audit (2026-07-01, before code moves):** full grep/read pass over the 3 target
+functions found most of their direct-global touches are already self-contained (`overlay_layers()`,
+`ensure_grace_srv()`/`ensure_grace_dungeon_srv()` — own file-static state, called only from inside
+these 3 functions, safe to move wholesale in Phase 2). The genuinely HOST-shared globals (written
+by code outside the 3 functions — `hk_present` body, icon-harvest, init) are: `g_hwnd`,
+`g_nav_frames`, `g_gamepad_combo_ready`, `g_item_icon_srvs`, `g_grace_state`. These must stay as
+pointers/refs into the host statics inside any context struct, never copies, or host and draw layer
+diverge. `draw_panel`'s ~1600-line body additionally owns a large panel-only UI-state cluster
+(`g_large`, `g_grace_dbg_*`, gamepad-combo strings) — draw_panel is sole writer for most of it, a
+clean fit for a `PanelCtx` sub-struct, but NOT yet audited to the same PR-boundary precision as
+`draw_worldmap_markers`/`draw_minimap_hud` (same caveat pattern as the inject-refactor plan's own
+"not yet audited" sections before PR 4). 26 function-local `static`s in `draw_panel` (incl. the
+locate hold-frame counters at `:1506-1508`) are function-local, not call-site state — out of scope
+for Phase 1, only become a real risk in Phase 2 (DLL reload resets statics on `FreeLibrary`).
+
+**Phase 1, slice 1 — DONE, build-verified, awaiting in-game confirm (2026-07-01, `feat/overlay-draw-context`):**
+scoped to the two small, audit-confirmed self-contained functions first (cleanest/lowest-risk,
+same "biggest/cleanest win first" convention as the inject-refactor plan). Added `OverlayFrameCtx`
+(`atlas_srv`, `hwnd`, `nav_frames`) right above `draw_worldmap_markers`; both `draw_worldmap_markers`
+and `draw_minimap_hud` now take `const OverlayFrameCtx &` instead of reading `g_atlas_gpu`/
+`g_atlas_ready`/`g_hwnd`/`g_nav_frames` directly. `hk_present` builds one `frame_ctx` per frame and
+passes it to both call sites. `draw_panel` is UNCHANGED in this slice — its own coupling (panel-UI
+cluster + host-shared globals above) needs its own PR-boundary audit pass before touching, same as
+the inject plan treated its biggest/messiest section last. Cross-build (clang-cl+xwin) clean, only
+pre-existing unrelated warnings (codecvt deprecation, ImGui memset-on-non-trivial). In-game log
+check still needed before this slice counts as the Phase-1 correctness gate passed for these 2 fns.
+Next slice: `draw_panel`'s own coupling audit + extraction (biggest remaining risk in Phase 1).
 
 **Phase 2 — split into a reloadable module + host-side reload mechanism.**
 Move the extracted draw layer into its own DLL (e.g. `goblin_overlay_render.dll`), loaded via
