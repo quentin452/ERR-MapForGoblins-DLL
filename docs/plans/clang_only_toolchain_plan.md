@@ -1,0 +1,75 @@
+# Clang-only toolchain plan — retire MSVC, one compiler/linker everywhere
+
+Status: **scoped, not started** (build-system audit 2026-07-01). USER DECISION 2026-07-01: go
+clang-only. This **reverses** the same-day "MSVC stays release-canonical" policy recorded in
+`docs/memory/tooling/build-toolchain-clang-xwin.md` — update that memory doc when Phase 2 lands.
+
+Goal: clang-cl + lld-link + ninja (+ xwin SDK) as the ONLY toolchain, on both Linux and Windows,
+for dev AND releases. No VS2022/msbuild/vswhere dependency, no dual-linker drift.
+
+## Why it's already the natural state
+- The current Windows box has NO Visual Studio (`build-toolchain-clang-xwin.md`) — `build.bat`'s
+  "canonical" path doesn't run on any machine in use.
+- `build.bat:151` forces `msbuild /t:Rebuild` purely to dodge MSVC LTCG stale-cache bugs; lld
+  thin-LTO doesn't have them (`CMAKE_INTERPROCEDURAL_OPTIMIZATION` works under clang-cl+lld).
+- clang builds of all 4 profiles already exist (`build-clang/erte/convergence/vanilla`, 2026-06-24)
+  and the Linux cross-build is what's deployed and played on this machine daily.
+- Byte-identical-to-MSVC stops mattering once clang IS the reference; lld `/Brepro` gives
+  deterministic PE output (better than MSVC).
+
+## Phase 0 — SEH correctness (BLOCKING; real latent crashes in today's clang DLL)
+Known rule (`docs/memory/tooling/clang-cl-seh-noinline.md`): clang-cl silently ELIDES `__try`
+around a raw load/store (even `noinline`); only `__try` around an opaque CALL is preserved.
+Repo was converted 2026-06-20 — except these, found in this audit:
+
+1. `probe_player_seh` — `src/goblin_world_position.cpp:511`: `__try` over raw derefs
+   (`*(uint8_t**)wcm_static`, `lp+0x6C0/6C4/6C8`). Runs EVERY FRAME (minimap, altitude arrows).
+2. `probe_map_pos_seh` — `src/goblin_world_position.cpp:566`: same pattern
+   (`singleton+0x2c`, `mgr+0x70/+0x78`). Every frame.
+3. `world_map_param_ready` — `src/goblin_tutorial_popup.cpp:69`: `__try` around a call to a
+   `static` same-TU function (inlinable ⇒ guard lost) + a direct raw deref `rescap+0x80`.
+   Runs during volatile game init — the exact historical crash scenario.
+
+Fix pattern: the SHIPPED `raw_copy` noinline-call pattern from `goblin_collected.cpp`
+(`__try{ raw_copy(out,src,n) }` — clang preserves SEH around the opaque call; ~ns, no wineserver
+IPC) for the two per-frame probes; plain RPM acceptable for the once-per-init readiness poll.
+Then: mechanical pass over ALL `__try` sites in the repo (~31 across 12 files) with a classify
+table (CALL-wrapped=OK / raw-deref=convert); spot-verify the hot sites in the built DLL via
+`llvm-objdump` (SEH frame present at the probe RVAs).
+
+## Phase 1 — port the build entry point
+- Replace `build.bat`'s configure/build (vswhere+VsDevCmd+`.sln`+msbuild) with Ninja + the existing
+  `clang-cl-xwin.cmake` on Windows (paths per `build-toolchain-clang-xwin.md`: scoop LLVM,
+  `D:\mfg_toolchain\xwin-sdk`, `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`, Release-only).
+- KEEP unchanged: profile matrix (err/vanilla/convergence/erte → `GENERATED_SUBDIR`, package
+  layouts), `generate` (build_pipeline.py), `snapshot`/`release` packaging via `mfg_inigen.exe`,
+  version parse/bump. Only the compile/link step changes.
+- Add `/Brepro` (deterministic PE) + emit PDB (`lld-link /debug`) and ARCHIVE the PDB per
+  release/snapshot — replaces MSVC-parity as the crash-RVA decode story. Old shipped MSVC releases
+  stay decodable only via their archived binaries; keep them.
+- Unify build dirs: `build-<profile>` all-clang; retire `build/` (msbuild) and fold
+  `build-linux`/`build-clang` naming.
+
+## Phase 2 — validation + flip
+- In-game pass on ERR + a spot-check profile, exercising the historical SEH crash sites:
+  kindling heap scan, collected refresh (tile churn), worldmap probe across a DLC/underground page
+  transition, icon harvest with inventory/map churn, altitude arrows + minimap on (Phase 0 sites).
+- Then: update `docs/memory/tooling/build-toolchain-clang-xwin.md` (clang = canonical) +
+  `docs/memory/linux.md`/`windows.md` pointers, README build instructions, delete the msbuild path
+  from `build.bat` (or replace the file), remove `steam_api64.lib` from repo root (linked nowhere;
+  runtime uses `GetModuleHandleA("steam_api64.dll")` only — verify then delete).
+
+## Guardrails (with Phase 1)
+- Lint script (pre-build or CI): flag any `__try` block containing a direct deref/`memcpy` on a
+  non-local pointer without going through a registered safe wrapper — the elision regression is
+  silent, so grep is the only cheap tripwire.
+- Optional: GitHub Actions Linux runner doing the xwin cross-build per PR (repo has NO CI today).
+
+## Known limitations to document as official
+- **Release-only**: xwin has no debug CRT (`libcmtd`) — Debug config cannot link. Already the
+  de-facto state.
+- **`/arch:AVX2` is global** under the toolchain file (Pattern16 needs the intrinsics exposed) ⇒
+  clang may auto-vectorize AVX2 anywhere ⇒ hard CPU floor = AVX2. ER min-spec CPUs all have it;
+  if ever a report surfaces, scope the flag to the Pattern16-using TUs instead.
+- Packaging (`mfg_inigen.exe`) runs the tool natively ⇒ release packaging happens on Windows
+  (or wine on Linux — not needed today).

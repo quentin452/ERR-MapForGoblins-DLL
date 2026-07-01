@@ -16,6 +16,16 @@ something not below, check `docs/changelog.md` first, then the relevant `docs/pl
 Last updated: 2026-07-01z9 (overlay_hot_reload_playwright_plan Phase 2 Slices A/B/C all MERGED to
 `master` except Slice C's `LoadLibrary` mechanism — see below).
 
+## Two new plans scoped (2026-07-01): big-files refactor + clang-only toolchain
+
+`docs/plans/big_files_refactor_plan.md` (god functions/duplication across the 7 biggest hand-written
+files; item 1 = draw_panel split, waits on hot-reload Slice C) and
+`docs/plans/clang_only_toolchain_plan.md` (retire MSVC; USER DECISION reverses the same-day "MSVC
+canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). ⚠️ The toolchain plan's
+Phase 0 is standalone-urgent even if the rest waits: 3 live clang-cl `__try`-elision hazards
+(`goblin_world_position.cpp:511`/`:566` — per-frame player probes; `goblin_tutorial_popup.cpp:69` —
+init-time param poll) are latent unhandled-0xC0000005 sites in the clang DLL currently deployed.
+
 ## MapGenie category coverage — GROUP 1: landmarks landed, farmables deferred (2026-07-01)
 
 Branch `feat/mapgenie-group1-landmarks` (off master, 1 commit). Adds 6 landmark map categories
