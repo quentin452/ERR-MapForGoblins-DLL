@@ -109,6 +109,9 @@ Backlog DX + bugs relevé par <user> le 2026-06-28 (à traiter plus tard, pas en
 
    **Bug DX chez nous — F1 inaccessible à la manette** — impossible d'ouvrir les menus via F1 (équivalent manette). Donc impossible de jouer MapForGoblins end-to-end uniquement à la manette. → besoin d'un binding manette pour l'ouverture du menu.
 4. **Intégrer le mod "Pause in game" directement dans MapForGoblins** — une case en plus dans F1. Évite tout conflit de touche possible avec le mod externe.
+   **RE reference trouvée (<user>, 2026-07-01): https://github.com/iArtorias/elden_pause** —
+   implémentation externe existante d'un pause-in-game pour Elden Ring (AOB/hook approach à
+   étudier avant de coder le RE spike nous-mêmes; peut raccourcir/remplacer le spike RE demandé).
 5. **Setting ImGui "pause à l'ouverture de F1"** — quand on ouvre F1 (manette ou clavier), proposer un setting pour choisir si le jeu se met en pause automatiquement à l'ouverture des settings MapForGoblins. Hypothèse DX : quand le menu F1 est ouvert on ne veut pas forcément jouer en même temps → peut-être meilleure DX qu'une simple case ImGui à long terme. Lié au point 4.
 6. ✅ **FIXED 2026-07-01** (`4ec2aa7`, PR C — code comment cite "Item 6") — recentrage du curseur
    sur la transition (re)open de la worldmap, via `o_set_cursor_pos` déjà hooké. Doc jamais croisée
@@ -132,7 +135,7 @@ Backlog DX + bugs relevé par <user> le 2026-06-28 (à traiter plus tard, pas en
    wider issue found: live-state gates (collected/graying, story/fragment flags, search-hit, region
    toggles) all already re-read every frame; only spatial/structural stuff (clustering, stacking,
    `ref_grace_y`) is build-cached by design (correct, since it's static geometry). Player Y was the
-   one true outlier. Built clean, deployed — pending in-game re-confirm.
+   one true outlier. **User-confirmed fixed live in-game (2026-07-01).**
 8. ✅ **FIXED 2026-06-30** (`feat/spatial-grid`, PR E) — replaced the nearest-grace heuristic with
    **tile-based clustering**: group by the marker's map-space 256-unit tile (+ map layer, `spatial_grid.hpp`).
    Root causes of the "icônes pas clusterisées" found via diagnostics: (a) the old `cluster_key>=0`
@@ -147,7 +150,16 @@ Backlog DX + bugs relevé par <user> le 2026-06-28 (à traiter plus tard, pas en
 
 ## Followups détectés en jeu (2026-06-28)
 
-F1. **Fuite d'icônes NATIVES overworld → underground après téléport Browser.** En se téléportant via le Browser DLC → underground, on voit les icônes natives ER de l'overworld (grottes/églises/ruines/donjons mineurs) S'AFFICHER dans la page underground. = ce sont les icônes du JEU (natives), pas nos markers ImGui (qui eux respectent le `group` = isDLC*2|isUG). Probablement un desync de page-state ER au téléport Browser. **Hypothèse <user> : auto-fixé plus tard** quand on aura retiré TOUTES les icônes natives au profit des icônes ImGui (qui filtrent par group). À garder en followup / re-tester après la migration native→ImGui. Lié [[category-icons-00solo-atlas]] (migration GPU/native icons), [[session-2026-06-23-map-icons]] (suppression draw-only des natives).
+F1. ✅ **NOT REPRODUCIBLE — closed 2026-07-01** (<user> re-tested, confirmed false bug). **Fuite
+    d'icônes NATIVES overworld → underground après téléport Browser** (report original ci-dessous).
+    Plus de repro en jeu — pas un bug réel (ou déjà auto-résolu par des changements ultérieurs). Pas
+    de code touché.
+    *Original report:* En se téléportant via le Browser DLC → underground, on voit les icônes
+    natives ER de l'overworld (grottes/églises/ruines/donjons mineurs) S'AFFICHER dans la page
+    underground. = ce sont les icônes du JEU (natives), pas nos markers ImGui (qui eux respectent le
+    `group` = isDLC*2|isUG). Probablement un desync de page-state ER au téléport Browser. Lié
+    [[category-icons-00solo-atlas]] (migration GPU/native icons), [[session-2026-06-23-map-icons]]
+    (suppression draw-only des natives).
 
 F2. **Locate/recherche ne recentre pas sur une cible dans le Fog of War.** Quand la recherche (cursor-locate) téléporte vers un objet situé dans le fog of war, le **pan s'arrête au bord de la zone de pan visible** et ne recentre PAS sur l'item cible (l'item reste hors-vue / en bord de carte). = le pan est **clampé aux bornes visibles** (panX/panZ bornés), donc une cible au-delà de cette limite (zone non explorée / fog) ne peut pas être centrée. Piste <user> : **bypasser la limite de pan / ajouter le support du PAN OOB (out-of-bounds)** pour autoriser le recentrage au-delà des bornes explorées. À regarder plus tard. Lié [[overlay-item-search-bar]] (cursor-locate / take_locate_pos = caméra map 2D), [[worldmap-unsearched-fog-mask]] (oracle fog), et le clamp de pan dans la projection (project_screen / panX-panZ, goblin_projection.hpp + map_renderer.cpp).
 
