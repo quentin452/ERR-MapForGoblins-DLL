@@ -356,12 +356,14 @@ void set_build_trigger(void (*fn)()) { g_build_trigger = fn; }
 std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots,
                                               std::vector<DiskCollectible> *collectibles,
                                               std::vector<DiskEnemy> *enemies,
-                                              std::vector<DiskRegion> *regions)
+                                              std::vector<DiskRegion> *regions,
+                                              std::vector<DiskObjAct> *objacts)
 {
     std::vector<DiskTreasure> out;
     const bool wantAssets = collectibles != nullptr;
     const bool wantEnemies = enemies != nullptr;
     const bool wantRegions = regions != nullptr;
+    const bool wantObjActs = objacts != nullptr;
     ensure_map_dir_resolved();      // ancestor-walk → Found/Searching (CreateFileW completes it)
     fs::path dir = disk_loot_dir(); // empty until Found (ancestor-walk or the observer)
     if (dir.empty())
@@ -412,7 +414,8 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
             continue;
         }
         msbe::ParseResult r = msbe::parse_msb(msb.data(), msb.size(), /*resident=*/false,
-                                              /*blobBase=*/0, wantAssets, wantEnemies, wantRegions);
+                                              /*blobBase=*/0, wantAssets, wantEnemies, wantRegions,
+                                              /*crossTileAssets=*/false, wantObjActs);
         if (!r.ok)
         {
             spdlog::warn("[LOOTDISK] parse failed: {}", name);
@@ -474,6 +477,27 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
             }
         }
 
+        if (wantObjActs)
+        {
+            for (const auto &o : r.objacts)
+            {
+                // Position comes ONLY from the resolved part — an event without one has no
+                // place-able anchor (keeping it would drop a marker at tile-local (0,0)).
+                if (o.partIndex < 0) continue;
+                DiskObjAct d;
+                d.objActParamId = o.objActParamId;
+                d.entityId = o.objActEntityId ? o.objActEntityId : o.partEntityId;
+                d.area = (uint8_t)area;
+                d.gx = (uint8_t)gx;
+                d.gz = (uint8_t)gz;
+                d.posX = o.pos[0];
+                d.posY = o.pos[1];  // altitude for the above/below-player badge
+                d.posZ = o.pos[2];
+                d.partName = o.partName;
+                objacts->push_back(std::move(d));
+            }
+        }
+
         int tilePos = 0;
         for (const auto &t : r.treasures)
         {
@@ -515,6 +539,9 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
     if (wantRegions)
         spdlog::info("[LOOTDISK] {} spirit-spring regions parsed (MountJump/Locked/FakeSpiring)",
                      regions->size());
+    if (wantObjActs)
+        spdlog::info("[LOOTDISK] {} ObjAct events parsed (Elevator / lever-lift candidates)",
+                     objacts->size());
     // Tile coverage: parsed _00 vs skipped LOD/duplicate tiers, for the scoreboard.
     {
         int total = 0, skipped = 0;

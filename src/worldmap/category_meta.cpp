@@ -116,6 +116,8 @@ const CatMeta CAT[] = {
     {"show_legacy_dungeons", G_WORLD},    // WorldLegacyDungeon
     {"show_miquella_crosses", G_WORLD},   // WorldMiquellaCross
     {"show_portals", G_WORLD},            // WorldPortal (Group 2 — sending gates)
+    {"show_elevators", G_WORLD},          // WorldElevator (Group 2 — lever-lifts)
+    {"show_smithing_tables", G_WORLD},    // WorldSmithingTable (Group 2 — AEG099_308 assets)
     {"show_farmable_drops", G_LOOT},      // WorldFarmableCollectible (MFG-original — respawning notable drops)
 };
 constexpr int CAT_COUNT = static_cast<int>(sizeof(CAT) / sizeof(CAT[0]));

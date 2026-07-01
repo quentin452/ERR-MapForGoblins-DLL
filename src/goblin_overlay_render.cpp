@@ -1376,7 +1376,20 @@ namespace
                 ImGui::TextDisabled("left = show on map   |   right [cluster] = join location pile (live) / unchecked = shown normally");
                 ImGui::Separator();
 
-                for (int c = 0; c < goblin::overlay_api::category_count(); c++)
+                // Rows sorted ALPHABETICALLY by label (user request 2026-07-02): the enum order
+                // appends every new category at the end of its section, which reads as random.
+                // Sorted once (labels are static for the session).
+                static std::vector<int> s_cat_order;
+                if (s_cat_order.empty())
+                {
+                    for (int c = 0; c < goblin::overlay_api::category_count(); c++)
+                        s_cat_order.push_back(c);
+                    std::sort(s_cat_order.begin(), s_cat_order.end(), [](int a, int b) {
+                        return std::strcmp(goblin::overlay_api::category_label(a),
+                                           goblin::overlay_api::category_label(b)) < 0;
+                    });
+                }
+                for (int c : s_cat_order)
                 {
                     if (goblin::overlay_api::category_section(c) != s) continue;
                     if (!show_all_cats && !contains_ci(goblin::overlay_api::category_label(c), cat_filter))

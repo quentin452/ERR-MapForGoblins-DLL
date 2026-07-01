@@ -90,6 +90,13 @@ enum class Category : uint8_t
     // Portal / sending gate: AEG099_510 asset bound as arg[2] of EMEVD warp template 90005605.
     // Runtime disk+EMEVD, no bake. See docs/re/windows_portal_aeg_re_findings.md.
     WorldPortal,
+    // Elevator / lever-lift: a disk MSB ObjAct EVENT whose objActParamId is a "lever" ObjActParam
+    // (its live ActionButtonParam prompt text is "Pull lever"/"Push lever"). Runtime disk-MSB parse,
+    // no bake. See docs/re/linux_group2_prompt_binding_re_findings.md.
+    WorldElevator,
+    // Smithing Table: a disk MSB Asset with model AEG099_308 (3 world placements). Plain model filter
+    // over the disk asset enumeration, no bake. See docs/re/linux_group2_prompt_binding_re_findings.md.
+    WorldSmithingTable,
     // MFG-original: enemy drops that RESPAWN (ItemLotParam getItemFlagId==0 / repeatable) AND are a
     // notable farm target (Smithing Stones / Golden Runes / Gloveworts). Surfaces the farmable enemy
     // drops the notable-loot pass currently skips. Live, no bake. (WorldFarmableEnemy was dropped —

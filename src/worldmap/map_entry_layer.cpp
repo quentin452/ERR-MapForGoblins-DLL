@@ -31,6 +31,7 @@
 #include <vector>
 #include <atomic>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <map>
@@ -1499,6 +1500,206 @@ static int build_disk_portal_markers(
     return emitted;
 }
 
+// ObjActParam rows whose ActionButtonParam prompt is a lever ("Pull lever" textId 3000 /
+// "Push lever" 3010) — the lever-lift signal. Field offsets pinned LIVE 2026-07-02
+// (docs/re/linux_group2_prompt_binding_re_findings.md): ObjActParam.actionButtonParamId
+// @ +0x28 (96-byte rows), ActionButtonParam.textId @ +0x34 (100-byte rows).
+static std::unordered_set<uint32_t> collect_lever_objact_ids()
+{
+    std::unordered_set<uint32_t> out;
+    auto *param_list = *from::params::param_list_address;
+    if (!param_list) { spdlog::warn("[LOOTDISK] lever ObjAct scan: no param list — no elevators"); return out; }
+    from::params::ParamTable *abp = nullptr;  // ActionButtonParam (rowId -> textId)
+    from::params::ParamTable *oap = nullptr;  // ObjActParam (rowId -> actionButtonParamId)
+    constexpr size_t kEntries = sizeof(param_list->entries) / sizeof(param_list->entries[0]);
+    for (size_t i = 0; i < kEntries && (!abp || !oap); i++)
+    {
+        auto *prc = param_list->entries[i].param_res_cap;
+        if (!prc || !prc->param_header || !prc->param_header->param_table) continue;
+        std::wstring_view nm(from::params::dlw_c_str(&prc->param_name));
+        if (nm == L"ActionButtonParam") abp = prc->param_header->param_table;
+        else if (nm == L"ObjActParam") oap = prc->param_header->param_table;
+    }
+    if (!abp || !oap || abp->num_rows == 0 || oap->num_rows == 0)
+    {
+        spdlog::warn("[LOOTDISK] lever ObjAct scan: ActionButtonParam/ObjActParam empty or unresolved "
+                     "(abp={}, oap={}) — no elevators", (void *)abp, (void *)oap);
+        return out;
+    }
+    // ActionButtonParam rowId -> textId (+0x34).
+    std::unordered_map<uint32_t, int32_t> abp_text;
+    {
+        auto *base = reinterpret_cast<uint8_t *>(abp);
+        constexpr uint64_t kTextOff = 0x34;
+        for (uint16_t r = 0; r < abp->num_rows; r++)
+        {
+            const auto &ri = abp->rows[r];
+            int32_t textId;
+            std::memcpy(&textId, base + ri.param_offset + kTextOff, 4);
+            abp_text[(uint32_t)ri.row_id] = textId;
+        }
+    }
+    // ObjActParam rows whose actionButtonParamId (+0x28) prompt text is a lever (3000 / 3010).
+    {
+        auto *base = reinterpret_cast<uint8_t *>(oap);
+        constexpr uint64_t kAbpOff = 0x28;
+        for (uint16_t r = 0; r < oap->num_rows; r++)
+        {
+            const auto &ri = oap->rows[r];
+            uint32_t abpId;
+            std::memcpy(&abpId, base + ri.param_offset + kAbpOff, 4);
+            auto it = abp_text.find(abpId);
+            if (it == abp_text.end()) continue;
+            if (it->second == 3000 || it->second == 3010) out.insert((uint32_t)ri.row_id);
+        }
+    }
+    spdlog::info("[LOOTDISK] lever ObjAct rows: {} (from ActionButtonParam texts 3000/3010)",
+                 (int)out.size());
+    return out;
+}
+
+// World feature: Elevators / lever-lifts (MapGenie Group 2, config world_features_from_disk). A lift
+// is a disk MSB ObjAct EVENT whose objActParamId is a "lever" ObjActParam — its live ActionButtonParam
+// prompt text is "Pull lever" (3000) / "Push lever" (3010), the lever-lift signal (collect_lever_
+// objact_ids). Position comes from the ObjAct's resolved MSB part. No bake, no flag (a lift never
+// "completes" → no graying). Dedup by entity when set (an interactive lift repeats across LOD _00/_10
+// tiles) else by cell. Dedicated category → category-wipe. See linux_group2_prompt_binding_re_findings.md.
+static int build_disk_elevator_markers(
+    const std::vector<DiskObjAct> &objacts,
+    const std::unordered_set<uint32_t> &lever_ids,
+    std::unordered_set<Cell, CellHash> &out_cells)
+{
+    namespace gen = goblin::generated;
+    GOBLIN_BENCH("build.disk_elevator");
+    const int cat = static_cast<int>(gen::Category::WorldElevator);
+    int emitted = 0, dup = 0;
+    std::unordered_set<uint32_t> seen_ent;      // dedup by entity (LOD tiles repeat the ObjAct)
+    std::unordered_set<std::string> seen_cell;  // dedup by cell when no entity
+    // Model gate ([ELEVDIAG] census 2026-07-02): lever ObjActs alone over-capture 224 parts —
+    // door/gate/portcullis levers share the same "Pull lever" rows (AEG219/227/239/447/... per-
+    // region models). The LIFT family is AEG027_* (002/080/115 = the platform variants, 87 parts
+    // ≈ real lifts × their top/bottom lever pairs); the proximity dedup below folds each pair.
+    std::vector<const DiskObjAct *> kept;
+    for (const DiskObjAct &oa : objacts)
+    {
+        if (!lever_ids.count(oa.objActParamId)) continue;      // not a lever prompt
+        if (oa.partName.rfind("AEG027_", 0) != 0) continue;    // not the lift family
+        kept.push_back(&oa);
+    }
+    // Proximity dedup: a lift's top + bottom levers are two ObjActs on one machine — fold
+    // markers within 30 m (same area+tile-neighborhood, world frame gx*256+local).
+    std::vector<std::pair<float, float>> placed_w;  // world-frame kept positions
+    std::vector<uint8_t> placed_area;
+    for (const DiskObjAct *poa : kept)
+    {
+        const DiskObjAct &oa = *poa;
+        const float wx = oa.gx * 256.0f + oa.posX, wz = oa.gz * 256.0f + oa.posZ;
+        bool near = false;
+        for (size_t i = 0; i < placed_w.size() && !near; i++)
+            near = placed_area[i] == oa.area &&
+                   (placed_w[i].first - wx) * (placed_w[i].first - wx) +
+                           (placed_w[i].second - wz) * (placed_w[i].second - wz) <
+                       30.0f * 30.0f;
+        if (near) { ++dup; continue; }
+        placed_w.emplace_back(wx, wz);
+        placed_area.push_back(oa.area);
+        if (oa.entityId != 0)
+        {
+            if (!seen_ent.insert(oa.entityId).second) { ++dup; continue; }
+        }
+        else
+        {
+            // Key includes the TILE (posX/Z are block-local — same local pos in two
+            // tiles of one area must not collide).
+            std::string k = std::to_string(oa.area) + "_" + std::to_string(oa.gx) + "_" +
+                            std::to_string(oa.gz) + "_" +
+                            std::to_string((long)std::lround(oa.posX)) + "_" +
+                            std::to_string((long)std::lround(oa.posZ));
+            if (!seen_cell.insert(k).second) { ++dup; continue; }
+        }
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = oa.area;
+        d.gridXNo = oa.gx;
+        d.gridZNo = oa.gz;
+        d.posX = oa.posX;
+        d.posZ = oa.posZ;
+        d.posY = oa.posY;  // altitude badge
+        // No verified WorldMapPoint PlaceName for lever-lifts: the RE established only the in-game
+        // ObjAct prompt (ActionButtonParam text "Pull/Push lever"), which is an ABP-FMG id, not a
+        // PlaceName the map-point label resolves against. 0 = no label (falls back to the category
+        // name), mod-agnostic. See linux_group2_prompt_binding_re_findings.md.
+        d.textId1 = 0;
+        // Entity when set; else a stable per-placement synthetic id (objActParamId is
+        // SHARED across lifts — e.g. 8301 — so it can't serve as the unique row key).
+        const uint64_t rid = oa.entityId
+                                 ? oa.entityId
+                                 : (0x0E000000ull | ((uint64_t)oa.gx << 16) |
+                                    ((uint64_t)oa.gz << 8) |
+                                    ((uint32_t)std::lround(oa.posX) & 0xFF));
+        push_marker(rid, d, cat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
+        out_cells.insert(cell_of(g_buckets[cat].back()));
+        ++emitted;
+    }
+    spdlog::info("[LOOTDISK] world features: {} Elevator markers (MSB ObjAct events with lever ABP "
+                 "prompts; {} objact events parsed, {} lever param rows, {} dups collapsed)",
+                 emitted, (int)objacts.size(), (int)lever_ids.size(), dup);
+    return emitted;
+}
+
+// World feature: Smithing Tables (MapGenie Group 2, config world_features_from_disk). A smithing table
+// is a disk MSB Asset with model AEG099_308 (3 world placements: m33_00, m60_38_51, m60_42_36 —
+// [ASSETCOUNT] census). Plain model filter over the disk asset enumeration; no EMEVD gate, no flag (a
+// table never "completes"). Dedup by entity when set else by cell (LOD tiles repeat the asset).
+// Dedicated category → category-wipe. See linux_group2_prompt_binding_re_findings.md.
+static int build_disk_smithing_markers(
+    const std::vector<DiskCollectible> &assets,
+    std::unordered_set<Cell, CellHash> &out_cells)
+{
+    namespace gen = goblin::generated;
+    GOBLIN_BENCH("build.disk_smithing");
+    const int cat = static_cast<int>(gen::Category::WorldSmithingTable);
+    constexpr uint32_t kSmithingAeg = 99308u;  // AEG099_308 → 99*1000+308
+    int emitted = 0, dup = 0;
+    std::unordered_set<uint32_t> seen_ent;
+    std::unordered_set<std::string> seen_cell;
+    for (const DiskCollectible &as : assets)
+    {
+        if (as.aegRow != kSmithingAeg) continue;
+        if (as.entityId != 0)
+        {
+            if (!seen_ent.insert(as.entityId).second) { ++dup; continue; }
+        }
+        else
+        {
+            // Tile-qualified key (posX/Z are block-local; see the elevator builder).
+            std::string k = std::to_string(as.area) + "_" + std::to_string(as.gx) + "_" +
+                            std::to_string(as.gz) + "_" +
+                            std::to_string((long)std::lround(as.posX)) + "_" +
+                            std::to_string((long)std::lround(as.posZ));
+            if (!seen_cell.insert(k).second) { ++dup; continue; }
+        }
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = as.area;
+        d.gridXNo = as.gx;
+        d.gridZNo = as.gz;
+        d.posX = as.posX;
+        d.posZ = as.posZ;
+        d.posY = as.posY;  // altitude badge
+        // No verified WorldMapPoint PlaceName for world smithing tables: the RE established only the
+        // engine-bound ABP prompt "Use smithing table" (ABP 6250 / FMG text), not a PlaceName the
+        // map-point label resolves against. 0 = no label (category-name fallback), mod-agnostic. See
+        // linux_group2_prompt_binding_re_findings.md.
+        d.textId1 = 0;
+        push_marker(/*row_id=*/as.entityId ? as.entityId : as.aegRow, d, cat,
+                    /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
+        out_cells.insert(cell_of(g_buckets[cat].back()));
+        ++emitted;
+    }
+    spdlog::info("[LOOTDISK] world features: {} Smithing Table markers (AEG099_308 assets; {} dups "
+                 "collapsed)", emitted, dup);
+    return emitted;
+}
+
 // World feature: Spirit Springs (config world_features_from_disk). A spring is a MountJump
 // (region subtype 46) / LockedMountJump (54) LAUNCH point, an Others region named
 // "FakeSpiritSpringJump" (ERR's manual springs), or a DLC AEG463_200 asset (springs without a
@@ -1981,6 +2182,7 @@ void build_buckets_impl()
         std::vector<DiskCollectible> disk_collectibles;
         std::vector<DiskEnemy> disk_enemies;
         std::vector<DiskRegion> disk_regions;
+        std::vector<DiskObjAct> disk_objacts;  // ObjAct EVENTs (Elevator / lever-lift source)
         // QuestNpcLayer resolves its pin position via entity_world_pos(), which reads the
         // g_entity_pos cache built below from these SAME disk_enemies/disk_collectibles
         // vectors — so the enemy/asset enumeration must run whenever that layer is active,
@@ -1998,11 +2200,14 @@ void build_buckets_impl()
                                 goblin::config::lootEmevdDrops || wantQuestNpcs;
         // Spirit Springs are POINT regions → request the region enumeration for world features.
         const bool wantRegions = goblin::config::worldFeaturesFromDisk;
+        // Elevators are MSB ObjAct events → request the ObjAct enumeration for world features.
+        const bool wantObjActs = goblin::config::worldFeaturesFromDisk;
         std::vector<DiskTreasure> treasures = load_disk_treasures(
             &dropped_dummy_lots,
             wantAssets ? &disk_collectibles : nullptr,
             wantEnemies ? &disk_enemies : nullptr,
-            wantRegions ? &disk_regions : nullptr);
+            wantRegions ? &disk_regions : nullptr,
+            wantObjActs ? &disk_objacts : nullptr);
         if (goblin::config::lootFromDiskMsb)
             build_disk_loot_markers(treasures, disk_lots, disk_lot_tile);
         // Cross-tile LOD treasures (non-_00 supertiles), indexed by lot for the baked-residual
@@ -2155,6 +2360,15 @@ void build_buckets_impl()
             build_disk_portal_markers(
                 disk_collectibles, portal_entities,
                 world_feature_cells[static_cast<int>(gen::Category::WorldPortal)]);
+            // Elevators / lever-lifts (Group 2): MSB ObjAct events whose ObjActParam prompt is a lever
+            // ("Pull/Push lever"), filtered by the live param scan.
+            build_disk_elevator_markers(
+                disk_objacts, collect_lever_objact_ids(),
+                world_feature_cells[static_cast<int>(gen::Category::WorldElevator)]);
+            // Smithing Tables (Group 2): AEG099_308 disk assets (plain model filter, no EMEVD gate).
+            build_disk_smithing_markers(
+                disk_collectibles,
+                world_feature_cells[static_cast<int>(gen::Category::WorldSmithingTable)]);
             // Spirit Springs: POINT regions (MountJump/Locked/FakeSpiring) + AEG463_200 assets.
             build_disk_spirit_springs_markers(
                 disk_regions, disk_collectibles,

@@ -92,6 +92,8 @@ std::string rd_utf16(const uint8_t *b, size_t o, size_t len)
 }
 
 constexpr uint32_t EVENT_TYPE_TREASURE = 4;
+constexpr uint32_t EVENT_TYPE_OBJACT = 7; // ER MSB event subtype (Treasure=4, same numbering
+                                          // family) — pinned empirically via [LOOTDISK] objact count
 constexpr int SEC_MODEL = 0; // PARAM section order: MODEL,EVENT,POINT,ROUTE,LAYER,PARTS
 constexpr int SEC_EVENT = 1; // PARAM section order: MODEL,EVENT,POINT,ROUTE,LAYER,PARTS
 constexpr int SEC_POINT = 2; // POINT = Regions (the Spirit Springs source)
@@ -134,7 +136,8 @@ inline uint32_t aeg_row_from_name(const std::string &n, bool crossTile = false)
 } // namespace
 
 ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t blobBase,
-                      bool wantAssets, bool wantEnemies, bool wantRegions, bool crossTileAssets)
+                      bool wantAssets, bool wantEnemies, bool wantRegions, bool crossTileAssets,
+                      bool wantObjActs)
 {
     ParseResult R;
     if (len < 0x10 || std::memcmp(buf, "MSB ", 4) != 0) return R;
@@ -233,6 +236,61 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
             }
         }
         R.treasures.push_back(std::move(t));
+    }
+
+    // ObjAct events (Elevator / lever-lift source, MapGenie Group 2). An MSB ObjAct EVENT (subtype 7)
+    // binds an asset placement to an ObjActParam prompt. Its typeData (ptr @ event+0x20, same eio rule
+    // as the treasure typeData) carries objActEntityId @+0x00, part INDEX @+0x04 (i32, -1 = none), and
+    // objActParamId @+0x08. The part resolves exactly like the treasure path (name@+0x00, pos@+0x20,
+    // entity sub-struct @+0x60). The caller filters objActParamId to the lever/lift ObjActParam rows
+    // (live ActionButtonParam text "Pull/Push lever"). See linux_group2_prompt_binding_re_findings.md.
+    if (wantObjActs)
+    {
+        for (uint32_t i = 0; i < EV.entries; i++)
+        {
+            size_t e = (size_t)rd64(buf, EV.entryArr + (size_t)i * 8);
+            if (!inb(e, 0x28, len)) continue;
+            if (rd32(buf, e + 0x0c) != EVENT_TYPE_OBJACT) continue;
+
+            uint64_t tdOff = rd64(buf, e + 0x20);
+            if (tdOff == 0) continue;
+            size_t td = eio(tdOff, e);
+            if (!inb(td, 0x0c, len)) continue;
+
+            ObjActEv o;
+            o.objActEntityId = rd32(buf, td + 0x00);
+            int32_t pidx = (int32_t)rd32(buf, td + 0x04);
+            o.objActParamId = rd32(buf, td + 0x08);
+            if (pidx != -1 && (uint32_t)pidx < PT.entries)
+            {
+                o.partIndex = pidx;
+                size_t pe = (size_t)rd64(buf, PT.entryArr + (size_t)pidx * 8);
+                if (inb(pe, 0x2c, len))
+                {
+                    size_t nm = eio(rd64(buf, pe + 0x00), pe);
+                    if (nm < len) o.partName = rd_utf16(buf, nm, len);
+                    o.pos[0] = rdf(buf, pe + 0x20);
+                    o.pos[1] = rdf(buf, pe + 0x24);
+                    o.pos[2] = rdf(buf, pe + 0x28);
+                    // Entity sub-struct (ptr @ part+0x60, EntityID@+0x00 — same read as the
+                    // treasure/asset paths). Fallback anchor when objActEntityId is 0.
+                    if (inb(pe, 0x68, len))
+                    {
+                        uint64_t entOff = rd64(buf, pe + 0x60);
+                        if (entOff)
+                        {
+                            size_t ent = eio(entOff, pe);
+                            if (inb(ent, 0x04, len))
+                            {
+                                uint32_t eid = rd32(buf, ent + 0x00);
+                                if (eid != 0xffffffffu) o.partEntityId = eid;
+                            }
+                        }
+                    }
+                }
+            }
+            R.objacts.push_back(std::move(o));
+        }
     }
 
     // Collectibles: enumerate every Asset part (type 13) named "AEG..." with its
