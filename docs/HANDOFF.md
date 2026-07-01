@@ -2,10 +2,9 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01z2 (overlay_hot_reload_playwright_plan Phase 2 scoping FULLY DONE —
-render-DLL source list resolved to `goblin_overlay_render.cpp` (new) + all 5 `src/worldmap/*.cpp`
-files, only one genuinely hard cross-boundary problem left (`native_item_icon` family's D3D12
-ownership); code not started, next is Slice A — see below). Earlier same day: `feat/inject-grace-suppression` PR 4c of the goblin_inject.cpp
+Last updated: 2026-07-01z3 (overlay_hot_reload_playwright_plan Phase 2 Slice A — CMake
+`GOBLIN_OVERLAY_HOTRELOAD` scaffold — build-verified both OFF/ON, deployed, not yet merged; Slice B
+(physical file move) not started — see below). Earlier same day: `feat/inject-grace-suppression` PR 4c of the goblin_inject.cpp
 god-file split — IN-GAME CONFIRMED + MERGED. This was the LAST planned extraction PR — the whole
 goblin_inject_refactor_plan is now COMPLETE (only 4d, an intentional non-PR stay-behind, remains).
 Earlier same day: PR 4b
@@ -22,32 +21,38 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01z2) — overlay_hot_reload_playwright_plan Phase 2 scoping FULLY DONE, code not started
+## RESUME HERE (2026-07-01z3) — overlay_hot_reload_playwright_plan Phase 2 Slice A landed, Slice B not started
 
 Phase 1 (all 3 draw functions take `OverlayFrameCtx`) is COMPLETE and MERGED to `master`. Phase 2
 (split the draw layer into its own hot-reloadable DLL, dev-only, behind a new
-`GOBLIN_OVERLAY_HOTRELOAD` CMake option — release builds stay single-DLL) is fully scoped now, two
-audit passes: (1) `goblin::overlay::native_item_icon`/`native_map_point_icon`/
-`native_map_point_icon_by_name`/`map_point_glyph_uv` (`goblin_overlay.cpp:3890-3994`) are called
-from `src/worldmap/map_renderer.cpp` on the SAME D3D12 render infra as Phase 1's icon-batch cluster
-— a real hot-reload boundary has to include `src/worldmap/*.cpp`, not just the 3 draw functions in
-`goblin_overlay.cpp`. (2) Follow-up audit of the other 4 `src/worldmap/*.cpp` files: all pure
-data-layer `MarkerLayer` subclasses, ZERO D3D12, ZERO calls into `goblin_overlay.cpp` — 3 of them
-(`map_entry_layer.cpp`/`grace_layer.cpp`/`quest_npc_layer.cpp`) only need their existing
-`goblin_inject.hpp` accessor calls (`marker_world_pos`/`category_visible`/etc.) declared
-`dllexport`/`dllimport` across the new boundary (ordinary functions, not ctx-pointer plumbing);
-`category_meta.cpp` has zero reverse coupling at all. **Net: render-DLL source list for Slice B is
-now fully resolved** — `goblin_overlay_render.cpp` (new) + all 5 `src/worldmap/*.cpp` files — and
-the ONLY genuinely hard cross-boundary problem in all of Phase 2 is the single `native_item_icon`
-family (owns/mutates D3D12 resources, must stay host-side, needs a reverse ctx/pointer table).
-CMakeLists restructuring sketched (no `option()` exists today — this introduces the first one);
-`dllmain.cpp`'s `goblin::overlay::initialize()` (:292) stays host-side unchanged in both modes,
-gains a `LoadLibrary`+`GetProcAddress` step when the option is ON. Recommended PR-slicing (full
-detail in the plan doc): **A** CMake scaffold only (inert, still one DLL) → **B** physical file
-move (draw fns + helpers + all 5 worldmap files), still statically linked when the option is OFF →
-**C** actual `LoadLibrary` split + reverse ctx table for `native_item_icon` → **D** file-watcher +
-real reload. Next: start Slice A (CMake scaffold, should be a small, low-risk, build-verifiable
-change).
+`GOBLIN_OVERLAY_HOTRELOAD` CMake option — release builds stay single-DLL) is fully scoped (two
+ground-truth audit passes, full detail + PR-slicing in `docs/plans/overlay_hot_reload_playwright_plan.md`):
+render-DLL source list resolved to `goblin_overlay_render.cpp` (new, not yet created) + all 5
+`src/worldmap/*.cpp` files; the ONLY genuinely hard cross-boundary problem in all of Phase 2 is the
+`native_item_icon`/`native_map_point_icon`/`native_map_point_icon_by_name`/`map_point_glyph_uv`
+family (owns/mutates D3D12 resources via `g_device`/`g_command_queue`/`g_srv_heap`, must stay
+host-side, needs a reverse ctx/pointer table); the 3 `goblin_inject.hpp`-dependent worldmap files
+just need `dllexport`/`dllimport` on those accessor calls (much easier, ordinary functions not
+mutable state); `category_meta.cpp` has zero reverse coupling.
+
+**Slice A — DONE, build-verified both `OFF`/`ON` (2026-07-01, `feat/overlay-hotreload-cmake-scaffold`,
+not yet merged).** Added `GOBLIN_OVERLAY_HOTRELOAD` option (first `option()` anywhere in
+`CMakeLists.txt`) + split the flat source list into `GOBLIN_RENDER_SOURCES` (the 5 worldmap files)
+/ `GOBLIN_HOST_SOURCES` (everything else, `goblin_overlay.cpp` included — it stays host-side until
+Slice B actually extracts the draw functions into the new file). Both variables still feed ONE
+`add_library(MapForGoblins SHARED ...)` regardless of the option — `if(GOBLIN_OVERLAY_HOTRELOAD)`
+only emits a `message(WARNING ...)` that Slice B/C haven't landed yet. Confirmed: default (`OFF`)
+config builds clean (76 objects) and links; `-DGOBLIN_OVERLAY_HOTRELOAD=ON` reconfigure fires the
+warning and still produces the same single-DLL shape. Deployed the `OFF` build to
+`~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (backup `.bak-pre-phase2-slicea`) — zero `.cpp`
+content changed vs. the prior already-in-game-confirmed deploy (pure CMake reorg), so this is
+low-risk; a quick log check after next launch is still worth doing before merge but isn't the same
+correctness gate as a runtime-code slice. Not yet merged to `master`. Next: Slice B — physically
+move the draw functions + private helpers into `src/goblin_overlay_render.cpp` and move all 5
+worldmap files into that source group for real (still statically linked when the option is OFF),
+same discipline as Phase 1's slices (audit already done, this is now just careful mechanical
+extraction + the `dllexport`/`dllimport` accessor wiring for the 3 `goblin_inject.hpp`-dependent
+files).
 
 ## RESUME HERE (2026-07-01w) — `grace_position_index` bake DROPPED (baked-data removal, offline-only)
 

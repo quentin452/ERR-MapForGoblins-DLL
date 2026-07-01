@@ -1,9 +1,8 @@
 # Overlay hot-reload + AI Playwright loop (plan)
 
-**Status:** Phase 1 COMPLETE for all 3 draw functions (2026-07-01) — slice 1
-(`draw_worldmap_markers`/`draw_minimap_hud`) MERGED to `master`; slice 2 (`draw_panel`)
-build-verified + IN-GAME CONFIRMED, not yet merged. Phase 2 (DLL split) not started. Raised by
-<user> 2026-07-01: reload ONLY the ImGui overlay
+**Status:** Phase 1 COMPLETE + MERGED to `master` for all 3 draw functions (2026-07-01). Phase 2
+(DLL split) fully scoped (two ground-truth audits done); Slice A (CMake option scaffold)
+build-verified, not yet merged; Slices B/C/D not started. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
 render code while ERR keeps running (no full restart), paired with the already-proposed Route B
 debug RPC so an AI agent can script the REAL running game — screenshot, spot a DX or functional
 bug in the minimap/worldmap/icons overlay, fix the overlay source, hot-reload just that piece,
@@ -213,14 +212,23 @@ both modes; a `GOBLIN_OVERLAY_HOTRELOAD` build additionally needs it to `LoadLib
 `GetProcAddress` the render DLL's vtable before returning.
 
 **Recommended PR-slicing for Phase 2 (mirrors Phase 1 / goblin_inject_refactor_plan discipline):**
-1. Slice A — CMake scaffold only (`option()` + source-list split), still ONE DLL either way, no
-   `goblin_overlay_render.cpp` file yet, no `LoadLibrary`. Verifies the CMake restructuring is inert.
-2. Slice B — physical file move (draw fns + private helpers + `map_renderer.cpp`, pending the
-   4-file reverse-dependency audit above), still statically linked into one DLL when the option is
-   OFF. Pure relocation, build+in-game confirm, same discipline as Phase 1's slices.
+1. **Slice A — DONE, build-verified (2026-07-01, `feat/overlay-hotreload-cmake-scaffold`).**
+   Added `GOBLIN_OVERLAY_HOTRELOAD` option (first `option()` in `CMakeLists.txt`) +
+   `GOBLIN_RENDER_SOURCES`/`GOBLIN_HOST_SOURCES` list split (render list = the 5
+   `src/worldmap/*.cpp` files per both audits above; `goblin_overlay_render.cpp` doesn't exist yet
+   so `goblin_overlay.cpp` itself stays in `GOBLIN_HOST_SOURCES` until Slice B). Both variables
+   still feed the ONE `MapForGoblins` target regardless of the option value — `if(GOBLIN_OVERLAY_HOTRELOAD)`
+   only emits a `message(WARNING ...)` noting Slice B/C aren't landed. Cross-build clean both
+   `OFF` (default) and `ON` (confirmed the warning fires, confirmed the combined source list still
+   links). Deployed the `OFF` build (zero `.cpp` content changed, so functionally identical to the
+   already-in-game-confirmed panel-ctx deploy — CMake reorg only, no runtime risk). Not yet merged.
+2. Slice B — physical file move (draw fns + private helpers + all 5 worldmap files, per the fully
+   resolved audit above), still statically linked into one DLL when the option is OFF. Pure
+   relocation, build+in-game confirm, same discipline as Phase 1's slices.
 3. Slice C — actual DLL split + `LoadLibrary` boundary when `GOBLIN_OVERLAY_HOTRELOAD=ON`: vtable/
    function-pointer resolution, `native_item_icon`-family calls back into host D3D12 infra via a
-   NEW reverse-direction ctx/pointer table (render DLL doesn't own `g_device` etc.).
+   NEW reverse-direction ctx/pointer table (render DLL doesn't own `g_device` etc.), plus
+   `dllexport`/`dllimport` for the `goblin_inject.hpp` accessors the 3 worldmap layer files use.
 4. Slice D — file-watcher + actual hot reload.
   - **ImGui context sharing across the DLL boundary.** Both DLLs must share the SAME `ImGuiContext*`
     (`ImGui::SetCurrentContext` on entry to every cross-DLL call) and be built against the same
