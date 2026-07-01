@@ -32,12 +32,18 @@ still blocked on running game / EMEVD corpus; NOT visually verified).
   corpus" was wrong — I'd checked the DarkScript3 TOOL dir, not its output). Each NPC's quest flags are a
   **mutually-exclusive STATE REGISTER** (Boc ev3959 / Thops ev3819 / Alexander ev3679 in `common.emevd`):
   `BatchSet(lo,hi,OFF)` then `Set(value,ON)` — advancing CLEARS the prior, so one flag == done would tick
-  then UNtick. The current `progress_flag` schema (1 flag, SET==done) can't express "register ≥ value" →
-  **nothing wired as progress_flag** (would be silent-wrong). Bonus: the register transitions are gated by
-  AREA flags matching the entity_id regions, independently confirming the pins. **DECISION PENDING**
-  (leave 0 / extend schema to register≥value / source monotonic area flags) — see
-  `docs/memory/features/quest-browser.md` "PROGRESS_FLAG STRUCTURAL FINDING" + the RE prompt. In-game §7
-  visual verify also still pending (game not running).
+  then UNtick. Bonus: the register transitions are gated by AREA flags matching the entity_id regions,
+  independently confirming the pins. **DECISION (user): extend the schema — DONE.** Added
+  `QuestStep::progress_flag_max` (register hi); `quest_step_done` OR-scans
+  `[progress_flag..progress_flag_max]` (= register ≥ value), else plain terminal check.
+  `quest_npc_layer.cpp` active-step picker gained a `flag_floor` so a manual gap (Alexander's missable
+  Gael Tunnel) or a concluded quest no longer traps the pin on an early step. WIRED (confident, anchored
+  by transition location side-effects): Alexander steps 1/3/4/5 (`3666`/`3669`/`3670` register + `3663`
+  death), Thops step 4 (`3803` concluded), Boc step 6 (`3943` concluded); the rest stay manual (no
+  confident mapping / missable). Host-tested + build-clang & build-erte green. **Still NEXT:** in-game §7
+  visual verify (game not running); filling the remaining mid-steps (Alexander step 2, Boc & Thops steps
+  1-3) needs per-gate-flag RE or in-game capture. See `docs/memory/features/quest-browser.md`
+  (PROGRESS_FLAG STRUCTURAL FINDING + DECISION + IMPLEMENTED).
 
 ## Session recap (2026-07-01) — feat_quests Phase 1: schema + entity-position cache + flag wiring + QuestNpcLayer
 

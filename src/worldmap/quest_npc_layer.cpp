@@ -48,12 +48,24 @@ const std::vector<Marker> &QuestNpcLayer::markers() const
         if (q.step_count == 0)
             continue; // placeholder entry, no steps authored yet
 
+        // A flag-backed done step proves the quest advanced PAST every earlier step,
+        // including a manual (unflagged) one sandwiched between flag-known steps (e.g.
+        // Alexander's missable Gael Tunnel) or the early manual steps of an already-
+        // concluded quest. So compute a floor = the last step known-done via a real
+        // progress_flag and treat every step at/below it as done when picking the
+        // active (first not-done) step -- else a manual gap would wrongly trap the pin
+        // there, or a concluded quest would still pin step 1.
+        long flag_floor = -1;
+        for (size_t s = 0; s < q.step_count; s++)
+            if (q.steps[s].progress_flag && goblin::quest_step_done(q, s))
+                flag_floor = static_cast<long>(s);
+
         int done = 0;
         size_t active = q.step_count; // sentinel = "no active (not-done) step"
         for (size_t s = 0; s < q.step_count; s++)
         {
-            if (goblin::quest_step_done(q, s)) { done++; continue; }
-            if (active == q.step_count) active = s; // first not-done step
+            if (goblin::quest_step_done(q, s) || static_cast<long>(s) <= flag_floor) { done++; continue; }
+            if (active == q.step_count) active = s; // first not-(effectively-)done step
         }
 
         // questNpcQuestAware: only pin questlines already in progress (at least one

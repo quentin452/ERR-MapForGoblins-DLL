@@ -14,33 +14,40 @@ namespace goblin::generated
 
 // ── authored step tables (original wording; quest facts only) ────────────
 // entity_id MSB-sourced via tools/_find_npc.py Boc + data/tile_region_map.json
-// (BonfireWarpParam-authoritative region resolve). progress_flag left 0 for all
-// steps: no running game for empirical debugEventFlags capture and no decompiled
-// EMEVD corpus on this machine -- manual ini checkbox stays the source of truth.
-// Steps 2/3/4 left 0: no Coastal-Cave (Limgrave shore) seamster placement found,
-// and the two Liurnia seamster placements (Bellum Hwy 1036480700 / Liurnia
+// (BonfireWarpParam-authoritative region resolve).
+// Steps 2/3/4 entity left 0: no Coastal-Cave (Limgrave shore) seamster placement
+// found, and the two Liurnia seamster placements (Bellum Hwy 1036480700 / Liurnia
 // 1039400710) can't be disambiguated to the Lake-facing Cliffs without coords.
 // NOTE: the old candidate 11050730 ("Boc 3943") resolves to Leyndell Ashen
 // Capital -- NOT any of these 6 steps -- so it is deliberately NOT used here.
+// progress_flag: Boc's register is 3940..3949 (EMEVD common.emevd ev3959), but its
+// 3945->3946->3947->3948 progression has NO location side-effects to anchor which
+// UI step each value is, so steps 1-5 stay manual (would be guessing). Only step 6
+// (Resolve his wish = quest concluded) is confident: 3943, his "_q99" concluded
+// flag (terminal, plain check), matching the fail_flag on his NpcQuest entry.
 static const QuestStep steps_boc[] = {
     {"Free Boc", "A voice cries from a bush by the road in western Limgrave. Strike the bush to free the demi-human Boc, who turns out to be a skilled tailor.", "Limgrave", /*progress_flag=*/0u, /*entity_id=*/1043370750u}, // "Demi-Human Boc" (pre-free), Limgrave open-world
     {"Coastal Cave", "He relocates to the mouth of the Coastal Cave on Limgrave's west shore.", "Limgrave"},
     {"Lake-facing Cliffs", "Boc next settles by the Lake-facing Cliffs in eastern Liurnia and offers to alter and reinforce your garments.", "Liurnia"},
     {"Tailoring tools", "Bring him the Sewing Needle and the Iron/Gold Tailoring Tools so he can do heavier alterations.", "Liurnia"},
     {"Altus Plateau", "He moves on again, found resting along the Altus Plateau highway.", "Altus Plateau", /*progress_flag=*/0u, /*entity_id=*/1039510700u}, // sole Altus seamster placement
-    {"Resolve his wish", "Console Boc with the 'You're Beautiful Too' gesture, or grant a Larval Tear, to finish his story.", "Altus Plateau", /*progress_flag=*/0u, /*entity_id=*/1039510700u}, // no relocation -> shares step 5 placement
+    {"Resolve his wish", "Console Boc with the 'You're Beautiful Too' gesture, or grant a Larval Tear, to finish his story.", "Altus Plateau", /*progress_flag=*/3943u, /*entity_id=*/1039510700u}, // _q99 concluded (terminal); no relocation -> shares step 5 placement
 };
 // entity_id MSB-sourced via tools/_find_npc.py Thops + tile_region_map.json.
 // Step 1 entity 1039390700 = the same id captured earlier as "Thops 3803" -- now
 // confirmed it resolves to Liurnia (Church of Irith), i.e. step 1. Step 4 left 0:
 // Thops is a corpse here (no live MSB enemy state to pin; the m14 placement is the
-// living step-3 Thops), needs EMEVD/in-game verification. progress_flag 0 (see
-// steps_boc note): manual ini checkbox remains source of truth.
+// living step-3 Thops), needs EMEVD/in-game verification.
+// progress_flag: Thops's register (3800..3806, EMEVD common.emevd ev3819) only
+// distinguishes active (3805) from concluded (3806 -> also sets 3803); it carries
+// NO per-step granularity for steps 1-3, so those stay manual. Step 4 (his end) =
+// 3803, his "_q99" concluded flag (terminal, plain check), matching the fail_flag
+// already on his NpcQuest entry.
 static const QuestStep steps_thops[] = {
     {"Meet Thops", "Find Sorcerer Thops resting at the Church of Irith in eastern Liurnia; he longs to enter the Academy but lacks a key.", "Liurnia", /*progress_flag=*/0u, /*entity_id=*/1039390700u}, // Liurnia placement (Church of Irith)
     {"Academy Glintstone Key", "Bring him a spare Academy Glintstone Key so he can pass the Academy's seal.", "Liurnia", /*progress_flag=*/0u, /*entity_id=*/1039390700u}, // no relocation -> shares step 1 placement
     {"Schoolhouse Classroom", "He relocates to the Schoolhouse Classroom deep within Raya Lucaria Academy.", "Raya Lucaria", /*progress_flag=*/0u, /*entity_id=*/14000740u}, // m14 Academy of Raya Lucaria (live Thops)
-    {"His end", "Return later to find Thops has passed at the Classroom; claim Thops's Barrier, the Academy Glintstone Staff, and his Bell Bearing.", "Raya Lucaria"},
+    {"His end", "Return later to find Thops has passed at the Classroom; claim Thops's Barrier, the Academy Glintstone Staff, and his Bell Bearing.", "Raya Lucaria", /*progress_flag=*/3803u}, // _q99 concluded (terminal)
 };
 static const QuestStep steps_patches[] = {
     {"Murkwater Cave", "Patches ambushes you as a boss in Murkwater Cave. When he feigns surrender, spare him and he opens a shop.", "Limgrave"},
@@ -98,13 +105,20 @@ static const QuestStep steps_rya[] = {
 // All 5 confidently placed: steps 1/4/5 by EXACT subRegion match (Stormhill /
 // Mt. Gelmir / Crumbling Farum Azula); step 2 = m32 Caelid tunnel (Alexander's
 // only tunnel is Gael); step 3 = sole remaining open-world Caelid placement (SE,
-// Redmane). progress_flag 0 (see steps_boc note): manual ini checkbox is truth.
+// Redmane).
+// progress_flag: state register 3665..3671 (EMEVD common.emevd ev3679; see
+// docs/memory/features/quest-browser.md "PROGRESS_FLAG STRUCTURAL FINDING"). Mapped
+// by the transitions' LOCATION side-effects: >=3666 = left Stormhill (step1 done);
+// >=3669 = left the festival / placed at Gelmir (step3 done); >=3670 = freed at
+// Gelmir (step4 done). Step5 (his end) = 3663, the death flag set at m13 Farum (a
+// terminal top-of-register flag, plain check). Step2 (Gael Tunnel) stays 0: it is
+// missable and has NO distinct register state (3666->3667 goes Stormhill->Redmane).
 static const QuestStep steps_alexander[] = {
-    {"Stuck in Stormhill", "Free Alexander, the Warrior Jar, from a hole in northern Stormhill by striking him.", "Limgrave", /*progress_flag=*/0u, /*entity_id=*/1043390710u}, // subRegion=Stormhill (exact)
-    {"Gael Tunnel", "Find him wedged before a door in Gael Tunnel and free him again.", "Caelid", /*progress_flag=*/0u, /*entity_id=*/32070700u}, // m32 tunnel map, Caelid
-    {"Radahn Festival", "Meet him at Redmane Castle, eager for the battle against Radahn.", "Caelid", /*progress_flag=*/0u, /*entity_id=*/1051360705u}, // SE Caelid, Redmane
-    {"Lava pot", "Free him once more from a hole on a lava slope of Mt. Gelmir.", "Mt. Gelmir", /*progress_flag=*/0u, /*entity_id=*/1035530700u}, // subRegion=Mt. Gelmir (exact)
-    {"His end", "Find him dying at Crumbling Farum Azula; the duel yields Alexander's Innards and the Shard of Alexander talisman.", "Crumbling Farum Azula", /*progress_flag=*/0u, /*entity_id=*/13000700u}, // m13 Crumbling Farum Azula (exact)
+    {"Stuck in Stormhill", "Free Alexander, the Warrior Jar, from a hole in northern Stormhill by striking him.", "Limgrave", /*progress_flag=*/3666u, /*entity_id=*/1043390710u, /*progress_flag_max=*/3671u}, // reg>=3666 (left Stormhill)
+    {"Gael Tunnel", "Find him wedged before a door in Gael Tunnel and free him again.", "Caelid", /*progress_flag=*/0u, /*entity_id=*/32070700u}, // missable, no distinct register state -> manual
+    {"Radahn Festival", "Meet him at Redmane Castle, eager for the battle against Radahn.", "Caelid", /*progress_flag=*/3669u, /*entity_id=*/1051360705u, /*progress_flag_max=*/3671u}, // reg>=3669 (left festival for Gelmir)
+    {"Lava pot", "Free him once more from a hole on a lava slope of Mt. Gelmir.", "Mt. Gelmir", /*progress_flag=*/3670u, /*entity_id=*/1035530700u, /*progress_flag_max=*/3671u}, // reg>=3670 (freed at Gelmir)
+    {"His end", "Find him dying at Crumbling Farum Azula; the duel yields Alexander's Innards and the Shard of Alexander talisman.", "Crumbling Farum Azula", /*progress_flag=*/3663u, /*entity_id=*/13000700u}, // death flag @ m13 Farum (terminal, plain check)
 };
 static const QuestStep steps_diallos[] = {
     {"Roundtable mourning", "Meet Diallos at the Roundtable Hold, grieving his lost servant.", "Roundtable Hold"},
@@ -421,9 +435,9 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Rya", "Rya's Quest", "Leads into Volcano Manor (Tanith)", steps_rya, 3},
     // name_id 122310 = "Boc the Seamster" FMG NpcName id (data/npc_name_text_map.json).
     // Per-step entity_id now MSB-sourced for steps 1/5/6 (see steps_boc above);
-    // steps 2/3/4 stay 0 (no offline-disambiguable placement). progress_flag stays 0
-    // for all steps -- needs the running game (empirical debugEventFlags) or a
-    // decompiled EMEVD corpus, neither available offline. The old CANDIDATE 11050730
+    // steps 2/3/4 stay 0 (no offline-disambiguable placement). progress_flag: only
+    // step 6 (concluded = 3943) is EMEVD-confident; steps 1-5 stay manual (Boc's
+    // 3945-3949 register has no location side-effects to map them). The old CANDIDATE 11050730
     // ("Confirmed: ... Boc 3943 (11050730)" in the fail_flag block above) was RESOLVED
     // via tile_region_map.json to Leyndell, Ashen Capital -- NOT any of Boc's 6 steps
     // -- so it is correctly NOT used as a step entity_id. (quest_gates.py's curated
@@ -475,7 +489,8 @@ const NpcQuest QUEST_BROWSER[] = {
     // entity_id now MSB-sourced for steps 1/2/3 (see steps_thops above); step 4 (his
     // corpse) stays 0. The candidate entity_id 1039390700 from the fail_flag block was
     // RESOLVED via tile_region_map.json to Liurnia (Church of Irith) = step 1, and is
-    // wired there. progress_flag stays 0 for all steps (needs game/EMEVD, offline-blocked).
+    // wired there. progress_flag: only step 4 (concluded = 3803) is confident; steps
+    // 1-3 stay manual (Thops's register has no per-step granularity, only active/done).
     {"Sorcerer Thops", "Thops's Quest", nullptr, steps_thops, 4, false, nullptr, 3803u, true, 133300u},
     // fail_flag 1051430800 = Gurranq dead (EMEVD 90005860 boss death handler,
     // entity 1051430800 at the Bestial Sanctum; flag id == entity id, persistent).
@@ -534,7 +549,19 @@ bool quest_step_done(const generated::NpcQuest &q, size_t s)
     if (s >= q.step_count)
         return false;
     if (uint32_t flag = q.steps[s].progress_flag)
-        return goblin::ui::read_event_flag(flag);
+    {
+        // State-register step (progress_flag_max > progress_flag): ER clears the
+        // block and sets ONE flag per state, so "done" = register reached >= flag,
+        // i.e. ANY flag in [flag .. max] is ON. Otherwise a plain single-flag check
+        // (a terminal "concluded" flag that is never cleared). See goblin_quest_steps.hpp.
+        uint32_t hi = q.steps[s].progress_flag_max;
+        if (hi <= flag)
+            return goblin::ui::read_event_flag(flag);
+        for (uint32_t f = flag; f <= hi; ++f)
+            if (goblin::ui::read_event_flag(f))
+                return true;
+        return false;
+    }
     // Manual ini blob: "name=bits;name2=bits2;..." one '0'/'1' char per step. Assumes
     // the modern keyed format -- the Quest Browser UI (goblin_overlay.cpp) one-shot
     // migrates an OLD un-keyed global bit-string blob to this format the first time it

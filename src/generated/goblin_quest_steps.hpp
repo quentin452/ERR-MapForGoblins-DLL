@@ -15,8 +15,20 @@ namespace goblin::generated
 // is on. `entity_id` (optional): the MSB EntityID of the NPC/asset QuestNpcLayer
 // pins on the world map while this is the active (first not-done) step. 0 = no
 // marker for this step.
+// `progress_flag_max` (optional): ER encodes most NPC quest progress as a
+// mutually-exclusive STATE REGISTER -- a contiguous flag block where exactly ONE
+// flag is ON and advancing a step CLEARS the previous (BatchSet(lo,hi,OFF) then
+// Set(value,ON) in the EMEVD). A single flag therefore ticks then UNticks, so
+// "step done" must mean "the register has reached AT LEAST this value". When
+// progress_flag_max > progress_flag, quest_step_done treats [progress_flag ..
+// progress_flag_max] as that register and reports done if ANY flag in the range
+// is ON (i.e. register >= progress_flag). 0 / <= progress_flag = plain single-flag
+// check (a terminal/"concluded" flag that is never cleared uses this form). MUST
+// stay the LAST member: the .cpp step tables initialise progress_flag/entity_id
+// positionally, so a new field can only be appended.
 struct QuestStep { const char *title; const char *desc; const char *zone;
-                   uint32_t progress_flag = 0; uint32_t entity_id = 0; };
+                   uint32_t progress_flag = 0; uint32_t entity_id = 0;
+                   uint32_t progress_flag_max = 0; };
 
 // One NPC questline. `related` = a short note on interconnections ("Start after
 // Kenneth's quest", "Part of Ranni's questline") or null. steps==null / count==0

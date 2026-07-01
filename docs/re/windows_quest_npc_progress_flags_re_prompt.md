@@ -1,7 +1,8 @@
 # RE prompt — source real progress_flag/entity_id for the Quest NPC bootstrap set
 
-**Status:** entity_id half DONE (offline, 2026-07-01); progress_flag half STILL BLOCKED. Windows
-required (SoulsFormats/pythonnet param+MSB tooling, EMEVD decompile). Blocks:
+**Status:** entity_id half DONE + progress_flag CONFIDENT STEPS WIRED (offline, 2026-07-01, schema
+extended to register≥value). Remaining: mid-step flags (need per-gate RE / in-game) + in-game §7 verify.
+Windows preferred (SoulsFormats/pythonnet param+MSB tooling, EMEVD decompile). Blocks:
 `docs/plans/feat_quests_implementation_plan.md` Phase 2 verification — `QuestNpcLayer` is built and
 wired (`feat/quest-npc-layer`, log-confirmed crash-free in-game).
 
@@ -27,8 +28,12 @@ current `QuestStep::progress_flag` (one flag, SET==done) is structurally wrong f
 gated by AREA flags matching the entity_id regions (Alexander Stormhill `1043399307` / Redmane
 `1051369259` / Gelmir `1035539208` / Farum `1052520800`; Thops Irith `1039399220`) — which independently
 CONFIRMS the wired entity_ids. See `docs/memory/features/quest-browser.md` (PROGRESS_FLAG STRUCTURAL
-FINDING) for the full state machines. DECISION PENDING (leave 0 / extend schema to register≥value /
-source monotonic area flags). Also: in-game §7 visual verify not yet done (game was not running).
+FINDING) for the full state machines. **DECISION (user): extended the schema to "register ≥ value" —
+DONE.** `QuestStep::progress_flag_max` + `quest_step_done` OR-scan; `quest_npc_layer` active-step got a
+`flag_floor`. Wired the confident steps (Alexander 1/3/4/5, Thops 4, Boc 6 — the rest stay manual: no
+confident mapping / missable / no register granularity). build-clang + build-erte green. STILL TODO:
+in-game §7 visual verify (game not running); mid-steps (Alexander step 2, Boc/Thops steps 1-3) need
+per-gate-flag RE (the ESD/parameterized gate flags with 0 EMEVD literal setters) or in-game capture.
 
 ## Goal
 
