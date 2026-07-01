@@ -2,10 +2,12 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01r (`feat/inject-world-position` PR 4a of the goblin_inject.cpp
-god-file split — IN-GAME CONFIRMED via log check, ready to merge — see directly below. A crash
-occurred this session but is a known pre-existing bug, NOT a regression (see RESUME HERE). Earlier
-same day: PR 3 (section-visibility) IN-GAME CONFIRMED + MERGED; PR 2 (item-classify) IN-GAME CONFIRMED + MERGED; PR 1 (icon-harvest) IN-GAME CONFIRMED +
+Last updated: 2026-07-01s (`feat/inject-tutorial-popup` branch: PR 4b of the goblin_inject.cpp
+god-file split — TutorialParam row injection + world_map_open() extracted, builds clean, deployed
++ md5-verified, NOT YET in-game log-checked — see directly below. Earlier same day: PR 4a
+(world-position) IN-GAME CONFIRMED + MERGED (a crash occurred that session but is a known
+pre-existing bug, NOT a regression); PR 3 (section-visibility) IN-GAME CONFIRMED + MERGED; PR 2
+(item-classify) IN-GAME CONFIRMED + MERGED; PR 1 (icon-harvest) IN-GAME CONFIRMED +
 MERGED; PR 0 — MERGED, in-game confirmed via log check; Phase A regen DONE on the Windows box
 (parallel session) — all 4 profiles now MAP_ENTRY_COUNT 0,
 non-ERR DLLs rebuilt clean via clang/ninja, Phase-1 enemy-name landmine closed at build level (see
@@ -15,7 +17,29 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01r) — `feat/inject-world-position` PR 4a IN-GAME CONFIRMED, ready to merge
+## RESUME HERE (2026-07-01s) — `feat/inject-tutorial-popup` PR 4b built+deployed, needs in-game log check
+
+Branch `feat/inject-tutorial-popup` (forked from `master` after PR 0-3+4a merged), implementing
+PR 4b. Extracted the WorldMapPointParam readiness probe, TutorialParam row injection (F10 banner
+rows), and `world_map_open()` into new `src/goblin_tutorial_popup.cpp` (~354 lines, 3 spans:
+`:89-134`+`:137-373`+`:433-463`). `world_map_open()` is a misplaced public utility (called from
+`goblin_worldmap_probe.cpp`/`map_renderer.cpp`/`goblin_overlay.cpp`×2/`input_wndproc.cpp`) that sat
+in the TutorialParam banner section by proximity only. **Scope narrower than the plan's original
+guess**: the toast-method A/B experiment (`g_toast_method`/`TOAST_METHOD_NAMES`/
+`TOAST_METHOD_COUNT`) and toast-delivery internals (`show_tutorial_popup_trampoline`/
+`seh_dispatch_toast`) STAY in `goblin_inject.cpp` — called ONLY by `show_toggle_banner`/
+`seh_fire_trampoline` (PR 4d's toast subsystem), moving them would just relocate half that hub for
+zero coupling reduction. Side finding (not fixed, pure relocation): the comment directly above
+`world_map_open()` in the original file describes `show_toggle_banner`'s toast-firing behavior, not
+`world_map_open` — a pre-existing stale/misplaced comment, moved as-is. Declarations in
+`goblin_inject.hpp` unchanged (facade kept). Builds clean via clang-cl+xwin, deployed to
+`~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior DLL backed up as
+`.bak-pre-tutorial-popup`) — **game wasn't running at deploy time, so NOT yet in-game log-checked**
+(same check as prior PRs: fresh `NEW SESSION` + `[SIG]` PASS + no crash; this PR touches the F10
+banner toggle path so ideally confirm that still fires). Next: launch ERR, check logs, then merge
+to `master`; PR 4c remains unstarted, 4d is the intended final resting state of `goblin_inject.cpp`.
+
+## OLDER RESUME (2026-07-01r) — `feat/inject-world-position` PR 4a IN-GAME CONFIRMED, MERGED
 
 PR 4 (the final cleanup pass) got its own scoping audit first, per the plan's own rule — every
 prior PR found the plan's pre-PR0 guesses about "what's left" wrong somewhere, so PR 4 needed a
