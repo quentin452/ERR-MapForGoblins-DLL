@@ -265,8 +265,12 @@ STAGES = [
     # removed with the rest of the pipeline in Phase 5.)
 
     Stage('generate_data',
-          inputs=[DATA / 'loot_lot_linkage.json',
-                  DATA / 'item_icon_table.json'],
+          # Reads the name-alias sources (root data/) + the profile's legacy-conv
+          # param; emits the map_data stub, name-alias table, and legacy-conv header.
+          inputs=[REPO / 'data' / 'items_database.json',
+                  REPO / 'data' / 'npc_name_text_map.json',
+                  REPO / 'data' / 'boss_list.json',
+                  DATA / 'WorldMapLegacyConvParam.json'],
           outputs=[GENERATED_CPP / 'goblin_map_data.cpp'],         # Phase-2 empty no-bake stub
           script='generate_data.py'),
 

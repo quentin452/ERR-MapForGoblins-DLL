@@ -312,8 +312,8 @@ namespace goblin
     // Marker/item key → the MFG Category that item would get as a normal marker
     // (static_cast<int>), or -1 if the item is the default/catch-all tail (owned by
     // classify_item_live). Classifies LIVE from ER's own taxonomy (goodsType,
-    // sortGroupId) + the curated goblin_category_exceptions table — no per-item bake.
-    // Lets the disk-MSB loot path bucket a live-resolved lot item without the bake.
+    // sortGroupId) only — no per-item bake, no curated exception table.
+    // Lets the disk-MSB loot path bucket a live-resolved lot item without any bake.
     int item_marker_category(int32_t key);
 
     // Real inventory iconId (MENU_ItemIcon_<id> atlas index) for an offset-encoded item key, read

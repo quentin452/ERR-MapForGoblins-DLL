@@ -4,7 +4,6 @@ Generate the live runtime C++ tables (NOT the marker bake — that was retired i
 
 Emits:
   - src/generated/goblin_map_data.cpp        (Phase-2 empty no-bake stub; markers come live/disk)
-  - src/generated/goblin_category_exceptions.cpp
   - src/generated/goblin_name_aliases_en.cpp
   - src/generated/goblin_legacy_conv.hpp     (dungeon -> overworld coord conversion)
 
@@ -18,77 +17,6 @@ import json
 import sys
 from collections import defaultdict
 from pathlib import Path
-
-# Category mapping: MASSEDIT filename prefix -> Category enum
-CATEGORY_MAP = {
-    "Equipment - Armaments": "EquipArmaments",
-    "Equipment - Armour": "EquipArmour",
-    "Equipment - Ashes of War": "EquipAshesOfWar",
-    "Equipment - Spirits": "EquipSpirits",
-    "Equipment - Talismans": "EquipTalismans",
-    "Key - Celestial Dew": "KeyCelestialDew",
-    "Key - Cookbooks": "KeyCookbooks",
-    "Key - Crystal Tears": "KeyCrystalTears",
-    "Key - Great Runes": "KeyGreatRunes",
-    "Key - Imbued Sword Keys": "KeyImbuedSwordKeys",
-    "Key - Larval Tears": "KeyLarvalTears",
-    "Key - Lost Ashes": "KeyLostAshes",
-    "Key - Pots n Perfumes": "KeyPotsNPerfumes",
-    "Key - Scadutree Fragments": "KeyScadutreeFragments",
-    "Key - Seeds Tears Ashes": "KeySeedsTears",
-    "Key - Whetblades": "KeyWhetblades",
-    "Loot - Ammo": "LootAmmo",
-    "Loot - Bell-Bearings": "LootBellBearings",
-    "Loot - Consumables": "LootConsumables",
-    "Loot - Crafting Materials": "LootCraftingMaterials",
-    "Loot - Gestures": "LootGestures",
-    "Loot - Gloveworts": "LootGloveworts",
-    "Loot - Golden Runes": "LootGoldenRunes",
-    "Loot - Golden Runes (Low)": "LootGoldenRunesLow",
-    "Loot - Great Gloveworts": "LootGreatGloveworts",
-    "Loot - Greases": "LootGreases",
-    "Loot - Material Nodes": "LootMaterialNodes",
-    "Loot - Merchant Bell-Bearings": "LootMerchantBellBearings",
-    "Loot - MP-Fingers": "LootMPFingers",
-    "Loot - Prattling Pates": "LootPrattlingPates",
-    "Loot - Rada Fruit": "LootRadaFruit",
-    "Loot - Reusables": "LootReusables",
-    "Loot - Smithing Stones": "LootSmithingStones",
-    "Loot - Smithing Stones (Low)": "LootSmithingStonesLow",
-    "Loot - Smithing Stones (Rare)": "LootSmithingStonesRare",
-    "Loot - Stat Boosts": "LootStatBoosts",
-    "Loot - Stonesword Keys": "LootStoneswordKeys",
-    "Loot - Throwables": "LootThrowables",
-    "Loot - Rune Arcs": "LootRuneArcs",
-    "Loot - Dragon Hearts": "LootDragonHearts",
-    "Loot - Utilities": "LootUtilities",
-    "Magic - Incantations": "MagicIncantations",
-    "Magic - Memory Stones": "MagicMemoryStones",
-    "Magic - Prayerbooks": "MagicPrayerbooks",
-    "Magic - Sorceries": "MagicSorceries",
-    "Quest - Deathroot": "QuestDeathroot",
-    "Quest - Progression": "QuestProgression",
-    "Quest - Seedbed Curses": "QuestSeedbedCurses",
-    "Reforged - Ember Pieces": "ReforgedEmberPieces",
-    "Reforged - Fortunes": "ReforgedFortunes",
-    "Reforged - Items": "ReforgedItemsAndChanges",
-    "Reforged - Rune Pieces": "ReforgedRunePieces",
-    "Reforged - Sealed Curios": "ReforgedItemsAndChanges",
-    "World - Bosses": "WorldBosses",
-    "World - Graces": "WorldGraces",
-    "World - Hostile NPC": "WorldHostileNPC",
-    "World - Quest NPC": "WorldQuestNPC",
-    "World - Imp Statues": "WorldImpStatues",
-    "World - Maps": "WorldMaps",
-    "World - Paintings": "WorldPaintings",
-    "World - Spirit Springs": "WorldSpiritSprings",
-    "World - Spiritspring Hawks": "WorldSpiritspringHawks",
-    "World - Stakes of Marika": "WorldStakesOfMarika",
-    "World - Summoning Pools": "WorldSummoningPools",
-    "World - Kindling Spirits": "WorldKindlingSpirits",
-    "World - Seal Puzzles": "WorldInteractables",
-    "World - Hero's Tomb Statues": "WorldInteractables",
-}
 
 # Phase-2 no-bake stub written to the COMPILED goblin_map_data.cpp. The static marker bake is
 # retired — every marker comes from live mod files / game memory at runtime — so the compiled
@@ -119,62 +47,6 @@ def generate_map_data_cpp(output_path):
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(_MAP_DATA_STUB)
     print(f"Generated {output_path} (Phase-2 empty no-bake stub)")
-
-
-# Phase-3: item categories the mod assigns by a deliberate id-list/name rule that ER's own
-# taxonomy (goodsType, sortGroupId) cannot express — they STAY as a curated per-item table.
-# Everything else is classified live from (goodsType, sortGroupId) in the DLL (drift-free).
-# Validated to reproduce the old ITEM_ICONS category column exactly (_validate_taxonomy_map.py).
-CATEGORY_EXCEPTION_CATS = {
-    "Loot - Golden Runes (Low)",
-    "Loot - Smithing Stones (Low)", "Loot - Smithing Stones (Rare)",
-    "Loot - Great Gloveworts",
-    "Loot - Rune Arcs", "Loot - Prattling Pates", "Loot - MP-Fingers", "Loot - Rada Fruit",
-    "Key - Celestial Dew", "Key - Imbued Sword Keys", "Loot - Stonesword Keys",
-    "Quest - Deathroot", "Quest - Seedbed Curses",
-    "Key - Whetblades", "Key - Larval Tears", "Key - Lost Ashes", "Loot - Dragon Hearts",
-    "Key - Scadutree Fragments", "Key - Seeds Tears Ashes",
-    "Magic - Memory Stones", "Magic - Prayerbooks",
-    "Quest - Progression",
-    "Reforged - Items", "Reforged - Fortunes", "Reforged - Sealed Curios",
-}
-
-
-def generate_category_exceptions_cpp(output_path):
-    """Generate goblin_category_exceptions.cpp: raw goods id -> Category, for the
-    curated splits/grab-bags ER's own taxonomy can't express (Phase-3). Source =
-    item_icon_table.json (the LOOT_CATEGORIES classifier); only goods whose category
-    is in CATEGORY_EXCEPTION_CATS are emitted. Sorted by id for binary search."""
-    import config
-    p = config.DATA_DIR / 'item_icon_table.json'
-    rows = {}  # goods_id(int) -> Category enum name
-    if p.exists():
-        with open(p, encoding='utf-8') as f:
-            raw = json.load(f)
-        for k, v in raw.items():
-            key = int(k)
-            if key < 500000000:
-                continue  # exceptions are goods-only (non-goods classify by key range)
-            cat_name = v[1]
-            if cat_name not in CATEGORY_EXCEPTION_CATS:
-                continue
-            enum = CATEGORY_MAP.get(cat_name)
-            if enum:
-                rows[key - 500000000] = enum
-
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write("// AUTO-GENERATED FILE - DO NOT EDIT\n")
-        f.write("// Generated by tools/generate_data.py from item_icon_table.json\n\n")
-        f.write('#include "goblin_category_exceptions.hpp"\n\n')
-        f.write("namespace goblin::generated\n{\n\n")
-        f.write(f"const size_t CATEGORY_EXCEPTION_COUNT = {len(rows)};\n\n")
-        f.write("const CategoryException CATEGORY_EXCEPTIONS[] = {\n")
-        for gid in sorted(rows.keys()):
-            f.write(f"    {{{gid}, Category::{rows[gid]}}},\n")
-        f.write("};\n\n")
-        f.write("} // namespace goblin::generated\n")
-
-    print(f"Generated {output_path} with {len(rows)} category exceptions")
 
 
 def _wlit(s):
@@ -279,7 +151,6 @@ def main():
     # that dir is self-contained for the compiler's include path.
     import shutil
     for hdr in ("goblin_map_data.hpp",
-                "goblin_category_exceptions.hpp",
                 "goblin_name_aliases_en.hpp"):
         canonical_hpp = project_dir / "src" / "generated" / hdr
         dest_hpp = output_dir / hdr
@@ -298,9 +169,6 @@ def main():
 
     print("=== Generating map data C++ (no-bake stub) ===")
     generate_map_data_cpp(output_dir / "goblin_map_data.cpp")
-
-    print("\n=== Generating category-exceptions table C++ ===")
-    generate_category_exceptions_cpp(output_dir / "goblin_category_exceptions.cpp")
 
     print("\n=== Generating English name-alias table C++ ===")
     generate_name_aliases_en_cpp(output_dir / "goblin_name_aliases_en.cpp")
