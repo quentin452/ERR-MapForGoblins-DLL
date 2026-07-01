@@ -143,6 +143,7 @@ add_library( MapForGoblins SHARED
   src/goblin_icon_harvest.cpp
   src/goblin_item_classify.cpp
   src/goblin_section_visibility.cpp
+  src/goblin_world_position.cpp
   src/goblin_kindling.hpp
   src/goblin_kindling.cpp
   src/goblin_logic.hpp
