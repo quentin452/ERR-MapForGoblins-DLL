@@ -4,9 +4,27 @@
 // map_entry_layer.cpp bake-loop emission is dead, see generated_data_removal_plan.md).
 
 #include "marker_layer.hpp"
+#include <string>
+#include <vector>
 
 namespace goblin::worldmap
 {
+// A quest NPC found at RUNTIME in the active mod's EMEVD (load_quest_npcs) that has NO
+// hand-authored QUEST_BROWSER entry — joined by concluded == NpcQuest::fail_flag. The
+// Quest Browser shows these as a minimal FALLBACK (name + live state, no step prose) so
+// modded / not-yet-authored NPCs still appear (mod-agnostic; the quest analogue of the
+// circle fallback). `concluded` = its _q99 flag (live-read for [concluded]); [regLo,regHi]
+// = its state register; `pinEntity` = a placement to pin. Filled on the disk worker,
+// read on the render thread (whole-vector swap under a mutex).
+struct QuestFallbackNpc
+{
+    std::string name;
+    uint32_t concluded = 0, regLo = 0, regHi = 0, pinEntity = 0;
+};
+std::vector<QuestFallbackNpc> quest_fallback_npcs();          // render-thread: returns a copy
+void set_quest_fallback_npcs(std::vector<QuestFallbackNpc> v); // disk-worker: replaces the set
+
+
 class QuestNpcLayer : public MarkerLayer
 {
 public:

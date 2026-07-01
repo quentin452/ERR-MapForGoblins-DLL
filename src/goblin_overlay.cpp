@@ -2794,6 +2794,26 @@ namespace
                                 draw_npc(goblin::generated::QUEST_BROWSER[i], (int)i);
                         ImGui::TreePop();
                     }
+                    // Runtime FALLBACK: quest NPCs the active mod's EMEVD exposes (load_quest_npcs)
+                    // that have NO hand-authored entry above — modded / not-yet-authored. Minimal
+                    // view: name + live concluded state, no step prose (mod-agnostic fallback).
+                    std::vector<goblin::worldmap::QuestFallbackNpc> qfb =
+                        goblin::worldmap::quest_fallback_npcs();
+                    if (!qfb.empty())
+                    {
+                        snprintf(gh, sizeof(gh), "Other quests \xE2\x80\x94 auto-detected (%zu)", qfb.size());
+                        if (ImGui::TreeNodeEx(gh))
+                        {
+                            ImGui::TextDisabled("Found in this mod's data; no step guide yet.");
+                            for (const auto &n : qfb)
+                            {
+                                bool done = goblin::ui::read_event_flag(n.concluded);
+                                ImGui::BulletText("%s  %s", n.name.c_str(),
+                                                  done ? "[concluded]" : "[in progress]");
+                            }
+                            ImGui::TreePop();
+                        }
+                    }
                     ImGui::EndChild();
                     ImGui::TextDisabled("Tick steps to track progress; Save to keep it. Original text.");
                     ImGui::TreePop();

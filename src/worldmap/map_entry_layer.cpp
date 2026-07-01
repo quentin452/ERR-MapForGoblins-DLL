@@ -1,7 +1,9 @@
 #include "map_entry_layer.hpp"
 
 #include "category_meta.hpp"
-#include "loot_disk.hpp"       // disk-MSB loot source (DiskTreasure / load_disk_treasures)
+#include "loot_disk.hpp"       // disk-MSB loot source (DiskTreasure / load_disk_treasures) + load_quest_npcs
+#include "quest_npc_layer.hpp" // QuestFallbackNpc + set_quest_fallback_npcs (runtime quest fallback)
+#include "goblin_quest_steps.hpp" // goblin::generated::QUEST_BROWSER (hand-authored fail_flags to join on)
 #include "goblin_config.hpp"   // config::lootFromDiskMsb
 #include "goblin_map_data.hpp" // MAP_ENTRIES / MAP_ENTRY_COUNT / MapEntry / Category
 #include "goblin_world_feature_models.hpp" // WORLD_FEATURE_MODELS (asset-model World features)
@@ -1831,21 +1833,66 @@ void build_buckets_impl()
         if (goblin::config::lootCollectibles)
             build_disk_collectible_markers(disk_collectibles, treasure_lots, disk_lots,
                                            collectible_cells, piece_disk_keys, gather_disk_keys);
-        // Runtime quest-NPC extractor (mod-agnostic EMEVD 90005702 mine, the runtime port of
-        // tools/extract_quest_npcs.py): log the grouped table for validation. One-time on this
-        // disk worker; gated on the quest feature so non-quest users don't pay the emevd scan.
-        if (goblin::config::showCategory[static_cast<int>(gen::Category::WorldQuestNPC)])
+        // Runtime quest-NPC table (mod-agnostic EMEVD 90005702 mine): join to the hand-authored
+        // QUEST_BROWSER by concluded==fail_flag. Runtime NPCs with NO hand entry (modded / not yet
+        // authored) become minimal FALLBACK browser rows (name + live state, no step prose) — the
+        // quest analogue of the circle fallback. One-time on this disk worker.
+        if (wantQuestNpcs)
         {
             std::vector<QuestNpcRuntime> qnpcs = load_quest_npcs();
-            spdlog::info("[QUESTNPC] runtime EMEVD extractor: {} quest NPCs (90005702)", (int)qnpcs.size());
-            int shown = 0;
-            for (const auto &q : qnpcs)
+            auto lc = [](std::string s) { for (char &c : s) c = (char)std::tolower((unsigned char)c); return s; };
+            // A hand-authored entry "covers" a runtime NPC by EITHER its _q99 fail_flag
+            // (concluded match) OR its name — many hand entries have no fail_flag wired, so a
+            // flag-only join would duplicate them into the fallback. Names differ (hand "Gowry"
+            // vs FMG "Sage Gowry"), so match by substring either way (min len 4).
+            std::unordered_set<uint32_t> handFail;
+            std::vector<std::string> handNames;
+            for (size_t qi = 0; qi < gen::QUEST_BROWSER_COUNT; ++qi)
             {
-                if (shown++ >= 12) break;
-                spdlog::info("[QUESTNPC]   concluded={} reg={}-{} placements={} e.g.={}",
-                             q.concluded, q.regLo, q.regHi, (int)q.entities.size(),
-                             q.entities.empty() ? 0u : q.entities.front());
+                if (gen::QUEST_BROWSER[qi].fail_flag) handFail.insert(gen::QUEST_BROWSER[qi].fail_flag);
+                if (gen::QUEST_BROWSER[qi].name) handNames.push_back(lc(gen::QUEST_BROWSER[qi].name));
             }
+            // entity → npcParamId from THIS pass's disk enemies (wantEnemies ⊇ wantQuestNpcs).
+            std::unordered_map<uint32_t, uint32_t> ent2param;
+            for (const DiskEnemy &en : disk_enemies)
+                if (en.entityId) ent2param.emplace(en.entityId, en.npcParamId);
+            std::vector<QuestFallbackNpc> fb;
+            int covered = 0, filtered = 0;
+            for (const QuestNpcRuntime &q : qnpcs)
+            {
+                if (q.concluded == 0 || q.concluded >= 100000u) { ++filtered; continue; } // 10-digit = entity-death variant, not a quest _q99
+                // Resolve a display name via any placement's NpcParam → nameId → NpcName FMG.
+                QuestFallbackNpc n;
+                for (uint32_t e : q.entities)
+                {
+                    auto it = ent2param.find(e);
+                    if (it == ent2param.end() || !it->second) continue;
+                    uint8_t team = 0;
+                    int32_t nameId = 0;
+                    if (goblin::npc_team_and_name(it->second, &team, &nameId) && nameId > 0)
+                    {
+                        std::string t = goblin::lookup_text_utf8(nameId);
+                        if (!t.empty()) { n.name = std::move(t); n.pinEntity = e; break; }
+                    }
+                }
+                if (n.name.empty()) { ++filtered; continue; }  // no FMG name → generic/noise, skip
+                bool cov = handFail.count(q.concluded) != 0;
+                if (!cov)
+                {
+                    std::string ln = lc(n.name);
+                    for (const std::string &hn : handNames)
+                        if (hn.size() >= 4 && (ln.find(hn) != std::string::npos || hn.find(ln) != std::string::npos))
+                        { cov = true; break; }
+                }
+                if (cov) { ++covered; continue; }  // a hand-authored entry already shows this NPC
+                n.concluded = q.concluded;
+                n.regLo = q.regLo;
+                n.regHi = q.regHi;
+                fb.push_back(std::move(n));
+            }
+            spdlog::info("[QUESTNPC] runtime: {} NPCs → {} fallback (browser), {} hand-covered, {} filtered",
+                         (int)qnpcs.size(), (int)fb.size(), covered, filtered);
+            set_quest_fallback_npcs(std::move(fb));
         }
         if (goblin::config::worldFeaturesFromDisk)
         {

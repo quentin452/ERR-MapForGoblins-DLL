@@ -9,9 +9,26 @@
 #include "goblin_bench.hpp"       // GOBLIN_BENCH scoped timers
 
 #include <functional>
+#include <mutex>
 
 namespace goblin::worldmap
 {
+// Runtime fallback quest NPCs (see quest_npc_layer.hpp). Written on the disk worker,
+// read on the render thread; the getter returns a copy so the render side never holds
+// a reference across a swap.
+static std::mutex g_qfb_mtx;
+static std::vector<QuestFallbackNpc> g_qfb;
+std::vector<QuestFallbackNpc> quest_fallback_npcs()
+{
+    std::lock_guard<std::mutex> lk(g_qfb_mtx);
+    return g_qfb;
+}
+void set_quest_fallback_npcs(std::vector<QuestFallbackNpc> v)
+{
+    std::lock_guard<std::mutex> lk(g_qfb_mtx);
+    g_qfb = std::move(v);
+}
+
 bool QuestNpcLayer::visible() const
 {
     const int g = static_cast<int>(goblin::generated::Category::WorldQuestNPC);
