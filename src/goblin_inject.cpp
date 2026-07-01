@@ -7,7 +7,6 @@
 #include "modutils.hpp"
 #include "re_signatures.hpp"
 #include "goblin_map_data.hpp"
-#include "goblin_category_exceptions.hpp"
 #include "goblin_region_anchors.hpp"
 #include "goblin_major_regions.hpp"
 #include "goblin_name_regions.hpp"

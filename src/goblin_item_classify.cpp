@@ -3,7 +3,6 @@
 #include "re_signatures.hpp"
 #include "from/params.hpp"
 #include "goblin_map_data.hpp"
-#include "goblin_category_exceptions.hpp"
 
 #include <map>
 #include <optional>
@@ -30,19 +29,6 @@
 // public classifier below can use them.
 static int goods_type_live(int32_t goods_id);
 static int goods_sort_group(int32_t goods_id);
-
-// Curated id → Category exception (binary search the generated table). These are the splits/grab-bags
-// the mod assigns by a deliberate id-list rule that (goodsType, sortGroupId) cannot express (runes /
-// smithing Low-normal-Rare, Gloveworts vs Great, the gType1-sg50 grab-bag, Quest-Progression +
-// Prayerbook id-lists, Reforged families). Returns the Category int, or -1 if the id has no exception.
-static int lookup_category_exception(int32_t goods_id)
-{
-    const auto *begin = goblin::generated::CATEGORY_EXCEPTIONS;
-    const auto *end   = begin + goblin::generated::CATEGORY_EXCEPTION_COUNT;
-    const auto *it = std::lower_bound(begin, end, goods_id,
-        [](const goblin::generated::CategoryException &a, int32_t k) { return a.id < k; });
-    return (it != end && it->id == goods_id) ? (int)it->category : -1;
-}
 
 // Confident category from ER's live taxonomy for a goods id: the explicit (goodsType, sortGroupId)
 // cells + the broad goodsType families. Returns -1 when only the DEFAULT/catch-all bucket applies
@@ -101,9 +87,8 @@ static int category_from_taxonomy(int32_t goods_id)
 
 // Primary item → Category classifier (Phase-3). Deterministic, drift-free, no per-item table:
 //   1. non-goods → ItemLotParam category by key range (weapon/armour/talisman/AoW + ammo id≥50M)
-//   2. curated id exception (the splits ER's taxonomy can't express)
-//   3. ER's live taxonomy (goodsType, sortGroupId) — the bulk
-//   4. returns -1 for the default/catch-all tail → classify_item_live owns it (and flags it live).
+//   2. ER's live taxonomy (goodsType, sortGroupId) — the bulk
+//   3. returns -1 for the default/catch-all tail → classify_item_live owns it (and flags it live).
 int goblin::item_marker_category(int32_t key)
 {
     if (key <= 0) return -1;
@@ -118,8 +103,6 @@ int goblin::item_marker_category(int32_t key)
         return -1;  // unknown encoding
     }
     const int32_t gid = key - 500000000;
-    const int ex = lookup_category_exception(gid);
-    if (ex >= 0) return ex;
     return category_from_taxonomy(gid);  // -1 → default/catch-all, handled by classify_item_live
 }
 
