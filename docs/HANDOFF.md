@@ -13,34 +13,40 @@ Kept: genuinely live/in-progress work, open questions, and standing knowledge (g
 decisions, non-obvious facts) not fully captured anywhere else. If you're looking for the history of
 something not below, check `docs/changelog.md` first, then the relevant `docs/plans/*.md`.
 
-Last updated: 2026-07-01z5 (overlay_hot_reload_playwright_plan Phase 2 Slice B — draw layer
-extracted to `src/goblin_overlay_render.cpp` — build-verified + IN-GAME CONFIRMED, not yet merged;
-Slice C (actual DLL split) not started — see below).
+Last updated: 2026-07-01z6 (overlay_hot_reload_playwright_plan Phase 2 Slice B MERGED to `master`;
+Slice C's export-API layer DONE, build-verified standalone (`feat/overlay-render-api`, not yet
+wired into the render-side call sites, not yet merged) — see below).
 
-## RESUME HERE (2026-07-01z5) — overlay_hot_reload_playwright_plan Phase 2 Slice B landed, Slice C not started
+## RESUME HERE (2026-07-01z6) — overlay_hot_reload_playwright_plan Phase 2 Slice B MERGED, Slice C export-API layer built, not yet wired
 
-Phase 1 (all 3 draw functions take `OverlayFrameCtx`) and Phase 2 Slice A (CMake
-`GOBLIN_OVERLAY_HOTRELOAD` scaffold) are both COMPLETE + MERGED to `master`.
+Phase 1, Phase 2 Slice A, and Phase 2 Slice B are all COMPLETE + MERGED to `master` (Slice B:
+draw layer extracted to `src/goblin_overlay_render.{cpp,hpp}`, grace/icon-SRV helpers stayed
+host-side behind thin wrappers since they turned out D3D12-coupled — full detail in the plan doc).
 
-**Slice B — DONE, build-verified + IN-GAME CONFIRMED (2026-07-01, `feat/overlay-render-split`, not
-yet merged).** Moved `draw_panel`/`draw_worldmap_markers`/`draw_minimap_hud` + their genuinely
-self-contained helpers (item-search string matching, `overlay_layers`, `scale_control`,
-`draw_gamepad_keyboard_button`, `grace_candidate_gate_warning`, `g_large`) into a new TU,
-`src/goblin_overlay_render.{cpp,hpp}`. **Correction found mid-implementation**: the grace-SRV/
-icon-SRV helpers (`ensure_grace_srv`, `ensure_grace_dungeon_srv`, `force_rebuild_grace`,
-`ensure_item_icon_srv`, `ensure_grace_debug`, `copy_er_sheet_direct`, `create_tex_from_dds_mem`)
-were WRONGLY assumed self-contained by earlier audits — they directly touch host-owned
-`g_device`/`g_command_queue`/`g_srv_heap`/`g_frames`/`g_command_list`, the same per-frame D3D12
-state `hk_present` resets every frame. Kept them in `goblin_overlay.cpp` behind ~15 thin forwarding
-wrappers/getters declared in `goblin_overlay_render.hpp`. `worldmap/*.cpp` files were NOT moved
-this slice — already correctly bucketed into `GOBLIN_RENDER_SOURCES` since Slice A, nothing to do.
-Still ONE binary. Cross-build clean. **IN-GAME CONFIRMED 2026-07-01 21:37**: both grace SRVs built
-successfully through the new getter/wrapper chain (`[GRACE-SRV] copied ...` + `[GRACE-SRV] DUNGEON
-copied ...`), `render.minimap` bench firing the whole session, `[SIG]` 29/29 clean, no crash/error
-— validates the riskiest part of this slice (grace-sprite cross-TU plumbing) live. Not yet merged.
-Next: Slice C — actual DLL split + `LoadLibrary` boundary when `GOBLIN_OVERLAY_HOTRELOAD=ON`
-(vtable/function-pointer resolution, `native_item_icon`-family reverse ctx table, `dllexport`/
-`dllimport` for the `goblin_inject.hpp` accessors 3 worldmap files use) — full detail in the plan.
+**Slice C — export-API layer DONE, build-verified standalone (2026-07-01, `feat/overlay-render-api`,
+not yet wired in, not yet merged).** A full export-surface audit found ~110 real cross-DLL call
+sites (bigger than first estimated) spanning `goblin::config` (59 of 64 globals — 5 are `inline
+constexpr`, already free), `goblin::ui`, `goblin::worldmap_probe`, ~40 bare `goblin::*` functions,
+`markers`/`kindling`/`collected`/`debug_events`/`input`, and `worldmap::disk_loot_*` (host despite
+the name). **User decision:** one consolidated wrapper file (`src/goblin_overlay_render_api.{hpp,cpp}`)
+rather than annotating ~15 existing shared headers — keeps blast radius contained. Config globals
+use an X-macro (45 mutable → pointer-getters, the rest read-only but same shape for uniformity);
+`GraceCandidate`/`LiveGrace`/`RuntimeEntry`/`SigHealth`/`LiveView`/`LocateDebug`/`NpcQuest` structs
+all confirmed already in shared headers (free, only the functions needed wrapping). Getting ~15 of
+the bare-`goblin::*` signatures right took several grep→compile-error→fix passes — audit-derived
+NAMES were right but several real signatures are far more complex than guessed (`marker_world_pos`
+takes 9 params with `uint8_t`/`uint32_t` area/grid encodings, `quest_step_done` lives in a
+different header entirely, `gpu_want_symbol`/`gpu_want_item` return `void` not `bool`, etc.) —
+**lesson for whoever continues this: read the real declaration before writing a forward, don't
+infer from a name.** This layer is dead code right now (not called from anywhere) — zero runtime
+risk, build-verified only, no in-game check needed yet.
+
+**Still remaining for Slice C** (full detail in the plan doc): (1) rewire the 6 render-side files
+(`goblin_overlay_render.cpp` + all 5 `worldmap/*.cpp`) to call `goblin::overlay_api::*` — large
+mechanical change (~110 call-site groups, config needs address-of-vs-dereference handled per
+site), DOES need build+in-game confirm after (unlike the API layer itself); (2) `native_item_icon`
+reverse ctx/pointer table; (3) `LoadLibrary`+`GetProcAddress` vtable resolution for the
+host→render call direction. Next session: start with (1).
 
 ## ⚠️ IN PROGRESS — baked-data → runtime/disk migration (build_pipeline.py deletion is the END state)
 
