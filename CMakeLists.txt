@@ -97,12 +97,13 @@ target_include_directories(imgui PUBLIC
   ${imgui_SOURCE_DIR}
   ${imgui_SOURCE_DIR}/backends)
 
-# Phase 2 Slice A: source-list split matching the plan's scoped render-DLL boundary (the 5
-# src/worldmap/*.cpp files — everything else, incl. goblin_overlay.cpp itself, stays host-side
-# until Slice B extracts the draw functions into a new goblin_overlay_render.cpp). Both variables
-# feed the SAME single `MapForGoblins` target below for now — GOBLIN_OVERLAY_HOTRELOAD has no
-# effect yet, this only proves the list partition is inert before Slice B acts on it.
+# Phase 2 Slice A/B: source-list split matching the plan's scoped render-DLL boundary. Slice B
+# extracted the draw layer (draw_panel/draw_worldmap_markers/draw_minimap_hud + private helpers)
+# into goblin_overlay_render.cpp/.hpp — still feeds the SAME single `MapForGoblins` target below;
+# GOBLIN_OVERLAY_HOTRELOAD has no effect yet (Slice C, the actual LoadLibrary split, isn't landed).
 set(GOBLIN_RENDER_SOURCES
+  src/goblin_overlay_render.hpp
+  src/goblin_overlay_render.cpp
   src/worldmap/marker_layer.hpp
   src/worldmap/grace_layer.hpp
   src/worldmap/grace_layer.cpp
