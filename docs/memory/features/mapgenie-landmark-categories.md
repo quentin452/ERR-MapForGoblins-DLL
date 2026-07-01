@@ -64,6 +64,33 @@ GrandLift 2, Dungeon 66, LegacyDungeon 13 (~114 total).
   (+ `tools/_probe_portal_{aeg,aeg2,emevd,verify}.py`). **Model + template facts are the reusable pattern
   for the rest of Group 2** — find the AEG model, find its EMEVD template binding, one harvest + one pass.
 
+## Loot - Farmable Drops (`WorldFarmableCollectible`, MFG-original) — shipped 2026-07-01
+
+Marks farm spots for notable upgrade mats. In `build_disk_enemy_markers` the respawning drops
+(`resolve_loot_flag==0`, previously skipped as `no-one-time-flag`) are now emitted under
+`WorldFarmableCollectible` IFF the lot contains a notable farm target (`is_notable_farmable_category`:
+Smithing Stones ×3 / Golden Runes ×2 / Gloveworts ×2). Trash drops still skip → no flood. **Key gotcha:
+the notable item is usually in lot SLOT 2** (slot 1 = a craft material), so a slot-1-only read
+(`resolve_loot_item_textid`) found 0 — fixed by `goblin::lot_slot_item_keys` (all 8 slots). Marker is
+emitted NON-lot-backed with `textId1` = the notable item's GoodsName key (kindling pattern; resolves via
+the `id>=500M` decode). Deduped per lot → **70 markers on ERR** (`[LOOTDISK] … farmable-notable`).
+`WorldFarmableEnemy` deliberately dropped (floods, no boss filter).
+
+### Potential future adjustments (not done — tune if the user wants)
+- **Notable set** (`is_notable_farmable_category` in `map_entry_layer.cpp`): currently Smithing Stones /
+  Golden Runes / Gloveworts. Golden Runes are the noisiest — drop them if 70 feels too busy; or ADD Rune
+  Arcs / Rada Fruit / specific crafting mats if the user wants more farm targets.
+- **Per-item icons**: all 70 share the category rep icon (`[CATICON] iconId 145`) because the markers are
+  non-lot (`item_icon_id=0`). To draw each marker's own item icon, either resolve it from the notable key
+  (`item_real_icon_id(notable_key)`) and set `m.item_icon_id`, or keep it lot-backed and teach
+  `push_marker` to prefer the notable slot. The NAME per marker is already correct.
+- **Dedup granularity**: deduped per LOT → one marker at a representative enemy position. A common lot
+  placed in several areas shows at ONE spot. For "all farm locations" switch to per-(lot,tile) or
+  per-projected-cell dedup — but that risks flooding for common lots; keep the per-lot cap unless asked.
+- **Map gather nodes** are NOT in this category (they already draw under Material Nodes / Crafting
+  Materials). Only enemy drops. Re-routing them here was explicitly rejected (would remove them from
+  their item categories).
+
 ## Deferred (user decision, 2026-07-01)
 
 The 2 MFG-original respawn categories `WorldFarmableEnemy` + `WorldFarmableCollectible` were

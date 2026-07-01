@@ -122,6 +122,7 @@ static Section section_of(Category c)
     case Category::LootGreases:
     case Category::LootUtilities:
     case Category::LootStatBoosts:
+    case Category::WorldFarmableCollectible:  // respawning notable drops — belongs with Loot
         return Section::Loot;
     case Category::MagicIncantations:
     case Category::MagicMemoryStones:
@@ -179,7 +180,7 @@ static std::atomic<int> g_section_apply_req{-1};  // section idx to (re)apply, -
 // section "show" must not resurrect those.
 
 // Number of marker categories (enum has no COUNT sentinel; keep in sync).
-static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldPortal) + 1;
+static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldFarmableCollectible) + 1;
 static std::atomic<bool> g_category_visible[NUM_CATEGORIES];
 static std::atomic<bool> g_category_dirty[NUM_CATEGORIES];  // set by menu, applied by watcher
 // Per-category cluster opt-in (true = this category folds into clusters). Seeded

@@ -118,6 +118,7 @@ ENUM2DISPLAY = {
     "WorldMinorErdtree": "World - Minor Erdtrees", "WorldGrandLift": "World - Grand Lifts",
     "WorldDungeon": "World - Dungeons", "WorldLegacyDungeon": "World - Legacy Dungeons",
     "WorldMiquellaCross": "World - Miquella's Cross", "WorldPortal": "World - Portals",
+    "WorldFarmableCollectible": "Loot - Farmable Drops",  # MFG-original, no MapGenie equivalent
 }
 
 # Sections: (display, [MapGenie labels to sum], [mod Category enums to sum]).

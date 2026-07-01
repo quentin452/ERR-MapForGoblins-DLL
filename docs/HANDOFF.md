@@ -108,8 +108,11 @@ Gate". Default OFF.
    Recon artifacts: `tools/_probe_g2_templates.py` (template→model map), `_probe_g2_actionbtn.py`.
    NB: offline SoulsFormats probes now need temp files in the REPO dir (`os.path.abspath('.')`), not
    `%TEMP%` — Defender started denying `%TEMP%` writes mid-session (`WinError 5`).
-4. **Deferred (user) — the 2 Farmable categories** (`WorldFarmableEnemy` + `WorldFarmableCollectible`).
-   Real design forks. Full rationale in `docs/plans/mapgenie_category_coverage_plan.md`.
+4. **DONE — Farmable.** `WorldFarmableCollectible` ("Loot - Farmable Drops") shipped + ERR-verified
+   (`[LOOTDISK] … 70 farmable-notable`): respawning enemy drops of notable mats (Smithing Stones /
+   Golden Runes / Gloveworts), all-8-slots scan (notable item is in slot 2), ~70 markers, off by default.
+   `WorldFarmableEnemy` DROPPED (floods, no boss filter). Tuning knobs (notable set / per-item icons /
+   dedup granularity) documented in `docs/memory/features/mapgenie-landmark-categories.md`.
 
 ## RESUME HERE (2026-07-01z9) — overlay_hot_reload_playwright_plan Slice C nearly done, only LoadLibrary mechanism left
 

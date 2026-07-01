@@ -28,7 +28,7 @@ using Category = goblin::generated::Category;
 // Number of marker categories (enum has no COUNT sentinel; keep in sync).
 // Local duplicate of goblin_inject.cpp's NUM_CATEGORIES (same convention already
 // used there for per-file AOB/RPM helper copies) — only diag_loot_flags needs it.
-static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldPortal) + 1;
+static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldFarmableCollectible) + 1;
 
 // Local duplicate of goblin_inject.cpp's icon_rpm_i32/icon_rpm_ptr (same small
 // RPM-wrapper helpers, same per-file-copy convention as e.g. goblin_markers.cpp /
@@ -371,6 +371,39 @@ int goblin::lot_item_count(uint32_t lotId, uint8_t lotType)
         ++live;
     }
     return (live == 1) ? singleNum : 1;
+}
+
+// Fill `out[8]` with the offset-encoded item key (encode_live_item) of each of a lot's 8 slots, 0
+// for an empty/invalid slot. Returns the count of non-empty slots. Unlike resolve_loot_item_textid
+// (slot 1 only), this exposes the WHOLE lot — needed by WorldFarmableCollectible, where the notable
+// farm item (smithing stone / rune / glovewort) usually sits in slot 2 (slot 1 = a craft material).
+// Same LotReader as the other resolves; live param chain, any mod, no bake.
+int goblin::lot_slot_item_keys(uint32_t lotId, uint8_t lotType, int32_t out[8])
+{
+    for (int i = 0; i < 8; ++i) out[i] = 0;
+    if (lotType == 0 || lotId == 0)
+        return 0;
+    static LotReader s_lots;
+    static std::once_flag s_once;
+    static bool s_ok = false;
+    std::call_once(s_once, [] { s_lots.init(); s_ok = s_lots.ok(); });
+    if (!s_ok)
+        return 0;
+    RawItemLotRow *row = s_lots.row(lotId, lotType);
+    if (!row)
+        return 0;
+    int n = 0;
+    for (int i = 0; i < 8; ++i)
+    {
+        const int32_t item = *reinterpret_cast<int32_t *>(row->b + 0x00 + i * 4);  // lotItemId0(i+1)
+        const int32_t cat  = *reinterpret_cast<int32_t *>(row->b + 0x20 + i * 4);  // lotItemCategory0(i+1)
+        if (item > 0 && cat >= 1 && cat <= 5)
+        {
+            out[i] = encode_live_item(item, cat);
+            if (out[i]) ++n;
+        }
+    }
+    return n;
 }
 
 // One-shot field dump to RE the real per-item "obtained" flag (see the findings doc).

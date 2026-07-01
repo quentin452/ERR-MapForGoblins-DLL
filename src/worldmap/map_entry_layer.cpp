@@ -41,7 +41,7 @@ namespace goblin::worldmap
 {
 namespace
 {
-constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldPortal) + 1;
+constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldFarmableCollectible) + 1;
 
 std::array<std::vector<Marker>, NUM_CAT> g_buckets;
 
@@ -709,16 +709,39 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
 // in a high range resolve_loot_flag treats as repeatable (Blessed Bone Shard, Iris of
 // Occultation); the measured duplicate overlap is only ~3. See
 // docs/re/windows_enemy_loot_nobake_analysis.md.
+// Notable "farm target" item categories for WorldFarmableCollectible (MFG-original). A respawning
+// enemy drop is only surfaced if its item classifies into one of these — the upgrade mats + runes
+// players actually farm — so the category shows the useful subset instead of flooding the map with
+// every Sliver-of-Meat trash drop. (User-chosen set, 2026-07-01.)
+static bool is_notable_farmable_category(int cat)
+{
+    using C = goblin::generated::Category;
+    switch (static_cast<C>(cat))
+    {
+    case C::LootSmithingStones:
+    case C::LootSmithingStonesLow:
+    case C::LootSmithingStonesRare:
+    case C::LootGoldenRunes:
+    case C::LootGoldenRunesLow:
+    case C::LootGloveworts:
+    case C::LootGreatGloveworts:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
                                      const std::unordered_set<uint32_t> &treasure_lots,
                                      std::unordered_set<uint32_t> &covered,
                                      std::unordered_set<uint32_t> *parsed_enemy_lots = nullptr)
 {
     GOBLIN_BENCH("build.disk_enemies");
-    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, respawn = 0, lot_dup = 0;
+    int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, respawn = 0, lot_dup = 0, farm_emitted = 0;
     const bool verbose = (*goblin::overlay_api::cfg_diagLootPos_ptr());
     std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
     std::unordered_set<uint32_t> seen;      // dedup by lot (one marker per notable lot)
+    std::unordered_set<uint32_t> farm_seen; // dedup by lot for WorldFarmableCollectible
     for (const DiskEnemy &en : enemies)
     {
         // [ENEMY-MARKERS] de-bake triage: record EVERY parsed enemy's raw itemLotId_enemy (0x30),
@@ -732,7 +755,50 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
         uint32_t lot = goblin::overlay_api::npc_loot_lot(en.npcParamId, &lt);  // live NpcParam chain
         if (lot == 0) { ++no_lot; continue; }
         if (treasure_lots.count(lot)) { ++dup; watch_lot(lot, "skip-enemy", "treasure-dup"); continue; }  // already a Treasure ground item
-        if (goblin::overlay_api::resolve_loot_flag(lot, lt, 0) == 0) { ++respawn; watch_lot(lot, "skip-enemy", "no-one-time-flag"); continue; }  // not a one-time drop
+        if (goblin::overlay_api::resolve_loot_flag(lot, lt, 0) == 0)
+        {
+            // Respawning (farmable) drop — not a one-time collectible. Surface it under
+            // WorldFarmableCollectible IF its item is a notable farm target (smithing stones / runes /
+            // gloveworts); otherwise it's trash (Sliver of Meat, …) → skip so the map isn't flooded.
+            // Dedup by lot (one marker per distinct farmable lot, at a representative enemy position).
+            ++respawn;
+            if (farm_seen.insert(lot).second)
+            {
+                // Scan ALL 8 lot slots — the notable farm item usually sits in slot 2 (slot 1 is a
+                // craft material), so a slot-1-only read (resolve_loot_item_textid) misses it.
+                int32_t keys[8] = {0};
+                goblin::overlay_api::lot_slot_item_keys(lot, lt, keys);
+                int32_t notable_key = 0;
+                for (int s = 0; s < 8 && notable_key == 0; ++s)
+                {
+                    if (keys[s] == 0) continue;
+                    int fcat = goblin::overlay_api::item_marker_category(keys[s]);
+                    if (fcat < 0) fcat = goblin::overlay_api::classify_item_live(keys[s]);
+                    if (is_notable_farmable_category(fcat)) notable_key = keys[s];
+                }
+                if (notable_key != 0)
+                {
+                    from::paramdef::WORLD_MAP_POINT_PARAM_ST fd{};
+                    fd.areaNo = en.area;
+                    fd.gridXNo = en.gx;
+                    fd.gridZNo = en.gz;
+                    fd.posX = en.posX;
+                    fd.posZ = en.posZ;
+                    fd.posY = en.posY;
+                    // Label = the notable item (its encoded FMG key), NOT the lot's slot-1 craft
+                    // material. Emitted NON-lot-backed (lotId 0) so the marker's name = this item —
+                    // the kindling pattern (a non-lot marker whose textId1 is an item key). Farmable
+                    // never "completes" → no graying wanted, so dropping the lot linkage is correct.
+                    fd.textId1 = notable_key;
+                    push_marker(/*row_id=*/lot, fd,
+                                static_cast<int>(goblin::generated::Category::WorldFarmableCollectible),
+                                /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
+                    ++farm_emitted;
+                }
+            }
+            watch_lot(lot, "skip-enemy", "no-one-time-flag");
+            continue;
+        }
         if (!seen.insert(lot).second) { ++lot_dup; continue; }  // a notable lot already placed
         int32_t key = goblin::overlay_api::resolve_loot_item_textid(lot, lt, -1);
         int cat = goblin::overlay_api::item_marker_category(key);
@@ -786,10 +852,11 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
                           verbose ? &per_cat : nullptr);
     }
     spdlog::info("[LOOTDISK] enemy drops: {} notable markers emitted + {} sequence-siblings ({} "
-                 "placements total; filtered: {} npc-has-no-lot, {} treasure-dup, {} no-one-time-flag, "
-                 "{} same-lot-dedup, {} unclassified; siblings: {} rune/ember-skip, {} unclassified)",
-                 emitted, sib.emitted, (int)enemies.size(), no_lot, dup, respawn, lot_dup, unclassified,
-                 sib.runeember, sib.unclassified);
+                 "placements total; filtered: {} npc-has-no-lot, {} treasure-dup, {} no-one-time-flag "
+                 "(of which {} farmable-notable → WorldFarmableCollectible), {} same-lot-dedup, {} "
+                 "unclassified; siblings: {} rune/ember-skip, {} unclassified)",
+                 emitted, sib.emitted, (int)enemies.size(), no_lot, dup, respawn, farm_emitted, lot_dup,
+                 unclassified, sib.runeember, sib.unclassified);
     g_skip.no_anchor += no_lot;
     g_skip.dedup += dup + lot_dup;
     g_skip.by_design += respawn + sib.runeember;  // respawnable base + GEOM-tracked rune/ember siblings

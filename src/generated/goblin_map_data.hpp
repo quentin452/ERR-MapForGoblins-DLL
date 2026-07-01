@@ -90,6 +90,11 @@ enum class Category : uint8_t
     // Portal / sending gate: AEG099_510 asset bound as arg[2] of EMEVD warp template 90005605.
     // Runtime disk+EMEVD, no bake. See docs/re/windows_portal_aeg_re_findings.md.
     WorldPortal,
+    // MFG-original: enemy drops that RESPAWN (ItemLotParam getItemFlagId==0 / repeatable) AND are a
+    // notable farm target (Smithing Stones / Golden Runes / Gloveworts). Surfaces the farmable enemy
+    // drops the notable-loot pass currently skips. Live, no bake. (WorldFarmableEnemy was dropped —
+    // marking every respawning mob floods the map with no clean boss filter.)
+    WorldFarmableCollectible,
 };
 
 // Provenance of a lot-backed loot row — the bake's own classification (extract_all_items.py

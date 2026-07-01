@@ -117,6 +117,7 @@ namespace goblin::overlay_api
     int32_t resolve_loot_item_textid(uint32_t lotId, uint8_t lotType, int32_t baked_textid) { return goblin::resolve_loot_item_textid(lotId, lotType, baked_textid); }
     bool lot_row_in_table(uint32_t lot, uint8_t lotType, uint32_t *flagOut, int32_t *keyOut) { return goblin::lot_row_in_table(lot, lotType, flagOut, keyOut); }
     int lot_item_count(uint32_t lotId, uint8_t lotType) { return goblin::lot_item_count(lotId, lotType); }
+    int lot_slot_item_keys(uint32_t lotId, uint8_t lotType, int32_t out[8]) { return goblin::lot_slot_item_keys(lotId, lotType, out); }
     void diag_loot_flags(uint32_t lotId, uint8_t lotType, uint32_t baked, int category, uint32_t nameId) { goblin::diag_loot_flags(lotId, lotType, baked, category, nameId); }
     int classify_item_live(int goodsId) { return goblin::classify_item_live(goodsId); }
     uint32_t npc_loot_lot(uint32_t npcParamId, uint8_t *lotTypeOut) { return goblin::npc_loot_lot(npcParamId, lotTypeOut); }

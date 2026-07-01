@@ -38,7 +38,7 @@ namespace goblin::config
     // "true"/"false" defaults live on the B(...) entries below); the zero-init
     // here is just a sane fallback before load_config() runs.
     static constexpr int NUM_CATEGORIES =
-        static_cast<int>(goblin::generated::Category::WorldPortal) + 1;
+        static_cast<int>(goblin::generated::Category::WorldFarmableCollectible) + 1;
     bool showCategory[NUM_CATEGORIES] = {};
 
     bool hideKilledBosses = false;
@@ -415,6 +415,7 @@ namespace
                 B("show_throwables", showCategory[static_cast<int>(Cat::LootThrowables)], "false", "Throwable items (darts, daggers, stones, chakrams, warming stones)"),
                 B("show_rune_arcs", showCategory[static_cast<int>(Cat::LootRuneArcs)], "false", "Rune Arcs (buffs for active Great Rune)"),
                 B("show_dragon_hearts", showCategory[static_cast<int>(Cat::LootDragonHearts)], "false", "Dragon Hearts (for Dragon Communion incantations)"),
+                B("show_farmable_drops", showCategory[static_cast<int>(Cat::WorldFarmableCollectible)], "false", "Farmable enemy drops: enemies that RESPAWN and drop a notable farm target (Smithing Stones, Golden Runes, Gloveworts). Off by default."),
             }},
 
             {"Magic", nullptr, false, {
