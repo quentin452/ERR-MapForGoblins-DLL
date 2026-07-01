@@ -1,7 +1,9 @@
 # Overlay hot-reload + AI Playwright loop (plan)
 
-**Status:** Phase 1 STARTED (2026-07-01, `feat/overlay-draw-context`) — first slice landed,
-build-verified + IN-GAME CONFIRMED (log check), not yet merged. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
+**Status:** Phase 1 COMPLETE for all 3 draw functions (2026-07-01) — slice 1
+(`draw_worldmap_markers`/`draw_minimap_hud`) MERGED to `master`; slice 2 (`draw_panel`)
+build-verified + IN-GAME CONFIRMED, not yet merged. Phase 2 (DLL split) not started. Raised by
+<user> 2026-07-01: reload ONLY the ImGui overlay
 render code while ERR keeps running (no full restart), paired with the already-proposed Route B
 debug RPC so an AI agent can script the REAL running game — screenshot, spot a DX or functional
 bug in the minimap/worldmap/icons overlay, fix the overlay source, hot-reload just that piece,
@@ -93,13 +95,31 @@ existing `OverlayFrameCtx` field), and the D3D12/atlas render-infra cluster (`g_
 `g_next_item_srv`/`g_pending_icons`/`g_icon_batch_open`/`g_item_icon_srvs`, the icon-batch cache,
 which is genuinely split across host and panel — `ensure_item_icon_srv()` is called from `draw_panel`
 but `flush_item_icon_batch()` (same cluster) is called directly from `hk_present` right after the
-draw calls, not from inside any of the 3 draw functions). Open design decision before coding (not a
-blocker, just needs a choice): either move `ensure_item_icon_srv`/`flush_item_icon_batch` together
-into the draw layer with D3D12 handles passed in as ctx refs, or keep `flush_item_icon_batch`
-host-side calling back into the draw layer's cache via a ctx-held pointer. No new struct SHAPE
-needed — extends `OverlayFrameCtx` with a `PanelCtx` sub-struct and widens the host-shared field
-list, same `RenderCtx`/panel-owned split slice 1 already established. Next: pick the icon-batch
-design, then extract `draw_panel`'s signature the same way slice 1 did.
+draw calls, not from inside any of the 3 draw functions).
+
+**Design decision (user, 2026-07-01):** keep `flush_item_icon_batch` host-side as-is; `draw_panel`
+reaches the icon-batch cache through a ctx-held pointer instead of moving both functions together.
+
+**Phase 1, slice 2 — DONE, build-verified + IN-GAME CONFIRMED (2026-07-01):** on reflection, most
+of the audit's "panel-owned" cluster (`g_large`, the grace-debug-override family) turned out to
+need NO ctx field at all — same treatment slice 1 gave `ensure_grace_srv`/`overlay_layers`: state
+touched only by `draw_panel` and by helpers called only from the 3 draw functions collectively
+isn't crossing the eventual host/draw-layer boundary, so it stays a file-static and moves bodily
+with the code in Phase 2. Only the TRULY host-shared fields got added to `OverlayFrameCtx`:
+`gamepad_combo_recording` (`bool*`, also R+W by `hk_present`'s XInput poll), `gamepad_combo_ready`
+(`const bool*`, host-written only), `gamepad_combo_reject_reason` (`std::string*`, also written by
+`hk_present`), `item_icon_srvs` (`std::map<int,ItemIconSrv>*`, also written by
+`flush_item_icon_batch`). `atlas_srv`/`nav_frames` reused as-is from slice 1. `draw_panel` now
+takes `const OverlayFrameCtx &ctx`; `hk_present` passes the same `frame_ctx` it already built.
+Cross-build clean (clang-cl+xwin). Deployed to
+`~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, backup
+`.bak-pre-panel-ctx`). **IN-GAME CONFIRMED 2026-07-01 20:47**: `[SIG]` 29/29 clean, no crash/error,
+AND the user actually exercised the exact new ctx-plumbed path live — `[OVERLAY] Gamepad combo
+rejected (single nav button): A` → `[OVERLAY] Gamepad combo recorded: Y+RB` → `[TOGGLEDIAG]
+GAMEPAD toggle fired` (true then false) — confirms the riskiest host-shared cluster (recording/
+ready/reject_reason round-tripping between `draw_panel` and `hk_present`'s XInput poll) works
+correctly through the new pointer indirection. **Phase 1 is now COMPLETE for all 3 draw
+functions** — not yet merged to `master`.
 
 **Phase 2 — split into a reloadable module + host-side reload mechanism.**
 Move the extracted draw layer into its own DLL (e.g. `goblin_overlay_render.dll`), loaded via

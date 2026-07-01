@@ -1485,6 +1485,17 @@ namespace
         void *atlas_srv;              // g_atlas_ready ? g_atlas_gpu.ptr : nullptr, host-resolved
         HWND hwnd;                    // g_hwnd, host-owned window handle
         std::atomic<int> *nav_frames; // &g_nav_frames, host-owned nav-jitter keepalive counter
+
+        // Phase 1 slice 2 (draw_panel): only fields draw_panel touches that are ALSO written by
+        // code outside the draw layer (hk_present's XInput poll, flush_item_icon_batch) go here.
+        // draw_panel's own self-contained state (g_large, the grace-debug-override family read
+        // only by ensure_grace_srv — itself only ever called from these 3 draw functions) stays as
+        // file-statics, same treatment slice 1 gave ensure_grace_srv/overlay_layers: it moves
+        // wholesale with the draw layer in Phase 2, no boundary to audit here.
+        bool *gamepad_combo_recording;         // &g_gamepad_combo_recording, also R+W by hk_present's XInput poll
+        const bool *gamepad_combo_ready;        // &g_gamepad_combo_ready, host-written only
+        std::string *gamepad_combo_reject_reason; // &g_gamepad_combo_reject_reason, also written by hk_present
+        std::map<int, ItemIconSrv> *item_icon_srvs; // &g_item_icon_srvs, also written by host-called flush_item_icon_batch
     };
 
     void draw_worldmap_markers(bool /*menu_open*/, const OverlayFrameCtx &ctx)
@@ -1578,7 +1589,7 @@ namespace
                                        io.DisplaySize.y);
     }
 
-    void draw_panel()
+    void draw_panel(const OverlayFrameCtx &ctx)
     {
         ImGuiIO &io = ImGui::GetIO();
 
@@ -1684,9 +1695,9 @@ namespace
                     if (!h) continue;
                     if (drawn++ % 8 != 0) ImGui::SameLine();
                     // The copied tex is the 4-block-snapped region; crop to the exact icon via UVs.
-                    auto sit = g_item_icon_srvs.find(id);
-                    ImVec2 uv0 = sit != g_item_icon_srvs.end() ? sit->second.uv0 : ImVec2(0, 0);
-                    ImVec2 uv1 = sit != g_item_icon_srvs.end() ? sit->second.uv1 : ImVec2(1, 1);
+                    auto sit = ctx.item_icon_srvs->find(id);
+                    ImVec2 uv0 = sit != ctx.item_icon_srvs->end() ? sit->second.uv0 : ImVec2(0, 0);
+                    ImVec2 uv1 = sit != ctx.item_icon_srvs->end() ? sit->second.uv1 : ImVec2(1, 1);
                     ImGui::Image(reinterpret_cast<ImTextureID>(h), ImVec2(48, 48), uv0, uv1);
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("iconId %d", id);
                 }
@@ -1885,8 +1896,8 @@ namespace
                         const char *name = goblin::ui::category_label(c);
                         // [baked] thumbnail (atlas cell, or a coloured circle for the no-cell categories).
                         ImVec2 bu0, bu1, p = ImGui::GetCursorScreenPos();
-                        if (g_atlas_ready && baked_uv(c, bu0, bu1))
-                            ImGui::Image(reinterpret_cast<ImTextureID>(g_atlas_gpu.ptr), ImVec2(SZ, SZ), bu0, bu1);
+                        if (ctx.atlas_srv && baked_uv(c, bu0, bu1))
+                            ImGui::Image(reinterpret_cast<ImTextureID>(ctx.atlas_srv), ImVec2(SZ, SZ), bu0, bu1);
                         else
                         {
                             ImGui::Dummy(ImVec2(SZ, SZ));
@@ -2072,24 +2083,24 @@ namespace
             ImGui::Text("Gamepad toggle combo: %s",
                         goblin::mask_to_combo_string(goblin::config::overlayToggleGamepad).c_str());
             ImGui::SameLine();
-            if (g_gamepad_combo_recording)
+            if (*ctx.gamepad_combo_recording)
             {
                 // Two phases: first wait for the button that ARMED recording (e.g. gamepad-nav A
                 // on this very widget) to fully release, THEN start listening — otherwise that
                 // same activating press gets captured as the whole combo.
                 ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f),
-                                    g_gamepad_combo_ready ? "Press buttons now…" : "Release all buttons…");
+                                    *ctx.gamepad_combo_ready ? "Press buttons now…" : "Release all buttons…");
             }
             else if (ImGui::SmallButton("Record gamepad combo"))
             {
-                g_gamepad_combo_recording = true;
-                g_gamepad_combo_reject_reason.clear();
+                *ctx.gamepad_combo_recording = true;
+                ctx.gamepad_combo_reject_reason->clear();
             }
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Click, then press the button combo on your controller (default Y+R3).\n"
                                   "The first combo read is captured and saved to the ini immediately.");
-            if (!g_gamepad_combo_reject_reason.empty())
-                ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "%s", g_gamepad_combo_reject_reason.c_str());
+            if (!ctx.gamepad_combo_reject_reason->empty())
+                ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "%s", ctx.gamepad_combo_reject_reason->c_str());
 
             // On-screen keyboard layout (dx-bugs-backlog PR C-2 part 2). Like every other plain
             // setting here, this only persists via "Save to INI" below — no immediate auto-save.
@@ -2417,7 +2428,7 @@ namespace
                                 s_pending_locate = h.name_id;  // click → pan the map onto it
                                 s_locate_label = h.label;      // remembered for the pending banner
                                 s_locate_group = h.group;      // this row's page
-                                g_nav_frames.store(90, std::memory_order_relaxed);  // wake the map so
+                                ctx.nav_frames->store(90, std::memory_order_relaxed);  // wake the map so
                                                   // the switch+pan apply with the F1 panel still open
                                 // Cross-page: switch to this row's page+layer (overworld<->DLC +
                                 // surface<->UG), marshalled onto the game thread, then the locate pans.
@@ -3633,9 +3644,13 @@ namespace
                 g_atlas_ready ? reinterpret_cast<void *>(g_atlas_gpu.ptr) : nullptr,
                 g_hwnd,
                 &g_nav_frames,
+                &g_gamepad_combo_recording,
+                &g_gamepad_combo_ready,
+                &g_gamepad_combo_reject_reason,
+                &g_item_icon_srvs,
             };
             if (g_show)
-                draw_panel();
+                draw_panel(frame_ctx);
             if (proto)
                 draw_worldmap_markers(g_show, frame_ctx);
             if (minimap)
