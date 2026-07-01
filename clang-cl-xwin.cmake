@@ -33,7 +33,10 @@ string(JOIN " " _incs_str ${_incs})
 #   clang 22 rejects (spdlog uses bundled fmt here, not std::format).
 # /Z7 -> CodeView debug info in the objects so lld-link can emit a PDB (crash
 #   symbolication). The DLL itself is unchanged; symbols live in the .pdb.
-set(_extra "/arch:AVX2 /DFMT_CONSTEVAL= /Z7")
+# /Brepro -> deterministic objects (zeroed timestamps) — with the matching link
+#   flag below, identical sources produce byte-identical DLLs (reproducible
+#   releases; replaces "byte-identical to MSVC" as the reproducibility story).
+set(_extra "/arch:AVX2 /DFMT_CONSTEVAL= /Z7 /Brepro")
 set(CMAKE_C_FLAGS_INIT   "${_triple} ${_extra} ${_incs_str}")
 set(CMAKE_CXX_FLAGS_INIT "${_triple} ${_extra} ${_incs_str}")
 
@@ -52,7 +55,9 @@ string(JOIN " " _libs_str ${_libs})
 # /pdbaltpath:%_PDB% -> the DLL's debug-directory records just the pdb FILENAME
 #   (not the build machine's absolute path), so dbghelp/llvm-symbolizer find it
 #   when the .pdb sits next to the deployed DLL.
-set(_dbg "/debug /pdbaltpath:%_PDB%")
+# /Brepro at link: PE timestamp = content hash instead of wall clock (lld),
+#   composing with /debug — the PDB GUID is content-derived too.
+set(_dbg "/debug /pdbaltpath:%_PDB% /Brepro")
 set(CMAKE_EXE_LINKER_FLAGS_INIT    "${_libs_str} ${_dbg}")
 set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_libs_str} ${_dbg}")
 

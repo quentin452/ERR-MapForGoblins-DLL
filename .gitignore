@@ -1,5 +1,9 @@
 # Build artifacts
 build/
+build-err/
+build-clang/
+build-erte/
+pdb-archive/
 build-linux/
 build-linux-hotreload/
 build-vanilla/

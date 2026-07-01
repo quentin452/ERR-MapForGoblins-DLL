@@ -59,6 +59,22 @@ table (CALL-wrapped=OK / raw-deref=convert); spot-verify the hot sites in the bu
 `llvm-objdump` (SEH frame present at the probe RVAs).
 
 ## Phase 1 — port the build entry point
+
+**STATUS 2026-07-02: IMPLEMENTED, Windows validation PENDING.** Done on Linux:
+- `/Z7` + `/debug` + **`/Brepro`** in `clang-cl-xwin.cmake` — determinism PROVEN (relink → identical
+  md5) on the Linux cross-build.
+- `build.bat` fully ported: vswhere/VsDevCmd/msbuild/.sln GONE → ninja + the same toolchain file
+  (env-overridable tool paths `MFG_LLVM_BIN`/`MFG_NINJA`/`MFG_CMAKE`/`MFG_XWIN`, defaults = the
+  current Windows box). Profile matrix / generate / snapshot / release / bump / package kept;
+  output paths moved `%BUILD_DIR%\Release\` → `%BUILD_DIR%\`; ERR build dir `build/` → `build-err/`
+  (old msbuild tree disposable). The Rebuild-LTCG hack is gone; a cached `VERSION_PRE=""` from a
+  release run is now explicitly reset to `pre` on the next configure (latent bug in the old script).
+- PDB archiving: snapshot/release copy the DLL+PDB pair to `pdb-archive/<ver>-<profile>/`
+  (git-ignored, NOT shipped) for `tools/resolve_crash.py`.
+- Guardrail: `tools/lint_seh.py` — flags any `__try` body containing a raw deref (comment/string
+  aware); currently clean, verified it catches the bad shape.
+**Remaining for Phase 1 close-out: run `build.bat` on the Windows box once** (snapshot + one
+profile), then Phase 2 (in-game validation matrix + docs flip + delete `steam_api64.lib`).
 - Replace `build.bat`'s configure/build (vswhere+VsDevCmd+`.sln`+msbuild) with Ninja + the existing
   `clang-cl-xwin.cmake` on Windows (paths per `build-toolchain-clang-xwin.md`: scoop LLVM,
   `D:\mfg_toolchain\xwin-sdk`, `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`, Release-only).

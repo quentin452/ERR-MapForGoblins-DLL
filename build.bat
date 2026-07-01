@@ -3,33 +3,54 @@ setlocal enabledelayedexpansion
 
 REM ============================================
 REM Build Script for MapForGoblins DLL Mod
+REM Toolchain: clang-cl + lld-link + ninja + xwin (NO Visual Studio / MSVC).
+REM Same toolchain file as the Linux cross-build (clang-cl-xwin.cmake) —
+REM one compiler everywhere, reproducible output (/Brepro: identical sources
+REM produce byte-identical DLLs). See docs/plans/clang_only_toolchain_plan.md
+REM and docs/memory/tooling/build-toolchain-clang-xwin.md (install recipe).
 REM ============================================
 
 set "SCRIPT_DIR=%~dp0"
-set "BUILD_DIR=%SCRIPT_DIR%build"
 
-REM Find Visual Studio 2022 using vswhere
-set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
-if not exist "%VSWHERE%" (
-    echo ERROR: vswhere.exe not found. Install Visual Studio 2022.
+REM Toolchain locations — env-var overridable per machine, defaults match the
+REM current Windows box (memory: build-toolchain-clang-xwin).
+if not defined MFG_LLVM_BIN set "MFG_LLVM_BIN=%USERPROFILE%\scoop\apps\llvm\current\bin"
+if not defined MFG_NINJA    set "MFG_NINJA=C:\ninja-win\ninja.exe"
+if not defined MFG_CMAKE    set "MFG_CMAKE=C:\Program Files\CMake\bin\cmake.exe"
+if not defined MFG_XWIN     set "MFG_XWIN=D:/mfg_toolchain/xwin-sdk"
+
+if not exist "%MFG_LLVM_BIN%\clang-cl.exe" (
+    echo ERROR: clang-cl not found at %MFG_LLVM_BIN% - install LLVM via scoop or set MFG_LLVM_BIN.
+    echo See docs\memory\tooling\build-toolchain-clang-xwin.md for the full toolchain recipe.
     exit /b 1
 )
-for /f "usebackq delims=" %%i in (`"%VSWHERE%" -products * -version [17.0^,18.0^) -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath -latest`) do set "VS_INSTALL=%%i"
-if not defined VS_INSTALL (
-    echo ERROR: Visual Studio 2022 with C++ tools not found!
+if not exist "%MFG_NINJA%" (
+    echo ERROR: ninja not found at %MFG_NINJA% - set MFG_NINJA.
     exit /b 1
 )
-set "VS_PATH=%VS_INSTALL%\Common7\Tools\VsDevCmd.bat"
+if not exist "%MFG_CMAKE%" (
+    echo ERROR: cmake not found at %MFG_CMAKE% - set MFG_CMAKE.
+    exit /b 1
+)
+if not exist "%MFG_XWIN%" (
+    echo ERROR: xwin SDK splat not found at %MFG_XWIN% - set MFG_XWIN.
+    echo Re-splat: xwin --accept-license --arch x86_64 splat --output D:\mfg_toolchain\xwin-sdk
+    exit /b 1
+)
+set "PATH=%MFG_LLVM_BIN%;%PATH%"
 
 REM Build profile: default = ERR; pass "--vanilla" or "--convergence" (any position).
-REM   ERR:         data/, src/generated, build/, pre-release/
+REM   ERR:         data/, src/generated, build-err/, pre-release/
 REM   vanilla:     data/vanilla, src/generated_vanilla, build-vanilla/, pre-release-vanilla/
 REM   convergence: data/convergence, src/generated_convergence, build-convergence/, pre-release-convergence/
 REM MFG_PROFILE is exported so build_pipeline.py + config.py pick the data source.
+REM NOTE: the ERR build dir moved build/ -> build-err/ with the ninja port (the old
+REM build/ holds an incompatible msbuild tree; delete it whenever).
 set "GEN_SUBDIR=generated"
 set "PKG_PREFIX=ERR"
 set "SNAP_DIR=%SCRIPT_DIR%pre-release"
 set "DISP_PROFILE=err"
+set "BUILD_DIR=%SCRIPT_DIR%build-err"
 set "README_SRC=%SCRIPT_DIR%assets\README.txt"
 set "GFX_SRC=%SCRIPT_DIR%assets\menu\02_120_worldmap_err.gfx"
 echo %*| findstr /i /c:"--vanilla" >nul && set "MFG_PROFILE=vanilla"
@@ -67,23 +88,25 @@ if /i "%~1"=="release" goto :release
 REM Default: configure if needed, then build
 call :ensure_configured
 if errorlevel 1 exit /b 1
+call :build
+if errorlevel 1 exit /b 1
 
 echo.
-echo Building MapForGoblins...
+echo Output: %BUILD_DIR%\MapForGoblins.dll (+ .pdb)
+dir /b "%BUILD_DIR%\MapForGoblins.*" 2>nul
+echo.
+exit /b 0
+
+:build
+echo.
+echo Building MapForGoblins (ninja + clang-cl)...
 echo ----------------------------------------
-
-cmd /c "call "%VS_PATH%" -arch=amd64 >nul 2>&1 && cd /d "%BUILD_DIR%" && msbuild MapForGoblins.sln /p:Configuration=Release /p:Platform=x64 /t:MapForGoblins /v:minimal /m"
-
+"%MFG_NINJA%" -C "%BUILD_DIR%" MapForGoblins mfg_inigen
 if errorlevel 1 (
     echo [FAILED] MapForGoblins
     exit /b 1
 )
-
 echo [SUCCESS] MapForGoblins
-echo.
-echo Output: %BUILD_DIR%\Release\MapForGoblins.dll
-dir /b "%BUILD_DIR%\Release\MapForGoblins.*" 2>nul
-echo.
 exit /b 0
 
 :generate
@@ -95,7 +118,7 @@ echo.
 exit /b 0
 
 :ensure_configured
-if not exist "%BUILD_DIR%\MapForGoblins.sln" (
+if not exist "%BUILD_DIR%\build.ninja" (
     echo Build not configured. Running configure...
     call :configure
     if errorlevel 1 exit /b 1
@@ -103,18 +126,17 @@ if not exist "%BUILD_DIR%\MapForGoblins.sln" (
 exit /b 0
 
 :configure
+REM %1 (optional) = extra -D flags, e.g. -DVERSION_PRE=""
 echo.
-echo Configuring CMake...
+echo Configuring CMake (Ninja + clang-cl-xwin)...
 echo ============================================
-
-if exist "%BUILD_DIR%" (
-    rmdir /s /q "%BUILD_DIR%"
-)
-mkdir "%BUILD_DIR%"
-
-call "%VS_PATH%" -arch=amd64 >nul 2>&1
-cd /d "%SCRIPT_DIR%"
-cmake -B "%BUILD_DIR%" -G "Visual Studio 17 2022" -A x64 -DGENERATED_SUBDIR=%GEN_SUBDIR%
+"%MFG_CMAKE%" -B "%BUILD_DIR%" -G Ninja ^
+  -DCMAKE_MAKE_PROGRAM="%MFG_NINJA%" ^
+  -DCMAKE_TOOLCHAIN_FILE="%SCRIPT_DIR%clang-cl-xwin.cmake" ^
+  -DXWIN=%MFG_XWIN% ^
+  -DGENERATED_SUBDIR=%GEN_SUBDIR% ^
+  -DCMAKE_BUILD_TYPE=Release ^
+  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 %~1
 if errorlevel 1 (
     echo ERROR: CMake configuration failed!
     exit /b 1
@@ -138,17 +160,11 @@ if errorlevel 1 (
     exit /b 1
 )
 
-call :ensure_configured
+REM Reconfigure with the pre- prefix (also resets a cached VERSION_PRE="" from a
+REM prior release run — the cache would otherwise keep the release value forever).
+call :configure "-DVERSION_PRE=pre"
 if errorlevel 1 exit /b 1
-
-echo.
-echo Building MapForGoblins...
-echo ----------------------------------------
-
-REM /t:MapForGoblins:Rebuild forces clean rebuild of just the DLL target,
-REM avoiding LTCG "copied from previous compilation" cache quirks that can
-REM embed stale code (e.g. the PROJECT_VERSION macro not propagating).
-cmd /c "call "%VS_PATH%" -arch=amd64 >nul 2>&1 && cd /d "%BUILD_DIR%" && msbuild MapForGoblins.sln /p:Configuration=Release /p:Platform=x64 /t:MapForGoblins:Rebuild /v:minimal /m"
+call :build
 if errorlevel 1 (
     echo [FAILED] Snapshot build
     exit /b 1
@@ -156,6 +172,8 @@ if errorlevel 1 (
 
 REM Package into pre-release folder (SNAP_DIR set per profile at top)
 call :package "%SNAP_DIR%"
+if errorlevel 1 exit /b 1
+call :archive_pdb "pre-%VER%"
 powershell -NoProfile -Command "(Get-Content '%README_SRC%') -replace '%%VERSION%%','pre-%VER%' | Set-Content '%SNAP_DIR%\README.txt'"
 
 echo.
@@ -186,28 +204,22 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Build with VERSION_PRE="" (release, no pre- prefix)
-call "%VS_PATH%" -arch=amd64 >nul 2>&1
-cd /d "%SCRIPT_DIR%"
-cmake -B "%BUILD_DIR%" -G "Visual Studio 17 2022" -A x64 -DGENERATED_SUBDIR=%GEN_SUBDIR% -DVERSION_PRE=""
-if errorlevel 1 (
-    echo ERROR: CMake configuration failed!
-    exit /b 1
-)
-
-cd /d "%BUILD_DIR%"
-REM Rebuild forces a clean LTCG pass so the version macro and any recently
-REM changed sources are actually re-emitted into the DLL.
-msbuild MapForGoblins.sln /p:Configuration=Release /p:Platform=x64 /t:MapForGoblins:Rebuild /v:minimal /m
+REM Build with VERSION_PRE="" (release, no pre- prefix). No Rebuild hack needed:
+REM the old msbuild LTCG cache could embed stale code; ninja + thin-LTO track the
+REM regenerated version.h correctly, and /Brepro makes the output reproducible.
+call :configure "-DVERSION_PRE="""
+if errorlevel 1 exit /b 1
+call :build
 if errorlevel 1 (
     echo [FAILED] Release build
     exit /b 1
 )
-cd /d "%SCRIPT_DIR%"
 
 REM Package into release folder (PKG_PREFIX = ERR or Vanilla per profile)
 set "REL_DIR=%SCRIPT_DIR%%PKG_PREFIX% - MapForGoblins - DLL - v%VER%"
 call :package "%REL_DIR%"
+if errorlevel 1 exit /b 1
+call :archive_pdb "v%VER%"
 powershell -NoProfile -Command "(Get-Content '%README_SRC%') -replace '%%VERSION%%','%VER%' | Set-Content '%REL_DIR%\README.txt'"
 
 echo.
@@ -225,18 +237,30 @@ echo Bumping to pre-%NEXT_VER%...
 REM Update CMakeLists.txt version
 powershell -Command "(Get-Content '%SCRIPT_DIR%CMakeLists.txt') -replace '  VERSION   \"%VER%\"', '  VERSION   \"%NEXT_VER%\"' | Set-Content '%SCRIPT_DIR%CMakeLists.txt'"
 
-REM Reconfigure with pre- prefix
-cmake -B "%BUILD_DIR%" -G "Visual Studio 17 2022" -A x64 -DGENERATED_SUBDIR=%GEN_SUBDIR% >nul 2>&1
+REM Reconfigure with the pre- prefix at the bumped version.
+call :configure "-DVERSION_PRE=pre" >nul 2>&1
 
 echo Done. Next dev version: pre-%NEXT_VER%
 echo.
 exit /b 0
 
 :release_nobump
-REM Reconfigure back to pre- prefix at the SAME version (no bump)
-cmake -B "%BUILD_DIR%" -G "Visual Studio 17 2022" -A x64 -DGENERATED_SUBDIR=%GEN_SUBDIR% >nul 2>&1
+REM Reconfigure back to the pre- prefix at the SAME version (no bump).
+call :configure "-DVERSION_PRE=pre" >nul 2>&1
 echo Done. Version kept at %VER% (--no-bump).
 echo.
+exit /b 0
+
+:archive_pdb
+REM %1 = version tag (e.g. v1.0.18 / pre-1.0.18). Keep the matching PDB for
+REM crash-RVA symbolication (tools/resolve_crash.py needs the DLL+PDB PAIR of
+REM the build that crashed). The pdb is NOT shipped in the package (26 MB +
+REM full symbol names); it lives under pdb-archive/ (git-ignored) instead.
+set "PDB_DIR=%SCRIPT_DIR%pdb-archive\%~1-%DISP_PROFILE%"
+if not exist "%PDB_DIR%" mkdir "%PDB_DIR%"
+copy /Y "%BUILD_DIR%\MapForGoblins.dll" "%PDB_DIR%\" >nul
+copy /Y "%BUILD_DIR%\MapForGoblins.pdb" "%PDB_DIR%\" >nul
+echo PDB archived: %PDB_DIR%
 exit /b 0
 
 :package
@@ -246,8 +270,7 @@ REM   vanilla/convergence : <root>\MapForGoblins\{dll,ini} + <root>\MapForGoblin
 REM The ini is GENERATED from the in-code schema via mfg_inigen (non-ERR builds
 REM pass --vanilla to omit ERR-only sections), not copied.
 set "PKG_ROOT=%~1"
-set "INIGEN=%BUILD_DIR%\Release\mfg_inigen.exe"
-if not exist "%INIGEN%" set "INIGEN=%BUILD_DIR%\Debug\mfg_inigen.exe"
+set "INIGEN=%BUILD_DIR%\mfg_inigen.exe"
 if not exist "%INIGEN%" (
     echo [FAILED] mfg_inigen.exe not found under %BUILD_DIR%
     exit /b 1
@@ -259,14 +282,14 @@ if defined MFG_PROFILE (
     REM carries re-iconed markers + references to textures absent elsewhere).
     REM GFX_SRC is set per profile at the top of this script.
     mkdir "%PKG_ROOT%\MapForGoblins\menu" 2>nul
-    copy /Y "%BUILD_DIR%\Release\MapForGoblins.dll" "%PKG_ROOT%\MapForGoblins\" >nul
+    copy /Y "%BUILD_DIR%\MapForGoblins.dll" "%PKG_ROOT%\MapForGoblins\" >nul
     "%INIGEN%" "%PKG_ROOT%\MapForGoblins\MapForGoblins.ini" --vanilla
     copy /Y "%GFX_SRC%" "%PKG_ROOT%\MapForGoblins\menu\02_120_worldmap.gfx" >nul
     copy /Y "%SCRIPT_DIR%LICENSE.txt" "%PKG_ROOT%\" >nul
 ) else (
     mkdir "%PKG_ROOT%\dll\offline" 2>nul
     mkdir "%PKG_ROOT%\addons\MapForGoblins\menu" 2>nul
-    copy /Y "%BUILD_DIR%\Release\MapForGoblins.dll" "%PKG_ROOT%\dll\offline\" >nul
+    copy /Y "%BUILD_DIR%\MapForGoblins.dll" "%PKG_ROOT%\dll\offline\" >nul
     "%INIGEN%" "%PKG_ROOT%\dll\offline\MapForGoblins.ini"
     copy /Y "%GFX_SRC%" "%PKG_ROOT%\addons\MapForGoblins\menu\02_120_worldmap.gfx" >nul
     copy /Y "%SCRIPT_DIR%LICENSE.txt" "%PKG_ROOT%\" >nul
