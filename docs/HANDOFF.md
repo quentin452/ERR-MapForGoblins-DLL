@@ -62,8 +62,9 @@ LADDERS; real lever-lifts = ABP 8200-8501 "Pull/Push lever" -> ~55 ObjActParam r
 +0x28) -> **MSB ObjAct EVENT section binds {asset entity, objActParamId}** => Elevator category is
 a pure mod-agnostic disk parse (msbe: parse ObjAct events, filter param ids whose ABP text is a
 lever, join asset position; refine by anim-id groups if gates over-capture). Smithing Table
-(ABP 6250 "Use smithing table") is engine-bound -> needs the asset-radar probe (dump disk assets
-near player at Church of Elleh) to get the AEG model. Probes live in `src/goblin_param_scan.cpp`
+SOLVED too (2026-07-02): [ASSETRADAR]+[ASSETCOUNT] -> model filter **AEG099_308** (3 world
+placements: m33_00, m60_38_51, m60_42_36 Elleh; companion AEG099_309). Both Group-2 categories
+are now mechanically resolved and ready to implement as mod-agnostic disk passes. Probes live in `src/goblin_param_scan.cpp`
 ([PARAMSCAN]/[EMEVDSCAN]/[ABPTEXT], debug_logging-gated).
 
 ## Linux runtime-RE path — investigate to stop the two-PC switch (2026-07-01, not started)

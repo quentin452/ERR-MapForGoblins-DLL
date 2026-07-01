@@ -54,11 +54,13 @@ Full ABP text dump (`logs/abptext_slot32.txt`) settles everything:
   (14020 vs 7110/8000 groups visible in the dump) or asset model.
 - **Grand lifts (Dectus/Rold)** = ABP 5762320/5762330 "Enter Field Area" — already covered by the
   WorldGrandLift category.
-- **Smithing Table (world, e.g. Church of Elleh): prompt = ABP 6250 "Use smithing table"**, but
-  bound ENGINE-side (no ObjAct row, no param value, no EMEVD init outside Roundtable's hub
-  template). For the map category the remaining route is identifying the table's AEG model and
-  filtering MSB assets by model — e.g. via an in-DLL "asset radar" probe (dump disk assets within
-  a few meters of the player while standing at the Elleh table).
+- **Smithing Table: SOLVED — model filter `AEG099_308`.** [ASSETRADAR] at the Church of Elleh
+  table put AEG099_308 (entity 1042361700, the Whetstone-Knife treasure event) + companion
+  AEG099_309 at ≤2 m; [ASSETCOUNT] world census: **AEG099_308 = 3 placements**
+  (m33_00_00_00 entity 33001035, m60_38_51 no-entity, m60_42_36 Elleh) — exactly the visible
+  world smithing tables (Roundtable is a hub, off-map). Category = MSB assets with model
+  AEG099_308, same disk pass class as everything else. (Prompt ABP 6250 stays engine-bound —
+  irrelevant for the map category now.)
 - Siofra "hits" (12022820/22) decoded: `2004[8]` = SetSpEffect(character, 5010) — SpEffect id
   homonym on two enemies, red herring.
 
