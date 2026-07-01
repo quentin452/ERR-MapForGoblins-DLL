@@ -45,6 +45,15 @@ against the real game to verify the render DLL actually loads/renders). Next ses
 either do the Windows in-game confirm or move straight to Slice D (file-watcher + real reload) —
 full detail in `docs/plans/overlay_hot_reload_playwright_plan.md`.
 
+## Clang-only Phase 1 IMPLEMENTED — needs ONE Windows validation run (2026-07-02)
+
+`build.bat` is now ninja+clang-cl (no VS/msbuild; tool paths env-overridable, defaults = the
+Windows box per `build-toolchain-clang-xwin.md`); `/Brepro` determinism PROVEN on Linux (relink →
+identical md5); PDB pairs archived to `pdb-archive/<ver>-<profile>/`; `tools/lint_seh.py` guards
+the SEH-elision regression. **Next Windows session: run `build.bat` (default) + `build.bat
+snapshot` once** — on pass, Phase 2 (in-game matrix + docs flip). Old `build/` msbuild dir is
+disposable (`build-err/` replaces it). See `docs/plans/clang_only_toolchain_plan.md` Phase 1.
+
 ## Two new plans scoped (2026-07-01): big-files refactor + clang-only toolchain
 
 `docs/plans/big_files_refactor_plan.md` (god functions/duplication across the 7 biggest hand-written
