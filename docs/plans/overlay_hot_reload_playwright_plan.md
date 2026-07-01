@@ -263,16 +263,52 @@ both modes; a `GOBLIN_OVERLAY_HOTRELOAD` build additionally needs it to `LoadLib
    globals (all `extern bool/int/float`, mostly simple, some bound as mutable `int*`/`bool*` to
    ImGui widgets and needing pointer-getters not value-getters) are near-identical in shape — an
    X-macro list is the planned mechanism instead of hand-writing 64 near-identical functions.
-   **Open before coding (verify, don't assume):** exact read-vs-write classification for each config
-   global (only inferred from widget-binding patterns spotted during the audit, not confirmed line
-   by line); whether `GraceCandidate`/`LiveGrace`/`RuntimeEntry`/`SigHealth`/`LiveView`/`NpcQuest`
-   (structs crossing the boundary) are already in a shared header (free) or host-`.cpp`-local
-   (would need relocating first); the exact qualified form of `flag`/`overlay_icons` (ambiguous
-   grep hits); no lambda/function-pointer-parameter wrapper cases found but not exhaustively ruled
-   out. Also still needed: `native_item_icon`-family reverse ctx/pointer table (host owns
-   `g_device` etc., doesn't change) and vtable/function-pointer resolution for the host→render call
-   direction (`draw_panel`/`draw_worldmap_markers`/`draw_minimap_hud`, via `LoadLibrary`+
-   `GetProcAddress` since render is the module that gets reloaded).
+   **Open-items resolved (2026-07-01):** exact 59/64 config classification done by grepping
+   `&goblin::config::X` (address-of/mutable) and `X = ` (direct-assignment) patterns across both
+   render files — 45 mutable (pointer-getter), 19 pure read-only (still given pointer-getters
+   anyway for a single uniform shape), plus `showCategory` (array, pointer-getter) and
+   `questProgress`/`regionToggles` (`std::string`, reference-getters); the other 5
+   (`lootFromDiskMsb`/`lootCollectibles`/`lootEnemyDrops`/`lootEmevdDrops`/`worldFeaturesFromDisk`)
+   turned out `inline constexpr` — already free, no export needed. `GraceCandidate`/`LiveGrace`
+   (`goblin_inject.hpp`), `RuntimeEntry` (`goblin_collected.hpp`), `SigHealth`/`sig_health()`
+   (`re_signatures.hpp`, itself `inline` — free, no wrapper), `LiveView`/`LocateDebug`
+   (`goblin_worldmap_probe.hpp`), `NpcQuest` (`generated/goblin_quest_steps.hpp`) — all confirmed
+   in headers both sides already include, free by construction, only the FUNCTIONS operating on
+   them needed wrappers. `flag` resolved to `goblin::flag::*` — `constexpr int` event-flag IDs in
+   `goblin/goblin_map_flags.hpp`, free. `overlay_icons` resolved to `goblin::overlay_icons`, the
+   generated baked-icon-atlas namespace, free (data tables, not functions).
+   `goblin::marker_group_from` turned out `inline` too — free, no wrapper (found only once actually
+   forwarding it and hitting a redundant-wrapper realization).
+
+   **API layer DONE, build-verified standalone (2026-07-01, `feat/overlay-render-api`, not yet
+   wired in, not yet merged).** New `src/goblin_overlay_render_api.{hpp,cpp}` — ~110 forwarding
+   functions/getters, one consolidated file per the design decision above. Getting exact signatures
+   right took several grep→compile-error→fix passes: multiple bare-`goblin::*` functions
+   (`marker_world_pos`, `marker_fragment_flag`, `marker_cluster_key`, `resolve_loot_flag`,
+   `resolve_loot_item_textid`, `lot_row_in_table`, `lot_item_count`, `diag_loot_flags`,
+   `npc_loot_lot`) have real signatures FAR more complex than their names suggest (5-9 params,
+   `uint8_t`/`uint32_t` area/grid/lot-type encodings, out-params) — audit-derived names were right,
+   guessed signatures mostly weren't; `quest_step_done` doesn't exist under `goblin::` at all (it's
+   `goblin::quest_step_done(const generated::NpcQuest&, size_t)` from a DIFFERENT header,
+   `goblin_quest_steps.hpp`, not `goblin_inject.hpp`); `gpu_want_symbol`/`gpu_want_item` return
+   `void` not `bool`; `goblin::markers::category_name`/`goblin::kindling::is_row_collected`+
+   `region_row_id`/`goblin::debug_events::arm_capture`+`capture_armed`+`capture_count`+
+   `finalize_capture` (the last takes a raw `bool(*)(uint32_t)` function pointer — forwards fine,
+   plain C function pointers cross DLL boundaries without issue) were ALL wrong initial guesses
+   (audit gave approximate names only, not real ones) — general lesson: for this remaining class of
+   work, read the real declaration before writing a forward, don't infer from a name alone. This
+   layer is currently dead code (not called from anywhere) — zero runtime risk, verified by
+   standalone compile only, no in-game check needed until it's actually wired in.
+
+   **Still remaining for Slice C:** (1) rewire the 6 render-side files
+   (`goblin_overlay_render.cpp` + all 5 `worldmap/*.cpp`) to call `goblin::overlay_api::*` instead
+   of `goblin::config::*`/`goblin::ui::*`/etc. directly — mechanical but large (~110 call-site
+   groups, config needs the address-of-vs-dereference distinction handled per site), build+in-game
+   confirm after (this DOES change runtime code paths, unlike the API layer itself); (2)
+   `native_item_icon`-family reverse ctx/pointer table (host owns `g_device` etc., doesn't change);
+   (3) vtable/function-pointer resolution for the host→render call direction (`draw_panel`/
+   `draw_worldmap_markers`/`draw_minimap_hud`, via `LoadLibrary`+`GetProcAddress` since render is
+   the module that gets reloaded).
 4. Slice D — file-watcher + actual hot reload.
   - **ImGui context sharing across the DLL boundary.** Both DLLs must share the SAME `ImGuiContext*`
     (`ImGui::SetCurrentContext` on entry to every cross-DLL call) and be built against the same
