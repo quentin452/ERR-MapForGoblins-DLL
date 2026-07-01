@@ -1,7 +1,9 @@
 #include "map_entry_layer.hpp"
 
 #include "category_meta.hpp"
-#include "loot_disk.hpp"       // disk-MSB loot source (DiskTreasure / load_disk_treasures)
+#include "loot_disk.hpp"       // disk-MSB loot source (DiskTreasure / load_disk_treasures) + load_quest_npcs
+#include "quest_npc_layer.hpp" // QuestFallbackNpc + set_quest_fallback_npcs (runtime quest fallback)
+#include "goblin_quest_steps.hpp" // goblin::generated::QUEST_BROWSER (hand-authored fail_flags to join on)
 #include "goblin_config.hpp"   // config::lootFromDiskMsb
 #include "goblin_map_data.hpp" // MAP_ENTRIES / MAP_ENTRY_COUNT / MapEntry / Category
 #include "goblin_world_feature_models.hpp" // WORLD_FEATURE_MODELS (asset-model World features)
@@ -41,6 +43,12 @@ namespace
 constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldInteractables) + 1;
 
 std::array<std::vector<Marker>, NUM_CAT> g_buckets;
+
+// MSB EntityID -> projected world position, for QuestNpcLayer's entity_world_pos().
+// Built once per build_buckets_impl() pass (same lifecycle as g_buckets, cleared and
+// repopulated together) from disk_enemies/disk_collectibles -- NOT a second parse.
+struct EntityPos { float wx, wz; int group; };
+std::unordered_map<uint32_t, EntityPos> g_entity_pos;
 
 // [SKIPPED] diag (config diag_loot_pos): disk placements PARSED from the mod's files but NOT drawn,
 // aggregated by reason across all passes (each pass adds its local filtered counts at its log line).
@@ -1784,15 +1792,21 @@ void build_buckets_impl()
         std::vector<DiskCollectible> disk_collectibles;
         std::vector<DiskEnemy> disk_enemies;
         std::vector<DiskRegion> disk_regions;
+        // QuestNpcLayer resolves its pin position via entity_world_pos(), which reads the
+        // g_entity_pos cache built below from these SAME disk_enemies/disk_collectibles
+        // vectors — so the enemy/asset enumeration must run whenever that layer is active,
+        // independent of the unrelated loot toggles (otherwise quest pins would silently
+        // stop resolving whenever the user has all 3 loot sources off).
+        const bool wantQuestNpcs = goblin::config::showCategory[static_cast<int>(gen::Category::WorldQuestNPC)];
         // World features need enemies too (Hostile NPC invaders ride the enemy enumeration).
         const bool wantEnemies = goblin::config::lootEnemyDrops || goblin::config::lootEmevdDrops ||
-                                 goblin::config::worldFeaturesFromDisk;
+                                 goblin::config::worldFeaturesFromDisk || wantQuestNpcs;
         // World features (Stakes) are AEG asset placements → they ride the SAME asset
         // enumeration as collectibles (disk_collectibles), so request it when either is on.
         // The EMEVD pass also needs asset positions (asset-anchored awards: Blaidd's spirit ash,
         // the scarab-cluster runes) → request it when emevd drops are on too.
         const bool wantAssets = goblin::config::lootCollectibles || goblin::config::worldFeaturesFromDisk ||
-                                goblin::config::lootEmevdDrops;
+                                goblin::config::lootEmevdDrops || wantQuestNpcs;
         // Spirit Springs are POINT regions → request the region enumeration for world features.
         const bool wantRegions = goblin::config::worldFeaturesFromDisk;
         std::vector<DiskTreasure> treasures = load_disk_treasures(
@@ -1819,6 +1833,98 @@ void build_buckets_impl()
         if (goblin::config::lootCollectibles)
             build_disk_collectible_markers(disk_collectibles, treasure_lots, disk_lots,
                                            collectible_cells, piece_disk_keys, gather_disk_keys);
+        // Runtime quest-NPC table (mod-agnostic EMEVD 90005702 mine): join to the hand-authored
+        // QUEST_BROWSER by concluded==fail_flag. Runtime NPCs with NO hand entry (modded / not yet
+        // authored) become minimal FALLBACK browser rows (name + live state, no step prose) — the
+        // quest analogue of the circle fallback. One-time on this disk worker.
+        if (wantQuestNpcs)
+        {
+            // entity_world_pos() cache for QuestNpcLayer's PINS — build it here, gated on the
+            // quest feature. It used to live ONLY inside the lootEmevdDrops loot block, so quest
+            // pins silently vanished whenever that unrelated toggle was off (the "zero pins" bug).
+            // Loot never reads g_entity_pos, so this is its sole builder.
+            for (const auto &en : disk_enemies)
+            {
+                if (!en.entityId) continue;
+                int ga = 0; float wx = 0.0f, wz = 0.0f;
+                if (goblin::marker_world_pos(en.area, en.gx, en.gz, en.posX, en.posZ, ga, wx, wz))
+                    g_entity_pos[en.entityId] = {wx, wz, goblin::marker_group_from(en.area, ga)};
+            }
+            for (const auto &as : disk_collectibles)
+            {
+                if (!as.entityId || g_entity_pos.count(as.entityId)) continue;
+                int ga = 0; float wx = 0.0f, wz = 0.0f;
+                if (goblin::marker_world_pos(as.area, as.gx, as.gz, as.posX, as.posZ, ga, wx, wz))
+                    g_entity_pos[as.entityId] = {wx, wz, goblin::marker_group_from(as.area, ga)};
+            }
+            std::vector<QuestNpcRuntime> qnpcs = load_quest_npcs();
+            // Flag-coverage (the only join possible here — NAMES are resolved at render, since
+            // npc_team_and_name reads live NpcParam which isn't ready on this early worker).
+            std::unordered_set<uint32_t> handFail;
+            for (size_t qi = 0; qi < gen::QUEST_BROWSER_COUNT; ++qi)
+                if (gen::QUEST_BROWSER[qi].fail_flag) handFail.insert(gen::QUEST_BROWSER[qi].fail_flag);
+            // entity → npcParamId from THIS pass's disk enemies (wantEnemies ⊇ wantQuestNpcs).
+            std::unordered_map<uint32_t, uint32_t> ent2param;
+            for (const DiskEnemy &en : disk_enemies)
+                if (en.entityId) ent2param.emplace(en.entityId, en.npcParamId);
+            // ALL runtime quest NPCs with a valid _q99 and a named-enemy placement (npcParamId, so the
+            // render side can resolve a name). Runtime = SOLE map source, so we keep the hand-covered
+            // ones too (QuestNpcLayer pins them; only the Browser's "Other quests" list hides them via
+            // `handCovered`). Name + the [concluded] state are resolved at render.
+            std::vector<QuestFallbackNpc> cand;
+            int covered = 0, filtered = 0, noPos = 0;
+            for (const QuestNpcRuntime &q : qnpcs)
+            {
+                if (q.concluded == 0 || q.concluded >= 100000u) { ++filtered; continue; } // 10-digit = entity-death variant
+                QuestFallbackNpc n;
+                int pinGrp = -1;
+                for (uint32_t e : q.entities)
+                {
+                    // PIN at a placement that has a world position (g_entity_pos, built just above from
+                    // disk enemies+assets). Position is REQUIRED; a name is best-effort (decoupled so an
+                    // asset-placed NPC still pins, just unnamed). PREFER a base-overworld placement
+                    // (group 0): a quest NPC often has stray underground/DLC c-model instances (Blaidd
+                    // has a Nokstella copy besides his Mistwood spot) — picking the first-any landed the
+                    // pin on the wrong page at a garbage spot. Overworld wins; UG/DLC only as fallback.
+                    auto pit = g_entity_pos.find(e);
+                    if (pit != g_entity_pos.end() &&
+                        (n.pinEntity == 0 || (pit->second.group == 0 && pinGrp != 0)))
+                    { n.pinEntity = e; pinGrp = pit->second.group; }
+                    auto it = ent2param.find(e);  // NAME source: a named disk enemy at this placement
+                    if (it != ent2param.end() && it->second &&
+                        std::find(n.npcParamIds.begin(), n.npcParamIds.end(), it->second) == n.npcParamIds.end())
+                        n.npcParamIds.push_back(it->second);
+                }
+                if (!n.pinEntity) { ++noPos; continue; }  // no placement resolves to a map position → can't pin
+                n.concluded = q.concluded; n.regLo = q.regLo; n.regHi = q.regHi;
+                n.handCovered = handFail.count(q.concluded) != 0;  // still pinned; hidden from the Browser's "Other" list
+                if (n.handCovered) ++covered;
+                cand.push_back(std::move(n));
+            }
+            spdlog::info("[QUESTNPC] runtime: {} NPCs -> {} pinnable, {} flag-covered, {} filtered (10-digit), "
+                         "{} no-position (extracted but no placement resolved; needs its MSB source)",
+                         (int)qnpcs.size(), (int)cand.size(), covered, filtered, noPos);
+            // [QUESTNPC-PIN] diag (Verbose logging only): any pin landing OFF the base overworld
+            // (grp!=0) is suspect — the picked placement's map isn't where the NPC's quest is (e.g. an
+            // underground c-model instance). Logs the concluded flag + pinEntity so it cross-refs to the
+            // MSB index. Gated so a normal run stays quiet; enable debug_logging to catch a future mis-pin.
+            if (goblin::config::debugLogging)
+            {
+                int g0 = 0, gUG = 0, gDLC = 0;
+                for (const QuestFallbackNpc &n : cand)
+                {
+                    auto it = g_entity_pos.find(n.pinEntity);
+                    int g = (it != g_entity_pos.end()) ? it->second.group : -1;
+                    if (g == 0) ++g0; else if (g & 1) ++gUG; else ++gDLC;
+                    if (g != 0 && it != g_entity_pos.end())
+                        spdlog::info("[QUESTNPC-PIN] OFF-OW concluded={} pin={} grp={} pos=({:.0f},{:.0f})",
+                                     n.concluded, n.pinEntity, g, it->second.wx, it->second.wz);
+                }
+                spdlog::info("[QUESTNPC-PIN] {} pins: {} overworld, {} underground, {} dlc",
+                             (int)cand.size(), g0, gUG, gDLC);
+            }
+            set_quest_fallback_npcs(std::move(cand));
+        }
         if (goblin::config::worldFeaturesFromDisk)
         {
             // EMEVD-sourced graying flags (entity → flag) for Hero's Tomb (template 90005683)
@@ -1938,6 +2044,8 @@ void build_buckets_impl()
                     missing_award_entities.insert(a.entityId);
             for (DiskEnemy &e : load_lod_award_entities(missing_award_entities))
                 disk_enemies.push_back(std::move(e));
+            // (entity_world_pos() cache for QuestNpcLayer moved OUT to the wantQuestNpcs block
+            // above — it must not be gated on this loot toggle, or quest pins vanish.)
             build_disk_emevd_markers(awards, disk_enemies, disk_collectibles, treasure_lots,
                                      emevd_disk_lots, piece_disk_keys,
                                      goblin::config::worldFeaturesFromDisk
@@ -2017,13 +2125,9 @@ void build_buckets_impl()
         // rows so they don't double the live ones (the bake is being retired for this category).
         if (e.category == gen::Category::WorldBosses)
             continue;
-        // Quest NPCs are RETIRED from the map: the category was location-only (no quest-state
-        // graying) and is superseded by the in-overlay Quest Browser. Neither a disk MSB pass nor
-        // live RPM can revive it usefully — quest progress lives in ER's ESD + thousands of
-        // scattered event flags (no queryable per-NPC structure; the Quest Browser is hand-authored),
-        // and live ChrIns/EnemyIns are resident only for the streamed tiles around the player (RPM
-        // probe: ~108 positioned near-player of 461, never the ~344 world-spread NPCs). So drop the
-        // baked rows here (like WorldBosses) — zero regen, reversible. Quest Browser is the UX now.
+        // Quest NPCs: QuestNpcLayer (quest_npc_layer.cpp) is the sole producer of
+        // WorldQuestNPC markers now (entity_id + live EMEVD flag driven, not this bake) —
+        // drop any baked rows here so it doesn't double-draw, same as WorldBosses above.
         if (e.category == gen::Category::WorldQuestNPC)
             continue;
         // Rune/Ember Piece IDENTITY dedup: the disk collectible pass placed this exact AEG world
@@ -2814,6 +2918,7 @@ void start_build_worker()
             g_rebuild_pending.store(false, std::memory_order_release);
             g_disk_built.store(false, std::memory_order_release);   // readers return empty during the build
             for (auto &b : g_buckets) b.clear();                    // sole mutator: clear then refill
+            g_entity_pos.clear();
             build_buckets_impl();
             g_disk_built.store(true, std::memory_order_release);
             if (g_rebuild_pending.load(std::memory_order_acquire))
@@ -3005,5 +3110,16 @@ void refresh_overlay_census()
         s_prev_looted[c] = looted;
     }
     s_logged_once = true;
+}
+
+bool entity_world_pos(uint32_t entity_id, float &worldX, float &worldZ, int &group)
+{
+    auto it = g_entity_pos.find(entity_id);
+    if (it == g_entity_pos.end())
+        return false;
+    worldX = it->second.wx;
+    worldZ = it->second.wz;
+    group = it->second.group;
+    return true;
 }
 } // namespace goblin::worldmap

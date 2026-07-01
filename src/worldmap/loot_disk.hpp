@@ -197,6 +197,20 @@ std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags(
     std::unordered_map<uint32_t, uint32_t> *paintings_out = nullptr,
     std::vector<msbe::GestureRef> *gestures_out = nullptr);
 
+// One quest NPC, mined at runtime from the ACTIVE install's emevds (mod-agnostic; the runtime
+// port of tools/extract_quest_npcs.py). `concluded` = its _q99 fail flag; [regLo,regHi] = its
+// coarse state register; `entities` = its MSB placements (positions/names come from the MSB +
+// NpcParam runtime passes). See load_quest_npcs.
+struct QuestNpcRuntime
+{
+    uint32_t concluded = 0, regLo = 0, regHi = 0;
+    std::vector<uint32_t> entities;
+};
+// Scan every event\*.emevd.dcx in the active install for the ENGINE-standard 90005702 quest-NPC
+// handler and group by (concluded, regLo, regHi). Same file-scan + Oodle/KRAK path as
+// load_emevd_awards. Mod-agnostic, no bake. Empty when no event dir is found.
+std::vector<QuestNpcRuntime> load_quest_npcs();
+
 // ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────
 // With loot_from_disk_msb on, the map dir is resolved by ancestor-walk at init
 // (Found). If that finds nothing we fall back to OBSERVING the game's own map

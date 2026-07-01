@@ -137,7 +137,7 @@ namespace goblin::config
     uint8_t clusterFarRadius     = 2;  // tiles: at/beyond this, clusterThreshold (clustered)
     bool clusterDebugRadius = false;  // overlay: draw distance-adaptive zones (player + near/far rings + tabs)
     bool clusterDebugMarkers = false; // overlay: per-marker projection/tile state dots (cluster diagnosis)
-    bool questNpcQuestAware = false;  // gate quest-NPC markers on quest-active flags
+    bool questAllowFlagWrite = false; // cheat: allow editing flag-backed Quest Browser steps
     std::string questProgress = "";   // Quest Browser per-step done bits ('0'/'1')
     bool questGreyOnDeath = true;     // grey questlines whose NPC death flag is set
     std::string regionToggles = "";   // in-world region chips on/off ('0'/'1' per anchor, order)
@@ -305,6 +305,13 @@ namespace
                   "a questline can be greyed when it shouldn't be, or not greyed when its\n"
                   "NPC is actually gone. Set to false to always show every questline\n"
                   "normally. The same toggle is in the Quest Browser itself."),
+                B("quest_allow_flag_write", questAllowFlagWrite, "false",
+                  "Cheat: for quest steps backed by a live EMEVD progress flag, allow the\n"
+                  "Quest Browser checkbox to be edited (writes the flag in memory on toggle).\n"
+                  "Off by default -- those checkboxes are a READ-ONLY mirror of the flag.\n"
+                  "WARNING: writing EMEVD progress flags mutates the save and can soft-lock\n"
+                  "a questline, skip a reward, or trigger an unintended event. Use a\n"
+                  "throwaway save if you turn this on."),
             }},
 
             {"Clustering",
@@ -435,8 +442,7 @@ namespace
                 B("show_bosses", showCategory[static_cast<int>(Cat::WorldBosses)], "false", "Boss markers (field bosses, dungeon bosses)"),
                 B("show_graces", showCategory[static_cast<int>(Cat::WorldGraces)], "false", "Sites of Grace"),
                 B("show_hostile_npc", showCategory[static_cast<int>(Cat::WorldHostileNPC)], "false", "Hostile NPC invader spawn locations (auto-discovered via teamType 24/27)"),
-                B("show_quest_npc", showCategory[static_cast<int>(Cat::WorldQuestNPC)], "false", "LEGACY / UNFINISHED (superseded by the in-overlay Quest Browser): raw quest-NPC + merchant map pins. Off by default."),
-                B("quest_npc_quest_aware", questNpcQuestAware, "false", "LEGACY / UNFINISHED (superseded by the Quest Browser): gate the legacy quest-NPC map pins on their questline flag (show only while the quest is active). Needs show_quest_npc. Off by default."),
+                B("show_quest_npc", showCategory[static_cast<int>(Cat::WorldQuestNPC)], "false", "Pin quest NPCs on the map (all quest NPCs the mod exposes, mod-agnostic; the 3 authored ones follow their active quest step). Off by default."),
                 B("show_imp_statues", showCategory[static_cast<int>(Cat::WorldImpStatues)], "false", "Imp Statue (Stonesword Key fog gate) locations"),
                 B("show_paintings", showCategory[static_cast<int>(Cat::WorldPaintings)], "false", "Painting locations"),
                 B("show_spirit_springs", showCategory[static_cast<int>(Cat::WorldSpiritSprings)], "false", "Spirit Spring (horse jump) locations"),

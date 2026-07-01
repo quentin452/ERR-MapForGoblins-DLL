@@ -224,6 +224,14 @@ ParseResult parse_msb(const uint8_t *buf, size_t len, bool resident, uintptr_t b
 // malformed blob.
 std::vector<EmevdAward> parse_emevd(const uint8_t *buf, size_t len);
 
+// One InitializeCommonEvent(0, 90005702, entity, concluded, reg_lo, reg_hi) call — the
+// ENGINE-standard quest-NPC "_q99 concluded/died" handler. Grouping these by
+// (concluded, regLo, regHi) across the ACTIVE install's emevds yields the quest-NPC table
+// (entities = that NPC's placements), mod-agnostically with NO bake. Runtime port of
+// tools/extract_quest_npcs.py; args at a+8/+12/+16/+20 (same 64-bit layout as parse_emevd).
+struct QuestNpcEmevd { uint32_t entity = 0, concluded = 0, regLo = 0, regHi = 0; };
+std::vector<QuestNpcEmevd> parse_emevd_quest_npcs(const uint8_t *buf, size_t len);
+
 // Richer EMEVD parse for the event-1200 recovery (mechanism B) on top of the direct awards
 // (mechanism A). Same pinned layout as parse_emevd. Returns direct awards, RunEvent(1200)
 // (flag,lot) pairs, and per-event SetEventFlag(.,1) records with their entity candidates.

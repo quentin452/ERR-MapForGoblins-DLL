@@ -30,10 +30,18 @@ def rd(tn):
     return asm.GetType(tn).GetMethod('Read', BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy, None, Array[SysType]([_str]), None)
 _param, _bnd4, _fmg, _msbe, _esd = (rd('SoulsFormats.PARAM'), rd('SoulsFormats.BND4'),
                                     rd('SoulsFormats.FMG'), rd('SoulsFormats.MSBE'), rd('SoulsFormats.ESD'))
+_fn_seq = 0
 def frombytes(m, d, s):
-    t = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_mt' + s)
+    # Unique name PER CALL + best-effort unlink: SoulsFormats keeps the temp file
+    # memory-mapped for the process lifetime, so a per-process-fixed name collides
+    # on the 2nd read and unlink throws WinError 5. (See tools/_find_npc.py.)
+    global _fn_seq; _fn_seq += 1
+    t = os.path.join(tempfile.gettempdir(), '%d_mt%d%s' % (os.getpid(), _fn_seq, s))
     SysFile.WriteAllBytes(t, d.ToArray() if hasattr(d, 'ToArray') else d)
-    r = m.Invoke(None, Array[Object]([t])); os.unlink(t); return r
+    r = m.Invoke(None, Array[Object]([t]))
+    try: os.unlink(t)
+    except OSError: pass
+    return r
 def to_bytes(b):
     return bytes(b.ToArray() if hasattr(b, 'ToArray') else b)
 

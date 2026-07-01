@@ -84,7 +84,7 @@ const CatMeta CAT[] = {
     {"show_stat_boosts", G_LOOT},         // LootStatBoosts
     {"show_fortunes", G_REFORGED},        // ReforgedFortunes
     {"show_hostile_npc", G_WORLD},        // WorldHostileNPC
-    {nullptr, G_WORLD},                   // WorldQuestNPC (legacy; Quest Browser)
+    {"show_quest_npc", G_WORLD},          // WorldQuestNPC (QuestNpcLayer; no atlas art yet -> circle fallback)
     {"show_incantations", G_MAGIC},       // MagicIncantations
     {"show_memory_stones", G_MAGIC},      // MagicMemoryStones
     {"show_prayerbooks", G_MAGIC},        // MagicPrayerbooks
@@ -154,6 +154,13 @@ constexpr CategoryGpuIcon CATEGORY_GPU_ICONS[] = {
     // Summoning Pool → Martyr Effigy glyph (MENU_MAP_89, SB_MapCursor_02). Resolved by iconId via
     // map_point_rect(89) → disk fallback in MapPointProvider, so it is mod-agnostic (not ERR-baked).
     {static_cast<int>(goblin::generated::Category::WorldSummoningPools), 89},
+    // Quest NPC → framed-hood NPC glyph (MENU_MAP_80, SB_MapCursor_02, rect 554,364,124,124 — the
+    // vanilla quest-NPC map symbol, eye-confirmed in docs/memory/features/map-point-glyph-ids.md).
+    // iconId path → map_point_rect(80) → disk fallback in MapPointProvider, so it is mod-agnostic
+    // (reads the ACTIVE install's SB_MapCursor, not the ERR-baked atlas). Falls to circle when the
+    // glyph can't be resolved. NB: the SB_MapCursor NN (80), NOT the WorldMapPointParam iconId
+    // 443=questNPC — 443 is never resident (vanilla draws no item pins) so only the NN path works.
+    {static_cast<int>(goblin::generated::Category::WorldQuestNPC), 80},
 };
 } // namespace
 

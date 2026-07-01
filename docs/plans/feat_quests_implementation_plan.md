@@ -14,6 +14,23 @@ map.
 > legacy path rather than adding a parallel one, reuses the existing prebuild index, and
 > defaults flag handling to **read-only**.
 
+> **PHASE 1 LANDED 2026-07-01, branch `feat/quest-npc-layer` (built clean on `build-linux`
+> ERR profile; log-confirmed crash-free in-game, NOT visually verified — see HANDOFF).** Two
+> of this doc's §0 infrastructure
+> claims were wrong when implementation actually started — corrected in §0 below, not
+> just noted here. Summary: the "legacy `WorldQuestNPC` emission ~L1891" was already gone
+> before Phase 1 started (only a dead skip-rule remained); there was no existing
+> persistent entity→position index to reuse (`ent_enemy`/`ent_any` were local to one
+> helper function) — a new one had to be built, populated inside the existing disk-worker
+> pass so it's still not a second parse. A previously-unknown gating bug was also found
+> and fixed: the disk-worker's enemy/asset enumeration was conditional on unrelated loot
+> toggles, which would have silently broken quest pins for anyone with all three off.
+> Schema/cache/layer/wiring/flag-read-write are all implemented and real. What's
+> deliberately NOT done: `progress_flag`/`entity_id` are 0 (unsourced) for every step of
+> the bootstrap demo set (Boc/Alexander/Thops) — no EMEVD/MSB cross-reference tooling was
+> available offline to source them safely; `name_id` was sourced and is real. See
+> `docs/HANDOFF.md` for the Phase 2 sourcing task and full session detail.
+
 ---
 
 ## 0. Existing Infrastructure To Reconcile (READ FIRST)
@@ -23,10 +40,10 @@ feature will double-draw markers and fork the progress source of truth.
 
 | Concern | Already in tree | v2 decision |
 | --- | --- | --- |
-| Quest-NPC map category | `Category::WorldQuestNPC`, emitted in [map_entry_layer.cpp](../../src/worldmap/map_entry_layer.cpp) (~L1891); meta in [category_meta.cpp](../../src/worldmap/category_meta.cpp) (~L87) | **Retire** the legacy emission; the new `QuestNpcLayer` becomes the sole producer of `WorldQuestNPC` markers. |
-| Quest-aware gate | `config::questNpcQuestAware` + `is_quest_npc_hidden()` in [map_renderer.cpp](../../src/worldmap/map_renderer.cpp) (~L985); `quest_aware()`/`set_quest_aware()` in [goblin_inject.cpp](../../src/goblin_inject.cpp) (~L4217) | Keep the toggle, but it now gates the new layer. The overlay already labels the legacy pins "legacy / unfinished — superseded by the Quest Browser"; that wording goes away once the layer is real. |
-| Per-step progress | `config::questProgress` blob keyed by NPC name; `qp_get`/`qp_set` lambdas in [goblin_overlay.cpp](../../src/goblin_overlay.cpp) (~L2608) | Keep the ini blob as the **manual** layer; flags become an optional *reflection* on top (see §4). |
-| Entity → position index | `ent_enemy` / `ent_any` maps built once in `prebuild_markers()` ([map_entry_layer.cpp](../../src/worldmap/map_entry_layer.cpp) L722–742) | **Reuse** via an exposed lookup function — do NOT add parallel global maps. |
+| Quest-NPC map category | **CORRECTED (was wrong):** the "legacy emission ~L1891" was already gone before Phase 1 started — only a dead `if (e.category == Category::WorldQuestNPC) continue;` skip-rule remained (`map_entry_layer.cpp`), `category_meta.cpp:87` had a `nullptr` icon. | **Done.** `QuestNpcLayer` (`src/worldmap/quest_npc_layer.{hpp,cpp}`) is the sole producer, excluded from the generic `MapEntryLayer` category loop in `goblin_overlay.cpp` (same pattern as `GraceLayer`). Kept the skip-rule (didn't delete it) as a guard against double-draw on `erte`/`convergence`, whose stale local bake isn't regenerated yet — see `generated_data_removal_plan.md`. |
+| Quest-aware gate | `config::questNpcQuestAware` + the visibility gate in [map_renderer.cpp](../../src/worldmap/map_renderer.cpp); `quest_aware()`/`set_quest_aware()` in [goblin_inject.cpp](../../src/goblin_inject.cpp) | **Done.** Toggle now gates `QuestNpcLayer` (only pin questlines with ≥1 step already done — the closest locally-computable proxy for "quest is active" without wiring `quest_gates.cpp`'s separate flag data, see `mapgenie_category_coverage_plan.md`'s cross-reference). Legacy "legacy / unfinished" tooltip wording removed from the F1 category row. |
+| Per-step progress | `config::questProgress` blob keyed by NPC name; `qp_get`/`qp_set` lambdas in [goblin_overlay.cpp](../../src/goblin_overlay.cpp) | **Done.** Ini blob stays the manual layer; flag-backed steps (`progress_flag != 0`) are a read-only mirror via `goblin::quest_step_done()` (new shared helper, `goblin_quest_steps.cpp`, used by both `qp_get` and `QuestNpcLayer` so they can't disagree) unless `config::questAllowFlagWrite` (new, default false) is on. |
+| Entity → position index | **CORRECTED (was wrong):** `prebuild_markers()` does NOT build any entity index — it's a thin trigger shim. `ent_enemy`/`ent_any` were local to one disk-marker helper function, not file-scope, not reusable. There was nothing to promote. | **Built new** (not reused, because nothing existed): `g_entity_pos` cache populated inside the existing disk-worker pass (`build_buckets_impl()`, where `disk_enemies`/`disk_collectibles` are already walked) — still zero extra parsing. Exposed as `goblin::worldmap::entity_world_pos()`. Also fixed a previously-unknown bug: that pass's enemy/asset enumeration was gated behind unrelated loot toggles (`lootEnemyDrops`/`lootEmevdDrops`/`worldFeaturesFromDisk` etc.) — forced it on whenever `show_quest_npc` is enabled, or quest pins would silently fail to resolve for anyone with those loot settings off. |
 | Flag read/write helpers | `goblin::ui::read_event_flag(id)` ([goblin_inject.cpp](../../src/goblin_inject.cpp) L4390); `goblin::markers::set_event_flag(id,val)` ([goblin_markers.cpp](../../src/goblin_markers.cpp) L133) | Read freely; **write only behind an explicit opt-in cheat gate** (see §4). |
 
 ---
@@ -101,6 +118,24 @@ must be **derived**, not hard-coded long-term:
   to prove the pipeline end-to-end — but the plan must land a *generator/derivation* path
   for the full 34 questlines, mirroring `tools/generate_*.py`. Tag any hand-authored row
   so a later derivation pass can replace it.
+
+  **PHASE 1 OUTCOME 2026-07-01: only partially done, and deliberately not faked.**
+  `name_id` was sourced for real (FMG NpcName ids from `data/npc_name_text_map.json`:
+  Boc 122310, Alexander 122000, Thops 133300) and is wired. `progress_flag`/`entity_id`
+  are at their `0` default for every step of all three — there was no offline-derivable
+  per-step EMEVD flag or MSB EntityID source available on the (Linux, no decrypted
+  regulation/EMEVD tooling) machine that implemented this. Two CANDIDATE `entity_id`
+  values exist in a pre-existing fail_flag-verification comment in the same file
+  (`goblin_quest_steps.cpp`: Boc `11050730`, Thops `1039390700`) but were deliberately
+  NOT wired — it's unclear which of Boc's 6 / Thops's 4 *steps* (they relocate across the
+  map) that single placement belongs to, and wiring it to the wrong step would silently
+  pin the wrong location. `quest_gates.py`'s EldenRingQuestLog-sourced flags were also
+  checked and deliberately NOT reused for `progress_flag` — those are whole-questline
+  "is active" gates, not per-step "is done" flags, wrong semantics. Net effect: the
+  pipeline is real and end-to-end, but currently produces **zero map pins** until real
+  per-step data is sourced on Windows with EMEVD+MSB tooling. That sourcing (for Boc/
+  Alexander/Thops at minimum, ideally all 34) is the next concrete task, not the
+  generator/derivation path yet (do the 3-NPC bootstrap properly first, generator after).
 
 ---
 

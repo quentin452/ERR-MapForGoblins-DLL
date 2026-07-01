@@ -23,9 +23,11 @@
 
 #include "goblin_inject.hpp"   // goblin::world_map_open()
 #include "goblin_crashdump.hpp"   // goblin::self_module_range() — XInputGetState hook caller check
+#include "goblin_markers.hpp"   // goblin::markers::set_event_flag()
 #include "goblin_worldmap_probe.hpp"   // get_live_view() for the marker prototype
 #include "goblin_map_data.hpp"         // generated::MAP_ENTRIES (graces for Phase 1)
 #include "worldmap/grace_layer.hpp"      // goblin::worldmap::GraceLayer
+#include "worldmap/quest_npc_layer.hpp"  // goblin::worldmap::QuestNpcLayer
 #include "worldmap/map_entry_layer.hpp"  // goblin::worldmap::MapEntryLayer
 #include "worldmap/map_renderer.hpp"     // goblin::worldmap::render_markers
 #include "worldmap/category_meta.hpp"    // baked→GPU icon migration counters (F1 panel)
@@ -1753,17 +1755,21 @@ namespace
         namespace wm = goblin::worldmap;
         namespace gen = goblin::generated;
         static wm::GraceLayer s_graces;
+        static wm::QuestNpcLayer s_quest_npc;
         static std::vector<wm::MapEntryLayer> s_cat;     // stable storage
         static std::vector<wm::MarkerLayer *> s_layers;  // pointers into the above
         if (s_layers.empty())
         {
             const int N = static_cast<int>(gen::Category::WorldInteractables) + 1;
             const int graces = static_cast<int>(gen::Category::WorldGraces);
+            const int quest_npc = static_cast<int>(gen::Category::WorldQuestNPC);
             s_cat.reserve(N); // reserve → no realloc, so the pointers below stay valid
             for (int c = 0; c < N; ++c)
-                if (c != graces) // graces come from the live GraceLayer, not MAP_ENTRIES
+                if (c != graces &&     // graces come from the live GraceLayer, not MAP_ENTRIES
+                    c != quest_npc)    // quest NPCs come from QuestNpcLayer, not MAP_ENTRIES
                     s_cat.emplace_back(c);
             s_layers.push_back(&s_graces);
+            s_layers.push_back(&s_quest_npc);
             for (auto &L : s_cat)
                 s_layers.push_back(&L);
         }
@@ -2458,7 +2464,7 @@ namespace
                 // Overworld + Underground + DLC) gets a separate row per page, so clicking a row locates
                 // on THAT page. (Deduping by name_id alone collapsed them into one row carrying only the
                 // first marker's group — the "shows only Underground" bug.)
-                struct Hit { std::string label; int32_t name_id; int count; int group; };
+                struct Hit { std::string label; int32_t name_id; int count; int group; bool quest = false; };
                 static char item_q[64] = "";
                 static std::string s_last_q;
                 static std::unordered_set<int32_t> s_match;   // name_ids whose name matches (rendered ring)
@@ -2535,6 +2541,12 @@ namespace
                         // so each page an item is on becomes its own row. s_match stays keyed by name_id
                         // so EVERY instance still highlights/rings on the map.
                         std::map<int64_t, int> hit_count;  // (name_id<<2 | group) -> marker count
+                        // Keys (name<<2|page) that have at least ONE quest-NPC marker → badge the row
+                        // "[quest]" so the player can tell which search hit is a quest pin on the map
+                        // without clicking each one. OR'd across all markers of the key (a name_id could
+                        // appear as both a quest pin and something else).
+                        std::unordered_set<int64_t> quest_keys;
+                        const int questCat = static_cast<int>(goblin::generated::Category::WorldQuestNPC);
                         for (auto *L : overlay_layers())
                         {
                             if (!L) continue;
@@ -2571,12 +2583,17 @@ namespace
                                 // stack toggle — no per-stack adjustment needed.
                                 const bool first = (hit_count[k] == 0);
                                 hit_count[k] += 1;
+                                if (m.category == questCat) quest_keys.insert(k);
                                 if (first)
                                     s_hits.push_back({nm.label, m.name_id, 0, g});
                             }
                         }
                         for (auto &h : s_hits)
-                            h.count = hit_count[((int64_t)h.name_id << 2) | h.group];
+                        {
+                            const int64_t k = ((int64_t)h.name_id << 2) | h.group;
+                            h.count = hit_count[k];
+                            h.quest = quest_keys.count(k) != 0;
+                        }
                         // Group same-name rows together, pages in order (Overworld, Underground, DLC).
                         std::sort(s_hits.begin(), s_hits.end(), [](const Hit &a, const Hit &b) {
                             int c = a.label.compare(b.label);
@@ -2661,8 +2678,9 @@ namespace
                             const bool locked = map_open && (((h.group & 2) && !s_dlc_seen) ||
                                                              ((h.group & 1) && !s_ug_seen));
                             char row[200];
-                            std::snprintf(row, sizeof(row), "%s  (x%d) - %s%s##h%zu", h.label.c_str(),
+                            std::snprintf(row, sizeof(row), "%s  (x%d) - %s%s%s##h%zu", h.label.c_str(),
                                           h.count, page_label(h.group),
+                                          h.quest ? " [quest]" : "",
                                           locked ? " [undiscovered]" : "", i);
                             if (locked) ImGui::BeginDisabled();
                             if (ImGui::Selectable(row) && map_open)
@@ -2771,27 +2789,13 @@ namespace
                     if (!show_all_cats && !contains_ci(goblin::ui::category_label(c), cat_filter))
                         continue;   // search box: hide non-matching category rows
                     ImGui::PushID(c);
-                    // The raw Quest-NPC map pins are legacy/unfinished — the Quest
-                    // Browser below is the supported quest-navigation path. Tag the
-                    // label and explain on hover. Off by default.
                     const char *clabel = goblin::ui::category_label(c);
-                    bool legacy_quest = std::string(clabel) == "World - Quest NPC";
-                    char clbuf[96];
-                    if (legacy_quest)
-                    {
-                        snprintf(clbuf, sizeof(clbuf), "%s  (legacy)", clabel);
-                        clabel = clbuf;
-                    }
                     bool cv = goblin::ui::category_visible(c);
                     if (ImGui::Checkbox(clabel, &cv))
                         goblin::ui::set_category_visible(c, cv);
                     // Capture row width once, before any SameLine, so the badge and
                     // the cluster checkbox both position from a stable origin.
                     float row_avail = ImGui::GetContentRegionAvail().x;
-                    if (legacy_quest && ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Legacy / unfinished: raw quest-NPC map pins.\n"
-                                          "Use the Quest Browser (below) for quest navigation.\n"
-                                          "Off by default.");
                     // Uncollected badge: "<remaining>/<total>" of collectible items in
                     // this category. Skipped for categories with no collectible rows
                     // (graces/NPCs/regions → total 0). Green once fully looted.
@@ -2839,16 +2843,7 @@ namespace
 
             ImGui::SeparatorText("Quest navigation");
             {
-                ImGui::TextDisabled("Use the Quest Browser below. The map-pin options here are");
-                ImGui::TextDisabled("legacy / unfinished and off by default.");
-                bool qa = goblin::ui::quest_aware();
-                if (ImGui::Checkbox("Quest-aware NPCs (legacy / unfinished)", &qa))
-                    goblin::ui::set_quest_aware(qa);
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("LEGACY / UNFINISHED — superseded by the Quest Browser below.\n"
-                                      "Gates the legacy quest-NPC map pins on their questline flag\n"
-                                      "(show a pin only while its quest is active). Needs the Quest\n"
-                                      "NPC (legacy) category enabled. Off by default.");
+                ImGui::TextDisabled("Enable \"World - Quest NPC\" above to pin quest NPCs on the map.");
 
                 // Quest Browser: ordered steps per NPC (hand-authored, original
                 // text). Each step names its location/zone for manual navigation.
@@ -2935,12 +2930,29 @@ namespace
                                 out += kv.first + "=" + kv.second + ";";
                         qp = out;
                     };
-                    auto qp_get = [&](const char *name, size_t s) {
-                        auto it = prog.find(name);
+                    // Flag-backed steps (QuestStep::progress_flag != 0) read straight from
+                    // the live EMEVD flag -- the manual ini bit is ignored for that step
+                    // (flag wins; see goblin_quest_steps.hpp). Flag-less steps (the common
+                    // case today -- per-step flags aren't sourced for most questlines yet,
+                    // see feat_quests Phase 2) keep the existing manual ini-blob behavior.
+                    auto qp_get = [&](const goblin::generated::NpcQuest &q, size_t s) {
+                        uint32_t flag = q.steps[s].progress_flag;
+                        if (flag) return goblin::ui::read_event_flag(flag);
+                        auto it = prog.find(q.name);
                         return it != prog.end() && s < it->second.size() && it->second[s] == '1';
                     };
-                    auto qp_set = [&](const char *name, size_t s, bool v) {
-                        std::string &bits = prog[name];
+                    auto qp_set = [&](const goblin::generated::NpcQuest &q, size_t s, bool v) {
+                        uint32_t flag = q.steps[s].progress_flag;
+                        if (flag)
+                        {
+                            // Read-only mirror unless the user explicitly opted into the
+                            // write cheat -- writing EMEVD flags can soft-lock a questline
+                            // or skip a reward (see config::questAllowFlagWrite's tooltip).
+                            if (goblin::config::questAllowFlagWrite)
+                                goblin::markers::set_event_flag(flag, v ? 1 : 0);
+                            return;
+                        }
+                        std::string &bits = prog[q.name];
                         if (bits.size() <= s) bits.resize(s + 1, '0');
                         bits[s] = v ? '1' : '0';
                         reserialize();
@@ -2954,7 +2966,7 @@ namespace
                         if (!contains_ci(q.name, filter)) return;
                         int done = 0;
                         for (size_t s = 0; s < q.step_count; s++)
-                            if (qp_get(q.name, s)) done++;
+                            if (qp_get(q, s)) done++;
                         // Visual state: grey "[unfinishable]" (NPC dead, fail_flag
                         // set) takes precedence over amber "(!)" (order-sensitive /
                         // missable). Both push a text tint over the whole subtree.
@@ -2965,16 +2977,22 @@ namespace
                         // it [concluded] rather than asserting the NPC is dead.
                         bool concl = dead && q.fail_conclusion;
                         bool warn = q.warning && q.warning[0];
-                        bool tint = dead || warn;
+                        // Hostility (the "Ranni" effect): attacking this NPC sets a
+                        // faction-hostility flag -- they vanish until absolution. Doesn't
+                        // override dead/warn (those already win the tint), just adds its
+                        // own header tag + note so the player knows why pins disappeared.
+                        bool hostile = q.hostility_flag && goblin::ui::read_event_flag(q.hostility_flag);
+                        bool tint = dead || warn || hostile;
                         if (tint)
                             ImGui::PushStyleColor(ImGuiCol_Text,
                                 dead ? ImVec4(0.55f, 0.55f, 0.55f, 1.0f)
                                      : ImVec4(1.0f, 0.78f, 0.35f, 1.0f));
-                        bool open = ImGui::TreeNode((void *)(intptr_t)id, "%s  (%d/%zu)%s",
+                        bool open = ImGui::TreeNode((void *)(intptr_t)id, "%s  (%d/%zu)%s%s",
                                                     q.name, done, q.step_count,
                                                     dead ? (concl ? "  [concluded]"
                                                                   : "  [unfinishable]")
-                                                         : warn ? "  (!)" : "");
+                                                         : warn ? "  (!)" : "",
+                                                    hostile ? "  [Hostile]" : "");
                         if (tint)
                             ImGui::PopStyleColor();
                         if (open)
@@ -3000,6 +3018,13 @@ namespace
                                 ImGui::TextWrapped("(!) %s", q.warning);
                                 ImGui::PopStyleColor();
                             }
+                            if (hostile)
+                            {
+                                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.66f, 0.28f, 1.0f));
+                                ImGui::TextWrapped("[Hostile -- obtain absolution at the Church of Vows "
+                                                   "to restore this NPC.]");
+                                ImGui::PopStyleColor();
+                            }
                             if (q.related)
                             {
                                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.8f, 1.0f, 1.0f));
@@ -3009,10 +3034,23 @@ namespace
                             for (size_t s = 0; s < q.step_count; s++)
                             {
                                 ImGui::PushID((int)s);
-                                bool d = qp_get(q.name, s);
-                                if (ImGui::Checkbox("##done", &d))
-                                    qp_set(q.name, s, d);
+                                bool d = qp_get(q, s);
+                                bool flag_backed = q.steps[s].progress_flag != 0;
+                                bool editable = !flag_backed || goblin::config::questAllowFlagWrite;
+                                if (!editable) ImGui::BeginDisabled();
+                                if (ImGui::Checkbox("##done", &d) && editable)
+                                    qp_set(q, s, d);
+                                if (!editable) ImGui::EndDisabled();
                                 ImGui::SameLine();
+                                if (flag_backed)
+                                {
+                                    ImGui::TextDisabled("[auto]");
+                                    if (ImGui::IsItemHovered())
+                                        ImGui::SetTooltip(goblin::config::questAllowFlagWrite
+                                            ? "Mirrors + can write the live EMEVD flag (cheat ON) -- can break this questline."
+                                            : "Read-only mirror of the live EMEVD flag. Enable 'Allow writing quest flags' to edit.");
+                                    ImGui::SameLine();
+                                }
                                 ImGui::TextWrapped("%zu. %s", s + 1, q.steps[s].title);
                                 ImGui::Indent();
                                 if (q.steps[s].desc && q.steps[s].desc[0])
@@ -3048,6 +3086,96 @@ namespace
                             if (goblin::generated::QUEST_BROWSER[i].dlc)
                                 draw_npc(goblin::generated::QUEST_BROWSER[i], (int)i);
                         ImGui::TreePop();
+                    }
+                    // Runtime FALLBACK: quest NPCs the active mod's EMEVD exposes (load_quest_npcs)
+                    // not covered by a hand entry above — modded / not-yet-authored. The disk worker
+                    // gives raw candidates (concluded/register/npcParamId, NO name); resolve the NAME
+                    // (npc_team_and_name reads live NpcParam → must be here, not the disk worker) +
+                    // the secondary name-coverage HERE, cached (candidate set is set once). Minimal
+                    // view: name + live [concluded] state, no step prose (mod-agnostic fallback).
+                    {
+                        std::vector<goblin::worldmap::QuestFallbackNpc> cand =
+                            goblin::worldmap::quest_fallback_npcs();
+                        static std::vector<goblin::worldmap::QuestFallbackNpc> s_qfb;
+                        static size_t s_qfb_gen = ~size_t{0};
+                        if (cand.size() != s_qfb_gen)
+                        {
+                            s_qfb_gen = cand.size();
+                            s_qfb.clear();
+                            // Hand coverage keys. name_id (FMG id) is LANGUAGE-INDEPENDENT — the
+                            // reliable join. Names (English) only weakly match a same-language FMG,
+                            // so keep them as a secondary signal only.
+                            std::unordered_set<int32_t> handNameIds;
+                            std::vector<std::string> handNames;
+                            for (size_t i = 0; i < goblin::generated::QUEST_BROWSER_COUNT; i++)
+                            {
+                                if (goblin::generated::QUEST_BROWSER[i].name_id)
+                                    handNameIds.insert((int32_t)goblin::generated::QUEST_BROWSER[i].name_id);
+                                if (goblin::generated::QUEST_BROWSER[i].name)
+                                {
+                                    std::string s = goblin::generated::QUEST_BROWSER[i].name;
+                                    for (char &c : s) c = (char)tolower((unsigned char)c);
+                                    handNames.push_back(std::move(s));
+                                }
+                            }
+                            // Pass 1: resolve each candidate's (name, nameId); count nameId frequency
+                            // so GENERIC NPCs (merchants/mobs sharing one NpcName across many flags —
+                            // "Nomadic Merchant" ×N) drop out language-independently.
+                            std::vector<std::pair<std::string, int32_t>> resolved(cand.size());
+                            std::unordered_map<std::string, int> freq;  // by TEXT: merchants share distinct nameIds but identical text
+                            for (size_t i = 0; i < cand.size(); i++)
+                            {
+                                if (cand[i].handCovered) continue;  // pinned on the map, but not an "Other quest"
+                                for (uint32_t param : cand[i].npcParamIds)
+                                {
+                                    uint8_t team = 0;
+                                    int32_t nameId = 0;
+                                    if (goblin::npc_team_and_name(param, &team, &nameId) && nameId > 0)
+                                    {
+                                        std::string nm = goblin::lookup_text_utf8(nameId + 700000000);
+                                        if (!nm.empty()) { freq[nm]++; resolved[i] = {std::move(nm), nameId}; break; }
+                                    }
+                                }
+                            }
+                            // Pass 2: keep only named, non-generic, hand-uncovered candidates.
+                            for (size_t i = 0; i < cand.size(); i++)
+                            {
+                                if (cand[i].handCovered) continue;  // pinned on the map, but not an "Other quest"
+                                const std::string &nm = resolved[i].first;
+                                int32_t nameId = resolved[i].second;
+                                if (nm.empty()) continue;
+                                if (freq[nm] > 1) continue;               // generic (merchant/mob — same name on many flags)
+                                if (handNameIds.count(nameId)) continue;  // covered by a hand entry (language-independent)
+                                std::string ln = nm;
+                                for (char &ch : ln) ch = (char)tolower((unsigned char)ch);
+                                bool cov = false;
+                                for (const std::string &hn : handNames)
+                                    if (hn.size() >= 4 && (ln.find(hn) != std::string::npos || hn.find(ln) != std::string::npos))
+                                    { cov = true; break; }
+                                if (cov) continue;
+                                cand[i].name = nm;
+                                s_qfb.push_back(cand[i]);
+                            }
+                            if (!cand.empty())
+                                spdlog::info("[QUESTNPC] browser fallback: {} candidates -> {} shown "
+                                             "(hand-covered by {} name_ids + fail_flags)",
+                                             cand.size(), s_qfb.size(), (int)handNameIds.size());
+                        }
+                        if (!s_qfb.empty())
+                        {
+                            snprintf(gh, sizeof(gh), "Other quests \xE2\x80\x94 auto-detected (%zu)", s_qfb.size());
+                            if (ImGui::TreeNodeEx(gh))
+                            {
+                                ImGui::TextDisabled("Found in this mod's data; no step guide yet.");
+                                for (const auto &n : s_qfb)
+                                {
+                                    bool done = goblin::ui::read_event_flag(n.concluded);
+                                    ImGui::BulletText("%s  %s", n.name.c_str(),
+                                                      done ? "[concluded]" : "[in progress]");
+                                }
+                                ImGui::TreePop();
+                            }
+                        }
                     }
                     ImGui::EndChild();
                     ImGui::TextDisabled("Tick steps to track progress; Save to keep it. Original text.");

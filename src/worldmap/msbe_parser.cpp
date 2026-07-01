@@ -463,6 +463,49 @@ std::vector<EmevdAward> parse_emevd(const uint8_t *buf, size_t len)
     return out;
 }
 
+// Quest-NPC concluded/register handler: InitializeCommonEvent(0, 90005702, entity, concluded,
+// reg_lo, reg_hi). Same 64-bit EMEVD layout as parse_emevd; args at a+8/+12/+16/+20. Runtime
+// port of tools/extract_quest_npcs.py's 90005702 mine — the whole quest-NPC table comes from
+// this ONE template, so it is correct for any mod that adds/removes/relocates NPCs (no bake).
+std::vector<QuestNpcEmevd> parse_emevd_quest_npcs(const uint8_t *buf, size_t len)
+{
+    std::vector<QuestNpcEmevd> out;
+    if (len < 0x80 || std::memcmp(buf, "EVD\0", 4) != 0) return out;
+
+    uint64_t eventCount  = rd64(buf, 0x10);
+    uint64_t eventsOff   = rd64(buf, 0x18);
+    uint64_t instrTblOff = rd64(buf, 0x28);
+    uint64_t argsOff     = rd64(buf, 0x78);
+    if (eventCount > 1000000u) return out;
+
+    constexpr size_t EVENT_SZ = 0x30, INSTR_SZ = 0x20;
+    for (uint64_t i = 0; i < eventCount; ++i)
+    {
+        size_t e = (size_t)eventsOff + (size_t)i * EVENT_SZ;
+        if (!inb(e, EVENT_SZ, len)) break;
+        uint64_t instrCount  = rd64(buf, e + 0x08);
+        uint64_t instrOffset = rd64(buf, e + 0x10);
+        size_t base = (size_t)instrTblOff + (size_t)instrOffset;
+        if (instrCount > 1000000u) continue;
+        for (uint64_t j = 0; j < instrCount; ++j)
+        {
+            size_t ins = base + (size_t)j * INSTR_SZ;
+            if (!inb(ins, INSTR_SZ, len)) break;
+            if (rd32(buf, ins + 0x00) != EMEVD_INIT_BANK) continue;
+            uint64_t argLen = rd64(buf, ins + 0x08);
+            int32_t  argOff = (int32_t)rd32(buf, ins + 0x10);
+            if (argOff < 0 || argLen < 24) continue;  // need reg_hi @ a+20..24
+            size_t a = (size_t)argsOff + (size_t)argOff;
+            if (!inb(a, (size_t)argLen, len)) continue;
+            if (rd32(buf, a + 4) != 90005702u) continue;  // the quest-NPC concluded handler
+            QuestNpcEmevd q{ rd32(buf, a + 8), rd32(buf, a + 12), rd32(buf, a + 16), rd32(buf, a + 20) };
+            if ((int32_t)q.entity > 0 && (int32_t)q.concluded > 0 && q.regLo <= q.regHi)
+                out.push_back(q);
+        }
+    }
+    return out;
+}
+
 // Flag-award templates (World-feature graying) — distinct from the item-lot templates above:
 // the event init carries (entity, FLAG) instead of (entity, lot). Hero's Tomb instruction
 // statue = template 90005683 (args: visgate@8, entity@12, sfx@16, activated_flag@20; matches

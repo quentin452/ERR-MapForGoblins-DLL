@@ -2,10 +2,9 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01 (Linux session — the Alt+Tab bug (see recap below) took 3 rounds of
-fix-log-fix before the real root cause was found; user-confirmed fixed in-game, merging
-`diag/alt-tab-click-toggle` to master now. `feat/minimap-scale-cluster-search` still open,
-not yet verified in-game).
+Last updated: 2026-07-01 (`feat/quest-npc-layer` MERGED to master — quest NPC feature complete, its
+RESUME HERE is below the Alt+Tab recap. Earlier same day: Alt+Tab F1-input bug fixed + merged (see recap
+below; 3 rounds of fix-log-fix). `feat/minimap-scale-cluster-search` still open, not yet verified in-game).
 
 ## Session recap (2026-07-01) — Alt+Tab F1 input dead: root-caused after 3 rounds, fixed
 
@@ -202,6 +201,123 @@ not yet verified in-game).
 - User-confirmed fixed in-game via the exact repro. Changelog entry added.
 - Unrelated to this session's other branch (`feat/quest-npc-layer`, not touched/not merged) — that work
   is exactly where the prior session left it, see the recap below for its own status.
+## RESUME HERE (2026-07-01d) — Quest NPC feature COMPLETE (merged to master)
+
+- **State:** `feat/quest-npc-layer`, clean tree, build-clang + build-erte green (vanilla/convergence NOT
+  built — pre-existing CONFIGURE failure on an incomplete bake, unrelated). Deployed + live-verified on
+  ERR v2.2.9.6. Read `docs/memory/features/quest-browser.md` (the "ALL QUEST NPCs PINNED", NPC GLYPH,
+  GATE DELETED, PIN PLACEMENT, SEARCH BADGE notes are this session's).
+- **Landed this session (commits b672ae6, 977f785, fcf6544 + a pending cleanup commit):**
+  1. Real NPC map glyph `MENU_MAP_80` instead of a circle (mod-agnostic disk path, `category_meta.cpp`).
+  2. Pin ALL runtime quest NPCs (58 on ERR), not just the 3 hand-authored — `entity_world_pos(pinEntity)`
+     lookup; 3 hand NPCs keep step-following, rest static; unnamed/asset-placed NPCs pin too.
+  3. Deleted `quest_npc_quest_aware` (config/schema/getters/checkbox), `quest_npc_gated_out`, the layer
+     `done==0` skip — feature is no longer legacy/unfinished.
+  4. Merchant state fix: fallback pins show live `[concluded]`/`[in progress]` ONLY for hand-VETTED
+     death-distinct fail_flags; unvetted runtime flags (Kalé etc.) show neutral `optional`.
+  5. `[quest]` badge in the item search (goblin_overlay.cpp) for hits backed by a WorldQuestNPC pin.
+  6. PIN PLACEMENT fix: prefer a base-overworld placement (was pinning Blaidd on his stray Nokstella
+     underground copy → garbage pan). `[QUESTNPC-PIN]` diag (now gated behind `debug_logging`).
+- **Before merge (mostly done):** cleanups committed (stale comment + unused `goblin_quest_gates.hpp`
+  include removed; diag gated). **THE USER pushes/merges.**
+- **Follow-ups (not blocking merge):**
+  - `QUEST_GATES` generated data (`goblin_quest_gates.*`, 4 profiles) is now DEAD (no code consumer after
+    the gate removal) — remove via the generate pipeline in a separate change (harmless additive data now).
+  - 3 quest NPCs are `no-position` (extracted, no placement resolved → need their MSB source); 6 UG + 4
+    DLC pins are plausibly-correct underground/DLC NPCs (Deeproot Fia/D, DLC followers) — spot-check if desired.
+  - Boss-handler NPCs (`90005860`, e.g. Gurranq) NOT extracted (90005860 is EVERY boss's handler → would
+    flood pins). Needs a quest-vs-plain-boss signal.
+  - Tooltip quest/step prose is English (hand-authored) while the NPC name is localized.
+
+## Session recap (2026-07-01b) — feat_quests Phase 2: per-step entity_id sourced + wired (offline)
+
+## Session recap (2026-07-01b) — feat_quests Phase 2: per-step entity_id sourced + wired (offline)
+
+- **Sourced + wired real per-step `entity_id`** for the bootstrap set in
+  `src/generated/goblin_quest_steps.cpp` using `tools/_find_npc.py` (MSB placement lookup) joined to
+  `data/tile_region_map.json` (BonfireWarpParam-authoritative tile→region) — deduction by region match,
+  not guessing. Confident wires: **Alexander 1–5** (Stormhill / Gael Tunnel / Redmane / Mt. Gelmir /
+  Farum Azula — 1/4/5 exact subRegion match), **Thops 1/2/3** (Church of Irith ×2 / Academy classroom),
+  **Boc 1/5/6** (Limgrave bush / Altus ×2). Left `0` (no offline-disambiguable source): Boc 2 (Coastal
+  Cave), Boc 3/4 (two ambiguous Liurnia placements), Thops 4 (corpse — needs EMEVD/in-game).
+- **Resolved the two pre-existing candidate ids the prompt flagged:** `Boc 11050730` resolves to
+  **Leyndell, Ashen Capital** = NOT any of Boc's 6 steps → correctly NOT used. `Thops 1039390700`
+  resolves to **Liurnia (Church of Irith)** = step 1 → wired there.
+- **Two blockers fixed en route (untracked-artifact / tooling):** (1) `tools/_find_npc.py` crashed on
+  Windows (`frombytes` reused one temp filename while SoulsFormats keeps it memory-mapped) — now unique
+  per call + best-effort unlink. (2) `tools/gen_nonerr_stubs.py` only wrote stubs *if missing*, so the
+  verbatim-copied `.hpp` never tracked the schema migration and the synth `.cpp` never emitted the new
+  `quest_step_done` free function → **every non-ERR build was broken since the helper was added**. Now
+  refreshes hpp/cpp on content change and synthesizes no-op definitions for free functions.
+- **Builds:** `build-clang` (canonical `generated`) and `build-erte` both green. `build-vanilla` /
+  `build-convergence` still fail at CMake *configure* on missing `goblin_category_exceptions.hpp` etc. —
+  **pre-existing incomplete data bake on this machine, unrelated to quests** (needs the full per-profile
+  pipeline run; not attempted).
+- **progress_flag TRACED — structural finding blocks naive wiring (still 0).** Chased it TalkESD →
+  EMEVD offline (corpus IS present: `D:\tools\emevd_js\err`, 516 `.emevd.dcx.js`; my first-pass "no
+  corpus" was wrong — I'd checked the DarkScript3 TOOL dir, not its output). Each NPC's quest flags are a
+  **mutually-exclusive STATE REGISTER** (Boc ev3959 / Thops ev3819 / Alexander ev3679 in `common.emevd`):
+  `BatchSet(lo,hi,OFF)` then `Set(value,ON)` — advancing CLEARS the prior, so one flag == done would tick
+  then UNtick. Bonus: the register transitions are gated by AREA flags matching the entity_id regions,
+  independently confirming the pins. **DECISION (user): extend the schema — DONE.** Added
+  `QuestStep::progress_flag_max` (register hi); `quest_step_done` OR-scans
+  `[progress_flag..progress_flag_max]` (= register ≥ value), else plain terminal check.
+  `quest_npc_layer.cpp` active-step picker gained a `flag_floor` so a manual gap (Alexander's missable
+  Gael Tunnel) or a concluded quest no longer traps the pin on an early step. WIRED (confident, anchored
+  by transition location side-effects): Alexander steps 1/3/4/5 (`3666`/`3669`/`3670` register + `3663`
+  death), Thops step 4 (`3803` concluded), Boc step 6 (`3943` concluded); the rest stay manual (no
+  confident mapping / missable). Host-tested + build-clang & build-erte green. **Still NEXT:** in-game §7
+  visual verify (game not running); filling the remaining mid-steps (Alexander step 2, Boc & Thops steps
+  1-3) needs per-gate-flag RE or in-game capture. See `docs/memory/features/quest-browser.md`
+  (PROGRESS_FLAG STRUCTURAL FINDING + DECISION + IMPLEMENTED).
+
+## Session recap (2026-07-01) — feat_quests Phase 1: schema + entity-position cache + flag wiring + QuestNpcLayer
+
+- **Implemented `docs/plans/feat_quests_implementation_plan.md` Phase 1 on `feat/quest-npc-layer`
+  (forked from master, not merged).** Builds clean on `build-linux` (ERR profile); deployed to
+  `dll/offline/MapForGoblins.dll`. **Log-checked after the user ran it** (`dll/offline/logs/
+  MapForGoblins.log`, 2026-07-01 01:08-01:09): all AOB signatures PASS, zero errors/exceptions/AV,
+  `[BENCH] build.quest_npc: 0.01 ms` fired exactly once (not every refresh cycle) confirming `QuestNpcLayer`
+  is wired correctly and its cache/signature rebuild-skip works (no per-frame flag re-read). No regressions
+  detected elsewhere in ~25s of normal overlay activity. Still NOT *visually* verified (no map pins exist
+  yet to look at — see the unsourced-data note below) — this is a crash/wiring smoke-test, not a feature
+  verification. Before coding, re-verified the plan's §0 infra claims against current master and found 2
+  wrong (both corrected in the plan doc itself, not just here):
+  1. The "legacy `WorldQuestNPC` emission ~L1891" the plan wanted to retire was already gone — only a dead
+     skip-rule remained (`map_entry_layer.cpp`). Kept that skip-rule (didn't delete it, diverging from the
+     plan's literal text) as a guard: `erte`/`convergence`'s local bake is stale and not yet regenerated
+     (see `generated_data_removal_plan.md` Phase A), so deleting it now risks double-draw on those 2
+     profiles until that separate plan's regen lands.
+  2. "`prebuild_markers()` already builds a reusable entity→position index, REUSE don't duplicate" was
+     false — verified `prebuild_markers()` is a thin trigger shim; the `ent_enemy`/`ent_any` maps that do
+     exist are local to one disk-marker helper, not file-scope. Built a new `g_entity_pos` cache instead
+     (populated inside the EXISTING disk-worker pass, still zero extra parsing) — exposed as
+     `goblin::worldmap::entity_world_pos()`.
+  3. **New bug found + fixed, not in the original plan:** the disk-worker's enemy/asset enumeration was
+     gated behind unrelated loot toggles (`lootEnemyDrops`/`lootEmevdDrops`/`worldFeaturesFromDisk` etc) —
+     would have silently broken quest pins for anyone with all of those off. Forced enumeration on
+     whenever `show_quest_npc` is enabled.
+- **What's real and working:** schema (`QuestStep::progress_flag/entity_id`, `NpcQuest::name_id/
+  hostility_flag`), `entity_world_pos()` cache, `goblin::quest_step_done()` (shared by `qp_get`/`qp_set`
+  AND `QuestNpcLayer` so they can't disagree), `config::questAllowFlagWrite` cheat gate (default off,
+  read-only flag mirror with `[auto]` tag otherwise), hostility amber note, `QuestNpcLayer` itself
+  (epoch-signature cache, sole `WorldQuestNPC` producer, excluded from the generic category loop like
+  `GraceLayer`).
+- **What's deliberately NOT done — the actual next task:** `progress_flag`/`entity_id` are 0 for every
+  step of the bootstrap demo set (Boc/Alexander/Thops) → **QuestNpcLayer currently produces zero map
+  pins.** No EMEVD/MSB cross-reference tooling was available offline (Linux, no decrypted regulation) to
+  source real values safely. `name_id` WAS sourced for real (122310/122000/133300 from
+  `data/npc_name_text_map.json`). Two candidate `entity_id` values exist in a pre-existing comment in
+  `goblin_quest_steps.cpp` (Boc `11050730`, Thops `1039390700`) but weren't wired — unclear which of
+  their multiple steps (they relocate across the map) the placement belongs to; wiring blind risks pinning
+  the wrong location. Crash/wiring safety already confirmed (log above) — what's left is purely the
+  DATA. **NEXT (Windows, EMEVD+MSB tooling):** `docs/re/windows_quest_npc_progress_flags_re_prompt.md` —
+  source + verify real per-step `progress_flag`/`entity_id` for Boc/Alexander/Thops's 15 steps (uses the
+  existing `tools/_find_npc.py` MSB lookup + the in-overlay `debugEventFlags` coverage-gap hook
+  empirically, not blind reuse of the 2 unverified candidate ids or `quest_gates.py`'s wrong-semantics
+  flags), then visually verify in-game (exactly one marker, correct position, `questAllowFlagWrite` OFF
+  read-only behavior). Changelog entry deferred until this makes the feature actually user-visible (0 pins
+  = nothing to announce yet).
 
 ## Session recap (2026-06-30 LATE) — native GetMessage: RE resolved → refactor landed → visually confirmed on ERR
 
