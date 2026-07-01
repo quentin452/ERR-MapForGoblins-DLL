@@ -1,4 +1,5 @@
 #include "category_meta.hpp"
+#include "../goblin_overlay_render_api.hpp"
 
 #include "goblin_map_data.hpp" // Category enum
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS (baked-cell resolve)

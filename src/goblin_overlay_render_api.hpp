@@ -70,6 +70,7 @@ namespace goblin::overlay_api
     bool category_visible(int c);
     void set_category_visible(int c, bool v);
     const char *category_label(int c);
+    const char *section_label(int idx);
     int category_section(int c);
     int category_count();
     int section_count();

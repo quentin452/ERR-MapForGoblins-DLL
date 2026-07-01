@@ -1,9 +1,10 @@
 #include "quest_npc_layer.hpp"
+#include "../goblin_overlay_render_api.hpp"
 
 #include "category_meta.hpp"      // category_color
 #include "map_entry_layer.hpp"    // entity_world_pos
 #include "goblin_map_data.hpp"    // goblin::generated::Category
-#include "goblin_inject.hpp"      // goblin::ui::category_visible/section_visible/category_section
+#include "goblin_inject.hpp"      // goblin::overlay_api::category_visible/section_visible/category_section
 #include "goblin_quest_steps.hpp" // goblin::generated::QUEST_BROWSER, goblin::quest_step_done
 #include "goblin_config.hpp"      // config::questProgress
 #include "goblin_bench.hpp"       // GOBLIN_BENCH scoped timers
@@ -33,8 +34,8 @@ void set_quest_fallback_npcs(std::vector<QuestFallbackNpc> v)
 bool QuestNpcLayer::visible() const
 {
     const int g = static_cast<int>(goblin::generated::Category::WorldQuestNPC);
-    return goblin::ui::category_visible(g) &&
-           goblin::ui::section_visible(goblin::ui::category_section(g));
+    return goblin::overlay_api::category_visible(g) &&
+           goblin::overlay_api::section_visible(goblin::overlay_api::category_section(g));
 }
 
 const std::vector<Marker> &QuestNpcLayer::markers() const
@@ -48,13 +49,13 @@ const std::vector<Marker> &QuestNpcLayer::markers() const
     // ONCE here: folded into the signature below and reused by the build loop.
     const std::vector<QuestFallbackNpc> fb = quest_fallback_npcs();
 
-    size_t sig = std::hash<std::string>{}(goblin::config::questProgress);
+    size_t sig = std::hash<std::string>{}(goblin::overlay_api::cfg_questProgress_ref());
     for (size_t qi = 0; qi < QUEST_BROWSER_COUNT; qi++)
     {
         const NpcQuest &q = QUEST_BROWSER[qi];
         for (size_t s = 0; s < q.step_count; s++)
             if (q.steps[s].progress_flag)
-                sig = sig * 1000003u + (goblin::quest_step_done(q, s) ? (s + 1) : 0);
+                sig = sig * 1000003u + (goblin::overlay_api::quest_step_done(q, s) ? (s + 1) : 0);
     }
     // Fallback set: its content (concluded ids) + how many currently resolve to a world position.
     // The resolve-count changes 0→N once the disk entity index is built, so the pins appear on the
@@ -104,13 +105,13 @@ const std::vector<Marker> &QuestNpcLayer::markers() const
         // there, or a concluded quest would still pin step 1.
         long flag_floor = -1;
         for (size_t s = 0; s < q.step_count; s++)
-            if (q.steps[s].progress_flag && goblin::quest_step_done(q, s))
+            if (q.steps[s].progress_flag && goblin::overlay_api::quest_step_done(q, s))
                 flag_floor = static_cast<long>(s);
 
         size_t active = q.step_count; // sentinel = "no active (not-done) step"
         for (size_t s = 0; s < q.step_count; s++)
         {
-            if (goblin::quest_step_done(q, s) || static_cast<long>(s) <= flag_floor) continue;
+            if (goblin::overlay_api::quest_step_done(q, s) || static_cast<long>(s) <= flag_floor) continue;
             if (active == q.step_count) { active = s; break; } // first not-(effectively-)done step
         }
 
@@ -166,7 +167,7 @@ const std::vector<Marker> &QuestNpcLayer::markers() const
         {
             uint8_t team = 0;
             int32_t nid = 0;
-            if (goblin::npc_team_and_name(param, &team, &nid) && nid > 0) { nameId = nid; break; }
+            if (goblin::overlay_api::npc_team_and_name(param, &team, &nid) && nid > 0) { nameId = nid; break; }
         }
         if (nameId && handPinnedName.count(nameId))
             continue; // this NPC already has a richer step-following pin above

@@ -1,4 +1,5 @@
 #include "map_entry_layer.hpp"
+#include "../goblin_overlay_render_api.hpp"
 
 #include "category_meta.hpp"
 #include "loot_disk.hpp"       // disk-MSB loot source (DiskTreasure / load_disk_treasures) + load_quest_npcs
@@ -76,7 +77,7 @@ const std::unordered_set<uint32_t> kWatchLots = {
 };
 inline void watch_lot(uint32_t lot, const char *stage, const std::string &detail = "")
 {
-    if (!goblin::config::diagLootPos || !kWatchLots.count(lot)) return;
+    if (!(*goblin::overlay_api::cfg_diagLootPos_ptr()) || !kWatchLots.count(lot)) return;
     spdlog::info("[WATCH] lot={} {}{}{}", lot, stage, detail.empty() ? "" : " ", detail);
 }
 
@@ -179,20 +180,20 @@ void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST
     namespace gen = goblin::generated;
     int ga;
     float wx, wz;
-    goblin::marker_world_pos(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ, ga, wx, wz,
+    goblin::overlay_api::marker_world_pos(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ, ga, wx, wz,
                              /*conv_underground=*/true);
     int grp = goblin::marker_group_from(d.areaNo, ga);
     int pname = -1;
-    int ckey = goblin::marker_cluster_key(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ, &pname);
-    int frag = goblin::marker_fragment_flag(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ);
+    int ckey = goblin::overlay_api::marker_cluster_key(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ, &pname);
+    int frag = goblin::overlay_api::marker_fragment_flag(d.areaNo, d.gridXNo, d.gridZNo, d.posX, d.posZ);
     // Lot-backed loot: resolve the LIVE pickup flag (baked textDisableFlagId1 is
     // stale under ERR/randomizer) so collected loot grays + the census decrements.
-    int collected_flag = (int)goblin::resolve_loot_flag(lotId, lotType, d.textDisableFlagId1);
-    goblin::diag_loot_flags(lotId, lotType, d.textDisableFlagId1, c, d.textId1);
+    int collected_flag = (int)goblin::overlay_api::resolve_loot_flag(lotId, lotType, d.textDisableFlagId1);
+    goblin::overlay_api::diag_loot_flags(lotId, lotType, d.textDisableFlagId1, c, d.textId1);
     // Item IDENTITY (name/icon key) is read LIVE from ItemLotParam for lot-backed markers, so the
     // marker shows the item ERR actually placed (drift-proof); non-lot rows + any miss fall back to
     // the baked textId1. setup_messages preloads the FMG name for this SAME resolved key.
-    const int32_t name_id = goblin::resolve_loot_item_textid(lotId, lotType, d.textId1);
+    const int32_t name_id = goblin::overlay_api::resolve_loot_item_textid(lotId, lotType, d.textId1);
     Marker m{wx, wz, grp, (int)d.areaNo, c, ckey, pname, name_id,
              category_color(c), category_icon_key(c), frag,
              row_id, (int)d.clearedEventFlagId, collected_flag};
@@ -220,14 +221,14 @@ void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST
     // offset-encoded item key (>=100M) on a live hit, 0 on a miss; item_real_icon_id maps that key to the
     // EquipParam iconId. Any miss leaves item_icon_id=0 so the renderer falls back to the category rep.
     if (m.lot_backed) {
-        const int32_t key = goblin::resolve_loot_item_textid(lotId, lotType, 0);
+        const int32_t key = goblin::overlay_api::resolve_loot_item_textid(lotId, lotType, 0);
         if (key >= 100000000) {
-            const int icon = goblin::item_real_icon_id(key);
+            const int icon = goblin::overlay_api::item_real_icon_id(key);
             if (icon > 0) m.item_icon_id = icon;
         }
         // Stacking: a lot can bundle several items (multiple slots, or qty>1 on slot 01) — the
         // marker still draws slot-01's icon/name but carries the total count for the "×N" badge.
-        m.count = goblin::lot_item_count(lotId, lotType);
+        m.count = goblin::overlay_api::lot_item_count(lotId, lotType);
     }
     g_buckets[c].push_back(m);
 }
@@ -270,7 +271,7 @@ void emit_lot_siblings(uint32_t baseLot,
             if (st.stopSet && st.stopSet->count(sub)) break;      // next bundle's base → chain ends
             uint32_t sflag = 0;
             int32_t skey = 0;
-            if (!goblin::lot_row_in_table(sub, st.tbl, &sflag, &skey)) break;  // param gap → chain ends
+            if (!goblin::overlay_api::lot_row_in_table(sub, st.tbl, &sflag, &skey)) break;  // param gap → chain ends
             if (sflag == 0 || skey == 0) continue;                // exists but repeatable/empty
             if ((skipA && skipA->count(sub)) || (skipB && skipB->count(sub))) continue;  // owned elsewhere
             if (!sib_seen.insert(sub).second) continue;           // already emitted as a sibling
@@ -279,9 +280,9 @@ void emit_lot_siblings(uint32_t baseLot,
                 int32_t gid = skey - 500000000;
                 if (gid == 800010 || gid == 850010) { ++out.runeember; watch_lot(sub, "skip-sibling", "rune/ember"); continue; }
             }
-            int scat = goblin::item_marker_category(skey);
+            int scat = goblin::overlay_api::item_marker_category(skey);
             bool slc = false;
-            if (scat < 0) { scat = goblin::classify_item_live(skey); slc = (scat >= 0); }
+            if (scat < 0) { scat = goblin::overlay_api::classify_item_live(skey); slc = (scat >= 0); }
             if (scat < 0 || scat >= NUM_CAT) { ++out.unclassified; watch_lot(sub, "skip-sibling", "unclassified"); continue; }
             from::paramdef::WORLD_MAP_POINT_PARAM_ST sd = at;
             push_marker(/*row_id=*/sub, sd, scat, sub, /*lotType=*/st.tbl, Source::DiskMSB, slc);
@@ -318,7 +319,7 @@ void build_live_bosses()
             // skips drawing it, leaving the overlay as the sole boss source (no double icon). Safe
             // because push_marker already snapshotted pos/name/icon and it IGNORES dispMask, so our
             // marker is unaffected. `row` is a reference into live param memory (params.hpp).
-            if (goblin::config::suppressNativeBosses)
+            if ((*goblin::overlay_api::cfg_suppressNativeBosses_ptr()))
             {
                 row.dispMask00 = false;
                 row.dispMask01 = false;
@@ -371,17 +372,17 @@ static void build_disk_loot_markers(const std::vector<DiskTreasure> &treasures,
         // Identity/category from the LIVE lot (lotType 1 = ItemLotParam_map). textId1
         // stays -1 and the flags 0, so push_marker resolves the item + pickup flag
         // live (the lot-backed path) — exactly like a baked lot-backed row.
-        int32_t key = goblin::resolve_loot_item_textid(t.lotId, 1, -1);
+        int32_t key = goblin::overlay_api::resolve_loot_item_textid(t.lotId, 1, -1);
         // Region Map fragments are owned by the dedicated build_disk_maps_markers pass (routed to
         // WorldMaps). Skip them here so the same pickup isn't ALSO emitted into a generic Loot bucket
         // — without this the live fallback (no map case) filed every disk-placed map under Crafting
         // Materials, drawing each map twice (surfaced by docs/item_classification.md). ER's own
         // sortGroupId 190/191 via goods_is_map; map goods carry the +500M goods encoding.
-        if (key >= 500000000 && goblin::goods_is_map(key - 500000000))
+        if (key >= 500000000 && goblin::overlay_api::goods_is_map(key - 500000000))
         { watch_lot(t.lotId, "skip-treasure", "map-routed"); continue; }
-        int c = goblin::item_marker_category(key);
+        int c = goblin::overlay_api::item_marker_category(key);
         bool lc = false;
-        if (c < 0) { c = goblin::classify_item_live(key); lc = (c >= 0); }  // live fallback (any mod / unbaked item)
+        if (c < 0) { c = goblin::overlay_api::classify_item_live(key); lc = (c >= 0); }  // live fallback (any mod / unbaked item)
         if (c < 0 || c >= NUM_CAT)
         {
             ++unclassified;  // item type genuinely unknown → no bucket
@@ -444,7 +445,7 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
     int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, piece_emitted = 0, clutter_skip = 0;
     uint64_t next_rt = 0;  // running index for synthetic runtime geom row_ids (pieces)
     std::vector<goblin::collected::RuntimeEntry> rt_entries;  // pieces to register for graying
-    const bool verbose = goblin::config::diagLootPos;
+    const bool verbose = (*goblin::overlay_api::cfg_diagLootPos_ptr());
     std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
     // [DEBAKE-RECOVER] sizing (verbose only): how much of the non-_8xx "clutter" actually carries
     // recoverable loot. The 328 DEBAKE-GAP = corpse/body pickups (AEG099_630/090, …) the _8xx filter
@@ -460,21 +461,21 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
         // exact filter); one-shot breakable clutter (pots/jars/corpses, AEG099_68x/72x/73x,
         // AEG463_65x) is isEnableRepick=false → skipped. This emits EVERY gather node, including
         // the _6xx/_7xx/_9xx ones the bake's "Material Nodes" category covered (no model table).
-        if (!goblin::aeg_is_gather(c.aegRow))
+        if (!goblin::overlay_api::aeg_is_gather(c.aegRow))
         {
             ++clutter_skip;
             if (verbose)  // size the recoverable corpse-loot inside the excluded clutter
             {
-                uint32_t clot = goblin::aeg_pickup_lot(c.aegRow);
+                uint32_t clot = goblin::overlay_api::aeg_pickup_lot(c.aegRow);
                 if (clot != 0)
                 {
                     ++rec_pickup;
                     if (treasure_lots.count(clot)) ++rec_dup;  // already placed by the treasure pass
-                    if (goblin::resolve_loot_flag(clot, 1, 0) != 0)
+                    if (goblin::overlay_api::resolve_loot_flag(clot, 1, 0) != 0)
                     { ++rec_flagged; rec_flag_lots.insert(clot); }   // one-time loot spot
-                    int32_t ckey = goblin::resolve_loot_item_textid(clot, 1, -1);
-                    int ccat = goblin::item_marker_category(ckey);
-                    if (ccat < 0) ccat = goblin::classify_item_live(ckey);
+                    int32_t ckey = goblin::overlay_api::resolve_loot_item_textid(clot, 1, -1);
+                    int ccat = goblin::overlay_api::item_marker_category(ckey);
+                    if (ccat < 0) ccat = goblin::overlay_api::classify_item_live(ckey);
                     // Equip* = the first 5 Category enumerators (Armaments..Talismans).
                     if (ccat >= 0 && ccat <= (int)goblin::generated::Category::EquipTalismans)
                         ++rec_equip;
@@ -527,13 +528,13 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
             ++piece_emitted;
             continue;
         }
-        uint32_t lot = goblin::aeg_pickup_lot(c.aegRow);  // live param chain (0 = not a pickup)
+        uint32_t lot = goblin::overlay_api::aeg_pickup_lot(c.aegRow);  // live param chain (0 = not a pickup)
         if (lot == 0) { ++no_lot; continue; }
         if (treasure_lots.count(lot)) { ++dup; continue; }  // a Treasure ground-item, already placed
-        int32_t key = goblin::resolve_loot_item_textid(lot, 1, -1);
-        int cat = goblin::item_marker_category(key);
+        int32_t key = goblin::overlay_api::resolve_loot_item_textid(lot, 1, -1);
+        int cat = goblin::overlay_api::item_marker_category(key);
         bool lc = false;
-        if (cat < 0) { cat = goblin::classify_item_live(key); lc = (cat >= 0); }  // live fallback (any mod / unbaked item)
+        if (cat < 0) { cat = goblin::overlay_api::classify_item_live(key); lc = (cat >= 0); }  // live fallback (any mod / unbaked item)
         if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
         d.areaNo = c.area;
@@ -581,7 +582,7 @@ static void build_disk_collectible_markers(const std::vector<DiskCollectible> &c
     // into the tracking maps on the refresh thread — see goblin_collected). One-time per disk build.
     // After Phase 2 (bake deleted) this is the SOLE source of the geom tracking — the MAP_ENTRIES seed
     // in goblin_collected::initialize is gone, so every geom-grayed marker must register here.
-    goblin::collected::register_runtime_entries(std::move(rt_entries));
+    goblin::overlay_api::register_runtime_entries(std::move(rt_entries));
 
     spdlog::info("[LOOTDISK] collectibles: {} markers emitted ({} assets total, {} non-ERR clutter "
                  "(pots/jars), {} not-a-pickup, {} treasure-dup, {} unclassified, {} rune/ember pieces)",
@@ -636,7 +637,7 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
 {
     GOBLIN_BENCH("build.disk_enemies");
     int emitted = 0, no_lot = 0, unclassified = 0, dup = 0, respawn = 0, lot_dup = 0;
-    const bool verbose = goblin::config::diagLootPos;
+    const bool verbose = (*goblin::overlay_api::cfg_diagLootPos_ptr());
     std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
     std::unordered_set<uint32_t> seen;      // dedup by lot (one marker per notable lot)
     for (const DiskEnemy &en : enemies)
@@ -646,18 +647,18 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
         // parsed-but-uncovered lot (map-preferred or filtered → recoverable) from a never-parsed
         // one (MSB scope miss). Diag-only (set passed only when lootFromDiskMsb).
         if (parsed_enemy_lots)
-            if (int32_t el = goblin::npc_item_lot_enemy(en.npcParamId); el > 0)
+            if (int32_t el = goblin::overlay_api::npc_item_lot_enemy(en.npcParamId); el > 0)
                 parsed_enemy_lots->insert((uint32_t)el);
         uint8_t lt = 0;
-        uint32_t lot = goblin::npc_loot_lot(en.npcParamId, &lt);  // live NpcParam chain
+        uint32_t lot = goblin::overlay_api::npc_loot_lot(en.npcParamId, &lt);  // live NpcParam chain
         if (lot == 0) { ++no_lot; continue; }
         if (treasure_lots.count(lot)) { ++dup; watch_lot(lot, "skip-enemy", "treasure-dup"); continue; }  // already a Treasure ground item
-        if (goblin::resolve_loot_flag(lot, lt, 0) == 0) { ++respawn; watch_lot(lot, "skip-enemy", "no-one-time-flag"); continue; }  // not a one-time drop
+        if (goblin::overlay_api::resolve_loot_flag(lot, lt, 0) == 0) { ++respawn; watch_lot(lot, "skip-enemy", "no-one-time-flag"); continue; }  // not a one-time drop
         if (!seen.insert(lot).second) { ++lot_dup; continue; }  // a notable lot already placed
-        int32_t key = goblin::resolve_loot_item_textid(lot, lt, -1);
-        int cat = goblin::item_marker_category(key);
+        int32_t key = goblin::overlay_api::resolve_loot_item_textid(lot, lt, -1);
+        int cat = goblin::overlay_api::item_marker_category(key);
         bool lc = false;
-        if (cat < 0) { cat = goblin::classify_item_live(key); lc = (cat >= 0); }  // live fallback (any mod / unbaked)
+        if (cat < 0) { cat = goblin::overlay_api::classify_item_live(key); lc = (cat >= 0); }  // live fallback (any mod / unbaked)
         if (cat < 0 || cat >= NUM_CAT) { ++unclassified; watch_lot(lot, "skip-enemy", "unclassified"); continue; }
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
         d.areaNo = en.area;
@@ -686,14 +687,14 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
     for (const DiskEnemy &en : enemies)
     {
         uint8_t blt = 0;
-        if (uint32_t l = goblin::npc_loot_lot(en.npcParamId, &blt)) enemy_bases.insert(l);
+        if (uint32_t l = goblin::overlay_api::npc_loot_lot(en.npcParamId, &blt)) enemy_bases.insert(l);
     }
     SibCounts sib;
     std::unordered_set<uint32_t> sib_seen, walked_bases;
     for (const DiskEnemy &en : enemies)
     {
         uint8_t lt = 0;
-        uint32_t lot = goblin::npc_loot_lot(en.npcParamId, &lt);
+        uint32_t lot = goblin::overlay_api::npc_loot_lot(en.npcParamId, &lt);
         if (lot == 0 || !walked_bases.insert(lot).second) continue;  // no lot / base already walked
         from::paramdef::WORLD_MAP_POINT_PARAM_ST at{};
         at.areaNo = en.area;
@@ -796,7 +797,7 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
     int boss_piece_emitted = 0, boss_piece_no_piece = 0;  // boss-reward Rune/Ember Piece recovery
     // Mechanism C (sequence-sibling) diag.
     SibCounts sib;
-    const bool verbose = goblin::config::diagLootPos;
+    const bool verbose = (*goblin::overlay_api::cfg_diagLootPos_ptr());
     std::unordered_map<int, int> per_cat;  // category → emitted count (diag)
     std::unordered_set<uint64_t> seen;      // dedup by (entity<<32 | lot)
     std::unordered_set<uint32_t> sib_seen;  // sub-lots already emitted (mechanism C dedup)
@@ -832,7 +833,7 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
                 {
                     uint32_t sub = a.lotId + off;
                     uint32_t sflag = 0; int32_t skey = 0;
-                    if (!goblin::lot_row_in_table(sub, 1, &sflag, &skey)) continue;
+                    if (!goblin::overlay_api::lot_row_in_table(sub, 1, &sflag, &skey)) continue;
                     if (skey < 500000000 || skey >= 600000000) continue;
                     int32_t gid = skey - 500000000;
                     if (gid != 800010 && gid != 850010) continue;
@@ -880,14 +881,14 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
         // Resolve identity with the award's lotType hint (1 = ItemLotParam_map / direct,
         // 2 = ItemLotParam_enemy / event-1200 boss drop), falling back to the other table.
         uint8_t lt = a.lotType;
-        int32_t key = goblin::resolve_loot_item_textid(a.lotId, lt, -1);
+        int32_t key = goblin::overlay_api::resolve_loot_item_textid(a.lotId, lt, -1);
         // Region Map fragment granted by an EMEVD award (the Altus Plateau map dropped by a scarab,
         // 90005300 @m60_39_51): no MSB Treasure, so build_disk_maps_markers misses it, and the loot
         // classifier deliberately skips map goods (→ it would otherwise fall to unclassified and stay
         // baked). Route it to WorldMaps here + record its cell so the finalize cell-dedup drops the
         // baked twin (bake pos == the scarab pos → same cell). Only when the maps pass is active
         // (maps_cells != null), else there's no dedup target and we'd draw a duplicate.
-        if (maps_cells && key >= 500000000 && goblin::goods_is_map(key - 500000000))
+        if (maps_cells && key >= 500000000 && goblin::overlay_api::goods_is_map(key - 500000000))
         {
             const int mcat = static_cast<int>(goblin::generated::Category::WorldMaps);
             from::paramdef::WORLD_MAP_POINT_PARAM_ST md{};
@@ -899,16 +900,16 @@ static void build_disk_emevd_markers(const std::vector<DiskEmevd> &awards,
             ++emitted;
             continue;
         }
-        int cat = goblin::item_marker_category(key);
+        int cat = goblin::overlay_api::item_marker_category(key);
         bool lc = false;
-        if (cat < 0) { cat = goblin::classify_item_live(key); lc = (cat >= 0); }
+        if (cat < 0) { cat = goblin::overlay_api::classify_item_live(key); lc = (cat >= 0); }
         if (cat < 0 || cat >= NUM_CAT)
         {
             uint8_t other = (uint8_t)(a.lotType == 1 ? 2 : 1);
-            int32_t key2b = goblin::resolve_loot_item_textid(a.lotId, other, -1);
-            int cat2 = goblin::item_marker_category(key2b);
+            int32_t key2b = goblin::overlay_api::resolve_loot_item_textid(a.lotId, other, -1);
+            int cat2 = goblin::overlay_api::item_marker_category(key2b);
             bool lc2 = false;
-            if (cat2 < 0) { cat2 = goblin::classify_item_live(key2b); lc2 = (cat2 >= 0); }
+            if (cat2 < 0) { cat2 = goblin::overlay_api::classify_item_live(key2b); lc2 = (cat2 >= 0); }
             if (cat2 >= 0 && cat2 < NUM_CAT) { lt = other; key = key2b; cat = cat2; lc = lc2; }
         }
         if (cat < 0 || cat >= NUM_CAT) { ++unclassified; continue; }
@@ -1280,7 +1281,7 @@ static int build_disk_hostile_npc_markers(
         if (e.entityId == 0) { ++no_entity; continue; }  // placed only (not script-spawned)
         uint8_t team = 0;
         int32_t name = 0;
-        if (!goblin::npc_team_and_name(e.npcParamId, &team, &name)) { ++not_invader; continue; }
+        if (!goblin::overlay_api::npc_team_and_name(e.npcParamId, &team, &name)) { ++not_invader; continue; }
         if ((team != 24 && team != 27) || name <= 0) { ++not_invader; continue; }
         std::string pk = std::to_string(e.area) + "_" + std::to_string(e.gx) + "_" +
                          std::to_string(e.gz) + "_" + std::to_string((long)std::lround(e.posX * 10.0f)) +
@@ -1411,10 +1412,10 @@ static int build_disk_maps_markers(const std::vector<DiskTreasure> &treasures,
     std::unordered_set<int32_t> seen;  // by goods id (one icon per map)
     for (const DiskTreasure &t : treasures)
     {
-        const int32_t key = goblin::resolve_loot_item_textid(t.lotId, 1, -1);
+        const int32_t key = goblin::overlay_api::resolve_loot_item_textid(t.lotId, 1, -1);
         if (key < 500000000) continue;             // not a goods item (goods = +500M encoding)
         const int32_t gid = key - 500000000;
-        if (!goblin::goods_is_map(gid)) continue;  // not a region map fragment
+        if (!goblin::overlay_api::goods_is_map(gid)) continue;  // not a region map fragment
         if (!seen.insert(gid).second) { ++dup; continue; }
         from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
         d.areaNo = t.area;
@@ -1638,7 +1639,7 @@ void annotate_item_stacks()
     int grouped_total = 0, group_count = 0;
     for (int c = 0; c < (int)g_buckets.size(); ++c)
     {
-        if (goblin::ui::category_section(c) != /*G_LOOT*/ 2) continue;
+        if (goblin::overlay_api::category_section(c) != /*G_LOOT*/ 2) continue;
         auto &bucket = g_buckets[c];
         const int n = (int)bucket.size();
         if (n < 2) continue;
@@ -1701,7 +1702,7 @@ void annotate_item_stacks()
 // capture_live_graces (dllmain orders it before the build). See offpage_altitude_via_grace_plan.md.
 void assign_grace_altitude_refs()
 {
-    const auto &graces = goblin::live_graces();
+    const auto &graces = goblin::overlay_api::live_graces();
     if (graces.empty()) return;
     struct G { float x, z, y; };
     std::unordered_map<int, std::vector<G>> by_area;   // areaNo → graces (area-local x/z, block-local y)
@@ -1797,7 +1798,7 @@ void build_buckets_impl()
         // vectors — so the enemy/asset enumeration must run whenever that layer is active,
         // independent of the unrelated loot toggles (otherwise quest pins would silently
         // stop resolving whenever the user has all 3 loot sources off).
-        const bool wantQuestNpcs = goblin::config::showCategory[static_cast<int>(gen::Category::WorldQuestNPC)];
+        const bool wantQuestNpcs = goblin::overlay_api::cfg_showCategory_ptr()[static_cast<int>(gen::Category::WorldQuestNPC)];
         // World features need enemies too (Hostile NPC invaders ride the enemy enumeration).
         const bool wantEnemies = goblin::config::lootEnemyDrops || goblin::config::lootEmevdDrops ||
                                  goblin::config::worldFeaturesFromDisk || wantQuestNpcs;
@@ -1847,14 +1848,14 @@ void build_buckets_impl()
             {
                 if (!en.entityId) continue;
                 int ga = 0; float wx = 0.0f, wz = 0.0f;
-                if (goblin::marker_world_pos(en.area, en.gx, en.gz, en.posX, en.posZ, ga, wx, wz))
+                if (goblin::overlay_api::marker_world_pos(en.area, en.gx, en.gz, en.posX, en.posZ, ga, wx, wz))
                     g_entity_pos[en.entityId] = {wx, wz, goblin::marker_group_from(en.area, ga)};
             }
             for (const auto &as : disk_collectibles)
             {
                 if (!as.entityId || g_entity_pos.count(as.entityId)) continue;
                 int ga = 0; float wx = 0.0f, wz = 0.0f;
-                if (goblin::marker_world_pos(as.area, as.gx, as.gz, as.posX, as.posZ, ga, wx, wz))
+                if (goblin::overlay_api::marker_world_pos(as.area, as.gx, as.gz, as.posX, as.posZ, ga, wx, wz))
                     g_entity_pos[as.entityId] = {wx, wz, goblin::marker_group_from(as.area, ga)};
             }
             std::vector<QuestNpcRuntime> qnpcs = load_quest_npcs();
@@ -1908,7 +1909,7 @@ void build_buckets_impl()
             // (grp!=0) is suspect — the picked placement's map isn't where the NPC's quest is (e.g. an
             // underground c-model instance). Logs the concluded flag + pinEntity so it cross-refs to the
             // MSB index. Gated so a normal run stays quiet; enable debug_logging to catch a future mis-pin.
-            if (goblin::config::debugLogging)
+            if ((*goblin::overlay_api::cfg_debugLogging_ptr()))
             {
                 int g0 = 0, gUG = 0, gDLC = 0;
                 for (const QuestFallbackNpc &n : cand)
@@ -1971,7 +1972,7 @@ void build_buckets_impl()
             for (const DiskRegion &r : disk_regions)
             {
                 if (r.name.rfind("KindlingSpirit_", 0) != 0) continue;
-                uint64_t rid = goblin::kindling::region_row_id(r.name.c_str());
+                uint64_t rid = goblin::overlay_api::kindling_region_row_id(r.name.c_str());
                 if (!rid) continue;
                 from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
                 d.areaNo = r.area;
@@ -2061,7 +2062,7 @@ void build_buckets_impl()
     const bool diag = goblin::config::lootFromDiskMsb;
     // Per-lot enumeration (disk-only + RECOVER-LATER lines) is verbose; gate it
     // behind diag_loot_pos so normal feature use only emits the summary totals.
-    const bool verbose = goblin::config::diagLootPos;
+    const bool verbose = (*goblin::overlay_api::cfg_diagLootPos_ptr());
     std::unordered_set<uint32_t> baked_lot1, baked_any;
 
     int replaced = 0;
@@ -2110,9 +2111,9 @@ void build_buckets_impl()
     // a merchant (ERR's shop sells most weapons / gloveworts / etc.). Built once; a baked loot row
     // whose resolved item key is in here AND reached this loop (no disk pass reproduced it) is dropped.
     const std::unordered_set<int32_t> shop_inf_keys =
-        goblin::config::dropMerchantPhantoms ? build_shop_infinite_keys()
+        (*goblin::overlay_api::cfg_dropMerchantPhantoms_ptr()) ? build_shop_infinite_keys()
                                              : std::unordered_set<int32_t>{};
-    if (goblin::config::dropMerchantPhantoms)
+    if ((*goblin::overlay_api::cfg_dropMerchantPhantoms_ptr()))
         spdlog::info("[LOOTDISK] merchant-phantom drop: {} infinite-stock shop item keys (live ShopLineupParam)",
                      (int)shop_inf_keys.size());
     for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
@@ -2172,7 +2173,7 @@ void build_buckets_impl()
                 ++replaced_kindling;
                 continue;  // disk twin owns it
             }
-            uint64_t rid = e.object_name ? goblin::kindling::region_row_id(e.object_name) : 0;
+            uint64_t rid = e.object_name ? goblin::overlay_api::kindling_region_row_id(e.object_name) : 0;
             if (rid)
             {
                 push_marker(rid, e.data, c, /*lotId=*/0u, /*lotType=*/0u, Source::Baked);
@@ -2242,13 +2243,13 @@ void build_buckets_impl()
         // marker's own item key (resolve_loot_item_textid). lotId != 0 keeps World features safe.
         if (!shop_inf_keys.empty() && e.lotId != 0)
         {
-            int32_t mkey = goblin::resolve_loot_item_textid(e.lotId, e.lotType, e.data.textId1);
+            int32_t mkey = goblin::overlay_api::resolve_loot_item_textid(e.lotId, e.lotType, e.data.textId1);
             if (mkey != 0 && shop_inf_keys.count(mkey))
             {
                 ++dropped_merchant;
                 if (verbose)
                     spdlog::info("[MERCHANT-PHANTOM] drop cat=\"{}\" lot={} lt={} key={} m{}_{}_{}",
-                                 goblin::markers::category_name(static_cast<gen::Category>(c)),
+                                 goblin::overlay_api::markers_category_name(static_cast<gen::Category>(c)),
                                  e.lotId, (int)e.lotType, mkey, e.data.areaNo, e.data.gridXNo,
                                  e.data.gridZNo);
                 continue;
@@ -2301,7 +2302,7 @@ void build_buckets_impl()
             ++gap_by_area[e.data.areaNo];
             if (verbose)
             {
-                int32_t key = goblin::resolve_loot_item_textid(e.lotId, 1, -1);
+                int32_t key = goblin::overlay_api::resolve_loot_item_textid(e.lotId, 1, -1);
                 spdlog::info("[DEBAKE-GAP] uncovered Treasure lot {} @ m{}_{}_{} key={} cat={}{}{} "
                              "(baked-only; disk did not place it)",
                              e.lotId, e.data.areaNo, e.data.gridXNo, e.data.gridZNo, key, c,
@@ -2332,7 +2333,7 @@ void build_buckets_impl()
             ++enemy_uncov_by_area[e.data.areaNo];
             if (verbose)
             {
-                int32_t key = goblin::resolve_loot_item_textid(e.lotId, e.lotType, -1);
+                int32_t key = goblin::overlay_api::resolve_loot_item_textid(e.lotId, e.lotType, -1);
                 spdlog::info("[ENEMY-MARKERS] uncovered lot={} m{}_{}_{} cat={} key={} npc={} [{}]",
                              e.lotId, e.data.areaNo, e.data.gridXNo, e.data.gridZNo,
                              static_cast<int>(e.category), key,
@@ -2349,12 +2350,12 @@ void build_buckets_impl()
             // across sources — feeds the offline by-family orphan-lot batch probe (tools/_probe_enemy_
             // residual.py). Supersedes the source-specific [DEBAKE-GAP]/[ENEMY-MARKERS] per-row dumps
             // for a single grep-able feed: cat name (family = prefix), source, lot+lotType, tile, key.
-            if (goblin::config::diagLootPos && e.lotId != 0)
+            if ((*goblin::overlay_api::cfg_diagLootPos_ptr()) && e.lotId != 0)
             {
                 static const char *SRCN[4] = {"unknown", "treasure", "enemy", "emevd"};
-                int32_t rkey = goblin::resolve_loot_item_textid(e.lotId, e.lotType, e.data.textId1);
+                int32_t rkey = goblin::overlay_api::resolve_loot_item_textid(e.lotId, e.lotType, e.data.textId1);
                 spdlog::info("[RESIDUAL-ROW] cat=\"{}\" src={} lot={} lt={} m{}_{}_{} key={}",
-                             goblin::markers::category_name(static_cast<gen::Category>(c)),
+                             goblin::overlay_api::markers_category_name(static_cast<gen::Category>(c)),
                              SRCN[static_cast<int>(e.loot_source) & 3], e.lotId, (int)e.lotType,
                              e.data.areaNo, e.data.gridXNo, e.data.gridZNo, rkey);
             }
@@ -2378,7 +2379,7 @@ void build_buckets_impl()
         spdlog::info("[LOOTDISK] replaced {} baked enemy rows with disk enemy placements", replaced_enemy);
     if (goblin::config::lootEmevdDrops)
         spdlog::info("[LOOTDISK] replaced {} baked emevd rows with disk EMEVD placements", replaced_emevd);
-    if (goblin::config::dropMerchantPhantoms)
+    if ((*goblin::overlay_api::cfg_dropMerchantPhantoms_ptr()))
         spdlog::info("[LOOTDISK] dropped {} baked merchant-phantom markers (item sold infinite-stock in "
                      "ShopLineupParam, no disk twin — bake fallback at tile corner)", dropped_merchant);
     g_skip.merchant_phantom = dropped_merchant;
@@ -2424,7 +2425,7 @@ void build_buckets_impl()
             std::string cat_hist, area_hist;
             for (const auto &kv : gap_by_cat)
             {
-                cat_hist += goblin::markers::category_name(static_cast<gen::Category>(kv.first));
+                cat_hist += goblin::overlay_api::markers_category_name(static_cast<gen::Category>(kv.first));
                 cat_hist += '=' + std::to_string(kv.second) + ' ';
             }
             for (const auto &kv : gap_by_area)
@@ -2453,7 +2454,7 @@ void build_buckets_impl()
                          tot[0], tot[1], tot[2], tot[3], tot[0] + tot[1] + tot[2] + tot[3]);
             for (const auto &kv : per_cat)
                 spdlog::info("[RESIDUAL-SRC]   {}: unk={} trea={} enem={} emev={}",
-                             goblin::markers::category_name(static_cast<gen::Category>(kv.first)),
+                             goblin::overlay_api::markers_category_name(static_cast<gen::Category>(kv.first)),
                              kv.second[0], kv.second[1], kv.second[2], kv.second[3]);
         }
         // Disk-only lots (placed by the disk but NOT in the bake's lotType==1 slice).
@@ -2469,7 +2470,7 @@ void build_buckets_impl()
             if (verbose && shown < 25)
             {
                 uint32_t tk = disk_lot_tile.count(lot) ? disk_lot_tile[lot] : 0;
-                int32_t key = goblin::resolve_loot_item_textid(lot, 1, -1);
+                int32_t key = goblin::overlay_api::resolve_loot_item_textid(lot, 1, -1);
                 spdlog::info("[LOOTDISK]   disk-only lot {} @ m{}_{}_{} key={} ({})", lot,
                              (tk >> 16) & 0xff, (tk >> 8) & 0xff, tk & 0xff, key,
                              as_enemy ? "baked-as-enemy" : "absent-from-bake");
@@ -2503,7 +2504,7 @@ void build_buckets_impl()
             ++recover;
             if (verbose)
             {
-                int32_t key = goblin::resolve_loot_item_textid(lot, 1, -1);
+                int32_t key = goblin::overlay_api::resolve_loot_item_textid(lot, 1, -1);
                 spdlog::info("[LOOTDISK]   RECOVER-LATER inert-dummy lot {} key={} "
                              "(entity-less; bake-backed today, lost when the bake is dropped)",
                              lot, key);
@@ -2621,7 +2622,7 @@ void build_buckets_impl()
     // [NONAME] diag: loot markers whose item key RESOLVED (icon works) but whose FMG name is EMPTY —
     // typically ERR-custom items missing from the (vanilla-derived) name preload. These now render
     // "Unknown item" + their count; this dump lists their keys/locations so the real names can be wired.
-    if (goblin::config::diagLootFlags)
+    if ((*goblin::overlay_api::cfg_diagLootFlags_ptr()))
     {
         // Dedup by name_id: thousands of ammo markers share one key (Arrow = 150000000 everywhere), so
         // print each DISTINCT unresolved key once — that surfaces rare keys (e.g. an ERR-custom item)
@@ -2632,11 +2633,11 @@ void build_buckets_impl()
             for (const Marker &m : g_buckets[c])
             {
                 if (m.name_id == 0) { ++zero_key; continue; }
-                if (!goblin::lookup_text_utf8(m.name_id).empty()) continue;
+                if (!goblin::overlay_api::lookup_text_utf8(m.name_id).empty()) continue;
                 if (distinct.find(m.name_id) == distinct.end())
                     spdlog::info("[NONAME] name_id={} (key-100M={}) cat_bucket={} lot_backed={} lot={} loc='{}'",
                                  m.name_id, m.name_id - 100000000, c, (int)m.lot_backed, m.lotId,
-                                 goblin::lookup_text_utf8(m.loc_pname));
+                                 goblin::overlay_api::lookup_text_utf8(m.loc_pname));
                 distinct[m.name_id]++;
             }
         if (!distinct.empty() || zero_key)
@@ -2649,7 +2650,7 @@ void build_buckets_impl()
     // The inverse of [COVERAGE]: of everything the passes parsed from the mod's files, how many
     // became markers vs were filtered, grouped by WHY. Each pass added its local filtered counts to
     // g_skip at its log line; dummy_inert comes from the load. Gated by diag_loot_pos.
-    if (goblin::config::diagLootPos)
+    if ((*goblin::overlay_api::cfg_diagLootPos_ptr()))
     {
         g_skip.dummy_inert = (int)dropped_dummy_lots.size();
         int drawn = 0;
@@ -2674,7 +2675,7 @@ void build_buckets_impl()
     // ABSENT here was dropped by a downstream finalize (cell-dedup / category-wipe / replace). For
     // the Group-B treasures (Ghostflame Torch / Burred Bolt) this distinguishes "on the underground
     // page, just unchecked" (survived) from "parsed then dropped" (absent). Gated by diag_loot_pos.
-    if (goblin::config::diagLootPos && !kWatchLots.empty())
+    if ((*goblin::overlay_api::cfg_diagLootPos_ptr()) && !kWatchLots.empty())
     {
         for (uint32_t lot : kWatchLots)
         {
@@ -2684,7 +2685,7 @@ void build_buckets_impl()
                     if (m.lotId == lot) { found_cat = c; ++count; }
             if (found_cat >= 0)
                 spdlog::info("[WATCH] lot={} SURVIVED in cat=\"{}\" (×{})", lot,
-                             goblin::markers::category_name(static_cast<gen::Category>(found_cat)), count);
+                             goblin::overlay_api::markers_category_name(static_cast<gen::Category>(found_cat)), count);
             else
                 spdlog::info("[WATCH] lot={} ABSENT from final buckets (never emitted, or dropped at "
                              "finalize)", lot);
@@ -2700,7 +2701,7 @@ void build_buckets_impl()
     // (lookup_text_utf8 of the marker's live key) so each residual is human-identifiable with no
     // offline step — covers loot AND world features (the old [RESIDUAL-ROW] was loot-only). Gated by
     // diag_loot_pos. Companion offline tool: tools/_probe_residual_recover.py (recovery verdicts).
-    if (goblin::config::diagLootPos)
+    if ((*goblin::overlay_api::cfg_diagLootPos_ptr()))
     {
         int total = 0;
         for (int c = 0; c < NUM_CAT; ++c)
@@ -2710,17 +2711,17 @@ void build_buckets_impl()
             {
                 if (m.source != Source::Baked) continue;
                 ++baked;
-                std::string nm = m.name_id > 0 ? goblin::lookup_text_utf8(m.name_id) : std::string();
+                std::string nm = m.name_id > 0 ? goblin::overlay_api::lookup_text_utf8(m.name_id) : std::string();
                 spdlog::info("[BAKED-RESIDUAL-ROW] cat=\"{}\" name=\"{}\" lot={} lt={} row_id={} "
                              "flag={} cleared={} m{}_{}_{} pos=({:.1f},{:.1f})",
-                             goblin::markers::category_name(static_cast<gen::Category>(c)),
+                             goblin::overlay_api::markers_category_name(static_cast<gen::Category>(c)),
                              nm.c_str(), m.lotId, (int)m.lotType, (unsigned long long)m.row_id,
                              m.collected_flag, m.cleared_flag,
                              m.raw_area, m.raw_gx, m.raw_gz, m.raw_px, m.raw_pz);
             }
             if (baked)
                 spdlog::info("[BAKED-RESIDUAL] cat=\"{}\" baked={}",
-                             goblin::markers::category_name(static_cast<gen::Category>(c)), baked);
+                             goblin::overlay_api::markers_category_name(static_cast<gen::Category>(c)), baked);
             total += baked;
         }
         spdlog::info("[BAKED-RESIDUAL] TOTAL surviving baked markers = {} (authoritative, post-finalize, "
@@ -2804,7 +2805,7 @@ void build_buckets_impl()
                                  : (r.baked == 0) ? (r.disk ? "disk" : "live")
                                                   : "partial";
             spdlog::info("[COVERAGE]   {:<24} baked={:<4} disk={:<4} live={:<4} live-cls={:<3} total={:<4} [{}]",
-                         goblin::markers::category_name(static_cast<gen::Category>(r.c)),
+                         goblin::overlay_api::markers_category_name(static_cast<gen::Category>(r.c)),
                          r.baked, r.disk, r.live, r.lc, r.drawn, status);
         }
         // Census-vs-drawn + collect-flag coverage, keyed by the same category name so the
@@ -2815,7 +2816,7 @@ void build_buckets_impl()
         for (const CovRow &r : rows)
             spdlog::info("[COVERAGE-CENSUS]   {:<24} drawn={:<4} census={:<4} flagged={:<4} "
                          "respawn={:<4} nonloot={:<4} flag-live={:<4} flag-disk={:<4} flag-baked={:<4} total={:<4}",
-                         goblin::markers::category_name(static_cast<gen::Category>(r.c)),
+                         goblin::overlay_api::markers_category_name(static_cast<gen::Category>(r.c)),
                          r.drawn, r.census, r.flagged, r.respawn, r.nonloot,
                          r.flag_live, r.flag_disk, r.flag_baked, r.drawn);
         spdlog::info("[COVERAGE] TOTAL baked={} disk={} live={} live-classified={} "
@@ -2845,7 +2846,7 @@ void build_buckets_impl()
                      itemclass.size());
         for (const auto &[key, cv] : itemclass)
             spdlog::info("[ITEMCLASS] key={} cat=\"{}\" count={}", key,
-                         goblin::markers::category_name(static_cast<gen::Category>(cv.first)), cv.second);
+                         goblin::overlay_api::markers_category_name(static_cast<gen::Category>(cv.first)), cv.second);
     }
     // ── Representative item-icon per category (live, no bake) ─────────────────────
     // For each ITEM category pick the most-common item key in its bucket and resolve that item's
@@ -2865,14 +2866,14 @@ void build_buckets_impl()
             int32_t best_key = 0; int best_n = 0;
             for (const auto &[k, n] : freq)
                 if (n > best_n) { best_n = n; best_key = k; }
-            const int icon = best_key ? goblin::item_real_icon_id(best_key) : -1;
+            const int icon = best_key ? goblin::overlay_api::item_real_icon_id(best_key) : -1;
             goblin::worldmap::set_category_rep_icon(c, icon);
             if (icon > 0)
             {
                 ++wired;
-                goblin::gpu_want_item(icon);  // central registry → pump keeps it resident
+                goblin::overlay_api::gpu_want_item(icon);  // central registry → pump keeps it resident
                 spdlog::info("[CATICON] cat=\"{}\" rep_key={} iconId={} (from {} markers)",
-                             goblin::markers::category_name(static_cast<gen::Category>(c)),
+                             goblin::overlay_api::markers_category_name(static_cast<gen::Category>(c)),
                              best_key, icon, best_n);
             }
             // World-feature categories with a named map symbol (boss …) → want the symbol too, so
@@ -2881,7 +2882,7 @@ void build_buckets_impl()
             {
                 char img[96];
                 snprintf(img, sizeof(img), "img://%s", sym);
-                goblin::gpu_want_symbol(img);
+                goblin::overlay_api::gpu_want_symbol(img);
             }
         }
         spdlog::info("[CATICON] representative item-icons resolved for {} / {} categories", wired, NUM_CAT);
@@ -2996,8 +2997,8 @@ MapEntryLayer::MapEntryLayer(int category) : cat_(category)
 
 bool MapEntryLayer::visible() const
 {
-    return goblin::ui::category_visible(cat_) &&
-           goblin::ui::section_visible(goblin::ui::category_section(cat_));
+    return goblin::overlay_api::category_visible(cat_) &&
+           goblin::overlay_api::section_visible(goblin::overlay_api::category_section(cat_));
 }
 
 const std::vector<Marker> &MapEntryLayer::markers() const
@@ -3023,7 +3024,7 @@ void refresh_overlay_census()
         // Graces aren't census items (deduped against the native pin) → no badge.
         if (c == static_cast<int>(gen::Category::WorldGraces))
         {
-            goblin::ui::set_category_census(c, 0, 0);
+            goblin::overlay_api::set_category_census(c, 0, 0);
             continue;
         }
         // Piece/kindling rows are geom/SFX-tracked (no textDisableFlag) — their
@@ -3041,8 +3042,8 @@ void refresh_overlay_census()
             for (const Marker &m : g_buckets[c])
             {
                 ++total;
-                const bool done = piece ? goblin::collected::is_original_row_collected(m.row_id)
-                                        : goblin::kindling::is_row_collected(m.row_id);
+                const bool done = piece ? goblin::overlay_api::is_original_row_collected(m.row_id)
+                                        : goblin::overlay_api::kindling_is_row_collected(m.row_id);
                 if (done)
                     ++looted;
             }
@@ -3072,7 +3073,7 @@ void refresh_overlay_census()
                     continue;  // else not a counted item (NPC, spirit spring, stake, …)
                 }
                 all.insert(flag);
-                if (goblin::ui::read_event_flag((uint32_t)flag))
+                if (goblin::overlay_api::read_event_flag((uint32_t)flag))
                     taken.insert(flag);
             }
             total = (int)all.size();   // completable spots only (distinct persistent flags)
@@ -3082,7 +3083,7 @@ void refresh_overlay_census()
             if (!s_logged_once && respawning > 0)
                 spdlog::info("[CENSUS] cat {:2} '{}' excluded {} respawning (flag-less) node(s) "
                              "from the completion counter",
-                             c, goblin::markers::category_name(static_cast<gen::Category>(c)),
+                             c, goblin::overlay_api::markers_category_name(static_cast<gen::Category>(c)),
                              respawning);
             // DEBUG: on the FIRST publish, sample a few still-UNSET flags per category.
             // On a 100% save these should be ~none — any here are flags we check that the
@@ -3095,17 +3096,17 @@ void refresh_overlay_census()
                     if (!taken.count(f) && n++ < 10)
                         s += std::to_string(f) + " ";
                 spdlog::info("[CENSUS-UNSET] cat {:2} '{}' {} unset; sample flags: {}",
-                             c, goblin::markers::category_name(static_cast<gen::Category>(c)),
+                             c, goblin::overlay_api::markers_category_name(static_cast<gen::Category>(c)),
                              total - looted, s);
             }
         }
-        goblin::ui::set_category_census(c, total, looted);
+        goblin::overlay_api::set_category_census(c, total, looted);
 
         // [OVERLAY-CENSUS] log: full dump on the first publish, then a line whenever a
         // category's looted count changes (so a pickup is visible in the log).
         if ((!s_logged_once || s_prev_looted[c] != looted) && total > 0)
             spdlog::info("[OVERLAY-CENSUS] cat {:2} '{}' remaining={}/{} (looted {} -> {})",
-                         c, goblin::markers::category_name(static_cast<gen::Category>(c)),
+                         c, goblin::overlay_api::markers_category_name(static_cast<gen::Category>(c)),
                          total - looted, total, s_prev_looted[c], looted);
         s_prev_looted[c] = looted;
     }

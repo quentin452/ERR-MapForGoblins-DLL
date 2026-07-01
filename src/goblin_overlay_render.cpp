@@ -4,8 +4,12 @@
 // file uses to reach host-owned D3D12 state (device/queue/heap/frames) that stays in
 // goblin_overlay.cpp — those helpers (ensure_grace_srv, ensure_item_icon_srv, etc.) turned out to
 // be genuinely D3D12-coupled, not self-contained, during the Slice B move (see the plan doc).
+//
+// Phase 2 Slice C: goblin_overlay_render_api.hpp is the consolidated wrapper surface for
+// everything else this file needs from host-only code (config/ui/worldmap_probe/etc.).
 
 #include "goblin_overlay_render.hpp"
+#include "goblin_overlay_render_api.hpp"
 #include "goblin_overlay.hpp"             // goblin::overlay::native_item_icon() family
 #include "goblin_config.hpp"
 #include "goblin_quest_steps.hpp"
@@ -20,8 +24,8 @@
 
 #include <spdlog/spdlog.h>
 
-#include "goblin_inject.hpp"             // goblin::world_map_open()
-#include "goblin_markers.hpp"            // goblin::markers::set_event_flag()
+#include "goblin_inject.hpp"             // goblin::overlay_api::world_map_open()
+#include "goblin_markers.hpp"            // goblin::overlay_api::markers_set_event_flag()
 #include "goblin_worldmap_probe.hpp"     // get_live_view() for the marker prototype
 #include "goblin_map_data.hpp"           // generated::MAP_ENTRIES / Category
 #include "worldmap/grace_layer.hpp"      // goblin::worldmap::GraceLayer
@@ -34,8 +38,8 @@
 #include "goblin_messages.hpp"           // lookup_text_utf8 (item-search name resolution)
 #include "generated_shared/goblin_overlay_icons.hpp" // ATLAS_PNG category-icon atlas
 #include "goblin_bench.hpp"              // GOBLIN_BENCH scoped timers
-#include "input/input_shared.hpp"        // goblin::input::menu_open()
-#include "input/input_cursor.hpp"        // goblin::input::get_cursor_pos_real()
+#include "input/input_shared.hpp"        // goblin::overlay_api::input_menu_open()
+#include "input/input_cursor.hpp"        // goblin::overlay_api::get_cursor_pos_real()
 
 #include <vector>
 #include <map>
@@ -138,7 +142,7 @@ namespace
 
     void grace_candidate_gate_warning()
     {
-        if (goblin::config::graceOverlay && goblin::config::graceGpuSprite)
+        if ((*goblin::overlay_api::cfg_graceOverlay_ptr()) && (*goblin::overlay_api::cfg_graceGpuSprite_ptr()))
             return;
         ImGui::TextColored(ImVec4(1.0f, 0.70f, 0.15f, 1.0f),
             "(!) Few/no candidates listed?\n"
@@ -177,7 +181,7 @@ namespace
     {
         static const char *const ALPHA_ROWS[] = {"ABCDEFGHIJK", "LMNOPQRSTUV", "WXYZ"};
         static const char *const QWERTY_ROWS[] = {"QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"};
-        const char *const *rows = (goblin::config::virtualKeyboardLayout == 1) ? QWERTY_ROWS : ALPHA_ROWS;
+        const char *const *rows = ((*goblin::overlay_api::cfg_virtualKeyboardLayout_ptr()) == 1) ? QWERTY_ROWS : ALPHA_ROWS;
 
         ImGui::PushID(popup_id);
         // NOT SameLine(): the InputText above is sized to GetContentRegionAvail().x (100% width),
@@ -256,14 +260,14 @@ namespace
     void goblin::overlay::draw_worldmap_markers(bool /*menu_open*/, const OverlayFrameCtx &ctx)
     {
         namespace wm = goblin::worldmap;
-        if (!goblin::ui::icons_enabled() && !wm::item_search_active())
+        if (!goblin::overlay_api::icons_enabled() && !wm::item_search_active())
             return; // master off (and no active search) → draw no overlay markers
         std::vector<wm::MarkerLayer *> &s_layers = overlay_layers();
         void *atlas = ctx.atlas_srv;
         // OS cursor in client/backbuffer px for marker tooltips (the map cursor tracks it).
         float mx = -1.f, my = -1.f;
         POINT pt{};
-        BOOL ok = goblin::input::get_cursor_pos_real(&pt);
+        BOOL ok = goblin::overlay_api::get_cursor_pos_real(&pt);
         if (ok && ctx.hwnd && ScreenToClient(ctx.hwnd, &pt)) { mx = (float)pt.x; my = (float)pt.y; }
         // Hand the renderer the harvested grace sprite (once ready) so it draws graces itself.
         if (ensure_grace_srv())
@@ -296,8 +300,8 @@ namespace
             // Zoom in if the view is too far-out (else the item is a speck). kLocateZoom is calibration
             // (map zoom ~0.05..1.0; kGraceZoomRef in map_renderer is 0.25 "mid") — bump if still too wide.
             constexpr float kLocateZoom = 0.5f;
-            goblin::worldmap_probe::set_view_center(s_hold_u, s_hold_v, kLocateZoom);
-            goblin::worldmap_probe::set_locate_target(s_hold_u, s_hold_v); // game-thread c32f0 centres on it
+            goblin::overlay_api::set_view_center(s_hold_u, s_hold_v, kLocateZoom);
+            goblin::overlay_api::set_locate_target(s_hold_u, s_hold_v); // game-thread c32f0 centres on it
             // Keep the map STEPPING (c32f0 runs) with F1 open: the per-frame step is gated on perceived
             // input, so keep the nav jitter alive for the whole hold.
             if (ctx.nav_frames->load(std::memory_order_relaxed) < s_hold_frames)
@@ -311,7 +315,7 @@ namespace
             constexpr int kSettle = 3;
             constexpr float kConvergeEps2 = 1024.f;  // ~32 marker-units off the screen centre
             goblin::worldmap_probe::LiveView lv2{};
-            if (s_hold_frames > kSettle && goblin::worldmap_probe::get_live_view(lv2) && lv2.zoom > 0.f)
+            if (s_hold_frames > kSettle && goblin::overlay_api::get_live_view(lv2) && lv2.zoom > 0.f)
             {
                 const float du = (lv2.panX + lv2.snapMidX) / lv2.zoom - s_hold_u;
                 const float dv = (lv2.panZ + lv2.snapMidZ) / lv2.zoom - s_hold_v;
@@ -323,7 +327,7 @@ namespace
                     s_settle_hits = 0;
             }
             if (s_hold_frames == 0)
-                goblin::worldmap_probe::clear_locate_target(); // release the map (mouse pan resumes)
+                goblin::overlay_api::clear_locate_target(); // release the map (mouse pan resumes)
         }
     }
 
@@ -362,7 +366,7 @@ namespace
         // observer came up empty within the timeout) → the disk source is REQUIRED
         // when loot_from_disk_msb is on, so replace the whole panel with a red error
         // instead of drawing an empty/misleading map.
-        if (goblin::worldmap::disk_loot_state() == goblin::worldmap::DiskLootState::Failed)
+        if (goblin::overlay_api::disk_loot_state() == goblin::worldmap::DiskLootState::Failed)
         {
             ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
             ImGui::Begin("Map for Goblins##error", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
@@ -373,7 +377,7 @@ namespace
                                "found. The mod cannot load its markers.");
             ImGui::PopStyleColor();
             ImGui::Spacing();
-            std::string sd = goblin::worldmap::disk_loot_dir().string();
+            std::string sd = goblin::overlay_api::disk_loot_dir().string();
             if (!sd.empty())
                 ImGui::TextDisabled("Last path searched: %s", sd.c_str());
             ImGui::TextDisabled("Set 'loot_msb_dir' in MapForGoblins.ini to your mod's");
@@ -438,7 +442,7 @@ namespace
             ImGui::Begin("Map for Goblins##large", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
             // Keep the per-category census warm: the watcher only runs the flag
             // sweep while the panel is on-screen (stamped here each frame).
-            goblin::ui::note_menu_visible();
+            goblin::overlay_api::note_menu_visible();
             if (ImGui::Button("[-] collapse"))
                 g_large = false;
             ImGui::SameLine();
@@ -447,12 +451,12 @@ namespace
 
             // P2b vertical slice: draw live-harvested item icons (copied GPU→GPU from the engine's
             // menu sheets). Open the inventory first to harvest, then check here. Dev-gated.
-            if (goblin::config::dumpIconTextures && ImGui::CollapsingHeader("Item icons (P2b test)"))
+            if ((*goblin::overlay_api::cfg_dumpIconTextures_ptr()) && ImGui::CollapsingHeader("Item icons (P2b test)"))
             {
                 // Draw the ACTUAL harvested icons (a hardcoded id list may not match what the
                 // player browsed → empty grid even with harvested>0). Exercises the batch path.
-                ImGui::Text("harvested: %zu  (open inventory to fill)", goblin::harvested_count());
-                std::vector<int> ids = goblin::harvested_ids(48);
+                ImGui::Text("harvested: %zu  (open inventory to fill)", goblin::overlay_api::harvested_count());
+                std::vector<int> ids = goblin::overlay_api::harvested_ids(48);
                 int drawn = 0;
                 for (int id : ids)
                 {
@@ -479,7 +483,7 @@ namespace
                 ImGui::InputText("##flpath", s_fl_path, sizeof(s_fl_path));
                 ImGui::SameLine();
                 if (ImGui::Button("Force-load (CSFile)"))
-                    goblin::force_load_file(s_fl_path);
+                    goblin::overlay_api::force_load_file(s_fl_path);
                 // One-click sweep of the menu resource-GROUP BNDs (re_v110): logs a [FORCELOAD] line per
                 // path. Try with the map/inventory CLOSED so a non-resident group's load is visible
                 // (handle != 0 + harvested grows after you then open the inventory).
@@ -490,11 +494,11 @@ namespace
                         "menu:/00_Solo.tpfbhd",   "menu:/03_ChrMake.tpfbhd",
                         "menu:/71_MapTile.tpfbhd", "menu:/02_Title.tpfbhd",
                     };
-                    for (const char *p : kGroups) goblin::force_load_file(p);
+                    for (const char *p : kGroups) goblin::overlay_api::force_load_file(p);
                 }
                 // Map-point icon rects (MENU_MAP_* → iconId→rect) are harvested from the resident image
                 // repo by the repo walk when the world map opens — no force-load needed.
-                ImGui::Text("map-icon layout entries: %zu", goblin::map_icon_layout_count());
+                ImGui::Text("map-icon layout entries: %zu", goblin::overlay_api::map_icon_layout_count());
 
                 // ── Bind-flip test (findings §5e) — does +0x7c flip trigger the per-icon bind? ──
                 // Recommended sequence (watch [BINDTEST] in the log, then "harvested:" above):
@@ -509,12 +513,12 @@ namespace
                 ImGui::SetNextItemWidth(120);
                 ImGui::InputInt("group id", &s_bt_gid);
                 if (s_bt_gid < 0) s_bt_gid = 0; if (s_bt_gid > 8) s_bt_gid = 8;
-                if (ImGui::Button("1) Dump groups"))       goblin::bind_test(1, s_bt_gid);
+                if (ImGui::Button("1) Dump groups"))       goblin::overlay_api::bind_test(1, s_bt_gid);
                 ImGui::SameLine();
-                if (ImGui::Button("2) Load files (gid)"))  goblin::bind_test(2, s_bt_gid);
-                if (ImGui::Button("3) Flip-bind all"))      goblin::bind_test(3, s_bt_gid);
+                if (ImGui::Button("2) Load files (gid)"))  goblin::overlay_api::bind_test(2, s_bt_gid);
+                if (ImGui::Button("3) Flip-bind all"))      goblin::overlay_api::bind_test(3, s_bt_gid);
                 ImGui::SameLine();
-                if (ImGui::Button("4) Load + flip (gid)")) goblin::bind_test(4, s_bt_gid);
+                if (ImGui::Button("4) Load + flip (gid)")) goblin::overlay_api::bind_test(4, s_bt_gid);
 
                 // Force-CreateImage (§5g): replay the GFx per-image bind callback for one item icon.
                 // Watch [CREATEIMG] in the log: live names while browsing, then the forced result +
@@ -525,9 +529,9 @@ namespace
                 ImGui::SetNextItemWidth(120);
                 ImGui::InputInt("iconId##ci", &s_ci_icon);
                 ImGui::SameLine();
-                if (ImGui::Button("Force CreateImage")) goblin::force_create_icon(s_ci_icon);
-                if (ImGui::Button("Replay last live symbol (control)")) goblin::force_create_last();
-                if (ImGui::Button("Force graces now")) goblin::force_graces();
+                if (ImGui::Button("Force CreateImage")) goblin::overlay_api::force_create_icon(s_ci_icon);
+                if (ImGui::Button("Replay last live symbol (control)")) goblin::overlay_api::force_create_last();
+                if (ImGui::Button("Force graces now")) goblin::overlay_api::force_graces();
                 ImGui::SameLine();
                 ImGui::TextDisabled("(re-harvest MENU_MAP_*/SB_ERR_Grace_* on demand)");
 
@@ -553,7 +557,7 @@ namespace
                 // BROWSE every DDS we grabbed from ER's decompresses (RAM, no game bind). Flip through
                 // them to find the icon sheet. Each "Show" uploads that DDS into our own texture.
                 ImGui::Separator();
-                size_t ddsN = goblin::tpf_dds_count();
+                size_t ddsN = goblin::overlay_api::tpf_dds_count();
                 ImGui::TextDisabled("Captured ER DDS in RAM: %zu (browse to find the icon sheet)", ddsN);
                 static int s_idx = 0;
                 static UINT64 s_ram_tex = 0; static int s_ram_w = 0, s_ram_h = 0, s_ram_fmt = 0;
@@ -568,7 +572,7 @@ namespace
                     if (ImGui::Button("Show"))
                     {
                         static std::vector<uint8_t> dds;
-                        if (goblin::tpf_dds_at((size_t)s_idx, dds))
+                        if (goblin::overlay_api::tpf_dds_at((size_t)s_idx, dds))
                         {
                             DXGI_FORMAT f;
                             s_ram_tex = create_tex_from_dds_mem(dds.data(), dds.size(), s_ram_w, s_ram_h, f);
@@ -594,7 +598,7 @@ namespace
             if (ImGui::CollapsingHeader("Icon migration (Baked \xE2\x86\x92 GPU)"))
             {
                 namespace wm = goblin::worldmap;
-                const bool native_on = goblin::config::nativeItemIcons;
+                const bool native_on = (*goblin::overlay_api::cfg_nativeItemIcons_ptr());
                 const float SZ = 22.f;
                 const ImVec4 GREEN(0.40f, 0.85f, 0.45f, 1), YEL(0.90f, 0.80f, 0.35f, 1),
                              GRAY(0.62f, 0.62f, 0.62f, 1);
@@ -629,7 +633,7 @@ namespace
                         }
                     return false;
                 };
-                const bool grace_gpu = native_on && goblin::config::graceOverlay && goblin::config::graceGpuSprite;
+                const bool grace_gpu = native_on && (*goblin::overlay_api::cfg_graceOverlay_ptr()) && (*goblin::overlay_api::cfg_graceGpuSprite_ptr());
                 const int total = wm::category_count();
                 struct Row { int s; const char *via; bool hasRt; ImTextureID rt; ImVec2 ra, rb; };
                 std::vector<Row> rows(total);
@@ -658,7 +662,7 @@ namespace
                     for (int c = 0; c < total; ++c)
                     {
                         const Row &r = rows[c];
-                        const char *name = goblin::ui::category_label(c);
+                        const char *name = goblin::overlay_api::category_label(c);
                         // [baked] thumbnail (atlas cell, or a coloured circle for the no-cell categories).
                         ImVec2 bu0, bu1, p = ImGui::GetCursorScreenPos();
                         if (ctx.atlas_srv && baked_uv(c, bu0, bu1))
@@ -696,7 +700,7 @@ namespace
             // Grace-sprite GPU debug: draw every harvested SB_ERR_Grace_* frame (full-sheet SRV +
             // UV, no copy) so we can visually pick the correct grace rect. Open the world map (with a
             // discovered grace) to populate. The frame that looks like a Site of Grace = the one to lock.
-            if (goblin::config::dumpIconTextures && ImGui::CollapsingHeader("ERR map sprites (GPU debug)"))
+            if ((*goblin::overlay_api::cfg_dumpIconTextures_ptr()) && ImGui::CollapsingHeader("ERR map sprites (GPU debug)"))
             {
                 ensure_grace_debug();
                 grace_candidate_gate_warning();
@@ -714,7 +718,7 @@ namespace
 
             // Grace texture DEBUG (live format/swizzle/source) — verify the active grace mapped the
             // right NAME and the right COLORING. Tweak below + "Re-apply" re-copies the SRV live.
-            if (goblin::config::dumpIconTextures && ImGui::CollapsingHeader("Grace texture debug (live)"))
+            if ((*goblin::overlay_api::cfg_dumpIconTextures_ptr()) && ImGui::CollapsingHeader("Grace texture debug (live)"))
             {
                 // The active grace, drawn big (this IS what the map markers use).
                 if (grace_state() == 1)
@@ -748,11 +752,11 @@ namespace
                 ImGui::Separator();
                 ImGui::TextDisabled("source candidate (click to use as grace):");
                 grace_candidate_gate_warning();
-                std::vector<goblin::GraceCandidate> cands = goblin::grace_candidates();
+                std::vector<goblin::GraceCandidate> cands = goblin::overlay_api::grace_candidates();
                 for (size_t i = 0; i < cands.size(); ++i)
                 {
                     ImGui::PushID(static_cast<int>(i));
-                    if (ImGui::SmallButton("use")) { goblin::set_grace_from_candidate(i); force_rebuild_grace(); }
+                    if (ImGui::SmallButton("use")) { goblin::overlay_api::set_grace_from_candidate(i); force_rebuild_grace(); }
                     ImGui::SameLine();
                     ImGui::Text("%s  (%d,%d)-(%d,%d)", cands[i].name.c_str(), cands[i].spr.x0,
                                 cands[i].spr.y0, cands[i].spr.x1, cands[i].spr.y1);
@@ -761,14 +765,14 @@ namespace
             }
 
             // Master on/off + Save.
-            bool icons_on = goblin::ui::icons_enabled();
+            bool icons_on = goblin::overlay_api::icons_enabled();
             if (ImGui::Checkbox("Show icons (master)", &icons_on))
-                goblin::ui::set_icons_enabled(icons_on);
+                goblin::overlay_api::set_icons_enabled(icons_on);
             ImGui::SameLine();
             static double saved_at = -10.0;
             if (ImGui::Button("Save to INI"))
             {
-                goblin::ui::request_save();
+                goblin::overlay_api::request_save();
                 saved_at = ImGui::GetTime();
             }
             // Brief confirmation so the button isn't a silent no-op (the file I/O
@@ -783,13 +787,13 @@ namespace
             // Map-fragment gate (live; persists via "Save to INI"). When on, a marker stays hidden
             // until the player has acquired that area's map-fragment ITEM (fragment event flag).
             ImGui::Checkbox("Require map fragments (hide an area's icons until its fragment is found)",
-                            &goblin::config::requireMapFragments);
+                            goblin::overlay_api::cfg_requireMapFragments_ptr());
 
             // DIAG: draw ONLY the no-bake residual (Baked-source markers; disk/live twins already
             // deduped away). Fly the world + eyeball each spot — real loot the live pass misses
             // (coverage gap) vs a phantom the bake invented (bake bug). See nobake_scoreboard.md.
             ImGui::Checkbox("Baked-only (diag: show just the no-bake residual)",
-                            &goblin::config::bakedOnly);
+                            goblin::overlay_api::cfg_bakedOnly_ptr());
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Hides every marker the live disk/memory passes already cover,\n"
                                   "leaving only the markers still coming from the static bake.\n"
@@ -800,47 +804,47 @@ namespace
             // On = dim looted items / killed bosses (cleared bosses get a checkmark);
             // hide_collected switches dim → remove (legacy native-map behaviour).
             ImGui::Checkbox("Gray collected/cleared markers (dim looted items & killed bosses)",
-                            &goblin::config::collectedGraying);
-            if (goblin::config::collectedGraying)
+                            goblin::overlay_api::cfg_collectedGraying_ptr());
+            if ((*goblin::overlay_api::cfg_collectedGraying_ptr()))
             {
                 ImGui::SameLine();
-                ImGui::Checkbox("hide instead", &goblin::config::hideCollected);
+                ImGui::Checkbox("hide instead", goblin::overlay_api::cfg_hideCollected_ptr());
             }
 
             // Merge co-located identical-item loot markers into one "xN". Pure render decision (the
             // grouping is annotated once at build) → instant toggle, no bucket rebuild.
             ImGui::Checkbox("Stack identical items (merge same-item nodes within ~5m)",
-                            &goblin::config::stackIdenticalItems);
+                            goblin::overlay_api::cfg_stackIdenticalItems_ptr());
 
             // Major-region name labels (overlay map; live, persists via "Save to INI").
             ImGui::Checkbox("Show region labels (major-region names on the map)",
-                            &goblin::config::showRegionLabels);
+                            goblin::overlay_api::cfg_showRegionLabels_ptr());
 
             // Redify boss markers (overlay port of the legacy red-skull iconId; live,
             // persists via "Save to INI"). Tints WorldBosses markers red (overworld +
             // dungeon bosses); collected/cleared graying still takes precedence.
             ImGui::Checkbox("Red boss markers (tint boss icons red)",
-                            &goblin::config::redifyBossIcons);
+                            goblin::overlay_api::cfg_redifyBossIcons_ptr());
 
             // DX item 7: up/down altitude badge for markers above/below the player (player's map only).
             ImGui::Checkbox("Altitude arrows (up = above / down = below player)",
-                            &goblin::config::altitudeCue);
+                            goblin::overlay_api::cfg_altitudeCue_ptr());
 
             // Grace rendering: overlay draws all graces (discovered=colour, undiscovered=grey).
             ImGui::Checkbox("Overlay graces (draw all graces ourselves)",
-                            &goblin::config::graceOverlay);
-            if (goblin::config::graceOverlay)
+                            goblin::overlay_api::cfg_graceOverlay_ptr());
+            if ((*goblin::overlay_api::cfg_graceOverlay_ptr()))
             {
                 ImGui::SameLine();
                 ImGui::Checkbox("GPU sprite (engine, time-tinted) vs CPU (baked atlas)",
-                                &goblin::config::graceGpuSprite);
+                                goblin::overlay_api::cfg_graceGpuSprite_ptr());
             }
 
             // Spoiler-free loot (overlay port of anonymous_loot; live, persists via
             // "Save to INI"). Lot-backed loot markers draw as a gray "?" with a generic
             // label instead of the real item icon/name.
             ImGui::Checkbox("Spoiler-free loot (gray \"?\" instead of the item)",
-                            &goblin::config::anonymousLoot);
+                            goblin::overlay_api::cfg_anonymousLoot_ptr());
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Every loot marker shows a gray \"?\" and only its location,\n"
                                   "hiding the real item (useful with randomizers). Markers still\n"
@@ -849,7 +853,7 @@ namespace
             // Gamepad overlay-toggle combo (dx-bugs-backlog PR C item 3). Recorder arms the
             // XInput poll in hk_present; first nonzero button read there wins and saves.
             ImGui::Text("Gamepad toggle combo: %s",
-                        goblin::mask_to_combo_string(goblin::config::overlayToggleGamepad).c_str());
+                        goblin::overlay_api::mask_to_combo_string((*goblin::overlay_api::cfg_overlayToggleGamepad_ptr())).c_str());
             ImGui::SameLine();
             if (*ctx.gamepad_combo_recording)
             {
@@ -874,43 +878,43 @@ namespace
             // setting here, this only persists via "Save to INI" below — no immediate auto-save.
             ImGui::Text("Gamepad keyboard layout:");
             ImGui::SameLine();
-            int kbd_layout = goblin::config::virtualKeyboardLayout;
+            int kbd_layout = (*goblin::overlay_api::cfg_virtualKeyboardLayout_ptr());
             if (ImGui::RadioButton("Alphabetical", &kbd_layout, 0))
-                goblin::config::virtualKeyboardLayout = static_cast<uint8_t>(kbd_layout);
+                (*goblin::overlay_api::cfg_virtualKeyboardLayout_ptr()) = static_cast<uint8_t>(kbd_layout);
             ImGui::SameLine();
             if (ImGui::RadioButton("QWERTY", &kbd_layout, 1))
-                goblin::config::virtualKeyboardLayout = static_cast<uint8_t>(kbd_layout);
+                (*goblin::overlay_api::cfg_virtualKeyboardLayout_ptr()) = static_cast<uint8_t>(kbd_layout);
 
             // Overlay marker scale (live preview; persists via "Save to INI"). Final
             // size = resolution-relative base × master × per-type scale.
             if (ImGui::CollapsingHeader("Marker scale (overlay map)"))
             {
-                scale_control("Master", &goblin::config::overlayMasterScale, 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
-                scale_control("Category icons", &goblin::config::overlayIconScale, 0.3f, 10.0f, 0.05f, 0.25f, "%.2f");
-                scale_control("Grace icons (calib)", &goblin::config::graceIconScale, 0.2f, 10.0f, 0.05f, 0.25f, "%.2f");
-                scale_control("Grace offset X (native vs imgui)", &goblin::config::graceOffsetX, -200.0f, 200.0f, 1.0f, 10.0f, "%.0f");
-                scale_control("Grace offset Y (native vs imgui)", &goblin::config::graceOffsetY, -200.0f, 200.0f, 1.0f, 10.0f, "%.0f");
-                scale_control("Cluster piles", &goblin::config::overlayClusterScale, 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
-                scale_control("Marker motion delay (frames)", &goblin::config::viewDelayFrames, 0.0f, 7.0f, 0.1f, 0.5f, "%.1f");
+                scale_control("Master", goblin::overlay_api::cfg_overlayMasterScale_ptr(), 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
+                scale_control("Category icons", goblin::overlay_api::cfg_overlayIconScale_ptr(), 0.3f, 10.0f, 0.05f, 0.25f, "%.2f");
+                scale_control("Grace icons (calib)", goblin::overlay_api::cfg_graceIconScale_ptr(), 0.2f, 10.0f, 0.05f, 0.25f, "%.2f");
+                scale_control("Grace offset X (native vs imgui)", goblin::overlay_api::cfg_graceOffsetX_ptr(), -200.0f, 200.0f, 1.0f, 10.0f, "%.0f");
+                scale_control("Grace offset Y (native vs imgui)", goblin::overlay_api::cfg_graceOffsetY_ptr(), -200.0f, 200.0f, 1.0f, 10.0f, "%.0f");
+                scale_control("Cluster piles", goblin::overlay_api::cfg_overlayClusterScale_ptr(), 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
+                scale_control("Marker motion delay (frames)", goblin::overlay_api::cfg_viewDelayFrames_ptr(), 0.0f, 7.0f, 0.1f, 0.5f, "%.1f");
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("Project markers this many present-frames behind the eased basemap.\n"
                                       "Pan the map: raise if markers LEAD (snap back on stop), lower if they TRAIL.\n"
                                       "1.0 = default. Tune to kill the pan/zoom re-adjust, then Save to INI.");
-                ImGui::Checkbox("Delay zoom too", &goblin::config::viewDelayZoom);
+                ImGui::Checkbox("Delay zoom too", goblin::overlay_api::cfg_viewDelayZoom_ptr());
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("ON (default): the motion delay applies to zoom as well as pan.\n"
                                       "If markers TELEPORT for one frame on each mouse-wheel zoom step,\n"
                                       "turn this OFF — markers then use the live zoom while still delaying pan.");
                 if (ImGui::SmallButton("Reset##scale"))
                 {
-                    goblin::config::overlayMasterScale = 1.0f;
-                    goblin::config::overlayIconScale = 1.2f;     // match the schema defaults
-                    goblin::config::overlayClusterScale = 1.0f;
-                    goblin::config::graceIconScale = 1.2f;
-                    goblin::config::graceOffsetX = 0.0f;
-                    goblin::config::graceOffsetY = 0.0f;
-                    goblin::config::viewDelayFrames = 1.0f;
-                    goblin::config::viewDelayZoom = true;
+                    (*goblin::overlay_api::cfg_overlayMasterScale_ptr()) = 1.0f;
+                    (*goblin::overlay_api::cfg_overlayIconScale_ptr()) = 1.2f;     // match the schema defaults
+                    (*goblin::overlay_api::cfg_overlayClusterScale_ptr()) = 1.0f;
+                    (*goblin::overlay_api::cfg_graceIconScale_ptr()) = 1.2f;
+                    (*goblin::overlay_api::cfg_graceOffsetX_ptr()) = 0.0f;
+                    (*goblin::overlay_api::cfg_graceOffsetY_ptr()) = 0.0f;
+                    (*goblin::overlay_api::cfg_viewDelayFrames_ptr()) = 1.0f;
+                    (*goblin::overlay_api::cfg_viewDelayZoom_ptr()) = true;
                 }
                 ImGui::TextDisabled("Slider = coarse; type in the box or use its +/- arrows for an exact\n"
                                     "value (Ctrl+Click the slider also types). × a resolution-relative\n"
@@ -921,7 +925,7 @@ namespace
             if (ImGui::CollapsingHeader("Minimap (in-game HUD)"))
             {
                 ImGui::Checkbox("Show minimap (corner HUD during gameplay)",
-                                &goblin::config::showMinimap);
+                                goblin::overlay_api::cfg_showMinimap_ptr());
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("A small north-up minimap in the screen corner showing nearby\n"
                                       "markers around you during play. OVERWORLD only for now\n"
@@ -933,16 +937,16 @@ namespace
                 // the INI, then silently reset on the next load by the (now correct, but still
                 // real) per-field range clamp in goblin_config.cpp. Keep what's shown and what's
                 // stored always in sync.
-                ImGui::SliderFloat("Zoom (px/world)", &goblin::config::minimapZoom, 0.02f, 5.0f, "%.3f",
+                ImGui::SliderFloat("Zoom (px/world)", goblin::overlay_api::cfg_minimapZoom_ptr(), 0.02f, 5.0f, "%.3f",
                                    ImGuiSliderFlags_AlwaysClamp);
-                ImGui::SliderFloat("Radius (px)", &goblin::config::minimapSize, 60.0f, 300.0f, "%.0f",
+                ImGui::SliderFloat("Radius (px)", goblin::overlay_api::cfg_minimapSize_ptr(), 60.0f, 300.0f, "%.0f",
                                    ImGuiSliderFlags_AlwaysClamp);
-                ImGui::SliderFloat("Opacity", &goblin::config::minimapOpacity, 0.0f, 1.0f, "%.2f");
-                ImGui::Checkbox("Anchor right", &goblin::config::minimapAnchorRight);
+                ImGui::SliderFloat("Opacity", goblin::overlay_api::cfg_minimapOpacity_ptr(), 0.0f, 1.0f, "%.2f");
+                ImGui::Checkbox("Anchor right", goblin::overlay_api::cfg_minimapAnchorRight_ptr());
                 ImGui::SameLine();
-                ImGui::Checkbox("Anchor bottom", &goblin::config::minimapAnchorBottom);
-                ImGui::SliderFloat("Offset X", &goblin::config::minimapOffsetX, 0.0f, 600.0f, "%.0f");
-                ImGui::SliderFloat("Offset Y", &goblin::config::minimapOffsetY, 0.0f, 600.0f, "%.0f");
+                ImGui::Checkbox("Anchor bottom", goblin::overlay_api::cfg_minimapAnchorBottom_ptr());
+                ImGui::SliderFloat("Offset X", goblin::overlay_api::cfg_minimapOffsetX_ptr(), 0.0f, 600.0f, "%.0f");
+                ImGui::SliderFloat("Offset Y", goblin::overlay_api::cfg_minimapOffsetY_ptr(), 0.0f, 600.0f, "%.0f");
                 ImGui::TextDisabled("North-up. Hidden while the world map is open. Save to INI to persist.");
             }
 
@@ -982,11 +986,11 @@ namespace
                 // ── Locate debug (dev) — gated behind Verbose logging (debug_logging). Diagnoses the
                 // item-search centring: LIVE view vs the target the engine should ease the pan toward
                 // ("live-vs-target dPan" → CENTERED OK once converged). Kept for future locate issues.
-                if (goblin::config::debugLogging && ImGui::TreeNode("Locate debug (dev)"))
+                if ((*goblin::overlay_api::cfg_debugLogging_ptr()) && ImGui::TreeNode("Locate debug (dev)"))
                 {
                     goblin::worldmap_probe::LiveView dlv{};
-                    const bool dbg_open = goblin::worldmap_probe::get_live_view(dlv);
-                    const auto &d = goblin::worldmap_probe::last_locate_debug();
+                    const bool dbg_open = goblin::overlay_api::get_live_view(dlv);
+                    const auto &d = goblin::overlay_api::last_locate_debug();
                     if (dbg_open && dlv.zoom != 0.f)
                     {
                         const float cu = (dlv.panX + dlv.snapMidX) / dlv.zoom;
@@ -1058,8 +1062,8 @@ namespace
                                 if (it == name_cache.end())
                                 {
                                     Names n;
-                                    n.loc = goblin::lookup_text_utf8(m.name_id);
-                                    n.en = goblin::lookup_name_alias_en_utf8(m.name_id);
+                                    n.loc = goblin::overlay_api::lookup_text_utf8(m.name_id);
+                                    n.en = goblin::overlay_api::lookup_name_alias_en_utf8(m.name_id);
                                     // Label = game-language name; fall back to English if the
                                     // live FMG had no entry. Append "(English)" only when it adds
                                     // information (present and different from the shown name).
@@ -1110,13 +1114,13 @@ namespace
                     // (what exists + which region) but the rows are disabled with a hint, so a click
                     // can't leave a locate dangling forever.
                     goblin::worldmap_probe::LiveView lv{};
-                    const bool map_open = goblin::worldmap_probe::get_live_view(lv);
+                    const bool map_open = goblin::overlay_api::get_live_view(lv);
                     const int open_grp = map_open ? ((lv.openDlc ? 2 : 0) | (lv.underground ? 1 : 0)) : 0;
 
                     if (map_open)
                         ImGui::TextDisabled("%zu match%s (ringed on map; click = pan map onto it)",
                                             s_hits.size(), s_hits.size() == 1 ? "" : "es");
-                    else if (goblin::config::showMinimap)
+                    else if ((*goblin::overlay_api::cfg_showMinimap_ptr()))
                         // <user> 2026-07-01: this used to always say "open the world map to
                         // locate them" even with the minimap on — wrong, the minimap already
                         // rings a hit (including off-range ones, clamped to the HUD edge).
@@ -1170,10 +1174,10 @@ namespace
                         }
                         s_dlc_seen = false;
                         for (uint32_t f : s_dlc_grace_flags)
-                            if (goblin::ui::read_event_flag(f)) { s_dlc_seen = true; break; }
+                            if (goblin::overlay_api::read_event_flag(f)) { s_dlc_seen = true; break; }
                         s_ug_seen = false;
                         for (uint32_t f : s_ug_grace_flags)
-                            if (goblin::ui::read_event_flag(f)) { s_ug_seen = true; break; }
+                            if (goblin::overlay_api::read_event_flag(f)) { s_ug_seen = true; break; }
                     }
                     if (ImGui::BeginChild("##itemhits", ImVec2(0, 150), true))
                     {
@@ -1201,7 +1205,7 @@ namespace
                                 // Cross-page: switch to this row's page+layer (overworld<->DLC +
                                 // surface<->UG), marshalled onto the game thread, then the locate pans.
                                 if (off_page)
-                                    goblin::worldmap_probe::request_switch_to_page(h.group);
+                                    goblin::overlay_api::request_switch_to_page(h.group);
                             }
                             if (locked) ImGui::EndDisabled();
                             if (map_open && !locked && off_page && ImGui::IsItemHovered())
@@ -1242,73 +1246,73 @@ namespace
                                      cat_filter, sizeof(cat_filter));
             draw_gamepad_keyboard_button("##catfilter_kbd", cat_filter, sizeof(cat_filter));
             const bool cat_filtering = cat_filter[0] != '\0';
-            for (int s = 0; s < goblin::ui::section_count(); s++)
+            for (int s = 0; s < goblin::overlay_api::section_count(); s++)
             {
-                bool sec_name_match = contains_ci(goblin::ui::section_label(s), cat_filter);
+                bool sec_name_match = contains_ci(goblin::overlay_api::section_label(s), cat_filter);
                 if (cat_filtering && !sec_name_match)
                 {
                     // Skip a section entirely if neither it nor any of its categories match.
                     bool any = false;
-                    for (int c = 0; c < goblin::ui::category_count() && !any; c++)
-                        if (goblin::ui::category_section(c) == s &&
-                            contains_ci(goblin::ui::category_label(c), cat_filter))
+                    for (int c = 0; c < goblin::overlay_api::category_count() && !any; c++)
+                        if (goblin::overlay_api::category_section(c) == s &&
+                            contains_ci(goblin::overlay_api::category_label(c), cat_filter))
                             any = true;
                     if (!any) continue;
                 }
                 if (cat_filtering)
                     ImGui::SetNextItemOpen(true, ImGuiCond_Always);
-                if (!ImGui::TreeNode(goblin::ui::section_label(s)))
+                if (!ImGui::TreeNode(goblin::overlay_api::section_label(s)))
                     continue;
                 // While filtering, a category row shows only if it matches (unless the
                 // section name itself matched → show the whole section).
                 const bool show_all_cats = !cat_filtering || sec_name_match;
 
-                bool sv = goblin::ui::section_visible(s);
+                bool sv = goblin::overlay_api::section_visible(s);
                 if (ImGui::Checkbox("(whole section)", &sv))
-                    goblin::ui::set_section_visible(s, sv);
+                    goblin::overlay_api::set_section_visible(s, sv);
 
                 ImGui::PushID(s);
                 if (ImGui::SmallButton("Show all"))
-                    for (int c = 0; c < goblin::ui::category_count(); c++)
-                        if (goblin::ui::category_section(c) == s)
-                            goblin::ui::set_category_visible(c, true);
+                    for (int c = 0; c < goblin::overlay_api::category_count(); c++)
+                        if (goblin::overlay_api::category_section(c) == s)
+                            goblin::overlay_api::set_category_visible(c, true);
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Show none"))
-                    for (int c = 0; c < goblin::ui::category_count(); c++)
-                        if (goblin::ui::category_section(c) == s)
-                            goblin::ui::set_category_visible(c, false);
+                    for (int c = 0; c < goblin::overlay_api::category_count(); c++)
+                        if (goblin::overlay_api::category_section(c) == s)
+                            goblin::overlay_api::set_category_visible(c, false);
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Cluster all"))
-                    for (int c = 0; c < goblin::ui::category_count(); c++)
-                        if (goblin::ui::category_section(c) == s)
-                            goblin::ui::set_category_clustered(c, true);
+                    for (int c = 0; c < goblin::overlay_api::category_count(); c++)
+                        if (goblin::overlay_api::category_section(c) == s)
+                            goblin::overlay_api::set_category_clustered(c, true);
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Cluster none"))
-                    for (int c = 0; c < goblin::ui::category_count(); c++)
-                        if (goblin::ui::category_section(c) == s)
-                            goblin::ui::set_category_clustered(c, false);
+                    for (int c = 0; c < goblin::overlay_api::category_count(); c++)
+                        if (goblin::overlay_api::category_section(c) == s)
+                            goblin::overlay_api::set_category_clustered(c, false);
                 ImGui::PopID();
                 ImGui::TextDisabled("left = show on map   |   right [cluster] = join location pile (live) / unchecked = shown normally");
                 ImGui::Separator();
 
-                for (int c = 0; c < goblin::ui::category_count(); c++)
+                for (int c = 0; c < goblin::overlay_api::category_count(); c++)
                 {
-                    if (goblin::ui::category_section(c) != s) continue;
-                    if (!show_all_cats && !contains_ci(goblin::ui::category_label(c), cat_filter))
+                    if (goblin::overlay_api::category_section(c) != s) continue;
+                    if (!show_all_cats && !contains_ci(goblin::overlay_api::category_label(c), cat_filter))
                         continue;   // search box: hide non-matching category rows
                     ImGui::PushID(c);
-                    const char *clabel = goblin::ui::category_label(c);
-                    bool cv = goblin::ui::category_visible(c);
+                    const char *clabel = goblin::overlay_api::category_label(c);
+                    bool cv = goblin::overlay_api::category_visible(c);
                     if (ImGui::Checkbox(clabel, &cv))
-                        goblin::ui::set_category_visible(c, cv);
+                        goblin::overlay_api::set_category_visible(c, cv);
                     // Capture row width once, before any SameLine, so the badge and
                     // the cluster checkbox both position from a stable origin.
                     float row_avail = ImGui::GetContentRegionAvail().x;
                     // Uncollected badge: "<remaining>/<total>" of collectible items in
                     // this category. Skipped for categories with no collectible rows
                     // (graces/NPCs/regions → total 0). Green once fully looted.
-                    int rem = goblin::ui::category_remaining(c);
-                    int tot = goblin::ui::category_total(c);
+                    int rem = goblin::overlay_api::category_remaining(c);
+                    int tot = goblin::overlay_api::category_total(c);
                     if (tot > 0)
                     {
                         char cntbuf[24];
@@ -1324,9 +1328,9 @@ namespace
                     // join the location pile; unchecked = shown normally on the map.
                     // Live (re-plans on next map open).
                     ImGui::SameLine(row_avail - 70.0f);
-                    bool clu = goblin::ui::category_clustered(c);
+                    bool clu = goblin::overlay_api::category_clustered(c);
                     if (ImGui::Checkbox("cluster", &clu))
-                        goblin::ui::set_category_clustered(c, clu);
+                        goblin::overlay_api::set_category_clustered(c, clu);
                     if (ImGui::IsItemHovered())
                         ImGui::SetTooltip("Checked = this category's markers fold into the\n"
                                           "one-per-location cluster pile. Unchecked = shown\n"
@@ -1338,9 +1342,9 @@ namespace
 
             ImGui::SeparatorText("ERR integration");
             {
-                bool hide_bosses = goblin::ui::err_hide_bosses();
+                bool hide_bosses = goblin::overlay_api::err_hide_bosses();
                 if (ImGui::Checkbox("Hide boss markers (ERR already marks bosses)", &hide_bosses))
-                    goblin::ui::set_err_hide_bosses(hide_bosses);
+                    goblin::overlay_api::set_err_hide_bosses(hide_bosses);
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("ELDEN RING Reforged natively marks bosses (and enemy camps,\n"
                                       "plus completion markers) on the world map. Enable this to hide\n"
@@ -1377,8 +1381,8 @@ namespace
                     // Experimental: grey out questlines whose NPC death flag is set.
                     // Live (read each frame) + persisted to the ini on toggle.
                     if (ImGui::Checkbox("Grey out dead-NPC questlines (experimental)",
-                                        &goblin::config::questGreyOnDeath))
-                        goblin::ui::request_save();  // watcher-thread sync + persist to ini
+                                        goblin::overlay_api::cfg_questGreyOnDeath_ptr()))
+                        goblin::overlay_api::request_save();  // watcher-thread sync + persist to ini
                     ImGui::SameLine();
                     ImGui::TextDisabled("(?)");
                     if (ImGui::IsItemHovered())
@@ -1399,7 +1403,7 @@ namespace
                     // reordering or inserting NPCs no longer shifts saved ticks
                     // (the old positional bitstring from commit 40691d5 drifted).
                     // Names carry no '=' or ';'; bits are one '0'/'1' per step.
-                    std::string &qp = goblin::config::questProgress;
+                    std::string &qp = goblin::overlay_api::cfg_questProgress_ref();
                     // One-time migration: a non-empty blob with no '=' is the old
                     // positional format. Walk author order and re-key by name. Base
                     // NPCs precede all DLC, so their global indices are unchanged by
@@ -1445,7 +1449,7 @@ namespace
                     // see feat_quests Phase 2) keep the existing manual ini-blob behavior.
                     auto qp_get = [&](const goblin::generated::NpcQuest &q, size_t s) {
                         uint32_t flag = q.steps[s].progress_flag;
-                        if (flag) return goblin::ui::read_event_flag(flag);
+                        if (flag) return goblin::overlay_api::read_event_flag(flag);
                         auto it = prog.find(q.name);
                         return it != prog.end() && s < it->second.size() && it->second[s] == '1';
                     };
@@ -1456,8 +1460,8 @@ namespace
                             // Read-only mirror unless the user explicitly opted into the
                             // write cheat -- writing EMEVD flags can soft-lock a questline
                             // or skip a reward (see config::questAllowFlagWrite's tooltip).
-                            if (goblin::config::questAllowFlagWrite)
-                                goblin::markers::set_event_flag(flag, v ? 1 : 0);
+                            if ((*goblin::overlay_api::cfg_questAllowFlagWrite_ptr()))
+                                goblin::overlay_api::markers_set_event_flag(flag, v ? 1 : 0);
                             return;
                         }
                         std::string &bits = prog[q.name];
@@ -1478,8 +1482,8 @@ namespace
                         // Visual state: grey "[unfinishable]" (NPC dead, fail_flag
                         // set) takes precedence over amber "(!)" (order-sensitive /
                         // missable). Both push a text tint over the whole subtree.
-                        bool dead = goblin::config::questGreyOnDeath
-                                    && goblin::ui::quest_unfinishable((size_t)id);
+                        bool dead = (*goblin::overlay_api::cfg_questGreyOnDeath_ptr())
+                                    && goblin::overlay_api::quest_unfinishable((size_t)id);
                         // `concl`: the fail_flag is the NPC's shared "concluded"
                         // flag (set on completion OR death) -- grey it, but label
                         // it [concluded] rather than asserting the NPC is dead.
@@ -1489,7 +1493,7 @@ namespace
                         // faction-hostility flag -- they vanish until absolution. Doesn't
                         // override dead/warn (those already win the tint), just adds its
                         // own header tag + note so the player knows why pins disappeared.
-                        bool hostile = q.hostility_flag && goblin::ui::read_event_flag(q.hostility_flag);
+                        bool hostile = q.hostility_flag && goblin::overlay_api::read_event_flag(q.hostility_flag);
                         bool tint = dead || warn || hostile;
                         if (tint)
                             ImGui::PushStyleColor(ImGuiCol_Text,
@@ -1544,7 +1548,7 @@ namespace
                                 ImGui::PushID((int)s);
                                 bool d = qp_get(q, s);
                                 bool flag_backed = q.steps[s].progress_flag != 0;
-                                bool editable = !flag_backed || goblin::config::questAllowFlagWrite;
+                                bool editable = !flag_backed || (*goblin::overlay_api::cfg_questAllowFlagWrite_ptr());
                                 if (!editable) ImGui::BeginDisabled();
                                 if (ImGui::Checkbox("##done", &d) && editable)
                                     qp_set(q, s, d);
@@ -1554,7 +1558,7 @@ namespace
                                 {
                                     ImGui::TextDisabled("[auto]");
                                     if (ImGui::IsItemHovered())
-                                        ImGui::SetTooltip(goblin::config::questAllowFlagWrite
+                                        ImGui::SetTooltip((*goblin::overlay_api::cfg_questAllowFlagWrite_ptr())
                                             ? "Mirrors + can write the live EMEVD flag (cheat ON) -- can break this questline."
                                             : "Read-only mirror of the live EMEVD flag. Enable 'Allow writing quest flags' to edit.");
                                     ImGui::SameLine();
@@ -1638,9 +1642,9 @@ namespace
                                 {
                                     uint8_t team = 0;
                                     int32_t nameId = 0;
-                                    if (goblin::npc_team_and_name(param, &team, &nameId) && nameId > 0)
+                                    if (goblin::overlay_api::npc_team_and_name(param, &team, &nameId) && nameId > 0)
                                     {
-                                        std::string nm = goblin::lookup_text_utf8(nameId + 700000000);
+                                        std::string nm = goblin::overlay_api::lookup_text_utf8(nameId + 700000000);
                                         if (!nm.empty()) { freq[nm]++; resolved[i] = {std::move(nm), nameId}; break; }
                                     }
                                 }
@@ -1677,7 +1681,7 @@ namespace
                                 ImGui::TextDisabled("Found in this mod's data; no step guide yet.");
                                 for (const auto &n : s_qfb)
                                 {
-                                    bool done = goblin::ui::read_event_flag(n.concluded);
+                                    bool done = goblin::overlay_api::read_event_flag(n.concluded);
                                     ImGui::BulletText("%s  %s", n.name.c_str(),
                                                       done ? "[concluded]" : "[in progress]");
                                 }
@@ -1698,9 +1702,9 @@ namespace
                 // threshold the whole block vanished and clustering could not be
                 // re-enabled without a restart.) Drives config::enableClustering and
                 // re-plans live; enabled ⇔ dense piles collapsed into one icon.
-                bool en = goblin::ui::clustering_enabled();
+                bool en = goblin::overlay_api::clustering_enabled();
                 if (ImGui::Checkbox("Enable clustering (declutter dense areas)", &en))
-                    goblin::ui::set_clustering_enabled(en);
+                    goblin::overlay_api::set_clustering_enabled(en);
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("Collapse dense marker piles into one icon to keep busy\n"
                                       "regions readable. NOT for performance — the overlay map\n"
@@ -1711,10 +1715,10 @@ namespace
                     ImGui::TextDisabled("One mixed pile per location. Per-category opt-in above.");
                     // Cluster size = how many markers a LOCATION must hold to collapse
                     // into one pile (sparse locations stay normal).
-                    int gt = goblin::ui::global_threshold();
+                    int gt = goblin::overlay_api::global_threshold();
                     ImGui::SetNextItemWidth(90.0f);
                     if (ImGui::InputInt("Cluster size — markers per location (live)", &gt))
-                        goblin::ui::set_global_threshold(gt);
+                        goblin::overlay_api::set_global_threshold(gt);
                     if (ImGui::IsItemHovered())
                         ImGui::SetTooltip("A location collapses into one pile when it holds MORE\n"
                                           "than this many (clustered-category) markers. LOWER = MORE\n"
@@ -1722,11 +1726,11 @@ namespace
                                           "When distance-adaptive is on, this is the FAR (clustered) size.");
 
                     // Distance-adaptive: scale the size up far from the player.
-                    bool da = goblin::config::clusterDistanceAdaptive;
+                    bool da = (*goblin::overlay_api::cfg_clusterDistanceAdaptive_ptr());
                     if (ImGui::Checkbox("Distance-adaptive (cluster by distance from player)", &da))
                     {
-                        goblin::config::clusterDistanceAdaptive = da;
-                        goblin::ui::request_cluster_replan();
+                        (*goblin::overlay_api::cfg_clusterDistanceAdaptive_ptr()) = da;
+                        goblin::overlay_api::request_cluster_replan();
                     }
                     if (ImGui::IsItemHovered())
                         ImGui::SetTooltip("Own mode: OVERRIDES the per-category opt-in above and clusters\n"
@@ -1737,33 +1741,33 @@ namespace
                                           "uses normal threshold + per-category). Live.");
                     if (da)
                     {
-                        int nr = goblin::config::clusterNearRadius;
+                        int nr = (*goblin::overlay_api::cfg_clusterNearRadius_ptr());
                         ImGui::SetNextItemWidth(160.0f);
                         if (ImGui::SliderInt("Near radius (tiles)", &nr, 1, 40))
-                        { goblin::config::clusterNearRadius = static_cast<uint8_t>(nr); goblin::ui::request_cluster_replan(); }
-                        int nt = goblin::config::clusterNearThreshold;
+                        { (*goblin::overlay_api::cfg_clusterNearRadius_ptr()) = static_cast<uint8_t>(nr); goblin::overlay_api::request_cluster_replan(); }
+                        int nt = (*goblin::overlay_api::cfg_clusterNearThreshold_ptr());
                         ImGui::SetNextItemWidth(160.0f);
                         if (ImGui::SliderInt("Detail near you (cluster size)", &nt, 1, 60))
-                        { goblin::config::clusterNearThreshold = static_cast<uint8_t>(nt); goblin::ui::request_cluster_replan(); }
+                        { (*goblin::overlay_api::cfg_clusterNearThreshold_ptr()) = static_cast<uint8_t>(nt); goblin::overlay_api::request_cluster_replan(); }
                         if (ImGui::IsItemHovered())
                             ImGui::SetTooltip("Cluster size WITHIN the near radius (higher = more individual\n"
                                               "items shown near you). Ramps down to 'Cluster size' (above) far away.");
-                        int fr = goblin::config::clusterFarRadius;
+                        int fr = (*goblin::overlay_api::cfg_clusterFarRadius_ptr());
                         ImGui::SetNextItemWidth(160.0f);
                         if (ImGui::SliderInt("Far radius (tiles)", &fr, 2, 80))
-                        { goblin::config::clusterFarRadius = static_cast<uint8_t>(fr); goblin::ui::request_cluster_replan(); }
+                        { (*goblin::overlay_api::cfg_clusterFarRadius_ptr()) = static_cast<uint8_t>(fr); goblin::overlay_api::request_cluster_replan(); }
 
                         // Debug viz: draw the player + near/far rings (overworld) and
                         // per-pile sub-page tab (underground) so you can SEE where the
                         // distance ramp engages and pin the bug.
                         ImGui::Checkbox("DEBUG: distance zones (player + near/far rings)",
-                                        &goblin::config::clusterDebugRadius);
+                                        goblin::overlay_api::cfg_clusterDebugRadius_ptr());
                         ImGui::Checkbox("DEBUG: marker projection/tile (green=live red=baked + tile)",
-                                        &goblin::config::clusterDebugMarkers);
+                                        goblin::overlay_api::cfg_clusterDebugMarkers_ptr());
                         ImGui::Checkbox("DEBUG: cluster anchors (pile→member lines + name)",
-                                        &goblin::config::debugClusterAnchors);
+                                        goblin::overlay_api::cfg_debugClusterAnchors_ptr());
                         ImGui::Checkbox("DEBUG: region volumes (names; red = unresolved)",
-                                        &goblin::config::debugRegionVolumes);
+                                        goblin::overlay_api::cfg_debugRegionVolumes_ptr());
                     }
 
                     // Player-profile presets — one click sets every cluster knob.
@@ -1773,9 +1777,9 @@ namespace
                     {
                         // Anchors aggregate ~40 markers each, so only a very high
                         // threshold leaves them as individual items everywhere.
-                        goblin::ui::set_global_threshold(60);
-                        goblin::config::clusterDistanceAdaptive = false;
-                        goblin::ui::request_cluster_replan();
+                        goblin::overlay_api::set_global_threshold(60);
+                        (*goblin::overlay_api::cfg_clusterDistanceAdaptive_ptr()) = false;
+                        goblin::overlay_api::request_cluster_replan();
                     }
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Max detail: individual items everywhere; only the densest spots cluster. No distance scaling.");
                     ImGui::SameLine();
@@ -1784,23 +1788,23 @@ namespace
                         // Tight radius: only the area immediately around you is detailed,
                         // everything else clusters (covers just the useful part of the
                         // map, not the whole thing). Verified-good config.
-                        goblin::ui::set_global_threshold(4);           // far = clustered
-                        goblin::config::clusterDistanceAdaptive = true;
-                        goblin::config::clusterNearThreshold = 60;     // near = individual items
-                        goblin::config::clusterNearRadius = 1;
-                        goblin::config::clusterFarRadius = 2;
-                        goblin::ui::request_cluster_replan();
+                        goblin::overlay_api::set_global_threshold(4);           // far = clustered
+                        (*goblin::overlay_api::cfg_clusterDistanceAdaptive_ptr()) = true;
+                        (*goblin::overlay_api::cfg_clusterNearThreshold_ptr()) = 60;     // near = individual items
+                        (*goblin::overlay_api::cfg_clusterNearRadius_ptr()) = 1;
+                        (*goblin::overlay_api::cfg_clusterFarRadius_ptr()) = 2;
+                        goblin::overlay_api::request_cluster_replan();
                     }
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Balanced: individual items in your immediate area, everything else merged.");
                     ImGui::SameLine();
                     if (ImGui::SmallButton("Performance"))
                     {
-                        goblin::ui::set_global_threshold(2);           // far = very aggressive
-                        goblin::config::clusterDistanceAdaptive = true;
-                        goblin::config::clusterNearThreshold = 30;     // tighter detail bubble
-                        goblin::config::clusterNearRadius = 1;
-                        goblin::config::clusterFarRadius = 2;
-                        goblin::ui::request_cluster_replan();
+                        goblin::overlay_api::set_global_threshold(2);           // far = very aggressive
+                        (*goblin::overlay_api::cfg_clusterDistanceAdaptive_ptr()) = true;
+                        (*goblin::overlay_api::cfg_clusterNearThreshold_ptr()) = 30;     // tighter detail bubble
+                        (*goblin::overlay_api::cfg_clusterNearRadius_ptr()) = 1;
+                        (*goblin::overlay_api::cfg_clusterFarRadius_ptr()) = 2;
+                        goblin::overlay_api::request_cluster_replan();
                     }
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Aggressive far-merge: fewest distant icons, most declutter.");
                 }
@@ -1813,7 +1817,7 @@ namespace
             ImGui::SeparatorText("Debug");
             // Live toggle (no restart): project_marker reads this every frame.
             ImGui::Checkbox("Live projection (engine world→map fn; fixes dungeon/UG placement)",
-                            &goblin::config::liveProjection);
+                            goblin::overlay_api::cfg_liveProjection_ptr());
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip(
                     "Project markers with the game's OWN WorldMapViewModel instead of the baked\n"
@@ -1823,17 +1827,17 @@ namespace
             if (ImGui::TreeNode("Dev tools (Save + restart)"))
             {
                 ImGui::Checkbox("Event-flag hook (coverage-gap detector)",
-                                &goblin::config::debugEventFlags);
+                                goblin::overlay_api::cfg_debugEventFlags_ptr());
                 ImGui::Checkbox("Item-grant hook (coverage-gap detector)",
-                                &goblin::config::debugItemGrants);
+                                goblin::overlay_api::cfg_debugItemGrants_ptr());
                 ImGui::Checkbox("World-map cursor probe (logs cursor coords)",
-                                &goblin::config::debugWorldmapProbe);
+                                goblin::overlay_api::cfg_debugWorldmapProbe_ptr());
                 ImGui::Checkbox("Marker-dump hotkey (F9 → markers log)",
-                                &goblin::config::enableMarkerDump);
+                                goblin::overlay_api::cfg_enableMarkerDump_ptr());
                 ImGui::Checkbox("Verbose logging (addresses, param internals)",
-                                &goblin::config::debugLogging);
+                                goblin::overlay_api::cfg_debugLogging_ptr());
                 ImGui::Checkbox("Flag-capture hook (NPC death-flag tool)",
-                                &goblin::config::debugFlagCapture);
+                                goblin::overlay_api::cfg_debugFlagCapture_ptr());
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("These take effect after Save + a game restart — each\n"
                                       "installs its hook/worker once at startup.");
@@ -1856,11 +1860,11 @@ namespace
                     ImGui::EndCombo();
                 }
                 static int cap_last = -1;
-                if (!goblin::debug_events::capture_armed())
+                if (!goblin::overlay_api::debug_events_capture_armed())
                 {
                     if (ImGui::Button("Arm capture"))
                     {
-                        goblin::debug_events::arm_capture(cap_name);
+                        goblin::overlay_api::debug_events_arm_capture(cap_name);
                         cap_last = -1;
                     }
                     if (cap_last >= 0)
@@ -1876,10 +1880,10 @@ namespace
                     ImGui::TextWrapped("ARMED for '%s' — kill it, wait ~5s, then Finalize.",
                                        cap_name);
                     ImGui::PopStyleColor();
-                    ImGui::Text("flags captured: %zu", goblin::debug_events::capture_count());
+                    ImGui::Text("flags captured: %zu", goblin::overlay_api::debug_events_capture_count());
                     if (ImGui::Button("Finalize -> log"))
-                        cap_last = goblin::debug_events::finalize_capture(
-                            &goblin::ui::read_event_flag);
+                        cap_last = goblin::overlay_api::debug_events_finalize_capture(
+                            &goblin::overlay_api::read_event_flag);
                 }
                 ImGui::TreePop();
             }
@@ -1908,7 +1912,7 @@ namespace
                     ImGui::TextDisabled("Cannot be undone. Save to INI afterwards to persist.");
                     if (ImGui::Button("Yes, clear"))
                     {
-                        goblin::ui::reset_quest_progress();
+                        goblin::overlay_api::reset_quest_progress();
                         ImGui::CloseCurrentPopup();
                     }
                     ImGui::SameLine();
@@ -1923,7 +1927,7 @@ namespace
                     ImGui::TextDisabled("Writes defaults to MapForGoblins.ini. Restart to fully apply.");
                     if (ImGui::Button("Yes, reset"))
                     {
-                        goblin::ui::reset_to_defaults();
+                        goblin::overlay_api::reset_to_defaults();
                         ImGui::CloseCurrentPopup();
                     }
                     ImGui::SameLine();

@@ -1,4 +1,5 @@
 #include "map_renderer.hpp"
+#include "../goblin_overlay_render_api.hpp"
 #include "category_meta.hpp"          // category_gpu_iconId (map-point symbol per category)
 #include "spatial_grid.hpp"           // tile-based clustering (grid_cell_key)
 
@@ -187,7 +188,7 @@ struct IconSet
                     out.tex = reinterpret_cast<ImTextureID>(t);
                     out.uv0 = ImVec2(a0, b0); out.uv1 = ImVec2(a1, b1);
                     // Per-category multiplier: normal hostile entities reuse the boss symbol smaller.
-                    out.scale = goblin::config::mapSymbolScale *
+                    out.scale = (*goblin::overlay_api::cfg_mapSymbolScale_ptr()) *
                                 goblin::worldmap::category_gpu_icon_scale(m.category);
                     out.tier = TIER_MP_NAME;
                     return true;
@@ -196,7 +197,7 @@ struct IconSet
             int gid = goblin::worldmap::category_gpu_iconId(m.category);
             if (gid > 0 && mappoint.resolve(IconKey{IconKey::MapPoint, nullptr, gid}, out))
             {
-                out.scale = goblin::config::mapSymbolScale;
+                out.scale = (*goblin::overlay_api::cfg_mapSymbolScale_ptr());
                 out.tier = TIER_MP_ID;
                 return true;
             }
@@ -269,7 +270,7 @@ static std::string tier_cat_list(const std::unordered_set<int> &cats)
     {
         if (!s.empty())
             s += ", ";
-        s += goblin::markers::category_name(static_cast<goblin::generated::Category>(c));
+        s += goblin::overlay_api::markers_category_name(static_cast<goblin::generated::Category>(c));
     }
     return s;
 }
@@ -308,7 +309,7 @@ static void tier_census_flush()
 static inline void draw_legible_icon(ImDrawList *fg, ImVec2 center, float half, ImTextureID tex,
                                      ImVec2 uv0, ImVec2 uv1, ImU32 tint, float minHalf, bool backing)
 {
-    if (goblin::config::iconLegibility)
+    if ((*goblin::overlay_api::cfg_iconLegibility_ptr()))
     {
         // Only the genuinely SMALL icons blend into the map and need a disc; a big item icon reads on
         // its own, so backing it just darkens the map. Decide on the icon's natural (pre-clamp) size.
@@ -340,7 +341,7 @@ static int   g_player_group = -1;   // player's current map layer (base/DLC × o
 //     at a glance. No same-area grace → no badge. See offpage_altitude_via_grace_plan.md.
 static inline void draw_altitude_badge(ImDrawList *fg, ImVec2 center, float half, const Marker &m)
 {
-    if (!goblin::config::altitudeCue || m.worldY == 0.0f)
+    if (!(*goblin::overlay_api::cfg_altitudeCue_ptr()) || m.worldY == 0.0f)
         return;
     float d;
     bool grace_ref;
@@ -356,7 +357,7 @@ static inline void draw_altitude_badge(ImDrawList *fg, ImVec2 center, float half
     }
     else
         return;                            // off-page with no grace reference → nothing meaningful
-    if (d > -goblin::config::altitudeDeadzone && d < goblin::config::altitudeDeadzone)
+    if (d > -(*goblin::overlay_api::cfg_altitudeDeadzone_ptr()) && d < (*goblin::overlay_api::cfg_altitudeDeadzone_ptr()))
         return; // same level
     const bool above = d > 0.0f;
     const float s = 4.0f;                              // half-size of the triangle
@@ -387,10 +388,10 @@ unsigned int dim_color(unsigned int abgr)
 // geom/kindling tracking), factored so an item-stack can test each absorbed member.
 static bool loot_member_collected(uint64_t row_id, int collected_flag)
 {
-    if (collected_flag && goblin::ui::read_event_flag((uint32_t)collected_flag))
+    if (collected_flag && goblin::overlay_api::read_event_flag((uint32_t)collected_flag))
         return true;
-    if (row_id && (goblin::collected::is_original_row_collected(row_id) ||
-                   goblin::kindling::is_row_collected(row_id)))
+    if (row_id && (goblin::overlay_api::is_original_row_collected(row_id) ||
+                   goblin::overlay_api::kindling_is_row_collected(row_id)))
         return true;
     return false;
 }
@@ -425,7 +426,7 @@ int stacked_remaining_count(const Marker &m)
 // (and its members draw individually), so stacking adds/removes nothing without a rebuild.
 static inline bool is_active_stack(const Marker &m)
 {
-    return goblin::config::stackIdenticalItems && !m.stacked.empty();
+    return (*goblin::overlay_api::cfg_stackIdenticalItems_ptr()) && !m.stacked.empty();
 }
 
 // Is this marker's item collected / boss cleared? cleared_only reports the boss-clear
@@ -435,7 +436,7 @@ static inline bool is_active_stack(const Marker &m)
 // falls through to the plain single-marker check (its members are drawn/judged individually).
 bool marker_done(const Marker &m, bool &cleared_only)
 {
-    cleared_only = m.cleared_flag && goblin::ui::read_event_flag((uint32_t)m.cleared_flag);
+    cleared_only = m.cleared_flag && goblin::overlay_api::read_event_flag((uint32_t)m.cleared_flag);
     if (cleared_only)
         return true;
     if (is_active_stack(m))
@@ -445,10 +446,10 @@ bool marker_done(const Marker &m, bool &cleared_only)
                 return false;
         return true;
     }
-    if (m.collected_flag && goblin::ui::read_event_flag((uint32_t)m.collected_flag))
+    if (m.collected_flag && goblin::overlay_api::read_event_flag((uint32_t)m.collected_flag))
         return true;
-    if (m.row_id && (goblin::collected::is_original_row_collected(m.row_id) ||
-                     goblin::kindling::is_row_collected(m.row_id)))
+    if (m.row_id && (goblin::overlay_api::is_original_row_collected(m.row_id) ||
+                     goblin::overlay_api::kindling_is_row_collected(m.row_id)))
         return true;
     return false;
 }
@@ -473,7 +474,7 @@ void draw_check(ImDrawList *fg, ImVec2 p, float half)
 // overlay projects dungeon CONTENTS, not a separate entrance marker — so it's native-only.
 inline bool redify_boss(const Marker &m)
 {
-    return goblin::config::redifyBossIcons &&
+    return (*goblin::overlay_api::cfg_redifyBossIcons_ptr()) &&
            m.category == static_cast<int>(goblin::generated::Category::WorldBosses);
 }
 
@@ -510,7 +511,7 @@ constexpr float kGraceZoomRef = 0.25f;
 // (undiscovered graces stay gated). Read live so it flips the instant the player rests.
 static inline bool is_discovered_grace(const Marker &m)
 {
-    return m.discover_flag && goblin::ui::read_event_flag(static_cast<uint32_t>(m.discover_flag));
+    return m.discover_flag && goblin::overlay_api::read_event_flag(static_cast<uint32_t>(m.discover_flag));
 }
 
 // Draw one marker at backbuffer px p: the atlas icon if available, else a circle.
@@ -523,13 +524,13 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
     // itself — discovered (rested) = full colour, undiscovered = grey. Source per grace_gpu_sprite:
     // the live engine sprite (s_grace_tex, time-tinted) or the mod's baked atlas icon (clean). Needs
     // native-pin suppression to avoid doubling. Graces aren't collectible → no graying path.
-    if (m.discover_flag && goblin::config::graceOverlay)
+    if (m.discover_flag && (*goblin::overlay_api::cfg_graceOverlay_ptr()))
     {
         // Discovered = a green check (same "done" language as cleared bosses / collected loot), NOT a
         // faded tint — ImGui can't desaturate a texture, and a check reads far clearer than low opacity.
-        bool disc = goblin::ui::read_event_flag(static_cast<uint32_t>(m.discover_flag));
+        bool disc = goblin::overlay_api::read_event_flag(static_cast<uint32_t>(m.discover_flag));
         ImU32 t = IM_COL32(255, 255, 255, 255);   // grace icon always full colour
-        if (goblin::config::graceGpuSprite && s_grace_tex)
+        if ((*goblin::overlay_api::cfg_graceGpuSprite_ptr()) && s_grace_tex)
         {
             // SIMPLIFIED: the BASE grace sprite is drawn for EVERY grace (cave/dungeon/overworld
             // Per-type grace icon (UNPARKED): overworld graces draw the bonfire (s_grace_tex), the
@@ -552,13 +553,13 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
             float zf = s_grace_zoom / kGraceZoomRef;
             if (zf < 0.3f) zf = 0.3f;
             if (zf > 2.0f) zf = 2.0f;          // cap high-zoom growth (graces were too big zoomed in)
-            float gh = half * goblin::config::graceIconScale * zf;
+            float gh = half * (*goblin::overlay_api::cfg_graceIconScale_ptr()) * zf;
             // Optional offset → shift the imgui grace beside the game's NATIVE pin for side-by-side
             // calibration (0 = on top). Scaled by the live projection factor (zoom × canvas) so the
             // nudge tracks the native pin across zoom levels instead of drifting (it's stored in
             // 1920×1080-reference px, same convention as the projection bias).
-            float gx = p.x + goblin::config::graceOffsetX * s_grace_off_sx,
-                  gy = p.y + goblin::config::graceOffsetY * s_grace_off_sy;
+            float gx = p.x + (*goblin::overlay_api::cfg_graceOffsetX_ptr()) * s_grace_off_sx,
+                  gy = p.y + (*goblin::overlay_api::cfg_graceOffsetY_ptr()) * s_grace_off_sy;
             // UNDISCOVERED grace → mod-agnostic DISK glyph (gold effigy MENU_MAP_Player_02 from the
             // active SB_MapCursor) instead of the bonfire sprite. Falls back to the sprite until the
             // DDS is read+uploaded, so nothing regresses. Discovered graces keep the sprite + check.
@@ -599,7 +600,7 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
                 }
             }
             draw_legible_icon(fg, ImVec2(gx, gy), gh, gt, u0, u1, t,
-                              goblin::config::iconMinHalfPx > 10.0f ? goblin::config::iconMinHalfPx : 10.0f,
+                              (*goblin::overlay_api::cfg_iconMinHalfPx_ptr()) > 10.0f ? (*goblin::overlay_api::cfg_iconMinHalfPx_ptr()) : 10.0f,
                               /*backing=*/false); // grace = native MENU_MAP symbol, no halo
             // No discovered-check on graces: the icon already encodes it (undiscovered = yellow
             // MENU_MAP_Player_02 cursor, discovered = the gold effigy sprite), so a check is redundant.
@@ -609,7 +610,7 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
         if (icons.resolve(m, ih))
         {
             tier_tally(ih.tier, m.category);
-            draw_legible_icon(fg, p, half, ih.tex, ih.uv0, ih.uv1, t, goblin::config::iconMinHalfPx,
+            draw_legible_icon(fg, p, half, ih.tex, ih.uv0, ih.uv1, t, (*goblin::overlay_api::cfg_iconMinHalfPx_ptr()),
                               tier_wants_backing(ih.tier));
         }
         else
@@ -623,15 +624,15 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
         return;
     }
     bool cleared = false, done = false;
-    if (goblin::config::collectedGraying)
+    if ((*goblin::overlay_api::cfg_collectedGraying_ptr()))
     {
         done = marker_done(m, cleared);
-        if (done && goblin::config::hideCollected)
+        if (done && (*goblin::overlay_api::cfg_hideCollected_ptr()))
             return; // legacy-style: hide collected/cleared entirely
     }
     // Spoiler-free (anonymous_loot): lot-backed loot draws as a neutral gray "?" disc,
     // hiding the item's icon/colour. Collected ones still gray; category gate unchanged.
-    if (goblin::config::anonymousLoot && m.lot_backed)
+    if ((*goblin::overlay_api::cfg_anonymousLoot_ptr()) && m.lot_backed)
     {
         float cr = half * 0.5f;
         const ImU32 fill = done ? IM_COL32(120, 120, 120, 120) : IM_COL32(155, 155, 160, 215);
@@ -652,7 +653,7 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
     {
         tier_tally(ih.tier, m.category);
         const float hh = half * ih.scale;
-        draw_legible_icon(fg, p, hh, ih.tex, ih.uv0, ih.uv1, tint, goblin::config::iconMinHalfPx,
+        draw_legible_icon(fg, p, hh, ih.tex, ih.uv0, ih.uv1, tint, (*goblin::overlay_api::cfg_iconMinHalfPx_ptr()),
                           tier_wants_backing(ih.tier));
     }
     else
@@ -689,7 +690,7 @@ inline void world_to_mapspace(const Marker &m, float &gU, float &gV)
 // doesn't place the area (e.g. m19 Chapel — no converter accepts it).
 inline void project_marker(const Marker &m, float &gU, float &gV)
 {
-    if (goblin::config::liveProjection && m.raw_area >= 0)
+    if ((*goblin::overlay_api::cfg_liveProjection_ptr()) && m.raw_area >= 0)
     {
         if (m.live_state != 1)
         {
@@ -734,7 +735,7 @@ inline void project_marker(const Marker &m, float &gU, float &gV)
 inline void project_raw(int area, float rawX, float rawZ, float bakedWX, float bakedWZ,
                         float &gU, float &gV)
 {
-    if (goblin::config::liveProjection && area >= 0)
+    if ((*goblin::overlay_api::cfg_liveProjection_ptr()) && area >= 0)
     {
         int gx = (int)std::floor(rawX / 256.0f), gz = (int)std::floor(rawZ / 256.0f);
         int pg = -1;
@@ -781,7 +782,7 @@ void hover_test(Hover &h, ImVec2 mouse, ImVec2 p, float r, MakeLabel make_label)
 // like the native map. Either may be empty; empty if both are.
 std::string marker_label(const Marker &m)
 {
-    std::string loc = goblin::lookup_text_utf8(m.loc_pname);
+    std::string loc = goblin::overlay_api::lookup_text_utf8(m.loc_pname);
     // " xN" quantity suffix: a multi-item lot, or an ACTIVE item-stack of co-located identical markers
     // (only when the stack toggle is on — off, a representative shows its own count like any marker).
     // For an active stack with collected_graying on, show the REMAINING (uncollected) count so it
@@ -789,13 +790,13 @@ std::string marker_label(const Marker &m)
     // can't tofu on a font missing the multiply glyph. Empty for single items.
     int shown = m.count;
     if (is_active_stack(m))
-        shown = goblin::config::collectedGraying ? stacked_remaining_count(m) : stacked_total_count(m);
+        shown = (*goblin::overlay_api::cfg_collectedGraying_ptr()) ? stacked_remaining_count(m) : stacked_total_count(m);
     const std::string qty = (shown > 1) ? (" x" + std::to_string(shown)) : std::string();
     // Spoiler-free: don't leak the item name — just "?" (+ its location, like native). Quantity is
     // not an identity spoiler, so it still shows.
-    if (goblin::config::anonymousLoot && m.lot_backed)
+    if ((*goblin::overlay_api::cfg_anonymousLoot_ptr()) && m.lot_backed)
         return loc.empty() ? ("?" + qty) : ("?" + qty + "\n" + loc);
-    std::string name = goblin::lookup_text_utf8(m.name_id);
+    std::string name = goblin::overlay_api::lookup_text_utf8(m.name_id);
     // Quest-NPC pin (QuestNpcLayer): NPC name + "quest — current step" + coarse zone.
     if (m.tip_quest)
     {
@@ -807,7 +808,7 @@ std::string marker_label(const Marker &m)
         // Runtime fallback pin (no hand step data) → append the LIVE quest state. Read at hover
         // only (one flag, when this marker is the hovered one), so it never re-reads per frame.
         if (m.quest_concluded_flag)
-            t += goblin::ui::read_event_flag((uint32_t)m.quest_concluded_flag) ? "  [concluded]"
+            t += goblin::overlay_api::read_event_flag((uint32_t)m.quest_concluded_flag) ? "  [concluded]"
                                                                                : "  [in progress]";
         return t;
     }
@@ -831,7 +832,7 @@ std::string marker_label(const Marker &m)
 // "<remaining>/<total> left" while some are uncollected, "<total> markers" otherwise.
 std::string pile_label(int loc_pname, int remaining, int total)
 {
-    std::string loc = goblin::lookup_text_utf8(loc_pname);
+    std::string loc = goblin::overlay_api::lookup_text_utf8(loc_pname);
     std::string n = (remaining == total)
                         ? (std::to_string(total) + " markers")
                         : (std::to_string(remaining) + "/" + std::to_string(total) + " left");
@@ -902,7 +903,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     int player_area = -1;
     float pwx = 0, pwz = 0;
     const bool have_player =
-        dist_adaptive && goblin::get_player_map_pos(player_area, pwx, pwz); // projected (debug rings)
+        dist_adaptive && goblin::overlay_api::get_player_map_pos(player_area, pwx, pwz); // projected (debug rings)
     // Tile clustering measures player↔tile in MAP-SPACE, gated to the player's own map layer (group).
     // Group-keyed tiles never share a cell across layers, so this avoids the overworld↔underground
     // overlap without needing the raw-area frame the old grace-key ramp relied on.
@@ -911,13 +912,13 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     if (have_player)
     {
         int pgx_ = 0, pgz_ = 0;
-        goblin::get_player_map_pos(player_area, pwx, pwz, &pgx_, &pgz_, &player_grp);
+        goblin::overlay_api::get_player_map_pos(player_area, pwx, pwz, &pgx_, &pgz_, &player_grp);
         world_to_mapspace_xy(pwx, pwz, pmU, pmV);
     }
     // DEBUG viz (config cluster_debug_radius): player marker + near/far rings so you can
     // SEE where the distance ramp engages. Draws on every page the ramp runs (incl. the
     // projected underground); per-pile d=/thr= below shows the ramp's decision.
-    const bool dbg_radius = goblin::config::clusterDebugRadius && have_player;
+    const bool dbg_radius = (*goblin::overlay_api::cfg_clusterDebugRadius_ptr()) && have_player;
     if (dbg_radius)
     {
         float gU, gV;
@@ -994,14 +995,14 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         // its grace anchor; red = anchor missing → member centroid (the drift/mis-place
         // cases, e.g. the Chapel cluster + underground miscalc). Lines that fan way out =
         // the pile sits far from its members.
-        if (goblin::config::debugClusterAnchors)
+        if ((*goblin::overlay_api::cfg_debugClusterAnchors_ptr()))
         {
             const ImU32 dcol = IM_COL32(40, 230, 170, 170); // tile pile = centroid placed
             for (int i : idxs)
                 fg->AddLine(c, items[i].p, dcol, 1.0f);
             fg->AddCircleFilled(c, 4.f, dcol);
             fg->AddCircle(c, 4.f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
-            std::string nm = goblin::lookup_text_utf8(items[idxs[0]].m->loc_pname);
+            std::string nm = goblin::overlay_api::lookup_text_utf8(items[idxs[0]].m->loc_pname);
             char db[140];
             if (dbg_d >= 0.f) // distance-adaptive engaged: show dist + chosen threshold
                 std::snprintf(db, sizeof(db), "%s [%d] d=%.0f thr=%d",
@@ -1018,7 +1019,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         // marker's hover tooltip (Marker.count), not the pile glyph.
         int total = (int)idxs.size();
         int remaining = total;
-        if (goblin::config::collectedGraying)
+        if ((*goblin::overlay_api::cfg_collectedGraying_ptr()))
         {
             remaining = 0;
             for (int i : idxs)
@@ -1078,7 +1079,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
             hover_test(hover, mouse, best, glyphR,
                        [&] { return pile_label(pl.loc_pname, pl.count, pl.total); });
             // Location name centred under the glyph (shadowed for readability on the busy map).
-            std::string loc = goblin::lookup_text_utf8(piles[i].loc_pname);
+            std::string loc = goblin::overlay_api::lookup_text_utf8(piles[i].loc_pname);
             if (!loc.empty())
             {
                 ImVec2 ts = ImGui::CalcTextSize(loc.c_str());
@@ -1131,7 +1132,7 @@ void ensure_region_init()
         return;
     for (int i = 0; i < kMaxRegions; ++i)
         g_region_on[i] = true;
-    const std::string &s = goblin::config::regionToggles;
+    const std::string &s = goblin::overlay_api::cfg_regionToggles_ref();
     const int n = (int)goblin::generated::MAJOR_REGION_ANCHOR_COUNT;
     for (int i = 0; i < n && i < kMaxRegions && i < (int)s.size(); ++i)
         g_region_on[i] = (s[i] != '0');
@@ -1149,7 +1150,7 @@ void persist_regions()
     s.reserve(n);
     for (int i = 0; i < n; ++i)
         s.push_back(g_region_on[i] ? '1' : '0');
-    goblin::config::regionToggles = s;
+    goblin::overlay_api::cfg_regionToggles_ref() = s;
 }
 
 // Project every major-region anchor to map-space for the current frame (same transform as
@@ -1166,11 +1167,11 @@ void compute_region_proj()
         const MajorRegionAnchor &a = MAJOR_REGION_ANCHORS[i];
         int ga;
         float wx, wz;
-        goblin::marker_world_pos(a.area, a.gx, a.gz, a.px, a.pz, ga, wx, wz,
+        goblin::overlay_api::marker_world_pos(a.area, a.gx, a.gz, a.px, a.pz, ga, wx, wz,
                                  /*conv_underground=*/true);
         float gU, gV;
         bool placed = false;
-        if (goblin::config::liveProjection)
+        if ((*goblin::overlay_api::cfg_liveProjection_ptr()))
         {
             int pg = -1;
             placed = goblin::worldmap_probe::project(a.area, a.gx, a.gz, a.px, a.pz, gU, gV, pg);
@@ -1359,11 +1360,11 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
 {
     namespace proj = goblin::projection;
     const IconSet icons(reinterpret_cast<ImTextureID>(atlas_texture),
-                        goblin::config::nativeItemIcons);
+                        (*goblin::overlay_api::cfg_nativeItemIcons_ptr()));
     const ImVec2 mouse(mouseX, mouseY);
     Hover hover;
     goblin::worldmap_probe::LiveView lv;
-    if (!goblin::worldmap_probe::get_live_view(lv))
+    if (!goblin::overlay_api::get_live_view(lv))
     {
         g_view_delay.reset(); // map closed → re-seed the delay fresh on reopen
         return;
@@ -1380,11 +1381,11 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // Y values are in unrelated frames (everything would read "below"), so we gate on group match.
     {
         float px = 0.0f, py = 0.0f, pz = 0.0f;
-        g_player_world_y_valid = goblin::get_player_world_pos(px, py, pz);
+        g_player_world_y_valid = goblin::overlay_api::get_player_world_pos(px, py, pz);
         g_player_world_y = py;
         int parea = 0, pgrp = -1;
         float mwx = 0.0f, mwz = 0.0f;
-        g_player_group = goblin::get_player_map_pos(parea, mwx, mwz, nullptr, nullptr, &pgrp) ? pgrp : -1;
+        g_player_group = goblin::overlay_api::get_player_map_pos(parea, mwx, mwz, nullptr, nullptr, &pgrp) ? pgrp : -1;
     }
 
     ImGuiIO &io = ImGui::GetIO();
@@ -1423,7 +1424,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // Motion sync: delay the projected view by the configured frame count so markers ride the
     // native map layer instead of leading it during a pan. Live config (view_delay_frames) so the
     // pan/zoom re-adjust can be A/B-tuned in-game; apply() clamps to the ring's [0, N-1] capacity.
-    g_view_delay.apply(view, goblin::config::viewDelayFrames, goblin::config::viewDelayZoom);
+    g_view_delay.apply(view, (*goblin::overlay_api::cfg_viewDelayFrames_ptr()), (*goblin::overlay_api::cfg_viewDelayZoom_ptr()));
 
     // Grace GPU offset rides the SAME projection as the markers (zoom × canvas factor), so the
     // native-vs-imgui calibration nudge stays aligned across zoom. Sampled here, after the delay
@@ -1435,21 +1436,21 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // Clustering = a live render pass: categories opted into clustering bin together
     // into ONE mixed pile per dense screen cell; everything else draws normally. Live
     // by construction (re-binned every frame), so toggles/zoom update with no rebuild.
-    const bool clustering = goblin::ui::clustering_enabled();
-    const int threshold = clustering ? goblin::ui::global_threshold() : 0;
+    const bool clustering = goblin::overlay_api::clustering_enabled();
+    const int threshold = clustering ? goblin::overlay_api::global_threshold() : 0;
     // Distance-adaptive is its own clustering mode: when on it OVERRIDES the per-category
     // opt-in (every category clusters by distance from the player; see draw_clusters). Works
     // on ALL pages — the ramp measures distance in the RAW per-area frame (get_player_raw_pos
     // / grace_anchor_raw), gated to the same raw area, so the projected-frame overlap that
     // broke it underground (Siofra) no longer applies.
     const bool dist_adaptive =
-        clustering && goblin::config::clusterDistanceAdaptive;
+        clustering && (*goblin::overlay_api::cfg_clusterDistanceAdaptive_ptr());
     // Resolution-relative icon/glyph sizes (match the native canvas-scaled icons),
     // × the user's master scale × the per-type scale (saved in the ini).
     const float uiScale = realH / 1080.f;
-    const float master = goblin::config::overlayMasterScale;
-    const float iconHalf = kIconHalfBase * uiScale * master * goblin::config::overlayIconScale;
-    const float glyphR = kGlyphRBase * uiScale * master * goblin::config::overlayClusterScale;
+    const float master = (*goblin::overlay_api::cfg_overlayMasterScale_ptr());
+    const float iconHalf = kIconHalfBase * uiScale * master * (*goblin::overlay_api::cfg_overlayIconScale_ptr());
+    const float glyphR = kGlyphRBase * uiScale * master * (*goblin::overlay_api::cfg_overlayClusterScale_ptr());
     std::vector<ScreenMarker> clustered; // markers whose category opted into clustering
 
     // In-world region chips: project every major-region anchor once (shared by the chip
@@ -1458,20 +1459,20 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     s_inworld_hot = false;
     compute_region_proj();
     const bool anyRegionOff = any_region_off();
-    if (goblin::config::showRegionLabels)
+    if ((*goblin::overlay_api::cfg_showRegionLabels_ptr()))
         draw_region_labels(fg, open_grp, view, realW, realH, uiScale, ImVec2(mouseX, mouseY));
 
     // DEBUG (debug_region_volumes): draw every MapNameOverride region volume on the open
     // page at its projected centre + its name. RED = its textId does NOT resolve in the FMG
     // (the bug — region returns the id but lookup_text_utf8 gives nothing), cyan = resolves.
-    if (goblin::config::debugRegionVolumes)
+    if ((*goblin::overlay_api::cfg_debugRegionVolumes_ptr()))
     {
         namespace gen = goblin::generated;
         for (size_t i = 0; i < gen::NAME_REGION_COUNT; ++i)
         {
             const auto &r = gen::NAME_REGIONS[i];
             int ga; float wx, wz;
-            goblin::marker_world_pos(r.area, r.gx, r.gz, r.px, r.pz, ga, wx, wz,
+            goblin::overlay_api::marker_world_pos(r.area, r.gx, r.gz, r.px, r.pz, ga, wx, wz,
                                      /*conv_underground=*/true);
             if (goblin::marker_group_from(r.area, ga) != open_grp)
                 continue;
@@ -1480,7 +1481,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             proj::Px p = proj::project_screen(gU, gV, view, realW, realH);
             if (p.x < -4 || p.y < -4 || p.x > realW + 4 || p.y > realH + 4)
                 continue;
-            std::string nm = goblin::lookup_text_utf8(r.text_id);
+            std::string nm = goblin::overlay_api::lookup_text_utf8(r.text_id);
             const ImU32 col = nm.empty() ? IM_COL32(255, 60, 60, 255)  // unresolved
                                          : IM_COL32(80, 200, 255, 255); // resolves
             fg->AddCircleFilled(ImVec2(p.x, p.y), 4.f, col);
@@ -1497,7 +1498,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // so without this each page's markers project on their FIRST view → a visible 1-by-1
     // pop-in on open / page-change. The projection is page-independent (static converters) →
     // valid forever once cached, so one upfront pass makes every reopen/page-switch instant.
-    if (goblin::config::liveProjection)
+    if ((*goblin::overlay_api::cfg_liveProjection_ptr()))
     {
         static bool s_prewarmed = false;
         if (!s_prewarmed)
@@ -1541,7 +1542,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // hits regardless (else "hide everything then search" finds nothing). master_on folds the icon
     // master into the per-layer visibility; a hidden layer is still iterated while searching so its
     // hits can draw, and non-hit markers in it stay hidden (the !layer_vis && !is_hit skip below).
-    const bool master_on = goblin::ui::icons_enabled();
+    const bool master_on = goblin::overlay_api::icons_enabled();
     // Locate-candidate selection: a searched name can have many markers across the page. Pick the
     // best one to pan onto — UNCOLLECTED first (the useful ones), then nearest to the current view
     // centre. If every instance is already collected, the nearest collected one wins (it draws greyed,
@@ -1588,13 +1589,13 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // Item stacking (render-time, instant toggle): a non-representative member of a co-located
             // identical-item group is hidden while the toggle is on — its representative draws once for
             // the whole group with the summed " xN". Toggle off → fall through and draw it individually.
-            if (m.stack_member && goblin::config::stackIdenticalItems)
+            if (m.stack_member && (*goblin::overlay_api::cfg_stackIdenticalItems_ptr()))
                 continue;
 
             // [diag] baked-only filter: show ONLY surviving Baked-source markers (= the no-bake
             // residual; disk/live twins were already dropped at finalize). Lets each spot be
             // eyeballed in-world — real loot the live pass misses vs a phantom the bake invented.
-            if (goblin::config::bakedOnly && m.source != Source::Baked)
+            if ((*goblin::overlay_api::cfg_bakedOnly_ptr()) && m.source != Source::Baked)
                 continue;
 
             // In a hidden layer (category off / master off) only an active search HIT draws.
@@ -1624,8 +1625,8 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                 // affine (e.g. an underground area the map VM hasn't resolved) has wrong map-space and
                 // would scatter across tiles — draw it individually until its live projection lands.
                 // (live_state is from last frame's project_marker; converges after one frame.)
-                (m.live_state == 1 || !goblin::config::liveProjection) &&
-                (dist_adaptive || goblin::ui::category_clustered(m.category));
+                (m.live_state == 1 || !(*goblin::overlay_api::cfg_liveProjection_ptr())) &&
+                (dist_adaptive || goblin::overlay_api::category_clustered(m.category));
 
             float gU, gV;
             project_marker(m, gU, gV);
@@ -1635,7 +1636,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // state (green live / red baked-fallback / grey untried); text = its map-space tile (tu,tv)
             // and group. Same-tile+same-colour neighbours cluster; scattered tiles or red dots explain a
             // miss. Drawn for on-screen markers only.
-            if (goblin::config::clusterDebugMarkers &&
+            if ((*goblin::overlay_api::cfg_clusterDebugMarkers_ptr()) &&
                 sp.x > -32 && sp.x < realW + 32 && sp.y > -32 && sp.y < realH + 32)
             {
                 const ImU32 dc = m.live_state == 1 ? IM_COL32(60, 230, 90, 255)
@@ -1696,25 +1697,25 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             // ALL graces itself (draw_marker: discovered = colour, undiscovered = grey). Without it,
             // the old hybrid: drop discovered graces (the game draws those natively), keep undiscovered.
             // Read live so it updates the moment the player rests at a grace.
-            if (m.discover_flag && !goblin::config::graceOverlay &&
-                goblin::ui::read_event_flag((uint32_t)m.discover_flag))
+            if (m.discover_flag && !(*goblin::overlay_api::cfg_graceOverlay_ptr()) &&
+                goblin::overlay_api::read_event_flag((uint32_t)m.discover_flag))
                 continue;
             // Post-event story gate: a marker tagged with a secondary story flag (post-burn
             // Leyndell / Chapel, Ashen Capital, Charm-broken, Sealing-tree-burnt) is a
             // post-event variant and appears only once that flag is set. Read live so it
             // reveals the instant the event fires. Legacy parity: SetSecondaryFlags
             // (textEnableFlag2) + the Ashen Capital eventFlag gate.
-            if (m.secondary_flag && !goblin::ui::read_event_flag((uint32_t)m.secondary_flag))
+            if (m.secondary_flag && !goblin::overlay_api::read_event_flag((uint32_t)m.secondary_flag))
                 continue;
             // Inverse story gate: a PRE-event variant (Leyndell Royal Capital) disappears
             // the moment its flag fires (the Ashen Capital replaces it).
-            if (m.hide_when_flag && goblin::ui::read_event_flag((uint32_t)m.hide_when_flag))
+            if (m.hide_when_flag && goblin::overlay_api::read_event_flag((uint32_t)m.hide_when_flag))
                 continue;
             // Map-fragment gate (require_map_fragments): the region's MAP FRAGMENT item must be
             // acquired (m.fragment_flag = GetMapFlagFromTile, read live). Exception (vanilla
             // parity): an already-DISCOVERED grace shows regardless of fragment ownership.
-            if (goblin::config::requireMapFragments && m.fragment_flag &&
-                !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
+            if ((*goblin::overlay_api::cfg_requireMapFragments_ptr()) && m.fragment_flag &&
+                !goblin::overlay_api::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
                 !is_discovered_grace(m))
                 continue; // map fragment not acquired yet (and not an already-discovered grace)
 
@@ -1740,7 +1741,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // was found, the marker is on a page that isn't open — KEEP the request pending so it fires the
     // moment that page opens (the auto-switch marshal is bringing it). HOLD the pan while a page switch
     // is still settling: the engine snaps the new page's view, which would clobber a too-early pan.
-    if (s_locate_nameid && loc_have && !goblin::worldmap_probe::page_switch_busy())
+    if (s_locate_nameid && loc_have && !goblin::overlay_api::page_switch_busy())
     {
         s_locate_pos = loc_best;
         s_locate_have = true;
@@ -1757,7 +1758,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
 
     // Throttled cost attribution (debug_logging only; ~every 300 frames). Read with
     // grep "\[RENDERPERF\]" alongside the [BENCH] render.worldmap.* timings.
-    if (goblin::config::debugLogging)
+    if ((*goblin::overlay_api::cfg_debugLogging_ptr()))
     {
         static int s_fc = 0;
         if (++s_fc % 300 == 0)
@@ -1777,17 +1778,17 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
                   float screenH)
 {
     namespace cfg = goblin::config;
-    if (!cfg::showMinimap || !goblin::ui::icons_enabled())
+    if (!cfg::showMinimap || !goblin::overlay_api::icons_enabled())
         return;
     // Hide the minimap while the full world map is open (it's a gameplay HUD).
-    if (goblin::world_map_open())
+    if (goblin::overlay_api::world_map_open())
         return;
     // Live player position (read during gameplay, map closed). The player pos is the
     // WorldMapPointParam frame on EVERY page now (RE windows_player_pos_RESOLVED), so the
     // minimap works overworld, underground AND DLC — pick the player's marker group.
     int parea = 0, pgroup = 0;
     float pwx = 0.f, pwz = 0.f;
-    if (!goblin::get_player_map_pos(parea, pwx, pwz, nullptr, nullptr, &pgroup))
+    if (!goblin::overlay_api::get_player_map_pos(parea, pwx, pwz, nullptr, nullptr, &pgroup))
         return; // no position (e.g. during a load) → no minimap this frame
 
     // DX (altitude badge stale on minimap): render_markers() only refreshes g_player_world_y/
@@ -1796,7 +1797,7 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     // was cached on last map-close. Refresh live here too, every minimap frame.
     {
         float px = 0.f, py = 0.f, pz = 0.f;
-        g_player_world_y_valid = goblin::get_player_world_pos(px, py, pz);
+        g_player_world_y_valid = goblin::overlay_api::get_player_world_pos(px, py, pz);
         g_player_world_y = py;
         g_player_group = pgroup;
     }
@@ -1828,7 +1829,7 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
 
     fg->PushClipRect(ImVec2(ctr.x - R, ctr.y - R), ImVec2(ctr.x + R, ctr.y + R), true);
     const IconSet icons(reinterpret_cast<ImTextureID>(atlas_texture),
-                        goblin::config::nativeItemIcons);
+                        (*goblin::overlay_api::cfg_nativeItemIcons_ptr()));
     // Item 13 (dx-bugs-backlog): the minimap used to hardcode half=6.0f, completely ignoring the
     // same scale settings the worldmap honors. Clamped so an extreme scale setting can't make the
     // small fixed-radius HUD unreadable or blow past its own icons.
@@ -1851,14 +1852,14 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             if (m.group != pgroup)
                 continue; // only the player's current map page
             // Same hide-gates as the worldmap (discovered grace, post-event story).
-            if (m.discover_flag && !goblin::config::graceOverlay &&
-                goblin::ui::read_event_flag((uint32_t)m.discover_flag))
+            if (m.discover_flag && !(*goblin::overlay_api::cfg_graceOverlay_ptr()) &&
+                goblin::overlay_api::read_event_flag((uint32_t)m.discover_flag))
                 continue;
-            if (m.secondary_flag && !goblin::ui::read_event_flag((uint32_t)m.secondary_flag))
+            if (m.secondary_flag && !goblin::overlay_api::read_event_flag((uint32_t)m.secondary_flag))
                 continue;
             // Inverse story gate: a PRE-event variant (Leyndell Royal Capital) disappears
             // the moment its flag fires (the Ashen Capital replaces it).
-            if (m.hide_when_flag && goblin::ui::read_event_flag((uint32_t)m.hide_when_flag))
+            if (m.hide_when_flag && goblin::overlay_api::read_event_flag((uint32_t)m.hide_when_flag))
                 continue;
             // North-up, player-centred: same orientation as the worldmap (mapV = -worldZ).
             float dx = (m.worldX - pwx) * scale;
@@ -1882,7 +1883,7 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             // Map-fragment gate (require_map_fragments): the FRAGMENT item must be acquired.
             // Vanilla parity: an already-discovered grace bypasses this gate.
             if (cfg::requireMapFragments && m.fragment_flag &&
-                !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
+                !goblin::overlay_api::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
                 !is_discovered_grace(m))
                 continue;
             // Clustering DISABLED on the minimap (user-tuned 2026-07-01: piles kept popping in

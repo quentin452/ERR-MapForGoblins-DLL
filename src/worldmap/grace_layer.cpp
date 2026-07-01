@@ -1,4 +1,5 @@
 #include "grace_layer.hpp"
+#include "../goblin_overlay_render_api.hpp"
 
 #include "category_meta.hpp" // category_color
 #include "goblin_inject.hpp" // goblin::live_graces / marker_world_pos / ui::category_visible
@@ -16,8 +17,8 @@ namespace goblin::worldmap
 bool GraceLayer::visible() const
 {
     const int g = static_cast<int>(goblin::generated::Category::WorldGraces);
-    return goblin::ui::category_visible(g) &&
-           goblin::ui::section_visible(goblin::ui::category_section(g));
+    return goblin::overlay_api::category_visible(g) &&
+           goblin::overlay_api::section_visible(goblin::overlay_api::category_section(g));
 }
 
 const std::vector<Marker> &GraceLayer::markers() const
@@ -27,7 +28,7 @@ const std::vector<Marker> &GraceLayer::markers() const
     built_ = true;
     GOBLIN_BENCH("build.graces");
 
-    const auto &graces = goblin::live_graces(); // LIVE BonfireWarpParam, no bake
+    const auto &graces = goblin::overlay_api::live_graces(); // LIVE BonfireWarpParam, no bake
     cache_.reserve(graces.size());
     for (const goblin::LiveGrace &e : graces)
     {
@@ -35,14 +36,14 @@ const std::vector<Marker> &GraceLayer::markers() const
         // Stormveil/area-10 are page-local until projected → else they pile up).
         int ga;
         float wx, wz;
-        goblin::marker_world_pos(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ, ga, wx, wz,
+        goblin::overlay_api::marker_world_pos(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ, ga, wx, wz,
                                  /*conv_underground=*/true);
         int grp = goblin::marker_group_from(e.areaNo, ga);
         const int gc = static_cast<int>(goblin::generated::Category::WorldGraces);
         int pname = -1;
-        int ckey = goblin::marker_cluster_key(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ,
+        int ckey = goblin::overlay_api::marker_cluster_key(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ,
                                               &pname);
-        int frag = goblin::marker_fragment_flag(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ);
+        int frag = goblin::overlay_api::marker_fragment_flag(e.areaNo, e.gridXNo, e.gridZNo, e.posX, e.posZ);
         // discover_flag = the grace's textDisableFlagId1: when set (discovered), the
         // renderer drops this marker (the game draws that grace natively) — keeps only
         // UNdiscovered graces as overlay helpers. row_id/cleared/collected stay 0
@@ -65,7 +66,7 @@ const std::vector<Marker> &GraceLayer::markers() const
     }
     // Verification (dev, gated by dump_icon_textures): one-shot histogram of grace raw areaNos +
     // how many we flag underground (ERR icon), to sanity-check the live iconId==44 gate in-game.
-    if (goblin::config::dumpIconTextures)
+    if ((*goblin::overlay_api::cfg_dumpIconTextures_ptr()))
     {
         std::map<int, int> by_area, by_grp;
         int ug = 0;
