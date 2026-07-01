@@ -2,9 +2,11 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01j (merged two parallel session tracks: (1) `feat/inject-module` PR 0 of the
-goblin_inject.cpp god-file split — MERGED to master, in-game confirmed via log check, PR 1 audit
-in progress next; (2) Phase A regen DONE on the Windows box — all 4 profiles now MAP_ENTRY_COUNT 0,
+Last updated: 2026-07-01k (`feat/inject-icon-harvest` branch: PR 1 of the goblin_inject.cpp
+god-file split — icon-texture harvest/GPU registry extracted, builds clean, deployed +
+md5-verified, NOT YET in-game log-checked — see directly below. Earlier same day: merged two
+parallel session tracks: (1) `feat/inject-module` PR 0 — MERGED to master, in-game confirmed via
+log check; (2) Phase A regen DONE on the Windows box — all 4 profiles now MAP_ENTRY_COUNT 0,
 non-ERR DLLs rebuilt clean via clang/ninja, Phase-1 enemy-name landmine closed at build level (see
 the baked-data STATUS block below), dead `goblin_massedit.{cpp,hpp}` culled. Also scoped this day:
 overlay-only hot-reload + AI Playwright RPC loop plan (not started); MSVC-canonical / clang-cl-alt
@@ -12,7 +14,27 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01i) — `feat/inject-module` PR 0 done + in-game CONFIRMED, ready to merge
+## RESUME HERE (2026-07-01k) — `feat/inject-icon-harvest` PR 1 built+deployed, needs in-game log check
+
+Branch `feat/inject-icon-harvest` (forked from `master` after PR 0 merged), implementing PR 1 of
+`docs/plans/goblin_inject_refactor_plan.md`. Extracted the icon-texture harvest/GPU-icon-registry
+block (`:1688-3939`, ~2252 lines — bigger than the plan's original ~1500-1600 estimate) out of
+`goblin_inject.cpp` into new `src/goblin_icon_harvest.cpp`. Audit (forked, same rigor as PR 0)
+found exactly ONE cross-boundary coupling: `goblin_inject.cpp`'s `warp_pin_detour` (native
+discovered-grace pin suppression, stays behind) needs `icon_rpm_i32`/`icon_rpm_ptr` — fixed with a
+local duplicate in `goblin_inject.cpp`, same per-file-copy convention PR 0 established. 30 public
+functions declared in `goblin_inject.hpp` unchanged (facade kept, zero call-site churn across
+`goblin_overlay.cpp`/`goblin_worldmap_probe.cpp`/`goblin_markers.cpp`/`goblin_messages.cpp`/
+`dllmain.cpp`/`worldmap/*`). Needed 2 include fixes not caught by the audit (missing `<set>`,
+missing `from/params.hpp` + `goblin_messages.hpp` for `lookup_text_utf8`) — build caught these
+immediately, nothing subtle. Builds clean via clang-cl+xwin, deployed to
+`~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior DLL backed up as
+`.bak-pre-icon-harvest`) — **game wasn't running at deploy time, so NOT yet in-game log-checked**
+(same as how PR 0 was confirmed: check for a fresh `NEW SESSION` + `[SIG]` PASS + no crash once ERR
+is launched). Next: launch ERR, check logs, then merge to `master`; PRs 2-4 of the same plan remain
+unstarted.
+
+## OLDER RESUME (2026-07-01i) — `feat/inject-module` PR 0 done + in-game CONFIRMED, MERGED
 
 Branch `feat/inject-module` (forked from `master`), implementing PR 0 of
 `docs/plans/goblin_inject_refactor_plan.md`. Extracted `LotReader` + the live-persistence
