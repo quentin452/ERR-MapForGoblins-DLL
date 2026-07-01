@@ -209,6 +209,29 @@ F2. **Locate/recherche ne recentre pas sur une cible dans le Fog of War.** Quand
     **Loot undercount + pas de ×N stacking** (détecté 2026-06-30) — "Below The Well" montre 1 Sliver of
     Meat alors que Mapgenie en liste 3. Plan détaillé : `docs/plans/loot_item_count_plan.md`.
 
+F3. **Clavier définitivement mort dans les search bars ImGui après un Alt+Tab — DÉTERMINISTE,
+    repro fiable trouvée par <user> (2026-07-01, après le refactor `feat/input-module`).** Repro
+    exacte : (1) écrire dans une search bar F1 avec le clavier → marche ; (2) Alt+Tab away puis
+    retour ; (3) réessayer d'écrire → **plus rien ne s'écrit**, à chaque fois. Log
+    `MapForGoblins.log` 17:33:17-24 : `wm_char/sec=17` avant l'Alt+Tab (ça tapait) →
+    `WM_KILLFOCUS` (19.425) → `WM_SETFOCUS` (20.037, UNE seule rising-edge propre, pas de flap —
+    la régression de flapping de l'arc précédent reste bien fixée) → à partir de 20.588,
+    `wm_char/sec=0 wm_keydown/sec=0` **pour le reste de la session (4+ échantillons, 4+ secondes)**
+    alors que `WantCaptureKeyboard=true WantTextInput=true` tout du long (ImGui pense toujours
+    qu'un champ a le focus, mais AUCUN message clavier n'arrive plus jamais à `hk_wndproc` —
+    compteur brut, incrémenté avant toute logique de consommation). PAS une régression du refactor
+    input-module (le focus-tracking lui-même reste propre, un seul edge) — bug préexistant, juste
+    mieux diagnostiqué maintenant grâce à une repro déterministe au lieu d'un cas rare. **Hypothèse
+    forte, même famille que le fix clic-souris Proton** (`docs/memory/bugs/overlay-input-hook-freeze.md`
+    / changelog "Overlay menu unclickable on Wine/Proton") : ER lit le clavier via raw input
+    (`RIDEV_NOLEGACY` probable), et un cycle Alt+Tab semble faire re-basculer ce mode pour le
+    clavier spécifiquement (la souris a déjà son fallback poll `GetAsyncKeyState`, pas le clavier).
+    **Fix probable : poll clavier (`GetAsyncKeyState` par VK + `ToUnicodeEx` pour la traduction
+    caractère/layout/shift) en fallback, même pattern que le clic souris** — mais nécessite
+    d'éviter les doublons quand les messages legacy marchent encore (avant tout Alt+Tab). Pas
+    encore implémenté — prochain candidat naturel après ce refactor. Compteurs déjà en place
+    (`input_wndproc.cpp` `diag_wm_char_exchange`/`diag_wm_keydown_exchange`) pour valider le fix.
+
 16. **Bug ER natif — zoom/dézoom stick droit parfois impossible** (relevé <user> 2026-07-01, pendant les
     tests PR C-2). Parfois le zoom/dézoom de la caméra worldmap via le stick droit de la manette cesse de
     répondre en jeu (bug natif ER, pas encore RE). Hypothèse <user> : hooker le zoom stick-droit

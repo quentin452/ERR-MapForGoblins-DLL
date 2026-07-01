@@ -2,12 +2,35 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01 (`feat/quest-npc-layer` MERGED to master — quest NPC feature complete, its
-RESUME HERE is below the recaps here. Same day, separately: `feat/minimap-scale-cluster-search`
-(despite the name, grew into a second much longer Alt+Tab/cursor debugging arc, a systemic
-INI-clamp bug fix, and a grace-icon auto-scale fix) also MERGED to master — see the recap directly
-below for that arc; the original Alt+Tab root-cause recap (3 sessions down) covers the FIRST round,
-merged separately earlier.)
+Last updated: 2026-07-01e (`feat/input-module` MERGED to master — see recap directly below: all 5
+input hook groups extracted from `goblin_overlay.cpp` into `src/input/`, plus a NEW deterministic
+repro for the long-standing Alt+Tab keyboard-dead bug, `dx-bugs-backlog.md` item F3 — RESUME HERE
+for next session. Earlier same day: `feat/quest-npc-layer` and `feat/minimap-scale-cluster-search`
+also MERGED — their recaps follow below.)
+
+## RESUME HERE (2026-07-01e) — input-module refactor MERGED; F3 keyboard-dead-after-Alt+Tab now deterministic, NOT yet fixed
+
+- **`feat/input-module` merged to master** (6 commits, fast-forward, no conflicts). All 5 input
+  hook groups (DirectInput, XInput, cursor, raw input, wndproc) moved out of `goblin_overlay.cpp`
+  into `src/input/*.cpp` — see `docs/memory/tooling/input-hooks.md` for the file map + where to
+  add the next `[XXXDIAG]` counter. Pure relocation + thin accessor plumbing, no logic changes;
+  user confirmed slices 1-3 (DirectInput/XInput/cursor) working live in-game before merge, and the
+  post-merge log (slices 4-5 deployed) showed correct behavior too (see next item).
+- **NEXT (real bug, not refactor-caused): F3 in `dx-bugs-backlog.md`** — <user> found a
+  **deterministic repro**: type in an F1 search bar (works) → Alt+Tab away+back → try typing again
+  → **keyboard permanently dead** for the rest of the session. Log-confirmed
+  (`MapForGoblins.log` 17:33:17-24): clean single focus-edge (the old flapping bug stays fixed),
+  but `wm_char/sec`/`wm_keydown/sec` go to 0 forever right after the `WM_SETFOCUS` while
+  `WantCaptureKeyboard`/`WantTextInput` stay true — legacy keyboard messages simply stop arriving
+  at `hk_wndproc` (now `src/input/input_wndproc.cpp`) after a real Alt+Tab cycle. Strong hypothesis:
+  same family as the earlier Proton mouse-click fix (`docs/memory/bugs/overlay-input-hook-freeze.md`)
+  — ER reads keyboard via raw input, Alt+Tab likely re-triggers `RIDEV_NOLEGACY` mode for keyboard
+  specifically (mouse already has a poll fallback, keyboard doesn't). **Likely fix:** poll keyboard
+  via `GetAsyncKeyState` per VK + `ToUnicodeEx` for char translation, same pattern as the mouse-click
+  poll, fed into ImGui's `io.AddKeyEvent`/`io.AddInputCharacter` — needs de-duplication logic so it
+  doesn't double-feed characters while legacy messages are still working (pre-Alt+Tab). Not
+  implemented yet. Diagnostic counters already in place
+  (`input_wndproc.cpp`'s `diag_wm_char_exchange()`/`diag_wm_keydown_exchange()`) to validate a fix.
 
 ## Session recap (2026-07-01) — MapGenie coverage RE: FULLY DISCHARGED (Part A + Tiers 2/3/4 verified)
 
