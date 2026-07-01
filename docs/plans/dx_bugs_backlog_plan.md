@@ -120,6 +120,29 @@ closed the panel mid-record — fixed by gating the toggle check on `!g_gamepad_
 
 ---
 
+## PR C-2 — Followup: full gamepad navigation inside the F1 panel (item 3, gap) — NOT STARTED
+
+Item 3 originally asked to "play MapForGoblins end-to-end on a gamepad only." PR C only covers
+opening/closing the panel (the toggle combo) — once open, buttons/checkboxes/lists and the item
+search bar still require a mouse/keyboard. Two distinct sub-problems:
+
+1. **Widget navigation (buttons, checkboxes, lists).** ImGui has a built-in gamepad nav mode
+   (`ImGuiConfigFlags_NavEnableGamepad` + `io.BackendFlags |= ImGuiBackendFlags_HasGamepad`, fed via
+   `ImGui::GetIO().AddKeyEvent(ImGuiKey_GamepadDpadUp/…/FaceDown, …)` each frame from the same
+   `XINPUT_STATE` the toggle poll in `hk_present` already reads — no second XInput read needed).
+   D-pad/left-stick to move focus, a face button to activate. Should compose cleanly with the
+   existing poll rather than duplicate it.
+2. **Search bar free-text entry.** ImGui's gamepad nav does NOT solve typing into `ImGui::InputText`
+   — that needs either an on-screen virtual keyboard (D-pad letter grid, most native-feeling but
+   more UI work) or falls back to requiring a keyboard for that one widget. Decide the approach
+   before implementing; likely its own small design pass rather than a drop-in.
+
+Related but distinct: item 2's other ask (auto-switch on-screen key-hints between
+keyboard/gamepad icons based on the last-active input device) — `g_last_input_was_gamepad` from PR C
+already tracks exactly that signal, so hint-icon switching is a cheap follow-on once this exists.
+
+---
+
 ## PR D — In-game pause (items 4, 5) — RE SPIKE FIRST
 
 > ⚠️ **v1's design (hook `QueryPerformanceCounter` and freeze the returned ticks
