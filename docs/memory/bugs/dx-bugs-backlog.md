@@ -171,8 +171,8 @@ F2. **Locate/recherche ne recentre pas sur une cible dans le Fog of War.** Quand
     cursor while the menu is open", tous deux **2026-06-18 — antérieurs au report du 2026-06-28/29**,
     donc <user> a probablement reporté contre un build pas à jour. Trouvé en auditant les commits vs
     le backlog. **Inputs souris fuient vers ER à travers F1 + curseur ancré au centre.** Quand F1 est ouvert, ER continue de recevoir les inputs souris (le menu ne capture pas exclusivement) ; en plus ER ré-ancre/force le curseur au milieu de l'écran. Lié [[input-device-active-flag]].
-13. ✅ **FIXED 2026-07-01** (branche `feat/minimap-scale-cluster-search`, pas encore mergée/vérifiée
-    en jeu) — `draw_minimap` (`map_renderer.cpp`) honore maintenant `overlayMasterScale`/
+13. ✅ **FIXED 2026-07-01** (branche `feat/minimap-scale-cluster-search`, MERGÉE ; réglages minimap
+    confirmés persistants en jeu) — `draw_minimap` (`map_renderer.cpp`) honore maintenant `overlayMasterScale`/
     `overlayIconScale` (était un `half=6.0f` codé en dur) et fait un clustering léger propre à la
     minimap (bucket par cellule écran fixe `kCellPx=14px`, pas le `draw_clusters` du worldmap —
     celui-ci est couplé au hover/tooltips/zoom-adaptatif qui n'a pas de sens sur un HUD de rayon

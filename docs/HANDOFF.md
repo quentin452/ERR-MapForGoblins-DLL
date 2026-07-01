@@ -51,8 +51,8 @@ merged separately earlier.)
   (should be 0..1, not 0.1..5.0). Fixed with a real per-field `f32_min`/`f32_max` on `IniEntry`
   (default 0.1/5.0, so the fields that were fine stay unchanged) plus
   `ImGuiSliderFlags_AlwaysClamp` on the minimap sliders so a Ctrl+Click-typed value beyond what's
-  shown can't silently diverge from what gets saved. **Not yet in-game re-verified**, but the bug
-  mechanism is unambiguous from the code.
+  shown can't silently diverge from what gets saved. **User-confirmed fixed in-game (2026-07-01):
+  minimap settings now persist correctly across save+restart.**
 - **Grace icon size mismatch — automatic fix, not a hand-picked constant.** <user>: undiscovered
   grace (`MENU_MAP_Player_02`, disk glyph) reads ~2x the discovered one (harvested live from the
   game's own rendered frame, `ensure_grace_srv`) in a screenshot. Traced the draw code: both share
