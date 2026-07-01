@@ -764,10 +764,19 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
             ++respawn;
             if (farm_seen.insert(lot).second)
             {
-                int32_t fkey = goblin::overlay_api::resolve_loot_item_textid(lot, lt, -1);
-                int fcat = goblin::overlay_api::item_marker_category(fkey);
-                if (fcat < 0) fcat = goblin::overlay_api::classify_item_live(fkey);
-                if (is_notable_farmable_category(fcat))
+                // Scan ALL 8 lot slots — the notable farm item usually sits in slot 2 (slot 1 is a
+                // craft material), so a slot-1-only read (resolve_loot_item_textid) misses it.
+                int32_t keys[8] = {0};
+                goblin::overlay_api::lot_slot_item_keys(lot, lt, keys);
+                int32_t notable_key = 0;
+                for (int s = 0; s < 8 && notable_key == 0; ++s)
+                {
+                    if (keys[s] == 0) continue;
+                    int fcat = goblin::overlay_api::item_marker_category(keys[s]);
+                    if (fcat < 0) fcat = goblin::overlay_api::classify_item_live(keys[s]);
+                    if (is_notable_farmable_category(fcat)) notable_key = keys[s];
+                }
+                if (notable_key != 0)
                 {
                     from::paramdef::WORLD_MAP_POINT_PARAM_ST fd{};
                     fd.areaNo = en.area;
@@ -776,9 +785,14 @@ static void build_disk_enemy_markers(const std::vector<DiskEnemy> &enemies,
                     fd.posX = en.posX;
                     fd.posZ = en.posZ;
                     fd.posY = en.posY;
+                    // Label = the notable item (its encoded FMG key), NOT the lot's slot-1 craft
+                    // material. Emitted NON-lot-backed (lotId 0) so the marker's name = this item —
+                    // the kindling pattern (a non-lot marker whose textId1 is an item key). Farmable
+                    // never "completes" → no graying wanted, so dropping the lot linkage is correct.
+                    fd.textId1 = notable_key;
                     push_marker(/*row_id=*/lot, fd,
                                 static_cast<int>(goblin::generated::Category::WorldFarmableCollectible),
-                                lot, lt, Source::DiskMSB);
+                                /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
                     ++farm_emitted;
                 }
             }

@@ -140,6 +140,7 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API int32_t resolve_loot_item_textid(uint32_t lotId, uint8_t lotType, int32_t baked_textid);
     GOBLIN_RENDER_API bool lot_row_in_table(uint32_t lot, uint8_t lotType, uint32_t *flagOut, int32_t *keyOut);
     GOBLIN_RENDER_API int lot_item_count(uint32_t lotId, uint8_t lotType);
+    GOBLIN_RENDER_API int lot_slot_item_keys(uint32_t lotId, uint8_t lotType, int32_t out[8]);
     GOBLIN_RENDER_API void diag_loot_flags(uint32_t lotId, uint8_t lotType, uint32_t baked, int category, uint32_t nameId);
     GOBLIN_RENDER_API int classify_item_live(int goodsId);
     GOBLIN_RENDER_API uint32_t npc_loot_lot(uint32_t npcParamId, uint8_t *lotTypeOut);

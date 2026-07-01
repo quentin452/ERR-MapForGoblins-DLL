@@ -388,6 +388,11 @@ namespace goblin
     // slots 01–08. Returns 1 on any miss. Drives the marker "×N" stacking badge.
     int lot_item_count(uint32_t lotId, uint8_t lotType);
 
+    // Per-slot offset-encoded item keys of a lot (out[8]; 0 = empty slot), count returned. Exposes
+    // the WHOLE lot (not just slot 1 like resolve_loot_item_textid) so WorldFarmableCollectible can
+    // find the notable farm item that sits in slot 2+. Live param chain, any mod, no bake.
+    int lot_slot_item_keys(uint32_t lotId, uint8_t lotType, int32_t out[8]);
+
     // Live category fallback for item_marker_category()'s default/catch-all tail:
     // derives a GENERIC MFG Category from the LIVE item type (EquipParamGoods.goodsType
     // for goods, the lot category for equipment). Takes the offset-encoded item key
