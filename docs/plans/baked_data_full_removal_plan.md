@@ -139,7 +139,14 @@ facts that change the remaining plan:
    `massedit_generated` wiped) → `src/generated` byte-identical; ERR DLL rebuilds clean. Left for Phase 5:
    the orphaned generator *scripts*, the tracked dead `data/massedit_generated/*.MASSEDIT` artifacts, and
    `generate_loot_massedit`'s own (now-dead) `.MASSEDIT` emission.
-3. **← NEXT: item_icon_table → runtime** — enumerate placed items live instead of the ERR-frozen JSON.
+3. **item_icon_table → runtime — DONE as a REMOVAL** (branch `pr3-remove-category-exceptions`, `6c19f72`,
+   not merged). User chose to DELETE the curated category-exception override rather than re-source it, so
+   `item_marker_category` classifies purely by ER's live `(goodsType, sortGroupId)` taxonomy. The generated
+   `goblin_category_exceptions.{cpp,hpp}` + DLL lookup + CMake + `generate_data` emitter are gone;
+   `item_icon_table.json` has zero compiled consumers (offline-only). Behaviour change: curated splits
+   (Golden Runes Low, Smithing Low/Rare, Great Gloveworts, Rune Arcs, …) fold into their parent live
+   category. Follow-ups: the now-dead F1 sub-category toggles/enum values + the stale offline taxonomy
+   mirror. Awaiting in-game check.
 4. **Phase 5** — retire `build_pipeline.py` + `build.bat` + `README.md` once the authored core is all
    that's left.
 
