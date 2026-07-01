@@ -1618,6 +1618,27 @@ static int build_disk_elevator_markers(
     spdlog::info("[LOOTDISK] world features: {} Elevator markers (MSB ObjAct events with lever ABP "
                  "prompts; {} objact events parsed, {} lever param rows, {} dups collapsed)",
                  emitted, (int)objacts.size(), (int)lever_ids.size(), dup);
+    // DIAG (temporary, refine round): the lever prompt over-captures (doors/gates share the
+    // same "Pull lever" ObjAct rows -> 224 markers vs ~40 real lifts). Census the emitted
+    // parts' MODEL prefixes + their ObjAct rows so the lift discriminator can be picked from
+    // real data ([ELEVDIAG] in the log; drop this block once the filter is settled).
+    {
+        std::map<std::string, int> models;
+        std::map<uint32_t, int> rows;
+        for (const DiskObjAct &oa : objacts)
+        {
+            if (!lever_ids.count(oa.objActParamId)) continue;
+            std::string m = oa.partName;
+            if (size_t u = m.find('_'); u != std::string::npos)
+                if (size_t u2 = m.find('_', u + 1); u2 != std::string::npos) m.resize(u2);
+            models[m]++;
+            rows[oa.objActParamId]++;
+        }
+        for (const auto &[m, n] : models)
+            spdlog::info("[ELEVDIAG] model {} x{}", m.empty() ? "<none>" : m, n);
+        for (const auto &[r, n] : rows)
+            spdlog::info("[ELEVDIAG] objact row {} x{}", r, n);
+    }
     return emitted;
 }
 
