@@ -4,6 +4,8 @@
 #include <spdlog/spdlog.h>
 #include <string>
 
+#include "../goblin_dll_export.hpp"  // GOBLIN_RENDER_API (no-op unless GOBLIN_OVERLAY_HOTRELOAD_BUILD)
+
 namespace from
 {
 namespace params
@@ -82,7 +84,7 @@ struct ParamList
     ParamListEntry entries[186];
 };
 
-extern ParamList **param_list_address;
+extern GOBLIN_RENDER_API ParamList **param_list_address;
 
 template <typename T> class ParamTableSequence
 {

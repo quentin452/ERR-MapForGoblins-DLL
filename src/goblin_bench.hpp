@@ -28,6 +28,12 @@
 
 #include <spdlog/spdlog.h>
 
+#include "goblin_dll_export.hpp"  // GOBLIN_RENDER_API (no-op unless GOBLIN_OVERLAY_HOTRELOAD_BUILD)
+                                  // — this header is included by both host and render-side code,
+                                  // so these two globals need the same dllexport/dllimport
+                                  // treatment as goblin_overlay_render_api.hpp's declarations for
+                                  // Slice C's real two-DLL split.
+
 namespace goblin::config
 {
     // Forward-declared (not #include "goblin_config.hpp") to keep this header's dependency
@@ -35,8 +41,8 @@ namespace goblin::config
     // default true (matches pre-existing behavior unchanged); set both false to silence [BENCH]
     // entirely. [BENCH][SPIKE] lag-hitch warnings are NOT gated by either — those are anomaly
     // alerts, not routine noise, and fire even for quiet timers by design (see ScopedTimer).
-    extern bool benchLogIndividual;  // per-call "[BENCH] label: X ms" lines
-    extern bool benchLogSession;     // the "[BENCH] SESSION REPORT" dump at detach
+    extern GOBLIN_RENDER_API bool benchLogIndividual;  // per-call "[BENCH] label: X ms" lines
+    extern GOBLIN_RENDER_API bool benchLogSession;     // the "[BENCH] SESSION REPORT" dump at detach
 }
 
 namespace goblin::bench

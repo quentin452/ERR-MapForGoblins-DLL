@@ -28,7 +28,7 @@
 #include "worldmap/loot_disk.hpp"
 #include "worldmap/name_fmg_en.hpp"  // load_english_name_index (F1 English search aliases)
 #include "worldmap/loot_open_probe.hpp"
-#include "worldmap/map_entry_layer.hpp"
+#include "goblin_overlay_render_loader.hpp"
 
 #include "version.h"
 
@@ -98,10 +98,14 @@ static bool seh_invoke_void(InitFn fn)
 }
 
 static void init_modutils()         { modutils::initialize(); }
+// Must run before init_prebuild_markers (below) and any other host code that calls into the
+// render module — goblin::overlay::initialize() also calls load() (idempotent) as a second gate
+// specifically for the overlay/draw-function path, see docs/plans/overlay_hot_reload_playwright_plan.md.
+static void init_render_module()    { goblin::overlay_render_loader::load(); }
 static void init_from_params()      { from::params::initialize(); }
 static void init_collected()        { goblin::collected::initialize(); }
 static void init_kindling()         { goblin::kindling::initialize(); }
-static void init_prebuild_markers() { goblin::worldmap::prebuild_markers(); }
+static void init_prebuild_markers() { goblin::overlay_render_loader::call_prebuild_markers(); }
 static void init_tutorial_popup()   { goblin::inject_tutorial_popup_rows(); }
 static void init_setup_messages()   { goblin::setup_messages(); }
 static void init_icon_tex_probe()   { goblin::install_icon_texture_probe(); }
@@ -147,6 +151,7 @@ static std::filesystem::path g_mod_folder;
 static void setup_mod()
 {
     safe_init_step(&init_modutils,    "modutils::initialize");
+    safe_init_step(&init_render_module, "overlay_render_loader::load");
     {
         GOBLIN_BENCH("init.from_params");
         safe_init_step(&init_from_params, "from::params::initialize");

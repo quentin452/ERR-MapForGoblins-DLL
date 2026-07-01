@@ -180,6 +180,9 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_overlay.cpp
   src/goblin_overlay_render_api.hpp
   src/goblin_overlay_render_api.cpp
+  src/goblin_overlay_render_loader.hpp
+  src/goblin_overlay_render_loader.cpp
+  src/goblin_dll_export.hpp
   src/input/input_shared.hpp
   src/input/input_directinput.hpp
   src/input/input_directinput.cpp
@@ -210,14 +213,33 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_crashdump.cpp
   src/dllmain.cpp)
 
+# Slice C: real two-target split when ON. Host does NOT link the render DLL (loaded at runtime
+# via LoadLibrary — see goblin_overlay.cpp's load_render_module()); render DOES link the host (its
+# import lib) for the ~110+ goblin::overlay_api::* calls — an ordinary load-time dependency, since
+# the OS has already loaded MapForGoblins.dll by the time the host LoadLibrary's the render DLL.
 if(GOBLIN_OVERLAY_HOTRELOAD)
-  message(WARNING "GOBLIN_OVERLAY_HOTRELOAD has no effect yet — Slice B/C of "
-    "overlay_hot_reload_playwright_plan.md haven't landed, building the single-DLL shape regardless.")
+  # A handful of pure-data generated/shared files (const data tables, no mutable state) are needed
+  # by BOTH targets — compiling them into render TOO (duplicate object, not moved out of
+  # GOBLIN_HOST_SOURCES) is simplest/safest: no shared-state lifecycle concerns, just a few extra
+  # bytes per binary. Found via the real two-target link (missing-symbol errors), not guessed.
+  set(GOBLIN_RENDER_DATA_SOURCES
+    ${GEN_DIR}/goblin_quest_steps.cpp
+    ${GEN_DIR}/goblin_world_feature_models.cpp
+    ${GEN_DIR}/goblin_map_data.cpp
+    ${GEN_DIR}/goblin_name_regions.cpp
+    ${GEN_DIR}/goblin_major_regions.cpp
+    src/generated_shared/goblin_overlay_icons.cpp)
+  add_library( goblin_overlay_render SHARED
+    ${GOBLIN_RENDER_SOURCES}
+    ${GOBLIN_RENDER_DATA_SOURCES})
+  add_library( MapForGoblins SHARED
+    ${GOBLIN_HOST_SOURCES})
+  add_dependencies(goblin_overlay_render MapForGoblins) # host (+ its import .lib) must exist first
+else()
+  add_library( MapForGoblins SHARED
+    ${GOBLIN_HOST_SOURCES}
+    ${GOBLIN_RENDER_SOURCES})
 endif()
-
-add_library( MapForGoblins SHARED
-  ${GOBLIN_HOST_SOURCES}
-  ${GOBLIN_RENDER_SOURCES})
 
 set_target_properties(MapForGoblins PROPERTIES OUTPUT_NAME "MapForGoblins")
 
@@ -284,3 +306,30 @@ target_link_libraries( MapForGoblins
   dxguid
   dbghelp
   bcrypt)
+
+if(GOBLIN_OVERLAY_HOTRELOAD)
+  target_compile_definitions(MapForGoblins PRIVATE GOBLIN_OVERLAY_HOTRELOAD_BUILD)
+  target_compile_definitions(goblin_overlay_render PRIVATE GOBLIN_OVERLAY_HOTRELOAD_BUILD)
+  if(NOT GENERATED_SUBDIR STREQUAL "generated")
+    target_compile_definitions(goblin_overlay_render PRIVATE MFG_VANILLA=1)
+  endif()
+  if(GENERATED_SUBDIR STREQUAL "generated_vanilla")
+    target_compile_definitions(goblin_overlay_render PRIVATE MFG_PROFILE_VANILLA=1)
+  endif()
+  target_include_directories(goblin_overlay_render PRIVATE ${CMAKE_SOURCE_DIR}/src)
+  target_include_directories(goblin_overlay_render PRIVATE ${CMAKE_BINARY_DIR}/generated)
+  target_include_directories(goblin_overlay_render PRIVATE ${GEN_DIR})
+  target_link_libraries( goblin_overlay_render
+    MapForGoblins   # the ~110+ goblin::overlay_api::* calls (host import lib, ordinary link-time dep)
+    minhook
+    pattern16
+    mini
+    spdlog
+    imgui
+    d3d12
+    dxgi
+    dinput8
+    dxguid
+    dbghelp
+    bcrypt)
+endif()

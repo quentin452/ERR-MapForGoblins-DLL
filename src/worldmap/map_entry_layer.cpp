@@ -3201,3 +3201,15 @@ bool entity_world_pos(uint32_t entity_id, float &worldX, float &worldZ, int &gro
     return true;
 }
 } // namespace goblin::worldmap
+
+#if defined(GOBLIN_OVERLAY_HOTRELOAD_BUILD)
+// Host→render: dllmain.cpp calls prebuild_markers() at startup, goblin_section_visibility.cpp
+// calls refresh_overlay_census() from the watcher thread — both host-side, so (like the 3 draw
+// functions) these need stable-name extern "C" exports resolved via GetProcAddress, not ordinary
+// dllimport. See goblin_overlay_render_loader.{hpp,cpp} for the host-side call sites.
+extern "C"
+{
+    __declspec(dllexport) void MFG_PrebuildMarkers() { goblin::worldmap::prebuild_markers(); }
+    __declspec(dllexport) void MFG_RefreshOverlayCensus() { goblin::worldmap::refresh_overlay_census(); }
+}
+#endif

@@ -8,7 +8,7 @@
 #include <spdlog/spdlog.h>
 
 #include "goblin_inject.hpp"          // goblin::world_map_open()
-#include "worldmap/map_renderer.hpp"  // goblin::worldmap::inworld_hovered()
+#include "goblin_overlay_render_loader.hpp"  // call_inworld_hovered()
 
 // ImGui's Win32 backend message handler (defined in imgui_impl_win32.cpp) — not declared by
 // the public backend header in this ImGui version, same extern goblin_overlay.cpp uses.
@@ -180,7 +180,7 @@ LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         case WM_LBUTTONDOWN:
         case WM_LBUTTONUP:
             ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
-            if (msg == WM_LBUTTONDOWN && goblin::worldmap::inworld_hovered())
+            if (msg == WM_LBUTTONDOWN && goblin::overlay_render_loader::call_inworld_hovered())
                 return 1; // chip ate the click; the game must not pan/select
             break;
         default:

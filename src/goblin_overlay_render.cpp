@@ -2040,3 +2040,29 @@ namespace
             ImGui::End();
         }
     }
+
+#if defined(GOBLIN_OVERLAY_HOTRELOAD_BUILD)
+// Host→render direction: stable-name extern "C" exports so the host can resolve these via
+// GetProcAddress (not ordinary dllimport — Slice D reloads this module, so the host must be able
+// to re-resolve these by name after a fresh LoadLibrary, which a load-time-bound import can't do).
+// ImGui::SetCurrentContext() first because both DLLs statically link their own copy of imgui
+// (separate global state per DLL) — see OverlayFrameCtx::imgui_ctx.
+extern "C"
+{
+    __declspec(dllexport) void MFG_DrawPanel(const goblin::overlay::OverlayFrameCtx *ctx)
+    {
+        ImGui::SetCurrentContext(ctx->imgui_ctx);
+        goblin::overlay::draw_panel(*ctx);
+    }
+    __declspec(dllexport) void MFG_DrawWorldmapMarkers(bool menu_open, const goblin::overlay::OverlayFrameCtx *ctx)
+    {
+        ImGui::SetCurrentContext(ctx->imgui_ctx);
+        goblin::overlay::draw_worldmap_markers(menu_open, *ctx);
+    }
+    __declspec(dllexport) void MFG_DrawMinimapHud(const goblin::overlay::OverlayFrameCtx *ctx)
+    {
+        ImGui::SetCurrentContext(ctx->imgui_ctx);
+        goblin::overlay::draw_minimap_hud(*ctx);
+    }
+}
+#endif

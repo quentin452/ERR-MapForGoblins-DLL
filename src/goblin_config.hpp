@@ -4,6 +4,12 @@
 #include <filesystem>
 #include <string>
 
+#include "goblin_dll_export.hpp"  // GOBLIN_RENDER_API (no-op unless GOBLIN_OVERLAY_HOTRELOAD_BUILD)
+                                  // — these globals are `extern` DATA, not functions, so dllexport
+                                  // must be on the declaration the DEFINING .cpp sees; a separate
+                                  // wrapper function can't rescue this (unlike the ~110+ render→
+                                  // host function wrappers in goblin_overlay_render_api.hpp).
+
 namespace goblin
 {
     // Create the ini from the schema defaults if missing; otherwise migrate it
@@ -34,46 +40,46 @@ namespace goblin
 
     namespace config
     {
-        extern uint8_t loadDelay;
-        extern bool requireMapFragments;
-        extern bool bakedOnly;  // diag overlay: draw ONLY Baked-source markers (the no-bake residual)
-        extern bool collectedGraying;
-        extern bool hideCollected;
-        extern bool stackIdenticalItems;  // merge co-located identical-item loot markers into one "xN"
-        extern bool clusterDebugRadius;
-        extern bool clusterDebugMarkers;   // per-marker projection/tile state dots (cluster diagnosis)
-        extern bool showRegionLabels; // overlay map: draw major-region names (Limgrave, Caelid, ...)
-        extern bool nativeItemIcons;  // overlay map: real game item icon (GPU harvest) when resident
-        extern bool diagLootFlags;    // one-shot [LOOTDIAG]: dump all candidate pickup flags per loot lot
-        extern bool diagLootPos;      // one-shot [LOOTPOS]: live MsbPart pos vs baked MAP_ENTRY placement
-        extern bool diagMapOpens;     // [MAPOPEN]: hook CreateFileW, log map .msb.dcx opens (path+latency)
-        extern bool diagFieldinsJoin; // one-shot [FIELDINS]: geom+0x3A8 embedded pool → child FieldIns lotId@+0x50
-        extern bool diagLotMemscan;   // one-shot [LOTSCAN]: brute scan of committed private mem for a known lotId
-        extern bool debugLogging;
-        extern bool showAll;  // master switch: show every category (see
+        extern GOBLIN_RENDER_API uint8_t loadDelay;
+        extern GOBLIN_RENDER_API bool requireMapFragments;
+        extern GOBLIN_RENDER_API bool bakedOnly;  // diag overlay: draw ONLY Baked-source markers (the no-bake residual)
+        extern GOBLIN_RENDER_API bool collectedGraying;
+        extern GOBLIN_RENDER_API bool hideCollected;
+        extern GOBLIN_RENDER_API bool stackIdenticalItems;  // merge co-located identical-item loot markers into one "xN"
+        extern GOBLIN_RENDER_API bool clusterDebugRadius;
+        extern GOBLIN_RENDER_API bool clusterDebugMarkers;   // per-marker projection/tile state dots (cluster diagnosis)
+        extern GOBLIN_RENDER_API bool showRegionLabels; // overlay map: draw major-region names (Limgrave, Caelid, ...)
+        extern GOBLIN_RENDER_API bool nativeItemIcons;  // overlay map: real game item icon (GPU harvest) when resident
+        extern GOBLIN_RENDER_API bool diagLootFlags;    // one-shot [LOOTDIAG]: dump all candidate pickup flags per loot lot
+        extern GOBLIN_RENDER_API bool diagLootPos;      // one-shot [LOOTPOS]: live MsbPart pos vs baked MAP_ENTRY placement
+        extern GOBLIN_RENDER_API bool diagMapOpens;     // [MAPOPEN]: hook CreateFileW, log map .msb.dcx opens (path+latency)
+        extern GOBLIN_RENDER_API bool diagFieldinsJoin; // one-shot [FIELDINS]: geom+0x3A8 embedded pool → child FieldIns lotId@+0x50
+        extern GOBLIN_RENDER_API bool diagLotMemscan;   // one-shot [LOTSCAN]: brute scan of committed private mem for a known lotId
+        extern GOBLIN_RENDER_API bool debugLogging;
+        extern GOBLIN_RENDER_API bool showAll;  // master switch: show every category (see
                               // is_category_enabled) except those listed below
-        extern bool iconsHidden;  // persisted master off (menu 'Show icons' / F10)
+        extern GOBLIN_RENDER_API bool iconsHidden;  // persisted master off (menu 'Show icons' / F10)
         extern uint32_t overlayToggleKey;  // VK_* for the overlay menu toggle (default F1)
-        extern uint16_t overlayToggleGamepad;  // XINPUT_GAMEPAD_* combo mask for the overlay toggle (default Y+R3)
-        extern uint8_t virtualKeyboardLayout;  // 0 = Alphabetical, 1 = QWERTY (on-screen gamepad text entry)
-        extern std::string showAllExcept;  // comma-separated category names to
+        extern GOBLIN_RENDER_API uint16_t overlayToggleGamepad;  // XINPUT_GAMEPAD_* combo mask for the overlay toggle (default Y+R3)
+        extern GOBLIN_RENDER_API uint8_t virtualKeyboardLayout;  // 0 = Alphabetical, 1 = QWERTY (on-screen gamepad text entry)
+        extern GOBLIN_RENDER_API std::string showAllExcept;  // comma-separated category names to
                               // keep hidden even when showAll is on (matched
                               // loosely against the category display name)
 
         // One bool per goblin::generated::Category, indexed by the enum value.
         // Replaces the former ~65 individual show* category flags; access via
         // category_config_ptr()/is_category_enabled() in goblin_inject.cpp.
-        extern bool showCategory[];
+        extern GOBLIN_RENDER_API bool showCategory[];
 
         // World - Bosses
-        extern bool hideKilledBosses;  // true=hide killed icons, false=green checkmark
+        extern GOBLIN_RENDER_API bool hideKilledBosses;  // true=hide killed icons, false=green checkmark
 
         // Compatibility
-        extern bool liveLootLabels; // read live ItemLotParam item+category at runtime
+        extern GOBLIN_RENDER_API bool liveLootLabels; // read live ItemLotParam item+category at runtime
                                     // → loot marker name shows the item the lot now
                                     // gives (Randomizer-safe). Needs full-band FMG copy.
                                     // (live_loot_flags/icons removed in Phase 2b — native-only.)
-        extern bool anonymousLoot;  // spoiler-free mode: every loot marker shows a
+        extern GOBLIN_RENDER_API bool anonymousLoot;  // spoiler-free mode: every loot marker shows a
                                     // gray "?" icon + a generic localized label instead
                                     // of the real item (blind randomizer runs).
 
@@ -117,167 +123,167 @@ namespace goblin
         // with NO world placement that the bake's unmatched-ItemLotParam fallback put on
         // the map at the tile corner (0,0,0) — a phantom the player can't find. Reads
         // ShopLineupParam live (any mod); only drops a still-baked marker (no disk twin).
-        extern bool dropMerchantPhantoms;
+        extern GOBLIN_RENDER_API bool dropMerchantPhantoms;
         // Directory holding the active mod's map\MapStudio\*.msb.dcx (or the mod
         // root, or a map\ root). Empty = auto-detect: the DLL's own mod folder,
         // then the Elden Ring install dir. Set it to your ModEngine2 mod's map
         // folder if auto-detect picks the wrong source.
-        extern std::string lootMsbDir;
+        extern GOBLIN_RENDER_API std::string lootMsbDir;
 
         // ── ERR Markers ─────────────────────────────────────────────────
-        extern bool redifyBossIcons;  // overlay: boss markers drawn red + auto-hide on kill
+        extern GOBLIN_RENDER_API bool redifyBossIcons;  // overlay: boss markers drawn red + auto-hide on kill
 
         // Grace rendering: when graceOverlay is on, the overlay draws ALL graces itself
         // (discovered = full colour, undiscovered = grey) instead of the hybrid (native draws
         // discovered). graceGpuSprite picks the icon source: false = baked atlas (clean, constant),
         // true = the live engine sprite (SB_ERR_Grace, time-of-day tinted). Needs native-pin
         // suppression to avoid doubling discovered graces.
-        extern bool graceOverlay;
-        extern bool graceGpuSprite;
+        extern GOBLIN_RENDER_API bool graceOverlay;
+        extern GOBLIN_RENDER_API bool graceGpuSprite;
 
         // Suppress the game's native discovered-grace map pins (so the overlay is the sole grace
         // source, paired with graceOverlay). Hooks the WarpPinData builder (RE e4b3f6a). PHASE A:
         // when on, the hook installs + LOGS each grace pin build ([WARPPIN]) to confirm we can
         // identify discovered ones — actual suppression is gated behind this once verified.
-        extern bool graceSuppressNative;
-        extern bool suppressNativeBosses;
+        extern GOBLIN_RENDER_API bool graceSuppressNative;
+        extern GOBLIN_RENDER_API bool suppressNativeBosses;
 
         // Marker dump (hotkey → dump beacon/stamp coords to file)
-        extern bool enableMarkerDump;
+        extern GOBLIN_RENDER_API bool enableMarkerDump;
         extern uint32_t markerDumpKey;  // Win32 VK_* code (default VK_F9 = 0x78)
 
         // Thread 7 — coverage-gap observers (log to logs/MapForGoblins_events.log).
         // debugEventFlags  = hook SetEventFlag (every flag the game sets).
         // debugItemGrants  = hook AddItemFunc (every inventory grant / pickup).
         // See goblin_debug_events.{hpp,cpp}.
-        extern bool debugEventFlags;
-        extern bool debugItemGrants;
+        extern GOBLIN_RENDER_API bool debugEventFlags;
+        extern GOBLIN_RENDER_API bool debugItemGrants;
         // debugFlagCapture = light SetEventFlag hook for the overlay's NPC
         // death-flag capture tool (Quest Browser Part 2).
-        extern bool debugFlagCapture;
+        extern GOBLIN_RENDER_API bool debugFlagCapture;
 
         // Read-only world-map cursor probe (logs cursor coords to confirm the RE
         // offsets / marker-space). See goblin_worldmap_probe.{hpp,cpp}.
-        extern bool debugWorldmapProbe;
+        extern GOBLIN_RENDER_API bool debugWorldmapProbe;
 
         // Dev probe: hook the world-map page-switch handlers and log which fires +
         // its args + the resulting page on each manual page change. Pins which DLC
         // sibling does base<->DLC + confirms args (docs/re/windows_worldmap_page_
         // switch_re_prompt.md). See goblin_worldmap_probe.cpp.
-        extern bool debugPageSwitch;
+        extern GOBLIN_RENDER_API bool debugPageSwitch;
 
         // Use the engine's own live world->map-space projection (call the native
         // WorldMapViewModel) instead of our baked LEGACY_CONV + affine + DLC eyeball.
         // Fixes dungeon/underground marker placement (proper LegacyConv fold). Falls
         // back to baked when the map is closed / an area isn't placed by the game.
-        extern bool liveProjection;
+        extern GOBLIN_RENDER_API bool liveProjection;
 
         // Dev probe: hook CSScaleformImageCreator::CreateImage and log each worldmap
         // icon image (sprite rect + backing GPU texture) to crack the iconId↔image
         // mapping for runtime icon textures. See goblin_inject.cpp icon-texture probe.
-        extern bool dumpIconTextures;
+        extern GOBLIN_RENDER_API bool dumpIconTextures;
 
         // Dev one-shot: find the live CS::WorldMapViewModel + dump its converter
         // array (VM+0xF8) — confirms the world->map-space projection RE before we
         // wire it. See goblin_worldmap_probe.cpp dump_converters_once.
-        extern bool dumpConverters;
+        extern GOBLIN_RENDER_API bool dumpConverters;
 
         // Dev one-shot: walk the native-pin icon manager (CSWorldMapPointMan
         // [er+ICON_MGR_SLOT_RVA] std::map @+0x398) and dump each built pin's key/ins
         // to MapForGoblins.log as [PINS] — identifies WHAT native pins exist + their
         // source before we suppress them (overlay = sole icon source). Read-only
         // (ReadProcessMemory). See goblin_worldmap_probe.cpp dump_native_pins.
-        extern bool dumpNativePins;
+        extern GOBLIN_RENDER_API bool dumpNativePins;
 
         // Dev prototype: draw overlay-rendered marker dots projected onto the open
         // world map (verifies the world->screen affine). See goblin_overlay.cpp +
         // goblin_worldmap_probe::get_live_view.
-        extern bool overlayMarkersProto;
+        extern GOBLIN_RENDER_API bool overlayMarkersProto;
 
         // Dev: log ER's render-output dims each ~2s ([RENDIMS]) to diagnose the
         // mid-session resolution-change zoom corruption. Read-only.
-        extern bool debugRenderDims;
+        extern GOBLIN_RENDER_API bool debugRenderDims;
 
         // Dev (dx-bugs 2026-07-01 Alt+Tab followup): draw two live on-screen crosshairs while F1
         // is open -- cyan at the raw polled OS cursor position (GetCursorPos), magenta at what
         // ImGui itself thinks the mouse position is (io.MousePos). If they diverge (ImGui's stays
         // put while the real one moves), THAT is the stale cursor visually, in real time --
         // no log round-trip needed to see it happen. Read-only, off by default.
-        extern bool debugCursorDiagnostic;
+        extern GOBLIN_RENDER_API bool debugCursorDiagnostic;
 
         // EXPERIMENTAL: on a swapchain resize, raw-poke ER's stale render-output dims
         // to the new size so a mid-session resolution change doesn't leave the world
         // zoomed (no restart needed). Same-aspect only. Default off.
-        extern bool fixMidsessionResolution;
+        extern GOBLIN_RENDER_API bool fixMidsessionResolution;
 
         // [BENCH] logging gates (goblin_bench.hpp). Independent — both true by default (matches
         // prior behavior unchanged); set both false to silence [BENCH] entirely. Does NOT affect
         // [BENCH][SPIKE] lag-hitch warnings, which always fire regardless (anomaly alert, not
         // routine noise).
-        extern bool benchLogIndividual;  // per-call "[BENCH] label: X ms" lines
-        extern bool benchLogSession;     // the "[BENCH] SESSION REPORT" dump at detach
+        extern GOBLIN_RENDER_API bool benchLogIndividual;  // per-call "[BENCH] label: X ms" lines
+        extern GOBLIN_RENDER_API bool benchLogSession;     // the "[BENCH] SESSION REPORT" dump at detach
 
         // Dev RE tool (offset source-of-truth): embedded find-what-accesses filtered to
         // eldenring.exe. Arms a HW breakpoint on a live param row+offset (probeFieldSpec =
         // "ParamName:rowId:offset[:len[:rw]]") and logs [FWA] the game's own access site,
         // skipping every mod read. See goblin_field_probe.{hpp,cpp}. Off by default.
-        extern bool probeFieldAccess;
-        extern std::string probeFieldSpec;
+        extern GOBLIN_RENDER_API bool probeFieldAccess;
+        extern GOBLIN_RENDER_API std::string probeFieldSpec;
 
         // Overlay marker sizes. Final = resolution-base × master × type-scale.
-        extern float overlayMasterScale;   // all overlay markers + piles
-        extern float overlayIconScale;     // category marker icons
-        extern float overlayClusterScale;  // cluster pile glyphs
-        extern float graceIconScale;       // grace markers only (calibration)
-        extern float mapSymbolScale;       // native MENU_MAP_* map symbols (bosses etc)
-        extern bool  iconLegibility;       // DX item 1: clamp min icon size + dark backing disc for contrast
-        extern float iconMinHalfPx;        // min icon half-extent (px) when iconLegibility is on
-        extern bool  altitudeCue;          // DX item 7: ▲/▼ badge when a marker is above/below the player
-        extern float altitudeDeadzone;     // world-Y diff (units) below which no badge is drawn
-        extern float graceOffsetX, graceOffsetY;  // overlay grace draw px offset (native-vs-imgui compare)
-        extern float viewDelayFrames;      // marker motion-sync delay in present-frames (A/B the pan/zoom re-adjust)
-        extern bool  viewDelayZoom;        // motion-sync delay also delays zoom (off = live zoom, fixes wheel-step teleport)
+        extern GOBLIN_RENDER_API float overlayMasterScale;   // all overlay markers + piles
+        extern GOBLIN_RENDER_API float overlayIconScale;     // category marker icons
+        extern GOBLIN_RENDER_API float overlayClusterScale;  // cluster pile glyphs
+        extern GOBLIN_RENDER_API float graceIconScale;       // grace markers only (calibration)
+        extern GOBLIN_RENDER_API float mapSymbolScale;       // native MENU_MAP_* map symbols (bosses etc)
+        extern GOBLIN_RENDER_API bool  iconLegibility;       // DX item 1: clamp min icon size + dark backing disc for contrast
+        extern GOBLIN_RENDER_API float iconMinHalfPx;        // min icon half-extent (px) when iconLegibility is on
+        extern GOBLIN_RENDER_API bool  altitudeCue;          // DX item 7: ▲/▼ badge when a marker is above/below the player
+        extern GOBLIN_RENDER_API float altitudeDeadzone;     // world-Y diff (units) below which no badge is drawn
+        extern GOBLIN_RENDER_API float graceOffsetX, graceOffsetY;  // overlay grace draw px offset (native-vs-imgui compare)
+        extern GOBLIN_RENDER_API float viewDelayFrames;      // marker motion-sync delay in present-frames (A/B the pan/zoom re-adjust)
+        extern GOBLIN_RENDER_API bool  viewDelayZoom;        // motion-sync delay also delays zoom (off = live zoom, fixes wheel-step teleport)
 
         // Debug viz: cluster pile anchor + member lines + name + d/thr (own toggle).
-        extern bool debugClusterAnchors;
+        extern GOBLIN_RENDER_API bool debugClusterAnchors;
         // Debug viz: draw each MapNameOverride region volume + name (red = unresolved).
-        extern bool debugRegionVolumes;
+        extern GOBLIN_RENDER_API bool debugRegionVolumes;
 
         // In-game minimap HUD (corner, north-up, overworld-only). Opt-in.
-        extern bool showMinimap;
-        extern float minimapZoom;     // px per world-unit
-        extern float minimapSize;     // radius px
-        extern float minimapOpacity;  // background opacity 0..1
-        extern bool minimapAnchorRight;
-        extern bool minimapAnchorBottom;
-        extern float minimapOffsetX;
-        extern float minimapOffsetY;
+        extern GOBLIN_RENDER_API bool showMinimap;
+        extern GOBLIN_RENDER_API float minimapZoom;     // px per world-unit
+        extern GOBLIN_RENDER_API float minimapSize;     // radius px
+        extern GOBLIN_RENDER_API float minimapOpacity;  // background opacity 0..1
+        extern GOBLIN_RENDER_API bool minimapAnchorRight;
+        extern GOBLIN_RENDER_API bool minimapAnchorBottom;
+        extern GOBLIN_RENDER_API float minimapOffsetX;
+        extern GOBLIN_RENDER_API float minimapOffsetY;
 
         // In-game per-section visibility (the 7 display groups). The section_*
         // bools are the persisted runtime state, driven live by the overlay menu
         // (F1) and written back on Save. See goblin_config_schema [Display Sections].
-        extern bool sectionEquipment, sectionKeyItems, sectionLoot, sectionMagic,
+        extern GOBLIN_RENDER_API bool sectionEquipment, sectionKeyItems, sectionLoot, sectionMagic,
                     sectionQuest, sectionReforged, sectionWorld;
 
         // Marker clustering (v1). See goblin_config_schema [Clustering].
-        extern bool enableClustering;
-        extern bool clusterHard;  // hard = mixed-category piles; soft = per-category
-        extern uint8_t clusterThreshold;   // base cluster size; the FAR (clustered) size when distance-adaptive
+        extern GOBLIN_RENDER_API bool enableClustering;
+        extern GOBLIN_RENDER_API bool clusterHard;  // hard = mixed-category piles; soft = per-category
+        extern GOBLIN_RENDER_API uint8_t clusterThreshold;   // base cluster size; the FAR (clustered) size when distance-adaptive
         // Distance-adaptive clustering: near the player use a HIGH threshold (few
         // piles = detail / real items), ramping DOWN to clusterThreshold far away
         // (more clustering = fewer distant icons).
-        extern bool    clusterDistanceAdaptive;
-        extern uint8_t clusterNearThreshold; // detail size NEAR player (high = more individual items)
-        extern uint8_t clusterNearRadius;    // tiles: full-detail radius
-        extern uint8_t clusterFarRadius;     // tiles: at/beyond → clusterThreshold (clustered)
+        extern GOBLIN_RENDER_API bool    clusterDistanceAdaptive;
+        extern GOBLIN_RENDER_API uint8_t clusterNearThreshold; // detail size NEAR player (high = more individual items)
+        extern GOBLIN_RENDER_API uint8_t clusterNearRadius;    // tiles: full-detail radius
+        extern GOBLIN_RENDER_API uint8_t clusterFarRadius;     // tiles: at/beyond → clusterThreshold (clustered)
         // Per-category cluster opt-out. Comma-separated category names (loose match,
         // like showAllExcept) that stay EXACT markers and never fold into a cluster.
         // Empty = every category is clusterable (the v1 behaviour).
-        extern std::string clusterExclude;
+        extern GOBLIN_RENDER_API std::string clusterExclude;
         // Per-category cluster-threshold overrides: "Name:N,Name2:M" (loose name
         // match). A category not listed uses the global clusterThreshold. Driven by
         // the per-category threshold inputs in the overlay.
-        extern std::string clusterThresholdOverrides;
+        extern GOBLIN_RENDER_API std::string clusterThresholdOverrides;
 
         // Thread 1 v1.5 — quest-aware quest-NPC markers. When true, a WorldQuestNPC
 
@@ -287,22 +293,22 @@ namespace goblin
         // Writing EMEVD progress flags mutates the save and can soft-lock a questline,
         // skip a reward, or trigger an unintended event -- off by default, use a
         // throwaway save when testing it on.
-        extern bool questAllowFlagWrite;
+        extern GOBLIN_RENDER_API bool questAllowFlagWrite;
 
         // Quest Browser per-step progress: one '0'/'1' char per global step index
         // (author order in goblin_quest_steps). Auto-grown; persisted on Save.
-        extern std::string questProgress;
+        extern GOBLIN_RENDER_API std::string questProgress;
 
         // In-world region chips: one '0'/'1' char per major-region anchor (anchor order;
         // '0' = region hidden). Managed by the overlay map; persisted on Save.
-        extern std::string regionToggles;
+        extern GOBLIN_RENDER_API std::string regionToggles;
 
         // Quest Browser: grey out + tag a questline ([unfinishable]/[concluded])
         // when the overlay reads its NPC's death/conclusion fail_flag as set.
         // Default true (existing behaviour). EXPERIMENTAL — the per-NPC death
         // flags are reverse-engineered and may mis-grey; users can turn it off.
         // Toggle is in the overlay Quest Browser; persisted in the ini.
-        extern bool questGreyOnDeath;
+        extern GOBLIN_RENDER_API bool questGreyOnDeath;
     };
 
     uint32_t parse_vk_code(std::string name);

@@ -1,6 +1,8 @@
 #pragma once
 #include <filesystem>
 
+#include "goblin_dll_export.hpp"  // GOBLIN_RENDER_API (no-op unless GOBLIN_OVERLAY_HOTRELOAD_BUILD)
+
 // Read-only world-map CURSOR probe (proximity + live-refresh scouting, Linux/DLL).
 //
 // The Windows/Ghidra RE (docs/world_map_re_findings_windows.md) found the map
@@ -125,7 +127,7 @@ namespace goblin::worldmap_probe
     // 10 DLC (the engine's page-table + area-12 override). Lets the overlay derive the
     // marker group without the baked LegacyConv fold: group = (page==10?2:0) |
     // ((area==12 || 40<=area<=43)?1:0).
-    bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU,
+    GOBLIN_RENDER_API bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU,
                  float &mapV, int &page);
 
     // DIAG: the currently-published active cursor address (0 = none). Lets the

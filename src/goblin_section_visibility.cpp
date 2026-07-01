@@ -5,6 +5,7 @@
 #include "goblin_markers.hpp"
 #include "modutils.hpp"
 #include "goblin_bench.hpp"
+#include "goblin_overlay_render_loader.hpp"
 
 #include <atomic>
 #include <cctype>
@@ -623,9 +624,9 @@ void goblin::ui::set_cluster_debug(bool on)
 // cluster depletion: plain loot via textDisableFlagId1 + orp_flag_set, Reforged
 // pieces/kindling via row-id tracking. Categories with no collectible rows
 // (graces/NPCs/regions) cache remaining = -1 so the overlay draws no badge.
-// Overlay-only census: implemented in the worldmap module (it owns the marker
-// buckets). Forward-declared here so the refresh entry point can delegate to it.
-namespace goblin::worldmap { void refresh_overlay_census(); }
+// Overlay-only census: implemented in the worldmap module (it owns the marker buckets), which is
+// render-side under Slice C's split — goes through goblin_overlay_render_loader instead of a
+// direct forward-declared call so this keeps working once GOBLIN_OVERLAY_HOTRELOAD=ON is real.
 
 int goblin::refresh_category_census()
 {
@@ -647,7 +648,7 @@ int goblin::refresh_category_census()
     // it draws + grays), so the F1 badge matches the map and can't diverge from a
     // parallel native-style recompute. refresh_overlay_census writes the census atomics
     // and logs [OVERLAY-CENSUS] (full dump once, then a line on each change).
-    goblin::worldmap::refresh_overlay_census();
+    goblin::overlay_render_loader::call_refresh_overlay_census();
     return 0;
 }
 

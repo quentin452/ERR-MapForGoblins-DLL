@@ -1,5 +1,6 @@
 #include "goblin_overlay.hpp"
 #include "goblin_overlay_render.hpp"
+#include "goblin_overlay_render_loader.hpp"
 #include "goblin_config.hpp"
 #include "goblin_quest_steps.hpp"
 #include "goblin_debug_events.hpp"
@@ -1267,7 +1268,6 @@ namespace
         return true;
     }
 
-
     // ── Present hook (renders the overlay) ────────────────────────────────
     HRESULT STDMETHODCALLTYPE hk_present(IDXGISwapChain3 *swapchain, UINT sync, UINT flags)
     {
@@ -1745,13 +1745,14 @@ namespace
                 &g_gamepad_combo_ready,
                 &g_gamepad_combo_reject_reason,
                 &g_item_icon_srvs,
+                ImGui::GetCurrentContext(),
             };
             if (g_show)
-                goblin::overlay::draw_panel(frame_ctx);
+                goblin::overlay_render_loader::call_draw_panel(frame_ctx);
             if (proto)
-                goblin::overlay::draw_worldmap_markers(g_show, frame_ctx);
+                goblin::overlay_render_loader::call_draw_worldmap_markers(g_show, frame_ctx);
             if (minimap)
-                goblin::overlay::draw_minimap_hud(frame_ctx);   // gameplay HUD (map closed) — self-gates overworld-only
+                goblin::overlay_render_loader::call_draw_minimap_hud(frame_ctx);   // gameplay HUD (map closed) — self-gates overworld-only
             // Finalize any item-icon GPU copies requested this frame as ONE batch (one execute +
             // one fence wait) before g_command_list is reused for the ImGui render below.
             flush_item_icon_batch();
@@ -1923,6 +1924,12 @@ void goblin::input::set_ignore_next_mousemove_for_gamepad_flag(bool v) { g_ignor
 void goblin::overlay::initialize()
 {
     GOBLIN_BENCH("overlay.init.hooks");
+    if (!goblin::overlay_render_loader::load())
+    {
+        spdlog::error("[OVERLAY] render module load failed → overlay disabled");
+        g_failed = true;
+        return;
+    }
     void *present_addr = nullptr, *resize_addr = nullptr, *eclist_addr = nullptr;
     if (!resolve_vtables(&present_addr, &resize_addr, &eclist_addr))
     {

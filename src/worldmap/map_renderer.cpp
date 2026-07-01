@@ -1938,3 +1938,12 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     fg->AddText(ImVec2(ctr.x - 4.f, ctr.y - R - 16.f), IM_COL32(230, 220, 180, 220), "N");
 }
 } // namespace goblin::worldmap
+
+#if defined(GOBLIN_OVERLAY_HOTRELOAD_BUILD)
+// Host→render: src/input/input_wndproc.cpp calls inworld_hovered() — host-side, needs the same
+// GetProcAddress mechanism as the 3 draw functions. See goblin_overlay_render_loader.{hpp,cpp}.
+extern "C"
+{
+    __declspec(dllexport) int MFG_InworldHovered() { return goblin::worldmap::inworld_hovered() ? 1 : 0; }
+}
+#endif

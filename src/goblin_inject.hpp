@@ -6,6 +6,13 @@
 #include <utility>
 #include <vector>
 
+#include "goblin_dll_export.hpp"  // GOBLIN_RENDER_API (no-op unless GOBLIN_OVERLAY_HOTRELOAD_BUILD)
+                                  // — generated files (e.g. goblin_quest_steps.cpp, duplicate-
+                                  // compiled into the render target for their data tables) call
+                                  // some of these functions directly using their original names;
+                                  // they can't be hand-edited to use goblin_overlay_render_api's
+                                  // wrappers instead, so functions they reach need this directly.
+
 namespace goblin
 {
     void inject_map_entries();
@@ -558,6 +565,6 @@ namespace goblin
         bool quest_unfinishable(size_t i);
         // Live event-flag read (wraps the internal IsEventFlag resolver) — used
         // by the flag-capture tool's finalize re-check. bool(*)(uint32_t).
-        bool read_event_flag(uint32_t id);
+        GOBLIN_RENDER_API bool read_event_flag(uint32_t id);
     }
 };

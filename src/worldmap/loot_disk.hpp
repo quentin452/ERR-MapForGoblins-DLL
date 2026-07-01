@@ -16,6 +16,12 @@
 #include <vector>
 
 #include "msbe_parser.hpp"  // msbe::GestureRef (World-feature gesture refs from the EMEVD scan)
+#include "../goblin_dll_export.hpp"  // GOBLIN_RENDER_API (no-op unless GOBLIN_OVERLAY_HOTRELOAD_BUILD)
+                                     // — loot_disk.cpp is host-side but several of its functions
+                                     // are called directly from render-side map_entry_layer.cpp/
+                                     // quest_npc_layer.cpp, so they need the same dllexport/
+                                     // dllimport treatment as goblin_overlay_render_api.hpp for
+                                     // Slice C's real two-DLL split.
 
 namespace goblin::worldmap
 {
@@ -99,7 +105,7 @@ struct DiskEmevd
 
 // True when any disk-MSB source is enabled (treasure loot OR collectibles); both
 // share the same map-dir discovery + parse pass.
-bool disk_source_enabled();
+GOBLIN_RENDER_API bool disk_source_enabled();
 
 // Record the DLL's own mod folder (parent of MapForGoblins.dll) for map-dir
 // auto-detect. Call once at init, before load_disk_treasures().
@@ -117,7 +123,7 @@ void set_mod_folder(const std::filesystem::path &p);
 // When `enemies` is non-null, also enumerate Enemy placements into it.
 // When `regions` is non-null, also enumerate spirit-spring POINT regions into it.
 // All sources share one disk read + parse pass.
-std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots = nullptr,
+GOBLIN_RENDER_API std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDummyLots = nullptr,
                                               std::vector<DiskCollectible> *collectibles = nullptr,
                                               std::vector<DiskEnemy> *enemies = nullptr,
                                               std::vector<DiskRegion> *regions = nullptr);
@@ -138,7 +144,7 @@ std::vector<DiskTreasure> load_disk_treasures(std::vector<uint32_t> *droppedDumm
 // EntityID from a different dungeon that coincides with a 4-byte window in the event, mislocating
 // the per-dungeon Rune Piece (see [[nobake-coverage-scoreboard]]). `knownEntities` is still used
 // for the flag==EntityID boss-reward shortcut (a globally-unique id, no map needed).
-std::vector<DiskEmevd> load_emevd_awards(
+GOBLIN_RENDER_API std::vector<DiskEmevd> load_emevd_awards(
     const std::unordered_set<uint32_t> &knownEntities,
     const std::unordered_map<uint32_t, std::unordered_set<uint32_t>> &entitiesByTile);
 
@@ -151,7 +157,7 @@ std::vector<DiskEmevd> load_emevd_awards(
 // result to disk_enemies for the EMEVD join ONLY (after build_disk_enemy_markers + known_entities
 // are built, so it adds no LOD phantoms to the enemy pass or the boss/setter resolution). Stops
 // early once every wanted id is resolved. Empty when `wanted` is empty or no dir is resolved.
-std::vector<DiskEnemy> load_lod_award_entities(const std::unordered_set<uint32_t> &wanted);
+GOBLIN_RENDER_API std::vector<DiskEnemy> load_lod_award_entities(const std::unordered_set<uint32_t> &wanted);
 
 // Targeted non-_00 scan for World-feature ASSETS whose model lives ONLY in LOD supertiles (the
 // asset analogue of load_lod_award_entities). Some asset-model features — the Snow Town
@@ -165,7 +171,7 @@ std::vector<DiskEnemy> load_lod_award_entities(const std::unordered_set<uint32_t
 // so these never count as loot collectibles). `wanted` = the WORLD_FEATURE_MODELS rows with lod_scan;
 // set lod_scan ONLY on models with no _00 placements (else _00 + LOD copies double-count). Empty when
 // `wanted` is empty or no dir is resolved.
-std::vector<DiskCollectible> load_lod_feature_assets(const std::unordered_set<uint32_t> &wanted);
+GOBLIN_RENDER_API std::vector<DiskCollectible> load_lod_feature_assets(const std::unordered_set<uint32_t> &wanted);
 
 // Targeted non-_00 scan for cross-tile LOD TREASURES — the treasure analogue of
 // load_lod_feature_assets. A handful of MSB Treasure events (18 across ERR, all Caelid m60)
@@ -179,7 +185,7 @@ std::vector<DiskCollectible> load_lod_feature_assets(const std::unordered_set<ui
 // uses it to RE-SOURCE a baked residual treasure's position from disk (kindling pattern) — it does
 // NOT emit new markers, so the sibling-covered lots are untouched (no double-place). Empty when no
 // dir is resolved. Skips GameEditionDisable parts via the same path as the _00 treasure scan.
-std::vector<DiskTreasure> load_lod_treasures();
+GOBLIN_RENDER_API std::vector<DiskTreasure> load_lod_treasures();
 
 // Parse the active mod's event\*.emevd.dcx and return the World-feature graying flags:
 // (entityId -> activated event flag) for each EMEVD flag-template (Hero's Tomb statue
@@ -193,7 +199,7 @@ std::vector<DiskTreasure> load_lod_treasures();
 // second ~550-file event-dir read. nullptr = skip the extra per-file parse.
 // `gestures_out` (optional): likewise filled with the gesture-spawn refs (template 90005570;
 // parse_emevd_gestures) — one msbe::GestureRef per call — so the gesture pass shares this scan.
-std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags(
+GOBLIN_RENDER_API std::unordered_map<uint32_t, uint32_t> load_emevd_world_feature_flags(
     std::unordered_map<uint32_t, uint32_t> *paintings_out = nullptr,
     std::vector<msbe::GestureRef> *gestures_out = nullptr);
 
@@ -209,7 +215,7 @@ struct QuestNpcRuntime
 // Scan every event\*.emevd.dcx in the active install for the ENGINE-standard 90005702 quest-NPC
 // handler and group by (concluded, regLo, regHi). Same file-scan + Oodle/KRAK path as
 // load_emevd_awards. Mod-agnostic, no bake. Empty when no event dir is found.
-std::vector<QuestNpcRuntime> load_quest_npcs();
+GOBLIN_RENDER_API std::vector<QuestNpcRuntime> load_quest_npcs();
 
 // ── Map-dir discovery state (F1 error + CreateFileW fallback) ──────────────────
 // With loot_from_disk_msb on, the map dir is resolved by ancestor-walk at init
@@ -223,14 +229,14 @@ enum class DiskLootState { Disabled, Found, Searching, Failed };
 
 // Resolve the map dir once (ancestor-walk). Found → cache + state Found; empty →
 // state Searching (the CreateFileW observer completes it). Idempotent / cheap.
-void ensure_map_dir_resolved();
+GOBLIN_RENDER_API void ensure_map_dir_resolved();
 
 // Current state. Lazily flips Searching→Failed once the in-game timeout elapses
 // (no per-frame tick needed — evaluated on access).
-DiskLootState disk_loot_state();
+GOBLIN_RENDER_API DiskLootState disk_loot_state();
 
 // The resolved (or last-searched) MapStudio dir, for the build + the error text.
-std::filesystem::path disk_loot_dir();
+GOBLIN_RENDER_API std::filesystem::path disk_loot_dir();
 
 // Called by the CreateFileW observer for every *.msb.dcx the game opens. While
 // the dir is not yet Found, captures its map\MapStudio parent → flips to Found.
@@ -239,7 +245,7 @@ void on_map_opened_path(const wchar_t *full_path);
 // Registered by the marker layer at init: invoked once, the instant the map dir
 // flips to Found via CreateFileW discovery, so the worker build kicks immediately
 // instead of waiting for the next overlay tick (~7s). Set before any map opens.
-void set_build_trigger(void (*fn)());
+GOBLIN_RENDER_API void set_build_trigger(void (*fn)());
 
 // Read + DCX-decompress an arbitrary game data file, given relative to the active
 // install/mod root (e.g. "menu/hi/01_common.sblytbnd.dcx"). Resolves the root via the
