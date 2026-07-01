@@ -114,10 +114,11 @@ const CatMeta CAT[] = {
     {"show_grand_lifts", G_WORLD},        // WorldGrandLift
     {"show_dungeons", G_WORLD},           // WorldDungeon
     {"show_legacy_dungeons", G_WORLD},    // WorldLegacyDungeon
+    {"show_miquella_crosses", G_WORLD},   // WorldMiquellaCross
 };
 constexpr int CAT_COUNT = static_cast<int>(sizeof(CAT) / sizeof(CAT[0]));
 static_assert(CAT_COUNT ==
-                  static_cast<int>(goblin::generated::Category::WorldLegacyDungeon) + 1,
+                  static_cast<int>(goblin::generated::Category::WorldMiquellaCross) + 1,
               "category_meta CAT table out of sync with the Category enum");
 } // namespace
 

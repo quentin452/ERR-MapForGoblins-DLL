@@ -155,6 +155,7 @@ static Section section_of(Category c)
     case Category::WorldGrandLift:
     case Category::WorldDungeon:
     case Category::WorldLegacyDungeon:
+    case Category::WorldMiquellaCross:
         return Section::World;
     }
     return Section::World;  // unreachable; keeps the compiler happy
@@ -176,7 +177,7 @@ static std::atomic<int> g_section_apply_req{-1};  // section idx to (re)apply, -
 // section "show" must not resurrect those.
 
 // Number of marker categories (enum has no COUNT sentinel; keep in sync).
-static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldLegacyDungeon) + 1;
+static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldMiquellaCross) + 1;
 static std::atomic<bool> g_category_visible[NUM_CATEGORIES];
 static std::atomic<bool> g_category_dirty[NUM_CATEGORIES];  // set by menu, applied by watcher
 // Per-category cluster opt-in (true = this category folds into clusters). Seeded

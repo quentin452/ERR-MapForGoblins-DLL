@@ -85,6 +85,7 @@ enum class Category : uint8_t
     WorldGrandLift,        // iconId 21 (Dectus + Rold only — NOT in-dungeon lifts)
     WorldDungeon,          // iconId ∈ {4,13,14,15,16,230,231,234} (typed minor-dungeon union)
     WorldLegacyDungeon,    // iconId ∈ {50,51,55,56,58,59,60,61,66,210,211,213,218} (per-site unique)
+    WorldMiquellaCross,    // iconId 208 (13 rows) — DLC Miquella's Crosses (also a clean WMPP iconId)
 };
 
 // Provenance of a lot-backed loot row — the bake's own classification (extract_all_items.py

@@ -117,6 +117,7 @@ ENUM2DISPLAY = {
     "WorldDivineTower": "World - Divine Towers", "WorldEvergaol": "World - Evergaols",
     "WorldMinorErdtree": "World - Minor Erdtrees", "WorldGrandLift": "World - Grand Lifts",
     "WorldDungeon": "World - Dungeons", "WorldLegacyDungeon": "World - Legacy Dungeons",
+    "WorldMiquellaCross": "World - Miquella's Cross",
 }
 
 # Sections: (display, [MapGenie labels to sum], [mod Category enums to sum]).
@@ -140,7 +141,7 @@ SECTIONS = {
         ("Portal", ["Portal"], []),
         ("Smithing Table", ["Smithing Table"], []),
         ("Wandering Mausoleum", ["Wandering Mausoleum"], []),
-        ("Miquella's Cross", ["Miquella's Cross"], []),
+        ("Miquella's Cross", ["Miquella's Cross"], ["WorldMiquellaCross"]),
     ],
     "Key Items": [
         ("Cookbook", ["Cookbook"], ["KeyCookbooks"]),

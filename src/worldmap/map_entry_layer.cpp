@@ -41,7 +41,7 @@ namespace goblin::worldmap
 {
 namespace
 {
-constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldLegacyDungeon) + 1;
+constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldMiquellaCross) + 1;
 
 std::array<std::vector<Marker>, NUM_CAT> g_buckets;
 
@@ -379,13 +379,18 @@ static int landmark_category_for_icon(int iconId)
     case 213: // DLC Shadow Keep
     case 218: // DLC Midra's Manse
         return static_cast<int>(gen::Category::WorldLegacyDungeon);
+    case 208: return static_cast<int>(gen::Category::WorldMiquellaCross); // DLC Miquella's Crosses (13 rows)
     default: return -1;
     }
 }
 
 void build_live_landmarks()
 {
-    int n = 0, per_cat[6] = {0};
+    namespace gen = goblin::generated;
+    // One counter per contiguous landmark category (WorldDivineTower .. WorldMiquellaCross).
+    constexpr int kFirst = static_cast<int>(gen::Category::WorldDivineTower);
+    constexpr int kLandmarkCount = static_cast<int>(gen::Category::WorldMiquellaCross) - kFirst + 1;
+    int n = 0, per_cat[kLandmarkCount] = {0};
     try
     {
         for (auto [rowId, row] :
@@ -395,8 +400,7 @@ void build_live_landmarks()
             if (c < 0) continue;
             push_marker(rowId, row, c, /*lotId=*/0u, /*lotType=*/0u, Source::Live);
             ++n;
-            namespace gen = goblin::generated;
-            ++per_cat[c - static_cast<int>(gen::Category::WorldDivineTower)];
+            ++per_cat[c - kFirst];
         }
     }
     catch (...)
@@ -405,8 +409,9 @@ void build_live_landmarks()
         return;
     }
     spdlog::info("[LANDMARKLIVE] built {} landmark markers from live WorldMapPointParam.iconId "
-                 "(DivineTower {}, Evergaol {}, MinorErdtree {}, GrandLift {}, Dungeon {}, LegacyDungeon {})",
-                 n, per_cat[0], per_cat[1], per_cat[2], per_cat[3], per_cat[4], per_cat[5]);
+                 "(DivineTower {}, Evergaol {}, MinorErdtree {}, GrandLift {}, Dungeon {}, LegacyDungeon {}, "
+                 "MiquellaCross {})",
+                 n, per_cat[0], per_cat[1], per_cat[2], per_cat[3], per_cat[4], per_cat[5], per_cat[6]);
 }
 
 // Build the loot markers from the ACTIVE mod's REAL disk MSBs (config
