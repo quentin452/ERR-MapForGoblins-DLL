@@ -324,13 +324,48 @@ both modes; a `GOBLIN_OVERLAY_HOTRELOAD` build additionally needs it to `LoadLib
    fired 574+ times drawing world-map icons through the new path, normal timings, `[SIG]` 29/29, no
    crash/error.
 
-   **Still remaining for Slice C:** vtable/function-pointer resolution for the host→render call
-   direction (`draw_panel`/`draw_worldmap_markers`/`draw_minimap_hud`, via `LoadLibrary`+
-   `GetProcAddress` since render is the module that gets reloaded) — this is genuinely new work
-   (extern "C" stable-name exports for the 3 draw functions, a function-pointer table the host
-   resolves at `LoadLibrary` time, the actual two-target CMake build when
-   `GOBLIN_OVERLAY_HOTRELOAD=ON`, plus the ImGui-context-sharing/threading risks already flagged
-   below) — not started, needs its own design pass before coding.
+   **LoadLibrary mechanism — design locked (2026-07-01), not yet implemented.** This piece does
+   ONLY a one-time load-and-resolve (proves the two-DLL split works end to end); the live
+   FreeLibrary/reload/rebind cycle is Slice D's job, not this one.
+   - **Render → host (already works, unchanged):** normal `dllexport`/`dllimport` on the ~110+
+     `goblin_overlay_render_api.hpp` declarations via a new macro (`GOBLIN_RENDER_API`) in a tiny
+     new header, active only when `GOBLIN_OVERLAY_HOTRELOAD_BUILD` is defined:
+     `#if defined(MapForGoblins_EXPORTS) dllexport #else dllimport #endif` — CMake already auto-
+     defines `MapForGoblins_EXPORTS` only when compiling that target's sources (confirmed in the
+     build log), so this needs zero new CMake wiring beyond passing `GOBLIN_OVERLAY_HOTRELOAD_BUILD`
+     to both targets. No-op (empty macro) when the option is OFF, so the default single-DLL build
+     is untouched.
+   - **Host → render (new): NOT normal linking.** The 3 draw functions get `extern "C"` trampolines
+     with stable names in `goblin_overlay_render.cpp` (guarded by `GOBLIN_OVERLAY_HOTRELOAD_BUILD`),
+     e.g. `extern "C" __declspec(dllexport) void MFG_DrawPanel(const OverlayFrameCtx *ctx)` forwarding
+     to `goblin::overlay::draw_panel(*ctx)` — deliberately NOT dllimport/dllexport C++ linkage,
+     because Slice D needs to `GetProcAddress` these by name after a `FreeLibrary`+reload, which
+     load-time-bound imports can't do.
+   - **ImGui context sharing:** `OverlayFrameCtx` gets a new `ImGuiContext *imgui_ctx` field (host
+     sets it once, from the existing `ImGui::CreateContext()` call in `init_imgui`); each `extern
+     "C"` trampoline calls `ImGui::SetCurrentContext(ctx->imgui_ctx)` before the real draw call —
+     both DLLs statically link their own copy of the `imgui` library (separate global state per
+     DLL by default), so this is required, not optional, the moment there are two binaries.
+   - **Host loader:** new `goblin::overlay::call_draw_panel/call_draw_worldmap_markers/
+     call_draw_minimap_hud` (host-side, e.g. folded into `goblin_overlay.cpp`) — `hk_present`'s call
+     sites stay EXACTLY as they are today; these 3 functions internally branch on
+     `GOBLIN_OVERLAY_HOTRELOAD_BUILD` (function-pointer call in the split build, direct
+     `goblin::overlay::draw_*` call in the default build) — no visible change at the call site
+     either way. `LoadLibraryW` resolves `goblin_overlay_render.dll` from the SAME DIRECTORY as the
+     host DLL (`GetModuleFileNameW` + strip filename), not default search order. One-time load in
+     `goblin::overlay::initialize()`; failure sets `g_failed = true` same as every other init
+     failure path (mod disables gracefully, doesn't crash).
+   - **CMakeLists (`GOBLIN_OVERLAY_HOTRELOAD=ON` only):** real two-target split —
+     `add_library(goblin_overlay_render SHARED ${GOBLIN_RENDER_SOURCES})` linked against
+     `MapForGoblins` (its import lib, for the ~110 `overlay_api` calls — standard load-time
+     dependency, resolved automatically since the OS already loaded `MapForGoblins.dll` before
+     `LoadLibrary`-ing render) + `imgui`/`minhook`/etc; `MapForGoblins` does NOT link
+     `goblin_overlay_render` (runtime-loaded only). `add_dependencies(goblin_overlay_render
+     MapForGoblins)` so the host (and its import `.lib`) builds first. Default `OFF` path
+     (today's single `add_library(MapForGoblins SHARED ${GOBLIN_HOST_SOURCES} ${GOBLIN_RENDER_SOURCES})`)
+     stays byte-for-byte unchanged.
+   - **Not this slice:** live reload (`FreeLibrary`+rebuild+`LoadLibrary`+rebind), the file-watcher,
+     and the threading/lock discipline that only matters once reload is real — all Slice D.
 4. Slice D — file-watcher + actual hot reload.
   - **ImGui context sharing across the DLL boundary.** Both DLLs must share the SAME `ImGuiContext*`
     (`ImGui::SetCurrentContext` on entry to every cross-DLL call) and be built against the same
