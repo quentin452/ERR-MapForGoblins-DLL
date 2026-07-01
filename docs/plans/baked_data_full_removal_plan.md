@@ -139,7 +139,15 @@ facts that change the remaining plan:
    `massedit_generated` wiped) → `src/generated` byte-identical; ERR DLL rebuilds clean. Left for Phase 5:
    the orphaned generator *scripts*, the tracked dead `data/massedit_generated/*.MASSEDIT` artifacts, and
    `generate_loot_massedit`'s own (now-dead) `.MASSEDIT` emission.
-3. **← NEXT: item_icon_table → runtime** — enumerate placed items live instead of the ERR-frozen JSON.
+3. **item_icon_table → runtime — DONE + MERGED** (branch `pr3-remove-category-exceptions`). Resolved as a
+   REMOVAL + a live re-derivation, not a re-source: (a) `6c19f72` DELETED the curated category-exception
+   override (generated `goblin_category_exceptions.{cpp,hpp}` + DLL lookup + CMake + `generate_data`
+   emitter) — `item_icon_table.json` has zero compiled consumers now (offline-only); (b) `a21665b`
+   recovered the splits LIVE via `EquipParamGoods.sortId` (s32 @ +0x20): `category_from_taxonomy` keys on
+   `(goodsType, sortGroupId, sortId)`, so the value-tier + grab-bag splits are reconstituted from the
+   active install with NO per-item bake. In-game verified on ERR (all splits repopulated, parents correct,
+   0 errors). Follow-ups: Reforged families + DLC key ids 2008025-2008037 (colliding in-cell sortId → still
+   catch-all); resync/retire the offline taxonomy mirror; drop `item_icon_table.json` emission at Phase 5.
 4. **Phase 5** — retire `build_pipeline.py` + `build.bat` + `README.md` once the authored core is all
    that's left.
 
