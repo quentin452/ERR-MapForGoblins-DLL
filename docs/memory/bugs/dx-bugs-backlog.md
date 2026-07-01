@@ -209,7 +209,13 @@ F2. **Locate/recherche ne recentre pas sur une cible dans le Fog of War.** Quand
     **Loot undercount + pas de ×N stacking** (détecté 2026-06-30) — "Below The Well" montre 1 Sliver of
     Meat alors que Mapgenie en liste 3. Plan détaillé : `docs/plans/loot_item_count_plan.md`.
 
-F3. **Clavier définitivement mort dans les search bars ImGui après un Alt+Tab — DÉTERMINISTE,
+F3. ✅ **FIXED + user-confirmed live 2026-07-01** (`90b3e2b`) — poll clavier
+    (`GetAsyncKeyState`+`ToUnicodeEx`, `src/input/input_keyboard_poll.cpp`) devenu la SEULE
+    source de texte clavier pendant que le menu est ouvert ; `input_wndproc.cpp` ne relaie plus
+    `WM_CHAR`/`WM_KEYDOWN`/`WM_KEYUP`/`WM_SYSKEYDOWN`/`WM_SYSKEYUP` à ImGui du tout (évite le
+    double-frappe pendant que les messages legacy marchaient encore, avant tout Alt+Tab). Limite
+    connue : pas d'auto-repeat OS émulé (une touche maintenue tape une fois par appui physique).
+    **Clavier définitivement mort dans les search bars ImGui après un Alt+Tab — DÉTERMINISTE,
     repro fiable trouvée par <user> (2026-07-01, après le refactor `feat/input-module`).** Repro
     exacte : (1) écrire dans une search bar F1 avec le clavier → marche ; (2) Alt+Tab away puis
     retour ; (3) réessayer d'écrire → **plus rien ne s'écrit**, à chaque fois. Log
