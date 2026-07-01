@@ -341,6 +341,7 @@ const char *category_name(generated::Category c)
         case C::WorldLegacyDungeon: return "World - Legacy Dungeons";
         case C::WorldMiquellaCross: return "World - Miquella's Cross";
         case C::WorldPortal: return "World - Portals";
+        case C::WorldFarmableCollectible: return "Loot - Farmable Drops";
     }
     return "?";
 }
