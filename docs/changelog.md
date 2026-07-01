@@ -212,6 +212,16 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   itself instead of patching each bug it produced; user-confirmed fixed in-game. Tradeoff: F1
   stays active (including input-swallow) even if the game window loses focus — close F1 before
   Alt+Tabbing to interact with a different window.
+- **Keyboard permanently dead after Alt+Tab (a separate bug from the mouse/focus fixes above)** —
+  legacy keyboard window messages (`WM_CHAR`/`WM_KEYDOWN`/etc.) simply stop arriving after a real
+  Alt+Tab under Wine/Proton, same `RIDEV_NOLEGACY` family as the mouse-click fix elsewhere in this
+  list. Keyboard text entry now polls (`GetAsyncKeyState` + `ToUnicodeEx`) instead of relying on
+  those messages while the panel is open. Known limitation: no OS auto-repeat emulation — a held
+  key types once per physical press, not on a timer.
+- **Minimap search-hit target vanished when outside the HUD's radius** — an item-search hit beyond
+  the minimap's radius simply didn't draw; now clamped to the HUD edge along its true direction
+  (like an off-screen objective indicator), and the search-hint text now says "ringed on the
+  minimap" instead of "open the world map to locate them" when the minimap is already showing it.
 - **Marker teleport on zoom** — overlay markers jumped for a single frame on each mouse-wheel zoom step.
   The marker motion-sync (which projects markers ~1 frame behind to ride the GFx-composited basemap) now
   delays zoom together with pan (`view_delay_zoom`, on by default); delaying pan alone left the zoom a
