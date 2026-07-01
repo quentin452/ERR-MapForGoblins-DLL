@@ -18,8 +18,10 @@ classifier + its 4 consumer functions (`resolve_loot_flag`, `resolve_loot_item_t
 `src/goblin_loot_resolve.cpp`, with a 3-accessor shared header (`goblin_inject_shared.hpp`) for
 the one genuine cross-file dependency (`orp_flag_set`, which stays in `goblin_inject.cpp` since
 other sections there still need it). Pure relocation, no logic changes. Builds clean via
-clang-cl+xwin on this Linux box (`build-linux/MapForGoblins.dll`, PE32+ confirmed) — **NOT deployed
-or in-game tested yet** (this session is Linux-only). This is loot-marker-adjacent code
+clang-cl+xwin on this Linux box (`build-linux/MapForGoblins.dll`, PE32+ confirmed) and DEPLOYED to
+`~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior deployed DLL backed up as
+`.bak-pre-inject-module`) — **NOT yet in-game tested** (game wasn't running at deploy time; launch
++ play-test is still needed). This is loot-marker-adjacent code
 (pickup-flag/identity resolution feeds marker graying/labels), so a regression here would show up
 as wrong/missing loot-collected state or wrong marker names/counts — needs a real ERR session
 before merging to `master`. Plan doc updated in place with the PR-0 findings (LotReader turned out
