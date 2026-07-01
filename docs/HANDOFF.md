@@ -2,10 +2,14 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01r (`feat/inject-world-position` PR 4a of the goblin_inject.cpp
-god-file split — IN-GAME CONFIRMED via log check, ready to merge — see directly below. A crash
-occurred this session but is a known pre-existing bug, NOT a regression (see RESUME HERE). Earlier
-same day: PR 3 (section-visibility) IN-GAME CONFIRMED + MERGED; PR 2 (item-classify) IN-GAME CONFIRMED + MERGED; PR 1 (icon-harvest) IN-GAME CONFIRMED +
+Last updated: 2026-07-01v (`feat/inject-grace-suppression` PR 4c of the goblin_inject.cpp
+god-file split — IN-GAME CONFIRMED + MERGED. This was the LAST planned extraction PR — the whole
+goblin_inject_refactor_plan is now COMPLETE (only 4d, an intentional non-PR stay-behind, remains)
+— see directly below. Earlier same day: PR 4b
+(tutorial-popup) IN-GAME CONFIRMED + MERGED; PR 4a (world-position) IN-GAME CONFIRMED + MERGED (a
+crash occurred that session but is a known pre-existing bug, NOT a regression); PR 3
+(section-visibility) IN-GAME CONFIRMED + MERGED; PR 2
+(item-classify) IN-GAME CONFIRMED + MERGED; PR 1 (icon-harvest) IN-GAME CONFIRMED +
 MERGED; PR 0 — MERGED, in-game confirmed via log check; Phase A regen DONE on the Windows box
 (parallel session) — all 4 profiles now MAP_ENTRY_COUNT 0,
 non-ERR DLLs rebuilt clean via clang/ninja, Phase-1 enemy-name landmine closed at build level (see
@@ -15,7 +19,55 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01r) — `feat/inject-world-position` PR 4a IN-GAME CONFIRMED, ready to merge
+## RESUME HERE (2026-07-01v) — `feat/inject-grace-suppression` PR 4c IN-GAME CONFIRMED + MERGED — goblin_inject.cpp refactor plan COMPLETE
+
+Branch `feat/inject-grace-suppression` (forked from `master` after PR 0-3+4a+4b merged),
+implementing PR 4c — **the LAST planned extraction PR of this whole plan.** Extracted the native
+WarpPinData builder log hook + the DRAW-ONLY SetTo suppression hook (RE e4b3f6a /
+windows_grace_warppin_teleport_re_findings.md §4) into new `src/goblin_grace_suppression.cpp`
+(`:152-297`, ~146 lines). Already known-independent since before PR 3's audit; a fresh file-wide
+grep confirmed zero coupling to anything else in `goblin_inject.cpp` — cleanest PR of the whole
+plan, first-try clean build (no missing-include fixes needed, unlike every prior PR). Public entry
+point (`install_grace_suppression_hook`, called from `dllmain.cpp`) unchanged, facade kept. Builds
+clean via clang-cl+xwin, deployed to `~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll`
+(md5-verified, prior DLL backed up as `.bak-pre-grace-suppression`). **IN-GAME CONFIRMED
+2026-07-01 20:22 via log check**: fresh `NEW SESSION`, `[SIG]` 29/29 PASS, `[WARPPIN] WarpPinData
+builder hooked` + `[WARPPIN] SetTo hooked` (both moved hooks installed), 20+ `[WARPPIN] build ...`
+lines firing with correct state/iconId data live, no error/exception. Same known pre-existing
+unrelated `eldenring.exe` crash fired again (identical `+0x1EB9999` offset) — not a regression.
+**PR 4c is done, verified, and MERGED to `master`. This was the LAST planned extraction PR — the
+goblin_inject_refactor_plan is now COMPLETE** except for 4d, which is not a PR (intentional
+permanent stay-behind: `orp_flag_set` event-flag hub + `menu_auto_toggle_loop` + save/reset/toast
+subsystem + kill-indicators, ~260 lines). `goblin_inject.cpp` is now 419 lines, down from the
+original 5266 across PRs 0-4c.
+
+## OLDER RESUME (2026-07-01t) — `feat/inject-tutorial-popup` PR 4b IN-GAME CONFIRMED, MERGED
+
+Branch `feat/inject-tutorial-popup` (forked from `master` after PR 0-3+4a merged), implementing
+PR 4b. Extracted the WorldMapPointParam readiness probe, TutorialParam row injection (F10 banner
+rows), and `world_map_open()` into new `src/goblin_tutorial_popup.cpp` (~354 lines, 3 spans:
+`:89-134`+`:137-373`+`:433-463`). `world_map_open()` is a misplaced public utility (called from
+`goblin_worldmap_probe.cpp`/`map_renderer.cpp`/`goblin_overlay.cpp`×2/`input_wndproc.cpp`) that sat
+in the TutorialParam banner section by proximity only. **Scope narrower than the plan's original
+guess**: the toast-method A/B experiment (`g_toast_method`/`TOAST_METHOD_NAMES`/
+`TOAST_METHOD_COUNT`) and toast-delivery internals (`show_tutorial_popup_trampoline`/
+`seh_dispatch_toast`) STAY in `goblin_inject.cpp` — called ONLY by `show_toggle_banner`/
+`seh_fire_trampoline` (PR 4d's toast subsystem), moving them would just relocate half that hub for
+zero coupling reduction. Side finding (not fixed, pure relocation): the comment directly above
+`world_map_open()` in the original file describes `show_toggle_banner`'s toast-firing behavior, not
+`world_map_open` — a pre-existing stale/misplaced comment, moved as-is. Declarations in
+`goblin_inject.hpp` unchanged (facade kept). Builds clean via clang-cl+xwin, deployed to
+`~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior DLL backed up as
+`.bak-pre-tutorial-popup`). **IN-GAME CONFIRMED 2026-07-01 20:16 via log check**: fresh
+`NEW SESSION`, `[SIG]` 29/29 PASS, `[TOAST] TutorialParam expanded: 11057 -> 11068 rows` (the moved
+`inject_tutorial_popup_rows()` ran correctly), `[OVERLAY] world_map_open CSMenuMan_slot=0x...` +
+repeated `CSMenuMan+0xCD changed -> 0/3/7/3/0` over ~40s (the moved `world_map_open()` resolving and
+driving map open/close correctly), no error/exception. Same known pre-existing unrelated
+`eldenring.exe` crash fired again this session (same `+0x1EB9999` offset, zero `MapForGoblins.dll`
+frames) — not a regression. **PR 4b is done and verified — merged to `master`.** PR 4c remains
+unstarted, 4d is the intended final resting state of `goblin_inject.cpp`.
+
+## OLDER RESUME (2026-07-01r) — `feat/inject-world-position` PR 4a IN-GAME CONFIRMED, MERGED
 
 PR 4 (the final cleanup pass) got its own scoping audit first, per the plan's own rule — every
 prior PR found the plan's pre-PR0 guesses about "what's left" wrong somewhere, so PR 4 needed a
