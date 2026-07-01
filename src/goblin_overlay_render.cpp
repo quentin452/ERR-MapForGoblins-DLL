@@ -241,7 +241,7 @@ namespace
         static std::vector<wm::MarkerLayer *> s_layers;  // pointers into the above
         if (s_layers.empty())
         {
-            const int N = static_cast<int>(gen::Category::WorldInteractables) + 1;
+            const int N = static_cast<int>(gen::Category::WorldLegacyDungeon) + 1;
             const int graces = static_cast<int>(gen::Category::WorldGraces);
             const int quest_npc = static_cast<int>(gen::Category::WorldQuestNPC);
             s_cat.reserve(N); // reserve → no realloc, so the pointers below stay valid

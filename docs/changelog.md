@@ -25,6 +25,16 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **6 landmark map categories** (`World - Divine Towers`, `Evergaols`, `Minor Erdtrees`,
+  `Grand Lifts`, `Dungeons`, `Legacy Dungeons`) — closes the MapGenie landmark gaps that are a clean
+  `WorldMapPointParam.iconId` key. Read LIVE from the active install's `WorldMapPointParam` (same
+  `build_live_bosses` path), so they are automatically correct on any mod/vanilla — no baked data.
+  Each has its own `show_*` toggle in the World section (all off by default). "Dungeon" is the union
+  of ER's typed minor-dungeon icons (Catacombs/Caves/Tunnels/Wells/Hero's Graves + DLC); "Legacy
+  Dungeon" is the per-site set (Stormveil, Raya Lucaria, Leyndell, …). In-game confirmed on ERR
+  (114 markers, positions correct). MapGenie categories that are NOT `WorldMapPointParam` (Smithing
+  Table, Portal, Hidden Passage, …) are deferred to a later MSB/AEG pass. Circle fallback until each
+  landmark's real `SB_MapCursor` glyph is wired (followup).
 - **`[BENCH]` logging gates** — two new independent INI settings, `bench_log_individual` and
   `bench_log_session` (both default `true`, matching prior behavior). Turn either off to keep
   only the per-call timing lines or only the end-of-session summary table; turn both off to

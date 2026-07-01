@@ -333,6 +333,12 @@ const char *category_name(generated::Category c)
         case C::WorldSummoningPools: return "World - Summoning Pools";
         case C::WorldKindlingSpirits: return "World - Kindling Spirits";
         case C::WorldInteractables: return "World - Interactables";
+        case C::WorldDivineTower: return "World - Divine Towers";
+        case C::WorldEvergaol: return "World - Evergaols";
+        case C::WorldMinorErdtree: return "World - Minor Erdtrees";
+        case C::WorldGrandLift: return "World - Grand Lifts";
+        case C::WorldDungeon: return "World - Dungeons";
+        case C::WorldLegacyDungeon: return "World - Legacy Dungeons";
     }
     return "?";
 }

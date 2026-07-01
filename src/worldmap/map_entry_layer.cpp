@@ -41,7 +41,7 @@ namespace goblin::worldmap
 {
 namespace
 {
-constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldInteractables) + 1;
+constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldLegacyDungeon) + 1;
 
 std::array<std::vector<Marker>, NUM_CAT> g_buckets;
 
@@ -333,6 +333,80 @@ void build_live_bosses()
         return;
     }
     spdlog::info("[BOSSLIVE] built {} boss markers from live WorldMapPointParam (textId2==5100)", n);
+}
+
+// Build the LANDMARK buckets LIVE from WorldMapPointParam.iconId (MapGenie category-coverage
+// GROUP 1). Same live-param source + push_marker path as build_live_bosses, so projection /
+// name (textId1 → PlaceName) / dungeon reprojection are identical. Mod-agnostic: the iconId
+// semantics are byte-identical vanilla↔ERR (verified tools/verify_worldmap_iconids.py — the
+// ERR rows only decorate the point TEXT with boss-status labels; the iconId itself is unchanged),
+// so this reads whatever the active install's regulation.bin holds — no bake, no ERR-specific data.
+// The requested named-landmark subset (docs/re/windows_mapgenie_category_coverage_re_findings.md
+// Tier 2(A)); iconIds NOT in this table (Churches 3, Ruins 5, boss buckets 41/67, structural
+// 80/83/84/85, …) are intentionally left unclassified. NO overlap with the boss pass — none of
+// these iconIds carry textId2==5100 (verified), so a landmark is never also a live boss marker.
+static int landmark_category_for_icon(int iconId)
+{
+    namespace gen = goblin::generated;
+    switch (iconId)
+    {
+    case 23: return static_cast<int>(gen::Category::WorldDivineTower);
+    case 9:  return static_cast<int>(gen::Category::WorldEvergaol);
+    case 30: return static_cast<int>(gen::Category::WorldMinorErdtree);
+    case 21: return static_cast<int>(gen::Category::WorldGrandLift);
+    // "Dungeon" = the UNION of ER's typed minor-dungeon icons (each iconId is one type).
+    case 4:   // Catacombs
+    case 13:  // Caves
+    case 14:  // Tunnels
+    case 15:  // Wells
+    case 16:  // Hero's Graves
+    case 230: // DLC Catacombs
+    case 231: // DLC Gaols
+    case 234: // DLC Caves
+        return static_cast<int>(gen::Category::WorldDungeon);
+    // "Legacy Dungeon" = per-site UNIQUE icons (each major site has a bespoke icon).
+    case 50:  // Stormveil
+    case 51:  // Raya Lucaria
+    case 55:  // Haligtree
+    case 56:  // Elphael
+    case 58:  // Volcano Manor
+    case 59:  // Farum Azula
+    case 60:  // Leyndell
+    case 61:  // Shunning-Grounds
+    case 66:  // Carian Study Hall
+    case 210: // DLC Belurat
+    case 211: // DLC Enir-Ilim
+    case 213: // DLC Shadow Keep
+    case 218: // DLC Midra's Manse
+        return static_cast<int>(gen::Category::WorldLegacyDungeon);
+    default: return -1;
+    }
+}
+
+void build_live_landmarks()
+{
+    int n = 0, per_cat[6] = {0};
+    try
+    {
+        for (auto [rowId, row] :
+             from::params::get_param<from::paramdef::WORLD_MAP_POINT_PARAM_ST>(L"WorldMapPointParam"))
+        {
+            const int c = landmark_category_for_icon(row.iconId);
+            if (c < 0) continue;
+            push_marker(rowId, row, c, /*lotId=*/0u, /*lotType=*/0u, Source::Live);
+            ++n;
+            namespace gen = goblin::generated;
+            ++per_cat[c - static_cast<int>(gen::Category::WorldDivineTower)];
+        }
+    }
+    catch (...)
+    {
+        spdlog::warn("[LANDMARKLIVE] WorldMapPointParam not readable — landmark markers absent this build");
+        return;
+    }
+    spdlog::info("[LANDMARKLIVE] built {} landmark markers from live WorldMapPointParam.iconId "
+                 "(DivineTower {}, Evergaol {}, MinorErdtree {}, GrandLift {}, Dungeon {}, LegacyDungeon {})",
+                 n, per_cat[0], per_cat[1], per_cat[2], per_cat[3], per_cat[4], per_cat[5]);
 }
 
 // Build the loot markers from the ACTIVE mod's REAL disk MSBs (config
@@ -2514,6 +2588,9 @@ void build_buckets_impl()
                      "— reachable dummies w/ an EntityID are now disk-emitted", recover);
     }
     build_live_bosses();
+    // Landmarks (WorldMapPointParam.iconId) — live, mod-agnostic, unconditional like bosses;
+    // per-category visibility is applied downstream (g_category_visible). See build_live_landmarks.
+    build_live_landmarks();
 
     // Great Runes: the 6 demigod runes shown at their LIVE boss positions (joined by cleared flag).
     // Must run after build_live_bosses (reads its markers); feeds the world-feature category-wipe below.
