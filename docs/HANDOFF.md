@@ -9,25 +9,25 @@ clang-cl-alt build toolchain policy formalized; `feat/input-module` MERGED to ma
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint text fix,
 `feat/quest-npc-layer` and `feat/minimap-scale-cluster-search` also MERGED.)
 
-## RESUME HERE (2026-07-01i) — `feat/inject-module` PR 0 landed, needs in-game verify before merge
+## RESUME HERE (2026-07-01i) — `feat/inject-module` PR 0 done + in-game CONFIRMED, ready to merge
 
-Branch `feat/inject-module` (forked from `master`, 1 commit `94958e2`), implementing PR 0 of
+Branch `feat/inject-module` (forked from `master`), implementing PR 0 of
 `docs/plans/goblin_inject_refactor_plan.md`. Extracted `LotReader` + the live-persistence
 classifier + its 4 consumer functions (`resolve_loot_flag`, `resolve_loot_item_textid`,
 `lot_row_in_table`, `lot_item_count`) + `diag_loot_flags` out of `goblin_inject.cpp` into new
 `src/goblin_loot_resolve.cpp`, with a 3-accessor shared header (`goblin_inject_shared.hpp`) for
 the one genuine cross-file dependency (`orp_flag_set`, which stays in `goblin_inject.cpp` since
 other sections there still need it). Pure relocation, no logic changes. Builds clean via
-clang-cl+xwin on this Linux box (`build-linux/MapForGoblins.dll`, PE32+ confirmed) and DEPLOYED to
-`~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior deployed DLL backed up as
-`.bak-pre-inject-module`) — **NOT yet in-game tested** (game wasn't running at deploy time; launch
-+ play-test is still needed). This is loot-marker-adjacent code
-(pickup-flag/identity resolution feeds marker graying/labels), so a regression here would show up
-as wrong/missing loot-collected state or wrong marker names/counts — needs a real ERR session
-before merging to `master`. Plan doc updated in place with the PR-0 findings (LotReader turned out
-NOT to need the separate "shared extraction first" step the plan originally called for — see the
-plan's own "PR 0 finding" note). Next: deploy + verify in-game (Windows), then merge; PRs 1-4 of
-the same plan remain unstarted.
+clang-cl+xwin on this Linux box and DEPLOYED to `~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll`
+(md5-verified, prior deployed DLL backed up as `.bak-pre-inject-module`). **IN-GAME CONFIRMED
+2026-07-01 19:20 via log check**: fresh `NEW SESSION` right after deploy, `[SIG]` health check
+29/29 PASS (incl. `IS_EVENT_FLAG`/`EVENT_FLAG_MAN_SLOT`, the AOBs the new shared-header accessor
+depends on), `diag_loot_flags` (the moved function) producing correct-looking live `[LOOTDIAG]`
+output, no crash dump/error/exception after session start. **PR 0 is done and verified — ready to
+merge `feat/inject-module` to `master` (not yet merged, user hasn't asked for the merge).** Plan
+doc updated in place with the PR-0 findings (LotReader turned out NOT to need the separate "shared
+extraction first" step the plan originally called for — see the plan's own "PR 0 finding" note).
+Next: merge to master when asked, then PRs 1-4 of the same plan remain unstarted.
 
 ## NEW PLAN (2026-07-01h) — overlay-only hot-reload + Route B AI Playwright loop, scoped not started
 

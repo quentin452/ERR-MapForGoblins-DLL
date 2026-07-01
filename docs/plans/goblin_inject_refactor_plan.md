@@ -1,7 +1,9 @@
 # Plan — extract subsystems out of `goblin_inject.cpp` (biggest hand-written god file)
 
 **Status:** PR 0 DONE (2026-07-01, branch `feat/inject-module`), builds clean
-(clang-cl+xwin, Linux dev-alt toolchain), not yet in-game verified. PRs 1-4 not started. Modeled
+(clang-cl+xwin, Linux dev-alt toolchain), IN-GAME CONFIRMED via log check (2026-07-01 19:20:
+[SIG] 29/29 PASS, diag_loot_flags producing correct live output, no crash/error). Ready to
+merge to master (not yet merged). PRs 1-4 not started. Modeled
 on the already-landed [input_module_refactor_plan.md](input_module_refactor_plan.md) precedent
 (`feat/input-module`, merged 2026-07-01, pure relocation + thin accessor plumbing, no logic
 changes).
@@ -81,7 +83,7 @@ finding/touching one subsystem means reading past ten others first.
 
 | PR | Content | Depends on | Size (~lines) | Risk / Status |
 | --- | --- | --- | --- | --- |
-| **0. `LotReader` + live-persistence classifier + 4 consumer fns + diag** ✅ DONE | `src/goblin_loot_resolve.cpp` (new): `LotReader`, `encode_live_item`, `ANON_LABEL_TEXTID`, the whole "Live persistence classifier" (`flag_query_persistent`/`fg_read_node`/`flag_is_repeatable`), `resolve_loot_flag`, `resolve_loot_item_textid`, `lot_row_in_table`, `lot_item_count`, `diag_loot_flags`. `src/goblin_inject_shared.hpp` (new): 3-fn accessor surface for `orp_flag_set` (stays in `goblin_inject.cpp`, genuinely shared with other sections there). Declarations UNCHANGED in `goblin_inject.hpp` (facade kept, lower call-site churn). | — | 425 lines moved | DONE 2026-07-01, `feat/inject-module`, builds clean (clang-cl+xwin) — **not yet in-game verified**, do that before merging |
+| **0. `LotReader` + live-persistence classifier + 4 consumer fns + diag** ✅ DONE | `src/goblin_loot_resolve.cpp` (new): `LotReader`, `encode_live_item`, `ANON_LABEL_TEXTID`, the whole "Live persistence classifier" (`flag_query_persistent`/`fg_read_node`/`flag_is_repeatable`), `resolve_loot_flag`, `resolve_loot_item_textid`, `lot_row_in_table`, `lot_item_count`, `diag_loot_flags`. `src/goblin_inject_shared.hpp` (new): 3-fn accessor surface for `orp_flag_set` (stays in `goblin_inject.cpp`, genuinely shared with other sections there). Declarations UNCHANGED in `goblin_inject.hpp` (facade kept, lower call-site churn). | — | 425 lines moved | DONE + IN-GAME CONFIRMED 2026-07-01, `feat/inject-module`, builds clean (clang-cl+xwin), ready to merge |
 | **1. Icon-texture harvest/GPU registry** | `:1746`–`:4130`ish (now shifted ~366 lines up post-PR0, re-grep before starting): icon probe, image enumerate, harvest-via-find-hook, proactive repo-walk harvest, TWIN-map walk, CreateImage force-bind, central GPU-icon registry, OodleLZ_Decompress hook, item-icon XML layout | PR 0 landed | ~1500-1600, the single biggest chunk | medium — self-contained per research, but not yet line-audited for OTHER cross-section reads beyond the 4 anonymous namespaces found |
 | **2. Item/loot classification-live (taxonomy-based)** | `classify_item_live`, `npc_loot_lot`, `aeg_pickup_lot`, `goods_is_map`, `npc_team_and_name` — confirmed during PR 0's audit to be a SEPARATE concern from `LotReader` (taxonomy/goodsType-based, not ItemLotParam-row-based); `lot_row_in_table`/`lot_item_count` already moved in PR 0, drop them from this PR's scope | — | small-medium | low-medium, not yet re-scoped post-PR0 |
 | **3. Visibility + marker-clustering (as ONE unit)** | `:186`–`:411`ish + grace anchors `:428`–`:729`ish | — | medium | medium (shared-mutex coupling already mapped, but still the riskiest single move since two "sections" become one file) |
