@@ -231,6 +231,22 @@ std::vector<uint8_t> read_game_file_decompressed(const std::string &rel_path)
     return out;
 }
 
+std::vector<uint8_t> read_loose_file_decompressed(const std::string &rel_path)
+{
+    // Loose (mod overlay / UXM base) ONLY — no packed dvdbnd fallback. Lets a
+    // caller distinguish "the mod ships this file" from "only the base game has
+    // it packed", so a mod's own data can be preferred over vanilla (used by the
+    // English name index: prefer the mod's msgbnd, fill gaps from packed vanilla).
+    fs::path full = resolve_root_file(fs::path(rel_path));
+    if (full.empty()) return {};
+    std::vector<uint8_t> raw = slurp(full);
+    if (raw.size() < 4) return {};
+    if (!(raw[0] == 'D' && raw[1] == 'C' && raw[2] == 'X' && raw[3] == 0))
+        return raw;  // loose-uncompressed
+    bool krak = false;
+    return msbe::dcx_decompress(raw.data(), raw.size(), &krak, resolve_oodle());
+}
+
 std::map<std::string, std::vector<uint8_t>>
 read_item_icon_sheets(const std::vector<std::string> &names)
 {
