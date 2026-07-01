@@ -208,6 +208,7 @@ preference:
    ERR build; independently confirm via Ghidra same as any other entry in
    `re_signatures.hpp`.** Prefer wiring the toggle into our existing `hk_present`/hotkey
    plumbing rather than copying their spawned-thread poll (we already have a poll loop there).
+   **Standalone RE recipe for the Windows spike:** `docs/re/windows_ingame_pause_re_prompt.md`.
 2. **Engine pause/cutscene flag.** ER already freezes the world during cutscenes/menus;
    reusing that state (if reachable) gives a clean, engine-sanctioned pause.
 3. **QPC hook — only as a last-resort fallback,** and if used, scope it as narrowly as
