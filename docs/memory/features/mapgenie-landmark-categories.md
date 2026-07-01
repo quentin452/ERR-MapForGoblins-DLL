@@ -1,6 +1,19 @@
 # MapGenie landmark categories (live WorldMapPointParam.iconId)
 
-Status: **shipped on `feat/mapgenie-group1-landmarks`, cross-build clean, in-game verification pending.**
+Status: **shipped on `feat/mapgenie-group1-landmarks`, cross-build clean, IN-GAME CONFIRMED on ERR
+(2026-07-01) — positions correct.** `[LANDMARKLIVE] built 114 markers (DivineTower 6, Evergaol 16,
+MinorErdtree 11, GrandLift 2, Dungeon 66, LegacyDungeon 13)`, matching the off-disk counts exactly;
+`[SIG] 29/29 clean`, `[BOSSLIVE] 217` unchanged (no overlap/interference), no crash. Not yet merged;
+the non-ERR (vanilla via me3) mod-agnostic check is still open.
+
+**Known followup — glyph (deferred, user "for later" 2026-07-01):** landmarks currently draw as the
+plain teal circle (no `category_meta` icon key, no `category_gpu_iconId` entry). Each landmark marker
+came from a WMPP row with a REAL iconId (23/9/30/21/4/13/…), which the disk `map_point_rect(iconId)`
+path can resolve to its `SB_MapCursor` glyph (mod-agnostic). Simplest wire for the 4 single-value
+categories: add `category_gpu_iconId` rows (DivineTower→23, Evergaol→9, MinorErdtree→30, GrandLift→21).
+`WorldDungeon`/`WorldLegacyDungeon` are multi-iconId → they'd need the marker's OWN source iconId
+plumbed through `push_marker` (the boss pass has the same limitation), so a per-marker glyph field is
+the fuller fix. Circle is the correct universal fallback until then (prime directive).
 
 MapGenie category-coverage GROUP 1 landed the 6 landmark categories that are a clean
 `WorldMapPointParam.iconId` key:

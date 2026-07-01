@@ -24,17 +24,23 @@ built LIVE from `WorldMapPointParam.iconId` — `build_live_landmarks()` in
 `src/worldmap/map_entry_layer.cpp`, same pattern as `build_live_bosses()`. Mod-agnostic, no bake;
 iconId map + zero-overlap-with-bosses re-verified off-disk (`tools/verify_worldmap_iconids.py`).
 clang-cl+xwin cross-build links clean. All 6 default OFF (World-section `show_*` toggles). Ghost =
-NPC invader = existing `WorldHostileNPC` (already shipped, no new work).
+NPC invader = existing `WorldHostileNPC` (already shipped, no new work). **IN-GAME CONFIRMED on ERR
+(2026-07-01):** deployed to `dll/offline/`, `[LANDMARKLIVE] built 114` (counts match off-disk exactly),
+`[SIG] 29/29 clean`, `[BOSSLIVE] 217` unchanged, no crash; **positions correct in-game (user).**
 
 **Next, in order:**
-1. **In-game verify the landmarks (user).** Toggle each of the 6 on over the ERR map (expect ~114
-   markers: DivineTower 6, Evergaol 16, MinorErdtree 11, GrandLift 2, Dungeon 66, LegacyDungeon 13);
-   grep `[LANDMARKLIVE]` for the per-category counts. Then the mod-agnostic check on a non-ERR
-   install (me3 CLI, `docs/memory/tooling/me3-cli-nonerr-launch.md`). On pass, merge to master.
-2. **GROUP 2** — the ~half of MapGenie categories NOT in `WorldMapPointParam` (Smithing Table,
+1. **Non-ERR mod-agnostic check + merge.** ERR positions confirmed. Still open: verify on a non-ERR
+   install (me3 CLI, `docs/memory/tooling/me3-cli-nonerr-launch.md`) — landmark counts should track
+   that install's WMPP (vanilla has different rows, same iconId semantics). On pass, merge to master.
+2. **Followup (user "for later") — landmark GLYPHS.** They draw as plain teal circles now. Each WMPP
+   row carries a real iconId → resolvable via disk `map_point_rect(iconId)` (`SB_MapCursor`, mod-
+   agnostic). Quick win: `category_gpu_iconId` rows for the 4 single-value categories (DivineTower→23,
+   Evergaol→9, MinorErdtree→30, GrandLift→21). Dungeon/LegacyDungeon are multi-iconId → need the
+   marker's own source iconId plumbed through `push_marker` (bosses share this gap). See the memory note.
+3. **GROUP 2** — the ~half of MapGenie categories NOT in `WorldMapPointParam` (Smithing Table,
    Portal, Hidden Passage, Martyr Effigy, Stone Cairn, …): disk MSB/AEG pass, category by category.
    See RE findings Tier 2(B).
-3. **Deferred (user) — the 2 Farmable categories** (`WorldFarmableEnemy` +
+4. **Deferred (user) — the 2 Farmable categories** (`WorldFarmableEnemy` +
    `WorldFarmableCollectible`). MFG-original; each hit a real design fork (no clean live boss signal
    → FarmableEnemy floods + can't exclude fog-gated bosses; FarmableCollectible is a routing choice).
    Gate mechanics stay valid. Full rationale in `docs/plans/mapgenie_category_coverage_plan.md`.
