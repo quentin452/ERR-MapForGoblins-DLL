@@ -2,11 +2,10 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01q (`feat/inject-world-position` branch: PR 4a of the goblin_inject.cpp
-god-file split — PR 4 first scoped into 4a/4b/4c + permanent stay-behind (4d), then 4a
-(world-position/grace-data) extracted, builds clean, deployed + md5-verified, NOT YET in-game
-log-checked — see directly below. Earlier same day: PR 3 (section-visibility) IN-GAME CONFIRMED +
-MERGED; PR 2 (item-classify) IN-GAME CONFIRMED + MERGED; PR 1 (icon-harvest) IN-GAME CONFIRMED +
+Last updated: 2026-07-01r (`feat/inject-world-position` PR 4a of the goblin_inject.cpp
+god-file split — IN-GAME CONFIRMED via log check, ready to merge — see directly below. A crash
+occurred this session but is a known pre-existing bug, NOT a regression (see RESUME HERE). Earlier
+same day: PR 3 (section-visibility) IN-GAME CONFIRMED + MERGED; PR 2 (item-classify) IN-GAME CONFIRMED + MERGED; PR 1 (icon-harvest) IN-GAME CONFIRMED +
 MERGED; PR 0 — MERGED, in-game confirmed via log check; Phase A regen DONE on the Windows box
 (parallel session) — all 4 profiles now MAP_ENTRY_COUNT 0,
 non-ERR DLLs rebuilt clean via clang/ninja, Phase-1 enemy-name landmine closed at build level (see
@@ -16,7 +15,7 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01q) — `feat/inject-world-position` PR 4a built+deployed, needs in-game log check
+## RESUME HERE (2026-07-01r) — `feat/inject-world-position` PR 4a IN-GAME CONFIRMED, ready to merge
 
 PR 4 (the final cleanup pass) got its own scoping audit first, per the plan's own rule — every
 prior PR found the plan's pre-PR0 guesses about "what's left" wrong somewhere, so PR 4 needed a
@@ -42,11 +41,17 @@ a local read), zero cross-file accessors needed. 2 dead-but-still-referenced glo
 `apply_flag_or_pairs`/`injected_row_ptrs()` (the dead subsystem above) still reference them.
 Declarations in `goblin_inject.hpp` unchanged (facade kept). Builds clean via clang-cl+xwin,
 deployed to `~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior DLL backed up
-as `.bak-pre-world-position`) — **game wasn't running at deploy time, so NOT yet in-game
-log-checked** (same check as prior PRs: fresh `NEW SESSION` + `[SIG]` PASS + no crash; this PR
-touches player-position/grace-anchor code so ideally also confirm the player dot / grace pins look
-right on the world map). Next: launch ERR, check logs, then merge to `master`; PRs 4b/4c remain
-unstarted, 4d is the intended final resting state of `goblin_inject.cpp`.
+as `.bak-pre-world-position`). **IN-GAME CONFIRMED 2026-07-01 20:06 via log check**: fresh
+`NEW SESSION`, `[SIG]` 29/29 PASS, grace sprites/icons resolving correctly (`[GRACE-SPRITE]
+'MENU_MAP_01_Bonfire' LOCKED`, `[GRACEUNDISC]` diag firing) — exercises the moved grace-anchor
+code. **A crash DID occur ~39s into this session (`MapForGoblins_crash_348.txt`) but it's a known
+pre-existing bug, NOT a regression**: fault is inside `eldenring.exe` itself (zero stack frames
+touch `MapForGoblins.dll`), at module offset `+0x1EB9999` — the EXACT SAME offset as ~13 other
+crash dumps in this same log dir going back to 2026-06-28, days before any of today's refactor
+work (matches the already-documented "intermittent render-thread race", see
+`docs/memory/bugs/mapforgoblins-map-open-freeze.md`). **PR 4a is done and verified — merged to
+`master`.** PRs 4b/4c remain unstarted, 4d is the intended final resting state of
+`goblin_inject.cpp`.
 
 ## OLDER RESUME (2026-07-01p) — `feat/inject-section-visibility` PR 3 IN-GAME CONFIRMED, MERGED
 
