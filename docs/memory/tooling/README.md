@@ -5,8 +5,11 @@ Cheat Engine, build pipelines, offset resolution, and file-format parsers. Read 
 one-off scripts — most workflows are already reusable.
 
 ## Build & deploy
-- **clang-cl + xwin + ninja** [active] — the DLL builds without MSVC/Wine via `clang-cl-xwin.cmake`;
-  Release + `CMAKE_POLICY_VERSION_MINIMUM=3.5`, per-profile build dirs, case-exact `Xinput.lib`. → [build-toolchain-clang-xwin](build-toolchain-clang-xwin.md)
+- **clang-cl + xwin + ninja** [active, dev/cross-compile ALT only] — the DLL builds without
+  MSVC/Wine via `clang-cl-xwin.cmake`; Release + `CMAKE_POLICY_VERSION_MINIMUM=3.5`, per-profile
+  build dirs, case-exact `Xinput.lib`. **Policy (2026-07-01): MSVC (`build.bat`) stays
+  release-canonical; this is the portable dev alt, not byte-identical, needs its own parity check
+  before shipping a release build with it.** → [build-toolchain-clang-xwin](build-toolchain-clang-xwin.md)
 - **Linux cross-build + deploy** [active] — live DLL is `<ERR_ROOT>/dll/offline/MapForGoblins.dll`
   (no hot-reload); **builds/deploys MUST run sandbox-disabled** or a COW overlay ships a stale DLL;
   ninja may falsely say "no work to do" after a revert (touch + verify md5). → [mapforgoblins-linux-build](mapforgoblins-linux-build.md)
