@@ -159,6 +159,10 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   panel by keyword: it matches section titles AND the setting labels inside them (e.g. "opacity"
   finds Minimap), hides everything that doesn't match, auto-expands what does, and says so when
   nothing matches. Clear the box to restore the full panel.
+- **Symbolized crash triage** — the build emits `MapForGoblins.pdb` (`/Z7` + lld `/debug`) and the
+  crash handler resolves fault + stack addresses to function names via dbghelp when the .pdb sits
+  next to the DLL; `tools/resolve_crash.py` symbolizes a triage .txt offline (function + file:line)
+  with llvm-symbolizer. eldenring.exe frames stay raw offsets (Ghidra path unchanged).
 
 ### Changed
 - **No-bake data pipeline** — markers derived live at runtime from the active mod's MSB / EMEVD / ItemLotParam

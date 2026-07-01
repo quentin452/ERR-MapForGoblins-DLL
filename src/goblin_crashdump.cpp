@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <cwchar>
 #include <utility>
 #include <vector>
@@ -34,6 +35,32 @@ uintptr_t g_self_base = 0; // MapForGoblins.dll
 uintptr_t g_self_end = 0;
 uintptr_t g_er_base = 0;   // eldenring.exe
 uintptr_t g_er_end = 0;
+
+// dbghelp symbol engine, initialised at INSTALL time (allocating mid-crash is
+// asking for a double fault; SymFromAddr in the handler then only does the
+// deferred module load + lookup). Needs MapForGoblins.pdb next to the DLL
+// (/Z7 + lld-link /debug — see clang-cl-xwin.cmake); without it every lookup
+// just fails and the triage falls back to raw +0xRVA lines as before.
+bool g_sym_ready = false;
+
+// Resolve `addr` to "name+0xdisp" via dbghelp. Returns false (out untouched)
+// when symbols are unavailable — e.g. eldenring.exe (no PDB), or wine's dbghelp
+// failing to parse ours. POD-only, fixed buffers: this runs mid-crash.
+static bool symbolize_addr(uintptr_t addr, char *out, size_t outsz)
+{
+    if (!g_sym_ready) return false;
+    char buf[sizeof(SYMBOL_INFO) + 256] = {};
+    auto *si = reinterpret_cast<SYMBOL_INFO *>(buf);
+    si->SizeOfStruct = sizeof(SYMBOL_INFO);
+    si->MaxNameLen = 255;
+    DWORD64 disp = 0;
+    if (!SymFromAddr(GetCurrentProcess(), static_cast<DWORD64>(addr), &disp, si))
+        return false;
+    _snprintf(out, outsz, "%s+0x%llX", si->Name,
+              static_cast<unsigned long long>(disp));
+    out[outsz - 1] = '\0';
+    return true;
+}
 
 // SizeOfImage from the PE header at `base` (PE64: e_lfanew@+0x3C, SizeOfImage@
 // +0x50 of the optional header). 0 on failure. POD-only.
@@ -81,7 +108,10 @@ static void write_crash_triage(EXCEPTION_POINTERS *ep)
                                MAX_PATH);
         }
     }
-    char buf[1024];
+    char fault_sym[320] = "";
+    if (addr)
+        symbolize_addr(reinterpret_cast<uintptr_t>(addr), fault_sym, sizeof(fault_sym));
+    char buf[1400];
     int n = _snprintf(
         buf, sizeof(buf),
         "MapForGoblins crash triage\r\n"
@@ -89,11 +119,13 @@ static void write_crash_triage(EXCEPTION_POINTERS *ep)
         "fault_address  = 0x%p\r\n"
         "fault_module   = %s\r\n"
         "fault_base     = 0x%p  (+0x%llX)\r\n"
+        "fault_symbol   = %s\r\n"
         "MapForGoblins.dll base = 0x%p\r\n"
         "eldenring.exe    base  = 0x%p\r\n",
         code, addr, mod, reinterpret_cast<void *>(modbase),
         static_cast<unsigned long long>(addr ? reinterpret_cast<uintptr_t>(addr) - modbase
                                              : 0),
+        fault_sym[0] ? fault_sym : "? (no pdb / not our module)",
         reinterpret_cast<void *>(g_self_base), reinterpret_cast<void *>(g_er_base));
     if (n > 0)
     {
@@ -128,10 +160,16 @@ static void write_crash_triage(EXCEPTION_POINTERS *ep)
             if (g_self_base && val >= g_self_base && val < g_self_end) { m = "MapForGoblins.dll"; b = g_self_base; }
             else if (g_er_base && val >= g_er_base && val < g_er_end) { m = "eldenring.exe"; b = g_er_base; }
             if (!m) continue;
-            char line[128];
-            int ln = _snprintf(line, sizeof(line), "  [+0x%05X] %s +0x%llX\r\n",
+            // Symbolize our own frames (PDB next to the DLL); eldenring.exe has
+            // no PDB so its lines stay raw +0xRVA for Ghidra as before.
+            char sym[320] = "";
+            if (b == g_self_base)
+                symbolize_addr(val, sym, sizeof(sym));
+            char line[480];
+            int ln = _snprintf(line, sizeof(line), "  [+0x%05X] %s +0x%llX%s%s\r\n",
                                (unsigned)(i * 8), m,
-                               static_cast<unsigned long long>(val - b));
+                               static_cast<unsigned long long>(val - b),
+                               sym[0] ? "  " : "", sym);
             if (ln > 0) WriteFile(f, line, static_cast<DWORD>(ln), &w, nullptr);
             printed++;
         }
@@ -262,6 +300,21 @@ void install_crash_handler(const std::filesystem::path &dump_dir)
     {
         g_self_base = reinterpret_cast<uintptr_t>(self);
         g_self_end = image_end(g_self_base);
+    }
+
+    // Symbol engine for crash-time name resolution. Initialised HERE (not in the
+    // handler — dbghelp init allocates). Deferred loads: the PDB is only parsed
+    // on the first SymFromAddr, i.e. mid-crash, best-effort. Search path = the
+    // DLL's own directory, where the deploy step puts MapForGoblins.pdb.
+    if (g_self_base)
+    {
+        char dll_path[MAX_PATH] = {0};
+        GetModuleFileNameA(reinterpret_cast<HMODULE>(g_self_base), dll_path, MAX_PATH);
+        if (char *slash = strrchr(dll_path, '\\')) *slash = '\0';
+        SymSetOptions(SYMOPT_DEFERRED_LOADS | SYMOPT_UNDNAME |
+                      SYMOPT_FAIL_CRITICAL_ERRORS);
+        g_sym_ready = SymInitialize(GetCurrentProcess(),
+                                    dll_path[0] ? dll_path : nullptr, TRUE) != FALSE;
     }
 
     // SetUnhandledExceptionFilter returns the prior filter; keep it to chain.

@@ -31,7 +31,9 @@ string(JOIN " " _incs_str ${_incs})
 #   MSVC exposes intrinsics unconditionally, clang gates them by target feature).
 # /DFMT_CONSTEVAL= -> neutralize bundled-fmt consteval format-string checks that
 #   clang 22 rejects (spdlog uses bundled fmt here, not std::format).
-set(_extra "/arch:AVX2 /DFMT_CONSTEVAL=")
+# /Z7 -> CodeView debug info in the objects so lld-link can emit a PDB (crash
+#   symbolication). The DLL itself is unchanged; symbols live in the .pdb.
+set(_extra "/arch:AVX2 /DFMT_CONSTEVAL= /Z7")
 set(CMAKE_C_FLAGS_INIT   "${_triple} ${_extra} ${_incs_str}")
 set(CMAKE_CXX_FLAGS_INIT "${_triple} ${_extra} ${_incs_str}")
 
@@ -46,8 +48,13 @@ set(_libs
   "/libpath:${XWIN}/sdk/lib/ucrt/x86_64"
   "/libpath:${XWIN}/sdk/lib/um/x86_64")
 string(JOIN " " _libs_str ${_libs})
-set(CMAKE_EXE_LINKER_FLAGS_INIT    "${_libs_str}")
-set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_libs_str}")
+# /debug -> emit MapForGoblins.pdb next to the DLL (needs /Z7 objects above).
+# /pdbaltpath:%_PDB% -> the DLL's debug-directory records just the pdb FILENAME
+#   (not the build machine's absolute path), so dbghelp/llvm-symbolizer find it
+#   when the .pdb sits next to the deployed DLL.
+set(_dbg "/debug /pdbaltpath:%_PDB%")
+set(CMAKE_EXE_LINKER_FLAGS_INIT    "${_libs_str} ${_dbg}")
+set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_libs_str} ${_dbg}")
 
 # Cross: don't probe/run target binaries; static lib for try_compile.
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)

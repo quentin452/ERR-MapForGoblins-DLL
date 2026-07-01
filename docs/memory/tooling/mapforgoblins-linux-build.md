@@ -27,7 +27,7 @@ clang-cl build is functionally equivalent but NOT byte-identical to the shipped 
 ## Deploy path (user-emphasized 2026-06-20)
 The live DLL the game loads = **`<ERR_ROOT>/dll/offline/MapForGoblins.dll`**.
 After cross-building (`cmake --build build-linux --target MapForGoblins` → `build-linux/MapForGoblins.dll`),
-ALWAYS `cp` it to that exact path. The game loads the DLL at LAUNCH (no hot-reload) — a redeploy
+ALWAYS `cp` it to that exact path. **Since 2026-07-02 copy `MapForGoblins.pdb` alongside it** — the crash handler symbolizes triage lines via dbghelp only when the pdb sits next to the deployed DLL; offline fallback = `py tools/resolve_crash.py <crash.txt> --dll build-linux/MapForGoblins.dll` (llvm-symbolizer, gives function + file:line). Keep the DLL+PDB pair matched (same build) or names will be garbage. The game loads the DLL at LAUNCH (no hot-reload) — a redeploy
 needs a full ERR restart to take effect ("proton cache"). There is only ONE MapForGoblins.dll on
 the system; verify with `md5sum` that deployed == build output.
 
