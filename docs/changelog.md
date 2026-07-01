@@ -137,6 +137,9 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   fixing hundreds of misplaced markers; live "you are here" player position on every page.
 - **Native map-point icons** — Oodle-IAT-hooked DDS harvest draws the game's real grace/boss pins on markers.
 - **Unicode overlay font** — embedded DejaVu Sans TTF (Latin-Ext / Greek / Cyrillic) over ImGui's Latin-1 default.
+- **F1 panel settings search** — a "Find setting" text box near the top of the panel auto-expands
+  every top-level section whose title matches what you type (and collapses the rest), so a setting
+  buried in a rarely-opened section can be found without manually clicking through each header.
 
 ### Changed
 - **No-bake data pipeline** — markers derived live at runtime from the active mod's MSB / EMEVD / ItemLotParam
@@ -151,6 +154,10 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   `>= 0x40000000` cut that wrongly dropped DLC one-time loot.
 
 ### Fixed
+- **Grace altitude badge (▲/▼) never drew when "Gpu Sprite" was on** — `draw_marker`'s live-sprite
+  grace path returned before reaching the shared `draw_altitude_badge` call; only the baked-atlas
+  fallback path drew it. The altitude cue now shows on grace markers regardless of the sprite
+  source setting.
 - **F1 mouse position dead after Alt+Tab (round 2 — the first fix wasn't the whole story)** — a
   second, longer debugging arc found the real root cause after 4 rounds of user-tested fixes:
   `hk_get_cursor_pos` deliberately fakes screen-centre for any caller while the panel is open (to
