@@ -21,7 +21,20 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01x) — `goblin_name_aliases_en` → runtime engus-FMG (ERR-verified, baked table not yet deleted)
+## RESUME HERE (2026-07-01x) — `goblin_name_aliases_en` → runtime engus-FMG DONE (migrated + baked table DELETED, ERR+vanilla verified)
+
+**COMPLETE.** The baked English search-alias table is fully removed; English aliases resolve live from the
+active install's engus FMGs on disk. Deleted `goblin_name_aliases_en.{cpp,hpp}` (+ profile mirrors),
+`generate_name_aliases_en_cpp` (+ `_wlit`/`ITEM_NAME_CAT_OFFSET`/`_load_json` it solely used), CMake
+entries, `lookup_name_alias_en_utf8` (+ decl), and the transitional fallback in `goblin_overlay.cpp`. ERR
+rebuilt clean + deployed. **Non-ERR verified in-game via the me3 CLI** (see
+`docs/memory/tooling/me3-cli-nonerr-launch.md`): launched bare vanilla (`ELDEN RING 1.16.2.0`) with
+`me3.exe launch -g elden-ring -p mfg_test/vanilla/vanilla.me3` → `[SIG] 29/29`, `[NAMEEN] English index:
+9877 names` from vanilla's OWN engus FMGs (≠ ERR count → reads the active install, not a bake), no errors.
+(An exit-only `me3_mod_host.dll +0xAEF4D` crash dump is a benign, deterministic ModEngine×vanilla teardown
+artifact — predates this work, not ours.) Branch `feat/name-aliases-runtime`.
+
+OLDER (superseded by the block above) — `goblin_name_aliases_en` → runtime engus-FMG (ERR-verified, baked table not yet deleted)
 
 Branch `feat/name-aliases-runtime` (off master after grace merged). The F1 English search-alias bake
 (`goblin_name_aliases_en`, 2756 rows, baked byte-identical into all 4 profiles → ERR names shipped into
@@ -373,9 +386,9 @@ sequencing + the post-Phase-1 findings that reframe Phase 2). What landed / what
   - ~~`grace_position_index`~~ **DONE 2026-07-01w** (see RESUME below). DLL grace table was already live
     (`capture_live_graces`); the leftover `grace_position_index.json`/`build_grace_index.py` only fed dead
     `.MASSEDIT` subtitle text — removed generator + pipeline stage + tracked JSON, offline-only, no DLL change.
-  - `goblin_name_aliases_en.cpp` (F1 English search aliases) — **IN PROGRESS, branch
-    `feat/name-aliases-runtime`, ERR-verified** (see RESUME above). Runtime engus-FMG-off-disk resolver
-    lands; baked table kept as transitional fallback pending non-ERR in-game verify + deletion.
+  - ~~`goblin_name_aliases_en.cpp`~~ **DONE 2026-07-01x** (branch `feat/name-aliases-runtime`). Migrated to a
+    runtime engus-FMG-off-disk resolver + **baked table deleted**; ERR + vanilla in-game verified. Next
+    baked artifact: `goblin_tile_tabs`/`goblin_major_regions` (H, pure dedup).
   - `goblin_tile_tabs` / `goblin_major_regions` — real + identical on all 4 profiles → (H) dedup into
     `generated_shared/`, pure housekeeping.
   - `goblin_region_anchors` / `goblin_name_regions` — assess vs `WorldMapPointParam` + `WorldMapPlaceName`.
