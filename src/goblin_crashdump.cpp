@@ -62,6 +62,21 @@ static bool symbolize_addr(uintptr_t addr, char *out, size_t outsz)
     return true;
 }
 
+// Raw loads live in noinline bodies so the __try wraps an opaque CALL — the
+// only SEH shape clang-cl reliably preserves (docs/memory/tooling/
+// clang-cl-seh-noinline.md); __try directly around a raw deref gets elided.
+__declspec(noinline) static uintptr_t read_qword_body(uintptr_t p)
+{
+    return *reinterpret_cast<uintptr_t *>(p);
+}
+
+__declspec(noinline) static uintptr_t image_end_body(uintptr_t base)
+{
+    uint32_t e_lfanew = *reinterpret_cast<uint32_t *>(base + 0x3C);
+    uint32_t size = *reinterpret_cast<uint32_t *>(base + e_lfanew + 0x50);
+    return base + size;
+}
+
 // SizeOfImage from the PE header at `base` (PE64: e_lfanew@+0x3C, SizeOfImage@
 // +0x50 of the optional header). 0 on failure. POD-only.
 static uintptr_t image_end(uintptr_t base)
@@ -69,9 +84,7 @@ static uintptr_t image_end(uintptr_t base)
     if (!base) return 0;
     __try
     {
-        uint32_t e_lfanew = *reinterpret_cast<uint32_t *>(base + 0x3C);
-        uint32_t size = *reinterpret_cast<uint32_t *>(base + e_lfanew + 0x50);
-        return base + size;
+        return image_end_body(base);
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
     {
@@ -153,7 +166,10 @@ static void write_crash_triage(EXCEPTION_POINTERS *ep)
             if (!VirtualQuery(reinterpret_cast<void *>(slot), &mq, sizeof(mq)) ||
                 mq.State != MEM_COMMIT)
                 break; // ran off the stack
-            __try { val = *reinterpret_cast<uintptr_t *>(slot); }
+            // Committed != readable (guard/PAGE_NOACCESS pages) — the guard must hold,
+            // and this runs MID-CRASH: an elided __try here would double-fault inside
+            // the handler and truncate the triage. Hence the noinline read body.
+            __try { val = read_qword_body(slot); }
             __except (EXCEPTION_EXECUTE_HANDLER) { continue; }
             const char *m = nullptr;
             uintptr_t b = 0;

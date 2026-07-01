@@ -21,8 +21,24 @@ for dev AND releases. No VS2022/msbuild/vswhere dependency, no dual-linker drift
 
 **STATUS 2026-07-01: the 3 sites below are FIXED** (commit `5b80541`, noinline-body pattern;
 verified on a no-LTO TU compile: `*_body` symbols emitted, caller keeps the opaque call +
-`__C_specific_handler` ref; built + deployed). Still open from Phase 0: the mechanical classify
-pass over the remaining `__try` sites repo-wide, and an in-game fault-injection check.
+`__C_specific_handler` ref; built + deployed).
+
+**Repo-wide `__try` classify pass DONE 2026-07-02** — every remaining site audited; 2 more
+raw-deref-shape sites found and fixed (goblin_crashdump.cpp `image_end` + the mid-crash stack-scan
+read — an elided guard there double-faults INSIDE the crash handler). Classification of the rest:
+
+| Site | Shape | Verdict |
+|---|---|---|
+| goblin_collected.cpp:179/:192 (`safe_read`/`safe_write_byte`) | __try around noinline `raw_copy`/`raw_store8` | SAFE (canonical pattern) |
+| goblin_world_position.cpp:529/:594, goblin_tutorial_popup.cpp:89 | noinline `*_body` | SAFE (fixed `5b80541`) |
+| goblin_crashdump.cpp:70ish/:156ish | noinline `image_end_body`/`read_qword_body` | SAFE (fixed this pass) |
+| goblin_inject.cpp:139/:212 (toast trampolines) | __try around indirect call into game code | SAFE (indirect call ⇒ frame kept) |
+| goblin_worldmap_probe.cpp:1498 (`call_reapply_seh`) | __try around `g_reapply_fn` fn-ptr call | SAFE |
+| goblin_markers.cpp:669 (`seh_dump_to_file_invoke`) | __try around large cross-TU call | SAFE (never inlined in practice) |
+| dllmain.cpp:40/:52/:64/:75/:96 (refresh/init wrappers) | __try around cross-TU calls / fn-ptr param | SAFE in practice (large callees); residual theoretical risk = thin-LTO inlining a small callee — if a dllmain-guarded path ever crashes unguarded, add noinline to the callee |
+
+Phase 0 remaining: in-game fault-injection spot check only (opportunistic — next real crash
+exercising a guarded path counts).
 Known rule (`docs/memory/tooling/clang-cl-seh-noinline.md`): clang-cl silently ELIDES `__try`
 around a raw load/store (even `noinline`); only `__try` around an opaque CALL is preserved.
 Repo was converted 2026-06-20 — except these, found in this audit:
