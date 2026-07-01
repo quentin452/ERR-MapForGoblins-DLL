@@ -2,8 +2,36 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01 (Phase 2 entity_id sourcing landed on `feat/quest-npc-layer`; progress_flag
-still blocked on running game / EMEVD corpus; NOT visually verified).
+Last updated: 2026-07-01 (feat/quest-npc-layer: Quest NPC layer WORKING end-to-end, live-verified on
+ERR v2.2.9.6, deployed dll/offline, last commit 056a27a).
+
+## RESUME HERE (2026-07-01c) — Quest NPC feature works end-to-end; decide merge vs follow-ups
+
+- **State:** `feat/quest-npc-layer` (~28 commits ahead of master, clean tree, build-clang + build-erte
+  green; vanilla/convergence fail at CONFIGURE on a pre-existing incomplete bake, unrelated). Deployed +
+  live-verified on the real ERR v2.2.9.6 install. Read `docs/memory/features/quest-browser.md` (the
+  PROGRESS_FLAG / MASS EXTRACTOR / fallback notes) + `docs/memory/tooling/rpm-live-memory-tooling.md`.
+- **What works now (all committed):** entity_id pins for Boc/Alexander/Thops (register+location flags);
+  progress_flag via register>=value (Alexander full, Boc/Thops terminals); 17 fail_flags; the RUNTIME
+  mod-agnostic quest extractor in the DLL (`msbe::parse_emevd_quest_npcs` + `loot_disk::load_quest_npcs`,
+  reads the active install's emevd, 71 NPCs on ERR); the browser "Other quests — auto-detected" FALLBACK
+  (name via NpcParam→nameId→`lookup_text_utf8(nameId+700000000)`, TEXT de-dup for merchants, nameId join
+  to the hand table — all 50 hand name_ids filled); quest PIN tooltip = NPC name + quest + current step +
+  zone (`tip_quest/tip_step/tip_zone` on Marker).
+- **Two bugs fixed live this session (root causes worth remembering):** (1) zero pins because
+  `g_entity_pos` (QuestNpcLayer's position cache) was gated inside `if(lootEmevdDrops)` — moved to the
+  `wantQuestNpcs` block. (2) `quest_npc_quest_aware=true` skips any questline with `done==0` (hides
+  manual-only NPCs) — it defaults false; user had it on. (3) empty tooltip because Marker name_id was the
+  RAW hand name_id — needs the +700000000 NpcName FMG offset.
+- **DECISION for next session:** either MERGE the branch (user pushes/merges — recommend a quick visual
+  check of the Boc/Alexander pins first, Thops already confirmed conformant via screenshot), or take the
+  headline FOLLOW-UP: **"runtime as sole source"** — make the browser LIST runtime-driven (localized
+  names + mod-agnostic), hand table supplies only step hints joined by nameId; also PIN the fallback NPCs
+  on the map (pinEntity→entity_world_pos) and the 2 alternate-form edge cases (Scribe Corhyn / Zorayas).
+  Note: tooltip quest/step text is English (hand prose is English-only) while the name is localized — the
+  runtime-sole-source follow-up is what fixes that.
+
+## Session recap (2026-07-01b) — feat_quests Phase 2: per-step entity_id sourced + wired (offline)
 
 ## Session recap (2026-07-01b) — feat_quests Phase 2: per-step entity_id sourced + wired (offline)
 
