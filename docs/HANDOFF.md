@@ -2,9 +2,8 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01o (`feat/inject-section-visibility` branch: PR 3 of the goblin_inject.cpp
-god-file split — per-section visibility + marker-clustering extracted (8 non-contiguous spans),
-builds clean, deployed + md5-verified, NOT YET in-game log-checked — see directly below. Earlier
+Last updated: 2026-07-01p (`feat/inject-section-visibility` PR 3 of the goblin_inject.cpp
+god-file split — IN-GAME CONFIRMED via log check, ready to merge — see directly below. Earlier
 same day: PR 2 (item-classify) IN-GAME CONFIRMED + MERGED; PR 1 (icon-harvest) IN-GAME CONFIRMED +
 MERGED; PR 0 — MERGED, in-game confirmed via log check; Phase A regen DONE on the Windows box
 (parallel session) — all 4 profiles now MAP_ENTRY_COUNT 0,
@@ -15,7 +14,7 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01o) — `feat/inject-section-visibility` PR 3 built+deployed, needs in-game log check
+## RESUME HERE (2026-07-01p) — `feat/inject-section-visibility` PR 3 IN-GAME CONFIRMED, ready to merge
 
 Branch `feat/inject-section-visibility` (forked from `master` after PR 0+1+2 merged), implementing
 PR 3 of `docs/plans/goblin_inject_refactor_plan.md`. Extracted per-section visibility + marker-
@@ -35,11 +34,12 @@ and joined `goblin_inject_shared.hpp` alongside 2 new accessors (`icons_user_dis
 `take_section_apply_req()`) — same established PR 0/1 accessor-header pattern. Declarations in
 `goblin_inject.hpp` unchanged (facade kept). Builds clean via clang-cl+xwin, deployed to
 `~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior DLL backed up as
-`.bak-pre-section-visibility`) — **game wasn't running at deploy time, so NOT yet in-game
-log-checked** (same check as prior PRs: fresh `NEW SESSION` + `[SIG]` PASS + no crash, and ideally
-exercise the F1 panel's section/category/cluster toggles once in-game since this PR touches those
-directly). Next: launch ERR, check logs (and toggle a section/category/cluster live if possible),
-then merge to `master`; PR 4 of the same plan remains unstarted.
+`.bak-pre-section-visibility`). **IN-GAME CONFIRMED 2026-07-01 19:54 via log check**: fresh
+`NEW SESSION`, `[SIG]` 29/29 PASS, ~2 minutes of real play — world map opened/closed multiple times
+(`CSMenuMan+0xCD` 0→3→7→3→0), `refresh.category_census` running repeatedly, `render.worldmap.clusters`
+bench fired (32 samples) — directly exercises the moved census/clustering-config machinery. No
+crash/error/exception. **PR 3 is done and verified — merged to `master`.** PR 4 of the same plan
+remains unstarted.
 
 ## OLDER RESUME (2026-07-01n) — `feat/inject-item-classify` PR 2 IN-GAME CONFIRMED, MERGED
 
