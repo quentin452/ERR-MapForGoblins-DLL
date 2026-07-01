@@ -9,8 +9,6 @@
 #include <windows.h>
 #include <d3d12.h>
 #include <dxgi1_4.h>
-#define DIRECTINPUT_VERSION 0x0800
-#include <dinput.h>
 #include <Xinput.h>   // struct/constant defs only — XInputGetState resolved dynamically below, no link dep
 #include <intrin.h>   // _ReturnAddress() — caller-range check in hk_xinput_get_state
 
@@ -38,6 +36,8 @@
 #include "generated_shared/dejavu_sans_ttf.h"         // embedded DejaVu Sans (extended-Latin glyphs)
 #include "stb_image.h"                                // stbi_load_from_memory (PNG decode)
 #include "goblin_bench.hpp"                           // GOBLIN_BENCH scoped timers
+#include "input/input_shared.hpp"                     // goblin::input::menu_open()
+#include "input/input_directinput.hpp"                // goblin::input::install_directinput_hooks()
 
 #include <vector>
 #include <map>
@@ -188,14 +188,8 @@ namespace
     using GetRawInputBufferFn = UINT(WINAPI *)(PRAWINPUT, PUINT, UINT);
     GetRawInputBufferFn o_get_raw_input_buffer = nullptr;
 
-    // DirectInput8 — ER's primary input path (imports DINPUT8.dll); the world-map
-    // cursor/pan follows the mouse through here even after raw input + window
-    // messages are blocked. Zero the device state while the menu is open.
-    using DIGetDeviceStateFn = HRESULT(STDMETHODCALLTYPE *)(IDirectInputDevice8 *, DWORD, LPVOID);
-    using DIGetDeviceDataFn = HRESULT(STDMETHODCALLTYPE *)(IDirectInputDevice8 *, DWORD,
-                                                           LPDIDEVICEOBJECTDATA, LPDWORD, DWORD);
-    DIGetDeviceStateFn o_di_get_device_state = nullptr;
-    DIGetDeviceDataFn o_di_get_device_data = nullptr;
+    // DirectInput8 hooks moved to src/input/input_directinput.cpp (goblin::input::
+    // install_directinput_hooks()) — first slice of docs/plans/input_module_refactor_plan.md.
 
     // ── D3D12 state captured from the live game ───────────────────────────
     ID3D12Device *g_device = nullptr;
@@ -1545,27 +1539,6 @@ namespace
         // game's buffer sizing stays correct.
         if (g_show && data != nullptr) return 0;
         return n;
-    }
-
-    // DirectInput8 device hooks. The vtable is shared by all devices (mouse +
-    // keyboard), so zeroing on g_show blocks both — which is exactly what we
-    // want while the menu owns input.
-    HRESULT STDMETHODCALLTYPE hk_di_get_device_state(IDirectInputDevice8 *dev, DWORD cb,
-                                                     LPVOID data)
-    {
-        HRESULT hr = o_di_get_device_state(dev, cb, data);
-        if (g_show && data && SUCCEEDED(hr))
-            memset(data, 0, cb);   // no axes / no buttons / no keys
-        return hr;
-    }
-    HRESULT STDMETHODCALLTYPE hk_di_get_device_data(IDirectInputDevice8 *dev, DWORD cb,
-                                                    LPDIDEVICEOBJECTDATA rg, LPDWORD inout,
-                                                    DWORD flags)
-    {
-        HRESULT hr = o_di_get_device_data(dev, cb, rg, inout, flags);
-        if (g_show && inout)
-            *inout = 0;            // report zero buffered events
-        return hr;
     }
 
     // ── WndProc hook (input capture) ──────────────────────────────────────
@@ -4187,6 +4160,8 @@ namespace
     }
 }
 
+bool goblin::input::menu_open() { return g_show; }
+
 void goblin::overlay::initialize()
 {
     GOBLIN_BENCH("overlay.init.hooks");
@@ -4285,34 +4260,9 @@ void goblin::overlay::initialize()
         }
     }
 
-    // DirectInput8 mouse/keyboard hook (ER's primary input path). Resolve the
-    // IDirectInputDevice8 vtable via a throwaway mouse device, then hook
-    // GetDeviceState (vtable[9]) + GetDeviceData (vtable[10]).
-    {
-        IDirectInput8 *di8 = nullptr;
-        IDirectInputDevice8 *dev = nullptr;
-        if (SUCCEEDED(DirectInput8Create(GetModuleHandleW(nullptr), DIRECTINPUT_VERSION,
-                                         IID_IDirectInput8, reinterpret_cast<void **>(&di8),
-                                         nullptr)) &&
-            di8 && SUCCEEDED(di8->CreateDevice(GUID_SysMouse, &dev, nullptr)) && dev)
-        {
-            void **vt = *reinterpret_cast<void ***>(dev);
-            void *gds = vt[9], *gdd = vt[10];
-            if (MH_CreateHook(gds, reinterpret_cast<void *>(&hk_di_get_device_state),
-                              reinterpret_cast<void **>(&o_di_get_device_state)) == MH_OK)
-                MH_EnableHook(gds);
-            if (MH_CreateHook(gdd, reinterpret_cast<void *>(&hk_di_get_device_data),
-                              reinterpret_cast<void **>(&o_di_get_device_data)) == MH_OK)
-                MH_EnableHook(gdd);
-            spdlog::info("[OVERLAY] DirectInput8 device hooks installed");
-        }
-        else
-        {
-            spdlog::warn("[OVERLAY] DirectInput8 resolve failed — map may still follow mouse");
-        }
-        if (dev) dev->Release();
-        if (di8) di8->Release();
-    }
+    // DirectInput8 mouse/keyboard hook (ER's primary input path) — extracted to
+    // src/input/input_directinput.cpp (docs/plans/input_module_refactor_plan.md).
+    goblin::input::install_directinput_hooks();
 
     spdlog::info("[OVERLAY] hooks installed (Present/ResizeBuffers/ExecuteCommandLists"
                  "/SetCursorPos/ClipCursor). F1 toggles.");

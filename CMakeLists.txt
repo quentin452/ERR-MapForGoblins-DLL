@@ -150,6 +150,9 @@ add_library( MapForGoblins SHARED
   src/goblin_messages.cpp
   src/goblin_overlay.hpp
   src/goblin_overlay.cpp
+  src/input/input_shared.hpp
+  src/input/input_directinput.hpp
+  src/input/input_directinput.cpp
   src/goblin_projection.hpp
   src/generated_shared/goblin_overlay_icons.hpp
   src/generated_shared/goblin_overlay_icons.cpp
