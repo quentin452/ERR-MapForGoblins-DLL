@@ -1,10 +1,11 @@
 # Overlay hot-reload + AI Playwright loop (plan)
 
-**Status:** Phase 1 COMPLETE + MERGED to `master` (2026-07-01). Phase 2 (DLL split): Slice A (CMake
-scaffold), Slice B (draw layer extracted to `src/goblin_overlay_render.cpp`), and Slice C
-(export-API layer + call-site rewiring + `native_item_icon` reverse wrapping) all IN-GAME CONFIRMED
-+ MERGED — remaining for Slice C: only the actual `LoadLibrary`/`GetProcAddress` vtable mechanism
-for the host→render call direction (not started). Slice D not started. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
+**Status:** Phase 1 + Phase 2 Slices A/B COMPLETE + MERGED to `master` (2026-07-01). Phase 2 Slice C
+(export-API layer + call-site rewiring + `native_item_icon` reverse wrapping + the real
+`LoadLibrary`/`GetProcAddress` mechanism) is fully IMPLEMENTED and build-verified end to end (both
+single-DLL and real two-DLL-split configs link clean) — not yet in-game confirmed for the split
+build specifically (Windows-only runtime behavior, dev box here is Linux) or merged. Slice D
+(file-watcher + actual reload) not started. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
 render code while ERR keeps running (no full restart), paired with the already-proposed Route B
 debug RPC so an AI agent can script the REAL running game — screenshot, spot a DX or functional
 bug in the minimap/worldmap/icons overlay, fix the overlay source, hot-reload just that piece,
@@ -366,6 +367,53 @@ both modes; a `GOBLIN_OVERLAY_HOTRELOAD` build additionally needs it to `LoadLib
      stays byte-for-byte unchanged.
    - **Not this slice:** live reload (`FreeLibrary`+rebuild+`LoadLibrary`+rebind), the file-watcher,
      and the threading/lock discipline that only matters once reload is real — all Slice D.
+
+   **IMPLEMENTED + build-verified end to end (2026-07-01, `feat/overlay-loadlibrary-mechanism`).**
+   Both `build-linux` (default OFF) and `build-linux-hotreload` (`GOBLIN_OVERLAY_HOTRELOAD=ON`,
+   real two-DLL split) link and build clean. New files: `src/goblin_dll_export.hpp`
+   (`GOBLIN_RENDER_API` macro), `src/goblin_overlay_render_loader.{hpp,cpp}` (consolidates ALL
+   host→render calls — not just the 3 draw functions; the real link surfaced 3 more:
+   `prebuild_markers`/`inworld_hovered`/`refresh_overlay_census`, called from
+   `dllmain.cpp`/`input_wndproc.cpp`/`goblin_section_visibility.cpp` — same extern "C"+
+   GetProcAddress treatment). `load()` runs once early in `dllmain.cpp`'s init sequence (BEFORE
+   `prebuild_markers` needs it, not inside `goblin::overlay::initialize()` which runs later) and is
+   idempotent so `initialize()` can also call it for the `g_failed` gate specifically.
+
+   **Two real design corrections found only by the actual link, not by auditing:**
+   1. **Render calls MORE host functions than either audit found** — `loot_disk.cpp`'s disk-
+      treasure/quest-npc loaders (`load_disk_treasures`, `load_lod_treasures`, `load_quest_npcs`,
+      `load_emevd_world_feature_flags`, `load_lod_feature_assets`, `load_emevd_awards`,
+      `load_lod_award_entities`, `disk_source_enabled`, `ensure_map_dir_resolved`,
+      `set_build_trigger`), `goblin_worldmap_probe::project()`, and `goblin::ui::read_event_flag`
+      (called directly by a GENERATED file, `goblin_quest_steps.cpp` — can't be hand-edited to use
+      a wrapper since it's regenerated).
+   2. **Raw `extern` DATA can't be rescued by a wrapper function** — `goblin::config::*` globals
+      and `from::params::param_list_address` are plain `extern` variables; `dllexport`/`dllimport`
+      must be on the declaration the DEFINING `.cpp` sees (i.e. what `goblin_config.cpp`/
+      `params.cpp` themselves include), so a SEPARATE getter-function wrapper in
+      `goblin_overlay_render_api.cpp` doesn't help — the variable's OWN declaring header needs the
+      macro. Fixed by directly annotating `goblin_config.hpp` (all 86 `extern` declarations, one
+      `sed` pass), `goblin_inject.hpp` (just `read_event_flag`, for the generated-file case above),
+      `goblin_worldmap_probe.hpp` (`project`), `from/params.hpp` (`param_list_address`), and
+      `loot_disk.hpp` (the 10 loader functions) directly with `GOBLIN_RENDER_API`, abandoning the
+      "touch zero existing headers" purity for these specific cases — proved more robust AND less
+      work than chasing every call site (including ones reached via macros like `GOBLIN_BENCH`, or
+      generated files that can't be edited at all).
+   3. **A few pure-data generated files needed duplicate compilation into the render target**
+      (`goblin_quest_steps.cpp`, `goblin_world_feature_models.cpp`, `goblin_map_data.cpp`,
+      `goblin_name_regions.cpp`, `goblin_major_regions.cpp`, `generated_shared/goblin_overlay_icons.cpp`)
+      — safe since they're const data tables with no mutable shared state; each DLL just gets its
+      own copy.
+
+   **General lesson for Slice D:** link-time verification (build BOTH configs for real) is the
+   ONLY reliable way to find the true cross-DLL surface — every audit pass this plan did
+   (multiple rounds) still missed real gaps that only the actual linker caught. Budget for this
+   when scoping Slice D's own work.
+
+   **Not yet done:** in-game confirm of `build-linux-hotreload`'s actual runtime behavior (this is
+   Windows-only work — `LoadLibrary`/the real render DLL load — and this box is Linux-only;
+   the default single-DLL build IS in-game confirmed, proving the macro plumbing is inert there).
+   Deploying + confirming the split build live is a natural next step before or during Slice D.
 4. Slice D — file-watcher + actual hot reload.
   - **ImGui context sharing across the DLL boundary.** Both DLLs must share the SAME `ImGuiContext*`
     (`ImGui::SetCurrentContext` on entry to every cross-DLL call) and be built against the same

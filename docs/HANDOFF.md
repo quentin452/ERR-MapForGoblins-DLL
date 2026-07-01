@@ -13,8 +13,37 @@ Kept: genuinely live/in-progress work, open questions, and standing knowledge (g
 decisions, non-obvious facts) not fully captured anywhere else. If you're looking for the history of
 something not below, check `docs/changelog.md` first, then the relevant `docs/plans/*.md`.
 
-Last updated: 2026-07-01z9 (overlay_hot_reload_playwright_plan Phase 2 Slices A/B/C all MERGED to
-`master` except Slice C's `LoadLibrary` mechanism — see below).
+Last updated: 2026-07-01z10 (overlay_hot_reload_playwright_plan Phase 2 Slice C's `LoadLibrary`
+mechanism IMPLEMENTED + build-verified end to end, both configs link clean — see below).
+
+## RESUME HERE (2026-07-01z10) — overlay_hot_reload_playwright_plan Slice C fully implemented, not yet merged/in-game-confirmed for the split build
+
+`feat/overlay-loadlibrary-mechanism` (off `master`, 1 commit): the real two-DLL split
+(`GOBLIN_OVERLAY_HOTRELOAD=ON`) now builds AND links clean (`build-linux-hotreload/`
+`MapForGoblins.dll` + `goblin_overlay_render.dll` both produced), alongside the unchanged default
+single-DLL build (`build-linux/`, in-game confirmed clean — SIG 29/29, grace SRVs, `render.minimap`
+firing, no crash, all the new macro plumbing inert there as designed).
+
+New: `src/goblin_dll_export.hpp` (`GOBLIN_RENDER_API` macro), `src/goblin_overlay_render_loader.{hpp,cpp}`
+(consolidates every host→render call — not just the 3 draw functions; the real link surfaced 3
+more: `prebuild_markers`/`inworld_hovered`/`refresh_overlay_census` — via `extern "C"` +
+`GetProcAddress`, resolved once early in `dllmain.cpp`'s init sequence, idempotent).
+
+**Two real corrections the actual link found, that BOTH prior audits missed:** (1) render calls
+more host functions than audited (`loot_disk.cpp`'s disk-loaders, `worldmap_probe::project`, and
+`goblin::ui::read_event_flag` called directly by a GENERATED file that can't be hand-edited); (2)
+raw `extern` DATA (`goblin::config::*`, `param_list_address`) can't be fixed by a wrapper
+FUNCTION — dllexport must be on the declaration the DEFINING `.cpp` sees, so
+`goblin_config.hpp`/`goblin_inject.hpp`/`loot_disk.hpp`/`goblin_worldmap_probe.hpp`/`from/params.hpp`
+got direct `GOBLIN_RENDER_API` annotations instead. Full detail + the general lesson ("link-time
+verification is the only reliable way to find the true cross-DLL surface — budget for this in
+Slice D too") in the plan doc.
+
+**Not yet done:** merge to `master`; in-game confirm of the split build's actual runtime behavior
+(Windows-only — this box is Linux, can cross-build both configs but can't run `LoadLibrary`
+against the real game to verify the render DLL actually loads/renders). Next session: merge, then
+either do the Windows in-game confirm or move straight to Slice D (file-watcher + real reload) —
+full detail in `docs/plans/overlay_hot_reload_playwright_plan.md`.
 
 ## Two new plans scoped (2026-07-01): big-files refactor + clang-only toolchain
 
