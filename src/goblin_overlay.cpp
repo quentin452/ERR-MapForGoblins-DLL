@@ -3753,28 +3753,29 @@ namespace
                 // and nothing ever refreshes it again, so WantCaptureMouse stayed false forever
                 // even though the button poll correctly saw real clicks.
                 //
-                // Unconditionally feeding every GetCursorPos read caused a second bug (<user>,
-                // same day): the cursor visibly snapped to / stuck at screen centre. A baseline-
-                // gate attempt (only feed once the poll differs from its first read) didn't fix
-                // it either — <user> confirmed live via the [DIAG] crosshairs that GetCursorPos
-                // itself is simply frozen: reads centre from the very first F1 open (not just
-                // after Alt+Tab), and after an Alt+Tab freezes at whatever it was at the moment of
-                // the transition instead of resuming. GetCursorPos cannot be trusted here at all.
-                //
-                // FINAL FIX: feed ImGui our own virtual cursor instead (g_virtual_cursor_x/y,
-                // accumulated from real raw-input mouse deltas in hk_get_raw_input_data/_buffer —
-                // see accumulate_virtual_cursor's declaration comment). That data keeps working
-                // across Alt+Tab (it's the same feed the game's own camera relies on), so this
-                // sidesteps the GetCursorPos staleness entirely instead of working around it.
-                // GetCursorPos is still polled below, but ONLY to feed the [DIAG] cyan crosshair
-                // for comparison — no longer drives ImGui's real mouse position.
+                // TRUE ROOT CAUSE (<user> pointed at it directly by asking "why can't we use
+                // GetCursorPos" — should have re-checked hk_get_cursor_pos's own body sooner):
+                // hk_get_cursor_pos DELIBERATELY fakes screen-centre for ANY caller while g_show
+                // is true, to freeze the game's own 2D map-panning camera — EXCEPT a caller that
+                // sets g_imgui_reading_cursor first (existing mechanism, already used to exempt
+                // ImGui_ImplWin32_NewFrame's own internal read, below). Every earlier "GetCursorPos
+                // is frozen/stale" diagnosis was this exact self-inflicted fake-centre trap — none
+                // of my own polling code (nor the [DIAG] cyan crosshair) was ever setting that
+                // exemption flag, so it always got the SAME faked centre value regardless of Wine,
+                // Alt+Tab, or anything else. The raw-input-delta virtual cursor (still computed
+                // below, kept for the [DIAG] readout) was solving a problem that didn't really
+                // exist while missing the real, trivial one — and is inherently less precise than
+                // the real value (mickeys-to-pixels scaling is an approximation; GetCursorPos,
+                // once unfaked, is exact). Use the exemption directly here instead.
                 if (fgw && g_hwnd)
                 {
-                    io.AddMousePosEvent(g_virtual_cursor_x.load(std::memory_order_relaxed),
-                                        g_virtual_cursor_y.load(std::memory_order_relaxed));
                     POINT pt;
-                    if (::GetCursorPos(&pt) && ::ScreenToClient(g_hwnd, &pt))
+                    g_imgui_reading_cursor = true;
+                    const BOOL gotPos = ::GetCursorPos(&pt);
+                    g_imgui_reading_cursor = false;
+                    if (gotPos && ::ScreenToClient(g_hwnd, &pt))
                     {
+                        io.AddMousePosEvent(static_cast<float>(pt.x), static_cast<float>(pt.y));
                         g_diag_raw_cursor_client = pt;
                         g_diag_raw_cursor_valid = true;
                     }
