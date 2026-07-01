@@ -152,10 +152,30 @@ search bar still required a mouse/keyboard. Two distinct sub-problems:
      combos where that button is A/B/X/Y or a D-pad direction (ImGui-nav-reserved); multi-button
      combos are unaffected. Also had to hand-fix one user's already-saved `overlay_toggle_gamepad =
      A` back to the default in the ini (validation only guards new recordings).
-2. **NOT STARTED — Search bar free-text entry.** ImGui's gamepad nav does NOT solve typing into
-   `ImGui::InputText` — that needs either an on-screen virtual keyboard (D-pad letter grid, most
-   native-feeling but more UI work) or falls back to requiring a keyboard for that one widget.
-   Decide the approach before implementing; likely its own small design pass rather than a drop-in.
+2. ✅ **DONE 2026-07-01** (`feat/gamepad-virtual-keyboard`) — **Search bar free-text entry.**
+   On-screen keyboard popup for all 3 free-text fields (item search, category filter, quest NPC
+   filter): a "Kbd" button opens a popup of ordinary `ImGui::Button`s in a row grid, writing
+   directly into the same buffer the `InputTextWithHint` already reads — no custom D-pad cursor
+   code, ImGui's own nav (enabled in part 1) already moves focus between the buttons and A already
+   activates them. Layout choice (Alphabetical/QWERTY) via a new `virtual_keyboard_layout` config
+   (`IniType::U8`, reusing the existing type — no new schema plumbing), settings RadioButtons next
+   to the gamepad combo recorder, persists via the existing "Save to INI" button like every other
+   plain setting (not an immediate-save case like the combo recorder).
+   **Bugs found + fixed during verification:**
+   - The "Kbd" button was invisible: placed via `ImGui::SameLine()` right after an `InputTextWithHint`
+     sized to `GetContentRegionAvail().x` (100% width) — the button landed past the panel's right
+     edge. Fixed by putting it on its own line below instead.
+   - **Mouse fully locked out after opening F1 via gamepad** (not this PR's code — a latent bug in
+     PR C-2 part 1's cursor-recenter surfaced by testing this PR): `recenter_cursor_to_window()`'s
+     `SetCursorPos` call generates a real `WM_MOUSEMOVE`, which `hk_wndproc`'s "real mouse input
+     clears `g_last_input_was_gamepad`" logic couldn't distinguish from a genuine user move — so it
+     cleared the flag, which re-armed the "just switched to gamepad" edge on the very next
+     `hk_present` tick if the pad was still reporting ANY activity (e.g. a hand resting on the
+     stick), re-firing the recenter, generating another self-inflicted `WM_MOUSEMOVE`, forever —
+     an infinite loop that pinned the cursor at the window center every frame, making the mouse
+     look completely dead. Fixed with a one-shot guard (`g_ignore_next_mousemove_for_gamepad_flag`)
+     set right before our own `SetCursorPos` call and consumed by the very next `WM_MOUSEMOVE` in
+     `hk_wndproc`, so only genuinely external mouse moves clear the flag.
 
 Related but distinct: item 2's other ask (auto-switch on-screen key-hints between
 keyboard/gamepad icons based on the last-active input device) — `g_last_input_was_gamepad` from PR C

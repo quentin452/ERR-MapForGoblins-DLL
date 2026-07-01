@@ -24,6 +24,17 @@ Backlog DX + bugs relevé par <user> le 2026-06-28 (à traiter plus tard, pas en
    toujours clavier (ImGui nav ne gère pas le texte libre) — donc "jouer end-to-end uniquement à la
    manette" presque atteint, sauf la recherche texte. Followup tracké : PR C-2 part 2 dans
    `docs/plans/dx_bugs_backlog_plan.md`. Original report ci-dessous.
+
+   ✅ **PR C-2 part 2 DONE 2026-07-01** (`feat/gamepad-virtual-keyboard`) — clavier virtuel à
+   l'écran (popup boutons, réutilise la nav ImGui existante) pour les 3 champs texte (recherche
+   item, filtre catégorie, filtre NPC quête), layout Alphabetical/QWERTY au choix. **"Jouer
+   end-to-end à la manette" est maintenant complet.** 2 bugs annexes trouvés + fixés pendant la
+   vérif : bouton "Kbd" invisible (placé hors panel par un `SameLine()` après un champ 100%
+   largeur) ; et un bug PLUS SÉRIEUX hérité de PR C-2 part 1 — la souris se retrouvait totalement
+   bloquée après ouverture F1 à la manette (boucle de feedback : notre `SetCursorPos` de recentrage
+   générait un `WM_MOUSEMOVE` que notre propre code prenait pour un vrai mouvement, ce qui
+   réarmait le recentrage en continu tant que la manette restait "active" — curseur épinglé au
+   centre chaque frame). Détail dans `docs/plans/dx_bugs_backlog_plan.md` PR C-2 part 2.
    **Bug DX chez nous — F1 inaccessible à la manette** — impossible d'ouvrir les menus via F1 (équivalent manette). Donc impossible de jouer MapForGoblins end-to-end uniquement à la manette. → besoin d'un binding manette pour l'ouverture du menu.
 4. **Intégrer le mod "Pause in game" directement dans MapForGoblins** — une case en plus dans F1. Évite tout conflit de touche possible avec le mod externe.
 5. **Setting ImGui "pause à l'ouverture de F1"** — quand on ouvre F1 (manette ou clavier), proposer un setting pour choisir si le jeu se met en pause automatiquement à l'ouverture des settings MapForGoblins. Hypothèse DX : quand le menu F1 est ouvert on ne veut pas forcément jouer en même temps → peut-être meilleure DX qu'une simple case ImGui à long terme. Lié au point 4.

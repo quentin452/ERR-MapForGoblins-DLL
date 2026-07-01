@@ -244,6 +244,7 @@ namespace
     bool g_prev_toggle_down = false;
     bool g_prev_gamepad_toggle_down = false;
     bool g_last_input_was_gamepad = false;   // cleared on mouse/kb msgs in hk_wndproc
+    bool g_ignore_next_mousemove_for_gamepad_flag = false;  // set by our own recenter SetCursorPos call
     bool g_gamepad_combo_recording = false;  // armed by the settings "Record gamepad combo" button
     bool g_gamepad_combo_ready = false;      // false = still waiting for the arming press to release
     std::string g_gamepad_combo_reject_reason;   // non-empty = last recording attempt was rejected, shown in settings
@@ -1176,6 +1177,57 @@ namespace
         return changed;
     }
 
+    // On-screen keyboard for gamepad text entry (dx-bugs-backlog PR C-2 part 2). ImGui's gamepad
+    // nav (enabled in PR C-2 part 1) has no answer for InputText, so this draws a popup made of
+    // ordinary buttons — D-pad/stick already moves focus between them and A already activates
+    // them, for free, via the SAME nav we already enabled. No custom input polling here at all.
+    // Writes directly into the caller's InputText buffer; next frame InputTextWithHint just
+    // re-renders whatever's in it, same as if the user had typed it on a real keyboard.
+    void draw_gamepad_keyboard_button(const char *popup_id, char *buf, size_t buf_size)
+    {
+        static const char *const ALPHA_ROWS[] = {"ABCDEFGHIJK", "LMNOPQRSTUV", "WXYZ"};
+        static const char *const QWERTY_ROWS[] = {"QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"};
+        const char *const *rows = (goblin::config::virtualKeyboardLayout == 1) ? QWERTY_ROWS : ALPHA_ROWS;
+
+        ImGui::PushID(popup_id);
+        // NOT SameLine(): the InputText above is sized to GetContentRegionAvail().x (100% width),
+        // so a same-line button would land past the panel's right edge — invisible without
+        // scrolling. Own line instead, always visible regardless of the field's width.
+        if (ImGui::SmallButton("Kbd")) ImGui::OpenPopup(popup_id);   // ASCII-only: U+2328 isn't in the merged font ranges
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("On-screen keyboard for gamepad text entry.");
+
+        if (ImGui::BeginPopup(popup_id))
+        {
+            const size_t len = strlen(buf);
+            for (int r = 0; r < 3; ++r)
+            {
+                for (const char *c = rows[r]; *c; ++c)
+                {
+                    ImGui::PushID(static_cast<int>(c - rows[r]) + r * 100);
+                    char label[2] = {*c, '\0'};
+                    if (ImGui::Button(label) && len + 1 < buf_size)
+                    {
+                        buf[len] = *c;
+                        buf[len + 1] = '\0';
+                    }
+                    ImGui::PopID();
+                    ImGui::SameLine();
+                }
+                ImGui::NewLine();
+            }
+            if (ImGui::Button("Space") && len + 1 < buf_size) { buf[len] = ' '; buf[len + 1] = '\0'; }
+            ImGui::SameLine();
+            if (ImGui::Button("Backspace") && len > 0) buf[len - 1] = '\0';
+            ImGui::SameLine();
+            if (ImGui::Button("Clear")) buf[0] = '\0';
+            ImGui::SameLine();
+            if (ImGui::Button("Done")) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+        ImGui::PopID();
+    }
+
     // Upload the atlas once g_command_queue is captured. Self-gates; on failure it
     // marks ready anyway so we don't retry every frame (just falls back to circles).
     void try_upload_atlas()
@@ -1362,7 +1414,16 @@ namespace
         // in hk_present, item 2 of dx-bugs-backlog PR C) — clear regardless of overlay state.
         switch (msg)
         {
-        case WM_MOUSEMOVE: case WM_LBUTTONDOWN: case WM_LBUTTONUP:
+        case WM_MOUSEMOVE:
+            // Our OWN recenter (item 2/6) calls SetCursorPos, which generates exactly this
+            // message — don't let our own cursor move look like "real" mouse input, or it
+            // re-arms the gamepad-switch edge next frame and the two feed each other forever.
+            if (g_ignore_next_mousemove_for_gamepad_flag)
+                g_ignore_next_mousemove_for_gamepad_flag = false;
+            else
+                g_last_input_was_gamepad = false;
+            break;
+        case WM_LBUTTONDOWN: case WM_LBUTTONUP:
         case WM_RBUTTONDOWN: case WM_RBUTTONUP: case WM_MBUTTONDOWN: case WM_MBUTTONUP:
         case WM_XBUTTONDOWN: case WM_XBUTTONUP: case WM_MOUSEWHEEL: case WM_MOUSEHWHEEL:
         case WM_KEYDOWN: case WM_KEYUP: case WM_SYSKEYDOWN: case WM_SYSKEYUP: case WM_CHAR:
@@ -2211,6 +2272,17 @@ namespace
             if (!g_gamepad_combo_reject_reason.empty())
                 ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "%s", g_gamepad_combo_reject_reason.c_str());
 
+            // On-screen keyboard layout (dx-bugs-backlog PR C-2 part 2). Like every other plain
+            // setting here, this only persists via "Save to INI" below — no immediate auto-save.
+            ImGui::Text("Gamepad keyboard layout:");
+            ImGui::SameLine();
+            int kbd_layout = goblin::config::virtualKeyboardLayout;
+            if (ImGui::RadioButton("Alphabetical", &kbd_layout, 0))
+                goblin::config::virtualKeyboardLayout = static_cast<uint8_t>(kbd_layout);
+            ImGui::SameLine();
+            if (ImGui::RadioButton("QWERTY", &kbd_layout, 1))
+                goblin::config::virtualKeyboardLayout = static_cast<uint8_t>(kbd_layout);
+
             // Overlay marker scale (live preview; persists via "Save to INI"). Final
             // size = resolution-relative base × master × per-type scale.
             if (ImGui::CollapsingHeader("Marker scale (overlay map)"))
@@ -2298,6 +2370,7 @@ namespace
                 ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::InputTextWithHint("##itemsearch", "find item/object by name... (e.g. larval, bolt of)",
                                          item_q, sizeof(item_q));
+                draw_gamepad_keyboard_button("##itemsearch_kbd", item_q, sizeof(item_q));
 
                 // ── Locate debug (dev) — gated behind Verbose logging (debug_logging). Diagnoses the
                 // item-search centring: LIVE view vs the target the engine should ease the pan toward
@@ -2541,6 +2614,7 @@ namespace
             ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
             ImGui::InputTextWithHint("##catfilter", "search categories... (e.g. sorcer, ash, smith)",
                                      cat_filter, sizeof(cat_filter));
+            draw_gamepad_keyboard_button("##catfilter_kbd", cat_filter, sizeof(cat_filter));
             const bool cat_filtering = cat_filter[0] != '\0';
             for (int s = 0; s < goblin::ui::section_count(); s++)
             {
@@ -2696,6 +2770,7 @@ namespace
                     ImGui::SetNextItemWidth(-1.0f);
                     ImGui::InputTextWithHint("##questfilter", "filter by NPC name...",
                                              filter, sizeof(filter));
+                    draw_gamepad_keyboard_button("##questfilter_kbd", filter, sizeof(filter));
                     // Experimental: grey out questlines whose NPC death flag is set.
                     // Live (read each frame) + persisted to the ini on toggle.
                     if (ImGui::Checkbox("Grey out dead-NPC questlines (experimental)",
@@ -3188,6 +3263,13 @@ namespace
             if (!GetClientRect(g_hwnd, &rc)) return;
             POINT c{(rc.left + rc.right) / 2, (rc.top + rc.bottom) / 2};
             ClientToScreen(g_hwnd, &c);
+            // SetCursorPos generates a real WM_MOUSEMOVE — without this guard, hk_wndproc's
+            // "real mouse move clears g_last_input_was_gamepad" logic would clear the flag WE
+            // just set, immediately re-arming the "just switched to gamepad" edge on the very
+            // next frame if the pad is still active at all (e.g. a hand resting on the stick) —
+            // an infinite recenter-every-frame loop that pins the cursor and locks out the mouse
+            // entirely. Consumed once in hk_wndproc, not just skipped here.
+            g_ignore_next_mousemove_for_gamepad_flag = true;
             o_set_cursor_pos(c.x, c.y);
         };
 

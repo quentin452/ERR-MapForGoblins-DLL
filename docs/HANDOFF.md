@@ -2,8 +2,41 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01 (dx-bugs-backlog PR C-2 part 1 — full gamepad widget nav + input isolation
-— DONE, in-game verified, committed on `feat/gamepad-nav-input-isolation`, about to merge to master).
+Last updated: 2026-07-01 (dx-bugs-backlog PR C-2 part 2 — on-screen gamepad keyboard — DONE, in-game
+verified, committed on `feat/gamepad-virtual-keyboard`, about to merge to master. Gamepad-only play
+of MapForGoblins is now fully supported end to end — item 3's original ask, closed).
+
+## Session recap (2026-07-01) — PR C-2 part 2: on-screen gamepad keyboard — DONE, in-game verified
+
+- Follows directly from PR C-2 part 1 (below), same session, in parallel with a separate Windows RE
+  agent working `feat/quest-npc-layer`.
+- Implements the last gap from item 3 (`docs/plans/dx_bugs_backlog_plan.md` PR C-2 part 2, now
+  DONE): typing into the 3 free-text fields (item search, category filter, quest NPC filter) via
+  gamepad. A "Kbd" button opens a popup keyboard built from ordinary `ImGui::Button`s in a row grid
+  — ImGui's own gamepad nav (already enabled in part 1) drives it for free, no custom D-pad cursor
+  code. Layout choice (Alphabetical/QWERTY) is a new `virtual_keyboard_layout` config (`IniType::U8`
+  reused, no new schema plumbing), persisted via the existing "Save to INI" button like every other
+  plain setting.
+- In-game verified (user, 2026-07-01): keyboard popup opens/types/persists correctly across both
+  layouts on all 3 fields; mouse/keyboard text entry unaffected.
+- Two bugs found + fixed during verification: (1) the "Kbd" button was invisible — placed via
+  `SameLine()` right after an `InputTextWithHint` sized to 100% width, landing past the panel's
+  right edge; moved to its own line. (2) **Mouse fully locked out after opening F1 via a gamepad
+  combo** — a latent bug in part 1's cursor-recenter, only surfaced by this session's testing: the
+  recenter's own `SetCursorPos` call generates a real `WM_MOUSEMOVE`, which `hk_wndproc`'s "clear
+  the gamepad-input flag on real mouse activity" logic couldn't tell apart from a genuine user
+  move — so it re-armed the "just switched to gamepad" edge on the very next frame if the
+  controller was still reporting ANY activity (e.g. a hand resting on the stick), re-firing the
+  recenter, generating another self-inflicted `WM_MOUSEMOVE`, forever — an infinite loop pinning
+  the cursor at the window center every frame, making the mouse look completely dead. Fixed with a
+  one-shot guard consumed by the very next `WM_MOUSEMOVE`, so only genuinely external moves clear
+  the flag.
+- Branch `feat/gamepad-virtual-keyboard` off master, committed — merging to master this session.
+- **Next up, raised by user this session, NOT started**: dx-bugs-backlog followup **F2** — item-
+  search "locate" pan is clamped to the visible/explored area, so a result inside the fog of war
+  can't be recentered on (stays at the pan boundary). User's hypothesis: needs out-of-bounds (OOB)
+  pan support. Already tracked with more detail in `docs/memory/bugs/dx-bugs-backlog.md` F2 —
+  not investigated this session.
 
 ## Session recap (2026-07-01) — PR C-2 part 1: gamepad widget nav + input isolation — DONE, in-game verified
 

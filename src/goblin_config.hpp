@@ -55,6 +55,7 @@ namespace goblin
         extern bool iconsHidden;  // persisted master off (menu 'Show icons' / F10)
         extern uint32_t overlayToggleKey;  // VK_* for the overlay menu toggle (default F1)
         extern uint16_t overlayToggleGamepad;  // XINPUT_GAMEPAD_* combo mask for the overlay toggle (default Y+R3)
+        extern uint8_t virtualKeyboardLayout;  // 0 = Alphabetical, 1 = QWERTY (on-screen gamepad text entry)
         extern std::string showAllExcept;  // comma-separated category names to
                               // keep hidden even when showAll is on (matched
                               // loosely against the category display name)

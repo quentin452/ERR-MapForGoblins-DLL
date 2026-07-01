@@ -25,6 +25,13 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **On-screen keyboard for gamepad text entry** — the item search, category filter, and quest NPC
+  filter fields each get a "Kbd" button opening a popup keyboard (Alphabetical or QWERTY, pick in
+  settings) built from ordinary buttons, so ImGui's existing gamepad nav drives it for free. Also
+  fixes a bug where the mouse could get fully locked out after opening F1 via a gamepad combo: the
+  cursor-recenter feature's own `SetCursorPos` call was generating a `WM_MOUSEMOVE` that looked
+  like real mouse input, re-arming itself every frame in an infinite loop while the controller was
+  active. dx-bugs-backlog PR C-2 part 2 (item 3) — gamepad-only play is now fully supported.
 - **Gamepad overlay toggle + cursor recentering** — a configurable XInput combo (default `Y+R3`)
   opens/closes the F1 overlay, mirroring the keyboard toggle (edge-detected, foreground-gated).
   Cursor auto-recenters to the window center on the mouse/keyboard→pad-only input transition (ER
