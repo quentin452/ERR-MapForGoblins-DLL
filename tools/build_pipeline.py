@@ -64,9 +64,10 @@ MASSEDIT_OUT = DATA / 'massedit_generated'
 GENERATED_CPP = config.GENERATED_DIR   # src/generated or src/generated_vanilla
 
 # Stages that only make sense for the ERR mod (their source assets/items do
-# not exist in vanilla). Dropped from the vanilla pipeline.
-ERR_ONLY_STAGES = {'generate_pieces_massedit', 'generate_kindling_spirits',
-                   'extract_rune_positions', 'extract_itemlot_csv'}
+# not exist in vanilla), dropped from the vanilla pipeline. Empty now that the
+# ERR-only MASSEDIT generators (pieces/kindling) + their extractors were culled;
+# kept as the mechanism for any future ERR-only stage.
+ERR_ONLY_STAGES = set()
 
 MENU_MSGBND = ERR_MOD / 'msg' / 'engus' / 'menu_dlc02.msgbnd.dcx'
 
@@ -178,21 +179,6 @@ STAGES = [
           script='extract_placename_dump.py',
           also_scripts=['config.py']),
 
-    # ERR-only: Rune/Ember Piece positions from ERR MSBs (AEG099_821/822).
-    Stage('extract_rune_positions',
-          inputs=[MSB_DIR],
-          outputs=[DATA / 'rune_pieces.json',
-                   DATA / 'ember_pieces.json'],
-          script='extract_rune_positions.py',
-          also_scripts=['config.py']),
-
-    # ERR-only: ItemLotParam_map CSV dump (consumed by generate_pieces_massedit).
-    Stage('extract_itemlot_csv',
-          inputs=[REGULATION, config.PARAMDEF_DIR],
-          outputs=[DATA / 'ItemLotParam_map.csv'],
-          script='extract_itemlot_csv.py',
-          also_scripts=['config.py']),
-
     Stage('extract_items',
           # emevd_lot_mapping is NOT read by extract_all_items, but listed as an input
           # on purpose: enrich_fallback mutates items_database.json IN PLACE using the
@@ -262,142 +248,27 @@ STAGES = [
           script='generate_loot_massedit.py',
           also_scripts=['massedit_common.py']),
 
-    Stage('generate_pieces_massedit',
-          inputs=[DATA / 'ItemLotParam_map.csv',
-                  DATA / 'grace_position_index.json'],
-          outputs=[MASSEDIT_OUT / 'Reforged - Rune Pieces.MASSEDIT',
-                   MASSEDIT_OUT / 'Reforged - Ember Pieces.MASSEDIT',
-                   MASSEDIT_OUT / 'Reforged - Rune Pieces_slots.json',
-                   MASSEDIT_OUT / 'Reforged - Ember Pieces_slots.json'],
-          script='generate_pieces_massedit.py',
-          also_scripts=['massedit_common.py']),
-
-    Stage('scan_gathering_nodes',
-          inputs=[MSB_DIR, DATA / 'aeg099_item_mapping.json'],
-          outputs=[DATA / 'all_gathering_nodes_final.json'],
-          script='scan_all_gathering_nodes.py',
-          also_scripts=['config.py']),
-
-    Stage('scan_gathering_node_flags',
-          inputs=[EVENT_DIR],
-          outputs=[DATA / 'gathering_node_flags.json'],
-          script='scan_gathering_node_flags.py',
-          also_scripts=['config.py']),
-
-    Stage('generate_material_nodes',
-          inputs=[DATA / 'aeg099_item_mapping.json',
-                  DATA / 'aeg463_item_mapping.json',
-                  DATA / 'all_gathering_nodes_final.json',
-                  DATA / 'gathering_node_flags.json'],
-          outputs=[MASSEDIT_OUT / 'Loot - Material Nodes.MASSEDIT',
-                   MASSEDIT_OUT / 'Loot - Material Nodes_slots.json'],
-          script='generate_material_nodes.py',
-          also_scripts=['massedit_common.py', 'unreachable.py']),
-
-    # NOTE: graces are no longer baked. The DLL reads them LIVE from BonfireWarpParam
-    # (capture_live_graces), gating the ERR underground/cave icon on iconId==44. The old
-    # 'generate_graces' stage + 'World - Graces.MASSEDIT' were removed.
-
-    Stage('generate_summoning_pools',
-          inputs=[REGULATION, MSB_DIR],
-          outputs=[MASSEDIT_OUT / 'World - Summoning Pools.MASSEDIT'],
-          script='generate_summoning_pools.py',
-          also_scripts=['extract_all_items.py'] + COMMON),
-
-    Stage('generate_kindling_spirits',
-          inputs=[DATA / 'kindling_spirits.json'],
-          outputs=[MASSEDIT_OUT / 'World - Kindling Spirits.MASSEDIT',
-                   MASSEDIT_OUT / 'World - Kindling Spirits_slots.json'],
-          script='generate_kindling_spirits_massedit.py',
-          also_scripts=['massedit_common.py']),
-
-    Stage('generate_spirit_springs',
-          inputs=[MSB_DIR],
-          outputs=[MASSEDIT_OUT / 'World - Spirit Springs.MASSEDIT',
-                   MASSEDIT_OUT / 'World - Spiritspring Hawks.MASSEDIT'],
-          script='generate_spirit_springs.py',
-          also_scripts=['unreachable.py'] + COMMON),
-
-    Stage('generate_imp_statues',
-          inputs=[MSB_DIR],
-          outputs=[MASSEDIT_OUT / 'World - Imp Statues.MASSEDIT'],
-          script='generate_imp_statues.py',
-          also_scripts=['unreachable.py'] + COMMON),
-
-    Stage('generate_stakes',
-          inputs=[MSB_DIR],
-          outputs=[MASSEDIT_OUT / 'World - Stakes of Marika.MASSEDIT'],
-          script='generate_stakes.py',
-          also_scripts=COMMON),
-
-    Stage('extract_seal_puzzles',
-          inputs=[MSB_DIR, EVENT_DIR],
-          outputs=[DATA / 'seal_puzzles.json'],
-          script='extract_seal_puzzles.py',
-          also_scripts=['config.py']),
-
-    Stage('generate_seal_puzzles',
-          inputs=[DATA / 'seal_puzzles.json'],
-          outputs=[MASSEDIT_OUT / 'World - Seal Puzzles.MASSEDIT'],
-          script='generate_seal_puzzles.py',
-          also_scripts=['massedit_common.py']),
-
-    Stage('generate_hero_tomb_statues',
-          inputs=[MSB_DIR, EVENT_DIR],
-          outputs=[MASSEDIT_OUT / "World - Hero's Tomb Statues.MASSEDIT"],
-          script='generate_hero_tomb_statues.py',
-          also_scripts=['massedit_common.py']),
-
-    Stage('generate_paintings',
-          inputs=[MSB_DIR, EVENT_DIR],
-          outputs=[MASSEDIT_OUT / 'World - Paintings.MASSEDIT'],
-          script='generate_paintings.py',
-          also_scripts=COMMON),
-
-    Stage('generate_maps',
-          inputs=[DATA / 'items_database.json'],
-          outputs=[MASSEDIT_OUT / 'World - Maps.MASSEDIT'],
-          script='generate_maps.py',
-          also_scripts=['massedit_common.py']),
-
-    Stage('generate_gestures',
-          inputs=[DATA / 'msb_entity_index.json', EVENT_DIR, REGULATION],
-          outputs=[MASSEDIT_OUT / 'Loot - Gestures.MASSEDIT'],
-          script='generate_gestures.py',
-          also_scripts=['massedit_common.py', 'config.py']),
-
-    Stage('generate_hostile_npcs',
-          inputs=[REGULATION, MSB_DIR, config.PARAMDEF_DIR, EVENT_DIR,
-                  DATA / 'items_database.json',
-                  REPO / 'data' / 'quest_invader_overrides.json'],
-          outputs=[MASSEDIT_OUT / 'World - Hostile NPC.MASSEDIT'],
-          script='generate_hostile_npcs.py',
-          also_scripts=['massedit_common.py', 'config.py']),
-
-    Stage('generate_quest_npcs',
-          inputs=[REGULATION, MSB_DIR, config.PARAMDEF_DIR],
-          outputs=[MASSEDIT_OUT / 'World - Quest NPC.MASSEDIT'],
-          script='generate_quest_npcs.py',
-          also_scripts=['massedit_common.py', 'config.py']),
-
-    # Relocating-boss fix (Lansseax): after all marker generators, before bake.
-    # Removes the un-collectable duplicate loot at the boss's flee-spawn and
-    # ensures a flee-spawn boss marker that clears on the flee flag. Edits the
-    # MASSEDIT in place (idempotent); generate_data (below) re-bakes from it.
-    Stage('relocating_boss_fix',
-          inputs=[MASSEDIT_OUT,
-                  config.PROJECT_DIR / 'data' / 'relocating_flee_spawns.json'],
-          outputs=[DATA / '_relocating_boss_fix.done'],
-          script='generate_relocating_boss_fix.py',
-          also_scripts=['config.py']),
+    # ── REMOVED 2026-07-01 (dead MASSEDIT world/loot-feature generators) ──
+    # The ~14 MASSEDIT generator stages that used to live here — pieces, material
+    # nodes (+ their scan_gathering_nodes / scan_gathering_node_flags extractors),
+    # summoning pools, kindling spirits, spirit springs, imp statues, stakes, seal
+    # puzzles (+ its extract_seal_puzzles extractor), hero's tomb, paintings, maps,
+    # gestures, hostile NPCs, quest NPCs — plus the Lansseax relocating_boss_fix,
+    # were CULLED. Their sole consumer was generate_data's MASSEDIT_OUT read, which
+    # is dead: the marker bake is an unconditional empty stub (generate_map_data_cpp)
+    # and every marker is now sourced live from the active install's MSB/params at
+    # runtime. (Graces went the same way earlier — live BonfireWarpParam.) Confirmed
+    # dead by regenerating ERR before/after: src/generated is byte-identical.
+    # generate_loot_massedit STAYS — it still emits loot_lot_linkage.json /
+    # item_icon_table.json, which feed the compiled category-exception + icon tables.
+    # (The orphaned generator scripts themselves are left on disk for now; they get
+    # removed with the rest of the pipeline in Phase 5.)
 
     Stage('generate_data',
-          inputs=[MASSEDIT_OUT, DATA / 'loot_lot_linkage.json',
-                  DATA / 'item_icon_table.json',
-                  DATA / '_relocating_boss_fix.done'],
+          inputs=[DATA / 'loot_lot_linkage.json',
+                  DATA / 'item_icon_table.json'],
           outputs=[GENERATED_CPP / 'goblin_map_data.cpp'],         # Phase-2 empty no-bake stub
-          script='generate_data.py',
-          args=['--massedit-dir', str(MASSEDIT_OUT)]),
+          script='generate_data.py'),
 
     # Editorial AEG-model -> marker-category table for the generic World-feature disk
     # pass (Stakes/Imp/Hero's Tomb …). Pure transcode of tools/world_feature_assets.py
