@@ -482,6 +482,10 @@ inline bool redify_boss(const Marker &m)
 // markers draw with it instead of the circle/native hybrid. Render-thread only.
 ImTextureID s_grace_tex = nullptr;
 ImVec2 s_grace_uv0{}, s_grace_uv1{};
+// Native pixel rect dims of the harvested sprite, before UV normalization (dx-bugs 2026-07-01
+// auto-scale-ratio followup) -- lets the undiscovered-grace branch derive its size compensation
+// from real measured native dims on both sides instead of a hand-picked constant.
+int s_grace_native_w = 0, s_grace_native_h = 0;
 // ERR dungeon-style grace (MENU_MAP_ERR_GraceUnderground). Valid only when ERR is installed; used for
 // DUNGEON graces (m.dungeon) in place of the vanilla bonfire. null → dungeon graces use s_grace_tex.
 ImTextureID s_grace_dgn_tex = nullptr;
@@ -562,17 +566,36 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
             if (!disc)
             {
                 void *ut = nullptr; float gu0, gv0, gu1, gv1;
-                if (goblin::overlay::map_point_glyph_uv("MENU_MAP_Player_02", -1, ut, gu0, gv0, gu1, gv1))
+                int nativeW = 0, nativeH = 0;
+                if (goblin::overlay::map_point_glyph_uv("MENU_MAP_Player_02", -1, ut, gu0, gv0, gu1, gv1,
+                                                        &nativeW, &nativeH))
                 {
                     gt = (ImTextureID)ut;
                     u0 = ImVec2(gu0, gv0);
                     u1 = ImVec2(gu1, gv1);
+                    // AUTOMATIC size compensation (<user> 2026-07-01: "trouve le scale automatique",
+                    // not a hand-picked constant). Discovered graces are drawn from a raw screen-
+                    // region capture (ensure_grace_srv/set_grace_sprite) that includes real padding
+                    // around the glyph (glow/background), while this disk glyph is a tight hand-
+                    // authored crop -- same shared `gh` destination quad, but the tighter crop's
+                    // content fills more of it, reading larger. Derive the compensation from each
+                    // icon's OWN measured native pixel rect (sqrt(w*h), scale-invariant to aspect)
+                    // instead of guessing a ratio: a smaller native rect is scaled down proportionally
+                    // more, on the (empirically-confirmed-here) assumption that a bigger raw capture
+                    // rect means proportionally more captured padding.
+                    if (nativeW > 0 && nativeH > 0 && s_grace_native_w > 0 && s_grace_native_h > 0)
+                    {
+                        const float undiscNative = std::sqrt(static_cast<float>(nativeW) * static_cast<float>(nativeH));
+                        const float discNative = std::sqrt(static_cast<float>(s_grace_native_w) * static_cast<float>(s_grace_native_h));
+                        gh *= undiscNative / discNative;
+                    }
                     static bool s_logged = false;
                     if (!s_logged)
                     {
                         s_logged = true;
                         spdlog::info("[GRACEUNDISC] undiscovered grace -> MENU_MAP_Player_02 disk glyph "
-                                     "tex={} uv=({},{})-({},{})", ut, gu0, gv0, gu1, gv1);
+                                     "tex={} uv=({},{})-({},{}) native={}x{} vs discovered native={}x{}",
+                                     ut, gu0, gv0, gu1, gv1, nativeW, nativeH, s_grace_native_w, s_grace_native_h);
                     }
                 }
             }
@@ -1322,11 +1345,13 @@ static inline bool search_hit(const Marker &m)
     return s_search_set && m.name_id >= 0 && s_search_set->count(m.name_id) != 0;
 }
 
-void set_grace_sprite(void *tex, float u0, float v0, float u1, float v1)
+void set_grace_sprite(void *tex, float u0, float v0, float u1, float v1, int nativeW, int nativeH)
 {
     s_grace_tex = reinterpret_cast<ImTextureID>(tex);
     s_grace_uv0 = ImVec2(u0, v0);
     s_grace_uv1 = ImVec2(u1, v1);
+    s_grace_native_w = nativeW;
+    s_grace_native_h = nativeH;
 }
 
 void set_grace_dungeon_sprite(void *tex, float u0, float v0, float u1, float v1)

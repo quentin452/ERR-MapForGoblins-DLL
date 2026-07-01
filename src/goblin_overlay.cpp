@@ -1000,6 +1000,9 @@ namespace
     ID3D12Resource *g_grace_tex = nullptr;
     D3D12_GPU_DESCRIPTOR_HANDLE g_grace_gpu{};
     ImVec2 g_grace_uv0{}, g_grace_uv1{};
+    // Native pixel rect dims (sp.x1-sp.x0, sp.y1-sp.y0), before UV normalization -- dx-bugs
+    // 2026-07-01 auto-scale-ratio followup.
+    int g_grace_native_w = 0, g_grace_native_h = 0;
     int g_grace_state = 0;   // 0 = not ready (retry), 1 = ok, 2 = failed (give up)
     int g_grace_srv_idx = -1;   // reuse one SRV slot across rebuilds (no slot leak on re-apply)
     // ── Grace texture DEBUG (F1 panel) — live format/swizzle/source override ────────────────────────
@@ -1057,6 +1060,7 @@ namespace
 
         g_grace_gpu = write_inline_srv(g_grace_tex, fmt, g_grace_srv_idx, grace_dbg_mapping());
         g_grace_uv0 = cp.uv0; g_grace_uv1 = cp.uv1;
+        g_grace_native_w = sp.x1 - sp.x0; g_grace_native_h = sp.y1 - sp.y0;
         g_grace_state = 1;
         spdlog::info("[GRACE-SRV] copied {}x{} (snapped from {},{}-{},{}) fmt={} -> slot {} gpu={:#x}",
                      cp.w, cp.h, sp.x0, sp.y0, sp.x1, sp.y1, static_cast<int>(fmt), g_grace_srv_idx,
@@ -1904,7 +1908,8 @@ namespace
         // Hand the renderer the harvested grace sprite (once ready) so it draws graces itself.
         if (ensure_grace_srv())
             wm::set_grace_sprite(reinterpret_cast<void *>(g_grace_gpu.ptr),
-                                 g_grace_uv0.x, g_grace_uv0.y, g_grace_uv1.x, g_grace_uv1.y);
+                                 g_grace_uv0.x, g_grace_uv0.y, g_grace_uv1.x, g_grace_uv1.y,
+                                 g_grace_native_w, g_grace_native_h);
         if (ensure_grace_dungeon_srv())
             wm::set_grace_dungeon_sprite(reinterpret_cast<void *>(g_grace_dgn_gpu.ptr),
                                          g_grace_dgn_uv0.x, g_grace_dgn_uv0.y, g_grace_dgn_uv1.x, g_grace_dgn_uv1.y);
@@ -1970,7 +1975,8 @@ namespace
         ImGuiIO &io = ImGui::GetIO();
         if (ensure_grace_srv())
             goblin::worldmap::set_grace_sprite(reinterpret_cast<void *>(g_grace_gpu.ptr),
-                                               g_grace_uv0.x, g_grace_uv0.y, g_grace_uv1.x, g_grace_uv1.y);
+                                               g_grace_uv0.x, g_grace_uv0.y, g_grace_uv1.x, g_grace_uv1.y,
+                                               g_grace_native_w, g_grace_native_h);
         if (ensure_grace_dungeon_srv())
             goblin::worldmap::set_grace_dungeon_sprite(reinterpret_cast<void *>(g_grace_dgn_gpu.ptr),
                                                        g_grace_dgn_uv0.x, g_grace_dgn_uv0.y, g_grace_dgn_uv1.x, g_grace_dgn_uv1.y);
@@ -4283,7 +4289,8 @@ bool goblin::overlay::native_map_point_icon_by_name(const char *name, void *&tex
 // return tex + UV sub-rect. Mirrors native_item_icon's GAP#2 disk branch. Returns false until the DDS is
 // read+uploaded (caller falls back to its previous icon). No baked dependency → correct on any mod.
 bool goblin::overlay::map_point_glyph_uv(const char *name, int iconId, void *&tex,
-                                         float &u0, float &v0, float &u1, float &v1)
+                                         float &u0, float &v0, float &u1, float &v1,
+                                         int *outW, int *outH)
 {
     int x = 0, y = 0, w = 0, h = 0;
     std::string sheet;
@@ -4300,5 +4307,7 @@ bool goblin::overlay::map_point_glyph_uv(const char *name, int iconId, void *&te
     tex = reinterpret_cast<void *>(ds.gpu);
     u0 = (float)x / ds.w; v0 = (float)y / ds.h;
     u1 = (float)(x + w) / ds.w; v1 = (float)(y + h) / ds.h;
+    if (outW) *outW = w;   // raw pixel rect dims, before UV normalization (dx-bugs 2026-07-01
+    if (outH) *outH = h;   // auto-scale-ratio followup) -- see header comment
     return true;
 }

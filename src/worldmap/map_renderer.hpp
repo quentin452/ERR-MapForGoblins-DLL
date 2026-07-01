@@ -35,7 +35,9 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
 // markers draw with this sprite (discovered = full colour, undiscovered = grey) instead of being
 // dropped (discovered) / circle-drawn (undiscovered). Pass tex=null to revert to the old behaviour.
 // Call each frame before render_markers/draw_minimap.
-void set_grace_sprite(void *tex, float u0, float v0, float u1, float v1);
+// nativeW/nativeH (optional, dx-bugs 2026-07-01): the harvested sprite's raw pixel rect dims
+// before UV normalization, so the undiscovered-grace draw can auto-derive a size ratio.
+void set_grace_sprite(void *tex, float u0, float v0, float u1, float v1, int nativeW = 0, int nativeH = 0);
 // The ERR dungeon-style grace (for m.dungeon graces; null = fall back to the vanilla grace sprite).
 void set_grace_dungeon_sprite(void *tex, float u0, float v0, float u1, float v1);
 
