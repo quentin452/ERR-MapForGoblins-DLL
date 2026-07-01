@@ -65,8 +65,23 @@ Everything below assumes Phase 0's `generated_shared/` dedup exists.
 
 **Phase 1 — names go live (highest ROI, infra already exists).** Route enemy + item + place names through
 native `GetMessage` instead of the baked `goblin_enemy_names` / `items_database` name fields. Reduces the
-biggest baked table (370 KB) to a thin ERR-Codex-only override. Acceptance: DLC + non-ERR item/enemy names
-resolve correctly with no `#ifdef MFG_*` and no baked name table.
+biggest baked table (370 KB) to zero. Acceptance: DLC + non-ERR item/enemy names resolve correctly with no
+`#ifdef MFG_*` and no baked name table.
+
+**OFFLINE-VERIFIED 2026-07-01 (`tools/verify_enemy_name_runtime.py`, vanilla) — redirects the approach:**
+- The enemy bake exists because markers encode the name at `enemyId + 900000000` where `enemyId` follows
+  ERR's `model*1000+variant*100+4` TutorialTitle convention. Vanilla's own TutorialTitle has **0 of the
+  520** ids → the `+900M → TutorialTitle` lookup finds nothing on non-ERR. So the bake can NOT be dropped
+  in favour of the install's TutorialTitle.
+- BUT all 520 names ARE in vanilla's **`NpcName`** FMG. The correct mod-agnostic path is NOT the
+  model-convention id but the enemy's actual **`npcParamId`** (already in hand at the disk enemy/loot
+  pass) → `NpcParam.nameId` → `GetMessage(NpcName, nameId)`. This is verbatim the shipped hostile-NPC
+  path (`npc_team_and_name` → `lookup_text_utf8(nameId + 700000000)`, Tier-3 findings). (A naive
+  `model*10000+variant*1000` bridge resolved 426/520 but mangled variants — proof the *data* is present;
+  use the real npcParamId, not a formula.)
+- **⇒ Phase 1 for enemy names = label the enemy-drop marker from its source `npcParamId` at the disk
+  pass (reuse the hostile-NPC mechanism), then delete `goblin_enemy_names` + the +900M PlaceName
+  injection (`goblin_messages.cpp:473`). No new table, no TutorialTitle dependency.**
 
 **Phase 2 — world-feature markers fully disk-sourced.** For each still-baked world-feature category, add
 (or extend) a disk pass reading the active MSB/AEG/EMEVD, gated by its category toggle, dropping the
