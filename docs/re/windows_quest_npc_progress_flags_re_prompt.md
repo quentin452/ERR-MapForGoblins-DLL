@@ -1,9 +1,26 @@
 # RE prompt — source real progress_flag/entity_id for the Quest NPC bootstrap set
 
-**Status:** needed, not started. Windows required (SoulsFormats/pythonnet param+MSB tooling, EMEVD
-decompile). Blocks: `docs/plans/feat_quests_implementation_plan.md` Phase 2 verification —
-`QuestNpcLayer` is built and wired (`feat/quest-npc-layer`, log-confirmed crash-free in-game) but
-currently draws **zero map pins** because every step's `progress_flag`/`entity_id` is `0`.
+**Status:** entity_id half DONE (offline, 2026-07-01); progress_flag half STILL BLOCKED. Windows
+required (SoulsFormats/pythonnet param+MSB tooling, EMEVD decompile). Blocks:
+`docs/plans/feat_quests_implementation_plan.md` Phase 2 verification — `QuestNpcLayer` is built and
+wired (`feat/quest-npc-layer`, log-confirmed crash-free in-game).
+
+**Done 2026-07-01 (offline, build-clang + build-erte green):** per-step `entity_id` MSB-sourced via
+`tools/_find_npc.py` + `data/tile_region_map.json` region resolve and wired in
+`src/generated/goblin_quest_steps.cpp` for the confident steps: Alexander 1–5 (Stormhill / Gael Tunnel /
+Redmane / Mt. Gelmir / Farum Azula), Thops 1/2/3 (Church of Irith ×2 / Academy classroom), Boc 1/5/6
+(Limgrave bush / Altus ×2). Resolved the prompt's open candidate question: `Boc 11050730` → Leyndell
+Ashen Capital = **not** any of the 6 steps (correctly NOT wired); `Thops 1039390700` → Liurnia = step 1
+(wired). Left at 0 (no offline source): Boc 2/3/4 (Coastal Cave + two ambiguous Liurnia placements),
+Thops 4 (corpse). Also fixed two blockers found en route: a Windows file-lock bug in `_find_npc.py`
+(`frombytes` temp-file reuse) and a schema-sync bug in `tools/gen_nonerr_stubs.py` (only-if-missing
+stub never tracked the new `QuestStep` fields / `quest_step_done`, breaking every non-ERR build).
+
+**Still TODO (this half needs the running game):** every step's `progress_flag` is still `0` — no
+running game for empirical `debugEventFlags` capture and no decompiled EMEVD corpus on disk
+(`D:\tools\DarkScript3` has 0 `.emevd.dcx.js` files). Until sourced, the Quest Browser checkbox stays
+manual-ini-backed (the pins already work off the active step regardless). Also: in-game visual verify
+per §7 not yet done (game was not running).
 
 ## Goal
 

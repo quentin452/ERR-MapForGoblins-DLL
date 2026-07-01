@@ -2,8 +2,36 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01 (Quest Browser automation + QuestNpcLayer Phase 1 landed, branch
-`feat/quest-npc-layer`, NOT merged; log-confirmed crash-free in-game, NOT visually verified).
+Last updated: 2026-07-01 (Phase 2 entity_id sourcing landed on `feat/quest-npc-layer`; progress_flag
+still blocked on running game / EMEVD corpus; NOT visually verified).
+
+## Session recap (2026-07-01b) — feat_quests Phase 2: per-step entity_id sourced + wired (offline)
+
+- **Sourced + wired real per-step `entity_id`** for the bootstrap set in
+  `src/generated/goblin_quest_steps.cpp` using `tools/_find_npc.py` (MSB placement lookup) joined to
+  `data/tile_region_map.json` (BonfireWarpParam-authoritative tile→region) — deduction by region match,
+  not guessing. Confident wires: **Alexander 1–5** (Stormhill / Gael Tunnel / Redmane / Mt. Gelmir /
+  Farum Azula — 1/4/5 exact subRegion match), **Thops 1/2/3** (Church of Irith ×2 / Academy classroom),
+  **Boc 1/5/6** (Limgrave bush / Altus ×2). Left `0` (no offline-disambiguable source): Boc 2 (Coastal
+  Cave), Boc 3/4 (two ambiguous Liurnia placements), Thops 4 (corpse — needs EMEVD/in-game).
+- **Resolved the two pre-existing candidate ids the prompt flagged:** `Boc 11050730` resolves to
+  **Leyndell, Ashen Capital** = NOT any of Boc's 6 steps → correctly NOT used. `Thops 1039390700`
+  resolves to **Liurnia (Church of Irith)** = step 1 → wired there.
+- **Two blockers fixed en route (untracked-artifact / tooling):** (1) `tools/_find_npc.py` crashed on
+  Windows (`frombytes` reused one temp filename while SoulsFormats keeps it memory-mapped) — now unique
+  per call + best-effort unlink. (2) `tools/gen_nonerr_stubs.py` only wrote stubs *if missing*, so the
+  verbatim-copied `.hpp` never tracked the schema migration and the synth `.cpp` never emitted the new
+  `quest_step_done` free function → **every non-ERR build was broken since the helper was added**. Now
+  refreshes hpp/cpp on content change and synthesizes no-op definitions for free functions.
+- **Builds:** `build-clang` (canonical `generated`) and `build-erte` both green. `build-vanilla` /
+  `build-convergence` still fail at CMake *configure* on missing `goblin_category_exceptions.hpp` etc. —
+  **pre-existing incomplete data bake on this machine, unrelated to quests** (needs the full per-profile
+  pipeline run; not attempted).
+- **Still NEXT (needs the running game):** `progress_flag` for all 15 steps is still `0` — blocked on
+  empirical `debugEventFlags` capture (game wasn't running) + a decompiled EMEVD corpus (`D:\tools\
+  DarkScript3` has 0 `.emevd.dcx.js`). Pins already work off the active step without it; the Quest
+  Browser checkbox stays manual-ini-backed until flags land. In-game §7 visual verify also still pending.
+  See `docs/re/windows_quest_npc_progress_flags_re_prompt.md` (status updated).
 
 ## Session recap (2026-07-01) — feat_quests Phase 1: schema + entity-position cache + flag wiring + QuestNpcLayer
 

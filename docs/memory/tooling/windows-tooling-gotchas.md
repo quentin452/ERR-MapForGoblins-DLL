@@ -32,5 +32,23 @@ Environment quirks discovered on this Windows box — they cost hours; apply dir
   Verify with `py -3.14 -c "import os; print(os.getpid())"` → a huge number means the shim is active.
 - Git: repo had **dubious-ownership** (owned by Administrators); fixed once with
   `git config --global --add safe.directory <repo>`.
+- **SoulsFormats temp-file mmap, per-CALL not per-process (2026-07-01, `tools/_find_npc.py`):** the
+  `frombytes()` helper wrote SoulsFormats input to a `<pid>_fn<ext>` temp path — fixed per process. But
+  `BND4.Read`/`MSBE.Read` keep the temp file **memory-mapped for the process lifetime**, so the 2nd
+  BND read in the same run collided on that one path (`IOException: file has an open user-mapped
+  section`), and even the 1st run's `os.unlink` threw `WinError 5`. Fix: **unique temp name per call**
+  (`<pid>_fn<seq><ext>`) + best-effort `try/except OSError` unlink (the OS reaps the temp dir; the
+  mapping just leaks until exit). Same WinError-5 family as the `extract_items` PYTHONPATH bullet
+  above, different root cause.
+- **`tools/gen_nonerr_stubs.py` was only-if-MISSING → silent stale-schema build break (2026-07-01):**
+  it emits the non-ERR (`generated_erte`/`_vanilla`/`_convergence`) stubs of the ERR-only generated
+  files; the `.hpp` is a VERBATIM copy of the profile-independent ERR struct defs. The old guard wrote
+  each stub **only if it didn't already exist**, so after a `QuestStep` schema migration (new
+  `progress_flag`/`entity_id` + the `quest_step_done` free function) the on-disk stubs stayed stale and
+  **every non-ERR build broke** (compile error on the missing members, then link error on the missing
+  `quest_step_done`) — and nothing regenerated them. Fix: refresh hpp/cpp on **content change**, and
+  `synth_cpp` now also synthesizes **no-op definitions for free functions** declared in the hpp (regex
+  for `<ret> <name>(<params>);` lines, emitted in `namespace goblin` returning false/0/nullptr). After
+  any ERR-only schema change, re-run `py tools/gen_nonerr_stubs.py {erte,convergence,vanilla}`.
 
-See [[mapforgoblins-pipeline-setup]], [[ghidra-worldmap-re]].
+See [[mapforgoblins-pipeline-setup]], [[ghidra-worldmap-re]], [[quest-browser]].
