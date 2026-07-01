@@ -219,6 +219,17 @@ namespace
 
     HWND g_hwnd = nullptr;
     WNDPROC g_orig_wndproc = nullptr;
+    // Message-driven focus state (dx-bugs 2026-07-01 "alt-tab back, ImGui receives no input"
+    // followup). Was previously re-polled every present frame via `GetForegroundWindow() ==
+    // g_hwnd`; [FOCUSDIAG] logging showed g_show flapping true/false SEVEN times in the ~20s
+    // after a single real Alt+Tab-back (one WM_SETFOCUS), with no further real focus change —
+    // GetForegroundWindow() briefly returns something other than g_hwnd for a few frames during
+    // the Wine/compositor alt-tab transition, and the per-frame poll caught those transient
+    // states. Each flap closed+reopened the ImGui window (draw is gated on g_show), resetting
+    // ImGui's per-window hover/focus continuity every time — nothing had a stable frame to
+    // register a click on. WM_SETFOCUS/WM_KILLFOCUS are event-driven and only fire on REAL
+    // transitions, so tracking focus from them instead of polling is immune to this.
+    std::atomic<bool> g_has_focus{true};
 
     bool g_imgui_init = false;   // ImGui + D3D resources built against live swapchain
     bool g_failed = false;       // gave up (no overlay), mod continues
@@ -234,6 +245,17 @@ namespace
     std::atomic<unsigned> g_diag_get_cursor_pos{0};
     std::atomic<unsigned> g_diag_get_raw_input_data{0};
     std::atomic<unsigned> g_diag_get_raw_input_buffer{0};
+    // [KBDIAG] dx-bugs 2026-07-01 followup: <user> reports the keyboard can lose the "hook"
+    // while typing in the item-search bar EVEN WITHOUT any Alt+Tab (so distinct from the
+    // g_has_focus/[FOCUSDIAG] fix above — this is an in-focus keyboard-loss, secondary bug,
+    // not yet reproduced/explained). Counts raw WM_CHAR/WM_KEYDOWN arrival at the wndproc
+    // level so the periodic [KBDIAG] log (see below, same 1/sec cadence as [CURSORDIAG]) can
+    // tell apart "no keyboard messages are arriving at all" (real OS/hook-level loss) from
+    // "messages arrive but ImGui isn't consuming them" (WantCaptureKeyboard false / ActiveID
+    // not the search field — an internal ImGui/nav state issue, e.g. gamepad nav stealing
+    // focus away from the InputText).
+    std::atomic<unsigned> g_diag_wm_char{0};
+    std::atomic<unsigned> g_diag_wm_keydown{0};
     // Item-search nav window: while > 0, a locate/page-switch is in flight and the input hooks inject a
     // tiny net-zero mouse jitter so the game keeps processing its world-map (otherwise, with the panel
     // open, input is blanked -> the map's view/page step doesn't run -> our switch+pan only apply once
@@ -242,8 +264,27 @@ namespace
     bool g_user_show = false;    // F1 master open/close (works anywhere = the menu keybind)
     bool g_large = true;         // false = compact widget, true = full panel
     bool g_prev_toggle_down = false;
-    bool g_prev_gamepad_toggle_down = false;
+    // Debounce for the gamepad toggle-combo READ itself (dx-bugs 2026-07-01 "search bar loses
+    // keyboard, no alt-tab" followup). [KBDIAG]/[FOCUSDIAG] logs showed g_show flapping 4+ MORE
+    // times after a single WM_SETFOCUS with NO further focus message in between — meaning
+    // g_user_show itself was toggling repeatedly, not `fg`. `combo_down` above was a raw
+    // single-frame OR-across-4-pads read with a single-frame edge check (line below) — no
+    // debounce at all, so a burst of stale/glitchy XInput reads right after a focus regain
+    // (a known XInput behavior: the first reads after an app was backgrounded can be a stale/
+    // resync burst) could bounce it several times, each bounce flipping g_user_show and
+    // resetting ImGui's per-window focus stack — which is why the search bar's InputText never
+    // got its keyboard capture back even once the panel visually reappeared for good.
+    int g_toggle_gamepad_streak = 0;
+    bool g_toggle_gamepad_armed = true;   // ready to fire on the next debounced rising edge
+    static constexpr int kToggleGamepadDebounceFrames = 3;  // ~50ms at 60fps
     bool g_last_input_was_gamepad = false;   // cleared on mouse/kb msgs in hk_wndproc
+    // Debounce for the mouse/kb->gamepad switch edge (dx-bugs 2026-07-01 followup): a single
+    // frame of pad "active" (stick drift, idle hand on the stick) used to be enough to flip
+    // g_last_input_was_gamepad, so any real gamepad presence re-armed the recenter within 1
+    // frame of a genuine mouse move clearing it — every mouse interaction fought a snap-to-
+    // center. Require this many CONSECUTIVE active frames before treating it as a real switch.
+    int g_gamepad_active_streak = 0;
+    static constexpr int kGamepadSwitchDebounceFrames = 5;  // ~80ms at 60fps
     bool g_ignore_next_mousemove_for_gamepad_flag = false;  // set by our own recenter SetCursorPos call
     bool g_gamepad_combo_recording = false;  // armed by the settings "Record gamepad combo" button
     bool g_gamepad_combo_ready = false;      // false = still waiting for the arming press to release
@@ -1408,7 +1449,44 @@ namespace
         // isn't initialized yet (init_imgui not run), and forwarding while the panel is
         // closed only updates ImGui's idle io.AddFocusEvent state, nothing visible.
         if (msg == WM_SETFOCUS || msg == WM_KILLFOCUS)
+        {
             ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
+            // [FOCUSDIAG] dx-bugs 2026-07-01 "alt-tab back, ImGui receives no input" followup —
+            // the fg-gate/debounce fix on g_last_input_was_gamepad did NOT resolve this in-game
+            // (still reproduces per <user>), so this logs the raw focus-transition + io state
+            // instead of guessing a third time. Rare event (only fires on actual focus changes),
+            // safe to always log.
+            {
+                ImGuiIO *io = ImGui::GetCurrentContext() ? &ImGui::GetIO() : nullptr;
+                spdlog::info("[FOCUSDIAG] {} g_show={} g_user_show={} WantCaptureMouse={} "
+                             "WantCaptureKeyboard={} MousePos=({:.0f},{:.0f}) NavActive={}",
+                             (msg == WM_SETFOCUS) ? "WM_SETFOCUS" : "WM_KILLFOCUS",
+                             g_show, g_user_show,
+                             io ? io->WantCaptureMouse : false,
+                             io ? io->WantCaptureKeyboard : false,
+                             io ? io->MousePos.x : -1.0f, io ? io->MousePos.y : -1.0f,
+                             io ? (io->NavActive ? "1" : "0") : "?");
+            }
+            // ROOT CAUSE (confirmed via the [FOCUSDIAG] log above, 2026-07-01): `fg` used to be
+            // re-polled every present frame via GetForegroundWindow()==g_hwnd, which flapped
+            // true/false several times during a single real Alt+Tab-back under Wine (the
+            // compositor transition briefly hands foreground to something else for a few
+            // frames) — see g_has_focus's declaration comment. Track focus from these
+            // event-driven messages instead; they only fire on real transitions.
+            g_has_focus.store(msg == WM_SETFOCUS, std::memory_order_relaxed);
+        }
+
+        // Losing focus (alt-tab away): reset the pad-switch state machine to a clean slate.
+        // Without this, residual pad activity while backgrounded (idle hand on the stick —
+        // hk_present's gamepad poll has no fg gate on its OWN read, only on whether it acts
+        // on it) could leave g_last_input_was_gamepad/streak primed, so regaining focus could
+        // immediately resume mid-transition instead of starting fresh (dx-bugs 2026-07-01
+        // "alt-tab back, ImGui receives no input" followup).
+        if (msg == WM_KILLFOCUS)
+        {
+            g_last_input_was_gamepad = false;
+            g_gamepad_active_streak = 0;
+        }
 
         // Real mouse/keyboard activity means input is no longer pad-only (see the XInput poll
         // in hk_present, item 2 of dx-bugs-backlog PR C) — clear regardless of overlay state.
@@ -1421,13 +1499,26 @@ namespace
             if (g_ignore_next_mousemove_for_gamepad_flag)
                 g_ignore_next_mousemove_for_gamepad_flag = false;
             else
+            {
                 g_last_input_was_gamepad = false;
+                g_gamepad_active_streak = 0;
+            }
             break;
         case WM_LBUTTONDOWN: case WM_LBUTTONUP:
         case WM_RBUTTONDOWN: case WM_RBUTTONUP: case WM_MBUTTONDOWN: case WM_MBUTTONUP:
         case WM_XBUTTONDOWN: case WM_XBUTTONUP: case WM_MOUSEWHEEL: case WM_MOUSEHWHEEL:
         case WM_KEYDOWN: case WM_KEYUP: case WM_SYSKEYDOWN: case WM_SYSKEYUP: case WM_CHAR:
+            // A real mouse click/wheel/keypress cancels any in-progress pad-switch detection
+            // outright (see kGamepadSwitchDebounceFrames below) — the user is demonstrably
+            // still on mouse/kb right now, regardless of what the pad happens to report.
             g_last_input_was_gamepad = false;
+            g_gamepad_active_streak = 0;
+            // [KBDIAG] raw arrival count, independent of g_show/consumption — see the
+            // g_diag_wm_char/g_diag_wm_keydown declaration comment.
+            if (msg == WM_CHAR)
+                g_diag_wm_char.fetch_add(1, std::memory_order_relaxed);
+            else if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
+                g_diag_wm_keydown.fetch_add(1, std::memory_order_relaxed);
             break;
         default:
             break;
@@ -3242,7 +3333,10 @@ namespace
         // cursor hooks (free/freeze the cursor, blank input) off-screen — bug report "F1 offscreen
         // active le hook cursor". Gate BOTH the toggle and the active state on the game window being
         // foreground: the hooks only ever run while you're actually in the game.
-        const bool fg = (g_hwnd && GetForegroundWindow() == g_hwnd);
+        // Message-driven (g_has_focus, set from WM_SETFOCUS/WM_KILLFOCUS in hk_wndproc), NOT a
+        // per-frame GetForegroundWindow() poll — see g_has_focus's declaration comment for why
+        // the poll was flapping during Alt+Tab under Wine and breaking input on refocus.
+        const bool fg = g_hwnd && g_has_focus.load(std::memory_order_relaxed);
         bool down = fg && (GetAsyncKeyState(static_cast<int>(goblin::config::overlayToggleKey)) & 0x8000) != 0;
         if (down && !g_prev_toggle_down) g_user_show = !g_user_show;
         g_prev_toggle_down = down;
@@ -3299,8 +3393,24 @@ namespace
             if (goblin::config::overlayToggleGamepad != 0 && !g_gamepad_combo_recording)
             {
                 const bool combo_down = fg && (combined & goblin::config::overlayToggleGamepad) == goblin::config::overlayToggleGamepad;
-                if (combo_down && !g_prev_gamepad_toggle_down) g_user_show = !g_user_show;
-                g_prev_gamepad_toggle_down = combo_down;
+                // Debounced: only commit the toggle once `combo_down` has been true for
+                // kToggleGamepadDebounceFrames CONSECUTIVE frames (rejects a single-frame/short
+                // glitch burst — see g_toggle_gamepad_streak's declaration comment), and only
+                // once per press (`g_toggle_gamepad_armed`, re-armed on release) so holding the
+                // combo past the debounce window doesn't fire it again every subsequent frame.
+                if (combo_down)
+                {
+                    if (++g_toggle_gamepad_streak >= kToggleGamepadDebounceFrames && g_toggle_gamepad_armed)
+                    {
+                        g_user_show = !g_user_show;
+                        g_toggle_gamepad_armed = false;
+                    }
+                }
+                else
+                {
+                    g_toggle_gamepad_streak = 0;
+                    g_toggle_gamepad_armed = true;
+                }
             }
 
             // Gamepad combo recorder: settings button arms this. Buttons pressed one after
@@ -3355,14 +3465,44 @@ namespace
                 g_gamepad_combo_ready = false;
             }
 
-            // Item 2: recenter the cursor the instant input switches from mouse/kb to pad — ER
+            // Item 2: recenter the cursor once input has switched from mouse/kb to pad — ER
             // itself doesn't recenter, so going pad-only otherwise leaves the cursor wherever the
-            // mouse last was.
-            if (active && !g_last_input_was_gamepad && fg)
-                recenter_cursor_to_window();
-            if (active) g_last_input_was_gamepad = true;
+            // mouse last was. `fg`-gated: background pad noise (alt-tabbed away) must never
+            // drive this or the flag below (dx-bugs 2026-07-01 "alt-tab back" followup).
+            // Debounced (dx-bugs 2026-07-01 "search panel unusable" followup): only treat it as
+            // a real switch after kGamepadSwitchDebounceFrames CONSECUTIVE active frames, so a
+            // single-frame blip (stick drift, idle hand on the pad) can't immediately re-arm the
+            // edge right after a genuine mouse move cleared it — that fight was pinning the
+            // cursor to window centre on almost every mouse interaction.
+            if (active && fg)
+            {
+                if (++g_gamepad_active_streak >= kGamepadSwitchDebounceFrames && !g_last_input_was_gamepad)
+                {
+                    recenter_cursor_to_window();
+                    g_last_input_was_gamepad = true;
+                }
+            }
+            else
+            {
+                g_gamepad_active_streak = 0;
+            }
         }
 
+        {
+            // [FOCUSDIAG] log the rising edge (menu reappearing after alt-tab back) with the
+            // exact io state at the frame it happens, to correlate against the WM_SETFOCUS log
+            // in hk_wndproc — same followup as above, diagnostic-only, fires rarely.
+            static bool s_prev_show_diag = false;
+            const bool new_show = g_user_show && fg;
+            if (new_show && !s_prev_show_diag)
+            {
+                ImGuiIO &io = ImGui::GetIO();
+                spdlog::info("[FOCUSDIAG] g_show rising edge (present) fg={} WantCaptureMouse={} "
+                             "WantCaptureKeyboard={} MousePos=({:.0f},{:.0f})",
+                             fg, io.WantCaptureMouse, io.WantCaptureKeyboard, io.MousePos.x, io.MousePos.y);
+            }
+            s_prev_show_diag = new_show;
+        }
         g_show = g_user_show && fg;   // lose focus → hooks deactivate; regain → panel restores
         // Count down the item-search nav window (set on a result click) — keeps the map "awake" for the
         // switch+pan, then lets the cursor re-freeze so the map stops drifting.
@@ -3447,7 +3587,9 @@ namespace
             // while the panel is up, foreground-guarded so a background click can't leak in.
             if (g_show)
             {
-                const bool fgw = (g_hwnd && GetForegroundWindow() == g_hwnd);
+                // Message-driven, same as the top-level `fg` (see g_has_focus) — was an
+                // independent GetForegroundWindow() poll, same flapping-under-Wine risk.
+                const bool fgw = g_hwnd && g_has_focus.load(std::memory_order_relaxed);
                 ImGuiIO &io = ImGui::GetIO();
                 const bool lb = fgw && (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
                 io.AddMouseButtonEvent(0, lb);
@@ -3475,6 +3617,22 @@ namespace
                                  g_diag_set_cursor_pos.exchange(0), g_diag_clip_cursor.exchange(0),
                                  g_diag_get_cursor_pos.exchange(0), g_diag_get_raw_input_data.exchange(0),
                                  g_diag_get_raw_input_buffer.exchange(0));
+                    // [KBDIAG] dx-bugs 2026-07-01 followup: <user> — keyboard loses the "hook" while
+                    // typing in the search bar, WITHOUT any Alt+Tab. `wm_char`/`wm_keydown` = raw
+                    // wndproc arrival (0 here while the bug is happening = the OS/our hook truly isn't
+                    // delivering keys, look at WM_SETFOCUS/message-pump territory); nonzero arrival but
+                    // WantCaptureKeyboard=false or WantTextInput=false = ImGui itself isn't claiming the
+                    // keys (look at nav/gamepad-flag territory instead — the ImGuiIO snapshot here is
+                    // last-frame's, since this runs just before ImGui::NewFrame()).
+                    {
+                        const ImGuiIO &io = ImGui::GetIO();
+                        spdlog::info("[KBDIAG] wm_char/sec={} wm_keydown/sec={} WantCaptureKeyboard={} "
+                                     "WantTextInput={} NavActive={} last_input_was_gamepad={} "
+                                     "gamepad_active_streak={}",
+                                     g_diag_wm_char.exchange(0), g_diag_wm_keydown.exchange(0),
+                                     io.WantCaptureKeyboard, io.WantTextInput, io.NavActive,
+                                     g_last_input_was_gamepad, g_gamepad_active_streak);
+                    }
                 }
             }
 

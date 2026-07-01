@@ -35,6 +35,47 @@ Backlog DX + bugs relevé par <user> le 2026-06-28 (à traiter plus tard, pas en
    générait un `WM_MOUSEMOVE` que notre propre code prenait pour un vrai mouvement, ce qui
    réarmait le recentrage en continu tant que la manette restait "active" — curseur épinglé au
    centre chaque frame). Détail dans `docs/plans/dx_bugs_backlog_plan.md` PR C-2 part 2.
+
+   ✅ **FIXED + log-confirmé 2026-07-01** (branche `fix/gamepad-input-flag-debounce`, pas encore
+   mergée) — followup relevé <user> même session, après PR C-2 part 2 : **3 bugs distincts**,
+   tous confirmés par preuve de log (`[FOCUSDIAG]`/`[KBDIAG]`, ajoutés cette session), pas par
+   déduction seule. Chronologie de l'investigation :
+   1. **1er essai (partiel/faux) :** `g_last_input_was_gamepad` n'avait aucun gate `fg` sur son
+      écriture + aucun debounce sur l'edge mouse→pad, donc une manette légèrement active pouvait
+      re-armer `recenter_cursor_to_window()` quasi à chaque frame → snapait le curseur au centre
+      à chaque interaction souris, cassant le scroll/survol des panels de recherche. Fix :
+      `fg`-gate + debounce `kGamepadSwitchDebounceFrames` (5 frames) + reset sur `WM_KILLFOCUS`
+      et sur tout vrai message souris/clavier. **Vrai fix pour un vrai bug**, mais <user> a
+      re-testé et l'Alt+Tab cassait TOUJOURS l'input — donc PAS la cause du bug Alt+Tab.
+   2. **Root cause Alt+Tab, trouvée via log :** `[FOCUSDIAG]` a montré qu'un seul VRAI cycle
+      focus (1× `WM_KILLFOCUS` puis 1× `WM_SETFOCUS`) produisait **7 rising-edges de `g_show`**
+      en ~20s sans aucun autre changement de focus réel. Cause : `fg` était re-CALCULÉ chaque
+      frame present via `GetForegroundWindow() == g_hwnd` (poll) — sous Wine, cet appel renvoie
+      transitoirement autre chose que `g_hwnd` pendant quelques frames lors de la transition
+      compositor de l'Alt+Tab, donc le poll captait ces états intermédiaires. Chaque flap
+      fermait/rouvrait la fenêtre ImGui (draw gated sur `g_show`), réinitialisant tout l'état
+      hover/focus interne à chaque fois — rien n'avait de frame stable pour enregistrer un
+      clic/scroll/frappe. Fix : nouveau `std::atomic<bool> g_has_focus`, mis à jour UNIQUEMENT
+      par `WM_SETFOCUS`/`WM_KILLFOCUS` (event-driven, ne se déclenche que sur de vrais
+      changements) ; `fg` (`hk_present`) et `fgw` (poll redondant dans le bloc clic-souris
+      Proton) lisent maintenant `g_has_focus` au lieu de re-poller `GetForegroundWindow()`.
+   3. **2e bug distinct, trouvé via log (<user> : "même sans unfocus/refocus, le clavier peut
+      perdre le hooking 'searching'") :** `[KBDIAG]` a montré la MÊME signature (`g_show`
+      rising-edges répétés) mais **sans aucun `WM_SETFOCUS`/`WM_KILLFOCUS` entre eux** — donc
+      `g_user_show` (le toggle lui-même) flappait, pas `fg`. Cause : le check du combo manette
+      de toggle (`combo_down && !g_prev_gamepad_toggle_down`) n'avait AUCUN debounce — un
+      comportement XInput connu (les premières lectures juste après qu'une app reprenne le
+      focus peuvent être une rafale stale/glitchée) pouvait faire bouncer la lecture plusieurs
+      fois, chaque bounce fermant/rouvrant le panel et cassant le focus clavier de l'InputText
+      de recherche. Fix : debounce `kToggleGamepadDebounceFrames` (3 frames consécutives) avant
+      de committer le toggle, armé une seule fois par appui (ré-armé au relâchement). Supprimé
+      `g_prev_gamepad_toggle_down` (devenu mort).
+   - **Confirmation finale (log, <user> 2026-07-01) :** un vrai Alt+Tab ne produit plus qu'UNE
+     seule rising-edge de `g_show` (corrélée au `WM_SETFOCUS`), avec `wm_keydown` de nouveau
+     non-nul en ~2s (vs 15+ secondes bloqué à 0 avant le fix) ; les autres rising-edges du log
+     (ouvertures/fermetures volontaires F1) restent isolées, plus de bounce répété. <user>
+     confirme aussi visuellement : clavier/souris/manette fonctionnent tous les trois.
+
    **Bug DX chez nous — F1 inaccessible à la manette** — impossible d'ouvrir les menus via F1 (équivalent manette). Donc impossible de jouer MapForGoblins end-to-end uniquement à la manette. → besoin d'un binding manette pour l'ouverture du menu.
 4. **Intégrer le mod "Pause in game" directement dans MapForGoblins** — une case en plus dans F1. Évite tout conflit de touche possible avec le mod externe.
 5. **Setting ImGui "pause à l'ouverture de F1"** — quand on ouvre F1 (manette ou clavier), proposer un setting pour choisir si le jeu se met en pause automatiquement à l'ouverture des settings MapForGoblins. Hypothèse DX : quand le menu F1 est ouvert on ne veut pas forcément jouer en même temps → peut-être meilleure DX qu'une simple case ImGui à long terme. Lié au point 4.
@@ -65,6 +106,15 @@ F1. **Fuite d'icônes NATIVES overworld → underground après téléport Browse
 
 F2. **Locate/recherche ne recentre pas sur une cible dans le Fog of War.** Quand la recherche (cursor-locate) téléporte vers un objet situé dans le fog of war, le **pan s'arrête au bord de la zone de pan visible** et ne recentre PAS sur l'item cible (l'item reste hors-vue / en bord de carte). = le pan est **clampé aux bornes visibles** (panX/panZ bornés), donc une cible au-delà de cette limite (zone non explorée / fog) ne peut pas être centrée. Piste <user> : **bypasser la limite de pan / ajouter le support du PAN OOB (out-of-bounds)** pour autoriser le recentrage au-delà des bornes explorées. À regarder plus tard. Lié [[overlay-item-search-bar]] (cursor-locate / take_locate_pos = caméra map 2D), [[worldmap-unsearched-fog-mask]] (oracle fog), et le clamp de pan dans la projection (project_screen / panX-panZ, goblin_projection.hpp + map_renderer.cpp).
 
+    **Re-relevé <user> 2026-07-01** ("pan lookup blocked to the current Player tile instead of
+    the worldXZ tile on Item research lookup" — <user> lui-même : "bug already tracked").
+    Vérifié ce jour côté code (lecture seule, pas de fix) : `take_locate_pos`/`loc_best` dans
+    `map_renderer.cpp` (~L1525-1650) prennent déjà les coordonnées projetées DE LA MARKER
+    CIBLE (`gU, gV`), pas celles du joueur — donc pas une régression "mauvaise tuile source".
+    Le symptôme observé (pan qui semble bloqué / ne recentre pas sur la cible) colle avec ce
+    F2 (clamp aux bornes de pan visibles), pas avec un nouveau bug de lookup. Pas de nouvel
+    item ouvert — reste F2.
+
 ---
 
 ## Review-2 — relevé <user> le 2026-06-29 (à traiter plus tard)
@@ -93,3 +143,9 @@ F2. **Locate/recherche ne recentre pas sur une cible dans le Fog of War.** Quand
     cause avant de coder quoi que ce soit (pourrait être un bug ER pur, sans rapport avec notre hook, ou
     au contraire une régression introduite PAR notre hook — à vérifier en premier : reproduit-il aussi
     SANS le hook XInput, càd sur une build d'avant PR C-2 ?).
+
+17. ✅ **DONE 2026-07-01** — <user> : "manque de section research pour trouver les features/flags
+    dans imgui (beaucoup de settings à chercher)". Écrit `docs/re/imgui_config_flags_research.md` :
+    checklist des `IO.ConfigFlags`/settings ImGui pertinents pour la coexistence manette+souris+
+    clavier (liés aux items 2/3/6/12/F2 ci-dessus), chacun avec une note "pourquoi ça pourrait
+    aider ici". Doc de référence, pas encore de flag testé en jeu — à cocher au fur et à mesure.
