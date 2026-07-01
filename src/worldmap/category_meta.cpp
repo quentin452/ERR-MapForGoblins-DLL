@@ -174,6 +174,15 @@ constexpr CategoryGpuIcon CATEGORY_GPU_ICONS[] = {
     // glyph can't be resolved. NB: the SB_MapCursor NN (80), NOT the WorldMapPointParam iconId
     // 443=questNPC — 443 is never resident (vanilla draws no item pins) so only the NN path works.
     {static_cast<int>(goblin::generated::Category::WorldQuestNPC), 80},
+    // Landmark categories (HANDOFF glyph followup): these are TRUE WorldMapPointParam rows the
+    // game itself draws, so their WMPP iconId IS the resident MENU_MAP_<NN> glyph (unlike 443
+    // above, which vanilla never draws). Single-iconId categories only — Dungeon/LegacyDungeon
+    // are per-site iconId unions and need per-marker source ids through push_marker (open).
+    {static_cast<int>(goblin::generated::Category::WorldDivineTower), 23},
+    {static_cast<int>(goblin::generated::Category::WorldEvergaol), 9},
+    {static_cast<int>(goblin::generated::Category::WorldMinorErdtree), 30},
+    {static_cast<int>(goblin::generated::Category::WorldGrandLift), 21},
+    {static_cast<int>(goblin::generated::Category::WorldMiquellaCross), 208},
 };
 } // namespace
 
