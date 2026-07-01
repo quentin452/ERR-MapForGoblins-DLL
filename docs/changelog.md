@@ -147,9 +147,10 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   fixing hundreds of misplaced markers; live "you are here" player position on every page.
 - **Native map-point icons** — Oodle-IAT-hooked DDS harvest draws the game's real grace/boss pins on markers.
 - **Unicode overlay font** — embedded DejaVu Sans TTF (Latin-Ext / Greek / Cyrillic) over ImGui's Latin-1 default.
-- **F1 panel settings search** — a "Find setting" text box near the top of the panel auto-expands
-  every top-level section whose title matches what you type (and collapses the rest), so a setting
-  buried in a rarely-opened section can be found without manually clicking through each header.
+- **F1 panel settings search** — a "find setting..." box near the top of the panel filters the whole
+  panel by keyword: it matches section titles AND the setting labels inside them (e.g. "opacity"
+  finds Minimap), hides everything that doesn't match, auto-expands what does, and says so when
+  nothing matches. Clear the box to restore the full panel.
 
 ### Changed
 - **No-bake data pipeline** — markers derived live at runtime from the active mod's MSB / EMEVD / ItemLotParam

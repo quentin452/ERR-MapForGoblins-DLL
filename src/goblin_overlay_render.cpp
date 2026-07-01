@@ -450,20 +450,40 @@ namespace
             ImGui::TextDisabled("F1 close | %.0f fps", io.Framerate);
             ImGui::Separator();
 
-            // Settings search: typing here auto-expands every top-level section whose title
-            // matches (and force-collapses the rest) so a setting buried in a rarely-opened
-            // section (e.g. "Minimap") can be found without manually clicking through each
-            // header. Separate from the "Sections & categories" search below, which filters
-            // marker CATEGORIES, not panel settings sections.
-            static ImGuiTextFilter s_settings_filter;
-            s_settings_filter.Draw("Find setting (section name)##settingsfilter", ImGui::GetContentRegionAvail().x);
-            const bool settings_filtering = s_settings_filter.IsActive();
+            // Settings search: type a keyword and only the matching parts of the panel stay
+            // visible (matching sections auto-expand); clear the box to restore everything.
+            // Matches section TITLES and the SETTING LABELS inside them (each block below
+            // declares its keywords), so "opacity" finds Minimap and "altitude" finds the
+            // flat checkbox. Separate from the "Sections & categories" search below, which
+            // filters marker CATEGORIES, not panel settings.
+            static char settings_q[64] = "";
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+            ImGui::InputTextWithHint("##settingsfilter", "find setting... (e.g. altitude, minimap zoom, spoiler)",
+                                     settings_q, sizeof(settings_q));
+            draw_gamepad_keyboard_button("##settingsfilter_kbd", settings_q, sizeof(settings_q));
+            const bool settings_filtering = settings_q[0] != '\0';
+            // Keywords per block = its title + the labels of the settings it contains; every
+            // query token must hit (word-order-independent, accent/case-insensitive).
+            // Hits are counted so an all-miss query can say so (last frame's count — the
+            // blocks below haven't evaluated yet this frame; 1-frame lag is invisible).
+            static int s_settings_hits = 0;
+            int settings_hits_now = 0;
+            auto settings_match = [&](const char *keywords) {
+                const bool m = !settings_filtering || matches_all_tokens(keywords, settings_q);
+                if (settings_filtering && m) settings_hits_now++;
+                return m;
+            };
+            if (settings_filtering && s_settings_hits == 0)
+                ImGui::TextDisabled("no setting matches \"%s\" — clear the box to show all", settings_q);
             ImGui::Separator();
 
             // P2b vertical slice: draw live-harvested item icons (copied GPU→GPU from the engine's
             // menu sheets). Open the inventory first to harvest, then check here. Dev-gated.
-            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("Item icons (P2b test)"), ImGuiCond_Always);
-            if ((*goblin::overlay_api::cfg_dumpIconTextures_ptr()) && ImGui::CollapsingHeader("Item icons (P2b test)"))
+            const bool show_p2b = (*goblin::overlay_api::cfg_dumpIconTextures_ptr()) &&
+                                  settings_match("item icons p2b test harvest inventory force-load csfile "
+                                                 "bind flip group createimage grace dev");
+            if (settings_filtering && show_p2b) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+            if (show_p2b && ImGui::CollapsingHeader("Item icons (P2b test)"))
             {
                 // Draw the ACTUAL harvested icons (a hardcoded id list may not match what the
                 // player browsed → empty grid even with harvested>0). Exercises the batch path.
@@ -607,8 +627,10 @@ namespace
             // including live residency (the GPU path only "wins" once its sprite is harvested), so the
             // panel shows the truth — not just what's WIRED. Lets us verify the per-category item icon
             // (00_Solo atlas) is correct before committing to the group-load that makes it resident.
-            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("Icon migration (Baked -> GPU)"), ImGuiCond_Always);
-            if (ImGui::CollapsingHeader("Icon migration (Baked \xE2\x86\x92 GPU)"))
+            const bool show_mig = settings_match("icon migration baked gpu native atlas circle census "
+                                                 "category render source");
+            if (settings_filtering && show_mig) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+            if (show_mig && ImGui::CollapsingHeader("Icon migration (Baked \xE2\x86\x92 GPU)"))
             {
                 namespace wm = goblin::worldmap;
                 const bool native_on = (*goblin::overlay_api::cfg_nativeItemIcons_ptr());
@@ -713,8 +735,10 @@ namespace
             // Grace-sprite GPU debug: draw every harvested SB_ERR_Grace_* frame (full-sheet SRV +
             // UV, no copy) so we can visually pick the correct grace rect. Open the world map (with a
             // discovered grace) to populate. The frame that looks like a Site of Grace = the one to lock.
-            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("ERR map sprites (GPU debug)"), ImGuiCond_Always);
-            if ((*goblin::overlay_api::cfg_dumpIconTextures_ptr()) && ImGui::CollapsingHeader("ERR map sprites (GPU debug)"))
+            const bool show_sprites = (*goblin::overlay_api::cfg_dumpIconTextures_ptr()) &&
+                                      settings_match("err map sprites gpu debug grace sheet frame harvest dev");
+            if (settings_filtering && show_sprites) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+            if (show_sprites && ImGui::CollapsingHeader("ERR map sprites (GPU debug)"))
             {
                 ensure_grace_debug();
                 grace_candidate_gate_warning();
@@ -732,8 +756,11 @@ namespace
 
             // Grace texture DEBUG (live format/swizzle/source) — verify the active grace mapped the
             // right NAME and the right COLORING. Tweak below + "Re-apply" re-copies the SRV live.
-            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("Grace texture debug (live)"), ImGuiCond_Always);
-            if ((*goblin::overlay_api::cfg_dumpIconTextures_ptr()) && ImGui::CollapsingHeader("Grace texture debug (live)"))
+            const bool show_gracedbg = (*goblin::overlay_api::cfg_dumpIconTextures_ptr()) &&
+                                       settings_match("grace texture debug live srgb swizzle channels "
+                                                      "format candidate source dev");
+            if (settings_filtering && show_gracedbg) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+            if (show_gracedbg && ImGui::CollapsingHeader("Grace texture debug (live)"))
             {
                 // The active grace, drawn big (this IS what the map markers use).
                 if (grace_state() == 1)
@@ -801,109 +828,134 @@ namespace
 
             // Map-fragment gate (live; persists via "Save to INI"). When on, a marker stays hidden
             // until the player has acquired that area's map-fragment ITEM (fragment event flag).
-            ImGui::Checkbox("Require map fragments (hide an area's icons until its fragment is found)",
-                            goblin::overlay_api::cfg_requireMapFragments_ptr());
+            if (settings_match("require map fragments hide area icons until fragment found"))
+                ImGui::Checkbox("Require map fragments (hide an area's icons until its fragment is found)",
+                                goblin::overlay_api::cfg_requireMapFragments_ptr());
 
             // DIAG: draw ONLY the no-bake residual (Baked-source markers; disk/live twins already
             // deduped away). Fly the world + eyeball each spot — real loot the live pass misses
             // (coverage gap) vs a phantom the bake invented (bake bug). See nobake_scoreboard.md.
-            ImGui::Checkbox("Baked-only (diag: show just the no-bake residual)",
-                            goblin::overlay_api::cfg_bakedOnly_ptr());
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Hides every marker the live disk/memory passes already cover,\n"
-                                  "leaving only the markers still coming from the static bake.\n"
-                                  "Use it to judge each leftover: real loot we fail to source live\n"
-                                  "(coverage miss) vs a stale/invented spot (bake bug).");
+            if (settings_match("baked only diag no-bake residual"))
+            {
+                ImGui::Checkbox("Baked-only (diag: show just the no-bake residual)",
+                                goblin::overlay_api::cfg_bakedOnly_ptr());
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Hides every marker the live disk/memory passes already cover,\n"
+                                      "leaving only the markers still coming from the static bake.\n"
+                                      "Use it to judge each leftover: real loot we fail to source live\n"
+                                      "(coverage miss) vs a stale/invented spot (bake bug).");
+            }
 
             // Collected/cleared graying (overlay map; live, persists via "Save to INI").
             // On = dim looted items / killed bosses (cleared bosses get a checkmark);
             // hide_collected switches dim → remove (legacy native-map behaviour).
-            ImGui::Checkbox("Gray collected/cleared markers (dim looted items & killed bosses)",
-                            goblin::overlay_api::cfg_collectedGraying_ptr());
-            if ((*goblin::overlay_api::cfg_collectedGraying_ptr()))
+            if (settings_match("gray grey collected cleared markers dim looted killed bosses hide instead"))
             {
-                ImGui::SameLine();
-                ImGui::Checkbox("hide instead", goblin::overlay_api::cfg_hideCollected_ptr());
+                ImGui::Checkbox("Gray collected/cleared markers (dim looted items & killed bosses)",
+                                goblin::overlay_api::cfg_collectedGraying_ptr());
+                if ((*goblin::overlay_api::cfg_collectedGraying_ptr()))
+                {
+                    ImGui::SameLine();
+                    ImGui::Checkbox("hide instead", goblin::overlay_api::cfg_hideCollected_ptr());
+                }
             }
 
             // Merge co-located identical-item loot markers into one "xN". Pure render decision (the
             // grouping is annotated once at build) → instant toggle, no bucket rebuild.
-            ImGui::Checkbox("Stack identical items (merge same-item nodes within ~5m)",
-                            goblin::overlay_api::cfg_stackIdenticalItems_ptr());
+            if (settings_match("stack identical items merge same-item nodes"))
+                ImGui::Checkbox("Stack identical items (merge same-item nodes within ~5m)",
+                                goblin::overlay_api::cfg_stackIdenticalItems_ptr());
 
             // Major-region name labels (overlay map; live, persists via "Save to INI").
-            ImGui::Checkbox("Show region labels (major-region names on the map)",
-                            goblin::overlay_api::cfg_showRegionLabels_ptr());
+            if (settings_match("show region labels major-region names map"))
+                ImGui::Checkbox("Show region labels (major-region names on the map)",
+                                goblin::overlay_api::cfg_showRegionLabels_ptr());
 
             // Redify boss markers (overlay port of the legacy red-skull iconId; live,
             // persists via "Save to INI"). Tints WorldBosses markers red (overworld +
             // dungeon bosses); collected/cleared graying still takes precedence.
-            ImGui::Checkbox("Red boss markers (tint boss icons red)",
-                            goblin::overlay_api::cfg_redifyBossIcons_ptr());
+            if (settings_match("red boss markers tint icons skull"))
+                ImGui::Checkbox("Red boss markers (tint boss icons red)",
+                                goblin::overlay_api::cfg_redifyBossIcons_ptr());
 
             // DX item 7: up/down altitude badge for markers above/below the player (player's map only).
-            ImGui::Checkbox("Altitude arrows (up = above / down = below player)",
-                            goblin::overlay_api::cfg_altitudeCue_ptr());
+            if (settings_match("altitude arrows up above down below player badge"))
+                ImGui::Checkbox("Altitude arrows (up = above / down = below player)",
+                                goblin::overlay_api::cfg_altitudeCue_ptr());
 
             // Grace rendering: overlay draws all graces (discovered=colour, undiscovered=grey).
-            ImGui::Checkbox("Overlay graces (draw all graces ourselves)",
-                            goblin::overlay_api::cfg_graceOverlay_ptr());
-            if ((*goblin::overlay_api::cfg_graceOverlay_ptr()))
+            if (settings_match("overlay graces draw all gpu sprite engine cpu baked atlas"))
             {
-                ImGui::SameLine();
-                ImGui::Checkbox("GPU sprite (engine, time-tinted) vs CPU (baked atlas)",
-                                goblin::overlay_api::cfg_graceGpuSprite_ptr());
+                ImGui::Checkbox("Overlay graces (draw all graces ourselves)",
+                                goblin::overlay_api::cfg_graceOverlay_ptr());
+                if ((*goblin::overlay_api::cfg_graceOverlay_ptr()))
+                {
+                    ImGui::SameLine();
+                    ImGui::Checkbox("GPU sprite (engine, time-tinted) vs CPU (baked atlas)",
+                                    goblin::overlay_api::cfg_graceGpuSprite_ptr());
+                }
             }
 
             // Spoiler-free loot (overlay port of anonymous_loot; live, persists via
             // "Save to INI"). Lot-backed loot markers draw as a gray "?" with a generic
             // label instead of the real item icon/name.
-            ImGui::Checkbox("Spoiler-free loot (gray \"?\" instead of the item)",
-                            goblin::overlay_api::cfg_anonymousLoot_ptr());
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Every loot marker shows a gray \"?\" and only its location,\n"
-                                  "hiding the real item (useful with randomizers). Markers still\n"
-                                  "gray out when collected; category show/hide is unaffected.");
+            if (settings_match("spoiler-free loot gray anonymous randomizer hide item"))
+            {
+                ImGui::Checkbox("Spoiler-free loot (gray \"?\" instead of the item)",
+                                goblin::overlay_api::cfg_anonymousLoot_ptr());
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Every loot marker shows a gray \"?\" and only its location,\n"
+                                      "hiding the real item (useful with randomizers). Markers still\n"
+                                      "gray out when collected; category show/hide is unaffected.");
+            }
 
             // Gamepad overlay-toggle combo (dx-bugs-backlog PR C item 3). Recorder arms the
             // XInput poll in hk_present; first nonzero button read there wins and saves.
-            ImGui::Text("Gamepad toggle combo: %s",
-                        goblin::overlay_api::mask_to_combo_string((*goblin::overlay_api::cfg_overlayToggleGamepad_ptr())).c_str());
-            ImGui::SameLine();
-            if (*ctx.gamepad_combo_recording)
+            if (settings_match("gamepad toggle combo record controller buttons"))
             {
-                // Two phases: first wait for the button that ARMED recording (e.g. gamepad-nav A
-                // on this very widget) to fully release, THEN start listening — otherwise that
-                // same activating press gets captured as the whole combo.
-                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f),
-                                    *ctx.gamepad_combo_ready ? "Press buttons now…" : "Release all buttons…");
+                ImGui::Text("Gamepad toggle combo: %s",
+                            goblin::overlay_api::mask_to_combo_string((*goblin::overlay_api::cfg_overlayToggleGamepad_ptr())).c_str());
+                ImGui::SameLine();
+                if (*ctx.gamepad_combo_recording)
+                {
+                    // Two phases: first wait for the button that ARMED recording (e.g. gamepad-nav A
+                    // on this very widget) to fully release, THEN start listening — otherwise that
+                    // same activating press gets captured as the whole combo.
+                    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f),
+                                        *ctx.gamepad_combo_ready ? "Press buttons now…" : "Release all buttons…");
+                }
+                else if (ImGui::SmallButton("Record gamepad combo"))
+                {
+                    *ctx.gamepad_combo_recording = true;
+                    ctx.gamepad_combo_reject_reason->clear();
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Click, then press the button combo on your controller (default Y+R3).\n"
+                                      "The first combo read is captured and saved to the ini immediately.");
+                if (!ctx.gamepad_combo_reject_reason->empty())
+                    ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "%s", ctx.gamepad_combo_reject_reason->c_str());
             }
-            else if (ImGui::SmallButton("Record gamepad combo"))
-            {
-                *ctx.gamepad_combo_recording = true;
-                ctx.gamepad_combo_reject_reason->clear();
-            }
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Click, then press the button combo on your controller (default Y+R3).\n"
-                                  "The first combo read is captured and saved to the ini immediately.");
-            if (!ctx.gamepad_combo_reject_reason->empty())
-                ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "%s", ctx.gamepad_combo_reject_reason->c_str());
 
             // On-screen keyboard layout (dx-bugs-backlog PR C-2 part 2). Like every other plain
             // setting here, this only persists via "Save to INI" below — no immediate auto-save.
-            ImGui::Text("Gamepad keyboard layout:");
-            ImGui::SameLine();
-            int kbd_layout = (*goblin::overlay_api::cfg_virtualKeyboardLayout_ptr());
-            if (ImGui::RadioButton("Alphabetical", &kbd_layout, 0))
-                (*goblin::overlay_api::cfg_virtualKeyboardLayout_ptr()) = static_cast<uint8_t>(kbd_layout);
-            ImGui::SameLine();
-            if (ImGui::RadioButton("QWERTY", &kbd_layout, 1))
-                (*goblin::overlay_api::cfg_virtualKeyboardLayout_ptr()) = static_cast<uint8_t>(kbd_layout);
+            if (settings_match("gamepad keyboard layout alphabetical qwerty virtual on-screen"))
+            {
+                ImGui::Text("Gamepad keyboard layout:");
+                ImGui::SameLine();
+                int kbd_layout = (*goblin::overlay_api::cfg_virtualKeyboardLayout_ptr());
+                if (ImGui::RadioButton("Alphabetical", &kbd_layout, 0))
+                    (*goblin::overlay_api::cfg_virtualKeyboardLayout_ptr()) = static_cast<uint8_t>(kbd_layout);
+                ImGui::SameLine();
+                if (ImGui::RadioButton("QWERTY", &kbd_layout, 1))
+                    (*goblin::overlay_api::cfg_virtualKeyboardLayout_ptr()) = static_cast<uint8_t>(kbd_layout);
+            }
 
             // Overlay marker scale (live preview; persists via "Save to INI"). Final
             // size = resolution-relative base × master × per-type scale.
-            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("Marker scale (overlay map)"), ImGuiCond_Always);
-            if (ImGui::CollapsingHeader("Marker scale (overlay map)"))
+            const bool show_scale = settings_match("marker scale overlay map master category icons grace "
+                                                   "offset cluster piles size motion delay frames zoom reset");
+            if (settings_filtering && show_scale) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+            if (show_scale && ImGui::CollapsingHeader("Marker scale (overlay map)"))
             {
                 scale_control("Master", goblin::overlay_api::cfg_overlayMasterScale_ptr(), 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
                 scale_control("Category icons", goblin::overlay_api::cfg_overlayIconScale_ptr(), 0.3f, 10.0f, 0.05f, 0.25f, "%.2f");
@@ -938,8 +990,10 @@ namespace
             }
 
             // In-game minimap HUD (foundation; overworld-only, north-up). Live; persists.
-            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("Minimap (in-game HUD)"), ImGuiCond_Always);
-            if (ImGui::CollapsingHeader("Minimap (in-game HUD)"))
+            const bool show_minimap = settings_match("minimap in-game hud show corner zoom radius opacity "
+                                                     "anchor right bottom offset north-up");
+            if (settings_filtering && show_minimap) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+            if (show_minimap && ImGui::CollapsingHeader("Minimap (in-game HUD)"))
             {
                 ImGui::Checkbox("Show minimap (corner HUD during gameplay)",
                                 goblin::overlay_api::cfg_showMinimap_ptr());
@@ -973,8 +1027,11 @@ namespace
             // cursor at it (cursor = the 2D map camera). The match set is rebuilt only when the query
             // changes (resolving ~thousands of FMG names per frame would be too costly), so the hot
             // render loop just does an O(1) name_id set lookup.
-            ImGui::SeparatorText("Find item / object");
+            // Hidden while the settings search filters it out; the last-applied ring/match
+            // state simply persists (the query can't change while the block is hidden).
+            if (settings_match("find item object search marker name locate ring quest"))
             {
+                ImGui::SeparatorText("Find item / object");
                 // group bits (marker_layer): bit0 = underground, bit1 = DLC. Label the page so the
                 // user knows where a hit is — locate only pans WITHIN the open page (cross-page needs
                 // a manual page switch first; auto-switch would need page-transition RE).
@@ -1255,18 +1312,22 @@ namespace
 
             // Sections (coarse) + their categories (fine). A row shows only if
             // both its section and its category are enabled.
-            ImGui::SeparatorText("Sections & categories");
-            // Search box: filter the category list by name. Matching a SECTION name
-            // shows that whole section; otherwise only matching category rows show,
-            // and sections with no match are hidden. Sections auto-expand while
-            // filtering so matches are visible without manual clicking.
             static char cat_filter[64] = "";
-            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-            ImGui::InputTextWithHint("##catfilter", "search categories... (e.g. sorcer, ash, smith)",
-                                     cat_filter, sizeof(cat_filter));
-            draw_gamepad_keyboard_button("##catfilter_kbd", cat_filter, sizeof(cat_filter));
+            const bool show_seccat = settings_match("sections categories marker show hide cluster world");
+            if (show_seccat)
+            {
+                ImGui::SeparatorText("Sections & categories");
+                // Search box: filter the category list by name. Matching a SECTION name
+                // shows that whole section; otherwise only matching category rows show,
+                // and sections with no match are hidden. Sections auto-expand while
+                // filtering so matches are visible without manual clicking.
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                ImGui::InputTextWithHint("##catfilter", "search categories... (e.g. sorcer, ash, smith)",
+                                         cat_filter, sizeof(cat_filter));
+                draw_gamepad_keyboard_button("##catfilter_kbd", cat_filter, sizeof(cat_filter));
+            }
             const bool cat_filtering = cat_filter[0] != '\0';
-            for (int s = 0; s < goblin::overlay_api::section_count(); s++)
+            for (int s = 0; show_seccat && s < goblin::overlay_api::section_count(); s++)
             {
                 bool sec_name_match = contains_ci(goblin::overlay_api::section_label(s), cat_filter);
                 if (cat_filtering && !sec_name_match)
@@ -1360,8 +1421,9 @@ namespace
                 ImGui::TreePop();
             }
 
-            ImGui::SeparatorText("ERR integration");
+            if (settings_match("err integration reforged hide boss markers camps completion"))
             {
+                ImGui::SeparatorText("ERR integration");
                 bool hide_bosses = goblin::overlay_api::err_hide_bosses();
                 if (ImGui::Checkbox("Hide boss markers (ERR already marks bosses)", &hide_bosses))
                     goblin::overlay_api::set_err_hide_bosses(hide_bosses);
@@ -1373,8 +1435,9 @@ namespace
                 ImGui::TextDisabled("ERR also marks enemy camps & completion (cleared dungeons/ruins).");
             }
 
-            ImGui::SeparatorText("Quest navigation");
+            if (settings_match("quest navigation browser npc questlines steps missable grey dead"))
             {
+                ImGui::SeparatorText("Quest navigation");
                 ImGui::TextDisabled("Enable \"World - Quest NPC\" above to pin quest NPCs on the map.");
 
                 // Quest Browser: ordered steps per NPC (hand-authored, original
@@ -1715,8 +1778,10 @@ namespace
                 }
             }
 
-            ImGui::SeparatorText("Clustering");
+            if (settings_match("clustering cluster enable declutter dense size threshold distance "
+                               "adaptive near far radius preset completionist explorer performance"))
             {
+                ImGui::SeparatorText("Clustering");
                 // Master enable — ALWAYS shown. (Bug: this was gated on
                 // clustering_active(), so once a re-plan found no pile over the
                 // threshold the whole block vanished and clustering could not be
@@ -1834,18 +1899,24 @@ namespace
             // ONCE at startup based on its config flag (dllmain setup), so these
             // are restart-required: flip + Save, then relaunch. save_all_bool_settings
             // persists every config bool, so no per-flag plumbing is needed.
-            ImGui::SeparatorText("Debug");
-            // Live toggle (no restart): project_marker reads this every frame.
-            ImGui::Checkbox("Live projection (engine world→map fn; fixes dungeon/UG placement)",
-                            goblin::overlay_api::cfg_liveProjection_ptr());
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip(
-                    "Project markers with the game's OWN WorldMapViewModel instead of the baked\n"
-                    "affine. Toggles live (open the map and flip it to compare). Underground /\n"
-                    "dungeon markers snap to their real LegacyConv-folded positions. Falls back\n"
-                    "to baked until the map is open (engine VM must resolve).");
-            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("Dev tools (Save + restart)"), ImGuiCond_Always);
-            if (ImGui::TreeNode("Dev tools (Save + restart)"))
+            if (settings_match("debug live projection engine world map dungeon underground placement"))
+            {
+                ImGui::SeparatorText("Debug");
+                // Live toggle (no restart): project_marker reads this every frame.
+                ImGui::Checkbox("Live projection (engine world→map fn; fixes dungeon/UG placement)",
+                                goblin::overlay_api::cfg_liveProjection_ptr());
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip(
+                        "Project markers with the game's OWN WorldMapViewModel instead of the baked\n"
+                        "affine. Toggles live (open the map and flip it to compare). Underground /\n"
+                        "dungeon markers snap to their real LegacyConv-folded positions. Falls back\n"
+                        "to baked until the map is open (engine VM must resolve).");
+            }
+            const bool show_devtools = settings_match("dev tools save restart event-flag item-grant hook "
+                                                      "cursor probe marker dump hotkey verbose logging "
+                                                      "flag capture npc death");
+            if (settings_filtering && show_devtools) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+            if (show_devtools && ImGui::TreeNode("Dev tools (Save + restart)"))
             {
                 ImGui::Checkbox("Event-flag hook (coverage-gap detector)",
                                 goblin::overlay_api::cfg_debugEventFlags_ptr());
@@ -1910,12 +1981,16 @@ namespace
             }
 
             // ── Danger zone: destructive resets behind a confirm popup ────────
-            ImGui::Separator();
+            // Push/Pop stay unconditional so the pop below never unbalances; only the
+            // separator + node hide while the settings search filters this out.
+            const bool show_danger = settings_match("danger zone reset quest progression parameters defaults");
+            if (show_danger)
+                ImGui::Separator();
             ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.55f, 0.13f, 0.13f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.78f, 0.18f, 0.18f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.90f, 0.22f, 0.22f, 1.0f));
-            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("Danger zone"), ImGuiCond_Always);
-            if (ImGui::TreeNode("Danger zone"))
+            if (settings_filtering && show_danger) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+            if (show_danger && ImGui::TreeNode("Danger zone"))
             {
                 if (ImGui::Button("Reset quest progression"))
                     ImGui::OpenPopup("##confirm_reset_quest");
@@ -1961,6 +2036,7 @@ namespace
             }
             ImGui::PopStyleColor(3);
 
+            s_settings_hits = settings_hits_now;
             ImGui::End();
         }
     }
