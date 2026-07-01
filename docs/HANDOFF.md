@@ -21,6 +21,34 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
+## RESUME HERE (2026-07-01x) — `goblin_name_aliases_en` → runtime engus-FMG (ERR-verified, baked table not yet deleted)
+
+Branch `feat/name-aliases-runtime` (off master after grace merged). The F1 English search-alias bake
+(`goblin_name_aliases_en`, 2756 rows, baked byte-identical into all 4 profiles → ERR names shipped into
+vanilla/Conv/ERTE = wrong) is replaced by a runtime resolver that reads the active install's
+`msg/engus/*.msgbnd.dcx` off disk. **Reclassified A→M** (it's FMG-derived, not authored). Live
+`GetMessage` is language-locked (active language only) so English must come from disk.
+
+- **New `src/worldmap/name_fmg_en.{cpp,hpp}`** (`load_english_name_index` at dllmain init +
+  `lookup_name_en_disk_utf8`): BND4 unpack + FMG-v2 group-table walk over the engus Name FMGs
+  (Goods/Weapon/Protector/Accessory/Gem/Arts/Npc/Place), materialized into per-category id→name maps.
+- **Two-pass layering (this was a real bug, in-game found):** `read_game_file_decompressed` falls back
+  loose→packed-VANILLA, so mixing ERR's loose `item_dlc02` with vanilla's packed `item.msgbnd` and taking
+  first-hit mislabeled marker id 100000 "Jardins royaux" as "Godrick the Grafted" (vanilla PlaceName group
+  ranges differ). Fix: pass 1 LOOSE (mod) bundles win, pass 2 PACKED fills only missing ids. New
+  `read_loose_file_decompressed` (loose-only) in loot_disk enables the split.
+- **`goblin_overlay.cpp`** search index prefers the disk resolver, keeps the baked table as a TRANSITIONAL
+  fallback. Fixed FMG group stride `0x18`→`0x10` in `tools/list_fmgs.py` (only found group-0 ids).
+- **Offline-validated** vs the baked table (ERR engus): 2754/2756 exact, 0 mismatch, 2 misses = stale
+  +900M enemy-Codex rows no live marker uses. **IN-GAME CONFIRMED on ERR** (`[NAMEEN] English index ready`,
+  SIG 29/29, and the Godrick collision fixed live — "Jardins royaux" now shows "Royal Gardens").
+  Commits `b6cf4f7` (feat) + `334d0c4` (two-pass fix). Deployed to ERR offline dir.
+- **NEXT (2 steps, both remain):** (1) **non-ERR in-game verify** — deploy the vanilla-profile DLL to a
+  vanilla install and confirm English search works there (the real mod-agnosticism acceptance test; the
+  long-open user-gated item). (2) **THEN delete the baked table** — `goblin_name_aliases_en.{cpp,hpp}`,
+  `generate_name_aliases_en_cpp`, its CMake entries + hpp mirror copies, `lookup_name_alias_en_utf8`, and
+  the fallback line in `goblin_overlay.cpp`. Do NOT delete before the non-ERR check (plan guardrail).
+
 ## RESUME HERE (2026-07-01w) — `grace_position_index` bake DROPPED (baked-data removal, offline-only)
 
 Executed the plan's "Grace positions" inventory row — the recommended next baked-data removal.
@@ -345,9 +373,9 @@ sequencing + the post-Phase-1 findings that reframe Phase 2). What landed / what
   - ~~`grace_position_index`~~ **DONE 2026-07-01w** (see RESUME below). DLL grace table was already live
     (`capture_live_graces`); the leftover `grace_position_index.json`/`build_grace_index.py` only fed dead
     `.MASSEDIT` subtitle text — removed generator + pipeline stage + tracked JSON, offline-only, no DLL change.
-  - `goblin_name_aliases_en.cpp` (F1 English search aliases, 2756 rows from `items_database.json`+npc+boss)
-    — names already resolve live via `GetMessage`; candidate to make the search alias-lookup runtime.
-    **(recommended next.)**
+  - `goblin_name_aliases_en.cpp` (F1 English search aliases) — **IN PROGRESS, branch
+    `feat/name-aliases-runtime`, ERR-verified** (see RESUME above). Runtime engus-FMG-off-disk resolver
+    lands; baked table kept as transitional fallback pending non-ERR in-game verify + deletion.
   - `goblin_tile_tabs` / `goblin_major_regions` — real + identical on all 4 profiles → (H) dedup into
     `generated_shared/`, pure housekeeping.
   - `goblin_region_anchors` / `goblin_name_regions` — assess vs `WorldMapPointParam` + `WorldMapPlaceName`.
