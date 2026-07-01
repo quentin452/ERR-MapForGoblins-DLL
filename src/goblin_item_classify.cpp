@@ -4,6 +4,7 @@
 #include "from/params.hpp"
 #include "goblin_map_data.hpp"
 
+#include <cstring>
 #include <map>
 #include <optional>
 #include <string>
@@ -29,12 +30,15 @@
 // public classifier below can use them.
 static int goods_type_live(int32_t goods_id);
 static int goods_sort_group(int32_t goods_id);
+static int goods_sort_id(int32_t goods_id);
 
 // Confident category from ER's live taxonomy for a goods id: the explicit (goodsType, sortGroupId)
 // cells + the broad goodsType families. Returns -1 when only the DEFAULT/catch-all bucket applies
 // (gType1 key-item tail → QuestProgression, or the LootCraftingMaterials catch-all) — those are the
 // "uncertain" surface, left to classify_item_live so the [ITEMCLASS] census still tracks them.
-// Validated to reproduce the old ITEM_ICONS category column exactly (tools/_validate_taxonomy_map.py).
+// The (goodsType, sortGroupId, sortId) cells recover the curated splits the deleted per-id
+// category-exception table used to carry — read LIVE, no bake. sortId is what subdivides the
+// cells sortGroupId collapses (value tiers, the gType1-sg50 grab-bag). See goods_sort_id().
 static int category_from_taxonomy(int32_t goods_id)
 {
     using C = goblin::generated::Category;
@@ -43,42 +47,82 @@ static int category_from_taxonomy(int32_t goods_id)
     // contaminated by a few non-spirit items (Codex of the All-Knowing, Spectral Steed Whistle,
     // Memory of Grace) which would otherwise be mislabelled as Spirits. Vanilla spirits stay gType 7/8.
     if (goods_id >= 300000 && goods_id <= 399999) return (int)C::EquipSpirits;
-    const int gt = goods_type_live(goods_id);
-    const int sg = goods_sort_group(goods_id);
+    const int gt  = goods_type_live(goods_id);
+    const int sg  = goods_sort_group(goods_id);
+    const int sid = goods_sort_id(goods_id);   // ER inventory sort order — sub-splits the cells that
+                                               // (goodsType, sortGroupId) alone collapses (see below).
     switch (gt)
     {
-        case 0:  // normal goods — split by sortGroupId
+        case 0:  // normal goods — split by sortGroupId, then sortId for the sub-families
             switch (sg)
             {
                 case 20: case 61: return (int)C::LootConsumables;
                 case 50:          return (int)C::LootThrowables;
                 case 70:          return (int)C::LootGreases;
                 case 60:          return (int)C::LootReusables;
-                case 80:          return (int)C::LootUtilities;        // Pates = exception
-                case 10:          return (int)C::LootStatBoosts;       // Rune Arc 150 = exception
-                case 100: case 101: case 102: return (int)C::LootGoldenRunes;  // Low = exception;
-                                                                               // 102 = ERR high-NG variants
+                // Prattling Pates share the Utilities cell — sortId 7110..7190 isolates them.
+                case 80:          return (sid >= 7110 && sid <= 7190) ? (int)C::LootPrattlingPates
+                                                                      : (int)C::LootUtilities;
+                // Rune Arc rides the Stat-Boosts cell (ERR sortId 520).
+                case 10:          return (sid == 520) ? (int)C::LootRuneArcs : (int)C::LootStatBoosts;
+                // Golden Runes: Low value tiers share sortGroupId with the high ones — sortId splits
+                // them (base sg100 Low <=680; DLC sg101 Broken/Shadow-Low <=9320). 102 = ERR high-NG.
+                case 100:         return (sid <= 680)  ? (int)C::LootGoldenRunesLow : (int)C::LootGoldenRunes;
+                case 101:         return (sid <= 9320) ? (int)C::LootGoldenRunesLow : (int)C::LootGoldenRunes;
+                case 102:         return (int)C::LootGoldenRunes;
+                // Multiplayer fingers (Furled/Recusant/…) live in their own sortGroup cell.
+                case 200:         return (int)C::LootMPFingers;
             }
             break;
-        case 1:  // key/important item — split by sortGroupId; tail handled by the gType1 default below
+        case 1:  // key/important item — split by sortGroupId, then sortId; tail → QuestProgression
             switch (sg)
             {
                 case 80: case 90:   return (int)C::LootBellBearings;
                 case 200: case 205: return (int)C::KeyCookbooks;
-                case 100:           return (int)C::MagicPrayerbooks;   // 8867 = exception
+                case 100:           return (int)C::MagicPrayerbooks;
+                case 50:  // grab-bag cell: keys + quest goods share (gType1,sg50) — sortId is the key
+                    switch (sid)
+                    {
+                        case 200000: return (int)C::LootStoneswordKeys;
+                        case 200010: return (int)C::KeyImbuedSwordKeys;
+                        case 204190: return (int)C::QuestSeedbedCurses;
+                        case 204300: return (int)C::QuestDeathroot;
+                        case 204340: return (int)C::KeyCelestialDew;
+                        case 204362: return (int)C::MagicPrayerbooks;   // Three Fingers' Scrawls
+                    }
+                    break;  // other (1,50) → gType1 tail → QuestProgression
+                case 54:  if (sid >= 200300 && sid <= 200700) return (int)C::KeyWhetblades; break;
+                case 30:  if (sid == 202030) return (int)C::MagicMemoryStones; break;
             }
             break;
-        case 2:  return (int)C::LootCraftingMaterials;   // gather materials
+        case 2:  // gather materials — Rada Fruit is the one DLC stat-up in this family
+            if (sg == 25 && sid == 101300) return (int)C::LootRadaFruit;
+            return (int)C::LootCraftingMaterials;
         case 5:  case 17: return (int)C::MagicSorceries;
         case 16: case 18: return (int)C::MagicIncantations;
         case 7:  case 8:  return (int)C::EquipSpirits;
         case 10: if (sg == 20) return (int)C::KeyCrystalTears; break;
         case 11: if (sg == 30) return (int)C::KeyPotsNPerfumes; break;
-        case 14: // upgrade material
+        case 14: // upgrade material — Great/Rare/Low tiers share the cell; sortId splits them
             switch (sg)
             {
-                case 40: case 41:           return (int)C::LootGloveworts;     // Great = exception
-                case 19: case 20: case 30:  return (int)C::LootSmithingStones; // Low/Rare = exception
+                case 40: return (sid >= 153090) ? (int)C::LootGreatGloveworts : (int)C::LootGloveworts;
+                case 41: return (sid >= 153190) ? (int)C::LootGreatGloveworts : (int)C::LootGloveworts;
+                case 19: return (int)C::LootSmithingStones;
+                case 20: if (sid <= 151050) return (int)C::LootSmithingStonesLow;
+                         if (sid >= 151075) return (int)C::LootSmithingStonesRare;
+                         return (int)C::LootSmithingStones;
+                case 30: if (sid <= 152050) return (int)C::LootSmithingStonesLow;
+                         if (sid >= 152085) return (int)C::LootSmithingStonesRare;
+                         return (int)C::LootSmithingStones;
+                case 3:  switch (sid) {   // Lost Ashes / Dragon Hearts / Larval Tears share (14,3)
+                             case 200010:             return (int)C::KeyLostAshes;
+                             case 200080:             return (int)C::LootDragonHearts;
+                             case 200090: case 200091: return (int)C::KeyLarvalTears;
+                         } break;
+                case 15: if (sid == 150100) return (int)C::KeyScadutreeFragments;
+                         if (sid == 150110) return (int)C::KeySeedsTears; break;
+                case 10: if (sid >= 150000 && sid <= 150010) return (int)C::KeySeedsTears; break;
             }
             break;
     }
@@ -334,6 +378,32 @@ static int goods_sort_group(int32_t goods_id)
     if (!s_ok || goods_id <= 0) return -1;
     RawGoodsRow *r = s_seq->try_get((uint64_t)goods_id);
     return r ? (int)r->b[goods_sort_group_offset()] : -1;
+}
+
+// sortId (s32 @ +0x20) — ER's inventory sort order. It sub-divides the coarse
+// (goodsType, sortGroupId) cells into the item sub-families / value-tiers that
+// sortGroupId alone collapses (Golden Rune Low vs high, Smithing Low/normal/Rare,
+// Great vs normal Gloveworts, the gType1-sg50 key/quest grab-bag, …). This is what
+// replaced the old baked per-id category-exception table: the same distinctions,
+// but read LIVE from the active install so they follow whatever items the mod has.
+// No access-instruction AOB harvested for this field yet, so the offset is pinned
+// from the paramdef field-layout walk: 0x20, cross-checked by the sortId→goodsType
+// byte delta (0x1e) against the AOB-verified goodsType@0x3e. s32, not the u8 the
+// group fields are.
+static int goods_sort_id(int32_t goods_id)
+{
+    static std::optional<from::params::ParamTableSequence<RawGoodsRow>> s_seq;
+    static std::once_flag s_once;
+    static bool s_ok = false;
+    std::call_once(s_once, [] {
+        try { s_seq.emplace(from::params::get_param<RawGoodsRow>(L"EquipParamGoods"));
+              s_ok = true; } catch (...) { s_ok = false; }
+    });
+    if (!s_ok || goods_id <= 0) return -1;
+    RawGoodsRow *r = s_seq->try_get((uint64_t)goods_id);
+    if (!r) return -1;
+    int32_t v; std::memcpy(&v, &r->b[0x20], sizeof(v));
+    return v;
 }
 
 // Real inventory iconId (the MENU_ItemIcon_<id> atlas index) for an offset-encoded marker/item key,
