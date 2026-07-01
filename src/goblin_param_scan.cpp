@@ -181,6 +181,46 @@ std::filesystem::path emevd_dir()
     return {};
 }
 
+// Round-4: full-body dump of the interesting events (needle scans exhausted —
+// 1030 has no per-lift inits at all, so its MECHANISM must be read from its
+// instructions; 1042582000 is the generic (ABP,entity) prompt template whose
+// exact arg-substitution slots we need). One line per instruction:
+// bank[id] + raw arg hex → decoded offline against EMEDF.
+constexpr uint64_t kBodyDumpEvents[] = {1030, 1042582000};
+
+void dump_event_body(const std::filesystem::path &src, uint64_t eventId,
+                     const uint8_t *buf, size_t len, size_t base, uint64_t instrCount,
+                     uint64_t argsOff)
+{
+    const auto dir = own_logs_dir();
+    if (dir.empty()) return;
+    const auto path = dir / ("emevddump_" + std::to_string(eventId) + ".txt");
+    FILE *f = _wfopen(path.wstring().c_str(), L"wb");
+    if (!f) return;
+    std::fprintf(f, "# %s event %llu (%llu instructions)\n", src.filename().string().c_str(),
+                 (unsigned long long)eventId, (unsigned long long)instrCount);
+    for (uint64_t j = 0; j < instrCount; ++j)
+    {
+        const size_t ins = base + (size_t)j * 0x20;
+        if (ins + 0x20 > len) break;
+        uint32_t bank, id;
+        uint64_t argLen;
+        int32_t argOff;
+        std::memcpy(&bank, buf + ins + 0x00, 4);
+        std::memcpy(&id, buf + ins + 0x04, 4);
+        std::memcpy(&argLen, buf + ins + 0x08, 8);
+        std::memcpy(&argOff, buf + ins + 0x10, 4);
+        std::fprintf(f, "%llu: %u[%u] :", (unsigned long long)j, bank, id);
+        if (argOff >= 0 && argLen <= 0x1000 && (size_t)argsOff + argOff + argLen <= len)
+            for (uint64_t b = 0; b < argLen; b++)
+                std::fprintf(f, " %02X", buf[(size_t)argsOff + argOff + b]);
+        std::fprintf(f, "\n");
+    }
+    std::fclose(f);
+    spdlog::info("[EMEVDSCAN] dumped body of event {} ({}) -> {}", eventId,
+                 src.filename().string(), path.string());
+}
+
 void emevd_scan_file(const std::filesystem::path &p, int &hit_lines)
 {
     std::ifstream f(p, std::ios::binary);
@@ -207,6 +247,9 @@ void emevd_scan_file(const std::filesystem::path &p, int &hit_lines)
         const uint64_t instrCount = rd64(e + 0x08), instrOffset = rd64(e + 0x10);
         if (instrCount > 1000000u) continue;
         const size_t base = (size_t)instrTblOff + (size_t)instrOffset;
+        for (uint64_t de : kBodyDumpEvents)
+            if (eventId == de)
+                dump_event_body(p, eventId, buf, len, base, instrCount, argsOff);
         for (uint64_t j = 0; j < instrCount; ++j)
         {
             const size_t ins = base + (size_t)j * INSTR_SZ;
