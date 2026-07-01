@@ -29,6 +29,26 @@ SRC = REPO / "src" / "generated"
 
 # `extern <type...> <name>[];`  or  `extern <type...> <name>;`
 EXTERN_RE = re.compile(r"extern\s+(.+?)\s+(\w+)\s*(\[\s*\])?\s*;")
+# A free-function declaration: `<ret> <name>(<params>);` on its own line, no
+# `extern`. These live in namespace `goblin` (not ::generated) and the overlay /
+# quest_npc_layer reference them unconditionally, so the stub must DEFINE them too
+# or the non-err DLL fails to link (e.g. quest_step_done). Comment lines (start
+# with `/`) and the bracketed extern data decls are naturally excluded.
+FUNC_RE = re.compile(
+    r"^[ \t]*([A-Za-z_][\w:<>,*& ]*?[\w&*>])[ \t]+(\w+)[ \t]*\(([^;{}]*)\)[ \t]*;[ \t]*$",
+    re.M,
+)
+
+
+def _default_return(ret: str) -> str:
+    r = ret.strip()
+    if r == "void":
+        return ""
+    if r.endswith("*"):
+        return "    return nullptr;\n"
+    if "bool" in r.split():
+        return "    return false;\n"
+    return "    return {};\n"  # int / size_t / struct value
 
 
 def synth_cpp(name: str, hpp_text: str) -> str:
@@ -42,13 +62,22 @@ def synth_cpp(name: str, hpp_text: str) -> str:
         else:  # scalar / struct value
             defs.append(f"    {typ} {sym} = {{}};")
     body = "\n".join(defs) if defs else "    // (no extern symbols)"
-    return (
+    out = (
         f"// AUTO-GENERATED empty stub (non-err profile) — see tools/gen_nonerr_stubs.py.\n"
         f"// {name} is an ERR-only feature; this empty table makes the DLL link and the\n"
         f"// feature a no-op on this profile. Do not hand-edit.\n"
         f'#include "{name}.hpp"\n\n'
         f"namespace goblin::generated\n{{\n{body}\n}}\n"
     )
+    # No-op definitions for free functions (namespace goblin). Safe to call: the
+    # data tables above are empty, so any caller hits a count==0 / not-found path.
+    funcs = []
+    for m in FUNC_RE.finditer(hpp_text):
+        ret, fname, params = m.group(1).strip(), m.group(2), m.group(3).strip()
+        funcs.append(f"{ret} {fname}({params})\n{{\n{_default_return(ret)}}}")
+    if funcs:
+        out += "\nnamespace goblin\n{\n" + "\n".join(funcs) + "\n}\n"
+    return out
 
 
 def main():
@@ -72,12 +101,18 @@ def main():
             continue
         hpp_text = src_hpp.read_text(encoding="utf-8")
         dst_hpp, dst_cpp = dst / f"{name}.hpp", dst / f"{name}.cpp"
-        if not dst_hpp.exists():
+        # The .hpp is a VERBATIM copy of the ERR struct defs, which are
+        # profile-independent -- it must track schema changes, so always refresh
+        # it (a stale copy from before a schema migration silently breaks the
+        # build, e.g. QuestStep gaining progress_flag/entity_id). The .cpp stub is
+        # synthesized from the .hpp's extern decls below; refresh it in lockstep.
+        if not dst_hpp.exists() or dst_hpp.read_text(encoding="utf-8") != hpp_text:
             dst_hpp.write_text(hpp_text, encoding="utf-8")
             wrote += 1
             print(f"  + {dst_hpp.relative_to(REPO)}")
-        if not dst_cpp.exists():
-            dst_cpp.write_text(synth_cpp(name, hpp_text), encoding="utf-8")
+        cpp_text = synth_cpp(name, hpp_text)
+        if not dst_cpp.exists() or dst_cpp.read_text(encoding="utf-8") != cpp_text:
+            dst_cpp.write_text(cpp_text, encoding="utf-8")
             wrote += 1
             print(f"  + {dst_cpp.relative_to(REPO)}")
     print(f"[gen_nonerr_stubs] {profile}: wrote {wrote} stub file(s)")

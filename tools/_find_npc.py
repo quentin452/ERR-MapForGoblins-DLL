@@ -17,10 +17,19 @@ def rd(tn):
     return asm.GetType(tn).GetMethod('Read', BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy, None, Array[SysType]([_str]), None)
 _param_read = rd('SoulsFormats.PARAM'); _bnd = rd('SoulsFormats.BND4')
 _fmg = rd('SoulsFormats.FMG'); _msbe = rd('SoulsFormats.MSBE')
+_fn_seq = 0
 def frombytes(m, d, s):
-    t = os.path.join(tempfile.gettempdir(), str(os.getpid()) + '_fn' + s)
+    # Unique name PER CALL: SoulsFormats keeps the temp file memory-mapped for the
+    # process lifetime, so a per-process-fixed name collides on the 2nd read.
+    global _fn_seq; _fn_seq += 1
+    t = os.path.join(tempfile.gettempdir(), '%d_fn%d%s' % (os.getpid(), _fn_seq, s))
     SysFile.WriteAllBytes(t, d.ToArray() if hasattr(d, 'ToArray') else d)
-    r = m.Invoke(None, Array[Object]([t])); os.unlink(t); return r
+    r = m.Invoke(None, Array[Object]([t]))
+    # The mapping stays open, so unlink throws even though the read succeeded;
+    # best-effort cleanup, the OS reaps the temp dir anyway.
+    try: os.unlink(t)
+    except OSError: pass
+    return r
 def load_paramdefs():
     d = {}
     for x in config.PARAMDEF_DIR.glob('*.xml'):
