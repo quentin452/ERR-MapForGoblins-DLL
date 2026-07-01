@@ -106,7 +106,7 @@ namespace goblin::config
     bool debugClusterAnchors = false; // viz: pile anchor + member lines + name + d/thr
     bool debugRegionVolumes = false; // viz: draw each MapNameOverride volume + name
     bool showMinimap = false;
-    float minimapZoom = 0.08f;     // px per world-unit shown on the minimap
+    float minimapZoom = 0.15f;     // px per world-unit shown on the minimap
     float minimapSize = 130.0f;    // minimap radius in px
     float minimapOpacity = 0.85f;  // background disc opacity 0..1
     bool minimapAnchorRight = true;   // corner: right vs left
@@ -545,8 +545,8 @@ namespace
                   "Debug viz: draw every MapNameOverride region volume on the open map page at\nits projected centre + its name; RED = the textId does NOT resolve in the FMG\n(the bug), cyan = resolves. Off by default."),
                 B("show_minimap", showMinimap, "false",
                   "In-game minimap HUD: a small north-up minimap in a screen corner showing\nnearby goblin markers around the player during gameplay (not the pause-screen\nmap). OVERWORLD only for now (underground player position isn't reliable yet).\nFoundation/opt-in; off by default."),
-                IniEntry{"minimap_zoom", IniType::F32, &cfg::minimapZoom, "0.08",
-                  "Minimap zoom = pixels per world-unit. Higher = more zoomed-in (less area\nshown). 0.08 = default."},
+                IniEntry{"minimap_zoom", IniType::F32, &cfg::minimapZoom, "0.15",
+                  "Minimap zoom = pixels per world-unit. Higher = more zoomed-in (less area\nshown). 0.15 = default (raised from 0.08 -- user feedback 2026-07-01: the old\ndefault, and the old 0.30 slider max, both read as too zoomed-out/small)."},
                 IniEntry{"minimap_size", IniType::F32, &cfg::minimapSize, "130",
                   "Minimap radius in pixels. 130 = default."},
                 IniEntry{"minimap_opacity", IniType::F32, &cfg::minimapOpacity, "0.85",
