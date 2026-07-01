@@ -20,10 +20,16 @@ for Windows. Its limits are runtime RE (no live game/debugger here) and Oodle-on
 - clang-cl silently elides `__try` around a bare load — use `__try` around a **noinline CALL** for hot
   in-process reads. → `tooling/clang-cl-seh-noinline.md`
 
-## RE limits on Linux
+## RE on Linux (updated 2026-07-02 — the old "no live RE here" claim was WRONG)
 
-- No live runtime RE (Ghidra-on-running-game, Cheat Engine, RPM against a live `eldenring.exe`).
-  Prepare prompts/findings under `docs/re/` for the Windows machine instead.
+- The live game runs on THIS box (Proton, `~/Games/ERRv2.2.9.6`) and runtime RE works via
+  **in-DLL probes**: `src/goblin_param_scan.cpp` ([PARAMSCAN]/[EMEVDSCAN]/[ABPTEXT]/[ASSETRADAR]/
+  [ASSETCOUNT], `debug_logging`-gated; edit needles/dump lists + rebuild ~1 min, one game restart
+  per round) + offline python over the dumped .txt files. Proven end-to-end on Group 2
+  (`docs/re/linux_group2_prompt_binding_re_findings.md`). Default to this before reaching for the
+  Windows PC; see [[linux-runtime-re-options]] for the option ranking (ceserver+CE GUI untried).
+- Still Windows: Cheat Engine GUI comfort and the existing Ghidra project/scripts (Ghidra itself
+  runs natively on Linux — that's habit, not a constraint).
 - Oodle-compressed assets (some MSB/icon extraction) are blocked here; DCX_DFLT/zlib files are fine
   (e.g. talk-ESD via `tools/esd_dump`).
 - Linux can still parse disk MSBs, run the no-bake pipeline logic, and do all C++/Python/docs work.

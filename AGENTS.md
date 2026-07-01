@@ -40,7 +40,13 @@ Single memory store (important):
 Platform rule:
 
 - Most tasks are possible on both Linux and Windows.
-- Windows is preferred for Ghidra, Cheat Engine, Python RPM against a running game, and runtime RE.
+- Runtime RE is PROVEN on Linux via in-DLL probes (the game runs here under Proton): param/EMEVD/
+  FMG scans, dumps, asset radar — `src/goblin_param_scan.cpp` + `docs/memory/tooling/
+  linux-runtime-re-options.md`. Group 2 (Elevators/Smithing) was solved end-to-end this way
+  (2026-07-02, `docs/re/linux_group2_prompt_binding_re_findings.md`).
+- Windows keeps: Cheat Engine GUI comfort (interactive scans/structure dissection; ceserver from
+  Linux untried), the Ghidra project/scripts that already live there, and Oodle-compressed asset
+  EXTRACTION (in-process decompression works on Linux; offline does not).
 - Linux is fine for normal code/docs work, cross-builds, log analysis, and preparing RE prompts for Windows.
 
 Workflow:

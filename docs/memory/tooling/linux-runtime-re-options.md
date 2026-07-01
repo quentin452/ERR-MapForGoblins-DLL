@@ -13,7 +13,9 @@ tooling comfort" with "no live target". The live target is here; the tooling gap
 
 ## Candidate paths (untested unless noted, ranked by expected fit)
 
-1. **In-DLL instrumentation (proven, zero new tooling)** — we already do runtime RE from inside
+1. **In-DLL instrumentation — PROVEN 2026-07-02, now the default** (Group 2 solved end-to-end
+   with it: 9 probe rounds + offline python, `docs/re/linux_group2_prompt_binding_re_findings.md`;
+   reusable probes live in `src/goblin_param_scan.cpp`) — we already do runtime RE from inside
    the process: `goblin_field_probe`, `goblin_worldmap_probe`, bind-test/FORCELOAD dev panels,
    `[SIG]` AOB framework, F9 marker dump. In-process derefs are ~free (no wineserver IPC — see
    [[linux-rpm-walk-danger]]). Extending a probe + rebuild (~1 min cross-build) is often FASTER
@@ -37,8 +39,8 @@ tooling comfort" with "no live target". The live target is here; the tooling gap
   about the existing project/scripts on that box, not a real constraint.
 - Oodle-compressed asset extraction stays blocked on Linux ([[linux.md]]).
 
-## Next step (not started)
+## Status
 
-Pick ONE real RE task and trial path 2 (ceserver) against the live Proton game; if attach/scan
-works, write the recipe here and relax the platform rule in `AGENTS.md`/`docs/memory/linux.md`.
-Until then, default to path 1 (in-DLL probes) before reaching for the Windows PC.
+Path 1 proven + platform rule relaxed in `AGENTS.md`/`docs/memory/linux.md` (2026-07-02).
+Path 2 (ceserver + CE GUI) still untried — only needed for interactive unknown-value scans /
+structure dissection, which path 1 doesn't cover.
