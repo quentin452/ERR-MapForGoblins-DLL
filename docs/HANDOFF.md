@@ -2,10 +2,27 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01f (`feat/input-module` MERGED to master, F3 Alt+Tab keyboard-dead bug
-FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint text fix both landed — see
-recap directly below. Earlier same day: `feat/quest-npc-layer` and
-`feat/minimap-scale-cluster-search` also MERGED — their recaps follow below.)
+Last updated: 2026-07-01h (new plan scoped: overlay-only hot-reload + AI Playwright RPC loop — see
+directly below. Earlier same day recaps follow: `feat/input-module` MERGED to master, F3 Alt+Tab
+keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint text fix,
+`feat/quest-npc-layer` and `feat/minimap-scale-cluster-search` also MERGED.)
+
+## NEW PLAN (2026-07-01h) — overlay-only hot-reload + Route B AI Playwright loop, scoped not started
+
+`docs/plans/overlay_hot_reload_playwright_plan.md` — <user> wants to reload ONLY the ImGui overlay
+draw code live (no ERR restart) so an AI can screenshot the real running game via the already-
+proposed Route B debug RPC (`docs/memory/tooling/overlay-test-harness.md`), spot a DX or functional
+bug in minimap/worldmap/icons, fix it, hot-reload just that piece, and re-verify — a tight iterate
+loop against the real game (not the offline Route A mock harness, which is unaffected). 4 phases:
+(1) extract `draw_panel`/`draw_worldmap_markers`/`draw_minimap_hud` out of `goblin_overlay.cpp`
+behind a context-struct interface, no reload yet — pure refactor, verify zero behavior change; (2)
+split into its own DLL loaded via `LoadLibrary` + dev-only file-watch reload (ImGui-context-sharing
+and thread-safety are the real risks, not the LoadLibrary mechanics); (3) greenfield Route B RPC
+(no IPC exists in `src/` today) with commands incl. new `reload_overlay`; (4) wire the actual AI
+loop. `dx-bugs-backlog` items 11/12 are explicitly NOT good first loop targets (11 = deploy-hygiene
+double-DLL issue not a code bug, 12 already fixed) — pick a live backlog item once Phases 1–3 land.
+Windows-only (LoadLibrary/MinHook). Not started — fork an implementation branch when work begins,
+per `AGENTS.md`.
 
 ## ⚠️ IN PROGRESS ELSEWHERE (2026-07-01g) — build_pipeline.py deletion/migration running in a SEPARATE agent session right now
 
