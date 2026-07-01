@@ -15,8 +15,14 @@ instead: `LiveGrace` gained `bonfireSubCategoryId`; `goblin::grace_anchors()` la
 subCat→region-PlaceName(=subCat when it resolves)+tabId. Deleted `generated/goblin_grace_anchors.*` +
 `tools/build_grace_anchors.py` (−472 lines). Validated in-process vs the old bake first: tabId offset 0
 mismatch, all 15 deltas = stale bake (6 ERR dispMask-hidden spoilers the bake wrongly kept, 5 stale
-subCat, 4 stale m11 grid). `grace_position_index.json`/`build_grace_index.py` KEPT (offline per-marker
-location-name resolution). Graces now FULLY live: names + iconId-gate + positions + anchors.
+subCat, 4 stale m11 grid). Graces now FULLY live: names + iconId-gate + positions + anchors.
+
+**`grace_position_index.json` + `build_grace_index.py` REMOVED 2026-07-01** (baked-data removal, plan's
+"Grace positions" inventory row). They only fed `massedit_common.resolve_location_id_at`'s stacked-tile
+(Nokron/Siofra) subtitle refinement, which writes `.MASSEDIT` `textId2` — a DEAD pipeline output (the
+marker bake is an empty stub; all markers/subtitles are runtime). No compiled DLL consumer existed, so
+this is offline-pipeline-only cleanup (no rebuild/in-game check). `resolve_location_id_at` is kept
+(orphaned Phase-5 generator scripts still import it) but degraded to the tile-level `resolve_location_id`.
 
 **Gate = a per-grace field in `BonfireWarpParam`** (NOT a dungeon-type / areaNo rule):
 - `iconId = 1`  → normal grace (MENU_MAP_01_Bonfire) — 350 graces

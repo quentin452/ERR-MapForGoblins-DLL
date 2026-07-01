@@ -200,12 +200,6 @@ STAGES = [
           script='build_entity_index.py',
           also_scripts=['config.py']),
 
-    Stage('grace_index',
-          inputs=[REGULATION, MSGBND],
-          outputs=[DATA / 'grace_position_index.json'],
-          script='build_grace_index.py',
-          also_scripts=['config.py']),
-
     Stage('emevd_scan',
           inputs=[EVENT_DIR, REGULATION, DATA / 'msb_entity_index.json'],
           outputs=[DATA / 'emevd_lot_mapping.json'],
@@ -237,8 +231,7 @@ STAGES = [
                   DATA / 'boss_list.json',
                   DATA / 'enemy_tutorial_mapping.json',
                   DATA / 'tutorial_title_ids.json',
-                  DATA / 'tutorial_title_names.json',
-                  DATA / 'grace_position_index.json'],
+                  DATA / 'tutorial_title_names.json'],
           outputs=[MASSEDIT_OUT / 'Loot - Consumables.MASSEDIT',
                    MASSEDIT_OUT / 'Equipment - Armaments.MASSEDIT',
                    MASSEDIT_OUT / 'Quest - Progression.MASSEDIT',

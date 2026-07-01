@@ -88,51 +88,16 @@ def resolve_location_id(map_name):
     return loc_id
 
 
-# Lazy grace position index for per-marker location resolution
-_GRACE_INDEX = None
-
-
-def _load_grace_index():
-    global _GRACE_INDEX
-    if _GRACE_INDEX is not None:
-        return _GRACE_INDEX
-    p = DATA_DIR / 'grace_position_index.json'
-    if p.exists():
-        with open(p, encoding='utf-8') as f:
-            _GRACE_INDEX = json.load(f)
-    else:
-        _GRACE_INDEX = []
-    return _GRACE_INDEX
-
-
-# Tiles where multiple PlaceName regions are physically stacked in 3D inside
-# the same MSB. For these, the tile-level resolver picks one dominant region
-# for the whole tile and mislabels everything on the other vertical layer —
-# so we fall back to per-marker nearest-grace lookup. Everywhere else the
-# tile-level scheme is correct AND safer: regular caves have a single
-# canonical PlaceName per tile, and nearest-grace picks up unrelated
-# sub-regions that disagree with the tile's name.
-#
-# Known stacked case: m12_02 and m12_07 — Nokron, Eternal City sits above
-# Siofra River in both tiles.
-STACKED_REGION_TILES = {(12, 2), (12, 7)}
-
-
 def resolve_location_id_at(map_name, x, y, z):
     """Per-marker location resolution — the coarse baseline textId2.
 
-    Bakes the BASELINE location name from the tile/grace fallback. (A hybrid
-    sub-area resolver that overrode this at runtime via generated::LOCATION_ALT
-    was retired with the static bake — the table had no runtime consumer once
-    MAP_ENTRIES became an empty stub. See the Phase-2 pipeline cleanup.)
-
-    For tiles in STACKED_REGION_TILES, finds the nearest grace in the SAME
-    MSB tile by 3D Euclidean distance and returns its subCategoryId — a
-    valid PlaceName FMG entry (e.g. 12020 = "Nokron, Eternal City",
-    12070 = "Siofra River").
-
-    Everywhere else, defers to the tile-based `resolve_location_id` to keep
-    each tile's canonical PlaceName.
+    Returns the tile-level canonical PlaceName (0 for the overworld). The x/y/z
+    args are kept for call-site compatibility but are no longer used: the old
+    per-marker nearest-grace refinement for the stacked-region tiles
+    (m12_02 / m12_07, where Nokron, Eternal City sits above Siofra River) read
+    the baked grace_position_index.json, which has been dropped — graces resolve
+    live in the DLL via capture_live_graces(), and the .MASSEDIT text this fed
+    is itself a dead pipeline output.
     """
     parts = map_name.replace('.msb', '').split('_')
     if len(parts) < 4:
@@ -140,32 +105,6 @@ def resolve_location_id_at(map_name, x, y, z):
     area = int(parts[0][1:])
     if area in OVERWORLD_AREAS:
         return 0
-    try:
-        gx = int(parts[1])
-        gz = int(parts[2])
-    except ValueError:
-        return resolve_location_id(map_name)
-    if (area, gx) not in STACKED_REGION_TILES:
-        return resolve_location_id(map_name)
-    graces = _load_grace_index()
-    if not graces:
-        return resolve_location_id(map_name)
-    best = None
-    best_d2 = float('inf')
-    for g in graces:
-        if g.get('areaNo') != area:
-            continue
-        if g.get('gridX') != gx or g.get('gridZ') != gz:
-            continue
-        dx = x - g['x']
-        dy = y - g['y']
-        dz = z - g['z']
-        d2 = dx*dx + dy*dy + dz*dz
-        if d2 < best_d2:
-            best_d2 = d2
-            best = g
-    if best and best.get('subCategoryId', 0) > 0:
-        return int(best['subCategoryId'])
     return resolve_location_id(map_name)
 
 
