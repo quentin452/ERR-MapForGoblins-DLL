@@ -31,6 +31,13 @@ set(GEN_DIR "${CMAKE_SOURCE_DIR}/src/${GENERATED_SUBDIR}")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 
+# Phase 2 of docs/plans/overlay_hot_reload_playwright_plan.md — dev-only hot-reloadable overlay
+# render DLL. Slice A (this option): source-list scaffolding only, still builds ONE DLL either
+# way — `goblin_overlay_render.cpp` doesn't exist yet, so there is nothing to split into a second
+# target until Slice B moves the draw layer there. Default OFF: normal builds (build.bat,
+# build-linux) are untouched.
+option(GOBLIN_OVERLAY_HOTRELOAD "Build overlay draw layer as a separate hot-reloadable DLL (not yet implemented, see plan Slice B/C)" OFF)
+
 include(FetchContent)
 
 FetchContent_Declare(minhook
@@ -90,7 +97,25 @@ target_include_directories(imgui PUBLIC
   ${imgui_SOURCE_DIR}
   ${imgui_SOURCE_DIR}/backends)
 
-add_library( MapForGoblins SHARED
+# Phase 2 Slice A: source-list split matching the plan's scoped render-DLL boundary (the 5
+# src/worldmap/*.cpp files — everything else, incl. goblin_overlay.cpp itself, stays host-side
+# until Slice B extracts the draw functions into a new goblin_overlay_render.cpp). Both variables
+# feed the SAME single `MapForGoblins` target below for now — GOBLIN_OVERLAY_HOTRELOAD has no
+# effect yet, this only proves the list partition is inert before Slice B acts on it.
+set(GOBLIN_RENDER_SOURCES
+  src/worldmap/marker_layer.hpp
+  src/worldmap/grace_layer.hpp
+  src/worldmap/grace_layer.cpp
+  src/worldmap/quest_npc_layer.hpp
+  src/worldmap/quest_npc_layer.cpp
+  src/worldmap/category_meta.hpp
+  src/worldmap/category_meta.cpp
+  src/worldmap/map_entry_layer.hpp
+  src/worldmap/map_entry_layer.cpp
+  src/worldmap/map_renderer.hpp
+  src/worldmap/map_renderer.cpp)
+
+set(GOBLIN_HOST_SOURCES
   src/from/params.hpp
   src/from/params.cpp
   src/from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp
@@ -171,17 +196,6 @@ add_library( MapForGoblins SHARED
   src/generated_shared/goblin_overlay_icons.hpp
   src/generated_shared/goblin_overlay_icons.cpp
   src/stb_image_impl.cpp
-  src/worldmap/marker_layer.hpp
-  src/worldmap/grace_layer.hpp
-  src/worldmap/grace_layer.cpp
-  src/worldmap/quest_npc_layer.hpp
-  src/worldmap/quest_npc_layer.cpp
-  src/worldmap/category_meta.hpp
-  src/worldmap/category_meta.cpp
-  src/worldmap/map_entry_layer.hpp
-  src/worldmap/map_entry_layer.cpp
-  src/worldmap/map_renderer.hpp
-  src/worldmap/map_renderer.cpp
   src/worldmap/msbe_parser.hpp
   src/worldmap/msbe_parser.cpp
   src/worldmap/loot_disk.hpp
@@ -192,6 +206,15 @@ add_library( MapForGoblins SHARED
   src/worldmap/loot_open_probe.cpp
   src/goblin_crashdump.cpp
   src/dllmain.cpp)
+
+if(GOBLIN_OVERLAY_HOTRELOAD)
+  message(WARNING "GOBLIN_OVERLAY_HOTRELOAD has no effect yet — Slice B/C of "
+    "overlay_hot_reload_playwright_plan.md haven't landed, building the single-DLL shape regardless.")
+endif()
+
+add_library( MapForGoblins SHARED
+  ${GOBLIN_HOST_SOURCES}
+  ${GOBLIN_RENDER_SOURCES})
 
 set_target_properties(MapForGoblins PROPERTIES OUTPUT_NAME "MapForGoblins")
 
