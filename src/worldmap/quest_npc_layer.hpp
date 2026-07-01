@@ -9,17 +9,23 @@
 
 namespace goblin::worldmap
 {
-// A quest NPC found at RUNTIME in the active mod's EMEVD (load_quest_npcs) that has NO
-// hand-authored QUEST_BROWSER entry — joined by concluded == NpcQuest::fail_flag. The
-// Quest Browser shows these as a minimal FALLBACK (name + live state, no step prose) so
-// modded / not-yet-authored NPCs still appear (mod-agnostic; the quest analogue of the
-// circle fallback). `concluded` = its _q99 flag (live-read for [concluded]); [regLo,regHi]
-// = its state register; `pinEntity` = a placement to pin. Filled on the disk worker,
-// read on the render thread (whole-vector swap under a mutex).
+// A quest NPC found at RUNTIME in the active mod's EMEVD (load_quest_npcs) that is NOT
+// covered by a hand-authored QUEST_BROWSER entry's fail_flag — a fallback CANDIDATE. The
+// disk worker fills the disk-side fields ONLY (`npcParamId` from the MSB); the NAME is
+// resolved LAZILY on the render thread (npc_team_and_name reads LIVE NpcParam, which is
+// not ready on the early disk worker — that's why it must be deferred). The Quest Browser
+// resolves the name + the secondary name-coverage there, and shows the survivors as a
+// minimal fallback (name + live [concluded] state, no step prose) — the mod-agnostic quest
+// analogue of the circle fallback. `concluded` = _q99 flag; [regLo,regHi] = state register;
+// `pinEntity` = a placement to pin. Written on the disk worker, read on render (mutex swap).
 struct QuestFallbackNpc
 {
-    std::string name;
     uint32_t concluded = 0, regLo = 0, regHi = 0, pinEntity = 0;
+    // NpcParam ids of ALL the candidate's placements (from the MSB). The render tries each
+    // until one has a real NpcName (nameId > 0) — a quest NPC's first placement is often a
+    // logic param with nameId 0; the named row is a different phase's placement.
+    std::vector<uint32_t> npcParamIds;
+    std::string name;  // empty from the disk worker; filled at render
 };
 std::vector<QuestFallbackNpc> quest_fallback_npcs();          // render-thread: returns a copy
 void set_quest_fallback_npcs(std::vector<QuestFallbackNpc> v); // disk-worker: replaces the set

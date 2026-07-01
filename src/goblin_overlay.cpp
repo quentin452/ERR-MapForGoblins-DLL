@@ -2795,23 +2795,89 @@ namespace
                         ImGui::TreePop();
                     }
                     // Runtime FALLBACK: quest NPCs the active mod's EMEVD exposes (load_quest_npcs)
-                    // that have NO hand-authored entry above — modded / not-yet-authored. Minimal
-                    // view: name + live concluded state, no step prose (mod-agnostic fallback).
-                    std::vector<goblin::worldmap::QuestFallbackNpc> qfb =
-                        goblin::worldmap::quest_fallback_npcs();
-                    if (!qfb.empty())
+                    // not covered by a hand entry above — modded / not-yet-authored. The disk worker
+                    // gives raw candidates (concluded/register/npcParamId, NO name); resolve the NAME
+                    // (npc_team_and_name reads live NpcParam → must be here, not the disk worker) +
+                    // the secondary name-coverage HERE, cached (candidate set is set once). Minimal
+                    // view: name + live [concluded] state, no step prose (mod-agnostic fallback).
                     {
-                        snprintf(gh, sizeof(gh), "Other quests \xE2\x80\x94 auto-detected (%zu)", qfb.size());
-                        if (ImGui::TreeNodeEx(gh))
+                        std::vector<goblin::worldmap::QuestFallbackNpc> cand =
+                            goblin::worldmap::quest_fallback_npcs();
+                        static std::vector<goblin::worldmap::QuestFallbackNpc> s_qfb;
+                        static size_t s_qfb_gen = ~size_t{0};
+                        if (cand.size() != s_qfb_gen)
                         {
-                            ImGui::TextDisabled("Found in this mod's data; no step guide yet.");
-                            for (const auto &n : qfb)
+                            s_qfb_gen = cand.size();
+                            s_qfb.clear();
+                            // Hand coverage keys. name_id (FMG id) is LANGUAGE-INDEPENDENT — the
+                            // reliable join. Names (English) only weakly match a same-language FMG,
+                            // so keep them as a secondary signal only.
+                            std::unordered_set<int32_t> handNameIds;
+                            std::vector<std::string> handNames;
+                            for (size_t i = 0; i < goblin::generated::QUEST_BROWSER_COUNT; i++)
                             {
-                                bool done = goblin::ui::read_event_flag(n.concluded);
-                                ImGui::BulletText("%s  %s", n.name.c_str(),
-                                                  done ? "[concluded]" : "[in progress]");
+                                if (goblin::generated::QUEST_BROWSER[i].name_id)
+                                    handNameIds.insert((int32_t)goblin::generated::QUEST_BROWSER[i].name_id);
+                                if (goblin::generated::QUEST_BROWSER[i].name)
+                                {
+                                    std::string s = goblin::generated::QUEST_BROWSER[i].name;
+                                    for (char &c : s) c = (char)tolower((unsigned char)c);
+                                    handNames.push_back(std::move(s));
+                                }
                             }
-                            ImGui::TreePop();
+                            // Pass 1: resolve each candidate's (name, nameId); count nameId frequency
+                            // so GENERIC NPCs (merchants/mobs sharing one NpcName across many flags —
+                            // "Nomadic Merchant" ×N) drop out language-independently.
+                            std::vector<std::pair<std::string, int32_t>> resolved(cand.size());
+                            std::unordered_map<std::string, int> freq;  // by TEXT: merchants share distinct nameIds but identical text
+                            for (size_t i = 0; i < cand.size(); i++)
+                                for (uint32_t param : cand[i].npcParamIds)
+                                {
+                                    uint8_t team = 0;
+                                    int32_t nameId = 0;
+                                    if (goblin::npc_team_and_name(param, &team, &nameId) && nameId > 0)
+                                    {
+                                        std::string nm = goblin::lookup_text_utf8(nameId + 700000000);
+                                        if (!nm.empty()) { freq[nm]++; resolved[i] = {std::move(nm), nameId}; break; }
+                                    }
+                                }
+                            // Pass 2: keep only named, non-generic, hand-uncovered candidates.
+                            for (size_t i = 0; i < cand.size(); i++)
+                            {
+                                const std::string &nm = resolved[i].first;
+                                int32_t nameId = resolved[i].second;
+                                if (nm.empty()) continue;
+                                if (freq[nm] > 1) continue;               // generic (merchant/mob — same name on many flags)
+                                if (handNameIds.count(nameId)) continue;  // covered by a hand entry (language-independent)
+                                std::string ln = nm;
+                                for (char &ch : ln) ch = (char)tolower((unsigned char)ch);
+                                bool cov = false;
+                                for (const std::string &hn : handNames)
+                                    if (hn.size() >= 4 && (ln.find(hn) != std::string::npos || hn.find(ln) != std::string::npos))
+                                    { cov = true; break; }
+                                if (cov) continue;
+                                cand[i].name = nm;
+                                s_qfb.push_back(cand[i]);
+                            }
+                            if (!cand.empty())
+                                spdlog::info("[QUESTNPC] browser fallback: {} candidates -> {} shown "
+                                             "(hand-covered by {} name_ids + fail_flags)",
+                                             cand.size(), s_qfb.size(), (int)handNameIds.size());
+                        }
+                        if (!s_qfb.empty())
+                        {
+                            snprintf(gh, sizeof(gh), "Other quests \xE2\x80\x94 auto-detected (%zu)", s_qfb.size());
+                            if (ImGui::TreeNodeEx(gh))
+                            {
+                                ImGui::TextDisabled("Found in this mod's data; no step guide yet.");
+                                for (const auto &n : s_qfb)
+                                {
+                                    bool done = goblin::ui::read_event_flag(n.concluded);
+                                    ImGui::BulletText("%s  %s", n.name.c_str(),
+                                                      done ? "[concluded]" : "[in progress]");
+                                }
+                                ImGui::TreePop();
+                            }
                         }
                     }
                     ImGui::EndChild();

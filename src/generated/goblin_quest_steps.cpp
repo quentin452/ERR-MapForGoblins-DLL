@@ -378,9 +378,8 @@ static const QuestStep steps_jolan[] = {
 // warning shown amber in the overlay. Both default-omitted when not needed.
 const NpcQuest QUEST_BROWSER[] = {
     // Ranni's questline (interconnected cluster)
-    {"Ranni the Witch", "Ranni's Quest", "Hub of the Blaidd/Iji/Seluvis cluster", steps_ranni, 6},
-    {"Blaidd", "Blaidd's Quest", "Part of Ranni's questline", steps_blaidd, 4, false,
-     "Use Blaidd before pushing Ranni's quest too far; advancing it first can trap him and he later turns hostile."},
+    {"Ranni the Witch", "Ranni's Quest", "Hub of the Blaidd/Iji/Seluvis cluster", steps_ranni, 6, false, nullptr, 0u, false, 110600u},
+    {"Blaidd", "Blaidd's Quest", "Part of Ranni's questline", steps_blaidd, 4, false, "Use Blaidd before pushing Ranni's quest too far; advancing it first can trap him and he later turns hostile.", 0u, false, 121600u},
     // fail_flag 1034499202 = Iji dead/gone. MSB-CONFIRMED: Iji is entity
     // 1034490700 / 1034490711 (model c4604, "Smithing Master Iji") at m60_34_49 —
     // NOT 1034500710, which the MSB shows is RANNI (model c2050). His death handler
@@ -390,16 +389,12 @@ const NpcQuest QUEST_BROWSER[] = {
     // Seluvis's 1034509302. Earlier picks were ALL wrong: 1042600001 (a 19-bit
     // counter bit), 1034509403 (that is Ranni's resolver flag, entity 1034500710),
     // 1034502743 / 558. See docs/emevd_death_flags_results.md.
-    {"Iji", "Iji's Quest", "Part of Ranni's questline", steps_iji, 3, false,
-     "Siding with Seluvis's puppet scheme, or angering Ranni's enemies, can get Iji killed.",
-     1034499202u},
+    {"Iji", "Iji's Quest", "Part of Ranni's questline", steps_iji, 3, false, "Siding with Seluvis's puppet scheme, or angering Ranni's enemies, can get Iji killed.", 1034499202u, false, 122400u},
     // fail_flag 1034509302 = Seluvis dead (= seluvis_q99 "quest concluded" in the
     // QuestLog, his own 1034509* namespace). Isolated by intersecting TWO far
     // Seluvis-dead saves (Caelid + Morne) with the in-game kill-window capture;
     // verified persistent (true at both far spots) + clean (false while alive).
-    {"Seluvis", "Seluvis's Quest", "Part of Ranni's questline; crosses Nepheli", steps_seluvis, 4, false,
-     "Using his puppet potion on Nepheli permanently ends HER questline -- warn her instead to keep both.",
-     1034509302u},
+    {"Seluvis", "Seluvis's Quest", "Part of Ranni's questline; crosses Nepheli", steps_seluvis, 4, false, "Using his puppet potion on Nepheli permanently ends HER questline -- warn her instead to keep both.", 1034509302u, false, 130700u},
     // Sellen
     // fail_flag + fail_conclusion=true: these flags are the NPC's SHARED "_q99"
     // concluded flag (set on death OR peaceful completion), via the 90005702
@@ -407,41 +402,28 @@ const NpcQuest QUEST_BROWSER[] = {
     // (10000730), Kenneth 3583 (1045380700), Gowry 4163 (1050380700), Boc 3943
     // (11050730), Patches 3683 (31000701), Thops 3803 (1039390700). The overlay
     // greys these as "[concluded]" (done or gone), not "[unfinishable]/dead".
-    {"Sorceress Sellen", "Sellen's Quest", "Crosses Jerren, Lusat/Azur", steps_sellen, 5, false,
-     "Her finale forces an exclusive side (Sellen vs Jerren); pick knowing the other is lost.",
-     3463u, true},
+    {"Sorceress Sellen", "Sellen's Quest", "Crosses Jerren, Lusat/Azur", steps_sellen, 5, false, "Her finale forces an exclusive side (Sellen vs Jerren); pick knowing the other is lost.", 3463u, true, 131600u},
     // fail_flag 3363 = Jerren gone. MSB-confirmed: entity 14000716 / 14000717 =
     // "Witch-Hunter Jerren" (m14 Academy, Sellen finale); 90005702 sets 3363 ON.
-    {"Witch-Hunter Jerren", "Jerren's Quest", "Sellen's quest finale (Sellen vs Jerren)", steps_jerren, 3, false,
-     "Tied to Sellen's finale -- siding with one ends the other.", 3363u},
+    {"Witch-Hunter Jerren", "Jerren's Quest", "Sellen's quest finale (Sellen vs Jerren)", steps_jerren, 3, false, "Tied to Sellen's finale -- siding with one ends the other.", 3363u, false, 131201u},
     // Roundtable / Roderika
-    {"Roderika", "Roderika's Quest", "Crosses Hewg (Stormhill -> Roundtable)", steps_roderika, 4},
-    {"Smithing Master Hewg", "Hewg's Quest", "Crosses Roderika", steps_hewg, 3},
-    {"Nepheli Loux", "Nepheli's Quest", "Crosses Kenneth, Gideon, Dung Eater", steps_nepheli, 5, false,
-     "Do NOT use Seluvis's potion on her, or her questline ends.", 4223u, true},
-    {"Kenneth Haight", "Kenneth's Quest", "Feeds Nepheli's claim to Limgrave", steps_kenneth, 3, false, nullptr, 3583u, true},
-    {"Gideon Ofnir", "Gideon's Quest", "Touches many quests (Roundtable info-broker)", steps_gideon, 4},
+    {"Roderika", "Roderika's Quest", "Crosses Hewg (Stormhill -> Roundtable)", steps_roderika, 4, false, nullptr, 0u, false, 132001u},
+    {"Smithing Master Hewg", "Hewg's Quest", "Crosses Roderika", steps_hewg, 3, false, nullptr, 0u, false, 121300u},
+    {"Nepheli Loux", "Nepheli's Quest", "Crosses Kenneth, Gideon, Dung Eater", steps_nepheli, 5, false, "Do NOT use Seluvis's potion on her, or her questline ends.", 4223u, true, 133400u},
+    {"Kenneth Haight", "Kenneth's Quest", "Feeds Nepheli's claim to Limgrave", steps_kenneth, 3, false, nullptr, 3583u, true, 132100u},
+    {"Gideon Ofnir", "Gideon's Quest", "Touches many quests (Roundtable info-broker)", steps_gideon, 4, false, nullptr, 0u, false, 132400u},
     // Deathbed / Black Knife cluster
-    {"Fia, Deathbed Companion", "Fia's Quest", "Crosses D and Rogier (Deathroot/Godwyn)", steps_fia, 5, false,
-     "Crosses D and Rogier; the Cursemark of Death order and whether Fia slays D gate her ending.",
-     4123u, true},
-    {"D, Hunter of the Dead", "D's Quest", "Crosses Fia; D's brother continues it", steps_dhunter, 3, false,
-     "Conflicts with Fia -- if Fia slays D his armor passes to his brother, branching the thread.",
-     4043u, true},
-    {"Sorcerer Rogier", "Rogier's Quest", "Feeds Fia's quest (Black Knife)", steps_rogier, 4, false,
-     "Advance before the deathblight claims him; his notes are needed to push Fia's quest."},
+    {"Fia, Deathbed Companion", "Fia's Quest", "Crosses D and Rogier (Deathroot/Godwyn)", steps_fia, 5, false, "Crosses D and Rogier; the Cursemark of Death order and whether Fia slays D gate her ending.", 4123u, true, 132200u},
+    {"D, Hunter of the Dead", "D's Quest", "Crosses Fia; D's brother continues it", steps_dhunter, 3, false, "Conflicts with Fia -- if Fia slays D his armor passes to his brother, branching the thread.", 4043u, true, 131900u},
+    {"Sorcerer Rogier", "Rogier's Quest", "Feeds Fia's quest (Black Knife)", steps_rogier, 4, false, "Advance before the deathblight claims him; his notes are needed to push Fia's quest.", 0u, false, 132500u},
     // Golden Order
-    {"Goldmask", "Goldmask (Corhyn's Quest)", "Part of Corhyn's questline", steps_goldmask, 4},
-    {"Brother Corhyn", "Corhyn's Quest", "Searches for Goldmask", steps_corhyn, 5},
+    {"Goldmask", "Goldmask (Corhyn's Quest)", "Part of Corhyn's questline", steps_goldmask, 4, false, nullptr, 0u, false, 111200u},
+    {"Brother Corhyn", "Corhyn's Quest", "Searches for Goldmask", steps_corhyn, 5, false, nullptr, 0u, false, 135100u},
     // Millicent
-    {"Millicent", "Millicent's Quest", "Started by Gowry (Scarlet Rot)", steps_millicent, 5, false,
-     "Time/order-sensitive: needs Gowry's repaired needle, and her ending hinges on a late choice at the Haligtree.",
-     4183u, true},
-    {"Sage Gowry", "Gowry's Quest", "Starts Millicent's quest", steps_gowry, 3, false,
-     "Finish the needle repair before progressing Millicent too far, or her thread can stall.",
-     4163u, true},
+    {"Millicent", "Millicent's Quest", "Started by Gowry (Scarlet Rot)", steps_millicent, 5, false, "Time/order-sensitive: needs Gowry's repaired needle, and her ending hinges on a late choice at the Haligtree.", 4183u, true, 134800u},
+    {"Sage Gowry", "Gowry's Quest", "Starts Millicent's quest", steps_gowry, 3, false, "Finish the needle repair before progressing Millicent too far, or her thread can stall.", 4163u, true, 134900u},
     // Standalone-ish
-    {"Rya", "Rya's Quest", "Leads into Volcano Manor (Tanith)", steps_rya, 3},
+    {"Rya", "Rya's Quest", "Leads into Volcano Manor (Tanith)", steps_rya, 3, false, nullptr, 0u, false, 131300u},
     // name_id 122310 = "Boc the Seamster" FMG NpcName id (data/npc_name_text_map.json).
     // Per-step entity_id now MSB-sourced for steps 1/5/6 (see steps_boc above);
     // steps 2/3/4 stay 0 (no offline-disambiguable placement). progress_flag: only
@@ -453,24 +435,17 @@ const NpcQuest QUEST_BROWSER[] = {
     // flags are whole-questline "is active" gates, not per-step "is done" flags --
     // still wrong semantics to reuse for progress_flag.)
     {"Boc the Seamster", "Boc's Quest", nullptr, steps_boc, 6, false, nullptr, 3943u, true, 122310u},
-    {"Patches", "Patches' Quest", "Joins Volcano Manor (Tanith)", steps_patches, 5, false,
-     "Attacking or killing him at the wrong moment ends his merchant questline early.",
-     3683u, true},
+    {"Patches", "Patches' Quest", "Joins Volcano Manor (Tanith)", steps_patches, 5, false, "Attacking or killing him at the wrong moment ends his merchant questline early.", 3683u, true, 130900u},
     // fail_flag 3383 = Irina gone. MSB-confirmed: entity 1045340700 = "Irina of
     // Morne" (m60_45_34); 90005702 death handler + her quest resolver set 3383 ON.
-    {"Irina", "Irina's Quest", "Crosses Edgar (Castle Morne)", steps_irina, 3, false,
-     "Time-sensitive: settle Castle Morne before too much story progress, or Irina dies and Edgar turns hostile.",
-     3383u},
+    {"Irina", "Irina's Quest", "Crosses Edgar (Castle Morne)", steps_irina, 3, false, "Time-sensitive: settle Castle Morne before too much story progress, or Irina dies and Edgar turns hostile.", 3383u, false, 131000u},
     // fail_flag 3403 = Edgar gone. MSB-confirmed: entity 1045340705 / 1043310705
     // (Castle Morne) = "Castellan Edgar"; 90005702 death handler sets 3403 ON.
-    {"Edgar", "Edgar's Quest", "Crosses Irina (Castle Morne)", steps_edgar, 3, false,
-     "If Irina dies he becomes a hostile invader instead of finishing peacefully.",
-     3403u},
+    {"Edgar", "Edgar's Quest", "Crosses Irina (Castle Morne)", steps_edgar, 3, false, "If Irina dies he becomes a hostile invader instead of finishing peacefully.", 3403u, false, 131101u},
     // fail_flag 3623 = Yura dead/gone (EMEVD 90005702 death handler, entity
     // 1049530700; SetNetworkconnectedEventFlagID + SaveRequest -> persistent).
     // Death-distinct (his thread ends when he's killed/usurped by Shabriri).
-    {"Yura, Bloody Finger Hunter", "Yura's Quest", "Crosses Shabriri/Eleonora; touches Hyetta", steps_yura, 4, false,
-     "Shabriri usurps him late; some steps gate behind area progress.", 3623u},
+    {"Yura, Bloody Finger Hunter", "Yura's Quest", "Crosses Shabriri/Eleonora; touches Hyetta", steps_yura, 4, false, "Shabriri usurps him late; some steps gate behind area progress.", 3623u, false, 131800u},
     // COBAYE (Part 2): fail_flag = 1042369205 = a PERSISTED Varre-death flag,
     // found by diffing a Varre-ALIVE save vs the Varre-DEAD save (er-save-lib
     // errflags). LESSON: the Event-flag hook also logs TRANSIENT flags (1042365008
@@ -478,10 +453,8 @@ const NpcQuest QUEST_BROWSER[] = {
     // SAVE-PERSISTED flag. Other persisted death candidates from the same diff:
     // 1042365009 / 1042365010 / 1042365027. To disambiguate death-vs-completion,
     // re-check against a quest-COMPLETED save (must not also set on normal finish).
-    {"White Mask Varre", "Varre's Quest", "Mohg / Bloody Finger path", steps_varre, 5, false,
-     nullptr, 1042369205u},
-    {"Hyetta", "Hyetta's Quest", "Frenzied Flame; crosses Shabriri/Yura", steps_hyetta, 4, false,
-     "Frenzied Flame path -- the final step is a point of no return that changes your ending."},
+    {"White Mask Varre", "Varre's Quest", "Mohg / Bloody Finger path", steps_varre, 5, false, nullptr, 1042369205u, false, 130100u},
+    {"Hyetta", "Hyetta's Quest", "Frenzied Flame; crosses Shabriri/Yura", steps_hyetta, 4, false, "Frenzied Flame path -- the final step is a point of no return that changes your ending.", 0u, false, 131011u},
     // name_id 122000 = "Alexander, Warrior Jar" FMG NpcName id (data/npc_name_text_map.json).
     // progress_flag/entity_id at default 0 for every step -- see the Boc entry above for why.
     {"Iron Fist Alexander", "Alexander's Quest", "Gives Alexander's Innards to Jar-Bairn", steps_alexander, 5, false,
@@ -489,11 +462,9 @@ const NpcQuest QUEST_BROWSER[] = {
      0u, false, 122000u},
     // fail_flag 3443 = Diallos dead/gone (EMEVD 90005702 death handler, entity
     // 1039440710 at Jarburg; persistent). Death-distinct (he falls defending Jarburg).
-    {"Diallos", "Diallos's Quest", "Crosses Jar-Bairn (Jarburg)", steps_diallos, 5, false, nullptr, 3443u},
-    {"Jar-Bairn", "Jar-Bairn's Quest", "Crosses Diallos and Alexander (Jarburg)", steps_jarbairn, 4, false,
-     "His outcome is tied to Diallos and to giving Alexander's Innards -- order matters across the three."},
-    {"Latenna", "Latenna's Quest", "Albinauric / Haligtree path", steps_latenna, 4, false,
-     "Needs the right Haligtree medallion half from Albus first."},
+    {"Diallos", "Diallos's Quest", "Crosses Jar-Bairn (Jarburg)", steps_diallos, 5, false, nullptr, 3443u, false, 131401u},
+    {"Jar-Bairn", "Jar-Bairn's Quest", "Crosses Diallos and Alexander (Jarburg)", steps_jarbairn, 4, false, "His outcome is tied to Diallos and to giving Alexander's Innards -- order matters across the three.", 0u, false, 122600u},
+    {"Latenna", "Latenna's Quest", "Albinauric / Haligtree path", steps_latenna, 4, false, "Needs the right Haligtree medallion half from Albus first.", 0u, false, 122800u},
     // name_id 133300 = "Sorcerer Thops" FMG NpcName id (data/npc_name_text_map.json).
     // entity_id now MSB-sourced for steps 1/2/3 (see steps_thops above); step 4 (his
     // corpse) stays 0. The candidate entity_id 1039390700 from the fail_flag block was
@@ -503,16 +474,14 @@ const NpcQuest QUEST_BROWSER[] = {
     {"Sorcerer Thops", "Thops's Quest", nullptr, steps_thops, 4, false, nullptr, 3803u, true, 133300u},
     // fail_flag 1051430800 = Gurranq dead (EMEVD 90005860 boss death handler,
     // entity 1051430800 at the Bestial Sanctum; flag id == entity id, persistent).
-    {"Gurranq, Beast Clergyman", "Gurranq's Quest", "Deathroot deliveries", steps_gurranq, 4, false, nullptr, 1051430800u},
-    {"Dung Eater", "Dung Eater's Quest", "Crosses Nepheli (Seedbed Curses)", steps_dungeater, 4, false,
-     "Mutually exclusive ending -- empower him OR hunt him down, not both.",
-     4243u, true},
+    {"Gurranq, Beast Clergyman", "Gurranq's Quest", "Deathroot deliveries", steps_gurranq, 4, false, nullptr, 1051430800u, false, 120200u},
+    {"Dung Eater", "Dung Eater's Quest", "Crosses Nepheli (Seedbed Curses)", steps_dungeater, 4, false, "Mutually exclusive ending -- empower him OR hunt him down, not both.", 4243u, true, 132300u},
     // fail_flag 3883 = Bernahl dead/gone (= bernahl_q99). His CharacterDead(16000800)
     // boss death (Farum Azula) gates the persistent conclusion flag 3883 set in
     // common.emevd. Death-distinct (recusant turn ends his recruitable thread).
-    {"Knight Bernahl", "Bernahl's Quest", "Volcano Manor / Recusant", steps_bernahl, 4, false, nullptr, 3883u},
-    {"Tanith (Volcano Manor)", "Volcano Manor (Tanith)", "Hub of Volcano Manor (Rya, Bernahl)", steps_tanith, 4},
-    {"Vyke", "Vyke's Quest", "Bloody Finger invader / Mountaintops boss", steps_vyke, 3},
+    {"Knight Bernahl", "Bernahl's Quest", "Volcano Manor / Recusant", steps_bernahl, 4, false, nullptr, 3883u, false, 132600u},
+    {"Tanith (Volcano Manor)", "Volcano Manor (Tanith)", "Hub of Volcano Manor (Rya, Bernahl)", steps_tanith, 4, false, nullptr, 0u, false, 130000u},
+    {"Vyke", "Vyke's Quest", "Bloody Finger invader / Mountaintops boss", steps_vyke, 3, false, nullptr, 0u, false, 130400u},
 
     // ── 14 Shadow of the Erdtree DLC questlines ──────────────────────────
     // DLC follower fail_flags found via the TalkESD pipeline (tools/mine_talkesd_flags
@@ -520,34 +489,20 @@ const NpcQuest QUEST_BROWSER[] = {
     // "dead/gone" flag (bootstrapped from Patches flag1=3683=dead). Confirmed
     // persistent in EMEVD as networkconnected blocks 44X0-44X3 (dead = 44X3); Ansbach
     // & Freyja also have explicit 90005702 death handlers at m21_01 (the Leda fight).
-    {"Needle Knight Leda", "Leda's Quest", "Hub of the DLC group; converges at Enir-Ilim", steps_leda, 5, true,
-     "Hub of the followers -- siding with Leda at Shadow Keep cuts down Hornsent/Ansbach and locks their branches.",
-     4443u},
-    {"Hornsent", "Hornsent's Quest", "Leda's group; gold/red summon at Shadow Keep", steps_hornsent, 5, true,
-     "At Shadow Keep, siding with Leda (red sign) kills him and locks his rewards.", 4363u},
-    {"Redmane Freyja", "Freyja's Quest", "Leda's group; crosses Ansbach (letter)", steps_freyja, 5, true,
-     "Speak with her BEFORE giving Ansbach the Secret Rite Scroll, or her questline is locked out.", 4423u},
-    {"Sir Ansbach", "Ansbach's Quest", "Leda's group (Mohg's servant); crosses Freyja", steps_ansbach, 6, true,
-     "Giving the Secret Rite Scroll before speaking to Freyja locks HER quest; the Leda fight side-choice decides if he lives.",
-     4403u},
-    {"Moore", "Moore's Quest", "Leda's group; crosses Thiollier (Black Syrup)", steps_moore, 5, true,
-     "His answer to 'how to face sorrow' decides whether he turns hostile at Enir-Ilim."},
-    {"Thiollier", "Thiollier's Quest", "Leda's group; crosses St. Trina / Florissax", steps_thiollier, 5, true,
-     "Reach St. Trina before he leaves; his Concoction is also needed for Florissax's true reward.", 4463u},
-    {"Fire Knight Queelign", "Queelign's Quest", "Messmer's flame; Iris of Grace/Occultation", steps_queelign, 3, true,
-     "Exclusive reward: Iris of Grace gives his spirit ash, Iris of Occultation gives his weapon -- not both."},
-    {"Igon", "Igon's Quest", "Bayle the Dread; crosses Florissax (concoction)", steps_igon, 5, true,
-     "Summon him at Bayle's arena before finishing the fight, or you miss his send-off.",
-     4263u, true},
-    {"Hornsent Grandam", "Grandam's Quest", "Belurat storeroom (NOT the Hornsent companion)", steps_grandam, 3, true, nullptr, 4483u, true},
-    {"Dryleaf Dane", "Dane's Quest", "Leda's group; bare-handed duel at Moorth", steps_dane, 5, true, nullptr, 4563u},
-    {"Dragon Communion Priestess", "Florissax's Quest", "Dragon path; crosses Igon and Thiollier", steps_florissax, 4, true,
-     "Her true reward needs Thiollier's Concoction given at night BEFORE you kill Bayle."},
-    {"Count Ymir, High Priest", "Ymir's Quest", "Manus Metyr / Finger questline; crosses Jolan", steps_ymir, 6, true,
-     "Runs parallel to Jolan -- finish the Finger ruins and Metyr before his final turn."},
-    {"Swordhand of Night Jolan", "Jolan's Quest", "Ymir's guard; crosses Anna and Rakshasa", steps_jolan, 4, true,
-     "Parallel to Ymir; the Iris choice (Grace vs Occultation) is exclusive."},
-    {"St. Trina", "St. Trina's Quest", "Crosses Thiollier (Stone Coffin Fissure)", steps_sttrina, 3, true},
+    {"Needle Knight Leda", "Leda's Quest", "Hub of the DLC group; converges at Enir-Ilim", steps_leda, 5, true, "Hub of the followers -- siding with Leda at Shadow Keep cuts down Hornsent/Ansbach and locks their branches.", 4443u, false, 141800u},
+    {"Hornsent", "Hornsent's Quest", "Leda's group; gold/red summon at Shadow Keep", steps_hornsent, 5, true, "At Shadow Keep, siding with Leda (red sign) kills him and locks his rewards.", 4363u, false, 141400u},
+    {"Redmane Freyja", "Freyja's Quest", "Leda's group; crosses Ansbach (letter)", steps_freyja, 5, true, "Speak with her BEFORE giving Ansbach the Secret Rite Scroll, or her questline is locked out.", 4423u, false, 141700u},
+    {"Sir Ansbach", "Ansbach's Quest", "Leda's group (Mohg's servant); crosses Freyja", steps_ansbach, 6, true, "Giving the Secret Rite Scroll before speaking to Freyja locks HER quest; the Leda fight side-choice decides if he lives.", 4403u, false, 141600u},
+    {"Moore", "Moore's Quest", "Leda's group; crosses Thiollier (Black Syrup)", steps_moore, 5, true, "His answer to 'how to face sorrow' decides whether he turns hostile at Enir-Ilim.", 0u, false, 141500u},
+    {"Thiollier", "Thiollier's Quest", "Leda's group; crosses St. Trina / Florissax", steps_thiollier, 5, true, "Reach St. Trina before he leaves; his Concoction is also needed for Florissax's true reward.", 4463u, false, 141900u},
+    {"Fire Knight Queelign", "Queelign's Quest", "Messmer's flame; Iris of Grace/Occultation", steps_queelign, 3, true, "Exclusive reward: Iris of Grace gives his spirit ash, Iris of Occultation gives his weapon -- not both.", 0u, false, 141300u},
+    {"Igon", "Igon's Quest", "Bayle the Dread; crosses Florissax (concoction)", steps_igon, 5, true, "Summon him at Bayle's arena before finishing the fight, or you miss his send-off.", 4263u, true, 140300u},
+    {"Hornsent Grandam", "Grandam's Quest", "Belurat storeroom (NOT the Hornsent companion)", steps_grandam, 3, true, nullptr, 4483u, true, 140200u},
+    {"Dryleaf Dane", "Dane's Quest", "Leda's group; bare-handed duel at Moorth", steps_dane, 5, true, nullptr, 4563u, false, 142500u},
+    {"Dragon Communion Priestess", "Florissax's Quest", "Dragon path; crosses Igon and Thiollier", steps_florissax, 4, true, "Her true reward needs Thiollier's Concoction given at night BEFORE you kill Bayle.", 0u, false, 140600u},
+    {"Count Ymir, High Priest", "Ymir's Quest", "Manus Metyr / Finger questline; crosses Jolan", steps_ymir, 6, true, "Runs parallel to Jolan -- finish the Finger ruins and Metyr before his final turn.", 0u, false, 142000u},
+    {"Swordhand of Night Jolan", "Jolan's Quest", "Ymir's guard; crosses Anna and Rakshasa", steps_jolan, 4, true, "Parallel to Ymir; the Iris choice (Grace vs Occultation) is exclusive.", 0u, false, 140900u},
+    {"St. Trina", "St. Trina's Quest", "Crosses Thiollier (Stone Coffin Fissure)", steps_sttrina, 3, true, nullptr, 0u, false, 140500u},
 };
 const size_t QUEST_BROWSER_COUNT = sizeof(QUEST_BROWSER) / sizeof(QUEST_BROWSER[0]);
 

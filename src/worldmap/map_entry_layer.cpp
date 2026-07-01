@@ -1840,59 +1840,41 @@ void build_buckets_impl()
         if (wantQuestNpcs)
         {
             std::vector<QuestNpcRuntime> qnpcs = load_quest_npcs();
-            auto lc = [](std::string s) { for (char &c : s) c = (char)std::tolower((unsigned char)c); return s; };
-            // A hand-authored entry "covers" a runtime NPC by EITHER its _q99 fail_flag
-            // (concluded match) OR its name — many hand entries have no fail_flag wired, so a
-            // flag-only join would duplicate them into the fallback. Names differ (hand "Gowry"
-            // vs FMG "Sage Gowry"), so match by substring either way (min len 4).
+            // Flag-coverage (the only join possible here — NAMES are resolved at render, since
+            // npc_team_and_name reads live NpcParam which isn't ready on this early worker).
             std::unordered_set<uint32_t> handFail;
-            std::vector<std::string> handNames;
             for (size_t qi = 0; qi < gen::QUEST_BROWSER_COUNT; ++qi)
-            {
                 if (gen::QUEST_BROWSER[qi].fail_flag) handFail.insert(gen::QUEST_BROWSER[qi].fail_flag);
-                if (gen::QUEST_BROWSER[qi].name) handNames.push_back(lc(gen::QUEST_BROWSER[qi].name));
-            }
             // entity → npcParamId from THIS pass's disk enemies (wantEnemies ⊇ wantQuestNpcs).
             std::unordered_map<uint32_t, uint32_t> ent2param;
             for (const DiskEnemy &en : disk_enemies)
                 if (en.entityId) ent2param.emplace(en.entityId, en.npcParamId);
-            std::vector<QuestFallbackNpc> fb;
+            // Candidates = runtime NPCs NOT covered by a hand fail_flag, with a valid _q99 and a
+            // named-enemy placement (npcParamId) so the render side can resolve a name. Name +
+            // secondary name-coverage + the [concluded] state happen in the Quest Browser.
+            std::vector<QuestFallbackNpc> cand;
             int covered = 0, filtered = 0;
             for (const QuestNpcRuntime &q : qnpcs)
             {
-                if (q.concluded == 0 || q.concluded >= 100000u) { ++filtered; continue; } // 10-digit = entity-death variant, not a quest _q99
-                // Resolve a display name via any placement's NpcParam → nameId → NpcName FMG.
+                if (q.concluded == 0 || q.concluded >= 100000u) { ++filtered; continue; } // 10-digit = entity-death variant
+                if (handFail.count(q.concluded)) { ++covered; continue; }                 // hand entry handles it
                 QuestFallbackNpc n;
                 for (uint32_t e : q.entities)
                 {
                     auto it = ent2param.find(e);
                     if (it == ent2param.end() || !it->second) continue;
-                    uint8_t team = 0;
-                    int32_t nameId = 0;
-                    if (goblin::npc_team_and_name(it->second, &team, &nameId) && nameId > 0)
-                    {
-                        std::string t = goblin::lookup_text_utf8(nameId);
-                        if (!t.empty()) { n.name = std::move(t); n.pinEntity = e; break; }
-                    }
+                    if (!n.pinEntity) n.pinEntity = e;  // first placeable entity → map pin
+                    if (std::find(n.npcParamIds.begin(), n.npcParamIds.end(), it->second) == n.npcParamIds.end())
+                        n.npcParamIds.push_back(it->second);
                 }
-                if (n.name.empty()) { ++filtered; continue; }  // no FMG name → generic/noise, skip
-                bool cov = handFail.count(q.concluded) != 0;
-                if (!cov)
-                {
-                    std::string ln = lc(n.name);
-                    for (const std::string &hn : handNames)
-                        if (hn.size() >= 4 && (ln.find(hn) != std::string::npos || hn.find(ln) != std::string::npos))
-                        { cov = true; break; }
-                }
-                if (cov) { ++covered; continue; }  // a hand-authored entry already shows this NPC
-                n.concluded = q.concluded;
-                n.regLo = q.regLo;
-                n.regHi = q.regHi;
-                fb.push_back(std::move(n));
+                if (n.npcParamIds.empty()) { ++filtered; continue; }  // no enemy placement → can't name it
+                n.concluded = q.concluded; n.regLo = q.regLo; n.regHi = q.regHi;
+                cand.push_back(std::move(n));
             }
-            spdlog::info("[QUESTNPC] runtime: {} NPCs → {} fallback (browser), {} hand-covered, {} filtered",
-                         (int)qnpcs.size(), (int)fb.size(), covered, filtered);
-            set_quest_fallback_npcs(std::move(fb));
+            spdlog::info("[QUESTNPC] runtime: {} NPCs → {} fallback-candidates, {} flag-covered, {} filtered "
+                         "(names + name-coverage resolved at render)",
+                         (int)qnpcs.size(), (int)cand.size(), covered, filtered);
+            set_quest_fallback_npcs(std::move(cand));
         }
         if (goblin::config::worldFeaturesFromDisk)
         {
