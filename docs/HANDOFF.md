@@ -16,34 +16,40 @@ something not below, check `docs/changelog.md` first, then the relevant `docs/pl
 Last updated: 2026-07-01z9 (overlay_hot_reload_playwright_plan Phase 2 Slices A/B/C all MERGED to
 `master` except Slice C's `LoadLibrary` mechanism — see below).
 
-## MapGenie category coverage — GROUP 1: landmarks landed, farmables deferred (2026-07-01)
+## MapGenie category coverage — GROUP 1 MERGED; GROUP 2 (Portal) RE in progress (2026-07-01)
 
-Branch `feat/mapgenie-group1-landmarks` (off master, 1 commit). Adds 6 landmark map categories
-(`World - Divine Towers / Evergaols / Minor Erdtrees / Grand Lifts / Dungeons / Legacy Dungeons`)
-built LIVE from `WorldMapPointParam.iconId` — `build_live_landmarks()` in
-`src/worldmap/map_entry_layer.cpp`, same pattern as `build_live_bosses()`. Mod-agnostic, no bake;
-iconId map + zero-overlap-with-bosses re-verified off-disk (`tools/verify_worldmap_iconids.py`).
-clang-cl+xwin cross-build links clean. All 6 default OFF (World-section `show_*` toggles). Ghost =
-NPC invader = existing `WorldHostileNPC` (already shipped, no new work). **IN-GAME CONFIRMED on ERR
-(2026-07-01):** deployed to `dll/offline/`, `[LANDMARKLIVE] built 114` (counts match off-disk exactly),
-`[SIG] 29/29 clean`, `[BOSSLIVE] 217` unchanged, no crash; **positions correct in-game (user).**
+**GROUP 1 landmarks — MERGED to master + ERR in-game confirmed.** 6 `World -
+DivineTowers/Evergaols/MinorErdtrees/GrandLifts/Dungeons/LegacyDungeons` built LIVE from
+`WorldMapPointParam.iconId` (`build_live_landmarks()`, `src/worldmap/map_entry_layer.cpp`). `[LANDMARKLIVE]
+built 114` (counts match off-disk), positions correct. Ghost = existing `WorldHostileNPC` (no work). All
+default OFF. Circle-glyph followup outstanding (task chip spawned; see memory note).
+
+**Miquella's Cross — added (branch `feat/mapgenie-group2-portal`).** DLC iconId 208 (13 rows) reuses the
+same landmark pass — one enum entry + iconId branch. Built clean, deployed to `dll/offline/`. Restart ERR
++ grep `[LANDMARKLIVE]` (should now show `MiquellaCross 13`). Default OFF.
+
+**Portal (39) — RE done, NOT a clean add. See `docs/re/windows_portal_aeg_re_findings.md`.** Model
+IDENTIFIED: **`AEG099_510`** = the sending-gate asset (WMPP "Sending Gate" row sits 0.4u on it). BUT it
+has 180 placements (all entity-bearing): only ~13 are map-scripted interactive gates; ~148 are a shared
+`10456xxxx` range dominated by a 94-member decorative cluster in Leyndell. `entity_required` does NOT
+filter it. Isolating the ~39 real portals needs an **EMEVD warp-template join** (find the sending-gate
+warp event's entity arg — same shape as the existing `seal_emevd`/`hero_tomb_emevd` joins). NOT wired yet.
 
 **Next, in order:**
-1. **Non-ERR mod-agnostic check + merge.** ERR positions confirmed. Still open: verify on a non-ERR
-   install (me3 CLI, `docs/memory/tooling/me3-cli-nonerr-launch.md`) — landmark counts should track
-   that install's WMPP (vanilla has different rows, same iconId semantics). On pass, merge to master.
-2. **Followup (user "for later") — landmark GLYPHS.** They draw as plain teal circles now. Each WMPP
-   row carries a real iconId → resolvable via disk `map_point_rect(iconId)` (`SB_MapCursor`, mod-
-   agnostic). Quick win: `category_gpu_iconId` rows for the 4 single-value categories (DivineTower→23,
-   Evergaol→9, MinorErdtree→30, GrandLift→21). Dungeon/LegacyDungeon are multi-iconId → need the
-   marker's own source iconId plumbed through `push_marker` (bosses share this gap). See the memory note.
-3. **GROUP 2** — the ~half of MapGenie categories NOT in `WorldMapPointParam` (Smithing Table,
-   Portal, Hidden Passage, Martyr Effigy, Stone Cairn, …): disk MSB/AEG pass, category by category.
-   See RE findings Tier 2(B).
-4. **Deferred (user) — the 2 Farmable categories** (`WorldFarmableEnemy` +
-   `WorldFarmableCollectible`). MFG-original; each hit a real design fork (no clean live boss signal
-   → FarmableEnemy floods + can't exclude fog-gated bosses; FarmableCollectible is a routing choice).
-   Gate mechanics stay valid. Full rationale in `docs/plans/mapgenie_category_coverage_plan.md`.
+1. **Merge Miquella's Cross + decide Portal depth.** Miquella's Cross is a clean, buildable add — merge
+   `feat/mapgenie-group2-portal` once its `[LANDMARKLIVE] MiquellaCross 13` is confirmed in-game. For
+   Portal, pick: (a) do the EMEVD warp-template scan (`tools/datamine_emevd_*.py` style) to isolate the
+   ~39, or (b) pivot to an easier Group-2 category first (Smithing Table = 1 AEG model; Elevator = AEG
+   lift models) and return to Portal with the EMEVD tooling. Model fact `AEG099_510` is solid either way.
+2. **Landmark GLYPHS followup (user "for later").** Circle now; each WMPP row has a real iconId →
+   `map_point_rect(iconId)` (`SB_MapCursor`). Quick win: `category_gpu_iconId` for the 4 single-value
+   categories (DivineTower→23/Evergaol→9/MinorErdtree→30/GrandLift→21). Dungeon/LegacyDungeon/MiquellaCross
+   need per-marker source iconId through `push_marker` (bosses share this gap). Task chip spawned.
+3. **Rest of GROUP 2** — Smithing Table (1, one AEG model), Elevator (40, AEG lift models), Hidden Passage
+   (59, illusory walls — likely EMEVD/hit, hard), Wandering Mausoleum (dynamic, hard). Martyr Effigy =
+   already `WorldSummoningPools`; Dragon Shrine folds into Churches; Landmark(172) = editorial → skip.
+4. **Deferred (user) — the 2 Farmable categories** (`WorldFarmableEnemy` + `WorldFarmableCollectible`).
+   Real design forks. Full rationale in `docs/plans/mapgenie_category_coverage_plan.md`.
 
 ## RESUME HERE (2026-07-01z9) — overlay_hot_reload_playwright_plan Slice C nearly done, only LoadLibrary mechanism left
 
