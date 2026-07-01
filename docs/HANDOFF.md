@@ -9,13 +9,35 @@ recap directly below. Earlier same day: `feat/quest-npc-layer` and
 
 ## ⚠️ IN PROGRESS ELSEWHERE (2026-07-01g) — build_pipeline.py deletion/migration running in a SEPARATE agent session right now
 
-**Do not edit `tools/build_pipeline.py`, `build.bat`, or `tools/generate_data.py` in this
-session/branch — a parallel agent is actively doing this deletion/migration per direct user
-instruction ("supprimer build_pipeline.py, on a déjà une path disk").** Recording findings here
-so nothing gets lost / re-derived, and so this session's own work (input-module refactor, F3 fix,
-minimap fixes below) doesn't collide with whatever lands there.
+**STATUS 2026-07-01g (the baked-data agent — this is now ACTED ON, not just planned):** the
+"supprimer build_pipeline.py, on a déjà une path disk" instruction was scoped into a real plan and
+Phase 1 landed. Key correction to the original framing: **`build_pipeline.py` can NOT be deleted now
+— it is the LAST step (Phase 5), not the first.** It still generates the authored tables compiled
+into the DLL (`category_exceptions`, `name_aliases`, `world_feature_models`, boss list, region
+tables) that have no runtime source yet, and `build.bat` calls it 3×. Deleting it now breaks every
+build. Authoritative plan: **`docs/plans/baked_data_full_removal_plan.md`** (full inventory + 6-phase
+sequencing + the post-Phase-1 findings that reframe Phase 2). What landed / what's next:
 
-**Findings gathered here before handing off (not yet acted on):**
+- **DONE — Phase 1 (enemy names), merged `5b24392` + deployed + in-game-verified on ERR.** The
+  `goblin_enemy_names` +900M TutorialTitle bake was DEAD (fed the retired `MAP_ENTRIES`;
+  `MAP_ENTRY_COUNT==0`, log `[COVERAGE] baked=0`). Removed it (injection, generated files, CMake
+  entries, `generate_data.py` emitter, pipeline output ref, `extract_enemy_names_i18n.py`). Enemy-drop
+  labels resolve mod-agnostic via `npcParamId → NpcParam.nameId → GetMessage(NpcName)` (shipped
+  hostile-NPC path). Log after deploy: 0 errors, GETMESSAGE PASS, SANITIZE cleared 0. Offline
+  feasibility tool: `tools/verify_enemy_name_runtime.py`.
+- **LANDMINE Phase 1 created:** local non-ERR bakes are stale (`generated_vanilla` MAP_ENTRY_COUNT
+  **6916**, `generated_convergence` **7448**; ERR/erte = 0) and still reference the now-deleted +900M
+  resolver → **any non-ERR build shows empty enemy labels until regenerated to the empty stub.** So
+  `generated_data_removal_plan.md` **Phase A (regen non-ERR) is the immediate next step**, no longer
+  optional. Blocked on a machine that can build non-ERR (2026-07-01 dev machine can't — CMake configure
+  fails there).
+- **NEXT PRs (evidence-based, in the plan):** (1) Phase A regen non-ERR + vanilla in-game sanity;
+  (2) cull the ~14 dead `generate_*_massedit` stages (`generate_map_data_cpp` is an unconditional empty
+  stub → their `.MASSEDIT` output is read by nothing) — but KEEP `generate_loot_massedit`'s JSON half
+  (`loot_lot_linkage.json`/`item_icon_table.json` still feed compiled tables); (3) migrate
+  `item_icon_table.json` (ERR-frozen placed-item set) to runtime; (4) Phase 5 retire the pipeline.
+
+**Findings gathered before handing off (historical context; Phase 1 above now acted on):**
 - `build_pipeline.py` (526 lines) is called from **3 places in `build.bat`**: the `:generate`
   label (`build.bat:93`), `:snapshot` (`build.bat:135`), and `:release` (`build.bat:183`). Simply
   `rm`-ing the file without touching these leaves `build.bat` broken (file-not-found) for every

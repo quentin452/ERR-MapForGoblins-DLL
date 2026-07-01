@@ -101,6 +101,42 @@ authored core, one copy, mod-agnostic by construction.
 `build.bat` and `README.md` updated in the same change. (Deleting it before then breaks the build; see the
 `build_pipeline.py` staged deletion — that file must be restored or this phase completed first.)
 
+## Verified state after Phase 1 landed (2026-07-01) — reframes Phase 2 + adds a landmine
+
+Phase 1 (enemy names) landed on master (`5b24392`); deployed + in-game-verified on ERR (log clean,
+`[COVERAGE] TOTAL baked=0`, GETMESSAGE PASS, SANITIZE cleared 0). Investigating the next point turned up
+facts that change the remaining plan:
+
+- **The world-feature MARKERS are ALREADY runtime-sourced.** `generate_map_data_cpp` writes an
+  **unconditional empty stub** (its two downstream consumers were retired), and the deployed ERR log shows
+  `baked=0` on 62/63 categories, none `baked>0`. So Phase 2 as originally written ("add disk passes for
+  world features") is a **no-op — already done at runtime.** The real Phase-2 work is deleting the
+  **~14 dead `generate_*_massedit` stages** (stakes, imp, paintings, maps, gestures, seal, hero-tomb,
+  spirit-springs, kindling, summoning, material, hostile-npc, quest-npc, pieces) whose `.MASSEDIT` output
+  nothing reads.
+- **COUPLING — `generate_loot_massedit.py` is MIXED, do not delete it whole.** Besides dead `.MASSEDIT`
+  it also emits `loot_lot_linkage.json` + `item_icon_table.json`, which STILL feed the compiled
+  `goblin_category_exceptions` / icon table / `goblin_name_aliases_en`. Drop its MASSEDIT emission, keep
+  the JSON. And `item_icon_table.json` is itself the ERR-frozen "placed-item set" → migrating THAT to a
+  runtime item enumeration is its own later phase (part of the item-DB row above).
+- **LANDMINE created by Phase 1 — non-ERR regen is now a hard prerequisite.** The local non-ERR bakes are
+  stale: `generated_vanilla/goblin_map_data.cpp` = **MAP_ENTRY_COUNT 6916**,
+  `generated_convergence` = **7448** (ERR/erte = 0). Those stale MAP_ENTRIES reference `+900M` enemy-name
+  textIds whose resolver Phase 1 DELETED. So **any non-ERR build now shows empty enemy labels until those
+  profiles are regenerated to the empty stub** (= `generated_data_removal_plan.md` Phase A). ERR is fine
+  (already empty, verified). This makes Phase A the immediate next step, not optional.
+
+**Reordered next PRs (evidence-based):**
+1. **Phase A regen** — run `build_pipeline.py --profile {vanilla,convergence,erte}` → empty map_data stub
+   on every profile; sanity-run vanilla in-game (closes the enemy-name landmine + the long-open
+   vanilla+DLC verify). Needs the game + buildable non-ERR profiles (NOT possible on the 2026-07-01 dev
+   machine — build-vanilla/convergence fail at CMake configure there).
+2. **Dead-MASSEDIT cull** — remove the ~14 pure-dead stages from `build_pipeline.py`; keep
+   `generate_loot_massedit`'s JSON half. Build-verify each profile.
+3. **item_icon_table → runtime** — enumerate placed items live instead of the ERR-frozen JSON.
+4. **Phase 5** — retire `build_pipeline.py` + `build.bat` + `README.md` once the authored core is all
+   that's left.
+
 ## Risks / guardrails
 
 - **Do not delete a bake before its runtime replacement is verified IN-GAME on a non-ERR profile.** The
