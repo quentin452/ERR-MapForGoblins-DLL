@@ -42,6 +42,19 @@ std::atomic<float> g_virtual_cursor_x{0.f};
 std::atomic<float> g_virtual_cursor_y{0.f};
 std::atomic<bool> g_virtual_cursor_seeded{false};
 
+// Wheel delta harvested from the raw event before it's blanked for the game — in raw
+// usButtonData units (multiples of WHEEL_DELTA), summed across events, drained per frame
+// by take_wheel_delta(). Runs on the game's input thread; hk_present drains on the render
+// thread — hence the atomic accumulator instead of calling io.AddMouseWheelEvent here
+// (ImGui's event queue is not cross-thread safe).
+std::atomic<int> g_wheel_accum{0};
+
+void accumulate_wheel(USHORT buttonFlags, USHORT buttonData)
+{
+    if (buttonFlags & RI_MOUSE_WHEEL)
+        g_wheel_accum.fetch_add(static_cast<SHORT>(buttonData), std::memory_order_relaxed);
+}
+
 void accumulate_virtual_cursor(LONG dx, LONG dy, USHORT flags)
 {
     ImGuiIO &io = ImGui::GetIO();
@@ -113,6 +126,9 @@ UINT WINAPI hk_get_raw_input_data(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size
             // accumulate_virtual_cursor's comment) before it gets blanked below for the game.
             accumulate_virtual_cursor(ri->data.mouse.lLastX, ri->data.mouse.lLastY,
                                       ri->data.mouse.usFlags);
+            // Same for the wheel: harvest before the blank — this is the ONLY source of
+            // wheel input for the panel (no legacy WM_MOUSEWHEEL, no pollable state).
+            accumulate_wheel(ri->data.mouse.usButtonFlags, ri->data.mouse.usButtonData);
             // During an item-search nav, feed a 1px net-zero (±1 alternating) delta so the game
             // keeps stepping/rendering its world map (which is otherwise frozen by the input blank)
             // — lets our page/layer switch + pan actually take effect with the F1 panel open. The
@@ -159,8 +175,13 @@ UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
         for (UINT i = 0; i < n; ++i)
         {
             if (ri->header.dwType == RIM_TYPEMOUSE)
+            {
                 accumulate_virtual_cursor(ri->data.mouse.lLastX, ri->data.mouse.lLastY,
                                           ri->data.mouse.usFlags);
+                // Batched path returns 0 events to the game while open (below), so this
+                // harvest is likewise the wheel's only chance to reach the panel.
+                accumulate_wheel(ri->data.mouse.usButtonFlags, ri->data.mouse.usButtonData);
+            }
             // NEXTRAWINPUTBLOCK expands to a QWORD-based alignment macro that isn't visible
             // with this project's xwin/clang-cl SDK headers — inlined equivalent (8-byte
             // align, matching RAWINPUT_ALIGN's own definition) instead of fighting the include.
@@ -206,6 +227,12 @@ void install_rawinput_hooks()
 
 float virtual_cursor_x() { return g_virtual_cursor_x.load(std::memory_order_relaxed); }
 float virtual_cursor_y() { return g_virtual_cursor_y.load(std::memory_order_relaxed); }
+
+float take_wheel_delta()
+{
+    const int raw = g_wheel_accum.exchange(0, std::memory_order_relaxed);
+    return static_cast<float>(raw) / static_cast<float>(WHEEL_DELTA);
+}
 
 unsigned diag_get_raw_input_data_exchange() { return g_diag_get_raw_input_data.exchange(0, std::memory_order_relaxed); }
 unsigned diag_get_raw_input_buffer_exchange() { return g_diag_get_raw_input_buffer.exchange(0, std::memory_order_relaxed); }

@@ -1632,6 +1632,21 @@ namespace
                 io.AddMouseButtonEvent(0, lb);
                 io.AddMouseButtonEvent(1, fgw && (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
                 io.AddMouseButtonEvent(2, fgw && (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0);
+                // Wheel: no pollable async state and no legacy WM_MOUSEWHEEL under ER's
+                // RIDEV_NOLEGACY — the delta is harvested in the raw-input hooks (the only
+                // place it exists, right before it's blanked for the game) and drained here
+                // on the render thread. See input_rawinput's take_wheel_delta().
+                if (const float wheel = goblin::input::take_wheel_delta(); wheel != 0.f && fgw)
+                {
+                    io.AddMouseWheelEvent(0.f, wheel);
+                    static bool s_logged_wheel = false;
+                    if (!s_logged_wheel)
+                    {
+                        s_logged_wheel = true;
+                        spdlog::info("[WHEELDIAG] wheel delivered to ImGui via raw-input harvest "
+                                     "(first delta {:.2f})", wheel);
+                    }
+                }
                 // dx-bugs F3: keyboard TEXT input via GetAsyncKeyState poll, same reasoning as
                 // the mouse-button poll above but foreground-guarded (fgw) so a background
                 // keypress can't leak in. See input_keyboard_poll.cpp's header comment — this is

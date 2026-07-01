@@ -25,4 +25,11 @@ float virtual_cursor_y();
 // matching the original atomic.exchange(0) call sites in the [CURSORDIAG] dump.
 unsigned diag_get_raw_input_data_exchange();
 unsigned diag_get_raw_input_buffer_exchange();
+
+// Mouse-wheel delta accumulated (in ImGui units: raw usButtonData / WHEEL_DELTA) from the
+// raw-input hooks while the menu is open, drained once per frame by hk_present into
+// io.AddMouseWheelEvent. The wheel has NO pollable async state (unlike buttons/keys) and
+// ER's RIDEV_NOLEGACY means WM_MOUSEWHEEL never reaches the wndproc — the blanked raw
+// event here is the only place the delta exists at all.
+float take_wheel_delta();
 } // namespace goblin::input
