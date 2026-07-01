@@ -263,7 +263,16 @@ namespace
     std::atomic<int> g_nav_frames{0};
     bool g_user_show = false;    // F1 master open/close (works anywhere = the menu keybind)
     bool g_large = true;         // false = compact widget, true = full panel
-    bool g_prev_toggle_down = false;
+    // Debounce for the VK_F1 toggle READ itself (dx-bugs 2026-07-01 "after Alt+Tab, can't click
+    // in F1" followup — [FOCUSDIAG] showed the SAME repeated-g_show-flapping-with-no-focus-event
+    // signature already found+fixed for the gamepad combo below, but on a session that already
+    // has that fix — so either the user is mashing F1 out of frustration at the click bug, or
+    // this GetAsyncKeyState poll has an analogous glitch. Debounce is cheap insurance either way
+    // (2 frames, ~33ms, not perceptible as a real press); the [TOGGLEDIAG] log on commit (see the
+    // two commit sites below) tells them apart definitively next time it happens.
+    int g_toggle_kb_streak = 0;
+    bool g_toggle_kb_armed = true;
+    static constexpr int kToggleKbDebounceFrames = 2;
     // Debounce for the gamepad toggle-combo READ itself (dx-bugs 2026-07-01 "search bar loses
     // keyboard, no alt-tab" followup). [KBDIAG]/[FOCUSDIAG] logs showed g_show flapping 4+ MORE
     // times after a single WM_SETFOCUS with NO further focus message in between — meaning
@@ -3338,8 +3347,20 @@ namespace
         // the poll was flapping during Alt+Tab under Wine and breaking input on refocus.
         const bool fg = g_hwnd && g_has_focus.load(std::memory_order_relaxed);
         bool down = fg && (GetAsyncKeyState(static_cast<int>(goblin::config::overlayToggleKey)) & 0x8000) != 0;
-        if (down && !g_prev_toggle_down) g_user_show = !g_user_show;
-        g_prev_toggle_down = down;
+        if (down)
+        {
+            if (++g_toggle_kb_streak >= kToggleKbDebounceFrames && g_toggle_kb_armed)
+            {
+                g_user_show = !g_user_show;
+                g_toggle_kb_armed = false;
+                spdlog::info("[TOGGLEDIAG] KEYBOARD toggle fired, g_user_show now {}", g_user_show);
+            }
+        }
+        else
+        {
+            g_toggle_kb_streak = 0;
+            g_toggle_kb_armed = true;
+        }
 
         // Gamepad support (dx-bugs-backlog PR C, items 2/3/6): combo toggle + cursor recenter.
         // XInput has no window messages, so — like the keyboard key above — it must be polled
@@ -3404,6 +3425,7 @@ namespace
                     {
                         g_user_show = !g_user_show;
                         g_toggle_gamepad_armed = false;
+                        spdlog::info("[TOGGLEDIAG] GAMEPAD toggle fired, g_user_show now {}", g_user_show);
                     }
                 }
                 else
@@ -3625,12 +3647,20 @@ namespace
                     // keys (look at nav/gamepad-flag territory instead — the ImGuiIO snapshot here is
                     // last-frame's, since this runs just before ImGui::NewFrame()).
                     {
-                        const ImGuiIO &io = ImGui::GetIO();
+                        // Reuses the outer `io`/`lb` already in scope (the click-poll block just
+                        // above, ~L3593) — extended with [KBDIAG] following <user>'s "after
+                        // Alt+Tab, can't click in F1" report: `lb` = current polled left-button
+                        // state (the Proton/Wine click workaround), `WantCaptureMouse` = whether
+                        // ImGui is actually claiming it. lb=true + WantCaptureMouse=false at the
+                        // same sample = a real click IS being read but ImGui isn't capturing it
+                        // (mouse pos / hover territory); lb never true while clicking = the poll
+                        // itself isn't seeing the button (fgw/GetAsyncKeyState territory).
                         spdlog::info("[KBDIAG] wm_char/sec={} wm_keydown/sec={} WantCaptureKeyboard={} "
-                                     "WantTextInput={} NavActive={} last_input_was_gamepad={} "
-                                     "gamepad_active_streak={}",
+                                     "WantTextInput={} WantCaptureMouse={} lb={} MousePos=({:.0f},{:.0f}) "
+                                     "NavActive={} last_input_was_gamepad={} gamepad_active_streak={}",
                                      g_diag_wm_char.exchange(0), g_diag_wm_keydown.exchange(0),
-                                     io.WantCaptureKeyboard, io.WantTextInput, io.NavActive,
+                                     io.WantCaptureKeyboard, io.WantTextInput, io.WantCaptureMouse, lb,
+                                     io.MousePos.x, io.MousePos.y, io.NavActive,
                                      g_last_input_was_gamepad, g_gamepad_active_streak);
                     }
                 }
