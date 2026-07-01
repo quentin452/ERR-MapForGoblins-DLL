@@ -122,6 +122,24 @@ correctly through the new pointer indirection. **Phase 1 is now COMPLETE for all
 functions** — not yet merged to `master`.
 
 **Phase 2 — split into a reloadable module + host-side reload mechanism.**
+
+**Two deploy modes (design decision, user, 2026-07-01):** the split is a DEV-ONLY convenience, not
+a shipped architecture change — real players keep getting today's single `MapForGoblins.dll`.
+  - **Release/single-DLL (default, unchanged):** `add_library(MapForGoblins SHARED ...)` as it
+    exists today (`CMakeLists.txt:93`) — the draw-layer `.cpp`(s) compile straight into the one
+    DLL, no `LoadLibrary`/vtable indirection at all. This is what `build.bat` and the current
+    `build-linux` cross-build target produce; nothing here changes for them.
+  - **Dev split (opt-in):** a second CMake target/option (`CMakeLists.txt` currently has NO
+    `option()` calls at all — this introduces the first one, e.g.
+    `option(GOBLIN_OVERLAY_HOTRELOAD "Build overlay draw layer as a separate hot-reloadable DLL" OFF)`)
+    that, when ON, builds the draw-layer sources into `goblin_overlay_render.dll` instead and links
+    the host DLL against a thin loader (`LoadLibrary`/`GetProcAddress`) rather than the object files
+    directly. Default OFF so a plain `cmake -B build-linux ...` / `build.bat` keeps producing the
+    single-DLL release shape; only an explicit `-DGOBLIN_OVERLAY_HOTRELOAD=ON` dev build produces
+    the split pair for the Phase 3/4 AI iterate loop.
+  - Both modes must build from the SAME source files (no forked copies) — the CMake option toggles
+    which target the draw-layer `.cpp`s are added to, not which code exists.
+
 Move the extracted draw layer into its own DLL (e.g. `goblin_overlay_render.dll`), loaded via
 `LoadLibrary` from the host (hook) DLL. Host keeps `hk_present`/device ownership, calls through a
 thin vtable/function-pointer table resolved via `GetProcAddress`. Dev-only file-watcher (mtime
