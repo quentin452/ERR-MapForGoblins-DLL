@@ -25,6 +25,11 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Quest-NPC map glyph** — quest NPC pins now draw the game's real NPC map symbol (the framed-hood
+  glyph, `MENU_MAP_80`) instead of a plain circle. Resolved mod-agnostically by iconId via the same
+  native-then-disk path as the summoning-pool effigy — reads the ACTIVE install's `SB_MapCursor`, no
+  baked atlas — so it is correct on any mod, and falls back to the circle if the glyph can't resolve.
+  Requires the native-icons toggle on. See `docs/memory/features/quest-browser.md`.
 - **Off-page altitude badge** — the ▲/▼ altitude cue now also appears on map pages the player isn't on,
   referenced to the nearest grace in the marker's own area (the player's Y is in a different frame
   there). Grace-relative badges use a distinct tint (green above / teal below) vs the warm/cool
