@@ -10,7 +10,7 @@
 
 #include "goblin_overlay_render.hpp"
 #include "goblin_overlay_render_api.hpp"
-#include "goblin_overlay.hpp"             // goblin::overlay::native_item_icon() family
+#include "goblin_overlay.hpp"
 #include "goblin_config.hpp"
 #include "goblin_quest_steps.hpp"
 #include "goblin_debug_events.hpp"
@@ -610,11 +610,11 @@ namespace
                     via = ""; if (!native_on) return false;
                     void *t = nullptr; float u0, v0, u1, v1; bool ok = false;
                     if (const char *sym = wm::category_gpu_icon_name(c))
-                        ok = goblin::overlay::native_map_point_icon_by_name(sym, t, u0, v0, u1, v1), via = "name symbol";
+                        ok = goblin::overlay_api::native_map_point_icon_by_name(sym, t, u0, v0, u1, v1), via = "name symbol";
                     if (!ok) if (int iid = wm::category_gpu_iconId(c))
-                        ok = goblin::overlay::native_map_point_icon(iid, t, u0, v0, u1, v1), via = "map-point id";
+                        ok = goblin::overlay_api::native_map_point_icon(iid, t, u0, v0, u1, v1), via = "map-point id";
                     if (!ok) if (int rep = wm::category_rep_icon(c))
-                        ok = goblin::overlay::native_item_icon(rep, t, u0, v0, u1, v1), via = "item icon";
+                        ok = goblin::overlay_api::native_item_icon(rep, t, u0, v0, u1, v1), via = "item icon";
                     if (!ok) { via = ""; return false; }
                     tex = reinterpret_cast<ImTextureID>(t); uv0 = ImVec2(u0, v0); uv1 = ImVec2(u1, v1);
                     return true;

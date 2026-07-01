@@ -176,4 +176,16 @@ namespace goblin::overlay_api
     //    GOBLIN_HOST_SOURCES, not the render group) ──
     std::filesystem::path disk_loot_dir();
     goblin::worldmap::DiskLootState disk_loot_state();
+
+    // ── goblin::overlay::native_*/map_point_glyph_uv (host — owns the SheetTex/MapSymSrv/DiskSheet
+    //    D3D12 caches, same class of coupling as the grace/icon-SRV wrappers above). Already public
+    //    API (declared in goblin_overlay.hpp) within the single-binary build; still routed through
+    //    this wrapper layer for a consistent, single cross-DLL surface once Slice C's real
+    //    LoadLibrary split lands. ──
+    bool native_item_icon(int iconId, void *&tex, float &u0, float &v0, float &u1, float &v1);
+    bool native_map_point_icon(int iconId, void *&tex, float &u0, float &v0, float &u1, float &v1);
+    bool native_map_point_icon_by_name(const char *name, void *&tex, float &u0, float &v0,
+                                       float &u1, float &v1);
+    bool map_point_glyph_uv(const char *name, int iconId, void *&tex, float &u0, float &v0,
+                            float &u1, float &v1, int *outW = nullptr, int *outH = nullptr);
 }

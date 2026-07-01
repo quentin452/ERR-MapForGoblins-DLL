@@ -151,11 +151,11 @@ struct MapPointProvider : IconProvider
             return false;
         void *tex = nullptr;
         float u0, v0, u1, v1;
-        if (!goblin::overlay::native_map_point_icon(k.icon_id, tex, u0, v0, u1, v1))
+        if (!goblin::overlay_api::native_map_point_icon(k.icon_id, tex, u0, v0, u1, v1))
         {
             // Resident GPU symbol not loaded (map closed, or this mod has no such symbol resident) ->
             // mod-agnostic DISK glyph by iconId (same no-bake path as the undiscovered-grace render).
-            if (!goblin::overlay::map_point_glyph_uv(nullptr, k.icon_id, tex, u0, v0, u1, v1))
+            if (!goblin::overlay_api::map_point_glyph_uv(nullptr, k.icon_id, tex, u0, v0, u1, v1))
                 return false;
         }
         out.tex = reinterpret_cast<ImTextureID>(tex);
@@ -183,7 +183,7 @@ struct IconSet
             if (const char *mn = goblin::worldmap::category_gpu_icon_name(m.category))
             {
                 void *t = nullptr; float a0, b0, a1, b1;
-                if (goblin::overlay::native_map_point_icon_by_name(mn, t, a0, b0, a1, b1))
+                if (goblin::overlay_api::native_map_point_icon_by_name(mn, t, a0, b0, a1, b1))
                 {
                     out.tex = reinterpret_cast<ImTextureID>(t);
                     out.uv0 = ImVec2(a0, b0); out.uv1 = ImVec2(a1, b1);
@@ -207,7 +207,7 @@ struct IconSet
             if (m.item_icon_id > 0)
             {
                 void *t = nullptr; float a0, b0, a1, b1;
-                if (goblin::overlay::native_item_icon(m.item_icon_id, t, a0, b0, a1, b1))
+                if (goblin::overlay_api::native_item_icon(m.item_icon_id, t, a0, b0, a1, b1))
                 {
                     out.tex = reinterpret_cast<ImTextureID>(t);
                     out.uv0 = ImVec2(a0, b0); out.uv1 = ImVec2(a1, b1);
@@ -222,7 +222,7 @@ struct IconSet
             if (rep > 0)
             {
                 void *t = nullptr; float a0, b0, a1, b1;
-                if (goblin::overlay::native_item_icon(rep, t, a0, b0, a1, b1))
+                if (goblin::overlay_api::native_item_icon(rep, t, a0, b0, a1, b1))
                 {
                     out.tex = reinterpret_cast<ImTextureID>(t);
                     out.uv0 = ImVec2(a0, b0); out.uv1 = ImVec2(a1, b1);
@@ -567,7 +567,7 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
             {
                 void *ut = nullptr; float gu0, gv0, gu1, gv1;
                 int nativeW = 0, nativeH = 0;
-                if (goblin::overlay::map_point_glyph_uv("MENU_MAP_Player_02", -1, ut, gu0, gv0, gu1, gv1,
+                if (goblin::overlay_api::map_point_glyph_uv("MENU_MAP_Player_02", -1, ut, gu0, gv0, gu1, gv1,
                                                         &nativeW, &nativeH))
                 {
                     gt = (ImTextureID)ut;

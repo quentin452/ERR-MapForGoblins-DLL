@@ -18,6 +18,7 @@
 #include "worldmap/name_fmg_en.hpp"
 #include "input/input_shared.hpp"
 #include "input/input_cursor.hpp"
+#include "goblin_overlay.hpp"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -147,4 +148,23 @@ namespace goblin::overlay_api
 
     std::filesystem::path disk_loot_dir() { return goblin::worldmap::disk_loot_dir(); }
     goblin::worldmap::DiskLootState disk_loot_state() { return goblin::worldmap::disk_loot_state(); }
+
+    bool native_item_icon(int iconId, void *&tex, float &u0, float &v0, float &u1, float &v1)
+    {
+        return goblin::overlay::native_item_icon(iconId, tex, u0, v0, u1, v1);
+    }
+    bool native_map_point_icon(int iconId, void *&tex, float &u0, float &v0, float &u1, float &v1)
+    {
+        return goblin::overlay::native_map_point_icon(iconId, tex, u0, v0, u1, v1);
+    }
+    bool native_map_point_icon_by_name(const char *name, void *&tex, float &u0, float &v0,
+                                       float &u1, float &v1)
+    {
+        return goblin::overlay::native_map_point_icon_by_name(name, tex, u0, v0, u1, v1);
+    }
+    bool map_point_glyph_uv(const char *name, int iconId, void *&tex, float &u0, float &v0,
+                            float &u1, float &v1, int *outW, int *outH)
+    {
+        return goblin::overlay::map_point_glyph_uv(name, iconId, tex, u0, v0, u1, v1, outW, outH);
+    }
 }
