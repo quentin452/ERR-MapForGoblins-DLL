@@ -50,10 +50,16 @@ full detail in `docs/plans/overlay_hot_reload_playwright_plan.md`.
 `docs/plans/big_files_refactor_plan.md` (god functions/duplication across the 7 biggest hand-written
 files; item 1 = draw_panel split, waits on hot-reload Slice C) and
 `docs/plans/clang_only_toolchain_plan.md` (retire MSVC; USER DECISION reverses the same-day "MSVC
-canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). ⚠️ The toolchain plan's
-Phase 0 is standalone-urgent even if the rest waits: 3 live clang-cl `__try`-elision hazards
-(`goblin_world_position.cpp:511`/`:566` — per-frame player probes; `goblin_tutorial_popup.cpp:69` —
-init-time param poll) are latent unhandled-0xC0000005 sites in the clang DLL currently deployed.
+canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase 0 update: the 3
+`__try`-elision hazards (world_position per-frame probes + tutorial_popup init poll) are FIXED
+(`5b80541`, built + deployed); still open = repo-wide `__try` classify pass, then Phases 1–2.**
+
+## Linux runtime-RE path — investigate to stop the two-PC switch (2026-07-01, not started)
+
+User pain: runtime RE is Windows-by-convention but the live game runs on the Linux box (Proton).
+Options + trial plan in `docs/memory/tooling/linux-runtime-re-options.md` (default = in-DLL probes,
+first trial = ceserver + CE GUI on the Proton pid). Related vision note (runtime modding framework,
+NOT a plan): `docs/runtime_modding_framework_vision.md`.
 
 ## MapGenie category coverage — GROUP 1 MERGED; GROUP 2 (Portal) RE in progress (2026-07-01)
 

@@ -43,6 +43,9 @@ one-off scripts — most workflows are already reusable.
   whole structs then parse, throttle, wrap in `GOBLIN_BENCH_QUIET`. → [linux-rpm-walk-danger](linux-rpm-walk-danger.md)
 - **ER Console as coords tool** [active] — Nexus 9365 readout; `coords` = block-local Havok frame,
   `tp` = larger chunk frame. → [er-console-mod](er-console-mod.md)
+- **Linux runtime-RE options** [scoped, untested] — the live game runs HERE (Proton); candidate paths to
+  stop switching PCs for runtime RE: in-DLL probes (default), ceserver+CE GUI, native process_vm_readv,
+  PINCE, winedbg. Trial pending. → [linux-runtime-re-options](linux-runtime-re-options.md)
 
 ## Offsets & signatures
 - **Runtime offset resolution** [resolved] — offsets lifted live from the exe's own access instructions

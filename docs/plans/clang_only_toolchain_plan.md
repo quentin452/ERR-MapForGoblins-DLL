@@ -18,6 +18,11 @@ for dev AND releases. No VS2022/msbuild/vswhere dependency, no dual-linker drift
   deterministic PE output (better than MSVC).
 
 ## Phase 0 — SEH correctness (BLOCKING; real latent crashes in today's clang DLL)
+
+**STATUS 2026-07-01: the 3 sites below are FIXED** (commit `5b80541`, noinline-body pattern;
+verified on a no-LTO TU compile: `*_body` symbols emitted, caller keeps the opaque call +
+`__C_specific_handler` ref; built + deployed). Still open from Phase 0: the mechanical classify
+pass over the remaining `__try` sites repo-wide, and an in-game fault-injection check.
 Known rule (`docs/memory/tooling/clang-cl-seh-noinline.md`): clang-cl silently ELIDES `__try`
 around a raw load/store (even `noinline`); only `__try` around an opaque CALL is preserved.
 Repo was converted 2026-06-20 — except these, found in this audit:
