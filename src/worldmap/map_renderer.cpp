@@ -604,6 +604,7 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
                               /*backing=*/false); // grace = native MENU_MAP symbol, no halo
             // No discovered-check on graces: the icon already encodes it (undiscovered = yellow
             // MENU_MAP_Player_02 cursor, discovered = the gold effigy sprite), so a check is redundant.
+            draw_altitude_badge(fg, p, half, m);
             return;
         }
         IconHandle ih;

@@ -450,8 +450,19 @@ namespace
             ImGui::TextDisabled("F1 close | %.0f fps", io.Framerate);
             ImGui::Separator();
 
+            // Settings search: typing here auto-expands every top-level section whose title
+            // matches (and force-collapses the rest) so a setting buried in a rarely-opened
+            // section (e.g. "Minimap") can be found without manually clicking through each
+            // header. Separate from the "Sections & categories" search below, which filters
+            // marker CATEGORIES, not panel settings sections.
+            static ImGuiTextFilter s_settings_filter;
+            s_settings_filter.Draw("Find setting (section name)##settingsfilter", ImGui::GetContentRegionAvail().x);
+            const bool settings_filtering = s_settings_filter.IsActive();
+            ImGui::Separator();
+
             // P2b vertical slice: draw live-harvested item icons (copied GPU→GPU from the engine's
             // menu sheets). Open the inventory first to harvest, then check here. Dev-gated.
+            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("Item icons (P2b test)"), ImGuiCond_Always);
             if ((*goblin::overlay_api::cfg_dumpIconTextures_ptr()) && ImGui::CollapsingHeader("Item icons (P2b test)"))
             {
                 // Draw the ACTUAL harvested icons (a hardcoded id list may not match what the
@@ -596,6 +607,7 @@ namespace
             // including live residency (the GPU path only "wins" once its sprite is harvested), so the
             // panel shows the truth — not just what's WIRED. Lets us verify the per-category item icon
             // (00_Solo atlas) is correct before committing to the group-load that makes it resident.
+            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("Icon migration (Baked -> GPU)"), ImGuiCond_Always);
             if (ImGui::CollapsingHeader("Icon migration (Baked \xE2\x86\x92 GPU)"))
             {
                 namespace wm = goblin::worldmap;
@@ -701,6 +713,7 @@ namespace
             // Grace-sprite GPU debug: draw every harvested SB_ERR_Grace_* frame (full-sheet SRV +
             // UV, no copy) so we can visually pick the correct grace rect. Open the world map (with a
             // discovered grace) to populate. The frame that looks like a Site of Grace = the one to lock.
+            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("ERR map sprites (GPU debug)"), ImGuiCond_Always);
             if ((*goblin::overlay_api::cfg_dumpIconTextures_ptr()) && ImGui::CollapsingHeader("ERR map sprites (GPU debug)"))
             {
                 ensure_grace_debug();
@@ -719,6 +732,7 @@ namespace
 
             // Grace texture DEBUG (live format/swizzle/source) — verify the active grace mapped the
             // right NAME and the right COLORING. Tweak below + "Re-apply" re-copies the SRV live.
+            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("Grace texture debug (live)"), ImGuiCond_Always);
             if ((*goblin::overlay_api::cfg_dumpIconTextures_ptr()) && ImGui::CollapsingHeader("Grace texture debug (live)"))
             {
                 // The active grace, drawn big (this IS what the map markers use).
@@ -888,6 +902,7 @@ namespace
 
             // Overlay marker scale (live preview; persists via "Save to INI"). Final
             // size = resolution-relative base × master × per-type scale.
+            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("Marker scale (overlay map)"), ImGuiCond_Always);
             if (ImGui::CollapsingHeader("Marker scale (overlay map)"))
             {
                 scale_control("Master", goblin::overlay_api::cfg_overlayMasterScale_ptr(), 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
@@ -923,6 +938,7 @@ namespace
             }
 
             // In-game minimap HUD (foundation; overworld-only, north-up). Live; persists.
+            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("Minimap (in-game HUD)"), ImGuiCond_Always);
             if (ImGui::CollapsingHeader("Minimap (in-game HUD)"))
             {
                 ImGui::Checkbox("Show minimap (corner HUD during gameplay)",
@@ -1828,6 +1844,7 @@ namespace
                     "affine. Toggles live (open the map and flip it to compare). Underground /\n"
                     "dungeon markers snap to their real LegacyConv-folded positions. Falls back\n"
                     "to baked until the map is open (engine VM must resolve).");
+            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("Dev tools (Save + restart)"), ImGuiCond_Always);
             if (ImGui::TreeNode("Dev tools (Save + restart)"))
             {
                 ImGui::Checkbox("Event-flag hook (coverage-gap detector)",
@@ -1897,6 +1914,7 @@ namespace
             ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.55f, 0.13f, 0.13f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.78f, 0.18f, 0.18f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.90f, 0.22f, 0.22f, 1.0f));
+            if (settings_filtering) ImGui::SetNextItemOpen(s_settings_filter.PassFilter("Danger zone"), ImGuiCond_Always);
             if (ImGui::TreeNode("Danger zone"))
             {
                 if (ImGui::Button("Reset quest progression"))
