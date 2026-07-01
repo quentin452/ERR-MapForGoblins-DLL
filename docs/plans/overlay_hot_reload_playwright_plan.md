@@ -2,7 +2,7 @@
 
 **Status:** Phase 1 COMPLETE + MERGED to `master` for all 3 draw functions (2026-07-01). Phase 2
 (DLL split) fully scoped (two ground-truth audits done); Slice A (CMake option scaffold)
-build-verified, not yet merged; Slices B/C/D not started. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
+IN-GAME CONFIRMED + MERGED; Slices B/C/D not started. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
 render code while ERR keeps running (no full restart), paired with the already-proposed Route B
 debug RPC so an AI agent can script the REAL running game — screenshot, spot a DX or functional
 bug in the minimap/worldmap/icons overlay, fix the overlay source, hot-reload just that piece,
@@ -221,7 +221,9 @@ both modes; a `GOBLIN_OVERLAY_HOTRELOAD` build additionally needs it to `LoadLib
    only emits a `message(WARNING ...)` noting Slice B/C aren't landed. Cross-build clean both
    `OFF` (default) and `ON` (confirmed the warning fires, confirmed the combined source list still
    links). Deployed the `OFF` build (zero `.cpp` content changed, so functionally identical to the
-   already-in-game-confirmed panel-ctx deploy — CMake reorg only, no runtime risk). Not yet merged.
+   already-in-game-confirmed panel-ctx deploy — CMake reorg only, no runtime risk).
+   **IN-GAME CONFIRMED 2026-07-01 21:07**: fresh session, `[SIG]` 29/29 clean, no crash/error.
+   **MERGED to `master`** (fast-forward, branch deleted).
 2. Slice B — physical file move (draw fns + private helpers + all 5 worldmap files, per the fully
    resolved audit above), still statically linked into one DLL when the option is OFF. Pure
    relocation, build+in-game confirm, same discipline as Phase 1's slices.

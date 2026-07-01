@@ -19,9 +19,9 @@ itself says COMPLETE). Plan: (1) diff every HANDOFF entry for a merged/confirmed
 against `changelog.md`'s `[Unreleased]` section, backfill any gap found (the 2 above at minimum),
 (2) then delete the HANDOFF entries whose content now lives in changelog/plan docs, keeping only
 genuinely live/in-progress/not-yet-decided items.
-Last updated: 2026-07-01z3 (overlay_hot_reload_playwright_plan Phase 2 Slice A — CMake
-`GOBLIN_OVERLAY_HOTRELOAD` scaffold — build-verified both OFF/ON, deployed, not yet merged; Slice B
-(physical file move) not started — see below). Earlier same day: `feat/inject-grace-suppression` PR 4c of the goblin_inject.cpp
+Last updated: 2026-07-01z4 (overlay_hot_reload_playwright_plan Phase 2 Slice A — CMake
+`GOBLIN_OVERLAY_HOTRELOAD` scaffold — IN-GAME CONFIRMED + MERGED to `master`; Slice B (physical
+file move) not started — see below). Earlier same day: `feat/inject-grace-suppression` PR 4c of the goblin_inject.cpp
 god-file split — IN-GAME CONFIRMED + MERGED. This was the LAST planned extraction PR — the whole
 goblin_inject_refactor_plan is now COMPLETE (only 4d, an intentional non-PR stay-behind, remains).
 Earlier same day: PR 4b
@@ -38,7 +38,7 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01z3) — overlay_hot_reload_playwright_plan Phase 2 Slice A landed, Slice B not started
+## RESUME HERE (2026-07-01z4) — overlay_hot_reload_playwright_plan Phase 2 Slice A MERGED, Slice B not started
 
 Phase 1 (all 3 draw functions take `OverlayFrameCtx`) is COMPLETE and MERGED to `master`. Phase 2
 (split the draw layer into its own hot-reloadable DLL, dev-only, behind a new
@@ -62,9 +62,9 @@ only emits a `message(WARNING ...)` that Slice B/C haven't landed yet. Confirmed
 config builds clean (76 objects) and links; `-DGOBLIN_OVERLAY_HOTRELOAD=ON` reconfigure fires the
 warning and still produces the same single-DLL shape. Deployed the `OFF` build to
 `~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (backup `.bak-pre-phase2-slicea`) — zero `.cpp`
-content changed vs. the prior already-in-game-confirmed deploy (pure CMake reorg), so this is
-low-risk; a quick log check after next launch is still worth doing before merge but isn't the same
-correctness gate as a runtime-code slice. Not yet merged to `master`. Next: Slice B — physically
+content changed vs. the prior already-in-game-confirmed deploy (pure CMake reorg). **IN-GAME
+CONFIRMED 2026-07-01 21:07**: fresh session, `[SIG]` 29/29 clean, no crash/error. **MERGED to
+`master`** (fast-forward, branch deleted). Next: Slice B — physically
 move the draw functions + private helpers into `src/goblin_overlay_render.cpp` and move all 5
 worldmap files into that source group for real (still statically linked when the option is OFF),
 same discipline as Phase 1's slices (audit already done, this is now just careful mechanical
