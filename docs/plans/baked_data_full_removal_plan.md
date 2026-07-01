@@ -127,13 +127,19 @@ facts that change the remaining plan:
   (already empty, verified). This makes Phase A the immediate next step, not optional.
 
 **Reordered next PRs (evidence-based):**
-1. **Phase A regen** — run `build_pipeline.py --profile {vanilla,convergence,erte}` → empty map_data stub
-   on every profile; sanity-run vanilla in-game (closes the enemy-name landmine + the long-open
-   vanilla+DLC verify). Needs the game + buildable non-ERR profiles (NOT possible on the 2026-07-01 dev
-   machine — build-vanilla/convergence fail at CMake configure there).
-2. **Dead-MASSEDIT cull** — remove the ~14 pure-dead stages from `build_pipeline.py`; keep
-   `generate_loot_massedit`'s JSON half. Build-verify each profile.
-3. **item_icon_table → runtime** — enumerate placed items live instead of the ERR-frozen JSON.
+1. **Phase A regen — DONE 2026-07-01h** (merged to master). Reran
+   `build_pipeline.py --profile {vanilla,convergence,erte}` → all 4 profiles MAP_ENTRY_COUNT 0; all 3
+   non-ERR DLLs rebuilt clean (clang/ninja). Enabler: `build_pipeline.py` now auto-loads
+   `tools/sitecustomize.py` (tolerant unlink) on Windows (`fe8d28c`). The old "not possible on the dev
+   machine — CMake configure fails" note was the Linux/MSVC framing; THIS Windows box builds all 4 via
+   clang-cl+xwin+ninja. Only the **vanilla in-game sanity-check remains (user)**.
+2. **Dead-MASSEDIT cull — DONE** (branch `pr2-dead-massedit-cull`, `1be1be4`). Removed the 14 MASSEDIT
+   generators + 5 orphaned extractors + `relocating_boss_fix` + the `massedit_dir` param; kept
+   `generate_loot_massedit`'s JSON half. Confirmed dead offline: regen ERR before/after (with
+   `massedit_generated` wiped) → `src/generated` byte-identical; ERR DLL rebuilds clean. Left for Phase 5:
+   the orphaned generator *scripts*, the tracked dead `data/massedit_generated/*.MASSEDIT` artifacts, and
+   `generate_loot_massedit`'s own (now-dead) `.MASSEDIT` emission.
+3. **← NEXT: item_icon_table → runtime** — enumerate placed items live instead of the ERR-frozen JSON.
 4. **Phase 5** — retire `build_pipeline.py` + `build.bat` + `README.md` once the authored core is all
    that's left.
 

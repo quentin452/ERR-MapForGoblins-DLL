@@ -68,17 +68,21 @@ sequencing + the post-Phase-1 findings that reframe Phase 2). What landed / what
   deleted; `generate_data`'s `massedit_dir` is a dead param (map_data stubbed unconditionally); the only
   pipeline reader `relocating_boss_fix` just edits MASSEDIT files that feed the empty stub. So the ~14
   `generate_*_massedit` stages produce output read by nothing.
-- **NEXT PRs (evidence-based, in the plan):** (1) ~~Phase A regen~~ DONE at build level (above); only
-  the **vanilla in-game sanity-check remains (user)**. (2) **← IMMEDIATE NEXT:** cull the ~14 dead
-  `generate_*_massedit` stages + `relocating_boss_fix` + the dead `massedit_dir` param in
-  `generate_data.py` (confirmed dead: `generate_map_data_cpp` writes an unconditional stub and never
-  reads `--massedit-dir`; the real generate_data outputs — category_exceptions/name_aliases/legacy_conv —
-  read JSON, not MASSEDIT) — but KEEP `generate_loot_massedit`'s JSON half
-  (`loot_lot_linkage.json`/`item_icon_table.json` still feed compiled tables). Empirical confirm = regen
-  ERR + rebuild + run + diff log vs the clean baseline (identical ⇒ dead confirmed). Note the regen
-  pipeline is now runnable on this Windows box (`fe8d28c`), so this confirm loop is doable here (ERR
-  rebuild needs clang/ninja per the toolchain doc). (3) migrate `item_icon_table.json` (ERR-frozen
-  placed-item set) to runtime; (4) Phase 5 retire the pipeline.
+- **NEXT PRs (evidence-based, in the plan):** (1) ~~Phase A regen~~ DONE at build level; only the
+  **vanilla in-game sanity-check remains (user)**. (2) ~~cull the dead `generate_*_massedit` stages~~
+  **DONE — branch `pr2-dead-massedit-cull`** (`a980746` refresh stale aliases bake, `1be1be4` the cull).
+  Removed the 14 MASSEDIT generators + their 5 now-orphaned extractors + `relocating_boss_fix` + the
+  `massedit_dir` param; kept `generate_loot_massedit` (JSON half feeds compiled tables). **Confirmed dead
+  OFFLINE** (stronger than the planned log-diff): regen ERR before/after with `data/massedit_generated`
+  wiped → `src/generated` BYTE-IDENTICAL, ERR DLL rebuilds clean. User game-checks ERR later.
+  **Follow-ups left for a Phase-5 sweep:** the ~19 orphaned generator *scripts* (`generate_stakes.py` …)
+  are still on disk; the committed dead `data/massedit_generated/*.MASSEDIT` artifacts (tracked, 71 files,
+  a mix of live-loot + dead-stage output — some regenerate non-deterministically) are untouched; and
+  `generate_loot_massedit` still *emits* dead `.MASSEDIT` alongside its live JSON (drop that emission when
+  convenient). (3) **← IMMEDIATE NEXT:** migrate `item_icon_table.json` (ERR-frozen placed-item set) to a
+  runtime item enumeration. (4) Phase 5 retire the pipeline + build.bat call sites + README.
+  - Note: the regen pipeline + all 4 profile builds are runnable on THIS Windows box (clang/ninja +
+    `fe8d28c`), so the confirm loop for (3)/(4) is doable here.
 
 **Findings gathered before handing off (historical context; Phase 1 above now acted on):**
 - `build_pipeline.py` (526 lines) is called from **3 places in `build.bat`**: the `:generate`
