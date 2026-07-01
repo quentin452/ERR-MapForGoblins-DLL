@@ -1575,9 +1575,34 @@ static int build_disk_elevator_markers(
     int emitted = 0, dup = 0;
     std::unordered_set<uint32_t> seen_ent;      // dedup by entity (LOD tiles repeat the ObjAct)
     std::unordered_set<std::string> seen_cell;  // dedup by cell when no entity
+    // Model gate ([ELEVDIAG] census 2026-07-02): lever ObjActs alone over-capture 224 parts —
+    // door/gate/portcullis levers share the same "Pull lever" rows (AEG219/227/239/447/... per-
+    // region models). The LIFT family is AEG027_* (002/080/115 = the platform variants, 87 parts
+    // ≈ real lifts × their top/bottom lever pairs); the proximity dedup below folds each pair.
+    std::vector<const DiskObjAct *> kept;
     for (const DiskObjAct &oa : objacts)
     {
-        if (!lever_ids.count(oa.objActParamId)) continue;  // not a lever prompt
+        if (!lever_ids.count(oa.objActParamId)) continue;      // not a lever prompt
+        if (oa.partName.rfind("AEG027_", 0) != 0) continue;    // not the lift family
+        kept.push_back(&oa);
+    }
+    // Proximity dedup: a lift's top + bottom levers are two ObjActs on one machine — fold
+    // markers within 30 m (same area+tile-neighborhood, world frame gx*256+local).
+    std::vector<std::pair<float, float>> placed_w;  // world-frame kept positions
+    std::vector<uint8_t> placed_area;
+    for (const DiskObjAct *poa : kept)
+    {
+        const DiskObjAct &oa = *poa;
+        const float wx = oa.gx * 256.0f + oa.posX, wz = oa.gz * 256.0f + oa.posZ;
+        bool near = false;
+        for (size_t i = 0; i < placed_w.size() && !near; i++)
+            near = placed_area[i] == oa.area &&
+                   (placed_w[i].first - wx) * (placed_w[i].first - wx) +
+                           (placed_w[i].second - wz) * (placed_w[i].second - wz) <
+                       30.0f * 30.0f;
+        if (near) { ++dup; continue; }
+        placed_w.emplace_back(wx, wz);
+        placed_area.push_back(oa.area);
         if (oa.entityId != 0)
         {
             if (!seen_ent.insert(oa.entityId).second) { ++dup; continue; }
