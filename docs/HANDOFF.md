@@ -2,11 +2,10 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01m (`feat/inject-item-classify` branch: PR 2 of the goblin_inject.cpp
-god-file split — taxonomy-based item/loot classification extracted (9 fns, non-contiguous span),
-builds clean, deployed + md5-verified, NOT YET in-game log-checked — see directly below. Earlier
-same day: PR 1 (icon-harvest) IN-GAME CONFIRMED + MERGED; PR 0 — MERGED, in-game confirmed via
-log check; Phase A regen DONE on the Windows box (parallel session) — all 4 profiles now MAP_ENTRY_COUNT 0,
+Last updated: 2026-07-01n (`feat/inject-item-classify` PR 2 of the goblin_inject.cpp god-file
+split — IN-GAME CONFIRMED via log check, ready to merge — see directly below. Earlier same day:
+PR 1 (icon-harvest) IN-GAME CONFIRMED + MERGED; PR 0 — MERGED, in-game confirmed via log check;
+Phase A regen DONE on the Windows box (parallel session) — all 4 profiles now MAP_ENTRY_COUNT 0,
 non-ERR DLLs rebuilt clean via clang/ninja, Phase-1 enemy-name landmine closed at build level (see
 the baked-data STATUS block below), dead `goblin_massedit.{cpp,hpp}` culled. Also scoped this day:
 overlay-only hot-reload + AI Playwright RPC loop plan (not started); MSVC-canonical / clang-cl-alt
@@ -14,7 +13,7 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01m) — `feat/inject-item-classify` PR 2 built+deployed, needs in-game log check
+## RESUME HERE (2026-07-01n) — `feat/inject-item-classify` PR 2 IN-GAME CONFIRMED, ready to merge
 
 Branch `feat/inject-item-classify` (forked from `master` after PR 0+1 merged), implementing PR 2
 of `docs/plans/goblin_inject_refactor_plan.md`. Extracted taxonomy-based item/loot classification
@@ -28,10 +27,12 @@ non-contiguous shape. Scope grew from the plan's 5-function estimate to 9 — `a
 `npc_item_lot_enemy`, `item_real_icon_id` were physically wedged into the same span sharing
 structs (`RawAegRow`/`RawNpcRow`/`RawEquipRow`) with the 5 named ones, couldn't be split out
 separately. Declarations in `goblin_inject.hpp` unchanged (facade kept). Builds clean via
-clang-cl+xwin, deployed to `~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior DLL backed up as `.bak-pre-item-classify`)
-— **game wasn't running at deploy time, so NOT yet in-game log-checked** (same check as PR 0/1:
-fresh `NEW SESSION` + `[SIG]` PASS + no crash once ERR is launched). Next: launch ERR, check logs,
-then merge to `master`; PRs 3-4 of the same plan remain unstarted.
+clang-cl+xwin, deployed to `~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior DLL backed up as
+`.bak-pre-item-classify`). **IN-GAME CONFIRMED 2026-07-01 19:37 via log check**: fresh `NEW SESSION`
+19s after deploy, `[SIG]` 29/29 PASS, no crash/error, and `[ITEMCLASS]` census (the moved
+`classify_item_live` chain) producing correct live output (e.g. `key=500008975 cat="Quest -
+Progression"`) — directly exercises the whole moved taxonomy path. **PR 2 is done and verified —
+merged to `master`.** PRs 3-4 of the same plan remain unstarted.
 
 ## OLDER RESUME (2026-07-01l) — `feat/inject-icon-harvest` PR 1 IN-GAME CONFIRMED, MERGED
 
