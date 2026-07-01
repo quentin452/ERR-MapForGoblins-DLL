@@ -16,6 +16,29 @@ something not below, check `docs/changelog.md` first, then the relevant `docs/pl
 Last updated: 2026-07-01z9 (overlay_hot_reload_playwright_plan Phase 2 Slices A/B/C all MERGED to
 `master` except Slice C's `LoadLibrary` mechanism — see below).
 
+## MapGenie category coverage — GROUP 1: landmarks landed, farmables deferred (2026-07-01)
+
+Branch `feat/mapgenie-group1-landmarks` (off master, 1 commit). Adds 6 landmark map categories
+(`World - Divine Towers / Evergaols / Minor Erdtrees / Grand Lifts / Dungeons / Legacy Dungeons`)
+built LIVE from `WorldMapPointParam.iconId` — `build_live_landmarks()` in
+`src/worldmap/map_entry_layer.cpp`, same pattern as `build_live_bosses()`. Mod-agnostic, no bake;
+iconId map + zero-overlap-with-bosses re-verified off-disk (`tools/verify_worldmap_iconids.py`).
+clang-cl+xwin cross-build links clean. All 6 default OFF (World-section `show_*` toggles). Ghost =
+NPC invader = existing `WorldHostileNPC` (already shipped, no new work).
+
+**Next, in order:**
+1. **In-game verify the landmarks (user).** Toggle each of the 6 on over the ERR map (expect ~114
+   markers: DivineTower 6, Evergaol 16, MinorErdtree 11, GrandLift 2, Dungeon 66, LegacyDungeon 13);
+   grep `[LANDMARKLIVE]` for the per-category counts. Then the mod-agnostic check on a non-ERR
+   install (me3 CLI, `docs/memory/tooling/me3-cli-nonerr-launch.md`). On pass, merge to master.
+2. **GROUP 2** — the ~half of MapGenie categories NOT in `WorldMapPointParam` (Smithing Table,
+   Portal, Hidden Passage, Martyr Effigy, Stone Cairn, …): disk MSB/AEG pass, category by category.
+   See RE findings Tier 2(B).
+3. **Deferred (user) — the 2 Farmable categories** (`WorldFarmableEnemy` +
+   `WorldFarmableCollectible`). MFG-original; each hit a real design fork (no clean live boss signal
+   → FarmableEnemy floods + can't exclude fog-gated bosses; FarmableCollectible is a routing choice).
+   Gate mechanics stay valid. Full rationale in `docs/plans/mapgenie_category_coverage_plan.md`.
+
 ## RESUME HERE (2026-07-01z9) — overlay_hot_reload_playwright_plan Slice C nearly done, only LoadLibrary mechanism left
 
 Phase 1 and Phase 2 Slices A + B are COMPLETE + MERGED. Slice C (the consolidated

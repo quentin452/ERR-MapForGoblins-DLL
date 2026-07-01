@@ -1,6 +1,32 @@
 # Plan — close the 31 MapGenie category gaps + 2 custom respawn categories
 
-Status: scoped, not started. Research done via subagent (2026-07-01), findings below are grounded in
+Status: GROUP 1 partially landed (2026-07-01). Research done via subagent (2026-07-01); findings below
+are grounded in actual param defs / source citations. RE fully discharged
+(`docs/re/windows_mapgenie_category_coverage_re_findings.md`).
+
+## Progress (2026-07-01, branch `feat/mapgenie-group1-landmarks`)
+
+- **DONE — Tier 2(A) landmarks (6 categories).** `WorldDivineTower` / `WorldEvergaol` /
+  `WorldMinorErdtree` / `WorldGrandLift` / `WorldDungeon` / `WorldLegacyDungeon` are wired LIVE from
+  `WorldMapPointParam.iconId` (`build_live_landmarks` in `map_entry_layer.cpp`, same path as
+  `build_live_bosses`). Mod-agnostic, no bake. iconId map + zero-boss-overlap re-verified off-disk
+  (`tools/verify_worldmap_iconids.py`). Cross-build (clang-cl+xwin) links clean. All 6 default OFF
+  (World section toggles). **In-game verification (ERR + a non-ERR install) still pending (user).**
+- **DONE (already shipped) — Ghost = NPC invader = `WorldHostileNPC`.** No new work, per Tier 3.
+- **DEFERRED (user, 2026-07-01) — `WorldFarmableEnemy` + `WorldFarmableCollectible`.** These are
+  MFG-original (not MapGenie) and each hit a real design fork with no clean answer from the data:
+  - `WorldFarmableEnemy`: NpcParam has **no** clean per-enemy "boss" field (`npcType`/`teamType`
+    aren't category keys; fog-gated bosses read `disableRespawn==0`), so a `dr==0` pass can't cleanly
+    exclude bosses AND would flood the map with thousands of trash placements. Revisit with a curated
+    notability/boss datamine (`tools/datamine_enemy_notability.py`) as the non-boss filter.
+  - `WorldFarmableCollectible`: farmable MAP gather nodes (`getItemFlagId==0`) already draw under
+    their item category; farmable ENEMY drops are dropped at `map_entry_layer.cpp` (the
+    `no-one-time-flag` skip). Populating a dedicated bucket is a routing decision (additive vs
+    re-route) the user opted to make later, alongside FarmableEnemy.
+  The gate mechanics remain correct if/when resumed: `dr==0 ∧ non-boss` (reuse a boss filter) and
+  `getItemFlagId==0 ∨ flag_is_repeatable` (both fields already read live — zero new plumbing).
+
+Research done via subagent (2026-07-01), findings below are grounded in
 actual param defs / source citations, not guesses — items marked "hypothesis" still need verification.
 
 ## Sequencing dependency — do this AFTER `generated_data_removal_plan.md` Phase B

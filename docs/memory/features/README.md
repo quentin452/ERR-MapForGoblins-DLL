@@ -27,6 +27,7 @@ into a single current-truth entry. Status reflects the **current code**, not the
 - **Sealed-chest registry RE** [closed] — sealed-chest loot is NOT pre-open resident; walker exists for spawned loot → [fieldins-pool-registry-re](fieldins-pool-registry-re.md)
 - **World-feature MSB identity table** [active] — off-bakes ~1300 static markers (`WORLD_FEATURE_MODELS`, now 9 rows) → [world-feature-msb-identities](world-feature-msb-identities.md)
 - **Marker coverage & quest-NPC layer** [shipped] — projection fixes, Royal-Capital eviction, 344-marker NPC layer → [mapforgoblins-map-freeze](mapforgoblins-map-freeze.md)
+- **MapGenie landmark categories** [shipped, in-game pending] — 6 live `WorldMapPointParam.iconId` categories (Divine Tower/Evergaol/Minor Erdtree/Grand Lift/Dungeon/Legacy Dungeon); GROUP 1, farmables deferred → [mapgenie-landmark-categories](mapgenie-landmark-categories.md)
 
 ## Item classification
 > Two notes describe the same classifier — `phase3` is the as-built, `er-item-taxonomy` the reference.
