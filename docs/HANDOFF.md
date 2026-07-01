@@ -2,9 +2,11 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01p (`feat/inject-section-visibility` PR 3 of the goblin_inject.cpp
-god-file split — IN-GAME CONFIRMED via log check, ready to merge — see directly below. Earlier
-same day: PR 2 (item-classify) IN-GAME CONFIRMED + MERGED; PR 1 (icon-harvest) IN-GAME CONFIRMED +
+Last updated: 2026-07-01q (`feat/inject-world-position` branch: PR 4a of the goblin_inject.cpp
+god-file split — PR 4 first scoped into 4a/4b/4c + permanent stay-behind (4d), then 4a
+(world-position/grace-data) extracted, builds clean, deployed + md5-verified, NOT YET in-game
+log-checked — see directly below. Earlier same day: PR 3 (section-visibility) IN-GAME CONFIRMED +
+MERGED; PR 2 (item-classify) IN-GAME CONFIRMED + MERGED; PR 1 (icon-harvest) IN-GAME CONFIRMED +
 MERGED; PR 0 — MERGED, in-game confirmed via log check; Phase A regen DONE on the Windows box
 (parallel session) — all 4 profiles now MAP_ENTRY_COUNT 0,
 non-ERR DLLs rebuilt clean via clang/ninja, Phase-1 enemy-name landmine closed at build level (see
@@ -14,7 +16,39 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01p) — `feat/inject-section-visibility` PR 3 IN-GAME CONFIRMED, ready to merge
+## RESUME HERE (2026-07-01q) — `feat/inject-world-position` PR 4a built+deployed, needs in-game log check
+
+PR 4 (the final cleanup pass) got its own scoping audit first, per the plan's own rule — every
+prior PR found the plan's pre-PR0 guesses about "what's left" wrong somewhere, so PR 4 needed a
+fresh full-file read of the post-PR3 ~1636-line `goblin_inject.cpp` rather than trusting the old
+section list. Findings: scoped into **4a** (world-position/grace-data, DONE below), **4b**
+(TutorialParam + toast-popup delivery + the misplaced `world_map_open()` — not started), **4c**
+(native/DRAW-ONLY grace suppression, already known-independent — not started), and **4d**
+(~260 lines that should STAY in `goblin_inject.cpp` permanently: the event-flag core `orp_flag_set`
+— already a shared-accessor hub 2 other files depend on — plus `menu_auto_toggle_loop`, a generic
+watcher touching state across 3 split files; moving this would just relocate the hub, not reduce
+coupling). Also found: `goblin::inject_map_entries()` has NO implementation anywhere in the
+codebase (likely orphaned by the parallel baked-data-removal session's native-injection
+retirement) — `apply_flag_or_pairs()`'s entire body is a guaranteed no-op as a result, flagged in
+the plan doc, not fixed (pure relocation is this plan's whole point).
+
+Branch `feat/inject-world-position` (forked from `master` after PR 0-3 merged), implementing PR 4a.
+Extracted the dungeon→overworld legacy-fold projection, grace anchors + region/cluster naming,
+live WorldChrMan player-position resolve, live grace capture, and the `marker_fragment_flag`/
+`marker_world_pos` wrappers into new `src/goblin_world_position.cpp` (~793 lines, 2 spans:
+`:60-176` + `:187-826`) — fully self-contained per audit (confirmed via a file-wide grep, not just
+a local read), zero cross-file accessors needed. 2 dead-but-still-referenced globals
+(`g_injected_row_ptrs`/`g_lot_backed_set`) sit between the two spans and stay behind since
+`apply_flag_or_pairs`/`injected_row_ptrs()` (the dead subsystem above) still reference them.
+Declarations in `goblin_inject.hpp` unchanged (facade kept). Builds clean via clang-cl+xwin,
+deployed to `~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior DLL backed up
+as `.bak-pre-world-position`) — **game wasn't running at deploy time, so NOT yet in-game
+log-checked** (same check as prior PRs: fresh `NEW SESSION` + `[SIG]` PASS + no crash; this PR
+touches player-position/grace-anchor code so ideally also confirm the player dot / grace pins look
+right on the world map). Next: launch ERR, check logs, then merge to `master`; PRs 4b/4c remain
+unstarted, 4d is the intended final resting state of `goblin_inject.cpp`.
+
+## OLDER RESUME (2026-07-01p) — `feat/inject-section-visibility` PR 3 IN-GAME CONFIRMED, MERGED
 
 Branch `feat/inject-section-visibility` (forked from `master` after PR 0+1+2 merged), implementing
 PR 3 of `docs/plans/goblin_inject_refactor_plan.md`. Extracted per-section visibility + marker-
