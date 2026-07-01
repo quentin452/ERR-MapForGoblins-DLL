@@ -270,6 +270,48 @@ namespace
     // through as a parameter.
     POINT g_diag_raw_cursor_client{};
     bool g_diag_raw_cursor_valid = false;
+
+    // ROOT CAUSE, confirmed live by <user> 2026-07-01 via the [DIAG] crosshairs above: the raw
+    // OS cursor (GetCursorPos) reads as permanently frozen — center from the very first F1 open
+    // (not just after Alt+Tab), and after an Alt+Tab it freezes wherever it was at the moment of
+    // the transition instead of resuming. Windows/Wine simply isn't updating the absolute cursor
+    // position at all while this game holds raw-input mouse capture — GetCursorPos can never be
+    // trusted here, focus transition or not.
+    //
+    // Fix: track our OWN virtual absolute cursor by accumulating the SAME raw mouse deltas the
+    // game's own camera already relies on (captured in hk_get_raw_input_data/_buffer below, right
+    // before we blank them for the game) — this is data proven to keep working across Alt+Tab
+    // (the user's camera control itself isn't reported broken), unlike GetCursorPos. Seeded once
+    // at first use to screen centre (matches where the frozen GetCursorPos reads anyway) since a
+    // real starting position isn't obtainable from anything reliable.
+    std::atomic<float> g_virtual_cursor_x{0.f};
+    std::atomic<float> g_virtual_cursor_y{0.f};
+    std::atomic<bool> g_virtual_cursor_seeded{false};
+
+    void accumulate_virtual_cursor(LONG dx, LONG dy, USHORT flags)
+    {
+        ImGuiIO &io = ImGui::GetIO();
+        const float dispW = io.DisplaySize.x > 0.f ? io.DisplaySize.x : 1920.f;
+        const float dispH = io.DisplaySize.y > 0.f ? io.DisplaySize.y : 1080.f;
+        if (!g_virtual_cursor_seeded.exchange(true, std::memory_order_relaxed))
+        {
+            g_virtual_cursor_x.store(dispW * 0.5f, std::memory_order_relaxed);
+            g_virtual_cursor_y.store(dispH * 0.5f, std::memory_order_relaxed);
+        }
+        if (flags & MOUSE_MOVE_ABSOLUTE)
+        {
+            // Rare (VM/tablet input): lLastX/Y are already normalized 0..65535 absolute coords.
+            g_virtual_cursor_x.store((static_cast<float>(dx) / 65535.f) * dispW, std::memory_order_relaxed);
+            g_virtual_cursor_y.store((static_cast<float>(dy) / 65535.f) * dispH, std::memory_order_relaxed);
+            return;
+        }
+        float nx = g_virtual_cursor_x.load(std::memory_order_relaxed) + static_cast<float>(dx);
+        float ny = g_virtual_cursor_y.load(std::memory_order_relaxed) + static_cast<float>(dy);
+        nx = nx < 0.f ? 0.f : (nx > dispW ? dispW : nx);
+        ny = ny < 0.f ? 0.f : (ny > dispH ? dispH : ny);
+        g_virtual_cursor_x.store(nx, std::memory_order_relaxed);
+        g_virtual_cursor_y.store(ny, std::memory_order_relaxed);
+    }
     // Item-search nav window: while > 0, a locate/page-switch is in flight and the input hooks inject a
     // tiny net-zero mouse jitter so the game keeps processing its world-map (otherwise, with the panel
     // open, input is blanked -> the map's view/page step doesn't run -> our switch+pan only apply once
@@ -1404,6 +1446,10 @@ namespace
             auto *ri = reinterpret_cast<RAWINPUT *>(data);
             if (ri->header.dwType == RIM_TYPEMOUSE)
             {
+                // Capture the REAL delta for our own virtual-cursor tracking (see
+                // accumulate_virtual_cursor's comment) before it gets blanked below for the game.
+                accumulate_virtual_cursor(ri->data.mouse.lLastX, ri->data.mouse.lLastY,
+                                          ri->data.mouse.usFlags);
                 // During an item-search nav, feed a 1px net-zero (±1 alternating) delta so the game
                 // keeps stepping/rendering its world map (which is otherwise frozen by the input blank)
                 // — lets our page/layer switch + pan actually take effect with the F1 panel open. The
@@ -1437,11 +1483,35 @@ namespace
     UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
     {
         g_diag_get_raw_input_buffer.fetch_add(1, std::memory_order_relaxed);
+        // Always call through for the real data first — needed for our own virtual-cursor
+        // tracking (see accumulate_virtual_cursor's comment). Previously this short-circuited to
+        // 0 immediately on a real read while g_show, giving us zero visibility into deltas the
+        // game's own camera was still receiving via this exact API (confirmed the game uses this
+        // batched path, not the singular GetRawInputData, by [CURSORDIAG]'s raw_input_buffer
+        // counter being the one that's consistently nonzero).
+        UINT n = o_get_raw_input_buffer(data, size, hdr);
+        if (g_show && data != nullptr && n != static_cast<UINT>(-1) && n > 0)
+        {
+            PRAWINPUT ri = data;
+            for (UINT i = 0; i < n; ++i)
+            {
+                if (ri->header.dwType == RIM_TYPEMOUSE)
+                    accumulate_virtual_cursor(ri->data.mouse.lLastX, ri->data.mouse.lLastY,
+                                              ri->data.mouse.usFlags);
+                // NEXTRAWINPUTBLOCK expands to a QWORD-based alignment macro that isn't visible
+                // with this project's xwin/clang-cl SDK headers — inlined equivalent (8-byte
+                // align, matching RAWINPUT_ALIGN's own definition) instead of fighting the include.
+                {
+                    const uint64_t next = (reinterpret_cast<uint64_t>(reinterpret_cast<uint8_t *>(ri) + ri->header.dwSize) + 7ull) & ~7ull;
+                    ri = reinterpret_cast<PRAWINPUT>(next);
+                }
+            }
+        }
         // Batched raw input. While the menu is open, report zero buffered events
         // for actual reads (data != null); pass size-queries through so the
         // game's buffer sizing stays correct.
         if (g_show && data != nullptr) return 0;
-        return o_get_raw_input_buffer(data, size, hdr);
+        return n;
     }
 
     // DirectInput8 device hooks. The vtable is shared by all devices (mouse +
@@ -3657,41 +3727,33 @@ namespace
                 // even though the button poll correctly saw real clicks.
                 //
                 // Unconditionally feeding every GetCursorPos read caused a second bug (<user>,
-                // same day): the cursor visibly snapped to / stuck at screen centre the instant
-                // F1 opened. This game keeps the OS cursor warped to centre continuously during
-                // normal play as part of its raw-input camera (same behavior described by
-                // hk_set_cursor_pos's "swallow the game's recenter-to-middle" comment) — so the
-                // very FIRST poll right after opening genuinely reads back centre, and feeding
-                // that stale gameplay-parked value into ImGui is what showed up as a
-                // recentered/stuck cursor. Fix: capture the first read as a baseline WITHOUT
-                // feeding it, and only start feeding positions once the poll reports something
-                // DIFFERENT from that baseline — i.e. once the player has genuinely moved the
-                // physical mouse. Still fixes the original "can't click" bug (any real movement
-                // to interact with the panel triggers it) without ever reporting the stale centre
-                // value. Re-baselines every time F1 closes so the next open starts clean.
-                static POINT s_mouse_poll_baseline{};
-                static bool s_mouse_poll_have_baseline = false;
+                // same day): the cursor visibly snapped to / stuck at screen centre. A baseline-
+                // gate attempt (only feed once the poll differs from its first read) didn't fix
+                // it either — <user> confirmed live via the [DIAG] crosshairs that GetCursorPos
+                // itself is simply frozen: reads centre from the very first F1 open (not just
+                // after Alt+Tab), and after an Alt+Tab freezes at whatever it was at the moment of
+                // the transition instead of resuming. GetCursorPos cannot be trusted here at all.
+                //
+                // FINAL FIX: feed ImGui our own virtual cursor instead (g_virtual_cursor_x/y,
+                // accumulated from real raw-input mouse deltas in hk_get_raw_input_data/_buffer —
+                // see accumulate_virtual_cursor's declaration comment). That data keeps working
+                // across Alt+Tab (it's the same feed the game's own camera relies on), so this
+                // sidesteps the GetCursorPos staleness entirely instead of working around it.
+                // GetCursorPos is still polled below, but ONLY to feed the [DIAG] cyan crosshair
+                // for comparison — no longer drives ImGui's real mouse position.
                 if (fgw && g_hwnd)
                 {
+                    io.AddMousePosEvent(g_virtual_cursor_x.load(std::memory_order_relaxed),
+                                        g_virtual_cursor_y.load(std::memory_order_relaxed));
                     POINT pt;
                     if (::GetCursorPos(&pt) && ::ScreenToClient(g_hwnd, &pt))
                     {
-                        g_diag_raw_cursor_client = pt;   // always captured, independent of the
-                        g_diag_raw_cursor_valid = true;  // baseline gate below (see [DIAG] draw)
-                        if (!s_mouse_poll_have_baseline)
-                        {
-                            s_mouse_poll_baseline = pt;
-                            s_mouse_poll_have_baseline = true;
-                        }
-                        else if (pt.x != s_mouse_poll_baseline.x || pt.y != s_mouse_poll_baseline.y)
-                        {
-                            io.AddMousePosEvent(static_cast<float>(pt.x), static_cast<float>(pt.y));
-                        }
+                        g_diag_raw_cursor_client = pt;
+                        g_diag_raw_cursor_valid = true;
                     }
                 }
                 else
                 {
-                    s_mouse_poll_have_baseline = false;
                     g_diag_raw_cursor_valid = false;
                 }
                 const bool lb = fgw && (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
@@ -3770,14 +3832,17 @@ namespace
                                       static_cast<float>(g_diag_raw_cursor_client.y)),
                               IM_COL32(0, 255, 255, 255));
                 crosshair(diagIo.MousePos, IM_COL32(255, 0, 255, 255));
-                char diagBuf[384];
+                char diagBuf[448];
                 std::snprintf(diagBuf, sizeof(diagBuf),
-                              "[DIAG] raw(cyan)=(%ld,%ld) valid=%d  ImGui(magenta)=(%.0f,%.0f)\n"
+                              "[DIAG] GetCursorPos(cyan)=(%ld,%ld) valid=%d  ImGui(magenta)=(%.0f,%.0f)\n"
+                              "virtual_cursor(raw-input-driven)=(%.0f,%.0f)\n"
                               "g_has_focus=%d WantCaptureMouse=%d\n"
                               "SetCursorPos/frame=%u last_call=(%d,%d) swallowed=%d",
                               g_diag_raw_cursor_valid ? static_cast<long>(g_diag_raw_cursor_client.x) : -1,
                               g_diag_raw_cursor_valid ? static_cast<long>(g_diag_raw_cursor_client.y) : -1,
                               g_diag_raw_cursor_valid, diagIo.MousePos.x, diagIo.MousePos.y,
+                              g_virtual_cursor_x.load(std::memory_order_relaxed),
+                              g_virtual_cursor_y.load(std::memory_order_relaxed),
                               g_has_focus.load(std::memory_order_relaxed), diagIo.WantCaptureMouse,
                               g_diag_set_cursor_pos_live.exchange(0, std::memory_order_relaxed),
                               g_diag_last_set_cursor_pos_x.load(std::memory_order_relaxed),
