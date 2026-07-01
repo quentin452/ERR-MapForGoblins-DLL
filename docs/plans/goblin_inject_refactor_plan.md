@@ -86,10 +86,29 @@ finding/touching one subsystem means reading past ten others first.
 | **1. Icon-texture harvest/GPU registry** ✅ DONE | `src/goblin_icon_harvest.cpp` (new, ~2290 lines incl. header): icon probe, image enumerate, harvest-via-find-hook, proactive repo-walk harvest, TWIN-map walk, CreateImage force-bind, central GPU-icon registry, OodleLZ_Decompress hook, item-icon XML layout. Full audit found the real block was `:1688-3939` (~2252 lines, bigger than the original ~1500-1600 estimate) and exactly ONE cross-boundary coupling: `icon_rpm_i32`/`icon_rpm_ptr` needed by `goblin_inject.cpp`'s `warp_pin_detour` (stays behind) — fixed with a local duplicate, same per-file-copy convention as PR 0. Declarations UNCHANGED in `goblin_inject.hpp` (30 public functions, facade kept). | PR 0 landed | 2252 lines moved | DONE + IN-GAME CONFIRMED + MERGED 2026-07-01, `feat/inject-icon-harvest` |
 | **2. Item/loot classification-live (taxonomy-based)** ✅ DONE | `src/goblin_item_classify.cpp` (new, ~430 lines): `classify_item_live`, `npc_loot_lot`, `aeg_pickup_lot`, `goods_is_map`, `npc_team_and_name`, `item_marker_category`, plus 3 more found during audit that were physically wedged into the same span sharing structs — `aeg_is_gather`, `npc_item_lot_enemy`, `item_real_icon_id`. Non-contiguous in the original file (taxonomy helpers `:1070-1167`, public API `:2299-2607`, ~1130-line unrelated gap between them, e.g. TutorialParam injection) — both spans moved together, zero coupling to the gap or elsewhere, no accessor header needed. | — | ~430 lines moved (two spans) | DONE + IN-GAME CONFIRMED + MERGED 2026-07-01, `feat/inject-item-classify` ([ITEMCLASS] census correct live) |
 | **3. Visibility + marker-clustering (as ONE unit)** ✅ DONE | `src/goblin_section_visibility.cpp` (new, ~675 lines): visibility globals + `is_section_hidden_ptr` (`:187-428`), cluster-config helpers + `seed_runtime_gates` (`:1140-1258`), the visibility/clustering half of "Overlay control API" (3 sub-spans `:1736-1955` minus save/reset/toast), per-category census (`:2118-2172`). Grace anchors turned out NOT coupled (own state, zero overlap) — correctly deferred to PR 4, the plan's original table wrongly lumped them in by proximity. 2 new tiny accessors (`icons_user_disabled`/`take_section_apply_req`) + `persist_settings` un-`static`'d, in `goblin_inject_shared.hpp` — same pattern as PR 0/1. | — | ~675 lines moved (8 non-adjacent spans) | DONE + IN-GAME CONFIRMED + MERGED 2026-07-01, `feat/inject-section-visibility` (2min session, world-map open/close + census + cluster-render bench all clean) |
-| **4. Remaining sections** (player position, grace anchors — confirmed independent by PR 3's audit, NOT visibility-coupled, TutorialParam, native grace suppression, the non-visibility remainder of "Overlay control API" — save/reset requests + the toast subsystem + `injected_row_ptrs`, kill indicators + `orp_flag_set`'s section) | Second-pass audit first (see Ground truth above), THEN scope exact PR boundaries — do not batch all of these into one commit | PRs 0-3 landed + audit done | large in total, unknown per-piece until audited (`goblin_inject.cpp` is 1636 lines post-PR3, down from the original 5266) | unknown until audited — don't guess a table entry here |
+| **4a. World-position/grace-data domain** | Dungeon→overworld legacy fold (`:67-165`), grace anchors + region/cluster naming (`:187-497`), player world/map position + live grace capture (`:499-796`), `marker_fragment_flag`/`marker_world_pos` wrappers (`:797-833`) | PR 0-3 landed + PR 4 scoping audit (2026-07-01) | ~760 lines | low — fully self-contained, zero cross-file accessors needed (all coupling is same-TU or via already-public API calls) |
+| **4b. TutorialParam + toast-popup delivery + `world_map_open`** | `:834-1222` (~390 lines) — toast-method A/B experiment, TutorialParam row injection + delivery, `world_map_open()` (a misplaced public utility called from `goblin_worldmap_probe.cpp`/`map_renderer.cpp`/`goblin_overlay.cpp`×2/`input_wndproc.cpp` — bundled here only by banner proximity, not relevance) | 4a | ~390 lines | low — no new accessor needed, facade unchanged |
+| **4c. Native/DRAW-ONLY grace suppression** | `:1223-1372` (~150 lines), already known-independent since before PR 3 | 4a/4b | ~150 lines | low — small, clean, self-contained |
+| **4d. Stays in `goblin_inject.cpp` permanently** | ~260 lines: event-flag core (`orp_flag_set` + its PR 0 shared accessors — a hub 2 other files already depend on), `menu_auto_toggle_loop` (generic watcher touching state across 3 split files), save/reset requests, toast subsystem, kill-indicators, quest-finishable cache | — | ~260 lines | n/a — this is intentional permanent glue, not a refactor gap (see PR 4 scoping finding below) |
+
+**PR 4 scoping audit (2026-07-01, before any PR 4 code moves):** don't trust the plan's pre-PR0
+description of "what's left" — every prior PR's audit found it wrong somewhere. Fresh full-file
+read of the post-PR3 ~1636-line `goblin_inject.cpp` found:
+- **Dead code (flag, don't fix in a relocation PR):** `goblin::inject_map_entries()` has NO
+  implementation anywhere in the codebase (declared in `goblin_inject.hpp:11` only) — likely
+  orphaned by the parallel baked-data-removal session's native-injection retirement. Consequence:
+  `g_injected_row_ptrs`/`g_lot_backed_set` are never populated, `apply_flag_or_pairs()`'s entire
+  body is a guaranteed no-op (iterates an always-empty vector), `injected_row_ptrs()` always
+  returns empty. Same pattern as PR 0's dead `ANON_LABEL_TEXTID` and PR 3's write-only dirty flags.
+- **`category_config_ptr`** — confirmed zero references left in `goblin_inject.cpp`; fully moved to
+  PR 3's file as expected, no leftover coupling.
+- **Grace anchors independence** (PR 3's finding) re-confirmed: depends on live-grace-capture only
+  via the PUBLIC `goblin::live_graces()` call, not static-linkage coupling.
 
 Land 0→1→2→3 in order (0 is a hard prerequisite for 1 and 2). PR 4 gets its own scoping pass —
-same discipline as this plan's own Ground-truth section — before any code moves.
+same discipline as this plan's own Ground-truth section — before any code moves. Land 4a→4b→4c in
+order (cleanest/lowest-risk first, same discipline as 0→1→2→3); 4d is not a PR, it's the intended
+final resting state of `goblin_inject.cpp`.
 
 ## Design sketch
 
