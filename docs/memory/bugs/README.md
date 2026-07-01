@@ -45,15 +45,17 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
   CSWorldMapPointMan rebuild RE). Does **not** affect the overlay marker path. → [thread8-mapopen-bottleneck-re](thread8-mapopen-bottleneck-re.md)
 - **Render-loop perf** [open] — ~8477-marker/frame loop; idle-skip + spatial bucketing are backlog
   (see `process/plan-spatial-grid-audit`). → [overlay-render-perf-followups](overlay-render-perf-followups.md)
-- **DX/bugs backlog** [open] — 14 items (invisible-icon halo, gamepad/cursor via input-device flag,
-  pause, Y-offset, clustering; + review-2: Region/fragment visibility heuristic, minimap honouring
-  marker-scale/clustering, minimap search-ring). → [dx-bugs-backlog](dx-bugs-backlog.md)
-- **Overlay double-draw** [open, non-deterministic] — F1 sometimes spawns two MapForGoblins windows (one
-  movable + one frozen replica); minimap has a similar duplicate. Varies per game instance. Likely a
-  double Present-hook / double init; probably tied to the F1 mouse-passthrough below. → [dx-bugs-backlog](dx-bugs-backlog.md) (item 11)
-- **F1 mouse passthrough + cursor anchor** [open] — with F1 open, ER still receives mouse input and
-  re-anchors the cursor to screen centre; need to force cursor-unlock + capture mouse for ImGui on F1
-  open. → [dx-bugs-backlog](dx-bugs-backlog.md) (item 12), [input-device-active-flag](../features/input-device-active-flag.md)
+- **DX/bugs backlog** [open, mostly stale — audited 2026-07-01] — real remaining items: 4/5 (in-game
+  pause, RE spike not started), 13/14 (minimap doesn't honour marker-scale/clustering, no search-ring),
+  16 (native ER right-stick zoom bug), F1 (native overworld icons leak underground after Browser
+  teleport), F2 (locate pan clamped at fog-of-war boundary). Items 1/3/6/7/8/9/10/12/15 already FIXED
+  (cross-checked against `git log` this session — the doc had drifted); 2 partial (cursor-recenter
+  done, key-hint auto-switch not); 11 root-caused as a double-DLL-load deploy issue, not code (hardening
+  guard still TODO). → [dx-bugs-backlog](dx-bugs-backlog.md)
+- **Overlay double-draw** [root-caused, not a code bug] — was thought to be a double Present-hook/init;
+  actually the double-DLL-load artifact (`MapForGoblins.dll` + `MapForGoblins_vanilla.dll` both
+  loading), see `docs/HANDOFF.md` "Known bugs". Practical fix = deploy one DLL; a runtime mutex-guard
+  hardening is still TODO. → [dx-bugs-backlog](dx-bugs-backlog.md) (item 11)
 - **Phantom cut graces** [open] — Siofra nameless + "Underground's End"; needs MSB entityId allowlist
   (Oodle-blocked on Linux). → [extra-graces-siofra](extra-graces-siofra.md)
 - **Per-tile walk-fog** [open RE] — real explored-fog lives in `CS::WorldMapTiledLayer`; `tile_fogged()`

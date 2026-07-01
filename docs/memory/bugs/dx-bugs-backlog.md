@@ -13,7 +13,13 @@ Backlog DX + bugs relevé par <user> le 2026-06-28 (à traiter plus tard, pas en
    native map symbols left untouched (no halo). Config `icon_legibility` / `icon_min_half_px`. Visually
    confirmed. Original report kept below.
    **Icônes quasi-invisibles pour certaines couleurs (BUG SYSTÉMIQUE)** — ex. "Doigt racorni de sans éclat" (Withered Dappled Finger?) et "Stake of Marika". ⚠️ PRÉCISION <user> : le bug apparaît AUSSI sur les icônes de l'atlas CPU, donc ce N'EST PAS spécifique au pipeline DDS disque — c'est systémique au rendu. Dans certaines configs de couleur, combinées avec la worldmap ER affichée derrière, certaines icônes deviennent quasi invisibles. DEUX cas distincts : (1) icône trop petite ; (2) couleur de l'icône qui se fond dans le décor de la map ER derrière (contraste insuffisant). → piste fix : outline/contour, halo/ombre portée, ou taille minimale garantie — pas un problème de crop rect ni de sampling DDS. Touche [[dvdbnd-packed-reader]] mais aussi tout le rendu marker.
-2. **Bug ER natif manette (DX upstream)** — quand on déplace le curseur à la souris puis qu'on repasse à la manette, ER devrait recentrer le curseur au milieu mais ne le fait pas. (Bug du jeu, pas le nôtre — DX à compenser éventuellement.) ➕ <user> veut aussi auto-switcher les hints de touche (manette/souris) selon le device actif → LIRE le flag "active input device" d'ER, cf. [[input-device-active-flag]] (= MÊME flag que le drift worldmap-manette ; recette CE memory-diff dans le brief RE).
+2. 🟡 **PARTIEL — FIXED 2026-07-01** (`4ec2aa7`, PR C — code comment cite "Item 2") — la compensation
+   côté DX (recentrage du curseur au milieu quand on passe souris→manette) est faite. Doc jamais
+   croisée à l'époque, trouvé en auditant les commits vs le backlog. **Reste ouvert :**
+   auto-switcher les hints de touche (manette/souris) selon le device actif — la donnée existe déjà
+   (`g_last_input_was_gamepad`, PR C) mais l'UI hint-icon elle-même n'a jamais été codée (noté comme
+   follow-on "cheap" dans `docs/plans/dx_bugs_backlog_plan.md`, pas fait).
+   **Bug ER natif manette (DX upstream)** — quand on déplace le curseur à la souris puis qu'on repasse à la manette, ER devrait recentrer le curseur au milieu mais ne le fait pas. (Bug du jeu, pas le nôtre — DX à compenser éventuellement.) ➕ <user> veut aussi auto-switcher les hints de touche (manette/souris) selon le device actif → LIRE le flag "active input device" d'ER, cf. [[input-device-active-flag]] (= MÊME flag que le drift worldmap-manette ; recette CE memory-diff dans le brief RE).
 3. 🟡 **PARTIEL — FIXED** (PR C `feat/gamepad-toggle-cursor-recenter` 2026-07-01, PR C-2 part 1
    `feat/gamepad-nav-input-isolation` 2026-07-01) — combo XInput configurable (défaut `Y+R3`)
    ouvre/ferme F1 (PR C), ET navigation complète des widgets (boutons/checkboxes/listes) via D-pad/
@@ -79,7 +85,10 @@ Backlog DX + bugs relevé par <user> le 2026-06-28 (à traiter plus tard, pas en
    **Bug DX chez nous — F1 inaccessible à la manette** — impossible d'ouvrir les menus via F1 (équivalent manette). Donc impossible de jouer MapForGoblins end-to-end uniquement à la manette. → besoin d'un binding manette pour l'ouverture du menu.
 4. **Intégrer le mod "Pause in game" directement dans MapForGoblins** — une case en plus dans F1. Évite tout conflit de touche possible avec le mod externe.
 5. **Setting ImGui "pause à l'ouverture de F1"** — quand on ouvre F1 (manette ou clavier), proposer un setting pour choisir si le jeu se met en pause automatiquement à l'ouverture des settings MapForGoblins. Hypothèse DX : quand le menu F1 est ouvert on ne veut pas forcément jouer en même temps → peut-être meilleure DX qu'une simple case ImGui à long terme. Lié au point 4.
-6. **Desync curseur ImGui ↔ ER au restart de la map** — quand on restart la map, le curseur devrait être recentré au milieu pour que les ToolTips s'affichent au même endroit que le curseur ER. Lié à [[overlay-item-search-bar]] (cursor-locate = caméra map 2D).
+6. ✅ **FIXED 2026-07-01** (`4ec2aa7`, PR C — code comment cite "Item 6") — recentrage du curseur
+   sur la transition (re)open de la worldmap, via `o_set_cursor_pos` déjà hooké. Doc jamais croisée
+   à l'époque, trouvé en auditant les commits vs le backlog.
+   **Desync curseur ImGui ↔ ER au restart de la map** — quand on restart la map, le curseur devrait être recentré au milieu pour que les ToolTips s'affichent au même endroit que le curseur ER. Lié à [[overlay-item-search-bar]] (cursor-locate = caméra map 2D).
 7. ✅ **FIXED 2026-06-30** (`feat/dx-altitude-cue`, PR B) — ▲/▼ triangle badge (AddTriangleFilled, no
    font dep) when a marker's Y differs from the player's, gated to the player's current map layer
    (group match) so cross-map viewing doesn't badge everything. MSB block-local Y (`pos[1]`) threaded
@@ -119,17 +128,31 @@ F2. **Locate/recherche ne recentre pas sur une cible dans le Fog of War.** Quand
 
 ## Review-2 — relevé <user> le 2026-06-29 (à traiter plus tard)
 
-10. **Heuristique visibilité RequireFragment + Region perd des icônes.** En cliquant sur une région (Region-click → affichage des objets de cette région) ET avec `require_map_fragments`, l'heuristique actuelle laisse certaines icônes hors de la plage de visibilité Region et hors de la plage RequireFragment → des MapForGoblins markers qui devraient s'afficher ne s'affichent pas. À investiguer (même famille que le clustering heuristique du point 8 / le gate fragment). Lié [[fragment-gate-maplist-gap]], [[worldmap-tile-fog-re]].
-11. **Double-draw non-déterministe (F1 + minimap).** Parfois F1 ouvre DEUX fenêtres MapForGoblins : une déplaçable + une figée qui réplique le rendu (XXX fps mais bloquée). La minimap a aussi un double-draw similaire. **Non-déterministe** : selon les instances de jeu, parfois 1 seul layer, parfois 2. Hypothèse : double initialisation / double hook du loop de rendu (Present hooké 2×) ou layer dupliqué. Probablement lié au point 12 (inputs souris qui passent à travers). À reproduire + tracer l'init du hook overlay.
-12. **Inputs souris fuient vers ER à travers F1 + curseur ancré au centre.** Quand F1 est ouvert, ER continue de recevoir les inputs souris (le menu ne capture pas exclusivement) ; en plus ER ré-ancre/force le curseur au milieu de l'écran. Besoin : à l'ouverture de F1, **forcer l'unlock du curseur** et **capturer les inputs souris** pour ImGui (bloquer le passthrough vers ER). Probablement lié au double-draw (point 11) et au desync curseur (point 6). Lié [[input-device-active-flag]].
+10. ✅ **FIXED** (avant même ce report du 2026-06-29 — `fix(fragment-gate): fill interior MapList
+    gaps...` + 2 commits liés, 2026-06-27/29) — déjà reflété comme "resolved" dans
+    `docs/memory/bugs/README.md` mais jamais croisé ici. **Heuristique visibilité RequireFragment +
+    Region perd des icônes.** En cliquant sur une région (Region-click → affichage des objets de
+    cette région) ET avec `require_map_fragments`, l'heuristique actuelle laisse certaines icônes
+    hors de la plage de visibilité Region et hors de la plage RequireFragment → des MapForGoblins
+    markers qui devraient s'afficher ne s'affichent pas. Lié [[fragment-gate-maplist-gap]],
+    [[worldmap-tile-fog-re]].
+11. 🟡 **Root-caused (HANDOFF, DOUBLE-LOAD de deux variantes DLL) — PAS un bug de code.** Le
+    double-draw = artefact du chargement simultané de `MapForGoblins.dll` ET
+    `MapForGoblins_vanilla.dll`. Fix pratique immédiat = ne déployer qu'UN seul DLL. Le garde-fou
+    runtime (mutex nommé, bail propre + bannière d'erreur si 2e instance détectée) reste un TODO
+    non codé — voir la section "Known bugs" de `docs/HANDOFF.md`.
+    **Double-draw non-déterministe (F1 + minimap).** Parfois F1 ouvre DEUX fenêtres MapForGoblins : une déplaçable + une figée qui réplique le rendu (XXX fps mais bloquée). La minimap a aussi un double-draw similaire. Lié au point 12.
+12. ✅ **FIXED** (`b10e50e` "fully block game input while the menu is open" + `2854600` "free the
+    cursor while the menu is open", tous deux **2026-06-18 — antérieurs au report du 2026-06-28/29**,
+    donc <user> a probablement reporté contre un build pas à jour. Trouvé en auditant les commits vs
+    le backlog. **Inputs souris fuient vers ER à travers F1 + curseur ancré au centre.** Quand F1 est ouvert, ER continue de recevoir les inputs souris (le menu ne capture pas exclusivement) ; en plus ER ré-ancre/force le curseur au milieu de l'écran. Lié [[input-device-active-flag]].
 13. **Minimap ignore le marker-scale ET le clustering.** Le réglage d'échelle des markers et le clustering n'affectent QUE la worldmap, pas la minimap. La minimap devrait honorer les mêmes réglages (ou avoir les siens). Lié [[minimap-future-feature]].
 14. **DX minimap : afficher l'objet sélectionné par le searcher sur la minimap.** Quand l'item-search sélectionne une cible, l'afficher sur la minimap avec le même cercle/anneau que sur la worldmap (= "game changer" DX selon <user>). Lié [[overlay-item-search-bar]], [[minimap-future-feature]].
-15. **Loot undercount + pas de ×N stacking** (détecté 2026-06-30) — "Below The Well" montre 1 Sliver of
-    Meat alors que Mapgenie en liste 3. ROOT CAUSE confirmée : les readers de lot (`resolve_loot_item_textid`,
-    `lot_row_in_table`, goblin_inject.cpp:4772/4809) ne lisent QUE le slot 01 d'`ItemLotParam` et ignorent
-    les slots 02-08 + toutes les quantités `lotItemNum01..08`. `Marker` n'a aucun champ count. Fix = lire
-    les 8 slots + quantités → `Marker.count` → badge "×N" dans draw_marker. Plan détaillé :
-    `docs/plans/loot_item_count_plan.md`. Fixable wiring, pas de donnée manquante. DEFERRED (fresh session).
+15. ✅ **FIXED** (`62eb9a9` "per-lot item count in tooltip" — lit maintenant les 8 slots
+    `ItemLotParam` + `lotItemNum01..08` via `goblin::lot_item_count`, per le plan). Doc marquée
+    DEFERRED n'avait jamais été mise à jour ; trouvé en auditant les commits vs le backlog.
+    **Loot undercount + pas de ×N stacking** (détecté 2026-06-30) — "Below The Well" montre 1 Sliver of
+    Meat alors que Mapgenie en liste 3. Plan détaillé : `docs/plans/loot_item_count_plan.md`.
 
 16. **Bug ER natif — zoom/dézoom stick droit parfois impossible** (relevé <user> 2026-07-01, pendant les
     tests PR C-2). Parfois le zoom/dézoom de la caméra worldmap via le stick droit de la manette cesse de
