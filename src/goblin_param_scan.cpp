@@ -457,6 +457,44 @@ void asset_radar()
     spdlog::info("[ASSETRADAR] done ({} unique assets logged)", logged.size());
 }
 
+// ── [ASSETCOUNT] — world-wide placement census for candidate models ──────────
+// Radar at Church of Elleh put two candidates at the smithing table:
+// AEG099_308 (entity 1042361700 — the Whetstone Knife treasure event) and
+// AEG099_309. Count every placement of each across all disk MSBs; the count
+// that matches the real smithing-table spots is the category filter.
+void asset_count()
+{
+    static constexpr const char *kCountModels[] = {"AEG099_308", "AEG099_309"};
+    const auto ms = goblin::overlay_api::disk_loot_dir();
+    if (ms.empty()) return;
+    int counts[std::size(kCountModels)] = {};
+    std::error_code ec;
+    for (auto it = std::filesystem::directory_iterator(ms, ec);
+         !ec && it != std::filesystem::directory_iterator(); it.increment(ec))
+    {
+        const auto &p = it->path();
+        if (p.extension() != ".dcx") continue;
+        std::ifstream f(p, std::ios::binary);
+        if (!f) continue;
+        std::vector<uint8_t> dcx((std::istreambuf_iterator<char>(f)),
+                                 std::istreambuf_iterator<char>());
+        auto raw = goblin::msbe::dcx_decompress(dcx.data(), dcx.size(), nullptr, emevd_oodle());
+        if (raw.empty()) continue;
+        auto pr = goblin::msbe::parse_msb(raw.data(), raw.size(), false, 0, /*wantAssets=*/true);
+        for (const auto &a : pr.assets)
+            for (size_t m = 0; m < std::size(kCountModels); m++)
+                if (a.modelName == kCountModels[m])
+                {
+                    counts[m]++;
+                    spdlog::info("[ASSETCOUNT] {}  {}  entity={}  {}  local=({:.1f},{:.1f},{:.1f})",
+                                 kCountModels[m], a.name, a.entityId, p.filename().string(),
+                                 a.pos[0], a.pos[1], a.pos[2]);
+                }
+    }
+    for (size_t m = 0; m < std::size(kCountModels); m++)
+        spdlog::info("[ASSETCOUNT] total {} = {}", kCountModels[m], counts[m]);
+}
+
 void emevd_needle_scan_deferred()
 {
     // Discovery (CreateFileW hook) fills disk_loot_dir asynchronously — poll for it.
@@ -488,6 +526,7 @@ void emevd_needle_scan_deferred()
     // GetMessage/msg-repo are resolved long before map discovery completes, so
     // this late point is safe for the raw-slot text probe.
     abp_text_probe();
+    asset_count();
     asset_radar();
 }
 } // namespace
