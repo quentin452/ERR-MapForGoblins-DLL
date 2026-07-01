@@ -9,7 +9,7 @@ INI-clamp bug fix, and a grace-icon auto-scale fix) also MERGED to master — se
 below for that arc; the original Alt+Tab root-cause recap (3 sessions down) covers the FIRST round,
 merged separately earlier.)
 
-## Session recap (2026-07-01) — MapGenie coverage RE: Part A(a)+A(b)+Tier 2 verified (all hypotheses corrected)
+## Session recap (2026-07-01) — MapGenie coverage RE: Part A(a)+A(b)+Tier 2+Tier 3 verified (Tier 4 left)
 
 - Started executing `docs/re/windows_mapgenie_category_coverage_re_prompt.md` (verify-only, no impl
   ahead of `generated_data_removal_plan.md` Phase B). Key method finding: params are baked verbatim
@@ -39,8 +39,15 @@ merged separately earlier.)
   Wandering Mausoleum, Dragon Shrine, Landmark) — they're AEG/MSB interactables, summoning pools, dynamic
   entities, or catch-alls → different source, must NOT be scoped as WMPP work. ERR only decorates the
   point *text* (boss status); iconId itself unchanged → mod-agnostic. Findings + plan updated in place.
-- **NEXT (same prompt):** Tier 3 `NpcParam` teamType/npcType (Character/Ghost/Merchant/Trainer/Elite
-  Enemy/Enemy — shares the A(a) read site). Disk-verifiable the same way.
+- **Tier 3 `NpcParam` teamType/npcType — VERIFIED, hypothesis mostly collapses.** `teamType` is a
+  per-ROW combat allegiance (each NPC spans 3–6 teams across state rows), `npcType` is ~all-0 (==1 set is
+  4 named rows) — neither is a per-NPC category key. Only clean signal: **Ghost = invader = teamType∈
+  {24,27} ∧ nameId>0 = the ALREADY-SHIPPED WorldHostileNPC** (`goblin_inject.hpp:360`), no new work. The
+  other 5 need non-teamType sources: Merchant→ShopLineupParam, Character→existing QuestNpcLayer,
+  Trainer→1 hand-ID'd NPC, Elite Enemy/Enemy→`datamine_enemy_notability.py`. Tool:
+  `tools/verify_npc_teamtype.py`. Findings + plan + Open-Q #1 updated.
+- **NEXT (same prompt):** Tier 4 — Lore (6) / Miscellaneous (9) short hypothesis pass +
+  Quest (7) spot-check vs QuestNpcLayer (do NOT implement). Then the RE brief is fully discharged.
 
 ## Session recap (2026-07-01) — minimap branch: cursor tracking rebuilt (4 rounds), F32 INI clamp bug fixed, grace auto-scale
 

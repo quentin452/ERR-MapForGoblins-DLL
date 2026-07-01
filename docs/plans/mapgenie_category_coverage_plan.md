@@ -91,9 +91,19 @@ actually in `WorldMapPointParam`**:
   Martyr Effigy — 212 · Minor Erdtree — 11 · Portal — 39 · Smithing Table — 1 · Wandering Mausoleum — 7
   · Stone Cairn — 5
 
-**Tier 3 — MED effort, hypothesis: `NpcParam`-based (teamType / npcType), same family as Part A's
-`disableRespawn` read — likely the same classification pass can emit several of these together:**
-- Character — 127 · Ghost — 57 · Merchant — 43 · Trainer — 1 · Elite Enemy — 184 · Enemy — 82
+**Tier 3 — `NpcParam` teamType/npcType. VERIFIED 2026-07-01** (`tools/verify_npc_teamtype.py` — see
+findings doc). The "one shared teamType/npcType pass emits all six" hypothesis is WRONG: `teamType` is a
+per-ROW combat allegiance (each NPC spans 3–6 teams across its state rows), and `npcType` is effectively
+all-0 (the `==1` set is 4 named rows). Only ONE of the six is a clean param signal, and it is already
+shipped:
+- **Ghost = NPC invader = `teamType ∈ {24,27}` ∧ `nameId>0` = the existing `WorldHostileNPC`** (live @
+  +0x133, `goblin_inject.hpp:360`, `map_entry_layer.cpp:1256`). No new work.
+- **Merchant** → `ShopLineupParam` presence (different param), not NpcParam.
+- **Character** → the already-merged `QuestNpcLayer` set (`docs/memory/features/quest-browser.md`).
+- **Trainer** (count 1) → single hand-identified NPC.
+- **Elite Enemy / Enemy** → notability datamine (`tools/datamine_enemy_notability.py`), not a teamType.
+- Original count list (reference): Character — 127 · Ghost — 57 · Merchant — 43 · Trainer — 1 ·
+  Elite Enemy — 184 · Enemy — 82
 
 **Tier 4 — unresolved / cross-plan, do not start blind:**
 - Lore — 6, Miscellaneous — 9: no hypothesis yet, needs its own short investigation pass before scoping.
@@ -104,9 +114,11 @@ actually in `WorldMapPointParam`**:
 
 ## Open questions before implementation starts
 
-1. Tier 2/3 are mechanism *hypotheses* from pattern-matching existing code, not verified against the
-   actual param/MSB rows for each of the 20 categories in them — budget an RE/verification pass per
-   category (or per cluster, if several share one source) before estimating real effort.
+1. ~~Tier 2/3 are mechanism *hypotheses*, not verified against actual rows — budget an RE pass.~~
+   **RESOLVED 2026-07-01:** RE pass done (`tools/verify_*.py`, findings doc). Tier 2 = iconId key for
+   the named-location subset (Divine Tower 23 / Evergaol 9 / Minor Erdtree 30 / Grand Lift 21 / Dungeon &
+   Legacy sets); the rest aren't WMPP. Tier 3 collapses to "Ghost = existing WorldHostileNPC"; the other
+   5 need ShopLineupParam / QuestNpcLayer / notability-datamine, not a teamType pass.
 2. ~~Confirm `disableRespawn` varies as expected on trash vs boss rows before wiring Part A(a).~~
    **RESOLVED 2026-07-01:** it does NOT vary as hoped — bosses read `dr=0`, not `1` (gated by event
    flags, not this field). Gate corrected above to `dr==0 AND non-boss`. See findings doc.

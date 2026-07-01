@@ -159,6 +159,44 @@ redirected to asset/summoning-pool/EMEVD sources and should NOT be scoped as WMP
 confident *negative* (absence from WMPP is direct), but the positive source for each (B) category is
 itself a further RE task, not resolved here.
 
-## Tier 3 — `NpcParam` teamType/npcType — PENDING (shares the NpcParam read site with A(a))
+## Tier 3 — `NpcParam` teamType/npcType — HYPOTHESIS MOSTLY WRONG (only "Ghost" is param-clean, and already shipped)
+
+**Tool:** `tools/verify_npc_teamtype.py` (vanilla, with ERR field-existence cross-check).
+
+The plan hoped one shared `teamType`/`npcType` pass would emit all six NPC categories (Character, Ghost,
+Merchant, Trainer, Elite Enemy, Enemy). It does not — **neither field is a stable per-NPC category key:**
+
+- **`teamType` is a per-ROW combat allegiance (state), not a per-NPC class.** Every notable NPC has 3–6
+  NpcParam rows spread across teams for its different states. Examples (vanilla): Roundtable Knight Vyke
+  appears in teams {27, 2, 6}; Needle Knight Leda in {26, 1, 6, 2, 27}; Millicent in {26, 0, 27};
+  Merchant Kalé in {0, 26, 28}. So reading one `teamType` cannot tell you an NPC's MapGenie category —
+  it tells you which side that one *state row* fights on.
+- **`npcType` is effectively unusable.** All-rows distribution vanilla `{0: 6876, 1: 163}`; but the
+  `npcType==1` set is only **4 distinct NAMED rows** (DLC dummy, Baleful Shadow, Rennala, Gurranq) — the
+  other 159 are unnamed template/boss-frame rows (teamType 7×78, 6×40, 33×36). Not a trash/boss category
+  signal in practice.
+
+**The one clean, param-derivable signal — and it is ALREADY IMPLEMENTED:**
+- **MapGenie "Ghost" = NPC invader = `teamType ∈ {24,27}` ∧ `nameId > 0`.** This is verbatim the shipped
+  `WorldHostileNPC` classifier (`src/goblin_inject.hpp:360-361`, `src/worldmap/map_entry_layer.cpp:1256`;
+  teamType read live @ +0x133, `goblin_inject.cpp:4998`). Vanilla: 184 rows carry teamType {24,27}
+  (~60 distinct invader names — White Mask Varré, Bloody Finger Nerijus, Okina, Recusant Henricus, Mad
+  Tongue Alberich, Vyke, …), lining up with MapGenie "Ghost — 57". Populated on ERR too (116 rows), and
+  the classifier already reads live NpcParam so it is mod-agnostic by construction. **⇒ Tier 3's "Ghost"
+  needs no new work — it IS `WorldHostileNPC`.**
+
+**The other five need non-teamType sources (do NOT scope as a NpcParam teamType pass):**
+- **Merchant** — the signal is "has a shop" = a `ShopLineupParam` block for that NPC (different param),
+  not any NpcParam field. Kalé/Patches/etc. carry ordinary friendly teamTypes indistinguishable from
+  non-merchant NPCs.
+- **Character** (friendly quest NPC) — this is the `QuestNpcLayer` set (already merged to master, see
+  `docs/memory/features/quest-browser.md`). Same population MapGenie calls "Character". Reuse it.
+- **Trainer** (MapGenie count 1) — a single hand-identified NPC, not a param class. Identify by name/id.
+- **Elite Enemy / Enemy** — these are *notability tiers* among hostile enemies, not a teamType. The repo
+  already computes this via `tools/datamine_enemy_notability.py`; that datamine (name + drops + boss
+  frame), not a raw NpcParam field, is the correct source.
+
+**Confidence:** HIGH. The negative (teamType/npcType are not category keys) is direct from the data;
+the positive (Ghost=invader) is already shipped and cross-validated live in production code.
 
 ## Tier 4 — Lore / Miscellaneous / Quest — PENDING (Quest = spot-check only)
