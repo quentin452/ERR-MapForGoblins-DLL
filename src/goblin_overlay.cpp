@@ -2549,8 +2549,15 @@ namespace
                                       "(underground player position isn't reliable yet).");
                 // Max raised 0.30 -> 0.60 (user feedback 2026-07-01: 0.30 was still too
                 // zoomed-out/small at max). Default also raised, see minimapZoom's declaration.
-                ImGui::SliderFloat("Zoom (px/world)", &goblin::config::minimapZoom, 0.02f, 5.0f, "%.3f");
-                ImGui::SliderFloat("Radius (px)", &goblin::config::minimapSize, 60.0f, 300.0f, "%.0f");
+                // AlwaysClamp: ImGui's Ctrl+Click-to-type on a slider does NOT clamp to
+                // [min,max] by default -- a typed value beyond what's shown could be saved to
+                // the INI, then silently reset on the next load by the (now correct, but still
+                // real) per-field range clamp in goblin_config.cpp. Keep what's shown and what's
+                // stored always in sync.
+                ImGui::SliderFloat("Zoom (px/world)", &goblin::config::minimapZoom, 0.02f, 5.0f, "%.3f",
+                                   ImGuiSliderFlags_AlwaysClamp);
+                ImGui::SliderFloat("Radius (px)", &goblin::config::minimapSize, 60.0f, 300.0f, "%.0f",
+                                   ImGuiSliderFlags_AlwaysClamp);
                 ImGui::SliderFloat("Opacity", &goblin::config::minimapOpacity, 0.0f, 1.0f, "%.2f");
                 ImGui::Checkbox("Anchor right", &goblin::config::minimapAnchorRight);
                 ImGui::SameLine();

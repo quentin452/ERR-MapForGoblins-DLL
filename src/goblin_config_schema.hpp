@@ -36,6 +36,16 @@ namespace goblin
         const char *comment;     // may contain '\n' for multi-line; nullptr = none
         bool err_only;           // omitted + disabled in the vanilla build
         const char *rename_from; // previous key name in this section, or nullptr
+        // IniType::F32 load-time clamp. Defaults match the original hardcoded [0.1, 5.0] this
+        // replaced (dx-bugs 2026-07-01: that was a blanket range meant for the overlay *scale*
+        // multipliers, e.g. overlay_master_scale, but IniType::F32 got reused later for fields
+        // with very different valid ranges -- minimap_size (default 100px!) would silently get
+        // clamped down to 5 on the very next load after any settings save, and minimap_zoom
+        // could never persist a value someone had typed above 5.0 via Ctrl+click on the slider,
+        // which ImGui does NOT clamp by default). Entries with a real range outside 0.1..5.0
+        // MUST override these two.
+        float f32_min = 0.1f;
+        float f32_max = 5.0f;
     };
 
     struct IniSection
