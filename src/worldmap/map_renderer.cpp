@@ -1863,8 +1863,22 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             // North-up, player-centred: same orientation as the worldmap (mapV = -worldZ).
             float dx = (m.worldX - pwx) * scale;
             float dy = -(m.worldZ - pwz) * scale;
-            if (dx * dx + dy * dy > cullR * cullR)
-                continue; // outside the HUD radius
+            const float d2 = dx * dx + dy * dy;
+            if (d2 > cullR * cullR)
+            {
+                // <user> 2026-07-01 DX: an active item-search target outside the minimap's
+                // radius used to just vanish (only markers near the player ever showed) —
+                // clamp it to the HUD edge instead, same idea as an off-screen objective
+                // indicator, so "locate" still gives a direction even far from the player.
+                // Non-search markers outside range stay culled (unchanged) to keep the HUD
+                // from cluttering with the whole map's contents.
+                if (!search_hit(m))
+                    continue;
+                const float d = std::sqrt(d2);
+                const float edgeScale = (cullR - half - 2.f) / d;
+                dx *= edgeScale;
+                dy *= edgeScale;
+            }
             // Map-fragment gate (require_map_fragments): the FRAGMENT item must be acquired.
             // Vanilla parity: an already-discovered grace bypasses this gate.
             if (cfg::requireMapFragments && m.fragment_flag &&
