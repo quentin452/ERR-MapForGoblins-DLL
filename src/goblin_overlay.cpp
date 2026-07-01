@@ -9,8 +9,7 @@
 #include <windows.h>
 #include <d3d12.h>
 #include <dxgi1_4.h>
-#include <Xinput.h>   // struct/constant defs only — XInputGetState resolved dynamically below, no link dep
-#include <intrin.h>   // _ReturnAddress() — caller-range check in hk_xinput_get_state
+#include <Xinput.h>   // XINPUT_STATE struct used by hk_present's own poll (real state, via the trampoline)
 
 #include <MinHook.h>
 #include <spdlog/spdlog.h>
@@ -20,7 +19,6 @@
 #include <backends/imgui_impl_win32.h>
 
 #include "goblin_inject.hpp"   // goblin::world_map_open()
-#include "goblin_crashdump.hpp"   // goblin::self_module_range() — XInputGetState hook caller check
 #include "goblin_markers.hpp"   // goblin::markers::set_event_flag()
 #include "goblin_worldmap_probe.hpp"   // get_live_view() for the marker prototype
 #include "goblin_map_data.hpp"         // generated::MAP_ENTRIES (graces for Phase 1)
@@ -38,6 +36,7 @@
 #include "goblin_bench.hpp"                           // GOBLIN_BENCH scoped timers
 #include "input/input_shared.hpp"                     // goblin::input::menu_open()
 #include "input/input_directinput.hpp"                // goblin::input::install_directinput_hooks()
+#include "input/input_gamepad.hpp"                    // goblin::input::install_xinput_hook() etc.
 
 #include <vector>
 #include <map>
@@ -164,11 +163,9 @@ namespace
     SetCursorPosFn o_set_cursor_pos = nullptr;
     ClipCursorFn o_clip_cursor = nullptr;
 
-    // XInputGetState — hooked (PR C-2) so the game gets no controller input while F1 is open
-    // (ImGui's own gamepad nav needs the real state; see hk_xinput_get_state).
-    using XInputGetStateFn = DWORD(WINAPI *)(DWORD, XINPUT_STATE *);
-    XInputGetStateFn o_xinput_get_state = nullptr;
-    bool g_xinput_available = false;
+    // XInputGetState hook moved to src/input/input_gamepad.cpp (goblin::input::
+    // install_xinput_hook() / xinput_available() / xinput_get_state_real()) — second slice
+    // of docs/plans/input_module_refactor_plan.md.
 
     // The 2D world map cursor follows the absolute OS cursor via GetCursorPos
     // (a different path from the 3D camera's DirectInput). We can't freeze it
@@ -1403,32 +1400,6 @@ namespace
         g_diag_clip_cursor.fetch_add(1, std::memory_order_relaxed);
         if (g_show) return o_clip_cursor(nullptr);   // unclip while menu is up
         return o_clip_cursor(rc);
-    }
-
-    // XInputGetState is polled, not message-based, so unlike mouse/keyboard it can't be
-    // swallowed via hk_wndproc — the game and ImGui's own gamepad-nav backend read the SAME
-    // physical controller state. While F1 is open: a caller inside OUR OWN module (ImGui's
-    // vendored backend, or our own toggle/recenter poll if it ever goes through this entry
-    // point) gets the real data; a caller outside it (the game) gets a REAL, CONNECTED result
-    // with the Gamepad struct zeroed. NOT ERROR_DEVICE_NOT_CONNECTED: that simulates an actual
-    // unplug, and games commonly back off / debounce reconnect-polling a "disconnected" slot —
-    // reported in testing as the controller feeling unresponsive to the game for a bit after
-    // closing F1. Reporting SUCCESS with zeroed buttons/sticks each poll also means any button
-    // released while F1 was open is delivered as a real release (dwPacketNumber still advances
-    // from the real state), so nothing can look "stuck held" once F1 closes — same class of bug
-    // already fixed for keyboard releases in hk_wndproc (never swallow an UP/release).
-    DWORD WINAPI hk_xinput_get_state(DWORD user_index, XINPUT_STATE *state)
-    {
-        const DWORD result = o_xinput_get_state(user_index, state);
-        if (result == ERROR_SUCCESS && g_show && state)
-        {
-            const auto [self_base, self_end] = goblin::self_module_range();
-            const uintptr_t ret = reinterpret_cast<uintptr_t>(_ReturnAddress());
-            const bool caller_is_us = self_base && ret >= self_base && ret < self_end;
-            if (!caller_is_us)
-                state->Gamepad = {};   // connected, real packet number, but nothing held
-        }
-        return result;
     }
 
     BOOL WINAPI hk_get_cursor_pos(LPPOINT p)
@@ -3599,10 +3570,10 @@ namespace
 
         // Gamepad support (dx-bugs-backlog PR C, items 2/3/6): combo toggle + cursor recenter.
         // XInput has no window messages, so — like the keyboard key above — it must be polled
-        // here every frame rather than driven off hk_wndproc. Loaded + hooked once in
-        // goblin::overlay::initialize() (g_xinput_available / o_xinput_get_state); always read
-        // through the trampoline here so our own poll sees real data even while F1 is open (the
-        // hook only swallows callers OUTSIDE our module — see hk_xinput_get_state).
+        // here every frame rather than driven off hk_wndproc. Loaded + hooked once via
+        // goblin::input::install_xinput_hook() (src/input/input_gamepad.cpp); always read via
+        // xinput_get_state_real() (the trampoline) here so our own poll sees real data even
+        // while F1 is open (the hook only swallows callers OUTSIDE our module).
 
         // Shared cursor-recenter (items 2 + 6): center of the game window client rect, via the
         // hooked SetCursorPos so it round-trips the same path as everything else touching the cursor.
@@ -3623,14 +3594,14 @@ namespace
             o_set_cursor_pos(c.x, c.y);
         };
 
-        if (g_xinput_available)
+        if (goblin::input::xinput_available())
         {
             WORD combined = 0;
             bool active = false;
             for (DWORD i = 0; i < 4; ++i)
             {
                 XINPUT_STATE state{};
-                if (o_xinput_get_state(i, &state) != ERROR_SUCCESS) continue;
+                if (goblin::input::xinput_get_state_real(i, &state) != ERROR_SUCCESS) continue;
                 const auto &pad = state.Gamepad;
                 combined |= pad.wButtons;
                 if (pad.wButtons != 0
@@ -4226,39 +4197,9 @@ void goblin::overlay::initialize()
                  reinterpret_cast<void **>(&o_get_cursor_pos));
     }
 
-    // XInputGetState (dx-bugs-backlog PR C / PR C-2): resolved dynamically (no static link dep),
-    // then hooked so the game gets no controller input while F1 is open — see hk_xinput_get_state.
-    // Same load order PR C's original poll used: newest-to-oldest so a system that only has the
-    // older redistributable still works.
-    {
-        XInputGetStateFn raw = nullptr;
-        for (const char *dll : {"xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"})
-        {
-            if (HMODULE h = LoadLibraryA(dll))
-            {
-                raw = reinterpret_cast<XInputGetStateFn>(GetProcAddress(h, "XInputGetState"));
-                if (raw) { spdlog::info("[OVERLAY] XInput loaded: {}", dll); break; }
-            }
-        }
-        if (!raw)
-            spdlog::warn("[OVERLAY] No XInput DLL found — gamepad toggle/recenter/nav disabled");
-        else
-        {
-            MH_STATUS cs = MH_CreateHook(reinterpret_cast<void *>(raw),
-                                          reinterpret_cast<void *>(&hk_xinput_get_state),
-                                          reinterpret_cast<void **>(&o_xinput_get_state));
-            MH_STATUS es = (cs == MH_OK) ? MH_EnableHook(reinterpret_cast<void *>(raw)) : cs;
-            if (cs != MH_OK || es != MH_OK)
-                spdlog::error("[OVERLAY] XInputGetState HOOK FAILED (create={}, enable={}) — "
-                              "gamepad toggle/recenter/nav disabled",
-                              MH_StatusToString(cs), MH_StatusToString(es));
-            else
-            {
-                g_xinput_available = true;
-                spdlog::info("[OVERLAY] XInputGetState hook installed");
-            }
-        }
-    }
+    // XInputGetState (dx-bugs-backlog PR C / PR C-2) — extracted to
+    // src/input/input_gamepad.cpp (docs/plans/input_module_refactor_plan.md).
+    goblin::input::install_xinput_hook();
 
     // DirectInput8 mouse/keyboard hook (ER's primary input path) — extracted to
     // src/input/input_directinput.cpp (docs/plans/input_module_refactor_plan.md).
