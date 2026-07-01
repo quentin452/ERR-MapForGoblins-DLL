@@ -13,9 +13,10 @@ Kept: genuinely live/in-progress work, open questions, and standing knowledge (g
 decisions, non-obvious facts) not fully captured anywhere else. If you're looking for the history of
 something not below, check `docs/changelog.md` first, then the relevant `docs/plans/*.md`.
 
-Last updated: 2026-07-01z7 (overlay_hot_reload_playwright_plan Phase 2 Slice B MERGED to `master`;
-Slice C's export-API layer + call-site rewiring both DONE, build-verified + IN-GAME CONFIRMED
-(`feat/overlay-render-api-wired`, not yet merged) — see below).
+Last updated: 2026-07-01z8 (overlay_hot_reload_playwright_plan Slice C export-API layer +
+call-site rewiring both DONE, IN-GAME CONFIRMED, merged to `master` — including a real merge
+conflict with the parallel name-aliases-runtime/data-purge session's push to `origin/master`,
+resolved and re-confirmed in-game — see below).
 
 ## RESUME HERE (2026-07-01z7) — overlay_hot_reload_playwright_plan Slice C API layer + rewiring landed, LoadLibrary mechanism not started
 
@@ -41,15 +42,28 @@ different header entirely, `gpu_want_symbol`/`gpu_want_item` return `void` not `
 infer from a name.** This layer is dead code right now (not called from anywhere) — zero runtime
 risk, build-verified only, no in-game check needed yet.
 
-**Call-site rewiring — DONE, build-verified + IN-GAME CONFIRMED (2026-07-01, same branch, not yet
-merged).** All 6 render-side files now call `goblin::overlay_api::*` instead of `goblin::config::*`/
-`goblin::ui::*`/etc. directly (generated via a ~180-rule per-symbol sed script, not a blanket
-namespace replace, to avoid rewriting TYPE references like `goblin::worldmap::DiskLootState` that
-must stay untouched). Found + fixed one export-audit gap while rewiring: `goblin::ui::section_label`
-was missing from the API entirely. **IN-GAME CONFIRMED 2026-07-01 22:12**: `[SIG]` 29/29 clean,
-both grace SRVs built, `render.minimap`/`refresh.collected`/`refresh.category_census`/
-`refresh.flag_or_pairs` all firing correctly the whole session, no crash/error — config/`ui::`/
-`collected::` wrappers all confirmed working live.
+**Call-site rewiring — DONE, IN-GAME CONFIRMED, MERGED.** All 6 render-side files now call
+`goblin::overlay_api::*` instead of `goblin::config::*`/`goblin::ui::*`/etc. directly (generated via
+a ~180-rule per-symbol sed script, not a blanket namespace replace, to avoid rewriting TYPE
+references like `goblin::worldmap::DiskLootState` that must stay untouched). Found + fixed one
+export-audit gap while rewiring: `goblin::ui::section_label` was missing from the API entirely.
+**IN-GAME CONFIRMED 2026-07-01 22:12**: `[SIG]` 29/29 clean, both grace SRVs built,
+`render.minimap`/`refresh.collected`/`refresh.category_census`/`refresh.flag_or_pairs` all firing
+correctly the whole session, no crash/error.
+
+**Real merge conflict hit + resolved (2026-07-01, `git merge` with `origin/master`).** While
+merging to `master`, hit an ACTUAL conflict with the parallel session's push: it deleted the baked
+`goblin_name_aliases_en` table and retired `lookup_name_alias_en_utf8` in favor of a new
+`goblin::lookup_name_en_disk_utf8` (runtime engus-FMG-off-disk lookup, `src/worldmap/name_fmg_en.{hpp,cpp}`,
+host-side like `disk_loot_dir`/`disk_loot_state`) — collided directly with this session's rename of
+the same call site to `goblin::overlay_api::lookup_name_alias_en_utf8`. Resolved by keeping BOTH:
+their new lookup function + this session's `overlay_api::` wrapper convention (renamed the wrapper
+to `lookup_name_en_disk_utf8`, updated `goblin_overlay_render_api.{hpp,cpp}` to match, added the
+`worldmap/name_fmg_en.hpp` include). Their other changes (113 dead `.MASSEDIT` file deletions,
+`name_fmg_en.*` additions, `dllmain.cpp`/`goblin_messages.*` edits) merged cleanly, untouched.
+**IN-GAME RE-CONFIRMED 2026-07-01 22:22** after the merge: `[DVDBND]`/`[GAMEFILE]` show the engus
+FMG files (item/menu msgbnd) actually loading from disk through the new wrapper chain, `[SIG]`
+29/29 clean, no crash/error. Merge commit + everything above now on `master`.
 
 **Still remaining for Slice C:** (1) `native_item_icon`-family reverse ctx/pointer table (host owns
 `g_device` etc., doesn't change); (2) `LoadLibrary`+`GetProcAddress` vtable resolution for the
