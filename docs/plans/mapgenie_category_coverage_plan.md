@@ -71,11 +71,25 @@ already-wired Loot/Key category):
 - Key Item (generic) — 85 · Remembrance — 25 · Talisman Pouch — 3 · Tool — 30 · Cerulean Scarab — 21 ·
   Crimson Scarab — 40 · Item (generic) — 13 · Miquella's Cross — 13 (DLC-specific, likely same table)
 
-**Tier 2 — LOW-MED effort, hypothesis: `WorldMapPointParam.iconId`-keyed (same pattern as the already-wired
-Site of Grace `row.iconId` read).** Needs per-category iconId value lookup, not new plumbing:
-- Divine Tower — 6 · Dragon Shrine — 2 · Dungeon — 64 · Elevator — 40 · Evergaol — 11 · Hidden Passage — 59
-  · Landmark — 172 · Legacy Dungeon — 7 · Martyr Effigy — 212 · Minor Erdtree — 11 · Portal — 39 ·
-  Smithing Table — 1 · Wandering Mausoleum — 7 · Stone Cairn — 5
+**Tier 2 — `WorldMapPointParam.iconId`-keyed. VERIFIED 2026-07-01** (`tools/verify_worldmap_iconids.py`,
+vanilla+ERR — see findings doc). The numbers below were MapGenie pin-COUNTS, not iconIds. Real result:
+iconId is a stable, mod-agnostic key (identical vanilla↔ERR), but **only ~half these categories are
+actually in `WorldMapPointParam`**:
+- **Wireable via iconId (subset A):** Divine Tower = **23** · Evergaol = **9** · Minor Erdtree = **30** ·
+  Grand Lift = **21** (only the 2 grand lifts, NOT the 40 in-dungeon elevators) · "Dungeon" = the UNION
+  of typed minor-dungeon icons {Catacombs 4, Caves 13, Tunnels 14, Hero's Graves 16, Wells 15, DLC 230/
+  231/234} · "Legacy Dungeon" = per-location UNIQUE icons {Stormveil 50, Raya Lucaria 51, Haligtree 55,
+  Elphael 56, Volcano Manor 58, Farum Azula 59, Leyndell 60, Shunning-Grounds 61, Carian Study Hall 66,
+  DLC 210/211/213/218}. Classify by single value (first four) or set-membership (Dungeon, Legacy).
+- **NOT in WorldMapPointParam (subset B) — need a different source, do NOT scope as WMPP work:** Smithing
+  Table, Stone Cairn, Hidden Passage (AEG/MSB interactables) · Martyr Effigy (summoning pools — reuse
+  `tools/generate_summoning_pools.py`) · Portal/waygate (MSB warp assets; iconId 87 is impure) ·
+  Wandering Mausoleum (dynamic entity; iconId 45 = only the static Mohgwyn one) · Dragon Shrine (folds
+  into Churches iconId 3, no distinct icon — ambiguous) · Landmark (MapGenie catch-all — skip).
+- Original count list (for reference): Divine Tower — 6 · Dragon Shrine — 2 · Dungeon — 64 ·
+  Elevator — 40 · Evergaol — 11 · Hidden Passage — 59 · Landmark — 172 · Legacy Dungeon — 7 ·
+  Martyr Effigy — 212 · Minor Erdtree — 11 · Portal — 39 · Smithing Table — 1 · Wandering Mausoleum — 7
+  · Stone Cairn — 5
 
 **Tier 3 — MED effort, hypothesis: `NpcParam`-based (teamType / npcType), same family as Part A's
 `disableRespawn` read — likely the same classification pass can emit several of these together:**

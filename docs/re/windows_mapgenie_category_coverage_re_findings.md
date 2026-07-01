@@ -103,7 +103,61 @@ asset/enemy reach the classifier, so this template noise is irrelevant in practi
 **Confidence:** HIGH. Reproducible via `tools/verify_farmable_collectible.py`; the authoritative offset
 +0x80 is already live-cross-validated in shipped code.
 
-## Tier 2 — `WorldMapPointParam.iconId` landmarks — PENDING
+## Tier 2 — `WorldMapPointParam.iconId` landmarks — VERIFIED (real iconIds found; ~half the categories are NOT WMPP)
+
+**Tool:** `tools/verify_worldmap_iconids.py` (groups `WorldMapPointParam` rows by `iconId`, resolves
+`textId1..8` → `PlaceName`). Feeds off `extract_world_map_param.py` + `extract_placename_dump.py`.
+Confirmed stable vanilla (472 rows) ↔ ERR (740 rows): **iconId semantics are byte-identical**; ERR only
+decorates the point *text* with boss-status labels (Resurrected/Defeated/Encountered) — the iconId
+itself is unchanged, so this is a safe mod-agnostic key.
+
+**First correction:** the plan's Tier-2 numbers ("Divine Tower — 6, Dragon Shrine — 2, Dungeon — 64…")
+are **MapGenie pin-COUNTS, not iconIds** (same format as the Tier-1 count list). The real iconIds:
+
+**(A) Categories that ARE a clean `WorldMapPointParam.iconId` (wireable now, same pattern as grace):**
+
+| MapGenie category | Real iconId | Evidence (place names under that iconId) |
+|---|---|---|
+| **Divine Tower** | **23** | exactly the 6 Divine Towers (Limgrave/Liurnia/W-Altus/Caelid/E-Altus/Isolated) — matches count 6 |
+| **Evergaol** | **9** | Weeping/Stormhill/Forlorn Hound/Ringleader's/… Evergaol |
+| **Minor Erdtree** | **30** | 11 rows all "Minor Erdtree" — matches count 11 |
+| **Elevator (grand lifts only)** | **21** | ONLY Grand Lift of Dectus + Rold (2 rows). **NOT** MapGenie's 40 "Elevator" pins (those are in-dungeon lifts, not WMPP — see B). |
+| **Dungeon** (MapGenie's single "Dungeon" = a UNION of ER's typed minor dungeons) | **4** Catacombs · **13** Caves · **14** Tunnels · **16** Hero's Graves · **15** Wells · DLC **230** Catacombs · **231** Gaols · **234** Caves | each iconId is one dungeon *type*; union ≈ MapGenie's 64 |
+| **Legacy Dungeon** | per-location UNIQUE icons, no single value: Stormveil **50**, Raya Lucaria **51**, Haligtree **55**, Elphael **56**, Volcano Manor **58**, Farum Azula **59**, Leyndell **60**, Shunning-Grounds **61**, Carian Study Hall **66**, DLC Belurat **210**, Enir-Ilim **211**, Shadow Keep **213**, Midra's Manse **218** | each major site has its own bespoke icon; classify by iconId ∈ this set |
+
+Bonus clean ones seen (not requested but same mechanism): Churches **3**, Ruins **5**, Shacks **6**,
+Lookout Towers **8**, Gates **10**, Sorcerer Rises **17**, Forts **18**, Colosseums **24**, Eternal
+Cities **46**, DLC Forges **232**, DLC Churches **247**.
+
+**(B) Requested categories that are NOT in `WorldMapPointParam` — hypothesis source WRONG, need a
+different data path:** WMPP only holds *named-location* world-map markers. These are small in-world
+interactables/dynamic entities with no WMPP row:
+
+- **Smithing Table** — an AEG interactable asset, not a WMPP. Needs an MSB/`AssetEnvironmentGeometry`
+  placement scan (same family as the loot-asset path `pickUpItemLotParamId @ +0xb8`, `:4876`).
+- **Martyr Effigy** — the summoning-pool effigies → SummoningPool data / MSB assets. `tools/generate_summoning_pools.py`
+  already sources these; reuse that, not WMPP.
+- **Stone Cairn**, **Hidden Passage** — small interactables, no WMPP row → MSB/AEG or EMEVD.
+- **Portal** (waygates) — no clean WMPP icon; "Sending Gate" shows up mixed under iconId **87** with
+  Volcano-Manor-request markers, so 87 is NOT a pure Portal icon. Waygates are MSB warp assets.
+- **Wandering Mausoleum** — the WALKING mausoleums are dynamic entities; iconId **45** is ONLY the static
+  "Mohgwyn Dynasty Mausoleum". A moving-mausoleum layer would need runtime entity tracking, not a param.
+- **Dragon Shrine** — no distinct icon; "Church/Cathedral of Dragon Communion" fold into Churches
+  (iconId **3**). The Dragon Communion altars are interactables. Flag ambiguous — do not force a WMPP key.
+- **Landmark** (MapGenie's 172) — a catch-all bucket, not a single ER icon; skip as a category.
+
+**(C) Unlabeled dense iconId buckets** (not among the 14 requested; carry NO place-name text): iconId
+**80** (71 rows), **83** (70 rows), **84**/**85** (16 each). Left unclassified — none of the requested
+named-landmark categories map here. Identify later only if a future category needs them.
+
+**Implementation guidance:** Tier 2's *wireable* subset is (A) — read `row.iconId` at the
+`WorldMapPointParam` site and classify by the table above (single value for Divine Tower/Evergaol/Minor
+Erdtree/Grand Lift; set-membership for Dungeon and Legacy Dungeon). The (B) categories must be
+redirected to asset/summoning-pool/EMEVD sources and should NOT be scoped as WMPP work.
+
+**Confidence:** HIGH for (A) (exact name clusters, counts match, stable across vanilla+ERR). (B) is a
+confident *negative* (absence from WMPP is direct), but the positive source for each (B) category is
+itself a further RE task, not resolved here.
 
 ## Tier 3 — `NpcParam` teamType/npcType — PENDING (shares the NpcParam read site with A(a))
 
