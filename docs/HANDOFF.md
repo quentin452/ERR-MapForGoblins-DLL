@@ -2,14 +2,14 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01f (`feat/input-module` MERGED to master, F3 Alt+Tab keyboard-dead bug
-FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint text fix both landed — see
-recap directly below. Earlier same day: `feat/quest-npc-layer` and
-`feat/minimap-scale-cluster-search` also MERGED — their recaps follow below.)
+Last updated: 2026-07-01h (Phase A regen DONE — all 4 profiles now MAP_ENTRY_COUNT 0, non-ERR
+DLLs rebuilt clean on THIS Windows box via clang/ninja; Phase-1 enemy-name landmine closed at build
+level. See STATUS block below. Earlier same day: `feat/input-module` MERGED, F3 Alt+Tab keyboard-dead
+bug FIXED, minimap fixes, `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## ⚠️ IN PROGRESS ELSEWHERE (2026-07-01g) — build_pipeline.py deletion/migration running in a SEPARATE agent session right now
+## ⚠️ IN PROGRESS (2026-07-01h) — baked-data → runtime/disk migration (build_pipeline.py deletion is the END state)
 
-**STATUS 2026-07-01g (the baked-data agent — this is now ACTED ON, not just planned):** the
+**STATUS 2026-07-01h (the baked-data agent — Phases 1 + A landed, see below):** the
 "supprimer build_pipeline.py, on a déjà une path disk" instruction was scoped into a real plan and
 Phase 1 landed. Key correction to the original framing: **`build_pipeline.py` can NOT be deleted now
 — it is the LAST step (Phase 5), not the first.** It still generates the authored tables compiled
@@ -25,23 +25,41 @@ sequencing + the post-Phase-1 findings that reframe Phase 2). What landed / what
   labels resolve mod-agnostic via `npcParamId → NpcParam.nameId → GetMessage(NpcName)` (shipped
   hostile-NPC path). Log after deploy: 0 errors, GETMESSAGE PASS, SANITIZE cleared 0. Offline
   feasibility tool: `tools/verify_enemy_name_runtime.py`.
-- **LANDMINE Phase 1 created:** local non-ERR bakes are stale (`generated_vanilla` MAP_ENTRY_COUNT
-  **6916**, `generated_convergence` **7448**; ERR/erte = 0) and still reference the now-deleted +900M
-  resolver → **any non-ERR build shows empty enemy labels until regenerated to the empty stub.** So
-  `generated_data_removal_plan.md` **Phase A (regen non-ERR) is the immediate next step**, no longer
-  optional. Blocked on a machine that can build non-ERR (2026-07-01 dev machine can't — CMake configure
-  fails there).
+- **DONE — Phase A regen (2026-07-01h, commit `fe8d28c` + this branch `phaseA-regen-nonerr`).** The
+  Phase-1 landmine (stale non-ERR bakes `generated_vanilla` **6916** / `generated_convergence` **7448**
+  referencing the deleted +900M resolver) is **closed at the build level**: reran
+  `build_pipeline.py --profile {vanilla,convergence,erte}` → **all 4 profiles now MAP_ENTRY_COUNT 0**,
+  and all 3 non-ERR DLLs rebuild+link clean (`build-{vanilla,convergence,erte}/MapForGoblins.dll`, ~4 MB,
+  clang/ninja). `generated_*` + `data/<profile>` are gitignored local artifacts, so the only committed
+  change is the pipeline fix. **STILL PENDING (user, needs the game): the in-game vanilla sanity-check**
+  — mod-agnosticism (enemy/loot labels resolving live on a non-ERR install) can ONLY be proven in-game
+  on a non-ERR profile; ERR passing is necessary, not sufficient (guardrail). Deploy the vanilla DLL
+  from `build-vanilla/MapForGoblins.dll` to a vanilla install to close this + the long-open
+  "vanilla+DLC verify" item.
+  - **Machine-capability correction:** the old "blocked on a machine that can build non-ERR — 2026-07-01
+    dev machine can't (CMake configure fails)" note was the Linux/MSVC framing. THIS Windows box builds
+    all 4 profiles via **clang-cl + xwin + ninja** (`build-<p>/`, see
+    `docs/memory/tooling/build-toolchain-clang-xwin.md`), NOT `build.bat`/MSVC (no VS installed here).
+    The real blocker was that the **regen** had never run on Windows — it crashed on the SoulsFormats
+    temp-file unlink because `tools/sitecustomize.py` (the tolerant-unlink safety net) never auto-loaded.
+    Fixed in `build_pipeline.py` (`fe8d28c`): it now puts `tools/` on child `PYTHONPATH` so `site`
+    imports sitecustomize. This also fixes `build.bat`'s pipeline stages on Windows.
 - **`.MASSEDIT` chain PROVEN DEAD (not just baked=0), `239b1ec`:** nothing reads `.MASSEDIT` anywhere —
   the DLL loader `goblin_massedit.{cpp,hpp}` was orphaned (not in CMake, never compiled) and is now
   deleted; `generate_data`'s `massedit_dir` is a dead param (map_data stubbed unconditionally); the only
   pipeline reader `relocating_boss_fix` just edits MASSEDIT files that feed the empty stub. So the ~14
   `generate_*_massedit` stages produce output read by nothing.
-- **NEXT PRs (evidence-based, in the plan):** (1) Phase A regen non-ERR + vanilla in-game sanity;
-  (2) cull the ~14 dead `generate_*_massedit` stages + `relocating_boss_fix` + the dead `massedit_dir`
-  param — but KEEP `generate_loot_massedit`'s JSON half (`loot_lot_linkage.json`/`item_icon_table.json`
-  still feed compiled tables). Empirical confirm = regen ERR + rebuild + run + diff log vs the clean
-  baseline (identical ⇒ dead confirmed); (3) migrate `item_icon_table.json` (ERR-frozen placed-item set)
-  to runtime; (4) Phase 5 retire the pipeline.
+- **NEXT PRs (evidence-based, in the plan):** (1) ~~Phase A regen~~ DONE at build level (above); only
+  the **vanilla in-game sanity-check remains (user)**. (2) **← IMMEDIATE NEXT:** cull the ~14 dead
+  `generate_*_massedit` stages + `relocating_boss_fix` + the dead `massedit_dir` param in
+  `generate_data.py` (confirmed dead: `generate_map_data_cpp` writes an unconditional stub and never
+  reads `--massedit-dir`; the real generate_data outputs — category_exceptions/name_aliases/legacy_conv —
+  read JSON, not MASSEDIT) — but KEEP `generate_loot_massedit`'s JSON half
+  (`loot_lot_linkage.json`/`item_icon_table.json` still feed compiled tables). Empirical confirm = regen
+  ERR + rebuild + run + diff log vs the clean baseline (identical ⇒ dead confirmed). Note the regen
+  pipeline is now runnable on this Windows box (`fe8d28c`), so this confirm loop is doable here (ERR
+  rebuild needs clang/ninja per the toolchain doc). (3) migrate `item_icon_table.json` (ERR-frozen
+  placed-item set) to runtime; (4) Phase 5 retire the pipeline.
 
 **Findings gathered before handing off (historical context; Phase 1 above now acted on):**
 - `build_pipeline.py` (526 lines) is called from **3 places in `build.bat`**: the `:generate`
