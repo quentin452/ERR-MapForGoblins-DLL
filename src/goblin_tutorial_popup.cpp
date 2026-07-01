@@ -60,25 +60,35 @@ static ParamResCap *find_world_map_point_param_res_cap()
 // is registered (regulation loaded). Polling THIS instead of a fixed sleep makes
 // init slow-PC-safe (the param can take >5s to load). SEH-guarded — the param list
 // is walked during volatile game init, so a mid-load fault just reads "not ready".
-bool goblin::world_map_param_ready()
+//
+// Raw derefs live in a noinline body: the __try below then wraps an opaque CALL,
+// which clang-cl PRESERVES — the old shape (__try directly around the walk, with
+// find_world_map_point_param_res_cap inlinable) risked clang-cl SEH elision =
+// unguarded fault during init (docs/memory/tooling/clang-cl-seh-noinline.md).
+__declspec(noinline) static bool world_map_param_ready_body()
 {
     // Not just "registered" — the ResCap appears almost instantly (the probe logged
     // "ready after 0 ms") while the regulation FILE + rows load later. Walk to the
     // param table and require num_rows > 0, else inject runs on an empty/half-loaded
     // table and the map fails to load on the slow launches. Same chain inject uses.
+    auto *prc = find_world_map_point_param_res_cap();
+    if (!prc)
+        return false;
+    auto *rescap = reinterpret_cast<uint8_t *>(prc->param_header);
+    if (!rescap)
+        return false;
+    auto *file_ptr = *reinterpret_cast<uint8_t **>(rescap + 0x80);
+    if (!file_ptr)
+        return false;
+    auto *table = reinterpret_cast<ParamTable *>(file_ptr);
+    return table->num_rows > 0;
+}
+
+bool goblin::world_map_param_ready()
+{
     __try
     {
-        auto *prc = find_world_map_point_param_res_cap();
-        if (!prc)
-            return false;
-        auto *rescap = reinterpret_cast<uint8_t *>(prc->param_header);
-        if (!rescap)
-            return false;
-        auto *file_ptr = *reinterpret_cast<uint8_t **>(rescap + 0x80);
-        if (!file_ptr)
-            return false;
-        auto *table = reinterpret_cast<ParamTable *>(file_ptr);
-        return table->num_rows > 0;
+        return world_map_param_ready_body();
     }
     __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }

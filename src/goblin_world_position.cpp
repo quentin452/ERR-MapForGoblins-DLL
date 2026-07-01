@@ -504,24 +504,33 @@ struct PlayerProbe
     bool ok;
 };
 
+// Raw derefs live in a noinline body: the caller's __try then wraps an opaque
+// CALL, which clang-cl PRESERVES — __try directly around raw loads gets ELIDED
+// by clang-cl (unguarded 0xC0000005; docs/memory/tooling/clang-cl-seh-noinline.md).
+// pr->ok is written LAST, so a mid-body fault leaves ok=false.
+__declspec(noinline) static void probe_player_body(void **wcm_static, PlayerProbe *pr)
+{
+    auto *wcm = *reinterpret_cast<uint8_t **>(wcm_static);
+    pr->wcm = wcm;
+    if (!wcm) return;
+    auto *lp = *reinterpret_cast<uint8_t **>(wcm + 0x1E508);
+    pr->lp = lp;
+    if (!lp) return;
+    pr->p[0] = *reinterpret_cast<float *>(lp + 0x6C0); // X (tile-local)
+    pr->p[1] = *reinterpret_cast<float *>(lp + 0x6C4); // Y (height)
+    pr->p[2] = *reinterpret_cast<float *>(lp + 0x6C8); // Z (tile-local)
+    pr->ok = true;
+}
+
 static void probe_player_seh(void **wcm_static, PlayerProbe *pr)
 {
     pr->wcm = pr->lp = nullptr;
     pr->ok = false;
     __try
     {
-        auto *wcm = *reinterpret_cast<uint8_t **>(wcm_static);
-        pr->wcm = wcm;
-        if (!wcm) return;
-        auto *lp = *reinterpret_cast<uint8_t **>(wcm + 0x1E508);
-        pr->lp = lp;
-        if (!lp) return;
-        pr->p[0] = *reinterpret_cast<float *>(lp + 0x6C0); // X (tile-local)
-        pr->p[1] = *reinterpret_cast<float *>(lp + 0x6C4); // Y (height)
-        pr->p[2] = *reinterpret_cast<float *>(lp + 0x6C8); // Z (tile-local)
-        pr->ok = true;
+        probe_player_body(wcm_static, pr);
     }
-    __except (EXCEPTION_EXECUTE_HANDLER) {}
+    __except (EXCEPTION_EXECUTE_HANDLER) { pr->ok = false; }
 }
 
 bool goblin::get_player_world_pos(float &x, float &y, float &z)
@@ -560,26 +569,33 @@ static void resolve_player_map_pos_statics()
 }
 
 struct MapPosProbe { int area, gx, gz; float lx, lz; bool ok; };
+// Same noinline-body shape as probe_player_body (clang-cl SEH-elision guard).
+__declspec(noinline) static void probe_map_pos_body(uintptr_t mapid_slot, uintptr_t mgr_slot,
+                                                    MapPosProbe *pr)
+{
+    auto *singleton = *reinterpret_cast<uint8_t **>(mapid_slot);
+    auto *mgr = *reinterpret_cast<uint8_t **>(mgr_slot);
+    if (!singleton || !mgr) return;
+    uint32_t mid = *reinterpret_cast<uint32_t *>(singleton + 0x2c);
+    pr->area = (mid >> 24) & 0xff;
+    pr->gx   = (mid >> 16) & 0xff;
+    pr->gz   = (mid >> 8)  & 0xff;
+    // Vec layout (RE FUN_14045e390, doc windows_yellowdot_player_pos): X@+0x70,
+    // Y(HEIGHT)@+0x74, Z@+0x78. The old code read +0x74 as Z = HEIGHT → masked
+    // overworld (flat, Y small), broken underground (deep, Y swings). Z is +0x78.
+    pr->lx = *reinterpret_cast<float *>(mgr + 0x70);  // local X
+    pr->lz = *reinterpret_cast<float *>(mgr + 0x78);  // local Z (NOT +0x74 = height)
+    pr->ok = true;
+}
+
 static void probe_map_pos_seh(uintptr_t mapid_slot, uintptr_t mgr_slot, MapPosProbe *pr)
 {
     pr->ok = false;
     __try
     {
-        auto *singleton = *reinterpret_cast<uint8_t **>(mapid_slot);
-        auto *mgr = *reinterpret_cast<uint8_t **>(mgr_slot);
-        if (!singleton || !mgr) return;
-        uint32_t mid = *reinterpret_cast<uint32_t *>(singleton + 0x2c);
-        pr->area = (mid >> 24) & 0xff;
-        pr->gx   = (mid >> 16) & 0xff;
-        pr->gz   = (mid >> 8)  & 0xff;
-        // Vec layout (RE FUN_14045e390, doc windows_yellowdot_player_pos): X@+0x70,
-        // Y(HEIGHT)@+0x74, Z@+0x78. The old code read +0x74 as Z = HEIGHT → masked
-        // overworld (flat, Y small), broken underground (deep, Y swings). Z is +0x78.
-        pr->lx = *reinterpret_cast<float *>(mgr + 0x70);  // local X
-        pr->lz = *reinterpret_cast<float *>(mgr + 0x78);  // local Z (NOT +0x74 = height)
-        pr->ok = true;
+        probe_map_pos_body(mapid_slot, mgr_slot, pr);
     }
-    __except (EXCEPTION_EXECUTE_HANDLER) {}
+    __except (EXCEPTION_EXECUTE_HANDLER) { pr->ok = false; }
 }
 
 bool goblin::get_player_map_pos(int &out_area, float &world_x, float &world_z,
