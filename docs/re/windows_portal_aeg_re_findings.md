@@ -41,10 +41,30 @@ its entity-arg offset are the remaining unknowns (an EMEVD scan, `tools/datamine
 Alternatively: the 13 map-local-prefixed ids may already be a usable (if partial) portal set for the
 dungeon/underground gates; the overworld/DLC waygates would still need the EMEVD join.
 
-## Recommendation
+## SOLVED — EMEVD template `90005605` = the sending-gate warp. CONFIRMED.
 
-Portal needs the EMEVD warp-template RE before it can be wired cleanly (it is NOT a `world_feature_assets`
-one-liner). Options: (a) do that EMEVD scan next; (b) approximate with the 13 local-prefixed gates + a
-dedup'd, cluster-collapsed subset of the shared range (imperfect); (c) pivot to an easier Group-2 category
-first (Smithing Table = a single AEG model; Elevator = AEG lift models) and return to Portal with the
-EMEVD tooling. The model fact (`AEG099_510`) is solid and reusable whichever path.
+`tools/_probe_portal_emevd.py` + `_probe_portal_verify.py`: scanning bank-2000 `InitializeEvent` calls
+(arg[1]@off4 = called template, args off8+ = params) for the AEG099_510 entity set finds **template
+`90005605`** — **23 distinct AEG099_510 gates at arg[2] (offset 8), 27 calls** — in the shared
+`90005xxx` common-template range (same family as seal `90006051` / hero-tomb `90005683`). The other
+match, `1045630910` (50 gates at arg[7]), is a Leyndell-LOCAL id = the decorative 94-cluster's warp, NOT
+the generic template.
+
+Verified (`_probe_portal_verify.py`): the 25 distinct arg[2] entities (23 are AEG099_510; 2 use a
+different model/region) span the whole world — m11 Leyndell, m12 Siofra, m14 tunnels, m34, DLC m61, and
+Limgrave/Caelid overworld tiles (m60_33..51). The call args are a textbook warp: `arg2 = gate entity`,
+`arg4 = destination entity`, `arg5 = warp target`, `arg6..8 = sub-entities`. LOD duplicate tiles
+(`_00` + `_10`) repeat the same entity → dedup by entity ⇒ **23 unique sending gates.**
+
+MapGenie's "Portal" (39) is broader (also belfry imbued-key portals / DLC-entry, likely other
+mechanisms), but `90005605` gives a clean, well-defined **sending-gate** set — the correct core.
+
+## Implementation (clean, mod-agnostic — mirrors seal_emevd/hostile-NPC)
+
+**Portal = an AEG099_510 asset whose EntityID is bound as arg[2] of an EMEVD `90005605` call.** Runtime,
+no bake: (1) harvest the sending-gate entity set live from the active install's `event/*.emevd` (template
+90005605, entity@arg[2]) — same EMEVD-template harvest the world-feature flag passes already do; (2) a
+disk asset pass emits each AEG099_510 placement whose EntityID ∈ that set (dedup by entity across LOD
+tiles); (3) new `WorldPortal` category + plumbing. Portals never "complete" → no graying flag
+(`flag_rule` none). Model + template facts are mod-agnostic (base-game AEG + common template, present on
+every install).

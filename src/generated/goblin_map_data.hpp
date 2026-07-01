@@ -86,6 +86,10 @@ enum class Category : uint8_t
     WorldDungeon,          // iconId ∈ {4,13,14,15,16,230,231,234} (typed minor-dungeon union)
     WorldLegacyDungeon,    // iconId ∈ {50,51,55,56,58,59,60,61,66,210,211,213,218} (per-site unique)
     WorldMiquellaCross,    // iconId 208 (13 rows) — DLC Miquella's Crosses (also a clean WMPP iconId)
+    // ── GROUP 2 — non-WMPP interactables (disk MSB/AEG + EMEVD) ──
+    // Portal / sending gate: AEG099_510 asset bound as arg[2] of EMEVD warp template 90005605.
+    // Runtime disk+EMEVD, no bake. See docs/re/windows_portal_aeg_re_findings.md.
+    WorldPortal,
 };
 
 // Provenance of a lot-backed loot row — the bake's own classification (extract_all_items.py

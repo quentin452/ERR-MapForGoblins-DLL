@@ -258,6 +258,13 @@ std::vector<std::pair<uint32_t, uint32_t>> parse_emevd_paintings(const uint8_t *
 // name LIVE from GestureParam[gestureParam].itemId. Same pinned 64-bit layout. Empty on malformed.
 std::vector<GestureRef> parse_emevd_gestures(const uint8_t *buf, size_t len);
 
+// Portal / sending-gate entities: a bank-2000 init of common warp template 90005605 carries the
+// gate entity at arg[2] (X0_4 @ +8). Returns each such entity id (>0). The disk pass joins the
+// entity to its AEG099_510 MSB Asset placement (position) and emits a WorldPortal marker. No flag
+// (portals never "complete"). Same pinned 64-bit layout as parse_emevd_flag_awards. Empty on
+// malformed. See docs/re/windows_portal_aeg_re_findings.md.
+std::vector<uint32_t> parse_emevd_portal_gates(const uint8_t *buf, size_t len);
+
 // oo2core's OodleLZ_Decompress (14-arg; x64 ABI unifies __stdcall/__fastcall). Kept as a
 // plain function-pointer typedef so msbe_parser needs no <windows.h>/oo2core link — the DLL
 // resolves the real export (GetProcAddress) and passes it in; offline tools can too.

@@ -340,6 +340,7 @@ const char *category_name(generated::Category c)
         case C::WorldDungeon: return "World - Dungeons";
         case C::WorldLegacyDungeon: return "World - Legacy Dungeons";
         case C::WorldMiquellaCross: return "World - Miquella's Cross";
+        case C::WorldPortal: return "World - Portals";
     }
     return "?";
 }

@@ -41,7 +41,7 @@ namespace goblin::worldmap
 {
 namespace
 {
-constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldMiquellaCross) + 1;
+constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldPortal) + 1;
 
 std::array<std::vector<Marker>, NUM_CAT> g_buckets;
 
@@ -1390,6 +1390,48 @@ static int build_disk_hostile_npc_markers(
     return emitted;
 }
 
+// World feature: Portals / sending gates (MapGenie Group 2, config world_features_from_disk). A portal
+// is an AEG099_510 asset (the sending-gate model) whose EntityID is bound as arg[2] of an EMEVD warp
+// template 90005605 call — the mod-agnostic "this gate actually warps the player" signal (decorative /
+// destination-anchor AEG099_510 placements carry no such binding). `portal_entities` is harvested live
+// from the active install's event/*.emevd (parse_emevd_portal_gates, deduped in
+// load_emevd_world_feature_flags). No bake, no flag (a portal never "completes" → no graying). Dedup by
+// entity (an interactive gate repeats across LOD _00/_10 tiles). Dedicated category → category-wipe.
+// See docs/re/windows_portal_aeg_re_findings.md.
+static int build_disk_portal_markers(
+    const std::vector<DiskCollectible> &assets,
+    const std::unordered_set<uint32_t> &portal_entities,
+    std::unordered_set<Cell, CellHash> &out_cells)
+{
+    namespace gen = goblin::generated;
+    GOBLIN_BENCH("build.disk_portal");
+    const int cat = static_cast<int>(gen::Category::WorldPortal);
+    constexpr uint32_t kSendingGateAeg = 99510u;  // AEG099_510 → 99*1000+510
+    int emitted = 0, dup = 0;
+    std::unordered_set<uint32_t> seen;            // dedup by entity (LOD tiles repeat the asset)
+    for (const DiskCollectible &as : assets)
+    {
+        if (as.aegRow != kSendingGateAeg) continue;
+        if (as.entityId == 0 || !portal_entities.count(as.entityId)) continue;  // not a warp-bound gate
+        if (!seen.insert(as.entityId).second) { ++dup; continue; }
+        from::paramdef::WORLD_MAP_POINT_PARAM_ST d{};
+        d.areaNo = as.area;
+        d.gridXNo = as.gx;
+        d.gridZNo = as.gz;
+        d.posX = as.posX;
+        d.posZ = as.posZ;
+        d.posY = as.posY;  // altitude badge
+        d.textId1 = 6108700;  // PlaceName "Sending Gate" (runtime-localized, mod-agnostic)
+        push_marker(/*row_id=*/as.entityId, d, cat, /*lotId=*/0u, /*lotType=*/0u, Source::DiskMSB);
+        out_cells.insert(cell_of(g_buckets[cat].back()));
+        ++emitted;
+    }
+    spdlog::info("[LOOTDISK] world features: {} Portal markers (AEG099_510 bound to warp template "
+                 "90005605; {} entities harvested, {} LOD-dup collapsed)",
+                 emitted, (int)portal_entities.size(), dup);
+    return emitted;
+}
+
 // World feature: Spirit Springs (config world_features_from_disk). A spring is a MountJump
 // (region subtype 46) / LockedMountJump (54) LAUNCH point, an Others region named
 // "FakeSpiritSpringJump" (ERR's manual springs), or a DLC AEG463_200 asset (springs without a
@@ -2013,8 +2055,10 @@ void build_buckets_impl()
             // into `painting_flags`, so the painting pass needs no second event-dir read.
             std::unordered_map<uint32_t, uint32_t> painting_flags;
             std::vector<msbe::GestureRef> gesture_refs;
+            // Portal / sending-gate entities (warp template 90005605) harvested in the SAME event scan.
+            std::unordered_set<uint32_t> portal_entities;
             std::unordered_map<uint32_t, uint32_t> world_feature_flags =
-                load_emevd_world_feature_flags(&painting_flags, &gesture_refs);
+                load_emevd_world_feature_flags(&painting_flags, &gesture_refs, &portal_entities);
             // LOD-only asset features: a few World-feature models (the Snow Town seal-release statues
             // AEG110_029) are placed ONLY in non-_00 LOD supertiles, which the _00 asset enumeration in
             // load_disk_treasures skips. Scan those models out of the non-_00 tiles and append to
@@ -2040,6 +2084,10 @@ void build_buckets_impl()
             build_disk_hostile_npc_markers(
                 disk_enemies, world_feature_flags,
                 world_feature_cells[static_cast<int>(gen::Category::WorldHostileNPC)]);
+            // Portals / sending gates (Group 2): AEG099_510 assets bound to EMEVD warp template 90005605.
+            build_disk_portal_markers(
+                disk_collectibles, portal_entities,
+                world_feature_cells[static_cast<int>(gen::Category::WorldPortal)]);
             // Spirit Springs: POINT regions (MountJump/Locked/FakeSpiring) + AEG463_200 assets.
             build_disk_spirit_springs_markers(
                 disk_regions, disk_collectibles,
