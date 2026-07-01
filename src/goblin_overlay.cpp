@@ -291,8 +291,19 @@ namespace
     void accumulate_virtual_cursor(LONG dx, LONG dy, USHORT flags)
     {
         ImGuiIO &io = ImGui::GetIO();
-        const float dispW = io.DisplaySize.x > 0.f ? io.DisplaySize.x : 1920.f;
-        const float dispH = io.DisplaySize.y > 0.f ? io.DisplaySize.y : 1080.f;
+        // <user> 2026-07-01: the seed/pivot point was inconsistent across launches — sometimes
+        // near screen centre, sometimes near the top. Root cause: this can fire before
+        // io.DisplaySize is populated from the swapchain (a timing race, not guaranteed to have
+        // run yet the very first time raw input arrives) — the old code fell back to a
+        // HARDCODED 1920x1080 guess in that case, seeding at (960,540) regardless of the real
+        // resolution. On any non-1920x1080 display that's not the real centre at all, landing
+        // wherever 540px happens to fall on the actual screen (e.g. visibly "near the top" on a
+        // taller display). Fix: refuse to seed (or accumulate) until DisplaySize is verified
+        // valid — retried on the next raw input event instead of guessing.
+        if (io.DisplaySize.x <= 0.f || io.DisplaySize.y <= 0.f)
+            return;
+        const float dispW = io.DisplaySize.x;
+        const float dispH = io.DisplaySize.y;
         if (!g_virtual_cursor_seeded.exchange(true, std::memory_order_relaxed))
         {
             g_virtual_cursor_x.store(dispW * 0.5f, std::memory_order_relaxed);
