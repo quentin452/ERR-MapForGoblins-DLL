@@ -150,9 +150,22 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   right after an app regains focus from background can be a stale/glitchy resync burst) could
   flip the panel open/closed on its own, with no Alt+Tab involved, same focus-reset side effect on
   the search bar's `InputText`. Fixed by requiring the combo to read as held for 3 consecutive
-  frames before committing the toggle. Log-confirmed fixed: a real Alt+Tab now produces exactly
-  one panel-reopen with keyboard input flowing again within ~2s, and no more unexplained
-  panel-reopens without a matching focus event.
+  frames before committing the toggle. Log-confirmed fixed the flapping, but the user then found
+  clicking/cursor still broken after a real Alt+Tab, root-caused via new `[KBDIAG]` logging: ImGui
+  only refreshes its mouse position from `WM_MOUSEMOVE`, which this game suppresses during normal
+  gameplay (raw input) — same reason the left-button click is already polled instead of read from
+  `WM_LBUTTONDOWN`. `WM_KILLFOCUS` invalidates ImGui's mouse position and nothing ever refreshed
+  it again, so clicks/hover never worked post-Alt+Tab even though the button poll saw them.
+  Polling `GetCursorPos` alongside the button fixed that, but surfaced a second bug: the game
+  keeps the real OS cursor warped to screen centre continuously during normal play (the same
+  behavior already described by `hk_set_cursor_pos`'s "swallow the game's recenter-to-middle"
+  comment), so the very first poll after opening genuinely read back centre, and feeding that
+  stale value into ImGui showed up as a stuck/recentered cursor. **Final fix:** stopped gating F1
+  on OS focus at all — `g_show` (drives drawing and every input-capture hook) now depends only on
+  the F1 toggle itself, not on `GetForegroundWindow`/focus messages. Removes the focus transition
+  itself instead of patching each bug it produced; user-confirmed fixed in-game. Tradeoff: F1
+  stays active (including input-swallow) even if the game window loses focus — close F1 before
+  Alt+Tabbing to interact with a different window.
 - **Marker teleport on zoom** — overlay markers jumped for a single frame on each mouse-wheel zoom step.
   The marker motion-sync (which projects markers ~1 frame behind to ride the GFx-composited basemap) now
   delays zoom together with pan (`view_delay_zoom`, on by default); delaying pan alone left the zoom a

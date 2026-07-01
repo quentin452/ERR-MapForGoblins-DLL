@@ -76,11 +76,36 @@ Backlog DX + bugs relevé par <user> le 2026-06-28 (à traiter plus tard, pas en
       de recherche. Fix : debounce `kToggleGamepadDebounceFrames` (3 frames consécutives) avant
       de committer le toggle, armé une seule fois par appui (ré-armé au relâchement). Supprimé
       `g_prev_gamepad_toggle_down` (devenu mort).
-   - **Confirmation finale (log, <user> 2026-07-01) :** un vrai Alt+Tab ne produit plus qu'UNE
-     seule rising-edge de `g_show` (corrélée au `WM_SETFOCUS`), avec `wm_keydown` de nouveau
-     non-nul en ~2s (vs 15+ secondes bloqué à 0 avant le fix) ; les autres rising-edges du log
-     (ouvertures/fermetures volontaires F1) restent isolées, plus de bounce répété. <user>
-     confirme aussi visuellement : clavier/souris/manette fonctionnent tous les trois.
+   - **Confirmation intermédiaire (log, <user> 2026-07-01) :** un vrai Alt+Tab ne produit plus
+     qu'UNE seule rising-edge de `g_show` (corrélée au `WM_SETFOCUS`), avec `wm_keydown` de
+     nouveau non-nul en ~2s (vs 15+ secondes bloqué à 0 avant le fix) ; les autres rising-edges du
+     log (ouvertures/fermetures volontaires F1) restent isolées, plus de bounce répété. Mais
+     <user> a retesté et **le clic/curseur restait cassé après Alt+Tab** — ce fix réglait le
+     flapping mais pas tout le bug.
+   3. **Root cause du "can't click" restant, trouvée via `[KBDIAG]`** (nouveau log ajouté cette
+      session) : ImGui_ImplWin32 ne feed `io.MousePos` que via `WM_MOUSEMOVE`, que le jeu
+      supprime pendant le gameplay normal (raw input) — même raison que le clic gauche est déjà
+      pollé (`GetAsyncKeyState`) plutôt que lu depuis `WM_LBUTTONDOWN`. `WM_KILLFOCUS` invalide
+      `io.MousePos` et rien ne le rafraîchit plus jamais après → log confirmé : `MousePos` bloqué
+      au sentinel invalide (-FLT_MAX) 26+ secondes d'affilée, `WantCaptureMouse` toujours faux
+      même si le poll du bouton voyait bien de vrais clics. 1er fix : poller `GetCursorPos` +
+      `ScreenToClient` → `io.AddMousePosEvent` chaque frame, même pattern que le poll du bouton.
+   4. **Régression du fix #3, trouvée par <user> en jeu :** le curseur se mettait à snapper/rester
+      collé au CENTRE de l'écran instantanément à l'ouverture de F1. Cause : ER garde le curseur
+      OS réellement warpé au centre en continu pendant le gameplay normal (caméra raw-input, même
+      comportement que documente déjà le commentaire "swallow the game's recenter-to-middle" de
+      `hk_set_cursor_pos`) — donc le tout premier poll après ouverture lit VRAIMENT le centre, et
+      feed cette valeur périmée à ImGui donnait l'impression d'un curseur recentré/collé. Tentative
+      de fix (baseline : ne feed la position qu'après un premier mouvement réel détecté) jugée
+      insuffisante par <user> (le recentrage persistait).
+   5. ✅ **FIX FINAL, confirmé par <user> en jeu 2026-07-01 :** `g_show` (qui pilote le draw ET
+      TOUS les hooks de capture input) ne dépend plus de `fg` (focus OS) du tout — seulement de
+      `g_user_show` (le toggle F1 lui-même). Supprime la transition de focus elle-même au lieu de
+      corriger chaque bug qu'elle produisait (MousePos invalide, WantCaptureMouse qui ne revient
+      jamais, curseur collé au centre) — root-fix de toute la classe de bug, pas un patch de plus.
+      **Tradeoff accepté :** F1 reste actif (y compris le swallow input) même si le jeu perd le
+      focus — si l'utilisateur alt-tab vers une AUTRE fenêtre avec F1 encore ouvert, nos hooks
+      peuvent interférer avec cette fenêtre ; fermer F1 avant dans ce cas.
 
    **Bug DX chez nous — F1 inaccessible à la manette** — impossible d'ouvrir les menus via F1 (équivalent manette). Donc impossible de jouer MapForGoblins end-to-end uniquement à la manette. → besoin d'un binding manette pour l'ouverture du menu.
 4. **Intégrer le mod "Pause in game" directement dans MapForGoblins** — une case en plus dans F1. Évite tout conflit de touche possible avec le mod externe.
