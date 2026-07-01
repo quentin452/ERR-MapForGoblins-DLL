@@ -13,18 +13,15 @@ are grounded in actual param defs / source citations. RE fully discharged
   (`tools/verify_worldmap_iconids.py`). Cross-build (clang-cl+xwin) links clean. All 6 default OFF
   (World section toggles). **In-game verification (ERR + a non-ERR install) still pending (user).**
 - **DONE (already shipped) — Ghost = NPC invader = `WorldHostileNPC`.** No new work, per Tier 3.
-- **DEFERRED (user, 2026-07-01) — `WorldFarmableEnemy` + `WorldFarmableCollectible`.** These are
-  MFG-original (not MapGenie) and each hit a real design fork with no clean answer from the data:
-  - `WorldFarmableEnemy`: NpcParam has **no** clean per-enemy "boss" field (`npcType`/`teamType`
-    aren't category keys; fog-gated bosses read `disableRespawn==0`), so a `dr==0` pass can't cleanly
-    exclude bosses AND would flood the map with thousands of trash placements. Revisit with a curated
-    notability/boss datamine (`tools/datamine_enemy_notability.py`) as the non-boss filter.
-  - `WorldFarmableCollectible`: farmable MAP gather nodes (`getItemFlagId==0`) already draw under
-    their item category; farmable ENEMY drops are dropped at `map_entry_layer.cpp` (the
-    `no-one-time-flag` skip). Populating a dedicated bucket is a routing decision (additive vs
-    re-route) the user opted to make later, alongside FarmableEnemy.
-  The gate mechanics remain correct if/when resumed: `dr==0 ∧ non-boss` (reuse a boss filter) and
-  `getItemFlagId==0 ∨ flag_is_repeatable` (both fields already read live — zero new plumbing).
+- **DONE (2026-07-01) — `WorldFarmableCollectible`** (shipped as "Loot - Farmable Drops"). Additive:
+  the respawning enemy drops the notable pass skipped are now emitted IFF the lot holds a notable farm
+  target (Smithing Stones / Golden Runes / Gloveworts, user-chosen set). Scans all 8 lot slots (the
+  notable item sits in slot 2). ~70 markers on ERR, deduped per lot, off by default. Map gather nodes
+  stay under their item categories (re-routing rejected). See the memory note for tuning knobs.
+- **DROPPED (user, 2026-07-01) — `WorldFarmableEnemy`.** NpcParam has no clean per-enemy "boss" field
+  (`npcType`/`teamType` aren't category keys; fog-gated bosses read `disableRespawn==0`), so a `dr==0`
+  pass can't cleanly exclude bosses AND floods the map. The Farmable-Collectible category already
+  covers the "where to farm X" need, so this was cut rather than deferred.
 
 Research done via subagent (2026-07-01), findings below are grounded in
 actual param defs / source citations, not guesses — items marked "hypothesis" still need verification.

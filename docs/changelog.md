@@ -25,6 +25,14 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Loot - Farmable Drops category** (`WorldFarmableCollectible`, MapForGoblins-original) — marks where
+  you can farm notable upgrade mats: enemies that **respawn** (no persistent obtained flag) AND drop a
+  **Smithing Stone / Golden Rune / Glovewort**. Surfaces the farmable enemy drops the notable-loot pass
+  previously skipped; trash drops (Sliver of Meat, …) stay hidden so the map isn't flooded. Scans all 8
+  lot slots (the notable item usually sits in slot 2, behind a craft material) and labels each marker
+  with that item. Live, no bake; deduped per lot (~70 spots on ERR). Off by default. (The companion
+  `WorldFarmableEnemy` — marking every respawning mob — was intentionally NOT added: it floods the map
+  and there is no clean live boss filter to exclude fog-gated bosses.)
 - **World - Portals category** (MapGenie Group 2, first non-`WorldMapPointParam` category) — Sending
   Gate / waygate locations, resolved fully at runtime with no bake. A portal is an `AEG099_510`
   sending-gate asset whose EntityID is bound as arg[2] of EMEVD warp template `90005605` — the
