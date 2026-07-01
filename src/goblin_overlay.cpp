@@ -40,6 +40,7 @@
 #include "input/input_cursor.hpp"                     // goblin::input::install_cursor_hooks() etc.
 #include "input/input_rawinput.hpp"                   // goblin::input::install_rawinput_hooks() etc.
 #include "input/input_wndproc.hpp"                    // goblin::input::install_wndproc_hook() etc.
+#include "input/input_keyboard_poll.hpp"              // goblin::input::poll_keyboard_text_input()
 
 #include <vector>
 #include <map>
@@ -3511,6 +3512,13 @@ namespace
                 io.AddMouseButtonEvent(0, lb);
                 io.AddMouseButtonEvent(1, fgw && (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
                 io.AddMouseButtonEvent(2, fgw && (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0);
+                // dx-bugs F3: keyboard TEXT input via GetAsyncKeyState poll, same reasoning as
+                // the mouse-button poll above but foreground-guarded (fgw) so a background
+                // keypress can't leak in. See input_keyboard_poll.cpp's header comment — this is
+                // now the SOLE keyboard-text source while the menu is open; input_wndproc.cpp no
+                // longer forwards WM_CHAR/WM_KEYDOWN/WM_KEYUP to ImGui at all.
+                if (fgw)
+                    goblin::input::poll_keyboard_text_input();
                 static bool s_logged_click = false;
                 if (lb && !s_logged_click)
                 {

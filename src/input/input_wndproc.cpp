@@ -125,7 +125,18 @@ LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
     if (menu_open())
     {
-        ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
+        // dx-bugs F3 (2026-07-01, deterministic repro): a real Alt+Tab cycle can permanently
+        // stop legacy WM_CHAR/WM_KEYDOWN/WM_KEYUP delivery to this wndproc (same RIDEV_NOLEGACY
+        // family as the mouse-click Proton fix below) — before that point they work fine, so
+        // forwarding them here risked DOUBLE input once a poll fallback existed. Same fix as
+        // mouse buttons: keyboard TEXT input is fed exclusively by
+        // goblin::input::poll_keyboard_text_input() (hk_present, every frame while the menu is
+        // open) — a single source of truth that doesn't depend on whether these messages ever
+        // arrive. Still forward everything else (mouse/focus/wheel) to ImGui as before.
+        const bool isKeyboardMsg = (msg == WM_CHAR || msg == WM_KEYDOWN || msg == WM_KEYUP ||
+                                    msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP);
+        if (!isKeyboardMsg)
+            ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
         if (msg == WM_LBUTTONDOWN) g_wndproc_lbdown_while_open.fetch_add(1, std::memory_order_relaxed);
         // While the menu is open, swallow ALL mouse/keyboard input so the
         // game gets none of it — regardless of where the cursor is (over the
