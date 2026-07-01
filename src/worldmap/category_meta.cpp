@@ -107,10 +107,17 @@ const CatMeta CAT[] = {
     {"show_summoning_pools", G_WORLD},    // WorldSummoningPools
     {"show_kindling_spirits", G_WORLD},   // WorldKindlingSpirits
     {"show_interactables", G_WORLD},      // WorldInteractables
+    // Landmarks (WorldMapPointParam.iconId) — no atlas art yet → circle fallback (G_WORLD teal).
+    {"show_divine_towers", G_WORLD},      // WorldDivineTower
+    {"show_evergaols", G_WORLD},          // WorldEvergaol
+    {"show_minor_erdtrees", G_WORLD},     // WorldMinorErdtree
+    {"show_grand_lifts", G_WORLD},        // WorldGrandLift
+    {"show_dungeons", G_WORLD},           // WorldDungeon
+    {"show_legacy_dungeons", G_WORLD},    // WorldLegacyDungeon
 };
 constexpr int CAT_COUNT = static_cast<int>(sizeof(CAT) / sizeof(CAT[0]));
 static_assert(CAT_COUNT ==
-                  static_cast<int>(goblin::generated::Category::WorldInteractables) + 1,
+                  static_cast<int>(goblin::generated::Category::WorldLegacyDungeon) + 1,
               "category_meta CAT table out of sync with the Category enum");
 } // namespace
 

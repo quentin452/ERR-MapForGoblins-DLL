@@ -74,6 +74,17 @@ enum class Category : uint8_t
     WorldSummoningPools,
     WorldKindlingSpirits,
     WorldInteractables,
+    // ── MapGenie category-coverage GROUP 1 — landmarks keyed on WorldMapPointParam.iconId ──
+    // Read LIVE from the active install's WorldMapPointParam (build_live_landmarks, same pattern
+    // as build_live_bosses). Mod-agnostic: the iconId semantics are byte-identical vanilla↔ERR
+    // (verified tools/verify_worldmap_iconids.py). No baked rows, no ERR-specific data. See
+    // docs/re/windows_mapgenie_category_coverage_re_findings.md Tier 2(A).
+    WorldDivineTower,      // iconId 23 (6 rows)
+    WorldEvergaol,         // iconId 9
+    WorldMinorErdtree,     // iconId 30 (11 rows)
+    WorldGrandLift,        // iconId 21 (Dectus + Rold only — NOT in-dungeon lifts)
+    WorldDungeon,          // iconId ∈ {4,13,14,15,16,230,231,234} (typed minor-dungeon union)
+    WorldLegacyDungeon,    // iconId ∈ {50,51,55,56,58,59,60,61,66,210,211,213,218} (per-site unique)
 };
 
 // Provenance of a lot-backed loot row — the bake's own classification (extract_all_items.py

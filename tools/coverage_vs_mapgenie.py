@@ -114,6 +114,9 @@ ENUM2DISPLAY = {
     "WorldSpiritspringHawks": "World - Spiritspring Hawks", "WorldStakesOfMarika": "World - Stakes of Marika",
     "WorldSummoningPools": "World - Summoning Pools", "WorldKindlingSpirits": "World - Kindling Spirits",
     "WorldInteractables": "World - Interactables",
+    "WorldDivineTower": "World - Divine Towers", "WorldEvergaol": "World - Evergaols",
+    "WorldMinorErdtree": "World - Minor Erdtrees", "WorldGrandLift": "World - Grand Lifts",
+    "WorldDungeon": "World - Dungeons", "WorldLegacyDungeon": "World - Legacy Dungeons",
 }
 
 # Sections: (display, [MapGenie labels to sum], [mod Category enums to sum]).
@@ -124,16 +127,16 @@ SECTIONS = {
         ("Stake of Marika", ["Stake of Marika"], ["WorldStakesOfMarika"]),
         ("Spiritspring Jump", ["Spiritspring Jump"], ["WorldSpiritSprings", "WorldSpiritspringHawks"]),
         ("Imp Seal Statue", ["Imp Seal Statue"], ["WorldImpStatues"]),
-        ("Divine Tower", ["Divine Tower"], []),
+        ("Divine Tower", ["Divine Tower"], ["WorldDivineTower"]),
         ("Dragon Shrine", ["Dragon Shrine"], []),
-        ("Dungeon", ["Dungeon"], []),
-        ("Elevator", ["Elevator"], []),
-        ("Evergaol", ["Evergaol"], []),
+        ("Dungeon", ["Dungeon"], ["WorldDungeon"]),
+        ("Elevator", ["Elevator"], ["WorldGrandLift"]),  # WMPP has only the 2 grand lifts; MapGenie's 40 in-dungeon lifts are not WMPP
+        ("Evergaol", ["Evergaol"], ["WorldEvergaol"]),
         ("Hidden Passage", ["Hidden Passage"], []),
         ("Landmark", ["Landmark"], []),
-        ("Legacy Dungeon", ["Legacy Dungeon"], []),
+        ("Legacy Dungeon", ["Legacy Dungeon"], ["WorldLegacyDungeon"]),
         ("Martyr Effigy", ["Martyr Effigy"], []),
-        ("Minor Erdtree", ["Minor Erdtree"], []),
+        ("Minor Erdtree", ["Minor Erdtree"], ["WorldMinorErdtree"]),
         ("Portal", ["Portal"], []),
         ("Smithing Table", ["Smithing Table"], []),
         ("Wandering Mausoleum", ["Wandering Mausoleum"], []),

@@ -38,7 +38,7 @@ namespace goblin::config
     // "true"/"false" defaults live on the B(...) entries below); the zero-init
     // here is just a sane fallback before load_config() runs.
     static constexpr int NUM_CATEGORIES =
-        static_cast<int>(goblin::generated::Category::WorldInteractables) + 1;
+        static_cast<int>(goblin::generated::Category::WorldLegacyDungeon) + 1;
     bool showCategory[NUM_CATEGORIES] = {};
 
     bool hideKilledBosses = false;
@@ -455,6 +455,13 @@ namespace
                 B("show_interactables", showCategory[static_cast<int>(Cat::WorldInteractables)], "false",
                   "Interactive world objects & puzzles. Includes:\n  - Blue seal puzzles (~65 seals across the overworld, unlock hidden cellars)\n  - \"Light flame\" interacts: Sellia chalices (3), Snow Town seal-release\n    statues (4), Siofra River lanterns (~14)\n  - Hero's Tomb direction statues (16, point at hidden Hero's Tomb caves)\nEach marker hides on activation via its own engine flag."),
                 B("show_world_maps", showCategory[static_cast<int>(Cat::WorldMaps)], "false", "World Map fragment locations"),
+                // Landmarks — live from WorldMapPointParam.iconId (mod-agnostic, any install). Off by default.
+                B("show_divine_towers", showCategory[static_cast<int>(Cat::WorldDivineTower)], "false", "Divine Tower locations (iconId 23)"),
+                B("show_evergaols", showCategory[static_cast<int>(Cat::WorldEvergaol)], "false", "Evergaol locations (iconId 9)"),
+                B("show_minor_erdtrees", showCategory[static_cast<int>(Cat::WorldMinorErdtree)], "false", "Minor Erdtree locations (iconId 30)"),
+                B("show_grand_lifts", showCategory[static_cast<int>(Cat::WorldGrandLift)], "false", "Grand Lift locations (Dectus, Rold; iconId 21)"),
+                B("show_dungeons", showCategory[static_cast<int>(Cat::WorldDungeon)], "false", "Minor dungeon entrances (Catacombs/Caves/Tunnels/Wells/Hero's Graves; iconIds 4,13,14,15,16,230,231,234)"),
+                B("show_legacy_dungeons", showCategory[static_cast<int>(Cat::WorldLegacyDungeon)], "false", "Legacy dungeon locations (Stormveil, Raya Lucaria, Leyndell, etc.; per-site iconIds)"),
                 B("hide_killed_bosses", hideKilledBosses, "false", "Hide boss/invader/hawk markers after defeat (false = show green checkmark instead)"),
             }},
 
