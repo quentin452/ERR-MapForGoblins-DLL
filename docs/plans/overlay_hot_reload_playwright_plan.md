@@ -1,8 +1,9 @@
 # Overlay hot-reload + AI Playwright loop (plan)
 
 **Status:** Phase 1 COMPLETE + MERGED to `master` for all 3 draw functions (2026-07-01). Phase 2
-(DLL split) fully scoped (two ground-truth audits done); Slice A (CMake option scaffold)
-IN-GAME CONFIRMED + MERGED; Slices B/C/D not started. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
+(DLL split): Slice A (CMake option scaffold) IN-GAME CONFIRMED + MERGED; Slice B (draw layer
+extracted to `src/goblin_overlay_render.cpp`) IN-GAME CONFIRMED, not yet merged; Slices C/D not
+started. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
 render code while ERR keeps running (no full restart), paired with the already-proposed Route B
 debug RPC so an AI agent can script the REAL running game — screenshot, spot a DX or functional
 bug in the minimap/worldmap/icons overlay, fix the overlay source, hot-reload just that piece,
@@ -224,9 +225,28 @@ both modes; a `GOBLIN_OVERLAY_HOTRELOAD` build additionally needs it to `LoadLib
    already-in-game-confirmed panel-ctx deploy — CMake reorg only, no runtime risk).
    **IN-GAME CONFIRMED 2026-07-01 21:07**: fresh session, `[SIG]` 29/29 clean, no crash/error.
    **MERGED to `master`** (fast-forward, branch deleted).
-2. Slice B — physical file move (draw fns + private helpers + all 5 worldmap files, per the fully
-   resolved audit above), still statically linked into one DLL when the option is OFF. Pure
-   relocation, build+in-game confirm, same discipline as Phase 1's slices.
+2. **Slice B — DONE, build-verified + IN-GAME CONFIRMED (2026-07-01, `feat/overlay-render-split`,
+   not yet merged).** Moved `draw_panel`/`draw_worldmap_markers`/`draw_minimap_hud` + their
+   genuinely self-contained helpers (item-search string matching, `overlay_layers`,
+   `scale_control`, `draw_gamepad_keyboard_button`, `grace_candidate_gate_warning`, `g_large`) into
+   a new TU, `src/goblin_overlay_render.{cpp,hpp}`. **Correction found mid-implementation**: the
+   grace-SRV/icon-SRV helpers (`ensure_grace_srv`, `ensure_grace_dungeon_srv`, `force_rebuild_grace`,
+   `ensure_item_icon_srv`, `ensure_grace_debug`, `copy_er_sheet_direct`, `create_tex_from_dds_mem`)
+   were WRONGLY assumed self-contained by earlier audits — they directly touch host-owned
+   `g_device`/`g_command_queue`/`g_srv_heap`/`g_frames`/`g_command_list`, the same per-frame D3D12
+   state `hk_present` resets every frame, so moving them breaks (they'd lose access to those
+   file-statics across the new TU boundary). Kept them in `goblin_overlay.cpp` behind ~15 thin
+   forwarding wrappers/getters (`grace_state`/`grace_dbg_fmt_used`/`grace_dbg_srgb_ptr`/
+   `grace_dbg_swiz_ptr`/`grace_srv_info`/`grace_dungeon_srv_info`/`grace_debug_candidates` + direct
+   forwards for the 7 D3D12 functions) declared in `goblin_overlay_render.hpp`. `worldmap/*.cpp`
+   files NOT moved this slice (already correctly bucketed into `GOBLIN_RENDER_SOURCES` since Slice
+   A, no file move needed — the "5 worldmap files" language in the CMakeLists comment refers to
+   that existing assignment, not a pending move). Still ONE binary — `GOBLIN_OVERLAY_HOTRELOAD` has
+   no runtime effect yet. Cross-build clean. **IN-GAME CONFIRMED 2026-07-01 21:37**: both grace
+   SRVs built successfully through the new getter/wrapper chain (`[GRACE-SRV] copied ...` +
+   `[GRACE-SRV] DUNGEON copied ...`), `render.minimap` bench firing the whole session, `[SIG]` 29/29
+   clean, no crash/error — validates the riskiest part of this slice (the grace-sprite cross-TU
+   plumbing) live. Not yet merged to `master`.
 3. Slice C — actual DLL split + `LoadLibrary` boundary when `GOBLIN_OVERLAY_HOTRELOAD=ON`: vtable/
    function-pointer resolution, `native_item_icon`-family calls back into host D3D12 infra via a
    NEW reverse-direction ctx/pointer table (render DLL doesn't own `g_device` etc.), plus

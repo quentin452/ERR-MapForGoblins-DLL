@@ -13,37 +13,34 @@ Kept: genuinely live/in-progress work, open questions, and standing knowledge (g
 decisions, non-obvious facts) not fully captured anywhere else. If you're looking for the history of
 something not below, check `docs/changelog.md` first, then the relevant `docs/plans/*.md`.
 
-Last updated: 2026-07-01z4 (overlay_hot_reload_playwright_plan Phase 2 Slice A — CMake
-`GOBLIN_OVERLAY_HOTRELOAD` scaffold — IN-GAME CONFIRMED + MERGED to `master`; Slice B (physical
-file move) not started — see below).
+Last updated: 2026-07-01z5 (overlay_hot_reload_playwright_plan Phase 2 Slice B — draw layer
+extracted to `src/goblin_overlay_render.cpp` — build-verified + IN-GAME CONFIRMED, not yet merged;
+Slice C (actual DLL split) not started — see below).
 
-## RESUME HERE (2026-07-01z4) — overlay_hot_reload_playwright_plan Phase 2 Slice A MERGED, Slice B not started
+## RESUME HERE (2026-07-01z5) — overlay_hot_reload_playwright_plan Phase 2 Slice B landed, Slice C not started
 
-Phase 1 (all 3 draw functions take `OverlayFrameCtx`) is COMPLETE and MERGED to `master`. Phase 2
-(split the draw layer into its own hot-reloadable DLL, dev-only, behind a new
-`GOBLIN_OVERLAY_HOTRELOAD` CMake option — release builds stay single-DLL) is fully scoped (two
-ground-truth audit passes, full detail + PR-slicing in `docs/plans/overlay_hot_reload_playwright_plan.md`):
-render-DLL source list resolved to `goblin_overlay_render.cpp` (new, not yet created) + all 5
-`src/worldmap/*.cpp` files; the ONLY genuinely hard cross-boundary problem in all of Phase 2 is the
-`native_item_icon`/`native_map_point_icon`/`native_map_point_icon_by_name`/`map_point_glyph_uv`
-family (owns/mutates D3D12 resources via `g_device`/`g_command_queue`/`g_srv_heap`, must stay
-host-side, needs a reverse ctx/pointer table); the 3 `goblin_inject.hpp`-dependent worldmap files
-just need `dllexport`/`dllimport` on those accessor calls (much easier, ordinary functions not
-mutable state); `category_meta.cpp` has zero reverse coupling.
+Phase 1 (all 3 draw functions take `OverlayFrameCtx`) and Phase 2 Slice A (CMake
+`GOBLIN_OVERLAY_HOTRELOAD` scaffold) are both COMPLETE + MERGED to `master`.
 
-**Slice A — DONE, build-verified both `OFF`/`ON` (2026-07-01, `feat/overlay-hotreload-cmake-scaffold`).**
-Added `GOBLIN_OVERLAY_HOTRELOAD` option (first `option()` anywhere in `CMakeLists.txt`) + split the
-flat source list into `GOBLIN_RENDER_SOURCES` (the 5 worldmap files) / `GOBLIN_HOST_SOURCES`
-(everything else, `goblin_overlay.cpp` included — it stays host-side until Slice B actually
-extracts the draw functions into the new file). Both variables still feed ONE
-`add_library(MapForGoblins SHARED ...)` regardless of the option — `if(GOBLIN_OVERLAY_HOTRELOAD)`
-only emits a `message(WARNING ...)` that Slice B/C haven't landed yet. **IN-GAME CONFIRMED
-2026-07-01 21:07**: fresh session, `[SIG]` 29/29 clean, no crash/error. **MERGED to `master`**
-(fast-forward, branch deleted). Next: Slice B — physically move the draw functions + private
-helpers into `src/goblin_overlay_render.cpp` and move all 5 worldmap files into that source group
-for real (still statically linked when the option is OFF), same discipline as Phase 1's slices
-(audit already done, this is now just careful mechanical extraction + the `dllexport`/`dllimport`
-accessor wiring for the 3 `goblin_inject.hpp`-dependent files).
+**Slice B — DONE, build-verified + IN-GAME CONFIRMED (2026-07-01, `feat/overlay-render-split`, not
+yet merged).** Moved `draw_panel`/`draw_worldmap_markers`/`draw_minimap_hud` + their genuinely
+self-contained helpers (item-search string matching, `overlay_layers`, `scale_control`,
+`draw_gamepad_keyboard_button`, `grace_candidate_gate_warning`, `g_large`) into a new TU,
+`src/goblin_overlay_render.{cpp,hpp}`. **Correction found mid-implementation**: the grace-SRV/
+icon-SRV helpers (`ensure_grace_srv`, `ensure_grace_dungeon_srv`, `force_rebuild_grace`,
+`ensure_item_icon_srv`, `ensure_grace_debug`, `copy_er_sheet_direct`, `create_tex_from_dds_mem`)
+were WRONGLY assumed self-contained by earlier audits — they directly touch host-owned
+`g_device`/`g_command_queue`/`g_srv_heap`/`g_frames`/`g_command_list`, the same per-frame D3D12
+state `hk_present` resets every frame. Kept them in `goblin_overlay.cpp` behind ~15 thin forwarding
+wrappers/getters declared in `goblin_overlay_render.hpp`. `worldmap/*.cpp` files were NOT moved
+this slice — already correctly bucketed into `GOBLIN_RENDER_SOURCES` since Slice A, nothing to do.
+Still ONE binary. Cross-build clean. **IN-GAME CONFIRMED 2026-07-01 21:37**: both grace SRVs built
+successfully through the new getter/wrapper chain (`[GRACE-SRV] copied ...` + `[GRACE-SRV] DUNGEON
+copied ...`), `render.minimap` bench firing the whole session, `[SIG]` 29/29 clean, no crash/error
+— validates the riskiest part of this slice (grace-sprite cross-TU plumbing) live. Not yet merged.
+Next: Slice C — actual DLL split + `LoadLibrary` boundary when `GOBLIN_OVERLAY_HOTRELOAD=ON`
+(vtable/function-pointer resolution, `native_item_icon`-family reverse ctx table, `dllexport`/
+`dllimport` for the `goblin_inject.hpp` accessors 3 worldmap files use) — full detail in the plan.
 
 ## ⚠️ IN PROGRESS — baked-data → runtime/disk migration (build_pipeline.py deletion is the END state)
 
