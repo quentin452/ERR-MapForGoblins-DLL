@@ -247,10 +247,32 @@ both modes; a `GOBLIN_OVERLAY_HOTRELOAD` build additionally needs it to `LoadLib
    `[GRACE-SRV] DUNGEON copied ...`), `render.minimap` bench firing the whole session, `[SIG]` 29/29
    clean, no crash/error — validates the riskiest part of this slice (the grace-sprite cross-TU
    plumbing) live. Not yet merged to `master`.
-3. Slice C — actual DLL split + `LoadLibrary` boundary when `GOBLIN_OVERLAY_HOTRELOAD=ON`: vtable/
-   function-pointer resolution, `native_item_icon`-family calls back into host D3D12 infra via a
-   NEW reverse-direction ctx/pointer table (render DLL doesn't own `g_device` etc.), plus
-   `dllexport`/`dllimport` for the `goblin_inject.hpp` accessors the 3 worldmap layer files use.
+3. **Slice C — actual DLL split + `LoadLibrary` boundary when `GOBLIN_OVERLAY_HOTRELOAD=ON`.**
+   Export-surface audit (2026-07-01) found the real cross-DLL surface is ~111 call sites, bigger
+   than the earlier "`native_item_icon` + 3 accessors" estimate — spans `goblin::config` (64
+   globals), `goblin::ui` (29 fns, host in `goblin_section_visibility.cpp`), `goblin::worldmap_probe`
+   (9 fns), 52 bare `goblin::*` fns (spread across `goblin_inject.cpp` + its PR-split files),
+   `goblin::markers`/`kindling`/`collected`/`debug_events`/`sig`/`input` (a dozen more), plus
+   `worldmap::disk_loot_dir`/`disk_loot_state` (host, despite the `worldmap::` name —
+   `loot_disk.cpp` is in `GOBLIN_HOST_SOURCES`, not the render group). NOT cross-boundary:
+   `goblin::projection::*` (all `inline`, compiles into both DLLs free) and most `goblin::worldmap::*`
+   (already defined in the render-side files themselves). **Design decision (user, 2026-07-01):**
+   consolidated wrapper API — one new file exposing thin forwards/getters, same mechanical pattern
+   Slice B validated for the grace/icon-SRV helpers — rather than annotating the ~15 existing host
+   headers directly, to keep blast radius contained to new files only. The 64 `goblin::config::*`
+   globals (all `extern bool/int/float`, mostly simple, some bound as mutable `int*`/`bool*` to
+   ImGui widgets and needing pointer-getters not value-getters) are near-identical in shape — an
+   X-macro list is the planned mechanism instead of hand-writing 64 near-identical functions.
+   **Open before coding (verify, don't assume):** exact read-vs-write classification for each config
+   global (only inferred from widget-binding patterns spotted during the audit, not confirmed line
+   by line); whether `GraceCandidate`/`LiveGrace`/`RuntimeEntry`/`SigHealth`/`LiveView`/`NpcQuest`
+   (structs crossing the boundary) are already in a shared header (free) or host-`.cpp`-local
+   (would need relocating first); the exact qualified form of `flag`/`overlay_icons` (ambiguous
+   grep hits); no lambda/function-pointer-parameter wrapper cases found but not exhaustively ruled
+   out. Also still needed: `native_item_icon`-family reverse ctx/pointer table (host owns
+   `g_device` etc., doesn't change) and vtable/function-pointer resolution for the host→render call
+   direction (`draw_panel`/`draw_worldmap_markers`/`draw_minimap_hud`, via `LoadLibrary`+
+   `GetProcAddress` since render is the module that gets reloaded).
 4. Slice D — file-watcher + actual hot reload.
   - **ImGui context sharing across the DLL boundary.** Both DLLs must share the SAME `ImGuiContext*`
     (`ImGui::SetCurrentContext` on entry to every cross-DLL call) and be built against the same

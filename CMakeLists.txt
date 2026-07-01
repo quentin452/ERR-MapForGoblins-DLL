@@ -180,6 +180,8 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_messages.cpp
   src/goblin_overlay.hpp
   src/goblin_overlay.cpp
+  src/goblin_overlay_render_api.hpp
+  src/goblin_overlay_render_api.cpp
   src/input/input_shared.hpp
   src/input/input_directinput.hpp
   src/input/input_directinput.cpp
