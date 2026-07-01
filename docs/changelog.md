@@ -185,6 +185,10 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   `>= 0x40000000` cut that wrongly dropped DLC one-time loot.
 
 ### Fixed
+- **F1 panel mouse-wheel scrolling dead under Proton** — ImGui's only wheel source was the legacy
+  `WM_MOUSEWHEEL` message, which ER's raw-input capture (`RIDEV_NOLEGACY` under Wine/Proton) never
+  posts — same family as the already-polled mouse buttons/keyboard. The wheel delta is now
+  harvested from the raw-input hooks (the only place it exists) and fed to ImGui each frame.
 - **Grace altitude badge (▲/▼) never drew when "Gpu Sprite" was on** — `draw_marker`'s live-sprite
   grace path returned before reaching the shared `draw_altitude_badge` call; only the baked-atlas
   fallback path drew it. The altitude cue now shows on grace markers regardless of the sprite
