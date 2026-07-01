@@ -3,11 +3,14 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -16,6 +19,7 @@
 
 #include "from/params.hpp"
 #include "goblin_config.hpp"
+#include "goblin_inject.hpp"               // goblin::get_player_map_pos (ASSETRADAR)
 #include "goblin_messages.hpp"            // goblin::raw_message_utf8 (ABPTEXT probe)
 #include "goblin_overlay_render_api.hpp"  // overlay_api::disk_loot_dir()
 #include "worldmap/msbe_parser.hpp"       // goblin::msbe::dcx_decompress
@@ -386,6 +390,73 @@ void abp_text_probe()
     }
 }
 
+// ── [ASSETRADAR] — "what asset am I standing next to?" (CE-substitute) ──────
+// Smithing Table's prompt (ABP 6250) is engine-bound: no param/ObjAct/EMEVD
+// trace, so the only handle left for the map category is the table's AEG
+// MODEL. Radar: for ~5 min after init, every 3 s, parse (cached) the 3×3 disk
+// MSB tiles around the player and log every Asset within 6 m, deduped. Stand
+// at the Church of Elleh table → its model shows up in the log. Overworld
+// (area 60/61 world coords = gx*256 + block-local) — same frame the markers
+// use, per get_player_map_pos's contract.
+void asset_radar()
+{
+    const auto ms = goblin::overlay_api::disk_loot_dir();
+    if (ms.empty()) return;
+    spdlog::info("[ASSETRADAR] active for 300s — stand next to the target asset "
+                 "(6 m radius, 3 s tick)");
+    struct TileKey { int gx, gz; bool operator<(const TileKey &o) const { return gx != o.gx ? gx < o.gx : gz < o.gz; } };
+    std::map<TileKey, std::vector<goblin::msbe::Asset>> cache;
+    std::set<std::string> logged;
+    for (int elapsed = 0; elapsed < 300; elapsed += 3)
+    {
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        int area = 0, pgx = 0, pgz = 0;
+        float pwx = 0, pwz = 0;
+        if (!goblin::get_player_map_pos(area, pwx, pwz, &pgx, &pgz)) continue;
+        for (int dx = -1; dx <= 1; dx++)
+            for (int dz = -1; dz <= 1; dz++)
+            {
+                const TileKey k{pgx + dx, pgz + dz};
+                auto it = cache.find(k);
+                if (it == cache.end())
+                {
+                    std::vector<goblin::msbe::Asset> assets;
+                    char fn[64];
+                    std::snprintf(fn, sizeof(fn), "m%02d_%02d_%02d_00.msb.dcx", area, k.gx, k.gz);
+                    std::ifstream f(ms / fn, std::ios::binary);
+                    if (f)
+                    {
+                        std::vector<uint8_t> dcx((std::istreambuf_iterator<char>(f)),
+                                                 std::istreambuf_iterator<char>());
+                        auto raw = goblin::msbe::dcx_decompress(dcx.data(), dcx.size(), nullptr,
+                                                                emevd_oodle());
+                        if (!raw.empty())
+                        {
+                            auto pr = goblin::msbe::parse_msb(raw.data(), raw.size(), false, 0,
+                                                              /*wantAssets=*/true);
+                            assets = std::move(pr.assets);
+                        }
+                    }
+                    it = cache.emplace(k, std::move(assets)).first;
+                }
+                for (const auto &a : it->second)
+                {
+                    const float ax = k.gx * 256.0f + a.pos[0];
+                    const float az = k.gz * 256.0f + a.pos[2];
+                    const float d2 = (ax - pwx) * (ax - pwx) + (az - pwz) * (az - pwz);
+                    if (d2 > 6.0f * 6.0f) continue;
+                    const std::string key = std::to_string(k.gx) + "_" + std::to_string(k.gz) + a.name;
+                    if (!logged.insert(key).second) continue;
+                    spdlog::info("[ASSETRADAR] {:.1f}m  {}  model={}  entity={}  tile m{:02}_{:02}_{:02} "
+                                 "local=({:.1f},{:.1f},{:.1f})",
+                                 std::sqrt(d2), a.name, a.modelName, a.entityId, area, k.gx,
+                                 k.gz, a.pos[0], a.pos[1], a.pos[2]);
+                }
+            }
+    }
+    spdlog::info("[ASSETRADAR] done ({} unique assets logged)", logged.size());
+}
+
 void emevd_needle_scan_deferred()
 {
     // Discovery (CreateFileW hook) fills disk_loot_dir asynchronously — poll for it.
@@ -417,6 +488,7 @@ void emevd_needle_scan_deferred()
     // GetMessage/msg-repo are resolved long before map discovery completes, so
     // this late point is safe for the raw-slot text probe.
     abp_text_probe();
+    asset_radar();
 }
 } // namespace
 
