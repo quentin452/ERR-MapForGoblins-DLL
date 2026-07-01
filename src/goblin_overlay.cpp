@@ -243,6 +243,13 @@ namespace
     // capture even reaches the user32 exports we hook (0 calls while ER clearly captures the mouse =
     // it's bypassing user32 entirely, e.g. native Wayland pointer-lock or a win32u-only path).
     std::atomic<unsigned> g_diag_set_cursor_pos{0};
+    // Separate counter for the live [DIAG] on-screen readout (config::debugCursorDiagnostic) —
+    // NOT the same one [CURSORDIAG] resets every ~1s in dump-to-log, so reading/resetting this
+    // one every frame doesn't starve that log's own accounting.
+    std::atomic<unsigned> g_diag_set_cursor_pos_live{0};
+    std::atomic<int> g_diag_last_set_cursor_pos_x{-1};
+    std::atomic<int> g_diag_last_set_cursor_pos_y{-1};
+    std::atomic<bool> g_diag_set_cursor_pos_swallowed{false};
     std::atomic<unsigned> g_diag_clip_cursor{0};
     std::atomic<unsigned> g_diag_get_cursor_pos{0};
     std::atomic<unsigned> g_diag_get_raw_input_data{0};
@@ -258,6 +265,82 @@ namespace
     // focus away from the InputText).
     std::atomic<unsigned> g_diag_wm_char{0};
     std::atomic<unsigned> g_diag_wm_keydown{0};
+    // Visual cursor diagnostic (dx-bugs 2026-07-01 Alt+Tab followup, config::debugCursorDiagnostic).
+    // Set in the mouse-poll block (client-relative, always captured regardless of whether the
+    // baseline gate feeds it to ImGui) and drawn as a crosshair after ImGui::NewFrame(), further
+    // down in the same function — file-scope so it survives across that gap without threading it
+    // through as a parameter.
+    POINT g_diag_raw_cursor_client{};
+    bool g_diag_raw_cursor_valid = false;
+
+    // ROOT CAUSE, confirmed live by <user> 2026-07-01 via the [DIAG] crosshairs above: the raw
+    // OS cursor (GetCursorPos) reads as permanently frozen — center from the very first F1 open
+    // (not just after Alt+Tab), and after an Alt+Tab it freezes wherever it was at the moment of
+    // the transition instead of resuming. Windows/Wine simply isn't updating the absolute cursor
+    // position at all while this game holds raw-input mouse capture — GetCursorPos can never be
+    // trusted here, focus transition or not.
+    //
+    // Fix: track our OWN virtual absolute cursor by accumulating the SAME raw mouse deltas the
+    // game's own camera already relies on (captured in hk_get_raw_input_data/_buffer below, right
+    // before we blank them for the game) — this is data proven to keep working across Alt+Tab
+    // (the user's camera control itself isn't reported broken), unlike GetCursorPos. Seeded once
+    // at first use to screen centre (matches where the frozen GetCursorPos reads anyway) since a
+    // real starting position isn't obtainable from anything reliable.
+    std::atomic<float> g_virtual_cursor_x{0.f};
+    std::atomic<float> g_virtual_cursor_y{0.f};
+    std::atomic<bool> g_virtual_cursor_seeded{false};
+
+    void accumulate_virtual_cursor(LONG dx, LONG dy, USHORT flags)
+    {
+        ImGuiIO &io = ImGui::GetIO();
+        // <user> 2026-07-01: the seed/pivot point was inconsistent across launches — sometimes
+        // near screen centre, sometimes near the top. Root cause: this can fire before
+        // io.DisplaySize is populated from the swapchain (a timing race, not guaranteed to have
+        // run yet the very first time raw input arrives) — the old code fell back to a
+        // HARDCODED 1920x1080 guess in that case, seeding at (960,540) regardless of the real
+        // resolution. On any non-1920x1080 display that's not the real centre at all, landing
+        // wherever 540px happens to fall on the actual screen (e.g. visibly "near the top" on a
+        // taller display). Fix: refuse to seed (or accumulate) until DisplaySize is verified
+        // valid — retried on the next raw input event instead of guessing.
+        if (io.DisplaySize.x <= 0.f || io.DisplaySize.y <= 0.f)
+            return;
+        const float dispW = io.DisplaySize.x;
+        const float dispH = io.DisplaySize.y;
+        if (!g_virtual_cursor_seeded.exchange(true, std::memory_order_relaxed))
+        {
+            g_virtual_cursor_x.store(dispW * 0.5f, std::memory_order_relaxed);
+            g_virtual_cursor_y.store(dispH * 0.5f, std::memory_order_relaxed);
+        }
+        if (flags & MOUSE_MOVE_ABSOLUTE)
+        {
+            // Rare (VM/tablet input): lLastX/Y are already normalized 0..65535 absolute coords.
+            g_virtual_cursor_x.store((static_cast<float>(dx) / 65535.f) * dispW, std::memory_order_relaxed);
+            g_virtual_cursor_y.store((static_cast<float>(dy) / 65535.f) * dispH, std::memory_order_relaxed);
+            return;
+        }
+        // <user> 2026-07-01: virtual cursor drifted away from the real mouse the farther it
+        // moved (worse near the bottom of the screen than the top in their testing — consistent
+        // with error growing with total travel, not a fixed offset). Root cause: raw input
+        // lLastX/lLastY are raw hardware "mickeys", NOT screen pixels — feeding them 1:1 assumed
+        // a mapping that doesn't hold. Scale by the user's actual Windows pointer-speed setting
+        // (SPI_GETMOUSESPEED, 1..20, Windows default 10 == "1 mickey per pixel" baseline) instead
+        // of guessing a constant — self-adjusts to their real OS config. Doesn't replicate
+        // Windows' full non-linear "enhance pointer precision" acceleration curve if that's
+        // enabled; a linear approximation is a large improvement over the prior flat 1:1 either
+        // way and doesn't need another calibration round-trip.
+        static float s_speedScale = []() {
+            int mouseSpeed = 10;
+            ::SystemParametersInfoW(SPI_GETMOUSESPEED, 0, &mouseSpeed, 0);
+            return static_cast<float>(mouseSpeed) / 10.0f;
+        }();  // queried once (not per-event -- this can fire many times/frame during fast
+              // movement) since the OS pointer-speed setting essentially never changes mid-session
+        float nx = g_virtual_cursor_x.load(std::memory_order_relaxed) + static_cast<float>(dx) * s_speedScale;
+        float ny = g_virtual_cursor_y.load(std::memory_order_relaxed) + static_cast<float>(dy) * s_speedScale;
+        nx = nx < 0.f ? 0.f : (nx > dispW ? dispW : nx);
+        ny = ny < 0.f ? 0.f : (ny > dispH ? dispH : ny);
+        g_virtual_cursor_x.store(nx, std::memory_order_relaxed);
+        g_virtual_cursor_y.store(ny, std::memory_order_relaxed);
+    }
     // Item-search nav window: while > 0, a locate/page-switch is in flight and the input hooks inject a
     // tiny net-zero mouse jitter so the game keeps processing its world-map (otherwise, with the panel
     // open, input is blanked -> the map's view/page step doesn't run -> our switch+pan only apply once
@@ -919,6 +1002,9 @@ namespace
     ID3D12Resource *g_grace_tex = nullptr;
     D3D12_GPU_DESCRIPTOR_HANDLE g_grace_gpu{};
     ImVec2 g_grace_uv0{}, g_grace_uv1{};
+    // Native pixel rect dims (sp.x1-sp.x0, sp.y1-sp.y0), before UV normalization -- dx-bugs
+    // 2026-07-01 auto-scale-ratio followup.
+    int g_grace_native_w = 0, g_grace_native_h = 0;
     int g_grace_state = 0;   // 0 = not ready (retry), 1 = ok, 2 = failed (give up)
     int g_grace_srv_idx = -1;   // reuse one SRV slot across rebuilds (no slot leak on re-apply)
     // ── Grace texture DEBUG (F1 panel) — live format/swizzle/source override ────────────────────────
@@ -976,6 +1062,7 @@ namespace
 
         g_grace_gpu = write_inline_srv(g_grace_tex, fmt, g_grace_srv_idx, grace_dbg_mapping());
         g_grace_uv0 = cp.uv0; g_grace_uv1 = cp.uv1;
+        g_grace_native_w = sp.x1 - sp.x0; g_grace_native_h = sp.y1 - sp.y0;
         g_grace_state = 1;
         spdlog::info("[GRACE-SRV] copied {}x{} (snapped from {},{}-{},{}) fmt={} -> slot {} gpu={:#x}",
                      cp.w, cp.h, sp.x0, sp.y0, sp.x1, sp.y1, static_cast<int>(fmt), g_grace_srv_idx,
@@ -1306,7 +1393,15 @@ namespace
     BOOL WINAPI hk_set_cursor_pos(int x, int y)
     {
         g_diag_set_cursor_pos.fetch_add(1, std::memory_order_relaxed);
-        if (g_show) return TRUE;            // swallow the game's recenter-to-middle
+        g_diag_set_cursor_pos_live.fetch_add(1, std::memory_order_relaxed);
+        g_diag_last_set_cursor_pos_x.store(x, std::memory_order_relaxed);
+        g_diag_last_set_cursor_pos_y.store(y, std::memory_order_relaxed);
+        if (g_show)
+        {
+            g_diag_set_cursor_pos_swallowed.store(true, std::memory_order_relaxed);
+            return TRUE;                    // swallow the game's recenter-to-middle
+        }
+        g_diag_set_cursor_pos_swallowed.store(false, std::memory_order_relaxed);
         return o_set_cursor_pos(x, y);
     }
     BOOL WINAPI hk_clip_cursor(const RECT *rc)
@@ -1384,6 +1479,10 @@ namespace
             auto *ri = reinterpret_cast<RAWINPUT *>(data);
             if (ri->header.dwType == RIM_TYPEMOUSE)
             {
+                // Capture the REAL delta for our own virtual-cursor tracking (see
+                // accumulate_virtual_cursor's comment) before it gets blanked below for the game.
+                accumulate_virtual_cursor(ri->data.mouse.lLastX, ri->data.mouse.lLastY,
+                                          ri->data.mouse.usFlags);
                 // During an item-search nav, feed a 1px net-zero (±1 alternating) delta so the game
                 // keeps stepping/rendering its world map (which is otherwise frozen by the input blank)
                 // — lets our page/layer switch + pan actually take effect with the F1 panel open. The
@@ -1417,11 +1516,35 @@ namespace
     UINT WINAPI hk_get_raw_input_buffer(PRAWINPUT data, PUINT size, UINT hdr)
     {
         g_diag_get_raw_input_buffer.fetch_add(1, std::memory_order_relaxed);
+        // Always call through for the real data first — needed for our own virtual-cursor
+        // tracking (see accumulate_virtual_cursor's comment). Previously this short-circuited to
+        // 0 immediately on a real read while g_show, giving us zero visibility into deltas the
+        // game's own camera was still receiving via this exact API (confirmed the game uses this
+        // batched path, not the singular GetRawInputData, by [CURSORDIAG]'s raw_input_buffer
+        // counter being the one that's consistently nonzero).
+        UINT n = o_get_raw_input_buffer(data, size, hdr);
+        if (g_show && data != nullptr && n != static_cast<UINT>(-1) && n > 0)
+        {
+            PRAWINPUT ri = data;
+            for (UINT i = 0; i < n; ++i)
+            {
+                if (ri->header.dwType == RIM_TYPEMOUSE)
+                    accumulate_virtual_cursor(ri->data.mouse.lLastX, ri->data.mouse.lLastY,
+                                              ri->data.mouse.usFlags);
+                // NEXTRAWINPUTBLOCK expands to a QWORD-based alignment macro that isn't visible
+                // with this project's xwin/clang-cl SDK headers — inlined equivalent (8-byte
+                // align, matching RAWINPUT_ALIGN's own definition) instead of fighting the include.
+                {
+                    const uint64_t next = (reinterpret_cast<uint64_t>(reinterpret_cast<uint8_t *>(ri) + ri->header.dwSize) + 7ull) & ~7ull;
+                    ri = reinterpret_cast<PRAWINPUT>(next);
+                }
+            }
+        }
         // Batched raw input. While the menu is open, report zero buffered events
         // for actual reads (data != null); pass size-queries through so the
         // game's buffer sizing stays correct.
         if (g_show && data != nullptr) return 0;
-        return o_get_raw_input_buffer(data, size, hdr);
+        return n;
     }
 
     // DirectInput8 device hooks. The vtable is shared by all devices (mouse +
@@ -1791,7 +1914,8 @@ namespace
         // Hand the renderer the harvested grace sprite (once ready) so it draws graces itself.
         if (ensure_grace_srv())
             wm::set_grace_sprite(reinterpret_cast<void *>(g_grace_gpu.ptr),
-                                 g_grace_uv0.x, g_grace_uv0.y, g_grace_uv1.x, g_grace_uv1.y);
+                                 g_grace_uv0.x, g_grace_uv0.y, g_grace_uv1.x, g_grace_uv1.y,
+                                 g_grace_native_w, g_grace_native_h);
         if (ensure_grace_dungeon_srv())
             wm::set_grace_dungeon_sprite(reinterpret_cast<void *>(g_grace_dgn_gpu.ptr),
                                          g_grace_dgn_uv0.x, g_grace_dgn_uv0.y, g_grace_dgn_uv1.x, g_grace_dgn_uv1.y);
@@ -1857,7 +1981,8 @@ namespace
         ImGuiIO &io = ImGui::GetIO();
         if (ensure_grace_srv())
             goblin::worldmap::set_grace_sprite(reinterpret_cast<void *>(g_grace_gpu.ptr),
-                                               g_grace_uv0.x, g_grace_uv0.y, g_grace_uv1.x, g_grace_uv1.y);
+                                               g_grace_uv0.x, g_grace_uv0.y, g_grace_uv1.x, g_grace_uv1.y,
+                                               g_grace_native_w, g_grace_native_h);
         if (ensure_grace_dungeon_srv())
             goblin::worldmap::set_grace_dungeon_sprite(reinterpret_cast<void *>(g_grace_dgn_gpu.ptr),
                                                        g_grace_dgn_uv0.x, g_grace_dgn_uv0.y, g_grace_dgn_uv1.x, g_grace_dgn_uv1.y);
@@ -2434,8 +2559,17 @@ namespace
                     ImGui::SetTooltip("A small north-up minimap in the screen corner showing nearby\n"
                                       "markers around you during play. OVERWORLD only for now\n"
                                       "(underground player position isn't reliable yet).");
-                ImGui::SliderFloat("Zoom (px/world)", &goblin::config::minimapZoom, 0.02f, 0.30f, "%.3f");
-                ImGui::SliderFloat("Radius (px)", &goblin::config::minimapSize, 60.0f, 300.0f, "%.0f");
+                // Max raised 0.30 -> 0.60 (user feedback 2026-07-01: 0.30 was still too
+                // zoomed-out/small at max). Default also raised, see minimapZoom's declaration.
+                // AlwaysClamp: ImGui's Ctrl+Click-to-type on a slider does NOT clamp to
+                // [min,max] by default -- a typed value beyond what's shown could be saved to
+                // the INI, then silently reset on the next load by the (now correct, but still
+                // real) per-field range clamp in goblin_config.cpp. Keep what's shown and what's
+                // stored always in sync.
+                ImGui::SliderFloat("Zoom (px/world)", &goblin::config::minimapZoom, 0.02f, 5.0f, "%.3f",
+                                   ImGuiSliderFlags_AlwaysClamp);
+                ImGui::SliderFloat("Radius (px)", &goblin::config::minimapSize, 60.0f, 300.0f, "%.0f",
+                                   ImGuiSliderFlags_AlwaysClamp);
                 ImGui::SliderFloat("Opacity", &goblin::config::minimapOpacity, 0.0f, 1.0f, "%.2f");
                 ImGui::Checkbox("Anchor right", &goblin::config::minimapAnchorRight);
                 ImGui::SameLine();
@@ -3760,40 +3894,36 @@ namespace
                 // and nothing ever refreshes it again, so WantCaptureMouse stayed false forever
                 // even though the button poll correctly saw real clicks.
                 //
-                // Unconditionally feeding every GetCursorPos read caused a second bug (<user>,
-                // same day): the cursor visibly snapped to / stuck at screen centre the instant
-                // F1 opened. This game keeps the OS cursor warped to centre continuously during
-                // normal play as part of its raw-input camera (same behavior described by
-                // hk_set_cursor_pos's "swallow the game's recenter-to-middle" comment) — so the
-                // very FIRST poll right after opening genuinely reads back centre, and feeding
-                // that stale gameplay-parked value into ImGui is what showed up as a
-                // recentered/stuck cursor. Fix: capture the first read as a baseline WITHOUT
-                // feeding it, and only start feeding positions once the poll reports something
-                // DIFFERENT from that baseline — i.e. once the player has genuinely moved the
-                // physical mouse. Still fixes the original "can't click" bug (any real movement
-                // to interact with the panel triggers it) without ever reporting the stale centre
-                // value. Re-baselines every time F1 closes so the next open starts clean.
-                static POINT s_mouse_poll_baseline{};
-                static bool s_mouse_poll_have_baseline = false;
+                // TRUE ROOT CAUSE (<user> pointed at it directly by asking "why can't we use
+                // GetCursorPos" — should have re-checked hk_get_cursor_pos's own body sooner):
+                // hk_get_cursor_pos DELIBERATELY fakes screen-centre for ANY caller while g_show
+                // is true, to freeze the game's own 2D map-panning camera — EXCEPT a caller that
+                // sets g_imgui_reading_cursor first (existing mechanism, already used to exempt
+                // ImGui_ImplWin32_NewFrame's own internal read, below). Every earlier "GetCursorPos
+                // is frozen/stale" diagnosis was this exact self-inflicted fake-centre trap — none
+                // of my own polling code (nor the [DIAG] cyan crosshair) was ever setting that
+                // exemption flag, so it always got the SAME faked centre value regardless of Wine,
+                // Alt+Tab, or anything else. The raw-input-delta virtual cursor (still computed
+                // below, kept for the [DIAG] readout) was solving a problem that didn't really
+                // exist while missing the real, trivial one — and is inherently less precise than
+                // the real value (mickeys-to-pixels scaling is an approximation; GetCursorPos,
+                // once unfaked, is exact). Use the exemption directly here instead.
                 if (fgw && g_hwnd)
                 {
                     POINT pt;
-                    if (::GetCursorPos(&pt) && ::ScreenToClient(g_hwnd, &pt))
+                    g_imgui_reading_cursor = true;
+                    const BOOL gotPos = ::GetCursorPos(&pt);
+                    g_imgui_reading_cursor = false;
+                    if (gotPos && ::ScreenToClient(g_hwnd, &pt))
                     {
-                        if (!s_mouse_poll_have_baseline)
-                        {
-                            s_mouse_poll_baseline = pt;
-                            s_mouse_poll_have_baseline = true;
-                        }
-                        else if (pt.x != s_mouse_poll_baseline.x || pt.y != s_mouse_poll_baseline.y)
-                        {
-                            io.AddMousePosEvent(static_cast<float>(pt.x), static_cast<float>(pt.y));
-                        }
+                        io.AddMousePosEvent(static_cast<float>(pt.x), static_cast<float>(pt.y));
+                        g_diag_raw_cursor_client = pt;
+                        g_diag_raw_cursor_valid = true;
                     }
                 }
                 else
                 {
-                    s_mouse_poll_have_baseline = false;
+                    g_diag_raw_cursor_valid = false;
                 }
                 const bool lb = fgw && (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
                 io.AddMouseButtonEvent(0, lb);
@@ -3849,6 +3979,46 @@ namespace
             }
 
             ImGui::NewFrame();
+            // [DIAG] dx-bugs 2026-07-01 Alt+Tab followup, config::debugCursorDiagnostic: two live
+            // crosshairs so a recurrence is visible in real time instead of needing another log
+            // round-trip. Cyan = raw polled OS cursor (g_diag_raw_cursor_client, captured in the
+            // mouse-poll block above regardless of whether it passed the baseline gate). Magenta
+            // = io.MousePos, what ImGui itself currently thinks the position is (reflects this
+            // frame's AddMousePosEvent, since NewFrame() just processed the input queue). If
+            // magenta stops tracking cyan (freezes while cyan keeps moving), THAT is the stale
+            // cursor. A text readout also dumps the raw numbers + the relevant gate states.
+            if (g_show && goblin::config::debugCursorDiagnostic)
+            {
+                ImDrawList *diagDl = ImGui::GetBackgroundDrawList();
+                const ImGuiIO &diagIo = ImGui::GetIO();
+                auto crosshair = [diagDl](ImVec2 p, ImU32 col) {
+                    diagDl->AddLine(ImVec2(p.x - 12, p.y), ImVec2(p.x + 12, p.y), col, 2.0f);
+                    diagDl->AddLine(ImVec2(p.x, p.y - 12), ImVec2(p.x, p.y + 12), col, 2.0f);
+                    diagDl->AddCircle(p, 14.0f, col, 0, 2.0f);
+                };
+                if (g_diag_raw_cursor_valid)
+                    crosshair(ImVec2(static_cast<float>(g_diag_raw_cursor_client.x),
+                                      static_cast<float>(g_diag_raw_cursor_client.y)),
+                              IM_COL32(0, 255, 255, 255));
+                crosshair(diagIo.MousePos, IM_COL32(255, 0, 255, 255));
+                char diagBuf[448];
+                std::snprintf(diagBuf, sizeof(diagBuf),
+                              "[DIAG] GetCursorPos(cyan)=(%ld,%ld) valid=%d  ImGui(magenta)=(%.0f,%.0f)\n"
+                              "virtual_cursor(raw-input-driven)=(%.0f,%.0f)\n"
+                              "g_has_focus=%d WantCaptureMouse=%d\n"
+                              "SetCursorPos/frame=%u last_call=(%d,%d) swallowed=%d",
+                              g_diag_raw_cursor_valid ? static_cast<long>(g_diag_raw_cursor_client.x) : -1,
+                              g_diag_raw_cursor_valid ? static_cast<long>(g_diag_raw_cursor_client.y) : -1,
+                              g_diag_raw_cursor_valid, diagIo.MousePos.x, diagIo.MousePos.y,
+                              g_virtual_cursor_x.load(std::memory_order_relaxed),
+                              g_virtual_cursor_y.load(std::memory_order_relaxed),
+                              g_has_focus.load(std::memory_order_relaxed), diagIo.WantCaptureMouse,
+                              g_diag_set_cursor_pos_live.exchange(0, std::memory_order_relaxed),
+                              g_diag_last_set_cursor_pos_x.load(std::memory_order_relaxed),
+                              g_diag_last_set_cursor_pos_y.load(std::memory_order_relaxed),
+                              g_diag_set_cursor_pos_swallowed.load(std::memory_order_relaxed));
+                diagDl->AddText(ImVec2(10, 10), IM_COL32(255, 255, 255, 255), diagBuf);
+            }
             // Draw ImGui's software cursor ONLY while the F1 panel is up AND the world map is CLOSED.
             // (NewFrame now runs every frame for the overlay markers/minimap, so the old init-time
             // MouseDrawCursor=true leaked it into gameplay; and with the world map open ER already
@@ -4247,7 +4417,8 @@ bool goblin::overlay::native_map_point_icon_by_name(const char *name, void *&tex
 // return tex + UV sub-rect. Mirrors native_item_icon's GAP#2 disk branch. Returns false until the DDS is
 // read+uploaded (caller falls back to its previous icon). No baked dependency → correct on any mod.
 bool goblin::overlay::map_point_glyph_uv(const char *name, int iconId, void *&tex,
-                                         float &u0, float &v0, float &u1, float &v1)
+                                         float &u0, float &v0, float &u1, float &v1,
+                                         int *outW, int *outH)
 {
     int x = 0, y = 0, w = 0, h = 0;
     std::string sheet;
@@ -4264,5 +4435,7 @@ bool goblin::overlay::map_point_glyph_uv(const char *name, int iconId, void *&te
     tex = reinterpret_cast<void *>(ds.gpu);
     u0 = (float)x / ds.w; v0 = (float)y / ds.h;
     u1 = (float)(x + w) / ds.w; v1 = (float)(y + h) / ds.h;
+    if (outW) *outW = w;   // raw pixel rect dims, before UV normalization (dx-bugs 2026-07-01
+    if (outH) *outH = h;   // auto-scale-ratio followup) -- see header comment
     return true;
 }

@@ -481,6 +481,10 @@ inline bool redify_boss(const Marker &m)
 // markers draw with it instead of the circle/native hybrid. Render-thread only.
 ImTextureID s_grace_tex = nullptr;
 ImVec2 s_grace_uv0{}, s_grace_uv1{};
+// Native pixel rect dims of the harvested sprite, before UV normalization (dx-bugs 2026-07-01
+// auto-scale-ratio followup) -- lets the undiscovered-grace branch derive its size compensation
+// from real measured native dims on both sides instead of a hand-picked constant.
+int s_grace_native_w = 0, s_grace_native_h = 0;
 // ERR dungeon-style grace (MENU_MAP_ERR_GraceUnderground). Valid only when ERR is installed; used for
 // DUNGEON graces (m.dungeon) in place of the vanilla bonfire. null → dungeon graces use s_grace_tex.
 ImTextureID s_grace_dgn_tex = nullptr;
@@ -561,17 +565,36 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
             if (!disc)
             {
                 void *ut = nullptr; float gu0, gv0, gu1, gv1;
-                if (goblin::overlay::map_point_glyph_uv("MENU_MAP_Player_02", -1, ut, gu0, gv0, gu1, gv1))
+                int nativeW = 0, nativeH = 0;
+                if (goblin::overlay::map_point_glyph_uv("MENU_MAP_Player_02", -1, ut, gu0, gv0, gu1, gv1,
+                                                        &nativeW, &nativeH))
                 {
                     gt = (ImTextureID)ut;
                     u0 = ImVec2(gu0, gv0);
                     u1 = ImVec2(gu1, gv1);
+                    // AUTOMATIC size compensation (<user> 2026-07-01: "trouve le scale automatique",
+                    // not a hand-picked constant). Discovered graces are drawn from a raw screen-
+                    // region capture (ensure_grace_srv/set_grace_sprite) that includes real padding
+                    // around the glyph (glow/background), while this disk glyph is a tight hand-
+                    // authored crop -- same shared `gh` destination quad, but the tighter crop's
+                    // content fills more of it, reading larger. Derive the compensation from each
+                    // icon's OWN measured native pixel rect (sqrt(w*h), scale-invariant to aspect)
+                    // instead of guessing a ratio: a smaller native rect is scaled down proportionally
+                    // more, on the (empirically-confirmed-here) assumption that a bigger raw capture
+                    // rect means proportionally more captured padding.
+                    if (nativeW > 0 && nativeH > 0 && s_grace_native_w > 0 && s_grace_native_h > 0)
+                    {
+                        const float undiscNative = std::sqrt(static_cast<float>(nativeW) * static_cast<float>(nativeH));
+                        const float discNative = std::sqrt(static_cast<float>(s_grace_native_w) * static_cast<float>(s_grace_native_h));
+                        gh *= undiscNative / discNative;
+                    }
                     static bool s_logged = false;
                     if (!s_logged)
                     {
                         s_logged = true;
                         spdlog::info("[GRACEUNDISC] undiscovered grace -> MENU_MAP_Player_02 disk glyph "
-                                     "tex={} uv=({},{})-({},{})", ut, gu0, gv0, gu1, gv1);
+                                     "tex={} uv=({},{})-({},{}) native={}x{} vs discovered native={}x{}",
+                                     ut, gu0, gv0, gu1, gv1, nativeW, nativeH, s_grace_native_w, s_grace_native_h);
                     }
                 }
             }
@@ -1315,11 +1338,13 @@ static inline bool search_hit(const Marker &m)
     return s_search_set && m.name_id >= 0 && s_search_set->count(m.name_id) != 0;
 }
 
-void set_grace_sprite(void *tex, float u0, float v0, float u1, float v1)
+void set_grace_sprite(void *tex, float u0, float v0, float u1, float v1, int nativeW, int nativeH)
 {
     s_grace_tex = reinterpret_cast<ImTextureID>(tex);
     s_grace_uv0 = ImVec2(u0, v0);
     s_grace_uv1 = ImVec2(u1, v1);
+    s_grace_native_w = nativeW;
+    s_grace_native_h = nativeH;
 }
 
 void set_grace_dungeon_sprite(void *tex, float u0, float v0, float u1, float v1)
@@ -1765,7 +1790,14 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     if (!goblin::get_player_map_pos(parea, pwx, pwz, nullptr, nullptr, &pgroup))
         return; // no position (e.g. during a load) → no minimap this frame
 
-    const float R = cfg::minimapSize > 24.f ? cfg::minimapSize : 24.f;
+    // <user> 2026-07-01: minimap size/icons were fixed pixel values, not scaled to the live
+    // resolution, unlike the worldmap's own marker icons (which already use this exact
+    // `uiScale = realH / 1080.f` pattern, see the worldmap draw loop above). At 4K the minimap
+    // would read proportionally tiny; at 720p proportionally huge. `minimapZoom` (world-units
+    // shown) is intentionally left un-scaled — that's a "how much world detail" preference,
+    // independent of screen resolution, same as the worldmap's pan/zoom is independent of uiScale.
+    const float uiScale = screenH / 1080.f;
+    const float R = (cfg::minimapSize > 24.f ? cfg::minimapSize : 24.f) * uiScale;
     const float scale = cfg::minimapZoom > 0.0001f ? cfg::minimapZoom : 0.08f;
     const float margin = 24.f;
     // Configurable corner + pixel offset.
@@ -1786,7 +1818,19 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     fg->PushClipRect(ImVec2(ctr.x - R, ctr.y - R), ImVec2(ctr.x + R, ctr.y + R), true);
     const IconSet icons(reinterpret_cast<ImTextureID>(atlas_texture),
                         goblin::config::nativeItemIcons);
-    const float half = 6.0f; // minimap markers are small + fixed-size
+    // Item 13 (dx-bugs-backlog): the minimap used to hardcode half=6.0f, completely ignoring the
+    // same scale settings the worldmap honors. Clamped so an extreme scale setting can't make the
+    // small fixed-radius HUD unreadable or blow past its own icons.
+    constexpr float kMinimapIconHalfBase = 6.0f; // matches the old fixed size at scale=1
+    float half = kMinimapIconHalfBase * uiScale * cfg::overlayMasterScale * cfg::overlayIconScale;
+    half = half < 3.0f * uiScale ? 3.0f * uiScale : (half > 10.0f * uiScale ? 10.0f * uiScale : half);
+
+    // Item 13 tried screen-space clustering here; disabled by user feedback 2026-07-01 (see the
+    // key-computation comment below) — piles popped in/out too jarringly on the small HUD. Kept
+    // the cells/ map (each marker now gets its own unique key) so the search-hit ring loop below
+    // doesn't need a second code path.
+    struct MiniHit { const Marker *m; ImVec2 pos; };
+    std::unordered_map<uint64_t, std::vector<MiniHit>> cells;
     for (auto *L : layers)
     {
         if (!L || !L->visible())
@@ -1816,8 +1860,48 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
                 !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
                 !is_discovered_grace(m))
                 continue;
-            draw_marker(fg, m, ImVec2(ctr.x + dx, ctr.y + dy), icons, half);
+            // Clustering DISABLED on the minimap (user-tuned 2026-07-01: piles kept popping in
+            // and out as markers crossed cell boundaries while panning/moving — visually jarring
+            // on a small HUD in a way it isn't on the full worldmap). Every marker gets a unique
+            // key (its address) so it always lands alone in its own "cell" — the cells/ map is
+            // kept only so the rest of this loop (search-hit ring below) doesn't need a second
+            // code path.
+            const uint64_t key = reinterpret_cast<uint64_t>(&m);
+            cells[key].push_back({&m, ImVec2(ctr.x + dx, ctr.y + dy)});
         }
+    }
+    // Item 14: same yellow ring the worldmap draws around an active item-search "locate" target
+    // (search_hit is a TU-local helper, already visible here — no plumbing needed).
+    for (auto &cell : cells)
+    {
+        const std::vector<MiniHit> &hits = cell.second;
+        bool any_search_hit = false;
+        ImVec2 avg(0.f, 0.f);
+        for (const MiniHit &h : hits)
+        {
+            avg.x += h.pos.x;
+            avg.y += h.pos.y;
+            if (search_hit(*h.m))
+                any_search_hit = true;
+        }
+        avg.x /= static_cast<float>(hits.size());
+        avg.y /= static_cast<float>(hits.size());
+        if (hits.size() == 1)
+        {
+            draw_marker(fg, *hits[0].m, hits[0].pos, icons, half);
+        }
+        else
+        {
+            fg->AddCircleFilled(avg, half + 1.5f, IM_COL32(40, 42, 60, 220));
+            fg->AddCircle(avg, half + 1.5f, IM_COL32(230, 220, 180, 200), 0, 1.5f);
+            char countBuf[8];
+            std::snprintf(countBuf, sizeof(countBuf), "%d", static_cast<int>(hits.size()));
+            const ImVec2 ts = ImGui::CalcTextSize(countBuf);
+            fg->AddText(ImVec2(avg.x - ts.x * 0.5f, avg.y - ts.y * 0.5f),
+                       IM_COL32(255, 255, 255, 255), countBuf);
+        }
+        if (any_search_hit)
+            fg->AddCircle(avg, half * 1.7f, IM_COL32(255, 226, 40, 255), 0, 2.0f);
     }
     fg->PopClipRect();
 

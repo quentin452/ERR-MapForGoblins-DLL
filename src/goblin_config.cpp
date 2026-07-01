@@ -64,8 +64,8 @@ namespace
             float f;
             try { f = std::stof(v); }
             catch (...) { f = 1.0f; }
-            if (f < 0.1f) f = 0.1f;
-            if (f > 5.0f) f = 5.0f;
+            if (f < e.f32_min) f = e.f32_min;
+            if (f > e.f32_max) f = e.f32_max;
             *static_cast<float *>(e.target) = f;
             break;
         }

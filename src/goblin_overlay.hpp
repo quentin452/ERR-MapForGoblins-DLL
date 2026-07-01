@@ -44,6 +44,9 @@ namespace goblin::overlay
 
     // Mod-agnostic DISK map-point glyph (SB_MapCursor[_02] from the live 01_common.tpf): resolve by
     // name first, else numeric iconId (pass -1 to skip). Render-thread only; false until DDS uploaded.
+    // outW/outH (optional, dx-bugs 2026-07-01): the glyph's RAW pixel rect dims in the sheet, before
+    // UV normalization -- lets a caller auto-derive a size-compensation ratio against another icon's
+    // own native pixel dims, instead of a hand-picked scale constant.
     bool map_point_glyph_uv(const char *name, int iconId, void *&tex, float &u0, float &v0,
-                            float &u1, float &v1);
+                            float &u1, float &v1, int *outW = nullptr, int *outH = nullptr);
 }

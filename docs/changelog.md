@@ -122,6 +122,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 - **In-game settings overlay** — DXGI-Present-hooked ImGui UI (F1) for live per-section / per-category
   toggles, clustering, and save-to-INI; replaces the old F-key + INI-restart workflow.
 - **Player-centred minimap HUD** — corner minimap reusing the overlay/atlas chain, on every map page.
+  Now honors the same marker-scale settings as the worldmap and scales to the live render
+  resolution (was fixed pixel sizes, unscaled at 720p/4K), has its own lightweight screen-space
+  clustering (own tuning, not the worldmap's — piling by cell rather than distance-adaptive), and
+  shows the same yellow ring the worldmap draws around an active item-search "locate" target.
+  Zoom/radius defaults raised through live user tuning (`minimap_zoom` 0.08→2.0, slider max
+  0.30→5.0; `minimap_size` 130→100).
 - **Item / object search bar** — F1 search that locates a marker by name and pans+zooms the live map onto it.
 - **Quest Browser** — in-overlay ordered per-NPC step list with persisted checkmarks, missable warnings,
   and grey-out of unfinishable questlines from EMEVD-derived death flags.
@@ -145,6 +151,26 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   `>= 0x40000000` cut that wrongly dropped DLC one-time loot.
 
 ### Fixed
+- **F1 mouse position dead after Alt+Tab (round 2 — the first fix wasn't the whole story)** — a
+  second, longer debugging arc found the real root cause after 4 rounds of user-tested fixes:
+  `hk_get_cursor_pos` deliberately fakes screen-centre for any caller while the panel is open (to
+  freeze the game's own map-panning camera), with an existing exemption flag
+  (`g_imgui_reading_cursor`) for genuine reads — nothing in the cursor-tracking code was ever
+  setting that flag, so every `GetCursorPos` call looked "frozen" all along. Fixed by setting the
+  exemption around the real poll instead of working around a staleness that was never real. Added
+  a `config::debugCursorDiagnostic` on-screen crosshair/readout (off by default) that made this
+  diagnosable without another log round-trip.
+- **`IniType::F32` settings silently corrupted on save+reload** — the load-time clamp was a single
+  hardcoded `[0.1, 5.0]` written for the overlay scale multipliers but reused for every later F32
+  field regardless of its real range: `minimap_size` (100 default) would reset to 5 on the very
+  next load after any settings save, `icon_min_half_px` (8.0) similarly, and
+  `grace_offset_x/y`/`minimap_offset_x/y` (0.0, needs negative values) got forced up to 0.1. Fixed
+  with a real per-field min/max on each `IniEntry`.
+- **Undiscovered grace icon ~2x the size of the discovered one** — both draw through the same
+  destination quad size, but the discovered icon's raw screen-capture crop has more padding around
+  the glyph than the hand-authored disk crop used for the undiscovered marker. Fixed with an
+  automatic compensation ratio derived from each icon's own measured native pixel dimensions
+  (`sqrt(w*h)` on both sides), not a hardcoded constant.
 - **Overlay menu unclickable on Wine/Proton** — the F1 panel showed and hover worked, but clicks on
   buttons/sliders/dropdowns didn't register. ER reads input via Raw Input, so under newer wine/Proton no
   legacy mouse-button window messages (`WM_LBUTTONDOWN`…) are posted — ImGui's message path saw no presses
