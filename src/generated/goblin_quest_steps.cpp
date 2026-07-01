@@ -111,11 +111,14 @@ static const QuestStep steps_rya[] = {
 // by the transitions' LOCATION side-effects: >=3666 = left Stormhill (step1 done);
 // >=3669 = left the festival / placed at Gelmir (step3 done); >=3670 = freed at
 // Gelmir (step4 done). Step5 (his end) = 3663, the death flag set at m13 Farum (a
-// terminal top-of-register flag, plain check). Step2 (Gael Tunnel) stays 0: it is
-// missable and has NO distinct register state (3666->3667 goes Stormhill->Redmane).
+// terminal top-of-register flag, plain check). Step2 (Gael Tunnel) = 32009203, a
+// PERSISTENT per-location flag (SetEventFlag ON in m32_07, never cleared; live
+// RPM-confirmed ON on a Gael-freed save) -- Gael is missable so the register alone
+// can't flag it; flag_floor in quest_npc_layer absorbs it if skipped. (Stormhill has
+// no equivalent: its 1043399314 toggles ON/OFF = transient, so step1 uses the register.)
 static const QuestStep steps_alexander[] = {
-    {"Stuck in Stormhill", "Free Alexander, the Warrior Jar, from a hole in northern Stormhill by striking him.", "Limgrave", /*progress_flag=*/3666u, /*entity_id=*/1043390710u, /*progress_flag_max=*/3671u}, // reg>=3666 (left Stormhill)
-    {"Gael Tunnel", "Find him wedged before a door in Gael Tunnel and free him again.", "Caelid", /*progress_flag=*/0u, /*entity_id=*/32070700u}, // missable, no distinct register state -> manual
+    {"Stuck in Stormhill", "Free Alexander, the Warrior Jar, from a hole in northern Stormhill by striking him.", "Limgrave", /*progress_flag=*/3666u, /*entity_id=*/1043390710u, /*progress_flag_max=*/3671u}, // reg>=3666 (past initial; no persistent per-loc flag for Stormhill)
+    {"Gael Tunnel", "Find him wedged before a door in Gael Tunnel and free him again.", "Caelid", /*progress_flag=*/32009203u, /*entity_id=*/32070700u}, // persistent Gael flag (m32_07 set-once, RPM+EMEVD confirmed)
     {"Radahn Festival", "Meet him at Redmane Castle, eager for the battle against Radahn.", "Caelid", /*progress_flag=*/3669u, /*entity_id=*/1051360705u, /*progress_flag_max=*/3671u}, // reg>=3669 (left festival for Gelmir)
     {"Lava pot", "Free him once more from a hole on a lava slope of Mt. Gelmir.", "Mt. Gelmir", /*progress_flag=*/3670u, /*entity_id=*/1035530700u, /*progress_flag_max=*/3671u}, // reg>=3670 (freed at Gelmir)
     {"His end", "Find him dying at Crumbling Farum Azula; the duel yields Alexander's Innards and the Shard of Alexander talisman.", "Crumbling Farum Azula", /*progress_flag=*/3663u, /*entity_id=*/13000700u}, // death flag @ m13 Farum (terminal, plain check)
