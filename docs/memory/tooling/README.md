@@ -68,3 +68,4 @@ one-off scripts — most workflows are already reusable.
 - **Runtime icon residency** [resolved] — no global icon page; offline bake is the path. → [runtime-icon-coverage](runtime-icon-coverage.md)
 - **Overlay icon atlas** [active] — PNG-embedded atlas, stb runtime decode; regen needs FFDEC. → [overlay-icon-atlas](overlay-icon-atlas.md)
 - **ERR save format** [active] — `ER0000.err` BND4 (28967888 B); SteamID64 in 11 slots + per-slot MD5. → [err-save-file-format](err-save-file-format.md)
+- **me3 CLI non-ERR launch** [active] — `me3.exe launch -g elden-ring -p mfg_test/<p>/<p>.me3` to test vanilla/ERTE/Convergence in-game; exit-only `me3_mod_host` crash is benign. → [me3-cli-nonerr-launch](me3-cli-nonerr-launch.md)

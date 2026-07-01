@@ -133,7 +133,7 @@ namespace goblin::overlay_api
     bool get_player_map_pos(int &out_area, float &world_x, float &world_z,
                             int *out_gx = nullptr, int *out_gz = nullptr, int *out_group = nullptr);
     std::string lookup_text_utf8(int32_t id);
-    std::string lookup_name_alias_en_utf8(int32_t id);
+    std::string lookup_name_en_disk_utf8(int32_t encoded_id);
     bool quest_step_done(const goblin::generated::NpcQuest &q, size_t s);
     uint32_t resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag);
     int32_t resolve_loot_item_textid(uint32_t lotId, uint8_t lotType, int32_t baked_textid);

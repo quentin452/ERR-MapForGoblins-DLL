@@ -15,6 +15,7 @@
 #include "goblin_map_data.hpp"
 #include "goblin_quest_steps.hpp"
 #include "worldmap/loot_disk.hpp"
+#include "worldmap/name_fmg_en.hpp"
 #include "input/input_shared.hpp"
 #include "input/input_cursor.hpp"
 
@@ -109,7 +110,7 @@ namespace goblin::overlay_api
         return goblin::get_player_map_pos(out_area, world_x, world_z, out_gx, out_gz, out_group);
     }
     std::string lookup_text_utf8(int32_t id) { return goblin::lookup_text_utf8(id); }
-    std::string lookup_name_alias_en_utf8(int32_t id) { return goblin::lookup_name_alias_en_utf8(id); }
+    std::string lookup_name_en_disk_utf8(int32_t encoded_id) { return goblin::lookup_name_en_disk_utf8(encoded_id); }
     bool quest_step_done(const goblin::generated::NpcQuest &q, size_t s) { return goblin::quest_step_done(q, s); }
     uint32_t resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag) { return goblin::resolve_loot_flag(lotId, lotType, baked_flag); }
     int32_t resolve_loot_item_textid(uint32_t lotId, uint8_t lotType, int32_t baked_textid) { return goblin::resolve_loot_item_textid(lotId, lotType, baked_textid); }

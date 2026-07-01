@@ -34,6 +34,7 @@
 #include "worldmap/map_renderer.hpp"     // goblin::worldmap::render_markers
 #include "worldmap/category_meta.hpp"    // baked→GPU icon migration counters (F1 panel)
 #include "worldmap/loot_disk.hpp"        // disk_loot_state — F1 "maps not found" error
+#include "worldmap/name_fmg_en.hpp"      // lookup_name_en_disk_utf8 — F1 English search aliases
 #include "re_signatures.hpp"             // sig_health — F1 "signatures unresolved" error
 #include "goblin_messages.hpp"           // lookup_text_utf8 (item-search name resolution)
 #include "generated_shared/goblin_overlay_icons.hpp" // ATLAS_PNG category-icon atlas
@@ -1063,7 +1064,10 @@ namespace
                                 {
                                     Names n;
                                     n.loc = goblin::overlay_api::lookup_text_utf8(m.name_id);
-                                    n.en = goblin::overlay_api::lookup_name_alias_en_utf8(m.name_id);
+                                    // English alias resolved live from the active install's engus
+                                    // FMGs on disk (mod-agnostic; empty if unavailable → search
+                                    // degrades to game-language matching, no wrong-mod names).
+                                    n.en = goblin::overlay_api::lookup_name_en_disk_utf8(m.name_id);
                                     // Label = game-language name; fall back to English if the
                                     // live FMG had no entry. Append "(English)" only when it adds
                                     // information (present and different from the shown name).

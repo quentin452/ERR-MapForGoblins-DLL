@@ -71,6 +71,13 @@ data/.build_cache.json
 data/*.bak
 data/_*.done
 
+# Dead .MASSEDIT artifacts (2026-07-01): the .MASSEDIT chain is proven dead (no
+# runtime/pipeline consumer — the marker bake is an empty stub). data/massedit_generated
+# is still (re)written by generate_loot_massedit each run alongside its LIVE JSON, so
+# ignore it rather than track dead output. data/massedit was orphaned source, removed.
+data/massedit_generated/
+data/massedit/
+
 # One-off research outputs + intermediate versions (not used by current pipeline)
 data/_*.json
 data/_*.txt

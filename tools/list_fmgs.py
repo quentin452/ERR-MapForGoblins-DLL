@@ -52,7 +52,7 @@ def search_fmg_for_id(fmg_data, target):
     str_off_table = struct.unpack_from("<q", fmg_data, 0x18)[0]
     group_count = struct.unpack_from("<i", fmg_data, 0x0C)[0]
     for g in range(group_count):
-        off = 0x28 + g * 0x18
+        off = 0x28 + g * 0x10  # FMG v2 group entry = 16 bytes (4×int32); a 0x18 stride only finds group-0 ids
         if off + 12 > len(fmg_data):
             break
         idx_start = struct.unpack_from("<i", fmg_data, off)[0]

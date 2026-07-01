@@ -137,8 +137,6 @@ set(GOBLIN_HOST_SOURCES
   ${GEN_DIR}/goblin_quest_gates.cpp
   ${GEN_DIR}/goblin_quest_steps.hpp
   ${GEN_DIR}/goblin_quest_steps.cpp
-  ${GEN_DIR}/goblin_name_aliases_en.hpp
-  ${GEN_DIR}/goblin_name_aliases_en.cpp
   ${GEN_DIR}/goblin_region_anchors.hpp
   ${GEN_DIR}/goblin_region_anchors.cpp
   ${GEN_DIR}/goblin_tile_tabs.hpp
@@ -203,6 +201,8 @@ set(GOBLIN_HOST_SOURCES
   src/worldmap/msbe_parser.cpp
   src/worldmap/loot_disk.hpp
   src/worldmap/loot_disk.cpp
+  src/worldmap/name_fmg_en.hpp
+  src/worldmap/name_fmg_en.cpp
   src/worldmap/dvdbnd_reader.hpp
   src/worldmap/dvdbnd_reader.cpp
   src/worldmap/loot_open_probe.hpp
