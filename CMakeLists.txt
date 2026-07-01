@@ -159,6 +159,8 @@ add_library( MapForGoblins SHARED
   src/input/input_cursor.cpp
   src/input/input_rawinput.hpp
   src/input/input_rawinput.cpp
+  src/input/input_wndproc.hpp
+  src/input/input_wndproc.cpp
   src/goblin_projection.hpp
   src/generated_shared/goblin_overlay_icons.hpp
   src/generated_shared/goblin_overlay_icons.cpp

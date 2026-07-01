@@ -39,6 +39,7 @@
 #include "input/input_gamepad.hpp"                    // goblin::input::install_xinput_hook() etc.
 #include "input/input_cursor.hpp"                     // goblin::input::install_cursor_hooks() etc.
 #include "input/input_rawinput.hpp"                   // goblin::input::install_rawinput_hooks() etc.
+#include "input/input_wndproc.hpp"                    // goblin::input::install_wndproc_hook() etc.
 
 #include <vector>
 #include <map>
@@ -196,7 +197,6 @@ namespace
     UINT g_buffer_count = 0;
 
     HWND g_hwnd = nullptr;
-    WNDPROC g_orig_wndproc = nullptr;
     // Message-driven focus state (dx-bugs 2026-07-01 "alt-tab back, ImGui receives no input"
     // followup). Was previously re-polled every present frame via `GetForegroundWindow() ==
     // g_hwnd`; [FOCUSDIAG] logging showed g_show flapping true/false SEVEN times in the ~20s
@@ -212,25 +212,15 @@ namespace
     bool g_imgui_init = false;   // ImGui + D3D resources built against live swapchain
     bool g_failed = false;       // gave up (no overlay), mod continues
     bool g_show = false;         // panel visible this frame
-    std::atomic<unsigned> g_wndproc_lbdown_while_open{0};  // diag: real WM_LBUTTONDOWN reaching us while the panel is open (0 ⇒ ER raw-input swallows legacy click messages → poll buttons instead)
     // diag (docs/re/proton11_cursor_lock_re_prompt.md step 1): call counts for the 5 cursor/raw-input
     // detours, logged once/sec while the panel is open. On Proton 11 the F1 cursor can be frozen at
     // screen-centre with no hover/click/move at all -- these counters tell us whether ER's mouse
     // capture even reaches the user32 exports we hook (0 calls while ER clearly captures the mouse =
     // it's bypassing user32 entirely, e.g. native Wayland pointer-lock or a win32u-only path).
-    // (The 3 cursor-hook counters + the raw-input pair moved to src/input/input_cursor.cpp /
-    // input_rawinput.cpp's diag_*_exchange() accessors along with their owning hooks.)
-    // [KBDIAG] dx-bugs 2026-07-01 followup: <user> reports the keyboard can lose the "hook"
-    // while typing in the item-search bar EVEN WITHOUT any Alt+Tab (so distinct from the
-    // g_has_focus/[FOCUSDIAG] fix above — this is an in-focus keyboard-loss, secondary bug,
-    // not yet reproduced/explained). Counts raw WM_CHAR/WM_KEYDOWN arrival at the wndproc
-    // level so the periodic [KBDIAG] log (see below, same 1/sec cadence as [CURSORDIAG]) can
-    // tell apart "no keyboard messages are arriving at all" (real OS/hook-level loss) from
-    // "messages arrive but ImGui isn't consuming them" (WantCaptureKeyboard false / ActiveID
-    // not the search field — an internal ImGui/nav state issue, e.g. gamepad nav stealing
-    // focus away from the InputText).
-    std::atomic<unsigned> g_diag_wm_char{0};
-    std::atomic<unsigned> g_diag_wm_keydown{0};
+    // (All 6 hook-owned counters — the 3 cursor-hook ones, the raw-input pair, and wm_char/
+    // wm_keydown/wndproc_lbdown_while_open — moved to src/input/input_cursor.cpp /
+    // input_rawinput.cpp / input_wndproc.cpp's diag_*_exchange() accessors along with their
+    // owning hooks.)
     // Visual cursor diagnostic (dx-bugs 2026-07-01 Alt+Tab followup, config::debugCursorDiagnostic).
     // Set in the mouse-poll block (client-relative, always captured regardless of whether the
     // baseline gate feeds it to ImGui) and drawn as a crosshair after ImGui::NewFrame(), further
@@ -1297,151 +1287,8 @@ namespace
     // Raw input hooks (hk_get_raw_input_data/hk_get_raw_input_buffer) moved to
     // src/input/input_rawinput.cpp — fourth slice of docs/plans/input_module_refactor_plan.md.
 
-    // ── WndProc hook (input capture) ──────────────────────────────────────
-    LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
-    {
-        // Focus messages MUST always reach ImGui, independent of g_show. g_show is
-        // recomputed once/frame from a foreground-window check (":3076" area), so it can
-        // still be FALSE for a frame or two right after the OS delivers WM_SETFOCUS on
-        // alt-tab-back — if that message only reached ImGui_ImplWin32_WndProcHandler
-        // inside the `if (g_show)` branch below, ImGui's internal focus-lost state never
-        // clears and UpdateMouseData() permanently stops writing the mouse position
-        // (the "F1 opens but the cursor never responds again" bug after alt-tab+back —
-        // see docs/re/proton11_cursor_lock_re_prompt.md's H3). Cheap and side-effect-free
-        // to forward unconditionally: ImGui's own handler no-ops these when its context
-        // isn't initialized yet (init_imgui not run), and forwarding while the panel is
-        // closed only updates ImGui's idle io.AddFocusEvent state, nothing visible.
-        if (msg == WM_SETFOCUS || msg == WM_KILLFOCUS)
-        {
-            ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
-            // [FOCUSDIAG] dx-bugs 2026-07-01 "alt-tab back, ImGui receives no input" followup —
-            // the fg-gate/debounce fix on g_last_input_was_gamepad did NOT resolve this in-game
-            // (still reproduces per <user>), so this logs the raw focus-transition + io state
-            // instead of guessing a third time. Rare event (only fires on actual focus changes),
-            // safe to always log.
-            {
-                ImGuiIO *io = ImGui::GetCurrentContext() ? &ImGui::GetIO() : nullptr;
-                spdlog::info("[FOCUSDIAG] {} g_show={} g_user_show={} WantCaptureMouse={} "
-                             "WantCaptureKeyboard={} MousePos=({:.0f},{:.0f}) NavActive={}",
-                             (msg == WM_SETFOCUS) ? "WM_SETFOCUS" : "WM_KILLFOCUS",
-                             g_show, g_user_show,
-                             io ? io->WantCaptureMouse : false,
-                             io ? io->WantCaptureKeyboard : false,
-                             io ? io->MousePos.x : -1.0f, io ? io->MousePos.y : -1.0f,
-                             io ? (io->NavActive ? "1" : "0") : "?");
-            }
-            // ROOT CAUSE (confirmed via the [FOCUSDIAG] log above, 2026-07-01): `fg` used to be
-            // re-polled every present frame via GetForegroundWindow()==g_hwnd, which flapped
-            // true/false several times during a single real Alt+Tab-back under Wine (the
-            // compositor transition briefly hands foreground to something else for a few
-            // frames) — see g_has_focus's declaration comment. Track focus from these
-            // event-driven messages instead; they only fire on real transitions.
-            g_has_focus.store(msg == WM_SETFOCUS, std::memory_order_relaxed);
-        }
-
-        // Losing focus (alt-tab away): reset the pad-switch state machine to a clean slate.
-        // Without this, residual pad activity while backgrounded (idle hand on the stick —
-        // hk_present's gamepad poll has no fg gate on its OWN read, only on whether it acts
-        // on it) could leave g_last_input_was_gamepad/streak primed, so regaining focus could
-        // immediately resume mid-transition instead of starting fresh (dx-bugs 2026-07-01
-        // "alt-tab back, ImGui receives no input" followup).
-        if (msg == WM_KILLFOCUS)
-        {
-            g_last_input_was_gamepad = false;
-            g_gamepad_active_streak = 0;
-        }
-
-        // Real mouse/keyboard activity means input is no longer pad-only (see the XInput poll
-        // in hk_present, item 2 of dx-bugs-backlog PR C) — clear regardless of overlay state.
-        switch (msg)
-        {
-        case WM_MOUSEMOVE:
-            // Our OWN recenter (item 2/6) calls SetCursorPos, which generates exactly this
-            // message — don't let our own cursor move look like "real" mouse input, or it
-            // re-arms the gamepad-switch edge next frame and the two feed each other forever.
-            if (g_ignore_next_mousemove_for_gamepad_flag)
-                g_ignore_next_mousemove_for_gamepad_flag = false;
-            else
-            {
-                g_last_input_was_gamepad = false;
-                g_gamepad_active_streak = 0;
-            }
-            break;
-        case WM_LBUTTONDOWN: case WM_LBUTTONUP:
-        case WM_RBUTTONDOWN: case WM_RBUTTONUP: case WM_MBUTTONDOWN: case WM_MBUTTONUP:
-        case WM_XBUTTONDOWN: case WM_XBUTTONUP: case WM_MOUSEWHEEL: case WM_MOUSEHWHEEL:
-        case WM_KEYDOWN: case WM_KEYUP: case WM_SYSKEYDOWN: case WM_SYSKEYUP: case WM_CHAR:
-            // A real mouse click/wheel/keypress cancels any in-progress pad-switch detection
-            // outright (see kGamepadSwitchDebounceFrames below) — the user is demonstrably
-            // still on mouse/kb right now, regardless of what the pad happens to report.
-            g_last_input_was_gamepad = false;
-            g_gamepad_active_streak = 0;
-            // [KBDIAG] raw arrival count, independent of g_show/consumption — see the
-            // g_diag_wm_char/g_diag_wm_keydown declaration comment.
-            if (msg == WM_CHAR)
-                g_diag_wm_char.fetch_add(1, std::memory_order_relaxed);
-            else if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
-                g_diag_wm_keydown.fetch_add(1, std::memory_order_relaxed);
-            break;
-        default:
-            break;
-        }
-
-        if (g_show)
-        {
-            ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
-            if (msg == WM_LBUTTONDOWN) g_wndproc_lbdown_while_open.fetch_add(1, std::memory_order_relaxed);
-            // While the menu is open, swallow ALL mouse/keyboard input so the
-            // game gets none of it — regardless of where the cursor is (over the
-            // map, the panel, anywhere). ImGui was already fed above, so the
-            // panel stays fully usable. This stops the world-map panning when
-            // the cursor is outside the panel (WantCaptureMouse would be false
-            // there and let the move reach the game).
-            switch (msg)
-            {
-            // RELEASES always pass through to the game (fall out of the switch). If we
-            // swallowed them, a key/button held BEFORE the overlay opened (or held when the
-            // map is quit abnormally) would never get its KEYUP → the game thinks it is held
-            // forever → camera/movement stuck "à vie". ImGui was already fed above.
-            case WM_KEYUP: case WM_SYSKEYUP:
-            case WM_LBUTTONUP: case WM_RBUTTONUP: case WM_MBUTTONUP: case WM_XBUTTONUP:
-                break;
-            // PRESSES / moves / wheel / char are consumed so the game gets none while open.
-            case WM_INPUT:
-            case WM_MOUSEMOVE:
-            case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK:
-            case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK:
-            case WM_MBUTTONDOWN: case WM_MBUTTONDBLCLK:
-            case WM_XBUTTONDOWN:
-            case WM_MOUSEWHEEL: case WM_MOUSEHWHEEL:
-            case WM_KEYDOWN: case WM_CHAR:
-            case WM_SYSKEYDOWN:
-                return (msg == WM_INPUT) ? 0 : 1;  // consume; game never sees it
-            default:
-                break;
-            }
-        }
-        // F1 panel CLOSED but the world map is open: feed ImGui the mouse so in-world chips
-        // (region toggles) stay clickable, and consume the L-button PRESS for the game ONLY
-        // when the cursor is over a chip (map pan/select elsewhere is untouched). Releases
-        // always pass through to the game (never swallow an UP → no "held forever" bug).
-        else if (goblin::world_map_open())
-        {
-            switch (msg)
-            {
-            case WM_MOUSEMOVE:
-            case WM_LBUTTONDOWN:
-            case WM_LBUTTONUP:
-                ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
-                if (msg == WM_LBUTTONDOWN && goblin::worldmap::inworld_hovered())
-                    return 1; // chip ate the click; the game must not pan/select
-                break;
-            default:
-                break;
-            }
-        }
-        return CallWindowProcW(g_orig_wndproc, hwnd, msg, wp, lp);
-    }
+    // WndProc hook (hk_wndproc) moved to src/input/input_wndproc.cpp — fifth and last slice
+    // of docs/plans/input_module_refactor_plan.md.
 
     // ── First-frame ImGui init against the live swapchain ─────────────────
     bool init_imgui(IDXGISwapChain3 *swapchain)
@@ -1586,8 +1433,7 @@ namespace
                             g_srv_heap->GetGPUDescriptorHandleForHeapStart());
 
         // Install the input hook now that we have the window.
-        g_orig_wndproc = reinterpret_cast<WNDPROC>(
-            SetWindowLongPtrW(g_hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(hk_wndproc)));
+        goblin::input::install_wndproc_hook(g_hwnd);
 
         spdlog::info("[OVERLAY] ImGui initialised: {} back buffers, hwnd={:p}",
                      g_buffer_count, static_cast<void *>(g_hwnd));
@@ -3663,7 +3509,8 @@ namespace
                 {
                     s_logged_click = true;
                     spdlog::info("[CLICKDIAG] L-button delivered to ImGui via GetAsyncKeyState poll "
-                                 "(WndProc WM_LBUTTONDOWN seen while open: {})", g_wndproc_lbdown_while_open.load());
+                                 "(WndProc WM_LBUTTONDOWN seen while open: {})",
+                                 goblin::input::diag_wndproc_lbdown_while_open_load());
                 }
                 // docs/re/proton11_cursor_lock_re_prompt.md step 1: once/sec while the panel is open,
                 // log how many times each cursor/raw-input detour fired since last logged. If these
@@ -3701,7 +3548,7 @@ namespace
                         spdlog::info("[KBDIAG] wm_char/sec={} wm_keydown/sec={} WantCaptureKeyboard={} "
                                      "WantTextInput={} WantCaptureMouse={} lb={} MousePos=({:.0f},{:.0f}) "
                                      "NavActive={} last_input_was_gamepad={} gamepad_active_streak={}",
-                                     g_diag_wm_char.exchange(0), g_diag_wm_keydown.exchange(0),
+                                     goblin::input::diag_wm_char_exchange(), goblin::input::diag_wm_keydown_exchange(),
                                      io.WantCaptureKeyboard, io.WantTextInput, io.WantCaptureMouse, lb,
                                      io.MousePos.x, io.MousePos.y, io.NavActive,
                                      g_last_input_was_gamepad, g_gamepad_active_streak);
@@ -3920,6 +3767,14 @@ namespace
 
 bool goblin::input::menu_open() { return g_show; }
 int goblin::input::nav_frames_active() { return g_nav_frames.load(std::memory_order_relaxed); }
+bool goblin::input::user_show() { return g_user_show; }
+void goblin::input::set_has_focus(bool v) { g_has_focus.store(v, std::memory_order_relaxed); }
+bool goblin::input::last_input_was_gamepad() { return g_last_input_was_gamepad; }
+void goblin::input::set_last_input_was_gamepad(bool v) { g_last_input_was_gamepad = v; }
+int goblin::input::gamepad_active_streak() { return g_gamepad_active_streak; }
+void goblin::input::set_gamepad_active_streak(int v) { g_gamepad_active_streak = v; }
+bool goblin::input::ignore_next_mousemove_for_gamepad_flag() { return g_ignore_next_mousemove_for_gamepad_flag; }
+void goblin::input::set_ignore_next_mousemove_for_gamepad_flag(bool v) { g_ignore_next_mousemove_for_gamepad_flag = v; }
 
 void goblin::overlay::initialize()
 {
@@ -3973,8 +3828,7 @@ void goblin::overlay::initialize()
 void goblin::overlay::shutdown()
 {
     if (g_failed) return;
-    if (g_hwnd && g_orig_wndproc)
-        SetWindowLongPtrW(g_hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_orig_wndproc));
+    goblin::input::uninstall_wndproc_hook(g_hwnd);
     if (g_imgui_init)
     {
         ImGui_ImplDX12_Shutdown();
