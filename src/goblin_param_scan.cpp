@@ -35,8 +35,21 @@ void scan_table(const char *name, from::params::ParamTable *table)
     for (uint16_t r = 0; r < table->num_rows; r++)
     {
         const auto &ri = table->rows[r];
-        if (ri.param_end_offset <= ri.param_offset) continue;
-        const uint64_t len = ri.param_end_offset - ri.param_offset;
+        // Row LENGTH = distance to the next row's data (rows are laid out
+        // sequentially). param_end_offset is NOT the row end — it points far past
+        // the row (first scan run attributed the whole table tail to every row:
+        // "row size 65486" on tables whose real rows are a few hundred bytes,
+        // duplicate hits in every following row). Last row: assume the uniform
+        // stride every FromSoft param table has.
+        uint64_t len;
+        if (r + 1 < table->num_rows && table->rows[r + 1].param_offset > ri.param_offset)
+            len = table->rows[r + 1].param_offset - ri.param_offset;
+        else if (row_size)
+            len = row_size;
+        else if (ri.param_end_offset > ri.param_offset)
+            len = ri.param_end_offset - ri.param_offset;
+        else
+            continue;
         if (len > 0x10000) continue;  // implausible row — corrupt/foreign table layout
         if (!row_size) row_size = len;
         const uint8_t *p = base + ri.param_offset;
