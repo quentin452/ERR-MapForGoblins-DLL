@@ -13,62 +13,30 @@ Kept: genuinely live/in-progress work, open questions, and standing knowledge (g
 decisions, non-obvious facts) not fully captured anywhere else. If you're looking for the history of
 something not below, check `docs/changelog.md` first, then the relevant `docs/plans/*.md`.
 
-Last updated: 2026-07-01z8 (overlay_hot_reload_playwright_plan Slice C export-API layer +
-call-site rewiring both DONE, IN-GAME CONFIRMED, merged to `master` — including a real merge
-conflict with the parallel name-aliases-runtime/data-purge session's push to `origin/master`,
-resolved and re-confirmed in-game — see below).
+Last updated: 2026-07-01z9 (overlay_hot_reload_playwright_plan Phase 2 Slices A/B/C all MERGED to
+`master` except Slice C's `LoadLibrary` mechanism — see below).
 
-## RESUME HERE (2026-07-01z7) — overlay_hot_reload_playwright_plan Slice C API layer + rewiring landed, LoadLibrary mechanism not started
+## RESUME HERE (2026-07-01z9) — overlay_hot_reload_playwright_plan Slice C nearly done, only LoadLibrary mechanism left
 
-Phase 1, Phase 2 Slice A, and Phase 2 Slice B are all COMPLETE + MERGED to `master` (Slice B:
-draw layer extracted to `src/goblin_overlay_render.{cpp,hpp}`, grace/icon-SRV helpers stayed
-host-side behind thin wrappers since they turned out D3D12-coupled — full detail in the plan doc).
+Phase 1 and Phase 2 Slices A + B are COMPLETE + MERGED. Slice C (the consolidated
+`goblin::overlay_api::*` wrapper layer covering ~110+ cross-DLL call sites — config/ui/
+worldmap_probe/markers/kindling/collected/debug_events/input/disk_loot/`native_item_icon` family
+— plus rewiring all 6 render-side files to use it) is DONE, IN-GAME CONFIRMED, MERGED. Full
+design/audit history + the "read the real declaration, don't guess from a name" lesson from
+several grep→compile-error→fix passes are in `docs/plans/overlay_hot_reload_playwright_plan.md`
+(don't re-derive any of it — audit is complete and correct as merged). One real merge conflict
+with the parallel name-aliases-runtime/data-purge session was hit and resolved along the way
+(their `lookup_name_alias_en_utf8` retirement in favor of `lookup_name_en_disk_utf8` collided with
+this session's wrapper rename — kept both, confirmed working in-game after).
 
-**Slice C — export-API layer DONE, build-verified standalone (2026-07-01, `feat/overlay-render-api`,
-not yet wired in, not yet merged).** A full export-surface audit found ~110 real cross-DLL call
-sites (bigger than first estimated) spanning `goblin::config` (59 of 64 globals — 5 are `inline
-constexpr`, already free), `goblin::ui`, `goblin::worldmap_probe`, ~40 bare `goblin::*` functions,
-`markers`/`kindling`/`collected`/`debug_events`/`input`, and `worldmap::disk_loot_*` (host despite
-the name). **User decision:** one consolidated wrapper file (`src/goblin_overlay_render_api.{hpp,cpp}`)
-rather than annotating ~15 existing shared headers — keeps blast radius contained. Config globals
-use an X-macro (45 mutable → pointer-getters, the rest read-only but same shape for uniformity);
-`GraceCandidate`/`LiveGrace`/`RuntimeEntry`/`SigHealth`/`LiveView`/`LocateDebug`/`NpcQuest` structs
-all confirmed already in shared headers (free, only the functions needed wrapping). Getting ~15 of
-the bare-`goblin::*` signatures right took several grep→compile-error→fix passes — audit-derived
-NAMES were right but several real signatures are far more complex than guessed (`marker_world_pos`
-takes 9 params with `uint8_t`/`uint32_t` area/grid encodings, `quest_step_done` lives in a
-different header entirely, `gpu_want_symbol`/`gpu_want_item` return `void` not `bool`, etc.) —
-**lesson for whoever continues this: read the real declaration before writing a forward, don't
-infer from a name.** This layer is dead code right now (not called from anywhere) — zero runtime
-risk, build-verified only, no in-game check needed yet.
-
-**Call-site rewiring — DONE, IN-GAME CONFIRMED, MERGED.** All 6 render-side files now call
-`goblin::overlay_api::*` instead of `goblin::config::*`/`goblin::ui::*`/etc. directly (generated via
-a ~180-rule per-symbol sed script, not a blanket namespace replace, to avoid rewriting TYPE
-references like `goblin::worldmap::DiskLootState` that must stay untouched). Found + fixed one
-export-audit gap while rewiring: `goblin::ui::section_label` was missing from the API entirely.
-**IN-GAME CONFIRMED 2026-07-01 22:12**: `[SIG]` 29/29 clean, both grace SRVs built,
-`render.minimap`/`refresh.collected`/`refresh.category_census`/`refresh.flag_or_pairs` all firing
-correctly the whole session, no crash/error.
-
-**Real merge conflict hit + resolved (2026-07-01, `git merge` with `origin/master`).** While
-merging to `master`, hit an ACTUAL conflict with the parallel session's push: it deleted the baked
-`goblin_name_aliases_en` table and retired `lookup_name_alias_en_utf8` in favor of a new
-`goblin::lookup_name_en_disk_utf8` (runtime engus-FMG-off-disk lookup, `src/worldmap/name_fmg_en.{hpp,cpp}`,
-host-side like `disk_loot_dir`/`disk_loot_state`) — collided directly with this session's rename of
-the same call site to `goblin::overlay_api::lookup_name_alias_en_utf8`. Resolved by keeping BOTH:
-their new lookup function + this session's `overlay_api::` wrapper convention (renamed the wrapper
-to `lookup_name_en_disk_utf8`, updated `goblin_overlay_render_api.{hpp,cpp}` to match, added the
-`worldmap/name_fmg_en.hpp` include). Their other changes (113 dead `.MASSEDIT` file deletions,
-`name_fmg_en.*` additions, `dllmain.cpp`/`goblin_messages.*` edits) merged cleanly, untouched.
-**IN-GAME RE-CONFIRMED 2026-07-01 22:22** after the merge: `[DVDBND]`/`[GAMEFILE]` show the engus
-FMG files (item/menu msgbnd) actually loading from disk through the new wrapper chain, `[SIG]`
-29/29 clean, no crash/error. Merge commit + everything above now on `master`.
-
-**Still remaining for Slice C:** (1) `native_item_icon`-family reverse ctx/pointer table (host owns
-`g_device` etc., doesn't change); (2) `LoadLibrary`+`GetProcAddress` vtable resolution for the
-host→render call direction (`draw_panel`/`draw_worldmap_markers`/`draw_minimap_hud`). Next session:
-start with (1) — full detail in the plan doc.
+**Only remaining Slice C piece: the actual `LoadLibrary`/`GetProcAddress` vtable mechanism** for
+the host→render call direction (`draw_panel`/`draw_worldmap_markers`/`draw_minimap_hud`) — genuinely
+new work, not started: needs `extern "C"` stable-name exports for the 3 draw functions, a
+function-pointer table the host resolves at `LoadLibrary` time, the actual two-target CMake build
+when `GOBLIN_OVERLAY_HOTRELOAD=ON` (currently a scaffold that always builds one DLL), plus the
+ImGui-context-sharing/threading risks the plan already flags. Needs its own design pass before
+coding — full detail + the risk list in the plan doc's Slice C/Phase 2 sections. Then Slice D
+(file-watcher + real reload) can start.
 
 ## ⚠️ IN PROGRESS — baked-data → runtime/disk migration (build_pipeline.py deletion is the END state)
 

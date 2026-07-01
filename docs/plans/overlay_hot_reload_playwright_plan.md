@@ -1,10 +1,10 @@
 # Overlay hot-reload + AI Playwright loop (plan)
 
 **Status:** Phase 1 COMPLETE + MERGED to `master` (2026-07-01). Phase 2 (DLL split): Slice A (CMake
-scaffold) and Slice B (draw layer extracted to `src/goblin_overlay_render.cpp`) both IN-GAME
-CONFIRMED + MERGED. Slice C (export-API layer + call-site rewiring) IN-GAME CONFIRMED + MERGED —
-remaining: `native_item_icon` reverse ctx table + the actual `LoadLibrary` vtable mechanism (not
-started). Slice D not started. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
+scaffold), Slice B (draw layer extracted to `src/goblin_overlay_render.cpp`), and Slice C
+(export-API layer + call-site rewiring + `native_item_icon` reverse wrapping) all IN-GAME CONFIRMED
++ MERGED — remaining for Slice C: only the actual `LoadLibrary`/`GetProcAddress` vtable mechanism
+for the host→render call direction (not started). Slice D not started. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
 render code while ERR keeps running (no full restart), paired with the already-proposed Route B
 debug RPC so an AI agent can script the REAL running game — screenshot, spot a DX or functional
 bug in the minimap/worldmap/icons overlay, fix the overlay source, hot-reload just that piece,
@@ -315,10 +315,22 @@ both modes; a `GOBLIN_OVERLAY_HOTRELOAD` build additionally needs it to `LoadLib
    `refresh.flag_or_pairs` all firing correctly the whole session — confirms config, `ui::`, and
    `collected::` wrappers all work live, no crash/error. Not yet merged.
 
-   **Still remaining for Slice C:** (1) `native_item_icon`-family reverse ctx/pointer table (host
-   owns `g_device` etc., doesn't change); (2) vtable/function-pointer resolution for the
-   host→render call direction (`draw_panel`/`draw_worldmap_markers`/`draw_minimap_hud`, via
-   `LoadLibrary`+`GetProcAddress` since render is the module that gets reloaded).
+   **`native_item_icon` reverse wrapping — DONE, IN-GAME CONFIRMED, MERGED (2026-07-01,
+   `feat/overlay-native-icon-wrap`).** Turned out to need no new mechanism — same D3D12-coupled-
+   host-function pattern as the grace/icon-SRV wrappers already established (these own the
+   SheetTex/MapSymSrv/DiskSheet caches). Added `native_item_icon`/`native_map_point_icon`/
+   `native_map_point_icon_by_name`/`map_point_glyph_uv` to the consolidated wrapper API, rewired
+   all 9 call sites in `goblin_overlay_render.cpp`/`map_renderer.cpp`. In-game: `render.worldmap.markers`
+   fired 574+ times drawing world-map icons through the new path, normal timings, `[SIG]` 29/29, no
+   crash/error.
+
+   **Still remaining for Slice C:** vtable/function-pointer resolution for the host→render call
+   direction (`draw_panel`/`draw_worldmap_markers`/`draw_minimap_hud`, via `LoadLibrary`+
+   `GetProcAddress` since render is the module that gets reloaded) — this is genuinely new work
+   (extern "C" stable-name exports for the 3 draw functions, a function-pointer table the host
+   resolves at `LoadLibrary` time, the actual two-target CMake build when
+   `GOBLIN_OVERLAY_HOTRELOAD=ON`, plus the ImGui-context-sharing/threading risks already flagged
+   below) — not started, needs its own design pass before coding.
 4. Slice D — file-watcher + actual hot reload.
   - **ImGui context sharing across the DLL boundary.** Both DLLs must share the SAME `ImGuiContext*`
     (`ImGui::SetCurrentContext` on entry to every cross-DLL call) and be built against the same
