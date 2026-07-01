@@ -1839,6 +1839,24 @@ void build_buckets_impl()
         // quest analogue of the circle fallback. One-time on this disk worker.
         if (wantQuestNpcs)
         {
+            // entity_world_pos() cache for QuestNpcLayer's PINS — build it here, gated on the
+            // quest feature. It used to live ONLY inside the lootEmevdDrops loot block, so quest
+            // pins silently vanished whenever that unrelated toggle was off (the "zero pins" bug).
+            // Loot never reads g_entity_pos, so this is its sole builder.
+            for (const auto &en : disk_enemies)
+            {
+                if (!en.entityId) continue;
+                int ga = 0; float wx = 0.0f, wz = 0.0f;
+                if (goblin::marker_world_pos(en.area, en.gx, en.gz, en.posX, en.posZ, ga, wx, wz))
+                    g_entity_pos[en.entityId] = {wx, wz, goblin::marker_group_from(en.area, ga)};
+            }
+            for (const auto &as : disk_collectibles)
+            {
+                if (!as.entityId || g_entity_pos.count(as.entityId)) continue;
+                int ga = 0; float wx = 0.0f, wz = 0.0f;
+                if (goblin::marker_world_pos(as.area, as.gx, as.gz, as.posX, as.posZ, ga, wx, wz))
+                    g_entity_pos[as.entityId] = {wx, wz, goblin::marker_group_from(as.area, ga)};
+            }
             std::vector<QuestNpcRuntime> qnpcs = load_quest_npcs();
             // Flag-coverage (the only join possible here — NAMES are resolved at render, since
             // npc_team_and_name reads live NpcParam which isn't ready on this early worker).
@@ -1995,25 +2013,8 @@ void build_buckets_impl()
                     missing_award_entities.insert(a.entityId);
             for (DiskEnemy &e : load_lod_award_entities(missing_award_entities))
                 disk_enemies.push_back(std::move(e));
-            // entity_world_pos() cache for QuestNpcLayer. Enemy entities first, then
-            // collectible/asset entities for any entityId not already an enemy (matches
-            // the documented enemy->asset precedence) -- same disk_enemies/disk_collectibles
-            // this pass already built, no extra parse.
-            for (const auto &en : disk_enemies)
-            {
-                if (!en.entityId) continue;
-                int ga = 0; float wx = 0.0f, wz = 0.0f;
-                if (!goblin::marker_world_pos(en.area, en.gx, en.gz, en.posX, en.posZ, ga, wx, wz)) continue;
-                g_entity_pos[en.entityId] = {wx, wz, goblin::marker_group_from(en.area, ga)};
-            }
-            for (const auto &as : disk_collectibles)
-            {
-                if (!as.entityId || g_entity_pos.count(as.entityId)) continue;
-                int ga = 0; float wx = 0.0f, wz = 0.0f;
-                if (!goblin::marker_world_pos(as.area, as.gx, as.gz, as.posX, as.posZ, ga, wx, wz)) continue;
-                g_entity_pos[as.entityId] = {wx, wz, goblin::marker_group_from(as.area, ga)};
-            }
-
+            // (entity_world_pos() cache for QuestNpcLayer moved OUT to the wantQuestNpcs block
+            // above — it must not be gated on this loot toggle, or quest pins vanish.)
             build_disk_emevd_markers(awards, disk_enemies, disk_collectibles, treasure_lots,
                                      emevd_disk_lots, piece_disk_keys,
                                      goblin::config::worldFeaturesFromDisk
