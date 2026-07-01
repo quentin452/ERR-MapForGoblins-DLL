@@ -63,7 +63,8 @@ merged separately earlier.)
   gained optional native-pixel-dims out-params, `set_grace_sprite` gained the same for the
   discovered side, and the undiscovered branch now scales by
   `sqrt(itsNativeW*itsNativeH) / sqrt(discoveredNativeW*discoveredNativeH)` — derived from real
-  measured rects each run (`[GRACEUNDISC]` log line prints both). **Not yet in-game verified.**
+  measured rects each run (`[GRACEUNDISC]` log line prints both). **User-confirmed fixed in-game
+  (2026-07-01): undiscovered/discovered grace icons now match size.**
 - Branch `feat/minimap-scale-cluster-search` (12 commits, despite the name it grew well past the
   original minimap scope) merged to master this session.
 
