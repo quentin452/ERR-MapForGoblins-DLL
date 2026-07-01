@@ -121,9 +121,37 @@ def build_name_cache():
     print('wrote %d entity names -> %s' % (len(ent2name), NAME_CACHE.relative_to(REPO)))
 
 
+def emit_json(out_path):
+    npc = extract_npcs(); fine = fine_registers()
+    names = json.load(open(NAME_CACHE, encoding='utf-8')) if NAME_CACHE.exists() else {}
+    idx = json.load(open(REPO / 'data' / 'msb_entity_index.json', encoding='utf-8'))
+    rows = []
+    for (concluded, lo, hi), info in npc.items():
+        nm = next((names[str(e)] for e in sorted(info['entities']) if names.get(str(e))), None)
+        # skip the obvious non-quest noise: unnamed generic entity-death groups
+        if not nm or nm.startswith('param'):
+            continue
+        evid, f = fine.get((lo, hi), (None, None))
+        places = []
+        for e in sorted(info['entities']):
+            gi = idx.get(str(e))
+            if gi:
+                places.append({'entity': e, 'map': gi['map'], 'x': gi['x'], 'y': gi['y'],
+                               'z': gi['z'], 'model': gi['model']})
+        rows.append({'name': nm, 'concluded_flag': concluded, 'coarse_register': [lo, hi],
+                     'fine_register': list(f) if f else None, 'placements': places})
+    rows.sort(key=lambda r: r['name'].lower())
+    Path(out_path).write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding='utf-8')
+    print('emitted %d quest NPCs -> %s' % (len(rows), out_path))
+
+
 def main():
     if '--names' in sys.argv:
         build_name_cache(); return
+    if '--emit' in sys.argv:
+        i = sys.argv.index('--emit')
+        emit_json(sys.argv[i + 1] if i + 1 < len(sys.argv) else str(REPO / 'data' / 'quest_npc_extracted.json'))
+        return
     npc = extract_npcs()
     fine = fine_registers()
     names = json.load(open(NAME_CACHE, encoding='utf-8')) if NAME_CACHE.exists() else {}
