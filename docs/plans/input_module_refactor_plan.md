@@ -58,6 +58,71 @@ logic, not a raw hook), ImGui setup/render, ImGui_ImplWin32 calls themselves.
 - Not touching rendering, gamepad nav-isolation policy, or focus-tracking logic — pure move +
   light restructuring of hook registration, same behavior.
 
+## Scope audit (2026-07-01)
+
+Real line ranges (today, `src/goblin_overlay.cpp`, 4441 lines total) — smaller than the "4700+ line
+file" framing above suggested, and `hk_wndproc` itself is modest; the bulk of the file between it
+and `hk_present` (`:1718-3568`, ~1850 lines) is ImGui panel/UI drawing code, not hooks:
+
+| Hook | Lines | Size |
+|------|-------|------|
+| `hk_set_cursor_pos` | 1393-1406 | ~14 |
+| `hk_clip_cursor` | 1407-1425 | ~19 |
+| `hk_xinput_get_state` | 1426-1439 | ~14 |
+| `hk_get_cursor_pos` | 1440-1468 | ~29 |
+| `hk_get_raw_input_data` | 1469-1515 | ~47 |
+| `hk_get_raw_input_buffer` | 1516-1552 | ~37 |
+| `hk_di_get_device_state` | 1553-1560 | ~8 |
+| `hk_di_get_device_data` | 1561-1571 | ~11 |
+| `hk_wndproc` | 1572-1717 | ~145 |
+
+Install sites: **two places**, not scattered — the main `MH_CreateHook`/`hook_u32` block
+(`goblin_overlay.cpp:4242-4304`) wires `SetCursorPos`/`ClipCursor`/`GetRawInputData`/
+`GetRawInputBuffer`/`GetCursorPos`/`XInputGetState`/DirectInput; `hk_wndproc` is subclassed
+separately via `SetWindowLongPtrW(..., GWLP_WNDPROC, ...)` inside `init_imgui()` (`:1861`).
+
+**Headline finding: the 5 hooks themselves are cheap to move (self-contained, ~250 lines total,
+all their state — `g_diag_*`, `g_virtual_cursor_*`, `g_imgui_reading_cursor` — is confined to this
+file, zero outside `.cpp`/`.hpp` references except one comment in `map_renderer.cpp:1112`). The
+real cost isn't the hooks — it's `hk_present` (`:3569-4069`, ~500 lines, explicitly EXCLUDED from
+this pass), which reads/writes the SAME globals the hooks own:**
+
+- `g_has_focus`, `g_last_input_was_gamepad`, `g_gamepad_active_streak`,
+  `g_ignore_next_mousemove_for_gamepad_flag`, `g_gamepad_combo_recording/ready`,
+  `g_toggle_kb_streak/armed`, `g_toggle_gamepad_streak/armed`, `g_nav_frames`,
+  `g_imgui_reading_cursor`, `g_diag_raw_cursor_client/valid`, `g_xinput_available`, `g_show`,
+  `g_user_show` — all written by `hk_wndproc`/`hk_xinput_get_state` and ALSO read/written by
+  `hk_present`'s per-frame gamepad-poll/recenter/diag-overlay logic. None of these are hook-internal
+  — every one crosses the hook/`hk_present` boundary in at least one direction (full per-variable
+  read-site list gathered via grep, not reproduced here — see `git log` of this edit for the raw
+  audit if needed).
+- Cross-hook coupling found: `hk_get_raw_input_data`/`hk_get_raw_input_buffer` both call
+  `accumulate_virtual_cursor()` (`:293`, file-local helper) which feeds `g_virtual_cursor_x/y`,
+  consumed later by `hk_present`'s diagnostic draw (`:4013-4014`) — so even the "isolated" raw-input
+  hooks feed forward into `hk_present`, not just backward into config.
+- `hk_wndproc` also calls OUT of the input hook group into other modules already — `ImGui_ImplWin32_
+  WndProcHandler` (expected, ImGui backend) and `goblin::world_map_open()` /
+  `goblin::worldmap::inworld_hovered()` (a real dependency on the worldmap module — the input module
+  will need to depend on worldmap query functions, not just the reverse).
+- `hk_xinput_get_state` already depends on `goblin::self_module_range()` from
+  `goblin_crashdump.cpp`/`.hpp` — confirms cross-TU dependencies for hooks are already normal in
+  this codebase (not a new pattern this refactor introduces).
+
+**Revised recommendation:** the plan's mouse+keyboard-first move order is still fine (those are
+the 2 hooks under active investigation), but **`hk_present` cannot stay untouched** the way the
+"Excluded from this pass" line implies — at minimum it needs `extern`/accessor-level access to every
+global in the list above once those globals move into `src/input/*.cpp`. Two options, pick when
+work starts:
+  (a) keep the globals themselves in a small shared header (`input_state.hpp`, no `.cpp`) that both
+      `src/input/*.cpp` and `goblin_overlay.cpp`'s `hk_present` include — cheapest, matches the "just
+      move the hook bodies" framing;
+  (b) also move `hk_present`'s input-reactive slice (gamepad-switch detection, recenter-on-pad-switch,
+      toggle debounce) into the input module and have `hk_present` call one `input::poll_frame()`
+      — more invasive but actually finishes the "one place per device class" goal, since right now
+      HALF of the gamepad-toggle/debounce logic lives in `hk_present`, not in `hk_xinput_get_state`.
+  Recommend (a) for the first pass (lower risk, matches "move hook bodies only"), note (b) as a
+  possible follow-up once (a) is stable and diagnosable.
+
 ## Suggested order
 
 1. Land the keyboard-bug diagnostic (raw-keyboard-event counter, per the in-progress investigation)
