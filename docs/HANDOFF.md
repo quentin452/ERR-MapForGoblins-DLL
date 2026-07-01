@@ -27,11 +27,17 @@ still blocked on running game / EMEVD corpus; NOT visually verified).
   `build-convergence` still fail at CMake *configure* on missing `goblin_category_exceptions.hpp` etc. —
   **pre-existing incomplete data bake on this machine, unrelated to quests** (needs the full per-profile
   pipeline run; not attempted).
-- **Still NEXT (needs the running game):** `progress_flag` for all 15 steps is still `0` — blocked on
-  empirical `debugEventFlags` capture (game wasn't running) + a decompiled EMEVD corpus (`D:\tools\
-  DarkScript3` has 0 `.emevd.dcx.js`). Pins already work off the active step without it; the Quest
-  Browser checkbox stays manual-ini-backed until flags land. In-game §7 visual verify also still pending.
-  See `docs/re/windows_quest_npc_progress_flags_re_prompt.md` (status updated).
+- **progress_flag TRACED — structural finding blocks naive wiring (still 0).** Chased it TalkESD →
+  EMEVD offline (corpus IS present: `D:\tools\emevd_js\err`, 516 `.emevd.dcx.js`; my first-pass "no
+  corpus" was wrong — I'd checked the DarkScript3 TOOL dir, not its output). Each NPC's quest flags are a
+  **mutually-exclusive STATE REGISTER** (Boc ev3959 / Thops ev3819 / Alexander ev3679 in `common.emevd`):
+  `BatchSet(lo,hi,OFF)` then `Set(value,ON)` — advancing CLEARS the prior, so one flag == done would tick
+  then UNtick. The current `progress_flag` schema (1 flag, SET==done) can't express "register ≥ value" →
+  **nothing wired as progress_flag** (would be silent-wrong). Bonus: the register transitions are gated by
+  AREA flags matching the entity_id regions, independently confirming the pins. **DECISION PENDING**
+  (leave 0 / extend schema to register≥value / source monotonic area flags) — see
+  `docs/memory/features/quest-browser.md` "PROGRESS_FLAG STRUCTURAL FINDING" + the RE prompt. In-game §7
+  visual verify also still pending (game not running).
 
 ## Session recap (2026-07-01) — feat_quests Phase 1: schema + entity-position cache + flag wiring + QuestNpcLayer
 

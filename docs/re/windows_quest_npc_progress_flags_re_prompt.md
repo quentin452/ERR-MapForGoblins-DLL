@@ -16,11 +16,19 @@ Thops 4 (corpse). Also fixed two blockers found en route: a Windows file-lock bu
 (`frombytes` temp-file reuse) and a schema-sync bug in `tools/gen_nonerr_stubs.py` (only-if-missing
 stub never tracked the new `QuestStep` fields / `quest_step_done`, breaking every non-ERR build).
 
-**Still TODO (this half needs the running game):** every step's `progress_flag` is still `0` — no
-running game for empirical `debugEventFlags` capture and no decompiled EMEVD corpus on disk
-(`D:\tools\DarkScript3` has 0 `.emevd.dcx.js` files). Until sourced, the Quest Browser checkbox stays
-manual-ini-backed (the pins already work off the active step regardless). Also: in-game visual verify
-per §7 not yet done (game was not running).
+**progress_flag — TRACED, and the finding BLOCKS naive wiring (2026-07-01).** The EMEVD corpus IS
+decompiled at `D:\tools\emevd_js\err` (516 `.emevd.dcx.js`; the old `D:\tools\DarkScript3` pointer was
+stale/empty). Traced each NPC's block (TalkESD-isolated: Boc 3940–3949 / Thops 3800–3806 / Alexander
+3660–3671) to its quest state-machine event (Boc ev3959, Thops ev3819, Alexander ev3679 in
+`common.emevd.dcx.js`). **These flags are mutually-exclusive STATE REGISTERS** (`BatchSet...(lo,hi,OFF)`
+then `Set...(value,ON)` — one ON at a time, advancing CLEARS the prior), NOT per-step booleans. So the
+current `QuestStep::progress_flag` (one flag, SET==done) is structurally wrong for them: wiring e.g. Boc
+3946 ticks the box then UNticks it at 3947. NOTHING wired as progress_flag. The register transitions are
+gated by AREA flags matching the entity_id regions (Alexander Stormhill `1043399307` / Redmane
+`1051369259` / Gelmir `1035539208` / Farum `1052520800`; Thops Irith `1039399220`) — which independently
+CONFIRMS the wired entity_ids. See `docs/memory/features/quest-browser.md` (PROGRESS_FLAG STRUCTURAL
+FINDING) for the full state machines. DECISION PENDING (leave 0 / extend schema to register≥value /
+source monotonic area flags). Also: in-game §7 visual verify not yet done (game was not running).
 
 ## Goal
 
@@ -95,10 +103,12 @@ the overlay:
    newly-observed event flag to `logs/MapForGoblins_events.log` (confirmed: `dllmain.cpp` near line 268-271
    wires it). Arm it, perform ONE step's specific in-game action (e.g. strike the bush to free Boc), and look for
    flags that flip in that narrow window. Multiple flags will fire (dialogue, animation, misc state) —
-   cross-reference against the DarkScript3-decompiled EMEVD (`docs/memory/tooling/
-   darkscript3-emevd-decompile.md` has the setup: `D:\tools\DarkScript3\DarkScript3.exe`, decompiled
-   `.emevd.dcx.js` corpus) to confirm WHICH flag is semantically "this step is done" (set once, by the
-   quest's own event, not a transient/animation flag) rather than just "a flag that happened to fire".
+   cross-reference against the already-decompiled EMEVD JS corpus at **`D:\tools\emevd_js\err`** (516
+   `.emevd.dcx.js`; the `D:\tools\DarkScript3` path in `docs/memory/tooling/darkscript3-emevd-decompile.md`
+   is stale/empty — use `emevd_js\err`) to confirm WHICH flag is semantically "this step is done" rather
+   than just "a flag that happened to fire". NOTE (2026-07-01): this cross-ref was DONE offline and found
+   the quest progress flags are mutually-exclusive state registers, not per-step booleans — see the
+   progress_flag status block at the top before re-doing this empirically.
 2. `tools/resolve_emevd_positions.py` is a related EMEVD-search helper (built for the EMEVD-posless-award
    problem, not this exact task) — read it for the search PATTERN (how it greps the decompiled corpus for
    a given id), reuse the pattern, don't expect it to directly answer this question.
