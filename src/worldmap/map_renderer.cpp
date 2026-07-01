@@ -1842,11 +1842,14 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
                 !goblin::ui::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
                 !is_discovered_grace(m))
                 continue;
-            const auto cx = static_cast<int32_t>(std::floor(dx / kCellPx));
-            const auto cy = static_cast<int32_t>(std::floor(dy / kCellPx));
-            const uint64_t key = (static_cast<uint64_t>(static_cast<uint32_t>(m.group)) << 40) ^
-                                  (static_cast<uint64_t>(static_cast<uint32_t>(cx)) << 20) ^
-                                  static_cast<uint64_t>(static_cast<uint32_t>(cy));
+            // Respect the same clustering toggle the worldmap uses — piling was unconditional
+            // before, ignoring `enableClustering=false`. Disabled: give every marker its own
+            // unique key (its address) so it always lands alone in its cell, i.e. never piles.
+            const uint64_t key = cfg::enableClustering
+                ? ((static_cast<uint64_t>(static_cast<uint32_t>(m.group)) << 40) ^
+                   (static_cast<uint64_t>(static_cast<uint32_t>(std::floor(dx / kCellPx))) << 20) ^
+                   static_cast<uint64_t>(static_cast<uint32_t>(std::floor(dy / kCellPx))))
+                : reinterpret_cast<uint64_t>(&m);
             cells[key].push_back({&m, ImVec2(ctr.x + dx, ctr.y + dy)});
         }
     }
