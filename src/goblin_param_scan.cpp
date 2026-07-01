@@ -217,14 +217,56 @@ void emevd_scan_file(const std::filesystem::path &p, int &hit_lines)
             if (argOff < 0 || argLen < 4 || argLen > 0x10000) continue;
             const size_t a = (size_t)argsOff + (size_t)argOff;
             if (!inb(a, (size_t)argLen)) continue;
+            // Round-2 harvest: any init (2000[0]) of a known prompt template — log its
+            // full u32 args (the entities). 1030 = the common lift event (3×
+            // IfActionButton ABP 5010 in its body, found round 1).
+            if (bank == 2000 && id == 0 && argLen >= 8)
+            {
+                const uint32_t initEventId = [&] { uint32_t v; std::memcpy(&v, buf + a + 4, 4); return v; }();
+                static constexpr uint32_t kHarvestTemplates[] = {1030};
+                for (uint32_t ht : kHarvestTemplates)
+                    if (initEventId == ht && hit_lines++ < 120)
+                    {
+                        std::string args;
+                        for (uint64_t o = 8; o + 4 <= argLen && o < 8 + 8 * 4; o += 4)
+                        {
+                            uint32_t v;
+                            std::memcpy(&v, buf + a + o, 4);
+                            args += " " + std::to_string(v);
+                        }
+                        spdlog::info("[EMEVDSCAN] {} INIT of template {}: args{}",
+                                     p.filename().string(), initEventId, args);
+                    }
+            }
             for (uint64_t off = 0; off + 4 <= argLen; off++)
             {
                 uint32_t v;
                 std::memcpy(&v, buf + a + off, 4);
                 for (uint32_t needle : kNeedles)
                     if (v == needle && hit_lines++ < 120)
-                        spdlog::info("[EMEVDSCAN] {} event {} instr {}[{}] arg+0x{:X} = {}",
-                                     p.filename().string(), eventId, bank, id, off, v);
+                    {
+                        if (bank == 2000 && id == 0 && argLen >= 8)
+                        {
+                            // A needle passed as an INIT ARG: the template id (at arg+4)
+                            // is the interesting part — log the whole init.
+                            uint32_t slot, tmpl;
+                            std::memcpy(&slot, buf + a + 0, 4);
+                            std::memcpy(&tmpl, buf + a + 4, 4);
+                            std::string args;
+                            for (uint64_t o = 8; o + 4 <= argLen && o < 8 + 8 * 4; o += 4)
+                            {
+                                uint32_t av;
+                                std::memcpy(&av, buf + a + o, 4);
+                                args += " " + std::to_string(av);
+                            }
+                            spdlog::info("[EMEVDSCAN] {} event {} INIT template {} (slot {}) "
+                                         "carries needle {} — args:{}",
+                                         p.filename().string(), eventId, tmpl, slot, v, args);
+                        }
+                        else
+                            spdlog::info("[EMEVDSCAN] {} event {} instr {}[{}] arg+0x{:X} = {}",
+                                         p.filename().string(), eventId, bank, id, off, v);
+                    }
             }
         }
     }
