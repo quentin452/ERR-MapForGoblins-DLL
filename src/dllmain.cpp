@@ -26,6 +26,7 @@
 #include "goblin_bench.hpp"
 #include "goblin_crashdump.hpp"
 #include "worldmap/loot_disk.hpp"
+#include "worldmap/name_fmg_en.hpp"  // load_english_name_index (F1 English search aliases)
 #include "worldmap/loot_open_probe.hpp"
 #include "worldmap/map_entry_layer.hpp"
 
@@ -209,6 +210,9 @@ static void setup_mod()
         // Snapshot the real graces from the LIVE WorldMapPointParam — the ImGui overlay
         // draws from this (no baked grace data).
         safe_init_step(&goblin::capture_live_graces, "capture_live_graces");
+        // Read the English (engus) Name FMGs off disk for the F1 search's English
+        // aliases — mod-agnostic, replaces the ERR-frozen baked alias table.
+        safe_init_step(&goblin::load_english_name_index, "load_english_name_index");
         // Seed the per-category visibility / cluster / threshold + master gates from
         // config — the overlay reads these.
         safe_init_step(&goblin::seed_runtime_gates, "seed_runtime_gates");

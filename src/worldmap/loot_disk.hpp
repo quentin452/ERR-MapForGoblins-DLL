@@ -251,6 +251,11 @@ void set_build_trigger(void (*fn)());
 // disk I/O — call off the engine thread / once.
 std::vector<uint8_t> read_game_file_decompressed(const std::string &rel_path);
 
+// Loose-only variant: resolves the mod overlay / UXM-unpacked file and
+// decompresses it, but does NOT fall back to the packed dvdbnd. Empty if the
+// file isn't present loose. Lets callers prefer a mod's own file over vanilla.
+std::vector<uint8_t> read_loose_file_decompressed(const std::string &rel_path);
+
 // Extract one or more item-icon ATLAS SHEET DDS images from the menu texture pack
 // menu/hi/01_common.tpf.dcx (read via read_game_file_decompressed, so loose mod overlay
 // first, then the packed dvdbnd). The pack decompresses to a ~194 MB PC TPF holding the
