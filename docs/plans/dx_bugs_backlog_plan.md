@@ -87,7 +87,15 @@ behind. Fix is contrast + minimum size — **do NOT touch DDS sampling**.
 
 ---
 
-## PR C — Controller binding + cursor recentering (items 2, 3, 6)
+## PR C — Controller binding + cursor recentering (items 2, 3, 6) — DONE, MERGED
+
+Implemented on `feat/gamepad-toggle-cursor-recenter`, in-game verified (2026-07-01): `Y+R3` toggle,
+pad-switch recenter, map-reopen recenter, and the combo recorder all confirmed working. Two bugs
+found and fixed during verification: (1) recorder captured on the first single button read instead
+of waiting for release, cutting multi-button combos short — fixed by accumulating the union of
+buttons held and finalizing on release; (2) the toggle-combo check ran unconditionally even while
+recording, so pressing the current combo (to record its replacement) also flipped `g_user_show` and
+closed the panel mid-record — fixed by gating the toggle check on `!g_gamepad_combo_recording`.
 
 #### [MODIFY] [src/goblin_config.hpp](../../src/goblin_config.hpp) / [src/goblin_config_schema.cpp](../../src/goblin_config_schema.cpp)
 * Add `overlayToggleGamepad` (uint16_t) wired through the **existing** `IniType::GamepadMask`

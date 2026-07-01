@@ -11,6 +11,7 @@
 #include <dxgi1_4.h>
 #define DIRECTINPUT_VERSION 0x0800
 #include <dinput.h>
+#include <Xinput.h>   // struct/constant defs only — XInputGetState resolved dynamically below, no link dep
 
 #include <MinHook.h>
 #include <spdlog/spdlog.h>
@@ -233,6 +234,9 @@ namespace
     bool g_user_show = false;    // F1 master open/close (works anywhere = the menu keybind)
     bool g_large = true;         // false = compact widget, true = full panel
     bool g_prev_toggle_down = false;
+    bool g_prev_gamepad_toggle_down = false;
+    bool g_last_input_was_gamepad = false;   // cleared on mouse/kb msgs in hk_wndproc
+    bool g_gamepad_combo_recording = false;  // armed by the settings "Record gamepad combo" button
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -1318,6 +1322,20 @@ namespace
         if (msg == WM_SETFOCUS || msg == WM_KILLFOCUS)
             ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
 
+        // Real mouse/keyboard activity means input is no longer pad-only (see the XInput poll
+        // in hk_present, item 2 of dx-bugs-backlog PR C) — clear regardless of overlay state.
+        switch (msg)
+        {
+        case WM_MOUSEMOVE: case WM_LBUTTONDOWN: case WM_LBUTTONUP:
+        case WM_RBUTTONDOWN: case WM_RBUTTONUP: case WM_MBUTTONDOWN: case WM_MBUTTONUP:
+        case WM_XBUTTONDOWN: case WM_XBUTTONUP: case WM_MOUSEWHEEL: case WM_MOUSEHWHEEL:
+        case WM_KEYDOWN: case WM_KEYUP: case WM_SYSKEYDOWN: case WM_SYSKEYUP: case WM_CHAR:
+            g_last_input_was_gamepad = false;
+            break;
+        default:
+            break;
+        }
+
         if (g_show)
         {
             ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp);
@@ -2126,6 +2144,23 @@ namespace
                 ImGui::SetTooltip("Every loot marker shows a gray \"?\" and only its location,\n"
                                   "hiding the real item (useful with randomizers). Markers still\n"
                                   "gray out when collected; category show/hide is unaffected.");
+
+            // Gamepad overlay-toggle combo (dx-bugs-backlog PR C item 3). Recorder arms the
+            // XInput poll in hk_present; first nonzero button read there wins and saves.
+            ImGui::Text("Gamepad toggle combo: %s",
+                        goblin::mask_to_combo_string(goblin::config::overlayToggleGamepad).c_str());
+            ImGui::SameLine();
+            if (g_gamepad_combo_recording)
+            {
+                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Press buttons now…");
+            }
+            else if (ImGui::SmallButton("Record gamepad combo"))
+            {
+                g_gamepad_combo_recording = true;
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Click, then press the button combo on your controller (default Y+R3).\n"
+                                  "The first combo read is captured and saved to the ini immediately.");
 
             // Overlay marker scale (live preview; persists via "Save to INI"). Final
             // size = resolution-relative base × master × per-type scale.
@@ -3087,6 +3122,101 @@ namespace
         bool down = fg && (GetAsyncKeyState(static_cast<int>(goblin::config::overlayToggleKey)) & 0x8000) != 0;
         if (down && !g_prev_toggle_down) g_user_show = !g_user_show;
         g_prev_toggle_down = down;
+
+        // Gamepad support (dx-bugs-backlog PR C, items 2/3/6): combo toggle + cursor recenter.
+        // XInput has no window messages, so — like the keyboard key above — it must be polled
+        // here every frame rather than driven off hk_wndproc.
+        using XInputGetStateFn = DWORD(WINAPI *)(DWORD, XINPUT_STATE *);
+        static bool s_xinput_tried = false;
+        static XInputGetStateFn s_xinput_get_state = nullptr;
+        if (!s_xinput_tried)
+        {
+            s_xinput_tried = true;
+            for (const char *dll : {"xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"})
+            {
+                if (HMODULE h = LoadLibraryA(dll))
+                {
+                    s_xinput_get_state = reinterpret_cast<XInputGetStateFn>(GetProcAddress(h, "XInputGetState"));
+                    if (s_xinput_get_state) { spdlog::info("[OVERLAY] XInput loaded: {}", dll); break; }
+                }
+            }
+            if (!s_xinput_get_state)
+                spdlog::warn("[OVERLAY] No XInput DLL found — gamepad toggle/recenter disabled");
+        }
+
+        // Shared cursor-recenter (items 2 + 6): center of the game window client rect, via the
+        // hooked SetCursorPos so it round-trips the same path as everything else touching the cursor.
+        auto recenter_cursor_to_window = [&]()
+        {
+            if (!o_set_cursor_pos || !g_hwnd) return;
+            RECT rc;
+            if (!GetClientRect(g_hwnd, &rc)) return;
+            POINT c{(rc.left + rc.right) / 2, (rc.top + rc.bottom) / 2};
+            ClientToScreen(g_hwnd, &c);
+            o_set_cursor_pos(c.x, c.y);
+        };
+
+        if (s_xinput_get_state)
+        {
+            WORD combined = 0;
+            bool active = false;
+            for (DWORD i = 0; i < 4; ++i)
+            {
+                XINPUT_STATE state{};
+                if (s_xinput_get_state(i, &state) != ERROR_SUCCESS) continue;
+                const auto &pad = state.Gamepad;
+                combined |= pad.wButtons;
+                if (pad.wButtons != 0
+                    || std::abs(pad.sThumbLX) > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE
+                    || std::abs(pad.sThumbLY) > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE
+                    || std::abs(pad.sThumbRX) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE
+                    || std::abs(pad.sThumbRY) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE
+                    || pad.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD
+                    || pad.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD)
+                    active = true;
+            }
+
+            // Combo toggle — same edge-detected, foreground-gated path the keyboard key drives.
+            // Skipped while recording a new combo: otherwise pressing the CURRENT combo (to record
+            // its replacement) also flips g_user_show and closes the very panel you're recording in.
+            if (goblin::config::overlayToggleGamepad != 0 && !g_gamepad_combo_recording)
+            {
+                const bool combo_down = fg && (combined & goblin::config::overlayToggleGamepad) == goblin::config::overlayToggleGamepad;
+                if (combo_down && !g_prev_gamepad_toggle_down) g_user_show = !g_user_show;
+                g_prev_gamepad_toggle_down = combo_down;
+            }
+
+            // Gamepad combo recorder: settings button arms this. Buttons pressed one after
+            // another while held (e.g. Y then R3 while still holding Y) all count — capture the
+            // UNION of everything held during the press, and finalize on release (not on the
+            // first single button), so a multi-button combo has time to actually form.
+            static WORD s_record_union = 0;
+            if (g_gamepad_combo_recording)
+            {
+                if (combined != 0)
+                    s_record_union |= combined;
+                else if (s_record_union != 0)
+                {
+                    goblin::config::overlayToggleGamepad = s_record_union;
+                    g_gamepad_combo_recording = false;
+                    goblin::save_all_bool_settings(goblin::config_ini_path());
+                    spdlog::info("[OVERLAY] Gamepad combo recorded: {}", goblin::mask_to_combo_string(s_record_union));
+                    s_record_union = 0;
+                }
+            }
+            else
+            {
+                s_record_union = 0;  // reset so a freshly-armed recording starts clean
+            }
+
+            // Item 2: recenter the cursor the instant input switches from mouse/kb to pad — ER
+            // itself doesn't recenter, so going pad-only otherwise leaves the cursor wherever the
+            // mouse last was.
+            if (active && !g_last_input_was_gamepad && fg)
+                recenter_cursor_to_window();
+            if (active) g_last_input_was_gamepad = true;
+        }
+
         g_show = g_user_show && fg;   // lose focus → hooks deactivate; regain → panel restores
         // Count down the item-search nav window (set on a result click) — keeps the map "awake" for the
         // switch+pan, then lets the cursor re-freeze so the map stops drifting.
@@ -3117,6 +3247,14 @@ namespace
             }
         }
         s_prev_show = g_show;
+
+        // Item 6: recenter the cursor on the world map's (re)open transition, so the ImGui cursor
+        // and ER's own native cursor agree instead of ImGui's carrying over wherever it last was.
+        static bool s_prev_map_open = false;
+        const bool map_open_now = goblin::world_map_open();
+        if (map_open_now && !s_prev_map_open && fg)
+            recenter_cursor_to_window();
+        s_prev_map_open = map_open_now;
 
         // Mid-session resolution fix + diagnostic. Run every frame (the fix self-skips
         // when the dims already match) because NOT all resolution changes fire

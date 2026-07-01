@@ -260,6 +260,28 @@ uint16_t goblin::parse_gamepad_combo(std::string s)
     return mask;
 }
 
+// Reverse of parse_gamepad_combo: turn a bitmask back into a "Y+R3"-style string for ini save.
+// One canonical name per bit (parse_gamepad_combo accepts aliases on read; write picks a single form).
+std::string goblin::mask_to_combo_string(uint16_t mask)
+{
+    static const std::vector<std::pair<uint16_t, const char *>> canonical = {
+        {0x1000, "A"}, {0x2000, "B"}, {0x4000, "X"}, {0x8000, "Y"},
+        {0x0100, "LB"}, {0x0200, "RB"}, {0x0040, "L3"}, {0x0080, "R3"},
+        {0x0020, "BACK"}, {0x0010, "START"},
+        {0x0001, "UP"}, {0x0002, "DOWN"}, {0x0004, "LEFT"}, {0x0008, "RIGHT"},
+    };
+    std::string out;
+    for (const auto &[bit, name] : canonical)
+    {
+        if (mask & bit)
+        {
+            if (!out.empty()) out += "+";
+            out += name;
+        }
+    }
+    return out;
+}
+
 // Parse a human key name ("F9", "A", "Home", "0", "Space") into Win32 VK_* code.
 // Returns 0 on unknown name.
 uint32_t goblin::parse_vk_code(std::string name)
@@ -315,9 +337,9 @@ void goblin::save_all_bool_settings(const std::filesystem::path &ini_path)
                 continue;
             if (e.err_only && goblin::profile_is_vanilla())
                 continue;
-            // Bool/String/U8 entries round-tripped from their config var so
-            // menu-driven values (cluster_exclude, cluster_threshold, …) persist.
-            // Other types (keys) untouched.
+            // Bool/String/U8/F32/GamepadMask entries round-tripped from their config var so
+            // menu-driven values (cluster_exclude, cluster_threshold, overlay_toggle_gamepad, …)
+            // persist. VkKey untouched (no live keyboard rebind UI yet).
             if (e.type == goblin::IniType::Bool)
                 ini[section.name][e.key] = *reinterpret_cast<bool *>(e.target) ? "true" : "false";
             else if (e.type == goblin::IniType::String)
@@ -326,6 +348,8 @@ void goblin::save_all_bool_settings(const std::filesystem::path &ini_path)
                 ini[section.name][e.key] = std::to_string(*reinterpret_cast<uint8_t *>(e.target));
             else if (e.type == goblin::IniType::F32)
                 ini[section.name][e.key] = std::to_string(*reinterpret_cast<float *>(e.target));
+            else if (e.type == goblin::IniType::GamepadMask)
+                ini[section.name][e.key] = goblin::mask_to_combo_string(*reinterpret_cast<uint16_t *>(e.target));
         }
     }
 

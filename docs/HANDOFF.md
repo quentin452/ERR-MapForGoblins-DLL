@@ -2,9 +2,29 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01 (F1 cursor-lock-after-Alt+Tab bug FIXED + MERGED to master, user-confirmed;
-also scrubbed stale `feat/native-poi-icons` + `feat/spatial-grid-cull` sections — both fully merged,
-branches deleted, confirmed via reflog).
+Last updated: 2026-07-01 (dx-bugs-backlog PR C — gamepad toggle + cursor recenter — DONE, in-game
+verified, committed on `feat/gamepad-toggle-cursor-recenter`, NOT merged/pushed yet).
+
+## Session recap (2026-07-01) — PR C: gamepad toggle + cursor recenter — DONE, in-game verified
+
+- Done in parallel with a separate Windows RE agent working `feat/quest-npc-layer`, off master.
+- Implements dx-bugs-backlog items 2/3/6 (`docs/plans/dx_bugs_backlog_plan.md`, PR C — now marked
+  DONE there). New config `overlayToggleGamepad` (default `Y+R3`, `IniType::GamepadMask`, already-
+  existing `parse_gamepad_combo` infra had no real consumer before this). XInput resolved
+  dynamically (`xinput1_4`→`xinput1_3`→`xinput9_1_0`), polled per-frame in `hk_present` (no window
+  messages exist for it). Cursor recenters via the already-hooked `o_set_cursor_pos` on two edges:
+  mouse/kb→pad-only transition, and world-map (re)open.
+- In-game verified (user, 2026-07-01): `Y+R3` toggle, pad-switch recenter, map-reopen recenter, and
+  the new "Record gamepad combo" settings button all confirmed working end to end (log
+  `[OVERLAY] Gamepad combo recorded: Y+LB+RB` matched the persisted
+  `overlay_toggle_gamepad=Y+LB+RB` in the ini).
+- Two bugs found + fixed live during verification: (1) recorder captured on the FIRST single button
+  read instead of waiting for release, so a real multi-button combo never had time to form — fixed
+  by accumulating the union of buttons held while armed and finalizing only on release; (2) the
+  toggle-combo check ran even while recording, so pressing the CURRENT combo (to record its
+  replacement) also flipped `g_user_show` and closed the very panel being recorded in — fixed by
+  gating the toggle check on `!g_gamepad_combo_recording`.
+- Branch `feat/gamepad-toggle-cursor-recenter` off master, committed, not pushed/merged — user's call.
 
 ## Session recap (2026-07-01) — F1 cursor lock after Alt+Tab: found + fixed + merged
 

@@ -25,6 +25,14 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Gamepad overlay toggle + cursor recentering** — a configurable XInput combo (default `Y+R3`)
+  opens/closes the F1 overlay, mirroring the keyboard toggle (edge-detected, foreground-gated).
+  Cursor auto-recenters to the window center on the mouse/keyboard→pad-only input transition (ER
+  itself doesn't) and on the world map's (re)open transition, so ImGui's cursor and ER's native
+  cursor agree. XInput is resolved dynamically (`xinput1_4`→`xinput1_3`→`xinput9_1_0`, no new link
+  dependency). New in-menu "Record gamepad combo" button captures a held multi-button combo (on
+  release, not on the first button pressed) and saves it to the ini immediately. dx-bugs-backlog
+  PR C (items 2, 3, 6) — see `docs/plans/dx_bugs_backlog_plan.md`.
 - **Off-page altitude badge** — the ▲/▼ altitude cue now also appears on map pages the player isn't on,
   referenced to the nearest grace in the marker's own area (the player's Y is in a different frame
   there). Grace-relative badges use a distinct tint (green above / teal below) vs the warm/cool

@@ -29,6 +29,7 @@ namespace goblin::config
     bool showAll = false;
     bool iconsHidden = false;  // master off persisted (menu/F10 "Show icons")
     uint32_t overlayToggleKey = 0x70;  // VK_F1 — overlay menu open/close key
+    uint16_t overlayToggleGamepad = 0x8000 | 0x0080;  // XINPUT_GAMEPAD_Y | XINPUT_GAMEPAD_RIGHT_THUMB (Y+R3)
     std::string showAllExcept = "";
 
     // One bool per goblin::generated::Category, indexed by the enum value. Seeded
@@ -253,6 +254,11 @@ namespace
                          "Key that opens/closes the in-game overlay menu. Default: F1.\n"
                          "Key names: F1-F24, A-Z, 0-9, Space, Escape, Tab, Enter, Home, End,\n"
                          "PageUp, PageDown, Insert, Delete, arrows.", false, nullptr},
+                IniEntry{"overlay_toggle_gamepad", IniType::GamepadMask, &cfg::overlayToggleGamepad, "Y+R3",
+                         "Gamepad combo that opens/closes the in-game overlay menu. Default: Y+R3.\n"
+                         "Button names: A, B, X, Y, LB, RB, L3, R3, Back, Start, Up, Down, Left, Right.\n"
+                         "Combine with '+', e.g. Y+R3. Use the in-menu recorder to set by pressing.",
+                         false, nullptr},
                 IniEntry{"quest_progress", IniType::String, &cfg::questProgress, "",
                          "Quest Browser per-step checkmarks (one 0/1 per step, author order).\n"
                          "Managed by the overlay's Quest Browser; saved when you Save.",
