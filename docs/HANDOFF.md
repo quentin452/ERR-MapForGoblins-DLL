@@ -144,19 +144,36 @@ sequencing + the post-Phase-1 findings that reframe Phase 2). What landed / what
   are still on disk; the committed dead `data/massedit_generated/*.MASSEDIT` artifacts (tracked, 71 files,
   a mix of live-loot + dead-stage output — some regenerate non-deterministically) are untouched; and
   `generate_loot_massedit` still *emits* dead `.MASSEDIT` alongside its live JSON (drop that emission when
-  convenient). (3) ~~migrate `item_icon_table.json` to runtime~~ **DONE as a REMOVAL (user call): branch
-  `pr3-remove-category-exceptions` (`6c19f72`), NOT merged.** Instead of re-sourcing the exception table,
-  the whole curated category-exception override was DELETED — `item_marker_category` now classifies purely
-  by ER's live `(goodsType, sortGroupId)` taxonomy (`lookup_category_exception`, the generated
-  `goblin_category_exceptions.{cpp,hpp}`, CMake entries, and `generate_data`'s emitter all removed).
-  `item_icon_table.json` now has **zero compiled consumers** (offline-analysis-only). ERR DLL builds clean
-  (clang/ninja). **User to game-check the behavior change:** curated splits collapse into their parent live
-  category (Golden Runes Low→Golden Runes, Smithing Low/Rare→Smithing Stones, Great Gloveworts→Gloveworts,
-  Rune Arcs→Stat Boosts, id-list key/quest/Reforged exceptions→their taxonomy bucket or gType1/catch-all);
-  categories still fed by a live cell (Quest-Progression, Prayerbooks) are unaffected. **Follow-ups:** the
-  now-unreachable F1 sub-category toggles/enum values, and the stale offline mirror
-  (`tools/taxonomy_classifier.py`, `_validate_taxonomy_map.py` still apply exceptions). (4) Phase 5 retire
-  the pipeline + build.bat call sites + README.
+  convenient). (3) ~~migrate `item_icon_table.json` to runtime~~ **DONE + MERGED (branch
+  `pr3-remove-category-exceptions`).** Two steps: (a) DELETED the whole baked category-exception override
+  (`6c19f72`: `lookup_category_exception`, generated `goblin_category_exceptions.{cpp,hpp}`, CMake entries,
+  `generate_data` emitter — `item_icon_table.json` now has zero compiled consumers, offline-only), then
+  (b) **recovered the curated splits LIVE via `sortId`** (`a21665b`): new `goods_sort_id()` reads
+  `EquipParamGoods.sortId` (s32 @ **+0x20**, pinned from the paramdef walk, +4-cross-checked vs
+  goodsType@0x3e) and `category_from_taxonomy` now keys on `(goodsType, sortGroupId, sortId)` to split the
+  cells sortGroupId collapses (value tiers, the gType1-sg50 grab-bag). **In-game verified on ERR:** every
+  split repopulated (Golden Runes Low 444, Smithing Low 403/Rare 11, Great Gloveworts 24, Rune Arcs 75,
+  Stonesword 48, Lost Ashes 81, Seeds Tears 79, Scadutree 49, …), parents reduced correctly (Golden Runes
+  226, Smithing 324), `[ITEMCLASS]` tail 142→113, 0 errors. **FOLLOW-UPS (later session):**
+  - The **Reforged item families** (Items/Fortunes/Sealed Curios, ERR-specific) + a few **DLC key items
+    (goods ids 2008025-2008037)** have colliding in-cell sortIds → still fall to the "Loot - Crafting
+    Materials" catch-all. Give them dedicated `sortId` rules or accept the catch-all.
+  - The stale offline mirror (`tools/taxonomy_classifier.py`, `_validate_taxonomy_map.py`) still applies
+    the deleted exceptions — resync to the live `sortId` classifier or retire.
+  - `item_icon_table.json` is now offline-only; `generate_loot_massedit` can stop emitting it (+ check if
+    `loot_lot_linkage.json` still has a compiled consumer) at Phase 5.
+  (4) Phase 5 retire the pipeline + build.bat call sites + README.
+
+- **NEXT SESSION — pick the next baked artifact to eliminate** (per `baked_data_full_removal_plan.md`
+  inventory). Remaining baked/compiled surface, easiest→hardest:
+  - `grace_position_index` — bake is already just a fallback; graces render LIVE from `BonfireWarpParam`
+    (`capture_live_graces`). Cleanest quick win: drop the bake. **(recommended next.)**
+  - `goblin_name_aliases_en.cpp` (F1 English search aliases, 2756 rows from `items_database.json`+npc+boss)
+    — names already resolve live via `GetMessage`; candidate to make the search alias-lookup runtime.
+  - `goblin_tile_tabs` / `goblin_major_regions` — real + identical on all 4 profiles → (H) dedup into
+    `generated_shared/`, pure housekeeping.
+  - `goblin_region_anchors` / `goblin_name_regions` — assess vs `WorldMapPointParam` + `WorldMapPlaceName`.
+  - Icon atlas (baked overlay atlas) — the prime-directive example; `native-from-disk → circle`. Biggest.
   - Note: the regen pipeline + all 4 profile builds are runnable on THIS Windows box (clang/ninja +
     `fe8d28c`), so the confirm loop for (3)/(4) is doable here.
 
