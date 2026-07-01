@@ -37,16 +37,20 @@ infinitely-farmable ones.
   `533110000`).
 
 **(b) `WorldFarmableCollectible`** — gatherable/killable-drop object that respawns on grace rest.
-- Field: `tools/paramdefs/ItemLotParam*.xml` → `getItemFlagId01/02/03` (u32). Japanese description:
-  "取得済みフラグとザクザク枠兼用(0:共通使用)" = "shared use of acquired-flag and farm-slot (0 = common/shared
-  use)". `0` = no persistent one-time flag → infinitely farmable · non-zero = persistent flag → one-time.
-- `ItemLotParam` (map + enemy variants) already read live: `src/goblin_inject.cpp:1072-1101`
-  (`ItemLotParam_map`/`ItemLotParam_enemy` via `from::params::get_param`). Same shape — additive field
-  read, not new plumbing.
-- Implementation: wherever a lot-backed marker's category is currently assigned (the live-loot path,
-  `goblin_inject.cpp` near the ItemLotParam read), branch on `getItemFlagId0{1,2,3} == 0` (need to confirm
-  exactly which of the 3 slots is authoritative for a given lot — likely "any of the 3 is 0" since a lot
-  can have up to 3 rolled items) → `WorldFarmableCollectible`.
+- **VERIFIED 2026-07-01** (`tools/verify_farmable_collectible.py`, vanilla+ERR — see findings doc). The
+  original field guess (`getItemFlagId01/02/03`, "any of 3 slots == 0") is WRONG: there are 8 per-slot
+  fields `getItemFlagId01..08` and **all of them are always 0** across the entire table (unused override
+  slots, "0 = use shared"). The authoritative field is the **single master `getItemFlagId`** (paramdef
+  "0 = flag disabled").
+- Polarity CONFIRMED: `getItemFlagId == 0` → farmable · `!= 0` → tracked (one-time uniques: Larval Tear,
+  Dragon Communion Seal, …). BUT nonzero is not automatically one-time — some nonzero flags are
+  *repeatable* (no save bit). Correct test: `getItemFlagId == 0 OR flag_is_repeatable(getItemFlagId)`.
+- Already read live and already resolved: `resolve_loot_flag` reads `getItemFlagId @ +0x80`
+  (`src/goblin_inject.cpp:4720`) and `flag_is_repeatable` exists (`:4679`). So this needs **zero new
+  plumbing** — just a category branch on the value `resolve_loot_flag`/`flag_is_repeatable` already
+  compute at the loot site.
+- Composition with (a): an enemy-drop collectible is only farmable if the enemy respawns too
+  (`enemy.disableRespawn == 0`); map gathering nodes gate on the lot flag alone.
 
 Both: new `Category::` enum entries + `category_meta.cpp` icon/scale rows (see mechanism note below).
 
@@ -92,4 +96,6 @@ Site of Grace `row.iconId` read).** Needs per-category iconId value lookup, not 
 2. ~~Confirm `disableRespawn` varies as expected on trash vs boss rows before wiring Part A(a).~~
    **RESOLVED 2026-07-01:** it does NOT vary as hoped — bosses read `dr=0`, not `1` (gated by event
    flags, not this field). Gate corrected above to `dr==0 AND non-boss`. See findings doc.
-3. For Part A(b), confirm which of `getItemFlagId01/02/03` to check (one canonical slot vs "any of three").
+3. ~~For Part A(b), confirm which of `getItemFlagId01/02/03` to check.~~ **RESOLVED 2026-07-01:** none of
+   them — the per-slot 01..08 fields are always 0. Authoritative field is the single master
+   `getItemFlagId` (already read live @ +0x80). Farmable ⇔ `==0 OR flag_is_repeatable`. See findings doc.

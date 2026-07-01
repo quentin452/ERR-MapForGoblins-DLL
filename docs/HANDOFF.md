@@ -9,7 +9,7 @@ INI-clamp bug fix, and a grace-icon auto-scale fix) also MERGED to master — se
 below for that arc; the original Alt+Tab root-cause recap (3 sessions down) covers the FIRST round,
 merged separately earlier.)
 
-## Session recap (2026-07-01) — MapGenie coverage RE: Part A(a) `disableRespawn` verified (hypothesis half-wrong)
+## Session recap (2026-07-01) — MapGenie coverage RE: Part A(a)+A(b) verified (both hypotheses corrected)
 
 - Started executing `docs/re/windows_mapgenie_category_coverage_re_prompt.md` (verify-only, no impl
   ahead of `generated_data_removal_plan.md` Phase B). Key method finding: params are baked verbatim
@@ -23,9 +23,15 @@ merged separately earlier.)
   `dr==0 AND already-classified-non-boss` (reuse existing `WorldBosses` classification; do NOT rely on
   `dr==1` to exclude bosses). Findings + citations: `docs/re/windows_mapgenie_category_coverage_re_findings.md`;
   plan + Open-Q #2 updated in place.
-- **NEXT (same prompt):** Part A(b) `ItemLotParam*.getItemFlagId01/02/03`, then Tier 2
-  `WorldMapPointParam.iconId` landmarks, then Tier 3 `NpcParam` teamType/npcType (shares the A(a) read
-  site). All disk-verifiable the same way.
+- **Part A(b) `WorldFarmableCollectible` = ItemLotParam flag — VERIFIED, field guess wrong.** Plan said
+  `getItemFlagId01/02/03`; actually the per-slot `01..08` fields are ALWAYS 0 (unused), and the
+  authoritative field is the single master `getItemFlagId` (already read live @ +0x80 in
+  `resolve_loot_flag`, `goblin_inject.cpp:4720`). Polarity: `==0` = farmable, `!=0` = tracked — but
+  nonzero≠one-time, some are *repeatable* (`flag_is_repeatable`, `:4679`). Gate:
+  `getItemFlagId==0 OR flag_is_repeatable(...)`. Zero new plumbing (field + helper already exist). Tool:
+  `tools/verify_farmable_collectible.py`. Both Part A items now done; findings + plan updated in place.
+- **NEXT (same prompt):** Tier 2 `WorldMapPointParam.iconId` landmarks (14), then Tier 3 `NpcParam`
+  teamType/npcType (shares the A(a) read site). All disk-verifiable the same way.
 
 ## Session recap (2026-07-01) — minimap branch: cursor tracking rebuilt (4 rounds), F32 INI clamp bug fixed, grace auto-scale
 
