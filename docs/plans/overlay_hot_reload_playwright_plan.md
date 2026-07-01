@@ -145,6 +145,63 @@ Move the extracted draw layer into its own DLL (e.g. `goblin_overlay_render.dll`
 thin vtable/function-pointer table resolved via `GetProcAddress`. Dev-only file-watcher (mtime
 poll on the render DLL, gated by a config flag) triggers `FreeLibrary` + rebuild + `LoadLibrary` +
 rebind on change — no ERR restart. Key risks to solve here, not defer:
+
+**Phase 2 ground-truth scoping audit (2026-07-01) — the boundary is bigger than "3 functions":**
+confirmed self-contained (safe to move, only ever called from the 3 draw functions or each other):
+`append_folded`/`fold_ci`/`contains_ci`/`matches_all_tokens` (item-search string matching),
+`scale_control`/`draw_gamepad_keyboard_button` (panel widgets), `ensure_grace_srv`/
+`ensure_grace_dungeon_srv`/`ensure_grace_debug`/`grace_candidate_gate_warning`/`grace_dbg_mapping`/
+`force_rebuild_grace` (grace-sprite family), `overlay_layers()`, `page_label`, plus the panel-owned
+statics already found in Phase 1 (`g_large`, `g_grace_dbg_*` family). **But**: `goblin::overlay::
+native_item_icon`/`native_map_point_icon`/`native_map_point_icon_by_name`/`map_point_glyph_uv`
+(`goblin_overlay.cpp:3890-3994`, declared `goblin_overlay.hpp:32-50`) are called from **`src/
+worldmap/map_renderer.cpp`** (:153,157,185,209,224,569) — a SEPARATE translation unit, invoked
+mid-frame from inside what `draw_worldmap_markers`/`draw_minimap_hud` call — AND directly from
+`draw_panel` (:1847, census thumbnails). This whole native-icon-resolution subsystem (`SheetTex`/
+`g_sheet_cache`/`copy_sheet_cached`, `MapSymSrv`/`g_map_sym_srv`/`ensure_map_sym_srv`, `DiskSheet`/
+`g_disk_sheets`/`ensure_disk_sheet`/`request_disk_sheets`, `create_tex_from_dds_mem`) sits on the
+SAME D3D12 render infra (`g_device`/`g_command_queue`/`g_srv_heap`) as Phase 1's icon-batch
+cluster. **Consequence:** the real Phase-2 boundary is "the whole render pipeline," spanning
+`goblin_overlay.cpp`'s draw functions AND `src/worldmap/*.cpp` (`map_renderer.cpp` confirmed;
+`map_entry_layer.cpp`/`grace_layer.cpp`/`quest_npc_layer.cpp`/`category_meta.cpp` NOT YET AUDITED
+for their own reverse dependencies back into host code — check before locking the file-move
+boundary). Moving only the 3 functions and leaving `native_item_icon`/etc. host-side means every
+marker draw crosses the DLL boundary anyway, defeating hot-reload's point if icon-resolution logic
+needs iteration too (likely, given how much RE/tuning work already lives there).
+
+**CMakeLists restructuring (no `option()` exists today — this introduces the first one):**
+```cmake
+option(GOBLIN_OVERLAY_HOTRELOAD "Build overlay draw layer as separate hot-reloadable DLL" OFF)
+set(GOBLIN_RENDER_SOURCES
+  src/goblin_overlay_render.cpp   # new: draw fns + grace/panel helpers
+  src/worldmap/map_renderer.cpp src/worldmap/map_entry_layer.cpp
+  src/worldmap/grace_layer.cpp src/worldmap/quest_npc_layer.cpp
+  src/worldmap/category_meta.cpp)
+set(GOBLIN_HOST_SOURCES <everything else, unchanged list minus GOBLIN_RENDER_SOURCES>)
+if(GOBLIN_OVERLAY_HOTRELOAD)
+  add_library(goblin_overlay_render SHARED ${GOBLIN_RENDER_SOURCES})
+  add_library(MapForGoblins SHARED ${GOBLIN_HOST_SOURCES})
+  target_link_libraries(MapForGoblins PRIVATE goblin_overlay_render)  # or LoadLibrary, no static link
+else()
+  add_library(MapForGoblins SHARED ${GOBLIN_HOST_SOURCES} ${GOBLIN_RENDER_SOURCES})  # today's shape
+endif()
+```
+Both branches reference the SAME source files (no forked copies) — satisfies the two-deploy-mode
+design decision above. `dllmain.cpp`'s `goblin::overlay::initialize()` (:292, installs the Present/
+ResizeBuffers/ExecuteCommandLists MinHook hooks via `resolve_vtables`) stays host-side unchanged in
+both modes; a `GOBLIN_OVERLAY_HOTRELOAD` build additionally needs it to `LoadLibrary`+
+`GetProcAddress` the render DLL's vtable before returning.
+
+**Recommended PR-slicing for Phase 2 (mirrors Phase 1 / goblin_inject_refactor_plan discipline):**
+1. Slice A — CMake scaffold only (`option()` + source-list split), still ONE DLL either way, no
+   `goblin_overlay_render.cpp` file yet, no `LoadLibrary`. Verifies the CMake restructuring is inert.
+2. Slice B — physical file move (draw fns + private helpers + `map_renderer.cpp`, pending the
+   4-file reverse-dependency audit above), still statically linked into one DLL when the option is
+   OFF. Pure relocation, build+in-game confirm, same discipline as Phase 1's slices.
+3. Slice C — actual DLL split + `LoadLibrary` boundary when `GOBLIN_OVERLAY_HOTRELOAD=ON`: vtable/
+   function-pointer resolution, `native_item_icon`-family calls back into host D3D12 infra via a
+   NEW reverse-direction ctx/pointer table (render DLL doesn't own `g_device` etc.).
+4. Slice D — file-watcher + actual hot reload.
   - **ImGui context sharing across the DLL boundary.** Both DLLs must share the SAME `ImGuiContext*`
     (`ImGui::SetCurrentContext` on entry to every cross-DLL call) and be built against the same
     ImGui version/config (`IMGUI_USER_CONFIG`, static/shared CRT) or vtable layouts silently diverge.
