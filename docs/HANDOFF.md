@@ -2,10 +2,12 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01n (`feat/inject-item-classify` PR 2 of the goblin_inject.cpp god-file
-split — IN-GAME CONFIRMED via log check, ready to merge — see directly below. Earlier same day:
-PR 1 (icon-harvest) IN-GAME CONFIRMED + MERGED; PR 0 — MERGED, in-game confirmed via log check;
-Phase A regen DONE on the Windows box (parallel session) — all 4 profiles now MAP_ENTRY_COUNT 0,
+Last updated: 2026-07-01o (`feat/inject-section-visibility` branch: PR 3 of the goblin_inject.cpp
+god-file split — per-section visibility + marker-clustering extracted (8 non-contiguous spans),
+builds clean, deployed + md5-verified, NOT YET in-game log-checked — see directly below. Earlier
+same day: PR 2 (item-classify) IN-GAME CONFIRMED + MERGED; PR 1 (icon-harvest) IN-GAME CONFIRMED +
+MERGED; PR 0 — MERGED, in-game confirmed via log check; Phase A regen DONE on the Windows box
+(parallel session) — all 4 profiles now MAP_ENTRY_COUNT 0,
 non-ERR DLLs rebuilt clean via clang/ninja, Phase-1 enemy-name landmine closed at build level (see
 the baked-data STATUS block below), dead `goblin_massedit.{cpp,hpp}` culled. Also scoped this day:
 overlay-only hot-reload + AI Playwright RPC loop plan (not started); MSVC-canonical / clang-cl-alt
@@ -13,7 +15,33 @@ build toolchain policy formalized. Earlier same day: `feat/input-module` MERGED,
 keyboard-dead bug FIXED + user-confirmed, minimap search-hit edge-clamp + search-hint fixes,
 `feat/quest-npc-layer` + `feat/minimap-scale-cluster-search` MERGED.)
 
-## RESUME HERE (2026-07-01n) — `feat/inject-item-classify` PR 2 IN-GAME CONFIRMED, ready to merge
+## RESUME HERE (2026-07-01o) — `feat/inject-section-visibility` PR 3 built+deployed, needs in-game log check
+
+Branch `feat/inject-section-visibility` (forked from `master` after PR 0+1+2 merged), implementing
+PR 3 of `docs/plans/goblin_inject_refactor_plan.md`. Extracted per-section visibility + marker-
+clustering into new `src/goblin_section_visibility.cpp` (~675 lines) — 8 non-contiguous spans (not
+a clean sed range like PR 0/1/2): visibility globals + `is_section_hidden_ptr` (`:187-428`),
+cluster-config helpers + `seed_runtime_gates` (`:1140-1258`), the visibility/clustering HALF of
+"Overlay control API" (3 sub-spans within `:1736-1955`, leaving save/reset requests + the toast
+subsystem + `injected_row_ptrs` behind — those are unrelated concerns that happened to share the
+same banner section), and the per-category census (`:2118-2172`). Grace anchors turned out NOT
+coupled to visibility/clustering (own state, zero overlap) — correctly left for PR 4, the plan's
+original table wrongly lumped them in by textual proximity. 2 build errors the audit's boundary
+list didn't catch, both caught immediately by the compiler: toast-queue globals
+(`g_toast_mtx`/`g_toast_queue`/etc.) sat inside the visibility span by proximity only — moved back
+to `goblin_inject.cpp` for `enqueue_toast`/`menu_auto_toggle_loop` (stay-behind toast subsystem);
+`persist_settings()` lost its `static` (only called from `menu_auto_toggle_loop`, staying behind)
+and joined `goblin_inject_shared.hpp` alongside 2 new accessors (`icons_user_disabled()`/
+`take_section_apply_req()`) — same established PR 0/1 accessor-header pattern. Declarations in
+`goblin_inject.hpp` unchanged (facade kept). Builds clean via clang-cl+xwin, deployed to
+`~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.dll` (md5-verified, prior DLL backed up as
+`.bak-pre-section-visibility`) — **game wasn't running at deploy time, so NOT yet in-game
+log-checked** (same check as prior PRs: fresh `NEW SESSION` + `[SIG]` PASS + no crash, and ideally
+exercise the F1 panel's section/category/cluster toggles once in-game since this PR touches those
+directly). Next: launch ERR, check logs (and toggle a section/category/cluster live if possible),
+then merge to `master`; PR 4 of the same plan remains unstarted.
+
+## OLDER RESUME (2026-07-01n) — `feat/inject-item-classify` PR 2 IN-GAME CONFIRMED, MERGED
 
 Branch `feat/inject-item-classify` (forked from `master` after PR 0+1 merged), implementing PR 2
 of `docs/plans/goblin_inject_refactor_plan.md`. Extracted taxonomy-based item/loot classification
