@@ -2,12 +2,70 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01 (Linux session — the Alt+Tab bug took 3 rounds of fix-log-fix before the
-real root cause was found; user-confirmed fixed in-game, merged to master. Separately,
-`feat/minimap-scale-cluster-search` (items 13/14 + a zoom default/range bump from user feedback)
-is rebased on top of that merge, still not in-game verified — see recaps below).
+Last updated: 2026-07-01 (Linux session — `feat/minimap-scale-cluster-search` grew into a second,
+much longer Alt+Tab/cursor debugging arc plus a systemic INI-clamp bug fix and a grace-icon
+auto-scale fix; merged to master. See the two recaps below for the full arc; the original
+Alt+Tab root-cause recap (3rd recap down) covers the FIRST round, already merged separately.)
 
-## Session recap (2026-07-01) — Alt+Tab F1 input dead: root-caused after 3 rounds, fixed
+## Session recap (2026-07-01) — minimap branch: cursor tracking rebuilt (4 rounds), F32 INI clamp bug fixed, grace auto-scale
+
+- **Cursor tracking — round 2 of the Alt+Tab saga, much longer this time.** After the first
+  Alt+Tab fix (recap below) merged, <user> found F1 input STILL died after Alt+Tab in a later
+  test. Four full rounds of fix → user tests live → wrong or incomplete → next hypothesis,
+  each grounded in something the user directly observed (not guessed):
+  1. Fed every `GetCursorPos` read to ImGui unconditionally → cursor visibly snapped to/stuck at
+     screen centre on open.
+  2. Baseline-diff gate (don't feed until it differs from the first read) → user reported the
+     centering was still happening — didn't fix it.
+  3. Switched to tracking a virtual cursor accumulated from raw-input mouse deltas (captured in
+     `hk_get_raw_input_data`/`hk_get_raw_input_buffer` right before blanking them for the game) —
+     theorized `GetCursorPos` was simply frozen under Wine. Fixed the immediate symptom but user
+     reported imprecision (drift growing with mouse travel) and an inconsistent seed/pivot point
+     across launches (sometimes centre, sometimes near the top).
+  4. Fixed the seed race (was falling back to a hardcoded 1920x1080 guess if `io.DisplaySize`
+     wasn't populated yet) and the mickeys-to-pixels scale (via `SPI_GETMOUSESPEED`) — better, but
+     user asked directly "why can't we just use GetCursorPos", which prompted actually re-reading
+     `hk_get_cursor_pos`'s own body for the first time this arc. **Real root cause, hiding in
+     plain sight:** that hook deliberately fakes screen-centre for ANY caller while `g_show` is
+     true (to freeze the game's own 2D map-panning camera), with an existing exemption flag
+     (`g_imgui_reading_cursor`) already used to let `ImGui_ImplWin32_NewFrame`'s own internal read
+     through — nothing in the diagnostic/virtual-cursor code was ever setting that flag, so every
+     "GetCursorPos is frozen" reading this whole arc was actually our own fake-centre trap. Final
+     fix: set the exemption around the mouse-poll block's own `GetCursorPos` call, feed that real,
+     exact value directly. **User-confirmed fixed.** The raw-input virtual cursor is kept only as
+     a `[DIAG]` comparison value, no longer drives the real cursor.
+  - Added along the way, all still in `config::debugCursorDiagnostic` (off by default): a live
+    on-screen crosshair pair (cyan = raw poll, magenta = ImGui's `io.MousePos`) plus a text
+    readout (positions, focus/capture state, `SetCursorPos` hook call rate + swallow state) — this
+    is what let round 4 actually get resolved instead of guessing a 5th time. Worth keeping for
+    any future input-tracking regression in this exact area.
+- **Systemic F32 INI clamp bug, found via a completely unrelated report.** <user>: changing
+  minimap zoom, saving, and restarting reset it to 5. Root cause: `IniType::F32`'s load-time
+  clamp was a single hardcoded `[0.1, 5.0]` written for the overlay SCALE multipliers
+  (`overlay_master_scale` etc.) but reused generically for every later F32 field. Audit found it
+  silently also broke `minimap_size` (100 default → 5 on the very next save+load, effectively
+  bricking the minimap), `icon_min_half_px` (8.0 → 5.0), `grace_offset_x/y` and
+  `minimap_offset_x/y` (0.0, and any negative value, forced up to 0.1), and `minimap_opacity`
+  (should be 0..1, not 0.1..5.0). Fixed with a real per-field `f32_min`/`f32_max` on `IniEntry`
+  (default 0.1/5.0, so the fields that were fine stay unchanged) plus
+  `ImGuiSliderFlags_AlwaysClamp` on the minimap sliders so a Ctrl+Click-typed value beyond what's
+  shown can't silently diverge from what gets saved. **Not yet in-game re-verified**, but the bug
+  mechanism is unambiguous from the code.
+- **Grace icon size mismatch — automatic fix, not a hand-picked constant.** <user>: undiscovered
+  grace (`MENU_MAP_Player_02`, disk glyph) reads ~2x the discovered one (harvested live from the
+  game's own rendered frame, `ensure_grace_srv`) in a screenshot. Traced the draw code: both share
+  the exact same destination quad size (`gh`) — the difference is content-density, since
+  discovered's raw screen-capture crop (156x156, confirmed via `[GRACE-SRV]` log) has real padding
+  around the glyph while the hand-authored disk crop (42x62) is tight. User explicitly rejected a
+  hand-picked per-icon multiplier and asked for the ratio to be automatic: `map_point_glyph_uv`
+  gained optional native-pixel-dims out-params, `set_grace_sprite` gained the same for the
+  discovered side, and the undiscovered branch now scales by
+  `sqrt(itsNativeW*itsNativeH) / sqrt(discoveredNativeW*discoveredNativeH)` — derived from real
+  measured rects each run (`[GRACEUNDISC]` log line prints both). **Not yet in-game verified.**
+- Branch `feat/minimap-scale-cluster-search` (12 commits, despite the name it grew well past the
+  original minimap scope) merged to master this session.
+
+## Session recap (2026-07-01) — Alt+Tab F1 input dead: root-caused after 3 rounds, fixed (FIRST round — see the recap above for the longer second round)
 
 - Continuation of the gamepad-nav/kbd bug session below. After that session's fix (event-driven
   `g_has_focus`) was merged, <user> found Alt+Tab STILL killed F1 input in a fresh test. Rather
