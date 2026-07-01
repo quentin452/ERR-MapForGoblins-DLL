@@ -1,7 +1,12 @@
 # Plan — extract input hooks out of `goblin_overlay.cpp` into a dedicated input module
 
-Status: scoped, not started. Fork an implementation branch from `master` when work actually starts
-(per the "plans live on master" policy) — do not keep a plan-only branch.
+**Status: DONE (2026-07-01), branch `feat/input-module`, 5 commits, builds clean, not yet
+in-game re-verified beyond slices 1-3 (user confirmed those three working live; slices 4-5
+deployed but not yet explicitly confirmed).** All 5 hook groups now live under `src/input/`;
+see `docs/memory/tooling/input-hooks.md` for the resulting file map + where to add the next
+diagnostic counter. Option (a) from the "Revised recommendation" below was the one implemented
+(thin accessor functions in `input_shared.hpp`, not a full `hk_present` absorption) — (b) is
+still a possible future follow-up, not started.
 
 ## Why (motivation — real bug, not speculative cleanup)
 

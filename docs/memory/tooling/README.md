@@ -21,6 +21,9 @@ one-off scripts — most workflows are already reusable.
 - **Overlay test harness** [proposed] — AI-driven "interactive Playwright" for the worldmap/minimap:
   Route A offline ImGui harness (mock data + imgui_test_engine + screenshots, deterministic, no game),
   Route B in-game debug-RPC + framebuffer grab. → [overlay-test-harness](overlay-test-harness.md)
+- **Input hooks live under `src/input/`** [active] — all 5 device-class hooks (DirectInput, XInput,
+  cursor, raw input, wndproc) extracted from `goblin_overlay.cpp`; file map + where to add the next
+  `[XXXDIAG]` counter. → [input-hooks](input-hooks.md)
 
 ## Ghidra & static RE
 - **Reusable Ghidra tools** [active] — `rtti_index.txt` (9760 classes) + `query.java`; index + on-demand
