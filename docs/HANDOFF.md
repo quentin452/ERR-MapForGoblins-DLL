@@ -2,34 +2,36 @@
 
 Living cross-session queue of in-progress / not-yet-finished work. Update at the end of each session.
 Committed code + `docs/changelog.md` are the record of DONE; this file tracks WHAT'S NEXT and WHY.
-Last updated: 2026-07-01 (feat/quest-npc-layer: Quest NPC layer WORKING end-to-end, live-verified on
-ERR v2.2.9.6, deployed dll/offline, last commit 056a27a).
+Last updated: 2026-07-01 (feat/quest-npc-layer: Quest NPC feature COMPLETE + live-verified on ERR
+v2.2.9.6; ready to merge. Last commit fcf6544 + a pending cleanup commit).
 
-## RESUME HERE (2026-07-01c) — Quest NPC feature works end-to-end; decide merge vs follow-ups
+## RESUME HERE (2026-07-01d) — Quest NPC feature COMPLETE, ready to merge
 
-- **State:** `feat/quest-npc-layer` (~28 commits ahead of master, clean tree, build-clang + build-erte
-  green; vanilla/convergence fail at CONFIGURE on a pre-existing incomplete bake, unrelated). Deployed +
-  live-verified on the real ERR v2.2.9.6 install. Read `docs/memory/features/quest-browser.md` (the
-  PROGRESS_FLAG / MASS EXTRACTOR / fallback notes) + `docs/memory/tooling/rpm-live-memory-tooling.md`.
-- **What works now (all committed):** entity_id pins for Boc/Alexander/Thops (register+location flags);
-  progress_flag via register>=value (Alexander full, Boc/Thops terminals); 17 fail_flags; the RUNTIME
-  mod-agnostic quest extractor in the DLL (`msbe::parse_emevd_quest_npcs` + `loot_disk::load_quest_npcs`,
-  reads the active install's emevd, 71 NPCs on ERR); the browser "Other quests — auto-detected" FALLBACK
-  (name via NpcParam→nameId→`lookup_text_utf8(nameId+700000000)`, TEXT de-dup for merchants, nameId join
-  to the hand table — all 50 hand name_ids filled); quest PIN tooltip = NPC name + quest + current step +
-  zone (`tip_quest/tip_step/tip_zone` on Marker).
-- **Two bugs fixed live this session (root causes worth remembering):** (1) zero pins because
-  `g_entity_pos` (QuestNpcLayer's position cache) was gated inside `if(lootEmevdDrops)` — moved to the
-  `wantQuestNpcs` block. (2) `quest_npc_quest_aware=true` skips any questline with `done==0` (hides
-  manual-only NPCs) — it defaults false; user had it on. (3) empty tooltip because Marker name_id was the
-  RAW hand name_id — needs the +700000000 NpcName FMG offset.
-- **DECISION for next session:** either MERGE the branch (user pushes/merges — recommend a quick visual
-  check of the Boc/Alexander pins first, Thops already confirmed conformant via screenshot), or take the
-  headline FOLLOW-UP: **"runtime as sole source"** — make the browser LIST runtime-driven (localized
-  names + mod-agnostic), hand table supplies only step hints joined by nameId; also PIN the fallback NPCs
-  on the map (pinEntity→entity_world_pos) and the 2 alternate-form edge cases (Scribe Corhyn / Zorayas).
-  Note: tooltip quest/step text is English (hand prose is English-only) while the name is localized — the
-  runtime-sole-source follow-up is what fixes that.
+- **State:** `feat/quest-npc-layer`, clean tree, build-clang + build-erte green (vanilla/convergence NOT
+  built — pre-existing CONFIGURE failure on an incomplete bake, unrelated). Deployed + live-verified on
+  ERR v2.2.9.6. Read `docs/memory/features/quest-browser.md` (the "ALL QUEST NPCs PINNED", NPC GLYPH,
+  GATE DELETED, PIN PLACEMENT, SEARCH BADGE notes are this session's).
+- **Landed this session (commits b672ae6, 977f785, fcf6544 + a pending cleanup commit):**
+  1. Real NPC map glyph `MENU_MAP_80` instead of a circle (mod-agnostic disk path, `category_meta.cpp`).
+  2. Pin ALL runtime quest NPCs (58 on ERR), not just the 3 hand-authored — `entity_world_pos(pinEntity)`
+     lookup; 3 hand NPCs keep step-following, rest static; unnamed/asset-placed NPCs pin too.
+  3. Deleted `quest_npc_quest_aware` (config/schema/getters/checkbox), `quest_npc_gated_out`, the layer
+     `done==0` skip — feature is no longer legacy/unfinished.
+  4. Merchant state fix: fallback pins show live `[concluded]`/`[in progress]` ONLY for hand-VETTED
+     death-distinct fail_flags; unvetted runtime flags (Kalé etc.) show neutral `optional`.
+  5. `[quest]` badge in the item search (goblin_overlay.cpp) for hits backed by a WorldQuestNPC pin.
+  6. PIN PLACEMENT fix: prefer a base-overworld placement (was pinning Blaidd on his stray Nokstella
+     underground copy → garbage pan). `[QUESTNPC-PIN]` diag (now gated behind `debug_logging`).
+- **Before merge (mostly done):** cleanups committed (stale comment + unused `goblin_quest_gates.hpp`
+  include removed; diag gated). **THE USER pushes/merges.**
+- **Follow-ups (not blocking merge):**
+  - `QUEST_GATES` generated data (`goblin_quest_gates.*`, 4 profiles) is now DEAD (no code consumer after
+    the gate removal) — remove via the generate pipeline in a separate change (harmless additive data now).
+  - 3 quest NPCs are `no-position` (extracted, no placement resolved → need their MSB source); 6 UG + 4
+    DLC pins are plausibly-correct underground/DLC NPCs (Deeproot Fia/D, DLC followers) — spot-check if desired.
+  - Boss-handler NPCs (`90005860`, e.g. Gurranq) NOT extracted (90005860 is EVERY boss's handler → would
+    flood pins). Needs a quest-vs-plain-boss signal.
+  - Tooltip quest/step prose is English (hand-authored) while the NPC name is localized.
 
 ## Session recap (2026-07-01b) — feat_quests Phase 2: per-step entity_id sourced + wired (offline)
 

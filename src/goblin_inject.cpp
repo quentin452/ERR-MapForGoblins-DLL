@@ -21,7 +21,6 @@
 #include "from/paramdef/WORLD_MAP_PIECE_PARAM_ST.hpp"
 #include "from/paramdef/BONFIRE_WARP_PARAM_ST.hpp"
 #include "from/paramdef/BONFIRE_WARP_SUB_CATEGORY_PARAM_ST.hpp"
-#include "goblin_quest_gates.hpp"
 #include "goblin_quest_steps.hpp"
 #include "goblin_logic.hpp"
 #include "worldmap/loot_disk.hpp"  // read_game_file_decompressed (no-bake item-icon layout source)

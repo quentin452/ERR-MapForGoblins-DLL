@@ -135,8 +135,7 @@ const std::vector<Marker> &QuestNpcLayer::markers() const
         m.icon_key = "show_quest_npc";
         // name_id must be the FMG-ROUTED id for the tooltip/search (lookup_text routes
         // NpcName at +700000000 — same convention as every other marker; the raw hand
-        // name_id gave an empty tooltip). quest_npc_gated_out() undoes the offset for its
-        // raw QUEST_GATES join.
+        // name_id gave an empty tooltip).
         m.name_id = q.name_id ? static_cast<int>(q.name_id + 700000000u) : -1;
         m.tip_quest = q.quest_title;       // "Boc's Quest"
         m.tip_step = step.title;           // active step title = the current "palier"

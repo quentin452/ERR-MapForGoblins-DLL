@@ -1904,9 +1904,11 @@ void build_buckets_impl()
             spdlog::info("[QUESTNPC] runtime: {} NPCs -> {} pinnable, {} flag-covered, {} filtered (10-digit), "
                          "{} no-position (extracted but no placement resolved; needs its MSB source)",
                          (int)qnpcs.size(), (int)cand.size(), covered, filtered, noPos);
-            // [QUESTNPC-PIN] diag: any pin landing OFF the base overworld (grp!=0) is suspect — the
-            // picked placement's map isn't where the NPC's quest is (e.g. an underground c-model
-            // instance). Logs the concluded flag + pinEntity so it cross-refs to the MSB index.
+            // [QUESTNPC-PIN] diag (Verbose logging only): any pin landing OFF the base overworld
+            // (grp!=0) is suspect — the picked placement's map isn't where the NPC's quest is (e.g. an
+            // underground c-model instance). Logs the concluded flag + pinEntity so it cross-refs to the
+            // MSB index. Gated so a normal run stays quiet; enable debug_logging to catch a future mis-pin.
+            if (goblin::config::debugLogging)
             {
                 int g0 = 0, gUG = 0, gDLC = 0;
                 for (const QuestFallbackNpc &n : cand)
