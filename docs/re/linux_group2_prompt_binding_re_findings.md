@@ -34,14 +34,33 @@ Session 2026-07-02, done ENTIRELY on the Linux box via in-DLL probes (`[PARAMSCA
      (`2004[8]`) — these DO reference concrete lift entities; body dump pending (round 5) → grep
      entity ids in MSB → the real lift AEG model id.
 
-## Where this leaves the map category
+## RESOLUTION (2026-07-02, [ABPTEXT] slot-32 breakthrough)
 
-- **Elevator:** per-lift EMEVD inits don't exist, so the category must be built from **MSB assets
-  filtered by the lift model(s)** (mod-agnostic, same class as other model-keyed passes). The
-  Siofra one-off entities are the key to identifying the model. Open: whether ONE model covers the
-  ~40 real lifts (recon's AEG099_630 = 235 placements was too broad — likely the wrong model).
-- **Smithing Table:** ground truth needed from the user before more scanning (ERR-specific
-  mechanism; ABP 6250 is Roundtable-only).
+The prompt-text FMG = **physical GetMessage slot 32** (3301="Descend", 7030="Use smithing table").
+Full ABP text dump (`logs/abptext_slot32.txt`) settles everything:
+
+- **ABP 5000/5010/5011 = "Climb"/"Descend" = LADDERS**, not elevators — the original recon anchor
+  was wrong from the start. Event 1030's generic-ABP list (1000 runes, 2000 summon sign, 3000 read
+  message, 4000 pick up item, 5000/5010 ladders, 6000 talk…) = the engine's built-in interaction
+  prompts, all engine-bound, none map-category material.
+- **Real lever-driven lifts = "Pull lever"/"Push lever" = ABP 8200–8501 (+ERR 208310/208405)** —
+  and THOSE are ObjAct-bound: **~55 ObjActParam rows** carry them at +0x28 (ids 27002…1464026,
+  offline join of paramdump_ObjActParam × abptext_slot32).
+- **The asset join is the MSB ObjAct EVENT section**: MSB events of type ObjAct bind
+  {asset entity, objActParamId}. ⇒ **Elevator category = pure disk parse**:
+  `MSB ObjAct event → objActParamId whose ObjActParam.actionButtonParamId(+0x28) has a
+  lever/lift text → asset → position`. Mod-agnostic, no bake, same pipeline class as Portal.
+  Refinement knob if levers over-capture (some open gates, not lifts): ObjAct anim-id fields
+  (14020 vs 7110/8000 groups visible in the dump) or asset model.
+- **Grand lifts (Dectus/Rold)** = ABP 5762320/5762330 "Enter Field Area" — already covered by the
+  WorldGrandLift category.
+- **Smithing Table (world, e.g. Church of Elleh): prompt = ABP 6250 "Use smithing table"**, but
+  bound ENGINE-side (no ObjAct row, no param value, no EMEVD init outside Roundtable's hub
+  template). For the map category the remaining route is identifying the table's AEG model and
+  filtering MSB assets by model — e.g. via an in-DLL "asset radar" probe (dump disk assets within
+  a few meters of the player while standing at the Elleh table).
+- Siofra "hits" (12022820/22) decoded: `2004[8]` = SetSpEffect(character, 5010) — SpEffect id
+  homonym on two enemies, red herring.
 
 ## Tooling notes (reusable)
 

@@ -54,6 +54,18 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
 `__try`-elision hazards (world_position per-frame probes + tutorial_popup init poll) are FIXED
 (`5b80541`, built + deployed); still open = repo-wide `__try` classify pass, then Phases 1–2.**
 
+## Group-2 Elevator MECHANISM SOLVED on Linux (2026-07-02) — implementation open
+
+Full RE chain in `docs/re/linux_group2_prompt_binding_re_findings.md` (done entirely with in-DLL
+probes + offline python — first end-to-end run of the Linux RE path). Net: recon's 5010 anchor was
+LADDERS; real lever-lifts = ABP 8200-8501 "Pull/Push lever" -> ~55 ObjActParam rows (join col
++0x28) -> **MSB ObjAct EVENT section binds {asset entity, objActParamId}** => Elevator category is
+a pure mod-agnostic disk parse (msbe: parse ObjAct events, filter param ids whose ABP text is a
+lever, join asset position; refine by anim-id groups if gates over-capture). Smithing Table
+(ABP 6250 "Use smithing table") is engine-bound -> needs the asset-radar probe (dump disk assets
+near player at Church of Elleh) to get the AEG model. Probes live in `src/goblin_param_scan.cpp`
+([PARAMSCAN]/[EMEVDSCAN]/[ABPTEXT], debug_logging-gated).
+
 ## Linux runtime-RE path — investigate to stop the two-PC switch (2026-07-01, not started)
 
 User pain: runtime RE is Windows-by-convention but the live game runs on the Linux box (Proton).
