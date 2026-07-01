@@ -145,6 +145,7 @@ add_library( MapForGoblins SHARED
   src/goblin_section_visibility.cpp
   src/goblin_world_position.cpp
   src/goblin_tutorial_popup.cpp
+  src/goblin_grace_suppression.cpp
   src/goblin_kindling.hpp
   src/goblin_kindling.cpp
   src/goblin_logic.hpp
