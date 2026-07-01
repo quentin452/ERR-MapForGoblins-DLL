@@ -1,6 +1,5 @@
 #include "goblin_messages.hpp"
 #include "goblin_map_data.hpp"
-#include "goblin_enemy_names.hpp"
 #include "goblin_name_aliases_en.hpp"
 #include "goblin_major_regions.hpp"
 #include "goblin_config.hpp"
@@ -107,28 +106,6 @@ static std::string detect_language()
         }
     }
     return "english";
-}
-
-// Map a Steam game-language string (from detect_language) to an index into the
-// embedded enemy-name table's ENEMY_NAME_LANGS (msgbnd codes). Falls back to 0
-// (engus) for anything unmapped.
-static int enemy_name_lang_index(const std::string &steam_lang)
-{
-    static const std::pair<const char *, const char *> STEAM_TO_MSGBND[] = {
-        {"english", "engus"}, {"japanese", "jpnjp"}, {"german", "deude"},
-        {"french", "frafr"}, {"italian", "itait"}, {"koreana", "korkr"},
-        {"polish", "polpl"}, {"brazilian", "porbr"}, {"portuguese", "porbr"},
-        {"russian", "rusru"}, {"spanish", "spaes"}, {"latam", "spaar"},
-        {"thai", "thath"}, {"schinese", "zhocn"}, {"tchinese", "zhotw"},
-        {"arabic", "araae"},
-    };
-    const char *code = "engus";
-    for (auto &m : STEAM_TO_MSGBND)
-        if (steam_lang == m.first) { code = m.second; break; }
-    for (int i = 0; i < goblin::generated::ENEMY_NAME_LANG_COUNT; i++)
-        if (std::strcmp(code, goblin::generated::ENEMY_NAME_LANGS[i]) == 0)
-            return i;
-    return 0;
 }
 
 // In-memory FMG binary layout (Elden Ring, version 2):
@@ -464,28 +441,9 @@ void goblin::setup_messages()
 
     auto **sub = reinterpret_cast<uint8_t **>(base_array[0]);
 
-    // Non-ERR builds carry their own localized enemy-name table (the runtime
-    // FMG has only generic tutorial entries, no enemy names). Inject the names
-    // for the detected language into PlaceName at the same +900M encoding the
-    // markers use, so enemy-drop labels read properly instead of falling back to
-    // the generic vocabulary words. The ERR build ships an empty table and uses
-    // its runtime names, so this loop is a no-op there.
-    if (generated::ENEMY_NAME_COUNT > 0)
-    {
-        int li = enemy_name_lang_index(lang);
-        int added = 0;
-        for (size_t i = 0; i < generated::ENEMY_NAME_COUNT; i++)
-        {
-            const auto &en = generated::ENEMY_NAMES[i];
-            const wchar_t *nm = en.names[li] ? en.names[li] : en.names[0];
-            if (nm && nm[0])
-            {
-                new_entries.push_back({en.id + 900000000, nm});
-                added++;
-            }
-        }
-        spdlog::info("Injected {} enemy names into PlaceName (lang index {})", added, li);
-    }
+    // (Enemy-drop labels are resolved from the killed enemy's live NpcParam.nameId
+    // via GetMessage(NpcName) at the disk pass — mod-agnostic, no baked table. The
+    // old +900M TutorialTitle injection fed the removed MAP_ENTRIES bake and is gone.)
 
     auto *fmg_ptr = sub[19];
 

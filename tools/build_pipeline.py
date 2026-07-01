@@ -384,8 +384,7 @@ STAGES = [
           inputs=[MASSEDIT_OUT, DATA / 'loot_lot_linkage.json',
                   DATA / 'item_icon_table.json',
                   DATA / '_relocating_boss_fix.done'],
-          outputs=[GENERATED_CPP / 'goblin_map_data.cpp',          # Phase-2 empty no-bake stub
-                   GENERATED_CPP / 'goblin_enemy_names.cpp'],
+          outputs=[GENERATED_CPP / 'goblin_map_data.cpp'],         # Phase-2 empty no-bake stub
           script='generate_data.py',
           args=['--massedit-dir', str(MASSEDIT_OUT)]),
 
