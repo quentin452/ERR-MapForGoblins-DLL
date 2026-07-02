@@ -517,6 +517,21 @@ both modes; a `GOBLIN_OVERLAY_HOTRELOAD` build additionally needs it to `LoadLib
   barriers, fence wait, BGRA/RGBA formats; BMP = zero new dependencies, PIL reads it); and
   `reload_overlay` — flags the Slice D swap exactly like the file watcher
   (`overlay_render_loader::request_reload`; `err not a hotreload build` in the default config).
+- **Input injection + pause (added 2026-07-02, `feat/rpc-input-injection` — closes the "can't
+  load a save" loop constraint):** `key <name> [hold_ms]` / `mouse_move <x> <y>` /
+  `mouse_click [left|right] [x y]` (client-pixel coords, same space as screenshots) execute on
+  the LISTENER thread via SendInput (thread-agnostic, no frame dependency; a hold-Sleep on the
+  present thread would hitch). **Hard-won gotcha: character keys must go VK-only** — with
+  KEYEVENTF_SCANCODE set, letters never reached the game under Wine + the AZERTY host layout
+  (Enter/Escape worked, E/G/Q didn't — cost a whole misdiagnosed key-sweep); non-char keys keep
+  the scancode. Validated end to end: title → warning → Continue → in-world → Equipment menu via
+  `key E`, and **worldmap opened via `key M`** (this install's map bind; vanilla default G does
+  nothing here) → `status map_open=1`. Plus `pause 0|1|toggle` + `paused=` in status
+  (goblin_pause frame-step flip, backlog item 4 — see dx-bugs-backlog): validated by screenshot
+  diff (paused = 0 changed pixels over 3s, running ≈ 4.8k); rendering/RPC stay live while
+  paused, so a driver can detect and clear an externally-set pause (PauseTheGame.dll's global
+  GetAsyncKeyState keybinds can toggle it while the game is UNFOCUSED — the likely "stuck in
+  pause when backgrounded" failure <user> hit) before scripting.
 - **NOT implemented: `search "<item>"`** — the F1 item-search buffer (`item_q`) is a render-side
   static; poking it from the host needs a new cross-DLL export. Followup when Phase 4 actually
   needs it (drive the UI via `set` + screenshots meanwhile).

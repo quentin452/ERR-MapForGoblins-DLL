@@ -35,6 +35,11 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   everywhere else — randomizer players flip that one key.
 
 ### Added
+- **Pause the game from the F1 menu.** New checkbox freezes the world simulation (enemies, timers,
+  physics) while the menu, map overlay and rendering stay fully usable — the pause technique from
+  iArtorias' elden_pause, built in (replaces the separate PauseTheGame.dll, which can also toggle
+  itself while the game is unfocused since it reads keys globally — remove it from your load order
+  to avoid double-toggling). Hidden automatically if a game update breaks the signature.
 - **Device-aware close-hint in the F1 panel.** The header (and the collapsed pill) now shows the
   configured gamepad combo (e.g. "Y+R3 close") while the gamepad is the active input device,
   instead of always saying "F1 close" — same detection the cursor-recenter compensation uses.

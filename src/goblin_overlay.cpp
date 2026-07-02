@@ -2069,6 +2069,7 @@ bool goblin::overlay::is_ready() { return g_imgui_init; }
 
 bool goblin::overlay::panel_open() { return g_user_show; }
 void goblin::overlay::set_panel_open(bool open) { g_user_show = open; }  // applied next frame (g_show = g_user_show)
+void *goblin::overlay::game_hwnd() { return g_hwnd; }
 
 // Backbuffer → 24-bit BMP. Runs at pump() time: our overlay draw was just submitted on the same
 // queue, so the copy below is queue-ordered behind it and the capture includes the overlay. The

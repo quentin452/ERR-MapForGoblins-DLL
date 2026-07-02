@@ -224,6 +224,16 @@ namespace goblin::sig
     inline constexpr uintptr_t ICON_MGR_SLOT_RVA = 0x3d6e9b0;
     inline constexpr uintptr_t ICON_MGR_SIBLING_SLOT_RVA = 0x3d6f558;
 
+    // ── In-game pause (dx-bugs-backlog item 4; technique from iArtorias/elden_pause) ──
+    // A `je` in the frame-step path: `je …; mov byte [rbx+XXX],0; lea rsi,[rip+…];
+    // mov [rbp-XX],rsi; mov [rbp-XX],edi`. Flipping the je (0F 84) to jne (0F 85) PAUSES the
+    // world simulation; restoring resumes it. Byte [1] IS the state (0x84 running / 0x85
+    // paused) — readable, so the debug RPC can also report/clear a pause set by another
+    // patcher of this same branch (PauseTheGame.dll uses the identical technique).
+    // See src/goblin_pause.cpp.
+    inline constexpr const char *PAUSE_BRANCH =
+        "0F 84 ?? ?? ?? ?? C6 83 ?? ?? 00 00 00 48 8D ?? ?? ?? ?? ?? 48 89 ?? ?? 89";
+
     // ── Health check ───────────────────────────────────────────────────────────
     // Scans every AOB above (no relative_offsets — a base match is enough to prove the
     // signature still exists) and logs PASS@addr / FAIL. Call once at init. After an ER
@@ -262,6 +272,7 @@ namespace goblin::sig
             {"EC_TEST_DISTANCE_VFT", EC_TEST_DISTANCE_VFT},
             {"WORLD_SFX_MAN_SLOT", WORLD_SFX_MAN_SLOT},
             {"RENDER_REAPPLY_RES", RENDER_REAPPLY_RES},
+            {"PAUSE_BRANCH", PAUSE_BRANCH},
         };
         count = sizeof(table) / sizeof(table[0]);
         return table;
