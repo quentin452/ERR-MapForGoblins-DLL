@@ -3,6 +3,9 @@
 #include "goblin/goblin_map_flags.hpp"
 #include "goblin/goblin_map_tiles.hpp"
 
+#include <algorithm>
+#include <cstdlib>
+
 using namespace goblin;
 using namespace goblin::mapPoint;
 
@@ -21,35 +24,41 @@ static int GetMapFlagFromTile(MapTile location)
     // bake's marker set; the no-bake disk pass now places markers on a few INTERIOR overworld
     // tiles the table omits. Those return 0 here ("no fragment → always shown"), so they LEAK
     // past require_map_fragments (visible even without the region's map). For an overworld tile
-    // with no exact match, inherit the MAJORITY map-fragment of its 8 immediate (±1) neighbours:
-    // an interior hole takes its region's fragment, while a genuinely isolated tile (ocean / a
-    // DLC area the table doesn't cover) has no covered neighbour → stays 0 and keeps the
+    // with no exact match, inherit the MAJORITY map-fragment of the nearest covered ring:
+    // ±1 neighbours first, then ±2 (the ±1-only fill missed off-shore islet tiles — Divine
+    // Towers etc. — which leaked, user-reported 2026-07-02). A tile with no covered neighbour
+    // within 2 (deep ocean / an area the table doesn't cover) stays 0 and keeps the
     // always-shown default. Build-time only (push_marker / cluster labels), never per-frame.
     if (location.X == 60 || location.X == 61)
     {
-        int ids[8], cnt = 0;
-        for (int dy = -1; dy <= 1; ++dy)
-            for (int dz = -1; dz <= 1; ++dz)
-            {
-                if (dy == 0 && dz == 0) continue;
-                MapTile nb(location.X, location.Y + dy, location.Z + dz);
-                bool found = false;
-                for (const auto &fragment : MapList)
-                {
-                    for (const auto &chunk : fragment.mapFragmentTile)
-                        if (chunk == nb) { ids[cnt++] = fragment.mapFragmentId; found = true; break; }
-                    if (found) break;
-                }
-            }
-        int best_id = 0, best_n = 0;
-        for (int i = 0; i < cnt; ++i)
+        for (int radius = 1; radius <= 2; ++radius)
         {
-            int n = 0;
-            for (int j = 0; j < cnt; ++j)
-                if (ids[j] == ids[i]) ++n;
-            if (n > best_n) { best_n = n; best_id = ids[i]; }
+            int ids[24], cnt = 0;
+            for (int dy = -radius; dy <= radius; ++dy)
+                for (int dz = -radius; dz <= radius; ++dz)
+                {
+                    if (std::max(std::abs(dy), std::abs(dz)) != radius) continue; // ring only
+                    MapTile nb(location.X, location.Y + dy, location.Z + dz);
+                    bool found = false;
+                    for (const auto &fragment : MapList)
+                    {
+                        for (const auto &chunk : fragment.mapFragmentTile)
+                            if (chunk == nb) { ids[cnt++] = fragment.mapFragmentId; found = true; break; }
+                        if (found) break;
+                    }
+                }
+            int best_id = 0, best_n = 0;
+            for (int i = 0; i < cnt; ++i)
+            {
+                int n = 0;
+                for (int j = 0; j < cnt; ++j)
+                    if (ids[j] == ids[i]) ++n;
+                if (n > best_n) { best_n = n; best_id = ids[i]; }
+            }
+            if (best_id)
+                return best_id;
         }
-        return best_id;
+        return 0;
     }
     return 0;
 }

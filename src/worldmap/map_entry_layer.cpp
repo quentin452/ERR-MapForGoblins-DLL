@@ -465,13 +465,23 @@ void build_live_landmarks()
     // flipped to 99 by a previous apply), re-register each matched LIVE row (the param
     // iterator yields references into the live table), apply once at the end.
     goblin::reset_native_landmark_rows();
+    // RE aid (debug_logging): which native pins we DON'T own — every WMPP row outside the
+    // landmark switch, tallied by iconId. Cross-check the survivors the user still sees on the
+    // native map against this list (boss 41/67, grace 80, structural 83/84/85, sub-zones 42,
+    // quest 87 are the expected residents; anything else = a gate we don't understand yet).
+    std::map<int, int> other_icons;
     try
     {
         for (auto [rowId, row] :
              from::params::get_param<from::paramdef::WORLD_MAP_POINT_PARAM_ST>(L"WorldMapPointParam"))
         {
             const int c = landmark_category_for_icon(row.iconId);
-            if (c < 0) continue;
+            if (c < 0)
+            {
+                if (goblin::config::debugLogging && row.iconId > 0)
+                    ++other_icons[row.iconId];
+                continue;
+            }
             push_marker(rowId, row, c, /*lotId=*/0u, /*lotType=*/0u, Source::Live);
             goblin::register_native_landmark_row(&row, c);
             ++n;
@@ -484,6 +494,13 @@ void build_live_landmarks()
         return;
     }
     goblin::apply_native_landmark_suppression();
+    if (goblin::config::debugLogging && !other_icons.empty())
+    {
+        std::string s;
+        for (auto &[icon, cnt] : other_icons)
+            s += std::to_string(icon) + "x" + std::to_string(cnt) + " ";
+        spdlog::debug("[LANDMARKPIN] WMPP iconIds NOT ours (never suppressed): {}", s);
+    }
     std::string breakdown;
     for (int i = 0; i < kLandmarkCount; ++i)
     {

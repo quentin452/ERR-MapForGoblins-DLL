@@ -85,6 +85,34 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
 `__try`-elision hazards (world_position per-frame probes + tutorial_popup init poll) are FIXED
 (`5b80541`, built + deployed); still open = repo-wide `__try` classify pass, then Phases 1–2.**
 
+## Feedback round 3 (2026-07-02, `feat/per-marker-native-glyphs`) — church glyph, fragment leaks, pin-RE diag
+
+- **Churches drew circle:** the worldmap gfx has NO numeric `MENU_MAP_03` — the church glyph is
+  NAME-keyed (`MENU_MAP_Church`). Fix: `map_point_name_alias()` in MapPointProvider (numeric
+  resident → numeric disk → alias resident-by-name → alias disk-by-name). Checked the decompiled
+  gfx symbol list: also missing numerics with NO known name = **15 (wells), 43 (Gelmir camp)** →
+  those stay circle until a name/RE surfaces.
+- **require_map_fragments leaks**, 3 root causes fixed:
+  (1) QuestNpcLayer never set `fragment_flag` → quest pins ignored the gate; now derived from the
+  pin's overworld tile (`quest_pin_fragment_flag`; UG groups stay ungated — tile ambiguous).
+  (2) Off-shore islet tiles (Divine Towers) missed the ±1 neighbour fill → widened to ring ±2
+  (`GetMapFlagFromTile`).
+  (3) Unmappable AREAS (Roundtable m11_10, unconverted dungeon leftovers) returned 0 = "always
+  shown" → `marker_fragment_flag` now returns a never-set sentinel flag (INT32_MAX) for a
+  projected area outside {60,61,12,40-43}, so the existing renderer gate hides them while the
+  toggle is on. Rune-piece leak most likely class (2)/(3) — recheck in-game.
+- **Native pins still visible — RE diag added:** debug_logging now logs `[LANDMARKPIN] WMPP
+  iconIds NOT ours (never suppressed): 41x191 67x26 80x…` at build. Expected residents: 41/67
+  (bosses), 80 (graces), 83/84/85 (structural), 42 (sub-zones), 87 (VM requests), 0 (ERR arena).
+  Anything the user still SEES beyond those → match its iconId here, then decide suppress/classify.
+  NB: ERR also injects its OWN custom rows (stakes/pools/effigies at iconId 374+ etc.) — those are
+  OUR old native-injection families, not WMPP vanilla pins.
+- **Crowded-icon DX (piles of icons at one spot): NOT implemented — design choice open.** Existing
+  machinery: per-marker `cluster_key` + pile labels + the cluster-bubble system (F1 clustering
+  options). Candidate simple wins: (a) hover fan-out (spiderfy) around the cursor; (b) stack badge
+  "xN" + tooltip listing (partially exists via pile labels); (c) per-pixel de-overlap (spiral
+  nudge) at draw. User asked for "simplest thing" — decide next session.
+
 ## SINGLE-DLL migration — profiles retired (2026-07-02, `feat/mapgenie-landmark-parity`)
 
 User audit request confirmed profiles had ~no reason left: zero real per-profile DATA (the only

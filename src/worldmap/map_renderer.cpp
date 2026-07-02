@@ -157,6 +157,18 @@ struct AtlasProvider : IconProvider
 // Native GPU map-point symbol: the game's OWN world-map symbol (MENU_MAP_<NN>) for a category
 // that maps to one (category_gpu_iconId, sparse). Resolved via the FD4 image-repo rect copied
 // into our SRV. Best-effort: resolves only after the world map opened + the symbol is resident.
+// A few WMPP iconIds have NO numeric MENU_MAP_<NN> gfx symbol — their glyph is NAME-keyed
+// (checked against the decompiled worldmap gfx symbol list, 2026-07-02: no MENU_MAP_03; also
+// missing numerics with no known name yet: 15 wells, 43 Gelmir camp → those stay circle).
+static inline const char *map_point_name_alias(int iconId)
+{
+    switch (iconId)
+    {
+    case 3: return "MENU_MAP_Church";
+    default: return nullptr;
+    }
+}
+
 struct MapPointProvider : IconProvider
 {
     bool resolve(const IconKey &k, IconHandle &out) const override
@@ -169,7 +181,14 @@ struct MapPointProvider : IconProvider
         {
             // Resident GPU symbol not loaded (map closed, or this mod has no such symbol resident) ->
             // mod-agnostic DISK glyph by iconId (same no-bake path as the undiscovered-grace render).
-            if (!goblin::overlay_api::map_point_glyph_uv(nullptr, k.icon_id, tex, u0, v0, u1, v1))
+            // Then the NAME-keyed aliases (iconIds with no numeric gfx symbol, e.g. 3 → Church):
+            // resident by name, else disk by name.
+            const char *alias = map_point_name_alias(k.icon_id);
+            bool got = goblin::overlay_api::map_point_glyph_uv(nullptr, k.icon_id, tex, u0, v0, u1, v1);
+            if (!got && alias)
+                got = goblin::overlay_api::native_map_point_icon_by_name(alias, tex, u0, v0, u1, v1) ||
+                      goblin::overlay_api::map_point_glyph_uv(alias, -1, tex, u0, v0, u1, v1);
+            if (!got)
                 return false;
         }
         out.tex = reinterpret_cast<ImTextureID>(tex);
