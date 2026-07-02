@@ -49,3 +49,9 @@ That host surface IS the future framework API.
 **Decision: do NOT extract a framework speculatively.** Extract the core lib when a SECOND mod
 actually exists (same discipline as "ERR is the dev install, not the target boundary"). Until
 then, the only action is keeping the `overlay_api`/render-DLL boundary clean.
+
+**Related decision — embedded scripting API: `scripting_api_roi_note.md` (2026-07-02, NOT YET).**
+Moving feature logic C++→scripts was assessed and deferred: enormous binding surface, hot paths +
+the feature core stay C++, it doesn't touch the RE bottleneck, and it's speculative by this same
+discipline. The near-term win instead = a **data-driven category/filter descriptor** + host-reload
+improvements (see that note).
