@@ -223,6 +223,14 @@ namespace goblin
         // [MENUOPEN-DIAG]. Read-only. See goblin_worldmap_probe.cpp menu_open_diag.
         extern GOBLIN_RENDER_API bool debugMenuCoverDiag;
 
+        // Dev discovery dump (overlay z-order Task B — the native map CLIP rect): while
+        // the world map is open, dump candidate f32 rects from the live structs (virtual
+        // UI canvas, WorldMapDialog, WorldMapArea view, WorldMapViewModel) as [MAPCLIP],
+        // re-dumping whenever the backbuffer resolution changes. A value that SCALES with
+        // the backbuffer is the native screen scissor; constant = virtual-canvas/marker
+        // space. Read-only. See goblin_worldmap_probe.cpp map_clip_diag.
+        extern GOBLIN_RENDER_API bool debugMapClipDiag;
+
         // Dev prototype: draw overlay-rendered marker dots projected onto the open
         // world map (verifies the world->screen affine). See goblin_overlay.cpp +
         // goblin_worldmap_probe::get_live_view.

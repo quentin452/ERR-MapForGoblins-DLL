@@ -1606,7 +1606,8 @@ namespace
         // Mid-session resolution fix + diagnostic. Run every frame (the fix self-skips
         // when the dims already match) because NOT all resolution changes fire
         // ResizeBuffers — a per-frame enforcer catches the paths the resize hook misses.
-        if (goblin::config::fixMidsessionResolution || goblin::config::debugRenderDims)
+        if (goblin::config::fixMidsessionResolution || goblin::config::debugRenderDims ||
+            goblin::config::debugMapClipDiag)
         {
             DXGI_SWAP_CHAIN_DESC d{};
             swapchain->GetDesc(&d);
@@ -1621,6 +1622,12 @@ namespace
                     goblin::worldmap_probe::dump_render_dims(static_cast<float>(bbW),
                                                              static_cast<float>(bbH));
             }
+            // Task B: hunt the native map clip rect. Dump candidate struct rects while the map is
+            // open, re-dumping when the resolution changes (map_clip_diag self-throttles to one dump
+            // per distinct backbuffer size — the res-swap discriminator).
+            if (goblin::config::debugMapClipDiag && map_open_now)
+                goblin::worldmap_probe::map_clip_diag(static_cast<float>(bbW),
+                                                      static_cast<float>(bbH));
         }
 
         // The overlay IS the map (native injection removed) → always draw overlay markers over

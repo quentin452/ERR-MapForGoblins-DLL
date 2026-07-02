@@ -162,6 +162,13 @@ namespace goblin::worldmap_probe
     // (RPM-guarded). Gated by config debug_render_dims; call throttled.
     void dump_render_dims(float bbW, float bbH);
 
+    // DIAG (overlay z-order Task B — native map CLIP rect): while the map is open, dump candidate
+    // f32 rects from the live structs (virtual UI canvas, WorldMapDialog, WorldMapArea view,
+    // WorldMapViewModel) as [MAPCLIP], ONE-SHOT per backbuffer resolution — re-dumping on a
+    // resolution change is the discriminator (native screen scissor scales with bb; virtual-canvas
+    // / marker-space rects don't). Read-only. Gated by config debug_map_clip_diag; render thread.
+    void map_clip_diag(float bbW, float bbH);
+
     // No-restart fix for mid-session resolution / display-mode changes: edge-triggered
     // call to ER's complete swapchain re-apply (FUN_1419ed440 — release+ResizeBuffers+
     // recreate all render targets), fixing windowed/fullscreen/borderless. Render-thread

@@ -48,12 +48,36 @@ reads 0 on the bare open map, so it can't be confused with "map is up".
   `clip_game_ui && menu_covers_map()` — right after the map-closed `get_live_view` early-return, before
   any `PushClipRect`. No view-delay reset (map still open underneath → resumes smoothly on close).
 
-### Validation status
+### Validation status — DONE (2026-07-03, live)
 - ≥4 cycles + zero bare-map false-positives: **met** (fast-travel confirm dialog).
-- ≥2 distinct covering menus: **PENDING live re-check** via the new `menucover=` status field (confirm
-  it also flips for the marker-placement dialog / region list, not just the warp prompt). `+0x104` is a
-  CSMenuMan-level field (not on the WorldMapDialog), so it is expected to be a generic "a dialog is
-  stacked over the current screen" flag.
+- ≥2 distinct covering menus: **CONFIRMED live** — `menucover=` flips `0→1` for multiple covering
+  menus (not just the warp prompt), and markers visibly disappear under the covering menu. `+0x104`
+  is a CSMenuMan-level field, so it behaves as the generic "a dialog is stacked over the current
+  screen" flag as expected. **Task A complete.**
 
-## TASK B — clip to ER's native map clip rect — NOT STARTED
-See the prompt doc. Sequenced after A.
+## TASK B — clip to ER's native map clip rect — IN PROGRESS (B1 instrument built 2026-07-03)
+
+Current manual clipping (what B replaces), all in `map_renderer.cpp`:
+1. **Canvas clip** (`s_canvas_min/max`, ~L1815) — the engine's static full-map rect `view+0x350`
+   (map-ART extent, MARKER space) projected through OUR delayed view. Kills icons on the void past
+   the map edge, but it's content-extent not the screen viewport, rides our affine + delayed view.
+2. **Static ERR dial exclusion** (`in_game_ui_exclusion`, ~L1036) — hardcoded disc (1815,1000) r240
+   + time pill, ERR-only magic numbers. Not mod-agnostic.
+3. **User-drawn exclusion rects** (`ui_exclusion_rects`) — manual per-install rectangles.
+
+**Goal:** ER's own screen-space map clip/scissor → pixel-identical native clip, retires 2+3.
+
+**B1 — struct rect-dump (BUILT, not yet run):** `map_clip_diag(bbW,bbH)` (probe), gated by ini
+`[Debug] debug_map_clip_diag`, called from `hk_present` while the map is open. Dumps every plausible
+f32 rect (finite, `(0,8192]`) from the candidate live structs — the virtual UI canvas singleton
+(`[slot]+0x128`, +0x100..0x1C0), the WorldMapDialog (+0xA00.., +0x2B60..), the WorldMapArea view
+(+0x300..0x400), and the WorldMapViewModel (+0x0..0x120) — as `[MAPCLIP]`, ONE-SHOT per backbuffer
+resolution. **Run recipe:** open the map, then change the game resolution in-game → two `[MAPCLIP]`
+dumps; a value that SCALES with the backbuffer is the native screen scissor, a constant is
+virtual-canvas (1920×1080) or marker space. Known non-answers: `view+0x340..0x34c` (cursor/snap
+bounds), `+0x350` (map-art extent) — both marker space.
+
+**B2 — command-list scissor sampler (if B1 empty):** we already hook `ExecuteCommandLists` +
+capture the command queue (`goblin_overlay.cpp`); a `RSSetScissorRects`/`RSSetViewports` observer
+on the map-layer draw is the fallback when the clip isn't parked on a struct. **B3** = Ghidra on the
+Scaleform `02_120_worldmap.gfx` movie clip. Not started.
