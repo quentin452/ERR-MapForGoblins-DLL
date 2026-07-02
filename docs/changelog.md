@@ -35,6 +35,14 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   everywhere else — randomizer players flip that one key.
 
 ### Added
+- **Dev-only overlay hot reload (split build).** With `GOBLIN_OVERLAY_HOTRELOAD=ON` the overlay
+  draw layer builds as a separate `goblin_overlay_render.dll` that the host watches and live-swaps
+  on rebuild (`FreeLibrary`/`LoadLibrary` between frames, markers rebuilt automatically) — iterate
+  on overlay rendering without restarting the game. Includes the /MT cross-DLL heap unification
+  (render's `operator new/delete` + ImGui allocations routed to the host heap) that the split build
+  needed for correctness. Shipped single-DLL builds are unaffected (option OFF = byte-identical
+  path). Windows in-game validation pending; detail in
+  `docs/plans/overlay_hot_reload_playwright_plan.md`.
 - **Per-marker native landmark glyphs** — every landmark marker now draws the game's OWN map glyph
   for its exact site (each `WorldMapPointParam` row's iconId → `MENU_MAP_<NN>`): catacomb/cave/tunnel
   icons for Dungeons, each legacy dungeon's bespoke icon, church/ruin/fort/village icons for the

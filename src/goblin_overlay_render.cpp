@@ -2088,23 +2088,40 @@ namespace
 // Host→render direction: stable-name extern "C" exports so the host can resolve these via
 // GetProcAddress (not ordinary dllimport — Slice D reloads this module, so the host must be able
 // to re-resolve these by name after a fresh LoadLibrary, which a load-time-bound import can't do).
-// ImGui::SetCurrentContext() first because both DLLs statically link their own copy of imgui
-// (separate global state per DLL) — see OverlayFrameCtx::imgui_ctx.
+// Both DLLs statically link their own copy of imgui (separate global state per DLL), so before the
+// real draw call each trampoline (a) points this module's imgui at the HOST's allocator triple —
+// once per module load; the static resets on every hot reload — because imgui allocates via malloc
+// wrappers (per-DLL CRT heap under /MT, NOT covered by goblin_render_new_override.cpp's operator-
+// new routing) and render-side draws grow buffers the host later frees; and (b) sets the host's
+// ImGuiContext current — see OverlayFrameCtx::imgui_ctx/imgui_alloc_fn.
+namespace
+{
+    void apply_imgui_bindings(const goblin::overlay::OverlayFrameCtx *ctx)
+    {
+        static bool s_alloc_applied = false;
+        if (!s_alloc_applied && ctx->imgui_alloc_fn && ctx->imgui_free_fn)
+        {
+            ImGui::SetAllocatorFunctions(ctx->imgui_alloc_fn, ctx->imgui_free_fn, ctx->imgui_alloc_ud);
+            s_alloc_applied = true;
+        }
+        ImGui::SetCurrentContext(ctx->imgui_ctx);
+    }
+}
 extern "C"
 {
     __declspec(dllexport) void MFG_DrawPanel(const goblin::overlay::OverlayFrameCtx *ctx)
     {
-        ImGui::SetCurrentContext(ctx->imgui_ctx);
+        apply_imgui_bindings(ctx);
         goblin::overlay::draw_panel(*ctx);
     }
     __declspec(dllexport) void MFG_DrawWorldmapMarkers(bool menu_open, const goblin::overlay::OverlayFrameCtx *ctx)
     {
-        ImGui::SetCurrentContext(ctx->imgui_ctx);
+        apply_imgui_bindings(ctx);
         goblin::overlay::draw_worldmap_markers(menu_open, *ctx);
     }
     __declspec(dllexport) void MFG_DrawMinimapHud(const goblin::overlay::OverlayFrameCtx *ctx)
     {
-        ImGui::SetCurrentContext(ctx->imgui_ctx);
+        apply_imgui_bindings(ctx);
         goblin::overlay::draw_minimap_hud(*ctx);
     }
 }

@@ -3486,6 +3486,9 @@ void prebuild_markers()
     ensure_buckets();
 }
 
+// Slice D reload gate (MFG_RenderIdle below): true while the detached disk-build worker is running.
+bool disk_build_running() { return g_disk_running.load(std::memory_order_acquire); }
+
 // Force a fresh bucket build so a config change that affects bucket CONTENT (e.g.
 // stackIdenticalItems) takes effect without a map reload. Disk source only — the bake path builds
 // via call_once and can't re-run; that's fine, the disk source is the live one. Thread-safe against
@@ -3645,5 +3648,10 @@ extern "C"
 {
     __declspec(dllexport) void MFG_PrebuildMarkers() { goblin::worldmap::prebuild_markers(); }
     __declspec(dllexport) void MFG_RefreshOverlayCensus() { goblin::worldmap::refresh_overlay_census(); }
+    // Slice D reload gate: the disk-loot build runs on a DETACHED worker thread inside THIS module —
+    // FreeLibrary while it runs would rip code out from under it. 1 = no worker active. (The worker
+    // stores g_disk_running=false a few instructions before actually leaving render code; the
+    // loader additionally defers the old module's FreeLibrary by one reload to cover that tail.)
+    __declspec(dllexport) int MFG_RenderIdle() { return goblin::worldmap::disk_build_running() ? 0 : 1; }
 }
 #endif

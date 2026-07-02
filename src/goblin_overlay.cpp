@@ -1286,6 +1286,11 @@ namespace
                 goblin::bench::Registry::instance().record("present.frame_wall", ms);
         }
 
+        // Slice D: consume a pending render-DLL swap between frames, before any render-side code
+        // runs this frame (present thread = the only thread that calls the draw functions, so no
+        // draw can be mid-flight here). No-op in the default single-DLL build.
+        goblin::overlay_render_loader::maybe_reload();
+
         if (!g_imgui_init)
         {
             if (!init_imgui(swapchain))
@@ -1752,6 +1757,13 @@ namespace
             // MouseDrawCursor=true leaked it into gameplay; and with the world map open ER already
             // draws its own cursor → don't double it.)
             ImGui::GetIO().MouseDrawCursor = g_show && !goblin::world_map_open();
+            // Slice D: hand the render module our imgui allocator triple alongside the context —
+            // render-side draws grow buffers inside this host-owned context, and under /MT each
+            // DLL's default imgui allocator is a different CRT heap (see OverlayFrameCtx docs).
+            ImGuiMemAllocFunc im_alloc = nullptr;
+            ImGuiMemFreeFunc im_free = nullptr;
+            void *im_alloc_ud = nullptr;
+            ImGui::GetAllocatorFunctions(&im_alloc, &im_free, &im_alloc_ud);
             const OverlayFrameCtx frame_ctx{
                 g_atlas_ready ? reinterpret_cast<void *>(g_atlas_gpu.ptr) : nullptr,
                 g_hwnd,
@@ -1761,6 +1773,9 @@ namespace
                 &g_gamepad_combo_reject_reason,
                 &g_item_icon_srvs,
                 ImGui::GetCurrentContext(),
+                im_alloc,
+                im_free,
+                im_alloc_ud,
             };
             if (g_show)
                 goblin::overlay_render_loader::call_draw_panel(frame_ctx);
