@@ -130,10 +130,14 @@ via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (sp
    knob. NOT visually reached: UG/DLC/Chapel pages — Deeproot etc. are "non découvert" on the test save
    so locate clamps (F2 behavior) and the underground page isn't accessible; those exercise the
    UNCHANGED baked-projection fallback code (Phase 3 removed only the toggle, not the fallback math →
-   ~nil regression risk). **NEXT: (b) minor tidies: [Goblin] diag-key relocation + the
-   stray dev widgets (Baked-only, Icon-migration Baked→GPU section, 4 cluster DEBUG checkboxes — all
-   still in the main panel, confirmed present this run) → dev panel area.** All 8 ⚠FLAGs
-   resolved (see plan). Original raw notes below:
+   ~nil regression risk). **(b) Panel dev-widget moves DONE + in-game verified (2026-07-02, commit
+   1eb81cf):** Baked-only + 4 cluster DEBUG checkboxes gated behind `debug_logging`, Icon-migration
+   census behind `dump_icon_textures` — with debug_logging=false all vanish from the default panel
+   (panel-only, no schema/ini churn). Gotcha logged: RPC `set debug_logging` doesn't live-update the
+   gate; test via ini + restart. **STILL OPEN (deferred by the plan, brace-risk > value): the `[Goblin]`
+   diag-key INI relocation** (move the 5 `diag_*` + `debug_logging` + `baked_only` keys out of `[Goblin]`
+   into `[Debug]` in the schema) — the Phase-0 migration will move their values for free when done.
+   All 8 ⚠FLAGs resolved (see plan). Original raw notes below:
    The F1 panel + ini carry many
    dev-era knobs (diag_*, debug_*, baked-only, locate-debug, sprite calib offsets…) AND — the
    user's key point — sliders whose values are now FINAL CALIBRATION, not preferences:

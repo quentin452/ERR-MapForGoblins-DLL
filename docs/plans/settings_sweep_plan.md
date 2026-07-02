@@ -37,8 +37,14 @@ ERR/Proton).** Author 2026-07-02.
 - **[Goblin] diag-key relocation** — move the 5 `diag_*` + `debug_logging` (+ the `baked_only` DIAG)
   out of `[Goblin]` into `[Debug]`. Deferred: non-contiguous in the schema, self-labeled already,
   brace-risk > value. The Phase-0 migration will move their values for free when done.
-- **Panel dev-widget moves** — the "Baked-only (diag)" checkbox in General settings + the 4 `DEBUG:`
-  checkboxes inline in Clustering should move to a dev-gated panel area (cosmetic, panel-only).
+- **Panel dev-widget moves — DONE + IN-GAME VERIFIED (2026-07-02, commit 1eb81cf).** "Baked-only
+  (diag)" (General) + the 4 `DEBUG:` cluster-viz checkboxes (Clustering) gated behind `debug_logging`
+  (same pattern as "Locate debug (dev)"); the "Icon migration (Baked→GPU)" census header gated behind
+  `dump_icon_textures` (matches its P2b/sprites/grace-debug siblings). Verified: with `debug_logging=false`
+  all three vanish from the default panel; devs flip Verbose logging / dump-icons to reveal. Panel-only,
+  no config/schema/ini churn. NB found on the way: RPC `set debug_logging <v>` echoes ok but does NOT
+  live-update the panel gate (the pre-existing "Locate debug (dev)" stayed shown) — flip via the ini +
+  restart to test debug_logging-gated UI, not via RPC.
 - **Phase 3 structural deletes — DONE 2026-07-02** (commits 369b619 + 360e3ab; in-game verify
   pending). Grace atlas fully removed; live-projection knob removed but the baked projection FALLBACK
   is kept (load-bearing for unplaced areas — see Phase 3 note at top).
