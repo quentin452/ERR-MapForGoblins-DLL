@@ -231,7 +231,11 @@ if(GOBLIN_OVERLAY_HOTRELOAD)
     src/generated_shared/goblin_overlay_icons.cpp)
   add_library( goblin_overlay_render SHARED
     ${GOBLIN_RENDER_SOURCES}
-    ${GOBLIN_RENDER_DATA_SOURCES})
+    ${GOBLIN_RENDER_DATA_SOURCES}
+    # Slice D heap unification: render's global operator new/delete forward to the host's heap
+    # (MFG_HostAlloc/MFG_HostFree) — render-ONLY source, must never be in the host or single-DLL
+    # build. See the file's header comment for the /MT cross-heap rationale.
+    src/goblin_render_new_override.cpp)
   add_library( MapForGoblins SHARED
     ${GOBLIN_HOST_SOURCES})
   add_dependencies(goblin_overlay_render MapForGoblins) # host (+ its import .lib) must exist first

@@ -16,7 +16,18 @@ namespace goblin::overlay_render_loader
     // One-time LoadLibrary(goblin_overlay_render.dll) + GetProcAddress for every export below.
     // No-op returning true in the default single-DLL build. Called once from
     // goblin::overlay::initialize(); false → caller sets g_failed (mod disables gracefully).
+    // Slice D: loads a per-generation COPY (goblin_overlay_render.hot<N>.dll — Windows locks a
+    // loaded module's file, so loading the original would break the first rebuild) and arms a
+    // 500ms file-watcher thread that flags a reload when a newly-linked DLL appears.
     bool load();
+
+    // Slice D: consume a watcher-flagged render-DLL swap. Present-thread only, called at the top of
+    // hk_present (between frames). Gates on the old module's disk-build worker being idle
+    // (MFG_RenderIdle), swaps under the same SRW lock the call_*() below hold shared, re-runs the
+    // new module's prebuild_markers/refresh_overlay_census (fresh statics), and defers the old
+    // module's FreeLibrary by one reload (grace for the worker thread's post-idle tail). No-op in
+    // the default single-DLL build and when nothing is pending.
+    void maybe_reload();
 
     void call_draw_panel(const goblin::overlay::OverlayFrameCtx &ctx);
     void call_draw_worldmap_markers(bool menu_open, const goblin::overlay::OverlayFrameCtx &ctx);

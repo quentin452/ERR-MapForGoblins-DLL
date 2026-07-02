@@ -13,37 +13,37 @@ Kept: genuinely live/in-progress work, open questions, and standing knowledge (g
 decisions, non-obvious facts) not fully captured anywhere else. If you're looking for the history of
 something not below, check `docs/changelog.md` first, then the relevant `docs/plans/*.md`.
 
-Last updated: 2026-07-02 (SINGLE-DLL migration: per-profile builds retired, ERR runtime-detected;
-+ the 9 native-pin parity landmark categories in-game verified — see below).
+Last updated: 2026-07-02 (hot-reload Slice D implemented on `feat/overlay-hotreload-slice-d` —
+see RESUME HERE; also: SINGLE-DLL migration + the 9 native-pin parity landmark categories in-game
+verified, see below).
 
-## RESUME HERE (2026-07-01z10) — overlay_hot_reload_playwright_plan Slice C fully implemented, not yet merged/in-game-confirmed for the split build
+## RESUME HERE (2026-07-02) — hot-reload Slice D IMPLEMENTED (`feat/overlay-hotreload-slice-d`), Windows in-game validation next
 
-`feat/overlay-loadlibrary-mechanism` (off `master`, 1 commit): the real two-DLL split
-(`GOBLIN_OVERLAY_HOTRELOAD=ON`) now builds AND links clean (`build-linux-hotreload/`
-`MapForGoblins.dll` + `goblin_overlay_render.dll` both produced), alongside the unchanged default
-single-DLL build (`build-linux/`, in-game confirmed clean — SIG 29/29, grace SRVs, `render.minimap`
-firing, no crash, all the new macro plumbing inert there as designed).
+Slice C was already merged to `master` (`af6baf7`, part of the `ed0a0e9` merge — the old "not yet
+merged" note here was stale). Slice D (file-watcher + actual FreeLibrary/LoadLibrary reload cycle)
+is now IMPLEMENTED on `feat/overlay-hotreload-slice-d` and build-verified on Linux (both configs
+link clean; all exports verified). Full design + audit detail in
+`docs/plans/overlay_hot_reload_playwright_plan.md` (Slice D section). Highlights:
 
-New: `src/goblin_dll_export.hpp` (`GOBLIN_RENDER_API` macro), `src/goblin_overlay_render_loader.{hpp,cpp}`
-(consolidates every host→render call — not just the 3 draw functions; the real link surfaced 3
-more: `prebuild_markers`/`inworld_hovered`/`refresh_overlay_census` — via `extern "C"` +
-`GetProcAddress`, resolved once early in `dllmain.cpp`'s init sequence, idempotent).
+- **Reload cycle:** host-side 500ms watcher thread polls the built `goblin_overlay_render.dll`
+  (stable mtime+size + exclusive-open = linker done) → `maybe_reload()` at the top of `hk_present`
+  swaps between frames: copy to `goblin_overlay_render.hot<gen>.dll` (Windows locks loaded module
+  files — the FIRST load is a copy too), LoadLibrary + re-GetProcAddress, old module's FreeLibrary
+  deferred one reload (worker-tail grace), new module's `prebuild_markers` + census re-run (fresh
+  statics). SRW lock: shared in every loader `call_*`, exclusive during swap; detached disk-build
+  worker gated via new `MFG_RenderIdle` export; `loot_disk`'s `g_build_trigger` (the one host-held
+  render fn ptr) nulled before / re-registered after.
+- **Biggest audit finding — LATENT SLICE C BUG fixed wholesale:** /MT = per-DLL CRT heaps, and ~8
+  `overlay_api` functions pass std::string/vector across the boundary (by value / move / out-param)
+  = alloc one heap, free the other. Fix: `src/goblin_render_new_override.cpp` (render-target-only)
+  forwards the render DLL's global operator new/delete to host exports `MFG_HostAlloc/Free` — one
+  heap for all C++ allocations, whole surface safe by construction. ImGui allocates via malloc (not
+  new) → host allocator triple travels in `OverlayFrameCtx`, trampolines `SetAllocatorFunctions`
+  once per module load.
 
-**Two real corrections the actual link found, that BOTH prior audits missed:** (1) render calls
-more host functions than audited (`loot_disk.cpp`'s disk-loaders, `worldmap_probe::project`, and
-`goblin::ui::read_event_flag` called directly by a GENERATED file that can't be hand-edited); (2)
-raw `extern` DATA (`goblin::config::*`, `param_list_address`) can't be fixed by a wrapper
-FUNCTION — dllexport must be on the declaration the DEFINING `.cpp` sees, so
-`goblin_config.hpp`/`goblin_inject.hpp`/`loot_disk.hpp`/`goblin_worldmap_probe.hpp`/`from/params.hpp`
-got direct `GOBLIN_RENDER_API` annotations instead. Full detail + the general lesson ("link-time
-verification is the only reliable way to find the true cross-DLL surface — budget for this in
-Slice D too") in the plan doc.
-
-**Not yet done:** merge to `master`; in-game confirm of the split build's actual runtime behavior
-(Windows-only — this box is Linux, can cross-build both configs but can't run `LoadLibrary`
-against the real game to verify the render DLL actually loads/renders). Next session: merge, then
-either do the Windows in-game confirm or move straight to Slice D (file-watcher + real reload) —
-full detail in `docs/plans/overlay_hot_reload_playwright_plan.md`.
+**Not yet done:** merge to `master`; Windows in-game validation of the split build's ENTIRE runtime
+path (Slice C one-time load was never in-game tested either) + a several-reload soak (stresses the
+cross-heap fixes). Then Phase 3 (debug RPC incl. `reload_overlay`) per the plan doc.
 
 ## Clang-only Phase 1 — WINDOWS BUILD + SNAPSHOT VALIDATED (2026-07-02) → only the in-game matrix left
 
@@ -306,28 +306,6 @@ Gate". Default OFF.
    Golden Runes / Gloveworts), all-8-slots scan (notable item is in slot 2), ~70 markers, off by default.
    `WorldFarmableEnemy` DROPPED (floods, no boss filter). Tuning knobs (notable set / per-item icons /
    dedup granularity) documented in `docs/memory/features/mapgenie-landmark-categories.md`.
-
-## RESUME HERE (2026-07-01z9) — overlay_hot_reload_playwright_plan Slice C nearly done, only LoadLibrary mechanism left
-
-Phase 1 and Phase 2 Slices A + B are COMPLETE + MERGED. Slice C (the consolidated
-`goblin::overlay_api::*` wrapper layer covering ~110+ cross-DLL call sites — config/ui/
-worldmap_probe/markers/kindling/collected/debug_events/input/disk_loot/`native_item_icon` family
-— plus rewiring all 6 render-side files to use it) is DONE, IN-GAME CONFIRMED, MERGED. Full
-design/audit history + the "read the real declaration, don't guess from a name" lesson from
-several grep→compile-error→fix passes are in `docs/plans/overlay_hot_reload_playwright_plan.md`
-(don't re-derive any of it — audit is complete and correct as merged). One real merge conflict
-with the parallel name-aliases-runtime/data-purge session was hit and resolved along the way
-(their `lookup_name_alias_en_utf8` retirement in favor of `lookup_name_en_disk_utf8` collided with
-this session's wrapper rename — kept both, confirmed working in-game after).
-
-**Only remaining Slice C piece: the actual `LoadLibrary`/`GetProcAddress` vtable mechanism** for
-the host→render call direction (`draw_panel`/`draw_worldmap_markers`/`draw_minimap_hud`) — genuinely
-new work, not started: needs `extern "C"` stable-name exports for the 3 draw functions, a
-function-pointer table the host resolves at `LoadLibrary` time, the actual two-target CMake build
-when `GOBLIN_OVERLAY_HOTRELOAD=ON` (currently a scaffold that always builds one DLL), plus the
-ImGui-context-sharing/threading risks the plan already flags. Needs its own design pass before
-coding — full detail + the risk list in the plan doc's Slice C/Phase 2 sections. Then Slice D
-(file-watcher + real reload) can start.
 
 ## ⚠️ IN PROGRESS — baked-data → runtime/disk migration (build_pipeline.py deletion is the END state)
 

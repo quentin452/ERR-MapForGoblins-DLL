@@ -1,11 +1,11 @@
 # Overlay hot-reload + AI Playwright loop (plan)
 
-**Status:** Phase 1 + Phase 2 Slices A/B COMPLETE + MERGED to `master` (2026-07-01). Phase 2 Slice C
-(export-API layer + call-site rewiring + `native_item_icon` reverse wrapping + the real
-`LoadLibrary`/`GetProcAddress` mechanism) is fully IMPLEMENTED and build-verified end to end (both
-single-DLL and real two-DLL-split configs link clean) — not yet in-game confirmed for the split
-build specifically (Windows-only runtime behavior, dev box here is Linux) or merged. Slice D
-(file-watcher + actual reload) not started. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
+**Status:** Phase 1 + Phase 2 Slices A/B/C COMPLETE + MERGED to `master` (2026-07-02). Slice D
+(file-watcher + actual FreeLibrary/LoadLibrary reload cycle + the /MT cross-heap fixes the reload
+audit surfaced) is IMPLEMENTED and build-verified on `feat/overlay-hotreload-slice-d` (2026-07-02,
+both configs link clean, all exports verified present) — see the Slice D section below. NOT yet
+in-game confirmed: the whole split-build runtime path (Slice C's one-time load AND Slice D's live
+reload) is Windows-only validation work; the dev box is Linux (cross-builds only). Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
 render code while ERR keeps running (no full restart), paired with the already-proposed Route B
 debug RPC so an AI agent can script the REAL running game — screenshot, spot a DX or functional
 bug in the minimap/worldmap/icons overlay, fix the overlay source, hot-reload just that piece,
@@ -414,15 +414,69 @@ both modes; a `GOBLIN_OVERLAY_HOTRELOAD` build additionally needs it to `LoadLib
    Windows-only work — `LoadLibrary`/the real render DLL load — and this box is Linux-only;
    the default single-DLL build IS in-game confirmed, proving the macro plumbing is inert there).
    Deploying + confirming the split build live is a natural next step before or during Slice D.
-4. Slice D — file-watcher + actual hot reload.
-  - **ImGui context sharing across the DLL boundary.** Both DLLs must share the SAME `ImGuiContext*`
-    (`ImGui::SetCurrentContext` on entry to every cross-DLL call) and be built against the same
-    ImGui version/config (`IMGUI_USER_CONFIG`, static/shared CRT) or vtable layouts silently diverge.
-  - **D3D12 handle lifetime across reload.** Device/command-list/heap pointers stay live in the
-    host; only the draw code swaps, so this should be safe by construction — verify no handle is
-    accidentally captured as a `static` inside the render DLL.
-  - **Threading.** Reload must happen off the Present-hook thread (or gated with a lock) — never
-    `FreeLibrary` a module while its code is on the call stack.
+4. Slice D — file-watcher + actual hot reload. **IMPLEMENTED + build-verified (2026-07-02,
+   `feat/overlay-hotreload-slice-d`; both configs link clean, exports verified via the DLLs' export
+   strings). Windows in-game validation still open.** What the pre-implementation audit found and
+   how each risk landed:
+   - **/MT cross-heap corruption (the biggest finding — a LATENT SLICE C BUG, not just a Slice D
+     concern).** `/MT` (required for injection) gives each DLL its own CRT heap, and ~8
+     `overlay_api` functions pass `std::string`/`std::vector` across the boundary by value, by
+     move, or via out-param (`lookup_text_utf8`, `lookup_name_en_disk_utf8`, `mask_to_combo_string`,
+     `harvested_ids`, `grace_candidates`, `tpf_dds_at`'s out-vector,
+     `register_runtime_entries(std::move(...))`, `cfg_questProgress_ref`/`cfg_regionToggles_ref`
+     reallocation) — allocate on one heap, free on the other. Fixed WHOLESALE, not per-signature:
+     `src/goblin_render_new_override.cpp` (render-target-only source) overrides the render DLL's
+     global `operator new/delete` (all variants incl. aligned/nothrow/sized) to forward to host
+     exports `MFG_HostAlloc/MFG_HostFree(Aligned)` (defined in `goblin_overlay_render_loader.cpp`)
+     — ONE heap for every C++ allocation on both sides, the entire api surface safe by
+     construction, including allocations that outlive a reload. Audited-safe without changes:
+     `reject_reason->clear()` (no dealloc), `item_icon_srvs` (render read-only), `live_graces()`
+     (const ref).
+   - **ImGui allocations are NOT covered by the operator-new override** (imgui allocates via malloc
+     wrappers behind per-DLL `GImAllocator*` statics): render-side draws grow buffers inside the
+     HOST-owned context that the host later frees. Fixed: `OverlayFrameCtx` carries the host's
+     allocator triple (`ImGui::GetAllocatorFunctions`, filled per-frame in `hk_present`), and each
+     draw trampoline applies it once per module load via `apply_imgui_bindings()` (a per-module
+     static that naturally resets on every reload) before `SetCurrentContext`.
+   - **The detached disk-build worker** (`map_entry_layer.cpp`'s `start_build_worker`, ~0.7s of
+     render-DLL code on a thread the loader can't see) is THE FreeLibrary hazard. Three-layer fix:
+     (1) new render export `MFG_RenderIdle` (reads `g_disk_running`) gates the swap — not idle →
+     retry next frame; (2) re-checked under the exclusive lock (a `call_*` could slip in between
+     check and acquire); (3) the old module's `FreeLibrary` is DEFERRED by one reload
+     (`g_prev_module`) because the worker stores `g_disk_running=false` a few instructions before
+     actually leaving render code — identity-swap-now, free-later closes that tail race.
+   - **Host-held render function pointer** (`loot_disk`'s `g_build_trigger` →
+     `kick_disk_build`, the ONLY render→host callback registration, found by audit): nulled via
+     `set_build_trigger(nullptr)` before the swap, re-registered by the NEW module's
+     `prebuild_markers()` after it. (Tiny benign TOCTOU at the `if (g_build_trigger)` call site;
+     dir discovery is a one-shot early event, long past by any dev-reload time.)
+   - **Threading/locking:** all host→render calls already funnel through the loader's `call_*`
+     chokepoints → SRW lock, shared in every `call_*` (with a `thread_local` depth guard — SRW is
+     non-reentrant), exclusive only during the swap. The swap itself runs at the TOP of
+     `hk_present` between frames (present thread = the only draw-call thread, so no draw is ever
+     mid-flight); `inworld_hovered` (wndproc thread) and `refresh_overlay_census`
+     (section-visibility watcher thread) are fenced by the shared lock. Inside the reload, raw fn
+     pointers are used on purpose (a `call_*` would shared-acquire under the held exclusive =
+     self-deadlock).
+   - **File locking (why copies):** Windows locks a loaded module's file, so loading the built
+     `goblin_overlay_render.dll` directly would make the very FIRST rebuild fail to link. `load()`
+     and every reload copy it to `goblin_overlay_render.hot<gen>.dll` first and load the copy
+     (per-generation names — the current copy is itself locked); stale copies are deleted
+     best-effort at init. The watcher (500ms host-side poll thread) flags a reload only once the
+     source file's mtime+size differ from the loaded generation, are STABLE across two polls, AND
+     the file opens with sharing denied (linker done writing).
+   - **Fresh-statics re-init:** a reloaded module starts with empty marker buckets and an
+     unregistered build trigger — `maybe_reload()` ends by calling the new module's
+     `prebuild_markers()` (re-registers the trigger + kicks the rebuild) and
+     `refresh_overlay_census()`. Reload failure keeps the OLD module live (trigger re-registered,
+     pending flag cleared — the next successful rebuild re-arms via its new mtime).
+   - **D3D12 handle lifetime:** as predicted safe by construction — grep audit found no D3D12
+     handle captured as a render-side static (the SRV/sheet caches all live host-side per Slice B/C).
+   - **In-game validation (open, Windows-only):** deploy the split build, confirm Slice C's
+     one-time load, then the full live cycle: edit render source → rebuild ONLY
+     `goblin_overlay_render` → watch `[HOTRELOAD] render gen<N> live` → markers/panel redraw
+     correctly, no heap corruption over repeated reloads (the /MT fixes above are exactly what a
+     several-reload soak would stress).
 
 **Phase 3 — Route B debug RPC.**
 Named pipe or loopback socket, dev-only, behind the existing config-gate pattern. Commands:

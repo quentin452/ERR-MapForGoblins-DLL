@@ -57,6 +57,15 @@ namespace goblin::overlay
         ImGuiContext *imgui_ctx; // host's ImGui::CreateContext() result — each draw fn calls
                                  // ImGui::SetCurrentContext(ctx.imgui_ctx) first (Slice C: both DLLs
                                  // statically link their own copy of imgui, separate global state).
+        // Host's imgui allocator triple (ImGui::GetAllocatorFunctions). Slice D: /MT gives each DLL
+        // its own CRT heap, and imgui allocates via malloc wrappers (per-DLL GImAllocator* statics,
+        // NOT the render DLL's operator-new override) — render-side draw calls grow buffers inside
+        // the HOST-owned context, which the host later frees. The trampolines apply these once per
+        // module load (ImGui::SetAllocatorFunctions) so every imgui allocation lands on the host
+        // heap regardless of which DLL's imgui code performed it.
+        ImGuiMemAllocFunc imgui_alloc_fn = nullptr;
+        ImGuiMemFreeFunc imgui_free_fn = nullptr;
+        void *imgui_alloc_ud = nullptr;
     };
 
     // Host→render direction (NOT dllexport/dllimport — Slice C's real split resolves these via
