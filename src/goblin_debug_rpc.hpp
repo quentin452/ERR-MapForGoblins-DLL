@@ -17,7 +17,10 @@
 // presenting. One client at a time; line protocol, replies start "ok" or "err".
 //
 // Commands: ping | status | open_f1 <0|1|toggle> | set <ini_key> <value> | screenshot <path> |
-// reload_overlay.
+// reload_overlay | pause <0|1|toggle> (goblin_pause frame-step flip; also `paused=` in status —
+// lets a driver clear a pause before scripting; rendering/RPC keep running while paused). Input injection (listener-thread, SendInput — drives menus/save-load/map hover
+// for the Phase 4 loop): key <name> [hold_ms] | mouse_move <x> <y> | mouse_click [left|right]
+// [<x> <y>] — coordinates in game-window CLIENT pixels (same space as screenshots).
 
 struct IDXGISwapChain3;
 

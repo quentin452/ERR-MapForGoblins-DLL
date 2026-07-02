@@ -79,6 +79,20 @@ save-load command is the next unblocker for worldmap targets (F2 pan-clamp, hove
 Remaining nit: keyboard branch hard-says "F1" even if `overlay_toggle_key` is rebound (needs a
 reverse vk→name helper).
 
+**RPC input injection + in-game pause — IMPLEMENTED + IN-GAME VALIDATED (2026-07-02,
+`feat/rpc-input-injection`):** the loop's "can't load a save" constraint is CLOSED. RPC gained
+`key <name> [hold_ms]` / `mouse_move` / `mouse_click` (SendInput on the listener thread; **AZERTY
+gotcha: character keys must be sent VK-only, KEYEVENTF_SCANCODE makes letters vanish under Wine +
+non-QWERTY layout**) — full nav validated: title → Continue → in-world → Equipment via `key E` →
+**worldmap via `key M`** (this install's bind; vanilla-default G is not it) → `status map_open=1`.
+Plus backlog item 4 shipped: `goblin_pause` (elden_pause je-flip, sig `PAUSE_BRANCH`, 30/30 SIG
+clean), F1 checkbox + RPC `pause 0|1|toggle` + `paused=` in status — validated by screenshot diff
+(paused = 0 changed pixels over 3s vs ~4.8k running). The user's "stuck in pause when the game is
+backgrounded" mystery: most likely PauseTheGame.dll (reads its keybinds via GLOBAL
+GetAsyncKeyState → typing its pause key in ANOTHER app toggles pause) — now redundant with our
+pause; **recommend removing PauseTheGame.dll from the me3 profiles**. A driver clears any pause
+via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (spiderfy, F2).
+
 ## Clang-only Phase 1 — WINDOWS BUILD + SNAPSHOT VALIDATED (2026-07-02) → only the in-game matrix left
 
 `build.bat` is now ninja+clang-cl (no VS/msbuild; tool paths env-overridable, defaults = the

@@ -35,6 +35,11 @@ namespace goblin::overlay
     bool panel_open();
     void set_panel_open(bool open);
 
+    // The game window (host-owned g_hwnd as a void* HWND; null until the first hooked frame
+    // resolved it — this header stays windows.h-free). Debug-RPC input injection uses it for
+    // focus + client→screen coordinate mapping.
+    void *game_hwnd();
+
     // Phase 3 debug RPC `screenshot` (present-thread only): copy the CURRENT backbuffer (game +
     // overlay, pump runs after our draw is submitted on the same queue) to a 24-bit BMP at
     // path_utf8. False + err on failure (overlay not ready, unsupported format, GPU/file error).

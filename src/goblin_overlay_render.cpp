@@ -25,6 +25,7 @@
 #include <spdlog/spdlog.h>
 
 #include "goblin_inject.hpp"             // goblin::overlay_api::world_map_open()
+#include "goblin_pause.hpp"              // F1 "Pause the game" checkbox (host-resolved branch)
 #include "goblin_markers.hpp"            // goblin::overlay_api::markers_set_event_flag()
 #include "goblin_worldmap_probe.hpp"     // get_live_view() for the marker prototype
 #include "goblin_map_data.hpp"           // generated::MAP_ENTRIES / Category
@@ -488,6 +489,15 @@ namespace
             if (settings_filtering && s_settings_hits == 0)
                 ImGui::TextDisabled("no setting matches \"%s\" — clear the box to show all", settings_q);
             ImGui::Separator();
+
+            // In-game pause (dx-bugs-backlog item 4): flips the frame-step branch, world sim
+            // freezes, this panel stays fully usable. Hidden when the signature didn't resolve.
+            if (goblin::pause::available() && settings_match("pause game freeze stop world"))
+            {
+                bool paused = goblin::pause::paused();
+                if (ImGui::Checkbox("Pause the game (world sim freezes; menu stays usable)", &paused))
+                    goblin::pause::set_paused(paused);
+            }
 
             // P2b vertical slice: draw live-harvested item icons (copied GPU→GPU from the engine's
             // menu sheets). Open the inventory first to harvest, then check here. Dev-gated.

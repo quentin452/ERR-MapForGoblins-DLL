@@ -1,6 +1,8 @@
 #include "goblin_debug_rpc.hpp"
 
 #include "goblin_config.hpp"
+#include "goblin_inject.hpp"   // world_map_open() — status field for the driver's boot/nav loop
+#include "goblin_pause.hpp"    // pause command + paused= status (unfocused-window pause escape)
 #include "goblin_overlay.hpp"
 #include "goblin_overlay_render_loader.hpp"
 
@@ -48,6 +50,145 @@ namespace goblin::debug_rpc
             return tok;
         }
 
+        // ── Input-injection commands (Phase 4 unblocker: drive menus / load a save / hover the
+        // map from the driver). These run on the LISTENER thread, not the present-thread pump:
+        // SendInput is thread-agnostic OS-queue injection, touches no overlay/game state, and a
+        // key-hold Sleep() on the present thread would hitch frames. Scancodes included because
+        // the game reads keyboard via raw input (legacy-message-only synthesis would be invisible
+        // to it); mouse moves via MOUSEEVENTF_ABSOLUTE rather than SetCursorPos so we don't feed
+        // our own hk_set_cursor_pos hook (which swallows recenter calls while the panel is open).
+
+        bool ensure_game_foreground()
+        {
+            HWND hwnd = static_cast<HWND>(goblin::overlay::game_hwnd());
+            if (!hwnd) return false;
+            if (GetForegroundWindow() != hwnd) SetForegroundWindow(hwnd);
+            return true;
+        }
+
+        void send_vk(uint16_t vk, bool up)
+        {
+            INPUT in{};
+            in.type = INPUT_KEYBOARD;
+            in.ki.wVk = vk;
+            in.ki.wScan = static_cast<WORD>(MapVirtualKeyW(vk, MAPVK_VK_TO_VSC));
+            // Character keys go VK-only: with KEYEVENTF_SCANCODE set, letters never reached the
+            // game under Wine + a non-QWERTY host layout (Enter/Escape worked, E/G/Q didn't —
+            // observed live 2026-07-02); the scan→layout remap in Wine's injection path drops or
+            // mistranslates them. Non-char keys keep the scancode (that's what raw-input readers
+            // want, and their scancodes are layout-independent).
+            const bool char_key = (vk >= 'A' && vk <= 'Z') || (vk >= '0' && vk <= '9');
+            in.ki.dwFlags = (up ? KEYEVENTF_KEYUP : 0u) |
+                            ((!char_key && in.ki.wScan) ? KEYEVENTF_SCANCODE : 0u);
+            // Extended keys (arrows, Ins/Del/Home/End/PgUp/PgDn) need the flag or they alias the
+            // numpad scancodes.
+            switch (vk)
+            {
+            case VK_LEFT: case VK_RIGHT: case VK_UP: case VK_DOWN:
+            case VK_INSERT: case VK_DELETE: case VK_HOME: case VK_END:
+            case VK_PRIOR: case VK_NEXT:
+                in.ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
+                break;
+            default: break;
+            }
+            SendInput(1, &in, sizeof(in));
+        }
+
+        bool client_to_abs(int cx, int cy, LONG &ax, LONG &ay)
+        {
+            HWND hwnd = static_cast<HWND>(goblin::overlay::game_hwnd());
+            if (!hwnd) return false;
+            POINT p{cx, cy};
+            ClientToScreen(hwnd, &p);
+            int vx = GetSystemMetrics(SM_XVIRTUALSCREEN), vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+            int vw = GetSystemMetrics(SM_CXVIRTUALSCREEN), vh = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+            if (vw <= 0 || vh <= 0) return false;
+            ax = static_cast<LONG>((p.x - vx) * 65535.0 / (vw - 1));
+            ay = static_cast<LONG>((p.y - vy) * 65535.0 / (vh - 1));
+            return true;
+        }
+
+        void send_mouse_abs(LONG ax, LONG ay, DWORD extra_flags)
+        {
+            INPUT in{};
+            in.type = INPUT_MOUSE;
+            in.mi.dx = ax;
+            in.mi.dy = ay;
+            in.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK | extra_flags;
+            SendInput(1, &in, sizeof(in));
+        }
+
+        // key <name> [hold_ms] | mouse_move <cx> <cy> | mouse_click [left|right] [<cx> <cy>]
+        // Coordinates are CLIENT pixels of the game window (same space as screenshots).
+        std::string execute_input(const std::string &cmd, std::string rest)
+        {
+            if (!ensure_game_foreground()) return "err game window not resolved yet";
+            if (cmd == "key")
+            {
+                std::string name = next_token(rest), hold = next_token(rest);
+                if (name.empty()) return "err usage: key <name> [hold_ms]";
+                uint32_t vk = goblin::parse_vk_code(name);
+                if (!vk) return "err unknown key name: " + name;
+                int hold_ms = 60;
+                if (!hold.empty())
+                {
+                    try { hold_ms = std::stoi(hold); } catch (...) { return "err bad hold_ms"; }
+                    if (hold_ms < 1 || hold_ms > 5000) return "err hold_ms out of range (1-5000)";
+                }
+                send_vk(static_cast<uint16_t>(vk), false);
+                Sleep(static_cast<DWORD>(hold_ms));
+                send_vk(static_cast<uint16_t>(vk), true);
+                return "ok key " + name;
+            }
+            if (cmd == "mouse_move")
+            {
+                std::string xs = next_token(rest), ys = next_token(rest);
+                int cx = 0, cy = 0;
+                try { cx = std::stoi(xs); cy = std::stoi(ys); }
+                catch (...) { return "err usage: mouse_move <client_x> <client_y>"; }
+                LONG ax = 0, ay = 0;
+                if (!client_to_abs(cx, cy, ax, ay)) return "err coordinate mapping failed";
+                send_mouse_abs(ax, ay, 0);
+                return "ok mouse_move";
+            }
+            if (cmd == "mouse_click")
+            {
+                std::string btn = next_token(rest);
+                bool right = btn == "right";
+                if (!btn.empty() && btn != "left" && btn != "right")
+                {
+                    // No button given → first token was the x coordinate.
+                    rest = btn + " " + rest;
+                    right = false;
+                }
+                std::string xs = next_token(rest), ys = next_token(rest);
+                if (!xs.empty())
+                {
+                    int cx = 0, cy = 0;
+                    try { cx = std::stoi(xs); cy = std::stoi(ys); }
+                    catch (...) { return "err usage: mouse_click [left|right] [<x> <y>]"; }
+                    LONG ax = 0, ay = 0;
+                    if (!client_to_abs(cx, cy, ax, ay)) return "err coordinate mapping failed";
+                    send_mouse_abs(ax, ay, 0);
+                    Sleep(30);
+                }
+                INPUT in{};
+                in.type = INPUT_MOUSE;
+                in.mi.dwFlags = right ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_LEFTDOWN;
+                SendInput(1, &in, sizeof(in));
+                Sleep(40);
+                in.mi.dwFlags = right ? MOUSEEVENTF_RIGHTUP : MOUSEEVENTF_LEFTUP;
+                SendInput(1, &in, sizeof(in));
+                return "ok mouse_click";
+            }
+            return "err not an input command";  // unreachable via dispatch below
+        }
+
+        bool is_input_command(const std::string &cmd)
+        {
+            return cmd == "key" || cmd == "mouse_move" || cmd == "mouse_click";
+        }
+
         // Present thread. Every handler here may touch overlay/config state freely — pump() is
         // called from hk_present, the same thread that owns that state.
         std::string execute(const std::string &line, IDXGISwapChain3 *swapchain)
@@ -67,7 +208,11 @@ namespace goblin::debug_rpc
                        " hotreload=" + std::to_string(hot ? 1 : 0) +
                        " gen=" + std::to_string(goblin::overlay_render_loader::render_generation()) +
                        " reload_pending=" +
-                       std::to_string(goblin::overlay_render_loader::reload_pending() ? 1 : 0);
+                       std::to_string(goblin::overlay_render_loader::reload_pending() ? 1 : 0) +
+                       " map_open=" + std::to_string(goblin::world_map_open() ? 1 : 0) +
+                       " paused=" + (goblin::pause::available()
+                                         ? std::to_string(goblin::pause::paused() ? 1 : 0)
+                                         : std::string("na"));
             }
             if (cmd == "open_f1")
             {
@@ -101,6 +246,20 @@ namespace goblin::debug_rpc
                 if (!goblin::overlay::screenshot_to_file(swapchain, path, err)) return "err " + err;
                 return "ok " + path;
             }
+            if (cmd == "pause")
+            {
+                if (!goblin::pause::available()) return "err pause branch not resolved (game update?)";
+                std::string arg = next_token(rest);
+                if (arg == "0")
+                    goblin::pause::set_paused(false);
+                else if (arg == "1")
+                    goblin::pause::set_paused(true);
+                else if (arg == "toggle" || arg.empty())
+                    goblin::pause::set_paused(!goblin::pause::paused());
+                else
+                    return "err pause takes 0|1|toggle";
+                return "ok paused=" + std::to_string(goblin::pause::paused() ? 1 : 0);
+            }
             if (cmd == "reload_overlay")
             {
                 if (!goblin::overlay_render_loader::request_reload())
@@ -128,6 +287,24 @@ namespace goblin::debug_rpc
                 buf.erase(0, nl + 1);
                 if (!line.empty() && line.back() == '\r') line.pop_back();
                 if (line.empty()) continue;
+
+                // Input-injection commands execute right here on the listener thread (see
+                // execute_input's rationale) — everything else marshals to the present thread.
+                {
+                    std::string peek = line, cmd = next_token(peek);
+                    if (is_input_command(cmd))
+                    {
+                        std::string reply = execute_input(cmd, peek) + "\n";
+                        size_t off = 0;
+                        while (off < reply.size())
+                        {
+                            int n = send(c, reply.c_str() + off, static_cast<int>(reply.size() - off), 0);
+                            if (n <= 0) return;
+                            off += n;
+                        }
+                        continue;
+                    }
+                }
 
                 auto p = std::make_shared<Pending>();
                 p->request = line;

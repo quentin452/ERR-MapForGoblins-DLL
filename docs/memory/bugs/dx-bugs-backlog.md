@@ -112,10 +112,20 @@ Backlog DX + bugs relevé par <user> le 2026-06-28 (à traiter plus tard, pas en
       peuvent interférer avec cette fenêtre ; fermer F1 avant dans ce cas.
 
    **Bug DX chez nous — F1 inaccessible à la manette** — impossible d'ouvrir les menus via F1 (équivalent manette). Donc impossible de jouer MapForGoblins end-to-end uniquement à la manette. → besoin d'un binding manette pour l'ouverture du menu.
-4. **Intégrer le mod "Pause in game" directement dans MapForGoblins** — une case en plus dans F1. Évite tout conflit de touche possible avec le mod externe.
-   **RE reference trouvée (<user>, 2026-07-01): https://github.com/iArtorias/elden_pause** —
-   implémentation externe existante d'un pause-in-game pour Elden Ring (AOB/hook approach à
-   étudier avant de coder le RE spike nous-mêmes; peut raccourcir/remplacer le spike RE demandé).
+4. ✅ **FIXED 2026-07-02** (`feat/rpc-input-injection`) — pause in-game intégré via la technique
+   elden_pause (AOB `PAUSE_BRANCH` dans `re_signatures.hpp`, flip du `je` frame-step 0F 84↔0F 85 =
+   pause/resume, le byte EST l'état donc lisible). `src/goblin_pause.{hpp,cpp}` (scan lazy,
+   tolérant au byte déjà flippé par un autre patcheur), case F1 "Pause the game" (cachée si la
+   sig ne résout pas), RPC `pause 0|1|toggle` + `paused=` dans status. **Validé quantitativement
+   en jeu** : monde figé = 0 pixel changé en 3s de screenshots, vivant = ~4.8k ; rendering + F1 +
+   RPC restent actifs pendant la pause. NB : `PauseTheGame.dll` (mod externe, MÊME byte patché,
+   touches lues via GetAsyncKeyState GLOBAL — peut toggler la pause pendant que le jeu est en
+   ARRIÈRE-PLAN quand on tape sa pause-key dans une autre app, cause probable du "bloqué en pause
+   unfocused" relevé par <user>) est maintenant redondant → à retirer du profil me3. Item 5
+   (auto-pause à l'ouverture F1) reste ouvert — trivial maintenant (un setting + 2 lignes).
+   *Original report:* Intégrer le mod "Pause in game" directement dans MapForGoblins — une case en
+   plus dans F1. Évite tout conflit de touche possible avec le mod externe. RE reference
+   (<user>, 2026-07-01): https://github.com/iArtorias/elden_pause.
 5. **Setting ImGui "pause à l'ouverture de F1"** — quand on ouvre F1 (manette ou clavier), proposer un setting pour choisir si le jeu se met en pause automatiquement à l'ouverture des settings MapForGoblins. Hypothèse DX : quand le menu F1 est ouvert on ne veut pas forcément jouer en même temps → peut-être meilleure DX qu'une simple case ImGui à long terme. Lié au point 4.
 6. ✅ **FIXED 2026-07-01** (`4ec2aa7`, PR C — code comment cite "Item 6") — recentrage du curseur
    sur la transition (re)open de la worldmap, via `o_set_cursor_pos` déjà hooké. Doc jamais croisée
