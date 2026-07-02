@@ -1538,6 +1538,56 @@ namespace
                 goblin::input::clip_cursor_real(&screen); // ORIGINAL ClipCursor (g_show already false here)
             }
         }
+        // Same falling edge, second dangling-state restore: with the world map open, ER edge-pans
+        // while the OS cursor sits at the window border — closing F1 with the cursor parked there
+        // (panel scrollbar at the screen edge, or an RPC mouse_move) leaves the map panning
+        // FOREVER until the mouse physically moves (user report 2026-07-02). Nudge the cursor
+        // inward, out of the edge-pan band, on a real close while the map is open. SetCursorPos
+        // alone holds for at most one frame here (the map re-warps the OS cursor onto its
+        // raw-input reticle — same finding as debug_rpc's move_cursor_client), so follow with a
+        // ±1px relative jiggle: a REAL mouse event makes the game adopt the position we just set.
+        if (s_prev_show && !g_show && fg && g_hwnd && goblin::world_map_open())
+        {
+            POINT cp{};
+            RECT rc;
+            if (goblin::input::get_cursor_pos_real(&cp) && GetClientRect(g_hwnd, &rc))
+            {
+                ScreenToClient(g_hwnd, &cp);
+                // Comfortably past the edge-pan band. Measured live (ERR 1920×1080, 2026-07-02):
+                // pan speed falls off with distance and only reaches zero ~150px from the border
+                // (64px was still well inside — the first fix attempt kept panning). Height-
+                // proportional so other resolutions keep the same headroom; skip degenerate
+                // (tiny/minimized) rects.
+                const LONG margin = std::max<LONG>(64, (rc.bottom - rc.top) / 6);
+                if (rc.right - rc.left > 2 * margin && rc.bottom - rc.top > 2 * margin)
+                {
+                    const LONG nx = std::clamp(cp.x, rc.left + margin, rc.right - 1 - margin);
+                    const LONG ny = std::clamp(cp.y, rc.top + margin, rc.bottom - 1 - margin);
+                    if (nx != cp.x || ny != cp.y)
+                    {
+                        POINT sp{nx, ny};
+                        ClientToScreen(g_hwnd, &sp);
+                        // Same guard as recenter_cursor_to_window: don't let our own synthetic
+                        // WM_MOUSEMOVE clear the "last input was gamepad" flag. (The jiggle's two
+                        // relative moves can still clear it — cosmetic at worst: the device-aware
+                        // close-hint re-flips on the next real pad input.)
+                        g_ignore_next_mousemove_for_gamepad_flag = true;
+                        goblin::input::set_cursor_pos_real(sp.x, sp.y);
+                        INPUT jig[2]{};
+                        jig[0].type = INPUT_MOUSE;
+                        jig[0].mi.dx = 1;
+                        jig[0].mi.dwFlags = MOUSEEVENTF_MOVE;
+                        jig[1].type = INPUT_MOUSE;
+                        jig[1].mi.dx = -1;
+                        jig[1].mi.dwFlags = MOUSEEVENTF_MOVE;
+                        SendInput(2, jig, sizeof(INPUT));
+                        spdlog::info("[OVERLAY] F1 close: cursor in map edge-pan band "
+                                     "({},{}) → nudged to ({},{})",
+                                     cp.x, cp.y, nx, ny);
+                    }
+                }
+            }
+        }
         s_prev_show = g_show;
 
         // Item 6: recenter the cursor on the world map's (re)open transition, so the ImGui cursor
