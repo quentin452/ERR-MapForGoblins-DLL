@@ -2038,6 +2038,7 @@ bool goblin::input::menu_open() { return g_show; }
 int goblin::input::nav_frames_active() { return g_nav_frames.load(std::memory_order_relaxed); }
 bool goblin::input::user_show() { return g_user_show; }
 void goblin::input::set_has_focus(bool v) { g_has_focus.store(v, std::memory_order_relaxed); }
+bool goblin::input::has_focus() { return g_has_focus.load(std::memory_order_relaxed); }
 bool goblin::input::last_input_was_gamepad() { return g_last_input_was_gamepad; }
 void goblin::input::set_last_input_was_gamepad(bool v) { g_last_input_was_gamepad = v; }
 int goblin::input::gamepad_active_streak() { return g_gamepad_active_streak; }

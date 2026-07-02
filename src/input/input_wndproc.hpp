@@ -19,5 +19,7 @@ void uninstall_wndproc_hook(HWND hwnd);
 // Diagnostic counters, read-and-reset by goblin_overlay.cpp's [KBDIAG]/[CLICKDIAG] dumps.
 unsigned diag_wm_char_exchange();
 unsigned diag_wm_keydown_exchange();
+// Monotonic WM_KEYDOWN/WM_SYSKEYDOWN arrival count (never reset) — RPC key-delivery verify.
+unsigned wm_keydown_total();
 unsigned diag_wndproc_lbdown_while_open_load();
 } // namespace goblin::input
