@@ -138,6 +138,12 @@ Backlog DX + bugs relevé par <user> le 2026-06-28 (à traiter plus tard, pas en
    `altitude_cue`/`altitude_deadzone`. Validated in-game (direction tracks player altitude). FOLLOW-UP:
    3 niche sources still drop posY (ReforgedRune/EmberPieces `bpos`, scarab/maps-pass `pos`, sibling-LOD
    `lit`) → those markers get no badge; thread if needed.
+   **FOLLOWUP 2026-07-02 (<user> question "les NPC ont leurs badges?"): NON — fixed
+   (`fix/npc-altitude-badge`).** Une 4e source droppait posY: les quest-NPC pins passent par
+   `entity_world_pos`/`g_entity_pos` qui ne stockait que X/Z. `EntityPos` gagne `wy` (rempli depuis
+   `DiskEnemy.posY`/`DiskCollectible.posY`), `entity_world_pos` a un out `worldY` optionnel, les 2
+   sites de pin (step-following + auto-detected) posent `m.worldY`. Build clean; vérif visuelle
+   in-game à faire (badge ▲/▼ sur un pin NPC à altitude ≠ joueur).
    **DX pour icône plus haut/bas que le joueur (axe Y)** — trouver une indication visuelle quand une icône sur la map est à un Y différent du joueur, pour que le joueur ne cherche pas au mauvais étage/altitude.
    **FOLLOWUP 2026-07-01, FIXED** (<user>: badge only updated on worldmap open, frozen on minimap) —
    `g_player_world_y`/`g_player_group` (`map_renderer.cpp:330-332`) were only refreshed inside

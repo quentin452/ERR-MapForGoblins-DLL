@@ -42,6 +42,9 @@ void refresh_overlay_census();
 // (not placed on the loaded map, or the worker hasn't built buckets yet). worldX/worldZ
 // are already projected (marker_world_pos), group is the overlay marker group
 // (marker_group_from) — both ready to assign onto a Marker directly, no extra
-// transform needed by the caller.
-bool entity_world_pos(uint32_t entity_id, float &worldX, float &worldZ, int &group);
+// transform needed by the caller. worldY (optional out) is the placement's BLOCK-LOCAL
+// MSB Y (Part+0x20[1], same frame as Marker.worldY) for the altitude badge — quest-NPC
+// pins had no badge because this path dropped Y (user report 2026-07-02).
+bool entity_world_pos(uint32_t entity_id, float &worldX, float &worldZ, int &group,
+                      float *worldY = nullptr);
 } // namespace goblin::worldmap
