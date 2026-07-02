@@ -219,10 +219,6 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
     {
         scale_control(tr("Master"), goblin::overlay_api::cfg_overlayMasterScale_ptr(), 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
         scale_control(tr("Category icons"), goblin::overlay_api::cfg_overlayIconScale_ptr(), 0.3f, 10.0f, 0.05f, 0.25f, "%.2f");
-        scale_control(tr("Grace icons (calib)"), goblin::overlay_api::cfg_graceIconScale_ptr(), 0.2f, 10.0f, 0.05f, 0.25f, "%.2f");
-        scale_control(tr("Grace offset X (native vs imgui)"), goblin::overlay_api::cfg_graceOffsetX_ptr(), -200.0f, 200.0f, 1.0f, 10.0f, "%.0f");
-        scale_control(tr("Grace offset Y (native vs imgui)"), goblin::overlay_api::cfg_graceOffsetY_ptr(), -200.0f, 200.0f, 1.0f, 10.0f, "%.0f");
-        scale_control(tr("Cluster piles"), goblin::overlay_api::cfg_overlayClusterScale_ptr(), 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
         scale_control(tr("Marker motion delay (frames)"), goblin::overlay_api::cfg_viewDelayFrames_ptr(), 0.0f, 7.0f, 0.1f, 0.5f, "%.1f");
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("%s", tr("Project markers this many present-frames behind the eased basemap.\n"
@@ -237,10 +233,6 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
         {
             (*goblin::overlay_api::cfg_overlayMasterScale_ptr()) = 1.0f;
             (*goblin::overlay_api::cfg_overlayIconScale_ptr()) = 1.2f;     // match the schema defaults
-            (*goblin::overlay_api::cfg_overlayClusterScale_ptr()) = 1.0f;
-            (*goblin::overlay_api::cfg_graceIconScale_ptr()) = 1.2f;
-            (*goblin::overlay_api::cfg_graceOffsetX_ptr()) = 0.0f;
-            (*goblin::overlay_api::cfg_graceOffsetY_ptr()) = 0.0f;
             (*goblin::overlay_api::cfg_viewDelayFrames_ptr()) = 1.0f;
             (*goblin::overlay_api::cfg_viewDelayZoom_ptr()) = true;
         }

@@ -258,16 +258,14 @@ namespace goblin
         extern GOBLIN_RENDER_API std::string probeFieldSpec;
 
         // Overlay marker sizes. Final = resolution-base × master × type-scale.
-        extern GOBLIN_RENDER_API float overlayMasterScale;   // all overlay markers + piles
-        extern GOBLIN_RENDER_API float overlayIconScale;     // category marker icons
-        extern GOBLIN_RENDER_API float overlayClusterScale;  // cluster pile glyphs
-        extern GOBLIN_RENDER_API float graceIconScale;       // grace markers only (calibration)
-        extern GOBLIN_RENDER_API float mapSymbolScale;       // native MENU_MAP_* map symbols (bosses etc)
+        extern GOBLIN_RENDER_API float overlayMasterScale;   // all overlay markers + piles (user pref)
+        extern GOBLIN_RENDER_API float overlayIconScale;     // category marker icons (user pref)
+        // Grace/symbol/cluster scale + grace px offset + altitude deadzone were dev-era calibration
+        // sliders — hardcoded final in map_renderer.cpp (kGraceIconScale/kMapSymbolScale/kClusterScale/
+        // kAltitudeDeadzone) by the settings sweep; grace offset dropped (was a no-op RE nudge).
         extern GOBLIN_RENDER_API bool  iconLegibility;       // DX item 1: clamp min icon size + dark backing disc for contrast
         extern GOBLIN_RENDER_API float iconMinHalfPx;        // min icon half-extent (px) when iconLegibility is on
         extern GOBLIN_RENDER_API bool  altitudeCue;          // DX item 7: ▲/▼ badge when a marker is above/below the player
-        extern GOBLIN_RENDER_API float altitudeDeadzone;     // world-Y diff (units) below which no badge is drawn
-        extern GOBLIN_RENDER_API float graceOffsetX, graceOffsetY;  // overlay grace draw px offset (native-vs-imgui compare)
         extern GOBLIN_RENDER_API float viewDelayFrames;      // marker motion-sync delay in present-frames (A/B the pan/zoom re-adjust)
         extern GOBLIN_RENDER_API bool  viewDelayZoom;        // motion-sync delay also delays zoom (off = live zoom, fixes wheel-step teleport)
 

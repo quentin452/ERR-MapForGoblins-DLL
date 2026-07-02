@@ -88,17 +88,13 @@ namespace goblin::config
     bool benchLogSession = true;
     bool probeFieldAccess = false;
     std::string probeFieldSpec = "";
-    float overlayMasterScale = 1.0f;   // master scale for all overlay markers + piles
-    float overlayIconScale = 1.2f;     // category marker icons (× master)
-    float overlayClusterScale = 1.0f;  // cluster pile glyphs (× master)
-    float graceIconScale = 1.2f;       // grace markers only (× icon scale) — calibration
-    float mapSymbolScale = 2.2f;       // native MENU_MAP_* map symbols (bosses etc) — bigger than item dots
+    float overlayMasterScale = 1.0f;   // master scale for all overlay markers + piles (user pref)
+    float overlayIconScale = 1.2f;     // category marker icons (× master) (user pref)
+    // cluster/grace/symbol scale + grace offset + altitude deadzone hardcoded final in
+    // map_renderer.cpp (settings sweep) — no longer config vars.
     bool  iconLegibility = true;       // DX item 1: clamp min icon size + dark backing disc for contrast
     float iconMinHalfPx = 8.0f;        // min icon half-extent (px) when iconLegibility is on
     bool  altitudeCue = true;          // DX item 7: ▲/▼ badge when a marker is above/below the player
-    float altitudeDeadzone = 5.0f;     // world-Y diff (units) below which no badge is drawn
-    float graceOffsetX = 0.0f;         // px offset of the overlay grace draw — native-vs-imgui compare
-    float graceOffsetY = 0.0f;
     float viewDelayFrames = 1.0f;      // marker motion-sync: project markers this many present-frames back to match the eased basemap
     bool  viewDelayZoom = true;        // also delay ZOOM (not just center) in the motion-sync; off = current zoom, fixes wheel-step teleport if zoom applies instantly
 
@@ -572,12 +568,6 @@ namespace
                   "Master scale for ALL overlay map markers + cluster piles (multiplies the\nper-type scales). 1.0 = default. A resolution-relative base size is applied\nfirst, then ×master×type. Editable live in the F1 menu; persists on Save."},
                 IniEntry{"overlay_icon_scale", IniType::F32, &cfg::overlayIconScale, "1.2",
                   "Scale for category marker ICONS (x master). 1.2 = default."},
-                IniEntry{"overlay_cluster_scale", IniType::F32, &cfg::overlayClusterScale, "1.0",
-                  "Scale for CLUSTER pile glyphs (x master). 1.0 = default."},
-                IniEntry{"grace_icon_scale", IniType::F32, &cfg::graceIconScale, "1.2",
-                  "Scale for GRACE markers only (x icon scale). 1.2 = default. For calibrating the\ngrace sprite size against the map. NOTE: grace size compounds with overlay_icon_scale."},
-                IniEntry{"map_symbol_scale", IniType::F32, &cfg::mapSymbolScale, "2.2",
-                  "Scale for native ER map symbols (MENU_MAP_*, e.g. bosses) drawn via the GPU\nmap-point path. Bigger than item dots since they're full map symbols. 2.2 = default."},
                 IniEntry{"icon_legibility", IniType::Bool, &cfg::iconLegibility, "true",
                   "Legibility pass for marker icons: clamp them to a minimum on-screen size and draw a\ndark backing disc behind each so small icons don't vanish into the map art. Set false\nto restore the raw icon draw."},
                 IniEntry{"icon_min_half_px", IniType::F32, &cfg::iconMinHalfPx, "8.0",
@@ -585,15 +575,6 @@ namespace
                   false, nullptr, 1.0f, 50.0f},
                 IniEntry{"altitude_cue", IniType::Bool, &cfg::altitudeCue, "true",
                   "Draw a small up/down triangle on a marker when it is well above / below the player's\naltitude, so you don't search the wrong floor. Set false to hide it."},
-                IniEntry{"altitude_deadzone", IniType::F32, &cfg::altitudeDeadzone, "5.0",
-                  "World-Y difference (game units) within which a marker counts as 'same level' and gets\nno altitude triangle. Raise it if badges appear on near-level markers. 5.0 = default.",
-                  false, nullptr, 0.0f, 100.0f},
-                IniEntry{"grace_offset_x", IniType::F32, &cfg::graceOffsetX, "0.0",
-                  "Pixel X offset of the overlay grace draw — set non-zero to shift the imgui grace\nbeside the game's NATIVE grace pin for side-by-side comparison/calibration.",
-                  false, nullptr, -500.0f, 500.0f},
-                IniEntry{"grace_offset_y", IniType::F32, &cfg::graceOffsetY, "0.0",
-                  "Pixel Y offset of the overlay grace draw (see grace_offset_x).",
-                  false, nullptr, -500.0f, 500.0f},
                 IniEntry{"view_delay_frames", IniType::F32, &cfg::viewDelayFrames, "1.0",
                   "Marker motion-sync: project overlay markers this many PRESENT-frames in the past so they\ntrack the engine's eased basemap during pan/zoom. 1.0 = default. Raise if markers LEAD the\nbasemap (snap back on stop); lower toward 0 if they TRAIL. A/B this to kill pan/zoom re-adjust.",
                   false, nullptr, 0.0f, 10.0f},

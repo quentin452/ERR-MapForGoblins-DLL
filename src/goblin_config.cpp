@@ -168,6 +168,25 @@ void goblin::ensure_ini(const std::filesystem::path &ini_path)
             consumed.insert({lsec, to_lower(e.rename_from)});
             return true;
         }
+        // Cross-section relocation: an ini key is globally unique (it's a config var), so if a
+        // key moved to a different section between versions (e.g. the calibration + minimap
+        // keys leaving [Debug]), find its OLD value wherever it still sits and adopt it — the
+        // old location is then consumed (not orphaned as a dead comment). Keeps a user's tuned
+        // value across a section reorg with no per-entry annotation. rename_from is honoured too.
+        for (const char *k : {e.key, e.rename_from})
+        {
+            if (!k) continue;
+            for (auto const &sec_pair : existing)
+            {
+                if (to_lower(sec_pair.first) == lsec) continue;  // already checked this section
+                if (existing[sec_pair.first].has(k))
+                {
+                    out = existing[sec_pair.first].get(k);
+                    consumed.insert({to_lower(sec_pair.first), to_lower(k)});
+                    return true;
+                }
+            }
+        }
         return false;
     };
 
@@ -240,21 +259,30 @@ void goblin::load_config(const std::filesystem::path &ini_path)
         return;
     }
 
+    // Find a key's value anywhere in the ini (keys are globally unique), for the case where
+    // ensure_ini could not rewrite the on-disk layout (read-only file) so a relocated key is
+    // still in its OLD section. Normally ensure_ini has already moved it into its new section.
+    auto find_anywhere = [&](const char *k, std::string &v) -> bool {
+        if (!k) return false;
+        for (auto const &sp : ini)
+            if (ini[sp.first].has(k)) { v = ini[sp.first].get(k); return true; }
+        return false;
+    };
+
     const bool include_err = err_features_enabled();
     for (auto const &sec : ini_schema())
     {
         if (sec.err_only && !include_err) continue;
-        if (!ini.has(sec.name)) continue;
-        auto &cfg = ini[sec.name];
+        const bool has_sec = ini.has(sec.name);
         for (auto const &e : sec.entries)
         {
             if (e.err_only && !include_err) continue;
             std::string v;
-            if (cfg.has(e.key))
-                v = cfg.get(e.key);
-            else if (e.rename_from && cfg.has(e.rename_from))
-                v = cfg.get(e.rename_from);
-            else
+            if (has_sec && ini[sec.name].has(e.key))
+                v = ini[sec.name].get(e.key);
+            else if (has_sec && e.rename_from && ini[sec.name].has(e.rename_from))
+                v = ini[sec.name].get(e.rename_from);
+            else if (!find_anywhere(e.key, v) && !find_anywhere(e.rename_from, v))
                 continue;
             set_from_string(e, v);
             spdlog::debug("Config: {} = {}", e.key, v);

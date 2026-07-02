@@ -42,9 +42,9 @@ namespace goblin::overlay_api
     X(showMinimap) X(minimapAnchorRight) X(minimapAnchorBottom) X(questAllowFlagWrite) X(questGreyOnDeath) \
     X(clusterDistanceAdaptive)
 #define GOBLIN_CFG_FLOAT_LIST(X) \
-    X(altitudeDeadzone) X(graceIconScale) X(graceOffsetX) X(graceOffsetY) X(iconMinHalfPx) \
-    X(mapSymbolScale) X(minimapOffsetX) X(minimapOffsetY) X(minimapOpacity) X(minimapSize) \
-    X(minimapZoom) X(overlayClusterScale) X(overlayIconScale) X(overlayMasterScale) X(viewDelayFrames)
+    X(iconMinHalfPx) \
+    X(minimapOffsetX) X(minimapOffsetY) X(minimapOpacity) X(minimapSize) \
+    X(minimapZoom) X(overlayIconScale) X(overlayMasterScale) X(viewDelayFrames)
 #define GOBLIN_CFG_U8_LIST(X) X(clusterFarRadius) X(clusterNearRadius) X(clusterNearThreshold) X(virtualKeyboardLayout)
 #define GOBLIN_CFG_U16_LIST(X) X(overlayToggleGamepad)
 

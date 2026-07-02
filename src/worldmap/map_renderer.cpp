@@ -59,6 +59,16 @@ goblin::projection::View to_proj_view(const goblin::worldmap_probe::LiveView &v)
 constexpr float kIconHalfBase = 10.f; // ~20px sprite at 1080 (native-ish)
 constexpr float kGlyphRBase = 12.f;   // cluster pile disc radius at 1080
 
+// Final marker-size calibration constants (settings sweep 2026-07-02: these were dev-era [Debug]
+// sliders whose values are now FINAL — exposing them only risked breaking the look; the user
+// prefs master/icon/minimap scale stay live in config, these do not). kGraceIconScale is grace-
+// ONLY and kept SEPARATE from the generic icon scale ON PURPOSE — calibrated for VANILLA PARITY
+// when the cursor locks a grace; never fold it into the generic scale (settings_sweep_plan.md).
+constexpr float kGraceIconScale   = 1.2f;
+constexpr float kMapSymbolScale   = 2.2f;  // native MENU_MAP_* symbols (bosses etc) — bigger than item dots
+constexpr float kClusterScale     = 1.0f;  // cluster pile glyphs (× master)
+constexpr float kAltitudeDeadzone = 5.0f;  // world-Y diff (units) below which no ▲/▼ badge draws
+
 // Resolve a marker's atlas cell to UVs. Returns false if no atlas / key missing.
 bool icon_uv(const char *key, ImVec2 &uv0, ImVec2 &uv1)
 {
@@ -222,7 +232,7 @@ struct IconSet
                     out.tex = reinterpret_cast<ImTextureID>(t);
                     out.uv0 = ImVec2(a0, b0); out.uv1 = ImVec2(a1, b1);
                     // Per-category multiplier: normal hostile entities reuse the boss symbol smaller.
-                    out.scale = (*goblin::overlay_api::cfg_mapSymbolScale_ptr()) *
+                    out.scale = kMapSymbolScale *
                                 goblin::worldmap::category_gpu_icon_scale(m.category);
                     out.tier = TIER_MP_NAME;
                     return true;
@@ -235,7 +245,7 @@ struct IconSet
                                         : goblin::worldmap::category_gpu_iconId(m.category);
             if (gid > 0 && mappoint.resolve(IconKey{IconKey::MapPoint, nullptr, gid}, out))
             {
-                out.scale = (*goblin::overlay_api::cfg_mapSymbolScale_ptr()) *
+                out.scale = kMapSymbolScale *
                             goblin::worldmap::category_gpu_iconId_scale(m.category);
                 out.tint = goblin::worldmap::category_gpu_iconId_tint(m.category);
                 out.tier = TIER_MP_ID;
@@ -403,7 +413,7 @@ static inline void draw_altitude_badge(ImDrawList *fg, ImVec2 center, float half
     }
     else
         return;                            // off-page with no grace reference → nothing meaningful
-    if (d > -(*goblin::overlay_api::cfg_altitudeDeadzone_ptr()) && d < (*goblin::overlay_api::cfg_altitudeDeadzone_ptr()))
+    if (d > -kAltitudeDeadzone && d < kAltitudeDeadzone)
         return; // same level
     const bool above = d > 0.0f;
     const float s = 4.0f;                              // half-size of the triangle
@@ -545,11 +555,6 @@ int s_grace_native_w = 0, s_grace_native_h = 0;
 // DUNGEON graces (m.dungeon) in place of the vanilla bonfire. null → dungeon graces use s_grace_tex.
 ImTextureID s_grace_dgn_tex = nullptr;
 ImVec2 s_grace_dgn_uv0{}, s_grace_dgn_uv1{};
-// Projection scale (zoom × canvas factor) for the grace GPU offset, refreshed each frame by
-// render_markers AFTER the view delay finalizes zoom. graceOffsetX/Y is a native-vs-imgui
-// calibration nudge expressed in 1920×1080-reference px; markers project as ·zoom·(real/virtual),
-// so the offset must use the SAME factor or it drifts apart from the native pin as you zoom.
-float s_grace_off_sx = 1.f, s_grace_off_sy = 1.f;
 // Live view zoom (set each frame by render_markers after the view delay). The grace GPU
 // icon scales WITH this so it tracks the map (zoom in → bigger, zoom out → smaller) instead
 // of staying constant-px (which read as "huge when zoomed out, tiny when zoomed in").
@@ -608,13 +613,8 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
             float zf = s_grace_zoom / kGraceZoomRef;
             if (zf < 0.3f) zf = 0.3f;
             if (zf > 2.0f) zf = 2.0f;          // cap high-zoom growth (graces were too big zoomed in)
-            float gh = half * (*goblin::overlay_api::cfg_graceIconScale_ptr()) * zf;
-            // Optional offset → shift the imgui grace beside the game's NATIVE pin for side-by-side
-            // calibration (0 = on top). Scaled by the live projection factor (zoom × canvas) so the
-            // nudge tracks the native pin across zoom levels instead of drifting (it's stored in
-            // 1920×1080-reference px, same convention as the projection bias).
-            float gx = p.x + (*goblin::overlay_api::cfg_graceOffsetX_ptr()) * s_grace_off_sx,
-                  gy = p.y + (*goblin::overlay_api::cfg_graceOffsetY_ptr()) * s_grace_off_sy;
+            float gh = half * kGraceIconScale * zf;
+            float gx = p.x, gy = p.y;
             // UNDISCOVERED grace → mod-agnostic DISK glyph (gold effigy MENU_MAP_Player_02 from the
             // active SB_MapCursor) instead of the bonfire sprite. Falls back to the sprite until the
             // DDS is read+uploaded, so nothing regresses. Discovered graces keep the sprite + check.
@@ -1800,11 +1800,6 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // pan/zoom re-adjust can be A/B-tuned in-game; apply() clamps to the ring's [0, N-1] capacity.
     g_view_delay.apply(view, (*goblin::overlay_api::cfg_viewDelayFrames_ptr()), (*goblin::overlay_api::cfg_viewDelayZoom_ptr()));
 
-    // Grace GPU offset rides the SAME projection as the markers (zoom × canvas factor), so the
-    // native-vs-imgui calibration nudge stays aligned across zoom. Sampled here, after the delay
-    // finalizes view.zoom; draw_marker reads s_grace_off_sx/sy. (kx/ky mirror project_screen.)
-    s_grace_off_sx = view.zoom * (realW / 1920.f);
-    s_grace_off_sy = view.zoom * (realH / 1080.f);
     s_grace_zoom = view.zoom;   // grace GPU icon scales with zoom (draw_marker reads this)
 
     // Clustering = a live render pass: categories opted into clustering bin together
@@ -1824,7 +1819,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const float uiScale = realH / 1080.f;
     const float master = (*goblin::overlay_api::cfg_overlayMasterScale_ptr());
     const float iconHalf = kIconHalfBase * uiScale * master * (*goblin::overlay_api::cfg_overlayIconScale_ptr());
-    const float glyphR = kGlyphRBase * uiScale * master * (*goblin::overlay_api::cfg_overlayClusterScale_ptr());
+    const float glyphR = kGlyphRBase * uiScale * master * kClusterScale;
     std::vector<ScreenMarker> clustered; // markers whose category opted into clustering
 
     // Map-canvas clip (fix: markers drawn OUTSIDE the map art — letterbox void, day/night

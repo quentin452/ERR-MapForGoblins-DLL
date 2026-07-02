@@ -136,18 +136,6 @@ tr=Général
 en=Category icons
 tr=Icônes de catégorie
 
-en=Grace icons (calib)
-tr=Icônes de grâce (calib)
-
-en=Grace offset X (native vs imgui)
-tr=Décalage grâce X (natif vs imgui)
-
-en=Grace offset Y (native vs imgui)
-tr=Décalage grâce Y (natif vs imgui)
-
-en=Cluster piles
-tr=Piles de groupement
-
 en=Marker motion delay (frames)
 tr=Retard de mouvement des marqueurs (frames)
 
