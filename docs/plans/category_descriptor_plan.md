@@ -1,7 +1,13 @@
 # Data-driven category descriptor — plan
 
-Status: **Tier 1 IN PROGRESS on `feat/category-descriptor` (2026-07-02).** Steps 1+2 landed +
-verified byte-identical:
+Status: **Tier 1 CORE DONE on `feat/category-descriptor` (2026-07-02) — steps 1, 2, 2b, 3 landed +
+verified byte-identical; step 4 (enum generation) deferred as optional.** The category descriptor
+`data/categories.json` now owns **name, section, landmark iconIds, glyphs (numeric + name-keyed), and
+the coverage display-name** — one source of truth, generated into `goblin_categories.gen.hpp` (wired
+into `generate_data.py`). Every step was proven identical to the code it replaced via an offline diff
+against git HEAD (stronger than a count check — every mapping, not just totals). Commits: `fd29ef2`
+(name+section), `8f0a340` (landmark icons), `2763c57` (glyphs), `80aec3c` (coverage ENUM2DISPLAY).
+Steps 1+2 detail:
 - **Step 1 (`fd29ef2`)** — category **name + section** are data-driven: `data/categories.json` (source
   of truth) → `src/generated/goblin_categories.gen.hpp` `CATEGORY_META[]` via
   `tools/generate_categories.py` (wired into `generate_data.py`). `category_name()` / `section_of()`
@@ -10,11 +16,22 @@ verified byte-identical:
 - **Step 2 (`8f0a340`)** — **landmark iconId→category** folded in (`landmark_icon_ids` per record →
   generated `landmark_category_for_icon()`; the C++ fn is a forwarder). 86/86 iconIds identical.
 
-Remaining Tier 1: `CATEGORY_GPU_ICONS` glyphs (Step 2b), the coverage_vs_mapgenie mapping (Step 3),
-optional enum generation (Step 4, riskiest — the enum stays hand-edited, guarded by the sync assert).
-**Edit surface for a new landmark category so far: `goblin_map_data.hpp` enum + one `categories.json`
-record (name/section/landmark_icon_ids) + regen — down from 6 scattered switches.** The near-term win
-from `docs/scripting_api_roi_note.md` (chosen over a full scripting API).
+Step 2b (`2763c57`) + Step 3 (`80aec3c`) then folded glyphs + the coverage display-name in.
+**Remaining: only the optional Step 4 (generate the `Category` enum itself) — the enum stays
+hand-edited in `goblin_map_data.hpp`, guarded by the `static_assert` that fails the build if the table
+and enum diverge; generating it removes the last hand-edit but risks reordering (the contiguous
+landmark block + any serialized enum value), so it's deferred until wanted.**
+
+**Edit surface for a new LANDMARK category now: the `goblin_map_data.hpp` enum entry + ONE
+`categories.json` record (name, section, landmark_icon_ids, optional glyph) + regen — down from ~6
+scattered switches.** Name/section/glyph/coverage all follow from the one record. (Non-landmark
+categories with bespoke builders still add their C++ builder; the descriptor owns their metadata.)
+The near-term win from `docs/scripting_api_roi_note.md` (chosen over a full scripting API).
+
+**Not in-game re-run:** each step is a no-behavior-change consolidation proven byte-identical offline
+(names/sections 0 diffs, 86/86 landmark iconIds, 10+2 glyphs incl. computed tints, coverage doc
+unchanged), so the deployed DLL behaves identically; deploy/merge when ready. An in-game
+`[LANDMARKLIVE]`/glyph smoke test is optional belt-and-suspenders.
 
 ## Goal
 
