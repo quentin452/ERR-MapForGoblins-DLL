@@ -94,6 +94,27 @@ GetAsyncKeyState → typing its pause key in ANOTHER app toggles pause) — now 
 pause; **recommend removing PauseTheGame.dll from the me3 profiles**. A driver clears any pause
 via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (spiderfy, F2).
 
+## Overlay polish batch (user, 2026-07-02 evening) — ALL OPEN, logged for next sessions
+
+1. **REAL map clipping = RE the game's own map/minimap clip** ("pour que ce soit parfait") —
+   find where ER clips its map-UI layers so our overlay can clip identically instead of
+   stacking exclusion zones. Big RE; the zone editor + dial exclusion are the stopgap.
+2. **Altitude badges overflow the minimap circle** — ▲/▼ badges draw past the round HUD edge;
+   clip badge draws to the minimap radius (the icon itself is edge-clamped, the badge isn't).
+3. **Zoom+pan simultané → 1-frame icon "dash"** (stale projections) — when zoom and pan change
+   in the same frame the icons streak for a frame. Smells like the ViewDelay ring interpolating
+   pan and zoom inconsistently (see viewDelayZoom's TELEPORT note — related tuning knob).
+4. **Legibility black disc drawn on an already-dark minimap** — the contrast disc under small
+   icons is pointless/ugly on dark minimap terrain; make it luminance-aware or minimap-off.
+5. **Golden-rune icons WAY too small** (looked like an invisible item with a hover tooltip —
+   triaged live by the user). Auto-fix direction: a runtime MINIMUM on-screen icon size —
+   `icon_min_half_px` already exists (cfg_iconMinHalfPx_ptr) → find why these icons escape it
+   (per-item icon tier scale?) or raise/enforce it in draw_marker for all tiers.
+6. **Debug toggle/slider cleanup** — the F1 panel + ini carry many dev-era debug knobs
+   (diag_*, debug_*, baked-only, locate-debug, sprite calib offsets…) that may no longer be
+   needed; sweep them into a collapsed dev-only section or delete the dead ones (schema +
+   panel + docs).
+
 ## Overlay z-order clipping (user report 2026-07-02) — dial DONE, menu-over-map OPEN
 
 We render post-present → always on top of the game's own UI. Two sub-bugs:
