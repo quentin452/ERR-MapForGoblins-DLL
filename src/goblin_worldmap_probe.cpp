@@ -1305,6 +1305,12 @@ uintptr_t hk_c32f0(uintptr_t dialog, float dt, uintptr_t a3, uintptr_t a4)
         seh_write_f32(reinterpret_cast<void *>(cur + 0x110), v);
     }
     uintptr_t r = g_c32f0_orig ? g_c32f0_orig(dialog, dt, a3, a4) : 0;
+    // BOUNDS MODEL (user-confirmed 2026-07-02): the engine's pan bounds = the bounding box of
+    // the DISCOVERED tiles (early-game fog ⇒ ≈ the player's tile), NOT the world rect our
+    // set_view_center clamps against — that model mismatch (two writers, two "legal" ranges)
+    // was the flicker in every earlier attempt. Single-writer rule: while we drive the pan
+    // beyond the engine's bounds, the engine's writer (the input-gated easer) must be ASLEEP
+    // (the overlay drains the nav jitter on locate_target_clamped()); never write against it.
     // F2 fog-locate: pan-OOB drive for targets the engine REFUSES. Inside the original step the
     // engine clamps the reticle we wrote above to the DISCOVERED-extent bounds (live 2026-07-02:
     // wrote (4499,3737), read back (4271,5922)) — so for a deep-fog target the easer stalls at

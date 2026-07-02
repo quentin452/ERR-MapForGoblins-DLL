@@ -5,6 +5,22 @@ zoom applied to every locate, and the 90-frame reticle fight produced visible fl
 This doc preserves what was learned live so the next attempt starts from the real constraints,
 not from scratch. Session driven entirely via the debug RPC + wmprobe stall dumps.
 
+## The bounds model (user-confirmed 2026-07-02) — read this first
+
+The engine's map pan bounds are NOT the world rect: they are the **bounding box of the
+DISCOVERED tiles** (early-game fog ⇒ bounds ≈ the tile the player is on; they grow as map
+fragments/discovery accumulate). Our code historically assumed the pan max = the whole world
+(the +0x350 full rect, 0..10496) — `set_view_center` clamps its target against the FULL rect,
+and the deployed dev ini even runs `require_map_fragments=false` so our overlay ignores fog
+entirely. **That model mismatch is the flicker mechanism:** two per-frame writers driving the
+same pan toward two different "legal" ranges (engine → discovered bbox, us → world) can never
+agree, so every driven frame visibly snaps between the two. It also explains the measured
+clamp values being zoom-independent (a tile bbox, not a viewport-derived range). Any future
+drive must either (a) mirror the engine's bounds (the reticle READBACK after the step IS the
+ground-truth closest legal point — cheaper and truer than recomputing the bbox from fragment
+flags ourselves), or (b) stop the engine's writer while driving beyond them — the shipped v2
+fix does (b): easer asleep (no nav jitter) + direct pan write, single writer, no flicker.
+
 ## The actual clamp chain (what stops a fog locate)
 
 - The locate drive writes the cursor RETICLE pairs pre-step (`hk_c32f0`, cursor+0xFC/+0x104/
