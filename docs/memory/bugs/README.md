@@ -27,6 +27,9 @@ Complex bugs — resolved and open — with the durable root-cause/fix takeaway.
   re-centred on cursor-independent `(pan+snapMid)/zoom` + canvas scale. → [overlay-gamepad-cursor-bugs](overlay-gamepad-cursor-bugs.md)
 - **Page-transition flicker** [resolved] — stale frame from our own view-delay ring; `g_view_delay.reset()`
   on page-group change. → [page-transition-flicker](page-transition-flicker.md)
+- **Endless map pan after F1 close at screen edge** [resolved 2026-07-02] — cursor left in ER's map
+  edge-pan band on close; nudged inward on the close falling edge (+ SendInput jiggle so the game
+  adopts it). Measured band: ~150px @1080p with falloff → margin = height/6. → [f1-close-edge-pan](f1-close-edge-pan.md)
 - **`require_map_fragments` leak** [resolved] — interior overworld tiles inherit majority fragment of
   8 neighbours (`goblin_logic.cpp:28-53`). Far-from-coverage tiles still leak (low-pri). → [fragment-gate-maplist-gap](fragment-gate-maplist-gap.md)
 - **DummyAsset over-emission** [resolved] — disk walk drops MSBE part-type 9 unless entity-bound;

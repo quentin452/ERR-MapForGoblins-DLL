@@ -239,11 +239,15 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
   UNDERGROUND page, the tell that unmasked it) and the ACTIVATION site (Divine Tower — ring
   visually confirmed on the Divine Tower of Limgrave). Possible polish later: suffix the
   activation-site marker's tooltip ("(activation)") so search rows self-explain.
-- **New bug (user, 2026-07-02): endless map pan after closing F1 with the cursor at a screen
-  edge.** ER edge-pans while the OS cursor sits at the border; closing F1 leaves our virtual/OS
-  cursor parked there → the map pans forever until the mouse moves. Likely fix: on F1 close (or
-  map open?) recenter/step the cursor off the edge, or suppress edge-pan while the cursor is
-  RPC-parked. Repro possibly easiest via RPC (mouse_move to edge + open_f1 0). Untriaged.
+- **Endless map pan after F1 close at screen edge — FIXED + in-game validated (2026-07-02,
+  `fix/f1-close-edge-pan`, fully via the RPC loop: scripted boot→save→map→edge→close, pan
+  stop proven by screenshot diffs).** On the menu-close falling edge (map open, real close),
+  the cursor is nudged out of ER's edge-pan band via `set_cursor_pos_real` + the ±1px SendInput
+  jiggle (the game only adopts the position on a REAL mouse event — same as RPC mouse_move).
+  Non-obvious finding: **the edge-pan band is ~150px wide at 1080p with speed falloff** — the
+  first 64px nudge landed visibly on-screen yet the map kept panning; margin is now
+  `max(64, height/6)`. Full detail `docs/memory/bugs/f1-close-edge-pan.md`. (No changelog
+  entry — F1 is fork-added, intra-cycle defect.)
 - **Quest-NPC altitude badges missing — FIXED (`fix/npc-altitude-badge`,** user question): the
   `entity_world_pos`/`g_entity_pos` path dropped MSB Y, so NPC pins never got the ▲/▼ badge.
   Y now threaded (EntityPos.wy from DiskEnemy/DiskCollectible.posY). In-game visual confirm
