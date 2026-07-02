@@ -116,6 +116,13 @@ namespace goblin::worldmap_probe
     // diff two tags to find the menu-over-map flag — HANDOFF z-order bug 2).
     void dump_menu_state(const char *tag);
 
+    // True while a submenu is stacked OVER the open world map (fast-travel confirm, marker
+    // dialog, region list, ...) — via CSMenuMan+0x104 (RE 2026-07-03, byte-diff). Reads 0 on
+    // the bare map, incl. during pan/zoom. We render post-present, so render_markers skips the
+    // whole worldmap marker pass while this is true (gated by clip_game_ui) — otherwise our
+    // icons punch through the covering menu. Read-only + SEH-guarded → safe every frame.
+    GOBLIN_RENDER_API bool menu_covers_map();
+
     // True while an auto page-switch is in progress OR still settling (the engine SNAPS the view to
     // the new page's default, which would clobber an item-locate pan issued too early). The locate
     // holds its pan until this is false so its set_view_center lands last and sticks.

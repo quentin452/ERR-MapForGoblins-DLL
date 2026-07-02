@@ -1736,6 +1736,17 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
         return;
     }
 
+    // Overlay z-order (HANDOFF Task A): we render post-present, so when a submenu is stacked OVER
+    // the open map (fast-travel confirm, marker-placement dialog, region list, ...) our markers
+    // would punch through it. menu_covers_map() reads CSMenuMan+0x104 == 1 exactly while such a
+    // menu covers the map, 0 on the bare map (incl. pan/zoom — RE 2026-07-03). Skip the WHOLE
+    // worldmap pass so markers, piles, labels, fans, region chips AND hover all go silent together
+    // (same "hover dies with the pixels" invariant the canvas clip keeps). Don't reset the view
+    // delay — the map is still open underneath, so it resumes smoothly when the menu closes. Gated
+    // by clip_game_ui so it can be toggled off for debugging. (Minimap pass is unaffected.)
+    if ((*goblin::overlay_api::cfg_clipGameUi_ptr()) && goblin::worldmap_probe::menu_covers_map())
+        return;
+
     // Per-frame worldmap render cost (aggregate-only — runs every frame the map is
     // open). Diagnoses whether the felt map lag is THIS render path vs the background
     // refresh thread (read_wgm). Shows as render.worldmap in the [BENCH] session report.
