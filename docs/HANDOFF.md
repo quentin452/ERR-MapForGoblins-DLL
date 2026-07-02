@@ -110,10 +110,16 @@ via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (sp
    triaged live by the user). Auto-fix direction: a runtime MINIMUM on-screen icon size —
    `icon_min_half_px` already exists (cfg_iconMinHalfPx_ptr) → find why these icons escape it
    (per-item icon tier scale?) or raise/enforce it in draw_marker for all tiers.
-6. **Debug toggle/slider cleanup** — the F1 panel + ini carry many dev-era debug knobs
-   (diag_*, debug_*, baked-only, locate-debug, sprite calib offsets…) that may no longer be
-   needed; sweep them into a collapsed dev-only section or delete the dead ones (schema +
-   panel + docs).
+6. **Settings sweep — NEXT SESSION's task (user-designated).** The F1 panel + ini carry many
+   dev-era knobs (diag_*, debug_*, baked-only, locate-debug, sprite calib offsets…) AND — the
+   user's key point — sliders whose values are now FINAL CALIBRATION, not preferences:
+   exposing them invites breaking the look (e.g. touching the icon scaling can make the map
+   really ugly). **Non-obvious fact to preserve while sweeping: graces have a SEPARATE scale
+   on purpose — it's calibrated for VANILLA PARITY when the cursor locks onto a grace; do not
+   fold it into the generic icon scale.** Sweep plan: classify every panel widget + ini key
+   into (a) real user preference → keep, (b) final calibration → hardcode the current tuned
+   value, drop the knob (schema + panel + fr.txt + docs), (c) dev/diag → collapse into one
+   dev-only section (or gate on debug_logging), (d) dead → delete.
 
 ## Overlay z-order clipping (user report 2026-07-02) — dial DONE, menu-over-map OPEN
 
