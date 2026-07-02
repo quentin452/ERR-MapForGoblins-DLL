@@ -524,6 +524,13 @@ both modes; a `GOBLIN_OVERLAY_HOTRELOAD` build additionally needs it to `LoadLib
   smoke-tested against a fake server (multi-arg commands, status parsing, exit codes). NB
   screenshot paths are interpreted by the GAME process — under Proton pass a Wine path
   (`Z:\tmp\shot.bmp`).
+- **Latency, measured live (2026-07-02, title screen @60fps):** every command ≈ ONE frame — ping/
+  status/set all avg 16.66ms (min ~15, p95 ~17, tight jitter), by design: commands queue and
+  execute at the next `hk_present`; TCP loopback and the execution itself are noise. Screenshot
+  avg 20.5ms (GPU readback + 6MB BMP write adds only ~4ms). Throughput is 1 command/frame
+  (burst of 50 pings = 16.45ms/cmd) because `serve_client` waits for each reply before reading
+  the next buffered line — if a future driver needs >60 cmd/s, pipeline server-side (queue all
+  buffered lines per frame, reply in order); not worth it for the iterate loop.
 - **In-game validation (open, doable on THIS box under Proton):** set `debug_rpc_port = 38700`,
   launch ERR, then `tools/mfg_rpc.py --port 38700 ping/status/screenshot ...`; `reload_overlay`
   additionally needs the split build deployed.
