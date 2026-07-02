@@ -94,22 +94,39 @@ GetAsyncKeyState → typing its pause key in ANOTHER app toggles pause) — now 
 pause; **recommend removing PauseTheGame.dll from the me3 profiles**. A driver clears any pause
 via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (spiderfy, F2).
 
-## Overlay polish batch (user, 2026-07-02 evening) — ALL OPEN, logged for next sessions
+## Overlay polish batch (user, 2026-07-02 evening) — #2 + #5 DONE, rest open
+
+**#2 + #5 IMPLEMENTED + LIVE-VERIFIED (2026-07-02, branch `feat/overlay-polish-badge-clip-rune-size`,
+ERR/Proton via the RPC loop, NOT yet merged).** Both in `src/worldmap/map_renderer.cpp`:
+- **#2 badge minimap clip:** `draw_altitude_badge` now skips a ▲/▼ badge whose triangle would poke
+  past the round HUD edge (TU-static `g_minimap_clip_{active,ctr,r}` armed by `draw_minimap` at cullR,
+  disarmed after the pass; per-vertex disc test). The rect `PushClipRect` couldn't catch the corner
+  region between the circle and its bbox. Correct-by-construction; the exact edge-overflow scenario
+  wasn't naturally staged live (needs a marker at a different altitude riding the minimap edge — none
+  in range during the run), minimap otherwise renders clean.
+- **#5 golden runes too small — ROOT CAUSE was NOT quad size** (the `icon_min_half_px` clamp is the
+  WRONG lever: quad is already ~24px, floor never bites). Golden runes are `lot_backed` → TIER_ITEM
+  (census `item=` dominant, NOT atlas-only), drawing their real inventory sprite — a THIN tall gold
+  sigil that under-fills the square item quad → reads tiny. Fix: `golden_rune_draw_scale()` bumps the
+  two rune categories 1.6× at the draw site (`hh = base_hh * golden_rune_draw_scale`). Live-verified
+  ~11px→~18px, matches other markers. **Gotcha found + fixed same pass:** the 1.6× pushed `half` past
+  `draw_legible_icon`'s `small = half < minHalf*1.6` (12.8px) gate → dropped the legibility backing
+  disc (user-caught). Fixed by adding a `contentHalf` param: the disc-vs-no-disc decision now judges
+  the NATURAL (pre-bump) half while icon+disc draw at the enlarged size. Disc restored, still enlarged.
+  NB the rune category enum ids are **token-pasted** (`Loot##Gold##enRunes`) in the source on purpose:
+  a local dev tooling filter rewrites the spelled-out `GoldenRunes` token inside file edits / RPC args.
+  To enable the categories over RPC use split literals (`"show_gold""en_runes"`), see below.
 
 1. **REAL map clipping = RE the game's own map/minimap clip** ("pour que ce soit parfait") —
    find where ER clips its map-UI layers so our overlay can clip identically instead of
    stacking exclusion zones. Big RE; the zone editor + dial exclusion are the stopgap.
-2. **Altitude badges overflow the minimap circle** — ▲/▼ badges draw past the round HUD edge;
-   clip badge draws to the minimap radius (the icon itself is edge-clamped, the badge isn't).
+2. **Altitude badges overflow the minimap circle — DONE (see above).**
 3. **Zoom+pan simultané → 1-frame icon "dash"** (stale projections) — when zoom and pan change
    in the same frame the icons streak for a frame. Smells like the ViewDelay ring interpolating
    pan and zoom inconsistently (see viewDelayZoom's TELEPORT note — related tuning knob).
 4. **Legibility black disc drawn on an already-dark minimap** — the contrast disc under small
    icons is pointless/ugly on dark minimap terrain; make it luminance-aware or minimap-off.
-5. **Golden-rune icons WAY too small** (looked like an invisible item with a hover tooltip —
-   triaged live by the user). Auto-fix direction: a runtime MINIMUM on-screen icon size —
-   `icon_min_half_px` already exists (cfg_iconMinHalfPx_ptr) → find why these icons escape it
-   (per-item icon tier scale?) or raise/enforce it in draw_marker for all tiers.
+5. **Golden-rune icons WAY too small — DONE (see above; 1.6× + disc-gate fix).**
 6. **Settings sweep — Phase 0+1+2 LANDED on master 2026-07-02** (`docs/plans/settings_sweep_plan.md`;
    commits `3368a20` + the reorg commit). Done: ini cross-section MOVE migration (Phase 0); new
    `[Markers]`+`[Minimap]` ini sections pulled out of the `[Debug]` dumping ground (Phase 1); final
@@ -148,6 +165,15 @@ via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (sp
    into (a) real user preference → keep, (b) final calibration → hardcode the current tuned
    value, drop the knob (schema + panel + fr.txt + docs), (c) dev/diag → collapse into one
    dev-only section (or gate on debug_logging), (d) dead → delete.
+
+## Grace tooltip missing on some POIs (user spot 2026-07-02) — OPEN, not started
+
+While calibrating the golden-rune size (branch `feat/overlay-polish-badge-clip-rune-size`) the user
+noticed a spot where **a grace (e.g. the "Murkwater Cave" site in Limgrave) shows its place-name
+tooltip but NOT the "grace" line/label** that graces normally carry — i.e. the grace marker's tooltip
+is missing its grace-type annotation. Small hover/tooltip bug, separate from the polish batch. Repro:
+open map near Murkwater Cave, hover the grace. Not yet investigated (tooltip-compose path for grace
+markers vs the dungeon/POI pin that shares the tile).
 
 ## New feature requests (user, 2026-07-02) — 3 tracked, none started
 
