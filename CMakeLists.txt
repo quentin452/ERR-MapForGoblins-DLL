@@ -237,7 +237,10 @@ if(GOBLIN_OVERLAY_HOTRELOAD)
     # Slice D heap unification: render's global operator new/delete forward to the host's heap
     # (MFG_HostAlloc/MFG_HostFree) — render-ONLY source, must never be in the host or single-DLL
     # build. See the file's header comment for the /MT cross-heap rationale.
-    src/goblin_render_new_override.cpp)
+    src/goblin_render_new_override.cpp
+    # Render→host spdlog bridge (render-ONLY): render lines forward to the host log file, and the
+    # loader initializes it deterministically at load — see the file's boot-crash rationale.
+    src/goblin_render_log_bridge.cpp)
   add_library( MapForGoblins SHARED
     ${GOBLIN_HOST_SOURCES})
   add_dependencies(goblin_overlay_render MapForGoblins) # host (+ its import .lib) must exist first

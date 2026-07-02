@@ -63,9 +63,21 @@ needs a new export). Driver `tools/mfg_rpc.py` (`wait-reload` polls the gen bump
 paths are the GAME's view: `Z:\tmp\...` under Proton. **The deployed ERR ini
 (`~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.ini`) keeps `debug_rpc_port = 38700` set** for
 future sessions; deploy dir restored to the single-DLL daily driver (render DLLs removed).
-**Next: Phase 4** — the actual AI iterate loop (screenshot → diagnose → edit → rebuild render →
-reload → re-screenshot) is now fully unblocked on this box; first target per the plan is a live
-item off `docs/memory/bugs/dx-bugs-backlog.md`.
+**Phase 4 — FIRST REAL LOOP RUN COMPLETE (2026-07-02, `feat/phase4-device-aware-hints`):** shipped
+backlog item 2's open UI half (device-aware close-hint — F1 panel shows the configured gamepad
+combo, e.g. "Y+R3 close", when the pad is the active device) with BOTH branches visually verified
+in the running game via hot-reload + RPC screenshots (gamepad branch tested by hot-reloading a
+condition-forced build, then reverting — 3 live iterations, ~15s each, no game restart).
+**Second split-boot crash root-caused + fixed on the way** (the Phase 3 "stale cache" theory was
+wrong): per-DLL spdlog registries — render-side logs lazily created render's own default logger
+inside hooked paths (intermittent boot AV, PDB-symbolized in `should_log`) AND vanished from
+MapForGoblins.log entirely. Fixed with a render→host log bridge (`goblin_render_log_bridge.cpp`
+`MFG_RenderInitLogging` → host `MFG_HostLogLine`), initialized by the loader as the first render
+call; validated crash-free with 300 render lines landing in the host log. Loop constraint noted:
+without a loaded save only title-screen/F1-panel targets are verifiable — an RPC game-input /
+save-load command is the next unblocker for worldmap targets (F2 pan-clamp, hover spiderfy).
+Remaining nit: keyboard branch hard-says "F1" even if `overlay_toggle_key` is rebound (needs a
+reverse vk→name helper).
 
 ## Clang-only Phase 1 — WINDOWS BUILD + SNAPSHOT VALIDATED (2026-07-02) → only the in-game matrix left
 

@@ -6,6 +6,8 @@
 // (its ~50 existing call sites are unchanged), this just gives the split-out hooks a way to
 // read it without duplicating or renaming it. See docs/plans/input_module_refactor_plan.md.
 
+#include "goblin_dll_export.hpp"  // GOBLIN_RENDER_API (no-op unless GOBLIN_OVERLAY_HOTRELOAD_BUILD)
+
 namespace goblin::input
 {
 // True while the F1 overlay panel is visible this frame (mirrors goblin_overlay.cpp's
@@ -30,7 +32,8 @@ void set_has_focus(bool v);
 // real mouse/kb activity) and hk_present's gamepad-switch debounce (sets it after N
 // consecutive active frames) — see goblin_overlay.cpp's g_last_input_was_gamepad /
 // kGamepadSwitchDebounceFrames comments.
-bool last_input_was_gamepad();
+// GOBLIN_RENDER_API: also read by the RENDER module (device-aware close-hint in draw_panel).
+GOBLIN_RENDER_API bool last_input_was_gamepad();
 void set_last_input_was_gamepad(bool v);
 int gamepad_active_streak();
 void set_gamepad_active_streak(int v);

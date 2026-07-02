@@ -359,6 +359,18 @@ namespace
                                        io.DisplaySize.y);
     }
 
+    // dx-bugs-backlog item 2 followup (the "cheap follow-on" UI half): the panel's close-hint
+    // names the binding for the ACTIVE input device — the configurable gamepad combo (PR C)
+    // while the pad drives, the F1 key otherwise. Same debounced flag hk_present's
+    // cursor-recenter compensation uses.
+    static std::string close_hint()
+    {
+        if (goblin::input::last_input_was_gamepad())
+            return goblin::overlay_api::mask_to_combo_string(
+                *goblin::overlay_api::cfg_overlayToggleGamepad_ptr());
+        return "F1";
+    }
+
     void goblin::overlay::draw_panel(const OverlayFrameCtx &ctx)
     {
         ImGuiIO &io = ImGui::GetIO();
@@ -427,7 +439,7 @@ namespace
             if (ImGui::Button("Map for Goblins  [+]"))  // expand
                 g_large = true;
             ImGui::SameLine();
-            ImGui::TextDisabled("F1");
+            ImGui::TextDisabled("%s", close_hint().c_str());
             ImGui::End();
         }
         else
@@ -447,7 +459,7 @@ namespace
             if (ImGui::Button("[-] collapse"))
                 g_large = false;
             ImGui::SameLine();
-            ImGui::TextDisabled("F1 close | %.0f fps", io.Framerate);
+            ImGui::TextDisabled("%s close | %.0f fps", close_hint().c_str(), io.Framerate);
             ImGui::Separator();
 
             // Settings search: type a keyword and only the matching parts of the panel stay

@@ -528,12 +528,31 @@ both modes; a `GOBLIN_OVERLAY_HOTRELOAD` build additionally needs it to `LoadLib
   launch ERR, then `tools/mfg_rpc.py --port 38700 ping/status/screenshot ...`; `reload_overlay`
   additionally needs the split build deployed.
 
-**Phase 4 — wire the AI iterate loop.**
-Script: RPC `screenshot` → (agent) inspect PNG, diagnose DX/functional bug → edit overlay source →
-rebuild ONLY the render DLL → RPC `reload_overlay` → RPC `screenshot` → verify fix, no regression
-elsewhere. First real target: pick a live, actually-code-fixable item off
-[dx-bugs-backlog](../memory/bugs/dx-bugs-backlog.md) once Phases 1–3 land (not items 11/12, see
-Ground truth above).
+**Phase 4 — wire the AI iterate loop. FIRST REAL RUN COMPLETE (2026-07-02,
+`feat/phase4-device-aware-hints`).**
+Target picked per the ground-truth rule: backlog item 2's open UI half (device-aware close-hint —
+the F1 panel said "F1 close" even for gamepad users; now shows the configured combo, e.g. "Y+R3
+close", when `last_input_was_gamepad()`). The loop as actually run: screenshot baseline ("F1
+close") → implement → rebuild ONLY render → watcher auto-swap → screenshot verify → **hot-reload a
+condition-FORCED build to visually verify the gamepad branch without owning a gamepad** ("Y+R3
+close" confirmed on-screen) → revert → reload → final screenshot. Three live iterations,
+~15s each edit-to-verified-pixels, game never restarted. Loop constraint learned: without a
+loaded save, only title-screen + F1-panel targets are verifiable (no game-input injection in the
+RPC yet — a `load save / press key` command is the natural next unblocker for worldmap-marker
+targets like F2/spiderfy).
+
+**Phase 4 prerequisite bug found + fixed on the way (the SECOND split-build boot crash):** the
+"stale cache" theory from the Phase 3 session was WRONG — a fresh build crashed identically (AV in
+the render module during boot, PDB-symbolized this time: `spdlog::logger::should_log`, garbage
+default-logger pointer). Root cause: each /MT DLL has its own spdlog registry, so render-side
+`spdlog::` calls lazily created render's OWN default logger inside hooked paths on whichever
+thread logged first — an intermittent first-touch race, AND every render-side log line
+([LANDMARKLIVE], [LOOTDISK]-build, render [BENCH]) silently vanished from MapForGoblins.log in the
+split build (confirmed: 0 occurrences in the Phase 3 session log). Fix:
+`src/goblin_render_log_bridge.cpp` (render-only) — `MFG_RenderInitLogging` installs a default
+logger whose sink forwards each line to the host's `MFG_HostLogLine` export; the loader calls it
+as the FIRST render call after GetProcAddress (deterministic, single-threaded). Validated: 300
+render lines in the host log, crash-free boot, 2 further reloads clean.
 
 ## Non-goals
 
