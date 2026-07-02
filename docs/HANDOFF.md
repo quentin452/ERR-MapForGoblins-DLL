@@ -244,7 +244,10 @@ doc: whatever the next MapGenie diff lists (see coverage_vs_mapgenie.py). Probes
 User pain: runtime RE is Windows-by-convention but the live game runs on the Linux box (Proton).
 Options + trial plan in `docs/memory/tooling/linux-runtime-re-options.md` (default = in-DLL probes,
 first trial = ceserver + CE GUI on the Proton pid). Related vision note (runtime modding framework,
-NOT a plan): `docs/runtime_modding_framework_vision.md`.
+NOT a plan): `docs/runtime_modding_framework_vision.md` — **capabilities-vs-vision GAP AUDIT done
+2026-07-02: `docs/runtime_live_capabilities_audit.md`** (what's proven live, what's missing for a
+full no-regulation.bin runtime mod, recommended battle order: FMG-inject + param_set_field quick
+wins → param_add_rows pivot → items/events → file-resolution hook long-term).
 
 ## MapGenie category coverage — GROUP 1 MERGED; GROUP 2 (Portal) RE in progress (2026-07-01)
 
