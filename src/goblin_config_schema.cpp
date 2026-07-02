@@ -68,6 +68,7 @@ namespace goblin::config
 
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
+    uint8_t freezeWatchdogSecs = 20;
     bool debugEventFlags = false;
     bool debugItemGrants = false;
     bool debugFlagCapture = false;
@@ -518,6 +519,11 @@ namespace
                          "(default). Line protocol; commands: ping, status, open_f1, set <key> <value>,\n"
                          "screenshot <path>, reload_overlay. Driver: tools/mfg_rpc.py. Loopback-only,\n"
                          "no auth — leave empty outside dev sessions.", false, nullptr},
+                IniEntry{"freeze_watchdog_secs", IniType::U8, &cfg::freezeWatchdogSecs, "20",
+                         "Deadlock watchdog: if the game renders NO frame for this many seconds,\n"
+                         "write logs/MapForGoblins_freeze_<pid>.txt + a full all-thread minidump\n"
+                         "(catches silent no-exception freezes the crash handler never sees).\n"
+                         "One report per session. 0 = disabled. Default: 20.", false, nullptr},
                 IniEntry{"marker_dump_key", IniType::VkKey, &cfg::markerDumpKey, "F9",
                          "Key to dump decoded markers to logs/MapForGoblins_markers.log. Default: F9.", false, nullptr},
                 B("diag_boot_io", diagBootIo, "false",

@@ -28,6 +28,7 @@
 #include "goblin_debug_rpc.hpp"
 #include "goblin_bench.hpp"
 #include "goblin_crashdump.hpp"
+#include "goblin_freeze_watchdog.hpp"
 #include "worldmap/loot_disk.hpp"
 #include "worldmap/name_fmg_en.hpp"  // load_english_name_index (F1 English search aliases)
 #include "worldmap/loot_open_probe.hpp"
@@ -284,6 +285,7 @@ static void setup_mod()
     // Re-assert our crash filter on top of whatever the game/Seamless installed
     // during their startup, so the non-deterministic post-load crash is caught.
     goblin::install_crash_handler(g_mod_folder / "logs");
+    goblin::freeze_watchdog::install(g_mod_folder / "logs");
 
     if (GetModuleHandleA("ersc.dll"))
         spdlog::info("Seamless Co-op detected (ersc.dll)");
@@ -421,6 +423,7 @@ bool WINAPI DllMain(HINSTANCE dll_instance, unsigned int fdw_reason, void *lpv_r
         // re-installed at the end of setup_mod to sit on top of the filter the
         // game installs during its own startup, covering the post-load window.
         goblin::install_crash_handler(folder / "logs");
+        goblin::freeze_watchdog::install(folder / "logs");
 
         spdlog::info("Map For Goblins DLL v{}", PROJECT_VERSION);
         goblin::load_config(folder / "MapForGoblins.ini");

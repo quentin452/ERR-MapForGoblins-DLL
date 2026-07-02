@@ -5,6 +5,7 @@
 #include "goblin_config.hpp"
 #include "goblin_quest_steps.hpp"
 #include "goblin_debug_events.hpp"
+#include "goblin_freeze_watchdog.hpp"
 
 #include <chrono>
 
@@ -1288,6 +1289,10 @@ namespace
             if (ms > 0.0 && ms < 1000.0)
                 goblin::bench::Registry::instance().record("present.frame_wall", ms);
         }
+
+        // Freeze-watchdog heartbeat: FIRST thing every frame — a stall of this counter is the
+        // watchdog's definition of "the game is frozen" (see goblin_freeze_watchdog.cpp).
+        goblin::freeze_watchdog::beat_present();
 
         // Slice D: consume a pending render-DLL swap between frames, before any render-side code
         // runs this frame (present thread = the only thread that calls the draw functions, so no
