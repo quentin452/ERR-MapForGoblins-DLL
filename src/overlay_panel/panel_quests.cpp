@@ -3,6 +3,7 @@
 // Moved verbatim from goblin_overlay_render.cpp::draw_panel in the split (item 1).
 
 #include "panel_internal.hpp"
+#include "goblin_i18n.hpp"
 #include "goblin_overlay_render_api.hpp"
 #include "goblin_quest_steps.hpp"        // generated::QUEST_BROWSER + QuestStep::progress_flag
 #include "worldmap/quest_npc_layer.hpp"  // QuestFallbackNpc / quest_fallback_npcs
@@ -19,13 +20,15 @@
 
 namespace goblin::overlay::panel
 {
+using goblin::i18n::tr;  // overlay UI localization (lang/<code>.txt)
+
 void draw_quest_browser(Filter &f)
 {
     if (!f.match("quest navigation browser npc questlines steps missable grey dead"))
         return;
 
-    ImGui::SeparatorText("Quest navigation");
-    ImGui::TextDisabled("Enable \"World - Quest NPC\" above to pin quest NPCs on the map.");
+    ImGui::SeparatorText(tr("Quest navigation"));
+    ImGui::TextDisabled("%s", tr("Enable \"World - Quest NPC\" above to pin quest NPCs on the map."));
 
     // Quest Browser: ordered steps per NPC (hand-authored, original
     // text). Each step names its location/zone for manual navigation.
@@ -35,32 +38,32 @@ void draw_quest_browser(Filter &f)
     for (size_t i = 0; i < total; i++)
         (goblin::generated::QUEST_BROWSER[i].dlc ? ndlc : nbase)++;
     char hdr[64];
-    snprintf(hdr, sizeof(hdr), "Quest Browser (%zu questlines)", total);
+    snprintf(hdr, sizeof(hdr), tr("Quest Browser (%zu questlines)"), total);
     if (ImGui::TreeNode(hdr))
     {
-        ImGui::TextDisabled("Steps in order; location named per line.");
-        ImGui::TextDisabled("Based on vanilla quests; modded profiles (ERR/Convergence/...) may differ.");
+        ImGui::TextDisabled("%s", tr("Steps in order; location named per line."));
+        ImGui::TextDisabled("%s", tr("Based on vanilla quests; modded profiles (ERR/Convergence/...) may differ."));
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.78f, 0.35f, 1.0f));
-        ImGui::TextWrapped("(!) = order-sensitive / missable -- read its note before doing other quests.");
+        ImGui::TextWrapped("%s", tr("(!) = order-sensitive / missable -- read its note before doing other quests."));
         ImGui::PopStyleColor();
         static char filter[64] = "";
         ImGui::SetNextItemWidth(-1.0f);
-        ImGui::InputTextWithHint("##questfilter", "filter by NPC name...",
+        ImGui::InputTextWithHint("##questfilter", tr("filter by NPC name..."),
                                  filter, sizeof(filter));
         draw_gamepad_keyboard_button("##questfilter_kbd", filter, sizeof(filter));
         // Experimental: grey out questlines whose NPC death flag is set.
         // Live (read each frame) + persisted to the ini on toggle.
-        if (ImGui::Checkbox("Grey out dead-NPC questlines (experimental)",
+        if (ImGui::Checkbox(tr("Grey out dead-NPC questlines (experimental)"),
                             goblin::overlay_api::cfg_questGreyOnDeath_ptr()))
             goblin::overlay_api::request_save();  // watcher-thread sync + persist to ini
         ImGui::SameLine();
         ImGui::TextDisabled("(?)");
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip(
-                "POTENTIALLY BUGGY. Death flags are reverse-engineered per NPC;\n"
-                "a line may grey incorrectly, or stay normal when its NPC is gone.\n"
-                "Some flags are also shared with normal completion ([concluded]).\n"
-                "Turn this off to always show every questline. Saved to the ini.");
+            ImGui::SetTooltip("%s",
+                tr("POTENTIALLY BUGGY. Death flags are reverse-engineered per NPC;\n"
+                   "a line may grey incorrectly, or stay normal when its NPC is gone.\n"
+                   "Some flags are also shared with normal completion ([concluded]).\n"
+                   "Turn this off to always show every questline. Saved to the ini."));
         auto contains_ci = [](const char *hay, const char *need) {
             if (!need[0]) return true;
             std::string h, n;
@@ -171,10 +174,10 @@ void draw_quest_browser(Filter &f)
                          : ImVec4(1.0f, 0.78f, 0.35f, 1.0f));
             bool open = ImGui::TreeNode((void *)(intptr_t)id, "%s  (%d/%zu)%s%s",
                                         q.name, done, q.step_count,
-                                        dead ? (concl ? "  [concluded]"
-                                                      : "  [unfinishable]")
+                                        dead ? (concl ? tr("  [concluded]")
+                                                      : tr("  [unfinishable]"))
                                              : warn ? "  (!)" : "",
-                                        hostile ? "  [Hostile]" : "");
+                                        hostile ? tr("  [Hostile]") : "");
             if (tint)
                 ImGui::PopStyleColor();
             if (open)
@@ -182,16 +185,16 @@ void draw_quest_browser(Filter &f)
                 if (dead && concl)
                 {
                     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.70f, 0.70f, 1.0f));
-                    ImGui::TextWrapped("[concluded] This questline is over -- the NPC has "
-                                       "either finished their story or is gone. (This flag "
-                                       "is set on completion as well as on death.)");
+                    ImGui::TextWrapped("%s", tr("[concluded] This questline is over -- the NPC has "
+                                                "either finished their story or is gone. (This flag "
+                                                "is set on completion as well as on death.)"));
                     ImGui::PopStyleColor();
                 }
                 else if (dead)
                 {
                     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.45f, 0.45f, 1.0f));
-                    ImGui::TextWrapped("[unfinishable] This questline's NPC is dead "
-                                       "-- it can no longer be completed.");
+                    ImGui::TextWrapped("%s", tr("[unfinishable] This questline's NPC is dead "
+                                                "-- it can no longer be completed."));
                     ImGui::PopStyleColor();
                 }
                 if (warn)
@@ -203,14 +206,14 @@ void draw_quest_browser(Filter &f)
                 if (hostile)
                 {
                     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.66f, 0.28f, 1.0f));
-                    ImGui::TextWrapped("[Hostile -- obtain absolution at the Church of Vows "
-                                       "to restore this NPC.]");
+                    ImGui::TextWrapped("%s", tr("[Hostile -- obtain absolution at the Church of Vows "
+                                                "to restore this NPC.]"));
                     ImGui::PopStyleColor();
                 }
                 if (q.related)
                 {
                     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.8f, 1.0f, 1.0f));
-                    ImGui::TextWrapped("Link: %s", q.related);
+                    ImGui::TextWrapped(tr("Link: %s"), q.related);
                     ImGui::PopStyleColor();
                 }
                 for (size_t s = 0; s < q.step_count; s++)
@@ -226,11 +229,11 @@ void draw_quest_browser(Filter &f)
                     ImGui::SameLine();
                     if (flag_backed)
                     {
-                        ImGui::TextDisabled("[auto]");
+                        ImGui::TextDisabled("%s", tr("[auto]"));
                         if (ImGui::IsItemHovered())
-                            ImGui::SetTooltip((*goblin::overlay_api::cfg_questAllowFlagWrite_ptr())
-                                ? "Mirrors + can write the live EMEVD flag (cheat ON) -- can break this questline."
-                                : "Read-only mirror of the live EMEVD flag. Enable 'Allow writing quest flags' to edit.");
+                            ImGui::SetTooltip("%s", (*goblin::overlay_api::cfg_questAllowFlagWrite_ptr())
+                                ? tr("Mirrors + can write the live EMEVD flag (cheat ON) -- can break this questline.")
+                                : tr("Read-only mirror of the live EMEVD flag. Enable 'Allow writing quest flags' to edit."));
                         ImGui::SameLine();
                     }
                     ImGui::TextWrapped("%zu. %s", s + 1, q.steps[s].title);
@@ -253,7 +256,7 @@ void draw_quest_browser(Filter &f)
 
         ImGui::BeginChild("questlist", ImVec2(0, 300), true);
         char gh[48];
-        snprintf(gh, sizeof(gh), "Base game (%zu)", nbase);
+        snprintf(gh, sizeof(gh), tr("Base game (%zu)"), nbase);
         if (ImGui::TreeNodeEx(gh, ImGuiTreeNodeFlags_DefaultOpen))
         {
             for (size_t i = 0; i < total; i++)
@@ -261,7 +264,7 @@ void draw_quest_browser(Filter &f)
                     draw_npc(goblin::generated::QUEST_BROWSER[i], (int)i);
             ImGui::TreePop();
         }
-        snprintf(gh, sizeof(gh), "Shadow of the Erdtree (%zu)", ndlc);
+        snprintf(gh, sizeof(gh), tr("Shadow of the Erdtree (%zu)"), ndlc);
         if (ImGui::TreeNodeEx(gh, ImGuiTreeNodeFlags_DefaultOpen))
         {
             for (size_t i = 0; i < total; i++)
@@ -345,22 +348,22 @@ void draw_quest_browser(Filter &f)
             }
             if (!s_qfb.empty())
             {
-                snprintf(gh, sizeof(gh), "Other quests \xE2\x80\x94 auto-detected (%zu)", s_qfb.size());
+                snprintf(gh, sizeof(gh), tr("Other quests \xE2\x80\x94 auto-detected (%zu)"), s_qfb.size());
                 if (ImGui::TreeNodeEx(gh))
                 {
-                    ImGui::TextDisabled("Found in this mod's data; no step guide yet.");
+                    ImGui::TextDisabled("%s", tr("Found in this mod's data; no step guide yet."));
                     for (const auto &n : s_qfb)
                     {
                         bool done = goblin::overlay_api::read_event_flag(n.concluded);
                         ImGui::BulletText("%s  %s", n.name.c_str(),
-                                          done ? "[concluded]" : "[in progress]");
+                                          done ? tr("[concluded]") : tr("[in progress]"));
                     }
                     ImGui::TreePop();
                 }
             }
         }
         ImGui::EndChild();
-        ImGui::TextDisabled("Tick steps to track progress; Save to keep it. Original text.");
+        ImGui::TextDisabled("%s", tr("Tick steps to track progress; Save to keep it. Original text."));
         ImGui::TreePop();
     }
 }

@@ -14,6 +14,7 @@
 
 #include "goblin_collected.hpp"
 #include "goblin_config.hpp"
+#include "goblin_i18n.hpp"
 #include "goblin_debug_events.hpp"
 #include "goblin_field_probe.hpp"
 #include "goblin_param_scan.hpp"
@@ -423,6 +424,9 @@ bool WINAPI DllMain(HINSTANCE dll_instance, unsigned int fdw_reason, void *lpv_r
 
         spdlog::info("Map For Goblins DLL v{}", PROJECT_VERSION);
         goblin::load_config(folder / "MapForGoblins.ini");
+        // Overlay UI language table (lang/<code>.txt) — must be loaded before the first
+        // frame draws (the render module reads it via i18n::tr).
+        goblin::i18n::initialize(folder);
 
         if (goblin::config::debugLogging)
             spdlog::default_logger()->set_level(spdlog::level::debug);

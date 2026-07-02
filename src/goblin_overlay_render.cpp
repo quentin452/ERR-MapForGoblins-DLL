@@ -58,6 +58,8 @@
 // shared widgets and each section's UI — see panel_internal.hpp. This file keeps the
 // window frame, the two draw entry points, and the shared marker layers below.
 #include "overlay_panel/panel_internal.hpp"
+#include "goblin_i18n.hpp"
+using goblin::i18n::tr;  // overlay UI localization
 
 namespace
 {
@@ -225,10 +227,10 @@ namespace
             ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
             ImGui::Begin("Map for Goblins##error", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.25f, 0.25f, 1.0f));
-            ImGui::TextUnformatted("Map for Goblins - ERROR");
+            ImGui::TextUnformatted(tr("Map for Goblins - ERROR"));
             ImGui::Separator();
-            ImGui::TextWrapped("The mod's map folder (map\\MapStudio\\*.msb.dcx) could not be "
-                               "found. The mod cannot load its markers.");
+            ImGui::TextWrapped("%s", tr("The mod's map folder (map\\MapStudio\\*.msb.dcx) could not be "
+                                        "found. The mod cannot load its markers."));
             ImGui::PopStyleColor();
             ImGui::Spacing();
             std::string sd = goblin::overlay_api::disk_loot_dir().string();
@@ -253,11 +255,11 @@ namespace
                 ImGui::Begin("Map for Goblins##sigerror", nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize);
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.15f, 1.0f));
-                ImGui::TextUnformatted("Map for Goblins - WARNING");
+                ImGui::TextUnformatted(tr("Map for Goblins - WARNING"));
                 ImGui::Separator();
-                ImGui::TextWrapped("The RE signatures were not resolved correctly. The mod "
-                                   "will probably not work correctly (markers, graces or "
-                                   "loot missing or wrong).");
+                ImGui::TextWrapped("%s", tr("The RE signatures were not resolved correctly. The mod "
+                                            "will probably not work correctly (markers, graces or "
+                                            "loot missing or wrong)."));
                 ImGui::PopStyleColor();
                 ImGui::Spacing();
                 ImGui::TextDisabled("%d missing, %d ambiguous out of %d signatures.",
@@ -297,10 +299,10 @@ namespace
             // Keep the per-category census warm: the watcher only runs the flag
             // sweep while the panel is on-screen (stamped here each frame).
             goblin::overlay_api::note_menu_visible();
-            if (ImGui::Button("[-] collapse"))
+            if (ImGui::Button(tr("[-] collapse")))
                 g_large = false;
             ImGui::SameLine();
-            ImGui::TextDisabled("%s close | %.0f fps", close_hint().c_str(), io.Framerate);
+            ImGui::TextDisabled(tr("%s close | %.0f fps"), close_hint().c_str(), io.Framerate);
             ImGui::Separator();
 
             // Settings search: type a keyword and only the matching parts of the panel stay
@@ -311,7 +313,7 @@ namespace
             // filters marker CATEGORIES, not panel settings.
             static char settings_q[64] = "";
             ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-            ImGui::InputTextWithHint("##settingsfilter", "find setting... (e.g. altitude, minimap zoom, spoiler)",
+            ImGui::InputTextWithHint("##settingsfilter", tr("find setting... (e.g. altitude, minimap zoom, spoiler)"),
                                      settings_q, sizeof(settings_q));
             panel::draw_gamepad_keyboard_button("##settingsfilter_kbd", settings_q, sizeof(settings_q));
             // Keywords per block = its title + the labels of the settings it contains; every
@@ -323,7 +325,7 @@ namespace
             f.filtering = settings_q[0] != '\0';
             static int s_settings_hits = 0;
             if (f.filtering && s_settings_hits == 0)
-                ImGui::TextDisabled("no setting matches \"%s\" — clear the box to show all", settings_q);
+                ImGui::TextDisabled(tr("no setting matches \"%s\" — clear the box to show all"), settings_q);
             ImGui::Separator();
 
             // In-game pause (dx-bugs-backlog item 4): flips the frame-step branch, world sim
@@ -331,7 +333,7 @@ namespace
             if (goblin::pause::available() && f.match("pause game freeze stop world"))
             {
                 bool paused = goblin::pause::paused();
-                if (ImGui::Checkbox("Pause the game (world sim freezes; menu stays usable)", &paused))
+                if (ImGui::Checkbox(tr("Pause the game (world sim freezes; menu stays usable)"), &paused))
                     goblin::pause::set_paused(paused);
             }
 

@@ -3,6 +3,7 @@
 // from goblin_overlay_render.cpp in the draw_panel split (big-files refactor item 1).
 
 #include "panel_internal.hpp"
+#include "goblin_i18n.hpp"
 #include "goblin_overlay_render_api.hpp"
 
 #include <cctype>
@@ -11,6 +12,8 @@
 
 namespace goblin::overlay::panel
 {
+using goblin::i18n::tr;  // overlay UI localization (lang/<code>.txt)
+
 namespace
 {
     void append_folded(std::string &out, uint32_t cp)
@@ -100,8 +103,16 @@ bool matches_all_tokens(const std::string &hay, const char *query)
 
 bool Filter::match(const char *keywords)
 {
-    const bool m = !filtering || matches_all_tokens(keywords, q);
-    if (filtering && m) hits++;
+    bool m = true;
+    if (filtering)
+    {
+        // Match the ENGLISH keywords AND their translation (when the language table has
+        // one), so a localized user can search in either language.
+        const char *tk = tr(keywords);
+        m = (tk == keywords) ? matches_all_tokens(keywords, q)
+                             : matches_all_tokens(std::string(keywords) + " " + tk, q);
+        if (m) hits++;
+    }
     return m;
 }
 
@@ -154,7 +165,7 @@ void draw_gamepad_keyboard_button(const char *popup_id, char *buf, size_t buf_si
     // scrolling. Own line instead, always visible regardless of the field's width.
     if (ImGui::SmallButton("Kbd")) ImGui::OpenPopup(popup_id);   // ASCII-only: U+2328 isn't in the merged font ranges
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("On-screen keyboard for gamepad text entry.");
+        ImGui::SetTooltip("%s", tr("On-screen keyboard for gamepad text entry."));
 
     if (ImGui::BeginPopup(popup_id))
     {
@@ -175,13 +186,13 @@ void draw_gamepad_keyboard_button(const char *popup_id, char *buf, size_t buf_si
             }
             ImGui::NewLine();
         }
-        if (ImGui::Button("Space") && len + 1 < buf_size) { buf[len] = ' '; buf[len + 1] = '\0'; }
+        if (ImGui::Button(tr("Space")) && len + 1 < buf_size) { buf[len] = ' '; buf[len + 1] = '\0'; }
         ImGui::SameLine();
-        if (ImGui::Button("Backspace") && len > 0) buf[len - 1] = '\0';
+        if (ImGui::Button(tr("Backspace")) && len > 0) buf[len - 1] = '\0';
         ImGui::SameLine();
-        if (ImGui::Button("Clear")) buf[0] = '\0';
+        if (ImGui::Button(tr("Clear"))) buf[0] = '\0';
         ImGui::SameLine();
-        if (ImGui::Button("Done")) ImGui::CloseCurrentPopup();
+        if (ImGui::Button(tr("Done"))) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
     ImGui::PopID();

@@ -3,11 +3,14 @@
 // Moved verbatim from goblin_overlay_render.cpp::draw_panel in the split (item 1).
 
 #include "panel_internal.hpp"
+#include "goblin_i18n.hpp"
 #include "goblin_overlay_render_api.hpp"
 #include "goblin_quest_steps.hpp"  // generated::QUEST_BROWSER (capture NPC combo)
 
 namespace goblin::overlay::panel
 {
+using goblin::i18n::tr;  // overlay UI localization (lang/<code>.txt)
+
 void draw_dev_tools_danger(Filter &f)
 {
     // Dev/debug observers. Each installs a hook or starts a worker thread
@@ -16,9 +19,9 @@ void draw_dev_tools_danger(Filter &f)
     // persists every config bool, so no per-flag plumbing is needed.
     if (f.match("debug live projection engine world map dungeon underground placement"))
     {
-        ImGui::SeparatorText("Debug");
+        ImGui::SeparatorText(tr("Debug"));
         // Live toggle (no restart): project_marker reads this every frame.
-        ImGui::Checkbox("Live projection (engine world→map fn; fixes dungeon/UG placement)",
+        ImGui::Checkbox(tr("Live projection (engine world→map fn; fixes dungeon/UG placement)"),
                         goblin::overlay_api::cfg_liveProjection_ptr());
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip(
@@ -105,45 +108,45 @@ void draw_dev_tools_danger(Filter &f)
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.78f, 0.18f, 0.18f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.90f, 0.22f, 0.22f, 1.0f));
     if (f.filtering && show_danger) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
-    if (show_danger && ImGui::TreeNode("Danger zone"))
+    if (show_danger && ImGui::TreeNode(tr("Danger zone")))
     {
-        if (ImGui::Button("Reset quest progression"))
+        if (ImGui::Button(tr("Reset quest progression")))
             ImGui::OpenPopup("##confirm_reset_quest");
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Clear every quest-step checkmark. Save to INI to persist.");
-        if (ImGui::Button("Reset parameters to default"))
+            ImGui::SetTooltip("%s", tr("Clear every quest-step checkmark. Save to INI to persist."));
+        if (ImGui::Button(tr("Reset parameters to default")))
             ImGui::OpenPopup("##confirm_reset_params");
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Restore all settings to defaults and write the ini.\n"
-                              "Restart the game to fully apply.");
+            ImGui::SetTooltip("%s", tr("Restore all settings to defaults and write the ini.\n"
+                                       "Restart the game to fully apply."));
 
         if (ImGui::BeginPopupModal("##confirm_reset_quest", nullptr,
                                    ImGuiWindowFlags_AlwaysAutoResize))
         {
-            ImGui::TextUnformatted("Clear ALL quest-step checkmarks?");
-            ImGui::TextDisabled("Cannot be undone. Save to INI afterwards to persist.");
-            if (ImGui::Button("Yes, clear"))
+            ImGui::TextUnformatted(tr("Clear ALL quest-step checkmarks?"));
+            ImGui::TextDisabled("%s", tr("Cannot be undone. Save to INI afterwards to persist."));
+            if (ImGui::Button(tr("Yes, clear")))
             {
                 goblin::overlay_api::reset_quest_progress();
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel"))
+            if (ImGui::Button(tr("Cancel")))
                 ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
         if (ImGui::BeginPopupModal("##confirm_reset_params", nullptr,
                                    ImGuiWindowFlags_AlwaysAutoResize))
         {
-            ImGui::TextUnformatted("Reset ALL settings to defaults?");
-            ImGui::TextDisabled("Writes defaults to MapForGoblins.ini. Restart to fully apply.");
-            if (ImGui::Button("Yes, reset"))
+            ImGui::TextUnformatted(tr("Reset ALL settings to defaults?"));
+            ImGui::TextDisabled("%s", tr("Writes defaults to MapForGoblins.ini. Restart to fully apply."));
+            if (ImGui::Button(tr("Yes, reset")))
             {
                 goblin::overlay_api::reset_to_defaults();
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel"))
+            if (ImGui::Button(tr("Cancel")))
                 ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
