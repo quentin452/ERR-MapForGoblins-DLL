@@ -112,6 +112,12 @@ struct Marker
     // per-item icon instead of the category representative. Set by MapEntryLayer push_marker after
     // the aggregate init (default 0 keeps other ctors intact).
     int item_icon_id = 0;
+    // This marker's OWN source WorldMapPointParam iconId (= the game's MENU_MAP_<NN> map-point
+    // glyph); 0 = none. Set by push_marker ONLY for Source::Live rows (bosses + landmarks — true
+    // WMPP rows the game itself pins, so the iconId IS a resident/on-disk map glyph). Lets the
+    // renderer resolve a native glyph PER MARKER, which unlocks the multi-iconId category unions
+    // (Dungeon/LegacyDungeon/the parity families) that a single per-category id cannot cover.
+    int map_icon_id = 0;
     // DX item 7: block-local altitude (MSB pos[1]); ≈ world Y on the overworld. Set by push_marker after
     // the aggregate init (default 0 keeps other ctors intact). Drives the above/below-player altitude badge.
     float worldY = 0.0f;

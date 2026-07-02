@@ -216,6 +216,11 @@ void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST
     m.lotId = lotId;
     m.lotType = lotType;
     m.worldY = d.posY;  // DX item 7: block-local altitude for the above/below-player badge
+    // Per-marker native map glyph: ONLY Live sources are true WMPP rows whose iconId is a real
+    // MENU_MAP_<NN> glyph (bosses, landmarks). Loot passes (Baked/DiskMSB) carry item/massedit
+    // iconIds with different semantics — never map glyphs — so they stay 0.
+    if (source == Source::Live && d.iconId > 0)
+        m.map_icon_id = d.iconId;
     // Per-item icon: resolve THIS lot's real inventory iconId from the live ItemLotParam -> EquipParam,
     // so a loot marker draws its OWN item icon instead of the category representative. Mod-agnostic
     // (reads the active install's live params). resolve_loot_item_textid with baked_textid=0 returns the

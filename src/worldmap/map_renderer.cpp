@@ -208,7 +208,11 @@ struct IconSet
                     return true;
                 }
             }
-            int gid = goblin::worldmap::category_gpu_iconId(m.category);
+            // Per-marker source WMPP iconId first (Live bosses/landmarks — covers the multi-iconId
+            // category unions like Dungeon/LegacyDungeon that a single per-category id can't),
+            // else the per-category mapped id. Scale/tint stay per-category either way.
+            int gid = m.map_icon_id > 0 ? m.map_icon_id
+                                        : goblin::worldmap::category_gpu_iconId(m.category);
             if (gid > 0 && mappoint.resolve(IconKey{IconKey::MapPoint, nullptr, gid}, out))
             {
                 out.scale = (*goblin::overlay_api::cfg_mapSymbolScale_ptr()) *

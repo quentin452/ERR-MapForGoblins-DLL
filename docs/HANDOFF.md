@@ -241,11 +241,16 @@ Gate". Default OFF.
    markers (AEG099_510 bound to warp template 90005605; N entities harvested, M LOD-dup collapsed)` —
    expect ~23 gates at real sending-gate spots (Four Belfries, Siofra, Leyndell, DLC, …). On pass, merge
    `feat/mapgenie-portal` to master.
-2. **Landmark GLYPHS followup (user "for later").** Circle now; each WMPP row has a real iconId →
-   `map_point_rect(iconId)` (`SB_MapCursor`). Quick win: `category_gpu_iconId` for the 4 single-value
-   categories (DivineTower→23/Evergaol→9/MinorErdtree→30/GrandLift→21). Dungeon/LegacyDungeon/MiquellaCross
-   need per-marker source iconId through `push_marker` (bosses share this gap). Task chip spawned.
-   Portals could reuse `AEG099_510`'s SB_MapCursor glyph too if one exists.
+2. **Landmark GLYPHS — DONE (2026-07-02, `feat/per-marker-native-glyphs`).** Single-iconId
+   categories landed first (`category_gpu_iconId`); then the per-marker plumbing closed the rest:
+   `Marker.map_icon_id` = the row's own WMPP iconId, set by `push_marker` for `Source::Live` only
+   (bosses + landmarks — Baked/DiskMSB loot iconIds are item/massedit ids, never map glyphs, stay
+   0); the renderer's MP_ID tier prefers it over the per-category id. Net: ALL 16 landmark
+   categories (incl. the Dungeon/LegacyDungeon/parity unions) now draw their native per-site
+   glyph, and on ERR-less installs bosses (41/67) get a native glyph too (ERR keeps the
+   name-keyed `MENU_MAP_ERR_Boss` first). Still open: Portals have no known SB_MapCursor glyph
+   (check `AEG099_510` sometime); the F1 "icons replaced" counter (`category_is_gpu_native`)
+   doesn't know about per-marker resolution yet — cosmetic.
 3. **Rest of GROUP 2 — recon done, NOT quick wins. See `docs/re/windows_group2_landscape_re_findings.md`.**
    Portal was the clean one *because* it had a harvestable EMEVD template (`90005605`). The rest do NOT:
    - **Elevator / Smithing Table are ObjAct-bound, not EMEVD-template-bound.** Anchors found:
