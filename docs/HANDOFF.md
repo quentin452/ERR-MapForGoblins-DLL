@@ -251,6 +251,16 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
   background game" tradeoff, it's symmetric with PauseTheGame's global keys) or real X-side
   focus forcing. Until then: leave the game window focused during scripted UI runs (world/map
   driving via `key`/menus works regardless — game reads its own input path).
+  **Partially closed 2026-07-02 (`fix/f2-fog-locate-v2` branch, user-reported + repro'd +
+  validated live): the FIRST `key` command after an auto-refocus was silently lost** (async
+  X/Wine focus; sometimes with no WM_KILLFOCUS at all). `ensure_game_foreground` now waits for
+  foreground + our g_has_focus gate, and `key` is CLOSED-LOOP: a keyboard-arrival counter in
+  hk_wndproc (WM_KEYDOWN leg + RIM_TYPEKEYBOARD raw leg — gameplay is NOLEGACY, legacy leg
+  alone false-retries everything) is polled post-send; no arrival ≤240ms → refocus + resend
+  once (down,down,up = one logical press → can't double-toggle). `status` gained `kbseen=`/
+  `fg=`. NOT yet covered: `mouse_click`/`type` have no delivery verify (same loss window),
+  and the full "drive UI while user works elsewhere" case still needs the dev-mode
+  treat-as-focused override.
 - **Great Rune "(x2)" in search — NOT a bug (triaged with the user, 2026-07-02).** Every rune has
   TWO legit markers sharing the GoodsName: the boss-drop (live boss position — Mohg's is on the
   UNDERGROUND page, the tell that unmasked it) and the ACTIVATION site (Divine Tower — ring
