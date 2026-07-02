@@ -1,8 +1,19 @@
 # Settings sweep — classify every F1/ini knob (keep / hardcode / dev-quarantine / delete)
 
-Status: **Phase 0+1+2 LANDED + IN-GAME CONFIRMED (user, 2026-07-02).** Migration verified live
-(existing ini's tuned values relocated into the new sections, no reset). Remaining: Phase 3 structural
-deletes (grace atlas, baked projection); minor tidies (see "Remaining" at bottom). Author 2026-07-02.
+Status: **Phase 0+1+2 LANDED + IN-GAME CONFIRMED; Phase 3 LANDED (build-verified, in-game verify
+pending).** Author 2026-07-02.
+
+### Phase 3 (commits 369b619 grace, 360e3ab projection)
+- **FLAG-2 grace baked-atlas — DELETED.** graceGpuSprite hardcoded true; the CPU baked-atlas grace
+  draw branch removed; sprite-not-harvested falls to the universal circle (native → circle, no baked
+  middle tier). Config var dropped everywhere; the graceOverlay=OFF path keeps its "show_graces"
+  atlas key. **In-game verify pending:** discovered/undiscovered graces still correct, no vanish.
+- **FLAG-4 live projection — knob REMOVED, fallback KEPT (correction to the original plan).** The
+  baked projection is NOT fully deletable: the engine ships no converter for m19 Chapel + DLC
+  unplaced areas, which rely on the baked affine, plus the pre-map-open window. So liveProjection is
+  hardcoded true (always try live) and the baked `world_to_mapspace`/LEGACY_CONV fallback stays as
+  the fallback within project_marker/project_raw. Only the config knob + branch gate + F1 checkbox
+  removed. **In-game verify pending:** dungeon/UG/DLC/Chapel placement unchanged, no pop-in.
 
 ### What landed (commits 3368a20 + this one)
 - **Phase 0** — ini migration handles cross-section key MOVES (global-unique-key scan): a relocated
@@ -22,8 +33,9 @@ deletes (grace atlas, baked projection); minor tidies (see "Remaining" at bottom
   brace-risk > value. The Phase-0 migration will move their values for free when done.
 - **Panel dev-widget moves** — the "Baked-only (diag)" checkbox in General settings + the 4 `DEBUG:`
   checkboxes inline in Clustering should move to a dev-gated panel area (cosmetic, panel-only).
-- **Phase 3 structural deletes** (own commits, in-game verify each): grace baked-atlas CPU path
-  (FLAG-2), baked projection fallback (FLAG-4). See resolutions below.
+- **Phase 3 structural deletes — DONE 2026-07-02** (commits 369b619 + 360e3ab; in-game verify
+  pending). Grace atlas fully removed; live-projection knob removed but the baked projection FALLBACK
+  is kept (load-bearing for unplaced areas — see Phase 3 note at top).
 
 Owner branch when work starts: fork `chore/settings-sweep` from master.
 

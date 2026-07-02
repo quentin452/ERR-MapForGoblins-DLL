@@ -117,10 +117,14 @@ via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (sp
    for vanilla parity, plus kMapSymbolScale/kClusterScale/kAltitudeDeadzone, grace offset deleted
    (Phase 2). Cross-builds clean; **IN-GAME CONFIRMED (user, 2026-07-02): migration works —
    existing ini's tuned values relocated into the new `[Markers]`/`[Minimap]` sections, no reset/dup.
-   NEXT: (a) Phase 3 structural deletes — grace baked-atlas CPU path (FLAG-2) + baked
-   projection fallback (FLAG-4), each its own commit + in-game verify (see plan "Flag resolutions");
-   (b) minor tidies: [Goblin] diag-key relocation + the stray dev widgets (Baked-only, 4 cluster
-   DEBUG checkboxes) → dev panel area.** All 8 ⚠FLAGs resolved (see plan). Original raw notes below:
+   Phase 3 LANDED 2026-07-02 (369b619 grace, 360e3ab projection; build-verified). FLAG-2: grace
+   baked-atlas CPU path DELETED (live sprite only → circle fallback). FLAG-4: liveProjection knob
+   removed (hardcoded true) but the baked projection FALLBACK is KEPT — it is load-bearing for
+   unplaced areas (m19 Chapel, DLC) + the pre-map-open window; only the knob/branch-gate/checkbox
+   went. **NEXT: (a) in-game verify Phase 3 — graces (disc/undisc, no vanish) + dungeon/UG/DLC/Chapel
+   placement unchanged + no map-open pop-in; (b) minor tidies: [Goblin] diag-key relocation + the
+   stray dev widgets (Baked-only, 4 cluster DEBUG checkboxes) → dev panel area.** All 8 ⚠FLAGs
+   resolved (see plan). Original raw notes below:
    The F1 panel + ini carry many
    dev-era knobs (diag_*, debug_*, baked-only, locate-debug, sprite calib offsets…) AND — the
    user's key point — sliders whose values are now FINAL CALIBRATION, not preferences:
