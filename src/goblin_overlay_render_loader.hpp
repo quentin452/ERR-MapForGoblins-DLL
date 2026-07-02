@@ -29,6 +29,15 @@ namespace goblin::overlay_render_loader
     // the default single-DLL build and when nothing is pending.
     void maybe_reload();
 
+    // Phase 3 debug-RPC surface. request_reload() force-flags a swap exactly as the file watcher
+    // would (consumed by the next frame's maybe_reload); false in the default single-DLL build.
+    // render_generation() = how many swaps have happened (0 = initial module, and always 0 in the
+    // default build); an RPC client polls it to see its rebuild go live. reload_pending() = a swap
+    // is flagged but not yet consumed.
+    bool request_reload();
+    unsigned render_generation();
+    bool reload_pending();
+
     void call_draw_panel(const goblin::overlay::OverlayFrameCtx &ctx);
     void call_draw_worldmap_markers(bool menu_open, const goblin::overlay::OverlayFrameCtx &ctx);
     void call_draw_minimap_hud(const goblin::overlay::OverlayFrameCtx &ctx);

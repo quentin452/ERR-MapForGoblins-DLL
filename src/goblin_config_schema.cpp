@@ -32,6 +32,7 @@ namespace goblin::config
     uint16_t overlayToggleGamepad = 0x8000 | 0x0080;  // XINPUT_GAMEPAD_Y | XINPUT_GAMEPAD_RIGHT_THUMB (Y+R3)
     uint8_t virtualKeyboardLayout = 0;  // 0 = Alphabetical, 1 = QWERTY
     std::string showAllExcept = "";
+    std::string debugRpcPort = "";  // dev debug RPC TCP loopback port; empty = disabled
 
     // One bool per goblin::generated::Category, indexed by the enum value. Seeded
     // from the schema defaults by apply_defaults() at load time (the per-category
@@ -499,6 +500,11 @@ namespace
              "Hotkey for the in-memory marker dump (developer aid). Key names: F1-F24,\nA-Z, 0-9, Space, Escape, Tab, Enter, Backspace, Home, End, PageUp, PageDown,\nInsert, Delete, arrows.",
              false, {
                 B("enable_marker_dump", enableMarkerDump, "false", "Master switch for the marker dump hotkey"),
+                IniEntry{"debug_rpc_port", IniType::String, &cfg::debugRpcPort, "",
+                         "Dev-only debug RPC: TCP port on 127.0.0.1 (e.g. 38700). Empty = disabled\n"
+                         "(default). Line protocol; commands: ping, status, open_f1, set <key> <value>,\n"
+                         "screenshot <path>, reload_overlay. Driver: tools/mfg_rpc.py. Loopback-only,\n"
+                         "no auth — leave empty outside dev sessions.", false, nullptr},
                 IniEntry{"marker_dump_key", IniType::VkKey, &cfg::markerDumpKey, "F9",
                          "Key to dump decoded markers to logs/MapForGoblins_markers.log. Default: F9.", false, nullptr},
                 B("debug_event_flags", debugEventFlags, "false",

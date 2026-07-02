@@ -35,14 +35,20 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   everywhere else — randomizer players flip that one key.
 
 ### Added
+- **Dev-only debug RPC.** New ini key `[Debug] debug_rpc_port` (empty = off, the default) starts a
+  TCP listener on 127.0.0.1 so an external script (`tools/mfg_rpc.py`) can drive the running game:
+  `ping`/`status`, open/close the F1 panel, set any ini config key live, capture a BMP screenshot
+  of the frame (overlay included), and trigger an overlay hot reload on the split build. Works from
+  Linux against the game under Proton (loopback is shared). Loopback-only, no auth — dev sessions
+  only.
 - **Dev-only overlay hot reload (split build).** With `GOBLIN_OVERLAY_HOTRELOAD=ON` the overlay
   draw layer builds as a separate `goblin_overlay_render.dll` that the host watches and live-swaps
   on rebuild (`FreeLibrary`/`LoadLibrary` between frames, markers rebuilt automatically) — iterate
   on overlay rendering without restarting the game. Includes the /MT cross-DLL heap unification
   (render's `operator new/delete` + ImGui allocations routed to the host heap) that the split build
   needed for correctness. Shipped single-DLL builds are unaffected (option OFF = byte-identical
-  path). Windows in-game validation pending; detail in
-  `docs/plans/overlay_hot_reload_playwright_plan.md`.
+  path). In-game validated on ERR under Proton (3 live reloads, watcher swap ~1.3s after rebuild);
+  detail in `docs/plans/overlay_hot_reload_playwright_plan.md`.
 - **Per-marker native landmark glyphs** — every landmark marker now draws the game's OWN map glyph
   for its exact site (each `WorldMapPointParam` row's iconId → `MENU_MAP_<NN>`): catacomb/cave/tunnel
   icons for Dungeons, each legacy dungeon's bespoke icon, church/ruin/fort/village icons for the

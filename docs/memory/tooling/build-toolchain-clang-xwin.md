@@ -100,3 +100,14 @@ PACKAGING assets (README/gfx/snapshot dir) + the offline data pipeline's data/<p
 Deploy target dir (offline mode DLLs): `<windows_downloads>\ERRv2.2.9.6-541-2-2-9-6-1780861369\ERRv2.2.9.6\dll\offline\`
 (also holds MapForGoblins.ini, er_console_mod.dll). See [[mapforgoblins-pipeline-setup]],
 [[windows-tooling-gotchas]]. <user> still runtime-tests in-game.
+
+## Stale build-dir gotcha (2026-07-02, Linux) — reconfigure after toolchain-file changes
+
+`CMAKE_CXX_FLAGS`/linker flags from the toolchain file are baked into the build dir's CMakeCache at
+CONFIGURE time — editing `clang-cl-xwin.cmake` does NOT update an existing build dir. Bit us for
+real: `build-linux-hotreload` was configured before the toolchain gained `/Z7 /Brepro`, and the DLL
+built from that stale cache **crashed in-game** (AV in the render DLL during the disk build) while
+a fresh reconfigure of the SAME source built a binary that ran clean (boot + disk build + 3 hot
+reloads). Also: no `/Z7` = no PDB = unsymbolizable crash dump. Rule: after any toolchain-file
+change, `rm -rf` + reconfigure every build dir. Fresh configures under CMake 4.x need
+`-DCMAKE_POLICY_VERSION_MINIMUM=3.5` (vendored minhook's cmake_minimum_required is too old).

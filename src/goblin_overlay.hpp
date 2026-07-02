@@ -12,6 +12,10 @@
 // Phase 1: resolve the vtables, install the hooks, and draw a hello window
 // toggled by a hotkey. No settings binding yet — that is Phase 3.
 
+#include <string>
+
+struct IDXGISwapChain3;  // screenshot_to_file — avoid pulling dxgi headers into every includer
+
 namespace goblin::overlay
 {
     // Resolve the DXGI/D3D12 vtables (via a throwaway device+swapchain) and
@@ -25,6 +29,16 @@ namespace goblin::overlay
 
     // True once the first frame has initialised ImGui against the live swapchain.
     bool is_ready();
+
+    // Phase 3 debug RPC (present-thread only — called from goblin_debug_rpc::pump inside
+    // hk_present): the F1 panel master open/close, same variable the F1 key flips.
+    bool panel_open();
+    void set_panel_open(bool open);
+
+    // Phase 3 debug RPC `screenshot` (present-thread only): copy the CURRENT backbuffer (game +
+    // overlay, pump runs after our draw is submitted on the same queue) to a 24-bit BMP at
+    // path_utf8. False + err on failure (overlay not ready, unsupported format, GPU/file error).
+    bool screenshot_to_file(IDXGISwapChain3 *swapchain, const std::string &path_utf8, std::string &err);
 
     // Resolve a real inventory iconId (MENU_ItemIcon_<id>, the 00_Solo atlas) to a drawable native
     // GPU icon (harvested sheet copied into an ImGui SRV, sheet-as-atlas). Returns false until the
