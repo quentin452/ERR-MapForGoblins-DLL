@@ -115,11 +115,11 @@ via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (sp
    `[Markers]`+`[Minimap]` ini sections pulled out of the `[Debug]` dumping ground (Phase 1); final
    calibration sub-knobs hardcoded to constexpr in map_renderer.cpp — kGraceIconScale kept SEPARATE
    for vanilla parity, plus kMapSymbolScale/kClusterScale/kAltitudeDeadzone, grace offset deleted
-   (Phase 2). Cross-builds clean; fresh ini emit eyeballed. **NEXT: (a) in-game migration confirm —
-   load once with an existing tuned ini, verify minimap/scale values reappear under the new sections
-   with no reset/dup; (b) Phase 3 structural deletes — grace baked-atlas CPU path (FLAG-2) + baked
+   (Phase 2). Cross-builds clean; **IN-GAME CONFIRMED (user, 2026-07-02): migration works —
+   existing ini's tuned values relocated into the new `[Markers]`/`[Minimap]` sections, no reset/dup.
+   NEXT: (a) Phase 3 structural deletes — grace baked-atlas CPU path (FLAG-2) + baked
    projection fallback (FLAG-4), each its own commit + in-game verify (see plan "Flag resolutions");
-   (c) minor tidies: [Goblin] diag-key relocation + the stray dev widgets (Baked-only, 4 cluster
+   (b) minor tidies: [Goblin] diag-key relocation + the stray dev widgets (Baked-only, 4 cluster
    DEBUG checkboxes) → dev panel area.** All 8 ⚠FLAGs resolved (see plan). Original raw notes below:
    The F1 panel + ini carry many
    dev-era knobs (diag_*, debug_*, baked-only, locate-debug, sprite calib offsets…) AND — the

@@ -1,8 +1,8 @@
 # Settings sweep — classify every F1/ini knob (keep / hardcode / dev-quarantine / delete)
 
-Status: **Phase 0+1+2 LANDED on master 2026-07-02** (build-verified, ini emit eyeballed). Remaining:
-in-game migration confirm; Phase 3 structural deletes (grace atlas, baked projection); minor tidies
-(see "Remaining" at bottom). Author 2026-07-02.
+Status: **Phase 0+1+2 LANDED + IN-GAME CONFIRMED (user, 2026-07-02).** Migration verified live
+(existing ini's tuned values relocated into the new sections, no reset). Remaining: Phase 3 structural
+deletes (grace atlas, baked projection); minor tidies (see "Remaining" at bottom). Author 2026-07-02.
 
 ### What landed (commits 3368a20 + this one)
 - **Phase 0** — ini migration handles cross-section key MOVES (global-unique-key scan): a relocated
@@ -15,9 +15,8 @@ in-game migration confirm; Phase 3 structural deletes (grace atlas, baked projec
   now holds only genuine dev/diag/RE knobs.
 
 ### Remaining (deferred, lower value / higher risk)
-- **In-game migration confirm** (do this first): launch once with an existing ini that has tuned
-  minimap/scale values under old `[Debug]`; verify they reappear under `[Minimap]`/`[Markers]` with no
-  reset and no duplicate/orphan keys.
+- **In-game migration confirm — DONE (user, 2026-07-02): confirmed working in game.** Existing ini
+  migrated its tuned values into the new `[Markers]`/`[Minimap]` sections, no reset, no dup/orphan keys.
 - **[Goblin] diag-key relocation** — move the 5 `diag_*` + `debug_logging` (+ the `baked_only` DIAG)
   out of `[Goblin]` into `[Debug]`. Deferred: non-contiguous in the schema, self-labeled already,
   brace-risk > value. The Phase-0 migration will move their values for free when done.
