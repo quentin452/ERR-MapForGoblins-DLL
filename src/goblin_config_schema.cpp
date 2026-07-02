@@ -127,6 +127,7 @@ namespace goblin::config
     // → detail / real items), ramping DOWN to clusterThreshold FAR away (more
     // clustering → fewer distant icons). Linear ramp over nearRadius..farRadius
     // tiles. Applied per pile at map-open replan.
+    bool    clusterSpiderfy = true;  // hover a pile → fan its members out around it
     bool    clusterDistanceAdaptive = false;
     uint8_t clusterNearThreshold = 60; // detail size NEAR player (high = more individual items)
     uint8_t clusterNearRadius    = 1;  // tiles: full-detail radius (tight = just your immediate area)
@@ -314,6 +315,10 @@ namespace
              false, {
                 B("enable_clustering", enableClustering, "false",
                   "Master switch for marker clustering."),
+                B("cluster_spiderfy", clusterSpiderfy, "true",
+                  "Hover a cluster pile to fan its member icons out around it (spiderfy) —\n"
+                  "inspect and tooltip each member without zooming in. The fan closes when\n"
+                  "the cursor leaves it."),
                 B("cluster_hard", clusterHard, "false",
                   "HARD clustering: fold ALL marker types in a dense map cell into ONE\n"
                   "mixed pile (far fewer icons). false = SOFT: cluster each category\n"

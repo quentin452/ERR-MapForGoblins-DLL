@@ -35,6 +35,11 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   everywhere else — randomizer players flip that one key.
 
 ### Added
+- **Spiderfy: hover a cluster pile to fan its members out.** With clustering on, hovering a pile
+  spreads its member icons around it (ring, spiral past a dozen; capped at 40 + "+N more") on a
+  legibility backdrop, each with its own leg line and full hover tooltip — inspect a dense spot
+  without zooming. The fan closes when the cursor leaves it. Ini `cluster_spiderfy` (Clustering,
+  default on).
 - **Pause the game from the F1 menu.** New checkbox freezes the world simulation (enemies, timers,
   physics) while the menu, map overlay and rendering stay fully usable — the pause technique from
   iArtorias' elden_pause, built in (replaces the separate PauseTheGame.dll, which can also toggle

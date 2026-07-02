@@ -162,9 +162,17 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
   85x16 87x8` — everything expected EXCEPT **iconId 19 (Windmill Pastures, 3 rows): missed in the
   first parity grouping pass** → added to `WorldTownVillage` (those were the user's remaining
   mystery pins).
-- **Crowded-icon DX: user picked (a) hover FAN-OUT (spiderfy) — FOLLOWUP, not started.** Hovering
-  a pile spreads its icons around the cursor. Existing machinery to reuse: per-marker
-  `cluster_key`, pile labels, the hover/tooltip pass in map_renderer.
+- **Crowded-icon DX: hover FAN-OUT (spiderfy) — DONE + IN-GAME VALIDATED 2026-07-02
+  (`feat/spiderfy`, entirely via the Phase 4 RPC loop — boot→save→map→hover all scripted, both
+  states screenshot-verified, debugged live with a hot-reloaded debug-viz build).** Hovering a
+  pile fans its members out (ring ≤12, archimedean spiral above, cap 40 + "+N more"), legibility
+  backdrop disc, leg lines, per-member hover tooltips via the existing hover_test; sticky on the
+  pile's tile cell key, closes when the cursor leaves fan extent + margin. Ini `cluster_spiderfy`
+  (default on). Loop side-findings fixed on the way: RPC `mouse_move` needed the SetCursorPos
+  TRAMPOLINE (SendInput absolute lands off-target under Wine) + a ±1px relative jiggle (a real
+  mouse EVENT — otherwise the game re-warps the OS cursor onto its raw-input reticle and the
+  placement lasts one frame); drivers should send mouse_move twice (rare warp race eats the
+  first).
 
 ## SINGLE-DLL migration — profiles retired (2026-07-02, `feat/mapgenie-landmark-parity`)
 
