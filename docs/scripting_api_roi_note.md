@@ -75,8 +75,9 @@ speculatively — wait until a second mod actually exists.*
 1. **Data-driven category/filter descriptor** (JSON/ini, read live). Declare "category X ← param Y,
    iconId Z, event-flag gate, section S" as **data**, not code. Covers a real slice of "new map feature
    = new landmark/loot category" with zero new C++ per category — ~80 % of the scripting benefit at
-   ~20 % of the cost, and it is exactly where the no-bake direction already points. **This is the
-   concrete near-term win to scope as a plan.**
+   ~20 % of the cost, and it is exactly where the no-bake direction already points. **Scoped as a plan:
+   `plans/category_descriptor_plan.md` (Tier 1 compile-time single-source-of-truth; Tier 2 runtime
+   live-add).**
 2. **Improve the host-reload story.** Push more feature logic into the already-hot-reloadable render
    module where it fits, and/or make the data layer (`rebuild_markers()`) re-runnable against edited
    descriptors without a DLL swap — attack the 40 s restart directly.
