@@ -4,6 +4,7 @@
 #include "goblin_overlay_render_api.hpp"
 
 #include "goblin_config.hpp"
+#include "goblin_config_schema.hpp"  // err_features_enabled
 #include "goblin_inject.hpp"
 #include "goblin_collected.hpp"
 #include "goblin_debug_events.hpp"
@@ -36,6 +37,7 @@ namespace goblin::overlay_api
     bool *cfg_showCategory_ptr() { return goblin::config::showCategory; }
     std::string &cfg_questProgress_ref() { return goblin::config::questProgress; }
     std::string &cfg_regionToggles_ref() { return goblin::config::regionToggles; }
+    std::string &cfg_uiExclusionRects_ref() { return goblin::config::uiExclusionRects; }
 
     bool section_visible(int s) { return goblin::ui::section_visible(s); }
     void set_section_visible(int s, bool v) { goblin::ui::set_section_visible(s, v); }
@@ -72,6 +74,8 @@ namespace goblin::overlay_api
     bool set_view_center(float mU, float mV, float minZoom) { return goblin::worldmap_probe::set_view_center(mU, mV, minZoom); }
     void set_locate_target(float u, float v) { goblin::worldmap_probe::set_locate_target(u, v); }
     void clear_locate_target() { goblin::worldmap_probe::clear_locate_target(); }
+    bool locate_target_clamped() { return goblin::worldmap_probe::locate_target_clamped(); }
+    bool err_features() { return goblin::err_features_enabled(); }
     bool page_switch_busy() { return goblin::worldmap_probe::page_switch_busy(); }
     void request_switch_to_page(int group) { goblin::worldmap_probe::request_switch_to_page(group); }
     const goblin::worldmap_probe::LocateDebug &last_locate_debug() { return goblin::worldmap_probe::last_locate_debug(); }

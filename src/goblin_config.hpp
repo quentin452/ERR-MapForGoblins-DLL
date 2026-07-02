@@ -48,6 +48,12 @@ namespace goblin
     {
         extern GOBLIN_RENDER_API uint8_t loadDelay;
         extern GOBLIN_RENDER_API bool requireMapFragments;
+        // Hide overlay markers under the game's own always-on-top map UI (ERR day/night
+        // dial bottom-right) — we render post-present so we'd otherwise draw OVER it.
+        extern GOBLIN_RENDER_API bool clipGameUi;
+        // User-drawn "no overlay icons here" rectangles (F1 editor), VIRTUAL-canvas units
+        // (1920x1080 space, resolution-independent): "x0,y0,x1,y1;x0,y0,x1,y1;..."
+        extern GOBLIN_RENDER_API std::string uiExclusionRects;
         extern GOBLIN_RENDER_API bool bakedOnly;  // diag overlay: draw ONLY Baked-source markers (the no-bake residual)
         extern GOBLIN_RENDER_API bool collectedGraying;
         extern GOBLIN_RENDER_API bool hideCollected;
@@ -173,6 +179,10 @@ namespace goblin
         // debugEventFlags  = hook SetEventFlag (every flag the game sets).
         // debugItemGrants  = hook AddItemFunc (every inventory grant / pickup).
         // See goblin_debug_events.{hpp,cpp}.
+        // freezeWatchdogSecs = deadlock watchdog: if the present thread renders no frame
+        // for this many seconds, write a freeze triage + all-thread minidump to logs/
+        // (catches no-exception freezes the crash handler can't see). 0 = off.
+        extern GOBLIN_RENDER_API uint8_t freezeWatchdogSecs;
         extern GOBLIN_RENDER_API bool debugEventFlags;
         extern GOBLIN_RENDER_API bool debugItemGrants;
         // debugFlagCapture = light SetEventFlag hook for the overlay's NPC

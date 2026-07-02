@@ -1072,6 +1072,48 @@ bool get_live_view(LiveView &out)
 static LocateDebug g_locate_dbg;
 const LocateDebug &last_locate_debug() { return g_locate_dbg; }
 
+// Menu-state byte dump (dev, RPC `dumpmenu <tag>`): log CSMenuMan's first 0x200 bytes + the
+// WorldMapDialog's 0xA00..0xB40 + 0x2B60..0x2C40 windows as hex to the wmprobe log, so two
+// dumps (map open vs map open + Z-menu over it) can be diffed offline to find the "a menu is
+// covering the map" flag (needed to hide the overlay under it — HANDOFF z-order bug 2).
+void dump_menu_state(const char *tag)
+{
+    if (!g_log) return;
+    uintptr_t base = g_exe_base ? g_exe_base
+                                : reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    uint64_t mm = 0;
+    if (!base || !seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm) ||
+        !plausible_ptr(mm))
+    {
+        g_log->info("[MENUDUMP:{}] CSMenuMan unresolved", tag);
+        return;
+    }
+    const uintptr_t cur = g_active_cursor.load(std::memory_order_relaxed);
+    const uintptr_t dlg = cur ? cur - CURSOR_OFF_IN_MENU : 0;
+    auto dump = [&](const char *name, uintptr_t at, ptrdiff_t from, ptrdiff_t to)
+    {
+        if (!at) { g_log->info("[MENUDUMP:{}] {} = null", tag, name); return; }
+        for (ptrdiff_t off = from; off < to; off += 16)
+        {
+            char line[16 * 3 + 1] = "";
+            int n = 0;
+            for (int i = 0; i < 16; ++i)
+            {
+                uint8_t b = 0;
+                SIZE_T rd = 0;
+                ReadProcessMemory(GetCurrentProcess(),
+                                  reinterpret_cast<void *>(at + off + i), &b, 1, &rd);
+                n += _snprintf(line + n, sizeof(line) - n, "%02X ", rd == 1 ? b : 0xEE);
+            }
+            g_log->info("[MENUDUMP:{}] {}+{:#05x}: {}", tag, name, off, line);
+        }
+    };
+    dump("mm", static_cast<uintptr_t>(mm), 0x0, 0x200);
+    dump("dlg", dlg, 0xA00, 0xB40);
+    dump("dlg", dlg, 0x2B60, 0x2C40);
+    g_log->flush();
+}
+
 bool set_view_center(float mU, float mV, float minZoom)
 {
     // Reset the diagnostic snapshot for this call (the F1 "Locate debug" overlay reads it).
@@ -1266,6 +1308,10 @@ std::atomic<int> g_pending_group{-1};  // target group (bit1=DLC, bit0=UG); -1 =
 // isn't reverted by the cursor tick. Set by the overlay locate hold; cleared when it ends.
 std::atomic<bool> g_locate_active{false};
 std::atomic<float> g_locate_u{0.f}, g_locate_v{0.f}; // target marker-space centre
+// True while the engine is clamping the current locate target (reticle readback ≠ what we
+// wrote → target outside the discovered-extent bounds). Read by the overlay hold to stop
+// pumping the nav jitter (sleeping the easer is what makes the direct pan write stick).
+std::atomic<bool> g_locate_clamped{false};
 // Frames to keep "busy" after the last switch: a page swap SNAPS the view to the new page's default
 // (page-transition findings §7b), which would CLOBBER an item-locate pan issued too early. The locate
 // waits until this settles (page_switch_busy) so its set_view_center is the LAST write and sticks.
@@ -1301,6 +1347,66 @@ uintptr_t hk_c32f0(uintptr_t dialog, float dt, uintptr_t a3, uintptr_t a4)
         seh_write_f32(reinterpret_cast<void *>(cur + 0x110), v);
     }
     uintptr_t r = g_c32f0_orig ? g_c32f0_orig(dialog, dt, a3, a4) : 0;
+    // BOUNDS MODEL (user-confirmed 2026-07-02): on a fogged/fragment-less save the engine's
+    // pan bounds = the LIVE fog window around the tile the player is currently on — they
+    // FOLLOW the player (not a discovery bbox; fragments widen the legal area on top). NOT
+    // the world rect our set_view_center clamps against — that mismatch (two writers, two
+    // different "legal" ranges)
+    // was the flicker in every earlier attempt. Single-writer rule: while we drive the pan
+    // beyond the engine's bounds, the engine's writer (the input-gated easer) must be ASLEEP
+    // (the overlay drains the nav jitter on locate_target_clamped()); never write against it.
+    // F2 fog-locate: pan-OOB drive for targets the engine REFUSES. Inside the original step the
+    // engine clamps the reticle we wrote above to the DISCOVERED-extent bounds (live 2026-07-02:
+    // wrote (4499,3737), read back (4271,5922)) — so for a deep-fog target the easer stalls at
+    // the revealed edge and the locate never centres (bug F2). The user-observed key fact: a
+    // direct pan write DOES reach the screen — the view sits on the target until the easer's
+    // next tick claws it back. So, POST-step (last pan writer of the frame): when the reticle
+    // readback shows the engine clamped our target, write the target pan directly. The easer
+    // only RUNS on perceived input — the overlay stops pumping the nav jitter the moment we
+    // report the clamp (locate_target_clamped), so after ~2 frames the easer sleeps and nothing
+    // re-claws the pan: the view STAYS on the target with no per-frame fight (no flicker), and
+    // the first real user input naturally glides the map back inside the engine's bounds.
+    // Non-clamped locates (discovered targets) never enter this branch — behavior unchanged.
+    if (g_locate_active.load(std::memory_order_relaxed) && dialog)
+    {
+        const uintptr_t cur = dialog + CURSOR_OFF_IN_MENU;
+        const float u = g_locate_u.load(std::memory_order_relaxed);
+        const float v = g_locate_v.load(std::memory_order_relaxed);
+        float rx = 0.f, rz = 0.f;
+        bool clamped = false;
+        if (seh_read4(reinterpret_cast<void *>(cur + 0xFC), &rx) &&
+            seh_read4(reinterpret_cast<void *>(cur + 0x100), &rz))
+        {
+            const float dx = rx - u, dz = rz - v;
+            clamped = (dx * dx + dz * dz > 32.f * 32.f);
+        }
+        if (clamped)
+        {
+            uint64_t vt = 0, view = 0;
+            static uintptr_t s_base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+            if (s_base && seh_read8(reinterpret_cast<void *>(cur), &vt) &&
+                vt == s_base + CURSOR_VTABLE_RVA &&
+                seh_read8(reinterpret_cast<void *>(cur + OFF_VIEW_PTR), &view) && view &&
+                plausible_ptr(view) && !view_is_static(view))
+            {
+                float zoom = 0, sminx = 0, sminz = 0, smaxx = 0, smaxz = 0;
+                if (seh_read4(reinterpret_cast<void *>(view + VIEW_ZOOM), &zoom) && zoom > 0.f &&
+                    seh_read4(reinterpret_cast<void *>(view + 0x340), &sminx) &&
+                    seh_read4(reinterpret_cast<void *>(view + 0x344), &sminz) &&
+                    seh_read4(reinterpret_cast<void *>(view + 0x348), &smaxx) &&
+                    seh_read4(reinterpret_cast<void *>(view + 0x34c), &smaxz))
+                {
+                    seh_write_f32(reinterpret_cast<void *>(view + VIEW_PAN_X),
+                                  u * zoom - (sminx + smaxx) * 0.5f);
+                    seh_write_f32(reinterpret_cast<void *>(view + VIEW_PAN_Z),
+                                  v * zoom - (sminz + smaxz) * 0.5f);
+                }
+            }
+        }
+        g_locate_clamped.store(clamped, std::memory_order_relaxed);
+    }
+    else
+        g_locate_clamped.store(false, std::memory_order_relaxed);
     const int want = g_pending_group.load(std::memory_order_relaxed);
     // GIVE-UP guard: if a requested switch never reaches its target (e.g. a handler that doesn't take
     // the expected direction), DON'T loop forever — that would pin page_switch_busy() true and block
@@ -1387,6 +1493,7 @@ void set_locate_target(float u, float v)
     g_locate_active.store(true, std::memory_order_relaxed);
 }
 void clear_locate_target() { g_locate_active.store(false, std::memory_order_relaxed); }
+bool locate_target_clamped() { return g_locate_clamped.load(std::memory_order_relaxed); }
 
 bool page_switch_busy()
 {

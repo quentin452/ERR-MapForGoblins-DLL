@@ -35,6 +35,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   everywhere else — randomizer players flip that one key.
 
 ### Added
+- **UI exclusion zones — draw your own "no icons here" areas on the map.** New F1 section
+  "UI exclusion zones (map clipping)": toggle Edit, then drag rectangles directly on the open
+  world map (right-click a zone deletes it) to hide overlay icons wherever they'd cover the
+  game's own UI. The ERR day/night dial (bottom-right) is excluded out of the box. Zones are
+  stored in resolution-independent units (`ui_exclusion_rects`), so they hold at any display
+  resolution.
 - **Overlay UI localization (v1) — French included.** New ini key `overlay_language`
   (`auto`/`en`/`fr`/…): the F1 panel (settings, categories, search, clustering, quest-browser
   chrome, danger zone) and the marker-tooltip glue ("Unknown item", "3/12 left", "x4 in this

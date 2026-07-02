@@ -256,10 +256,18 @@ LONG WINAPI goblin_crash_filter(EXCEPTION_POINTERS *ep)
         }
     }
 
-    // Let the previous handler (and the OS default) run as usual.
-    if (g_prev_filter)
-        return g_prev_filter(ep);
-    return EXCEPTION_CONTINUE_SEARCH;
+    // Do NOT chain to the previous filter / OS default. This filter is the LAST resort —
+    // nothing downstream can recover the process — and under Wine/Proton the downstream
+    // handling is what ZOMBIFIES the game (user-observed 2026-07-02): the window freezes
+    // solid while all threads (incl. our RPC listener) stay alive, so the game looks
+    // "frozen with the DLL still living" instead of closing. Every observed instance is
+    // ER's own deterministic +0x1EB9999 teardown/exit crash (6/6 identical stacks,
+    // docs/memory/bugs/er-shutdown-crash-noise.md) — dying cleanly right after the triage
+    // is written turns "permanent freeze the user must kill" into a normal-looking exit.
+    TerminateProcess(GetCurrentProcess(),
+                     ep && ep->ExceptionRecord ? ep->ExceptionRecord->ExceptionCode
+                                               : 0xC0000005u);
+    return EXCEPTION_EXECUTE_HANDLER; // unreachable
 }
 } // namespace
 

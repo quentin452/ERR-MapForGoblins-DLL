@@ -21,6 +21,9 @@ one-off scripts — most workflows are already reusable.
   redirects; forward-slash env paths. → [windows-tooling-gotchas](windows-tooling-gotchas.md)
 
 ## Dev / test infra
+- **RPC driver hardening** [active, mandatory] — the game can FREEZE with the RPC listener still
+  alive (`ping` answers, present thread dead) → every driver call needs `timeout`, every wait loop
+  a game-liveness gate, whole recipes a global cap. → [mfg-rpc-driver-hardening](mfg-rpc-driver-hardening.md)
 - **Overlay test harness** [proposed] — AI-driven "interactive Playwright" for the worldmap/minimap:
   Route A offline ImGui harness (mock data + imgui_test_engine + screenshots, deterministic, no game),
   Route B in-game debug-RPC + framebuffer grab. → [overlay-test-harness](overlay-test-harness.md)

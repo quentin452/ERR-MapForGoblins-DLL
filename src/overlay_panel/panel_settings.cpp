@@ -3,6 +3,7 @@
 // goblin_overlay_render.cpp::draw_panel in the split (big-files refactor item 1).
 
 #include "panel_internal.hpp"
+#include "worldmap/map_renderer.hpp"  // ui_rect_* (UI exclusion-zone editor)
 #include "goblin_i18n.hpp"
 
 #include <string>
@@ -278,6 +279,39 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
         ImGui::SliderFloat(tr("Offset X"), goblin::overlay_api::cfg_minimapOffsetX_ptr(), 0.0f, 600.0f, "%.0f");
         ImGui::SliderFloat(tr("Offset Y"), goblin::overlay_api::cfg_minimapOffsetY_ptr(), 0.0f, 600.0f, "%.0f");
         ImGui::TextDisabled("%s", tr("North-up. Hidden while the world map is open. Save to INI to persist."));
+    }
+
+    // User-drawn "no overlay icons here" zones — self-service fix for icons drawing over
+    // the game's own map UI (we render post-present, always on top). Stored in 1920x1080
+    // virtual-canvas units so the zones hold at every resolution.
+    const bool show_uiex = f.match("ui exclusion zones clipping clip rectangles hide icons "
+                                   "under game menu dial clock zone");
+    if (f.filtering && show_uiex) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+    if (show_uiex && ImGui::CollapsingHeader(tr("UI exclusion zones (map clipping)")))
+    {
+        ImGui::Checkbox(tr("Enable clipping (hide icons under game UI)"),
+                        goblin::overlay_api::cfg_clipGameUi_ptr());
+        bool edit = goblin::worldmap::ui_rect_edit();
+        if (ImGui::Checkbox(tr("Edit zones (open the world map)"), &edit))
+            goblin::worldmap::set_ui_rect_edit(edit);
+        if (edit)
+            ImGui::TextDisabled("%s", tr("On the MAP: drag = new zone, right-click a zone = delete."));
+        const int n = goblin::worldmap::ui_rect_count();
+        for (int i = 0; i < n; ++i)
+        {
+            float r[4];
+            if (!goblin::worldmap::ui_rect_get(i, r)) break;
+            ImGui::Text(tr("Zone %d: (%.0f,%.0f)-(%.0f,%.0f)"), i + 1, r[0], r[1], r[2], r[3]);
+            ImGui::SameLine();
+            ImGui::PushID(i);
+            if (ImGui::SmallButton(tr("Delete")))
+                goblin::worldmap::ui_rect_delete(i);
+            ImGui::PopID();
+        }
+        if (n > 0 && ImGui::SmallButton(tr("Clear all zones")))
+            goblin::worldmap::ui_rect_clear();
+        ImGui::TextDisabled("%s", tr("Zones are saved in 1920x1080 virtual units - they work at every\n"
+                                     "resolution. Save to INI to persist."));
     }
 }
 } // namespace goblin::overlay::panel

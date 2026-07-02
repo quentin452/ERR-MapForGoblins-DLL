@@ -148,7 +148,18 @@ namespace
             goblin::overlay_api::set_locate_target(s_hold_u, s_hold_v); // game-thread c32f0 centres on it
             // Keep the map STEPPING (c32f0 runs) with F1 open: the per-frame step is gated on perceived
             // input, so keep the nav jitter alive for the whole hold.
-            if (ctx.nav_frames->load(std::memory_order_relaxed) < s_hold_frames)
+            // EXCEPT when the engine is clamping this target (deep-fog locate, F2): the c32f0
+            // detour then writes the target pan directly post-step, and the only thing that
+            // claws it back is the easer — which runs on perceived input. Draining the jitter
+            // puts the easer to sleep within ~2 frames, so the direct write sticks and the view
+            // stays on the target (no per-frame fight, no flicker). The next real user input
+            // wakes the easer and glides the map back inside the engine's bounds, as normal.
+            if (goblin::overlay_api::locate_target_clamped())
+            {
+                if (ctx.nav_frames->load(std::memory_order_relaxed) > 2)
+                    ctx.nav_frames->store(2, std::memory_order_relaxed);
+            }
+            else if (ctx.nav_frames->load(std::memory_order_relaxed) < s_hold_frames)
                 ctx.nav_frames->store(s_hold_frames, std::memory_order_relaxed);
             --s_hold_frames;
             // EARLY RELEASE (perf): each hold-frame forces ER to step + re-composite its WHOLE Scaleform

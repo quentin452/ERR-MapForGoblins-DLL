@@ -94,6 +94,58 @@ GetAsyncKeyState → typing its pause key in ANOTHER app toggles pause) — now 
 pause; **recommend removing PauseTheGame.dll from the me3 profiles**. A driver clears any pause
 via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (spiderfy, F2).
 
+## Overlay polish batch (user, 2026-07-02 evening) — ALL OPEN, logged for next sessions
+
+1. **REAL map clipping = RE the game's own map/minimap clip** ("pour que ce soit parfait") —
+   find where ER clips its map-UI layers so our overlay can clip identically instead of
+   stacking exclusion zones. Big RE; the zone editor + dial exclusion are the stopgap.
+2. **Altitude badges overflow the minimap circle** — ▲/▼ badges draw past the round HUD edge;
+   clip badge draws to the minimap radius (the icon itself is edge-clamped, the badge isn't).
+3. **Zoom+pan simultané → 1-frame icon "dash"** (stale projections) — when zoom and pan change
+   in the same frame the icons streak for a frame. Smells like the ViewDelay ring interpolating
+   pan and zoom inconsistently (see viewDelayZoom's TELEPORT note — related tuning knob).
+4. **Legibility black disc drawn on an already-dark minimap** — the contrast disc under small
+   icons is pointless/ugly on dark minimap terrain; make it luminance-aware or minimap-off.
+5. **Golden-rune icons WAY too small** (looked like an invisible item with a hover tooltip —
+   triaged live by the user). Auto-fix direction: a runtime MINIMUM on-screen icon size —
+   `icon_min_half_px` already exists (cfg_iconMinHalfPx_ptr) → find why these icons escape it
+   (per-item icon tier scale?) or raise/enforce it in draw_marker for all tiers.
+6. **Debug toggle/slider cleanup** — the F1 panel + ini carry many dev-era debug knobs
+   (diag_*, debug_*, baked-only, locate-debug, sprite calib offsets…) that may no longer be
+   needed; sweep them into a collapsed dev-only section or delete the dead ones (schema +
+   panel + docs).
+
+## Overlay z-order clipping (user report 2026-07-02) — dial DONE, menu-over-map OPEN
+
+We render post-present → always on top of the game's own UI. Two sub-bugs:
+1. **ERR day/night dial (bottom-right of the map) — FIXED (`fix/f2-fog-locate-v2` branch,
+   in-game validated):** static exclusion region (disc ~(1815,1000) r240 + time pill, in the
+   1920×1080 virtual canvas, resolution-scaled) wired into `in_draw_bounds` so markers +
+   hover + pile anchors cull together. ERR-gated, ini `clip_game_ui` (default true).
+2. **Menus opening OVER the map (Z map-menu, beacon dialog, etc.) — OPEN:** our icons still
+   draw over them. Needs a "menu is covering the map" flag: CSMenuMan+0xCD is dead on this
+   build; plan = byte-diff probe (watch CSMenuMan first KBs + WorldMapDialog region while
+   RPC-toggling the Z menu — the [REGION-DIAG]/INPUT-DELTA probe infra in
+   goblin_worldmap_probe.cpp is the template). When found: hide the whole worldmap overlay
+   pass while the flag is up.
+
+## Silent deadlock freeze + freeze watchdog (2026-07-02, `fix/f2-fog-locate-v2` branch)
+
+User hit a "deadlock-like" FREEZE (18:49): last log = a normal `render.minimap` BENCH line,
+then silence — NO exception, NO crash dump, window solid, DLL threads (RPC listener) alive.
+Distinct from the `eldenring.exe +0x1EB9999` exit crash (that one is ER's own deterministic
+teardown crash — 6/6 identical stacks across the day, fires on Exit/Alt+F4; our handler now
+calls TerminateProcess after the triage so it closes the game instead of leaving a Wine
+zombie, which was ANOTHER freeze-looking failure mode). The real deadlock is UNSOLVED — no
+stack yet. Shipped the tool to catch it: **freeze watchdog** (`goblin_freeze_watchdog.cpp`,
+ini `[Debug] freeze_watchdog_secs`, default 20s, 0=off) — present-thread heartbeat; on a
+stall it writes `logs/MapForGoblins_freeze_<pid>.txt` + a FULL all-thread minidump from the
+healthy watchdog thread; raw Win32 on the dump path (spdlog could be the deadlock). **Next
+freeze → symbolize the dump's MapForGoblins frames with the deployed PDB and root-cause.**
+Also mandatory now: `docs/memory/tooling/mfg-rpc-driver-hardening.md` (RPC `ping` ≠ game
+alive; driver scripts need per-call timeouts + liveness gates — learned when a freeze left a
+validation script spinning forever).
+
 ## Overlay i18n v1 — SHIPPED + in-game validated FR (2026-07-02, `feat/overlay-i18n-v1`)
 
 `goblin::i18n::tr()` (host module, GOBLIN_RENDER_API-exported) + ini `overlay_language`
@@ -234,6 +286,16 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
   background game" tradeoff, it's symmetric with PauseTheGame's global keys) or real X-side
   focus forcing. Until then: leave the game window focused during scripted UI runs (world/map
   driving via `key`/menus works regardless — game reads its own input path).
+  **Partially closed 2026-07-02 (`fix/f2-fog-locate-v2` branch, user-reported + repro'd +
+  validated live): the FIRST `key` command after an auto-refocus was silently lost** (async
+  X/Wine focus; sometimes with no WM_KILLFOCUS at all). `ensure_game_foreground` now waits for
+  foreground + our g_has_focus gate, and `key` is CLOSED-LOOP: a keyboard-arrival counter in
+  hk_wndproc (WM_KEYDOWN leg + RIM_TYPEKEYBOARD raw leg — gameplay is NOLEGACY, legacy leg
+  alone false-retries everything) is polled post-send; no arrival ≤240ms → refocus + resend
+  once (down,down,up = one logical press → can't double-toggle). `status` gained `kbseen=`/
+  `fg=`. NOT yet covered: `mouse_click`/`type` have no delivery verify (same loss window),
+  and the full "drive UI while user works elsewhere" case still needs the dev-mode
+  treat-as-focused override.
 - **Great Rune "(x2)" in search — NOT a bug (triaged with the user, 2026-07-02).** Every rune has
   TWO legit markers sharing the GoodsName: the boss-drop (live boss position — Mohg's is on the
   UNDERGROUND page, the tell that unmasked it) and the ACTIVATION site (Divine Tower — ring

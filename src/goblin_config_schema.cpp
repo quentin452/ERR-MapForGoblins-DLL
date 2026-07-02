@@ -68,6 +68,9 @@ namespace goblin::config
 
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
+    uint8_t freezeWatchdogSecs = 20;
+    bool clipGameUi = true;
+    std::string uiExclusionRects = "";
     bool debugEventFlags = false;
     bool debugItemGrants = false;
     bool debugFlagCapture = false;
@@ -171,6 +174,10 @@ namespace
                          "init poll cannot confirm the world-map data is loaded. Normally the mod\n"
                          "POLLS for the data and proceeds as soon as it's ready (no fixed wait),\n"
                          "so this key has no effect on a healthy boot. Leave at 5.", false, nullptr},
+                B("clip_game_ui", clipGameUi, "true",
+                  "Hide overlay markers that fall under the game's own always-on-top map UI\n(the ERR day/night dial, bottom-right). The overlay renders after the game's\nframe, so without this our icons draw OVER that UI. ERR-only region; no\neffect on other installs. Default: true."),
+                IniEntry{"ui_exclusion_rects", IniType::String, &cfg::uiExclusionRects, "",
+                         "User-drawn rectangles where overlay icons are HIDDEN on the world map\n(fix any icons-over-game-UI clipping yourself: F1 > UI exclusion zones >\nEdit, then drag on the map; right-click a zone deletes it). Stored in\n1920x1080 virtual-canvas units -> works at every resolution.\nFormat: x0,y0,x1,y1;... Empty = none.", false, nullptr},
                 B("require_map_fragments", requireMapFragments, "true",
                   "Require map fragment discovery before showing icons in that area\n"
                   "(overlay map: gates on the area's map-fragment event flag)."),
@@ -518,6 +525,11 @@ namespace
                          "(default). Line protocol; commands: ping, status, open_f1, set <key> <value>,\n"
                          "screenshot <path>, reload_overlay. Driver: tools/mfg_rpc.py. Loopback-only,\n"
                          "no auth — leave empty outside dev sessions.", false, nullptr},
+                IniEntry{"freeze_watchdog_secs", IniType::U8, &cfg::freezeWatchdogSecs, "20",
+                         "Deadlock watchdog: if the game renders NO frame for this many seconds,\n"
+                         "write logs/MapForGoblins_freeze_<pid>.txt + a full all-thread minidump\n"
+                         "(catches silent no-exception freezes the crash handler never sees).\n"
+                         "One report per session. 0 = disabled. Default: 20.", false, nullptr},
                 IniEntry{"marker_dump_key", IniType::VkKey, &cfg::markerDumpKey, "F9",
                          "Key to dump decoded markers to logs/MapForGoblins_markers.log. Default: F9.", false, nullptr},
                 B("diag_boot_io", diagBootIo, "false",

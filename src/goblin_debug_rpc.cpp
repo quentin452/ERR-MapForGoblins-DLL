@@ -1,10 +1,13 @@
 #include "goblin_debug_rpc.hpp"
 
 #include "goblin_config.hpp"
+#include "input/input_shared.hpp"
+#include "input/input_wndproc.hpp"  // wm_keydown_total — RPC key-delivery verify
 #include "goblin_inject.hpp"   // world_map_open() — status field for the driver's boot/nav loop
 #include "input/input_cursor.hpp"  // set_cursor_pos_real — pixel-exact mouse_move via the trampoline
 #include "goblin_pause.hpp"    // pause command + paused= status (unfocused-window pause escape)
 #include "goblin_overlay.hpp"
+#include "goblin_worldmap_probe.hpp"  // dump_menu_state (dumpmenu cmd)
 #include "goblin_overlay_render_loader.hpp"
 
 #include <spdlog/spdlog.h>
@@ -78,7 +81,25 @@ namespace goblin::debug_rpc
         {
             HWND hwnd = static_cast<HWND>(goblin::overlay::game_hwnd());
             if (!hwnd) return false;
-            if (GetForegroundWindow() != hwnd) SetForegroundWindow(hwnd);
+            if (GetForegroundWindow() == hwnd && goblin::input::has_focus()) return true;
+            SetForegroundWindow(hwnd);
+            // X11/Wine focus is ASYNC: firing SendInput right after SetForegroundWindow loses
+            // the FIRST command — validated live 2026-07-02 (xterm steals focus -> `key M`
+            // returns ok but the map never opens; the log shows WM_SETFOCUS landing DURING the
+            // send; the immediate retry works). Wait until BOTH the OS reports us foreground
+            // AND our own WM_SETFOCUS-driven gate (g_has_focus) has processed — that second
+            // condition is what actually opens the input paths — then a short settle frame.
+            for (int i = 0; i < 60; ++i) // <= ~1.2s
+            {
+                if (GetForegroundWindow() == hwnd && goblin::input::has_focus())
+                {
+                    Sleep(40); // one-two frames of settle so the game's own focus handling runs
+                    return true;
+                }
+                Sleep(20);
+            }
+            // Focus never confirmed (the known Wine "can't steal X focus back" case) — proceed
+            // best-effort; the caller's command may still land if focus arrives late.
             return true;
         }
 
@@ -155,10 +176,29 @@ namespace goblin::debug_rpc
                     try { hold_ms = std::stoi(hold); } catch (...) { return "err bad hold_ms"; }
                     if (hold_ms < 1 || hold_ms > 5000) return "err hold_ms out of range (1-5000)";
                 }
+                // Closed-loop delivery verify (first-command-after-refocus loss, 2026-07-02):
+                // a key can be silently eaten when X focus is mid-transition even though Wine
+                // reports us foreground (no WM_KILLFOCUS ever fires — invisible from in here).
+                // The game's wndproc DOES see every delivered injected key (WM_KEYDOWN,
+                // validated live via the kbseen counter), so poll it: no arrival within ~240ms
+                // → re-assert foreground and resend once.
+                const unsigned kb_before = goblin::input::wm_keydown_total();
                 send_vk(static_cast<uint16_t>(vk), false);
+                bool retried = false;
+                for (int i = 0; i < 12 && goblin::input::wm_keydown_total() == kb_before; ++i)
+                    Sleep(20);
+                if (goblin::input::wm_keydown_total() == kb_before)
+                {
+                    if (HWND hw = static_cast<HWND>(goblin::overlay::game_hwnd()))
+                        SetForegroundWindow(hw);
+                    Sleep(150);
+                    send_vk(static_cast<uint16_t>(vk), false);
+                    retried = true;
+                }
                 Sleep(static_cast<DWORD>(hold_ms));
                 send_vk(static_cast<uint16_t>(vk), true);
-                return "ok key " + name;
+                return retried ? "ok key " + name + " (retried after lost first send)"
+                               : "ok key " + name;
             }
             if (cmd == "mouse_move")
             {
@@ -168,6 +208,31 @@ namespace goblin::debug_rpc
                 catch (...) { return "err usage: mouse_move <client_x> <client_y>"; }
                 if (!move_cursor_client(cx, cy)) return "err cursor placement failed";
                 return "ok mouse_move";
+            }
+            if (cmd == "mouse_drag")
+            {
+                // mouse_drag <x0> <y0> <x1> <y1> — left-button drag in client px (the UI
+                // exclusion-zone editor's create gesture; also map panning).
+                std::string a=next_token(rest),b=next_token(rest),c=next_token(rest),d=next_token(rest);
+                int x0=0,y0=0,x1=0,y1=0;
+                try { x0=std::stoi(a); y0=std::stoi(b); x1=std::stoi(c); y1=std::stoi(d); }
+                catch (...) { return "err usage: mouse_drag <x0> <y0> <x1> <y1>"; }
+                if (!move_cursor_client(x0, y0)) return "err cursor placement failed";
+                Sleep(80);
+                INPUT in{};
+                in.type = INPUT_MOUSE;
+                in.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+                SendInput(1, &in, sizeof(in));
+                Sleep(80);
+                for (int i = 1; i <= 8; ++i)
+                {
+                    move_cursor_client(x0 + (x1 - x0) * i / 8, y0 + (y1 - y0) * i / 8);
+                    Sleep(30);
+                }
+                Sleep(80);
+                in.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+                SendInput(1, &in, sizeof(in));
+                return "ok mouse_drag";
             }
             if (cmd == "type")
             {
@@ -267,6 +332,7 @@ namespace goblin::debug_rpc
         bool is_input_command(const std::string &cmd)
         {
             return cmd == "key" || cmd == "type" || cmd == "mouse_move" || cmd == "mouse_click" ||
+                   cmd == "mouse_drag" ||
                    cmd == "mouse_wheel";
         }
 
@@ -293,7 +359,15 @@ namespace goblin::debug_rpc
                        " map_open=" + std::to_string(goblin::world_map_open() ? 1 : 0) +
                        " paused=" + (goblin::pause::available()
                                          ? std::to_string(goblin::pause::paused() ? 1 : 0)
-                                         : std::string("na"));
+                                         : std::string("na")) +
+                       " kbseen=" + std::to_string(goblin::input::wm_keydown_total()) +
+                       " fg=" + std::to_string(goblin::input::has_focus() ? 1 : 0);
+            }
+            if (cmd == "dumpmenu")
+            {
+                std::string tag = next_token(rest);
+                goblin::worldmap_probe::dump_menu_state(tag.empty() ? "x" : tag.c_str());
+                return "ok dumpmenu -> wmprobe log";
             }
             if (cmd == "open_f1")
             {

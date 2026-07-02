@@ -31,12 +31,31 @@ WNDPROC o_orig_wndproc = nullptr;
 // from the InputText).
 std::atomic<unsigned> g_diag_wm_char{0};
 std::atomic<unsigned> g_diag_wm_keydown{0};
+// Monotonic total (never reset) — the RPC input path polls it to VERIFY an injected key
+// actually reached the game's wndproc (first-command-after-refocus loss, 2026-07-02).
+std::atomic<unsigned> g_wm_keydown_total{0};
 // diag: real WM_LBUTTONDOWN reaching us while the panel is open (0 => ER raw-input swallows
 // legacy click messages -> poll buttons instead).
 std::atomic<unsigned> g_wndproc_lbdown_while_open{0};
 
 LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
+    // Keyboard-arrival counter, RAW-INPUT leg: in gameplay ER runs keyboard raw-input
+    // NOLEGACY, so WM_KEYDOWN never arrives and the legacy-message count below goes silent —
+    // the RPC key-delivery verify then false-retries EVERY key (benign — down,down,up is one
+    // logical press — but +~390ms latency each). WM_INPUT still traverses this wndproc in
+    // every state, so count keyboard-type raw packets too (header-only read; must filter
+    // RIM_TYPEKEYBOARD or the mouse-move WM_INPUT flood would fake key arrivals).
+    if (msg == WM_INPUT)
+    {
+        RAWINPUTHEADER rh;
+        UINT sz = sizeof(rh);
+        if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lp), RID_HEADER, &rh, &sz,
+                            sizeof(RAWINPUTHEADER)) == sizeof(rh) &&
+            rh.dwType == RIM_TYPEKEYBOARD)
+            g_wm_keydown_total.fetch_add(1, std::memory_order_relaxed);
+    }
+
     // Focus messages MUST always reach ImGui, independent of menu_open(). g_show is
     // recomputed once/frame from a foreground-window check, so it can still be FALSE for a
     // frame or two right after the OS delivers WM_SETFOCUS on alt-tab-back — if that message
@@ -118,6 +137,7 @@ LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             g_diag_wm_char.fetch_add(1, std::memory_order_relaxed);
         else if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
             g_diag_wm_keydown.fetch_add(1, std::memory_order_relaxed);
+            g_wm_keydown_total.fetch_add(1, std::memory_order_relaxed);
         break;
     default:
         break;
@@ -205,5 +225,6 @@ void uninstall_wndproc_hook(HWND hwnd)
 
 unsigned diag_wm_char_exchange() { return g_diag_wm_char.exchange(0, std::memory_order_relaxed); }
 unsigned diag_wm_keydown_exchange() { return g_diag_wm_keydown.exchange(0, std::memory_order_relaxed); }
+unsigned wm_keydown_total() { return g_wm_keydown_total.load(std::memory_order_relaxed); }
 unsigned diag_wndproc_lbdown_while_open_load() { return g_wndproc_lbdown_while_open.load(std::memory_order_relaxed); }
 } // namespace goblin::input

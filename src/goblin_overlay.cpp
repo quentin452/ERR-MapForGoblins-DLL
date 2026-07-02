@@ -5,6 +5,7 @@
 #include "goblin_config.hpp"
 #include "goblin_quest_steps.hpp"
 #include "goblin_debug_events.hpp"
+#include "goblin_freeze_watchdog.hpp"
 
 #include <chrono>
 
@@ -1289,6 +1290,10 @@ namespace
                 goblin::bench::Registry::instance().record("present.frame_wall", ms);
         }
 
+        // Freeze-watchdog heartbeat: FIRST thing every frame — a stall of this counter is the
+        // watchdog's definition of "the game is frozen" (see goblin_freeze_watchdog.cpp).
+        goblin::freeze_watchdog::beat_present();
+
         // Slice D: consume a pending render-DLL swap between frames, before any render-side code
         // runs this frame (present thread = the only thread that calls the draw functions, so no
         // draw can be mid-flight here). No-op in the default single-DLL build.
@@ -2033,6 +2038,7 @@ bool goblin::input::menu_open() { return g_show; }
 int goblin::input::nav_frames_active() { return g_nav_frames.load(std::memory_order_relaxed); }
 bool goblin::input::user_show() { return g_user_show; }
 void goblin::input::set_has_focus(bool v) { g_has_focus.store(v, std::memory_order_relaxed); }
+bool goblin::input::has_focus() { return g_has_focus.load(std::memory_order_relaxed); }
 bool goblin::input::last_input_was_gamepad() { return g_last_input_was_gamepad; }
 void goblin::input::set_last_input_was_gamepad(bool v) { g_last_input_was_gamepad = v; }
 int goblin::input::gamepad_active_streak() { return g_gamepad_active_streak; }

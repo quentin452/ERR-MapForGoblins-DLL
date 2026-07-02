@@ -108,6 +108,13 @@ namespace goblin::worldmap_probe
     // write, which the engine overwrites. Call every frame while the locate is held; clear when done.
     void set_locate_target(float u, float v);
     void clear_locate_target();
+    // True while the engine is clamping the active locate target to the discovered-extent
+    // bounds (deep-fog target). The overlay hold uses it to stop pumping the nav jitter so the
+    // engine easer sleeps and the c32f0 detour's direct pan write sticks (F2 pan-OOB).
+    bool locate_target_clamped();
+    // Dev: hex-dump CSMenuMan + WorldMapDialog windows to the wmprobe log (RPC `dumpmenu <tag>`;
+    // diff two tags to find the menu-over-map flag — HANDOFF z-order bug 2).
+    void dump_menu_state(const char *tag);
 
     // True while an auto page-switch is in progress OR still settling (the engine SNAPS the view to
     // the new page's default, which would clobber an item-locate pan issued too early). The locate

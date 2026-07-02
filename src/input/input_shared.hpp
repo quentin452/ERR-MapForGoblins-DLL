@@ -27,6 +27,7 @@ bool user_show();
 // OS focus state, set only by real WM_SETFOCUS/WM_KILLFOCUS transitions (see
 // goblin_overlay.cpp's g_has_focus declaration comment for why event-driven, not polled).
 void set_has_focus(bool v);
+bool has_focus();
 
 // Mouse/keyboard vs. gamepad input-source tracking, shared between hk_wndproc (clears it on
 // real mouse/kb activity) and hk_present's gamepad-switch debounce (sets it after N
