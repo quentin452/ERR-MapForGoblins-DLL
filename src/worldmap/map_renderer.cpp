@@ -348,6 +348,14 @@ static void tier_census_flush()
     g_tier_census = TierCensus{};
 }
 
+// Minimap circular clip state (polish #2 / #4, user 2026-07-02..03). Armed by draw_minimap for its
+// pass, disarmed after: draw_altitude_badge uses ctr/r to skip badges poking past the round HUD edge,
+// and draw_legible_icon uses `active` to flip its contrast disc to a LIGHT one on the dark minimap
+// (black gives no contrast there). Declared here so draw_legible_icon (below) can see the flag.
+static bool   g_minimap_clip_active = false;
+static ImVec2 g_minimap_clip_ctr{};
+static float  g_minimap_clip_r = 0.0f;
+
 // DX item 1 (legibility): draw a marker icon centered at `center` with a minimum on-screen size and
 // (for small inventory-style icons only) a dark backing disc, so they don't vanish into the map art.
 //
@@ -377,7 +385,13 @@ static inline void draw_legible_icon(ImDrawList *fg, ImVec2 center, float half, 
             // (alpha halved), and a full-strength disc under a greyed icon read as "not
             // collected yet" on the map/minimap (user-reported confusion 2026-07-02).
             const unsigned discA = 165u * ((tint >> 24) & 0xffu) / 255u;
-            fg->AddCircleFilled(center, half + 1.5f, IM_COL32(0, 0, 0, discA)); // contrast backing
+            // On the bright parchment worldmap a BLACK disc gives contrast; on the DARK minimap a black
+            // disc gives none (icon dark parts vanish into it) → flip to a light translucent disc there
+            // so small icons still read (polish #4, user 2026-07-03). Alpha still follows the icon's tint
+            // so a collected/dimmed icon keeps a proportionally faded backing.
+            const ImU32 discC = g_minimap_clip_active ? IM_COL32(228, 228, 234, discA)
+                                                      : IM_COL32(0, 0, 0, discA);
+            fg->AddCircleFilled(center, half + 1.5f, discC); // contrast backing
         }
     }
     fg->AddImage(tex, ImVec2(center.x - half, center.y - half), ImVec2(center.x + half, center.y + half),
@@ -393,13 +407,8 @@ static float g_player_world_y = 0.0f;
 static bool  g_player_world_y_valid = false;
 static int   g_player_group = -1;   // player's current map layer (base/DLC × over/under); -1 = unknown
 
-// Minimap circular clip for the altitude badge (polish #2, user 2026-07-02): the minimap edge-clamps
-// each icon INSIDE its round HUD, but the ▲/▼ badge draws at the icon's top-right corner (+half,-half)
-// so on an edge-clamped icon it spills past the round edge (the PushClipRect is a rect, not a disc).
-// When active, draw_altitude_badge skips any badge whose triangle would poke outside this radius.
-static bool   g_minimap_clip_active = false;
-static ImVec2 g_minimap_clip_ctr{};
-static float  g_minimap_clip_r = 0.0f;
+// (g_minimap_clip_active/ctr/r moved above draw_legible_icon so it can flip its disc on the minimap —
+// polish #2 uses ctr/r here for the badge round-edge cull; see the declaration comment above.)
 
 // Small ▲ (above) / ▼ (below) triangle in the marker's top-right corner when it sits well above/below
 // its altitude REFERENCE. Drawn as primitives (AddTriangleFilled) — no font dependency, can't tofu.

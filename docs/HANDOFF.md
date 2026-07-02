@@ -136,8 +136,12 @@ ERR/Proton via the RPC loop, NOT yet merged).** Both in `src/worldmap/map_render
 3. **Zoom+pan simultané → 1-frame icon "dash"** (stale projections) — when zoom and pan change
    in the same frame the icons streak for a frame. Smells like the ViewDelay ring interpolating
    pan and zoom inconsistently (see viewDelayZoom's TELEPORT note — related tuning knob).
-4. **Legibility black disc drawn on an already-dark minimap** — the contrast disc under small
-   icons is pointless/ugly on dark minimap terrain; make it luminance-aware or minimap-off.
+4. **Legibility black disc on dark minimap — DONE + in-game verified (2026-07-03).** The contrast
+   disc under small item/rep icons gave zero contrast on the dark minimap (black-on-dark). Fix: on the
+   minimap (`g_minimap_clip_active`) the disc flips to a LIGHT translucent colour `(228,228,234)`; the
+   bright parchment worldmap keeps the black disc. Disc alpha still follows the icon tint (collected =
+   faded backing). Chose "light disc" over drop / luminance-aware (user pick). `draw_legible_icon` in
+   map_renderer.cpp; the `g_minimap_clip_active` decl moved above the function so it's visible there.
 5. **Golden-rune icons WAY too small — DONE (see above; 1.6× + disc-gate fix).**
 6. **Settings sweep — Phase 0+1+2 LANDED on master 2026-07-02** (`docs/plans/settings_sweep_plan.md`;
    commits `3368a20` + the reorg commit). Done: ini cross-section MOVE migration (Phase 0); new
