@@ -357,6 +357,8 @@ namespace goblin::debug_rpc
                        " reload_pending=" +
                        std::to_string(goblin::overlay_render_loader::reload_pending() ? 1 : 0) +
                        " map_open=" + std::to_string(goblin::world_map_open() ? 1 : 0) +
+                       " menucover=" +
+                       std::to_string(goblin::worldmap_probe::menu_covers_map() ? 1 : 0) +
                        " paused=" + (goblin::pause::available()
                                          ? std::to_string(goblin::pause::paused() ? 1 : 0)
                                          : std::string("na")) +

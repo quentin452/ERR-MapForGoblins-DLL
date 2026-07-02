@@ -24,6 +24,12 @@ named releases, so everything fork-specific lives under **[Unreleased]** until t
 Everything below is specific to this fork (`master`, ~990 commits ahead of `upstream/main`) and
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
+### Fixed
+- **Overlay markers no longer punch through menus that open over the map.** When a submenu is
+  stacked over the open world map (e.g. the fast-travel confirmation prompt), the overlay marker
+  pass is now skipped so our post-present icons don't draw on top of it, via a live "a menu covers
+  the map" game-state flag (`CSMenuMan+0x104`). Gated by the `clip_game_ui` setting.
+
 ### Changed
 - **Settings declutter.** Marker-rendering preferences and the minimap block moved out of the
   catch-all `[Debug]` ini section into their own `[Markers]` and `[Minimap]` sections; existing inis

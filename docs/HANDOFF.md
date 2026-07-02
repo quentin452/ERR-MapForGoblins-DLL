@@ -256,12 +256,22 @@ We render post-present → always on top of the game's own UI. Two sub-bugs:
    in-game validated):** static exclusion region (disc ~(1815,1000) r240 + time pill, in the
    1920×1080 virtual canvas, resolution-scaled) wired into `in_draw_bounds` so markers +
    hover + pile anchors cull together. ERR-gated, ini `clip_game_ui` (default true).
-2. **Menus opening OVER the map (Z map-menu, beacon dialog, etc.) — OPEN:** our icons still
-   draw over them. Needs a "menu is covering the map" flag: CSMenuMan+0xCD is dead on this
-   build; plan = byte-diff probe (watch CSMenuMan first KBs + WorldMapDialog region while
-   RPC-toggling the Z menu — the [REGION-DIAG]/INPUT-DELTA probe infra in
-   goblin_worldmap_probe.cpp is the template). When found: hide the whole worldmap overlay
-   pass while the flag is up.
+2. **Menus opening OVER the map (fast-travel confirm, marker dialog, etc.) — SOLVED + WIRED
+   (2026-07-03), pending one live re-check.** Flag = **`CSMenuMan+0x104` (u8)**: 1 while a
+   submenu covers the open map, 0 on the bare map (incl. pan/zoom). Found by live in-DLL
+   byte-diff on Windows (the RE loop DOES run here, not just Linux). Full write-up:
+   `docs/re/worldmap_menu_and_native_clip_re_findings.md`.
+   - **Wired:** `goblin::worldmap_probe::menu_covers_map()` (reads +0x104, `GOBLIN_RENDER_API`),
+     `render_markers` early-outs the whole worldmap pass when `clip_game_ui && menu_covers_map()`,
+     RPC `status` gained `menucover=`. Discovery scaffold kept: `dump_menu_state` dumps CSMenuMan
+     +0x0..0x400; `menu_open_diag` (ini `[Debug] debug_menu_cover_diag`) is now **byte-wise** —
+     the first int32-stride/`[0,256)`-filter version silently dropped byte flags (the bug behind
+     two "zero logs" runs; see findings).
+   - **PENDING:** live re-check via `menucover=` that +0x104 also flips for a SECOND covering menu
+     (marker-placement dialog / region list), not just the fast-travel confirm — doc bar is ≥2
+     menus. +0x104 is a CSMenuMan-level field so it's expected to be generic. After that, retire
+     the static dial exclusion + user-drawn zones and move to Task B (native clip rect; see
+     `docs/re/worldmap_menu_and_native_clip_re_prompt.md`).
 
 ## Silent deadlock freeze + freeze watchdog (2026-07-02, `fix/f2-fog-locate-v2` branch)
 

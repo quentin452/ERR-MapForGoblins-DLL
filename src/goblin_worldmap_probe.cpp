@@ -88,6 +88,13 @@ constexpr uintptr_t CURSOR_OFF_IN_MENU = 0x2DB0;
 constexpr uintptr_t CSMENUMAN_SLOT_RVA = goblin::sig::CSMENUMAN_SLOT_RVA;
 constexpr uintptr_t MENU_WALK_WINDOW = 0x10000; // dialog ptr "in the first few KB"; widen to be safe
 
+// CSMenuMan+0x104 (u8): 1 while a submenu covers the OPEN world map, 0 on the bare map. RE
+// 2026-07-03 via the debug_menu_cover_diag byte-diff — stayed 0 across a bare-map open + ~16s of
+// panning, then toggled 0<->1 cleanly across 4 cover/uncover cycles of the grace-warp confirm
+// dialog (dialog persistent throughout → menu-over-map, not a map reopen). Consumed by
+// menu_covers_map(); the renderer skips the whole worldmap marker pass while it reads 1.
+constexpr ptrdiff_t CSMENUMAN_MENU_COVER_OFF = 0x104;
+
 // PROJECTION transform-scan (docs/world_map_projection_re_findings.md). cursor+0xF0
 // points to the CS::WorldMapArea view object; the LIVE viewport is plain floats there:
 //   +0x378 = pan (vec2, marker space)   +0x380 = zoom (f32)
@@ -267,6 +274,57 @@ void region_diag(uintptr_t cursor, uintptr_t view)
     };
     scan("dialog", cursor - CURSOR_OFF_IN_MENU, 0x600);
     if (view) scan("view", view, 0x400);
+}
+
+// MENU-OVER-MAP finder (HANDOFF overlay z-order Task A). We render post-present, so worldmap
+// markers punch through any submenu the game stacks OVER the open map. To hide the marker pass
+// under a covering menu we need a game-state field that reads "a child dialog covers the open
+// map" (the "Z" map-menu, beacon/marker dialog, region list). This delta-scans the CSMenuMan
+// head AND the WorldMapDialog head for a field that flips when such a menu opens and RETURNS on
+// close. Recipe: get the bare map up (don't pan), then open/close the map-menu / beacon /
+// region-list a few times — the offset that's one value bare, a different STABLE value while
+// covered, and RETURNS bare (reproduced across menus, quiet during bare-map pan/zoom) is
+// menu_covers_map(). CSMenuMan+0xCD is DEAD here (it says "map screen up", not "child covers it").
+//
+// BYTE-WISE by design (fix 2026-07-03): a menu flag is typically a single byte (a count/depth or
+// a bool). Reading at a 4-byte stride + filtering the int32 to [0,256) — as region_diag does —
+// HIDES a byte that flips at a non-4-aligned offset (e.g. +0xCD → the int32 at +0xCC changes by
+// 7<<8=1792, filtered out), which is why the first pass logged nothing. So we read each byte and
+// log any byte that changes: a byte is always [0,255], no filter, alignment-agnostic. Noisier, so
+// the CONTROLLED test matters (still map, toggle only the menu). Read-only + SEH-guarded. First
+// tick announces itself so "no output" unambiguously means "no byte flipped", not "scan dead".
+void menu_open_diag(uintptr_t mm, uintptr_t dialog)
+{
+    static std::unordered_map<ptrdiff_t, uint8_t> last;
+    static bool announced = false;
+    if (!announced && g_log)
+    {
+        g_log->info("[MENUOPEN-DIAG] scan ACTIVE — byte-wise mm+0..0x400 (mm={:#x}) + dlg+0..0x400 "
+                    "(dlg={:#x}). Open/close a covering submenu; watch for a byte that flips + returns.",
+                    mm, dialog);
+        announced = true;
+    }
+    auto scan = [&](const char *tag, uintptr_t base_obj, ptrdiff_t key_bias) {
+        if (!base_obj) return;
+        for (ptrdiff_t off = 0; off < 0x400; off += 4)
+        {
+            int v = 0;
+            if (!seh_read_i32(reinterpret_cast<void *>(base_obj + off), &v)) continue;
+            uint32_t u = static_cast<uint32_t>(v);
+            for (int b = 0; b < 4; ++b)
+            {
+                ptrdiff_t boff = off + b;
+                uint8_t val = static_cast<uint8_t>((u >> (b * 8)) & 0xffu);
+                ptrdiff_t key = key_bias + boff;
+                auto it = last.find(key);
+                if (it != last.end() && it->second != val)
+                    g_log->info("[MENUOPEN-DIAG] {}+{:#05x}: {} -> {}", tag, boff, it->second, val);
+                last[key] = val;
+            }
+        }
+    };
+    scan("mm", mm, 0);
+    scan("dlg", dialog, 0x100000); // bias dlg keys off mm's so 0..0x400 don't collide
 }
 
 // INPUT-DEVICE delta scan: which f32 fields move under MOUSE vs GAMEPAD-STICK?
@@ -788,6 +846,18 @@ void probe_loop()
                 GOBLIN_BENCH_QUIET("debug.dump_icon_textures");
                 goblin::dump_icon_textures_live();
             }
+            // HANDOFF overlay z-order Task A: hunt the "submenu covers the open map" flag by
+            // delta-scanning the CSMenuMan head while the map is up. Resolve mm from the slot
+            // (cheap, same read as world_map_open) and scan; logs [MENUOPEN-DIAG]. Read-only,
+            // off by default. Open the bare map, then open/close a covering submenu a few times.
+            if (goblin::config::debugMenuCoverDiag)
+            {
+                GOBLIN_BENCH_QUIET("debug.menu_cover_diag");
+                uint64_t mm = 0;
+                if (seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm) &&
+                    plausible_ptr(mm))
+                    menu_open_diag(static_cast<uintptr_t>(mm), menu_cursor - CURSOR_OFF_IN_MENU);
+            }
             // DISABLED (gamepad-cursor WIP): the all-instance enumerate_menu_cursors scan
             // (L1 0x10000 × L2 0x800 RPM reads) ran once per map-open and slowed the map
             // load noticeably — and it never reliably found the gamepad cursor. Removed; the
@@ -1109,9 +1179,42 @@ void dump_menu_state(const char *tag)
         }
     };
     dump("mm", static_cast<uintptr_t>(mm), 0x0, 0x200);
+    dump("mm", static_cast<uintptr_t>(mm), 0x200, 0x400); // Task A: submenu-stack head may sit past +0x200
     dump("dlg", dlg, 0xA00, 0xB40);
     dump("dlg", dlg, 0x2B60, 0x2C40);
     g_log->flush();
+}
+
+// HANDOFF overlay z-order Task A — consumer-facing "a submenu covers the open map" flag.
+// Reads CSMenuMan+0x104 (see CSMENUMAN_MENU_COVER_OFF): 1 while a modal/submenu is stacked over
+// the OPEN world map (fast-travel confirm, marker-placement dialog, region list, ...), 0 on the
+// bare map (incl. during pan/zoom — proven zero false-positives). We render post-present, so
+// without this the worldmap markers punch through the covering menu; render_markers early-outs on
+// it. Mirrors world_map_open(): resolve the CSMenuMan slot once, SEH/RPM-read the byte, log
+// distinct values as [MENUCOVER]. Read-only + SEH-guarded → safe to call every frame on the render
+// thread. GOBLIN_RENDER_API so the (hot-reload) render module can import it like project().
+bool menu_covers_map()
+{
+    static uintptr_t base = 0;
+    if (!base)
+        base = g_exe_base ? g_exe_base
+                          : reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base) return false;
+    uint64_t mm = 0;
+    if (!seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm) || !plausible_ptr(mm))
+        return false;
+    int v = 0;
+    if (!seh_read_i32(reinterpret_cast<void *>(static_cast<uintptr_t>(mm) + CSMENUMAN_MENU_COVER_OFF),
+                      &v))
+        return false;
+    const uint8_t b = static_cast<uint8_t>(v & 0xff); // +0x104 is 4-aligned → flag = low byte
+    static int last = -1;
+    if (b != last)
+    {
+        if (g_log) g_log->info("[MENUCOVER] CSMenuMan+0x104 -> {}", static_cast<int>(b));
+        last = b;
+    }
+    return b != 0;
 }
 
 bool set_view_center(float mU, float mV, float minZoom)
