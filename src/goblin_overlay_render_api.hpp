@@ -102,6 +102,7 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API bool set_view_center(float mU, float mV, float minZoom = 0.f);
     GOBLIN_RENDER_API void set_locate_target(float u, float v);
     GOBLIN_RENDER_API void clear_locate_target();
+    GOBLIN_RENDER_API bool locate_target_clamped();
     GOBLIN_RENDER_API bool page_switch_busy();
     GOBLIN_RENDER_API void request_switch_to_page(int group);
     GOBLIN_RENDER_API const goblin::worldmap_probe::LocateDebug &last_locate_debug();

@@ -72,6 +72,7 @@ namespace goblin::overlay_api
     bool set_view_center(float mU, float mV, float minZoom) { return goblin::worldmap_probe::set_view_center(mU, mV, minZoom); }
     void set_locate_target(float u, float v) { goblin::worldmap_probe::set_locate_target(u, v); }
     void clear_locate_target() { goblin::worldmap_probe::clear_locate_target(); }
+    bool locate_target_clamped() { return goblin::worldmap_probe::locate_target_clamped(); }
     bool page_switch_busy() { return goblin::worldmap_probe::page_switch_busy(); }
     void request_switch_to_page(int group) { goblin::worldmap_probe::request_switch_to_page(group); }
     const goblin::worldmap_probe::LocateDebug &last_locate_debug() { return goblin::worldmap_probe::last_locate_debug(); }

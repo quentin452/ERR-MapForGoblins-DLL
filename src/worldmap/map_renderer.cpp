@@ -2012,7 +2012,11 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
 
             // ── visibility gates (now only for on-screen markers + all pile members) ──
             // Shared with the minimap — see marker_passes_gates for each gate's rationale.
-            if (!marker_passes_gates(m))
+            // A search HIT bypasses the per-marker gates, same semantic as the hidden-layer
+            // bypass above: the user asked for this marker BY NAME, so the locate ring must be
+            // visible — without this, a locate onto a discovery/fragment-gated marker (unmet
+            // boss deep in fog, F2) centres the view on seemingly empty fog with no ring.
+            if (!is_hit && !marker_passes_gates(m))
                 continue;
 
             // Clustered-eligible markers are deferred (uncull'd) to the pile pass;
