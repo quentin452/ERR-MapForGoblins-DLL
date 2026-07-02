@@ -94,6 +94,20 @@ GetAsyncKeyState → typing its pause key in ANOTHER app toggles pause) — now 
 pause; **recommend removing PauseTheGame.dll from the me3 profiles**. A driver clears any pause
 via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (spiderfy, F2).
 
+## Overlay z-order clipping (user report 2026-07-02) — dial DONE, menu-over-map OPEN
+
+We render post-present → always on top of the game's own UI. Two sub-bugs:
+1. **ERR day/night dial (bottom-right of the map) — FIXED (`fix/f2-fog-locate-v2` branch,
+   in-game validated):** static exclusion region (disc ~(1815,1000) r240 + time pill, in the
+   1920×1080 virtual canvas, resolution-scaled) wired into `in_draw_bounds` so markers +
+   hover + pile anchors cull together. ERR-gated, ini `clip_game_ui` (default true).
+2. **Menus opening OVER the map (Z map-menu, beacon dialog, etc.) — OPEN:** our icons still
+   draw over them. Needs a "menu is covering the map" flag: CSMenuMan+0xCD is dead on this
+   build; plan = byte-diff probe (watch CSMenuMan first KBs + WorldMapDialog region while
+   RPC-toggling the Z menu — the [REGION-DIAG]/INPUT-DELTA probe infra in
+   goblin_worldmap_probe.cpp is the template). When found: hide the whole worldmap overlay
+   pass while the flag is up.
+
 ## Silent deadlock freeze + freeze watchdog (2026-07-02, `fix/f2-fog-locate-v2` branch)
 
 User hit a "deadlock-like" FREEZE (18:49): last log = a normal `render.minimap` BENCH line,
