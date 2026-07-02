@@ -1,12 +1,13 @@
 # Data-driven category descriptor — plan
 
-Status: **Tier 1 CORE DONE on `feat/category-descriptor` (2026-07-02) — steps 1, 2, 2b, 3 landed +
-verified byte-identical; step 4 (enum generation) deferred as optional.** The category descriptor
-`data/categories.json` now owns **name, section, landmark iconIds, glyphs (numeric + name-keyed), and
-the coverage display-name** — one source of truth, generated into `goblin_categories.gen.hpp` (wired
-into `generate_data.py`). Every step was proven identical to the code it replaced via an offline diff
-against git HEAD (stronger than a count check — every mapping, not just totals). Commits: `fd29ef2`
-(name+section), `8f0a340` (landmark icons), `2763c57` (glyphs), `80aec3c` (coverage ENUM2DISPLAY).
+Status: **Tier 1 COMPLETE on `feat/category-descriptor` (2026-07-02) — steps 1, 2, 2b, 3, 4 all
+landed + verified byte-identical.** The category descriptor `data/categories.json` is now the SINGLE
+source of truth for **the enum itself, name, section, landmark iconIds, glyphs (numeric + name-keyed),
+and the coverage display-name** — generated into `goblin_categories.gen.hpp` + `goblin_categories_enum.gen.inc`
+(wired into `generate_data.py`). Every step proven identical to the code it replaced via an offline
+diff against git HEAD (stronger than a count check — every mapping, not just totals). Commits:
+`fd29ef2` (name+section), `8f0a340` (landmark icons), `2763c57` (glyphs), `80aec3c` (coverage),
+`354d1e3` (enum). **Adding a category is now literally one `data/categories.json` record + regen.**
 Steps 1+2 detail:
 - **Step 1 (`fd29ef2`)** — category **name + section** are data-driven: `data/categories.json` (source
   of truth) → `src/generated/goblin_categories.gen.hpp` `CATEGORY_META[]` via
@@ -28,10 +29,13 @@ scattered switches.** Name/section/glyph/coverage all follow from the one record
 categories with bespoke builders still add their C++ builder; the descriptor owns their metadata.)
 The near-term win from `docs/scripting_api_roi_note.md` (chosen over a full scripting API).
 
-**Not in-game re-run:** each step is a no-behavior-change consolidation proven byte-identical offline
+**In-game smoke test — PASS (2026-07-02, ERR/Proton, the generated-enum build `7e7e3ecf`):**
+`[LANDMARKLIVE] built 298` with all 16 landmark categories at their exact counts,
+`[COVERAGE]` 81 categories with names intact (rendered from the generated CATEGORY_META), `[SIG]`
+30/30 clean, 0 errors. Confirms the whole descriptor refactor (generated enum + name + section +
+landmark map + glyphs) is behavior-identical. This is on top of the per-step offline byte-diffs
 (names/sections 0 diffs, 86/86 landmark iconIds, 10+2 glyphs incl. computed tints, coverage doc
-unchanged), so the deployed DLL behaves identically; deploy/merge when ready. An in-game
-`[LANDMARKLIVE]`/glyph smoke test is optional belt-and-suspenders.
+unchanged, 85/85 enumerator sequence identical).
 
 ## Goal
 
