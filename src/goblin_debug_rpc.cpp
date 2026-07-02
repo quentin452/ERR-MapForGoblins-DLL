@@ -2,6 +2,7 @@
 
 #include "goblin_config.hpp"
 #include "goblin_inject.hpp"   // world_map_open() — status field for the driver's boot/nav loop
+#include "input/input_cursor.hpp"  // set_cursor_pos_real — pixel-exact mouse_move via the trampoline
 #include "goblin_pause.hpp"    // pause command + paused= status (unfocused-window pause escape)
 #include "goblin_overlay.hpp"
 #include "goblin_overlay_render_loader.hpp"
@@ -53,10 +54,9 @@ namespace goblin::debug_rpc
         // ── Input-injection commands (Phase 4 unblocker: drive menus / load a save / hover the
         // map from the driver). These run on the LISTENER thread, not the present-thread pump:
         // SendInput is thread-agnostic OS-queue injection, touches no overlay/game state, and a
-        // key-hold Sleep() on the present thread would hitch frames. Scancodes included because
-        // the game reads keyboard via raw input (legacy-message-only synthesis would be invisible
-        // to it); mouse moves via MOUSEEVENTF_ABSOLUTE rather than SetCursorPos so we don't feed
-        // our own hk_set_cursor_pos hook (which swallows recenter calls while the panel is open).
+        // key-hold Sleep() on the present thread would hitch frames. Scancodes included for
+        // non-char keys (raw-input readers want them); mouse moves go through the SetCursorPos
+        // TRAMPOLINE (see move_cursor_client) — pixel-exact and doesn't feed our swallow hook.
 
         bool ensure_game_foreground()
         {
@@ -94,28 +94,32 @@ namespace goblin::debug_rpc
             SendInput(1, &in, sizeof(in));
         }
 
-        bool client_to_abs(int cx, int cy, LONG &ax, LONG &ay)
+        // Pixel-exact cursor placement via the SetCursorPos TRAMPOLINE (set_cursor_pos_real —
+        // bypasses our own swallow hook; the game's map cursor tracks the OS cursor, so this is
+        // all a hover needs). SendInput MOUSEEVENTF_ABSOLUTE was tried first and LANDED OFF
+        // TARGET under Wine (sent client 476,536 → arrived 552,371 — the absolute→X11 mapping
+        // doesn't match the virtual-desktop metrics we computed against).
+        bool move_cursor_client(int cx, int cy)
         {
             HWND hwnd = static_cast<HWND>(goblin::overlay::game_hwnd());
             if (!hwnd) return false;
             POINT p{cx, cy};
             ClientToScreen(hwnd, &p);
-            int vx = GetSystemMetrics(SM_XVIRTUALSCREEN), vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
-            int vw = GetSystemMetrics(SM_CXVIRTUALSCREEN), vh = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-            if (vw <= 0 || vh <= 0) return false;
-            ax = static_cast<LONG>((p.x - vx) * 65535.0 / (vw - 1));
-            ay = static_cast<LONG>((p.y - vy) * 65535.0 / (vh - 1));
+            if (!goblin::input::set_cursor_pos_real(p.x, p.y)) return false;
+            // SetCursorPos generates no input EVENT, so with the world map open the game keeps
+            // re-warping the OS cursor back onto its own (raw-input-driven) reticle — the
+            // placement held for at most a frame (observed live: sent 483,540, read back
+            // 814,901). A ±1px relative jiggle is a REAL mouse event: the game switches to
+            // mouse-cursor mode and adopts the OS cursor position we just set.
+            INPUT in[2]{};
+            in[0].type = INPUT_MOUSE;
+            in[0].mi.dx = 1;
+            in[0].mi.dwFlags = MOUSEEVENTF_MOVE;
+            in[1].type = INPUT_MOUSE;
+            in[1].mi.dx = -1;
+            in[1].mi.dwFlags = MOUSEEVENTF_MOVE;
+            SendInput(2, in, sizeof(INPUT));
             return true;
-        }
-
-        void send_mouse_abs(LONG ax, LONG ay, DWORD extra_flags)
-        {
-            INPUT in{};
-            in.type = INPUT_MOUSE;
-            in.mi.dx = ax;
-            in.mi.dy = ay;
-            in.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK | extra_flags;
-            SendInput(1, &in, sizeof(in));
         }
 
         // key <name> [hold_ms] | mouse_move <cx> <cy> | mouse_click [left|right] [<cx> <cy>]
@@ -146,9 +150,7 @@ namespace goblin::debug_rpc
                 int cx = 0, cy = 0;
                 try { cx = std::stoi(xs); cy = std::stoi(ys); }
                 catch (...) { return "err usage: mouse_move <client_x> <client_y>"; }
-                LONG ax = 0, ay = 0;
-                if (!client_to_abs(cx, cy, ax, ay)) return "err coordinate mapping failed";
-                send_mouse_abs(ax, ay, 0);
+                if (!move_cursor_client(cx, cy)) return "err cursor placement failed";
                 return "ok mouse_move";
             }
             if (cmd == "mouse_click")
@@ -167,9 +169,7 @@ namespace goblin::debug_rpc
                     int cx = 0, cy = 0;
                     try { cx = std::stoi(xs); cy = std::stoi(ys); }
                     catch (...) { return "err usage: mouse_click [left|right] [<x> <y>]"; }
-                    LONG ax = 0, ay = 0;
-                    if (!client_to_abs(cx, cy, ax, ay)) return "err coordinate mapping failed";
-                    send_mouse_abs(ax, ay, 0);
+                    if (!move_cursor_client(cx, cy)) return "err cursor placement failed";
                     Sleep(30);
                 }
                 INPUT in{};

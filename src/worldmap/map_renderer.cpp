@@ -1003,7 +1003,14 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
 
     // Pass 1: resolve each pile's GRACE anchor + its (distance-adaptive) threshold.
     // Sub-threshold groups draw their members normally; denser ones become a pile.
-    struct Pile { ImVec2 g; int count; int total; int loc_pname; int thr; };
+    struct Pile
+    {
+        ImVec2 g; int count; int total; int loc_pname; int thr;
+        uint32_t key;           // tile cell key — the fan's sticky identity across frames
+        std::vector<int> idxs;  // member indices into `items` (spiderfy draws them fanned)
+        ImVec2 placed{};        // final glyph position after the pass-2 nudge
+        bool visible = false;
+    };
     std::vector<Pile> piles;
     for (auto &kv : groups)
     {
@@ -1090,7 +1097,7 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
                     ++remaining;
             }
         }
-        piles.push_back({c, remaining, total, items[idxs[0]].m->loc_pname, thr});
+        piles.push_back({c, remaining, total, items[idxs[0]].m->loc_pname, thr, kv.first, idxs});
     }
 
     // Pass 2: nudge each pile off its grace icon (so both stay visible), in the cardinal
@@ -1123,6 +1130,8 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
                 off = ImVec2(0.f, vy > 0 ? OFF : -OFF);
         }
         ImVec2 best(piles[i].g.x + off.x, piles[i].g.y + off.y);
+        piles[i].placed = best;
+        piles[i].visible = on_screen(best);
         if (on_screen(best))
         {
             const bool depleted = (piles[i].count == 0 && piles[i].total > 0);
@@ -1151,6 +1160,103 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         }
     }
 
+    // ── Spiderfy (hover fan-out) ─────────────────────────────────────────────
+    // Hover a pile glyph → its members fan out around it (circle; spiral past a dozen) with a
+    // leg back to the glyph, each fanned icon fully hover/tooltip-able via the same hover_test
+    // the loose markers use. Sticky across frames on the pile's TILE CELL KEY (stable across
+    // the per-frame pile rebuild); closes when the cursor leaves the fan's extent + margin, or
+    // the pile itself disappears (zoom/page/toggle rebuilt the piles differently).
+    if (goblin::config::clusterSpiderfy)
+    {
+        static bool s_fan_open = false;
+        static uint32_t s_fan_key = 0;
+
+        int hov = -1;
+        for (size_t i = 0; i < piles.size(); ++i)
+        {
+            if (!piles[i].visible) continue;
+            const float dx = mouse.x - piles[i].placed.x, dy = mouse.y - piles[i].placed.y;
+            if (dx * dx + dy * dy <= glyphR * glyphR) { hov = (int)i; break; }
+        }
+        if (hov >= 0 && (!s_fan_open || piles[hov].key != s_fan_key))
+        {
+            s_fan_open = true;
+            s_fan_key = piles[hov].key;
+        }
+        int open_idx = -1;
+        if (s_fan_open)
+            for (size_t i = 0; i < piles.size(); ++i)
+                if (piles[i].key == s_fan_key && piles[i].visible) { open_idx = (int)i; break; }
+        if (s_fan_open && open_idx < 0)
+            s_fan_open = false;  // the hovered pile no longer exists at this zoom/page
+
+        if (open_idx >= 0)
+        {
+            const Pile &pl = piles[open_idx];
+            const ImVec2 c = pl.placed;
+            const int n_total = (int)pl.idxs.size();
+            constexpr int kFanMax = 40;  // spiral gets unreadable past this; label the rest
+            const int n = n_total > kFanMax ? kFanMax : n_total;
+            const float spacing = 2.f * iconHalf + 8.f;
+
+            // Positions: single ring while it fits, then an archimedean spiral outward.
+            std::vector<ImVec2> pos((size_t)n);
+            float max_r = 0.f;
+            if (n <= 12)
+            {
+                float r = spacing * (float)n / 6.2831853f;
+                if (r < glyphR * 2.4f) r = glyphR * 2.4f;
+                max_r = r;
+                for (int k = 0; k < n; ++k)
+                {
+                    const float a = -1.5707963f + 6.2831853f * (float)k / (float)n;
+                    pos[(size_t)k] = ImVec2(c.x + r * std::cos(a), c.y + r * std::sin(a));
+                }
+            }
+            else
+            {
+                float r = glyphR * 2.4f, a = -1.5707963f;
+                const float growth = spacing / 6.2831853f * 1.35f;
+                for (int k = 0; k < n; ++k)
+                {
+                    pos[(size_t)k] = ImVec2(c.x + r * std::cos(a), c.y + r * std::sin(a));
+                    if (r > max_r) max_r = r;
+                    a += spacing / r;
+                    r += growth * (spacing / r);
+                }
+            }
+
+            // Keep-open test against the fan's extent (+ margin) so the cursor can travel from
+            // the glyph to any fanned icon without the fan collapsing under it.
+            const float keep_r = max_r + iconHalf + 24.f;
+            const float dx = mouse.x - c.x, dy = mouse.y - c.y;
+            if (dx * dx + dy * dy > keep_r * keep_r)
+                s_fan_open = false;
+            else
+            {
+                // Backdrop disc so the fanned icons read against the busy map art.
+                fg->AddCircleFilled(c, max_r + iconHalf + 6.f, IM_COL32(0, 0, 0, 90));
+                for (int k = 0; k < n; ++k)
+                {
+                    const int i = pl.idxs[(size_t)k];
+                    fg->AddLine(c, pos[(size_t)k], IM_COL32(255, 255, 255, 90), 1.2f);
+                    draw_marker(fg, *items[i].m, pos[(size_t)k], icons, iconHalf);
+                    const Marker *mm = items[i].m;
+                    hover_test(hover, mouse, pos[(size_t)k], iconHalf,
+                               [&] { return marker_label(*mm); });
+                }
+                if (n_total > n)
+                {
+                    char more[24];
+                    std::snprintf(more, sizeof(more), "+%d more", n_total - n);
+                    ImVec2 ts = ImGui::CalcTextSize(more);
+                    ImVec2 tp(c.x - ts.x * 0.5f, c.y + max_r + iconHalf + 8.f);
+                    fg->AddText(ImVec2(tp.x + 1, tp.y + 1), IM_COL32(0, 0, 0, 205), more);
+                    fg->AddText(tp, IM_COL32(255, 230, 120, 235), more);
+                }
+            }
+        }
+    }
 }
 
 // Does a major-region anchor (its `area` page id) belong to the currently OPEN map
