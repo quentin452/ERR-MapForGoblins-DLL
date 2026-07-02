@@ -111,5 +111,12 @@ The B2 probe (`debug_scissor_probe`, `note_map_scissor`/`note_map_viewport`, the
 vtable-swap in `hk_execute_command_lists`) stays committed as documented scaffolding — OFF by default,
 non-firing; do not re-attempt the MinHook path.
 
-**B3 — Ghidra static RE of the Scaleform map-movie clip — ACTIVE.** See
-`worldmap_native_clip_b3_scaleform_re_prompt.md`.
+**B3 — SOLVED LIVE via RPM (2026-07-03), not Ghidra.** The prompt budgeted static Ghidra RE; an
+external ReadProcessMemory scan (RTTI → heap → worldmap-movie-name match) found the live Scaleform
+viewport in one session instead. Chain (RTTI-verified, probe-reachable):
+`WorldMapDialog + 0x140 → movieHandle + 0x00 → MovieImpl + 0xB0 = int L,T,W,H` (clip rect, canvas
+1920×1080 units; buffer size `+0xA8`; `movieHandle+0x58` = worldmap `CSScaleformSwfPlayer`).
+**Correction to the plan:** the viewport is the FULL canvas (0,0,1920,1080) — no inset — so it retires
+the edge/void cull (#1) but NOT the dial disc (#2); keep the dial/user exclusions as a separate
+HUD-overlap layer. Full write-up + consumer wiring:
+`worldmap_native_clip_b3_scaleform_re_findings.md`.
