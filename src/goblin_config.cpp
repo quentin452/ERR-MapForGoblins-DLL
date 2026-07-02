@@ -1,6 +1,8 @@
 #include "goblin_config.hpp"
 #include "goblin_config_schema.hpp"
 
+#include <windows.h>
+
 #include <spdlog/spdlog.h>
 #include <mini/ini.h>
 
@@ -72,7 +74,11 @@ namespace
         }
     }
 
-    // Seed every config variable from its schema default. In the vanilla build
+    // Folder holding the ini (set before anything queries err_features_enabled) —
+    // anchors the ERR-install fingerprint walk below.
+    std::filesystem::path g_ini_folder;
+
+    // Seed every config variable from its schema default. On a non-ERR install
     // ERR-only entries are force-disabled (so their features stay off even if
     // an ERR ini is present).
     void apply_defaults()
@@ -82,7 +88,7 @@ namespace
             for (auto const &e : sec.entries)
             {
                 bool err_only = e.err_only || sec.err_only;
-                if (goblin::profile_is_vanilla() && err_only)
+                if (!goblin::err_features_enabled() && err_only)
                 {
                     if (e.type == goblin::IniType::Bool)
                         *static_cast<bool *>(e.target) = false;
@@ -94,10 +100,48 @@ namespace
     }
 }
 
+// Runtime ERR-install detection (replaces the compile-time MFG_VANILLA profile split).
+// Fingerprint: ERR ships its menu-project dir in the mod overlay
+// (menu/deploy/projects/ELDENRINGReforged). Probed with the same ancestor-walk as
+// loot_disk's resolve_root_file — the DLL's own folder upward ("mod" overlay first,
+// then the dir itself), then the eldenring.exe dir (UXM-style installs). Cached; the
+// walk touches a handful of stat() calls once at init.
+bool goblin::err_features_enabled()
+{
+    static int cached = -1;
+    if (cached >= 0)
+        return cached == 1;
+    namespace fs = std::filesystem;
+    const fs::path rel = fs::path("menu") / "deploy" / "projects" / "ELDENRINGReforged";
+    std::error_code ec;
+    auto probe = [&](const fs::path &root) {
+        return !root.empty() &&
+               (fs::exists(root / "mod" / rel, ec) || fs::exists(root / rel, ec));
+    };
+    bool found = false;
+    fs::path p = g_ini_folder;
+    for (int up = 0; up < 5 && !found && !p.empty() && p != p.root_path();
+         ++up, p = p.parent_path())
+        found = probe(p);
+    if (!found)
+    {
+        wchar_t buf[MAX_PATH] = {0};
+        HMODULE h = GetModuleHandleW(L"eldenring.exe");
+        if (h && GetModuleFileNameW(h, buf, MAX_PATH))
+            found = probe(fs::path(buf).parent_path());
+    }
+    cached = found ? 1 : 0;
+    spdlog::info("[PROFILE] ERR install {} (fingerprint {}) — ERR-only config {}",
+                 found ? "DETECTED" : "not detected", rel.string(),
+                 found ? "active" : "force-disabled");
+    return found;
+}
+
 void goblin::ensure_ini(const std::filesystem::path &ini_path)
 {
     namespace fs = std::filesystem;
-    const bool include_err = !profile_is_vanilla();
+    g_ini_folder = ini_path.parent_path();
+    const bool include_err = err_features_enabled();
 
     mINI::INIStructure existing;
     bool had = fs::exists(ini_path);
@@ -198,7 +242,7 @@ void goblin::load_config(const std::filesystem::path &ini_path)
         return;
     }
 
-    const bool include_err = !profile_is_vanilla();
+    const bool include_err = err_features_enabled();
     for (auto const &sec : ini_schema())
     {
         if (sec.err_only && !include_err) continue;
@@ -329,13 +373,13 @@ void goblin::save_all_bool_settings(const std::filesystem::path &ini_path)
     // entries (keys, delays) are left as the file already has them.
     for (const auto &section : goblin::ini_schema())
     {
-        if (section.err_only && goblin::profile_is_vanilla())
+        if (section.err_only && !goblin::err_features_enabled())
             continue;
         for (const auto &e : section.entries)
         {
             if (e.target == nullptr)
                 continue;
-            if (e.err_only && goblin::profile_is_vanilla())
+            if (e.err_only && !goblin::err_features_enabled())
                 continue;
             // Bool/String/U8/F32/GamepadMask entries round-tripped from their config var so
             // menu-driven values (cluster_exclude, cluster_threshold, overlay_toggle_gamepad, …)

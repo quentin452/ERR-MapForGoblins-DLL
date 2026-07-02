@@ -39,14 +39,14 @@ if not exist "%MFG_XWIN%" (
 )
 set "PATH=%MFG_LLVM_BIN%;%PATH%"
 
-REM Build profile: default = ERR; pass "--vanilla" or "--convergence" (any position).
-REM   ERR:         data/, src/generated, build-err/, pre-release/
-REM   vanilla:     data/vanilla, src/generated_vanilla, build-vanilla/, pre-release-vanilla/
-REM   convergence: data/convergence, src/generated_convergence, build-convergence/, pre-release-convergence/
-REM MFG_PROFILE is exported so build_pipeline.py + config.py pick the data source.
+REM Packaging profile: default = ERR; pass "--vanilla" / "--convergence" / "--erte"
+REM (any position). SINGLE-DLL: every profile now builds the SAME DLL from the same
+REM build-err/ tree (the per-profile GENERATED_SUBDIR bake split is gone; ERR-only
+REM config is runtime-detected). The profile only selects the PACKAGE assets
+REM (README, worldmap gfx, snapshot dir) and the data source for the offline
+REM pipeline (MFG_PROFILE is exported so build_pipeline.py + config.py pick it).
 REM NOTE: the ERR build dir moved build/ -> build-err/ with the ninja port (the old
 REM build/ holds an incompatible msbuild tree; delete it whenever).
-set "GEN_SUBDIR=generated"
 set "PKG_PREFIX=ERR"
 set "SNAP_DIR=%SCRIPT_DIR%pre-release"
 set "DISP_PROFILE=err"
@@ -56,28 +56,22 @@ set "GFX_SRC=%SCRIPT_DIR%assets\menu\02_120_worldmap_err.gfx"
 echo %*| findstr /i /c:"--vanilla" >nul && set "MFG_PROFILE=vanilla"
 echo %*| findstr /i /c:"--convergence" >nul && set "MFG_PROFILE=convergence"
 echo %*| findstr /i /c:"--erte" >nul && set "MFG_PROFILE=erte"
-if "%MFG_PROFILE%"=="vanilla" set "BUILD_DIR=%SCRIPT_DIR%build-vanilla"
-if "%MFG_PROFILE%"=="vanilla" set "GEN_SUBDIR=generated_vanilla"
 if "%MFG_PROFILE%"=="vanilla" set "PKG_PREFIX=Vanilla"
 if "%MFG_PROFILE%"=="vanilla" set "SNAP_DIR=%SCRIPT_DIR%pre-release-vanilla"
 if "%MFG_PROFILE%"=="vanilla" set "DISP_PROFILE=vanilla"
 if "%MFG_PROFILE%"=="vanilla" set "README_SRC=%SCRIPT_DIR%assets\README_vanilla.txt"
 if "%MFG_PROFILE%"=="vanilla" set "GFX_SRC=%SCRIPT_DIR%assets\menu\02_120_worldmap_vanilla.gfx"
-if "%MFG_PROFILE%"=="convergence" set "BUILD_DIR=%SCRIPT_DIR%build-convergence"
-if "%MFG_PROFILE%"=="convergence" set "GEN_SUBDIR=generated_convergence"
 if "%MFG_PROFILE%"=="convergence" set "PKG_PREFIX=Convergence"
 if "%MFG_PROFILE%"=="convergence" set "SNAP_DIR=%SCRIPT_DIR%pre-release-convergence"
 if "%MFG_PROFILE%"=="convergence" set "DISP_PROFILE=convergence"
 if "%MFG_PROFILE%"=="convergence" set "README_SRC=%SCRIPT_DIR%assets\README_convergence.txt"
 if "%MFG_PROFILE%"=="convergence" set "GFX_SRC=%SCRIPT_DIR%assets\menu\02_120_worldmap_convergence.gfx"
-if "%MFG_PROFILE%"=="erte" set "BUILD_DIR=%SCRIPT_DIR%build-erte"
-if "%MFG_PROFILE%"=="erte" set "GEN_SUBDIR=generated_erte"
 if "%MFG_PROFILE%"=="erte" set "PKG_PREFIX=ERTE"
 if "%MFG_PROFILE%"=="erte" set "SNAP_DIR=%SCRIPT_DIR%pre-release-erte"
 if "%MFG_PROFILE%"=="erte" set "DISP_PROFILE=erte"
 if "%MFG_PROFILE%"=="erte" set "README_SRC=%SCRIPT_DIR%assets\README_erte.txt"
 if "%MFG_PROFILE%"=="erte" set "GFX_SRC=%SCRIPT_DIR%assets\menu\02_120_worldmap_erte.gfx"
-echo [PROFILE] %DISP_PROFILE%  build=%BUILD_DIR%  gen=%GEN_SUBDIR%
+echo [PROFILE] %DISP_PROFILE%  build=%BUILD_DIR% (single DLL, all profiles)
 
 if /i "%~1"=="clean" goto :clean
 if /i "%~1"=="configure" goto :configure
@@ -134,7 +128,6 @@ echo ============================================
   -DCMAKE_MAKE_PROGRAM="%MFG_NINJA%" ^
   -DCMAKE_TOOLCHAIN_FILE="%SCRIPT_DIR%clang-cl-xwin.cmake" ^
   -DXWIN=%MFG_XWIN% ^
-  -DGENERATED_SUBDIR=%GEN_SUBDIR% ^
   -DCMAKE_BUILD_TYPE=Release ^
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5 %~1
 if errorlevel 1 (
@@ -267,8 +260,9 @@ exit /b 0
 REM %1 = target root dir. Lays out the package per profile.
 REM   ERR              : <root>\dll\offline\{dll,ini} + <root>\addons\MapForGoblins\menu\gfx
 REM   vanilla/convergence : <root>\MapForGoblins\{dll,ini} + <root>\MapForGoblins\menu\gfx
-REM The ini is GENERATED from the in-code schema via mfg_inigen (non-ERR builds
-REM pass --vanilla to omit ERR-only sections), not copied.
+REM The ini is GENERATED from the in-code schema via mfg_inigen, not copied.
+REM Single-DLL: one full ini everywhere; ERR-only entries are runtime-disabled
+REM off-ERR by the DLL itself (goblin::err_features_enabled).
 set "PKG_ROOT=%~1"
 set "INIGEN=%BUILD_DIR%\mfg_inigen.exe"
 if not exist "%INIGEN%" (
@@ -283,7 +277,7 @@ if defined MFG_PROFILE (
     REM GFX_SRC is set per profile at the top of this script.
     mkdir "%PKG_ROOT%\MapForGoblins\menu" 2>nul
     copy /Y "%BUILD_DIR%\MapForGoblins.dll" "%PKG_ROOT%\MapForGoblins\" >nul
-    "%INIGEN%" "%PKG_ROOT%\MapForGoblins\MapForGoblins.ini" --vanilla
+    "%INIGEN%" "%PKG_ROOT%\MapForGoblins\MapForGoblins.ini"
     copy /Y "%GFX_SRC%" "%PKG_ROOT%\MapForGoblins\menu\02_120_worldmap.gfx" >nul
     copy /Y "%SCRIPT_DIR%LICENSE.txt" "%PKG_ROOT%\" >nul
 ) else (

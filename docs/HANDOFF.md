@@ -13,8 +13,8 @@ Kept: genuinely live/in-progress work, open questions, and standing knowledge (g
 decisions, non-obvious facts) not fully captured anywhere else. If you're looking for the history of
 something not below, check `docs/changelog.md` first, then the relevant `docs/plans/*.md`.
 
-Last updated: 2026-07-01z10 (overlay_hot_reload_playwright_plan Phase 2 Slice C's `LoadLibrary`
-mechanism IMPLEMENTED + build-verified end to end, both configs link clean — see below).
+Last updated: 2026-07-02 (SINGLE-DLL migration: per-profile builds retired, ERR runtime-detected;
++ the 9 native-pin parity landmark categories in-game verified — see below).
 
 ## RESUME HERE (2026-07-01z10) — overlay_hot_reload_playwright_plan Slice C fully implemented, not yet merged/in-game-confirmed for the split build
 
@@ -85,7 +85,31 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
 `__try`-elision hazards (world_position per-frame probes + tutorial_popup init poll) are FIXED
 (`5b80541`, built + deployed); still open = repo-wide `__try` classify pass, then Phases 1–2.**
 
-## Native-pin PARITY — 9 new landmark categories IMPLEMENTED, not yet in-game verified (2026-07-02)
+## SINGLE-DLL migration — profiles retired (2026-07-02, `feat/mapgenie-landmark-parity`)
+
+User audit request confirmed profiles had ~no reason left: zero real per-profile DATA (the only
+divergent bakes were EMPTY non-ERR stubs of ERR-only tables + `legacy_conv`, which is a pre-param-
+residence fallback only — the live `goblin_legacy_fold` is primary). Implemented:
+- `goblin::err_features_enabled()` (goblin_config.cpp) replaces compile-time `profile_is_vanilla()`:
+  runtime disk fingerprint `menu/deploy/projects/ELDENRINGReforged` (ancestor-walk from the DLL
+  folder, "mod" overlay first, then the eldenring.exe dir; cached; logs `[PROFILE]`). ERR-only
+  config force-disabled off-ERR at load, exactly like the old vanilla build.
+- DELETED: `GENERATED_SUBDIR` CMake machinery, `MFG_VANILLA`/`MFG_PROFILE_VANILLA` defines,
+  `tools/gen_nonerr_stubs.py`, `src/generated_{vanilla,erte,convergence}/` dirs (were gitignored),
+  per-profile build dirs. `src/generated/` is THE single bake dir.
+- build.bat `--vanilla/--convergence/--erte` KEPT but now only select packaging assets
+  (README/gfx/SNAP_DIR) + offline pipeline data source; all profiles build/ship the same DLL from
+  `build-err/`. inigen always emits the full ini (ERR entries included everywhere).
+- `liveLootLabels` single default = false (vanilla package used to default true — changelog notes it).
+- **Verify next:** in-game on ERR — grep `[PROFILE] ERR install DETECTED`; then a vanilla me3 launch
+  — expect `[PROFILE] ERR install not detected` + Reforged sections absent from F1 + ini rewritten
+  without ERR sections. Windows `build.bat` + `build.bat snapshot` re-run (script edited; validated
+  snapshot flow predates this change). Fingerprint risk: if some ERR release ships without
+  `menu/deploy/projects/ELDENRINGReforged`, add a second fingerprint or an ini override knob.
+- Baked-data plan impact: Phase A per-profile regen is MOOT; remaining bake work (name_regions/
+  region_anchors → disk-MSB runtime, icon atlas) unchanged.
+
+## Native-pin PARITY — 9 new landmark categories IMPLEMENTED + in-game VERIFIED (2026-07-02)
 
 `feat/mapgenie-landmark-parity`: full audit of native WMPP pins (every family the game still draws
 that we didn't re-draw) → 9 new categories via the same `build_live_landmarks` pass: Churches /
@@ -97,14 +121,13 @@ Ruins / Rises & Towers / Shacks / Forts / Castles / Towns & Villages / Colosseum
 log listing all 16 landmark cats; expect Churches ~28, Ruins ~38, RisesTowers ~21, Shacks ~24,
 Forts 7, Castles 6, TownsVillages ~14, Colosseums 3, UniqueSites ~26), toggle a few in F1, then
 merge. Colosseum got a `category_gpu_iconId` (24) native-glyph entry, rest = circle.
+**VERIFIED in-game on ERR (2026-07-02): `[LANDMARKLIVE] built 295` — all 16 categories, every
+count exactly as predicted; SIG 29/29 clean, 0 errors.** Ready to merge.
 
-**Side finding — non-ERR profile bakes are STALE/incomplete:** `generated_vanilla` lacked the whole
-Group1/2 enum block (vanilla build was BROKEN pre-change); synced `goblin_map_data.hpp` +
-`goblin_quest_steps.{hpp,cpp}` (hand-authored, profile-independent) from `generated/` → vanilla
-builds clean again (`build-vanilla/MapForGoblins.dll`). `generated_erte`/`generated_convergence`
-are missing whole FILES (`goblin_world_feature_models.*`, `goblin_category_exceptions.*`,
-`goblin_name_aliases_en.*`) — they don't even configure; need a real regen (Windows box) or the
-`generated_shared/` dedup from the baked-data plan.
+**Side finding (SUPERSEDED same day by the single-DLL migration above):** the non-ERR profile
+bakes were stale/incomplete (vanilla missed the whole Group1/2 enum block → its build had been
+broken since Group 1; erte/convergence missed whole files). Fixed first by syncing headers, then
+made moot by deleting the per-profile dirs entirely.
 
 ## Native-map landmark icon suppression — TRACKED, not started (2026-07-02)
 
@@ -309,9 +332,10 @@ MsgRepository PlaceName patch producing `?PlaceName?`, double hook installs, dis
 markers appearing to vanish) — confirmed by log diff, not a real code bug in any of the affected
 systems. **Fix (immediate):** only ship/deploy ONE DLL — the launcher should load `MapForGoblins.dll`
 only (renaming it does NOT disable the mod; the launcher falls back to the stale `_vanilla.dll` — to
-truly test mod-off, remove BOTH). **Fix (strategic):** true mod-agnosticism (this mod's whole prime
-directive) makes the per-mod build split unnecessary — one DLL for every mod means no variant, no
-double-load possible. **Hardening TODO, not yet implemented:** a named-mutex check at init
+truly test mod-off, remove BOTH). **Fix (strategic): DONE 2026-07-02 — the single-DLL migration
+retired the per-profile variants; new packages ship one `MapForGoblins.dll` for every install, so a
+fresh install can no longer double-load. (Stale old `_vanilla.dll` files in EXISTING installs can
+still double-load until removed — the named-mutex hardening below still has value.)** **Hardening TODO, not yet implemented:** a named-mutex check at init
 (`CreateMutexW`) so a second instance bails before installing any hooks/ImGui/PlaceName patch and
 shows a clear on-screen "double load detected, check your launcher config" banner instead of silent
 double-draw corruption — currently the failure mode is confusing, not caught.

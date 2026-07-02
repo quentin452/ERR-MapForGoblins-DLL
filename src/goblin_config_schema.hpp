@@ -59,15 +59,13 @@ namespace goblin
     // The schema, built once.
     const std::vector<IniSection> &ini_schema();
 
-    // Compile-time profile. The vanilla DLL is built with -DMFG_VANILLA.
-    constexpr bool profile_is_vanilla()
-    {
-#ifdef MFG_VANILLA
-        return true;
-#else
-        return false;
-#endif
-    }
+    // Runtime replacement for the old compile-time MFG_VANILLA profile split: ONE DLL
+    // for every install; ERR-only config sections/entries activate only when the active
+    // install IS ELDEN RING Reforged (disk fingerprint, cached). Defined in
+    // goblin_config.cpp (the runtime); mfg_inigen links only the schema and must not
+    // call this — the shipped ini now always includes the ERR-only entries (they are
+    // force-disabled at load time on a non-ERR install).
+    bool err_features_enabled();
 
     // Resolver lets the caller supply an existing value for an entry (used by
     // the runtime migration to preserve user-set values + apply renames).

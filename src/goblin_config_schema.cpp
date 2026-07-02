@@ -43,19 +43,12 @@ namespace goblin::config
 
     bool hideKilledBosses = false;
 
-    // Live-loot / randomizer-compat options default ON for the plain VANILLA
-    // build only (that's what Item/Enemy Randomizer players use) and OFF for ERR
-    // and Convergence (opt-in — they add memory/CPU with no benefit without a
-    // regulation mod). MFG_PROFILE_VANILLA is set by CMake for the vanilla bake
-    // only (MFG_VANILLA covers vanilla AND convergence, so it can't be used here).
+    // Randomizer relabel (copy the whole item-name space into PlaceName). Perf-heavy →
+    // opt-in on every install. (The old per-profile vanilla-defaults-ON split died with
+    // the single-DLL migration; randomizer players flip this one key.)
     // live_loot_flags / live_loot_icons removed (Phase 2b): their only consumers were the native
-    // map's param rewriters, deleted with native injection. live_loot_labels survives — it's the
-    // randomizer relabel (copy the whole item-name space into PlaceName, perf-heavy → opt-in).
-#ifdef MFG_PROFILE_VANILLA
-    bool liveLootLabels = true;
-#else
+    // map's param rewriters, deleted with native injection.
     bool liveLootLabels = false;
-#endif
     bool anonymousLoot = false;  // opt-in spoiler-free mode (all profiles default off)
 
     // loot{FromDiskMsb,Collectibles,EnemyDrops,EmevdDrops} + worldFeaturesFromDisk are now
@@ -155,14 +148,10 @@ namespace
 
     constexpr bool ERR = true; // err-only marker for readability
 
-    // Default string for the live-loot options — "true" only in the vanilla
-    // bake (see the var defs above), "false" elsewhere. Must match the compiled
-    // bool defaults so the generated ini and the DLL agree.
-#ifdef MFG_PROFILE_VANILLA
-#define MFG_LL_DEF "true"
-#else
+    // Default string for the live-loot options. Must match the compiled bool
+    // defaults so the generated ini and the DLL agree (single default since the
+    // single-DLL migration — see liveLootLabels above).
 #define MFG_LL_DEF "false"
-#endif
 
     // helper macros to keep the table compact
 #define B(k, var, def, cmt) IniEntry{k, IniType::Bool, &cfg::var, def, cmt, false, nullptr}

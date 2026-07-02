@@ -388,13 +388,10 @@ def main():
             json.dump(cache, f, indent=1)
         print(f'[OK]      {stage.name}  ({time.time()-t0:.1f}s)')
 
-    # Non-err profiles don't generate the ERR-only tables (quest gates/steps/browser,
-    # region anchors, name regions, model aliases), but the DLL references their
-    # symbols unconditionally — emit empty stubs so a non-err DLL links (the features
-    # are simply absent on that profile; the loot path never touches them).
-    if PROFILE != 'err':
-        import subprocess
-        subprocess.run([sys.executable, str(REPO / 'tools' / 'gen_nonerr_stubs.py'), PROFILE])
+    # Single-DLL migration: the DLL always compiles src/generated/ (no per-profile
+    # bake dirs, no non-err stubs — tools/gen_nonerr_stubs.py deleted). Non-err
+    # MFG_PROFILE runs still emit their data/<profile>/ artifacts for offline
+    # analysis, but nothing profile-specific feeds the DLL build anymore.
 
     print(f'\n[DONE]    pipeline in {time.time()-overall_t0:.1f}s')
     return 0

@@ -24,6 +24,16 @@ named releases, so everything fork-specific lives under **[Unreleased]** until t
 Everything below is specific to this fork (`master`, ~990 commits ahead of `upstream/main`) and
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
+### Changed
+- **Single DLL for every install (per-profile builds retired).** The old ERR/vanilla/erte/convergence
+  DLL variants are gone: one `MapForGoblins.dll` now serves any Elden Ring install. ERR-only config
+  sections/entries activate automatically when the install is ELDEN RING Reforged (runtime disk
+  detection) and are force-disabled elsewhere; ERR-only data tables ship everywhere and are inert
+  off-ERR. The shipped ini is the same on every package (ERR-only entries included). Also removes the
+  double-DLL-load failure mode caused by shipping two profile variants side by side. One behavior
+  change: the vanilla package's `live_loot_labels` (randomizer relabel) now defaults OFF like
+  everywhere else — randomizer players flip that one key.
+
 ### Added
 - **9 native-pin parity landmark categories** (`World - Churches / Ruins / Rises & Towers / Shacks /
   Forts / Castles / Towns & Villages / Colosseums / Unique Sites`) — completes coverage of every pin
