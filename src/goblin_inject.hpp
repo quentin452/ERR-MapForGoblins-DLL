@@ -101,6 +101,10 @@ namespace goblin
                             int *out_gx = nullptr, int *out_gz = nullptr,
                             int *out_group = nullptr);
 
+    // Live player facing yaw (radians, [-pi, pi]) from LocalPlayer+0x6CC. Drives the minimap
+    // heading arrow. false during a load / before the WCM static resolves.
+    bool get_player_facing_yaw(float &yaw_radians);
+
     // Unified overworld marker-space coord for an arbitrary baked marker (projects
     // legacy dungeons to area-60 via LEGACY_CONV, then world = grid*256 + local).
     // Used by the overlay-rendered-markers prototype to place graces etc.

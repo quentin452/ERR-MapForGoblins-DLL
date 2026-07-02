@@ -533,6 +533,36 @@ static void probe_player_seh(void **wcm_static, PlayerProbe *pr)
     __except (EXCEPTION_EXECUTE_HANDLER) { pr->ok = false; }
 }
 
+// Player facing YAW = float [LocalPlayer + 0x6CC], radians [-pi, pi] (RE 2026-07-02, Linux in-DLL
+// probe: sits right after the +0x6C0 position block, render copy at +0x6E0; +0x6D0 = pitch ~flat).
+// Drives the minimap heading arrow. Same noinline-CALL SEH shape as the position probes.
+struct YawProbe { float yaw; bool ok; };
+__declspec(noinline) static void probe_yaw_body(void **wcm_static, YawProbe *pr)
+{
+    auto *wcm = *reinterpret_cast<uint8_t **>(wcm_static);
+    if (!wcm) return;
+    auto *lp = *reinterpret_cast<uint8_t **>(wcm + 0x1E508);
+    if (!lp) return;
+    pr->yaw = *reinterpret_cast<float *>(lp + 0x6CC);
+    pr->ok = true;
+}
+static void probe_yaw_seh(void **wcm_static, YawProbe *pr)
+{
+    pr->ok = false;
+    __try { probe_yaw_body(wcm_static, pr); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { pr->ok = false; }
+}
+bool goblin::get_player_facing_yaw(float &yaw_radians)
+{
+    if (!g_wcm_tried) resolve_world_chr_man();
+    if (!g_wcm_static) return false;
+    YawProbe pr{};
+    probe_yaw_seh(g_wcm_static, &pr);
+    if (!pr.ok) return false;
+    yaw_radians = pr.yaw;
+    return true;
+}
+
 bool goblin::get_player_world_pos(float &x, float &y, float &z)
 {
     if (!g_wcm_tried) resolve_world_chr_man();

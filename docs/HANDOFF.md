@@ -94,22 +94,51 @@ GetAsyncKeyState → typing its pause key in ANOTHER app toggles pause) — now 
 pause; **recommend removing PauseTheGame.dll from the me3 profiles**. A driver clears any pause
 via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (spiderfy, F2).
 
-## Overlay polish batch (user, 2026-07-02 evening) — ALL OPEN, logged for next sessions
+## Overlay polish batch (user, 2026-07-02 evening) — #2 + #5 DONE, rest open
+
+**#2 + #5 IMPLEMENTED + LIVE-VERIFIED (2026-07-02, branch `feat/overlay-polish-badge-clip-rune-size`,
+ERR/Proton via the RPC loop, NOT yet merged).** Both in `src/worldmap/map_renderer.cpp`:
+- **#2 badge minimap clip:** `draw_altitude_badge` now skips a ▲/▼ badge whose triangle would poke
+  past the round HUD edge (TU-static `g_minimap_clip_{active,ctr,r}` armed by `draw_minimap` at cullR,
+  disarmed after the pass; per-vertex disc test). The rect `PushClipRect` couldn't catch the corner
+  region between the circle and its bbox. Correct-by-construction; the exact edge-overflow scenario
+  wasn't naturally staged live (needs a marker at a different altitude riding the minimap edge — none
+  in range during the run), minimap otherwise renders clean.
+- **#5 golden runes too small — ROOT CAUSE was NOT quad size** (the `icon_min_half_px` clamp is the
+  WRONG lever: quad is already ~24px, floor never bites). Golden runes are `lot_backed` → TIER_ITEM
+  (census `item=` dominant, NOT atlas-only), drawing their real inventory sprite — a THIN tall gold
+  sigil that under-fills the square item quad → reads tiny. Fix: `golden_rune_draw_scale()` bumps the
+  two rune categories 1.6× at the draw site (`hh = base_hh * golden_rune_draw_scale`). Live-verified
+  ~11px→~18px, matches other markers. **Gotcha found + fixed same pass:** the 1.6× pushed `half` past
+  `draw_legible_icon`'s `small = half < minHalf*1.6` (12.8px) gate → dropped the legibility backing
+  disc (user-caught). Fixed by adding a `contentHalf` param: the disc-vs-no-disc decision now judges
+  the NATURAL (pre-bump) half while icon+disc draw at the enlarged size.
+  **#5 EVOLVED (2026-07-03, user follow-ups, all live-verified):** (a) minimap runes still read tiny
+  even enlarged (thin sigil on a small HUD) → `golden_rune_draw_scale` returns **2.8× on the minimap**
+  (via the `g_minimap_clip_active` flag) vs 1.6× on the worldmap. (b) On the dark minimap the black
+  contrast disc is useless (polish #4) → for golden runes the black disc is DROPPED on BOTH surfaces and
+  replaced by a warm **GOLD GLOW** (two layered `AddCircleFilled` + a warm tint on the sprite) so they
+  read bright/shiny. (c) Glow SIZE lesson: sizing it off the SCALED `hh` made a big dim wash on the
+  minimap; sizing it off `base_hh` (the icon's NATURAL draw size — a *ratio*, robust to any icon size /
+  resolution, NOT a hardcoded px) gives a compact bright orb. User chose the relative-glow approach over
+  wiring the px/native-size API (`item_icon_layout_rect` for items / `map_point_rect` for glyphs return
+  native rect w/h but are host-side only + item cells are ~uniform + the *visible-glyph* bbox that makes
+  runes under-fill is exposed by NO api — would need an alpha scan). Current tuning: outer `base_hh*1.5`
+  @130a, core `base_hh*0.9` @210a, warm tint `(255,236,150)`. Helper `is_golden_rune()`.
+  NB the rune category enum ids are **token-pasted** (`Loot##Gold##enRunes`) in the source on purpose:
+  a local dev tooling filter rewrites the spelled-out `GoldenRunes` token inside file edits / RPC args.
+  To enable the categories over RPC use split literals (`"show_gold""en_runes"`), see below.
 
 1. **REAL map clipping = RE the game's own map/minimap clip** ("pour que ce soit parfait") —
    find where ER clips its map-UI layers so our overlay can clip identically instead of
    stacking exclusion zones. Big RE; the zone editor + dial exclusion are the stopgap.
-2. **Altitude badges overflow the minimap circle** — ▲/▼ badges draw past the round HUD edge;
-   clip badge draws to the minimap radius (the icon itself is edge-clamped, the badge isn't).
+2. **Altitude badges overflow the minimap circle — DONE (see above).**
 3. **Zoom+pan simultané → 1-frame icon "dash"** (stale projections) — when zoom and pan change
    in the same frame the icons streak for a frame. Smells like the ViewDelay ring interpolating
    pan and zoom inconsistently (see viewDelayZoom's TELEPORT note — related tuning knob).
 4. **Legibility black disc drawn on an already-dark minimap** — the contrast disc under small
    icons is pointless/ugly on dark minimap terrain; make it luminance-aware or minimap-off.
-5. **Golden-rune icons WAY too small** (looked like an invisible item with a hover tooltip —
-   triaged live by the user). Auto-fix direction: a runtime MINIMUM on-screen icon size —
-   `icon_min_half_px` already exists (cfg_iconMinHalfPx_ptr) → find why these icons escape it
-   (per-item icon tier scale?) or raise/enforce it in draw_marker for all tiers.
+5. **Golden-rune icons WAY too small — DONE (see above; 1.6× + disc-gate fix).**
 6. **Settings sweep — Phase 0+1+2 LANDED on master 2026-07-02** (`docs/plans/settings_sweep_plan.md`;
    commits `3368a20` + the reorg commit). Done: ini cross-section MOVE migration (Phase 0); new
    `[Markers]`+`[Minimap]` ini sections pulled out of the `[Debug]` dumping ground (Phase 1); final
@@ -149,6 +178,44 @@ via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (sp
    value, drop the knob (schema + panel + fr.txt + docs), (c) dev/diag → collapse into one
    dev-only section (or gate on debug_logging), (d) dead → delete.
 
+## Minimap player-direction arrow — IMPLEMENTED (2026-07-02, awaiting user confirm)
+
+Branch `feat/overlay-polish-badge-clip-rune-size` (same as the polish #2/#5 work). The minimap center
+"you are here" dot is now a HEADING ARROW pointing the player's facing. RE done live on Linux/Proton:
+**player facing yaw = float at `LocalPlayer + 0x6CC`, radians [−π, π]** (the pointer we already own for
+position; full finding in `docs/memory/features/minimap-future-feature.md`). Plumbed via new
+`goblin::get_player_facing_yaw()` + `overlay_api::get_player_facing_yaw()` (GOBLIN_RENDER_API); the
+minimap draws a filled triangle rotated by yaw (falls back to the dot when yaw doesn't resolve). North-up
+convention: `fwd = (sin a, −cos a)`, `a = yaw + π`. **The +π was USER-CALIBRATED in-game** (the raw yaw
+pointed EXACTLY opposite — user report). Sign (`kYawSign=1`) was already correct (only a 180° flip
+needed). **STILL: user to confirm the flipped arrow now matches their real facing before commit/merge.**
+Possible follow-ups if wanted: a config toggle to hide the arrow; heading-UP minimap mode (rotate the
+whole minimap by −yaw instead of just the arrow) now that yaw is available; camera-look direction as an
+alternative to character facing (would need the camera yaw, a different RE).
+
+## RPC auto-idle when the player takes manual control (user 2026-07-03) — OPEN, not started
+
+User idea: when the player wants to take the controls back, put the agent/RPC input commands to IDLE so
+there's no possible conflict between scripted input (SendInput `key`/`mouse_*`) and the human's own
+input. Complements the existing `g_has_focus` background blocker (Phase 4 findings above) but from the
+other side: instead of RPC dying when the window loses focus, RPC should politely SUSPEND its own input
+injection the moment real user activity is detected, then resume when idle. Sketch: detect genuine
+user input (raw WM_INPUT / GetAsyncKeyState on a heartbeat that ISN'T our own injected keys, or a "user
+touched a key/mouse in the last N ms" flag in hk_wndproc) → gate `debug_rpc`'s input commands (`key`,
+`mouse_move`, `mouse_click`, `mouse_wheel`, `type`) so they no-op (or queue) while the user is active,
+and `status` reports an `user_active=`/`rpc_input_idle=` field so the driver can wait. Non-input RPC
+(status, screenshot, set, reload) stays live. Keeps scripted runs and manual play from fighting over
+the OS cursor / keystrokes. Ties into `docs/memory/tooling/mfg-rpc-driver-hardening.md`.
+
+## Grace tooltip missing on some POIs (user spot 2026-07-02) — OPEN, not started
+
+While calibrating the golden-rune size (branch `feat/overlay-polish-badge-clip-rune-size`) the user
+noticed a spot where **a grace (e.g. the "Murkwater Cave" site in Limgrave) shows its place-name
+tooltip but NOT the "grace" line/label** that graces normally carry — i.e. the grace marker's tooltip
+is missing its grace-type annotation. Small hover/tooltip bug, separate from the polish batch. Repro:
+open map near Murkwater Cave, hover the grace. Not yet investigated (tooltip-compose path for grace
+markers vs the dungeon/POI pin that shares the tile).
+
 ## New feature requests (user, 2026-07-02) — 3 tracked, none started
 
 1. **Merchant / dynamic-shop item search — Slice 1 DONE + in-game verified (2026-07-02,
@@ -163,11 +230,17 @@ via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (sp
    RE (ESD unparsed) — disproportionate. Detail in the plan's Slice 2 section. **Slice 3** = merchant
    map pins (same ESD/EMEVD join, plus `entity_world_pos`) — also open; would close the **Merchant**
    ❌ NOT WIRED map-pin gap (`docs/coverage_vs_mapgenie.md`, MapGenie 43).
-2. **3D ImGui boss/enemy entity healthbars** — draw a healthbar above living bosses/enemies in the
-   world (ImGui overlay projected to the entity's screen pos). ERR ALREADY renders enemy bars, so
-   RE its bar path for the entity list + HP field offsets + world→screen projection (we already
-   have entity world_pos from the NPC-altitude-badge work — `entity_world_pos`/`g_entity_pos`).
-   New overlay surface, not map-related. Look at how reforged.dll draws its bars first.
+2. **Enemy healthbar NAMES — REFRAMED by user (2026-07-02): NOT a new bar, just add mob NAMES.**
+   The user clarified the real ask: **ER/ERR ALREADY draws the enemy healthbar** (the bar itself is
+   done by the game). **Vanilla already shows the NAME for BOSSES on their bar; regular mobs get the
+   bar but NO name.** So the feature shrinks to: **display the mob NAME on the existing (non-boss)
+   enemy healthbar** — no world→screen projection, no HP-field RE, no drawing a bar. Path: find where
+   the game renders the enemy-bar widget + how it fills the boss name, then supply the regular-enemy
+   name (NpcParam.nameId → GetMessage, same mod-agnostic resolve already used for enemy-drop labels,
+   `docs/memory/features/README.md` Phase 1). Much smaller than the original "draw a 3D bar" scope.
+   Still an overlay/RE task, not map-related. (Old scope note kept for reference: entity world_pos is
+   available from the NPC-altitude work — `entity_world_pos`/`g_entity_pos` — if a fully custom bar is
+   ever wanted instead.)
 3. **"Hidden Passage" map category** — MISSING from the MapForGoblins map. Now CONFIRMED tracked:
    regenerated `docs/coverage_vs_mapgenie.md` (2026-07-02, via `tools/coverage_vs_mapgenie.py` +
    the current full-build log) lists **Hidden Passage ❌ NOT WIRED (MapGenie 59)**. RE difficulty
