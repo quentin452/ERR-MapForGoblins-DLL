@@ -292,9 +292,13 @@ namespace
             // to a sane min/max so it neither shrinks to nothing nor overflows the
             // screen; if content exceeds the max it scrolls.
             ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
+            // Max width 720 -> 840: translated labels (i18n) run longer than the English
+            // source — French checkbox rows clipped at the old cap (AlwaysAutoResize
+            // re-fits every frame but only up to this constraint). Translations should
+            // still aim for <= English+20% so the panel doesn't eat the screen.
             ImGui::SetNextWindowSizeConstraints(
                 ImVec2(360.0f, 240.0f),
-                ImVec2(720.0f, io.DisplaySize.y * 0.92f));
+                ImVec2(840.0f, io.DisplaySize.y * 0.92f));
             ImGui::Begin("Map for Goblins##large", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
             // Keep the per-category census warm: the watcher only runs the flag
             // sweep while the panel is on-screen (stamped here each frame).

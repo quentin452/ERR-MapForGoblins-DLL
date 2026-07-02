@@ -68,16 +68,16 @@ en=Saved to INI
 tr=Sauvegardé dans l'INI
 
 en=Require map fragments (hide an area's icons until its fragment is found)
-tr=Exiger les fragments de carte (masquer les icônes d'une zone tant que son fragment n'est pas trouvé)
+tr=Exiger les fragments de carte (masque la zone avant la découverte du fragment)
 
 en=Gray collected/cleared markers (dim looted items & killed bosses)
-tr=Griser les marqueurs récupérés/terminés (objets ramassés et boss vaincus)
+tr=Griser les marqueurs récupérés (objets ramassés, boss vaincus)
 
 en=hide instead
 tr=masquer plutôt
 
 en=Stack identical items (merge same-item nodes within ~5m)
-tr=Empiler les objets identiques (fusionner les noeuds du même objet à ~5m)
+tr=Empiler les objets identiques (mêmes objets à ~5m fusionnés)
 
 en=Show region labels (major-region names on the map)
 tr=Afficher les noms de régions (grandes régions sur la carte)
@@ -89,10 +89,10 @@ en=Altitude arrows (up = above / down = below player)
 tr=Flèches d'altitude (haut = au-dessus / bas = en dessous du joueur)
 
 en=Overlay graces (draw all graces ourselves)
-tr=Grâces overlay (dessiner toutes les grâces nous-mêmes)
+tr=Grâces overlay (toutes dessinées par le mod)
 
 en=GPU sprite (engine, time-tinted) vs CPU (baked atlas)
-tr=Sprite GPU (moteur, teinte du jour) vs CPU (atlas figé)
+tr=Sprite GPU (moteur) vs CPU (atlas)
 
 en=Hide native landmark pins (when our category re-draws them)
 tr=Masquer les épingles natives (quand notre catégorie les redessine)
@@ -275,7 +275,7 @@ en=Quest navigation
 tr=Navigation de quêtes
 
 en=Enable "World - Quest NPC" above to pin quest NPCs on the map.
-tr=Activez « Monde - PNJ de quête » ci-dessus pour épingler les PNJ de quête sur la carte.
+tr=Activez « Monde - PNJ de quête » pour épingler les PNJ sur la carte.
 
 en=Quest Browser (%zu questlines)
 tr=Navigateur de quêtes (%zu lignes de quête)
@@ -371,7 +371,7 @@ en=Cluster none
 tr=Rien grouper
 
 en=left = show on map   |   right [cluster] = join location pile (live) / unchecked = shown normally
-tr=gauche = afficher sur la carte   |   droite [grouper] = rejoint la pile du lieu (direct) / décoché = affiché normalement
+tr=gauche = afficher   |   droite [grouper] = rejoint la pile du lieu / décoché = normal
 
 en=Also hides the game's OWN pin for these spots while enabled\n("Hide native landmark pins" in Settings, avoids duplicates).\nThe native pin change shows the NEXT time the map is opened.
 tr=Masque aussi l'épingle du JEU pour ces lieux tant que c'est actif\n(« Masquer les épingles natives » dans les réglages, évite les doublons).\nLe changement apparaît à la PROCHAINE ouverture de la carte.
@@ -401,7 +401,7 @@ en=Debug
 tr=Débogage
 
 en=Live projection (engine world→map fn; fixes dungeon/UG placement)
-tr=Projection en direct (fonction monde→carte du moteur ; corrige donjons/souterrain)
+tr=Projection en direct (monde→carte moteur ; corrige donjons/souterrain)
 
 en=Danger zone
 tr=Zone dangereuse
