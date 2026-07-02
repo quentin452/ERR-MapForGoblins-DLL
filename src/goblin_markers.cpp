@@ -340,6 +340,15 @@ const char *category_name(generated::Category c)
         case C::WorldDungeon: return "World - Dungeons";
         case C::WorldLegacyDungeon: return "World - Legacy Dungeons";
         case C::WorldMiquellaCross: return "World - Miquella's Cross";
+        case C::WorldChurch: return "World - Churches";
+        case C::WorldRuins: return "World - Ruins";
+        case C::WorldRiseTower: return "World - Rises & Towers";
+        case C::WorldShack: return "World - Shacks";
+        case C::WorldFort: return "World - Forts";
+        case C::WorldCastle: return "World - Castles";
+        case C::WorldTownVillage: return "World - Towns & Villages";
+        case C::WorldColosseum: return "World - Colosseums";
+        case C::WorldUniqueSite: return "World - Unique Sites";
         case C::WorldPortal: return "World - Portals";
         case C::WorldElevator: return "World - Elevators";
         case C::WorldSmithingTable: return "World - Smithing Tables";

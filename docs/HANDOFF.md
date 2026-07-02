@@ -85,6 +85,27 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
 `__try`-elision hazards (world_position per-frame probes + tutorial_popup init poll) are FIXED
 (`5b80541`, built + deployed); still open = repo-wide `__try` classify pass, then Phases 1–2.**
 
+## Native-pin PARITY — 9 new landmark categories IMPLEMENTED, not yet in-game verified (2026-07-02)
+
+`feat/mapgenie-landmark-parity`: full audit of native WMPP pins (every family the game still draws
+that we didn't re-draw) → 9 new categories via the same `build_live_landmarks` pass: Churches /
+Ruins / Rises & Towers / Shacks / Forts / Castles / Towns & Villages / Colosseums / Unique Sites
+(~167 rows; + iconId 62 Ashen Leyndell → LegacyDungeon). All WMPP pins are natively eventFlag-gated
+(discovered-only) — we show all. Full audit table + skip rationale (42 sub-zones, 87 quest markers,
+0 ERR-arena) in `docs/memory/features/mapgenie-landmark-categories.md`. ERR build DEPLOYED to
+`~/Games/ERRv2.2.9.6/dll/offline/`. **Next: in-game verify** — grep `[LANDMARKLIVE]` (now a loop
+log listing all 16 landmark cats; expect Churches ~28, Ruins ~38, RisesTowers ~21, Shacks ~24,
+Forts 7, Castles 6, TownsVillages ~14, Colosseums 3, UniqueSites ~26), toggle a few in F1, then
+merge. Colosseum got a `category_gpu_iconId` (24) native-glyph entry, rest = circle.
+
+**Side finding — non-ERR profile bakes are STALE/incomplete:** `generated_vanilla` lacked the whole
+Group1/2 enum block (vanilla build was BROKEN pre-change); synced `goblin_map_data.hpp` +
+`goblin_quest_steps.{hpp,cpp}` (hand-authored, profile-independent) from `generated/` → vanilla
+builds clean again (`build-vanilla/MapForGoblins.dll`). `generated_erte`/`generated_convergence`
+are missing whole FILES (`goblin_world_feature_models.*`, `goblin_category_exceptions.*`,
+`goblin_name_aliases_en.*`) — they don't even configure; need a real regen (Windows box) or the
+`generated_shared/` dedup from the baked-data plan.
+
 ## Native-map landmark icon suppression — TRACKED, not started (2026-07-02)
 
 The game still draws its OWN landmark pins on the native world map (Minor Erdtrees etc.), so our
@@ -95,7 +116,9 @@ precedent exists: native grace suppression (`goblin_grace_suppression.cpp`) and 
 row-flip eviction used by section visibility — the same trick applied to the landmark
 WorldMapPointParam rows (gated on "our category is ON", restore on OFF) should kill the native
 pin without touching files. Scope when picked up: which iconIds to suppress = exactly the ones our
-categories re-draw; keep ERR's own custom pins (boss/camp) untouched.
+categories re-draw; keep ERR's own custom pins (boss/camp) untouched. **NB (2026-07-02): do this
+AFTER the parity branch above merges — the suppression set is now the Group 1 + parity iconId
+union (see the audit table in `docs/memory/features/mapgenie-landmark-categories.md`).**
 
 ## Group-2 Elevator MECHANISM SOLVED on Linux (2026-07-02) — implementation open
 

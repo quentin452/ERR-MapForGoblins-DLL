@@ -84,8 +84,22 @@ enum class Category : uint8_t
     WorldMinorErdtree,     // iconId 30 (11 rows)
     WorldGrandLift,        // iconId 21 (Dectus + Rold only — NOT in-dungeon lifts)
     WorldDungeon,          // iconId ∈ {4,13,14,15,16,230,231,234} (typed minor-dungeon union)
-    WorldLegacyDungeon,    // iconId ∈ {50,51,55,56,58,59,60,61,66,210,211,213,218} (per-site unique)
+    WorldLegacyDungeon,    // iconId ∈ {50,51,55,56,58,59,60,61,62,66,210,211,213,218} (per-site unique; 62 = Ashen Leyndell)
     WorldMiquellaCross,    // iconId 208 (13 rows) — DLC Miquella's Crosses (also a clean WMPP iconId)
+    // ── PARITY — the remaining native WMPP pin families (2026-07-02 audit). Same live
+    // build_live_landmarks pass; grouped so every pin the game still draws natively has a
+    // category of ours. Deliberately skipped iconIds: 41/67 (boss pass owns them), 80 (graces),
+    // 83/84/85 (structural no-text nav), 42 (legacy-dungeon sub-zone nav points), 87 (Volcano
+    // Manor request markers — dynamic), 0 (ERR-custom arena rows).
+    WorldChurch,           // iconId ∈ {3,20,247,248,249} (churches + cathedrals + Grand Altar)
+    WorldRuins,            // iconId ∈ {5,47,250,251,252,253,254,255} (incl. underground + Finger Ruins)
+    WorldRiseTower,        // iconId ∈ {8,17,68,258} (sorcerers' rises + lookout towers)
+    WorldShack,            // iconId ∈ {6,259} (shacks + DLC hovels)
+    WorldFort,             // iconId ∈ {18,242,243}
+    WorldCastle,           // iconId ∈ {25,26,27,28,29,241} (field castles/manors, NOT legacy dungeons)
+    WorldTownVillage,      // iconId ∈ {32..40,244,245,246,261}
+    WorldColosseum,        // iconId 24 (3 rows)
+    WorldUniqueSite,       // iconId ∈ {10,11,43,45,46,52,53,54,57,88,217,232,240,256,257,260} (one-off sites)
     // ── GROUP 2 — non-WMPP interactables (disk MSB/AEG + EMEVD) ──
     // Portal / sending gate: AEG099_510 asset bound as arg[2] of EMEVD warp template 90005605.
     // Runtime disk+EMEVD, no bake. See docs/re/windows_portal_aeg_re_findings.md.

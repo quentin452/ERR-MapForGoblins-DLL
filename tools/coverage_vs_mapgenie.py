@@ -118,6 +118,11 @@ ENUM2DISPLAY = {
     "WorldMinorErdtree": "World - Minor Erdtrees", "WorldGrandLift": "World - Grand Lifts",
     "WorldDungeon": "World - Dungeons", "WorldLegacyDungeon": "World - Legacy Dungeons",
     "WorldMiquellaCross": "World - Miquella's Cross", "WorldPortal": "World - Portals",
+    "WorldChurch": "World - Churches", "WorldRuins": "World - Ruins",
+    "WorldRiseTower": "World - Rises & Towers", "WorldShack": "World - Shacks",
+    "WorldFort": "World - Forts", "WorldCastle": "World - Castles",
+    "WorldTownVillage": "World - Towns & Villages", "WorldColosseum": "World - Colosseums",
+    "WorldUniqueSite": "World - Unique Sites",
     "WorldFarmableCollectible": "Loot - Farmable Drops",  # MFG-original, no MapGenie equivalent
 }
 
@@ -135,7 +140,11 @@ SECTIONS = {
         ("Elevator", ["Elevator"], ["WorldGrandLift"]),  # WMPP has only the 2 grand lifts; MapGenie's 40 in-dungeon lifts are not WMPP
         ("Evergaol", ["Evergaol"], ["WorldEvergaol"]),
         ("Hidden Passage", ["Hidden Passage"], []),
-        ("Landmark", ["Landmark"], []),
+        # MapGenie "Landmark" = their editorial catch-all; our parity families (2026-07-02
+        # native-pin audit) collectively cover it. Taxonomies differ → expect ℹ️/⚠️ noise, not 1:1.
+        ("Landmark", ["Landmark"],
+         ["WorldChurch", "WorldRuins", "WorldRiseTower", "WorldShack", "WorldFort",
+          "WorldCastle", "WorldTownVillage", "WorldColosseum", "WorldUniqueSite"]),
         ("Legacy Dungeon", ["Legacy Dungeon"], ["WorldLegacyDungeon"]),
         ("Martyr Effigy", ["Martyr Effigy"], []),
         ("Minor Erdtree", ["Minor Erdtree"], ["WorldMinorErdtree"]),
