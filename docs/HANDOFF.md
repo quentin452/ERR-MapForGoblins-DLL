@@ -13,7 +13,7 @@ Kept: genuinely live/in-progress work, open questions, and standing knowledge (g
 decisions, non-obvious facts) not fully captured anywhere else. If you're looking for the history of
 something not below, check `docs/changelog.md` first, then the relevant `docs/plans/*.md`.
 
-Last updated: 2026-07-02 (hot-reload Slice D implemented on `feat/overlay-hotreload-slice-d` —
+Last updated: 2026-07-02 (hot-reload D + Phase 3 RPC + Phase 4 loop ALL merged & in-game validated on Linux/Proton; spiderfy v1+v2, in-game pause, RPC input injection/HUD, NPC altitude badges, F2 repro — see the Phase 4 sections below).
 see RESUME HERE; also: SINGLE-DLL migration + the 9 native-pin parity landmark categories in-game
 verified, see below).
 
@@ -214,6 +214,20 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
   `entity_world_pos`/`g_entity_pos` path dropped MSB Y, so NPC pins never got the ▲/▼ badge.
   Y now threaded (EntityPos.wy from DiskEnemy/DiskCollectible.posY). In-game visual confirm
   pending (needs an NPC pin at a different altitude than the player).
+- **Boot-time question (user, 2026-07-02) — profiled from the existing log, plan agreed, NOT
+  started.** DLL-side timeline of a real boot (log timestamps): injection t+0 → `init.from_params`
+  **8013 ms** (waiting for the GAME to load regulation/params — not our work) → signatures 394 ms →
+  `init.param_poll` **5005 ms flat (coarse poll interval, easy ~5s win for overlay readiness — our
+  code, zero game risk)** → heavy init 743 ms (NAMEEN 20k) → ImGui/hooks/RPC ~230 ms; total ~15s of
+  which ~13s is WAITING on game state. Game-side phases known: params resident t+8.6s, first
+  D3D12 frame t+14.8s (mount dvdbnd + vkd3d shaders live in between). **Safety triage for "make
+  the game boot faster":** safe = our param_poll interval + vkd3d shader-cache hygiene +
+  SkipTheIntro (already installed); medium = short-circuiting pure WAITS (Steam offline timeouts,
+  "Checking save data" cloud poll — save/cloud chain is SACRED, only with save backup); dangerous
+  = skipping/patching engine init stages (partial state → distant random crashes, save risk,
+  uncertain gain). **Agreed order: (1) read-only boot I/O profile first (extend the CreateFileW
+  observer to ALL files + phase timestamps, ~30 min, zero risk), (2) fix our param_poll, (3) only
+  then discuss targeted wait-hooks based on data.**
 - **DX sweep findings (multi-zoom, to triage):** (1) markers/piles draw OUTSIDE the map canvas
   (on the black letterbox and OVER the day/night dial) — no clip to the map rect; (2) pile
   LOCATION LABELS flood the screen at far zoom (idea: reuse the fan's tile-px gate to hide
