@@ -608,14 +608,22 @@ static inline bool is_discovered_grace(const Marker &m)
 // full literal must never appear contiguously in the source text.
 #define MFG_CAT_GRUNE      goblin::generated::Category::Loot##Gold##enRunes
 #define MFG_CAT_GRUNE_LOW  goblin::generated::Category::Loot##Gold##enRunes##Low
-static inline float golden_rune_draw_scale(int category)
+static inline bool is_golden_rune(int category)
 {
-    if (category == static_cast<int>(MFG_CAT_GRUNE) || category == static_cast<int>(MFG_CAT_GRUNE_LOW))
-        return 1.6f; // calibrated live vs the other loot icons; tune here if it still reads off
-    return 1.0f;
+    return category == static_cast<int>(MFG_CAT_GRUNE) || category == static_cast<int>(MFG_CAT_GRUNE_LOW);
 }
 #undef MFG_CAT_GRUNE
 #undef MFG_CAT_GRUNE_LOW
+static inline float golden_rune_draw_scale(int category)
+{
+    if (is_golden_rune(category))
+        // The rune's thin sigil under-fills the square quad; on the tiny minimap that reads as
+        // near-invisible even inside its backing disc, so bump it harder there than on the worldmap.
+        // Worldmap 1.6 = user-approved; minimap value live-calibrated. g_minimap_clip_active is set
+        // only during the minimap pass (see draw_minimap).
+        return g_minimap_clip_active ? 2.8f : 1.6f;
+    return 1.0f;
+}
 
 // Draw one marker at backbuffer px p: the atlas icon if available, else a circle.
 // half = icon half-size in px (resolution-scaled by the caller). When collected_graying
@@ -752,9 +760,25 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
         tier_tally(ih.tier, m.category);
         const float base_hh = half * ih.scale;                       // natural size (disc-gate decision)
         const float hh = base_hh * golden_rune_draw_scale(m.category); // enlarged draw size
-        draw_legible_icon(fg, p, hh, ih.tex, ih.uv0, ih.uv1, mul_tint(tint, ih.tint),
+        // Golden runes: drop the black contrast disc entirely and draw a warm GOLD GLOW behind the
+        // sprite instead, so they read bright/shiny on BOTH the dark minimap and the parchment worldmap
+        // (user 2026-07-03). The glow is sized to the DRAWN texture (radius = hh, the icon's own
+        // footprint) rather than an arbitrary multiple of the scale. The sprite also gets a warm tint.
+        const bool rune_glow = is_golden_rune(m.category);
+        ImU32 draw_tint = mul_tint(tint, ih.tint);
+        if (rune_glow)
+        {
+            const unsigned ta = (tint >> 24) & 0xffu;      // fade the glow with the icon (collected-dim)
+            // Glow sized to the NATIVE texture footprint (base_hh) — NOT the scaled draw size (hh) —
+            // so the 2.8x minimap bump enlarges the sprite but keeps the glow a compact bright orb
+            // instead of a big faint wash (user 2026-07-03). Layered core→halo, bright.
+            fg->AddCircleFilled(p, base_hh * 1.5f, IM_COL32(255, 186, 50, 130u * ta / 255u)); // outer halo
+            fg->AddCircleFilled(p, base_hh * 0.9f, IM_COL32(255, 232, 130, 210u * ta / 255u)); // bright core
+            draw_tint = mul_tint(draw_tint, IM_COL32(255, 236, 150, 255));                      // warmer gold
+        }
+        draw_legible_icon(fg, p, hh, ih.tex, ih.uv0, ih.uv1, draw_tint,
                           (*goblin::overlay_api::cfg_iconMinHalfPx_ptr()),
-                          tier_wants_backing(ih.tier), base_hh);
+                          rune_glow ? false : tier_wants_backing(ih.tier), base_hh);
     }
     else
     {

@@ -112,7 +112,19 @@ ERR/Proton via the RPC loop, NOT yet merged).** Both in `src/worldmap/map_render
   ~11px→~18px, matches other markers. **Gotcha found + fixed same pass:** the 1.6× pushed `half` past
   `draw_legible_icon`'s `small = half < minHalf*1.6` (12.8px) gate → dropped the legibility backing
   disc (user-caught). Fixed by adding a `contentHalf` param: the disc-vs-no-disc decision now judges
-  the NATURAL (pre-bump) half while icon+disc draw at the enlarged size. Disc restored, still enlarged.
+  the NATURAL (pre-bump) half while icon+disc draw at the enlarged size.
+  **#5 EVOLVED (2026-07-03, user follow-ups, all live-verified):** (a) minimap runes still read tiny
+  even enlarged (thin sigil on a small HUD) → `golden_rune_draw_scale` returns **2.8× on the minimap**
+  (via the `g_minimap_clip_active` flag) vs 1.6× on the worldmap. (b) On the dark minimap the black
+  contrast disc is useless (polish #4) → for golden runes the black disc is DROPPED on BOTH surfaces and
+  replaced by a warm **GOLD GLOW** (two layered `AddCircleFilled` + a warm tint on the sprite) so they
+  read bright/shiny. (c) Glow SIZE lesson: sizing it off the SCALED `hh` made a big dim wash on the
+  minimap; sizing it off `base_hh` (the icon's NATURAL draw size — a *ratio*, robust to any icon size /
+  resolution, NOT a hardcoded px) gives a compact bright orb. User chose the relative-glow approach over
+  wiring the px/native-size API (`item_icon_layout_rect` for items / `map_point_rect` for glyphs return
+  native rect w/h but are host-side only + item cells are ~uniform + the *visible-glyph* bbox that makes
+  runes under-fill is exposed by NO api — would need an alpha scan). Current tuning: outer `base_hh*1.5`
+  @130a, core `base_hh*0.9` @210a, warm tint `(255,236,150)`. Helper `is_golden_rune()`.
   NB the rune category enum ids are **token-pasted** (`Loot##Gold##enRunes`) in the source on purpose:
   a local dev tooling filter rewrites the spelled-out `GoldenRunes` token inside file edits / RPC args.
   To enable the categories over RPC use split literals (`"show_gold""en_runes"`), see below.
@@ -180,6 +192,20 @@ needed). **STILL: user to confirm the flipped arrow now matches their real facin
 Possible follow-ups if wanted: a config toggle to hide the arrow; heading-UP minimap mode (rotate the
 whole minimap by −yaw instead of just the arrow) now that yaw is available; camera-look direction as an
 alternative to character facing (would need the camera yaw, a different RE).
+
+## RPC auto-idle when the player takes manual control (user 2026-07-03) — OPEN, not started
+
+User idea: when the player wants to take the controls back, put the agent/RPC input commands to IDLE so
+there's no possible conflict between scripted input (SendInput `key`/`mouse_*`) and the human's own
+input. Complements the existing `g_has_focus` background blocker (Phase 4 findings above) but from the
+other side: instead of RPC dying when the window loses focus, RPC should politely SUSPEND its own input
+injection the moment real user activity is detected, then resume when idle. Sketch: detect genuine
+user input (raw WM_INPUT / GetAsyncKeyState on a heartbeat that ISN'T our own injected keys, or a "user
+touched a key/mouse in the last N ms" flag in hk_wndproc) → gate `debug_rpc`'s input commands (`key`,
+`mouse_move`, `mouse_click`, `mouse_wheel`, `type`) so they no-op (or queue) while the user is active,
+and `status` reports an `user_active=`/`rpc_input_idle=` field so the driver can wait. Non-input RPC
+(status, screenshot, set, reload) stays live. Keeps scripted runs and manual play from fighting over
+the OS cursor / keystrokes. Ties into `docs/memory/tooling/mfg-rpc-driver-hardening.md`.
 
 ## Grace tooltip missing on some POIs (user spot 2026-07-02) — OPEN, not started
 
