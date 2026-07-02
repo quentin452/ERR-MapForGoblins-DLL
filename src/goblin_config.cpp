@@ -74,10 +74,6 @@ namespace
         }
     }
 
-    // Folder holding the ini (set before anything queries err_features_enabled) —
-    // anchors the ERR-install fingerprint walk below.
-    std::filesystem::path g_ini_folder;
-
     // Seed every config variable from its schema default. On a non-ERR install
     // ERR-only entries are force-disabled (so their features stay off even if
     // an ERR ini is present).
@@ -100,39 +96,22 @@ namespace
     }
 }
 
-// Runtime ERR-install detection (replaces the compile-time MFG_VANILLA profile split).
-// Fingerprint: ERR ships its menu-project dir in the mod overlay
-// (menu/deploy/projects/ELDENRINGReforged). Probed with the same ancestor-walk as
-// loot_disk's resolve_root_file — the DLL's own folder upward ("mod" overlay first,
-// then the dir itself), then the eldenring.exe dir (UXM-style installs). Cached; the
-// walk touches a handful of stat() calls once at init.
+// Runtime ERR detection (replaces the compile-time MFG_VANILLA profile split).
+// Signal = ERR's core native `reforged.dll` LOADED in this process. Every ERR me3
+// profile (err.me3 / err_offline.me3, and the ReforgedLauncher wrapping them) lists
+// it BEFORE MapForGoblins, so it is resident by the time our DllMain runs. A loaded-
+// module check — unlike a disk fingerprint — stays correct when the SAME install
+// hosts multiple launch profiles (e.g. vanilla.me3 injecting this DLL into the
+// unmodified game from an ERR folder: ERR's files are on disk but NOT loaded).
 bool goblin::err_features_enabled()
 {
     static int cached = -1;
     if (cached >= 0)
         return cached == 1;
-    namespace fs = std::filesystem;
-    const fs::path rel = fs::path("menu") / "deploy" / "projects" / "ELDENRINGReforged";
-    std::error_code ec;
-    auto probe = [&](const fs::path &root) {
-        return !root.empty() &&
-               (fs::exists(root / "mod" / rel, ec) || fs::exists(root / rel, ec));
-    };
-    bool found = false;
-    fs::path p = g_ini_folder;
-    for (int up = 0; up < 5 && !found && !p.empty() && p != p.root_path();
-         ++up, p = p.parent_path())
-        found = probe(p);
-    if (!found)
-    {
-        wchar_t buf[MAX_PATH] = {0};
-        HMODULE h = GetModuleHandleW(L"eldenring.exe");
-        if (h && GetModuleFileNameW(h, buf, MAX_PATH))
-            found = probe(fs::path(buf).parent_path());
-    }
+    const bool found = GetModuleHandleW(L"reforged.dll") != nullptr;
     cached = found ? 1 : 0;
-    spdlog::info("[PROFILE] ERR install {} (fingerprint {}) — ERR-only config {}",
-                 found ? "DETECTED" : "not detected", rel.string(),
+    spdlog::info("[PROFILE] ERR {} (reforged.dll {} in-process) — ERR-only config {}",
+                 found ? "DETECTED" : "not detected", found ? "loaded" : "not loaded",
                  found ? "active" : "force-disabled");
     return found;
 }
@@ -140,7 +119,6 @@ bool goblin::err_features_enabled()
 void goblin::ensure_ini(const std::filesystem::path &ini_path)
 {
     namespace fs = std::filesystem;
-    g_ini_folder = ini_path.parent_path();
     const bool include_err = err_features_enabled();
 
     mINI::INIStructure existing;

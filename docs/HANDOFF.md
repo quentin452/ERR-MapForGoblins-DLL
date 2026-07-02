@@ -91,9 +91,12 @@ User audit request confirmed profiles had ~no reason left: zero real per-profile
 divergent bakes were EMPTY non-ERR stubs of ERR-only tables + `legacy_conv`, which is a pre-param-
 residence fallback only — the live `goblin_legacy_fold` is primary). Implemented:
 - `goblin::err_features_enabled()` (goblin_config.cpp) replaces compile-time `profile_is_vanilla()`:
-  runtime disk fingerprint `menu/deploy/projects/ELDENRINGReforged` (ancestor-walk from the DLL
-  folder, "mod" overlay first, then the eldenring.exe dir; cached; logs `[PROFILE]`). ERR-only
-  config force-disabled off-ERR at load, exactly like the old vanilla build.
+  **ERR = `reforged.dll` loaded in-process** (GetModuleHandle at init; cached; logs `[PROFILE]`).
+  Every ERR me3 profile lists reforged.dll BEFORE MapForGoblins so it's resident when our DllMain
+  runs. v1 was a disk fingerprint (`menu/deploy/projects/ELDENRINGReforged`, in-game verified
+  DETECTED on ERR) but disk presence false-positives when the SAME install hosts a vanilla.me3
+  launch (ERR files on disk, not loaded) — the loaded-module check answers "what's RUNNING".
+  ERR-only config force-disabled off-ERR at load, exactly like the old vanilla build.
 - DELETED: `GENERATED_SUBDIR` CMake machinery, `MFG_VANILLA`/`MFG_PROFILE_VANILLA` defines,
   `tools/gen_nonerr_stubs.py`, `src/generated_{vanilla,erte,convergence}/` dirs (were gitignored),
   per-profile build dirs. `src/generated/` is THE single bake dir.
@@ -101,13 +104,14 @@ residence fallback only — the live `goblin_legacy_fold` is primary). Implement
   (README/gfx/SNAP_DIR) + offline pipeline data source; all profiles build/ship the same DLL from
   `build-err/`. inigen always emits the full ini (ERR entries included everywhere).
 - `liveLootLabels` single default = false (vanilla package used to default true — changelog notes it).
-- **ERR detection VERIFIED in-game (2026-07-02):** `[PROFILE] ERR install DETECTED (fingerprint
-  menu\deploy\projects\ELDENRINGReforged) — ERR-only config active`. **Still to verify:** a vanilla
-  me3 launch — expect `[PROFILE] ERR install not detected` + Reforged sections absent from F1 + ini
-  rewritten without ERR sections (see `docs/memory/tooling/me3-cli-nonerr-launch.md` for the launch
-  recipe). Windows `build.bat` + `build.bat snapshot` re-run (script edited; the validated snapshot
-  flow predates this change). Fingerprint risk: if some ERR release ships without
-  `menu/deploy/projects/ELDENRINGReforged`, add a second fingerprint or an ini override knob.
+- **Verify (both quick, same install — `vanilla.me3` injects the SAME `dll/offline` DLL into the
+  unmodified game):** (1) restart ERR → `[PROFILE] ERR DETECTED (reforged.dll loaded in-process)`;
+  (2) `internals/modengine/bin/me3 launch -g eldenring -e "<steam exe>" -p
+  internals/modengine/vanilla.me3` → `[PROFILE] ERR not detected` + Reforged sections absent from
+  F1 + ini rewritten without ERR sections. (v1 disk-fingerprint variant WAS in-game verified
+  DETECTED on ERR before the module-check rewrite.) Windows `build.bat` + `build.bat snapshot`
+  re-run (script edited; the validated snapshot flow predates this change). Detection risk: if a
+  future ERR renames `reforged.dll`, add its new core native to the check.
 - Baked-data plan impact: Phase A per-profile regen is MOOT; remaining bake work (name_regions/
   region_anchors → disk-MSB runtime, icon atlas) unchanged.
 
