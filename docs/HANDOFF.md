@@ -94,6 +94,23 @@ GetAsyncKeyState → typing its pause key in ANOTHER app toggles pause) — now 
 pause; **recommend removing PauseTheGame.dll from the me3 profiles**. A driver clears any pause
 via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (spiderfy, F2).
 
+## Silent deadlock freeze + freeze watchdog (2026-07-02, `fix/f2-fog-locate-v2` branch)
+
+User hit a "deadlock-like" FREEZE (18:49): last log = a normal `render.minimap` BENCH line,
+then silence — NO exception, NO crash dump, window solid, DLL threads (RPC listener) alive.
+Distinct from the `eldenring.exe +0x1EB9999` exit crash (that one is ER's own deterministic
+teardown crash — 6/6 identical stacks across the day, fires on Exit/Alt+F4; our handler now
+calls TerminateProcess after the triage so it closes the game instead of leaving a Wine
+zombie, which was ANOTHER freeze-looking failure mode). The real deadlock is UNSOLVED — no
+stack yet. Shipped the tool to catch it: **freeze watchdog** (`goblin_freeze_watchdog.cpp`,
+ini `[Debug] freeze_watchdog_secs`, default 20s, 0=off) — present-thread heartbeat; on a
+stall it writes `logs/MapForGoblins_freeze_<pid>.txt` + a FULL all-thread minidump from the
+healthy watchdog thread; raw Win32 on the dump path (spdlog could be the deadlock). **Next
+freeze → symbolize the dump's MapForGoblins frames with the deployed PDB and root-cause.**
+Also mandatory now: `docs/memory/tooling/mfg-rpc-driver-hardening.md` (RPC `ping` ≠ game
+alive; driver scripts need per-call timeouts + liveness gates — learned when a freeze left a
+validation script spinning forever).
+
 ## Overlay i18n v1 — SHIPPED + in-game validated FR (2026-07-02, `feat/overlay-i18n-v1`)
 
 `goblin::i18n::tr()` (host module, GOBLIN_RENDER_API-exported) + ini `overlay_language`
