@@ -135,14 +135,15 @@ const std::vector<Marker> &QuestNpcLayer::markers() const
         if (!step.entity_id)
             continue; // this step has no sourced map position yet (most steps today)
 
-        float wx, wz;
+        float wx, wz, wy = 0.f;
         int grp;
-        if (!entity_world_pos(step.entity_id, wx, wz, grp))
+        if (!entity_world_pos(step.entity_id, wx, wz, grp, &wy))
             continue; // entity not on the currently loaded map / index not built yet
 
         Marker m{};
         m.worldX = wx;
         m.worldZ = wz;
+        m.worldY = wy;  // altitude badge (was dropped here — NPC pins had no badge)
         m.group = grp;
         m.category = gc;
         m.color = category_color(gc);
@@ -169,9 +170,9 @@ const std::vector<Marker> &QuestNpcLayer::markers() const
     {
         if (!n.pinEntity)
             continue;
-        float wx, wz;
+        float wx, wz, wy = 0.f;
         int grp;
-        if (!entity_world_pos(n.pinEntity, wx, wz, grp))
+        if (!entity_world_pos(n.pinEntity, wx, wz, grp, &wy))
             continue; // entity not on the currently loaded map / index not built yet
 
         // Localized name from any of the NPC's placements (first with a real NpcName; a quest NPC's
@@ -189,6 +190,7 @@ const std::vector<Marker> &QuestNpcLayer::markers() const
         Marker m{};
         m.worldX = wx;
         m.worldZ = wz;
+        m.worldY = wy;  // altitude badge (was dropped here — NPC pins had no badge)
         m.group = grp;
         m.category = gc;
         m.color = category_color(gc);

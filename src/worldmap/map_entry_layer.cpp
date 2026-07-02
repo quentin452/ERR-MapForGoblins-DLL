@@ -49,7 +49,7 @@ std::array<std::vector<Marker>, NUM_CAT> g_buckets;
 // MSB EntityID -> projected world position, for QuestNpcLayer's entity_world_pos().
 // Built once per build_buckets_impl() pass (same lifecycle as g_buckets, cleared and
 // repopulated together) from disk_enemies/disk_collectibles -- NOT a second parse.
-struct EntityPos { float wx, wz; int group; };
+struct EntityPos { float wx, wz, wy; int group; };  // wy = block-local MSB Y (altitude badge)
 std::unordered_map<uint32_t, EntityPos> g_entity_pos;
 
 // [SKIPPED] diag (config diag_loot_pos): disk placements PARSED from the mod's files but NOT drawn,
@@ -2342,14 +2342,14 @@ void build_buckets_impl()
                 if (!en.entityId) continue;
                 int ga = 0; float wx = 0.0f, wz = 0.0f;
                 if (goblin::overlay_api::marker_world_pos(en.area, en.gx, en.gz, en.posX, en.posZ, ga, wx, wz))
-                    g_entity_pos[en.entityId] = {wx, wz, goblin::marker_group_from(en.area, ga)};
+                    g_entity_pos[en.entityId] = {wx, wz, en.posY, goblin::marker_group_from(en.area, ga)};
             }
             for (const auto &as : disk_collectibles)
             {
                 if (!as.entityId || g_entity_pos.count(as.entityId)) continue;
                 int ga = 0; float wx = 0.0f, wz = 0.0f;
                 if (goblin::overlay_api::marker_world_pos(as.area, as.gx, as.gz, as.posX, as.posZ, ga, wx, wz))
-                    g_entity_pos[as.entityId] = {wx, wz, goblin::marker_group_from(as.area, ga)};
+                    g_entity_pos[as.entityId] = {wx, wz, as.posY, goblin::marker_group_from(as.area, ga)};
             }
             std::vector<QuestNpcRuntime> qnpcs = load_quest_npcs();
             // Flag-coverage (the only join possible here — NAMES are resolved at render, since
@@ -3627,7 +3627,7 @@ void refresh_overlay_census()
     s_logged_once = true;
 }
 
-bool entity_world_pos(uint32_t entity_id, float &worldX, float &worldZ, int &group)
+bool entity_world_pos(uint32_t entity_id, float &worldX, float &worldZ, int &group, float *worldY)
 {
     auto it = g_entity_pos.find(entity_id);
     if (it == g_entity_pos.end())
@@ -3635,6 +3635,7 @@ bool entity_world_pos(uint32_t entity_id, float &worldX, float &worldZ, int &gro
     worldX = it->second.wx;
     worldZ = it->second.wz;
     group = it->second.group;
+    if (worldY) *worldY = it->second.wy;
     return true;
 }
 } // namespace goblin::worldmap

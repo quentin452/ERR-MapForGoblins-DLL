@@ -200,6 +200,20 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
   background game" tradeoff, it's symmetric with PauseTheGame's global keys) or real X-side
   focus forcing. Until then: leave the game window focused during scripted UI runs (world/map
   driving via `key`/menus works regardless — game reads its own input path).
+- **Great Rune "(x2)" in search — NOT a bug (triaged with the user, 2026-07-02).** Every rune has
+  TWO legit markers sharing the GoodsName: the boss-drop (live boss position — Mohg's is on the
+  UNDERGROUND page, the tell that unmasked it) and the ACTIVATION site (Divine Tower — ring
+  visually confirmed on the Divine Tower of Limgrave). Possible polish later: suffix the
+  activation-site marker's tooltip ("(activation)") so search rows self-explain.
+- **New bug (user, 2026-07-02): endless map pan after closing F1 with the cursor at a screen
+  edge.** ER edge-pans while the OS cursor sits at the border; closing F1 leaves our virtual/OS
+  cursor parked there → the map pans forever until the mouse moves. Likely fix: on F1 close (or
+  map open?) recenter/step the cursor off the edge, or suppress edge-pan while the cursor is
+  RPC-parked. Repro possibly easiest via RPC (mouse_move to edge + open_f1 0). Untriaged.
+- **Quest-NPC altitude badges missing — FIXED (`fix/npc-altitude-badge`,** user question): the
+  `entity_world_pos`/`g_entity_pos` path dropped MSB Y, so NPC pins never got the ▲/▼ badge.
+  Y now threaded (EntityPos.wy from DiskEnemy/DiskCollectible.posY). In-game visual confirm
+  pending (needs an NPC pin at a different altitude than the player).
 - **DX sweep findings (multi-zoom, to triage):** (1) markers/piles draw OUTSIDE the map canvas
   (on the black letterbox and OVER the day/night dial) — no clip to the map rect; (2) pile
   LOCATION LABELS flood the screen at far zoom (idea: reuse the fan's tile-px gate to hide
