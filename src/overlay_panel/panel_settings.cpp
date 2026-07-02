@@ -79,7 +79,9 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
     // DIAG: draw ONLY the no-bake residual (Baked-source markers; disk/live twins already
     // deduped away). Fly the world + eyeball each spot — real loot the live pass misses
     // (coverage gap) vs a phantom the bake invented (bake bug). See nobake_scoreboard.md.
-    if (f.match("baked only diag no-bake residual"))
+    // Dev-gated behind Verbose logging (same pattern as "Locate debug (dev)") — a bake/live
+    // triage tool, not a user preference, so it stays out of the default settings list.
+    if ((*goblin::overlay_api::cfg_debugLogging_ptr()) && f.match("baked only diag no-bake residual"))
     {
         ImGui::Checkbox("Baked-only (diag: show just the no-bake residual)",
                         goblin::overlay_api::cfg_bakedOnly_ptr());

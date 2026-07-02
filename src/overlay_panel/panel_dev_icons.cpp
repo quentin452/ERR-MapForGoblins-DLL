@@ -173,7 +173,10 @@ void draw_dev_icon_sections(const OverlayFrameCtx &ctx, Filter &f)
     // including live residency (the GPU path only "wins" once its sprite is harvested), so the
     // panel shows the truth — not just what's WIRED. Lets us verify the per-category item icon
     // (00_Solo atlas) is correct before committing to the group-load that makes it resident.
-    const bool show_mig = f.match("icon migration baked gpu native atlas circle census "
+    // Dev-gated (like the P2b / sprites / grace-debug siblings above): the census is an
+    // RE/verification tool, not a user setting → only surfaces when "dump icon textures" is on.
+    const bool show_mig = (*goblin::overlay_api::cfg_dumpIconTextures_ptr()) &&
+                          f.match("icon migration baked gpu native atlas circle census "
                                   "category render source");
     if (f.filtering && show_mig) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
     if (show_mig && ImGui::CollapsingHeader("Icon migration (Baked \xE2\x86\x92 GPU)"))

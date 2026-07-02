@@ -79,15 +79,19 @@ void draw_clustering(Filter &f)
 
             // Debug viz: draw the player + near/far rings (overworld) and
             // per-pile sub-page tab (underground) so you can SEE where the
-            // distance ramp engages and pin the bug.
-            ImGui::Checkbox("DEBUG: distance zones (player + near/far rings)",
-                            goblin::overlay_api::cfg_clusterDebugRadius_ptr());
-            ImGui::Checkbox("DEBUG: marker projection/tile (green=live red=baked + tile)",
-                            goblin::overlay_api::cfg_clusterDebugMarkers_ptr());
-            ImGui::Checkbox("DEBUG: cluster anchors (pile→member lines + name)",
-                            goblin::overlay_api::cfg_debugClusterAnchors_ptr());
-            ImGui::Checkbox("DEBUG: region volumes (names; red = unresolved)",
-                            goblin::overlay_api::cfg_debugRegionVolumes_ptr());
+            // distance ramp engages and pin the bug. Dev-gated behind Verbose
+            // logging so these RE-viz toggles stay out of the default panel.
+            if (*goblin::overlay_api::cfg_debugLogging_ptr())
+            {
+                ImGui::Checkbox("DEBUG: distance zones (player + near/far rings)",
+                                goblin::overlay_api::cfg_clusterDebugRadius_ptr());
+                ImGui::Checkbox("DEBUG: marker projection/tile (green=live red=baked + tile)",
+                                goblin::overlay_api::cfg_clusterDebugMarkers_ptr());
+                ImGui::Checkbox("DEBUG: cluster anchors (pile→member lines + name)",
+                                goblin::overlay_api::cfg_debugClusterAnchors_ptr());
+                ImGui::Checkbox("DEBUG: region volumes (names; red = unresolved)",
+                                goblin::overlay_api::cfg_debugRegionVolumes_ptr());
+            }
         }
 
         // Player-profile presets — one click sets every cluster knob.
