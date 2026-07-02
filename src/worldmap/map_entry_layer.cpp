@@ -1279,6 +1279,64 @@ static std::unordered_set<int32_t> build_shop_infinite_keys()
     return keys;
 }
 
+// Host index of items sold by ANY merchant, for the F1 item-search "· buyable" rows
+// (merchant_item_search_plan.md, Slice 1). Same live ShopLineupParam read as
+// build_shop_infinite_keys, but KEEPS the items (offset-encoded name_id) instead of only
+// using them to drop phantoms — so shop-ONLY items (spirit ashes at Twin Maidens, bell-
+// bearing-unlocked mats) become searchable even though they have no world placement. name_id
+// uses the marker offset-encoding so the search's lookup_text_utf8 / English alias / icon path
+// resolve it for free. Deduped by name_id; `gated` is AND-folded (freely buyable at ANY row
+// clears it), `infinite` OR-folded. eventFlag_forStock (+0x0C) != 0 → the row is behind an
+// unlock (bell bearing / progression). Includes gems/ashes-of-war (equipType 4 → +400M), which
+// the phantom-drop set skips.
+static std::vector<MerchantItem> g_merchant_items;
+
+static void build_merchant_search_index()
+{
+    g_merchant_items.clear();
+    std::unordered_map<int32_t, size_t> seen;  // name_id → index in g_merchant_items
+    try
+    {
+        auto shop = from::params::get_param<RawShopRow>(L"ShopLineupParam");
+        for (auto entry : shop)
+        {
+            const RawShopRow &r = entry.second;
+            int32_t  equipId      = *reinterpret_cast<const int32_t *>(r.b + 0x00);
+            uint32_t flagForStock = *reinterpret_cast<const uint32_t *>(r.b + 0x0c);
+            int16_t  sellQuantity = *reinterpret_cast<const int16_t *>(r.b + 0x14);
+            uint8_t  equipType    = r.b[0x17];
+            if (equipId <= 0) continue;
+            int32_t off;
+            switch (equipType)
+            {
+                case 0: off = 100000000; break;  // weapon  (WeaponName)
+                case 1: off = 200000000; break;  // protector / armour
+                case 2: off = 300000000; break;  // accessory / talisman
+                case 3: off = 500000000; break;  // goods (incl. spirit ashes)
+                case 4: off = 400000000; break;  // gem / ash of war
+                default: continue;
+            }
+            const int32_t name_id = equipId + off;
+            const bool infinite = (sellQuantity == -1);
+            const bool gated    = (flagForStock != 0 && flagForStock != 0xFFFFFFFFu);
+            auto it = seen.find(name_id);
+            if (it == seen.end())
+            {
+                seen.emplace(name_id, g_merchant_items.size());
+                g_merchant_items.push_back(MerchantItem{name_id, infinite, gated});
+            }
+            else
+            {
+                MerchantItem &mi = g_merchant_items[it->second];
+                mi.infinite = mi.infinite || infinite;
+                mi.gated    = mi.gated && gated;  // any ungated shop row → freely buyable
+            }
+        }
+    }
+    catch (...) { g_merchant_items.clear(); }
+    spdlog::info("[MERCHANTSEARCH] {} distinct merchant-sold items indexed", g_merchant_items.size());
+}
+
 // Minimal raw-offset view of a SignPuddleParam row (the no-bake Summoning Pools source).
 // Only the fields the marker needs; get_param<T> casts T* over the live row bytes. ⚠ The
 // paramdef field NAMES (unknown_0x28 etc.) are LABELS, not byte offsets — the REAL offsets,
@@ -2529,6 +2587,10 @@ void build_buckets_impl()
     if ((*goblin::overlay_api::cfg_dropMerchantPhantoms_ptr()))
         spdlog::info("[LOOTDISK] merchant-phantom drop: {} infinite-stock shop item keys (live ShopLineupParam)",
                      (int)shop_inf_keys.size());
+
+    // Merchant item-search index (Slice 1) — independent of the phantom-drop toggle above; the
+    // F1 search reads it to list shop-only items as "· buyable" info rows.
+    build_merchant_search_index();
     for (size_t i = 0; i < gen::MAP_ENTRY_COUNT; ++i)
     {
         const gen::MapEntry &e = gen::MAP_ENTRIES[i];
@@ -3543,6 +3605,10 @@ bool entity_world_pos(uint32_t entity_id, float &worldX, float &worldZ, int &gro
     if (worldY) *worldY = it->second.wy;
     return true;
 }
+
+// Public accessor for the F1 item search (defined out here, not in the anon namespace above,
+// so it has external linkage; g_merchant_items is file-scope-visible from the same TU).
+const std::vector<MerchantItem> &merchant_search_items() { return g_merchant_items; }
 } // namespace goblin::worldmap
 
 #if defined(GOBLIN_OVERLAY_HOTRELOAD_BUILD)

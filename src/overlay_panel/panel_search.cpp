@@ -11,6 +11,7 @@
 #include "goblin_bench.hpp"              // GOBLIN_BENCH (gate scan)
 #include "worldmap/marker_layer.hpp"
 #include "worldmap/map_renderer.hpp"     // set_item_search / locate_pending
+#include "worldmap/map_entry_layer.hpp"  // merchant_search_items (shop-sold item rows)
 
 #include <atomic>
 #include <cstdio>
@@ -51,10 +52,15 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
     // on THAT page. (Deduping by name_id alone collapsed them into one row carrying only the
     // first marker's group — the "shows only Underground" bug.)
     struct Hit { std::string label; int32_t name_id; int count; int group; bool quest = false; };
+    // Merchant-sold items (ShopLineupParam) — info-only rows: no world placement, so no ring
+    // and no locate. Just tells the player the item is buyable (and whether it's still behind
+    // an unlock). merchant_item_search_plan.md Slice 1.
+    struct ShopHit { std::string label; bool gated; };
     static char item_q[64] = "";
     static std::string s_last_q;
     static std::unordered_set<int32_t> s_match;   // name_ids whose name matches (rendered ring)
     static std::vector<Hit> s_hits;               // deduped results for the list
+    static std::vector<ShopHit> s_shop_hits;      // merchant-sold matches (info-only, no locate)
     static int32_t s_pending_locate = 0;
     static std::string s_locate_label;            // clicked item name (pending banner)
     static int s_locate_group = 0;                // clicked item page (pending banner)
@@ -113,6 +119,7 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
         s_last_q = item_q;
         s_match.clear();
         s_hits.clear();
+        s_shop_hits.clear();
         if (item_q[0] != '\0')
         {
             // Resolve each distinct name_id once (cache), substring-match the query
@@ -188,6 +195,26 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
                 int c = a.label.compare(b.label);
                 return c != 0 ? c < 0 : a.group < b.group;
             });
+
+            // Merchant-sold items (ShopLineupParam). Info-only: no world pos → no ring/locate.
+            // Dedup against the placed-marker hits by name_id so an item that is BOTH world-
+            // placed and sold isn't listed twice (the locatable marker row wins). Names resolve
+            // through the SAME live FMG + English-alias path as markers (the id is offset-encoded).
+            std::unordered_set<int32_t> placed_ids;
+            for (const auto &m2 : s_match) placed_ids.insert(m2);
+            for (const auto &mi : goblin::worldmap::merchant_search_items())
+            {
+                if (placed_ids.count(mi.name_id)) continue;   // already a locatable hit
+                std::string loc = goblin::overlay_api::lookup_text_utf8(mi.name_id);
+                std::string en  = goblin::overlay_api::lookup_name_en_disk_utf8(mi.name_id);
+                std::string label = loc.empty() ? en : loc;
+                if (label.empty()) continue;
+                if (!matches_all_tokens(loc + " " + en, item_q)) continue;
+                if (!en.empty() && en != label) label += " (" + en + ")";
+                s_shop_hits.push_back({std::move(label), mi.gated});
+            }
+            std::sort(s_shop_hits.begin(), s_shop_hits.end(),
+                      [](const ShopHit &a, const ShopHit &b) { return a.label < b.label; });
         }
     }
 
@@ -201,7 +228,11 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
         const bool map_open = goblin::overlay_api::get_live_view(lv);
         const int open_grp = map_open ? ((lv.openDlc ? 2 : 0) | (lv.underground ? 1 : 0)) : 0;
 
-        if (map_open)
+        // Count line is about LOCATABLE marker hits only; skip it when there are none (the
+        // list below still shows the "Sold by merchants" info rows, if any).
+        if (s_hits.empty())
+            ; // no locatable markers — the child renders shop rows / "no match" itself
+        else if (map_open)
             ImGui::TextDisabled(s_hits.size() == 1
                                     ? tr("%zu match (ringed on map; click = pan map onto it)")
                                     : tr("%zu matches (ringed on map; click = pan map onto it)"),
@@ -304,7 +335,17 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
                                       page_label(h.group));
             }
             if (!map_open) ImGui::EndDisabled();
-            if (s_hits.empty())
+
+            // Merchant-sold matches — info rows (no ring/locate; no world position). Enabled
+            // regardless of map_open since they don't pan. Gated items note the unlock.
+            if (!s_shop_hits.empty())
+            {
+                ImGui::SeparatorText(tr("Sold by merchants"));
+                for (const ShopHit &sh : s_shop_hits)
+                    ImGui::BulletText("%s  %s%s", sh.label.c_str(), tr("· buyable"),
+                                      sh.gated ? tr(" (unlock required)") : "");
+            }
+            if (s_hits.empty() && s_shop_hits.empty())
                 ImGui::TextDisabled("%s", tr("no marker matches"));
         }
         ImGui::EndChild();

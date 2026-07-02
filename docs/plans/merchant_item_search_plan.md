@@ -1,6 +1,10 @@
 # Merchant / shop item search — plan
 
-Status: **scoped 2026-07-02, Slice 1 starting.** Fork branch `feat/merchant-search` from master.
+Status: **Slice 1 DONE + IN-GAME VERIFIED (2026-07-02, `feat/merchant-search` `0acbf8f`). Slice 2
+DEFERRED (user) — merchant naming needs ESD/EMEVD RE the live ERR shop-id data proved disproportionate
+(see Slice 2). Slice 3 open.** Verified on ERR/Proton: `[MERCHANTSEARCH] 5485 items indexed` at boot; F1 search "telescope"
+(shop-only, Kalé — no world marker) lists **"Telescope · buyable (unlock required)"** under a new
+"Sold by merchants" heading, with the FR translations. Names resolve even at the title screen.
 
 ## Goal (user, 2026-07-02)
 
@@ -42,7 +46,7 @@ stock searchable. Map pins for merchants are a nice-to-have, NOT the ask — the
 
 ## Slices
 
-### Slice 1 — searchable shop-item index (info-only rows) — mod-agnostic, no RE, no reference tables
+### Slice 1 — searchable shop-item index (info-only rows) — DONE + VERIFIED (0acbf8f)
 
 Make every merchant-sold item findable in the F1 search, as info rows (no map locate yet).
 
@@ -67,15 +71,28 @@ Make every merchant-sold item findable in the F1 search, as info rows (no map lo
 Delivers: typing a spirit-ash / bell-bearing-mat name surfaces "· buyable" so the player knows it's
 purchasable. Does NOT yet name the merchant or pan to it.
 
-### Slice 2 — merchant identity (name the seller)
+### Slice 2 — merchant identity (name the seller) — DEFERRED (user, 2026-07-02)
 
-Group shop rows by merchant and label the row "sold by <merchant>". Two options, pick per cost:
-- **(a) shopId-range → merchant reference table** — an ADDITIVE ER/vanilla layer (prime directive:
-  base stays "a merchant", named layer is additive). Fast; risk = ERR remaps ranges → wrong names, so
-  gate the named layer on `err_features_enabled()`/vanilla and fall back to "merchant" otherwise.
-- **(b) eventFlag_forStock → bell-bearing name** — for the gated Twin-Maidens rows, map the unlock flag
-  to the bell-bearing item (we already place `LootBellBearings`); label "(unlock: <bell> — Twin Maiden
-  Husks)". Mod-agnostic-ish (flags are data), but needs the bell→flag table.
+Group shop rows by merchant and label the row "sold by <merchant>". **Investigated on the live ERR
+install (runtime `[SHOPDIAG]` dump of ShopLineupParam row-ids + gated-flag clusters) and DEFERRED —
+the naming is blocked without disproportionate RE:**
+- The shop-id layout is **ERR-customized**, NOT vanilla: dozens of single-row shops in the
+  `57253xxx`–`57291xxx` range, a 42-row block at `58011xxx`, and the flag-gated rows cluster in
+  `100201`–`100338` with **ERR-specific unlock flags** (`120xxx`/`130xxx`, e.g. rid 100225→flag
+  120250), NOT the vanilla bell-bearing flag range. So **there is no clean Twin Maidens / bell-bearing
+  signature** to key on, and a hardcoded vanilla shopId-range table would MISLABEL on this install
+  (fails the mod-agnostic acceptance test).
+- ShopLineupParam carries no merchant identity; the shop-row → merchant link lives in EMEVD
+  `OpenRegularShop(begin,end)` + the triggering talk/**ESD** → NPC entity → NpcName. EMEVD we can
+  parse; **ESD is not parsed anywhere** in the repo, so getting the NAME is a new-infra RE spike.
+
+Options if revisited (both non-trivial):
+- **(a) shopId-range → merchant reference table** — additive ER layer, but the live data shows ERR
+  reassigned ranges, so it needs per-install verification, not a static vanilla table. Fragile.
+- **(b) EMEVD OpenRegularShop harvest** (mod-agnostic) — groups rows by merchant RANGE (no name yet);
+  the NAME still needs the talk/ESD→NPC hop. Effectively merges with Slice 3.
+
+Slice 1's generic "· buyable (unlock required)" tag stands as the shipped behavior.
 
 ### Slice 3 — merchant map pins + locate (optional, heaviest)
 

@@ -55,6 +55,15 @@ tr=Sur la carte %s — vous ne l'avez pas encore découverte.
 en=no marker matches
 tr=aucun marqueur ne correspond
 
+en=Sold by merchants
+tr=Vendu par les marchands
+
+en=· buyable
+tr=· achetable
+
+en= (unlock required)
+tr= (déblocage requis)
+
 en=> Locating "%s" on the %s map...
 tr=> Localisation de « %s » sur la carte %s...
 

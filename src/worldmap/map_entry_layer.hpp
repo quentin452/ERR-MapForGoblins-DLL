@@ -47,4 +47,16 @@ void refresh_overlay_census();
 // pins had no badge because this path dropped Y (user report 2026-07-02).
 bool entity_world_pos(uint32_t entity_id, float &worldX, float &worldZ, int &group,
                       float *worldY = nullptr);
+
+// One item sold by SOME merchant, harvested from the live ShopLineupParam for the F1
+// item-search "· buyable" rows (merchant_item_search_plan.md, Slice 1). name_id is the
+// marker offset-encoded id (encode_live_item) so the search's lookup_text_utf8 / English
+// alias resolve it for free. `infinite` = at least one shop sells it unlimited (sellQuantity
+// == -1). `gated` = EVERY shop row for it is behind an eventFlag_forStock unlock (bell
+// bearing / progression) — i.e. not freely buyable yet.
+struct MerchantItem { int32_t name_id; bool infinite; bool gated; };
+
+// Deduped list of merchant-sold items, rebuilt each bucket build (build_buckets_impl).
+// Empty if ShopLineupParam is absent. Read by the F1 item search on the present thread.
+const std::vector<MerchantItem> &merchant_search_items();
 } // namespace goblin::worldmap

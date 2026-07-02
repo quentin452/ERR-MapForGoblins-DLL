@@ -151,13 +151,18 @@ via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (sp
 
 ## New feature requests (user, 2026-07-02) — 3 tracked, none started
 
-1. **Merchant / dynamic-shop item search** — the F1 item searcher can NOT find items sold by
-   MERCHANTS, nor items in a dynamic merchant GUI (e.g. spirit ashes from "Twin Maiden Husks").
-   The search index only covers world-placed loot markers; shop inventories (static merchant
-   lineups + bell-bearing-unlocked stock) aren't indexed. Related coverage gap: **Merchant** reads
-   ❌ NOT WIRED in `docs/coverage_vs_mapgenie.md` (MapGenie 43) — merchants aren't drawn as map
-   markers either. Scope: harvest shop lineups (ShopLineupParam + the bell-bearing unlock flags →
-   which goods each merchant sells) into the search index, and optionally place Merchant map pins.
+1. **Merchant / dynamic-shop item search — Slice 1 DONE + in-game verified (2026-07-02,
+   `feat/merchant-search` `0acbf8f`; plan `docs/plans/merchant_item_search_plan.md`).** The F1 item
+   search now lists items sold by merchants (live `ShopLineupParam` index, `[MERCHANTSEARCH]` log)
+   under a "Sold by merchants" heading — including shop-ONLY goods with no world marker (verified:
+   "telescope" → "Telescope · buyable (unlock required)"), tagged when still behind an unlock flag.
+   Info-only rows (no locate). **Slice 2 (name the seller) DEFERRED (user, 2026-07-02)** — a live
+   `[SHOPDIAG]` dump proved the ERR shop-id layout is customized (single-row shops in 57–58M, gated
+   rows in 100201–100338 with ERR-specific flags, no clean Twin Maidens/bell signature), so a vanilla
+   shopId-range table would mislabel and the real name needs EMEVD `OpenRegularShop` + talk/**ESD**→NPC
+   RE (ESD unparsed) — disproportionate. Detail in the plan's Slice 2 section. **Slice 3** = merchant
+   map pins (same ESD/EMEVD join, plus `entity_world_pos`) — also open; would close the **Merchant**
+   ❌ NOT WIRED map-pin gap (`docs/coverage_vs_mapgenie.md`, MapGenie 43).
 2. **3D ImGui boss/enemy entity healthbars** — draw a healthbar above living bosses/enemies in the
    world (ImGui overlay projected to the entity's screen pos). ERR ALREADY renders enemy bars, so
    RE its bar path for the entity list + HP field offsets + world→screen projection (we already

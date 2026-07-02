@@ -42,6 +42,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   everywhere else — randomizer players flip that one key.
 
 ### Added
+- **Merchant items in the search.** The F1 "Find item / object" search now also lists items sold
+  by merchants (read live from `ShopLineupParam`), including shop-only goods that have no world
+  pickup — e.g. the spirit ashes and bell-bearing-unlocked stock at Twin Maiden Husks. These show
+  under a "Sold by merchants" heading as info rows (no map locate yet — merchants aren't placed as
+  pins), tagged "(unlock required)" when still behind an event-flag unlock. Mod-agnostic (any
+  install's live shop table). Naming the seller + map pins are planned follow-ups.
 - **UI exclusion zones — draw your own "no icons here" areas on the map.** New F1 section
   "UI exclusion zones (map clipping)": toggle Edit, then drag rectangles directly on the open
   world map (right-click a zone deletes it) to hide overlay icons wherever they'd cover the
