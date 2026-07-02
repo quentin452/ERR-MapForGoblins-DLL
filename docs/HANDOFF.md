@@ -104,14 +104,15 @@ residence fallback only — the live `goblin_legacy_fold` is primary). Implement
   (README/gfx/SNAP_DIR) + offline pipeline data source; all profiles build/ship the same DLL from
   `build-err/`. inigen always emits the full ini (ERR entries included everywhere).
 - `liveLootLabels` single default = false (vanilla package used to default true — changelog notes it).
-- **Verify (both quick, same install — `vanilla.me3` injects the SAME `dll/offline` DLL into the
-  unmodified game):** (1) restart ERR → `[PROFILE] ERR DETECTED (reforged.dll loaded in-process)`;
-  (2) `internals/modengine/bin/me3 launch -g eldenring -e "<steam exe>" -p
-  internals/modengine/vanilla.me3` → `[PROFILE] ERR not detected` + Reforged sections absent from
-  F1 + ini rewritten without ERR sections. (v1 disk-fingerprint variant WAS in-game verified
-  DETECTED on ERR before the module-check rewrite.) Windows `build.bat` + `build.bat snapshot`
-  re-run (script edited; the validated snapshot flow predates this change). Detection risk: if a
-  future ERR renames `reforged.dll`, add its new core native to the check.
+- **BOTH SIDES VERIFIED in-game (2026-07-02), same install, same DLL:** ERR launch →
+  `[PROFILE] ERR DETECTED (reforged.dll loaded in-process) — ERR-only config active`; vanilla me3
+  launch (`internals/modengine/bin/me3 launch -g eldenring -e "<steam exe>" -p vanilla.me3`, runs
+  fine from Linux) → `[PROFILE] ERR not detected — ERR-only config force-disabled`, 0 errors.
+  Bonus mod-agnostic proof: the parity landmarks read the ACTIVE regulation — `[LANDMARKLIVE] 280`
+  on vanilla vs 295 on ERR with coherent per-category diffs (Evergaols 10 vs 16 = ERR's added
+  archery-challenge rows, Dungeons 63 vs 66, …). Still open: Windows `build.bat` + `build.bat
+  snapshot` re-run (script edited; the validated snapshot flow predates this change). Detection
+  risk: if a future ERR renames `reforged.dll`, add its new core native to the check.
 - Baked-data plan impact: Phase A per-profile regen is MOOT; remaining bake work (name_regions/
   region_anchors → disk-MSB runtime, icon atlas) unchanged.
 
