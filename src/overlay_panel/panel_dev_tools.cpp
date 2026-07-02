@@ -17,19 +17,6 @@ void draw_dev_tools_danger(Filter &f)
     // ONCE at startup based on its config flag (dllmain setup), so these
     // are restart-required: flip + Save, then relaunch. save_all_bool_settings
     // persists every config bool, so no per-flag plumbing is needed.
-    if (f.match("debug live projection engine world map dungeon underground placement"))
-    {
-        ImGui::SeparatorText(tr("Debug"));
-        // Live toggle (no restart): project_marker reads this every frame.
-        ImGui::Checkbox(tr("Live projection (engine world→map fn; fixes dungeon/UG placement)"),
-                        goblin::overlay_api::cfg_liveProjection_ptr());
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip(
-                "Project markers with the game's OWN WorldMapViewModel instead of the baked\n"
-                "affine. Toggles live (open the map and flip it to compare). Underground /\n"
-                "dungeon markers snap to their real LegacyConv-folded positions. Falls back\n"
-                "to baked until the map is open (engine VM must resolve).");
-    }
     const bool show_devtools = f.match("dev tools save restart event-flag item-grant hook "
                                        "cursor probe marker dump hotkey verbose logging "
                                        "flag capture npc death");

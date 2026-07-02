@@ -382,12 +382,6 @@ tr=ELDEN RING Reforged marque nativement les boss (et les camps ennemis,\nplus l
 en=ERR also marks enemy camps & completion (cleared dungeons/ruins).
 tr=ERR marque aussi les camps ennemis et la complétion (donjons/ruines terminés).
 
-en=Debug
-tr=Débogage
-
-en=Live projection (engine world→map fn; fixes dungeon/UG placement)
-tr=Projection en direct (monde→carte moteur ; corrige donjons/souterrain)
-
 en=Danger zone
 tr=Zone dangereuse
 
@@ -806,8 +800,6 @@ tr=sections categories catégories marqueur afficher masquer grouper monde
 en=err integration reforged hide boss markers camps completion
 tr=err integration intégration reforged masquer boss marqueurs camps completion complétion
 
-en=debug live projection engine world map dungeon underground placement
-tr=debogage débogage projection direct moteur monde carte donjon souterrain placement
 
 en=danger zone reset quest progression parameters defaults
 tr=zone dangereuse reinitialiser réinitialiser quete quête progression parametres paramètres defaut défaut

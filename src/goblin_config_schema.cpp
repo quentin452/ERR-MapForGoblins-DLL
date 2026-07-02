@@ -76,7 +76,6 @@ namespace goblin::config
     bool debugWorldmapProbe = false;
     bool debugPageSwitch = false;
     bool dumpIconTextures = false;
-    bool liveProjection = true;
     bool dumpConverters = false;
     bool dumpNativePins = false;
     bool overlayMarkersProto = false;
@@ -598,8 +597,6 @@ namespace
                   "Dev probe: hook the world-map page-switch handlers and log [PAGESW] each\ntime one fires (which fn + args + page before->after) so the base<->DLC\nsibling is pinned + args confirmed. Open the map, switch overworld->underground\n->overworld->DLC->overworld. Logs to the wmprobe log; off by default."),
                 B("dump_icon_textures", dumpIconTextures, "false",
                   "Dev probe: hook the GFx image creator and log each worldmap icon image\n(sprite rect + backing GPU texture id) as [ICONTEX] when the map opens, to\nmap iconIds to their sprite-sheet sub-rects for runtime icon textures. Off by\ndefault."),
-                B("live_projection", liveProjection, "true",
-                  "Project markers with the engine's OWN world->map-space function (the\nlive WorldMapViewModel) instead of our baked LEGACY_CONV + affine + DLC\neyeball. Fixes hundreds of dungeon/underground misplacements via the game's\nreal LegacyConv fold. Falls back to the baked projection when the map is\nclosed or an area isn't placed by the game. On by default; set false to\nforce the old baked projection."),
                 B("dump_converters", dumpConverters, "false",
                   "Dev one-shot RE check: when the world map is open, find the live\nCS::WorldMapViewModel and dump its 8 converter slots (origin/bias/scale/\narea/legacyConvNode @ VM+0xF8) + count to MapForGoblins.log as [CONV]. Open\nthe overworld, then base underground (m12), then the DLC/Realm of Shadows map\nto capture each page's converter (incl. the never-solved DLC constants).\nConfirms the world->map-space projection RE. Off by default."),
                 B("dump_native_pins", dumpNativePins, "false",

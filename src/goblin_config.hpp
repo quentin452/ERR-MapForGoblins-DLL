@@ -199,11 +199,6 @@ namespace goblin
         // switch_re_prompt.md). See goblin_worldmap_probe.cpp.
         extern GOBLIN_RENDER_API bool debugPageSwitch;
 
-        // Use the engine's own live world->map-space projection (call the native
-        // WorldMapViewModel) instead of our baked LEGACY_CONV + affine + DLC eyeball.
-        // Fixes dungeon/underground marker placement (proper LegacyConv fold). Falls
-        // back to baked when the map is closed / an area isn't placed by the game.
-        extern GOBLIN_RENDER_API bool liveProjection;
 
         // Dev probe: hook CSScaleformImageCreator::CreateImage and log each worldmap
         // icon image (sprite rect + backing GPU texture) to crack the iconId↔image

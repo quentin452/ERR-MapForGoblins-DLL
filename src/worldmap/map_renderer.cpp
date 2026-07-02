@@ -738,15 +738,15 @@ inline void world_to_mapspace(const Marker &m, float &gU, float &gV)
     world_to_mapspace_xy(m.worldX, m.worldZ, gU, gV);
 }
 
-// Project a marker to map-space. With config::liveProjection, use the engine's OWN
-// projection (worldmap_probe::project on the live WorldMapViewModel) — folds LegacyConv
+// Project a marker to map-space using the engine's OWN projection (worldmap_probe::project
+// on the live WorldMapViewModel) — folds LegacyConv
 // for dungeons/underground exactly like the native map. Result is cached per marker
 // (the converter affine is static, so it's valid across map reopens); retries until the
 // map is open + the VM resolves. Falls back to the baked affine until then / if the engine
 // doesn't place the area (e.g. m19 Chapel — no converter accepts it).
 inline void project_marker(const Marker &m, float &gU, float &gV)
 {
-    if ((*goblin::overlay_api::cfg_liveProjection_ptr()) && m.raw_area >= 0)
+    if (m.raw_area >= 0)
     {
         if (m.live_state != 1)
         {
@@ -783,15 +783,15 @@ inline void project_marker(const Marker &m, float &gU, float &gV)
     world_to_mapspace(m, gU, gV);
 }
 
-// Project a NON-marker point (grace-anchor pile, region label) to map-space. With
-// config::liveProjection, call the engine from the point's RAW per-area frame
+// Project a NON-marker point (grace-anchor pile, region label) to map-space by
+// calling the engine from the point's RAW per-area frame
 // (rawX/rawZ = gridX*256+pos in the point's OWN area — NOT pre-folded) by decomposing
 // back to grid+pos; else the baked affine on the already-folded world coords. No cache
 // (these are few per frame). area < 0 → baked.
 inline void project_raw(int area, float rawX, float rawZ, float bakedWX, float bakedWZ,
                         float &gU, float &gV)
 {
-    if ((*goblin::overlay_api::cfg_liveProjection_ptr()) && area >= 0)
+    if (area >= 0)
     {
         int gx = (int)std::floor(rawX / 256.0f), gz = (int)std::floor(rawZ / 256.0f);
         int pg = -1;
@@ -1540,12 +1540,8 @@ void compute_region_proj()
         goblin::overlay_api::marker_world_pos(a.area, a.gx, a.gz, a.px, a.pz, ga, wx, wz,
                                  /*conv_underground=*/true);
         float gU, gV;
-        bool placed = false;
-        if ((*goblin::overlay_api::cfg_liveProjection_ptr()))
-        {
-            int pg = -1;
-            placed = goblin::worldmap_probe::project(a.area, a.gx, a.gz, a.px, a.pz, gU, gV, pg);
-        }
+        int pg = -1;
+        bool placed = goblin::worldmap_probe::project(a.area, a.gx, a.gz, a.px, a.pz, gU, gV, pg);
         if (!placed)
             world_to_mapspace_xy(wx, wz, gU, gV);
         s_region_u[i] = gU;
@@ -1879,8 +1875,8 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // so without this each page's markers project on their FIRST view → a visible 1-by-1
     // pop-in on open / page-change. The projection is page-independent (static converters) →
     // valid forever once cached, so one upfront pass makes every reopen/page-switch instant.
-    if ((*goblin::overlay_api::cfg_liveProjection_ptr()))
     {
+        // Upfront one-shot pre-warm of the live projection cache (live projection is always on).
         static bool s_prewarmed = false;
         if (!s_prewarmed)
         {
@@ -2006,7 +2002,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                 // affine (e.g. an underground area the map VM hasn't resolved) has wrong map-space and
                 // would scatter across tiles — draw it individually until its live projection lands.
                 // (live_state is from last frame's project_marker; converges after one frame.)
-                (m.live_state == 1 || !(*goblin::overlay_api::cfg_liveProjection_ptr())) &&
+                (m.live_state == 1) &&
                 (dist_adaptive || goblin::overlay_api::category_clustered(m.category));
 
             float gU, gV;
