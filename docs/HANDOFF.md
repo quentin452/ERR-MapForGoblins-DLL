@@ -166,6 +166,21 @@ ERR/Proton via the RPC loop, NOT yet merged).** Both in `src/worldmap/map_render
    value, drop the knob (schema + panel + fr.txt + docs), (c) dev/diag → collapse into one
    dev-only section (or gate on debug_logging), (d) dead → delete.
 
+## Minimap player-direction arrow — IMPLEMENTED (2026-07-02, awaiting user confirm)
+
+Branch `feat/overlay-polish-badge-clip-rune-size` (same as the polish #2/#5 work). The minimap center
+"you are here" dot is now a HEADING ARROW pointing the player's facing. RE done live on Linux/Proton:
+**player facing yaw = float at `LocalPlayer + 0x6CC`, radians [−π, π]** (the pointer we already own for
+position; full finding in `docs/memory/features/minimap-future-feature.md`). Plumbed via new
+`goblin::get_player_facing_yaw()` + `overlay_api::get_player_facing_yaw()` (GOBLIN_RENDER_API); the
+minimap draws a filled triangle rotated by yaw (falls back to the dot when yaw doesn't resolve). North-up
+convention: `fwd = (sin a, −cos a)`, `a = yaw + π`. **The +π was USER-CALIBRATED in-game** (the raw yaw
+pointed EXACTLY opposite — user report). Sign (`kYawSign=1`) was already correct (only a 180° flip
+needed). **STILL: user to confirm the flipped arrow now matches their real facing before commit/merge.**
+Possible follow-ups if wanted: a config toggle to hide the arrow; heading-UP minimap mode (rotate the
+whole minimap by −yaw instead of just the arrow) now that yaw is available; camera-look direction as an
+alternative to character facing (would need the camera yaw, a different RE).
+
 ## Grace tooltip missing on some POIs (user spot 2026-07-02) — OPEN, not started
 
 While calibrating the golden-rune size (branch `feat/overlay-polish-badge-clip-rune-size`) the user
@@ -189,11 +204,17 @@ markers vs the dungeon/POI pin that shares the tile).
    RE (ESD unparsed) — disproportionate. Detail in the plan's Slice 2 section. **Slice 3** = merchant
    map pins (same ESD/EMEVD join, plus `entity_world_pos`) — also open; would close the **Merchant**
    ❌ NOT WIRED map-pin gap (`docs/coverage_vs_mapgenie.md`, MapGenie 43).
-2. **3D ImGui boss/enemy entity healthbars** — draw a healthbar above living bosses/enemies in the
-   world (ImGui overlay projected to the entity's screen pos). ERR ALREADY renders enemy bars, so
-   RE its bar path for the entity list + HP field offsets + world→screen projection (we already
-   have entity world_pos from the NPC-altitude-badge work — `entity_world_pos`/`g_entity_pos`).
-   New overlay surface, not map-related. Look at how reforged.dll draws its bars first.
+2. **Enemy healthbar NAMES — REFRAMED by user (2026-07-02): NOT a new bar, just add mob NAMES.**
+   The user clarified the real ask: **ER/ERR ALREADY draws the enemy healthbar** (the bar itself is
+   done by the game). **Vanilla already shows the NAME for BOSSES on their bar; regular mobs get the
+   bar but NO name.** So the feature shrinks to: **display the mob NAME on the existing (non-boss)
+   enemy healthbar** — no world→screen projection, no HP-field RE, no drawing a bar. Path: find where
+   the game renders the enemy-bar widget + how it fills the boss name, then supply the regular-enemy
+   name (NpcParam.nameId → GetMessage, same mod-agnostic resolve already used for enemy-drop labels,
+   `docs/memory/features/README.md` Phase 1). Much smaller than the original "draw a 3D bar" scope.
+   Still an overlay/RE task, not map-related. (Old scope note kept for reference: entity world_pos is
+   available from the NPC-altitude work — `entity_world_pos`/`g_entity_pos` — if a fully custom bar is
+   ever wanted instead.)
 3. **"Hidden Passage" map category** — MISSING from the MapForGoblins map. Now CONFIRMED tracked:
    regenerated `docs/coverage_vs_mapgenie.md` (2026-07-02, via `tools/coverage_vs_mapgenie.py` +
    the current full-build log) lists **Hidden Passage ❌ NOT WIRED (MapGenie 59)**. RE difficulty

@@ -115,6 +115,7 @@ namespace goblin::overlay_api
     {
         return goblin::get_player_map_pos(out_area, world_x, world_z, out_gx, out_gz, out_group);
     }
+    bool get_player_facing_yaw(float &yaw_radians) { return goblin::get_player_facing_yaw(yaw_radians); }
     std::string lookup_text_utf8(int32_t id) { return goblin::lookup_text_utf8(id); }
     std::string lookup_name_en_disk_utf8(int32_t encoded_id) { return goblin::lookup_name_en_disk_utf8(encoded_id); }
     bool quest_step_done(const goblin::generated::NpcQuest &q, size_t s) { return goblin::quest_step_done(q, s); }

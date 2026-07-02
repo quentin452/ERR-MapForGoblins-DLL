@@ -2423,9 +2423,32 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     fg->PopClipRect();
     g_minimap_clip_active = false; // worldmap pass must not disc-clip its badges
 
-    // Player marker at centre + a north tick (no heading yet → north-up only).
-    fg->AddCircleFilled(ctr, 4.0f, IM_COL32(255, 225, 70, 255));
-    fg->AddCircle(ctr, 4.0f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
+    // Player marker at centre: a heading ARROW (facing yaw @ LocalPlayer+0x6CC) when it resolves,
+    // else the plain dot. North-up minimap → screen +x = east (+worldX), -y = north (-worldZ). The
+    // yaw→screen convention (sign + zero offset) is calibrated in-game; see minimap-future-feature.md.
+    float yaw = 0.f;
+    if (goblin::overlay_api::get_player_facing_yaw(yaw))
+    {
+        constexpr float kYawSign = 1.0f;              // flip if the arrow turns the wrong way
+        constexpr float kYawOffset = 3.14159265f;     // +π: the game yaw points 180° from the map facing
+                                                      // (user-calibrated in-game — arrow was exactly reversed)
+        const float a = kYawSign * yaw + kYawOffset;
+        const ImVec2 fwd(std::sin(a), -std::cos(a));  // a=0 → (0,-1) = up (north-up minimap)
+        const ImVec2 rgt(-fwd.y, fwd.x);
+        const float L = 9.f * uiScale;                // tip reach from centre
+        const float B = 5.f * uiScale;                // base setback + half-width
+        const ImVec2 tip(ctr.x + fwd.x * L, ctr.y + fwd.y * L);
+        const ImVec2 bl(ctr.x - fwd.x * B + rgt.x * B, ctr.y - fwd.y * B + rgt.y * B);
+        const ImVec2 br(ctr.x - fwd.x * B - rgt.x * B, ctr.y - fwd.y * B - rgt.y * B);
+        fg->AddTriangleFilled(tip, bl, br, IM_COL32(255, 225, 70, 255));
+        fg->AddTriangle(tip, bl, br, IM_COL32(0, 0, 0, 210), 1.5f);
+    }
+    else
+    {
+        fg->AddCircleFilled(ctr, 4.0f, IM_COL32(255, 225, 70, 255));
+        fg->AddCircle(ctr, 4.0f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
+    }
+    // North tick (map is north-up).
     fg->AddText(ImVec2(ctr.x - 4.f, ctr.y - R - 16.f), IM_COL32(230, 220, 180, 220), "N");
 }
 } // namespace goblin::worldmap
