@@ -186,6 +186,35 @@ namespace
         }
     }
 
+    // Mob NAMES on the game's own non-boss enemy HP bar. The engine already draws the bar and
+    // stored each on-screen bar position; we read (screenPos, name) POD entries from the host and
+    // label them. Screen coords are the game's virtual 1920x1080 space -> scale to the backbuffer.
+    // See docs/re/linux_enemy_healthbar_name_re_findings.md.
+    static void draw_enemy_bar_names(ImGuiIO &io)
+    {
+        if (!*goblin::overlay_api::cfg_enemyNames_ptr())
+            return;
+        goblin::EnemyBarLabel labels[8];
+        int n = goblin::overlay_api::get_enemy_bar_labels(labels, 8);
+        if (n <= 0)
+            return;
+        const float scale = io.DisplaySize.x / 1920.0f;
+        ImDrawList *fg = ImGui::GetForegroundDrawList();
+        for (int i = 0; i < n; ++i)
+        {
+            if (labels[i].name[0] == '\0')
+                continue;
+            const float sx = labels[i].sx * scale;
+            const float sy = labels[i].sy * scale;
+            const char *txt = labels[i].name;
+            const ImVec2 ts = ImGui::CalcTextSize(txt);
+            // Centered on the bar's x, just above it. Shadow first for legibility over the world.
+            const ImVec2 p(sx - ts.x * 0.5f, sy - ts.y - 2.0f * scale);
+            fg->AddText(ImVec2(p.x + 1.0f, p.y + 1.0f), IM_COL32(0, 0, 0, 205), txt);
+            fg->AddText(p, IM_COL32(255, 255, 255, 235), txt);
+        }
+    }
+
     // In-game minimap HUD (corner, north-up, overworld). Drawn during gameplay (map
     // closed) on the foreground draw list. No-ops internally when show_minimap is off,
     // the icons master is off, or the player is underground (pos not yet reliable).
@@ -197,6 +226,7 @@ namespace
         GOBLIN_BENCH("render.minimap");
         void *atlas = ctx.atlas_srv;
         ImGuiIO &io = ImGui::GetIO();
+        draw_enemy_bar_names(io); // mob names on the game's enemy HP bar (independent of the minimap)
         if (ensure_grace_srv())
         {
             void *gs_gpu; ImVec2 gs_uv0, gs_uv1; int gs_nw, gs_nh;

@@ -62,6 +62,7 @@ namespace goblin
         extern GOBLIN_RENDER_API bool clusterDebugMarkers;   // per-marker projection/tile state dots (cluster diagnosis)
         extern GOBLIN_RENDER_API bool showRegionLabels; // overlay map: draw major-region names (Limgrave, Caelid, ...)
         extern GOBLIN_RENDER_API bool nativeItemIcons;  // overlay map: real game item icon (GPU harvest) when resident
+        extern GOBLIN_RENDER_API bool enemyNames;       // overlay HUD: mob name on the game's non-boss enemy HP bar
         extern GOBLIN_RENDER_API bool diagLootFlags;    // one-shot [LOOTDIAG]: dump all candidate pickup flags per loot lot
         extern GOBLIN_RENDER_API bool diagLootPos;      // one-shot [LOOTPOS]: live MsbPart pos vs baked MAP_ENTRY placement
         extern GOBLIN_RENDER_API bool diagMapOpens;     // [MAPOPEN]: hook CreateFileW, log map .msb.dcx opens (path+latency)
