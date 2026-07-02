@@ -56,6 +56,7 @@ namespace goblin::overlay_api
     void set_global_threshold(int v) { goblin::ui::set_global_threshold(v); }
     bool icons_enabled() { return goblin::ui::icons_enabled(); }
     void set_icons_enabled(bool v) { goblin::ui::set_icons_enabled(v); }
+    void request_native_landmark_reapply() { goblin::request_native_landmark_reapply(); }
     bool err_hide_bosses() { return goblin::ui::err_hide_bosses(); }
     void set_err_hide_bosses(bool v) { goblin::ui::set_err_hide_bosses(v); }
     void note_menu_visible() { goblin::ui::note_menu_visible(); }

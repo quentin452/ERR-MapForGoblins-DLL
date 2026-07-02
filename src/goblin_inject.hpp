@@ -40,6 +40,8 @@ namespace goblin
     GOBLIN_RENDER_API void register_native_landmark_row(void *row_data, int category);
     GOBLIN_RENDER_API void apply_native_landmark_suppression();
     bool take_native_landmark_dirty();  // watcher-only (host side)
+    // Menu-side "config changed, re-decide" nudge (e.g. the landmark_suppress_native checkbox).
+    GOBLIN_RENDER_API void request_native_landmark_reapply();
 
     // Nearest-grace cluster key for a marker (source area + raw grid/pos), matching
     // the native by-location clustering. -1 = no anchor (draw exact). out_pname (opt)

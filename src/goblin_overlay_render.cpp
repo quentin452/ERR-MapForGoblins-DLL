@@ -896,6 +896,15 @@ namespace
                 }
             }
 
+            // Native landmark-pin suppression (areaNo flips applied by the watcher; effect on the
+            // NEXT map open, so the nudge just re-decides — no live rebuild needed here).
+            if (settings_match("hide native landmark pins duplicate suppress erdtree dungeon church"))
+            {
+                if (ImGui::Checkbox("Hide native landmark pins (when our category re-draws them)",
+                                    goblin::overlay_api::cfg_landmarkSuppressNative_ptr()))
+                    goblin::overlay_api::request_native_landmark_reapply();
+            }
+
             // Spoiler-free loot (overlay port of anonymous_loot; live, persists via
             // "Save to INI"). Lot-backed loot markers draw as a gray "?" with a generic
             // label instead of the real item icon/name.

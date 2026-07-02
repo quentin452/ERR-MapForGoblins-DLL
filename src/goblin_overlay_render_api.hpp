@@ -36,7 +36,7 @@ namespace goblin::overlay_api
     X(requireMapFragments) X(bakedOnly) X(collectedGraying) X(hideCollected) X(stackIdenticalItems) \
     X(clusterDebugRadius) X(clusterDebugMarkers) X(showRegionLabels) X(nativeItemIcons) X(diagLootFlags) \
     X(diagLootPos) X(debugLogging) X(anonymousLoot) X(dropMerchantPhantoms) X(redifyBossIcons) \
-    X(graceOverlay) X(graceGpuSprite) X(suppressNativeBosses) X(enableMarkerDump) X(debugEventFlags) \
+    X(graceOverlay) X(graceGpuSprite) X(suppressNativeBosses) X(landmarkSuppressNative) X(enableMarkerDump) X(debugEventFlags) \
     X(debugItemGrants) X(debugFlagCapture) X(debugWorldmapProbe) X(liveProjection) X(dumpIconTextures) \
     X(iconLegibility) X(altitudeCue) X(viewDelayZoom) X(debugClusterAnchors) X(debugRegionVolumes) \
     X(showMinimap) X(minimapAnchorRight) X(minimapAnchorBottom) X(questAllowFlagWrite) X(questGreyOnDeath) \
@@ -85,6 +85,7 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API void set_global_threshold(int v);
     GOBLIN_RENDER_API bool icons_enabled();
     GOBLIN_RENDER_API void set_icons_enabled(bool v);
+    GOBLIN_RENDER_API void request_native_landmark_reapply();
     GOBLIN_RENDER_API bool err_hide_bosses();
     GOBLIN_RENDER_API void set_err_hide_bosses(bool v);
     GOBLIN_RENDER_API void note_menu_visible();
