@@ -1,0 +1,243 @@
+// F1 panel — general settings: master toggle + Save, the flat option checkboxes, the
+// gamepad combo recorder, marker scale, and the minimap block. Moved verbatim from
+// goblin_overlay_render.cpp::draw_panel in the split (big-files refactor item 1).
+
+#include "panel_internal.hpp"
+#include "goblin_overlay_render_api.hpp"
+
+namespace goblin::overlay::panel
+{
+void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
+{
+    // Master on/off + Save.
+    bool icons_on = goblin::overlay_api::icons_enabled();
+    if (ImGui::Checkbox("Show icons (master)", &icons_on))
+        goblin::overlay_api::set_icons_enabled(icons_on);
+    ImGui::SameLine();
+    static double saved_at = -10.0;
+    if (ImGui::Button("Save to INI"))
+    {
+        goblin::overlay_api::request_save();
+        saved_at = ImGui::GetTime();
+    }
+    // Brief confirmation so the button isn't a silent no-op (the file I/O
+    // happens on the watcher thread; this just acknowledges the click).
+    double since = ImGui::GetTime() - saved_at;
+    if (since < 2.0)
+    {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "Saved to INI");
+    }
+
+    // Map-fragment gate (live; persists via "Save to INI"). When on, a marker stays hidden
+    // until the player has acquired that area's map-fragment ITEM (fragment event flag).
+    if (f.match("require map fragments hide area icons until fragment found"))
+        ImGui::Checkbox("Require map fragments (hide an area's icons until its fragment is found)",
+                        goblin::overlay_api::cfg_requireMapFragments_ptr());
+
+    // DIAG: draw ONLY the no-bake residual (Baked-source markers; disk/live twins already
+    // deduped away). Fly the world + eyeball each spot — real loot the live pass misses
+    // (coverage gap) vs a phantom the bake invented (bake bug). See nobake_scoreboard.md.
+    if (f.match("baked only diag no-bake residual"))
+    {
+        ImGui::Checkbox("Baked-only (diag: show just the no-bake residual)",
+                        goblin::overlay_api::cfg_bakedOnly_ptr());
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Hides every marker the live disk/memory passes already cover,\n"
+                              "leaving only the markers still coming from the static bake.\n"
+                              "Use it to judge each leftover: real loot we fail to source live\n"
+                              "(coverage miss) vs a stale/invented spot (bake bug).");
+    }
+
+    // Collected/cleared graying (overlay map; live, persists via "Save to INI").
+    // On = dim looted items / killed bosses (cleared bosses get a checkmark);
+    // hide_collected switches dim → remove (legacy native-map behaviour).
+    if (f.match("gray grey collected cleared markers dim looted killed bosses hide instead"))
+    {
+        ImGui::Checkbox("Gray collected/cleared markers (dim looted items & killed bosses)",
+                        goblin::overlay_api::cfg_collectedGraying_ptr());
+        if ((*goblin::overlay_api::cfg_collectedGraying_ptr()))
+        {
+            ImGui::SameLine();
+            ImGui::Checkbox("hide instead", goblin::overlay_api::cfg_hideCollected_ptr());
+        }
+    }
+
+    // Merge co-located identical-item loot markers into one "xN". Pure render decision (the
+    // grouping is annotated once at build) → instant toggle, no bucket rebuild.
+    if (f.match("stack identical items merge same-item nodes"))
+        ImGui::Checkbox("Stack identical items (merge same-item nodes within ~5m)",
+                        goblin::overlay_api::cfg_stackIdenticalItems_ptr());
+
+    // Major-region name labels (overlay map; live, persists via "Save to INI").
+    if (f.match("show region labels major-region names map"))
+        ImGui::Checkbox("Show region labels (major-region names on the map)",
+                        goblin::overlay_api::cfg_showRegionLabels_ptr());
+
+    // Redify boss markers (overlay port of the legacy red-skull iconId; live,
+    // persists via "Save to INI"). Tints WorldBosses markers red (overworld +
+    // dungeon bosses); collected/cleared graying still takes precedence.
+    if (f.match("red boss markers tint icons skull"))
+        ImGui::Checkbox("Red boss markers (tint boss icons red)",
+                        goblin::overlay_api::cfg_redifyBossIcons_ptr());
+
+    // DX item 7: up/down altitude badge for markers above/below the player (player's map only).
+    if (f.match("altitude arrows up above down below player badge"))
+        ImGui::Checkbox("Altitude arrows (up = above / down = below player)",
+                        goblin::overlay_api::cfg_altitudeCue_ptr());
+
+    // Grace rendering: overlay draws all graces (discovered=colour, undiscovered=grey).
+    if (f.match("overlay graces draw all gpu sprite engine cpu baked atlas"))
+    {
+        ImGui::Checkbox("Overlay graces (draw all graces ourselves)",
+                        goblin::overlay_api::cfg_graceOverlay_ptr());
+        if ((*goblin::overlay_api::cfg_graceOverlay_ptr()))
+        {
+            ImGui::SameLine();
+            ImGui::Checkbox("GPU sprite (engine, time-tinted) vs CPU (baked atlas)",
+                            goblin::overlay_api::cfg_graceGpuSprite_ptr());
+        }
+    }
+
+    // Native landmark-pin suppression (areaNo flips applied by the watcher; effect on the
+    // NEXT map open, so the nudge just re-decides — no live rebuild needed here).
+    if (f.match("hide native landmark pins duplicate suppress erdtree dungeon church"))
+    {
+        if (ImGui::Checkbox("Hide native landmark pins (when our category re-draws them)",
+                            goblin::overlay_api::cfg_landmarkSuppressNative_ptr()))
+            goblin::overlay_api::request_native_landmark_reapply();
+        ImGui::SameLine();
+        ImGui::TextDisabled("↻");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Per category: only World-landmark categories that are toggled ON get their\n"
+                              "native pin hidden (no duplicate). Categories OFF keep the game's own pin.\n"
+                              "Changes show the NEXT time the map is opened (the game rebuilds its pin\n"
+                              "list then). The affected category rows carry the same \xE2\x86\xBB mark.");
+    }
+
+    // Spoiler-free loot (overlay port of anonymous_loot; live, persists via
+    // "Save to INI"). Lot-backed loot markers draw as a gray "?" with a generic
+    // label instead of the real item icon/name.
+    if (f.match("spoiler-free loot gray anonymous randomizer hide item"))
+    {
+        ImGui::Checkbox("Spoiler-free loot (gray \"?\" instead of the item)",
+                        goblin::overlay_api::cfg_anonymousLoot_ptr());
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Every loot marker shows a gray \"?\" and only its location,\n"
+                              "hiding the real item (useful with randomizers). Markers still\n"
+                              "gray out when collected; category show/hide is unaffected.");
+    }
+
+    // Gamepad overlay-toggle combo (dx-bugs-backlog PR C item 3). Recorder arms the
+    // XInput poll in hk_present; first nonzero button read there wins and saves.
+    if (f.match("gamepad toggle combo record controller buttons"))
+    {
+        ImGui::Text("Gamepad toggle combo: %s",
+                    goblin::overlay_api::mask_to_combo_string((*goblin::overlay_api::cfg_overlayToggleGamepad_ptr())).c_str());
+        ImGui::SameLine();
+        if (*ctx.gamepad_combo_recording)
+        {
+            // Two phases: first wait for the button that ARMED recording (e.g. gamepad-nav A
+            // on this very widget) to fully release, THEN start listening — otherwise that
+            // same activating press gets captured as the whole combo.
+            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f),
+                                *ctx.gamepad_combo_ready ? "Press buttons now…" : "Release all buttons…");
+        }
+        else if (ImGui::SmallButton("Record gamepad combo"))
+        {
+            *ctx.gamepad_combo_recording = true;
+            ctx.gamepad_combo_reject_reason->clear();
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Click, then press the button combo on your controller (default Y+R3).\n"
+                              "The first combo read is captured and saved to the ini immediately.");
+        if (!ctx.gamepad_combo_reject_reason->empty())
+            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "%s", ctx.gamepad_combo_reject_reason->c_str());
+    }
+
+    // On-screen keyboard layout (dx-bugs-backlog PR C-2 part 2). Like every other plain
+    // setting here, this only persists via "Save to INI" below — no immediate auto-save.
+    if (f.match("gamepad keyboard layout alphabetical qwerty virtual on-screen"))
+    {
+        ImGui::Text("Gamepad keyboard layout:");
+        ImGui::SameLine();
+        int kbd_layout = (*goblin::overlay_api::cfg_virtualKeyboardLayout_ptr());
+        if (ImGui::RadioButton("Alphabetical", &kbd_layout, 0))
+            (*goblin::overlay_api::cfg_virtualKeyboardLayout_ptr()) = static_cast<uint8_t>(kbd_layout);
+        ImGui::SameLine();
+        if (ImGui::RadioButton("QWERTY", &kbd_layout, 1))
+            (*goblin::overlay_api::cfg_virtualKeyboardLayout_ptr()) = static_cast<uint8_t>(kbd_layout);
+    }
+
+    // Overlay marker scale (live preview; persists via "Save to INI"). Final
+    // size = resolution-relative base × master × per-type scale.
+    const bool show_scale = f.match("marker scale overlay map master category icons grace "
+                                    "offset cluster piles size motion delay frames zoom reset");
+    if (f.filtering && show_scale) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+    if (show_scale && ImGui::CollapsingHeader("Marker scale (overlay map)"))
+    {
+        scale_control("Master", goblin::overlay_api::cfg_overlayMasterScale_ptr(), 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
+        scale_control("Category icons", goblin::overlay_api::cfg_overlayIconScale_ptr(), 0.3f, 10.0f, 0.05f, 0.25f, "%.2f");
+        scale_control("Grace icons (calib)", goblin::overlay_api::cfg_graceIconScale_ptr(), 0.2f, 10.0f, 0.05f, 0.25f, "%.2f");
+        scale_control("Grace offset X (native vs imgui)", goblin::overlay_api::cfg_graceOffsetX_ptr(), -200.0f, 200.0f, 1.0f, 10.0f, "%.0f");
+        scale_control("Grace offset Y (native vs imgui)", goblin::overlay_api::cfg_graceOffsetY_ptr(), -200.0f, 200.0f, 1.0f, 10.0f, "%.0f");
+        scale_control("Cluster piles", goblin::overlay_api::cfg_overlayClusterScale_ptr(), 0.3f, 3.0f, 0.05f, 0.25f, "%.2f");
+        scale_control("Marker motion delay (frames)", goblin::overlay_api::cfg_viewDelayFrames_ptr(), 0.0f, 7.0f, 0.1f, 0.5f, "%.1f");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Project markers this many present-frames behind the eased basemap.\n"
+                              "Pan the map: raise if markers LEAD (snap back on stop), lower if they TRAIL.\n"
+                              "1.0 = default. Tune to kill the pan/zoom re-adjust, then Save to INI.");
+        ImGui::Checkbox("Delay zoom too", goblin::overlay_api::cfg_viewDelayZoom_ptr());
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("ON (default): the motion delay applies to zoom as well as pan.\n"
+                              "If markers TELEPORT for one frame on each mouse-wheel zoom step,\n"
+                              "turn this OFF — markers then use the live zoom while still delaying pan.");
+        if (ImGui::SmallButton("Reset##scale"))
+        {
+            (*goblin::overlay_api::cfg_overlayMasterScale_ptr()) = 1.0f;
+            (*goblin::overlay_api::cfg_overlayIconScale_ptr()) = 1.2f;     // match the schema defaults
+            (*goblin::overlay_api::cfg_overlayClusterScale_ptr()) = 1.0f;
+            (*goblin::overlay_api::cfg_graceIconScale_ptr()) = 1.2f;
+            (*goblin::overlay_api::cfg_graceOffsetX_ptr()) = 0.0f;
+            (*goblin::overlay_api::cfg_graceOffsetY_ptr()) = 0.0f;
+            (*goblin::overlay_api::cfg_viewDelayFrames_ptr()) = 1.0f;
+            (*goblin::overlay_api::cfg_viewDelayZoom_ptr()) = true;
+        }
+        ImGui::TextDisabled("Slider = coarse; type in the box or use its +/- arrows for an exact\n"
+                            "value (Ctrl+Click the slider also types). × a resolution-relative\n"
+                            "base. Save to INI to persist.");
+    }
+
+    // In-game minimap HUD (foundation; overworld-only, north-up). Live; persists.
+    const bool show_minimap = f.match("minimap in-game hud show corner zoom radius opacity "
+                                      "anchor right bottom offset north-up");
+    if (f.filtering && show_minimap) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+    if (show_minimap && ImGui::CollapsingHeader("Minimap (in-game HUD)"))
+    {
+        ImGui::Checkbox("Show minimap (corner HUD during gameplay)",
+                        goblin::overlay_api::cfg_showMinimap_ptr());
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("A small north-up minimap in the screen corner showing nearby\n"
+                              "markers around you during play. OVERWORLD only for now\n"
+                              "(underground player position isn't reliable yet).");
+        // Max raised 0.30 -> 0.60 (user feedback 2026-07-01: 0.30 was still too
+        // zoomed-out/small at max). Default also raised, see minimapZoom's declaration.
+        // AlwaysClamp: ImGui's Ctrl+Click-to-type on a slider does NOT clamp to
+        // [min,max] by default -- a typed value beyond what's shown could be saved to
+        // the INI, then silently reset on the next load by the (now correct, but still
+        // real) per-field range clamp in goblin_config.cpp. Keep what's shown and what's
+        // stored always in sync.
+        ImGui::SliderFloat("Zoom (px/world)", goblin::overlay_api::cfg_minimapZoom_ptr(), 0.02f, 5.0f, "%.3f",
+                           ImGuiSliderFlags_AlwaysClamp);
+        ImGui::SliderFloat("Radius (px)", goblin::overlay_api::cfg_minimapSize_ptr(), 60.0f, 300.0f, "%.0f",
+                           ImGuiSliderFlags_AlwaysClamp);
+        ImGui::SliderFloat("Opacity", goblin::overlay_api::cfg_minimapOpacity_ptr(), 0.0f, 1.0f, "%.2f");
+        ImGui::Checkbox("Anchor right", goblin::overlay_api::cfg_minimapAnchorRight_ptr());
+        ImGui::SameLine();
+        ImGui::Checkbox("Anchor bottom", goblin::overlay_api::cfg_minimapAnchorBottom_ptr());
+        ImGui::SliderFloat("Offset X", goblin::overlay_api::cfg_minimapOffsetX_ptr(), 0.0f, 600.0f, "%.0f");
+        ImGui::SliderFloat("Offset Y", goblin::overlay_api::cfg_minimapOffsetY_ptr(), 0.0f, 600.0f, "%.0f");
+        ImGui::TextDisabled("North-up. Hidden while the world map is open. Save to INI to persist.");
+    }
+}
+} // namespace goblin::overlay::panel

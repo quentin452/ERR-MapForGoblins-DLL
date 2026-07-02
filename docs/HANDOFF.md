@@ -128,7 +128,10 @@ validation matrix. Docs already flipped to "clang = canonical" + `steam_api64.li
 ## Two new plans scoped (2026-07-01): big-files refactor + clang-only toolchain
 
 `docs/plans/big_files_refactor_plan.md` (god functions/duplication across the 7 biggest hand-written
-files; item 1 = draw_panel split, waits on hot-reload Slice C) and
+files; **items 1+2 DONE 2026-07-02** — item 1: draw_panel split into `src/overlay_panel/` 8-file
+section layout, render cpp 2150→~400 lines, in-game validated; item 2: shared marker gates, see the
+DX-sweep entry below — remaining: 3 classify dedup, 4 diag quarantine, 5 icon_uv, 6 god functions,
+7 grace-sprite design) and
 `docs/plans/clang_only_toolchain_plan.md` (retire MSVC; USER DECISION reverses the same-day "MSVC
 canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase 0 update: the 3
 `__try`-elision hazards (world_position per-frame probes + tutorial_popup init poll) are FIXED

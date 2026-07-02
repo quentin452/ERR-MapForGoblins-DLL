@@ -102,6 +102,16 @@ target_include_directories(imgui PUBLIC
 set(GOBLIN_RENDER_SOURCES
   src/goblin_overlay_render.hpp
   src/goblin_overlay_render.cpp
+  # F1 panel sections (draw_panel split — big-files refactor item 1)
+  src/overlay_panel/panel_internal.hpp
+  src/overlay_panel/panel_util.cpp
+  src/overlay_panel/panel_dev_icons.cpp
+  src/overlay_panel/panel_settings.cpp
+  src/overlay_panel/panel_search.cpp
+  src/overlay_panel/panel_categories.cpp
+  src/overlay_panel/panel_quests.cpp
+  src/overlay_panel/panel_clustering.cpp
+  src/overlay_panel/panel_dev_tools.cpp
   src/worldmap/marker_layer.hpp
   src/worldmap/grace_layer.hpp
   src/worldmap/grace_layer.cpp
