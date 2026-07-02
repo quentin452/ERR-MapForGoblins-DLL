@@ -2,6 +2,7 @@
 #include "../goblin_overlay_render_api.hpp"
 
 #include "goblin_map_data.hpp" // Category enum
+#include "goblin_categories.gen.hpp" // CATEGORY_GPU_ICONS / CATEGORY_GPU_NAMES (data-driven)
 #include "generated_shared/goblin_overlay_icons.hpp" // ICON_CELLS (baked-cell resolve)
 
 #include <atomic>
@@ -163,54 +164,10 @@ bool category_has_baked_icon(int category)
     return false;
 }
 
-namespace
-{
-// Canonical engine iconId per category for the baked→GPU migration. SPARSE — a category
-// absent here is still baked-only ("to replace"). Populate an entry as each category's
-// real engine sprite gets wired into the marker draw; the F1 completion panel then counts
-// it as replaced once harvested_icon() has the sprite.
-// scale: extra per-category multiplier on top of config::mapSymbolScale (2.2 default) — the
-// big POI statue/dais glyphs drawn among item dots need < 1 or they dwarf everything
-// (user-reported). tint: ImU32 ABGR multiplied into the draw tint, 0 = none (white); used to
-// tell apart categories that share one glyph (stakes vs pools both use the Marika statue).
-struct CategoryGpuIcon { int category; int iconId; float scale; unsigned int tint; };
-constexpr CategoryGpuIcon CATEGORY_GPU_ICONS[] = {
-    {-1, 0, 1.0f, 0},  // sentinel (never matches a real category) — keeps the array non-empty;
-              // add {static_cast<int>(Category::X), iconId} entries as categories migrate
-    // Stakes vs Pools (user 2026-07-02 v2): both use the SAME Marika-statue glyph (MENU_MAP_89 —
-    // it matches BOTH in-world objects) and differ by TINT, the game's own colour language:
-    // pools = multiplayer blue, stakes = warm gold. The two-summons-on-a-dais glyph (MENU_MAP_21)
-    // reads as an elevator/lift platform → given to WorldElevator instead, greyed (mechanical).
-    // All three scaled 0.6 — these are POI dots among item icons, not full map landmarks, and at
-    // the raw mapSymbolScale they dwarfed everything.
-    {static_cast<int>(goblin::generated::Category::WorldSummoningPools), 89, 0.6f, abgr(120, 170, 255)},
-    {static_cast<int>(goblin::generated::Category::WorldStakesOfMarika), 89, 0.6f, abgr(255, 205, 110)},
-    {static_cast<int>(goblin::generated::Category::WorldElevator), 21, 0.6f, abgr(185, 185, 190)},
-    // Quest NPC → framed-hood NPC glyph (MENU_MAP_80, SB_MapCursor_02, rect 554,364,124,124 — the
-    // vanilla quest-NPC map symbol, eye-confirmed in docs/memory/features/map-point-glyph-ids.md).
-    // iconId path → map_point_rect(80) → disk fallback in MapPointProvider, so it is mod-agnostic
-    // (reads the ACTIVE install's SB_MapCursor, not the ERR-baked atlas). Falls to circle when the
-    // glyph can't be resolved. NB: the SB_MapCursor NN (80), NOT the WorldMapPointParam iconId
-    // 443=questNPC — 443 is never resident (vanilla draws no item pins) so only the NN path works.
-    {static_cast<int>(goblin::generated::Category::WorldQuestNPC), 80, 1.0f, 0},
-    // Landmark categories (HANDOFF glyph followup): these are TRUE WorldMapPointParam rows the
-    // game itself draws, so their WMPP iconId IS the resident MENU_MAP_<NN> glyph (unlike 443
-    // above, which vanilla never draws). Single-iconId categories only — Dungeon/LegacyDungeon
-    // are per-site iconId unions and need per-marker source ids through push_marker (open).
-    {static_cast<int>(goblin::generated::Category::WorldDivineTower), 23, 1.0f, 0},
-    {static_cast<int>(goblin::generated::Category::WorldEvergaol), 9, 1.0f, 0},
-    {static_cast<int>(goblin::generated::Category::WorldMinorErdtree), 30, 1.0f, 0},
-    {static_cast<int>(goblin::generated::Category::WorldGrandLift), 21, 1.0f, 0},
-    {static_cast<int>(goblin::generated::Category::WorldMiquellaCross), 208, 1.0f, 0},
-    // Parity families: only Colosseum is single-iconId; the others are per-site/typed unions
-    // (need per-marker source ids through push_marker, same open gap as Dungeon/LegacyDungeon).
-    {static_cast<int>(goblin::generated::Category::WorldColosseum), 24, 1.0f, 0},
-};
-} // namespace
 
 int category_gpu_iconId(int category)
 {
-    for (const auto &e : CATEGORY_GPU_ICONS)
+    for (const auto &e : goblin::generated::CATEGORY_GPU_ICONS)
         if (e.category == category)
             return e.iconId;
     return 0;
@@ -218,7 +175,7 @@ int category_gpu_iconId(int category)
 
 float category_gpu_iconId_scale(int category)
 {
-    for (const auto &e : CATEGORY_GPU_ICONS)
+    for (const auto &e : goblin::generated::CATEGORY_GPU_ICONS)
         if (e.category == category)
             return e.scale;
     return 1.0f;
@@ -226,31 +183,16 @@ float category_gpu_iconId_scale(int category)
 
 unsigned int category_gpu_iconId_tint(int category)
 {
-    for (const auto &e : CATEGORY_GPU_ICONS)
+    for (const auto &e : goblin::generated::CATEGORY_GPU_ICONS)
         if (e.category == category)
             return e.tint;
     return 0;
 }
 
-namespace
-{
-// NAME-keyed engine map symbol per category (ERR custom MENU_MAP_ERR_* / vanilla MENU_MAP_*).
-// SPARSE — most categories have no real game symbol and stay on the baked atlas. Resolved via
-// goblin::map_icon_rect_by_name → overlay::native_map_point_icon_by_name. Grow as symbols are
-// confirmed resident in-game (see the [MAPICON-AVAIL] log + g_map_icon_named).
-struct CategoryGpuName { int category; const char *name; float scale; };
-using C = goblin::generated::Category;
-constexpr CategoryGpuName CATEGORY_GPU_NAMES[] = {
-    {static_cast<int>(C::WorldBosses), "MENU_MAP_ERR_Boss", 1.0f},
-    // Normal hostile entities reuse the boss symbol, drawn smaller so a real boss still reads as the
-    // bigger pin. Same symbol → the central pump already keeps it resident (no extra want).
-    {static_cast<int>(C::WorldHostileNPC), "MENU_MAP_ERR_Boss", 0.65f},
-};
-} // namespace
 
 const char *category_gpu_icon_name(int category)
 {
-    for (const auto &e : CATEGORY_GPU_NAMES)
+    for (const auto &e : goblin::generated::CATEGORY_GPU_NAMES)
         if (e.category == category)
             return e.name;
     return nullptr;
@@ -258,7 +200,7 @@ const char *category_gpu_icon_name(int category)
 
 float category_gpu_icon_scale(int category)
 {
-    for (const auto &e : CATEGORY_GPU_NAMES)
+    for (const auto &e : goblin::generated::CATEGORY_GPU_NAMES)
         if (e.category == category)
             return e.scale;
     return 1.0f;

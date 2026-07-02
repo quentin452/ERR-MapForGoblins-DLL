@@ -156,9 +156,52 @@ def generate(rows):
         "    default: return -1;",
         "    }",
         "}",
-        "} // namespace goblin::generated",
         "",
     ]
+
+    def flt(x):
+        return repr(float(x)) + "f"  # repr keeps a decimal point -> valid float literal
+
+    # Numeric engine-glyph per category (iconId + per-category scale + ABGR tint). Sparse.
+    lines += [
+        "// Per-category native map glyph (numeric iconId + scale + ABGR tint). From each",
+        "// category's `glyph` in data/categories.json. Sparse — absent = baked-only / circle.",
+        "struct CategoryGpuIcon { int category; int iconId; float scale; unsigned int tint; };",
+        "inline constexpr CategoryGpuIcon CATEGORY_GPU_ICONS[] = {",
+        "    {-1, 0, 1.0f, 0u},  // sentinel (never matches a real category; keeps the array non-empty)",
+    ]
+    for r in rows:
+        g = r.get("glyph")
+        if not g:
+            continue
+        t = g.get("tint")
+        if t:
+            tint_u = (235 << 24) | (t[2] << 16) | (t[1] << 8) | t[0]
+            tint = f"{tint_u}u"
+            note = f"  // tint rgb({t[0]},{t[1]},{t[2]})"
+        else:
+            tint, note = "0u", ""
+        lines.append(f"    {{static_cast<int>(Category::{r['enum']}), {g['icon_id']}, "
+                     f"{flt(g['scale'])}, {tint}}},{note}")
+    lines.append("};")
+    lines.append("")
+
+    # Name-keyed engine map symbol per category (ERR MENU_MAP_ERR_* / vanilla MENU_MAP_*). Sparse.
+    lines += [
+        "// Per-category NAME-keyed engine map symbol (+ scale). From each category's `glyph_name`",
+        "// in data/categories.json. Sparse — most categories have none.",
+        "struct CategoryGpuName { int category; const char *name; float scale; };",
+        "inline constexpr CategoryGpuName CATEGORY_GPU_NAMES[] = {",
+    ]
+    for r in rows:
+        g = r.get("glyph_name")
+        if not g:
+            continue
+        lines.append(f"    {{static_cast<int>(Category::{r['enum']}), {cpp_str(g['name'])}, "
+                     f"{flt(g['scale'])}}},")
+    lines.append("};")
+
+    lines += ["} // namespace goblin::generated", ""]
     GEN_HPP.write_text("\n".join(lines), encoding="utf-8")
     print(f"wrote {GEN_HPP.relative_to(ROOT)}  ({len(rows)} rows)")
 

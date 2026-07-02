@@ -195,4 +195,29 @@ inline int landmark_category_for_icon(int iconId)
     default: return -1;
     }
 }
+
+// Per-category native map glyph (numeric iconId + scale + ABGR tint). From each
+// category's `glyph` in data/categories.json. Sparse — absent = baked-only / circle.
+struct CategoryGpuIcon { int category; int iconId; float scale; unsigned int tint; };
+inline constexpr CategoryGpuIcon CATEGORY_GPU_ICONS[] = {
+    {-1, 0, 1.0f, 0u},  // sentinel (never matches a real category; keeps the array non-empty)
+    {static_cast<int>(Category::WorldQuestNPC), 80, 1.0f, 0u},
+    {static_cast<int>(Category::WorldStakesOfMarika), 89, 0.6f, 3949907455u},  // tint rgb(255,205,110)
+    {static_cast<int>(Category::WorldSummoningPools), 89, 0.6f, 3959401080u},  // tint rgb(120,170,255)
+    {static_cast<int>(Category::WorldDivineTower), 23, 1.0f, 0u},
+    {static_cast<int>(Category::WorldEvergaol), 9, 1.0f, 0u},
+    {static_cast<int>(Category::WorldMinorErdtree), 30, 1.0f, 0u},
+    {static_cast<int>(Category::WorldGrandLift), 21, 1.0f, 0u},
+    {static_cast<int>(Category::WorldMiquellaCross), 208, 1.0f, 0u},
+    {static_cast<int>(Category::WorldColosseum), 24, 1.0f, 0u},
+    {static_cast<int>(Category::WorldElevator), 21, 0.6f, 3955145145u},  // tint rgb(185,185,190)
+};
+
+// Per-category NAME-keyed engine map symbol (+ scale). From each category's `glyph_name`
+// in data/categories.json. Sparse — most categories have none.
+struct CategoryGpuName { int category; const char *name; float scale; };
+inline constexpr CategoryGpuName CATEGORY_GPU_NAMES[] = {
+    {static_cast<int>(Category::WorldHostileNPC), "MENU_MAP_ERR_Boss", 0.65f},
+    {static_cast<int>(Category::WorldBosses), "MENU_MAP_ERR_Boss", 1.0f},
+};
 } // namespace goblin::generated

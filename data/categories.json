@@ -212,12 +212,20 @@
   {
     "enum": "WorldHostileNPC",
     "name": "World - Hostile NPC",
-    "section": "World"
+    "section": "World",
+    "glyph_name": {
+      "name": "MENU_MAP_ERR_Boss",
+      "scale": 0.65
+    }
   },
   {
     "enum": "WorldQuestNPC",
     "name": "World - Quest NPC",
-    "section": "World"
+    "section": "World",
+    "glyph": {
+      "icon_id": 80,
+      "scale": 1.0
+    }
   },
   {
     "enum": "MagicIncantations",
@@ -242,7 +250,11 @@
   {
     "enum": "WorldBosses",
     "name": "World - Bosses",
-    "section": "World"
+    "section": "World",
+    "glyph_name": {
+      "name": "MENU_MAP_ERR_Boss",
+      "scale": 1.0
+    }
   },
   {
     "enum": "QuestDeathroot",
@@ -307,12 +319,30 @@
   {
     "enum": "WorldStakesOfMarika",
     "name": "World - Stakes of Marika",
-    "section": "World"
+    "section": "World",
+    "glyph": {
+      "icon_id": 89,
+      "scale": 0.6,
+      "tint": [
+        255,
+        205,
+        110
+      ]
+    }
   },
   {
     "enum": "WorldSummoningPools",
     "name": "World - Summoning Pools",
-    "section": "World"
+    "section": "World",
+    "glyph": {
+      "icon_id": 89,
+      "scale": 0.6,
+      "tint": [
+        120,
+        170,
+        255
+      ]
+    }
   },
   {
     "enum": "WorldKindlingSpirits",
@@ -330,7 +360,11 @@
     "section": "World",
     "landmark_icon_ids": [
       23
-    ]
+    ],
+    "glyph": {
+      "icon_id": 23,
+      "scale": 1.0
+    }
   },
   {
     "enum": "WorldEvergaol",
@@ -338,7 +372,11 @@
     "section": "World",
     "landmark_icon_ids": [
       9
-    ]
+    ],
+    "glyph": {
+      "icon_id": 9,
+      "scale": 1.0
+    }
   },
   {
     "enum": "WorldMinorErdtree",
@@ -346,7 +384,11 @@
     "section": "World",
     "landmark_icon_ids": [
       30
-    ]
+    ],
+    "glyph": {
+      "icon_id": 30,
+      "scale": 1.0
+    }
   },
   {
     "enum": "WorldGrandLift",
@@ -354,7 +396,11 @@
     "section": "World",
     "landmark_icon_ids": [
       21
-    ]
+    ],
+    "glyph": {
+      "icon_id": 21,
+      "scale": 1.0
+    }
   },
   {
     "enum": "WorldDungeon",
@@ -398,7 +444,11 @@
     "section": "World",
     "landmark_icon_ids": [
       208
-    ]
+    ],
+    "glyph": {
+      "icon_id": 208,
+      "scale": 1.0
+    }
   },
   {
     "enum": "WorldChurch",
@@ -497,7 +547,11 @@
     "section": "World",
     "landmark_icon_ids": [
       24
-    ]
+    ],
+    "glyph": {
+      "icon_id": 24,
+      "scale": 1.0
+    }
   },
   {
     "enum": "WorldUniqueSite",
@@ -530,7 +584,16 @@
   {
     "enum": "WorldElevator",
     "name": "World - Elevators",
-    "section": "World"
+    "section": "World",
+    "glyph": {
+      "icon_id": 21,
+      "scale": 0.6,
+      "tint": [
+        185,
+        185,
+        190
+      ]
+    }
   },
   {
     "enum": "WorldSmithingTable",
