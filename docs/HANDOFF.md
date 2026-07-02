@@ -302,6 +302,15 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
   sweep finding — dozens of icons float on the black void past the map edge, over the day/night
   dial. Fix direction per the original F2 note: pan-OOB support (bypass/extend the panX/panZ
   clamp in the projection when centring on a locate target).
+  **FIX ATTEMPT 2026-07-02 — REVERTED (user call), read
+  `docs/re/linux_f2_fog_locate_clamp_re_findings.md` BEFORE retrying.** Net RE knowledge kept:
+  the real blocker is the engine clamping the cursor RETICLE to discovered-extent bounds INSIDE
+  the c32f0 step (bounds source absent from the view/cursor structs — needs Ghidra on the c32f0
+  subtree); direct pan writes and snap-rect (+0x340) widening are PROVEN dead ends (composite/
+  overlay divergence; off-map teleport); `cursor+0x180` = the zoom easer TARGET (writing it makes
+  the engine zoom itself — mechanically works, rejected as UX: uninvited zoom on every locate +
+  visible 90-frame flicker fight on clamped targets). Constraints for any retry (user, hard):
+  non-fog locates must behave EXACTLY as today, no per-frame write fights, no forced zoom.
 
 ## SINGLE-DLL migration — profiles retired (2026-07-02, `feat/mapgenie-landmark-parity`)
 
