@@ -58,6 +58,11 @@ std::optional<ptrdiff_t> resolve_field_offset(const FieldOffsetArgs &args);
 
 void hook(void *function, void *detour, void **trampoline);
 
+// Create AND enable the hook immediately (not queued for enable_hooks()). For
+// observers that must be live long before the init batch is applied, e.g. the
+// [BOOTIO] CreateFileW probe armed at the very top of setup_mod.
+void hook_now(void *function, void *detour, void **trampoline);
+
 template <typename ReturnType> inline ReturnType *scan(const ScanArgs &args)
 {
     return reinterpret_cast<ReturnType *>(scan(args));

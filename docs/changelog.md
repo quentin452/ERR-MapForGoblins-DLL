@@ -35,6 +35,11 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   everywhere else — randomizer players flip that one key.
 
 ### Added
+- **`diag_boot_io` boot I/O profile (dev).** Read-only diagnostic: hooks `CreateFileW` live at the
+  very top of init (before the regulation wait, not queued with the normal hook batch) and logs
+  every file the process opens during boot — `[BOOTIO]` lines with time-since-arming, per-open
+  latency and ok/FAIL, first ~1500 individually then counted. Correlate with the init-phase log
+  timestamps to see what the startup actually waits on. Off by default.
 - **Spiderfy: hover a cluster pile to fan its members out.** With clustering on, hovering a pile
   spreads its member icons around it (ring, spiral past a dozen; capped at 40 + "+N more") on a
   legibility backdrop, each with its own leg line and full hover tooltip — inspect a dense spot
@@ -353,6 +358,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   clustering was the pre-overlay mitigation.)
 
 ### Performance
+- **Overlay init no longer sleeps a flat `load_delay` after readiness is confirmed** — the init
+  poll checks the real dependency (WorldMapPointParam registered with rows), so the old "honor
+  load_delay as a minimum total wait" added a flat ~5s to every healthy boot for nothing. Confirmed
+  ready now proceeds after a 250ms settle; `load_delay` remains as the fallback minimum only when
+  the poll can't confirm. Measured in-game (ERR under Proton): `init.param_poll` **5005 ms → 250 ms**,
+  DLL init complete ~10.7s after injection (was ~15s).
 - **World-map marker viewport-cull** — clustered-eligible markers used to pay the per-frame visibility
   gates even when their pile cell sits off-screen (off-screen members feed the pile). Now a map-space
   viewport rect (`proj::unproject_screen` of the 4 corners, +1 tile margin) skips a clustered marker's
