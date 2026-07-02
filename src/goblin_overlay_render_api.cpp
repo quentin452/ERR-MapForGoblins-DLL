@@ -37,6 +37,7 @@ namespace goblin::overlay_api
     bool *cfg_showCategory_ptr() { return goblin::config::showCategory; }
     std::string &cfg_questProgress_ref() { return goblin::config::questProgress; }
     std::string &cfg_regionToggles_ref() { return goblin::config::regionToggles; }
+    std::string &cfg_uiExclusionRects_ref() { return goblin::config::uiExclusionRects; }
 
     bool section_visible(int s) { return goblin::ui::section_visible(s); }
     void set_section_visible(int s, bool v) { goblin::ui::set_section_visible(s, v); }

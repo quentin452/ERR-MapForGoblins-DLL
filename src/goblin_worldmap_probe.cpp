@@ -1072,6 +1072,48 @@ bool get_live_view(LiveView &out)
 static LocateDebug g_locate_dbg;
 const LocateDebug &last_locate_debug() { return g_locate_dbg; }
 
+// Menu-state byte dump (dev, RPC `dumpmenu <tag>`): log CSMenuMan's first 0x200 bytes + the
+// WorldMapDialog's 0xA00..0xB40 + 0x2B60..0x2C40 windows as hex to the wmprobe log, so two
+// dumps (map open vs map open + Z-menu over it) can be diffed offline to find the "a menu is
+// covering the map" flag (needed to hide the overlay under it — HANDOFF z-order bug 2).
+void dump_menu_state(const char *tag)
+{
+    if (!g_log) return;
+    uintptr_t base = g_exe_base ? g_exe_base
+                                : reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    uint64_t mm = 0;
+    if (!base || !seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm) ||
+        !plausible_ptr(mm))
+    {
+        g_log->info("[MENUDUMP:{}] CSMenuMan unresolved", tag);
+        return;
+    }
+    const uintptr_t cur = g_active_cursor.load(std::memory_order_relaxed);
+    const uintptr_t dlg = cur ? cur - CURSOR_OFF_IN_MENU : 0;
+    auto dump = [&](const char *name, uintptr_t at, ptrdiff_t from, ptrdiff_t to)
+    {
+        if (!at) { g_log->info("[MENUDUMP:{}] {} = null", tag, name); return; }
+        for (ptrdiff_t off = from; off < to; off += 16)
+        {
+            char line[16 * 3 + 1] = "";
+            int n = 0;
+            for (int i = 0; i < 16; ++i)
+            {
+                uint8_t b = 0;
+                SIZE_T rd = 0;
+                ReadProcessMemory(GetCurrentProcess(),
+                                  reinterpret_cast<void *>(at + off + i), &b, 1, &rd);
+                n += _snprintf(line + n, sizeof(line) - n, "%02X ", rd == 1 ? b : 0xEE);
+            }
+            g_log->info("[MENUDUMP:{}] {}+{:#05x}: {}", tag, name, off, line);
+        }
+    };
+    dump("mm", static_cast<uintptr_t>(mm), 0x0, 0x200);
+    dump("dlg", dlg, 0xA00, 0xB40);
+    dump("dlg", dlg, 0x2B60, 0x2C40);
+    g_log->flush();
+}
+
 bool set_view_center(float mU, float mV, float minZoom)
 {
     // Reset the diagnostic snapshot for this call (the F1 "Locate debug" overlay reads it).

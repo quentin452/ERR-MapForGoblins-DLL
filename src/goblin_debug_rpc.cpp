@@ -7,6 +7,7 @@
 #include "input/input_cursor.hpp"  // set_cursor_pos_real — pixel-exact mouse_move via the trampoline
 #include "goblin_pause.hpp"    // pause command + paused= status (unfocused-window pause escape)
 #include "goblin_overlay.hpp"
+#include "goblin_worldmap_probe.hpp"  // dump_menu_state (dumpmenu cmd)
 #include "goblin_overlay_render_loader.hpp"
 
 #include <spdlog/spdlog.h>
@@ -208,6 +209,31 @@ namespace goblin::debug_rpc
                 if (!move_cursor_client(cx, cy)) return "err cursor placement failed";
                 return "ok mouse_move";
             }
+            if (cmd == "mouse_drag")
+            {
+                // mouse_drag <x0> <y0> <x1> <y1> — left-button drag in client px (the UI
+                // exclusion-zone editor's create gesture; also map panning).
+                std::string a=next_token(rest),b=next_token(rest),c=next_token(rest),d=next_token(rest);
+                int x0=0,y0=0,x1=0,y1=0;
+                try { x0=std::stoi(a); y0=std::stoi(b); x1=std::stoi(c); y1=std::stoi(d); }
+                catch (...) { return "err usage: mouse_drag <x0> <y0> <x1> <y1>"; }
+                if (!move_cursor_client(x0, y0)) return "err cursor placement failed";
+                Sleep(80);
+                INPUT in{};
+                in.type = INPUT_MOUSE;
+                in.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+                SendInput(1, &in, sizeof(in));
+                Sleep(80);
+                for (int i = 1; i <= 8; ++i)
+                {
+                    move_cursor_client(x0 + (x1 - x0) * i / 8, y0 + (y1 - y0) * i / 8);
+                    Sleep(30);
+                }
+                Sleep(80);
+                in.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+                SendInput(1, &in, sizeof(in));
+                return "ok mouse_drag";
+            }
             if (cmd == "type")
             {
                 // Type literal TEXT into a focused (ImGui) field. `key <letter>` is the wrong tool
@@ -306,6 +332,7 @@ namespace goblin::debug_rpc
         bool is_input_command(const std::string &cmd)
         {
             return cmd == "key" || cmd == "type" || cmd == "mouse_move" || cmd == "mouse_click" ||
+                   cmd == "mouse_drag" ||
                    cmd == "mouse_wheel";
         }
 
@@ -335,6 +362,12 @@ namespace goblin::debug_rpc
                                          : std::string("na")) +
                        " kbseen=" + std::to_string(goblin::input::wm_keydown_total()) +
                        " fg=" + std::to_string(goblin::input::has_focus() ? 1 : 0);
+            }
+            if (cmd == "dumpmenu")
+            {
+                std::string tag = next_token(rest);
+                goblin::worldmap_probe::dump_menu_state(tag.empty() ? "x" : tag.c_str());
+                return "ok dumpmenu -> wmprobe log";
             }
             if (cmd == "open_f1")
             {

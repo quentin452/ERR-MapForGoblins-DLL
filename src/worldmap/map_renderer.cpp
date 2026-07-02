@@ -985,6 +985,52 @@ static void refresh_player_world_y()
 static ImVec2 s_canvas_min(0.f, 0.f), s_canvas_max(0.f, 0.f);
 static bool s_canvas_clip = false;
 
+// ── User UI-exclusion rectangles (F1 editor; see map_renderer.hpp) ────────────
+// Parsed from cfg_uiExclusionRects_ref() ("x0,y0,x1,y1;..." in 1920x1080 virtual units,
+// resolution-independent) into a cached vector; re-parsed only when the string changes
+// (the editor and the ini loader both just mutate the string).
+struct UiRect { float x0, y0, x1, y1; };
+static std::vector<UiRect> s_ui_rects;
+static std::string s_ui_rects_src = "\x01"; // never matches → first call parses
+static bool s_ui_rect_edit = false;
+
+static void ui_rects_sync()
+{
+    const std::string &src = goblin::overlay_api::cfg_uiExclusionRects_ref();
+    if (src == s_ui_rects_src)
+        return;
+    s_ui_rects_src = src;
+    s_ui_rects.clear();
+    const char *p = src.c_str();
+    while (*p)
+    {
+        UiRect r{};
+        int n = 0;
+        if (std::sscanf(p, "%f,%f,%f,%f%n", &r.x0, &r.y0, &r.x1, &r.y1, &n) == 4 && n > 0)
+        {
+            if (r.x1 < r.x0) std::swap(r.x0, r.x1);
+            if (r.y1 < r.y0) std::swap(r.y0, r.y1);
+            s_ui_rects.push_back(r);
+            p += n;
+        }
+        while (*p && *p != ';') ++p;
+        if (*p == ';') ++p;
+    }
+}
+
+static void ui_rects_store()
+{
+    char buf[64];
+    std::string out;
+    for (const UiRect &r : s_ui_rects)
+    {
+        std::snprintf(buf, sizeof(buf), "%.0f,%.0f,%.0f,%.0f;", r.x0, r.y0, r.x1, r.y1);
+        out += buf;
+    }
+    goblin::overlay_api::cfg_uiExclusionRects_ref() = out;
+    s_ui_rects_src = out; // keep cache coherent (skip the next re-parse)
+}
+
 // Game-UI exclusion (user report 2026-07-02): the overlay renders AFTER the game's frame, so
 // our icons draw OVER the game's own always-on-top map UI. Static-region case: the ERR
 // day/night dial (bottom-right, fixed layout in the 1920x1080 virtual canvas — disc centre
@@ -995,9 +1041,16 @@ static bool s_canvas_clip = false;
 // tracked in HANDOFF, not covered here.
 static inline bool in_game_ui_exclusion(const ImVec2 &p, float realW, float realH)
 {
-    if (!(*goblin::overlay_api::cfg_clipGameUi_ptr()) || !goblin::overlay_api::err_features())
+    if (!(*goblin::overlay_api::cfg_clipGameUi_ptr()))
         return false;
     const float sx = realW / 1920.f, sy = realH / 1080.f;
+    // User-drawn zones first (any install; virtual units → screen scale).
+    ui_rects_sync();
+    for (const UiRect &r : s_ui_rects)
+        if (p.x >= r.x0 * sx && p.x <= r.x1 * sx && p.y >= r.y0 * sy && p.y <= r.y1 * sy)
+            return true;
+    if (!goblin::overlay_api::err_features())
+        return false;
     const float dx = p.x - 1815.f * sx, dy = p.y - 1000.f * sy;
     const float r = 240.f * ((sx + sy) * 0.5f);
     if (dx * dx + dy * dy < r * r)
@@ -2093,12 +2146,101 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     if (s_canvas_clip)
         fg->PopClipRect();
 
+    // ── UI exclusion-zone EDITOR (F1 "UI exclusion zones" → Edit) ──────────────
+    // Zones drawn semi-transparent red over the map; drag on the map creates a new one,
+    // right-click inside a zone deletes it. Coordinates captured in screen px, stored in
+    // 1920x1080 VIRTUAL units so they hold at every resolution.
+    if (s_ui_rect_edit)
+    {
+        ui_rects_sync();
+        const float sx = realW / 1920.f, sy = realH / 1080.f;
+        for (const UiRect &r : s_ui_rects)
+        {
+            const ImVec2 a(r.x0 * sx, r.y0 * sy), b(r.x1 * sx, r.y1 * sy);
+            fg->AddRectFilled(a, b, IM_COL32(220, 40, 40, 60));
+            fg->AddRect(a, b, IM_COL32(255, 60, 60, 220), 0.f, 0, 2.0f);
+        }
+        ImGuiIO &io = ImGui::GetIO();
+        static bool s_dragging = false;
+        static ImVec2 s_drag0;
+        if (!io.WantCaptureMouse) // not over the panel
+        {
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+            {
+                s_dragging = true;
+                s_drag0 = io.MousePos;
+            }
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+            {
+                // delete the topmost zone under the cursor
+                for (int i = static_cast<int>(s_ui_rects.size()) - 1; i >= 0; --i)
+                {
+                    const UiRect &r = s_ui_rects[static_cast<size_t>(i)];
+                    if (io.MousePos.x >= r.x0 * sx && io.MousePos.x <= r.x1 * sx &&
+                        io.MousePos.y >= r.y0 * sy && io.MousePos.y <= r.y1 * sy)
+                    {
+                        s_ui_rects.erase(s_ui_rects.begin() + i);
+                        ui_rects_store();
+                        break;
+                    }
+                }
+            }
+        }
+        if (s_dragging)
+        {
+            fg->AddRect(s_drag0, io.MousePos, IM_COL32(255, 220, 60, 230), 0.f, 0, 2.0f);
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+            {
+                s_dragging = false;
+                UiRect r{std::min(s_drag0.x, io.MousePos.x) / sx,
+                         std::min(s_drag0.y, io.MousePos.y) / sy,
+                         std::max(s_drag0.x, io.MousePos.x) / sx,
+                         std::max(s_drag0.y, io.MousePos.y) / sy};
+                if (r.x1 - r.x0 > 8.f && r.y1 - r.y0 > 8.f) // ignore stray clicks
+                {
+                    s_ui_rects.push_back(r);
+                    ui_rects_store();
+                }
+            }
+        }
+        fg->AddText(ImVec2(realW * 0.5f - 220.f, 8.f), IM_COL32(255, 220, 60, 255),
+                    "EXCLUSION EDIT: drag = new zone, right-click = delete zone");
+    }
+
     // Tooltip for the hovered marker / pile (drawn last so it's on top).
     if (hover.bestd < 1e30f)
         draw_tooltip(fg, mouse, hover.text);
 
     // [ICONTIER] audit: throttled summary of how this pass's markers resolved across the tier chain.
     tier_census_flush();
+}
+
+void set_ui_rect_edit(bool on) { s_ui_rect_edit = on; }
+bool ui_rect_edit() { return s_ui_rect_edit; }
+int ui_rect_count()
+{
+    ui_rects_sync();
+    return static_cast<int>(s_ui_rects.size());
+}
+bool ui_rect_get(int index, float out[4])
+{
+    ui_rects_sync();
+    if (index < 0 || index >= static_cast<int>(s_ui_rects.size())) return false;
+    const UiRect &r = s_ui_rects[static_cast<size_t>(index)];
+    out[0] = r.x0; out[1] = r.y0; out[2] = r.x1; out[3] = r.y1;
+    return true;
+}
+void ui_rect_delete(int index)
+{
+    ui_rects_sync();
+    if (index < 0 || index >= static_cast<int>(s_ui_rects.size())) return;
+    s_ui_rects.erase(s_ui_rects.begin() + index);
+    ui_rects_store();
+}
+void ui_rect_clear()
+{
+    s_ui_rects.clear();
+    ui_rects_store();
 }
 
 void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture, float screenW,

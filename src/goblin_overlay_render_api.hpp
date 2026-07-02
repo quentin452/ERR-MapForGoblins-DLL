@@ -63,7 +63,8 @@ namespace goblin::overlay_api
 
     GOBLIN_RENDER_API bool *cfg_showCategory_ptr();          // array base (bool showCategory[]), index at the call site
     GOBLIN_RENDER_API std::string &cfg_questProgress_ref();  // mutated in place (bit twiddling on the packed string)
-    GOBLIN_RENDER_API std::string &cfg_regionToggles_ref();  // assigned wholesale (region-toggle bitset serialization)
+    GOBLIN_RENDER_API std::string &cfg_regionToggles_ref();
+    GOBLIN_RENDER_API std::string &cfg_uiExclusionRects_ref(); // user no-icon zones (virtual units)  // assigned wholesale (region-toggle bitset serialization)
 
     // ── goblin::ui::* (host-defined in src/goblin_section_visibility.cpp + goblin_inject.cpp) ──
     GOBLIN_RENDER_API bool section_visible(int s);

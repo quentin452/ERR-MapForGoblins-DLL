@@ -51,6 +51,9 @@ namespace goblin
         // Hide overlay markers under the game's own always-on-top map UI (ERR day/night
         // dial bottom-right) — we render post-present so we'd otherwise draw OVER it.
         extern GOBLIN_RENDER_API bool clipGameUi;
+        // User-drawn "no overlay icons here" rectangles (F1 editor), VIRTUAL-canvas units
+        // (1920x1080 space, resolution-independent): "x0,y0,x1,y1;x0,y0,x1,y1;..."
+        extern GOBLIN_RENDER_API std::string uiExclusionRects;
         extern GOBLIN_RENDER_API bool bakedOnly;  // diag overlay: draw ONLY Baked-source markers (the no-bake residual)
         extern GOBLIN_RENDER_API bool collectedGraying;
         extern GOBLIN_RENDER_API bool hideCollected;
