@@ -207,14 +207,31 @@ and `status` reports an `user_active=`/`rpc_input_idle=` field so the driver can
 (status, screenshot, set, reload) stays live. Keeps scripted runs and manual play from fighting over
 the OS cursor / keystrokes. Ties into `docs/memory/tooling/mfg-rpc-driver-hardening.md`.
 
-## Grace tooltip missing on some POIs (user spot 2026-07-02) — OPEN, not started
+## Grace tooltip missing on some POIs (user spot 2026-07-02) — FIXED + IN-GAME VERIFIED 2026-07-03
 
 While calibrating the golden-rune size (branch `feat/overlay-polish-badge-clip-rune-size`) the user
 noticed a spot where **a grace (e.g. the "Murkwater Cave" site in Limgrave) shows its place-name
 tooltip but NOT the "grace" line/label** that graces normally carry — i.e. the grace marker's tooltip
-is missing its grace-type annotation. Small hover/tooltip bug, separate from the polish batch. Repro:
-open map near Murkwater Cave, hover the grace. Not yet investigated (tooltip-compose path for grace
-markers vs the dungeon/POI pin that shares the tile).
+is missing its grace-type annotation.
+
+**Root cause:** `marker_label()` (map_renderer.cpp) had NO grace branch — a grace tooltip was just
+`name(textId1) + loc(region)`, identical to any POI, so nothing said "grace". A grace's `name_id` is
+its BonfireWarpParam `textId1` = a PLACE-NAME (not a "Site of Grace" descriptor); when that textId
+doesn't resolve (some graces store a tab/region id there → empty name) marker_label collapsed to the
+region line alone, dropping the grace's own name and leaving no grace identity at all.
+
+**Fix (`feat/grace-tooltip-annot`, Linux build-clean `[43/43]`):** marker_label now branches on
+`m.discover_flag` (set ONLY on graces) and always emits a `"Site of Grace"` annotation line —
+`"<grace place-name>\nSite of Grace\n<region>"` (grace-name / region lines dropped when blank or
+duplicate). Robust to textId1 not resolving: even a nameless grace still reads as a grace.
+i18n-translated (`tr("Site of Grace")`, fr = "Site de grâce" added to `assets/lang/fr.txt`). NB this
+tooltip only shows for UNdiscovered graces — our overlay drops discovered graces (game draws those
+natively with its own tooltip), so a rested grace still shows the engine's tooltip, not ours.
+**IN-GAME VERIFIED (user, 2026-07-03, ERR/Proton):** "Agheel Lake North / Site de grâce / Limgrave"
+on an undiscovered grace, FR translation live. (First attempt showed nothing = the deployed DLL was
+stale — a normal build needs redeploy to `~/Games/ERRv2.2.9.6/dll/offline/` + relaunch; hot-reload
+only in a split build.) The alt hypothesis (co-located dungeon/POI pin stealing the hover) did NOT
+apply — the grace's own marker was hovered fine.
 
 ## New feature requests (user, 2026-07-02) — 3 tracked, none started
 
