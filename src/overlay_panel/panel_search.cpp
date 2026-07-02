@@ -4,6 +4,7 @@
 // verbatim from goblin_overlay_render.cpp::draw_panel in the split (item 1).
 
 #include "panel_internal.hpp"
+#include "goblin_i18n.hpp"
 #include "goblin_overlay_render_api.hpp"
 #include "goblin_map_data.hpp"           // generated::Category
 #include "goblin_worldmap_probe.hpp"     // LiveView
@@ -22,6 +23,8 @@
 
 namespace goblin::overlay::panel
 {
+using goblin::i18n::tr;  // overlay UI localization (lang/<code>.txt)
+
 void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
 {
     // ── Find item / object ────────────────────────────────────────────────────────────
@@ -35,13 +38,13 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
     if (!f.match("find item object search marker name locate ring quest"))
         return;
 
-    ImGui::SeparatorText("Find item / object");
+    ImGui::SeparatorText(tr("Find item / object"));
     // group bits (marker_layer): bit0 = underground, bit1 = DLC. Label the page so the
     // user knows where a hit is — locate only pans WITHIN the open page (cross-page needs
     // a manual page switch first; auto-switch would need page-transition RE).
     auto page_label = [](int g) -> const char * {
-        switch (g & 3) { case 1: return "Underground"; case 2: return "DLC";
-                         case 3: return "DLC Underground"; default: return "Overworld"; }
+        switch (g & 3) { case 1: return tr("Underground"); case 2: return tr("DLC");
+                         case 3: return tr("DLC Underground"); default: return tr("Overworld"); }
     };
     // One result row per (name, PAGE): an item on several pages (e.g. a Larval Tear on
     // Overworld + Underground + DLC) gets a separate row per page, so clicking a row locates
@@ -57,7 +60,7 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
     static int s_locate_group = 0;                // clicked item page (pending banner)
 
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-    ImGui::InputTextWithHint("##itemsearch", "find item/object by name... (e.g. larval, bolt of)",
+    ImGui::InputTextWithHint("##itemsearch", tr("find item/object by name... (e.g. larval, bolt of)"),
                              item_q, sizeof(item_q));
     draw_gamepad_keyboard_button("##itemsearch_kbd", item_q, sizeof(item_q));
 
@@ -199,19 +202,23 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
         const int open_grp = map_open ? ((lv.openDlc ? 2 : 0) | (lv.underground ? 1 : 0)) : 0;
 
         if (map_open)
-            ImGui::TextDisabled("%zu match%s (ringed on map; click = pan map onto it)",
-                                s_hits.size(), s_hits.size() == 1 ? "" : "es");
+            ImGui::TextDisabled(s_hits.size() == 1
+                                    ? tr("%zu match (ringed on map; click = pan map onto it)")
+                                    : tr("%zu matches (ringed on map; click = pan map onto it)"),
+                                s_hits.size());
         else if ((*goblin::overlay_api::cfg_showMinimap_ptr()))
             // <user> 2026-07-01: this used to always say "open the world map to
             // locate them" even with the minimap on — wrong, the minimap already
             // rings a hit (including off-range ones, clamped to the HUD edge).
             ImGui::TextColored(ImVec4(0.6f, 0.9f, 0.6f, 1.f),
-                               "%zu match%s (ringed on the minimap)",
-                               s_hits.size(), s_hits.size() == 1 ? "" : "es");
+                               s_hits.size() == 1 ? tr("%zu match (ringed on the minimap)")
+                                                  : tr("%zu matches (ringed on the minimap)"),
+                               s_hits.size());
         else
             ImGui::TextColored(ImVec4(1.f, 0.85f, 0.2f, 1.f),
-                               "%zu match%s - open the world map to locate them",
-                               s_hits.size(), s_hits.size() == 1 ? "" : "es");
+                               s_hits.size() == 1 ? tr("%zu match - open the world map to locate them")
+                                                  : tr("%zu matches - open the world map to locate them"),
+                               s_hits.size());
 
         // Region-visited gate from GRACE DISCOVERY (robust, save-backed — supersedes the
         // fragile dialog availability byte): if NO grace in a region has been rested at, the
@@ -273,8 +280,8 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
                 char row[200];
                 std::snprintf(row, sizeof(row), "%s  (x%d) - %s%s%s##h%zu", h.label.c_str(),
                               h.count, page_label(h.group),
-                              h.quest ? " [quest]" : "",
-                              locked ? " [undiscovered]" : "", i);
+                              h.quest ? tr(" [quest]") : "",
+                              locked ? tr(" [undiscovered]") : "", i);
                 if (locked) ImGui::BeginDisabled();
                 if (ImGui::Selectable(row) && map_open)
                 {
@@ -290,15 +297,15 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
                 }
                 if (locked) ImGui::EndDisabled();
                 if (map_open && !locked && off_page && ImGui::IsItemHovered())
-                    ImGui::SetTooltip("On the %s map — click to switch there + centre on it.",
+                    ImGui::SetTooltip(tr("On the %s map — click to switch there + centre on it."),
                                       page_label(h.group));
                 if (locked && ImGui::IsItemHovered())
-                    ImGui::SetTooltip("On the %s map — you haven't discovered it yet.",
+                    ImGui::SetTooltip(tr("On the %s map — you haven't discovered it yet."),
                                       page_label(h.group));
             }
             if (!map_open) ImGui::EndDisabled();
             if (s_hits.empty())
-                ImGui::TextDisabled("no marker matches");
+                ImGui::TextDisabled("%s", tr("no marker matches"));
         }
         ImGui::EndChild();
 
@@ -306,7 +313,7 @@ void draw_item_search(const OverlayFrameCtx &ctx, Filter &f)
         // the instant that page opens. The banner shows until it lands.
         if (map_open && goblin::worldmap::locate_pending())
             ImGui::TextColored(ImVec4(1.f, 0.85f, 0.2f, 1.f),
-                               "> Locating \"%s\" on the %s map...", s_locate_label.c_str(),
+                               tr("> Locating \"%s\" on the %s map..."), s_locate_label.c_str(),
                                page_label(s_locate_group));
     }
     // Hand the renderer the live match set + any pending locate (consumed once).

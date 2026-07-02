@@ -125,6 +125,8 @@ set(GOBLIN_RENDER_SOURCES
   src/worldmap/map_renderer.cpp)
 
 set(GOBLIN_HOST_SOURCES
+  src/goblin_i18n.hpp
+  src/goblin_i18n.cpp
   src/from/params.hpp
   src/from/params.cpp
   src/from/paramdef/WORLD_MAP_POINT_PARAM_ST.hpp

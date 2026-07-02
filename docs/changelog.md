@@ -35,6 +35,16 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   everywhere else — randomizer players flip that one key.
 
 ### Added
+- **Overlay UI localization (v1) — French included.** New ini key `overlay_language`
+  (`auto`/`en`/`fr`/…): the F1 panel (settings, categories, search, clustering, quest-browser
+  chrome, danger zone) and the marker-tooltip glue ("Unknown item", "3/12 left", "x4 in this
+  pile", quest badges) translate via a user-editable text table `lang/<code>.txt` next to the
+  DLL — a shipped `lang/fr.txt` covers ~270 strings including every category/section label.
+  Missing file or string falls back to English; game CONTENT names (items, places) always come
+  from the game's own files in its language. The panel's settings search matches English AND
+  translated words ("echelle" finds "Marker scale"). `auto` follows the OS UI language (NB:
+  under Proton that's the Wine prefix locale, often en — set `fr` explicitly). Not yet
+  translated: quest-browser step CONTENT and the dev-only sections.
 - **`diag_boot_io` boot I/O profile (dev).** Read-only diagnostic: hooks `CreateFileW` live at the
   very top of init (before the regulation wait, not queued with the normal hook batch) and logs
   every file the process opens during boot — `[BOOTIO]` lines with time-since-arming, per-open

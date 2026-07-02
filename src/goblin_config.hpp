@@ -69,6 +69,7 @@ namespace goblin
         extern uint32_t overlayToggleKey;  // VK_* for the overlay menu toggle (default F1)
         extern GOBLIN_RENDER_API uint16_t overlayToggleGamepad;  // XINPUT_GAMEPAD_* combo mask for the overlay toggle (default Y+R3)
         extern GOBLIN_RENDER_API uint8_t virtualKeyboardLayout;  // 0 = Alphabetical, 1 = QWERTY (on-screen gamepad text entry)
+        extern GOBLIN_RENDER_API std::string overlayLanguage;  // overlay UI language: auto|en|fr|... (see goblin_i18n.hpp)
         extern GOBLIN_RENDER_API std::string showAllExcept;  // comma-separated category names to
                               // keep hidden even when showAll is on (matched
                               // loosely against the category display name)

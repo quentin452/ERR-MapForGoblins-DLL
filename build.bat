@@ -280,6 +280,9 @@ if defined MFG_PROFILE (
     "%INIGEN%" "%PKG_ROOT%\MapForGoblins\MapForGoblins.ini"
     copy /Y "%GFX_SRC%" "%PKG_ROOT%\MapForGoblins\menu\02_120_worldmap.gfx" >nul
     copy /Y "%SCRIPT_DIR%LICENSE.txt" "%PKG_ROOT%\" >nul
+    REM Overlay UI language tables (ini overlay_language; see src/goblin_i18n.hpp)
+    mkdir "%PKG_ROOT%\MapForGoblins\lang" 2>nul
+    copy /Y "%SCRIPT_DIR%assets\lang\*.txt" "%PKG_ROOT%\MapForGoblins\lang\" >nul
 ) else (
     mkdir "%PKG_ROOT%\dll\offline" 2>nul
     mkdir "%PKG_ROOT%\addons\MapForGoblins\menu" 2>nul
@@ -287,6 +290,9 @@ if defined MFG_PROFILE (
     "%INIGEN%" "%PKG_ROOT%\dll\offline\MapForGoblins.ini"
     copy /Y "%GFX_SRC%" "%PKG_ROOT%\addons\MapForGoblins\menu\02_120_worldmap.gfx" >nul
     copy /Y "%SCRIPT_DIR%LICENSE.txt" "%PKG_ROOT%\" >nul
+    REM Overlay UI language tables (ini overlay_language; see src/goblin_i18n.hpp)
+    mkdir "%PKG_ROOT%\dll\offline\lang" 2>nul
+    copy /Y "%SCRIPT_DIR%assets\lang\*.txt" "%PKG_ROOT%\dll\offline\lang\" >nul
 )
 exit /b 0
 

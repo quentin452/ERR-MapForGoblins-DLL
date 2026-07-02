@@ -1,0 +1,831 @@
+# MapForGoblins — overlay UI, French (fr)
+# Format: 'en=' the exact English source string, 'tr=' its translation.
+# Newlines are written as \n. Keep %d/%s/%zu placeholders in the same order.
+# Anything after ## in a key is an internal widget id — keep it unchanged.
+# Missing/empty tr= falls back to English. UTF-8. Avoid œ (use oe): font range.
+
+en=Find item / object
+tr=Trouver un objet
+
+en=Underground
+tr=Souterrain
+
+en=DLC
+tr=DLC
+
+en=DLC Underground
+tr=Souterrain DLC
+
+en=Overworld
+tr=Surface
+
+en=find item/object by name... (e.g. larval, bolt of)
+tr=chercher un objet par nom... (ex. larve, carreau)
+
+en=%zu match (ringed on map; click = pan map onto it)
+tr=%zu résultat (entouré sur la carte ; clic = centrer dessus)
+
+en=%zu matches (ringed on map; click = pan map onto it)
+tr=%zu résultats (entourés sur la carte ; clic = centrer dessus)
+
+en=%zu match (ringed on the minimap)
+tr=%zu résultat (entouré sur la minicarte)
+
+en=%zu matches (ringed on the minimap)
+tr=%zu résultats (entourés sur la minicarte)
+
+en=%zu match - open the world map to locate them
+tr=%zu résultat - ouvrez la carte du monde pour le localiser
+
+en=%zu matches - open the world map to locate them
+tr=%zu résultats - ouvrez la carte du monde pour les localiser
+
+en= [quest]
+tr= [quête]
+
+en= [undiscovered]
+tr= [non découvert]
+
+en=On the %s map — click to switch there + centre on it.
+tr=Sur la carte %s — clic pour y basculer et centrer dessus.
+
+en=On the %s map — you haven't discovered it yet.
+tr=Sur la carte %s — vous ne l'avez pas encore découverte.
+
+en=no marker matches
+tr=aucun marqueur ne correspond
+
+en=> Locating "%s" on the %s map...
+tr=> Localisation de « %s » sur la carte %s...
+
+en=Show icons (master)
+tr=Afficher les icônes (interrupteur principal)
+
+en=Save to INI
+tr=Sauver dans l'INI
+
+en=Saved to INI
+tr=Sauvegardé dans l'INI
+
+en=Require map fragments (hide an area's icons until its fragment is found)
+tr=Exiger les fragments de carte (masquer les icônes d'une zone tant que son fragment n'est pas trouvé)
+
+en=Gray collected/cleared markers (dim looted items & killed bosses)
+tr=Griser les marqueurs récupérés/terminés (objets ramassés et boss vaincus)
+
+en=hide instead
+tr=masquer plutôt
+
+en=Stack identical items (merge same-item nodes within ~5m)
+tr=Empiler les objets identiques (fusionner les noeuds du même objet à ~5m)
+
+en=Show region labels (major-region names on the map)
+tr=Afficher les noms de régions (grandes régions sur la carte)
+
+en=Red boss markers (tint boss icons red)
+tr=Marqueurs de boss rouges (teinter les icônes de boss en rouge)
+
+en=Altitude arrows (up = above / down = below player)
+tr=Flèches d'altitude (haut = au-dessus / bas = en dessous du joueur)
+
+en=Overlay graces (draw all graces ourselves)
+tr=Grâces overlay (dessiner toutes les grâces nous-mêmes)
+
+en=GPU sprite (engine, time-tinted) vs CPU (baked atlas)
+tr=Sprite GPU (moteur, teinte du jour) vs CPU (atlas figé)
+
+en=Hide native landmark pins (when our category re-draws them)
+tr=Masquer les épingles natives (quand notre catégorie les redessine)
+
+en=Per category: only World-landmark categories that are toggled ON get their\nnative pin hidden (no duplicate). Categories OFF keep the game's own pin.\nChanges show the NEXT time the map is opened (the game rebuilds its pin\nlist then). The affected category rows carry the same ↻ mark.
+tr=Par catégorie : seules les catégories Monde activées voient leur épingle\nnative masquée (pas de doublon). Les catégories désactivées gardent l'épingle\ndu jeu. Le changement apparaît à la PROCHAINE ouverture de la carte (le jeu\nreconstruit alors sa liste d'épingles). Les lignes concernées portent la marque ↻.
+
+en=Spoiler-free loot (gray "?" instead of the item)
+tr=Butin sans spoiler (« ? » gris à la place de l'objet)
+
+en=Every loot marker shows a gray "?" and only its location,\nhiding the real item (useful with randomizers). Markers still\ngray out when collected; category show/hide is unaffected.
+tr=Chaque marqueur de butin affiche un « ? » gris et seulement son lieu,\nen cachant le vrai objet (utile avec les randomizers). Les marqueurs se\ngrisent toujours une fois récupérés ; l'affichage par catégorie est inchangé.
+
+en=Gamepad toggle combo: %s
+tr=Combo manette d'ouverture : %s
+
+en=Press buttons now…
+tr=Appuyez sur les boutons...
+
+en=Release all buttons…
+tr=Relâchez tous les boutons...
+
+en=Record gamepad combo
+tr=Enregistrer un combo manette
+
+en=Click, then press the button combo on your controller (default Y+R3).\nThe first combo read is captured and saved to the ini immediately.
+tr=Cliquez, puis pressez le combo de boutons sur votre manette (défaut Y+R3).\nLe premier combo lu est capturé et sauvé immédiatement dans l'ini.
+
+en=Gamepad keyboard layout:
+tr=Disposition du clavier manette :
+
+en=Alphabetical
+tr=Alphabétique
+
+en=Marker scale (overlay map)
+tr=Échelle des marqueurs (carte overlay)
+
+en=Master
+tr=Général
+
+en=Category icons
+tr=Icônes de catégorie
+
+en=Grace icons (calib)
+tr=Icônes de grâce (calib)
+
+en=Grace offset X (native vs imgui)
+tr=Décalage grâce X (natif vs imgui)
+
+en=Grace offset Y (native vs imgui)
+tr=Décalage grâce Y (natif vs imgui)
+
+en=Cluster piles
+tr=Piles de groupement
+
+en=Marker motion delay (frames)
+tr=Retard de mouvement des marqueurs (frames)
+
+en=Project markers this many present-frames behind the eased basemap.\nPan the map: raise if markers LEAD (snap back on stop), lower if they TRAIL.\n1.0 = default. Tune to kill the pan/zoom re-adjust, then Save to INI.
+tr=Projette les marqueurs avec ce retard (en frames) derrière la carte animée.\nDéplacez la carte : montez si les marqueurs DEVANCENT, baissez s'ils TRAÎNENT.\n1.0 = défaut. Réglez pour supprimer le réajustement, puis Sauver dans l'INI.
+
+en=Delay zoom too
+tr=Retarder aussi le zoom
+
+en=ON (default): the motion delay applies to zoom as well as pan.\nIf markers TELEPORT for one frame on each mouse-wheel zoom step,\nturn this OFF — markers then use the live zoom while still delaying pan.
+tr=ACTIVÉ (défaut) : le retard s'applique au zoom comme au déplacement.\nSi les marqueurs se TÉLÉPORTENT une frame à chaque cran de molette,\ndésactivez — le zoom devient instantané, le déplacement reste retardé.
+
+en=Reset##scale
+tr=Réinitialiser##scale
+
+en=Slider = coarse; type in the box or use its +/- arrows for an exact\nvalue (Ctrl+Click the slider also types). × a resolution-relative\nbase. Save to INI to persist.
+tr=Curseur = grossier ; tapez dans la case ou utilisez ses flèches +/- pour\nune valeur exacte (Ctrl+clic sur le curseur aussi). × une base relative à\nla résolution. Sauver dans l'INI pour conserver.
+
+en=Minimap (in-game HUD)
+tr=Minicarte (HUD en jeu)
+
+en=Show minimap (corner HUD during gameplay)
+tr=Afficher la minicarte (coin de l'écran en jeu)
+
+en=A small north-up minimap in the screen corner showing nearby\nmarkers around you during play. OVERWORLD only for now\n(underground player position isn't reliable yet).
+tr=Une petite minicarte orientée nord dans un coin, montrant les marqueurs\nproches pendant le jeu. SURFACE uniquement pour l'instant (la position\nsouterraine du joueur n'est pas encore fiable).
+
+en=Zoom (px/world)
+tr=Zoom (px/monde)
+
+en=Radius (px)
+tr=Rayon (px)
+
+en=Opacity
+tr=Opacité
+
+en=Anchor right
+tr=Ancrer à droite
+
+en=Anchor bottom
+tr=Ancrer en bas
+
+en=Offset X
+tr=Décalage X
+
+en=Offset Y
+tr=Décalage Y
+
+en=North-up. Hidden while the world map is open. Save to INI to persist.
+tr=Orientée nord. Masquée quand la carte du monde est ouverte. Sauver dans l'INI pour conserver.
+
+en=On-screen keyboard for gamepad text entry.
+tr=Clavier virtuel pour saisir du texte à la manette.
+
+en=Space
+tr=Espace
+
+en=Backspace
+tr=Effacer
+
+en=Clear
+tr=Vider
+
+en=Done
+tr=Terminé
+
+en=Clustering
+tr=Groupement
+
+en=Enable clustering (declutter dense areas)
+tr=Activer le groupement (désencombrer les zones denses)
+
+en=Collapse dense marker piles into one icon to keep busy\nregions readable. NOT for performance — the overlay map\nhas no freeze. Live (updates as you pan/zoom the map).
+tr=Regroupe les tas denses de marqueurs en une icône pour garder les régions\nchargées lisibles. PAS pour la performance — la carte overlay ne fige pas.\nEn direct (se met à jour quand vous déplacez/zoomez la carte).
+
+en=One mixed pile per location. Per-category opt-in above.
+tr=Une pile mixte par lieu. Opt-in par catégorie ci-dessus.
+
+en=Cluster size — markers per location (live)
+tr=Taille de groupe — marqueurs par lieu (direct)
+
+en=A location collapses into one pile when it holds MORE\nthan this many (clustered-category) markers. LOWER = MORE\nclustering. Min 1. Live — reopen the map to see it.\nWhen distance-adaptive is on, this is the FAR (clustered) size.
+tr=Un lieu se replie en une pile quand il contient PLUS que ce nombre de\nmarqueurs (des catégories groupées). PLUS BAS = PLUS de groupement. Min 1.\nDirect — rouvrez la carte pour le voir. Avec l'adaptatif à la distance,\nc'est la taille LOINTAINE (groupée).
+
+en=Distance-adaptive (cluster by distance from player)
+tr=Adaptatif à la distance (grouper selon la distance au joueur)
+
+en=Own mode: OVERRIDES the per-category opt-in above and clusters\nEVERY category by distance — full detail (individual items)\nnear you, dense spots far away merged into piles. Ramps from\nthe near size to the far size below. OVERWORLD ONLY (the\nunderground player position isn't available, so underground\nuses normal threshold + per-category). Live.
+tr=Mode à part : IGNORE l'opt-in par catégorie et groupe TOUTES les catégories\nselon la distance — plein détail (objets individuels) près de vous, les zones\ndenses lointaines fusionnées en piles. Progresse de la taille proche à la\ntaille lointaine ci-dessous. SURFACE UNIQUEMENT (position souterraine du\njoueur indisponible ; le souterrain garde seuil normal + par catégorie). Direct.
+
+en=Near radius (tiles)
+tr=Rayon proche (tuiles)
+
+en=Detail near you (cluster size)
+tr=Détail près de vous (taille de groupe)
+
+en=Cluster size WITHIN the near radius (higher = more individual\nitems shown near you). Ramps down to 'Cluster size' (above) far away.
+tr=Taille de groupe DANS le rayon proche (plus haut = plus d'objets\nindividuels près de vous). Redescend vers « Taille de groupe » au loin.
+
+en=Far radius (tiles)
+tr=Rayon lointain (tuiles)
+
+en=Preset:
+tr=Préréglage :
+
+en=Completionist
+tr=Complétionniste
+
+en=Max detail: individual items everywhere; only the densest spots cluster. No distance scaling.
+tr=Détail max : objets individuels partout ; seuls les endroits les plus denses se groupent. Pas d'adaptation à la distance.
+
+en=Explorer
+tr=Explorateur
+
+en=Balanced: individual items in your immediate area, everything else merged.
+tr=Équilibré : objets individuels autour de vous, tout le reste fusionné.
+
+en=Performance
+tr=Performance
+
+en=Aggressive far-merge: fewest distant icons, most declutter.
+tr=Fusion lointaine agressive : le moins d'icônes au loin, le plus de désencombrement.
+
+en=Quest navigation
+tr=Navigation de quêtes
+
+en=Enable "World - Quest NPC" above to pin quest NPCs on the map.
+tr=Activez « Monde - PNJ de quête » ci-dessus pour épingler les PNJ de quête sur la carte.
+
+en=Quest Browser (%zu questlines)
+tr=Navigateur de quêtes (%zu lignes de quête)
+
+en=Steps in order; location named per line.
+tr=Étapes dans l'ordre ; lieu nommé par ligne.
+
+en=Based on vanilla quests; modded profiles (ERR/Convergence/...) may differ.
+tr=Basé sur les quêtes vanilla ; les mods (ERR/Convergence/...) peuvent différer.
+
+en=(!) = order-sensitive / missable -- read its note before doing other quests.
+tr=(!) = sensible à l'ordre / manquable -- lisez sa note avant de faire d'autres quêtes.
+
+en=filter by NPC name...
+tr=filtrer par nom de PNJ...
+
+en=Grey out dead-NPC questlines (experimental)
+tr=Griser les quêtes au PNJ mort (expérimental)
+
+en=POTENTIALLY BUGGY. Death flags are reverse-engineered per NPC;\na line may grey incorrectly, or stay normal when its NPC is gone.\nSome flags are also shared with normal completion ([concluded]).\nTurn this off to always show every questline. Saved to the ini.
+tr=POTENTIELLEMENT BOGUÉ. Les drapeaux de mort sont rétro-conçus par PNJ ;\nune ligne peut se griser à tort, ou rester normale alors que son PNJ a\ndisparu. Certains drapeaux sont partagés avec la simple complétion\n([conclu]). Désactivez pour toujours tout afficher. Sauvé dans l'ini.
+
+en=  [concluded]
+tr=  [conclu]
+
+en=  [unfinishable]
+tr=  [inachevable]
+
+en=  [Hostile]
+tr=  [Hostile]
+
+en=[concluded] This questline is over -- the NPC has either finished their story or is gone. (This flag is set on completion as well as on death.)
+tr=[conclu] Cette ligne de quête est terminée -- le PNJ a fini son histoire ou a disparu. (Ce drapeau se déclenche à la complétion comme à la mort.)
+
+en=[unfinishable] This questline's NPC is dead -- it can no longer be completed.
+tr=[inachevable] Le PNJ de cette ligne de quête est mort -- elle ne peut plus être terminée.
+
+en=[Hostile -- obtain absolution at the Church of Vows to restore this NPC.]
+tr=[Hostile -- obtenez l'absolution à l'Église des Voeux pour restaurer ce PNJ.]
+
+en=Link: %s
+tr=Lien : %s
+
+en=[auto]
+tr=[auto]
+
+en=Mirrors + can write the live EMEVD flag (cheat ON) -- can break this questline.
+tr=Reflète + peut écrire le drapeau EMEVD (triche ACTIVE) -- peut casser cette quête.
+
+en=Read-only mirror of the live EMEVD flag. Enable 'Allow writing quest flags' to edit.
+tr=Miroir en lecture seule du drapeau EMEVD. Activez « Autoriser l'écriture des drapeaux » pour éditer.
+
+en=Base game (%zu)
+tr=Jeu de base (%zu)
+
+en=Shadow of the Erdtree (%zu)
+tr=Shadow of the Erdtree (%zu)
+
+en=Other quests — auto-detected (%zu)
+tr=Autres quêtes — auto-détectées (%zu)
+
+en=Found in this mod's data; no step guide yet.
+tr=Trouvées dans les données de ce mod ; pas encore de guide d'étapes.
+
+en=[concluded]
+tr=[conclu]
+
+en=[in progress]
+tr=[en cours]
+
+en=Tick steps to track progress; Save to keep it. Original text.
+tr=Cochez les étapes pour suivre votre progression ; Sauver pour conserver. Texte original.
+
+en=Sections & categories
+tr=Sections et catégories
+
+en=search categories... (e.g. sorcer, ash, smith)
+tr=chercher une catégorie... (ex. sorcel, cendre, forge)
+
+en=(whole section)
+tr=(toute la section)
+
+en=Show all
+tr=Tout afficher
+
+en=Show none
+tr=Rien afficher
+
+en=Cluster all
+tr=Tout grouper
+
+en=Cluster none
+tr=Rien grouper
+
+en=left = show on map   |   right [cluster] = join location pile (live) / unchecked = shown normally
+tr=gauche = afficher sur la carte   |   droite [grouper] = rejoint la pile du lieu (direct) / décoché = affiché normalement
+
+en=Also hides the game's OWN pin for these spots while enabled\n("Hide native landmark pins" in Settings, avoids duplicates).\nThe native pin change shows the NEXT time the map is opened.
+tr=Masque aussi l'épingle du JEU pour ces lieux tant que c'est actif\n(« Masquer les épingles natives » dans les réglages, évite les doublons).\nLe changement apparaît à la PROCHAINE ouverture de la carte.
+
+en=Items not yet collected / total collectible in this category.
+tr=Objets pas encore récupérés / total récupérable dans cette catégorie.
+
+en=cluster
+tr=grouper
+
+en=Checked = this category's markers fold into the\none-per-location cluster pile. Unchecked = shown\nnormally on the map. Live — reopen the map to apply.
+tr=Coché = les marqueurs de cette catégorie se replient dans la pile\ndu lieu. Décoché = affichés normalement sur la carte.\nDirect — rouvrez la carte pour appliquer.
+
+en=ERR integration
+tr=Intégration ERR
+
+en=Hide boss markers (ERR already marks bosses)
+tr=Masquer les marqueurs de boss (ERR marque déjà les boss)
+
+en=ELDEN RING Reforged natively marks bosses (and enemy camps,\nplus completion markers) on the world map. Enable this to hide\nMapForGoblins' own boss markers and avoid the duplicate.\nSame as unchecking 'World - Bosses' above; persists on Save.
+tr=ELDEN RING Reforged marque nativement les boss (et les camps ennemis,\nplus les marqueurs de complétion) sur la carte. Activez pour masquer les\nmarqueurs de boss de MapForGoblins et éviter le doublon.\nÉquivaut à décocher « Monde - Boss » ; persiste à la sauvegarde.
+
+en=ERR also marks enemy camps & completion (cleared dungeons/ruins).
+tr=ERR marque aussi les camps ennemis et la complétion (donjons/ruines terminés).
+
+en=Debug
+tr=Débogage
+
+en=Live projection (engine world→map fn; fixes dungeon/UG placement)
+tr=Projection en direct (fonction monde→carte du moteur ; corrige donjons/souterrain)
+
+en=Danger zone
+tr=Zone dangereuse
+
+en=Reset quest progression
+tr=Réinitialiser la progression des quêtes
+
+en=Clear every quest-step checkmark. Save to INI to persist.
+tr=Efface toutes les coches d'étapes de quête. Sauver dans l'INI pour conserver.
+
+en=Reset parameters to default
+tr=Réinitialiser les paramètres par défaut
+
+en=Restore all settings to defaults and write the ini.\nRestart the game to fully apply.
+tr=Restaure tous les réglages par défaut et écrit l'ini.\nRedémarrez le jeu pour appliquer complètement.
+
+en=Clear ALL quest-step checkmarks?
+tr=Effacer TOUTES les coches d'étapes de quête ?
+
+en=Cannot be undone. Save to INI afterwards to persist.
+tr=Irréversible. Sauver dans l'INI ensuite pour conserver.
+
+en=Yes, clear
+tr=Oui, effacer
+
+en=Cancel
+tr=Annuler
+
+en=Reset ALL settings to defaults?
+tr=Réinitialiser TOUS les réglages par défaut ?
+
+en=Writes defaults to MapForGoblins.ini. Restart to fully apply.
+tr=Écrit les valeurs par défaut dans MapForGoblins.ini. Redémarrez pour appliquer.
+
+en=Yes, reset
+tr=Oui, réinitialiser
+
+en=Map for Goblins - ERROR
+tr=Map for Goblins - ERREUR
+
+en=The mod's map folder (map\\MapStudio\\*.msb.dcx) could not be found. The mod cannot load its markers.
+tr=Le dossier de cartes du mod (map\\MapStudio\\*.msb.dcx) est introuvable. Le mod ne peut pas charger ses marqueurs.
+
+en=Map for Goblins - WARNING
+tr=Map for Goblins - AVERTISSEMENT
+
+en=The RE signatures were not resolved correctly. The mod will probably not work correctly (markers, graces or loot missing or wrong).
+tr=Les signatures RE n'ont pas été résolues correctement. Le mod ne fonctionnera probablement pas bien (marqueurs, grâces ou butin manquants ou faux).
+
+en=[-] collapse
+tr=[-] réduire
+
+en=%s close | %.0f fps
+tr=%s fermer | %.0f fps
+
+en=find setting... (e.g. altitude, minimap zoom, spoiler)
+tr=chercher un réglage... (ex. altitude, zoom minicarte, spoiler)
+
+en=no setting matches "%s" — clear the box to show all
+tr=aucun réglage ne correspond à « %s » — videz la case pour tout afficher
+
+en=Pause the game (world sim freezes; menu stays usable)
+tr=Mettre le jeu en pause (le monde fige ; le menu reste utilisable)
+
+en=Quest NPC
+tr=PNJ de quête
+
+en=  [in progress]
+tr=  [en cours]
+
+en=Unknown item
+tr=Objet inconnu
+
+en=%d markers
+tr=%d marqueurs
+
+en=%d/%d left
+tr=%d/%d restants
+
+en=\n(x%d in this pile)
+tr=\n(x%d dans cette pile)
+
+en=+%d more
+tr=+%d de plus
+
+# ── Category / section labels (generated tables, translated at display) ──
+
+en=Equipment
+tr=Équipement
+
+en=Key Items
+tr=Objets clés
+
+en=Loot
+tr=Butin
+
+en=Magic
+tr=Magie
+
+en=Quest
+tr=Quête
+
+en=Reforged
+tr=Reforged
+
+en=World
+tr=Monde
+
+en=Equipment - Armaments
+tr=Équipement - Armes
+
+en=Equipment - Armour
+tr=Équipement - Armures
+
+en=Equipment - Ashes of War
+tr=Équipement - Cendres de guerre
+
+en=Equipment - Spirits
+tr=Équipement - Esprits
+
+en=Equipment - Talismans
+tr=Équipement - Talismans
+
+en=Key - Celestial Dew
+tr=Clé - Rosée céleste
+
+en=Key - Cookbooks
+tr=Clé - Livres de recettes
+
+en=Key - Crystal Tears
+tr=Clé - Larmes de cristal
+
+en=Key - Great Runes
+tr=Clé - Grandes runes
+
+en=Key - Imbued Sword Keys
+tr=Clé - Clés-épées imprégnées
+
+en=Key - Larval Tears
+tr=Clé - Larmes larvaires
+
+en=Key - Lost Ashes
+tr=Clé - Cendres perdues
+
+en=Key - Pots n Perfumes
+tr=Clé - Pots et parfums
+
+en=Key - Scadutree Fragments
+tr=Clé - Fragments de Scadutree
+
+en=Key - Seeds Tears Ashes
+tr=Clé - Graines, larmes, cendres
+
+en=Key - Whetblades
+tr=Clé - Lames à aiguiser
+
+en=Loot - Ammo
+tr=Butin - Munitions
+
+en=Loot - Bell-Bearings
+tr=Butin - Sonnailles
+
+en=Loot - Consumables
+tr=Butin - Consommables
+
+en=Loot - Crafting Materials
+tr=Butin - Matériaux d'artisanat
+
+en=Loot - Dragon Hearts
+tr=Butin - Coeurs de dragon
+
+en=Loot - Farmable Drops
+tr=Butin - Drops farmables
+
+en=Loot - Gestures
+tr=Butin - Gestes
+
+en=Loot - Gloveworts
+tr=Butin - Digitales
+
+en=Loot - Golden Runes
+tr=Butin - Runes dorées
+
+en=Loot - Golden Runes (Low)
+tr=Butin - Runes dorées (basses)
+
+en=Loot - Greases
+tr=Butin - Graisses
+
+en=Loot - Great Gloveworts
+tr=Butin - Grandes digitales
+
+en=Loot - Material Nodes
+tr=Butin - Noeuds de matériaux
+
+en=Loot - Merchant Bell-Bearings
+tr=Butin - Sonnailles de marchand
+
+en=Loot - MP-Fingers
+tr=Butin - Doigts multijoueur
+
+en=Loot - Prattling Pates
+tr=Butin - Crânes babillards
+
+en=Loot - Rada Fruit
+tr=Butin - Fruits de Rada
+
+en=Loot - Reusables
+tr=Butin - Réutilisables
+
+en=Loot - Rune Arcs
+tr=Butin - Arcs de rune
+
+en=Loot - Smithing Stones
+tr=Butin - Pierres de forge
+
+en=Loot - Smithing Stones (Low)
+tr=Butin - Pierres de forge (basses)
+
+en=Loot - Smithing Stones (Rare)
+tr=Butin - Pierres de forge (rares)
+
+en=Loot - Stat Boosts
+tr=Butin - Bonus de stats
+
+en=Loot - Stonesword Keys
+tr=Butin - Clés-épées de pierre
+
+en=Loot - Throwables
+tr=Butin - Projectiles
+
+en=Loot - Utilities
+tr=Butin - Utilitaires
+
+en=Magic - Incantations
+tr=Magie - Incantations
+
+en=Magic - Memory Stones
+tr=Magie - Pierres de mémoire
+
+en=Magic - Prayerbooks
+tr=Magie - Livres de prières
+
+en=Magic - Sorceries
+tr=Magie - Sorcelleries
+
+en=Quest - Deathroot
+tr=Quête - Morterine
+
+en=Quest - Progression
+tr=Quête - Progression
+
+en=Quest - Seedbed Curses
+tr=Quête - Malédictions de semis
+
+en=Reforged - Ember Pieces
+tr=Reforged - Fragments de braise
+
+en=Reforged - Fortunes
+tr=Reforged - Fortunes
+
+en=Reforged - Items
+tr=Reforged - Objets
+
+en=Reforged - Rune Pieces
+tr=Reforged - Fragments de rune
+
+en=World - Bosses
+tr=Monde - Boss
+
+en=World - Castles
+tr=Monde - Châteaux
+
+en=World - Churches
+tr=Monde - Églises
+
+en=World - Colosseums
+tr=Monde - Colisées
+
+en=World - Divine Towers
+tr=Monde - Tours divines
+
+en=World - Dungeons
+tr=Monde - Donjons
+
+en=World - Elevators
+tr=Monde - Ascenseurs
+
+en=World - Evergaols
+tr=Monde - Géôles éternelles
+
+en=World - Forts
+tr=Monde - Forts
+
+en=World - Graces
+tr=Monde - Grâces
+
+en=World - Grand Lifts
+tr=Monde - Grands élévateurs
+
+en=World - Hostile NPC
+tr=Monde - PNJ hostiles
+
+en=World - Imp Statues
+tr=Monde - Statues d'imp
+
+en=World - Interactables
+tr=Monde - Interactifs
+
+en=World - Kindling Spirits
+tr=Monde - Esprits à raviver
+
+en=World - Legacy Dungeons
+tr=Monde - Donjons majeurs
+
+en=World - Maps
+tr=Monde - Cartes
+
+en=World - Minor Erdtrees
+tr=Monde - Arbres-Monde mineurs
+
+en=World - Miquella's Cross
+tr=Monde - Croix de Miquella
+
+en=World - Paintings
+tr=Monde - Peintures
+
+en=World - Portals
+tr=Monde - Portails
+
+en=World - Quest NPC
+tr=Monde - PNJ de quête
+
+en=World - Rises & Towers
+tr=Monde - Tours de mage
+
+en=World - Ruins
+tr=Monde - Ruines
+
+en=World - Shacks
+tr=Monde - Cabanes
+
+en=World - Smithing Tables
+tr=Monde - Tables de forge
+
+en=World - Spiritspring Hawks
+tr=Monde - Faucons des sources
+
+en=World - Spirit Springs
+tr=Monde - Sources spirituelles
+
+en=World - Stakes of Marika
+tr=Monde - Effigies de Marika
+
+en=World - Summoning Pools
+tr=Monde - Bassins d'invocation
+
+en=World - Towns & Villages
+tr=Monde - Villes et villages
+
+en=World - Unique Sites
+tr=Monde - Sites uniques
+
+# ── Settings-search keywords (per block; searched in EN OR the words below) ──
+
+en=find item object search marker name locate ring quest
+tr=trouver objet recherche chercher marqueur nom localiser cercle quete quête
+
+en=require map fragments hide area icons until fragment found
+tr=exiger fragments carte masquer cacher zone icones icônes fragment trouve trouvé
+
+en=gray grey collected cleared markers dim looted killed bosses hide instead
+tr=griser gris recuperes récupérés termines terminés marqueurs ramasses ramassés boss vaincus masquer
+
+en=stack identical items merge same-item nodes
+tr=empiler objets identiques fusionner noeuds pile
+
+en=show region labels major-region names map
+tr=afficher noms regions régions etiquettes étiquettes carte
+
+en=red boss markers tint icons skull
+tr=rouge boss marqueurs teinter icones icônes crane crâne
+
+en=altitude arrows up above down below player badge
+tr=altitude fleches flèches haut dessus bas dessous joueur badge
+
+en=overlay graces draw all gpu sprite engine cpu baked atlas
+tr=graces grâces overlay dessiner toutes gpu sprite moteur cpu atlas
+
+en=hide native landmark pins duplicate suppress erdtree dungeon church
+tr=masquer epingles épingles natives doublon supprimer arbre-monde donjon eglise église
+
+en=spoiler-free loot gray anonymous randomizer hide item
+tr=spoiler butin gris anonyme randomizer masquer objet
+
+en=gamepad toggle combo record controller buttons
+tr=manette combo enregistrer controleur contrôleur boutons ouverture
+
+en=gamepad keyboard layout alphabetical qwerty virtual on-screen
+tr=manette clavier disposition alphabetique alphabétique qwerty azerty virtuel
+
+en=marker scale overlay map master category icons grace offset cluster piles size motion delay frames zoom reset
+tr=echelle échelle marqueurs carte general général categorie catégorie icones icônes grace grâce decalage décalage piles taille mouvement retard frames zoom reinitialiser réinitialiser
+
+en=minimap in-game hud show corner zoom radius opacity anchor right bottom offset north-up
+tr=minicarte hud jeu afficher coin zoom rayon opacite opacité ancrer droite bas decalage décalage nord
+
+en=clustering cluster enable declutter dense size threshold distance adaptive near far radius preset completionist explorer performance
+tr=groupement grouper activer desencombrer désencombrer dense taille seuil distance adaptatif proche lointain rayon prereglage préréglage completionniste complétionniste explorateur performance
+
+en=quest navigation browser npc questlines steps missable grey dead
+tr=quete quête navigation navigateur pnj lignes etapes étapes manquable gris mort
+
+en=sections categories marker show hide cluster world
+tr=sections categories catégories marqueur afficher masquer grouper monde
+
+en=err integration reforged hide boss markers camps completion
+tr=err integration intégration reforged masquer boss marqueurs camps completion complétion
+
+en=debug live projection engine world map dungeon underground placement
+tr=debogage débogage projection direct moteur monde carte donjon souterrain placement
+
+en=danger zone reset quest progression parameters defaults
+tr=zone dangereuse reinitialiser réinitialiser quete quête progression parametres paramètres defaut défaut
+
+en=pause game freeze stop world
+tr=pause jeu figer geler stop monde

@@ -94,6 +94,25 @@ GetAsyncKeyState → typing its pause key in ANOTHER app toggles pause) — now 
 pause; **recommend removing PauseTheGame.dll from the me3 profiles**. A driver clears any pause
 via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (spiderfy, F2).
 
+## Overlay i18n v1 — SHIPPED + in-game validated FR (2026-07-02, `feat/overlay-i18n-v1`)
+
+`goblin::i18n::tr()` (host module, GOBLIN_RENDER_API-exported) + ini `overlay_language`
+(auto|en|fr|…) + disk table `lang/<code>.txt` (en=/tr= pairs, \n-escaped; missing → EN
+fallback). ~180 tr() sites across the panel section files + map_renderer tooltip glue;
+category/section labels translated at display (incl. the alphabetical sort + the category
+search box matching EN or FR); `Filter::match` also matches translated per-block keyword
+strings so the settings search works in both languages ("echelle" → Marker scale, validated
+in-game). `assets/lang/fr.txt` ships ~270 translated strings; build.bat packaging copies
+`assets/lang/*.txt` into the package (ERR: `dll/offline/lang/`; profiles: `MapForGoblins/lang/`)
+— **packaging path NOT yet exercised on the Windows box** (next `build.bat snapshot` run
+verifies it). Gotchas: (1) `auto` reads the WINE prefix locale under Proton (usually en_US
+even on a French desktop) → French users set `overlay_language = fr` explicitly — the
+deployed dev ini has it; (2) avoid `œ` in translations (outside the merged font ranges —
+use "oe"); (3) translated format strings must keep the % placeholders in order. Deliberately
+NOT translated (v2 candidates): quest-browser step CONTENT (hand-authored corpus, big),
+dev-only sections (P2b/sprites/grace-debug/dev-tools), spdlog lines. The same lang-file
+mechanism can carry future languages — drop a `lang/de.txt` etc., no rebuild.
+
 ## Clang-only Phase 1 — WINDOWS BUILD + SNAPSHOT VALIDATED (2026-07-02) → only the in-game matrix left
 
 `build.bat` is now ninja+clang-cl (no VS/msbuild; tool paths env-overridable, defaults = the

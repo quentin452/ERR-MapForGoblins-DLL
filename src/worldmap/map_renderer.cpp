@@ -13,6 +13,7 @@
 #include "goblin_collected.hpp"      // is_original_row_collected (rune/ember graying)
 #include "goblin_kindling.hpp"       // is_row_collected (kindling graying)
 #include "goblin_major_regions.hpp"  // MAJOR_REGION_ANCHORS (region labels)
+#include "goblin_i18n.hpp"           // tr() — tooltip glue strings (overlay UI localization)
 #include "goblin_name_regions.hpp"   // NAME_REGIONS (MapNameOverride debug viz)
 #include "goblin_map_data.hpp"       // Category enum (WorldQuestNPC)
 #include "goblin_markers.hpp"        // markers::category_name (readable [ICONTIER] audit output)
@@ -861,7 +862,7 @@ std::string marker_label(const Marker &m)
     // Quest-NPC pin (QuestNpcLayer): NPC name + "quest — current step" + coarse zone.
     if (m.tip_quest)
     {
-        std::string t = name.empty() ? std::string("Quest NPC") : name;
+        std::string t = name.empty() ? std::string(goblin::i18n::tr("Quest NPC")) : name;
         t += "\n";
         t += m.tip_quest;
         if (m.tip_step && m.tip_step[0]) { t += " \xE2\x80\x94 "; t += m.tip_step; }  // em dash
@@ -869,8 +870,9 @@ std::string marker_label(const Marker &m)
         // Runtime fallback pin (no hand step data) → append the LIVE quest state. Read at hover
         // only (one flag, when this marker is the hovered one), so it never re-reads per frame.
         if (m.quest_concluded_flag)
-            t += goblin::overlay_api::read_event_flag((uint32_t)m.quest_concluded_flag) ? "  [concluded]"
-                                                                               : "  [in progress]";
+            t += goblin::overlay_api::read_event_flag((uint32_t)m.quest_concluded_flag)
+                     ? goblin::i18n::tr("  [concluded]")
+                     : goblin::i18n::tr("  [in progress]");
         return t;
     }
     if (name.empty())
@@ -881,7 +883,7 @@ std::string marker_label(const Marker &m)
         // the location here used to silently drop the stack count). Non-loot nameless markers are
         // unchanged (location only).
         if (m.lot_backed || !m.stacked.empty() || !qty.empty())
-            name = "Unknown item";
+            name = goblin::i18n::tr("Unknown item");
         else
             return loc;
     }
@@ -894,9 +896,12 @@ std::string marker_label(const Marker &m)
 std::string pile_label(int loc_pname, int remaining, int total)
 {
     std::string loc = goblin::overlay_api::lookup_text_utf8(loc_pname);
-    std::string n = (remaining == total)
-                        ? (std::to_string(total) + " markers")
-                        : (std::to_string(remaining) + "/" + std::to_string(total) + " left");
+    char nb[64];
+    if (remaining == total)
+        std::snprintf(nb, sizeof(nb), goblin::i18n::tr("%d markers"), total);
+    else
+        std::snprintf(nb, sizeof(nb), goblin::i18n::tr("%d/%d left"), remaining, total);
+    std::string n = nb;
     return loc.empty() ? n : (loc + "\n" + n);
 }
 // Draw a small dark tooltip box near the cursor on the foreground draw list.
@@ -1365,14 +1370,19 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
                     const int en = e.n;
                     hover_test(hover, mouse, pos[(size_t)k], iconHalf, [&, mm, en] {
                         std::string s = marker_label(*mm);
-                        if (en > 1) s += "\n(x" + std::to_string(en) + " in this pile)";
+                        if (en > 1)
+                        {
+                            char pb[48];
+                            std::snprintf(pb, sizeof(pb), goblin::i18n::tr("\n(x%d in this pile)"), en);
+                            s += pb;
+                        }
                         return s;
                     });
                 }
                 if (n_total > n)
                 {
                     char more[24];
-                    std::snprintf(more, sizeof(more), "+%d more", n_total - n);
+                    std::snprintf(more, sizeof(more), goblin::i18n::tr("+%d more"), n_total - n);
                     ImVec2 ts = ImGui::CalcTextSize(more);
                     ImVec2 tp(c.x - ts.x * 0.5f, c.y + max_r + iconHalf + 8.f);
                     fg->AddText(ImVec2(tp.x + 1, tp.y + 1), IM_COL32(0, 0, 0, 205), more);

@@ -32,6 +32,7 @@ namespace goblin::config
     uint32_t overlayToggleKey = 0x70;  // VK_F1 — overlay menu open/close key
     uint16_t overlayToggleGamepad = 0x8000 | 0x0080;  // XINPUT_GAMEPAD_Y | XINPUT_GAMEPAD_RIGHT_THUMB (Y+R3)
     uint8_t virtualKeyboardLayout = 0;  // 0 = Alphabetical, 1 = QWERTY
+    std::string overlayLanguage = "auto";  // overlay UI language: auto|en|fr|... (lang/<code>.txt)
     std::string showAllExcept = "";
     std::string debugRpcPort = "";  // dev debug RPC TCP loopback port; empty = disabled
 
@@ -256,6 +257,12 @@ namespace
                          "Button names: A, B, X, Y, LB, RB, L3, R3, Back, Start, Up, Down, Left, Right.\n"
                          "Combine with '+', e.g. Y+R3. Use the in-menu recorder to set by pressing.",
                          false, nullptr},
+                IniEntry{"overlay_language", IniType::String, &cfg::overlayLanguage, "auto",
+                         "Overlay UI language (F1 panel + marker tooltips). 'auto' = follow the\n"
+                         "OS user-interface language; 'en' = English; any other code (fr, de, ...)\n"
+                         "loads lang\\<code>.txt from the mod folder (missing file/string falls\n"
+                         "back to English). Game CONTENT names (items, places) always come from\n"
+                         "the game's own files in ITS language, this only affects our UI text.", false, nullptr},
                 IniEntry{"virtual_keyboard_layout", IniType::U8, &cfg::virtualKeyboardLayout, "0",
                          "On-screen keyboard layout for gamepad text entry (item search / category "
                          "filter). 0 = Alphabetical, 1 = QWERTY.", false, nullptr},
