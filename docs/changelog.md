@@ -35,6 +35,11 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   everywhere else — randomizer players flip that one key.
 
 ### Added
+- **Native landmark-pin suppression** (`landmark_suppress_native`, default on) — while a World-landmark
+  category (Minor Erdtrees, Dungeons, Churches, …) is enabled, the game's own pin for those spots is
+  hidden on the native world map so the overlay icon isn't a duplicate; turn the category (or the
+  option) off and the native pins come back. Per-category, mod-agnostic (works on any install), takes
+  effect on the next map open. Graces and boss pins are untouched (they have their own systems).
 - **9 native-pin parity landmark categories** (`World - Churches / Ruins / Rises & Towers / Shacks /
   Forts / Castles / Towns & Villages / Colosseums / Unique Sites`) — completes coverage of every pin
   family the game itself draws on the world map, from a full audit of `WorldMapPointParam` iconIds
@@ -154,9 +159,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   item's real `EquipParam` iconId (`resolve_loot_item_textid` → `item_real_icon_id`) and stored on the
   marker; the renderer prefers `native_item_icon(item_icon_id)` (resident GPU → disk), falling back to
   the category rep → baked atlas → circle on any miss. Mod-agnostic (reads the active install's params).
-- **Summoning Pool glyph (Martyr Effigy)** — `World - Summoning Pools` markers now draw the native
-  `MENU_MAP_89` glyph. Resolved by iconId from the active install's map-point layout, with a disk
-  (no-bake) fallback when the resident GPU symbol isn't loaded — mod-agnostic, not an ERR bake.
+- **Summoning Pool / Stake of Marika / Elevator native glyphs** — Pools and Stakes both draw the
+  native Marika-statue glyph (`MENU_MAP_89`, it matches both in-world objects) told apart by tint:
+  pools = multiplayer blue, stakes = warm gold. Elevators draw the native lift-platform glyph
+  (`MENU_MAP_21`), greyed. These POI glyphs render at a reduced per-category scale so they sit
+  naturally among item icons. Resolved by iconId from the active install's map-point layout, with a
+  disk (no-bake) fallback when the resident GPU symbol isn't loaded — mod-agnostic, not an ERR bake.
 - **Map-point disk fallback (mod-agnostic)** — `MapPointProvider` now falls back to the on-disk glyph
   by iconId when the resident GPU symbol is unavailable, so any category with a map-point iconId renders
   correctly even before/without the world map loading that symbol.

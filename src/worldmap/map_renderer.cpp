@@ -112,8 +112,22 @@ struct IconHandle
     ImTextureID tex = nullptr;
     ImVec2 uv0{}, uv1{};
     float scale = 1.0f; // draw-size multiplier (native map symbols are bigger than item dots)
+    unsigned int tint = 0; // per-category ABGR multiplied into the draw tint; 0 = none (white)
     int tier = TIER_CIRCLE; // tier of the provider chain that resolved this handle (audit census)
 };
+
+// Per-channel multiply of the state tint (collected-dim / boss-red) with a category tint.
+// b == 0 means "no category tint" (the sparse-table default), NOT transparent black.
+static inline ImU32 mul_tint(ImU32 a, ImU32 b)
+{
+    if (!b)
+        return a;
+    const unsigned r = (((a >> 0) & 0xff) * ((b >> 0) & 0xff)) / 255u;
+    const unsigned g = (((a >> 8) & 0xff) * ((b >> 8) & 0xff)) / 255u;
+    const unsigned bl = (((a >> 16) & 0xff) * ((b >> 16) & 0xff)) / 255u;
+    const unsigned al = (((a >> 24) & 0xff) * ((b >> 24) & 0xff)) / 255u;
+    return (al << 24) | (bl << 16) | (g << 8) | r;
+}
 
 struct IconProvider
 {
@@ -197,7 +211,9 @@ struct IconSet
             int gid = goblin::worldmap::category_gpu_iconId(m.category);
             if (gid > 0 && mappoint.resolve(IconKey{IconKey::MapPoint, nullptr, gid}, out))
             {
-                out.scale = (*goblin::overlay_api::cfg_mapSymbolScale_ptr());
+                out.scale = (*goblin::overlay_api::cfg_mapSymbolScale_ptr()) *
+                            goblin::worldmap::category_gpu_iconId_scale(m.category);
+                out.tint = goblin::worldmap::category_gpu_iconId_tint(m.category);
                 out.tier = TIER_MP_ID;
                 return true;
             }
@@ -317,7 +333,13 @@ static inline void draw_legible_icon(ImDrawList *fg, ImVec2 center, float half, 
         if (half < minHalf)
             half = minHalf;
         if (backing && small)
-            fg->AddCircleFilled(center, half + 1.5f, IM_COL32(0, 0, 0, 165)); // contrast backing
+        {
+            // The disc follows the icon's OWN alpha: a collected marker dims via dim_color
+            // (alpha halved), and a full-strength disc under a greyed icon read as "not
+            // collected yet" on the map/minimap (user-reported confusion 2026-07-02).
+            const unsigned discA = 165u * ((tint >> 24) & 0xffu) / 255u;
+            fg->AddCircleFilled(center, half + 1.5f, IM_COL32(0, 0, 0, discA)); // contrast backing
+        }
     }
     fg->AddImage(tex, ImVec2(center.x - half, center.y - half), ImVec2(center.x + half, center.y + half),
                  uv0, uv1, tint);
@@ -382,6 +404,15 @@ unsigned int dim_color(unsigned int abgr)
     r = (r + lum * 2) / 3; g = (g + lum * 2) / 3; b = (b + lum * 2) / 3;
     a /= 2;
     return ((unsigned)a << 24) | ((unsigned)b << 16) | ((unsigned)g << 8) | (unsigned)r;
+}
+
+// Spoiler-free coverage: markers whose tooltip/icon reveals a SPECIFIC item. Lot-backed rows
+// (treasure/enemy/EMEVD drops) plus the non-lot Farmable Drops markers (each names its real
+// notable drop). Pieces/kindling/material nodes keep their identity — it is the category.
+static inline bool anonymous_marker(const goblin::worldmap::Marker &m)
+{
+    return m.lot_backed ||
+           m.category == static_cast<int>(goblin::generated::Category::WorldFarmableCollectible);
 }
 
 // Is a single loot member collected? Same predicate as marker_done's loot branch (event flag +
@@ -611,7 +642,8 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
         if (icons.resolve(m, ih))
         {
             tier_tally(ih.tier, m.category);
-            draw_legible_icon(fg, p, half, ih.tex, ih.uv0, ih.uv1, t, (*goblin::overlay_api::cfg_iconMinHalfPx_ptr()),
+            draw_legible_icon(fg, p, half * ih.scale, ih.tex, ih.uv0, ih.uv1, mul_tint(t, ih.tint),
+                              (*goblin::overlay_api::cfg_iconMinHalfPx_ptr()),
                               tier_wants_backing(ih.tier));
         }
         else
@@ -631,9 +663,13 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
         if (done && (*goblin::overlay_api::cfg_hideCollected_ptr()))
             return; // legacy-style: hide collected/cleared entirely
     }
-    // Spoiler-free (anonymous_loot): lot-backed loot draws as a neutral gray "?" disc,
-    // hiding the item's icon/colour. Collected ones still gray; category gate unchanged.
-    if ((*goblin::overlay_api::cfg_anonymousLoot_ptr()) && m.lot_backed)
+    // Spoiler-free (anonymous_loot): loot with a per-marker ITEM identity draws as a neutral
+    // gray "?" disc, hiding the item's icon/colour. Coverage audit (user ask 2026-07-02):
+    // lot-backed rows (treasure/enemy/EMEVD drops) + the non-lot Farmable Drops markers (they
+    // name the real notable drop). Deliberately NOT anonymized: pieces/kindling (identity IS
+    // the category), material nodes (fixed gather spots, not randomized), world features.
+    // Collected ones still gray; category gate unchanged.
+    if ((*goblin::overlay_api::cfg_anonymousLoot_ptr()) && anonymous_marker(m))
     {
         float cr = half * 0.5f;
         const ImU32 fill = done ? IM_COL32(120, 120, 120, 120) : IM_COL32(155, 155, 160, 215);
@@ -654,7 +690,8 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
     {
         tier_tally(ih.tier, m.category);
         const float hh = half * ih.scale;
-        draw_legible_icon(fg, p, hh, ih.tex, ih.uv0, ih.uv1, tint, (*goblin::overlay_api::cfg_iconMinHalfPx_ptr()),
+        draw_legible_icon(fg, p, hh, ih.tex, ih.uv0, ih.uv1, mul_tint(tint, ih.tint),
+                          (*goblin::overlay_api::cfg_iconMinHalfPx_ptr()),
                           tier_wants_backing(ih.tier));
     }
     else
@@ -795,7 +832,7 @@ std::string marker_label(const Marker &m)
     const std::string qty = (shown > 1) ? (" x" + std::to_string(shown)) : std::string();
     // Spoiler-free: don't leak the item name — just "?" (+ its location, like native). Quantity is
     // not an identity spoiler, so it still shows.
-    if ((*goblin::overlay_api::cfg_anonymousLoot_ptr()) && m.lot_backed)
+    if ((*goblin::overlay_api::cfg_anonymousLoot_ptr()) && anonymous_marker(m))
         return loc.empty() ? ("?" + qty) : ("?" + qty + "\n" + loc);
     std::string name = goblin::overlay_api::lookup_text_utf8(m.name_id);
     // Quest-NPC pin (QuestNpcLayer): NPC name + "quest — current step" + coarse zone.

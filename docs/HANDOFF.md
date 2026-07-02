@@ -136,7 +136,48 @@ bakes were stale/incomplete (vanilla missed the whole Group1/2 enum block → it
 broken since Group 1; erte/convergence missed whole files). Fixed first by syncing headers, then
 made moot by deleting the per-profile dirs entirely.
 
-## Native-map landmark icon suppression — TRACKED, not started (2026-07-02)
+## Native landmark-pin suppression — IMPLEMENTED, not yet in-game verified (2026-07-02)
+
+`feat/native-landmark-pin-suppression`. **Path decision (user asked grace-path vs direct):** direct
+areaNo=99 flip on the native WMPP rows — the grace SetTo draw-only hook exists ONLY to preserve the
+fast-travel click, and landmark pins have no click action (tooltip-only, duplicated by our overlay);
+the direct path needs zero new RE and reuses the proven eviction/restore pattern. Implementation:
+registry in `goblin_section_visibility.cpp` (`reset/register/apply_native_landmark_suppression`,
+`goblin_inject.hpp` facade, GOBLIN_RENDER_API-annotated for the hotreload split);
+`build_live_landmarks` owns the lifecycle (reset RESTORES before clearing so a rebuild never bakes
+a flipped 99 into markers/orig_area; the param iterator yields live-row references so `&row` is the
+live table); the `menu_auto_toggle_loop` watcher re-applies on landmark-category / F10 master
+flips (`take_native_landmark_dirty`); config `landmark_suppress_native` (World section, default
+true, NOT ERR-only — vanilla native pins duplicate too). Per-category: only categories toggled ON
+suppress their native rows; graces (80) / bosses (41/67) untouched. Flips take effect next map
+open (same cadence as every areaNo owner). **CONFIRMED in-game (user, 2026-07-02)** with one gap:
+minor-dungeon families (Caves / Hero's Graves) kept their native pins — their OVERWORLD pin comes
+from the dist-view mark, so `areaNo_forDistViewMark` now flips to 99 alongside `areaNo` (both
+saved/restored). **ALL CONFIRMED in-game (user, 2026-07-02): dungeon pins suppressed too.**
+
+Same feedback round shipped 3 more fixes + a round 2 (deployed `e970671e`) — **ALL CONFIRMED in-game (user, 2026-07-02)**:
+- **Collected black-disc bug:** the icon-legibility contrast disc under small icons kept full alpha
+  when the icon dimmed as collected → looked uncollected. Disc alpha now follows the icon tint's
+  alpha (`draw_legible_icon`, map_renderer.cpp).
+- **"Map icons: ON/OFF" toast removed:** its only remaining trigger is the F1 menu's own master
+  checkbox — announcing what the user just clicked was noise. `show_toggle_banner` kept (unused)
+  for a future hotkey path.
+- **Stakes/Pools glyph collision (v2 after user feedback on v1's swap):** both categories now draw
+  the SAME native Marika-statue glyph (`MENU_MAP_89` — matches both in-world objects) differentiated
+  by TINT (pools = multiplayer blue, stakes = warm gold — the game's own colour language).
+  `MENU_MAP_21` reads as a lift platform (it IS the Grand Lift WMPP glyph — landmark GrandLift
+  already used it) → given to `WorldElevator`, grey-tinted. Plumbing: `CATEGORY_GPU_ICONS` grew
+  per-category `scale` (these 3 POI glyphs draw at 0.6× the 2.2 mapSymbolScale — at raw scale they
+  dwarfed item dots, user-reported) and `tint` (ABGR multiplied into the draw tint via `mul_tint`,
+  composes with collected-dim/boss-red). SB_MapCursor sheets re-checked with menu_tex_extract: no
+  dedicated stake glyph exists natively; 21/89 rects eye-confirmed.
+- **Spoiler-free coverage audit (user ask):** the only ITEM-identity leak outside `lot_backed` was
+  Farmable Drops (non-lot, names the real notable drop) → `anonymous_marker(m)` = lot_backed ∨
+  farmable now gates the "?" draw + tooltip. Deliberately NOT anonymized: pieces/kindling (identity
+  IS the category), material nodes (fixed gather spots, randomizers don't touch them), world
+  features. Enemy/EMEVD drops were already lot-backed → covered.
+
+## Native-map landmark icon suppression — TRACKED (2026-07-02) → implemented same day, see above
 
 The game still draws its OWN landmark pins on the native world map (Minor Erdtrees etc.), so our
 new landmark categories (incl. the 5 that now use the native glyphs — DivineTower/Evergaol/

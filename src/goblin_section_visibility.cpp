@@ -194,6 +194,9 @@ static std::atomic<int> g_section_apply_req{-1};  // section idx to (re)apply, -
 static constexpr int NUM_CATEGORIES = static_cast<int>(Category::WorldFarmableCollectible) + 1;
 static std::atomic<bool> g_category_visible[NUM_CATEGORIES];
 static std::atomic<bool> g_category_dirty[NUM_CATEGORIES];  // set by menu, applied by watcher
+// Native landmark-pin suppression needs a re-apply (set by menu/master toggles,
+// consumed by the watcher via take_native_landmark_dirty).
+static std::atomic<bool> g_native_landmark_dirty{false};
 // Per-category cluster opt-in (true = this category folds into clusters). Seeded
 // from config::clusterExclude at init; toggled live by the menu but only takes
 // effect after Save + restart, since clustering is planned once at inject.
@@ -451,7 +454,11 @@ void goblin::ui::set_section_visible(int idx, bool visible)
 }
 
 bool goblin::ui::icons_enabled() { return !g_icons_user_disabled.load(); }
-void goblin::ui::set_icons_enabled(bool on) { g_icons_user_disabled.store(!on); }
+void goblin::ui::set_icons_enabled(bool on)
+{
+    g_icons_user_disabled.store(!on);
+    g_native_landmark_dirty.store(true);  // master gate feeds the native-pin suppression decision
+}
 
 int goblin::ui::category_count() { return NUM_CATEGORIES; }
 
@@ -473,11 +480,80 @@ bool goblin::ui::category_visible(int idx)
     return g_category_visible[idx].load();
 }
 
+// ── Native landmark-pin suppression (see goblin_inject.hpp) ──
+// Registry of the NATIVE WorldMapPointParam rows our landmark categories re-draw.
+// build_live_landmarks owns the lifecycle (reset → register → apply); the watcher
+// re-applies on toggle flips. orig_area is captured at registration — reset RESTORES
+// before clearing so a re-registration never captures an already-flipped 99.
+namespace
+{
+constexpr int kLandmarkFirst = static_cast<int>(Category::WorldDivineTower);
+constexpr int kLandmarkLast = static_cast<int>(Category::WorldUniqueSite);
+
+struct NativeLandmarkRow
+{
+    from::paramdef::WORLD_MAP_POINT_PARAM_ST *row;
+    unsigned char orig_area;
+    // Minor-dungeon rows (caves / hero's graves / …) place their OVERWORLD pin via the
+    // dist-view mark (areaNo_forDistViewMark) — flipping areaNo alone left those native
+    // pins visible (user-reported 2026-07-02). Both fields flip together.
+    unsigned char orig_distview_area;
+    int category;
+};
+std::mutex g_native_landmark_mtx;
+std::vector<NativeLandmarkRow> g_native_landmark_rows;
+} // namespace
+
+void goblin::reset_native_landmark_rows()
+{
+    std::lock_guard<std::mutex> lk(g_native_landmark_mtx);
+    for (auto &e : g_native_landmark_rows)
+    {
+        e.row->areaNo = e.orig_area;
+        e.row->areaNo_forDistViewMark = e.orig_distview_area;
+    }
+    g_native_landmark_rows.clear();
+}
+
+void goblin::register_native_landmark_row(void *row_data, int category)
+{
+    if (category < kLandmarkFirst || category > kLandmarkLast) return;
+    auto *row = static_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(row_data);
+    std::lock_guard<std::mutex> lk(g_native_landmark_mtx);
+    g_native_landmark_rows.push_back({row, row->areaNo, row->areaNo_forDistViewMark, category});
+}
+
+void goblin::apply_native_landmark_suppression()
+{
+    std::lock_guard<std::mutex> lk(g_native_landmark_mtx);
+    const bool overlay_on = !g_icons_user_disabled.load() && !g_master_off.load();
+    int hidden = 0;
+    for (auto &e : g_native_landmark_rows)
+    {
+        const bool ours_drawn = goblin::config::landmarkSuppressNative && overlay_on &&
+                                g_category_visible[e.category].load();
+        const unsigned char want = ours_drawn ? 99 : e.orig_area;
+        const unsigned char want_dv = ours_drawn ? 99 : e.orig_distview_area;
+        if (e.row->areaNo != want)
+            e.row->areaNo = want;
+        if (e.row->areaNo_forDistViewMark != want_dv)
+            e.row->areaNo_forDistViewMark = want_dv;
+        if (ours_drawn) ++hidden;
+    }
+    if (!g_native_landmark_rows.empty())
+        spdlog::debug("[LANDMARKPIN] native landmark rows: {} suppressed / {} registered",
+                      hidden, g_native_landmark_rows.size());
+}
+
+bool goblin::take_native_landmark_dirty() { return g_native_landmark_dirty.exchange(false); }
+
 void goblin::ui::set_category_visible(int idx, bool visible)
 {
     if (idx < 0 || idx >= NUM_CATEGORIES) return;
     g_category_visible[idx].store(visible);
     g_category_dirty[idx].store(true);  // watcher applies the areaNo park/restore
+    if (idx >= kLandmarkFirst && idx <= kLandmarkLast)
+        g_native_landmark_dirty.store(true);  // watcher re-applies native pin suppression
 }
 
 // ERR integration convenience: ERR already marks bosses on the world map, so this

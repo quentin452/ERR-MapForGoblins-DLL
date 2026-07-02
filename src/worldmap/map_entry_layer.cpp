@@ -455,6 +455,11 @@ void build_live_landmarks()
     constexpr int kFirst = static_cast<int>(gen::Category::WorldDivineTower);
     constexpr int kLandmarkCount = static_cast<int>(gen::Category::WorldUniqueSite) - kFirst + 1;
     int n = 0, per_cat[kLandmarkCount] = {0};
+    // Native-pin suppression registry lifecycle: restore + clear BEFORE re-reading the
+    // rows (a rebuild must never see — or capture as orig_area — an areaNo already
+    // flipped to 99 by a previous apply), re-register each matched LIVE row (the param
+    // iterator yields references into the live table), apply once at the end.
+    goblin::reset_native_landmark_rows();
     try
     {
         for (auto [rowId, row] :
@@ -463,6 +468,7 @@ void build_live_landmarks()
             const int c = landmark_category_for_icon(row.iconId);
             if (c < 0) continue;
             push_marker(rowId, row, c, /*lotId=*/0u, /*lotType=*/0u, Source::Live);
+            goblin::register_native_landmark_row(&row, c);
             ++n;
             ++per_cat[c - kFirst];
         }
@@ -472,6 +478,7 @@ void build_live_landmarks()
         spdlog::warn("[LANDMARKLIVE] WorldMapPointParam not readable — landmark markers absent this build");
         return;
     }
+    goblin::apply_native_landmark_suppression();
     std::string breakdown;
     for (int i = 0; i < kLandmarkCount; ++i)
     {

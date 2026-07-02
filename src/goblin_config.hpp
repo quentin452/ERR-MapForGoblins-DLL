@@ -146,6 +146,13 @@ namespace goblin
         // when on, the hook installs + LOGS each grace pin build ([WARPPIN]) to confirm we can
         // identify discovered ones — actual suppression is gated behind this once verified.
         extern GOBLIN_RENDER_API bool graceSuppressNative;
+        // Hide the game's own landmark pins (Minor Erdtrees, dungeons, churches, …) on the
+        // native world map while the matching MapForGoblins landmark category is toggled ON —
+        // the overlay draws its own icon there, so the native pin is a visual duplicate.
+        // areaNo=99 flip on the native WorldMapPointParam rows, restored on toggle OFF
+        // (same eviction trick as section visibility; unlike graces there is no native
+        // click action to preserve — landmark pins are tooltip-only).
+        extern GOBLIN_RENDER_API bool landmarkSuppressNative;
         extern GOBLIN_RENDER_API bool suppressNativeBosses;
 
         // Marker dump (hotkey → dump beacon/stamp coords to file)

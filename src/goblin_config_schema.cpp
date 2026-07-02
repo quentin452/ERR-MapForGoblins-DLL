@@ -60,6 +60,7 @@ namespace goblin::config
     bool graceOverlay = true;        // our graces are the default map source now (validated)
     bool graceGpuSprite = true;      // live engine grace sprite (validated working)
     bool graceSuppressNative = true; // overlay is the sole grace source — hide native pins
+    bool landmarkSuppressNative = true; // hide native landmark pins while our category re-draws them
     bool suppressNativeBosses = true; // hide native boss pins (clear dispMask on textId2==5100)
 
     bool enableMarkerDump = false;
@@ -465,6 +466,8 @@ namespace
                 B("show_portals", showCategory[static_cast<int>(Cat::WorldPortal)], "false", "Sending Gate / waygate portals (AEG099_510 bound to EMEVD warp template 90005605)"),
                 B("show_elevators", showCategory[static_cast<int>(Cat::WorldElevator)], "false", "Elevator / lever-lift locations (MSB ObjAct events whose ObjActParam prompt is a lever)"),
                 B("show_smithing_tables", showCategory[static_cast<int>(Cat::WorldSmithingTable)], "false", "Smithing Table locations (AEG099_308 assets; 3 in the base game)"),
+                B("landmark_suppress_native", landmarkSuppressNative, "true",
+                  "Hide the game's own landmark pins (Minor Erdtrees, dungeons, churches, ...)\non the native world map while the matching World-landmark category above is\nenabled — the overlay draws its own icon there, so the native pin would be a\nduplicate. Pins come back when the category (or this) is turned off."),
                 B("hide_killed_bosses", hideKilledBosses, "false", "Hide boss/invader/hawk markers after defeat (false = show green checkmark instead)"),
             }},
 

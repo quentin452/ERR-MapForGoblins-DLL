@@ -369,15 +369,24 @@ void goblin::menu_auto_toggle_loop()
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-        // Master-off banner. The overlay itself honours the toggle — goblin_overlay
-        // skips render_markers when ui::icons_enabled() is false — so this thread only
-        // fires the visual banner when the user flips master-off via the F10 hotkey.
+        // Master toggle watch. The overlay itself honours the toggle — goblin_overlay
+        // skips render_markers when ui::icons_enabled() is false. The "Map icons:
+        // ON/OFF" banner is GONE (user 2026-07-02): the only remaining flip path is
+        // the F1 menu's own checkbox, so announcing what the user just clicked was
+        // pure noise. (show_toggle_banner kept below for a future hotkey path.)
+        (void)&show_toggle_banner;
         bool user_disabled_now = icons_user_disabled();
         if (user_disabled_now != prev_user_disabled)
         {
-            show_toggle_banner(!user_disabled_now);
             prev_user_disabled = user_disabled_now;
+            // Master gate feeds the native landmark-pin suppression decision.
+            goblin::apply_native_landmark_suppression();
         }
+
+        // Landmark category / master toggle flipped in the menu → re-decide which
+        // native landmark pins are suppressed (areaNo flips, next map open shows it).
+        if (goblin::take_native_landmark_dirty())
+            goblin::apply_native_landmark_suppression();
 
         // Per-section toggle: persist the choice to the ini (single owner of file I/O,
         // off the render thread). The overlay reads section_visible() live via the
