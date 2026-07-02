@@ -46,8 +46,9 @@ auto-resolved. `vanilla.me3` injects the SAME `dll/offline/MapForGoblins.dll` in
 game, so no separate DLL/ini copy is needed since the single-DLL migration (the `[PROFILE]` line
 tells you which mode the DLL picked).
 
-**GOTCHA — `me3 launch` BLOCKS until the game exits (`waitforexitandrun`).** Launching it
-"headless" just to grep a boot log leaves the game window open forever and the command hung — a
-human had to kill it manually (2026-07-02). If an agent launches the game only to read early
-`MapForGoblins.log` lines: grab the log once the marker line appears, then KILL the game
-(`pkill -f eldenring.exe`) — or better, tell the user the game window is theirs to close.
+**GOTCHA — the Linux `me3 launch` process can HANG AFTER the game exits.** Observed 2026-07-02:
+`eldenring.exe` was already dead, but the `me3 launch` command never returned — its exit-detection
+(the waitforexitandrun/monitor-pipe chain through Proton) missed the game's termination, and the
+hung command had to be killed manually. If an agent runs it (e.g. just to grep boot-time
+`MapForGoblins.log` lines): run it in background, read the log once the marker line appears, and
+expect to `kill` the me3 process itself afterwards — do NOT wait for it to exit on its own.
