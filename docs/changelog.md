@@ -42,6 +42,9 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   everywhere else — randomizer players flip that one key.
 
 ### Added
+- **Minimap player-direction arrow.** The minimap "you are here" dot is now an arrow that points the
+  direction the player is facing (read live from the character's yaw), so you can orient at a glance on
+  the north-up minimap instead of guessing your heading.
 - **Merchant items in the search.** The F1 "Find item / object" search now also lists items sold
   by merchants (read live from `ShopLineupParam`), including shop-only goods that have no world
   pickup — e.g. the spirit ashes and bell-bearing-unlocked stock at Twin Maiden Husks. These show
