@@ -1166,18 +1166,30 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     // the loose markers use. Sticky across frames on the pile's TILE CELL KEY (stable across
     // the per-frame pile rebuild); closes when the cursor leaves the fan's extent + margin, or
     // the pile itself disappears (zoom/page/toggle rebuilt the piles differently).
+    // Zoomed-out gate, measured in SCREEN px of one 256-unit map tile (no dependence on the
+    // engine's zoom value range). Far out, a tile is a few dozen px — a fan would blanket half
+    // the region and hover precision is meaningless; make the user zoom a step instead.
+    bool fan_zoom_ok = false;
+    {
+        proj::Px za = proj::project_screen(0.f, 0.f, view, realW, realH);
+        proj::Px zb = proj::project_screen(256.f, 0.f, view, realW, realH);
+        constexpr float kMinTilePxForFan = 64.f;
+        fan_zoom_ok = std::fabs(zb.x - za.x) >= kMinTilePxForFan;
+    }
     if (goblin::config::clusterSpiderfy)
     {
         static bool s_fan_open = false;
         static uint32_t s_fan_key = 0;
+        if (!fan_zoom_ok) s_fan_open = false;
 
         int hov = -1;
-        for (size_t i = 0; i < piles.size(); ++i)
-        {
-            if (!piles[i].visible) continue;
-            const float dx = mouse.x - piles[i].placed.x, dy = mouse.y - piles[i].placed.y;
-            if (dx * dx + dy * dy <= glyphR * glyphR) { hov = (int)i; break; }
-        }
+        if (fan_zoom_ok)
+            for (size_t i = 0; i < piles.size(); ++i)
+            {
+                if (!piles[i].visible) continue;
+                const float dx = mouse.x - piles[i].placed.x, dy = mouse.y - piles[i].placed.y;
+                if (dx * dx + dy * dy <= glyphR * glyphR) { hov = (int)i; break; }
+            }
         if (hov >= 0 && (!s_fan_open || piles[hov].key != s_fan_key))
         {
             s_fan_open = true;
@@ -1194,7 +1206,34 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
         {
             const Pile &pl = piles[open_idx];
             const ImVec2 c = pl.placed;
-            const int n_total = (int)pl.idxs.size();
+
+            // Dedup identical members for DISPLAY: a 50+ pile is usually a handful of distinct
+            // things repeated (same name_id/category/icon across the tile) — fan ONE icon per
+            // distinct identity with an xN badge instead of N copies of the same sprite. The
+            // badge count still counts MARKERS (each may carry its own per-lot item count in
+            // its tooltip, same convention as the pile number).
+            struct FanEntry { int first; int n; };
+            std::vector<FanEntry> entries;
+            {
+                std::unordered_map<uint64_t, size_t> seen;
+                entries.reserve(pl.idxs.size());
+                for (int i : pl.idxs)
+                {
+                    const Marker *m = items[i].m;
+                    const uint64_t k = (static_cast<uint64_t>(static_cast<uint32_t>(m->name_id)) << 32) ^
+                                       (static_cast<uint64_t>(static_cast<uint32_t>(m->category)) << 8) ^
+                                       (reinterpret_cast<uintptr_t>(m->icon_key) & 0xFFu);
+                    auto it = seen.find(k);
+                    if (it == seen.end())
+                    {
+                        seen.emplace(k, entries.size());
+                        entries.push_back({i, 1});
+                    }
+                    else
+                        entries[it->second].n++;
+                }
+            }
+            const int n_total = (int)entries.size();
             constexpr int kFanMax = 40;  // spiral gets unreadable past this; label the rest
             const int n = n_total > kFanMax ? kFanMax : n_total;
             const float spacing = 2.f * iconHalf + 8.f;
@@ -1238,12 +1277,24 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
                 fg->AddCircleFilled(c, max_r + iconHalf + 6.f, IM_COL32(0, 0, 0, 90));
                 for (int k = 0; k < n; ++k)
                 {
-                    const int i = pl.idxs[(size_t)k];
+                    const FanEntry &e = entries[(size_t)k];
                     fg->AddLine(c, pos[(size_t)k], IM_COL32(255, 255, 255, 90), 1.2f);
-                    draw_marker(fg, *items[i].m, pos[(size_t)k], icons, iconHalf);
-                    const Marker *mm = items[i].m;
-                    hover_test(hover, mouse, pos[(size_t)k], iconHalf,
-                               [&] { return marker_label(*mm); });
+                    draw_marker(fg, *items[e.first].m, pos[(size_t)k], icons, iconHalf);
+                    if (e.n > 1)
+                    {
+                        char xb[16];
+                        std::snprintf(xb, sizeof(xb), "x%d", e.n);
+                        ImVec2 bp(pos[(size_t)k].x + iconHalf * 0.6f, pos[(size_t)k].y + iconHalf * 0.4f);
+                        fg->AddText(ImVec2(bp.x + 1, bp.y + 1), IM_COL32(0, 0, 0, 220), xb);
+                        fg->AddText(bp, IM_COL32(255, 230, 120, 255), xb);
+                    }
+                    const Marker *mm = items[e.first].m;
+                    const int en = e.n;
+                    hover_test(hover, mouse, pos[(size_t)k], iconHalf, [&, mm, en] {
+                        std::string s = marker_label(*mm);
+                        if (en > 1) s += "\n(x" + std::to_string(en) + " in this pile)";
+                        return s;
+                    });
                 }
                 if (n_total > n)
                 {

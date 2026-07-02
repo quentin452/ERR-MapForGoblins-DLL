@@ -174,6 +174,43 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
   placement lasts one frame); drivers should send mouse_move twice (rare warp race eats the
   first).
 
+  **Spiderfy v2 (same day, user followups, both live-validated):** (1) zoomed-out GATE — no fan
+  when one 256-unit map tile projects below 64 SCREEN px (zoom-range-agnostic criterion); pile
+  tooltip still works there. (2) member DEDUP — fan shows ONE icon per distinct
+  (name_id, category, icon) with an xN badge + "(xN in this pile)" tooltip line; a 52-pile
+  rendered ~20 fanned entries with x2/x3/x5 badges instead of a 40-icon spiral.
+
+## Phase 4 session findings (2026-07-02, spiderfy-v2/RPC-HUD run) — DX sweep + background-focus blocker
+
+- **RPC command HUD shipped + live-validated:** bottom-right overlay feed of driver commands +
+  results (host-drawn, `debug_rpc::recent_commands`, entries fade after ~6s; empty = draws
+  nothing). New RPC input commands: `mouse_wheel <±notches>` (map zoom — validated), `type
+  <text>` (focused ImGui field). **Wine/AZERTY key gotcha #2:** SendInput VK→scancode uses the
+  US layout but the return scan→VK translation uses the HOST layout — so VK_A lands as 'q' on
+  AZERTY. `type` can't compensate in-process (the game-side layout reads as US; VkKeyScanW is
+  identity) — the DRIVER must send the QWERTY-position character (send "lqrvql" to type
+  "larval"; a↔q, z↔w, m→';'). Proven live: search field filled "larval", 3 matches listed,
+  result click panned the map + drew the search ring.
+- **THE systemic background blocker found (answers the user's "stuck when unfocused" question
+  for real): it is NOT the pause** (`paused=0` throughout) — **our own `g_has_focus` gate kills
+  the keyboard poll AND mouse clicks when the game window loses focus**, so RPC UI driving
+  (typing, clicking results) dies as soon as the user works elsewhere. SetForegroundWindow from
+  in-process does not reliably steal X focus back under Wine. Next work: a dev-mode override
+  (treat-as-focused while debug RPC is enabled — accept the "user keystrokes leak into the
+  background game" tradeoff, it's symmetric with PauseTheGame's global keys) or real X-side
+  focus forcing. Until then: leave the game window focused during scripted UI runs (world/map
+  driving via `key`/menus works regardless — game reads its own input path).
+- **DX sweep findings (multi-zoom, to triage):** (1) markers/piles draw OUTSIDE the map canvas
+  (on the black letterbox and OVER the day/night dial) — no clip to the map rect; (2) pile
+  LOCATION LABELS flood the screen at far zoom (idea: reuse the fan's tile-px gate to hide
+  labels when zoomed way out); (3) a fan opened near the screen edge overflows off-screen (no
+  clamp/re-anchor); (4) ER edge-pans the map when the cursor sits near a screen edge — scripted
+  mouse_move near edges drifts the view between screenshots (driver beware, not a bug).
+- **F2 (fog locate clamp): partially reproduced.** Search+locate WORKS via RPC (discovered
+  target: pan + yellow ring confirmed). The undiscovered-target click test was inconclusive —
+  blocked by the focus gate above, not by F2 itself. Retry once the focus override exists
+  ("[undiscovered]"-tagged results are the exact F2 case).
+
 ## SINGLE-DLL migration — profiles retired (2026-07-02, `feat/mapgenie-landmark-parity`)
 
 User audit request confirmed profiles had ~no reason left: zero real per-profile DATA (the only

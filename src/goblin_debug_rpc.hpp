@@ -22,6 +22,9 @@
 // for the Phase 4 loop): key <name> [hold_ms] | mouse_move <x> <y> | mouse_click [left|right]
 // [<x> <y>] — coordinates in game-window CLIENT pixels (same space as screenshots).
 
+#include <string>
+#include <vector>
+
 struct IDXGISwapChain3;
 
 namespace goblin::debug_rpc
@@ -34,4 +37,9 @@ namespace goblin::debug_rpc
     // the overlay's own draw is submitted (so `screenshot` captures game + overlay). Cheap no-op
     // (one relaxed atomic read) when the RPC is disabled or idle.
     void pump(IDXGISwapChain3 *swapchain);
+
+    // Live feed for the on-screen HUD (bottom-right corner): the last few commands + their
+    // results, newest last; entries fade out (dropped after ~6s). Empty when the RPC is
+    // disabled or idle — the HUD then draws nothing.
+    std::vector<std::string> recent_commands();
 }
