@@ -3,6 +3,7 @@ build/
 build-err/
 build-clang/
 build-erte/
+build-convergence/
 pdb-archive/
 build-linux/
 build-linux-hotreload/
@@ -20,6 +21,13 @@ tools/msb_extractor/obj/
 data/vanilla/
 data/convergence/
 data/erte/
+
+# Per-profile GENERATED C++ dirs (config.GENERATED_DIR when MFG_PROFILE != default).
+# The committed canonical is src/generated/ (+ src/generated_shared/); these
+# src/generated_<profile>/ variants are transient pipeline output, never tracked.
+src/generated_vanilla/
+src/generated_convergence/
+src/generated_erte/
 
 # Release packages and built release
 ERR - MapForGoblins - DLL - v*/
