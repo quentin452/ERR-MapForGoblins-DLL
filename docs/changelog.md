@@ -43,7 +43,9 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   Missing file or string falls back to English; game CONTENT names (items, places) always come
   from the game's own files in its language. The panel's settings search matches English AND
   translated words ("echelle" finds "Marker scale"). `auto` follows the OS UI language (NB:
-  under Proton that's the Wine prefix locale, often en — set `fr` explicitly). Not yet
+  under Proton that's the Wine prefix locale, often en — set `fr` explicitly). The language is
+  also switchable LIVE from the F1 panel ("Language:" combo, one entry per `lang/*.txt` on
+  disk) — the whole UI swaps the same frame, no restart; Save to INI persists it. Not yet
   translated: quest-browser step CONTENT and the dev-only sections.
 - **`diag_boot_io` boot I/O profile (dev).** Read-only diagnostic: hooks `CreateFileW` live at the
   very top of init (before the regulation wait, not queued with the normal hook batch) and logs

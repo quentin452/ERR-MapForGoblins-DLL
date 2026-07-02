@@ -829,3 +829,14 @@ tr=zone dangereuse reinitialiser réinitialiser quete quête progression paramet
 
 en=pause game freeze stop world
 tr=pause jeu figer geler stop monde
+
+# ── Live language switch (F1 combo) ──
+
+en=Language:
+tr=Langue :
+
+en=Overlay UI language (lang/<code>.txt next to the DLL).\nSwitches live; Save to INI to persist. Game content\nnames stay in the game's own language.
+tr=Langue de l'interface overlay (lang/<code>.txt à côté du DLL).\nChange en direct ; Sauver dans l'INI pour conserver. Les noms\ndu contenu du jeu restent dans la langue du jeu.
+
+en=language langue overlay ui english french francais traduction translation
+tr=langue language interface overlay anglais francais français traduction
