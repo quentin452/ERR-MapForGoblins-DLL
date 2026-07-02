@@ -1,6 +1,9 @@
 # Merchant / shop item search — plan
 
-Status: **scoped 2026-07-02, Slice 1 starting.** Fork branch `feat/merchant-search` from master.
+Status: **Slice 1 DONE + IN-GAME VERIFIED (2026-07-02, `feat/merchant-search` `0acbf8f`).** Slices 2–3
+open. Verified on ERR/Proton: `[MERCHANTSEARCH] 5485 items indexed` at boot; F1 search "telescope"
+(shop-only, Kalé — no world marker) lists **"Telescope · buyable (unlock required)"** under a new
+"Sold by merchants" heading, with the FR translations. Names resolve even at the title screen.
 
 ## Goal (user, 2026-07-02)
 
@@ -42,7 +45,7 @@ stock searchable. Map pins for merchants are a nice-to-have, NOT the ask — the
 
 ## Slices
 
-### Slice 1 — searchable shop-item index (info-only rows) — mod-agnostic, no RE, no reference tables
+### Slice 1 — searchable shop-item index (info-only rows) — DONE + VERIFIED (0acbf8f)
 
 Make every merchant-sold item findable in the F1 search, as info rows (no map locate yet).
 
