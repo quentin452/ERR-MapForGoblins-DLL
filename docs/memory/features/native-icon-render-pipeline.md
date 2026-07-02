@@ -25,3 +25,22 @@ Cross-validated: runtime `MENU_MAP_Church` rect `1660,150,1800,338` == offline `
 Also shipped this session (branch): in-world region on/off chips (diegetic toggles, persisted, zoom-LOD fade), IconProvider refactor.
 
 **⛔ "fill category_gpu_iconId per category" = DEAD END for item/feature categories (RESIDENCY, confirmed 2026-06-23 via [MAPICON-AVAIL] dump).** The per-category baked map-point iconIds DO exist in the sheet LAYOUT (381=armour, 405=stake, 394=pool, 404=spring, 406=map, 407=painting, 369=imp, 443=questNPC, 439=hawk, 438=interactable… one consistent iconId per category in goblin_map_data) — BUT the RAM repo walk only has a rect for symbols the game actually DRAWS, and **vanilla never draws item/feature map-pins** → iconIds 369–443 are NEVER harvested → `map_icon_rect(405)` returns nothing → nothing draws. The [MAPICON-AVAIL] enumeration showed ONLY iconId **1–89 + 208–261** resident (graces/dungeon-entrances/region/DLC/MP markers). Rects are an **irregular texture-pack** (e.g. 718,524 156×156 vs 1277,0 194×178) → can't extrapolate a missing rect from a grid. Full `SB_MapCursor.layout` (all rects) = sblytbnd asset data, **Oodle-blocked on Linux**. CONCLUSION: real ER map symbols are only available for features the vanilla map draws (≈ graces+bosses, handled by ERR's NAME-keyed `MENU_MAP_ERR_*` sheet). The mod's whole purpose is showing what the vanilla map does NOT (loot/items/features) → most categories have NO ER map symbol by construction. **Boss+Grace ≈ the ceiling.** Items already draw the real INVENTORY icon (`native_item_icons`) when resident; everything else stays the baked atlas (unavoidable). Higher-value adjacent work = improving inventory-icon coverage for the item categories that fall to a circle, NOT chasing map symbols. See [[overlay-icon-atlas]].
+
+**FUTURE — icon CONTENT (alpha) bbox is feasible without new hooks (assessed 2026-07-03).** Question that
+came up while polishing the golden-rune legibility (a thin sigil UNDER-FILLS its square cell, so any
+size/glow keyed to the cell over- or under-shoots the visible glyph): could we fit visuals to the actual
+visible content? **Yes, the pixels+alpha are ALREADY captured on the CPU** — the `OodleLZ_Decompress` IAT
+hook copies each complete icon-sheet DDS into `g_dds_list` (retrieve via `goblin::tpf_dds_at(i,out)` /
+`tpf_dds_count`; browsable in the F1 dev DDS panel). So a per-icon "tight alpha bbox" needs **no new GPU
+readback and no new hook** — but it is NOT free, four gaps: (1) the DDS is **BC-compressed** (BC7/BC1/BC3),
+so per-pixel alpha needs a small CPU **BC-decode of the icon's sub-rect** (one-time per icon, cache the
+bbox as a fraction of the cell — never per-frame; note `create_tex_from_dds_mem` uploads BC raw and does
+NOT CPU-decode today); (2) `g_dds_list` is keyed by **INDEX, capped at 64, and only Oodle/KRAK**-decompressed
+sheets land there — ERR's **loose-modified sheets are DCX_DFLT (zlib)** and bypass the Oodle hook, so
+they're absent (would want a name→DDS map + cover the zlib/loose path, already read elsewhere via
+`dvdbnd_reader`); (3) it's **lazy/dev** — populated only after the sheet is decompressed (open map/inventory
+once); (4) icons currently draw into a **fixed square quad** (`iconHalf`), native aspect discarded, so a
+content-aware crop would also mean aspect-correct draw. **We deliberately AVOIDED needing this** for the
+golden-rune glow by sizing the glow off the icon's own draw size (`base_hh`, a ratio — robust to any icon
+size/resolution) instead of the visible glyph. Only pursue the alpha bbox if a future feature must hug the
+real glyph. Cross-ref [[minimap-future-feature]] (where the rune glow + heading arrow shipped).
