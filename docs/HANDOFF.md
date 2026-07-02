@@ -153,9 +153,9 @@ suppress their native rows; graces (80) / bosses (41/67) untouched. Flips take e
 open (same cadence as every areaNo owner). **CONFIRMED in-game (user, 2026-07-02)** with one gap:
 minor-dungeon families (Caves / Hero's Graves) kept their native pins — their OVERWORLD pin comes
 from the dist-view mark, so `areaNo_forDistViewMark` now flips to 99 alongside `areaNo` (both
-saved/restored). Re-verify the dungeon pins after this fix.
+saved/restored). **ALL CONFIRMED in-game (user, 2026-07-02): dungeon pins suppressed too.**
 
-Same feedback round shipped 3 more fixes (round 2 deployed `e970671e`, pending in-game confirm):
+Same feedback round shipped 3 more fixes + a round 2 (deployed `e970671e`) — **ALL CONFIRMED in-game (user, 2026-07-02)**:
 - **Collected black-disc bug:** the icon-legibility contrast disc under small icons kept full alpha
   when the icon dimmed as collected → looked uncollected. Disc alpha now follows the icon tint's
   alpha (`draw_legible_icon`, map_renderer.cpp).
