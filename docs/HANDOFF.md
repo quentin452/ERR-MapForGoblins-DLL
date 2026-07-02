@@ -108,7 +108,10 @@ in-game). `assets/lang/fr.txt` ships ~270 translated strings; build.bat packagin
 verifies it). Gotchas: (1) `auto` reads the WINE prefix locale under Proton (usually en_US
 even on a French desktop) → French users set `overlay_language = fr` explicitly — the
 deployed dev ini has it; (2) avoid `œ` in translations (outside the merged font ranges —
-use "oe"); (3) translated format strings must keep the % placeholders in order. Deliberately
+use "oe"); (3) translated format strings must keep the % placeholders in order; (4) keep
+label translations ≲ English+20% — the panel auto-fits but caps at 840px (was 720; the
+first FR pass clipped at the old cap, user-reported → cap bumped + longest FR labels
+shortened, both in-game verified). Deliberately
 NOT translated (v2 candidates): quest-browser step CONTENT (hand-authored corpus, big),
 dev-only sections (P2b/sprites/grace-debug/dev-tools), spdlog lines. The same lang-file
 mechanism can carry future languages — drop a `lang/de.txt` etc., no rebuild.
