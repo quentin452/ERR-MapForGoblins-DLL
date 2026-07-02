@@ -206,10 +206,18 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
   labels when zoomed way out); (3) a fan opened near the screen edge overflows off-screen (no
   clamp/re-anchor); (4) ER edge-pans the map when the cursor sits near a screen edge — scripted
   mouse_move near edges drifts the view between screenshots (driver beware, not a bug).
-- **F2 (fog locate clamp): partially reproduced.** Search+locate WORKS via RPC (discovered
-  target: pan + yellow ring confirmed). The undiscovered-target click test was inconclusive —
-  blocked by the focus gate above, not by F2 itself. Retry once the focus override exists
-  ("[undiscovered]"-tagged results are the exact F2 case).
+- **F2 (fog locate clamp): FULLY REPRODUCED, deterministic scripted recipe (2026-07-02).**
+  With the map open + F1: type `godrick` (search works via RPC — no AZERTY remap needed for that
+  word) → clicking "Godrick the Grafted (x1) - Overworld" pans fine (Stormveil is DISCOVERED on
+  this save, ring visible = negative control). Then `morgott` → click "Morgott, the Omen King
+  (x1) - Overworld" (Leyndell, deep fog) → **the pan CLAMPS at the edge of the pannable/revealed
+  area: the map canvas ends, the rest of the screen is void, and the target is never centred (no
+  search ring in view)** — exactly F2's description. Repro screenshot kept at
+  `/tmp/mfg_rpc_test/f2_repro_morgott_clamp.bmp` (regenerate any time with the recipe above).
+  Bonus: that same frame is the strongest capture of the "markers drawn OUTSIDE the map canvas"
+  sweep finding — dozens of icons float on the black void past the map edge, over the day/night
+  dial. Fix direction per the original F2 note: pan-OOB support (bypass/extend the panX/panZ
+  clamp in the projection when centring on a locate target).
 
 ## SINGLE-DLL migration — profiles retired (2026-07-02, `feat/mapgenie-landmark-parity`)
 
