@@ -7,9 +7,12 @@ not from scratch. Session driven entirely via the debug RPC + wmprobe stall dump
 
 ## The bounds model (user-confirmed 2026-07-02) — read this first
 
-The engine's map pan bounds are NOT the world rect: they are the **bounding box of the
-DISCOVERED tiles** (early-game fog ⇒ bounds ≈ the tile the player is on; they grow as map
-fragments/discovery accumulate). Our code historically assumed the pan max = the whole world
+The engine's map pan bounds are NOT the world rect: on a fragment-less/fogged save they are
+the **live fog window around the tile the player is CURRENTLY on — the bounds FOLLOW the
+player** (user-corrected 2026-07-02: not a function of discovery; it's the early-game fog
+box tracking the player's position in real time, the vanilla "no map fragment → the map only
+shows/plans around you" behavior; owned fragments widen the legal area on top of that). Our
+code historically assumed the pan max = the whole world
 (the +0x350 full rect, 0..10496) — `set_view_center` clamps its target against the FULL rect,
 and the deployed dev ini even runs `require_map_fragments=false` so our overlay ignores fog
 entirely. **That model mismatch is the flicker mechanism:** two per-frame writers driving the
