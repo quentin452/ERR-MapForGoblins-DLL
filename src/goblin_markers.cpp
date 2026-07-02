@@ -18,6 +18,7 @@
 #include "goblin_legacy_conv.hpp"
 #include "goblin_legacy_fold.hpp"
 #include "goblin_map_data.hpp"
+#include "goblin_categories.gen.hpp"  // CATEGORY_META (name + section, data-driven)
 
 #include <windows.h>
 #include <spdlog/spdlog.h>
@@ -263,98 +264,21 @@ static const char *type_name(uint16_t type)
 }
 
 
+// Category display name — now data-driven from data/categories.json via the generated
+// CATEGORY_META table (goblin_categories.gen.hpp), Tier 1 of the category-descriptor plan.
+// The static_assert ties the generated table to the enum: adding a Category without a
+// categories.json row (or vice versa) is a compile error, not a silent "?".
+static_assert(generated::CATEGORY_META_COUNT ==
+                  static_cast<int>(generated::Category::WorldFarmableCollectible) + 1,
+              "data/categories.json out of sync with the Category enum — run "
+              "tools/generate_categories.py");
+
 const char *category_name(generated::Category c)
 {
-    using C = generated::Category;
-    switch (c)
-    {
-        case C::EquipArmaments: return "Equipment - Armaments";
-        case C::EquipArmour: return "Equipment - Armour";
-        case C::EquipAshesOfWar: return "Equipment - Ashes of War";
-        case C::EquipSpirits: return "Equipment - Spirits";
-        case C::EquipTalismans: return "Equipment - Talismans";
-        case C::KeyCelestialDew: return "Key - Celestial Dew";
-        case C::KeyCookbooks: return "Key - Cookbooks";
-        case C::KeyCrystalTears: return "Key - Crystal Tears";
-        case C::KeyImbuedSwordKeys: return "Key - Imbued Sword Keys";
-        case C::KeyLarvalTears: return "Key - Larval Tears";
-        case C::KeyScadutreeFragments: return "Key - Scadutree Fragments";
-        case C::KeyGreatRunes: return "Key - Great Runes";
-        case C::KeyLostAshes: return "Key - Lost Ashes";
-        case C::KeyPotsNPerfumes: return "Key - Pots n Perfumes";
-        case C::KeySeedsTears: return "Key - Seeds Tears Ashes";
-        case C::KeyWhetblades: return "Key - Whetblades";
-        case C::LootAmmo: return "Loot - Ammo";
-        case C::LootBellBearings: return "Loot - Bell-Bearings";
-        case C::LootMerchantBellBearings: return "Loot - Merchant Bell-Bearings";
-        case C::LootConsumables: return "Loot - Consumables";
-        case C::LootCraftingMaterials: return "Loot - Crafting Materials";
-        case C::LootMPFingers: return "Loot - MP-Fingers";
-        case C::LootMaterialNodes: return "Loot - Material Nodes";
-        case C::LootReusables: return "Loot - Reusables";
-        case C::LootSmithingStones: return "Loot - Smithing Stones";
-        case C::LootSmithingStonesLow: return "Loot - Smithing Stones (Low)";
-        case C::LootSmithingStonesRare: return "Loot - Smithing Stones (Rare)";
-        case C::LootGoldenRunes: return "Loot - Golden Runes";
-        case C::LootGoldenRunesLow: return "Loot - Golden Runes (Low)";
-        case C::LootStoneswordKeys: return "Loot - Stonesword Keys";
-        case C::LootThrowables: return "Loot - Throwables";
-        case C::LootPrattlingPates: return "Loot - Prattling Pates";
-        case C::LootRuneArcs: return "Loot - Rune Arcs";
-        case C::LootDragonHearts: return "Loot - Dragon Hearts";
-        case C::LootGloveworts: return "Loot - Gloveworts";
-        case C::LootGreatGloveworts: return "Loot - Great Gloveworts";
-        case C::LootRadaFruit: return "Loot - Rada Fruit";
-        case C::LootGestures: return "Loot - Gestures";
-        case C::LootGreases: return "Loot - Greases";
-        case C::LootUtilities: return "Loot - Utilities";
-        case C::LootStatBoosts: return "Loot - Stat Boosts";
-        case C::ReforgedFortunes: return "Reforged - Fortunes";
-        case C::MagicIncantations: return "Magic - Incantations";
-        case C::MagicMemoryStones: return "Magic - Memory Stones";
-        case C::MagicPrayerbooks: return "Magic - Prayerbooks";
-        case C::MagicSorceries: return "Magic - Sorceries";
-        case C::WorldBosses: return "World - Bosses";
-        case C::QuestDeathroot: return "Quest - Deathroot";
-        case C::QuestProgression: return "Quest - Progression";
-        case C::QuestSeedbedCurses: return "Quest - Seedbed Curses";
-        case C::ReforgedEmberPieces: return "Reforged - Ember Pieces";
-        case C::ReforgedItemsAndChanges: return "Reforged - Items";
-        case C::ReforgedRunePieces: return "Reforged - Rune Pieces";
-        case C::WorldGraces: return "World - Graces";
-        case C::WorldHostileNPC: return "World - Hostile NPC";
-        case C::WorldQuestNPC: return "World - Quest NPC";
-        case C::WorldImpStatues: return "World - Imp Statues";
-        case C::WorldMaps: return "World - Maps";
-        case C::WorldPaintings: return "World - Paintings";
-        case C::WorldSpiritSprings: return "World - Spirit Springs";
-        case C::WorldSpiritspringHawks: return "World - Spiritspring Hawks";
-        case C::WorldStakesOfMarika: return "World - Stakes of Marika";
-        case C::WorldSummoningPools: return "World - Summoning Pools";
-        case C::WorldKindlingSpirits: return "World - Kindling Spirits";
-        case C::WorldInteractables: return "World - Interactables";
-        case C::WorldDivineTower: return "World - Divine Towers";
-        case C::WorldEvergaol: return "World - Evergaols";
-        case C::WorldMinorErdtree: return "World - Minor Erdtrees";
-        case C::WorldGrandLift: return "World - Grand Lifts";
-        case C::WorldDungeon: return "World - Dungeons";
-        case C::WorldLegacyDungeon: return "World - Legacy Dungeons";
-        case C::WorldMiquellaCross: return "World - Miquella's Cross";
-        case C::WorldChurch: return "World - Churches";
-        case C::WorldRuins: return "World - Ruins";
-        case C::WorldRiseTower: return "World - Rises & Towers";
-        case C::WorldShack: return "World - Shacks";
-        case C::WorldFort: return "World - Forts";
-        case C::WorldCastle: return "World - Castles";
-        case C::WorldTownVillage: return "World - Towns & Villages";
-        case C::WorldColosseum: return "World - Colosseums";
-        case C::WorldUniqueSite: return "World - Unique Sites";
-        case C::WorldPortal: return "World - Portals";
-        case C::WorldElevator: return "World - Elevators";
-        case C::WorldSmithingTable: return "World - Smithing Tables";
-        case C::WorldFarmableCollectible: return "Loot - Farmable Drops";
-    }
-    return "?";
+    const int i = static_cast<int>(c);
+    if (i < 0 || i >= generated::CATEGORY_META_COUNT)
+        return "?";
+    return generated::CATEGORY_META[i].name;
 }
 
 

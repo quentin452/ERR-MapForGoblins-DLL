@@ -97,6 +97,12 @@ def main():
     generate_legacy_conv_cpp(config.DATA_DIR / "WorldMapLegacyConvParam.json",
                              output_dir / "goblin_legacy_conv.hpp")
 
+    # Category descriptor (data/categories.json -> goblin_categories.gen.hpp). Keeps the
+    # committed generated header in sync so name/section never drift from the table.
+    print("\n=== Generating category descriptor ===")
+    import generate_categories
+    generate_categories.main()
+
     print("\nDone.")
 
 

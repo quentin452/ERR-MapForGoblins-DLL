@@ -2,6 +2,7 @@
 #include "goblin_inject_shared.hpp"
 #include "goblin_config.hpp"
 #include "goblin_map_data.hpp"
+#include "goblin_categories.gen.hpp"  // CATEGORY_META (data-driven section)
 #include "goblin_markers.hpp"
 #include "modutils.hpp"
 #include "goblin_bench.hpp"
@@ -11,6 +12,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <mutex>
 #include <set>
 #include <string>
@@ -72,107 +74,29 @@ static const char *section_name(Section s)
     }
 }
 
-// Category -> display section. Mirrors the [section] grouping in
-// goblin_config_schema.cpp::build_schema() exactly (note: HostileNPC / QuestNPC
-// live under [World] in the schema, not [Quest]). Every Category is covered.
+// Section enum-name (as stored in data/categories.json) -> Section. Only these 7 are valid;
+// anything else defaults to World (matches the old switch's fall-through default).
+static Section section_from_name(const char *s)
+{
+    if (!s) return Section::World;
+    if (!std::strcmp(s, "Equipment")) return Section::Equipment;
+    if (!std::strcmp(s, "KeyItems"))  return Section::KeyItems;
+    if (!std::strcmp(s, "Loot"))      return Section::Loot;
+    if (!std::strcmp(s, "Magic"))     return Section::Magic;
+    if (!std::strcmp(s, "Quest"))     return Section::Quest;
+    if (!std::strcmp(s, "Reforged"))  return Section::Reforged;
+    return Section::World;
+}
+
+// Category -> display section, now data-driven from data/categories.json via the generated
+// CATEGORY_META table (Tier 1 of the category-descriptor plan). Still mirrors the [section]
+// grouping in goblin_config_schema.cpp::build_schema() (HostileNPC / QuestNPC under [World]).
 static Section section_of(Category c)
 {
-    switch (c)
-    {
-    case Category::EquipArmaments:
-    case Category::EquipArmour:
-    case Category::EquipAshesOfWar:
-    case Category::EquipSpirits:
-    case Category::EquipTalismans:
-        return Section::Equipment;
-    case Category::KeyCelestialDew:
-    case Category::KeyCookbooks:
-    case Category::KeyCrystalTears:
-    case Category::KeyImbuedSwordKeys:
-    case Category::KeyLarvalTears:
-    case Category::KeyScadutreeFragments:
-    case Category::KeyGreatRunes:
-    case Category::KeyLostAshes:
-    case Category::KeyPotsNPerfumes:
-    case Category::KeySeedsTears:
-    case Category::KeyWhetblades:
-        return Section::KeyItems;
-    case Category::LootAmmo:
-    case Category::LootBellBearings:
-    case Category::LootConsumables:
-    case Category::LootCraftingMaterials:
-    case Category::LootMPFingers:
-    case Category::LootMaterialNodes:
-    case Category::LootMerchantBellBearings:
-    case Category::LootReusables:
-    case Category::LootSmithingStones:
-    case Category::LootSmithingStonesLow:
-    case Category::LootSmithingStonesRare:
-    case Category::LootGoldenRunes:
-    case Category::LootGoldenRunesLow:
-    case Category::LootStoneswordKeys:
-    case Category::LootThrowables:
-    case Category::LootPrattlingPates:
-    case Category::LootRuneArcs:
-    case Category::LootDragonHearts:
-    case Category::LootGloveworts:
-    case Category::LootGreatGloveworts:
-    case Category::LootRadaFruit:
-    case Category::LootGestures:
-    case Category::LootGreases:
-    case Category::LootUtilities:
-    case Category::LootStatBoosts:
-    case Category::WorldFarmableCollectible:  // respawning notable drops — belongs with Loot
-        return Section::Loot;
-    case Category::MagicIncantations:
-    case Category::MagicMemoryStones:
-    case Category::MagicPrayerbooks:
-    case Category::MagicSorceries:
-        return Section::Magic;
-    case Category::QuestDeathroot:
-    case Category::QuestProgression:
-    case Category::QuestSeedbedCurses:
-        return Section::Quest;
-    case Category::ReforgedFortunes:
-    case Category::ReforgedEmberPieces:
-    case Category::ReforgedItemsAndChanges:
-    case Category::ReforgedRunePieces:
-        return Section::Reforged;
-    case Category::WorldHostileNPC:
-    case Category::WorldQuestNPC:
-    case Category::WorldBosses:
-    case Category::WorldGraces:
-    case Category::WorldImpStatues:
-    case Category::WorldMaps:
-    case Category::WorldPaintings:
-    case Category::WorldSpiritSprings:
-    case Category::WorldSpiritspringHawks:
-    case Category::WorldStakesOfMarika:
-    case Category::WorldSummoningPools:
-    case Category::WorldKindlingSpirits:
-    case Category::WorldInteractables:
-    case Category::WorldDivineTower:
-    case Category::WorldEvergaol:
-    case Category::WorldMinorErdtree:
-    case Category::WorldGrandLift:
-    case Category::WorldDungeon:
-    case Category::WorldLegacyDungeon:
-    case Category::WorldMiquellaCross:
-    case Category::WorldChurch:
-    case Category::WorldRuins:
-    case Category::WorldRiseTower:
-    case Category::WorldShack:
-    case Category::WorldFort:
-    case Category::WorldCastle:
-    case Category::WorldTownVillage:
-    case Category::WorldColosseum:
-    case Category::WorldUniqueSite:
-    case Category::WorldPortal:
-    case Category::WorldElevator:
-    case Category::WorldSmithingTable:
+    const int i = static_cast<int>(c);
+    if (i < 0 || i >= goblin::generated::CATEGORY_META_COUNT)
         return Section::World;
-    }
-    return Section::World;  // unreachable; keeps the compiler happy
+    return section_from_name(goblin::generated::CATEGORY_META[i].section);
 }
 
 // Runtime gate per section. Seeded from config at inject time; flipped live by

@@ -1,0 +1,427 @@
+[
+  {
+    "enum": "EquipArmaments",
+    "name": "Equipment - Armaments",
+    "section": "Equipment"
+  },
+  {
+    "enum": "EquipArmour",
+    "name": "Equipment - Armour",
+    "section": "Equipment"
+  },
+  {
+    "enum": "EquipAshesOfWar",
+    "name": "Equipment - Ashes of War",
+    "section": "Equipment"
+  },
+  {
+    "enum": "EquipSpirits",
+    "name": "Equipment - Spirits",
+    "section": "Equipment"
+  },
+  {
+    "enum": "EquipTalismans",
+    "name": "Equipment - Talismans",
+    "section": "Equipment"
+  },
+  {
+    "enum": "KeyCelestialDew",
+    "name": "Key - Celestial Dew",
+    "section": "KeyItems"
+  },
+  {
+    "enum": "KeyCookbooks",
+    "name": "Key - Cookbooks",
+    "section": "KeyItems"
+  },
+  {
+    "enum": "KeyCrystalTears",
+    "name": "Key - Crystal Tears",
+    "section": "KeyItems"
+  },
+  {
+    "enum": "KeyImbuedSwordKeys",
+    "name": "Key - Imbued Sword Keys",
+    "section": "KeyItems"
+  },
+  {
+    "enum": "KeyLarvalTears",
+    "name": "Key - Larval Tears",
+    "section": "KeyItems"
+  },
+  {
+    "enum": "KeyScadutreeFragments",
+    "name": "Key - Scadutree Fragments",
+    "section": "KeyItems"
+  },
+  {
+    "enum": "KeyGreatRunes",
+    "name": "Key - Great Runes",
+    "section": "KeyItems"
+  },
+  {
+    "enum": "KeyLostAshes",
+    "name": "Key - Lost Ashes",
+    "section": "KeyItems"
+  },
+  {
+    "enum": "KeyPotsNPerfumes",
+    "name": "Key - Pots n Perfumes",
+    "section": "KeyItems"
+  },
+  {
+    "enum": "KeySeedsTears",
+    "name": "Key - Seeds Tears Ashes",
+    "section": "KeyItems"
+  },
+  {
+    "enum": "KeyWhetblades",
+    "name": "Key - Whetblades",
+    "section": "KeyItems"
+  },
+  {
+    "enum": "LootAmmo",
+    "name": "Loot - Ammo",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootBellBearings",
+    "name": "Loot - Bell-Bearings",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootConsumables",
+    "name": "Loot - Consumables",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootCraftingMaterials",
+    "name": "Loot - Crafting Materials",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootMPFingers",
+    "name": "Loot - MP-Fingers",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootMaterialNodes",
+    "name": "Loot - Material Nodes",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootMerchantBellBearings",
+    "name": "Loot - Merchant Bell-Bearings",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootReusables",
+    "name": "Loot - Reusables",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootSmithingStones",
+    "name": "Loot - Smithing Stones",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootSmithingStonesLow",
+    "name": "Loot - Smithing Stones (Low)",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootSmithingStonesRare",
+    "name": "Loot - Smithing Stones (Rare)",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootGoldenRunes",
+    "name": "Loot - Golden Runes",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootGoldenRunesLow",
+    "name": "Loot - Golden Runes (Low)",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootStoneswordKeys",
+    "name": "Loot - Stonesword Keys",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootThrowables",
+    "name": "Loot - Throwables",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootPrattlingPates",
+    "name": "Loot - Prattling Pates",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootRuneArcs",
+    "name": "Loot - Rune Arcs",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootDragonHearts",
+    "name": "Loot - Dragon Hearts",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootGloveworts",
+    "name": "Loot - Gloveworts",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootGreatGloveworts",
+    "name": "Loot - Great Gloveworts",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootRadaFruit",
+    "name": "Loot - Rada Fruit",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootGestures",
+    "name": "Loot - Gestures",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootGreases",
+    "name": "Loot - Greases",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootUtilities",
+    "name": "Loot - Utilities",
+    "section": "Loot"
+  },
+  {
+    "enum": "LootStatBoosts",
+    "name": "Loot - Stat Boosts",
+    "section": "Loot"
+  },
+  {
+    "enum": "ReforgedFortunes",
+    "name": "Reforged - Fortunes",
+    "section": "Reforged"
+  },
+  {
+    "enum": "WorldHostileNPC",
+    "name": "World - Hostile NPC",
+    "section": "World"
+  },
+  {
+    "enum": "WorldQuestNPC",
+    "name": "World - Quest NPC",
+    "section": "World"
+  },
+  {
+    "enum": "MagicIncantations",
+    "name": "Magic - Incantations",
+    "section": "Magic"
+  },
+  {
+    "enum": "MagicMemoryStones",
+    "name": "Magic - Memory Stones",
+    "section": "Magic"
+  },
+  {
+    "enum": "MagicPrayerbooks",
+    "name": "Magic - Prayerbooks",
+    "section": "Magic"
+  },
+  {
+    "enum": "MagicSorceries",
+    "name": "Magic - Sorceries",
+    "section": "Magic"
+  },
+  {
+    "enum": "WorldBosses",
+    "name": "World - Bosses",
+    "section": "World"
+  },
+  {
+    "enum": "QuestDeathroot",
+    "name": "Quest - Deathroot",
+    "section": "Quest"
+  },
+  {
+    "enum": "QuestProgression",
+    "name": "Quest - Progression",
+    "section": "Quest"
+  },
+  {
+    "enum": "QuestSeedbedCurses",
+    "name": "Quest - Seedbed Curses",
+    "section": "Quest"
+  },
+  {
+    "enum": "ReforgedEmberPieces",
+    "name": "Reforged - Ember Pieces",
+    "section": "Reforged"
+  },
+  {
+    "enum": "ReforgedItemsAndChanges",
+    "name": "Reforged - Items",
+    "section": "Reforged"
+  },
+  {
+    "enum": "ReforgedRunePieces",
+    "name": "Reforged - Rune Pieces",
+    "section": "Reforged"
+  },
+  {
+    "enum": "WorldGraces",
+    "name": "World - Graces",
+    "section": "World"
+  },
+  {
+    "enum": "WorldImpStatues",
+    "name": "World - Imp Statues",
+    "section": "World"
+  },
+  {
+    "enum": "WorldMaps",
+    "name": "World - Maps",
+    "section": "World"
+  },
+  {
+    "enum": "WorldPaintings",
+    "name": "World - Paintings",
+    "section": "World"
+  },
+  {
+    "enum": "WorldSpiritSprings",
+    "name": "World - Spirit Springs",
+    "section": "World"
+  },
+  {
+    "enum": "WorldSpiritspringHawks",
+    "name": "World - Spiritspring Hawks",
+    "section": "World"
+  },
+  {
+    "enum": "WorldStakesOfMarika",
+    "name": "World - Stakes of Marika",
+    "section": "World"
+  },
+  {
+    "enum": "WorldSummoningPools",
+    "name": "World - Summoning Pools",
+    "section": "World"
+  },
+  {
+    "enum": "WorldKindlingSpirits",
+    "name": "World - Kindling Spirits",
+    "section": "World"
+  },
+  {
+    "enum": "WorldInteractables",
+    "name": "World - Interactables",
+    "section": "World"
+  },
+  {
+    "enum": "WorldDivineTower",
+    "name": "World - Divine Towers",
+    "section": "World"
+  },
+  {
+    "enum": "WorldEvergaol",
+    "name": "World - Evergaols",
+    "section": "World"
+  },
+  {
+    "enum": "WorldMinorErdtree",
+    "name": "World - Minor Erdtrees",
+    "section": "World"
+  },
+  {
+    "enum": "WorldGrandLift",
+    "name": "World - Grand Lifts",
+    "section": "World"
+  },
+  {
+    "enum": "WorldDungeon",
+    "name": "World - Dungeons",
+    "section": "World"
+  },
+  {
+    "enum": "WorldLegacyDungeon",
+    "name": "World - Legacy Dungeons",
+    "section": "World"
+  },
+  {
+    "enum": "WorldMiquellaCross",
+    "name": "World - Miquella's Cross",
+    "section": "World"
+  },
+  {
+    "enum": "WorldChurch",
+    "name": "World - Churches",
+    "section": "World"
+  },
+  {
+    "enum": "WorldRuins",
+    "name": "World - Ruins",
+    "section": "World"
+  },
+  {
+    "enum": "WorldRiseTower",
+    "name": "World - Rises & Towers",
+    "section": "World"
+  },
+  {
+    "enum": "WorldShack",
+    "name": "World - Shacks",
+    "section": "World"
+  },
+  {
+    "enum": "WorldFort",
+    "name": "World - Forts",
+    "section": "World"
+  },
+  {
+    "enum": "WorldCastle",
+    "name": "World - Castles",
+    "section": "World"
+  },
+  {
+    "enum": "WorldTownVillage",
+    "name": "World - Towns & Villages",
+    "section": "World"
+  },
+  {
+    "enum": "WorldColosseum",
+    "name": "World - Colosseums",
+    "section": "World"
+  },
+  {
+    "enum": "WorldUniqueSite",
+    "name": "World - Unique Sites",
+    "section": "World"
+  },
+  {
+    "enum": "WorldPortal",
+    "name": "World - Portals",
+    "section": "World"
+  },
+  {
+    "enum": "WorldElevator",
+    "name": "World - Elevators",
+    "section": "World"
+  },
+  {
+    "enum": "WorldSmithingTable",
+    "name": "World - Smithing Tables",
+    "section": "World"
+  },
+  {
+    "enum": "WorldFarmableCollectible",
+    "name": "Loot - Farmable Drops",
+    "section": "Loot"
+  }
+]
