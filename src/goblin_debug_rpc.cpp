@@ -12,6 +12,7 @@
 #include <windows.h>
 
 #include <atomic>
+#include <cstring>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -131,6 +132,12 @@ namespace goblin::debug_rpc
                 auto p = std::make_shared<Pending>();
                 p->request = line;
                 p->done = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+                if (!p->done)
+                {
+                    const char *msg = "err event creation failed\n";
+                    send(c, msg, static_cast<int>(strlen(msg)), 0);
+                    continue;
+                }
                 {
                     std::lock_guard<std::mutex> lk(g_queue_mutex);
                     g_queue.push_back(p);
@@ -160,7 +167,14 @@ namespace goblin::debug_rpc
                         reply = "err timeout (no frames presenting?)";
                 }
                 reply += "\n";
-                send(c, reply.c_str(), static_cast<int>(reply.size()), 0);
+                // send() may transmit partially — loop; a failed send means the client is gone.
+                size_t off = 0;
+                while (off < reply.size())
+                {
+                    int n = send(c, reply.c_str() + off, static_cast<int>(reply.size() - off), 0);
+                    if (n <= 0) return;
+                    off += n;
+                }
             }
         }
 
@@ -197,6 +211,10 @@ namespace goblin::debug_rpc
             {
                 SOCKET c = accept(s, nullptr, nullptr);
                 if (c == INVALID_SOCKET) continue;
+                // Generous idle timeout so a hung/leaked client can't starve accept() forever
+                // (one client at a time); an interactive driver just reconnects after.
+                DWORD rcv_to = 10 * 60 * 1000;
+                setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char *>(&rcv_to), sizeof(rcv_to));
                 serve_client(c);  // one client at a time — a dev driver, not a server
                 closesocket(c);
             }

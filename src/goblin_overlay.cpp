@@ -2149,6 +2149,7 @@ bool goblin::overlay::screenshot_to_file(IDXGISwapChain3 *swapchain, const std::
     g_command_queue->ExecuteCommandLists(1, lists);
 
     bool gpu_done = false;
+    err = "GPU copy fence timeout";
     ID3D12Fence *fence = nullptr;
     if (SUCCEEDED(g_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))))
     {
@@ -2161,15 +2162,19 @@ bool goblin::overlay::screenshot_to_file(IDXGISwapChain3 *swapchain, const std::
             fence->SetEventOnCompletion(1, ev);
             gpu_done = WaitForSingleObject(ev, 2000) == WAIT_OBJECT_0;
         }
+        else
+            err = "fence event creation failed";
         if (ev) CloseHandle(ev);
         fence->Release();
     }
+    else
+        err = "fence creation failed";
     if (!gpu_done)
     {
         readback->Release();
-        err = "GPU copy fence timeout";
         return false;
     }
+    err.clear();
 
     void *mapped = nullptr;
     if (FAILED(readback->Map(0, nullptr, &mapped)))

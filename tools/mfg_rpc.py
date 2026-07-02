@@ -43,6 +43,8 @@ class Rpc:
             if not chunk:
                 raise ConnectionError("RPC connection closed")
             self.buf += chunk
+            if len(self.buf) > 1 << 20:
+                raise RuntimeError("reply exceeds 1 MB with no newline — protocol desync?")
         reply, self.buf = self.buf.split(b"\n", 1)
         return reply.decode("utf-8", "replace").rstrip("\r")
 
