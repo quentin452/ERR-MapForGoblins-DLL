@@ -77,7 +77,25 @@ dumps; a value that SCALES with the backbuffer is the native screen scissor, a c
 virtual-canvas (1920×1080) or marker space. Known non-answers: `view+0x340..0x34c` (cursor/snap
 bounds), `+0x350` (map-art extent) — both marker space.
 
-**B2 — command-list scissor sampler (if B1 empty):** we already hook `ExecuteCommandLists` +
-capture the command queue (`goblin_overlay.cpp`); a `RSSetScissorRects`/`RSSetViewports` observer
-on the map-layer draw is the fallback when the clip isn't parked on a struct. **B3** = Ghidra on the
-Scaleform `02_120_worldmap.gfx` movie clip. Not started.
+**B1 RESULT (run 2026-07-03) — no screen-space map rect on the scanned structs; escalated:**
+- Dumped clean at 1920×1080: `canvas+0x118/11c = 1920/1080` (the FULL virtual canvas, no map
+  sub-rect), `view+0x340..0x34c = [-267,-152,1652,927]` (the documented marker-space cursor/snap
+  bounds — 16:9-looking but NOT screen space), `view+0x320` a small quad. No obvious screen-space
+  map-viewport sub-rect.
+- **Key architectural finding:** changing the in-game resolution to 1280×720 did NOT change the DXGI
+  swapchain backbuffer (stayed 1920×1080 → `map_clip_diag` never re-dumped). ER renders the map UI
+  into a fixed backbuffer = the window/desktop size and up/downscales the internal 3D target. So the
+  map UI clip lives in **virtual-canvas (1920×1080) space**, and the "scales with backbuffer"
+  discriminator needs a real window/desktop resize, not the in-game slider. B1's null result +
+  fixed-canvas architecture ⇒ the native clip is likely an **inline D3D12 scissor** set at draw time,
+  not a rect parked on a struct → escalate to B2.
+
+**B2 — command-list scissor sampler (BUILT 2026-07-03, not yet run):** we already hook
+`ExecuteCommandLists` + capture the queue. `debug_scissor_probe` lazily installs an
+`RSSetScissorRects` detour (vtable slot 22 on `ID3D12GraphicsCommandList`, shared → one MinHook
+covers all lists) from the first command list. Each distinct scissor rect is logged once as
+`[SCISSOR] mapopen=0/1` via `note_map_scissor` (thread-safe dedup; records on many threads; map-open
+state read from a per-present cached atomic). **Run recipe:** enable `debug_scissor_probe`, open the
+map, pan, close it, repeat a few times → the rect(s) that appear with `mapopen=1` but NEVER
+`mapopen=0` are the map-layer scissor candidates. **B3** (Ghidra on Scaleform `02_120_worldmap.gfx`)
+only if B2 is inconclusive.

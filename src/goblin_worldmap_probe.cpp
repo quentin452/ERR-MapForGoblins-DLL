@@ -17,9 +17,11 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -1284,6 +1286,32 @@ void map_clip_diag(float bbW, float bbH)
     dump("vm", vm, 0x0, 0x120);
 
     g_log->flush();
+}
+
+// TASK B2 sink — record a scissor rect the engine set during rendering (from the RSSetScissorRects
+// detour in goblin_overlay.cpp), tagged with whether the world map is open. B1 (struct rect-dump)
+// found no screen-space map-viewport rect parked on the candidate structs, so the native clip is
+// likely an inline D3D12 scissor set at draw time. Dedups by (rect, map_open) and logs each distinct
+// pair ONCE as [SCISSOR]. The map-layer scissor is a rect seen with mapopen=1 but NEVER mapopen=0 —
+// open/close the map a few times, then diff. Thread-safe: RSSetScissorRects records on many worker
+// threads. Read-only. Coords packed as int16 (screen-space fits) for the dedup key.
+void note_map_scissor(int left, int top, int right, int bottom, bool map_open)
+{
+    if (!g_log) return;
+    static std::mutex mtx;
+    static std::unordered_set<uint64_t> seen[2];
+    const uint64_t key = (static_cast<uint64_t>(static_cast<uint16_t>(left))) |
+                         (static_cast<uint64_t>(static_cast<uint16_t>(top)) << 16) |
+                         (static_cast<uint64_t>(static_cast<uint16_t>(right)) << 32) |
+                         (static_cast<uint64_t>(static_cast<uint16_t>(bottom)) << 48);
+    bool is_new;
+    {
+        std::lock_guard<std::mutex> lk(mtx);
+        is_new = seen[map_open ? 1 : 0].insert(key).second;
+    }
+    if (is_new)
+        g_log->info("[SCISSOR] mapopen={} rect=({},{})-({},{})  w={} h={}", map_open ? 1 : 0, left,
+                    top, right, bottom, right - left, bottom - top);
 }
 
 bool set_view_center(float mU, float mV, float minZoom)

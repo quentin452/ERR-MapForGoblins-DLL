@@ -169,6 +169,12 @@ namespace goblin::worldmap_probe
     // / marker-space rects don't). Read-only. Gated by config debug_map_clip_diag; render thread.
     void map_clip_diag(float bbW, float bbH);
 
+    // DIAG (overlay z-order Task B2 — native map CLIP via D3D12 scissor). Sink for the
+    // RSSetScissorRects detour (goblin_overlay.cpp): dedups (rect, map_open) and logs each distinct
+    // pair once as [SCISSOR]. The map-layer scissor is a rect seen with mapopen=1 but never mapopen=0
+    // (open/close the map, diff). Thread-safe (records on many threads). Gated by debug_scissor_probe.
+    void note_map_scissor(int left, int top, int right, int bottom, bool map_open);
+
     // No-restart fix for mid-session resolution / display-mode changes: edge-triggered
     // call to ER's complete swapchain re-apply (FUN_1419ed440 — release+ResizeBuffers+
     // recreate all render targets), fixing windowed/fullscreen/borderless. Render-thread

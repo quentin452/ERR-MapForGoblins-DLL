@@ -84,6 +84,15 @@ namespace
     ResizeBuffersFn o_resize_buffers = nullptr;
     ExecuteCommandListsFn o_execute_command_lists = nullptr;
 
+    // Task B2 (native map clip via D3D12 scissor): RSSetScissorRects detour, lazily installed on the
+    // first ExecuteCommandLists when debug_scissor_probe is on. Records on many worker threads → the
+    // detour reads a per-present cached atomic (not world_map_open()) for the map-open tag.
+    using RSSetScissorRectsFn =
+        void(STDMETHODCALLTYPE *)(ID3D12GraphicsCommandList *, UINT, const D3D12_RECT *);
+    RSSetScissorRectsFn o_rs_set_scissor_rects = nullptr;
+    std::atomic<bool> g_scissor_hook_installed{false};
+    std::atomic<bool> g_scissor_map_open{false};
+
     // Cursor hooks (SetCursorPos/ClipCursor/GetCursorPos) moved to src/input/input_cursor.cpp
     // (goblin::input::install_cursor_hooks() / set_cursor_pos_real() / clip_cursor_real() /
     // get_cursor_pos_real() / set_imgui_reading_cursor()) — third slice of
@@ -1602,6 +1611,7 @@ namespace
         if (map_open_now && !s_prev_map_open && fg)
             recenter_cursor_to_window();
         s_prev_map_open = map_open_now;
+        g_scissor_map_open.store(map_open_now, std::memory_order_relaxed); // for the B2 scissor detour
 
         // Mid-session resolution fix + diagnostic. Run every frame (the fix self-skips
         // when the dims already match) because NOT all resolution changes fire
@@ -1955,6 +1965,25 @@ namespace
     }
 
     // ── ExecuteCommandLists hook (captures the game's DIRECT queue) ────────
+    // Task B2 detour: record every distinct scissor rect the engine sets, tagged with whether the
+    // world map is open (cached atomic — this fires on many record threads, so calling
+    // world_map_open() here would be both slow and racy). The map-layer scissor is a rect that shows
+    // up with mapopen=1 but never mapopen=0. Read the rects BEFORE calling the original (they're the
+    // caller's array, valid on entry) and never disturb rendering. Cap the per-call count defensively.
+    void STDMETHODCALLTYPE hk_rs_set_scissor_rects(ID3D12GraphicsCommandList *self, UINT num,
+                                                   const D3D12_RECT *rects)
+    {
+        if (goblin::config::debugScissorProbe && rects && num > 0)
+        {
+            const bool mo = g_scissor_map_open.load(std::memory_order_relaxed);
+            const UINT n = num < 8 ? num : 8;
+            for (UINT i = 0; i < n; ++i)
+                goblin::worldmap_probe::note_map_scissor(rects[i].left, rects[i].top, rects[i].right,
+                                                         rects[i].bottom, mo);
+        }
+        o_rs_set_scissor_rects(self, num, rects);
+    }
+
     void STDMETHODCALLTYPE hk_execute_command_lists(ID3D12CommandQueue *queue, UINT count,
                                                     ID3D12CommandList *const *lists)
     {
@@ -1967,6 +1996,27 @@ namespace
                 g_command_queue = queue;
                 spdlog::info("[OVERLAY] captured game command queue {:p}",
                              static_cast<void *>(queue));
+            }
+        }
+        // Task B2: lazily install the RSSetScissorRects detour once, from a live graphics command
+        // list's vtable (slot 22, shared across all command lists → one MinHook covers them all).
+        // Only when the probe is on, so no per-scissor cost in normal play.
+        if (goblin::config::debugScissorProbe && !g_scissor_hook_installed.load() && count > 0 &&
+            lists && lists[0])
+        {
+            ID3D12GraphicsCommandList *gcl = nullptr;
+            if (SUCCEEDED(lists[0]->QueryInterface(IID_PPV_ARGS(&gcl))) && gcl)
+            {
+                void *addr = vtable_entry(gcl, 22); // ID3D12GraphicsCommandList::RSSetScissorRects
+                if (addr &&
+                    MH_CreateHook(addr, reinterpret_cast<void *>(&hk_rs_set_scissor_rects),
+                                  reinterpret_cast<void **>(&o_rs_set_scissor_rects)) == MH_OK &&
+                    MH_EnableHook(addr) == MH_OK)
+                {
+                    g_scissor_hook_installed.store(true);
+                    spdlog::info("[SCISSOR] RSSetScissorRects detour installed @ {:p}", addr);
+                }
+                gcl->Release();
             }
         }
         o_execute_command_lists(queue, count, lists);

@@ -231,6 +231,13 @@ namespace goblin
         // space. Read-only. See goblin_worldmap_probe.cpp map_clip_diag.
         extern GOBLIN_RENDER_API bool debugMapClipDiag;
 
+        // Dev discovery hook (overlay z-order Task B2 — native map clip via D3D12 scissor):
+        // installs an RSSetScissorRects detour and logs each distinct scissor rect the engine
+        // sets, tagged mapopen=0/1 ([SCISSOR]). The map-layer scissor appears with mapopen=1 but
+        // never mapopen=0. Read-only; high-frequency hook, dev-only. See goblin_overlay.cpp
+        // hk_rs_set_scissor_rects + goblin_worldmap_probe.cpp note_map_scissor.
+        extern GOBLIN_RENDER_API bool debugScissorProbe;
+
         // Dev prototype: draw overlay-rendered marker dots projected onto the open
         // world map (verifies the world->screen affine). See goblin_overlay.cpp +
         // goblin_worldmap_probe::get_live_view.

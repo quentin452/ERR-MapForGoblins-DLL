@@ -80,6 +80,7 @@ namespace goblin::config
     bool dumpNativePins = false;
     bool debugMenuCoverDiag = false;
     bool debugMapClipDiag = false;
+    bool debugScissorProbe = false;
     bool overlayMarkersProto = false;
     bool debugRenderDims = false;
     bool debugCursorDiagnostic = false;
@@ -607,6 +608,8 @@ namespace
                   "Dev discovery scan (overlay z-order Task A): while the world map is open,\ndelta-scan the CSMenuMan head (+0x0..0x400) for a small-int field that flips\nwhen a submenu opens OVER the bare map (the map-menu / beacon / region-list),\nlogged as [MENUOPEN-DIAG] mm+off: old->new to the wmprobe log. Open the bare\nmap, then open/close a covering submenu a few times: the offset that reads one\nvalue bare and a different STABLE value while covered (and returns bare) is the\nmenu-covers-map flag. CSMenuMan+0xCD is DEAD for this. Read-only. Off by default."),
                 B("debug_map_clip_diag", debugMapClipDiag, "false",
                   "Dev discovery dump (overlay z-order Task B — native map CLIP rect): while\nthe world map is open, dump candidate f32 rects from the live structs (virtual\nUI canvas, WorldMapDialog, WorldMapArea view, WorldMapViewModel) as [MAPCLIP]\nto the wmprobe log, re-dumping whenever the backbuffer resolution changes.\nOpen the map, then change the game resolution in-game: diff the two dumps -- a\nvalue that SCALES with the backbuffer is the native screen scissor; a constant\nis virtual-canvas (1920x1080) or marker space. Read-only. Off by default."),
+                B("debug_scissor_probe", debugScissorProbe, "false",
+                  "Dev discovery hook (overlay z-order Task B2 — native map clip via D3D12\nscissor): installs an RSSetScissorRects detour and logs each distinct scissor\nrect the engine sets, tagged mapopen=0/1, as [SCISSOR] to the wmprobe log. The\nnative map-layer scissor is a rect seen with mapopen=1 but NEVER mapopen=0 --\nopen/close the map a few times, then diff the [SCISSOR] lines. High-frequency\nD3D12 hook (records on many threads); read-only. Off by default."),
                 B("overlay_markers_proto", overlayMarkersProto, "false",
                   "Dev prototype (overlay-rendered markers): draw our own marker dot in\nthe ImGui overlay, projected onto the open world map via the live pan/zoom\n(WorldMapArea), to verify the world->screen affine. Starts the cursor probe\nif not already on. Open the F1 menu to tune scale/bias live. Off by default."),
                 B("fix_midsession_resolution", fixMidsessionResolution, "false",
