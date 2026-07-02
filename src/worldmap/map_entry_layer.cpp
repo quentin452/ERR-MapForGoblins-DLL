@@ -7,6 +7,7 @@
 #include "goblin_quest_steps.hpp" // goblin::generated::QUEST_BROWSER (hand-authored fail_flags to join on)
 #include "goblin_config.hpp"   // config::lootFromDiskMsb
 #include "goblin_map_data.hpp" // MAP_ENTRIES / MAP_ENTRY_COUNT / MapEntry / Category
+#include "goblin_categories.gen.hpp" // landmark_category_for_icon (data-driven)
 #include "goblin_world_feature_models.hpp" // WORLD_FEATURE_MODELS (asset-model World features)
 #include "goblin_inject.hpp"   // marker_world_pos / category_visible / read_event_flag / census
 #include "goblin_logic.hpp"    // map_fragment_flag
@@ -351,107 +352,11 @@ void build_live_bosses()
 // Tier 2(A)); iconIds NOT in this table (Churches 3, Ruins 5, boss buckets 41/67, structural
 // 80/83/84/85, …) are intentionally left unclassified. NO overlap with the boss pass — none of
 // these iconIds carry textId2==5100 (verified), so a landmark is never also a live boss marker.
+// iconId -> landmark Category. Data-driven: the mapping lives in data/categories.json
+// (each category's landmark_icon_ids) and is generated into goblin_categories.gen.hpp.
 static int landmark_category_for_icon(int iconId)
 {
-    namespace gen = goblin::generated;
-    switch (iconId)
-    {
-    case 23: return static_cast<int>(gen::Category::WorldDivineTower);
-    case 9:  return static_cast<int>(gen::Category::WorldEvergaol);
-    case 30: return static_cast<int>(gen::Category::WorldMinorErdtree);
-    case 21: return static_cast<int>(gen::Category::WorldGrandLift);
-    // "Dungeon" = the UNION of ER's typed minor-dungeon icons (each iconId is one type).
-    case 4:   // Catacombs
-    case 13:  // Caves
-    case 14:  // Tunnels
-    case 15:  // Wells
-    case 16:  // Hero's Graves
-    case 230: // DLC Catacombs
-    case 231: // DLC Gaols
-    case 234: // DLC Caves
-        return static_cast<int>(gen::Category::WorldDungeon);
-    // "Legacy Dungeon" = per-site UNIQUE icons (each major site has a bespoke icon).
-    case 50:  // Stormveil
-    case 51:  // Raya Lucaria
-    case 55:  // Haligtree
-    case 56:  // Elphael
-    case 58:  // Volcano Manor
-    case 59:  // Farum Azula
-    case 60:  // Leyndell
-    case 61:  // Shunning-Grounds
-    case 62:  // Leyndell, Ashen Capital (post-burning swap of 60)
-    case 66:  // Carian Study Hall
-    case 210: // DLC Belurat
-    case 211: // DLC Enir-Ilim
-    case 213: // DLC Shadow Keep
-    case 218: // DLC Midra's Manse
-        return static_cast<int>(gen::Category::WorldLegacyDungeon);
-    case 208: return static_cast<int>(gen::Category::WorldMiquellaCross); // DLC Miquella's Crosses (13 rows)
-    // ── PARITY families (2026-07-02 native-pin audit) — every remaining native WMPP pin family.
-    // Skipped on purpose: 41/67 (boss pass), 80 (graces), 83/84/85 (structural no-text),
-    // 42 (legacy sub-zone nav), 87 (Volcano Manor requests, dynamic), 0 (ERR-custom arena).
-    case 3:   // Churches
-    case 20:  // Cathedral of Manus Celes
-    case 247: // DLC Churches
-    case 248: // Cathedral of Manus Metyr
-    case 249: // Grand Altar of Dragon Communion
-        return static_cast<int>(gen::Category::WorldChurch);
-    case 5:   // Ruins
-    case 47:  // underground ruins (Uhl Palace, Hallowhorn, Grand Cloister)
-    case 250: // Scorched Ruins
-    case 251: // Prospect Town Ruins
-    case 252: // Temple Town Ruins
-    case 253: // Ruins of Unte
-    case 254: // Moorth Ruins
-    case 255: // Finger Ruins
-        return static_cast<int>(gen::Category::WorldRuins);
-    case 8:   // lookout towers (Tower of Return, Frenzy-Flaming Tower, …)
-    case 17:  // sorcerers' rises
-    case 68:  // Three Sisters rises (Seluvis/Ranni/Renna)
-    case 258: // DLC rises (Sunken, Rabbath's)
-        return static_cast<int>(gen::Category::WorldRiseTower);
-    case 6:   // shacks
-    case 259: // DLC shacks/hovels
-        return static_cast<int>(gen::Category::WorldShack);
-    case 18:  // forts
-    case 242: // Fog Rift Fort
-    case 243: // Fort of Reprimand
-        return static_cast<int>(gen::Category::WorldFort);
-    case 25:  // Castle Morne
-    case 26:  // Caria Manor
-    case 27:  // The Shaded Castle
-    case 28:  // Redmane Castle
-    case 29:  // Castle Sol
-    case 241: // Castle Ensis
-        return static_cast<int>(gen::Category::WorldCastle);
-    case 19:  // Windmill Pastures (missed in the first parity pass — [LANDMARKPIN] 19x3)
-    case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39: case 40: // towns/villages
-    case 244: // Abandoned Ailing Village
-    case 245: // Bonny Village
-    case 246: // Shaman Village
-    case 261: // Village of Flies
-        return static_cast<int>(gen::Category::WorldTownVillage);
-    case 24:  // Colosseums (Royal/Leyndell/Caelid)
-        return static_cast<int>(gen::Category::WorldColosseum);
-    case 10:  // gates (Stormgate, Sellia Gateway)
-    case 11:  // Bridge of Sacrifice
-    case 43:  // Demi-Human and Misbegotten (Mt. Gelmir camp)
-    case 45:  // Mohgwyn Dynasty Mausoleum
-    case 46:  // eternal cities (Nokstella/Nokron/Siofra Aqueduct/Night's Sacred Ground)
-    case 52:  // The Four Belfries
-    case 53:  // Ruin-Strewn Precipice
-    case 54:  // Bestial Sanctum
-    case 57:  // Forge of the Giants
-    case 88:  // The Rold Route
-    case 217: // Stone Coffin Fissure
-    case 232: // Ruined Forges (DLC)
-    case 240: // Scadutree Chalice
-    case 256: // Nameless Mausoleums (DLC)
-    case 257: // Suppressing Pillar
-    case 260: // Ellac Greatbridge
-        return static_cast<int>(gen::Category::WorldUniqueSite);
-    default: return -1;
-    }
+    return goblin::generated::landmark_category_for_icon(iconId);
 }
 
 void build_live_landmarks()

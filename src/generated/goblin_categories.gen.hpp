@@ -99,4 +99,100 @@ inline constexpr CategoryMetaRow CATEGORY_META[] = {
 };
 
 inline constexpr int CATEGORY_META_COUNT = static_cast<int>(sizeof(CATEGORY_META) / sizeof(CATEGORY_META[0]));
+
+// iconId -> landmark Category (int), or -1. Built from each category's
+// landmark_icon_ids in data/categories.json; drives build_live_landmarks().
+inline int landmark_category_for_icon(int iconId)
+{
+    switch (iconId)
+    {
+    case 23: return static_cast<int>(Category::WorldDivineTower);
+    case 9: return static_cast<int>(Category::WorldEvergaol);
+    case 30: return static_cast<int>(Category::WorldMinorErdtree);
+    case 21: return static_cast<int>(Category::WorldGrandLift);
+    case 4:
+    case 13:
+    case 14:
+    case 15:
+    case 16:
+    case 230:
+    case 231:
+    case 234: return static_cast<int>(Category::WorldDungeon);
+    case 50:
+    case 51:
+    case 55:
+    case 56:
+    case 58:
+    case 59:
+    case 60:
+    case 61:
+    case 62:
+    case 66:
+    case 210:
+    case 211:
+    case 213:
+    case 218: return static_cast<int>(Category::WorldLegacyDungeon);
+    case 208: return static_cast<int>(Category::WorldMiquellaCross);
+    case 3:
+    case 20:
+    case 247:
+    case 248:
+    case 249: return static_cast<int>(Category::WorldChurch);
+    case 5:
+    case 47:
+    case 250:
+    case 251:
+    case 252:
+    case 253:
+    case 254:
+    case 255: return static_cast<int>(Category::WorldRuins);
+    case 8:
+    case 17:
+    case 68:
+    case 258: return static_cast<int>(Category::WorldRiseTower);
+    case 6:
+    case 259: return static_cast<int>(Category::WorldShack);
+    case 18:
+    case 242:
+    case 243: return static_cast<int>(Category::WorldFort);
+    case 25:
+    case 26:
+    case 27:
+    case 28:
+    case 29:
+    case 241: return static_cast<int>(Category::WorldCastle);
+    case 19:
+    case 32:
+    case 33:
+    case 34:
+    case 35:
+    case 36:
+    case 37:
+    case 38:
+    case 39:
+    case 40:
+    case 244:
+    case 245:
+    case 246:
+    case 261: return static_cast<int>(Category::WorldTownVillage);
+    case 24: return static_cast<int>(Category::WorldColosseum);
+    case 10:
+    case 11:
+    case 43:
+    case 45:
+    case 46:
+    case 52:
+    case 53:
+    case 54:
+    case 57:
+    case 88:
+    case 217:
+    case 232:
+    case 240:
+    case 256:
+    case 257:
+    case 260: return static_cast<int>(Category::WorldUniqueSite);
+    default: return -1;
+    }
+}
 } // namespace goblin::generated

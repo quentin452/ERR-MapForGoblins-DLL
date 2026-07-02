@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ENUM_HPP = ROOT / "src" / "generated" / "goblin_map_data.hpp"
 NAMES_CPP = ROOT / "src" / "goblin_markers.cpp"
 SECT_CPP = ROOT / "src" / "goblin_section_visibility.cpp"
+LAND_CPP = ROOT / "src" / "worldmap" / "map_entry_layer.cpp"
 JSON = ROOT / "data" / "categories.json"
 GEN_HPP = ROOT / "src" / "generated" / "goblin_categories.gen.hpp"
 
@@ -70,14 +71,37 @@ def parse_sections():
     return out
 
 
+def parse_landmarks():
+    """{enum -> [iconId,...]} from landmark_category_for_icon()'s case groups."""
+    txt = LAND_CPP.read_text(encoding="utf-8")
+    m = re.search(r"int landmark_category_for_icon\(int iconId\)\s*\{(.*?)\n\}", txt, re.S)
+    if not m:
+        sys.exit("could not find `landmark_category_for_icon` function")
+    out, pending = {}, []
+    for line in m.group(1).splitlines():
+        for cm in re.findall(r"case (\d+):", line):  # several `case N:` may share a line
+            pending.append(int(cm))
+        rm = re.search(r"Category::(\w+)\)", line)
+        if rm:
+            out.setdefault(rm.group(1), []).extend(pending)
+            pending = []
+    return {k: sorted(v) for k, v in out.items()}
+
+
 def extract_to_json():
     order = parse_enum_order()
     names = parse_names()
     sects = parse_sections()
+    land = parse_landmarks()
     missing = [c for c in order if c not in names or c not in sects]
     if missing:
         sys.exit(f"enum categories with no name/section: {missing}")
-    rows = [{"enum": c, "name": names[c], "section": sects[c]} for c in order]
+    rows = []
+    for c in order:
+        row = {"enum": c, "name": names[c], "section": sects[c]}
+        if land.get(c):
+            row["landmark_icon_ids"] = land[c]
+        rows.append(row)
     JSON.parent.mkdir(parents=True, exist_ok=True)
     JSON.write_text(json.dumps(rows, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"extracted {len(rows)} categories -> {JSON.relative_to(ROOT)}")
@@ -113,6 +137,25 @@ def generate(rows):
         "",
         "inline constexpr int CATEGORY_META_COUNT ="
         " static_cast<int>(sizeof(CATEGORY_META) / sizeof(CATEGORY_META[0]));",
+        "",
+        "// iconId -> landmark Category (int), or -1. Built from each category's",
+        "// landmark_icon_ids in data/categories.json; drives build_live_landmarks().",
+        "inline int landmark_category_for_icon(int iconId)",
+        "{",
+        "    switch (iconId)",
+        "    {",
+    ]
+    for r in rows:
+        ids = r.get("landmark_icon_ids")
+        if not ids:
+            continue
+        for i in ids:
+            lines.append(f"    case {i}:")
+        lines[-1] += f" return static_cast<int>(Category::{r['enum']});"
+    lines += [
+        "    default: return -1;",
+        "    }",
+        "}",
         "} // namespace goblin::generated",
         "",
     ]
@@ -121,9 +164,14 @@ def generate(rows):
 
 
 def main():
-    force = "--extract" in sys.argv[1:]
-    if force or not JSON.exists():
+    # data/categories.json is the SOURCE OF TRUTH (committed). --extract is the historical
+    # bootstrap that reconstructs it from the old C++ switches — it only works BEFORE those
+    # switches were migrated to the table, so it is not used in normal runs.
+    if "--extract" in sys.argv[1:]:
         rows = extract_to_json()
+    elif not JSON.exists():
+        sys.exit(f"{JSON.relative_to(ROOT)} missing — it is the source of truth; restore it from git "
+                 "(the C++ switches it replaced are gone, so --extract can no longer rebuild it).")
     else:
         rows = json.loads(JSON.read_text(encoding="utf-8"))
     generate(rows)
