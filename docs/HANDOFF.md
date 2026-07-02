@@ -13,9 +13,10 @@ Kept: genuinely live/in-progress work, open questions, and standing knowledge (g
 decisions, non-obvious facts) not fully captured anywhere else. If you're looking for the history of
 something not below, check `docs/changelog.md` first, then the relevant `docs/plans/*.md`.
 
-Last updated: 2026-07-02 (hot-reload D + Phase 3 RPC + Phase 4 loop ALL merged & in-game validated on Linux/Proton; spiderfy v1+v2, in-game pause, RPC input injection/HUD, NPC altitude badges, F2 repro — see the Phase 4 sections below).
-see RESUME HERE; also: SINGLE-DLL migration + the 9 native-pin parity landmark categories in-game
-verified, see below).
+Last updated: 2026-07-02 (hot-reload D + Phase 3 RPC + Phase 4 loop ALL merged & in-game validated
+on Linux/Proton; spiderfy v1+v2, in-game pause, RPC input injection/HUD, NPC altitude badges, F2
+repro — see the Phase 4 sections below. Earlier same day: SINGLE-DLL migration + the 9 native-pin
+parity landmark categories in-game verified.)
 
 ## RESUME HERE (2026-07-02) — hot-reload Slice D IMPLEMENTED (`feat/overlay-hotreload-slice-d`), Windows in-game validation next
 
