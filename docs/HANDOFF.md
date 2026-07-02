@@ -107,11 +107,16 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
   Anything the user still SEES beyond those → match its iconId here, then decide suppress/classify.
   NB: ERR also injects its OWN custom rows (stakes/pools/effigies at iconId 374+ etc.) — those are
   OUR old native-injection families, not WMPP vanilla pins.
-- **Crowded-icon DX (piles of icons at one spot): NOT implemented — design choice open.** Existing
-  machinery: per-marker `cluster_key` + pile labels + the cluster-bubble system (F1 clustering
-  options). Candidate simple wins: (a) hover fan-out (spiderfy) around the cursor; (b) stack badge
-  "xN" + tooltip listing (partially exists via pile labels); (c) per-pixel de-overlap (spiral
-  nudge) at draw. User asked for "simplest thing" — decide next session.
+- **Round 3 in-game results (user, 2026-07-02):** church glyph FIXED; fragment leaks mostly fixed;
+  Roundtable items still visible — ACCEPTED as correct (its markers project through the m11 conv
+  onto a Leyndell-fragment tile the player owns; the "always available since game start" reading
+  fits the Roundtable anyway). `[LANDMARKPIN]` diag: `19x3 41x191 42x29 67x26 80x73 83x70 84x16
+  85x16 87x8` — everything expected EXCEPT **iconId 19 (Windmill Pastures, 3 rows): missed in the
+  first parity grouping pass** → added to `WorldTownVillage` (those were the user's remaining
+  mystery pins).
+- **Crowded-icon DX: user picked (a) hover FAN-OUT (spiderfy) — FOLLOWUP, not started.** Hovering
+  a pile spreads its icons around the cursor. Existing machinery to reuse: per-marker
+  `cluster_key`, pile labels, the hover/tooltip pass in map_renderer.
 
 ## SINGLE-DLL migration — profiles retired (2026-07-02, `feat/mapgenie-landmark-parity`)
 

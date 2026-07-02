@@ -97,7 +97,7 @@ enum class Category : uint8_t
     WorldShack,            // iconId ∈ {6,259} (shacks + DLC hovels)
     WorldFort,             // iconId ∈ {18,242,243}
     WorldCastle,           // iconId ∈ {25,26,27,28,29,241} (field castles/manors, NOT legacy dungeons)
-    WorldTownVillage,      // iconId ∈ {32..40,244,245,246,261}
+    WorldTownVillage,      // iconId ∈ {19,32..40,244,245,246,261} (19 = Windmill Pastures)
     WorldColosseum,        // iconId 24 (3 rows)
     WorldUniqueSite,       // iconId ∈ {10,11,43,45,46,52,53,54,57,88,217,232,240,256,257,260} (one-off sites)
     // ── GROUP 2 — non-WMPP interactables (disk MSB/AEG + EMEVD) ──

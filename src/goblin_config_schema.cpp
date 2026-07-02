@@ -460,7 +460,7 @@ namespace
                 B("show_shacks", showCategory[static_cast<int>(Cat::WorldShack)], "false", "Shack / hovel locations (iconIds 6,259)"),
                 B("show_forts", showCategory[static_cast<int>(Cat::WorldFort)], "false", "Fort locations (iconIds 18,242,243)"),
                 B("show_castles", showCategory[static_cast<int>(Cat::WorldCastle)], "false", "Field castle / manor locations (iconIds 25-29,241; legacy dungeons have their own toggle)"),
-                B("show_towns_villages", showCategory[static_cast<int>(Cat::WorldTownVillage)], "false", "Town / village locations (iconIds 32-40,244,245,246,261)"),
+                B("show_towns_villages", showCategory[static_cast<int>(Cat::WorldTownVillage)], "false", "Town / village locations incl. Windmill Pastures (iconIds 19,32-40,244,245,246,261)"),
                 B("show_colosseums", showCategory[static_cast<int>(Cat::WorldColosseum)], "false", "Colosseum locations (iconId 24)"),
                 B("show_unique_sites", showCategory[static_cast<int>(Cat::WorldUniqueSite)], "false", "One-off named sites: Four Belfries, Bestial Sanctum, Forge of the Giants, eternal cities, gates/bridges, DLC one-offs …"),
                 B("show_portals", showCategory[static_cast<int>(Cat::WorldPortal)], "false", "Sending Gate / waygate portals (AEG099_510 bound to EMEVD warp template 90005605)"),

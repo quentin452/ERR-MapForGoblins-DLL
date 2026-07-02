@@ -424,6 +424,7 @@ static int landmark_category_for_icon(int iconId)
     case 29:  // Castle Sol
     case 241: // Castle Ensis
         return static_cast<int>(gen::Category::WorldCastle);
+    case 19:  // Windmill Pastures (missed in the first parity pass — [LANDMARKPIN] 19x3)
     case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39: case 40: // towns/villages
     case 244: // Abandoned Ailing Village
     case 245: // Bonny Village
