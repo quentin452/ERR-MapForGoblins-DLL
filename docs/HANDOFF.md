@@ -101,10 +101,12 @@ residence fallback only — the live `goblin_legacy_fold` is primary). Implement
   (README/gfx/SNAP_DIR) + offline pipeline data source; all profiles build/ship the same DLL from
   `build-err/`. inigen always emits the full ini (ERR entries included everywhere).
 - `liveLootLabels` single default = false (vanilla package used to default true — changelog notes it).
-- **Verify next:** in-game on ERR — grep `[PROFILE] ERR install DETECTED`; then a vanilla me3 launch
-  — expect `[PROFILE] ERR install not detected` + Reforged sections absent from F1 + ini rewritten
-  without ERR sections. Windows `build.bat` + `build.bat snapshot` re-run (script edited; validated
-  snapshot flow predates this change). Fingerprint risk: if some ERR release ships without
+- **ERR detection VERIFIED in-game (2026-07-02):** `[PROFILE] ERR install DETECTED (fingerprint
+  menu\deploy\projects\ELDENRINGReforged) — ERR-only config active`. **Still to verify:** a vanilla
+  me3 launch — expect `[PROFILE] ERR install not detected` + Reforged sections absent from F1 + ini
+  rewritten without ERR sections (see `docs/memory/tooling/me3-cli-nonerr-launch.md` for the launch
+  recipe). Windows `build.bat` + `build.bat snapshot` re-run (script edited; the validated snapshot
+  flow predates this change). Fingerprint risk: if some ERR release ships without
   `menu/deploy/projects/ELDENRINGReforged`, add a second fingerprint or an ini override knob.
 - Baked-data plan impact: Phase A per-profile regen is MOOT; remaining bake work (name_regions/
   region_anchors → disk-MSB runtime, icon atlas) unchanged.
