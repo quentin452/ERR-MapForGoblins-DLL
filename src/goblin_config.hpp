@@ -48,6 +48,9 @@ namespace goblin
     {
         extern GOBLIN_RENDER_API uint8_t loadDelay;
         extern GOBLIN_RENDER_API bool requireMapFragments;
+        // Hide overlay markers under the game's own always-on-top map UI (ERR day/night
+        // dial bottom-right) — we render post-present so we'd otherwise draw OVER it.
+        extern GOBLIN_RENDER_API bool clipGameUi;
         extern GOBLIN_RENDER_API bool bakedOnly;  // diag overlay: draw ONLY Baked-source markers (the no-bake residual)
         extern GOBLIN_RENDER_API bool collectedGraying;
         extern GOBLIN_RENDER_API bool hideCollected;

@@ -69,6 +69,7 @@ namespace goblin::config
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
     uint8_t freezeWatchdogSecs = 20;
+    bool clipGameUi = true;
     bool debugEventFlags = false;
     bool debugItemGrants = false;
     bool debugFlagCapture = false;
@@ -172,6 +173,8 @@ namespace
                          "init poll cannot confirm the world-map data is loaded. Normally the mod\n"
                          "POLLS for the data and proceeds as soon as it's ready (no fixed wait),\n"
                          "so this key has no effect on a healthy boot. Leave at 5.", false, nullptr},
+                B("clip_game_ui", clipGameUi, "true",
+                  "Hide overlay markers that fall under the game's own always-on-top map UI\n(the ERR day/night dial, bottom-right). The overlay renders after the game's\nframe, so without this our icons draw OVER that UI. ERR-only region; no\neffect on other installs. Default: true."),
                 B("require_map_fragments", requireMapFragments, "true",
                   "Require map fragment discovery before showing icons in that area\n"
                   "(overlay map: gates on the area's map-fragment event flag)."),

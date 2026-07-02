@@ -33,7 +33,7 @@ namespace goblin::overlay_api
     // Scalars are exposed as pointer-getters (works uniformly for read AND for the ImGui widgets
     // that bind `&goblin::config::X` directly) via one shared macro shape.
 #define GOBLIN_CFG_BOOL_LIST(X) \
-    X(requireMapFragments) X(bakedOnly) X(collectedGraying) X(hideCollected) X(stackIdenticalItems) \
+    X(requireMapFragments) X(clipGameUi) X(bakedOnly) X(collectedGraying) X(hideCollected) X(stackIdenticalItems) \
     X(clusterDebugRadius) X(clusterDebugMarkers) X(showRegionLabels) X(nativeItemIcons) X(diagLootFlags) \
     X(diagLootPos) X(debugLogging) X(anonymousLoot) X(dropMerchantPhantoms) X(redifyBossIcons) \
     X(graceOverlay) X(graceGpuSprite) X(suppressNativeBosses) X(landmarkSuppressNative) X(enableMarkerDump) X(debugEventFlags) \
@@ -103,6 +103,7 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API void set_locate_target(float u, float v);
     GOBLIN_RENDER_API void clear_locate_target();
     GOBLIN_RENDER_API bool locate_target_clamped();
+    GOBLIN_RENDER_API bool err_features();  // reforged.dll loaded — ERR-only UI exists
     GOBLIN_RENDER_API bool page_switch_busy();
     GOBLIN_RENDER_API void request_switch_to_page(int group);
     GOBLIN_RENDER_API const goblin::worldmap_probe::LocateDebug &last_locate_debug();

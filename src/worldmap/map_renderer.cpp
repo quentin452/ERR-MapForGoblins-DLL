@@ -985,6 +985,26 @@ static void refresh_player_world_y()
 static ImVec2 s_canvas_min(0.f, 0.f), s_canvas_max(0.f, 0.f);
 static bool s_canvas_clip = false;
 
+// Game-UI exclusion (user report 2026-07-02): the overlay renders AFTER the game's frame, so
+// our icons draw OVER the game's own always-on-top map UI. Static-region case: the ERR
+// day/night dial (bottom-right, fixed layout in the 1920x1080 virtual canvas — disc centre
+// ~(1815,1000) r~240 covers the needle/wing; the time-of-day pill sits above it). Markers,
+// hover and pile anchors falling inside are treated as out-of-bounds (in_draw_bounds below),
+// so nothing draws or reacts under the dial. ERR-gated (vanilla has no dial) + ini
+// clip_game_ui. The DYNAMIC case (a menu opening over the map) needs a menu-state flag —
+// tracked in HANDOFF, not covered here.
+static inline bool in_game_ui_exclusion(const ImVec2 &p, float realW, float realH)
+{
+    if (!(*goblin::overlay_api::cfg_clipGameUi_ptr()) || !goblin::overlay_api::err_features())
+        return false;
+    const float sx = realW / 1920.f, sy = realH / 1080.f;
+    const float dx = p.x - 1815.f * sx, dy = p.y - 1000.f * sy;
+    const float r = 240.f * ((sx + sy) * 0.5f);
+    if (dx * dx + dy * dy < r * r)
+        return true; // dial disc (+ needle/wing, inside the radius)
+    return p.x > 1700.f * sx && p.y > 685.f * sy && p.y < 740.f * sy; // time-of-day pill
+}
+
 // Cull test shared by the marker loop and the pile pass: inside the canvas rect when
 // clipping is active, else the old whole-screen test. pad keeps partially-visible
 // edge markers (the ImGui clip rect trims their pixels exactly).
@@ -994,7 +1014,9 @@ static inline bool in_draw_bounds(const ImVec2 &p, float realW, float realH, flo
     const float miny = s_canvas_clip ? s_canvas_min.y : 0.f;
     const float maxx = s_canvas_clip ? s_canvas_max.x : realW;
     const float maxy = s_canvas_clip ? s_canvas_max.y : realH;
-    return !(p.x < minx - pad || p.y < miny - pad || p.x > maxx + pad || p.y > maxy + pad);
+    if (p.x < minx - pad || p.y < miny - pad || p.x > maxx + pad || p.y > maxy + pad)
+        return false;
+    return !in_game_ui_exclusion(p, realW, realH);
 }
 
 // Group clustered markers by their nearest-grace key (matches the native map's
