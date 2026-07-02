@@ -137,6 +137,7 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API bool get_player_world_pos(float &x, float &y, float &z);
     GOBLIN_RENDER_API bool get_player_map_pos(int &out_area, float &world_x, float &world_z,
                             int *out_gx = nullptr, int *out_gz = nullptr, int *out_group = nullptr);
+    GOBLIN_RENDER_API bool get_player_facing_yaw(float &yaw_radians);
     GOBLIN_RENDER_API std::string lookup_text_utf8(int32_t id);
     GOBLIN_RENDER_API std::string lookup_name_en_disk_utf8(int32_t encoded_id);
     GOBLIN_RENDER_API bool quest_step_done(const goblin::generated::NpcQuest &q, size_t s);

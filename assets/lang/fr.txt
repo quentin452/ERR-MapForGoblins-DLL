@@ -826,3 +826,6 @@ tr=Langue de l'interface overlay (lang/<code>.txt à côté du DLL).\nChange en 
 
 en=language langue overlay ui english french francais traduction translation
 tr=langue language interface overlay anglais francais français traduction
+
+en=Site of Grace
+tr=Site de grâce

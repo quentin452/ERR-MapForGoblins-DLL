@@ -12,6 +12,25 @@ metadata:
 
 **✅ FOUNDATION VERIFIED IN-GAME (2026-06-22 #5): "works perfectly" per user** — overworld north-up corner HUD tracks the player live, map-CLOSED, all pages. RESOLVES the ⚠️ the feature hinged on: player world-pos now reliable (commit a2e3c27, `[[WCM+0x1E508]+0x6C0]`=WorldMapPointParam posX/posZ frame — SUPERSEDES the reverted physics-Vec ccb2227 note below, now stale). Remaining for FULL minimap = heading-up (player-rotation RE) + underground player-pos RE; overworld foundation is shippable.
 
+**✅ PLAYER-DIRECTION ARROW SHIPPED (2026-07-03, on `master` via the polish merge). PLAYER YAW OFFSET
+RESOLVED IN-GAME (2026-07-02, Linux/Proton in-DLL probe).** The minimap "you are here" dot is now an
+arrow pointing the player's facing (heading-UP mode — rotating the whole minimap by −yaw — is the natural
+next step, same yaw). On the SAME `LocalPlayer` pointer we already own (`[[WCM+0x1E508]]` → `+0x6C0`
+position block), the player facing is a single float at **`LocalPlayer + 0x6CC`** — yaw in RADIANS, range
+[−π, π]. Sits immediately after the `+0x6C0/6C4/6C8` (X/Y/Z) position and is mirrored in the render copy
+(`+0x6D4` pos copy → `+0x6E0` yaw copy), confirming it's part of the same transform. `+0x6D0 ≈ 0.011` =
+pitch (≈flat). Proven by a temporary `[HEADING]` float-window probe: turning the character in-place swept
+`+6CC` through `2.905 → 1.115 → −0.297 → −2.733 → −0.655` (±π) while position/pitch behaved independently.
+Implementation: `goblin::get_player_facing_yaw()` (world_position.cpp) + `overlay_api` forwarder;
+`draw_minimap` draws a triangle rotated by yaw (dot fallback if unresolved). **Screen convention (calibrated
+in-game, user-confirmed):** north-up minimap, `fwd = (sin a, −cos a)`, `a = yaw + π` — the `+π` because the
+raw yaw pointed EXACTLY opposite; the rotation SIGN (`+1`) was already correct. Movement input note (for
+future RPC-driven probes): this install moves on **Z/Q/S/D (AZERTY)** but only `D` reliably registered via
+RPC `key` (Z/Q/S dropped — AZERTY scancode/VK mismatch, see HANDOFF); `key D` turns work.
+Same merge also shipped the golden-rune legibility polish (worldmap 1.6× / minimap 2.8×, black disc → warm
+gold GLOW sized off the icon's natural draw size) — see [[native-icon-render-pipeline]] for the icon
+content-alpha-bbox assessment that came out of it.
+
 A small always-on minimap HUD (screen corner) showing nearby goblin markers relative to the player — not the full pause-screen world map, a live mini view during gameplay.
 
 **Building block status:** a player-centred minimap needs a reliable LIVE player world position. The physics-Vec attempt (commit ccb2227, WCM+0x1e508 chain) was REVERTED — it read overworld `local=(0,0)` and broke underground (the deep sub-offset is wrong on this build). So the player pos is NOT yet reliable. The native map CURSOR pos IS reliable (LiveView.cursorX/Z, all pages — now drives distance-adaptive, commit 65580d9) but the cursor ≠ player (it's the reticle). For a "you are here" minimap centred on the PLAYER, the underground-player-pos RE still needs finishing (RE §5 decision tree, [[overlay-pending-re]] #1). A cursor-centred mini view is possible NOW if that UX is acceptable.

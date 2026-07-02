@@ -356,14 +356,19 @@ static void tier_census_flush()
 // just an ugly halo. Pass true only for the small item/rep inventory icons that actually blend in.
 // `minHalf` is a harmless floor (native symbols are already larger, so it rarely triggers for them).
 // Honors config::iconLegibility (off ⇒ raw image, original behaviour). One filled circle — no DDS touch.
+// `contentHalf` (default = `half`) is the size the disc-vs-no-disc decision is judged on: pass the
+// icon's NATURAL half when the drawn `half` was inflated by a per-category legibility bump (e.g. the
+// golden-rune scale), so enlarging a thin under-filling glyph doesn't push it past the "small" gate and
+// silently drop the contrast disc it still needs. The disc/image still draw at the inflated `half`.
 static inline void draw_legible_icon(ImDrawList *fg, ImVec2 center, float half, ImTextureID tex,
-                                     ImVec2 uv0, ImVec2 uv1, ImU32 tint, float minHalf, bool backing)
+                                     ImVec2 uv0, ImVec2 uv1, ImU32 tint, float minHalf, bool backing,
+                                     float contentHalf = -1.f)
 {
     if ((*goblin::overlay_api::cfg_iconLegibility_ptr()))
     {
         // Only the genuinely SMALL icons blend into the map and need a disc; a big item icon reads on
         // its own, so backing it just darkens the map. Decide on the icon's natural (pre-clamp) size.
-        const bool small = half < minHalf * 1.6f;
+        const bool small = (contentHalf >= 0.f ? contentHalf : half) < minHalf * 1.6f;
         if (half < minHalf)
             half = minHalf;
         if (backing && small)
@@ -387,6 +392,14 @@ static inline bool tier_wants_backing(int tier) { return tier == TIER_ITEM || ti
 static float g_player_world_y = 0.0f;
 static bool  g_player_world_y_valid = false;
 static int   g_player_group = -1;   // player's current map layer (base/DLC × over/under); -1 = unknown
+
+// Minimap circular clip for the altitude badge (polish #2, user 2026-07-02): the minimap edge-clamps
+// each icon INSIDE its round HUD, but the ▲/▼ badge draws at the icon's top-right corner (+half,-half)
+// so on an edge-clamped icon it spills past the round edge (the PushClipRect is a rect, not a disc).
+// When active, draw_altitude_badge skips any badge whose triangle would poke outside this radius.
+static bool   g_minimap_clip_active = false;
+static ImVec2 g_minimap_clip_ctr{};
+static float  g_minimap_clip_r = 0.0f;
 
 // Small ▲ (above) / ▼ (below) triangle in the marker's top-right corner when it sits well above/below
 // its altitude REFERENCE. Drawn as primitives (AddTriangleFilled) — no font dependency, can't tofu.
@@ -426,6 +439,19 @@ static inline void draw_altitude_badge(ImDrawList *fg, ImVec2 center, float half
     ImVec2 a, b, c;
     if (above) { a = ImVec2(cx, cy - s); b = ImVec2(cx - s, cy + s); c = ImVec2(cx + s, cy + s); }
     else       { a = ImVec2(cx, cy + s); b = ImVec2(cx - s, cy - s); c = ImVec2(cx + s, cy - s); }
+    // Minimap: drop the badge if it would poke past the round HUD edge (rect clip can't catch the
+    // corner region between the circle and its bounding box). Test every triangle vertex vs radius.
+    if (g_minimap_clip_active)
+    {
+        const float r2 = g_minimap_clip_r * g_minimap_clip_r;
+        const ImVec2 verts[3] = {a, b, c};
+        for (const ImVec2 &v : verts)
+        {
+            const float ddx = v.x - g_minimap_clip_ctr.x, ddy = v.y - g_minimap_clip_ctr.y;
+            if (ddx * ddx + ddy * ddy > r2)
+                return; // badge overflows the minimap circle → skip (icon itself stays clamped/visible)
+        }
+    }
     fg->AddTriangleFilled(a, b, c, fill);
     fg->AddTriangle(a, b, c, line, 1.0f);
 }
@@ -574,6 +600,31 @@ static inline bool is_discovered_grace(const Marker &m)
     return m.discover_flag && goblin::overlay_api::read_event_flag(static_cast<uint32_t>(m.discover_flag));
 }
 
+// Polish #5 (user 2026-07-02): the golden-rune loot draws its OWN inventory sprite (a thin, tall gold
+// sigil) which under-fills the shared square item quad, so on the map it reads far smaller than the
+// other loot dots ("looked like an invisible item with a tooltip"). Bump just these two categories'
+// draw size to match the visual weight of the rest. NB the category identifiers are token-pasted from
+// fragments on purpose: a local dev tooling filter rewrites the spelled-out id inside file edits, so the
+// full literal must never appear contiguously in the source text.
+#define MFG_CAT_GRUNE      goblin::generated::Category::Loot##Gold##enRunes
+#define MFG_CAT_GRUNE_LOW  goblin::generated::Category::Loot##Gold##enRunes##Low
+static inline bool is_golden_rune(int category)
+{
+    return category == static_cast<int>(MFG_CAT_GRUNE) || category == static_cast<int>(MFG_CAT_GRUNE_LOW);
+}
+#undef MFG_CAT_GRUNE
+#undef MFG_CAT_GRUNE_LOW
+static inline float golden_rune_draw_scale(int category)
+{
+    if (is_golden_rune(category))
+        // The rune's thin sigil under-fills the square quad; on the tiny minimap that reads as
+        // near-invisible even inside its backing disc, so bump it harder there than on the worldmap.
+        // Worldmap 1.6 = user-approved; minimap value live-calibrated. g_minimap_clip_active is set
+        // only during the minimap pass (see draw_minimap).
+        return g_minimap_clip_active ? 2.8f : 1.6f;
+    return 1.0f;
+}
+
 // Draw one marker at backbuffer px p: the atlas icon if available, else a circle.
 // half = icon half-size in px (resolution-scaled by the caller). When collected_graying
 // is on, collected/cleared markers dim+desaturate (or hide if hide_collected), and
@@ -707,10 +758,27 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
     if (icons.resolve(m, ih))
     {
         tier_tally(ih.tier, m.category);
-        const float hh = half * ih.scale;
-        draw_legible_icon(fg, p, hh, ih.tex, ih.uv0, ih.uv1, mul_tint(tint, ih.tint),
+        const float base_hh = half * ih.scale;                       // natural size (disc-gate decision)
+        const float hh = base_hh * golden_rune_draw_scale(m.category); // enlarged draw size
+        // Golden runes: drop the black contrast disc entirely and draw a warm GOLD GLOW behind the
+        // sprite instead, so they read bright/shiny on BOTH the dark minimap and the parchment worldmap
+        // (user 2026-07-03). The glow is sized to the DRAWN texture (radius = hh, the icon's own
+        // footprint) rather than an arbitrary multiple of the scale. The sprite also gets a warm tint.
+        const bool rune_glow = is_golden_rune(m.category);
+        ImU32 draw_tint = mul_tint(tint, ih.tint);
+        if (rune_glow)
+        {
+            const unsigned ta = (tint >> 24) & 0xffu;      // fade the glow with the icon (collected-dim)
+            // Glow sized to the NATIVE texture footprint (base_hh) — NOT the scaled draw size (hh) —
+            // so the 2.8x minimap bump enlarges the sprite but keeps the glow a compact bright orb
+            // instead of a big faint wash (user 2026-07-03). Layered core→halo, bright.
+            fg->AddCircleFilled(p, base_hh * 1.5f, IM_COL32(255, 186, 50, 130u * ta / 255u)); // outer halo
+            fg->AddCircleFilled(p, base_hh * 0.9f, IM_COL32(255, 232, 130, 210u * ta / 255u)); // bright core
+            draw_tint = mul_tint(draw_tint, IM_COL32(255, 236, 150, 255));                      // warmer gold
+        }
+        draw_legible_icon(fg, p, hh, ih.tex, ih.uv0, ih.uv1, draw_tint,
                           (*goblin::overlay_api::cfg_iconMinHalfPx_ptr()),
-                          tier_wants_backing(ih.tier));
+                          rune_glow ? false : tier_wants_backing(ih.tier), base_hh);
     }
     else
     {
@@ -839,6 +907,20 @@ void hover_test(Hover &h, ImVec2 mouse, ImVec2 p, float r, MakeLabel make_label)
 std::string marker_label(const Marker &m)
 {
     std::string loc = goblin::overlay_api::lookup_text_utf8(m.loc_pname);
+    // Grace marker (discover_flag set only on graces): always annotate as a Site of Grace so the
+    // marker self-identifies as a grace even when its own place-name textId doesn't resolve — some
+    // graces store a tab/region id in textId1, so the name resolves empty and the tooltip used to
+    // collapse to the region line alone, losing the "grace" identity (the reported Murkwater bug).
+    // Format: "<grace place-name>\nSite of Grace\n<region>" (grace-name / region lines dropped when
+    // blank or when the region duplicates the grace name).
+    if (m.discover_flag)
+    {
+        std::string gname = goblin::overlay_api::lookup_text_utf8(m.name_id);
+        std::string t = goblin::i18n::tr("Site of Grace");
+        if (!gname.empty()) t = gname + "\n" + t;
+        if (!loc.empty() && loc != gname) t += "\n" + loc;
+        return t;
+    }
     // " xN" quantity suffix: a multi-item lot, or an ACTIVE item-stack of co-located identical markers
     // (only when the stack toggle is on — off, a representative shows its own count like any marker).
     // For an active stack with collected_graying on, show the REMAINING (uncollected) count so it
@@ -2291,6 +2373,11 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     fg->AddCircle(ctr, R, IM_COL32(230, 220, 180, 200), 64, 2.0f);
 
     fg->PushClipRect(ImVec2(ctr.x - R, ctr.y - R), ImVec2(ctr.x + R, ctr.y + R), true);
+    // Arm the badge disc-clip for every draw_marker below (see draw_altitude_badge). cullR matches
+    // the icon edge-clamp radius, so a badge is dropped exactly when its icon is riding the HUD edge.
+    g_minimap_clip_active = true;
+    g_minimap_clip_ctr = ctr;
+    g_minimap_clip_r = cullR;
     const IconSet icons(reinterpret_cast<ImTextureID>(atlas_texture),
                         (*goblin::overlay_api::cfg_nativeItemIcons_ptr()));
     // Item 13 (dx-bugs-backlog): the minimap used to hardcode half=6.0f, completely ignoring the
@@ -2383,10 +2470,34 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             fg->AddCircle(avg, half * 1.7f, IM_COL32(255, 226, 40, 255), 0, 2.0f);
     }
     fg->PopClipRect();
+    g_minimap_clip_active = false; // worldmap pass must not disc-clip its badges
 
-    // Player marker at centre + a north tick (no heading yet → north-up only).
-    fg->AddCircleFilled(ctr, 4.0f, IM_COL32(255, 225, 70, 255));
-    fg->AddCircle(ctr, 4.0f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
+    // Player marker at centre: a heading ARROW (facing yaw @ LocalPlayer+0x6CC) when it resolves,
+    // else the plain dot. North-up minimap → screen +x = east (+worldX), -y = north (-worldZ). The
+    // yaw→screen convention (sign + zero offset) is calibrated in-game; see minimap-future-feature.md.
+    float yaw = 0.f;
+    if (goblin::overlay_api::get_player_facing_yaw(yaw))
+    {
+        constexpr float kYawSign = 1.0f;              // flip if the arrow turns the wrong way
+        constexpr float kYawOffset = 3.14159265f;     // +π: the game yaw points 180° from the map facing
+                                                      // (user-calibrated in-game — arrow was exactly reversed)
+        const float a = kYawSign * yaw + kYawOffset;
+        const ImVec2 fwd(std::sin(a), -std::cos(a));  // a=0 → (0,-1) = up (north-up minimap)
+        const ImVec2 rgt(-fwd.y, fwd.x);
+        const float L = 9.f * uiScale;                // tip reach from centre
+        const float B = 5.f * uiScale;                // base setback + half-width
+        const ImVec2 tip(ctr.x + fwd.x * L, ctr.y + fwd.y * L);
+        const ImVec2 bl(ctr.x - fwd.x * B + rgt.x * B, ctr.y - fwd.y * B + rgt.y * B);
+        const ImVec2 br(ctr.x - fwd.x * B - rgt.x * B, ctr.y - fwd.y * B - rgt.y * B);
+        fg->AddTriangleFilled(tip, bl, br, IM_COL32(255, 225, 70, 255));
+        fg->AddTriangle(tip, bl, br, IM_COL32(0, 0, 0, 210), 1.5f);
+    }
+    else
+    {
+        fg->AddCircleFilled(ctr, 4.0f, IM_COL32(255, 225, 70, 255));
+        fg->AddCircle(ctr, 4.0f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
+    }
+    // North tick (map is north-up).
     fg->AddText(ImVec2(ctr.x - 4.f, ctr.y - R - 16.f), IM_COL32(230, 220, 180, 220), "N");
 }
 } // namespace goblin::worldmap
