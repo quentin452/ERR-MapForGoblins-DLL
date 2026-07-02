@@ -92,8 +92,13 @@ void draw_sections_categories(Filter &f)
         // appends every new category at the end of its section, which reads as random.
         // Sorted once (labels are static for the session).
         static std::vector<int> s_cat_order;
-        if (s_cat_order.empty())
+        static int s_cat_order_gen = -1;
+        if (s_cat_order.empty() || s_cat_order_gen != goblin::i18n::generation())
         {
+            // Re-sorted on a live language switch too — the order follows the DISPLAYED
+            // (translated) labels, which just changed.
+            s_cat_order_gen = goblin::i18n::generation();
+            s_cat_order.clear();
             for (int c = 0; c < goblin::overlay_api::category_count(); c++)
                 s_cat_order.push_back(c);
             std::sort(s_cat_order.begin(), s_cat_order.end(), [](int a, int b) {

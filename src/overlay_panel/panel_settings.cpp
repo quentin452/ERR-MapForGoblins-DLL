@@ -4,7 +4,10 @@
 
 #include "panel_internal.hpp"
 #include "goblin_i18n.hpp"
+
+#include <string>
 #include "goblin_overlay_render_api.hpp"
+#include "goblin_config.hpp"  // overlayLanguage (live language combo)
 
 namespace goblin::overlay::panel
 {
@@ -30,6 +33,40 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
     {
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "%s", tr("Saved to INI"));
+    }
+
+    // Overlay UI language — LIVE switch (same-frame table swap; everything below this
+    // line already draws translated). tr() + set_language() both run on this present
+    // thread, so no locking (see goblin_i18n.hpp). Persist via "Save to INI" as usual.
+    if (f.match("language langue overlay ui english french francais traduction translation"))
+    {
+        ImGui::Text("%s", tr("Language:"));
+        ImGui::SameLine();
+        std::string &cfg_lang = goblin::config::overlayLanguage;
+        ImGui::SetNextItemWidth(140.0f);
+        if (ImGui::BeginCombo("##uilang", cfg_lang.c_str()))
+        {
+            auto pick = [&](const std::string &code) {
+                if (ImGui::Selectable(code.c_str(), cfg_lang == code))
+                {
+                    cfg_lang = code;
+                    goblin::i18n::set_language(code.c_str());
+                }
+            };
+            pick("auto");
+            pick("en");
+            // One entry per lang/<code>.txt on disk (scanned only while the combo is open).
+            for (const std::string &c : goblin::i18n::available_languages())
+                if (c != "en")
+                    pick(c);
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", tr("Overlay UI language (lang/<code>.txt next to the DLL).\n"
+                                       "Switches live; Save to INI to persist. Game content\n"
+                                       "names stay in the game's own language."));
     }
 
     // Map-fragment gate (live; persists via "Save to INI"). When on, a marker stays hidden

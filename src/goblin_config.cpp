@@ -1,4 +1,5 @@
 #include "goblin_config.hpp"
+#include "goblin_i18n.hpp"
 #include "goblin_config_schema.hpp"
 
 #include <windows.h>
@@ -125,6 +126,11 @@ bool goblin::config_set_by_key(const std::string &key, const std::string &value)
             {
                 if ((e.err_only || sec.err_only) && !include_err) return false;
                 set_from_string(e, value);
+                // Side effect: the language table only re-reads its config at (re)load, so
+                // an RPC `set overlay_language X` also swaps the table live (the RPC pump
+                // runs on the present thread — same thread contract as the F1 combo).
+                if (key == "overlay_language")
+                    goblin::i18n::set_language(config::overlayLanguage.c_str());
                 return true;
             }
     return false;

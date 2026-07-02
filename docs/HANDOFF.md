@@ -112,6 +112,14 @@ use "oe"); (3) translated format strings must keep the % placeholders in order. 
 NOT translated (v2 candidates): quest-browser step CONTENT (hand-authored corpus, big),
 dev-only sections (P2b/sprites/grace-debug/dev-tools), spdlog lines. The same lang-file
 mechanism can carry future languages — drop a `lang/de.txt` etc., no rebuild.
+**Live switch added same day (`feat/i18n-live-switch`, in-game validated fr→en→fr):** F1
+"Language:" combo (under the master row; entries = auto, en, + one per `lang/*.txt` scanned
+while the combo is open) calls `i18n::set_language()` — same-frame table swap, no restart.
+Safe WITHOUT locking because every tr()/set_language caller is on the PRESENT thread (panel,
+renderer, RPC pump — documented in goblin_i18n.hpp; keep it that way). `generation()` bumps
+per load; the category sort order re-sorts on it (order follows the displayed labels). RPC
+`set overlay_language <code>` also swaps live (wired in config_set_by_key — how the
+validation drove it). Persist = the normal "Save to INI".
 
 ## Clang-only Phase 1 — WINDOWS BUILD + SNAPSHOT VALIDATED (2026-07-02) → only the in-game matrix left
 
