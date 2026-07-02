@@ -30,6 +30,15 @@ extern "C"
     __declspec(dllexport) void MFG_HostFree(void *p) { std::free(p); }
     __declspec(dllexport) void *MFG_HostAllocAligned(size_t n, size_t a) { return _aligned_malloc(n, a); }
     __declspec(dllexport) void MFG_HostFreeAligned(void *p) { _aligned_free(p); }
+    // Render-side spdlog lines forward here (goblin_render_log_bridge.cpp) so they land in the
+    // host's MapForGoblins.log — each /MT DLL has its own spdlog registry, and render's own
+    // default logger both lost the lines AND lazily initialized inside hooked paths (boot crash).
+    __declspec(dllexport) void MFG_HostLogLine(int level, const char *msg)
+    {
+        auto lv = static_cast<spdlog::level::level_enum>(level);
+        if (lv < spdlog::level::trace || lv > spdlog::level::critical) lv = spdlog::level::info;
+        spdlog::default_logger_raw()->log(lv, "{}", msg);
+    }
 }
 #endif
 
@@ -45,6 +54,7 @@ namespace goblin::overlay_render_loader
         using InworldHoveredFn = int (*)();
         using RefreshOverlayCensusFn = void (*)();
         using RenderIdleFn = int (*)();
+        using RenderInitLoggingFn = void (*)(int);
 
         struct RenderExports
         {
@@ -56,6 +66,7 @@ namespace goblin::overlay_render_loader
             InworldHoveredFn inworld_hovered = nullptr;
             RefreshOverlayCensusFn refresh_overlay_census = nullptr;
             RenderIdleFn render_idle = nullptr;
+            RenderInitLoggingFn init_logging = nullptr;
         };
 
         RenderExports g_cur;             // the live render module; swapped under g_lock exclusive
@@ -138,13 +149,19 @@ namespace goblin::overlay_render_loader
             e.refresh_overlay_census =
                 reinterpret_cast<RefreshOverlayCensusFn>(GetProcAddress(m, "MFG_RefreshOverlayCensus"));
             e.render_idle = reinterpret_cast<RenderIdleFn>(GetProcAddress(m, "MFG_RenderIdle"));
+            e.init_logging = reinterpret_cast<RenderInitLoggingFn>(GetProcAddress(m, "MFG_RenderInitLogging"));
             if (!e.draw_panel || !e.draw_worldmap_markers || !e.draw_minimap_hud || !e.prebuild_markers ||
-                !e.inworld_hovered || !e.refresh_overlay_census || !e.render_idle)
+                !e.inworld_hovered || !e.refresh_overlay_census || !e.render_idle || !e.init_logging)
             {
                 spdlog::error("[HOTRELOAD] GetProcAddress failed for one or more render exports in {}", utf8(dest));
                 FreeLibrary(m);
                 return false;
             }
+            // FIRST render call, before anything else can log from that module: install the
+            // host-forwarding default logger (goblin_render_log_bridge.cpp). Deterministic,
+            // single-threaded — kills the lazy spdlog-registry first-touch that crashed at boot
+            // (AV in should_log, symbolized 2026-07-02) and routes render lines into our log file.
+            e.init_logging(static_cast<int>(spdlog::get_level()));
             out = e;
             return true;
         }

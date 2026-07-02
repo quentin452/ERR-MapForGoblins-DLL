@@ -13,12 +13,16 @@ Backlog DX + bugs relevé par <user> le 2026-06-28 (à traiter plus tard, pas en
    native map symbols left untouched (no halo). Config `icon_legibility` / `icon_min_half_px`. Visually
    confirmed. Original report kept below.
    **Icônes quasi-invisibles pour certaines couleurs (BUG SYSTÉMIQUE)** — ex. "Doigt racorni de sans éclat" (Withered Dappled Finger?) et "Stake of Marika". ⚠️ PRÉCISION <user> : le bug apparaît AUSSI sur les icônes de l'atlas CPU, donc ce N'EST PAS spécifique au pipeline DDS disque — c'est systémique au rendu. Dans certaines configs de couleur, combinées avec la worldmap ER affichée derrière, certaines icônes deviennent quasi invisibles. DEUX cas distincts : (1) icône trop petite ; (2) couleur de l'icône qui se fond dans le décor de la map ER derrière (contraste insuffisant). → piste fix : outline/contour, halo/ombre portée, ou taille minimale garantie — pas un problème de crop rect ni de sampling DDS. Touche [[dvdbnd-packed-reader]] mais aussi tout le rendu marker.
-2. 🟡 **PARTIEL — FIXED 2026-07-01** (`4ec2aa7`, PR C — code comment cite "Item 2") — la compensation
-   côté DX (recentrage du curseur au milieu quand on passe souris→manette) est faite. Doc jamais
-   croisée à l'époque, trouvé en auditant les commits vs le backlog. **Reste ouvert :**
-   auto-switcher les hints de touche (manette/souris) selon le device actif — la donnée existe déjà
-   (`g_last_input_was_gamepad`, PR C) mais l'UI hint-icon elle-même n'a jamais été codée (noté comme
-   follow-on "cheap" dans `docs/plans/dx_bugs_backlog_plan.md`, pas fait).
+2. ✅ **FIXED 2026-07-02** (les deux moitiés). La compensation DX (recentrage curseur souris→manette)
+   était faite depuis `4ec2aa7` (PR C). La moitié UI restante — hints de touche auto-switchés selon
+   le device actif — est faite (`feat/phase4-device-aware-hints`, **premier vrai run de la boucle
+   AI Phase 4** du plan hot-reload) : le close-hint du panel F1 (pill compact + header) affiche le
+   combo manette configuré (`mask_to_combo_string(overlayToggleGamepad)`, ex. "Y+R3 close") quand
+   `last_input_was_gamepad()`, sinon "F1". Les DEUX branches vérifiées visuellement en jeu via
+   hot-reload + screenshot RPC (la branche manette testée en hot-reloadant une version condition
+   forcée, puis revert — 3 itérations live, jamais redémarré le jeu). Nit restant (non tracké
+   avant, toujours ouvert) : la branche clavier affiche "F1" en dur — si l'utilisateur rebinde
+   `overlay_toggle_key`, le hint ment (il faudrait un reverse vk→name).
    **Bug ER natif manette (DX upstream)** — quand on déplace le curseur à la souris puis qu'on repasse à la manette, ER devrait recentrer le curseur au milieu mais ne le fait pas. (Bug du jeu, pas le nôtre — DX à compenser éventuellement.) ➕ <user> veut aussi auto-switcher les hints de touche (manette/souris) selon le device actif → LIRE le flag "active input device" d'ER, cf. [[input-device-active-flag]] (= MÊME flag que le drift worldmap-manette ; recette CE memory-diff dans le brief RE).
 3. 🟡 **PARTIEL — FIXED** (PR C `feat/gamepad-toggle-cursor-recenter` 2026-07-01, PR C-2 part 1
    `feat/gamepad-nav-input-isolation` 2026-07-01) — combo XInput configurable (défaut `Y+R3`)

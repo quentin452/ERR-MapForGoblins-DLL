@@ -35,6 +35,9 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   everywhere else — randomizer players flip that one key.
 
 ### Added
+- **Device-aware close-hint in the F1 panel.** The header (and the collapsed pill) now shows the
+  configured gamepad combo (e.g. "Y+R3 close") while the gamepad is the active input device,
+  instead of always saying "F1 close" — same detection the cursor-recenter compensation uses.
 - **Dev-only debug RPC.** New ini key `[Debug] debug_rpc_port` (empty = off, the default) starts a
   TCP listener on 127.0.0.1 so an external script (`tools/mfg_rpc.py`) can drive the running game:
   `ping`/`status`, open/close the F1 panel, set any ini config key live, capture a BMP screenshot
