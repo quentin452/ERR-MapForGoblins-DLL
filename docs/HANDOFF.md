@@ -236,11 +236,22 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
   are the discord-ipc connect wait and the audio-bank gap, NOT file I/O; the regulation parse is
   engine work (dangerous tier, leave alone).** vkd3d shader-cache hygiene + SkipTheIntro remain
   the safe game-side levers.
-- **DX sweep findings (multi-zoom, to triage):** (1) markers/piles draw OUTSIDE the map canvas
-  (on the black letterbox and OVER the day/night dial) — no clip to the map rect; (2) pile
-  LOCATION LABELS flood the screen at far zoom (idea: reuse the fan's tile-px gate to hide
-  labels when zoomed way out); (3) a fan opened near the screen edge overflows off-screen (no
-  clamp/re-anchor); (4) ER edge-pans the map when the cursor sits near a screen edge — scripted
+- **DX sweep findings (multi-zoom):** (1) markers OUTSIDE the map canvas — **FIXED 2026-07-02
+  (`refactor/marker-gates-clip-labels`, in-game validated via the RPC loop):** the engine's static
+  full-map rect (view+0x350, now in `LiveView.mapMin/Max*`) is projected through the marker view →
+  `PushClipRect` around the whole worldmap pass + the cull/pile-visibility tests use it (hover dies
+  with the pixels). Validated on the morgott locate-clamp frame: the black void past the canvas
+  edge went from dozens of floating icons to ZERO. NB the earlier "markers all over black at max
+  zoom-out" screenshot was NOT this bug — that's undiscovered-canvas INSIDE the map rect with
+  `require_map_fragments=false` (the deployed dev ini) — flipping it true live collapsed the spam
+  to the discovered region (also a live proof of the new shared gate predicate). (2) pile label
+  flood at far zoom — **FIXED same branch:** labels now gate on the fan's tile-px criterion
+  (256-unit tile < 64 screen px → hidden; pile tooltip still names the location). Same session
+  landed **big-files refactor item 2**: `marker_passes_gates()` (the 4 event-flag gates, worldmap +
+  minimap now ONE predicate) + `refresh_player_world_y()`; icon-scale math deliberately NOT shared
+  (minimap's base+clamp differs by design, see item-13 note in draw_minimap). Still open: (3) fan
+  near screen edge overflows off-screen (no clamp/re-anchor — the canvas clip now trims it but
+  doesn't re-anchor); (4) ER edge-pans when the cursor sits near a screen edge — scripted
   mouse_move near edges drifts the view between screenshots (driver beware, not a bug).
 - **F2 (fog locate clamp): FULLY REPRODUCED, deterministic scripted recipe (2026-07-02).**
   With the map open + F1: type `godrick` (search works via RPC — no AZERTY remap needed for that

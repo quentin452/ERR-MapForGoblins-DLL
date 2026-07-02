@@ -926,6 +926,72 @@ void draw_cluster_glyph(ImDrawList *fg, ImVec2 c, int n, float r, bool depleted)
     fg->AddText(ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), txt, buf);
 }
 
+// ── Shared per-marker visibility gates (worldmap loop + minimap) ─────────────
+// ONE predicate for the live event-flag hide gates, so a gate fix can't silently
+// land in one view and miss the other (they used to be two hand-copied blocks —
+// the exact bug class the big-files refactor plan flagged). Each read is a live
+// event-flag lookup — cheap per call, but the callers cull BEFORE gating where
+// they can (thousands of markers per frame).
+static bool marker_passes_gates(const Marker &m)
+{
+    // Graces (discover_flag set only on grace markers). With grace_overlay the overlay
+    // draws ALL graces itself (discovered = colour, undiscovered = grey). Without it,
+    // the old hybrid: drop discovered graces (the game draws those natively), keep
+    // undiscovered. Read live so it updates the moment the player rests at a grace.
+    if (m.discover_flag && !(*goblin::overlay_api::cfg_graceOverlay_ptr()) &&
+        goblin::overlay_api::read_event_flag((uint32_t)m.discover_flag))
+        return false;
+    // Post-event story gate: a marker tagged with a secondary story flag (post-burn
+    // Leyndell / Chapel, Ashen Capital, Charm-broken, Sealing-tree-burnt) is a
+    // post-event variant and appears only once that flag is set.
+    if (m.secondary_flag && !goblin::overlay_api::read_event_flag((uint32_t)m.secondary_flag))
+        return false;
+    // Inverse story gate: a PRE-event variant (Leyndell Royal Capital) disappears
+    // the moment its flag fires (the Ashen Capital replaces it).
+    if (m.hide_when_flag && goblin::overlay_api::read_event_flag((uint32_t)m.hide_when_flag))
+        return false;
+    // Map-fragment gate (require_map_fragments): the region's MAP FRAGMENT item must be
+    // acquired. Exception (vanilla parity): an already-DISCOVERED grace shows regardless.
+    if ((*goblin::overlay_api::cfg_requireMapFragments_ptr()) && m.fragment_flag &&
+        !goblin::overlay_api::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
+        !is_discovered_grace(m))
+        return false;
+    return true;
+}
+
+// Refresh the player world-Y statics the altitude badge reads (draw_altitude_badge via
+// draw_marker). Shared by the worldmap pass and the minimap (the minimap used to carry
+// its own copy after the stale-badge fix). g_player_group is set by each caller — the
+// two views derive it differently (open-page group vs player-page group).
+static void refresh_player_world_y()
+{
+    float px = 0.0f, py = 0.0f, pz = 0.0f;
+    g_player_world_y_valid = goblin::overlay_api::get_player_world_pos(px, py, pz);
+    g_player_world_y = py;
+}
+
+// ── Map-canvas clip (fix: markers drawn OUTSIDE the map art) ─────────────────
+// Screen-space rect of the map ART for the current worldmap pass — the engine's static
+// full-map rect (+0x350) projected through the same delayed view as the markers, then
+// intersected with the screen. Markers/piles/labels/fans past the map edge used to draw
+// on the black letterbox void and over the day/night dial. Set each frame by
+// render_markers (false = rect unavailable → no clip, old behaviour); draw_clusters
+// culls piles/members against it too so a pile can't anchor in the void.
+static ImVec2 s_canvas_min(0.f, 0.f), s_canvas_max(0.f, 0.f);
+static bool s_canvas_clip = false;
+
+// Cull test shared by the marker loop and the pile pass: inside the canvas rect when
+// clipping is active, else the old whole-screen test. pad keeps partially-visible
+// edge markers (the ImGui clip rect trims their pixels exactly).
+static inline bool in_draw_bounds(const ImVec2 &p, float realW, float realH, float pad = 32.f)
+{
+    const float minx = s_canvas_clip ? s_canvas_min.x : 0.f;
+    const float miny = s_canvas_clip ? s_canvas_min.y : 0.f;
+    const float maxx = s_canvas_clip ? s_canvas_max.x : realW;
+    const float maxy = s_canvas_clip ? s_canvas_max.y : realH;
+    return !(p.x < minx - pad || p.y < miny - pad || p.x > maxx + pad || p.y > maxy + pad);
+}
+
 // Group clustered markers by their nearest-grace key (matches the native map's
 // by-location clustering, NOT screen proximity — markers sharing a grace pile even
 // when spread out). A group with MORE than `threshold` members draws ONE glyph at the
@@ -937,9 +1003,17 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
                    float iconHalf, float glyphR, ImVec2 mouse, Hover &hover)
 {
     namespace proj = goblin::projection;
-    auto on_screen = [&](const ImVec2 &p) {
-        return !(p.x < -32 || p.y < -32 || p.x > realW + 32 || p.y > realH + 32);
-    };
+    auto on_screen = [&](const ImVec2 &p) { return in_draw_bounds(p, realW, realH); };
+    // SCREEN px of one 256-unit map tile — the zoom-level criterion shared by the
+    // spiderfy fan gate AND the pile location labels (below). Zoom-range-agnostic:
+    // measures what the current view actually shows, not the engine's zoom value.
+    float tile_px = 0.f;
+    {
+        proj::Px za = proj::project_screen(0.f, 0.f, view, realW, realH);
+        proj::Px zb = proj::project_screen(goblin::worldmap::kTileSize, 0.f, view, realW, realH);
+        tile_px = std::fabs(zb.x - za.x);
+    }
+    constexpr float kMinTilePx = 64.f; // below this a tile is a few dozen px — fan + labels off
     // Tile clustering: group by the marker's MAP-SPACE tile (+ map group), not the nearest-grace key.
     // Deterministic + zoom-aware, and every group is bounded to one 256-unit tile, so a pile's centroid
     // can't drift across the map the way the old grace-key centroid fallback could.
@@ -1149,7 +1223,12 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
             hover_test(hover, mouse, best, glyphR,
                        [&] { return pile_label(pl.loc_pname, pl.count, pl.total); });
             // Location name centred under the glyph (shadowed for readability on the busy map).
-            std::string loc = goblin::overlay_api::lookup_text_utf8(piles[i].loc_pname);
+            // Zoom gate (fix: label flood): far out, EVERY pile prints its name and the labels
+            // blanket the region — same tile-px criterion as the fan (the pile tooltip still
+            // names the location on hover).
+            std::string loc = tile_px >= kMinTilePx
+                                  ? goblin::overlay_api::lookup_text_utf8(piles[i].loc_pname)
+                                  : std::string();
             if (!loc.empty())
             {
                 ImVec2 ts = ImGui::CalcTextSize(loc.c_str());
@@ -1166,16 +1245,10 @@ void draw_clusters(ImDrawList *fg, const std::vector<ScreenMarker> &items, int t
     // the loose markers use. Sticky across frames on the pile's TILE CELL KEY (stable across
     // the per-frame pile rebuild); closes when the cursor leaves the fan's extent + margin, or
     // the pile itself disappears (zoom/page/toggle rebuilt the piles differently).
-    // Zoomed-out gate, measured in SCREEN px of one 256-unit map tile (no dependence on the
-    // engine's zoom value range). Far out, a tile is a few dozen px — a fan would blanket half
+    // Zoomed-out gate: far out, a tile is a few dozen px — a fan would blanket half
     // the region and hover precision is meaningless; make the user zoom a step instead.
-    bool fan_zoom_ok = false;
-    {
-        proj::Px za = proj::project_screen(0.f, 0.f, view, realW, realH);
-        proj::Px zb = proj::project_screen(256.f, 0.f, view, realW, realH);
-        constexpr float kMinTilePxForFan = 64.f;
-        fan_zoom_ok = std::fabs(zb.x - za.x) >= kMinTilePxForFan;
-    }
+    // tile_px/kMinTilePx computed once at the top (shared with the label gate).
+    const bool fan_zoom_ok = tile_px >= kMinTilePx;
     if (goblin::config::clusterSpiderfy)
     {
         static bool s_fan_open = false;
@@ -1598,9 +1671,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // × overworld/underground). When you view a different map than where the player physically is, the
     // Y values are in unrelated frames (everything would read "below"), so we gate on group match.
     {
-        float px = 0.0f, py = 0.0f, pz = 0.0f;
-        g_player_world_y_valid = goblin::overlay_api::get_player_world_pos(px, py, pz);
-        g_player_world_y = py;
+        refresh_player_world_y();
         int parea = 0, pgrp = -1;
         float mwx = 0.0f, mwz = 0.0f;
         g_player_group = goblin::overlay_api::get_player_map_pos(parea, mwx, mwz, nullptr, nullptr, &pgrp) ? pgrp : -1;
@@ -1670,6 +1741,24 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     const float iconHalf = kIconHalfBase * uiScale * master * (*goblin::overlay_api::cfg_overlayIconScale_ptr());
     const float glyphR = kGlyphRBase * uiScale * master * (*goblin::overlay_api::cfg_overlayClusterScale_ptr());
     std::vector<ScreenMarker> clustered; // markers whose category opted into clustering
+
+    // Map-canvas clip (fix: markers drawn OUTSIDE the map art — letterbox void, day/night
+    // dial). Project the engine's static full-map rect through the SAME delayed view as the
+    // markers → screen rect → intersect with the screen; everything the worldmap pass draws
+    // (markers, piles, labels, fans, region chips) is clipped to it, and the cull below uses
+    // it so hover dies with the pixels. Rect unavailable (probe read failed / zeros) → no
+    // clip, old behaviour.
+    s_canvas_clip = false;
+    if (lv.mapMaxU > lv.mapMinU && lv.mapMaxV > lv.mapMinV)
+    {
+        proj::Px c0 = proj::project_screen(lv.mapMinU, lv.mapMinV, view, realW, realH);
+        proj::Px c1 = proj::project_screen(lv.mapMaxU, lv.mapMaxV, view, realW, realH);
+        s_canvas_min = ImVec2(std::max(0.f, c0.x), std::max(0.f, c0.y));
+        s_canvas_max = ImVec2(std::min(realW, c1.x), std::min(realH, c1.y));
+        s_canvas_clip = s_canvas_min.x < s_canvas_max.x && s_canvas_min.y < s_canvas_max.y;
+    }
+    if (s_canvas_clip)
+        fg->PushClipRect(s_canvas_min, s_canvas_max, true);
 
     // In-world region chips: project every major-region anchor once (shared by the chip
     // drawer + the per-marker region gate), then draw the clickable names. any_region_off
@@ -1887,8 +1976,9 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                     loc_best = ImVec2(gU, gV);
                 }
             }
-            const bool offscreen =
-                (sp.x < -32 || sp.y < -32 || sp.x > realW + 32 || sp.y > realH + 32);
+            // Cull against the canvas clip rect when active (a marker past the map edge is
+            // invisible under the clip — skip its gates, draw AND hover), else the screen.
+            const bool offscreen = !in_draw_bounds(sp, realW, realH);
             if (offscreen)
             {
                 if (!clustered_eligible)
@@ -1911,31 +2001,9 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             }
 
             // ── visibility gates (now only for on-screen markers + all pile members) ──
-            // Graces (discover_flag set only on grace markers). With grace_overlay the overlay draws
-            // ALL graces itself (draw_marker: discovered = colour, undiscovered = grey). Without it,
-            // the old hybrid: drop discovered graces (the game draws those natively), keep undiscovered.
-            // Read live so it updates the moment the player rests at a grace.
-            if (m.discover_flag && !(*goblin::overlay_api::cfg_graceOverlay_ptr()) &&
-                goblin::overlay_api::read_event_flag((uint32_t)m.discover_flag))
+            // Shared with the minimap — see marker_passes_gates for each gate's rationale.
+            if (!marker_passes_gates(m))
                 continue;
-            // Post-event story gate: a marker tagged with a secondary story flag (post-burn
-            // Leyndell / Chapel, Ashen Capital, Charm-broken, Sealing-tree-burnt) is a
-            // post-event variant and appears only once that flag is set. Read live so it
-            // reveals the instant the event fires. Legacy parity: SetSecondaryFlags
-            // (textEnableFlag2) + the Ashen Capital eventFlag gate.
-            if (m.secondary_flag && !goblin::overlay_api::read_event_flag((uint32_t)m.secondary_flag))
-                continue;
-            // Inverse story gate: a PRE-event variant (Leyndell Royal Capital) disappears
-            // the moment its flag fires (the Ashen Capital replaces it).
-            if (m.hide_when_flag && goblin::overlay_api::read_event_flag((uint32_t)m.hide_when_flag))
-                continue;
-            // Map-fragment gate (require_map_fragments): the region's MAP FRAGMENT item must be
-            // acquired (m.fragment_flag = GetMapFlagFromTile, read live). Exception (vanilla
-            // parity): an already-DISCOVERED grace shows regardless of fragment ownership.
-            if ((*goblin::overlay_api::cfg_requireMapFragments_ptr()) && m.fragment_flag &&
-                !goblin::overlay_api::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
-                !is_discovered_grace(m))
-                continue; // map fragment not acquired yet (and not an already-discovered grace)
 
             // Clustered-eligible markers are deferred (uncull'd) to the pile pass;
             // everything else (already on-screen here) draws now.
@@ -1984,6 +2052,11 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                           n_iter, n_drawn, n_deferred, open_grp);
     }
 
+    // End of map-content drawing — the tooltip below follows the CURSOR, not the map,
+    // so it must not be clipped to the canvas.
+    if (s_canvas_clip)
+        fg->PopClipRect();
+
     // Tooltip for the hovered marker / pile (drawn last so it's on top).
     if (hover.bestd < 1e30f)
         draw_tooltip(fg, mouse, hover.text);
@@ -2014,9 +2087,7 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     // draw_marker) always reads those same statics — so the minimap badge froze at whatever Y
     // was cached on last map-close. Refresh live here too, every minimap frame.
     {
-        float px = 0.f, py = 0.f, pz = 0.f;
-        g_player_world_y_valid = goblin::overlay_api::get_player_world_pos(px, py, pz);
-        g_player_world_y = py;
+        refresh_player_world_y();
         g_player_group = pgroup;
     }
 
@@ -2069,15 +2140,11 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
         {
             if (m.group != pgroup)
                 continue; // only the player's current map page
-            // Same hide-gates as the worldmap (discovered grace, post-event story).
-            if (m.discover_flag && !(*goblin::overlay_api::cfg_graceOverlay_ptr()) &&
-                goblin::overlay_api::read_event_flag((uint32_t)m.discover_flag))
-                continue;
-            if (m.secondary_flag && !goblin::overlay_api::read_event_flag((uint32_t)m.secondary_flag))
-                continue;
-            // Inverse story gate: a PRE-event variant (Leyndell Royal Capital) disappears
-            // the moment its flag fires (the Ashen Capital replaces it).
-            if (m.hide_when_flag && goblin::overlay_api::read_event_flag((uint32_t)m.hide_when_flag))
+            // SAME hide-gates as the worldmap — one shared predicate (discovered grace,
+            // post-event story, hide-when, map fragment). The fragment gate used to sit
+            // further down this loop, after the edge-clamp math; it's position-independent,
+            // so gating everything here first is the same visible set, cheaper.
+            if (!marker_passes_gates(m))
                 continue;
             // North-up, player-centred: same orientation as the worldmap (mapV = -worldZ).
             float dx = (m.worldX - pwx) * scale;
@@ -2098,12 +2165,6 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
                 dx *= edgeScale;
                 dy *= edgeScale;
             }
-            // Map-fragment gate (require_map_fragments): the FRAGMENT item must be acquired.
-            // Vanilla parity: an already-discovered grace bypasses this gate.
-            if (cfg::requireMapFragments && m.fragment_flag &&
-                !goblin::overlay_api::read_event_flag(static_cast<uint32_t>(m.fragment_flag)) &&
-                !is_discovered_grace(m))
-                continue;
             // Clustering DISABLED on the minimap (user-tuned 2026-07-01: piles kept popping in
             // and out as markers crossed cell boundaries while panning/moving — visually jarring
             // on a small HUD in a way it isn't on the full worldmap). Every marker gets a unique

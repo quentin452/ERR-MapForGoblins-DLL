@@ -260,6 +260,15 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   `>= 0x40000000` cut that wrongly dropped DLC one-time loot.
 
 ### Fixed
+- **Markers no longer draw outside the map canvas.** When the view sits at a pan clamp (e.g. after
+  a search "locate" into a fogged area) or zoomed far out, the map ART ends mid-screen — markers,
+  piles, labels and fans used to keep drawing on the black void past the map edge and over the
+  day/night dial. The overlay now reads the engine's own full-map rect, projects it through the
+  same view as the markers, and clips every worldmap draw (and hover) to it.
+- **Cluster location labels no longer flood the screen when zoomed far out.** Every pile printed
+  its location name at any zoom; far out that blanketed the region in text. Labels now hide below
+  the same zoom criterion the spiderfy fan uses (a 256-unit map tile under ~64 screen px); the pile
+  tooltip still names the location on hover.
 - **F1 panel mouse-wheel scrolling dead under Proton** — ImGui's only wheel source was the legacy
   `WM_MOUSEWHEEL` message, which ER's raw-input capture (`RIDEV_NOLEGACY` under Wine/Proton) never
   posts — same family as the already-polled mouse buttons/keyboard. The wheel delta is now

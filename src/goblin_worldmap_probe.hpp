@@ -42,6 +42,12 @@ namespace goblin::worldmap_probe
         // sits off-centre, which is why reticle-centred markers are "jamais centré" until you
         // move the mouse.
         float snapMidX, snapMidZ;
+        // STATIC full-map rect (view+0x350..0x35c = [minX,minZ,maxX,maxZ], marker space) — the
+        // engine's own pan-clamp bound = the extent of the map ART. The renderer projects it to
+        // screen and clips marker draws to it (markers used to float on the letterbox void /
+        // day-night dial past the map edge). All zeros when the read failed → renderer skips
+        // the clip.
+        float mapMinU, mapMinV, mapMaxU, mapMaxV;
         float raw[8];           // diag: cursor+0xFC,+0x100,+0x104,+0x108,+0x10C,+0x110,+0x114,+0x118
         int viewArea;           // WorldMapArea+0x6e = areaNo of the open page (doc §3)
         int underground;        // open-map layer (dialog+0x2B68 deref +0xB8): 0=surface, 1=underground

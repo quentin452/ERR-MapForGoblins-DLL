@@ -34,11 +34,13 @@ Sections have zero interdependence. Extract: visibility/settings grid, quest bro
 settings-search fix had to touch all 10 sections inside one function.
 **After hot-reload Slice C** (same files).
 
-### 2. Extract the duplicated marker-gate loop (map vs minimap) — BUG-RISK KILLER
-`render_markers()` (map_renderer.cpp:1577) and `draw_minimap()` (:1847) run near-identical loops:
-same gates (discover/secondary/hide-when/fragment/fog), same player-state setup (:1383 vs :1799),
-same uiScale/icon-size math (:1451 vs :1812). A gate fix applied to one silently misses the other.
-Extract `marker_passes_gates()` predicate + shared `setup_player_state()` + `compute_icon_scale()`.
+### 2. Extract the duplicated marker-gate loop (map vs minimap) — DONE 2026-07-02
+Landed on `refactor/marker-gates-clip-labels` together with the two DX-sweep fixes that motivated
+it (canvas clip + label zoom gate): `marker_passes_gates()` (the 4 event-flag gates — discover /
+secondary / hide-when / fragment — ONE predicate for both loops) + `refresh_player_world_y()`.
+The icon-size math was deliberately NOT shared: the minimap's base + clamp differ by design
+(item-13 note in draw_minimap), so "same uiScale math" from the audit was an overstatement.
+In-game validated (shared gate flipped live via RPC `set require_map_fragments`).
 
 ### 3. De-duplicate item classification in map_entry_layer.cpp — ~100 LOC, one choke point
 - 4-line classify chain copy-pasted **7×** (lines 283/457/551/609/733/977/984) →
