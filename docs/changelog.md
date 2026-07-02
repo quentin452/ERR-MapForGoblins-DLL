@@ -159,9 +159,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   item's real `EquipParam` iconId (`resolve_loot_item_textid` → `item_real_icon_id`) and stored on the
   marker; the renderer prefers `native_item_icon(item_icon_id)` (resident GPU → disk), falling back to
   the category rep → baked atlas → circle on any miss. Mod-agnostic (reads the active install's params).
-- **Summoning Pool glyph (Martyr Effigy)** — `World - Summoning Pools` markers now draw the native
-  `MENU_MAP_89` glyph. Resolved by iconId from the active install's map-point layout, with a disk
-  (no-bake) fallback when the resident GPU symbol isn't loaded — mod-agnostic, not an ERR bake.
+- **Summoning Pool + Stake of Marika native glyphs** — `World - Summoning Pools` markers draw the
+  native two-summons-on-a-dais glyph (`MENU_MAP_21`) and `World - Stakes of Marika` the native
+  Marika-statue glyph (`MENU_MAP_89`). (Pools initially used 89, but that statue silhouette is
+  identical to the stake statue — the two categories read as the same icon; the swap gives each an
+  unambiguous native symbol.) Resolved by iconId from the active install's map-point layout, with a
+  disk (no-bake) fallback when the resident GPU symbol isn't loaded — mod-agnostic, not an ERR bake.
 - **Map-point disk fallback (mod-agnostic)** — `MapPointProvider` now falls back to the on-disk glyph
   by iconId when the resident GPU symbol is unavailable, so any category with a map-point iconId renders
   correctly even before/without the world map loading that symbol.

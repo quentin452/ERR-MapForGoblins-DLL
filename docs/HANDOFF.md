@@ -150,10 +150,23 @@ live table); the `menu_auto_toggle_loop` watcher re-applies on landmark-category
 flips (`take_native_landmark_dirty`); config `landmark_suppress_native` (World section, default
 true, NOT ERR-only — vanilla native pins duplicate too). Per-category: only categories toggled ON
 suppress their native rows; graces (80) / bosses (41/67) untouched. Flips take effect next map
-open (same cadence as every areaNo owner). **Verify in-game:** toggle Minor Erdtrees ON → native
-Erdtree pin gone from native map, ours drawn; toggle OFF → native pin back (discovered ones);
-`landmark_suppress_native=false` → duplicates return; `[LANDMARKPIN]` debug log shows counts
-(debug_logging). Deployed `ad502280`.
+open (same cadence as every areaNo owner). **CONFIRMED in-game (user, 2026-07-02)** with one gap:
+minor-dungeon families (Caves / Hero's Graves) kept their native pins — their OVERWORLD pin comes
+from the dist-view mark, so `areaNo_forDistViewMark` now flips to 99 alongside `areaNo` (both
+saved/restored). Re-verify the dungeon pins after this fix.
+
+Same feedback round shipped 3 more fixes (all deployed `3dc8f998`, pending in-game confirm):
+- **Collected black-disc bug:** the icon-legibility contrast disc under small icons kept full alpha
+  when the icon dimmed as collected → looked uncollected. Disc alpha now follows the icon tint's
+  alpha (`draw_legible_icon`, map_renderer.cpp).
+- **"Map icons: ON/OFF" toast removed:** its only remaining trigger is the F1 menu's own master
+  checkbox — announcing what the user just clicked was noise. `show_toggle_banner` kept (unused)
+  for a future hotkey path.
+- **Stakes/Pools glyph collision:** pools drew native `MENU_MAP_89` (Martyr Effigy statue) while
+  stakes drew the ERR atlas statue — identical silhouettes. Swap: pools → native `MENU_MAP_21`
+  (two summons on a dais), stakes → native 89 (the statue IS the stake object; native-tier upgrade
+  for stakes too). SB_MapCursor sheets re-checked with tools/menu_tex_extract: no dedicated stake
+  glyph exists natively, 21/89 rects eye-confirmed.
 
 ## Native-map landmark icon suppression — TRACKED (2026-07-02) → implemented same day, see above
 

@@ -173,9 +173,15 @@ struct CategoryGpuIcon { int category; int iconId; };
 constexpr CategoryGpuIcon CATEGORY_GPU_ICONS[] = {
     {-1, 0},  // sentinel (never matches a real category) — keeps the array non-empty;
               // add {static_cast<int>(Category::X), iconId} entries as categories migrate
-    // Summoning Pool → Martyr Effigy glyph (MENU_MAP_89, SB_MapCursor_02). Resolved by iconId via
-    // map_point_rect(89) → disk fallback in MapPointProvider, so it is mod-agnostic (not ERR-baked).
-    {static_cast<int>(goblin::generated::Category::WorldSummoningPools), 89},
+    // Summoning Pool → the two-summons-on-a-dais glyph (MENU_MAP_21, SB_MapCursor). Was 89
+    // (Martyr Effigy statue), but that silhouette is identical to the Stake-of-Marika statue
+    // ERR's own iconography uses → pools and stakes read as the same icon (user 2026-07-02).
+    // 21 says "multiplayer summons" unambiguously; 89 moved to Stakes below, where the statue
+    // actually matches the in-world object.
+    {static_cast<int>(goblin::generated::Category::WorldSummoningPools), 21},
+    // Stake of Marika → the Marika-statue glyph (MENU_MAP_89, SB_MapCursor_02) — native-tier
+    // upgrade (was the baked-atlas statue cell) and visually THE stake players know.
+    {static_cast<int>(goblin::generated::Category::WorldStakesOfMarika), 89},
     // Quest NPC → framed-hood NPC glyph (MENU_MAP_80, SB_MapCursor_02, rect 554,364,124,124 — the
     // vanilla quest-NPC map symbol, eye-confirmed in docs/memory/features/map-point-glyph-ids.md).
     // iconId path → map_point_rect(80) → disk fallback in MapPointProvider, so it is mod-agnostic

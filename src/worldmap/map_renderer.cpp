@@ -317,7 +317,13 @@ static inline void draw_legible_icon(ImDrawList *fg, ImVec2 center, float half, 
         if (half < minHalf)
             half = minHalf;
         if (backing && small)
-            fg->AddCircleFilled(center, half + 1.5f, IM_COL32(0, 0, 0, 165)); // contrast backing
+        {
+            // The disc follows the icon's OWN alpha: a collected marker dims via dim_color
+            // (alpha halved), and a full-strength disc under a greyed icon read as "not
+            // collected yet" on the map/minimap (user-reported confusion 2026-07-02).
+            const unsigned discA = 165u * ((tint >> 24) & 0xffu) / 255u;
+            fg->AddCircleFilled(center, half + 1.5f, IM_COL32(0, 0, 0, discA)); // contrast backing
+        }
     }
     fg->AddImage(tex, ImVec2(center.x - half, center.y - half), ImVec2(center.x + half, center.y + half),
                  uv0, uv1, tint);

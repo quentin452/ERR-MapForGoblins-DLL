@@ -494,6 +494,10 @@ struct NativeLandmarkRow
 {
     from::paramdef::WORLD_MAP_POINT_PARAM_ST *row;
     unsigned char orig_area;
+    // Minor-dungeon rows (caves / hero's graves / …) place their OVERWORLD pin via the
+    // dist-view mark (areaNo_forDistViewMark) — flipping areaNo alone left those native
+    // pins visible (user-reported 2026-07-02). Both fields flip together.
+    unsigned char orig_distview_area;
     int category;
 };
 std::mutex g_native_landmark_mtx;
@@ -504,7 +508,10 @@ void goblin::reset_native_landmark_rows()
 {
     std::lock_guard<std::mutex> lk(g_native_landmark_mtx);
     for (auto &e : g_native_landmark_rows)
+    {
         e.row->areaNo = e.orig_area;
+        e.row->areaNo_forDistViewMark = e.orig_distview_area;
+    }
     g_native_landmark_rows.clear();
 }
 
@@ -513,7 +520,7 @@ void goblin::register_native_landmark_row(void *row_data, int category)
     if (category < kLandmarkFirst || category > kLandmarkLast) return;
     auto *row = static_cast<from::paramdef::WORLD_MAP_POINT_PARAM_ST *>(row_data);
     std::lock_guard<std::mutex> lk(g_native_landmark_mtx);
-    g_native_landmark_rows.push_back({row, row->areaNo, category});
+    g_native_landmark_rows.push_back({row, row->areaNo, row->areaNo_forDistViewMark, category});
 }
 
 void goblin::apply_native_landmark_suppression()
@@ -526,8 +533,11 @@ void goblin::apply_native_landmark_suppression()
         const bool ours_drawn = goblin::config::landmarkSuppressNative && overlay_on &&
                                 g_category_visible[e.category].load();
         const unsigned char want = ours_drawn ? 99 : e.orig_area;
+        const unsigned char want_dv = ours_drawn ? 99 : e.orig_distview_area;
         if (e.row->areaNo != want)
             e.row->areaNo = want;
+        if (e.row->areaNo_forDistViewMark != want_dv)
+            e.row->areaNo_forDistViewMark = want_dv;
         if (ours_drawn) ++hidden;
     }
     if (!g_native_landmark_rows.empty())
