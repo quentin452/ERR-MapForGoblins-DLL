@@ -78,55 +78,13 @@ MAPGENIE = {
     },
 }
 
-# enum (Category) → category_name() display string (src/goblin_markers.cpp). The [COVERAGE] log
-# keys by this display string, so SECTIONS (enum names) map through here to the parsed drawn counts.
-ENUM2DISPLAY = {
-    "EquipArmaments": "Equipment - Armaments", "EquipArmour": "Equipment - Armour",
-    "EquipAshesOfWar": "Equipment - Ashes of War", "EquipSpirits": "Equipment - Spirits",
-    "EquipTalismans": "Equipment - Talismans", "KeyCelestialDew": "Key - Celestial Dew",
-    "KeyCookbooks": "Key - Cookbooks", "KeyCrystalTears": "Key - Crystal Tears",
-    "KeyImbuedSwordKeys": "Key - Imbued Sword Keys", "KeyLarvalTears": "Key - Larval Tears",
-    "KeyScadutreeFragments": "Key - Scadutree Fragments", "KeyGreatRunes": "Key - Great Runes",
-    "KeyLostAshes": "Key - Lost Ashes", "KeyPotsNPerfumes": "Key - Pots n Perfumes",
-    "KeySeedsTears": "Key - Seeds Tears Ashes", "KeyWhetblades": "Key - Whetblades",
-    "LootAmmo": "Loot - Ammo", "LootBellBearings": "Loot - Bell-Bearings",
-    "LootMerchantBellBearings": "Loot - Merchant Bell-Bearings", "LootConsumables": "Loot - Consumables",
-    "LootCraftingMaterials": "Loot - Crafting Materials", "LootMPFingers": "Loot - MP-Fingers",
-    "LootMaterialNodes": "Loot - Material Nodes", "LootReusables": "Loot - Reusables",
-    "LootSmithingStones": "Loot - Smithing Stones", "LootSmithingStonesLow": "Loot - Smithing Stones (Low)",
-    "LootSmithingStonesRare": "Loot - Smithing Stones (Rare)", "LootGoldenRunes": "Loot - Golden Runes",
-    "LootGoldenRunesLow": "Loot - Golden Runes (Low)", "LootStoneswordKeys": "Loot - Stonesword Keys",
-    "LootThrowables": "Loot - Throwables", "LootPrattlingPates": "Loot - Prattling Pates",
-    "LootRuneArcs": "Loot - Rune Arcs", "LootDragonHearts": "Loot - Dragon Hearts",
-    "LootGloveworts": "Loot - Gloveworts", "LootGreatGloveworts": "Loot - Great Gloveworts",
-    "LootRadaFruit": "Loot - Rada Fruit", "LootGestures": "Loot - Gestures",
-    "LootGreases": "Loot - Greases", "LootUtilities": "Loot - Utilities",
-    "LootStatBoosts": "Loot - Stat Boosts", "ReforgedFortunes": "Reforged - Fortunes",
-    "MagicIncantations": "Magic - Incantations", "MagicMemoryStones": "Magic - Memory Stones",
-    "MagicPrayerbooks": "Magic - Prayerbooks", "MagicSorceries": "Magic - Sorceries",
-    "WorldBosses": "World - Bosses", "QuestDeathroot": "Quest - Deathroot",
-    "QuestProgression": "Quest - Progression", "QuestSeedbedCurses": "Quest - Seedbed Curses",
-    "ReforgedEmberPieces": "Reforged - Ember Pieces", "ReforgedItemsAndChanges": "Reforged - Items",
-    "ReforgedRunePieces": "Reforged - Rune Pieces", "WorldGraces": "World - Graces",
-    "WorldHostileNPC": "World - Hostile NPC", "WorldQuestNPC": "World - Quest NPC",
-    "WorldImpStatues": "World - Imp Statues", "WorldMaps": "World - Maps",
-    "WorldPaintings": "World - Paintings", "WorldSpiritSprings": "World - Spirit Springs",
-    "WorldSpiritspringHawks": "World - Spiritspring Hawks", "WorldStakesOfMarika": "World - Stakes of Marika",
-    "WorldSummoningPools": "World - Summoning Pools", "WorldKindlingSpirits": "World - Kindling Spirits",
-    "WorldInteractables": "World - Interactables",
-    "WorldDivineTower": "World - Divine Towers", "WorldEvergaol": "World - Evergaols",
-    "WorldMinorErdtree": "World - Minor Erdtrees", "WorldGrandLift": "World - Grand Lifts",
-    "WorldDungeon": "World - Dungeons", "WorldLegacyDungeon": "World - Legacy Dungeons",
-    "WorldMiquellaCross": "World - Miquella's Cross", "WorldPortal": "World - Portals",
-    "WorldChurch": "World - Churches", "WorldRuins": "World - Ruins",
-    "WorldRiseTower": "World - Rises & Towers", "WorldShack": "World - Shacks",
-    "WorldFort": "World - Forts", "WorldCastle": "World - Castles",
-    "WorldTownVillage": "World - Towns & Villages", "WorldColosseum": "World - Colosseums",
-    "WorldUniqueSite": "World - Unique Sites",
-    "WorldElevator": "World - Elevators",  # Group-2 AEG027 lift family (solved 2026-07-02)
-    "WorldSmithingTable": "World - Smithing Tables",  # Group-2 AEG099_308 (solved 2026-07-02)
-    "WorldFarmableCollectible": "Loot - Farmable Drops",  # MFG-original, no MapGenie equivalent
-}
+# enum (Category) -> display string. Loaded from the category descriptor
+# (data/categories.json, the single source of truth for the name) instead of a duplicated
+# dict — see docs/plans/category_descriptor_plan.md. The [COVERAGE] log keys by this display
+# string, so SECTIONS (enum names) map through here to the parsed drawn counts.
+import json as _json
+ENUM2DISPLAY = {r["enum"]: r["name"]
+                for r in _json.load(open(ROOT / "data" / "categories.json", encoding="utf-8"))}
 
 # Sections: (display, [MapGenie labels to sum], [mod Category enums to sum]).
 # Empty mod list = MapGenie type with no mod equivalent (❌ NOT WIRED).
