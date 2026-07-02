@@ -1,11 +1,22 @@
 # Overlay hot-reload + AI Playwright loop (plan)
 
-**Status:** Phase 1 + Phase 2 Slices A/B/C COMPLETE + MERGED to `master` (2026-07-02). Slice D
-(file-watcher + actual FreeLibrary/LoadLibrary reload cycle + the /MT cross-heap fixes the reload
-audit surfaced) is IMPLEMENTED and build-verified on `feat/overlay-hotreload-slice-d` (2026-07-02,
-both configs link clean, all exports verified present) — see the Slice D section below. NOT yet
-in-game confirmed: the whole split-build runtime path (Slice C's one-time load AND Slice D's live
-reload) is Windows-only validation work; the dev box is Linux (cross-builds only). Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
+**Status:** Phases 1–3 COMPLETE and **IN-GAME VALIDATED (2026-07-02, on the LINUX box, ERR under
+Proton — the "split-build validation is Windows-only" assumption was WRONG: LoadLibrary/
+GetProcAddress/FreeLibrary and the TCP RPC all work under Wine).** Live session proof: split build
+booted (`render module loaded ... gen0`), SIG 29/29 clean, disk-loot build (the never-before-live
+Slice C loot_disk cross-DLL path incl. `register_runtime_entries`) ran crash-free, THREE live
+reloads (RPC-forced gen1, watcher-auto gen2 + gen3 — watcher swap landed **1.3s after the copy**),
+and the full dev loop closed end to end: edited the F1 panel title in `goblin_overlay_render.cpp`
+→ rebuilt ONLY the render target → auto-swap → RPC screenshot shows "Map for Goblins
+[HOT-RELOADED gen-test]" in the running game, 60 fps, game never restarted. Phase 3 RPC commands
+all validated live (ping/status/open_f1/set/screenshot/reload_overlay incl. error paths).
+**Gotcha found on the way:** the FIRST split-build launch crashed (AV in the render DLL during the
+disk build) — built from the STALE `build-linux-hotreload` cache configured before the toolchain
+gained `/Z7 /Brepro`; a fresh reconfigure (needs `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` under CMake
+4) built a crash-free binary that survived boot + disk build + 3 reloads. Root cause not fully
+pinned (stale flags vs. heisenbug) — if it EVER recurs on a fresh build, the PDB pair now ships to
+the deploy dir for symbolized triage. Remaining: Phase 4 (the actual AI iterate loop) + optional
+real-Windows spot-check. Raised by <user> 2026-07-01: reload ONLY the ImGui overlay
 render code while ERR keeps running (no full restart), paired with the already-proposed Route B
 debug RPC so an AI agent can script the REAL running game — screenshot, spot a DX or functional
 bug in the minimap/worldmap/icons overlay, fix the overlay source, hot-reload just that piece,

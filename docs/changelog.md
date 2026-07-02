@@ -47,8 +47,8 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   on overlay rendering without restarting the game. Includes the /MT cross-DLL heap unification
   (render's `operator new/delete` + ImGui allocations routed to the host heap) that the split build
   needed for correctness. Shipped single-DLL builds are unaffected (option OFF = byte-identical
-  path). Windows in-game validation pending; detail in
-  `docs/plans/overlay_hot_reload_playwright_plan.md`.
+  path). In-game validated on ERR under Proton (3 live reloads, watcher swap ~1.3s after rebuild);
+  detail in `docs/plans/overlay_hot_reload_playwright_plan.md`.
 - **Per-marker native landmark glyphs** — every landmark marker now draws the game's OWN map glyph
   for its exact site (each `WorldMapPointParam` row's iconId → `MENU_MAP_<NN>`): catacomb/cave/tunnel
   icons for Dungeons, each legacy dungeon's bespoke icon, church/ruin/fort/village icons for the

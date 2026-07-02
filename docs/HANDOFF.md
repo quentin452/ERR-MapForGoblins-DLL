@@ -41,21 +41,31 @@ link clean; all exports verified). Full design + audit detail in
   new) → host allocator triple travels in `OverlayFrameCtx`, trampolines `SetAllocatorFunctions`
   once per module load.
 
-**Not yet done:** Windows in-game validation of the split build's ENTIRE runtime path (Slice C
-one-time load was never in-game tested either) + a several-reload soak (stresses the cross-heap
-fixes). (Slice D itself is MERGED to `master`, `4228b01`.)
+**ALL IN-GAME VALIDATED 2026-07-02, ON THIS LINUX BOX (ERR under Proton)** — the "split-build
+validation is Windows-only" assumption was WRONG (LoadLibrary/FreeLibrary + TCP RPC work under
+Wine). Split build booted clean (SIG 29/29, disk build crash-free = the Slice C cross-DLL
+loot_disk path's first live run), 3 live reloads (RPC gen1, watcher-auto gen2+gen3, swap 1.3s
+after copy), and the full dev loop closed: edit render source → rebuild render target →
+auto-swap → screenshot shows the change in the RUNNING game. Gotcha hit: first launch crashed
+from the STALE pre-`/Z7` `build-linux-hotreload` cache — fresh reconfigure
+(`-DCMAKE_POLICY_VERSION_MINIMUM=3.5` under CMake 4) fixed it; watch for any recurrence (PDBs now
+deploy alongside for symbolized triage). Windows spot-check now optional.
 
-**Phase 3 debug RPC — IMPLEMENTED same day (`feat/overlay-debug-rpc`), in-game validation open.**
+**Phase 3 debug RPC — IMPLEMENTED + IN-GAME VALIDATED same day (merged with the above).**
 TCP loopback (NOT named pipe — Wine loopback == host loopback, so a Linux Python driver reaches the
-Proton game directly), gated on ini `[Debug] debug_rpc_port` (empty = off). Commands: `ping`,
-`status` (incl. render generation — poll to watch a reload land), `open_f1`, `set <ini_key> <value>`
-(generic, through the ini schema via new `goblin::config_set_by_key`), `screenshot <path>`
-(backbuffer→BMP, includes the overlay), `reload_overlay` (flags the Slice D swap). Listener thread
-queues; commands execute on the present thread (`debug_rpc::pump` at the end of `hk_present`).
-`search` deferred (render-side static buffer, needs a new export). Driver `tools/mfg_rpc.py`
-(protocol smoke-tested vs a fake server). **In-game validation is doable on THIS Linux box** (set
-`debug_rpc_port = 38700`, launch ERR under Proton, drive with the tool); `reload_overlay` needs the
-split build deployed. Full detail in the plan doc's Phase 3 section.
+Proton game directly), gated on ini `[Debug] debug_rpc_port` (empty = off). Commands ALL validated
+live: `ping`, `status` (incl. render generation — poll to watch a reload land), `open_f1`,
+`set <ini_key> <value>` (generic, through the ini schema via new `goblin::config_set_by_key`),
+`screenshot <path>` (backbuffer→BMP, includes the overlay — captured the F1 panel it had itself
+opened), `reload_overlay`. Listener thread queues; commands execute on the present thread
+(`debug_rpc::pump` at the end of `hk_present`). `search` deferred (render-side static buffer,
+needs a new export). Driver `tools/mfg_rpc.py` (`wait-reload` polls the gen bump). NB screenshot
+paths are the GAME's view: `Z:\tmp\...` under Proton. **The deployed ERR ini
+(`~/Games/ERRv2.2.9.6/dll/offline/MapForGoblins.ini`) keeps `debug_rpc_port = 38700` set** for
+future sessions; deploy dir restored to the single-DLL daily driver (render DLLs removed).
+**Next: Phase 4** — the actual AI iterate loop (screenshot → diagnose → edit → rebuild render →
+reload → re-screenshot) is now fully unblocked on this box; first target per the plan is a live
+item off `docs/memory/bugs/dx-bugs-backlog.md`.
 
 ## Clang-only Phase 1 — WINDOWS BUILD + SNAPSHOT VALIDATED (2026-07-02) → only the in-game matrix left
 
