@@ -1,8 +1,20 @@
 # Data-driven category descriptor — plan
 
-Status: **scoped 2026-07-02, not started.** The concrete near-term win from
-`docs/scripting_api_roi_note.md` (chosen over a full scripting API). Fork `feat/category-descriptor`
-from master when work starts.
+Status: **Tier 1 IN PROGRESS on `feat/category-descriptor` (2026-07-02).** Steps 1+2 landed +
+verified byte-identical:
+- **Step 1 (`fd29ef2`)** — category **name + section** are data-driven: `data/categories.json` (source
+  of truth) → `src/generated/goblin_categories.gen.hpp` `CATEGORY_META[]` via
+  `tools/generate_categories.py` (wired into `generate_data.py`). `category_name()` / `section_of()`
+  are array lookups; a `static_assert` ties the table to the `Category` enum. 0 diffs vs the old
+  switches across all 85 categories.
+- **Step 2 (`8f0a340`)** — **landmark iconId→category** folded in (`landmark_icon_ids` per record →
+  generated `landmark_category_for_icon()`; the C++ fn is a forwarder). 86/86 iconIds identical.
+
+Remaining Tier 1: `CATEGORY_GPU_ICONS` glyphs (Step 2b), the coverage_vs_mapgenie mapping (Step 3),
+optional enum generation (Step 4, riskiest — the enum stays hand-edited, guarded by the sync assert).
+**Edit surface for a new landmark category so far: `goblin_map_data.hpp` enum + one `categories.json`
+record (name/section/landmark_icon_ids) + regen — down from 6 scattered switches.** The near-term win
+from `docs/scripting_api_roi_note.md` (chosen over a full scripting API).
 
 ## Goal
 
