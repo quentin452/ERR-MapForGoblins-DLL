@@ -907,6 +907,20 @@ void hover_test(Hover &h, ImVec2 mouse, ImVec2 p, float r, MakeLabel make_label)
 std::string marker_label(const Marker &m)
 {
     std::string loc = goblin::overlay_api::lookup_text_utf8(m.loc_pname);
+    // Grace marker (discover_flag set only on graces): always annotate as a Site of Grace so the
+    // marker self-identifies as a grace even when its own place-name textId doesn't resolve — some
+    // graces store a tab/region id in textId1, so the name resolves empty and the tooltip used to
+    // collapse to the region line alone, losing the "grace" identity (the reported Murkwater bug).
+    // Format: "<grace place-name>\nSite of Grace\n<region>" (grace-name / region lines dropped when
+    // blank or when the region duplicates the grace name).
+    if (m.discover_flag)
+    {
+        std::string gname = goblin::overlay_api::lookup_text_utf8(m.name_id);
+        std::string t = goblin::i18n::tr("Site of Grace");
+        if (!gname.empty()) t = gname + "\n" + t;
+        if (!loc.empty() && loc != gname) t += "\n" + loc;
+        return t;
+    }
     // " xN" quantity suffix: a multi-item lot, or an ACTIVE item-stack of co-located identical markers
     // (only when the stack toggle is on — off, a representative shows its own count like any marker).
     // For an active stack with collected_graying on, show the REMAINING (uncollected) count so it
