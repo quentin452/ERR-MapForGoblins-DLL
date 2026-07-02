@@ -25,6 +25,13 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Changed
+- **Settings declutter.** Marker-rendering preferences and the minimap block moved out of the
+  catch-all `[Debug]` ini section into their own `[Markers]` and `[Minimap]` sections; existing inis
+  migrate their tuned values automatically (keys relocate on next launch, nothing reset). Several
+  dev-era calibration sliders whose values were final (grace/native-symbol/cluster scale, altitude
+  deadzone, grace draw offset) were baked to their tuned constants and removed from the F1 panel + ini
+  so they can't be nudged into an ugly map; the real preferences (overall marker scale, minimap,
+  legibility, altitude arrows, motion delay) stay adjustable.
 - **Single DLL for every install (per-profile builds retired).** The old ERR/vanilla/erte/convergence
   DLL variants are gone: one `MapForGoblins.dll` now serves any Elden Ring install. ERR-only config
   sections/entries activate automatically when the install is ELDEN RING Reforged (runtime disk

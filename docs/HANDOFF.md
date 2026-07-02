@@ -110,15 +110,17 @@ via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (sp
    triaged live by the user). Auto-fix direction: a runtime MINIMUM on-screen icon size —
    `icon_min_half_px` already exists (cfg_iconMinHalfPx_ptr) → find why these icons escape it
    (per-item icon tier scale?) or raise/enforce it in draw_marker for all tiers.
-6. **Settings sweep — AUDIT DONE 2026-07-02, `docs/plans/settings_sweep_plan.md`** (full
-   classification table: every ini key + F1 widget → keep / hardcode-calib / dev-quarantine /
-   delete). Core finding: `[Debug]` ini section is a dumping ground mixing all final-calibration
-   values (scales, minimap, altitude, legibility, view-delay) WITH real dev/diag keys; `[Goblin]`
-   mixes 5 RE-diag keys into real prefs. **NEXT: user resolves the 8 ⚠FLAG items** (esp. FLAG-8:
-   are overlay_master_scale/overlay_icon_scale real accessibility prefs or final calib?), then
-   execute (relocate → delete → hardcode). grace_icon_scale stays its OWN const (vanilla-parity,
-   never fold into generic scale). Hardcode-blocked-until-bug-lands: view_delay_* (item 3),
-   icon_legibility (item 4), icon_min_half_px (item 5). Original raw notes below preserved:
+6. **Settings sweep — Phase 0+1+2 LANDED on master 2026-07-02** (`docs/plans/settings_sweep_plan.md`;
+   commits `3368a20` + the reorg commit). Done: ini cross-section MOVE migration (Phase 0); new
+   `[Markers]`+`[Minimap]` ini sections pulled out of the `[Debug]` dumping ground (Phase 1); final
+   calibration sub-knobs hardcoded to constexpr in map_renderer.cpp — kGraceIconScale kept SEPARATE
+   for vanilla parity, plus kMapSymbolScale/kClusterScale/kAltitudeDeadzone, grace offset deleted
+   (Phase 2). Cross-builds clean; fresh ini emit eyeballed. **NEXT: (a) in-game migration confirm —
+   load once with an existing tuned ini, verify minimap/scale values reappear under the new sections
+   with no reset/dup; (b) Phase 3 structural deletes — grace baked-atlas CPU path (FLAG-2) + baked
+   projection fallback (FLAG-4), each its own commit + in-game verify (see plan "Flag resolutions");
+   (c) minor tidies: [Goblin] diag-key relocation + the stray dev widgets (Baked-only, 4 cluster
+   DEBUG checkboxes) → dev panel area.** All 8 ⚠FLAGs resolved (see plan). Original raw notes below:
    The F1 panel + ini carry many
    dev-era knobs (diag_*, debug_*, baked-only, locate-debug, sprite calib offsets…) AND — the
    user's key point — sliders whose values are now FINAL CALIBRATION, not preferences:

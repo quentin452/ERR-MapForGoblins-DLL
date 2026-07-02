@@ -1,6 +1,31 @@
 # Settings sweep — classify every F1/ini knob (keep / hardcode / dev-quarantine / delete)
 
-Status: **AUDIT DONE, no edits yet** (user chose audit-first). Author 2026-07-02.
+Status: **Phase 0+1+2 LANDED on master 2026-07-02** (build-verified, ini emit eyeballed). Remaining:
+in-game migration confirm; Phase 3 structural deletes (grace atlas, baked projection); minor tidies
+(see "Remaining" at bottom). Author 2026-07-02.
+
+### What landed (commits 3368a20 + this one)
+- **Phase 0** — ini migration handles cross-section key MOVES (global-unique-key scan): a relocated
+  key is adopted from wherever it sits in an existing ini instead of orphaned + reset. `goblin_config.cpp`.
+- **Phase 2** — hardcoded the final-calibration sub-knobs to `constexpr` in `map_renderer.cpp`
+  (kGraceIconScale kept SEPARATE = vanilla parity, kMapSymbolScale, kClusterScale, kAltitudeDeadzone);
+  deleted grace_offset_x/y (no-op). Dropped from config struct + schema + render-api X-macro + panel + fr.txt.
+- **Phase 1** — new `[Markers]` (master/icon scale, legibility, icon_min_half_px, altitude_cue,
+  view_delay_*) + `[Minimap]` ini sections; both moved OUT of the `[Debug]` dumping ground. `[Debug]`
+  now holds only genuine dev/diag/RE knobs.
+
+### Remaining (deferred, lower value / higher risk)
+- **In-game migration confirm** (do this first): launch once with an existing ini that has tuned
+  minimap/scale values under old `[Debug]`; verify they reappear under `[Minimap]`/`[Markers]` with no
+  reset and no duplicate/orphan keys.
+- **[Goblin] diag-key relocation** — move the 5 `diag_*` + `debug_logging` (+ the `baked_only` DIAG)
+  out of `[Goblin]` into `[Debug]`. Deferred: non-contiguous in the schema, self-labeled already,
+  brace-risk > value. The Phase-0 migration will move their values for free when done.
+- **Panel dev-widget moves** — the "Baked-only (diag)" checkbox in General settings + the 4 `DEBUG:`
+  checkboxes inline in Clustering should move to a dev-gated panel area (cosmetic, panel-only).
+- **Phase 3 structural deletes** (own commits, in-game verify each): grace baked-atlas CPU path
+  (FLAG-2), baked projection fallback (FLAG-4). See resolutions below.
+
 Owner branch when work starts: fork `chore/settings-sweep` from master.
 
 ## Why
