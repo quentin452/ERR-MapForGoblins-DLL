@@ -110,7 +110,16 @@ via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (sp
    triaged live by the user). Auto-fix direction: a runtime MINIMUM on-screen icon size —
    `icon_min_half_px` already exists (cfg_iconMinHalfPx_ptr) → find why these icons escape it
    (per-item icon tier scale?) or raise/enforce it in draw_marker for all tiers.
-6. **Settings sweep — NEXT SESSION's task (user-designated).** The F1 panel + ini carry many
+6. **Settings sweep — AUDIT DONE 2026-07-02, `docs/plans/settings_sweep_plan.md`** (full
+   classification table: every ini key + F1 widget → keep / hardcode-calib / dev-quarantine /
+   delete). Core finding: `[Debug]` ini section is a dumping ground mixing all final-calibration
+   values (scales, minimap, altitude, legibility, view-delay) WITH real dev/diag keys; `[Goblin]`
+   mixes 5 RE-diag keys into real prefs. **NEXT: user resolves the 8 ⚠FLAG items** (esp. FLAG-8:
+   are overlay_master_scale/overlay_icon_scale real accessibility prefs or final calib?), then
+   execute (relocate → delete → hardcode). grace_icon_scale stays its OWN const (vanilla-parity,
+   never fold into generic scale). Hardcode-blocked-until-bug-lands: view_delay_* (item 3),
+   icon_legibility (item 4), icon_min_half_px (item 5). Original raw notes below preserved:
+   The F1 panel + ini carry many
    dev-era knobs (diag_*, debug_*, baked-only, locate-debug, sprite calib offsets…) AND — the
    user's key point — sliders whose values are now FINAL CALIBRATION, not preferences:
    exposing them invites breaking the look (e.g. touching the icon scaling can make the map
