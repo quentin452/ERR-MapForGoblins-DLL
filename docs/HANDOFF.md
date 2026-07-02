@@ -215,20 +215,27 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
   `entity_world_pos`/`g_entity_pos` path dropped MSB Y, so NPC pins never got the ▲/▼ badge.
   Y now threaded (EntityPos.wy from DiskEnemy/DiskCollectible.posY). In-game visual confirm
   pending (needs an NPC pin at a different altitude than the player).
-- **Boot-time question (user, 2026-07-02) — profiled from the existing log, plan agreed, NOT
-  started.** DLL-side timeline of a real boot (log timestamps): injection t+0 → `init.from_params`
-  **8013 ms** (waiting for the GAME to load regulation/params — not our work) → signatures 394 ms →
-  `init.param_poll` **5005 ms flat (coarse poll interval, easy ~5s win for overlay readiness — our
-  code, zero game risk)** → heavy init 743 ms (NAMEEN 20k) → ImGui/hooks/RPC ~230 ms; total ~15s of
-  which ~13s is WAITING on game state. Game-side phases known: params resident t+8.6s, first
-  D3D12 frame t+14.8s (mount dvdbnd + vkd3d shaders live in between). **Safety triage for "make
-  the game boot faster":** safe = our param_poll interval + vkd3d shader-cache hygiene +
-  SkipTheIntro (already installed); medium = short-circuiting pure WAITS (Steam offline timeouts,
-  "Checking save data" cloud poll — save/cloud chain is SACRED, only with save backup); dangerous
-  = skipping/patching engine init stages (partial state → distant random crashes, save risk,
-  uncertain gain). **Agreed order: (1) read-only boot I/O profile first (extend the CreateFileW
-  observer to ALL files + phase timestamps, ~30 min, zero risk), (2) fix our param_poll, (3) only
-  then discuss targeted wait-hooks based on data.**
+- **Boot-time work — steps 1+2 DONE, in-game measured (2026-07-02,
+  `perf/boot-io-profile-param-poll`).** (2) **param_poll fixed:** the 5005ms was NOT the poll
+  interval (already 200ms) — it was the "honor `load_delay` as a MINIMUM total wait" sleep after
+  the poll had already confirmed readiness. Ready now proceeds after a 250ms settle; `load_delay`
+  kept only as the fallback minimum when the poll can't confirm (ini comment updated). Measured:
+  `init.param_poll` **5005 ms → 250 ms**, "Initialization complete" **t+10.7s (was ~15s)**, SIG
+  30/30, zero errors. (1) **Boot I/O profile shipped + run:** new `diag_boot_io` ([Debug], default
+  off) widens the CreateFileW observer to ALL opens and arms it LIVE at the top of setup_mod (new
+  `modutils::hook_now` — the normal queued path only goes live at enable_hooks, ~14s in, which is
+  why the old observer couldn't profile boot). `[BOOTIO]` = +ms-since-arm, per-open latency,
+  ok/FAIL, first 1500 lines then counted. **Findings (ERR/Proton run 2026-07-02): boot is NOT
+  file-I/O bound** — 1500 opens totaled ~85ms of open latency, all sub-ms. Time lives in idle
+  gaps between opens: t+0-7s engine init (sparse opens; a 1.5s gap around failing discord-ipc
+  pipes, ~1.3s after the sd/cs_smain.bnk audio bank), regulation.bin opened t+7.1s then a 1.35s
+  gap (decrypt/parse; from_params completes t+9.3s), then OUR MSB disk-loot burst (~964 MapStudio
+  opens, t+10.4-11.2s ≈ 0.8s, matches the known prebuild cost). FAIL noise is benign (158×
+  mods' log.txt probes, dxvk.conf, discord-ipc absent, PauseTheGame's pause_keybinds.ini).
+  **Step 3 (only if wanted): targeted wait-hooks are the remaining tier — the data says candidates
+  are the discord-ipc connect wait and the audio-bank gap, NOT file I/O; the regulation parse is
+  engine work (dangerous tier, leave alone).** vkd3d shader-cache hygiene + SkipTheIntro remain
+  the safe game-side levers.
 - **DX sweep findings (multi-zoom, to triage):** (1) markers/piles draw OUTSIDE the map canvas
   (on the black letterbox and OVER the day/night dial) — no clip to the map rect; (2) pile
   LOCATION LABELS flood the screen at far zoom (idea: reuse the fan's tile-px gate to hide

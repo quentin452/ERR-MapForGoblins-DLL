@@ -212,6 +212,20 @@ void modutils::hook(void *function, void *detour, void **trampoline)
     }
 }
 
+void modutils::hook_now(void *function, void *detour, void **trampoline)
+{
+    auto mh_status = MH_CreateHook(function, detour, trampoline);
+    if (mh_status != MH_OK)
+    {
+        throw runtime_error(string("Error creating hook: ") + MH_StatusToString(mh_status));
+    }
+    mh_status = MH_EnableHook(function);
+    if (mh_status != MH_OK)
+    {
+        throw runtime_error(string("Error enabling hook: ") + MH_StatusToString(mh_status));
+    }
+}
+
 void modutils::enable_hooks()
 {
     auto mh_status = MH_ApplyQueued();

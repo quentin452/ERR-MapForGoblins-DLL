@@ -23,6 +23,7 @@ namespace goblin::config
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
     bool diagLootPos = false;      // one-shot [LOOTPOS] live-vs-baked placement accuracy probe
     bool diagMapOpens = false;     // [MAPOPEN] CreateFileW probe: log map .msb.dcx opens
+    bool diagBootIo = false;       // [BOOTIO] CreateFileW probe: log ALL file opens during boot (read-only profile)
     bool diagFieldinsJoin = false; // one-shot [FIELDINS] embedded-pool asset→lotId join probe (path A)
     bool diagLotMemscan = false;   // one-shot [LOTSCAN] brute committed-private memory scan for a lotId
     bool debugLogging = false;
@@ -165,10 +166,10 @@ namespace
         return {
             {"Goblin", nullptr, false, {
                 IniEntry{"load_delay", IniType::U8, &cfg::loadDelay, "5",
-                         "MINIMUM seconds to wait before loading map icons. The mod now POLLS\n"
-                         "for the world-map data to finish loading (robust on slow PCs) and\n"
-                         "proceeds as soon as it's ready; this is just a floor/settle margin.\n"
-                         "Leave at 5 unless you want a longer guaranteed settle.", false, nullptr},
+                         "FALLBACK seconds to wait before loading map icons, used only when the\n"
+                         "init poll cannot confirm the world-map data is loaded. Normally the mod\n"
+                         "POLLS for the data and proceeds as soon as it's ready (no fixed wait),\n"
+                         "so this key has no effect on a healthy boot. Leave at 5.", false, nullptr},
                 B("require_map_fragments", requireMapFragments, "true",
                   "Require map fragment discovery before showing icons in that area\n"
                   "(overlay map: gates on the area's map-fragment event flag)."),
@@ -512,6 +513,8 @@ namespace
                          "no auth — leave empty outside dev sessions.", false, nullptr},
                 IniEntry{"marker_dump_key", IniType::VkKey, &cfg::markerDumpKey, "F9",
                          "Key to dump decoded markers to logs/MapForGoblins_markers.log. Default: F9.", false, nullptr},
+                B("diag_boot_io", diagBootIo, "false",
+                  "Perf diagnostic: [BOOTIO] — hook kernel32!CreateFileW as early as possible\n(before the param wait) and log EVERY file the process opens during boot\n(+ms since arming, open latency, ok/FAIL, full path). Read-only boot I/O\nprofile to find what the ~15s startup actually waits on. First ~1500 opens\nlogged individually, then counted. Off by default (verbose)."),
                 B("debug_event_flags", debugEventFlags, "false",
                   "Observe every event flag the game sets at runtime and log each newly-seen\nflag id to logs/MapForGoblins_events.log (coverage-gap discovery aid).\nHooks SetEventFlag; off by default."),
                 B("debug_item_grants", debugItemGrants, "false",

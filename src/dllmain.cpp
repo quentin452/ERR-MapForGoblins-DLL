@@ -153,6 +153,14 @@ static std::filesystem::path g_mod_folder;
 static void setup_mod()
 {
     safe_init_step(&init_modutils,    "modutils::initialize");
+
+    // Boot I/O profile: arm the CreateFileW observer NOW (hook_now, live
+    // immediately) so it covers the ~8s from_params regulation wait below —
+    // the normal arm point further down would miss the whole interesting
+    // window. No-op unless diag_boot_io is on (install is idempotent).
+    if (goblin::config::diagBootIo)
+        goblin::worldmap::install_map_open_probe();
+
     safe_init_step(&init_render_module, "overlay_render_loader::load");
     {
         GOBLIN_BENCH("init.from_params");
@@ -181,8 +189,8 @@ static void setup_mod()
     // Robust init wait: POLL for the WorldMapPointParam table (the real dependency
     // of inject_map_entries) instead of sleeping a fixed load_delay — on a slow PC
     // the params can take well over 5s to load, and a too-short fixed delay makes
-    // the inject find nothing / init incorrectly. We still honor load_delay as a
-    // MINIMUM total wait (settle margin + backward-compat), and cap the poll so we
+    // the inject find nothing / init incorrectly. load_delay is only a FALLBACK
+    // minimum for when the poll can't confirm readiness; the poll is capped so we
     // never hang forever if the probe never goes ready.
     {
         using namespace std::chrono;
@@ -190,8 +198,9 @@ static void setup_mod()
         constexpr int POLL_MS = 200;
         constexpr int HARD_CAP_S = 180;  // never wait longer than this
         auto t0 = steady_clock::now();
-        spdlog::info("Waiting for WorldMapPointParam to load (min {}s, cap {}s)...",
-                     goblin::config::loadDelay, HARD_CAP_S);
+        spdlog::info("Waiting for WorldMapPointParam to load (cap {}s; fallback "
+                     "load_delay {}s only if the poll can't confirm)...",
+                     HARD_CAP_S, goblin::config::loadDelay);
         bool ready = false;
         for (int waited = 0; waited < HARD_CAP_S * 1000; waited += POLL_MS)
         {
@@ -200,14 +209,27 @@ static void setup_mod()
         }
         auto elapsed = duration_cast<milliseconds>(steady_clock::now() - t0).count();
         if (ready)
-            spdlog::info("WorldMapPointParam ready after {} ms", elapsed);
+        {
+            // The poll checks the REAL dependency (WorldMapPointParam registered
+            // AND num_rows > 0), so a confirmed ready needs no extra load_delay —
+            // honoring it as a minimum used to add a flat ~5s to every fast boot
+            // (params are already resident after from_params' own wait). Keep a
+            // short fixed settle so rows the game just published stop moving.
+            constexpr int SETTLE_MS = 250;
+            spdlog::info("WorldMapPointParam ready after {} ms (+{} ms settle)",
+                         elapsed, SETTLE_MS);
+            std::this_thread::sleep_for(milliseconds(SETTLE_MS));
+        }
         else
+        {
             spdlog::warn("WorldMapPointParam not ready after {}s cap — proceeding "
                          "anyway (init may degrade)", HARD_CAP_S);
-        // Honor load_delay as a minimum total wait (settle + old behaviour).
-        auto min_ms = static_cast<long long>(goblin::config::loadDelay) * 1000;
-        if (elapsed < min_ms)
-            std::this_thread::sleep_for(milliseconds(min_ms - elapsed));
+            // Poll could not confirm readiness — fall back to honoring load_delay
+            // as the minimum total wait (the pre-poll behaviour).
+            auto min_ms = static_cast<long long>(goblin::config::loadDelay) * 1000;
+            if (elapsed < min_ms)
+                std::this_thread::sleep_for(milliseconds(min_ms - elapsed));
+        }
     }
 
     {
