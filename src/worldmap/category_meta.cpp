@@ -169,38 +169,42 @@ namespace
 // absent here is still baked-only ("to replace"). Populate an entry as each category's
 // real engine sprite gets wired into the marker draw; the F1 completion panel then counts
 // it as replaced once harvested_icon() has the sprite.
-struct CategoryGpuIcon { int category; int iconId; };
+// scale: extra per-category multiplier on top of config::mapSymbolScale (2.2 default) — the
+// big POI statue/dais glyphs drawn among item dots need < 1 or they dwarf everything
+// (user-reported). tint: ImU32 ABGR multiplied into the draw tint, 0 = none (white); used to
+// tell apart categories that share one glyph (stakes vs pools both use the Marika statue).
+struct CategoryGpuIcon { int category; int iconId; float scale; unsigned int tint; };
 constexpr CategoryGpuIcon CATEGORY_GPU_ICONS[] = {
-    {-1, 0},  // sentinel (never matches a real category) — keeps the array non-empty;
+    {-1, 0, 1.0f, 0},  // sentinel (never matches a real category) — keeps the array non-empty;
               // add {static_cast<int>(Category::X), iconId} entries as categories migrate
-    // Summoning Pool → the two-summons-on-a-dais glyph (MENU_MAP_21, SB_MapCursor). Was 89
-    // (Martyr Effigy statue), but that silhouette is identical to the Stake-of-Marika statue
-    // ERR's own iconography uses → pools and stakes read as the same icon (user 2026-07-02).
-    // 21 says "multiplayer summons" unambiguously; 89 moved to Stakes below, where the statue
-    // actually matches the in-world object.
-    {static_cast<int>(goblin::generated::Category::WorldSummoningPools), 21},
-    // Stake of Marika → the Marika-statue glyph (MENU_MAP_89, SB_MapCursor_02) — native-tier
-    // upgrade (was the baked-atlas statue cell) and visually THE stake players know.
-    {static_cast<int>(goblin::generated::Category::WorldStakesOfMarika), 89},
+    // Stakes vs Pools (user 2026-07-02 v2): both use the SAME Marika-statue glyph (MENU_MAP_89 —
+    // it matches BOTH in-world objects) and differ by TINT, the game's own colour language:
+    // pools = multiplayer blue, stakes = warm gold. The two-summons-on-a-dais glyph (MENU_MAP_21)
+    // reads as an elevator/lift platform → given to WorldElevator instead, greyed (mechanical).
+    // All three scaled 0.6 — these are POI dots among item icons, not full map landmarks, and at
+    // the raw mapSymbolScale they dwarfed everything.
+    {static_cast<int>(goblin::generated::Category::WorldSummoningPools), 89, 0.6f, abgr(120, 170, 255)},
+    {static_cast<int>(goblin::generated::Category::WorldStakesOfMarika), 89, 0.6f, abgr(255, 205, 110)},
+    {static_cast<int>(goblin::generated::Category::WorldElevator), 21, 0.6f, abgr(185, 185, 190)},
     // Quest NPC → framed-hood NPC glyph (MENU_MAP_80, SB_MapCursor_02, rect 554,364,124,124 — the
     // vanilla quest-NPC map symbol, eye-confirmed in docs/memory/features/map-point-glyph-ids.md).
     // iconId path → map_point_rect(80) → disk fallback in MapPointProvider, so it is mod-agnostic
     // (reads the ACTIVE install's SB_MapCursor, not the ERR-baked atlas). Falls to circle when the
     // glyph can't be resolved. NB: the SB_MapCursor NN (80), NOT the WorldMapPointParam iconId
     // 443=questNPC — 443 is never resident (vanilla draws no item pins) so only the NN path works.
-    {static_cast<int>(goblin::generated::Category::WorldQuestNPC), 80},
+    {static_cast<int>(goblin::generated::Category::WorldQuestNPC), 80, 1.0f, 0},
     // Landmark categories (HANDOFF glyph followup): these are TRUE WorldMapPointParam rows the
     // game itself draws, so their WMPP iconId IS the resident MENU_MAP_<NN> glyph (unlike 443
     // above, which vanilla never draws). Single-iconId categories only — Dungeon/LegacyDungeon
     // are per-site iconId unions and need per-marker source ids through push_marker (open).
-    {static_cast<int>(goblin::generated::Category::WorldDivineTower), 23},
-    {static_cast<int>(goblin::generated::Category::WorldEvergaol), 9},
-    {static_cast<int>(goblin::generated::Category::WorldMinorErdtree), 30},
-    {static_cast<int>(goblin::generated::Category::WorldGrandLift), 21},
-    {static_cast<int>(goblin::generated::Category::WorldMiquellaCross), 208},
+    {static_cast<int>(goblin::generated::Category::WorldDivineTower), 23, 1.0f, 0},
+    {static_cast<int>(goblin::generated::Category::WorldEvergaol), 9, 1.0f, 0},
+    {static_cast<int>(goblin::generated::Category::WorldMinorErdtree), 30, 1.0f, 0},
+    {static_cast<int>(goblin::generated::Category::WorldGrandLift), 21, 1.0f, 0},
+    {static_cast<int>(goblin::generated::Category::WorldMiquellaCross), 208, 1.0f, 0},
     // Parity families: only Colosseum is single-iconId; the others are per-site/typed unions
     // (need per-marker source ids through push_marker, same open gap as Dungeon/LegacyDungeon).
-    {static_cast<int>(goblin::generated::Category::WorldColosseum), 24},
+    {static_cast<int>(goblin::generated::Category::WorldColosseum), 24, 1.0f, 0},
 };
 } // namespace
 
@@ -209,6 +213,22 @@ int category_gpu_iconId(int category)
     for (const auto &e : CATEGORY_GPU_ICONS)
         if (e.category == category)
             return e.iconId;
+    return 0;
+}
+
+float category_gpu_iconId_scale(int category)
+{
+    for (const auto &e : CATEGORY_GPU_ICONS)
+        if (e.category == category)
+            return e.scale;
+    return 1.0f;
+}
+
+unsigned int category_gpu_iconId_tint(int category)
+{
+    for (const auto &e : CATEGORY_GPU_ICONS)
+        if (e.category == category)
+            return e.tint;
     return 0;
 }
 

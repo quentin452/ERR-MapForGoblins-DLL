@@ -27,6 +27,13 @@ bool category_has_baked_icon(int category);
 // the F1 "X / N icons replaced" completion counter.
 int category_gpu_iconId(int category);
 
+// Per-category draw modifiers for the iconId-keyed symbol above. scale multiplies the config
+// map-symbol size (big POI glyphs among item dots use < 1). tint is an ImU32 ABGR multiplied
+// into the draw tint, 0 = none — used to tell apart categories sharing one glyph (stakes vs
+// pools both draw the Marika statue, gold vs multiplayer blue).
+float category_gpu_iconId_scale(int category);
+unsigned int category_gpu_iconId_tint(int category);
+
 // Name-keyed engine map symbol for the category (ERR custom MENU_MAP_ERR_* / vanilla MENU_MAP_*),
 // or nullptr. Sparse — only categories with a real game symbol. Resolved via map_icon_rect_by_name.
 const char *category_gpu_icon_name(int category);

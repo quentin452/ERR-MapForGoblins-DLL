@@ -155,18 +155,27 @@ minor-dungeon families (Caves / Hero's Graves) kept their native pins — their 
 from the dist-view mark, so `areaNo_forDistViewMark` now flips to 99 alongside `areaNo` (both
 saved/restored). Re-verify the dungeon pins after this fix.
 
-Same feedback round shipped 3 more fixes (all deployed `3dc8f998`, pending in-game confirm):
+Same feedback round shipped 3 more fixes (round 2 deployed `e970671e`, pending in-game confirm):
 - **Collected black-disc bug:** the icon-legibility contrast disc under small icons kept full alpha
   when the icon dimmed as collected → looked uncollected. Disc alpha now follows the icon tint's
   alpha (`draw_legible_icon`, map_renderer.cpp).
 - **"Map icons: ON/OFF" toast removed:** its only remaining trigger is the F1 menu's own master
   checkbox — announcing what the user just clicked was noise. `show_toggle_banner` kept (unused)
   for a future hotkey path.
-- **Stakes/Pools glyph collision:** pools drew native `MENU_MAP_89` (Martyr Effigy statue) while
-  stakes drew the ERR atlas statue — identical silhouettes. Swap: pools → native `MENU_MAP_21`
-  (two summons on a dais), stakes → native 89 (the statue IS the stake object; native-tier upgrade
-  for stakes too). SB_MapCursor sheets re-checked with tools/menu_tex_extract: no dedicated stake
-  glyph exists natively, 21/89 rects eye-confirmed.
+- **Stakes/Pools glyph collision (v2 after user feedback on v1's swap):** both categories now draw
+  the SAME native Marika-statue glyph (`MENU_MAP_89` — matches both in-world objects) differentiated
+  by TINT (pools = multiplayer blue, stakes = warm gold — the game's own colour language).
+  `MENU_MAP_21` reads as a lift platform (it IS the Grand Lift WMPP glyph — landmark GrandLift
+  already used it) → given to `WorldElevator`, grey-tinted. Plumbing: `CATEGORY_GPU_ICONS` grew
+  per-category `scale` (these 3 POI glyphs draw at 0.6× the 2.2 mapSymbolScale — at raw scale they
+  dwarfed item dots, user-reported) and `tint` (ABGR multiplied into the draw tint via `mul_tint`,
+  composes with collected-dim/boss-red). SB_MapCursor sheets re-checked with menu_tex_extract: no
+  dedicated stake glyph exists natively; 21/89 rects eye-confirmed.
+- **Spoiler-free coverage audit (user ask):** the only ITEM-identity leak outside `lot_backed` was
+  Farmable Drops (non-lot, names the real notable drop) → `anonymous_marker(m)` = lot_backed ∨
+  farmable now gates the "?" draw + tooltip. Deliberately NOT anonymized: pieces/kindling (identity
+  IS the category), material nodes (fixed gather spots, randomizers don't touch them), world
+  features. Enemy/EMEVD drops were already lot-backed → covered.
 
 ## Native-map landmark icon suppression — TRACKED (2026-07-02) → implemented same day, see above
 
