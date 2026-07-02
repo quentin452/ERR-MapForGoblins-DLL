@@ -43,19 +43,12 @@ namespace goblin::config
 
     bool hideKilledBosses = false;
 
-    // Live-loot / randomizer-compat options default ON for the plain VANILLA
-    // build only (that's what Item/Enemy Randomizer players use) and OFF for ERR
-    // and Convergence (opt-in — they add memory/CPU with no benefit without a
-    // regulation mod). MFG_PROFILE_VANILLA is set by CMake for the vanilla bake
-    // only (MFG_VANILLA covers vanilla AND convergence, so it can't be used here).
+    // Randomizer relabel (copy the whole item-name space into PlaceName). Perf-heavy →
+    // opt-in on every install. (The old per-profile vanilla-defaults-ON split died with
+    // the single-DLL migration; randomizer players flip this one key.)
     // live_loot_flags / live_loot_icons removed (Phase 2b): their only consumers were the native
-    // map's param rewriters, deleted with native injection. live_loot_labels survives — it's the
-    // randomizer relabel (copy the whole item-name space into PlaceName, perf-heavy → opt-in).
-#ifdef MFG_PROFILE_VANILLA
-    bool liveLootLabels = true;
-#else
+    // map's param rewriters, deleted with native injection.
     bool liveLootLabels = false;
-#endif
     bool anonymousLoot = false;  // opt-in spoiler-free mode (all profiles default off)
 
     // loot{FromDiskMsb,Collectibles,EnemyDrops,EmevdDrops} + worldFeaturesFromDisk are now
@@ -155,14 +148,10 @@ namespace
 
     constexpr bool ERR = true; // err-only marker for readability
 
-    // Default string for the live-loot options — "true" only in the vanilla
-    // bake (see the var defs above), "false" elsewhere. Must match the compiled
-    // bool defaults so the generated ini and the DLL agree.
-#ifdef MFG_PROFILE_VANILLA
-#define MFG_LL_DEF "true"
-#else
+    // Default string for the live-loot options. Must match the compiled bool
+    // defaults so the generated ini and the DLL agree (single default since the
+    // single-DLL migration — see liveLootLabels above).
 #define MFG_LL_DEF "false"
-#endif
 
     // helper macros to keep the table compact
 #define B(k, var, def, cmt) IniEntry{k, IniType::Bool, &cfg::var, def, cmt, false, nullptr}
@@ -464,6 +453,15 @@ namespace
                 B("show_dungeons", showCategory[static_cast<int>(Cat::WorldDungeon)], "false", "Minor dungeon entrances (Catacombs/Caves/Tunnels/Wells/Hero's Graves; iconIds 4,13,14,15,16,230,231,234)"),
                 B("show_legacy_dungeons", showCategory[static_cast<int>(Cat::WorldLegacyDungeon)], "false", "Legacy dungeon locations (Stormveil, Raya Lucaria, Leyndell, etc.; per-site iconIds)"),
                 B("show_miquella_crosses", showCategory[static_cast<int>(Cat::WorldMiquellaCross)], "false", "Miquella's Cross locations (DLC; iconId 208)"),
+                B("show_churches", showCategory[static_cast<int>(Cat::WorldChurch)], "false", "Church / cathedral locations (iconIds 3,20,247,248,249)"),
+                B("show_ruins", showCategory[static_cast<int>(Cat::WorldRuins)], "false", "Ruins locations, incl. underground and Finger Ruins (iconIds 5,47,250-255)"),
+                B("show_rises_towers", showCategory[static_cast<int>(Cat::WorldRiseTower)], "false", "Sorcerers' rises + lookout towers (iconIds 8,17,68,258)"),
+                B("show_shacks", showCategory[static_cast<int>(Cat::WorldShack)], "false", "Shack / hovel locations (iconIds 6,259)"),
+                B("show_forts", showCategory[static_cast<int>(Cat::WorldFort)], "false", "Fort locations (iconIds 18,242,243)"),
+                B("show_castles", showCategory[static_cast<int>(Cat::WorldCastle)], "false", "Field castle / manor locations (iconIds 25-29,241; legacy dungeons have their own toggle)"),
+                B("show_towns_villages", showCategory[static_cast<int>(Cat::WorldTownVillage)], "false", "Town / village locations (iconIds 32-40,244,245,246,261)"),
+                B("show_colosseums", showCategory[static_cast<int>(Cat::WorldColosseum)], "false", "Colosseum locations (iconId 24)"),
+                B("show_unique_sites", showCategory[static_cast<int>(Cat::WorldUniqueSite)], "false", "One-off named sites: Four Belfries, Bestial Sanctum, Forge of the Giants, eternal cities, gates/bridges, DLC one-offs …"),
                 B("show_portals", showCategory[static_cast<int>(Cat::WorldPortal)], "false", "Sending Gate / waygate portals (AEG099_510 bound to EMEVD warp template 90005605)"),
                 B("show_elevators", showCategory[static_cast<int>(Cat::WorldElevator)], "false", "Elevator / lever-lift locations (MSB ObjAct events whose ObjActParam prompt is a lever)"),
                 B("show_smithing_tables", showCategory[static_cast<int>(Cat::WorldSmithingTable)], "false", "Smithing Table locations (AEG099_308 assets; 3 in the base game)"),

@@ -40,7 +40,9 @@ Environment quirks discovered on this Windows box — they cost hours; apply dir
   (`<pid>_fn<seq><ext>`) + best-effort `try/except OSError` unlink (the OS reaps the temp dir; the
   mapping just leaks until exit). Same WinError-5 family as the `extract_items` PYTHONPATH bullet
   above, different root cause.
-- **`tools/gen_nonerr_stubs.py` was only-if-MISSING → silent stale-schema build break (2026-07-01):**
+- **[OBSOLETE 2026-07-02 — single-DLL migration deleted gen_nonerr_stubs.py and the per-profile
+  bake dirs entirely; kept for the lesson only.]
+  `tools/gen_nonerr_stubs.py` was only-if-MISSING → silent stale-schema build break (2026-07-01):**
   it emits the non-ERR (`generated_erte`/`_vanilla`/`_convergence`) stubs of the ERR-only generated
   files; the `.hpp` is a VERBATIM copy of the profile-independent ERR struct defs. The old guard wrote
   each stub **only if it didn't already exist**, so after a `QuestStep` schema migration (new

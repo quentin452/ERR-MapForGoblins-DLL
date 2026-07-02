@@ -1,6 +1,8 @@
 #include "goblin_config.hpp"
 #include "goblin_config_schema.hpp"
 
+#include <windows.h>
+
 #include <spdlog/spdlog.h>
 #include <mini/ini.h>
 
@@ -72,7 +74,7 @@ namespace
         }
     }
 
-    // Seed every config variable from its schema default. In the vanilla build
+    // Seed every config variable from its schema default. On a non-ERR install
     // ERR-only entries are force-disabled (so their features stay off even if
     // an ERR ini is present).
     void apply_defaults()
@@ -82,7 +84,7 @@ namespace
             for (auto const &e : sec.entries)
             {
                 bool err_only = e.err_only || sec.err_only;
-                if (goblin::profile_is_vanilla() && err_only)
+                if (!goblin::err_features_enabled() && err_only)
                 {
                     if (e.type == goblin::IniType::Bool)
                         *static_cast<bool *>(e.target) = false;
@@ -94,10 +96,30 @@ namespace
     }
 }
 
+// Runtime ERR detection (replaces the compile-time MFG_VANILLA profile split).
+// Signal = ERR's core native `reforged.dll` LOADED in this process. Every ERR me3
+// profile (err.me3 / err_offline.me3, and the ReforgedLauncher wrapping them) lists
+// it BEFORE MapForGoblins, so it is resident by the time our DllMain runs. A loaded-
+// module check — unlike a disk fingerprint — stays correct when the SAME install
+// hosts multiple launch profiles (e.g. vanilla.me3 injecting this DLL into the
+// unmodified game from an ERR folder: ERR's files are on disk but NOT loaded).
+bool goblin::err_features_enabled()
+{
+    static int cached = -1;
+    if (cached >= 0)
+        return cached == 1;
+    const bool found = GetModuleHandleW(L"reforged.dll") != nullptr;
+    cached = found ? 1 : 0;
+    spdlog::info("[PROFILE] ERR {} (reforged.dll {} in-process) — ERR-only config {}",
+                 found ? "DETECTED" : "not detected", found ? "loaded" : "not loaded",
+                 found ? "active" : "force-disabled");
+    return found;
+}
+
 void goblin::ensure_ini(const std::filesystem::path &ini_path)
 {
     namespace fs = std::filesystem;
-    const bool include_err = !profile_is_vanilla();
+    const bool include_err = err_features_enabled();
 
     mINI::INIStructure existing;
     bool had = fs::exists(ini_path);
@@ -198,7 +220,7 @@ void goblin::load_config(const std::filesystem::path &ini_path)
         return;
     }
 
-    const bool include_err = !profile_is_vanilla();
+    const bool include_err = err_features_enabled();
     for (auto const &sec : ini_schema())
     {
         if (sec.err_only && !include_err) continue;
@@ -329,13 +351,13 @@ void goblin::save_all_bool_settings(const std::filesystem::path &ini_path)
     // entries (keys, delays) are left as the file already has them.
     for (const auto &section : goblin::ini_schema())
     {
-        if (section.err_only && goblin::profile_is_vanilla())
+        if (section.err_only && !goblin::err_features_enabled())
             continue;
         for (const auto &e : section.entries)
         {
             if (e.target == nullptr)
                 continue;
-            if (e.err_only && goblin::profile_is_vanilla())
+            if (e.err_only && !goblin::err_features_enabled())
                 continue;
             // Bool/String/U8/F32/GamepadMask entries round-tripped from their config var so
             // menu-driven values (cluster_exclude, cluster_threshold, overlay_toggle_gamepad, …)

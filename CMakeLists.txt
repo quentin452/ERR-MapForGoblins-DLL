@@ -19,14 +19,12 @@ if(NOT DEFINED VERSION_PRE)
   set(VERSION_PRE "pre")  # default for dev/snapshot; build.bat release passes -DVERSION_PRE=""
 endif()
 
-# Which baked-data dir to compile. Default = ERR (src/generated). The vanilla
-# build passes -DGENERATED_SUBDIR=generated_vanilla so the two bakes never
-# clobber each other. Sources include the generated headers by bare name and
-# resolve them via the include path below.
-if(NOT DEFINED GENERATED_SUBDIR)
-  set(GENERATED_SUBDIR "generated")
-endif()
-set(GEN_DIR "${CMAKE_SOURCE_DIR}/src/${GENERATED_SUBDIR}")
+# The single baked-data dir. (Single-DLL migration: the old per-profile
+# GENERATED_SUBDIR/generated_{vanilla,erte,convergence} split is gone — one DLL
+# serves every install; ERR-only tables are no-op off-ERR and ERR-only config
+# is gated at runtime via goblin::err_features_enabled.) Sources include the
+# generated headers by bare name and resolve them via the include path below.
+set(GEN_DIR "${CMAKE_SOURCE_DIR}/src/generated")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
@@ -245,31 +243,14 @@ endif()
 
 set_target_properties(MapForGoblins PROPERTIES OUTPUT_NAME "MapForGoblins")
 
-# Non-ERR bakes (vanilla, convergence): omit + disable ERR-only config
-# entries at runtime. MFG_VANILLA here means "no ERR-only features".
-if(NOT GENERATED_SUBDIR STREQUAL "generated")
-  target_compile_definitions(MapForGoblins PRIVATE MFG_VANILLA=1)
-endif()
-
-# Vanilla-ONLY (not Convergence): used to default the live-loot / randomizer-
-# compat options ON, since the plain vanilla build is what randomizer players
-# use. ERR and Convergence keep them OFF (opt-in).
-if(GENERATED_SUBDIR STREQUAL "generated_vanilla")
-  target_compile_definitions(MapForGoblins PRIVATE MFG_PROFILE_VANILLA=1)
-endif()
-
 # Tiny build-time tool that emits the default ini from the in-code schema
 # (src/goblin_config_schema.cpp). build.bat runs it to generate the shipped
-# ini per profile instead of copying a hand-maintained file.
+# ini instead of copying a hand-maintained file.
 add_executable(mfg_inigen src/inigen_main.cpp src/goblin_config_schema.cpp)
 target_include_directories(mfg_inigen PRIVATE ${CMAKE_SOURCE_DIR}/src)
 # schema.cpp now includes goblin_map_data.hpp (the Category enum) for the
-# showCategory[] array — give the generator the active bake's include dir too.
+# showCategory[] array — give the generator the bake's include dir too.
 target_include_directories(mfg_inigen PRIVATE ${GEN_DIR})
-# Keep the generated ini's defaults in sync with the DLL's compiled defaults.
-if(GENERATED_SUBDIR STREQUAL "generated_vanilla")
-  target_compile_definitions(mfg_inigen PRIVATE MFG_PROFILE_VANILLA=1)
-endif()
 
 if(VERSION_PRE)
   set(FULL_VERSION "${VERSION_PRE}-${CMAKE_PROJECT_VERSION}")
@@ -312,12 +293,6 @@ target_link_libraries( MapForGoblins
 if(GOBLIN_OVERLAY_HOTRELOAD)
   target_compile_definitions(MapForGoblins PRIVATE GOBLIN_OVERLAY_HOTRELOAD_BUILD)
   target_compile_definitions(goblin_overlay_render PRIVATE GOBLIN_OVERLAY_HOTRELOAD_BUILD)
-  if(NOT GENERATED_SUBDIR STREQUAL "generated")
-    target_compile_definitions(goblin_overlay_render PRIVATE MFG_VANILLA=1)
-  endif()
-  if(GENERATED_SUBDIR STREQUAL "generated_vanilla")
-    target_compile_definitions(goblin_overlay_render PRIVATE MFG_PROFILE_VANILLA=1)
-  endif()
   target_include_directories(goblin_overlay_render PRIVATE ${CMAKE_SOURCE_DIR}/src)
   target_include_directories(goblin_overlay_render PRIVATE ${CMAKE_BINARY_DIR}/generated)
   target_include_directories(goblin_overlay_render PRIVATE ${GEN_DIR})

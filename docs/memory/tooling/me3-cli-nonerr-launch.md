@@ -38,3 +38,17 @@ stack frames; all frames are `eldenring.exe`). It fires only when quitting, is b
 and to a 2026-06-24 dump (predates the runtime-English work), so it's a deterministic ModEngine3 × vanilla
 teardown artifact — ignore it. Gameplay/testing during the session is unaffected. (Distinct from the
 intermittent in-session `eldenring.exe +0x1EB9999` render race in [[mapforgoblins-map-open-freeze]].)
+
+**Linux invocation (verified 2026-07-02, this repo's ERR install):**
+`cd <ERR_ROOT>/internals/modengine && ./bin/me3 launch -g eldenring -e "<steam>/steamapps/common/ELDEN RING/Game/eldenring.exe" -p vanilla.me3`.
+`--windows-binaries-dir` does NOT exist in me3 0.11.0 (`unexpected argument`) — the host DLL is
+auto-resolved. `vanilla.me3` injects the SAME `dll/offline/MapForGoblins.dll` into the unmodified
+game, so no separate DLL/ini copy is needed since the single-DLL migration (the `[PROFILE]` line
+tells you which mode the DLL picked).
+
+**GOTCHA — the Linux `me3 launch` process can HANG AFTER the game exits.** Observed 2026-07-02:
+`eldenring.exe` was already dead, but the `me3 launch` command never returned — its exit-detection
+(the waitforexitandrun/monitor-pipe chain through Proton) missed the game's termination, and the
+hung command had to be killed manually. If an agent runs it (e.g. just to grep boot-time
+`MapForGoblins.log` lines): run it in background, read the log once the marker line appears, and
+expect to `kill` the me3 process itself afterwards — do NOT wait for it to exit on its own.

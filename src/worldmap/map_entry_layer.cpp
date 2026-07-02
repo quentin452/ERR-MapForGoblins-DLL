@@ -374,6 +374,7 @@ static int landmark_category_for_icon(int iconId)
     case 59:  // Farum Azula
     case 60:  // Leyndell
     case 61:  // Shunning-Grounds
+    case 62:  // Leyndell, Ashen Capital (post-burning swap of 60)
     case 66:  // Carian Study Hall
     case 210: // DLC Belurat
     case 211: // DLC Enir-Ilim
@@ -381,6 +382,68 @@ static int landmark_category_for_icon(int iconId)
     case 218: // DLC Midra's Manse
         return static_cast<int>(gen::Category::WorldLegacyDungeon);
     case 208: return static_cast<int>(gen::Category::WorldMiquellaCross); // DLC Miquella's Crosses (13 rows)
+    // ── PARITY families (2026-07-02 native-pin audit) — every remaining native WMPP pin family.
+    // Skipped on purpose: 41/67 (boss pass), 80 (graces), 83/84/85 (structural no-text),
+    // 42 (legacy sub-zone nav), 87 (Volcano Manor requests, dynamic), 0 (ERR-custom arena).
+    case 3:   // Churches
+    case 20:  // Cathedral of Manus Celes
+    case 247: // DLC Churches
+    case 248: // Cathedral of Manus Metyr
+    case 249: // Grand Altar of Dragon Communion
+        return static_cast<int>(gen::Category::WorldChurch);
+    case 5:   // Ruins
+    case 47:  // underground ruins (Uhl Palace, Hallowhorn, Grand Cloister)
+    case 250: // Scorched Ruins
+    case 251: // Prospect Town Ruins
+    case 252: // Temple Town Ruins
+    case 253: // Ruins of Unte
+    case 254: // Moorth Ruins
+    case 255: // Finger Ruins
+        return static_cast<int>(gen::Category::WorldRuins);
+    case 8:   // lookout towers (Tower of Return, Frenzy-Flaming Tower, …)
+    case 17:  // sorcerers' rises
+    case 68:  // Three Sisters rises (Seluvis/Ranni/Renna)
+    case 258: // DLC rises (Sunken, Rabbath's)
+        return static_cast<int>(gen::Category::WorldRiseTower);
+    case 6:   // shacks
+    case 259: // DLC shacks/hovels
+        return static_cast<int>(gen::Category::WorldShack);
+    case 18:  // forts
+    case 242: // Fog Rift Fort
+    case 243: // Fort of Reprimand
+        return static_cast<int>(gen::Category::WorldFort);
+    case 25:  // Castle Morne
+    case 26:  // Caria Manor
+    case 27:  // The Shaded Castle
+    case 28:  // Redmane Castle
+    case 29:  // Castle Sol
+    case 241: // Castle Ensis
+        return static_cast<int>(gen::Category::WorldCastle);
+    case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39: case 40: // towns/villages
+    case 244: // Abandoned Ailing Village
+    case 245: // Bonny Village
+    case 246: // Shaman Village
+    case 261: // Village of Flies
+        return static_cast<int>(gen::Category::WorldTownVillage);
+    case 24:  // Colosseums (Royal/Leyndell/Caelid)
+        return static_cast<int>(gen::Category::WorldColosseum);
+    case 10:  // gates (Stormgate, Sellia Gateway)
+    case 11:  // Bridge of Sacrifice
+    case 43:  // Demi-Human and Misbegotten (Mt. Gelmir camp)
+    case 45:  // Mohgwyn Dynasty Mausoleum
+    case 46:  // eternal cities (Nokstella/Nokron/Siofra Aqueduct/Night's Sacred Ground)
+    case 52:  // The Four Belfries
+    case 53:  // Ruin-Strewn Precipice
+    case 54:  // Bestial Sanctum
+    case 57:  // Forge of the Giants
+    case 88:  // The Rold Route
+    case 217: // Stone Coffin Fissure
+    case 232: // Ruined Forges (DLC)
+    case 240: // Scadutree Chalice
+    case 256: // Nameless Mausoleums (DLC)
+    case 257: // Suppressing Pillar
+    case 260: // Ellac Greatbridge
+        return static_cast<int>(gen::Category::WorldUniqueSite);
     default: return -1;
     }
 }
@@ -388,9 +451,9 @@ static int landmark_category_for_icon(int iconId)
 void build_live_landmarks()
 {
     namespace gen = goblin::generated;
-    // One counter per contiguous landmark category (WorldDivineTower .. WorldMiquellaCross).
+    // One counter per contiguous landmark category (WorldDivineTower .. WorldUniqueSite).
     constexpr int kFirst = static_cast<int>(gen::Category::WorldDivineTower);
-    constexpr int kLandmarkCount = static_cast<int>(gen::Category::WorldMiquellaCross) - kFirst + 1;
+    constexpr int kLandmarkCount = static_cast<int>(gen::Category::WorldUniqueSite) - kFirst + 1;
     int n = 0, per_cat[kLandmarkCount] = {0};
     try
     {
@@ -409,10 +472,17 @@ void build_live_landmarks()
         spdlog::warn("[LANDMARKLIVE] WorldMapPointParam not readable — landmark markers absent this build");
         return;
     }
-    spdlog::info("[LANDMARKLIVE] built {} landmark markers from live WorldMapPointParam.iconId "
-                 "(DivineTower {}, Evergaol {}, MinorErdtree {}, GrandLift {}, Dungeon {}, LegacyDungeon {}, "
-                 "MiquellaCross {})",
-                 n, per_cat[0], per_cat[1], per_cat[2], per_cat[3], per_cat[4], per_cat[5], per_cat[6]);
+    std::string breakdown;
+    for (int i = 0; i < kLandmarkCount; ++i)
+    {
+        if (!breakdown.empty())
+            breakdown += ", ";
+        breakdown += goblin::overlay_api::markers_category_name(static_cast<gen::Category>(kFirst + i));
+        breakdown += ' ';
+        breakdown += std::to_string(per_cat[i]);
+    }
+    spdlog::info("[LANDMARKLIVE] built {} landmark markers from live WorldMapPointParam.iconId ({})",
+                 n, breakdown);
 }
 
 // Build the loot markers from the ACTIVE mod's REAL disk MSBs (config

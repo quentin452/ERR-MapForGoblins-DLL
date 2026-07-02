@@ -64,6 +64,35 @@ GrandLift 2, Dungeon 66, LegacyDungeon 13 (~114 total).
   (+ `tools/_probe_portal_{aeg,aeg2,emevd,verify}.py`). **Model + template facts are the reusable pattern
   for the rest of Group 2** — find the AEG model, find its EMEVD template binding, one harvest + one pass.
 
+## PARITY families — 9 new WMPP landmark categories (2026-07-02, `feat/mapgenie-landmark-parity`)
+
+Origin: user asked "which native pins does the game still draw that WE don't re-draw?" (parity view,
+also feeds the future native-pin suppression set). Full audit of `data/WorldMapPointParam.json`
+(740 rows, ERR dump) grouped by iconId × PlaceName: **every WMPP pin is eventFlag-gated natively**
+(shows only once discovered) — our overlay showing everything is the parity win. The audit's
+uncovered families became 9 new categories (same `build_live_landmarks` pass, contiguous enum block
+now `WorldDivineTower .. WorldUniqueSite`; the `[LANDMARKLIVE]` log is now a loop over the block):
+
+| Category | iconIds | ~rows |
+|---|---|---|
+| `WorldChurch`      | 3, 20, 247, 248, 249 | 28 |
+| `WorldRuins`       | 5, 47, 250–255 | 38 |
+| `WorldRiseTower`   | 8, 17, 68, 258 | 21 |
+| `WorldShack`       | 6, 259 | 24 |
+| `WorldFort`        | 18, 242, 243 | 7 |
+| `WorldCastle`      | 25–29, 241 | 6 |
+| `WorldTownVillage` | 32–40, 244, 245, 246, 261 | 14 |
+| `WorldColosseum`   | 24 (single → `category_gpu_iconId` glyph entry added) | 3 |
+| `WorldUniqueSite`  | 10, 11, 43, 45, 46, 52, 53, 54, 57, 88, 217, 232, 240, 256, 257, 260 | 26 |
+
+Plus: iconId **62** (Ashen Leyndell) added to `WorldLegacyDungeon`. Deliberately skipped: 41/67
+(boss pass), 80 (graces), 83/84/85 (structural no-text), **42** (legacy-dungeon sub-zone nav labels,
+29 rows — revisit if wanted), **87** (Volcano Manor request markers, dynamic), **0** (ERR-custom
+arena rows). `coverage_vs_mapgenie.py`: MapGenie's editorial "Landmark" row now sums the 9.
+
+**Suppression implication (HANDOFF item):** the native-pin suppression set = exactly the iconIds our
+categories re-draw — now the Group 1 + parity union, so implement suppression AFTER this merges.
+
 ## Loot - Farmable Drops (`WorldFarmableCollectible`, MFG-original) — shipped 2026-07-01
 
 Marks farm spots for notable upgrade mats. In `build_disk_enemy_markers` the respawning drops

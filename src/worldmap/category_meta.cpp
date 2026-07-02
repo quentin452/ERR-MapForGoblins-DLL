@@ -115,6 +115,15 @@ const CatMeta CAT[] = {
     {"show_dungeons", G_WORLD},           // WorldDungeon
     {"show_legacy_dungeons", G_WORLD},    // WorldLegacyDungeon
     {"show_miquella_crosses", G_WORLD},   // WorldMiquellaCross
+    {"show_churches", G_WORLD},           // WorldChurch (parity — native WMPP pin family)
+    {"show_ruins", G_WORLD},              // WorldRuins
+    {"show_rises_towers", G_WORLD},       // WorldRiseTower
+    {"show_shacks", G_WORLD},             // WorldShack
+    {"show_forts", G_WORLD},              // WorldFort
+    {"show_castles", G_WORLD},            // WorldCastle
+    {"show_towns_villages", G_WORLD},     // WorldTownVillage
+    {"show_colosseums", G_WORLD},         // WorldColosseum
+    {"show_unique_sites", G_WORLD},       // WorldUniqueSite
     {"show_portals", G_WORLD},            // WorldPortal (Group 2 — sending gates)
     {"show_elevators", G_WORLD},          // WorldElevator (Group 2 — lever-lifts)
     {"show_smithing_tables", G_WORLD},    // WorldSmithingTable (Group 2 — AEG099_308 assets)
@@ -183,6 +192,9 @@ constexpr CategoryGpuIcon CATEGORY_GPU_ICONS[] = {
     {static_cast<int>(goblin::generated::Category::WorldMinorErdtree), 30},
     {static_cast<int>(goblin::generated::Category::WorldGrandLift), 21},
     {static_cast<int>(goblin::generated::Category::WorldMiquellaCross), 208},
+    // Parity families: only Colosseum is single-iconId; the others are per-site/typed unions
+    // (need per-marker source ids through push_marker, same open gap as Dungeon/LegacyDungeon).
+    {static_cast<int>(goblin::generated::Category::WorldColosseum), 24},
 };
 } // namespace
 

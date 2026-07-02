@@ -158,6 +158,15 @@ static Section section_of(Category c)
     case Category::WorldDungeon:
     case Category::WorldLegacyDungeon:
     case Category::WorldMiquellaCross:
+    case Category::WorldChurch:
+    case Category::WorldRuins:
+    case Category::WorldRiseTower:
+    case Category::WorldShack:
+    case Category::WorldFort:
+    case Category::WorldCastle:
+    case Category::WorldTownVillage:
+    case Category::WorldColosseum:
+    case Category::WorldUniqueSite:
     case Category::WorldPortal:
     case Category::WorldElevator:
     case Category::WorldSmithingTable:

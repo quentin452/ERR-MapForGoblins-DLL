@@ -57,7 +57,7 @@ $cmakeArgs = @(
   '-B','build-clang','-G','Ninja',
   '-DCMAKE_MAKE_PROGRAM=C:/ninja-win/ninja.exe',
   '-DCMAKE_TOOLCHAIN_FILE=<repo>/clang-cl-xwin.cmake',
-  '-DXWIN=D:/mfg_toolchain/xwin-sdk','-DGENERATED_SUBDIR=generated',
+  '-DXWIN=D:/mfg_toolchain/xwin-sdk',
   '-DCMAKE_BUILD_TYPE=Release','-DCMAKE_POLICY_VERSION_MINIMUM=3.5')
 & "C:\Program Files\CMake\bin\cmake.exe" @cmakeArgs
 & "C:\ninja-win\ninja.exe" -C build-clang MapForGoblins
@@ -66,15 +66,13 @@ Copy-Item build-clang\MapForGoblins.dll "<windows_downloads>\ERRv2.2.9.6-541-2-2
 Output DLL = `build-clang\MapForGoblins.dll` (~5.1 MB). src/generated/ is committed (25 files) so
 NO need to run the data pipeline for a code-only rebuild.
 
-**Per-PROFILE DLL builds (erte/convergence/vanilla)** — use a separate build dir + the profile's
-generated subdir (CMake sets MFG_VANILLA for non-err, MFG_PROFILE_VANILLA for vanilla):
-`cmake -B build-<p> ... -DGENERATED_SUBDIR=generated_<p> ...` then `ninja -C build-<p> MapForGoblins`.
-GOTCHA: the pipeline does NOT emit the 5 ERR-only generated tables (quest_gates/quest_steps/
-region_anchors/name_regions/model_aliases) for non-err, but the DLL references them → configure
-fails ("No SOURCES"). FIX: `py tools/gen_nonerr_stubs.py <profile>` writes empty COUNT=0 stubs
-(build_pipeline.py now runs it automatically at the end of a non-err run). All 4 profiles built OK
-2026-06-24 (build-clang/erte/convergence/vanilla). Loot path is profile-independent; stubbed
-features (quest browser, region labels) are just absent on non-err.
+**Per-PROFILE DLL builds — GONE (single-DLL migration 2026-07-02).** ONE DLL from `src/generated/`
+serves every install: ERR-only config is runtime-gated (`goblin::err_features_enabled()`, disk
+fingerprint `menu/deploy/projects/ELDENRINGReforged`), ERR-only tables (quest_gates/region_anchors/
+name_regions/model_aliases) ship everywhere and no-op off-ERR. `GENERATED_SUBDIR`, `MFG_VANILLA`,
+`MFG_PROFILE_VANILLA`, `tools/gen_nonerr_stubs.py`, and the `src/generated_{vanilla,erte,convergence}`
+dirs were all deleted. build.bat `--vanilla/--convergence/--erte` still exist but only select
+PACKAGING assets (README/gfx/snapshot dir) + the offline data pipeline's data/<profile>/ source.
 
 **Gotchas (all hit + solved 2026-06-20):**
 1. **Must be Release** — `CMAKE_MSVC_RUNTIME_LIBRARY` picks the DEBUG CRT (`libcmtd.lib`/`libcpmtd0.lib`)
