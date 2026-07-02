@@ -149,6 +149,28 @@ via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (sp
    value, drop the knob (schema + panel + fr.txt + docs), (c) dev/diag → collapse into one
    dev-only section (or gate on debug_logging), (d) dead → delete.
 
+## New feature requests (user, 2026-07-02) — 3 tracked, none started
+
+1. **Merchant / dynamic-shop item search** — the F1 item searcher can NOT find items sold by
+   MERCHANTS, nor items in a dynamic merchant GUI (e.g. spirit ashes from "Twin Maiden Husks").
+   The search index only covers world-placed loot markers; shop inventories (static merchant
+   lineups + bell-bearing-unlocked stock) aren't indexed. Related coverage gap: **Merchant** reads
+   ❌ NOT WIRED in `docs/coverage_vs_mapgenie.md` (MapGenie 43) — merchants aren't drawn as map
+   markers either. Scope: harvest shop lineups (ShopLineupParam + the bell-bearing unlock flags →
+   which goods each merchant sells) into the search index, and optionally place Merchant map pins.
+2. **3D ImGui boss/enemy entity healthbars** — draw a healthbar above living bosses/enemies in the
+   world (ImGui overlay projected to the entity's screen pos). ERR ALREADY renders enemy bars, so
+   RE its bar path for the entity list + HP field offsets + world→screen projection (we already
+   have entity world_pos from the NPC-altitude-badge work — `entity_world_pos`/`g_entity_pos`).
+   New overlay surface, not map-related. Look at how reforged.dll draws its bars first.
+3. **"Hidden Passage" map category** — MISSING from the MapForGoblins map. Now CONFIRMED tracked:
+   regenerated `docs/coverage_vs_mapgenie.md` (2026-07-02, via `tools/coverage_vs_mapgenie.py` +
+   the current full-build log) lists **Hidden Passage ❌ NOT WIRED (MapGenie 59)**. RE difficulty
+   already documented in `docs/re/windows_group2_landscape_re_findings.md`: hit-detected illusory
+   walls, NO action button → no static signal (the HARDEST Group-2 category). The coverage regen
+   also dropped NOT-WIRED 31→21 (Elevator + Smithing Table are now correctly wired in the script —
+   they were solved since the last regen; the script's SECTIONS/ENUM2DISPLAY were stale).
+
 ## Overlay z-order clipping (user report 2026-07-02) — dial DONE, menu-over-map OPEN
 
 We render post-present → always on top of the game's own UI. Two sub-bugs:

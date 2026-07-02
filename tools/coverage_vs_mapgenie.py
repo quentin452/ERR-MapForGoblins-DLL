@@ -123,6 +123,8 @@ ENUM2DISPLAY = {
     "WorldFort": "World - Forts", "WorldCastle": "World - Castles",
     "WorldTownVillage": "World - Towns & Villages", "WorldColosseum": "World - Colosseums",
     "WorldUniqueSite": "World - Unique Sites",
+    "WorldElevator": "World - Elevators",  # Group-2 AEG027 lift family (solved 2026-07-02)
+    "WorldSmithingTable": "World - Smithing Tables",  # Group-2 AEG099_308 (solved 2026-07-02)
     "WorldFarmableCollectible": "Loot - Farmable Drops",  # MFG-original, no MapGenie equivalent
 }
 
@@ -137,7 +139,9 @@ SECTIONS = {
         ("Divine Tower", ["Divine Tower"], ["WorldDivineTower"]),
         ("Dragon Shrine", ["Dragon Shrine"], []),
         ("Dungeon", ["Dungeon"], ["WorldDungeon"]),
-        ("Elevator", ["Elevator"], ["WorldGrandLift"]),  # WMPP has only the 2 grand lifts; MapGenie's 40 in-dungeon lifts are not WMPP
+        # MapGenie "Elevator" (40) = the in-dungeon lifts, now solved as WorldElevator (AEG027
+        # family, 2026-07-02); the 2 grand story-lifts (WorldGrandLift) sum in too.
+        ("Elevator", ["Elevator"], ["WorldElevator", "WorldGrandLift"]),
         ("Evergaol", ["Evergaol"], ["WorldEvergaol"]),
         ("Hidden Passage", ["Hidden Passage"], []),
         # MapGenie "Landmark" = their editorial catch-all; our parity families (2026-07-02
@@ -149,7 +153,7 @@ SECTIONS = {
         ("Martyr Effigy", ["Martyr Effigy"], []),
         ("Minor Erdtree", ["Minor Erdtree"], ["WorldMinorErdtree"]),
         ("Portal", ["Portal"], ["WorldPortal"]),
-        ("Smithing Table", ["Smithing Table"], []),
+        ("Smithing Table", ["Smithing Table"], ["WorldSmithingTable"]),  # AEG099_308 (solved 2026-07-02)
         ("Wandering Mausoleum", ["Wandering Mausoleum"], []),
         ("Miquella's Cross", ["Miquella's Cross"], ["WorldMiquellaCross"]),
     ],
