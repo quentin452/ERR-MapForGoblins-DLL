@@ -999,6 +999,15 @@ bool get_live_view(LiveView &out)
     {
         out.snapMinX = out.snapMinZ = out.snapMaxX = out.snapMaxZ = 0.f;
     }
+    // Full-map rect (+0x350) — the map-art extent the renderer clips draws to. Zeroed on a
+    // failed read; the renderer treats an empty rect as "no clip".
+    if (!seh_read4(reinterpret_cast<void *>(view + VIEW_FULLRECT + 0x0), &out.mapMinU) ||
+        !seh_read4(reinterpret_cast<void *>(view + VIEW_FULLRECT + 0x4), &out.mapMinV) ||
+        !seh_read4(reinterpret_cast<void *>(view + VIEW_FULLRECT + 0x8), &out.mapMaxU) ||
+        !seh_read4(reinterpret_cast<void *>(view + VIEW_FULLRECT + 0xC), &out.mapMaxV))
+    {
+        out.mapMinU = out.mapMinV = out.mapMaxU = out.mapMaxV = 0.f;
+    }
     // diag window cursor+0xFC..+0x118 (find which offset drives the vertical axis)
     for (int i = 0; i < 8; ++i)
         if (!seh_read4(reinterpret_cast<void *>(a + 0xFC + i * 4), &out.raw[i]))
