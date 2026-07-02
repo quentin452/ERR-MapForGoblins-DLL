@@ -28,11 +28,17 @@ per-section panel files belong to the render module's source list (`GOBLIN_RENDE
 
 ## Ranked items (each independently landable)
 
-### 1. Split `draw_panel()` into per-section files — HIGH ROI, mechanical
-Sections have zero interdependence. Extract: visibility/settings grid, quest browser
-(`quest_browser_panel.cpp`), clustering, debug/dev tools. Evidence of cost: the 2026-07-01
-settings-search fix had to touch all 10 sections inside one function.
-**After hot-reload Slice C** (same files).
+### 1. Split `draw_panel()` into per-section files — DONE 2026-07-02
+Landed on `refactor/draw-panel-split`: `goblin_overlay_render.cpp` 2150 → ~400 lines. The
+~1700-line draw_panel body moved verbatim into `src/overlay_panel/` (8 files, all in
+`GOBLIN_RENDER_SOURCES`): `panel_util.cpp` (fold/match helpers, Filter, shared widgets),
+`panel_dev_icons.cpp` (P2b + migration census + sprites + grace debug), `panel_settings.cpp`
+(master/save + flat toggles + scale + minimap), `panel_search.cpp`, `panel_categories.cpp`
+(+ ERR integration), `panel_quests.cpp`, `panel_clustering.cpp`, `panel_dev_tools.cpp`
+(+ danger zone). draw_panel keeps the error panels, window frame and the settings-search box;
+the per-block `settings_match` lambda became `panel::Filter` (same hit counting).
+`overlay_layers()` promoted out of the anonymous namespace (panel_search iterates it).
+In-game validated: full panel identical, settings filter works through the new Filter.
 
 ### 2. Extract the duplicated marker-gate loop (map vs minimap) — DONE 2026-07-02
 Landed on `refactor/marker-gates-clip-labels` together with the two DX-sweep fixes that motivated
