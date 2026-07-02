@@ -85,6 +85,18 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
 `__try`-elision hazards (world_position per-frame probes + tutorial_popup init poll) are FIXED
 (`5b80541`, built + deployed); still open = repo-wide `__try` classify pass, then Phases 1–2.**
 
+## Native-map landmark icon suppression — TRACKED, not started (2026-07-02)
+
+The game still draws its OWN landmark pins on the native world map (Minor Erdtrees etc.), so our
+new landmark categories (incl. the 5 that now use the native glyphs — DivineTower/Evergaol/
+MinorErdtree/GrandLift/MiquellaCross) can visually DUPLICATE the native pins when toggled ON.
+User decision: acceptable for now; the definitive fix is suppressing the native pins. Technical
+precedent exists: native grace suppression (`goblin_grace_suppression.cpp`) and the areaNo=99
+row-flip eviction used by section visibility — the same trick applied to the landmark
+WorldMapPointParam rows (gated on "our category is ON", restore on OFF) should kill the native
+pin without touching files. Scope when picked up: which iconIds to suppress = exactly the ones our
+categories re-draw; keep ERR's own custom pins (boss/camp) untouched.
+
 ## Group-2 Elevator MECHANISM SOLVED on Linux (2026-07-02) — implementation open
 
 Full RE chain in `docs/re/linux_group2_prompt_binding_re_findings.md` (done entirely with in-DLL
