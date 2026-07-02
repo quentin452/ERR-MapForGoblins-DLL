@@ -207,7 +207,7 @@ and `status` reports an `user_active=`/`rpc_input_idle=` field so the driver can
 (status, screenshot, set, reload) stays live. Keeps scripted runs and manual play from fighting over
 the OS cursor / keystrokes. Ties into `docs/memory/tooling/mfg-rpc-driver-hardening.md`.
 
-## Grace tooltip missing on some POIs (user spot 2026-07-02) — FIXED 2026-07-03, in-game verify pending
+## Grace tooltip missing on some POIs (user spot 2026-07-02) — FIXED + IN-GAME VERIFIED 2026-07-03
 
 While calibrating the golden-rune size (branch `feat/overlay-polish-badge-clip-rune-size`) the user
 noticed a spot where **a grace (e.g. the "Murkwater Cave" site in Limgrave) shows its place-name
@@ -227,10 +227,11 @@ duplicate). Robust to textId1 not resolving: even a nameless grace still reads a
 i18n-translated (`tr("Site of Grace")`, fr = "Site de grâce" added to `assets/lang/fr.txt`). NB this
 tooltip only shows for UNdiscovered graces — our overlay drops discovered graces (game draws those
 natively with its own tooltip), so a rested grace still shows the engine's tooltip, not ours.
-**In-game verify pending** (needs an undiscovered grace hovered on ERR/Proton via the RPC loop). The
-alt hypothesis in the original note (co-located dungeon/POI pin stealing the hover) is NOT addressed
-here — if the user still sees a bare place-name after this, it's the hover picking the Murkwater Cave
-dungeon pin, not the grace, and needs hover-disambiguation instead.
+**IN-GAME VERIFIED (user, 2026-07-03, ERR/Proton):** "Agheel Lake North / Site de grâce / Limgrave"
+on an undiscovered grace, FR translation live. (First attempt showed nothing = the deployed DLL was
+stale — a normal build needs redeploy to `~/Games/ERRv2.2.9.6/dll/offline/` + relaunch; hot-reload
+only in a split build.) The alt hypothesis (co-located dungeon/POI pin stealing the hover) did NOT
+apply — the grace's own marker was hovered fine.
 
 ## New feature requests (user, 2026-07-02) — 3 tracked, none started
 
