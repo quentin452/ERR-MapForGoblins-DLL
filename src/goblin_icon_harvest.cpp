@@ -1393,7 +1393,7 @@ void gpu_icon_tick(uintptr_t er)
     // this res_tick-gated path (map-only sessions never reach here). See background_harvest_tick().
 
     // Grace candidates (their own hardcoded set) — always, no cap.
-    if (goblin::config::graceOverlay && goblin::config::graceGpuSprite)
+    if (goblin::config::graceOverlay)
         run_force_grace(er);
 
     // Snapshot the wanted set (brief lock; force calls happen unlocked).

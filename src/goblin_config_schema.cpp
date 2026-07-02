@@ -61,7 +61,6 @@ namespace goblin::config
 
     bool redifyBossIcons = false;
     bool graceOverlay = true;        // our graces are the default map source now (validated)
-    bool graceGpuSprite = true;      // live engine grace sprite (validated working)
     bool graceSuppressNative = true; // overlay is the sole grace source — hide native pins
     bool landmarkSuppressNative = true; // hide native landmark pins while our category re-draws them
     bool suppressNativeBosses = true; // hide native boss pins (clear dispMask on textId2==5100)
@@ -495,8 +494,6 @@ namespace
                    "Cosmetic: draw boss markers red and auto-hide them once the boss is\ndefeated."),
                 BE("grace_overlay", graceOverlay, "true",
                    "Draw ALL Sites of Grace in the overlay (discovered = full colour,\nundiscovered = grey) instead of letting the game draw discovered ones.\nDefault ON — the overlay is the grace source. Off-switch only."),
-                BE("grace_gpu_sprite", graceGpuSprite, "true",
-                   "Grace icon source when grace_overlay is on: false = the mod's baked atlas\nicon (clean, constant); true = the live engine sprite (SB_ERR_Grace,\ntinted by in-game time of day). Default ON."),
                 BE("grace_suppress_native", graceSuppressNative, "true",
                    "Suppress the game's native discovered-grace map pins so the overlay is the\nsole grace source. Default ON. Keeps teleport working (draw-only hide). Set\nfalse if native grace pins/teleport ever misbehave on your setup."),
                 BE("suppress_native_bosses", suppressNativeBosses, "true",

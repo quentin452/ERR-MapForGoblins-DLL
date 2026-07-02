@@ -581,7 +581,7 @@ static inline bool is_discovered_grace(const Marker &m)
 void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons, float half)
 {
     // Grace marker (discover_flag set only on graces): with grace_overlay the overlay draws it
-    // itself — discovered (rested) = full colour, undiscovered = grey. Source per grace_gpu_sprite:
+    // itself — discovered (rested) = full colour, undiscovered = grey. Source = live engine sprite:
     // the live engine sprite (s_grace_tex, time-tinted) or the mod's baked atlas icon (clean). Needs
     // native-pin suppression to avoid doubling. Graces aren't collectible → no graying path.
     if (m.discover_flag && (*goblin::overlay_api::cfg_graceOverlay_ptr()))
@@ -590,7 +590,10 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
         // faded tint — ImGui can't desaturate a texture, and a check reads far clearer than low opacity.
         bool disc = goblin::overlay_api::read_event_flag(static_cast<uint32_t>(m.discover_flag));
         ImU32 t = IM_COL32(255, 255, 255, 255);   // grace icon always full colour
-        if ((*goblin::overlay_api::cfg_graceGpuSprite_ptr()) && s_grace_tex)
+        // Grace icon = the live engine sprite (harvested SB_ERR_Grace), always. The old baked-atlas
+        // CPU alternative was retired by the settings sweep (graceGpuSprite hardcoded true); when the
+        // sprite isn't harvested yet we fall to the universal circle below, never the baked atlas.
+        if (s_grace_tex)
         {
             // SIMPLIFIED: the BASE grace sprite is drawn for EVERY grace (cave/dungeon/overworld
             // Per-type grace icon (UNPARKED): overworld graces draw the bonfire (s_grace_tex), the
@@ -662,21 +665,12 @@ void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons
             draw_altitude_badge(fg, p, half, m);
             return;
         }
-        IconHandle ih;
-        if (icons.resolve(m, ih))
-        {
-            tier_tally(ih.tier, m.category);
-            draw_legible_icon(fg, p, half * ih.scale, ih.tex, ih.uv0, ih.uv1, mul_tint(t, ih.tint),
-                              (*goblin::overlay_api::cfg_iconMinHalfPx_ptr()),
-                              tier_wants_backing(ih.tier));
-        }
-        else
-        {
-            tier_tally(TIER_CIRCLE, m.category);
-            float cr = half * 0.45f;
-            fg->AddCircleFilled(p, cr, disc ? m.color : dim_color(m.color));
-            fg->AddCircle(p, cr, IM_COL32(0, 0, 0, 220), 0, 1.5f);
-        }
+        // Sprite not harvested yet → universal circle (discovered = full colour, undiscovered = dim).
+        // No baked-atlas tier for graces (retired): native sprite → circle, per the prime directive.
+        tier_tally(TIER_CIRCLE, m.category);
+        float cr = half * 0.45f;
+        fg->AddCircleFilled(p, cr, disc ? m.color : dim_color(m.color));
+        fg->AddCircle(p, cr, IM_COL32(0, 0, 0, 220), 0, 1.5f);
         draw_altitude_badge(fg, p, half, m);
         return;
     }

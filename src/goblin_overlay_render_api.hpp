@@ -36,7 +36,7 @@ namespace goblin::overlay_api
     X(requireMapFragments) X(clipGameUi) X(bakedOnly) X(collectedGraying) X(hideCollected) X(stackIdenticalItems) \
     X(clusterDebugRadius) X(clusterDebugMarkers) X(showRegionLabels) X(nativeItemIcons) X(diagLootFlags) \
     X(diagLootPos) X(debugLogging) X(anonymousLoot) X(dropMerchantPhantoms) X(redifyBossIcons) \
-    X(graceOverlay) X(graceGpuSprite) X(suppressNativeBosses) X(landmarkSuppressNative) X(enableMarkerDump) X(debugEventFlags) \
+    X(graceOverlay) X(suppressNativeBosses) X(landmarkSuppressNative) X(enableMarkerDump) X(debugEventFlags) \
     X(debugItemGrants) X(debugFlagCapture) X(debugWorldmapProbe) X(liveProjection) X(dumpIconTextures) \
     X(iconLegibility) X(altitudeCue) X(viewDelayZoom) X(debugClusterAnchors) X(debugRegionVolumes) \
     X(showMinimap) X(minimapAnchorRight) X(minimapAnchorBottom) X(questAllowFlagWrite) X(questGreyOnDeath) \

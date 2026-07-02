@@ -91,9 +91,6 @@ tr=Flèches d'altitude (haut = au-dessus / bas = en dessous du joueur)
 en=Overlay graces (draw all graces ourselves)
 tr=Grâces overlay (toutes dessinées par le mod)
 
-en=GPU sprite (engine, time-tinted) vs CPU (baked atlas)
-tr=Sprite GPU (moteur) vs CPU (atlas)
-
 en=Hide native landmark pins (when our category re-draws them)
 tr=Masquer les épingles natives (quand notre catégorie les redessine)
 

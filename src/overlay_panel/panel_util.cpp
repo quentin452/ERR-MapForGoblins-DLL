@@ -118,15 +118,14 @@ bool Filter::match(const char *keywords)
 
 void grace_candidate_gate_warning()
 {
-    if ((*goblin::overlay_api::cfg_graceOverlay_ptr()) && (*goblin::overlay_api::cfg_graceGpuSprite_ptr()))
+    if ((*goblin::overlay_api::cfg_graceOverlay_ptr()))
         return;
     ImGui::TextColored(ImVec4(1.0f, 0.70f, 0.15f, 1.0f),
         "(!) Few/no candidates listed?\n"
-        "    The forced MENU_MAP_* grace sprites are only created while BOTH\n"
-        "    'grace_overlay' AND 'grace_gpu_sprite' are ON. Enable them via the\n"
-        "    checkboxes below (Overlay graces / live engine sprite), or set both\n"
-        "    = true in MapForGoblins.ini. Otherwise only the live SB_ERR_Grace_*\n"
-        "    frame the game happens to draw will appear.");
+        "    The forced MENU_MAP_* grace sprites are only created while\n"
+        "    'grace_overlay' is ON. Enable it via the checkbox below (Overlay\n"
+        "    graces), or set it = true in MapForGoblins.ini. Otherwise only the\n"
+        "    live SB_ERR_Grace_* frame the game happens to draw will appear.");
 }
 
 bool scale_control(const char *label, float *v, float lo, float hi,

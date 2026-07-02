@@ -129,16 +129,8 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
 
     // Grace rendering: overlay draws all graces (discovered=colour, undiscovered=grey).
     if (f.match("overlay graces draw all gpu sprite engine cpu baked atlas"))
-    {
         ImGui::Checkbox(tr("Overlay graces (draw all graces ourselves)"),
                         goblin::overlay_api::cfg_graceOverlay_ptr());
-        if ((*goblin::overlay_api::cfg_graceOverlay_ptr()))
-        {
-            ImGui::SameLine();
-            ImGui::Checkbox(tr("GPU sprite (engine, time-tinted) vs CPU (baked atlas)"),
-                            goblin::overlay_api::cfg_graceGpuSprite_ptr());
-        }
-    }
 
     // Native landmark-pin suppression (areaNo flips applied by the watcher; effect on the
     // NEXT map open, so the nudge just re-decides — no live rebuild needed here).

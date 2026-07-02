@@ -151,11 +151,11 @@ namespace goblin
 
         // Grace rendering: when graceOverlay is on, the overlay draws ALL graces itself
         // (discovered = full colour, undiscovered = grey) instead of the hybrid (native draws
-        // discovered). graceGpuSprite picks the icon source: false = baked atlas (clean, constant),
-        // true = the live engine sprite (SB_ERR_Grace, time-of-day tinted). Needs native-pin
-        // suppression to avoid doubling discovered graces.
+        // discovered). Icon source = the live engine sprite (SB_ERR_Grace, time-of-day tinted),
+        // circle fallback until harvested. Needs native-pin suppression to avoid doubling.
         extern GOBLIN_RENDER_API bool graceOverlay;
-        extern GOBLIN_RENDER_API bool graceGpuSprite;
+        // graceGpuSprite retired (settings sweep): the live engine grace sprite is the only path;
+        // the baked-atlas CPU grace draw was deleted (native sprite → circle fallback).
 
         // Suppress the game's native discovered-grace map pins (so the overlay is the sole grace
         // source, paired with graceOverlay). Hooks the WarpPinData builder (RE e4b3f6a). PHASE A:
