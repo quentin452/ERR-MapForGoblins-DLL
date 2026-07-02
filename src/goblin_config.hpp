@@ -38,6 +38,12 @@ namespace goblin
     // section toggle) that needs to persist back without threading the path.
     const std::filesystem::path &config_ini_path();
 
+    // Set ONE config variable by its ini key (any section), parsing the value with the same typed
+    // parser load_config uses. Runtime-only (does NOT persist to the ini). False = unknown key or
+    // an ERR-only key off-ERR. Debug-RPC `set` command; content-affecting keys may still need
+    // their usual refresh path (map reopen / category toggle) to show.
+    bool config_set_by_key(const std::string &key, const std::string &value);
+
     namespace config
     {
         extern GOBLIN_RENDER_API uint8_t loadDelay;
@@ -65,6 +71,8 @@ namespace goblin
         extern GOBLIN_RENDER_API std::string showAllExcept;  // comma-separated category names to
                               // keep hidden even when showAll is on (matched
                               // loosely against the category display name)
+        extern GOBLIN_RENDER_API std::string debugRpcPort;  // dev debug RPC: TCP loopback port
+                              // ("38700"); empty = disabled (default). See goblin_debug_rpc.hpp.
 
         // One bool per goblin::generated::Category, indexed by the enum value.
         // Replaces the former ~65 individual show* category flags; access via

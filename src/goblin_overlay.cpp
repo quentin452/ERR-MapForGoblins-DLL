@@ -1,6 +1,7 @@
 #include "goblin_overlay.hpp"
 #include "goblin_overlay_render.hpp"
 #include "goblin_overlay_render_loader.hpp"
+#include "goblin_debug_rpc.hpp"   // pump() — drained at the end of hk_present
 #include "goblin_config.hpp"
 #include "goblin_quest_steps.hpp"
 #include "goblin_debug_events.hpp"
@@ -45,6 +46,8 @@
 #include "input/input_keyboard_poll.hpp"              // goblin::input::poll_keyboard_text_input()
 
 #include <vector>
+#include <filesystem>  // screenshot_to_file path handling
+#include <fstream>     // screenshot_to_file BMP write
 #include <map>
 #include <unordered_set>
 #include <unordered_map>
@@ -1816,6 +1819,11 @@ namespace
             g_command_queue->ExecuteCommandLists(1, lists);
         }
 
+        // Phase 3 debug RPC: execute queued commands on this (present) thread, AFTER our overlay
+        // draw is submitted on the same queue — a `screenshot` copy is ordered behind it, so the
+        // capture includes the overlay. Near-free when idle (one atomic read).
+        goblin::debug_rpc::pump(swapchain);
+
         return o_present(swapchain, sync, flags);
     }
 
@@ -2056,6 +2064,166 @@ void goblin::overlay::grace_dungeon_srv_info(void *&gpu, ImVec2 &uv0, ImVec2 &uv
 const std::vector<goblin::overlay::GraceDbg> &goblin::overlay::grace_debug_candidates() { return g_grace_dbg; }
 
 bool goblin::overlay::is_ready() { return g_imgui_init; }
+
+// ── Phase 3 debug RPC surface (present-thread only, called from debug_rpc::pump) ──────────────
+
+bool goblin::overlay::panel_open() { return g_user_show; }
+void goblin::overlay::set_panel_open(bool open) { g_user_show = open; }  // applied next frame (g_show = g_user_show)
+
+// Backbuffer → 24-bit BMP. Runs at pump() time: our overlay draw was just submitted on the same
+// queue, so the copy below is queue-ordered behind it and the capture includes the overlay. The
+// blocking fence wait + file write hitch ONE frame — it's a dev command, not a per-frame path.
+bool goblin::overlay::screenshot_to_file(IDXGISwapChain3 *swapchain, const std::string &path_utf8,
+                                         std::string &err)
+{
+    if (!g_imgui_init || !g_device || !g_command_queue || !g_command_list || g_frames.empty() || !swapchain)
+    {
+        err = "overlay not ready";
+        return false;
+    }
+    UINT idx = swapchain->GetCurrentBackBufferIndex();
+    if (idx >= g_frames.size() || !g_frames[idx].render_target)
+    {
+        err = "no render target for backbuffer " + std::to_string(idx);
+        return false;
+    }
+    ID3D12Resource *bb = g_frames[idx].render_target;
+    D3D12_RESOURCE_DESC desc = bb->GetDesc();
+    const bool bgra = desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM || desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+    const bool rgba = desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM || desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    if (!bgra && !rgba)
+    {
+        err = "unsupported backbuffer format " + std::to_string(desc.Format);
+        return false;
+    }
+    const UINT w = static_cast<UINT>(desc.Width), h = desc.Height;
+
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT fp{};
+    UINT64 total = 0;
+    g_device->GetCopyableFootprints(&desc, 0, 1, 0, &fp, nullptr, nullptr, &total);
+
+    D3D12_HEAP_PROPERTIES hp{};
+    hp.Type = D3D12_HEAP_TYPE_READBACK;
+    D3D12_RESOURCE_DESC bd{};
+    bd.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    bd.Width = total;
+    bd.Height = 1;
+    bd.DepthOrArraySize = 1;
+    bd.MipLevels = 1;
+    bd.Format = DXGI_FORMAT_UNKNOWN;
+    bd.SampleDesc.Count = 1;
+    bd.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    ID3D12Resource *readback = nullptr;
+    if (FAILED(g_device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &bd,
+                                                 D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                                                 IID_PPV_ARGS(&readback))))
+    {
+        err = "readback buffer creation failed";
+        return false;
+    }
+
+    // Same reuse pattern as the icon-upload path: reset the LIST only (never the in-flight
+    // allocator) — hk_present closed it just above, and it's reset again next frame.
+    g_command_list->Reset(g_frames[idx].allocator, nullptr);
+    D3D12_RESOURCE_BARRIER b{};
+    b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    b.Transition.pResource = bb;
+    b.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    b.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+    b.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    g_command_list->ResourceBarrier(1, &b);
+    D3D12_TEXTURE_COPY_LOCATION src{};
+    src.pResource = bb;
+    src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    src.SubresourceIndex = 0;
+    D3D12_TEXTURE_COPY_LOCATION dst{};
+    dst.pResource = readback;
+    dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    dst.PlacedFootprint = fp;
+    g_command_list->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+    b.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    b.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+    g_command_list->ResourceBarrier(1, &b);
+    g_command_list->Close();
+    ID3D12CommandList *lists[] = {g_command_list};
+    g_command_queue->ExecuteCommandLists(1, lists);
+
+    bool gpu_done = false;
+    ID3D12Fence *fence = nullptr;
+    if (SUCCEEDED(g_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))))
+    {
+        HANDLE ev = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        g_command_queue->Signal(fence, 1);
+        if (fence->GetCompletedValue() >= 1)
+            gpu_done = true;
+        else if (ev)
+        {
+            fence->SetEventOnCompletion(1, ev);
+            gpu_done = WaitForSingleObject(ev, 2000) == WAIT_OBJECT_0;
+        }
+        if (ev) CloseHandle(ev);
+        fence->Release();
+    }
+    if (!gpu_done)
+    {
+        readback->Release();
+        err = "GPU copy fence timeout";
+        return false;
+    }
+
+    void *mapped = nullptr;
+    if (FAILED(readback->Map(0, nullptr, &mapped)))
+    {
+        readback->Release();
+        err = "readback Map failed";
+        return false;
+    }
+
+    const UINT row_out = (w * 3 + 3) & ~3u;  // BMP rows pad to 4 bytes
+    const UINT32 data_size = row_out * h, file_size = 14 + 40 + data_size;
+    std::vector<uint8_t> out(file_size, 0);
+    uint8_t *o = out.data();
+    // BITMAPFILEHEADER + BITMAPINFOHEADER, little-endian by memcpy (we only build on LE targets)
+    o[0] = 'B'; o[1] = 'M';
+    memcpy(o + 2, &file_size, 4);
+    const UINT32 data_off = 14 + 40, hdr_size = 40;
+    memcpy(o + 10, &data_off, 4);
+    memcpy(o + 14, &hdr_size, 4);
+    const INT32 iw = static_cast<INT32>(w), ih = static_cast<INT32>(h);
+    memcpy(o + 18, &iw, 4);
+    memcpy(o + 22, &ih, 4);  // positive height = bottom-up rows
+    const UINT16 planes = 1, bpp = 24;
+    memcpy(o + 26, &planes, 2);
+    memcpy(o + 28, &bpp, 2);
+    memcpy(o + 34, &data_size, 4);
+    const uint8_t *px = static_cast<const uint8_t *>(mapped);
+    for (UINT y = 0; y < h; ++y)
+    {
+        const uint8_t *srow = px + static_cast<size_t>(y) * fp.Footprint.RowPitch;
+        uint8_t *drow = o + data_off + static_cast<size_t>(h - 1 - y) * row_out;
+        for (UINT x = 0; x < w; ++x)
+        {
+            const uint8_t *s = srow + x * 4;
+            uint8_t *d = drow + x * 3;
+            if (bgra) { d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; }
+            else      { d[0] = s[2]; d[1] = s[1]; d[2] = s[0]; }
+        }
+    }
+    readback->Unmap(0, nullptr);
+    readback->Release();
+
+    std::error_code ec;
+    std::filesystem::path p = std::filesystem::u8path(path_utf8);
+    if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path(), ec);
+    std::ofstream f(p, std::ios::binary | std::ios::trunc);
+    if (!f || !f.write(reinterpret_cast<const char *>(out.data()), out.size()))
+    {
+        err = "file write failed: " + path_utf8;
+        return false;
+    }
+    spdlog::info("[RPC] screenshot {}x{} → {}", w, h, path_utf8);
+    return true;
+}
 
 bool goblin::overlay::native_item_icon(int iconId, void *&tex, float &u0, float &v0, float &u1,
                                        float &v1)

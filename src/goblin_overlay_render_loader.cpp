@@ -283,6 +283,16 @@ namespace goblin::overlay_render_loader
         spdlog::info("[HOTRELOAD] render gen{} live (prev module free deferred one reload)", g_generation);
     }
 
+    // Phase 3 debug RPC: force the same flag the watcher sets (the next frame's maybe_reload
+    // consumes it — same stability gates apply since copy_and_load re-reads the file).
+    bool request_reload()
+    {
+        g_reload_pending.store(true, std::memory_order_release);
+        return true;
+    }
+    unsigned render_generation() { return g_generation; }
+    bool reload_pending() { return g_reload_pending.load(std::memory_order_acquire); }
+
     // draw_panel/draw_worldmap_markers/draw_minimap_hud are safe-by-construction: hk_present (their
     // only caller) never installs if goblin::overlay::initialize() saw load() fail (g_failed gates
     // it). prebuild_markers/inworld_hovered/refresh_overlay_census are called from OTHER unrelated
@@ -322,6 +332,9 @@ namespace goblin::overlay_render_loader
     // Default single-DLL build: direct calls, no indirection, nothing to load or reload.
     bool load() { return true; }
     void maybe_reload() {}
+    bool request_reload() { return false; }
+    unsigned render_generation() { return 0; }
+    bool reload_pending() { return false; }
 
     void call_draw_panel(const goblin::overlay::OverlayFrameCtx &ctx) { goblin::overlay::draw_panel(ctx); }
     void call_draw_worldmap_markers(bool menu_open, const goblin::overlay::OverlayFrameCtx &ctx)

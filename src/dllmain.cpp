@@ -24,6 +24,7 @@
 #include "goblin_markers.hpp"
 #include "goblin_messages.hpp"
 #include "goblin_overlay.hpp"
+#include "goblin_debug_rpc.hpp"
 #include "goblin_bench.hpp"
 #include "goblin_crashdump.hpp"
 #include "worldmap/loot_disk.hpp"
@@ -303,6 +304,10 @@ static void setup_mod()
     // Installs a DX12 Present hook; on any failure it self-disables and the mod
     // continues unaffected.
     goblin::overlay::initialize();
+
+    // Dev-only debug RPC (ini [Debug] debug_rpc_port; empty = off, the default). Commands execute
+    // on the present thread via the overlay's pump — needs the overlay hook above installed.
+    goblin::debug_rpc::initialize();
 
     bool first_read = true;
     auto start = std::chrono::steady_clock::now();

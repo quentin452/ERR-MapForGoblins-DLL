@@ -478,11 +478,44 @@ both modes; a `GOBLIN_OVERLAY_HOTRELOAD` build additionally needs it to `LoadLib
      correctly, no heap corruption over repeated reloads (the /MT fixes above are exactly what a
      several-reload soak would stress).
 
-**Phase 3 — Route B debug RPC.**
-Named pipe or loopback socket, dev-only, behind the existing config-gate pattern. Commands:
-`open_f1`, `search "<item>"`, `set_scale`, `toggle_cluster`, `screenshot` (framebuffer grab off
-`hk_present`), plus the new `reload_overlay` command wired to Phase 2's mechanism. External Python
-driver gives script→observe against the real running game.
+**Phase 3 — Route B debug RPC. IMPLEMENTED + build-verified (2026-07-02,
+`feat/overlay-debug-rpc`); in-game validation open.**
+- **Transport: TCP loopback, NOT a named pipe — deliberate change from the original sketch.** The
+  live game runs under Proton on the Linux box, and Wine's loopback IS the host's loopback: a
+  Python driver on Linux reaches 127.0.0.1 straight into the Wine process, which a Windows named
+  pipe can't do. Same code works on real Windows. This makes the whole Phase 3/4 loop drivable
+  from the Linux box.
+- **Gate:** ini `[Debug] debug_rpc_port` (String; empty = disabled = default; loopback-only bind,
+  no auth). `goblin::debug_rpc::initialize()` (dllmain, after `overlay::initialize`) starts the
+  listener thread; bind failure just logs + disables.
+- **Threading model:** the listener thread ONLY parses lines and queues them
+  (`shared_ptr<Pending>` + event per command — no use-after-free even if the listener times out
+  while the present thread still executes). Every command EXECUTES on the present thread:
+  `debug_rpc::pump(swapchain)` at the END of `hk_present`, after the overlay's
+  `ExecuteCommandLists` — so a `screenshot` copy is queue-ordered behind the overlay draw and the
+  capture INCLUDES the overlay. Idle cost ≈ one relaxed atomic read per frame. 10s command
+  timeout (game not presenting) → `err timeout`.
+- **Commands (line protocol, reply `ok ...`/`err ...`):** `ping`; `status` (panel/hotreload/gen/
+  reload_pending — poll `gen` to watch a reload land); `open_f1 0|1|toggle` (flips the same
+  `g_user_show` the F1 key does); `set <ini_key> <value>` — GENERIC config setter through the ini
+  schema (new `goblin::config_set_by_key`, same typed parser as load_config, runtime-only, no
+  persist; ERR-only keys rejected off-ERR) — covers the planned `set_scale`/`toggle_cluster` and
+  every other key without per-key code (caveat: content-affecting keys may need their usual
+  refresh path); `screenshot <path>` — backbuffer → 24-bit BMP
+  (`overlay::screenshot_to_file`: readback buffer + `GetCopyableFootprints`, PRESENT→COPY_SOURCE
+  barriers, fence wait, BGRA/RGBA formats; BMP = zero new dependencies, PIL reads it); and
+  `reload_overlay` — flags the Slice D swap exactly like the file watcher
+  (`overlay_render_loader::request_reload`; `err not a hotreload build` in the default config).
+- **NOT implemented: `search "<item>"`** — the F1 item-search buffer (`item_q`) is a render-side
+  static; poking it from the host needs a new cross-DLL export. Followup when Phase 4 actually
+  needs it (drive the UI via `set` + screenshots meanwhile).
+- **Driver: `tools/mfg_rpc.py`** — `Rpc` class (`cmd`/`status`/`wait_reload`) + CLI; protocol
+  smoke-tested against a fake server (multi-arg commands, status parsing, exit codes). NB
+  screenshot paths are interpreted by the GAME process — under Proton pass a Wine path
+  (`Z:\tmp\shot.bmp`).
+- **In-game validation (open, doable on THIS box under Proton):** set `debug_rpc_port = 38700`,
+  launch ERR, then `tools/mfg_rpc.py --port 38700 ping/status/screenshot ...`; `reload_overlay`
+  additionally needs the split build deployed.
 
 **Phase 4 — wire the AI iterate loop.**
 Script: RPC `screenshot` → (agent) inspect PNG, diagnose DX/functional bug → edit overlay source →

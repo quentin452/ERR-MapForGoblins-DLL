@@ -116,6 +116,20 @@ bool goblin::err_features_enabled()
     return found;
 }
 
+bool goblin::config_set_by_key(const std::string &key, const std::string &value)
+{
+    const bool include_err = err_features_enabled();
+    for (const auto &sec : goblin::ini_schema())
+        for (const auto &e : sec.entries)
+            if (key == e.key)
+            {
+                if ((e.err_only || sec.err_only) && !include_err) return false;
+                set_from_string(e, value);
+                return true;
+            }
+    return false;
+}
+
 void goblin::ensure_ini(const std::filesystem::path &ini_path)
 {
     namespace fs = std::filesystem;

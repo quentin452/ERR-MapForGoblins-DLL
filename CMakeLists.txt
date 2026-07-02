@@ -178,6 +178,8 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_messages.cpp
   src/goblin_overlay.hpp
   src/goblin_overlay.cpp
+  src/goblin_debug_rpc.hpp
+  src/goblin_debug_rpc.cpp
   src/goblin_overlay_render_api.hpp
   src/goblin_overlay_render_api.cpp
   src/goblin_overlay_render_loader.hpp
@@ -292,7 +294,8 @@ target_link_libraries( MapForGoblins
   dinput8
   dxguid
   dbghelp
-  bcrypt)
+  bcrypt
+  ws2_32)  # Phase 3 debug RPC loopback listener (goblin_debug_rpc.cpp)
 
 if(GOBLIN_OVERLAY_HOTRELOAD)
   target_compile_definitions(MapForGoblins PRIVATE GOBLIN_OVERLAY_HOTRELOAD_BUILD)
