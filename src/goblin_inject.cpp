@@ -377,7 +377,15 @@ void goblin::menu_auto_toggle_loop()
         {
             show_toggle_banner(!user_disabled_now);
             prev_user_disabled = user_disabled_now;
+            // Master gate feeds the native landmark-pin decision (F10 sets the atomic
+            // directly, without going through ui::set_icons_enabled → no dirty mark).
+            goblin::apply_native_landmark_suppression();
         }
+
+        // Landmark category / master toggle flipped in the menu → re-decide which
+        // native landmark pins are suppressed (areaNo flips, next map open shows it).
+        if (goblin::take_native_landmark_dirty())
+            goblin::apply_native_landmark_suppression();
 
         // Per-section toggle: persist the choice to the ini (single owner of file I/O,
         // off the render thread). The overlay reads section_visible() live via the

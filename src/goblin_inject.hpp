@@ -22,6 +22,25 @@ namespace goblin
     // native_map_injection is off, so the overlay needs this independent path).
     void seed_runtime_gates();
 
+    // ── Native landmark-pin suppression (config landmark_suppress_native) ──
+    // The game draws its OWN pins for the WMPP landmark families our World-landmark
+    // categories re-draw (Minor Erdtrees, dungeons, churches, …) → visual duplicates
+    // when a category is ON. Suppression = areaNo=99 flip on the NATIVE rows (same
+    // eviction trick as section visibility), restored on toggle OFF. Unlike graces
+    // there is no click action to preserve (landmark pins are tooltip-only), so no
+    // draw-only hook is needed. build_live_landmarks (map_entry_layer.cpp) owns the
+    // registry lifecycle: reset (restores + clears) BEFORE it re-reads the rows —
+    // so it never bakes a flipped areaNo into a marker or an orig_area — then
+    // registers each matched row, then applies once. The watcher re-applies when a
+    // landmark category / master toggle flips (take_native_landmark_dirty).
+    // GOBLIN_RENDER_API: called from build_live_landmarks (map_entry_layer.cpp, render
+    // side in the GOBLIN_OVERLAY_HOTRELOAD split) — direct-annotation pattern, same as
+    // ui::read_event_flag below.
+    GOBLIN_RENDER_API void reset_native_landmark_rows();
+    GOBLIN_RENDER_API void register_native_landmark_row(void *row_data, int category);
+    GOBLIN_RENDER_API void apply_native_landmark_suppression();
+    bool take_native_landmark_dirty();  // watcher-only (host side)
+
     // Nearest-grace cluster key for a marker (source area + raw grid/pos), matching
     // the native by-location clustering. -1 = no anchor (draw exact). out_pname (opt)
     // = the group's region PlaceName id for the pile label.

@@ -35,6 +35,11 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   everywhere else — randomizer players flip that one key.
 
 ### Added
+- **Native landmark-pin suppression** (`landmark_suppress_native`, default on) — while a World-landmark
+  category (Minor Erdtrees, Dungeons, Churches, …) is enabled, the game's own pin for those spots is
+  hidden on the native world map so the overlay icon isn't a duplicate; turn the category (or the
+  option) off and the native pins come back. Per-category, mod-agnostic (works on any install), takes
+  effect on the next map open. Graces and boss pins are untouched (they have their own systems).
 - **9 native-pin parity landmark categories** (`World - Churches / Ruins / Rises & Towers / Shacks /
   Forts / Castles / Towns & Villages / Colosseums / Unique Sites`) — completes coverage of every pin
   family the game itself draws on the world map, from a full audit of `WorldMapPointParam` iconIds

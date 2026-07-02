@@ -136,7 +136,26 @@ bakes were stale/incomplete (vanilla missed the whole Group1/2 enum block → it
 broken since Group 1; erte/convergence missed whole files). Fixed first by syncing headers, then
 made moot by deleting the per-profile dirs entirely.
 
-## Native-map landmark icon suppression — TRACKED, not started (2026-07-02)
+## Native landmark-pin suppression — IMPLEMENTED, not yet in-game verified (2026-07-02)
+
+`feat/native-landmark-pin-suppression`. **Path decision (user asked grace-path vs direct):** direct
+areaNo=99 flip on the native WMPP rows — the grace SetTo draw-only hook exists ONLY to preserve the
+fast-travel click, and landmark pins have no click action (tooltip-only, duplicated by our overlay);
+the direct path needs zero new RE and reuses the proven eviction/restore pattern. Implementation:
+registry in `goblin_section_visibility.cpp` (`reset/register/apply_native_landmark_suppression`,
+`goblin_inject.hpp` facade, GOBLIN_RENDER_API-annotated for the hotreload split);
+`build_live_landmarks` owns the lifecycle (reset RESTORES before clearing so a rebuild never bakes
+a flipped 99 into markers/orig_area; the param iterator yields live-row references so `&row` is the
+live table); the `menu_auto_toggle_loop` watcher re-applies on landmark-category / F10 master
+flips (`take_native_landmark_dirty`); config `landmark_suppress_native` (World section, default
+true, NOT ERR-only — vanilla native pins duplicate too). Per-category: only categories toggled ON
+suppress their native rows; graces (80) / bosses (41/67) untouched. Flips take effect next map
+open (same cadence as every areaNo owner). **Verify in-game:** toggle Minor Erdtrees ON → native
+Erdtree pin gone from native map, ours drawn; toggle OFF → native pin back (discovered ones);
+`landmark_suppress_native=false` → duplicates return; `[LANDMARKPIN]` debug log shows counts
+(debug_logging). Deployed `ad502280`.
+
+## Native-map landmark icon suppression — TRACKED (2026-07-02) → implemented same day, see above
 
 The game still draws its OWN landmark pins on the native world map (Minor Erdtrees etc.), so our
 new landmark categories (incl. the 5 that now use the native glyphs — DivineTower/Evergaol/
