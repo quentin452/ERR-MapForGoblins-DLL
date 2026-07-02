@@ -183,12 +183,31 @@ We render post-present → always on top of the game's own UI. Two sub-bugs:
    in-game validated):** static exclusion region (disc ~(1815,1000) r240 + time pill, in the
    1920×1080 virtual canvas, resolution-scaled) wired into `in_draw_bounds` so markers +
    hover + pile anchors cull together. ERR-gated, ini `clip_game_ui` (default true).
-2. **Menus opening OVER the map (Z map-menu, beacon dialog, etc.) — OPEN:** our icons still
-   draw over them. Needs a "menu is covering the map" flag: CSMenuMan+0xCD is dead on this
-   build; plan = byte-diff probe (watch CSMenuMan first KBs + WorldMapDialog region while
-   RPC-toggling the Z menu — the [REGION-DIAG]/INPUT-DELTA probe infra in
-   goblin_worldmap_probe.cpp is the template). When found: hide the whole worldmap overlay
-   pass while the flag is up.
+2. **Menus opening OVER the map (Z map-menu, beacon dialog, etc.) — OPEN, discovery
+   instrument BUILT (2026-07-02):** our icons still draw over them. Needs a "menu is covering
+   the map" flag; CSMenuMan+0xCD is dead on this build (says "map screen up", not "child
+   covers it"). The byte-diff harness is now wired and DLL-linked — remaining work is the live
+   run + wiring the found offset:
+   - **`dump_menu_state`** (RPC `dumpmenu <tag>`) now also dumps CSMenuMan **+0x200..0x400**
+     (was only +0x0..0x200) so the submenu-stack head is covered in one call.
+   - **New scan `menu_open_diag`** behind ini `[Debug] debug_menu_cover_diag` (default off):
+     while the map is open it delta-scans the CSMenuMan head +0x0..0x400 and logs
+     `[MENUOPEN-DIAG] mm+off: old->new` for any small-int (`[0,256)`) that flips — the direct
+     covering-menu-flag finder. (`goblin_worldmap_probe.cpp menu_open_diag`, gated in the
+     probe loop next to the other dump gates.)
+   - **LIVE RUN (needs the game running — Linux/Proton loop, not done on the Windows box):**
+     set `debug_menu_cover_diag=true` (+ `debug_worldmap_probe=true` to run the loop), open the
+     bare map, then open/close a covering submenu ≥4× and across ≥2 menus. The offset that
+     reads one value bare, a different STABLE value while covered, and RETURNS bare (quiet
+     during bare-map pan/zoom) is the flag. Cross-check with two `dumpmenu bare` / `dumpmenu
+     covered` snapshots.
+   - **THEN wire it (not yet done, needs the offset):** add
+     `goblin::worldmap_probe::menu_covers_map()` (mirror `world_map_open()` — resolve slot
+     once, SEH-read the byte, log distinct values), add `menucover=` to the RPC `status` line,
+     and early-out the whole worldmap marker pass in `map_renderer.cpp` (~L1846, before
+     `PushClipRect`) when it's true, gated by the existing `clip_game_ui` ini. Then retire the
+     static dial exclusion + user-drawn zones (Task B tightens the clip; see
+     `docs/re/worldmap_menu_and_native_clip_re_prompt.md`).
 
 ## Silent deadlock freeze + freeze watchdog (2026-07-02, `fix/f2-fog-locate-v2` branch)
 

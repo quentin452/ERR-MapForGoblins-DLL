@@ -269,6 +269,34 @@ void region_diag(uintptr_t cursor, uintptr_t view)
     if (view) scan("view", view, 0x400);
 }
 
+// MENU-OVER-MAP finder (HANDOFF overlay z-order Task A). We render post-present, so worldmap
+// markers punch through any submenu the game stacks OVER the open map. To hide the marker pass
+// under a covering menu we need a game-state field that reads "a child dialog covers the open
+// map" (the "Z" map-menu, beacon/marker dialog, region list). This delta-scans the CSMenuMan
+// head for a small-int (submenu count / stack depth) that flips when such a menu opens and
+// RETURNS on close: log each change once (old->new), old+new both in [0,256) to skip pointers
+// and float noise (prefer a depth/count over a pointer — the doc's guidance). Recipe: get the
+// bare map up, then open/close the map-menu / beacon / region-list a few times — the offset
+// that's one value bare, a different STABLE value while covered, and RETURNS bare (reproduced
+// across menus, quiet during bare-map pan/zoom) is menu_covers_map(). CSMenuMan+0xCD is DEAD
+// here (it says "map screen up", not "child covers it"). Read-only + SEH-guarded; mirrors
+// region_diag. Gated by config debug_menu_cover_diag; only called while the map is open.
+void menu_open_diag(uintptr_t mm)
+{
+    if (!mm) return;
+    static std::unordered_map<ptrdiff_t, int> last;
+    for (ptrdiff_t off = 0; off <= 0x400; off += 4)
+    {
+        int val = 0;
+        if (!seh_read_i32(reinterpret_cast<void *>(mm + off), &val)) continue;
+        auto it = last.find(off);
+        if (it != last.end() && it->second != val &&
+            val >= 0 && val < 256 && it->second >= 0 && it->second < 256)
+            g_log->info("[MENUOPEN-DIAG] mm+{:#05x}: {} -> {}", off, it->second, val);
+        last[off] = val;
+    }
+}
+
 // INPUT-DEVICE delta scan: which f32 fields move under MOUSE vs GAMEPAD-STICK?
 // Symptom (2026-06-20): markers update on mouse motion but NOT gamepad stick — the
 // reticle (+0x104/+0x108) tracks the mouse cursor but seemingly not the gamepad one.
@@ -788,6 +816,18 @@ void probe_loop()
                 GOBLIN_BENCH_QUIET("debug.dump_icon_textures");
                 goblin::dump_icon_textures_live();
             }
+            // HANDOFF overlay z-order Task A: hunt the "submenu covers the open map" flag by
+            // delta-scanning the CSMenuMan head while the map is up. Resolve mm from the slot
+            // (cheap, same read as world_map_open) and scan; logs [MENUOPEN-DIAG]. Read-only,
+            // off by default. Open the bare map, then open/close a covering submenu a few times.
+            if (goblin::config::debugMenuCoverDiag)
+            {
+                GOBLIN_BENCH_QUIET("debug.menu_cover_diag");
+                uint64_t mm = 0;
+                if (seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm) &&
+                    plausible_ptr(mm))
+                    menu_open_diag(static_cast<uintptr_t>(mm));
+            }
             // DISABLED (gamepad-cursor WIP): the all-instance enumerate_menu_cursors scan
             // (L1 0x10000 × L2 0x800 RPM reads) ran once per map-open and slowed the map
             // load noticeably — and it never reliably found the gamepad cursor. Removed; the
@@ -1109,6 +1149,7 @@ void dump_menu_state(const char *tag)
         }
     };
     dump("mm", static_cast<uintptr_t>(mm), 0x0, 0x200);
+    dump("mm", static_cast<uintptr_t>(mm), 0x200, 0x400); // Task A: submenu-stack head may sit past +0x200
     dump("dlg", dlg, 0xA00, 0xB40);
     dump("dlg", dlg, 0x2B60, 0x2C40);
     g_log->flush();

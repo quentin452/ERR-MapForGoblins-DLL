@@ -217,6 +217,12 @@ namespace goblin
         // (ReadProcessMemory). See goblin_worldmap_probe.cpp dump_native_pins.
         extern GOBLIN_RENDER_API bool dumpNativePins;
 
+        // Dev discovery scan (overlay z-order Task A — the "menu covers map" flag):
+        // while the world map is open, delta-scan the CSMenuMan head for a small-int
+        // field that flips when a submenu opens OVER the bare map, logged as
+        // [MENUOPEN-DIAG]. Read-only. See goblin_worldmap_probe.cpp menu_open_diag.
+        extern GOBLIN_RENDER_API bool debugMenuCoverDiag;
+
         // Dev prototype: draw overlay-rendered marker dots projected onto the open
         // world map (verifies the world->screen affine). See goblin_overlay.cpp +
         // goblin_worldmap_probe::get_live_view.
