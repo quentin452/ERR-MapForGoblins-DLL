@@ -546,6 +546,7 @@ void goblin::apply_native_landmark_suppression()
 }
 
 bool goblin::take_native_landmark_dirty() { return g_native_landmark_dirty.exchange(false); }
+void goblin::request_native_landmark_reapply() { g_native_landmark_dirty.store(true); }
 
 void goblin::ui::set_category_visible(int idx, bool visible)
 {

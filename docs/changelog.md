@@ -35,6 +35,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   everywhere else — randomizer players flip that one key.
 
 ### Added
+- **Per-marker native landmark glyphs** — every landmark marker now draws the game's OWN map glyph
+  for its exact site (each `WorldMapPointParam` row's iconId → `MENU_MAP_<NN>`): catacomb/cave/tunnel
+  icons for Dungeons, each legacy dungeon's bespoke icon, church/ruin/fort/village icons for the
+  parity categories, etc. Previously only single-icon categories had a native glyph and the unions
+  fell back to a circle. Mod-agnostic (resident GPU glyph → on-disk glyph → circle). Boss markers
+  also gain a native glyph on installs without ERR's custom boss symbol.
 - **Native landmark-pin suppression** (`landmark_suppress_native`, default on) — while a World-landmark
   category (Minor Erdtrees, Dungeons, Churches, …) is enabled, the game's own pin for those spots is
   hidden on the native world map so the overlay icon isn't a duplicate; turn the category (or the

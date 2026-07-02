@@ -896,6 +896,22 @@ namespace
                 }
             }
 
+            // Native landmark-pin suppression (areaNo flips applied by the watcher; effect on the
+            // NEXT map open, so the nudge just re-decides — no live rebuild needed here).
+            if (settings_match("hide native landmark pins duplicate suppress erdtree dungeon church"))
+            {
+                if (ImGui::Checkbox("Hide native landmark pins (when our category re-draws them)",
+                                    goblin::overlay_api::cfg_landmarkSuppressNative_ptr()))
+                    goblin::overlay_api::request_native_landmark_reapply();
+                ImGui::SameLine();
+                ImGui::TextDisabled("↻");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Per category: only World-landmark categories that are toggled ON get their\n"
+                                      "native pin hidden (no duplicate). Categories OFF keep the game's own pin.\n"
+                                      "Changes show the NEXT time the map is opened (the game rebuilds its pin\n"
+                                      "list then). The affected category rows carry the same \xE2\x86\xBB mark.");
+            }
+
             // Spoiler-free loot (overlay port of anonymous_loot; live, persists via
             // "Save to INI"). Lot-backed loot markers draw as a gray "?" with a generic
             // label instead of the real item icon/name.
@@ -1399,6 +1415,20 @@ namespace
                     bool cv = goblin::overlay_api::category_visible(c);
                     if (ImGui::Checkbox(clabel, &cv))
                         goblin::overlay_api::set_category_visible(c, cv);
+                    // Landmark categories drive the native-pin suppression (a WMPP areaNo flip
+                    // the game only re-reads when it rebuilds its pin list) → mark the rows the
+                    // "Hide native landmark pins" option affects, with the map-reopen caveat.
+                    if ((*goblin::overlay_api::cfg_landmarkSuppressNative_ptr()) &&
+                        c >= static_cast<int>(goblin::generated::Category::WorldDivineTower) &&
+                        c <= static_cast<int>(goblin::generated::Category::WorldUniqueSite))
+                    {
+                        ImGui::SameLine();
+                        ImGui::TextDisabled("↻");
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Also hides the game's OWN pin for these spots while enabled\n"
+                                              "(\"Hide native landmark pins\" in Settings, avoids duplicates).\n"
+                                              "The native pin change shows the NEXT time the map is opened.");
+                    }
                     // Capture row width once, before any SameLine, so the badge and
                     // the cluster checkbox both position from a stable origin.
                     float row_avail = ImGui::GetContentRegionAvail().x;

@@ -85,6 +85,39 @@ canonical" note in `docs/memory/tooling/build-toolchain-clang-xwin.md`). **Phase
 `__try`-elision hazards (world_position per-frame probes + tutorial_popup init poll) are FIXED
 (`5b80541`, built + deployed); still open = repo-wide `__try` classify pass, then Phases 1–2.**
 
+## Feedback round 3 (2026-07-02, `feat/per-marker-native-glyphs`) — church glyph, fragment leaks, pin-RE diag
+
+- **Churches drew circle:** the worldmap gfx has NO numeric `MENU_MAP_03` — the church glyph is
+  NAME-keyed (`MENU_MAP_Church`). Fix: `map_point_name_alias()` in MapPointProvider (numeric
+  resident → numeric disk → alias resident-by-name → alias disk-by-name). Checked the decompiled
+  gfx symbol list: also missing numerics with NO known name = **15 (wells), 43 (Gelmir camp)** →
+  those stay circle until a name/RE surfaces.
+- **require_map_fragments leaks**, 3 root causes fixed:
+  (1) QuestNpcLayer never set `fragment_flag` → quest pins ignored the gate; now derived from the
+  pin's overworld tile (`quest_pin_fragment_flag`; UG groups stay ungated — tile ambiguous).
+  (2) Off-shore islet tiles (Divine Towers) missed the ±1 neighbour fill → widened to ring ±2
+  (`GetMapFlagFromTile`).
+  (3) Unmappable AREAS (Roundtable m11_10, unconverted dungeon leftovers) returned 0 = "always
+  shown" → `marker_fragment_flag` now returns a never-set sentinel flag (INT32_MAX) for a
+  projected area outside {60,61,12,40-43}, so the existing renderer gate hides them while the
+  toggle is on. Rune-piece leak most likely class (2)/(3) — recheck in-game.
+- **Native pins still visible — RE diag added:** debug_logging now logs `[LANDMARKPIN] WMPP
+  iconIds NOT ours (never suppressed): 41x191 67x26 80x…` at build. Expected residents: 41/67
+  (bosses), 80 (graces), 83/84/85 (structural), 42 (sub-zones), 87 (VM requests), 0 (ERR arena).
+  Anything the user still SEES beyond those → match its iconId here, then decide suppress/classify.
+  NB: ERR also injects its OWN custom rows (stakes/pools/effigies at iconId 374+ etc.) — those are
+  OUR old native-injection families, not WMPP vanilla pins.
+- **Round 3 in-game results (user, 2026-07-02):** church glyph FIXED; fragment leaks mostly fixed;
+  Roundtable items still visible — ACCEPTED as correct (its markers project through the m11 conv
+  onto a Leyndell-fragment tile the player owns; the "always available since game start" reading
+  fits the Roundtable anyway). `[LANDMARKPIN]` diag: `19x3 41x191 42x29 67x26 80x73 83x70 84x16
+  85x16 87x8` — everything expected EXCEPT **iconId 19 (Windmill Pastures, 3 rows): missed in the
+  first parity grouping pass** → added to `WorldTownVillage` (those were the user's remaining
+  mystery pins).
+- **Crowded-icon DX: user picked (a) hover FAN-OUT (spiderfy) — FOLLOWUP, not started.** Hovering
+  a pile spreads its icons around the cursor. Existing machinery to reuse: per-marker
+  `cluster_key`, pile labels, the hover/tooltip pass in map_renderer.
+
 ## SINGLE-DLL migration — profiles retired (2026-07-02, `feat/mapgenie-landmark-parity`)
 
 User audit request confirmed profiles had ~no reason left: zero real per-profile DATA (the only
@@ -211,7 +244,10 @@ doc: whatever the next MapGenie diff lists (see coverage_vs_mapgenie.py). Probes
 User pain: runtime RE is Windows-by-convention but the live game runs on the Linux box (Proton).
 Options + trial plan in `docs/memory/tooling/linux-runtime-re-options.md` (default = in-DLL probes,
 first trial = ceserver + CE GUI on the Proton pid). Related vision note (runtime modding framework,
-NOT a plan): `docs/runtime_modding_framework_vision.md`.
+NOT a plan): `docs/runtime_modding_framework_vision.md` — **capabilities-vs-vision GAP AUDIT done
+2026-07-02: `docs/runtime_live_capabilities_audit.md`** (what's proven live, what's missing for a
+full no-regulation.bin runtime mod, recommended battle order: FMG-inject + param_set_field quick
+wins → param_add_rows pivot → items/events → file-resolution hook long-term).
 
 ## MapGenie category coverage — GROUP 1 MERGED; GROUP 2 (Portal) RE in progress (2026-07-01)
 
@@ -241,11 +277,16 @@ Gate". Default OFF.
    markers (AEG099_510 bound to warp template 90005605; N entities harvested, M LOD-dup collapsed)` —
    expect ~23 gates at real sending-gate spots (Four Belfries, Siofra, Leyndell, DLC, …). On pass, merge
    `feat/mapgenie-portal` to master.
-2. **Landmark GLYPHS followup (user "for later").** Circle now; each WMPP row has a real iconId →
-   `map_point_rect(iconId)` (`SB_MapCursor`). Quick win: `category_gpu_iconId` for the 4 single-value
-   categories (DivineTower→23/Evergaol→9/MinorErdtree→30/GrandLift→21). Dungeon/LegacyDungeon/MiquellaCross
-   need per-marker source iconId through `push_marker` (bosses share this gap). Task chip spawned.
-   Portals could reuse `AEG099_510`'s SB_MapCursor glyph too if one exists.
+2. **Landmark GLYPHS — DONE (2026-07-02, `feat/per-marker-native-glyphs`).** Single-iconId
+   categories landed first (`category_gpu_iconId`); then the per-marker plumbing closed the rest:
+   `Marker.map_icon_id` = the row's own WMPP iconId, set by `push_marker` for `Source::Live` only
+   (bosses + landmarks — Baked/DiskMSB loot iconIds are item/massedit ids, never map glyphs, stay
+   0); the renderer's MP_ID tier prefers it over the per-category id. Net: ALL 16 landmark
+   categories (incl. the Dungeon/LegacyDungeon/parity unions) now draw their native per-site
+   glyph, and on ERR-less installs bosses (41/67) get a native glyph too (ERR keeps the
+   name-keyed `MENU_MAP_ERR_Boss` first). Still open: Portals have no known SB_MapCursor glyph
+   (check `AEG099_510` sometime); the F1 "icons replaced" counter (`category_is_gpu_native`)
+   doesn't know about per-marker resolution yet — cosmetic.
 3. **Rest of GROUP 2 — recon done, NOT quick wins. See `docs/re/windows_group2_landscape_re_findings.md`.**
    Portal was the clean one *because* it had a harvestable EMEVD template (`90005605`). The rest do NOT:
    - **Elevator / Smithing Table are ObjAct-bound, not EMEVD-template-bound.** Anchors found:

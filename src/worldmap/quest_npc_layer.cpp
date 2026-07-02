@@ -20,6 +20,19 @@ namespace goblin::worldmap
 // a reference across a swap.
 static std::mutex g_qfb_mtx;
 static std::vector<QuestFallbackNpc> g_qfb;
+
+// Map-fragment gate for a quest pin. entity_world_pos returns UNIFIED world coords + the draw
+// group only, so recover the overworld tile (world = grid*256 + local) and look its fragment up
+// directly. Overworld/DLC-overworld only — underground groups keep 0 ("no gate"): their tile
+// area is ambiguous from group alone, and a wrong gate is worse than none. Fixes quest pins
+// ignoring require_map_fragments entirely (user-reported 2026-07-02).
+static int quest_pin_fragment_flag(int grp, float wx, float wz)
+{
+    if (grp != 0 && grp != 2)
+        return 0;
+    const int area = (grp == 0) ? 60 : 61;
+    return goblin::overlay_api::map_fragment_flag(area, (int)(wx / 256.0f), (int)(wz / 256.0f));
+}
 std::vector<QuestFallbackNpc> quest_fallback_npcs()
 {
     std::lock_guard<std::mutex> lk(g_qfb_mtx);
@@ -134,6 +147,7 @@ const std::vector<Marker> &QuestNpcLayer::markers() const
         m.category = gc;
         m.color = category_color(gc);
         m.icon_key = "show_quest_npc";
+        m.fragment_flag = quest_pin_fragment_flag(grp, wx, wz);
         // name_id must be the FMG-ROUTED id for the tooltip/search (lookup_text routes
         // NpcName at +700000000 — same convention as every other marker; the raw hand
         // name_id gave an empty tooltip).
@@ -179,6 +193,7 @@ const std::vector<Marker> &QuestNpcLayer::markers() const
         m.category = gc;
         m.color = category_color(gc);
         m.icon_key = "show_quest_npc";
+        m.fragment_flag = quest_pin_fragment_flag(grp, wx, wz);
         // FMG-routed id (+700000000) for the tooltip name, same convention as the hand pin.
         m.name_id = nameId ? static_cast<int>(nameId + 700000000u) : -1;
         m.tip_quest = "Auto-detected quest"; // marks it a quest pin for marker_label (no step prose)

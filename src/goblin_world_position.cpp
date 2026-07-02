@@ -794,7 +794,20 @@ int goblin::marker_fragment_flag(uint8_t areaNo, uint8_t gx, uint8_t gz, float p
     tmp.posX = px;
     tmp.posZ = pz;
     project_dungeon_row_to_overworld(&tmp, nullptr, nullptr, /*conv_underground=*/false);
-    return goblin::map_fragment_flag(tmp.areaNo, tmp.gridXNo, tmp.gridZNo);
+    const int flag = goblin::map_fragment_flag(tmp.areaNo, tmp.gridXNo, tmp.gridZNo);
+    if (flag)
+        return flag;
+    // Unmappable AREA (no overworld conversion AND not a MapList-keyed page — Roundtable
+    // Hold m11_10, unconverted dungeon leftovers): the native map has NO page for these, so
+    // under require_map_fragments they must stay hidden, not "no gate → always shown"
+    // (user-reported leak 2026-07-02). Return a never-set sentinel flag: the renderer's
+    // existing `flag && !read_event_flag(flag)` gate then hides the marker while the toggle
+    // is on, and everything is unchanged when it's off. Overworld/underground pages keep
+    // the plain-0 "no fragment needed" default (their coverage gaps are handled by the
+    // neighbour fill in GetMapFlagFromTile).
+    const int a = tmp.areaNo;
+    const bool mapped_page = a == 60 || a == 61 || a == 12 || (a >= 40 && a <= 43);
+    return mapped_page ? 0 : 0x7FFFFFFF; // INT32_MAX: not a real event flag, never set
 }
 
 bool goblin::marker_world_pos(uint8_t areaNo, uint8_t gx, uint8_t gz, float px, float pz,

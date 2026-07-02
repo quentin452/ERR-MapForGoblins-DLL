@@ -216,6 +216,11 @@ void push_marker(uint64_t row_id, const from::paramdef::WORLD_MAP_POINT_PARAM_ST
     m.lotId = lotId;
     m.lotType = lotType;
     m.worldY = d.posY;  // DX item 7: block-local altitude for the above/below-player badge
+    // Per-marker native map glyph: ONLY Live sources are true WMPP rows whose iconId is a real
+    // MENU_MAP_<NN> glyph (bosses, landmarks). Loot passes (Baked/DiskMSB) carry item/massedit
+    // iconIds with different semantics — never map glyphs — so they stay 0.
+    if (source == Source::Live && d.iconId > 0)
+        m.map_icon_id = d.iconId;
     // Per-item icon: resolve THIS lot's real inventory iconId from the live ItemLotParam -> EquipParam,
     // so a loot marker draws its OWN item icon instead of the category representative. Mod-agnostic
     // (reads the active install's live params). resolve_loot_item_textid with baked_textid=0 returns the
@@ -419,6 +424,7 @@ static int landmark_category_for_icon(int iconId)
     case 29:  // Castle Sol
     case 241: // Castle Ensis
         return static_cast<int>(gen::Category::WorldCastle);
+    case 19:  // Windmill Pastures (missed in the first parity pass — [LANDMARKPIN] 19x3)
     case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39: case 40: // towns/villages
     case 244: // Abandoned Ailing Village
     case 245: // Bonny Village
@@ -460,13 +466,23 @@ void build_live_landmarks()
     // flipped to 99 by a previous apply), re-register each matched LIVE row (the param
     // iterator yields references into the live table), apply once at the end.
     goblin::reset_native_landmark_rows();
+    // RE aid (debug_logging): which native pins we DON'T own — every WMPP row outside the
+    // landmark switch, tallied by iconId. Cross-check the survivors the user still sees on the
+    // native map against this list (boss 41/67, grace 80, structural 83/84/85, sub-zones 42,
+    // quest 87 are the expected residents; anything else = a gate we don't understand yet).
+    std::map<int, int> other_icons;
     try
     {
         for (auto [rowId, row] :
              from::params::get_param<from::paramdef::WORLD_MAP_POINT_PARAM_ST>(L"WorldMapPointParam"))
         {
             const int c = landmark_category_for_icon(row.iconId);
-            if (c < 0) continue;
+            if (c < 0)
+            {
+                if (goblin::config::debugLogging && row.iconId > 0)
+                    ++other_icons[row.iconId];
+                continue;
+            }
             push_marker(rowId, row, c, /*lotId=*/0u, /*lotType=*/0u, Source::Live);
             goblin::register_native_landmark_row(&row, c);
             ++n;
@@ -479,6 +495,13 @@ void build_live_landmarks()
         return;
     }
     goblin::apply_native_landmark_suppression();
+    if (goblin::config::debugLogging && !other_icons.empty())
+    {
+        std::string s;
+        for (auto &[icon, cnt] : other_icons)
+            s += std::to_string(icon) + "x" + std::to_string(cnt) + " ";
+        spdlog::debug("[LANDMARKPIN] WMPP iconIds NOT ours (never suppressed): {}", s);
+    }
     std::string breakdown;
     for (int i = 0; i < kLandmarkCount; ++i)
     {
