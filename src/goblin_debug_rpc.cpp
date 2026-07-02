@@ -34,6 +34,22 @@ namespace goblin::debug_rpc
             ~Pending() { if (done) CloseHandle(done); }
         };
 
+        // Command-feed history for the on-screen HUD (recent_commands below). Listener thread
+        // writes, present thread reads — tiny, mutexed.
+        struct HistEntry { std::string line; ULONGLONG tick; };
+        std::mutex g_hist_mutex;
+        std::deque<HistEntry> g_hist;
+        constexpr ULONGLONG kHistMaxAgeMs = 6000;
+        constexpr size_t kHistMax = 8;
+
+        void note_command(const std::string &request, const std::string &reply)
+        {
+            std::string line = request + "  ->  " + (reply.size() > 48 ? reply.substr(0, 45) + "..." : reply);
+            std::lock_guard<std::mutex> lk(g_hist_mutex);
+            g_hist.push_back({std::move(line), GetTickCount64()});
+            while (g_hist.size() > kHistMax) g_hist.pop_front();
+        }
+
         std::mutex g_queue_mutex;
         // shared_ptr on purpose: on a listener timeout, pump() may STILL be executing the command —
         // its own reference keeps the Pending (and the event handle) alive until SetEvent returns,
@@ -153,6 +169,70 @@ namespace goblin::debug_rpc
                 if (!move_cursor_client(cx, cy)) return "err cursor placement failed";
                 return "ok mouse_move";
             }
+            if (cmd == "type")
+            {
+                // Type literal TEXT into a focused (ImGui) field. `key <letter>` is the wrong tool
+                // for text on a non-QWERTY layout: Wine converts a VK-only SendInput to a scancode
+                // via the US layout, then the game-side layout translates it back — so under
+                // AZERTY, sending VK_A lands as 'q' (typed "larval", got "lqrvql", live
+                // 2026-07-02). Inversion: char → VK in the GAME's layout (VkKeyScanW) → that
+                // key's PHYSICAL scancode → the VK sitting at that position in QWERTY (static
+                // scancode→US-VK table) → send THAT; Wine's US mapping then lands on the right
+                // physical key and the game layout produces the wanted char. Layout-agnostic.
+                size_t b = rest.find_first_not_of(" \t");
+                std::string text = b == std::string::npos ? std::string{} : rest.substr(b);
+                if (text.empty()) return "err usage: type <text>";
+                static const uint16_t kScanToUsVk[0x40] = {
+                    // 0x00-0x0F: esc 1..0 - = bksp tab
+                    0, VK_ESCAPE, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
+                    VK_OEM_MINUS, VK_OEM_PLUS, VK_BACK, VK_TAB,
+                    // 0x10-0x1F: qwertyuiop [ ] enter ctrl a s
+                    'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P',
+                    VK_OEM_4, VK_OEM_6, VK_RETURN, VK_CONTROL, 'A', 'S',
+                    // 0x20-0x2F: d f g h j k l ; ' ` lshift \ z x c v
+                    'D', 'F', 'G', 'H', 'J', 'K', 'L', VK_OEM_1, VK_OEM_7, VK_OEM_3,
+                    VK_SHIFT, VK_OEM_5, 'Z', 'X', 'C', 'V',
+                    // 0x30-0x39: b n m , . / rshift * alt space
+                    'B', 'N', 'M', VK_OEM_COMMA, VK_OEM_PERIOD, VK_OEM_2,
+                    VK_SHIFT, VK_MULTIPLY, VK_MENU, VK_SPACE, 0, 0, 0, 0, 0, 0};
+                int typed = 0;
+                for (char ch : text)
+                {
+                    const SHORT vks = VkKeyScanW(static_cast<WCHAR>(ch));
+                    if (vks == -1) continue;  // no key produces this char in the game's layout
+                    const UINT vk_game = vks & 0xFF;
+                    const bool shift = (vks & 0x100) != 0;
+                    const UINT scan = MapVirtualKeyW(vk_game, MAPVK_VK_TO_VSC);
+                    if (scan >= 0x40 || !kScanToUsVk[scan]) continue;
+                    const uint16_t vk_send = kScanToUsVk[scan];
+                    if (shift) send_vk(VK_SHIFT, false);
+                    send_vk(vk_send, false);
+                    Sleep(60);  // the poll samples per frame — 35ms dropped/doubled chars live
+                    send_vk(vk_send, true);
+                    if (shift) send_vk(VK_SHIFT, true);
+                    Sleep(60);
+                    ++typed;
+                }
+                return "ok typed " + std::to_string(typed) + "/" + std::to_string(text.size()) + " chars";
+            }
+            if (cmd == "mouse_wheel")
+            {
+                std::string ds = next_token(rest);
+                int notches = 0;
+                try { notches = std::stoi(ds); } catch (...) { return "err usage: mouse_wheel <notches> (±)"; }
+                if (notches < -20 || notches > 20 || notches == 0) return "err notches out of range (±1..20)";
+                INPUT in{};
+                in.type = INPUT_MOUSE;
+                in.mi.dwFlags = MOUSEEVENTF_WHEEL;
+                const int step = notches > 0 ? 1 : -1;
+                for (int k = 0; k != notches; k += step)
+                {
+                    in.mi.mouseData = static_cast<DWORD>(step * WHEEL_DELTA);
+                    SendInput(1, &in, sizeof(in));
+                    Sleep(30);  // one notch per game frame-ish; a single big delta gets clamped
+                }
+                return "ok mouse_wheel";
+            }
             if (cmd == "mouse_click")
             {
                 std::string btn = next_token(rest);
@@ -186,7 +266,8 @@ namespace goblin::debug_rpc
 
         bool is_input_command(const std::string &cmd)
         {
-            return cmd == "key" || cmd == "mouse_move" || cmd == "mouse_click";
+            return cmd == "key" || cmd == "type" || cmd == "mouse_move" || cmd == "mouse_click" ||
+                   cmd == "mouse_wheel";
         }
 
         // Present thread. Every handler here may touch overlay/config state freely — pump() is
@@ -294,7 +375,9 @@ namespace goblin::debug_rpc
                     std::string peek = line, cmd = next_token(peek);
                     if (is_input_command(cmd))
                     {
-                        std::string reply = execute_input(cmd, peek) + "\n";
+                        std::string reply = execute_input(cmd, peek);
+                        note_command(line, reply);
+                        reply += "\n";
                         size_t off = 0;
                         while (off < reply.size())
                         {
@@ -343,6 +426,7 @@ namespace goblin::debug_rpc
                     else
                         reply = "err timeout (no frames presenting?)";
                 }
+                note_command(line, reply);
                 reply += "\n";
                 // send() may transmit partially — loop; a failed send means the client is gone.
                 size_t off = 0;
@@ -410,6 +494,18 @@ namespace goblin::debug_rpc
             return;
         }
         std::thread(listener_main, static_cast<unsigned short>(port)).detach();
+    }
+
+    std::vector<std::string> recent_commands()
+    {
+        std::vector<std::string> out;
+        const ULONGLONG now = GetTickCount64();
+        std::lock_guard<std::mutex> lk(g_hist_mutex);
+        while (!g_hist.empty() && now - g_hist.front().tick > kHistMaxAgeMs)
+            g_hist.pop_front();
+        out.reserve(g_hist.size());
+        for (const auto &h : g_hist) out.push_back(h.line);
+        return out;
     }
 
     void pump(IDXGISwapChain3 *swapchain)

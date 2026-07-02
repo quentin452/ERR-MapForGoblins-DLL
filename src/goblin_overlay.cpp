@@ -1786,6 +1786,37 @@ namespace
                 goblin::overlay_render_loader::call_draw_worldmap_markers(g_show, frame_ctx);
             if (minimap)
                 goblin::overlay_render_loader::call_draw_minimap_hud(frame_ctx);   // gameplay HUD (map closed) — self-gates overworld-only
+
+            // Debug-RPC command HUD (bottom-right): live feed of what a driver script is doing —
+            // each command + its result, entries fading after a few seconds. Draws nothing when
+            // the RPC is off/idle (empty vector). HOST-drawn on purpose (host imgui, host code) —
+            // it monitors the host-side RPC, not the reloadable overlay.
+            {
+                std::vector<std::string> rpc_lines = goblin::debug_rpc::recent_commands();
+                if (!rpc_lines.empty())
+                {
+                    ImDrawList *fgdl = ImGui::GetForegroundDrawList();
+                    const ImVec2 ds = ImGui::GetIO().DisplaySize;
+                    const float lh = ImGui::GetTextLineHeightWithSpacing();
+                    float w = 120.f;
+                    for (const auto &s : rpc_lines)
+                    {
+                        const float sw = ImGui::CalcTextSize(s.c_str()).x;
+                        if (sw > w) w = sw;
+                    }
+                    const float pad = 8.f;
+                    const ImVec2 br(ds.x - 16.f, ds.y - 16.f);
+                    const ImVec2 tl(br.x - w - pad * 2.f, br.y - rpc_lines.size() * lh - lh - pad * 2.f);
+                    fgdl->AddRectFilled(tl, br, IM_COL32(0, 0, 0, 150), 6.f);
+                    fgdl->AddText(ImVec2(tl.x + pad, tl.y + pad), IM_COL32(150, 200, 255, 220), "RPC");
+                    float y = tl.y + pad + lh;
+                    for (const auto &s : rpc_lines)
+                    {
+                        fgdl->AddText(ImVec2(tl.x + pad, y), IM_COL32(160, 255, 160, 235), s.c_str());
+                        y += lh;
+                    }
+                }
+            }
             // Finalize any item-icon GPU copies requested this frame as ONE batch (one execute +
             // one fence wait) before g_command_list is reused for the ImGui render below.
             flush_item_icon_batch();
