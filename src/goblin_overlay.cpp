@@ -89,7 +89,10 @@ namespace
     // detour reads a per-present cached atomic (not world_map_open()) for the map-open tag.
     using RSSetScissorRectsFn =
         void(STDMETHODCALLTYPE *)(ID3D12GraphicsCommandList *, UINT, const D3D12_RECT *);
+    using RSSetViewportsFn =
+        void(STDMETHODCALLTYPE *)(ID3D12GraphicsCommandList *, UINT, const D3D12_VIEWPORT *);
     RSSetScissorRectsFn o_rs_set_scissor_rects = nullptr;
+    RSSetViewportsFn o_rs_set_viewports = nullptr;
     std::atomic<bool> g_scissor_hook_installed{false};
     std::atomic<bool> g_scissor_map_open{false};
 
@@ -1973,6 +1976,9 @@ namespace
     void STDMETHODCALLTYPE hk_rs_set_scissor_rects(ID3D12GraphicsCommandList *self, UINT num,
                                                    const D3D12_RECT *rects)
     {
+        static std::atomic<int> fired{0};
+        if (fired.fetch_add(1, std::memory_order_relaxed) == 0)
+            spdlog::info("[SCISSOR] detour FIRED (first RSSetScissorRects call reached us)");
         if (goblin::config::debugScissorProbe && rects && num > 0)
         {
             const bool mo = g_scissor_map_open.load(std::memory_order_relaxed);
@@ -1982,6 +1988,23 @@ namespace
                                                          rects[i].bottom, mo);
         }
         o_rs_set_scissor_rects(self, num, rects);
+    }
+
+    void STDMETHODCALLTYPE hk_rs_set_viewports(ID3D12GraphicsCommandList *self, UINT num,
+                                               const D3D12_VIEWPORT *vps)
+    {
+        static std::atomic<int> fired{0};
+        if (fired.fetch_add(1, std::memory_order_relaxed) == 0)
+            spdlog::info("[VIEWPORT] detour FIRED (first RSSetViewports call reached us)");
+        if (goblin::config::debugScissorProbe && vps && num > 0)
+        {
+            const bool mo = g_scissor_map_open.load(std::memory_order_relaxed);
+            const UINT n = num < 8 ? num : 8;
+            for (UINT i = 0; i < n; ++i)
+                goblin::worldmap_probe::note_map_viewport(vps[i].TopLeftX, vps[i].TopLeftY,
+                                                          vps[i].Width, vps[i].Height, mo);
+        }
+        o_rs_set_viewports(self, num, vps);
     }
 
     void STDMETHODCALLTYPE hk_execute_command_lists(ID3D12CommandQueue *queue, UINT count,
@@ -2007,14 +2030,25 @@ namespace
             ID3D12GraphicsCommandList *gcl = nullptr;
             if (SUCCEEDED(lists[0]->QueryInterface(IID_PPV_ARGS(&gcl))) && gcl)
             {
-                void *addr = vtable_entry(gcl, 22); // ID3D12GraphicsCommandList::RSSetScissorRects
-                if (addr &&
-                    MH_CreateHook(addr, reinterpret_cast<void *>(&hk_rs_set_scissor_rects),
-                                  reinterpret_cast<void **>(&o_rs_set_scissor_rects)) == MH_OK &&
-                    MH_EnableHook(addr) == MH_OK)
+                // Direct vtable swap — canonical D3D12 method hook. MinHook's prologue patch on the
+                // D3D12Core.dll (Agility SDK) methods did NOT redirect (RSSetViewports, which fires
+                // every frame, never reached our detour). vt is the shared ID3D12GraphicsCommandList
+                // vtable, so swapping slots 21/22 catches every command list. Pointer writes are
+                // atomic on x64 → concurrent readers on other record threads see old-or-new, both valid.
+                void **vt = *reinterpret_cast<void ***>(gcl);
+                o_rs_set_viewports = reinterpret_cast<RSSetViewportsFn>(vt[21]);
+                o_rs_set_scissor_rects = reinterpret_cast<RSSetScissorRectsFn>(vt[22]);
+                DWORD oldp = 0;
+                if (VirtualProtect(&vt[21], sizeof(void *) * 2, PAGE_READWRITE, &oldp))
                 {
+                    vt[21] = reinterpret_cast<void *>(&hk_rs_set_viewports);
+                    vt[22] = reinterpret_cast<void *>(&hk_rs_set_scissor_rects);
+                    DWORD tmp = 0;
+                    VirtualProtect(&vt[21], sizeof(void *) * 2, oldp, &tmp);
                     g_scissor_hook_installed.store(true);
-                    spdlog::info("[SCISSOR] RSSetScissorRects detour installed @ {:p}", addr);
+                    spdlog::info("[SCISSOR] vtable-swap installed: vt={:p} vp_orig={:p} sc_orig={:p}",
+                                 static_cast<void *>(vt), reinterpret_cast<void *>(o_rs_set_viewports),
+                                 reinterpret_cast<void *>(o_rs_set_scissor_rects));
                 }
                 gcl->Release();
             }

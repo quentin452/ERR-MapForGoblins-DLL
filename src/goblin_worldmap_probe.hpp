@@ -175,6 +175,10 @@ namespace goblin::worldmap_probe
     // (open/close the map, diff). Thread-safe (records on many threads). Gated by debug_scissor_probe.
     void note_map_scissor(int left, int top, int right, int bottom, bool map_open);
 
+    // Companion to note_map_scissor for the RSSetViewports detour (D3D12_VIEWPORT floats). Logs each
+    // distinct (viewport, map_open) once as [VIEWPORT]. Gated by debug_scissor_probe.
+    void note_map_viewport(float x, float y, float w, float h, bool map_open);
+
     // No-restart fix for mid-session resolution / display-mode changes: edge-triggered
     // call to ER's complete swapchain re-apply (FUN_1419ed440 — release+ResizeBuffers+
     // recreate all render targets), fixing windowed/fullscreen/borderless. Render-thread

@@ -1314,6 +1314,28 @@ void note_map_scissor(int left, int top, int right, int bottom, bool map_open)
                     top, right, bottom, right - left, bottom - top);
 }
 
+// TASK B2 sink (companion to note_map_scissor) — the RSSetViewports detour. The viewport is the
+// actual render rectangle for a draw; the map layer's viewport is a rect seen with mapopen=1 but
+// never mapopen=0. D3D12_VIEWPORT is floats; dedup on the integer-rounded {x,y,w,h}.
+void note_map_viewport(float x, float y, float w, float h, bool map_open)
+{
+    if (!g_log) return;
+    static std::mutex mtx;
+    static std::unordered_set<uint64_t> seen[2];
+    const uint64_t key = (static_cast<uint64_t>(static_cast<uint16_t>(static_cast<int>(x)))) |
+                         (static_cast<uint64_t>(static_cast<uint16_t>(static_cast<int>(y))) << 16) |
+                         (static_cast<uint64_t>(static_cast<uint16_t>(static_cast<int>(w))) << 32) |
+                         (static_cast<uint64_t>(static_cast<uint16_t>(static_cast<int>(h))) << 48);
+    bool is_new;
+    {
+        std::lock_guard<std::mutex> lk(mtx);
+        is_new = seen[map_open ? 1 : 0].insert(key).second;
+    }
+    if (is_new)
+        g_log->info("[VIEWPORT] mapopen={} xy=({:.0f},{:.0f})  wh=({:.0f},{:.0f})", map_open ? 1 : 0,
+                    x, y, w, h);
+}
+
 bool set_view_center(float mU, float mV, float minZoom)
 {
     // Reset the diagnostic snapshot for this call (the F1 "Locate debug" overlay reads it).

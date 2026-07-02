@@ -90,12 +90,26 @@ bounds), `+0x350` (map-art extent) — both marker space.
   fixed-canvas architecture ⇒ the native clip is likely an **inline D3D12 scissor** set at draw time,
   not a rect parked on a struct → escalate to B2.
 
-**B2 — command-list scissor sampler (BUILT 2026-07-03, not yet run):** we already hook
-`ExecuteCommandLists` + capture the queue. `debug_scissor_probe` lazily installs an
-`RSSetScissorRects` detour (vtable slot 22 on `ID3D12GraphicsCommandList`, shared → one MinHook
-covers all lists) from the first command list. Each distinct scissor rect is logged once as
-`[SCISSOR] mapopen=0/1` via `note_map_scissor` (thread-safe dedup; records on many threads; map-open
-state read from a per-present cached atomic). **Run recipe:** enable `debug_scissor_probe`, open the
-map, pan, close it, repeat a few times → the rect(s) that appear with `mapopen=1` but NEVER
-`mapopen=0` are the map-layer scissor candidates. **B3** (Ghidra on Scaleform `02_120_worldmap.gfx`)
-only if B2 is inconclusive.
+**B2 — command-list scissor/viewport sampler — DEAD END (run 2026-07-03), pivoted to B3.**
+`debug_scissor_probe` hooks `RSSetScissorRects` (vtable slot 22) + `RSSetViewports` (slot 21) on
+`ID3D12GraphicsCommandList` from the first submitted list, tags each rect `mapopen=0/1`, dedups, logs
+`[SCISSOR]`/`[VIEWPORT]`. What we learned running it:
+- The hooked addresses live in **`D3D12Core.dll`** — ER ships the **Agility SDK** (two D3D12 runtimes:
+  OS `d3d12.dll` stub + Agility `D3D12Core.dll` doing the real work).
+- **MinHook-on-function did NOT redirect** these D3D12Core methods (install returned `MH_OK`, but the
+  detour never fired — not even `RSSetViewports`, which runs every frame).
+- Switched to a **direct vtable-swap** (canonical D3D12 method hook: overwrite the slot pointer the
+  engine reads) — the swap write succeeded (`vt=0x7fff937ba850`), but the detour **still never fired**,
+  including for viewports.
+- Conclusion: the engine's per-frame render calls don't read the vtable slot we swapped → either it
+  records scene/UI command lists with a **different vtable** than the `lists[0]` we sampled, or it
+  **pre-records command lists and re-submits** them (so scissor/viewport is set once, before our hook).
+  A "swap every distinct vtable + log distinct vtables" pass would disambiguate, but per the user's
+  call we **pivot to B3** rather than drill further into the command-list mechanism.
+
+The B2 probe (`debug_scissor_probe`, `note_map_scissor`/`note_map_viewport`, the two detours +
+vtable-swap in `hk_execute_command_lists`) stays committed as documented scaffolding — OFF by default,
+non-firing; do not re-attempt the MinHook path.
+
+**B3 — Ghidra static RE of the Scaleform map-movie clip — ACTIVE.** See
+`worldmap_native_clip_b3_scaleform_re_prompt.md`.
