@@ -1,19 +1,25 @@
 # Settings sweep — classify every F1/ini knob (keep / hardcode / dev-quarantine / delete)
 
-Status: **Phase 0+1+2 LANDED + IN-GAME CONFIRMED; Phase 3 LANDED (build-verified, in-game verify
-pending).** Author 2026-07-02.
+Status: **Phase 0+1+2 LANDED + IN-GAME CONFIRMED; Phase 3 LANDED + IN-GAME VERIFIED (2026-07-02,
+ERR/Proton).** Author 2026-07-02.
 
 ### Phase 3 (commits 369b619 grace, 360e3ab projection)
 - **FLAG-2 grace baked-atlas — DELETED.** graceGpuSprite hardcoded true; the CPU baked-atlas grace
   draw branch removed; sprite-not-harvested falls to the universal circle (native → circle, no baked
   middle tier). Config var dropped everywhere; the graceOverlay=OFF path keeps its "show_graces"
-  atlas key. **In-game verify pending:** discovered/undiscovered graces still correct, no vanish.
+  atlas key. **In-game VERIFIED (2026-07-02): PASS** — live grace sprites render crisp on discovered
+  parchment (gold swirl, not circle) and over fog when zoomed out (undiscovered); no vanish at map open.
 - **FLAG-4 live projection — knob REMOVED, fallback KEPT (correction to the original plan).** The
   baked projection is NOT fully deletable: the engine ships no converter for m19 Chapel + DLC
   unplaced areas, which rely on the baked affine, plus the pre-map-open window. So liveProjection is
   hardcoded true (always try live) and the baked `world_to_mapspace`/LEGACY_CONV fallback stays as
   the fallback within project_marker/project_raw. Only the config knob + branch gate + F1 checkbox
-  removed. **In-game verify pending:** dungeon/UG/DLC/Chapel placement unchanged, no pop-in.
+  removed. **In-game VERIFIED (2026-07-02): PASS for overworld** — dungeon/landmark glyphs placed
+  correctly, no map-open pop-in (markers at final projected positions before the parchment faded in,
+  no baked→live jump). UG/DLC/Chapel pages NOT reachable on the test save (Deeproot etc. "non
+  découvert" → locate clamps, F2 behavior); those hit the UNCHANGED baked-projection fallback code
+  (only the toggle was removed, not the fallback math) → ~nil regression risk, verify opportunistically
+  when a save with underground/DLC discovered is available.
 
 ### What landed (commits 3368a20 + this one)
 - **Phase 0** — ini migration handles cross-section key MOVES (global-unique-key scan): a relocated

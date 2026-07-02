@@ -121,9 +121,18 @@ via `pause 0` before scripting. Next unlocked: worldmap-target Phase 4 loops (sp
    baked-atlas CPU path DELETED (live sprite only → circle fallback). FLAG-4: liveProjection knob
    removed (hardcoded true) but the baked projection FALLBACK is KEPT — it is load-bearing for
    unplaced areas (m19 Chapel, DLC) + the pre-map-open window; only the knob/branch-gate/checkbox
-   went. **NEXT: (a) in-game verify Phase 3 — graces (disc/undisc, no vanish) + dungeon/UG/DLC/Chapel
-   placement unchanged + no map-open pop-in; (b) minor tidies: [Goblin] diag-key relocation + the
-   stray dev widgets (Baked-only, 4 cluster DEBUG checkboxes) → dev panel area.** All 8 ⚠FLAGs
+   went. **(a) Phase 3 IN-GAME VERIFIED (2026-07-02, ERR/Proton via RPC loop) — PASS:** live grace
+   sprites render crisp on discovered parchment (Stormveil-gate + road graces, gold swirl, not circle,
+   not vanished) AND over fog on the zoomed-out map (undiscovered, no vanish); no map-open pop-in
+   (markers already at final projected positions before the parchment texture faded in — no baked→live
+   jump); overworld dungeon/landmark glyphs placed correctly. F1 panel confirms the removed knobs are
+   gone: no grace "GPU sprite vs CPU" sub-checkbox (only "Grâces overlay" master kept), no projection
+   knob. NOT visually reached: UG/DLC/Chapel pages — Deeproot etc. are "non découvert" on the test save
+   so locate clamps (F2 behavior) and the underground page isn't accessible; those exercise the
+   UNCHANGED baked-projection fallback code (Phase 3 removed only the toggle, not the fallback math →
+   ~nil regression risk). **NEXT: (b) minor tidies: [Goblin] diag-key relocation + the
+   stray dev widgets (Baked-only, Icon-migration Baked→GPU section, 4 cluster DEBUG checkboxes — all
+   still in the main panel, confirmed present this run) → dev panel area.** All 8 ⚠FLAGs
    resolved (see plan). Original raw notes below:
    The F1 panel + ini carry many
    dev-era knobs (diag_*, debug_*, baked-only, locate-debug, sprite calib offsets…) AND — the
