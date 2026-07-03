@@ -267,6 +267,32 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
         ImGui::TextDisabled("%s", tr("North-up. Hidden while the world map is open. Save to INI to persist."));
     }
 
+    // Enemy-name HUD (mob name on the game's own enemy HP bar). Live; persists.
+    const bool show_enemy = f.match("enemy bars mob name health bar hp label lead position sync "
+                                    "offset size scale");
+    if (f.filtering && show_enemy) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+    if (show_enemy && ImGui::CollapsingHeader(tr("Enemy bars (mob names)")))
+    {
+        ImGui::Checkbox(tr("Show mob names on the enemy HP bar"),
+                        goblin::overlay_api::cfg_enemyNames_ptr());
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", tr("Label the game's own non-boss enemy health bar with the mob's\n"
+                                       "name (read live from the active install). Bosses are already\n"
+                                       "named by the game. A mob with no name in the game data stays\n"
+                                       "unlabeled."));
+        ImGui::SliderFloat(tr("Position sync (lead)"), goblin::overlay_api::cfg_enemyNameLead_ptr(),
+                           0.0f, 5.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", tr("How far the name leads toward where the bar is moving, so it\n"
+                                       "tracks the bar when the camera pans. Raise if the name trails\n"
+                                       "the bar, lower if it overshoots. 0 = raw (slightly lagging)."));
+        ImGui::SliderFloat(tr("Offset above bar (px)"), goblin::overlay_api::cfg_enemyNameOffsetY_ptr(),
+                           -40.0f, 40.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::SliderFloat(tr("Text size"), goblin::overlay_api::cfg_enemyNameScale_ptr(),
+                           0.5f, 3.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::TextDisabled("%s", tr("Live. Save to INI to persist."));
+    }
+
     // User-drawn "no overlay icons here" zones — self-service fix for icons drawing over
     // the game's own map UI (we render post-present, always on top). Stored in 1920x1080
     // virtual-canvas units so the zones hold at every resolution.

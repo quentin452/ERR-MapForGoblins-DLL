@@ -198,20 +198,25 @@ namespace
         int n = goblin::overlay_api::get_enemy_bar_labels(labels, 8);
         if (n <= 0)
             return;
-        const float scale = io.DisplaySize.x / 1920.0f;
+        const float vscale = io.DisplaySize.x / 1920.0f; // game 1920x1080 space -> backbuffer
+        const float tscale = *goblin::overlay_api::cfg_enemyNameScale_ptr();
+        const float offY = *goblin::overlay_api::cfg_enemyNameOffsetY_ptr() * vscale;
+        ImFont *font = ImGui::GetFont();
+        const float fontSize = ImGui::GetFontSize() * (tscale > 0.f ? tscale : 1.f);
         ImDrawList *fg = ImGui::GetForegroundDrawList();
         for (int i = 0; i < n; ++i)
         {
             if (labels[i].name[0] == '\0')
                 continue;
-            const float sx = labels[i].sx * scale;
-            const float sy = labels[i].sy * scale;
+            const float sx = labels[i].sx * vscale;
+            const float sy = labels[i].sy * vscale;
             const char *txt = labels[i].name;
-            const ImVec2 ts = ImGui::CalcTextSize(txt);
-            // Centered on the bar's x, just above it. Shadow first for legibility over the world.
-            const ImVec2 p(sx - ts.x * 0.5f, sy - ts.y - 2.0f * scale);
-            fg->AddText(ImVec2(p.x + 1.0f, p.y + 1.0f), IM_COL32(0, 0, 0, 205), txt);
-            fg->AddText(p, IM_COL32(255, 255, 255, 235), txt);
+            ImVec2 ts = ImGui::CalcTextSize(txt);
+            ts.x *= tscale; ts.y *= tscale;
+            // Centered on the bar's x, `offY` above the bar top. Shadow first for legibility.
+            const ImVec2 p(sx - ts.x * 0.5f, sy - ts.y - offY);
+            fg->AddText(font, fontSize, ImVec2(p.x + 1.0f, p.y + 1.0f), IM_COL32(0, 0, 0, 205), txt);
+            fg->AddText(font, fontSize, p, IM_COL32(255, 255, 255, 235), txt);
         }
     }
 

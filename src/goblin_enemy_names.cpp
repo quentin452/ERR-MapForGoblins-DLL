@@ -36,6 +36,7 @@
 #include <cstring>
 #include <string>
 #include <unordered_map>
+#include <chrono>
 
 namespace
 {
@@ -100,7 +101,7 @@ void resolve_once()
 struct BarProbe
 {
     int count;
-    struct { float sx, sy; int npcParam, model; } e[kEntityBars];
+    struct { float sx, sy; int npcParam, model; uint64_t handle; } e[kEntityBars];
 };
 
 // Raw derefs + the opaque GetChrInsFromHandle CALL live in a noinline body so clang-cl keeps the
@@ -133,6 +134,7 @@ __declspec(noinline) void probe_bars_body(void **feman_slot, void **wcm_slot, Ge
         pr->e[k].sy = *reinterpret_cast<float *>(ent + kOffScreenY);
         pr->e[k].npcParam = *reinterpret_cast<int *>(cb + kChrOffNpc);
         pr->e[k].model    = *reinterpret_cast<int *>(cb + kChrOffModel);
+        pr->e[k].handle   = handle;
         pr->count = k + 1;
     }
 }
@@ -161,18 +163,24 @@ std::string strip_codex_prefix(const std::string &s)
 // Resolve the display name for an enemy from the ACTIVE install (tiers 1-3; "" = nameless). Cached
 // per npcParamId — computed at most once per distinct enemy param (tier 3 does a 1000-wide FMG scan
 // on first sight of a vanilla boss, so caching matters).
-const std::string &resolve_enemy_name(int npcParam, int model)
+struct ResolvedName { std::string name; int tier; };
+
+const ResolvedName &resolve_enemy_name(int npcParam, int model)
 {
-    static std::unordered_map<int, std::string> cache;
+    static std::unordered_map<int, ResolvedName> cache;
     auto it = cache.find(npcParam);
     if (it != cache.end()) return it->second;
 
     std::string name;
+    int tier = 0;
 
     // Tier 1: NpcParam.nameId -> NpcName.
     uint8_t team = 0; int32_t nameId = 0;
     if (goblin::npc_team_and_name(static_cast<uint32_t>(npcParam), &team, &nameId) && nameId > 0)
+    {
         name = goblin::lookup_text_utf8(nameId + kNpcNameBand);
+        if (!name.empty()) tier = 1;
+    }
 
     // Tier 2: TutorialTitle bestiary codex (id = model*1000 + variant*100 + {10,4}; variant then
     // variant-0 fallback since codex sub-entries don't always match the param variant digit).
@@ -189,7 +197,7 @@ const std::string &resolve_enemy_name(int npcParam, int model)
                 long id = kTutorialBand + base + suf;
                 if (id <= 0 || id > 0x7fffffff) continue;
                 std::string t = goblin::lookup_text_utf8(static_cast<int32_t>(id));
-                if (!t.empty()) { name = strip_codex_prefix(t); break; }
+                if (!t.empty()) { name = strip_codex_prefix(t); tier = 2; break; }
             }
             if (!name.empty()) break;
         }
@@ -208,15 +216,73 @@ const std::string &resolve_enemy_name(int npcParam, int model)
             for (uint32_t slot : kNpcNameSlots)
             {
                 std::string t = goblin::raw_message_utf8(slot, static_cast<uint32_t>(id));
-                if (!t.empty()) { name = t; break; }
+                if (!t.empty()) { name = t; tier = 3; break; }
             }
         }
     }
 
-    auto [ins, _] = cache.emplace(npcParam, std::move(name));
+    auto [ins, _] = cache.emplace(npcParam, ResolvedName{std::move(name), tier});
+    return ins->second;
+}
+
+// DIAG only: run the tier-3 NpcName boss-band scan for a model in isolation (cached), so we can
+// confirm the tier-3 path resolves field bosses even on ERR where tier 2 wins the actual resolution.
+const std::string &tier3_probe(int model)
+{
+    static std::unordered_map<int, std::string> cache;
+    auto it = cache.find(model);
+    if (it != cache.end()) return it->second;
+    std::string name;
+    if (model > 0)
+    {
+        long modelBase = kBossBandBase + static_cast<long>(model) * 1000;
+        for (int suffix = 0; suffix < 1000 && name.empty(); ++suffix)
+        {
+            long id = modelBase + suffix;
+            if (id <= 0 || id > 0x7fffffff) break;
+            for (uint32_t slot : kNpcNameSlots)
+            {
+                std::string t = goblin::raw_message_utf8(slot, static_cast<uint32_t>(id));
+                if (!t.empty()) { name = t; break; }
+            }
+        }
+    }
+    auto [ins, _] = cache.emplace(model, std::move(name));
     return ins->second;
 }
 } // namespace
+
+// Position-fixing: the game's entityHpBars.screenPos is a SNAPSHOT updated at the game UI tick and
+// lags the actual (per-render-frame) HP bar when the camera pans (same desync PostureBarMod documents).
+// Extrapolate the label forward by the bar's on-screen velocity: track per entityHandle the last
+// position + the time it last CHANGED, derive velocity from the change, and lead the draw position by
+// velocity * time-since-change. A stopped bar (no change for a while) leads by nothing (velocity kept
+// but the guard zeroes the lead once stale) so it settles on the real position. Present-thread only.
+struct PosTrack { float px, py, vx, vy; uint64_t tChangeMs; bool has; };
+
+void apply_pos_fix(uint64_t handle, float sx, float sy, float &ex, float &ey)
+{
+    static std::unordered_map<uint64_t, PosTrack> track;
+    using clock = std::chrono::steady_clock;
+    uint64_t now = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(clock::now().time_since_epoch()).count());
+
+    const float kLead = goblin::config::enemyNameLead; // extrapolation strength (F1 slider, live)
+    constexpr uint64_t kStaleMs = 60; // beyond this since the last change, treat the bar as stopped
+
+    PosTrack &t = track[handle];
+    if (!t.has) { t = {sx, sy, 0.f, 0.f, now, true}; ex = sx; ey = sy; return; }
+    if (sx != t.px || sy != t.py)
+    {
+        uint64_t dt = now - t.tChangeMs;
+        if (dt > 0 && dt < 500) { t.vx = (sx - t.px) / (float)dt; t.vy = (sy - t.py) / (float)dt; }
+        t.px = sx; t.py = sy; t.tChangeMs = now;
+    }
+    uint64_t elapsed = now - t.tChangeMs;
+    if (elapsed > kStaleMs) { ex = sx; ey = sy; return; } // stopped → no lead, sit on the real pos
+    ex = sx + t.vx * (float)elapsed * kLead;
+    ey = sy + t.vy * (float)elapsed * kLead;
+}
 
 int goblin::get_enemy_bar_labels(EnemyBarLabel *buf, int max)
 {
@@ -230,19 +296,23 @@ int goblin::get_enemy_bar_labels(EnemyBarLabel *buf, int max)
     int out = 0;
     for (int i = 0; i < pr.count && out < max; ++i)
     {
-        const std::string &nm = resolve_enemy_name(pr.e[i].npcParam, pr.e[i].model);
-        if (nm.empty()) continue;   // true generic with no name in the active install → draw nothing
-        buf[out].sx = pr.e[i].sx;
-        buf[out].sy = pr.e[i].sy;
-        std::snprintf(buf[out].name, sizeof(buf[out].name), "%s", nm.c_str());
+        const ResolvedName &rn = resolve_enemy_name(pr.e[i].npcParam, pr.e[i].model);
+        if (rn.name.empty()) continue;  // true generic with no name in the active install → draw nothing
+        apply_pos_fix(pr.e[i].handle, pr.e[i].sx, pr.e[i].sy, buf[out].sx, buf[out].sy);
+        std::snprintf(buf[out].name, sizeof(buf[out].name), "%s", rn.name.c_str());
         ++out;
     }
 
     if (goblin::config::debugLogging && pr.count > 0)
         for (int i = 0; i < pr.count; ++i)
-            spdlog::info("[ENEMYBAR] vis={} named={} | [{}] npc={} model={} name='{}'",
-                         pr.count, out, i, pr.e[i].npcParam, pr.e[i].model,
-                         resolve_enemy_name(pr.e[i].npcParam, pr.e[i].model));
+        {
+            const ResolvedName &rn = resolve_enemy_name(pr.e[i].npcParam, pr.e[i].model);
+            // Independent tier-3 probe (diag only): on ERR tier 2 wins first, so tier=3 never shows in
+            // normal play — this proves the tier-3 boss-band code resolves the field bosses anyway.
+            spdlog::info("[ENEMYBAR] vis={} named={} | [{}] npc={} model={} tier={} name='{}' tier3probe='{}'",
+                         pr.count, out, i, pr.e[i].npcParam, pr.e[i].model, rn.tier, rn.name,
+                         tier3_probe(pr.e[i].model));
+        }
 
     return out;
 }
