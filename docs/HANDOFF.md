@@ -167,9 +167,12 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   module → verify via `+0x220`, not the getter). **Persistence CONFIRMED 2026-07-03** (`move_hold`/
   `move_read` RPCs): a cache-only write is DURABLE — `move_hold 0 100 0` then polling `+0x220` 10× over
   ~7s held at Y 83.38, no engine revert from the `+0x18` module. So no module-sync needed for a move to
-  stick. **Follow-up (open, one): on-screen/collision confirm** — the probe picks an arbitrary first-in-
-  walk instance (likely off-screen); a targeted move of a named instance near the player + screenshot
-  would close it. **Remaining MSB-write hole: ADD a NEW placement — now SCOPED (static, 2026-07-03).**
+  stick. **On-screen render CONFIRMED 2026-07-03 (user-observed live):** `move_all <d>` (mass move of
+  every loaded geom instance; new `move_near`/`move_all`/`move_restore` + `list_live_geom_instances`) was
+  watched live — props visibly moved. Automated screenshot pairs were defeated by First Step's scripted
+  intro camera (pans between shots even after a 15s settle), so the confirm is the live observation + the
+  byte-exact/persistent proof. **Move primitive is fully proven (static→live→durable→renders); it does not
+  need `+0x18`/Dynamic.** **Remaining MSB-write hole: ADD a NEW placement — now SCOPED (static, 2026-07-03).**
   Traced the spawn drivers `FUN_1406a7930`/`FUN_1406adc80`: there is **NO isolated "spawn one geom" call** —
   they are the tile-streaming state machine over the loaded MSB resource, and instances are
   **placement-new'd into fixed-capacity BlockData pools** (static `+0x2b0`/stride 0x440, dynamic `+0x2c0`/

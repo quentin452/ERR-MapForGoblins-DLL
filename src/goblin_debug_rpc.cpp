@@ -402,7 +402,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read"
+                       " | mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -995,7 +995,37 @@ namespace goblin::debug_rpc
             // move_hold <dx> <dy> <dz> — like move_asset but does NOT restore; remembers the instance.
             // move_read — re-read the held instance's +0x220 translation. Poll it to see if the engine
             // reverts a cache-only write over frames (the move-persistence probe).
-            if (cmd == "move_hold" || cmd == "move_read")
+            // move_all <dx dy dz> — move EVERY loaded geom instance by the delta (mass visual confirm).
+            if (cmd == "move_all")
+            {
+                std::string xs = next_token(rest), ys = next_token(rest), zs = next_token(rest);
+                float dx = 0, dy = 0, dz = 0;
+                try { dx = std::stof(xs); dy = std::stof(ys); dz = std::stof(zs); }
+                catch (...) { return "err usage: move_all <dx> <dy> <dz>"; }
+                auto r = goblin::geom_move::move_all(dx, dy, dz);
+                char b[96];
+                if (!r.ok) { std::snprintf(b, sizeof(b), "err move_all: %s", r.err); return std::string(b); }
+                std::snprintf(b, sizeof(b), "ok move_all moved=%llu instances", (unsigned long long)r.inst);
+                return std::string(b);
+            }
+            // move_near <dx dy dz> — move the geom instance NEAREST the player (on-screen visual confirm).
+            if (cmd == "move_near")
+            {
+                std::string xs = next_token(rest), ys = next_token(rest), zs = next_token(rest);
+                float dx = 0, dy = 0, dz = 0;
+                try { dx = std::stof(xs); dy = std::stof(ys); dz = std::stof(zs); }
+                catch (...) { return "err usage: move_near <dx> <dy> <dz>"; }
+                float dist = -1;
+                auto r = goblin::geom_move::move_near(dx, dy, dz, dist);
+                char b[224];
+                if (!r.ok) { std::snprintf(b, sizeof(b), "err move_near: %s", r.err); return std::string(b); }
+                std::snprintf(b, sizeof(b),
+                              "ok move_near inst=%#llx dist=%.2f before=(%.2f,%.2f,%.2f) now=(%.2f,%.2f,%.2f)",
+                              (unsigned long long)r.inst, dist, r.before[0], r.before[1], r.before[2],
+                              r.moved[0], r.moved[1], r.moved[2]);
+                return std::string(b);
+            }
+            if (cmd == "move_hold" || cmd == "move_read" || cmd == "move_restore")
             {
                 goblin::geom_move::MoveResult r;
                 if (cmd == "move_hold")
@@ -1006,6 +1036,8 @@ namespace goblin::debug_rpc
                     catch (...) { return "err usage: move_hold <dx> <dy> <dz>"; }
                     r = goblin::geom_move::move_hold(dx, dy, dz);
                 }
+                else if (cmd == "move_restore")
+                    r = goblin::geom_move::restore_held();
                 else
                     r = goblin::geom_move::read_held();
                 char b[224];

@@ -57,4 +57,8 @@ namespace goblin::collected
     /// First live CSWorldGeomIns pointer from CSWorldGeomMan (a loaded-tile geom instance), or nullptr
     /// if none is loaded. Read-only, safe. For the dev geom transform-setter probe (move_asset RPC).
     void *first_live_geom_instance();
+
+    /// Fill `out` with up to `max` live geom instance pointers (all loaded tiles). Returns the count.
+    /// For the geom-move nearest-to-player selection (move_near RPC). Read-only, safe.
+    size_t list_live_geom_instances(void **out, size_t max);
 };

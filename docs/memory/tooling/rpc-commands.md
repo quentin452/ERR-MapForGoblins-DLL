@@ -108,6 +108,11 @@ while a human is actively using kb/mouse (`rpc_input_idle=1` in `status`; ini `r
 | `equip_dump` | `equip_dump <off(0x..)> <len>` | Hex-dump `EquipGameData+off` (len ≤ 256). |
 | `equip_fwa` | `equip_fwa <off(0x..)> <len> [r\|w]` | Arm FWA on `EquipGameData+off`. |
 | `move_asset` | `move_asset <dx> <dy> <dz>` | LIVE test of the geom transform setter (`vtable[0xd0]`): moves a live geom instance by the delta via the engine's own virtual setter, reads back, restores. Reports `before/moved/restored` translations. Proves the MSB-write-free move primitive (`docs/re/windows_msb_placement_write_re_findings.md`). |
+| `move_hold` | `move_hold <dx> <dy> <dz>` | Like `move_asset` but does NOT restore; remembers the instance (persistence probe). |
+| `move_read` | `move_read` | Re-read the held instance's `+0x220` translation (poll to check the move persists). |
+| `move_restore` | `move_restore` | Restore the held instance to its remembered pre-move transform. |
+| `move_near` | `move_near <dx> <dy> <dz>` | Move the geom instance NEAREST the player (for an on-screen visual). NB `+0x220` is block-LOCAL per tile, so cross-tile "nearest" is approximate. |
+| `move_all` | `move_all <dx> <dy> <dz>` | Move EVERY loaded geom instance by the delta (mass visual confirm; dirties the world). |
 
 ## Extending
 

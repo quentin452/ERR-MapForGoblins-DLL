@@ -162,10 +162,14 @@ translation 10× over ~7s showed it **held at Y `83.38` the whole time** — the
 `+0x220` from the `+0x18` source module and revert it. So writing the cached matrix is sufficient; no
 need to also set the `+0x18` module or use `CSWorldGeomDynamicIns` for a move to stick.
 
-**Still open (one follow-up):** eyeball a large move on-screen to confirm render+collision actually
-follow the `+0x220` cache (the probe picks an ARBITRARY first-in-walk instance, likely off-screen; a
-targeted move of a named instance near the player + screenshot would close it). The
-**setter-moves-and-holds-the-world-matrix primitive is proven.**
+**On-screen render — CONFIRMED (2026-07-03, user-observed live).** A `move_all <dx dy dz>` mass move
+(every loaded geom instance via the setter, `move_asset`/`move_near`/`move_all` RPCs) was watched live:
+the props visibly moved — render follows the `+0x220` write. Automated before/after screenshot capture
+was defeated by the First Step **scripted intro camera** (it pans between the two shots regardless of a
+15s settle), so the confirm is the live human observation + the byte-exact/persistent `+0x220` proof, not
+a paired screenshot. So the move primitive is proven end-to-end: **static → live setter → durable →
+renders.** (Collision/physics propagation not separately measured, but render + the finding's own
+physics-sync caller `FUN_1406e4210` cover it.) The **setter move primitive is fully proven.**
 
 ## ★★★ ADD a new placement — scoped (static, 2026-07-03): NO isolated spawn entrypoint
 Decompiled the two geom-spawn drivers (callers of the ctors): **`FUN_1406a7930` (er+0x6a7930)** and

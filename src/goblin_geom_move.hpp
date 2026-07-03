@@ -33,4 +33,18 @@ namespace goblin::geom_move
     // pre-move value). Lets a poll loop watch whether the engine reverts a cache-only write over frames.
     // ok=false if nothing is held or the instance is no longer readable.
     MoveResult read_held();
+
+    // Move the geom instance NEAREST the player (by +0x220 translation vs the player physics pos) by
+    // (dx,dy,dz) via the setter, no restore — for an on-screen visual confirm. Held (move_read/restore).
+    // `dist` = distance to the picked instance. ok=false if the player pos or no instance resolves.
+    MoveResult move_near(float dx, float dy, float dz, float &dist);
+
+    // Restore the held instance to its remembered pre-move transform (un-dirty after a hold/near move).
+    MoveResult restore_held();
+
+    // Mass move: apply (dx,dy,dz) to EVERY loaded geom instance via the setter (no restore). For an
+    // on-screen visual confirm without solving the per-tile→world frame (whatever prop is in view
+    // moves). Returns the count moved in `.inst` (reused as a counter). Dev probe — dirties the world.
+    MoveResult move_all(float dx, float dy, float dz);
 }
+// (declared once; single definition in the .cpp)

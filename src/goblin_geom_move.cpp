@@ -10,7 +10,8 @@
 
 #include <spdlog/spdlog.h>
 
-#include "goblin_collected.hpp"  // first_live_geom_instance — proven live CSWorldGeomIns source
+#include "goblin_collected.hpp"  // first_live_geom_instance / list_live_geom_instances
+#include "goblin_inject.hpp"      // get_player_world_pos (nearest-to-player selection)
 
 namespace
 {
@@ -166,6 +167,62 @@ namespace goblin::geom_move
         return r;
     }
 
+    MoveResult move_near(float dx, float dy, float dz, float &dist)
+    {
+        dist = -1.0f;
+        MoveResult r;
+        uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
+        if (!base) { std::snprintf(r.err, sizeof(r.err), "eldenring.exe base not found"); return r; }
+        float px = 0, py = 0, pz = 0;
+        if (!goblin::get_player_world_pos(px, py, pz))
+        {
+            std::snprintf(r.err, sizeof(r.err), "player pos unresolved (in-world?)");
+            return r;
+        }
+        // Enumerate loaded geom instances; pick the one whose +0x220 translation is nearest the player.
+        static void *insts[4096];
+        size_t cnt = goblin::collected::list_live_geom_instances(insts, 4096);
+        if (!cnt) { std::snprintf(r.err, sizeof(r.err), "no live geom instances"); return r; }
+        void *best = nullptr;
+        float best_d2 = 1e30f;
+        float best_m[16] = {};
+        for (size_t i = 0; i < cnt; i++)
+        {
+            float cache[16] = {};
+            if (!rpm((char *)insts[i] + 0x220, cache, sizeof(cache)) || !finite3(cache)) continue;
+            float ddx = cache[12] - px, ddy = cache[13] - py, ddz = cache[14] - pz;
+            float d2 = ddx * ddx + ddy * ddy + ddz * ddz;
+            if (d2 < best_d2) { best_d2 = d2; best = insts[i]; memcpy(best_m, cache, sizeof(best_m)); }
+        }
+        if (!best) { std::snprintf(r.err, sizeof(r.err), "no readable instance near player"); return r; }
+        dist = std::sqrt(best_d2);
+        r.inst = (uint64_t)best;
+        rpm(best, &r.vtable, 8);
+        r.before[0] = best_m[12]; r.before[1] = best_m[13]; r.before[2] = best_m[14];
+
+        // Build the moved matrix from the getter (preserves rotation/scale), translation += delta.
+        auto getter = (GetterFn)(base + GETTER_RVA);
+        float m[16] = {};
+        if (!call_getter(getter, best, m) || !finite3(m)) memcpy(m, best_m, sizeof(m));
+        float moved_mat[16];
+        memcpy(moved_mat, m, sizeof(moved_mat));
+        moved_mat[12] = r.before[0] + dx; moved_mat[13] = r.before[1] + dy; moved_mat[14] = r.before[2] + dz;
+        void **vtbl = *(void ***)best;
+        SetterFn setter = (SetterFn)vtbl[SETTER_VSLOT];
+        if (!call_setter(setter, best, moved_mat)) { std::snprintf(r.err, sizeof(r.err), "setter faulted"); return r; }
+        float cache[16] = {};
+        rpm((char *)best + 0x220, cache, sizeof(cache));
+        r.moved[0] = cache[12]; r.moved[1] = cache[13]; r.moved[2] = cache[14];
+
+        g_held = best;
+        g_held_before[0] = r.before[0]; g_held_before[1] = r.before[1]; g_held_before[2] = r.before[2];
+        r.ok = true;
+        spdlog::info("[GEOMMOVE] NEAR inst={:#x} dist={:.2f} before=({:.2f},{:.2f},{:.2f}) moved=({:.2f},"
+                     "{:.2f},{:.2f})", r.inst, dist, r.before[0], r.before[1], r.before[2], r.moved[0],
+                     r.moved[1], r.moved[2]);
+        return r;
+    }
+
     MoveResult read_held()
     {
         MoveResult r;
@@ -180,6 +237,57 @@ namespace goblin::geom_move
         }
         r.moved[0] = cache[12]; r.moved[1] = cache[13]; r.moved[2] = cache[14];
         r.restored[0] = cache[12]; r.restored[1] = cache[13]; r.restored[2] = cache[14];  // current == moved
+        r.ok = true;
+        return r;
+    }
+
+    MoveResult move_all(float dx, float dy, float dz)
+    {
+        MoveResult r;
+        uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
+        if (!base) { std::snprintf(r.err, sizeof(r.err), "eldenring.exe base not found"); return r; }
+        static void *insts[4096];
+        size_t cnt = goblin::collected::list_live_geom_instances(insts, 4096);
+        if (!cnt) { std::snprintf(r.err, sizeof(r.err), "no live geom instances"); return r; }
+        auto getter = (GetterFn)(base + GETTER_RVA);
+        int moved = 0;
+        for (size_t i = 0; i < cnt; i++)
+        {
+            void *inst = insts[i];
+            float m[16] = {};
+            if (!call_getter(getter, inst, m) || !finite3(m)) continue;
+            m[12] += dx; m[13] += dy; m[14] += dz;  // uniform per-instance delta (own block-local frame)
+            void **vtbl = *(void ***)inst;
+            SetterFn setter = (SetterFn)vtbl[SETTER_VSLOT];
+            if (call_setter(setter, inst, m)) ++moved;
+        }
+        r.inst = (uint64_t)moved;  // reuse .inst as the moved count
+        r.ok = true;
+        spdlog::info("[GEOMMOVE] ALL moved {}/{} instances by ({},{},{})", moved, cnt, dx, dy, dz);
+        return r;
+    }
+
+    MoveResult restore_held()
+    {
+        MoveResult r;
+        if (!g_held) { std::snprintf(r.err, sizeof(r.err), "nothing held"); return r; }
+        uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
+        r.inst = (uint64_t)g_held;
+        r.before[0] = g_held_before[0]; r.before[1] = g_held_before[1]; r.before[2] = g_held_before[2];
+        auto getter = (GetterFn)(base + GETTER_RVA);
+        float m[16] = {};
+        if (!call_getter(getter, g_held, m) || !finite3(m))
+        {
+            if (!rpm((char *)g_held + 0x220, m, sizeof(m)) || !finite3(m))
+            { std::snprintf(r.err, sizeof(r.err), "held instance unreadable"); return r; }
+        }
+        m[12] = g_held_before[0]; m[13] = g_held_before[1]; m[14] = g_held_before[2];
+        void **vtbl = *(void ***)g_held;
+        SetterFn setter = (SetterFn)vtbl[SETTER_VSLOT];
+        if (!call_setter(setter, g_held, m)) { std::snprintf(r.err, sizeof(r.err), "setter faulted"); return r; }
+        float cache[16] = {};
+        rpm((char *)g_held + 0x220, cache, sizeof(cache));
+        r.moved[0] = cache[12]; r.moved[1] = cache[13]; r.moved[2] = cache[14];
         r.ok = true;
         return r;
     }
