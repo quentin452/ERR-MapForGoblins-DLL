@@ -177,7 +177,25 @@ void draw_world_editor(Filter &f)
         ImGui::SetTooltip("%s", tr("World-units to move the nearest placement by (Y is up). Uses the\n"
                                    "engine's transform setter — the object really moves + collides.\n"
                                    "Not saved (a live edit); use Restore to put it back."));
-    if (ImGui::Button(tr("Move nearest to player")))
+    // Primary: move the SELECTED asset's nearest placement (the aeg picked above).
+    ImGui::BeginDisabled(aeg <= 0);
+    if (ImGui::Button(tr("Move this asset")))
+    {
+        float before[3] = {}, now[3] = {};
+        bool ok = goblin::overlay_api::we_move_aeg(aeg, mv[0], mv[1], mv[2], before, now);
+        if (ok)
+            std::snprintf(status, sizeof(status),
+                          "moved asset %d: (%.1f,%.1f,%.1f) -> (%.1f,%.1f,%.1f)", aeg,
+                          before[0], before[1], before[2], now[0], now[1], now[2]);
+        else
+            std::snprintf(status, sizeof(status), "no loaded placement for asset %d nearby", aeg);
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("Move the nearest loaded placement of the picked asset (aegRow above).\n"
+                                   "Targets THAT object, not just whatever is closest to you."));
+    ImGui::SameLine();
+    if (ImGui::Button(tr("Move nearest")))
     {
         float before[3] = {}, now[3] = {}, dist = -1.0f;
         bool ok = goblin::overlay_api::we_move_near(mv[0], mv[1], mv[2], before, now, &dist);

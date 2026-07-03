@@ -402,7 +402,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all geom_stats geom_dump"
+                       " | mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -1024,6 +1024,21 @@ namespace goblin::debug_rpc
                 char b[96];
                 if (!r.ok) { std::snprintf(b, sizeof(b), "err move_all: %s", r.err); return std::string(b); }
                 std::snprintf(b, sizeof(b), "ok move_all moved=%llu instances", (unsigned long long)r.inst);
+                return std::string(b);
+            }
+            // move_aeg <aegRow> <dx dy dz> — move the SPECIFIC asset's nearest placement (targeted move).
+            if (cmd == "move_aeg")
+            {
+                std::string as = next_token(rest), xs = next_token(rest), ys = next_token(rest), zs = next_token(rest);
+                uint32_t aeg = 0; float dx = 0, dy = 0, dz = 0;
+                try { aeg = (uint32_t)std::stoul(as, nullptr, 0); dx = std::stof(xs); dy = std::stof(ys); dz = std::stof(zs); }
+                catch (...) { return "err usage: move_aeg <aegRow> <dx> <dy> <dz>"; }
+                auto r = goblin::geom_move::move_aeg(aeg, dx, dy, dz);
+                char b[224];
+                if (!r.ok) { std::snprintf(b, sizeof(b), "err move_aeg: %s", r.err); return std::string(b); }
+                std::snprintf(b, sizeof(b), "ok move_aeg aeg=%u inst=%#llx before=(%.2f,%.2f,%.2f) now=(%.2f,%.2f,%.2f)",
+                              aeg, (unsigned long long)r.inst, r.before[0], r.before[1], r.before[2],
+                              r.moved[0], r.moved[1], r.moved[2]);
                 return std::string(b);
             }
             // move_near <dx dy dz> — move the geom instance NEAREST the player (on-screen visual confirm).

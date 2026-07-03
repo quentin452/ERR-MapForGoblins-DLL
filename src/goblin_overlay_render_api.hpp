@@ -187,6 +187,10 @@ namespace goblin::overlay_api
     // For the World Editor "Move a placement" section. Not persisted (a live transform edit).
     GOBLIN_RENDER_API bool we_move_near(float dx, float dy, float dz, float out_before[3],
                                         float out_now[3], float *out_dist);
+    // Move the placement of a SPECIFIC asset (AssetEnvironmentGeometry row, the World Editor's picked
+    // asset) nearest the player. Fills before/now translations. we_move_restore undoes it.
+    GOBLIN_RENDER_API bool we_move_aeg(int aegRow, float dx, float dy, float dz, float out_before[3],
+                                       float out_now[3]);
     GOBLIN_RENDER_API bool we_move_restore();
     GOBLIN_RENDER_API std::string lookup_name_en_disk_utf8(int32_t encoded_id);
     GOBLIN_RENDER_API bool quest_step_done(const goblin::generated::NpcQuest &q, size_t s);

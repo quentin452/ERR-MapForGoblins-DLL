@@ -127,6 +127,13 @@ namespace goblin::overlay_api
         if (out_now) { out_now[0] = r.moved[0]; out_now[1] = r.moved[1]; out_now[2] = r.moved[2]; }
         return r.ok;
     }
+    bool we_move_aeg(int aegRow, float dx, float dy, float dz, float out_before[3], float out_now[3])
+    {
+        auto r = goblin::geom_move::move_aeg((uint32_t)aegRow, dx, dy, dz);
+        if (out_before) { out_before[0] = r.before[0]; out_before[1] = r.before[1]; out_before[2] = r.before[2]; }
+        if (out_now) { out_now[0] = r.moved[0]; out_now[1] = r.moved[1]; out_now[2] = r.moved[2]; }
+        return r.ok;
+    }
     bool we_move_restore() { return goblin::geom_move::restore_held().ok; }
     void request_save() { goblin::ui::request_save(); }
     void reset_quest_progress() { goblin::ui::reset_quest_progress(); }

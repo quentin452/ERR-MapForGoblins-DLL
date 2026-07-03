@@ -42,6 +42,10 @@ namespace goblin::geom_move
     // Restore the held instance to its remembered pre-move transform (un-dirty after a hold/near move).
     MoveResult restore_held();
 
+    // Move the placement of a SPECIFIC asset (AssetEnvironmentGeometry row) nearest the player — the
+    // World Editor "move the asset I picked" path. Held (move_read/restore).
+    MoveResult move_aeg(uint32_t aegRow, float dx, float dy, float dz);
+
     // Mass move: apply (dx,dy,dz) to EVERY loaded geom instance via the setter (no restore). For an
     // on-screen visual confirm without solving the per-tile→world frame (whatever prop is in view
     // moves). Returns the count moved in `.inst` (reused as a counter). Dev probe — dirties the world.
