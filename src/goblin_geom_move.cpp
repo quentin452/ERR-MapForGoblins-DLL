@@ -37,23 +37,10 @@ namespace
         __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
     }
 
-    // ADD/spawn_clone (docs/re/windows_geom_spawn_re_findings.md). The world-transform builder
-    // (thunk_FUN_144cbdae7, er+0x6c3910) writes a fresh OWNED ~0x188-byte pose descriptor into `out`
-    // from (BlockData, partsList, arg4) — REBUILD it, never alias the source (9081c7c8: the ctor
-    // move-init would gut a source-aliased descriptor). The Dynamic ctor (FUN_1406b9880, er+0x6b9880)
-    // placement-constructs a CSWorldGeomDynamicIns into `self` from (srcType, BlockData, transform).
-    using BuilderFn = void(__fastcall *)(void *out, void *blockData, void *partsList, uint64_t arg4);
-    using DynCtorFn = void *(__fastcall *)(void *self, uint64_t srcType, void *blockData, void *transform);
-    __declspec(noinline) bool call_builder(BuilderFn fn, void *out, void *blk, void *pl, uint64_t a4)
-    {
-        __try { fn(out, blk, pl, a4); return true; }
-        __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-    }
-    __declspec(noinline) void *call_dynctor(DynCtorFn fn, void *self, uint64_t st, void *blk, void *tr)
-    {
-        __try { return fn(self, st, blk, tr); }
-        __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-    }
+    // NOTE: the ADD/spawn_clone plan (drive the Dynamic ctor FUN_1406b9880 with a fresh pose descriptor
+    // from the builder thunk_FUN_144cbdae7) is a DEAD END — the builder hangs the game called standalone
+    // (streaming-context-welded, windows_geom_spawn_builder_re_findings.md). The builder/ctor call helpers
+    // were removed with the spawn attempt; spawn_clone now only does safe recon + reports the dead end.
 
     bool rpm(const void *addr, void *out, size_t n)
     {
@@ -509,14 +496,14 @@ namespace goblin::geom_move
         return r;
     }
 
-    // ADD a new geom placement (spawn_clone) — the last MSB-write primitive. Clones a live dynamic geom
-    // by driving the engine's own Dynamic ctor (FUN_1406b9880) with a FRESH pose descriptor built by the
-    // engine's own builder (thunk_FUN_144cbdae7), then SetWorldMatrix-offsets the clone by (dx,dy,dz).
-    // Args resolved live (spawn_probe, reading (a)): resource=*(block+8), partsList=*(res+0x48),
-    // arg4=*(res+0x58). STAGED: go=false builds+dumps the descriptor only (no ctor, safe-ish); go=true
-    // fires the ctor + move. Dev/RE probe on a throwaway map — the clone is NOT pushed into the block's
-    // +0x288 list (ctor self-registers into WGM/render), so it leaks on tile-unload; kill before an area
-    // change. Reuses MoveResult: .inst=new instance, .before=source pos, .moved=clone pos after the offset.
+    // ADD a new geom placement (spawn_clone) — ⛔ DEAD END, kept as documented recon (see the body +
+    // windows_geom_spawn_builder_re_findings.md). The plan was to drive the engine's Dynamic ctor
+    // (FUN_1406b9880) with a fresh pose descriptor from the engine's builder (thunk_FUN_144cbdae7) then
+    // SetWorldMatrix-offset — but the builder HANGS the game called standalone (streaming-context-welded),
+    // and no safe independent descriptor exists, so the standalone-ctor route does not work. This resolves
+    // the (safe) builder args off the live block/resource and RETURNS THE DEAD-END without calling anything
+    // dangerous. Real ADD = streaming-thread spawn (hook FUN_1406a7930) or the asset-request path
+    // (FUN_1406a5080). `go`/deltas are ignored. Reuses MoveResult (.err carries the resolved args + pivot).
     MoveResult spawn_clone(float dx, float dy, float dz, bool go)
     {
         MoveResult r;
@@ -545,66 +532,23 @@ namespace goblin::geom_move
             r.before[0] = scache[12]; r.before[1] = scache[13]; r.before[2] = scache[14];
         }
 
-        // Build a FRESH, OWNED pose descriptor (never alias the source — the ctor move-init would gut it).
-        alignas(16) uint8_t param4[0x200] = {};
-        auto build = (BuilderFn)(base + 0x6c3910);
-        if (!call_builder(build, param4, block, partsList, arg4))
-        {
-            std::snprintf(r.err, sizeof(r.err), "transform builder faulted (thunk_FUN_144cbdae7)");
-            return r;
-        }
-        dump_hex("param4", param4, 0x60);  // inspect the built descriptor (transform region)
-
-        if (!go)
-        {
-            r.ok = true;
-            std::snprintf(r.err, sizeof(r.err),
-                          "BUILT-ONLY srcType=%#llx block=%#llx partsList=%#llx arg4=%#llx "
-                          "(param4 -> [GEOMDUMP]; pass 'go' to spawn)",
-                          (unsigned long long)srcType, (unsigned long long)(uint64_t)block,
-                          (unsigned long long)(uint64_t)partsList, (unsigned long long)arg4);
-            return r;
-        }
-
-        // Allocate the instance ourselves (dynamic pool is full) and placement-construct into it.
-        void *mem = std::calloc(1, 0x5b0);
-        if (!mem) { std::snprintf(r.err, sizeof(r.err), "0x5b0 alloc failed"); return r; }
-        auto ctor = (DynCtorFn)(base + 0x6b9880);
-        void *ni = call_dynctor(ctor, mem, srcType, block, param4);
-        if (!ni)
-        {
-            std::free(mem);
-            std::snprintf(r.err, sizeof(r.err), "Dynamic ctor faulted (FUN_1406b9880)");
-            return r;
-        }
-        r.inst = (uint64_t)ni;
-        uint64_t nvt = 0;
-        rpm(ni, &nvt, 8);
-        r.vtable = nvt;
-        if (nvt < base || nvt >= base + 0x10000000ull)
-        {
-            std::snprintf(r.err, sizeof(r.err), "ctor returned no valid vtable (vt=%#llx) — not moving",
-                          (unsigned long long)nvt);
-            return r;  // leak mem; do NOT vcall an unconstructed object
-        }
-
-        // Offset the clone by (dx,dy,dz) via the proven setter (vtable[0xd0]).
-        void **vtbl = *(void ***)ni;
-        SetterFn setter = (SetterFn)vtbl[SETTER_VSLOT];
-        float m[16];
-        memcpy(m, scache, sizeof(m));
-        m[12] = r.before[0] + dx; m[13] = r.before[1] + dy; m[14] = r.before[2] + dz;
-        call_setter(setter, ni, m);
-        float ncache[16] = {};
-        if (rpm((char *)ni + 0x220, ncache, sizeof(ncache)))
-        {
-            r.moved[0] = ncache[12]; r.moved[1] = ncache[13]; r.moved[2] = ncache[14];
-        }
-        r.ok = true;
-        spdlog::info("[SPAWNCLONE] SPAWNED inst={:#x} vt={:#x} src=({:.1f},{:.1f},{:.1f}) "
-                     "clone=({:.1f},{:.1f},{:.1f})", r.inst, nvt, r.before[0], r.before[1], r.before[2],
-                     r.moved[0], r.moved[1], r.moved[2]);
-        return r;
+        // ⛔ DEAD END — the standalone-ctor spawn does NOT work (windows_geom_spawn_builder_re_findings.md,
+        // 726f6189). Calling the pose-descriptor builder `thunk_FUN_144cbdae7` standalone HANGS the game: it
+        // is MSVC-EH-wrapped and welded to the tile-streaming context (the working driver passes the SAME
+        // arg4=0, so the hang is contextual, not an arg bug), and no cheap independent `param_4` exists
+        // (alias guts the source via the move-init, shallow-copy double-frees the owned sub-objects). So we
+        // DELIBERATELY do NOT call the builder or the Dynamic ctor here — doing so froze the game in the live
+        // test. The real ADD path is streaming-thread spawn (hook `FUN_1406a7930`) or the asset-request path
+        // (`FUN_1406a5080`). This function is kept for its (safe) arg recon + as the documented dead end.
+        (void)go; (void)dx; (void)dy; (void)dz;
+        std::snprintf(r.err, sizeof(r.err),
+                      "DEAD-END standalone spawn (builder is streaming-welded, hangs). args srcType=%#llx "
+                      "block=%#llx res=%#llx partsList=%#llx arg4=%#llx — see "
+                      "windows_geom_spawn_builder_re_findings.md (pivot: hook FUN_1406a7930 or FUN_1406a5080)",
+                      (unsigned long long)srcType, (unsigned long long)(uint64_t)block,
+                      (unsigned long long)(uint64_t)res, (unsigned long long)(uint64_t)partsList,
+                      (unsigned long long)arg4);
+        return r;  // r.ok stays false → the RPC reports the dead end, never touches the builder/ctor
     }
 
     MoveResult geom_stats()

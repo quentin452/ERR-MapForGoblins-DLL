@@ -184,16 +184,20 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   WGM/render/physics. Open sub-Qs (a live probe answers): does a cloned `CSMsbPartsGeom` satisfy the ctor's
   reads; is the `+0x288` push enough for render+collision or is a pool index assumed elsewhere. This is a
   multi-step build, NOT a quick primitive like move.
-  **⇒ RESUME (next session): `spawn_clone` CODED + live-tried — the pose-descriptor BUILDER
-  (`thunk_FUN_144cbdae7`) HANGS the game called standalone. NEW Ghidra blocker: decomp the builder
-  (`docs/re/windows_geom_spawn_builder_re_prompt.md`). `docs/re/windows_geom_spawn_re_findings.md`.**
-  spawn_clone (`spawn_clone <dx dy dz> [go]` RPC) is staged: `go=false` builds+dumps the descriptor only.
-  Builder args live-resolved + valid (`resource=*(block+8)`, `partsList=*(res+0x48)`, `arg4=*(res+0x58)`=0),
-  but calling `thunk_FUN_144cbdae7(&out, block, partsList, 0)` FROZE the game ("no frames", builder never
-  returned) → a hang = unbounded loop or a streaming lock, NOT an SEH-catchable fault. Can't be resolved by
-  blind live calls (each hangs). Everything past the builder (ctor srcType/param_3=BlockData/0x5b0/skip-+0x288/
-  SetWorldMatrix) is coded + correct; ONLY the `param_4` builder call is unusable. → need the builder's arg4
-  meaning + loop/lock/part-selection semantics from Ghidra, then the live spawn works.
+  **⇒ RESUME (next session): standalone-ctor ADD is a DEAD END (builder decompiled, 726f6189). Pivot to a
+  streaming-path spawn. `docs/re/windows_geom_spawn_builder_re_findings.md`.**
+  The pose-descriptor builder `thunk_FUN_144cbdae7` is MSVC-EH-wrapped + welded to the tile-streaming
+  context; calling it standalone FROZE the game (live-confirmed). `arg4=0` is exactly what the working driver
+  passes → the hang is CONTEXTUAL, not an arg bug — decomp (726f6189) confirmed there's no arg fix and no
+  cheap independent `param_4` (alias guts the source, copy double-frees the owned sub-objects). So
+  hand-driving the Dynamic ctor from a standalone RPC does NOT work. **`spawn_clone` was NEUTRALIZED** — it
+  now only does the safe arg recon and returns the DEAD-END string (never calls the builder/ctor; no longer a
+  footgun). **Real ADD = pick a pivot (from the findings):** (1) spawn on the streaming thread — hook the
+  tile-stream driver `FUN_1406a7930` and inject one extra part into its per-part loop (heaviest, correct);
+  (2) the asset-request path `FUN_1406a5080`→`FUN_1406c7000` (re-elevated from the earlier downgrade — hands
+  the work to the streamer) — **recommended to evaluate FIRST** (needs `FUN_1406a5080` full-flow decomp +
+  what consumes the request → a Windows/Ghidra task). MOVE stays fully solved; ADD is bigger than the
+  spawn_clone route hoped.
   **Live recon (2026-07-03, `spawn_probe` + `test_spawn_probe.py`, fresh DLL) confirmed srcType + corrected
   the layout:** on a real dynamic instance (`AEG004_903`) — srcType@+0x08 `0x3c1412016ff00000` (geom tag ✓,
   hi==BlockData tag ✓; masks g0=0xff/g1=0x14/g2=0xfffff); **param_3 = the BlockData** (inst+0x10, NOT a
