@@ -1,7 +1,10 @@
 # Param-override loader — plan (regulation.bin-free runtime param modding)
 
-Status: **SCOPED 2026-07-03. Slice 1 helper PROTOTYPED (`src/goblin_param_edit.{hpp,cpp}`, not yet
-wired to a loader or exported). Build-verification + in-game test pending.**
+Status: **SCOPED 2026-07-03. Slice 1 (offset-addressed helper) + Slice 2 tier-1 (name-addressed
+registry) IMPLEMENTED in `src/goblin_param_edit.{hpp,cpp}` + RPC `param_get(f)`/`param_set(f)`
+commands. Builds clean on Linux. In-game round-trip verification PENDING (blocked: a background
+Claude job can't keep ER alive — [[../memory/tooling/mfg-rpc-driver-hardening]]; needs a
+user-launched game). Not yet: Slice 3 boot override-file loader.**
 
 Origin: the architecture audit (`docs/runtime_live_capabilities_audit.md`) +
 `docs/runtime_modding_framework_vision.md` + `docs/scripting_api_roi_note.md`. This is the FIRST
@@ -70,18 +73,36 @@ std::optional<double> param_get_field(const wchar_t* param, uint64_t row_id, ptr
 load, read it back, and see the game reflect the value (e.g. weapon AR / goods effect changes live).
 Mod-agnostic test: same call on vanilla + a non-ERR mod hits that install's own row values.
 
-### Slice 2 — name-addressed offsets (paramdef-driven) — the multiplier
-Turn `field_offset` into `field_name`. Two tiers:
-1. **Cheap/interim:** per-field `resolve_field_offset` AOBs for the handful of fields a first override
-   file targets (reuses `goblin_item_classify.cpp`'s pattern verbatim). Enough to author the demo file
-   by name for known fields.
-2. **Industrial (Phase-3 class 1, `nobake-endgame-roadmap.md`):** load PARAMDEFs at runtime (shipped
-   defs / from regulation) and resolve ANY field offset by name → zero manual offsets, version-proof.
-   This is the same "kill the manual offsets" endgame already on the roadmap; the override loader is
-   its first real consumer.
+### Slice 2 — name-addressed offsets — TIER 1 IMPLEMENTED (2026-07-03)
+
+**Key RE fact (settles the tier-2 design): `docs/re/windows_live_paramdef_offset_re_findings.md` —
+the exe has NO queryable paramdef.** `EQUIP_PARAM_*_ST` / `EquipParam*` / `PARAMDEF` have zero exe
+xrefs; ER applies the paramdef at load then accesses every field by a COMPILED offset. The bundled
+`tools/paramdefs/*.xml` are PRE-DLC (off by bytes, e.g. Weapon iconId XML 0xBF ≠ live 0xC0), so a
+shipped-def name→offset table is build-fragile. The blessed method is therefore **AOB
+self-calibration** — read the compiled displacement out of the game's OWN access instruction
+(`modutils::resolve_field_offset`), self-correcting across ER patches AND regulation swaps
+(vanilla/ERR/Convergence). This is exactly what `goblin_item_classify` already does.
+
+- **Tier 1 (implemented):** a name-keyed field registry in `goblin_param_edit.cpp` (`FieldSpec` rows:
+  param, field, AOB, disp_pos/size, consensus, type, pinned fallback) →
+  `param_set_field_by_name` / `param_get_field_by_name` / `field_is_known`, resolving offset via
+  `resolve_field_offset` (memoized once-per-field, whole-image scan). RPC `param_getf` / `param_setf
+  <Param> <row> <field> [value]`. Seeded from the AOBs already in `re_signatures.hpp`:
+  `EquipParamGoods.goodsType` (+0x3e), `.sortGroupId` (+0x72),
+  `AssetEnvironmentGeometryParam.pickUpItemLotParamId` (+0xb8), `BonfireWarpParam.textId1` (+0x30).
+  Extend = add one `FieldSpec` row (author the AOB in Ghidra). Build-clean; in-game verify pending
+  (same launch blocker as Slice 1 — [[../memory/tooling/mfg-rpc-driver-hardening]]).
+- **Tier 2 (revised, later):** generic "ANY field by name" needs the paramdef, which the exe won't
+  give — so the industrial path is **ship the build-matching (SOTE 2.6.2.0) Paramdex defs** + a
+  runtime XML→layout parser (bit-pack aware, mirroring the offline `param_to_dict`). Correct for
+  vanilla + value-only mods; a paramdef-EDITING mod (rare) would drift → keep the AOB registry as the
+  authoritative override for hot fields and log a `[FIELDOFF]`-style mismatch. NOT the originally
+  sketched "read paramdef from the exe/regulation at runtime" — that route is disproven.
 
 Authoring an override by byte offset is a footgun (silently wrong after a patch) — **do not ship a
-user-facing override file addressed by raw offset.** Slice 2 (at least tier 1) gates the public loader.
+user-facing override file addressed by raw offset.** The tier-1 registry (name-addressed) gates the
+public loader; unregistered fields simply aren't override-able until an AOB is added.
 
 ### Slice 3 — boot-time override loader — the shippable feature
 `param_overrides.json` (or an ini section) next to the DLL, applied once params are ready (reuse the

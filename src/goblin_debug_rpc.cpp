@@ -480,6 +480,39 @@ namespace goblin::debug_rpc
                 return "ok " + pname + "[" + row_s + "]+" + off_s + " " + type_s + "=" +
                        std::to_string(*rb);
             }
+            // param_getf <ParamName> <rowId> <fieldName> — read by field NAME (offset resolved from
+            // the live exe via the registry). param_setf <ParamName> <rowId> <fieldName> <value>.
+            // Slice 2: name-addressed. Unknown field → err (see goblin::paramedit registry).
+            if (cmd == "param_getf" || cmd == "param_setf")
+            {
+                const bool is_set = cmd == "param_setf";
+                std::string pname = next_token(rest), row_s = next_token(rest),
+                            field = next_token(rest),
+                            val_s = is_set ? next_token(rest) : std::string{};
+                if (pname.empty() || row_s.empty() || field.empty() || (is_set && val_s.empty()))
+                    return std::string("err usage: ") + cmd + " <ParamName> <rowId> <fieldName>" +
+                           (is_set ? " <value>" : "");
+                uint64_t row_id = 0;
+                double value = 0;
+                try
+                {
+                    row_id = std::stoull(row_s, nullptr, 0);
+                    if (is_set) value = std::stod(val_s);
+                }
+                catch (...)
+                {
+                    return "err bad number (row/value)";
+                }
+                std::wstring wname(pname.begin(), pname.end());
+                if (!goblin::paramedit::field_is_known(wname.c_str(), field.c_str()))
+                    return "err unknown field (not in registry): " + pname + "." + field;
+                if (is_set &&
+                    !goblin::paramedit::param_set_field_by_name(wname.c_str(), row_id, field.c_str(), value))
+                    return "err write failed (row missing, offset OOR, or fault)";
+                auto rb = goblin::paramedit::param_get_field_by_name(wname.c_str(), row_id, field.c_str());
+                if (!rb) return "err read failed (row missing)";
+                return "ok " + pname + "[" + row_s + "]." + field + "=" + std::to_string(*rb);
+            }
             if (cmd == "reload_overlay")
             {
                 if (!goblin::overlay_render_loader::request_reload())

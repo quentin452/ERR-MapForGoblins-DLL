@@ -42,4 +42,19 @@ bool param_set_field(const wchar_t *param, uint64_t row_id, ptrdiff_t offset, Fi
 std::optional<double> param_get_field(const wchar_t *param, uint64_t row_id, ptrdiff_t offset,
                                       FieldType type);
 
+// ── Slice 2: name-addressed field access ─────────────────────────────────────────────────────
+// Resolve (param, field-NAME) → offset via the game's OWN access instruction (modutils::
+// resolve_field_offset AOB scan), the codebase's blessed version-proof + mod-agnostic method — the
+// exe has NO queryable paramdef (docs/re/windows_live_paramdef_offset_re_findings.md), so a shipped
+// paramdef table would be build-fragile; reading the compiled displacement out of the live exe is
+// self-correcting across ER patches AND regulation swaps (vanilla/ERR/Convergence). Only fields
+// with a registered access AOB resolve; unknown field → false/nullopt (caller can fall back to the
+// offset-addressed API). This is what a user-facing override file must use (never a raw offset).
+bool param_set_field_by_name(const wchar_t *param, uint64_t row_id, const char *field, double value);
+std::optional<double> param_get_field_by_name(const wchar_t *param, uint64_t row_id,
+                                               const char *field);
+
+// True if (param, field) is in the resolvable-field registry (for a "field known?" check / listing).
+bool field_is_known(const wchar_t *param, const char *field);
+
 }  // namespace goblin::paramedit

@@ -6,12 +6,75 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include <array>
+#include <cwchar>
+#include <mutex>
+
 #include <spdlog/spdlog.h>
 
 #include "from/params.hpp"
+#include "modutils.hpp"        // resolve_field_offset — name→offset from the live exe
+#include "re_signatures.hpp"   // field-access AOBs (goblin::sig::*)
 
 namespace
 {
+
+// ── Name-addressed field registry (Slice 2) ──────────────────────────────────────────────────
+// One row per (param, field) we expose by name. `aob`/`disp_pos`/`disp_size`/`consensus` feed
+// modutils::resolve_field_offset (the game's own access instruction → the compiled displacement);
+// `type` is the field's read/write WIDTH (independent of the instruction's disp encoding); `fallback`
+// is the pinned offset used + logged only if the AOB ever fails to resolve. Extend by adding a row
+// (author the AOB in Ghidra, same as goblin_item_classify). Seeded from the AOBs already proven in
+// the codebase (goodsType/sortGroupId/AEG-lot/bonfire-textId1).
+struct FieldSpec
+{
+    const wchar_t *param;
+    const char *field;
+    const char *aob;
+    int disp_pos;
+    int disp_size;
+    bool consensus;
+    goblin::paramedit::FieldType type;
+    ptrdiff_t fallback;
+};
+
+using goblin::paramedit::FieldType;
+constexpr FieldSpec kFields[] = {
+    {L"EquipParamGoods", "goodsType", goblin::sig::GOODS_TYPE_ACCESS, 7, 1, false, FieldType::U8, 0x3e},
+    {L"EquipParamGoods", "sortGroupId", goblin::sig::GOODS_SORT_GROUP_ACCESS, 3, 1, false, FieldType::U8, 0x72},
+    {L"AssetEnvironmentGeometryParam", "pickUpItemLotParamId", goblin::sig::AEG_PICKUP_LOT_ACCESS, 2, 4, false, FieldType::S32, 0xb8},
+    {L"BonfireWarpParam", "textId1", goblin::sig::BONFIRE_TEXTID1_ACCESS, 3, 1, true, FieldType::S32, 0x30},
+};
+constexpr size_t kFieldCount = std::size(kFields);
+
+// Index of the registry row matching (param, field), or -1.
+ptrdiff_t find_field(const wchar_t *param, const char *field)
+{
+    for (size_t i = 0; i < kFieldCount; i++)
+        if (std::wcscmp(kFields[i].param, param) == 0 && std::strcmp(kFields[i].field, field) == 0)
+            return static_cast<ptrdiff_t>(i);
+    return -1;
+}
+
+// Resolve (and memoize) the offset for registry row `idx` from the live exe; fallback on AOB miss.
+// resolve_field_offset scans the whole image, so this is once-per-field, not per-call.
+ptrdiff_t resolve_registry_offset(size_t idx)
+{
+    static std::array<ptrdiff_t, kFieldCount> cache{};
+    static std::array<std::once_flag, kFieldCount> once{};
+    std::call_once(once[idx], [idx] {
+        const auto &f = kFields[idx];
+        auto r = modutils::resolve_field_offset(
+            {.aob = f.aob, .disp_pos = f.disp_pos, .disp_size = f.disp_size, .consensus = f.consensus});
+        cache[idx] = r ? *r : f.fallback;
+        std::string pn = from::params::internal::wstring_to_string(std::wstring(f.param));
+        if (r)
+            spdlog::info("[PARAMEDIT] {}.{} = +0x{:x} (live from exe)", pn, f.field, cache[idx]);
+        else
+            spdlog::warn("[PARAMEDIT] {}.{} AOB unresolved — fallback +0x{:x}", pn, f.field, cache[idx]);
+    });
+    return cache[idx];
+}
 
 // Locate a live param row: fills `out_base` (row data base pointer) and `out_size` (a conservative
 // upper bound on the row's byte length, from the ParamRowInfo span). Walks the param list directly
@@ -183,6 +246,26 @@ std::optional<double> param_get_field(const wchar_t *param, uint64_t row_id, ptr
     case FieldType::F64: { double   v; std::memcpy(&v, buf, 8); return v; }
     }
     return std::nullopt;
+}
+
+bool field_is_known(const wchar_t *param, const char *field)
+{
+    return find_field(param, field) >= 0;
+}
+
+bool param_set_field_by_name(const wchar_t *param, uint64_t row_id, const char *field, double value)
+{
+    ptrdiff_t idx = find_field(param, field);
+    if (idx < 0) return false;
+    return param_set_field(param, row_id, resolve_registry_offset(idx), kFields[idx].type, value);
+}
+
+std::optional<double> param_get_field_by_name(const wchar_t *param, uint64_t row_id,
+                                              const char *field)
+{
+    ptrdiff_t idx = find_field(param, field);
+    if (idx < 0) return std::nullopt;
+    return param_get_field(param, row_id, resolve_registry_offset(idx), kFields[idx].type);
 }
 
 }  // namespace goblin::paramedit
