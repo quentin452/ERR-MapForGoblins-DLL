@@ -13,6 +13,7 @@
 #include "panel_internal.hpp"
 #include "goblin_i18n.hpp"
 #include "worldmap/marker_layer.hpp"   // Marker / MarkerLayer (overlay_layers → markers to project)
+#include "goblin_virtual_world.hpp"    // vworld registry — the active custom world's markers (slice C)
 
 #include <cmath>
 #include <cstdio>
@@ -63,13 +64,33 @@ void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
     }
     ImGui::SameLine();
     if (ImGui::SmallButton(tr("Fit"))) s_fit_requested = true;
+    // World selector: "Base ER" (id 0 → live ER markers by group) or a custom virtual world (its own
+    // markers). The active world is framework state (goblin::vworld), shared with the RPC.
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(180.0f);
-    if (ImGui::BeginCombo(tr("group"), tr(kGroupNames[s_group])))
+    const int active_world = goblin::vworld::active();
+    auto worlds = goblin::vworld::list();
+    const char *active_name = "Base ER";
+    for (auto &p : worlds)
+        if (p.first == active_world) active_name = p.second.c_str();
+    ImGui::SetNextItemWidth(150.0f);
+    if (ImGui::BeginCombo(tr("world"), active_name))
     {
-        for (int i = 0; i < 4; i++)
-            if (ImGui::Selectable(tr(kGroupNames[i]), s_group == i)) s_group = i;
+        for (auto &p : worlds)
+            if (ImGui::Selectable(p.second.c_str(), p.first == active_world))
+                goblin::vworld::set_active(p.first);
         ImGui::EndCombo();
+    }
+    // ER group selector — only meaningful for Base ER (a custom world has its own single marker set).
+    if (active_world == 0)
+    {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(170.0f);
+        if (ImGui::BeginCombo(tr("group"), tr(kGroupNames[s_group])))
+        {
+            for (int i = 0; i < 4; i++)
+                if (ImGui::Selectable(tr(kGroupNames[i]), s_group == i)) s_group = i;
+            ImGui::EndCombo();
+        }
     }
     ImGui::TextDisabled(tr("drag = pan   wheel = zoom   |   centre (%.0f, %.0f)  zoom %.3f px/u   markers %d"),
                         s_cam_x, s_cam_z, s_zoom, s_drawn);
@@ -147,26 +168,36 @@ void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
                     std::fabs(gz) < step * 0.5f ? axis_col : grid_col);
     }
 
-    // Markers (slice B): project the selected group's live mod markers onto the canvas + accumulate a
-    // bbox for Fit. A colored dot per marker (m.color); on-canvas icons are a follow-up. This uses the
-    // live ER markers as test data — slice C ties markers to a bundle-backed custom world.
+    // Markers: project the ACTIVE world's markers onto the canvas + accumulate a bbox for Fit. A colored
+    // dot per marker (on-canvas icons are a follow-up). Base ER (world 0) → the live ER markers of the
+    // selected group (slice B); a custom world → its OWN markers in its own coordinate namespace (slice C).
     int drawn = 0;
     float minx = 1e30f, minz = 1e30f, maxx = -1e30f, maxz = -1e30f;
-    for (auto *L : overlay_layers())
+    auto plot = [&](float wx, float wz, uint32_t col) {
+        if (wx < minx) minx = wx;
+        if (wx > maxx) maxx = wx;
+        if (wz < minz) minz = wz;
+        if (wz > maxz) maxz = wz;
+        ImVec2 ps = w2s(wx, wz);
+        if (ps.x < origin.x || ps.x > canvas_end.x || ps.y < origin.y || ps.y > canvas_end.y) return;
+        dl->AddCircleFilled(ps, 3.0f, col ? col : IM_COL32(235, 130, 90, 255));
+        drawn++;
+    };
+    if (active_world == 0)
     {
-        if (!L) continue;
-        for (const goblin::worldmap::Marker &m : L->markers())
+        for (auto *L : overlay_layers())
         {
-            if (m.group != s_group) continue;
-            if (m.worldX < minx) minx = m.worldX;
-            if (m.worldX > maxx) maxx = m.worldX;
-            if (m.worldZ < minz) minz = m.worldZ;
-            if (m.worldZ > maxz) maxz = m.worldZ;
-            ImVec2 ps = w2s(m.worldX, m.worldZ);
-            if (ps.x < origin.x || ps.x > canvas_end.x || ps.y < origin.y || ps.y > canvas_end.y) continue;
-            dl->AddCircleFilled(ps, 3.0f, m.color ? m.color : IM_COL32(235, 130, 90, 255));
-            drawn++;
+            if (!L) continue;
+            for (const goblin::worldmap::Marker &m : L->markers())
+                if (m.group == s_group) plot(m.worldX, m.worldZ, m.color);
         }
+    }
+    else
+    {
+        goblin::vworld::World w;
+        if (goblin::vworld::get_world(active_world, w))
+            for (const goblin::vworld::Marker &m : w.markers)
+                plot(m.x + w.originX, m.z + w.originZ, m.color);  // C1: originX/Z default 0 (identity)
     }
     s_drawn = drawn;
     // Fit: frame the selected group's bbox (cam/zoom feed w2s next frame → 1-frame settle).

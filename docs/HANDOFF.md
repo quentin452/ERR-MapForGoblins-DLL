@@ -101,9 +101,16 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
     a draw-list icon helper: resolve tex+uv like the census, `dl->AddImage`). **NOTE:** the vmap currently
     draws INSIDE `draw_panel` so it needs F1 open — slice D must decouple it (draw independent of g_show) for
     the M-open path.
-  - **SLICE C: the WORLD model** — an active-world id + per-world {origin/scale, marker set, optional bg
-    image}, bundle-backed (extends `goblin_world_bundle`); synthetic marker group (≥100) so markers belong
-    to a world; framework assigns per-world coordinate namespaces (collision-free).
+  - **✅ SLICE C1 DONE 2026-07-04 — the WORLD model + registry.** `src/goblin_virtual_world.{hpp,cpp}`:
+    a mutex-guarded registry of custom worlds (`{id, name, originX/Z, scale, markers[]}`) + an active-world
+    id (0 = Base ER). The vmap gained a **World selector** (Base ER → live ER markers by group; a custom
+    world → its OWN markers in its own coordinate namespace) — collision-free by construction (each world =
+    its own coord space, framework owns ids/placement). RPC `vworld create|marker|active|list|clear`.
+    Live-verified: created DevWorld, added 11 markers (a 3×3 grid + diagonals), `vworld active 1` → the vmap
+    drew exactly those 11 in the world's own space (centre 1000,1000), switchable back to Base ER.
+    **Remaining C:** C2 = tag EXISTING mod markers to a world (synthetic group ≥100 in `marker_layer.hpp`);
+    C3 = bundle persistence (extend `goblin_world_bundle` to save/load worlds as TOML). Per-world
+    origin/scale projection is wired (fields) but identity in C1.
   - **SLICE D: open with "M"** — production UX: the virtual page is what the game MAP KEY shows when the
     active world is a custom world (hook the RE'd `worldmap_open()`; suppress/overlay the native Scaleform
     map). The `vmap` RPC + F1 Dev toggle stay as the DEV harness.

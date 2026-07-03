@@ -8,6 +8,7 @@
 #include "input/input_cursor.hpp"  // set_cursor_pos_real — pixel-exact mouse_move via the trampoline
 #include "goblin_pause.hpp"    // pause command + paused= status (unfocused-window pause escape)
 #include "goblin_overlay.hpp"
+#include "goblin_virtual_world.hpp"  // vworld registry — `vworld` RPC (custom virtual worlds)
 #include "goblin_worldmap_probe.hpp"  // dump_menu_state (dumpmenu cmd)
 #include "goblin_overlay_render_loader.hpp"
 #include "goblin_param_edit.hpp"  // param_get/param_set commands — Slice 1 in-game smoke test
@@ -398,7 +399,7 @@ namespace goblin::debug_rpc
             // help — one-line verb list (the client reads a single reply line, so no embedded \n).
             // Full usages + caveats: docs/memory/tooling/rpc-commands.md. Keep in sync when adding a cmd.
             if (cmd == "help" || cmd == "?")
-                return "ok commands: help ping status open_f1 f1_tab vmap pause set screenshot dumpmenu reload_overlay"
+                return "ok commands: help ping status open_f1 f1_tab vmap vworld pause set screenshot dumpmenu reload_overlay"
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
@@ -483,6 +484,45 @@ namespace goblin::debug_rpc
                     goblin::overlay_api::virtual_map_set_open(!goblin::overlay_api::virtual_map_is_open());
                 else return "err vmap takes 0|1|toggle | fit | group <0-3>";
                 return "ok vmap=" + std::to_string(goblin::overlay_api::virtual_map_is_open() ? 1 : 0);
+            }
+            // vworld create <name> | marker <id> <x> <z> [name] | active <id> | list | clear —
+            // drive the virtual-world registry (custom mod worlds shown on the virtual map).
+            if (cmd == "vworld")
+            {
+                std::string sub = next_token(rest);
+                auto ltrim = [](std::string &s) { size_t b = s.find_first_not_of(" \t"); s = (b == std::string::npos) ? std::string{} : s.substr(b); };
+                if (sub == "create")
+                {
+                    ltrim(rest);
+                    int id = goblin::vworld::create(rest);
+                    return "ok vworld create id=" + std::to_string(id);
+                }
+                if (sub == "marker")
+                {
+                    std::string is = next_token(rest), xs = next_token(rest), zs = next_token(rest);
+                    int id = 0; float x = 0, z = 0;
+                    try { id = std::stoi(is); x = std::stof(xs); z = std::stof(zs); }
+                    catch (...) { return "err usage: vworld marker <id> <x> <z> [name]"; }
+                    ltrim(rest);
+                    bool ok = goblin::vworld::add_marker(id, x, z, rest, 0xFFEB82E6u);
+                    return ok ? "ok vworld marker" : "err vworld: unknown world " + is;
+                }
+                if (sub == "active")
+                {
+                    int id = 0;
+                    try { id = std::stoi(next_token(rest)); } catch (...) { return "err usage: vworld active <id>"; }
+                    return goblin::vworld::set_active(id) ? "ok vworld active=" + std::to_string(id)
+                                                          : "err vworld: unknown world " + std::to_string(id);
+                }
+                if (sub == "list")
+                {
+                    std::string out = "ok vworld active=" + std::to_string(goblin::vworld::active()) + " worlds:";
+                    for (auto &p : goblin::vworld::list())
+                        out += " [" + std::to_string(p.first) + "]" + p.second;
+                    return out;
+                }
+                if (sub == "clear") { goblin::vworld::clear(); return "ok vworld clear"; }
+                return "err usage: vworld create|marker|active|list|clear";
             }
             if (cmd == "open_f1")
             {
