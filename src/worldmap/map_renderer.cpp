@@ -1069,6 +1069,7 @@ struct UiRect { float x0, y0, x1, y1; };
 static std::vector<UiRect> s_ui_rects;
 static std::string s_ui_rects_src = "\x01"; // never matches → first call parses
 static bool s_ui_rect_edit = false;
+static bool s_dial_edit = false; // ERR dial disc/pill placement mode (drag handles on the map)
 
 static void ui_rects_sync()
 {
@@ -1127,11 +1128,26 @@ static inline bool in_game_ui_exclusion(const ImVec2 &p, float realW, float real
             return true;
     if (!goblin::overlay_api::err_features())
         return false;
-    const float dx = p.x - 1815.f * sx, dy = p.y - 1000.f * sy;
-    const float r = 240.f * ((sx + sy) * 0.5f);
-    if (dx * dx + dy * dy < r * r)
-        return true; // dial disc (+ needle/wing, inside the radius)
-    return p.x > 1700.f * sx && p.y > 685.f * sy && p.y < 740.f * sy; // time-of-day pill
+    namespace api = goblin::overlay_api;
+    // Dial disc (needle/wing). Radius 0 disables it. Virtual units → screen scale.
+    const float discR = *api::cfg_dialDiscR_ptr();
+    if (discR > 0.f)
+    {
+        const float dx = p.x - *api::cfg_dialDiscX_ptr() * sx;
+        const float dy = p.y - *api::cfg_dialDiscY_ptr() * sy;
+        const float r = discR * ((sx + sy) * 0.5f);
+        if (dx * dx + dy * dy < r * r)
+            return true;
+    }
+    // Time-of-day pill (a rect above the disc). y1<=y0 disables it.
+    const float py0 = *api::cfg_dialPillY0_ptr(), py1 = *api::cfg_dialPillY1_ptr();
+    if (py1 > py0)
+    {
+        const float px0 = *api::cfg_dialPillX0_ptr(), px1 = *api::cfg_dialPillX1_ptr();
+        if (p.x >= px0 * sx && p.x <= px1 * sx && p.y >= py0 * sy && p.y <= py1 * sy)
+            return true;
+    }
+    return false;
 }
 
 // Cull test shared by the marker loop and the pile pass: inside the canvas rect when
@@ -2285,6 +2301,73 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                     "EXCLUSION EDIT: drag = new zone, right-click = delete zone");
     }
 
+    // ── ERR dial exclusion placement (F1 "UI exclusion zones" → Edit dial) ─────
+    // The dial is a DISC (round day/night dial) the rect editor can't express. Here the
+    // disc + time-pill are drawn live and dragged into place; values are the ini-backed
+    // cfg::dial* globals (virtual 1920x1080 units) — "Save to INI" persists them. ERR-only.
+    if (s_dial_edit && goblin::overlay_api::err_features())
+    {
+        namespace api = goblin::overlay_api;
+        const float sx = realW / 1920.f, sy = realH / 1080.f, ss = (sx + sy) * 0.5f;
+        float *dcx = api::cfg_dialDiscX_ptr(), *dcy = api::cfg_dialDiscY_ptr();
+        float *dr = api::cfg_dialDiscR_ptr();
+        float *px0 = api::cfg_dialPillX0_ptr(), *py0 = api::cfg_dialPillY0_ptr();
+        float *px1 = api::cfg_dialPillX1_ptr(), *py1 = api::cfg_dialPillY1_ptr();
+        const ImVec2 ctr(*dcx * sx, *dcy * sy);
+        const float rpx = *dr * ss;
+        const ImVec2 rHandle(ctr.x + rpx, ctr.y);
+        const ImVec2 pA(*px0 * sx, *py0 * sy), pB(*px1 * sx, *py1 * sy);
+        const ImVec2 pCtr((pA.x + pB.x) * 0.5f, (pA.y + pB.y) * 0.5f);
+
+        // Visuals: cyan disc, magenta pill, handle dots.
+        if (*dr > 0.f)
+        {
+            fg->AddCircleFilled(ctr, rpx, IM_COL32(40, 200, 220, 45), 48);
+            fg->AddCircle(ctr, rpx, IM_COL32(60, 220, 255, 230), 48, 2.0f);
+            fg->AddCircleFilled(ctr, 6.f, IM_COL32(60, 220, 255, 255));   // move handle
+            fg->AddCircleFilled(rHandle, 6.f, IM_COL32(255, 255, 80, 255)); // radius handle
+        }
+        if (*py1 > *py0)
+        {
+            fg->AddRectFilled(pA, pB, IM_COL32(220, 40, 220, 50));
+            fg->AddRect(pA, pB, IM_COL32(255, 80, 255, 230), 0.f, 0, 2.0f);
+            fg->AddCircleFilled(pCtr, 6.f, IM_COL32(255, 80, 255, 255)); // pill move handle
+        }
+
+        ImGuiIO &io = ImGui::GetIO();
+        enum Grab { None, DiscMove, DiscRadius, PillMove };
+        static int s_grab = None;
+        auto hit = [](const ImVec2 &a, const ImVec2 &b, float t) {
+            const float ex = a.x - b.x, ey = a.y - b.y; return ex * ex + ey * ey <= t * t;
+        };
+        if (!io.WantCaptureMouse && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        {
+            if (*dr > 0.f && hit(io.MousePos, rHandle, 14.f)) s_grab = DiscRadius;
+            else if (*dr > 0.f && hit(io.MousePos, ctr, 14.f)) s_grab = DiscMove;
+            else if (*py1 > *py0 && hit(io.MousePos, pCtr, 16.f)) s_grab = PillMove;
+        }
+        if (s_grab != None)
+        {
+            if (s_grab == DiscMove) { *dcx = io.MousePos.x / sx; *dcy = io.MousePos.y / sy; }
+            else if (s_grab == DiscRadius)
+            {
+                const float ex = io.MousePos.x - ctr.x, ey = io.MousePos.y - ctr.y;
+                *dr = std::sqrt(ex * ex + ey * ey) / (ss > 0.f ? ss : 1.f);
+            }
+            else if (s_grab == PillMove)
+            {
+                const float w = *px1 - *px0, h = *py1 - *py0;
+                const float cxv = io.MousePos.x / sx, cyv = io.MousePos.y / sy;
+                *px0 = cxv - w * 0.5f; *px1 = cxv + w * 0.5f;
+                *py0 = cyv - h * 0.5f; *py1 = cyv + h * 0.5f;
+            }
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) s_grab = None;
+        }
+        fg->AddText(ImVec2(realW * 0.5f - 300.f, 8.f), IM_COL32(60, 220, 255, 255),
+                    "DIAL EDIT: drag cyan dot = move disc, yellow dot = radius, "
+                    "magenta dot = move pill. Save to INI to keep.");
+    }
+
     // Tooltip for the hovered marker / pile (drawn last so it's on top).
     if (hover.bestd < 1e30f)
         draw_tooltip(fg, mouse, hover.text);
@@ -2295,6 +2378,8 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
 
 void set_ui_rect_edit(bool on) { s_ui_rect_edit = on; }
 bool ui_rect_edit() { return s_ui_rect_edit; }
+void set_dial_edit(bool on) { s_dial_edit = on; }
+bool dial_edit() { return s_dial_edit; }
 int ui_rect_count()
 {
     ui_rects_sync();

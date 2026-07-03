@@ -54,6 +54,16 @@ namespace goblin
         // User-drawn "no overlay icons here" rectangles (F1 editor), VIRTUAL-canvas units
         // (1920x1080 space, resolution-independent): "x0,y0,x1,y1;x0,y0,x1,y1;..."
         extern GOBLIN_RENDER_API std::string uiExclusionRects;
+        // ERR day/night dial exclusion, tunable so its shape can be aligned to the dial on any
+        // build/aspect (was hardcoded). VIRTUAL-canvas (1920x1080) units. Disc = the round dial
+        // (needle/wing); pill = the time-of-day bar above it. Only applied when err_features().
+        extern GOBLIN_RENDER_API float dialDiscX;   // disc centre X (default 1815)
+        extern GOBLIN_RENDER_API float dialDiscY;   // disc centre Y (default 1000)
+        extern GOBLIN_RENDER_API float dialDiscR;   // disc radius   (default 240; 0 = disc off)
+        extern GOBLIN_RENDER_API float dialPillX0;  // time pill rect left   (default 1700)
+        extern GOBLIN_RENDER_API float dialPillY0;  // time pill rect top    (default 685)
+        extern GOBLIN_RENDER_API float dialPillX1;  // time pill rect right  (default 1920)
+        extern GOBLIN_RENDER_API float dialPillY1;  // time pill rect bottom (default 740; y1<=y0 = pill off)
         extern GOBLIN_RENDER_API bool bakedOnly;  // diag overlay: draw ONLY Baked-source markers (the no-bake residual)
         extern GOBLIN_RENDER_API bool collectedGraying;
         extern GOBLIN_RENDER_API bool hideCollected;

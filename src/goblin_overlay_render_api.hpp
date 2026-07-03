@@ -44,7 +44,8 @@ namespace goblin::overlay_api
 #define GOBLIN_CFG_FLOAT_LIST(X) \
     X(iconMinHalfPx) \
     X(minimapOffsetX) X(minimapOffsetY) X(minimapOpacity) X(minimapSize) \
-    X(minimapZoom) X(overlayIconScale) X(overlayMasterScale) X(viewDelayFrames)
+    X(minimapZoom) X(overlayIconScale) X(overlayMasterScale) X(viewDelayFrames) \
+    X(dialDiscX) X(dialDiscY) X(dialDiscR) X(dialPillX0) X(dialPillY0) X(dialPillX1) X(dialPillY1)
 #define GOBLIN_CFG_U8_LIST(X) X(clusterFarRadius) X(clusterNearRadius) X(clusterNearThreshold) X(virtualKeyboardLayout)
 #define GOBLIN_CFG_U16_LIST(X) X(overlayToggleGamepad)
 

@@ -80,5 +80,9 @@ int ui_rect_count();
 bool ui_rect_get(int index, float out[4]);
 void ui_rect_delete(int index);
 void ui_rect_clear();
+// ERR dial exclusion placement mode: draws the disc + time-pill live on the open map with
+// drag handles that write the cfg::dial* globals (virtual units). ERR-only; "Save to INI" persists.
+void set_dial_edit(bool on);
+bool dial_edit();
 
 } // namespace goblin::worldmap

@@ -24,6 +24,13 @@ named releases, so everything fork-specific lives under **[Unreleased]** until t
 Everything below is specific to this fork (`master`, ~990 commits ahead of `upstream/main`) and
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
+### Added
+- **The ERR day/night dial exclusion is now adjustable.** The round dial region where overlay
+  markers are hidden (bottom-right of the world map) was a hardcoded disc; it's now tunable via
+  F1 → *UI exclusion zones* → *Edit dial* — drag the disc/time-pill handles on the open map, or set
+  the `dial_disc_x/y/r` + `dial_pill_x0/y0/x1/y1` keys (1920×1080 virtual units, ERR-only). Radius 0
+  hides the disc; an empty pill (bottom ≤ top) hides the pill. Save to INI to persist.
+
 ### Fixed
 - **Overlay markers no longer punch through menus that open over the map.** When a submenu is
   stacked over the open world map (e.g. the fast-travel confirmation prompt), the overlay marker
