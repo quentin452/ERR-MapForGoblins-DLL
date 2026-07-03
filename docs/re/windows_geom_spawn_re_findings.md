@@ -101,6 +101,38 @@ Re-decompiled the base ctor `FUN_1406c5900` + Dynamic ctor `FUN_1406b9880`, trac
 transform)` reusing the live source record (only `+0x18b` matters), accept that the clone is registered into
 the source record, then `SetWorldMatrix` to offset it. No unknown record fields remain.
 
+## ★★ Transform-independence (the Linux agent's move-init risk) — SOLVED: REBUILD, don't alias
+Decompiled the move-init `FUN_1406c3180` + its sub-copy `FUN_140cef4a0` to settle how `param_4` (the
+transform descriptor) is consumed:
+- **`param_4` is a big pose *descriptor* (~0x188 bytes), not a 24-byte handle.** `FUN_1406c3180` (the geom's
+  transform move-ctor, `self+0x18 = param_1+3`) field-by-field **swaps ~0x188 bytes** with `param_4`, seeds
+  default pose constants (30.0/5.0/10.0/-1.0f), and **move-constructs an embedded `CSMsbPartsGeom` at
+  `self+0x30`** from `param_4+0x18` via **`FUN_140cef4a0` = `CSMsbPartsGeom` move-ctor** (`*self+0x30 =
+  CSMsbPartsGeom::vftable`, calls base move `FUN_140cecbe0`). It also swaps the heap sub-ptr `param_4[1]`
+  into `self+0x20` (the "pose ptr" the live recon saw).
+- **So aliasing the source is worse than feared:** a source-aliased `param_4` would (a) steal the source's
+  `+0x20` heap pose ptr AND (b) **move-OUT the source's `CSMsbPartsGeom`** — gutting the live source asset.
+  Deep-dup (option a) is a trap: the descriptor embeds a pointer-rich `CSMsbPartsGeom` (the earlier
+  geom_dump's deep record) → a shallow copy shares sub-objects.
+- **Cleanest fix — REBUILD `param_4` with the driver's own builder (no aliasing).** Both drivers build it as
+  ```
+  thunk_FUN_144cbdae7(&param_4 /*out, owned*/, BlockData, partsList, *(BlockData+8+0x58));
+  //   partsList = *(BlockData+8+0x48)   (er+0x6c3910; body decompiles garbled but the 4-arg
+  //   signature is identical at both call sites FUN_1406a7930 / FUN_1406adc80)
+  ```
+  Calling this ourselves from the SOURCE's BlockData yields a **fresh, owned pose descriptor** — the ctor
+  then move-inits from OUR copy, leaving the source untouched. This sidesteps blocker 2 AND the corruption
+  risk in one step. (Option b — a copy-ctor of the pose class — would also work but is unnecessary; option c
+  — synth from a 4x4 — is dead: the builder body is unreadable statically.)
+- **Remaining detail (for the probe):** the builder builds for a PART context (it reads `partsList` + an
+  index). Confirm which part index it resolves for a standalone call (the driver passes a running `idx`);
+  simplest is to target the SOURCE instance's own part so the descriptor matches a real, resident asset,
+  then `SetWorldMatrix`-offset the clone. This is a live-probe question, not static.
+
+**Revised spawn_clone (route b, corruption-safe):** build srcType (solved) → `thunk_FUN_144cbdae7` a FRESH
+`param_4` from the source BlockData/partsList → `FUN_1406b9880(inst, srcType, source_BlockData, &param_4)`
+into a self-alloc 0x5b0 → (skip `+0x288`, full) → `SetWorldMatrix` to offset. No source-aliased bytes.
+
 ## LIVE-VERIFY checklist (hand to the Linux/Proton agent — this box's loaded DLL is stale)
 The Windows box runs the game with an OLDER mod DLL, so its RPC (`geom_dump`) predates these findings —
 don't trust a local RPC probe. Confirm on a freshly-deployed Proton build:
