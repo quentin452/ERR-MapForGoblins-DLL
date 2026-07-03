@@ -2,11 +2,9 @@
   // MapForGoblins dev tasks (Linux clang-cl + xwin cross-build → Proton). Run via
   // Terminal ▸ Run Task…, or Ctrl+Shift+B for the default build. See
   // docs/memory/tooling/mapforgoblins-linux-build.md for the toolchain setup.
+  // Deploy target (ERR_ROOT) comes from .env / .env.local (gitignored) via mfg_session — no hardcoding.
+  // Set ERR_ROOT + GAME_DIR in .env.local for your machine.
   "version": "2.0.0",
-  "options": {
-    // The ERR install that runs the game (deploy target). Adjust if your path differs.
-    "env": { "ERR_ROOT": "${env:HOME}/Games/ERRv2.2.9.6" }
-  },
   "tasks": [
     {
       "label": "MFG: Configure (clang-cl xwin)",
@@ -27,9 +25,9 @@
     },
     {
       "label": "MFG: Deploy DLL (to ERR offline)",
-      "detail": "Copy the built DLL + PDB into <ERR_ROOT>/dll/offline (game must be CLOSED; restart to load).",
+      "detail": "Copy the built DLL + PDB into <ERR_ROOT>/dll/offline (resolved via .env.local; game must be CLOSED; restart to load).",
       "type": "shell",
-      "command": "cp build-linux/MapForGoblins.dll \"$ERR_ROOT/dll/offline/MapForGoblins.dll\" && cp build-linux/MapForGoblins.pdb \"$ERR_ROOT/dll/offline/MapForGoblins.pdb\" && echo deployed to \"$ERR_ROOT/dll/offline\"",
+      "command": "python -c \"import sys,shutil; sys.path.insert(0,'tools'); from mfg_session import DLL_OFFLINE as D; shutil.copy('build-linux/MapForGoblins.dll', D+'/MapForGoblins.dll'); shutil.copy('build-linux/MapForGoblins.pdb', D+'/MapForGoblins.pdb'); print('deployed to', D)\"",
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []
     },

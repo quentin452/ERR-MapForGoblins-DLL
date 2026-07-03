@@ -13,7 +13,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from mfg_session import run_test  # noqa: E402
+from mfg_session import run_test, LOG  # noqa: E402
 
 
 def triple(reply, key):
@@ -47,7 +47,7 @@ def _test(g):
     # Targeted move: move a SPECIFIC asset's nearest placement (World Editor "Move this asset"). Find a
     # loaded aegRow via geom_dump, move it +40Y, assert it moved, restore.
     import re, os
-    log = os.path.expanduser("~/Games/ERRv2.2.9.6/dll/offline/logs/MapForGoblins.log")
+    log = LOG
     g.rpc("geom_dump", timeout=15)
     dump_lines = [l for l in open(log) if "[GEOMDUMP] inst=" in l]
     m = re.search(r"aegRow=(\d+)", dump_lines[-1]) if dump_lines else None

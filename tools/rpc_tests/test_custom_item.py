@@ -17,14 +17,12 @@ import re
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from mfg_session import GameSession  # noqa: E402
+from mfg_session import GameSession, SAVE_DIR  # noqa: E402
 
 TEST_ID = "0x40003bed"   # reserved goods 15341
 QTY = 3
 
-MFG_GLOB = os.path.expanduser(
-    "~/.local/share/Steam/steamapps/compatdata/1245620/pfx/drive_c/users/steamuser/"
-    "AppData/Roaming/EldenRing/*/ER0000.mfg")
+MFG_GLOB = os.path.join(SAVE_DIR, "*", "ER0000.mfg")
 
 
 def _n(reply):

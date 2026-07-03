@@ -16,9 +16,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from mfg_session import run_test  # noqa: E402
-
-LOG = os.path.expanduser("~/Games/ERRv2.2.9.6/dll/offline/logs/MapForGoblins.log")
+from mfg_session import run_test, LOG  # noqa: E402  (LOG = <ERR_ROOT>/dll/offline/logs/MapForGoblins.log)
 
 
 def _test(g):

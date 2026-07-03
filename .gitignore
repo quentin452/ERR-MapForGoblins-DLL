@@ -195,3 +195,7 @@ data/err_collectibles.json
 tools/rpc_tests/results.jsonl
 tools/rpc_tests/sweep.log
 !.vscode/tasks.json
+
+# per-machine env (real paths) — never commit
+.env.local
+tools/.env.local

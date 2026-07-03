@@ -34,13 +34,32 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mfg_rpc import Rpc  # noqa: E402
 
+# Load .env / .env.local (real shell env wins) so per-machine paths aren't hardcoded — set ERR_ROOT +
+# GAME_DIR in .env.local (gitignored). Falls back to the old defaults if no env files are present.
+try:
+    import load_env  # noqa: E402
+    load_env.load()
+except Exception:
+    pass
+
 HOME = os.path.expanduser("~")
-ME3 = os.environ.get("MFG_ME3", f"{HOME}/Games/ERRv2.2.9.6/internals/modengine/bin/me3")
-EXE = os.environ.get(
-    "MFG_EXE", "/home/iamacat/.local/share/Steam/steamapps/common/ELDEN RING/Game/eldenring.exe")
+# ERR_ROOT = the install that runs the game (dll/offline, internals/modengine, mod/); GAME_DIR = the
+# eldenring.exe folder. Everything below derives from these (override any single one if needed).
+ERR_ROOT = os.environ.get("ERR_ROOT", "").strip() or f"{HOME}/Games/ERRv2.2.9.6"
+GAME_DIR = os.environ.get("GAME_DIR", "").strip() or f"{HOME}/.local/share/Steam/steamapps/common/ELDEN RING/Game"
+ME3 = os.environ.get("MFG_ME3", f"{ERR_ROOT}/internals/modengine/bin/me3")
+EXE = os.environ.get("MFG_EXE", f"{GAME_DIR}/eldenring.exe")
 PROFILE = os.environ.get("MFG_PROFILE", "err_offline.me3")
-ME3_CWD = os.environ.get("MFG_ME3_CWD", f"{HOME}/Games/ERRv2.2.9.6/internals/modengine")
+ME3_CWD = os.environ.get("MFG_ME3_CWD", f"{ERR_ROOT}/internals/modengine")
 PORT = int(os.environ.get("MFG_RPC_PORT", "38700"))
+
+# Shared path constants for the tests (import these instead of hardcoding ~/Games/ERRv2…).
+DLL_OFFLINE = f"{ERR_ROOT}/dll/offline"           # the deployed DLL + logs live here
+LOG = f"{DLL_OFFLINE}/logs/MapForGoblins.log"     # the main in-game log
+# Wine-prefix save dir (holds ER0000.sl2 + the .mfg sidecar under a per-user steamid subdir).
+SAVE_DIR = os.environ.get("MFG_SAVE_DIR", "").strip() or (
+    f"{HOME}/.local/share/Steam/steamapps/compatdata/1245620/pfx/drive_c/users/"
+    "steamuser/AppData/Roaming/EldenRing")
 
 
 class AssertionFail(Exception):

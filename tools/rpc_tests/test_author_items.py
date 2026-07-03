@@ -11,9 +11,9 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from mfg_session import run_test  # noqa: E402
+from mfg_session import run_test, DLL_OFFLINE  # noqa: E402
 
-MOD_DIR = os.path.expanduser("~/Games/ERRv2.2.9.6/dll/offline")
+MOD_DIR = DLL_OFFLINE
 TOML = os.path.join(MOD_DIR, "custom_items.toml")
 RID = 8000001                       # fresh reserved goods row (<= 0x7FFFFE)
 GID = f"0x{0x40000000 | RID:08x}"   # 0x407a1201

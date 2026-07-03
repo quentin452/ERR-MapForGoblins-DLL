@@ -22,15 +22,13 @@ import re
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from mfg_session import GameSession  # noqa: E402
+from mfg_session import GameSession, SAVE_DIR  # noqa: E402
 
 RID = 8000000                       # reserved custom goods row id (<= 0x7FFFFE, grantable)
 GID = f"0x{0x40000000 | RID:08x}"   # 0x407a1200 — category-encoded grant/count id
 QTY = 1                             # template goods 100 is a maxNum=1 item (clone inherits the cap)
 
-MFG_GLOB = os.path.expanduser(
-    "~/.local/share/Steam/steamapps/compatdata/1245620/pfx/drive_c/users/steamuser/"
-    "AppData/Roaming/EldenRing/*/ER0000.mfg")
+MFG_GLOB = os.path.join(SAVE_DIR, "*", "ER0000.mfg")
 
 
 def _n(reply):
