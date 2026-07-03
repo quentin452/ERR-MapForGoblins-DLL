@@ -63,6 +63,39 @@ placement-new an instance — but it's a bigger detour, not the spawn_clone shor
    self-allocated `0x5b0`, push to `+0x288`, then `SetWorldMatrix` (`vtable[0xd0]`, proven) to offset it by
    the delta — sidesteps the 24-byte transform builder (blocker 2) entirely.
 
+## ★ Blocker 3 — the ctor's parts-record reads — SOLVED (and it corrects the prompt)
+Re-decompiled the base ctor `FUN_1406c5900` + Dynamic ctor `FUN_1406b9880`, tracing every deref of the
+parts record (`param_3`, stored at `self+0x10 = param_1[2]`):
+
+- **Only ONE direct field is read from the record: `rec+0x18b`** — a `char` flag (base ctor reads it twice:
+  `inst[0x26c] = (rec[0x18b]==0)` and a branch on it). **That is the entire set of record *field* reads.**
+- **Correction to the prompt:** the guessed `rec+0x124` / `rec+0x3b` / `rec+0x3c` / `rec+0xd` are **NOT**
+  record fields — they are `param_1[4]+…`, i.e. the **transform module** (`self+0x20`, set from the 24-byte
+  transform wrapper `param_4`, not from the record). No model-ref field is dereferenced off the record in
+  either ctor — the model/asset is used by the render/physics registration elsewhere (already resident for
+  a reused record → it renders).
+- **The record is also used as an INSTANCE REGISTRY (mutated, not just read).** The Dynamic ctor calls
+  `FUN_1406a6630(record, inst)` which **adds the new instance to the record's own instance list**:
+  ```
+  rec+0xe8 = slot array (inst ptrs)   rec+0xf0 = free-index list   rec+0xf8 = cursor (bumped)
+  rec+0xfc = capacity                 rec+0xd0 = grow-check sub-object (FUN_1406ac220)
+  guard: rec+0xf8 < rec+0xfc  ||  FUN_1406ac220(rec+0xd0)   (won't overflow; silently skips if full)
+  ```
+
+**Clone-safety verdict (route b, reuse the SOURCE's live record):**
+- **Field-wise safe:** the ctor only needs `rec+0x18b` valid, which it trivially is on a live source record.
+- **But the ctor MUTATES the shared record:** it registers the clone into the source record's instance list
+  (`rec+0xe8`/`+0xf8`). So the clone becomes **tracked by the source record** and shares its lifecycle
+  (on tile-unload / record destroy, the engine will iterate/free the clone too). Bounded + non-crashing (the
+  capacity guard prevents overflow), and **fine for a dev/throwaway `spawn_clone` probe**. For a fully
+  isolated production clone, synthesize a MINIMAL record with a valid `+0x18b` + its own registry
+  (`+0xe8/+0xf0/+0xf8/+0xfc` sized ≥1) instead of reusing the source — but that is extra work; reuse-source
+  is the pragmatic first probe.
+
+**So static blocker 3 is closed:** route (b) can drive `FUN_1406b9880(inst, srcTypeDesc, source_record,
+transform)` reusing the live source record (only `+0x18b` matters), accept that the clone is registered into
+the source record, then `SetWorldMatrix` to offset it. No unknown record fields remain.
+
 ## LIVE-VERIFY checklist (hand to the Linux/Proton agent — this box's loaded DLL is stale)
 The Windows box runs the game with an OLDER mod DLL, so its RPC (`geom_dump`) predates these findings —
 don't trust a local RPC probe. Confirm on a freshly-deployed Proton build:
@@ -72,9 +105,10 @@ don't trust a local RPC probe. Confirm on a freshly-deployed Proton build:
    `inst+0x08`; confirm which field holds the passed-by-value srcType qword.)
 2. **transform is a 24B FD4 pose wrapper (blocker 2):** dump 24B of a live instance's `+0x18` module head —
    expect a vtable ptr at [0] (not raw floats). Confirms route (b) is needed (copy source pose, not the 4x4).
-3. **Blocker 3 — clone-safety record reads:** dump the live part record (`inst+0x10`) at the offsets the
-   base ctor reads — `rec+0x18b`, `rec+0x124`, and the model-ref fields — to confirm they're valid on the
-   source, so a clone that REUSES the source record is safe (route b reuses it, doesn't synthesize).
+3. **Blocker 3 (now STATICally solved):** the ctor only reads `rec+0x18b` (valid on any live record) and
+   registers the clone into the source record's instance list (`rec+0xe8/+0xf8`, cap `rec+0xfc`). Live check
+   is just a sanity dump: confirm `rec+0x18b` is a small flag and `rec+0xf8 < rec+0xfc` (registry not full)
+   on the chosen source before spawning.
 4. **Then the `spawn_clone` probe (route b):** srcTypeDesc(built) + source record + copied transform →
    `FUN_1406b9880` into self-alloc 0x5b0 → push `+0x288` → `SetWorldMatrix` to offset by the delta →
    see a duplicated asset render+collide.

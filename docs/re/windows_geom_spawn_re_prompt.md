@@ -5,7 +5,10 @@
 > Blocker 1 (`srcTypeDesc`) SOLVED = 8-byte packed FieldIns id. Blocker 2 (`transform`) = a 24-byte FD4 pose
 > wrapper (builder garbled in Ghidra) → recommend sidestepping it: spawn at the source transform then
 > `SetWorldMatrix`-move (reuse the proven move primitive). Lead: `FUN_1406c7000` may be a cleaner
-> single-spawn factory. Remaining: decomp `FUN_1406c7000` + the ctor's parts-record reads.
+> single-spawn factory. **Blocker 3 now SOLVED too:** the ctors read only `rec+0x18b` from the record (the
+> guessed `rec+0x124` etc. are the transform module, not the record; no model-ref read), and register the
+> clone into the source record's instance list (`rec+0xe8/+0xf8`, cap `+0xfc`). Route (b) reusing the source
+> record is field-safe. **All static blockers closed → next is the Proton `spawn_clone` probe.**
 
 **Goal:** drive `CSWorldGeomDynamicIns` spawn (`FUN_1406b9880`) live to ADD one new world-geom instance
 (the last MSB-write hole — see `windows_msb_placement_write_re_findings.md`). MOVE is fully solved+live
