@@ -67,7 +67,8 @@ namespace goblin::sig
     // ⚠ WRITE side only: SaveLoad2 never reads GameDataMan — it writes an already-serialized content
     // buffer, so hooking this is TOO LATE to strip inventory. Good as a save-detection observer /
     // write bracket; the strip/reinject bracket needs the game-data SERIALIZE (find-what-accesses
-    // EquipGameData — the one RE step left). ⚠ Re-verify [SIG] on the ERR/Proton deploy build.
+    // EquipGameData — the one RE step left). VERIFIED UNIQUE on the ERR-Steam exe (offline scan
+    // 2026-07-03: 1 match @ file_off 0x240f370 = RVA 0x240FD70) → [SIG] will PASS on this build.
     inline constexpr const char *SAVE_FN =
         "48 8B C4 55 57 41 54 41 56 41 57 48 8D 68 A1 48 81 EC B0 00 00 00 48 C7 45 EF FE FF FF FF 48 89 58 10";
 
