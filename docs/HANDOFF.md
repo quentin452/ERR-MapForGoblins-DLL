@@ -18,7 +18,7 @@ on Linux/Proton; spiderfy v1+v2, in-game pause, RPC input injection/HUD, NPC alt
 repro — see the Phase 4 sections below. Earlier same day: SINGLE-DLL migration + the 9 native-pin
 parity landmark categories in-game verified.)
 
-## Runtime modding framework — FIRST STEP DONE (2026-07-03, branch `feat/param-override-loader`, NOT merged)
+## Runtime modding framework — FIRST STEP DONE + MERGED to master (2026-07-03)
 
 Architecture audit answered the user's "what to do first for end-to-end modding without a
 regulation.bin". Pick: a **boot-time param-override loader** — editing a param FIELD in RAM is
