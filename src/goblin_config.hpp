@@ -57,13 +57,13 @@ namespace goblin
         // ERR day/night dial exclusion, tunable so its shape can be aligned to the dial on any
         // build/aspect (was hardcoded). VIRTUAL-canvas (1920x1080) units. Disc = the round dial
         // (needle/wing); pill = the time-of-day bar above it. Only applied when err_features().
-        extern GOBLIN_RENDER_API float dialDiscX;   // disc centre X (default 1815)
-        extern GOBLIN_RENDER_API float dialDiscY;   // disc centre Y (default 1000)
-        extern GOBLIN_RENDER_API float dialDiscR;   // disc radius   (default 240; 0 = disc off)
-        extern GOBLIN_RENDER_API float dialPillX0;  // time pill rect left   (default 1700)
-        extern GOBLIN_RENDER_API float dialPillY0;  // time pill rect top    (default 685)
-        extern GOBLIN_RENDER_API float dialPillX1;  // time pill rect right  (default 1920)
-        extern GOBLIN_RENDER_API float dialPillY1;  // time pill rect bottom (default 740; y1<=y0 = pill off)
+        extern GOBLIN_RENDER_API float dialDiscX;   // disc centre X (default 1840)
+        extern GOBLIN_RENDER_API float dialDiscY;   // disc centre Y (default 962)
+        extern GOBLIN_RENDER_API float dialDiscR;   // disc radius   (default 227; 0 = disc off)
+        extern GOBLIN_RENDER_API float dialPillX0;  // time pill rect left   (default 1690)
+        extern GOBLIN_RENDER_API float dialPillY0;  // time pill rect top    (default 692)
+        extern GOBLIN_RENDER_API float dialPillX1;  // time pill rect right  (default 1890)
+        extern GOBLIN_RENDER_API float dialPillY1;  // time pill rect bottom (default 726; y1<=y0 = pill off)
         extern GOBLIN_RENDER_API bool bakedOnly;  // diag overlay: draw ONLY Baked-source markers (the no-bake residual)
         extern GOBLIN_RENDER_API bool collectedGraying;
         extern GOBLIN_RENDER_API bool hideCollected;
