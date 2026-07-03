@@ -57,6 +57,44 @@ Per-world projection (origin/scale) lives in the world's bundle.
 - Later (walkable, needs ADD geom + a reserved-mapId allocator) — Decision 1's dimension level + Decision 2's
   mapId→world. Blocked on the geom-spawn ADD frontier (pivot 2, Windows RE).
 
+## ★ Endgame: TOTAL native-map replacement (the ultimate form) — phased + risk-scoped (2026-07-04)
+Vision: the mod-drawn map REPLACES ER's native worldmap entirely — one map for base ER AND custom worlds,
+killing the two-UX split and the intermittent marker CLIPPING for good. Coherent, but large + risky; the
+map is not a viewer — it drives FAST-TRAVEL, beacons, fog/fragments, region labels, DLC/UG page switching.
+
+**Key reframe — the clipping win is FREE, no risky suppression needed.** Clipping comes from drawing our
+markers OVER the Scaleform map. A full-screen mod-owned surface (slices A-D) does NOT draw over it — it IS
+the map — so clipping is gone the moment the mod map renders full-screen, WITHOUT suppressing the native
+map. So the dangerous "replace/suppress native" step is LAST and OPTIONAL; most value lands before it.
+
+**The make-or-break feature = FAST-TRAVEL.** ER's map's #1 job is warp-on-grace-click. We have the
+primitive (`warp <graceId>` = LuaWarp_01), but replacing the map means WE must: list discovered graces,
+let the user pick one, warp. Getting this wrong is GAME-BREAKING — be ultra-rigorous here (the user's own
+caveat). Everything else (beacons, legend, fog reveal, fragments, region labels, page switch) is additive.
+
+**Building blocks (the user's list):**
+- **Player position** — DONE (we already project the player point).
+- **DCX map-tile loading** — ER's map art = `WorldMapTile` DDS sheets, DCX-compressed. We HAVE Oodle on
+  Linux (`liboo2corelinux64.so.9`) — extract DCX → DDS → GPU texture, drawn per-tile at its grid position
+  (`tileId = group*10000+gx*100+gz`), scaled by the mod projection. Real work, no RE wall.
+- **PNG support** — for custom worlds' own map images (stb_image or similar). Easy.
+- **All markers** — DONE (per-group projection on the canvas).
+- **Fast-travel** — primitive DONE; the UI + grace-list + click-to-warp is the risky new build.
+
+**Phasing (keep the native map as a FALLBACK until parity):**
+1. **Full ALTERNATIVE map** (opened via M, native still available as fallback): mod surface + ER tiles +
+   player pos + all markers + **fast-travel** (grace list → `warp`). No clipping (our surface). This is the
+   bulk of the value + already sits on the A-D foundation.
+2. **Feature parity**: fog/fragments reveal, beacons (player-placed pins), region labels, DLC/UG page
+   switch, legend — additive slices.
+3. **Suppress the native map** (the actual "replace"): hook map-open so M shows ONLY ours. LAST + riskiest
+   + optional — the clipping/UX wins are already banked by phase 1.
+
+**Verdict:** this is a multi-phase CAPSTONE, not a slice — but it's the natural top of the virtual-map work
+(A-D are its foundation). Do NOT gate the custom-world track on it. Recommended first brick if pursued:
+phase-1 tile loading (DCX→GPU) so the mod map shows ER's real art, then fast-travel. Keep native as
+fallback throughout; only suppress it once fast-travel parity is proven.
+
 ## Open RE items (small, mostly confirm-live)
 - mapId→world lookup + a reserved-mapId/area allocator (only for walkable worlds — not on the marker path).
 - The exact M-open hook point to swap in the virtual page (worldmap-open is RE'd; the suppress/overlay of
