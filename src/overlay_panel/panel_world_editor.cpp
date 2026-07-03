@@ -1,8 +1,15 @@
-// F1 panel — "World Editor (live)": first slice of the in-game world editor (runtime-modding
-// framework vision #2). Pick an AEG asset, see the loot item its MAP MARKER resolves to (the same
-// live chain the map build uses), re-skin that lot's slot-1 item to any goods id, and refresh the
-// markers to see it on the map — the whole regulation-free live-edit loop as a UI. Backend proven
-// via the loot_at / param_setf / refresh_markers RPCs (2026-07-03).
+// F1 panel — "World Editor (live)": the in-game world editor (runtime-modding framework vision #2).
+// Pick an AEG asset, see the loot item its MAP MARKER resolves to (the same live chain the map build
+// uses), then either RE-SKIN that lot's slot-1 item in place, or REPOINT the asset at a different
+// existing lot (non-destructive — leaves the shared lot alone). Refresh the markers to see the edit
+// on the map — the whole regulation-free live-edit loop as a UI. Backend proven via the
+// loot_at / param_setf / refresh_markers RPCs (2026-07-03).
+//
+// Slice 1 (2026-07-03): live loot re-skin (pickUpItemLotParamId → lot → resolve → set lotItemId01).
+// Slice 2 (2026-07-03): repoint-to-another-lot (set pickUpItemLotParamId to a different EXISTING lot,
+//   with a live preview of the target lot's item). Repointing at an existing lot resolves live on
+//   Refresh markers — the refresh_markers v2 LotReader-index reset is only needed for NEWLY CLONED
+//   lots, which the CLONE slice will add on top of this.
 
 #include "panel_internal.hpp"
 #include "goblin_i18n.hpp"
@@ -57,7 +64,47 @@ void draw_world_editor(Filter &f)
                          : "FAILED to set lot %d", lot, new_item);
     }
     ImGui::EndDisabled();
-    ImGui::SameLine();
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("IN-PLACE re-skin: changes the shared lot itself, so EVERY asset\n"
+                                   "that points at this lot changes too. To change only THIS asset,\n"
+                                   "use Repoint below instead."));
+
+    // ── Slice 2: repoint this asset at a DIFFERENT existing lot ──────────────────────────────────
+    // Non-destructive: leaves the current (shared) lot untouched and just points this one asset's
+    // pickUpItemLotParamId elsewhere. Live preview shows what the target lot yields before committing.
+    ImGui::Spacing();
+    static int target_lot = 0;
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputInt(tr("Repoint to lot"), &target_lot);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("Point THIS asset at a different EXISTING ItemLotParam_map row\n"
+                                   "(non-destructive — the current lot is left unchanged). A newly\n"
+                                   "CLONED lot won't resolve on the map until the CLONE slice lands\n"
+                                   "the LotReader-index reset; existing lots reflect live."));
+
+    // Preview the target lot's slot-1 item live, same chain as the current-lot display above.
+    if (target_lot > 0)
+    {
+        int32_t t_textid = goblin::overlay_api::resolve_loot_item_textid((uint32_t)target_lot, 1, -1);
+        std::string t_name = (t_textid >= 0) ? goblin::overlay_api::lookup_text_utf8(t_textid)
+                                             : std::string{};
+        ImGui::SameLine();
+        ImGui::TextDisabled("\xE2\x86\x92 %s",
+                            t_name.empty() ? tr("(no item / unknown lot)") : t_name.c_str());
+    }
+
+    ImGui::BeginDisabled(aeg <= 0 || target_lot <= 0);
+    if (ImGui::Button(tr("Repoint asset to this lot")))
+    {
+        bool ok = goblin::overlay_api::param_set_field(
+            "AssetEnvironmentGeometryParam", (uint64_t)aeg, "pickUpItemLotParamId", (double)target_lot);
+        std::snprintf(status, sizeof(status),
+                      ok ? "ok: asset %d pickUpItemLotParamId = %d (Refresh markers to see it)"
+                         : "FAILED to repoint asset %d", aeg, target_lot);
+    }
+    ImGui::EndDisabled();
+
+    ImGui::Spacing();
     if (ImGui::Button(tr("Refresh markers")))
     {
         goblin::overlay_api::rebuild_markers();

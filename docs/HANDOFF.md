@@ -74,16 +74,25 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 
 ## Open / next items
 
-- **In-Game World Editor (vision #2) — SLICE 1 DONE 2026-07-03.** New F1 panel section "World Editor
+- **In-Game World Editor (vision #2) — SLICES 1+2 DONE 2026-07-03.** F1 panel section "World Editor
   (live)" (`src/overlay_panel/panel_world_editor.cpp`): pick an AEG asset → it shows the loot item its
   MAP MARKER resolves to (live `aeg_pickup_lot`→`resolve_loot_item_textid`→`lookup_text_utf8`) → set that
   lot's `lotItemId01` to any goods id → `Refresh markers` → shows on the map. Wires the proven runtime
-  primitives (`overlay_api::param_set_field` new bridge + `rebuild_markers`) to widgets. Visually verified
-  ("Lot 997230 → Bloodrose"). **Next slices:** repoint-to-another-lot (pickUpItemLotParamId), a proper
-  asset/item PICKER (browse instead of typing ids), CLONE a lot instead of editing in place (needs the
-  `refresh_markers` v2 LotReader-index reset so new lots resolve), category select, and SAVE the edits as
-  a world bundle (→ feeds vision #1 World Virtualization). Backend all proven; these are UI + the two
-  `refresh_markers` v2 items.
+  primitives (`overlay_api::param_set_field` new bridge + `rebuild_markers`) to widgets. Slice-1 visually
+  verified ("Lot 997230 → Bloodrose").
+  **Slice 2 (2026-07-03): repoint-to-another-lot.** Panel now also sets the asset's `pickUpItemLotParamId`
+  to a different EXISTING lot (non-destructive — leaves the shared lot alone), with a live preview of the
+  target lot's slot-1 item before commit. Pure ImGui over already-proven bridges (`param_set_field` on
+  `pickUpItemLotParamId` is the same write the RPC repoint used; live re-read via `aeg_pickup_lot` from
+  slice 1). **Built clean (clang-cl) but NOT yet deployed/in-game-verified — the game was running at
+  build time (DLL file-lock, no hot-reload). Deploy `build-linux/MapForGoblins.dll`(+`.pdb`) to
+  `~/Games/ERRv2.2.9.6/dll/offline/` after the game is closed, restart ERR, verify: repoint an asset at
+  another lot → live preview + display update → Refresh markers shows it.**
+  **Next slices:** a proper asset/item PICKER (browse instead of typing ids — needs an enumeration
+  source), CLONE a lot instead of editing in place (needs the `refresh_markers` v2 LotReader-index reset
+  so new lots resolve), a slot selector (edit any of 8 lot slots via `lot_slot_item_keys`, not just
+  slot 1), category select, and SAVE the edits as a world bundle (→ feeds vision #1 World Virtualization).
+  Backend all proven; these are UI + the two `refresh_markers` v2 items.
 
 - **Long-horizon vision bets — tracked in `docs/runtime_modding_framework_vision.md` "Future directions"
   (2026-07-03):** (1) World Virtualization — a FRAMEWORK feature: the framework holds N of its OWN worlds (each a data
