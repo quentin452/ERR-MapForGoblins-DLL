@@ -192,6 +192,12 @@ routine triggered by `GameMan+0xB42`; find via find-what-accesses on 0xB42 or th
 return address) and move the strip/reinject bracket there. The data layer + give_item primitives are
 done and reusable; only the trigger point changes.
 
+**Save-fn RE handed to Windows (2026-07-03):** the outer save routine is virtual/worker-dispatched +
+serialize is a separate pre-write phase, so the in-DLL stack walk can't reach it. Next step is a LIVE-RPM
+/ CE find-what-accesses hunt on the Windows box — prompt: `docs/re/windows_save_function_rpm_re_prompt.md`
+(find via `GameMan+0xB42` writer/reader or an RTTI `CS::…SaveLoad` vtable scan). Deliver `SAVE_FN` RVA+AOB
++ pre-serialize proof → hook entry(strip)/exit(reinject) → flip `kItemStripReinjectWired`.
+
 Original design (trigger point now known to be the save fn, not CreateFileW):
 On the CreateFileW save signal: for each sidecar item, `RemoveItem` from the live inventory (record
 qty), let the game write the (now-clean) save, then `AddItem` back. On load: `AddItem` each from the

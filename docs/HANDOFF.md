@@ -104,11 +104,17 @@ inventory buffer before/around the file-open (strip too late) and (2) `reinject-
 frequent AUTOSAVE re-dirties. **So strip must be a SYNCHRONOUS hook on the SAVE ROUTINE**
 (`strip → original_save() → reinject`, atomic, no autosave window), not CreateFileW. CreateFileW stays
 correct for the `.mfg` write signal + path (ERR/alt-save work there too — but for REDIRECT of the whole
-buffer, confirmed by reading `eldenring_alt_saves.dll` = pure CreateFileW hook). **NEXT: RE the ER save
-function** (triggered by `GameMan+0xB42`; find via find-what-accesses on 0xB42 or the save-write
-CreateFileW caller's return addr) → move the strip/reinject bracket there → flip the gate on. Data layer
-+ give_item primitives are done & reusable; only the trigger point changes. `plans/shadow_sidecar_save_plan.md`
-Phase 2 has the detail.
+buffer, confirmed by reading `eldenring_alt_saves.dll` = pure CreateFileW hook). **SAVE-FN RE: in-DLL stack walk done, hit
+the indirect-dispatch wall → handed to WINDOWS live-RPM (2026-07-03).** Mapped the save WRITE chain
+(recursive BND4 write tree `0x240daa0`/`0x240c530` → file open `0x1fc0b70` → CreateFileW) but the OUTER
+save routine is virtual/worker-dispatched (can't reach its entry by call-site/heuristic — an observer on
+a guessed entry got 0 calls) AND the inventory SERIALIZE is a separate phase before the write stack.
+`docs/re/linux_save_function_re_findings.md`. **NEXT (Windows box, CE+Ghidra+RPM):
+`docs/re/windows_save_function_rpm_re_prompt.md`** — find the save initiator via CE find-what-accesses on
+`GameMan+0xB42` (writer=request sites, reader=dispatcher) or an RTTI `CS::…SaveLoad` vtable RPM scan
+(GfxScan.cs style); deliver `SAVE_FN` RVA+AOB + pre-serialize BP-order proof → hook entry(strip)/
+exit(reinject) → flip `kItemStripReinjectWired`. Alt path if RE drags = Variant B (reserved-id, item
+tolerated in the `.err`, blank if DLL-less). Data layer + give_item primitives are done & reusable.
 
 **GRACE WARP — ADDED + IN-GAME VERIFIED 2026-07-03 (dev-world navigation, user-requested).** The
 Hexinton CT ("Coinsworth") had a proven warp: `goblin::warp::to_grace(graceId)`
