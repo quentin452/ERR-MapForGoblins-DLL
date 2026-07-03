@@ -190,3 +190,6 @@ data/err_collectibles.json
 
 # serena tool config/cache (per-machine; project memory lives in docs/memory/ only)
 .serena/
+
+# RPC test run results (local regression ledger, not committed)
+tools/rpc_tests/results.jsonl

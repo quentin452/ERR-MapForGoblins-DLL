@@ -95,6 +95,43 @@ caveat). Everything else (beacons, legend, fog reveal, fragments, region labels,
 phase-1 tile loading (DCX→GPU) so the mod map shows ER's real art, then fast-travel. Keep native as
 fallback throughout; only suppress it once fast-travel parity is proven.
 
+## Feature-parity with ER's native map (from the button bar) + gamepad (2026-07-04)
+The native map's on-screen actions (`E place beacon`, `Q close`, `R marker`, `F sites of grace`, `Z map
+menu`, `zoom`) map to a SHORT list once you subtract cosmetics — **almost everything else is cosmetic**:
+- **Compass** → already covered by the minimap (`showMinimap`); reuse its heading.
+- **Zoom / pan / close** → the vmap canvas already has these (wheel/drag; a close verb).
+- **Sites of grace (`F`) → FAST-TRAVEL** — the make-or-break feature (see the endgame section); `warp`
+  primitive exists.
+- **The REAL functional gaps (not cosmetic):**
+  1. **Clock / time-of-day** ("Morning" etc.) — read the live game time-of-day and show it. Small RE (a
+     world-time field) + a label.
+  2. **Blue ER "you clicked here" marker** — the map's click-to-place location pin (the blue diamond). We
+     own the canvas → click → place a transient pin at the `s2w` world coord.
+  3. **Custom beacon / personal marker (`E` place beacon)** — a persistent user-placed marker (guidance
+     beacon). Store on the active world (bundle-backed, like `vworld` markers) + draw it.
+  Everything else in the submenus (legend, map-menu `Z`, fragment/region cosmetics) is polish.
+- **GAMEPAD support (design gap — must add):** the vmap canvas is mouse-only today (wheel/drag). It MUST be
+  controller-drivable (the game map is): **left stick → pan, triggers/RB-LB → zoom, D-pad/stick → move a
+  selection cursor over markers, A → select/place, B → close.** ImGui nav handles buttons/focus but a
+  world-space CANVAS needs explicit stick→pan/zoom + a cursor reticle (the game map uses a reticle, not a
+  free pointer). Wire it off the same gamepad input the F1 combo already reads. Add to every vmap slice.
+
+## Path-loading REGRESSION risk (vanilla packed/unpacked vs ERR modded) — add RPC checks (2026-07-04)
+The asset-load paths differ by install shape: **vanilla PACKED** (base game dvdbnd `Data*.bhd`, Windows-only
+reader), **vanilla UXM-UNPACKED** (loose `menu/…` files), and **ERR-modded** (me3 overlay `mod/menu/…` loose
++ base dvdbnd underneath). `read_game_file_decompressed` tries loose→dvdbnd, but the map-tile / name / FMG
+paths can shift subtly per shape → a silent regression on one install shape while another still works.
+**Add RPC regression checks** that assert the load path resolves on the CURRENT install (e.g. a
+`assets_probe` verb: can it resolve `menu/71_MapTile`, an item-icon sheet, an FMG, a param) + record the
+install shape — so a path break shows up in the persisted test ledger (below) instead of as a phantom.
+
+## Process: PERSIST RPC test PASS/FAIL + regression detection (DONE 2026-07-04)
+`tools/mfg_session.py::summary()` now appends every run to `tools/rpc_tests/results.jsonl` (gitignored) and
+LOUDLY flags a regression: a check that PASSED in the prior run of the same test but FAILS now (or overall
+pass→fail). So a regression is RECORDED, not a phantom. Orchestration follow-up (open): a `check-regress`
+tool that diffs the ledger across a run set + a nightly/cron all-tests sweep so agents catch breaks without
+a human eyeballing each run.
+
 ## Open RE items (small, mostly confirm-live)
 - mapId→world lookup + a reserved-mapId/area allocator (only for walkable worlds — not on the marker path).
 - The exact M-open hook point to swap in the virtual page (worldmap-open is RE'd; the suppress/overlay of

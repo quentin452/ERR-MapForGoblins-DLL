@@ -174,7 +174,50 @@ class GameSession:
         for n, ok, d in self.checks:
             if not ok:
                 print(f"  FAIL: {n} — {d}", flush=True)
+        self._persist_results(passed, total)
         return passed == total
+
+    def _persist_results(self, passed, total):
+        """Append this run's PASS/FAIL to tools/rpc_tests/results.jsonl so a regression is RECORDED,
+        not a phantom, and loudly flag any check that PASSED in the prior run of this same test but
+        FAILS now (or an overall pass->fail). Best-effort: never let bookkeeping fail the test."""
+        try:
+            import json
+            from datetime import datetime
+            test = os.path.basename(sys.argv[0]) if sys.argv and sys.argv[0] else "unknown"
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rpc_tests", "results.jsonl")
+            prior = None
+            if os.path.exists(path):
+                with open(path) as f:
+                    for line in f:
+                        try:
+                            r = json.loads(line)
+                        except Exception:
+                            continue
+                        if r.get("test") == test:
+                            prior = r  # keep the LAST prior run of this test
+            rec = {
+                "test": test,
+                "ts": datetime.now().isoformat(timespec="seconds"),
+                "passed": passed, "total": total, "ok": passed == total,
+                "checks": [{"name": n, "ok": ok} for n, ok, _ in self.checks],
+            }
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "a") as f:
+                f.write(json.dumps(rec) + "\n")
+            # Regression detection vs the prior run of the SAME test.
+            if prior:
+                prev_ok = {c["name"]: c["ok"] for c in prior.get("checks", [])}
+                regressed = [n for n, ok, _ in self.checks if not ok and prev_ok.get(n) is True]
+                if regressed:
+                    print(f"\n  ⚠ REGRESSION in {test} (was PASS, now FAIL): " + ", ".join(regressed),
+                          flush=True)
+                elif prior.get("ok") and passed != total:
+                    print(f"\n  ⚠ REGRESSION in {test}: prior run was all-pass, this run is {passed}/{total}",
+                          flush=True)
+            print(f"  [results] appended to {path}", flush=True)
+        except Exception as e:
+            print(f"  [results] persist skipped: {e!r}", flush=True)
 
 
 def run_test(fn):
