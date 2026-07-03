@@ -184,18 +184,24 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   WGM/render/physics. Open sub-Qs (a live probe answers): does a cloned `CSMsbPartsGeom` satisfy the ctor's
   reads; is the `+0x288` push enough for render+collision or is a pool index assumed elsewhere. This is a
   multi-step build, NOT a quick primitive like move.
-  **⇒ RESUME (next session, 2026-07-03 wrap): 2/3 blockers solved — `docs/re/windows_geom_spawn_re_findings.md`.**
+  **⇒ RESUME (next session): ALL STATIC BLOCKERS CLOSED — `docs/re/windows_geom_spawn_re_findings.md`.
+  Next is the Proton `spawn_clone` probe.**
   Blocker 1 (srcTypeDesc) = 8-byte packed FieldIns id, buildable (live cross-check ✓: geom_dump inst+0x08
   has the `0x6…` tag + block-tag high32). Blocker 2 (transform=24B FD4 pose wrapper) SIDESTEPPED via **route
   (b): spawn at the source transform, then `SetWorldMatrix`-move to the offset (reuse the proven move
-  primitive).** **`FUN_1406c7000` CHECKED + downgraded (8a0e37a) — NO shortcut:** it's an asset-name/
-  streaming-REQUEST builder (`swprintf("%s_%04d")` + FD4 resource container), not a leaner instance factory,
-  and still needs a rich part descriptor. So drive the Dynamic ctor `FUN_1406b9880` directly.
-  **Remaining static blocker = BLOCKER 3:** decomp `FUN_1406b9880` arg reads + base `FUN_1406c5900`
-  parts-record reads (`rec+0x18b`, `rec+0x124`, model refs) — the minimal fields a cloned record must satisfy
-  so route (b)'s reuse-source-record is safe. When those land → code+drive `spawn_clone` route (b) on Proton
-  (move step already exists). Windows box's loaded DLL is stale, so the 4-item LIVE-VERIFY checklist in
-  `windows_geom_spawn_re_findings.md` is handed to the Linux/Proton agent. Nothing safe to drive live until then.
+  primitive).** **`FUN_1406c7000` CHECKED + downgraded (8a0e37a) — NO shortcut:** asset-name/streaming-REQUEST
+  builder, not a leaner instance factory → drive the Dynamic ctor `FUN_1406b9880` directly.
+  **Blocker 3 SOLVED (4e405a1):** the ctors read ONLY `rec+0x18b` (a char flag) from the parts record — the
+  prompt's guessed `rec+0x124/+0x3b/+0x3c/+0xd` are the TRANSFORM module (`param_1[4]`/self+0x20), NOT record
+  fields; no model-ref read. The Dynamic ctor also MUTATES the record — `FUN_1406a6630(record, inst)`
+  registers the clone into the source record's instance list (`rec+0xe8` slots/`+0xf8` cursor/`+0xfc` cap,
+  guarded). Route (b) reusing the source record is field-safe (only `+0x18b` matters); the clone just becomes
+  tracked by the source record's lifecycle (fine for a dev probe; production would synth a minimal record).
+  **NEXT = the Proton `spawn_clone` probe (route b):** build srcTypeDesc + reuse source record + copy source
+  transform → `FUN_1406b9880` into self-alloc 0x5b0 → push `+0x288` → `SetWorldMatrix` to offset → see a
+  duplicated asset render+collide. Windows box's loaded DLL is stale, so the 4-item LIVE-VERIFY checklist in
+  `windows_geom_spawn_re_findings.md` (sanity-dump `rec+0x18b` + `rec+0xf8<rec+0xfc` before spawning) is
+  handed to the Linux/Proton agent — that agent codes + drives it (move step already exists).
   **Freecam** (dev tool, after ADD): recon done (`windows_freecam_re_findings.md`), **Route 2** = freeze
   ChrCam + override the render view matrix in `GameRendCameraSet` (er+0x680460). BLOCKED on Ghidra: that
   matrix offset + a `CSCameraImp` singleton AOB. Then I code freeze+override from Linux.
