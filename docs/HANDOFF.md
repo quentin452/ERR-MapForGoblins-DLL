@@ -310,7 +310,7 @@ apply — the grace's own marker was hovered fine.
    also dropped NOT-WIRED 31→21 (Elevator + Smithing Table are now correctly wired in the script —
    they were solved since the last regen; the script's SECTIONS/ENUM2DISPLAY were stale).
 
-## Overlay z-order clipping (user report 2026-07-02) — dial DONE, menu-over-map OPEN
+## Overlay z-order clipping (user report 2026-07-02) — dial DONE, menu-over-map DONE, native clip B3 SOLVED LIVE (2026-07-03)
 
 We render post-present → always on top of the game's own UI. Two sub-bugs:
 1. **ERR day/night dial (bottom-right of the map) — FIXED (`fix/f2-fog-locate-v2` branch,
@@ -328,11 +328,31 @@ We render post-present → always on top of the game's own UI. Two sub-bugs:
      +0x0..0x400; `menu_open_diag` (ini `[Debug] debug_menu_cover_diag`) is now **byte-wise** —
      the first int32-stride/`[0,256)`-filter version silently dropped byte flags (the bug behind
      two "zero logs" runs; see findings).
-   - **PENDING:** live re-check via `menucover=` that +0x104 also flips for a SECOND covering menu
-     (marker-placement dialog / region list), not just the fast-travel confirm — doc bar is ≥2
-     menus. +0x104 is a CSMenuMan-level field so it's expected to be generic. After that, retire
-     the static dial exclusion + user-drawn zones and move to Task B (native clip rect; see
-     `docs/re/worldmap_menu_and_native_clip_re_prompt.md`).
+   - **VALIDATED live (2026-07-03):** `menucover=` flips for multiple covering menus and markers
+     visibly disappear under them. **Task A complete.**
+3. **Native map CLIP rect (perfect edge clipping) — Task B, B3 SOLVED LIVE (2026-07-03).** Full
+   detail: `docs/re/worldmap_native_clip_b3_scaleform_re_findings.md`. Progress:
+   - **B1 (live struct rect-dump) — done, negative.** No screen-space map-viewport rect is parked
+     on the canvas / dialog / view / viewmodel; only the full 1920×1080 canvas + marker-space rects.
+     Also learned: the in-game res slider does NOT change the DXGI backbuffer (ER draws the map into a
+     fixed 1920×1080 virtual canvas and up/downscales) → the clip is in canvas units.
+   - **B2 (D3D12 scissor/viewport command-list hook) — dead end.** ER ships the Agility SDK
+     (`D3D12Core.dll`); MinHook AND a direct vtable-swap on `RSSetScissorRects`/`RSSetViewports` both
+     **never fire** (not even viewports, every frame) — the engine's render calls don't read the
+     vtable slot we can reach. Scaffolding kept OFF under `debug_scissor_probe`; don't re-attempt.
+   - **B3 — SOLVED via LIVE RPM (not Ghidra).** Instead of the static-RE the prompt budgeted, an
+     external ReadProcessMemory scan (scratchpad `GfxScan.cs`: RTTI→heap→movie-name match) found the
+     live Scaleform viewport in one session. Chain (RTTI-verified, probe-reachable):
+     `WorldMapDialog + 0x140 → movieHandle + 0x00 → MovieImpl + 0xB0 = int L,T,W,H` (clip rect,
+     **canvas 1920×1080 units**; buffer size at `+0xA8`; `movieHandle+0x58` = the worldmap
+     `CSScaleformSwfPlayer`). **Answers the user's question decisively: live RPM was far more
+     efficient than offline Ghidra here.**
+   - **IMPORTANT correction to the plan's premise:** the movie viewport is the **FULL canvas
+     (0,0,1920,1080)** — no engine inset sub-rect (the dial is HUD-over-map, inside the viewport).
+     So the native clip retires the **edge/void cull (#1)** but does **NOT** remove the dial disc
+     (#2) or user rects (#3) — keep `in_game_ui_exclusion` + `ui_exclusion_rects` as a separate
+     HUD-overlap layer. One axis unverified (needs a non-16:9 **window** resize): whether `+0xB0`
+     goes letterbox-inset off 16:9. Consumer wiring in the findings doc; keep the `clip_game_ui` gate.
 
 ## Silent deadlock freeze + freeze watchdog (2026-07-02, `fix/f2-fog-locate-v2` branch)
 

@@ -17,9 +17,11 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -1215,6 +1217,123 @@ bool menu_covers_map()
         last = b;
     }
     return b != 0;
+}
+
+// TASK B discovery dump — the NATIVE map CLIP rect. We clip our overlay to the map-ART extent
+// today (view+0x350 projected through OUR view → s_canvas_min/max) + hand-authored dial/user
+// zones; what we WANT is the engine's own screen-space clip so we match the native map pixel-for-
+// pixel. This dumps every plausible f32 rect from the live structs that might hold it, ONE-SHOT
+// per backbuffer resolution — re-dumping when the resolution changes IS the discriminator: a
+// native screen scissor SCALES with the backbuffer, a virtual-canvas (1920×1080) or marker-space
+// rect does NOT. Diff two [MAPCLIP] dumps at different resolutions offline. Read-only + SEH-guarded.
+// Called from hk_present (render thread, has the swapchain dims) while the map is open.
+void map_clip_diag(float bbW, float bbH)
+{
+    if (!g_log) return;
+    static float last_w = -1.f, last_h = -1.f;
+    if (bbW == last_w && bbH == last_h) return; // one-shot per resolution
+    last_w = bbW;
+    last_h = bbH;
+
+    static uintptr_t exe = 0;
+    if (!exe)
+        exe = g_exe_base ? g_exe_base : reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!exe) return;
+
+    g_log->info("=== [MAPCLIP] dump @ backbuffer {:.0f}x{:.0f} — a value that SCALES with bb across "
+                "two resolutions is the native screen scissor; constant = virtual-canvas/marker ===",
+                bbW, bbH);
+
+    // Log every finite f32 in a window that's plausibly canvas/screen-space: (0, 8192] excludes 0
+    // and marker-space maxima (~10496); pan (~7000) may leak but is harmless one-shot noise.
+    auto dump = [&](const char *tag, uintptr_t obj, ptrdiff_t from, ptrdiff_t to) {
+        if (!obj) { g_log->info("[MAPCLIP] {} = null", tag); return; }
+        for (ptrdiff_t off = from; off < to; off += 4)
+        {
+            float v = 0.f;
+            if (!seh_read4(reinterpret_cast<void *>(obj + off), &v) || !std::isfinite(v)) continue;
+            const float a = std::fabs(v);
+            if (a > 0.f && a <= 8192.f)
+                g_log->info("[MAPCLIP] {}+{:#05x} = {:.3f}", tag, off, v);
+        }
+    };
+
+    // (1) Virtual UI canvas singleton — prime lead ([slot]+0x128 → +0x110 origin/+0x118 size ≈
+    //     1920×1080). A map sub-rect may sit nearby.
+    uint64_t canvas = 0, c2 = 0;
+    if (seh_read8(reinterpret_cast<void *>(exe + CANVAS_SINGLETON_RVA), &canvas) && canvas &&
+        seh_read8(reinterpret_cast<void *>(static_cast<uintptr_t>(canvas) + 0x128), &c2) && c2)
+        dump("canvas", static_cast<uintptr_t>(c2), 0x100, 0x1C0);
+    else
+        g_log->info("[MAPCLIP] canvas unresolved");
+
+    // (2) WorldMapDialog + WorldMapArea view (from the published active cursor). Known non-answers:
+    //     view+0x340..0x34c cursor/snap bounds, +0x350 map-art extent — both marker space.
+    uintptr_t cur = g_active_cursor.load(std::memory_order_relaxed);
+    if (cur)
+    {
+        dump("dlg", cur - CURSOR_OFF_IN_MENU, 0xA00, 0xB40);
+        dump("dlg", cur - CURSOR_OFF_IN_MENU, 0x2B60, 0x2C40);
+        uint64_t view = 0;
+        if (seh_read8(reinterpret_cast<void *>(cur + OFF_VIEW_PTR), &view) && view)
+            dump("view", static_cast<uintptr_t>(view), 0x300, 0x400);
+    }
+    else
+        g_log->info("[MAPCLIP] active cursor = 0 (map cursor not published — is debug_worldmap_probe on?)");
+
+    // (3) WorldMapViewModel (self-resolves).
+    uintptr_t vm = find_view_model();
+    dump("vm", vm, 0x0, 0x120);
+
+    g_log->flush();
+}
+
+// TASK B2 sink — record a scissor rect the engine set during rendering (from the RSSetScissorRects
+// detour in goblin_overlay.cpp), tagged with whether the world map is open. B1 (struct rect-dump)
+// found no screen-space map-viewport rect parked on the candidate structs, so the native clip is
+// likely an inline D3D12 scissor set at draw time. Dedups by (rect, map_open) and logs each distinct
+// pair ONCE as [SCISSOR]. The map-layer scissor is a rect seen with mapopen=1 but NEVER mapopen=0 —
+// open/close the map a few times, then diff. Thread-safe: RSSetScissorRects records on many worker
+// threads. Read-only. Coords packed as int16 (screen-space fits) for the dedup key.
+void note_map_scissor(int left, int top, int right, int bottom, bool map_open)
+{
+    if (!g_log) return;
+    static std::mutex mtx;
+    static std::unordered_set<uint64_t> seen[2];
+    const uint64_t key = (static_cast<uint64_t>(static_cast<uint16_t>(left))) |
+                         (static_cast<uint64_t>(static_cast<uint16_t>(top)) << 16) |
+                         (static_cast<uint64_t>(static_cast<uint16_t>(right)) << 32) |
+                         (static_cast<uint64_t>(static_cast<uint16_t>(bottom)) << 48);
+    bool is_new;
+    {
+        std::lock_guard<std::mutex> lk(mtx);
+        is_new = seen[map_open ? 1 : 0].insert(key).second;
+    }
+    if (is_new)
+        g_log->info("[SCISSOR] mapopen={} rect=({},{})-({},{})  w={} h={}", map_open ? 1 : 0, left,
+                    top, right, bottom, right - left, bottom - top);
+}
+
+// TASK B2 sink (companion to note_map_scissor) — the RSSetViewports detour. The viewport is the
+// actual render rectangle for a draw; the map layer's viewport is a rect seen with mapopen=1 but
+// never mapopen=0. D3D12_VIEWPORT is floats; dedup on the integer-rounded {x,y,w,h}.
+void note_map_viewport(float x, float y, float w, float h, bool map_open)
+{
+    if (!g_log) return;
+    static std::mutex mtx;
+    static std::unordered_set<uint64_t> seen[2];
+    const uint64_t key = (static_cast<uint64_t>(static_cast<uint16_t>(static_cast<int>(x)))) |
+                         (static_cast<uint64_t>(static_cast<uint16_t>(static_cast<int>(y))) << 16) |
+                         (static_cast<uint64_t>(static_cast<uint16_t>(static_cast<int>(w))) << 32) |
+                         (static_cast<uint64_t>(static_cast<uint16_t>(static_cast<int>(h))) << 48);
+    bool is_new;
+    {
+        std::lock_guard<std::mutex> lk(mtx);
+        is_new = seen[map_open ? 1 : 0].insert(key).second;
+    }
+    if (is_new)
+        g_log->info("[VIEWPORT] mapopen={} xy=({:.0f},{:.0f})  wh=({:.0f},{:.0f})", map_open ? 1 : 0,
+                    x, y, w, h);
 }
 
 bool set_view_center(float mU, float mV, float minZoom)

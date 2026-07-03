@@ -54,6 +54,17 @@ namespace goblin
         // User-drawn "no overlay icons here" rectangles (F1 editor), VIRTUAL-canvas units
         // (1920x1080 space, resolution-independent): "x0,y0,x1,y1;x0,y0,x1,y1;..."
         extern GOBLIN_RENDER_API std::string uiExclusionRects;
+        // ERR day/night dial exclusion, tunable so its shape can be aligned to the dial on any
+        // build/aspect (was hardcoded). VIRTUAL-canvas (1920x1080) units. Disc = the round dial
+        // (needle/wing); pill = the time-of-day bar above it. Only applied when err_features().
+        extern GOBLIN_RENDER_API float dialDiscX;   // disc centre X (default 1840)
+        extern GOBLIN_RENDER_API float dialDiscY;   // disc centre Y (default 962)
+        extern GOBLIN_RENDER_API float dialDiscR;   // disc radius   (default 227; 0 = disc off)
+        extern GOBLIN_RENDER_API float dialPillX0;  // time pill rect left   (default 1690)
+        extern GOBLIN_RENDER_API float dialPillY0;  // time pill rect top    (default 692)
+        extern GOBLIN_RENDER_API float dialPillX1;  // time pill rect right  (default 1890)
+        extern GOBLIN_RENDER_API float dialPillY1;  // time pill rect bottom (default 726; y1<=y0 = pill off)
+        extern GOBLIN_RENDER_API float dialFadeMargin; // soft-fade band width in virtual units (default 40; 0 = hard edge)
         extern GOBLIN_RENDER_API bool bakedOnly;  // diag overlay: draw ONLY Baked-source markers (the no-bake residual)
         extern GOBLIN_RENDER_API bool collectedGraying;
         extern GOBLIN_RENDER_API bool hideCollected;
@@ -225,6 +236,21 @@ namespace goblin
         // field that flips when a submenu opens OVER the bare map, logged as
         // [MENUOPEN-DIAG]. Read-only. See goblin_worldmap_probe.cpp menu_open_diag.
         extern GOBLIN_RENDER_API bool debugMenuCoverDiag;
+
+        // Dev discovery dump (overlay z-order Task B — the native map CLIP rect): while
+        // the world map is open, dump candidate f32 rects from the live structs (virtual
+        // UI canvas, WorldMapDialog, WorldMapArea view, WorldMapViewModel) as [MAPCLIP],
+        // re-dumping whenever the backbuffer resolution changes. A value that SCALES with
+        // the backbuffer is the native screen scissor; constant = virtual-canvas/marker
+        // space. Read-only. See goblin_worldmap_probe.cpp map_clip_diag.
+        extern GOBLIN_RENDER_API bool debugMapClipDiag;
+
+        // Dev discovery hook (overlay z-order Task B2 — native map clip via D3D12 scissor):
+        // installs an RSSetScissorRects detour and logs each distinct scissor rect the engine
+        // sets, tagged mapopen=0/1 ([SCISSOR]). The map-layer scissor appears with mapopen=1 but
+        // never mapopen=0. Read-only; high-frequency hook, dev-only. See goblin_overlay.cpp
+        // hk_rs_set_scissor_rects + goblin_worldmap_probe.cpp note_map_scissor.
+        extern GOBLIN_RENDER_API bool debugScissorProbe;
 
         // Dev prototype: draw overlay-rendered marker dots projected onto the open
         // world map (verifies the world->screen affine). See goblin_overlay.cpp +

@@ -73,6 +73,10 @@ namespace goblin::config
     uint8_t freezeWatchdogSecs = 20;
     bool clipGameUi = true;
     std::string uiExclusionRects = "";
+    // ERR day/night dial exclusion (was hardcoded); VIRTUAL-canvas 1920x1080 units.
+    float dialDiscX = 1840.f, dialDiscY = 962.f, dialDiscR = 227.f;
+    float dialPillX0 = 1690.f, dialPillY0 = 692.f, dialPillX1 = 1890.f, dialPillY1 = 726.f;
+    float dialFadeMargin = 40.f; // soft-fade band width (virtual units); 0 = hard edge
     bool debugEventFlags = false;
     bool debugItemGrants = false;
     bool debugFlagCapture = false;
@@ -82,6 +86,8 @@ namespace goblin::config
     bool dumpConverters = false;
     bool dumpNativePins = false;
     bool debugMenuCoverDiag = false;
+    bool debugMapClipDiag = false;
+    bool debugScissorProbe = false;
     bool overlayMarkersProto = false;
     bool debugRenderDims = false;
     bool debugCursorDiagnostic = false;
@@ -176,6 +182,25 @@ namespace
                   "Hide overlay markers that fall under the game's own always-on-top map UI\n(the ERR day/night dial, bottom-right). The overlay renders after the game's\nframe, so without this our icons draw OVER that UI. ERR-only region; no\neffect on other installs. Default: true."),
                 IniEntry{"ui_exclusion_rects", IniType::String, &cfg::uiExclusionRects, "",
                          "User-drawn rectangles where overlay icons are HIDDEN on the world map\n(fix any icons-over-game-UI clipping yourself: F1 > UI exclusion zones >\nEdit, then drag on the map; right-click a zone deletes it). Stored in\n1920x1080 virtual-canvas units -> works at every resolution.\nFormat: x0,y0,x1,y1;... Empty = none.", false, nullptr},
+                // NB the last two args OVERRIDE the F32 [0.1,5.0] load clamp (see IniEntry) — these
+                // are pixel coords in 1920x1080 space, not scale multipliers; without a real range
+                // they'd be clamped to 5 on load (looks like "reset to ~0", dial disc lost).
+                IniEntry{"dial_disc_x", IniType::F32, &cfg::dialDiscX, "1840",
+                         "ERR day/night dial exclusion disc, centre X (1920x1080 virtual units).\nTune via F1 > UI exclusion zones > Edit dial. ERR-only.", false, nullptr, 0.f, 1920.f},
+                IniEntry{"dial_disc_y", IniType::F32, &cfg::dialDiscY, "962",
+                         "ERR dial exclusion disc, centre Y (virtual units). ERR-only.", false, nullptr, 0.f, 1080.f},
+                IniEntry{"dial_disc_r", IniType::F32, &cfg::dialDiscR, "227",
+                         "ERR dial exclusion disc radius (virtual units). 0 = disc off. ERR-only.", false, nullptr, 0.f, 2000.f},
+                IniEntry{"dial_pill_x0", IniType::F32, &cfg::dialPillX0, "1690",
+                         "ERR dial time-of-day pill rect, left edge (virtual units). ERR-only.", false, nullptr, 0.f, 1920.f},
+                IniEntry{"dial_pill_y0", IniType::F32, &cfg::dialPillY0, "692",
+                         "ERR dial time-pill rect, top edge (virtual units). ERR-only.", false, nullptr, 0.f, 1080.f},
+                IniEntry{"dial_pill_x1", IniType::F32, &cfg::dialPillX1, "1890",
+                         "ERR dial time-pill rect, right edge (virtual units). ERR-only.", false, nullptr, 0.f, 1920.f},
+                IniEntry{"dial_pill_y1", IniType::F32, &cfg::dialPillY1, "726",
+                         "ERR dial time-pill rect, bottom edge (virtual units). y1<=y0 = pill off.\nERR-only.", false, nullptr, 0.f, 1080.f},
+                IniEntry{"dial_fade_margin", IniType::F32, &cfg::dialFadeMargin, "40",
+                         "ERR dial soft-fade band width (virtual units): markers dim gradually across\nthis margin around the dial edge instead of popping. 0 = hard edge. ERR-only.", false, nullptr, 0.f, 500.f},
                 B("require_map_fragments", requireMapFragments, "true",
                   "Require map fragment discovery before showing icons in that area\n"
                   "(overlay map: gates on the area's map-fragment event flag)."),
@@ -621,6 +646,10 @@ namespace
                   "Dev one-shot RE check: when the world map is open, walk the native-pin\nicon manager (CSWorldMapPointMan std::map @ mgr+0x398, mgr=[er+0x3D6E9B0])\nand its sibling [er+0x3D6F558], dumping each built pin's key/ins-ptr + a\nfield window as [PINS] to MapForGoblins.log. Identifies WHAT native pins\nstill draw (graces/categories/objectives) + their source, to decide native-\npin suppression (overlay = sole icon source). Read-only. Off by default."),
                 B("debug_menu_cover_diag", debugMenuCoverDiag, "false",
                   "Dev discovery scan (overlay z-order Task A): while the world map is open,\ndelta-scan the CSMenuMan head (+0x0..0x400) for a small-int field that flips\nwhen a submenu opens OVER the bare map (the map-menu / beacon / region-list),\nlogged as [MENUOPEN-DIAG] mm+off: old->new to the wmprobe log. Open the bare\nmap, then open/close a covering submenu a few times: the offset that reads one\nvalue bare and a different STABLE value while covered (and returns bare) is the\nmenu-covers-map flag. CSMenuMan+0xCD is DEAD for this. Read-only. Off by default."),
+                B("debug_map_clip_diag", debugMapClipDiag, "false",
+                  "Dev discovery dump (overlay z-order Task B — native map CLIP rect): while\nthe world map is open, dump candidate f32 rects from the live structs (virtual\nUI canvas, WorldMapDialog, WorldMapArea view, WorldMapViewModel) as [MAPCLIP]\nto the wmprobe log, re-dumping whenever the backbuffer resolution changes.\nOpen the map, then change the game resolution in-game: diff the two dumps -- a\nvalue that SCALES with the backbuffer is the native screen scissor; a constant\nis virtual-canvas (1920x1080) or marker space. Read-only. Off by default."),
+                B("debug_scissor_probe", debugScissorProbe, "false",
+                  "Dev discovery hook (overlay z-order Task B2 — native map clip via D3D12\nscissor): installs an RSSetScissorRects detour and logs each distinct scissor\nrect the engine sets, tagged mapopen=0/1, as [SCISSOR] to the wmprobe log. The\nnative map-layer scissor is a rect seen with mapopen=1 but NEVER mapopen=0 --\nopen/close the map a few times, then diff the [SCISSOR] lines. High-frequency\nD3D12 hook (records on many threads); read-only. Off by default."),
                 B("overlay_markers_proto", overlayMarkersProto, "false",
                   "Dev prototype (overlay-rendered markers): draw our own marker dot in\nthe ImGui overlay, projected onto the open world map via the live pan/zoom\n(WorldMapArea), to verify the world->screen affine. Starts the cursor probe\nif not already on. Open the F1 menu to tune scale/bias live. Off by default."),
                 B("fix_midsession_resolution", fixMidsessionResolution, "false",

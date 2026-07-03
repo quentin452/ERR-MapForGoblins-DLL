@@ -84,6 +84,18 @@ namespace
     ResizeBuffersFn o_resize_buffers = nullptr;
     ExecuteCommandListsFn o_execute_command_lists = nullptr;
 
+    // Task B2 (native map clip via D3D12 scissor): RSSetScissorRects detour, lazily installed on the
+    // first ExecuteCommandLists when debug_scissor_probe is on. Records on many worker threads → the
+    // detour reads a per-present cached atomic (not world_map_open()) for the map-open tag.
+    using RSSetScissorRectsFn =
+        void(STDMETHODCALLTYPE *)(ID3D12GraphicsCommandList *, UINT, const D3D12_RECT *);
+    using RSSetViewportsFn =
+        void(STDMETHODCALLTYPE *)(ID3D12GraphicsCommandList *, UINT, const D3D12_VIEWPORT *);
+    RSSetScissorRectsFn o_rs_set_scissor_rects = nullptr;
+    RSSetViewportsFn o_rs_set_viewports = nullptr;
+    std::atomic<bool> g_scissor_hook_installed{false};
+    std::atomic<bool> g_scissor_map_open{false};
+
     // Cursor hooks (SetCursorPos/ClipCursor/GetCursorPos) moved to src/input/input_cursor.cpp
     // (goblin::input::install_cursor_hooks() / set_cursor_pos_real() / clip_cursor_real() /
     // get_cursor_pos_real() / set_imgui_reading_cursor()) — third slice of
@@ -1602,11 +1614,13 @@ namespace
         if (map_open_now && !s_prev_map_open && fg)
             recenter_cursor_to_window();
         s_prev_map_open = map_open_now;
+        g_scissor_map_open.store(map_open_now, std::memory_order_relaxed); // for the B2 scissor detour
 
         // Mid-session resolution fix + diagnostic. Run every frame (the fix self-skips
         // when the dims already match) because NOT all resolution changes fire
         // ResizeBuffers — a per-frame enforcer catches the paths the resize hook misses.
-        if (goblin::config::fixMidsessionResolution || goblin::config::debugRenderDims)
+        if (goblin::config::fixMidsessionResolution || goblin::config::debugRenderDims ||
+            goblin::config::debugMapClipDiag)
         {
             DXGI_SWAP_CHAIN_DESC d{};
             swapchain->GetDesc(&d);
@@ -1621,6 +1635,12 @@ namespace
                     goblin::worldmap_probe::dump_render_dims(static_cast<float>(bbW),
                                                              static_cast<float>(bbH));
             }
+            // Task B: hunt the native map clip rect. Dump candidate struct rects while the map is
+            // open, re-dumping when the resolution changes (map_clip_diag self-throttles to one dump
+            // per distinct backbuffer size — the res-swap discriminator).
+            if (goblin::config::debugMapClipDiag && map_open_now)
+                goblin::worldmap_probe::map_clip_diag(static_cast<float>(bbW),
+                                                      static_cast<float>(bbH));
         }
 
         // The overlay IS the map (native injection removed) → always draw overlay markers over
@@ -1948,6 +1968,45 @@ namespace
     }
 
     // ── ExecuteCommandLists hook (captures the game's DIRECT queue) ────────
+    // Task B2 detour: record every distinct scissor rect the engine sets, tagged with whether the
+    // world map is open (cached atomic — this fires on many record threads, so calling
+    // world_map_open() here would be both slow and racy). The map-layer scissor is a rect that shows
+    // up with mapopen=1 but never mapopen=0. Read the rects BEFORE calling the original (they're the
+    // caller's array, valid on entry) and never disturb rendering. Cap the per-call count defensively.
+    void STDMETHODCALLTYPE hk_rs_set_scissor_rects(ID3D12GraphicsCommandList *self, UINT num,
+                                                   const D3D12_RECT *rects)
+    {
+        static std::atomic<int> fired{0};
+        if (fired.fetch_add(1, std::memory_order_relaxed) == 0)
+            spdlog::info("[SCISSOR] detour FIRED (first RSSetScissorRects call reached us)");
+        if (goblin::config::debugScissorProbe && rects && num > 0)
+        {
+            const bool mo = g_scissor_map_open.load(std::memory_order_relaxed);
+            const UINT n = num < 8 ? num : 8;
+            for (UINT i = 0; i < n; ++i)
+                goblin::worldmap_probe::note_map_scissor(rects[i].left, rects[i].top, rects[i].right,
+                                                         rects[i].bottom, mo);
+        }
+        o_rs_set_scissor_rects(self, num, rects);
+    }
+
+    void STDMETHODCALLTYPE hk_rs_set_viewports(ID3D12GraphicsCommandList *self, UINT num,
+                                               const D3D12_VIEWPORT *vps)
+    {
+        static std::atomic<int> fired{0};
+        if (fired.fetch_add(1, std::memory_order_relaxed) == 0)
+            spdlog::info("[VIEWPORT] detour FIRED (first RSSetViewports call reached us)");
+        if (goblin::config::debugScissorProbe && vps && num > 0)
+        {
+            const bool mo = g_scissor_map_open.load(std::memory_order_relaxed);
+            const UINT n = num < 8 ? num : 8;
+            for (UINT i = 0; i < n; ++i)
+                goblin::worldmap_probe::note_map_viewport(vps[i].TopLeftX, vps[i].TopLeftY,
+                                                          vps[i].Width, vps[i].Height, mo);
+        }
+        o_rs_set_viewports(self, num, vps);
+    }
+
     void STDMETHODCALLTYPE hk_execute_command_lists(ID3D12CommandQueue *queue, UINT count,
                                                     ID3D12CommandList *const *lists)
     {
@@ -1960,6 +2019,38 @@ namespace
                 g_command_queue = queue;
                 spdlog::info("[OVERLAY] captured game command queue {:p}",
                              static_cast<void *>(queue));
+            }
+        }
+        // Task B2: lazily install the RSSetScissorRects detour once, from a live graphics command
+        // list's vtable (slot 22, shared across all command lists → one MinHook covers them all).
+        // Only when the probe is on, so no per-scissor cost in normal play.
+        if (goblin::config::debugScissorProbe && !g_scissor_hook_installed.load() && count > 0 &&
+            lists && lists[0])
+        {
+            ID3D12GraphicsCommandList *gcl = nullptr;
+            if (SUCCEEDED(lists[0]->QueryInterface(IID_PPV_ARGS(&gcl))) && gcl)
+            {
+                // Direct vtable swap — canonical D3D12 method hook. MinHook's prologue patch on the
+                // D3D12Core.dll (Agility SDK) methods did NOT redirect (RSSetViewports, which fires
+                // every frame, never reached our detour). vt is the shared ID3D12GraphicsCommandList
+                // vtable, so swapping slots 21/22 catches every command list. Pointer writes are
+                // atomic on x64 → concurrent readers on other record threads see old-or-new, both valid.
+                void **vt = *reinterpret_cast<void ***>(gcl);
+                o_rs_set_viewports = reinterpret_cast<RSSetViewportsFn>(vt[21]);
+                o_rs_set_scissor_rects = reinterpret_cast<RSSetScissorRectsFn>(vt[22]);
+                DWORD oldp = 0;
+                if (VirtualProtect(&vt[21], sizeof(void *) * 2, PAGE_READWRITE, &oldp))
+                {
+                    vt[21] = reinterpret_cast<void *>(&hk_rs_set_viewports);
+                    vt[22] = reinterpret_cast<void *>(&hk_rs_set_scissor_rects);
+                    DWORD tmp = 0;
+                    VirtualProtect(&vt[21], sizeof(void *) * 2, oldp, &tmp);
+                    g_scissor_hook_installed.store(true);
+                    spdlog::info("[SCISSOR] vtable-swap installed: vt={:p} vp_orig={:p} sc_orig={:p}",
+                                 static_cast<void *>(vt), reinterpret_cast<void *>(o_rs_set_viewports),
+                                 reinterpret_cast<void *>(o_rs_set_scissor_rects));
+                }
+                gcl->Release();
             }
         }
         o_execute_command_lists(queue, count, lists);

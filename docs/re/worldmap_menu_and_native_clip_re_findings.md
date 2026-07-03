@@ -48,12 +48,75 @@ reads 0 on the bare open map, so it can't be confused with "map is up".
   `clip_game_ui && menu_covers_map()` — right after the map-closed `get_live_view` early-return, before
   any `PushClipRect`. No view-delay reset (map still open underneath → resumes smoothly on close).
 
-### Validation status
+### Validation status — DONE (2026-07-03, live)
 - ≥4 cycles + zero bare-map false-positives: **met** (fast-travel confirm dialog).
-- ≥2 distinct covering menus: **PENDING live re-check** via the new `menucover=` status field (confirm
-  it also flips for the marker-placement dialog / region list, not just the warp prompt). `+0x104` is a
-  CSMenuMan-level field (not on the WorldMapDialog), so it is expected to be a generic "a dialog is
-  stacked over the current screen" flag.
+- ≥2 distinct covering menus: **CONFIRMED live** — `menucover=` flips `0→1` for multiple covering
+  menus (not just the warp prompt), and markers visibly disappear under the covering menu. `+0x104`
+  is a CSMenuMan-level field, so it behaves as the generic "a dialog is stacked over the current
+  screen" flag as expected. **Task A complete.**
 
-## TASK B — clip to ER's native map clip rect — NOT STARTED
-See the prompt doc. Sequenced after A.
+## TASK B — clip to ER's native map clip rect — IN PROGRESS (B1 instrument built 2026-07-03)
+
+Current manual clipping (what B replaces), all in `map_renderer.cpp`:
+1. **Canvas clip** (`s_canvas_min/max`, ~L1815) — the engine's static full-map rect `view+0x350`
+   (map-ART extent, MARKER space) projected through OUR delayed view. Kills icons on the void past
+   the map edge, but it's content-extent not the screen viewport, rides our affine + delayed view.
+2. **Static ERR dial exclusion** (`in_game_ui_exclusion`, ~L1036) — hardcoded disc (1815,1000) r240
+   + time pill, ERR-only magic numbers. Not mod-agnostic.
+3. **User-drawn exclusion rects** (`ui_exclusion_rects`) — manual per-install rectangles.
+
+**Goal:** ER's own screen-space map clip/scissor → pixel-identical native clip, retires 2+3.
+
+**B1 — struct rect-dump (BUILT, not yet run):** `map_clip_diag(bbW,bbH)` (probe), gated by ini
+`[Debug] debug_map_clip_diag`, called from `hk_present` while the map is open. Dumps every plausible
+f32 rect (finite, `(0,8192]`) from the candidate live structs — the virtual UI canvas singleton
+(`[slot]+0x128`, +0x100..0x1C0), the WorldMapDialog (+0xA00.., +0x2B60..), the WorldMapArea view
+(+0x300..0x400), and the WorldMapViewModel (+0x0..0x120) — as `[MAPCLIP]`, ONE-SHOT per backbuffer
+resolution. **Run recipe:** open the map, then change the game resolution in-game → two `[MAPCLIP]`
+dumps; a value that SCALES with the backbuffer is the native screen scissor, a constant is
+virtual-canvas (1920×1080) or marker space. Known non-answers: `view+0x340..0x34c` (cursor/snap
+bounds), `+0x350` (map-art extent) — both marker space.
+
+**B1 RESULT (run 2026-07-03) — no screen-space map rect on the scanned structs; escalated:**
+- Dumped clean at 1920×1080: `canvas+0x118/11c = 1920/1080` (the FULL virtual canvas, no map
+  sub-rect), `view+0x340..0x34c = [-267,-152,1652,927]` (the documented marker-space cursor/snap
+  bounds — 16:9-looking but NOT screen space), `view+0x320` a small quad. No obvious screen-space
+  map-viewport sub-rect.
+- **Key architectural finding:** changing the in-game resolution to 1280×720 did NOT change the DXGI
+  swapchain backbuffer (stayed 1920×1080 → `map_clip_diag` never re-dumped). ER renders the map UI
+  into a fixed backbuffer = the window/desktop size and up/downscales the internal 3D target. So the
+  map UI clip lives in **virtual-canvas (1920×1080) space**, and the "scales with backbuffer"
+  discriminator needs a real window/desktop resize, not the in-game slider. B1's null result +
+  fixed-canvas architecture ⇒ the native clip is likely an **inline D3D12 scissor** set at draw time,
+  not a rect parked on a struct → escalate to B2.
+
+**B2 — command-list scissor/viewport sampler — DEAD END (run 2026-07-03), pivoted to B3.**
+`debug_scissor_probe` hooks `RSSetScissorRects` (vtable slot 22) + `RSSetViewports` (slot 21) on
+`ID3D12GraphicsCommandList` from the first submitted list, tags each rect `mapopen=0/1`, dedups, logs
+`[SCISSOR]`/`[VIEWPORT]`. What we learned running it:
+- The hooked addresses live in **`D3D12Core.dll`** — ER ships the **Agility SDK** (two D3D12 runtimes:
+  OS `d3d12.dll` stub + Agility `D3D12Core.dll` doing the real work).
+- **MinHook-on-function did NOT redirect** these D3D12Core methods (install returned `MH_OK`, but the
+  detour never fired — not even `RSSetViewports`, which runs every frame).
+- Switched to a **direct vtable-swap** (canonical D3D12 method hook: overwrite the slot pointer the
+  engine reads) — the swap write succeeded (`vt=0x7fff937ba850`), but the detour **still never fired**,
+  including for viewports.
+- Conclusion: the engine's per-frame render calls don't read the vtable slot we swapped → either it
+  records scene/UI command lists with a **different vtable** than the `lists[0]` we sampled, or it
+  **pre-records command lists and re-submits** them (so scissor/viewport is set once, before our hook).
+  A "swap every distinct vtable + log distinct vtables" pass would disambiguate, but per the user's
+  call we **pivot to B3** rather than drill further into the command-list mechanism.
+
+The B2 probe (`debug_scissor_probe`, `note_map_scissor`/`note_map_viewport`, the two detours +
+vtable-swap in `hk_execute_command_lists`) stays committed as documented scaffolding — OFF by default,
+non-firing; do not re-attempt the MinHook path.
+
+**B3 — SOLVED LIVE via RPM (2026-07-03), not Ghidra.** The prompt budgeted static Ghidra RE; an
+external ReadProcessMemory scan (RTTI → heap → worldmap-movie-name match) found the live Scaleform
+viewport in one session instead. Chain (RTTI-verified, probe-reachable):
+`WorldMapDialog + 0x140 → movieHandle + 0x00 → MovieImpl + 0xB0 = int L,T,W,H` (clip rect, canvas
+1920×1080 units; buffer size `+0xA8`; `movieHandle+0x58` = worldmap `CSScaleformSwfPlayer`).
+**Correction to the plan:** the viewport is the FULL canvas (0,0,1920,1080) — no inset — so it retires
+the edge/void cull (#1) but NOT the dial disc (#2); keep the dial/user exclusions as a separate
+HUD-overlap layer. Full write-up + consumer wiring:
+`worldmap_native_clip_b3_scaleform_re_findings.md`.
