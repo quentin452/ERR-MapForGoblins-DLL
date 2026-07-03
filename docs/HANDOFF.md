@@ -188,10 +188,14 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   Blocker 1 (srcTypeDesc) = 8-byte packed FieldIns id, buildable (live cross-check ✓: geom_dump inst+0x08
   has the `0x6…` tag + block-tag high32). Blocker 2 (transform=24B FD4 pose wrapper) SIDESTEPPED via **route
   (b): spawn at the source transform, then `SetWorldMatrix`-move to the offset (reuse the proven move
-  primitive).** **BLOCKED on ONE Ghidra decomp: `FUN_1406c7000`** (er+0x6c7000, via `FUN_1406a5080`) — a
-  likely-cleaner "spawn one geom by id" factory that would avoid the pool+`+0x288` questions; also the base
-  ctor's parts-record reads (blocker 3). When `FUN_1406c7000`'s signature lands → I code+drive `spawn_clone`
-  route (b) on Proton (move step already exists). Nothing safe to drive live until then.
+  primitive).** **`FUN_1406c7000` CHECKED + downgraded (8a0e37a) — NO shortcut:** it's an asset-name/
+  streaming-REQUEST builder (`swprintf("%s_%04d")` + FD4 resource container), not a leaner instance factory,
+  and still needs a rich part descriptor. So drive the Dynamic ctor `FUN_1406b9880` directly.
+  **Remaining static blocker = BLOCKER 3:** decomp `FUN_1406b9880` arg reads + base `FUN_1406c5900`
+  parts-record reads (`rec+0x18b`, `rec+0x124`, model refs) — the minimal fields a cloned record must satisfy
+  so route (b)'s reuse-source-record is safe. When those land → code+drive `spawn_clone` route (b) on Proton
+  (move step already exists). Windows box's loaded DLL is stale, so the 4-item LIVE-VERIFY checklist in
+  `windows_geom_spawn_re_findings.md` is handed to the Linux/Proton agent. Nothing safe to drive live until then.
   **Freecam** (dev tool, after ADD): recon done (`windows_freecam_re_findings.md`), **Route 2** = freeze
   ChrCam + override the render view matrix in `GameRendCameraSet` (er+0x680460). BLOCKED on Ghidra: that
   matrix offset + a `CSCameraImp` singleton AOB. Then I code freeze+override from Linux.
