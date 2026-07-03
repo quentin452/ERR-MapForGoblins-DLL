@@ -63,6 +63,22 @@ placement-new an instance — but it's a bigger detour, not the spawn_clone shor
    self-allocated `0x5b0`, push to `+0x288`, then `SetWorldMatrix` (`vtable[0xd0]`, proven) to offset it by
    the delta — sidesteps the 24-byte transform builder (blocker 2) entirely.
 
+## LIVE-VERIFY checklist (hand to the Linux/Proton agent — this box's loaded DLL is stale)
+The Windows box runs the game with an OLDER mod DLL, so its RPC (`geom_dump`) predates these findings —
+don't trust a local RPC probe. Confirm on a freshly-deployed Proton build:
+1. **srcTypeDesc packing (blocker 1):** read the 3 mask globals `er+0x3b339a0/a4/a8` (RPM, game-static —
+   DLL-version-independent) and a live Dynamic instance's `srcType` field, and check the low32 carries the
+   `0x60000000` tag + the computed `(g0&partType)<<g1 | g2&idx` bitfield. (geom_dump already prints
+   `inst+0x08`; confirm which field holds the passed-by-value srcType qword.)
+2. **transform is a 24B FD4 pose wrapper (blocker 2):** dump 24B of a live instance's `+0x18` module head —
+   expect a vtable ptr at [0] (not raw floats). Confirms route (b) is needed (copy source pose, not the 4x4).
+3. **Blocker 3 — clone-safety record reads:** dump the live part record (`inst+0x10`) at the offsets the
+   base ctor reads — `rec+0x18b`, `rec+0x124`, and the model-ref fields — to confirm they're valid on the
+   source, so a clone that REUSES the source record is safe (route b reuses it, doesn't synthesize).
+4. **Then the `spawn_clone` probe (route b):** srcTypeDesc(built) + source record + copied transform →
+   `FUN_1406b9880` into self-alloc 0x5b0 → push `+0x288` → `SetWorldMatrix` to offset by the delta →
+   see a duplicated asset render+collide.
+
 ## Anchors
 - `CSWorldGeomDynamicIns` vt er+0x2a84208 (ctors er+0x6ba0f0/0x6b9880); `CSWorldGeomIns` vt er+0x2a84cb0.
 - `FUN_14062e700` er+0x62e700 (srcTypeDesc, 8B); masks er+0x3b339a0/a4/a8.
