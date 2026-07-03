@@ -44,11 +44,18 @@ spurious strip at items=0.
 **NEXT = the cap-oracle E2E (the on-disk proof).** The bracket is wired + crash-safe but not yet proven
 to actually clean the vanilla save. Recipe: grant a reserved-id item live (`give_item`) + register it
 (`sidecar additem`) → trigger a real game save → reload with the `.mfg` `[items]` emptied → item must be
-GONE from the vanilla save. **Blocker for automation:** there is NO live inventory-count read RPC, so the
-oracle is currently manual (in-game toast/dialog, or the item-cap trick from the Phase-2 RemoveItem RE).
-Either (a) validate manually in-game once, or (b) add a `goods_count(id)` read RPC (small RE off the
-captured EquipGameData chain) and then script `tools/rpc_tests/test_custom_item.py`. Variant B stays the
-zero-RE fallback.
+GONE from the vanilla save. That assertion needs an automated **`goods_count(id)`** read.
+
+**⛔ `goods_count` via memory-walk is BLOCKED (proven 2026-07-03, ~14 boots + a `goods_diff` before/after
+probe, both reverted).** A DIFF over every 2-level array off PlayerGameData AND the MapItemMan singleton
+found NO plain i32 that moves with a grant/remove — scanning for the encoded id only hits static catalog
+tables. ELDEN RING uses **GaItemHandle indirection**: the held list stores `{GaItemHandle, qty}` and the
+id lives in a `GaItem` resolved via a MapItemMan hashmap. So a by-id count needs the game's own count fn
+(or the handle-resolver + struct offsets) — a **Ghidra handoff**, same play that cracked SERIALIZE_FN.
+Prompt written: **`docs/re/windows_goods_count_re_prompt.md`** (find `EquipInventoryData::GetItemQuantity`
+/ shop "owned" check → RVA+AOB+convention). After it lands: add `goods_count` (one guarded call) + script
+`tools/rpc_tests/test_custom_item.py`. Meanwhile the bracket can be sanity-checked MANUALLY in-game
+(grant → save → empty `.mfg` → reload → eyeball inventory). Variant B stays the zero-RE fallback.
 
 ---
 
