@@ -118,9 +118,17 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
     broken (same disproven pattern) — migrate it + add a reboot test (new open item below).**
     **Remaining C:** C2 = tag EXISTING mod markers to a world (synthetic group ≥100 in `marker_layer.hpp`).
     Per-world origin/scale projection is wired (fields) but identity so far.
-  - **SLICE D: open with "M"** — production UX: the virtual page is what the game MAP KEY shows when the
-    active world is a custom world (hook the RE'd `worldmap_open()`; suppress/overlay the native Scaleform
-    map). The `vmap` RPC + F1 Dev toggle stay as the DEV harness.
+  - **✅ SLICE D DONE 2026-07-04 — decoupled from F1 + opens with the game MAP KEY.** The vmap now draws on
+    its OWN per-frame entry (`draw_virtual_map_entry` + a `call_draw_virtual_map` loader trampoline / the
+    `MFG_DrawVirtualMap` hotreload export), called UNCONDITIONALLY in the present loop — so it appears
+    WITHOUT the F1 panel. **LIVE-VERIFIED: `vmap 1` with F1 CLOSED (`panel=0`) → the window renders
+    standalone.** The M-trigger is wired in `draw_virtual_map`: on the `world_map_open()` rising edge with a
+    CUSTOM world active (`vworld::active()!=0`) it opens the vmap, and closes it on map-close if IT opened
+    it (a Dev-toggle vmap is left alone). **M-trigger not harness-verified** (driving the game map open needs
+    the install's map keybind — impractical to guess-inject); it's simple code on the proven
+    `world_map_open()` primitive, **user-verifiable by pressing M in a custom world**. **Follow-up:** the
+    vmap is a movable WINDOW over the native map, not a full-screen replace — native-map suppression (draw
+    the mod surface in the map's place) is a later polish.
   - **Full architecture (collision / active-world / M-open / how ER's map works) = `docs/plans/
     virtual_world_multi_world_design.md`** (2026-07-04). Key decisions: the FRAMEWORK assigns position (not
     the player) — marker worlds get separate mod namespaces, walkable worlds get a reserved mapId

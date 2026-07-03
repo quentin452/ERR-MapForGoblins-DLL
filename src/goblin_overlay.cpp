@@ -1902,6 +1902,10 @@ namespace
             };
             if (g_show)
                 goblin::overlay_render_loader::call_draw_panel(frame_ctx);
+            // Virtual world map (mod page) — drawn on its OWN entry, independent of the F1 panel, so it can
+            // appear via the game map key without F1 (slice D). Self-gates on virtual_map_open() → no-op
+            // while closed.
+            goblin::overlay_render_loader::call_draw_virtual_map(frame_ctx);
             if (proto)
                 goblin::overlay_render_loader::call_draw_worldmap_markers(g_show, frame_ctx);
             if (minimap)

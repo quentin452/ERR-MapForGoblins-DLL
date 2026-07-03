@@ -41,6 +41,7 @@ namespace goblin::overlay_render_loader
     void call_draw_panel(const goblin::overlay::OverlayFrameCtx &ctx);
     void call_draw_worldmap_markers(bool menu_open, const goblin::overlay::OverlayFrameCtx &ctx);
     void call_draw_minimap_hud(const goblin::overlay::OverlayFrameCtx &ctx);
+    void call_draw_virtual_map(const goblin::overlay::OverlayFrameCtx &ctx);
 
     void call_prebuild_markers();
     bool call_inworld_hovered();

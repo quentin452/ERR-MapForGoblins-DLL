@@ -14,6 +14,7 @@
 #include "goblin_i18n.hpp"
 #include "worldmap/marker_layer.hpp"   // Marker / MarkerLayer (overlay_layers → markers to project)
 #include "goblin_virtual_world.hpp"    // vworld registry — the active custom world's markers (slice C)
+#include "goblin_inject.hpp"           // goblin::world_map_open() — the game map-key trigger (slice D)
 
 #include <cmath>
 #include <cstdio>
@@ -46,6 +47,17 @@ int virtual_map_group() { return s_group; }
 
 void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
 {
+    // Slice D: open the virtual map with the game MAP KEY when a CUSTOM world is active (the production
+    // "M, not F1" UX). On map-open edge with active world ≠ Base ER → open; on map-close, close it if WE
+    // opened it (so a Dev-toggle-opened vmap isn't closed by the game map). Runs every frame (this entry is
+    // called unconditionally, independent of the F1 panel).
+    {
+        static bool s_prev_map = false, s_from_map = false;
+        const bool map_now = goblin::world_map_open();
+        if (map_now && !s_prev_map && goblin::vworld::active() != 0) { s_open = true; s_from_map = true; }
+        else if (!map_now && s_prev_map && s_from_map) { s_open = false; s_from_map = false; }
+        s_prev_map = map_now;
+    }
     if (!s_open) return;
 
     ImGui::SetNextWindowSize(ImVec2(720.0f, 560.0f), ImGuiCond_FirstUseEver);

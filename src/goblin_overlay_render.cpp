@@ -483,11 +483,12 @@ void goblin::overlay::request_f1_tab(int idx) { g_requested_tab = idx; }
             s_settings_hits = f.hits;
             ImGui::End();
         }
-
-        // MapForGoblins-owned virtual world map (mod page) — a sibling window, drawn in both compact and
-        // full mode whenever it's toggled open (from the Dev tab). No-op while closed.
-        panel::draw_virtual_map(ctx);
     }
+
+    // MapForGoblins-owned virtual world map (mod page). Drawn on its OWN per-frame entry (NOT inside
+    // draw_panel), so it can appear WITHOUT the F1 panel — opened by the Dev toggle OR by the game map key
+    // when a custom world is active (slice D). No-op while closed (draw_virtual_map self-gates on open).
+    void goblin::overlay::draw_virtual_map_entry(const OverlayFrameCtx &ctx) { panel::draw_virtual_map(ctx); }
 
 #if defined(GOBLIN_OVERLAY_HOTRELOAD_BUILD)
 // Host→render direction: stable-name extern "C" exports so the host can resolve these via
@@ -528,6 +529,11 @@ extern "C"
     {
         apply_imgui_bindings(ctx);
         goblin::overlay::draw_minimap_hud(*ctx);
+    }
+    __declspec(dllexport) void MFG_DrawVirtualMap(const goblin::overlay::OverlayFrameCtx *ctx)
+    {
+        apply_imgui_bindings(ctx);
+        goblin::overlay::draw_virtual_map_entry(*ctx);
     }
 }
 #endif

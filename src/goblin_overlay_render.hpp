@@ -74,6 +74,9 @@ namespace goblin::overlay
     void draw_worldmap_markers(bool menu_open, const OverlayFrameCtx &ctx);
     void draw_minimap_hud(const OverlayFrameCtx &ctx);
     void draw_panel(const OverlayFrameCtx &ctx);
+    // Virtual world map (mod page) — drawn on its own per-frame entry, independent of the F1 panel
+    // (self-gates on virtual_map_open). See panel_virtual_map.cpp + slice D.
+    void draw_virtual_map_entry(const OverlayFrameCtx &ctx);
 
     // Force-select an F1 tab by index (0=Markers,1=Search,2=Quests,3=Display,4=Dev) on the next draw
     // (one-shot, ImGui SetSelected). For scripted verification so tests drive tabs by name, not pixels.
