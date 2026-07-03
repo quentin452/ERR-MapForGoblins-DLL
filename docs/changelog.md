@@ -25,6 +25,19 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **F1 panel reorganized into tabs.** The one long scrolling panel is now split into five tabs by
+  intent — *Markers*, *Search*, *Quests*, *Display*, *Dev* — so the everyday controls aren't buried
+  under dev tooling. The settings-search box still filters across everything: while you're typing it
+  hides the tabs and shows all matching blocks in one flat list, so a search never hides its own
+  results behind an unselected tab.
+- **Category icons in the panel.** Each row in *Markers → Sections & categories* now shows that
+  category's actual map icon (the real native/disk glyph when resident, the baked atlas cell
+  otherwise, a colored group dot as the universal fallback) instead of text alone, so the list reads
+  like the map.
+- **Auto-pause while the F1 panel is open.** New *Display* option "Pause automatically while this panel
+  is open (F1 / gamepad)": opening the panel freezes the world sim (same branch as the manual *Pause
+  the game* button) and closing it resumes — handy for editing/searching without the world moving.
+  Only releases a pause it set itself, so a manual pause survives. Off by default (`pause_on_open`).
 - **In-game World Editor (first slice).** New F1 panel section *World Editor (live)*: pick a world
   asset by id, see the loot item its map marker currently resolves to, re-skin that spot to any goods
   id, and *Refresh markers* to see it on the map — all at runtime, regulation-free, save-safe. Early

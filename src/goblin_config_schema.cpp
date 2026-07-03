@@ -106,6 +106,7 @@ namespace goblin::config
     bool  iconLegibility = true;       // DX item 1: clamp min icon size + dark backing disc for contrast
     float iconMinHalfPx = 8.0f;        // min icon half-extent (px) when iconLegibility is on
     bool  altitudeCue = true;          // DX item 7: ▲/▼ badge when a marker is above/below the player
+    bool  pauseOnOpen = false;         // auto-pause the game while the F1 panel is open (freeze world sim)
     float viewDelayFrames = 1.0f;      // marker motion-sync: project markers this many present-frames back to match the eased basemap
     bool  viewDelayZoom = true;        // also delay ZOOM (not just center) in the motion-sync; off = current zoom, fixes wheel-step teleport if zoom applies instantly
 
@@ -560,6 +561,9 @@ namespace
                   false, nullptr, 1.0f, 50.0f},
                 IniEntry{"altitude_cue", IniType::Bool, &cfg::altitudeCue, "true",
                   "Draw a small up/down triangle on a marker when it is well above / below the player's\naltitude, so you don't search the wrong floor. Set false to hide it.",
+                  false, nullptr},
+                IniEntry{"pause_on_open", IniType::Bool, &cfg::pauseOnOpen, "false",
+                  "Auto-pause the game while the F1 panel is open (world sim freezes; the panel stays\nusable), and un-pause on close. Same freeze as the 'Pause the game' button, driven by\nopening/closing the menu (keyboard F1 or the gamepad combo). Only auto-un-pauses a pause\nit set itself. Needs the pause branch signature; ignored if unresolved. Default false.",
                   false, nullptr},
                 IniEntry{"view_delay_frames", IniType::F32, &cfg::viewDelayFrames, "1.0",
                   "Marker motion-sync: project overlay markers this many PRESENT-frames in the past so they\ntrack the engine's eased basemap during pan/zoom. 1.0 = default. Raise if markers LEAD the\nbasemap (snap back on stop); lower toward 0 if they TRAIL. A/B this to kill pan/zoom re-adjust.",

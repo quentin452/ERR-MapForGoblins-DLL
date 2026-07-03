@@ -41,7 +41,7 @@ namespace goblin::overlay_api
     X(debugItemGrants) X(debugFlagCapture) X(debugWorldmapProbe) X(dumpIconTextures) \
     X(iconLegibility) X(altitudeCue) X(viewDelayZoom) X(debugClusterAnchors) X(debugRegionVolumes) \
     X(showMinimap) X(minimapAnchorRight) X(minimapAnchorBottom) X(questAllowFlagWrite) X(questGreyOnDeath) \
-    X(clusterDistanceAdaptive) X(enemyNames)
+    X(clusterDistanceAdaptive) X(enemyNames) X(pauseOnOpen)
 #define GOBLIN_CFG_FLOAT_LIST(X) \
     X(iconMinHalfPx) \
     X(minimapOffsetX) X(minimapOffsetY) X(minimapOpacity) X(minimapSize) \

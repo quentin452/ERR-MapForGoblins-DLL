@@ -5,6 +5,8 @@
 #include "panel_internal.hpp"
 #include "goblin_i18n.hpp"
 #include "goblin_overlay_render_api.hpp"
+#include "worldmap/category_meta.hpp"                 // category_gpu_* / rep / color / icon_key
+#include "generated_shared/goblin_overlay_icons.hpp"  // baked ATLAS cells (transitional fallback)
 
 #include <cctype>
 #include <cstdint>
@@ -114,6 +116,52 @@ bool Filter::match(const char *keywords)
         if (m) hits++;
     }
     return m;
+}
+
+void draw_category_icon(const OverlayFrameCtx &ctx, int c, float size)
+{
+    namespace wm = goblin::worldmap;
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+    const ImVec2 p = ImGui::GetCursorScreenPos();
+
+    // Tiers 1-3: native runtime sprite (name symbol → numeric map-point id → representative item
+    // icon), the SAME backends the renderer draws with. Resolve only once the sprite is resident.
+    void *t = nullptr;
+    float u0, v0, u1, v1;
+    bool ok = false;
+    if (const char *sym = wm::category_gpu_icon_name(c))
+        ok = goblin::overlay_api::native_map_point_icon_by_name(sym, t, u0, v0, u1, v1);
+    if (!ok)
+        if (int iid = wm::category_gpu_iconId(c))
+            ok = goblin::overlay_api::native_map_point_icon(iid, t, u0, v0, u1, v1);
+    if (!ok)
+        if (int rep = wm::category_rep_icon(c))
+            ok = goblin::overlay_api::native_item_icon(rep, t, u0, v0, u1, v1);
+    if (ok)
+    {
+        ImGui::Image(reinterpret_cast<ImTextureID>(t), ImVec2(size, size), ImVec2(u0, v0), ImVec2(u1, v1));
+        return;
+    }
+
+    // Tier 4: baked atlas cell (transitional fallback; always resident when atlas_srv is bound).
+    if (ctx.atlas_srv)
+    {
+        using namespace goblin::overlay_icons;
+        if (const char *key = wm::category_icon_key(c))
+            for (int i = 0; i < ICON_CELL_COUNT; ++i)
+                if (std::strcmp(ICON_CELLS[i].key, key) == 0)
+                {
+                    const IconCell &cell = ICON_CELLS[i];
+                    ImVec2 a((cell.col * CELL) / (float)ATLAS_W, (cell.row * CELL) / (float)ATLAS_H);
+                    ImVec2 b(((cell.col + 1) * CELL) / (float)ATLAS_W, ((cell.row + 1) * CELL) / (float)ATLAS_H);
+                    ImGui::Image(reinterpret_cast<ImTextureID>(ctx.atlas_srv), ImVec2(size, size), a, b);
+                    return;
+                }
+    }
+
+    // Tier 5: universal fallback — a filled dot in the category's group color (needs no art).
+    ImGui::Dummy(ImVec2(size, size));
+    dl->AddCircleFilled(ImVec2(p.x + size / 2, p.y + size / 2), size * 0.34f, wm::category_color(c));
 }
 
 void grace_candidate_gate_warning()

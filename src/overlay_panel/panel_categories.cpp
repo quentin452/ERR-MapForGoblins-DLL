@@ -16,7 +16,7 @@ namespace goblin::overlay::panel
 {
 using goblin::i18n::tr;  // overlay UI localization (lang/<code>.txt)
 
-void draw_sections_categories(Filter &f)
+void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f)
 {
     // Search matches the ENGLISH label or its translation, so a localized user can type either.
     auto label_match = [](const char *lbl, const char *needle) {
@@ -113,6 +113,10 @@ void draw_sections_categories(Filter &f)
                 continue;   // search box: hide non-matching category rows
             ImGui::PushID(c);
             const char *clabel = tr(goblin::overlay_api::category_label(c));
+            // The category's actual marker icon (native/baked/dot) left of the label, so the row
+            // reads like the map instead of a wall of text. Sized to the checkbox line height.
+            draw_category_icon(ctx, c, ImGui::GetFrameHeight());
+            ImGui::SameLine();
             bool cv = goblin::overlay_api::category_visible(c);
             if (ImGui::Checkbox(clabel, &cv))
                 goblin::overlay_api::set_category_visible(c, cv);

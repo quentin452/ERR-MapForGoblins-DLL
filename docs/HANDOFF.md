@@ -184,8 +184,8 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   WGM/render/physics. Open sub-Qs (a live probe answers): does a cloned `CSMsbPartsGeom` satisfy the ctor's
   reads; is the `+0x288` push enough for render+collision or is a pool index assumed elsewhere. This is a
   multi-step build, NOT a quick primitive like move.
-  **⇒ RESUME (next session): STATIC done + LIVE RECON done (`spawn_probe` RPC, Proton). ONE design risk
-  gates the ctor call — see below. `docs/re/windows_geom_spawn_re_findings.md`.**
+  **⇒ RESUME (next session): STATIC done + LIVE RECON done + move-init risk SOLVED (9081c7c8). NOTHING
+  gates the ctor call now — CODE spawn_clone. `docs/re/windows_geom_spawn_re_findings.md`.**
   **Live recon (2026-07-03, `spawn_probe` + `test_spawn_probe.py`, fresh DLL) confirmed srcType + corrected
   the layout:** on a real dynamic instance (`AEG004_903`) — srcType@+0x08 `0x3c1412016ff00000` (geom tag ✓,
   hi==BlockData tag ✓; masks g0=0xff/g1=0x14/g2=0xfffff); **param_3 = the BlockData** (inst+0x10, NOT a
@@ -194,13 +194,17 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   inst+0x30 (vt er+0x2ba6738); the **`+0x288` geom_ins vector is EXACTLY FULL** (n=41). ⇒ spawn_clone passes
   the source BlockData, self-allocs 0x5b0, and can **SKIP the +0x288 push** for a first render probe (ctor
   self-registers into WGM/render; untracked-for-unload leak is fine for a throwaway).
-  **THE ONE REMAINING RISK before firing the ctor:** `FUN_1406c3180` is a **move-init (swap) — it STEALS
-  from param_4** (the transform). Passing the source's own bytes would swap out the source's pose-module ptr
-  and CORRUPT the live source asset. So param_4 must own an INDEPENDENT pose module. Next iteration must
-  settle one of: (a) deep-duplicate the inst+0x20 pose object (probe its size first), (b) find a copy-ctor,
-  or (c) decomp `thunk_FUN_144cbdae7` to synthesize a minimal wrapper from a 4x4. Everything else (srcType,
-  param_3=BlockData, 0x5b0 alloc, skip-+0x288, post-SetWorldMatrix offset) is ready. DO NOT fire the ctor
-  with source-aliased bytes until this is solved.
+  **Move-init risk SOLVED (9081c7c8, Windows-Ghidra):** `param_4` is a **~0x188-byte pose DESCRIPTOR**
+  (not a 24B handle); `FUN_1406c3180` field-swaps ~0x188 bytes AND move-constructs the embedded
+  CSMsbPartsGeom at self+0x30 from param_4+0x18 (`FUN_140cef4a0`) + steals the heap pose ptr param_4[1] into
+  self+0x20 — so a source-aliased param_4 WOULD gut the source (and a deep-dup is a trap: pointer-rich
+  sub-object). **FIX = don't alias, REBUILD:** call the driver's own builder
+  `thunk_FUN_144cbdae7(&out, BlockData, partsList=*(BlockData+8+0x48), *(BlockData+8+0x58))` (er+0x6c3910,
+  4-arg sig identical at both driver sites) → a fresh OWNED descriptor; the ctor move-inits from OUR copy,
+  source untouched. **So the full spawn_clone recipe is now unblocked:** build srcType (copy source +0x08 or
+  repack), pass source BlockData as param_3, build param_4 via `thunk_FUN_144cbdae7`, `FUN_1406b9880` into a
+  self-alloc 0x5b0, SKIP the +0x288 push (ctor self-registers), then `SetWorldMatrix`-offset. Open live
+  detail: which part index the standalone builder resolves — target the source's own part.
   Blocker 1 (srcTypeDesc) = 8-byte packed FieldIns id, buildable (live cross-check ✓: geom_dump inst+0x08
   has the `0x6…` tag + block-tag high32). Blocker 2 (transform=24B FD4 pose wrapper) SIDESTEPPED via **route
   (b): spawn at the source transform, then `SetWorldMatrix`-move to the offset (reuse the proven move

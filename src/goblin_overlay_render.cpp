@@ -343,13 +343,16 @@ namespace
             // screen; if content exceeds the max it scrolls.
             ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
             // Max width 720 -> 840: translated labels (i18n) run longer than the English
-            // source — French checkbox rows clipped at the old cap (AlwaysAutoResize
-            // re-fits every frame but only up to this constraint). Translations should
+            // source — French checkbox rows clipped at the old cap. Translations should
             // still aim for <= English+20% so the panel doesn't eat the screen.
             ImGui::SetNextWindowSizeConstraints(
                 ImVec2(360.0f, 240.0f),
                 ImVec2(840.0f, io.DisplaySize.y * 0.92f));
-            ImGui::Begin("Map for Goblins##large", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+            // Tabbed layout: a FIXED default size (user-resizable) instead of AlwaysAutoResize —
+            // otherwise the window would jump size on every tab switch (each tab has different
+            // content height). Per-tab content taller than the window scrolls inside it.
+            ImGui::SetNextWindowSize(ImVec2(430.0f, 620.0f), ImGuiCond_FirstUseEver);
+            ImGui::Begin("Map for Goblins##large", nullptr, ImGuiWindowFlags_None);
             // Keep the per-category census warm: the watcher only runs the flag
             // sweep while the panel is on-screen (stamped here each frame).
             goblin::overlay_api::note_menu_visible();
@@ -384,39 +387,81 @@ namespace
 
             // In-game pause (dx-bugs-backlog item 4): flips the frame-step branch, world sim
             // freezes, this panel stays fully usable. Hidden when the signature didn't resolve.
-            if (goblin::pause::available() && f.match("pause game freeze stop world"))
+            // Drawn in the Display tab (below) or, while the search filter is active, in the flat list.
+            auto draw_pause = [&]() {
+                if (goblin::pause::available() && f.match("pause game freeze stop world"))
+                {
+                    bool paused = goblin::pause::paused();
+                    if (ImGui::Checkbox(tr("Pause the game (world sim freezes; menu stays usable)"), &paused))
+                        goblin::pause::set_paused(paused);
+                }
+                // Auto-pause driven by opening/closing THIS panel (keyboard F1 or the gamepad combo) —
+                // applied on the open/close edge in goblin_overlay.cpp. Config-backed, persists on Save.
+                if (goblin::pause::available() && f.match("pause on open auto f1 gamepad freeze menu panel"))
+                {
+                    bool *p = goblin::overlay_api::cfg_pauseOnOpen_ptr();
+                    ImGui::Checkbox(tr("Pause automatically while this panel is open (F1 / gamepad)"), p);
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("%s", tr("Freezes the world sim the moment you open F1 (or the gamepad\n"
+                                                   "combo) and resumes on close. Only releases a pause it set\n"
+                                                   "itself. Saved with your settings."));
+                }
+            };
+
+            // The panel is organized into TABS by usage (Markers / Search / Quests / Display / Dev).
+            // BUT the settings-search box is a cross-cutting filter: when it's active we hide the tabs
+            // and draw every matching block in ONE flat list (a match may live in any tab), so a search
+            // never hides its own results behind an unselected tab. Empty box → the tabs come back.
+            if (f.filtering)
             {
-                bool paused = goblin::pause::paused();
-                if (ImGui::Checkbox(tr("Pause the game (world sim freezes; menu stays usable)"), &paused))
-                    goblin::pause::set_paused(paused);
+                draw_pause();
+                panel::draw_dev_icon_sections(ctx, f);   // dev/RE icon sections
+                panel::draw_general_settings(ctx, f);    // master+save, toggles, scale, minimap
+                panel::draw_item_search(ctx, f);         // find item / object
+                panel::draw_sections_categories(ctx, f); // categories grid + ERR
+                panel::draw_quest_browser(f);            // quest browser
+                panel::draw_clustering(f);               // clustering
+                panel::draw_dev_tools_danger(f);         // debug / dev tools / danger
+                panel::draw_world_editor(f);             // world editor
             }
-
-            // Dev/RE icon sections (P2b test, icon migration census, ERR map sprites,
-            // grace texture debug) — src/overlay_panel/panel_dev_icons.cpp.
-            panel::draw_dev_icon_sections(ctx, f);
-
-            // Master toggle + Save, flat option checkboxes, gamepad combo/keyboard,
-            // marker scale, minimap — src/overlay_panel/panel_settings.cpp.
-            panel::draw_general_settings(ctx, f);
-
-            // Find item / object (search + ring + locate) — src/overlay_panel/panel_search.cpp.
-            panel::draw_item_search(ctx, f);
-
-            // Sections & categories grid + ERR integration — src/overlay_panel/panel_categories.cpp.
-            panel::draw_sections_categories(f);
-
-            // Quest navigation / Quest Browser — src/overlay_panel/panel_quests.cpp.
-            panel::draw_quest_browser(f);
-
-            // Clustering controls + presets — src/overlay_panel/panel_clustering.cpp.
-            panel::draw_clustering(f);
-
-            // Debug toggle, dev-tool hooks + flag capture, danger zone —
-            // src/overlay_panel/panel_dev_tools.cpp.
-            panel::draw_dev_tools_danger(f);
-
-            // World Editor (live loot/asset re-skin + refresh) — src/overlay_panel/panel_world_editor.cpp.
-            panel::draw_world_editor(f);
+            else if (ImGui::BeginTabBar("##f1tabs", ImGuiTabBarFlags_None))
+            {
+                // Markers — the everyday "what shows on the map" controls.
+                if (ImGui::BeginTabItem(tr("Markers")))
+                {
+                    panel::draw_sections_categories(ctx, f);  // categories grid (with icons) + ERR
+                    panel::draw_clustering(f);                // clustering presets
+                    ImGui::EndTabItem();
+                }
+                // Search — find an item/object and locate it on the map.
+                if (ImGui::BeginTabItem(tr("Search")))
+                {
+                    panel::draw_item_search(ctx, f);
+                    ImGui::EndTabItem();
+                }
+                // Quests — quest navigation / browser.
+                if (ImGui::BeginTabItem(tr("Quests")))
+                {
+                    panel::draw_quest_browser(f);
+                    ImGui::EndTabItem();
+                }
+                // Display — global rendering settings (scale, minimap, toggles) + pause.
+                if (ImGui::BeginTabItem(tr("Display")))
+                {
+                    draw_pause();
+                    panel::draw_general_settings(ctx, f);
+                    ImGui::EndTabItem();
+                }
+                // Dev — RE/debug tooling: icon census, dev tools + danger zone, live world editor.
+                if (ImGui::BeginTabItem(tr("Dev")))
+                {
+                    panel::draw_dev_icon_sections(ctx, f);
+                    panel::draw_dev_tools_danger(f);
+                    panel::draw_world_editor(f);
+                    ImGui::EndTabItem();
+                }
+                ImGui::EndTabBar();
+            }
 
             s_settings_hits = f.hits;
             ImGui::End();

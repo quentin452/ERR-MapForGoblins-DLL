@@ -4,6 +4,7 @@
 #include "goblin_debug_rpc.hpp"   // pump() — drained at the end of hk_present
 #include "goblin_sidecar.hpp"     // pump_present() — sidecar flag replay (slice 1b)
 #include "goblin_config.hpp"
+#include "goblin_pause.hpp"       // pause-on-open (config::pauseOnOpen) — freeze world sim while F1 is up
 #include "goblin_quest_steps.hpp"
 #include "goblin_debug_events.hpp"
 #include "goblin_freeze_watchdog.hpp"
@@ -1606,6 +1607,31 @@ namespace
                     }
                 }
             }
+        }
+        // Pause-on-open (config::pauseOnOpen): freeze the world sim while the F1 panel is open — the same
+        // branch flip as the "Pause the game" button, but driven by the menu open/close edge (keyboard F1
+        // OR the gamepad combo, since both flip g_user_show → g_show above). We ONLY release a pause we
+        // set ourselves, so a manual pause taken before opening survives the close.
+        static bool s_auto_paused = false;
+        if (goblin::config::pauseOnOpen && goblin::pause::available())
+        {
+            if (!s_prev_show && g_show && !goblin::pause::paused())  // rising edge: menu just opened
+            {
+                goblin::pause::set_paused(true);
+                s_auto_paused = true;
+            }
+            else if (s_prev_show && !g_show && s_auto_paused)        // falling edge: menu just closed
+            {
+                goblin::pause::set_paused(false);
+                s_auto_paused = false;
+            }
+        }
+        else if (s_auto_paused && !g_show && goblin::pause::available())
+        {
+            // Option was turned off (or pause became unavailable) while we still held an auto-pause and
+            // the panel is closed — release it so the game isn't left frozen.
+            goblin::pause::set_paused(false);
+            s_auto_paused = false;
         }
         s_prev_show = g_show;
 

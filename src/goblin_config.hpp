@@ -300,6 +300,7 @@ namespace goblin
         extern GOBLIN_RENDER_API bool  iconLegibility;       // DX item 1: clamp min icon size + dark backing disc for contrast
         extern GOBLIN_RENDER_API float iconMinHalfPx;        // min icon half-extent (px) when iconLegibility is on
         extern GOBLIN_RENDER_API bool  altitudeCue;          // DX item 7: ▲/▼ badge when a marker is above/below the player
+        extern GOBLIN_RENDER_API bool  pauseOnOpen;          // auto-pause the game while the F1 panel is open
         extern GOBLIN_RENDER_API float viewDelayFrames;      // marker motion-sync delay in present-frames (A/B the pan/zoom re-adjust)
         extern GOBLIN_RENDER_API bool  viewDelayZoom;        // motion-sync delay also delays zoom (off = live zoom, fixes wheel-step teleport)
 

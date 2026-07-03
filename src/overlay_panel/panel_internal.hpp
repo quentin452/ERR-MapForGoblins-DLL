@@ -51,11 +51,19 @@ void draw_gamepad_keyboard_button(const char *popup_id, char *buf, size_t buf_si
 // Amber hint shown in the grace-debug sections when the candidate gate is off.
 void grace_candidate_gate_warning();
 
+// Draw category `c`'s resolved marker icon (native map-point → representative item icon → baked
+// atlas cell → colored group dot), `size` px, at the cursor; advances the cursor by `size` so a
+// following SameLine() places the label beside it. Mirrors map_renderer's IconSet::resolve tier
+// order → the panel shows the SAME glyph the map draws (native/disk first, baked transitional,
+// dot when nothing resolves). Native tiers only resolve once the sprite is resident (map opened);
+// until then the baked cell or the dot stands in.
+void draw_category_icon(const OverlayFrameCtx &ctx, int c, float size);
+
 // ── Panel sections, in draw order ───────────────────────────────────────────
 void draw_dev_icon_sections(const OverlayFrameCtx &ctx, Filter &f);  // P2b / migration / sprites / grace dbg
 void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f);   // master+save, flat toggles, scale, minimap
 void draw_item_search(const OverlayFrameCtx &ctx, Filter &f);        // Find item / object
-void draw_sections_categories(Filter &f);                            // Sections & categories + ERR integration
+void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f); // Sections & categories (icons) + ERR
 void draw_quest_browser(Filter &f);                                  // Quest navigation / Quest Browser
 void draw_clustering(Filter &f);                                     // Clustering
 void draw_dev_tools_danger(Filter &f);                               // Debug, Dev tools, Danger zone
