@@ -80,31 +80,36 @@ routines, entries found by CC-boundary scan) are `0xC96726`, `0xA4BD06`, `0x7829
 static disambiguation from UI/status readers is unreliable, so this must be pinned **live**:
 
 **Decisive method — find-what-accesses `EquipGameData` during a real save** (prompt Method A/C):
-1. Resolve `GameDataMan` (accessor AOB `48 8B 05 ?? ?? ?? ?? 48 85 C0 74 05 48 8B 40 58 C3 C3`,
-   slot = match+7+disp32) → `+0x8` PlayerGameData → `+0x2B0` EquipGameData → an item entry's bytes.
-2. HW breakpoint (read) on those bytes — via the user's **CE "Find out what accesses"** here, or the
-   in-DLL HW-breakpoint observer (`goblin_field_probe` infra) on the ERR/Proton dev install.
-3. Trigger a save (rest at grace / quit-to-menu / warp). The accessor that reads the item bytes = the
-   serialize; its **containing function is the strip/reinject bracket** (strip at entry, reinject at
-   exit → the snapshotted buffer is clean; the async `SLSaveSession::run` then writes the clean buffer).
-4. Confirm ordering (serialize entry fires before `SLSaveSession::run`), once-per-save, and thread.
+resolve `GameDataMan` (accessor AOB `48 8B 05 ?? ?? ?? ?? 48 85 C0 74 05 48 8B 40 58 C3 C3`,
+slot = match+7+disp32) → `+0x8` PlayerGameData → `+0x2B0` EquipGameData → an item entry's bytes; HW
+breakpoint (read) on those bytes (CE "Find out what accesses" or the in-DLL `goblin_field_probe`
+observer); trigger a save; the accessor's containing function = the strip/reinject bracket.
 
-Alternative route from what we now hold: hook `SLSaveSession::run` as an observer, capture the caller
-(`SLSessionManager` create-save-session) and where `[session+0xE0]` (the content) is filled — that
-producer is the serialize.
+> **UPDATE — this step was executed on Linux (b8755b3) and hit a WALL (5af1ee4, b0d2660). See
+> `linux_save_function_re_findings.md` §"Update 2026-07-03 (PM #3)".** The serialize was located:
+> **`SERIALIZE_FN = er+0x1ede700`** = the recursive object-serializer entry (6 E8 callers, fires ~150×
+> per op on the save worker, tid 352). BUT it is a **generic REFLECTION walker shared by BOTH save AND
+> load** (a `serclear` before a save still yields the boot/load chain) → a hook needs save-vs-load
+> discrimination. The deepest common frame = the session-run **orchestrator `er+0x24fb88b`**, but its
+> function entry **can't be pinned by offline CC/capstone heuristics** (ER `.text` has CC bytes
+> mid-function → nearest-CC entry-find gives a false start with 0 E8 callers). **Cleanly bracketing
+> the serialize (Variant A) needs real Ghidra**, not offline scripting. **Standing decision: ship
+> Variant B** (reserved-id — the custom item lives in the `.err` under a high goods id, blank/unknown
+> if loaded DLL-less; tolerable for the mod-locked `.err`) via the shipped `give_item` + sidecar store,
+> no serialize hook. Revisit Variant A only with Ghidra.
 
 ## Deliverable status vs. the prompt
 
-1. **SAVE routine RVA + AOB** — ✅ delivered for the outer save-**write** routine (`SLSaveSession::run`
-   `0x240FD70` + unique AOB + RTTI recipe); `re_signatures.hpp` `SAVE_FN` updated (replaces the
-   proven-wrong `0x253e4b0`). ⚠ **Re-verify `[SIG]` on the ERR/Proton deploy build** (AOB generated on
-   the Windows App 2.6.x build; version may differ from ERR's ER base).
+1. **SAVE routine RVA + AOB** — ✅ `SLSaveSession::run` `0x240FD70` + unique AOB + RTTI recipe;
+   `re_signatures.hpp` `SAVE_FN` updated (replaced the proven-wrong `0x253e4b0`). ✅ **AOB re-verified
+   unique on the ERR-Steam exe (3d3bcd2)** — the earlier ⚠ "re-verify on ERR build" is resolved.
 2. **Call convention** — ✅ `rcx=this`, vtable-slot-2 dispatch, stack-canary framed.
-3. **Pre-serialize ordering proof** — ⛔ N/A for the write routine; the true bracket = the game-data
-   serialize (above), still to pin live. This is the ONE remaining RE step.
-4. **Once-per-save / thread** — ⛔ pending live confirmation on the serialize (SLSaveSession::run is a
-   ticked state-machine — likely multiple invocations; not the once-per-save bracket).
+3. **Pre-serialize ordering / strip bracket** — ⛔ the true bracket = the game-data serialize
+   (`SERIALIZE_FN 0x1ede700`), located but NOT offline-hookable (shared save+load reflection walker +
+   unpinnable orchestrator entry — see the UPDATE above). Needs Ghidra for Variant A; Variant B ships.
+4. **Once-per-save / thread** — serialize runs on the save worker (tid 352); `SLSaveSession::run` is a
+   ticked write state-machine (multiple invocations), not a once-per-save bracket.
 
-Net: the indirect-dispatch wall is **broken** (SaveLoad2 mapped, outer routine identified + corrected),
-the save WRITE subsystem is fully RE'd, and the last piece (the serialize snapshot) is now sharply
-scoped to a single live find-what-accesses on `EquipGameData`.
+Net: the indirect-dispatch wall is **broken** (SaveLoad2 mapped, `SLSaveSession::run` identified +
+AOB-verified on ERR, corrects the Linux `0x253e4b0` mislabel; serialize `0x1ede700` located). The
+remaining Variant-A atomic-strip bracket is **Ghidra-gated**; **Variant B is the pragmatic ship.**
