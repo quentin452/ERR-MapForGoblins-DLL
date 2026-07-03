@@ -101,7 +101,15 @@ Re-decompiled the base ctor `FUN_1406c5900` + Dynamic ctor `FUN_1406b9880`, trac
 transform)` reusing the live source record (only `+0x18b` matters), accept that the clone is registered into
 the source record, then `SetWorldMatrix` to offset it. No unknown record fields remain.
 
-## ★★ Transform-independence (the Linux agent's move-init risk) — SOLVED: REBUILD, don't alias
+## ★★ Transform-independence (the Linux agent's move-init risk) — REBUILD idea FAILED (builder hangs)
+> **SUPERSEDED (see `windows_geom_spawn_builder_re_findings.md`):** the "rebuild `param_4` via
+> `thunk_FUN_144cbdae7`" recommendation below is DEAD — calling that builder standalone **hangs the game**
+> (it's EH-wrapped + streaming-context-welded; `arg4=0` matches the driver, so the hang is contextual). With
+> aliasing/deep-copy also unsafe (owned resource sub-objects), **hand-driving the Dynamic ctor from a
+> standalone RPC is a dead end.** Real ADD = streaming-thread spawn (hook the driver) or the asset-request
+> path (`FUN_1406a5080`). The analysis below is kept for context (it correctly identified the descriptor
+> shape + the move-init corruption), but its rebuild fix does not work.
+
 Decompiled the move-init `FUN_1406c3180` + its sub-copy `FUN_140cef4a0` to settle how `param_4` (the
 transform descriptor) is consumed:
 - **`param_4` is a big pose *descriptor* (~0x188 bytes), not a 24-byte handle.** `FUN_1406c3180` (the geom's

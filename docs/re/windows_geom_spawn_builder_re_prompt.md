@@ -1,5 +1,12 @@
 # Ghidra prompt — decomp the geom pose-descriptor BUILDER (`thunk_FUN_144cbdae7`)
 
+> **ANSWERED → `windows_geom_spawn_builder_re_findings.md` (2026-07-03).** The builder resolves to MSVC EH
+> funclets around a `try/catch` resource-touching body (`FUN_1406c3956` + jumptable) — no clean decomp.
+> `arg4=0` is what the working DRIVER passes, so the hang is **contextual** (streaming-thread/lock-welded),
+> not an arg bug. Combined with the descriptor's owned resource sub-objects, **hand-driving the ctor
+> standalone is a dead end** → pivot to streaming-thread spawn (hook the driver) or the asset-request path
+> (`FUN_1406a5080`). Stop blind builder calls.
+
 > **Why:** the ADD-a-geom `spawn_clone` primitive is fully coded and every other arg is live-verified, but
 > the one call that builds `param_4` (the ~0x188-byte pose descriptor the Dynamic ctor `FUN_1406b9880`
 > move-inits) **HANGS the game** when called standalone with the args we resolved. A hang (not an AV) =
