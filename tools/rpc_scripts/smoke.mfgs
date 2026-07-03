@@ -1,0 +1,6 @@
+# quick inventory smoke — a saved command script for `mfg run`
+status
+goods_count 0x40003bed
+give_item 0x40003bed 1
+goods_count 0x40003bed
+strip_test 0x40003bed

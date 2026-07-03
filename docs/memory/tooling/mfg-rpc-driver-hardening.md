@@ -120,8 +120,20 @@ per the PREREQ above).
   ```
   Regression tests live in `tools/rpc_tests/test_*.py` (each = one standalone boot via `run_test`);
   `python3 tools/mfg_test.py [filter]` runs them all + reports pass/fail. Proven 2026-07-03: `test_warp`
-  4/4, `test_sidecar` 5/5. Runs inside ONE foreground call (me3 is the script's child, killed at
-  `__exit__` before return — the reaping constraint still holds). Hand bash only for one-off pokes.
+  4/4, `test_sidecar` 5/5, `test_goods_count` 6/6, `test_custom_item` 4/4 (Variant A clean-save). Runs
+  inside ONE foreground call (me3 is the script's child, killed at `__exit__` before return — the
+  reaping constraint still holds). Hand bash only for one-off pokes.
+
+  **Front door: `tools/mfg.py` (or `tools/mfg`) — one CLI over all of the above (added 2026-07-03):**
+  - `mfg rpc <cmd> [args]` — one-shot RPC against a RUNNING game (`mfg rpc goods_count 0x40003bed`).
+  - `mfg repl [--boot]` — interactive RPC shell (readline history). Attach to a running game, or
+    `--boot` to cold-boot ER + load a save for the session.
+  - `mfg run <script> [--boot]` — replay a saved command script (one RPC line/row, `#` comments);
+    sample `tools/rpc_scripts/smoke.mfgs`. Prints per-line ok/err + an `N/N ok` tally.
+  - `mfg test [name...]` — the regression suite (delegates to `mfg_test`; each test cold-boots).
+  Port = `--port` / `$MFG_RPC_PORT` / 38700. `--boot` needs Steam already running (PREREQ above).
+  Attach mode (no `--boot`) is the fast iterate path once a game is up; it gives a clear "no listener"
+  hint instead of a stack trace when nothing's running.
 
   This machine's exact pieces (verified 2026-07-03): me3 = `~/Games/ERRv2.2.9.6/internals/modengine/bin/me3`,
   exe = `~/.local/share/Steam/steamapps/common/ELDEN RING/Game/eldenring.exe`, profile `err_offline.me3`.
