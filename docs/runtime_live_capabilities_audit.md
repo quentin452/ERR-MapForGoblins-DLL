@@ -129,8 +129,11 @@ Détails :
    (`goblin_param_edit.{hpp,cpp}`, offset live via `resolve_field_offset`) + le loader
    `param_overrides.ini` (Slice 3, shippable, `docs/plans/param_override_loader_plan.md`). Vérifié
    in-game. C'est le premier "mod sans regulation.bin".
-3. **Pièce maîtresse B** : `param_add_rows(paramName, templates)` — généraliser l'expansion
-   TutorialParam ; valider d'abord sur une table non id-looked-up ; budgéter le test heap.
+3. ✅ **Pièce maîtresse B — FAITE + vérifiée in-game** : `goblin::paramedit::param_add_rows` /
+   `param_clone_row` (`goblin_param_edit.{hpp,cpp}`, généralise l'expansion TutorialParam ;
+   wrapper id→index align-16 systématique ; stride+type lus de la table live ; collision-check Gap H).
+   Vérifié sur EquipParamGoods (id-looked-up) : 2 rows ajoutées, données copiées, jeu SURVIT aux
+   lookups goods live. RPC `param_clone`. Commit `623e66f`. Le "mass-add non prouvé" est LEVÉ.
 4. **C (item bout-en-bout)** : APRÈS H — **H est FIGÉ 2026-07-03**
    (`docs/memory/process/reserved-id-and-load-contract.md` : bandes d'IDs réservées + collision-check +
    contrat DLL-au-load ; bandes numériques à finaliser au démarrage de C via un survey live) ; prototyper

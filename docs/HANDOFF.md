@@ -43,10 +43,16 @@ without regulation.bin", shippable as a rebalance mod, and the substrate for ite
   verified: inject+override+read-back on base slots 10 GoodsName / 19 PlaceName (11=WeaponName;
   {419,319}=DLC layers, guarded). Save-safe. Second framework primitive after `param_set_field` —
   together they rename/re-stat items without a regulation.bin.
+- **Gap B DONE 2026-07-03 (`623e66f`):** `goblin::paramedit::param_add_rows` / `param_clone_row` —
+  generic live table row-add (generalizes the TutorialParam expand; 16-aligned id→index wrapper always
+  built; stride/type from the live table; Gap H collision-check aborts on an existing id). RPC
+  `param_clone`. In-game verified on EquipParamGoods (id-looked-up): rows added + findable + data
+  copied + game survives live goods lookups. Third framework primitive; `param_clone_row` is the
+  custom-item basis (clone template → `param_set_field` the clone). Deeper save-load-inventory check
+  shares the (already-proven) TutorialParam wrapper code.
 - **NEXT (optional):** F1 panel to edit overrides live; more param registry fields (each = one AOB);
-  Slice-2 tier-2 (ship SOTE Paramdex for arbitrary fields). Then the bigger gaps: **Gap B**
-  (`param_add_rows` — generalize the TutorialParam table-expand; validate on a non-id-looked-up table,
-  budget the heap test), **Gap C** (item grants — FREEZE the reserved high-ID range +
+  Slice-2 tier-2 (ship SOTE Paramdex for arbitrary fields). Then the last big gap: **Gap C**
+  (item grants — the reserved high-ID range +
   "DLL-required-at-load" policy — **Gap H now FROZEN 2026-07-03**,
   `docs/memory/process/reserved-id-and-load-contract.md`: reserved-ID bands + collision-check +
   load-contract principles LOCKED, numeric bands finalize at Gap C; sidecar save downgrades the
