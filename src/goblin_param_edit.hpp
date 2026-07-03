@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 // ── Generic runtime param-FIELD editor (Slice 1 of the param-override loader) ─────────────────
 //
@@ -56,5 +57,30 @@ std::optional<double> param_get_field_by_name(const wchar_t *param, uint64_t row
 
 // True if (param, field) is in the resolvable-field registry (for a "field known?" check / listing).
 bool field_is_known(const wchar_t *param, const char *field);
+
+// ── Gap B: add rows to a live param table ────────────────────────────────────────────────────
+// Generalizes the proven TutorialParam expansion (goblin_tutorial_popup.cpp): HeapAllocs a bigger
+// param file, merges the existing rows + `templates` (sorted by id), rebuilds the row locators AND
+// the 16-aligned id→index wrapper array (load-bearing for id-looked-up tables — a merely-4-aligned
+// wrapper crashes on save-load), then swaps the ResCap's file_ptr/size. Mod-agnostic; stride +
+// type-string are read from the LIVE table. SAVE-SAFE in the same sense as field edits (the param
+// table reloads from regulation each boot; a row the SAVE references by id is the Gap-C concern, not
+// this primitive). Row growth is copy-based (proven); this is the "mass-add" the audit flagged.
+struct RowTemplate
+{
+    int32_t row_id;       // must be a FREE id — collision aborts the whole add (Gap H: no overwrite)
+    const uint8_t *data;  // row_stride bytes of row data (e.g. cloned from an existing row + patched)
+};
+
+// Add `templates` rows to `param`. `row_stride` = 0 derives it from the table (rows[1]-rows[0]).
+// Returns false if: param absent / <2 rows (can't derive stride) / any template id already exists
+// (Gap H collision — logged [RESERVE]) / alloc fails. All-or-nothing.
+bool param_add_rows(const wchar_t *param, const std::vector<RowTemplate> &templates,
+                    int64_t row_stride = 0);
+
+// Convenience: clone existing row `src_id` into a new row `new_id` (same data). Reads src's row data
+// from the live table, then param_add_rows one template. Basis for custom items later (clone a
+// template item, then param_set_field the clone). Returns false on the same conditions + src missing.
+bool param_clone_row(const wchar_t *param, uint64_t src_id, int32_t new_id);
 
 }  // namespace goblin::paramedit

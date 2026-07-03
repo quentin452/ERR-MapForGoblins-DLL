@@ -6,7 +6,9 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
+#include <vector>
 #include <cwchar>
 #include <mutex>
 
@@ -266,6 +268,175 @@ std::optional<double> param_get_field_by_name(const wchar_t *param, uint64_t row
     ptrdiff_t idx = find_field(param, field);
     if (idx < 0) return std::nullopt;
     return param_get_field(param, row_id, resolve_registry_offset(idx), kFields[idx].type);
+}
+
+// ── Gap B: add rows to a live param table (generalizes goblin_tutorial_popup.cpp) ─────────────
+
+// id→index binary-search entry the engine reads from the wrapper header (LookupTutorialParam).
+struct WrapperRowLocator
+{
+    int32_t row;
+    int32_t index;
+};
+
+static from::params::ParamResCap *find_res_cap(const wchar_t *name)
+{
+    auto param_list = *from::params::param_list_address;
+    if (!param_list) return nullptr;
+    for (int i = 0; i < 186; i++)
+    {
+        auto *prc = param_list->entries[i].param_res_cap;
+        if (!prc) continue;
+        std::wstring_view pn = from::params::dlw_c_str(&prc->param_name);
+        if (pn == name) return prc;
+    }
+    return nullptr;
+}
+
+static std::string narrow(const wchar_t *w)
+{
+    return from::params::internal::wstring_to_string(std::wstring(w));
+}
+
+bool param_add_rows(const wchar_t *param, const std::vector<RowTemplate> &templates,
+                    int64_t row_stride)
+{
+    if (templates.empty()) return true;
+
+    from::params::ParamResCap *prc = find_res_cap(param);
+    if (!prc || !prc->param_header)
+    {
+        spdlog::warn("[PARAMADD] {} not found", narrow(param));
+        return false;
+    }
+    auto *rescap = reinterpret_cast<uint8_t *>(prc->param_header);
+    auto *&file_ptr = *reinterpret_cast<uint8_t **>(rescap + 0x80);
+    auto &file_size = *reinterpret_cast<int64_t *>(rescap + 0x78);
+
+    uint8_t *old_file = file_ptr;
+    auto *old_table = reinterpret_cast<from::params::ParamTable *>(old_file);
+    uint16_t orig_rows = old_table->num_rows;
+    if (orig_rows < 2)
+    {
+        spdlog::warn("[PARAMADD] {} has {} rows — need >=2 to derive stride", narrow(param), orig_rows);
+        return false;
+    }
+    int64_t stride = row_stride > 0
+                         ? row_stride
+                         : (int64_t)old_table->rows[1].param_offset -
+                               (int64_t)old_table->rows[0].param_offset;
+    if (stride <= 0 || stride > 0x100000)
+    {
+        spdlog::warn("[PARAMADD] {} bad stride {}", narrow(param), stride);
+        return false;
+    }
+
+    // Gap H collision-check: a template id that already exists aborts the whole add (never overwrite).
+    for (const auto &t : templates)
+        for (uint16_t i = 0; i < orig_rows; i++)
+            if ((int32_t)old_table->rows[i].row_id == t.row_id)
+            {
+                spdlog::warn("[RESERVE] param_add_rows {} id {} already exists — abort (no overwrite)",
+                             narrow(param), t.row_id);
+                return false;
+            }
+
+    constexpr size_t WRAPPER_HEADER = 0x10;
+    constexpr size_t HEADER_SIZE = 0x40;
+    const char *type_str = reinterpret_cast<const char *>(old_file + old_table->param_type_offset);
+    size_t type_str_len = strlen(type_str) + 1;
+
+    uint32_t total_rows = orig_rows + (uint32_t)templates.size();
+    size_t row_locators_start = HEADER_SIZE;
+    size_t data_start = row_locators_start + total_rows * sizeof(from::params::ParamRowInfo);
+    size_t data_end = data_start + total_rows * (size_t)stride;
+    size_t type_str_start = data_end;
+    size_t after_type_str = type_str_start + type_str_len;
+    // 16-align the wrapper array: the engine's id-lookup rounds this base UP to 16 before its binary
+    // search, so a merely-4-aligned array reads past itself → OOB → save-load crash on id-looked-up
+    // tables (goblin_tutorial_popup.cpp comment). Correct + harmless for iterated-only tables too.
+    size_t wrapper_row_loc_start = (after_type_str + 0xf) & ~(size_t)0xf;
+    size_t wrapper_row_loc_end = wrapper_row_loc_start + total_rows * sizeof(WrapperRowLocator);
+    size_t param_file_size = wrapper_row_loc_end;
+    size_t total_alloc = WRAPPER_HEADER + param_file_size;
+
+    auto *allocation = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, total_alloc);
+    if (!allocation)
+    {
+        spdlog::error("[PARAMADD] {} HeapAlloc {} bytes failed", narrow(param), total_alloc);
+        return false;
+    }
+    auto *new_wrapper = reinterpret_cast<uint8_t *>(allocation);
+    auto *new_file = new_wrapper + WRAPPER_HEADER;
+    auto *new_table = reinterpret_cast<from::params::ParamTable *>(new_file);
+
+    *reinterpret_cast<uint32_t *>(new_wrapper + 0x00) = (uint32_t)wrapper_row_loc_start;
+    *reinterpret_cast<int32_t *>(new_wrapper + 0x04) = (int32_t)total_rows;
+
+    memcpy(new_file, old_file, HEADER_SIZE);
+    new_table->num_rows = (uint16_t)total_rows;
+    new_table->param_type_offset = type_str_start;
+    *reinterpret_cast<uint32_t *>(new_file + 0x00) = (uint32_t)type_str_start;
+    *reinterpret_cast<uint64_t *>(new_file + 0x30) = data_start;
+    memcpy(new_file + type_str_start, type_str, type_str_len);
+
+    struct RowSrc { int32_t id; const uint8_t *data; };
+    std::vector<RowSrc> all;
+    all.reserve(total_rows);
+    for (uint16_t i = 0; i < orig_rows; i++)
+        all.push_back({(int32_t)old_table->rows[i].row_id, old_file + old_table->rows[i].param_offset});
+    for (const auto &t : templates) all.push_back({t.row_id, t.data});
+    std::sort(all.begin(), all.end(), [](const RowSrc &a, const RowSrc &b) { return a.id < b.id; });
+
+    auto *new_loc = reinterpret_cast<from::params::ParamRowInfo *>(new_file + row_locators_start);
+    auto *new_wloc = reinterpret_cast<WrapperRowLocator *>(new_file + wrapper_row_loc_start);
+    size_t file_end_marker = type_str_start + type_str_len;
+    for (size_t i = 0; i < all.size(); i++)
+    {
+        size_t off = data_start + i * (size_t)stride;
+        new_loc[i].row_id = (uint64_t)all[i].id;
+        new_loc[i].param_offset = off;
+        new_loc[i].param_end_offset = file_end_marker;
+        memcpy(new_file + off, all[i].data, (size_t)stride);
+        new_wloc[i].row = all[i].id;
+        new_wloc[i].index = (int32_t)i;
+    }
+
+    file_ptr = new_file;
+    file_size = (int64_t)param_file_size;
+    spdlog::info("[PARAMADD] {} expanded {} -> {} rows (+{}, stride {})", narrow(param), orig_rows,
+                 total_rows, templates.size(), stride);
+    return true;
+}
+
+bool param_clone_row(const wchar_t *param, uint64_t src_id, int32_t new_id)
+{
+    from::params::ParamResCap *prc = find_res_cap(param);
+    if (!prc || !prc->param_header) return false;
+    auto *rescap = reinterpret_cast<uint8_t *>(prc->param_header);
+    uint8_t *file_ptr = *reinterpret_cast<uint8_t **>(rescap + 0x80);
+    auto *table = reinterpret_cast<from::params::ParamTable *>(file_ptr);
+    uint16_t rows = table->num_rows;
+    if (rows < 2) return false;
+    int64_t stride = (int64_t)table->rows[1].param_offset - (int64_t)table->rows[0].param_offset;
+    if (stride <= 0 || stride > 0x100000) return false;
+
+    const uint8_t *src = nullptr;
+    for (uint16_t i = 0; i < rows; i++)
+        if ((int32_t)table->rows[i].row_id == (int32_t)src_id)
+        {
+            src = file_ptr + table->rows[i].param_offset;
+            break;
+        }
+    if (!src)
+    {
+        spdlog::warn("[PARAMADD] clone: {} src row {} not found", narrow(param), src_id);
+        return false;
+    }
+    // Copy src into a local buffer that outlives the add (param_add_rows re-navigates + reallocs).
+    std::vector<uint8_t> buf(src, src + stride);
+    RowTemplate t{new_id, buf.data()};
+    return param_add_rows(param, {t}, stride);
 }
 
 }  // namespace goblin::paramedit

@@ -546,6 +546,32 @@ namespace goblin::debug_rpc
                 if (!rb) return "err read failed (row missing)";
                 return "ok " + pname + "[" + row_s + "]." + field + "=" + std::to_string(*rb);
             }
+            // param_clone <ParamName> <srcRowId> <newRowId> — add a row by cloning an existing one
+            // (Gap B: param_add_rows table-expand). Read-back proves the new row is findable.
+            if (cmd == "param_clone")
+            {
+                std::string pname = next_token(rest), src_s = next_token(rest), new_s = next_token(rest);
+                if (pname.empty() || src_s.empty() || new_s.empty())
+                    return "err usage: param_clone <ParamName> <srcRowId> <newRowId>";
+                uint64_t src = 0;
+                int32_t nid = 0;
+                try
+                {
+                    src = std::stoull(src_s, nullptr, 0);
+                    nid = static_cast<int32_t>(std::stol(new_s, nullptr, 0));
+                }
+                catch (...)
+                {
+                    return "err bad id";
+                }
+                std::wstring wname(pname.begin(), pname.end());
+                if (!goblin::paramedit::param_clone_row(wname.c_str(), src, nid))
+                    return "err clone failed (src missing / id collision / alloc)";
+                auto rb = goblin::paramedit::param_get_field(wname.c_str(), (uint64_t)nid, 0,
+                                                             goblin::paramedit::FieldType::S32);
+                return "ok cloned " + pname + "[" + src_s + "] -> [" + new_s +
+                       "] new_row_present=" + (rb ? "1" : "0");
+            }
             // fmg_set <slot> <id> <text...> — inject/override an FMG string (Gap D). Slot = physical
             // FMG slot (419 GoodsName, 410 WeaponName, 19 PlaceName). Read-back via raw_message_utf8.
             if (cmd == "fmg_set")
