@@ -46,13 +46,25 @@ Read tracks live held qty per-id, in-world. **Caveats found (give_item, NOT the 
 cap (grant N via N× `+1`); grants are live-inventory only, not persisted until a real save (fresh id
 re-reads `0` after reboot → regression is idempotent).
 
-**NEXT (Linux):** script `tools/rpc_tests/test_custom_item.py` = the Phase-2 clean-save regression
-that CLOSES Variant A: grant a reserved-id item (N× `give_item +1`) + register it (`sidecar additem`)
-→ trigger a REAL game save (grants only persist through a save) → reload with the `.mfg` `[items]`
-emptied → assert `goods_count==0` (item gone from the vanilla save). GameSession already does
-cold-boot→load; needs a save-trigger step + the `.mfg` edit + reload. Meanwhile the strip/reinject
-bracket can be sanity-checked MANUALLY in-game. Variant B (reserved-id item tolerated in the `.err`,
-no serialize hook) remains the zero-RE fallback.
+**✅ Variant A clean-save CLOSED 2026-07-03 (Linux/Proton, E2E 4/4).** `tools/rpc_tests/test_custom_item.py`
+(two cold boots: grant+additem+warp-save → empty `.mfg [items]` → reload) proves a registered custom
+item does NOT survive in the vanilla `.sl2` once the `.mfg` stops re-granting it: boot-2 `goods_count==0`.
+Three fixes made it work (the original bracket was a silent no-op):
+- **Real strip (not `give_item(-qty)`).** AddItemFunc is add-only, so `strip_items()` now zeroes the
+  matching EquipInventoryData node directly (`inventory::strip_goods()` — snapshot 0x18 bytes, write
+  `handle@0=0`+`qty@8=0`; the exact decrement the game's `FUN_14024bfe0` does) and `restore_goods()`
+  writes the bytes back the instant the serialize returns. The serializer honors the zeroed slot.
+- **`WriteProcessMemory`-to-self silently FAILS on the inventory pages** (qty stayed 6 after a WPM
+  strip) — a **direct in-process store under SEH** (`write_dw`/`write_bytes`) sticks. Use those, not WPM.
+- **Idempotent reinject.** World-enter `reinject_items()` now grants only the missing delta
+  (target − held) via the exact `give_item(+1)` primitive — a warp/area re-enter (item still live)
+  grants 0 instead of inflating +1/save; a cold load (item stripped from the save, held=0) grants full qty.
+Dev RPC `strip_test <id>` validates the strip round-trip WITHOUT a save (before→strip→0→restore→before).
+Variant B (reserved-id item tolerated in the `.err`, no serialize hook) remains the zero-RE fallback.
+
+**NEXT:** Gap C GRANT for arbitrary custom items can now build on this proven sidecar item (the Gap H
+"don't dirty the `.sl2` until strip proven" contract is satisfied). Caveat still open: `give_item(+N)`
+single-call is unreliable for N>1 (caps ~1000) — grant N via N× `+1` (reinject already does).
 
 **Infra note (corrects stale memory):** a background Claude job CAN boot ER for a self-contained RPC
 run — the missing piece was **Steam must already be running** (me3's `require_steam` aborts otherwise:
@@ -65,8 +77,9 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 - **F1 panel to edit param overrides live** — optional polish on the param-override framework (all 3
   loader slices are done/merged); more registry fields = one AOB each. Not started.
 - **Gap C GRANT for arbitrary custom items** — DEFINE half is done (`custom_item_end_to_end_plan.md`);
-  the grant half depends on the sidecar item above (Gap H hard contract: don't dirty the `.sl2` until
-  the strip/reinject is proven).
+  the grant half was gated on the sidecar strip/reinject being proven (Gap H). **That gate is now
+  passed** (Variant A clean-save closed 2026-07-03, E2E 4/4 — see the RESUME section), so the grant
+  half can proceed.
 - **MapGenie coverage — Hidden Passage category, not started.** Hit-detected illusory walls, no action
   button → no static signal to parse (hardest remaining Group-2 category). RE notes:
   `docs/re/windows_group2_landscape_re_findings.md`.

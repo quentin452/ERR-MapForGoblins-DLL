@@ -130,3 +130,24 @@ Struct offsets are far more patch-stable than RVAs; confirmed once on the deploy
   an actual save.
 
 This closes the count-read the cap-oracle E2E (`test_custom_item.py`) needs to finish Variant A.
+
+## The STRIP (Phase-2 clean-save remove) — ✅ WIRED + E2E-PROVEN 2026-07-03
+The bracket originally stripped via `give_item(id, -qty)`, which is a **no-op** (AddItemFunc is
+add-only, above) — the item was never removed, so it serialized into the `.sl2` (test dirtied a save
+before this was caught). The real remove reuses the SAME verified node walk as `goods_count`:
+- **`inventory::strip_goods(ids)`** walks EquipInventoryData, and for each node whose `id@4` matches,
+  snapshots the 0x18 node bytes then zeroes `handle@0` (the active flag the game's iteration idiom
+  checks) + `qty@8`. This is exactly what the decrement path `FUN_14024bfe0` does to `qty@8`; the
+  serializer honors the zeroed `handle@0` (writes the slot absent). `restore_goods()` writes the
+  snapshot back the instant `g_orig_ser` returns. Both run on the save thread inside the
+  `g_in_serialize` bracket in `hk_serialize`.
+- **`WriteProcessMemory(GetCurrentProcess(), …)` SILENTLY FAILS on these inventory pages** (qty stayed
+  6 after a WPM strip; `got==n` but the value didn't change). A **direct in-process store under SEH**
+  (`write_dw`/`write_bytes` in `goblin_inventory.cpp`) sticks. Do NOT use WPM-to-self for game-memory
+  writes here.
+- **Idempotent reinject.** World-enter `reinject_items()` grants only `target − held` via
+  `give_item(+1)` (exact), so a warp/area re-enter (item still live) adds 0 — no per-save inflation —
+  while a cold load (item stripped, held=0) grants the full qty.
+- Validate the strip without a save (no dirtying): RPC **`strip_test <id>`** → `before=N during=0
+  after=N`. Full E2E: `tools/rpc_tests/test_custom_item.py` (two cold boots) → boot-2 `goods_count==0`,
+  4/4.

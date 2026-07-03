@@ -141,6 +141,20 @@ bool rpm(const void *p, T &out)
     SIZE_T got = 0;
     return p && ReadProcessMemory(GetCurrentProcess(), p, &out, sizeof(T), &got) && got == sizeof(T);
 }
+
+// Direct in-process writes under SEH. WriteProcessMemory-to-self silently fails on the inventory
+// pages here (live-verified: qty stayed 6 after a WPM strip; a direct store zeroed it), so the
+// strip/restore node edits use these instead. noinline so the __try wraps a real store.
+__declspec(noinline) static bool write_dw(void *p, uint32_t v)
+{
+    __try { *reinterpret_cast<volatile uint32_t *>(p) = v; return true; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+__declspec(noinline) static bool write_bytes(void *p, const void *src, size_t n)
+{
+    __try { std::memcpy(p, src, n); return true; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
 }  // namespace
 
 uint32_t goods_count(uint32_t item_id)
@@ -177,6 +191,62 @@ uint32_t goods_count(uint32_t item_id)
     }
     // Held stacks are u32; clamp defensively.
     return total > 0xFFFFFFFFull ? 0xFFFFFFFFu : static_cast<uint32_t>(total);
+}
+
+std::vector<StripEntry> strip_goods(const std::vector<uint32_t> &ids)
+{
+    std::vector<StripEntry> saved;
+    if (ids.empty()) return saved;
+    void *egd = equip_game_data();
+    if (!egd) return saved;  // not in-world
+    auto *inv = reinterpret_cast<uint8_t *>(egd) + 0x158;
+
+    uint32_t seg1 = 0;
+    int32_t last = -1;
+    uint64_t seg1_base = 0, seg2_base = 0;
+    if (!rpm(inv + 0x1C, seg1) || !rpm(inv + 0x80, last) ||
+        !rpm(inv + 0x50, seg1_base) || !rpm(inv + 0x40, seg2_base))
+        return saved;
+    if (last < 0) return saved;
+    const uint32_t span = static_cast<uint32_t>(last) + 1u;
+    if (span > 0x4000) return saved;
+
+    for (uint32_t i = 0; i < span; ++i)
+    {
+        uint64_t base = (i < seg1) ? seg1_base : seg2_base;
+        uint32_t idx = (i < seg1) ? i : i - seg1;
+        auto *node = reinterpret_cast<uint8_t *>(base) + static_cast<uint64_t>(idx) * 0x18;
+
+        uint32_t active = 0, node_id = 0;
+        if (!rpm(node, active) || active == 0) continue;
+        if (!rpm(node + 4, node_id)) continue;
+        bool match = false;
+        for (uint32_t id : ids)
+            if (node_id == id) { match = true; break; }
+        if (!match) continue;
+
+        StripEntry e{};
+        e.node = reinterpret_cast<uintptr_t>(node);
+        SIZE_T got = 0;
+        if (!ReadProcessMemory(GetCurrentProcess(), node, e.bytes, sizeof(e.bytes), &got) ||
+            got != sizeof(e.bytes))
+            continue;
+        // Mark the slot empty for the serialize: zero the handle (@0, the active flag the game's
+        // own iteration idiom checks) and the qty (@8). Restored byte-exact by restore_goods().
+        write_dw(node, 0);
+        write_dw(node + 8, 0);
+        saved.push_back(e);
+    }
+    if (!saved.empty())
+        spdlog::info("[INVSTRIP] stripped {} node(s) matching {} id(s)", saved.size(), ids.size());
+    return saved;
+}
+
+void restore_goods(const std::vector<StripEntry> &saved)
+{
+    for (const auto &e : saved)
+        write_bytes(reinterpret_cast<void *>(e.node), e.bytes, sizeof(e.bytes));
+    if (!saved.empty()) spdlog::info("[INVSTRIP] restored {} node(s)", saved.size());
 }
 
 bool give_item(uint32_t item_id, int32_t qty)

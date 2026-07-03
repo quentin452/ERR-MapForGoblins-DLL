@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <vector>
 
 // Inventory grant / remove primitive (Gap C GRANT + sidecar Phase-2 strip-and-reinject).
 //
@@ -9,14 +10,24 @@
 // id:u32@4}, r8=scratch buffer, r9=0). `inv` = the MapItemMan singleton, resolved from the
 // INVENTORY_ACCESSOR static AOB (no captured pointer needed).
 //
-// REMOVAL: ELDEN RING has no separate RemoveItem function (the comprehensive Hexinton CT
-// exposes none) — the game removes via AddItemFunc with a NEGATIVE quantity. So give_item
-// with qty<0 is the strip half of the sidecar; qty>0 is the grant/reinject half.
+// REMOVAL: AddItemFunc is ADD-ONLY — give_item(qty<0) is a NO-OP, live-verified 2026-07-03
+// (the CT's "negative qty removes" claim is wrong for this build; the count never moves). The
+// real remove is a direct decrement of the EquipInventoryData node's qty field — exactly what
+// the game's own decrement path FUN_14024bfe0 does (reads qty via FUN_1407127a0, writes back
+// max(0,qty+delta)). The sidecar strip snapshots + zeroes the matching node(s) via strip_goods()
+// and restores them post-serialize via restore_goods(). See windows_goods_count_re_findings.md.
 //
 // Item ids are category-encoded: goods = 0x40000000 | goodsId (confirmed live), weapon =
 // id, armor = 0x10000000|id, accessory = 0x20000000|id, ash-of-war/gem = 0x80000000|id.
 namespace goblin::inventory
 {
+    // One stripped inventory node: its absolute address + the 0x18 original bytes, so the
+    // save-bracket can zero the slot before serialize and restore it byte-exact afterwards.
+    struct StripEntry
+    {
+        uintptr_t node;       // absolute node address in EquipInventoryData
+        uint8_t   bytes[0x18];
+    };
     // Resolve AddItemFunc + the MapItemMan static slot (idempotent; logs [INVGRANT]). Called
     // at init after params are ready. Safe no-op on any AOB miss (give_item then returns false).
     void initialize();
@@ -42,4 +53,15 @@ namespace goblin::inventory
     // oracle) OR when the chain isn't resolvable yet (not in-world) — callers that need to tell
     // "absent" from "not-ready" should gate on equip_game_data() != nullptr first.
     uint32_t goods_count(uint32_t item_id);
+
+    // Phase-2 clean-save strip: find every carried-inventory node whose id matches one of `ids`,
+    // snapshot its 0x18 bytes, then mark the slot empty (zero handle@0 + qty@8) so the save
+    // serialize writes it as absent. Returns the snapshots — pass them to restore_goods() the
+    // instant the serialize returns. In-process WriteProcessMemory (guarded, no fault on a bad
+    // ptr); synchronous, meant to run on the save thread inside the serialize bracket. A no-op
+    // (empty result) when not in-world or nothing matches.
+    std::vector<StripEntry> strip_goods(const std::vector<uint32_t> &ids);
+
+    // Restore nodes zeroed by strip_goods() (writes the saved 0x18 bytes back). Idempotent.
+    void restore_goods(const std::vector<StripEntry> &saved);
 }

@@ -259,8 +259,13 @@ std::atomic<bool> g_in_serialize{false};  // re-entrancy guard: never double-str
 
 std::set<uintptr_t> g_ser_callers;  // dedup by direct caller RVA (guarded by g_mtx)
 
-void strip_items();     // fwd (defined below) — remove custom items from the LIVE inventory
-void reinject_items();  // fwd (defined below) — re-add them after the buffer is written
+// Snapshot of the nodes strip_items() zeroed at serialize entry; restored at exit. Only ever
+// touched on the save thread inside the g_in_serialize bracket, so no extra lock needed.
+std::vector<goblin::inventory::StripEntry> g_strip_snapshot;
+
+void strip_items();       // fwd — zero custom-item nodes in the LIVE inventory (snapshot kept)
+void restore_stripped();  // fwd — restore the zeroed nodes byte-exact after the buffer is written
+void reinject_items();    // fwd — world-enter re-grant of loaded items (give_item +qty)
 
 uint64_t hk_serialize(void *a, void *b, void *c, void *d)
 {
@@ -308,7 +313,7 @@ uint64_t hk_serialize(void *a, void *b, void *c, void *d)
     uint64_t r = g_orig_ser(a, b, c, d);
     if (bracket)
     {
-        reinject_items();
+        restore_stripped();
         g_in_serialize.store(false, std::memory_order_release);
     }
     return r;
@@ -352,25 +357,39 @@ void probe_save_callstack()
     }
 }
 
-// a game-save signal so the item is not in the serialized save. Snapshots under the lock, then
-// calls give_item OUTSIDE it (never hold g_mtx across a game call). give_item is SEH-guarded.
+// Zero every custom-item node in the live inventory just before the save serialize reads it, so
+// the item is written as absent (the clean vanilla save). AddItemFunc can't remove (add-only, see
+// goblin_inventory.hpp), so this is a direct node edit via inventory::strip_goods() — the exact
+// decrement the game's own FUN_14024bfe0 does. The snapshot is restored byte-exact at exit by
+// restore_stripped(). Runs on the save thread inside the g_in_serialize bracket.
 void strip_items()
 {
-    std::vector<std::pair<uint32_t, int32_t>> items;
+    std::vector<uint32_t> ids;
     {
         std::lock_guard<std::mutex> lk(g_mtx);
-        items.assign(g_items.begin(), g_items.end());
+        for (auto &[id, qty] : g_items)
+            if (qty > 0) ids.push_back(id);
     }
-    int n = 0;
-    for (auto &[id, qty] : items)
-        if (qty > 0 && goblin::inventory::give_item(id, -qty)) ++n;
-    if (!items.empty())
-        spdlog::info("[SIDECAR] stripped {}/{} custom items from live inventory (pre-save)", n,
-                     items.size());
+    g_strip_snapshot = goblin::inventory::strip_goods(ids);
+    if (!ids.empty())
+        spdlog::info("[SIDECAR] stripped {} node(s) for {} custom item(s) (pre-save)",
+                     g_strip_snapshot.size(), ids.size());
 }
 
-// Re-grant all sidecar custom items into the LIVE inventory (give_item positive qty). Called
-// on world-enter and after a save's strip. Idempotent enough for the +cap case (the game caps).
+// Restore the nodes strip_items() zeroed, the instant the serialize write returns.
+void restore_stripped()
+{
+    goblin::inventory::restore_goods(g_strip_snapshot);
+    if (!g_strip_snapshot.empty())
+        spdlog::info("[SIDECAR] restored {} stripped node(s) (post-save)", g_strip_snapshot.size());
+    g_strip_snapshot.clear();
+}
+
+// Re-grant sidecar custom items into the LIVE inventory up to their target qty. Called on
+// world-enter. IDEMPOTENT: grants only the missing delta (target − current held) via the exact
+// give_item(+1) primitive, so a cold load (item stripped from the save, held=0) grants the full
+// qty while a warp/area-change re-enter (item still live) grants nothing — no per-save inflation.
+// give_item(+N) in one call is unreliable for N>1 (caps at ~1000), hence the +1 loop.
 void reinject_items()
 {
     std::vector<std::pair<uint32_t, int32_t>> items;
@@ -378,11 +397,16 @@ void reinject_items()
         std::lock_guard<std::mutex> lk(g_mtx);
         items.assign(g_items.begin(), g_items.end());
     }
-    int n = 0;
+    int granted = 0;
     for (auto &[id, qty] : items)
-        if (qty > 0 && goblin::inventory::give_item(id, qty)) ++n;
+    {
+        if (qty <= 0) continue;
+        uint32_t cur = goblin::inventory::goods_count(id);
+        for (uint32_t have = cur; have < static_cast<uint32_t>(qty); ++have)
+            if (goblin::inventory::give_item(id, 1)) ++granted;
+    }
     if (!items.empty())
-        spdlog::info("[SIDECAR] reinjected {}/{} custom items into the session", n, items.size());
+        spdlog::info("[SIDECAR] reinjected {} unit(s) across {} custom item(s)", granted, items.size());
 }
 
 bool load_locked()

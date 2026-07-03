@@ -737,6 +737,29 @@ namespace goblin::debug_rpc
                 std::snprintf(b, sizeof(b), "ok goods_count id=%#010x n=%u", id, n);
                 return std::string(b);
             }
+            // strip_test <id> — validate the Phase-2 strip primitive WITHOUT a save (no dirtying):
+            // read held count, strip_goods([id]) (zero the node), re-read (expect 0), restore, re-read
+            // (expect the original). Proves inventory::strip_goods/restore_goods round-trips the live
+            // inventory the serialize reads.
+            if (cmd == "strip_test")
+            {
+                std::string id_s = next_token(rest);
+                if (id_s.empty()) return "err usage: strip_test <id(0x..)>";
+                uint32_t id = 0;
+                try { id = static_cast<uint32_t>(std::stoul(id_s, nullptr, 0)); }
+                catch (...) { return "err bad id"; }
+                if (!goblin::inventory::equip_game_data()) return "err not in-world (inventory unresolved)";
+                uint32_t before = goblin::inventory::goods_count(id);
+                auto snap = goblin::inventory::strip_goods({id});
+                uint32_t during = goblin::inventory::goods_count(id);
+                goblin::inventory::restore_goods(snap);
+                uint32_t after = goblin::inventory::goods_count(id);
+                char b[128];
+                std::snprintf(b, sizeof(b),
+                              "ok strip_test id=%#010x before=%u during=%u after=%u nodes=%zu",
+                              id, before, during, after, snap.size());
+                return std::string(b);
+            }
             // warp <graceId> — fast-travel to a site of grace (dev-world nav). graceId = the
             // bonfire entity id (e.g. 1042362951 = The First Step, 10002951 = Margit). Must be
             // in-world + the grace unlocked. grep [WARP] for the call result.
