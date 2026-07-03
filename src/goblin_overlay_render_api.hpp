@@ -182,6 +182,12 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API bool we_bundle_save();   // to <mod>/world_bundle.toml
     GOBLIN_RENDER_API int we_bundle_apply();   // from <mod>/world_bundle.toml (0 if absent)
     GOBLIN_RENDER_API void we_bundle_clear();
+    // Live placement MOVE (geom transform setter): nudge the geom instance NEAREST the player by
+    // (dx,dy,dz); fills before/now translations + the picked distance. we_move_restore undoes it.
+    // For the World Editor "Move a placement" section. Not persisted (a live transform edit).
+    GOBLIN_RENDER_API bool we_move_near(float dx, float dy, float dz, float out_before[3],
+                                        float out_now[3], float *out_dist);
+    GOBLIN_RENDER_API bool we_move_restore();
     GOBLIN_RENDER_API std::string lookup_name_en_disk_utf8(int32_t encoded_id);
     GOBLIN_RENDER_API bool quest_step_done(const goblin::generated::NpcQuest &q, size_t s);
     GOBLIN_RENDER_API uint32_t resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag);

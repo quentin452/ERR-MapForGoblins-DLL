@@ -17,6 +17,7 @@
 #include "goblin_quest_steps.hpp"
 #include "goblin_param_edit.hpp"          // param_set_field bridge (World Editor)
 #include "goblin_world_bundle.hpp"        // world-bundle save/apply bridge (World Editor)
+#include "goblin_geom_move.hpp"           // live placement move bridge (World Editor)
 #include "worldmap/loot_disk.hpp"
 #include "worldmap/map_entry_layer.hpp"   // rebuild_markers (refresh_markers RPC)
 #include "worldmap/name_fmg_en.hpp"
@@ -116,6 +117,17 @@ namespace goblin::overlay_api
     bool we_bundle_save() { return goblin::world_bundle::save_default(); }
     int we_bundle_apply() { return goblin::world_bundle::apply_default(); }
     void we_bundle_clear() { goblin::world_bundle::clear(); }
+    bool we_move_near(float dx, float dy, float dz, float out_before[3], float out_now[3],
+                      float *out_dist)
+    {
+        float dist = -1.0f;
+        auto r = goblin::geom_move::move_near(dx, dy, dz, dist);
+        if (out_dist) *out_dist = dist;
+        if (out_before) { out_before[0] = r.before[0]; out_before[1] = r.before[1]; out_before[2] = r.before[2]; }
+        if (out_now) { out_now[0] = r.moved[0]; out_now[1] = r.moved[1]; out_now[2] = r.moved[2]; }
+        return r.ok;
+    }
+    bool we_move_restore() { return goblin::geom_move::restore_held().ok; }
     void request_save() { goblin::ui::request_save(); }
     void reset_quest_progress() { goblin::ui::reset_quest_progress(); }
     void reset_to_defaults() { goblin::ui::reset_to_defaults(); }

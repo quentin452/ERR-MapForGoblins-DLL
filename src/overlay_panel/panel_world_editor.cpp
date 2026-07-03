@@ -164,6 +164,37 @@ void draw_world_editor(Filter &f)
         ImGui::SetTooltip("%s", tr("Add a new lot row that copies this one. Non-destructive: the\n"
                                    "original lot is untouched. Then Repoint + Refresh markers."));
 
+    // ── Move a placement (live geom transform setter; MSB-write-free) ────────────────────────────
+    // Nudge the geom instance NEAREST the player by a delta via the engine's own setter (vtable[0xd0]).
+    // Live-only (not persisted). Picks the nearest loaded CSWorldGeomIns to the player — approximate
+    // across tiles (the transform is block-local), so it's a "grab the closest prop and move it" tool.
+    ImGui::Spacing();
+    ImGui::SeparatorText(tr("Move a placement (live)"));
+    static float mv[3] = {0.0f, 5.0f, 0.0f};
+    ImGui::SetNextItemWidth(220.0f);
+    ImGui::InputFloat3(tr("Delta X/Y/Z"), mv);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("World-units to move the nearest placement by (Y is up). Uses the\n"
+                                   "engine's transform setter — the object really moves + collides.\n"
+                                   "Not saved (a live edit); use Restore to put it back."));
+    if (ImGui::Button(tr("Move nearest to player")))
+    {
+        float before[3] = {}, now[3] = {}, dist = -1.0f;
+        bool ok = goblin::overlay_api::we_move_near(mv[0], mv[1], mv[2], before, now, &dist);
+        if (ok)
+            std::snprintf(status, sizeof(status),
+                          "moved nearest (dist %.0f): (%.1f,%.1f,%.1f) -> (%.1f,%.1f,%.1f)", dist,
+                          before[0], before[1], before[2], now[0], now[1], now[2]);
+        else
+            std::snprintf(status, sizeof(status), "move failed (in-world? geom loaded?)");
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(tr("Restore moved")))
+    {
+        bool ok = goblin::overlay_api::we_move_restore();
+        std::snprintf(status, sizeof(status), ok ? "restored the moved placement" : "nothing to restore");
+    }
+
     // ── Slice 7: save the edits as a world bundle (persists across restarts; vision #1) ──────────
     // Every edit above is recorded into an in-memory bundle; Save writes it to <mod>/world_bundle.toml,
     // which re-applies automatically on the next launch. Apply re-runs the saved bundle now.
