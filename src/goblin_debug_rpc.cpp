@@ -9,6 +9,7 @@
 #include "goblin_overlay.hpp"
 #include "goblin_worldmap_probe.hpp"  // dump_menu_state (dumpmenu cmd)
 #include "goblin_overlay_render_loader.hpp"
+#include "goblin_param_edit.hpp"  // param_get/param_set commands — Slice 1 in-game smoke test
 
 #include <spdlog/spdlog.h>
 
@@ -68,6 +69,24 @@ namespace goblin::debug_rpc
             std::string tok = s.substr(b, e == std::string::npos ? std::string::npos : e - b);
             s.erase(0, e == std::string::npos ? s.size() : e + 1);
             return tok;
+        }
+
+        // Parse a param-field type token (u8/s8/u16/s16/u32/s32/f32/f64/u64/s64) for the
+        // param_get/param_set RPC commands. false = unknown token.
+        bool parse_field_type(const std::string &t, goblin::paramedit::FieldType &out)
+        {
+            using FT = goblin::paramedit::FieldType;
+            if (t == "u8")  { out = FT::U8;  return true; }
+            if (t == "s8")  { out = FT::S8;  return true; }
+            if (t == "u16") { out = FT::U16; return true; }
+            if (t == "s16") { out = FT::S16; return true; }
+            if (t == "u32") { out = FT::U32; return true; }
+            if (t == "s32") { out = FT::S32; return true; }
+            if (t == "f32") { out = FT::F32; return true; }
+            if (t == "f64") { out = FT::F64; return true; }
+            if (t == "u64") { out = FT::U64; return true; }
+            if (t == "s64") { out = FT::S64; return true; }
+            return false;
         }
 
         // ── Input-injection commands (Phase 4 unblocker: drive menus / load a save / hover the
@@ -416,6 +435,50 @@ namespace goblin::debug_rpc
                 else
                     return "err pause takes 0|1|toggle";
                 return "ok paused=" + std::to_string(goblin::pause::paused() ? 1 : 0);
+            }
+            // param_get <ParamName> <rowId> <offset(0x..)> <type> — read a live param field.
+            // param_set <ParamName> <rowId> <offset(0x..)> <type> <value> — write it, return read-back.
+            // Slice 1 in-game smoke test for goblin::paramedit (docs/plans/param_override_loader_plan.md).
+            // Offset-addressed on purpose (a DEV command); a shipped override FILE will be name-addressed.
+            if (cmd == "param_get" || cmd == "param_set")
+            {
+                const bool is_set = cmd == "param_set";
+                std::string pname = next_token(rest), row_s = next_token(rest),
+                            off_s = next_token(rest), type_s = next_token(rest),
+                            val_s = is_set ? next_token(rest) : std::string{};
+                if (pname.empty() || row_s.empty() || off_s.empty() || type_s.empty() ||
+                    (is_set && val_s.empty()))
+                    return std::string("err usage: ") + cmd +
+                           " <ParamName> <rowId> <offset(0x..)> <type>" +
+                           (is_set ? " <value>" : "") + " (type=u8|s8|u16|s16|u32|s32|f32|f64|u64|s64)";
+
+                goblin::paramedit::FieldType ft;
+                if (!parse_field_type(type_s, ft)) return "err bad type: " + type_s;
+
+                uint64_t row_id = 0;
+                ptrdiff_t offset = 0;
+                double value = 0;
+                try
+                {
+                    row_id = std::stoull(row_s, nullptr, 0);
+                    offset = static_cast<ptrdiff_t>(std::stoll(off_s, nullptr, 0));  // 0x.. auto-detected
+                    if (is_set) value = std::stod(val_s);
+                }
+                catch (...)
+                {
+                    return "err bad number (row/offset/value)";
+                }
+
+                std::wstring wname(pname.begin(), pname.end());  // ASCII param names
+                if (is_set)
+                {
+                    if (!goblin::paramedit::param_set_field(wname.c_str(), row_id, offset, ft, value))
+                        return "err write failed (param/row missing, offset OOR, or fault)";
+                }
+                auto rb = goblin::paramedit::param_get_field(wname.c_str(), row_id, offset, ft);
+                if (!rb) return "err read failed (param/row missing or offset OOR)";
+                return "ok " + pname + "[" + row_s + "]+" + off_s + " " + type_s + "=" +
+                       std::to_string(*rb);
             }
             if (cmd == "reload_overlay")
             {
