@@ -22,6 +22,7 @@
 #include "goblin_inject.hpp"
 #include "goblin_kindling.hpp"
 #include "goblin_param_overrides.hpp"
+#include "goblin_sidecar.hpp"
 #include "goblin_logic.hpp"
 #include "goblin_markers.hpp"
 #include "goblin_messages.hpp"
@@ -81,6 +82,23 @@ static void safe_fragment_eviction_seh()
     {
         goblin::refresh_category_census();  // per-category uncollected counts (overlay)
         goblin::refresh_quest_finishable(); // Quest Browser: grey out unfinishable lines
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+    }
+}
+
+// Sidecar lifecycle (slice 1b): drive the world enter/exit edges. get_player_world_pos
+// resolves only in-world (LocalPlayer null at the title) → a clean "in world" signal. The
+// enter edge queues a flag replay (run on the present thread by sidecar::pump_present),
+// the exit edge autosaves. No-op unless [Sidecar] sidecar_save is on.
+static void safe_sidecar_tick_seh()
+{
+    __try
+    {
+        float x = 0, y = 0, z = 0;
+        bool in_world = goblin::get_player_world_pos(x, y, z);
+        goblin::sidecar::tick(in_world);
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
     {
@@ -381,6 +399,14 @@ static void setup_mod()
         try
         {
             safe_fragment_eviction_seh();
+        }
+        catch (...)
+        {
+        }
+
+        try
+        {
+            safe_sidecar_tick_seh();
         }
         catch (...)
         {

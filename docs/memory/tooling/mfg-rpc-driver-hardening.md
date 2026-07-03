@@ -86,6 +86,13 @@ session: the game will not stay alive when launched from the job's Bash tool.
   # ... run the RPC commands (params live at title — no save needed) ...
   kill $ME3; pkill -f "Game/eldenring.exe"     # MUST kill before returning, else the game outlives the run
   ```
+  **GOTCHA (2026-07-03): `pkill -f "Game/eldenring.exe"` matches the DRIVER SHELL'S OWN args** (the
+  launch command line contains that path) → pkill kills your own script mid-run (exit 144, any output
+  after it is lost). Either `pkill -f "eldenring.exe" | grep -v` won't help (pkill has no such filter) —
+  use `kill $ME3` alone, or `pgrep -f Game/eldenring.exe | grep -v $$` then kill those PIDs, or just
+  accept it and read the PERSISTED log afterward (the game's log survives the shell death). Also: a
+  **two-boot** recipe blows the default **120 s** Bash-tool timeout — split into separate tool calls or
+  pass an explicit longer `timeout`.
   This machine's exact pieces (verified 2026-07-03): me3 = `~/Games/ERRv2.2.9.6/internals/modengine/bin/me3`,
   exe = `~/.local/share/Steam/steamapps/common/ELDEN RING/Game/eldenring.exe`, profile `err_offline.me3`.
   RPC comes up at ~24s. Screenshots: pass a `Z:\...` path (game's view; `Z:` = `/`).

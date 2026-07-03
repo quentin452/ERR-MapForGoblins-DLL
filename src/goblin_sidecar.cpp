@@ -1,7 +1,9 @@
 #include "goblin_sidecar.hpp"
 
-#include "goblin_config.hpp"  // config::sidecarSave
+#include "goblin_config.hpp"   // config::sidecarSave
+#include "goblin_markers.hpp"  // markers::set_event_flag — flag replay (slice 1b)
 
+#include <atomic>
 #include <mini/ini.h>
 #include <spdlog/spdlog.h>
 
@@ -30,6 +32,11 @@ bool g_dirty = false;      // in-memory state changed since the last save
 std::set<uint32_t> g_flags;
 std::unordered_map<std::string, std::string> g_kv;
 std::string g_guid;        // self-stamped binding id (forward-compat; identity RE is Phase 1c)
+
+// Lifecycle (slice 1b). g_prev_world_loaded is touched ONLY by tick() (poll thread) — no
+// lock. g_replay_pending crosses poll→present, so it's atomic.
+bool g_prev_world_loaded = false;
+std::atomic<bool> g_replay_pending{false};
 
 // A stable-ish id for binding the sidecar to a save. Character-identity RE (steam id + slot)
 // is deferred (Phase 1c); until then the sidecar binds by living next to the save file, and
@@ -132,6 +139,15 @@ bool save_locked()
     spdlog::info("[SIDECAR] saved {} ({} flags, {} kv)", g_mfg_path.string(), g_flags.size(),
                  g_kv.size());
     return true;
+}
+
+// SEH-guarded single SetEventFlag call: a flag id from a hand-edited / foreign .mfg could
+// be out of range and fault inside the game fn (no bounds guarantee). Wraps a lone opaque
+// CALL only (clang-cl keeps that; lint_seh enforces it). Runs on the present thread.
+__declspec(noinline) bool seh_set_flag(uint32_t f)
+{
+    __try { return goblin::markers::set_event_flag(f, 1); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
 bool load_locked()
@@ -251,5 +267,47 @@ std::string status_line()
     return "path=" + p + " loaded=" + (g_loaded ? "1" : "0") +
            " flags=" + std::to_string(g_flags.size()) + " kv=" + std::to_string(g_kv.size()) +
            " dirty=" + (g_dirty ? "1" : "0");
+}
+
+void tick(bool world_loaded)
+{
+    if (!config::sidecarSave) return;
+    // Single-threaded state (poll thread only) — no lock for the edge tracker.
+    if (world_loaded && !g_prev_world_loaded)
+    {
+        // Entered the world (the game has loaded its own save flags by now) → queue a
+        // replay onto the present thread. Re-firing is harmless: SetEventFlag(f,1) is
+        // idempotent, so a transient world_loaded blip that re-edges just re-applies.
+        g_replay_pending.store(true, std::memory_order_relaxed);
+        spdlog::info("[SIDECAR] world entered — flag replay queued");
+    }
+    else if (!world_loaded && g_prev_world_loaded)
+    {
+        // Left to the title / a load screen → persist dirty state (belt-and-suspenders
+        // alongside the game-save write signal in note_save_file_opened).
+        std::lock_guard<std::mutex> lk(g_mtx);
+        if (g_dirty && !g_mfg_path.empty()) save_locked();
+    }
+    g_prev_world_loaded = world_loaded;
+}
+
+void pump_present()
+{
+    if (!config::sidecarSave) return;
+    if (!g_replay_pending.exchange(false, std::memory_order_relaxed)) return;
+    // Snapshot under the lock, then call the game fn OUTSIDE it (never hold g_mtx across a
+    // game call). markers::set_event_flag resolves EventFlagMan + SetEventFlag itself and
+    // returns false if not yet ready — a not-ready replay is simply retried on the next
+    // world-enter edge.
+    std::vector<uint32_t> flags;
+    {
+        std::lock_guard<std::mutex> lk(g_mtx);
+        flags.assign(g_flags.begin(), g_flags.end());
+    }
+    if (flags.empty()) return;
+    int ok = 0;
+    for (uint32_t f : flags)
+        if (seh_set_flag(f)) ++ok;
+    spdlog::info("[SIDECAR] replayed {}/{} custom event flags into the session", ok, flags.size());
 }
 }  // namespace goblin::sidecar

@@ -65,10 +65,18 @@ triggers a sidecar save. Config `[Sidecar] sidecar_save` (default OFF, set true 
 `load` → `getkv foo=bar` (DISK value, proving the read path) + flag reloaded. **KEY: the save file is NOT
 opened at the title screen** (`sidecar status`=`path=(none)` there) — binding needs being IN-WORLD; cold-boot
 load nav that worked: `key Return`→`key e` (Continue)→`key Return` (now in
-[[memory/tooling/mfg-rpc-driver-hardening]]). **DEFERRED Phase-1 slices:** (1b) flag-REPLAY into the live
-session on world-enter (via `markers::set_event_flag`, ready) + world-exit autosave; (1c)
-character-identity binding RE (v1 binds by the `.mfg` sitting next to the save; guid stamped for the later
-cross-check); multi-slot per-character.
+[[memory/tooling/mfg-rpc-driver-hardening]]). **SLICE 1b DONE + IN-GAME VERIFIED 2026-07-03
+(auto lifecycle):** `sidecar::tick(world_loaded)` (poll thread, `dllmain`; `world_loaded` =
+`get_player_world_pos`) queues a flag replay on the title→in-world edge + autosaves on the exit edge;
+`sidecar::pump_present()` (present thread, next to `debug_rpc::pump`) drains it, re-applying each custom
+flag via `markers::set_event_flag` (SEH-guarded `seh_set_flag`). Two-boot test: boot-2 log =
+`loaded (1 flags)` → `world entered — flag replay queued` → `replayed 1/1 custom event flags`, game alive
+→ a framework-set flag now survives save→quit→reload. **REMAINING Phase 1: only (1c) character-identity
+binding RE** (v1 binds by the `.mfg` next to the save; guid stamped for the cross-check) + multi-slot.
+After that the sidecar backs the Gap C GRANT (Phase 2 = inventory strip/reinject via RemoveItem RE).
+NB test gotcha: `pkill -f "Game/eldenring.exe"` also matches the driver shell's own args → kills it (exit
+144, final log line lost); grep the persisted log after. And the 2-boot recipe exceeds the default 120s
+Bash timeout — split boots or pass a longer timeout.
 
 **AOB version-stability audit 2026-07-03 (asked by user).** Live `[SIG]` health = 30 unique / 0 ambiguous
 / 0 missing — all clean. Sidecar Phase 1 uses NO AOB (hooks `CreateFileW` = kernel32 import + mINI →

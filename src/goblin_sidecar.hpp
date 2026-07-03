@@ -52,4 +52,16 @@ namespace goblin::sidecar
 
     // One-line status for the RPC driver / logs: path, loaded, flag/kv counts, dirty.
     std::string status_line();
+
+    // ── Lifecycle (slice 1b — replay on load, autosave on exit) ──────────────
+    // Poll-thread tick: `world_loaded` = the caller's live "player is in the world" signal
+    // (e.g. get_player_world_pos resolving). On the title→in-world EDGE it QUEUES a flag
+    // replay (run on the present thread by pump_present — SetEventFlag must run there); on
+    // the in-world→title EDGE it autosaves dirty state. Cheap; no-op when the feature is off.
+    void tick(bool world_loaded);
+
+    // Present-thread pump: if tick() queued a replay, re-apply the sidecar's custom event
+    // flags into the live session via markers::set_event_flag (idempotent — safe to re-run).
+    // Call once per frame from the present pump (next to debug_rpc::pump). No-op otherwise.
+    void pump_present();
 }

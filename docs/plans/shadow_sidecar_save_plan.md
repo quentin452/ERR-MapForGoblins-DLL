@@ -144,10 +144,20 @@ cold boot (undocumented before): RPC `key Return` (dismiss splash) → `key e` (
 - **DEFERRED to later Phase-1 slices:** (1c) character-identity binding — v1 binds by the `.mfg` living
   next to the save (copy the save without it = no sidecar, safe; a stale `.mfg` left by a
   deleted+recreated save with the same filename is the known gap the identity RE closes; guid is stamped
-  now for that cross-check). (1b) auto lifecycle — the flag-REPLAY into the live session on world-enter
-  (via `markers::set_event_flag`, already available) + a world-exit autosave. Slice 1 is storage +
-  load/save-signal only. Multi-slot per-character state (one `.err` holds all slots) — v1 stores
+  now for that cross-check). Multi-slot per-character state (one `.err` holds all slots) — v1 stores
   per-save-file (global); add a slot dimension later.
+
+**Slice 1b DONE + IN-GAME VERIFIED 2026-07-03 (auto lifecycle — replay on load + autosave on exit).**
+`sidecar::tick(world_loaded)` (poll thread, `dllmain` loop, `world_loaded` = `get_player_world_pos`
+resolving) detects the title→in-world EDGE → queues a replay; the in-world→title edge autosaves dirty
+state. `sidecar::pump_present()` (present thread, next to `debug_rpc::pump` in `hk_present`) drains the
+queue and re-applies each custom flag via `markers::set_event_flag` (SetEventFlag must run present-side).
+SEH-guarded per-flag call (`seh_set_flag` — a hand-edited/foreign `.mfg` id can't fault the present
+thread). Idempotent (re-firing an edge just re-sets flags). **VERIFIED:** boot 1 wrote a benign flag to
+the `.mfg`; boot 2 log showed `loaded …(1 flags)` → `world entered — flag replay queued` → `replayed 1/1
+custom event flags into the session`, game alive. So a framework-set event flag now survives a full
+save→quit→reload cycle. **Remaining Phase 1: only (1c) identity binding + multi-slot.** After that the
+sidecar is ready to back the Gap C GRANT (Phase 2 adds the inventory strip/reinject).
 
 ### Phase 2 — inventory ITEMS via strip-and-reinject (the hard part)
 On the CreateFileW save signal: for each sidecar item, `RemoveItem` from the live inventory (record

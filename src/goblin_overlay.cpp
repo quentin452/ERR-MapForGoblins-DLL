@@ -2,6 +2,7 @@
 #include "goblin_overlay_render.hpp"
 #include "goblin_overlay_render_loader.hpp"
 #include "goblin_debug_rpc.hpp"   // pump() — drained at the end of hk_present
+#include "goblin_sidecar.hpp"     // pump_present() — sidecar flag replay (slice 1b)
 #include "goblin_config.hpp"
 #include "goblin_quest_steps.hpp"
 #include "goblin_debug_events.hpp"
@@ -1953,6 +1954,11 @@ namespace
         // draw is submitted on the same queue — a `screenshot` copy is ordered behind it, so the
         // capture includes the overlay. Near-free when idle (one atomic read).
         goblin::debug_rpc::pump(swapchain);
+
+        // Sidecar flag replay (slice 1b): SetEventFlag must run on the present thread, so
+        // the poll-thread world-enter edge only QUEUES the replay; this drains it. No-op
+        // unless a replay is pending. Cheap (one relaxed atomic read when idle).
+        goblin::sidecar::pump_present();
 
         return o_present(swapchain, sync, flags);
     }
