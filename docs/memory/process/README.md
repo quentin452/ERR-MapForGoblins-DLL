@@ -32,6 +32,9 @@ feature docs).
 - **Quests audit** [active] — reuse already-shipped infra; event-flag writes must default READ-only. → [plan-quests-audit](plan-quests-audit.md)
 
 ## Locked policies
+- **Authoring format is data-first** [LOCKED 2026-07-03] — 3-layer spectrum (C++ primitives → data
+  declarations → scripting logic); pick the lowest layer; ini for flat config, JSON for rich records
+  (custom items), Lua deferred with an explicit trigger. → [authoring-format-decision](authoring-format-decision.md)
 - **Framework is regulation-agnostic** [LOCKED 2026-07-03] — vanilla-only rejected; running on a
   regulation.bin mod (ERR/Convergence) is the DEFAULT, not a feature; the only write-path danger is ID
   collision on persisted writes (= Gap H). → [framework-regulation-agnostic-decision](framework-regulation-agnostic-decision.md)
