@@ -132,6 +132,27 @@ def _test(g):
     g.check("we_scan found pickup assets", na > 0, sc)
     g.check("we_scan found named goods", ng > 0, sc)
 
+    # --- Slice 7: world bundle save -> clear -> apply roundtrip (default path = the Save/Apply flow) ---
+    # Record a clone + a repoint, save to the default <mod>/world_bundle.toml, CLEAR memory, then apply
+    # from that file (proves load-from-disk + apply, the boot path) and verify the edits took effect.
+    bundle_lot = 900900902
+    g.rpc("bundle clear")
+    g.rpc(f"bundle clone ItemLotParam_map {lotB} {bundle_lot}")
+    st = g.rpc(f"bundle set AssetEnvironmentGeometryParam {aegB} pickUpItemLotParamId {bundle_lot}")
+    g.check("bundle holds 1 clone + 1 set", "clones=1 sets=1" in st, st)
+    g.check("bundle save ok", g.rpc("bundle save").startswith("ok saved"))
+    g.rpc("bundle clear")
+    g.check("bundle clear empties memory", "clones=0 sets=0" in g.rpc("bundle status"))
+    ap = g.rpc("bundle apply")
+    g.check("bundle apply reports 2 ops", "applied 2 ops" in ap, ap)
+    lot_b, tid_b, _ = parse_loot_at(g.rpc(f"loot_at {aegB}"))
+    g.check("bundle applied: asset repointed to cloned lot", lot_b == bundle_lot, f"lot={lot_b}")
+    g.check("bundle applied: cloned lot resolves B's item", tid_b == tidB, f"tid={tid_b} tidB={tidB}")
+    # restore + remove the saved bundle so it doesn't auto-apply on the next boot (test hygiene)
+    g.rpc(f"param_setf AssetEnvironmentGeometryParam {aegB} pickUpItemLotParamId {lotB}")
+    g.rpc("bundle clear")
+    g.rpc("bundle save")  # overwrite the file with an empty bundle
+
 
 if __name__ == "__main__":
     run_test(_test)

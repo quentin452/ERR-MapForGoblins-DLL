@@ -107,9 +107,22 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   `overlay_api::we_scan`/`we_copy_assets`/`we_copy_goods` (+ POD `WEAsset`/`WEGoods`) and a `we_scan`
   RPC. The F1 `Browse (pick asset / item)` section (Scan button → client-side filter → click sets the
   Asset / New-goods-id fields). Live scan on a loaded save: 324 pickup assets, 5499 named goods.
-  **Next slices:** category select (weapons/armour/… beyond goods), and SAVE the edits as a world bundle
-  (→ feeds vision #1 World Virtualization — the big one). Backend all proven; these are UI + a bundle
-  format. (`refresh_markers` v2 (a) incremental regen still open, perf-only.)
+  **Slice 7 (2026-07-03): SAVE edits as a world bundle — DONE + E2E-VERIFIED (24/24).** New host module
+  `goblin_world_bundle.{hpp,cpp}` records the editor's edits (dedup: SET keeps last per param/row/field,
+  CLONE unique per newId) and persists them as `<mod>/world_bundle.toml` (`[[clone]]` + `[[set]]` arrays,
+  toml++). `apply_current()` re-runs them (clones first, then sets, then `reset_lot_reader`);
+  `apply_boot()` re-applies the default bundle at startup (wired in `dllmain` right after
+  `custom_items::apply`, before the first marker build → no LotReader reset needed at boot). Panel:
+  `Save / Apply / Clear bundle` buttons + op count; RPC `bundle status|clone|set|save|load|apply|clear`.
+  E2E: record clone+repoint → save → clear memory → apply-from-disk → asset resolves the cloned lot's
+  item. **This is the first brick of vision #1 World Virtualization** (a swappable world = a bundle);
+  remaining for #1: multiple named bundles + live swap (reset-to-base + apply + refresh) + per-world
+  sidecar save context. **⚠️ GOTCHA found:** `toml::parse_file` returns an EMPTY table under Proton/Wine
+  (silent, no throw) — read the file via `std::ifstream` + `toml::parse(string)` instead. `custom_items.cpp`
+  still uses `parse_file` → likely the SAME latent bug (custom_items.toml silently ignored under Proton);
+  see `docs/memory/tooling/toml-parse-file-proton-bug.md`.
+  **Next slices:** category select (weapons/armour/… beyond goods in the picker), and the World
+  Virtualization multi-bundle swap. (`refresh_markers` v2 fully done.)
 
 - **Long-horizon vision bets — tracked in `docs/runtime_modding_framework_vision.md` "Future directions"
   (2026-07-03):** (1) World Virtualization — a FRAMEWORK feature: the framework holds N of its OWN worlds (each a data

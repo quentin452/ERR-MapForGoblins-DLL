@@ -72,6 +72,7 @@ Registry fields today (name-addressed): `EquipParamGoods.{goodsType,sortGroupId}
 | `refresh_markers` | `refresh_markers` | Force a fresh marker/bucket build so a live param edit shows on the drawn map (disk worker, async). NB a newly CLONED lot won't resolve yet (LotReader-index reset — see HANDOFF v2). |
 | `warp` | `warp <graceId>` | Fast-travel to a site of grace (e.g. `1042362951` = The First Step). Must be in-world + grace unlocked. |
 | `we_scan` | `we_scan` | Build the World Editor picker lists (pickup assets + named goods) from live params; reports `assets= goods= total=`. Same scan the F1 "Browse" button runs. |
+| `bundle` | `bundle <sub>` | World-bundle persistence (World Editor edits saved as TOML, re-applied at boot). Subs: `status`, `clone <param> <src> <new>`, `set <param> <row> <field> <value>`, `save [path]`, `load <path>`, `apply [path]`, `clear`. Default path `<mod>/world_bundle.toml`. |
 
 ## Inventory / custom items (Gap C / sidecar)
 

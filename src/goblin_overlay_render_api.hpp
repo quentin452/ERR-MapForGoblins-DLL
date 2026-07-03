@@ -172,6 +172,16 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API size_t we_goods_count();
     GOBLIN_RENDER_API size_t we_copy_assets(goblin::world_editor::WEAsset *out, size_t max);
     GOBLIN_RENDER_API size_t we_copy_goods(goblin::world_editor::WEGoods *out, size_t max);
+    // World bundle: record the World Editor's edits + save/apply them as a persistent TOML that
+    // re-applies at boot (World Editor "Save/Apply/Clear bundle" buttons).
+    GOBLIN_RENDER_API void we_bundle_record_set(const char *param, uint64_t row, const char *field,
+                                                double value);
+    GOBLIN_RENDER_API void we_bundle_record_clone(const char *param, uint64_t src, int32_t newId);
+    GOBLIN_RENDER_API size_t we_bundle_count();
+    GOBLIN_RENDER_API std::string we_bundle_status();
+    GOBLIN_RENDER_API bool we_bundle_save();   // to <mod>/world_bundle.toml
+    GOBLIN_RENDER_API int we_bundle_apply();   // from <mod>/world_bundle.toml (0 if absent)
+    GOBLIN_RENDER_API void we_bundle_clear();
     GOBLIN_RENDER_API std::string lookup_name_en_disk_utf8(int32_t encoded_id);
     GOBLIN_RENDER_API bool quest_step_done(const goblin::generated::NpcQuest &q, size_t s);
     GOBLIN_RENDER_API uint32_t resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag);

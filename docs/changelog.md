@@ -44,6 +44,11 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 - **World Editor — browsable asset/item picker (slice 6).** A `Browse (pick asset / item)` section
   scans the live params into searchable lists of pickup assets and named items — filter by name/id and
   click to fill the Asset / New-goods-id fields, instead of typing raw ids.
+- **World Editor — save edits as a world bundle (slice 7).** Every edit you make (re-skin, repoint,
+  clone) is recorded; `Save bundle` writes them to `world_bundle.toml` next to the DLL, which **re-applies
+  automatically on the next launch** — so an edited world persists across restarts and can be shared.
+  `Apply bundle` re-runs a saved bundle live; `Clear` empties the in-memory recording. First brick of the
+  runtime "World Virtualization" direction.
 - **Regulation.bin-free custom items.** A new `custom_items.toml` (next to `MapForGoblins.dll`) lets
   you declare custom items as data — no `regulation.bin`, no code. Each `[[goods]]` (also `[[weapon]]`
   /`[[protector]]`/`[[accessory]]`) clones a template row from the ACTIVE install, sets fields by name,

@@ -21,6 +21,10 @@ one-off scripts — most workflows are already reusable.
   redirects; forward-slash env paths. → [windows-tooling-gotchas](windows-tooling-gotchas.md)
 
 ## Dev / test infra
+- **`toml::parse_file` is broken under Proton** [active, gotcha] — it returns an EMPTY table (silent, no
+  throw) for a valid on-disk file under Wine. Read via `std::ifstream` + `toml::parse(string)` instead.
+  `custom_items.cpp` still uses `parse_file` → likely silently ignored under Proton. →
+  [toml-parse-file-proton-bug](toml-parse-file-proton-bug.md)
 - **RPC command catalog** [active] — every in-game debug-RPC verb (param read/write, give_item,
   goods_count, warp, loot_at, refresh_markers, fmg_set, sidecar, input injection, mem/equip FWA…) +
   the `tools/mfg.py` driver. The runtime driving/RE surface; read before scripting the live game.

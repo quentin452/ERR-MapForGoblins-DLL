@@ -17,6 +17,7 @@
 #include "goblin_inventory.hpp"  // give_item cmd — Gap C grant / Phase-2 strip RE
 #include "goblin_warp.hpp"  // warp cmd — grace fast-travel (dev-world nav)
 #include "goblin_world_editor.hpp"  // we_scan cmd — World Editor picker enumeration
+#include "goblin_world_bundle.hpp"  // bundle cmd — World Editor save/apply persistence
 #include "goblin_field_probe.hpp"  // arm_raw — serialize find-what-accesses (Phase 2)
 
 #include <spdlog/spdlog.h>
@@ -399,7 +400,7 @@ namespace goblin::debug_rpc
                 return "ok commands: help ping status open_f1 pause set screenshot dumpmenu reload_overlay"
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp we_scan"
-                       " | give_item goods_count strip_test inv_probe fmg_set sidecar"
+                       " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
                        " | mem_dump mem_fwa equip_dump equip_fwa"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
@@ -907,6 +908,63 @@ namespace goblin::debug_rpc
                               goblin::world_editor::asset_count(),
                               goblin::world_editor::goods_count(), total);
                 return std::string(b);
+            }
+            // bundle <sub> — drive/verify the World Editor world-bundle persistence (slice 7):
+            //   status                         path + clones/sets held
+            //   clone <param> <src> <new>      record a clone op
+            //   set <param> <row> <field> <v>  record a set op (dedup per param/row/field)
+            //   save [path]                    write the bundle (default: <mod>/world_bundle.toml)
+            //   load <path>                    parse a bundle INTO memory (no apply)
+            //   apply [path]                   apply the bundle to live params (default path)
+            //   clear                          empty the in-memory bundle
+            if (cmd == "bundle")
+            {
+                namespace wb = goblin::world_bundle;
+                std::string sub = next_token(rest);
+                if (sub == "status" || sub.empty())
+                    return "ok " + wb::status_line() + " path=" + wb::default_path().string();
+                if (sub == "clear") { wb::clear(); return "ok cleared"; }
+                if (sub == "clone")
+                {
+                    std::string p = next_token(rest), s = next_token(rest), n = next_token(rest);
+                    if (p.empty() || s.empty() || n.empty())
+                        return "err usage: bundle clone <param> <srcRow> <newRow>";
+                    try {
+                        wb::record_clone(p, std::stoull(s, nullptr, 0),
+                                         (int32_t)std::stol(n, nullptr, 0));
+                    } catch (...) { return "err bad id"; }
+                    return "ok " + wb::status_line();
+                }
+                if (sub == "set")
+                {
+                    std::string p = next_token(rest), r = next_token(rest), f = next_token(rest),
+                                v = next_token(rest);
+                    if (p.empty() || r.empty() || f.empty() || v.empty())
+                        return "err usage: bundle set <param> <row> <field> <value>";
+                    try {
+                        wb::record_set(p, std::stoull(r, nullptr, 0), f, std::stod(v));
+                    } catch (...) { return "err bad number"; }
+                    return "ok " + wb::status_line();
+                }
+                if (sub == "save")
+                {
+                    std::string p = next_token(rest);
+                    bool ok = p.empty() ? wb::save_default() : wb::save(p);
+                    return ok ? "ok saved " + wb::status_line() : "err save failed";
+                }
+                if (sub == "load")
+                {
+                    std::string p = next_token(rest);
+                    if (p.empty()) return "err usage: bundle load <path>";
+                    return wb::load(p) ? "ok " + wb::status_line() : "err load failed";
+                }
+                if (sub == "apply")
+                {
+                    std::string p = next_token(rest);
+                    int n = p.empty() ? wb::apply_default() : wb::apply(p);
+                    return "ok applied " + std::to_string(n) + " ops (" + wb::status_line() + ")";
+                }
+                return "err usage: bundle status|clone|set|save|load|apply|clear";
             }
             if (cmd == "reload_overlay")
             {

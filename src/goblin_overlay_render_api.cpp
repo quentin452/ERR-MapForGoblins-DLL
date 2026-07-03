@@ -16,6 +16,7 @@
 #include "goblin_map_data.hpp"
 #include "goblin_quest_steps.hpp"
 #include "goblin_param_edit.hpp"          // param_set_field bridge (World Editor)
+#include "goblin_world_bundle.hpp"        // world-bundle save/apply bridge (World Editor)
 #include "worldmap/loot_disk.hpp"
 #include "worldmap/map_entry_layer.hpp"   // rebuild_markers (refresh_markers RPC)
 #include "worldmap/name_fmg_en.hpp"
@@ -102,6 +103,19 @@ namespace goblin::overlay_api
     {
         return goblin::world_editor::copy_goods(out, max);
     }
+    void we_bundle_record_set(const char *param, uint64_t row, const char *field, double value)
+    {
+        if (param && field) goblin::world_bundle::record_set(param, row, field, value);
+    }
+    void we_bundle_record_clone(const char *param, uint64_t src, int32_t newId)
+    {
+        if (param) goblin::world_bundle::record_clone(param, src, newId);
+    }
+    size_t we_bundle_count() { return goblin::world_bundle::op_count(); }
+    std::string we_bundle_status() { return goblin::world_bundle::status_line(); }
+    bool we_bundle_save() { return goblin::world_bundle::save_default(); }
+    int we_bundle_apply() { return goblin::world_bundle::apply_default(); }
+    void we_bundle_clear() { goblin::world_bundle::clear(); }
     void request_save() { goblin::ui::request_save(); }
     void reset_quest_progress() { goblin::ui::reset_quest_progress(); }
     void reset_to_defaults() { goblin::ui::reset_to_defaults(); }

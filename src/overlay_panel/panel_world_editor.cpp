@@ -80,6 +80,9 @@ void draw_world_editor(Filter &f)
     {
         bool ok = goblin::overlay_api::param_set_field("ItemLotParam_map", (uint64_t)lot,
                                                        field, (double)new_item);
+        if (ok)
+            goblin::overlay_api::we_bundle_record_set("ItemLotParam_map", (uint64_t)lot, field,
+                                                      (double)new_item);
         std::snprintf(status, sizeof(status),
                       ok ? "ok: lot %d %s = %d (Refresh markers to see it)"
                          : "FAILED to set lot %d %s", lot, field, new_item);
@@ -120,6 +123,9 @@ void draw_world_editor(Filter &f)
     {
         bool ok = goblin::overlay_api::param_set_field(
             "AssetEnvironmentGeometryParam", (uint64_t)aeg, "pickUpItemLotParamId", (double)target_lot);
+        if (ok)
+            goblin::overlay_api::we_bundle_record_set("AssetEnvironmentGeometryParam", (uint64_t)aeg,
+                                                      "pickUpItemLotParamId", (double)target_lot);
         std::snprintf(status, sizeof(status),
                       ok ? "ok: asset %d pickUpItemLotParamId = %d (Refresh markers to see it)"
                          : "FAILED to repoint asset %d", aeg, target_lot);
@@ -144,7 +150,11 @@ void draw_world_editor(Filter &f)
         bool ok = goblin::overlay_api::param_clone("ItemLotParam_map", (uint64_t)lot,
                                                    (int32_t)clone_new_lot);
         if (ok)
+        {
+            goblin::overlay_api::we_bundle_record_clone("ItemLotParam_map", (uint64_t)lot,
+                                                        (int32_t)clone_new_lot);
             target_lot = clone_new_lot;  // pre-fill the repoint target with the fresh copy
+        }
         std::snprintf(status, sizeof(status),
                       ok ? "ok: cloned lot %d -> %d (Repoint to it, then Refresh markers)"
                          : "FAILED to clone lot %d (id in use / not found?)", lot, clone_new_lot);
@@ -153,6 +163,35 @@ void draw_world_editor(Filter &f)
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("%s", tr("Add a new lot row that copies this one. Non-destructive: the\n"
                                    "original lot is untouched. Then Repoint + Refresh markers."));
+
+    // ── Slice 7: save the edits as a world bundle (persists across restarts; vision #1) ──────────
+    // Every edit above is recorded into an in-memory bundle; Save writes it to <mod>/world_bundle.toml,
+    // which re-applies automatically on the next launch. Apply re-runs the saved bundle now.
+    ImGui::Spacing();
+    ImGui::SeparatorText(tr("World bundle (persist edits)"));
+    ImGui::TextDisabled("%zu %s", goblin::overlay_api::we_bundle_count(),
+                        tr("edit(s) recorded — save to keep them across restarts"));
+    if (ImGui::Button(tr("Save bundle")))
+    {
+        bool ok = goblin::overlay_api::we_bundle_save();
+        std::snprintf(status, sizeof(status),
+                      ok ? "ok: saved world_bundle.toml (%zu ops) — re-applies on next launch"
+                         : "FAILED to save world_bundle.toml",
+                      goblin::overlay_api::we_bundle_count());
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(tr("Apply bundle")))
+    {
+        int n = goblin::overlay_api::we_bundle_apply();
+        goblin::overlay_api::rebuild_markers();
+        std::snprintf(status, sizeof(status), "applied %d bundle op(s) — Refresh markers running", n);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(tr("Clear bundle")))
+    {
+        goblin::overlay_api::we_bundle_clear();
+        std::snprintf(status, sizeof(status), "cleared the in-memory bundle (the saved file is kept)");
+    }
 
     ImGui::Spacing();
     if (ImGui::Button(tr("Refresh markers")))
