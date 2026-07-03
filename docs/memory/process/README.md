@@ -32,6 +32,9 @@ feature docs).
 - **Quests audit** [active] — reuse already-shipped infra; event-flag writes must default READ-only. → [plan-quests-audit](plan-quests-audit.md)
 
 ## Locked policies
+- **Framework is regulation-agnostic** [LOCKED 2026-07-03] — vanilla-only rejected; running on a
+  regulation.bin mod (ERR/Convergence) is the DEFAULT, not a feature; the only write-path danger is ID
+  collision on persisted writes (= Gap H). → [framework-regulation-agnostic-decision](framework-regulation-agnostic-decision.md)
 - **Reserved-ID & DLL-at-load contract (Gap H)** [FROZEN 2026-07-03] — the reserved-ID bands +
   collision-check rule + DLL-required-at-load contract that any PERSISTED framework write (item grants
   = Gap C, custom flags) must obey. Param-field edits + FMG inject are exempt (non-persistent). →
