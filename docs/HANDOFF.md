@@ -74,20 +74,18 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 
 ## Open / next items
 
-- **Live marker regeneration (real-time map editing) — FOLLOW-UP, not started.** Markers build ONCE at
-  boot via `std::call_once` (`prebuild_markers`, `map_entry_layer.cpp`), and the deployed build has no
-  live rebuild (`reload_overlay` is hotreload-dev-only). So ANY runtime change to what the map shows —
-  a `pickUpItemLotParamId` repoint (PROVEN live via `loot_at`, `f90ee01`), a custom item's lot, a live
-  param override — does NOT reflect on the drawn markers until a rebuild. To edit the map in real time
-  we need a **marker-regen trigger**: v1 = a `refresh_markers` RPC/hook that resets the `call_once` +
-  rebuilds all buckets (simple, broadly useful — makes every live param override show on the map); v2 =
-  INCREMENTAL regen (rebuild only the affected buckets/tiles) for perf. Must ALSO rebuild the `LotReader`
-  lot INDEX (`goblin_loot_resolve.cpp`, snapshotted at init) so NEWLY CLONED lots resolve — today only
-  EXISTING lots do (editing an existing lot's `lotItemId01` reflects live; a new cloned lot does not).
-  Shared enabler for "custom items/mobs on the map" (`ItemLotParam` field access is DONE — see
-  `custom_item_end_to_end_plan.md` "Showing a custom item ON THE MAP"; proven: existing-lot `lotItemId01`
-  → custom item+name on the marker chain) and for any live map-editing UX. Gate a rebuild carefully vs
-  the collected-graying contract + the `read_wgm` cache-miss spike (a full rebuild re-walks every tile).
+- **Live marker regeneration (real-time map editing) — v1 DONE 2026-07-03; v2 open.** Markers build once
+  at boot; to reflect a LIVE param edit on the DRAWN map without a game reload, **`refresh_markers` RPC**
+  (→ `overlay_api::rebuild_markers` → `worldmap::rebuild_markers`, the production toggle-rebuild path) now
+  forces a fresh bucket build. Verified: after a `pickUpItemLotParamId` repoint, `refresh_markers` ran a
+  full `build.buckets` (2381 ms) on the detached disk WORKER thread (no frame freeze), re-reading live
+  params; game alive. Since the rebuild uses the same live resolve as `loot_at`, existing-lot edits
+  (repoint, `lotItemId01`, any param override) now show on the map. **Still open (v2):** (a) it's a FULL
+  re-parse (~2.4s, re-walks every MSB) — INCREMENTAL regen (only affected buckets/tiles) for perf; (b) a
+  NEWLY CLONED lot still won't resolve — the `LotReader` lot INDEX (`goblin_loot_resolve.cpp`) is
+  snapshotted via `once_flag` at init and `rebuild_markers` doesn't reset it (existing lots reflect live;
+  new lots need a LotReader-index reset). Gate any auto-trigger vs the collected-graying contract + the
+  `read_wgm` cache-miss spike.
 - **F1 panel to edit param overrides live** — optional polish on the param-override framework (all 3
   loader slices are done/merged); more registry fields = one AOB each. Not started.
 - **Gap C GRANT — grant+sidecar PROVEN 2026-07-03; NAME + author surface remain.** A CLONED custom

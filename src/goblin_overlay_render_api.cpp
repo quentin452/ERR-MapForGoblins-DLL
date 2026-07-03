@@ -16,6 +16,7 @@
 #include "goblin_map_data.hpp"
 #include "goblin_quest_steps.hpp"
 #include "worldmap/loot_disk.hpp"
+#include "worldmap/map_entry_layer.hpp"   // rebuild_markers (refresh_markers RPC)
 #include "worldmap/name_fmg_en.hpp"
 #include "input/input_shared.hpp"
 #include "input/input_cursor.hpp"
@@ -65,6 +66,7 @@ namespace goblin::overlay_api
     bool quest_unfinishable(size_t i) { return goblin::ui::quest_unfinishable(i); }
     bool read_event_flag(uint32_t id) { return goblin::ui::read_event_flag(id); }
     void request_cluster_replan() { goblin::ui::request_cluster_replan(); }
+    void rebuild_markers() { goblin::worldmap::rebuild_markers(); }
     void request_save() { goblin::ui::request_save(); }
     void reset_quest_progress() { goblin::ui::reset_quest_progress(); }
     void reset_to_defaults() { goblin::ui::reset_to_defaults(); }

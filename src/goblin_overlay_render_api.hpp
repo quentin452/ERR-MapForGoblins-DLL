@@ -96,6 +96,10 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API bool quest_unfinishable(size_t i);
     GOBLIN_RENDER_API bool read_event_flag(uint32_t id);
     GOBLIN_RENDER_API void request_cluster_replan();
+    // Force a fresh marker/bucket build so a LIVE param edit (pickUpItemLotParamId repoint, a lot's
+    // lotItemId01, any param override) shows on the drawn map without a game reload. Disk source only
+    // (the default) — re-runs the disk build worker, which re-reads live params. refresh_markers RPC.
+    GOBLIN_RENDER_API void rebuild_markers();
     GOBLIN_RENDER_API void request_save();
     GOBLIN_RENDER_API void reset_quest_progress();
     GOBLIN_RENDER_API void reset_to_defaults();

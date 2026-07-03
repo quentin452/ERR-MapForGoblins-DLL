@@ -4,6 +4,7 @@
 #include "input/input_shared.hpp"
 #include "input/input_wndproc.hpp"  // wm_keydown_total — RPC key-delivery verify
 #include "goblin_inject.hpp"   // world_map_open() — status field for the driver's boot/nav loop
+#include "goblin_overlay_render_api.hpp"  // overlay_api::rebuild_markers (refresh_markers cmd)
 #include "input/input_cursor.hpp"  // set_cursor_pos_real — pixel-exact mouse_move via the trampoline
 #include "goblin_pause.hpp"    // pause command + paused= status (unfocused-window pause escape)
 #include "goblin_overlay.hpp"
@@ -762,6 +763,16 @@ namespace goblin::debug_rpc
                               "ok strip_test id=%#010x before=%u during=%u after=%u nodes=%zu",
                               id, before, during, after, snap.size());
                 return std::string(b);
+            }
+            // refresh_markers — force a fresh marker/bucket build so a LIVE param edit (a
+            // pickUpItemLotParamId repoint, a lot's lotItemId01, any param override) shows on the drawn
+            // map without a game reload. Disk source only (default). Re-reads live params on the build
+            // worker (async) — poll the log's [BENCH] build line / the map to see it land. NB a NEWLY
+            // CLONED lot still won't resolve until the LotReader index is rebuildable (see HANDOFF).
+            if (cmd == "refresh_markers")
+            {
+                goblin::overlay_api::rebuild_markers();
+                return "ok refresh_markers triggered (rebuild runs on the disk worker; poll the map)";
             }
             // warp <graceId> — fast-travel to a site of grace (dev-world nav). graceId = the
             // bonfire entity id (e.g. 1042362951 = The First Step, 10002951 = Margit). Must be
