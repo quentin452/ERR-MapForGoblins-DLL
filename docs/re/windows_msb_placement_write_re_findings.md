@@ -226,6 +226,13 @@ parts record via `first_live_geom_instance()`, clone-spawn a Dynamic instance of
 - ~~Persistence check~~ **DONE — cache-only write is durable (`dc691b2`, no revert over ~7s).**
 - ~~Static: scope "add" / trace the spawn drivers~~ **DONE — see ADD section above (no isolated entrypoint;
   pool placement-new; 3 routes).**
-- **ADD probe (next):** route 1 — `spawn_clone` dev RPC (clone an existing part's record → direct
-  `FUN_1406b9880` → join BlockData `+0x288`) on Proton; verify a duplicated asset renders + collides.
+- **ADD probe (next) — BLOCKED on 3 helper decomps (2026-07-03).** Route 1 can't be driven blind: the
+  Dynamic ctor `FUN_1406b9880`'s args are built by `FUN_14062e700` (srcType desc) + `thunk_FUN_144cbdae7`
+  (transform), whose sizes/formats aren't decompiled — calling the ctor with wrong-format args crashes.
+  Linux recon done (`geom_dump` RPC): the parts record (`inst+0x10`) is a deep, pointer-rich struct
+  (>0x200B, sub-object vtables + a big `0xFF` sentinel block), so a shallow memcpy clone shares
+  sub-objects (unsafe); `+0x18` aliases `+0x10` on the sampled instance; live vtable RVA is `0x2a84208`
+  (≠ the doc's `0x2a84cb0` — reconcile). **Handoff: `docs/re/windows_geom_spawn_re_prompt.md`** (the 3
+  helper signatures + record reads needed, with the live ground-truth dump). Then the Proton spawn_clone
+  probe.
 - **Move follow-up (minor):** on-screen/collision eyeball of a targeted near-player move.

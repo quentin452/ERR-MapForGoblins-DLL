@@ -48,8 +48,9 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
    placement is now SCOPED (static):** the spawn drivers `FUN_1406a7930`/`FUN_1406adc80` are the
    tile-streaming state machine (no isolated "spawn one geom" call); instances are placement-new'd into
    fixed-capacity BlockData pools (static `+0x2b0`, dynamic `+0x2c0`) + pushed into geom_ins vector `+0x288`.
-   Recommended next probe = route 1 `spawn_clone` (clone a resident part's record → direct `FUN_1406b9880`
-   → join `+0x288`). ADD is a multi-step build, not a quick primitive — the remaining real hole.
+   Route 1 `spawn_clone` is BLOCKED on 3 helper decomps (the Dynamic ctor's srcType/transform args) —
+   can't drive `FUN_1406b9880` blind. Linux recon done (`geom_dump`); Ghidra handoff =
+   `windows_geom_spawn_re_prompt.md`. ADD is a multi-step build, not a quick primitive — the remaining hole.
 2. **ESD / talk scripts (EzState) — mostly unmapped.** Merchant shop↔NPC join, dialogue, talk-driven
    logic need an EzState bytecode evaluator (shelved after a spike — see
    `docs/plans/merchant_item_search_plan.md` Slice 3).

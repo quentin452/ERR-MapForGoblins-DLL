@@ -246,6 +246,55 @@ namespace goblin::geom_move
     // some objects move and others not" — move_all only touches CSWorldGeomIns-family instances (AEG
     // assets), never map parts (walls/terrain), and is capped; LOD gives an asset >1 instance. Returns
     // a summary string in .err (reused), .inst = total count.
+    // Read-only recon for the ADD-new-placement route 1: dump a live geom instance's header + its
+    // CSMsbParts record (inst+0x10) so we know exactly what a cloned record must satisfy for the
+    // Dynamic ctor FUN_1406b9880 (rec+0x124, rec+0x18b, model refs). Logs hex to [GEOMDUMP]; safe.
+    static void dump_hex(const char *tag, const uint8_t *b, size_t n)
+    {
+        char line[8 + 16 * 3 + 2];
+        for (size_t off = 0; off < n; off += 16)
+        {
+            int p = std::snprintf(line, sizeof(line), "%03zx:", off);
+            for (size_t i = 0; i < 16 && off + i < n; i++)
+                p += std::snprintf(line + p, sizeof(line) - p, " %02x", b[off + i]);
+            spdlog::info("[GEOMDUMP] {} {}", tag, line);
+        }
+    }
+    MoveResult geom_dump()
+    {
+        MoveResult r;
+        void *inst = goblin::collected::first_live_geom_instance();
+        if (!inst) { std::snprintf(r.err, sizeof(r.err), "no live geom instance"); return r; }
+        r.inst = (uint64_t)inst;
+        uint8_t hdr[0x60] = {};
+        rpm(inst, hdr, sizeof(hdr));
+        uint64_t vt = 0, parts_rec = 0;
+        memcpy(&vt, hdr + 0x00, 8);
+        memcpy(&parts_rec, hdr + 0x10, 8);  // CSMsbParts record ptr
+        r.vtable = vt;
+        spdlog::info("[GEOMDUMP] inst={:#x} vt={:#x} partsRec={:#x}", (uint64_t)inst, vt, parts_rec);
+        dump_hex("inst", hdr, sizeof(hdr));
+        if (parts_rec)
+        {
+            uint8_t rec[0x200] = {};
+            if (rpm((void *)parts_rec, rec, sizeof(rec)))
+            {
+                uint64_t rvt = 0;
+                memcpy(&rvt, rec + 0x00, 8);
+                spdlog::info("[GEOMDUMP] partsRec vt={:#x}  @+0x124={:#x} @+0x18b(byte)={:#x}", rvt,
+                             *(uint32_t *)(rec + 0x124), rec[0x18b]);
+                dump_hex("rec", rec, sizeof(rec));
+            }
+            else
+                spdlog::info("[GEOMDUMP] partsRec unreadable");
+        }
+        std::snprintf(r.err, sizeof(r.err), "inst=%#llx vt=%#llx partsRec=%#llx (dump -> [GEOMDUMP] log)",
+                      (unsigned long long)(uint64_t)inst, (unsigned long long)vt,
+                      (unsigned long long)parts_rec);
+        r.ok = true;
+        return r;
+    }
+
     MoveResult geom_stats()
     {
         MoveResult r;

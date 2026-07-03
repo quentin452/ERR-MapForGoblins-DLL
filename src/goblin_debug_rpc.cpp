@@ -402,7 +402,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all geom_stats"
+                       " | mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all geom_stats geom_dump"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -995,6 +995,15 @@ namespace goblin::debug_rpc
             // move_hold <dx> <dy> <dz> — like move_asset but does NOT restore; remembers the instance.
             // move_read — re-read the held instance's +0x220 translation. Poll it to see if the engine
             // reverts a cache-only write over frames (the move-persistence probe).
+            // geom_dump — read-only recon for ADD-new-placement: dump a live geom instance + its
+            // CSMsbParts record to the [GEOMDUMP] log (what a cloned record must satisfy for the ctor).
+            if (cmd == "geom_dump")
+            {
+                auto r = goblin::geom_move::geom_dump();
+                char b[224];
+                std::snprintf(b, sizeof(b), "%s geom_dump %s", r.ok ? "ok" : "err", r.err);
+                return std::string(b);
+            }
             // geom_stats — count loaded geom instances + class histogram (why some objects moved, others
             // not: move_all only touches CSWorldGeomIns-family, is capped, and LOD dupes an asset).
             if (cmd == "geom_stats")

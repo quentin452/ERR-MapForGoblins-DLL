@@ -49,4 +49,7 @@ namespace goblin::geom_move
 
     // Diagnostic: count loaded geom instances + histogram their vtable classes (into .err, .inst=count).
     MoveResult geom_stats();
+
+    // ADD-recon: dump a live geom instance header + its CSMsbParts record to the [GEOMDUMP] log.
+    MoveResult geom_dump();
 }
