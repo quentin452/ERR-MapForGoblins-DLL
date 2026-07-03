@@ -85,9 +85,17 @@ tractable than buffer surgery.
   session singleton, so the captured pointer is reusable to CALL AddItemFunc ourselves). On first capture
   it logs `[INVACCESS]` — inv vs LocalPlayer/WCM + a `safe_copy` scan of both objects (0..0x2000) for a
   slot HOLDING inv, to promote the pointer to a STATIC path (LocalPlayer+off or a two-hop WCM global).
-  Raw getters `goblin::get_{world_chr_man,local_player}_ptr()`; RPC `inv_probe` reports it live. **NEXT:
-  drive a loaded ER, pick up ANY item (needs `debug_item_grants=true`), read `[INVACCESS]` + `inv_probe`
-  → get the real pointer + the static offset.** Shared with the Gap C grant.
+  Raw getters `goblin::get_{world_chr_man,local_player}_ptr()`; RPC `inv_probe` reports it live.
+  **IN-GAME CAPTURE DONE 2026-07-03 (ERR/Proton, user picked up an item):** captured
+  `inv=0x25b1ea00 LocalPlayer=0x2f2bc080 WCM=0x2ee50080` (`logs/MapForGoblins_events.log`). **NO offset
+  hit** (no `LocalPlayer/WCM +0xNNN -> inv` line) → `inv` is a SEPARATE CS singleton (MapItemMan), ~159 MB
+  below LocalPlayer, NOT a member off the player chain within 0x2000. Conclusion: **reuse the captured
+  singleton pointer** for the grant (session-stable) — a MapItemMan static AOB is optional polish, no
+  short static path exists. **BONUS — goods id encoding CONFIRMED** from the same grant line
+  (`item grant: entry+0=0x00000001 entry+4=0x40003bec`): `entry+4 = 0x40000000 | goodsId`, qty in
+  `entry+0`. So the Gap C grant is RE-complete: `inv`=captured singleton, entry=`{qty@0,
+  0x40000000|goodsId @4}`, call AddItemFunc. Shared with the Gap C grant; grant still gated on the
+  sidecar (save-clean). **RemoveItem (Phase 2 strip) is now the only open inv RE.**
 - **AddItem — AOB KNOWN** (`sig::ADD_ITEM_FUNC`, observer-hooked read-only, `goblin_debug_events.cpp:344`;
   convention: `AddItemFn(inv, entry{qty@0,id@4}, base, count, pad)`). **RemoveItem — NEW RE** (the
   consume/discard counterpart).

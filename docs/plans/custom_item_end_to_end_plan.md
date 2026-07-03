@@ -33,9 +33,11 @@ part. Requirements + blockers:
   reusable), + logs `[INVACCESS]` correlating it against LocalPlayer/WCM to derive a static path. RPC
   `inv_probe`. NEXT: drive a loaded ER, pick up an item, read the pointer/offset. Detail:
   `shadow_sidecar_save_plan.md` RE targets.
-- **Item-id encoding.** The grant's `item_id` is category-encoded (goods vs weapon vs gem live in the
-  id's high bits / a base offset) — confirm the goods encoding against a known pickup via the existing
-  observer before granting a custom id.
+- **Item-id encoding — CONFIRMED for goods (2026-07-03).** A captured grant read
+  `entry+0=0x00000001 entry+4=0x40003bec` → the id is `entry+4 = 0x40000000 | goodsId` (goods base
+  `0x40000000`; qty in `entry+0`). So a custom goods id `G` is granted as `0x40000000 | G`. Weapon/armor/
+  accessory bases (`0x0/0x10000000/0x20000000`) follow the standard ER category encoding — confirm each
+  against a pickup before granting that category.
 - **Save risk (why it waits for the sidecar).** A granted custom id writes into the `.sl2` inventory →
   per Gap H the DLL-at-load contract is HARD (orphan if the DLL is later removed). The clean path is
   the sidecar strip-and-reinject (`shadow_sidecar_save_plan.md`): keep the custom id OUT of the `.sl2`,

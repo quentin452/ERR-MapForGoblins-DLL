@@ -44,9 +44,15 @@ now stashes the live `inv` (rcx) on any grant → `goblin::debug_events::last_in
 (MapItemMan = session singleton, reusable to CALL AddItemFunc); first capture logs `[INVACCESS]` (inv vs
 LocalPlayer/WCM + a `safe_copy` scan of both for a slot holding inv → static path). Added raw getters
 `goblin::get_{world_chr_man,local_player}_ptr()` (`goblin_world_position.cpp`) + RPC `inv_probe`.
-**NEXT concrete step: drive a LOADED ER with `debug_item_grants=true`, pick up ANY item, read
-`[INVACCESS]` + `inv_probe`** → the real accessor pointer + its static offset (shared by both the sidecar
-strip/reinject AND the Gap C grant). Drive ER foreground via the workaround below.
+**IN-GAME CAPTURE DONE 2026-07-03 (ERR/Proton, user picked up an item):** `inv=0x25b1ea00
+LocalPlayer=0x2f2bc080 WCM=0x2ee50080` (`logs/MapForGoblins_events.log`). **No offset hit → `inv` is a
+SEPARATE CS singleton (MapItemMan), not off the player chain → REUSE the captured singleton pointer for
+the grant** (session-stable; a MapItemMan static AOB is optional polish). **BONUS: goods id encoding
+CONFIRMED** — `entry+4 = 0x40000000 | goodsId`, qty in `entry+0` (from `entry+4=0x40003bec`). So the
+Gap C grant is now RE-complete (inv=captured singleton, entry={qty@0, 0x40000000|goodsId @4}, call
+AddItemFunc); grant still gated on the sidecar for save-cleanliness. **The ONLY open inv RE left =
+RemoveItem** (Phase 2 strip-and-reinject). NB `debug_item_grants=true` is now set in the deployed ERR
+ini (leave on for the RemoveItem RE too).
 Then: RemoveItem RE, save-window timing (CreateFileW on `ER0000.err`), character-identity binding.
 NB ERR saves are `ER0000.err` (ME3 redirect, SAME sl2 format) → resolve save path dynamically;
 ERR `.err` is already mod-locked so variant B is tolerable there, sidecar's clean-uninstall matters
