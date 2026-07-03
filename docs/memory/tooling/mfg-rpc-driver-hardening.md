@@ -86,6 +86,17 @@ session: the game will not stay alive when launched from the job's Bash tool.
   # ... run the RPC commands (params live at title — no save needed) ...
   kill $ME3; pkill -f "Game/eldenring.exe"     # MUST kill before returning, else the game outlives the run
   ```
+  This machine's exact pieces (verified 2026-07-03): me3 = `~/Games/ERRv2.2.9.6/internals/modengine/bin/me3`,
+  exe = `~/.local/share/Steam/steamapps/common/ELDEN RING/Game/eldenring.exe`, profile `err_offline.me3`.
+  RPC comes up at ~24s. Screenshots: pass a `Z:\...` path (game's view; `Z:` = `/`).
+- **LOAD A SAVE from a cold boot (needed for inventory/world/sidecar tests; VERIFIED 2026-07-03).**
+  Some state only exists in-world — e.g. the **save FILE is not opened at the title screen** (a
+  `sidecar status` there returns `path=(none)`; ER opens `ER0000.err` only on actual character load).
+  Nav that works blind from the title: RPC `key Return` (dismiss the "press any button" splash) →
+  `key e` (confirm the default-highlighted **Continue**) → `key Return` → in-world in ~4s. Poll for the
+  world (e.g. `sidecar status` path flips off `(none)`, or `status map_open` after `key M`). `key e` is
+  this install's confirm bind (AZERTY); VK-only send (the driver already handles the AZERTY scancode
+  gotcha). This closed the full sidecar Phase-1 round-trip in one automated foreground run.
   Trade-off: the command BLOCKS for the whole boot+test (~30-120s) and the game is KILLED at the end
   (a foreground tool call can't leave a child running — returning reaps it). So this is for
   self-contained verify runs, NOT for leaving a game up for interactive iteration. For a long-lived

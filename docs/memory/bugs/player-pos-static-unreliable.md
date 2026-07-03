@@ -34,6 +34,15 @@ source likely IS there. Real bugs = axis (`+0x74`→`+0x78`) + underground bridg
 `marker_world_pos(conv_underground=true)`, not tile*256). Yellow-dot truth path = cursor+0x90 provider
 → `FUN_140d82770` world→map projection. See `docs/re/windows_yellowdot_player_pos_re_findings.md`.
 
+**WCM resolve is now AOB-FIRST (2026-07-03).** `resolve_world_chr_man` used to prefer the hardcoded
+RVA (`fixed ? fixed : aob`, `er_base+0x3D65F88`), against the framework doctrine ("pin code sigs, never
+RVAs" — `re_signatures.hpp`). On an ER patch the RVA stays non-null but points to a MOVED slot → the old
+logic used that stale slot and never reached the `WCM_FINDER` AOB fallback (which IS patch-resilient +
+live-confirmed unique, `[SIG] PASS`). Flipped to `aob ? aob : fixed` + a MISMATCH warn when both resolve
+but differ (patch-drift early-warning; the RVA is then stale and should be re-derived). Zero behaviour
+change today (both resolve to the same slot — `[PLAYER] … aob==fixed`), strictly more robust across
+versions. This is on the inventory-accessor / sidecar-grant path too (LocalPlayer = [WCM+0x1E508]).
+
 **Why:** I over-trusted decompiler output for pointer-chain leaf offsets + manager identity.
 **How to apply:** for live-memory chains (player pos, transforms), don't ship static-derived
 offsets as "confirmed" — mark them "needs runtime confirm". The decisive validation is **Cheat

@@ -489,9 +489,19 @@ static void resolve_world_chr_man()
         int32_t disp = *reinterpret_cast<int32_t *>(finder + 0xA);
         aob = reinterpret_cast<void **>(finder + 0xE + disp);
     }
-    g_wcm_static = fixed ? fixed : aob;
-    spdlog::info("[PLAYER] WorldChrMan slot: fixed(er+0x3D65F88)={:p} aob={:p} -> using {:p}",
-                 (void *)fixed, (void *)aob, (void *)g_wcm_static);
+    // AOB-FIRST per the framework doctrine (re_signatures.hpp: "we pin code signatures,
+    // never hardcoded RVAs"). WCM_FINDER is patch-resilient; the fixed RVA is version-
+    // specific. Prefer the AOB, fall back to the RVA only if the AOB fails to resolve.
+    // On an ER update the RVA stays non-null but points to a MOVED slot — the old
+    // `fixed ? fixed : aob` would use that stale slot and never reach the AOB. When both
+    // resolve but DIFFER, the patch moved the singleton → the AOB is authoritative; warn
+    // so the drift shows in the log and the RVA can be re-derived.
+    g_wcm_static = aob ? aob : fixed;
+    if (aob && fixed && aob != fixed)
+        spdlog::warn("[PLAYER] WorldChrMan slot MISMATCH: aob={:p} != fixed(er+0x3D65F88)={:p} "
+                     "— using AOB (RVA is stale, re-derive 0x3D65F88)", (void *)aob, (void *)fixed);
+    spdlog::info("[PLAYER] WorldChrMan slot: aob={:p} fixed(er+0x3D65F88)={:p} -> using {:p}",
+                 (void *)aob, (void *)fixed, (void *)g_wcm_static);
 }
 
 // Player-position probe (POD-only; no C++ objects in the __try). Caller reads the

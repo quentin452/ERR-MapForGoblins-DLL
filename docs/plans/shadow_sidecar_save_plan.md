@@ -1,6 +1,6 @@
 # Shadow / sidecar save — plan
 
-Status: **PHASE 1 SLICE 1 DONE 2026-07-03 (build+SEH-lint clean, deployed; in-game verify pending).**
+Status: **PHASE 1 SLICE 1 DONE + IN-GAME VERIFIED 2026-07-03 (ERR/Proton, full RPC round-trip PASS).**
 Approach chosen (transient-grant via inventory API + save-detection, NOT serializer parsing) + RE targets
 nailed — see "Implementation phasing" below. **Phase 1 (ini state-store, no inventory strip) = the
 buildable start — slice 1 (core module + save-path detection + RPC) landed; Phase 2 (inventory
@@ -118,7 +118,15 @@ JSON deferred to Phase 2 / Gap C records). **Useful immediately** (persist custo
 sessions), and it's the skeleton Phase 2 rides on. Does NOT touch the inventory → no strip, no RemoveItem,
 low risk.
 
-**Slice 1 DONE 2026-07-03 (build + SEH-lint clean, deployed) — the buildable core.** New module
+**Slice 1 DONE + IN-GAME VERIFIED 2026-07-03 (ERR/Proton, automated foreground RPC round-trip).**
+PASS: loaded a save (nav below) → sidecar bound `path=…\ER0000.mfg loaded=1` (dynamic path resolved from
+the opened `ER0000.err`); `setkv foo=bar` + `addflag 90000001` + `save` wrote a 116-byte `ER0000.mfg`
+with correct `[meta]`/`[flags] custom`/`[kv]`; then `setkv foo=ZZZ` (dirty memory) → `load` → `getkv
+foo=bar` (the DISK value, proving the read path) + `flags: 90000001` reloaded. Atomic temp+rename worked.
+**KEY: the save file is NOT opened at the TITLE screen — `sidecar status` = `path=(none)` there;** it
+opens only on actual character load, so binding requires being in-world. Load nav that worked from a
+cold boot (undocumented before): RPC `key Return` (dismiss splash) → `key e` (confirm Continue) →
+`key Return` → in-world in ~4s. New `src/goblin_sidecar.{hpp,cpp}` (`goblin::sidecar`):
 `src/goblin_sidecar.{hpp,cpp}` (`goblin::sidecar`):
 - **Save-path resolution — DONE, dynamic.** Wired into the existing CreateFileW hook
   (`worldmap/loot_open_probe.cpp` `hk_create_file_w`): on a successful open of an ER save
