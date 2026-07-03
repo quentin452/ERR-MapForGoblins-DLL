@@ -74,6 +74,25 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 
 ## Open / next items
 
+- **NEW-WORLDMAP-PAGE registration (for a custom "dev world" map entry) — SCOPED 2026-07-04, not started.**
+  User goal: a REAL new entry on the world map (a new pannable page) so MapForGoblins markers integrate on
+  it. **Key strategic call: this is a DATA/MENU-layer track, SEPARATE from and LIGHTER than ADD/geom spawn
+  — markers are an overlay on the worldmap menu, they need NO 3D geometry/collision.** We already RE the
+  worldmap READ path deeply (projection `world_map_projection`, page-transition, tile-fog,
+  `WorldMapPointParam`/`WorldMapPlaceName`, `WORLDMAP_POINT_FN/_CTOR`, `MARKER_ARRAY_CTOR`); the open piece
+  is WRITING a new page ENTRY (a new map image/tile + its coord bounds registered in the worldmap menu) —
+  needs a spike (probably param + menu-side, NOT the MSB wall). **Do NOT gate this on ADD.** ADD (spawn
+  geom) is only needed if you want to physically WALK in the new world (playable content), which is the
+  separate capstone. Recommend scoping the page-entry write FIRST as the fast path to the markers goal.
+  Sandbox for any playable experiments meanwhile = an existing SPARSE map via warp+freecam (already scoped
+  in the creative-mode mini-track), not a from-scratch map.
+- **F1 category list → GRID LAYOUT (followup, not started).** The Markers-tab category list is a checkbox
+  tree; with many custom worlds/categories it overflows into a long scroll. Replace with a GRID of
+  icon-tiles (the category icon we just added as the tile, toggle visibility on click, checkmark/dim
+  overlay for on/off), gamepad + keyboard navigable (reuse the already-enabled ImGui nav — same nav that
+  drives the on-screen keyboard). Natural successor to the category-icons work (`draw_category_icon`).
+  Pure ImGui slice, Linux-doable. Keep the per-category count badge + cluster toggle reachable (tooltip or
+  a detail row on select).
 - **In-Game World Editor (vision #2) — SLICES 1+2 DONE 2026-07-03.** F1 panel section "World Editor
   (live)" (`src/overlay_panel/panel_world_editor.cpp`): pick an AEG asset → it shows the loot item its
   MAP MARKER resolves to (live `aeg_pickup_lot`→`resolve_loot_item_textid`→`lookup_text_utf8`) → set that
