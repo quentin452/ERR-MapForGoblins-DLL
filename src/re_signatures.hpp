@@ -56,6 +56,23 @@ namespace goblin::sig
     inline constexpr const char *INVENTORY_ACCESSOR =
         "44 8B 61 1C 41 8B FC C1 EF 07 40 80 E7 01 41 C1 EC 08 41 80 E4 01 48 8B 0D";
 
+    // ── Grace warp (fast-travel to a site of grace — dev-world navigation) ──
+    // From the Hexinton CT ("Coinsworth"). LuaWarp_01 = the game's Lua-event warp: proper
+    // area-load fast-travel. AOB anchors on the previous fn's `C3` ret; the callable is
+    // MATCH + 2. Convention (from the CT's Warp stub): LuaWarp_01(rcx=[CSLuaEventManager+0x18],
+    // rdx=[CSLuaEventManager+0x08], r8d = graceId - 1000). graceId = the bonfire entity id
+    // (e.g. 1042362951 = The First Step, 10002951 = Margit).
+    inline constexpr const char *LUA_WARP =
+        "C3 ?? ?? ?? ?? ?? ?? 57 48 83 EC ?? 48 8B FA 44";
+    // CSLuaEventManager singleton (mov rax,[rip+disp]; disp@+3, instr len 7 → slot = match+7+disp).
+    // NB [SIG] reports MULTI (2 matches) on ERR — the FIRST match is the correct one (grace warp
+    // verified live 2026-07-03: Limgrave → Roundtable Hold). A future patch could reorder the two;
+    // that fails SAFE (warp reads a wrong singleton → the SEH-guarded LuaWarp call faults → to_grace
+    // returns false, no crash). TODO tighten to unique (needs live disasm of the 2 sites to find the
+    // distinguishing trailing bytes).
+    inline constexpr const char *CS_LUA_EVENT_MANAGER =
+        "48 8B 05 ?? ?? ?? ?? 48 85 C0 74 ?? 41 BE 01 00 00 00 44 89 75";
+
     // ── Live param + message repositories (SoloParamRepository / MsgRepositoryImp) ──
     // Param list address (get_param). relative_offsets {{3,7}}.
     inline constexpr const char *SOLO_PARAM_LIST =
@@ -272,6 +289,8 @@ namespace goblin::sig
             {"EVENT_FLAG_MAN_SLOT_ALT", EVENT_FLAG_MAN_SLOT_ALT},
             {"ADD_ITEM_FUNC", ADD_ITEM_FUNC},
             {"INVENTORY_ACCESSOR", INVENTORY_ACCESSOR},
+            {"LUA_WARP", LUA_WARP},
+            {"CS_LUA_EVENT_MANAGER", CS_LUA_EVENT_MANAGER},
             {"SOLO_PARAM_LIST", SOLO_PARAM_LIST},
             {"MSG_REPOSITORY", MSG_REPOSITORY},
             {"GETMESSAGE", GETMESSAGE},

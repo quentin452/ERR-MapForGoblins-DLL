@@ -24,6 +24,12 @@ other overhauls (no regulation.bin merge wars).
   TPF/sblytbnd), `force_load_file` via CSFile (by-path resident loads).
 - **Generic infra**: AOB sig framework with health surfacing (`[SIG]`), DX12+ImGui overlay,
   event-flag reads, item-grant/flag hooks, GPU texture harvest.
+- **Dev-drive primitives (built + in-game verified 2026-07-03, RPC-driven, all SEH-guarded):**
+  `goblin::inventory::give_item(id, qty)` — grant (qty>0) / REMOVE (qty<0) via the game's AddItemFunc
+  (ER has no separate RemoveItem; removal = negative qty). `goblin::warp::to_grace(graceId)` — fast-travel
+  to any grace via the game's own Lua-event warp (proper area-load; dev-world navigation + testing the
+  overlay across map areas). Both from the Hexinton CT recipes, static AOBs in `re_signatures.hpp`. Join
+  the param/FMG/row primitives + the sidecar save as the framework's runtime surface.
 
 ## Honest constraints (from the discussion, validated)
 

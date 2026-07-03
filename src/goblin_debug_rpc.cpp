@@ -14,6 +14,7 @@
 #include "goblin_debug_events.hpp"  // last_inventory_accessor — inv_probe cmd (Gap C grant RE)
 #include "goblin_sidecar.hpp"  // sidecar cmd — Phase 1 state store drive/verify
 #include "goblin_inventory.hpp"  // give_item cmd — Gap C grant / Phase-2 strip RE
+#include "goblin_warp.hpp"  // warp cmd — grace fast-travel (dev-world nav)
 
 #include <spdlog/spdlog.h>
 
@@ -691,6 +692,20 @@ namespace goblin::debug_rpc
                 char b[96];
                 std::snprintf(b, sizeof(b), "%s give_item id=%#010x qty=%d", ok ? "ok" : "err", id, qty);
                 return std::string(b);
+            }
+            // warp <graceId> — fast-travel to a site of grace (dev-world nav). graceId = the
+            // bonfire entity id (e.g. 1042362951 = The First Step, 10002951 = Margit). Must be
+            // in-world + the grace unlocked. grep [WARP] for the call result.
+            if (cmd == "warp")
+            {
+                std::string id_s = next_token(rest);
+                if (id_s.empty()) return "err usage: warp <graceId> (e.g. 1042362951 = The First Step)";
+                int32_t gid = 0;
+                try { gid = static_cast<int32_t>(std::stol(id_s, nullptr, 0)); }
+                catch (...) { return "err bad graceId"; }
+                bool ok = goblin::warp::to_grace(gid);
+                return ok ? "ok warp " + std::to_string(gid)
+                          : "err warp failed (unresolved / not in-world / grace locked)";
             }
             if (cmd == "reload_overlay")
             {

@@ -191,6 +191,8 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_sidecar.cpp
   src/goblin_inventory.hpp
   src/goblin_inventory.cpp
+  src/goblin_warp.hpp
+  src/goblin_warp.cpp
   src/goblin_logic.hpp
   src/goblin_logic.cpp
   src/goblin_markers.hpp

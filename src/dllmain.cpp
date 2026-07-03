@@ -24,6 +24,7 @@
 #include "goblin_param_overrides.hpp"
 #include "goblin_sidecar.hpp"
 #include "goblin_inventory.hpp"
+#include "goblin_warp.hpp"
 #include "goblin_logic.hpp"
 #include "goblin_markers.hpp"
 #include "goblin_messages.hpp"
@@ -133,6 +134,7 @@ static void init_prebuild_markers() { goblin::overlay_render_loader::call_prebui
 static void init_tutorial_popup()   { goblin::inject_tutorial_popup_rows(); }
 static void init_param_overrides()  { goblin::apply_param_overrides(); }
 static void init_inventory()        { goblin::inventory::initialize(); }
+static void init_warp()             { goblin::warp::initialize(); }
 static void init_setup_messages()   { goblin::setup_messages(); }
 static void init_icon_tex_probe()   { goblin::install_icon_texture_probe(); }
 static void init_grace_suppress()   { goblin::install_grace_suppression_hook(); }
@@ -285,6 +287,8 @@ static void setup_mod()
         // Resolve AddItemFunc + MapItemMan slot (Gap C grant / sidecar Phase-2 strip). Just
         // AOB resolution here — no inventory mutation. Gated give_item() drives it later.
         safe_init_step(&init_inventory,       "inventory::initialize");
+        // Grace warp (dev-world navigation) — resolve LuaWarp_01 + CSLuaEventManager AOBs.
+        safe_init_step(&init_warp,            "warp::initialize");
         safe_init_step(&init_setup_messages,  "setup_messages");
         // Queue the live-refresh hook (FUN_140a82a80) — kept for the native-pin
         // suppression path; no-op until enabled.

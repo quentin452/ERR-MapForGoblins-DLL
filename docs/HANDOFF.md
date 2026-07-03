@@ -92,6 +92,19 @@ before any game save (on-disk save unchanged). **So Gap C GRANT is fully impleme
 sidecar Phase-2 strip = `give_item(id,-qty)` before the game save + `give_item(id,+qty)` after.** NEXT:
 wire the strip/reinject onto the CreateFileW save signal (Phase 2 proper) + the Gap C custom-item grant.
 
+**GRACE WARP — ADDED + IN-GAME VERIFIED 2026-07-03 (dev-world navigation, user-requested).** The
+Hexinton CT ("Coinsworth") had a proven warp: `goblin::warp::to_grace(graceId)`
+(`goblin_warp.{hpp,cpp}`) calls the game's own Lua-event fast-travel `LuaWarp_01(rcx=[CSLuaEventManager
++0x18], rdx=[CSLuaEventManager+0x08], r8d=graceId-1000)` → proper area-load. AOBs `LUA_WARP` (callable =
+match+2) + `CS_LUA_EVENT_MANAGER` in `re_signatures.hpp`; SEH-guarded, present-thread; RPC `warp
+<graceId>`; `dllmain` `warp::initialize`. graceId = bonfire entity id (1042362951=The First Step,
+10002951=Margit, 11102950=Roundtable Hold). **VERIFIED: warped Limgrave overworld → Roundtable Hold
+interior** (screenshot). Caveat: `CS_LUA_EVENT_MANAGER` is `[SIG] MULTI` (2 on ERR) — first match is
+correct here, fails SAFE if a patch reorders (SEH → to_grace false, no crash); tighten TODO in the sig
+comment. Save note: warping changes player location, which ER persists on its next (auto)save — expected
+for the tool. Good for testing the overlay/markers across map areas without walking; pairs with the
+`give_item` primitive as the framework's dev-drive surface.
+
 **AOB version-stability audit 2026-07-03 (asked by user).** Live `[SIG]` health = 30 unique / 0 ambiguous
 / 0 missing — all clean. Sidecar Phase 1 uses NO AOB (hooks `CreateFileW` = kernel32 import + mINI →
 patch-proof by construction). One real fix: **WCM resolve was RVA-first** (`fixed ? fixed : aob`) against
