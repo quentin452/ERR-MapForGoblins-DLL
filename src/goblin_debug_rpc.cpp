@@ -10,6 +10,7 @@
 #include "goblin_worldmap_probe.hpp"  // dump_menu_state (dumpmenu cmd)
 #include "goblin_overlay_render_loader.hpp"
 #include "goblin_param_edit.hpp"  // param_get/param_set commands — Slice 1 in-game smoke test
+#include "goblin_messages.hpp"  // inject_fmg_entries / raw_message_utf8 — fmg_set cmd (Gap D)
 
 #include <spdlog/spdlog.h>
 
@@ -544,6 +545,32 @@ namespace goblin::debug_rpc
                 auto rb = goblin::paramedit::param_get_field_by_name(wname.c_str(), row_id, field.c_str());
                 if (!rb) return "err read failed (row missing)";
                 return "ok " + pname + "[" + row_s + "]." + field + "=" + std::to_string(*rb);
+            }
+            // fmg_set <slot> <id> <text...> — inject/override an FMG string (Gap D). Slot = physical
+            // FMG slot (419 GoodsName, 410 WeaponName, 19 PlaceName). Read-back via raw_message_utf8.
+            if (cmd == "fmg_set")
+            {
+                std::string slot_s = next_token(rest), id_s = next_token(rest);
+                size_t b = rest.find_first_not_of(" \t");
+                std::string text = b == std::string::npos ? std::string{} : rest.substr(b);
+                if (slot_s.empty() || id_s.empty() || text.empty())
+                    return "err usage: fmg_set <slot> <id> <text>";
+                uint32_t slot = 0;
+                int32_t id = 0;
+                try
+                {
+                    slot = static_cast<uint32_t>(std::stoul(slot_s, nullptr, 0));
+                    id = static_cast<int32_t>(std::stol(id_s, nullptr, 0));
+                }
+                catch (...)
+                {
+                    return "err bad slot/id";
+                }
+                std::wstring wtext(text.begin(), text.end());  // ASCII widen (dev test path)
+                if (!goblin::inject_fmg_entries(slot, {{id, wtext}}))
+                    return "err inject failed (repo not ready / slot invalid)";
+                return "ok " + slot_s + ":" + id_s + "=" +
+                       goblin::raw_message_utf8(slot, static_cast<uint32_t>(id));
             }
             if (cmd == "reload_overlay")
             {

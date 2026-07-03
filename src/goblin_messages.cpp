@@ -541,6 +541,57 @@ void goblin::setup_messages()
     goblin::sanitize_injected_textids();
 }
 
+bool goblin::inject_fmg_entries(uint32_t fmg_slot, const std::vector<goblin::FmgEntry> &entries)
+{
+    if (!msg_repository)
+    {
+        spdlog::error("[FMGINJECT] message repository not resolved (call after setup_messages)");
+        return false;
+    }
+    if (entries.empty()) return true;
+
+    // Navigate the repository to the base-language FMG array, same chain setup_messages uses:
+    // repo+0x08 = base_array; base_array[0] = base-language sub-array; sub[slot] = the FMG buffer.
+    auto *repo = reinterpret_cast<uint8_t *>(msg_repository);
+    auto base_array = *reinterpret_cast<uint8_t ***>(repo + 0x08);
+    int32_t count2 = *reinterpret_cast<int32_t *>(repo + 0x14);
+    if (!base_array || !base_array[0] || (int32_t)fmg_slot >= count2)
+    {
+        spdlog::error("[FMGINJECT] slot {} out of range (repo count {})", fmg_slot, count2);
+        return false;
+    }
+    auto **sub = reinterpret_cast<uint8_t **>(base_array[0]);
+    uint8_t *fmg_ptr = sub[fmg_slot];
+    if (!fmg_ptr)
+    {
+        spdlog::error("[FMGINJECT] slot {} FMG is null", fmg_slot);
+        return false;
+    }
+    // Sanity-guard the source FMG before rebuilding it: a wrong/empty slot (e.g. an unpopulated DLC
+    // layer in this language sub-array) can be a tiny stub with a garbage string-offset field that
+    // makes the rebuild walk bad memory. Require a valid FMG v2 header + a sane string count.
+    uint32_t ver = *reinterpret_cast<uint32_t *>(fmg_ptr + 0x00);
+    uint32_t scount = *reinterpret_cast<uint32_t *>(fmg_ptr + 0x10);
+    if (ver != 0x00020000u || scount > 200000u)
+    {
+        spdlog::error("[FMGINJECT] slot {} is not a usable FMG v2 (hdr=0x{:x}, strings={}) — skipped "
+                      "(wrong slot? base GoodsName=10, WeaponName=11, PlaceName=19)",
+                      fmg_slot, ver, scount);
+        return false;
+    }
+
+    // patch_fmg_in_memory reads each NewEntry.text synchronously (wcslen + copy into the rebuilt
+    // buffer) during this call, so the entries' wstrings only need to outlive the call — they do.
+    std::vector<NewEntry> ne;
+    ne.reserve(entries.size());
+    for (auto &e : entries) ne.push_back({e.id, e.text.c_str()});
+
+    bool ok = patch_fmg_in_memory(fmg_ptr, &sub[fmg_slot], ne, false);
+    spdlog::info("[FMGINJECT] slot {} += {} entries -> {}", fmg_slot, entries.size(),
+                 ok ? "ok" : "FAIL");
+    return ok;
+}
+
 void goblin::sanitize_injected_textids()
 {
     if (!g_expanded_placename_fmg && !g_get_message)

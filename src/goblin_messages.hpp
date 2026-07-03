@@ -2,11 +2,24 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace goblin
 {
     /// Inject PlaceName text entries into MsgRepositoryImp at runtime.
     void setup_messages();
+
+    /// One FMG string entry for inject_fmg_entries (Gap D).
+    struct FmgEntry { int32_t id; std::wstring text; };
+
+    /// Generic runtime FMG injection (Gap D of the runtime-modding framework): inject/override
+    /// `entries` into the base-language FMG at physical `fmg_slot` (e.g. 419 GoodsName, 410
+    /// WeaponName, 19 PlaceName) — rebuilds the FMG v2 in RAM and swaps the repository slot pointer.
+    /// Additive + MOD-AGNOSTIC (operates on the ACTIVE install's loaded FMG); an existing id is
+    /// OVERRIDDEN. SAVE-SAFE (RAM only — FMG reloads from the msgbnd each boot, like param edits).
+    /// Must run AFTER setup_messages (message repository resolved). Read back via raw_message_utf8.
+    /// Generalizes the PlaceName machinery (patch_fmg_in_memory) used by setup_messages.
+    bool inject_fmg_entries(uint32_t fmg_slot, const std::vector<FmgEntry> &entries);
 
     /// Clear any injected-marker textId that has no string in the expanded
     /// PlaceName FMG (prevents a game-side null-wstring deref on load). Called
