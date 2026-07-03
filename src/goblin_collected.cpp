@@ -383,35 +383,32 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
     void *root = nullptr;
     safe_read((char *)tree_head + 0x08, &root, 8); // parent of head = root
 
-    auto get_is_nil = [](void *node) -> bool {
-        uint8_t val = 1;
-        safe_read((char *)node + 0x19, &val, 1);
-        return val != 0;
-    };
-
-    auto get_left = [](void *node) -> void * {
-        void *p = nullptr;
-        safe_read((char *)node + 0x00, &p, 8);
-        return p;
-    };
-
-    auto get_right = [](void *node) -> void * {
-        void *p = nullptr;
-        safe_read((char *)node + 0x10, &p, 8);
-        return p;
-    };
-
-    auto get_parent = [](void *node) -> void * {
-        void *p = nullptr;
-        safe_read((char *)node + 0x08, &p, 8);
-        return p;
+    // Read a whole RB-tree node header (0..0x30) in ONE RPM. Under Wine every safe_read is a
+    // wineserver round-trip, and this walk used to fire ~8-12 tiny reads PER NODE (left/parent/
+    // right/is_nil + block_id/data + successor navigation) — the source of the
+    // refresh.collected.read_wgm [SPIKE]: wineserver is a global serialization point, so the RPM
+    // burst on this refresh thread contends with the render thread's own wineserver calls → frame
+    // hitch. One bulk read collapses the per-node navigation to ~1 RPM.
+    struct RbNode { void *left, *parent, *right; bool is_nil; uint32_t block_id; void *block_data; };
+    auto read_rb = [&](void *node, RbNode &o) -> bool {
+        uint8_t b[0x30] = {};
+        if (!node || !safe_read(node, b, sizeof(b))) return false;
+        memcpy(&o.left, b + 0x00, 8);
+        memcpy(&o.parent, b + 0x08, 8);
+        memcpy(&o.right, b + 0x10, 8);
+        o.is_nil = b[0x19] != 0;
+        memcpy(&o.block_id, b + 0x20, 4);
+        memcpy(&o.block_data, b + 0x28, 8);
+        return true;
     };
 
     auto min_node = [&](void *node) -> void * {
-        while (node && !get_is_nil(node)) {
-            void *left = get_left(node);
-            if (!left || get_is_nil(left)) break;
-            node = left;
+        RbNode n;
+        while (node && read_rb(node, n) && !n.is_nil) {
+            if (!n.left || n.left == node) break;
+            RbNode ln;
+            if (!read_rb(n.left, ln) || ln.is_nil) break;
+            node = n.left;
         }
         return node;
     };
@@ -419,21 +416,25 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
     void *current = min_node(root);
     int nodes_visited = 0;
 
-    while (current && current != tree_head && !get_is_nil(current) && nodes_visited < 500)
+    RbNode cur{};
+    while (current && current != tree_head && read_rb(current, cur) && !cur.is_nil &&
+           nodes_visited < 500)
     {
         nodes_visited++;
 
-        uint32_t block_id = 0;
-        void *block_data = nullptr;
-        safe_read((char *)current + 0x20, &block_id, 4);
-        safe_read((char *)current + 0x28, &block_data, 8);
+        uint32_t block_id = cur.block_id;      // both from the single bulk node read above
+        void *block_data = cur.block_data;
 
         if (block_data)
         {
-            // geom_ins vector at BlockData+0x288
+            // geom_ins vector at BlockData+0x288 — bulk both pointers (+0x08/+0x10) in ONE RPM.
             void *vec_begin = nullptr, *vec_end = nullptr;
-            safe_read((char *)block_data + 0x288 + 0x08, &vec_begin, 8);
-            safe_read((char *)block_data + 0x288 + 0x10, &vec_end, 8);
+            uint8_t vb[0x18] = {};
+            if (safe_read((char *)block_data + 0x288, vb, sizeof(vb)))
+            {
+                memcpy(&vec_begin, vb + 0x08, 8);
+                memcpy(&vec_end, vb + 0x10, 8);
+            }
 
             seen_tiles.insert(block_id);
 
@@ -607,22 +608,23 @@ static std::map<uint32_t, WGMSnapshot> read_wgm_snapshot()
             } // end CACHE MISS
         }
 
-        // In-order successor
-        void *right = get_right(current);
-        if (right && !get_is_nil(right))
+        // In-order successor — reuse cur's already-read right/parent (no extra RPMs for current).
+        RbNode rn;
+        if (cur.right && read_rb(cur.right, rn) && !rn.is_nil)
         {
-            current = min_node(right);
+            current = min_node(cur.right);
         }
         else
         {
-            void *parent = get_parent(current);
+            void *child = current;
+            void *parent = cur.parent;
             int walk_up = 0;
-            while (parent && parent != tree_head && ++walk_up < 500)
+            RbNode pn;
+            while (parent && parent != tree_head && ++walk_up < 500 && read_rb(parent, pn))
             {
-                void *parent_right = get_right(parent);
-                if (current != parent_right) break;
-                current = parent;
-                parent = get_parent(current);
+                if (child != pn.right) break;   // came up from the left subtree → parent is successor
+                child = parent;
+                parent = pn.parent;
             }
             if (walk_up >= 500) break;
             current = parent;

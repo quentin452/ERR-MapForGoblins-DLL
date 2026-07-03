@@ -895,12 +895,22 @@ resolved key would disambiguate "fundamentally iconId=0" from "a fixable lot-res
 
 ## OPEN — deferred for later
 
-- **Lag-spike hunt, real suspect `refresh.collected.*`.** `refresh.collected.read_wgm` shows spikes
-  2-5ms (~30x its avg) in the `[SPIKE]` log despite supposedly already using a good lookup — not yet
-  root-caused. Use the `[SPIKE]` warns + the bench spikes column to localize a hidden per-marker/
-  per-frame O(n) cost or cache miss. (Cosmetic nit noticed along the way: the spike-ratio display
-  divides by a near-zero baseline for quiet timers, e.g. "~600x its 0.01ms avg" — harmless but ugly,
-  floor the avg in the ratio display whenever touching that code.)
+- **Lag-spike hunt, `refresh.collected.read_wgm` — ROOT-CAUSED + FIX LANDED 2026-07-03.** Cause: the
+  CSWorldGeomMan RB-tree walk in `read_wgm_snapshot()` (`goblin_collected.cpp`) fired **~8-12 tiny
+  `safe_read` (RPM) calls per node** — separate `get_is_nil`/`get_left`/`get_right`/`get_parent` +
+  `block_id`/`block_data`/vec reads, EVERY refresh regardless of the instance cache. Under Wine each
+  RPM is a wineserver round-trip and wineserver is a GLOBAL serialization point, so the per-refresh
+  RPM burst on the refresh thread contended with the render thread → the frame [SPIKE]. Fix: bulk each
+  RB-node header (0..0x30) in ONE RPM (`read_rb` helper, mirrors the `[FIELDINS-B]` diag pattern right
+  below it) + bulk the block_data vec pointers → ~2 RPMs/node instead of ~8-12 (successor navigation
+  reuses the already-read fields). Behavior-preserving (same offsets/traversal). Built clean +
+  deployed. **In-game (light title-load, save didn't reach world): `read_wgm` max 0.27ms, 0 spikes,
+  no regression.** REMAINING: confirm the in-WORLD magnitude (many tiles loaded) in a real play
+  session via the `[SPIKE]` log — the light run under-stresses read_wgm. The residual
+  `refresh.collected.total` spike (max ~2.9ms) is now OUTSIDE read_wgm (the geof/wgm merge + collected
+  marking) — next suspect if total spikes persist in-world. (Cosmetic nit still open: the spike-ratio
+  display divides by a near-zero baseline for quiet timers, e.g. "~600x its 0.01ms avg" — floor the
+  avg in the ratio display whenever touching that code.)
 - **Map-exit input softlock.** Root cause for the general "soft key lock at screen edge" turned out
   to be **external** — Deskflow (cursor-sharing KVM), not ER or this mod; fix is Deskflow-side, see
   `docs/re/windows_input_softlock_re_prompt.md`. The F1-mouse-dead half of the original report was a
