@@ -3465,6 +3465,11 @@ bool disk_build_running() { return g_disk_running.load(std::memory_order_acquire
 void rebuild_markers()
 {
     if (!disk_source_enabled()) return;
+    // v2: drop the cached LotReader so a lot CLONED live (World Editor) is re-read from the param
+    // table by the fresh build — the reader snapshots param_header->param_table, which param_clone
+    // reallocates, so without this a newly cloned lot resolves to nothing. Existing-lot edits
+    // (repoint / lotItemId0N) don't need it, but the reset is cheap (a lazy re-init on next use).
+    goblin::reset_lot_reader();
     g_rebuild_pending.store(true, std::memory_order_release);  // ask for a fresh build
     g_disk_built.store(false, std::memory_order_release);      // readers return empty until it lands
     start_build_worker();                                      // start one iff none running

@@ -97,10 +97,10 @@ void draw_world_editor(Filter &f)
     ImGui::SetNextItemWidth(140.0f);
     ImGui::InputInt(tr("Repoint to lot"), &target_lot);
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("%s", tr("Point THIS asset at a different EXISTING ItemLotParam_map row\n"
-                                   "(non-destructive — the current lot is left unchanged). A newly\n"
-                                   "CLONED lot won't resolve on the map until the CLONE slice lands\n"
-                                   "the LotReader-index reset; existing lots reflect live."));
+        ImGui::SetTooltip("%s", tr("Point THIS asset at a different ItemLotParam_map row\n"
+                                   "(non-destructive — the current lot is left unchanged). Works for\n"
+                                   "an existing lot or one you just cloned below; Refresh markers\n"
+                                   "re-reads the lot table so a cloned lot resolves."));
 
     // Preview the target lot's slot-1 item live, same chain as the current-lot display above.
     if (target_lot > 0)
@@ -123,6 +123,34 @@ void draw_world_editor(Filter &f)
                          : "FAILED to repoint asset %d", aeg, target_lot);
     }
     ImGui::EndDisabled();
+
+    // ── Slice 5: CLONE this lot to a new id ──────────────────────────────────────────────────────
+    // Copies the current lot into a fresh ItemLotParam_map row so you can edit it WITHOUT touching
+    // the shared original. The new lot has no asset pointing at it, so clone → repoint an asset at it
+    // (fills "Repoint to lot") → Refresh markers, which resets the LotReader so the new lot resolves.
+    ImGui::Spacing();
+    static int clone_new_lot = 900900900;  // a high, normally-unused ItemLotParam_map id
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputInt(tr("Clone to new lot id"), &clone_new_lot);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("New ItemLotParam_map row id for the clone (must be unused).\n"
+                                   "After cloning, this id is filled into 'Repoint to lot' so you\n"
+                                   "can point this asset at the copy, then Refresh markers."));
+    ImGui::BeginDisabled(lot == 0 || clone_new_lot <= 0);
+    if (ImGui::Button(tr("Clone this lot")))
+    {
+        bool ok = goblin::overlay_api::param_clone("ItemLotParam_map", (uint64_t)lot,
+                                                   (int32_t)clone_new_lot);
+        if (ok)
+            target_lot = clone_new_lot;  // pre-fill the repoint target with the fresh copy
+        std::snprintf(status, sizeof(status),
+                      ok ? "ok: cloned lot %d -> %d (Repoint to it, then Refresh markers)"
+                         : "FAILED to clone lot %d (id in use / not found?)", lot, clone_new_lot);
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("Add a new lot row that copies this one. Non-destructive: the\n"
+                                   "original lot is untouched. Then Repoint + Refresh markers."));
 
     ImGui::Spacing();
     if (ImGui::Button(tr("Refresh markers")))

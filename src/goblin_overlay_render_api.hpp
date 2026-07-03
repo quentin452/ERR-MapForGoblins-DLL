@@ -159,6 +159,10 @@ namespace goblin::overlay_api
     // returns true, or returns false if the field/row is unknown or the read faulted. Pairs with
     // param_set_field to show a slot's current value before editing it.
     GOBLIN_RENDER_API bool param_get_field(const char *param, uint64_t row, const char *field, double *out);
+    // Clone a param row live (add a new row `newId` copied from `srcRow`) — World Editor lot-clone.
+    // Returns false if the src is missing, `newId` collides, or the table expand faults. Pair with
+    // rebuild_markers() (which resets the LotReader) so a cloned ItemLotParam_map lot resolves.
+    GOBLIN_RENDER_API bool param_clone(const char *param, uint64_t srcRow, int32_t newId);
     GOBLIN_RENDER_API std::string lookup_name_en_disk_utf8(int32_t encoded_id);
     GOBLIN_RENDER_API bool quest_step_done(const goblin::generated::NpcQuest &q, size_t s);
     GOBLIN_RENDER_API uint32_t resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag);

@@ -37,6 +37,10 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 - **World Editor — per-slot re-skin (slice 3).** The re-skin now targets any of a lot's **8 item slots**
   (a `Slot` selector), not just slot 1, showing the selected slot's current item id live. (Slot 1 is
   what the map marker shows.)
+- **World Editor — clone a loot lot (slice 5).** A `Clone this lot` button copies the current lot into a
+  fresh row you can edit without touching the shared original; it pre-fills the repoint target so you
+  can point an asset at the copy. *Refresh markers* now re-reads the live lot table, so a **cloned lot
+  resolves on the map** (previously a newly cloned lot never showed).
 - **Regulation.bin-free custom items.** A new `custom_items.toml` (next to `MapForGoblins.dll`) lets
   you declare custom items as data — no `regulation.bin`, no code. Each `[[goods]]` (also `[[weapon]]`
   /`[[protector]]`/`[[accessory]]`) clones a template row from the ACTIVE install, sets fields by name,

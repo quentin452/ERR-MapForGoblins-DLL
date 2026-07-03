@@ -67,6 +67,12 @@ struct LotReader
         try { enemy_lots.emplace(from::params::get_param<RawItemLotRow>(L"ItemLotParam_enemy")); } catch (...) {}
     }
     bool ok() const { return map_lots.has_value() || enemy_lots.has_value(); }
+    // Drop the cached ParamTableSequences. ParamTableSequence SNAPSHOTS param_header->param_table at
+    // construction (from/params.hpp), so after a param_clone (which rewrites param_header->param_table
+    // to a reallocated file — goblin_param_edit.cpp:param_add_rows) a cached reader never sees the new
+    // rows. reset_lot_reader() calls this + re-inits so a cloned lot resolves. optional::reset works;
+    // a plain reassign wouldn't (ParamTableSequence has a const member → not copy/move-assignable).
+    void clear() { map_lots.reset(); enemy_lots.reset(); }
     RawItemLotRow *row(uint32_t lot_id, uint8_t lot_type)
     {
         auto &pref  = (lot_type == 2) ? enemy_lots : map_lots;
@@ -78,6 +84,54 @@ struct LotReader
         return nullptr;
     }
 };
+
+// ── Shared, resettable LotReader ──────────────────────────────────────────────────────────────
+// Was five function-local `static LotReader` caches (resolve_loot_flag / resolve_loot_item_textid /
+// lot_row_in_table / lot_item_count / lot_slot_item_keys). Consolidated so reset_lot_reader() can
+// invalidate ALL of them at once after a live param_clone (World Editor lot-clone / refresh_markers
+// v2). Guarded by one mutex; callers copy the 0x98-byte row OUT under the lock, then read fields
+// lock-free (so no nested lock with flag_query_persistent's mutex, and no stale-pointer race with a
+// concurrent reset). Row lookups are per-marker on the disk-build worker + occasional render-thread
+// tooltip resolves — a binary search under a mutex is negligible vs the RPMs already in that path.
+std::mutex g_lot_reader_mtx;
+LotReader g_lot_reader;
+bool g_lot_reader_tried = false;   // init attempted this generation
+bool g_lot_reader_ready = false;   // init attempted AND at least one table loaded
+
+// Caller MUST hold g_lot_reader_mtx. Lazy-inits on first use (params are loaded by map-open time)
+// and after a reset. Returns nullptr if the param tables aren't loaded yet.
+LotReader *locked_lot_reader()
+{
+    if (!g_lot_reader_tried)
+    {
+        g_lot_reader.init();
+        g_lot_reader_ready = g_lot_reader.ok();
+        g_lot_reader_tried = true;
+    }
+    return g_lot_reader_ready ? &g_lot_reader : nullptr;
+}
+
+// Copy a lot row out under the lock, or return false (params not loaded / row absent). `specific`
+// forces a single table (no map⟷enemy fallback) — for lot_row_in_table's sub-lot-chain gap probe.
+bool copy_lot_row(uint32_t lotId, uint8_t lotType, RawItemLotRow &out, bool specific = false)
+{
+    std::lock_guard<std::mutex> lk(g_lot_reader_mtx);
+    LotReader *lr = locked_lot_reader();
+    if (!lr) return false;
+    RawItemLotRow *row = nullptr;
+    if (specific)
+    {
+        auto &tbl = (lotType == 2) ? lr->enemy_lots : lr->map_lots;
+        if (tbl) row = tbl->try_get(lotId);
+    }
+    else
+    {
+        row = lr->row(lotId, lotType);
+    }
+    if (!row) return false;
+    out = *row;  // 0x98-byte snapshot; safe to read after the lock releases
+    return true;
+}
 
 // Encode a live item (id + ItemLotParam category 1-5) into the offset-encoded
 // key used by marker textIds (and item_marker_category's key-range classifier).
@@ -221,34 +275,40 @@ static bool flag_is_repeatable(uint32_t flag)
 // read-only resolve for the overlay's collected-detection, which must work regardless
 // (else ERR-remapped loot like Golden Runes never registers as taken).
 // The LotReader is cached after first use (params are loaded by map-open time).
+// Invalidate the shared LotReader so the next resolve re-reads the live ItemLotParam tables. Call
+// after a live param_clone adds an ItemLotParam row (World Editor lot-clone) — otherwise the cached
+// reader, which snapshotted param_header->param_table at construction, never sees the new lot and a
+// cloned lot resolves to nothing. refresh_markers() (v2) calls this before kicking the rebuild.
+void goblin::reset_lot_reader()
+{
+    std::lock_guard<std::mutex> lk(g_lot_reader_mtx);
+    g_lot_reader.clear();
+    g_lot_reader_tried = false;
+    g_lot_reader_ready = false;
+}
+
 uint32_t goblin::resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag)
 {
     if (lotType == 0 || lotId == 0)
         return baked_flag;
-    static LotReader s_lots;
-    static std::once_flag s_once;
-    static bool s_ok = false;
-    // Thread-safe one-time init: the disk-loot build now resolves on a WORKER
-    // thread (map_entry_layer) concurrently with render-thread callers
-    // (find_nearby_overworld / messages), so the old `if(!s_init)` race is real.
-    std::call_once(s_once, [] { s_lots.init(); s_ok = s_lots.ok(); });
-    if (!s_ok)
-        return baked_flag;
-    RawItemLotRow *row = s_lots.row(lotId, lotType);
-    if (!row)
+    // Copy the row out under the shared-reader lock, then read fields lock-free (so flag_is_repeatable
+    // below — which takes a different mutex — never nests under g_lot_reader_mtx). The disk-loot build
+    // resolves on a WORKER thread concurrently with render-thread callers, hence the shared lock.
+    RawItemLotRow row;
+    if (!copy_lot_row(lotId, lotType, row))
         return baked_flag;
     // getItemFlagId @ +0x80 (lot-wide). Live-CONFIRMED via the embedded find-what-accesses (the game's
     // getter `mov eax,[row+0x80]; cmp eax,-1`), but NOT runtime-resolved: that getter is byte-identical
     // to its 0x84-field sibling, so no disp-wildcarded AOB can disambiguate it (the offset is the only
     // difference — circular). Stays pinned, cross-validated live + guarded by check_param_offsets.py.
-    uint32_t flag = *reinterpret_cast<uint32_t *>(row->b + 0x80);  // lot-wide getItemFlagId
+    uint32_t flag = *reinterpret_cast<uint32_t *>(row.b + 0x80);  // lot-wide getItemFlagId
     if (flag == 0)
     {
         // Single-item lots only (else a slot-1 flag would mark the whole row taken
         // while other loot remains) — mirrors refresh_loot_from_itemlot.
-        int32_t item2 = *reinterpret_cast<int32_t *>(row->b + 0x04);
+        int32_t item2 = *reinterpret_cast<int32_t *>(row.b + 0x04);
         if (item2 == 0)
-            flag = *reinterpret_cast<uint32_t *>(row->b + 0x60);  // getItemFlagId01
+            flag = *reinterpret_cast<uint32_t *>(row.b + 0x60);  // getItemFlagId01
     }
     uint32_t resolved = flag ? flag : baked_flag;
     // Non-persistent / repeatable flags have NO save-backed "obtained" bit, so they read false
@@ -274,20 +334,11 @@ int32_t goblin::resolve_loot_item_textid(uint32_t lotId, uint8_t lotType, int32_
 {
     if (lotType == 0 || lotId == 0)
         return baked_textid;
-    static LotReader s_lots;
-    static std::once_flag s_once;
-    static bool s_ok = false;
-    // Thread-safe one-time init: the disk-loot build now resolves on a WORKER
-    // thread (map_entry_layer) concurrently with render-thread callers
-    // (find_nearby_overworld / messages), so the old `if(!s_init)` race is real.
-    std::call_once(s_once, [] { s_lots.init(); s_ok = s_lots.ok(); });
-    if (!s_ok)
+    RawItemLotRow row;
+    if (!copy_lot_row(lotId, lotType, row))
         return baked_textid;
-    RawItemLotRow *row = s_lots.row(lotId, lotType);
-    if (!row)
-        return baked_textid;
-    const int32_t item1 = *reinterpret_cast<int32_t *>(row->b + 0x00);  // lotItemId01
-    const int32_t cat1  = *reinterpret_cast<int32_t *>(row->b + 0x20);  // lotItemCategory01
+    const int32_t item1 = *reinterpret_cast<int32_t *>(row.b + 0x00);  // lotItemId01
+    const int32_t cat1  = *reinterpret_cast<int32_t *>(row.b + 0x20);  // lotItemCategory01
     if (item1 <= 0 || cat1 < 1 || cat1 > 5)
         return baked_textid;
     const int32_t live = encode_live_item(item1, cat1);
@@ -302,29 +353,23 @@ bool goblin::lot_row_in_table(uint32_t lot, uint8_t lotType, uint32_t *flagOut, 
     if (flagOut) *flagOut = 0;
     if (keyOut) *keyOut = 0;
     if (lotType == 0 || lot == 0) return false;
-    static LotReader s_lots;
-    static std::once_flag s_once;
-    static bool s_ok = false;
-    std::call_once(s_once, [] { s_lots.init(); s_ok = s_lots.ok(); });
-    if (!s_ok) return false;
-    auto &tbl = (lotType == 2) ? s_lots.enemy_lots : s_lots.map_lots;  // SPECIFIC table only
-    if (!tbl) return false;
-    RawItemLotRow *row = tbl->try_get(lot);
-    if (!row) return false;  // gap — the contiguous sub-lot chain ends here
+    RawItemLotRow row;
+    if (!copy_lot_row(lot, lotType, row, /*specific=*/true))
+        return false;  // params not loaded, or gap — the contiguous sub-lot chain ends here
     // Notability flag, same semantics as resolve_loot_flag (lot-wide @+0x80, single-item
     // fallback to getItemFlagId01 @+0x60; repeatable/temp → not notable, via the same live
     // group query so DLC one-time loot stays notable).
-    uint32_t flag = *reinterpret_cast<uint32_t *>(row->b + 0x80);
+    uint32_t flag = *reinterpret_cast<uint32_t *>(row.b + 0x80);
     if (flag == 0)
     {
-        int32_t item2 = *reinterpret_cast<int32_t *>(row->b + 0x04);
-        if (item2 == 0) flag = *reinterpret_cast<uint32_t *>(row->b + 0x60);
+        int32_t item2 = *reinterpret_cast<int32_t *>(row.b + 0x04);
+        if (item2 == 0) flag = *reinterpret_cast<uint32_t *>(row.b + 0x60);
     }
     if (flag_is_repeatable(flag)) flag = 0;
     if (flagOut) *flagOut = flag;
     // Slot-1 item → encoded key (same as resolve_loot_item_textid).
-    int32_t item1 = *reinterpret_cast<int32_t *>(row->b + 0x00);
-    int32_t cat1  = *reinterpret_cast<int32_t *>(row->b + 0x20);
+    int32_t item1 = *reinterpret_cast<int32_t *>(row.b + 0x00);
+    int32_t cat1  = *reinterpret_cast<int32_t *>(row.b + 0x20);
     if (item1 > 0 && cat1 >= 1 && cat1 <= 5)
     {
         int32_t k = encode_live_item(item1, cat1);
@@ -348,25 +393,19 @@ int goblin::lot_item_count(uint32_t lotId, uint8_t lotType)
 {
     if (lotType == 0 || lotId == 0)
         return 1;
-    static LotReader s_lots;
-    static std::once_flag s_once;
-    static bool s_ok = false;
-    std::call_once(s_once, [] { s_lots.init(); s_ok = s_lots.ok(); });
-    if (!s_ok)
-        return 1;
-    RawItemLotRow *row = s_lots.row(lotId, lotType);
-    if (!row)
+    RawItemLotRow row;
+    if (!copy_lot_row(lotId, lotType, row))
         return 1;
     int live = 0;        // number of weighted (basePoint>0) item slots
     int singleNum = 1;   // num of the sole live slot, used only when live == 1
     for (int i = 0; i < 8; ++i)
     {
-        const int32_t item = *reinterpret_cast<int32_t *>(row->b + 0x00 + i * 4);   // lotItemId0(i+1)
-        const int32_t cat  = *reinterpret_cast<int32_t *>(row->b + 0x20 + i * 4);   // lotItemCategory0(i+1)
-        const uint16_t base = *reinterpret_cast<uint16_t *>(row->b + 0x40 + i * 2); // lotItemBasePoint0(i+1)
+        const int32_t item = *reinterpret_cast<int32_t *>(row.b + 0x00 + i * 4);   // lotItemId0(i+1)
+        const int32_t cat  = *reinterpret_cast<int32_t *>(row.b + 0x20 + i * 4);   // lotItemCategory0(i+1)
+        const uint16_t base = *reinterpret_cast<uint16_t *>(row.b + 0x40 + i * 2); // lotItemBasePoint0(i+1)
         if (item <= 0 || cat < 1 || cat > 5 || base == 0)
             continue;
-        const uint8_t num = *(row->b + 0x8A + i);                                   // lotItemNum0(i+1)
+        const uint8_t num = *(row.b + 0x8A + i);                                   // lotItemNum0(i+1)
         singleNum = (num > 0) ? num : 1;
         ++live;
     }
@@ -383,20 +422,14 @@ int goblin::lot_slot_item_keys(uint32_t lotId, uint8_t lotType, int32_t out[8])
     for (int i = 0; i < 8; ++i) out[i] = 0;
     if (lotType == 0 || lotId == 0)
         return 0;
-    static LotReader s_lots;
-    static std::once_flag s_once;
-    static bool s_ok = false;
-    std::call_once(s_once, [] { s_lots.init(); s_ok = s_lots.ok(); });
-    if (!s_ok)
-        return 0;
-    RawItemLotRow *row = s_lots.row(lotId, lotType);
-    if (!row)
+    RawItemLotRow row;
+    if (!copy_lot_row(lotId, lotType, row))
         return 0;
     int n = 0;
     for (int i = 0; i < 8; ++i)
     {
-        const int32_t item = *reinterpret_cast<int32_t *>(row->b + 0x00 + i * 4);  // lotItemId0(i+1)
-        const int32_t cat  = *reinterpret_cast<int32_t *>(row->b + 0x20 + i * 4);  // lotItemCategory0(i+1)
+        const int32_t item = *reinterpret_cast<int32_t *>(row.b + 0x00 + i * 4);  // lotItemId0(i+1)
+        const int32_t cat  = *reinterpret_cast<int32_t *>(row.b + 0x20 + i * 4);  // lotItemCategory0(i+1)
         if (item > 0 && cat >= 1 && cat <= 5)
         {
             out[i] = encode_live_item(item, cat);

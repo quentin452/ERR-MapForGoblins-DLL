@@ -102,6 +102,29 @@ def _test(g):
         back2 = parse_getf(g.rpc(f"param_getf ItemLotParam_map {lotA} lotItemId02"))
         g.check("slot 2 restored to original", back2 == orig2, f"back2={back2} orig2={orig2}")
 
+    # --- Slice 5: CLONE a lot + refresh_markers LotReader reset ---
+    # Clone lotB (a known map lot) to a fresh id, repoint asset B at the copy, and prove:
+    #   * BEFORE refresh_markers the cloned lot is INVISIBLE to the resolver (stale cached LotReader);
+    #   * AFTER refresh_markers (which resets the LotReader) it resolves to B's item.
+    # This is the whole point of the v2 reset — without it a cloned lot never resolves on the map.
+    new_lot = 900900900
+    cl = g.rpc(f"param_clone ItemLotParam_map {lotB} {new_lot}")
+    g.check("param_clone lotB -> new_lot ok", cl.startswith("ok") and "new_row_present=1" in cl, cl)
+    if cl.startswith("ok"):
+        # Warm the resolver on the new lot's would-be marker via a repoint, BEFORE any reset.
+        g.rpc(f"param_setf AssetEnvironmentGeometryParam {aegB} pickUpItemLotParamId {new_lot}")
+        lot_pre, tid_pre, _ = parse_loot_at(g.rpc(f"loot_at {aegB}"))
+        g.check("repoint took (loot_at lot == new_lot)", lot_pre == new_lot, f"lot_pre={lot_pre}")
+        g.check("cloned lot INVISIBLE before refresh (stale reader)", tid_pre != tidB,
+                f"tid_pre={tid_pre} tidB={tidB}")
+        # Reset the LotReader (v2) and re-resolve — now the clone is visible.
+        g.rpc("refresh_markers")
+        lot_post, tid_post, _ = parse_loot_at(g.rpc(f"loot_at {aegB}"))
+        g.check("cloned lot resolves B's item AFTER refresh (reader reset)", tid_post == tidB,
+                f"tid_post={tid_post} tidB={tidB}")
+        # restore asset B to its original lot
+        g.rpc(f"param_setf AssetEnvironmentGeometryParam {aegB} pickUpItemLotParamId {lotB}")
+
 
 if __name__ == "__main__":
     run_test(_test)

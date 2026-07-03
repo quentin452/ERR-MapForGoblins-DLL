@@ -85,6 +85,12 @@ namespace goblin::overlay_api
         *out = *v;
         return true;
     }
+    bool param_clone(const char *param, uint64_t srcRow, int32_t newId)
+    {
+        if (!param) return false;
+        std::wstring wp(param, param + std::strlen(param));  // ASCII param names
+        return goblin::paramedit::param_clone_row(wp.c_str(), srcRow, newId);
+    }
     void request_save() { goblin::ui::request_save(); }
     void reset_quest_progress() { goblin::ui::reset_quest_progress(); }
     void reset_to_defaults() { goblin::ui::reset_to_defaults(); }

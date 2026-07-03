@@ -204,6 +204,11 @@ namespace goblin
     // native injection's refresh_loot_from_itemlot. lotType: 1=_map, 2=_enemy, 0=none.
     uint32_t resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag);
 
+    // Invalidate the shared LotReader cache so the next lot resolve re-reads the live ItemLotParam
+    // tables. Call after a live param_clone adds an ItemLotParam row (World Editor lot-clone), else the
+    // cached reader (which snapshots param_header->param_table) never sees the new lot. rebuild_markers.
+    void reset_lot_reader();
+
     // Resolve a lot-backed marker's IDENTITY (offset-encoded name/icon key) from the LIVE
     // ItemLotParam row (slot-1 item id @+0x00 + category @+0x20), so the marker shows the
     // item ERR/randomizer actually placed instead of the baked vanilla one. Returns the

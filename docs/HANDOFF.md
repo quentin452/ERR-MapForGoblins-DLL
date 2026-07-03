@@ -95,11 +95,14 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   `ItemLotParam_map.lotItemId02..08` to the paramedit registry (offset-only, core-stable, `+0x00+(N-1)*4`)
   + an `overlay_api::param_get_field` name-addressed read bridge. `tools/rpc_tests/test_world_editor.py`
   (renamed from `_slice2`) round-trips lotItemId02 (0→424242→0) on top of the slice-2 checks.
-  **Next slices:** CLONE a lot instead of editing in place (**slice 5, NEXT** — needs the
-  `refresh_markers` v2 LotReader-index reset so new lots resolve; `param_clone` already exists), a proper
-  asset/item PICKER (browse instead of typing ids — needs an enumeration bridge, none exposed to the
-  render side today), category select, and SAVE the edits as a world bundle (→ feeds vision #1 World
-  Virtualization). Backend proven except the `refresh_markers` v2 LotReader reset.
+  **Slice 5 (2026-07-03): CLONE a lot — DONE + E2E-VERIFIED (16/16).** A `Clone this lot` button
+  (`overlay_api::param_clone` new bridge → `param_clone_row`) copies the current lot to a fresh row and
+  pre-fills the repoint target; combined with the `refresh_markers` v2 LotReader reset (see the live
+  marker regen item below), a cloned lot now resolves on the map. Test proves invisible-before /
+  resolves-after refresh.
+  **Next slices:** a proper asset/item PICKER (browse instead of typing ids — needs an enumeration
+  bridge, none exposed to the render side today), category select, and SAVE the edits as a world bundle
+  (→ feeds vision #1 World Virtualization). Backend all proven; these are UI + one new enumeration bridge.
 
 - **Long-horizon vision bets — tracked in `docs/runtime_modding_framework_vision.md` "Future directions"
   (2026-07-03):** (1) World Virtualization — a FRAMEWORK feature: the framework holds N of its OWN worlds (each a data
@@ -118,12 +121,16 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   forces a fresh bucket build. Verified: after a `pickUpItemLotParamId` repoint, `refresh_markers` ran a
   full `build.buckets` (2381 ms) on the detached disk WORKER thread (no frame freeze), re-reading live
   params; game alive. Since the rebuild uses the same live resolve as `loot_at`, existing-lot edits
-  (repoint, `lotItemId01`, any param override) now show on the map. **Still open (v2):** (a) it's a FULL
-  re-parse (~2.4s, re-walks every MSB) — INCREMENTAL regen (only affected buckets/tiles) for perf; (b) a
-  NEWLY CLONED lot still won't resolve — the `LotReader` lot INDEX (`goblin_loot_resolve.cpp`) is
-  snapshotted via `once_flag` at init and `rebuild_markers` doesn't reset it (existing lots reflect live;
-  new lots need a LotReader-index reset). Gate any auto-trigger vs the collected-graying contract + the
-  `read_wgm` cache-miss spike.
+  (repoint, `lotItemId01`, any param override) now show on the map.
+  **v2 (b) DONE 2026-07-03 — cloned lots now resolve.** The 5 `LotReader` caches in
+  `goblin_loot_resolve.cpp` were consolidated into ONE shared, mutex-guarded reader (callers copy the
+  0x98-byte row out under the lock, then read lock-free) with a public `goblin::reset_lot_reader()`;
+  `rebuild_markers()` calls it synchronously before kicking the worker, so a lot CLONED live
+  (`param_clone`, which reallocates `param_header->param_table` — the pointer the reader snapshots at
+  construction) is re-read on refresh. E2E-proven (`test_world_editor.py`, 16/16): a cloned lot reads
+  `textid=-1` (invisible) BEFORE refresh and resolves its item AFTER. **Still open (v2 a):** it's a FULL
+  re-parse (~2.4s, re-walks every MSB) — INCREMENTAL regen (only affected buckets/tiles) for perf. Gate
+  any auto-trigger vs the collected-graying contract + the `read_wgm` cache-miss spike.
 - **F1 panel to edit param overrides live** — optional polish on the param-override framework (all 3
   loader slices are done/merged); more registry fields = one AOB each. Not started.
 - **Gap C GRANT — grant+sidecar PROVEN 2026-07-03; NAME + author surface remain.** A CLONED custom
