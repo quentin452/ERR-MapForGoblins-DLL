@@ -224,6 +224,44 @@ namespace goblin::geom_move
         return r;
     }
 
+    // Move the placement of a SPECIFIC asset (AssetEnvironmentGeometry row) nearest the player — the
+    // World Editor "move THIS asset" path. Held (move_read/restore). ok=false if no such asset loaded.
+    MoveResult move_aeg(uint32_t aegRow, float dx, float dy, float dz)
+    {
+        MoveResult r;
+        uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
+        if (!base) { std::snprintf(r.err, sizeof(r.err), "base not found"); return r; }
+        float px = 0, py = 0, pz = 0;
+        goblin::get_player_world_pos(px, py, pz);  // ok if it fails → nearest to origin
+        void *inst = goblin::collected::geom_instance_for_aeg(aegRow, px, py, pz);
+        if (!inst) { std::snprintf(r.err, sizeof(r.err), "no loaded placement for aeg %u", aegRow); return r; }
+        r.inst = (uint64_t)inst;
+        rpm(inst, &r.vtable, 8);
+
+        constexpr ptrdiff_t CACHE_MAT = 0x220;
+        float m[16] = {}, cache[16] = {};
+        auto getter = (GetterFn)(base + GETTER_RVA);
+        if (!call_getter(getter, inst, m) || !finite3(m)) { std::snprintf(r.err, sizeof(r.err), "getter faulted"); return r; }
+        if (!rpm((char *)inst + CACHE_MAT, cache, sizeof(cache)) || !finite3(cache)) { std::snprintf(r.err, sizeof(r.err), "cache unreadable"); return r; }
+        r.before[0] = cache[12]; r.before[1] = cache[13]; r.before[2] = cache[14];
+
+        void **vtbl = *(void ***)inst;
+        SetterFn setter = (SetterFn)vtbl[SETTER_VSLOT];
+        float moved_mat[16];
+        memcpy(moved_mat, m, sizeof(moved_mat));
+        moved_mat[12] = r.before[0] + dx; moved_mat[13] = r.before[1] + dy; moved_mat[14] = r.before[2] + dz;
+        if (!call_setter(setter, inst, moved_mat)) { std::snprintf(r.err, sizeof(r.err), "setter faulted"); return r; }
+        rpm((char *)inst + CACHE_MAT, cache, sizeof(cache));
+        r.moved[0] = cache[12]; r.moved[1] = cache[13]; r.moved[2] = cache[14];
+
+        g_held = inst;
+        g_held_before[0] = r.before[0]; g_held_before[1] = r.before[1]; g_held_before[2] = r.before[2];
+        r.ok = true;
+        spdlog::info("[GEOMMOVE] AEG {} inst={:#x} before=({:.2f},{:.2f},{:.2f}) moved=({:.2f},{:.2f},{:.2f})",
+                     aegRow, r.inst, r.before[0], r.before[1], r.before[2], r.moved[0], r.moved[1], r.moved[2]);
+        return r;
+    }
+
     MoveResult read_held()
     {
         MoveResult r;
@@ -272,7 +310,24 @@ namespace goblin::geom_move
         memcpy(&vt, hdr + 0x00, 8);
         memcpy(&parts_rec, hdr + 0x10, 8);  // CSMsbParts record ptr
         r.vtable = vt;
-        spdlog::info("[GEOMDUMP] inst={:#x} vt={:#x} partsRec={:#x}", (uint64_t)inst, vt, parts_rec);
+        // AEG name via the +0x48 → MSB part → +0x00 wide-name chain (same as goblin_collected).
+        char aegname[64] = {};
+        void *msb_part = nullptr;
+        if (rpm((char *)inst + 0x48, &msb_part, 8) && msb_part)
+        {
+            void *np = nullptr;
+            if (rpm(msb_part, &np, 8) && np)
+            {
+                wchar_t wn[64] = {};
+                if (rpm(np, wn, sizeof(wn) - 2))
+                    for (int c = 0; c < 63 && wn[c]; c++) aegname[c] = (char)(wn[c] & 0xFF);
+            }
+        }
+        const char *ap = std::strstr(aegname, "AEG");
+        unsigned ag = 0, an = 0;
+        uint32_t aegrow = (ap && sscanf(ap, "AEG%u_%u", &ag, &an) == 2) ? ag * 1000 + an : 0;
+        spdlog::info("[GEOMDUMP] inst={:#x} vt={:#x} partsRec={:#x} name='{}' aegRow={}", (uint64_t)inst,
+                     vt, parts_rec, aegname, aegrow);
         dump_hex("inst", hdr, sizeof(hdr));
         if (parts_rec)
         {

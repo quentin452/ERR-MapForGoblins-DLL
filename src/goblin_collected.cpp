@@ -1494,6 +1494,39 @@ void *goblin::collected::first_live_geom_instance()
     return nullptr;
 }
 
+void *goblin::collected::geom_instance_for_aeg(uint32_t aegRow, float px, float py, float pz)
+{
+    static void *insts[20000];
+    size_t cnt = list_live_geom_instances(insts, 20000);
+    void *best = nullptr;
+    float best_d2 = 1e30f;
+    for (size_t i = 0; i < cnt; i++)
+    {
+        void *gi = insts[i];
+        // name chain: geom_ins+0x48 -> MSB part -> +0x00 wide name -> "AEG{A}_{B}_..."
+        void *msb_part = nullptr;
+        if (!safe_read((char *)gi + 0x48, &msb_part, 8) || !msb_part) continue;
+        void *name_ptr = nullptr;
+        if (!safe_read(msb_part, &name_ptr, 8) || !name_ptr) continue;
+        wchar_t wname[64] = {};
+        if (!safe_read(name_ptr, wname, sizeof(wname) - 2)) continue;
+        char narrow[64] = {};
+        for (int c = 0; c < 63 && wname[c]; c++) narrow[c] = (char)(wname[c] & 0xFF);
+        // Names are either "AEG{A}_{B}_…" or tile-prefixed "m60_41_36_00-AEG{A}_{B}_…" — find the AEG part.
+        const char *ap = std::strstr(narrow, "AEG");
+        unsigned g = 0, n = 0;
+        if (!ap || sscanf(ap, "AEG%u_%u", &g, &n) != 2) continue;
+        if (g * 1000u + n != aegRow) continue;
+        // nearest matching placement to (px,py,pz), by the +0x220 cached-matrix translation
+        float m[16] = {};
+        if (!safe_read((char *)gi + 0x220, m, sizeof(m))) continue;
+        float dx = m[12] - px, dy = m[13] - py, dz = m[14] - pz;
+        float d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < best_d2) { best_d2 = d2; best = gi; }
+    }
+    return best;
+}
+
 size_t goblin::collected::list_live_geom_instances(void **out, size_t max)
 {
     if (!out || max == 0) return 0;

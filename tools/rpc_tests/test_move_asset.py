@@ -44,6 +44,22 @@ def _test(g):
     # The vcalls did not crash the game.
     g.check("game alive after the vcalls", g.alive())
 
+    # Targeted move: move a SPECIFIC asset's nearest placement (World Editor "Move this asset"). Find a
+    # loaded aegRow via geom_dump, move it +40Y, assert it moved, restore.
+    import re, os
+    log = os.path.expanduser("~/Games/ERRv2.2.9.6/dll/offline/logs/MapForGoblins.log")
+    g.rpc("geom_dump", timeout=15)
+    dump_lines = [l for l in open(log) if "[GEOMDUMP] inst=" in l]
+    m = re.search(r"aegRow=(\d+)", dump_lines[-1]) if dump_lines else None
+    aeg = int(m.group(1)) if m else 0
+    if g.check("geom_dump reported a loaded aegRow", aeg > 0, f"aeg={aeg}"):
+        rr = g.rpc(f"move_aeg {aeg} 0 40 0", timeout=15)
+        ab, an = triple(rr, "before"), triple(rr, "now")
+        g.check("move_aeg targeted the asset + moved +40Y",
+                bool(ab and an) and abs(an[1] - (ab[1] + 40)) < 0.5, rr)
+        g.rpc("move_restore", timeout=10)
+        g.check("game alive after targeted move", g.alive())
+
 
 if __name__ == "__main__":
     run_test(_test)

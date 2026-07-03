@@ -44,10 +44,11 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 - **World Editor — browsable asset/item picker (slice 6).** A `Browse (pick asset / item)` section
   scans the live params into searchable lists of pickup assets and named items — filter by name/id and
   click to fill the Asset / New-goods-id fields, instead of typing raw ids.
-- **World Editor — move a placement live (slice 8).** A *Move a placement (live)* section nudges the
-  nearest world object to the player by an X/Y/Z delta using the engine's own transform setter — the
-  object really moves and collides, no `regulation.bin`/MSB write. *Restore* puts it back. Live-only (not
-  saved). First use of the reverse-engineered geom move primitive in the UI.
+- **World Editor — move a placement live (slice 8).** A *Move a placement (live)* section moves a world
+  object by an X/Y/Z delta using the engine's own transform setter — the object really moves and collides,
+  no `regulation.bin`/MSB write. *Move this asset* targets the nearest loaded placement of the **picked
+  asset** (the aegRow selected above), *Move nearest* grabs whatever's closest, *Restore* puts it back.
+  Live-only (not saved). First use of the reverse-engineered geom move primitive in the UI.
 - **World Editor — save edits as a world bundle (slice 7).** Every edit you make (re-skin, repoint,
   clone) is recorded; `Save bundle` writes them to `world_bundle.toml` next to the DLL, which **re-applies
   automatically on the next launch** — so an edited world persists across restarts and can be shared.

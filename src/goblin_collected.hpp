@@ -61,4 +61,10 @@ namespace goblin::collected
     /// Fill `out` with up to `max` live geom instance pointers (all loaded tiles). Returns the count.
     /// For the geom-move nearest-to-player selection (move_near RPC). Read-only, safe.
     size_t list_live_geom_instances(void **out, size_t max);
+
+    /// Live geom instance for AssetEnvironmentGeometry row `aegRow` (the World Editor's picked asset):
+    /// walks loaded instances, parses each MSB part name ("AEG{A}_{B}_…" → A*1000+B), and returns the
+    /// matching placement NEAREST (px,py,pz) — the copy the player is looking at. nullptr if none.
+    /// Targets the selected asset instead of "nearest to player". Read-only, safe.
+    void *geom_instance_for_aeg(uint32_t aegRow, float px, float py, float pz);
 };

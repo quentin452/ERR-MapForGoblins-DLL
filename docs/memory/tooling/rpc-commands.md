@@ -112,6 +112,8 @@ while a human is actively using kb/mouse (`rpc_input_idle=1` in `status`; ini `r
 | `move_read` | `move_read` | Re-read the held instance's `+0x220` translation (poll to check the move persists). |
 | `move_restore` | `move_restore` | Restore the held instance to its remembered pre-move transform. |
 | `move_near` | `move_near <dx> <dy> <dz>` | Move the geom instance NEAREST the player (for an on-screen visual). NB `+0x220` is block-LOCAL per tile, so cross-tile "nearest" is approximate. |
+| `move_aeg` | `move_aeg <aegRow> <dx> <dy> <dz>` | Move the nearest loaded placement of a SPECIFIC asset (AssetEnvironmentGeometry row) — targeted move (World Editor "Move this asset"). |
+| `geom_dump` | `geom_dump` | Read-only recon: dump a live geom instance + its CSMsbParts record (name, aegRow, hex) to the `[GEOMDUMP]` log. For ADD-placement RE. |
 | `move_all` | `move_all <dx> <dy> <dz>` | Move EVERY loaded geom instance by the delta (mass visual confirm; dirties the world). |
 | `geom_stats` | `geom_stats` | Count loaded geom instances + class (vtable) histogram. Explains "some objects moved, others not": move_all only touches CSWorldGeomIns-family (~17k), never map parts (walls/terrain); LOD dupes an asset. |
 
