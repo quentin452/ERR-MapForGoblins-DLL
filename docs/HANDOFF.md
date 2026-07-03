@@ -89,7 +89,10 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   for it); the 419 freeze is our `patch_fmg_in_memory` doing a `fileSize − str_data_start` size_t
   **underflow** on a DLC-stub header (NOT the group loop — hence the reverted span guard didn't help)
   → multi-GB resize/memcpy on the present thread. Fix = O(1) offset/size sanity guard + reject slots
-  ≥300 and the 11x menu tier; keep injecting at base 10. DLL guard not yet coded.
+  ≥300 and the 11x menu tier; keep injecting at base 10. **DLL guards CODED + verified 2026-07-03**
+  (`goblin_messages.cpp`: `patch_fmg_in_memory` offset/size + span-vs-stringCount guards;
+  `inject_fmg_entries` slot policy): `fmg_set 419` now returns a fast error (game alive), `fmg_set 10`
+  works, boot PlaceName(19)/TutorialBody(208) injects unaffected.
   **NEXT:** the author surface — `custom_items.json` applied at BOOT (clone+fields+name) + registered
   via the sidecar so it re-grants every load (param_clone doesn't persist; sidecar re-grant does).
   Also finalize the reserved band from a param-scan survey.

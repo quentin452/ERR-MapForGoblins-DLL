@@ -178,8 +178,49 @@ static bool patch_fmg_in_memory(uint8_t *fmg_ptr, uint8_t **slot_ptr,
     spdlog::debug("[PATCH] Original: fileSize={}, groups={}, strings={}, strOffRel=0x{:X} (raw=0x{:X})",
                   orig_file_size, orig_group_cnt, orig_string_cnt, orig_str_off_rel, raw_str_off);
 
+    // FREEZE GUARD #1 — offset/size sanity (windows_fmg_slot_re_findings.md §3/§5). A DLC-stub /
+    // malformed FMG (e.g. the GoodsName DLC tier at slot 419) has an offsets pointer that does NOT sit
+    // inside [header, fileSize), so `str_data_start = off_rel + string_cnt*8` overshoots fileSize and
+    // the later `fileSize - str_data_start` UNDERFLOWS (size_t) into a multi-GB resize/memcpy on the
+    // present thread → the game freezes. Reject in O(1) BEFORE any allocation. Base name slots pass
+    // (their offsets array sits right after the header — PlaceName 19 / TutorialBody 208 rebuild fine).
+    {
+        uint64_t str_data_start = orig_str_off_rel + static_cast<uint64_t>(orig_string_cnt) * 8;
+        if (orig_str_off_rel == 0 || orig_str_off_rel >= orig_file_size ||
+            str_data_start > orig_file_size)
+        {
+            spdlog::error("[PATCH] refusing FMG: bad offsets/size (off_rel=0x{:X} strCnt={} "
+                          "str_data_start=0x{:X} fileSize=0x{:X}) — stub/DLC slot? inject item names at "
+                          "the BASE slot (GoodsName=10).",
+                          orig_str_off_rel, orig_string_cnt, str_data_start, orig_file_size);
+            return false;
+        }
+    }
+
     auto *orig_groups = reinterpret_cast<FmgGroup *>(fmg_ptr + 0x28);
     auto *orig_offsets = reinterpret_cast<uint64_t *>(orig_offsets_ptr);
+
+    // FREEZE GUARD #2 — span invariant (§5). A well-formed FMG has Σ(last_id-first_id+1) == stringCount
+    // (the game binary-searches + index-computes, never iterates a group, so groups are contiguous
+    // runs). Catch a malformed/stub slot with a wide bogus group in O(groupCount) before the expansion
+    // loop below blows up.
+    {
+        uint64_t span = 0;
+        for (uint32_t g = 0; g < orig_group_cnt; g++)
+        {
+            int64_t s = static_cast<int64_t>(orig_groups[g].last_id) -
+                        static_cast<int64_t>(orig_groups[g].first_id) + 1;
+            if (s < 0) { span = ~0ull; break; }
+            span += static_cast<uint64_t>(s);
+            if (span > static_cast<uint64_t>(orig_string_cnt) + 8) break;
+        }
+        if (span > static_cast<uint64_t>(orig_string_cnt) + 8)
+        {
+            spdlog::error("[PATCH] refusing FMG: group span {} >> stringCount {} (malformed/stub slot)",
+                          span, orig_string_cnt);
+            return false;
+        }
+    }
 
     struct ExistingEntry
     {
@@ -560,6 +601,19 @@ bool goblin::inject_fmg_entries(uint32_t fmg_slot, const std::vector<goblin::Fmg
         spdlog::error("[FMGINJECT] slot {} out of range (repo count {})", fmg_slot, count2);
         return false;
     }
+    // Slot policy (windows_fmg_slot_re_findings.md §5): the item-name UI renders a NEW id from the BASE
+    // name slots (GoodsName=10, WeaponName=11, ProtectorName=12, AccessoryName=13, PlaceName=19). The
+    // DLC tiers (>=300) are 1-string stubs (wrong priority AND they freeze the rebuild), and the 11x
+    // menu tier is wrong-priority — refuse both with a clear, fast error. Internal base-slot callers
+    // (PlaceName 19, TutorialBody 208) call patch_fmg_in_memory directly and are unaffected.
+    if (fmg_slot >= 300 || (fmg_slot >= 110 && fmg_slot <= 119))
+    {
+        spdlog::error("[FMGINJECT] slot {} is a DLC/menu tier — refused. Inject item names at the BASE "
+                      "slot (GoodsName=10, WeaponName=11, ProtectorName=12, AccessoryName=13, "
+                      "PlaceName=19).", fmg_slot);
+        return false;
+    }
+
     auto **sub = reinterpret_cast<uint8_t **>(base_array[0]);
     uint8_t *fmg_ptr = sub[fmg_slot];
     if (!fmg_ptr)
