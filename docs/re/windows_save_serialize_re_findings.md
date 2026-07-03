@@ -74,6 +74,10 @@ the grain of truth behind PM#3's "shared save+load walker" — but PM#3 pointed 
    `kItemStripReinjectWired`. This is cheap with the shipped in-DLL observer infra on ERR/Proton — and it
    directly closes the PM#2 failure mode (a candidate that never fired). Also re-verify `[SIG]` on the
    ERR deploy build (AOB from Windows App 2.6.x).
+   **CODE-READY 2026-07-03 (Linux):** `install_save_hook()` in `goblin_sidecar.cpp` now hooks
+   `hk_serialize` via the `SERIALIZE_FN` AOB scan (was the stale hardcoded `er+0x1ede700`) → `[SERFN]`
+   observer logs caller#/tid/chain on each call. Cross-build clean. Run on ERR/Proton: `sidecar_save=true`,
+   trigger one save, grep `[SERFN]` — expect ONE fresh caller on the save thread. Then flip the flag.
 
 Net: the save serialize is **found and statically airtight** (GameData→DLOutputStream, save-specific,
 synchronous, brackets the inventory). Variant A (clean vanilla save) is unblocked; wire

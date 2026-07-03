@@ -424,13 +424,13 @@ void install_save_hook()
     {
         spdlog::error("[SAVEFN] hook failed: {}", e.what());
     }
-    // Serialize observer (Phase 2 RE). Hook the CONFIRMED save-serialize section dispatcher by exact
-    // RVA (0x1eddec0 on the ERR-Steam build — the reliable memcpy caller from the FWA; the AOB-unique
-    // 0x2573c0 turned out to be a generic/load serialize, not the save path). RVA is version-specific
-    // — fine for a dev-only RE observer. Logs its callers → the orchestrator = the strip bracket.
-    uintptr_t er = (uintptr_t)GetModuleHandleA("eldenring.exe");
-    void *sf = er ? reinterpret_cast<void *>(er + 0x1ede700) : nullptr;
-    if (!sf) { spdlog::warn("[SERFN] eldenring.exe base not found — observer skipped"); return; }
+    // Serialize observer (Phase 2 RE). Hook the CONFIRMED whole-slot game-data serialize
+    // (FUN_14067dc00, RVA 0x67dc00) found in Ghidra via find_serialize.java — SERIALIZE_FN AOB
+    // (unique in .text, version-independent). READ-ONLY: confirm it fires ONCE per real save
+    // (grace-rest / quit) + note its thread before flipping kItemStripReinjectWired. Supersedes the
+    // old hardcoded 0x1ede700 (a DLOutputStream primitive, not the orchestrator).
+    void *sf = modutils::scan<void>({.aob = goblin::sig::SERIALIZE_FN});
+    if (!sf) { spdlog::warn("[SERFN] SERIALIZE_FN AOB not found — observer skipped"); return; }
     try
     {
         modutils::hook(sf, reinterpret_cast<void *>(hk_serialize),

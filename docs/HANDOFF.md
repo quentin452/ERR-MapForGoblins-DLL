@@ -13,6 +13,26 @@ Kept: genuinely live/in-progress work, open questions, and standing knowledge (g
 decisions, non-obvious facts) not fully captured anywhere else. If you're looking for the history of
 something not below, check `docs/changelog.md` first, then the relevant `docs/plans/*.md`.
 
+## ⇒ RESUME HERE (2026-07-03 PM #2) — serialize FOUND (0x67dc00); observer retargeted, run it on Proton
+
+**Windows-Ghidra agent UNBLOCKED Variant A.** `find_serialize.java` pinned the real whole-slot game-data
+serialize: **`FUN_14067dc00` @ RVA `0x67dc00`** (GameDataMan-xref ∩ DLOutputStream-writer). Save-specific
+(write-only stream, no save/load ambiguity), synchronous, direct-called, brackets the inventory read
+(inside `FUN_140257f20`). Unique AOB → `SERIALIZE_FN` in `re_signatures.hpp`. Full:
+`docs/re/windows_save_serialize_re_findings.md`, linux §PM#5.
+
+**THIS SESSION (Linux, code-ready):** `install_save_hook()` observer was still hooking the STALE wrong
+`er+0x1ede700` (a DLOutputStream primitive). Retargeted `hk_serialize` to scan `SERIALIZE_FN` (0x67dc00).
+Cross-build clean (`build-linux`, DLL linked).
+
+**NEXT (Proton, one run):** deploy build, `sidecar_save=true`, trigger ONE real save (grace-rest / quit),
+grep `[SERFN]` in `logs/MapForGoblins_events.log` — expect exactly ONE fresh caller on the save thread
+(note the tid). That closes deliverable-status #4 (once-per-save + thread) + the PM#2 never-fired failure
+mode. Then wire strip@entry/reinject@exit onto `SERIALIZE_FN` + flip `kItemStripReinjectWired=true`.
+(Variant B remains the zero-RE fallback if the observer surprises.)
+
+---
+
 ## ⇒ RESUME HERE (2026-07-03 PM) — sidecar Phase 2 BLOCKED on Windows-Ghidra; else ship Variant B
 
 **Session wrap (all committed to master, local ahead of origin — user pushes).** This session shipped:
