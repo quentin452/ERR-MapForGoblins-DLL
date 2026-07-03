@@ -118,9 +118,10 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   item. **This is the first brick of vision #1 World Virtualization** (a swappable world = a bundle);
   remaining for #1: multiple named bundles + live swap (reset-to-base + apply + refresh) + per-world
   sidecar save context. **⚠️ GOTCHA found:** `toml::parse_file` returns an EMPTY table under Proton/Wine
-  (silent, no throw) — read the file via `std::ifstream` + `toml::parse(string)` instead. `custom_items.cpp`
-  still uses `parse_file` → likely the SAME latent bug (custom_items.toml silently ignored under Proton);
-  see `docs/memory/tooling/toml-parse-file-proton-bug.md`.
+  (silent, no throw) — but ONLY in the exceptions-ON config; read via `std::ifstream` +
+  `toml::parse(string)` instead (world_bundle does). **custom_items.cpp CHECKED — NOT affected**: it
+  `#define TOML_EXCEPTIONS 0` so its parse path works (re-verified `test_author_items.py` 1/1). No fix
+  needed there. See `docs/memory/tooling/toml-parse-file-proton-bug.md`.
   **Next slices:** category select (weapons/armour/… beyond goods in the picker), and the World
   Virtualization multi-bundle swap. (`refresh_markers` v2 fully done.)
 
