@@ -56,14 +56,20 @@ namespace goblin::sig
     inline constexpr const char *INVENTORY_ACCESSOR =
         "44 8B 61 1C 41 8B FC C1 EF 07 40 80 E7 01 41 C1 EC 08 41 80 E4 01 48 8B 0D";
 
-    // ── Save routine (sidecar Phase-2 strip/reinject bracket) ──
-    // Outermost eldenring.exe save fn (#09 in the save-write stack walk, RVA 0x253e4b0 on this
-    // ERR build) — RE: docs/re/linux_save_function_re_findings.md. Hooked READ-ONLY first to
-    // confirm it's save-specific + brackets serialize+write, before wiring strip/reinject.
-    // Prologue: 40 53 48 83 EC 30 44 8B D1 48 85 D2 75 ?? E8 (push rbx; sub rsp,30; mov r10d,ecx;
-    // test rdx,rdx; jnz +..; call ..).
+    // ── Save routine (sidecar Phase-2) — CS::SaveLoad2::SLSaveSession::run ──
+    // The ER save subsystem is CS::SaveLoad2 (RTTI-mapped via live RPM, Windows box 2026-07-03:
+    // docs/re/windows_save_function_rpm_re_findings.md). This is `SLSaveSession::run` (vtable slot 2,
+    // RVA 0x240FD70 on the Windows App 2.6.x build) — the OUTER save-WRITE state machine, reached by
+    // VTABLE dispatch through the SLSaveSession vtable (which is why the Linux rel32 stack walk's
+    // 0x253e4b0 guess got 0 observer calls — it was never E8-called). Convention: rcx=this
+    // (SLSaveSession*), no other args; stack-canary framed. Prefer RTTI resolution (TD
+    // `.?AVSLSaveSession@SaveLoad2@@` -> COL -> vtable[2]); this AOB is the fallback.
+    // ⚠ WRITE side only: SaveLoad2 never reads GameDataMan — it writes an already-serialized content
+    // buffer, so hooking this is TOO LATE to strip inventory. Good as a save-detection observer /
+    // write bracket; the strip/reinject bracket needs the game-data SERIALIZE (find-what-accesses
+    // EquipGameData — the one RE step left). ⚠ Re-verify [SIG] on the ERR/Proton deploy build.
     inline constexpr const char *SAVE_FN =
-        "40 53 48 83 EC 30 44 8B D1 48 85 D2 75 ?? E8";
+        "48 8B C4 55 57 41 54 41 56 41 57 48 8D 68 A1 48 81 EC B0 00 00 00 48 C7 45 EF FE FF FF FF 48 89 58 10";
 
     // ── Grace warp (fast-travel to a site of grace — dev-world navigation) ──
     // From the Hexinton CT ("Coinsworth"). LuaWarp_01 = the game's Lua-event warp: proper

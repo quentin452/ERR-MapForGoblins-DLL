@@ -109,12 +109,21 @@ the indirect-dispatch wall → handed to WINDOWS live-RPM (2026-07-03).** Mapped
 (recursive BND4 write tree `0x240daa0`/`0x240c530` → file open `0x1fc0b70` → CreateFileW) but the OUTER
 save routine is virtual/worker-dispatched (can't reach its entry by call-site/heuristic — an observer on
 a guessed entry got 0 calls) AND the inventory SERIALIZE is a separate phase before the write stack.
-`docs/re/linux_save_function_re_findings.md`. **NEXT (Windows box, CE+Ghidra+RPM):
-`docs/re/windows_save_function_rpm_re_prompt.md`** — find the save initiator via CE find-what-accesses on
-`GameMan+0xB42` (writer=request sites, reader=dispatcher) or an RTTI `CS::…SaveLoad` vtable RPM scan
-(GfxScan.cs style); deliver `SAVE_FN` RVA+AOB + pre-serialize BP-order proof → hook entry(strip)/
-exit(reinject) → flip `kItemStripReinjectWired`. Alt path if RE drags = Variant B (reserved-id, item
-tolerated in the `.err`, blank if DLL-less). Data layer + give_item primitives are done & reusable.
+`docs/re/linux_save_function_re_findings.md`. **SAVE-FN RE — WINDOWS RPM DONE 2026-07-03 (Method B,
+indirect-dispatch wall BROKEN): `docs/re/windows_save_function_rpm_re_findings.md`.** External
+RTTI→COL→vtable RPM scan (GfxScan precedent, rebuilt: scratchpad `RttiScan.cs`/`CallScan.cs`/`disah.py`)
+mapped the whole **`CS::SaveLoad2`** subsystem. Outer save routine = **`SLSaveSession::run` (vtable slot
+2, RVA 0x240FD70; AOB now in `re_signatures.hpp` SAVE_FN, replacing the proven-wrong 0x253e4b0)** — a
+save-WRITE state machine reached by VTABLE dispatch (hence 0 rel32-observer calls on the Linux guess).
+Convention `rcx=this`. **BUT it's the WRITE side: SaveLoad2 never reads GameDataMan (727-xref scan, 0
+hits in the 0x240xxxx range) → it writes an ALREADY-serialized content buffer → hooking it is TOO LATE
+to strip.** So SAVE_FN is now a correct save-detection observer, NOT the strip bracket. **THE ONE RE STEP
+LEFT = the game-data SERIALIZE** (reads GameDataMan+8→+2B0 EquipGameData into the buffer): pin via
+**find-what-accesses on EquipGameData during a real save** (user's CE GUI here, or the in-DLL HW-bp
+observer `goblin_field_probe` on ERR/Proton) — its containing fn is the strip(entry)/reinject(exit)
+bracket. ⚠ Re-verify SAVE_FN `[SIG]` on the ERR deploy build (AOB from Windows App 2.6.x). Alt path if
+RE drags = Variant B (reserved-id, item tolerated in the `.err`, blank if DLL-less). Data layer +
+give_item primitives are done & reusable.
 
 **GRACE WARP — ADDED + IN-GAME VERIFIED 2026-07-03 (dev-world navigation, user-requested).** The
 Hexinton CT ("Coinsworth") had a proven warp: `goblin::warp::to_grace(graceId)`
