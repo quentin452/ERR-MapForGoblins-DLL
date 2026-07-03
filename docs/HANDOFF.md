@@ -18,6 +18,29 @@ on Linux/Proton; spiderfy v1+v2, in-game pause, RPC input injection/HUD, NPC alt
 repro — see the Phase 4 sections below. Earlier same day: SINGLE-DLL migration + the 9 native-pin
 parity landmark categories in-game verified.)
 
+## Runtime modding framework — FIRST STEP scoped + prototyped (2026-07-03, branch `feat/param-override-loader`)
+
+Architecture audit answered the user's "what to do first for end-to-end modding without a
+regulation.bin". Pick: a **boot-time param-override loader** — editing a param FIELD in RAM is
+save-safe by construction (params reload from regulation.bin each boot), so it's the minimum viable
+"mod ER without regulation.bin", shippable as a rebalance mod, and the substrate for items/rows later.
+Full reasoning + slices: **`docs/plans/param_override_loader_plan.md`**.
+
+- **Slice 1 PROTOTYPED (not merged):** `src/goblin_param_edit.{hpp,cpp}` — generic
+  `param_set_field(param, row_id, offset, FieldType, value)` + `param_get_field` read-back. Writes a
+  live param row via WriteProcessMemory (SEH-elision safe), reuses `from::params::get_param`
+  traversal + recovers the row extent for a bound check. Offset-addressed (Slice 2 = name-addressed
+  via `resolve_field_offset` / runtime paramdef). Added to CMake; **builds clean on Linux** (obj +
+  link OK, verified on the branch base). NOT yet: wired to a loader, exported over `overlay_api`, or
+  in-game tested.
+- **NEXT:** (a) in-game smoke test — call `param_set_field(L"EquipParamWeapon", id, off, F32, x)`
+  after param load, verify the game reflects it (RPC-drivable); (b) Slice 2 tier-1 (per-field AOB
+  offsets) so an override file can be authored by field NAME not raw offset; (c) Slice 3 boot
+  `param_overrides.json` loader behind a default-OFF ini cheat-gate.
+- **Parallel prereq to FREEZE (policy, not code):** reserved high-ID range + "DLL-required-at-load"
+  contract — gates Gap C (item grants → `.sl2` orphan-ID corruption). This loader does NOT need it
+  (edits no persisted state); decide it before any inject-into-inventory work.
+
 ## RESUME HERE (2026-07-02) — hot-reload Slice D IMPLEMENTED (`feat/overlay-hotreload-slice-d`), Windows in-game validation next
 
 Slice C was already merged to `master` (`af6baf7`, part of the `ed0a0e9` merge — the old "not yet
