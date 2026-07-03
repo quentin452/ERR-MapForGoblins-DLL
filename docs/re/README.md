@@ -44,8 +44,12 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
    VERIFIED (2026-07-03):** the transform setter is `vtable[0xd0] SetWorldMatrix(self, mat4x4)`; driving
    it on a live `CSWorldGeomIns` (via `move_asset` RPC, `test_move_asset.py` 7/7) moves the cached world
    matrix (`inst+0x220`) by the exact delta, no crash. So "move an existing placement" is a solved
-   primitive; **ADD a new placement (Dynamic factory + tile/geom-manager join) is the remaining hole.**
-   Open follow-ups: on-screen/collision confirm + move persistence vs the `+0x18` module recompute.
+   primitive **and DURABLE** (persistence confirmed — cache-only write held ~7s, no revert). **ADD a new
+   placement is now SCOPED (static):** the spawn drivers `FUN_1406a7930`/`FUN_1406adc80` are the
+   tile-streaming state machine (no isolated "spawn one geom" call); instances are placement-new'd into
+   fixed-capacity BlockData pools (static `+0x2b0`, dynamic `+0x2c0`) + pushed into geom_ins vector `+0x288`.
+   Recommended next probe = route 1 `spawn_clone` (clone a resident part's record → direct `FUN_1406b9880`
+   → join `+0x288`). ADD is a multi-step build, not a quick primitive — the remaining real hole.
 2. **ESD / talk scripts (EzState) — mostly unmapped.** Merchant shop↔NPC join, dialogue, talk-driven
    logic need an EzState bytecode evaluator (shelved after a spike — see
    `docs/plans/merchant_item_search_plan.md` Slice 3).

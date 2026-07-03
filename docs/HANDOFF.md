@@ -169,8 +169,17 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   ~7s held at Y 83.38, no engine revert from the `+0x18` module. So no module-sync needed for a move to
   stick. **Follow-up (open, one): on-screen/collision confirm** — the probe picks an arbitrary first-in-
   walk instance (likely off-screen); a targeted move of a named instance near the player + screenshot
-  would close it. **Remaining MSB-write hole: ADD a NEW placement** (the Dynamic factory `FUN_1406b9880`
-  + parts-rec/transform synth + geom-manager join — §B4 of the findings).
+  would close it. **Remaining MSB-write hole: ADD a NEW placement — now SCOPED (static, 2026-07-03).**
+  Traced the spawn drivers `FUN_1406a7930`/`FUN_1406adc80`: there is **NO isolated "spawn one geom" call** —
+  they are the tile-streaming state machine over the loaded MSB resource, and instances are
+  **placement-new'd into fixed-capacity BlockData pools** (static `+0x2b0`/stride 0x440, dynamic `+0x2c0`/
+  stride 0x5b0, counts `+0x498`/`+0x49c`), then pushed into the BlockData geom_ins vector `+0x288`. Three
+  add-routes ranked in the findings; **recommended first probe = route 1 `spawn_clone`**: allocate 0x5b0,
+  `FUN_1406b9880(mem, srcType, CLONED existing parts rec, transform)` (reuse a resident asset so its model
+  is loaded), copy a live sibling's `+0x220` matrix + offset it, push into `+0x288`; the ctor self-registers
+  WGM/render/physics. Open sub-Qs (a live probe answers): does a cloned `CSMsbPartsGeom` satisfy the ctor's
+  reads; is the `+0x288` push enough for render+collision or is a pool index assumed elsewhere. This is a
+  multi-step build, NOT a quick primitive like move.
 
 - **Live marker regeneration (real-time map editing) — v1 DONE 2026-07-03; v2 open.** Markers build once
   at boot; to reflect a LIVE param edit on the DRAWN map without a game reload, **`refresh_markers` RPC**

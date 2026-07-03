@@ -1,8 +1,9 @@
 # MSB placement WRITE — RE findings (volet A: the load path, STATIC)
 
-Status: **volet A RESOLVED (static, Ghidra, 2026-07-03)** — answers the crux of
-`windows_msb_placement_write_re_prompt.md` §A + scopes §B4. Volets B5/C (live write test, spawn-factory
-drive) remain. Imagebase `0x140000000`; tool = `query.java` on `D:\ghidra_proj2\ER`.
+Status: **MOVE fully solved (static + live-verified + durable, 2026-07-03); ADD scoped (static).** Answers
+`windows_msb_placement_write_re_prompt.md` §A/§C for move; §B4 "add" is scoped (no isolated spawn
+entrypoint — see the ADD section) with route 1 (`spawn_clone`) recommended as the next live probe.
+Imagebase `0x140000000`; tool = `query.java` on `D:\ghidra_proj2\ER`.
 
 ---
 
@@ -166,10 +167,61 @@ follow the `+0x220` cache (the probe picks an ARBITRARY first-in-walk instance, 
 targeted move of a named instance near the player + screenshot would close it). The
 **setter-moves-and-holds-the-world-matrix primitive is proven.**
 
+## ★★★ ADD a new placement — scoped (static, 2026-07-03): NO isolated spawn entrypoint
+Decompiled the two geom-spawn drivers (callers of the ctors): **`FUN_1406a7930` (er+0x6a7930)** and
+`FUN_1406adc80` (er+0x6adc80). Both are **not** a "spawn one asset" factory — they are the **tile-streaming
+state machine**, and `param_1` is the **`CSWorldGeomMan` BlockData** (the same struct `move`/collected walk
+uses: geom_ins vector at `+0x288`). Per-part spawn shape (from `FUN_1406a7930`):
+```c
+// param_1 = BlockData; param_1+8 = the loaded MSB resource (parts lists + models)
+local_278 = *(param_1+8 + 0x48);                       // the MSB parts list
+... state machine on param_1+0x490 (phase 1/2/3), index param_1+0x494 ...
+FUN_14062e700(local_290, partType, param_1, idx);      // build srcType descriptor from the part
+thunk_FUN_144cbdae7(local_1e8, param_1, local_278, *(param_1+8+0x58));  // build the WORLD TRANSFORM
+if (isStatic /* *(partDesc+0xd)==1 */) {
+    inst = param_1+0x2b0[count440];  // STATIC pool: base *(param_1+0x2b0), stride 0x440, count param_1+0x498
+    FUN_1406db840(inst, local_290, param_1, local_1e8);      // placement-new CSWorldGeomStaticIns
+    (*(int*)(param_1+0x498))++;
+} else {
+    inst = param_1+0x2c0[count5b0];  // DYNAMIC pool: base *(param_1+0x2c0), stride 0x5b0, count param_1+0x49c
+    FUN_1406b9880(inst, local_290, param_1, local_1e8);      // placement-new CSWorldGeomDynamicIns
+    (*(int*)(param_1+0x49c))++;
+}
+// then push `inst` into the BlockData geom_ins vector at param_1+0x288 (+0x290/0x298/0x2a0 = begin/end/cap)
+```
+**Consequences (the reason "add" ≫ "move" in effort):**
+- **Instances are placement-new'd into pre-sized block pools** (`+0x2b0` static / `+0x2c0` dynamic), whose
+  **capacity is fixed at tile-load from the MSB part count** — you cannot just append a slot; the pool is full.
+- The spawn is **welded to the MSB resource + streaming phase** (`param_1+8`, `+0x490`), so there is **no
+  clean "spawn a geom at a transform" call** to drive in isolation.
+- The instance ctor (`FUN_1406c5900`) self-registers into WGM (`FUN_140b32880` on `DAT_143d7b0c0[+0x10]+0x720`)
+  and render/physics (`FUN_1406c9020`); the **block geom_ins vector push is the DRIVER's job**, not the ctor's.
+
+### Three candidate ADD routes (ranked)
+1. **Clone-existing via direct Dynamic ctor + manual join (recommended first probe).** Allocate `0x5b0`
+   bytes ourselves, `FUN_1406b9880(mem, srcType, clonedPartsRec, transform)` reusing an **existing loaded
+   part's record** (so its model/asset is already resident → renders), copy a live sibling's `+0x220`
+   matrix and offset the translation, then push `mem` into the BlockData `+0x288` vector. Ctor does the
+   WGM/render/physics registration. Open sub-Qs: does a cloned `CSMsbPartsGeom` record satisfy the ctor's
+   reads (`rec+0x18b`, `rec+0x124`, model refs)? does the `+0x288` push suffice for render+collision, or
+   is a pool index assumed elsewhere? — a live probe answers both.
+2. **MSB-inject + tile re-stream.** Add a Part to the MSB parts list the driver reads (disk `.msb` edit or
+   patch the loaded resource before the driver's phase), then force a tile re-stream so the engine spawns
+   it natively (pools re-sized). Cleanest fidelity, but needs MSB write + pool re-size + a re-stream trigger.
+3. **Grow the block dynamic pool.** Reallocate `+0x2c0` with +1 capacity and drive one more `FUN_1406b9880`.
+   Fragile (every holder of the old pool base would dangle).
+
+**Recommended:** prototype route 1 behind a dev RPC (`spawn_clone <dx dy dz>`): find a live geom + its
+parts record via `first_live_geom_instance()`, clone-spawn a Dynamic instance offset from it, join the
+`+0x288` vector, and see if a duplicated asset appears + collides. That's the smallest step that proves
+"add" and reuses everything `move` already established.
+
 ## Next
 - ~~Static: find the transform setter vmethod~~ **DONE — vtable[0xd0].**
-- ~~Live (Proton): drive it behind a dev RPC~~ **DONE — `move_asset`, 7/7 (see above).**
-- **Persistence check:** hold a move (no restore) + observe over several frames — does the engine revert
-  it from the `+0x18` module? If so, also set the module (or use `CSWorldGeomDynamicIns`).
-- **Then "add":** drive `FUN_1406b9880` (Dynamic) from a synthesized parts rec + transform; trace
-  `FUN_1406a7930`/`FUN_1406adc80` for the exact arg construction + geom-manager join.
+- ~~Live (Proton): drive it behind a dev RPC~~ **DONE — `move_asset`, 7/7.**
+- ~~Persistence check~~ **DONE — cache-only write is durable (`dc691b2`, no revert over ~7s).**
+- ~~Static: scope "add" / trace the spawn drivers~~ **DONE — see ADD section above (no isolated entrypoint;
+  pool placement-new; 3 routes).**
+- **ADD probe (next):** route 1 — `spawn_clone` dev RPC (clone an existing part's record → direct
+  `FUN_1406b9880` → join BlockData `+0x288`) on Proton; verify a duplicated asset renders + collides.
+- **Move follow-up (minor):** on-screen/collision eyeball of a targeted near-player move.
