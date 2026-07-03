@@ -178,6 +178,19 @@ the save buffer), which `query.java`'s per-address mode doesn't do. **Variant B 
 Variant A now unblocked for a focused Ghidra session** (no longer "impossible offline" — just not yet
 done). Full check log: `docs/re/windows_save_function_rpm_re_findings.md` §Ghidra.
 
+## Update 2026-07-03 (PM #5) — SERIALIZE FOUND: `FUN_14067dc00` (er+0x67dc00)
+
+Did the bespoke Ghidra pass — `tools/ghidra/find_serialize.java` (GameDataMan data-xref ∩
+DLOutputStream-writer). Top hit decompiled to the **whole-slot save serializer** `FUN_14067dc00`: builds
+a `DLIO::DLOutputStream` over the out-buffer, writes header → `FUN_140257f20` (player data incl. inventory
+— reads `GameDataMan`→PlayerGameData live) → ~11 section serializers → trailer, then seeks to 0 and
+rewrites the size header (unmistakable write). **Save-specific** (write-only DLOutputStream — no shared
+read/write, so no save-vs-load discrimination), **synchronous, direct-called** (4 save-trigger callers).
+Convention `rcx=save_ctx, rdx=out_buffer, r8d=size, r9=&out_written`. Strip@entry / reinject@exit = the
+atomic bracket (inventory serialized INSIDE, after entry). Unique AOB → `SERIALIZE_FN` in
+`re_signatures.hpp` (replaced the wrong `0x2573c0`). Only a live observer (fires-once-per-save + thread)
+remains before wiring strip/reinject. Full write-up: `docs/re/windows_save_serialize_re_findings.md`.
+
 ## Two remaining paths (original — now superseded by the recommendation above)
 - **Variant A (clean vanilla save) — more RE.** Find the SERIALIZE phase / the save-REQUEST processor
   (the fn that reads `GameMan+0xB42` and initiates serialize+write) via find-what-accesses on

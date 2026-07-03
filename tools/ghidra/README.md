@@ -40,6 +40,14 @@ file). Examples:
 ... query.java 0x71a0f0 0x6c5900                     # decompile two functions by RVA
 ```
 
+## 3. `find_serialize.java` — example bespoke scan (GameData serialize hunt)
+A worked example of a custom scan when `query.java` isn't enough: resolves the `GameDataMan` slot from
+its accessor AOB, collects every function referencing it, and ranks by calls into the
+`DLIO::DLOutputStream` write region (`0x1edc000..0x1ee1000`, overridable via two `0x`-args) — i.e. the
+intersection "reads game data ∧ writes a stream" = the save serialize. Found `FUN_14067dc00`
+(er+0x67dc00, the whole-slot serialize / sidecar strip bracket — `docs/re/windows_save_serialize_re_findings.md`).
+Writes `D:\ghidra_scripts\out_find_serialize.txt`. Same headless invocation as `query.java`.
+
 ## Workflow (the fast path for a new RE)
 1. `grep` `rtti_index.txt` for the class(es) you care about → vtable RVA + ctor RVAs.
 2. `query.java name:<exact>` or `query.java 0x<ctorRVA>` → read the decompiled ctor/methods.

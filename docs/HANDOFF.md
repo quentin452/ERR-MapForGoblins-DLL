@@ -159,7 +159,17 @@ base, not a caller). The "mid-function-CC unpinnable" wall is a misdiagnosis —
 **vtable-dispatched** (0 direct E8 callers), and Ghidra gives clean boundaries. So the game-data SERIALIZE
 is **still unpinned** (none of the cited addrs) but **Ghidra-tractable** via a bespoke GameDataMan
 data-xref → DLOutputStream-writer pass. `docs/re/{linux,windows}_save_function*findings.md` §PM#4/§Ghidra.
-**Standing decision unchanged: ship Variant B; Variant A now unblocked for a focused Ghidra session.**
+**SERIALIZE FOUND 2026-07-03 (PM#5) — Variant A unblocked: `docs/re/windows_save_serialize_re_findings.md`.**
+Wrote `tools/ghidra/find_serialize.java` (GameDataMan-xref ∩ DLOutputStream-writer) → **`FUN_14067dc00`
+(er+0x67dc00) = the whole-slot save serialize**: builds a DLOutputStream over the out-buffer, writes
+header → `FUN_140257f20` (player data incl. inventory, reads GameDataMan live) → ~11 sections → trailer,
+then patches the size header. **Save-specific (write-only DLOutputStream, no save/load ambiguity),
+synchronous, direct-called** (4 save-trigger callers); unique AOB now in `re_signatures.hpp` `SERIALIZE_FN`
+(replaced the wrong 0x2573c0). Convention `rcx=save_ctx, rdx=out_buffer, r8d=size, r9=&out_written`. Strip
+@entry / reinject @exit = the atomic bracket (inventory serialized INSIDE, after entry). **ONLY STEP LEFT:
+hook it READ-ONLY (observer) to confirm it fires once-per-save on a real save + note the thread (closes the
+PM#2 "candidate never fired" risk) → then wire strip/reinject + flip `kItemStripReinjectWired`.** ⚠ verify
+`[SIG]` on the ERR deploy build. Variant B remains the zero-RE fallback.
 
 **GRACE WARP — ADDED + IN-GAME VERIFIED 2026-07-03 (dev-world navigation, user-requested).** The
 Hexinton CT ("Coinsworth") had a proven warp: `goblin::warp::to_grace(graceId)`

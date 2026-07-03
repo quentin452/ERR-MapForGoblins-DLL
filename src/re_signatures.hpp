@@ -80,13 +80,21 @@ namespace goblin::sig
         "48 8B C4 55 57 41 54 41 56 41 57 48 8D 68 A1 48 81 EC B0 00 00 00 48 C7 45 EF FE FF FF FF 48 89 58 10";
 
     // ── Game-data SERIALIZE (sidecar Phase-2 strip/reinject bracket) ──
-    // A candidate outer serialize orchestrator (RVA 0x2573c0 on the ERR-Steam build) — found by the
-    // live find-what-accesses on the char name (PlayerGameData+0x9c): the serialize memcpy's the
-    // player data, and this is up its caller chain. UNIQUE in .text. Hooked READ-ONLY first (observer
-    // + stack chain) to confirm once-per-save + that it brackets the inventory serialize, before
-    // wiring strip(entry)/reinject(exit). RE: docs/re/linux_save_function_re_findings.md (PM update).
+    // The whole-slot game-data SERIALIZE (RVA 0x67dc00) — found in Ghidra via find_serialize.java
+    // (GameDataMan-xref ∩ DLOutputStream-writer), docs/re/windows_save_serialize_re_findings.md.
+    // Builds a DLOutputStream over the out-buffer, writes header → FUN_140257f20 (player data incl.
+    // inventory: reads GameDataMan→PlayerGameData live) → ~11 more section serializers → trailer, then
+    // seeks back and patches the size header. SAVE-SPECIFIC (write-only DLOutputStream — no save/load
+    // ambiguity) and SYNCHRONOUS (direct calls, not vtable-dispatched). Convention:
+    //   FUN_14067dc00(rcx=save_ctx, rdx=out_buffer, r8d=buf_size, r9=&out_written) -> bool.
+    // Strip at ENTRY / reinject at EXIT = the atomic bracket (inventory is serialized INSIDE, after
+    // entry → the written buffer excludes the custom item; reinject after exit restores it live).
+    // Supersedes every prior wrong guess: 0x253e4b0 (SAVE_FN write side), 0x2573c0 (boot/load, 0 save
+    // calls), 0x1ede700 (a DLOutputStream primitive). ⚠ Before flipping kItemStripReinjectWired: hook
+    // READ-ONLY first (observer) to confirm it fires once-per-save on a real save + note the thread;
+    // and re-verify [SIG] on the ERR deploy build (AOB from the Windows App 2.6.x build).
     inline constexpr const char *SERIALIZE_FN =
-        "48 89 5C 24 08 57 48 83 EC 20 48 8B 3D ?? ?? ?? ?? 48 8B CA";
+        "40 55 53 56 57 48 8D 6C 24 A8 48 81 EC 58 01 00 00 48 C7 45 A0 FE FF FF FF";
 
     // ── Grace warp (fast-travel to a site of grace — dev-world navigation) ──
     // From the Hexinton CT ("Coinsworth"). LuaWarp_01 = the game's Lua-event warp: proper
