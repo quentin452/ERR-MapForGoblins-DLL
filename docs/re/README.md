@@ -1,6 +1,6 @@
 # RE coverage map — what of ELDEN RING is reverse-engineered, and what isn't
 
-Index + honest coverage map for `docs/re/`. **156 RE docs** live here. Two kinds:
+Index + honest coverage map for `docs/re/`. **161 RE docs** live here. Two kinds:
 - `*_re_findings.md` / `*_RESOLVED.md` — a SOLVED structure/function (the answer).
 - `*_re_prompt.md` / `*_analysis.md` — an OPEN or historical RE task handed to Ghidra/CE.
 
@@ -44,13 +44,18 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
    VERIFIED (2026-07-03):** the transform setter is `vtable[0xd0] SetWorldMatrix(self, mat4x4)`; driving
    it on a live `CSWorldGeomIns` (via `move_asset` RPC, `test_move_asset.py` 7/7) moves the cached world
    matrix (`inst+0x220`) by the exact delta, no crash. So "move an existing placement" is a solved
-   primitive **and DURABLE** (persistence confirmed — cache-only write held ~7s, no revert). **ADD a new
-   placement is now SCOPED (static):** the spawn drivers `FUN_1406a7930`/`FUN_1406adc80` are the
-   tile-streaming state machine (no isolated "spawn one geom" call); instances are placement-new'd into
-   fixed-capacity BlockData pools (static `+0x2b0`, dynamic `+0x2c0`) + pushed into geom_ins vector `+0x288`.
-   Route 1 `spawn_clone` is BLOCKED on 3 helper decomps (the Dynamic ctor's srcType/transform args) —
-   can't drive `FUN_1406b9880` blind. Linux recon done (`geom_dump`); Ghidra handoff =
-   `windows_geom_spawn_re_prompt.md`. ADD is a multi-step build, not a quick primitive — the remaining hole.
+   primitive **and DURABLE** (persistence confirmed — cache-only write held ~7s, no revert) **and RENDERS**
+   (`move_all` mass move watched live). **ADD a new placement — all RE now DONE, ctor call unblocked
+   (`windows_geom_spawn_re_findings.md`).** No isolated "spawn one geom" call exists (the spawn drivers
+   `FUN_1406a7930`/`FUN_1406adc80` are the tile-streaming state machine; instances are placement-new'd into
+   fixed-cap BlockData pools + pushed into geom_ins vector `+0x288`), so ADD = drive the Dynamic ctor
+   `FUN_1406b9880` directly. Every static blocker is closed: srcType is an 8B packed FieldIns id (built from
+   3 mask globals or copied); `param_3` = the source BlockData (live recon `spawn_probe` corrected the
+   layout: BlockData@+0x10, transform module@+0x20, CSMsbPartsGeom@+0x30); the ctor reads only
+   `BlockData+0x18b`; and the move-init CORRUPTION risk is solved (rebuild `param_4` via the driver's own
+   builder `thunk_FUN_144cbdae7`, don't alias the source). Remaining = a multi-step BUILD (code
+   `spawn_clone` on Proton: build args → `FUN_1406b9880` into a self-alloc 0x5b0 → SetWorldMatrix-offset),
+   not more RE. This is the last brick of the MSB-write wall for GEOM placement.
 2. **ESD / talk scripts (EzState) — mostly unmapped.** Merchant shop↔NPC join, dialogue, talk-driven
    logic need an EzState bytecode evaluator (shelved after a spike — see
    `docs/plans/merchant_item_search_plan.md` Slice 3).
@@ -65,6 +70,9 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
   (`linux_f2_fog_locate_clamp_re_findings.md`).
 - **Hidden Passage** (illusory walls, no static signal — `windows_group2_landscape`), **Wandering
   Mausoleum** (dynamic entity, no static MSB signal).
+- **Freecam** (dev tool for the world-editor loop — recon done `windows_freecam_re_findings.md`, Route 2 =
+  freeze ChrCam + override the render view matrix in `GameRendCameraSet` er+0x680460; blocked on the matrix
+  offset + a `CSCameraImp` singleton AOB).
 - **In-game pause** (`windows_ingame_pause_re_prompt.md`), **gamepad input device**
   (`windows_gamepad_input_device_re_prompt.md`), **silent deadlock freeze** (unsolved; watchdog shipped).
 
