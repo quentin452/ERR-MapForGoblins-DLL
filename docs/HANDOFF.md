@@ -75,8 +75,11 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 ## Open / next items
 
 - **Long-horizon vision bets — tracked in `docs/runtime_modding_framework_vision.md` "Future directions"
-  (2026-07-03):** (1) World Virtualization (runtime switching between overhauls without reinstall —
-  bundle-over-shared-base is the tractable slice; full overhaul-swap needs regulation/VFS virtualization),
+  (2026-07-03):** (1) World Virtualization — a FRAMEWORK feature: the framework holds N of its OWN worlds (each a data
+  BUNDLE of param overrides + custom items + names + map/loot edits + flags + save context) and swaps the
+  active one live over one shared base. NOT third-party-overhaul interop (the Convergence⟷ERR line is
+  only an analogy). Missing = a bundle format + activation (reset-to-base + apply + `refresh_markers`) +
+  per-world sidecar save context. Shares the primitives with #2,
   (2) In-Game World Editor (ImGui over the runtime primitives — the live-edit loop already EXISTS:
   `param_setf`/`param_clone`/`loot_at`/repoint/`lotItemId01`/`refresh_markers`; the editor is the panel
   wiring), (3) 3D model variants + reuse across worlds (asset/MSB frontier — needs an MSB-write path that

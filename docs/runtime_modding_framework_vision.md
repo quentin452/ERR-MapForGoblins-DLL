@@ -113,18 +113,25 @@ improvements (see that note).
 Three directional bets raised by the user. Not scoped plans — captured so they aren't lost. Each is
 connected to what already exists so the on-ramp is visible.
 
-### 1. World Virtualization — runtime switching between "sets of mods"
-Break the uninstall/reinstall round-trip a player suffers to move between overhauls (e.g. The
-Convergence ⟷ ELDEN RING Reforged). Vision: a "world" = a runtime-applied DATA BUNDLE (param overrides
-+ custom items + FMG names + map edits + flags), layered over the base game and swappable live, without
-touching the install.
-- **Already on the ramp:** regulation.bin-free param overrides (`param_overrides.ini`), the
-  `custom_items.toml` author surface, the sidecar save-clean (`shadow_sidecar_save_plan.md`) that keeps
-  each world's state out of the vanilla `.sl2`, and `framework-regulation-agnostic-decision`.
-- **Hard part:** overhauls ship their OWN `regulation.bin` (Convergence isn't just param deltas — new
-  rows, EMEVD, ESD, assets). True "no reinstall" needs either restricting to bundles that layer over ONE
-  shared base, or virtualizing `regulation.bin`/the mod VFS itself (me3/UXM-level). A bundle over a
-  shared base is the tractable first slice; full overhaul-swapping is a much larger VFS bet.
+### 1. World Virtualization — a FRAMEWORK feature (not existing-mod interop)
+**Scope (clarified 2026-07-03): this is about the FRAMEWORK's OWN worlds, not swapping third-party
+overhauls.** A "world" = a DATA BUNDLE authored WITH the framework (param overrides + custom items + FMG
+names + map/loot edits + flags + its own save context), all applied at RUNTIME over one shared base
+game. Virtualization = the framework holds N such worlds and switches the ACTIVE one live — no reinstall,
+no regulation.bin swap, no touching the install. (The "Convergence ⟷ ERR" line is only an ANALOGY for
+the user-facing benefit — the framework does NOT need to ingest an overhaul's regulation.bin; that
+external-interop problem is a separate, much larger VFS bet and explicitly out of scope here.)
+- **Directly on the ramp — the pieces mostly EXIST:** regulation-free param overrides
+  (`param_overrides.ini`), the `custom_items.toml` author surface, live map edits + `refresh_markers`,
+  and the sidecar save-clean (`shadow_sidecar_save_plan.md`) that keeps each world's state out of the
+  vanilla `.sl2`. A world is just a grouping of these authored artifacts.
+- **What's actually missing (the real work):** (a) a WORLD BUNDLE format grouping the params/items/
+  names/map-edits/flags of one world; (b) an ACTIVATION step that resets to base then applies the active
+  bundle (params reload from regulation each boot, so "reset to base" is cheap; the live overrides just
+  need to be re-driven) + a `refresh_markers`; (c) SAVE-CONTEXT switching so each world has its own
+  sidecar (`.mfg`) state and they don't cross-contaminate. Shares almost everything with #2 (the editor
+  authors a world; virtualization stores + swaps worlds). This is a tractable framework feature, not a
+  VFS research project.
 
 ### 2. In-Game World Editor (ImGui, param-based)
 An ImGui frontend over the runtime primitives — edit params/items/loot/markers live and SEE it, no
