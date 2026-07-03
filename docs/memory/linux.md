@@ -9,6 +9,11 @@ for Windows. Its limits are runtime RE (no live game/debugger here) and Oodle-on
   `clang-cl-xwin.cmake`. Key flags: `/arch:AVX2`, `/DFMT_CONSTEVAL=`, `CMAKE_POLICY_VERSION_MINIMUM=3.5`,
   case-exact `Xinput.lib` symlink. → `tooling/mapforgoblins-linux-build.md`, `tooling/build-toolchain-clang-xwin.md`
 - Live DLL path: `<ERR_ROOT>/dll/offline/MapForGoblins.dll` (no hot-reload — restart ERR).
+- **Deploy ATOMICALLY while the game runs** (user-flagged 2026-07-03): a plain `cp` over the live DLL
+  can leave a partial/half-written file that crashes on the next launch. Copy to `MapForGoblins.dll.tmp`
+  then `mv -f` into place (mv is atomic on the same FS → launcher sees old-complete or new-complete,
+  never partial) and verify `md5sum src == dst`. The new DLL only takes effect on ERR restart anyway
+  (no hot-reload in the single-DLL build).
 - **Builds/deploys MUST run sandbox-disabled**, or a copy-on-write overlay ships a stale DLL.
 - ninja can falsely report "no work to do" after a `git revert` — touch the source and verify the md5.
 
