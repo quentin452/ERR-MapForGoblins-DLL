@@ -50,9 +50,16 @@ without regulation.bin", shippable as a rebalance mod, and the substrate for ite
   copied + game survives live goods lookups. Third framework primitive; `param_clone_row` is the
   custom-item basis (clone template → `param_set_field` the clone). Deeper save-load-inventory check
   shares the (already-proven) TutorialParam wrapper code.
+- **Gap C DEFINE half DONE 2026-07-03** (`plans/custom_item_end_to_end_plan.md`): composed the 3
+  primitives into ONE custom goods item (id 90000001 = clone of 100 + sortGroupId=101 + name "Ashen
+  Custom Flask"), all read back correct, game alive, ZERO save risk (params/FMG reload each boot). The
+  whole item minus the grant. **GRANT half GATED:** needs RE of the inventory accessor `inv`
+  (AddItemFunc is observer-hooked read-only, `goblin_debug_events.cpp:344`; convention known, but the
+  `inv` ptr / goods-id encoding are unRE'd) + should wait for the sidecar so the `.sl2` stays clean
+  (Gap H hard contract otherwise). Order: sidecar → grant. Author surface later = `custom_items.json`.
 - **NEXT (optional):** F1 panel to edit overrides live; more param registry fields (each = one AOB);
-  Slice-2 tier-2 (ship SOTE Paramdex for arbitrary fields). Then the last big gap: **Gap C**
-  (item grants — the reserved high-ID range +
+  Slice-2 tier-2 (ship SOTE Paramdex for arbitrary fields). Gap C GRANT half needs first: **the
+  reserved high-ID range +
   "DLL-required-at-load" policy — **Gap H now FROZEN 2026-07-03**,
   `docs/memory/process/reserved-id-and-load-contract.md`: reserved-ID bands + collision-check +
   load-contract principles LOCKED, numeric bands finalize at Gap C; sidecar save downgrades the

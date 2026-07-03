@@ -134,7 +134,9 @@ Détails :
    wrapper id→index align-16 systématique ; stride+type lus de la table live ; collision-check Gap H).
    Vérifié sur EquipParamGoods (id-looked-up) : 2 rows ajoutées, données copiées, jeu SURVIT aux
    lookups goods live. RPC `param_clone`. Commit `623e66f`. Le "mass-add non prouvé" est LEVÉ.
-4. **C (item bout-en-bout)** : APRÈS H — **H est FIGÉ 2026-07-03**
+4. **C (item bout-en-bout)** : **moitié DÉFINE FAITE + vérifiée in-game 2026-07-03**
+   (`plans/custom_item_end_to_end_plan.md` : goods 90000001 = clone+stat+name composé des 3 primitives,
+   save-safe) ; moitié GRANT bloquée (RE de l'accesseur `inv` + sidecar). APRÈS H — **H est FIGÉ 2026-07-03**
    (`docs/memory/process/reserved-id-and-load-contract.md` : bandes d'IDs réservées + collision-check +
    contrat DLL-au-load ; bandes numériques à finaliser au démarrage de C via un survey live) ; prototyper
    sur UN item.
