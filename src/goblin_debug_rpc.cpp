@@ -522,7 +522,11 @@ namespace goblin::debug_rpc
                     return out;
                 }
                 if (sub == "clear") { goblin::vworld::clear(); return "ok vworld clear"; }
-                return "err usage: vworld create|marker|active|list|clear";
+                if (sub == "save")
+                    return goblin::vworld::save_default() ? "ok vworld save" : "err vworld save failed";
+                if (sub == "load")
+                    return "ok vworld load worlds=" + std::to_string(goblin::vworld::load_default());
+                return "err usage: vworld create|marker|active|list|save|load|clear";
             }
             if (cmd == "open_f1")
             {

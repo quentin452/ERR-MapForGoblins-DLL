@@ -11,6 +11,7 @@
 // Thread-safe: the RPC/host mutates, the render (present) thread reads via get_world() snapshots.
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -46,4 +47,14 @@ bool get_world(int id, World &out);
 std::vector<std::pair<int, std::string>> list();
 // Remove all custom worlds + reset active to 0 (base ER).
 void clear();
+
+// ── Persistence (bundle-backed, TOML — slice C3) ──────────────────────────────────────────────────
+// Records `mod_folder` so the no-arg default_path()/save_default()/load_boot() work later.
+void set_folder(const std::filesystem::path &mod_folder);
+std::filesystem::path default_path();                 // <mod_folder>/virtual_worlds.toml
+bool save(const std::filesystem::path &path);         // write the registry (+ active id) to a TOML file
+bool load(const std::filesystem::path &path);         // parse a TOML file INTO the registry (REPLACES it)
+bool save_default();                                  // save() to default_path()
+int load_default();                                   // load default_path() if present (folder already set)
+int load_boot(const std::filesystem::path &mod_folder);  // set_folder + load default if present; #worlds
 } // namespace goblin::vworld

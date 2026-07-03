@@ -1,6 +1,6 @@
 ---
 name: toml-parse-file-proton-bug
-description: toml::parse_file returns EMPTY under Proton ONLY in the exceptions-ON config; TOML_EXCEPTIONS=0 works. Fix = read file + toml::parse(string), or define TOML_EXCEPTIONS 0
+description: toml++ parse returns EMPTY under Proton in the exceptions-ON config (BOTH parse_file AND parse(string)); the ONLY working fix is #define TOML_EXCEPTIONS 0. world_bundle's parse(string) path is latently broken.
 metadata:
   node_type: memory
   type: bugs
@@ -15,9 +15,22 @@ before including toml++ parses an on-disk file with `parse_file` **correctly** u
 `applied 1 custom item(s)`, `goods_count n=1`). So custom_items is FINE; do NOT "fix" it. The bug was
 observed only in `goblin_world_bundle.cpp`, which used the DEFAULT (exceptions-ON) config.
 
-**Two working fixes** (world_bundle uses the first): (1) read the file via `std::ifstream` +
-`toml::parse(std::string)` (robust regardless of config); (2) `#define TOML_EXCEPTIONS 0` before the
-toml++ include (matches custom_items). Prefer (1) — it doesn't depend on the exceptions macro.
+**★ CORRECTION (2026-07-04, virtual_worlds C3):** the exceptions-ON config is broken for **BOTH**
+`parse_file` **AND** `toml::parse(std::string)` — `goblin_virtual_world.cpp` used the exact
+"ifstream + parse(string)" recipe below and its cold-boot load returned an **EMPTY** table (0 worlds), no
+throw. Switching that TU to `#define TOML_EXCEPTIONS 0` + `parse_file` fixed it (E2E: save boot-1 → cold
+boot → boot-load restored the world + 5 markers). So **the ONLY reliable fix is `#define TOML_EXCEPTIONS 0`**
+(the custom_items config); the parse(string) mitigation does NOT work.
+
+**⚠ world_bundle is LATENTLY SUSPECT:** it uses exceptions-ON + parse(string) (the now-disproven fix), so
+its LOAD-from-disk almost certainly returns empty under Proton too. `test_world_editor.py` 24/24 passed
+only because it never exercises a real cold-boot reload (it saves + applies the IN-MEMORY bundle in one
+session). Migrate `goblin_world_bundle.cpp` to `#define TOML_EXCEPTIONS 0` + `parse_file` (like
+custom_items / virtual_world) before relying on its on-disk load; add a genuine save→reboot→load test.
+
+Historical (pre-correction) note — the two once-believed fixes: (1) `std::ifstream` +
+`toml::parse(std::string)` — **DISPROVEN, also returns empty in exceptions-ON**; (2) `#define
+TOML_EXCEPTIONS 0` before the toml++ include (matches custom_items) — **the only one that works.**
 
 **Symptom (2026-07-03, World Editor slice 7 world_bundle):** `toml::parse_file(path)` inside the DLL
 running under Proton returned an **empty** `toml::table` (`root.size()==0`) for a file that exists and is

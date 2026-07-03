@@ -108,9 +108,16 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
     its own coord space, framework owns ids/placement). RPC `vworld create|marker|active|list|clear`.
     Live-verified: created DevWorld, added 11 markers (a 3×3 grid + diagonals), `vworld active 1` → the vmap
     drew exactly those 11 in the world's own space (centre 1000,1000), switchable back to Base ER.
-    **Remaining C:** C2 = tag EXISTING mod markers to a world (synthetic group ≥100 in `marker_layer.hpp`);
-    C3 = bundle persistence (extend `goblin_world_bundle` to save/load worlds as TOML). Per-world
-    origin/scale projection is wired (fields) but identity in C1.
+  - **✅ SLICE C3 DONE 2026-07-04 — bundle persistence.** `goblin_virtual_world` now saves/loads the
+    registry (+ active id) as `<mod>/virtual_worlds.toml`; boot-loaded via `dllmain init_virtual_worlds`
+    (`vworld::load_boot`) right after `world_bundle`. RPC `vworld save|load`. **E2E-verified across TWO cold
+    boots:** boot-1 create "Persisted" + 5 markers + `vworld save` → boot-2 boot-load restored it (active=1,
+    5 markers rendered from disk). **⚠ Required the TOML fix (`#define TOML_EXCEPTIONS 0` + `parse_file`) —
+    the exceptions-ON `parse(string)` path returned an EMPTY table (0 worlds) under Proton; see the corrected
+    `docs/memory/tooling/toml-parse-file-proton-bug.md`. This also flags `goblin_world_bundle` as latently
+    broken (same disproven pattern) — migrate it + add a reboot test (new open item below).**
+    **Remaining C:** C2 = tag EXISTING mod markers to a world (synthetic group ≥100 in `marker_layer.hpp`).
+    Per-world origin/scale projection is wired (fields) but identity so far.
   - **SLICE D: open with "M"** — production UX: the virtual page is what the game MAP KEY shows when the
     active world is a custom world (hook the RE'd `worldmap_open()`; suppress/overlay the native Scaleform
     map). The `vmap` RPC + F1 Dev toggle stay as the DEV harness.
@@ -120,6 +127,12 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
     (ER's dimension mechanism); active world = player mapId (walkable) or explicit bundle (marker); ER's map
     is BAKED `WorldMapTile` DDS sheets (overworld/UG/DLC = separate dimensions), so custom worlds supply
     their own image/grid. Walkable worlds also need the ADD-geom frontier (pivot 2, Windows RE).
+- **`goblin_world_bundle` TOML load likely BROKEN under Proton — not verified, migrate.** It uses the
+  exceptions-ON `ifstream+parse(string)` path that virtual_worlds C3 just DISPROVEN (returns an empty table
+  under Proton). `test_world_editor.py` 24/24 never exercises a real cold-boot reload (saves+applies the
+  in-memory bundle in one session), so the on-disk load is untested. Fix: switch `goblin_world_bundle.cpp`
+  to `#define TOML_EXCEPTIONS 0` + `toml::parse_file` (like `custom_items` / `virtual_world`) and add a
+  genuine save→reboot→load test. See `docs/memory/tooling/toml-parse-file-proton-bug.md`.
 - **F1 category list → GRID LAYOUT (followup, not started).** The Markers-tab category list is a checkbox
   tree; with many custom worlds/categories it overflows into a long scroll. Replace with a GRID of
   icon-tiles (the category icon we just added as the tile, toggle visibility on click, checkmark/dim

@@ -25,6 +25,7 @@
 #include "goblin_sidecar.hpp"
 #include "goblin_custom_items.hpp"
 #include "goblin_world_bundle.hpp"
+#include "goblin_virtual_world.hpp"
 #include "goblin_inventory.hpp"
 #include "goblin_warp.hpp"
 #include "goblin_logic.hpp"
@@ -184,6 +185,9 @@ static void init_custom_items()     { goblin::custom_items::apply(g_mod_folder);
 // World bundle (vision #1): re-apply the saved World Editor edits (clones + field sets). After
 // custom_items (params ready) and before the first marker build, so the initial resolve sees them.
 static void init_world_bundle()     { goblin::world_bundle::apply_boot(g_mod_folder); }
+// Virtual worlds (vision #1): load the saved mod-owned custom map pages (virtual_worlds.toml) so they
+// persist across sessions and show on the virtual map (panel_virtual_map). Data-only; no engine writes.
+static void init_virtual_worlds()   { goblin::vworld::load_boot(g_mod_folder); }
 
 static void setup_mod()
 {
@@ -305,6 +309,7 @@ static void setup_mod()
         // declared item. After setup_messages (name inject needs the FMG repo) + params ready.
         safe_init_step(&init_custom_items,    "custom_items::apply");
         safe_init_step(&init_world_bundle,    "world_bundle::apply_boot");
+        safe_init_step(&init_virtual_worlds,  "vworld::load_boot");
         // Queue the live-refresh hook (FUN_140a82a80) — kept for the native-pin
         // suppression path; no-op until enabled.
         safe_init_step(&init_icon_tex_probe,  "install_icon_texture_probe");
