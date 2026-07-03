@@ -402,7 +402,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe"
+                       " | mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -1011,6 +1011,27 @@ namespace goblin::debug_rpc
                 auto r = goblin::geom_move::spawn_probe();
                 char b[224];
                 std::snprintf(b, sizeof(b), "%s spawn_probe %s", r.ok ? "ok" : "err", r.err);
+                return std::string(b);
+            }
+            // spawn_clone <dx> <dy> <dz> [go] — ADD a new geom placement (the last MSB-write primitive):
+            // clone a live dynamic geom via the engine's Dynamic ctor + a freshly-built pose descriptor,
+            // offset by (dx,dy,dz). Without 'go' it BUILDS the descriptor only (no ctor — safe recon).
+            if (cmd == "spawn_clone")
+            {
+                std::string xs = next_token(rest), ys = next_token(rest), zs = next_token(rest);
+                std::string g = next_token(rest);
+                float dx = 0, dy = 0, dz = 0;
+                try { dx = std::stof(xs); dy = std::stof(ys); dz = std::stof(zs); }
+                catch (...) { return "err usage: spawn_clone <dx> <dy> <dz> [go]"; }
+                bool go = (g == "go" || g == "1");
+                auto r = goblin::geom_move::spawn_clone(dx, dy, dz, go);
+                char b[256];
+                if (!r.ok) { std::snprintf(b, sizeof(b), "err spawn_clone: %s", r.err); return std::string(b); }
+                if (!go) { std::snprintf(b, sizeof(b), "ok spawn_clone %s", r.err); return std::string(b); }
+                std::snprintf(b, sizeof(b),
+                              "ok spawn_clone inst=%#llx vt=%#llx src=(%.1f,%.1f,%.1f) clone=(%.1f,%.1f,%.1f)",
+                              (unsigned long long)r.inst, (unsigned long long)r.vtable, r.before[0],
+                              r.before[1], r.before[2], r.moved[0], r.moved[1], r.moved[2]);
                 return std::string(b);
             }
             // geom_stats — count loaded geom instances + class histogram (why some objects moved, others

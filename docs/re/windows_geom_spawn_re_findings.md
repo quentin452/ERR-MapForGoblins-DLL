@@ -191,6 +191,31 @@ synthesize a minimal wrapper from a 4x4. Until one is settled, **do NOT fire the
 bytes.** Everything else (srcType, param_3=BlockData, self-alloc 0x5b0, skip-+0x288, post-SetWorldMatrix)
 is ready.
 
+## ★★ LIVE spawn_clone attempt (Linux/Proton, 2026-07-03) — the BUILDER call HANGS the game (new blocker)
+`spawn_clone` is now CODED (`goblin::geom_move::spawn_clone`, `spawn_clone <dx dy dz> [go]` RPC): staged so
+`go=false` **only builds** the pose descriptor (calls `thunk_FUN_144cbdae7`) and dumps it — no ctor. Builder
+args resolved live (`spawn_probe` reading (a), all valid): **`resource = *(block+8)` = 0x18541c9c0;
+`partsList = *(res+0x48)` = 0x185670080 (real heap ptr — Wine heap sits BELOW the image base, so a
+"> base" plausibility check is inverted); `arg4 = *(res+0x58)` = 0.** Block layout confirmed: `block+0x00`
+= block tag, `block+0x08` = resource ptr, `block+0x10..0x80` = the `0xFF` sentinel band (so the alt reading
+`*(block+0x50)`/`*(block+0x60)` is garbage — reading (a) is correct). Resource head: `res+0x00` = vtable
+(er+0xa7d4b0), `res+0x08` = block tag, `res+0x48` = partsList, `res+0x58` = 0.
+
+**Result: calling `thunk_FUN_144cbdae7(&param4, block, partsList, 0)` FROZE the game** — "no frames
+presenting", no `param4` dump emitted (the builder never returned), RPC thread stuck. A wrong POINTER would
+AV (SEH-caught); a **hang** means either an unbounded loop (arg4/partsList not what it expects) or it takes
+a streaming lock the present thread needs → deadlock. The move primitive proved the RPC thread CAN vcall the
+engine (`move_asset`), so thread-per-se isn't it; the builder is just **not safe to call standalone with
+these args.** This is exactly the "which part index does the standalone builder resolve / is it safe" open
+sub-Q from 9081c7c8 — and it can't be answered by blind live calls (each hangs the game).
+
+**⇒ NEW STATIC BLOCKER (Ghidra): decomp `thunk_FUN_144cbdae7` (er+0x6c3910 → er+0x144cbdae7) fully** —
+see `windows_geom_spawn_builder_re_prompt.md`. Need: what are the 4 args (esp. **arg4** — index? flags?
+count? — and where the part is selected FROM), does it LOOP (over partsList, on what terminator) or take a
+LOCK, and can it run off the streaming thread. Until that lands, the ctor path (srcType/param_3=BlockData/
+0x5b0/skip-+0x288/SetWorldMatrix) is ALL ready and correct — only the `param_4` builder call is unusable.
+Everything up to the builder is live-verified; `spawn_clone` is committed but gated (won't fire on its own).
+
 ## Anchors
 - `CSWorldGeomDynamicIns` vt er+0x2a84208 (ctors er+0x6ba0f0/0x6b9880); `CSWorldGeomIns` vt er+0x2a84cb0.
 - `CSMsbPartsGeom` vt er+0x2ba6738 — the part sub-object embedded at **inst+0x30** (live-confirmed).

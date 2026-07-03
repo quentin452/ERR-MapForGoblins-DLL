@@ -62,4 +62,10 @@ namespace goblin::geom_move
     // room, dynamic pool) and confirm the live-verify checklist WITHOUT mutating anything. Logs to
     // [SPAWNPROBE]; .err = summary (PROBE-OK / PROBE-WARN + the individual checks). Behind `spawn_probe` RPC.
     MoveResult spawn_probe();
+
+    // ADD a new geom placement (spawn_clone) — clone a live dynamic geom via the engine's Dynamic ctor
+    // + a freshly-built pose descriptor, offset by (dx,dy,dz). STAGED: go=false builds+dumps the
+    // descriptor only (no ctor); go=true fires the ctor + SetWorldMatrix offset. Dev/RE probe (throwaway
+    // map — the clone leaks on tile-unload). Behind `spawn_clone <dx> <dy> <dz> [go]` RPC.
+    MoveResult spawn_clone(float dx, float dy, float dz, bool go);
 }

@@ -184,8 +184,16 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   WGM/render/physics. Open sub-Qs (a live probe answers): does a cloned `CSMsbPartsGeom` satisfy the ctor's
   reads; is the `+0x288` push enough for render+collision or is a pool index assumed elsewhere. This is a
   multi-step build, NOT a quick primitive like move.
-  **⇒ RESUME (next session): STATIC done + LIVE RECON done + move-init risk SOLVED (9081c7c8). NOTHING
-  gates the ctor call now — CODE spawn_clone. `docs/re/windows_geom_spawn_re_findings.md`.**
+  **⇒ RESUME (next session): `spawn_clone` CODED + live-tried — the pose-descriptor BUILDER
+  (`thunk_FUN_144cbdae7`) HANGS the game called standalone. NEW Ghidra blocker: decomp the builder
+  (`docs/re/windows_geom_spawn_builder_re_prompt.md`). `docs/re/windows_geom_spawn_re_findings.md`.**
+  spawn_clone (`spawn_clone <dx dy dz> [go]` RPC) is staged: `go=false` builds+dumps the descriptor only.
+  Builder args live-resolved + valid (`resource=*(block+8)`, `partsList=*(res+0x48)`, `arg4=*(res+0x58)`=0),
+  but calling `thunk_FUN_144cbdae7(&out, block, partsList, 0)` FROZE the game ("no frames", builder never
+  returned) → a hang = unbounded loop or a streaming lock, NOT an SEH-catchable fault. Can't be resolved by
+  blind live calls (each hangs). Everything past the builder (ctor srcType/param_3=BlockData/0x5b0/skip-+0x288/
+  SetWorldMatrix) is coded + correct; ONLY the `param_4` builder call is unusable. → need the builder's arg4
+  meaning + loop/lock/part-selection semantics from Ghidra, then the live spawn works.
   **Live recon (2026-07-03, `spawn_probe` + `test_spawn_probe.py`, fresh DLL) confirmed srcType + corrected
   the layout:** on a real dynamic instance (`AEG004_903`) — srcType@+0x08 `0x3c1412016ff00000` (geom tag ✓,
   hi==BlockData tag ✓; masks g0=0xff/g1=0x14/g2=0xfffff); **param_3 = the BlockData** (inst+0x10, NOT a

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -34,6 +35,24 @@ namespace
     {
         __try { fn(inst, mat); return true; }
         __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    }
+
+    // ADD/spawn_clone (docs/re/windows_geom_spawn_re_findings.md). The world-transform builder
+    // (thunk_FUN_144cbdae7, er+0x6c3910) writes a fresh OWNED ~0x188-byte pose descriptor into `out`
+    // from (BlockData, partsList, arg4) — REBUILD it, never alias the source (9081c7c8: the ctor
+    // move-init would gut a source-aliased descriptor). The Dynamic ctor (FUN_1406b9880, er+0x6b9880)
+    // placement-constructs a CSWorldGeomDynamicIns into `self` from (srcType, BlockData, transform).
+    using BuilderFn = void(__fastcall *)(void *out, void *blockData, void *partsList, uint64_t arg4);
+    using DynCtorFn = void *(__fastcall *)(void *self, uint64_t srcType, void *blockData, void *transform);
+    __declspec(noinline) bool call_builder(BuilderFn fn, void *out, void *blk, void *pl, uint64_t a4)
+    {
+        __try { fn(out, blk, pl, a4); return true; }
+        __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    }
+    __declspec(noinline) void *call_dynctor(DynCtorFn fn, void *self, uint64_t st, void *blk, void *tr)
+    {
+        __try { return fn(self, st, blk, tr); }
+        __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
     }
 
     bool rpm(const void *addr, void *out, size_t n)
@@ -440,6 +459,34 @@ namespace goblin::geom_move
         uint64_t vec_n = (vb_end > vb_begin) ? (vb_end - vb_begin) / 8 : 0;
         uint64_t vec_room = (vb_cap > vb_end) ? (vb_cap - vb_end) / 8 : 0;
 
+        // Builder-arg recon (for thunk_FUN_144cbdae7(out, BlockData, partsList, arg4)): the driver reads
+        // partsList/arg4 off "BlockData+8 = the loaded MSB resource". Two candidate readings — resolve
+        // which is valid by dumping both: (a) resource=*(block+8), partsList=*(res+0x48), arg4=*(res+0x58)
+        // vs (b) partsList=*(block+0x50), arg4=*(block+0x60). Dump block head + the resource head.
+        uint64_t res_ptr = 0, a_partsList = 0, a_arg4 = 0, b_partsList = 0, b_arg4 = 0;
+        if (block)
+        {
+            rpm((char *)block + 0x08, &res_ptr, 8);           // candidate resource pointer
+            rpm((char *)block + 0x50, &b_partsList, 8);       // reading (b)
+            rpm((char *)block + 0x60, &b_arg4, 8);
+            if (res_ptr)
+            {
+                rpm((char *)res_ptr + 0x48, &a_partsList, 8); // reading (a)
+                rpm((char *)res_ptr + 0x58, &a_arg4, 8);
+            }
+            uint8_t bh[0x80] = {};
+            if (rpm(block, bh, sizeof(bh))) dump_hex("block00", bh, sizeof(bh));
+            if (res_ptr)
+            {
+                uint8_t rh[0x70] = {};
+                if (rpm((void *)res_ptr, rh, sizeof(rh))) dump_hex("res00", rh, sizeof(rh));
+            }
+        }
+        auto plausible = [&](uint64_t p) { return p > base && p < base + 0x800000000ull; };  // heap-ish ptr
+        spdlog::info("[SPAWNPROBE] builder args: resPtr={:#x} | (a) partsList={:#x}[{}] arg4={:#x} | "
+                     "(b) partsList={:#x}[{}] arg4={:#x}", res_ptr, a_partsList, plausible(a_partsList),
+                     a_arg4, b_partsList, plausible(b_partsList), b_arg4);
+
         spdlog::info("[SPAWNPROBE] inst={:#x} vt={:#x} block={:#x}", (uint64_t)inst, vt, (uint64_t)block);
         spdlog::info("[SPAWNPROBE] srcType@+0x08={:#018x} lo={:#010x} hi={:#010x} tag_ok={} hi==blockTag({:#x})={}",
                      srcType, srclo, srchi, tag_ok, block_tag, hi_matches_block);
@@ -459,6 +506,104 @@ namespace goblin::geom_move
                       (unsigned)rec18b, (uint32_t)reg_cursor, (uint32_t)reg_cap, reg_has_room,
                       (unsigned long long)vec_room);
         r.ok = true;
+        return r;
+    }
+
+    // ADD a new geom placement (spawn_clone) — the last MSB-write primitive. Clones a live dynamic geom
+    // by driving the engine's own Dynamic ctor (FUN_1406b9880) with a FRESH pose descriptor built by the
+    // engine's own builder (thunk_FUN_144cbdae7), then SetWorldMatrix-offsets the clone by (dx,dy,dz).
+    // Args resolved live (spawn_probe, reading (a)): resource=*(block+8), partsList=*(res+0x48),
+    // arg4=*(res+0x58). STAGED: go=false builds+dumps the descriptor only (no ctor, safe-ish); go=true
+    // fires the ctor + move. Dev/RE probe on a throwaway map — the clone is NOT pushed into the block's
+    // +0x288 list (ctor self-registers into WGM/render), so it leaks on tile-unload; kill before an area
+    // change. Reuses MoveResult: .inst=new instance, .before=source pos, .moved=clone pos after the offset.
+    MoveResult spawn_clone(float dx, float dy, float dz, bool go)
+    {
+        MoveResult r;
+        uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
+        if (!base) { std::snprintf(r.err, sizeof(r.err), "eldenring.exe base not found"); return r; }
+
+        void *block = nullptr;
+        void *src = goblin::collected::first_live_geom_with_block(&block);
+        if (!src || !block) { std::snprintf(r.err, sizeof(r.err), "no live geom instance/block"); return r; }
+
+        uint64_t srcType = 0;
+        void *res = nullptr;
+        rpm((char *)src + 0x08, &srcType, 8);   // reuse the source's packed FieldIns id
+        rpm((char *)block + 0x08, &res, 8);      // BlockData+8 = the loaded MSB resource
+        if (!res) { std::snprintf(r.err, sizeof(r.err), "block resource ptr null"); return r; }
+        void *partsList = nullptr;
+        uint64_t arg4 = 0;
+        rpm((char *)res + 0x48, &partsList, 8);  // reading (a): *(res+0x48)
+        rpm((char *)res + 0x58, &arg4, 8);        // reading (a): *(res+0x58)
+        if (!partsList) { std::snprintf(r.err, sizeof(r.err), "partsList (res+0x48) null"); return r; }
+
+        // Source position (reference + the base for the offset move).
+        float scache[16] = {};
+        if (rpm((char *)src + 0x220, scache, sizeof(scache)) && finite3(scache))
+        {
+            r.before[0] = scache[12]; r.before[1] = scache[13]; r.before[2] = scache[14];
+        }
+
+        // Build a FRESH, OWNED pose descriptor (never alias the source — the ctor move-init would gut it).
+        alignas(16) uint8_t param4[0x200] = {};
+        auto build = (BuilderFn)(base + 0x6c3910);
+        if (!call_builder(build, param4, block, partsList, arg4))
+        {
+            std::snprintf(r.err, sizeof(r.err), "transform builder faulted (thunk_FUN_144cbdae7)");
+            return r;
+        }
+        dump_hex("param4", param4, 0x60);  // inspect the built descriptor (transform region)
+
+        if (!go)
+        {
+            r.ok = true;
+            std::snprintf(r.err, sizeof(r.err),
+                          "BUILT-ONLY srcType=%#llx block=%#llx partsList=%#llx arg4=%#llx "
+                          "(param4 -> [GEOMDUMP]; pass 'go' to spawn)",
+                          (unsigned long long)srcType, (unsigned long long)(uint64_t)block,
+                          (unsigned long long)(uint64_t)partsList, (unsigned long long)arg4);
+            return r;
+        }
+
+        // Allocate the instance ourselves (dynamic pool is full) and placement-construct into it.
+        void *mem = std::calloc(1, 0x5b0);
+        if (!mem) { std::snprintf(r.err, sizeof(r.err), "0x5b0 alloc failed"); return r; }
+        auto ctor = (DynCtorFn)(base + 0x6b9880);
+        void *ni = call_dynctor(ctor, mem, srcType, block, param4);
+        if (!ni)
+        {
+            std::free(mem);
+            std::snprintf(r.err, sizeof(r.err), "Dynamic ctor faulted (FUN_1406b9880)");
+            return r;
+        }
+        r.inst = (uint64_t)ni;
+        uint64_t nvt = 0;
+        rpm(ni, &nvt, 8);
+        r.vtable = nvt;
+        if (nvt < base || nvt >= base + 0x10000000ull)
+        {
+            std::snprintf(r.err, sizeof(r.err), "ctor returned no valid vtable (vt=%#llx) — not moving",
+                          (unsigned long long)nvt);
+            return r;  // leak mem; do NOT vcall an unconstructed object
+        }
+
+        // Offset the clone by (dx,dy,dz) via the proven setter (vtable[0xd0]).
+        void **vtbl = *(void ***)ni;
+        SetterFn setter = (SetterFn)vtbl[SETTER_VSLOT];
+        float m[16];
+        memcpy(m, scache, sizeof(m));
+        m[12] = r.before[0] + dx; m[13] = r.before[1] + dy; m[14] = r.before[2] + dz;
+        call_setter(setter, ni, m);
+        float ncache[16] = {};
+        if (rpm((char *)ni + 0x220, ncache, sizeof(ncache)))
+        {
+            r.moved[0] = ncache[12]; r.moved[1] = ncache[13]; r.moved[2] = ncache[14];
+        }
+        r.ok = true;
+        spdlog::info("[SPAWNCLONE] SPAWNED inst={:#x} vt={:#x} src=({:.1f},{:.1f},{:.1f}) "
+                     "clone=({:.1f},{:.1f},{:.1f})", r.inst, nvt, r.before[0], r.before[1], r.before[2],
+                     r.moved[0], r.moved[1], r.moved[2]);
         return r;
     }
 
