@@ -132,6 +132,23 @@ partial win; (B) is quick but frozen. Do the `esd_dump` rebuild + `--hist` RE FI
 confirm the shop command + prove the join on one merchant, THEN pick A/B/C. This is the real RE spike;
 do only if the user wants pins.
 
+**RE SPIKE DONE 2026-07-03 — cost ESCALATED, lean toward (C) or shelve.** Rebuilt the ESD reader as
+`tools/esd_shop/` (Andre.SoulsFormats, dotnet 10 — works on the ERR `talkesdbnd.dcx`, histogram +
+command dump). Findings on Roundtable `m11_10`:
+- The reader works (banks confirmed: 1 = talk, 5 = text, 6 = ESD function calls — matches
+  `[[grace-menu-esd-spike]]`), BUT **ESD command ARGUMENTS are EzState BYTECODE EXPRESSIONS, not plain
+  int32** (decoded values are `0x7FFFFFA7`-style sentinels + recurring EzState constants 386/130). So
+  reading the command is easy; extracting its shop-id RANGE operands needs an **EzState bytecode
+  evaluator** — new infra on TOP of the ESD reader, needed by BOTH (A) and (B).
+- Net cost for real pins now = ESD reader + **EzState evaluator** + identify the OpenRegularShop talk
+  command id + shopRange→TalkID→NPC-entity→`entity_world_pos` join. That is disproportionate for ONE
+  map-pin category (the plan's original Slice-2 "disproportionate" call now extends to the pins).
+- **Revised recommendation: (C) the runtime shop-open hook** (hook the game's shop-open fn, capture
+  (shopId, talking-NPC entity) live, pin progressively) — needs ZERO ESD/EzState work, is mod-agnostic,
+  and reuses `entity_world_pos`; accept "pins appear once you've met the merchant." OR **shelve pins**
+  and keep Slice 1's search (already shipped) as the merchant feature. Do NOT build A/B unless a real
+  need for full-static merchant pins justifies the EzState-evaluator infra.
+
 ## Acceptance (mod-agnostic test)
 
 On a DIFFERENT mod with different ShopLineupParam, Slice 1 still lists that mod's merchant stock as
