@@ -18,28 +18,30 @@ on Linux/Proton; spiderfy v1+v2, in-game pause, RPC input injection/HUD, NPC alt
 repro — see the Phase 4 sections below. Earlier same day: SINGLE-DLL migration + the 9 native-pin
 parity landmark categories in-game verified.)
 
-## Runtime modding framework — FIRST STEP scoped + prototyped (2026-07-03, branch `feat/param-override-loader`)
+## Runtime modding framework — FIRST STEP DONE (2026-07-03, branch `feat/param-override-loader`, NOT merged)
 
 Architecture audit answered the user's "what to do first for end-to-end modding without a
 regulation.bin". Pick: a **boot-time param-override loader** — editing a param FIELD in RAM is
-save-safe by construction (params reload from regulation.bin each boot), so it's the minimum viable
-"mod ER without regulation.bin", shippable as a rebalance mod, and the substrate for items/rows later.
-Full reasoning + slices: **`docs/plans/param_override_loader_plan.md`**.
+save-safe by construction (params reload from regulation.bin each boot), the minimum viable "mod ER
+without regulation.bin", shippable as a rebalance mod, and the substrate for items/rows later.
+**ALL 3 SLICES IMPLEMENTED + IN-GAME VERIFIED (ERR/Proton).** Full detail:
+**`docs/plans/param_override_loader_plan.md`** + changelog Added entry.
 
-- **Slice 1 PROTOTYPED (not merged):** `src/goblin_param_edit.{hpp,cpp}` — generic
-  `param_set_field(param, row_id, offset, FieldType, value)` + `param_get_field` read-back. Writes a
-  live param row via WriteProcessMemory (SEH-elision safe), reuses `from::params::get_param`
-  traversal + recovers the row extent for a bound check. Offset-addressed (Slice 2 = name-addressed
-  via `resolve_field_offset` / runtime paramdef). Added to CMake; **builds clean on Linux** (obj +
-  link OK, verified on the branch base). NOT yet: wired to a loader, exported over `overlay_api`, or
-  in-game tested.
-- **NEXT:** (a) in-game smoke test — call `param_set_field(L"EquipParamWeapon", id, off, F32, x)`
-  after param load, verify the game reflects it (RPC-drivable); (b) Slice 2 tier-1 (per-field AOB
-  offsets) so an override file can be authored by field NAME not raw offset; (c) Slice 3 boot
-  `param_overrides.json` loader behind a default-OFF ini cheat-gate.
-- **Parallel prereq to FREEZE (policy, not code):** reserved high-ID range + "DLL-required-at-load"
-  contract — gates Gap C (item grants → `.sl2` orphan-ID corruption). This loader does NOT need it
-  (edits no persisted state); decide it before any inject-into-inventory work.
+- **Slice 1+2** `src/goblin_param_edit.{hpp,cpp}`: `param_set_field`/`param_get_field` (offset) +
+  `param_{set,get}_field_by_name`/`field_is_known` (name-addressed via `resolve_field_offset` — no
+  paramdef in the exe, so read the compiled displacement live; version-proof + mod-agnostic). RPC
+  `param_get(f)`/`param_set(f)`. Registry seeded: goodsType/sortGroupId/AEG-lot/bonfire-textId1.
+- **Slice 3** `src/goblin_param_overrides.{hpp,cpp}`: reads `param_overrides.ini` (gate `[Param
+  Overrides] param_overrides`, default OFF), applies at the params-ready step in dllmain. Format
+  `label = Param:rowId:fieldName:value` (spec in the VALUE — mINI lowercases keys). Verified: boot
+  `2 applied, 1 skipped`, read-back sortGroupId=42/goodsType=7.
+- **Verify workflow learned:** a bg Claude job can't keep ER alive EXCEPT via a single FOREGROUND
+  blocking command (me3 as in-shell child, killed before return) — see
+  [[memory/tooling/mfg-rpc-driver-hardening]]. Params live at title (no save needed).
+- **NEXT (optional):** F1 panel to edit overrides live; more registry fields (each = one AOB);
+  Slice-2 tier-2 (ship SOTE Paramdex for arbitrary fields). Then the bigger gaps: **Gap D**
+  (`inject_fmg_entries`), **Gap B** (`param_add_rows`), **Gap C** (item grants — FREEZE the reserved
+  high-ID range + "DLL-required-at-load" policy FIRST; `.sl2` orphan-ID corruption otherwise).
 
 ## RESUME HERE (2026-07-02) — hot-reload Slice D IMPLEMENTED (`feat/overlay-hotreload-slice-d`), Windows in-game validation next
 
