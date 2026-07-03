@@ -919,7 +919,19 @@ resolved key would disambiguate "fundamentally iconId=0" from "a fixable lot-res
   (20 spikes, up to 24ms)** + `render.minimap` — RENDER-side, unrelated to read_wgm; higher-value
   target if the goal is "stop the felt lag". (Cosmetic nit still open: the spike-ratio display divides
   by a near-zero baseline for quiet timers — floor the avg when touching that code.)
-- **`present.overlay_total` spike — INSTRUMENTED 2026-07-03, awaiting a play session.** The dominant
+- **`present.overlay_total` spike — RESOLVED 2026-07-03: our overlay is NOT the lag (WONTFIX).** The
+  full clean-exit SESSION REPORT settled it: `present.overlay_total` = avg 0.45ms, **1.11% of wall**,
+  5 spikes/1048 frames. The newframe 28→22ms max localized (via the `present.nf_dx12`/`nf_win32`
+  split) to **`present.nf_dx12` max 19.5ms = a ONE-TIME cost** (count 1048, total 20ms ⇒ one 19.5ms
+  frame): `ImGui_ImplDX12_NewFrame` creating the font-atlas GPU texture on the first overlay frame.
+  **The XInput/gamepad hypothesis was DISPROVEN** — nf_win32 stayed tiny (good call splitting before
+  fixing). Nothing to fix here: it's a one-frame startup upload. **The REAL frame lag is game-side:**
+  `present.frame_wall` max **883ms, 9 spikes** (= the game's own frame — area loads / transitions,
+  ~30ms avg ≈ 33fps), NOT our code. Only marginal in-overlay item left = `render.worldmap.markers`
+  max 49ms (one map-open-build frame, avg 1.4ms, 66 frames) — rare, low value. The sub-timers
+  (`present.iconbatch/imgui_render/submit/newframe/nf_dx12/nf_win32`) are QUIET (spike/summary only,
+  ~free) — LEFT IN as the standing overlay-perf breakdown. Original instrumentation note below.
+  --- INSTRUMENTED 2026-07-03 (historical): The dominant
   frame hitch in the 04:49 in-world session (20 spikes, up to 24ms), living in the un-sub-timed
   parent−children gap of present.overlay_total (`hk_present`, `goblin_overlay.cpp`). Split that hole
   into 3 sub-timers (deployed): **`present.iconbatch`** (`flush_item_icon_batch`'s GPU fence WAIT —
