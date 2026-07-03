@@ -1,5 +1,6 @@
 #include "goblin_geom_move.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -241,13 +242,52 @@ namespace goblin::geom_move
         return r;
     }
 
+    // Diagnostic: count loaded geom instances + histogram their vtables (classes). Answers "why did
+    // some objects move and others not" — move_all only touches CSWorldGeomIns-family instances (AEG
+    // assets), never map parts (walls/terrain), and is capped; LOD gives an asset >1 instance. Returns
+    // a summary string in .err (reused), .inst = total count.
+    MoveResult geom_stats()
+    {
+        MoveResult r;
+        uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
+        static void *insts[20000];
+        size_t cnt = goblin::collected::list_live_geom_instances(insts, 20000);
+        r.inst = cnt;
+        std::vector<std::pair<uint64_t, int>> hist;  // vtable RVA -> count
+        for (size_t i = 0; i < cnt; i++)
+        {
+            uint64_t vt = 0;
+            if (!rpm(insts[i], &vt, 8) || !vt) continue;
+            uint64_t rva = vt - base;
+            bool seen = false;
+            for (auto &e : hist) if (e.first == rva) { e.second++; seen = true; break; }
+            if (!seen && hist.size() < 64) hist.push_back({rva, 1});
+        }
+        std::sort(hist.begin(), hist.end(), [](auto &a, auto &b) { return a.second > b.second; });
+        spdlog::info("[GEOMMOVE] STATS total={} distinctClasses={} (move_all cap=20000-list/4096-move)",
+                     cnt, hist.size());
+        std::string s;
+        char b[64];
+        for (size_t i = 0; i < hist.size() && i < 6; i++)
+        {
+            std::snprintf(b, sizeof(b), "vt+%#llx=%d ", (unsigned long long)hist[i].first, hist[i].second);
+            s += b;
+            spdlog::info("[GEOMMOVE]   class vt+{:#x} count={}", hist[i].first, hist[i].second);
+        }
+        std::snprintf(r.err, sizeof(r.err), "total=%zu classes=%zu top: %s", cnt, hist.size(), s.c_str());
+        r.ok = true;
+        return r;
+    }
+
     MoveResult move_all(float dx, float dy, float dz)
     {
         MoveResult r;
         uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
         if (!base) { std::snprintf(r.err, sizeof(r.err), "eldenring.exe base not found"); return r; }
-        static void *insts[4096];
-        size_t cnt = goblin::collected::list_live_geom_instances(insts, 4096);
+        // Move ALL loaded instances (there are ~17k in an open area — the old 4096 cap left most
+        // unmoved, which looked like "the world half-duplicated"; it was just the cap).
+        static void *insts[20000];
+        size_t cnt = goblin::collected::list_live_geom_instances(insts, 20000);
         if (!cnt) { std::snprintf(r.err, sizeof(r.err), "no live geom instances"); return r; }
         auto getter = (GetterFn)(base + GETTER_RVA);
         int moved = 0;
