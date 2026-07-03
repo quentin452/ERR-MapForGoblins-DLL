@@ -29,4 +29,9 @@ namespace goblin::inventory
     // AddItemFunc on the CURRENT thread (caller must be a safe point — present thread for the
     // sidecar/RPC path). SEH-guarded. Returns false if unresolved or the call faulted.
     bool give_item(uint32_t item_id, int32_t qty);
+
+    // Live EquipGameData pointer = GameDataMan(static) → +0x8 PlayerGameData → +0x2B0 EquipGameData
+    // — the inventory the SAVE serialize reads (sidecar Phase-2 strip-bracket RE target). nullptr
+    // before the world loads / on fault. SEH-guarded chain walk.
+    void *equip_game_data();
 }

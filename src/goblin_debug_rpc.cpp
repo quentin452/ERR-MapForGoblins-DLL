@@ -15,6 +15,7 @@
 #include "goblin_sidecar.hpp"  // sidecar cmd — Phase 1 state store drive/verify
 #include "goblin_inventory.hpp"  // give_item cmd — Gap C grant / Phase-2 strip RE
 #include "goblin_warp.hpp"  // warp cmd — grace fast-travel (dev-world nav)
+#include "goblin_field_probe.hpp"  // arm_raw — serialize find-what-accesses (Phase 2)
 
 #include <spdlog/spdlog.h>
 
@@ -728,6 +729,85 @@ namespace goblin::debug_rpc
                 bool ok = goblin::warp::to_grace(gid);
                 return ok ? "ok warp " + std::to_string(gid)
                           : "err warp failed (unresolved / not in-world / grace locked)";
+            }
+            // mem_dump <hexaddr> <len> — raw RPM hex-dump of an absolute address (follow pointers /
+            // diff to locate the goods inventory). len capped at 256.
+            if (cmd == "mem_dump")
+            {
+                std::string a_s = next_token(rest), len_s = next_token(rest);
+                uint64_t addr = 0; uint32_t len = 64;
+                try { addr = std::stoull(a_s, nullptr, 0);
+                      if (!len_s.empty()) len = (uint32_t)std::stoul(len_s, nullptr, 0); }
+                catch (...) { return "err bad addr/len"; }
+                if (len > 256) len = 256;
+                unsigned char buf[256]; SIZE_T got = 0;
+                if (!ReadProcessMemory(GetCurrentProcess(), (void *)addr, buf, len, &got) || got != len)
+                    return "err read failed";
+                char out[800];
+                int p = std::snprintf(out, sizeof(out), "ok %#llx:", (unsigned long long)addr);
+                for (uint32_t i = 0; i < len && p < (int)sizeof(out) - 4; i++)
+                    p += std::snprintf(out + p, sizeof(out) - p, " %02x", buf[i]);
+                return std::string(out);
+            }
+            // mem_fwa <hexaddr> <len> [r|w] — arm a HW find-what-accesses breakpoint on an ABSOLUTE
+            // address (e.g. PlayerGameData+0x9c = the char name, a COLD serialized field). Trigger a
+            // save (warp) → [FWA] logs the serialize read RIP. Cold target avoids the VEH storm that a
+            // per-frame-hot byte (equipped id) causes.
+            if (cmd == "mem_fwa")
+            {
+                std::string a_s = next_token(rest), len_s = next_token(rest), rw = next_token(rest);
+                uint64_t addr = 0; uint32_t len = 2;
+                try { addr = std::stoull(a_s, nullptr, 0);
+                      if (!len_s.empty()) len = (uint32_t)std::stoul(len_s, nullptr, 0); }
+                catch (...) { return "err bad addr/len"; }
+                bool wo = (rw == "w");
+                bool ok = goblin::field_probe::arm_raw((uintptr_t)addr, (int)len, wo, "serialize");
+                char b[96];
+                std::snprintf(b, sizeof(b), "%s armed FWA @ %#llx len=%u %s", ok ? "ok" : "err",
+                              (unsigned long long)addr, len, wo ? "w" : "r");
+                return std::string(b);
+            }
+            // equip_dump <off(0x..)> <len> — hex-dump EquipGameData+off (find the inventory layout
+            // for the Phase-2 serialize bracket RE). len capped at 256.
+            if (cmd == "equip_dump")
+            {
+                std::string off_s = next_token(rest), len_s = next_token(rest);
+                uint32_t off = 0, len = 64;
+                try { off = (uint32_t)std::stoul(off_s, nullptr, 0);
+                      if (!len_s.empty()) len = (uint32_t)std::stoul(len_s, nullptr, 0); }
+                catch (...) { return "err bad off/len"; }
+                if (len > 256) len = 256;
+                void *egd = goblin::inventory::equip_game_data();
+                if (!egd) return "err EquipGameData null (not in-world?)";
+                unsigned char buf[256];
+                SIZE_T got = 0;
+                if (!ReadProcessMemory(GetCurrentProcess(), (unsigned char *)egd + off, buf, len, &got) ||
+                    got != len)
+                    return "err read failed";
+                char out[800];
+                int p = std::snprintf(out, sizeof(out), "ok egd=%p +%#x:", egd, off);
+                for (uint32_t i = 0; i < len && p < (int)sizeof(out) - 4; i++)
+                    p += std::snprintf(out + p, sizeof(out) - p, " %02x", buf[i]);
+                return std::string(out);
+            }
+            // equip_fwa <off(0x..)> <len> [r|w] — arm a HW find-what-accesses breakpoint on
+            // EquipGameData+off, then trigger a save (warp) → [FWA] logs the serialize read RIP.
+            if (cmd == "equip_fwa")
+            {
+                std::string off_s = next_token(rest), len_s = next_token(rest), rw = next_token(rest);
+                uint32_t off = 0, len = 1;
+                try { off = (uint32_t)std::stoul(off_s, nullptr, 0);
+                      if (!len_s.empty()) len = (uint32_t)std::stoul(len_s, nullptr, 0); }
+                catch (...) { return "err bad off/len"; }
+                void *egd = goblin::inventory::equip_game_data();
+                if (!egd) return "err EquipGameData null (not in-world?)";
+                uintptr_t addr = reinterpret_cast<uintptr_t>(egd) + off;
+                bool write_only = (rw == "w");
+                bool ok = goblin::field_probe::arm_raw(addr, (int)len, write_only, "equip-serialize");
+                char b[96];
+                std::snprintf(b, sizeof(b), "%s armed FWA @ %#llx len=%u %s", ok ? "ok" : "err",
+                              (unsigned long long)addr, len, write_only ? "w" : "r");
+                return std::string(b);
             }
             if (cmd == "reload_overlay")
             {

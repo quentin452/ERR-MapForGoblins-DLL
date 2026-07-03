@@ -55,6 +55,13 @@ namespace goblin::sig
     // separate RemoveItem — the CT, a full trainer, exposes none).
     inline constexpr const char *INVENTORY_ACCESSOR =
         "44 8B 61 1C 41 8B FC C1 EF 07 40 80 E7 01 41 C1 EC 08 41 80 E4 01 48 8B 0D";
+    // GameDataMan static accessor (Hexinton CT) → the player's persistent game data (the SAVE
+    // serialize snapshots this). slot = match+7+*(int32*)(match+3); GameDataMan = *slot.
+    // Chain: GameDataMan → +0x8 PlayerGameData → +0x2B0 EquipGameData (the inventory the serialize
+    // reads — sidecar Phase-2 strip bracket target, docs/re/windows_save_function_rpm_re_findings.md).
+    // Unique on the ERR-Steam exe (offline scan 2026-07-03 @ 0x255b90).
+    inline constexpr const char *GAME_DATA_MAN =
+        "48 8B 05 ?? ?? ?? ?? 48 85 C0 74 05 48 8B 40 58 C3 C3";
 
     // ── Save routine (sidecar Phase-2) — CS::SaveLoad2::SLSaveSession::run ──
     // The ER save subsystem is CS::SaveLoad2 (RTTI-mapped via live RPM, Windows box 2026-07-03:
@@ -304,6 +311,7 @@ namespace goblin::sig
             {"EVENT_FLAG_MAN_SLOT_ALT", EVENT_FLAG_MAN_SLOT_ALT},
             {"ADD_ITEM_FUNC", ADD_ITEM_FUNC},
             {"INVENTORY_ACCESSOR", INVENTORY_ACCESSOR},
+            {"GAME_DATA_MAN", GAME_DATA_MAN},
             {"SAVE_FN", SAVE_FN},
             {"LUA_WARP", LUA_WARP},
             {"CS_LUA_EVENT_MANAGER", CS_LUA_EVENT_MANAGER},

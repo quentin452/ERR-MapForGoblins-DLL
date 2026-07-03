@@ -93,6 +93,44 @@ static bool give_item_seh(void *inv, void *entry, void *buffer)
     }
 }
 
+void *equip_game_data()
+{
+    // Resolve GameDataMan static (cached), then walk the chain with RPM (guarded — nulls before
+    // the world loads). GameDataMan = *((match+7) + disp32@(match+3)).
+    static void **gdm_slot = nullptr;
+    static bool tried = false;
+    if (!tried)
+    {
+        tried = true;
+        if (auto *m = reinterpret_cast<uint8_t *>(
+                modutils::scan<void>({.aob = goblin::sig::GAME_DATA_MAN})))
+        {
+            int32_t disp = *reinterpret_cast<int32_t *>(m + 3);
+            gdm_slot = reinterpret_cast<void **>(m + 7 + disp);
+        }
+        spdlog::info("[EQUIP] GameDataMan slot={}", (void *)gdm_slot);
+    }
+    if (!gdm_slot) return nullptr;
+    auto rd = [](void *p) -> void * {
+        void *v = nullptr;
+        SIZE_T got = 0;
+        return (p && ReadProcessMemory(GetCurrentProcess(), p, &v, sizeof(v), &got) &&
+                got == sizeof(v) && reinterpret_cast<uintptr_t>(v) >= 0x10000)
+                   ? v
+                   : nullptr;
+    };
+    void *gdm = rd(gdm_slot);
+    void *pgd = rd(gdm ? reinterpret_cast<uint8_t *>(gdm) + 0x8 : nullptr);
+    void *egd = pgd ? reinterpret_cast<uint8_t *>(pgd) + 0x2B0 : nullptr;
+    static void *last_pgd = nullptr;
+    if (pgd && pgd != last_pgd)
+    {
+        last_pgd = pgd;
+        spdlog::info("[EQUIP] chain: GameDataMan={} PlayerGameData={} EquipGameData={}", gdm, pgd, egd);
+    }
+    return egd;
+}
+
 bool give_item(uint32_t item_id, int32_t qty)
 {
     if (!g_ready.load()) initialize();

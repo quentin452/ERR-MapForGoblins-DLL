@@ -138,6 +138,24 @@ LONG CALLBACK veh(EXCEPTION_POINTERS *ep)
         spdlog::warn("[FWA] hit #{}: eldenring.exe READ of {:#x} by rip=er+0x{:x} (access ENDS at this rip)",
                      idx, g_watch_addr, rip - g_exe_base);
         spdlog::warn("[FWA]   bytes[rip-24 .. rip+16) = {}", hex);
+        // The read site is often a shared memcpy/rep-movsb — the CALLER is the real function (e.g.
+        // the save serialize). Scan the stack for eldenring.exe return addresses (the caller chain).
+        uint64_t stk[48] = {0};
+        std::memcpy(stk, reinterpret_cast<void *>(c->Rsp), sizeof(stk));
+        std::string rets;
+        int found = 0;
+        for (int i = 0; i < 48 && found < 8; ++i)
+        {
+            uintptr_t v = static_cast<uintptr_t>(stk[i]);
+            if (v >= g_exe_base && v < g_exe_end)
+            {
+                char b[24];
+                std::snprintf(b, sizeof(b), " er+0x%llx", (unsigned long long)(v - g_exe_base));
+                rets += b;
+                ++found;
+            }
+        }
+        spdlog::warn("[FWA]   caller ret-addrs (top-of-stack, innermost first):{}", rets);
     }
     if (full && !g_disarmed.exchange(true))
     {

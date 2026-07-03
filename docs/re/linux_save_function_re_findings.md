@@ -56,6 +56,37 @@ Key deductions:
   SERIALIZE runs in a phase BEFORE the write stack — a separate function not on the write-time
   callstack. Hooking it needs a different entry point (below), not the write chain.
 
+## Update 2026-07-03 (PM) — the SERIALIZE is located via a live find-what-accesses (Linux)
+
+Ran the prompt's decisive method IN-DLL on Linux (`goblin_field_probe` HW breakpoint + new RPC
+`equip_dump`/`mem_dump`/`mem_fwa`, `GAME_DATA_MAN` sig, the GameDataMan→PlayerGameData→EquipGameData
+resolve). Key moves + results:
+- `GameDataMan` (accessor AOB, sig `GAME_DATA_MAN`) → `+0x8` PlayerGameData (PGD) → `+0x2B0` EquipGameData.
+  Both `[SIG] PASS`; `SAVE_FN` (SLSaveSession::run) also PASS on the ERR build (RVA 0x240FD70).
+- The goods inventory is NOT a flat array in PGD/EGD (0..0x2000) — it is HANDLE-indirected / separately
+  allocated, so it's a poor FWA target. Instead watched a COLD, always-serialized field: the CHARACTER
+  NAME at **`PlayerGameData+0x9c`** (UTF-16; read only in menus / on save, NOT the in-world HUD).
+  ⚠ A HOT byte (EquipGameData+0x8, equipped id, read every frame by ~104 threads) CRASHED the game via
+  the VEH single-step storm — always pick a cold byte.
+- FWA armed on the name + warp (save): **hit** `READ by rip=er+0x251bee7`, whose bytes end in `F3 A4`
+  (**rep movsb**) → the serialize copies PlayerGameData via a **memcpy** (fn `er+0x251b83c`).
+- Enhanced the FWA VEH to log the stack return-address chain → the memcpy's callers (the real serialize):
+  `er+0x1edeb0b` (fn **`0x1ede9d0`** — a field-serializer: `mov rdi,rcx; add rcx,8; call memcpy`) ←
+  `er+0x1ede71e` (fn **`0x1eddec0`** — section dispatcher: `mov rcx,[rcx+8]; test; call`) ← higher
+  (`0x260ce0`→fn `0x25f2d0`, `0x257f55`→fn `0x2573c0`).
+
+**So the serialize is the `er+0x1edexxxx` cluster.** The strip/reinject bracket = a function that wraps
+the player-data serialize (strip at entry so the inventory section serializes clean, reinject at exit).
+Candidate bracket entries (prologues confirmed via offline PE-mapped CC-scan):
+- `0x1ede9d0` `48 89 5C 24 08 57 48 83 EC 20 48 8B F9 8B DA 48 83 C1 08 E8` (per-field — too granular)
+- **`0x1eddec0`** `48 83 EC 28 48 8B 49 08 48 85 C9 74 1B E8` (section dispatcher — likely per-section)
+- `0x25f2d0` / `0x2573c0` (higher — candidate whole-content orchestrators; the true once-per-save bracket)
+
+**NEXT (final step):** hook the outermost of these as an OBSERVER (once-per-save + reads GameDataMan →
+it's the player-data serialize), then wire strip-at-entry / reinject-at-exit and re-run the cap-oracle
+clean-save test. The exact bracket among `0x1eddec0` / `0x25f2d0` / `0x2573c0` needs the observer
+(once-per-save = the orchestrator) — one focused boot. All the FWA/dump RPC infra is committed + reusable.
+
 **Two remaining paths (a DECISION):**
 - **Variant A (clean vanilla save) — more RE.** Find the SERIALIZE phase / the save-REQUEST processor
   (the fn that reads `GameMan+0xB42` and initiates serialize+write) via find-what-accesses on
