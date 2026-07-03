@@ -46,5 +46,7 @@ namespace goblin::geom_move
     // on-screen visual confirm without solving the per-tile→world frame (whatever prop is in view
     // moves). Returns the count moved in `.inst` (reused as a counter). Dev probe — dirties the world.
     MoveResult move_all(float dx, float dy, float dz);
+
+    // Diagnostic: count loaded geom instances + histogram their vtable classes (into .err, .inst=count).
+    MoveResult geom_stats();
 }
-// (declared once; single definition in the .cpp)

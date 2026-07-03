@@ -113,6 +113,7 @@ while a human is actively using kb/mouse (`rpc_input_idle=1` in `status`; ini `r
 | `move_restore` | `move_restore` | Restore the held instance to its remembered pre-move transform. |
 | `move_near` | `move_near <dx> <dy> <dz>` | Move the geom instance NEAREST the player (for an on-screen visual). NB `+0x220` is block-LOCAL per tile, so cross-tile "nearest" is approximate. |
 | `move_all` | `move_all <dx> <dy> <dz>` | Move EVERY loaded geom instance by the delta (mass visual confirm; dirties the world). |
+| `geom_stats` | `geom_stats` | Count loaded geom instances + class (vtable) histogram. Explains "some objects moved, others not": move_all only touches CSWorldGeomIns-family (~17k), never map parts (walls/terrain); LOD dupes an asset. |
 
 ## Extending
 
