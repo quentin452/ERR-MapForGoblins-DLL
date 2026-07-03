@@ -96,8 +96,18 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
     virtual_map_set_open/is_open`). Live-verified on Proton (`vmap 1` → window+grid+origin render, alive).
   - **SLICE B (next): draw markers on it** — project a chosen marker group with the mod projection + draw
     the marker icons (reuse `draw_category_icon`/the marker path) at `w2s` per marker; pan/zoom with them.
-  - **SLICE C: custom-world content** — synthetic group id (≥100) in `marker_layer.hpp` to tag markers to a
-    custom world; bundle-backed (World Virtualization vision #1). ADD/geom NOT on this path (only to WALK it).
+  - **SLICE C: the WORLD model** — an active-world id + per-world {origin/scale, marker set, optional bg
+    image}, bundle-backed (extends `goblin_world_bundle`); synthetic marker group (≥100) so markers belong
+    to a world; framework assigns per-world coordinate namespaces (collision-free).
+  - **SLICE D: open with "M"** — production UX: the virtual page is what the game MAP KEY shows when the
+    active world is a custom world (hook the RE'd `worldmap_open()`; suppress/overlay the native Scaleform
+    map). The `vmap` RPC + F1 Dev toggle stay as the DEV harness.
+  - **Full architecture (collision / active-world / M-open / how ER's map works) = `docs/plans/
+    virtual_world_multi_world_design.md`** (2026-07-04). Key decisions: the FRAMEWORK assigns position (not
+    the player) — marker worlds get separate mod namespaces, walkable worlds get a reserved mapId
+    (ER's dimension mechanism); active world = player mapId (walkable) or explicit bundle (marker); ER's map
+    is BAKED `WorldMapTile` DDS sheets (overworld/UG/DLC = separate dimensions), so custom worlds supply
+    their own image/grid. Walkable worlds also need the ADD-geom frontier (pivot 2, Windows RE).
 - **F1 category list → GRID LAYOUT (followup, not started).** The Markers-tab category list is a checkbox
   tree; with many custom worlds/categories it overflows into a long scroll. Replace with a GRID of
   icon-tiles (the category icon we just added as the tile, toggle visibility on click, checkmark/dim
