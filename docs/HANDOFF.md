@@ -919,6 +919,17 @@ resolved key would disambiguate "fundamentally iconId=0" from "a fixable lot-res
   (20 spikes, up to 24ms)** + `render.minimap` — RENDER-side, unrelated to read_wgm; higher-value
   target if the goal is "stop the felt lag". (Cosmetic nit still open: the spike-ratio display divides
   by a near-zero baseline for quiet timers — floor the avg when touching that code.)
+- **`present.overlay_total` spike — INSTRUMENTED 2026-07-03, awaiting a play session.** The dominant
+  frame hitch in the 04:49 in-world session (20 spikes, up to 24ms), living in the un-sub-timed
+  parent−children gap of present.overlay_total (`hk_present`, `goblin_overlay.cpp`). Split that hole
+  into 3 sub-timers (deployed): **`present.iconbatch`** (`flush_item_icon_batch`'s GPU fence WAIT —
+  CPU blocks on GPU, frame-variable = PRIME SUSPECT), `present.imgui_render` (ImGui::Render draw-data
+  build), `present.submit` (RenderDrawData vertex upload + ExecuteCommandLists). **NEXT: play a
+  session, grep `[BENCH]`/`[SPIKE]` for which of the three spikes.** If it's `present.iconbatch`, the
+  fix is to stop blocking on the icon-copy fence (double-buffer / async / skip the per-frame wait,
+  `goblin_overlay.cpp:~799 submit_and_wait`). If `present.submit`, it's GPU submission under vkd3d
+  (likely PSO/shader-cache transients — a warmup/cache lever, not our code). If `present.imgui_render`,
+  it scales with vertex count (too many markers/verts in the draw list).
 - **Map-exit input softlock.** Root cause for the general "soft key lock at screen edge" turned out
   to be **external** — Deskflow (cursor-sharing KVM), not ER or this mod; fix is Deskflow-side, see
   `docs/re/windows_input_softlock_re_prompt.md`. The F1-mouse-dead half of the original report was a
