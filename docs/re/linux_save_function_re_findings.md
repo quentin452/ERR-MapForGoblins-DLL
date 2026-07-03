@@ -87,7 +87,35 @@ it's the player-data serialize), then wire strip-at-entry / reinject-at-exit and
 clean-save test. The exact bracket among `0x1eddec0` / `0x25f2d0` / `0x2573c0` needs the observer
 (once-per-save = the orchestrator) — one focused boot. All the FWA/dump RPC infra is committed + reusable.
 
-**Two remaining paths (a DECISION):**
+## Update 2026-07-03 (PM #2) — observer-to-bracket hit an entry-pinning wall
+
+Tried to promote the serialize find to a hookable bracket. Results:
+- `SERIALIZE_FN` = `0x2573c0` (unique AOB) — hooked, but fires 2× at BOOT and 0× during a save → it's a
+  GENERIC/load serialize, not the save path. Its FWA stack frames (`0x260ce0`/`0x257f55`) were STALE
+  stack garbage, not real callers of the name-copy.
+- The RELIABLE save-serialize frames are only the tight innermost: memcpy `0x251b83c` ← `0x1ede9d0`
+  (field copy, ret `0x1edeb0b`) ← `0x1eddec0` (ret `0x1ede71e`). But hooking `0x1eddec0` AND `0x1ede9d0`
+  by exact RVA both got **0 calls during a save** → the offline CC-scan MISLABELS their entries (ER
+  .text isn't cleanly int3-padded; a hook at a non-entry never fires). No reliable offline way to pin a
+  mid-function caller's entry without a disassembler.
+- The serialize runs on a WORKER thread (FWA tid=352). The hookable SaveLoad2 functions are either the
+  WRITE side (`SLSaveSession::run` 0x240FD70 — too late, post-serialize) or session-create/dispatch
+  (likely async-queues the worker → a bracket around it wouldn't hold synchronously around serialize).
+
+**WALL:** the serialize is located (er+0x1edexxxx, worker thread, memcpy-based) but NOT reliably
+hookable for an atomic strip bracket without proper function-boundary analysis (Ghidra, or capstone
+linear-disasm from a known start to pin the enclosing function of `0x1edeb0b`). Infra built + committed:
+`GAME_DATA_MAN`/`SAVE_FN`/`SERIALIZE_FN` sigs, `equip_game_data` chain, RPC
+`equip_dump`/`mem_dump`/`equip_fwa`/`mem_fwa`, FWA stack-chain logging, SAVE_FN/SERFN observers.
+
+**RECOMMENDED next:** either (A) use capstone (already used on the Windows box) to pin the enclosing
+function entry of `er+0x1edeb0b` (disassemble the SaveLoad2 serialize path from a known SaveLoad2 vtable
+method forward, following calls, until reaching the fn that iterates the player-data sections) → hook
+THAT; or (B) ship **Variant B** (reserved-id: the custom item lives in the `.err` under a high goods id,
+blank/unknown if loaded DLL-less — tolerable for ERR) using the shipped `give_item` + sidecar store, no
+serialize hook. Given the diminishing returns of the hook hunt, B is the pragmatic ship.
+
+## Two remaining paths (original — now superseded by the recommendation above)
 - **Variant A (clean vanilla save) — more RE.** Find the SERIALIZE phase / the save-REQUEST processor
   (the fn that reads `GameMan+0xB42` and initiates serialize+write) via find-what-accesses on
   `GameMan+0xB42` (we have the HW-breakpoint infra, `goblin_field_probe`). Hook its entry (strip) +

@@ -79,6 +79,15 @@ namespace goblin::sig
     inline constexpr const char *SAVE_FN =
         "48 8B C4 55 57 41 54 41 56 41 57 48 8D 68 A1 48 81 EC B0 00 00 00 48 C7 45 EF FE FF FF FF 48 89 58 10";
 
+    // ── Game-data SERIALIZE (sidecar Phase-2 strip/reinject bracket) ──
+    // A candidate outer serialize orchestrator (RVA 0x2573c0 on the ERR-Steam build) — found by the
+    // live find-what-accesses on the char name (PlayerGameData+0x9c): the serialize memcpy's the
+    // player data, and this is up its caller chain. UNIQUE in .text. Hooked READ-ONLY first (observer
+    // + stack chain) to confirm once-per-save + that it brackets the inventory serialize, before
+    // wiring strip(entry)/reinject(exit). RE: docs/re/linux_save_function_re_findings.md (PM update).
+    inline constexpr const char *SERIALIZE_FN =
+        "48 89 5C 24 08 57 48 83 EC 20 48 8B 3D ?? ?? ?? ?? 48 8B CA";
+
     // ── Grace warp (fast-travel to a site of grace — dev-world navigation) ──
     // From the Hexinton CT ("Coinsworth"). LuaWarp_01 = the game's Lua-event warp: proper
     // area-load fast-travel. AOB anchors on the previous fn's `C3` ret; the callable is
@@ -313,6 +322,7 @@ namespace goblin::sig
             {"INVENTORY_ACCESSOR", INVENTORY_ACCESSOR},
             {"GAME_DATA_MAN", GAME_DATA_MAN},
             {"SAVE_FN", SAVE_FN},
+            {"SERIALIZE_FN", SERIALIZE_FN},
             {"LUA_WARP", LUA_WARP},
             {"CS_LUA_EVENT_MANAGER", CS_LUA_EVENT_MANAGER},
             {"SOLO_PARAM_LIST", SOLO_PARAM_LIST},

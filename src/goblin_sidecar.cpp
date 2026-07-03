@@ -252,6 +252,53 @@ uint64_t hk_save(void *a, void *b, void *c, void *d)
     return r;
 }
 
+// Serialize observer (Phase 2 RE): confirm SERIALIZE_FN is the once-per-save orchestrator + log its
+// caller chain (to find the true bracket if it's too granular). Read-only. 4-arg passthrough.
+using SerFn = uint64_t(*)(void *, void *, void *, void *);
+SerFn g_orig_ser = nullptr;
+std::atomic<long> g_ser_calls{0};
+
+std::set<uintptr_t> g_ser_callers;  // dedup by direct caller RVA (guarded by g_mtx)
+
+uint64_t hk_serialize(void *a, void *b, void *c, void *d)
+{
+    ++g_ser_calls;
+    using RtlCapFn = USHORT(WINAPI *)(ULONG, ULONG, PVOID *, PULONG);
+    static auto rtl =
+        (RtlCapFn)GetProcAddress(GetModuleHandleA("ntdll.dll"), "RtlCaptureStackBackTrace");
+    void *fr[16] = {};
+    USHORT m = rtl ? rtl(1, 16, fr, nullptr) : 0;  // skip our own frame
+    uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
+    uintptr_t direct = 0;
+    for (USHORT i = 0; i < m; i++)
+        if ((uintptr_t)fr[i] >= base && (uintptr_t)fr[i] < base + 0x10000000)
+        { direct = (uintptr_t)fr[i]; break; }
+    // Log each DISTINCT direct caller once (dedup) — the save-path caller (SaveLoad2 / content build)
+    // shows up as a new entry vs the boot/gameplay noise. Cap at 40 distinct.
+    bool fresh = false;
+    {
+        std::lock_guard<std::mutex> lk(g_mtx);
+        fresh = direct && g_ser_callers.size() < 40 && g_ser_callers.insert(direct).second;
+    }
+    if (fresh)
+    {
+        std::string s;
+        for (USHORT i = 0; i < m && (int)s.size() < 160; i++)
+        {
+            uintptr_t v = (uintptr_t)fr[i];
+            if (v >= base && v < base + 0x10000000)
+            {
+                char x[24];
+                std::snprintf(x, sizeof(x), " er+0x%llx", (unsigned long long)(v - base));
+                s += x;
+            }
+        }
+        spdlog::info("[SERFN] caller#{} tid={} chain:{}", g_ser_callers.size(),
+                     GetCurrentThreadId(), s);
+    }
+    return g_orig_ser(a, b, c, d);
+}
+
 void probe_save_callstack()
 {
     static std::atomic<bool> done{false};
@@ -368,6 +415,23 @@ void install_save_hook()
     catch (const std::exception &e)
     {
         spdlog::error("[SAVEFN] hook failed: {}", e.what());
+    }
+    // Serialize observer (Phase 2 RE). Hook the CONFIRMED save-serialize section dispatcher by exact
+    // RVA (0x1eddec0 on the ERR-Steam build — the reliable memcpy caller from the FWA; the AOB-unique
+    // 0x2573c0 turned out to be a generic/load serialize, not the save path). RVA is version-specific
+    // — fine for a dev-only RE observer. Logs its callers → the orchestrator = the strip bracket.
+    uintptr_t er = (uintptr_t)GetModuleHandleA("eldenring.exe");
+    void *sf = er ? reinterpret_cast<void *>(er + 0x1ede9d0) : nullptr;
+    if (!sf) { spdlog::warn("[SERFN] eldenring.exe base not found — observer skipped"); return; }
+    try
+    {
+        modutils::hook(sf, reinterpret_cast<void *>(hk_serialize),
+                       reinterpret_cast<void **>(&g_orig_ser));
+        spdlog::info("[SERFN] observer hooked @ {}", sf);
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("[SERFN] hook failed: {}", e.what());
     }
 }
 
