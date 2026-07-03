@@ -46,6 +46,15 @@ namespace goblin::sig
     inline constexpr const char *ADD_ITEM_FUNC =
         "40 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 70 FF FF FF 48 81 EC "
         "90 01 00 00 48 C7 45 C8 FE FF FF FF 48 89 9C 24 D8 01 00 00 48 8B 05";
+    // MapItemMan static accessor (the `inv` rcx arg for a framework GRANT / sidecar strip).
+    // From the Hexinton CT ItemGib ("Zodiacsl125"). The trailing `48 8B 0D` (mov rcx,[rip+disp32])
+    // sits at AOB+0x16: slot = (match + 0x1D) + *(int32*)(match + 0x19); inv = *slot. Static +
+    // version-resilient — supersedes the AddItemFunc-observer-captured pointer (which needed a
+    // prior game grant). Call convention (also from the CT): AddItemFunc(rcx=inv, rdx=&entry
+    // {qty:i32@0, id:u32@4}, r8=scratch buffer base, r9=0). Removal = negative qty (ER has no
+    // separate RemoveItem — the CT, a full trainer, exposes none).
+    inline constexpr const char *INVENTORY_ACCESSOR =
+        "44 8B 61 1C 41 8B FC C1 EF 07 40 80 E7 01 41 C1 EC 08 41 80 E4 01 48 8B 0D";
 
     // ── Live param + message repositories (SoloParamRepository / MsgRepositoryImp) ──
     // Param list address (get_param). relative_offsets {{3,7}}.
@@ -262,6 +271,7 @@ namespace goblin::sig
             {"SET_EVENT_FLAG", SET_EVENT_FLAG},
             {"EVENT_FLAG_MAN_SLOT_ALT", EVENT_FLAG_MAN_SLOT_ALT},
             {"ADD_ITEM_FUNC", ADD_ITEM_FUNC},
+            {"INVENTORY_ACCESSOR", INVENTORY_ACCESSOR},
             {"SOLO_PARAM_LIST", SOLO_PARAM_LIST},
             {"MSG_REPOSITORY", MSG_REPOSITORY},
             {"GETMESSAGE", GETMESSAGE},

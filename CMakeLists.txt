@@ -189,6 +189,8 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_param_overrides.cpp
   src/goblin_sidecar.hpp
   src/goblin_sidecar.cpp
+  src/goblin_inventory.hpp
+  src/goblin_inventory.cpp
   src/goblin_logic.hpp
   src/goblin_logic.cpp
   src/goblin_markers.hpp

@@ -78,6 +78,20 @@ NB test gotcha: `pkill -f "Game/eldenring.exe"` also matches the driver shell's 
 144, final log line lost); grep the persisted log after. And the 2-boot recipe exceeds the default 120s
 Bash timeout — split boots or pass a longer timeout.
 
+**PHASE 2 RemoveItem RE — DONE + IN-GAME VERIFIED 2026-07-03 (the last inventory unknown).** The
+Hexinton CT was the oracle: it gave the exact AddItemFunc call convention
+(`rcx=inv, rdx=&entry{qty:i32@0,id:u32@4}, r8=scratch buf, r9=0` — count is ALWAYS 0, quantity is the
+entry's `qty@0`) AND the **`INVENTORY_ACCESSOR` static AOB** (resolves MapItemMan without a captured
+pointer; added to `re_signatures.hpp`, `[SIG] PASS`). Built `goblin::inventory::give_item(id, qty)`
+(`goblin_inventory.{hpp,cpp}`, SEH-guarded, present-thread) + RPC `give_item <id> <qty>` + `dllmain`
+`inventory::initialize`. **RemoveItem conclusion: ER has NO dedicated remove fn — removal = AddItemFunc
+with NEGATIVE qty.** Verified in-game on a char at the Thin Beast Bones cap: `+5` → game's own "Unable to
+acquire … exceed the maximum" dialog (proves the real acquisition path ran); `-5` dropped the count below
+cap (toast `×994`); re-`+5` then PARTIALLY succeeded — proving the `-5` decremented live stock. Killed
+before any game save (on-disk save unchanged). **So Gap C GRANT is fully implementable now, and the
+sidecar Phase-2 strip = `give_item(id,-qty)` before the game save + `give_item(id,+qty)` after.** NEXT:
+wire the strip/reinject onto the CreateFileW save signal (Phase 2 proper) + the Gap C custom-item grant.
+
 **AOB version-stability audit 2026-07-03 (asked by user).** Live `[SIG]` health = 30 unique / 0 ambiguous
 / 0 missing — all clean. Sidecar Phase 1 uses NO AOB (hooks `CreateFileW` = kernel32 import + mINI →
 patch-proof by construction). One real fix: **WCM resolve was RVA-first** (`fixed ? fixed : aob`) against

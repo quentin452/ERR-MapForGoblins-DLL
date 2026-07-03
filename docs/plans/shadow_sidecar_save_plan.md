@@ -97,9 +97,21 @@ tractable than buffer surgery.
   `entry+0`. So the Gap C grant is RE-complete: `inv`=captured singleton, entry=`{qty@0,
   0x40000000|goodsId @4}`, call AddItemFunc. Shared with the Gap C grant; grant still gated on the
   sidecar (save-clean). **RemoveItem (Phase 2 strip) is now the only open inv RE.**
-- **AddItem — AOB KNOWN** (`sig::ADD_ITEM_FUNC`, observer-hooked read-only, `goblin_debug_events.cpp:344`;
-  convention: `AddItemFn(inv, entry{qty@0,id@4}, base, count, pad)`). **RemoveItem — NEW RE** (the
-  consume/discard counterpart).
+- **AddItem — CALLABLE + convention NAILED (2026-07-03).** From the Hexinton CT ItemGib:
+  `AddItemFunc(rcx=inv, rdx=&entry{qty:i32@0,id:u32@4}, r8=scratch buffer, r9=0)` — `r9`/`count` is
+  ALWAYS 0 (the quantity is the entry's `qty@0`, which explains the observer's `count=0`). Built
+  `goblin::inventory::give_item(id, qty)` (`goblin_inventory.{hpp,cpp}`), inv resolved from the
+  **`INVENTORY_ACCESSOR` static AOB** (also from the CT — no captured pointer needed; `[SIG] PASS`).
+  RPC `give_item <id> <qty>`. IN-GAME VERIFIED: `give_item(0x40003bec,+5)` on a char at the item cap
+  triggered the game's own **"Unable to acquire … exceed the maximum able to be held"** dialog → the
+  real acquisition path ran.
+- **RemoveItem — RE DONE 2026-07-03: ER has NO dedicated RemoveItem** (the comprehensive Hexinton CT
+  exposes none). **Removal = AddItemFunc with a NEGATIVE quantity** (`give_item(id, -N)`). VERIFIED
+  in-game: at the item cap, `+5` was totally rejected ("unable to acquire every"); after `-5` the count
+  dropped below cap (acquisition toast `×994`) and a re-`+5` PARTIALLY succeeded ("some items could not
+  be acquired") — proving the `-5` decremented the live stock. SEH-guarded; negative calls don't crash.
+  So the Phase-2 strip = `give_item(id, -qty)`, reinject = `give_item(id, +qty)`. **The last inventory
+  RE unknown is closed.**
 - **Save-event DETECTION — TRACTABLE via existing infra.** The mod already hooks `CreateFileW`
   (`diag_boot_io` / [BOOTIO]). The game opens/writes `ER0000.err` (ERR) / `ER0000.sl2` (vanilla) on
   save — watch that path to fire a "save starting/ending" signal WITHOUT RE'ing the save function.

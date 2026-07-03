@@ -13,6 +13,7 @@
 #include "goblin_messages.hpp"  // inject_fmg_entries / raw_message_utf8 — fmg_set cmd (Gap D)
 #include "goblin_debug_events.hpp"  // last_inventory_accessor — inv_probe cmd (Gap C grant RE)
 #include "goblin_sidecar.hpp"  // sidecar cmd — Phase 1 state store drive/verify
+#include "goblin_inventory.hpp"  // give_item cmd — Gap C grant / Phase-2 strip RE
 
 #include <spdlog/spdlog.h>
 
@@ -669,6 +670,27 @@ namespace goblin::debug_rpc
                     return goblin::sidecar::load() ? "ok " + goblin::sidecar::status_line()
                                                    : "err load failed (no save file seen yet?)";
                 return "err usage: sidecar status|setkv|getkv|addflag|rmflag|flags|save|load";
+            }
+            // give_item <id> <qty> — call AddItemFunc to GRANT (qty>0) or REMOVE (qty<0) an
+            // item (Gap C grant / sidecar Phase-2 strip RE). id is category-encoded
+            // (goods = 0x40000000|goodsId). Mutates the live inventory — dev-only, SEH-guarded.
+            // inv_probe reports the resolved accessor; grep [INVGRANT] for the call result.
+            if (cmd == "give_item")
+            {
+                std::string id_s = next_token(rest), qty_s = next_token(rest);
+                if (id_s.empty()) return "err usage: give_item <id(0x..)> <qty(+grant/-remove)>";
+                uint32_t id = 0;
+                int32_t qty = 1;
+                try
+                {
+                    id = static_cast<uint32_t>(std::stoul(id_s, nullptr, 0));
+                    if (!qty_s.empty()) qty = static_cast<int32_t>(std::stol(qty_s, nullptr, 0));
+                }
+                catch (...) { return "err bad id/qty"; }
+                bool ok = goblin::inventory::give_item(id, qty);
+                char b[96];
+                std::snprintf(b, sizeof(b), "%s give_item id=%#010x qty=%d", ok ? "ok" : "err", id, qty);
+                return std::string(b);
             }
             if (cmd == "reload_overlay")
             {

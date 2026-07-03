@@ -22,6 +22,15 @@ Compose the three primitives; nothing persists (params + FMG reload from regulat
 (reads the active install's template + params), collision-safe (Gap H), zero save risk. This is the
 whole item EXCEPT it isn't in the player's inventory yet.
 
+### Half 2 — GRANT — PRIMITIVE BUILT + VERIFIED 2026-07-03 (still gated on the sidecar for a clean save)
+`goblin::inventory::give_item(item_id, qty)` (`goblin_inventory.{hpp,cpp}`) calls the game's AddItemFunc:
+`AddItemFunc(rcx=inv, rdx=&entry{qty:i32@0,id:u32@4}, r8=scratch buffer, r9=0)`. `inv` from the
+`INVENTORY_ACCESSOR` static AOB (Hexinton CT; `[SIG] PASS`). Goods id = `0x40000000|goodsId`. Grant =
+`qty>0`, remove = `qty<0` (ER has no separate RemoveItem — verified in-game via the item-cap dialog
+oracle). RPC `give_item <id> <qty>`. So the GRANT mechanism is DONE; what remains is wiring it to the
+custom item (define → grant) + doing it save-clean via the sidecar strip/reinject
+(`shadow_sidecar_save_plan.md` Phase 2). Original blocker notes below (now resolved):
+
 ### Half 2 — GRANT (persisted, risky) — GATED, not started
 Put the defined item into the player's inventory so they have it. This is the only persisted/risky
 part. Requirements + blockers:
