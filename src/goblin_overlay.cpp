@@ -1662,10 +1662,14 @@ namespace
             // still [SPIKE]s, so an 18ms stall here self-identifies next session — no clean exit needed.
             {
                 GOBLIN_BENCH_QUIET("present.newframe");
-                try_upload_atlas();   // one-time; needs the captured command queue
+                try_upload_atlas();   // one-time; needs the captured command queue (3.9ms, not the spike)
                 goblin::input::set_imgui_reading_cursor(true);   // let ImGui's NewFrame see the real cursor
-                ImGui_ImplDX12_NewFrame();
-                ImGui_ImplWin32_NewFrame();
+                // Split to pin the newframe 28ms max: nf_dx12 = font/GPU device-object path;
+                // nf_win32 = ImGui_ImplWin32_NewFrame, which polls XInput EVERY frame (NavEnableGamepad
+                // is on) — under Wine XInputGetState on an absent/just-refocused pad slot can stall ms
+                // (see the "stale XInput reads after focus regain" note ~L195). Prime suspect for the max.
+                { GOBLIN_BENCH_QUIET("present.nf_dx12"); ImGui_ImplDX12_NewFrame(); }
+                { GOBLIN_BENCH_QUIET("present.nf_win32"); ImGui_ImplWin32_NewFrame(); }
                 goblin::input::set_imgui_reading_cursor(false);
             }
 
