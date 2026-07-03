@@ -13,10 +13,46 @@ Kept: genuinely live/in-progress work, open questions, and standing knowledge (g
 decisions, non-obvious facts) not fully captured anywhere else. If you're looking for the history of
 something not below, check `docs/changelog.md` first, then the relevant `docs/plans/*.md`.
 
-Last updated: 2026-07-02 (hot-reload D + Phase 3 RPC + Phase 4 loop ALL merged & in-game validated
-on Linux/Proton; spiderfy v1+v2, in-game pause, RPC input injection/HUD, NPC altitude badges, F2
-repro — see the Phase 4 sections below. Earlier same day: SINGLE-DLL migration + the 9 native-pin
-parity landmark categories in-game verified.)
+Last updated: 2026-07-03 (BIG runtime-modding-framework session — see the section directly below;
++ read_wgm perf fix + present.overlay spike localized (game-side, not us) + merchant pins SHELVED.
+Earlier 2026-07-02: hot-reload D + Phase 3 RPC + Phase 4 loop merged & validated; spiderfy, pause,
+RPC input/HUD, NPC altitude badges.)
+
+## ⇒ RESUME HERE (2026-07-03) — runtime-modding framework: primitives DONE, sidecar/grant is the frontier
+
+**Session recap (all committed to master, local ahead of origin — user pushes):** built the
+"mod ER without a regulation.bin" framework end to end at the primitive level:
+- **Param-override loader (Gap A)** — `param_set_field` + name-addressed registry + `param_overrides.ini`
+  boot loader. ALL 3 slices DONE + in-game verified + **MERGED** (`param_override_loader_plan.md`,
+  changelog Added). RPC `param_get(f)`/`param_set(f)`.
+- **FMG inject (Gap D)** — `inject_fmg_entries` (rename/redescribe). DONE + verified. RPC `fmg_set`.
+- **Row-add (Gap B)** — `param_add_rows`/`param_clone_row` (the "mass-add" was unproven; now PROVEN on
+  id-looked-up EquipParamGoods). RPC `param_clone`.
+- **Gap C DEFINE half** — composed the 3 into a coherent custom goods item (90000001, statted + named),
+  save-safe. `custom_item_end_to_end_plan.md`.
+- **Policies LOCKED:** Gap H reserved-ID/DLL-at-load (`process/reserved-id-and-load-contract.md`),
+  regulation-agnostic design (`process/framework-regulation-agnostic-decision.md`), authoring-format
+  data-first (`process/authoring-format-decision.md`).
+- All primitives are `goblin::paramedit::*` (`goblin_param_edit.{hpp,cpp}`) + `goblin::inject_fmg_entries`
+  (`goblin_messages.{hpp,cpp}`); all dev-drivable via RPC; all save-safe (persist nothing).
+
+**THE FRONTIER = the SIDECAR SAVE (user chose "sidecar first"), then the Gap C GRANT.**
+`plans/shadow_sidecar_save_plan.md` is now PHASED with the approach chosen (transient-grant via
+inventory API + save-detection, NOT serializer parsing) + every RE target's status. **Next concrete
+step: finish the INVENTORY-ACCESSOR chain** (WorldChrMan→LocalPlayer→inventory ptr — half-known,
+`goblin_world_position.cpp:463`; shared by both the sidecar strip/reinject AND the Gap C grant).
+Needs a LOADED SAVE (inventory only exists in-world) → drive ER foreground (the workaround below).
+Then: RemoveItem RE, save-window timing (CreateFileW on `ER0000.err`), character-identity binding.
+NB ERR saves are `ER0000.err` (ME3 redirect, SAME sl2 format) → resolve save path dynamically;
+ERR `.err` is already mod-locked so variant B is tolerable there, sidecar's clean-uninstall matters
+most for vanilla. **Deeper Gap-B/C save-load-inventory validation is still pending** (shares the
+proven TutorialParam wrapper code; low risk).
+
+**KEY WORKFLOW UNLOCK this session:** a background job CAN drive in-game RPC verification via a single
+FOREGROUND blocking bash command (me3 as an in-shell child, killed before return) — see
+`memory/tooling/mfg-rpc-driver-hardening.md`. Params live at the title screen (no save needed for
+param/FMG tests; a save IS needed for inventory/world work). This is how every "in-game verified"
+above was done.
 
 ## Runtime modding framework — FIRST STEP DONE + MERGED to master (2026-07-03)
 
