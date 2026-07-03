@@ -93,6 +93,22 @@ session: the game will not stay alive when launched from the job's Bash tool.
   accept it and read the PERSISTED log afterward (the game's log survives the shell death). Also: a
   **two-boot** recipe blows the default **120 s** Bash-tool timeout — split into separate tool calls or
   pass an explicit longer `timeout`.
+  **PREFER the scripting framework over hand-rolled bash (added 2026-07-03):**
+  `tools/mfg_session.py` wraps this whole dance (launch me3 child → poll `ping` → title→in-world nav →
+  rpc + assertions → `pkill -x eldenring.exe` on exit) behind a `GameSession` context manager, with all
+  the gotchas baked in (per-call timeouts, exact-name kill, sidecar-path bind wait). A repro/regression
+  is now a few lines of Python instead of 40 lines of bash:
+  ```python
+  from mfg_session import GameSession
+  with GameSession() as g:
+      g.load_save(); g.warp(11102950)
+      g.assert_in("sidecar getkv foo", "foo=bar")
+  ```
+  Regression tests live in `tools/rpc_tests/test_*.py` (each = one standalone boot via `run_test`);
+  `python3 tools/mfg_test.py [filter]` runs them all + reports pass/fail. Proven 2026-07-03: `test_warp`
+  4/4, `test_sidecar` 5/5. Runs inside ONE foreground call (me3 is the script's child, killed at
+  `__exit__` before return — the reaping constraint still holds). Hand bash only for one-off pokes.
+
   This machine's exact pieces (verified 2026-07-03): me3 = `~/Games/ERRv2.2.9.6/internals/modengine/bin/me3`,
   exe = `~/.local/share/Steam/steamapps/common/ELDEN RING/Game/eldenring.exe`, profile `err_offline.me3`.
   RPC comes up at ~24s. Screenshots: pass a `Z:\...` path (game's view; `Z:` = `/`).
