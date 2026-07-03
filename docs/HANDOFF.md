@@ -13,6 +13,33 @@ Kept: genuinely live/in-progress work, open questions, and standing knowledge (g
 decisions, non-obvious facts) not fully captured anywhere else. If you're looking for the history of
 something not below, check `docs/changelog.md` first, then the relevant `docs/plans/*.md`.
 
+## ⇒ RESUME HERE (2026-07-03 PM) — sidecar Phase 2 BLOCKED on Windows-Ghidra; else ship Variant B
+
+**Session wrap (all committed to master, local ahead of origin — user pushes).** This session shipped:
+inventory GRANT/REMOVE (`give_item`, RemoveItem = negative-qty, in-game verified), GRACE WARP
+(`warp <graceId>`, dev-world nav, verified Limgrave→Roundtable), sidecar Phase-1 (state store + flag
+replay, verified), the Phase-2 data layer (dormant behind `kItemStripReinjectWired=false`), the warp AOB
+MULTI fix, and an **RPC SCRIPTING/REGRESSION harness** (`tools/mfg_session.py` + `tools/rpc_tests/` +
+`tools/mfg_test.py`; test_warp 4/4, test_sidecar 5/5). Framework dev-drive surface = give_item + warp +
+param/FMG/row + sidecar. All RE infra (GAME_DATA_MAN/SAVE_FN/SERIALIZE_FN sigs, equip/mem dump+fwa RPC,
+FWA stack chains, capstone entry-finder) committed.
+
+**⛔ BLOCKED — waiting on the WINDOWS-GHIDRA agent for sidecar Phase-2 Variant A (clean-save strip
+bracket).** The save-serialize RE hit a hard wall on Linux (offline heuristics): the ER save serializer
+is a GENERIC REFLECTION walker (`0x1ede700`, real call target, fires on the save worker tid 352) shared
+by save AND load, and the once-per-save orchestrator (`er+0x24fb88b`) function entry can't be pinned by
+CC-scan/capstone (mid-function CC bytes). Needs real Ghidra on the SaveLoad2 + reflection path to (a)
+pin the orchestrator entry + (b) find the save-vs-load discriminator. **HAND-OFF PROMPT TO WRITE/RUN on
+Windows:** extend `docs/re/windows_save_function_rpm_re_findings.md` — Ghidra-analyze `SLSaveSession::run`
+(0x240FD70) + the reflection serializer, deliver the once-per-save bracket fn RVA+AOB + how to tell save
+from load, so the DLL can hook strip(entry)/reinject(exit) + flip `kItemStripReinjectWired`. Full detail:
+`docs/re/linux_save_function_re_findings.md` (updates PM #1/#2/#3).
+
+**WHILE WAITING (no Windows dep):** ship **Variant B** — reserved-id custom item lives in the `.err`
+(blank/unknown if loaded DLL-less, tolerable for ERR), via the shipped `give_item` + sidecar `[items]`
+store; NO serialize hook. Compose the full Gap C custom-item end-to-end (define → grant → persist) and
+codify it as a new `tools/rpc_tests/` regression. This unblocks the whole grant path today.
+
 Last updated: 2026-07-03 (BIG runtime-modding-framework session — see the section directly below;
 + read_wgm perf fix + present.overlay spike localized (game-side, not us) + merchant pins SHELVED.
 Earlier 2026-07-02: hot-reload D + Phase 3 RPC + Phase 4 loop merged & validated; spiderfy, pause,
