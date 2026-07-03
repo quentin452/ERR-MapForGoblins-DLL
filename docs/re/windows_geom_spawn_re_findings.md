@@ -63,9 +63,14 @@ placement-new an instance — but it's a bigger detour, not the spawn_clone shor
    self-allocated `0x5b0`, push to `+0x288`, then `SetWorldMatrix` (`vtable[0xd0]`, proven) to offset it by
    the delta — sidesteps the 24-byte transform builder (blocker 2) entirely.
 
-## ★ Blocker 3 — the ctor's parts-record reads — SOLVED (and it corrects the prompt)
-Re-decompiled the base ctor `FUN_1406c5900` + Dynamic ctor `FUN_1406b9880`, tracing every deref of the
-parts record (`param_3`, stored at `self+0x10 = param_1[2]`):
+## ★ Blocker 3 — the ctor's `param_3` reads — SOLVED (and it corrects the prompt)
+> **Live recon reconcile (see "LIVE RECON DONE" below):** `param_3` (`self+0x10`) is the **BlockData**, NOT
+> a `CSMsbParts` record — the real `CSMsbPartsGeom` is embedded at `inst+0x30`. The offsets below are
+> correct; read them as **`BlockData+0x18b`** and the registry on the **BlockData** (`+0xe8/+0xf8/+0xfc`).
+> `spawn_clone` therefore passes the source's **BlockData** as `param_3`, not a synthesized record.
+
+Re-decompiled the base ctor `FUN_1406c5900` + Dynamic ctor `FUN_1406b9880`, tracing every deref of
+`param_3` (stored at `self+0x10 = param_1[2]`):
 
 - **Only ONE direct field is read from the record: `rec+0x18b`** — a `char` flag (base ctor reads it twice:
   `inst[0x26c] = (rec[0x18b]==0)` and a branch on it). **That is the entire set of record *field* reads.**
