@@ -46,6 +46,16 @@ constexpr FieldSpec kFields[] = {
     {L"EquipParamGoods", "sortGroupId", goblin::sig::GOODS_SORT_GROUP_ACCESS, 3, 1, false, FieldType::U8, 0x72},
     {L"AssetEnvironmentGeometryParam", "pickUpItemLotParamId", goblin::sig::AEG_PICKUP_LOT_ACCESS, 2, 4, false, FieldType::S32, 0xb8},
     {L"BonfireWarpParam", "textId1", goblin::sig::BONFIRE_TEXTID1_ACCESS, 3, 1, true, FieldType::S32, 0x30},
+    // ItemLotParam slot-1 fields — offset-only (core-stable layout, read raw all over
+    // goblin_loot_resolve.cpp: lotItemId01@0x00, lotItemCategory01@0x20, lotItemBasePoint01@0x40).
+    // Lets a cloned lot be made to yield a custom item (Gap C ⋈ map markers). AOB upgrade: see
+    // docs/re/windows_itemlot_field_re_prompt.md. Applies to both ItemLotParam_map and _enemy.
+    {L"ItemLotParam_map", "lotItemId01", nullptr, 0, 4, false, FieldType::S32, 0x00},
+    {L"ItemLotParam_map", "lotItemCategory01", nullptr, 0, 4, false, FieldType::S32, 0x20},
+    {L"ItemLotParam_map", "lotItemBasePoint01", nullptr, 0, 2, false, FieldType::U16, 0x40},
+    {L"ItemLotParam_enemy", "lotItemId01", nullptr, 0, 4, false, FieldType::S32, 0x00},
+    {L"ItemLotParam_enemy", "lotItemCategory01", nullptr, 0, 4, false, FieldType::S32, 0x20},
+    {L"ItemLotParam_enemy", "lotItemBasePoint01", nullptr, 0, 2, false, FieldType::U16, 0x40},
 };
 constexpr size_t kFieldCount = std::size(kFields);
 
@@ -66,10 +76,20 @@ ptrdiff_t resolve_registry_offset(size_t idx)
     static std::array<std::once_flag, kFieldCount> once{};
     std::call_once(once[idx], [idx] {
         const auto &f = kFields[idx];
+        std::string pn = from::params::internal::wstring_to_string(std::wstring(f.param));
+        // Offset-only rows (aob==nullptr): a core-stable param-layout offset already trusted raw
+        // elsewhere (e.g. ItemLotParam lotItemId01@0x00 / lotItemCategory01@0x20, read all over
+        // goblin_loot_resolve.cpp). No image scan; upgrade to a resolved AOB later (see the RE prompt).
+        if (f.aob == nullptr)
+        {
+            cache[idx] = f.fallback;
+            spdlog::info("[PARAMEDIT] {}.{} = +0x{:x} (offset-only, core-stable — no AOB)", pn, f.field,
+                         cache[idx]);
+            return;
+        }
         auto r = modutils::resolve_field_offset(
             {.aob = f.aob, .disp_pos = f.disp_pos, .disp_size = f.disp_size, .consensus = f.consensus});
         cache[idx] = r ? *r : f.fallback;
-        std::string pn = from::params::internal::wstring_to_string(std::wstring(f.param));
         if (r)
             spdlog::info("[PARAMEDIT] {}.{} = +0x{:x} (live from exe)", pn, f.field, cache[idx]);
         else

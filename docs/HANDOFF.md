@@ -81,10 +81,13 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   param override — does NOT reflect on the drawn markers until a rebuild. To edit the map in real time
   we need a **marker-regen trigger**: v1 = a `refresh_markers` RPC/hook that resets the `call_once` +
   rebuilds all buckets (simple, broadly useful — makes every live param override show on the map); v2 =
-  INCREMENTAL regen (rebuild only the affected buckets/tiles) for perf. This is the shared enabler for
-  "custom items/mobs on the map" (with `ItemLotParam` field access, see `custom_item_end_to_end_plan.md`
-  "Showing a custom item ON THE MAP") and for any live map-editing UX. Gate a rebuild carefully vs the
-  collected-graying contract + the `read_wgm` cache-miss spike (a full rebuild re-walks every tile).
+  INCREMENTAL regen (rebuild only the affected buckets/tiles) for perf. Must ALSO rebuild the `LotReader`
+  lot INDEX (`goblin_loot_resolve.cpp`, snapshotted at init) so NEWLY CLONED lots resolve — today only
+  EXISTING lots do (editing an existing lot's `lotItemId01` reflects live; a new cloned lot does not).
+  Shared enabler for "custom items/mobs on the map" (`ItemLotParam` field access is DONE — see
+  `custom_item_end_to_end_plan.md` "Showing a custom item ON THE MAP"; proven: existing-lot `lotItemId01`
+  → custom item+name on the marker chain) and for any live map-editing UX. Gate a rebuild carefully vs
+  the collected-graying contract + the `read_wgm` cache-miss spike (a full rebuild re-walks every tile).
 - **F1 panel to edit param overrides live** — optional polish on the param-override framework (all 3
   loader slices are done/merged); more registry fields = one AOB each. Not started.
 - **Gap C GRANT — grant+sidecar PROVEN 2026-07-03; NAME + author surface remain.** A CLONED custom

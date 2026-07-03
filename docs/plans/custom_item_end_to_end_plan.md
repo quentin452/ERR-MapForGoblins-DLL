@@ -109,15 +109,21 @@ item` (`msbe_parser.cpp:298`, `map_entry_layer.cpp` `aeg_pickup_lot`/`resolve_lo
   the marker build would show. `param_setf AssetEnvironmentGeometryParam <aeg> pickUpItemLotParamId
   <lot>` then re-reading `loot_at` changed the item at asset 99036 Bloodrose→Erdleaf Flower→Poisonbloom.
   So repointing an existing treasure's lot changes the map marker's item, no MSB edit — regulation-free.
-- **To point it at a CUSTOM item, two pieces remain:**
-  1. **`ItemLotParam_map.lotItemId01` + `.lotItemCategory01` field access** — only `pickUpItemLotParamId`
-     is in the param-edit registry today; need those 2 field-AOBs so a cloned lot can be made to yield
-     the custom goods id (then repoint an asset at that lot).
-  2. **Marker-build timing.** `loot_at` reads live, but the drawn markers build ONCE via `call_once`
-     (`prebuild_markers`, boot) BEFORE the boot-order param edits (`param_overrides`/`custom_items`),
-     and the deployed build has no live marker rebuild (`reload_overlay` is hotreload-only). So the
-     override must be applied BEFORE marker-build (reorder init, or gate via `param_overrides.ini` moved
-     ahead of `prebuild_markers`) OR add a `refresh_markers` that resets the `call_once` + rebuilds.
+- **✅ Custom item ON the marker chain PROVEN (2026-07-03).** `ItemLotParam_map/_enemy` `lotItemId01`
+  (@0x00), `lotItemCategory01` (@0x20), `lotItemBasePoint01` (@0x40) are now settable — offset-only
+  FieldSpecs (`goblin_param_edit.cpp`; core-stable offsets already read raw in `goblin_loot_resolve.cpp`;
+  AOB upgrade prompt `windows_itemlot_field_re_prompt.md`). Setting an EXISTING lot's `lotItemId01` to
+  the custom goods id made `loot_at 99036` resolve `item_textid=508000000 name='Goblin Test Item'` — the
+  custom item AND its custom name (injected at base slot 10) render on the marker chain. The name-timing
+  worry is a NON-issue: the marker name lookup resolves live through to slot 10.
+- **Two remaining, both = the `refresh_markers` follow-up (HANDOFF), not blockers:**
+  1. **Existing lots only.** A NEWLY CLONED lot isn't found by `resolve_loot_item_textid` — the
+     `LotReader` lot INDEX is snapshotted at init. Modify an EXISTING lot in place (works) until the
+     LotReader index is rebuildable. (Enough for re-skinning existing loot to a custom item.)
+  2. **Drawn marker vs live resolve.** `loot_at` reads live, but the DRAWN markers build once at boot
+     (`prebuild_markers` `call_once`), no live rebuild in the deployed build. So a visual marker update
+     needs the edit before marker-build OR a `refresh_markers` (reset the `call_once` + the LotReader
+     index + rebuild buckets).
 - **New locations (a NEW treasure/mob at NEW coords) still need MSB editing** — outside the runtime
   framework. Repointing only RE-SKINS existing placements.
 
