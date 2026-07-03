@@ -111,6 +111,39 @@ moved; re-pull PostureBarMod source at that version. The name path (`npc_team_an
 table + FMG) is version-robust (uses our AOB-resolved param/FMG infra), only the CSFeMan/ChrIns
 raw offsets are version-pinned.
 
+## Session post-mortem (2026-07-03) — the naive path is DEAD for generic mobs
+
+Implemented the read loop above and validated it live on ERR/Proton. The bar read works perfectly
+(`CSFeMan.entityHpBars` → handle → `ChrIns` → `npcParam`), but **name resolution fails for generic
+enemies** because ELDEN RING stores no localized display name for them. Three sources tested, all
+dead for generic mobs:
+
+1. **`NpcParam.nameId` (`+0x0c`, paramdef-confirmed)** = **0** for every generic enemy hit
+   (`c3251/c4311/c4600/c6060/c6100`; `found=true`, so the rows exist, the field is genuinely 0).
+   Nonzero only for *named* entities (invaders / hostile NPCs / some minibosses) — those DO resolve
+   via `nameId → lookup_text_utf8(nameId+700M)`, so the implemented feature already names them.
+2. **`NpcName` FMG** (physical slots `{428,328,18}`) holds **only named characters** (live dump:
+   "Sorceress Sellen", "Bloody Finger Nerijus", "Knight of the Great Jar", ids `13xxxx/14xxxx`). A
+   model-derived-id probe (`model{,*10,*100,*1k,*10k}`, `npc{,/10,/100}` in slots 428/328/18) got
+   ZERO hits. Generic-enemy names are not in NpcName at any derivable id.
+3. **Live entity data** (Erd-Tools chain `[[ChrIns+0x190]+0x0]+0x1A0`, UTF-16) = the **internal
+   part/model name** `"c3251_9000"`, NOT a display name (`Model` string at `+0xC8` = `"c3251"`).
+   Validated by `Hp@0x138` matching PostureBarMod's statModule.
+
+Also: hooking `MsgRepositoryImp::GetMessage` showed the only readable "Tree Sentinel" is the
+**field-boss banner** `fmg=32 id=5763010 'Enter Field Boss: Tree Sentinel'` (ERR bakes the whole
+phrase into one entry); the game never looks up a clean per-mob name in normal play.
+
+**Verdict:** the implemented `NpcParam.nameId` path is correct + complete for what ER exposes — it
+names invaders / hostile NPCs / named enemies, and draws nothing for generic mobs (which have no
+name in the data). Getting names for *generic* mobs needs a **model → name** map; every HUD/debug mod
+(Nordgaren Erd-Tools) does this with a hand-authored table (Paramdex `Resources/Params/Names`). The
+open question — can a **mod-agnostic RUNTIME** model→name source be found in the active install (no
+bake)? — is handed to Windows RE: **`docs/re/windows_enemy_name_runtime_source_re_prompt.md`**.
+
+The live model id (`c3251`, read from `+0xC8` or by stripping the `_NNNN` off the `+0x1A0` name) is
+the reliable mod-agnostic key to feed whatever mapping the RE lands on.
+
 ## Credit
 
 Struct layout + signatures derived from **Mordrog/EldenRing-PostureBarMod** (open source). We
