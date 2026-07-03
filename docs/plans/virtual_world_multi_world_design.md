@@ -131,8 +131,13 @@ LOUDLY flags a regression: a check that PASSED in the prior run of the same test
 pass→fail). So a regression is RECORDED, not a phantom. **`tools/rpc_tests/check_regress.py` (DONE)** scans
 the ledger and, per test, compares its two most recent runs → prints REGRESSIONS (PASS→FAIL) / recovered /
 new-failing, `--history` audits, `--test` filters; **exit 1 on any regression** so an agent/CI sweep gates on
-it. Orchestration follow-up (open): a nightly/cron all-tests sweep that runs the suite then
-`check_regress.py`, so agents catch breaks without a human eyeballing each run.
+it. **`tools/rpc_tests/run_all.py` (DONE)** = the nightly sweep: runs every `test_*.py` SERIALLY (each
+cold-boots ER — one game at a time; kills stragglers between), each appends to the ledger, then runs
+`check_regress.py`; exit 1 if any test failed OR any regression. E2E-verified (drove a real test → ledger →
+scan → gated exit). Must run LOCALLY (the game is on this box — a cloud cron can't drive it); Steam must be
+up. Nightly local cron (user adds to their crontab):
+`30 4 * * * cd <repo> && python tools/rpc_tests/run_all.py >> tools/rpc_tests/sweep.log 2>&1`.
+Loop fully closed: run → record → detect → gate.
 
 ## Open RE items (small, mostly confirm-live)
 - mapId→world lookup + a reserved-mapId/area allocator (only for walkable worlds — not on the marker path).
