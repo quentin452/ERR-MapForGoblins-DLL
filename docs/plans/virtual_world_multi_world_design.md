@@ -128,9 +128,11 @@ install shape — so a path break shows up in the persisted test ledger (below) 
 ## Process: PERSIST RPC test PASS/FAIL + regression detection (DONE 2026-07-04)
 `tools/mfg_session.py::summary()` now appends every run to `tools/rpc_tests/results.jsonl` (gitignored) and
 LOUDLY flags a regression: a check that PASSED in the prior run of the same test but FAILS now (or overall
-pass→fail). So a regression is RECORDED, not a phantom. Orchestration follow-up (open): a `check-regress`
-tool that diffs the ledger across a run set + a nightly/cron all-tests sweep so agents catch breaks without
-a human eyeballing each run.
+pass→fail). So a regression is RECORDED, not a phantom. **`tools/rpc_tests/check_regress.py` (DONE)** scans
+the ledger and, per test, compares its two most recent runs → prints REGRESSIONS (PASS→FAIL) / recovered /
+new-failing, `--history` audits, `--test` filters; **exit 1 on any regression** so an agent/CI sweep gates on
+it. Orchestration follow-up (open): a nightly/cron all-tests sweep that runs the suite then
+`check_regress.py`, so agents catch breaks without a human eyeballing each run.
 
 ## Open RE items (small, mostly confirm-live)
 - mapId→world lookup + a reserved-mapId/area allocator (only for walkable worlds — not on the marker path).
