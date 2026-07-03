@@ -50,6 +50,11 @@ namespace goblin::sidecar
     // after + re-granted on world-enter. add accumulates qty (category-encoded id, e.g.
     // 0x40000000|goodsId); a total ≤0 drops the record.
     void add_custom_item(uint32_t item_id, int32_t qty);
+
+    // Register a DECLARATIVE author-surface item (custom_items.toml), re-registered every boot.
+    // Granted on world-enter + stripped pre-save exactly like add_custom_item's items, but NEVER
+    // persisted to the .mfg (load/save ignore it) — the toml is its source of truth. qty<=0 removes.
+    void register_author_item(uint32_t item_id, int32_t qty);
     void remove_custom_item(uint32_t item_id);
     std::vector<std::pair<uint32_t, int32_t>> custom_items();
 

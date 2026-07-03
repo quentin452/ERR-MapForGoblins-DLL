@@ -1,6 +1,6 @@
 ---
 name: authoring-format-decision
-description: "LOCKED 2026-07-03 — framework mod-authoring is DATA-FIRST, tiered: C++ (primitives/RE/hot loops) → data (declarations: ini for flat, JSON for rich records like custom items) → scripting (Lua, DEFERRED until a mod needs real control flow). Pick the lowest layer that expresses the mod."
+description: "LOCKED 2026-07-03 — framework mod-authoring is DATA-FIRST, tiered: C++ (primitives/RE/hot loops) → data (declarations: ini for flat, TOML for rich hand-authored records like custom items) → scripting (Lua, DEFERRED until a mod needs real control flow). Pick the lowest layer that expresses the mod."
 metadata:
   node_type: project
   type: project
@@ -37,11 +37,20 @@ Everything the shipped primitives do is a declaration, no logic:
 - **ini (mINI, already linked)** — fine for FLAT `key = value` config. Keep it for that. Caveat: mINI
   LOWERCASES keys → case-sensitive identifiers must go in the VALUE (the `Param:row:field:value` hack
   in `param_overrides.ini`). Ugly for anything nested.
-- **JSON** — right the moment records get nested/listy. A custom item is a record with a fields map:
-  `{ "clone":"EquipParamGoods:1074000", "id":90000001, "name":"…", "fields":{ "sortGroupId":101 } }`.
-  **When Gap C (custom items) lands, add a small JSON parser** (the DLL has none yet; mINI stays for
-  flat config). JSON is the default — ubiquitous + the `data/` pipeline already speaks it. TOML is a
-  fine human-nicer alternative (also needs a lib).
+- **TOML (chosen for the author surface, 2026-07-03 — user reopened the JSON default).** For rich,
+  HAND-AUTHORED records (custom items), TOML won on ergonomics: comments, minimal punctuation, and
+  `[[goods]]` array-of-tables is a natural item list. Shipped via header-only `marzer/tomlplusplus`
+  (FetchContent, isolated to `goblin_custom_items.cpp`). Format:
+  ```toml
+  [[goods]]
+  id = 8000000            # <= 0x7FFFFE grantable
+  clone = 100             # template row
+  name = "Goblin Test Item"
+  fields = { sortGroupId = 101 }
+  ```
+- **JSON** — still fine + ubiquitous (the `data/` bake pipeline speaks it), but NO comments and
+  quote-heavy for hand-authored config; passed over for the author surface in favour of TOML. Reach for
+  it if a surface is machine-generated or must interop with the JSON `data/` pipeline.
 
 ## Scripting (Lua) — DEFERRED, explicit revisit triggers
 
@@ -54,5 +63,5 @@ computed value"). Reopen triggers: (1) a repetitive assembly pattern that clearl
 
 ## Recommendation (frozen)
 
-Data-first, tiered: ini for flat config (keep), **JSON for rich records (add at Gap C)**, C++ for
+Data-first, tiered: ini for flat config (keep), **TOML for rich hand-authored records (chosen at Gap C; JSON still fine for machine-generated)**, C++ for
 primitives/RE/hot loops, scripting deferred with the trigger above.

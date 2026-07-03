@@ -1,0 +1,7 @@
+# MapForGoblins custom items — author surface (Gap C). Applied every boot.
+[[goods]]
+id     = 8000000            # base row id (<= 0x7FFFFE to be grantable)
+clone  = 100               # template goods row to clone from the active install
+name   = "Goblin Test Item"
+qty    = 1
+fields = { sortGroupId = 101 }

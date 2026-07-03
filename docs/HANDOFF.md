@@ -93,9 +93,14 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   (`goblin_messages.cpp`: `patch_fmg_in_memory` offset/size + span-vs-stringCount guards;
   `inject_fmg_entries` slot policy): `fmg_set 419` now returns a fast error (game alive), `fmg_set 10`
   works, boot PlaceName(19)/TutorialBody(208) injects unaffected.
-  **NEXT:** the author surface — `custom_items.json` applied at BOOT (clone+fields+name) + registered
-  via the sidecar so it re-grants every load (param_clone doesn't persist; sidecar re-grant does).
-  Also finalize the reserved band from a param-scan survey.
+  **✅ Author surface DONE 2026-07-03** — `custom_items.toml` (TOML chosen over JSON for hand-authoring;
+  toml++ header-only). `goblin_custom_items.{hpp,cpp}` applies each `[[goods]]/[[weapon]]/…` at boot
+  (clone+fields+name) + `sidecar::register_author_item` (declarative registry: granted on world-enter,
+  stripped pre-save, NEVER in the `.mfg` — re-applied every boot). E2E `test_author_items.py` 1/1: toml
+  → boot → world-enter grant → `goods_count==qty`. Example `custom_items.example.toml`.
+  **Remaining polish only:** finalize the reserved band from a param-scan survey; `decode_textid`
+  read-back chain parity (menu-first `{111,10,319,419}`); more categories as needed. **Gap C is
+  functionally complete.**
 - **MapGenie coverage — Hidden Passage category, not started.** Hit-detected illusory walls, no action
   button → no static signal to parse (hardest remaining Group-2 category). RE notes:
   `docs/re/windows_group2_landscape_re_findings.md`.

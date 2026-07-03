@@ -1,11 +1,11 @@
 # Custom item end-to-end (Gap C) — plan
 
-Status: **DEFINE(stats) + GRANT + SIDECAR clean-save all PROVEN end-to-end (2026-07-03).** A CLONED
-custom goods row can be granted into inventory and kept out of the vanilla `.sl2`
-(`tools/rpc_tests/test_gapc_grant.py` 4/4 + boot-2 clean 1/1). Remaining: the NAME (Gap D) live path
-freezes, the reserved band needs revising to the grantable range, and the author surface + boot-time
-re-definition. The payoff of the runtime-modding framework: a custom item that DOESN'T ship a
-`regulation.bin`.
+Status: **END-TO-END DONE (2026-07-03).** DEFINE(clone+fields+name) + GRANT + SIDECAR clean-save +
+the `custom_items.toml` AUTHOR SURFACE all proven live. A hand-authored TOML file produces a named
+custom item that grants into inventory, stays out of the vanilla `.sl2`, and re-applies every boot —
+a custom item that DOESN'T ship a `regulation.bin`. Tests: `test_gapc_grant.py` 4/4 + clean 1/1,
+`test_author_items.py` 1/1. Remaining polish only: finalize the reserved band from a param-scan
+survey; the `decode_textid` read-back chain parity (menu-first); more categories as needed.
 
 **Two blockers found while proving the grant (2026-07-03, `mfg run`/GameSession probes):**
 - **Grantable goods-id CEILING = `0x7FFFFE` (8388606).** `give_item` no-ops for any goods id ≥
@@ -89,10 +89,16 @@ ceiling that the survey shows free), wire the ini base + the collision-check (al
    (`test_gapc_grant.py` 4/4 + clean 1/1). Uses id `8000000` (≤ the `0x7FFFFE` grantable ceiling).
    REMAINING in this step: (a) fix the NAME path (`fmg_set` GoodsName freezes — do it at boot or fix the
    live inject); (b) finalize the reserved band from a param-scan survey.
-4. Author surface (NEXT): a `custom_items.json` (per [[../memory/process/authoring-format-decision]] —
-   JSON for rich records) = `{clone, id, name, fields{}}`, applied at BOOT (define: clone+fields+name)
-   + granted/registered via the sidecar path so it re-applies every load (param_clone does NOT persist;
-   the sidecar re-grant does). This is the real end-user deliverable and the last integration.
+4. ✅ Author surface — **DONE 2026-07-03.** `custom_items.toml` (TOML chosen over JSON for
+   hand-authoring — see [[../memory/process/authoring-format-decision]]) `[[goods]]/[[weapon]]/…`
+   array-of-tables = `{id, clone, name, qty, fields{}}`. `goblin_custom_items.{hpp,cpp}` (toml++,
+   header-only) applies each at BOOT after setup_messages: `param_clone_row` + `param_set_field_by_name`
+   + `inject_fmg_entries`(base name slot) + `sidecar::register_author_item` (a DECLARATIVE registry,
+   granted on world-enter + stripped pre-save, NEVER written to the `.mfg` — the toml is the source of
+   truth, re-applied every boot since param_clone/FMG don't persist). Verified E2E (ERR/Proton):
+   `test_author_items.py` 1/1 — toml → boot define+name+register → world-enter grant →
+   `goods_count == qty`. Categories wired: goods(10)/weapon(11)/protector(12)/accessory(13); each
+   enforces the `0x7FFFFE` grantable ceiling. Example: `custom_items.example.toml`.
 
 ## Acceptance (mod-agnostic)
 On vanilla AND a non-ERR mod: the define half produces a coherent named custom item from that install's

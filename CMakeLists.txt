@@ -54,6 +54,14 @@ FetchContent_Declare(mini
   CONFIGURE_COMMAND     ""
   BUILD_COMMAND         "")
 
+# toml++ (header-only) — parses the custom-items author surface (custom_items.toml, Gap C).
+# Human-authored, so TOML: comments + [[goods]] array-of-tables. Isolated to goblin_custom_items.cpp.
+FetchContent_Declare(tomlplusplus
+  GIT_REPOSITORY        https://github.com/marzer/tomlplusplus.git
+  GIT_TAG               v3.4.0
+  CONFIGURE_COMMAND     ""
+  BUILD_COMMAND         "")
+
 set(SPDLOG_DISABLE_DEFAULT_LOGGER ON)
 set(SPDLOG_USE_STD_FORMAT ON)
 FetchContent_Declare(spdlog
@@ -75,13 +83,16 @@ add_definitions(-D_ITERATOR_DEBUG_LEVEL=0)
 # Static CRT linking (/MT) - required for DLL injection into game process
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-FetchContent_MakeAvailable(minhook pattern16 mini spdlog imgui)
+FetchContent_MakeAvailable(minhook pattern16 mini spdlog imgui tomlplusplus)
 
 add_library(pattern16 INTERFACE)
 target_include_directories(pattern16 INTERFACE ${pattern16_SOURCE_DIR}/include)
 
 add_library(mini INTERFACE)
 target_include_directories(mini INTERFACE ${mini_SOURCE_DIR}/src)
+
+add_library(tomlplusplus INTERFACE)
+target_include_directories(tomlplusplus INTERFACE ${tomlplusplus_SOURCE_DIR}/include)
 
 # Dear ImGui core + DX12/Win32 backends, compiled into the DLL.
 add_library(imgui STATIC
@@ -191,6 +202,8 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_sidecar.cpp
   src/goblin_inventory.hpp
   src/goblin_inventory.cpp
+  src/goblin_custom_items.hpp
+  src/goblin_custom_items.cpp
   src/goblin_warp.hpp
   src/goblin_warp.cpp
   src/goblin_logic.hpp
@@ -316,6 +329,7 @@ target_link_libraries( MapForGoblins
   minhook
   pattern16
   mini
+  tomlplusplus
   spdlog
   imgui
   d3d12

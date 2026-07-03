@@ -25,6 +25,14 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Regulation.bin-free custom items.** A new `custom_items.toml` (next to `MapForGoblins.dll`) lets
+  you declare custom items as data — no `regulation.bin`, no code. Each `[[goods]]` (also `[[weapon]]`
+  /`[[protector]]`/`[[accessory]]`) clones a template row from the ACTIVE install, sets fields by name,
+  injects a name, and grants the item into your inventory on load — and it's **save-safe**: the item
+  is stripped from the vanilla `.sl2` on every save and re-granted from the toml each launch, so the
+  save stays DLL-less-loadable. Example:
+  `[[goods]]\nid = 8000000\nclone = 100\nname = "Custom Item"\nfields = { sortGroupId = 101 }`.
+  Mod-agnostic (clones whatever the loaded mod's template row is). See `custom_items.example.toml`.
 - **Regulation.bin-free param overrides.** A new `param_overrides.ini` (next to `MapForGoblins.ini`,
   gated on `[Param Overrides] param_overrides = true`, default OFF) applies per-field param edits to
   the ACTIVE install's LIVE params at boot — so you can rebalance items/weapons/etc. **without

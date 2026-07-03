@@ -37,6 +37,19 @@ bool g_dirty = false;      // in-memory state changed since the last save
 std::set<uint32_t> g_flags;
 std::unordered_map<std::string, std::string> g_kv;
 std::map<uint32_t, int32_t> g_items;  // custom item id (category-encoded) → qty (Phase 2)
+// Author-surface (custom_items.toml) items: declarative, re-registered from the toml EVERY boot.
+// Granted/stripped exactly like g_items, but NEVER written to or cleared by the .mfg (load()/save()
+// touch only g_items) — the toml is their source of truth, so they stay save-clean without persisting.
+std::map<uint32_t, int32_t> g_author_items;
+
+// Merged view (g_items ∪ g_author_items) for grant/strip. Author qty wins on a collision (unlikely —
+// author ids live in a reserved band). Caller holds g_mtx.
+std::map<uint32_t, int32_t> all_custom_items_locked()
+{
+    std::map<uint32_t, int32_t> m = g_items;
+    for (auto &[id, qty] : g_author_items) m[id] = qty;
+    return m;
+}
 std::string g_guid;        // self-stamped binding id (forward-compat; identity RE is Phase 1c)
 
 // Lifecycle (slice 1b). g_prev_world_loaded is touched ONLY by tick() (poll thread) — no
@@ -367,7 +380,7 @@ void strip_items()
     std::vector<uint32_t> ids;
     {
         std::lock_guard<std::mutex> lk(g_mtx);
-        for (auto &[id, qty] : g_items)
+        for (auto &[id, qty] : all_custom_items_locked())
             if (qty > 0) ids.push_back(id);
     }
     g_strip_snapshot = goblin::inventory::strip_goods(ids);
@@ -392,10 +405,10 @@ void restore_stripped()
 // give_item(+N) in one call is unreliable for N>1 (caps at ~1000), hence the +1 loop.
 void reinject_items()
 {
-    std::vector<std::pair<uint32_t, int32_t>> items;
+    std::map<uint32_t, int32_t> items;
     {
         std::lock_guard<std::mutex> lk(g_mtx);
-        items.assign(g_items.begin(), g_items.end());
+        items = all_custom_items_locked();
     }
     int granted = 0;
     for (auto &[id, qty] : items)
@@ -565,6 +578,14 @@ std::vector<std::pair<uint32_t, int32_t>> custom_items()
 {
     std::lock_guard<std::mutex> lk(g_mtx);
     return {g_items.begin(), g_items.end()};
+}
+
+void register_author_item(uint32_t item_id, int32_t qty)
+{
+    std::lock_guard<std::mutex> lk(g_mtx);
+    if (qty > 0) g_author_items[item_id] = qty;
+    else g_author_items.erase(item_id);
+    // NB not marked dirty and never written to the .mfg — the toml is the source of truth.
 }
 
 void set_kv(const std::string &key, const std::string &value)
