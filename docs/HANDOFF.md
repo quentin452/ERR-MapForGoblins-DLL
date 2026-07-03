@@ -129,6 +129,19 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
     `world_map_open()` primitive, **user-verifiable by pressing M in a custom world**. **Follow-up:** the
     vmap is a movable WINDOW over the native map, not a full-screen replace — native-map suppression (draw
     the mod surface in the map's place) is a later polish.
+  - **ENDGAME (total native-map replacement) — SCOPED + phase-1a format-CRACKED 2026-07-04, not built.**
+    Vision: the mod map fully REPLACES ER's native worldmap (one UX, no marker clipping — the clipping win
+    is FREE from a full-screen mod surface, no risky native suppression needed). Make-or-break = FAST-TRAVEL
+    (warp-on-grace-click; primitive `warp` exists). **Phase-1a = load ER's real map ART onto the canvas** —
+    fully scoped in `docs/plans/map_tile_loading_plan.md`: the DCX→DDS→GPU chain all EXISTS
+    (`create_tex_from_dds_mem`, `dcx_decompress`, `tpf_find_texture`, the `read_item_icon_sheets` template,
+    the img→resource offsets, `w2s` positioning); the ONE gap was the `71_MapTile.tpfbhd/.tpfbdt` archive —
+    **format CRACKED: `BHF4` header (entry table {hash,size,offset}) + `BDF4` data, each entry = `DCX`→TPF→
+    DDS (inner half already handled), so the only new code is a small BHF4 entry-table parser (SoulsFormats
+    BXF4).** Two paths: RAM-harvest (resident `MENU_MapTile_*` via `force_load_file`, but SRV-256-cap +
+    g_icon_repo-needs-a-menu wrinkle) vs disk-extract (in-game dvdbnd read — `dvdbnd_reader` is Windows-only;
+    OFFLINE format-recon possible on the loose `00_Solo.tpfbhd`). **This is a real SLICE (DX12 SRV-cap
+    streaming is the main engineering constraint), best as a focused fresh-context session.**
   - **Full architecture (collision / active-world / M-open / how ER's map works) = `docs/plans/
     virtual_world_multi_world_design.md`** (2026-07-04). Key decisions: the FRAMEWORK assigns position (not
     the player) — marker worlds get separate mod namespaces, walkable worlds get a reserved mapId
