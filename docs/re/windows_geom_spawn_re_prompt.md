@@ -1,5 +1,12 @@
 # ADD a new geom placement — Windows/Ghidra RE prompt (route 1: spawn_clone)
 
+> **Partial answer landed → `docs/re/windows_geom_spawn_re_findings.md` (2026-07-03).** Vtable reconciled
+> (live vt `0x2a84208` = `CSWorldGeomDynamicIns`, base `0x2a84cb0` = `CSWorldGeomIns`; slot 0xd0 inherited).
+> Blocker 1 (`srcTypeDesc`) SOLVED = 8-byte packed FieldIns id. Blocker 2 (`transform`) = a 24-byte FD4 pose
+> wrapper (builder garbled in Ghidra) → recommend sidestepping it: spawn at the source transform then
+> `SetWorldMatrix`-move (reuse the proven move primitive). Lead: `FUN_1406c7000` may be a cleaner
+> single-spawn factory. Remaining: decomp `FUN_1406c7000` + the ctor's parts-record reads.
+
 **Goal:** drive `CSWorldGeomDynamicIns` spawn (`FUN_1406b9880`) live to ADD one new world-geom instance
 (the last MSB-write hole — see `windows_msb_placement_write_re_findings.md`). MOVE is fully solved+live
 (vtable[0xd0] setter, `move_asset` 7/7). ADD is blocked because the ctor's args must be built by two
