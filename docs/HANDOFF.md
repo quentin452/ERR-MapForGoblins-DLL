@@ -33,11 +33,22 @@ fired on the **save worker thread `tid=344`** (not present/main); call chain run
 callers = 2 of the fn's 4 save triggers — fine for a self-bracketing strip@entry/reinject@exit. Detail:
 `docs/re/windows_save_serialize_re_findings.md` §4.
 
-**Deliverable #4 CLOSED. NEXT = wire it:** add strip@entry / reinject@exit inside `hk_serialize`
-(guard with a re-entrancy/`g_stripped` flag), snapshot items under `g_mtx` then `give_item(∓qty)` outside
-the lock (already have `strip_items()`/`reinject_items()`), and flip `kItemStripReinjectWired=true`.
-Then re-run the cap-oracle test (grant → game-save → delete `.mfg` → reload with `items=0` → item gone
-from the vanilla save). Variant B stays the zero-RE fallback.
+**✅ BRACKET WIRED + LIVE 2026-07-03 (`be7b212`).** strip@entry / reinject@exit now runs inside
+`hk_serialize` (SERIALIZE_FN 0x67dc00): `strip_items()` → `g_orig_ser(..)` (ER writes the clean live
+inventory) → `reinject_items()`, all synchronous on the save worker thread, guarded by `g_in_serialize`.
+Removed the disproven CreateFileW strip + the timer reinject (`g_reinject_at`/`g_stripped`); world-enter
+reinject (load half) kept. `kItemStripReinjectWired=true`. Cross-build clean, deployed, **test_sidecar 5/5
+with the bracket live** — SERIALIZE_FN fired 2× on the save thread (tid=352), passthrough survived, no
+spurious strip at items=0.
+
+**NEXT = the cap-oracle E2E (the on-disk proof).** The bracket is wired + crash-safe but not yet proven
+to actually clean the vanilla save. Recipe: grant a reserved-id item live (`give_item`) + register it
+(`sidecar additem`) → trigger a real game save → reload with the `.mfg` `[items]` emptied → item must be
+GONE from the vanilla save. **Blocker for automation:** there is NO live inventory-count read RPC, so the
+oracle is currently manual (in-game toast/dialog, or the item-cap trick from the Phase-2 RemoveItem RE).
+Either (a) validate manually in-game once, or (b) add a `goods_count(id)` read RPC (small RE off the
+captured EquipGameData chain) and then script `tools/rpc_tests/test_custom_item.py`. Variant B stays the
+zero-RE fallback.
 
 ---
 
