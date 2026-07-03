@@ -84,10 +84,12 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   to a different EXISTING lot (non-destructive — leaves the shared lot alone), with a live preview of the
   target lot's slot-1 item before commit. Pure ImGui over already-proven bridges (`param_set_field` on
   `pickUpItemLotParamId` is the same write the RPC repoint used; live re-read via `aeg_pickup_lot` from
-  slice 1). **Built clean (clang-cl) but NOT yet deployed/in-game-verified — the game was running at
-  build time (DLL file-lock, no hot-reload). Deploy `build-linux/MapForGoblins.dll`(+`.pdb`) to
-  `~/Games/ERRv2.2.9.6/dll/offline/` after the game is closed, restart ERR, verify: repoint an asset at
-  another lot → live preview + display update → Refresh markers shows it.**
+  slice 1). **✅ DEPLOYED + E2E-VERIFIED 2026-07-03 (Linux/Proton, 8/8)** —
+  `tools/rpc_tests/test_world_editor_slice2.py` cold-boots ER, loads a save, and proves the exact panel
+  write path: `help` returns the verb list; repoint asset 99030 (lot 900002000 → 997230) then
+  `param_getf`==997230 AND `loot_at` resolves lot 997230 + 'Bloodrose' (textid 500020723); restore to
+  900002000. Also proved the new `help`/`?` RPC verb. (Test caveat baked in: discover pickup assets by
+  loot TEXTID, not name — many valid lots resolve an empty FMG name off this chain.)
   **Next slices:** a proper asset/item PICKER (browse instead of typing ids — needs an enumeration
   source), CLONE a lot instead of editing in place (needs the `refresh_markers` v2 LotReader-index reset
   so new lots resolve), a slot selector (edit any of 8 lot slots via `lot_slot_item_keys`, not just
