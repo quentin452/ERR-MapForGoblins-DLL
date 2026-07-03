@@ -74,13 +74,12 @@ namespace goblin::sig
     inline constexpr const char *LUA_WARP =
         "C3 ?? ?? ?? ?? ?? ?? 57 48 83 EC ?? 48 8B FA 44";
     // CSLuaEventManager singleton (mov rax,[rip+disp]; disp@+3, instr len 7 → slot = match+7+disp).
-    // NB [SIG] reports MULTI (2 matches) on ERR — the FIRST match is the correct one (grace warp
-    // verified live 2026-07-03: Limgrave → Roundtable Hold). A future patch could reorder the two;
-    // that fails SAFE (warp reads a wrong singleton → the SEH-guarded LuaWarp call faults → to_grace
-    // returns false, no crash). TODO tighten to unique (needs live disasm of the 2 sites to find the
-    // distinguishing trailing bytes).
+    // The bare `…44 89 75` form matched TWO sites on ERR (0x65a1bd + 0xbbaf0b); the CORRECT one
+    // (grace warp verified live 2026-07-03, [SIG] 0x…525abbd = er+0x65abbd) continues `?? 48 8B 48 08`
+    // (mov rcx,[rax+8]) while the decoy continues `?? 48 83 78 08` (cmp) — so the trailing `?? 48 8B`
+    // pins it UNIQUE (offline exe scan confirmed 1 match). Was MULTI, now unique.
     inline constexpr const char *CS_LUA_EVENT_MANAGER =
-        "48 8B 05 ?? ?? ?? ?? 48 85 C0 74 ?? 41 BE 01 00 00 00 44 89 75";
+        "48 8B 05 ?? ?? ?? ?? 48 85 C0 74 ?? 41 BE 01 00 00 00 44 89 75 ?? 48 8B";
 
     // ── Live param + message repositories (SoloParamRepository / MsgRepositoryImp) ──
     // Param list address (get_param). relative_offsets {{3,7}}.
