@@ -107,3 +107,38 @@ Moving feature logic C++→scripts was assessed and deferred: enormous binding s
 the feature core stay C++, it doesn't touch the RE bottleneck, and it's speculative by this same
 discipline. The near-term win instead = a **data-driven category/filter descriptor** + host-reload
 improvements (see that note).
+
+## Future directions (bigger bets — TRACKED for later, 2026-07-03)
+
+Three directional bets raised by the user. Not scoped plans — captured so they aren't lost. Each is
+connected to what already exists so the on-ramp is visible.
+
+### 1. World Virtualization — runtime switching between "sets of mods"
+Break the uninstall/reinstall round-trip a player suffers to move between overhauls (e.g. The
+Convergence ⟷ ELDEN RING Reforged). Vision: a "world" = a runtime-applied DATA BUNDLE (param overrides
++ custom items + FMG names + map edits + flags), layered over the base game and swappable live, without
+touching the install.
+- **Already on the ramp:** regulation.bin-free param overrides (`param_overrides.ini`), the
+  `custom_items.toml` author surface, the sidecar save-clean (`shadow_sidecar_save_plan.md`) that keeps
+  each world's state out of the vanilla `.sl2`, and `framework-regulation-agnostic-decision`.
+- **Hard part:** overhauls ship their OWN `regulation.bin` (Convergence isn't just param deltas — new
+  rows, EMEVD, ESD, assets). True "no reinstall" needs either restricting to bundles that layer over ONE
+  shared base, or virtualizing `regulation.bin`/the mod VFS itself (me3/UXM-level). A bundle over a
+  shared base is the tractable first slice; full overhaul-swapping is a much larger VFS bet.
+
+### 2. In-Game World Editor (ImGui, param-based)
+An ImGui frontend over the runtime primitives — edit params/items/loot/markers live and SEE it, no
+rebuild. **This is the closest of the three: the whole live-edit loop already exists.** We built it this
+session — `param_setf`/`param_clone` (edit), `custom_items` (define), `loot_at` (inspect what a marker
+resolves), `pickUpItemLotParamId` repoint + `lotItemId01` (re-skin a loot spot), and **`refresh_markers`
+(see the edit on the map)**. The editor = a panel wiring these to widgets (pick asset → pick item →
+apply → refresh). On-ramp: the F1 panel, `category_descriptor` Tier 2 (runtime live-add), and the
+`refresh_markers` v2 (incremental regen + LotReader-index reset so NEW cloned lots resolve, not just
+existing ones — see HANDOFF).
+
+### 3. 3D model variants + reuse across worlds
+Vary/retexture placed models and reuse models in new worlds. The asset/geometry frontier — AEG assets,
+FLVER models, MSB placements. **Hardest + furthest:** map markers already read placements from disk MSB,
+but CREATING/varying placements needs MSB write + model handling, which is outside the current runtime
+framework (repointing only re-skins existing placements; new coords/models need MSB editing). Long
+horizon; depends on an MSB-write path that doesn't exist yet.
