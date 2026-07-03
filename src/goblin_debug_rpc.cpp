@@ -578,8 +578,11 @@ namespace goblin::debug_rpc
                 return "ok cloned " + pname + "[" + src_s + "] -> [" + new_s +
                        "] new_row_present=" + (rb ? "1" : "0");
             }
-            // fmg_set <slot> <id> <text...> — inject/override an FMG string (Gap D). Slot = physical
-            // FMG slot (419 GoodsName, 410 WeaponName, 19 PlaceName). Read-back via raw_message_utf8.
+            // fmg_set <slot> <id> <text...> — inject/override an FMG string (Gap D). Slot = the BASE
+            // FMG slot: GoodsName=10, WeaponName=11, PlaceName=19 (the low tier the item-name path
+            // falls through to). Do NOT use the DLC/menu tiers (GoodsName 419/319, WeaponName 410/310)
+            // — their group id-spans hang patch_fmg_in_memory (now guarded → fast error, not a freeze).
+            // Read-back via the reply (raw_message_utf8).
             if (cmd == "fmg_set")
             {
                 std::string slot_s = next_token(rest), id_s = next_token(rest);

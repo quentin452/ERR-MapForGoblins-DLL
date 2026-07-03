@@ -13,9 +13,15 @@ re-definition. The payoff of the runtime-modding framework: a custom item that D
   8388607/8388608/9M/50M all no-op. **So the old reserved band `90000001` was NEVER grantable.** The
   grant itself is otherwise fine for a cloned row (0→1); the earlier "grant VERIFIED" only ever tried
   pre-existing low ids. Real ER goods ids sit far below the ceiling.
-- **`fmg_set 419` (GoodsName) FREEZES the present thread** — a live name injection hangs the game (no
-  frames; `alive→False`). The name is cosmetic; the grant works without it. Gap D live path needs
-  fixing (or do the name inject at boot, not via the live RPC) before the name ships.
+- **`fmg_set` slot matters — base `10` WORKS, DLC-tier `419` FREEZES.** The name lives across tiers
+  `kGoods={419,319,10}`; **base slot 10** injects instantly (`ok 10:<id>=<text>`, game alive, reads
+  back via `GetMessage`). Slot **419** hangs `patch_fmg_in_memory` on the PRESENT thread (RPC marshals
+  there) → no frames → game dead; a group-span guard did NOT stop it, so 419 is structurally different
+  (not just a big group range). Immediate path: inject names at slot 10. Open: (a) confirm the slot the
+  game's item-name UI actually reads for a goods id (so the name renders on the item, not just our
+  read-back), (b) why 419 hangs + an O(1) reject for hazardous slots. **Handed to a Windows/Ghidra sweep:
+  `docs/re/windows_fmg_slot_re_prompt.md`.** The old fmg_set RPC comment said "419 GoodsName" — WRONG,
+  corrected to base 10/11/19.
 
 Depends on the three shipped primitives (`goblin_param_edit` + `goblin_messages`), the frozen policy
 [[../memory/process/reserved-id-and-load-contract]] (Gap H), and — for a clean grant —

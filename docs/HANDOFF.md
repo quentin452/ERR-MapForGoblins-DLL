@@ -80,8 +80,10 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   goods row grants into inventory and is kept out of the vanilla `.sl2` (`test_gapc_grant.py` 4/4 +
   boot-2 clean 1/1). Two findings baked into `custom_item_end_to_end_plan.md`: (1) **grantable goods-id
   ceiling `0x7FFFFE`** — `give_item` no-ops at ≥`0x7FFFFF`, so the old reserved band `90000001` was
-  never grantable; use ≤`0x7FFFFE` (the test uses `8000000`). (2) **`fmg_set` GoodsName FREEZES the
-  present thread** — the live NAME inject (Gap D) hangs; cosmetic, do it at boot or fix the live path.
+  never grantable; use ≤`0x7FFFFE` (the test uses `8000000`). (2) **`fmg_set` slot: base `10`
+  WORKS, DLC-tier `419` FREEZES** the present thread (RPC marshals there). Inject names at slot 10;
+  the 419 hang + which slot the item-name UI reads are handed to a Windows/Ghidra sweep
+  (`docs/re/windows_fmg_slot_re_prompt.md`).
   **NEXT:** the author surface — `custom_items.json` applied at BOOT (clone+fields+name) + registered
   via the sidecar so it re-grants every load (param_clone doesn't persist; sidecar re-grant does).
   Also finalize the reserved band from a param-scan survey.
