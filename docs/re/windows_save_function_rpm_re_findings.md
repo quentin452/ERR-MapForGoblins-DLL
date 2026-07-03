@@ -85,18 +85,15 @@ slot = match+7+disp32) → `+0x8` PlayerGameData → `+0x2B0` EquipGameData → 
 breakpoint (read) on those bytes (CE "Find out what accesses" or the in-DLL `goblin_field_probe`
 observer); trigger a save; the accessor's containing function = the strip/reinject bracket.
 
-> **UPDATE — this step was executed on Linux (b8755b3) and hit a WALL (5af1ee4, b0d2660). See
-> `linux_save_function_re_findings.md` §"Update 2026-07-03 (PM #3)".** The serialize was located:
-> **`SERIALIZE_FN = er+0x1ede700`** = the recursive object-serializer entry (6 E8 callers, fires ~150×
-> per op on the save worker, tid 352). BUT it is a **generic REFLECTION walker shared by BOTH save AND
-> load** (a `serclear` before a save still yields the boot/load chain) → a hook needs save-vs-load
-> discrimination. The deepest common frame = the session-run **orchestrator `er+0x24fb88b`**, but its
-> function entry **can't be pinned by offline CC/capstone heuristics** (ER `.text` has CC bytes
-> mid-function → nearest-CC entry-find gives a false start with 0 E8 callers). **Cleanly bracketing
-> the serialize (Variant A) needs real Ghidra**, not offline scripting. **Standing decision: ship
-> Variant B** (reserved-id — the custom item lives in the `.err` under a high goods id, blank/unknown
-> if loaded DLL-less; tolerable for the mod-locked `.err`) via the shipped `give_item` + sidecar store,
-> no serialize hook. Revisit Variant A only with Ghidra.
+> **UPDATE 1 (Linux b8755b3/5af1ee4/b0d2660) — SUPERSEDED by §Ghidra below.** These sessions claimed
+> `SERIALIZE_FN = er+0x1ede700` (a "reflection serializer") and `er+0x24fb88b` (a "session-run
+> orchestrator"), and concluded Variant A "needs real Ghidra" because the entries couldn't be pinned by
+> offline CC heuristics. **The Ghidra check (§Ghidra below) disproved BOTH addresses** — `0x1ede700` is
+> a `DLIO::DLOutputStream` write primitive, `0x24fb88b` is the CRT `__scrt_common_main` stack base. So
+> the serialize was NOT actually located, and the "wall" was a misdiagnosis (ER is vtable-dispatched,
+> not "mid-function-CC unpinnable"). The **standing ship decision (Variant B — reserved-id, item
+> tolerated in the mod-locked `.err`) still holds**, but Variant A is now unblocked for Ghidra, not
+> impossible. See §Ghidra.
 
 ## Deliverable status vs. the prompt
 
@@ -105,11 +102,40 @@ observer); trigger a save; the accessor's containing function = the strip/reinje
    unique on the ERR-Steam exe (3d3bcd2)** — the earlier ⚠ "re-verify on ERR build" is resolved.
 2. **Call convention** — ✅ `rcx=this`, vtable-slot-2 dispatch, stack-canary framed.
 3. **Pre-serialize ordering / strip bracket** — ⛔ the true bracket = the game-data serialize
-   (`SERIALIZE_FN 0x1ede700`), located but NOT offline-hookable (shared save+load reflection walker +
-   unpinnable orchestrator entry — see the UPDATE above). Needs Ghidra for Variant A; Variant B ships.
-4. **Once-per-save / thread** — serialize runs on the save worker (tid 352); `SLSaveSession::run` is a
-   ticked write state-machine (multiple invocations), not a once-per-save bracket.
+   (GameData → the content sub-blocks), which is **still unpinned** (the earlier `0x1ede700` claim was
+   disproven — see §Ghidra). Tractable in Ghidra via a bespoke GameDataMan-xref→DLOutputStream pass;
+   Variant B ships meanwhile.
+4. **Once-per-save / thread** — `SLSaveSession::run` is a ticked write state-machine (multiple
+   invocations), not a once-per-save bracket; the serialize's thread/frequency await the real fn.
 
 Net: the indirect-dispatch wall is **broken** (SaveLoad2 mapped, `SLSaveSession::run` identified +
-AOB-verified on ERR, corrects the Linux `0x253e4b0` mislabel; serialize `0x1ede700` located). The
-remaining Variant-A atomic-strip bracket is **Ghidra-gated**; **Variant B is the pragmatic ship.**
+AOB-verified on ERR, corrects the Linux `0x253e4b0` mislabel). The PM#3 "serialize located + walled"
+claim is **disproven by Ghidra** (§Ghidra) — the real serialize is unpinned but Ghidra-tractable.
+**Variant B is the pragmatic ship; Variant A is unblocked for a focused Ghidra session.**
+
+## §Ghidra — check of the PM#3 "wall" (2026-07-03 PM #4): the wall was a MISDIAGNOSIS
+
+Ran the reusable Ghidra tooling (`D:\ghidra_proj2\ER`, `query.java`, imagebase 0x140000000 — matches this
+build; SaveLoad2 vtable RVAs identical to the live RPM scan) on the addresses the Linux "wall" rested on.
+Result: **both were misidentified**, so `linux_save_function_re_findings.md`'s PM#2/#3 conclusion is void.
+
+- **`er+0x24fb88b` = `FUN_1424fb774` = CRT `__scrt_common_main`** (`_initterm`,
+  `_get_wide_winmain_command_line` → WinMain). NOT a save orchestrator; the "142/142 deepest common
+  frame" was the thread/CRT **stack base** (stack-walk garbage).
+- **`er+0x1ede700` = a `DLIO::DLOutputStream` stream write-bounds primitive** (the `0x1edexxxx` region is
+  DLOutputStream — Ghidra shows `*this = DLIO::DLOutputStream::vftable`). NOT a reflection serializer;
+  fires ~150×/op + on boot because it's the shared byte-writer.
+- **`SLSaveSession::run` (0x240fd70)** decompiles cleanly as the file-WRITE state machine (builds
+  `L"%s\%s%s"` paths; writes sections from the pre-filled content container at `[this+0xe0]`).
+- **SaveLoad2 is fully vtable-dispatched** — ctors/methods have **0 direct E8 callers** (checked the
+  SLSaveSession/SLSaveContent ctor wrappers `0x240fcc0`/`0x240a4e0` + SLSystemImpl methods). That, not
+  "mid-function CC bytes", is why the stack-walk couldn't reach the outer routine.
+- CT `GameMan+0xB42` offset is **version-drifted** (GameMan slot `er+0x3D69918`; 0 static `[reg+0xB42]`
+  operands) → Method A needs a live HW-bp, not a static scan.
+
+**Corrected conclusion:** the "serialize can't be pinned offline → needs Ghidra" wall is a misdiagnosis.
+Ghidra gives clean boundaries, so **Variant A is tractable** — but the real game-data SERIALIZE
+(GameData → the content sub-blocks read by `SLSaveSession::run`) is a **separate, still-unpinned**
+function on the save-request path, none of the previously-cited addresses. Pinning it wants a bespoke
+Ghidra pass (GameDataMan data-xrefs → containing fns → the one writing a `DLOutputStream` into the save
+buffer). Variant B remains the pragmatic ship; Variant A is now **unblocked for a focused Ghidra session**.

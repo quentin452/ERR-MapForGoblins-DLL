@@ -141,6 +141,43 @@ session-run orchestrator return addr.
 **DECISION STANDS: ship Variant B** (reserved-id, item tolerated in the `.err`, blank if DLL-less) with
 the shipped `give_item` + sidecar store — no serialize hook. Revisit Variant A only with Ghidra.
 
+## Update 2026-07-03 (PM #4) — Ghidra check: the PM#2/#3 "wall" addresses were MISIDENTIFIED
+
+Ran the reusable Ghidra tooling (`D:\ghidra_proj2\ER`, `query.java`) on the PM#3 lead addresses. **Both
+were wrong**, so the "wall" premise collapses:
+- **`er+0x24fb88b` is NOT the save orchestrator** — it is inside `FUN_1424fb774` = the CRT
+  `__scrt_common_main` (`_initterm` / `_get_wide_winmain_command_line` → calls WinMain). The "142/142
+  deepest common frame" was the **thread/CRT stack base** — stack-walk garbage, confirming PM#2's own
+  "FWA frames were stale stack garbage" note. There is no save orchestrator here.
+- **`er+0x1ede700` is NOT a reflection serializer** — the whole `0x1edexxxx` region is
+  **`DLIO::DLOutputStream`** (Ghidra shows the vftable store `*this = DLIO::DLOutputStream::vftable` in
+  the 0x1ede9d0 dtor). `0x1ede700` is a low-level **stream write-bounds primitive** (`if (used < need)
+  vcall(stream, -12); else vcall(stream, 0)`), which is why it fires ~150×/op and on boot — every byte
+  write goes through it. It is NOT the game-state serializer, and "shared by save AND load" just means
+  "it's the shared stream writer."
+
+Corrected picture from Ghidra (clean function boundaries — the "mid-function CC" limitation is an
+OFFLINE-heuristic problem, not a Ghidra one):
+- `SLSaveSession::run` (`0x240fd70`) decompiles cleanly as the file-**WRITE** state machine: builds
+  `L"%s\\%s%s"` paths and writes each section from the pre-filled content at `[this+0xe0]` (a container:
+  `FUN_142409120`=count, `FUN_14240a7e0`=get-by-index of pre-serialized sub-blocks). Confirms the write
+  side operates on already-serialized data.
+- **SaveLoad2 is entirely vtable-dispatched** — the ctors/methods/wrappers have **0 direct E8 callers**
+  (verified on the SLSaveSession/SLSaveContent ctor wrappers + SLSystemImpl methods). THIS is the real
+  reason the stack-walk couldn't reach the outer routine — not "mid-function CC". Climbing needs vtable
+  xrefs, not call-site walks.
+- The CT's `GameMan+0xB42` save-request offset does **not** exist as a static displacement in this build
+  (resolved GameMan slot `er+0x3D69918` via AOB; 0 `[reg+0xB42]` mem-operands) → CT offset is
+  version-drifted; Method A needs the live `[reg+0xB42]` found by a HW-bp, not a static scan.
+
+**Net:** Variant A is **tractable in Ghidra** (clean boundaries; wall was a misdiagnosis), but the real
+game-data SERIALIZE (GameData → the content sub-blocks) is a **separate, still-unpinned** function on
+the save-request path — NOT any previously-cited address. Finding it wants a bespoke Ghidra pass
+(iterate the GameDataMan data-xrefs → containing functions → the one that writes a `DLOutputStream` into
+the save buffer), which `query.java`'s per-address mode doesn't do. **Variant B still the pragmatic ship;
+Variant A now unblocked for a focused Ghidra session** (no longer "impossible offline" — just not yet
+done). Full check log: `docs/re/windows_save_function_rpm_re_findings.md` §Ghidra.
+
 ## Two remaining paths (original — now superseded by the recommendation above)
 - **Variant A (clean vanilla save) — more RE.** Find the SERIALIZE phase / the save-REQUEST processor
   (the fn that reads `GameMan+0xB42` and initiates serialize+write) via find-what-accesses on

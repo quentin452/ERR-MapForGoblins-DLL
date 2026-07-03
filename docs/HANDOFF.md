@@ -121,9 +121,18 @@ to strip.** So SAVE_FN is now a correct save-detection observer, NOT the strip b
 LEFT = the game-data SERIALIZE** (reads GameDataMan+8→+2B0 EquipGameData into the buffer): pin via
 **find-what-accesses on EquipGameData during a real save** (user's CE GUI here, or the in-DLL HW-bp
 observer `goblin_field_probe` on ERR/Proton) — its containing fn is the strip(entry)/reinject(exit)
-bracket. ⚠ Re-verify SAVE_FN `[SIG]` on the ERR deploy build (AOB from Windows App 2.6.x). Alt path if
-RE drags = Variant B (reserved-id, item tolerated in the `.err`, blank if DLL-less). Data layer +
-give_item primitives are done & reusable.
+bracket. Alt path if RE drags = Variant B (reserved-id, item tolerated in the `.err`, blank if
+DLL-less). Data layer + give_item primitives are done & reusable. **SAVE_FN AOB re-verified unique on
+the ERR-Steam exe (3d3bcd2)** — the "re-verify on ERR" caveat is resolved.
+**PM#3 serialize hunt (b8755b3/5af1ee4/b0d2660) DISPROVEN by a Ghidra check (PM#4, 2026-07-03).** It had
+claimed `SERIALIZE_FN=0x1ede700` (reflection walker) + `0x24fb88b` (orchestrator) and concluded "Variant
+A needs Ghidra / unpinnable offline". Ghidra (`D:\ghidra_proj2\ER`, `query.java`) shows **both are wrong**:
+`0x1ede700` = a `DLIO::DLOutputStream` write primitive; `0x24fb88b` = CRT `__scrt_common_main` (stack
+base, not a caller). The "mid-function-CC unpinnable" wall is a misdiagnosis — ER SaveLoad2 is simply
+**vtable-dispatched** (0 direct E8 callers), and Ghidra gives clean boundaries. So the game-data SERIALIZE
+is **still unpinned** (none of the cited addrs) but **Ghidra-tractable** via a bespoke GameDataMan
+data-xref → DLOutputStream-writer pass. `docs/re/{linux,windows}_save_function*findings.md` §PM#4/§Ghidra.
+**Standing decision unchanged: ship Variant B; Variant A now unblocked for a focused Ghidra session.**
 
 **GRACE WARP — ADDED + IN-GAME VERIFIED 2026-07-03 (dev-world navigation, user-requested).** The
 Hexinton CT ("Coinsworth") had a proven warp: `goblin::warp::to_grace(graceId)`
