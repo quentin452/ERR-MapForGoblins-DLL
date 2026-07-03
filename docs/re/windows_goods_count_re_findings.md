@@ -108,10 +108,25 @@ by the blind ≤2-level scan. With the exact chain + segment split above, the wa
 Both take `inv = EquipInventoryData` and an `int* id`. The direct walk is preferred (read-only, no
 convention/thread risk, no AOB — reuses the existing GAME_DATA_MAN sig + struct offsets).
 
-## Verify (Linux/Proton, no Windows dep)
-Struct offsets are far more patch-stable than RVAs, but confirm once on the deploy build:
-1. The DLL already exposes `equip_dump <off> <len>` (hex-dump EquipGameData+off) over RPC. Grant a
-   known item (`give_item 0x40003bec 7`), then `equip_dump 0x158 0x90` and eyeball `+0x1c/+0x40/+0x50/
-   +0x80`; dump a node array to see `{handle,id,qty}` at `0x18` stride.
-2. `goods_count(0x40003bec)` must read `7`; after `give_item 0x40003bec -7`, read `0`.
-This is the count-read the cap-oracle E2E (`test_custom_item.py`) needs to close Variant A.
+## Verify (Linux/Proton, no Windows dep) — ✅ DONE 2026-07-03
+Struct offsets are far more patch-stable than RVAs; confirmed once on the deploy build via
+`tools/rpc_tests/test_goods_count.py` (GameSession: cold-boot me3 → load save → grant/read → 6/6):
+- Fresh reserved id `0x40003bed`: baseline `n=0`, `give_item +1` → `1`, `+1` → `2`, `+1` → `3`
+  (exact, monotonic). Held id `0x40003bec`: `7 → 8 → 9 → 10`. The read tracks the live held qty
+  per-id, in-world. Offsets (`+0x1c seg1_cap`, `+0x40 seg2_base`, `+0x50 seg1_base`, `+0x80 last`,
+  node `{handle@0,id@4,qty@8}` @ `0x18`) are correct on ERR v2.2.9.6.
+- `equip_dump 0x158 0x90` header sample (in-world): `28 2f 5e f7 … 00 0c 00 00 80 0a 00 00 90 …`.
+
+**give_item / AddItemFunc caveats found while verifying (NOT goods_count bugs):**
+- **Negative qty is a NO-OP** — `give_item id -1` logs `-> called` but the count is unchanged
+  (AddItemFunc is add-only; the earlier "read `0` after `-7`" verify step was wrong, negative can't
+  remove). Removal, when needed, must go through the remove path (`FUN_14024c560` sibling finder /
+  the decrement function), not AddItemFunc.
+- **qty ≥ ~5 clamps to the item stack cap (~1000)** — a single `give_item id 5` slams the held count
+  to exactly `1000` regardless of base (both test ids). `+1` is exact. Grant N reliably via N× `+1`.
+- **Grants are live-inventory only, NOT persisted** — the fresh id reads `0` again after a cold
+  reboot (AddItemFunc mutates resident EquipInventoryData; nothing hits `.sl2` until a real game
+  save). This is why the regression is idempotent and why the Phase-2 clean-save test must trigger
+  an actual save.
+
+This closes the count-read the cap-oracle E2E (`test_custom_item.py`) needs to finish Variant A.

@@ -44,6 +44,10 @@ for Windows. Its limits are runtime RE (no live game/debugger here) and Oodle-on
   (`from::params::get_param`, `goblin::paramedit::param_get/set_field`, the RPC `param_get`/`param_set`
   commands) works against a game sitting on the title screen — you do NOT need to load a save or drive
   the world. Save/pixels are only needed for world-state features (positions, event flags, map).
-- **Launching the game must be done by the USER, not from a background Claude job** — the bg-job
-  sandbox reaps the spawned game process tree (exit 144) and ER dies at param-wait before the RPC
-  listener starts. Details + the headless-launcher facts in [[tooling/mfg-rpc-driver-hardening]].
+- **A background Claude job CAN launch ER for a self-contained RPC run** (updated 2026-07-03) — via
+  the foreground in-shell-child pattern (`GameSession` / `tools/rpc_tests/test_*.py`), NOT detached
+  (setsid/disown/run_in_background get reaped at param-wait, exit 144). **Hard prereq: Steam must
+  already be running** or me3 aborts `require_steam` — start it once headless (`steam -silent &`;
+  auto-login persists + daemonizes + survives across tool calls). goods_count offsets were
+  live-verified this way (2026-07-03). For a LONG-LIVED interactive game the user still launches it
+  (a foreground tool call kills its child on return). Details in [[tooling/mfg-rpc-driver-hardening]].

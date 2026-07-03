@@ -37,13 +37,28 @@ game call, no thread/save-timing risk) as `goblin::inventory::goods_count(id)`
 `err not in-world` vs a real `n=0`). Builds clean (clang-cl). Callable fallbacks recorded
 (`FUN_14024c460`/`…c560` by-id finders).
 
-**NEXT (Linux, not yet done):** cross-build + deploy the DLL on the Proton box, then live-verify the
-offsets (`give_item 0x40003bec 7` → `goods_count` reads 7 → `give_item … -7` → 0; `equip_dump 0x158 0x90`
-to eyeball the segment header), then script `tools/rpc_tests/test_custom_item.py` (grant reserved-id →
-warp-save → empty `.mfg [items]` → reload → assert `goods_count==0`) = the Phase-2 clean-save regression
-that CLOSES Variant A. Meanwhile the bracket can be sanity-checked MANUALLY in-game (grant → save → empty
-`.mfg` → reload → eyeball inventory). Variant B (reserved-id item tolerated in the `.err`, no serialize
-hook) remains the zero-RE fallback.
+**✅ goods_count offsets LIVE-VERIFIED 2026-07-03 (Linux/Proton).** Cross-built + deployed, then
+`tools/rpc_tests/test_goods_count.py` (GameSession cold-boot → load save → grant/read) went 6/6:
+fresh id `0x40003bed` reads `0→1→2→3` on repeated `give_item +1`; held id `0x40003bec` `7→8→9→10`.
+Read tracks live held qty per-id, in-world. **Caveats found (give_item, NOT the read — full note in
+`windows_goods_count_re_findings.md`):** AddItemFunc is ADD-ONLY (negative qty = no-op — the old
+"−7 → 0" verify recipe was wrong; removal needs the remove path); `qty≥~5` clamps to the ~1000 stack
+cap (grant N via N× `+1`); grants are live-inventory only, not persisted until a real save (fresh id
+re-reads `0` after reboot → regression is idempotent).
+
+**NEXT (Linux):** script `tools/rpc_tests/test_custom_item.py` = the Phase-2 clean-save regression
+that CLOSES Variant A: grant a reserved-id item (N× `give_item +1`) + register it (`sidecar additem`)
+→ trigger a REAL game save (grants only persist through a save) → reload with the `.mfg` `[items]`
+emptied → assert `goods_count==0` (item gone from the vanilla save). GameSession already does
+cold-boot→load; needs a save-trigger step + the `.mfg` edit + reload. Meanwhile the strip/reinject
+bracket can be sanity-checked MANUALLY in-game. Variant B (reserved-id item tolerated in the `.err`,
+no serialize hook) remains the zero-RE fallback.
+
+**Infra note (corrects stale memory):** a background Claude job CAN boot ER for a self-contained RPC
+run — the missing piece was **Steam must already be running** (me3's `require_steam` aborts otherwise:
+`ERROR require_steam: Steam is required to run this game`). Start it headless once with
+`steam -silent` (auto-login persists, daemonizes, survives across tool calls), then `GameSession`
+launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driver-hardening.md`.
 
 ## Open / next items
 

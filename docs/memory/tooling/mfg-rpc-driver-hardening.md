@@ -55,10 +55,24 @@ per-injection guard are hardcoded calibration). Driver implications:
   the same-window case (user grabs kb/mouse while the game is FOCUSED). Set `rpc_auto_idle=false` if a
   script must drive input regardless of user activity (accepts the fight).
 
-## GOTCHA — you CANNOT launch/keep the game alive from a background Claude job (2026-07-03)
+## PREREQ — Steam must already be running (2026-07-03, corrects the header below)
+
+me3's launcher aborts with `ERROR require_steam: Steam is required to run this game` when the Steam
+client isn't up — the game never boots and `GameSession` fails at `me3 exited before the RPC came up`.
+Fix: start Steam headless ONCE (`steam -silent >…/steam.log 2>&1 &`); with `AllowAutoLogin=1` +
+`RememberPassword=1` it auto-logs-in online (watch `~/.local/share/Steam/logs/connection_log.txt` for
+`RecvMsgClientLogOnResponse() : 'OK'`), daemonizes, and **survives across Bash tool calls** (it
+reparents itself — not reaped like a detached me3). After that a **background Claude job CAN** run the
+foreground one-shot below to boot ER, drive RPC, and kill the game. So the "CANNOT launch" header is
+only true when Steam is down; with Steam up it's a solved, repeatable flow (goods_count offsets were
+live-verified this way 2026-07-03, `tools/rpc_tests/test_goods_count.py` 6/6).
+
+## GOTCHA — game won't stay alive if launched DETACHED from a background Claude job (2026-07-03)
 
 Verified while trying to auto-run a Slice-1 in-game RPC smoke test from a **background** Claude
-session: the game will not stay alive when launched from the job's Bash tool.
+session: the game will not stay alive when launched DETACHED (setsid/disown/run_in_background) from
+the job's Bash tool — but the foreground in-shell-child workaround below works (and needs Steam up,
+per the PREREQ above).
 
 - **The bg-job sandbox reaps the spawned process TREE.** Every game-launch command returns **exit
   144** (this env's "spawned tree got reaped" code) and the game dies WITH it — `setsid` / `nohup` /
