@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
-"""E2E for World Editor slice 2 (repoint a loot asset to another lot) + the `help` verb.
+"""E2E for the in-game World Editor (slices 2+3) + the `help` verb.
 
 Boots ER, loads a save, then:
   1. `help` returns the verb list (in-band discovery).
   2. Discovers two pickup assets whose markers resolve to DIFFERENT items (scan a small aegRow band
      via loot_at).
   3. Reads asset A's pickUpItemLotParamId (param_getf) and cross-checks it == the lot loot_at reports.
-  4. Repoints A at asset B's lot (param_setf AssetEnvironmentGeometryParam A pickUpItemLotParamId lotB)
-     — the exact write the panel's "Repoint asset to this lot" button makes.
-  5. Re-reads: param_getf == lotB, and loot_at A now reports B's item name.
+  4. (Slice 2) Repoints A at asset B's lot (param_setf AssetEnvironmentGeometryParam A
+     pickUpItemLotParamId lotB) — the exact write the panel's "Repoint asset to this lot" button makes.
+  5. Re-reads: param_getf == lotB, and loot_at A now reports B's item.
   6. Restores A to its original lot (edit is live-only, not persisted, but leave it clean anyway).
+  7. (Slice 3) Round-trips ItemLotParam_map lotItemId02 on lotA (the panel's per-slot selector write:
+     read original → write sentinel → read back → restore), proving the new lotItemId02..08 registry
+     entries + the param_get_field bridge.
 
-Run: python tools/mfg.py test world_editor_slice2   (or: python tools/rpc_tests/test_world_editor_slice2.py)
+Run: python tools/mfg.py test world_editor   (or: python tools/rpc_tests/test_world_editor.py)
 """
 import os
 import re
@@ -82,6 +85,22 @@ def _test(g):
     g.rpc(f"param_setf AssetEnvironmentGeometryParam {aegA} pickUpItemLotParamId {lotA}")
     lot_restored, _, _ = parse_loot_at(g.rpc(f"loot_at {aegA}"))
     g.check("loot_at(A) restored to lotA", lot_restored == lotA, f"lot_restored={lot_restored}")
+
+    # --- Slice 3: per-slot edit (the new lotItemId02..08 registry entries + param_get bridge) ---
+    # Round-trip slot 2 on lotA: read original, write a sentinel, read it back, restore. Proves the
+    # panel's slot selector write/read path (ItemLotParam_map.lotItemId0N by name).
+    orig2 = parse_getf(g.rpc(f"param_getf ItemLotParam_map {lotA} lotItemId02"))
+    g.check("param_getf slot 2 readable (new registry entry)", orig2 is not None,
+            f"orig2={orig2}")
+    if orig2 is not None:
+        sentinel = 424242
+        sr = g.rpc(f"param_setf ItemLotParam_map {lotA} lotItemId02 {sentinel}")
+        g.check("param_setf slot 2 returned ok", sr.startswith("ok"), sr)
+        got2 = parse_getf(g.rpc(f"param_getf ItemLotParam_map {lotA} lotItemId02"))
+        g.check("slot 2 reads back the sentinel", got2 == sentinel, f"got2={got2}")
+        g.rpc(f"param_setf ItemLotParam_map {lotA} lotItemId02 {orig2}")
+        back2 = parse_getf(g.rpc(f"param_getf ItemLotParam_map {lotA} lotItemId02"))
+        g.check("slot 2 restored to original", back2 == orig2, f"back2={back2} orig2={orig2}")
 
 
 if __name__ == "__main__":

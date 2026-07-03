@@ -75,6 +75,16 @@ namespace goblin::overlay_api
         if (!goblin::paramedit::field_is_known(wp.c_str(), field)) return false;
         return goblin::paramedit::param_set_field_by_name(wp.c_str(), row, field, value);
     }
+    bool param_get_field(const char *param, uint64_t row, const char *field, double *out)
+    {
+        if (!param || !field || !out) return false;
+        std::wstring wp(param, param + std::strlen(param));  // ASCII param names
+        if (!goblin::paramedit::field_is_known(wp.c_str(), field)) return false;
+        auto v = goblin::paramedit::param_get_field_by_name(wp.c_str(), row, field);
+        if (!v) return false;
+        *out = *v;
+        return true;
+    }
     void request_save() { goblin::ui::request_save(); }
     void reset_quest_progress() { goblin::ui::reset_quest_progress(); }
     void reset_to_defaults() { goblin::ui::reset_to_defaults(); }

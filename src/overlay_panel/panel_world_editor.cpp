@@ -44,30 +44,50 @@ void draw_world_editor(Filter &f)
     ImGui::Text("%s %d  \xE2\x86\x92  %s", tr("Lot"), lot,
                 name.empty() ? tr("(none / not a pickup asset)") : name.c_str());
 
+    // Slot selector (slice 3): an ItemLotParam row has 8 item slots (lotItemId01..08). Slot 1 drives
+    // the map marker, but any slot can be re-skinned. Pick a slot, see its current id live, set it.
+    static int slot = 1;  // 1-based (matches the lotItemId0N field naming)
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::SliderInt(tr("Slot"), &slot, 1, 8);
+    if (slot < 1) slot = 1; else if (slot > 8) slot = 8;
+    char field[16];
+    std::snprintf(field, sizeof(field), "lotItemId%02d", slot);
+
+    // Live-read the selected slot's current item id (0 = empty slot).
+    double cur = 0.0;
+    bool cur_ok = lot && goblin::overlay_api::param_get_field("ItemLotParam_map", (uint64_t)lot,
+                                                              field, &cur);
+    ImGui::SameLine();
+    if (cur_ok)
+        ImGui::TextDisabled("%s = %d", field, (int)cur);
+    else
+        ImGui::TextDisabled("%s", tr("(no lot)"));
+
     static int new_item = 8000000;  // a reserved custom-goods id (define via custom_items.toml)
     ImGui::SetNextItemWidth(140.0f);
     ImGui::InputInt(tr("New goods id"), &new_item);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("%s", tr("Raw goods row id (must be <= 8388606 to be grantable).\n"
                                    "Define its name/stats first via custom_items.toml; an\n"
-                                   "existing goods id works too. Edits this lot's slot-1 item\n"
-                                   "IN PLACE (affects every asset pointing at this lot)."));
+                                   "existing goods id works too. Edits the SELECTED slot of this\n"
+                                   "lot IN PLACE (affects every asset pointing at this lot)."));
 
     static char status[160] = "";
     ImGui::BeginDisabled(lot == 0);
     if (ImGui::Button(tr("Set item on this asset's lot")))
     {
         bool ok = goblin::overlay_api::param_set_field("ItemLotParam_map", (uint64_t)lot,
-                                                       "lotItemId01", (double)new_item);
+                                                       field, (double)new_item);
         std::snprintf(status, sizeof(status),
-                      ok ? "ok: lot %d lotItemId01 = %d (Refresh markers to see it)"
-                         : "FAILED to set lot %d", lot, new_item);
+                      ok ? "ok: lot %d %s = %d (Refresh markers to see it)"
+                         : "FAILED to set lot %d %s", lot, field, new_item);
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("%s", tr("IN-PLACE re-skin: changes the shared lot itself, so EVERY asset\n"
-                                   "that points at this lot changes too. To change only THIS asset,\n"
-                                   "use Repoint below instead."));
+        ImGui::SetTooltip("%s", tr("IN-PLACE re-skin of the selected slot: changes the shared lot\n"
+                                   "itself, so EVERY asset that points at this lot changes too. To\n"
+                                   "change only THIS asset, use Repoint below instead. Slot 1 is\n"
+                                   "what the map marker shows."));
 
     // ── Slice 2: repoint this asset at a DIFFERENT existing lot ──────────────────────────────────
     // Non-destructive: leaves the current (shared) lot untouched and just points this one asset's

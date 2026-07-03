@@ -34,6 +34,9 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   asset at a **different existing loot lot** instead of only re-skinning its own lot. Non-destructive
   (leaves the shared lot untouched, so other assets on it are unaffected), with a live preview of the
   target lot's item before you commit; *Refresh markers* shows it on the map.
+- **World Editor — per-slot re-skin (slice 3).** The re-skin now targets any of a lot's **8 item slots**
+  (a `Slot` selector), not just slot 1, showing the selected slot's current item id live. (Slot 1 is
+  what the map marker shows.)
 - **Regulation.bin-free custom items.** A new `custom_items.toml` (next to `MapForGoblins.dll`) lets
   you declare custom items as data — no `regulation.bin`, no code. Each `[[goods]]` (also `[[weapon]]`
   /`[[protector]]`/`[[accessory]]`) clones a template row from the ACTIVE install, sets fields by name,

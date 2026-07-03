@@ -90,11 +90,16 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   `param_getf`==997230 AND `loot_at` resolves lot 997230 + 'Bloodrose' (textid 500020723); restore to
   900002000. Also proved the new `help`/`?` RPC verb. (Test caveat baked in: discover pickup assets by
   loot TEXTID, not name — many valid lots resolve an empty FMG name off this chain.)
-  **Next slices:** a proper asset/item PICKER (browse instead of typing ids — needs an enumeration
-  source), CLONE a lot instead of editing in place (needs the `refresh_markers` v2 LotReader-index reset
-  so new lots resolve), a slot selector (edit any of 8 lot slots via `lot_slot_item_keys`, not just
-  slot 1), category select, and SAVE the edits as a world bundle (→ feeds vision #1 World Virtualization).
-  Backend all proven; these are UI + the two `refresh_markers` v2 items.
+  **Slice 3 (2026-07-03): per-slot re-skin — DONE + E2E-VERIFIED (12/12).** The in-place re-skin now
+  targets any of a lot's 8 slots via a `Slot` selector, showing the selected slot's live item id. Added
+  `ItemLotParam_map.lotItemId02..08` to the paramedit registry (offset-only, core-stable, `+0x00+(N-1)*4`)
+  + an `overlay_api::param_get_field` name-addressed read bridge. `tools/rpc_tests/test_world_editor.py`
+  (renamed from `_slice2`) round-trips lotItemId02 (0→424242→0) on top of the slice-2 checks.
+  **Next slices:** CLONE a lot instead of editing in place (**slice 5, NEXT** — needs the
+  `refresh_markers` v2 LotReader-index reset so new lots resolve; `param_clone` already exists), a proper
+  asset/item PICKER (browse instead of typing ids — needs an enumeration bridge, none exposed to the
+  render side today), category select, and SAVE the edits as a world bundle (→ feeds vision #1 World
+  Virtualization). Backend proven except the `refresh_markers` v2 LotReader reset.
 
 - **Long-horizon vision bets — tracked in `docs/runtime_modding_framework_vision.md` "Future directions"
   (2026-07-03):** (1) World Virtualization — a FRAMEWORK feature: the framework holds N of its OWN worlds (each a data
