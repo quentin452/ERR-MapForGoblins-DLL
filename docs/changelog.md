@@ -48,6 +48,13 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   everywhere else — randomizer players flip that one key.
 
 ### Added
+- **Mob names on the enemy health bar.** The game draws a health bar for locked/aggroed enemies but
+  only names bosses; regular mobs now get their name labeled over the bar too. The name is read live
+  from the active install (no bundled table): the enemy's `NpcParam` name for invaders / hostile NPCs,
+  the bestiary codex for generic enemies (any mod shipping one — ERR names sheep, soldiers, trolls…),
+  and the boss-name band for vanilla field bosses. A mob the game genuinely has no name for stays
+  unlabeled. Toggle + text-size / position sliders under F1 → "Enemy bars (mob names)"; hidden while
+  the world map or a menu is open.
 - **Minimap player-direction arrow.** The minimap "you are here" dot is now an arrow that points the
   direction the player is facing (read live from the character's yaw), so you can orient at a glance on
   the north-up minimap instead of guessing your heading.

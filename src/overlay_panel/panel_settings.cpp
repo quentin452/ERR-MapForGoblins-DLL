@@ -280,12 +280,6 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
                                        "name (read live from the active install). Bosses are already\n"
                                        "named by the game. A mob with no name in the game data stays\n"
                                        "unlabeled."));
-        ImGui::SliderFloat(tr("Position sync (lead)"), goblin::overlay_api::cfg_enemyNameLead_ptr(),
-                           0.0f, 5.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s", tr("How far the name leads toward where the bar is moving, so it\n"
-                                       "tracks the bar when the camera pans. Raise if the name trails\n"
-                                       "the bar, lower if it overshoots. 0 = raw (slightly lagging)."));
         ImGui::SliderFloat(tr("Offset above bar (px)"), goblin::overlay_api::cfg_enemyNameOffsetY_ptr(),
                            -40.0f, 40.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
         ImGui::SliderFloat(tr("Text size"), goblin::overlay_api::cfg_enemyNameScale_ptr(),

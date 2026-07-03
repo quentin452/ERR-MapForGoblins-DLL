@@ -63,7 +63,6 @@ namespace goblin
         extern GOBLIN_RENDER_API bool showRegionLabels; // overlay map: draw major-region names (Limgrave, Caelid, ...)
         extern GOBLIN_RENDER_API bool nativeItemIcons;  // overlay map: real game item icon (GPU harvest) when resident
         extern GOBLIN_RENDER_API bool enemyNames;       // overlay HUD: mob name on the game's non-boss enemy HP bar
-        extern GOBLIN_RENDER_API float enemyNameLead;   // enemy-name HUD: position-fix lead multiplier
         extern GOBLIN_RENDER_API float enemyNameOffsetY;// enemy-name HUD: vertical offset above the bar (virtual px)
         extern GOBLIN_RENDER_API float enemyNameScale;  // enemy-name HUD: text size multiplier
         extern GOBLIN_RENDER_API bool diagLootFlags;    // one-shot [LOOTDIAG]: dump all candidate pickup flags per loot lot

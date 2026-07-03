@@ -36,7 +36,6 @@
 #include <cstring>
 #include <string>
 #include <unordered_map>
-#include <chrono>
 
 namespace
 {
@@ -224,65 +223,12 @@ const ResolvedName &resolve_enemy_name(int npcParam, int model)
     auto [ins, _] = cache.emplace(npcParam, ResolvedName{std::move(name), tier});
     return ins->second;
 }
-
-// DIAG only: run the tier-3 NpcName boss-band scan for a model in isolation (cached), so we can
-// confirm the tier-3 path resolves field bosses even on ERR where tier 2 wins the actual resolution.
-const std::string &tier3_probe(int model)
-{
-    static std::unordered_map<int, std::string> cache;
-    auto it = cache.find(model);
-    if (it != cache.end()) return it->second;
-    std::string name;
-    if (model > 0)
-    {
-        long modelBase = kBossBandBase + static_cast<long>(model) * 1000;
-        for (int suffix = 0; suffix < 1000 && name.empty(); ++suffix)
-        {
-            long id = modelBase + suffix;
-            if (id <= 0 || id > 0x7fffffff) break;
-            for (uint32_t slot : kNpcNameSlots)
-            {
-                std::string t = goblin::raw_message_utf8(slot, static_cast<uint32_t>(id));
-                if (!t.empty()) { name = t; break; }
-            }
-        }
-    }
-    auto [ins, _] = cache.emplace(model, std::move(name));
-    return ins->second;
-}
 } // namespace
 
-// Position-fixing: the game's entityHpBars.screenPos is a SNAPSHOT updated at the game UI tick and
-// lags the actual (per-render-frame) HP bar when the camera pans (same desync PostureBarMod documents).
-// Extrapolate the label forward by the bar's on-screen velocity: track per entityHandle the last
-// position + the time it last CHANGED, derive velocity from the change, and lead the draw position by
-// velocity * time-since-change. A stopped bar (no change for a while) leads by nothing (velocity kept
-// but the guard zeroes the lead once stale) so it settles on the real position. Present-thread only.
-struct PosTrack { float px, py, vx, vy; uint64_t tChangeMs; bool has; };
-
-void apply_pos_fix(uint64_t handle, float sx, float sy, float &ex, float &ey)
-{
-    static std::unordered_map<uint64_t, PosTrack> track;
-    using clock = std::chrono::steady_clock;
-    uint64_t now = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(clock::now().time_since_epoch()).count());
-
-    const float kLead = goblin::config::enemyNameLead; // extrapolation strength (F1 slider, live)
-    constexpr uint64_t kStaleMs = 60; // beyond this since the last change, treat the bar as stopped
-
-    PosTrack &t = track[handle];
-    if (!t.has) { t = {sx, sy, 0.f, 0.f, now, true}; ex = sx; ey = sy; return; }
-    if (sx != t.px || sy != t.py)
-    {
-        uint64_t dt = now - t.tChangeMs;
-        if (dt > 0 && dt < 500) { t.vx = (sx - t.px) / (float)dt; t.vy = (sy - t.py) / (float)dt; }
-        t.px = sx; t.py = sy; t.tChangeMs = now;
-    }
-    uint64_t elapsed = now - t.tChangeMs;
-    if (elapsed > kStaleMs) { ex = sx; ey = sy; return; } // stopped → no lead, sit on the real pos
-    ex = sx + t.vx * (float)elapsed * kLead;
-    ey = sy + t.vy * (float)elapsed * kLead;
-}
+// On-screen thresholds (1920x1080 space, PostureBarMod values): keep the label inside a sane band so
+// it doesn't ride the extreme screen edge or fall off the bottom (raw screenPos clamps to 1080 there).
+constexpr float kClampL = 130.0f, kClampR = 1790.0f, kClampT = 175.0f, kClampB = 990.0f;
+static inline float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
 int goblin::get_enemy_bar_labels(EnemyBarLabel *buf, int max)
 {
@@ -298,7 +244,10 @@ int goblin::get_enemy_bar_labels(EnemyBarLabel *buf, int max)
     {
         const ResolvedName &rn = resolve_enemy_name(pr.e[i].npcParam, pr.e[i].model);
         if (rn.name.empty()) continue;  // true generic with no name in the active install → draw nothing
-        apply_pos_fix(pr.e[i].handle, pr.e[i].sx, pr.e[i].sy, buf[out].sx, buf[out].sy);
+        // Draw at the raw bar position (it's smooth frame-to-frame — no extrapolation needed), clamped
+        // to the on-screen band so the name stays put instead of riding the edge.
+        buf[out].sx = clampf(pr.e[i].sx, kClampL, kClampR);
+        buf[out].sy = clampf(pr.e[i].sy, kClampT, kClampB);
         std::snprintf(buf[out].name, sizeof(buf[out].name), "%s", rn.name.c_str());
         ++out;
     }
@@ -307,11 +256,8 @@ int goblin::get_enemy_bar_labels(EnemyBarLabel *buf, int max)
         for (int i = 0; i < pr.count; ++i)
         {
             const ResolvedName &rn = resolve_enemy_name(pr.e[i].npcParam, pr.e[i].model);
-            // Independent tier-3 probe (diag only): on ERR tier 2 wins first, so tier=3 never shows in
-            // normal play — this proves the tier-3 boss-band code resolves the field bosses anyway.
-            spdlog::info("[ENEMYBAR] vis={} named={} | [{}] npc={} model={} tier={} name='{}' tier3probe='{}'",
-                         pr.count, out, i, pr.e[i].npcParam, pr.e[i].model, rn.tier, rn.name,
-                         tier3_probe(pr.e[i].model));
+            spdlog::info("[ENEMYBAR] vis={} named={} | [{}] npc={} model={} tier={} name='{}'",
+                         pr.count, out, i, pr.e[i].npcParam, pr.e[i].model, rn.tier, rn.name);
         }
 
     return out;

@@ -251,8 +251,17 @@ apply — the grace's own marker was hovered fine.
    RE (ESD unparsed) — disproportionate. Detail in the plan's Slice 2 section. **Slice 3** = merchant
    map pins (same ESD/EMEVD join, plus `entity_world_pos`) — also open; would close the **Merchant**
    ❌ NOT WIRED map-pin gap (`docs/coverage_vs_mapgenie.md`, MapGenie 43).
-2. **Enemy healthbar NAMES — IMPLEMENTED 2026-07-03 (`feat/enemy-bar-names`), in-game validation
-   pending.** Native path (user: names on ER's EXISTING bar). **Key unlock: ERR bundles
+2. **Enemy healthbar NAMES — DONE + in-game validated 2026-07-03 (`feat/enemy-bar-names`).** Mob
+   names label the game's own enemy HP bar, mod-agnostic (no bake): tier 1 `NpcParam.nameId → NpcName`
+   (invaders/named NPCs), tier 2 TutorialTitle bestiary codex `model*1000 + variant*100 + {10,4}` (ERR
+   names every generic mob — sheep/soldiers/trolls; all 3 tiers exercised in-game), tier 3 NpcName
+   boss band `9e8 + model*1000 + suffix` (vanilla field bosses, proven via probe). Windows-RE result:
+   `docs/re/windows_enemy_name_runtime_source_re_findings.md`. Draw hidden on worldmap/menu; raw
+   `screenPos` clamped to the on-screen band (drawn at raw — it's smooth per-frame, an early
+   velocity-extrapolation "position-fix" was REMOVED after it caused a jump-ahead on fast camera
+   motion). F1 "Enemy bars (mob names)": on/off + offset + text-size sliders. Remaining/future:
+   **draw the name directly ON the ER bar widget** (bigger; the current overlay text sits above it).
+   Original design notes below. **Key unlock: ERR bundles
    `PostureBarMod.dll` (Mordrog, active in `err_offline.me3`, ImGui+DX12) which already accesses the
    enemy bars — its open source gave the whole recipe.** The engine itself projects each enemy HP bar
    to screen and stores it in the **CSFeMan** HUD manager's per-frame `entityHpBars[8]` array — so NO

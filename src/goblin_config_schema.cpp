@@ -21,7 +21,6 @@ namespace goblin::config
     bool showRegionLabels = true;  // overlay: draw major-region name labels on the map
     bool nativeItemIcons = true;   // overlay: draw the game's real item icon (GPU harvest) when resident
     bool enemyNames = true;        // overlay: draw the mob NAME on the game's non-boss enemy HP bar
-    float enemyNameLead = 1.0f;    // enemy-name HUD: position-fix lead (velocity extrapolation strength)
     float enemyNameOffsetY = 4.0f; // enemy-name HUD: vertical offset above the bar (1920x1080 px)
     float enemyNameScale = 1.0f;   // enemy-name HUD: text size multiplier
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
@@ -578,9 +577,6 @@ namespace
              false, {
                 B("enemy_names", enemyNames, "true",
                   "Draw the mob NAME on the game's own non-boss enemy health bar. The engine\ndraws the bar (when you lock on / hit an enemy); this reads the bar's\non-screen position + the enemy's NpcParam name and labels it. Bosses are\nleft alone (the game already names them). Default ON."),
-                IniEntry{"enemy_name_lead", IniType::F32, &cfg::enemyNameLead, "1.0",
-                  "Enemy-name HUD position sync: how far to lead the name toward where the\nbar is moving (velocity extrapolation), so it tracks the bar when the camera\npans. 0 = no lead (name uses the raw, slightly-lagging bar position). 1.0 =\ndefault. Raise if the name trails the bar, lower if it overshoots.",
-                  false, nullptr, 0.0f, 5.0f},
                 IniEntry{"enemy_name_offset_y", IniType::F32, &cfg::enemyNameOffsetY, "4.0",
                   "Enemy-name HUD: vertical gap (px, 1920x1080 scale) between the name and the\ntop of the bar. Higher = name sits further above the bar.",
                   false, nullptr, -40.0f, 40.0f},

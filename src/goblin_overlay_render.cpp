@@ -194,6 +194,10 @@ namespace
     {
         if (!*goblin::overlay_api::cfg_enemyNames_ptr())
             return;
+        // Don't draw the in-world HUD over the world map / a menu (we render post-present, always on
+        // top). The game hides the enemy bars there anyway; this stops our text punching through.
+        if (goblin::overlay_api::world_map_open() || goblin::overlay_api::input_menu_open())
+            return;
         goblin::EnemyBarLabel labels[8];
         int n = goblin::overlay_api::get_enemy_bar_labels(labels, 8);
         if (n <= 0)
