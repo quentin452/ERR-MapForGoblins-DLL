@@ -177,14 +177,28 @@ class GameSession:
         self._persist_results(passed, total)
         return passed == total
 
-    def _persist_results(self, passed, total):
+    def finish_test(self, test_name):
+        """Aggregate mode (run_all --aggregate): the tests share ONE GameSession, so this records the
+        checks accumulated for `test_name` as its own ledger run, prints a per-test summary, then RESETS
+        self.checks for the next test. Returns True iff all passed."""
+        passed = sum(1 for _, ok, _ in self.checks if ok)
+        total = len(self.checks)
+        print(f"\n=== [{test_name}] {passed}/{total} checks passed ===", flush=True)
+        for n, ok, d in self.checks:
+            if not ok:
+                print(f"  FAIL: {n} — {d}", flush=True)
+        self._persist_results(passed, total, test_name)
+        self.checks = []
+        return passed == total
+
+    def _persist_results(self, passed, total, test_name=None):
         """Append this run's PASS/FAIL to tools/rpc_tests/results.jsonl so a regression is RECORDED,
         not a phantom, and loudly flag any check that PASSED in the prior run of this same test but
         FAILS now (or an overall pass->fail). Best-effort: never let bookkeeping fail the test."""
         try:
             import json
             from datetime import datetime
-            test = os.path.basename(sys.argv[0]) if sys.argv and sys.argv[0] else "unknown"
+            test = test_name or (os.path.basename(sys.argv[0]) if sys.argv and sys.argv[0] else "unknown")
             path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rpc_tests", "results.jsonl")
             prior = None
             if os.path.exists(path):

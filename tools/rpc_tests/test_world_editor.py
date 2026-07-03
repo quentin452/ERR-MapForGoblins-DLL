@@ -154,5 +154,8 @@ def _test(g):
     g.rpc("bundle save")  # overwrite the file with an empty bundle
 
 
+SWEEP = _test  # run_all.py aggregation entry — single-boot, self-loads (safe to share a session)
+
+
 if __name__ == "__main__":
     run_test(_test)

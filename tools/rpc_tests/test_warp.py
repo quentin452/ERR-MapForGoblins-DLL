@@ -22,5 +22,8 @@ def test(g):
     g.check("alive after 2nd warp", g.alive())
 
 
+SWEEP = test  # run_all.py aggregation entry — single-boot, self-loads (safe to share a session)
+
+
 if __name__ == "__main__":
     run_test(test)

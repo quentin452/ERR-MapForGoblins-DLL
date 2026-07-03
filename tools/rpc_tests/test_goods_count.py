@@ -54,5 +54,8 @@ def test(g):
     g.rpc("equip_dump 0x158 0x90")
 
 
+SWEEP = test  # run_all.py aggregation entry — single-boot, self-loads (safe to share a session)
+
+
 if __name__ == "__main__":
     run_test(test)

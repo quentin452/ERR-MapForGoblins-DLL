@@ -29,5 +29,8 @@ def test(g):
     g.assert_in("sidecar flags", "2000000000", "custom flag survived save+load")
 
 
+SWEEP = test  # run_all.py aggregation entry — single-boot, self-loads (safe to share a session)
+
+
 if __name__ == "__main__":
     run_test(test)

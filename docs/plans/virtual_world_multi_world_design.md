@@ -131,10 +131,13 @@ LOUDLY flags a regression: a check that PASSED in the prior run of the same test
 pass→fail). So a regression is RECORDED, not a phantom. **`tools/rpc_tests/check_regress.py` (DONE)** scans
 the ledger and, per test, compares its two most recent runs → prints REGRESSIONS (PASS→FAIL) / recovered /
 new-failing, `--history` audits, `--test` filters; **exit 1 on any regression** so an agent/CI sweep gates on
-it. **`tools/rpc_tests/run_all.py` (DONE)** = the nightly sweep: runs every `test_*.py` SERIALLY (each
-cold-boots ER — one game at a time; kills stragglers between), each appends to the ledger, then runs
-`check_regress.py`; exit 1 if any test failed OR any regression. E2E-verified (drove a real test → ledger →
-scan → gated exit). Must run LOCALLY (the game is on this box — a cloud cron can't drive it); Steam must be
+it. **`tools/rpc_tests/run_all.py` (DONE)** = the nightly sweep. **AGGREGATED to minimize game boots:** the
+cold boot (~45s–2min) is the real cost, so single-boot tests that declare a module-level `SWEEP = <_test|test>`
+marker run TOGETHER in ONE shared GameSession (each self-loads via `g.load_save()` → isolated, no
+contamination — E2E-verified 6 tests, one boot, all pass); the inherently multi-boot / boot-config tests
+(`custom_item`/`gapc`/`author_items`, no SWEEP) run per-boot. So the 9-test suite = **4 boots, not 9**.
+`--no-aggregate` forces all per-boot. Each test appends to the ledger, then `check_regress.py` runs; exit 1
+if any test failed OR any regression. Must run LOCALLY (the game is on this box — a cloud cron can't drive it); Steam must be
 up. Nightly local cron (user adds to their crontab):
 `30 4 * * * cd <repo> && python tools/rpc_tests/run_all.py >> tools/rpc_tests/sweep.log 2>&1`.
 Loop fully closed: run → record → detect → gate.

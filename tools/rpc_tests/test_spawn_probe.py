@@ -62,5 +62,8 @@ def _test(g):
             print(l.split("] [info] ")[-1] if "] [info] " in l else l)
 
 
+SWEEP = _test  # run_all.py aggregation entry — single-boot, self-loads (safe to share a session)
+
+
 if __name__ == "__main__":
     run_test(_test)

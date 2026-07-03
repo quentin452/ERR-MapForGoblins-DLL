@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Run EVERY RPC test (tools/rpc_tests/test_*.py) sequentially, then the regression scan.
 
-Each test cold-boots ER under Proton (slow — ~1-3 min each) and can only run one at a time, so this is a
-SERIAL sweep meant for a nightly LOCAL cron (the game runs on this box — a cloud cron cannot drive it).
-Every test appends its PASS/FAIL to results.jsonl (via mfg_session), so after the sweep check_regress.py
-compares each test's new run to its prior one and flags regressions.
+The ER cold boot (~45s-2min) is the real cost, so single-boot tests that declare a module-level
+`SWEEP = <_test|test>` entry run TOGETHER in ONE shared GameSession (each self-loads via g.load_save(), so
+they stay isolated); inherently multi-boot / boot-config tests (no SWEEP) run per-boot. This cuts the 9-test
+suite from 9 boots to ~4. `--no-aggregate` forces everything per-boot. Every test appends its PASS/FAIL to
+results.jsonl (via mfg_session), so after the sweep check_regress.py compares each test's new run to its
+prior one and flags regressions. Meant for a nightly LOCAL cron (the game is on this box — no cloud cron).
 
 Prerequisites (same as any single test): Steam already running (me3 needs it), a display for Proton.
 
@@ -22,6 +24,7 @@ Nightly local cron (edit `crontab -e`; adjust the repo path + hour, ensure Steam
 """
 import argparse
 import glob
+import importlib.util
 import os
 import subprocess
 import sys
@@ -39,6 +42,22 @@ def discover():
     return [n for n in names if n not in SKIP]
 
 
+def sweep_entry(test_file):
+    """Import a test module (its `if __name__=='__main__'` guard means importing does NOT boot) and return
+    its `SWEEP` entry callable if it declared one (single-boot, aggregation-safe), else None. A multi-boot
+    or boot-config test (custom_item/gapc/author_items) declares no SWEEP → runs per-boot."""
+    path = os.path.join(HERE, test_file)
+    try:
+        spec = importlib.util.spec_from_file_location("sweep_" + test_file[:-3], path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        fn = getattr(mod, "SWEEP", None)
+        return fn if callable(fn) else None
+    except Exception as e:
+        print(f"[sweep] import {test_file} failed ({e!r}) — will run per-boot", flush=True)
+        return None
+
+
 def kill_stragglers():
     """After a test (esp. a timeout that SIGKILLed the runner before GameSession.__exit__), make sure no
     ER/me3 lingers into the next boot. Safe BETWEEN tests: the test subprocess has already returned, so its
@@ -52,6 +71,8 @@ def main():
     ap.add_argument("--timeout", type=int, default=360, help="per-test seconds (default 360)")
     ap.add_argument("--only", default=None, help="only tests whose name contains this substring")
     ap.add_argument("--list", action="store_true", help="list the tests and exit")
+    ap.add_argument("--no-aggregate", action="store_true",
+                    help="force EVERY test into its own boot (no shared session)")
     args = ap.parse_args()
 
     tests = discover()
@@ -64,11 +85,48 @@ def main():
         print("[sweep] no tests found")
         return 0
 
-    print(f"[sweep] {len(tests)} test(s), timeout {args.timeout}s each, serial (one game at a time)\n",
-          flush=True)
+    # Split into AGGREGATABLE (declare a `SWEEP` entry — single-boot, safe to share a session) and the
+    # rest (multi-boot / boot-config → their own subprocess boot). Aggregation is a big speed win: N
+    # single-boot tests in ONE game boot instead of N.
     results = []
-    for i, t in enumerate(tests, 1):
-        print(f"[sweep] ({i}/{len(tests)}) {t} …", flush=True)
+    agg = []
+    standalone = list(tests)
+    if not args.no_aggregate:
+        agg = [(t, e) for t in tests if (e := sweep_entry(t)) is not None]
+        agg_names = {t for t, _ in agg}
+        standalone = [t for t in tests if t not in agg_names]
+
+    if agg:
+        print(f"[sweep] aggregate phase: {len(agg)} test(s) in ONE boot "
+              f"({', '.join(t for t, _ in agg)})\n", flush=True)
+        sys.path.insert(0, os.path.dirname(HERE))  # tools/ so `from mfg_session import ...` resolves
+        from mfg_session import GameSession
+        try:
+            with GameSession() as g:
+                for name, entry in agg:
+                    print(f"[sweep]   (agg) {name} …", flush=True)
+                    t0 = time.time()
+                    try:
+                        entry(g)
+                    except Exception as e:
+                        g.check("test raised", False, repr(e))
+                    ok = g.finish_test(name)   # records this test's checks to the ledger + resets
+                    results.append((name, 0 if ok else 1))
+                    print(f"[sweep]   (agg) {name} -> {'PASS' if ok else 'FAIL'} ({time.time()-t0:.0f}s)\n",
+                          flush=True)
+        except Exception as e:
+            print(f"[sweep] aggregate boot failed ({e!r}) — those tests recorded as failed", flush=True)
+            done = {n for n, _ in results}
+            for name, _ in agg:
+                if name not in done:
+                    results.append((name, 1))
+        kill_stragglers()
+
+    if standalone:
+        print(f"[sweep] per-boot phase: {len(standalone)} test(s), timeout {args.timeout}s each\n",
+              flush=True)
+    for i, t in enumerate(standalone, 1):
+        print(f"[sweep] ({i}/{len(standalone)}) {t} …", flush=True)
         t0 = time.time()
         try:
             r = subprocess.run([sys.executable, os.path.join(HERE, t)], cwd=REPO, timeout=args.timeout)
