@@ -25,11 +25,19 @@ serialize: **`FUN_14067dc00` @ RVA `0x67dc00`** (GameDataMan-xref ∩ DLOutputSt
 `er+0x1ede700` (a DLOutputStream primitive). Retargeted `hk_serialize` to scan `SERIALIZE_FN` (0x67dc00).
 Cross-build clean (`build-linux`, DLL linked).
 
-**NEXT (Proton, one run):** deploy build, `sidecar_save=true`, trigger ONE real save (grace-rest / quit),
-grep `[SERFN]` in `logs/MapForGoblins_events.log` — expect exactly ONE fresh caller on the save thread
-(note the tid). That closes deliverable-status #4 (once-per-save + thread) + the PM#2 never-fired failure
-mode. Then wire strip@entry/reinject@exit onto `SERIALIZE_FN` + flip `kItemStripReinjectWired=true`.
-(Variant B remains the zero-RE fallback if the observer surprises.)
+**✅ OBSERVER RUN — PASS 2026-07-03 (ERR/Proton, this box; test_sidecar 5/5 on the fresh DLL).** Deployed
+the rebuild, ran `python3 tools/mfg_test.py sidecar`. Log confirmed: `[SERFN] observer hooked` at offset
+**exactly `0x67dc00`** (er base `0x6ffff4ba0000`; `[SAVEFN]` = `0x240fd70` too — both AOBs correct);
+fired on the **save worker thread `tid=344`** (not present/main); call chain runs through **`er+0x24fb88b`**
+= the known once-per-save orchestrator; save-frequency (2 fires / 44 s, not per-frame). 2 distinct
+callers = 2 of the fn's 4 save triggers — fine for a self-bracketing strip@entry/reinject@exit. Detail:
+`docs/re/windows_save_serialize_re_findings.md` §4.
+
+**Deliverable #4 CLOSED. NEXT = wire it:** add strip@entry / reinject@exit inside `hk_serialize`
+(guard with a re-entrancy/`g_stripped` flag), snapshot items under `g_mtx` then `give_item(∓qty)` outside
+the lock (already have `strip_items()`/`reinject_items()`), and flip `kItemStripReinjectWired=true`.
+Then re-run the cap-oracle test (grant → game-save → delete `.mfg` → reload with `items=0` → item gone
+from the vanilla save). Variant B stays the zero-RE fallback.
 
 ---
 

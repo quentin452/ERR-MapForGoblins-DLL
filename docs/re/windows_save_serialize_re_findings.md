@@ -74,10 +74,26 @@ the grain of truth behind PM#3's "shared save+load walker" — but PM#3 pointed 
    `kItemStripReinjectWired`. This is cheap with the shipped in-DLL observer infra on ERR/Proton — and it
    directly closes the PM#2 failure mode (a candidate that never fired). Also re-verify `[SIG]` on the
    ERR deploy build (AOB from Windows App 2.6.x).
-   **CODE-READY 2026-07-03 (Linux):** `install_save_hook()` in `goblin_sidecar.cpp` now hooks
-   `hk_serialize` via the `SERIALIZE_FN` AOB scan (was the stale hardcoded `er+0x1ede700`) → `[SERFN]`
-   observer logs caller#/tid/chain on each call. Cross-build clean. Run on ERR/Proton: `sidecar_save=true`,
-   trigger one save, grep `[SERFN]` — expect ONE fresh caller on the save thread. Then flip the flag.
+   **✅ OBSERVER RUN — PASS 2026-07-03 (ERR/Proton, this box).** `install_save_hook()` now hooks
+   `hk_serialize` via the `SERIALIZE_FN` AOB scan (was the stale hardcoded `er+0x1ede700`). Live log
+   (`logs/MapForGoblins.log`):
+   - `[SERFN] observer hooked @ 0x6ffff521dc00` — offset from er base `0x6ffff4ba0000` = **exactly
+     `0x67dc00`** (and `[SAVEFN]` @ `0x240fd70` = SAVE_FN — both AOBs land on the intended RVAs).
+   - Fired on the **dedicated save worker thread `tid=344`** (NOT the present/main thread) — good for a
+     trampoline bracket.
+   - Call chain passes through **`er+0x24fb88b`**, the once-per-save save orchestrator identified in the
+     PM notes → confirms `0x67dc00` is the orchestrator's whole-slot serialize, as Ghidra predicted.
+   - Frequency = save-triggered, NOT per-frame (2 fires in a 44 s session, else thousands) → the fn is a
+     save event, not a hot loop.
+   - Nuance: 2 DISTINCT direct callers logged (`er+0x67e1a3`, `er+0x67ba3a`) = 2 of the fn's 4
+     save-trigger callers. The observer dedups by caller so the raw per-save count isn't in the log, but
+     for a **strip@entry / reinject@exit** bracket that's irrelevant — each call self-brackets (strip
+     before its serialize, reinject after), so N calls stay balanced. (If an exact per-save count is ever
+     wanted, add a raw `g_ser_calls` line; not blocking.)
+
+   **CONCLUSION: deliverable #4 closed.** The serialize is found, statically airtight, and now
+   dynamically confirmed (right RVA, save thread, save orchestrator, save-frequency). Ready to wire
+   strip(entry)/reinject(exit) onto `SERIALIZE_FN` + flip `kItemStripReinjectWired=true`.
 
 Net: the save serialize is **found and statically airtight** (GameData→DLOutputStream, save-specific,
 synchronous, brackets the inventory). Variant A (clean vanilla save) is unblocked; wire
