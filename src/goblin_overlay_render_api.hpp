@@ -149,6 +149,12 @@ namespace goblin::overlay_api
     // goblin::EnemyBarLabel is declared in goblin_inject.hpp (included above). POD across the boundary.
     GOBLIN_RENDER_API int get_enemy_bar_labels(goblin::EnemyBarLabel *buf, int max);
     GOBLIN_RENDER_API std::string lookup_text_utf8(int32_t id);
+
+    // Set a param field by name (regulation-free live edit), for the in-game World Editor. `param` is
+    // the ASCII param table name (e.g. "ItemLotParam_map", "AssetEnvironmentGeometryParam"). Returns
+    // false if the field/row is unknown or the write faulted. Pairs with rebuild_markers() to reflect
+    // loot/asset edits on the drawn map.
+    GOBLIN_RENDER_API bool param_set_field(const char *param, uint64_t row, const char *field, double value);
     GOBLIN_RENDER_API std::string lookup_name_en_disk_utf8(int32_t encoded_id);
     GOBLIN_RENDER_API bool quest_step_done(const goblin::generated::NpcQuest &q, size_t s);
     GOBLIN_RENDER_API uint32_t resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag);

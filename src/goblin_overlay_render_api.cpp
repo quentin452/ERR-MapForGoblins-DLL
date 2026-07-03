@@ -15,6 +15,7 @@
 #include "goblin_messages.hpp"
 #include "goblin_map_data.hpp"
 #include "goblin_quest_steps.hpp"
+#include "goblin_param_edit.hpp"          // param_set_field bridge (World Editor)
 #include "worldmap/loot_disk.hpp"
 #include "worldmap/map_entry_layer.hpp"   // rebuild_markers (refresh_markers RPC)
 #include "worldmap/name_fmg_en.hpp"
@@ -67,6 +68,13 @@ namespace goblin::overlay_api
     bool read_event_flag(uint32_t id) { return goblin::ui::read_event_flag(id); }
     void request_cluster_replan() { goblin::ui::request_cluster_replan(); }
     void rebuild_markers() { goblin::worldmap::rebuild_markers(); }
+    bool param_set_field(const char *param, uint64_t row, const char *field, double value)
+    {
+        if (!param || !field) return false;
+        std::wstring wp(param, param + std::strlen(param));  // ASCII param names
+        if (!goblin::paramedit::field_is_known(wp.c_str(), field)) return false;
+        return goblin::paramedit::param_set_field_by_name(wp.c_str(), row, field, value);
+    }
     void request_save() { goblin::ui::request_save(); }
     void reset_quest_progress() { goblin::ui::reset_quest_progress(); }
     void reset_to_defaults() { goblin::ui::reset_to_defaults(); }

@@ -59,5 +59,6 @@ void draw_sections_categories(Filter &f);                            // Sections
 void draw_quest_browser(Filter &f);                                  // Quest navigation / Quest Browser
 void draw_clustering(Filter &f);                                     // Clustering
 void draw_dev_tools_danger(Filter &f);                               // Debug, Dev tools, Danger zone
+void draw_world_editor(Filter &f);                                   // World Editor (live loot/asset edit)
 } // namespace panel
 } // namespace goblin::overlay

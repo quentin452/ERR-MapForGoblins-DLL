@@ -25,6 +25,11 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **In-game World Editor (first slice).** New F1 panel section *World Editor (live)*: pick a world
+  asset by id, see the loot item its map marker currently resolves to, re-skin that spot to any goods
+  id, and *Refresh markers* to see it on the map — all at runtime, regulation-free, save-safe. Early
+  slice (edit-by-id; a browsable picker + lot-cloning are next). Pairs with `custom_items.toml` to give
+  the re-skinned item a name/stats.
 - **Regulation.bin-free custom items.** A new `custom_items.toml` (next to `MapForGoblins.dll`) lets
   you declare custom items as data — no `regulation.bin`, no code. Each `[[goods]]` (also `[[weapon]]`
   /`[[protector]]`/`[[accessory]]`) clones a template row from the ACTIVE install, sets fields by name,

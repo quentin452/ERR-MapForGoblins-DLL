@@ -133,9 +133,13 @@ external-interop problem is a separate, much larger VFS bet and explicitly out o
   authors a world; virtualization stores + swaps worlds). This is a tractable framework feature, not a
   VFS research project.
 
-### 2. In-Game World Editor (ImGui, param-based)
+### 2. In-Game World Editor (ImGui, param-based) — SLICE 1 LANDED 2026-07-03
 An ImGui frontend over the runtime primitives — edit params/items/loot/markers live and SEE it, no
-rebuild. **This is the closest of the three: the whole live-edit loop already exists.** We built it this
+rebuild. **This is the closest of the three: the whole live-edit loop already exists.** **Slice 1 is
+IN** — F1 → "World Editor (live)" (`panel_world_editor.cpp`): pick an asset, see the loot item its map
+marker resolves to, re-skin that lot's `lotItemId01`, `Refresh markers` → on the map. Next: a real
+asset/item picker, repoint-to-lot, lot-cloning (needs `refresh_markers` v2), and SAVE edits as a world
+bundle (feeds #1). We built it this
 session — `param_setf`/`param_clone` (edit), `custom_items` (define), `loot_at` (inspect what a marker
 resolves), `pickUpItemLotParamId` repoint + `lotItemId01` (re-skin a loot spot), and **`refresh_markers`
 (see the edit on the map)**. The editor = a panel wiring these to widgets (pick asset → pick item →

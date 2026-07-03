@@ -415,6 +415,9 @@ namespace
             // src/overlay_panel/panel_dev_tools.cpp.
             panel::draw_dev_tools_danger(f);
 
+            // World Editor (live loot/asset re-skin + refresh) — src/overlay_panel/panel_world_editor.cpp.
+            panel::draw_world_editor(f);
+
             s_settings_hits = f.hits;
             ImGui::End();
         }

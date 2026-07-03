@@ -74,6 +74,17 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 
 ## Open / next items
 
+- **In-Game World Editor (vision #2) — SLICE 1 DONE 2026-07-03.** New F1 panel section "World Editor
+  (live)" (`src/overlay_panel/panel_world_editor.cpp`): pick an AEG asset → it shows the loot item its
+  MAP MARKER resolves to (live `aeg_pickup_lot`→`resolve_loot_item_textid`→`lookup_text_utf8`) → set that
+  lot's `lotItemId01` to any goods id → `Refresh markers` → shows on the map. Wires the proven runtime
+  primitives (`overlay_api::param_set_field` new bridge + `rebuild_markers`) to widgets. Visually verified
+  ("Lot 997230 → Bloodrose"). **Next slices:** repoint-to-another-lot (pickUpItemLotParamId), a proper
+  asset/item PICKER (browse instead of typing ids), CLONE a lot instead of editing in place (needs the
+  `refresh_markers` v2 LotReader-index reset so new lots resolve), category select, and SAVE the edits as
+  a world bundle (→ feeds vision #1 World Virtualization). Backend all proven; these are UI + the two
+  `refresh_markers` v2 items.
+
 - **Long-horizon vision bets — tracked in `docs/runtime_modding_framework_vision.md` "Future directions"
   (2026-07-03):** (1) World Virtualization — a FRAMEWORK feature: the framework holds N of its OWN worlds (each a data
   BUNDLE of param overrides + custom items + names + map/loot edits + flags + save context) and swaps the
