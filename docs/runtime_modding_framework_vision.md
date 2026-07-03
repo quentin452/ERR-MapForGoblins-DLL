@@ -31,6 +31,10 @@ other overhauls (no regulation.bin merge wars).
   the DLL leaves an orphan ID (item vanishes or worse). Any injected-item design must treat
   "DLL must be present at load" as a hard contract, and pick IDs from reserved high ranges to
   avoid colliding with overhauls (compat ≠ coherence: Convergence etc. still interact logically).
+  **→ RESOLUTION: the shadow / sidecar save (see the dedicated section below)** — a DLL-owned
+  `<save>.mfg` that (in the strip-and-reinject variant) keeps the `.sl2` vanilla-clean and downgrades
+  the hard "DLL-at-load" contract to soft. Note the SHIPPED param-override loader needs none of this
+  (param edits don't persist).
 - **Models/animations are the hard wall**: a playable model = geometry + skeleton + materials +
   collision + Havok behavior/animations. "Swap the vertex buffers in RAM" does NOT work as a
   design; the realistic path is serving a VALID FLVER/BND through a file-resolution hook — i.e.
@@ -38,6 +42,46 @@ other overhauls (no regulation.bin merge wars).
   FBX/Assimp→FLVER at runtime would mean writing a FLVER writer in the DLL (big, separate project).
 - **Param table growth**: tables are sorted row-descriptor arrays; appending in bulk needs
   realloc+resort or slack exploitation. Row-copy (what we do) is proven; mass-add is not.
+
+## Save persistence — the shadow / sidecar save (design direction, 2026-07-03)
+
+Question raised by the user: you can't cram custom framework state into ELDEN RING's `.sl2` — should
+the framework keep a **"shadowing save"** (a sidecar file the DLL owns) instead? **Yes — that is the
+right architecture, and it resolves the save-persistence constraint above.** Recorded here as the
+intended direction; scope as a `docs/plans/` plan when Gap C (item grants) actually starts.
+
+**What does / doesn't need saving (tier the problem):**
+- **Param FIELD edits (the shipped param-override loader, Slices 1-3) need NO save at all.** Params
+  reload from `regulation.bin` every boot and the DLL re-applies the overrides; nothing is written to
+  the `.sl2`. Already save-safe by construction — the shadow save is NOT for this tier.
+- **What DOES need out-of-schema persistence:** granted **custom items** (IDs the vanilla `.sl2`
+  inventory has no legit home for), **custom event flags** (beyond the vanilla flag block), and any
+  **framework-specific progress** (mod quest state, counters). These are what the sidecar holds.
+
+**The sidecar model (`<save>.mfg` next to the `.sl2`):** the DLL keeps a small file — the source of
+truth for all framework state — and syncs it to the game's own save/load lifecycle. Two ways to run it:
+- **(A) Strip-and-reinject (preferred — keeps the `.sl2` VANILLA-CLEAN).** Hook inventory/flag
+  serialization: on SAVE, strip our custom entries out of what the game writes (so the `.sl2` never
+  contains a custom ID); persist them to the sidecar instead. On LOAD, read the sidecar and re-grant
+  the items / re-set the flags into the live session. Result: the `.sl2` stays a legal vanilla save,
+  and — the big win — **this DOWNGRADES the "DLL-must-be-present-at-load" hard contract to soft**:
+  loading without the framework just means the modded items are absent that session (no orphan IDs,
+  no corruption). Uninstall = delete the folder + the `.mfg`, save still loads clean. This is the
+  "one folder, zero game files touched, clean uninstall" vision, fully realized.
+- **(B) Reserved-range + tolerate (simpler, dirtier).** Let custom items sit in the `.sl2` in a
+  reserved high ID range; accept orphans if loaded DLL-less. Easier (no serializer RE) but violates
+  "clean save"; only a stopgap.
+
+**The hard part of (A) is RE:** finding the save/load serializer for inventory + the flag block to
+strip/reinject, plus a robust **binding key** so a sidecar can't desync from its `.sl2` (candidates:
+steam id + character slot + a stamped GUID; must survive the user copying/backing-up saves). Atomicity
+matters — write the sidecar in lockstep with the game's save event, tolerate a crash between the two.
+
+**Relation to the reserved-ID policy (Gap H):** the sidecar doesn't remove the need to pick custom IDs
+from a reserved high range (to avoid colliding with overhauls in the LIVE session) — it removes the
+need for those IDs to survive in the `.sl2`. Freeze the reserved-range + binding-key policy before
+shipping anything that grants items. See the battle order in `runtime_live_capabilities_audit.md`
+(Gap C is gated on Gap H); the sidecar is the mechanism that makes Gap C safe.
 
 ## Framework split (GoblinFramework core + client mods)
 
