@@ -1,5 +1,11 @@
 # Windows-Ghidra + live-probe RE prompt — Freecam (detached, input-driven dev camera)
 
+> **Recon DONE (static, 2026-07-03) → `docs/re/windows_freecam_re_findings.md`.** Camera architecture
+> mapped: `CSCameraImp` (4 slots), the per-frame step `FUN_140766980` drives the active camera global
+> `DAT_143d6b880` (view transform at `[*(+0x10)+0x18]+0x10`), debug-hotkey infra + `CSDebugCam` present in
+> retail. Route 2 (freeze+drive the output transform) looks most tractable. Next: the transform write-point
+> (`FUN_1407650a0` + `GameRendCameraSet`) and the debug-cam activation slot.
+
 ## Why
 The dev "creative mode" mini-track (`docs/HANDOFF.md`, vision doc "Future directions"): a free-flying
 camera detached from the player is the verification + authoring tool for the world-editing work — move/ADD
