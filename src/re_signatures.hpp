@@ -153,6 +153,20 @@ namespace goblin::sig
         "40 55 53 56 57 41 54 41 56 41 57 48 8B EC 48 83 EC 60 "
         "48 C7 45 D0 FE FF FF FF 4C 8B F9 8B 42 34";
 
+    // ── Enemy HP-bar (mob NAMES on the game's native health bar) ──
+    // RE: docs/re/linux_enemy_healthbar_name_re_findings.md. Struct offsets + these AOBs are derived
+    // from the bundled, WORKING PostureBarMod.dll (Mordrog) → live-valid on this ERR/ER build.
+    // CSFeManImp singleton slot (mov rcx,[rip+disp]; disp @+3, instr len 7 → relative_offsets{{3,7}}).
+    // CSFeManImp+0x59F0 = EntityHpBar entityHpBars[8]; +0x5BF0 = BossHpBar bossHpBars[3].
+    inline constexpr const char *CSFEMAN_SLOT =
+        "48 8B 0D ?? ?? ?? ?? 8B DA 48 85 C9 75 ?? 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 4C 8B C8 "
+        "4C 8D 05 ?? ?? ?? ?? BA B4 00 00 00 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? "
+        "8B D3 E8 ?? ?? ?? ?? 48 8B D8";
+    // GetChrInsFromHandle(WorldChrMan*, u64* handlePtr) -> ChrIns*. Matched address IS the function
+    // (no RIP deref). ChrIns+0x60 = npcParam (the npcParamId → name).
+    inline constexpr const char *GET_CHRINS_FROM_HANDLE =
+        "48 83 EC 28 E8 17 FF FF FF 48 85 C0 74 08 48 8B 00 48 83 C4 28 C3";
+
     // ── World→map-space projection (the native map's per-icon projection) ──
     // RE: docs/re/windows_world_to_mapspace_projection_re_findings.md (FUN_140876140
     // + the live WorldMapViewModel converter array; binary-verified objdump §6b).

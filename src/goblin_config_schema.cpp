@@ -20,6 +20,9 @@ namespace goblin::config
     bool stackIdenticalItems = true;  // merge co-located identical-item loot markers into one "xN"
     bool showRegionLabels = true;  // overlay: draw major-region name labels on the map
     bool nativeItemIcons = true;   // overlay: draw the game's real item icon (GPU harvest) when resident
+    bool enemyNames = true;        // overlay: draw the mob NAME on the game's non-boss enemy HP bar
+    float enemyNameOffsetY = 4.0f; // enemy-name HUD: vertical offset above the bar (1920x1080 px)
+    float enemyNameScale = 1.0f;   // enemy-name HUD: text size multiplier
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
     bool diagLootPos = false;      // one-shot [LOOTPOS] live-vs-baked placement accuracy probe
     bool diagMapOpens = false;     // [MAPOPEN] CreateFileW probe: log map .msb.dcx opens
@@ -566,6 +569,20 @@ namespace
                 IniEntry{"minimap_offset_y", IniType::F32, &cfg::minimapOffsetY, "0",
                   "Minimap Y offset (px) from the anchored corner. 0 = default.",
                   false, nullptr, -2000.0f, 2000.0f},
+            }},
+
+            {"Enemy Bars",
+             "In-game enemy HP bar (F1 > Enemy bars). The game already draws the enemy\n"
+             "health bar and names BOSSES; this adds the name to regular (non-boss) mobs.",
+             false, {
+                B("enemy_names", enemyNames, "true",
+                  "Draw the mob NAME on the game's own non-boss enemy health bar. The engine\ndraws the bar (when you lock on / hit an enemy); this reads the bar's\non-screen position + the enemy's NpcParam name and labels it. Bosses are\nleft alone (the game already names them). Default ON."),
+                IniEntry{"enemy_name_offset_y", IniType::F32, &cfg::enemyNameOffsetY, "4.0",
+                  "Enemy-name HUD: vertical gap (px, 1920x1080 scale) between the name and the\ntop of the bar. Higher = name sits further above the bar.",
+                  false, nullptr, -40.0f, 40.0f},
+                IniEntry{"enemy_name_scale", IniType::F32, &cfg::enemyNameScale, "1.0",
+                  "Enemy-name HUD: text size multiplier. 1.0 = default font size.",
+                  false, nullptr, 0.5f, 3.0f},
             }},
 
             {"Debug",

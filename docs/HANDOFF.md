@@ -251,7 +251,47 @@ apply — the grace's own marker was hovered fine.
    RE (ESD unparsed) — disproportionate. Detail in the plan's Slice 2 section. **Slice 3** = merchant
    map pins (same ESD/EMEVD join, plus `entity_world_pos`) — also open; would close the **Merchant**
    ❌ NOT WIRED map-pin gap (`docs/coverage_vs_mapgenie.md`, MapGenie 43).
-2. **Enemy healthbar NAMES — REFRAMED by user (2026-07-02): NOT a new bar, just add mob NAMES.**
+2. **Enemy healthbar NAMES — DONE + in-game validated 2026-07-03 (`feat/enemy-bar-names`).** Mob
+   names label the game's own enemy HP bar, mod-agnostic (no bake): tier 1 `NpcParam.nameId → NpcName`
+   (invaders/named NPCs), tier 2 TutorialTitle bestiary codex `model*1000 + variant*100 + {10,4}` (ERR
+   names every generic mob — sheep/soldiers/trolls; all 3 tiers exercised in-game), tier 3 NpcName
+   boss band `9e8 + model*1000 + suffix` (vanilla field bosses, proven via probe). Windows-RE result:
+   `docs/re/windows_enemy_name_runtime_source_re_findings.md`. Draw hidden on worldmap/menu; raw
+   `screenPos` clamped to the on-screen band (drawn at raw — it's smooth per-frame, an early
+   velocity-extrapolation "position-fix" was REMOVED after it caused a jump-ahead on fast camera
+   motion). F1 "Enemy bars (mob names)": on/off + offset + text-size sliders. Remaining/future:
+   **draw the name directly ON the ER bar widget** (bigger; the current overlay text sits above it).
+   Original design notes below. **Key unlock: ERR bundles
+   `PostureBarMod.dll` (Mordrog, active in `err_offline.me3`, ImGui+DX12) which already accesses the
+   enemy bars — its open source gave the whole recipe.** The engine itself projects each enemy HP bar
+   to screen and stores it in the **CSFeMan** HUD manager's per-frame `entityHpBars[8]` array — so NO
+   world→screen projection and NO WorldChrMan enumeration needed (the two gaps the earlier RE flagged).
+   We read that array, `handle → GetChrInsFromHandle → ChrIns+0x60 npcParam → NpcName FMG` (reusing
+   `npc_team_and_name` + `lookup_text_utf8(nameId+700M)`), and draw the name over the bar. Full struct
+   map + sigs (CSFeMan `+0x59F0`, EntityHpBar 0x40: handle@0, screenPosX/Y@0x10/0x14, isVisible@0x34;
+   GetChrInsFromHandle sig) in **`docs/re/linux_enemy_healthbar_name_re_findings.md`** — offsets are
+   live-valid because the bundled PostureBarMod works in-process. Files: `src/goblin_enemy_names.cpp`
+   (SEH-guarded host reader, called from the render/present path), `overlay_api::get_enemy_bar_labels`
+   (POD getter), draw in `draw_minimap_hud` (independent of the minimap toggle), config `[Enemy Bars]
+   enemy_names` (default ON), `[ENEMYBAR]` diag on `debug_logging`. Build+SEH-lint clean, DEPLOYED.
+   **NEXT: in-game verify** — relaunch ERR, lock onto / hit a NON-boss mob, the name should appear
+   above its HP bar. If wrong/absent: set `debug_logging=true`, grep `[ENEMYBAR] visible=N named=M`
+   (visible>0 named=0 ⇒ name-resolve issue; visible=0 with a bar on screen ⇒ CSFeMan sig/offset drift
+   — re-pull PostureBarMod at this ER version). Text position (centered above bar) may need an offset
+   tweak live. On PASS: add a changelog `Added` line + merge.
+   **RUNTIME NAME SOURCE FOR GENERIC MOBS — RE ANSWERED, POSITIVE (Windows, 2026-07-03):** the
+   `NpcParam.nameId` path only names bosses/NPCs; the Windows offline RE
+   (`docs/re/windows_enemy_name_runtime_source_re_findings.md`) found the missing tiers, all
+   mod-agnostic (active install's regulation+msg only): tier 2 = ERR bestiary `TutorialTitle` at
+   `9e8 + model*1000 + variant*100 + {10,4}` (names EVERY generic mob on ERR, ~298 models; band
+   already routed by `decode_textid`); tier 3 = NpcName band probe `9e8 + model*1000 + 0..999`
+   (vanilla/ERR field bosses whose nameId=0 — incl. Tree Sentinel 903251600; these are EMEVD
+   `HandleBossHealthBar` nameIds). **Implementation TODO: add tiers 2+3 to
+   `src/goblin_enemy_names.cpp`** (strip the `^\d+[a-z]?\.\s*` codex prefix; cache the tier-3
+   band scan per model), then the in-game verify above covers both. Risk note: we call GetChrInsFromHandle
+   (a game fn) from the present thread (SEH-guarded); if it ever faults, move the read into a
+   game-thread hook on `UpdateUIBarStructs` like PostureBarMod does.
+   ORIGINAL NOTE — REFRAMED by user (2026-07-02): NOT a new bar, just add mob NAMES.
    The user clarified the real ask: **ER/ERR ALREADY draws the enemy healthbar** (the bar itself is
    done by the game). **Vanilla already shows the NAME for BOSSES on their bar; regular mobs get the
    bar but NO name.** So the feature shrinks to: **display the mob NAME on the existing (non-boss)

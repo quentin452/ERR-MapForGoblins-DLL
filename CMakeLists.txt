@@ -178,6 +178,7 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_item_classify.cpp
   src/goblin_section_visibility.cpp
   src/goblin_world_position.cpp
+  src/goblin_enemy_names.cpp
   src/goblin_tutorial_popup.cpp
   src/goblin_grace_suppression.cpp
   src/goblin_kindling.hpp
