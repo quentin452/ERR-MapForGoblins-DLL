@@ -97,9 +97,39 @@ Slice 1's generic "· buyable (unlock required)" tag stands as the shipped behav
 ### Slice 3 — merchant map pins + locate (optional, heaviest)
 
 Emit a real `Marker` per (sold item, merchant) at the merchant's `entity_world_pos`, so shop items ring
-+ locate like any marker. Requires the **shop-row → merchant-NPC-entityId** join: harvest EMEVD/ESD
-`ShopOpenDialog`/`OpenRegularShop(begin,end)` events (same style as the portal/summoning EMEVD parse)
-to map a shop-id range to the NPC that opens it, then `entity_world_pos`. This is the real RE spike;
++ locate like any marker. Requires the **shop-row → merchant-NPC-entityId** join, then `entity_world_pos`.
+
+**SCOPING DONE 2026-07-03 — the join source is ESD, NOT EMEVD.**
+- **EMEVD is a DEAD END.** ER EMEVD has NO shop-open instruction — verified by parsing
+  `tools/er-common.emedf.json` (27 classes, no shop/buy/sell/purchase/OpenRegularShop; only
+  `2003[78] Open World Map Point`). "OpenRegularShop" is DS1 terminology; ER opens shops from **talk
+  ESD** (EzState), so the earlier "EMEVD OpenRegularShop(begin,end)" premise was wrong. The existing
+  EMEVD parsers (portals 90005605, quest-NPCs 90005702 in `msbe_parser.cpp`) can't reach it.
+- **ESD is the only source, and it IS reachable on Linux** (talk ESD is DFLT/zlib, not Oodle):
+  `~/Games/ERRv2.2.9.6/mod/script/talk/mXX_..._.talkesdbnd.dcx` on disk; the SoulsFormats.ESD reader
+  ships as `tools/lib/Andre.SoulsFormats.dll` (committed) + dotnet 10 available. Precedent: the
+  quest-browser mined talk ESD (`[[quest-browser]]`, `docs/emevd_death_flags_results.md`). **Caveat:
+  the `tools/esd_dump/` C# SOURCE is NOT committed (only `bin/`)** — it must be rebuilt (small C# using
+  Andre.SoulsFormats: `ESD.Read`, `StateGroups`→`State.{Entry,While}Commands`→`CommandCall.{CommandBank,
+  CommandID,Arguments}`; bank 1 = talk commands, see `[[grace-menu-esd-spike]]`).
+- **The join chain:** talk ESD command `OpenRegularShop(begin,end)` (a bank:id to FIND via
+  `esd_dump --hist` on a merchant map, e.g. Roundtable `m11_10`) → gives the shop-id RANGE per talk
+  script → TalkID → NPC entity (MSB part talkId / `tools/_npc_talkids.py`) → `entity_world_pos`.
+
+**DECISION FORK (prime-directive tension) — get a user call before building:**
+- **(A) Runtime ESD parse (mod-agnostic, BIG):** a new in-DLL EzState/ESD parser reading the ACTIVE
+  install's `talkesdbnd.dcx` at boot (DFLT decompress already exists). Correct on any mod. Large new
+  infra (ESD state machines in C++), the heaviest option.
+- **(B) Baked-additive table (FAST, ERR-frozen):** offline `esd_dump` pipeline → `data/merchants.json`
+  (shopRange→entity→pos), loaded as an additive ERR layer. Violates the mod-agnostic acceptance test
+  (wrong under other mods) → a transitional fallback per the prime directive, not the end state.
+- **(C) Runtime shop-open HOOK (lightweight, partial):** hook the game's shop-open fn; when the player
+  opens a merchant, capture (shopId range, talking-NPC entity) live → pin progressively. No ESD parse,
+  mod-agnostic, but only pins merchants ALREADY VISITED (weak for a "find merchants" map).
+
+Recommendation: (A) is the only true-to-directive end state but is a large spike; (C) is a cheap
+partial win; (B) is quick but frozen. Do the `esd_dump` rebuild + `--hist` RE FIRST (bounded) to
+confirm the shop command + prove the join on one merchant, THEN pick A/B/C. This is the real RE spike;
 do only if the user wants pins.
 
 ## Acceptance (mod-agnostic test)
