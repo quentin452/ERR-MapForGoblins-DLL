@@ -56,6 +56,15 @@ namespace goblin::sig
     inline constexpr const char *INVENTORY_ACCESSOR =
         "44 8B 61 1C 41 8B FC C1 EF 07 40 80 E7 01 41 C1 EC 08 41 80 E4 01 48 8B 0D";
 
+    // ── Save routine (sidecar Phase-2 strip/reinject bracket) ──
+    // Outermost eldenring.exe save fn (#09 in the save-write stack walk, RVA 0x253e4b0 on this
+    // ERR build) — RE: docs/re/linux_save_function_re_findings.md. Hooked READ-ONLY first to
+    // confirm it's save-specific + brackets serialize+write, before wiring strip/reinject.
+    // Prologue: 40 53 48 83 EC 30 44 8B D1 48 85 D2 75 ?? E8 (push rbx; sub rsp,30; mov r10d,ecx;
+    // test rdx,rdx; jnz +..; call ..).
+    inline constexpr const char *SAVE_FN =
+        "40 53 48 83 EC 30 44 8B D1 48 85 D2 75 ?? E8";
+
     // ── Grace warp (fast-travel to a site of grace — dev-world navigation) ──
     // From the Hexinton CT ("Coinsworth"). LuaWarp_01 = the game's Lua-event warp: proper
     // area-load fast-travel. AOB anchors on the previous fn's `C3` ret; the callable is
@@ -289,6 +298,7 @@ namespace goblin::sig
             {"EVENT_FLAG_MAN_SLOT_ALT", EVENT_FLAG_MAN_SLOT_ALT},
             {"ADD_ITEM_FUNC", ADD_ITEM_FUNC},
             {"INVENTORY_ACCESSOR", INVENTORY_ACCESSOR},
+            {"SAVE_FN", SAVE_FN},
             {"LUA_WARP", LUA_WARP},
             {"CS_LUA_EVENT_MANAGER", CS_LUA_EVENT_MANAGER},
             {"SOLO_PARAM_LIST", SOLO_PARAM_LIST},

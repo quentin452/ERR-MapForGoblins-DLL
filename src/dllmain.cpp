@@ -135,6 +135,7 @@ static void init_tutorial_popup()   { goblin::inject_tutorial_popup_rows(); }
 static void init_param_overrides()  { goblin::apply_param_overrides(); }
 static void init_inventory()        { goblin::inventory::initialize(); }
 static void init_warp()             { goblin::warp::initialize(); }
+static void init_save_hook()        { goblin::sidecar::install_save_hook(); }
 static void init_setup_messages()   { goblin::setup_messages(); }
 static void init_icon_tex_probe()   { goblin::install_icon_texture_probe(); }
 static void init_grace_suppress()   { goblin::install_grace_suppression_hook(); }
@@ -289,6 +290,8 @@ static void setup_mod()
         safe_init_step(&init_inventory,       "inventory::initialize");
         // Grace warp (dev-world navigation) — resolve LuaWarp_01 + CSLuaEventManager AOBs.
         safe_init_step(&init_warp,            "warp::initialize");
+        // Sidecar Phase-2 RE: read-only observer on the save routine (gated on sidecar_save).
+        safe_init_step(&init_save_hook,       "sidecar::install_save_hook");
         safe_init_step(&init_setup_messages,  "setup_messages");
         // Queue the live-refresh hook (FUN_140a82a80) — kept for the native-pin
         // suppression path; no-op until enabled.

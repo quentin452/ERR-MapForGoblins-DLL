@@ -73,4 +73,8 @@ namespace goblin::sidecar
     // flags into the live session via markers::set_event_flag (idempotent — safe to re-run).
     // Call once per frame from the present pump (next to debug_rpc::pump). No-op otherwise.
     void pump_present();
+
+    // Install the read-only save-fn observer (Phase 2 RE — confirm the save routine before
+    // wiring strip/reinject). Gated on sidecar_save; call once at init. [SAVEFN] in the log.
+    void install_save_hook();
 }

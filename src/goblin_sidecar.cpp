@@ -3,6 +3,8 @@
 #include "goblin_config.hpp"     // config::sidecarSave
 #include "goblin_markers.hpp"    // markers::set_event_flag — flag replay (slice 1b)
 #include "goblin_inventory.hpp"  // give_item — custom-item strip/reinject (Phase 2)
+#include "modutils.hpp"          // scan/hook — save-fn observer (Phase 2 RE)
+#include "re_signatures.hpp"     // sig::SAVE_FN
 
 #include <atomic>
 #include <map>
@@ -182,6 +184,112 @@ __declspec(noinline) bool seh_set_flag(uint32_t f)
 }
 
 // Remove all sidecar custom items from the LIVE inventory (give_item negative qty). Called at
+// ── Save-function RE probe (one-shot) ────────────────────────────────────────
+// Called from the CreateFileW save-WRITE hook, so the stack above us is the game's save
+// chain: [note_save_file_opened] ← [hk_create_file_w] ← [game file wrapper] ← … ← [the
+// SAVE ROUTINE that serializes then writes]. We want to hook that routine (strip at entry,
+// reinject at exit — an atomic bracket around serialization). This logs the call chain: each
+// return address as eldenring.exe+RVA, the containing function's ENTRY (found by scanning
+// back to the CC-padding boundary), and the entry's first bytes (for an AOB). Read
+// docs/plans/shadow_sidecar_save_plan.md Phase 2 — identify the frame that brackets
+// serialize+write, then hook it. See [SAVERE] in the log.
+// Does buf[k..] look like a real x64 function prologue? (the common MSVC/clang shapes ER uses).
+bool looks_like_prologue(const uint8_t *p)
+{
+    // push rbx/rbp/rsi/rdi
+    if (p[0] >= 0x53 && p[0] <= 0x57) return true;
+    // 40 53 / 40 55.. (push with REX), 41 54.. (push r12-15)
+    if (p[0] == 0x40 && p[1] >= 0x53 && p[1] <= 0x57) return true;
+    if (p[0] == 0x41 && p[1] >= 0x54 && p[1] <= 0x57) return true;
+    // 48 89 5C/74/7C 24 .. (mov [rsp+x], reg — save reg prologue)
+    if (p[0] == 0x48 && p[1] == 0x89 && (p[2] == 0x5C || p[2] == 0x74 || p[2] == 0x7C) && p[3] == 0x24)
+        return true;
+    // 48 83 EC (sub rsp, imm8) / 48 81 EC (imm32)
+    if (p[0] == 0x48 && (p[1] == 0x83 || p[1] == 0x81) && p[2] == 0xEC) return true;
+    // 48 8B C4 (mov rax,rsp — frame setup) / 4C 8B DC (mov r11,rsp)
+    if (p[0] == 0x48 && p[1] == 0x8B && p[2] == 0xC4) return true;
+    if (p[0] == 0x4C && p[1] == 0x8B && p[2] == 0xDC) return true;
+    return false;
+}
+
+uintptr_t find_fn_entry(uintptr_t ra, uintptr_t base, uintptr_t hi)
+{
+    if (ra < base + 0x8000 || ra > hi) return ra;
+    uint8_t buf[0x8000];
+    uintptr_t start = ra - sizeof(buf) + 1;  // [ra-0x7FFF, ra]
+    SIZE_T got = 0;
+    if (!ReadProcessMemory(GetCurrentProcess(), (void *)start, buf, sizeof(buf), &got) ||
+        got != sizeof(buf))
+        return ra;
+    // Nearest CC→non-CC transition whose following bytes are a valid prologue (MSVC int3-pads
+    // between functions; but CC also appears inside bodies, so validate the prologue shape).
+    for (int k = (int)sizeof(buf) - 1; k >= 2; --k)
+        if (buf[k - 1] == 0xCC && buf[k] != 0xCC && looks_like_prologue(&buf[k]))
+            return start + k;
+    // fallback: nearest CC boundary at all.
+    for (int k = (int)sizeof(buf) - 1; k >= 1; --k)
+        if (buf[k] != 0xCC && buf[k - 1] == 0xCC) return start + k;
+    return ra;
+}
+
+// ── Save-fn observer (Phase 2 RE, read-only) ─────────────────────────────────
+// Hook the outermost save routine (sig::SAVE_FN) and log entry/exit + thread + call count, to
+// confirm it fires on a save, is save-specific (not floods every frame / loads), and brackets
+// serialize+write (one call per save). NO strip yet. 4-arg passthrough (the fn uses rcx/rdx;
+// extra regs are forwarded harmlessly).
+using SaveFn = uint64_t(*)(void *, void *, void *, void *);
+SaveFn g_orig_save = nullptr;
+std::atomic<long> g_save_calls{0};
+
+uint64_t hk_save(void *a, void *b, void *c, void *d)
+{
+    long n = ++g_save_calls;
+    bool log = (n <= 40) || (n % 200 == 0);
+    if (log)
+        spdlog::info("[SAVEFN] #{} ENTER tid={} a={} b={}", n, GetCurrentThreadId(), a, b);
+    uint64_t r = g_orig_save(a, b, c, d);
+    if (log) spdlog::info("[SAVEFN] #{} exit", n);
+    return r;
+}
+
+void probe_save_callstack()
+{
+    static std::atomic<bool> done{false};
+    if (done.exchange(true)) return;
+    using RtlCapFn = USHORT(WINAPI *)(ULONG, ULONG, PVOID *, PULONG);
+    auto rtl = (RtlCapFn)GetProcAddress(GetModuleHandleA("ntdll.dll"), "RtlCaptureStackBackTrace");
+    if (!rtl) { spdlog::warn("[SAVERE] RtlCaptureStackBackTrace unavailable"); return; }
+    void *frames[40];
+    USHORT n = rtl(0, 40, frames, nullptr);
+    uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
+    uintptr_t hi = base + 0x10000000;  // generous .text upper bound
+    spdlog::info("[SAVERE] save write-open callstack ({} frames), er_base={:#x}:", n, base);
+    for (USHORT i = 0; i < n; i++)
+    {
+        uintptr_t ra = (uintptr_t)frames[i];
+        if (ra < base || ra > hi) { spdlog::info("[SAVERE]  #{:02d} {:p} (extern)", i, (void *)ra); continue; }
+        // Reliable callee entry: the return address ra is right after a `call`. For a direct
+        // `E8 rel32` at ra-5, the callee (this frame's INNER function) = ra + int32(ra-4). That
+        // is the EXACT entry of the next-inner frame's function — no CC-scan heuristic.
+        uint8_t pre[5] = {};
+        SIZE_T g2 = 0;
+        ReadProcessMemory(GetCurrentProcess(), (void *)(ra - 5), pre, 5, &g2);
+        uintptr_t callee = 0;
+        if (g2 == 5 && pre[0] == 0xE8)
+        {
+            int32_t rel = *reinterpret_cast<int32_t *>(pre + 1);
+            callee = ra + rel;
+        }
+        uint8_t ch[16] = {};
+        if (callee >= base && callee <= hi)
+            ReadProcessMemory(GetCurrentProcess(), (void *)callee, ch, sizeof(ch), &g2);
+        spdlog::info("[SAVERE]  #{:02d} ret=er+{:#x}  callee(er+{:#x}) hdr={:02x} {:02x} {:02x} {:02x} "
+                     "{:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+                     i, ra - base, callee ? callee - base : 0, ch[0], ch[1], ch[2], ch[3], ch[4],
+                     ch[5], ch[6], ch[7], ch[8], ch[9], ch[10], ch[11]);
+    }
+}
+
 // a game-save signal so the item is not in the serialized save. Snapshots under the lock, then
 // calls give_item OUTSIDE it (never hold g_mtx across a game call). give_item is SEH-guarded.
 void strip_items()
@@ -246,6 +354,23 @@ bool load_locked()
 }
 }  // namespace
 
+void install_save_hook()
+{
+    if (!config::sidecarSave) return;
+    void *fn = modutils::scan<void>({.aob = goblin::sig::SAVE_FN});
+    if (!fn) { spdlog::warn("[SAVEFN] AOB not found — observer skipped"); return; }
+    try
+    {
+        modutils::hook(fn, reinterpret_cast<void *>(hk_save),
+                       reinterpret_cast<void **>(&g_orig_save));
+        spdlog::info("[SAVEFN] observer hooked @ {}", fn);
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("[SAVEFN] hook failed: {}", e.what());
+    }
+}
+
 void note_save_file_opened(const wchar_t *path, bool for_write)
 {
     if (!config::sidecarSave || !path) return;
@@ -276,6 +401,9 @@ void note_save_file_opened(const wchar_t *path, bool for_write)
     // Phase 2 strip (outside the lock — strip_items re-locks + calls the game fn): on a game
     // WRITE, remove custom items from the LIVE inventory so the save serializes clean, then
     // queue a reinject on the present thread once the write settles (~1.5 s later).
+    // Save-function RE: one-shot stack walk from the save write-open to find the routine to
+    // hook for the atomic strip/reinject bracket (Phase 2). Cheap, gated by the one-shot.
+    if (saving) probe_save_callstack();
     // Debounce: one save = several write-opens; strip only on the first of the cycle.
     if (kItemStripReinjectWired && saving && !g_stripped.exchange(true, std::memory_order_relaxed))
     {
