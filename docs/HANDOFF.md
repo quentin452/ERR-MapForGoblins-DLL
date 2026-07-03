@@ -290,9 +290,15 @@ apply — the grace's own marker was hovered fine.
    `[SHOPDIAG]` dump proved the ERR shop-id layout is customized (single-row shops in 57–58M, gated
    rows in 100201–100338 with ERR-specific flags, no clean Twin Maidens/bell signature), so a vanilla
    shopId-range table would mislabel and the real name needs EMEVD `OpenRegularShop` + talk/**ESD**→NPC
-   RE (ESD unparsed) — disproportionate. Detail in the plan's Slice 2 section. **Slice 3** = merchant
-   map pins (same ESD/EMEVD join, plus `entity_world_pos`) — also open; would close the **Merchant**
-   ❌ NOT WIRED map-pin gap (`docs/coverage_vs_mapgenie.md`, MapGenie 43).
+   RE (ESD unparsed) — disproportionate. Detail in the plan's Slice 2 section. **Slice 3 = merchant
+   map pins — SHELVED (user, 2026-07-03) after an RE spike.** Confirmed the shop↔NPC join is
+   talk-ESD-ONLY (ER EMEVD has no shop instruction — verified via `tools/er-common.emedf.json`; the
+   "EMEVD OpenRegularShop" premise was wrong), and that pulling the shop-id RANGE out of ESD needs an
+   EzState BYTECODE EVALUATOR on top of the ESD reader (rebuilt as `tools/esd_shop/`) — too much infra
+   for one pin category. So the **Merchant ❌ NOT WIRED** map-pin gap (`coverage_vs_mapgenie.md`) stays
+   open by choice; Slice 1 search is the shipped merchant feature. Options if ever revisited: (A) full
+   ESD+EzState, (C) runtime shop-open hook (visited-only pins). See `plans/merchant_item_search_plan.md`
+   Slice 3.
 2. **Enemy healthbar NAMES — DONE + in-game validated 2026-07-03 (`feat/enemy-bar-names`).** Mob
    names label the game's own enemy HP bar, mod-agnostic (no bake): tier 1 `NpcParam.nameId → NpcName`
    (invaders/named NPCs), tier 2 TutorialTitle bestiary codex `model*1000 + variant*100 + {10,4}` (ERR

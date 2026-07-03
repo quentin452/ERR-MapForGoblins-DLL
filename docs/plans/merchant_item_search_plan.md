@@ -1,8 +1,11 @@
 # Merchant / shop item search — plan
 
 Status: **Slice 1 DONE + IN-GAME VERIFIED (2026-07-02, `feat/merchant-search` `0acbf8f`). Slice 2
-DEFERRED (user) — merchant naming needs ESD/EMEVD RE the live ERR shop-id data proved disproportionate
-(see Slice 2). Slice 3 open.** Verified on ERR/Proton: `[MERCHANTSEARCH] 5485 items indexed` at boot; F1 search "telescope"
+DEFERRED + Slice 3 SHELVED (user, 2026-07-03) — both need ESD RE that proved disproportionate. Slice 1
+search is the shipped merchant feature; no more work planned.** Slice 3 RE spike (2026-07-03) confirmed
+the shop↔NPC join is talk-ESD-only (no EMEVD shop instr) AND that extracting the shop-id range needs an
+EzState bytecode EVALUATOR on top of the ESD reader (`tools/esd_shop/`) — too much infra for one pin
+category (see Slice 3). Verified on ERR/Proton: `[MERCHANTSEARCH] 5485 items indexed` at boot; F1 search "telescope"
 (shop-only, Kalé — no world marker) lists **"Telescope · buyable (unlock required)"** under a new
 "Sold by merchants" heading, with the FR translations. Names resolve even at the title screen.
 
