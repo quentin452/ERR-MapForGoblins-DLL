@@ -269,7 +269,17 @@ apply — the grace's own marker was hovered fine.
    above its HP bar. If wrong/absent: set `debug_logging=true`, grep `[ENEMYBAR] visible=N named=M`
    (visible>0 named=0 ⇒ name-resolve issue; visible=0 with a bar on screen ⇒ CSFeMan sig/offset drift
    — re-pull PostureBarMod at this ER version). Text position (centered above bar) may need an offset
-   tweak live. On PASS: add a changelog `Added` line + merge. Risk note: we call GetChrInsFromHandle
+   tweak live. On PASS: add a changelog `Added` line + merge.
+   **RUNTIME NAME SOURCE FOR GENERIC MOBS — RE ANSWERED, POSITIVE (Windows, 2026-07-03):** the
+   `NpcParam.nameId` path only names bosses/NPCs; the Windows offline RE
+   (`docs/re/windows_enemy_name_runtime_source_re_findings.md`) found the missing tiers, all
+   mod-agnostic (active install's regulation+msg only): tier 2 = ERR bestiary `TutorialTitle` at
+   `9e8 + model*1000 + variant*100 + {10,4}` (names EVERY generic mob on ERR, ~298 models; band
+   already routed by `decode_textid`); tier 3 = NpcName band probe `9e8 + model*1000 + 0..999`
+   (vanilla/ERR field bosses whose nameId=0 — incl. Tree Sentinel 903251600; these are EMEVD
+   `HandleBossHealthBar` nameIds). **Implementation TODO: add tiers 2+3 to
+   `src/goblin_enemy_names.cpp`** (strip the `^\d+[a-z]?\.\s*` codex prefix; cache the tier-3
+   band scan per model), then the in-game verify above covers both. Risk note: we call GetChrInsFromHandle
    (a game fn) from the present thread (SEH-guarded); if it ever faults, move the read into a
    game-thread hook on `UpdateUIBarStructs` like PostureBarMod does.
    ORIGINAL NOTE — REFRAMED by user (2026-07-02): NOT a new bar, just add mob NAMES.

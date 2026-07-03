@@ -1,5 +1,11 @@
 # RE PROMPT (Windows) — mod-agnostic RUNTIME source for an enemy MODEL → display NAME
 
+> **ANSWERED 2026-07-03 — verdict POSITIVE (mechanism exists, no table needed).** See
+> `windows_enemy_name_runtime_source_re_findings.md`. Short version: the Linux probes missed two
+> id conventions — vanilla boss names live in NpcName at `9e8 + model*1000 + suffix` (EMEVD
+> `HandleBossHealthBar` nameIds), and ERR's TutorialParam bestiary keys `model*1000 + variant*100`
+> → TutorialTitle names EVERY generic enemy. Do not re-run this prompt.
+
 ## Goal
 
 Find a way to resolve a **live enemy's display name** (e.g. `c3251` → "Tree Sentinel", `c4311` →
