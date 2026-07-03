@@ -30,7 +30,8 @@
 
 // Virtual world map open-flag (panel_virtual_map.cpp) — forward-declared to avoid pulling the
 // D3D12-coupled panel_internal.hpp here; both live in the render module (single-DLL build).
-namespace goblin::overlay::panel { bool &virtual_map_open(); }
+namespace goblin::overlay::panel { bool &virtual_map_open(); void virtual_map_request_fit();
+                                   void virtual_map_set_group(int g); int virtual_map_group(); }
 namespace goblin::overlay { void request_f1_tab(int idx); }  // goblin_overlay_render.cpp
 
 namespace goblin::overlay_api
@@ -78,6 +79,9 @@ namespace goblin::overlay_api
     void virtual_map_set_open(bool open) { goblin::overlay::panel::virtual_map_open() = open; }
     bool virtual_map_is_open() { return goblin::overlay::panel::virtual_map_open(); }
     void f1_request_tab(int idx) { goblin::overlay::request_f1_tab(idx); }
+    void virtual_map_fit() { goblin::overlay::panel::virtual_map_request_fit(); }
+    void virtual_map_set_group(int g) { goblin::overlay::panel::virtual_map_set_group(g); }
+    int virtual_map_get_group() { return goblin::overlay::panel::virtual_map_group(); }
     bool param_set_field(const char *param, uint64_t row, const char *field, double value)
     {
         if (!param || !field) return false;

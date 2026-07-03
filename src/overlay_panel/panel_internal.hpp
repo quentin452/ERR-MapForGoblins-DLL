@@ -74,5 +74,8 @@ void draw_world_editor(Filter &f);                                   // World Ed
 // in the Dev tab. See docs/re/worldmap_new_page_spike_findings.md. Drawn as a sibling of the F1 panel.
 void draw_virtual_map(const OverlayFrameCtx &ctx);
 bool &virtual_map_open();
+void virtual_map_request_fit();       // one-shot: frame the selected group's markers on next draw
+void virtual_map_set_group(int g);    // 0..3 = base-OW / base-UG / DLC-OW / DLC-UG
+int virtual_map_group();
 } // namespace panel
 } // namespace goblin::overlay

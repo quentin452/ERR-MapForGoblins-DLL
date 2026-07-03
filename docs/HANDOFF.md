@@ -94,8 +94,13 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
     world→canvas projection (`w2s`/`s2w`; cam in world units, zoom px/unit). Drawn as a sibling of the F1
     panel (compact+full). Toggle: Dev-tab button **and** `vmap 0|1|toggle` RPC (+ `overlay_api::
     virtual_map_set_open/is_open`). Live-verified on Proton (`vmap 1` → window+grid+origin render, alive).
-  - **SLICE B (next): draw markers on it** — project a chosen marker group with the mod projection + draw
-    the marker icons (reuse `draw_category_icon`/the marker path) at `w2s` per marker; pan/zoom with them.
+  - **✅ SLICE B DONE 2026-07-04 — markers on the canvas.** The selected group's live markers project onto
+    the canvas as colored dots (by `m.color`), with a group selector (Combo) + `Fit`-to-markers + a marker
+    count readout. Live-verified: base-overworld = 6837 markers forming the recognizable Lands Between
+    silhouette; `vmap group <0-3>` / `vmap fit` RPCs drive it. On-canvas ICONS (vs dots) = a follow-up (needs
+    a draw-list icon helper: resolve tex+uv like the census, `dl->AddImage`). **NOTE:** the vmap currently
+    draws INSIDE `draw_panel` so it needs F1 open — slice D must decouple it (draw independent of g_show) for
+    the M-open path.
   - **SLICE C: the WORLD model** — an active-world id + per-world {origin/scale, marker set, optional bg
     image}, bundle-backed (extends `goblin_world_bundle`); synthetic marker group (≥100) so markers belong
     to a world; framework assigns per-world coordinate namespaces (collision-free).

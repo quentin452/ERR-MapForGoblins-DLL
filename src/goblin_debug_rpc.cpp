@@ -460,15 +460,28 @@ namespace goblin::debug_rpc
                 goblin::overlay_api::f1_request_tab(idx);     // SetSelected next draw (one-shot)
                 return "ok f1_tab=" + std::string(kTabs[idx]);
             }
-            // vmap 0|1|toggle — open/close the MapForGoblins virtual world map (mod page) window.
+            // vmap 0|1|toggle | fit | group <0-3> — drive the virtual world map (mod page) window.
             if (cmd == "vmap")
             {
                 std::string arg = next_token(rest);
+                if (arg == "fit")
+                {
+                    goblin::overlay_api::virtual_map_set_open(true);
+                    goblin::overlay_api::virtual_map_fit();
+                    return "ok vmap fit";
+                }
+                if (arg == "group")
+                {
+                    int g = 0;
+                    try { g = std::stoi(next_token(rest)); } catch (...) { return "err usage: vmap group <0-3>"; }
+                    goblin::overlay_api::virtual_map_set_group(g);
+                    return "ok vmap group=" + std::to_string(goblin::overlay_api::virtual_map_get_group());
+                }
                 if (arg == "0") goblin::overlay_api::virtual_map_set_open(false);
                 else if (arg == "1") goblin::overlay_api::virtual_map_set_open(true);
                 else if (arg == "toggle" || arg.empty())
                     goblin::overlay_api::virtual_map_set_open(!goblin::overlay_api::virtual_map_is_open());
-                else return "err vmap takes 0|1|toggle";
+                else return "err vmap takes 0|1|toggle | fit | group <0-3>";
                 return "ok vmap=" + std::to_string(goblin::overlay_api::virtual_map_is_open() ? 1 : 0);
             }
             if (cmd == "open_f1")

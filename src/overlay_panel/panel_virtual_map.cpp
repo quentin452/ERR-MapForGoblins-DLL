@@ -12,6 +12,7 @@
 
 #include "panel_internal.hpp"
 #include "goblin_i18n.hpp"
+#include "worldmap/marker_layer.hpp"   // Marker / MarkerLayer (overlay_layers → markers to project)
 
 #include <cmath>
 #include <cstdio>
@@ -28,9 +29,19 @@ namespace
     float s_cam_x = 0.0f, s_cam_z = 0.0f;
     float s_zoom = 0.05f;  // 0.05 px/unit → ~10k-unit ER map spans ~525px; a sane default overview
     constexpr float kZoomMin = 0.002f, kZoomMax = 4.0f;
+    // Which marker group to lay out on the canvas (slice B uses the live mod markers as test data;
+    // slice C ties markers to a custom world). group = isDLC*2|isUG → 0/1/2/3.
+    int s_group = 0;
+    bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
+    int s_drawn = 0;               // marker count drawn last frame (toolbar readout)
+    const char *const kGroupNames[4] = {"Base overworld", "Base underground", "DLC overworld",
+                                        "DLC underground"};
 }
 
 bool &virtual_map_open() { return s_open; }
+void virtual_map_request_fit() { s_fit_requested = true; }
+void virtual_map_set_group(int g) { if (g >= 0 && g < 4) s_group = g; }
+int virtual_map_group() { return s_group; }
 
 void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
 {
@@ -44,15 +55,24 @@ void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
         return;
     }
 
-    // Toolbar: reset view + live zoom / centre readout.
+    // Toolbar: reset view + group selector + fit-to-markers + readout.
     if (ImGui::SmallButton(tr("Reset view")))
     {
         s_cam_x = s_cam_z = 0.0f;
         s_zoom = 0.05f;
     }
     ImGui::SameLine();
-    ImGui::TextDisabled(tr("drag = pan   wheel = zoom   |   centre (%.0f, %.0f)  zoom %.3f px/u"),
-                        s_cam_x, s_cam_z, s_zoom);
+    if (ImGui::SmallButton(tr("Fit"))) s_fit_requested = true;
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(180.0f);
+    if (ImGui::BeginCombo(tr("group"), tr(kGroupNames[s_group])))
+    {
+        for (int i = 0; i < 4; i++)
+            if (ImGui::Selectable(tr(kGroupNames[i]), s_group == i)) s_group = i;
+        ImGui::EndCombo();
+    }
+    ImGui::TextDisabled(tr("drag = pan   wheel = zoom   |   centre (%.0f, %.0f)  zoom %.3f px/u   markers %d"),
+                        s_cam_x, s_cam_z, s_zoom, s_drawn);
 
     // Canvas = the remaining content region. An InvisibleButton captures drag/scroll over exactly it.
     ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -126,6 +146,40 @@ void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
         dl->AddLine(ImVec2(origin.x, a.y), ImVec2(canvas_end.x, a.y),
                     std::fabs(gz) < step * 0.5f ? axis_col : grid_col);
     }
+
+    // Markers (slice B): project the selected group's live mod markers onto the canvas + accumulate a
+    // bbox for Fit. A colored dot per marker (m.color); on-canvas icons are a follow-up. This uses the
+    // live ER markers as test data — slice C ties markers to a bundle-backed custom world.
+    int drawn = 0;
+    float minx = 1e30f, minz = 1e30f, maxx = -1e30f, maxz = -1e30f;
+    for (auto *L : overlay_layers())
+    {
+        if (!L) continue;
+        for (const goblin::worldmap::Marker &m : L->markers())
+        {
+            if (m.group != s_group) continue;
+            if (m.worldX < minx) minx = m.worldX;
+            if (m.worldX > maxx) maxx = m.worldX;
+            if (m.worldZ < minz) minz = m.worldZ;
+            if (m.worldZ > maxz) maxz = m.worldZ;
+            ImVec2 ps = w2s(m.worldX, m.worldZ);
+            if (ps.x < origin.x || ps.x > canvas_end.x || ps.y < origin.y || ps.y > canvas_end.y) continue;
+            dl->AddCircleFilled(ps, 3.0f, m.color ? m.color : IM_COL32(235, 130, 90, 255));
+            drawn++;
+        }
+    }
+    s_drawn = drawn;
+    // Fit: frame the selected group's bbox (cam/zoom feed w2s next frame → 1-frame settle).
+    if (s_fit_requested && maxx > minx && maxz > minz)
+    {
+        s_cam_x = (minx + maxx) * 0.5f;
+        s_cam_z = (minz + maxz) * 0.5f;
+        float zx = size.x * 0.9f / (maxx - minx), zz = size.y * 0.9f / (maxz - minz);
+        s_zoom = zx < zz ? zx : zz;
+        if (s_zoom < kZoomMin) s_zoom = kZoomMin;
+        if (s_zoom > kZoomMax) s_zoom = kZoomMax;
+    }
+    s_fit_requested = false;
 
     // World origin cross (0,0) + a small label, so the empty canvas is legible.
     ImVec2 o = w2s(0.0f, 0.0f);
