@@ -47,8 +47,9 @@ other overhauls (no regulation.bin merge wars).
 
 Question raised by the user: you can't cram custom framework state into ELDEN RING's `.sl2` — should
 the framework keep a **"shadowing save"** (a sidecar file the DLL owns) instead? **Yes — that is the
-right architecture, and it resolves the save-persistence constraint above.** Recorded here as the
-intended direction; scope as a `docs/plans/` plan when Gap C (item grants) actually starts.
+right architecture, and it resolves the save-persistence constraint above.** Scoped (deferred) as
+**`docs/plans/shadow_sidecar_save_plan.md`** — kept for later; it becomes real work only when Gap C
+(item grants) starts.
 
 **What does / doesn't need saving (tier the problem):**
 - **Param FIELD edits (the shipped param-override loader, Slices 1-3) need NO save at all.** Params
