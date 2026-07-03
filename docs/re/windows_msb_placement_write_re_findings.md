@@ -97,6 +97,33 @@ World-Editor "drag-a-placement" slice, and "add" is the Dynamic-factory follow-u
 
 ---
 
+## ★ The transform SETTER — found (vtable-walk, 2026-07-03)
+The move primitive is a **virtual method at vtable offset `0xd0` (slot 26 = `0x1a`)** on the FieldIns /
+`CSWorldGeomIns` instance:
+```c
+void SetWorldMatrix(FieldIns *self, const float mat4x4[16]);   // vtable[0xd0]
+```
+Two independent callers prove it:
+- **`FUN_1406c9aa0`** (er+0x6c9aa0) — a reposition helper: reads a new pos vec (`x=param_4[0]`,
+  `z=param_4[2]`), fetches the current world matrix via the getter, overwrites the translation row, then
+  `(**(code**)(*self + 0xd0))(self, &mat)`.
+- **`FUN_1406e4210`** (er+0x6e4210) — physics/anim sync: `FUN_1406c46e0(*self+0x18,&mat)` then
+  `(**(code**)(vtable + 0xd0))(self, mat)`.
+
+**Getter (current world matrix):** `FUN_1406c46e0(inst+0x18, &out_mat4x4)` (er+0x6c46e0) — non-virtual,
+builds a 4x4 from the `+0x18` location module (identity basis constants at er+0x3279280/0x3279230/0x32792f0
++ translation). Matrix is row-major 4x4; **translation in the last row** (x, y, z).
+
+So the live **move** primitive is a direct vcall — no MSB, no raw poke:
+```c
+// inst = a live CSWorldGeomIns* (from the geom manager DAT_143d7b0c0[+0x10], or the FieldIns registry)
+float m[16] = { 1,0,0,0,  0,1,0,0,  0,0,1,0,  newX,newY,newZ,1 };   // identity basis + new translation
+(*(void(**)(void*,const float*))((*(void***)inst)[26]))(inst, m);   // vtable[0xd0], slot 26
+```
+Because it is the engine's own setter, it refreshes the cached matrix (`+0x44`) and drives physics/render —
+exactly what a raw poke would miss. The vtable-walk also confirmed `CSWorldGeomIns::vftable` @ er+0x2a84cb0
+(slots 0..5 are the FieldInsBase dtor + type getters at er+0x397a60/70/80; the vtable extends past slot 26).
+
 ## Anchors (er-relative, imagebase 0x140000000, this ERR build)
 - `CSMsbParts::ctor`            `FUN_140cee430` (er+0xcee430) — copies MSB pos out (snapshot #1)
 - `CSMsbPartsGeom::ctor`        `FUN_140cef4d0` (er+0xcef4d0)
@@ -111,8 +138,8 @@ World-Editor "drag-a-placement" slice, and "add" is the Dynamic-factory follow-u
   `CSMsbPartsGeom@CS@@` er+0x2ba6738 (see `tools/ghidra/rtti_index.txt`).
 
 ## Next
-- **Immediate static:** `query.java name:CSWorldGeomIns@CS@@` → find the transform **setter/warp** vmethod
-  (makes the live "move" probe a direct vcall).
-- **Then live (Proton):** the §C probe behind a dev RPC.
+- ~~Static: find the transform setter vmethod~~ **DONE — vtable[0xd0] (see above).**
+- **Then live (Proton):** the §C probe behind a dev RPC — now a direct `vtable[0xd0](inst, mat4x4)` vcall on
+  a live geom instance; get `inst` from the geom manager (`DAT_143d7b0c0[+0x10]`) or the FieldIns registry.
 - **Then "add":** drive `FUN_1406b9880` (Dynamic) from a synthesized parts rec + transform; trace
   `FUN_1406a7930`/`FUN_1406adc80` for the exact arg construction + geom-manager join.

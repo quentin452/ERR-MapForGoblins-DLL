@@ -99,10 +99,13 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   separately-passed world matrix) → **resident-MSB byte writes are provably inert.** The movable transform
   is the FD4 location module at `CSWorldGeomIns+0x18` (world matrix cached at `+0x44`), so moving needs the
   **setter**, not a flat poke. **`CSWorldGeomDynamicIns` (`FUN_1406b9880`, on factory `FUN_1406c5900`) is a
-  movable geom class** = the vehicle for both move + add. **NEXT:** `query.java name:CSWorldGeomIns@CS@@` to
-  find the transform-setter vmethod, then the re-scoped live probe (move-via-setter, behind a dev RPC);
-  then "add" = drive the Dynamic factory from a synthesized parts rec + transform (trace `er+0x6a7930`/
-  `er+0x6adc80`).
+  movable geom class** = the vehicle for both move + add. **Setter FOUND (vtable-walk):** the world transform
+  is set via **`vtable[0xd0]` (slot 26) `SetWorldMatrix(inst, mat4x4)`** on the FieldIns/geom instance
+  (proven by two callers `er+0x6c9aa0`/`er+0x6e4210`; getter `FUN_1406c46e0(inst+0x18,&out)`, row-major 4x4,
+  translation in last row). **NEXT:** the live move probe is now a direct vcall
+  `(*(void(**)(void*,const float*))((*(void***)inst)[26]))(inst, mat)` behind a dev RPC — get `inst` from the
+  geom manager (`DAT_143d7b0c0[+0x10]`) or the FieldIns registry; observe the object move. Then "add" = drive
+  the Dynamic factory (`er+0x6b9880`) from a synthesized parts rec + transform (trace `er+0x6a7930`/`er+0x6adc80`).
 
 - **Long-horizon vision bets — tracked in `docs/runtime_modding_framework_vision.md` "Future directions"
   (2026-07-03):** (1) World Virtualization — a FRAMEWORK feature: the framework holds N of its OWN worlds (each a data

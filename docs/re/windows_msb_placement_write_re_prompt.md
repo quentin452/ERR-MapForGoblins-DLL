@@ -4,8 +4,9 @@
 > position is snapshotted twice (CSMsbParts copies it out → CSWorldGeomIns gets a separate transform), so
 > **resident-MSB byte writes are inert**; the movable transform is the FD4 location module at
 > `CSWorldGeomIns+0x18` (matrix cached at `+0x44`). `CSWorldGeomDynamicIns` (`FUN_1406b9880`) is a movable
-> geom class built on the factory `FUN_1406c5900` — the vehicle for move AND add. Next: find the transform
-> setter vmethod (`query.java name:CSWorldGeomIns@CS@@`), then the live §C probe (re-scoped in the findings).
+> geom class built on the factory `FUN_1406c5900` — the vehicle for move AND add. **Setter FOUND:** the
+> world transform is set via **`vtable[0xd0]` (slot 26)** `SetWorldMatrix(self, mat4x4)` on the FieldIns/geom
+> instance (getter = `FUN_1406c46e0(inst+0x18,&out)`). The live §C move probe is now a direct vcall.
 
 
 ## Why (the strategic bet)
