@@ -31,3 +31,26 @@ Mandatory pattern for every RPC driver / background validation script:
 Related: the `+0x1EB9999` render race itself is pre-existing and documented in
 [[er-shutdown-crash-noise]] / [[mapforgoblins-map-open-freeze]]; heavy scripted map open/close
 cycling seems to tickle it (2 dumps in one evening of RPC loops, 18:27 + 18:43 on 2026-07-02).
+
+## RPC auto-idle — scripted vs. human input arbitration (2026-07-03, `feat/rpc-auto-idle`)
+
+The RPC input commands (`key`/`type`/`mouse_move`/`mouse_click`/`mouse_drag`/`mouse_wheel`) now
+SUSPEND themselves while the human is actively driving, so scripted SendInput can't fight the user's
+own kb/mouse. Gated on `[Debug] rpc_auto_idle` (default true; the 1500ms user-active window + 300ms
+per-injection guard are hardcoded calibration). Driver implications:
+
+- **`status` fields:** `user_idle_ms=` (age of the last real user input; 99999 = none/idle) and
+  `rpc_input_idle=` (1 while input injection is suspended). Non-input RPC — status, screenshot, set,
+  reload, pause, open_f1 — is NEVER gated, so a driver can always read state.
+- **A suspended input command returns `idle user active (rpc input suspended; poll status
+  rpc_input_idle=)`** and does nothing (not even a focus-steal). Treat that reply as "retry later",
+  not an error. `mfg_rpc.py` has `wait_idle()` / the `wait-idle` subcommand to block until
+  `rpc_input_idle=0` before an input burst.
+- **Our own injection does NOT self-idle:** each RPC SendInput arms a guard window so its WM echo
+  through hk_wndproc isn't miscounted as user activity — a scripted `type`/`key`/drag runs to
+  completion. The mechanism (`mark_rpc_injection` / `note_user_input`, `g_last_user_input_tick`)
+  lives in `src/input/input_wndproc.cpp`; the gate + status in `src/goblin_debug_rpc.cpp`.
+- **Interaction with the `g_has_focus` background blocker (Phase 4):** these are complementary —
+  focus-loss already kills the game's own input path when the window is backgrounded; auto-idle adds
+  the same-window case (user grabs kb/mouse while the game is FOCUSED). Set `rpc_auto_idle=false` if a
+  script must drive input regardless of user activity (accepts the fight).

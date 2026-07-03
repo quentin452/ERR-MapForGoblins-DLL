@@ -45,6 +45,14 @@ namespace goblin::debug_rpc
         constexpr ULONGLONG kHistMaxAgeMs = 6000;
         constexpr size_t kHistMax = 8;
 
+        // RPC auto-idle: the user counts as "active" (and RPC input injection is suspended) while
+        // real kb/mouse activity is younger than this. Hardcoded calibration, not a preference —
+        // the on/off switch is the `rpc_auto_idle` ini key. ~1.5s covers the gap between keystrokes
+        // without holding the RPC off for long after the human stops.
+        constexpr unsigned long long kUserIdleWindowMs = 1500;
+        // How long each SendInput's WM echo is discounted from user-activity (see mark_rpc_injection).
+        constexpr unsigned kInjectionGuardMs = 300;
+
         void note_command(const std::string &request, const std::string &reply)
         {
             std::string line = request + "  ->  " + (reply.size() > 48 ? reply.substr(0, 45) + "..." : reply);
@@ -128,6 +136,7 @@ namespace goblin::debug_rpc
                 break;
             default: break;
             }
+            goblin::input::mark_rpc_injection(kInjectionGuardMs);
             SendInput(1, &in, sizeof(in));
         }
 
@@ -142,6 +151,7 @@ namespace goblin::debug_rpc
             if (!hwnd) return false;
             POINT p{cx, cy};
             ClientToScreen(hwnd, &p);
+            goblin::input::mark_rpc_injection(kInjectionGuardMs);  // SetCursorPos + jiggle = our echo
             if (!goblin::input::set_cursor_pos_real(p.x, p.y)) return false;
             // SetCursorPos generates no input EVENT, so with the world map open the game keeps
             // re-warping the OS cursor back onto its own (raw-input-driven) reticle — the
@@ -163,6 +173,13 @@ namespace goblin::debug_rpc
         // Coordinates are CLIENT pixels of the game window (same space as screenshots).
         std::string execute_input(const std::string &cmd, std::string rest)
         {
+            // Auto-idle: if the human is actively driving kb/mouse, don't inject — scripted and
+            // manual input must not fight over the OS cursor/keystrokes. No-op with a clear reply
+            // (BEFORE ensure_game_foreground so we don't even steal focus). Non-input RPC bypasses
+            // this entirely (it never reaches execute_input). Off via ini rpc_auto_idle=false.
+            if (goblin::config::rpcAutoIdle &&
+                goblin::input::ms_since_user_input() < kUserIdleWindowMs)
+                return "idle user active (rpc input suspended; poll status rpc_input_idle=)";
             if (!ensure_game_foreground()) return "err game window not resolved yet";
             if (cmd == "key")
             {
@@ -222,6 +239,7 @@ namespace goblin::debug_rpc
                 INPUT in{};
                 in.type = INPUT_MOUSE;
                 in.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+                goblin::input::mark_rpc_injection(kInjectionGuardMs);
                 SendInput(1, &in, sizeof(in));
                 Sleep(80);
                 for (int i = 1; i <= 8; ++i)
@@ -231,6 +249,7 @@ namespace goblin::debug_rpc
                 }
                 Sleep(80);
                 in.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+                goblin::input::mark_rpc_injection(kInjectionGuardMs);
                 SendInput(1, &in, sizeof(in));
                 return "ok mouse_drag";
             }
@@ -293,6 +312,7 @@ namespace goblin::debug_rpc
                 for (int k = 0; k != notches; k += step)
                 {
                     in.mi.mouseData = static_cast<DWORD>(step * WHEEL_DELTA);
+                    goblin::input::mark_rpc_injection(kInjectionGuardMs);
                     SendInput(1, &in, sizeof(in));
                     Sleep(30);  // one notch per game frame-ish; a single big delta gets clamped
                 }
@@ -320,9 +340,11 @@ namespace goblin::debug_rpc
                 INPUT in{};
                 in.type = INPUT_MOUSE;
                 in.mi.dwFlags = right ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_LEFTDOWN;
+                goblin::input::mark_rpc_injection(kInjectionGuardMs);
                 SendInput(1, &in, sizeof(in));
                 Sleep(40);
                 in.mi.dwFlags = right ? MOUSEEVENTF_RIGHTUP : MOUSEEVENTF_LEFTUP;
+                goblin::input::mark_rpc_injection(kInjectionGuardMs);
                 SendInput(1, &in, sizeof(in));
                 return "ok mouse_click";
             }
@@ -363,7 +385,17 @@ namespace goblin::debug_rpc
                                          ? std::to_string(goblin::pause::paused() ? 1 : 0)
                                          : std::string("na")) +
                        " kbseen=" + std::to_string(goblin::input::wm_keydown_total()) +
-                       " fg=" + std::to_string(goblin::input::has_focus() ? 1 : 0);
+                       " fg=" + std::to_string(goblin::input::has_focus() ? 1 : 0) +
+                       [] {
+                           const unsigned long long idle = goblin::input::ms_since_user_input();
+                           const bool suspended =
+                               goblin::config::rpcAutoIdle && idle < kUserIdleWindowMs;
+                           // Cap the reported age so a fresh session (no input yet = ~0ull) prints
+                           // a sane number, not 18446744073709551615.
+                           return " user_idle_ms=" +
+                                  std::to_string(idle > 99999ull ? 99999ull : idle) +
+                                  " rpc_input_idle=" + std::to_string(suspended ? 1 : 0);
+                       }();
             }
             if (cmd == "dumpmenu")
             {

@@ -38,6 +38,7 @@ namespace goblin::config
     std::string overlayLanguage = "auto";  // overlay UI language: auto|en|fr|... (lang/<code>.txt)
     std::string showAllExcept = "";
     std::string debugRpcPort = "";  // dev debug RPC TCP loopback port; empty = disabled
+    bool rpcAutoIdle = true;  // suspend RPC input injection while the user is actively using kb/mouse
 
     // One bool per goblin::generated::Category, indexed by the enum value. Seeded
     // from the schema defaults by apply_defaults() at load time (the per-category
@@ -619,6 +620,12 @@ namespace
                          "(default). Line protocol; commands: ping, status, open_f1, set <key> <value>,\n"
                          "screenshot <path>, reload_overlay. Driver: tools/mfg_rpc.py. Loopback-only,\n"
                          "no auth — leave empty outside dev sessions.", false, nullptr},
+                B("rpc_auto_idle", rpcAutoIdle, "true",
+                  "Dev RPC safety: while the USER is actively pressing keys / moving the mouse,\n"
+                  "SUSPEND the RPC input-injection commands (key/type/mouse_*) so scripted input\n"
+                  "can't fight the human's own input. They no-op with an 'idle user active' reply\n"
+                  "until ~1.5s after the last real user input; status reports rpc_input_idle=.\n"
+                  "Non-input RPC (status/screenshot/set/reload) stays live. Default ON."),
                 IniEntry{"freeze_watchdog_secs", IniType::U8, &cfg::freezeWatchdogSecs, "20",
                          "Deadlock watchdog: if the game renders NO frame for this many seconds,\n"
                          "write logs/MapForGoblins_freeze_<pid>.txt + a full all-thread minidump\n"

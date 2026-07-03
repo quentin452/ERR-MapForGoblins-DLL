@@ -95,6 +95,8 @@ namespace goblin
                               // loosely against the category display name)
         extern GOBLIN_RENDER_API std::string debugRpcPort;  // dev debug RPC: TCP loopback port
                               // ("38700"); empty = disabled (default). See goblin_debug_rpc.hpp.
+        extern GOBLIN_RENDER_API bool rpcAutoIdle;  // suspend RPC input injection while the user
+                              // is actively using kb/mouse (dev RPC safety). Default true.
 
         // One bool per goblin::generated::Category, indexed by the enum value.
         // Replaces the former ~65 individual show* category flags; access via

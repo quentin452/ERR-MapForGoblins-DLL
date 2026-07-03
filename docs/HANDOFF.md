@@ -197,19 +197,36 @@ Possible follow-ups if wanted: a config toggle to hide the arrow; heading-UP min
 whole minimap by −yaw instead of just the arrow) now that yaw is available; camera-look direction as an
 alternative to character facing (would need the camera yaw, a different RE).
 
-## RPC auto-idle when the player takes manual control (user 2026-07-03) — OPEN, not started
+## RPC auto-idle when the player takes manual control — IMPLEMENTED 2026-07-03 (`feat/rpc-auto-idle`), in-game verify next
 
-User idea: when the player wants to take the controls back, put the agent/RPC input commands to IDLE so
-there's no possible conflict between scripted input (SendInput `key`/`mouse_*`) and the human's own
-input. Complements the existing `g_has_focus` background blocker (Phase 4 findings above) but from the
-other side: instead of RPC dying when the window loses focus, RPC should politely SUSPEND its own input
-injection the moment real user activity is detected, then resume when idle. Sketch: detect genuine
-user input (raw WM_INPUT / GetAsyncKeyState on a heartbeat that ISN'T our own injected keys, or a "user
-touched a key/mouse in the last N ms" flag in hk_wndproc) → gate `debug_rpc`'s input commands (`key`,
-`mouse_move`, `mouse_click`, `mouse_wheel`, `type`) so they no-op (or queue) while the user is active,
-and `status` reports an `user_active=`/`rpc_input_idle=` field so the driver can wait. Non-input RPC
-(status, screenshot, set, reload) stays live. Keeps scripted runs and manual play from fighting over
-the OS cursor / keystrokes. Ties into `docs/memory/tooling/mfg-rpc-driver-hardening.md`.
+User idea (put scripted RPC input to IDLE the moment the human grabs the controls, so SendInput
+`key`/`mouse_*` can't fight the human's own input) — DONE, build-clean both configs + SEH lint OK,
+normal DLL DEPLOYED to `~/Games/ERRv2.2.9.6/dll/offline/`. Design (the "isn't our own injected keys"
+problem is the crux — our SendInject echoes the SAME WM messages through hk_wndproc):
+- **Activity tracker (`src/input/input_wndproc.cpp`):** `note_user_input()` stamps
+  `g_last_user_input_tick` on genuine kb/mouse WM activity — the WM_INPUT RIM_TYPEKEYBOARD leg (the
+  only kb signal under NOLEGACY gameplay), the non-recenter WM_MOUSEMOVE leg, and the real
+  click/wheel/keypress switch. `mark_rpc_injection(ms)` arms a guard window (`g_rpc_injection_guard_until`)
+  that `note_user_input()` checks — activity landing inside it is discounted as our own echo. Accessors
+  `ms_since_user_input()` / `mark_rpc_injection()` in `input_wndproc.hpp` (host module, no RENDER_API).
+- **RPC (`src/goblin_debug_rpc.cpp`):** every SendInput site (send_vk, move_cursor_client, the raw
+  click/wheel/drag ones) calls `mark_rpc_injection(300)` first. `execute_input` gates at the top —
+  if `rpcAutoIdle && ms_since_user_input() < 1500` it no-ops with `"idle user active (rpc input
+  suspended; poll status rpc_input_idle=)"` BEFORE ensure_game_foreground (doesn't even steal focus).
+  Non-input RPC (status/screenshot/set/reload/pause/open_f1) never reaches execute_input → always live.
+  `status` gained `user_idle_ms=` (capped 99999) + `rpc_input_idle=` (1 while suspended).
+- **Config:** `[Debug] rpc_auto_idle` bool, default true (the 1500ms window + 300ms guard are hardcoded
+  calibration, per the settings-sweep philosophy). Migration adds the key on next ini load.
+- **Driver:** `tools/mfg_rpc.py` gained `wait_idle()` + `wait-idle` subcommand (block until
+  `rpc_input_idle=0`); the status parser auto-picks the new int fields.
+- **Fixed a latent brace bug on the way:** `input_wndproc.cpp`'s real-input switch was missing braces so
+  `g_wm_keydown_total` bumped for mouse buttons/wheel too (not just keydown) — now gated correctly.
+- **NEXT: in-game verify** (ERR/Proton, split build for the live loop): with the map open, `status`
+  → `rpc_input_idle=0 user_idle_ms=99999`; wiggle the real mouse, `status` within ~1.5s →
+  `rpc_input_idle=1`, and an RPC `key`/`mouse_move` returns the "idle user active" reply; stop
+  touching input, after ~1.5s `rpc_input_idle=0` and injection resumes. Also confirm a SCRIPTED
+  `type`/`key` run does NOT self-idle (the injection guard holds). On PASS: merge (dev-only tooling
+  → no changelog line). Ties into `docs/memory/tooling/mfg-rpc-driver-hardening.md`.
 
 ## Grace tooltip missing on some POIs (user spot 2026-07-02) — FIXED + IN-GAME VERIFIED 2026-07-03
 

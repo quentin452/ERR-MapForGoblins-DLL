@@ -38,6 +38,23 @@ std::atomic<unsigned> g_wm_keydown_total{0};
 // legacy click messages -> poll buttons instead).
 std::atomic<unsigned> g_wndproc_lbdown_while_open{0};
 
+// RPC auto-idle (2026-07-03): tick of the last GENUINE user kb/mouse activity, so the debug
+// RPC can suspend its own SendInput injection while the human is driving (no scripted-vs-human
+// input fight). The catch is that our OWN injected input generates the SAME WM messages — so
+// mark_rpc_injection() arms a short guard window around each RPC SendInput, and note_user_input()
+// ignores activity that lands inside it. 0 = no user input seen yet.
+std::atomic<ULONGLONG> g_last_user_input_tick{0};
+std::atomic<ULONGLONG> g_rpc_injection_guard_until{0};
+
+void note_user_input()
+{
+    const ULONGLONG now = GetTickCount64();
+    // Drop activity that is really our own RPC injection echoing back through the wndproc.
+    if (now < g_rpc_injection_guard_until.load(std::memory_order_relaxed))
+        return;
+    g_last_user_input_tick.store(now, std::memory_order_relaxed);
+}
+
 LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     // Keyboard-arrival counter, RAW-INPUT leg: in gameplay ER runs keyboard raw-input
@@ -53,7 +70,10 @@ LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lp), RID_HEADER, &rh, &sz,
                             sizeof(RAWINPUTHEADER)) == sizeof(rh) &&
             rh.dwType == RIM_TYPEKEYBOARD)
+        {
             g_wm_keydown_total.fetch_add(1, std::memory_order_relaxed);
+            note_user_input();  // NOLEGACY gameplay: raw packets are the only kb signal
+        }
     }
 
     // Focus messages MUST always reach ImGui, independent of menu_open(). g_show is
@@ -120,6 +140,7 @@ LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         {
             set_last_input_was_gamepad(false);
             set_gamepad_active_streak(0);
+            note_user_input();  // a real mouse move (not our own recenter)
         }
         break;
     case WM_LBUTTONDOWN: case WM_LBUTTONUP:
@@ -131,13 +152,16 @@ LRESULT CALLBACK hk_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         // still on mouse/kb right now, regardless of what the pad happens to report.
         set_last_input_was_gamepad(false);
         set_gamepad_active_streak(0);
+        note_user_input();  // real click/wheel/keypress — RPC auto-idle signal
         // [KBDIAG] raw arrival count, independent of menu_open()/consumption — see the
         // g_diag_wm_char/g_diag_wm_keydown declaration comment.
         if (msg == WM_CHAR)
             g_diag_wm_char.fetch_add(1, std::memory_order_relaxed);
         else if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
+        {
             g_diag_wm_keydown.fetch_add(1, std::memory_order_relaxed);
             g_wm_keydown_total.fetch_add(1, std::memory_order_relaxed);
+        }
         break;
     default:
         break;
@@ -227,4 +251,24 @@ unsigned diag_wm_char_exchange() { return g_diag_wm_char.exchange(0, std::memory
 unsigned diag_wm_keydown_exchange() { return g_diag_wm_keydown.exchange(0, std::memory_order_relaxed); }
 unsigned wm_keydown_total() { return g_wm_keydown_total.load(std::memory_order_relaxed); }
 unsigned diag_wndproc_lbdown_while_open_load() { return g_wndproc_lbdown_while_open.load(std::memory_order_relaxed); }
+
+void mark_rpc_injection(unsigned ms)
+{
+    // Arm the guard window so hk_wndproc's note_user_input() ignores the WM messages our own
+    // SendInject is about to generate (they land async, up to ~ms later). Extend (never shorten)
+    // an already-armed window so back-to-back injections don't leave a gap.
+    const ULONGLONG until = GetTickCount64() + ms;
+    ULONGLONG cur = g_rpc_injection_guard_until.load(std::memory_order_relaxed);
+    while (until > cur &&
+           !g_rpc_injection_guard_until.compare_exchange_weak(cur, until, std::memory_order_relaxed))
+        ; // cur reloaded on failure
+}
+
+unsigned long long ms_since_user_input()
+{
+    const ULONGLONG last = g_last_user_input_tick.load(std::memory_order_relaxed);
+    if (last == 0) return ~0ull;  // no user input observed yet this session
+    const ULONGLONG now = GetTickCount64();
+    return now > last ? (now - last) : 0ull;
+}
 } // namespace goblin::input

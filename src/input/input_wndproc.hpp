@@ -22,4 +22,12 @@ unsigned diag_wm_keydown_exchange();
 // Monotonic WM_KEYDOWN/WM_SYSKEYDOWN arrival count (never reset) — RPC key-delivery verify.
 unsigned wm_keydown_total();
 unsigned diag_wndproc_lbdown_while_open_load();
+
+// RPC auto-idle (2026-07-03). The debug RPC calls mark_rpc_injection() right before each of its
+// own SendInput calls so hk_wndproc doesn't count that echo as genuine user activity; the guard
+// window covers the async WM delivery tail. ms_since_user_input() returns the age (ms) of the
+// last real kb/mouse activity — the RPC gate/status use it to suspend input injection while the
+// human is driving. Returns ~0ull (huge) when no user input has been seen yet.
+void mark_rpc_injection(unsigned ms);
+unsigned long long ms_since_user_input();
 } // namespace goblin::input

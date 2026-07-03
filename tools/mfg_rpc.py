@@ -13,6 +13,7 @@ CLI:
     ./tools/mfg_rpc.py --port 38700 screenshot 'Z:\\tmp\\shot.bmp'
     ./tools/mfg_rpc.py --port 38700 reload_overlay
     ./tools/mfg_rpc.py --port 38700 wait-reload      # reload_overlay + poll status until gen bumps
+    ./tools/mfg_rpc.py --port 38700 wait-idle        # block until the user stops driving (rpc_input_idle=0)
 
 NB screenshot paths are interpreted by the GAME process: under Proton use a Wine path
 (Z:\\ maps to the Linux root, e.g. Z:\\home\\user\\shot.bmp or Z:\\tmp\\shot.bmp).
@@ -69,6 +70,18 @@ class Rpc:
             time.sleep(poll)
         raise TimeoutError(f"render generation stuck at {before} after {timeout}s")
 
+    def wait_idle(self, timeout=30.0, poll=0.3):
+        """Block until rpc_input_idle=0 (the user is no longer actively driving kb/mouse), so a
+        scripted input run won't fight the human. Returns the final status dict. If rpc_auto_idle
+        is off in the ini, rpc_input_idle is always 0 and this returns immediately."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            st = self.status()
+            if st.get("rpc_input_idle", 0) == 0:
+                return st
+            time.sleep(poll)
+        raise TimeoutError(f"user still active after {timeout}s (rpc_input_idle=1)")
+
     def close(self):
         self.sock.close()
 
@@ -87,6 +100,10 @@ def main():
     with Rpc(args.port) as rpc:
         if args.command[0] == "wait-reload":
             print(f"ok gen={rpc.wait_reload()}")
+            return 0
+        if args.command[0] == "wait-idle":
+            st = rpc.wait_idle()
+            print(f"ok idle user_idle_ms={st.get('user_idle_ms', '?')}")
             return 0
         reply = rpc.cmd(" ".join(args.command))
         print(reply)
