@@ -1,8 +1,21 @@
 # Custom item end-to-end (Gap C) — plan
 
-Status: **DEFINE half DONE + IN-GAME VERIFIED (2026-07-03). GRANT half GATED** (needs the
-inventory-accessor RE + should wait for the sidecar save so the `.sl2` stays clean). The payoff of the
-runtime-modding framework: a custom item that DOESN'T ship a `regulation.bin`.
+Status: **DEFINE(stats) + GRANT + SIDECAR clean-save all PROVEN end-to-end (2026-07-03).** A CLONED
+custom goods row can be granted into inventory and kept out of the vanilla `.sl2`
+(`tools/rpc_tests/test_gapc_grant.py` 4/4 + boot-2 clean 1/1). Remaining: the NAME (Gap D) live path
+freezes, the reserved band needs revising to the grantable range, and the author surface + boot-time
+re-definition. The payoff of the runtime-modding framework: a custom item that DOESN'T ship a
+`regulation.bin`.
+
+**Two blockers found while proving the grant (2026-07-03, `mfg run`/GameSession probes):**
+- **Grantable goods-id CEILING = `0x7FFFFE` (8388606).** `give_item` no-ops for any goods id ≥
+  `0x7FFFFF` (the goods id is a 23-bit field, `0x7FFFFF` reserved). Verified: 8388606 grants,
+  8388607/8388608/9M/50M all no-op. **So the old reserved band `90000001` was NEVER grantable.** The
+  grant itself is otherwise fine for a cloned row (0→1); the earlier "grant VERIFIED" only ever tried
+  pre-existing low ids. Real ER goods ids sit far below the ceiling.
+- **`fmg_set 419` (GoodsName) FREEZES the present thread** — a live name injection hangs the game (no
+  frames; `alive→False`). The name is cosmetic; the grant works without it. Gap D live path needs
+  fixing (or do the name inject at boot, not via the live RPC) before the name ships.
 
 Depends on the three shipped primitives (`goblin_param_edit` + `goblin_messages`), the frozen policy
 [[../memory/process/reserved-id-and-load-contract]] (Gap H), and — for a clean grant —
@@ -55,18 +68,25 @@ part. Requirements + blockers:
 - **Needs a loaded save** (grant into a live inventory + open inventory to verify the named item).
 
 ## Reserved band (Gap H) — finalize here
-The define test used `90000001` ad hoc. Before any grant ships, finalize the reserved custom-goods
-band per [[../memory/process/reserved-id-and-load-contract]] from a live param-scan survey of the
-target regulation(s), wire the ini base + the collision-check (already in `param_add_rows`).
+The define test used `90000001` ad hoc — **which is NOT grantable** (> the `0x7FFFFE` ceiling above).
+The band MUST live in `1 .. 0x7FFFFE`. `test_gapc_grant.py` uses `8000000` (0x7A1200), which grants
+cleanly and is well clear of real ER goods ids. Before any grant ships, finalize the reserved
+custom-goods band per [[../memory/process/reserved-id-and-load-contract]] from a live param-scan
+survey of the target regulation(s) — pick a sub-range of `8000000..8388606` (or another gap below the
+ceiling that the survey shows free), wire the ini base + the collision-check (already in
+`param_add_rows`).
 
 ## Order of operations
-1. ✅ Define half (done).
-2. Sidecar save (`shadow_sidecar_save_plan.md`) — so the grant can keep the `.sl2` clean.
-3. Grant half: RE `inv` accessor + goods-id encoding → call `AddItemFunc` → verify named item in a
-   loaded save's inventory. Reserved band finalized.
-4. Author surface: a `custom_items.json` (per [[../memory/process/authoring-format-decision]] — JSON
-   for rich records) = `{clone, id, name, fields{}}`, applied at boot (define) + granted via the
-   sidecar path.
+1. ✅ Define half — stats (clone + fields) done + verified.
+2. ✅ Sidecar strip/reinject clean-save (Variant A closed 2026-07-03) — the grant keeps the `.sl2` clean.
+3. ✅ Grant half — a cloned custom goods row grants into a loaded inventory + is stripped from the save
+   (`test_gapc_grant.py` 4/4 + clean 1/1). Uses id `8000000` (≤ the `0x7FFFFE` grantable ceiling).
+   REMAINING in this step: (a) fix the NAME path (`fmg_set` GoodsName freezes — do it at boot or fix the
+   live inject); (b) finalize the reserved band from a param-scan survey.
+4. Author surface (NEXT): a `custom_items.json` (per [[../memory/process/authoring-format-decision]] —
+   JSON for rich records) = `{clone, id, name, fields{}}`, applied at BOOT (define: clone+fields+name)
+   + granted/registered via the sidecar path so it re-applies every load (param_clone does NOT persist;
+   the sidecar re-grant does). This is the real end-user deliverable and the last integration.
 
 ## Acceptance (mod-agnostic)
 On vanilla AND a non-ERR mod: the define half produces a coherent named custom item from that install's

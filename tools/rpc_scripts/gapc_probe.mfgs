@@ -1,0 +1,8 @@
+# Gap C vertical slice: define a custom goods item, then grant it.
+param_clone EquipParamGoods 100 90000001
+param_setf EquipParamGoods 90000001 sortGroupId 101
+fmg_set 419 90000001 Goblin Test Item
+goods_count 0x455d4ac1
+give_item 0x455d4ac1 1
+goods_count 0x455d4ac1
+sidecar additem 0x455d4ac1 1

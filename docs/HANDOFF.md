@@ -76,10 +76,15 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 
 - **F1 panel to edit param overrides live** — optional polish on the param-override framework (all 3
   loader slices are done/merged); more registry fields = one AOB each. Not started.
-- **Gap C GRANT for arbitrary custom items** — DEFINE half is done (`custom_item_end_to_end_plan.md`);
-  the grant half was gated on the sidecar strip/reinject being proven (Gap H). **That gate is now
-  passed** (Variant A clean-save closed 2026-07-03, E2E 4/4 — see the RESUME section), so the grant
-  half can proceed.
+- **Gap C GRANT — grant+sidecar PROVEN 2026-07-03; NAME + author surface remain.** A CLONED custom
+  goods row grants into inventory and is kept out of the vanilla `.sl2` (`test_gapc_grant.py` 4/4 +
+  boot-2 clean 1/1). Two findings baked into `custom_item_end_to_end_plan.md`: (1) **grantable goods-id
+  ceiling `0x7FFFFE`** — `give_item` no-ops at ≥`0x7FFFFF`, so the old reserved band `90000001` was
+  never grantable; use ≤`0x7FFFFE` (the test uses `8000000`). (2) **`fmg_set` GoodsName FREEZES the
+  present thread** — the live NAME inject (Gap D) hangs; cosmetic, do it at boot or fix the live path.
+  **NEXT:** the author surface — `custom_items.json` applied at BOOT (clone+fields+name) + registered
+  via the sidecar so it re-grants every load (param_clone doesn't persist; sidecar re-grant does).
+  Also finalize the reserved band from a param-scan survey.
 - **MapGenie coverage — Hidden Passage category, not started.** Hit-detected illusory walls, no action
   button → no static signal to parse (hardest remaining Group-2 category). RE notes:
   `docs/re/windows_group2_landscape_re_findings.md`.
