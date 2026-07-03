@@ -21,6 +21,10 @@ one-off scripts — most workflows are already reusable.
   redirects; forward-slash env paths. → [windows-tooling-gotchas](windows-tooling-gotchas.md)
 
 ## Dev / test infra
+- **RPC command catalog** [active] — every in-game debug-RPC verb (param read/write, give_item,
+  goods_count, warp, loot_at, refresh_markers, fmg_set, sidecar, input injection, mem/equip FWA…) +
+  the `tools/mfg.py` driver. The runtime driving/RE surface; read before scripting the live game.
+  → [rpc-commands](rpc-commands.md)
 - **RPC driver hardening** [active, mandatory] — the game can FREEZE with the RPC listener still
   alive (`ping` answers, present thread dead) → every driver call needs `timeout`, every wait loop
   a game-liveness gate, whole recipes a global cap. → [mfg-rpc-driver-hardening](mfg-rpc-driver-hardening.md)

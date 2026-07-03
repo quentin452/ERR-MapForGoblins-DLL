@@ -12,6 +12,21 @@ Read first:
 
 Drill into the topic folders for detail: `docs/memory/{features,bugs,tooling,process}/` (each has a `README.md` index). See `docs/changelog.md` for the fork's feature/change/fix list. Notes are sanitized and may contain stale pointers; checked-out code and committed docs win on conflict.
 
+## Driving the live game — debug RPC (read before any runtime work)
+
+The DLL exposes a **dev-only TCP loopback RPC** that lets you drive and inspect the RUNNING game: read/
+write params live, `give_item`/`goods_count`, `warp`, `loot_at`, `refresh_markers`, `fmg_set`, `sidecar`,
+inject keyboard/mouse, `screenshot`, and arm find-what-accesses breakpoints. This is the primary way
+runtime RE and in-game verification happen here (proven on Linux/Proton — the game runs under Proton on
+the dev box). A background job can even cold-boot ER and run a self-contained RPC session.
+
+- **Command catalog + how to enable/drive it:** `docs/memory/tooling/rpc-commands.md`.
+- **Driver:** `tools/mfg.py` (`rpc` one-shot / `repl` / `run <script>` / `test`). Enable with ini
+  `[Debug] debug_rpc_port = 38700`.
+- **Scripting gotchas (mandatory):** `docs/memory/tooling/mfg-rpc-driver-hardening.md` — the game can
+  freeze with the listener still answering `ping`, so gate on real liveness; input has AZERTY/refocus
+  quirks; a bg job keeps ER alive only via a single foreground blocking command.
+
 ## Design principles (prime directive)
 
 - **Mod-agnostic first.** MapForGoblins must work on ANY Elden Ring mod (and vanilla), not just ELDEN
