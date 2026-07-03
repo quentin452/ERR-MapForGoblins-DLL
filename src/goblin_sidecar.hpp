@@ -77,4 +77,8 @@ namespace goblin::sidecar
     // Install the read-only save-fn observer (Phase 2 RE — confirm the save routine before
     // wiring strip/reinject). Gated on sidecar_save; call once at init. [SAVEFN] in the log.
     void install_save_hook();
+
+    // Clear the serialize-observer's captured caller set (RE aid — call right before triggering a
+    // save so the fresh [SERFN] chains are save-specific, not boot/load noise).
+    void reset_serialize_probe();
 }

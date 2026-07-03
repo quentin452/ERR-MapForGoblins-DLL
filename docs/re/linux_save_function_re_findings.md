@@ -115,6 +115,32 @@ THAT; or (B) ship **Variant B** (reserved-id: the custom item lives in the `.err
 blank/unknown if loaded DLL-less — tolerable for ERR) using the shipped `give_item` + sidecar store, no
 serialize hook. Given the diminishing returns of the hook hunt, B is the pragmatic ship.
 
+## Update 2026-07-03 (PM #3) — capstone pin: serializer is a shared reflection walker; wall confirmed
+
+Installed capstone; added call-target (E8-rel32) verification + a serialize observer with stack-chain
+dedup + `sidecar serclear` (reset the capture right before a save to isolate save-only chains). Results:
+- Call-target analysis nailed the reflection serializer: `0x1ede9d0` has **0 E8 callers** (mid-block —
+  why RVA-hooking it fired 0×); **`0x1ede700` has 6 E8 callers** = the real recursive object-serializer
+  entry. Hooking `0x1ede700` FIRES — ~150+ distinct call sites per operation, all on the save worker
+  (tid 352). It is a GENERIC reflection/schema serializer used by **both save AND load** (a `serclear`
+  before the warp still produced the same deep chain as boot/load).
+- The deepest common eldenring frame across ALL save serialize chains = **`er+0x24fb88b`** (142/142),
+  below the worker-thread thunks (`er+0xb290d59`/`er+0xb3001ff`). That's the save/load session-run
+  orchestrator. But capstone-pinning its function entry gives `0x24fb797` with **0 E8 callers** (false
+  CC boundary) — ER `.text` has CC bytes MID-function, so neither CC-scan nor capstone-from-nearest-CC
+  reliably finds these entries.
+
+**WALL (confirmed, deeper):** (1) the save serializer is a generic REFLECTION walker shared by save AND
+load → even a working hook needs save-vs-load discrimination (session type / direction arg); (2) the
+orchestrator entries can't be pinned by offline CC/capstone heuristics (mid-function CC bytes). Cleanly
+solving Variant A needs **real Ghidra** (auto-analysis / manual function bounds) on the SaveLoad2 +
+reflection paths, not offline scripting. Reusable infra committed: capstone entry-finder + E8 call-target
+counter (this file's recipe), `0x1ede700` = the reflection serializer entry, `er+0x24fb88b` = the
+session-run orchestrator return addr.
+
+**DECISION STANDS: ship Variant B** (reserved-id, item tolerated in the `.err`, blank if DLL-less) with
+the shipped `give_item` + sidecar store — no serialize hook. Revisit Variant A only with Ghidra.
+
 ## Two remaining paths (original — now superseded by the recommendation above)
 - **Variant A (clean vanilla save) — more RE.** Find the SERIALIZE phase / the save-REQUEST processor
   (the fn that reads `GameMan+0xB42` and initiates serialize+write) via find-what-accesses on

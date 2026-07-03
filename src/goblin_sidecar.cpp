@@ -266,8 +266,8 @@ uint64_t hk_serialize(void *a, void *b, void *c, void *d)
     using RtlCapFn = USHORT(WINAPI *)(ULONG, ULONG, PVOID *, PULONG);
     static auto rtl =
         (RtlCapFn)GetProcAddress(GetModuleHandleA("ntdll.dll"), "RtlCaptureStackBackTrace");
-    void *fr[16] = {};
-    USHORT m = rtl ? rtl(1, 16, fr, nullptr) : 0;  // skip our own frame
+    void *fr[40] = {};
+    USHORT m = rtl ? rtl(1, 40, fr, nullptr) : 0;  // skip our own frame
     uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
     uintptr_t direct = 0;
     for (USHORT i = 0; i < m; i++)
@@ -278,12 +278,12 @@ uint64_t hk_serialize(void *a, void *b, void *c, void *d)
     bool fresh = false;
     {
         std::lock_guard<std::mutex> lk(g_mtx);
-        fresh = direct && g_ser_callers.size() < 40 && g_ser_callers.insert(direct).second;
+        fresh = direct && g_ser_callers.size() < 300 && g_ser_callers.insert(direct).second;
     }
     if (fresh)
     {
         std::string s;
-        for (USHORT i = 0; i < m && (int)s.size() < 160; i++)
+        for (USHORT i = 0; i < m && (int)s.size() < 480; i++)
         {
             uintptr_t v = (uintptr_t)fr[i];
             if (v >= base && v < base + 0x10000000)
@@ -401,6 +401,14 @@ bool load_locked()
 }
 }  // namespace
 
+void reset_serialize_probe()
+{
+    std::lock_guard<std::mutex> lk(g_mtx);
+    g_ser_callers.clear();
+    g_ser_calls.store(0);
+    spdlog::info("[SERFN] probe reset — capturing fresh caller chains");
+}
+
 void install_save_hook()
 {
     if (!config::sidecarSave) return;
@@ -421,7 +429,7 @@ void install_save_hook()
     // 0x2573c0 turned out to be a generic/load serialize, not the save path). RVA is version-specific
     // — fine for a dev-only RE observer. Logs its callers → the orchestrator = the strip bracket.
     uintptr_t er = (uintptr_t)GetModuleHandleA("eldenring.exe");
-    void *sf = er ? reinterpret_cast<void *>(er + 0x1ede9d0) : nullptr;
+    void *sf = er ? reinterpret_cast<void *>(er + 0x1ede700) : nullptr;
     if (!sf) { spdlog::warn("[SERFN] eldenring.exe base not found — observer skipped"); return; }
     try
     {

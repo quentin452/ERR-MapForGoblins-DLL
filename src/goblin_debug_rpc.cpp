@@ -687,6 +687,11 @@ namespace goblin::debug_rpc
                     }
                     return out;
                 }
+                if (sub == "serclear")
+                {
+                    goblin::sidecar::reset_serialize_probe();
+                    return "ok serialize probe reset";
+                }
                 if (sub == "save")
                     return goblin::sidecar::save() ? "ok saved " + goblin::sidecar::sidecar_path_utf8()
                                                    : "err save failed (no save file seen yet?)";
