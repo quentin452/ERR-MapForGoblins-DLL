@@ -42,22 +42,26 @@ ctor's `param_2` (`srcType`) is this qword, not a pointer.
   proven `vtable[0xd0] SetWorldMatrix` (offset by the delta) — the move primitive we already have. Route (b)
   sidesteps blocker 2 entirely: spawn at the source transform, then `SetWorldMatrix`-move it.
 
-## ★ Lead — a possibly-cleaner factory `FUN_1406c7000` (via `FUN_1406a5080`)
-`FUN_1406a5080` (er+0x6a5080) is a **single-instance** spawn helper (not the full tile-streaming driver):
-it builds the 8-byte `srcTypeDesc` with `FUN_14062e700` exactly as above, then calls
-**`FUN_1406c7000(&id, param2, blockThing)`** and inserts the result into a tree (`param_1+0x318`) keyed by
-the low id. This looks like a **"create one geom instance by id" factory** — a leaner path than
-placement-new into the fixed pool + manual `+0x288` push. Worth decompiling `FUN_1406c7000` next: if it
-allocates + registers a single instance from an id, `spawn_clone` may drive IT instead of `FUN_1406b9880`
-directly (avoiding the pool-capacity + `+0x288`-push questions in the prompt).
+## Lead `FUN_1406c7000` — CHECKED, downgraded (it's an asset-name/request builder, not an instance factory)
+Decompiled `FUN_1406c7000` (er+0x6c7000): it does **not** allocate/return a geom instance. It builds an
+**asset resource name** `swprintf(L"%s_%04d", partName @ param_2+0x48, idx @ param_1+0x18)`, sets up an FD4
+resource container (`FUN_140cf2360(_,10,0xd)`), reads a transform/pos at `param_2+0x88/0x90` and a flag at
+`param_2+0x100`, and aborts on "incompatible heap." So `FUN_1406a5080`+`FUN_1406c7000` are an **asset
+streaming-REQUEST** path (build the model resource name + register the request), keyed by the same 8-byte
+id — NOT a leaner instance ctor. It still consumes a rich part descriptor (name@+0x48, transform@+0x88), so
+it doesn't dodge the "need a valid part record" problem. **Conclusion: no shortcut here — drive the Dynamic
+ctor `FUN_1406b9880` directly (blocker 3), or take route (b).** (Note: this "request an asset by name" path
+is a *different* add-strategy worth remembering — ask the streaming system to load an asset rather than
+placement-new an instance — but it's a bigger detour, not the spawn_clone shortcut hoped for.)
 
 ## Next (to finish the unblock)
-1. Decompile **`FUN_1406c7000`** (er+0x6c7000) — is it the clean single-spawn factory? its args + what it
-   allocates/registers.
-2. Decompile **`FUN_1406b9880`** arg reads + base `FUN_1406c5900`'s **parts-record reads** (`rec+0x18b`,
-   `rec+0x124`, model refs) — the minimal fields a cloned/synth record must satisfy (prompt blocker 3).
-3. Then the Proton `spawn_clone` probe — favor route (b): spawn at the source transform, `SetWorldMatrix`
-   to the offset (reuses the proven move primitive, sidesteps blocker 2).
+1. Decompile **`FUN_1406b9880`** arg reads + base `FUN_1406c5900`'s **parts-record reads** (`rec+0x18b`,
+   `rec+0x124`, model refs) — the minimal fields a cloned/synth record must satisfy (prompt blocker 3). This
+   is now THE remaining static blocker.
+2. Then the Proton `spawn_clone` probe — favor **route (b)**: build the 8-byte `srcTypeDesc` (solved),
+   reuse the SOURCE instance's part record + a `transform` copied from it, `FUN_1406b9880` into a
+   self-allocated `0x5b0`, push to `+0x288`, then `SetWorldMatrix` (`vtable[0xd0]`, proven) to offset it by
+   the delta — sidesteps the 24-byte transform builder (blocker 2) entirely.
 
 ## Anchors
 - `CSWorldGeomDynamicIns` vt er+0x2a84208 (ctors er+0x6ba0f0/0x6b9880); `CSWorldGeomIns` vt er+0x2a84cb0.
