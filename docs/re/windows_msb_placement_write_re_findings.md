@@ -137,9 +137,34 @@ exactly what a raw poke would miss. The vtable-walk also confirmed `CSWorldGeomI
 - RTTI: `CSWorldGeomIns@CS@@` vtable er+0x2a84cb0; `CSWorldGeomStaticIns@CS@@` er+0x2a86860;
   `CSMsbPartsGeom@CS@@` er+0x2ba6738 (see `tools/ghidra/rtti_index.txt`).
 
+## ★★ LIVE-VERIFIED on Proton (2026-07-03) — the setter MOVES
+The `vtable[0xd0]` setter was driven live behind the **`move_asset <dx> <dy> <dz>` dev RPC**
+(`goblin_geom_move.cpp`) and **works**: `tools/rpc_tests/test_move_asset.py` 7/7. Picking a live
+`CSWorldGeomIns`, `move_asset 0 100 0` moved its cached world-matrix translation from Y `-16.62` →
+`83.38` (exactly +100), X/Z unchanged, then a restore call put it back — **game alive through all
+vcalls** (no crash; the vcall path + `__fastcall(self, const float[16])` ABI + slot 26 are correct).
+
+Two things learned that the static read couldn't give:
+- **The setter writes the CACHED world matrix at `inst+0x220`, NOT the `+0x18` source pose module.** A
+  byte-diff showed the setter touched **exactly one float** — `+0x220 + 0x34` = matrix element `m[13]`
+  (the Y translation) — and nothing else. So verify a move by reading `inst+0x220` (translation @
+  elements 12/13/14, row-major); the getter `FUN_1406c46e0(inst+0x18,…)` rebuilds from the module and
+  still shows the ORIGINAL value after a setter call (it is NOT a read-back of the setter's effect).
+- **Getting a live `inst`:** the FieldIns self-register map (`[er+0x3d7b0c0]→+0x10→+0x720→map`) was
+  found **EMPTY** in-world here (`root==head`). The reliable source is **`CSWorldGeomMan`** (the WGM walk
+  `goblin_collected` already uses for collected-graying): `mgr→+0x18 tree→BlockData+0x288 geom_ins
+  vector`. Exposed as `goblin::collected::first_live_geom_instance()`.
+
+**Still open (not yet done):** eyeball a large move on-screen (the RPC restores immediately, and the
+picked instance is arbitrary/maybe off-screen) to confirm render+collision follow the `+0x220` cache;
+and whether the move survives without the `+0x18` module also being set (a frame-later engine recompute
+from the module could revert it — the cache-only write may be transient). Both are follow-ups; the
+**setter-moves-the-world-matrix primitive is proven.**
+
 ## Next
-- ~~Static: find the transform setter vmethod~~ **DONE — vtable[0xd0] (see above).**
-- **Then live (Proton):** the §C probe behind a dev RPC — now a direct `vtable[0xd0](inst, mat4x4)` vcall on
-  a live geom instance; get `inst` from the geom manager (`DAT_143d7b0c0[+0x10]`) or the FieldIns registry.
+- ~~Static: find the transform setter vmethod~~ **DONE — vtable[0xd0].**
+- ~~Live (Proton): drive it behind a dev RPC~~ **DONE — `move_asset`, 7/7 (see above).**
+- **Persistence check:** hold a move (no restore) + observe over several frames — does the engine revert
+  it from the `+0x18` module? If so, also set the module (or use `CSWorldGeomDynamicIns`).
 - **Then "add":** drive `FUN_1406b9880` (Dynamic) from a synthesized parts rec + transform; trace
   `FUN_1406a7930`/`FUN_1406adc80` for the exact arg construction + geom-manager join.

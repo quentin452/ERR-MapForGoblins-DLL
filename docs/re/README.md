@@ -40,7 +40,12 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
    cheap "move existing" win from the real "add new" (spawn factory + tile re-stream). **Volet A DONE
    (static, `..._findings.md`):** MSB pos is snapshotted twice → resident-byte writes are inert; the
    movable transform is `CSWorldGeomIns+0x18`, and `CSWorldGeomDynamicIns` (`FUN_1406b9880`, factory
-   `FUN_1406c5900`) is a movable geom class = the vehicle for move + add. Next: transform-setter vmethod, then live probe.
+   `FUN_1406c5900`) is a movable geom class = the vehicle for move + add. **MOVE is now CRACKED + LIVE-
+   VERIFIED (2026-07-03):** the transform setter is `vtable[0xd0] SetWorldMatrix(self, mat4x4)`; driving
+   it on a live `CSWorldGeomIns` (via `move_asset` RPC, `test_move_asset.py` 7/7) moves the cached world
+   matrix (`inst+0x220`) by the exact delta, no crash. So "move an existing placement" is a solved
+   primitive; **ADD a new placement (Dynamic factory + tile/geom-manager join) is the remaining hole.**
+   Open follow-ups: on-screen/collision confirm + move persistence vs the `+0x18` module recompute.
 2. **ESD / talk scripts (EzState) — mostly unmapped.** Merchant shop↔NPC join, dialogue, talk-driven
    logic need an EzState bytecode evaluator (shelved after a spike — see
    `docs/plans/merchant_item_search_plan.md` Slice 3).

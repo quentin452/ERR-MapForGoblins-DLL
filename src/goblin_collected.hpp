@@ -53,4 +53,8 @@ namespace goblin::collected
 
     int collected_count();
     int skipped_count();
+
+    /// First live CSWorldGeomIns pointer from CSWorldGeomMan (a loaded-tile geom instance), or nullptr
+    /// if none is loaded. Read-only, safe. For the dev geom transform-setter probe (move_asset RPC).
+    void *first_live_geom_instance();
 };

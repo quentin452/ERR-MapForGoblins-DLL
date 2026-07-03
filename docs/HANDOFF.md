@@ -157,6 +157,19 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   wiring), (3) 3D model variants + reuse across worlds (asset/MSB frontier — needs an MSB-write path that
   doesn't exist; hardest/furthest). Not scoped; captured so they aren't lost.
 
+- **Geom placement MOVE — CRACKED + LIVE-VERIFIED 2026-07-03 (`move_asset` RPC, 7/7).** The MSB-write
+  frontier's "move an existing placement" half is solved: the transform setter is `vtable[0xd0]
+  SetWorldMatrix(self, mat4x4)` on `CSWorldGeomIns`. `goblin_geom_move.cpp` picks a live geom instance
+  (`goblin::collected::first_live_geom_instance()`, the WGM/CSWorldGeomMan walk — the FieldIns registry
+  `[er+0x3d7b0c0]…` was EMPTY in-world) and vcalls it; `move_asset 0 100 0` moved the cached world matrix
+  (`inst+0x220`, one float) by exactly +100 Y, game alive. Full RE + nuances in
+  `docs/re/windows_msb_placement_write_re_findings.md` (setter writes the `+0x220` CACHE, not the `+0x18`
+  module → verify via `+0x220`, not the getter). **Follow-ups (open):** (a) on-screen/collision confirm
+  (RPC restores immediately + picks an arbitrary instance); (b) move PERSISTENCE — does a frame-later
+  engine recompute from the `+0x18` module revert a cache-only write? If so, also set the module or use
+  `CSWorldGeomDynamicIns`. **Remaining MSB-write hole: ADD a NEW placement** (the Dynamic factory
+  `FUN_1406b9880` + parts-rec/transform synth + geom-manager join — §B4 of the findings).
+
 - **Live marker regeneration (real-time map editing) — v1 DONE 2026-07-03; v2 open.** Markers build once
   at boot; to reflect a LIVE param edit on the DRAWN map without a game reload, **`refresh_markers` RPC**
   (→ `overlay_api::rebuild_markers` → `worldmap::rebuild_markers`, the production toggle-rebuild path) now

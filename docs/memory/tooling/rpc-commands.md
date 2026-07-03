@@ -107,6 +107,7 @@ while a human is actively using kb/mouse (`rpc_input_idle=1` in `status`; ini `r
 | `mem_fwa` | `mem_fwa <hexaddr> <len> [r\|w]` | Arm a HW find-what-accesses BP on an absolute address; trigger (e.g. a save via `warp`) → `[FWA]` logs the accessing RIP. Use a COLD target to avoid a VEH storm. |
 | `equip_dump` | `equip_dump <off(0x..)> <len>` | Hex-dump `EquipGameData+off` (len ≤ 256). |
 | `equip_fwa` | `equip_fwa <off(0x..)> <len> [r\|w]` | Arm FWA on `EquipGameData+off`. |
+| `move_asset` | `move_asset <dx> <dy> <dz>` | LIVE test of the geom transform setter (`vtable[0xd0]`): moves a live geom instance by the delta via the engine's own virtual setter, reads back, restores. Reports `before/moved/restored` translations. Proves the MSB-write-free move primitive (`docs/re/windows_msb_placement_write_re_findings.md`). |
 
 ## Extending
 

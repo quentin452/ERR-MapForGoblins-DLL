@@ -18,6 +18,7 @@
 #include "goblin_warp.hpp"  // warp cmd — grace fast-travel (dev-world nav)
 #include "goblin_world_editor.hpp"  // we_scan cmd — World Editor picker enumeration
 #include "goblin_world_bundle.hpp"  // bundle cmd — World Editor save/apply persistence
+#include "goblin_geom_move.hpp"     // move_asset cmd — live geom transform-setter test (MSB-write RE)
 #include "goblin_field_probe.hpp"  // arm_raw — serialize find-what-accesses (Phase 2)
 
 #include <spdlog/spdlog.h>
@@ -401,7 +402,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | mem_dump mem_fwa equip_dump equip_fwa"
+                       " | mem_dump mem_fwa equip_dump equip_fwa move_asset"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -965,6 +966,31 @@ namespace goblin::debug_rpc
                     return "ok applied " + std::to_string(n) + " ops (" + wb::status_line() + ")";
                 }
                 return "err usage: bundle status|clone|set|save|load|apply|clear";
+            }
+            // move_asset <dx> <dy> <dz> — LIVE test of the geom transform SETTER (vtable[0xd0]): pick a
+            // live geom instance, move it by the delta via the engine's own virtual setter, read back,
+            // then restore. Present-thread (the setter drives physics/render). Proves the MSB-write-free
+            // move primitive (docs/re/windows_msb_placement_write_re_findings.md).
+            if (cmd == "move_asset")
+            {
+                std::string xs = next_token(rest), ys = next_token(rest), zs = next_token(rest);
+                float dx = 0, dy = 0, dz = 0;
+                try { dx = std::stof(xs); dy = std::stof(ys); dz = std::stof(zs); }
+                catch (...) { return "err usage: move_asset <dx> <dy> <dz>"; }
+                auto r = goblin::geom_move::move_first(dx, dy, dz);
+                char b[224];
+                if (!r.ok)
+                {
+                    std::snprintf(b, sizeof(b), "err move_asset: %s", r.err);
+                    return std::string(b);
+                }
+                std::snprintf(b, sizeof(b),
+                              "ok move_asset inst=%#llx vt=%#llx before=(%.2f,%.2f,%.2f) "
+                              "moved=(%.2f,%.2f,%.2f) restored=(%.2f,%.2f,%.2f)",
+                              (unsigned long long)r.inst, (unsigned long long)r.vtable,
+                              r.before[0], r.before[1], r.before[2], r.moved[0], r.moved[1], r.moved[2],
+                              r.restored[0], r.restored[1], r.restored[2]);
+                return std::string(b);
             }
             if (cmd == "reload_overlay")
             {
