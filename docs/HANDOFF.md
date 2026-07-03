@@ -925,11 +925,21 @@ resolved key would disambiguate "fundamentally iconId=0" from "a fixable lot-res
   into 3 sub-timers (deployed): **`present.iconbatch`** (`flush_item_icon_batch`'s GPU fence WAIT —
   CPU blocks on GPU, frame-variable = PRIME SUSPECT), `present.imgui_render` (ImGui::Render draw-data
   build), `present.submit` (RenderDrawData vertex upload + ExecuteCommandLists). **NEXT: play a
-  session, grep `[BENCH]`/`[SPIKE]` for which of the three spikes.** If it's `present.iconbatch`, the
-  fix is to stop blocking on the icon-copy fence (double-buffer / async / skip the per-frame wait,
-  `goblin_overlay.cpp:~799 submit_and_wait`). If `present.submit`, it's GPU submission under vkd3d
-  (likely PSO/shader-cache transients — a warmup/cache lever, not our code). If `present.imgui_render`,
-  it scales with vertex count (too many markers/verts in the draw list).
+  session, grep `[BENCH]`/`[SPIKE]` for which of the three spikes.**
+  **LOCALIZED 2026-07-03 (clean-exit summary):** NOT iconbatch/imgui_render/submit (all stayed quiet).
+  The `dump_report` summary pinned it: `present.overlay_total` avg 0.55ms / max 36ms / **5 spikes per
+  914 frames = 0.5% (RARE, avg healthy)**; the big front-matter hit is **`present.newframe` max 28ms**
+  (total 38ms/914 ⇒ ~ONE 28ms frame — `overlay.init.atlas` is only 3.9ms so try_upload_atlas is ruled
+  out → it's ImGui NewFrame). Some present spikes are just `render.minimap` (child) bleeding through.
+  **Prime suspect for newframe: `ImGui_ImplWin32_NewFrame` polling XInput every frame**
+  (`NavEnableGamepad` set, goblin_overlay.cpp:1214; vendored Win32 backend calls `XInputGetState` each
+  NewFrame; under Wine stalls ms on an absent/just-refocused pad — cf. "stale XInput after focus
+  regain" ~L195). **Split `present.newframe` → `present.nf_dx12` / `present.nf_win32` (deployed)** to
+  confirm next session (clean EXIT for the summary; trigger via focus-change / (re)connect a pad).
+  **IF confirmed + recurs:** feed gamepad nav to ImGui from the repo's OWN XInput hook
+  (input_gamepad.cpp) + compile backend `IMGUI_IMPL_WIN32_DISABLE_GAMEPAD` to kill the redundant poll.
+  **IF ~one-off** (data leans this way — 1 frame/914): a rare focus-event hitch, likely NOT worth the
+  gamepad-nav-regression risk. Decide from the nf_win32 vs nf_dx12 split.
 - **Map-exit input softlock.** Root cause for the general "soft key lock at screen edge" turned out
   to be **external** — Deskflow (cursor-sharing KVM), not ER or this mod; fix is Deskflow-side, see
   `docs/re/windows_input_softlock_re_prompt.md`. The F1-mouse-dead half of the original report was a
