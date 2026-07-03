@@ -25,6 +25,15 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Regulation.bin-free param overrides.** A new `param_overrides.ini` (next to `MapForGoblins.ini`,
+  gated on `[Param Overrides] param_overrides = true`, default OFF) applies per-field param edits to
+  the ACTIVE install's LIVE params at boot — so you can rebalance items/weapons/etc. **without
+  shipping a modified `regulation.bin`**, touching no game files and composable with any overhaul.
+  Edits are made in RAM and are **save-safe** (they reset each launch and the DLL re-applies them).
+  Format `label = Param:rowId:fieldName:value`; the field offset is resolved live from the game's own
+  code (version-proof, mod-agnostic — the exe has no queryable paramdef). Fields exposed so far:
+  `EquipParamGoods.goodsType/.sortGroupId`, `AssetEnvironmentGeometryParam.pickUpItemLotParamId`,
+  `BonfireWarpParam.textId1` (extend by adding a `FieldSpec` AOB). Dev RPC: `param_get(f)`/`param_set(f)`.
 - **The ERR day/night dial exclusion is now adjustable.** The round dial region where overlay
   markers are hidden (bottom-right of the world map) was a hardcoded disc; it's now tunable via
   F1 → *UI exclusion zones* → *Edit dial* — drag the disc/time-pill handles on the open map, or set

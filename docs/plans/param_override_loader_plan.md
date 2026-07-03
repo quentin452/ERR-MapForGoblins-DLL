@@ -1,12 +1,21 @@
 # Param-override loader — plan (regulation.bin-free runtime param modding)
 
-Status: **SCOPED 2026-07-03. Slice 1 (offset-addressed helper) + Slice 2 tier-1 (name-addressed
-registry) IMPLEMENTED + IN-GAME VERIFIED (ERR/Proton, foreground me3 launch — see
-[[../memory/tooling/mfg-rpc-driver-hardening]] workaround). `src/goblin_param_edit.{hpp,cpp}` + RPC
-`param_get(f)`/`param_set(f)`. Verified round-trips: `EquipParamWeapon[1000000]@0x00 s32` 0→1→0
-(offset write); `EquipParamGoods[100].sortGroupId` 200→101→200 (name-addressed write, offset resolved
-live from the exe); missing-row / unknown-field return clean `err`, no crash. Test row that EXISTS on
-ERR: `EquipParamGoods` id 100 (1074000 does NOT). NEXT: Slice 3 boot override-file loader.**
+Status: **ALL 3 SLICES IMPLEMENTED + IN-GAME VERIFIED (2026-07-03, ERR/Proton, foreground me3 launch
+— see [[../memory/tooling/mfg-rpc-driver-hardening]] workaround). The regulation.bin-free param-mod
+thesis is proven end-to-end.**
+- **Slice 1** (offset-addressed helper) + **Slice 2 tier-1** (name-addressed registry):
+  `src/goblin_param_edit.{hpp,cpp}` + RPC `param_get(f)`/`param_set(f)`. Verified round-trips:
+  `EquipParamWeapon[1000000]@0x00 s32` 0→1→0; `EquipParamGoods[100].sortGroupId` 200→101→200 (offset
+  resolved live from the exe); missing-row / unknown-field → clean `err`, no crash.
+- **Slice 3** (boot override-file loader): `src/goblin_param_overrides.{hpp,cpp}`, gated on ini
+  `[Param Overrides] param_overrides` (default OFF), file `param_overrides.ini` next to the config,
+  applied at the from::params-ready step in dllmain. **Verified:** boot log `2 applied, 1 skipped`,
+  read-back `sortGroupId=42` + `goodsType=7` (applied before any manual command), bad field skipped.
+  **GOTCHA fixed during verify: mINI LOWERCASES ini keys/sections** → the case-sensitive param/field
+  identifiers MUST live in the ini VALUE, not the key. Format: `label = Param:rowId:fieldName:value`.
+- Test row that EXISTS on ERR: `EquipParamGoods` id 100 (1074000 does NOT).
+- **Remaining (optional):** F1 panel UI for editing overrides live; more registry fields (each needs
+  an AOB); Slice-2 tier-2 (shipped SOTE Paramdex for arbitrary fields). None block shipping Slice 3.
 
 Origin: the architecture audit (`docs/runtime_live_capabilities_audit.md`) +
 `docs/runtime_modding_framework_vision.md` + `docs/scripting_api_roi_note.md`. This is the FIRST
