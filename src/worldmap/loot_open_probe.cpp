@@ -1,6 +1,7 @@
 #include "loot_open_probe.hpp"
 
 #include "../goblin_config.hpp"
+#include "../goblin_sidecar.hpp"  // note_save_file_opened — sidecar save detection (Phase 1)
 #include "../modutils.hpp"
 #include "loot_disk.hpp"  // on_map_opened_path — CreateFileW map-dir discovery
 
@@ -100,6 +101,13 @@ HANDLE WINAPI hk_create_file_w(LPCWSTR name, DWORD access, DWORD share, LPSECURI
 
     if (boot_io) log_boot_open(name, h, t0);
 
+    // Sidecar save (Phase 1): the game opening its save file (ER0000.err / .sl2) is our
+    // load/save signal. GENERIC_WRITE in the access mask = a save in progress vs a load
+    // read. Cheap filter (extension + basename) lives inside note_save_file_opened; a no-op
+    // unless [Sidecar] sidecar_save is on. Only act on a successful open.
+    if (config::sidecarSave && h != INVALID_HANDLE_VALUE)
+        goblin::sidecar::note_save_file_opened(name, (access & GENERIC_WRITE) != 0);
+
     if (is_map)
     {
         // Discovery: feed the real resolved path to the disk-loot map-dir fallback
@@ -133,7 +141,9 @@ void install_map_open_probe()
     // OR the boot I/O profile is on. Idempotent: called from the early boot-io
     // arm point AND the normal post-from_params site.
     static std::atomic<bool> installed{false};
-    if (!config::diagMapOpens && !config::lootFromDiskMsb && !config::diagBootIo) return;
+    if (!config::diagMapOpens && !config::lootFromDiskMsb && !config::diagBootIo &&
+        !config::sidecarSave)
+        return;
     if (installed.exchange(true)) return;
     QueryPerformanceFrequency(&g_qpf);
     QueryPerformanceCounter(&g_armed);

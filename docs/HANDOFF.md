@@ -53,6 +53,19 @@ Gap C grant is now RE-complete (inv=captured singleton, entry={qty@0, 0x40000000
 AddItemFunc); grant still gated on the sidecar for save-cleanliness. **The ONLY open inv RE left =
 RemoveItem** (Phase 2 strip-and-reinject). NB `debug_item_grants=true` is now set in the deployed ERR
 ini (leave on for the RemoveItem RE too).
+
+**SIDECAR PHASE 1 SLICE 1 DONE 2026-07-03 (build+SEH-lint clean, DEPLOYED, in-game verify pending):**
+new `src/goblin_sidecar.{hpp,cpp}` (`goblin::sidecar`) = the `<save>.mfg` state store. Save-path resolved
+DYNAMICALLY from the file the game opens (CreateFileW hook in `worldmap/loot_open_probe.cpp`; ME3 `.err`
+redirect handled for free) → `<save>.mfg` sibling; mINI flat store (`[meta]`/`[flags] custom`/`[kv]`,
+atomic temp+rename, thread-safe). A `GENERIC_WRITE` save-open triggers a sidecar save. Config
+`[Sidecar] sidecar_save` (default OFF, **set true in the deployed ini**). RPC
+`sidecar status|setkv|getkv|addflag|rmflag|flags|save|load`. **NEXT — in-game verify round-trip:** load a
+save (fires `[SIDECAR] save file … -> sidecar …`), `sidecar setkv foo bar` + `sidecar save`, confirm
+`ER0000.mfg` on disk next to `ER0000.err`, then `sidecar load` / relaunch → `sidecar getkv foo` = bar.
+**DEFERRED Phase-1 slices:** (1b) flag-REPLAY into the live session on world-enter (via
+`markers::set_event_flag`, ready) + world-exit autosave; (1c) character-identity binding RE (v1 binds by
+the `.mfg` sitting next to the save; guid stamped for the later cross-check); multi-slot per-character.
 Then: RemoveItem RE, save-window timing (CreateFileW on `ER0000.err`), character-identity binding.
 NB ERR saves are `ER0000.err` (ME3 redirect, SAME sl2 format) → resolve save path dynamically;
 ERR `.err` is already mod-locked so variant B is tolerable there, sidecar's clean-uninstall matters

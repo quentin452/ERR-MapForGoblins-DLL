@@ -1,9 +1,10 @@
 # Shadow / sidecar save — plan
 
-Status: **SCOPED + PHASED 2026-07-03 (user chose "sidecar first").** Approach chosen (transient-grant
-via inventory API + save-detection, NOT serializer parsing) + RE targets nailed — see "Implementation
-phasing" below. **Phase 1 (ini state-store, no inventory strip) = the buildable start; Phase 2
-(inventory strip-and-reinject) = the hard RE.** Phase 1 uses mINI (flat state); JSON is only needed for
+Status: **PHASE 1 SLICE 1 DONE 2026-07-03 (build+SEH-lint clean, deployed; in-game verify pending).**
+Approach chosen (transient-grant via inventory API + save-detection, NOT serializer parsing) + RE targets
+nailed — see "Implementation phasing" below. **Phase 1 (ini state-store, no inventory strip) = the
+buildable start — slice 1 (core module + save-path detection + RPC) landed; Phase 2 (inventory
+strip-and-reinject) = the hard RE.** Phase 1 uses mINI (flat state); JSON is only needed for
 Gap-C custom-item records (Phase 2 territory). Gap H frozen; param-override loader needs NONE of this.
 Origin: user idea + `docs/runtime_modding_framework_vision.md` ("Save persistence — the shadow/sidecar
 save"). Prereqs in `docs/runtime_live_capabilities_audit.md` (Gap C gated on Gap H).
@@ -109,13 +110,36 @@ tractable than buffer surgery.
   state in memory (or stamp our own GUID into a reserved event-flag pattern).
 
 ### Phase 1 — sidecar STATE STORE (no inventory strip; buildable without the hard save-hook)
-The `<save>.mfg` file + binding + JSON, storing framework state the DLL FULLY OWNS: custom event flags
-we set (`SetEventFlag`), per-save mod config, progress counters. Persist on our own schedule (own-state
-change + world-exit) + on the CreateFileW save signal; load + re-apply on world-enter. Needs: save-PATH
-resolution (`.err`/`.sl2`, dynamic), character-identity read (binding), a JSON parser (shared with Gap C
-— add here per [[../memory/process/authoring-format-decision]]). **Useful immediately** (persist custom
-flags/progress across sessions), and it's the skeleton Phase 2 rides on. Does NOT touch the inventory →
-no strip, no RemoveItem, low risk.
+The `<save>.mfg` file + binding + flat state, storing framework state the DLL FULLY OWNS: custom event
+flags we set (`SetEventFlag`), per-save mod config, progress counters. Persist on our own schedule
+(own-state change + world-exit) + on the CreateFileW save signal; load + re-apply on world-enter. Needs:
+save-PATH resolution (`.err`/`.sl2`, dynamic), character-identity read (binding), a parser (mINI flat —
+JSON deferred to Phase 2 / Gap C records). **Useful immediately** (persist custom flags/progress across
+sessions), and it's the skeleton Phase 2 rides on. Does NOT touch the inventory → no strip, no RemoveItem,
+low risk.
+
+**Slice 1 DONE 2026-07-03 (build + SEH-lint clean, deployed) — the buildable core.** New module
+`src/goblin_sidecar.{hpp,cpp}` (`goblin::sidecar`):
+- **Save-path resolution — DONE, dynamic.** Wired into the existing CreateFileW hook
+  (`worldmap/loot_open_probe.cpp` `hk_create_file_w`): on a successful open of an ER save
+  (`ER*.sl2`/`ER*.err`, extension+basename filter) it binds `<save>.mfg` (extension swapped) and
+  loads it; a `GENERIC_WRITE` open (= a save in progress) triggers a sidecar save alongside. The hook
+  now also arms when `sidecar_save` is on. NB save path is resolved from the file the GAME opens, so the
+  ME3 `.err` redirect is handled for free — never hardcoded.
+- **State store — DONE.** mINI-backed `<save>.mfg`: `[meta]` (version/guid/savefile), `[flags] custom`
+  (CSV of custom event-flag ids), `[kv]` (free-form progress/config). Atomic write (temp + rename).
+  Thread-safe (internal mutex — the CreateFileW hook is multi-threaded). API: add/remove/has_custom_flag,
+  custom_flags, set_kv/get_kv, load/save, status_line.
+- **Config** `[Sidecar] sidecar_save` bool, default OFF (opt-in; every entry point no-ops when off).
+- **RPC** `sidecar status|setkv|getkv|addflag|rmflag|flags|save|load` (`tools/mfg_rpc.py` reachable) to
+  drive + verify a disk round-trip in-game.
+- **DEFERRED to later Phase-1 slices:** (1c) character-identity binding — v1 binds by the `.mfg` living
+  next to the save (copy the save without it = no sidecar, safe; a stale `.mfg` left by a
+  deleted+recreated save with the same filename is the known gap the identity RE closes; guid is stamped
+  now for that cross-check). (1b) auto lifecycle — the flag-REPLAY into the live session on world-enter
+  (via `markers::set_event_flag`, already available) + a world-exit autosave. Slice 1 is storage +
+  load/save-signal only. Multi-slot per-character state (one `.err` holds all slots) — v1 stores
+  per-save-file (global); add a slot dimension later.
 
 ### Phase 2 — inventory ITEMS via strip-and-reinject (the hard part)
 On the CreateFileW save signal: for each sidecar item, `RemoveItem` from the live inventory (record

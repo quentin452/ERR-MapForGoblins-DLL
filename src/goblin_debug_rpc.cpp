@@ -12,6 +12,7 @@
 #include "goblin_param_edit.hpp"  // param_get/param_set commands — Slice 1 in-game smoke test
 #include "goblin_messages.hpp"  // inject_fmg_entries / raw_message_utf8 — fmg_set cmd (Gap D)
 #include "goblin_debug_events.hpp"  // last_inventory_accessor — inv_probe cmd (Gap C grant RE)
+#include "goblin_sidecar.hpp"  // sidecar cmd — Phase 1 state store drive/verify
 
 #include <spdlog/spdlog.h>
 
@@ -617,6 +618,57 @@ namespace goblin::debug_rpc
                               inv, lp, wcm, dlp, dwcm,
                               inv ? "" : " (no grant seen yet — pick up an item)");
                 return std::string(b);
+            }
+            // sidecar <sub> — drive/verify the Phase 1 sidecar state store. Subs:
+            //   status                — path/loaded/flags/kv/dirty
+            //   setkv <key> <value..> — set a persisted kv
+            //   getkv <key>           — read it
+            //   addflag <id> / rmflag <id> / flags — custom-flag set ops
+            //   save / load           — force persist / reload of <save>.mfg
+            if (cmd == "sidecar")
+            {
+                std::string sub = next_token(rest);
+                if (sub == "status" || sub.empty())
+                    return "ok " + goblin::sidecar::status_line();
+                if (sub == "setkv")
+                {
+                    std::string k = next_token(rest);
+                    size_t b = rest.find_first_not_of(" \t");
+                    std::string v = b == std::string::npos ? std::string{} : rest.substr(b);
+                    if (k.empty()) return "err usage: sidecar setkv <key> <value>";
+                    goblin::sidecar::set_kv(k, v);
+                    return "ok set " + k + "=" + v;
+                }
+                if (sub == "getkv")
+                {
+                    std::string k = next_token(rest);
+                    if (k.empty()) return "err usage: sidecar getkv <key>";
+                    return "ok " + k + "=" + goblin::sidecar::get_kv(k);
+                }
+                if (sub == "addflag" || sub == "rmflag")
+                {
+                    std::string id_s = next_token(rest);
+                    uint32_t id = 0;
+                    try { id = (uint32_t)std::stoul(id_s, nullptr, 0); }
+                    catch (...) { return "err bad flag id"; }
+                    if (sub == "addflag") goblin::sidecar::add_custom_flag(id);
+                    else goblin::sidecar::remove_custom_flag(id);
+                    return "ok " + sub + " " + std::to_string(id);
+                }
+                if (sub == "flags")
+                {
+                    std::string out = "ok flags:";
+                    for (uint32_t f : goblin::sidecar::custom_flags())
+                        out += " " + std::to_string(f);
+                    return out;
+                }
+                if (sub == "save")
+                    return goblin::sidecar::save() ? "ok saved " + goblin::sidecar::sidecar_path_utf8()
+                                                   : "err save failed (no save file seen yet?)";
+                if (sub == "load")
+                    return goblin::sidecar::load() ? "ok " + goblin::sidecar::status_line()
+                                                   : "err load failed (no save file seen yet?)";
+                return "err usage: sidecar status|setkv|getkv|addflag|rmflag|flags|save|load";
             }
             if (cmd == "reload_overlay")
             {

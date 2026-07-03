@@ -22,6 +22,7 @@ namespace goblin::config
     bool nativeItemIcons = true;   // overlay: draw the game's real item icon (GPU harvest) when resident
     bool enemyNames = true;        // overlay: draw the mob NAME on the game's non-boss enemy HP bar
     bool paramOverrides = false;   // apply param_overrides.ini at boot (regulation.bin-free field edits; OFF = ignore file)
+    bool sidecarSave = false;      // shadow/sidecar save: keep a DLL-owned <save>.mfg of framework state (Phase 1 state store)
     float enemyNameOffsetY = 4.0f; // enemy-name HUD: vertical offset above the bar (1920x1080 px)
     float enemyNameScale = 1.0f;   // enemy-name HUD: text size multiplier
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
@@ -624,6 +625,19 @@ namespace
              false, {
                 B("param_overrides", paramOverrides, "false",
                   "Apply param_overrides.ini at boot. OFF (default) = the file is ignored\neven if present. This MUTATES game balance — opt in explicitly."),
+            }},
+
+            {"Sidecar",
+             "Shadow / sidecar save (framework state persistence). Keeps a DLL-owned\n"
+             "<save>.mfg file next to the game's real save (ER0000.err / ER0000.sl2,\n"
+             "resolved dynamically) holding framework state the vanilla save has no home\n"
+             "for: custom event flags, per-save mod config, progress. Loaded/saved in\n"
+             "lockstep with the game opening its save file. Phase 1 = state store only\n"
+             "(does NOT touch the inventory). Touches no game files; delete the .mfg to\n"
+             "clean-uninstall. OFF (default) = no sidecar written or read.",
+             false, {
+                B("sidecar_save", sidecarSave, "false",
+                  "Enable the <save>.mfg sidecar state store. OFF (default) = disabled."),
             }},
 
             {"Debug",
