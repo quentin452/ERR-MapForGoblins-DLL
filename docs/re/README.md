@@ -1,6 +1,6 @@
 # RE coverage map — what of ELDEN RING is reverse-engineered, and what isn't
 
-Index + honest coverage map for `docs/re/`. **155 RE docs** live here. Two kinds:
+Index + honest coverage map for `docs/re/`. **156 RE docs** live here. Two kinds:
 - `*_re_findings.md` / `*_RESOLVED.md` — a SOLVED structure/function (the answer).
 - `*_re_prompt.md` / `*_analysis.md` — an OPEN or historical RE task handed to Ghidra/CE.
 
@@ -37,7 +37,10 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
    treasure/mob at NEW coords). Blocks new map content + vision #3. **First probe scoped:
    `windows_msb_placement_write_re_prompt.md`** — settles at which layer an edit moves an object (instance
    snapshot vs resident MSB bytes) via the MSB→instance load path + a live 2-target write test; splits the
-   cheap "move existing" win from the real "add new" (spawn factory + tile re-stream).
+   cheap "move existing" win from the real "add new" (spawn factory + tile re-stream). **Volet A DONE
+   (static, `..._findings.md`):** MSB pos is snapshotted twice → resident-byte writes are inert; the
+   movable transform is `CSWorldGeomIns+0x18`, and `CSWorldGeomDynamicIns` (`FUN_1406b9880`, factory
+   `FUN_1406c5900`) is a movable geom class = the vehicle for move + add. Next: transform-setter vmethod, then live probe.
 2. **ESD / talk scripts (EzState) — mostly unmapped.** Merchant shop↔NPC join, dialogue, talk-driven
    logic need an EzState bytecode evaluator (shelved after a spike — see
    `docs/plans/merchant_item_search_plan.md` Slice 3).

@@ -93,7 +93,16 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   instance — likely reusing the enemy/boss + FieldIns transform we already RE'd) or a live pointer; then a
   2-target live write test (instance transform vs resident MSB bytes) picks the layer. If "move an existing
   placement live" falls out, it's an immediate World-Editor slice (drag-a-placement). "Add new" then splits
-  into a spawn-factory + tile re-stream follow-up. NOT started; prompt only.
+  into a spawn-factory + tile re-stream follow-up. **Volet A DONE (static, 2026-07-03,
+  `..._findings.md`):** the MSB position is snapshotted TWICE (`CSMsbParts` ctor `er+0xcee430` copies
+  `+0x20` out of the blob → `CSWorldGeomIns` ctor `er+0x6c5900` builds its OWN transform at `+0x18` from a
+  separately-passed world matrix) → **resident-MSB byte writes are provably inert.** The movable transform
+  is the FD4 location module at `CSWorldGeomIns+0x18` (world matrix cached at `+0x44`), so moving needs the
+  **setter**, not a flat poke. **`CSWorldGeomDynamicIns` (`FUN_1406b9880`, on factory `FUN_1406c5900`) is a
+  movable geom class** = the vehicle for both move + add. **NEXT:** `query.java name:CSWorldGeomIns@CS@@` to
+  find the transform-setter vmethod, then the re-scoped live probe (move-via-setter, behind a dev RPC);
+  then "add" = drive the Dynamic factory from a synthesized parts rec + transform (trace `er+0x6a7930`/
+  `er+0x6adc80`).
 
 - **Long-horizon vision bets — tracked in `docs/runtime_modding_framework_vision.md` "Future directions"
   (2026-07-03):** (1) World Virtualization — a FRAMEWORK feature: the framework holds N of its OWN worlds (each a data

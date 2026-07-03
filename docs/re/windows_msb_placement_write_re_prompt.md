@@ -1,5 +1,13 @@
 # Windows-Ghidra + live-probe RE prompt — MSB placement WRITE (move/add a world object)
 
+> **Volet A RESOLVED (static, 2026-07-03) → `docs/re/windows_msb_placement_write_re_findings.md`.** MSB
+> position is snapshotted twice (CSMsbParts copies it out → CSWorldGeomIns gets a separate transform), so
+> **resident-MSB byte writes are inert**; the movable transform is the FD4 location module at
+> `CSWorldGeomIns+0x18` (matrix cached at `+0x44`). `CSWorldGeomDynamicIns` (`FUN_1406b9880`) is a movable
+> geom class built on the factory `FUN_1406c5900` — the vehicle for move AND add. Next: find the transform
+> setter vmethod (`query.java name:CSWorldGeomIns@CS@@`), then the live §C probe (re-scoped in the findings).
+
+
 ## Why (the strategic bet)
 `docs/re/README.md` ranks **MSB WRITE as frontier #1** — the keystone that unblocks custom mob/treasure
 placement (#5), new map content, and visions #1/#2/#3. We READ MSB fully (both routes proven:
