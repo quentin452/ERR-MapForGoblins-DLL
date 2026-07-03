@@ -1654,11 +1654,20 @@ namespace
             // block). Parent of render.worldmap / render.minimap in the [BENCH] report — the gap
             // present.overlay_total − Σ(those children) is UNLABELLED our-code (a benchmarking hole).
             GOBLIN_BENCH_QUIET("present.overlay_total");
-            try_upload_atlas();   // one-time; needs the captured command queue
-            goblin::input::set_imgui_reading_cursor(true);   // let ImGui's NewFrame see the real cursor
-            ImGui_ImplDX12_NewFrame();
-            ImGui_ImplWin32_NewFrame();
-            goblin::input::set_imgui_reading_cursor(false);
+            // present.newframe = the un-attributed FRONT matter of present.overlay_total — where the
+            // two isolated 18-21ms spikes live (they fire NO child spike, so they're here, not in
+            // iconbatch/imgui_render/submit which were sub-timed and stayed quiet). Prime suspect:
+            // ImGui NewFrame rebuilding the DX12 font/atlas texture (a GPU upload + stall) when the
+            // atlas is dirtied (e.g. i18n language swap), or try_upload_atlas re-firing. A quiet timer
+            // still [SPIKE]s, so an 18ms stall here self-identifies next session — no clean exit needed.
+            {
+                GOBLIN_BENCH_QUIET("present.newframe");
+                try_upload_atlas();   // one-time; needs the captured command queue
+                goblin::input::set_imgui_reading_cursor(true);   // let ImGui's NewFrame see the real cursor
+                ImGui_ImplDX12_NewFrame();
+                ImGui_ImplWin32_NewFrame();
+                goblin::input::set_imgui_reading_cursor(false);
+            }
 
             // Mouse BUTTONS via polling, not window messages. ER reads input through Raw Input
             // (RIDEV_NOLEGACY under newer wine/Proton), so WM_LBUTTONDOWN/UP are never posted to our
@@ -1668,6 +1677,10 @@ namespace
             // while the panel is up, foreground-guarded so a background click can't leak in.
             if (g_show)
             {
+                // present.inputpoll = the F1-panel-only win32 input reads (GetCursorPos, GetAsyncKeyState
+                // x6, poll_keyboard_text_input). Under Wine each is a potential wineserver round-trip, so
+                // this is the other front-matter spike candidate — but only when the panel is OPEN.
+                GOBLIN_BENCH_QUIET("present.inputpoll");
                 // Message-driven, same as the top-level `fg` (see g_has_focus) — was an
                 // independent GetForegroundWindow() poll, same flapping-under-Wine risk.
                 const bool fgw = g_hwnd && g_has_focus.load(std::memory_order_relaxed);
