@@ -58,6 +58,12 @@ namespace goblin::collected
     /// if none is loaded. Read-only, safe. For the dev geom transform-setter probe (move_asset RPC).
     void *first_live_geom_instance();
 
+    /// Like first_live_geom_instance, but ALSO returns the owning BlockData (the CSWorldGeomMan tree
+    /// node's block, whose +0x288 geom_ins vector held the instance). The ADD/spawn_clone path needs the
+    /// BlockData to push a new instance into the +0x288 vector and to read the dynamic pool (+0x2c0).
+    /// Returns the instance (nullptr if none); *out_block set to the BlockData. Read-only, safe.
+    void *first_live_geom_with_block(void **out_block);
+
     /// Fill `out` with up to `max` live geom instance pointers (all loaded tiles). Returns the count.
     /// For the geom-move nearest-to-player selection (move_near RPC). Read-only, safe.
     size_t list_live_geom_instances(void **out, size_t max);

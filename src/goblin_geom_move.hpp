@@ -56,4 +56,10 @@ namespace goblin::geom_move
 
     // ADD-recon: dump a live geom instance header + its CSMsbParts record to the [GEOMDUMP] log.
     MoveResult geom_dump();
+
+    // ADD/spawn_clone STAGE 1 — read-only recon: gather + validate every Dynamic-ctor argument
+    // (srcType@+0x08, transform module@+0x18, parts rec@+0x10 +0x18b/registry, BlockData +0x288 vector
+    // room, dynamic pool) and confirm the live-verify checklist WITHOUT mutating anything. Logs to
+    // [SPAWNPROBE]; .err = summary (PROBE-OK / PROBE-WARN + the individual checks). Behind `spawn_probe` RPC.
+    MoveResult spawn_probe();
 }

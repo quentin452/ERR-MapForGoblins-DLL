@@ -402,7 +402,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump"
+                       " | mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -1002,6 +1002,15 @@ namespace goblin::debug_rpc
                 auto r = goblin::geom_move::geom_dump();
                 char b[224];
                 std::snprintf(b, sizeof(b), "%s geom_dump %s", r.ok ? "ok" : "err", r.err);
+                return std::string(b);
+            }
+            // spawn_probe — ADD/spawn_clone STAGE 1: read-only recon of every Dynamic-ctor argument
+            // (srcType, transform module, parts rec + registry, BlockData +0x288 vector room). No mutation.
+            if (cmd == "spawn_probe")
+            {
+                auto r = goblin::geom_move::spawn_probe();
+                char b[224];
+                std::snprintf(b, sizeof(b), "%s spawn_probe %s", r.ok ? "ok" : "err", r.err);
                 return std::string(b);
             }
             // geom_stats — count loaded geom instances + class histogram (why some objects moved, others

@@ -350,6 +350,118 @@ namespace goblin::geom_move
         return r;
     }
 
+    // ADD/spawn_clone STAGE 1 — read-only recon. Gathers + validates every argument the Dynamic ctor
+    // FUN_1406b9880(self, srcType, partsRec, transform) needs, per docs/re/windows_geom_spawn_re_findings.md,
+    // WITHOUT calling anything (no mutation, no vcall). Confirms the live-verify checklist (items 1-3):
+    //   1. srcType packing: source inst+0x08 low32 carries the 0x6xxxxxxx geom FieldIns tag; high32 == the
+    //      BlockData first dword (block tag). Cross-checks the mask globals er+0x3b339a0/a4/a8.
+    //   2. transform is a 24B FD4 pose wrapper: inst+0x18 head qword is a vtable ptr (in eldenring .rdata),
+    //      not raw floats.
+    //   3. clone-safety: parts rec (inst+0x10) has a small rec+0x18b flag, and the record's instance
+    //      registry has room (rec+0xf8 cursor < rec+0xfc cap).
+    // Also reads the BlockData +0x288 geom_ins vector (begin/end/cap → room to push a new inst) and the
+    // dynamic pool (+0x2c0 base, +0x49c count). Logs everything to [SPAWNPROBE]; summary in .err.
+    MoveResult spawn_probe()
+    {
+        MoveResult r;
+        uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
+        if (!base) { std::snprintf(r.err, sizeof(r.err), "eldenring.exe base not found"); return r; }
+
+        void *block = nullptr;
+        void *inst = goblin::collected::first_live_geom_with_block(&block);
+        if (!inst) { std::snprintf(r.err, sizeof(r.err), "no live geom instance (in-world + tiles loaded?)"); return r; }
+        r.inst = (uint64_t)inst;
+
+        uint64_t vt = 0, srcType = 0, parts_rec = 0, mod_head = 0;
+        rpm(inst, &vt, 8);
+        rpm((char *)inst + 0x08, &srcType, 8);   // candidate srcType descriptor (passed by value to ctor)
+        rpm((char *)inst + 0x10, &parts_rec, 8);  // ctor param_3 — Dynamic driver passes the BlockData here
+        rpm((char *)inst + 0x18, &mod_head, 8);   // transform module head (expect a vtable ptr)
+        r.vtable = vt;
+
+        // Name of THIS instance (inst+0x48 → MSB part → +0x00 wide name), to know if it's a real placed
+        // asset vs a pool sentinel. Plus raw hex windows so the transform/record layout is eyeballable.
+        char nm[64] = {};
+        void *msb_part = nullptr;
+        if (rpm((char *)inst + 0x48, &msb_part, 8) && msb_part)
+        {
+            void *np = nullptr;
+            if (rpm(msb_part, &np, 8) && np)
+            {
+                wchar_t wn[64] = {};
+                if (rpm(np, wn, sizeof(wn) - 2))
+                    for (int c = 0; c < 63 && wn[c]; c++) nm[c] = (char)(wn[c] & 0xFF);
+            }
+        }
+        spdlog::info("[SPAWNPROBE] inst name='{}' msbPart={:#x}", nm, (uint64_t)msb_part);
+        uint8_t hdr[0x60] = {}, cache[0x30] = {}, modblk[0x20] = {};
+        if (rpm(inst, hdr, sizeof(hdr))) dump_hex("inst00", hdr, sizeof(hdr));
+        if (mod_head && rpm((void *)mod_head, modblk, sizeof(modblk))) dump_hex("mod18ptr", modblk, sizeof(modblk));
+        if (rpm((char *)inst + 0x210, cache, sizeof(cache))) dump_hex("inst210", cache, sizeof(cache));
+
+        uint32_t srclo = (uint32_t)(srcType & 0xffffffff), srchi = (uint32_t)(srcType >> 32);
+        uint32_t block_tag = 0;
+        if (block) rpm(block, &block_tag, 4);
+        uint32_t g0 = 0, g1 = 0, g2 = 0;
+        rpm((void *)(base + 0x3b339a0), &g0, 4);
+        rpm((void *)(base + 0x3b339a4), &g1, 4);
+        rpm((void *)(base + 0x3b339a8), &g2, 4);
+
+        bool tag_ok = (srclo & 0xf0000000u) == 0x60000000u;
+        bool hi_matches_block = (srchi == block_tag);
+        bool mod_is_vtable = (mod_head > base) && (mod_head < base + 0x10000000ull);  // ptr into ER image
+
+        // Parts record: the ONE field the ctor reads (+0x18b) + the instance registry it mutates.
+        uint8_t rec18b = 0xff;
+        uint64_t reg_slots = 0, reg_cursor = 0, reg_cap = 0, reg_freeidx = 0, rec_vt = 0;
+        if (parts_rec)
+        {
+            rpm((void *)parts_rec, &rec_vt, 8);
+            rpm((char *)parts_rec + 0x18b, &rec18b, 1);
+            rpm((char *)parts_rec + 0xe8, &reg_slots, 8);   // slot array
+            rpm((char *)parts_rec + 0xf0, &reg_freeidx, 8);
+            rpm((char *)parts_rec + 0xf8, &reg_cursor, 8);  // cursor (bumped on add)
+            rpm((char *)parts_rec + 0xfc, &reg_cap, 4);     // capacity (fc is a 4-byte int per findings)
+        }
+        bool reg_has_room = parts_rec && ((uint32_t)reg_cursor < (uint32_t)reg_cap);
+
+        // BlockData +0x288 geom_ins vector: begin/end/cap → is there spare capacity to push in place?
+        uint64_t vb_begin = 0, vb_end = 0, vb_cap = 0, dpool_base = 0;
+        uint32_t dpool_count = 0, spool_count = 0;
+        if (block)
+        {
+            rpm((char *)block + 0x290, &vb_begin, 8);
+            rpm((char *)block + 0x298, &vb_end, 8);
+            rpm((char *)block + 0x2a0, &vb_cap, 8);
+            rpm((char *)block + 0x2c0, &dpool_base, 8);  // dynamic instance pool base
+            rpm((char *)block + 0x49c, &dpool_count, 4);
+            rpm((char *)block + 0x498, &spool_count, 4);
+        }
+        uint64_t vec_n = (vb_end > vb_begin) ? (vb_end - vb_begin) / 8 : 0;
+        uint64_t vec_room = (vb_cap > vb_end) ? (vb_cap - vb_end) / 8 : 0;
+
+        spdlog::info("[SPAWNPROBE] inst={:#x} vt={:#x} block={:#x}", (uint64_t)inst, vt, (uint64_t)block);
+        spdlog::info("[SPAWNPROBE] srcType@+0x08={:#018x} lo={:#010x} hi={:#010x} tag_ok={} hi==blockTag({:#x})={}",
+                     srcType, srclo, srchi, tag_ok, block_tag, hi_matches_block);
+        spdlog::info("[SPAWNPROBE] masks g0={:#x} g1={:#x} g2={:#x}", g0, g1, g2);
+        spdlog::info("[SPAWNPROBE] transform@+0x18 head={:#x} isVtablePtr={}", mod_head, mod_is_vtable);
+        spdlog::info("[SPAWNPROBE] partsRec={:#x} vt={:#x} +0x18b={:#x} | registry slots={:#x} freeidx={:#x} "
+                     "cursor={} cap={} room={}", parts_rec, rec_vt, rec18b, reg_slots, reg_freeidx,
+                     (uint32_t)reg_cursor, (uint32_t)reg_cap, reg_has_room);
+        spdlog::info("[SPAWNPROBE] +0x288 vec: begin={:#x} end={:#x} cap={:#x} n={} room={} | dynPool base={:#x} "
+                     "count={} staticCount={}", vb_begin, vb_end, vb_cap, vec_n, vec_room, dpool_base,
+                     dpool_count, spool_count);
+
+        bool all_ok = tag_ok && mod_is_vtable && parts_rec && (rec18b <= 1);
+        std::snprintf(r.err, sizeof(r.err),
+                      "%s tag=%d hiBlk=%d modVt=%d rec18b=%u reg=%u/%u room=%d vecRoom=%llu (see [SPAWNPROBE])",
+                      all_ok ? "PROBE-OK" : "PROBE-WARN", tag_ok, hi_matches_block, mod_is_vtable,
+                      (unsigned)rec18b, (uint32_t)reg_cursor, (uint32_t)reg_cap, reg_has_room,
+                      (unsigned long long)vec_room);
+        r.ok = true;
+        return r;
+    }
+
     MoveResult geom_stats()
     {
         MoveResult r;

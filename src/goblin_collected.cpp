@@ -1494,6 +1494,63 @@ void *goblin::collected::first_live_geom_instance()
     return nullptr;
 }
 
+void *goblin::collected::first_live_geom_with_block(void **out_block)
+{
+    if (out_block) *out_block = nullptr;
+    void *wgm = nullptr;
+    if (!safe_read((void *)world_geom_man_slot(), &wgm, 8) || !wgm) return nullptr;
+    void *tree_head = nullptr;
+    uint64_t tree_size = 0;
+    if (!safe_read((char *)wgm + 0x18 + 0x08, &tree_head, 8) || !tree_head) return nullptr;
+    safe_read((char *)wgm + 0x18 + 0x10, &tree_size, 8);
+    if (tree_size == 0 || tree_size > 1000) return nullptr;
+
+    struct RbNode { void *left, *parent, *right; bool is_nil; void *block_data; };
+    auto read_rb = [&](void *node, RbNode &o) -> bool {
+        uint8_t b[0x30] = {};
+        if (!node || !safe_read(node, b, sizeof(b))) return false;
+        memcpy(&o.left, b + 0x00, 8);
+        memcpy(&o.right, b + 0x10, 8);
+        o.is_nil = b[0x19] != 0;
+        memcpy(&o.block_data, b + 0x28, 8);
+        return true;
+    };
+    void *root = nullptr;
+    safe_read((char *)tree_head + 0x08, &root, 8);
+
+    std::vector<void *> stack{root};
+    std::set<void *> seen;
+    int guard = 0;
+    while (!stack.empty() && guard++ < 2000)
+    {
+        void *node = stack.back(); stack.pop_back();
+        if (!node || node == tree_head || !seen.insert(node).second) continue;
+        RbNode n;
+        if (!read_rb(node, n) || n.is_nil) continue;
+        if (n.right && n.right != tree_head) stack.push_back(n.right);
+        if (n.left && n.left != tree_head) stack.push_back(n.left);
+        if (!n.block_data) continue;
+        void *vec_begin = nullptr, *vec_end = nullptr;
+        uint8_t vb[0x18] = {};
+        if (!safe_read((char *)n.block_data + 0x288, vb, sizeof(vb))) continue;
+        memcpy(&vec_begin, vb + 0x08, 8);
+        memcpy(&vec_end, vb + 0x10, 8);
+        if (!vec_begin || !vec_end || vec_end <= vec_begin) continue;
+        size_t count = ((uintptr_t)vec_end - (uintptr_t)vec_begin) / 8;
+        if (count > 10000) count = 10000;
+        for (size_t i = 0; i < count; i++)
+        {
+            void *geom_ins = nullptr;
+            if (safe_read((char *)vec_begin + i * 8, &geom_ins, 8) && geom_ins)
+            {
+                if (out_block) *out_block = n.block_data;
+                return geom_ins;
+            }
+        }
+    }
+    return nullptr;
+}
+
 void *goblin::collected::geom_instance_for_aeg(uint32_t aegRow, float px, float py, float pz)
 {
     static void *insts[20000];

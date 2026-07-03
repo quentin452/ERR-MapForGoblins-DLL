@@ -113,8 +113,51 @@ don't trust a local RPC probe. Confirm on a freshly-deployed Proton build:
    `FUN_1406b9880` into self-alloc 0x5b0 → push `+0x288` → `SetWorldMatrix` to offset by the delta →
    see a duplicated asset render+collide.
 
+## ★★ LIVE RECON DONE (Linux/Proton, 2026-07-03) — `spawn_probe` RPC, fresh DLL
+Built a read-only recon (`goblin::geom_move::spawn_probe`, `spawn_probe` RPC + `first_live_geom_with_block`
++ `tools/rpc_tests/test_spawn_probe.py`) that dumps every ctor argument off a live Dynamic instance and
+hex-windows the header. Ran on First Step (dynamic instance #0 = `m60_41_36_00-AEG004_903_1000`, a REAL
+placed asset). Base resolved `0x6ffff4ba0000` (inst vt RVA `0x2a84208` = CSWorldGeomDynamicIns ✓).
+
+**Confirmed live + the layout it corrects:**
+```
+inst+0x00  vtable = er+0x2a84208 (CSWorldGeomDynamicIns)
+inst+0x08  srcType = 0x3c1412016ff00000   lo=0x6ff00000 (0x6xxxxxxx geom tag ✓) hi=0x3c141201 == BlockData[0] tag ✓
+inst+0x10  = BlockData ptr (NOT a CSMsbParts record)   ← ctor param_3 IS the BlockData
+inst+0x18  = BlockData ptr again (aliases +0x10)        ← so the transform is NOT here
+inst+0x20  = 0x1bf8e9ac0  ← the REAL transform/pose module ptr (matches blocker-3 "param_1[4] = self+0x20")
+inst+0x30  vtable = er+0x2ba6738 (CSMsbPartsGeom)        ← the MSB part sub-object embedded on the instance
+inst+0x48  = MSB part ptr (wide name source)
+inst+0x220 region = the cached world matrix (translation floats; what SetWorldMatrix/move writes)
+```
+masks (live): `g0=0xff g1=0x14 g2=0xfffff`. This build's dynamic srcType packs `partType=0xff, idx=0`.
+
+**Corrections to the static plan (important):**
+- **param_3 = BlockData, NOT a cloned parts record.** The Dynamic driver passes `param_1` (BlockData) as the
+  3rd ctor arg; it lands at `self+0x10`. So `rec+0x18b` (the one flag) = **BlockData+0x18b** (read live = 0),
+  and the `FUN_1406a6630` "instance registry" is on the **BlockData** (`+0xe8` slots / `+0xf8` cursor / `+0xfc`
+  cap = 1024, cursor 0 → room). ⇒ **spawn_clone must pass the SOURCE's BlockData, not synthesize a record.**
+- **The transform module is at `self+0x20`** (a heap ptr), NOT `+0x18`. Blocker-3's read-offset call was
+  right. The 24-byte transform *wrapper* is the ctor INPUT that `FUN_1406c3180` move-inits into `self+0x20`.
+- **The `BlockData+0x288` geom_ins vector is EXACTLY FULL** (begin=end..cap, n=41 = 9 dyn + 32 static). So
+  route-1's "push into `+0x288`" **cannot append in place** — but the ctor self-registers into WGM/render
+  (`FUN_140b32880`/`FUN_1406c9020`) independently, so a **first render probe can SKIP the `+0x288` push**
+  (the instance renders; it's just untracked for unload = a bounded leak, fine for a throwaway). The push /
+  realloc is only needed for a production-clean clone.
+
+**The ONE remaining design risk before the ctor call:** `FUN_1406c3180` is a **move-init (swap)** — it
+STEALS from `param_4`. Passing the source's own `+0x18/+0x20` bytes as `param_4` would swap the source's
+pose-module ptr out → **corrupt the live source asset**. So `param_4` must own an INDEPENDENT pose module.
+Options for the next iteration: (a) deep-duplicate the `self+0x20` pose object (size unknown — probe it),
+(b) find a copy-ctor variant, or (c) decomp `thunk_FUN_144cbdae7` (the transform builder) enough to
+synthesize a minimal wrapper from a 4x4. Until one is settled, **do NOT fire the ctor with source-aliased
+bytes.** Everything else (srcType, param_3=BlockData, self-alloc 0x5b0, skip-+0x288, post-SetWorldMatrix)
+is ready.
+
 ## Anchors
 - `CSWorldGeomDynamicIns` vt er+0x2a84208 (ctors er+0x6ba0f0/0x6b9880); `CSWorldGeomIns` vt er+0x2a84cb0.
+- `CSMsbPartsGeom` vt er+0x2ba6738 — the part sub-object embedded at **inst+0x30** (live-confirmed).
+- transform/pose module ptr at **inst+0x20** (live-confirmed); BlockData ptr at inst+0x10 AND inst+0x18.
 - `FUN_14062e700` er+0x62e700 (srcTypeDesc, 8B); masks er+0x3b339a0/a4/a8.
 - transform builder `thunk_FUN_144cbdae7` er+0x6c3910 → er+0x144cbdae7 (garbled); `transform` = 24B FD4 pose
   wrapper; consumed by `FUN_1406c3180` (er+0x6c3180).
