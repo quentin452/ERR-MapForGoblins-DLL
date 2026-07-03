@@ -184,6 +184,24 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   WGM/render/physics. Open sub-Qs (a live probe answers): does a cloned `CSMsbPartsGeom` satisfy the ctor's
   reads; is the `+0x288` push enough for render+collision or is a pool index assumed elsewhere. This is a
   multi-step build, NOT a quick primitive like move.
+  **⇒ RESUME (next session, 2026-07-03 wrap): 2/3 blockers solved — `docs/re/windows_geom_spawn_re_findings.md`.**
+  Blocker 1 (srcTypeDesc) = 8-byte packed FieldIns id, buildable (live cross-check ✓: geom_dump inst+0x08
+  has the `0x6…` tag + block-tag high32). Blocker 2 (transform=24B FD4 pose wrapper) SIDESTEPPED via **route
+  (b): spawn at the source transform, then `SetWorldMatrix`-move to the offset (reuse the proven move
+  primitive).** **BLOCKED on ONE Ghidra decomp: `FUN_1406c7000`** (er+0x6c7000, via `FUN_1406a5080`) — a
+  likely-cleaner "spawn one geom by id" factory that would avoid the pool+`+0x288` questions; also the base
+  ctor's parts-record reads (blocker 3). When `FUN_1406c7000`'s signature lands → I code+drive `spawn_clone`
+  route (b) on Proton (move step already exists). Nothing safe to drive live until then.
+  **Freecam** (dev tool, after ADD): recon done (`windows_freecam_re_findings.md`), **Route 2** = freeze
+  ChrCam + override the render view matrix in `GameRendCameraSet` (er+0x680460). BLOCKED on Ghidra: that
+  matrix offset + a `CSCameraImp` singleton AOB. Then I code freeze+override from Linux.
+  **Disk 90GB scare (2026-07-03) = NOT our code — closed.** User lost 90GB while ER ran, recovered on close.
+  Verified: our logs 27M, no ER core dump, `move_all` (16927 insts) had zero disk effect, disk stable in
+  automated tests. The Discord "16GiB deleted" files are `memfd:*_pool_shadow` (Chromium PartitionAlloc, **0
+  real disk** — lsof shows logical size only). Leading suspect = **Discord Clips recording ER** (journal
+  confirms Clips sessions per ER launch) filling a disk buffer during REAL gameplay; user disabling Clips is
+  the fix. To re-confirm if it recurs: watch deleted-open files by REAL `st_blocks` (not logical size), while
+  actually playing. Don't re-investigate our code.
 
 - **Dev "creative mode" mini-track — SCOPED 2026-07-03 (do after ADD; not on ADD's critical path).** Two
   small/moderate RE items that together give a dev sandbox loop (warp into a throwaway map + fly around +
