@@ -83,7 +83,13 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   never grantable; use ≤`0x7FFFFE` (the test uses `8000000`). (2) **`fmg_set` slot: base `10`
   WORKS, DLC-tier `419` FREEZES** the present thread (RPC marshals there). Inject names at slot 10;
   the 419 hang + which slot the item-name UI reads are handed to a Windows/Ghidra sweep
-  (`docs/re/windows_fmg_slot_re_prompt.md`).
+  (`docs/re/windows_fmg_slot_re_prompt.md`). **RESOLVED (static, 2026-07-03,
+  `docs/re/windows_fmg_slot_re_findings.md`):** goods-name UI (`FUN_140d10680`) reads
+  `menu(111)→base(10)→dlc01(319)→dlc02(419)`, so a NEW id renders at base **slot 10** (111/DLC empty
+  for it); the 419 freeze is our `patch_fmg_in_memory` doing a `fileSize − str_data_start` size_t
+  **underflow** on a DLC-stub header (NOT the group loop — hence the reverted span guard didn't help)
+  → multi-GB resize/memcpy on the present thread. Fix = O(1) offset/size sanity guard + reject slots
+  ≥300 and the 11x menu tier; keep injecting at base 10. DLL guard not yet coded.
   **NEXT:** the author surface — `custom_items.json` applied at BOOT (clone+fields+name) + registered
   via the sidecar so it re-grants every load (param_clone doesn't persist; sidecar re-grant does).
   Also finalize the reserved band from a param-scan survey.

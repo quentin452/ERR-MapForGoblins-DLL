@@ -1,5 +1,11 @@
 # Windows-Ghidra RE prompt — FMG slot semantics + the `fmg_set` GoodsName freeze
 
+> **RESOLVED (static, 2026-07-03) → `docs/re/windows_fmg_slot_re_findings.md`.** Goods-name UI reads
+> `menu(111)→base(10)→dlc01(319)→dlc02(419)`; inject at base slot 10. The 419 freeze is a
+> `fileSize − str_data_start` size_t underflow in our `patch_fmg_in_memory` on a DLC-stub header (not the
+> group loop), fixed by an O(1) offset/size guard + rejecting slots ≥300/11x. This prompt kept for context.
+
+
 ## Why
 Gap C (custom item end-to-end) needs to inject a NAME string for a custom goods id. Live testing on
 ERR/Proton (2026-07-03) found:
