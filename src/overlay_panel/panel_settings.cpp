@@ -298,6 +298,29 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
             goblin::worldmap::ui_rect_clear();
         ImGui::TextDisabled("%s", tr("Zones are saved in 1920x1080 virtual units - they work at every\n"
                                      "resolution. Save to INI to persist."));
+
+        // ERR day/night dial — a round region the rectangle zones can't express. Placement
+        // handles on the map + precise sliders; the values are the ini-backed cfg::dial* globals.
+        if (goblin::overlay_api::err_features())
+        {
+            ImGui::Separator();
+            ImGui::TextUnformatted(tr("ERR day/night dial exclusion"));
+            bool dedit = goblin::worldmap::dial_edit();
+            if (ImGui::Checkbox(tr("Edit dial (open the world map)"), &dedit))
+                goblin::worldmap::set_dial_edit(dedit);
+            if (dedit)
+                ImGui::TextDisabled("%s", tr("On the MAP: cyan dot = move disc, yellow = radius, magenta = move pill."));
+            ImGui::SliderFloat(tr("Disc X"), goblin::overlay_api::cfg_dialDiscX_ptr(), 0.0f, 1920.0f, "%.0f");
+            ImGui::SliderFloat(tr("Disc Y"), goblin::overlay_api::cfg_dialDiscY_ptr(), 0.0f, 1080.0f, "%.0f");
+            ImGui::SliderFloat(tr("Disc radius"), goblin::overlay_api::cfg_dialDiscR_ptr(), 0.0f, 500.0f, "%.0f");
+            ImGui::SliderFloat(tr("Pill left"), goblin::overlay_api::cfg_dialPillX0_ptr(), 0.0f, 1920.0f, "%.0f");
+            ImGui::SliderFloat(tr("Pill top"), goblin::overlay_api::cfg_dialPillY0_ptr(), 0.0f, 1080.0f, "%.0f");
+            ImGui::SliderFloat(tr("Pill right"), goblin::overlay_api::cfg_dialPillX1_ptr(), 0.0f, 1920.0f, "%.0f");
+            ImGui::SliderFloat(tr("Pill bottom"), goblin::overlay_api::cfg_dialPillY1_ptr(), 0.0f, 1080.0f, "%.0f");
+            ImGui::SliderFloat(tr("Fade margin"), goblin::overlay_api::cfg_dialFadeMargin_ptr(), 0.0f, 200.0f, "%.0f");
+            ImGui::TextDisabled("%s", tr("Disc radius 0 = disc off; pill bottom <= top = pill off.\n"
+                                         "Fade margin = soft dim band around the dial (0 = hard edge). Save to INI to persist."));
+        }
     }
 }
 } // namespace goblin::overlay::panel

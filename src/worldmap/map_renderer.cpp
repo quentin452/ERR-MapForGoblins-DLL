@@ -401,6 +401,32 @@ static bool   g_minimap_clip_active = false;
 static ImVec2 g_minimap_clip_ctr{};
 static float  g_minimap_clip_r = 0.0f;
 
+// ── ERR dial exclusion SOFT-FADE (user 2026-07-03) ──────────────────────────
+// Rather than hard-culling a marker whose anchor enters the ERR dial disc/pill, fade its
+// alpha across a margin band so icons near the dial dim out gradually ("un petit peu") instead
+// of popping. Armed ONLY during the worldmap marker/cluster pass (like g_minimap_clip_*), so
+// the minimap is unaffected. game_ui_exclusion_alpha() is defined next to in_game_ui_exclusion.
+static bool  s_ui_fade_active = false;
+static float s_ui_fade_realW = 0.f, s_ui_fade_realH = 0.f;
+static float game_ui_exclusion_alpha(const ImVec2 &p, float realW, float realH);
+
+// Post-multiply the alpha of every vertex a draw call appended to `dl` (indices >= vtx_start)
+// by `fade`. The standard ImGui way to apply one global alpha to raw ImDrawList output
+// (AddImage/AddCircle/AddText carry no per-call alpha) — we scale the emitted vertex colours.
+static inline void scale_vtx_alpha(ImDrawList *dl, int vtx_start, float fade)
+{
+    if (fade < 0.f) fade = 0.f;
+    if (fade >= 1.f) return;
+    for (int i = vtx_start; i < dl->VtxBuffer.Size; ++i)
+    {
+        const ImU32 c = dl->VtxBuffer[static_cast<size_t>(i)].col;
+        int a = static_cast<int>((c >> IM_COL32_A_SHIFT) & 0xFFu);
+        a = static_cast<int>(a * fade + 0.5f);
+        dl->VtxBuffer[static_cast<size_t>(i)].col =
+            (c & ~IM_COL32_A_MASK) | (static_cast<ImU32>(a) << IM_COL32_A_SHIFT);
+    }
+}
+
 // Small ▲ (above) / ▼ (below) triangle in the marker's top-right corner when it sits well above/below
 // its altitude REFERENCE. Drawn as primitives (AddTriangleFilled) — no font dependency, can't tofu.
 // worldY==0 = no altitude data → skip. Reference:
@@ -625,11 +651,33 @@ static inline float golden_rune_draw_scale(int category)
     return 1.0f;
 }
 
+static void draw_marker_impl(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons, float half);
+
+// Public entry: draws the marker, then (during the worldmap pass only) applies the ERR-dial
+// soft-fade by scaling the alpha of the vertices it just produced. Fade 1 = untouched.
+void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons, float half)
+{
+    if (!s_ui_fade_active)
+    {
+        draw_marker_impl(fg, m, p, icons, half);
+        return;
+    }
+    const float fade = game_ui_exclusion_alpha(p, s_ui_fade_realW, s_ui_fade_realH);
+    if (fade >= 1.f)
+    {
+        draw_marker_impl(fg, m, p, icons, half);
+        return;
+    }
+    const int v0 = fg->VtxBuffer.Size;
+    draw_marker_impl(fg, m, p, icons, half);
+    scale_vtx_alpha(fg, v0, fade);
+}
+
 // Draw one marker at backbuffer px p: the atlas icon if available, else a circle.
 // half = icon half-size in px (resolution-scaled by the caller). When collected_graying
 // is on, collected/cleared markers dim+desaturate (or hide if hide_collected), and
 // cleared bosses get a green checkmark. Uncollected bosses redden when redify_boss_icons.
-void draw_marker(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons, float half)
+static void draw_marker_impl(ImDrawList *fg, const Marker &m, ImVec2 p, const IconSet &icons, float half)
 {
     // Grace marker (discover_flag set only on graces): with grace_overlay the overlay draws it
     // itself — discovered (rested) = full colour, undiscovered = grey. Source = live engine sprite:
@@ -1069,6 +1117,7 @@ struct UiRect { float x0, y0, x1, y1; };
 static std::vector<UiRect> s_ui_rects;
 static std::string s_ui_rects_src = "\x01"; // never matches → first call parses
 static bool s_ui_rect_edit = false;
+static bool s_dial_edit = false; // ERR dial disc/pill placement mode (drag handles on the map)
 
 static void ui_rects_sync()
 {
@@ -1109,29 +1158,66 @@ static void ui_rects_store()
 
 // Game-UI exclusion (user report 2026-07-02): the overlay renders AFTER the game's frame, so
 // our icons draw OVER the game's own always-on-top map UI. Static-region case: the ERR
-// day/night dial (bottom-right, fixed layout in the 1920x1080 virtual canvas — disc centre
-// ~(1815,1000) r~240 covers the needle/wing; the time-of-day pill sits above it). Markers,
-// hover and pile anchors falling inside are treated as out-of-bounds (in_draw_bounds below),
-// so nothing draws or reacts under the dial. ERR-gated (vanilla has no dial) + ini
-// clip_game_ui. The DYNAMIC case (a menu opening over the map) needs a menu-state flag —
-// tracked in HANDOFF, not covered here.
-static inline bool in_game_ui_exclusion(const ImVec2 &p, float realW, float realH)
+// day/night dial (bottom-right, in the 1920x1080 virtual canvas — a disc over the needle/wing +
+// a time-of-day pill above it; all tunable via cfg::dial*). User-drawn zones are hard rects.
+//
+// Returns a FADE factor in [0,1]: 1 = fully visible, 0 = fully hidden. User rects stay HARD
+// (0/1, they're drawn to fully hide). The ERR dial fades over a margin band (cfg::dialFadeMargin,
+// virtual units) so icons dim gradually instead of popping — the anchor's signed distance to the
+// disc/pill boundary drives a ramp centred on the edge. Margin 0 = hard edge (old behaviour).
+static float game_ui_exclusion_alpha(const ImVec2 &p, float realW, float realH)
 {
     if (!(*goblin::overlay_api::cfg_clipGameUi_ptr()))
-        return false;
-    const float sx = realW / 1920.f, sy = realH / 1080.f;
-    // User-drawn zones first (any install; virtual units → screen scale).
+        return 1.f;
+    const float sx = realW / 1920.f, sy = realH / 1080.f, ss = (sx + sy) * 0.5f;
+    // User-drawn zones first (any install) — hard hide.
     ui_rects_sync();
     for (const UiRect &r : s_ui_rects)
         if (p.x >= r.x0 * sx && p.x <= r.x1 * sx && p.y >= r.y0 * sy && p.y <= r.y1 * sy)
-            return true;
+            return 0.f;
     if (!goblin::overlay_api::err_features())
-        return false;
-    const float dx = p.x - 1815.f * sx, dy = p.y - 1000.f * sy;
-    const float r = 240.f * ((sx + sy) * 0.5f);
-    if (dx * dx + dy * dy < r * r)
-        return true; // dial disc (+ needle/wing, inside the radius)
-    return p.x > 1700.f * sx && p.y > 685.f * sy && p.y < 740.f * sy; // time-of-day pill
+        return 1.f;
+    namespace api = goblin::overlay_api;
+    const float margin = *api::cfg_dialFadeMargin_ptr() * ss; // virtual → screen px
+    // signedOut: +ve outside the boundary, -ve inside. alpha 1 far outside → 0 far inside.
+    auto ramp = [margin](float signedOut) -> float {
+        if (margin <= 0.f) return signedOut > 0.f ? 1.f : 0.f; // hard edge
+        const float a = 0.5f + signedOut / (2.f * margin);
+        return a < 0.f ? 0.f : (a > 1.f ? 1.f : a);
+    };
+    float alpha = 1.f;
+    // Dial disc (needle/wing). Radius 0 disables it.
+    const float discR = *api::cfg_dialDiscR_ptr();
+    if (discR > 0.f)
+    {
+        const float dx = p.x - *api::cfg_dialDiscX_ptr() * sx;
+        const float dy = p.y - *api::cfg_dialDiscY_ptr() * sy;
+        const float dist = std::sqrt(dx * dx + dy * dy);
+        alpha = std::min(alpha, ramp(dist - discR * ss));
+    }
+    // Time-of-day pill (a rect above the disc). y1<=y0 disables it. Signed distance to the rect.
+    const float py0 = *api::cfg_dialPillY0_ptr(), py1 = *api::cfg_dialPillY1_ptr();
+    if (py1 > py0)
+    {
+        const float rx0 = *api::cfg_dialPillX0_ptr() * sx, rx1 = *api::cfg_dialPillX1_ptr() * sx;
+        const float ry0 = py0 * sy, ry1 = py1 * sy;
+        const float qx = std::max(std::max(rx0 - p.x, p.x - rx1), 0.f);
+        const float qy = std::max(std::max(ry0 - p.y, p.y - ry1), 0.f);
+        float sd;
+        if (qx == 0.f && qy == 0.f) // inside → negative distance to the nearest edge
+            sd = -std::min(std::min(p.x - rx0, rx1 - p.x), std::min(p.y - ry0, ry1 - p.y));
+        else
+            sd = std::sqrt(qx * qx + qy * qy);
+        alpha = std::min(alpha, ramp(sd));
+    }
+    return alpha;
+}
+
+// Hard bool for the cull path: a marker is dropped only when FULLY excluded (alpha 0). Partially
+// faded markers (in the margin band) still draw + hover, just dimmed.
+static inline bool in_game_ui_exclusion(const ImVec2 &p, float realW, float realH)
+{
+    return game_ui_exclusion_alpha(p, realW, realH) <= 0.f;
 }
 
 // Cull test shared by the marker loop and the pile pass: inside the canvas rect when
@@ -2006,6 +2092,11 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
     // can be attributed (raw iteration vs actual draws). n_iter counts EVERY marker the loop
     // touches across visible categories (the true O(n) cost), before the page/cull gates.
     int n_iter = 0, n_drawn = 0, n_deferred = 0;
+    // Arm the ERR-dial soft-fade for every draw_marker below (single + pile members). Disarmed
+    // after the cluster pass so the minimap (which also calls draw_marker) is unaffected.
+    s_ui_fade_active = true;
+    s_ui_fade_realW = realW;
+    s_ui_fade_realH = realH;
     {
     GOBLIN_BENCH_QUIET("render.worldmap.markers");
     // Master-off / hidden categories normally skip drawing — but an active item search REVEALS its
@@ -2208,6 +2299,7 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
             draw_clusters(fg, clustered, threshold, icons, realW, realH, view,
                           /*dist_eligible=*/true, iconHalf, glyphR, mouse, hover);
     }
+    s_ui_fade_active = false; // disarm — the minimap pass must not fade
 
     // Throttled cost attribution (debug_logging only; ~every 300 frames). Read with
     // grep "\[RENDERPERF\]" alongside the [BENCH] render.worldmap.* timings.
@@ -2285,6 +2377,73 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
                     "EXCLUSION EDIT: drag = new zone, right-click = delete zone");
     }
 
+    // ── ERR dial exclusion placement (F1 "UI exclusion zones" → Edit dial) ─────
+    // The dial is a DISC (round day/night dial) the rect editor can't express. Here the
+    // disc + time-pill are drawn live and dragged into place; values are the ini-backed
+    // cfg::dial* globals (virtual 1920x1080 units) — "Save to INI" persists them. ERR-only.
+    if (s_dial_edit && goblin::overlay_api::err_features())
+    {
+        namespace api = goblin::overlay_api;
+        const float sx = realW / 1920.f, sy = realH / 1080.f, ss = (sx + sy) * 0.5f;
+        float *dcx = api::cfg_dialDiscX_ptr(), *dcy = api::cfg_dialDiscY_ptr();
+        float *dr = api::cfg_dialDiscR_ptr();
+        float *px0 = api::cfg_dialPillX0_ptr(), *py0 = api::cfg_dialPillY0_ptr();
+        float *px1 = api::cfg_dialPillX1_ptr(), *py1 = api::cfg_dialPillY1_ptr();
+        const ImVec2 ctr(*dcx * sx, *dcy * sy);
+        const float rpx = *dr * ss;
+        const ImVec2 rHandle(ctr.x + rpx, ctr.y);
+        const ImVec2 pA(*px0 * sx, *py0 * sy), pB(*px1 * sx, *py1 * sy);
+        const ImVec2 pCtr((pA.x + pB.x) * 0.5f, (pA.y + pB.y) * 0.5f);
+
+        // Visuals: cyan disc, magenta pill, handle dots.
+        if (*dr > 0.f)
+        {
+            fg->AddCircleFilled(ctr, rpx, IM_COL32(40, 200, 220, 45), 48);
+            fg->AddCircle(ctr, rpx, IM_COL32(60, 220, 255, 230), 48, 2.0f);
+            fg->AddCircleFilled(ctr, 6.f, IM_COL32(60, 220, 255, 255));   // move handle
+            fg->AddCircleFilled(rHandle, 6.f, IM_COL32(255, 255, 80, 255)); // radius handle
+        }
+        if (*py1 > *py0)
+        {
+            fg->AddRectFilled(pA, pB, IM_COL32(220, 40, 220, 50));
+            fg->AddRect(pA, pB, IM_COL32(255, 80, 255, 230), 0.f, 0, 2.0f);
+            fg->AddCircleFilled(pCtr, 6.f, IM_COL32(255, 80, 255, 255)); // pill move handle
+        }
+
+        ImGuiIO &io = ImGui::GetIO();
+        enum Grab { None, DiscMove, DiscRadius, PillMove };
+        static int s_grab = None;
+        auto hit = [](const ImVec2 &a, const ImVec2 &b, float t) {
+            const float ex = a.x - b.x, ey = a.y - b.y; return ex * ex + ey * ey <= t * t;
+        };
+        if (!io.WantCaptureMouse && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        {
+            if (*dr > 0.f && hit(io.MousePos, rHandle, 14.f)) s_grab = DiscRadius;
+            else if (*dr > 0.f && hit(io.MousePos, ctr, 14.f)) s_grab = DiscMove;
+            else if (*py1 > *py0 && hit(io.MousePos, pCtr, 16.f)) s_grab = PillMove;
+        }
+        if (s_grab != None)
+        {
+            if (s_grab == DiscMove) { *dcx = io.MousePos.x / sx; *dcy = io.MousePos.y / sy; }
+            else if (s_grab == DiscRadius)
+            {
+                const float ex = io.MousePos.x - ctr.x, ey = io.MousePos.y - ctr.y;
+                *dr = std::sqrt(ex * ex + ey * ey) / (ss > 0.f ? ss : 1.f);
+            }
+            else if (s_grab == PillMove)
+            {
+                const float w = *px1 - *px0, h = *py1 - *py0;
+                const float cxv = io.MousePos.x / sx, cyv = io.MousePos.y / sy;
+                *px0 = cxv - w * 0.5f; *px1 = cxv + w * 0.5f;
+                *py0 = cyv - h * 0.5f; *py1 = cyv + h * 0.5f;
+            }
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) s_grab = None;
+        }
+        fg->AddText(ImVec2(realW * 0.5f - 300.f, 8.f), IM_COL32(60, 220, 255, 255),
+                    "DIAL EDIT: drag cyan dot = move disc, yellow dot = radius, "
+                    "magenta dot = move pill. Save to INI to keep.");
+    }
+
     // Tooltip for the hovered marker / pile (drawn last so it's on top).
     if (hover.bestd < 1e30f)
         draw_tooltip(fg, mouse, hover.text);
@@ -2295,6 +2454,8 @@ void render_markers(const std::vector<MarkerLayer *> &layers, void *atlas_textur
 
 void set_ui_rect_edit(bool on) { s_ui_rect_edit = on; }
 bool ui_rect_edit() { return s_ui_rect_edit; }
+void set_dial_edit(bool on) { s_dial_edit = on; }
+bool dial_edit() { return s_dial_edit; }
 int ui_rect_count()
 {
     ui_rects_sync();
