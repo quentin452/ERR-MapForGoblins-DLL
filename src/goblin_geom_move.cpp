@@ -118,4 +118,69 @@ namespace goblin::geom_move
                      r.restored[2]);
         return r;
     }
+
+    // Persistence-probe state (single held instance; present-thread only, no lock needed).
+    static void *g_held = nullptr;
+    static float g_held_before[3] = {};
+
+    MoveResult move_hold(float dx, float dy, float dz)
+    {
+        MoveResult r;
+        uintptr_t base = (uintptr_t)GetModuleHandleA("eldenring.exe");
+        if (!base) { std::snprintf(r.err, sizeof(r.err), "eldenring.exe base not found"); return r; }
+        void *inst = goblin::collected::first_live_geom_instance();
+        if (!inst) { std::snprintf(r.err, sizeof(r.err), "no live geom instance"); return r; }
+        r.inst = (uint64_t)inst;
+        rpm(inst, &r.vtable, 8);
+
+        constexpr ptrdiff_t CACHE_MAT = 0x220;
+        float m[16] = {};
+        auto getter = (GetterFn)(base + GETTER_RVA);
+        if (!call_getter(getter, inst, m) || !finite3(m))
+        {
+            std::snprintf(r.err, sizeof(r.err), "getter faulted / non-finite");
+            return r;
+        }
+        float cache[16] = {};
+        if (!rpm((char *)inst + CACHE_MAT, cache, sizeof(cache)) || !finite3(cache))
+        {
+            std::snprintf(r.err, sizeof(r.err), "cache matrix unreadable");
+            return r;
+        }
+        r.before[0] = cache[12]; r.before[1] = cache[13]; r.before[2] = cache[14];
+
+        void **vtbl = *(void ***)inst;
+        SetterFn setter = (SetterFn)vtbl[SETTER_VSLOT];
+        float moved_mat[16];
+        memcpy(moved_mat, m, sizeof(moved_mat));
+        moved_mat[12] = r.before[0] + dx; moved_mat[13] = r.before[1] + dy; moved_mat[14] = r.before[2] + dz;
+        if (!call_setter(setter, inst, moved_mat)) { std::snprintf(r.err, sizeof(r.err), "setter faulted"); return r; }
+        rpm((char *)inst + CACHE_MAT, cache, sizeof(cache));
+        r.moved[0] = cache[12]; r.moved[1] = cache[13]; r.moved[2] = cache[14];
+
+        g_held = inst;
+        g_held_before[0] = r.before[0]; g_held_before[1] = r.before[1]; g_held_before[2] = r.before[2];
+        r.ok = true;
+        spdlog::info("[GEOMMOVE] HOLD inst={:#x} before=({:.2f},{:.2f},{:.2f}) moved=({:.2f},{:.2f},{:.2f})",
+                     r.inst, r.before[0], r.before[1], r.before[2], r.moved[0], r.moved[1], r.moved[2]);
+        return r;
+    }
+
+    MoveResult read_held()
+    {
+        MoveResult r;
+        if (!g_held) { std::snprintf(r.err, sizeof(r.err), "nothing held (call move_hold first)"); return r; }
+        r.inst = (uint64_t)g_held;
+        r.before[0] = g_held_before[0]; r.before[1] = g_held_before[1]; r.before[2] = g_held_before[2];
+        float cache[16] = {};
+        if (!rpm((char *)g_held + 0x220, cache, sizeof(cache)) || !finite3(cache))
+        {
+            std::snprintf(r.err, sizeof(r.err), "held instance no longer readable");
+            return r;
+        }
+        r.moved[0] = cache[12]; r.moved[1] = cache[13]; r.moved[2] = cache[14];
+        r.restored[0] = cache[12]; r.restored[1] = cache[13]; r.restored[2] = cache[14];  // current == moved
+        r.ok = true;
+        return r;
+    }
 }

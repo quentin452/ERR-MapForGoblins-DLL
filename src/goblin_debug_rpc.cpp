@@ -402,7 +402,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | mem_dump mem_fwa equip_dump equip_fwa move_asset"
+                       " | mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -990,6 +990,30 @@ namespace goblin::debug_rpc
                               (unsigned long long)r.inst, (unsigned long long)r.vtable,
                               r.before[0], r.before[1], r.before[2], r.moved[0], r.moved[1], r.moved[2],
                               r.restored[0], r.restored[1], r.restored[2]);
+                return std::string(b);
+            }
+            // move_hold <dx> <dy> <dz> — like move_asset but does NOT restore; remembers the instance.
+            // move_read — re-read the held instance's +0x220 translation. Poll it to see if the engine
+            // reverts a cache-only write over frames (the move-persistence probe).
+            if (cmd == "move_hold" || cmd == "move_read")
+            {
+                goblin::geom_move::MoveResult r;
+                if (cmd == "move_hold")
+                {
+                    std::string xs = next_token(rest), ys = next_token(rest), zs = next_token(rest);
+                    float dx = 0, dy = 0, dz = 0;
+                    try { dx = std::stof(xs); dy = std::stof(ys); dz = std::stof(zs); }
+                    catch (...) { return "err usage: move_hold <dx> <dy> <dz>"; }
+                    r = goblin::geom_move::move_hold(dx, dy, dz);
+                }
+                else
+                    r = goblin::geom_move::read_held();
+                char b[224];
+                if (!r.ok) { std::snprintf(b, sizeof(b), "err %s: %s", cmd.c_str(), r.err); return std::string(b); }
+                std::snprintf(b, sizeof(b),
+                              "ok %s inst=%#llx before=(%.2f,%.2f,%.2f) now=(%.2f,%.2f,%.2f)", cmd.c_str(),
+                              (unsigned long long)r.inst, r.before[0], r.before[1], r.before[2],
+                              r.moved[0], r.moved[1], r.moved[2]);
                 return std::string(b);
             }
             if (cmd == "reload_overlay")

@@ -25,4 +25,12 @@ namespace goblin::geom_move
     // Move the first live geom instance by (dx,dy,dz) via the virtual setter, read back, then restore
     // it to its original transform (so the world is left unchanged). Proves the setter round-trips.
     MoveResult move_first(float dx, float dy, float dz);
+
+    // Persistence probe: move the first live geom instance by (dx,dy,dz) and DO NOT restore — remember
+    // the instance + its pre-move translation. `moved` = the +0x220 translation right after the setter.
+    MoveResult move_hold(float dx, float dy, float dz);
+    // Re-read the held instance's current +0x220 translation (into `moved`; `before` = the remembered
+    // pre-move value). Lets a poll loop watch whether the engine reverts a cache-only write over frames.
+    // ok=false if nothing is held or the instance is no longer readable.
+    MoveResult read_held();
 }

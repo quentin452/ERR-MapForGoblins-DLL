@@ -164,11 +164,13 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   `[er+0x3d7b0c0]…` was EMPTY in-world) and vcalls it; `move_asset 0 100 0` moved the cached world matrix
   (`inst+0x220`, one float) by exactly +100 Y, game alive. Full RE + nuances in
   `docs/re/windows_msb_placement_write_re_findings.md` (setter writes the `+0x220` CACHE, not the `+0x18`
-  module → verify via `+0x220`, not the getter). **Follow-ups (open):** (a) on-screen/collision confirm
-  (RPC restores immediately + picks an arbitrary instance); (b) move PERSISTENCE — does a frame-later
-  engine recompute from the `+0x18` module revert a cache-only write? If so, also set the module or use
-  `CSWorldGeomDynamicIns`. **Remaining MSB-write hole: ADD a NEW placement** (the Dynamic factory
-  `FUN_1406b9880` + parts-rec/transform synth + geom-manager join — §B4 of the findings).
+  module → verify via `+0x220`, not the getter). **Persistence CONFIRMED 2026-07-03** (`move_hold`/
+  `move_read` RPCs): a cache-only write is DURABLE — `move_hold 0 100 0` then polling `+0x220` 10× over
+  ~7s held at Y 83.38, no engine revert from the `+0x18` module. So no module-sync needed for a move to
+  stick. **Follow-up (open, one): on-screen/collision confirm** — the probe picks an arbitrary first-in-
+  walk instance (likely off-screen); a targeted move of a named instance near the player + screenshot
+  would close it. **Remaining MSB-write hole: ADD a NEW placement** (the Dynamic factory `FUN_1406b9880`
+  + parts-rec/transform synth + geom-manager join — §B4 of the findings).
 
 - **Live marker regeneration (real-time map editing) — v1 DONE 2026-07-03; v2 open.** Markers build once
   at boot; to reflect a LIVE param edit on the DRAWN map without a game reload, **`refresh_markers` RPC**

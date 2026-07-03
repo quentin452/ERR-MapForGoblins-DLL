@@ -155,11 +155,16 @@ Two things learned that the static read couldn't give:
   `goblin_collected` already uses for collected-graying): `mgr→+0x18 tree→BlockData+0x288 geom_ins
   vector`. Exposed as `goblin::collected::first_live_geom_instance()`.
 
-**Still open (not yet done):** eyeball a large move on-screen (the RPC restores immediately, and the
-picked instance is arbitrary/maybe off-screen) to confirm render+collision follow the `+0x220` cache;
-and whether the move survives without the `+0x18` module also being set (a frame-later engine recompute
-from the module could revert it — the cache-only write may be transient). Both are follow-ups; the
-**setter-moves-the-world-matrix primitive is proven.**
+**Persistence — CONFIRMED (2026-07-03, `move_hold`/`move_read`):** a cache-only setter write is
+**durable, NOT transient.** `move_hold 0 100 0` (move, no restore) then polling the instance's `+0x220`
+translation 10× over ~7s showed it **held at Y `83.38` the whole time** — the engine did NOT recompute
+`+0x220` from the `+0x18` source module and revert it. So writing the cached matrix is sufficient; no
+need to also set the `+0x18` module or use `CSWorldGeomDynamicIns` for a move to stick.
+
+**Still open (one follow-up):** eyeball a large move on-screen to confirm render+collision actually
+follow the `+0x220` cache (the probe picks an ARBITRARY first-in-walk instance, likely off-screen; a
+targeted move of a named instance near the player + screenshot would close it). The
+**setter-moves-and-holds-the-world-matrix primitive is proven.**
 
 ## Next
 - ~~Static: find the transform setter vmethod~~ **DONE — vtable[0xd0].**
