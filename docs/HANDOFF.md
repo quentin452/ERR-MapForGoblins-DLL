@@ -74,18 +74,23 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 
 ## Open / next items
 
-- **NEW-WORLDMAP-PAGE registration (for a custom "dev world" map entry) — SCOPED 2026-07-04, not started.**
-  User goal: a REAL new entry on the world map (a new pannable page) so MapForGoblins markers integrate on
-  it. **Key strategic call: this is a DATA/MENU-layer track, SEPARATE from and LIGHTER than ADD/geom spawn
-  — markers are an overlay on the worldmap menu, they need NO 3D geometry/collision.** We already RE the
-  worldmap READ path deeply (projection `world_map_projection`, page-transition, tile-fog,
-  `WorldMapPointParam`/`WorldMapPlaceName`, `WORLDMAP_POINT_FN/_CTOR`, `MARKER_ARRAY_CTOR`); the open piece
-  is WRITING a new page ENTRY (a new map image/tile + its coord bounds registered in the worldmap menu) —
-  needs a spike (probably param + menu-side, NOT the MSB wall). **Do NOT gate this on ADD.** ADD (spawn
-  geom) is only needed if you want to physically WALK in the new world (playable content), which is the
-  separate capstone. Recommend scoping the page-entry write FIRST as the fast path to the markers goal.
-  Sandbox for any playable experiments meanwhile = an existing SPARSE map via warp+freecam (already scoped
-  in the creative-mode mini-track), not a from-scratch map.
+- **NEW map entry for MFG markers — SPIKED 2026-07-04 (`docs/re/worldmap_new_page_spike_findings.md`).**
+  User goal: a new map ENTRY so MapForGoblins markers show on a custom "dev world". **Spike verdict (this
+  CORRECTS the earlier "lighter data-layer" guess):** a NATIVE new page is its OWN unsolved WRITE frontier,
+  NOT a light param task — the page SET is a converter array built live in `CS::WorldMapViewModel` (ctor
+  `FUN_1408855b0`, count `WorldMapViewModel+0x280`=8, page-byte table `DAT_142ad82f8=[00 01 0a]`) from
+  regulation; no injection path is RE'd, plus menu-tab registration + a tile-art sheet in the ERR `.gfx` are
+  all write-unknown (adjacent to the MSB wall). The whole READ side is solved (projection/converter fields/
+  page switch), the WRITE side is not. **⇒ Achievable path = a MOD-OWNED virtual page, NOT a native one:**
+  the overlay already draws in the backbuffer and only needs the open group-id to cull (`map_renderer.hpp:4`),
+  so MFG can own a synthetic group id (≥100) + a mod-defined projection (origin/scale/bias) + a mod-drawn map
+  surface (bg image + pan/zoom, opened via a mod toggle) with markers tagged to it — 100% mod code, no engine
+  write, Linux-doable, and it IS World Virtualization vision #1 (a custom world = a bundle whose map is this
+  virtual page). Reserve native-page registration as a far-frontier item (only if the world must be a real
+  in-game map TAB). **Next concrete step (on confirm): the virtual-page slice — start with marker-group
+  plumbing (group id ≥100 in `marker_layer.hpp`, cheapest, unlocks tagging markers to it), then the
+  mod-defined projection, then the mod-drawn surface + open toggle.** ADD/geom is NOT on this critical path
+  (only needed to physically WALK the world — separate capstone).
 - **F1 category list → GRID LAYOUT (followup, not started).** The Markers-tab category list is a checkbox
   tree; with many custom worlds/categories it overflows into a long scroll. Replace with a GRID of
   icon-tiles (the category icon we just added as the tile, toggle visibility on click, checkmark/dim
