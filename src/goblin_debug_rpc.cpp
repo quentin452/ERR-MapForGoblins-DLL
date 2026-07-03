@@ -392,6 +392,16 @@ namespace goblin::debug_rpc
             std::string rest = line;
             std::string cmd = next_token(rest);
             if (cmd == "ping") return "ok pong";
+            // help — one-line verb list (the client reads a single reply line, so no embedded \n).
+            // Full usages + caveats: docs/memory/tooling/rpc-commands.md. Keep in sync when adding a cmd.
+            if (cmd == "help" || cmd == "?")
+                return "ok commands: help ping status open_f1 pause set screenshot dumpmenu reload_overlay"
+                       " | param_get param_set param_getf param_setf param_clone"
+                       " | loot_at refresh_markers warp"
+                       " | give_item goods_count strip_test inv_probe fmg_set sidecar"
+                       " | mem_dump mem_fwa equip_dump equip_fwa"
+                       " | key type mouse_move mouse_click mouse_drag mouse_wheel"
+                       "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
             {
                 bool hot =
