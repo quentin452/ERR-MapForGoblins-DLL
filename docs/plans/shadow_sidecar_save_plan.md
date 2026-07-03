@@ -57,9 +57,11 @@ save/load lifecycle. Two implementation variants:
 
 ## Sequencing (why it's deferred)
 
-1. **Gap H first** — freeze the reserved-ID range + binding-key + DLL-at-load policy (cheap, policy not
-   code). The sidecar removes the need for custom IDs to SURVIVE in the `.sl2`, but not the need to pick
-   them from a reserved range to avoid colliding with overhauls in the LIVE session.
+1. **Gap H — FROZEN 2026-07-03** (`docs/memory/process/reserved-id-and-load-contract.md`): reserved-ID
+   bands + collision-check + DLL-at-load contract. (The binding-KEY for the sidecar↔`.sl2` pairing is
+   scoped in "The hard parts" above, not in Gap H.) The sidecar removes the need for custom IDs to
+   SURVIVE in the `.sl2`, but not the need to pick them from a reserved band to avoid colliding with
+   overhauls in the LIVE session. Numeric bands finalize when Gap C starts.
 2. **Then Gap C (item grants)** — the sidecar is the mechanism that makes granting SAFE. Prototype on
    ONE custom item end-to-end (grant → save → reload → item still present, `.sl2` still vanilla-legal).
 3. Only THEN generalize to custom flags + framework progress.

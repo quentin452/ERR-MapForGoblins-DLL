@@ -131,7 +131,9 @@ Détails :
    in-game. C'est le premier "mod sans regulation.bin".
 3. **Pièce maîtresse B** : `param_add_rows(paramName, templates)` — généraliser l'expansion
    TutorialParam ; valider d'abord sur une table non id-looked-up ; budgéter le test heap.
-4. **C (item bout-en-bout)** : APRÈS avoir figé H (IDs réservés + contrat DLL-au-load) ; prototyper
+4. **C (item bout-en-bout)** : APRÈS H — **H est FIGÉ 2026-07-03**
+   (`docs/memory/process/reserved-id-and-load-contract.md` : bandes d'IDs réservées + collision-check +
+   contrat DLL-au-load ; bandes numériques à finaliser au démarrage de C via un survey live) ; prototyper
    sur UN item.
 5. **E (couche events par hooks)** : petite API réactive sur les primitifs existants.
 6. **Long terme F** : hook de résolution de fichiers (FLVER/BND/TPF depuis le dossier mod) — projet

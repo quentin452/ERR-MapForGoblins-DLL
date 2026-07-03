@@ -31,6 +31,12 @@ feature docs).
 - **DX-bugs audit** [active] — split into 5 PRs; reject the global QPC pause hook. → [plan-dx-bugs-audit](plan-dx-bugs-audit.md)
 - **Quests audit** [active] — reuse already-shipped infra; event-flag writes must default READ-only. → [plan-quests-audit](plan-quests-audit.md)
 
+## Locked policies
+- **Reserved-ID & DLL-at-load contract (Gap H)** [FROZEN 2026-07-03] — the reserved-ID bands +
+  collision-check rule + DLL-required-at-load contract that any PERSISTED framework write (item grants
+  = Gap C, custom flags) must obey. Param-field edits + FMG inject are exempt (non-persistent). →
+  [reserved-id-and-load-contract](reserved-id-and-load-contract.md)
+
 ## Working lessons
 - **Collaboration & branch hygiene** [active] — flat feature branches off master, never push, confirm
   genuine decisions, verify offsets live not statically. → [workflow-preferences](workflow-preferences.md)

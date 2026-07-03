@@ -47,8 +47,10 @@ without regulation.bin", shippable as a rebalance mod, and the substrate for ite
   Slice-2 tier-2 (ship SOTE Paramdex for arbitrary fields). Then the bigger gaps: **Gap B**
   (`param_add_rows` — generalize the TutorialParam table-expand; validate on a non-id-looked-up table,
   budget the heap test), **Gap C** (item grants — FREEZE the reserved high-ID range +
-  "DLL-required-at-load" policy FIRST; `.sl2` orphan-ID corruption otherwise; sidecar save =
-  `plans/shadow_sidecar_save_plan.md`).
+  "DLL-required-at-load" policy — **Gap H now FROZEN 2026-07-03**,
+  `docs/memory/process/reserved-id-and-load-contract.md`: reserved-ID bands + collision-check +
+  load-contract principles LOCKED, numeric bands finalize at Gap C; sidecar save downgrades the
+  contract to soft = `plans/shadow_sidecar_save_plan.md`).
 
 ## RESUME HERE (2026-07-02) — hot-reload Slice D IMPLEMENTED (`feat/overlay-hotreload-slice-d`), Windows in-game validation next
 

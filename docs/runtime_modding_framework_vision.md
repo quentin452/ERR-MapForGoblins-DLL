@@ -30,6 +30,7 @@ other overhauls (no regulation.bin merge wars).
 - **Save persistence**: a custom item ID picked up gets written into the `.sl2`. Loading without
   the DLL leaves an orphan ID (item vanishes or worse). Any injected-item design must treat
   "DLL must be present at load" as a hard contract, and pick IDs from reserved high ranges to
+  <!-- Gap H is now FROZEN: docs/memory/process/reserved-id-and-load-contract.md -->
   avoid colliding with overhauls (compat ≠ coherence: Convergence etc. still interact logically).
   **→ RESOLUTION: the shadow / sidecar save (see the dedicated section below)** — a DLL-owned
   `<save>.mfg` that (in the strip-and-reinject variant) keeps the `.sl2` vanilla-clean and downgrades
