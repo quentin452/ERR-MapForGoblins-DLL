@@ -21,6 +21,7 @@ namespace goblin::config
     bool showRegionLabels = true;  // overlay: draw major-region name labels on the map
     bool nativeItemIcons = true;   // overlay: draw the game's real item icon (GPU harvest) when resident
     bool enemyNames = true;        // overlay: draw the mob NAME on the game's non-boss enemy HP bar
+    bool paramOverrides = false;   // apply param_overrides.ini at boot (regulation.bin-free field edits; OFF = ignore file)
     float enemyNameOffsetY = 4.0f; // enemy-name HUD: vertical offset above the bar (1920x1080 px)
     float enemyNameScale = 1.0f;   // enemy-name HUD: text size multiplier
     bool diagLootFlags = false;    // one-shot [LOOTDIAG] field dump for the collected-flag RE
@@ -609,6 +610,20 @@ namespace
                 IniEntry{"enemy_name_scale", IniType::F32, &cfg::enemyNameScale, "1.0",
                   "Enemy-name HUD: text size multiplier. 1.0 = default font size.",
                   false, nullptr, 0.5f, 3.0f},
+            }},
+
+            {"Param Overrides",
+             "Regulation.bin-free param modding: apply per-field edits from a\n"
+             "param_overrides.ini file (next to this ini) at boot. Edits are made in\n"
+             "RAM to the ACTIVE install's live params, so they are SAVE-SAFE (they\n"
+             "reset each launch and are re-applied by the DLL) and touch no game files.\n"
+             "File format, one line per edit under [Overrides] (the key is just a label; the\n"
+             "spec is the VALUE — mINI lowercases keys, so the case-sensitive names go in the value):\n"
+             "  label = Param:rowId:fieldName:value   (e.g. a = EquipParamGoods:100:sortGroupId:101)\n"
+             "Only registered fields resolve (see goblin_param_edit FieldSpec table).",
+             false, {
+                B("param_overrides", paramOverrides, "false",
+                  "Apply param_overrides.ini at boot. OFF (default) = the file is ignored\neven if present. This MUTATES game balance — opt in explicitly."),
             }},
 
             {"Debug",

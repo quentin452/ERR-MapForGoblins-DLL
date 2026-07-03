@@ -21,6 +21,7 @@
 #include "goblin_worldmap_probe.hpp"
 #include "goblin_inject.hpp"
 #include "goblin_kindling.hpp"
+#include "goblin_param_overrides.hpp"
 #include "goblin_logic.hpp"
 #include "goblin_markers.hpp"
 #include "goblin_messages.hpp"
@@ -111,6 +112,7 @@ static void init_collected()        { goblin::collected::initialize(); }
 static void init_kindling()         { goblin::kindling::initialize(); }
 static void init_prebuild_markers() { goblin::overlay_render_loader::call_prebuild_markers(); }
 static void init_tutorial_popup()   { goblin::inject_tutorial_popup_rows(); }
+static void init_param_overrides()  { goblin::apply_param_overrides(); }
 static void init_setup_messages()   { goblin::setup_messages(); }
 static void init_icon_tex_probe()   { goblin::install_icon_texture_probe(); }
 static void init_grace_suppress()   { goblin::install_grace_suppression_hook(); }
@@ -258,6 +260,8 @@ static void setup_mod()
         // The ImGui overlay is the sole world map (the native WorldMapPointParam
         // injection was removed — no native page-build = no freeze, no double-draw).
         safe_init_step(&init_tutorial_popup,  "inject_tutorial_popup_rows");
+        // Slice 3: apply param_overrides.ini (params are ready here). Gated OFF by default.
+        safe_init_step(&init_param_overrides, "apply_param_overrides");
         safe_init_step(&init_setup_messages,  "setup_messages");
         // Queue the live-refresh hook (FUN_140a82a80) — kept for the native-pin
         // suppression path; no-op until enabled.

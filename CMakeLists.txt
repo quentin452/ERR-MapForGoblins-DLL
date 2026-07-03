@@ -183,6 +183,10 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_grace_suppression.cpp
   src/goblin_kindling.hpp
   src/goblin_kindling.cpp
+  src/goblin_param_edit.hpp
+  src/goblin_param_edit.cpp
+  src/goblin_param_overrides.hpp
+  src/goblin_param_overrides.cpp
   src/goblin_logic.hpp
   src/goblin_logic.cpp
   src/goblin_markers.hpp
