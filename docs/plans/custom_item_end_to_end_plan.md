@@ -100,6 +100,27 @@ ceiling that the survey shows free), wire the ini base + the collision-check (al
    `goods_count == qty`. Categories wired: goods(10)/weapon(11)/protector(12)/accessory(13); each
    enforces the `0x7FFFFE` grantable ceiling. Example: `custom_items.example.toml`.
 
+## Showing a custom item ON THE MAP (Gap C ⋈ MapForGoblins markers)
+A custom item is inventory-only; a map marker is a WORLD PLACEMENT. The map resolves a loot marker's
+identity LIVE via `AssetEnvironmentGeometryParam[aegRow].pickUpItemLotParamId → ItemLotParam_map →
+item` (`msbe_parser.cpp:298`, `map_entry_layer.cpp` `aeg_pickup_lot`/`resolve_loot_item_textid`).
+
+- **Repoint mechanism PROVEN live (2026-07-03).** New dev RPC `loot_at <aegRow>` resolves exactly what
+  the marker build would show. `param_setf AssetEnvironmentGeometryParam <aeg> pickUpItemLotParamId
+  <lot>` then re-reading `loot_at` changed the item at asset 99036 Bloodrose→Erdleaf Flower→Poisonbloom.
+  So repointing an existing treasure's lot changes the map marker's item, no MSB edit — regulation-free.
+- **To point it at a CUSTOM item, two pieces remain:**
+  1. **`ItemLotParam_map.lotItemId01` + `.lotItemCategory01` field access** — only `pickUpItemLotParamId`
+     is in the param-edit registry today; need those 2 field-AOBs so a cloned lot can be made to yield
+     the custom goods id (then repoint an asset at that lot).
+  2. **Marker-build timing.** `loot_at` reads live, but the drawn markers build ONCE via `call_once`
+     (`prebuild_markers`, boot) BEFORE the boot-order param edits (`param_overrides`/`custom_items`),
+     and the deployed build has no live marker rebuild (`reload_overlay` is hotreload-only). So the
+     override must be applied BEFORE marker-build (reorder init, or gate via `param_overrides.ini` moved
+     ahead of `prebuild_markers`) OR add a `refresh_markers` that resets the `call_once` + rebuilds.
+- **New locations (a NEW treasure/mob at NEW coords) still need MSB editing** — outside the runtime
+  framework. Repointing only RE-SKINS existing placements.
+
 ## Acceptance (mod-agnostic)
 On vanilla AND a non-ERR mod: the define half produces a coherent named custom item from that install's
 own template/params; the grant (post-sidecar) puts it in inventory and the `.sl2` stays vanilla-legal

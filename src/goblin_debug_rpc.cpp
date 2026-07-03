@@ -837,6 +837,25 @@ namespace goblin::debug_rpc
                     p += std::snprintf(out + p, sizeof(out) - p, " %02x", buf[i]);
                 return std::string(out);
             }
+            // loot_at <aegRow> — resolve LIVE what the map's loot marker for AssetEnvironmentGeometry
+            // row `aegRow` would show: pickUpItemLotParamId → ItemLotParam_map → item name (the exact
+            // chain map_entry_layer builds a marker from). Lets a pickUpItemLotParamId repoint be
+            // verified without a screenshot: read loot_at, param_set the pickup lot, read loot_at again.
+            if (cmd == "loot_at")
+            {
+                std::string a_s = next_token(rest);
+                if (a_s.empty()) return "err usage: loot_at <aegRow>";
+                uint32_t aeg = 0;
+                try { aeg = (uint32_t)std::stoul(a_s, nullptr, 0); }
+                catch (...) { return "err bad aegRow"; }
+                uint32_t lot = goblin::aeg_pickup_lot(aeg);
+                int32_t textid = lot ? goblin::resolve_loot_item_textid(lot, 1, -1) : -1;
+                std::string name = (textid >= 0) ? goblin::lookup_text_utf8(textid) : std::string{};
+                char b[224];
+                std::snprintf(b, sizeof(b), "ok aeg=%u lot=%u item_textid=%d name='%s'",
+                              aeg, lot, textid, name.c_str());
+                return std::string(b);
+            }
             // equip_fwa <off(0x..)> <len> [r|w] — arm a HW find-what-accesses breakpoint on
             // EquipGameData+off, then trigger a save (warp) → [FWA] logs the serialize read RIP.
             if (cmd == "equip_fwa")
