@@ -120,8 +120,15 @@ Détails :
 
 ## 4. Ordre de bataille recommandé
 
-1. **Quick win D** : `inject_fmg_entries(slot, entries)` générique (extrait de setup_messages).
-2. **Quick win A** : `param_set_field(...)` générique par-dessus get_param + resolve_field_offset.
+**MAJ 2026-07-03 — quick wins A + D FAITS + vérifiés in-game (ERR/Proton).**
+1. ✅ **Quick win D — FAIT** : `goblin::inject_fmg_entries(slot, entries)` générique
+   (`goblin_messages.{hpp,cpp}`, généralise `patch_fmg_in_memory`) + RPC `fmg_set`. Vérifié :
+   inject+override+read-back sur slots base 10 GoodsName / 19 PlaceName. Save-safe (FMG rechargé du
+   msgbnd au boot). Commit `ad5e9f5`.
+2. ✅ **Quick win A — FAIT** : `goblin::paramedit::param_set_field` / `param_set_field_by_name`
+   (`goblin_param_edit.{hpp,cpp}`, offset live via `resolve_field_offset`) + le loader
+   `param_overrides.ini` (Slice 3, shippable, `docs/plans/param_override_loader_plan.md`). Vérifié
+   in-game. C'est le premier "mod sans regulation.bin".
 3. **Pièce maîtresse B** : `param_add_rows(paramName, templates)` — généraliser l'expansion
    TutorialParam ; valider d'abord sur une table non id-looked-up ; budgéter le test heap.
 4. **C (item bout-en-bout)** : APRÈS avoir figé H (IDs réservés + contrat DLL-au-load) ; prototyper

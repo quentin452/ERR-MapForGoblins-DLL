@@ -38,10 +38,17 @@ without regulation.bin", shippable as a rebalance mod, and the substrate for ite
 - **Verify workflow learned:** a bg Claude job can't keep ER alive EXCEPT via a single FOREGROUND
   blocking command (me3 as in-shell child, killed before return) — see
   [[memory/tooling/mfg-rpc-driver-hardening]]. Params live at title (no save needed).
-- **NEXT (optional):** F1 panel to edit overrides live; more registry fields (each = one AOB);
-  Slice-2 tier-2 (ship SOTE Paramdex for arbitrary fields). Then the bigger gaps: **Gap D**
-  (`inject_fmg_entries`), **Gap B** (`param_add_rows`), **Gap C** (item grants — FREEZE the reserved
-  high-ID range + "DLL-required-at-load" policy FIRST; `.sl2` orphan-ID corruption otherwise).
+- **Gap D DONE 2026-07-03 (`ad5e9f5`):** `goblin::inject_fmg_entries(slot, entries)` — generic runtime
+  FMG string injection (generalizes `patch_fmg_in_memory`), RPC `fmg_set <slot> <id> <text>`. In-game
+  verified: inject+override+read-back on base slots 10 GoodsName / 19 PlaceName (11=WeaponName;
+  {419,319}=DLC layers, guarded). Save-safe. Second framework primitive after `param_set_field` —
+  together they rename/re-stat items without a regulation.bin.
+- **NEXT (optional):** F1 panel to edit overrides live; more param registry fields (each = one AOB);
+  Slice-2 tier-2 (ship SOTE Paramdex for arbitrary fields). Then the bigger gaps: **Gap B**
+  (`param_add_rows` — generalize the TutorialParam table-expand; validate on a non-id-looked-up table,
+  budget the heap test), **Gap C** (item grants — FREEZE the reserved high-ID range +
+  "DLL-required-at-load" policy FIRST; `.sl2` orphan-ID corruption otherwise; sidecar save =
+  `plans/shadow_sidecar_save_plan.md`).
 
 ## RESUME HERE (2026-07-02) — hot-reload Slice D IMPLEMENTED (`feat/overlay-hotreload-slice-d`), Windows in-game validation next
 
