@@ -904,13 +904,21 @@ resolved key would disambiguate "fundamentally iconId=0" from "a fixable lot-res
   RB-node header (0..0x30) in ONE RPM (`read_rb` helper, mirrors the `[FIELDINS-B]` diag pattern right
   below it) + bulk the block_data vec pointers → ~2 RPMs/node instead of ~8-12 (successor navigation
   reuses the already-read fields). Behavior-preserving (same offsets/traversal). Built clean +
-  deployed. **In-game (light title-load, save didn't reach world): `read_wgm` max 0.27ms, 0 spikes,
-  no regression.** REMAINING: confirm the in-WORLD magnitude (many tiles loaded) in a real play
-  session via the `[SPIKE]` log — the light run under-stresses read_wgm. The residual
-  `refresh.collected.total` spike (max ~2.9ms) is now OUTSIDE read_wgm (the geof/wgm merge + collected
-  marking) — next suspect if total spikes persist in-world. (Cosmetic nit still open: the spike-ratio
-  display divides by a near-zero baseline for quiet timers, e.g. "~600x its 0.01ms avg" — floor the
-  avg in the ratio display whenever touching that code.)
+  deployed. **IN-WORLD RESULT (real session 2026-07-03 04:49, fixed DLL): PARTIAL.** Steady path
+  fixed — `read_wgm` AVG dropped to 0.04-0.10ms — BUT read_wgm STILL SPIKES 2-3ms (~33x, 4x/session).
+  Those remaining spikes are the **cache-MISS path (new tile loads)**, NOT the steady tree walk: on a
+  fresh tile, read_wgm re-reads EVERY geom instance's chain — geom_ins header + msb_part header + name
+  = **~3 RPMs per instance** for all instances BEFORE the AEG099/AEG463 family filter drops the noise
+  (hundreds × 3 RPMs = the burst). The tree-walk fix didn't touch that path.
+  **NEXT for read_wgm spikes:** (a) budget the cache-miss resolve per refresh (cap K new tiles /
+  N instances per call, defer the rest — CHECK the downstream graying contract first so a deferred
+  tile doesn't flash wrong-collected); (b) land the [GEOMPROBE] endgame — AOB-pin the game's own O(1)
+  collected getter (`goblin_collected.cpp:543` already arms DR0 for it) to replace the RPM snapshot;
+  (c) a cheaper per-instance family discriminator than the name-chain (needs RE of a type/model field).
+  **BIGGER FISH REVEALED:** the DOMINANT frame hitch this session was **`present.overlay_total`
+  (20 spikes, up to 24ms)** + `render.minimap` — RENDER-side, unrelated to read_wgm; higher-value
+  target if the goal is "stop the felt lag". (Cosmetic nit still open: the spike-ratio display divides
+  by a near-zero baseline for quiet timers — floor the avg when touching that code.)
 - **Map-exit input softlock.** Root cause for the general "soft key lock at screen edge" turned out
   to be **external** — Deskflow (cursor-sharing KVM), not ER or this mod; fix is Deskflow-side, see
   `docs/re/windows_input_softlock_re_prompt.md`. The F1-mouse-dead half of the original report was a
