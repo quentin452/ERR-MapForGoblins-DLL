@@ -92,6 +92,24 @@ before any game save (on-disk save unchanged). **So Gap C GRANT is fully impleme
 sidecar Phase-2 strip = `give_item(id,-qty)` before the game save + `give_item(id,+qty)` after.** NEXT:
 wire the strip/reinject onto the CreateFileW save signal (Phase 2 proper) + the Gap C custom-item grant.
 
+**SIDECAR PHASE 2 (strip/reinject) — DATA LAYER BUILT, CreateFileW TRIGGER DISPROVEN 2026-07-03.**
+Built + committed (all in `goblin_sidecar.cpp`, currently DORMANT behind `kItemStripReinjectWired=false`):
+`[items]` store in the `.mfg` (`add_custom_item`/`custom_items`, RPC `sidecar additem|items`),
+`strip_items()`/`reinject_items()` (via `give_item ∓qty`), world-enter reinject + after-save drain +
+a `g_stripped` debounce (one save = ~5 CreateFileW write-opens → strip once). give_item from the save
+thread is stable (SEH, no crash). **KEY FINDING — strip-at-CreateFileW does NOT clean the save:**
+cap-oracle test (grant→warp-save→delete `.mfg`→reload with `items=0`) showed the char STILL at the item
+cap → the item was serialized at full count despite the strip. Fatal because (1) ER serializes the
+inventory buffer before/around the file-open (strip too late) and (2) `reinject-after-save` + ER's
+frequent AUTOSAVE re-dirties. **So strip must be a SYNCHRONOUS hook on the SAVE ROUTINE**
+(`strip → original_save() → reinject`, atomic, no autosave window), not CreateFileW. CreateFileW stays
+correct for the `.mfg` write signal + path (ERR/alt-save work there too — but for REDIRECT of the whole
+buffer, confirmed by reading `eldenring_alt_saves.dll` = pure CreateFileW hook). **NEXT: RE the ER save
+function** (triggered by `GameMan+0xB42`; find via find-what-accesses on 0xB42 or the save-write
+CreateFileW caller's return addr) → move the strip/reinject bracket there → flip the gate on. Data layer
++ give_item primitives are done & reusable; only the trigger point changes. `plans/shadow_sidecar_save_plan.md`
+Phase 2 has the detail.
+
 **GRACE WARP — ADDED + IN-GAME VERIFIED 2026-07-03 (dev-world navigation, user-requested).** The
 Hexinton CT ("Coinsworth") had a proven warp: `goblin::warp::to_grace(graceId)`
 (`goblin_warp.{hpp,cpp}`) calls the game's own Lua-event fast-travel `LuaWarp_01(rcx=[CSLuaEventManager

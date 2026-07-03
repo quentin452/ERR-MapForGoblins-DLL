@@ -172,6 +172,27 @@ save→quit→reload cycle. **Remaining Phase 1: only (1c) identity binding + mu
 sidecar is ready to back the Gap C GRANT (Phase 2 adds the inventory strip/reinject).
 
 ### Phase 2 — inventory ITEMS via strip-and-reinject (the hard part)
+
+**PROGRESS 2026-07-03: data layer + strip/reinject primitives BUILT; CreateFileW trigger DISPROVEN.**
+Built (all in `goblin_sidecar.cpp`): the `[items]` store (`add_custom_item`/`remove_custom_item`/
+`custom_items`, persisted in the `.mfg`), `strip_items()` (give_item −qty) / `reinject_items()`
+(give_item +qty), reinject-on-world-enter (present pump, with the flag replay), and an after-save
+reinject drain with a `g_stripped` debounce (one game save opens the save file ~5× → strip once).
+RPC `sidecar additem|items`. give_item from the CreateFileW (save) thread is stable (SEH-guarded, no
+crash). **BUT the CreateFileW-triggered strip does NOT yield a clean save** — empirically DISPROVEN
+(cap-oracle test, `.mfg` deleted so no reinject on reload): after grant→warp-save→reload the char was
+still at the item cap → the item was serialized at full count DESPITE the strip. Two fatal reasons:
+(1) ER serializes the inventory buffer before/around the file-open, so stripping at CreateFileW is too
+late; (2) even if timed, `reinject-after-save` restores the item and ER's frequent AUTOSAVE re-serializes
+it. **So the strip trigger must be a SYNCHRONOUS hook on the save/serialization routine**
+(`strip → original_save() → reinject`, one atomic bracket, no autosave window) — NOT CreateFileW.
+`CreateFileW` remains right for the sidecar `.mfg` write signal + path resolution (ERR/alt-save also
+work there — but for REDIRECT of the whole buffer, not strip). **NEXT: RE the ER save function** (the
+routine triggered by `GameMan+0xB42`; find via find-what-accesses on 0xB42 or the CreateFileW caller's
+return address) and move the strip/reinject bracket there. The data layer + give_item primitives are
+done and reusable; only the trigger point changes.
+
+Original design (trigger point now known to be the save fn, not CreateFileW):
 On the CreateFileW save signal: for each sidecar item, `RemoveItem` from the live inventory (record
 qty), let the game write the (now-clean) save, then `AddItem` back. On load: `AddItem` each from the
 sidecar. Needs: the finished inv accessor + AddItem/RemoveItem + robust save-window timing (catch EVERY

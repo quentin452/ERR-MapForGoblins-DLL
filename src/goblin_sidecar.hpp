@@ -44,6 +44,15 @@ namespace goblin::sidecar
     void set_kv(const std::string &key, const std::string &value);
     std::string get_kv(const std::string &key);
 
+    // ── Custom items (Phase 2 strip-and-reinject) ────────────────────────────
+    // A framework-granted custom item to persist across saves WITHOUT dirtying the save:
+    // stripped from the live inventory right before the game serializes a save, reinjected
+    // after + re-granted on world-enter. add accumulates qty (category-encoded id, e.g.
+    // 0x40000000|goodsId); a total ≤0 drops the record.
+    void add_custom_item(uint32_t item_id, int32_t qty);
+    void remove_custom_item(uint32_t item_id);
+    std::vector<std::pair<uint32_t, int32_t>> custom_items();
+
     // ── Persistence ──────────────────────────────────────────────────────────
     // Force a load / save of the current sidecar path. save() writes atomically
     // (temp + rename). Both return false if the path is unknown or I/O failed.

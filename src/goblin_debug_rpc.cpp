@@ -664,6 +664,28 @@ namespace goblin::debug_rpc
                         out += " " + std::to_string(f);
                     return out;
                 }
+                if (sub == "additem")
+                {
+                    std::string id_s = next_token(rest), qty_s = next_token(rest);
+                    if (id_s.empty()) return "err usage: sidecar additem <id(0x..)> <qty>";
+                    uint32_t id = 0; int32_t qty = 1;
+                    try {
+                        id = (uint32_t)std::stoul(id_s, nullptr, 0);
+                        if (!qty_s.empty()) qty = (int32_t)std::stol(qty_s, nullptr, 0);
+                    } catch (...) { return "err bad id/qty"; }
+                    goblin::sidecar::add_custom_item(id, qty);
+                    return "ok additem " + id_s + " x" + std::to_string(qty);
+                }
+                if (sub == "items")
+                {
+                    std::string out = "ok items:";
+                    for (auto &[id, qty] : goblin::sidecar::custom_items())
+                    {
+                        char b[32]; std::snprintf(b, sizeof(b), " %#010x=%d", id, qty);
+                        out += b;
+                    }
+                    return out;
+                }
                 if (sub == "save")
                     return goblin::sidecar::save() ? "ok saved " + goblin::sidecar::sidecar_path_utf8()
                                                    : "err save failed (no save file seen yet?)";
