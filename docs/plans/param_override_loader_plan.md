@@ -1,10 +1,12 @@
 # Param-override loader — plan (regulation.bin-free runtime param modding)
 
 Status: **SCOPED 2026-07-03. Slice 1 (offset-addressed helper) + Slice 2 tier-1 (name-addressed
-registry) IMPLEMENTED in `src/goblin_param_edit.{hpp,cpp}` + RPC `param_get(f)`/`param_set(f)`
-commands. Builds clean on Linux. In-game round-trip verification PENDING (blocked: a background
-Claude job can't keep ER alive — [[../memory/tooling/mfg-rpc-driver-hardening]]; needs a
-user-launched game). Not yet: Slice 3 boot override-file loader.**
+registry) IMPLEMENTED + IN-GAME VERIFIED (ERR/Proton, foreground me3 launch — see
+[[../memory/tooling/mfg-rpc-driver-hardening]] workaround). `src/goblin_param_edit.{hpp,cpp}` + RPC
+`param_get(f)`/`param_set(f)`. Verified round-trips: `EquipParamWeapon[1000000]@0x00 s32` 0→1→0
+(offset write); `EquipParamGoods[100].sortGroupId` 200→101→200 (name-addressed write, offset resolved
+live from the exe); missing-row / unknown-field return clean `err`, no crash. Test row that EXISTS on
+ERR: `EquipParamGoods` id 100 (1074000 does NOT). NEXT: Slice 3 boot override-file loader.**
 
 Origin: the architecture audit (`docs/runtime_live_capabilities_audit.md`) +
 `docs/runtime_modding_framework_vision.md` + `docs/scripting_api_roi_note.md`. This is the FIRST

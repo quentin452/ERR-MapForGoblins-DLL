@@ -48,11 +48,29 @@ session: the game will not stay alive when launched from the job's Bash tool.
   environment!` and exits. The me3 CLI (`internals/modengine/bin/me3 launch -g eldenring -e
   <Game/eldenring.exe> -p err_offline.me3`, per [[me3-cli-nonerr-launch]]) IS the headless path and
   DOES start booting — but it's still reaped by the bg job as above.
-- **Consequence / workflow:** in-game RPC verification must be driven against a **user-launched**
-  game. The user starts ER their normal way (a real terminal), reaches a state where params are
-  live (title screen is enough — see [[../linux]]), THEN the agent runs the RPC driver against the
-  already-running process. The agent CAN do everything except keep the process alive: build, deploy
-  (atomic), and drive `mfg_rpc.py` once something else owns the game process.
+- **THE WORKAROUND — one FOREGROUND blocking command (VERIFIED 2026-07-03).** The reaping only hits
+  a DETACHED child (setsid/disown/`run_in_background` reparent me3 to init → the job's cleanup kills
+  it). If instead you launch me3 as an in-shell background child (`me3 launch … &`) inside a SINGLE
+  **foreground** Bash tool call (a generous `timeout`, e.g. 300000 ms) and do the WHOLE recipe —
+  poll `ping`, run the RPC test, then `kill $ME3` — before the command returns, the parent shell
+  stays alive the whole time so me3 is NOT reaped. Proven: ER booted, RPC up at ~28s, full param
+  round-trip ran, then clean kill. Pattern:
+  ```bash
+  cd <ERR>/internals/modengine
+  ./bin/me3 launch -g eldenring -e "<Game/eldenring.exe>" -p err_offline.me3 >me3.log 2>&1 &
+  ME3=$!                          # in-shell child of the still-running foreground shell
+  for i in $(seq 1 55); do kill -0 $ME3 || break; r=$(timeout 8 python tools/mfg_rpc.py --port 38700 ping); [[ $r == *pong* ]] && break; sleep 4; done
+  # ... run the RPC commands (params live at title — no save needed) ...
+  kill $ME3; pkill -f "Game/eldenring.exe"     # MUST kill before returning, else the game outlives the run
+  ```
+  Trade-off: the command BLOCKS for the whole boot+test (~30-120s) and the game is KILLED at the end
+  (a foreground tool call can't leave a child running — returning reaps it). So this is for
+  self-contained verify runs, NOT for leaving a game up for interactive iteration. For a long-lived
+  session the user still launches ER themselves.
+- **Consequence / workflow:** in-game RPC verification either uses the foreground one-shot above, or
+  is driven against a **user-launched** game. Params are live at the title screen (no save — see
+  [[../linux]]). The agent can build, deploy (atomic), and drive `mfg_rpc.py`; it just can't keep a
+  detached game process alive across tool calls.
 - Deploy note: redeploy AFTER the last rebuild — it's easy to `cp` the DLL before adding the RPC
   command you're about to test (the deployed binary then rejects `param_get` as "unknown command").
   Sanity-check with `grep -ac param_set <deployed dll>`.
