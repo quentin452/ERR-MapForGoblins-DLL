@@ -64,7 +64,14 @@ using goblin::i18n::tr;  // overlay UI localization
 namespace
 {
     bool g_large = true;         // false = compact widget, true = full panel
+    // Deterministic F1 tab selection for scripted verification (RPC `f1_tab <name>` → SetSelected on the
+    // matching BeginTabItem for one frame), so tests don't pixel-click the tab bar. -1 = no request.
+    int g_requested_tab = -1;
 }
+
+// Force-select an F1 tab by index (0=Markers,1=Search,2=Quests,3=Display,4=Dev) on the next draw.
+// One-shot: consumed + reset after the tab bar draws. Set via overlay_api::f1_request_tab / the RPC.
+void goblin::overlay::request_f1_tab(int idx) { g_requested_tab = idx; }
 
     // ── Overlay-rendered markers ──────────────────────────────────────────
     // The world map is now drawn by the goblin::worldmap module (src/worldmap/):
@@ -426,34 +433,38 @@ namespace
             }
             else if (ImGui::BeginTabBar("##f1tabs", ImGuiTabBarFlags_None))
             {
+                // Scripted-verification tab select (RPC f1_tab): SetSelected on the requested tab this frame.
+                auto tab_flag = [&](int i) {
+                    return g_requested_tab == i ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+                };
                 // Markers — the everyday "what shows on the map" controls.
-                if (ImGui::BeginTabItem(tr("Markers")))
+                if (ImGui::BeginTabItem(tr("Markers"), nullptr, tab_flag(0)))
                 {
                     panel::draw_sections_categories(ctx, f);  // categories grid (with icons) + ERR
                     panel::draw_clustering(f);                // clustering presets
                     ImGui::EndTabItem();
                 }
                 // Search — find an item/object and locate it on the map.
-                if (ImGui::BeginTabItem(tr("Search")))
+                if (ImGui::BeginTabItem(tr("Search"), nullptr, tab_flag(1)))
                 {
                     panel::draw_item_search(ctx, f);
                     ImGui::EndTabItem();
                 }
                 // Quests — quest navigation / browser.
-                if (ImGui::BeginTabItem(tr("Quests")))
+                if (ImGui::BeginTabItem(tr("Quests"), nullptr, tab_flag(2)))
                 {
                     panel::draw_quest_browser(f);
                     ImGui::EndTabItem();
                 }
                 // Display — global rendering settings (scale, minimap, toggles) + pause.
-                if (ImGui::BeginTabItem(tr("Display")))
+                if (ImGui::BeginTabItem(tr("Display"), nullptr, tab_flag(3)))
                 {
                     draw_pause();
                     panel::draw_general_settings(ctx, f);
                     ImGui::EndTabItem();
                 }
                 // Dev — RE/debug tooling: icon census, dev tools + danger zone, live world editor.
-                if (ImGui::BeginTabItem(tr("Dev")))
+                if (ImGui::BeginTabItem(tr("Dev"), nullptr, tab_flag(4)))
                 {
                     // Mod-owned virtual world map (WIP) — opens a pannable/zoomable custom-world canvas.
                     if (ImGui::Button(panel::virtual_map_open() ? tr("Virtual World Map: OPEN")
@@ -466,6 +477,7 @@ namespace
                     ImGui::EndTabItem();
                 }
                 ImGui::EndTabBar();
+                g_requested_tab = -1;  // one-shot: consume the scripted tab request
             }
 
             s_settings_hits = f.hits;

@@ -104,6 +104,8 @@ namespace goblin::overlay_api
     // MapForGoblins virtual world map (mod page) open flag — drive it from the RPC / a toggle.
     GOBLIN_RENDER_API void virtual_map_set_open(bool open);
     GOBLIN_RENDER_API bool virtual_map_is_open();
+    // Force-select an F1 tab by index (0=Markers,1=Search,2=Quests,3=Display,4=Dev) — scripted verify.
+    GOBLIN_RENDER_API void f1_request_tab(int idx);
     GOBLIN_RENDER_API void request_save();
     GOBLIN_RENDER_API void reset_quest_progress();
     GOBLIN_RENDER_API void reset_to_defaults();

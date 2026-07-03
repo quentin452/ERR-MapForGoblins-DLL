@@ -32,6 +32,22 @@ Related: the `+0x1EB9999` render race itself is pre-existing and documented in
 [[er-shutdown-crash-noise]] / [[mapforgoblins-map-open-freeze]]; heavy scripted map open/close
 cycling seems to tickle it (2 dumps in one evening of RPC loops, 18:27 + 18:43 on 2026-07-02).
 
+## Driving the F1 panel in tests — prefer STATE-RPCs over pixel-clicks (2026-07-04)
+
+Pixel `mouse_click <x> <y>` on F1 widgets (esp. the TAB BAR) is flaky — clicks land on the wrong tab
+(the AZERTY/refocus/warp-race quirks below), so a scripted verify that clicks tabs is unreliable. Drive
+the panel by STATE instead — deterministic, no coordinate guessing, no focus race:
+
+- **`f1_tab <Markers|Search|Quests|Display|Dev|0..4>`** — force-selects a tab (opens the panel first;
+  ImGui `SetSelected`, one-shot). Use this to reach a tab before screenshotting, NOT a pixel-click.
+- **`open_f1 0|1|toggle`**, **`vmap 0|1|toggle`** (virtual world map), **`pause 0|1|toggle`** — panel /
+  window / pause state directly.
+- **`set <ini_key> <val>`** for any config bool/float; **`param_setf`/`param_getf`**, the world-editor
+  verbs, `goods_count`, etc. for feature state.
+- Rule of thumb: if you need to verify a UI action, add a small state-RPC for it (the pattern above)
+  rather than pixel-clicking. Only fall back to `mouse_click`/`mouse_drag`/`mouse_wheel` for things with
+  NO state backing (e.g. exercising the virtual-map canvas pan/zoom itself).
+
 ## RPC auto-idle — scripted vs. human input arbitration (2026-07-03, `feat/rpc-auto-idle`)
 
 The RPC input commands (`key`/`type`/`mouse_move`/`mouse_click`/`mouse_drag`/`mouse_wheel`) now

@@ -398,7 +398,7 @@ namespace goblin::debug_rpc
             // help — one-line verb list (the client reads a single reply line, so no embedded \n).
             // Full usages + caveats: docs/memory/tooling/rpc-commands.md. Keep in sync when adding a cmd.
             if (cmd == "help" || cmd == "?")
-                return "ok commands: help ping status open_f1 vmap pause set screenshot dumpmenu reload_overlay"
+                return "ok commands: help ping status open_f1 f1_tab vmap pause set screenshot dumpmenu reload_overlay"
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
@@ -442,6 +442,23 @@ namespace goblin::debug_rpc
                 std::string tag = next_token(rest);
                 goblin::worldmap_probe::dump_menu_state(tag.empty() ? "x" : tag.c_str());
                 return "ok dumpmenu -> wmprobe log";
+            }
+            // f1_tab <Markers|Search|Quests|Display|Dev|0..4> — deterministically select an F1 tab (opens
+            // the panel first). For scripted verification so tests drive tabs by name, not pixel-clicks.
+            if (cmd == "f1_tab")
+            {
+                std::string a = next_token(rest);
+                if (a.empty()) return "err usage: f1_tab <Markers|Search|Quests|Display|Dev>";
+                static const char *kTabs[5] = {"markers", "search", "quests", "display", "dev"};
+                std::string la;
+                for (char c : a) la += (char)std::tolower((unsigned char)c);
+                int idx = -1;
+                if (la.size() == 1 && la[0] >= '0' && la[0] <= '4') idx = la[0] - '0';
+                else for (int i = 0; i < 5; i++) if (la == kTabs[i]) { idx = i; break; }
+                if (idx < 0) return "err f1_tab: unknown tab '" + a + "'";
+                goblin::overlay::set_panel_open(true);       // ensure the panel is up
+                goblin::overlay_api::f1_request_tab(idx);     // SetSelected next draw (one-shot)
+                return "ok f1_tab=" + std::string(kTabs[idx]);
             }
             // vmap 0|1|toggle — open/close the MapForGoblins virtual world map (mod page) window.
             if (cmd == "vmap")

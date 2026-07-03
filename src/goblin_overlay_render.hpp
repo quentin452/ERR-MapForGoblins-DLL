@@ -75,6 +75,10 @@ namespace goblin::overlay
     void draw_minimap_hud(const OverlayFrameCtx &ctx);
     void draw_panel(const OverlayFrameCtx &ctx);
 
+    // Force-select an F1 tab by index (0=Markers,1=Search,2=Quests,3=Display,4=Dev) on the next draw
+    // (one-shot, ImGui SetSelected). For scripted verification so tests drive tabs by name, not pixels.
+    GOBLIN_RENDER_API void request_f1_tab(int idx);
+
     // Slice B wrapper surface: mechanical forwards to host implementations that stay in
     // goblin_overlay.cpp because they operate on host-owned g_device/g_command_queue/g_srv_heap/
     // g_frames/g_command_list — the same per-frame D3D12 state hk_present resets every frame. Found
