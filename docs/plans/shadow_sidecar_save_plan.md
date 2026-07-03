@@ -45,10 +45,22 @@ save/load lifecycle. Two implementation variants:
    `docs/ersc_hosting_and_map_autohide.md` — a possible reference/reuse point.)
 2. **Save/load lifecycle hooks.** The events to fire strip (pre-write) and reinject (post-load). Must be
    the RIGHT boundary so we neither miss a save nor corrupt a partial one.
-3. **Binding key (anti-desync).** A `<save>.mfg` MUST pair unambiguously with its `.sl2` and survive the
-   user copying / backing up / cloud-syncing saves. Candidates: steam id + character slot index + a
-   GUID we stamp (into an unused `.sl2` field, or a vanilla-range flag pattern). Define the key + the
+3. **Binding key (anti-desync).** A `<save>.mfg` MUST pair unambiguously with its save file and survive
+   the user copying / backing up / cloud-syncing saves. Candidates: steam id + character slot index + a
+   GUID we stamp (into an unused save field, or a vanilla-range flag pattern). Define the key + the
    "sidecar doesn't match this save" fallback (ignore + warn, never mis-apply another save's items).
+   **SAVE-PATH IS DYNAMIC — do NOT hardcode `.sl2`.** ERR writes **`ER0000.err`** (ModEngine3 `savefile`
+   redirect in the `.me3` profile), NOT `.sl2` — but it is the SAME format (BND4/sl2 layout, see
+   [[../memory/tooling/err-save-file-format]]). Vanilla = `.sl2`, co-op (ERSC) may differ again. Resolve
+   the ACTIVE save file the game opened (hook the save open / read the ME3 redirect) and place `<save>.mfg`
+   next to it; key off the real file, whatever its extension. Because the serializer work is IN-MEMORY,
+   the redirect doesn't touch the strip/reinject RE — only where the sidecar lands.
+
+   **ERR nuance (relaxes variant choice for ERR):** an ERR `.err` save is ALREADY mod-locked (needs ERR's
+   regulation; vanilla can't load it), so the sidecar's "keep the save vanilla-clean / loads DLL-less"
+   payoff matters MOST for vanilla / value-only-mod installs. For ERR specifically, variant B
+   (reserved-id + DLL-required) is more tolerable — the only orphan case is dropping just MapForGoblins
+   from an ERR profile, a smaller blast radius than dirtying a precious vanilla `.sl2`.
 4. **Atomicity / crash safety.** Write the sidecar in lockstep with the game's save event; tolerate a
    crash between the `.sl2` write and the `.mfg` write (temp-file + rename, a generation counter, or a
    pending-journal). Decide the recovery rule when they disagree.
