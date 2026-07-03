@@ -1,9 +1,10 @@
 # Shadow / sidecar save — plan
 
-Status: **SCOPED 2026-07-03, DEFERRED — do NOT start yet.** This is the save-persistence mechanism for
-FUTURE content modding (custom items / flags / progress). It is gated on **Gap H** (reserved-ID +
-DLL-at-load policy) and only becomes real work when **Gap C** (item grants) starts. Kept here so the
-design survives; the shipped param-override loader (`param_override_loader_plan.md`) needs NONE of this.
+Status: **SCOPED + PHASED 2026-07-03 (user chose "sidecar first").** Approach chosen (transient-grant
+via inventory API + save-detection, NOT serializer parsing) + RE targets nailed — see "Implementation
+phasing" below. **Phase 1 (ini state-store, no inventory strip) = the buildable start; Phase 2
+(inventory strip-and-reinject) = the hard RE.** Phase 1 uses mINI (flat state); JSON is only needed for
+Gap-C custom-item records (Phase 2 territory). Gap H frozen; param-override loader needs NONE of this.
 Origin: user idea + `docs/runtime_modding_framework_vision.md` ("Save persistence — the shadow/sidecar
 save"). Prereqs in `docs/runtime_live_capabilities_audit.md` (Gap C gated on Gap H).
 
@@ -66,6 +67,48 @@ save/load lifecycle. Two implementation variants:
    pending-journal). Decide the recovery rule when they disagree.
 5. **Multi-slot / new-game / delete.** One `.sl2` holds multiple character slots; handle per-slot state,
    new-character (empty sidecar), and character-delete (drop the sidecar slice).
+
+## Implementation phasing + RE targets (2026-07-03 — user chose "sidecar first")
+
+**Approach chosen: transient-grant via the inventory API + save-DETECTION, NOT raw serializer
+parsing.** Rationale: the game serializes whatever is in the live inventory, so instead of RE'ing the
+`.sl2`/`.err` inventory-serialize function + its 11 checksums (huge, format-fragile), keep custom items
+OUT of the live inventory across a save: re-grant on load, strip right before the game writes the save,
+re-grant after. The strip/reinject uses the inventory ADD/REMOVE functions (game APIs) — far more
+tractable than buffer surgery.
+
+**RE targets (state of each):**
+- **Inventory accessor — PARTLY KNOWN.** `WorldChrMan=[er+0x3D65F88]`, `LocalPlayer=[WCM+0x1E508]`
+  (`goblin_world_position.cpp:463`). The inventory (EquipInventoryData / the MapItemMan the grant `inv`
+  arg points at) hangs off LocalPlayer or a sibling global — finish this chain first (shared with the
+  Gap C grant).
+- **AddItem — AOB KNOWN** (`sig::ADD_ITEM_FUNC`, observer-hooked read-only, `goblin_debug_events.cpp:344`;
+  convention: `AddItemFn(inv, entry{qty@0,id@4}, base, count, pad)`). **RemoveItem — NEW RE** (the
+  consume/discard counterpart).
+- **Save-event DETECTION — TRACTABLE via existing infra.** The mod already hooks `CreateFileW`
+  (`diag_boot_io` / [BOOTIO]). The game opens/writes `ER0000.err` (ERR) / `ER0000.sl2` (vanilla) on
+  save — watch that path to fire a "save starting/ending" signal WITHOUT RE'ing the save function.
+  (A cleaner hook on the actual RequestSaveData fn is a later refinement.)
+- **Load-complete DETECTION — ALREADY HAVE signals** (world-entered: player pos resolves, collected
+  refresh runs). Re-grant on first in-world frame after a load.
+- **Character identity (binding key) — NEW small RE.** SteamID + character slot from the loaded save
+  state in memory (or stamp our own GUID into a reserved event-flag pattern).
+
+### Phase 1 — sidecar STATE STORE (no inventory strip; buildable without the hard save-hook)
+The `<save>.mfg` file + binding + JSON, storing framework state the DLL FULLY OWNS: custom event flags
+we set (`SetEventFlag`), per-save mod config, progress counters. Persist on our own schedule (own-state
+change + world-exit) + on the CreateFileW save signal; load + re-apply on world-enter. Needs: save-PATH
+resolution (`.err`/`.sl2`, dynamic), character-identity read (binding), a JSON parser (shared with Gap C
+— add here per [[../memory/process/authoring-format-decision]]). **Useful immediately** (persist custom
+flags/progress across sessions), and it's the skeleton Phase 2 rides on. Does NOT touch the inventory →
+no strip, no RemoveItem, low risk.
+
+### Phase 2 — inventory ITEMS via strip-and-reinject (the hard part)
+On the CreateFileW save signal: for each sidecar item, `RemoveItem` from the live inventory (record
+qty), let the game write the (now-clean) save, then `AddItem` back. On load: `AddItem` each from the
+sidecar. Needs: the finished inv accessor + AddItem/RemoveItem + robust save-window timing (catch EVERY
+save incl. autosave; strip before the write, restore after the close). This is what makes granted
+custom items save-clean. Prototype on the ONE Gap-C item (goods 90000001).
 
 ## Sequencing (why it's deferred)
 
