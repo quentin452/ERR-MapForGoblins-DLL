@@ -574,6 +574,28 @@ bool goblin::get_player_world_pos(float &x, float &y, float &z)
     return true;
 }
 
+// Raw player-chain pointers for the inventory-accessor RE + the Gap C / sidecar grant
+// chain. probe_player_seh writes wcm then lp BEFORE the (possibly faulting) float reads,
+// so both are valid even when pr.ok is false (position field moved / not yet live) — we
+// only need the pointers here, not the coordinates. nullptr before the WCM static resolves.
+void *goblin::get_world_chr_man_ptr()
+{
+    if (!g_wcm_tried) resolve_world_chr_man();
+    if (!g_wcm_static) return nullptr;
+    PlayerProbe pr{};
+    probe_player_seh(g_wcm_static, &pr);
+    return pr.wcm;
+}
+
+void *goblin::get_local_player_ptr()
+{
+    if (!g_wcm_tried) resolve_world_chr_man();
+    if (!g_wcm_static) return nullptr;
+    PlayerProbe pr{};
+    probe_player_seh(g_wcm_static, &pr);
+    return pr.lp;
+}
+
 // ─── Player MARKER-space position — CONFIRMED Target-A chain (playerpos doc) ──
 // Both statics are AOB-anchored (drift per patch, so never hardcode the RVAs):
 //   player-MapId singleton (was 0x3d691d8): unique site that loads it then calls

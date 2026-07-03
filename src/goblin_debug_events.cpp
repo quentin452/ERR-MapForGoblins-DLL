@@ -357,10 +357,52 @@ using AddItemFn = uint64_t (*)(void *, uint8_t *, uint8_t *, uint64_t, uint64_t)
 AddItemFn g_orig_add_item = nullptr;
 constexpr const char *ADD_ITEM_AOB = goblin::sig::ADD_ITEM_FUNC;
 
+// Last live `inv` (rcx) the game passed to AddItemFunc — the inventory / MapItemMan
+// accessor a framework grant (Gap C / sidecar) must supply to CALL AddItemFunc. The
+// observer only forwards what the game passes; capturing it here is the bootstrap that
+// makes the grant callable without a fresh static-chain RE. MapItemMan is a session
+// singleton → the pointer is reusable for the rest of the session once seen.
+std::atomic<void *> g_last_inv{nullptr};
+
+// One-shot inventory-accessor correlation: when a NEW `inv` is seen, snapshot the player
+// chain and log inv vs LocalPlayer/WorldChrMan + scan each for a slot holding `inv`, so we
+// can turn the observed pointer into a STATIC chain (LocalPlayer+off, or a MapItemMan
+// global) instead of relying on a game grant to populate it. Read-only, safe_copy-guarded.
+void log_inv_accessor_chain(void *inv)
+{
+    void *lp = goblin::get_local_player_ptr();
+    void *wcm = goblin::get_world_chr_man_ptr();
+    auto delta = [](void *a, void *b) -> long long {
+        return a && b ? (long long)((uintptr_t)a - (uintptr_t)b) : 0;
+    };
+    g_log->info("[INVACCESS] inv={:p} LocalPlayer={:p} WCM={:p} inv-lp={:#x} inv-wcm={:#x}",
+                inv, lp, wcm, delta(inv, lp), delta(inv, wcm));
+    // Scan the player-chain objects for a pointer slot that HOLDS inv → that offset is
+    // the static path to the accessor (LocalPlayer+off, or two hops via WCM).
+    auto scan = [inv](const char *tag, void *base) {
+        if (!base) return;
+        auto *p = reinterpret_cast<uint8_t *>(base);
+        for (size_t off = 0; off < 0x2000; off += 8)
+        {
+            void *slot = nullptr;
+            if (safe_copy(p + off, &slot, sizeof(slot)) && slot == inv)
+                g_log->info("[INVACCESS]   {} + {:#x} -> inv", tag, off);
+        }
+    };
+    scan("LocalPlayer", lp);
+    scan("WCM", wcm);
+}
+
 uint64_t hk_add_item(void *inv, uint8_t *entries, uint8_t *base, uint64_t count,
                      uint64_t pad)
 {
     int64_t t = now_ns();
+    // Capture the inventory accessor for the framework grant (Gap C / sidecar). On a
+    // CHANGE, log the accessor chain once so the observed pointer can be promoted to a
+    // static path. MapItemMan is a singleton → normally captured once and reused.
+    void *prev_inv = g_last_inv.exchange(inv, std::memory_order_relaxed);
+    if (inv && inv != prev_inv)
+        log_inv_accessor_chain(inv);
     uint32_t item_id = 0;
     uint8_t buf[24];
     if (entries && safe_copy(entries, buf, sizeof(buf)))
@@ -538,6 +580,11 @@ int finalize_capture(bool (*reader)(uint32_t))
         return -1;
     }
     return static_cast<int>(persisted.size());
+}
+
+void *last_inventory_accessor()
+{
+    return g_last_inv.load(std::memory_order_relaxed);
 }
 
 } // namespace goblin::debug_events

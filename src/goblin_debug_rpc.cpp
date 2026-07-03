@@ -11,6 +11,7 @@
 #include "goblin_overlay_render_loader.hpp"
 #include "goblin_param_edit.hpp"  // param_get/param_set commands — Slice 1 in-game smoke test
 #include "goblin_messages.hpp"  // inject_fmg_entries / raw_message_utf8 — fmg_set cmd (Gap D)
+#include "goblin_debug_events.hpp"  // last_inventory_accessor — inv_probe cmd (Gap C grant RE)
 
 #include <spdlog/spdlog.h>
 
@@ -20,6 +21,7 @@
 #include <windows.h>
 
 #include <atomic>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <memory>
@@ -597,6 +599,24 @@ namespace goblin::debug_rpc
                     return "err inject failed (repo not ready / slot invalid)";
                 return "ok " + slot_s + ":" + id_s + "=" +
                        goblin::raw_message_utf8(slot, static_cast<uint32_t>(id));
+            }
+            // inv_probe — report the captured inventory accessor (AddItemFunc `inv`) + the
+            // live player chain, for the Gap C grant / sidecar inventory-accessor RE. The
+            // accessor populates after the game grants ANY item this session (pick something
+            // up / a rune / a reward); [INVACCESS] in the events log carries the offset scan.
+            if (cmd == "inv_probe")
+            {
+                void *inv = goblin::debug_events::last_inventory_accessor();
+                void *lp = goblin::get_local_player_ptr();
+                void *wcm = goblin::get_world_chr_man_ptr();
+                char b[192];
+                long long dlp = (inv && lp) ? (long long)((uintptr_t)inv - (uintptr_t)lp) : 0;
+                long long dwcm = (inv && wcm) ? (long long)((uintptr_t)inv - (uintptr_t)wcm) : 0;
+                std::snprintf(b, sizeof(b),
+                              "ok inv=%p LocalPlayer=%p WCM=%p inv-lp=0x%llx inv-wcm=0x%llx%s",
+                              inv, lp, wcm, dlp, dwcm,
+                              inv ? "" : " (no grant seen yet — pick up an item)");
+                return std::string(b);
             }
             if (cmd == "reload_overlay")
             {

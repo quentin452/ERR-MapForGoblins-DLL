@@ -33,4 +33,13 @@ namespace goblin::debug_events
     bool capture_armed();
     size_t capture_count();
     int finalize_capture(bool (*reader)(uint32_t));
+
+    // ── Inventory accessor (Gap C grant / sidecar) ──────────────────────────
+    // The last `inv` (rcx) the game passed to AddItemFunc — the inventory /
+    // MapItemMan accessor needed to CALL AddItemFunc for a framework grant. nullptr
+    // until the game grants at least one item this session (the observer captures it;
+    // MapItemMan is a session singleton so the value is reusable). Requires the item
+    // observer installed (config debug_item_grants). On first capture the accessor
+    // chain is logged ([INVACCESS]) to promote the pointer to a static path.
+    void *last_inventory_accessor();
 }

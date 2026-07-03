@@ -38,10 +38,15 @@ RPC input/HUD, NPC altitude badges.)
 
 **THE FRONTIER = the SIDECAR SAVE (user chose "sidecar first"), then the Gap C GRANT.**
 `plans/shadow_sidecar_save_plan.md` is now PHASED with the approach chosen (transient-grant via
-inventory API + save-detection, NOT serializer parsing) + every RE target's status. **Next concrete
-step: finish the INVENTORY-ACCESSOR chain** (WorldChrMan→LocalPlayer→inventory ptr — half-known,
-`goblin_world_position.cpp:463`; shared by both the sidecar strip/reinject AND the Gap C grant).
-Needs a LOADED SAVE (inventory only exists in-world) → drive ER foreground (the workaround below).
+inventory API + save-detection, NOT serializer parsing) + every RE target's status. **INVENTORY-ACCESSOR
+CAPTURE BOOTSTRAP DONE 2026-07-03 (build+SEH-lint clean, this box):** the shipped AddItemFunc observer
+now stashes the live `inv` (rcx) on any grant → `goblin::debug_events::last_inventory_accessor()`
+(MapItemMan = session singleton, reusable to CALL AddItemFunc); first capture logs `[INVACCESS]` (inv vs
+LocalPlayer/WCM + a `safe_copy` scan of both for a slot holding inv → static path). Added raw getters
+`goblin::get_{world_chr_man,local_player}_ptr()` (`goblin_world_position.cpp`) + RPC `inv_probe`.
+**NEXT concrete step: drive a LOADED ER with `debug_item_grants=true`, pick up ANY item, read
+`[INVACCESS]` + `inv_probe`** → the real accessor pointer + its static offset (shared by both the sidecar
+strip/reinject AND the Gap C grant). Drive ER foreground via the workaround below.
 Then: RemoveItem RE, save-window timing (CreateFileW on `ER0000.err`), character-identity binding.
 NB ERR saves are `ER0000.err` (ME3 redirect, SAME sl2 format) → resolve save path dynamically;
 ERR `.err` is already mod-locked so variant B is tolerable there, sidecar's clean-uninstall matters

@@ -78,10 +78,16 @@ re-grant after. The strip/reinject uses the inventory ADD/REMOVE functions (game
 tractable than buffer surgery.
 
 **RE targets (state of each):**
-- **Inventory accessor — PARTLY KNOWN.** `WorldChrMan=[er+0x3D65F88]`, `LocalPlayer=[WCM+0x1E508]`
-  (`goblin_world_position.cpp:463`). The inventory (EquipInventoryData / the MapItemMan the grant `inv`
-  arg points at) hangs off LocalPlayer or a sibling global — finish this chain first (shared with the
-  Gap C grant).
+- **Inventory accessor — CAPTURE BOOTSTRAP DONE (2026-07-03), in-game capture pending.**
+  `WorldChrMan=[er+0x3D65F88]`, `LocalPlayer=[WCM+0x1E508]` (`goblin_world_position.cpp:463`). Rather than
+  guess an AOB for the MapItemMan global, the shipped AddItemFunc observer now CAPTURES the live `inv`
+  (rcx) the game passes on any grant → `goblin::debug_events::last_inventory_accessor()` (MapItemMan is a
+  session singleton, so the captured pointer is reusable to CALL AddItemFunc ourselves). On first capture
+  it logs `[INVACCESS]` — inv vs LocalPlayer/WCM + a `safe_copy` scan of both objects (0..0x2000) for a
+  slot HOLDING inv, to promote the pointer to a STATIC path (LocalPlayer+off or a two-hop WCM global).
+  Raw getters `goblin::get_{world_chr_man,local_player}_ptr()`; RPC `inv_probe` reports it live. **NEXT:
+  drive a loaded ER, pick up ANY item (needs `debug_item_grants=true`), read `[INVACCESS]` + `inv_probe`
+  → get the real pointer + the static offset.** Shared with the Gap C grant.
 - **AddItem — AOB KNOWN** (`sig::ADD_ITEM_FUNC`, observer-hooked read-only, `goblin_debug_events.cpp:344`;
   convention: `AddItemFn(inv, entry{qty@0,id@4}, base, count, pad)`). **RemoveItem — NEW RE** (the
   consume/discard counterpart).

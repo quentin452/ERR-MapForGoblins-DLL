@@ -25,11 +25,14 @@ whole item EXCEPT it isn't in the player's inventory yet.
 ### Half 2 — GRANT (persisted, risky) — GATED, not started
 Put the defined item into the player's inventory so they have it. This is the only persisted/risky
 part. Requirements + blockers:
-- **RE the inventory accessor.** `AddItemFunc` is AOB-resolved and hooked READ-ONLY as an observer
-  (`goblin_debug_events.cpp:344`, `sig::ADD_ITEM_FUNC`). Convention: `AddItemFn(void* inv, entry*
-  {qty:u32@+0, item_id:u32@+4}, base, count, pad)`. To CALL it we need the `inv` pointer (the
-  MapItemMan / player-inventory accessor) — the observer only forwards what the game passes; getting
-  `inv` ourselves is a new static-chain RE (WorldChrMan → player → inventory, or a MapItemMan global).
+- **RE the inventory accessor — CAPTURE BOOTSTRAP DONE (2026-07-03), in-game capture pending.**
+  `AddItemFunc` is AOB-resolved and hooked READ-ONLY as an observer (`goblin_debug_events.cpp:344`,
+  `sig::ADD_ITEM_FUNC`). Convention: `AddItemFn(void* inv, entry* {qty:u32@+0, item_id:u32@+4}, base,
+  count, pad)`. To CALL it we need the `inv` pointer. The observer now CAPTURES the live `inv` on any
+  game grant → `goblin::debug_events::last_inventory_accessor()` (MapItemMan is a session singleton →
+  reusable), + logs `[INVACCESS]` correlating it against LocalPlayer/WCM to derive a static path. RPC
+  `inv_probe`. NEXT: drive a loaded ER, pick up an item, read the pointer/offset. Detail:
+  `shadow_sidecar_save_plan.md` RE targets.
 - **Item-id encoding.** The grant's `item_id` is category-encoded (goods vs weapon vs gem live in the
   id's high bits / a base offset) — confirm the goods encoding against a known pickup via the existing
   observer before granting a custom id.

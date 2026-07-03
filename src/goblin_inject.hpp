@@ -84,6 +84,13 @@ namespace goblin
     // For proximity clustering (v2). Coordinate space = global/world (verify).
     bool get_player_world_pos(float &x, float &y, float &z);
 
+    // Raw player-chain pointers for the inventory-accessor RE + the Gap C / sidecar
+    // grant chain. WorldChrMan = the engine char-manager singleton; LocalPlayer =
+    // [WCM+0x1E508] (the player ChrIns). nullptr before the WCM static resolves / on
+    // fault. Used to correlate the AddItemFunc `inv` arg against the player chain.
+    void *get_world_chr_man_ptr();
+    void *get_local_player_ptr();
+
     // Player position in MARKER space via the CONFIRMED Target-A chain (see
     // docs/re_findings_playerpos.md): player MapId singleton (gridX/gridZ) +
     // CSWorldGeomMan block-local (+0x70/+0x74). Both statics AOB-anchored (patch-
