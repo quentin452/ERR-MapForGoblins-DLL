@@ -48,6 +48,7 @@
 #include "input/input_keyboard_poll.hpp"              // goblin::input::poll_keyboard_text_input()
 
 #include <vector>
+#include <cctype>
 #include <filesystem>  // screenshot_to_file path handling
 #include <fstream>     // screenshot_to_file BMP write
 #include <map>
@@ -2279,6 +2280,91 @@ bool goblin::overlay::panel_open() { return g_user_show; }
 void goblin::overlay::set_panel_open(bool open) { g_user_show = open; }  // applied next frame (g_show = g_user_show)
 void *goblin::overlay::game_hwnd() { return g_hwnd; }
 
+// ── Minimal PNG writer (no external lib) ─────────────────────────────────────────────────────────
+// Encodes 8-bit RGB (top-down) to a real, directly-viewable PNG. Uses DEFLATE *stored* blocks (no
+// compression), so the file is ~raw size — but it is a valid PNG (readable everywhere, no BMP→PNG
+// conversion step). We have no zlib/miniz in the build and stb_image_write isn't vendored; a stored
+// stream is the small, correct choice. Swap in real compression later if screenshot size matters.
+namespace
+{
+uint32_t png_crc32(const uint8_t *p, size_t n, uint32_t crc = 0xFFFFFFFFu)
+{
+    for (size_t i = 0; i < n; ++i)
+    {
+        crc ^= p[i];
+        for (int k = 0; k < 8; ++k)
+            crc = (crc >> 1) ^ (0xEDB88320u & (~(crc & 1) + 1));
+    }
+    return crc;
+}
+void png_put_u32(std::vector<uint8_t> &v, uint32_t x)  // big-endian
+{
+    v.push_back((x >> 24) & 0xFF); v.push_back((x >> 16) & 0xFF);
+    v.push_back((x >> 8) & 0xFF);  v.push_back(x & 0xFF);
+}
+void png_chunk(std::vector<uint8_t> &out, const char *type, const std::vector<uint8_t> &data)
+{
+    png_put_u32(out, (uint32_t)data.size());
+    size_t crc_start = out.size();
+    out.insert(out.end(), type, type + 4);
+    out.insert(out.end(), data.begin(), data.end());
+    uint32_t crc = png_crc32(out.data() + crc_start, out.size() - crc_start) ^ 0xFFFFFFFFu;
+    png_put_u32(out, crc);
+}
+// Assemble the DEFLATE-stored zlib stream over `raw`, appending an adler32 trailer.
+std::vector<uint8_t> png_zlib_stored(const std::vector<uint8_t> &raw)
+{
+    std::vector<uint8_t> z;
+    z.push_back(0x78); z.push_back(0x01);  // zlib header (32K window, no dict); 0x7801 % 31 == 0
+    size_t off = 0;
+    while (off < raw.size() || raw.empty())
+    {
+        size_t n = raw.size() - off;
+        if (n > 0xFFFF) n = 0xFFFF;
+        bool last = (off + n >= raw.size());
+        z.push_back(last ? 1 : 0);                       // BFINAL, BTYPE=00 (stored)
+        z.push_back(n & 0xFF); z.push_back((n >> 8) & 0xFF);          // LEN
+        z.push_back(~n & 0xFF); z.push_back((~n >> 8) & 0xFF);        // NLEN
+        z.insert(z.end(), raw.begin() + off, raw.begin() + off + n);
+        off += n;
+        if (raw.empty()) break;
+    }
+    // adler32 of raw
+    uint32_t a = 1, b = 0;
+    for (uint8_t c : raw) { a = (a + c) % 65521; b = (b + a) % 65521; }
+    png_put_u32(z, (b << 16) | a);
+    return z;
+}
+bool write_rgb_png(const std::filesystem::path &p, uint32_t w, uint32_t h,
+                   const uint8_t *rgb_topdown, std::string &err)
+{
+    std::vector<uint8_t> raw;
+    raw.reserve((size_t)h * (1 + (size_t)w * 3));
+    for (uint32_t y = 0; y < h; ++y)
+    {
+        raw.push_back(0);  // PNG filter type 0 (none) per scanline
+        const uint8_t *row = rgb_topdown + (size_t)y * w * 3;
+        raw.insert(raw.end(), row, row + (size_t)w * 3);
+    }
+    std::vector<uint8_t> out = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+    std::vector<uint8_t> ihdr;
+    png_put_u32(ihdr, w); png_put_u32(ihdr, h);
+    ihdr.push_back(8); ihdr.push_back(2); ihdr.push_back(0); ihdr.push_back(0); ihdr.push_back(0);  // 8-bit RGB
+    png_chunk(out, "IHDR", ihdr);
+    png_chunk(out, "IDAT", png_zlib_stored(raw));
+    png_chunk(out, "IEND", {});
+    std::error_code ec;
+    if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path(), ec);
+    std::ofstream f(p, std::ios::binary | std::ios::trunc);
+    if (!f || !f.write(reinterpret_cast<const char *>(out.data()), out.size()))
+    {
+        err = "file write failed: " + p.string();
+        return false;
+    }
+    return true;
+}
+}  // namespace
+
 // Backbuffer → 24-bit BMP. Runs at pump() time: our overlay draw was just submitted on the same
 // queue, so the copy below is queue-ordered behind it and the capture includes the overlay. The
 // blocking fence wait + file write hitch ONE frame — it's a dev command, not a per-frame path.
@@ -2393,6 +2479,34 @@ bool goblin::overlay::screenshot_to_file(IDXGISwapChain3 *swapchain, const std::
         return false;
     }
 
+    const uint8_t *px = static_cast<const uint8_t *>(mapped);
+
+    // PNG output (path ends .png): pack RGB top-down and write a real PNG (no BMP→PNG conversion step).
+    std::filesystem::path pout = std::filesystem::u8path(path_utf8);
+    std::string ext = pout.extension().string();
+    for (char &c : ext) c = (char)std::tolower((unsigned char)c);
+    if (ext == ".png")
+    {
+        std::vector<uint8_t> rgb((size_t)w * h * 3);
+        for (UINT y = 0; y < h; ++y)
+        {
+            const uint8_t *srow = px + (size_t)y * fp.Footprint.RowPitch;
+            uint8_t *drow = rgb.data() + (size_t)y * w * 3;  // top-down
+            for (UINT x = 0; x < w; ++x)
+            {
+                const uint8_t *s = srow + x * 4;
+                uint8_t *d = drow + x * 3;
+                if (bgra) { d[0] = s[2]; d[1] = s[1]; d[2] = s[0]; }  // BGRA → RGB
+                else      { d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; }  // RGBA → RGB
+            }
+        }
+        readback->Unmap(0, nullptr);
+        readback->Release();
+        if (!write_rgb_png(pout, w, h, rgb.data(), err)) return false;
+        spdlog::info("[RPC] screenshot {}x{} → {} (png)", w, h, path_utf8);
+        return true;
+    }
+
     const UINT row_out = (w * 3 + 3) & ~3u;  // BMP rows pad to 4 bytes
     const UINT32 data_size = row_out * h, file_size = 14 + 40 + data_size;
     std::vector<uint8_t> out(file_size, 0);
@@ -2410,7 +2524,6 @@ bool goblin::overlay::screenshot_to_file(IDXGISwapChain3 *swapchain, const std::
     memcpy(o + 26, &planes, 2);
     memcpy(o + 28, &bpp, 2);
     memcpy(o + 34, &data_size, 4);
-    const uint8_t *px = static_cast<const uint8_t *>(mapped);
     for (UINT y = 0; y < h; ++y)
     {
         const uint8_t *srow = px + static_cast<size_t>(y) * fp.Footprint.RowPitch;
