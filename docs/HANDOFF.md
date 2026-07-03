@@ -85,6 +85,16 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   a world bundle (→ feeds vision #1 World Virtualization). Backend all proven; these are UI + the two
   `refresh_markers` v2 items.
 
+- **MSB WRITE — frontier #1, first probe scoped 2026-07-03 (`docs/re/windows_msb_placement_write_re_prompt.md`).**
+  The keystone for "create new content" (custom mob/treasure placement, new map geometry). We READ MSB fully
+  (both routes, `msbe::parse_msb`) but have NO write path. The probe is a cheap decision: RE the MSB→instance
+  load path (static Ghidra — `CSMsbPartsGeom`/`CSMsbPartsMap` ctor) to learn whether the position is
+  **snapshotted into the spawned instance** (⇒ resident-MSB writes are inert, the movable transform is on the
+  instance — likely reusing the enemy/boss + FieldIns transform we already RE'd) or a live pointer; then a
+  2-target live write test (instance transform vs resident MSB bytes) picks the layer. If "move an existing
+  placement live" falls out, it's an immediate World-Editor slice (drag-a-placement). "Add new" then splits
+  into a spawn-factory + tile re-stream follow-up. NOT started; prompt only.
+
 - **Long-horizon vision bets — tracked in `docs/runtime_modding_framework_vision.md` "Future directions"
   (2026-07-03):** (1) World Virtualization — a FRAMEWORK feature: the framework holds N of its OWN worlds (each a data
   BUNDLE of param overrides + custom items + names + map/loot edits + flags + save context) and swaps the

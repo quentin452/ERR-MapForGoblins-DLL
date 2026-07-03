@@ -1,6 +1,6 @@
 # RE coverage map — what of ELDEN RING is reverse-engineered, and what isn't
 
-Index + honest coverage map for `docs/re/`. **154 RE docs** live here. Two kinds:
+Index + honest coverage map for `docs/re/`. **155 RE docs** live here. Two kinds:
 - `*_re_findings.md` / `*_RESOLVED.md` — a SOLVED structure/function (the answer).
 - `*_re_prompt.md` / `*_analysis.md` — an OPEN or historical RE task handed to Ghidra/CE.
 
@@ -34,7 +34,10 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
 
 1. **MSB WRITE — the big hole.** We READ disk MSB placements; there is NO write path. So you can RE-SKIN
    existing placements (repoint a lot, change a lot's item — done) but CANNOT ADD a new placement (a
-   treasure/mob at NEW coords). Blocks new map content + vision #3. No prompt exists yet.
+   treasure/mob at NEW coords). Blocks new map content + vision #3. **First probe scoped:
+   `windows_msb_placement_write_re_prompt.md`** — settles at which layer an edit moves an object (instance
+   snapshot vs resident MSB bytes) via the MSB→instance load path + a live 2-target write test; splits the
+   cheap "move existing" win from the real "add new" (spawn factory + tile re-stream).
 2. **ESD / talk scripts (EzState) — mostly unmapped.** Merchant shop↔NPC join, dialogue, talk-driven
    logic need an EzState bytecode evaluator (shelved after a spike — see
    `docs/plans/merchant_item_search_plan.md` Slice 3).
