@@ -1894,9 +1894,16 @@ namespace
             }
             // Finalize any item-icon GPU copies requested this frame as ONE batch (one execute +
             // one fence wait) before g_command_list is reused for the ImGui render below.
-            flush_item_icon_batch();
-            ImGui::Render();
+            // SUB-TIMERS (split the present.overlay_total "benchmarking hole" — the parent−children
+            // gap that was carrying the 2-24ms present spikes; localize which segment stalls):
+            //   present.iconbatch  = flush_item_icon_batch's GPU fence WAIT (CPU blocks on GPU;
+            //                        prime spike suspect — only non-zero when icons were copied)
+            //   present.imgui_render = ImGui::Render draw-data build (scales with vertex count)
+            //   present.submit     = RenderDrawData vertex upload + ExecuteCommandLists (GPU submit)
+            { GOBLIN_BENCH_QUIET("present.iconbatch"); flush_item_icon_batch(); }
+            { GOBLIN_BENCH_QUIET("present.imgui_render"); ImGui::Render(); }
 
+            GOBLIN_BENCH_QUIET("present.submit");
             UINT idx = swapchain->GetCurrentBackBufferIndex();
             FrameContext &frame = g_frames[idx];
 
