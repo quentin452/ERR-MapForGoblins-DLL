@@ -31,3 +31,28 @@ Mandatory pattern for every RPC driver / background validation script:
 Related: the `+0x1EB9999` render race itself is pre-existing and documented in
 [[er-shutdown-crash-noise]] / [[mapforgoblins-map-open-freeze]]; heavy scripted map open/close
 cycling seems to tickle it (2 dumps in one evening of RPC loops, 18:27 + 18:43 on 2026-07-02).
+
+## GOTCHA — you CANNOT launch/keep the game alive from a background Claude job (2026-07-03)
+
+Verified while trying to auto-run a Slice-1 in-game RPC smoke test from a **background** Claude
+session: the game will not stay alive when launched from the job's Bash tool.
+
+- **The bg-job sandbox reaps the spawned process TREE.** Every game-launch command returns **exit
+  144** (this env's "spawned tree got reaped" code) and the game dies WITH it — `setsid` / `nohup` /
+  `disown` / `dangerouslyDisableSandbox` / `run_in_background` all still get reaped. Observed: ER
+  booted far enough to load our DLL (`[PROFILE] ERR DETECTED` → `Waiting for params...`) then was
+  torn down at param-wait — BEFORE `enable_hooks` starts the RPC listener, so `ping` never answers
+  (port 38700 not listening) and the whole smoke test fails at the `ping` gate.
+- **The interactive ERR launcher can't run headless either:** `4 - Launch … Offline … (Linux).sh`
+  → `ReforgedLauncher --offline` uses a PromptPlus TUI → `PromptPlus requires a terminal/console
+  environment!` and exits. The me3 CLI (`internals/modengine/bin/me3 launch -g eldenring -e
+  <Game/eldenring.exe> -p err_offline.me3`, per [[me3-cli-nonerr-launch]]) IS the headless path and
+  DOES start booting — but it's still reaped by the bg job as above.
+- **Consequence / workflow:** in-game RPC verification must be driven against a **user-launched**
+  game. The user starts ER their normal way (a real terminal), reaches a state where params are
+  live (title screen is enough — see [[../linux]]), THEN the agent runs the RPC driver against the
+  already-running process. The agent CAN do everything except keep the process alive: build, deploy
+  (atomic), and drive `mfg_rpc.py` once something else owns the game process.
+- Deploy note: redeploy AFTER the last rebuild — it's easy to `cp` the DLL before adding the RPC
+  command you're about to test (the deployed binary then rejects `param_get` as "unknown command").
+  Sanity-check with `grep -ac param_set <deployed dll>`.

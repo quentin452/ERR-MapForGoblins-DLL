@@ -38,3 +38,12 @@ for Windows. Its limits are runtime RE (no live game/debugger here) and Oodle-on
 - Oodle-compressed assets (some MSB/icon extraction) are blocked here; DCX_DFLT/zlib files are fine
   (e.g. talk-ESD via `tools/esd_dump`).
 - Linux can still parse disk MSBs, run the no-bake pipeline logic, and do all C++/Python/docs work.
+- **Params are live at the TITLE SCREEN — no save needed.** The resident param tables are populated
+  when the engine parses `regulation.bin` during boot (~t+7-9s, well before any save load — the DLL's
+  `Waiting for params...` gate clears at the title). So any param-only RE or verification
+  (`from::params::get_param`, `goblin::paramedit::param_get/set_field`, the RPC `param_get`/`param_set`
+  commands) works against a game sitting on the title screen — you do NOT need to load a save or drive
+  the world. Save/pixels are only needed for world-state features (positions, event flags, map).
+- **Launching the game must be done by the USER, not from a background Claude job** — the bg-job
+  sandbox reaps the spawned game process tree (exit 144) and ER dies at param-wait before the RPC
+  listener starts. Details + the headless-launcher facts in [[tooling/mfg-rpc-driver-hardening]].
