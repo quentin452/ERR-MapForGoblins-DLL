@@ -44,22 +44,16 @@ std::string g_guid;        // self-stamped binding id (forward-compat; identity 
 bool g_prev_world_loaded = false;
 std::atomic<bool> g_replay_pending{false};
 
-// Phase 2 strip/reinject. A game save (CreateFileW write-open) STRIPS our custom items from
-// the live inventory so the save stays clean, then a reinject is queued (present thread) to
-// add them back. g_reinject_at = the earliest tick to reinject (a short delay lets the write
-// finish); 0 = nothing pending. g_stripped DEBOUNCES: one game save opens the save file
-// several times (main + .bak + re-opens, all within ~0.3s) — strip only on the FIRST, or we'd
-// remove the items N times. Cleared when the reinject fires (end of the save cycle).
-std::atomic<uint64_t> g_reinject_at{0};
-std::atomic<bool> g_stripped{false};
-
-// The item strip/reinject is BUILT but DORMANT: the CreateFileW trigger was empirically shown
-// NOT to produce a clean save (ER serializes before the file-open + autosave re-dirties — see
-// shadow_sidecar_save_plan.md Phase 2). Strip/reinject must be driven from a SYNCHRONOUS hook on
-// the save routine instead. Flip this true once that hook exists. Off = the [items] store still
-// persists to the .mfg (harmless) but nothing touches the live inventory (no strip, no reinject,
-// no double-grant). The flag replay (slice 1b) is independent and stays active.
-constexpr bool kItemStripReinjectWired = false;
+// Phase 2 strip/reinject (Variant A — the clean vanilla save). Wired ON: the strip@entry /
+// reinject@exit bracket lives in hk_serialize (SERIALIZE_FN 0x67dc00), the whole-slot game-data
+// serialize, where the live inventory is written to the out-buffer INSIDE the call. So the custom
+// items are removed from the live inventory just before the buffer is written and restored the
+// instant it returns — atomic, synchronous, on the save worker thread. This SUPERSEDES the old
+// CreateFileW-triggered strip (Phase-2 data-layer), which fired too LATE (ER had already serialized
+// the inventory by file-open time; the item survived at full count — see shadow_sidecar_save_plan.md
+// Phase 2). Off = the [items] store still persists to the .mfg but nothing touches the live
+// inventory. The flag replay (slice 1b) is independent of this flag.
+constexpr bool kItemStripReinjectWired = true;
 
 // A stable-ish id for binding the sidecar to a save. Character-identity RE (steam id + slot)
 // is deferred (Phase 1c); until then the sidecar binds by living next to the save file, and
@@ -252,13 +246,21 @@ uint64_t hk_save(void *a, void *b, void *c, void *d)
     return r;
 }
 
-// Serialize observer (Phase 2 RE): confirm SERIALIZE_FN is the once-per-save orchestrator + log its
-// caller chain (to find the true bracket if it's too granular). Read-only. 4-arg passthrough.
+// Serialize hook (Phase 2 strip/reinject bracket, Variant A). SERIALIZE_FN (0x67dc00) is the whole-slot
+// game-data serialize: the live inventory is written to the out-buffer INSIDE this call (after entry,
+// via FUN_140257f20). So strip@entry / reinject@exit brackets it atomically — the custom items are gone
+// from the live inventory while the buffer is written, then restored the instant the write returns, all
+// synchronously on the save worker thread (observer-confirmed tid=344; give_item proven stable there).
+// Still logs the caller chain (dedup) for diagnostics. 4-arg passthrough.
 using SerFn = uint64_t(*)(void *, void *, void *, void *);
 SerFn g_orig_ser = nullptr;
 std::atomic<long> g_ser_calls{0};
+std::atomic<bool> g_in_serialize{false};  // re-entrancy guard: never double-strip a nested serialize
 
 std::set<uintptr_t> g_ser_callers;  // dedup by direct caller RVA (guarded by g_mtx)
+
+void strip_items();     // fwd (defined below) — remove custom items from the LIVE inventory
+void reinject_items();  // fwd (defined below) — re-add them after the buffer is written
 
 uint64_t hk_serialize(void *a, void *b, void *c, void *d)
 {
@@ -296,7 +298,20 @@ uint64_t hk_serialize(void *a, void *b, void *c, void *d)
         spdlog::info("[SERFN] caller#{} tid={} chain:{}", g_ser_callers.size(),
                      GetCurrentThreadId(), s);
     }
-    return g_orig_ser(a, b, c, d);
+
+    // Strip@entry / reinject@exit bracket. Guard against a nested serialize double-stripping (they
+    // shouldn't nest on one thread, but the guard is cheap insurance). Both halves are no-ops when the
+    // [items] store is empty. If g_orig_ser crashes we skip reinject — the game is dying anyway.
+    bool bracket =
+        kItemStripReinjectWired && !g_in_serialize.exchange(true, std::memory_order_acquire);
+    if (bracket) strip_items();
+    uint64_t r = g_orig_ser(a, b, c, d);
+    if (bracket)
+    {
+        reinject_items();
+        g_in_serialize.store(false, std::memory_order_release);
+    }
+    return r;
 }
 
 void probe_save_callstack()
@@ -470,18 +485,12 @@ void note_save_file_opened(const wchar_t *path, bool for_write)
             saving = true;
         }
     }
-    // Phase 2 strip (outside the lock — strip_items re-locks + calls the game fn): on a game
-    // WRITE, remove custom items from the LIVE inventory so the save serializes clean, then
-    // queue a reinject on the present thread once the write settles (~1.5 s later).
-    // Save-function RE: one-shot stack walk from the save write-open to find the routine to
-    // hook for the atomic strip/reinject bracket (Phase 2). Cheap, gated by the one-shot.
+    // NB the item strip/reinject is NOT done here. The CreateFileW write-open fires too LATE — ER has
+    // already serialized the inventory buffer by then (empirically the item survived at full count).
+    // The atomic bracket lives in hk_serialize (SERIALIZE_FN) instead, where the inventory is written
+    // INSIDE the call. This path only persists our sidecar .mfg alongside the game save (above).
+    // Keep the one-shot save-path stack walk for diagnostics only.
     if (saving) probe_save_callstack();
-    // Debounce: one save = several write-opens; strip only on the first of the cycle.
-    if (kItemStripReinjectWired && saving && !g_stripped.exchange(true, std::memory_order_relaxed))
-    {
-        strip_items();  // snapshots g_items under the lock internally; no-op when empty
-        g_reinject_at.store(GetTickCount64() + 1500, std::memory_order_relaxed);
-    }
 }
 
 std::string sidecar_path_utf8()
@@ -612,15 +621,7 @@ void pump_present()
                          flags.size());
         if (kItemStripReinjectWired) reinject_items();
     }
-
-    // After-save reinject: strip removed our items so the save serialized clean; once the write
-    // has settled (short delay), add them back to the live inventory. Present-thread (safe point).
-    uint64_t due = g_reinject_at.load(std::memory_order_relaxed);
-    if (due != 0 && GetTickCount64() >= due)
-    {
-        g_reinject_at.store(0, std::memory_order_relaxed);
-        reinject_items();
-        g_stripped.store(false, std::memory_order_relaxed);  // save cycle done — arm the next strip
-    }
+    // No after-save timer reinject here — the strip/reinject is now atomic inside hk_serialize
+    // (SERIALIZE_FN), so the item is restored synchronously the instant the save buffer is written.
 }
 }  // namespace goblin::sidecar
