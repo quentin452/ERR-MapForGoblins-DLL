@@ -184,6 +184,24 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   reads; is the `+0x288` push enough for render+collision or is a pool index assumed elsewhere. This is a
   multi-step build, NOT a quick primitive like move.
 
+- **Dev "creative mode" mini-track — SCOPED 2026-07-03 (do after ADD; not on ADD's critical path).** Two
+  small/moderate RE items that together give a dev sandbox loop (warp into a throwaway map + fly around +
+  place/move/verify) so world-editing experiments (move/ADD/spawn) run ISOLATED from the live save's world:
+  - **(1) Warp-to-(mapid, x,y,z) dev primitive.** Today `warp <graceId>` uses `LuaWarp_01` — warps to an
+    existing GRACE/bonfire by id (gated on a grace at the target). Missing = a coordinate/map-id warp (ER's
+    `WarpToMapPoint`-style debug warp) so the dev can drop into ANY existing map at any coord. Moderate RE
+    on top of the warp infra (`LUA_WARP` sig, `CSLuaEventManager`) + player-pos/mapid slots already RE'd.
+    Sandbox target = an existing SPARSE/empty map (arena/coliseum, a cleared legacy dungeon, or an overworld
+    tile) — do NOT need to create a new map (that's the capstone below).
+  - **(2) Freecam.** Not tracked anywhere yet (new). Detach the camera from the player + drive it via input
+    — the natural verification+authoring tool for move/ADD + the World Editor (the move/ADD confirms all
+    need eyeballing the world at an arbitrary position). Moderate, well-trodden ER RE (FD4/debug camera
+    struct + detach flag + input), NOT a frontier. Prompt to write: `docs/re/windows_freecam_re_prompt.md`.
+  - Combined payoff: warp (1) + freecam (2) = a "creative mode" dev loop; each is cheap alone, big together.
+  - **NOT this track:** creating a genuinely NEW empty map/page FROM SCRATCH = full map creation (new MSB +
+    collision + streaming/worldmap registration) — strictly harder than ADD, the map-content **capstone**.
+    Explicitly LATER; the sandbox uses an existing map instead so it isn't blocked on this.
+
 - **Live marker regeneration (real-time map editing) — v1 DONE 2026-07-03; v2 open.** Markers build once
   at boot; to reflect a LIVE param edit on the DRAWN map without a game reload, **`refresh_markers` RPC**
   (→ `overlay_api::rebuild_markers` → `worldmap::rebuild_markers`, the production toggle-rebuild path) now

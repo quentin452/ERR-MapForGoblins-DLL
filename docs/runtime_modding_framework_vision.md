@@ -152,4 +152,20 @@ Vary/retexture placed models and reuse models in new worlds. The asset/geometry 
 FLVER models, MSB placements. **Hardest + furthest:** map markers already read placements from disk MSB,
 but CREATING/varying placements needs MSB write + model handling, which is outside the current runtime
 framework (repointing only re-skins existing placements; new coords/models need MSB editing). Long
-horizon; depends on an MSB-write path that doesn't exist yet.
+horizon; depends on an MSB-write path that doesn't exist yet. **Progress 2026-07-03:** the MSB-write path
+is now partly cracked at the INSTANCE layer — MOVE an existing placement is a solved+durable live primitive
+(`vtable[0xd0] SetWorldMatrix`), and ADD a new placement is scoped (`spawn_clone` route; see
+`docs/re/windows_msb_placement_write_re_findings.md`).
+
+### Dev "creative mode" mini-track (tooling for #2/#3 — scoped 2026-07-03)
+Two small/moderate RE items that make world-editing (move/ADD/spawn) practical to build + verify by giving
+a dev sandbox loop — **warp into a throwaway map + fly around + place/move/verify, isolated from the live
+save's world.** Do AFTER the ADD primitive; not on its critical path. Full scope in `docs/HANDOFF.md`.
+- **(1) Warp-to-(mapid, x,y,z) dev primitive** — today's `warp` only fast-travels to an existing grace by
+  id (`LuaWarp_01`); the missing piece is a coordinate/map-id warp so the dev can drop into any existing map
+  at any coord. Sandbox = an existing SPARSE map (arena / cleared dungeon / overworld tile), NOT a new one.
+- **(2) Freecam** — detach camera from player + input-drive it; the verification+authoring tool for move/ADD
+  and the World Editor. Moderate, well-trodden ER RE (not a frontier).
+- **Capstone (LATER, not this mini-track):** creating a genuinely NEW empty map/page FROM SCRATCH = full map
+  creation (new MSB + collision + streaming/worldmap registration) — strictly harder than ADD. The sandbox
+  deliberately reuses an existing map so it isn't blocked on this.
