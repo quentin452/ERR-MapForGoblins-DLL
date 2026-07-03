@@ -73,6 +73,7 @@ namespace goblin::config
     // ERR day/night dial exclusion (was hardcoded); VIRTUAL-canvas 1920x1080 units.
     float dialDiscX = 1840.f, dialDiscY = 962.f, dialDiscR = 227.f;
     float dialPillX0 = 1690.f, dialPillY0 = 692.f, dialPillX1 = 1890.f, dialPillY1 = 726.f;
+    float dialFadeMargin = 40.f; // soft-fade band width (virtual units); 0 = hard edge
     bool debugEventFlags = false;
     bool debugItemGrants = false;
     bool debugFlagCapture = false;
@@ -195,6 +196,8 @@ namespace
                          "ERR dial time-pill rect, right edge (virtual units). ERR-only.", false, nullptr, 0.f, 1920.f},
                 IniEntry{"dial_pill_y1", IniType::F32, &cfg::dialPillY1, "726",
                          "ERR dial time-pill rect, bottom edge (virtual units). y1<=y0 = pill off.\nERR-only.", false, nullptr, 0.f, 1080.f},
+                IniEntry{"dial_fade_margin", IniType::F32, &cfg::dialFadeMargin, "40",
+                         "ERR dial soft-fade band width (virtual units): markers dim gradually across\nthis margin around the dial edge instead of popping. 0 = hard edge. ERR-only.", false, nullptr, 0.f, 500.f},
                 B("require_map_fragments", requireMapFragments, "true",
                   "Require map fragment discovery before showing icons in that area\n"
                   "(overlay map: gates on the area's map-fragment event flag)."),

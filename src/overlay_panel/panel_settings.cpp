@@ -317,7 +317,9 @@ void draw_general_settings(const OverlayFrameCtx &ctx, Filter &f)
             ImGui::SliderFloat(tr("Pill top"), goblin::overlay_api::cfg_dialPillY0_ptr(), 0.0f, 1080.0f, "%.0f");
             ImGui::SliderFloat(tr("Pill right"), goblin::overlay_api::cfg_dialPillX1_ptr(), 0.0f, 1920.0f, "%.0f");
             ImGui::SliderFloat(tr("Pill bottom"), goblin::overlay_api::cfg_dialPillY1_ptr(), 0.0f, 1080.0f, "%.0f");
-            ImGui::TextDisabled("%s", tr("Disc radius 0 = disc off; pill bottom <= top = pill off. Save to INI to persist."));
+            ImGui::SliderFloat(tr("Fade margin"), goblin::overlay_api::cfg_dialFadeMargin_ptr(), 0.0f, 200.0f, "%.0f");
+            ImGui::TextDisabled("%s", tr("Disc radius 0 = disc off; pill bottom <= top = pill off.\n"
+                                         "Fade margin = soft dim band around the dial (0 = hard edge). Save to INI to persist."));
         }
     }
 }

@@ -64,6 +64,7 @@ namespace goblin
         extern GOBLIN_RENDER_API float dialPillY0;  // time pill rect top    (default 692)
         extern GOBLIN_RENDER_API float dialPillX1;  // time pill rect right  (default 1890)
         extern GOBLIN_RENDER_API float dialPillY1;  // time pill rect bottom (default 726; y1<=y0 = pill off)
+        extern GOBLIN_RENDER_API float dialFadeMargin; // soft-fade band width in virtual units (default 40; 0 = hard edge)
         extern GOBLIN_RENDER_API bool bakedOnly;  // diag overlay: draw ONLY Baked-source markers (the no-bake residual)
         extern GOBLIN_RENDER_API bool collectedGraying;
         extern GOBLIN_RENDER_API bool hideCollected;

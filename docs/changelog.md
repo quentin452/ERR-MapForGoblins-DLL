@@ -30,6 +30,11 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   F1 → *UI exclusion zones* → *Edit dial* — drag the disc/time-pill handles on the open map, or set
   the `dial_disc_x/y/r` + `dial_pill_x0/y0/x1/y1` keys (1920×1080 virtual units, ERR-only). Radius 0
   hides the disc; an empty pill (bottom ≤ top) hides the pill. Save to INI to persist.
+- **Markers near the dial now fade instead of popping.** Rather than hard-hiding a marker the moment
+  it crosses the dial edge, its opacity ramps down across a soft band (`dial_fade_margin`, default 40
+  virtual units; 0 = hard edge like before) so icons dim gradually over the dial. Works for the round
+  disc too — ImGui can't clip a texture to a circle, so the fade is applied by scaling the alpha of
+  each marker's vertices. Only the ERR dial fades; user-drawn exclusion rectangles stay hard.
 
 ### Fixed
 - **Overlay markers no longer punch through menus that open over the map.** When a submenu is
