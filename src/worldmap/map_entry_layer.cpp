@@ -47,6 +47,28 @@ constexpr int NUM_CAT = static_cast<int>(goblin::generated::Category::WorldFarma
 
 std::array<std::vector<Marker>, NUM_CAT> g_buckets;
 
+// refresh_markers v2 (a): the MSB PARSE (load_disk_treasures — ~1.2s of a ~2.7s build.buckets, it
+// walks ~480k asset placements) produces data that DOES NOT change on a param edit (repoint /
+// lotItemId / clone) — only the per-marker LIVE resolution downstream does. So cache the raw parse and
+// reuse it across rebuilds, keyed by the "want" flags that decide which sources were parsed; a param-
+// only refresh_markers then skips the parse entirely (~2.7s → ~1.6s). The MSB files are immutable for
+// the process lifetime, so the want-key is the only invalidation needed. Downstream reads these by
+// reference EXCEPT disk_collectibles, which the build augments (LOD-feature append) — that one gets a
+// cheap working copy per build (~0.1s vs the ~1.2s parse it replaces).
+struct ParsedDisk
+{
+    std::vector<DiskTreasure> treasures;
+    std::vector<DiskTreasure> lod;          // load_lod_treasures (cross-tile LOD supertiles)
+    std::vector<DiskCollectible> collectibles;
+    std::vector<DiskEnemy> enemies;
+    std::vector<DiskRegion> regions;
+    std::vector<DiskObjAct> objacts;
+    std::vector<uint32_t> dropped_dummy_lots;
+    bool valid = false;
+    uint32_t want_key = 0xFFFFFFFF;         // which sources this snapshot was parsed with
+};
+ParsedDisk g_parsed;
+
 // MSB EntityID -> projected world position, for QuestNpcLayer's entity_world_pos().
 // Built once per build_buckets_impl() pass (same lifecycle as g_buckets, cleared and
 // repopulated together) from disk_enemies/disk_collectibles -- NOT a second parse.
@@ -2242,10 +2264,8 @@ void build_buckets_impl()
         // One disk read pass for all sources. Each out-vector requested only when on.
         // The EMEVD pass needs the enemy placements too (for the EntityID → position
         // join), so parse enemies whenever the enemy OR emevd source is on.
-        std::vector<DiskCollectible> disk_collectibles;
-        std::vector<DiskEnemy> disk_enemies;
-        std::vector<DiskRegion> disk_regions;
-        std::vector<DiskObjAct> disk_objacts;  // ObjAct EVENTs (Elevator / lever-lift source)
+        // disk_collectibles is the one parsed vector the build MUTATES (LOD-feature append below), so
+        // it's a working COPY of the cache; the rest are read-only references into the cache.
         // QuestNpcLayer resolves its pin position via entity_world_pos(), which reads the
         // g_entity_pos cache built below from these SAME disk_enemies/disk_collectibles
         // vectors — so the enemy/asset enumeration must run whenever that layer is active,
@@ -2265,12 +2285,54 @@ void build_buckets_impl()
         const bool wantRegions = goblin::config::worldFeaturesFromDisk;
         // Elevators are MSB ObjAct events → request the ObjAct enumeration for world features.
         const bool wantObjActs = goblin::config::worldFeaturesFromDisk;
-        std::vector<DiskTreasure> treasures = load_disk_treasures(
-            &dropped_dummy_lots,
-            wantAssets ? &disk_collectibles : nullptr,
-            wantEnemies ? &disk_enemies : nullptr,
-            wantRegions ? &disk_regions : nullptr,
-            wantObjActs ? &disk_objacts : nullptr);
+        // The single MSB read pass (all sources) — CACHED across rebuilds (see ParsedDisk). A param-
+        // only refresh_markers (World Editor) reuses the snapshot and skips this ~1.2s parse; the cache
+        // is rebuilt only when the "want" flags change (a different set of sources needs parsing).
+        const uint32_t want_key = (wantAssets ? 1u : 0u) | (wantEnemies ? 2u : 0u) |
+                                  (wantRegions ? 4u : 0u) | (wantObjActs ? 8u : 0u) |
+                                  (goblin::config::lootFromDiskMsb ? 16u : 0u);
+        if (!g_parsed.valid || g_parsed.want_key != want_key)
+        {
+            auto _parse_t0 = std::chrono::steady_clock::now();
+            g_parsed.treasures.clear();
+            g_parsed.collectibles.clear();
+            g_parsed.enemies.clear();
+            g_parsed.regions.clear();
+            g_parsed.objacts.clear();
+            g_parsed.dropped_dummy_lots.clear();
+            g_parsed.lod.clear();
+            g_parsed.treasures = load_disk_treasures(
+                &g_parsed.dropped_dummy_lots,
+                wantAssets ? &g_parsed.collectibles : nullptr,
+                wantEnemies ? &g_parsed.enemies : nullptr,
+                wantRegions ? &g_parsed.regions : nullptr,
+                wantObjActs ? &g_parsed.objacts : nullptr);
+            if (goblin::config::lootFromDiskMsb)
+                g_parsed.lod = load_lod_treasures();
+            g_parsed.valid = true;
+            g_parsed.want_key = want_key;
+            spdlog::info("[BENCH] build.disk_parse: {} ms ({} treasures, {} collectibles, {} enemies)",
+                         std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - _parse_t0).count(),
+                         g_parsed.treasures.size(), g_parsed.collectibles.size(),
+                         g_parsed.enemies.size());
+        }
+        else
+        {
+            spdlog::info("[BENCH] build.disk_parse: CACHED ({} treasures, {} collectibles, {} enemies)",
+                         g_parsed.treasures.size(), g_parsed.collectibles.size(),
+                         g_parsed.enemies.size());
+        }
+        // Read-only views into the cache; disk_collectibles is a working copy (the build appends the
+        // LOD-feature assets to it). dropped_dummy_lots is consumed later in the baked loop.
+        const std::vector<DiskTreasure> &treasures = g_parsed.treasures;
+        const std::vector<DiskRegion> &disk_regions = g_parsed.regions;
+        const std::vector<DiskObjAct> &disk_objacts = g_parsed.objacts;
+        // Working copies of the two vectors the build augments in place (LOD-feature collectibles /
+        // LOD-award enemies) — cheap vs the parse they replace. The rest stay read-only refs.
+        std::vector<DiskCollectible> disk_collectibles = g_parsed.collectibles;
+        std::vector<DiskEnemy> disk_enemies = g_parsed.enemies;
+        dropped_dummy_lots = g_parsed.dropped_dummy_lots;
         if (goblin::config::lootFromDiskMsb)
             build_disk_loot_markers(treasures, disk_lots, disk_lot_tile);
         // Cross-tile LOD treasures (non-_00 supertiles), indexed by lot for the baked-residual
@@ -2278,7 +2340,7 @@ void build_buckets_impl()
         // kept — a covered lot is already drawn, so re-sourcing it would double-place. First
         // occurrence wins (one position per lot). Only when the treasure source is on.
         if (goblin::config::lootFromDiskMsb)
-            for (DiskTreasure &t : load_lod_treasures())
+            for (const DiskTreasure &t : g_parsed.lod)  // cached with the parse (see ParsedDisk)
                 if (!disk_lots.count(t.lotId))
                     lod_treasure_pos.emplace(t.lotId, t);
         // All MSB Treasure lots (the ground-item pickup assets) — used to skip

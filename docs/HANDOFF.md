@@ -135,9 +135,18 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   `rebuild_markers()` calls it synchronously before kicking the worker, so a lot CLONED live
   (`param_clone`, which reallocates `param_header->param_table` — the pointer the reader snapshots at
   construction) is re-read on refresh. E2E-proven (`test_world_editor.py`, 16/16): a cloned lot reads
-  `textid=-1` (invisible) BEFORE refresh and resolves its item AFTER. **Still open (v2 a):** it's a FULL
-  re-parse (~2.4s, re-walks every MSB) — INCREMENTAL regen (only affected buckets/tiles) for perf. Gate
-  any auto-trigger vs the collected-graying contract + the `read_wgm` cache-miss spike.
+  `textid=-1` (invisible) BEFORE refresh and resolves its item AFTER.
+  **v2 (a) DONE 2026-07-03 — parse cached, refresh ~60% faster.** Measured: `build.buckets` was
+  ~3160ms of which the MSB parse (`load_disk_treasures`, ~480k asset placements) is ~1820ms. That parse
+  output doesn't change on a PARAM edit (only the live per-marker resolve does), so it's now cached in a
+  file-scope `ParsedDisk` (keyed by the source "want" flags; MSB files are immutable for the process, so
+  the key is the only invalidation). A param-only `refresh_markers` reuses it (`[BENCH] build.disk_parse:
+  CACHED`) → **build.buckets 3163 ms → 1262 ms**. The two vectors the build augments in place
+  (`disk_collectibles` LOD-feature append, `disk_enemies` LOD-award append) get a cheap working copy;
+  the rest are read-only refs into the cache (const-checked by the compiler). New `[BENCH] build.disk_parse`
+  line isolates the parse cost. E2E still 18/18 (markers unchanged). Remaining perf idea (not needed):
+  truly INCREMENTAL per-bucket regen — the parse cache already removes the dominant cost. NB the copy is
+  ~30MB resident; acceptable. Gate any AUTO-trigger vs the collected-graying contract + `read_wgm` spike.
 - **F1 panel to edit param overrides live** — optional polish on the param-override framework (all 3
   loader slices are done/merged); more registry fields = one AOB each. Not started.
 - **Gap C GRANT — grant+sidecar PROVEN 2026-07-03; NAME + author surface remain.** A CLONED custom

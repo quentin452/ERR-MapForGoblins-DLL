@@ -95,6 +95,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   change: the vanilla package's `live_loot_labels` (randomizer relabel) now defaults OFF like
   everywhere else — randomizer players flip that one key.
 
+### Performance
+- **Faster live map refresh (*Refresh markers*).** The marker rebuild used to re-walk every MSB on each
+  refresh (~1.8s of a ~3.2s rebuild, just parsing ~480k asset placements). That geometry doesn't change
+  when you edit params in the World Editor, so it's now cached and reused — a param-only refresh drops
+  from ~3.2s to ~1.3s (about 60% faster) on the background worker.
+
 ### Added
 - **Mob names on the enemy health bar.** The game draws a health bar for locked/aggroed enemies but
   only names bosses; regular mobs now get their name labeled over the bar too. The name is read live
