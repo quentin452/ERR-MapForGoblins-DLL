@@ -53,6 +53,15 @@ constexpr FieldSpec kFields[] = {
     {L"ItemLotParam_map", "lotItemId01", nullptr, 0, 4, false, FieldType::S32, 0x00},
     {L"ItemLotParam_map", "lotItemCategory01", nullptr, 0, 4, false, FieldType::S32, 0x20},
     {L"ItemLotParam_map", "lotItemBasePoint01", nullptr, 0, 2, false, FieldType::U16, 0x40},
+    // Slots 2-8 (World Editor slice 3, per-slot re-skin). Same core-stable layout as slot 1:
+    // lotItemId0N @ +0x00+(N-1)*4 (read raw in goblin_loot_resolve.cpp:398). Offset-only.
+    {L"ItemLotParam_map", "lotItemId02", nullptr, 0, 4, false, FieldType::S32, 0x04},
+    {L"ItemLotParam_map", "lotItemId03", nullptr, 0, 4, false, FieldType::S32, 0x08},
+    {L"ItemLotParam_map", "lotItemId04", nullptr, 0, 4, false, FieldType::S32, 0x0c},
+    {L"ItemLotParam_map", "lotItemId05", nullptr, 0, 4, false, FieldType::S32, 0x10},
+    {L"ItemLotParam_map", "lotItemId06", nullptr, 0, 4, false, FieldType::S32, 0x14},
+    {L"ItemLotParam_map", "lotItemId07", nullptr, 0, 4, false, FieldType::S32, 0x18},
+    {L"ItemLotParam_map", "lotItemId08", nullptr, 0, 4, false, FieldType::S32, 0x1c},
     {L"ItemLotParam_enemy", "lotItemId01", nullptr, 0, 4, false, FieldType::S32, 0x00},
     {L"ItemLotParam_enemy", "lotItemCategory01", nullptr, 0, 4, false, FieldType::S32, 0x20},
     {L"ItemLotParam_enemy", "lotItemBasePoint01", nullptr, 0, 2, false, FieldType::U16, 0x40},

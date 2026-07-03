@@ -26,6 +26,7 @@
 #include "goblin_map_data.hpp"        // generated::Category
 #include "goblin_quest_steps.hpp"     // generated::NpcQuest
 #include "worldmap/loot_disk.hpp"     // DiskLootState
+#include "goblin_world_editor.hpp"    // WEAsset, WEGoods (World Editor picker enumeration)
 
 namespace goblin::overlay_api
 {
@@ -155,6 +156,32 @@ namespace goblin::overlay_api
     // false if the field/row is unknown or the write faulted. Pairs with rebuild_markers() to reflect
     // loot/asset edits on the drawn map.
     GOBLIN_RENDER_API bool param_set_field(const char *param, uint64_t row, const char *field, double value);
+    // Read a param field by name (regulation-free live read), for the World Editor. Fills `*out` and
+    // returns true, or returns false if the field/row is unknown or the read faulted. Pairs with
+    // param_set_field to show a slot's current value before editing it.
+    GOBLIN_RENDER_API bool param_get_field(const char *param, uint64_t row, const char *field, double *out);
+    // Clone a param row live (add a new row `newId` copied from `srcRow`) — World Editor lot-clone.
+    // Returns false if the src is missing, `newId` collides, or the table expand faults. Pair with
+    // rebuild_markers() (which resets the LotReader) so a cloned ItemLotParam_map lot resolves.
+    GOBLIN_RENDER_API bool param_clone(const char *param, uint64_t srcRow, int32_t newId);
+    // World Editor picker enumeration: scan the live params into browsable asset/goods lists, then
+    // copy them into caller buffers (the panel filters client-side). we_scan is a one-shot (a brief
+    // present-thread hitch); count/copy are cheap.
+    GOBLIN_RENDER_API int we_scan();
+    GOBLIN_RENDER_API size_t we_asset_count();
+    GOBLIN_RENDER_API size_t we_goods_count();
+    GOBLIN_RENDER_API size_t we_copy_assets(goblin::world_editor::WEAsset *out, size_t max);
+    GOBLIN_RENDER_API size_t we_copy_goods(goblin::world_editor::WEGoods *out, size_t max);
+    // World bundle: record the World Editor's edits + save/apply them as a persistent TOML that
+    // re-applies at boot (World Editor "Save/Apply/Clear bundle" buttons).
+    GOBLIN_RENDER_API void we_bundle_record_set(const char *param, uint64_t row, const char *field,
+                                                double value);
+    GOBLIN_RENDER_API void we_bundle_record_clone(const char *param, uint64_t src, int32_t newId);
+    GOBLIN_RENDER_API size_t we_bundle_count();
+    GOBLIN_RENDER_API std::string we_bundle_status();
+    GOBLIN_RENDER_API bool we_bundle_save();   // to <mod>/world_bundle.toml
+    GOBLIN_RENDER_API int we_bundle_apply();   // from <mod>/world_bundle.toml (0 if absent)
+    GOBLIN_RENDER_API void we_bundle_clear();
     GOBLIN_RENDER_API std::string lookup_name_en_disk_utf8(int32_t encoded_id);
     GOBLIN_RENDER_API bool quest_step_done(const goblin::generated::NpcQuest &q, size_t s);
     GOBLIN_RENDER_API uint32_t resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag);

@@ -30,6 +30,25 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   id, and *Refresh markers* to see it on the map — all at runtime, regulation-free, save-safe. Early
   slice (edit-by-id; a browsable picker + lot-cloning are next). Pairs with `custom_items.toml` to give
   the re-skinned item a name/stats.
+- **World Editor — repoint a loot asset (slice 2).** The *World Editor (live)* panel can now point an
+  asset at a **different existing loot lot** instead of only re-skinning its own lot. Non-destructive
+  (leaves the shared lot untouched, so other assets on it are unaffected), with a live preview of the
+  target lot's item before you commit; *Refresh markers* shows it on the map.
+- **World Editor — per-slot re-skin (slice 3).** The re-skin now targets any of a lot's **8 item slots**
+  (a `Slot` selector), not just slot 1, showing the selected slot's current item id live. (Slot 1 is
+  what the map marker shows.)
+- **World Editor — clone a loot lot (slice 5).** A `Clone this lot` button copies the current lot into a
+  fresh row you can edit without touching the shared original; it pre-fills the repoint target so you
+  can point an asset at the copy. *Refresh markers* now re-reads the live lot table, so a **cloned lot
+  resolves on the map** (previously a newly cloned lot never showed).
+- **World Editor — browsable asset/item picker (slice 6).** A `Browse (pick asset / item)` section
+  scans the live params into searchable lists of pickup assets and named items — filter by name/id and
+  click to fill the Asset / New-goods-id fields, instead of typing raw ids.
+- **World Editor — save edits as a world bundle (slice 7).** Every edit you make (re-skin, repoint,
+  clone) is recorded; `Save bundle` writes them to `world_bundle.toml` next to the DLL, which **re-applies
+  automatically on the next launch** — so an edited world persists across restarts and can be shared.
+  `Apply bundle` re-runs a saved bundle live; `Clear` empties the in-memory recording. First brick of the
+  runtime "World Virtualization" direction.
 - **Regulation.bin-free custom items.** A new `custom_items.toml` (next to `MapForGoblins.dll`) lets
   you declare custom items as data — no `regulation.bin`, no code. Each `[[goods]]` (also `[[weapon]]`
   /`[[protector]]`/`[[accessory]]`) clones a template row from the ACTIVE install, sets fields by name,
@@ -80,6 +99,12 @@ not present in the upstream ELDEN RING Reforged / MapForGoblins project.
   double-DLL-load failure mode caused by shipping two profile variants side by side. One behavior
   change: the vanilla package's `live_loot_labels` (randomizer relabel) now defaults OFF like
   everywhere else — randomizer players flip that one key.
+
+### Performance
+- **Faster live map refresh (*Refresh markers*).** The marker rebuild used to re-walk every MSB on each
+  refresh (~1.8s of a ~3.2s rebuild, just parsing ~480k asset placements). That geometry doesn't change
+  when you edit params in the World Editor, so it's now cached and reused — a param-only refresh drops
+  from ~3.2s to ~1.3s (about 60% faster) on the background worker.
 
 ### Added
 - **Mob names on the enemy health bar.** The game draws a health bar for locked/aggroed enemies but

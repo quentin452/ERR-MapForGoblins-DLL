@@ -74,16 +74,55 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
 
 ## Open / next items
 
-- **In-Game World Editor (vision #2) — SLICE 1 DONE 2026-07-03.** New F1 panel section "World Editor
+- **In-Game World Editor (vision #2) — SLICES 1+2 DONE 2026-07-03.** F1 panel section "World Editor
   (live)" (`src/overlay_panel/panel_world_editor.cpp`): pick an AEG asset → it shows the loot item its
   MAP MARKER resolves to (live `aeg_pickup_lot`→`resolve_loot_item_textid`→`lookup_text_utf8`) → set that
   lot's `lotItemId01` to any goods id → `Refresh markers` → shows on the map. Wires the proven runtime
-  primitives (`overlay_api::param_set_field` new bridge + `rebuild_markers`) to widgets. Visually verified
-  ("Lot 997230 → Bloodrose"). **Next slices:** repoint-to-another-lot (pickUpItemLotParamId), a proper
-  asset/item PICKER (browse instead of typing ids), CLONE a lot instead of editing in place (needs the
-  `refresh_markers` v2 LotReader-index reset so new lots resolve), category select, and SAVE the edits as
-  a world bundle (→ feeds vision #1 World Virtualization). Backend all proven; these are UI + the two
-  `refresh_markers` v2 items.
+  primitives (`overlay_api::param_set_field` new bridge + `rebuild_markers`) to widgets. Slice-1 visually
+  verified ("Lot 997230 → Bloodrose").
+  **Slice 2 (2026-07-03): repoint-to-another-lot.** Panel now also sets the asset's `pickUpItemLotParamId`
+  to a different EXISTING lot (non-destructive — leaves the shared lot alone), with a live preview of the
+  target lot's slot-1 item before commit. Pure ImGui over already-proven bridges (`param_set_field` on
+  `pickUpItemLotParamId` is the same write the RPC repoint used; live re-read via `aeg_pickup_lot` from
+  slice 1). **✅ DEPLOYED + E2E-VERIFIED 2026-07-03 (Linux/Proton, 8/8)** —
+  `tools/rpc_tests/test_world_editor_slice2.py` cold-boots ER, loads a save, and proves the exact panel
+  write path: `help` returns the verb list; repoint asset 99030 (lot 900002000 → 997230) then
+  `param_getf`==997230 AND `loot_at` resolves lot 997230 + 'Bloodrose' (textid 500020723); restore to
+  900002000. Also proved the new `help`/`?` RPC verb. (Test caveat baked in: discover pickup assets by
+  loot TEXTID, not name — many valid lots resolve an empty FMG name off this chain.)
+  **Slice 3 (2026-07-03): per-slot re-skin — DONE + E2E-VERIFIED (12/12).** The in-place re-skin now
+  targets any of a lot's 8 slots via a `Slot` selector, showing the selected slot's live item id. Added
+  `ItemLotParam_map.lotItemId02..08` to the paramedit registry (offset-only, core-stable, `+0x00+(N-1)*4`)
+  + an `overlay_api::param_get_field` name-addressed read bridge. `tools/rpc_tests/test_world_editor.py`
+  (renamed from `_slice2`) round-trips lotItemId02 (0→424242→0) on top of the slice-2 checks.
+  **Slice 5 (2026-07-03): CLONE a lot — DONE + E2E-VERIFIED (16/16).** A `Clone this lot` button
+  (`overlay_api::param_clone` new bridge → `param_clone_row`) copies the current lot to a fresh row and
+  pre-fills the repoint target; combined with the `refresh_markers` v2 LotReader reset (see the live
+  marker regen item below), a cloned lot now resolves on the map. Test proves invisible-before /
+  resolves-after refresh.
+  **Slice 6 (2026-07-03): asset/item PICKER — DONE + E2E-VERIFIED (18/18).** New host module
+  `goblin_world_editor.{hpp,cpp}` scans the live params into browsable lists — pickup assets
+  (AssetEnvironmentGeometryParam rows with a real `pickUpItemLotParamId`, name via the loot chain) and
+  named goods (EquipParamGoods, name via `lookup_text_utf8(id+500000000)`). Exposed through
+  `overlay_api::we_scan`/`we_copy_assets`/`we_copy_goods` (+ POD `WEAsset`/`WEGoods`) and a `we_scan`
+  RPC. The F1 `Browse (pick asset / item)` section (Scan button → client-side filter → click sets the
+  Asset / New-goods-id fields). Live scan on a loaded save: 324 pickup assets, 5499 named goods.
+  **Slice 7 (2026-07-03): SAVE edits as a world bundle — DONE + E2E-VERIFIED (24/24).** New host module
+  `goblin_world_bundle.{hpp,cpp}` records the editor's edits (dedup: SET keeps last per param/row/field,
+  CLONE unique per newId) and persists them as `<mod>/world_bundle.toml` (`[[clone]]` + `[[set]]` arrays,
+  toml++). `apply_current()` re-runs them (clones first, then sets, then `reset_lot_reader`);
+  `apply_boot()` re-applies the default bundle at startup (wired in `dllmain` right after
+  `custom_items::apply`, before the first marker build → no LotReader reset needed at boot). Panel:
+  `Save / Apply / Clear bundle` buttons + op count; RPC `bundle status|clone|set|save|load|apply|clear`.
+  E2E: record clone+repoint → save → clear memory → apply-from-disk → asset resolves the cloned lot's
+  item. **This is the first brick of vision #1 World Virtualization** (a swappable world = a bundle);
+  remaining for #1: multiple named bundles + live swap (reset-to-base + apply + refresh) + per-world
+  sidecar save context. **⚠️ GOTCHA found:** `toml::parse_file` returns an EMPTY table under Proton/Wine
+  (silent, no throw) — read the file via `std::ifstream` + `toml::parse(string)` instead. `custom_items.cpp`
+  still uses `parse_file` → likely the SAME latent bug (custom_items.toml silently ignored under Proton);
+  see `docs/memory/tooling/toml-parse-file-proton-bug.md`.
+  **Next slices:** category select (weapons/armour/… beyond goods in the picker), and the World
+  Virtualization multi-bundle swap. (`refresh_markers` v2 fully done.)
 
 - **MSB WRITE — frontier #1, first probe scoped 2026-07-03 (`docs/re/windows_msb_placement_write_re_prompt.md`).**
   The keystone for "create new content" (custom mob/treasure placement, new map geometry). We READ MSB fully
@@ -124,12 +163,25 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   forces a fresh bucket build. Verified: after a `pickUpItemLotParamId` repoint, `refresh_markers` ran a
   full `build.buckets` (2381 ms) on the detached disk WORKER thread (no frame freeze), re-reading live
   params; game alive. Since the rebuild uses the same live resolve as `loot_at`, existing-lot edits
-  (repoint, `lotItemId01`, any param override) now show on the map. **Still open (v2):** (a) it's a FULL
-  re-parse (~2.4s, re-walks every MSB) — INCREMENTAL regen (only affected buckets/tiles) for perf; (b) a
-  NEWLY CLONED lot still won't resolve — the `LotReader` lot INDEX (`goblin_loot_resolve.cpp`) is
-  snapshotted via `once_flag` at init and `rebuild_markers` doesn't reset it (existing lots reflect live;
-  new lots need a LotReader-index reset). Gate any auto-trigger vs the collected-graying contract + the
-  `read_wgm` cache-miss spike.
+  (repoint, `lotItemId01`, any param override) now show on the map.
+  **v2 (b) DONE 2026-07-03 — cloned lots now resolve.** The 5 `LotReader` caches in
+  `goblin_loot_resolve.cpp` were consolidated into ONE shared, mutex-guarded reader (callers copy the
+  0x98-byte row out under the lock, then read lock-free) with a public `goblin::reset_lot_reader()`;
+  `rebuild_markers()` calls it synchronously before kicking the worker, so a lot CLONED live
+  (`param_clone`, which reallocates `param_header->param_table` — the pointer the reader snapshots at
+  construction) is re-read on refresh. E2E-proven (`test_world_editor.py`, 16/16): a cloned lot reads
+  `textid=-1` (invisible) BEFORE refresh and resolves its item AFTER.
+  **v2 (a) DONE 2026-07-03 — parse cached, refresh ~60% faster.** Measured: `build.buckets` was
+  ~3160ms of which the MSB parse (`load_disk_treasures`, ~480k asset placements) is ~1820ms. That parse
+  output doesn't change on a PARAM edit (only the live per-marker resolve does), so it's now cached in a
+  file-scope `ParsedDisk` (keyed by the source "want" flags; MSB files are immutable for the process, so
+  the key is the only invalidation). A param-only `refresh_markers` reuses it (`[BENCH] build.disk_parse:
+  CACHED`) → **build.buckets 3163 ms → 1262 ms**. The two vectors the build augments in place
+  (`disk_collectibles` LOD-feature append, `disk_enemies` LOD-award append) get a cheap working copy;
+  the rest are read-only refs into the cache (const-checked by the compiler). New `[BENCH] build.disk_parse`
+  line isolates the parse cost. E2E still 18/18 (markers unchanged). Remaining perf idea (not needed):
+  truly INCREMENTAL per-bucket regen — the parse cache already removes the dominant cost. NB the copy is
+  ~30MB resident; acceptable. Gate any AUTO-trigger vs the collected-graying contract + `read_wgm` spike.
 - **F1 panel to edit param overrides live** — optional polish on the param-override framework (all 3
   loader slices are done/merged); more registry fields = one AOB each. Not started.
 - **Gap C GRANT — grant+sidecar PROVEN 2026-07-03; NAME + author surface remain.** A CLONED custom

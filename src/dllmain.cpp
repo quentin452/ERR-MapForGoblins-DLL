@@ -24,6 +24,7 @@
 #include "goblin_param_overrides.hpp"
 #include "goblin_sidecar.hpp"
 #include "goblin_custom_items.hpp"
+#include "goblin_world_bundle.hpp"
 #include "goblin_inventory.hpp"
 #include "goblin_warp.hpp"
 #include "goblin_logic.hpp"
@@ -180,6 +181,9 @@ static std::filesystem::path g_mod_folder;
 
 // Author surface applier — needs g_mod_folder, so defined after it (unlike the other init wrappers).
 static void init_custom_items()     { goblin::custom_items::apply(g_mod_folder); }
+// World bundle (vision #1): re-apply the saved World Editor edits (clones + field sets). After
+// custom_items (params ready) and before the first marker build, so the initial resolve sees them.
+static void init_world_bundle()     { goblin::world_bundle::apply_boot(g_mod_folder); }
 
 static void setup_mod()
 {
@@ -300,6 +304,7 @@ static void setup_mod()
         // Author surface (Gap C): apply custom_items.toml — clone+fields+name+sidecar-register each
         // declared item. After setup_messages (name inject needs the FMG repo) + params ready.
         safe_init_step(&init_custom_items,    "custom_items::apply");
+        safe_init_step(&init_world_bundle,    "world_bundle::apply_boot");
         // Queue the live-refresh hook (FUN_140a82a80) — kept for the native-pin
         // suppression path; no-op until enabled.
         safe_init_step(&init_icon_tex_probe,  "install_icon_texture_probe");
