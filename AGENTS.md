@@ -74,4 +74,5 @@ Workflow:
 - At the end of a completed task, update `docs/memory/` when the result changes project state, workflow,
   blockers, machine capabilities, or important next steps. If it adds a feature or fixes a bug, also add
   a line under `[Unreleased]` in `docs/changelog.md`.
-- For RE handoffs, write clear prompts/findings under `docs/re/`.
+- For RE handoffs, write clear prompts/findings under `docs/re/`. See `docs/re/README.md` — the RE
+  COVERAGE MAP (what of ELDEN RING is reverse-engineered vs the frontier: MSB-write + ESD are the walls).
