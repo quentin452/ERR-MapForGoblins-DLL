@@ -66,7 +66,7 @@ tools/config.ini
 
 # IDE / OS
 .vs/
-.vscode/
+.vscode/*
 .claude/
 .idea/
 Thumbs.db
@@ -194,3 +194,4 @@ data/err_collectibles.json
 # RPC test run results (local regression ledger, not committed)
 tools/rpc_tests/results.jsonl
 tools/rpc_tests/sweep.log
+!.vscode/tasks.json

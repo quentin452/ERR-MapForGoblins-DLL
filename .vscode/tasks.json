@@ -1,0 +1,61 @@
+{
+  // MapForGoblins dev tasks (Linux clang-cl + xwin cross-build → Proton). Run via
+  // Terminal ▸ Run Task…, or Ctrl+Shift+B for the default build. See
+  // docs/memory/tooling/mapforgoblins-linux-build.md for the toolchain setup.
+  "version": "2.0.0",
+  "options": {
+    // The ERR install that runs the game (deploy target). Adjust if your path differs.
+    "env": { "ERR_ROOT": "${env:HOME}/Games/ERRv2.2.9.6" }
+  },
+  "tasks": [
+    {
+      "label": "MFG: Configure (clang-cl xwin)",
+      "detail": "First-time / after CMakeLists changes — configure the Ninja build dir.",
+      "type": "shell",
+      "command": "cmake -B build-linux -G Ninja -DCMAKE_TOOLCHAIN_FILE=clang-cl-xwin.cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "MFG: Build DLL (clang)",
+      "detail": "ninja build of MapForGoblins.dll (the Windows DLL, cross-built with clang-cl).",
+      "type": "shell",
+      "command": "ninja -C build-linux MapForGoblins",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "MFG: Deploy DLL (to ERR offline)",
+      "detail": "Copy the built DLL + PDB into <ERR_ROOT>/dll/offline (game must be CLOSED; restart to load).",
+      "type": "shell",
+      "command": "cp build-linux/MapForGoblins.dll \"$ERR_ROOT/dll/offline/MapForGoblins.dll\" && cp build-linux/MapForGoblins.pdb \"$ERR_ROOT/dll/offline/MapForGoblins.pdb\" && echo deployed to \"$ERR_ROOT/dll/offline\"",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "MFG: Build + Deploy",
+      "detail": "Build then deploy the DLL+PDB in one step.",
+      "dependsOrder": "sequence",
+      "dependsOn": ["MFG: Build DLL (clang)", "MFG: Deploy DLL (to ERR offline)"],
+      "problemMatcher": []
+    },
+    {
+      "label": "MFG: Run all RPC tests (aggregated)",
+      "detail": "Boot ER + run the RPC test suite (single-boot tests share ONE boot) + regression scan.",
+      "type": "shell",
+      "command": "python tools/rpc_tests/run_all.py",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "MFG: Check regressions + refresh STATUS.md",
+      "detail": "Scan the test ledger for regressions vs the prior run + regenerate tools/rpc_tests/STATUS.md.",
+      "type": "shell",
+      "command": "python tools/rpc_tests/check_regress.py",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ]
+}

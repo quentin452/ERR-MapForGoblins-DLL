@@ -141,6 +141,13 @@ if any test failed OR any regression. Must run LOCALLY (the game is on this box 
 up. Nightly local cron (user adds to their crontab):
 `30 4 * * * cd <repo> && python tools/rpc_tests/run_all.py >> tools/rpc_tests/sweep.log 2>&1`.
 Loop fully closed: run → record → detect → gate.
+**Git-tracked status (DONE):** `check_regress.py` also regenerates `tools/rpc_tests/STATUS.md` (a committed
+markdown table of the LAST run of each test — ✅/❌, N/total, timestamp) from the local ledger, so the repo
+carries a visible, versioned test-status snapshot (the raw `results.jsonl` stays gitignored). `run_all`
+refreshes it every sweep; the user/cron commits it (auto-commit left out to avoid daily noise commits).
+**Dev ergonomics (DONE):** `.vscode/tasks.json` (git-tracked via a `.gitignore` `.vscode/*` + `!tasks.json`)
+gives one-click tasks — Configure, Build DLL (clang), Deploy, Build+Deploy, Run all tests, Check
+regressions — so the user compiles + tests without memorizing the ninja/cmake/cp/python invocations.
 
 ## Open RE items (small, mostly confirm-live)
 - mapId→world lookup + a reserved-mapId/area allocator (only for walkable worlds — not on the marker path).
