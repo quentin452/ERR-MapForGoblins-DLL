@@ -721,6 +721,22 @@ namespace goblin::debug_rpc
                 std::snprintf(b, sizeof(b), "%s give_item id=%#010x qty=%d", ok ? "ok" : "err", id, qty);
                 return std::string(b);
             }
+            // goods_count <id> — how many of the category-encoded `id` the player HOLDS (carried
+            // inventory), read-only. The sidecar clean-save oracle (grant→save→empty .mfg→reload→
+            // assert 0). Reports not-in-world separately from a real 0 (chain unresolved).
+            if (cmd == "goods_count")
+            {
+                std::string id_s = next_token(rest);
+                if (id_s.empty()) return "err usage: goods_count <id(0x..)>";
+                uint32_t id = 0;
+                try { id = static_cast<uint32_t>(std::stoul(id_s, nullptr, 0)); }
+                catch (...) { return "err bad id"; }
+                if (!goblin::inventory::equip_game_data()) return "err not in-world (inventory unresolved)";
+                uint32_t n = goblin::inventory::goods_count(id);
+                char b[80];
+                std::snprintf(b, sizeof(b), "ok goods_count id=%#010x n=%u", id, n);
+                return std::string(b);
+            }
             // warp <graceId> — fast-travel to a site of grace (dev-world nav). graceId = the
             // bonfire entity id (e.g. 1042362951 = The First Step, 10002951 = Margit). Must be
             // in-world + the grace unlocked. grep [WARP] for the call result.

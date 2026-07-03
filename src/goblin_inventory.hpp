@@ -34,4 +34,12 @@ namespace goblin::inventory
     // — the inventory the SAVE serialize reads (sidecar Phase-2 strip-bracket RE target). nullptr
     // before the world loads / on fault. SEH-guarded chain walk.
     void *equip_game_data();
+
+    // How many of the category-encoded `item_id` the player currently HOLDS (carried inventory).
+    // Read-only RPM walk of EquipInventoryData (EquipGameData+0x158) — the two-segment slot list,
+    // node {handle@0, id@4, qty@8} @ 0x18 stride (docs/re/windows_goods_count_re_findings.md). No
+    // game call, no thread/save-timing concern. Returns 0 when absent (the sidecar clean-save
+    // oracle) OR when the chain isn't resolvable yet (not in-world) — callers that need to tell
+    // "absent" from "not-ready" should gate on equip_game_data() != nullptr first.
+    uint32_t goods_count(uint32_t item_id);
 }

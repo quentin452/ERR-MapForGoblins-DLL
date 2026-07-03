@@ -1,5 +1,11 @@
 # Windows-Ghidra RE prompt — the "owned item count" function (sidecar Phase-2 clean-save ORACLE)
 
+> ✅ **SOLVED 2026-07-03 — see `windows_goods_count_re_findings.md`.** Delivered option (3): the direct
+> EquipInventoryData walk (`GameDataMan+8 → +0x2B0 EquipGameData → +0x158 EquipInventoryData`, two-segment
+> slot list, node `{handle@0, id@4, qty@8}` @ 0x18 stride). Implemented as `goblin::inventory::goods_count(id)`
+> (read-only RPM walk, no game call) + RPC `goods_count <id>`. Only step left = live-verify offsets on the
+> ERR deploy build (via the existing `equip_dump` RPC) + script `test_custom_item.py`. Original prompt kept below.
+
 ## Why this is needed
 
 The sidecar Phase-2 strip/reinject bracket is WIRED and LIVE (`hk_serialize` on `SERIALIZE_FN`

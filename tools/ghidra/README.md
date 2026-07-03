@@ -48,6 +48,14 @@ intersection "reads game data ∧ writes a stream" = the save serialize. Found `
 (er+0x67dc00, the whole-slot serialize / sidecar strip bracket — `docs/re/windows_save_serialize_re_findings.md`).
 Writes `D:\ghidra_scripts\out_find_serialize.txt`. Same headless invocation as `query.java`.
 
+## 4. `find_goodscount.java` — example bespoke scan (owned-item-count hunt)
+Second worked example: enumerate every function in a code region (default the equip/player game-data TU
+`[0x245000,0x260000)`), flag the ones that LOOP and CALL into the CSGaitemImp GaItem region
+`[0x670000,0x683000)`, and dump their decomp — the "iterates the inventory ∧ resolves item handles"
+intersection. Found the EquipInventoryData two-segment slot layout + node `{handle@0,id@4,qty@8}` that
+backs `goblin::inventory::goods_count` (`docs/re/windows_goods_count_re_findings.md`). Overridable region
+args (`0xLO 0xHI [0xGA_LO 0xGA_HI]`); writes `D:\ghidra_scripts\out_find_goodscount.txt`.
+
 ## Workflow (the fast path for a new RE)
 1. `grep` `rtti_index.txt` for the class(es) you care about → vtable RVA + ctor RVAs.
 2. `query.java name:<exact>` or `query.java 0x<ctorRVA>` → read the decompiled ctor/methods.

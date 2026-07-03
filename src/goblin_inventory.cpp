@@ -131,6 +131,54 @@ void *equip_game_data()
     return egd;
 }
 
+namespace
+{
+// One guarded RPM read of a POD from the game address space. false on a bad/unmapped ptr (the
+// inventory chain is null before the world loads) — never faults the DLL.
+template <typename T>
+bool rpm(const void *p, T &out)
+{
+    SIZE_T got = 0;
+    return p && ReadProcessMemory(GetCurrentProcess(), p, &out, sizeof(T), &got) && got == sizeof(T);
+}
+}  // namespace
+
+uint32_t goods_count(uint32_t item_id)
+{
+    // EquipInventoryData (carried) = EquipGameData + 0x158. Walk the two-segment slot list read-only.
+    // Layout + node fields: docs/re/windows_goods_count_re_findings.md.
+    void *egd = equip_game_data();
+    if (!egd) return 0;  // not in-world yet — caller gates on equip_game_data() to tell absent apart.
+    auto *inv = reinterpret_cast<uint8_t *>(egd) + 0x158;
+
+    uint32_t seg1 = 0;
+    int32_t last = -1;
+    uint64_t seg1_base = 0, seg2_base = 0;
+    if (!rpm(inv + 0x1C, seg1) || !rpm(inv + 0x80, last) ||
+        !rpm(inv + 0x50, seg1_base) || !rpm(inv + 0x40, seg2_base))
+        return 0;
+    if (last < 0) return 0;
+
+    // Sanity clamp — a torn read mid-transition shouldn't spin the DLL on a garbage count.
+    const uint32_t span = static_cast<uint32_t>(last) + 1u;
+    if (span > 0x4000) return 0;
+
+    uint64_t total = 0;
+    for (uint32_t i = 0; i < span; ++i)
+    {
+        uint64_t base = (i < seg1) ? seg1_base : seg2_base;
+        uint32_t idx = (i < seg1) ? i : i - seg1;
+        auto *node = reinterpret_cast<const uint8_t *>(base) + static_cast<uint64_t>(idx) * 0x18;
+
+        uint32_t active = 0, node_id = 0, qty = 0;
+        if (!rpm(node, active) || active == 0) continue;   // empty slot
+        if (!rpm(node + 4, node_id) || node_id != item_id) continue;
+        if (rpm(node + 8, qty)) total += qty;
+    }
+    // Held stacks are u32; clamp defensively.
+    return total > 0xFFFFFFFFull ? 0xFFFFFFFFu : static_cast<uint32_t>(total);
+}
+
 bool give_item(uint32_t item_id, int32_t qty)
 {
     if (!g_ready.load()) initialize();

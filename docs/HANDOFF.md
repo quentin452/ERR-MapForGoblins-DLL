@@ -46,16 +46,23 @@ to actually clean the vanilla save. Recipe: grant a reserved-id item live (`give
 (`sidecar additem`) → trigger a real game save → reload with the `.mfg` `[items]` emptied → item must be
 GONE from the vanilla save. That assertion needs an automated **`goods_count(id)`** read.
 
-**⛔ `goods_count` via memory-walk is BLOCKED (proven 2026-07-03, ~14 boots + a `goods_diff` before/after
-probe, both reverted).** A DIFF over every 2-level array off PlayerGameData AND the MapItemMan singleton
-found NO plain i32 that moves with a grant/remove — scanning for the encoded id only hits static catalog
-tables. ELDEN RING uses **GaItemHandle indirection**: the held list stores `{GaItemHandle, qty}` and the
-id lives in a `GaItem` resolved via a MapItemMan hashmap. So a by-id count needs the game's own count fn
-(or the handle-resolver + struct offsets) — a **Ghidra handoff**, same play that cracked SERIALIZE_FN.
-Prompt written: **`docs/re/windows_goods_count_re_prompt.md`** (find `EquipInventoryData::GetItemQuantity`
-/ shop "owned" check → RVA+AOB+convention). After it lands: add `goods_count` (one guarded call) + script
-`tools/rpc_tests/test_custom_item.py`. Meanwhile the bracket can be sanity-checked MANUALLY in-game
-(grant → save → empty `.mfg` → reload → eyeball inventory). Variant B stays the zero-RE fallback.
+**✅ `goods_count` UNBLOCKED 2026-07-03 (Windows-Ghidra, this box) — `docs/re/windows_goods_count_re_findings.md`.**
+The blind 2-level `goods_diff` failed because the held qty is NOT inline next to the id: ELDEN RING uses
+GaItemHandle indirection AND the held list is a **two-segment split list three hops from GameDataMan**.
+Ghidra (`D:\ghidra_proj2\ER`, new `tools/ghidra/find_goodscount.java` + `query.java`) pinned the whole
+layout: **`GameDataMan+8 → +0x2B0 EquipGameData → +0x158 EquipInventoryData` (carried)**; two segments
+(seg1_cap@+0x1C, seg1_base@+0x50, seg2_base@+0x40, last_index@+0x80), node stride `0x18`, node
+`{handle@0 (0⇒empty), itemId@4 (0x40000000|goodsId), quantity@8}` (qty offset cross-checked via the
+decrement path `FUN_14024bfe0` + the `FUN_1407127a0` accessor). Delivered **option (3), the direct walk**
+(read-only, no game call, no thread/save-timing risk) as `goblin::inventory::goods_count(id)`
+(`goblin_inventory.{hpp,cpp}`, RPM-guarded, reuses the existing `equip_game_data()` chain) + RPC
+`goods_count <id>` (reports `err not in-world` vs a real `n=0`). Callable fallbacks recorded too
+(`FUN_14024c460`/`…c560` by-id finders). **NEXT: live-verify the offsets on the ERR deploy build** (grant
+`give_item 0x40003bec 7` → `goods_count` must read 7 → `give_item … -7` → 0; `equip_dump 0x158 0x90` to
+eyeball the segment header) **then script `tools/rpc_tests/test_custom_item.py`** (grant reserved-id →
+warp-save → empty `.mfg [items]` → reload → assert `goods_count==0`) = the Phase-2 clean-save regression
+that CLOSES Variant A. Variant B stays the zero-RE fallback. NB code is committed but NOT built/run on the
+Linux box yet — cross-build + deploy there before the live-verify.
 
 ---
 
