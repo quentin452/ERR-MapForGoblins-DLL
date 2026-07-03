@@ -26,6 +26,7 @@
 #include "goblin_map_data.hpp"        // generated::Category
 #include "goblin_quest_steps.hpp"     // generated::NpcQuest
 #include "worldmap/loot_disk.hpp"     // DiskLootState
+#include "goblin_world_editor.hpp"    // WEAsset, WEGoods (World Editor picker enumeration)
 
 namespace goblin::overlay_api
 {
@@ -163,6 +164,14 @@ namespace goblin::overlay_api
     // Returns false if the src is missing, `newId` collides, or the table expand faults. Pair with
     // rebuild_markers() (which resets the LotReader) so a cloned ItemLotParam_map lot resolves.
     GOBLIN_RENDER_API bool param_clone(const char *param, uint64_t srcRow, int32_t newId);
+    // World Editor picker enumeration: scan the live params into browsable asset/goods lists, then
+    // copy them into caller buffers (the panel filters client-side). we_scan is a one-shot (a brief
+    // present-thread hitch); count/copy are cheap.
+    GOBLIN_RENDER_API int we_scan();
+    GOBLIN_RENDER_API size_t we_asset_count();
+    GOBLIN_RENDER_API size_t we_goods_count();
+    GOBLIN_RENDER_API size_t we_copy_assets(goblin::world_editor::WEAsset *out, size_t max);
+    GOBLIN_RENDER_API size_t we_copy_goods(goblin::world_editor::WEGoods *out, size_t max);
     GOBLIN_RENDER_API std::string lookup_name_en_disk_utf8(int32_t encoded_id);
     GOBLIN_RENDER_API bool quest_step_done(const goblin::generated::NpcQuest &q, size_t s);
     GOBLIN_RENDER_API uint32_t resolve_loot_flag(uint32_t lotId, uint8_t lotType, uint32_t baked_flag);

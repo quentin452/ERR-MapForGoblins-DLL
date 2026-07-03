@@ -71,6 +71,7 @@ Registry fields today (name-addressed): `EquipParamGoods.{goodsType,sortGroupId}
 | `loot_at` | `loot_at <aegRow>` | Resolve LIVE what the map's loot marker for an AssetEnvironmentGeometry row shows: `pickUpItemLotParamId → ItemLotParam_map → item name` (the exact map-build chain). Verify a repoint headless. |
 | `refresh_markers` | `refresh_markers` | Force a fresh marker/bucket build so a live param edit shows on the drawn map (disk worker, async). NB a newly CLONED lot won't resolve yet (LotReader-index reset — see HANDOFF v2). |
 | `warp` | `warp <graceId>` | Fast-travel to a site of grace (e.g. `1042362951` = The First Step). Must be in-world + grace unlocked. |
+| `we_scan` | `we_scan` | Build the World Editor picker lists (pickup assets + named goods) from live params; reports `assets= goods= total=`. Same scan the F1 "Browse" button runs. |
 
 ## Inventory / custom items (Gap C / sidecar)
 

@@ -15,9 +15,11 @@
 #include "goblin_i18n.hpp"
 #include "goblin_overlay_render_api.hpp"
 
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 namespace goblin::overlay::panel
 {
@@ -163,5 +165,83 @@ void draw_world_editor(Filter &f)
                                    "Full rebuild (~2s) on a worker thread — no frame hitch."));
 
     if (status[0]) ImGui::TextDisabled("%s", status);
+
+    // ── Slice 6: browsable asset / item PICKER ───────────────────────────────────────────────────
+    // Instead of typing raw ids, scan the live params once into cached lists and pick from a filtered
+    // list — clicking sets the Asset (aegRow) or New goods id fields above. Scan is on-demand (a brief
+    // hitch); the filter runs client-side over the cached copy each frame (cheap).
+    ImGui::Spacing();
+    if (ImGui::CollapsingHeader(tr("Browse (pick asset / item)")))
+    {
+        using goblin::world_editor::WEAsset;
+        using goblin::world_editor::WEGoods;
+        static std::vector<WEAsset> assets;
+        static std::vector<WEGoods> goods;
+        static char af[64] = "";
+        static char gf[64] = "";
+
+        auto matches = [](const char *name, int a, int b, const char *filt) {
+            if (!filt[0]) return true;
+            char hay[160];
+            std::snprintf(hay, sizeof(hay), "%s %d %d", name, a, b);
+            std::string h(hay), f(filt);
+            for (char &c : h) c = (char)std::tolower((unsigned char)c);
+            for (char &c : f) c = (char)std::tolower((unsigned char)c);
+            return h.find(f) != std::string::npos;
+        };
+
+        if (ImGui::Button(tr("Scan world")))
+        {
+            goblin::overlay_api::we_scan();
+            assets.resize(goblin::overlay_api::we_asset_count());
+            if (!assets.empty())
+                assets.resize(goblin::overlay_api::we_copy_assets(assets.data(), assets.size()));
+            goods.resize(goblin::overlay_api::we_goods_count());
+            if (!goods.empty())
+                goods.resize(goblin::overlay_api::we_copy_goods(goods.data(), goods.size()));
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("%d assets / %d items", (int)assets.size(), (int)goods.size());
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", tr("Reads every pickup asset + named goods from the live params.\n"
+                                       "One-shot (brief hitch); re-scan after cloning to pick the copy."));
+
+        // Pickup assets → sets the Asset (aegRow) field above.
+        ImGui::SeparatorText(tr("Pickup assets"));
+        ImGui::SetNextItemWidth(220.0f);
+        ImGui::InputTextWithHint("##af", tr("filter: item name / aeg / lot"), af, sizeof(af));
+        if (ImGui::BeginChild("we_assets", ImVec2(0, 120), true))
+        {
+            int shown = 0;
+            for (const auto &a : assets)
+            {
+                if (!matches(a.name, a.aegRow, a.lot, af)) continue;
+                if (shown++ >= 300) { ImGui::TextDisabled("%s", tr("… refine the filter")); break; }
+                char label[144];
+                std::snprintf(label, sizeof(label), "aeg %d   lot %d   %s", a.aegRow, a.lot,
+                              a.name[0] ? a.name : "(no name)");
+                if (ImGui::Selectable(label)) aeg = a.aegRow;
+            }
+        }
+        ImGui::EndChild();
+
+        // Goods → sets the New goods id field above.
+        ImGui::SeparatorText(tr("Items (goods)"));
+        ImGui::SetNextItemWidth(220.0f);
+        ImGui::InputTextWithHint("##gf", tr("filter: name / id"), gf, sizeof(gf));
+        if (ImGui::BeginChild("we_goods", ImVec2(0, 120), true))
+        {
+            int shown = 0;
+            for (const auto &gd : goods)
+            {
+                if (!matches(gd.name, gd.goodsId, gd.goodsId, gf)) continue;
+                if (shown++ >= 300) { ImGui::TextDisabled("%s", tr("… refine the filter")); break; }
+                char label[144];
+                std::snprintf(label, sizeof(label), "%d   %s", gd.goodsId, gd.name);
+                if (ImGui::Selectable(label)) new_item = gd.goodsId;
+            }
+        }
+        ImGui::EndChild();
+    }
 }
 }  // namespace goblin::overlay::panel

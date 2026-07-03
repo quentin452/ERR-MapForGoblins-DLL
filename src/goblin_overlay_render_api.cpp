@@ -91,6 +91,17 @@ namespace goblin::overlay_api
         std::wstring wp(param, param + std::strlen(param));  // ASCII param names
         return goblin::paramedit::param_clone_row(wp.c_str(), srcRow, newId);
     }
+    int we_scan() { return goblin::world_editor::scan(); }
+    size_t we_asset_count() { return goblin::world_editor::asset_count(); }
+    size_t we_goods_count() { return goblin::world_editor::goods_count(); }
+    size_t we_copy_assets(goblin::world_editor::WEAsset *out, size_t max)
+    {
+        return goblin::world_editor::copy_assets(out, max);
+    }
+    size_t we_copy_goods(goblin::world_editor::WEGoods *out, size_t max)
+    {
+        return goblin::world_editor::copy_goods(out, max);
+    }
     void request_save() { goblin::ui::request_save(); }
     void reset_quest_progress() { goblin::ui::reset_quest_progress(); }
     void reset_to_defaults() { goblin::ui::reset_to_defaults(); }

@@ -207,6 +207,8 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_custom_items.cpp
   src/goblin_warp.hpp
   src/goblin_warp.cpp
+  src/goblin_world_editor.hpp
+  src/goblin_world_editor.cpp
   src/goblin_logic.hpp
   src/goblin_logic.cpp
   src/goblin_markers.hpp

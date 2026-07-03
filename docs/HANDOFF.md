@@ -100,9 +100,16 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   pre-fills the repoint target; combined with the `refresh_markers` v2 LotReader reset (see the live
   marker regen item below), a cloned lot now resolves on the map. Test proves invisible-before /
   resolves-after refresh.
-  **Next slices:** a proper asset/item PICKER (browse instead of typing ids — needs an enumeration
-  bridge, none exposed to the render side today), category select, and SAVE the edits as a world bundle
-  (→ feeds vision #1 World Virtualization). Backend all proven; these are UI + one new enumeration bridge.
+  **Slice 6 (2026-07-03): asset/item PICKER — DONE + E2E-VERIFIED (18/18).** New host module
+  `goblin_world_editor.{hpp,cpp}` scans the live params into browsable lists — pickup assets
+  (AssetEnvironmentGeometryParam rows with a real `pickUpItemLotParamId`, name via the loot chain) and
+  named goods (EquipParamGoods, name via `lookup_text_utf8(id+500000000)`). Exposed through
+  `overlay_api::we_scan`/`we_copy_assets`/`we_copy_goods` (+ POD `WEAsset`/`WEGoods`) and a `we_scan`
+  RPC. The F1 `Browse (pick asset / item)` section (Scan button → client-side filter → click sets the
+  Asset / New-goods-id fields). Live scan on a loaded save: 324 pickup assets, 5499 named goods.
+  **Next slices:** category select (weapons/armour/… beyond goods), and SAVE the edits as a world bundle
+  (→ feeds vision #1 World Virtualization — the big one). Backend all proven; these are UI + a bundle
+  format. (`refresh_markers` v2 (a) incremental regen still open, perf-only.)
 
 - **Long-horizon vision bets — tracked in `docs/runtime_modding_framework_vision.md` "Future directions"
   (2026-07-03):** (1) World Virtualization — a FRAMEWORK feature: the framework holds N of its OWN worlds (each a data

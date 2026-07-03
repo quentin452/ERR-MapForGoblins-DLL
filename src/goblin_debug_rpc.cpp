@@ -16,6 +16,7 @@
 #include "goblin_sidecar.hpp"  // sidecar cmd — Phase 1 state store drive/verify
 #include "goblin_inventory.hpp"  // give_item cmd — Gap C grant / Phase-2 strip RE
 #include "goblin_warp.hpp"  // warp cmd — grace fast-travel (dev-world nav)
+#include "goblin_world_editor.hpp"  // we_scan cmd — World Editor picker enumeration
 #include "goblin_field_probe.hpp"  // arm_raw — serialize find-what-accesses (Phase 2)
 
 #include <spdlog/spdlog.h>
@@ -397,7 +398,7 @@ namespace goblin::debug_rpc
             if (cmd == "help" || cmd == "?")
                 return "ok commands: help ping status open_f1 pause set screenshot dumpmenu reload_overlay"
                        " | param_get param_set param_getf param_setf param_clone"
-                       " | loot_at refresh_markers warp"
+                       " | loot_at refresh_markers warp we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar"
                        " | mem_dump mem_fwa equip_dump equip_fwa"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
@@ -894,6 +895,17 @@ namespace goblin::debug_rpc
                 char b[96];
                 std::snprintf(b, sizeof(b), "%s armed FWA @ %#llx len=%u %s", ok ? "ok" : "err",
                               (unsigned long long)addr, len, write_only ? "w" : "r");
+                return std::string(b);
+            }
+            // we_scan — build the World Editor picker lists (pickup assets + named goods) from the
+            // live params and report the counts. Same scan the F1 "Browse" button runs; present-thread.
+            if (cmd == "we_scan")
+            {
+                int total = goblin::world_editor::scan();
+                char b[96];
+                std::snprintf(b, sizeof(b), "ok we_scan assets=%zu goods=%zu total=%d",
+                              goblin::world_editor::asset_count(),
+                              goblin::world_editor::goods_count(), total);
                 return std::string(b);
             }
             if (cmd == "reload_overlay")

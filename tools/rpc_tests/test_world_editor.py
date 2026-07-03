@@ -125,6 +125,13 @@ def _test(g):
         # restore asset B to its original lot
         g.rpc(f"param_setf AssetEnvironmentGeometryParam {aegB} pickUpItemLotParamId {lotB}")
 
+    # --- Slice 6: picker enumeration (we_scan backs the F1 Browse list) ---
+    sc = g.rpc("we_scan")
+    m = re.search(r"assets=(\d+) goods=(\d+)", sc)
+    na, ng = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+    g.check("we_scan found pickup assets", na > 0, sc)
+    g.check("we_scan found named goods", ng > 0, sc)
+
 
 if __name__ == "__main__":
     run_test(_test)
