@@ -455,6 +455,11 @@ namespace
                 // Dev — RE/debug tooling: icon census, dev tools + danger zone, live world editor.
                 if (ImGui::BeginTabItem(tr("Dev")))
                 {
+                    // Mod-owned virtual world map (WIP) — opens a pannable/zoomable custom-world canvas.
+                    if (ImGui::Button(panel::virtual_map_open() ? tr("Virtual World Map: OPEN")
+                                                                : tr("Open Virtual World Map (WIP)")))
+                        panel::virtual_map_open() = !panel::virtual_map_open();
+                    ImGui::Separator();
                     panel::draw_dev_icon_sections(ctx, f);
                     panel::draw_dev_tools_danger(f);
                     panel::draw_world_editor(f);
@@ -466,6 +471,10 @@ namespace
             s_settings_hits = f.hits;
             ImGui::End();
         }
+
+        // MapForGoblins-owned virtual world map (mod page) — a sibling window, drawn in both compact and
+        // full mode whenever it's toggled open (from the Dev tab). No-op while closed.
+        panel::draw_virtual_map(ctx);
     }
 
 #if defined(GOBLIN_OVERLAY_HOTRELOAD_BUILD)

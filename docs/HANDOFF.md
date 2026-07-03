@@ -87,10 +87,17 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   surface (bg image + pan/zoom, opened via a mod toggle) with markers tagged to it — 100% mod code, no engine
   write, Linux-doable, and it IS World Virtualization vision #1 (a custom world = a bundle whose map is this
   virtual page). Reserve native-page registration as a far-frontier item (only if the world must be a real
-  in-game map TAB). **Next concrete step (on confirm): the virtual-page slice — start with marker-group
-  plumbing (group id ≥100 in `marker_layer.hpp`, cheapest, unlocks tagging markers to it), then the
-  mod-defined projection, then the mod-drawn surface + open toggle.** ADD/geom is NOT on this critical path
-  (only needed to physically WALK the world — separate capstone).
+  in-game map TAB). **User CONFIRMED mod-owned page (2026-07-04).** Slices:
+  - **✅ SLICE A DONE 2026-07-04 — the virtual-map CANVAS.** `src/overlay_panel/panel_virtual_map.cpp`: an
+    ImGui window "MapForGoblins — Virtual World Map (WIP)" with a world-space canvas (drag=pan,
+    wheel=zoom-about-cursor), a snapped reference grid + origin cross + grid-step legend, and a mod-defined
+    world→canvas projection (`w2s`/`s2w`; cam in world units, zoom px/unit). Drawn as a sibling of the F1
+    panel (compact+full). Toggle: Dev-tab button **and** `vmap 0|1|toggle` RPC (+ `overlay_api::
+    virtual_map_set_open/is_open`). Live-verified on Proton (`vmap 1` → window+grid+origin render, alive).
+  - **SLICE B (next): draw markers on it** — project a chosen marker group with the mod projection + draw
+    the marker icons (reuse `draw_category_icon`/the marker path) at `w2s` per marker; pan/zoom with them.
+  - **SLICE C: custom-world content** — synthetic group id (≥100) in `marker_layer.hpp` to tag markers to a
+    custom world; bundle-backed (World Virtualization vision #1). ADD/geom NOT on this path (only to WALK it).
 - **F1 category list → GRID LAYOUT (followup, not started).** The Markers-tab category list is a checkbox
   tree; with many custom worlds/categories it overflows into a long scroll. Replace with a GRID of
   icon-tiles (the category icon we just added as the tile, toggle visibility on click, checkmark/dim

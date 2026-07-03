@@ -28,6 +28,10 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+// Virtual world map open-flag (panel_virtual_map.cpp) — forward-declared to avoid pulling the
+// D3D12-coupled panel_internal.hpp here; both live in the render module (single-DLL build).
+namespace goblin::overlay::panel { bool &virtual_map_open(); }
+
 namespace goblin::overlay_api
 {
 #define GOBLIN_CFG_DEF_PTR(name) \
@@ -70,6 +74,8 @@ namespace goblin::overlay_api
     bool read_event_flag(uint32_t id) { return goblin::ui::read_event_flag(id); }
     void request_cluster_replan() { goblin::ui::request_cluster_replan(); }
     void rebuild_markers() { goblin::worldmap::rebuild_markers(); }
+    void virtual_map_set_open(bool open) { goblin::overlay::panel::virtual_map_open() = open; }
+    bool virtual_map_is_open() { return goblin::overlay::panel::virtual_map_open(); }
     bool param_set_field(const char *param, uint64_t row, const char *field, double value)
     {
         if (!param || !field) return false;

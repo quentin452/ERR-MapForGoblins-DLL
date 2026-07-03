@@ -68,5 +68,11 @@ void draw_quest_browser(Filter &f);                                  // Quest na
 void draw_clustering(Filter &f);                                     // Clustering
 void draw_dev_tools_danger(Filter &f);                               // Debug, Dev tools, Danger zone
 void draw_world_editor(Filter &f);                                   // World Editor (live loot/asset edit)
+
+// MapForGoblins-owned VIRTUAL world map (mod page, not a native ER tab). draw_virtual_map draws the
+// window (a pannable/zoomable world-space canvas) whenever virtual_map_open() is true; the toggle lives
+// in the Dev tab. See docs/re/worldmap_new_page_spike_findings.md. Drawn as a sibling of the F1 panel.
+void draw_virtual_map(const OverlayFrameCtx &ctx);
+bool &virtual_map_open();
 } // namespace panel
 } // namespace goblin::overlay

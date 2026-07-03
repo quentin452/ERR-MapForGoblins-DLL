@@ -398,7 +398,7 @@ namespace goblin::debug_rpc
             // help — one-line verb list (the client reads a single reply line, so no embedded \n).
             // Full usages + caveats: docs/memory/tooling/rpc-commands.md. Keep in sync when adding a cmd.
             if (cmd == "help" || cmd == "?")
-                return "ok commands: help ping status open_f1 pause set screenshot dumpmenu reload_overlay"
+                return "ok commands: help ping status open_f1 vmap pause set screenshot dumpmenu reload_overlay"
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
@@ -442,6 +442,17 @@ namespace goblin::debug_rpc
                 std::string tag = next_token(rest);
                 goblin::worldmap_probe::dump_menu_state(tag.empty() ? "x" : tag.c_str());
                 return "ok dumpmenu -> wmprobe log";
+            }
+            // vmap 0|1|toggle — open/close the MapForGoblins virtual world map (mod page) window.
+            if (cmd == "vmap")
+            {
+                std::string arg = next_token(rest);
+                if (arg == "0") goblin::overlay_api::virtual_map_set_open(false);
+                else if (arg == "1") goblin::overlay_api::virtual_map_set_open(true);
+                else if (arg == "toggle" || arg.empty())
+                    goblin::overlay_api::virtual_map_set_open(!goblin::overlay_api::virtual_map_is_open());
+                else return "err vmap takes 0|1|toggle";
+                return "ok vmap=" + std::to_string(goblin::overlay_api::virtual_map_is_open() ? 1 : 0);
             }
             if (cmd == "open_f1")
             {

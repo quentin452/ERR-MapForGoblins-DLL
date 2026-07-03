@@ -124,6 +124,7 @@ set(GOBLIN_RENDER_SOURCES
   src/overlay_panel/panel_clustering.cpp
   src/overlay_panel/panel_dev_tools.cpp
   src/overlay_panel/panel_world_editor.cpp
+  src/overlay_panel/panel_virtual_map.cpp
   src/worldmap/marker_layer.hpp
   src/worldmap/grace_layer.hpp
   src/worldmap/grace_layer.cpp
