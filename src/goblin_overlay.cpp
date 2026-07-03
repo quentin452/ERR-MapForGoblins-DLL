@@ -2281,10 +2281,12 @@ void goblin::overlay::set_panel_open(bool open) { g_user_show = open; }  // appl
 void *goblin::overlay::game_hwnd() { return g_hwnd; }
 
 // ── Minimal PNG writer (no external lib) ─────────────────────────────────────────────────────────
-// Encodes 8-bit RGB (top-down) to a real, directly-viewable PNG. Uses DEFLATE *stored* blocks (no
-// compression), so the file is ~raw size — but it is a valid PNG (readable everywhere, no BMP→PNG
-// conversion step). We have no zlib/miniz in the build and stb_image_write isn't vendored; a stored
-// stream is the small, correct choice. Swap in real compression later if screenshot size matters.
+// Encodes 8-bit RGB (top-down) to a real, directly-viewable PNG (no BMP→PNG step). We have no
+// zlib/miniz in the build and stb_image_write isn't vendored, so the DEFLATE + PNG scanline filters
+// are implemented here: per-row best-of-5 filter (decorrelates) → fixed-Huffman DEFLATE with a
+// hash-chain LZ77 matcher. Compresses a 1080p screenshot from ~6MB (raw) to ~1-2MB. Correctness
+// notes: DEFLATE packs bits LSB-first, so Huffman codes are written bit-REVERSED while length/dist
+// EXTRA bits are written straight.
 namespace
 {
 uint32_t png_crc32(const uint8_t *p, size_t n, uint32_t crc = 0xFFFFFFFFu)
@@ -2311,26 +2313,113 @@ void png_chunk(std::vector<uint8_t> &out, const char *type, const std::vector<ui
     uint32_t crc = png_crc32(out.data() + crc_start, out.size() - crc_start) ^ 0xFFFFFFFFu;
     png_put_u32(out, crc);
 }
-// Assemble the DEFLATE-stored zlib stream over `raw`, appending an adler32 trailer.
-std::vector<uint8_t> png_zlib_stored(const std::vector<uint8_t> &raw)
+
+// ── DEFLATE (fixed Huffman + hash-chain LZ77) ──
+struct BitWriter
+{
+    std::vector<uint8_t> &out;
+    uint32_t buf = 0;
+    int cnt = 0;
+    explicit BitWriter(std::vector<uint8_t> &o) : out(o) {}
+    void bits(uint32_t v, int n)  // LSB-first
+    {
+        buf |= (v & ((1u << n) - 1)) << cnt;
+        cnt += n;
+        while (cnt >= 8) { out.push_back(buf & 0xFF); buf >>= 8; cnt -= 8; }
+    }
+    void flush() { if (cnt > 0) { out.push_back(buf & 0xFF); buf = 0; cnt = 0; } }
+};
+uint32_t rev_bits(uint32_t c, int n)
+{
+    uint32_t r = 0;
+    for (int i = 0; i < n; ++i) { r = (r << 1) | (c & 1); c >>= 1; }
+    return r;
+}
+// Fixed literal/length Huffman code (RFC 1951 §3.2.6): fills code+len for symbol 0..287.
+void fixed_litlen(int sym, uint32_t &code, int &len)
+{
+    if (sym < 144)      { len = 8; code = 0x30 + sym; }
+    else if (sym < 256) { len = 9; code = 0x190 + (sym - 144); }
+    else if (sym < 280) { len = 7; code = 0x00 + (sym - 256); }
+    else                { len = 8; code = 0xC0 + (sym - 280); }
+}
+void emit_sym(BitWriter &bw, int sym)
+{
+    uint32_t code; int len;
+    fixed_litlen(sym, code, len);
+    bw.bits(rev_bits(code, len), len);  // Huffman codes are bit-reversed for LSB-first packing
+}
+// Length code (257..285) + extra bits for a match length 3..258.
+const uint16_t kLenBase[29]  = {3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
+const uint8_t  kLenExtra[29] = {0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
+const uint16_t kDistBase[30] = {1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577};
+const uint8_t  kDistExtra[30]= {0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13};
+void emit_match(BitWriter &bw, int len, int dist)
+{
+    int lc = 28;
+    while (lc > 0 && kLenBase[lc] > len) --lc;
+    emit_sym(bw, 257 + lc);
+    if (kLenExtra[lc]) bw.bits(len - kLenBase[lc], kLenExtra[lc]);  // extra bits: straight, not reversed
+    int dc = 29;
+    while (dc > 0 && kDistBase[dc] > dist) --dc;
+    bw.bits(rev_bits(dc, 5), 5);  // fixed 5-bit distance code, reversed
+    if (kDistExtra[dc]) bw.bits(dist - kDistBase[dc], kDistExtra[dc]);
+}
+std::vector<uint8_t> png_zlib_deflate(const std::vector<uint8_t> &raw)
 {
     std::vector<uint8_t> z;
-    z.push_back(0x78); z.push_back(0x01);  // zlib header (32K window, no dict); 0x7801 % 31 == 0
-    size_t off = 0;
-    while (off < raw.size() || raw.empty())
+    z.push_back(0x78); z.push_back(0x01);  // zlib header
+    BitWriter bw(z);
+    bw.bits(1, 1);  // BFINAL = 1 (single block)
+    bw.bits(1, 2);  // BTYPE = 01 (fixed Huffman)
+
+    const size_t n = raw.size();
+    const uint8_t *d = raw.data();
+    // Hash-chain LZ77: head[hash]=most-recent pos, prev[pos]=next-older pos with same 3-byte hash.
+    constexpr int WIN = 32768, MIN_M = 3, MAX_M = 258, MAX_CHAIN = 128;
+    std::vector<int> head(1 << 15, -1), prev(n, -1);
+    auto hash3 = [&](size_t i) -> uint32_t {
+        return (uint32_t)((d[i] * 0x9E3779B1u ^ (d[i + 1] << 8) ^ (d[i + 2] << 4)) & 0x7FFF);
+    };
+    size_t i = 0;
+    while (i < n)
     {
-        size_t n = raw.size() - off;
-        if (n > 0xFFFF) n = 0xFFFF;
-        bool last = (off + n >= raw.size());
-        z.push_back(last ? 1 : 0);                       // BFINAL, BTYPE=00 (stored)
-        z.push_back(n & 0xFF); z.push_back((n >> 8) & 0xFF);          // LEN
-        z.push_back(~n & 0xFF); z.push_back((~n >> 8) & 0xFF);        // NLEN
-        z.insert(z.end(), raw.begin() + off, raw.begin() + off + n);
-        off += n;
-        if (raw.empty()) break;
+        int best_len = 0, best_dist = 0;
+        if (i + MIN_M <= n)
+        {
+            uint32_t hv = hash3(i);
+            int cand = head[hv], probes = 0;
+            int maxlen = (int)std::min<size_t>(MAX_M, n - i);
+            while (cand >= 0 && probes++ < MAX_CHAIN)
+            {
+                if ((int)i - cand <= WIN)
+                {
+                    int l = 0;
+                    while (l < maxlen && d[cand + l] == d[i + l]) ++l;
+                    if (l > best_len) { best_len = l; best_dist = (int)i - cand; if (l >= maxlen) break; }
+                }
+                cand = prev[cand];
+            }
+        }
+        if (best_len >= MIN_M)
+        {
+            emit_match(bw, best_len, best_dist);
+            // insert all covered positions into the hash chains
+            size_t end = i + best_len;
+            for (; i + MIN_M <= n && i < end; ++i) { uint32_t hv = hash3(i); prev[i] = head[hv]; head[hv] = (int)i; }
+            i = end;
+        }
+        else
+        {
+            emit_sym(bw, d[i]);
+            if (i + MIN_M <= n) { uint32_t hv = hash3(i); prev[i] = head[hv]; head[hv] = (int)i; }
+            ++i;
+        }
     }
-    // adler32 of raw
-    uint32_t a = 1, b = 0;
+    emit_sym(bw, 256);  // end of block
+    bw.flush();
+
+    uint32_t a = 1, b = 0;  // adler32 of raw (the decompressor's output)
     for (uint8_t c : raw) { a = (a + c) % 65521; b = (b + a) % 65521; }
     png_put_u32(z, (b << 16) | a);
     return z;
@@ -2338,20 +2427,49 @@ std::vector<uint8_t> png_zlib_stored(const std::vector<uint8_t> &raw)
 bool write_rgb_png(const std::filesystem::path &p, uint32_t w, uint32_t h,
                    const uint8_t *rgb_topdown, std::string &err)
 {
+    // Filter each scanline with the best of the 5 PNG filters (min sum of |signed| heuristic) to
+    // decorrelate before DEFLATE — the big compression win for photographic frames. bpp = 3 (RGB).
+    const size_t stride = (size_t)w * 3;
     std::vector<uint8_t> raw;
-    raw.reserve((size_t)h * (1 + (size_t)w * 3));
+    raw.reserve(h * (1 + stride));
+    std::vector<uint8_t> cand[5], zero(stride, 0);
+    for (int k = 0; k < 5; ++k) cand[k].resize(stride);
+    auto paeth = [](int a, int b, int c) -> int {
+        int p = a + b - c, pa = std::abs(p - a), pb = std::abs(p - b), pc = std::abs(p - c);
+        return (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c);
+    };
     for (uint32_t y = 0; y < h; ++y)
     {
-        raw.push_back(0);  // PNG filter type 0 (none) per scanline
-        const uint8_t *row = rgb_topdown + (size_t)y * w * 3;
-        raw.insert(raw.end(), row, row + (size_t)w * 3);
+        const uint8_t *cur = rgb_topdown + (size_t)y * stride;
+        const uint8_t *up = (y == 0) ? zero.data() : rgb_topdown + (size_t)(y - 1) * stride;
+        for (size_t x = 0; x < stride; ++x)
+        {
+            int a = (x >= 3) ? cur[x - 3] : 0;
+            int b = up[x];
+            int c = (x >= 3) ? up[x - 3] : 0;
+            int v = cur[x];
+            cand[0][x] = (uint8_t)v;
+            cand[1][x] = (uint8_t)(v - a);
+            cand[2][x] = (uint8_t)(v - b);
+            cand[3][x] = (uint8_t)(v - ((a + b) >> 1));
+            cand[4][x] = (uint8_t)(v - paeth(a, b, c));
+        }
+        int best = 0; uint64_t best_sum = UINT64_MAX;
+        for (int k = 0; k < 5; ++k)
+        {
+            uint64_t s = 0;
+            for (size_t x = 0; x < stride; ++x) { int8_t sv = (int8_t)cand[k][x]; s += sv < 0 ? -sv : sv; }
+            if (s < best_sum) { best_sum = s; best = k; }
+        }
+        raw.push_back((uint8_t)best);
+        raw.insert(raw.end(), cand[best].begin(), cand[best].end());
     }
     std::vector<uint8_t> out = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
     std::vector<uint8_t> ihdr;
     png_put_u32(ihdr, w); png_put_u32(ihdr, h);
     ihdr.push_back(8); ihdr.push_back(2); ihdr.push_back(0); ihdr.push_back(0); ihdr.push_back(0);  // 8-bit RGB
     png_chunk(out, "IHDR", ihdr);
-    png_chunk(out, "IDAT", png_zlib_stored(raw));
+    png_chunk(out, "IDAT", png_zlib_deflate(raw));
     png_chunk(out, "IEND", {});
     std::error_code ec;
     if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path(), ec);
