@@ -648,6 +648,47 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         dl->AddCircleFilled(o, 4.0f, IM_COL32(220, 180, 90, 255));
         dl->AddText(ImVec2(o.x + 6, o.y + 4), IM_COL32(220, 180, 90, 255), "0,0");
     }
+    // Player position marker + heading arrow (A11 parity — the native minimap has this; the vmap must
+    // too before it can replace the native map). Base ER only, and only when the player's group matches
+    // the displayed group (underground overlaps the overworld in XZ, so a cross-group dot would mislead).
+    if (active_world == 0)
+    {
+        int parea = 0, pgroup = 0;
+        float pwx = 0.f, pwz = 0.f;
+        if (goblin::overlay_api::get_player_map_pos(parea, pwx, pwz, nullptr, nullptr, &pgroup) &&
+            pgroup == s_group)
+        {
+            ImVec2 pp = w2s(pwx, pwz);
+            if (pp.x >= origin.x && pp.x <= canvas_end.x && pp.y >= origin.y && pp.y <= canvas_end.y)
+            {
+                // Heading arrow when the yaw resolves, else a plain dot. Same convention as the minimap
+                // (a = yaw + π), but expressed in WORLD dir then run through the vmap's axis signs so it
+                // stays correct if the canvas is flipped: world fwd = (sin a, cos a); screen dir =
+                // (s_sx·fwd_x, s_sz·fwd_z) → matches the minimap's (sin a, −cos a) at the default signs.
+                float yaw = 0.f;
+                if (goblin::overlay_api::get_player_facing_yaw(yaw))
+                {
+                    const float a = yaw + 3.14159265f;
+                    float fx = s_sx * std::sin(a), fz = s_sz * std::cos(a);
+                    const float len = std::sqrt(fx * fx + fz * fz);
+                    if (len > 1e-4f) { fx /= len; fz /= len; }
+                    const ImVec2 fwd(fx, fz), rgt(-fwd.y, fwd.x);
+                    const float L = 11.f, B = 6.f;
+                    const ImVec2 tip(pp.x + fwd.x * L, pp.y + fwd.y * L);
+                    const ImVec2 bl(pp.x - fwd.x * B + rgt.x * B, pp.y - fwd.y * B + rgt.y * B);
+                    const ImVec2 br(pp.x - fwd.x * B - rgt.x * B, pp.y - fwd.y * B - rgt.y * B);
+                    dl->AddTriangleFilled(tip, bl, br, IM_COL32(90, 200, 255, 255));
+                    dl->AddTriangle(tip, bl, br, IM_COL32(20, 40, 60, 220), 1.5f);
+                }
+                else
+                {
+                    dl->AddCircleFilled(pp, 5.0f, IM_COL32(90, 200, 255, 255));
+                    dl->AddCircle(pp, 5.0f, IM_COL32(20, 40, 60, 220), 0, 1.5f);
+                }
+            }
+        }
+    }
+
     // Grid-step legend (bottom-left) so the scale is readable.
     char legend[64];
     std::snprintf(legend, sizeof(legend), "%s: %.0f u", tr("grid"), step);
