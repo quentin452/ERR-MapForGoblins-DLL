@@ -92,6 +92,18 @@ namespace
 }
 
 bool &virtual_map_open() { return s_open; }
+
+// Service a grace warp queued by a vmap double-click. Called POST-FRAME (after ImGui::Render, next to
+// debug_rpc::pump) — running warp mid-ImGui-draw freezes the loading screen; the RPC path works because it
+// executes here. Present thread. No-op unless a warp is pending.
+void virtual_map_service_pending_warp()
+{
+    if (!s_warp_pending) return;
+    uint64_t gid = s_warp_pending; s_warp_pending = 0;
+    bool ok = goblin::overlay_api::warp_to_grace((int32_t)gid);
+    s_tile_status = ok ? ("warped to grace " + std::to_string(gid))
+                       : ("warp failed " + std::to_string(gid));
+}
 void virtual_map_request_fit() { s_fit_requested = true; }
 void virtual_map_set_group(int g) { if (g >= 0 && g < 4) s_group = g; }
 int virtual_map_group() { return s_group; }
@@ -343,16 +355,6 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         s_prev_map = map_now;
     }
     if (!s_open) return;
-
-    // Service a pending grace warp (queued last frame by a double-click) BEFORE building this frame's UI —
-    // warp tears down menu state, so it must not run mid-ImGui-draw.
-    if (s_warp_pending)
-    {
-        uint64_t gid = s_warp_pending; s_warp_pending = 0;
-        bool ok = goblin::overlay_api::warp_to_grace((int32_t)gid);
-        s_tile_status = ok ? ("warped to grace " + std::to_string(gid))
-                           : ("warp failed (locked/undiscovered?) " + std::to_string(gid));
-    }
 
     ImGui::SetNextWindowSize(ImVec2(720.0f, 560.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(470.0f, 40.0f), ImGuiCond_FirstUseEver);

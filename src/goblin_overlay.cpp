@@ -66,6 +66,8 @@
 
 // ImGui's Win32 backend message handler (defined in imgui_impl_win32.cpp).
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
+// Post-frame vmap grace-warp service (defined in panel_virtual_map.cpp; single-DLL link).
+namespace goblin::overlay::panel { void virtual_map_service_pending_warp(); }
 
 namespace
 {
@@ -1985,6 +1987,9 @@ namespace
         // draw is submitted on the same queue — a `screenshot` copy is ordered behind it, so the
         // capture includes the overlay. Near-free when idle (one atomic read).
         goblin::debug_rpc::pump(swapchain);
+        // Service a vmap grace-warp queued by a double-click THIS frame — post-Render, same safe point as
+        // the RPC pump (running warp mid-ImGui-draw froze the loading screen).
+        goblin::overlay::panel::virtual_map_service_pending_warp();
 
         // Sidecar flag replay (slice 1b): SetEventFlag must run on the present thread, so
         // the poll-thread world-enter edge only QUEUES the replay; this drains it. No-op
