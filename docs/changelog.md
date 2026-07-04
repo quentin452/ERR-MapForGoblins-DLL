@@ -25,6 +25,10 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Custom map markers (Virtual World Map).** Right-click the map to drop your own marker (a blue pin
+  drawn on top of everything), and manage them from the `Custom` sidebar: each row shows which map it's on
+  + its coordinates, with Go (pan the map there), TP (teleport in-game), Delete, and an editable name.
+  Answers "where's my custom marker and take me there" across the overworld / underground / DLC.
 - **Grace warp menu (Virtual World Map sidebar).** A `Graces` toggle opens a searchable, sorted list of
   every site of grace beside the map, each with a discovered/undiscovered state dot. Double-click a
   discovered grace to fast-travel; click any grace to pan the map to it. Browse/search/filter the whole
