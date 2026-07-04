@@ -123,8 +123,16 @@ a real `CSWorldGeom` instance (not visual-only). Recap of what's known:
   AEG-streamer template (Q4); request → real block-registered rendered instance (Q2).
 
 **Remaining before a live `spawn_asset <AEGname>` probe (small):**
-1. **Resolve the `DAT_143d69ba8` FD4Singleton accessor AOB** (Windows/Ghidra or a live RPM find) so the DLL
-   can get `reqMgr = [DAT_143d69ba8+0x30]`. This is the only code-anchor still needed.
+1. ~~Resolve the `DAT_143d69ba8` accessor AOB~~ **DONE (pyghidra byte-scan, 2026-07-04).** Candidate AOBs
+   (each verified UNIQUE image-wide; `relative_offsets {{3,7}}` lifts the rip-disp → `&DAT_143d69ba8`; then
+   `reqMgr = *(void**)(singleton + 0x30)`):
+   ```
+   GEOM_REQ_MGR (preferred, er+0x1dcc53):  48 8B 0D ?? ?? ?? ?? 48 85 C9 74 16 B8 01 00 00 00 48 8D 53
+   backup (er+0x1dc930):                   48 8B 0D ?? ?? ?? ?? 48 85 C9 74 14 83 CB 02 89 5C 24 20 48
+   ```
+   (`mov rcx,[DAT_143d69ba8]; test rcx,rcx; jz …` — the singleton null-check idiom. RVAs are Ghidra-DB
+   build; the Linux agent adds this to `re_signatures.hpp` + the `[SIG]` boot health-check to confirm it
+   resolves on the deploy build, per AOB doctrine.)
 2. **Live probe (Linux/Proton):** `spawn_asset <AEGname>` → get `reqMgr` → `FUN_1406a5080(reqMgr, L"AEG###_###")`
    near the player; confirm it renders, then walk into it to confirm collision (the one live checkmark Q2
    left open).

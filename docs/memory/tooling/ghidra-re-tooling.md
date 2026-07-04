@@ -28,6 +28,19 @@ load). See [[ghidra-worldmap-re]] for the headless setup. Committed in repo `too
   ```
   Good for bespoke scans (AOB byte-search, ref/call tallies, batch decompile) when `query.java` isn't enough.
   Symbols can be in the EXTERNAL space → guard `addr.subtract(imageBase)` in try/except.
+  - **Read bytes with a real Java `byte[]`** — `mem.getBytes(addr, jpype.JArray(jpype.JByte)(n))`; a Python
+    `bytearray` marshals in but comes back **all zeros** (silent). Then `int(x)&0xff` per element.
+  - **A KILLED / exception-exited pyghidra run leaves a stale `D:\ghidra_proj2\ER.lock` (+ `ER.lock~`)** →
+    the next `GhidraProject.openProject` dies with `LockException: Unable to lock project` (and `rm` the
+    `.lock~` gives "Device or resource busy" because the zombie still holds it). **pyghidra embeds the JVM
+    INSIDE `python.exe`** — so `Get-Process java` shows 0 while the lock-holder is a lingering `python`/`py`
+    process (a script exception doesn't cleanly shut the JVM). Fix: `Get-Process python,py` → `Stop-Process`
+    the stale ones → `rm -f D:\ghidra_proj2\ER.lock D:\ghidra_proj2\ER.lock~` → re-run. `analyzeHeadless`
+    manages its own lock so it's immune; readOnly=True still takes a lock. Always `gp.close()`/exit cleanly.
+  - **`... | grep -v > file` block-buffers** → the file stays empty until the run ends (no live progress).
+    For a long scan, `open(path,"w")` + `print`/`write` + **`flush()`** per result inside the script instead.
+  - Full-image `mem.findBytes` per candidate is slow (~30 MB); restrict candidates to the main code region
+    (`va < 0x142000000`, skip the EH/high `0x144xxxxx`+ dupes) and test one tail length.
 
 - **`<ghidra_scripts>\rtti_index.txt`** (live copy; a snapshot was committed to `tools/ghidra/` @ a0187c8
   but is NOT in the current working tree — grep the D:\ path) — TSV `vtable_rva  td_rva  ctor_rvas  mangled_name` for all

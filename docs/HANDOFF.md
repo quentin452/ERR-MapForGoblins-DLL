@@ -333,10 +333,13 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   + `FUN_1406e38c0` (scene/render node + world matrix `FUN_1409f1320`). So `FUN_1406c7000` allocates a REAL
   geom instance (reconciles the earlier "just a name builder") and a serviced request → a real,
   block-registered, rendered instance — NOT visual-only. Collision follows the standard world-geom path (one
-  live checkmark left). **NEXT (small): resolve the `DAT_143d69ba8` FD4Singleton accessor AOB** (only
-  code-anchor still needed) → **live `spawn_asset <AEGname>` probe (Linux/Proton):**
-  `FUN_1406a5080([DAT_143d69ba8+0x30], L"AEG###_###")` near player → renders → walk into it for collision.
-  No static unknowns left. MOVE stays fully solved; ADD is a multi-step subsystem build.
+  live checkmark left). **reqMgr singleton AOB FOUND (2026-07-04, pyghidra byte-scan) — pivot-2 STATIC RE is
+  100% DONE.** `GEOM_REQ_MGR = "48 8B 0D ?? ?? ?? ?? 48 85 C9 74 16 B8 01 00 00 00 48 8D 53"` (er+0x1dcc53,
+  UNIQUE image-wide; `relative_offsets {{3,7}}` → `&DAT_143d69ba8`; `reqMgr = *(singleton+0x30)`; backup AOB
+  in the findings). **NEXT = purely the live probe (Linux/Proton):** add `GEOM_REQ_MGR` to `re_signatures.hpp`
+  + `[SIG]` health-check, then a `spawn_asset <AEGname>` dev RPC → `FUN_1406a5080(reqMgr, L"AEG###_###")` near
+  player → renders → walk into it for collision. **No Windows/Ghidra static work left on ADD.** MOVE stays
+  fully solved; ADD is a multi-step subsystem build but the whole static path is now mapped end-to-end.
   **Live recon (2026-07-03, `spawn_probe` + `test_spawn_probe.py`, fresh DLL) confirmed srcType + corrected
   the layout:** on a real dynamic instance (`AEG004_903`) — srcType@+0x08 `0x3c1412016ff00000` (geom tag ✓,
   hi==BlockData tag ✓; masks g0=0xff/g1=0x14/g2=0xfffff); **param_3 = the BlockData** (inst+0x10, NOT a
