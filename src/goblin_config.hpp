@@ -201,6 +201,11 @@ namespace goblin
         // for this many seconds, write a freeze triage + all-thread minidump to logs/
         // (catches no-exception freezes the crash handler can't see). 0 = off.
         extern GOBLIN_RENDER_API uint8_t freezeWatchdogSecs;
+        // loadWatchdogSecs = stuck-load watchdog (the freeze watchdog's blind spot): a hung
+        // world-load keeps rendering the loading screen, so present keeps beating. This watches
+        // LocalPlayer==null instead; if it stays null past this many seconds after a warp, write
+        // a load-stall triage + all-thread minidump to logs/. 0 = off.
+        extern GOBLIN_RENDER_API uint8_t loadWatchdogSecs;
         extern GOBLIN_RENDER_API bool debugEventFlags;
         extern GOBLIN_RENDER_API bool debugItemGrants;
         // debugFlagCapture = light SetEventFlag hook for the overlay's NPC

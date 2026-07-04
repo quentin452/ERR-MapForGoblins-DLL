@@ -74,6 +74,7 @@ namespace goblin::config
     bool enableMarkerDump = false;
     uint32_t markerDumpKey = 0x78; // VK_F9
     uint8_t freezeWatchdogSecs = 20;
+    uint8_t loadWatchdogSecs = 30;
     bool clipGameUi = true;
     std::string uiExclusionRects = "";
     // ERR day/night dial exclusion (was hardcoded); VIRTUAL-canvas 1920x1080 units.
@@ -664,6 +665,12 @@ namespace
                          "write logs/MapForGoblins_freeze_<pid>.txt + a full all-thread minidump\n"
                          "(catches silent no-exception freezes the crash handler never sees).\n"
                          "One report per session. 0 = disabled. Default: 20.", false, nullptr},
+                IniEntry{"load_watchdog_secs", IniType::U8, &cfg::loadWatchdogSecs, "30",
+                         "Stuck-LOAD watchdog (the freeze watchdog's blind spot: a hung world-load\n"
+                         "keeps rendering the loading screen, so present keeps beating). Watches\n"
+                         "LocalPlayer==null instead; if a warp's load stays null this many seconds,\n"
+                         "write logs/MapForGoblins_load_stall_<pid>.txt + all-thread minidump.\n"
+                         "0 = disabled. Default: 30.", false, nullptr},
                 IniEntry{"marker_dump_key", IniType::VkKey, &cfg::markerDumpKey, "F9",
                          "Key to dump decoded markers to logs/MapForGoblins_markers.log. Default: F9.", false, nullptr},
                 B("diag_boot_io", diagBootIo, "false",

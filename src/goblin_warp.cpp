@@ -1,5 +1,6 @@
 #include "goblin_warp.hpp"
 
+#include "goblin_load_watchdog.hpp"
 #include "modutils.hpp"
 #include "re_signatures.hpp"
 
@@ -86,6 +87,10 @@ bool to_grace(int32_t grace_id)
     }
 
     uint32_t code = static_cast<uint32_t>(grace_id - 1000);  // r8d = graceId - 0x3E8
+    // Arm the load watchdog BEFORE the call: a hung fast-travel keeps the loading screen
+    // rendering (freeze watchdog blind), so this catches the "infinite loading" and dumps
+    // all-thread stacks + the target grace for diagnosis.
+    goblin::load_watchdog::arm_warp(grace_id);
     bool ok = warp_seh(a, b, code);
     spdlog::info("[WARP] to_grace grace_id={} code={} lem={} -> {}", grace_id, code, lem,
                  ok ? "called" : "FAULTED");

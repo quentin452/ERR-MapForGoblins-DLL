@@ -265,6 +265,7 @@ set(GOBLIN_HOST_SOURCES
   src/worldmap/loot_open_probe.cpp
   src/goblin_crashdump.cpp
   src/goblin_freeze_watchdog.cpp
+  src/goblin_load_watchdog.cpp
   src/dllmain.cpp)
 
 # Slice C: real two-target split when ON. Host does NOT link the render DLL (loaded at runtime
