@@ -22,11 +22,20 @@ grace-warp streaming path (or a coordinate warp that triggers the load), not jus
 the warp findings + `warp` (LuaWarp) already work for graces; a coord-warp with streaming is the gap.
 
 ### Native icons (replace our hand-made ones) — 2 items to NOTE
-1. **Death rune icon (bloodstain)** — when the player dies, show the rune-loss marker (where runes dropped)
-   on the map/minimap. `DisableRuneLoss.dll` HOOKS the rune-loss system → RE the exact mechanism (the
-   death→bloodstain event + the dropped-runes location) so we can place our own marker there. Draw the
-   **NATIVE** rune icon — it already exists in the decompiled `.dcx` (use it at runtime, don't bake).
-   *User to confirm which .dcx icon is the correct one.*
+1. **Death rune icon (bloodstain)** — show a marker where the player died / dropped runes.
+   **RECON 2026-07-04 — feasible, 2 small gaps:**
+   - **Location is EASY (no frame bridge):** at the death moment, record `get_player_map_pos` — that is
+     already the WORLD/marker frame our markers use (the same reader that draws the player dot). We do NOT
+     need the game's native bloodstain coords (the Hexinton CT has "Bloodstain coords" but those are
+     chunk/physics space → the chunk→world bridge wrinkle; skip it entirely).
+   - **Gap 1 — death DETECTION (the moment):** no player-HP reader exists yet. Add one via the known
+     WorldChrMan chain (AOB `48 8B FA 0F 11 41 70 48 8B 05`, `[[[[[WCM]+0x1E508]…]]]` → ChrIns → HP), fire
+     on the HP→0 rising edge; OR find a death event flag. `DisableRuneLoss.dll` patches the rune-loss fn
+     (its exact AOB needs Ghidra) — we don't need its hook, just the death moment.
+   - **Gap 2 — native icon NAME:** `native_map_point_icon_by_name("<name>")` already resolves+draws a
+     native map-point sprite by name (used for graces). Need the exact lost-runes/bloodstain symbol name.
+     *USER to confirm which `.dcx` icon is the rune-loss one.*
+   - Draw ONE at a time (a new death replaces it; clear on pickup — later). Same store + minimap path.
 2. **Other-player icons (multiplayer)** — show other players' positions/icons (co-op/invasion). Check if
    there's existing RE on the multiplayer player list; likely none → a new RE item. SAME for the local
    **player icon**: today the minimap/vmap draw our own RED arrow — the NATIVE "you are here" player glyph
