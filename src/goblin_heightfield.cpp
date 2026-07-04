@@ -297,18 +297,32 @@ void tick_game_thread()
         else spdlog::warn("[HEIGHTFIELD] probe: no player pos");
     }
 
-    // Grid sampler (D2.2): start on request, then step rate-limited until the queue drains.
-    if (g_sample_pending.exchange(false)) start_sample();
-    if (g_sampling) step_sample();
+    // Grid sampler moved to tick_present (the cast works reproducibly on the present thread with a clean
+    // idle ctx; the game-thread hk_c32f0 path only fires at map-OPEN where collision is unloaded). Kept
+    // here only as the D2.1 one-shot probe above.
 }
 
 void request_present_probe() { g_present_probe_pending.store(true); }
 
+// Present thread, every frame (from hk_present via goblin_overlay). Drives the one-shot probe AND the
+// D2.2 grid sampler — both need world collision LOADED, i.e. in-world with the map CLOSED (map-open
+// unloads collision). The present-thread cast is proven (aligned-vector fix, d3ca993): a clean stable
+// idle ctx hits reproducibly; a torn ctx during movement just misses that cell and retries next sample.
 void tick_present()
 {
+    const bool map_open = goblin::world_map_open();
+
+    // D2.2 grid sampler: capture the frame on request, then cast kCellsPerTick per frame until drained.
+    // Paused (not started/stepped) while the map is open so we never cast into unloaded collision.
+    if (!map_open)
+    {
+        if (g_sample_pending.exchange(false)) start_sample();
+        if (g_sampling) step_sample();
+    }
+
+    // One-shot validation probe (D2.1) — unchanged behaviour, gated on its own request.
     if (!g_present_probe_pending.exchange(false)) return;
-    // Only cast when the world is ACTIVE: in-world AND the map is CLOSED (map-open unloads collision).
-    if (goblin::world_map_open())
+    if (map_open)
     {
         spdlog::warn("[HEIGHTFIELD] PRESENT probe skipped — map is open (close it; world collision "
                      "unloads while the map is up)");
@@ -320,7 +334,6 @@ void tick_present()
         spdlog::warn("[HEIGHTFIELD] PRESENT probe: no player pos");
         return;
     }
-    diag_ctx(px, py, pz);   // D2.2 diagnostic: try every ctx interpretation, log which hits
     RayHit h{};
     bool ok = cast_down(px, py + 2000.f, pz, 4000.f, FILTER_GROUND, h);
     if (ok)

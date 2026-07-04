@@ -1040,7 +1040,7 @@ namespace goblin::debug_rpc
                 if (!rs.empty()) { try { res = std::stoi(rs); } catch (...) { return "err bad res"; } }
                 goblin::heightfield::request_sample(extent, res);
                 return "ok hf_sample queued (extent " + std::to_string((int)extent) + ", res " +
-                       std::to_string(res) + ") — open the map; grep [HEIGHTFIELD]";
+                       std::to_string(res) + ") — stay in gameplay (map CLOSED); grep [HEIGHTFIELD]";
             }
             // er_base — absolute base of eldenring.exe, so a Python RPM client can turn er+RVA
             // anchors into absolute addresses for mem_dump/mem_fwa (tools/hf_hook_scout.py).
