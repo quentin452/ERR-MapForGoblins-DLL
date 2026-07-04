@@ -407,7 +407,7 @@ namespace goblin::debug_rpc
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
-                       " | mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone"
+                       " | er_base mem_dump mem_fwa equip_dump equip_fwa move_asset move_hold move_read move_near move_restore move_all move_aeg geom_stats geom_dump spawn_probe spawn_clone"
                        " | key type mouse_move mouse_click mouse_drag mouse_wheel"
                        "  (usage+caveats: docs/memory/tooling/rpc-commands.md)";
             if (cmd == "status")
@@ -1040,6 +1040,16 @@ namespace goblin::debug_rpc
                 goblin::heightfield::request_sample(extent, res);
                 return "ok hf_sample queued (extent " + std::to_string((int)extent) + ", res " +
                        std::to_string(res) + ") — open the map; grep [HEIGHTFIELD]";
+            }
+            // er_base — absolute base of eldenring.exe, so a Python RPM client can turn er+RVA
+            // anchors into absolute addresses for mem_dump/mem_fwa (tools/hf_hook_scout.py).
+            if (cmd == "er_base")
+            {
+                uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+                if (!er) return "err eldenring.exe not found";
+                char b[48];
+                std::snprintf(b, sizeof(b), "ok er_base=%#llx", (unsigned long long)er);
+                return std::string(b);
             }
             // mem_dump <hexaddr> <len> — raw RPM hex-dump of an absolute address (follow pointers /
             // diff to locate the goods inventory). len capped at 256.
