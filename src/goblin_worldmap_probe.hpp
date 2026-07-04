@@ -1,5 +1,6 @@
 #pragma once
 #include <filesystem>
+#include <vector>
 
 #include "goblin_dll_export.hpp"  // GOBLIN_RENDER_API (no-op unless GOBLIN_OVERLAY_HOTRELOAD_BUILD)
 
@@ -163,6 +164,15 @@ namespace goblin::worldmap_probe
     };
     GOBLIN_RENDER_API bool get_converter_affine(int area, ConvAffine &out);
     void log_converter_slots();  // DIAG: dump all live converter slots (area/gridbase/origin) to the log
+
+    // A live resident WorldMapTile's cell + map-space rect (position only; textures deferred). The engine
+    // positioned it (region-walk applied), so mapU0/mapV0 → world via the proven fit aligns with markers.
+    // dim 0=overworld/1=mid/2=coarse; gridX/gridZ from tileId (dim*10000+gridX*100+gridZ). See
+    // windows_worldmap_tile_rect_reach_re_findings.md.
+    struct ResidentTileRect { int dim, gridX, gridZ; float u0, v0, u1, v1; };
+    // Walk the live tile trees off the open map and collect resident tiles' {dim,gridX,gridZ,rect}. Needs
+    // the map OPEN (active cursor published). Returns the count. Read-only + SEH-guarded.
+    GOBLIN_RENDER_API int harvest_resident_tiles(std::vector<ResidentTileRect> &out, int max_tiles = 2000);
 
     // DIAG: the currently-published active cursor address (0 = none). Lets the
     // overlay tell apart "probe hasn't found a cursor yet" (0) from "found but the

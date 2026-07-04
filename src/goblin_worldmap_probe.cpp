@@ -132,6 +132,11 @@ inline bool seh_read_i32(const void *src, int *out)
     SIZE_T n = 0;
     return ReadProcessMemory(GetCurrentProcess(), src, out, sizeof(*out), &n) && n == sizeof(*out);
 }
+inline bool seh_read1(const void *src, uint8_t *out)
+{
+    SIZE_T n = 0;
+    return ReadProcessMemory(GetCurrentProcess(), src, out, sizeof(*out), &n) && n == sizeof(*out);
+}
 // Safe writes via WriteProcessMemory — bad/read-only dst returns false, never crashes.
 inline bool seh_write_i32(void *dst, int v)
 {
@@ -1070,6 +1075,116 @@ bool project(int area, int gridX, int gridZ, float posX, float posZ, float &mapU
         }
     }
     return false; // no converter accepts it
+}
+
+// Harvest the LIVE resident WorldMapTile rects (position only — no textures). Chain (findings
+// windows_worldmap_tile_rect_reach_re_findings.md §3): active cursor → WorldMapDialog (cursor-0x2DB0) →
+// scan its fields for the WorldMapArea (vtable er+0x2b2cb08) → area+0x390 inline layer vector (stride 0x110)
+// → each WorldMapTiledLayer+0x230 std::map<u16,WorldMapTile*> → tile {tileId@+0x30, rect@+0x98}. The rect is
+// the engine's own map-space (region-walk applied) → aligns with markers via the proven fit. Read-only/SEH.
+int harvest_resident_tiles(std::vector<goblin::worldmap_probe::ResidentTileRect> &out, int max_tiles)
+{
+    out.clear();
+    uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+    if (!base) return 0;
+    const uint64_t AREA_VT  = base + 0x2b2cb08;
+    const uint64_t LAYER_VT = base + 0x2b2caf0;
+    const uint64_t TILE_VT  = base + 0x2b31108;
+    uintptr_t cursor = g_active_cursor.load(std::memory_order_relaxed);
+    if (!cursor) return 0;
+    uintptr_t dialog = cursor - CURSOR_OFF_IN_MENU;
+
+    // find WorldMapArea in the dialog's pointer fields (also try the VM object). WorldMapArea can be a
+    // pointer field OR reached from the VM — scan both, wide.
+    uintptr_t area = 0;
+    uintptr_t roots[2] = {dialog, find_view_model()};
+    for (int ri = 0; ri < 2 && !area; ++ri)
+    {
+        if (!roots[ri]) continue;
+        for (uintptr_t o = 0; o < 0x8000; o += 8)
+        {
+            uint64_t p = 0;
+            if (!seh_read8(reinterpret_cast<void *>(roots[ri] + o), &p) || !plausible_ptr(p)) continue;
+            uint64_t vt = 0;
+            if (seh_read8(reinterpret_cast<void *>(p), &vt) && vt == AREA_VT) { area = (uintptr_t)p; break; }
+        }
+    }
+    if (g_log) g_log->info("[TILEHARVEST] dialog={:#x} area={:#x}", dialog, area);
+    if (!area) return 0;
+
+    uint64_t vbegin = 0, vend = 0;
+    seh_read8(reinterpret_cast<void *>(area + 0x390), &vbegin);
+    seh_read8(reinterpret_cast<void *>(area + 0x398), &vend);
+    if (g_log) g_log->info("[TILEHARVEST] layers vbegin={:#x} vend={:#x} count={}", vbegin, vend,
+                           (plausible_ptr(vbegin) && vend > vbegin) ? (vend - vbegin) / 0x110 : -1);
+    if (!plausible_ptr(vbegin) || vend <= vbegin || (vend - vbegin) > 0x4000) return 0;
+
+    auto read_tile = [&](uintptr_t tile) {
+        uint64_t tvt = 0;
+        if (!seh_read8(reinterpret_cast<void *>(tile), &tvt) || tvt != TILE_VT) return;
+        int id = 0; float r[4] = {};
+        seh_read_i32(reinterpret_cast<void *>(tile + 0x30), &id);   // u16 tileId in low bits
+        int tid = id & 0xffff;
+        if (!seh_read4(reinterpret_cast<void *>(tile + 0x98), &r[0]) ||
+            !seh_read4(reinterpret_cast<void *>(tile + 0x9c), &r[1]) ||
+            !seh_read4(reinterpret_cast<void *>(tile + 0xa0), &r[2]) ||
+            !seh_read4(reinterpret_cast<void *>(tile + 0xa4), &r[3]))
+            return;
+        goblin::worldmap_probe::ResidentTileRect t;
+        t.dim = tid / 10000; t.gridX = (tid % 10000) / 100; t.gridZ = tid % 100;
+        t.u0 = r[0]; t.v0 = r[1]; t.u1 = r[2]; t.v1 = r[3];
+        out.push_back(t);
+    };
+
+    for (uintptr_t layer = (uintptr_t)vbegin; layer < (uintptr_t)vend && (int)out.size() < max_tiles;
+         layer += 0x110)
+    {
+        uint64_t lvt = 0;
+        if (!seh_read8(reinterpret_cast<void *>(layer), &lvt)) continue;
+        if (lvt != LAYER_VT) { if (g_log) g_log->info("[TILEHARVEST] layer@{:#x} vt={:#x} != LAYER_VT", layer, lvt); continue; }
+        uint64_t head = 0;
+        bool headok = seh_read8(reinterpret_cast<void *>(layer + 0x230), &head) && plausible_ptr(head);
+        uint64_t root = 0, sz = 0;
+        if (headok) seh_read8(reinterpret_cast<void *>((uintptr_t)head + 0x08), &root);
+        seh_read8(reinterpret_cast<void *>(layer + 0x238), &sz);  // std::map _Mysize (after _Myhead)
+        uint8_t rootNil = 2;
+        if (plausible_ptr(root)) seh_read1(reinterpret_cast<void *>((uintptr_t)root + 0x19), &rootNil);
+        if (g_log) g_log->info("[TILEHARVEST] layer@{:#x} head={:#x} root={:#x} size={} rootNil={}",
+                               layer, head, root, sz, rootNil);
+        if (!headok || !plausible_ptr(root))
+        {
+            // scan the layer object for a std::map: a ptr whose target has a nil-sentinel byte @+0x19==1
+            // AND a plausible parent @+0x08. Log candidate offsets so we pin the real tile-tree offset.
+            for (uintptr_t off = 0x18; off < 0x110 && g_log; off += 8)
+            {
+                uint64_t p = 0;
+                if (!seh_read8(reinterpret_cast<void *>(layer + off), &p) || !plausible_ptr(p)) continue;
+                uint8_t nil = 0; uint64_t par = 0;
+                if (seh_read1(reinterpret_cast<void *>((uintptr_t)p + 0x19), &nil) && nil == 1 &&
+                    seh_read8(reinterpret_cast<void *>((uintptr_t)p + 0x08), &par) && plausible_ptr(par))
+                    g_log->info("[TILEHARVEST]   map? layer+{:#x} head={:#x} root={:#x}", off, p, par);
+            }
+            continue;
+        }
+        // DFS the RB-tree (MSVC std::map): node{left@0,parent@8,right@0x10,isNil@0x19,key@0x20,val@0x28}.
+        std::vector<uint64_t> stack{root};
+        int guard = 0;
+        while (!stack.empty() && (int)out.size() < max_tiles && guard++ < 20000)
+        {
+            uint64_t n = stack.back(); stack.pop_back();
+            if (!plausible_ptr(n)) continue;
+            uint8_t isNil = 1;
+            if (!seh_read1(reinterpret_cast<void *>((uintptr_t)n + 0x19), &isNil) || isNil) continue;
+            uint64_t val = 0;
+            if (seh_read8(reinterpret_cast<void *>((uintptr_t)n + 0x28), &val) && plausible_ptr(val))
+                read_tile((uintptr_t)val);
+            uint64_t l = 0, r = 0;
+            seh_read8(reinterpret_cast<void *>((uintptr_t)n + 0x00), &l);
+            seh_read8(reinterpret_cast<void *>((uintptr_t)n + 0x10), &r);
+            stack.push_back(l); stack.push_back(r);
+        }
+    }
+    return (int)out.size();
 }
 
 void log_converter_slots()

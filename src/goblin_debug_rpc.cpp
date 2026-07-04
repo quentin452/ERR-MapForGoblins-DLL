@@ -503,6 +503,10 @@ namespace goblin::debug_rpc
                     goblin::overlay_api::virtual_map_clear_tiles();
                     return "ok vmap tiles_clear";
                 }
+                // vmap tiles_resident — harvest LIVE resident tile rects (engine positions, no textures) →
+                // outline cells that overlay markers exactly. Confirms the placement calibration. Map must be open.
+                if (arg == "tiles_resident")
+                    return "ok vmap tiles_resident " + goblin::overlay_api::virtual_map_load_resident();
                 // vmap view <camX> <camZ> <zoom> — frame the canvas directly (dev/test screenshots).
                 if (arg == "view")
                 {

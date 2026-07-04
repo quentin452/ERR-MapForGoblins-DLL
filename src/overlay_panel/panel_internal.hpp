@@ -81,6 +81,8 @@ void virtual_map_request_tile(const char *needle, float wx0, float wz0, float wx
 void virtual_map_clear_tiles();
 // Load a whole dimension+LOD placed via the live converter affine (slice 3). Returns a status string.
 std::string virtual_map_load_lod(int dim, int lod, int cap);
+// Harvest LIVE resident tile rects (engine positions, no textures) → outline cells. Confirms alignment.
+std::string virtual_map_load_resident();
 void virtual_map_set_view(float camX, float camZ, float zoom);  // dev/test: frame the canvas directly
 int virtual_map_group();
 } // namespace panel

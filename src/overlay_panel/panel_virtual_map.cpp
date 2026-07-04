@@ -110,6 +110,53 @@ void virtual_map_request_tile(const char *needle, float wx0, float wz0, float wx
 // so this frees the CPU records but not the GPU descriptors — slice 3 adds SRV recycling.
 void virtual_map_clear_tiles() { s_tiles.clear(); s_tile_status = "cleared"; }
 
+// Harvest the LIVE resident WorldMapTile rects (position only — textures deferred) and draw them as
+// outlined cells at the engine's OWN positions (region-walk applied). This is the authoritative alignment:
+// the engine already positioned these, so they overlay the markers exactly. Confirms the calibration + is
+// the base for resident-texture draw later. Needs the ER map OPEN + moved (cursor published). map-space→
+// world via the proven marker-projection fit (worldX=u+bx, worldZ=-v+bz).
+std::string virtual_map_load_resident()
+{
+    // map-space→world fit from live markers (proven bx=7040, bz=16512).
+    std::vector<float> dX, dZ;
+    for (auto *L : overlay_layers())
+    {
+        if (!L) continue;
+        for (const goblin::worldmap::Marker &m : L->markers())
+        {
+            if (m.group != 0 || m.raw_area < 0) continue;
+            float u = 0, v = 0; int pg = -1;
+            if (goblin::worldmap_probe::project(m.raw_area, m.raw_gx, m.raw_gz, m.raw_px, m.raw_pz, u, v, pg) && pg == 0)
+            { dX.push_back(m.worldX - u); dZ.push_back(m.worldZ + v); }
+        }
+    }
+    if (dX.size() < 8)
+        return (s_tile_status = "open the ER map + move it (need markers projected) then retry");
+    auto median = [](std::vector<float> &v) { std::sort(v.begin(), v.end()); return v[v.size() / 2]; };
+    const float bx = median(dX), bz = median(dZ);
+
+    std::vector<goblin::worldmap_probe::ResidentTileRect> rt;
+    int n = goblin::worldmap_probe::harvest_resident_tiles(rt);
+    if (n == 0)
+        return (s_tile_status = "no resident tiles (open the ER map + move it, then retry)");
+    virtual_map_clear_tiles();
+    for (const auto &t : rt)
+    {
+        LoadedTile lt;
+        lt.srv = 0;  // no texture yet (position-only harvest); drawn as an outline cell
+        lt.name = "cell";
+        float wxA = t.u0 + bx, wxB = t.u1 + bx;
+        float wzA = -t.v0 + bz, wzB = -t.v1 + bz;
+        lt.wx0 = (std::min)(wxA, wxB); lt.wx1 = (std::max)(wxA, wxB);
+        lt.wz0 = (std::min)(wzA, wzB); lt.wz1 = (std::max)(wzA, wzB);
+        s_tiles.push_back(lt);
+    }
+    s_open = true;
+    char st[96];
+    std::snprintf(st, sizeof(st), "resident: %d tile cells (position-only, outlines)", n);
+    return (s_tile_status = st);
+}
+
 // Load a whole ER map dimension+LOD onto the canvas (slice 3). The tile grid is decoded per the SOLVED
 // WorldMapTile findings (docs/re/windows_worldmap_tile_placement_re_findings.md): a UNIFORM 256-cell grid,
 // name M{dim}_L{lod}_{col}_{row}_{suffix} with col/row DECIMAL, suffix = 8*morton(subX,subY) in a 64-cell
@@ -304,6 +351,8 @@ void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
     ImGui::SameLine();
     if (ImGui::SmallButton(tr("Load ER map tiles"))) virtual_map_load_lod(0, 3, 240);
     ImGui::SameLine();
+    if (ImGui::SmallButton(tr("Resident cells"))) virtual_map_load_resident();  // engine positions (aligned)
+    ImGui::SameLine();
     if (ImGui::SmallButton(tr("Clear tiles"))) virtual_map_clear_tiles();
     // World selector: "Base ER" (id 0 → live ER markers by group) or a custom virtual world (its own
     // markers). The active world is framework state (goblin::vworld), shared with the RPC.
@@ -386,13 +435,21 @@ void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
     dl->PushClipRect(origin, canvas_end, true);
     dl->AddRectFilled(origin, canvas_end, IM_COL32(18, 20, 26, 255));  // dark canvas backdrop
 
-    // ER map ART tiles (slice 2): draw each loaded real-map tile at its world quad, under the grid+markers.
+    // ER map ART tiles: draw each loaded tile at its world quad, under the grid+markers. srv==0 = a
+    // position-only resident cell (harvested rect, no texture yet) → faint fill + frame so it's visible.
     for (const LoadedTile &t : s_tiles)
     {
-        if (!t.srv) continue;
         ImVec2 a = w2s(t.wx0, t.wz0), b = w2s(t.wx1, t.wz1);
-        dl->AddImage((ImTextureID)t.srv, a, b);
-        dl->AddRect(a, b, IM_COL32(90, 160, 220, 120));  // faint frame so an empty/black tile is still visible
+        if (t.srv)
+        {
+            dl->AddImage((ImTextureID)t.srv, a, b);
+            dl->AddRect(a, b, IM_COL32(90, 160, 220, 120));
+        }
+        else  // resident cell outline (position calibration view)
+        {
+            dl->AddRectFilled(a, b, IM_COL32(70, 130, 90, 60));
+            dl->AddRect(a, b, IM_COL32(120, 220, 150, 180));
+        }
     }
 
     // Reference grid: pick a world spacing that renders ~80px on screen, snapped to a 1/2/5×10^n step,
