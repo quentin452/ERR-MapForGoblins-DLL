@@ -62,6 +62,19 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
 3. **regulation.bin / mod-VFS virtualization** — for the strong form of world-swap (vision #1). Only
    `windows_regulation_modroot_anchor_re_prompt.md` scratches it; the VFS-level swap isn't RE'd.
 4. **3D models / FLVER** — completely untouched (vision #3). No asset/model RE at all.
+4b. **Terrain / Havok collision WRITE — new frontier, partly RE'd (static, 2026-07-04).** We READ the terrain
+   (down-ray heightfield) and can MOVE an object, but there is NO way to change collision GEOMETRY (deform the
+   ground, add a platform/wall). **Static class inventory + `CSPhysWorld`/`hknpWorld` wiring DONE**
+   (`windows_terrain_heightfield_write_re_findings.md`; prompt `..._re_prompt.md`): terrain is a **baked
+   `hknpCompressedMeshShape`** (vtable er+0x2eeb908) ⇒ **Route A (deform-in-place) is a near-certain DEAD END**
+   (an editable `hknpHeightFieldShape` er+0x2ee2a18 also exists — a live shape-vtable read decides). **Route B
+   = add a dynamic collision body** (`hknpBoxShape`/`hknpSphereShape` via `CSPhysIns@CS` / DLRF factory +
+   `hknpWorld::addBody`), reusing the geom-spawn machinery + the MSB-move lesson (drive the engine ctor/setter,
+   never poke raw shape bytes). `CSPhysWorld` ctor `FUN_140c6f120` mapped (hknpWorld* @ `CSPhysWorld+0x08`,
+   confirming the raycast `ctx+8`; hknpWorld ctor `FUN_1418a6760`; shape-tag codec `hknpUFMShapeTagCodec<3,5,8>`
+   behind the `0x5e` filter). **Remaining = live (Linux):** the shape-vtable read (decides A vs B), the
+   `hknpWorld` vtable dump for the exact `addBody` slot, and an `add_collision` box smoke test vs the `hf_probe`
+   raycast.
 5. **Custom mob PLACEMENT** — NpcParam is param-driveable, but placing a custom enemy is MSB write (#1).
 
 ### Smaller tactical gaps (see HANDOFF)
