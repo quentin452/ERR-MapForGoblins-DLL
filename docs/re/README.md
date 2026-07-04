@@ -1,6 +1,6 @@
 # RE coverage map — what of ELDEN RING is reverse-engineered, and what isn't
 
-Index + honest coverage map for `docs/re/`. **167 RE docs** live here. Two kinds:
+Index + honest coverage map for `docs/re/`. **169 RE docs** live here. Two kinds:
 - `*_re_findings.md` / `*_RESOLVED.md` — a SOLVED structure/function (the answer).
 - `*_re_prompt.md` / `*_analysis.md` — an OPEN or historical RE task handed to Ghidra/CE.
 
@@ -82,7 +82,12 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
    confirming the raycast `ctx+8`; hknpWorld ctor `FUN_1418a6760`; shape-tag codec `hknpUFMShapeTagCodec<3,5,8>`
    behind the `0x5e` filter). **Remaining = live (Linux):** the shape-vtable read (decides A vs B), the
    `hknpWorld` vtable dump for the exact `addBody` slot, and an `add_collision` box smoke test vs the `hf_probe`
-   raycast.
+   raycast. **UPDATE (2026-07-05, `hknpworld_addbody_slot_re_findings.md`): the add path is now STATICally
+   COMPLETE.** `addBody` is NOT a vtable slot — hknp uses a deferred command buffer (`addBody` = command
+   opcode 1; the vtable's slot 7/8 are the command executor + debug-printer, which leaked the full opcode
+   map). The real callable recipe (as CS itself calls it, no dispatcher): `FUN_1418aabf0` (allocateBody) →
+   `FUN_1418a9ff0` (addBody: AABB + broadphase insert), with a working exe template `FUN_1418a3080`
+   (`hknpCharacterProxy` body create). Remaining = build the box `cinfo` + the live smoke test.
 5. **Custom mob PLACEMENT** — NpcParam is param-driveable, but placing a custom enemy is MSB write (#1).
 
 ### Smaller tactical gaps (see HANDOFF)
