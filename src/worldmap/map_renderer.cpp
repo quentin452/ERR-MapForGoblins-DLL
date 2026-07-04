@@ -2729,15 +2729,31 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
         const float a = kYawSign * yaw + kYawOffset;
         const ImVec2 fwd(std::sin(a), -std::cos(a));  // a=0 → (0,-1) = up (north-up minimap)
         const ImVec2 rgt(-fwd.y, fwd.x);
-        const float L = 9.f * uiScale;                // tip reach from centre
-        const float B = 5.f * uiScale;                // base setback + half-width
-        const ImVec2 tip(ctr.x + fwd.x * L, ctr.y + fwd.y * L);
-        const ImVec2 bl(ctr.x - fwd.x * B + rgt.x * B, ctr.y - fwd.y * B + rgt.y * B);
-        const ImVec2 br(ctr.x - fwd.x * B - rgt.x * B, ctr.y - fwd.y * B - rgt.y * B);
-        // Player = RED + white outline (matches the vmap; was yellow, which collided with the yellow
-        // altitude badge and diverged from the vmap's player marker).
-        fg->AddTriangleFilled(tip, bl, br, IM_COL32(255, 48, 48, 255));
-        fg->AddTriangle(tip, bl, br, IM_COL32(255, 255, 255, 235), 1.5f);
+        // NATIVE local-player cursor = MENU_MAP_Player_01 (the yellow arrow+circle), mod-agnostic +
+        // disk-resolved, ROTATED to face yaw. Its texture is tall (72x150: arrow on top, ring below) so
+        // keep the aspect. AddImageQuad's 4 corners: texture-up (v0) -> +fwd, texture-right (u1) -> +rgt.
+        // (MENU_MAP_Player_02 = the OTHER-players effigy — followup 2b.) Red-triangle fallback.
+        void *pt = nullptr; float pu0, pv0, pu1, pv1;
+        if (goblin::overlay_api::map_point_glyph_uv("MENU_MAP_Player_01", -1, pt, pu0, pv0, pu1, pv1) && pt)
+        {
+            const float hh = 12.0f * uiScale;          // half-height
+            const float hw = hh * (72.0f / 150.0f);    // half-width (preserve the sprite aspect)
+            const ImVec2 tl(ctr.x - rgt.x * hw + fwd.x * hh, ctr.y - rgt.y * hw + fwd.y * hh);
+            const ImVec2 tr(ctr.x + rgt.x * hw + fwd.x * hh, ctr.y + rgt.y * hw + fwd.y * hh);
+            const ImVec2 br(ctr.x + rgt.x * hw - fwd.x * hh, ctr.y + rgt.y * hw - fwd.y * hh);
+            const ImVec2 bl(ctr.x - rgt.x * hw - fwd.x * hh, ctr.y - rgt.y * hw - fwd.y * hh);
+            fg->AddImageQuad((ImTextureID)pt, tl, tr, br, bl, ImVec2(pu0, pv0), ImVec2(pu1, pv0),
+                             ImVec2(pu1, pv1), ImVec2(pu0, pv1));
+        }
+        else
+        {
+            const float L = 9.f * uiScale, B = 5.f * uiScale;
+            const ImVec2 tip(ctr.x + fwd.x * L, ctr.y + fwd.y * L);
+            const ImVec2 pbl(ctr.x - fwd.x * B + rgt.x * B, ctr.y - fwd.y * B + rgt.y * B);
+            const ImVec2 pbr(ctr.x - fwd.x * B - rgt.x * B, ctr.y - fwd.y * B - rgt.y * B);
+            fg->AddTriangleFilled(tip, pbl, pbr, IM_COL32(255, 48, 48, 255));
+            fg->AddTriangle(tip, pbl, pbr, IM_COL32(255, 255, 255, 235), 1.5f);
+        }
     }
     else
     {
