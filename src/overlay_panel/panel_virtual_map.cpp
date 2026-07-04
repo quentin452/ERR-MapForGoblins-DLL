@@ -22,6 +22,7 @@
 #include "goblin_inject.hpp"           // goblin::world_map_open() + marker_group_from (slice D / A7)
 #include "goblin_major_regions.hpp"    // MAJOR_REGION_ANCHORS — coarse region name labels (A7 parity)
 #include "goblin_bench.hpp"            // GOBLIN_BENCH_QUIET — profile the vmap draw at high marker counts
+#include "overlay_panel/marker_quadtree.hpp"  // spatial index: viewport cull + LOD clustering (perf)
 
 #include <spdlog/spdlog.h>
 
@@ -63,6 +64,11 @@ namespace
                       std::string region; int regionIdx; };
     std::vector<GraceRow> s_graces;
     bool s_graces_built = false;
+    // Marker spatial index (perf): viewport-cull + LOD-cluster the ~6837 base markers instead of the
+    // O(n)-every-frame loop. Rebuilt when the displayed group changes (markers themselves are static).
+    MarkerQuadtree s_qt;
+    std::vector<const goblin::worldmap::Marker *> s_grace_pts;  // group's graces (drawn on top, not clustered)
+    int s_qt_group = -999;
     uint64_t s_warp_pending = 0;   // grace rowId to warp to; serviced at the next frame's top (not mid-draw)
     int s_warp_offset = 0;          // added to the grace entity id before LuaWarp; 0 = entity id direct (ground truth; CT's -1000 was wrong)
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
@@ -888,21 +894,86 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // hidden under a co-located loot/landmark glyph. (kGraceCat defined above for the hover priority.)
     if (active_world == 0)
     {
-        // vmap.markers = ~99% of the vmap frame cost (bench 2026-07-04): this O(n) loop draws EVERY marker
-        // of the open group individually (6837 base-overworld) with no clustering/viewport pre-cull, so
-        // present spikes ~5x when zoomed out to fit. A8 clustering is the fix (missing parity item).
         GOBLIN_BENCH_QUIET("vmap.markers");
-        for (int pass = 0; pass < 2; ++pass)
+        // Spatial index replaces the old O(n) per-frame loop over all 6837 markers (the profiled ~99%
+        // bottleneck). (Re)build for the open group (markers are static ⇒ rebuild only on group change);
+        // origin-defaulted (0,0) markers are excluded (the "hors map" stray icons). Graces are NOT indexed
+        // — they draw individually on top (few, must stay clickable/warpable).
+        if (s_qt_group != s_group)
         {
-            const bool graces = (pass == 1);
+            std::vector<const goblin::worldmap::Marker *> pts;
+            pts.reserve(8192);
+            s_grace_pts.clear();
+            // Reject "hors map" markers: origin-defaulted (0,0) and wildly-out-of-frame coords (a few
+            // markers project to garbage like (110767,-59445)). ER base world XZ is ~[0..20000]; a generous
+            // ±40000 box keeps every real marker while dropping the outliers that otherwise (a) draw as
+            // stray icons and (b) blow up the Fit bbox so everything renders microscopic.
+            auto implausible = [](float x, float z) {
+                return (x == 0.f && z == 0.f) || x < -40000.f || x > 40000.f || z < -40000.f || z > 40000.f;
+            };
             for (auto *L : overlay_layers())
             {
                 if (!L) continue;
                 for (const goblin::worldmap::Marker &m : L->markers())
-                    if (m.group == s_group && ((m.category == kGraceCat) == graces) && !region_gated(m))
-                        plot(m.worldX, m.worldZ, m.color, m.category, m.name_id, nullptr, m.row_id, m.discover_flag, &m);
+                {
+                    if (m.group != s_group || implausible(m.worldX, m.worldZ))
+                        continue;
+                    if (m.category == kGraceCat)
+                        s_grace_pts.push_back(&m);   // graces: kept out of the tree, drawn on top
+                    else
+                        pts.push_back(&m);
+                }
+            }
+            s_qt.build(pts);
+            s_qt_group = s_group;
+        }
+        // Fit frames ALL markers of the group → take the bbox from the index (not just the drawn subset).
+        s_qt.bounds(minx, minz, maxx, maxz);
+
+        // Visible world rect from the canvas corners (s2w flips Z → normalise). A node smaller than
+        // kPilePx on screen collapses to one "×N" pile; sparse leaves in view draw individually.
+        float wxa, wza, wxb, wzb;
+        s2w(origin, wxa, wza);
+        s2w(canvas_end, wxb, wzb);
+        const float vMinX = (std::min)(wxa, wxb), vMaxX = (std::max)(wxa, wxb);
+        const float vMinZ = (std::min)(wza, wzb), vMaxZ = (std::max)(wza, wzb);
+        constexpr float kPilePx = 26.0f;
+        const float clusterWorld = kPilePx / (s_zoom > 1e-6f ? s_zoom : 1e-6f);
+        static std::vector<MarkerQuadtree::Pile> s_piles;
+        static std::vector<const goblin::worldmap::Marker *> s_singles;
+        s_piles.clear();
+        s_singles.clear();
+        s_qt.query(vMinX, vMinZ, vMaxX, vMaxZ, clusterWorld, s_piles, s_singles);
+
+        // Cluster piles (drawn UNDER singles + graces): a disc sized ~log(count) + the count.
+        for (const MarkerQuadtree::Pile &pl : s_piles)
+        {
+            ImVec2 ps = w2s(pl.cx, pl.cz);
+            if (ps.x < origin.x || ps.x > canvas_end.x || ps.y < origin.y || ps.y > canvas_end.y) continue;
+            float r = 7.0f + std::log2((float)pl.count) * 2.2f;
+            if (r > 22.f) r = 22.f;
+            dl->AddCircleFilled(ps, r, IM_COL32(40, 46, 60, 225));
+            dl->AddCircle(ps, r, IM_COL32(230, 210, 140, 235), 0, 1.5f);
+            char cbuf[16];
+            std::snprintf(cbuf, sizeof(cbuf), "%d", pl.count);
+            ImVec2 ts = ImGui::CalcTextSize(cbuf);
+            dl->AddText(ImVec2(ps.x - ts.x * 0.5f, ps.y - ts.y * 0.5f), IM_COL32(240, 235, 220, 255), cbuf);
+            ++drawn;
+            if (hovered)
+            {
+                float dx = ps.x - io.MousePos.x, dy = ps.y - io.MousePos.y;
+                if (dx * dx + dy * dy < r * r)
+                    ImGui::SetTooltip("%d %s", pl.count, tr("markers — zoom in to expand"));
             }
         }
+        // Non-grace singles (region-gated), then graces ON TOP (separate viewport-culled loop).
+        for (const goblin::worldmap::Marker *m : s_singles)
+            if (!region_gated(*m))
+                plot(m->worldX, m->worldZ, m->color, m->category, m->name_id, nullptr, m->row_id, m->discover_flag, m);
+        for (const goblin::worldmap::Marker *m : s_grace_pts)
+            if (!region_gated(*m) && m->worldX >= vMinX && m->worldX <= vMaxX &&
+                m->worldZ >= vMinZ && m->worldZ <= vMaxZ)
+                plot(m->worldX, m->worldZ, m->color, m->category, m->name_id, nullptr, m->row_id, m->discover_flag, m);
     }
     else
     {
