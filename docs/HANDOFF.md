@@ -28,11 +28,21 @@ from F1 + open via the game MAP KEY. RPCs: `vmap`/`vworld`/`f1_tab`. **NEXT on t
   `vmap tile <needle> [rect]` / `tiles_clear`; `maptile::extract_named` + `panel_virtual_map` service the
   load on the render thread (`create_tex_from_dds_mem`, like panel_dev_icons' on-click load), cache
   {SRV, world quad}, and `dl->AddImage` under grid+markers. A 2×2 M00_L0 block rendered as seamless ER
-  terrain (screenshot-confirmed under Proton). **NEXT = sub-slice 3:** (a) true tile→world projection so
-  tiles align to markers (col/row → map-space → world; decode the `{suffix}` sub-cell + LOD scale — use
-  `docs/re/windows_world_to_mapspace_projection_re_findings.md`); (b) stream visible-only + read byte
-  ranges (`extract_named` reads the whole 1.26 GB .tpfbdt per tile today); (c) **SRV recycling** — the
-  256-cap has no free list, so repeated loads eventually `SRV FAIL`; even coarsest M00_L3=561 > 256.
+  terrain (screenshot-confirmed under Proton).
+  **✅ sub-slice 3a DONE 2026-07-04 — live map-space→world transform (the Convergence-trap-safe core).**
+  The vmap places tiles in the SAME world frame as markers, derived 100% LIVE via `worldmap_probe::project`
+  (project every overworld marker → robust MEDIAN offset, fixed ±1 slope since converter scale is live=1):
+  result EXACT `worldX=mapU+7040, worldZ=−mapV+16512`, ground-truth-verified (marker world(10138,10046) ↔
+  engine map(3098,6465)), NO hardcoding. RPCs `vmap tiles_lod <dim> <lod> [cap]` (reads archive once,
+  center-out, cap for the SRV limit) + `vmap view <camX> <camZ> <zoom>`. Tiles land in the correct region
+  (co-located with markers, live-verified). **Testing gotchas found:** `set rpc_auto_idle false` before
+  scripted input (auto-idle SUSPENDS it when a human is at the PC); the map cursor/VM only publishes once
+  the map view is NON-static (pan/zoom); the ER world map opens with the **`m`** key on this install.
+  **NEXT (3b/3c/decode):** (1) **crack the `{suffix}` decode** — it's a Morton (Z-order) code over a
+  VARIABLE-DEPTH per-region quadtree (col/row = 6×6 blocks; dense land cells subdivide deeply, ocean = 1
+  tile), so per-tile grid size/packing is still approximate (gaps); cell 02_03 dump (78 tiles, suffix set)
+  is in the logs. (2) **SRV recycling** — 256-cap no free list; even coarsest M00_L3=561>256. (3) byte-range
+  reads (extract reads whole 1.26 GB .tpfbdt). Then the full seamless overworld renders under the markers.
 - Missed design items (captured in `docs/plans/virtual_world_multi_world_design.md`): **GAMEPAD** for the
   vmap canvas (stick→pan/zoom + reticle — add to every vmap slice); the real feature gaps = **clock /
   blue click-marker / custom beacon** (rest of ER's map is cosmetic; grace = fast-travel = make-or-break).

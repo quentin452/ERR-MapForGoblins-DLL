@@ -102,7 +102,16 @@ archive** → each entry is a TPF (maybe DCX'd) → `tpf_find_texture` → DDS �
    (auto col/row placement if no rect) + `vmap tiles_clear`, bridged via overlay_api. Verified under Proton:
    a 2×2 M00_L0 overworld block decodes off the packed dvdbnd (DCX→TPF→DDS 256×256) and renders as seamless
    ER terrain art on the canvas, markers overlaying.
-3. **All overworld tiles + true positioning (NEXT — was sub-slice 3):** three parts —
+3a. **✅ DONE 2026-07-04 — live map-space→world transform.** The vmap places tiles in the marker world
+   frame, derived LIVE (not hardcoded) via `worldmap_probe::project` + a robust median-offset fit (fixed ±1
+   slope, converter scale live=1): EXACT `worldX=mapU+7040, worldZ=−mapV+16512`, ground-truth-verified.
+   RPCs `vmap tiles_lod <dim> <lod> [cap]` + `vmap view`. Tiles co-locate with markers (live-verified).
+   **Open (3b/3c):** (a) the `{suffix}` field is a Morton code over a VARIABLE-DEPTH per-region quadtree
+   (col/row=6×6 blocks; dense land subdivides deeply, ocean=1 tile) — the exact suffix→cell decode is
+   unsolved, so per-tile size/packing is still approximate (gaps); (b) SRV recycling (256-cap, no free
+   list); (c) byte-range reads (avoid the whole 1.26 GB .tpfbdt). Testing: `set rpc_auto_idle false`, the
+   VM publishes only on a non-static map view, map opens with `m`.
+3. **All overworld tiles + true positioning (transform DONE ↑; decode+SRV remain):** three parts —
    (a) **true tile→world projection** so tiles align to the marker world coords (today's placement is an
        approximate `col*256`; need col/row → map-space → world INVERSE of `FUN_140876140`, plus decode the
        `{suffix8}` sub-cell offset + the per-LOD scale — §1/§2 of
