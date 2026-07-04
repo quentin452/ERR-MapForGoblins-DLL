@@ -61,14 +61,14 @@ from parity — Track A is real BUILD work, not just a checklist. This IS the go
 | A8 | Clustering / pile "×N" | ❌ **MISSING** — vmap plots every marker raw (`:589-594`), no piles/counts | **yes** (dense areas unreadable) |
 | A9 | Item search + "locate" pan | ❌ **MISSING** — F1 search targets the native map only; vmap ignores it | **yes** |
 | A10 | Fast-travel to grace (double-click) | ✅ but FREEZES — Track C0 | **yes** |
-| A11 | Player position marker + heading | ❌ **MISSING** — minimap has it (`get_player_map_pos`/`get_player_facing_yaw`); vmap never calls them | **yes (critical)** |
+| A11 | Player position marker + heading | ✅ **DONE `69188c3`** — dot/heading-arrow on the vmap (base ER + matching group), minimap yaw convention through the vmap axis signs | no |
 | A12 | ERR day/night dial (ERR-only) | ❌ MISSING — native-map overlay only (`map_renderer.cpp:1170`) | ERR-only, low prio |
 | A13 | Map cursor → world readout (dev) | ✅ probe | no |
 | A14 | UI exclusion zones | native-map overlay only → **moot** after switch | drop |
 | A15 | Legacy-dungeon / sub-area maps | ❌ MISSING — vmap has only the 4 top-level groups (`s_group`, `:593`); dungeons folded into overworld | maybe (dungeons still show as folded markers) |
 
 **A-BUILD list (the gate) — ordered cheapest/most-critical first:**
-1. **A11 player marker + heading** (critical, trivial — vmap has w2s; call get_player_map_pos + draw dot/arrow like the minimap).
+1. ~~**A11 player marker + heading**~~ ✅ DONE `69188c3`.
 2. **A7 region labels** (reuse the native label data; draw at w2s).
 3. **A8 clustering/piles** (reuse the spatial-grid clustering from map_renderer, or a vmap-local pass).
 4. **A9 item search/locate** (make the F1 search ring + pan target the vmap too).
