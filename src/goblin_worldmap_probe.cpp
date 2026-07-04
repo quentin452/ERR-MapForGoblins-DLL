@@ -1,4 +1,5 @@
 #include "goblin_worldmap_probe.hpp"
+#include "goblin_heightfield.hpp"  // heightfield sampler tick (game-thread ray-cast, Track D2)
 #include "goblin_bench.hpp"    // GOBLIN_BENCH_QUIET — make dev dump cost visible in the report
 #include "goblin_inject.hpp"   // goblin::world_map_open() — gate the scan on map-open
 #include "goblin_config.hpp"   // config::dumpConverters
@@ -1756,6 +1757,9 @@ uintptr_t hk_c32f0(uintptr_t dialog, float dt, uintptr_t a3, uintptr_t a4)
         seh_write_f32(reinterpret_cast<void *>(cur + 0x110), v);
     }
     uintptr_t r = g_c32f0_orig ? g_c32f0_orig(dialog, dt, a3, a4) : 0;
+    // Heightfield sampler (Track D2): this runs on the GAME thread (safe for the hknp ray-cast, unlike
+    // the present thread). No-op unless a probe/sample is pending. Only ticks while the map is stepping.
+    goblin::heightfield::tick_game_thread();
     // BOUNDS MODEL (user-confirmed 2026-07-02): on a fogged/fragment-less save the engine's
     // pan bounds = the LIVE fog window around the tile the player is currently on — they
     // FOLLOW the player (not a discovery bbox; fragments widen the legal area on top). NOT

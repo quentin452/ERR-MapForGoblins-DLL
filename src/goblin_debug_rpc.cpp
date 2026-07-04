@@ -23,6 +23,7 @@
 #include "goblin_world_bundle.hpp"  // bundle cmd — World Editor save/apply persistence
 #include "goblin_geom_move.hpp"     // move_asset cmd — live geom transform-setter test (MSB-write RE)
 #include "goblin_geom_spawn.hpp"    // spawn_asset cmd — ADD via pivot-2 asset-request path (MSB-write RE)
+#include "goblin_heightfield.hpp"   // hf_probe cmd — terrain raycast heightfield (Track D2)
 #include "goblin_field_probe.hpp"  // arm_raw — serialize find-what-accesses (Phase 2)
 
 #include <spdlog/spdlog.h>
@@ -1010,6 +1011,14 @@ namespace goblin::debug_rpc
                 bool ok = goblin::warp::to_grace(gid, off);
                 return ok ? "ok warp " + std::to_string(gid) + " offset " + std::to_string(off)
                           : "err warp failed (unresolved / not in-world / grace locked)";
+            }
+            // hf_probe — queue a heightfield validation cast (Track D2). The cast runs on the GAME
+            // thread (the world-map step hook), so OPEN THE MAP after issuing this. Result → [HEIGHTFIELD]
+            // in the log (ground Y at the player + normal). Compare ground Y to the player foot Y.
+            if (cmd == "hf_probe")
+            {
+                goblin::heightfield::request_probe();
+                return "ok hf_probe queued — open the map; grep [HEIGHTFIELD] in the log";
             }
             // mem_dump <hexaddr> <len> — raw RPM hex-dump of an absolute address (follow pointers /
             // diff to locate the goods inventory). len capped at 256.
