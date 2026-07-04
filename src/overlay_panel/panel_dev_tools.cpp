@@ -17,6 +17,17 @@ void draw_dev_tools_danger(Filter &f)
     // ONCE at startup based on its config flag (dllmain setup), so these
     // are restart-required: flip + Save, then relaunch. save_all_bool_settings
     // persists every config bool, so no per-flag plumbing is needed.
+    // Virtual World Map (WIP) — the mod-owned map page. Opens the pannable/zoomable canvas window.
+    if (f.match("virtual world map vmap tiles"))
+    {
+        if (ImGui::Button(tr("Open Virtual World Map (WIP)"))) virtual_map_open() = true;
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Opens the mod map window. Then: 'Load ER map tiles' in its toolbar loads\n"
+                              "ER's real map art (open the game map + move on it first so it resolves).\n"
+                              "Note: tile alignment is still WIP.");
+        ImGui::Separator();
+    }
+
     const bool show_devtools = f.match("dev tools save restart event-flag item-grant hook "
                                        "cursor probe marker dump hotkey verbose logging "
                                        "flag capture npc death");

@@ -299,6 +299,12 @@ void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
     }
     ImGui::SameLine();
     if (ImGui::SmallButton(tr("Fit"))) s_fit_requested = true;
+    // Load ER's real map ART tiles (WIP — see below). Needs the game map OPEN + you moving on it a
+    // moment (so the projection resolves). Loads overworld coarse tiles around the marker area.
+    ImGui::SameLine();
+    if (ImGui::SmallButton(tr("Load ER map tiles"))) virtual_map_load_lod(0, 3, 240);
+    ImGui::SameLine();
+    if (ImGui::SmallButton(tr("Clear tiles"))) virtual_map_clear_tiles();
     // World selector: "Base ER" (id 0 → live ER markers by group) or a custom virtual world (its own
     // markers). The active world is framework state (goblin::vworld), shared with the RPC.
     ImGui::SameLine();
