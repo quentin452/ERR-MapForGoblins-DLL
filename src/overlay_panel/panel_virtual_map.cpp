@@ -555,6 +555,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     const bool nativeIcons = *goblin::overlay_api::cfg_nativeItemIcons_ptr();
     // Hover tooltip: track the marker nearest the cursor (within a pixel radius) while drawing.
     float hoverBestD = 1e18f; int hoverName = -1, hoverCat = -1, hoverDisc = 0; std::string hoverV; uint64_t hoverRow = 0;
+    float hoverWx = 0.f, hoverWz = 0.f;  // world pos of the hovered marker (for warp diagnostics)
+    int hoverArea = -1;                  // the hovered marker's REAL area (mp->raw_area), for warp diagnostics
     // mp != null (base ER) → reuse the native state-aware per-marker draw (grace discovered/undiscovered
     // sprite, collected-dim, cleared check, rune glow, badge) so the vmap does NOT duplicate that logic.
     auto plot = [&](float wx, float wz, uint32_t col, int cat, int nameId, const char *vname, uint64_t rowId,
@@ -581,7 +583,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         {
             float dx = ps.x - io.MousePos.x, dy = ps.y - io.MousePos.y, d = dx * dx + dy * dy;
             if (d < hoverBestD && d < icoHalf * icoHalf * 2.0f)
-            { hoverBestD = d; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; }
+            { hoverBestD = d; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; hoverWx = wx; hoverWz = wz; hoverArea = mp ? mp->raw_area : -1; }
         }
     };
     // Graces draw ON TOP of every other marker (parity with the native map, which draws the grace layer
@@ -627,14 +629,28 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             else ImGui::TextDisabled("(unnamed)");
             if (clab) ImGui::TextDisabled("%s", clab);
             if (hoverGrace)
+            {
                 graceDiscovered ? ImGui::TextColored(ImVec4(0.90f, 0.78f, 0.35f, 1.f), "double-click to warp")
                                 : ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.f), "not discovered — cannot warp");
+                // Dev: warp rowId + the grace's REAL area, so a bad grace→rowId mapping shows on hover
+                // (a base grace — area 60 — carrying a DLC rowId, or an area-61 grace shown in group 0).
+                ImGui::TextDisabled("rowId %llu · area %d · group %d", (unsigned long long)hoverRow,
+                                    hoverArea, s_group);
+            }
             ImGui::EndTooltip();
         }
         // Double-click a DISCOVERED grace → fast-travel. Deferred to next frame's top (warp tears down UI
         // state; firing mid-ImGui-draw is unsafe). Double-click avoids the drag-pan click conflict.
         if (graceDiscovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+        {
             s_warp_pending = hoverRow;
+            // Log WHAT we're warping to — the name + rowId + world pos let us catch a bad grace→rowId
+            // mapping (e.g. a base-overworld grace carrying a DLC BonfireWarpParam rowId → area-61 stall).
+            std::string gname = !hoverV.empty() ? hoverV
+                                : (hoverName > 0 ? goblin::overlay_api::lookup_text_utf8(hoverName) : std::string("?"));
+            spdlog::info("[VMAP] warp queued: grace '{}' rowId={} area={} discFlag={} nameId={} group={} worldXZ=({:.0f},{:.0f})",
+                         gname, hoverRow, hoverArea, hoverDisc, hoverName, s_group, hoverWx, hoverWz);
+        }
     }
     s_drawn = drawn;
     // Fit: frame the selected group's bbox (cam/zoom feed w2s next frame → 1-frame settle).
