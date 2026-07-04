@@ -5,7 +5,9 @@ every fixed-RVA site in code is already listed below. No new resolutions since t
 the only delta was `RENDER_MGR_SLOT_RVA` (a local alias of `CANVAS_SINGLETON_RVA` 0x47ef360, now noted).
 All other uncovered `er+0x` hits are comments / log strings restating documented RVAs (WorldChrMan
 fallback already dual-pathed; FieldIns `er+0x3d7b0c0` is comment-only — impl uses the WGM walk). The
-A7 region-labels work added zero RVAs. The 3 cheap-win switch-to-existing-AOB items are still open.
+A7 region-labels work added zero RVAs. **Update 2026-07-04: the 3 hot-path FUNCs + the cheap-win
+switches are now DONE (see the ✅ sections); remaining = PHYSWORLD slot, the 2 hooked grace fns, and
+the vtable/slot + icon-harvest sets.**
 
 Inventory 2026-07-04. RVAs are **build-specific** (ERR 2.2.9.6): they break on a game patch and are not
 mod-agnostic. Doctrine (`re_signatures.hpp`) is to pin AOBs, keep an RVA only as a cross-checked
@@ -46,10 +48,13 @@ installs), then wildcard as usual.
 | — | er+0x2ad8228 | WorldMapWarpPinData vftable | goblin_grace_suppression.cpp:147 |
 | icon-harvest | er+0x3d82510, er+0x3d5b0f8; base+0x2f05928, +0x2b761b0 | image-repo/CSFile slots + GX vtables | goblin_icon_harvest.cpp |
 
-## Cheap wins — AOB already exists, but an RVA is still used (just switch the call site)
-- **WorldChrMan** — `WCM_FINDER` AOB + `er+0x3D65F88` fallback (already dual-pathed; fine).
-- **CSMenuMan** — `CSMENUMAN_SLOT` AOB exists, but `worldmap_probe.cpp` uses `CSMENUMAN_SLOT_RVA` 0x3d6b7b0 everywhere → switch to the AOB.
-- **CreateImage** — `WORLDMAP_CREATE_IMAGE` AOB exists, but `icon_harvest.cpp:1352/1370` uses `er+0xd6bbc0` → switch.
+## ✅ Cheap wins — DONE 2026-07-04 (switched call site to the existing AOB)
+- **WorldChrMan** — `WCM_FINDER` AOB + `er+0x3D65F88` fallback (already dual-pathed; fine — no change).
+- **CSMenuMan** — ✅ `worldmap_probe.cpp` now resolves the slot via a cached `csmenuman_slot(base)`
+  (`CSMENUMAN_SLOT` AOB + `relative_offsets{{3,7}}`, RVA fallback) at all 6 read sites. `[SIG]` PASS live.
+- **CreateImage** — ✅ the hook install AOB-address is cached in `g_create_image_addr` and reused by the
+  two force paths (RVA fallback kept). Live-verified: the AOB resolved to EXACTLY `er+0xd6bbc0` and the
+  hook installed there, so the force calls hit the identical function.
 
 ## Diag/debug-only (behind config flags — lowest priority)
 `goblin_collected.cpp` (diagFieldinsJoin/diagLotMemscan slots + vtables), `goblin_geom_move.cpp:412-414`
@@ -72,10 +77,10 @@ a region is VMProtect-*mutated* per-run (no stable AOB exists — rare; detect b
 - **Cheap wins** need no RE — the AOB already exists, just switch the call site.
 
 ## Priority
-~~Hot-path first: CASTRAY, ENSURE_ASSET_REQUEST, GETTER~~ ✅ DONE 2026-07-04. Remaining, in order:
-the three cheap-win switch-to-existing-AOB items (near-free); **PHYSWORLD** slot (heightfield — FWA a
-load site); the two **hooked** grace-suppression FUNCs (wrong hook addr = crash; read the trampoline,
-not the live bytes); then the worldmap vtables/slots and the icon-harvest set.
+~~Hot-path FUNCs (CASTRAY, ENSURE_ASSET_REQUEST, GETTER)~~ ✅ + ~~cheap-win switches (CSMenuMan,
+CreateImage)~~ ✅ DONE 2026-07-04. Remaining, in order: **PHYSWORLD** slot (heightfield — FWA a load
+site); the two **hooked** grace-suppression FUNCs (wrong hook addr = crash; read the trampoline, not the
+live bytes); then the worldmap vtables/slots and the icon-harvest set.
 
 Note: `goblin_markers.cpp` old RVAs 0x3D5DF38/0x2AC21D8 are already migrated to AOB (comments only).
 See [re-signatures-registry](../memory/tooling/re-signatures-registry.md) for how to add a signature.

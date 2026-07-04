@@ -53,6 +53,9 @@ namespace
 using create_image_fn = void *(__fastcall *)(void *, void *, void *, void *, void *, void *,
                                              void *, void *);
 create_image_fn g_create_image_orig = nullptr;
+// The CreateImage function address, AOB-resolved at hook install (cheap-win: reuse it for the force
+// calls instead of re-deriving the fixed RVA er+0xd6bbc0). See docs/re/rva_aob_hardening_backlog.md.
+void *g_create_image_addr = nullptr;
 
 // CreateImage context capture (RE §5g) — populated by create_image_detour, consumed by
 // run_create_icon to replay the GFx per-image bind for an arbitrary symbol. a0=param_1 (creator this),
@@ -1349,7 +1352,8 @@ void run_force_grace(uintptr_t er)
         "img://MENU_MAP_GOBLIN_Grace", "img://MENU_MAP_GOBLIN_SortaGraceIDK",
         "img://MENU_MAP_ERR_GraceUnderground", "img://SB_ERR_Grace_Morning_Color",
     };
-    auto CreateImageHooked = reinterpret_cast<create_image_fn>(er + 0xd6bbc0);
+    auto CreateImageHooked = reinterpret_cast<create_image_fn>(
+        g_create_image_addr ? g_create_image_addr : reinterpret_cast<void *>(er + 0xd6bbc0));
     for (const char *c : kCands)
     {
         snprintf(g_ci_name, sizeof(g_ci_name), "%s", c);
@@ -1367,7 +1371,8 @@ void run_force_grace(uintptr_t er)
 static void force_symbol_hooked(uintptr_t er, const char *imgname)
 {
     if (!g_create_image_orig || g_ci_p1.load(std::memory_order_relaxed) == nullptr || !imgname) return;
-    auto CreateImageHooked = reinterpret_cast<create_image_fn>(er + 0xd6bbc0);
+    auto CreateImageHooked = reinterpret_cast<create_image_fn>(
+        g_create_image_addr ? g_create_image_addr : reinterpret_cast<void *>(er + 0xd6bbc0));
     snprintf(g_ci_name, sizeof(g_ci_name), "%s", imgname);
     g_ci_desc[0] = reinterpret_cast<uintptr_t>(g_ci_name) - 0xc;
     CreateImageHooked(g_ci_p1.load(), g_ci_p2.load(), g_ci_desc, nullptr, nullptr, nullptr, nullptr, nullptr);
@@ -2072,6 +2077,7 @@ void goblin::install_icon_texture_probe()
         spdlog::warn("[ICONTEX] CreateImage AOB not found (game patch?) — icon probe disabled");
         return;
     }
+    g_create_image_addr = fn;   // reused by the force paths (AOB-resolved, no RVA re-derive)
     try
     {
         modutils::hook(fn, reinterpret_cast<void *>(&create_image_detour),

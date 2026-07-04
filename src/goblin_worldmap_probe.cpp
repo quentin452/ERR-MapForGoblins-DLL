@@ -91,6 +91,21 @@ constexpr uintptr_t CURSOR_OFF_IN_MENU = 0x2DB0;
 constexpr uintptr_t CSMENUMAN_SLOT_RVA = goblin::sig::CSMENUMAN_SLOT_RVA;
 constexpr uintptr_t MENU_WALK_WINDOW = 0x10000; // dialog ptr "in the first few KB"; widen to be safe
 
+// Absolute address of the CSMenuMan static slot. AOB-first (CSMENUMAN_SLOT is patch-portable), cached,
+// with the fixed RVA as a fallback if the AOB doesn't match. Replaces the raw `base + RVA` at every read
+// site (the cheap-win from docs/re/rva_aob_hardening_backlog.md: the AOB already exists).
+inline void *csmenuman_slot(uintptr_t base)
+{
+    static void *slot = nullptr;
+    if (!slot)
+    {
+        try { slot = modutils::scan<void>({.aob = goblin::sig::CSMENUMAN_SLOT, .relative_offsets = {{3, 7}}}); }
+        catch (...) { slot = nullptr; }
+        if (!slot && base) slot = csmenuman_slot(base);
+    }
+    return slot;
+}
+
 // CSMenuMan+0x104 (u8): 1 while a submenu covers the OPEN world map, 0 on the bare map. RE
 // 2026-07-03 via the debug_menu_cover_diag byte-diff — stayed 0 across a bare-map open + ~16s of
 // panning, then toggled 0<->1 cleanly across 4 cover/uncover cycles of the grace-warp confirm
@@ -166,13 +181,14 @@ inline bool seh_write_u8(void *dst, uint8_t v)
 uintptr_t resolve_cursor_via_menu(uintptr_t base, uintptr_t vtable_va)
 {
     uint64_t mm = 0;
-    bool mm_ok = seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm);
+    void *mm_slot = csmenuman_slot(base);
+    bool mm_ok = seh_read8(mm_slot, &mm);
     static int diag = 0;
     if (diag < 3)
     {
         ++diag;
         g_log->info("[MENU] walk: CSMenuMan slot {:#x} -> mm={:#x} (read_ok={}, plausible={})",
-                    base + CSMENUMAN_SLOT_RVA, mm, mm_ok, mm ? plausible_ptr(mm) : false);
+                    reinterpret_cast<uintptr_t>(mm_slot), mm, mm_ok, mm ? plausible_ptr(mm) : false);
     }
     if (!mm_ok || !mm || !plausible_ptr(mm))
         return 0;
@@ -378,7 +394,7 @@ void enumerate_menu_cursors(uintptr_t base, uintptr_t vtable_va)
 {
     g_all_cursors.clear();
     uint64_t mm = 0;
-    if (!seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm) || !plausible_ptr(mm))
+    if (!seh_read8(csmenuman_slot(base), &mm) || !plausible_ptr(mm))
         return;
     auto vt_is_cursor = [&](uint64_t obj) {
         uint64_t vt = 0;
@@ -892,7 +908,7 @@ void probe_loop()
             {
                 GOBLIN_BENCH_QUIET("debug.menu_cover_diag");
                 uint64_t mm = 0;
-                if (seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm) &&
+                if (seh_read8(csmenuman_slot(base), &mm) &&
                     plausible_ptr(mm))
                     menu_open_diag(static_cast<uintptr_t>(mm), menu_cursor - CURSOR_OFF_IN_MENU);
             }
@@ -1342,7 +1358,7 @@ void dump_menu_state(const char *tag)
     uintptr_t base = g_exe_base ? g_exe_base
                                 : reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
     uint64_t mm = 0;
-    if (!base || !seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm) ||
+    if (!base || !seh_read8(csmenuman_slot(base), &mm) ||
         !plausible_ptr(mm))
     {
         g_log->info("[MENUDUMP:{}] CSMenuMan unresolved", tag);
@@ -1391,7 +1407,7 @@ bool menu_covers_map()
                           : reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
     if (!base) return false;
     uint64_t mm = 0;
-    if (!seh_read8(reinterpret_cast<void *>(base + CSMENUMAN_SLOT_RVA), &mm) || !plausible_ptr(mm))
+    if (!seh_read8(csmenuman_slot(base), &mm) || !plausible_ptr(mm))
         return false;
     int v = 0;
     if (!seh_read_i32(reinterpret_cast<void *>(static_cast<uintptr_t>(mm) + CSMENUMAN_MENU_COVER_OFF),
