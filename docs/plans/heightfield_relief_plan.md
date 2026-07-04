@@ -58,11 +58,22 @@ Building the grid sampler surfaced that the primitive only hit ONCE (abddc05) an
   mid-update). `hk_c32f0` is game-thread but only map-open (collision unloaded) — a dead end.
 
 **Unblock = hook a gameplay game-thread fn and cast there (D2.2-real):**
-- Best target: **`FUN_1403f13c0`** (er+0x3f13c0, the snap-to-ground caller — SAME filter 0x5e) — it runs
-  on the game thread in gameplay and ALREADY calls the cast. Hook it (modutils::hook): in the detour,
-  **capture the ctx the game just used** (from its register/arg — no torn read) and run a few sampler
-  casts with it. Alternatives: the AEG streamer `FUN_140699670`, or any per-frame in-world world tick.
-- Then D2.2's sampler (already written) runs from that detour instead of `tick_game_thread`/`tick_present`.
+- **`FUN_1403f13c0` scouted (2026-07-04)** — hookable prologue (game-thread, in-world), sig ≈
+  `(rcx=obj, rdx=out-vec, r8d, xmm3)`, does `mov rax,[rcx]; call [rax+0x4a0]` + reads WorldChrMan
+  (`er+0x3d65f88`). BUT: (a) **player-gated** (snap events, likely NOT per-frame → slow fill), (b)
+  **arg count uncertain** (stack args beyond 4 possible → a mismatched detour CRASHES; x64 clang-cl has
+  no `__declspec(naked)` for a register-perfect passthrough), (c) doesn't hand ctx in 640B (self-derive
+  on the game thread instead — clean). ⇒ a **mediocre, risky** target.
+- On the game thread `resolve_ctx()` (`*(*(singleton)+0x98)`) is CLEAN (no torn read) — so ANY game-thread
+  gameplay hook works; the target just needs to be frequent + have a KNOWN signature to hook safely.
+- **No clean per-frame gameplay game-thread hook is currently identified** (hk_c32f0 = map-open only;
+  grace/event hooks = irregular). Implementing D2.2 = finding/validating such a hook (RE its full
+  signature first) — real hook-engineering with crash risk.
+
+**STATUS: D2 diagnosis COMPLETE (committed); implementation PARKED pending a safe game-thread gameplay
+hook.** The sampler code + RPC harness are ready to reattach once such a hook exists. Recommendation:
+resume D2 when there's appetite for the game-loop-hook RE; meanwhile the ImGui-only GATE work (Track A
+parity) and the RVA cheap wins are higher-value + lower-risk.
 
 **Old unblock notes (superseded by the root-cause above):**
 1. **find-what-accesses** (debug RPC) on the cast site during a KNOWN-good in-game cast (walk into
