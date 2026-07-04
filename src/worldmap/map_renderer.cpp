@@ -2697,6 +2697,23 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
         fg->AddCircleFilled(p, half * 0.7f, c.color);
         fg->AddCircle(p, half * 0.7f, IM_COL32(255, 255, 255, 235), 0, 1.5f);
     }
+    // Death marker (DropSoul) on the minimap — native icon, edge-clamped like the rest.
+    {
+        float dwx, dwz; int dgrp;
+        if (goblin::death_marker::get(dwx, dwz, dgrp) && dgrp == pgroup)
+        {
+            float dx = (dwx - pwx) * scale, dy = -(dwz - pwz) * scale;
+            const float d = std::sqrt(dx * dx + dy * dy);
+            if (d > edgeR) { const float k = edgeR / (d > 1e-3f ? d : 1e-3f); dx *= k; dy *= k; }
+            const ImVec2 p(ctr.x + dx, ctr.y + dy);
+            void *tex = nullptr; float u0, v0, u1, v1;
+            if (goblin::overlay_api::map_point_glyph_uv("MENU_MAP_DropSoul", -1, tex, u0, v0, u1, v1) && tex)
+                fg->AddImage((ImTextureID)tex, ImVec2(p.x - half, p.y - half), ImVec2(p.x + half, p.y + half),
+                             ImVec2(u0, v0), ImVec2(u1, v1));
+            else
+                fg->AddCircleFilled(p, half * 0.7f, IM_COL32(200, 60, 60, 235));
+        }
+    }
     fg->PopClipRect();
     g_minimap_clip_active = false; // worldmap pass must not disc-clip its badges
 

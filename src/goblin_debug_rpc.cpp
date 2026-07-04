@@ -24,6 +24,7 @@
 #include "goblin_geom_move.hpp"     // move_asset cmd — live geom transform-setter test (MSB-write RE)
 #include "goblin_geom_spawn.hpp"    // spawn_asset cmd — ADD via pivot-2 asset-request path (MSB-write RE)
 #include "goblin_heightfield.hpp"   // hf_probe cmd — terrain raycast heightfield (Track D2)
+#include "goblin_custom_markers.hpp" // death_mark cmd — the DropSoul death marker
 #include "goblin_field_probe.hpp"  // arm_raw — serialize find-what-accesses (Phase 2)
 #include "goblin_build_id.hpp"     // er_exe_version — er_version verb (build fingerprint)
 
@@ -1063,6 +1064,18 @@ namespace goblin::debug_rpc
                 catch (...) { return "err bad args"; }
                 return "err usage: vis sec|cat <idx> <0|1> | vis master <0|1>";
             }
+            // death_mark — set the "you died here" marker at the CURRENT player map pos (native DropSoul
+            // icon). death_clear — remove it. Manual trigger + test until HP-auto-detect lands.
+            if (cmd == "death_mark")
+            {
+                int area = 0, group = 0; float wx = 0, wz = 0;
+                if (!goblin::get_player_map_pos(area, wx, wz, nullptr, nullptr, &group))
+                    return "err not in-world";
+                goblin::death_marker::set(wx, wz, group);
+                char b[96]; std::snprintf(b, sizeof(b), "ok death_mark world=(%.0f,%.0f) group=%d", wx, wz, group);
+                return std::string(b);
+            }
+            if (cmd == "death_clear") { goblin::death_marker::clear(); return "ok death_clear"; }
             // mfg_build — FRESHNESS GUARD. Returns the compile time of THIS RPC translation unit
             // (goblin_debug_rpc.cpp). Adding/changing ANY verb edits this file → its __TIME__ advances,
             // so a stale DLL is detectable: `ping` answers even from an OLD DLL (the listener lives), but

@@ -1234,6 +1234,27 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             dl->AddCircle(head, r * 0.7f, IM_COL32(255, 255, 255, 240), 0, 1.5f);
             dl->AddText(ImVec2(p.x + 7.0f, p.y - r * 1.3f - 8.0f), IM_COL32(230, 240, 255, 255), c.name.c_str());
         }
+        // Death marker (dropped runes / bloodstain) — the NATIVE MENU_MAP_DropSoul sprite from the resident
+        // map-symbol sheet (mod-agnostic; same resolve path as the grace glyph). Falls back to a red disc
+        // until the sprite is resident (map opened once).
+        float dwx, dwz; int dgrp;
+        if (goblin::death_marker::get(dwx, dwz, dgrp) && dgrp == s_group)
+        {
+            ImVec2 p = w2s(dwx, dwz);
+            if (p.x >= origin.x && p.x <= canvas_end.x && p.y >= origin.y && p.y <= canvas_end.y)
+            {
+                void *tex = nullptr; float u0, v0, u1, v1; int nw = 0, nh = 0;
+                const float h = 11.0f;
+                if (goblin::overlay_api::map_point_glyph_uv("MENU_MAP_DropSoul", -1, tex, u0, v0, u1, v1, &nw, &nh) && tex)
+                    dl->AddImage((ImTextureID)tex, ImVec2(p.x - h, p.y - h), ImVec2(p.x + h, p.y + h),
+                                 ImVec2(u0, v0), ImVec2(u1, v1));
+                else
+                {
+                    dl->AddCircleFilled(p, 6.0f, IM_COL32(200, 60, 60, 235));
+                    dl->AddCircle(p, 6.0f, IM_COL32(255, 255, 255, 235), 0, 1.5f);
+                }
+            }
+        }
     }
 
     // Region name labels (A7 parity — the coarse major-region names Limgrave/Caelid/… the native map

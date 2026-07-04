@@ -62,3 +62,31 @@ bool set_name(size_t index, const std::string &name)
     return true;
 }
 } // namespace goblin::custom_markers
+
+namespace goblin::death_marker
+{
+namespace
+{
+std::mutex g_dm_mtx;
+bool g_active = false;
+float g_wx = 0.f, g_wz = 0.f;
+int g_group = 0;
+}
+void set(float wx, float wz, int group)
+{
+    std::lock_guard<std::mutex> lk(g_dm_mtx);
+    g_active = true; g_wx = wx; g_wz = wz; g_group = group;
+}
+bool get(float &wx, float &wz, int &group)
+{
+    std::lock_guard<std::mutex> lk(g_dm_mtx);
+    if (!g_active) return false;
+    wx = g_wx; wz = g_wz; group = g_group;
+    return true;
+}
+void clear()
+{
+    std::lock_guard<std::mutex> lk(g_dm_mtx);
+    g_active = false;
+}
+} // namespace goblin::death_marker

@@ -30,3 +30,13 @@ std::vector<Marker> snapshot();
 // Mutable access for the editor (rename). Returns false if index is out of range.
 bool set_name(size_t index, const std::string &name);
 } // namespace goblin::custom_markers
+
+namespace goblin::death_marker
+{
+// The single "you died here" marker (dropped runes / bloodstain), drawn with the native MENU_MAP_DropSoul
+// icon on the vmap + minimap. Set on death (get_player_map_pos), replaced by the next death, cleared on
+// pickup/manual. World-frame (map-space) so no chunk->world bridge needed.
+void set(float wx, float wz, int group);
+bool get(float &wx, float &wz, int &group);   // false = none active
+void clear();
+} // namespace goblin::death_marker

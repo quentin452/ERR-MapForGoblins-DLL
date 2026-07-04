@@ -41,6 +41,18 @@ the warp findings + `warp` (LuaWarp) already work for graces; a coord-warp with 
    **player icon**: today the minimap/vmap draw our own RED arrow — the NATIVE "you are here" player glyph
    exists in the assets; use it instead of the hand-made red once resolved.
 
+### Known bug — custom markers are Base-ER only
+Placement + draw are gated `active_world == 0`. In a CUSTOM vworld the right-click/list/pins do nothing.
+Fix: let custom markers live per-vworld (store the active-world id alongside group), and draw/place in the
+active world's coord space. Note before shipping more world-owned features.
+
+### ⚠ SHIP RULE — custom content must stay Marker-Mapper compatible
+When we ship anything custom (custom items via `custom_items.toml`, custom worlds, custom markers, …),
+it MUST remain compatible with the CURRENT marker-mapper pipeline (the live marker build + the vmap/native
+render). Don't ship a custom data path that the marker mapper can't ingest / that desyncs from how markers
+are built and drawn. Acceptance: the custom thing shows + behaves through the SAME marker/render path as
+everything else (or an explicit, tested additive layer), not a fork that drifts.
+
 ### Persistence
 Custom markers are IN-SESSION only. Persist to `<mod>/custom_markers.toml` (like `virtual_worlds.toml`) so
 they survive a restart — the `TOML_EXCEPTIONS 0` + `parse_file` path (the only one working under Proton).
