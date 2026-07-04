@@ -65,6 +65,11 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
 5. **Custom mob PLACEMENT** — NpcParam is param-driveable, but placing a custom enemy is MSB write (#1).
 
 ### Smaller tactical gaps (see HANDOFF)
+- **Terrain raycast → heightfield (procedural relief map)** — sample the LIVE 3D world with down-rays over an
+  XZ grid → hillshade, mod-agnostic (never stale, unlike baked tiles). Needs the raycast fn + a TERRAIN-only
+  filter + a water level; objects are EXCLUDED (we have them as markers/MSB). Lead `FUN_140c74c70` on
+  `DAT_143d76060` (AEG streamer cast, query 0x5d/0x67). Prompt:
+  `windows_terrain_raycast_heightfield_re_prompt.md`.
 - **WorldMapTile placement/rect — SOLVED (static, calibration fixed 2026-07-04).** The engine positions
   tiles on a `floor(mapU/cellSize)` grid with a **FLIPPED Z axis**, base 0: `gridX = clamp(floor(mapU/cs),
   0, N-1)`, `gridZ = clamp((N-1) − floor(mapV/cs), 0, N-1)`, per-tier `cs/N = {256/41, 342/31, 1288/9}`

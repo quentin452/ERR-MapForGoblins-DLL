@@ -507,6 +507,15 @@ namespace goblin::debug_rpc
                 // outline cells that overlay markers exactly. Confirms the placement calibration. Map must be open.
                 if (arg == "tiles_resident")
                     return "ok vmap tiles_resident " + goblin::overlay_api::virtual_map_load_resident();
+                // vmap dump_markers <path> — export every marker to CSV for offline procedural-map styling.
+                if (arg == "dump_markers")
+                {
+                    std::string p = next_token(rest);
+                    if (p.empty()) return "err usage: vmap dump_markers <path.csv>";
+                    int n = goblin::overlay_api::virtual_map_dump_markers(p.c_str());
+                    return n >= 0 ? "ok vmap dump_markers " + std::to_string(n) + " -> " + p
+                                  : "err dump_markers: file open failed";
+                }
                 // vmap view <camX> <camZ> <zoom> — frame the canvas directly (dev/test screenshots).
                 if (arg == "view")
                 {

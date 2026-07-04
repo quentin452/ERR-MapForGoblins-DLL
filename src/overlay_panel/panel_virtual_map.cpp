@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -109,6 +110,28 @@ void virtual_map_request_tile(const char *needle, float wx0, float wz0, float wx
 // Drop cached tiles. NB: the SRV handles are NOT recycled (create_tex_from_dds_mem has no free list yet),
 // so this frees the CPU records but not the GPU descriptors — slice 3 adds SRV recycling.
 void virtual_map_clear_tiles() { s_tiles.clear(); s_tile_status = "cleared"; }
+
+// Dump every live marker to a CSV (for OFFLINE procedural-map style prototyping — no game needed after).
+// Columns: group,category,srcArea,color,worldX,worldZ. category = int(Category) (name table lives in the
+// generated enum). Returns marker count, -1 on file error.
+int dump_markers_csv(const char *path)
+{
+    std::ofstream f(path);
+    if (!f) return -1;
+    f << "group,category,srcArea,color,worldX,worldZ\n";
+    int n = 0;
+    for (auto *L : overlay_layers())
+    {
+        if (!L) continue;
+        for (const goblin::worldmap::Marker &m : L->markers())
+        {
+            f << m.group << ',' << m.category << ',' << m.srcArea << ',' << std::hex << m.color << std::dec
+              << ',' << m.worldX << ',' << m.worldZ << '\n';
+            ++n;
+        }
+    }
+    return n;
+}
 
 // Harvest the LIVE resident WorldMapTile rects (position only — textures deferred) and draw them as
 // outlined cells at the engine's OWN positions (region-walk applied). This is the authoritative alignment:
@@ -401,21 +424,22 @@ void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
     const bool hovered = ImGui::IsItemHovered();
     ImGuiIO &io = ImGui::GetIO();
 
-    // world → screen and screen → world (mod-defined projection; Z maps to screen-Y, no flip needed for
-    // a mod page — we own the convention). Keep them inverse so zoom-about-cursor is exact.
+    // world → screen and screen → world. Z is FLIPPED (screen-Y decreases as worldZ increases) to match the
+    // native ER map orientation — the engine converter flips Z (mapZ = -worldZ + bias); without this the
+    // vmap was a vertical mirror of the game map. Keep w2s/s2w inverse so zoom-about-cursor stays exact.
     auto w2s = [&](float wx, float wz) {
-        return ImVec2(center.x + (wx - s_cam_x) * s_zoom, center.y + (wz - s_cam_z) * s_zoom);
+        return ImVec2(center.x + (wx - s_cam_x) * s_zoom, center.y - (wz - s_cam_z) * s_zoom);
     };
     auto s2w = [&](ImVec2 s, float &wx, float &wz) {
         wx = s_cam_x + (s.x - center.x) / s_zoom;
-        wz = s_cam_z + (s.y - center.y) / s_zoom;
+        wz = s_cam_z - (s.y - center.y) / s_zoom;
     };
 
     // Pan: dragging moves the camera opposite the mouse delta (in world units).
     if (hovered && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f))
     {
         s_cam_x -= io.MouseDelta.x / s_zoom;
-        s_cam_z -= io.MouseDelta.y / s_zoom;
+        s_cam_z += io.MouseDelta.y / s_zoom;   // Z flipped in w2s → drag-pan Z sign flips too
     }
     // Zoom about the cursor: keep the world point under the mouse fixed across the zoom step.
     if (hovered && io.MouseWheel != 0.0f)

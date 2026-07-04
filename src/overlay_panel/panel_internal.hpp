@@ -83,6 +83,7 @@ void virtual_map_clear_tiles();
 std::string virtual_map_load_lod(int dim, int lod, int cap);
 // Harvest LIVE resident tile rects (engine positions, no textures) → outline cells. Confirms alignment.
 std::string virtual_map_load_resident();
+int dump_markers_csv(const char *path);  // export all markers → CSV (offline procedural-style prototyping)
 void virtual_map_set_view(float camX, float camZ, float zoom);  // dev/test: frame the canvas directly
 int virtual_map_group();
 } // namespace panel
