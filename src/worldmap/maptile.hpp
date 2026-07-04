@@ -39,6 +39,13 @@ bool load_archive(const std::string &rel_base, std::vector<Entry> &entries, std:
 std::vector<uint8_t> extract_dds(const std::vector<uint8_t> &bdt, const Entry &e, std::string &texName,
                                  uint32_t *w = nullptr, uint32_t *h = nullptr);
 
+// Convenience: load the archive, find the FIRST entry whose name contains `needle`
+// (e.g. "M00_L0_00_00_00000000"), and extract its DDS. Fills texName + (if non-null) w/h.
+// Frees the (large) .tpfbdt before returning. Heavy — reads the whole archive per call — so this is for a
+// single-tile slice-2 probe; slice 3 will cache the parse / read only the wanted byte range.
+std::vector<uint8_t> extract_named(const std::string &rel_base, const std::string &needle,
+                                   std::string &texName, uint32_t *w = nullptr, uint32_t *h = nullptr);
+
 // Dev recon: load the archive in-game, log the entry count + first entries' names/dims, and return a
 // one-line RPC summary. Learns the tile naming/count/dims for the packed 71_MapTile (sub-slice 1b).
 std::string probe(const std::string &rel_base, int max_probe = 8, const char *name_filter = nullptr);

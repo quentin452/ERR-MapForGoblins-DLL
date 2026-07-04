@@ -109,6 +109,10 @@ namespace goblin::overlay_api
     // Virtual map view control (drive/verify without pixel-clicks).
     GOBLIN_RENDER_API void virtual_map_fit();            // frame the selected group's markers
     GOBLIN_RENDER_API void virtual_map_set_group(int g); // 0..3
+    // ER map ART tile load (endgame phase-1a slice 2). needle selects by tile-name substring; if wx1<=wx0
+    // the world quad is auto-derived from the tile's col/row. Serviced on the render thread next draw.
+    GOBLIN_RENDER_API void virtual_map_request_tile(const char *needle, float wx0, float wz0, float wx1, float wz1);
+    GOBLIN_RENDER_API void virtual_map_clear_tiles();
     GOBLIN_RENDER_API int virtual_map_get_group();
     GOBLIN_RENDER_API void request_save();
     GOBLIN_RENDER_API void reset_quest_progress();

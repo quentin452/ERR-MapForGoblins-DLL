@@ -480,11 +480,33 @@ namespace goblin::debug_rpc
                     goblin::overlay_api::virtual_map_set_group(g);
                     return "ok vmap group=" + std::to_string(goblin::overlay_api::virtual_map_get_group());
                 }
+                // vmap tile <needle> [wx0 wz0 wx1 wz1] — load an ER map ART tile (endgame phase-1a slice 2).
+                // needle selects a tile by name substring (e.g. M00_L0_00_00_00000000); omit the rect to
+                // auto-place from the tile's col/row. The load runs on the render thread next draw.
+                if (arg == "tile")
+                {
+                    std::string needle = next_token(rest);
+                    if (needle.empty()) return "err usage: vmap tile <needle> [wx0 wz0 wx1 wz1]";
+                    float r[4] = {0, 0, 0, 0};
+                    for (int i = 0; i < 4; ++i)
+                    {
+                        std::string t = next_token(rest);
+                        if (t.empty()) break;
+                        try { r[i] = std::stof(t); } catch (...) {}
+                    }
+                    goblin::overlay_api::virtual_map_request_tile(needle.c_str(), r[0], r[1], r[2], r[3]);
+                    return "ok vmap tile requested " + needle;
+                }
+                if (arg == "tiles_clear")
+                {
+                    goblin::overlay_api::virtual_map_clear_tiles();
+                    return "ok vmap tiles_clear";
+                }
                 if (arg == "0") goblin::overlay_api::virtual_map_set_open(false);
                 else if (arg == "1") goblin::overlay_api::virtual_map_set_open(true);
                 else if (arg == "toggle" || arg.empty())
                     goblin::overlay_api::virtual_map_set_open(!goblin::overlay_api::virtual_map_is_open());
-                else return "err vmap takes 0|1|toggle | fit | group <0-3>";
+                else return "err vmap takes 0|1|toggle | fit | group <0-3> | tile <needle> [rect] | tiles_clear";
                 return "ok vmap=" + std::to_string(goblin::overlay_api::virtual_map_is_open() ? 1 : 0);
             }
             // assets_probe — path-loading regression guard: does the mod's disk loader resolve the key

@@ -139,6 +139,26 @@ std::vector<uint8_t> extract_dds(const std::vector<uint8_t> &bdt, const Entry &e
     return std::vector<uint8_t>(tpf.begin() + off, tpf.begin() + off + len);
 }
 
+std::vector<uint8_t> extract_named(const std::string &rel_base, const std::string &needle,
+                                   std::string &texName, uint32_t *w, uint32_t *h)
+{
+    texName.clear();
+    std::vector<Entry> entries;
+    std::vector<uint8_t> bdt;
+    if (!load_archive(rel_base, entries, bdt))
+        return {};
+    for (const Entry &e : entries)
+        if (e.name.find(needle) != std::string::npos)
+        {
+            std::vector<uint8_t> dds = extract_dds(bdt, e, texName, w, h);
+            spdlog::info("[MAPTILE] extract_named '{}' -> {} ({} DDS bytes)", needle,
+                         texName.empty() ? "(fail)" : texName, dds.size());
+            return dds;  // bdt frees here
+        }
+    spdlog::warn("[MAPTILE] extract_named: no entry matches '{}'", needle);
+    return {};
+}
+
 std::string probe(const std::string &rel_base, int max_probe, const char *name_filter)
 {
     std::vector<Entry> entries;

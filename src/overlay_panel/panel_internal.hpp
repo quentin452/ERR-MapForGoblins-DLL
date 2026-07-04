@@ -76,6 +76,9 @@ void draw_virtual_map(const OverlayFrameCtx &ctx);
 bool &virtual_map_open();
 void virtual_map_request_fit();       // one-shot: frame the selected group's markers on next draw
 void virtual_map_set_group(int g);    // 0..3 = base-OW / base-UG / DLC-OW / DLC-UG
+// ER map ART tile (endgame phase-1a slice 2). needle = tile-name substring; wx1<=wx0 → auto grid quad.
+void virtual_map_request_tile(const char *needle, float wx0, float wz0, float wx1, float wz1);
+void virtual_map_clear_tiles();
 int virtual_map_group();
 } // namespace panel
 } // namespace goblin::overlay
