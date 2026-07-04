@@ -1,5 +1,6 @@
 #include "goblin_custom_markers.hpp"
 #include "goblin_inventory.hpp"   // read_bloodstain — the game's OWN persistent death marker
+#include "goblin_inject.hpp"      // marker_world_pos / marker_group_from — same projection as real markers
 
 #include <mutex>
 
@@ -97,12 +98,12 @@ void tick()
     float x = 0.f, y = 0.f, z = 0.f; uint32_t mapid = 0; int32_t souls = 0;
     if (!goblin::inventory::read_bloodstain(x, y, z, mapid, souls)) return; // not resolvable (load/menu)
     if (souls <= 0) { clear(); return; }                                    // none / collected
-    const int area = (mapid >> 24) & 0xFF, gx = (mapid >> 16) & 0xFF, gz = (mapid >> 8) & 0xFF;
-    int group;
-    if (area == 60) group = 0;        // overworld
-    else if (area == 61) group = 2;   // DLC overworld
-    else return;                      // underground / legacy dungeon → needs WorldMapLegacyConvParam fold (TODO)
-    // Marker frame = gridX*256 + local (same as graces/markers: marker_cluster_key).
-    set(gx * 256.0f + x, gz * 256.0f + z, group);
+    // mapId = m{AA}_{BB}_{CC}_{DD} → areaNo/gridX/gridZ. Project through the SAME pipeline as real markers
+    // (marker_world_pos applies WorldMapLegacyConvParam) so underground + legacy dungeon deaths land right,
+    // not just the overworld. group = which map page (marker_group_from).
+    const uint8_t areaNo = (mapid >> 24) & 0xFF, gx = (mapid >> 16) & 0xFF, gz = (mapid >> 8) & 0xFF;
+    int out_area = 0; float wx = 0.f, wz = 0.f;
+    if (!goblin::marker_world_pos(areaNo, gx, gz, x, z, out_area, wx, wz, /*conv_underground=*/true)) return;
+    set(wx, wz, goblin::marker_group_from(areaNo, out_area));
 }
 } // namespace goblin::death_marker

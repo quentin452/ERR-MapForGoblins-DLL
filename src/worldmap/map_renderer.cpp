@@ -2587,9 +2587,9 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     // Item 13 (dx-bugs-backlog): the minimap used to hardcode half=6.0f, completely ignoring the
     // same scale settings the worldmap honors. Clamped so an extreme scale setting can't make the
     // small fixed-radius HUD unreadable or blow past its own icons.
-    constexpr float kMinimapIconHalfBase = 6.0f; // matches the old fixed size at scale=1
+    constexpr float kMinimapIconHalfBase = 8.0f; // bumped 6->8 (icons read too small at 1080p, 2026-07-04)
     float half = kMinimapIconHalfBase * uiScale * cfg::overlayMasterScale * cfg::overlayIconScale;
-    half = half < 3.0f * uiScale ? 3.0f * uiScale : (half > 10.0f * uiScale ? 10.0f * uiScale : half);
+    half = half < 3.0f * uiScale ? 3.0f * uiScale : (half > 14.0f * uiScale ? 14.0f * uiScale : half);
     // ONE inner radius for clamping icon/marker CENTERS. An icon centered exactly here has its OUTER
     // edge at (edgeR + half) = R - 2 → just inside the border ring at R, so nothing pokes past it.
     // Distinct from cullR / g_minimap_clip_r above, which is a pure disc-clip radius for badges and is
