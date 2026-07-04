@@ -9,6 +9,38 @@ questions, and standing knowledge (gotchas, deferred decisions, non-obvious fact
 elsewhere. History for anything not below: `docs/changelog.md` first, then `docs/plans/*.md`,
 then `docs/re/*.md` (RE findings) and `docs/memory/`.
 
+## ⇒ SESSION WRAP 2026-07-04 — Virtual World Map (mod-owned page) + test orchestration
+
+Big session. Two tracks landed (all committed, in-game verified where noted; local master ahead of origin):
+
+**1. Virtual World Map — the mod-owned map page (World Virtualization vision #1).** Slices A→D + C1/C3 all
+DONE + live-verified (see the "In-Game World Editor" item's virtual-page block below for detail):
+A canvas (pan/zoom/grid), B markers (6837 ER markers → Lands Between silhouette), C1 world registry
+(`goblin_virtual_world`), C3 bundle persistence (`virtual_worlds.toml`, 2-cold-boot verified), D decouple
+from F1 + open via the game MAP KEY. RPCs: `vmap`/`vworld`/`f1_tab`. **NEXT on this track (pick one):**
+- **ENDGAME phase-1a = load ER's real map ART** onto the canvas → `docs/plans/map_tile_loading_plan.md`
+  (format CRACKED: `71_MapTile.tpfbhd` = BHF4→BDF4→DCX→TPF→DDS; the DCX→DDS→GPU chain all exists; **in-game
+  read CONFIRMED** via `assets_probe` = packed 4.3MB; only a small BHF4 entry-table parser + DX12 SRV-cap
+  streaming remain). This is a SLICE.
+- Missed design items (captured in `docs/plans/virtual_world_multi_world_design.md`): **GAMEPAD** for the
+  vmap canvas (stick→pan/zoom + reticle — add to every vmap slice); the real feature gaps = **clock /
+  blue click-marker / custom beacon** (rest of ER's map is cosmetic; grace = fast-travel = make-or-break);
+  `test_vmap.py`/`test_vworld.py` to cover the new features in the sweep.
+
+**2. Test orchestration — regressions are no longer phantoms.** `mfg_session` persists PASS/FAIL to
+`tools/rpc_tests/results.jsonl` (gitignored) + inline regression flag; `check_regress.py` scans + regenerates
+git-tracked `tools/rpc_tests/STATUS.md`; `run_all.py` = AGGREGATED sweep (single-boot tests share ONE game
+boot via a `SWEEP` marker → 9-test suite = 4 boots) → ledger → check_regress → gated exit. Nightly LOCAL cron
+line documented (user adds to crontab; **Steam must be up** — `steam -silent`). `.vscode/tasks.json`
+(git-tracked) = one-click build/deploy/test. Paths now **env-driven** (`.env`/`.env.local`, ERR_ROOT+GAME_DIR;
+`.env.local` gitignored). `assets_probe` RPC + `test_assets.py` = path-loading guard (loose/packed/MISSING per
+install shape). Open follow-up: `world_bundle` TOML load is latently broken under Proton (migrate to
+TOML_EXCEPTIONS 0 like virtual_world/custom_items — see the open item below).
+
+**Also this session (RE):** geom-spawn ADD standalone-ctor confirmed DEAD END (builder hangs, streaming-
+welded); `spawn_clone` neutralized; real ADD = the asset-request path (pivot 2, Windows RE) — see the geom
+placement item below.
+
 ## ⇒ RESUME HERE — sidecar Phase 2 (clean-save item strip/reinject): bracket is LIVE, cap-oracle E2E is next
 
 **Where things stand:** the whole-slot save serialize is found and pinned — `SERIALIZE_FN`
