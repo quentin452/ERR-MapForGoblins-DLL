@@ -118,6 +118,37 @@ bool Filter::match(const char *keywords)
     return m;
 }
 
+// Resolve category `c`'s marker icon to a drawable {texture, uv} — the SAME tier order as
+// draw_category_icon (native map-point sprite → representative item icon → baked atlas cell), but returns
+// the handle instead of drawing, so a draw-list can AddImage it at an arbitrary position (the virtual map
+// canvas). Returns false if nothing resolved yet (caller draws the group-colour dot). Native tiers only
+// resolve once the sprite is resident (native map opened once); the atlas tier is always available.
+bool resolve_category_icon(const OverlayFrameCtx &ctx, int c, void *&tex, ImVec2 &uv0, ImVec2 &uv1)
+{
+    namespace wm = goblin::worldmap;
+    float u0, v0, u1, v1; void *t = nullptr; bool ok = false;
+    if (const char *sym = wm::category_gpu_icon_name(c))
+        ok = goblin::overlay_api::native_map_point_icon_by_name(sym, t, u0, v0, u1, v1);
+    if (!ok) if (int iid = wm::category_gpu_iconId(c)) ok = goblin::overlay_api::native_map_point_icon(iid, t, u0, v0, u1, v1);
+    if (!ok) if (int rep = wm::category_rep_icon(c)) ok = goblin::overlay_api::native_item_icon(rep, t, u0, v0, u1, v1);
+    if (ok) { tex = t; uv0 = ImVec2(u0, v0); uv1 = ImVec2(u1, v1); return true; }
+    if (ctx.atlas_srv)
+    {
+        using namespace goblin::overlay_icons;
+        if (const char *key = wm::category_icon_key(c))
+            for (int i = 0; i < ICON_CELL_COUNT; ++i)
+                if (std::strcmp(ICON_CELLS[i].key, key) == 0)
+                {
+                    const IconCell &cell = ICON_CELLS[i];
+                    tex = ctx.atlas_srv;
+                    uv0 = ImVec2((cell.col * CELL) / (float)ATLAS_W, (cell.row * CELL) / (float)ATLAS_H);
+                    uv1 = ImVec2(((cell.col + 1) * CELL) / (float)ATLAS_W, ((cell.row + 1) * CELL) / (float)ATLAS_H);
+                    return true;
+                }
+    }
+    return false;
+}
+
 void draw_category_icon(const OverlayFrameCtx &ctx, int c, float size)
 {
     namespace wm = goblin::worldmap;

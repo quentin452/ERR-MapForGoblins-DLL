@@ -58,6 +58,8 @@ void grace_candidate_gate_warning();
 // dot when nothing resolves). Native tiers only resolve once the sprite is resident (map opened);
 // until then the baked cell or the dot stands in.
 void draw_category_icon(const OverlayFrameCtx &ctx, int c, float size);
+// Resolve category c's icon to {tex,uv} (native→atlas) for a draw-list AddImage (vmap canvas). false = none.
+bool resolve_category_icon(const OverlayFrameCtx &ctx, int c, void *&tex, ImVec2 &uv0, ImVec2 &uv1);
 
 // ── Panel sections, in draw order ───────────────────────────────────────────
 void draw_dev_icon_sections(const OverlayFrameCtx &ctx, Filter &f);  // P2b / migration / sprites / grace dbg

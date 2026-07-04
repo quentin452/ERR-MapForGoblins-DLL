@@ -26,6 +26,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace goblin::overlay::panel
@@ -46,6 +47,7 @@ namespace
     // Which marker group to lay out on the canvas (slice B uses the live mod markers as test data;
     // slice C ties markers to a custom world). group = isDLC*2|isUG → 0/1/2/3.
     int s_group = 0;
+    bool s_show_icons = true;      // draw real category icons (native/atlas) vs plain colour dots
     bool s_fit_requested = false;  // one-shot: on next draw, frame the selected group's markers
     int s_drawn = 0;               // marker count drawn last frame (toolbar readout)
     const char *const kGroupNames[4] = {"Base overworld", "Base underground", "DLC overworld",
@@ -324,7 +326,7 @@ std::string virtual_map_load_lod(int dim, int lod, int cap)
     return (s_tile_status = st);
 }
 
-void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
+void draw_virtual_map(const OverlayFrameCtx &ctx)
 {
     // Slice D: open the virtual map with the game MAP KEY when a CUSTOM world is active (the production
     // "M, not F1" UX). On map-open edge with active world ≠ Base ER → open; on map-close, close it if WE
@@ -381,6 +383,8 @@ void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
     }
     ImGui::SameLine();
     if (ImGui::SmallButton(tr("Fit"))) s_fit_requested = true;
+    ImGui::SameLine();
+    ImGui::Checkbox(tr("Icons"), &s_show_icons);   // real category icons vs plain dots
     // Load ER's real map ART tiles (WIP — see below). Needs the game map OPEN + you moving on it a
     // moment (so the projection resolves). Loads overworld coarse tiles around the marker area.
     ImGui::SameLine();
@@ -523,14 +527,28 @@ void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
     // selected group (slice B); a custom world → its OWN markers in its own coordinate namespace (slice C).
     int drawn = 0;
     float minx = 1e30f, minz = 1e30f, maxx = -1e30f, maxz = -1e30f;
-    auto plot = [&](float wx, float wz, uint32_t col) {
+    // Per-category icon cache (resolve once per frame, reuse across the thousands of markers).
+    struct IcoRes { void *tex; ImVec2 uv0, uv1; bool ok, tried; };
+    std::unordered_map<int, IcoRes> icoCache;
+    auto icon_for = [&](int cat) -> IcoRes & {
+        IcoRes &r = icoCache[cat];
+        if (!r.tried) { r.tried = true; r.ok = s_show_icons && cat >= 0 && resolve_category_icon(ctx, cat, r.tex, r.uv0, r.uv1); }
+        return r;
+    };
+    const float icoHalf = 8.0f;  // on-canvas icon size (px)
+    auto plot = [&](float wx, float wz, uint32_t col, int cat) {
         if (wx < minx) minx = wx;
         if (wx > maxx) maxx = wx;
         if (wz < minz) minz = wz;
         if (wz > maxz) maxz = wz;
         ImVec2 ps = w2s(wx, wz);
         if (ps.x < origin.x || ps.x > canvas_end.x || ps.y < origin.y || ps.y > canvas_end.y) return;
-        dl->AddCircleFilled(ps, 3.0f, col ? col : IM_COL32(235, 130, 90, 255));
+        const IcoRes &r = icon_for(cat);
+        if (r.ok)
+            dl->AddImage((ImTextureID)r.tex, ImVec2(ps.x - icoHalf, ps.y - icoHalf),
+                         ImVec2(ps.x + icoHalf, ps.y + icoHalf), r.uv0, r.uv1);
+        else
+            dl->AddCircleFilled(ps, 3.0f, col ? col : IM_COL32(235, 130, 90, 255));
         drawn++;
     };
     if (active_world == 0)
@@ -539,7 +557,7 @@ void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
         {
             if (!L) continue;
             for (const goblin::worldmap::Marker &m : L->markers())
-                if (m.group == s_group) plot(m.worldX, m.worldZ, m.color);
+                if (m.group == s_group) plot(m.worldX, m.worldZ, m.color, m.category);
         }
     }
     else
@@ -547,7 +565,7 @@ void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
         goblin::vworld::World w;
         if (goblin::vworld::get_world(active_world, w))
             for (const goblin::vworld::Marker &m : w.markers)
-                plot(m.x + w.originX, m.z + w.originZ, m.color);  // C1: originX/Z default 0 (identity)
+                plot(m.x + w.originX, m.z + w.originZ, m.color, m.category);  // C1: originX/Z default 0
     }
     s_drawn = drawn;
     // Fit: frame the selected group's bbox (cam/zoom feed w2s next frame → 1-frame settle).
