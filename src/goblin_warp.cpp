@@ -1,5 +1,6 @@
 #include "goblin_warp.hpp"
 
+#include "goblin_inject.hpp"          // get_player_world_pos — loading-state guard
 #include "goblin_load_watchdog.hpp"
 #include "modutils.hpp"
 #include "re_signatures.hpp"
@@ -67,6 +68,17 @@ bool to_grace(int32_t grace_id, int32_t offset)
 {
     if (!g_ready.load()) initialize();
     if (!g_warp || !g_lem_slot) { spdlog::warn("[WARP] unresolved — to_grace skipped"); return false; }
+
+    // Reject a warp while the world is NOT playable (a loading screen is up = LocalPlayer null). This
+    // guards re-entrancy: double-clicking a 2nd grace DURING the first warp's load would fire LuaWarp
+    // mid-transition → the player lands in a weird/wrong position. get_player_world_pos returns false
+    // exactly while LocalPlayer is null, so this blocks both the re-entrant warp and any mid-load warp.
+    float px = 0.f, py = 0.f, pz = 0.f;
+    if (!goblin::get_player_world_pos(px, py, pz))
+    {
+        spdlog::warn("[WARP] world not playable (loading / not in-world) — to_grace skipped (re-entrancy guard)");
+        return false;
+    }
 
     // Live CSLuaEventManager, guarded (the singleton may not exist before the world loads).
     void *lem = nullptr;
