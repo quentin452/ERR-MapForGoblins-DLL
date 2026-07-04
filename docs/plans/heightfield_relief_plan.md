@@ -75,6 +75,16 @@ hook.** The sampler code + RPC harness are ready to reattach once such a hook ex
 resume D2 when there's appetite for the game-loop-hook RE; meanwhile the ImGui-only GATE work (Track A
 parity) and the RVA cheap wins are higher-value + lower-risk.
 
+**Hook-scout harness (resume here — `tools/hf_hook_scout.py`, 2026-07-04):** a live-RPM scout that
+de-risks the safe hook from Python (it does NOT hook — that's the in-DLL detour). Three subcommands
+attack the three blockers directly: `slot` (pure RPM — proves `inst+0x98` is written per-frame + catches
+the torn reads, confirming the game-thread requirement), `fwa` (arms a write-watch on `inst+0x98` → the
+game's own per-frame writer RIP + caller land as `[FWA]` lines → the ideal hook site, clean ctx by
+construction), `disasm` (`mem_dump` + capstone of a candidate prologue → summarises the int/xmm arg regs
+and flags INCOMING STACK args, killing the "arg count uncertain → detour crashes" risk). Needs the new
+`er_base` RPC verb (turns `er+RVA` → absolute) or `--er-base`. Flow: `slot` → `fwa` → `disasm <writer RIP>`
+→ only THEN write the detour against a fully-validated site.
+
 **Old unblock notes (superseded by the root-cause above):**
 1. **find-what-accesses** (debug RPC) on the cast site during a KNOWN-good in-game cast (walk into
    something / the AEG streamer) → capture the REAL ctx pointer + how it's derived + the exact fn. This
