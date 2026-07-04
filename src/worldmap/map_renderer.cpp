@@ -7,6 +7,7 @@
 #include "goblin_projection.hpp"     // baked map-space → backbuffer projection
 #include "goblin_worldmap_probe.hpp" // get_live_view()
 #include "goblin_inject.hpp"         // ui::clustering_enabled / global_threshold / category_clustered
+#include "goblin_custom_markers.hpp" // player-placed markers on the minimap (#4)
 #include "goblin_overlay.hpp"        // overlay::native_map_point_icon (native GPU map-symbol harvest)
 #include "goblin_config.hpp"         // overlay marker scale config
 #include "goblin_messages.hpp"       // lookup_text_utf8 (tooltip names)
@@ -2671,6 +2672,22 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
         }
         if (any_search_hit)
             fg->AddCircle(avg, half * 1.7f, IM_COL32(255, 226, 40, 255), 0, 2.0f);
+    }
+    // Custom player-placed markers of the CURRENT map (same store the vmap uses) — a small pin, edge-
+    // clamped like an off-screen objective so a far marker still gives a direction. North-up, player-centred.
+    for (const goblin::custom_markers::Marker &c : goblin::custom_markers::snapshot())
+    {
+        if (c.group != pgroup) continue;
+        float dx = (c.wx - pwx) * scale, dy = -(c.wz - pwz) * scale;
+        const float d = std::sqrt(dx * dx + dy * dy);
+        if (d > cullR - half)   // clamp to the HUD edge (keep the bearing) instead of vanishing
+        {
+            const float k = (cullR - half) / (d > 1e-3f ? d : 1e-3f);
+            dx *= k; dy *= k;
+        }
+        const ImVec2 p(ctr.x + dx, ctr.y + dy);
+        fg->AddCircleFilled(p, half * 0.7f, c.color);
+        fg->AddCircle(p, half * 0.7f, IM_COL32(255, 255, 255, 235), 0, 1.5f);
     }
     fg->PopClipRect();
     g_minimap_clip_active = false; // worldmap pass must not disc-clip its badges

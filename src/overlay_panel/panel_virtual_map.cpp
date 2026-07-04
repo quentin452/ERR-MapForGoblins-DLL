@@ -22,6 +22,7 @@
 #include "goblin_inject.hpp"           // goblin::world_map_open() + marker_group_from (slice D / A7)
 #include "goblin_major_regions.hpp"    // MAJOR_REGION_ANCHORS — coarse region name labels (A7 parity)
 #include "goblin_bench.hpp"            // GOBLIN_BENCH_QUIET — profile the vmap draw at high marker counts
+#include "goblin_custom_markers.hpp"   // shared player-placed marker store (vmap + minimap read it)
 #include "overlay_panel/marker_quadtree.hpp"  // spatial index: viewport cull + LOD clustering (perf)
 
 #include <spdlog/spdlog.h>
@@ -61,10 +62,8 @@ namespace
     bool s_show_markers_panel = false;  // F1→vmap port: the Sections & categories controls in a sidebar
     Filter s_markers_filter;            // default (not filtering) → draw_sections_categories shows all
     float s_markers_w = 320.0f, s_graces_w = 250.0f;  // user-resizable sidebar widths (drag the splitter)
-    // Custom player-placed markers (our OWN system — right-click the canvas to drop one). Drawn on TOP of
-    // every other icon; listed in a sidebar with per-marker location + teleport (DX: "where's my marker").
-    struct CustomMarker { float wx, wz; int group; std::string name; uint32_t color; };
-    std::vector<CustomMarker> s_custom;
+    // Custom player-placed markers live in the shared goblin::custom_markers store (so the minimap draws
+    // them too). Right-click the canvas near empty space to drop one; near an existing pin to delete it.
     bool s_show_custom = false;        // custom-marker list sidebar toggle
     float s_custom_w = 250.0f;         // its resizable width
     int s_custom_seq = 1;              // auto-name counter
@@ -679,18 +678,20 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     if (s_show_custom && active_world == 0)
     {
         ImGui::BeginChild("##custom_panel", ImVec2(s_custom_w, 0.0f), true);
-        ImGui::Text(tr("Custom markers (%d)"), (int)s_custom.size());
-        ImGui::TextDisabled("%s", tr("right-click the map to add"));
+        auto cm = goblin::custom_markers::snapshot();
+        ImGui::Text(tr("Custom markers (%d/%d this map)"),
+                    (int)goblin::custom_markers::count_in_group(s_group), goblin::custom_markers::kMaxPerGroup);
+        ImGui::TextDisabled("%s", tr("right-click the map to add / delete"));
         ImGui::Separator();
         int del = -1;
-        for (int i = 0; i < (int)s_custom.size(); ++i)
+        for (int i = 0; i < (int)cm.size(); ++i)
         {
-            CustomMarker &c = s_custom[i];
+            const goblin::custom_markers::Marker &c = cm[i];
             ImGui::PushID(i);
             char nbuf[64];
             std::snprintf(nbuf, sizeof(nbuf), "%s", c.name.c_str());
             ImGui::SetNextItemWidth(-1.0f);
-            if (ImGui::InputText("##nm", nbuf, sizeof(nbuf))) c.name = nbuf;
+            if (ImGui::InputText("##nm", nbuf, sizeof(nbuf))) goblin::custom_markers::set_name((size_t)i, nbuf);
             const char *gname = (c.group >= 0 && c.group < 4) ? kGroupNames[c.group] : "?";
             ImGui::TextDisabled("%s  (%.0f, %.0f)", tr(gname), c.wx, c.wz);
             if (ImGui::SmallButton(tr("Go")))
@@ -705,7 +706,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             ImGui::Separator();
             ImGui::PopID();
         }
-        if (del >= 0) s_custom.erase(s_custom.begin() + del);
+        if (del >= 0) goblin::custom_markers::remove_at((size_t)del);
         ImGui::EndChild();
         vsplitter("##custom_split", s_custom_w, 180.0f, 480.0f);
     }
@@ -758,15 +759,28 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         s_cam_x -= io.MouseDelta.x / (s_sx * s_zoom);
         s_cam_z -= io.MouseDelta.y / (s_sz * s_zoom);   // axis signs (s_sx/s_sz) keep drag correct on flip
     }
-    // Right-click the canvas → drop a CUSTOM marker at that world XZ (our own player-marker system). Base
-    // ER only (custom worlds have their own coord space). Tagged with the current group so the list can say
-    // which map it's on. Auto-opens the list so the new marker is immediately visible/manageable.
+    // Right-click the canvas: near an existing custom pin of this group → DELETE it (#1, a second delete
+    // path besides the sidebar button); otherwise → DROP a new marker at that world XZ, tagged with the
+    // current group (which map). add() enforces the per-world cap (#2). Base ER only.
     if (hovered && active_world == 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
     {
         float mwx, mwz;
         s2w(io.MousePos, mwx, mwz);
-        s_custom.push_back({mwx, mwz, s_group, std::string("Marker ") + std::to_string(s_custom_seq++),
-                            IM_COL32(90, 200, 255, 255)});
+        auto cm = goblin::custom_markers::snapshot();
+        int hit = -1;
+        float bestd = 14.0f * 14.0f;   // delete radius in px
+        for (int i = 0; i < (int)cm.size(); ++i)
+        {
+            if (cm[i].group != s_group) continue;
+            ImVec2 ps = w2s(cm[i].wx, cm[i].wz);
+            float dx = ps.x - io.MousePos.x, dy = ps.y - io.MousePos.y, d = dx * dx + dy * dy;
+            if (d < bestd) { bestd = d; hit = i; }
+        }
+        if (hit >= 0)
+            goblin::custom_markers::remove_at((size_t)hit);
+        else if (!goblin::custom_markers::add(mwx, mwz, s_group,
+                     std::string("Marker ") + std::to_string(s_custom_seq++), IM_COL32(90, 200, 255, 255)))
+            s_tile_status = "custom marker cap reached for this map";
         s_show_custom = true;
     }
     // Zoom about the cursor: keep the world point under the mouse fixed across the zoom step.
@@ -1207,7 +1221,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     // (teardrop) + name, for the markers tagged to the displayed group. Right-click the canvas to drop one.
     if (active_world == 0)
     {
-        for (const CustomMarker &c : s_custom)
+        for (const goblin::custom_markers::Marker &c : goblin::custom_markers::snapshot())
         {
             if (c.group != s_group) continue;
             ImVec2 p = w2s(c.wx, c.wz);
