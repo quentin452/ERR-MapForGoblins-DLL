@@ -422,9 +422,13 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     ImGui::SameLine();
     ImGui::Checkbox(tr("Relief"), &s_show_relief); // heightfield hillshade backdrop (D2.3)
     ImGui::SameLine();
+    // 1024u extent = the ACCURATE zone: the world→cast-local transform is a translation captured at the
+    // player, valid only near the player's physics chunk (ER recenters the frame across tiles) — 1024u
+    // holds ~75% hits vs ~36% at 2048u where far cells cast in the wrong frame. Full coverage = accumulate
+    // as the player moves (D2.4). res 48 → ~21u cells, dense.
     if (ImGui::SmallButton(tr("Sample terrain")))  // cast a grid around the player (map must be CLOSED)
     {
-        goblin::overlay_api::heightfield_request_sample(2048.f, 48);
+        goblin::overlay_api::heightfield_request_sample(1024.f, 48);
         s_show_relief = true;   // so the result is visible even if Relief was toggled off
     }
     ImGui::SameLine();
