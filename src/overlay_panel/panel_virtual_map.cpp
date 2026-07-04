@@ -356,14 +356,15 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         else if (!map_now && s_prev_map && s_from_map) { s_open = false; s_from_map = false; }
         s_prev_map = map_now;
     }
-    if (!s_open) return;
-    // Focus the player on OPEN (rising edge of s_open, any open path): jump the camera to where the
-    // player is and select their group, so opening the map shows "you are here" instead of the last view.
+    // Focus the player on OPEN (rising edge of s_open, ANY open path). Tracked BEFORE the early return
+    // so a close→reopen RE-fires — else s_was_open never resets while closed (the fn returns first) and
+    // focus fired only on the very first open.
     {
         static bool s_was_open = false;
         if (s_open && !s_was_open) s_focus_player = true;
         s_was_open = s_open;
     }
+    if (!s_open) return;
 
     ImGui::SetNextWindowSize(ImVec2(720.0f, 560.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(470.0f, 40.0f), ImGuiCond_FirstUseEver);
@@ -407,6 +408,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     }
     ImGui::SameLine();
     if (ImGui::SmallButton(tr("Fit"))) s_fit_requested = true;
+    ImGui::SameLine();
+    if (ImGui::SmallButton(tr("Player"))) s_focus_player = true;   // jump to the live player position
     ImGui::SameLine();
     ImGui::Checkbox(tr("Icons"), &s_show_icons);   // real category icons vs plain dots
     // Load ER's real map ART tiles (WIP — see below). Needs the game map OPEN + you moving on it a
@@ -475,7 +478,9 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     {
         int parea = 0, pgroup = 0;
         float pwx = 0.f, pwz = 0.f;
-        if (goblin::overlay_api::get_player_map_pos(parea, pwx, pwz, nullptr, nullptr, &pgroup))
+        bool got = goblin::overlay_api::get_player_map_pos(parea, pwx, pwz, nullptr, nullptr, &pgroup);
+        spdlog::info("[VMAP] focus player: got={} area={} group={} worldXZ=({:.0f},{:.0f})", got, parea, pgroup, pwx, pwz);
+        if (got)
         {
             s_cam_x = pwx; s_cam_z = pwz; s_group = pgroup;
             if (s_zoom < 0.12f) s_zoom = 0.12f;   // ensure a useful close-in view, don't zoom back out
@@ -728,13 +733,16 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
                     const ImVec2 tip(pp.x + fwd.x * L, pp.y + fwd.y * L);
                     const ImVec2 bl(pp.x - fwd.x * B + rgt.x * B, pp.y - fwd.y * B + rgt.y * B);
                     const ImVec2 br(pp.x - fwd.x * B - rgt.x * B, pp.y - fwd.y * B - rgt.y * B);
-                    dl->AddTriangleFilled(tip, bl, br, IM_COL32(90, 200, 255, 255));
-                    dl->AddTriangle(tip, bl, br, IM_COL32(20, 40, 60, 220), 1.5f);
+                    // Player = RED + white outline: distinct from the grace gold AND the blue/yellow
+                    // altitude badge (the old blue arrow read as an altitude badge). White outline pops
+                    // it off any tile. (Minimap uses the same red now — was yellow, a needless divergence.)
+                    dl->AddTriangleFilled(tip, bl, br, IM_COL32(255, 48, 48, 255));
+                    dl->AddTriangle(tip, bl, br, IM_COL32(255, 255, 255, 235), 1.5f);
                 }
                 else
                 {
-                    dl->AddCircleFilled(pp, 5.0f, IM_COL32(90, 200, 255, 255));
-                    dl->AddCircle(pp, 5.0f, IM_COL32(20, 40, 60, 220), 0, 1.5f);
+                    dl->AddCircleFilled(pp, 5.0f, IM_COL32(255, 48, 48, 255));
+                    dl->AddCircle(pp, 5.0f, IM_COL32(255, 255, 255, 235), 0, 1.5f);
                 }
             }
         }

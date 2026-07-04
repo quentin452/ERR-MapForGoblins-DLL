@@ -2670,13 +2670,15 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
         const ImVec2 tip(ctr.x + fwd.x * L, ctr.y + fwd.y * L);
         const ImVec2 bl(ctr.x - fwd.x * B + rgt.x * B, ctr.y - fwd.y * B + rgt.y * B);
         const ImVec2 br(ctr.x - fwd.x * B - rgt.x * B, ctr.y - fwd.y * B - rgt.y * B);
-        fg->AddTriangleFilled(tip, bl, br, IM_COL32(255, 225, 70, 255));
-        fg->AddTriangle(tip, bl, br, IM_COL32(0, 0, 0, 210), 1.5f);
+        // Player = RED + white outline (matches the vmap; was yellow, which collided with the yellow
+        // altitude badge and diverged from the vmap's player marker).
+        fg->AddTriangleFilled(tip, bl, br, IM_COL32(255, 48, 48, 255));
+        fg->AddTriangle(tip, bl, br, IM_COL32(255, 255, 255, 235), 1.5f);
     }
     else
     {
-        fg->AddCircleFilled(ctr, 4.0f, IM_COL32(255, 225, 70, 255));
-        fg->AddCircle(ctr, 4.0f, IM_COL32(0, 0, 0, 200), 0, 1.5f);
+        fg->AddCircleFilled(ctr, 4.0f, IM_COL32(255, 48, 48, 255));
+        fg->AddCircle(ctr, 4.0f, IM_COL32(255, 255, 255, 235), 0, 1.5f);
     }
     // North tick (map is north-up).
     fg->AddText(ImVec2(ctr.x - 4.f, ctr.y - R - 16.f), IM_COL32(230, 220, 180, 220), "N");
