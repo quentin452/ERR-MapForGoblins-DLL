@@ -137,6 +137,11 @@ void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f, bool with_e
             // Capture row width once, before any SameLine, so the badge and
             // the cluster checkbox both position from a stable origin.
             float row_avail = ImGui::GetContentRegionAvail().x;
+            // NARROW (e.g. the vmap Markers sidebar): the fixed right-align offsets below (row_avail-150 /
+            // -70) fall ON TOP of the label checkbox → widgets overlap AND the cluster checkbox steals the
+            // label's clicks (why the toggles did nothing). Append inline instead. Wide F1 window keeps the
+            // clean right-aligned columns.
+            const bool narrow = row_avail < 300.0f;
             // Uncollected badge: "<remaining>/<total>" of collectible items in
             // this category. Skipped for categories with no collectible rows
             // (graces/NPCs/regions → total 0). Green once fully looted.
@@ -146,7 +151,8 @@ void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f, bool with_e
             {
                 char cntbuf[24];
                 snprintf(cntbuf, sizeof(cntbuf), "%d/%d", rem < 0 ? 0 : rem, tot);
-                ImGui::SameLine(row_avail - 150.0f);
+                if (narrow) ImGui::SameLine();
+                else ImGui::SameLine(row_avail - 150.0f);
                 ImVec4 col = (rem == 0) ? ImVec4(0.45f, 0.85f, 0.45f, 1.0f)   // all collected
                                         : ImVec4(0.85f, 0.82f, 0.45f, 1.0f);  // some left
                 ImGui::TextColored(col, "%s", cntbuf);
@@ -156,7 +162,8 @@ void draw_sections_categories(const OverlayFrameCtx &ctx, Filter &f, bool with_e
             // Right-aligned cluster opt-in: checked = this category's markers
             // join the location pile; unchecked = shown normally on the map.
             // Live (re-plans on next map open).
-            ImGui::SameLine(row_avail - 70.0f);
+            if (narrow) ImGui::SameLine();
+            else ImGui::SameLine(row_avail - 70.0f);
             bool clu = goblin::overlay_api::category_clustered(c);
             if (ImGui::Checkbox(tr("cluster"), &clu))
                 goblin::overlay_api::set_category_clustered(c, clu);
