@@ -60,6 +60,7 @@ namespace
     bool s_show_graces = false;     // Track B: the grace warp-menu sidebar
     bool s_show_markers_panel = false;  // F1→vmap port: the Sections & categories controls in a sidebar
     Filter s_markers_filter;            // default (not filtering) → draw_sections_categories shows all
+    float s_markers_w = 320.0f, s_graces_w = 250.0f;  // user-resizable sidebar widths (drag the splitter)
     char s_grace_filter[64] = "";   // grace-list search box
     // Grace list cache (rebuilt on open / Refresh; discovered-state re-read live per visible row).
     struct GraceRow { std::string name; float wx, wz; uint64_t rowId; int discFlag; int group;
@@ -507,16 +508,39 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         ImGui::TextDisabled(tr("map tiles: %d loaded   |   last: %s"), (int)s_tiles.size(),
                             s_tile_status.c_str());
 
+    // Draggable vertical splitter between a sidebar and the next element — lets the user resize the
+    // sidebar (ImGui has no built-in splitter; an invisible drag-bar that nudges the width is the idiom).
+    auto vsplitter = [&](const char *id, float &w, float wmin, float wmax) {
+        ImGui::SameLine(0.0f, 0.0f);
+        ImGui::InvisibleButton(id, ImVec2(6.0f, ImGui::GetContentRegionAvail().y));
+        const bool hot = ImGui::IsItemHovered() || ImGui::IsItemActive();
+        if (hot) ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+        if (ImGui::IsItemActive()) w += ImGui::GetIO().MouseDelta.x;
+        if (w < wmin) w = wmin;
+        if (w > wmax) w = wmax;
+        ImVec2 mn = ImGui::GetItemRectMin(), mx = ImGui::GetItemRectMax();
+        ImGui::GetWindowDrawList()->AddRectFilled(
+            ImVec2((mn.x + mx.x) * 0.5f - 1.0f, mn.y), ImVec2((mn.x + mx.x) * 0.5f + 1.0f, mx.y),
+            hot ? IM_COL32(230, 210, 140, 220) : IM_COL32(90, 96, 110, 160));
+        ImGui::SameLine(0.0f, 0.0f);
+    };
+
     // F1→vmap port (first slice): host the F1 "Sections & categories" controls in a vmap sidebar. It's a
     // standalone draw_X(ctx, Filter&) with zero coupling to the F1 window, so it drops straight in — the
     // toggles it drives are shared config, so hiding a category here hides it on the vmap markers too. The
     // eventual home is a unified tabbed sidebar (Markers|Search|Quests|…); this proves the reuse path.
     if (s_show_markers_panel)
     {
-        ImGui::BeginChild("##markers_panel", ImVec2(320.0f, 0.0f), true);   // wider: category rows are dense
+        ImGui::BeginChild("##markers_panel", ImVec2(s_markers_w, 0.0f), true);
+        // Master "show all markers" toggle (the F1 icon master) — ported here so the categories list has
+        // its on/off head; drives overlay_api::icons_enabled (gates every vmap marker + the native map).
+        bool master_on = goblin::overlay_api::icons_enabled();
+        if (ImGui::Checkbox(tr("Show all markers"), &master_on))
+            goblin::overlay_api::set_icons_enabled(master_on);
+        ImGui::Separator();
         draw_sections_categories(ctx, s_markers_filter, /*with_err_integration=*/false);   // ERR moot on ImGui map
         ImGui::EndChild();
-        ImGui::SameLine();
+        vsplitter("##markers_split", s_markers_w, 200.0f, 640.0f);
     }
 
     // Track B — grace warp-menu sidebar (Base ER only; graces are ER's). A collapsible list next to the
@@ -576,7 +600,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             });
             s_graces_built = true;
         }
-        ImGui::BeginChild("##grace_sidebar", ImVec2(250.0f, 0.0f), true);
+        ImGui::BeginChild("##grace_sidebar", ImVec2(s_graces_w, 0.0f), true);
         ImGui::Text(tr("Graces (%d)"), (int)s_graces.size());
         ImGui::SameLine();
         if (ImGui::SmallButton(tr("Refresh"))) s_graces_built = false;
@@ -638,7 +662,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         }
         ImGui::EndChild();
         ImGui::EndChild();
-        ImGui::SameLine();
+        vsplitter("##graces_split", s_graces_w, 180.0f, 520.0f);
     }
 
     // Canvas = the remaining content region. An InvisibleButton captures drag/scroll over exactly it.
