@@ -75,6 +75,16 @@ from parity — Track A is real BUILD work, not just a checklist. This IS the go
 5. **A3 tiles underground/DLC + placement fix** (map_tile slice 3; the offset gap).
 6. A12 dial (ERR-only, low), A15 legacy-dungeon sub-maps (decide if needed).
 
+**A-SETTINGS audit (user, 2026-07-04): reframe/remove native-map-only F1 knobs.** Many F1 settings
+exist ONLY to control the native ER map overlay; once the vmap is the sole surface they're dead or
+must be re-pointed at the vmap. Audit every F1/ini knob through the ImGui-only lens (this EXTENDS the
+existing `settings_sweep_plan.md` classification — do it there, tagged "native-map-only"). Known
+native-map-only → retire after the switch: `graceSuppressNative`, `landmarkSuppressNative`,
+`suppressNativeBosses`, `clipGameUi`, `uiExclusionRects` (A14), the ERR `dial*` (A12 unless ported).
+Known to re-point at the vmap: `showRegionLabels` (A7), `stackIdenticalItems`/clustering (A8), item
+search (A9), `showMinimap` gate (flip to `virtual_map_open()`). Do this as part of Track C3 (collapse),
+NOT before the switch — the knobs still drive the native map until then.
+
 ---
 
 ## Track B — Grace warp menu (NEW feature; user request 2026-07-04)
