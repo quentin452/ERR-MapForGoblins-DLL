@@ -35,6 +35,19 @@ can be hardened. STRUCT FIELD offsets (`+0x98`, `+0x6C0`, `+0x1E508`, …) are s
 `goblin_collected.cpp` (diagFieldinsJoin/diagLotMemscan slots + vtables), `goblin_geom_move.cpp:412-414`
 (3 diag-dump globals), `worldmap_probe.cpp` area/layer/tile vtables — all gated, harden last.
 
+## How to harden — ALL doable on Linux (RVAs are known + module loads ~1:1)
+An AOB matches RUNTIME bytes, so packed/VMProtect'd code is fine (mem_dump gives the real bytes; scan
+matches them). Windows Ghidra is only needed to DISCOVER a new function (not the case — all known) or if
+a region is VMProtect-*mutated* per-run (no stable AOB exists — rare; detect by an incoherent prologue).
+- **FUNC** (call target): `mem_dump` ~48-64 bytes at `er+RVA` → craft an AOB from the prologue
+  (wildcard rip-rel disps/immediates; include enough bytes to be unique). FWA not needed. Dumping also
+  verifies the RVA is right (sane prologue) vs a packer mismatch.
+- **STATIC-SLOT** (singleton/data ptr): arm **find-what-accesses** on `er+RVA` (the slot) → capture the
+  RIP of a `mov reg,[rip+disp]` that reads it → `mem_dump` at that RIP → AOB + `relative_offsets`.
+- **vtable**: FWA on the vtable address, TRIGGER the object's construction/use (open map / spawn) →
+  capture the `lea [rip+disp]` RIP → AOB.
+- **Cheap wins** need no RE — the AOB already exists, just switch the call site.
+
 ## Priority
 Hot-path first: CASTRAY + PHYSWORLD (heightfield, brand-new), ENSURE_ASSET_REQUEST + GETTER (geom),
 the two **hooked** grace-suppression FUNCs (a wrong hook address = crash). Then the worldmap vtables/
