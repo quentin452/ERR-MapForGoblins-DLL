@@ -2528,8 +2528,10 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     namespace cfg = goblin::config;
     if (!cfg::showMinimap || !goblin::overlay_api::icons_enabled())
         return;
-    // Hide the minimap while the full world map is open (it's a gameplay HUD).
-    if (goblin::overlay_api::world_map_open())
+    // Hide the minimap while a full map is open (it's a gameplay HUD): the native ER map OR our own
+    // Virtual World Map. Before this the vmap opened (native map closed) with the minimap still drawn →
+    // both showed at once. v1 = hard hide; a minimap→vmap expand animation is a later polish.
+    if (goblin::overlay_api::world_map_open() || goblin::overlay_api::virtual_map_is_open())
         return;
     // Live player position (read during gameplay, map closed). The player pos is the
     // WorldMapPointParam frame on EVERY page now (RE windows_player_pos_RESOLVED), so the
