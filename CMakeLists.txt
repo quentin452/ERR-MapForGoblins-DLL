@@ -217,6 +217,8 @@ set(GOBLIN_HOST_SOURCES
   src/goblin_world_bundle.cpp
   src/goblin_geom_move.hpp
   src/goblin_geom_move.cpp
+  src/goblin_geom_spawn.hpp
+  src/goblin_geom_spawn.cpp
   src/goblin_logic.hpp
   src/goblin_logic.cpp
   src/goblin_markers.hpp

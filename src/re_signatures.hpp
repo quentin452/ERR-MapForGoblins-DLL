@@ -195,6 +195,17 @@ namespace goblin::sig
     // CSWorldGeomMan / map-pos manager slot (was RVA 0x3D69BA8). Shared by collected + inject.
     inline constexpr const char *WORLD_GEOM_MAN_SLOT =
         "48 8B 0D ?? ?? ?? ?? 48 8D 53 10 E8 ?? ?? ?? ?? 4C 8B E8";
+    // Geom asset-request manager singleton (pivot-2 ADD path — spawn an AEG asset by name). FD4Singleton
+    // DAT_143d69ba8 load site (`mov rcx,[rip+disp]; test rcx,rcx; jz` — the null-check idiom).
+    // relative_offsets {{3,7}} lifts the rip-disp → &singleton; then reqMgr = *(void**)(singleton + 0x30)
+    // = FUN_1406a5080's param_1. Found via pyghidra byte-scan (b16b21a), verified UNIQUE image-wide;
+    // GEOM_REQ_MGR_BACKUP loads the SAME singleton at another site. RE:
+    // docs/re/windows_geom_spawn_pivot2_re_findings.md.
+    inline constexpr const char *GEOM_REQ_MGR =
+        "48 8B 0D ?? ?? ?? ?? 48 85 C9 74 16 B8 01 00 00 00 48 8D 53";
+    inline constexpr const char *GEOM_REQ_MGR_BACKUP =
+        "48 8B 0D ?? ?? ?? ?? 48 85 C9 74 14 83 CB 02 89 5C 24 20 48";
+
     // WorldChrMan finder (player map-pos path).
     inline constexpr const char *WCM_FINDER = "48 8B FA 0F 11 41 70 48 8B 05";
     // Player-MapId singleton load site (was 0x3d691d8). relative_offsets {{3,7}}.
@@ -342,6 +353,8 @@ namespace goblin::sig
             {"AEG_REPICK_BIT_ACCESS", AEG_REPICK_BIT_ACCESS},
             {"GEOM_FLAG_SLOT", GEOM_FLAG_SLOT},
             {"WORLD_GEOM_MAN_SLOT", WORLD_GEOM_MAN_SLOT},
+            {"GEOM_REQ_MGR", GEOM_REQ_MGR},
+            {"GEOM_REQ_MGR_BACKUP", GEOM_REQ_MGR_BACKUP},
             {"WCM_FINDER", WCM_FINDER},
             {"PLAYER_MAPID_SLOT", PLAYER_MAPID_SLOT},
             {"MARKER_CHAIN_SLOT", MARKER_CHAIN_SLOT},

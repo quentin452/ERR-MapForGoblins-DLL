@@ -22,6 +22,7 @@
 #include "goblin_world_editor.hpp"  // we_scan cmd — World Editor picker enumeration
 #include "goblin_world_bundle.hpp"  // bundle cmd — World Editor save/apply persistence
 #include "goblin_geom_move.hpp"     // move_asset cmd — live geom transform-setter test (MSB-write RE)
+#include "goblin_geom_spawn.hpp"    // spawn_asset cmd — ADD via pivot-2 asset-request path (MSB-write RE)
 #include "goblin_field_probe.hpp"  // arm_raw — serialize find-what-accesses (Phase 2)
 
 #include <spdlog/spdlog.h>
@@ -1174,6 +1175,38 @@ namespace goblin::debug_rpc
                 auto r = goblin::geom_move::spawn_probe();
                 char b[224];
                 std::snprintf(b, sizeof(b), "%s spawn_probe %s", r.ok ? "ok" : "err", r.err);
+                return std::string(b);
+            }
+            // spawn_asset [AEGname] [force] — ADD via pivot 2 (asset streaming-REQUEST). Resolves the reqMgr
+            // singleton (GEOM_REQ_MGR AOB) → would call FUN_1406a5080(reqMgr, L"AEG###_###").
+            // ⚠ The direct call DEADLOCKS the present thread (lock inversion vs the streamer) — proven live
+            // 2026-07-04. Default = resolve + report ONLY (no call). `force` fires it anyway (WILL hang).
+            // No arg = resolve-only. RE: docs/re/windows_geom_spawn_pivot2_re_findings.md.
+            if (cmd == "spawn_asset")
+            {
+                std::string name = next_token(rest);
+                std::string f = next_token(rest);
+                bool force = (f == "force" || f == "1" || f == "go");
+                char b[256];
+                if (name.empty())
+                {
+                    auto r = goblin::geom_spawn::resolve_req_mgr();
+                    if (!r.ok) { std::snprintf(b, sizeof(b), "err spawn_asset: %s", r.err); return std::string(b); }
+                    std::snprintf(b, sizeof(b), "ok spawn_asset reqMgr singleton=%#llx reqMgr=%#llx (resolve-only; direct call deadlocks — see findings)",
+                                  (unsigned long long)r.singleton, (unsigned long long)r.reqMgr);
+                    return std::string(b);
+                }
+                auto r = goblin::geom_spawn::spawn_asset(name.c_str(), force);
+                if (!r.ok) { std::snprintf(b, sizeof(b), "err spawn_asset %s: %s", name.c_str(), r.err); return std::string(b); }
+                if (!force)
+                {
+                    std::snprintf(b, sizeof(b), "ok spawn_asset %s resolved reqMgr=%#llx — call SKIPPED (deadlocks present thread; append 'force' to fire)",
+                                  name.c_str(), (unsigned long long)r.reqMgr);
+                    return std::string(b);
+                }
+                std::snprintf(b, sizeof(b), "ok spawn_asset %s FORCED req=%#llx reqMgr=%#llx%s", name.c_str(),
+                              (unsigned long long)r.req, (unsigned long long)r.reqMgr,
+                              r.req ? "" : " (req=0)");
                 return std::string(b);
             }
             // spawn_clone <dx> <dy> <dz> [go] — ADD a new geom placement (the last MSB-write primitive):

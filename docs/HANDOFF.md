@@ -347,10 +347,16 @@ launches me3 as its in-shell child and kills the game at exit. See `mfg-rpc-driv
   live checkmark left). **reqMgr singleton AOB FOUND (2026-07-04, pyghidra byte-scan) — pivot-2 STATIC RE is
   100% DONE.** `GEOM_REQ_MGR = "48 8B 0D ?? ?? ?? ?? 48 85 C9 74 16 B8 01 00 00 00 48 8D 53"` (er+0x1dcc53,
   UNIQUE image-wide; `relative_offsets {{3,7}}` → `&DAT_143d69ba8`; `reqMgr = *(singleton+0x30)`; backup AOB
-  in the findings). **NEXT = purely the live probe (Linux/Proton):** add `GEOM_REQ_MGR` to `re_signatures.hpp`
-  + `[SIG]` health-check, then a `spawn_asset <AEGname>` dev RPC → `FUN_1406a5080(reqMgr, L"AEG###_###")` near
-  player → renders → walk into it for collision. **No Windows/Ghidra static work left on ADD.** MOVE stays
-  fully solved; ADD is a multi-step subsystem build but the whole static path is now mapped end-to-end.
+  in the findings). **✅ LIVE PROBE WIRED + RUN 2026-07-04 (`goblin_geom_spawn.{hpp,cpp}` + `spawn_asset`
+  RPC):** GEOM_REQ_MGR + backup AOBs `[SIG]` PASS + UNIQUE (er+0x1dcc53 / er+0x1dc930, match commit); reqMgr
+  chain resolves in-world (`reqMgr=*(singleton+0x30)`). **BUT the direct `FUN_1406a5080` call DEADLOCKS** —
+  our RPC runs on the PRESENT thread (pump()) yet the call froze present (watchdog, no exception; workers
+  alive) = lock inversion vs the streamer on the reqMgr RB-tree (`mgr+0x318`). So the static "no hang" claim
+  fails for an off-native-thread call. RPC is now safe-by-default (resolve-only; `force` to fire → hangs).
+  **⇒ NEXT = call it on the game's MAIN-UPDATE thread** where the proximity streamer (`FUN_140699670`) calls
+  it safely: hook a per-frame main-thread step (`FUN_140699170`/`FUN_14069a550`) and inject the request there
+  (the heaviest-but-correct pivot-1 shape), NOT a standalone RPC/present-thread call. Full result in
+  `docs/re/windows_geom_spawn_pivot2_re_findings.md` item 2. MOVE stays fully solved.
   **Live recon (2026-07-03, `spawn_probe` + `test_spawn_probe.py`, fresh DLL) confirmed srcType + corrected
   the layout:** on a real dynamic instance (`AEG004_903`) — srcType@+0x08 `0x3c1412016ff00000` (geom tag ✓,
   hi==BlockData tag ✓; masks g0=0xff/g1=0x14/g2=0xfffff); **param_3 = the BlockData** (inst+0x10, NOT a

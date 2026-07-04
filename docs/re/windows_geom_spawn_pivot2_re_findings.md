@@ -133,10 +133,30 @@ a real `CSWorldGeom` instance (not visual-only). Recap of what's known:
    (`mov rcx,[DAT_143d69ba8]; test rcx,rcx; jz …` — the singleton null-check idiom. RVAs are Ghidra-DB
    build; the Linux agent adds this to `re_signatures.hpp` + the `[SIG]` boot health-check to confirm it
    resolves on the deploy build, per AOB doctrine.)
-2. **Live probe (Linux/Proton):** `spawn_asset <AEGname>` → get `reqMgr` → `FUN_1406a5080(reqMgr, L"AEG###_###")`
-   near the player; confirm it renders, then walk into it to confirm collision (the one live checkmark Q2
-   left open).
-This is a **multi-step subsystem build** vs MOVE's one-vcall, but there are **no static unknowns left**.
+2. **Live probe (Linux/Proton) — WIRED + RUN 2026-07-04. AOB VERIFIED; direct call DEADLOCKS.**
+   `goblin_geom_spawn.{hpp,cpp}` + RPC `spawn_asset [AEGname] [force]`. Results:
+   - **✅ GEOM_REQ_MGR + GEOM_REQ_MGR_BACKUP AOBs resolve on the deploy build** — `[SIG]` PASS + UNIQUE,
+     at `er+0x1dcc53` / `er+0x1dc930` (exactly the commit RVAs). Added to `re_signatures.hpp` + the health check.
+   - **✅ reqMgr chain resolves in-world:** `reqMgr = *(void**)(DAT_143d69ba8 + 0x30)` — non-null once a save
+     is loaded (e.g. singleton=0x184caf080 → reqMgr=0x35b5f580).
+   - **❌ The direct `FUN_1406a5080(reqMgr, L"AEG004_903")` call DEADLOCKS the game.** Our RPC handler runs on
+     the **present thread** (`goblin_debug_rpc.cpp` `execute()` via `pump()`), yet the call froze the present
+     thread: freeze watchdog fired (`present beat unchanged ~20s`, NO exception), worker threads still ticking
+     (`[BENCH] refresh.*` kept logging). ⇒ it is a **stall/lock inversion**, not a crash: the registrar's
+     RB-tree insert into the LIVE reqMgr tree (`mgr+0x318`, ops `FUN_14069e660`/`FUN_1406a0270`) contends with
+     the streamer thread, which coordinates with present → deadlock. **The static "streaming-friendly, no
+     hang" conclusion held for the ALGORITHM, not for a standalone call off the engine's native update
+     thread.** Same class of "streaming-welded" wall the direct-ctor route hit.
+   - The RPC is now **safe by default**: `spawn_asset <name>` resolves + reports the dead end (NO call);
+     `spawn_asset <name> force` fires it anyway (WILL hang — kept only for a future main-thread hook / dump).
+
+   **⇒ Remaining for a working ADD (pivot 2 refined):** call `FUN_1406a5080` on the **game's own main-update
+   thread**, where the proximity streamer (`FUN_140699670`/`FUN_14069a9b0`) calls it and the RB-tree lock is
+   held safely — i.e. **hook a per-frame main-thread step and inject the request there** (the "heaviest,
+   correct" pivot-1 shape), NOT a standalone RPC-thread/present-thread call. Finding which thread + a safe
+   injection point (hook `FUN_140699170`/`FUN_14069a550`, or the streamer's own lock) is the next RE step.
+This is a **multi-step subsystem build** vs MOVE's one-vcall; the static anchors are all resolved, but the
+live result adds a **thread/locking constraint** that the static RE could not see.
 
 ## Anchors
 - registrar `FUN_1406a5080` er+0x6a5080; request-name builder `FUN_1406c7000` er+0x6c7000; request state
