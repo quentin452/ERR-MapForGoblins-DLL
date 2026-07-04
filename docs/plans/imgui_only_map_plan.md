@@ -46,25 +46,34 @@ user notices. Track A is the gate; C's final step (bind the key / disable native
 Every native-ER-map / F1-worldmap capability, and whether the vmap already has it. `?` = needs an
 audit pass to confirm. Fill/confirm this table first; each unchecked row is a blocker.
 
+**AUDIT DONE 2026-07-04** (read-only pass): 6 of 7 audited rows MISSING, 1 PARTIAL. The vmap is far
+from parity — Track A is real BUILD work, not just a checklist. This IS the go/no-go list.
+
 | # | Capability (native map / F1) | vmap today | Blocker? |
 |---|------------------------------|-----------|----------|
 | A1 | Pan / zoom | ✅ canvas | no |
 | A2 | Real map ART tiles (overworld) | ✅ slice 2/3a (M00) | partial: seamless full-map streaming = map_tile slice 3 |
-| A3 | Underground (M01) + DLC (M10/M11) tiles | ⚠️ group switch exists; tiles not all wired | **yes** |
+| A3 | Underground (M01) + DLC (M10/M11) tiles | ⚠️ **PARTIAL** — `virtual_map_load_lod(dim,…)` is dim-generic + RPC-reachable, but the UI button hardcodes dim 0 (`panel_virtual_map.cpp:407`) and placement is offset-broken (name-grid≠converter grid, KNOWN GAP `:301-307`) | **yes** |
 | A4 | All marker categories (graces/sites/bosses/loot/…) | ✅ reuses native draw (`draw_marker_glyph`) | no |
 | A5 | State-aware icons (discovered/collected/cleared/rune glow) | ✅ `563a00e` | no |
 | A6 | Marker tooltips (name + count) | ✅ | no |
-| A7 | Region name labels | ? audit | ? |
-| A8 | Clustering / pile "×N" | ? audit | ? |
-| A9 | Item search + "locate" pan | ? audit (F1 search targets the native map today) | **yes** |
+| A7 | Region name labels | ❌ **MISSING** — native `map_renderer.cpp:1770/2038`; vmap draws none | **yes** |
+| A8 | Clustering / pile "×N" | ❌ **MISSING** — vmap plots every marker raw (`:589-594`), no piles/counts | **yes** (dense areas unreadable) |
+| A9 | Item search + "locate" pan | ❌ **MISSING** — F1 search targets the native map only; vmap ignores it | **yes** |
 | A10 | Fast-travel to grace (double-click) | ✅ but FREEZES — Track C0 | **yes** |
-| A11 | Player position marker + heading | ? (minimap has it; vmap?) | ? |
-| A12 | ERR day/night dial (ERR-only) | ⚠️ native-map overlay only | ERR-only, low prio |
+| A11 | Player position marker + heading | ❌ **MISSING** — minimap has it (`get_player_map_pos`/`get_player_facing_yaw`); vmap never calls them | **yes (critical)** |
+| A12 | ERR day/night dial (ERR-only) | ❌ MISSING — native-map overlay only (`map_renderer.cpp:1170`) | ERR-only, low prio |
 | A13 | Map cursor → world readout (dev) | ✅ probe | no |
 | A14 | UI exclusion zones | native-map overlay only → **moot** after switch | drop |
-| A15 | Legacy-dungeon / sub-area maps | ? audit | ? |
+| A15 | Legacy-dungeon / sub-area maps | ❌ MISSING — vmap has only the 4 top-level groups (`s_group`, `:593`); dungeons folded into overworld | maybe (dungeons still show as folded markers) |
 
-**Action:** one audit pass (read-only) resolves every `?` and turns this into the real go/no-go list.
+**A-BUILD list (the gate) — ordered cheapest/most-critical first:**
+1. **A11 player marker + heading** (critical, trivial — vmap has w2s; call get_player_map_pos + draw dot/arrow like the minimap).
+2. **A7 region labels** (reuse the native label data; draw at w2s).
+3. **A8 clustering/piles** (reuse the spatial-grid clustering from map_renderer, or a vmap-local pass).
+4. **A9 item search/locate** (make the F1 search ring + pan target the vmap too).
+5. **A3 tiles underground/DLC + placement fix** (map_tile slice 3; the offset gap).
+6. A12 dial (ERR-only, low), A15 legacy-dungeon sub-maps (decide if needed).
 
 ---
 

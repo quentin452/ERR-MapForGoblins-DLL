@@ -25,6 +25,11 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Stuck-load watchdog.** A companion to the freeze watchdog for a load that hangs instead of the
+  whole game: a hung world-load keeps rendering the loading screen, so the freeze watchdog (which
+  watches the render beat) never fires. The new watchdog watches the world-playable state directly and,
+  if a fast-travel's load never completes within `[Debug] load_watchdog_secs` (default 30), writes a
+  load-stall report + a full all-thread minidump to `logs/` so an "infinite loading" can be diagnosed.
 - **F1 panel reorganized into tabs.** The one long scrolling panel is now split into five tabs by
   intent — *Markers*, *Search*, *Quests*, *Display*, *Dev* — so the everyday controls aren't buried
   under dev tooling. The settings-search box still filters across everything: while you're typing it

@@ -52,6 +52,10 @@ one-off scripts — most workflows are already reusable.
   `__try` around a **noinline CALL** (`raw_copy`/`raw_store8`) for hot in-process reads, RPM otherwise. → [clang-cl-seh-noinline](clang-cl-seh-noinline.md)
 - **Linux/Proton RPM walk trap** [active] — per-node RPM-to-self is a Proton freeze cliff; bulk-read
   whole structs then parse, throttle, wrap in `GOBLIN_BENCH_QUIET`. → [linux-rpm-walk-danger](linux-rpm-walk-danger.md)
+- **Never AOB-scan at boot / thread-start** [active, gotcha] — `modutils::scan` at DLL-init or on a
+  thread spawned during boot crashes (`0xC0000005` in `Pattern16::scanRegion`) — module not mapped
+  yet. Resolve AOB statics LAZILY on first use (like world_position / warp / load_watchdog). →
+  [aob-scan-boot-race](aob-scan-boot-race.md)
 - **ER Console as coords tool** [active] — Nexus 9365 readout; `coords` = block-local Havok frame,
   `tp` = larger chunk frame. → [er-console-mod](er-console-mod.md)
 - **Linux runtime-RE options** [scoped, untested] — the live game runs HERE (Proton); candidate paths to
