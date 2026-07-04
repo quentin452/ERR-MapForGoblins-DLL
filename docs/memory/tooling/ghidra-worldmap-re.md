@@ -826,3 +826,33 @@ the baked fallback `world_to_mapspace_xy` (−7040/+16512) already projects DLC 
 scale 0.5 / DLC own origin" claims live in the OLD `marker_to_mapspace_re_findings.md` (RE-era hypothesis,
 superseded). Docs fixed on master (commit d2556cd): SUPERSEDED banner on the old doc + RESOLVED notes on
 `windows_world_to_mapspace_projection_re_findings.md` TL;DR-Q3 + §7.1. Nothing to bake/capture.
+
+---
+
+**WORLDMAP TILE PLACEMENT DECODE — SOLVED statically (2026-07-04, scripts `D:\ghidra_scripts_mfg\mfg_tile.java`,
+doc `docs/re/windows_worldmap_tile_placement_re_findings.md`).** The `71_MapTile` ART grid is a **uniform
+256×256-map-space SPARSE grid**, NOT a variable-size quadtree. `CS::WorldMapTile` ctor `FUN_1409df560`
+(vtable er+0x2b31108) writes rect `origin + {0,0,256,256}` (const `DAT_143b37d00..d0c`), origin PASSED IN by
+the region walk. Name `MENU_MapTile_M%02d_L%u_%02d_%02d_%08x` (fmt utf16 @er+0x2ad7c40) → `suffix =
+8·morton(subX,subY)` in a **64×64-cell block**: `gridX=col·64+subX`, `gridZ=row·64+subY`,
+`mapU0=(gridX−gridXbase)·256`, `mapV0=(gridZ−gridZbase)·256` (bases from the live converter — ties to the
+world_to_mapspace projection). Verified `morton(52,38)·8=0x69c0` = block-02_03 observed max. Tile subsystem:
+`WorldMapTiledLayer` (vt er+0x2b2caf0, ctor er+0x9e0cc0, streamer slot1 er+0x9e1550), `WorldMapTileRes`
+(er+0x2ad7be8), `WorldMapTileBackReader` (er+0x882500). Per-tile resource lookup = binary search of the
+3-slot per-dimension sorted table at **VM+0x288** (0x0C-stride `{u32 tileId,u32 val,u8 flag}`), dim index
+`{0,1,0x0a}` via selector `FUN_1408867d0`. **LOD** = per-LOD `WorldMapTiledLayer` stack (mgr+0x390, stride
+0x110), zoom-gated in the manager tick `FUN_1409cd390`. No `WorldMapTileParam` — pure name-decode. Runtime
+gaps (Linux): Morton axis-order + `W=64` confirm, per-`L` zoom thresholds, SRV recycling, byte-range reads.
+
+**Ghidra-12 OSGi gotcha (cost real cycles this session):** `D:\ghidra_scripts` compiles as ONE OSGi bundle
+— a SINGLE `.java` with a compile error makes the whole bundle fail, so EVERY script (incl. `query.java`)
+then dies with `Failed to get OSGi bundle containing script` / `ClassNotFoundException` (NO javac diagnostic
+in the log; it fails in ~4 s, before the DB loads). The error I hit: `getFunctionContaining(long)` — that
+API needs an **`Address`** (`toAddr(x)`), passing a bare `long` won't compile. Do NOT delete the felix cache
+to "fix" it (deleting `osgi/felixcache/bundle0` breaks the OSGi framework itself → same error for all
+scripts until the whole `osgi/` dir regenerates). Fixes: (1) run bespoke scripts from an ISOLATED
+`-scriptPath` dir (e.g. `D:\ghidra_scripts_mfg`) so a compile error can't poison `query.java`; (2) if
+poisoned, delete the offending `.java` from the shared dir. Un-analyzed engine routines (reached only via
+vtable/jump, e.g. the tile create tail er+0x9da9f0) have NO Ghidra function — `disassemble(addr)` +
+`createFunction(addr,null)`, then check `getFunctionContaining(call).getBody().contains(call)`; the true
+entry may be a 16-aligned boundary a few bytes into an un-disassembled gap (walk candidate starts).

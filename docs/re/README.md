@@ -1,6 +1,6 @@
 # RE coverage map — what of ELDEN RING is reverse-engineered, and what isn't
 
-Index + honest coverage map for `docs/re/`. **161 RE docs** live here. Two kinds:
+Index + honest coverage map for `docs/re/`. **162 RE docs** live here. Two kinds:
 - `*_re_findings.md` / `*_RESOLVED.md` — a SOLVED structure/function (the answer).
 - `*_re_prompt.md` / `*_analysis.md` — an OPEN or historical RE task handed to Ghidra/CE.
 
@@ -22,7 +22,7 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
 | **Inventory / items** | `ADD_ITEM_FUNC`, `INVENTORY_ACCESSOR`, `GAME_DATA_MAN` | `windows_goods_count`, `windows_runtime_asset_to_itemlot`, `windows_global_item_position_structure` | Grant/count/strip items; `GameDataMan→PlayerGameData→EquipGameData→EquipInventoryData`; ItemLotParam layout; AEG `pickUpItemLotParamId`; id encoding; grantable ceiling `0x7FFFFE` |
 | **Messages / FMG** | `MSG_REPOSITORY`, `GETMESSAGE` | `windows_fmg_slot`, `windows_native_msg_getter` | Inject/override item & place names; FMG-v2 layout; base/DLC/menu slot semantics; `FmgFile_lookup` binary search |
 | **Save** | `SAVE_FN`, `SERIALIZE_FN` | `windows_save_serialize`, `linux_save_function`, `windows_save_function_rpm` | Whole-slot serialize hook; strip/reinject save-clean bracket; sidecar `.mfg` |
-| **World map / markers** | `WORLDMAP_POINT_FN/_CTOR`, `WORLDMAP_PROJ_LOOP/_POINT`, `WORLDMAP_CONV_BUILD`, `MARKER_ARRAY_CTOR`, `MARKER_CHAIN_SLOT` | `world_map_projection`, `windows_world_to_mapspace_projection`, `windows_worldmap_tile_fog`, `windows_worldmap_page_transition`, `windows_map_point_icon_layout`, `windows_aeg_collectible_source`, `windows_runtime_msb_resident` | Marker projection + map-space; tile fog; page switch; disk-MSB loot parse (asset→lot→item, enemy/EMEVD/collectible drops); icon textures (resident + disk) |
+| **World map / markers** | `WORLDMAP_POINT_FN/_CTOR`, `WORLDMAP_PROJ_LOOP/_POINT`, `WORLDMAP_CONV_BUILD`, `MARKER_ARRAY_CTOR`, `MARKER_CHAIN_SLOT` | `world_map_projection`, `windows_world_to_mapspace_projection`, `windows_worldmap_tile_fog`, `windows_worldmap_tile_placement`, `windows_worldmap_page_transition`, `windows_map_point_icon_layout`, `windows_aeg_collectible_source`, `windows_runtime_msb_resident` | Marker projection + map-space; tile fog; **tile ART placement (name→256-cell grid decode)**; page switch; disk-MSB loot parse (asset→lot→item, enemy/EMEVD/collectible drops); icon textures (resident + disk) |
 | **World state / entities** | `WCM_FINDER`, `GET_CHRINS_FROM_HANDLE`, `EVENT_FLAG_MAN_SLOT(_ALT)`, `IS/SET_EVENT_FLAG`, `GEOM_FLAG_SLOT`, `WORLD_GEOM_MAN_SLOT`, `PLAYER_MAPID_SLOT` | `windows_player_pos_RESOLVED`, `windows_enemy_boss_runtime_pos`, `windows_enemy_name_runtime_source`, `windows_geom_flag_savedata_table`, `windows_fieldins_registry_layout_and_preopen` | Player/enemy/boss live position; event flags read/write; geom (collected) flags; field-instance registry/pool |
 | **Nav / warp** | `LUA_WARP`, `CS_LUA_EVENT_MANAGER` | `windows_grace_warppin_teleport`, `windows_grace_warppin_setto_abi` | Grace fast-travel (dev nav) |
 | **Menus / UI / present** | `CSMENUMAN_SLOT`, `CSFEMAN_SLOT`, `PAUSE_BRANCH`, `RENDER_REAPPLY_RES`, `EC_TEST_DISTANCE_VFT` | `windows_menu_item_icon`, `windows_menu_cursor_iconid_populator`, `worldmap_menu_and_native_clip`, `windows_midsession_resolution_swapchain` | Menu icon/cursor; worldmap clip; resolution swapchain; native pin suppression |
@@ -65,10 +65,13 @@ exactly what separates "runtime re-skin of existing content" (works) from "creat
 5. **Custom mob PLACEMENT** — NpcParam is param-driveable, but placing a custom enemy is MSB write (#1).
 
 ### Smaller tactical gaps (see HANDOFF)
-- **WorldMapTile placement decode** — the vmap loads ER map ART tiles + the map-space→world transform is
-  SOLVED (live), but the tile-name `{col,row,suffix}` → map-space rect + LOD-per-zoom is a variable-depth
-  Morton quadtree not yet cracked (tiles land in-region but not seamless). Prompt:
-  `windows_worldmap_tile_placement_re_prompt.md`. (SRV recycling + byte-range reads = separate Linux DLL work.)
+- **WorldMapTile placement decode — SOLVED (static).** Tiles are a **uniform 256×256-map-space sparse
+  grid** (constant size `DAT_143b37d00..d0c={0,0,256,256}`), NOT a variable-size quadtree. Name decode:
+  `suffix = 8·morton(subX,subY)` in a `64×64`-cell block → `gridX=col·64+subX`, `gridZ=row·64+subY`,
+  `rect = ((gridX−gridXbase)·256, (gridZ−gridZbase)·256) + (0,0,256,256)` (`gridXbase/gridZbase` from the
+  live converter). No `WorldMapTileParam` (pure name-decode). LOD = per-LOD layer stack, zoom-gated.
+  Findings: `windows_worldmap_tile_placement_re_findings.md`. Runtime gap (Linux): axis-order + `W=64`
+  confirm, per-`L` zoom thresholds, SRV recycling + byte-range reads.
 - **LotReader index rebuild** — snapshotted at init; newly cloned lots don't resolve (`refresh_markers` v2).
 - **F2 fog-locate clamp** — the reticle-clamp bounds source in the `c32f0` subtree is unfound
   (`linux_f2_fog_locate_clamp_re_findings.md`).

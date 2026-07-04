@@ -59,6 +59,19 @@ a bespoke script for custom scans/iteration. (Decompiling ALL 100k+ funcs to tex
 all `FUN_` names + stale-on-patch → not worth it; the index + on-demand query is the sweet spot.)
 
 ## Operational playbook — driving `query.java` headless from THIS harness (2026-07-03, cost real cycles)
+- **`D:\ghidra_scripts` compiles as ONE OSGi bundle — a single broken `.java` poisons EVERY script**
+  (2026-07-04). If a bespoke script has a compile error, subsequent runs of ANY script (incl. `query.java`)
+  die with `Failed to get OSGi bundle containing script` / `ClassNotFoundException`, NO javac diagnostic,
+  failing in ~4 s (before the DB loads). Fixes: **run bespoke scripts from an ISOLATED `-scriptPath` dir**
+  (e.g. `D:\ghidra_scripts_mfg`) so an error can't take down `query.java`; if the shared dir is poisoned,
+  delete the offending `.java`. Do **NOT** delete `osgi/felixcache/bundle0` to "fix" it — that breaks the
+  OSGi framework itself and makes ALL scripts fail until the whole `osgi/` dir regenerates. Common compile
+  trap: `getFunctionContaining(x)` needs an **`Address`** (`toAddr(x)`), not a bare `long`. Detail:
+  [[ghidra-worldmap-re]] (tile-placement entry).
+- **Un-analyzed engine routines** (reached only via vtable/jump — e.g. a tile create tail) have NO Ghidra
+  function: `disassemble(addr)` + `createFunction(addr,null)`, then verify
+  `getFunctionContaining(call).getBody().contains(call)`. The true entry may be a 16-aligned boundary a few
+  bytes into an un-disassembled gap (no `0xCC` padding when functions are contiguous) — walk candidate starts.
 - **The invocation that works** — the **PowerShell tool** (NOT `cmd.exe`; see [[windows-tooling-gotchas]]),
   `run_in_background: true`, then wait for the completion notification:
   ```

@@ -38,11 +38,18 @@ from F1 + open via the game MAP KEY. RPCs: `vmap`/`vworld`/`f1_tab`. **NEXT on t
   (co-located with markers, live-verified). **Testing gotchas found:** `set rpc_auto_idle false` before
   scripted input (auto-idle SUSPENDS it when a human is at the PC); the map cursor/VM only publishes once
   the map view is NON-static (pan/zoom); the ER world map opens with the **`m`** key on this install.
-  **NEXT (3b/3c/decode):** (1) **crack the `{suffix}` decode** — it's a Morton (Z-order) code over a
-  VARIABLE-DEPTH per-region quadtree (col/row = 6×6 blocks; dense land cells subdivide deeply, ocean = 1
-  tile), so per-tile grid size/packing is still approximate (gaps); cell 02_03 dump (78 tiles, suffix set)
-  is in the logs. (2) **SRV recycling** — 256-cap no free list; even coarsest M00_L3=561>256. (3) byte-range
-  reads (extract reads whole 1.26 GB .tpfbdt). Then the full seamless overworld renders under the markers.
+  **NEXT (3b/3c/decode):** (1) **`{suffix}` decode — CRACKED (static Ghidra, 2026-07-04,
+  `docs/re/windows_worldmap_tile_placement_re_findings.md`).** NOT a variable-depth quadtree: every tile is
+  a **constant 256×256 map-space quad** (`DAT_143b37d00..d0c={0,0,256,256}`) on a **uniform SPARSE grid**.
+  Decode: `suffix = 8·morton(subX,subY)` in a **64×64-cell block** → `gridX=col·64+subX`,
+  `gridZ=row·64+subY`, `rect = ((gridX−gridXbase)·256,(gridZ−gridZbase)·256)+(0,0,256,256)`
+  (`gridXbase/gridZbase` live from the converter). Verified: `morton(52,38)·8=0x69c0` = block-02_03 max.
+  No `WorldMapTileParam` (pure name-decode). LOD = per-LOD layer stack, zoom-gated (`WorldMapTiledLayer`
+  array at mgr+0x390, stride 0x110). Implement `decode_suffix`+`tile_map_rect` in `maptile.cpp` (ref C in
+  the findings). **Runtime to confirm on Linux:** Morton axis-order (even-bit = col-axis or row-axis?) +
+  `W=64` holds for the active archive, via one screenshot vs. a known marker. (2) **SRV recycling** —
+  256-cap no free list; even coarsest M00_L3=561>256. (3) byte-range reads (extract reads whole 1.26 GB
+  .tpfbdt). Then the full seamless overworld renders under the markers.
 - Missed design items (captured in `docs/plans/virtual_world_multi_world_design.md`): **GAMEPAD** for the
   vmap canvas (stick→pan/zoom + reticle — add to every vmap slice); the real feature gaps = **clock /
   blue click-marker / custom beacon** (rest of ER's map is cosmetic; grace = fast-travel = make-or-break).
