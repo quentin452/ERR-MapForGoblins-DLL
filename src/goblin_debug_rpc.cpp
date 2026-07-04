@@ -9,6 +9,7 @@
 #include "goblin_pause.hpp"    // pause command + paused= status (unfocused-window pause escape)
 #include "goblin_overlay.hpp"
 #include "goblin_virtual_world.hpp"  // vworld registry — `vworld` RPC (custom virtual worlds)
+#include "worldmap/loot_disk.hpp"    // read_game_file_decompressed — `assets_probe` path-loading guard
 #include "goblin_worldmap_probe.hpp"  // dump_menu_state (dumpmenu cmd)
 #include "goblin_overlay_render_loader.hpp"
 #include "goblin_param_edit.hpp"  // param_get/param_set commands — Slice 1 in-game smoke test
@@ -399,7 +400,7 @@ namespace goblin::debug_rpc
             // help — one-line verb list (the client reads a single reply line, so no embedded \n).
             // Full usages + caveats: docs/memory/tooling/rpc-commands.md. Keep in sync when adding a cmd.
             if (cmd == "help" || cmd == "?")
-                return "ok commands: help ping status open_f1 f1_tab vmap vworld pause set screenshot dumpmenu reload_overlay"
+                return "ok commands: help ping status open_f1 f1_tab vmap vworld assets_probe pause set screenshot dumpmenu reload_overlay"
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
@@ -484,6 +485,40 @@ namespace goblin::debug_rpc
                     goblin::overlay_api::virtual_map_set_open(!goblin::overlay_api::virtual_map_is_open());
                 else return "err vmap takes 0|1|toggle | fit | group <0-3>";
                 return "ok vmap=" + std::to_string(goblin::overlay_api::virtual_map_is_open() ? 1 : 0);
+            }
+            // assets_probe — path-loading regression guard: does the mod's disk loader resolve the key
+            // menu assets on the CURRENT install, and via the loose overlay (ERR/UXM) or the packed
+            // dvdbnd (vanilla)? Catches a silent load-path break per install shape (packed/unpacked/ERR).
+            // Reports per-file shape+size (avoids the 2GB 71_MapTile.tpfbdt — only its 545KB header).
+            if (cmd == "assets_probe")
+            {
+                static const char *kRels[] = {
+                    "menu/71_MapTile.tpfbhd",     // world-map tiles header (endgame phase-1a target)
+                    "menu/hi/01_common.tpf.dcx",  // item-icon sheet (the proven DCX disk no-bake path)
+                };
+                int nloose = 0, npacked = 0, nmiss = 0;
+                std::string per;
+                for (const char *rel : kRels)
+                {
+                    const char *shape;
+                    size_t sz;
+                    auto lo = goblin::worldmap::read_loose_file_decompressed(rel);
+                    if (!lo.empty()) { shape = "loose"; sz = lo.size(); ++nloose; }
+                    else
+                    {
+                        auto any = goblin::worldmap::read_game_file_decompressed(rel);
+                        if (!any.empty()) { shape = "packed"; sz = any.size(); ++npacked; }
+                        else { shape = "MISSING"; sz = 0; ++nmiss; }
+                    }
+                    char b[160];
+                    std::snprintf(b, sizeof(b), " %s=%s(%zu)", rel, shape, sz);
+                    per += b;
+                }
+                const char *overall = nmiss ? "PARTIAL" : (nloose ? "loose/overlay" : "packed/vanilla");
+                char head[96];
+                std::snprintf(head, sizeof(head), "ok assets_probe shape=%s loose=%d packed=%d missing=%d |",
+                              overall, nloose, npacked, nmiss);
+                return std::string(head) + per;
             }
             // vworld create <name> | marker <id> <x> <z> [name] | active <id> | list | clear —
             // drive the virtual-world registry (custom mod worlds shown on the virtual map).

@@ -88,3 +88,6 @@ archive** → each entry is a TPF (maybe DCX'd) → `tpf_find_texture` → DDS �
 - **mip0 only** — fine for a flat map view.
 - Keep it mod-agnostic: read the ACTIVE install's tiles (Path A resident, or Path B dvdbnd/loose), never a
   baked snapshot.
+
+## ★ In-game read CONFIRMED (2026-07-04, assets_probe)
+`menu/71_MapTile.tpfbhd` resolves IN-GAME via `read_game_file_decompressed` = **packed(4.3MB)** from the base-game dvdbnd (the `assets_probe` RPC / `test_assets.py`). So Path B's dvdbnd read WORKS in-game (the Windows-only `dvdbnd_reader` caveat was only about OFFLINE Linux reads — the DLL under Proton reads it fine). Only the BHF4 entry-table parser + the DX12 SRV-cap streaming remain.
