@@ -47,6 +47,17 @@ static int category_from_taxonomy(int32_t goods_id)
     // contaminated by a few non-spirit items (Codex of the All-Knowing, Spectral Steed Whistle,
     // Memory of Grace) which would otherwise be mislabelled as Spirits. Vanilla spirits stay gType 7/8.
     if (goods_id >= 300000 && goods_id <= 399999) return (int)C::EquipSpirits;
+    // ERR Fortune trinkets — an explicit ERR id-list (like the spirit range above): they share their
+    // (gType1, sg 56/57/58) taxonomy cell with ~20 unclassified tail goods, so no (gType,sg[,sortId]) rule
+    // isolates them cleanly (a blanket sg rule mis-files ~49 placed tail markers as Fortunes — measured).
+    // ReforgedFortunes is inherently ERR content (an additive layer, CLAUDE.md), so a curated ERR list is
+    // the correct tool. Restores what 6c19f72 dropped, scoped to just this category. (data/categories.json)
+    switch (goods_id)
+    {
+        case 900218: case 900238: case 900258: case 900268: case 900278: case 900288:
+        case 900308: case 900318: case 900328: case 900338: case 900348: case 900368:
+            return (int)C::ReforgedFortunes;
+    }
     const int gt  = goods_type_live(goods_id);
     const int sg  = goods_sort_group(goods_id);
     const int sid = goods_sort_id(goods_id);   // ER inventory sort order — sub-splits the cells that
