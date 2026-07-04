@@ -46,7 +46,25 @@ Building the grid sampler surfaced that the primitive only hit ONCE (abddc05) an
   RVAs come from a decrypted Ghidra dump whose runtime layout we haven't verified); AND/OR collision
   streaming state.
 
-**Unblock path (proper runtime RE, not more RVA guessing):**
+**ROOT CAUSE NAILED (FWA/disasm session 2026-07-04):**
+- **ctx = `*(*(er+0x3d76060) + 0x98)` is CORRECT** — the game's own code (disassembled live) does exactly
+  `mov rax,[singleton]; mov rcx,[rax+0x98]; call cast`. The RVAs map 1:1 (real prologues verified).
+- The cast (`FUN_140c70360`) prologue does **`cmp qword[rcx+8],0; je <no-hit>`** → it early-exits with
+  no hit if `*(ctx+8)==0` (ctx+8 = the hknpWorld).
+- **`inst+0x98` (the ctx pointer) is WRITTEN every frame by the game thread** → an off-thread read is
+  TORN (observed `0x1bd575600` = 0x1 high-dword stitched onto a low dword; clean read = `0xd6f5600`). A
+  torn ctx → `ctx+8` garbage/null → early-exit → MISS. abddc05 caught a clean read by luck.
+- **⇒ the cast MUST run on the GAME thread during GAMEPLAY** (physics active + collision loaded + ctx not
+  mid-update). `hk_c32f0` is game-thread but only map-open (collision unloaded) — a dead end.
+
+**Unblock = hook a gameplay game-thread fn and cast there (D2.2-real):**
+- Best target: **`FUN_1403f13c0`** (er+0x3f13c0, the snap-to-ground caller — SAME filter 0x5e) — it runs
+  on the game thread in gameplay and ALREADY calls the cast. Hook it (modutils::hook): in the detour,
+  **capture the ctx the game just used** (from its register/arg — no torn read) and run a few sampler
+  casts with it. Alternatives: the AEG streamer `FUN_140699670`, or any per-frame in-world world tick.
+- Then D2.2's sampler (already written) runs from that detour instead of `tick_game_thread`/`tick_present`.
+
+**Old unblock notes (superseded by the root-cause above):**
 1. **find-what-accesses** (debug RPC) on the cast site during a KNOWN-good in-game cast (walk into
    something / the AEG streamer) → capture the REAL ctx pointer + how it's derived + the exact fn. This
    is the tool AGENTS.md points to for exactly this.
