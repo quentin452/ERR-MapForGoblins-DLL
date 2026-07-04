@@ -90,9 +90,24 @@ Ran the scout + a fresh idle test with the CASTRAY/PHYSWORLD AOB-hardened build:
   a hot-physics-fn hook (some risk) — a focused session, not a quick win. Everything downstream
   (D2.2 sampler / D2.3 hillshade / D2.4 coverage) is unchanged and ready once the cast reliably hits.
 
-**STATUS: D2 still PARKED, but the blocker is RE-DIAGNOSED — it is the cast ABI/args, NOT a game-thread
-hook.** The sampler code + RPC harness are ready. Higher-value/lower-risk work (Track A parity, RVA/tier-S
-hardening) continues to take precedence; resume D2 when there's appetite for the cast-ABI capture.
+**✅ UNBLOCKED 2026-07-04 — the cast ABI was an ALIGNMENT bug. D2 primitive now works reproducibly.**
+Live disasm of `er+0xc70360` showed it reads start (r8) and segDir (r9) as 16-byte **VECTOR4**s via
+`movaps xmm0,[r8]; addps xmm0,[r9]` (endpoint = start+segDir). `movaps` FAULTS on an unaligned address —
+we passed `float[3]` (12 B, unaligned) → the load faulted into our `__except` → "miss"; a luck-aligned
+stack frame hit once (`abddc05`). Fix (`d3ca993`): pass start/segDir/outPoint/outNormal as
+`alignas(16) float[4]` (w=1 position, 0 delta). **Result: 6/6 present-thread IDLE casts HIT** —
+`GROUND y=10.67, nrm=(0.075,0.994,-0.085)` walkable up-normal, `frac=0.519`, reproducible, clean stable
+ctx, **NO game-thread hook needed**. The entire "find a safe game-thread gameplay hook" track is retired.
+
+**⇒ D2 remaining (now a clear build, present-thread, no frontier RE):**
+1. **D2.2 grid sampler** — cast a few cells/frame on the present thread, idle-gated (a torn ctx during
+   movement just misses+retries; resolve_ctx fresh each cast). Still needs the **block-local↔world frame
+   conversion** (D2.1 finding: the cast frame is Havok BLOCK-LOCAL — convert world XZ → chunk-local before
+   casting, hit XZ back to world for drawing). The sampler code is already staged.
+2. **D2.3 hillshade render** on the vmap (dot(normal, light); sea = y<seaLevel) under markers/tiles.
+3. **D2.4 coverage extension + persistence** (accumulate as the player warps; log nodata).
+
+The primitive is proven; this is now normal feature work, not RE. Good candidate for a focused session.
 
 **Hook-scout harness (resume here — `tools/hf_hook_scout.py`, 2026-07-04):** a live-RPM scout that
 de-risks the safe hook from Python (it does NOT hook — that's the in-DLL detour). Three subcommands
