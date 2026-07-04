@@ -109,8 +109,27 @@ from parity — Track A is real BUILD work, not just a checklist. This IS the go
 **vmap UX backlog (from live testing 2026-07-04):**
 - ✅ grace z-order (draw on top) `dd64d8d`; ✅ hover z-order (grace wins the tooltip/warp) `89d0cd8`;
   ✅ focus-player-on-open `cd7948b`; ✅ grace warp id fix (bonfireEntityId) `89d0cd8`.
-- **Spiderify on non-clustered overlapping markers** — spiderify already ships on CLUSTERS; extend it
-  to plain overlapping markers on the vmap (spread them on click/hover so each is selectable). Later.
+- **Spiderify — LARGELY SUPERSEDED on the vmap (user call 2026-07-04).** Spiderify exists on the NATIVE
+  map because its zoom is capped, so co-located markers can never be separated by zooming — spreading them
+  in a spiral is the only way. The vmap has a HUGE unbounded zoom range (`kZoomMin 0.002 … kZoomMax 4.0`)
+  PLUS quadtree LOD clustering, so the normal "too dense to read / to click" case is solved by *zoom in →
+  the pile expands → markers separate spatially*. The only residual niche = markers at the EXACT same world
+  position (e.g. several items on one loot spot) that never separate at any zoom. Keep spiderfy as a
+  LOW-PRIORITY polish for that exact-coincident case only; the general overlapping case is handled.
+- **Perf follow-ups (the big bottleneck is GONE — `177c73c`, vmap.markers 4.08→0.51 ms).** Minor, for
+  later, none blocking: (1) QT rebuild is a ~17 ms one-time spike on group change — build incrementally or
+  off-thread only if it's ever felt; (2) `region_gated` is applied to singles at draw but the QT is NOT
+  rebuilt on a region toggle, and PILES ignore region gating (a hidden region still counts in a pile) —
+  rebuild-on-toggle or gate piles if it matters; (3) cache each visible single's draw recipe (icon UV +
+  state) instead of recomputing `draw_marker_glyph` per frame — small now that only the visible subset
+  draws; (4) relief draws per-cell quads (`vmap.relief`) — a single texture would scale better at big
+  grids; (5) the grace sidebar reads `read_event_flag` per grace per frame (~438) — throttle if needed.
+- **"Hors map" stray icons = a PRE-EXISTING DATA bug, not a vmap bug.** A handful of markers carry bad
+  world positions (origin (0,0) defaults + garbage like (110767,−59445)) from a failed projection. Those
+  were ALWAYS wrong — invisible before only because the native map can't zoom out far enough to show them
+  and the vmap's default view didn't frame them. Our unbounded dezoom + Fit made them VISIBLE. The quadtree
+  plausibility gate (±40000 box + (0,0)) hides them from the vmap so they stop distorting Fit, but the ROOT
+  cause (why those markers project to garbage) is a separate marker-data investigation, unchanged by this.
 
 **A-SETTINGS audit DONE 2026-07-04 → full per-key table in
 [f1_settings_imgui_only_classification.md](f1_settings_imgui_only_classification.md)** (~19 DROP, 1
