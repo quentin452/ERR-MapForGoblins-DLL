@@ -132,8 +132,12 @@ void watchdog_loop()
     // the load this long to BEGIN before we stop watching this arm.
     const DWORD start_window_ms = 20000u;
 
-    resolve_statics();
-
+    // Slots are resolved LAZILY on the first arm, NOT here: AOB-scanning eldenring.exe at boot
+    // (this thread starts during "Waiting for params...") races the game's module mapping and
+    // faults inside modutils::scan. A warp only happens long after boot, so by first-arm the
+    // module is fully mapped (mirrors goblin_world_position, which also resolves WorldChrMan
+    // lazily). The poll loop idles until armed, so there is nothing to resolve before then.
+    bool resolved = false;
     bool saw_null = false;           // load actually started (player went null) this arm
     ULONGLONG null_since = 0;        // tick LocalPlayer first read null this arm
     uint32_t last_mapid = 0;
@@ -142,6 +146,7 @@ void watchdog_loop()
     {
         Sleep(500);
         if (!g_armed.load(std::memory_order_relaxed)) continue;
+        if (!resolved) { resolve_statics(); resolved = true; }
 
         const ULONGLONG arm = g_arm_tick.load(std::memory_order_relaxed);
         LoadProbe pr{};
