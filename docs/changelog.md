@@ -25,6 +25,10 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Grace warp menu (Virtual World Map sidebar).** A `Graces` toggle opens a searchable, sorted list of
+  every site of grace beside the map, each with a discovered/undiscovered state dot. Double-click a
+  discovered grace to fast-travel; click any grace to pan the map to it. Browse/search/filter the whole
+  grace set — impossible on the native map.
 - **Virtual map terrain relief (heightfield hillshade).** The mod-owned Virtual World Map can now draw a
   mod-agnostic terrain backdrop sampled LIVE from the 3D world: a `Sample terrain` button casts a grid of
   down-rays around the player (Havok ground query on the present thread) and the map hillshades each hit

@@ -102,9 +102,16 @@ NOT before the switch — the knobs still drive the native map until then.
 
 ---
 
-## Track B — Grace warp menu (NEW feature; user request 2026-07-04)
+## Track B — Grace warp menu — ✅ v1 DONE 2026-07-04 (`586a148`)
 
-A grace LIST menu (not just clicking dots on the canvas), so the player browses and travels:
+Collapsible grace-list **sidebar on the vmap** (the locked home): `Graces` toolbar toggle → a searchable,
+name-sorted list of all graces (438 on the dev save) with a per-row state dot (gold=discovered via
+`read_event_flag`, grey=not). Discovered → double-click TELEPORTS (`s_warp_pending`); any row →
+single-click LOCATES (pans canvas + switches group); undiscovered = locate-only. Reuses the canvas grace
+layer (`row_id`/`discover_flag`/`name_id`) — no new RE. Screenshot-verified. **Follow-ups (not v1):**
+group rows by region (reuse A7 anchors), All/Current/Other-worlds tabs, flash the located dot.
+
+Original spec (a grace LIST menu, not just clicking dots on the canvas), so the player browses and travels:
 - **Tabs:** `All` · `Current world` · `Other worlds` (per `goblin::vworld`; multi-world aware).
 - **Rows:** every grace, DISCOVERED and UNDISCOVERED, grouped by region, with the state icon + name.
 - **Action per row:**
