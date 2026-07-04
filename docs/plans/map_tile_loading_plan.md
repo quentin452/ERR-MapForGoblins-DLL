@@ -95,13 +95,24 @@ archive** → each entry is a TPF (maybe DCX'd) → `tpf_find_texture` → DDS �
      the 256 SRV cap, so "full map" REQUIRES either a grown/recycling SRV heap or visible-only streaming —
      it is NOT optional. Also: reading the whole 1.26 GB `.tpfbdt` per load is wasteful; slice 3 should read
      only the wanted entries' byte ranges (the BHF4 gives each `dataOffset`+`compressedSize`).
-2. **One tile → GPU → canvas (NEXT):** `maptile::extract_dds` already yields DDS bytes in-game; feed one to
-   `create_tex_from_dds_mem` (off the icon batch) and draw at its grid quad on the vmap canvas (Base ER
-   world 0). Verify a real ER map fragment renders. `maptile.extract_dds` + the probe are the plumbing.
-3. **All overworld tiles + positioning:** load group-0 tiles, place each by grid, mind the SRV cap (stream
-   only visible tiles, or grow/recycle the SRV heap). The mod map now shows the ER overworld.
-4. **Groups 1/2 (UG/DLC) + per-group converter coords.** Then fast-travel (separate feature) makes it a
-   real map.
+2. **✅ DONE 2026-07-04 — one tile → GPU → canvas (LIVE-VERIFIED).** `maptile::extract_named` +
+   `panel_virtual_map` service a pending tile load on the render thread (`create_tex_from_dds_mem`, the
+   on-click pattern from panel_dev_icons — safe mid-frame because it's one-shot, not per-frame), cache
+   {SRV, world quad}, and `dl->AddImage` under the grid+markers. RPC `vmap tile <needle> [wx0 wz0 wx1 wz1]`
+   (auto col/row placement if no rect) + `vmap tiles_clear`, bridged via overlay_api. Verified under Proton:
+   a 2×2 M00_L0 overworld block decodes off the packed dvdbnd (DCX→TPF→DDS 256×256) and renders as seamless
+   ER terrain art on the canvas, markers overlaying.
+3. **All overworld tiles + true positioning (NEXT — was sub-slice 3):** three parts —
+   (a) **true tile→world projection** so tiles align to the marker world coords (today's placement is an
+       approximate `col*256`; need col/row → map-space → world INVERSE of `FUN_140876140`, plus decode the
+       `{suffix8}` sub-cell offset + the per-LOD scale — §1/§2 of
+       `windows_world_to_mapspace_projection_re_findings.md`);
+   (b) **stream visible-only + byte-range reads** — `extract_named` reads the whole 1.26 GB `.tpfbdt` per
+       tile; use each entry's `dataOffset`+`compressedSize` to read only what's on-screen;
+   (c) **SRV recycling** — `create_tex_from_dds_mem` has a hard 256 cap with no free list, so a full level
+       (even coarsest M00_L3=561) exhausts it; add a ring/free-list keyed by tile id.
+4. **Other dimensions (M01 underground / M10 DLC / M11 DLC-ug) + per-dimension converter coords.** Then
+   fast-travel (separate feature) makes it a real map.
 
 ## Constraints to respect
 - **SRV 256-cap + no recycle** — the biggest structural blocker for "all tiles". Plan a bounded/streamed
