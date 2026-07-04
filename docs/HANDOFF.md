@@ -18,10 +18,21 @@ DONE + live-verified (see the "In-Game World Editor" item's virtual-page block b
 A canvas (pan/zoom/grid), B markers (6837 ER markers → Lands Between silhouette), C1 world registry
 (`goblin_virtual_world`), C3 bundle persistence (`virtual_worlds.toml`, 2-cold-boot verified), D decouple
 from F1 + open via the game MAP KEY. RPCs: `vmap`/`vworld`/`f1_tab`. **NEXT on this track (pick one):**
-- **ENDGAME phase-1a = load ER's real map ART** onto the canvas → `docs/plans/map_tile_loading_plan.md`
-  (format CRACKED: `71_MapTile.tpfbhd` = BHF4→BDF4→DCX→TPF→DDS; the DCX→DDS→GPU chain all exists; **in-game
-  read CONFIRMED** via `assets_probe` = packed 4.3MB; only a small BHF4 entry-table parser + DX12 SRV-cap
-  streaming remain). This is a SLICE.
+- **ENDGAME phase-1a = load ER's real map ART** onto the canvas → `docs/plans/map_tile_loading_plan.md`.
+  **✅ sub-slices 1a+1b DONE 2026-07-04** (format cracked + validated offline AND in-game): BHF4 parser
+  lives in `src/worldmap/maptile.{hpp,cpp}` (`parse_bhf4`/`load_archive`/`extract_dds`) + `maptile_probe`
+  RPC; offline tool `tools/tpfbhd_recon.cpp`. In-game recon of the packed `71_MapTile`: **28469 tiles,
+  256×256**, extract chain works; 4 dimensions (M00 overworld / M01 underground / M10 DLC / M11 DLC-ug),
+  LOD pyramid L0(fine)→L3/L4(coarse) — full per-level counts in the plan.
+  **✅ sub-slice 2 DONE + LIVE-VERIFIED 2026-07-04:** the vmap canvas now draws REAL ER map ART. RPC
+  `vmap tile <needle> [rect]` / `tiles_clear`; `maptile::extract_named` + `panel_virtual_map` service the
+  load on the render thread (`create_tex_from_dds_mem`, like panel_dev_icons' on-click load), cache
+  {SRV, world quad}, and `dl->AddImage` under grid+markers. A 2×2 M00_L0 block rendered as seamless ER
+  terrain (screenshot-confirmed under Proton). **NEXT = sub-slice 3:** (a) true tile→world projection so
+  tiles align to markers (col/row → map-space → world; decode the `{suffix}` sub-cell + LOD scale — use
+  `docs/re/windows_world_to_mapspace_projection_re_findings.md`); (b) stream visible-only + read byte
+  ranges (`extract_named` reads the whole 1.26 GB .tpfbdt per tile today); (c) **SRV recycling** — the
+  256-cap has no free list, so repeated loads eventually `SRV FAIL`; even coarsest M00_L3=561 > 256.
 - Missed design items (captured in `docs/plans/virtual_world_multi_world_design.md`): **GAMEPAD** for the
   vmap canvas (stick→pan/zoom + reticle — add to every vmap slice); the real feature gaps = **clock /
   blue click-marker / custom beacon** (rest of ER's map is cosmetic; grace = fast-travel = make-or-break).
