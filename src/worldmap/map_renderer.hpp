@@ -54,6 +54,16 @@ void set_grace_dungeon_sprite(void *tex, float u0, float v0, float u1, float v1)
 // still feeding the click to ImGui so the chip toggles even with the F1 panel closed.
 bool inworld_hovered();
 
+// ── Region on/off toggles — shared surface (native chips + virtual-map labels) ──
+// The major-region show/hide flags (indexed by MAJOR_REGION_ANCHORS[i], seeded from
+// config::regionToggles and persisted on Save) are owned by map_renderer. Expose a tiny
+// read/set so the mod-owned Virtual World Map's region labels drive the SAME flags — a
+// region toggled off on either surface stays in sync + persists. Both accessors seed the
+// state first (the vmap may touch these before the native map has ever opened). An
+// out-of-range index reads as "on" and writes are ignored.
+bool region_enabled(int anchorIndex);
+void region_set_enabled(int anchorIndex, bool on);
+
 // ── Item search (F1 search bar) ──────────────────────────────────────────────
 // Hand render_markers the set of marker name_ids whose resolved name matches the search query
 // (null/empty = search inactive). Matching markers are ringed and pulled out of cluster piles.

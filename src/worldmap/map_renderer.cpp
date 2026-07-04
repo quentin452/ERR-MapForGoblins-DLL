@@ -1854,6 +1854,26 @@ void draw_marker_glyph(ImDrawList *dl, const Marker &m, float px, float py, void
 
 bool inworld_hovered() { return s_inworld_hot; }
 
+// Region on/off toggle — shared read/set so the Virtual World Map's region labels drive the SAME
+// g_region_on flags the native chips do (sync + config::regionToggles persistence). Both seed the
+// state (the vmap can toggle before the native map ever opened). Out-of-range → "on" / no-op.
+bool region_enabled(int anchorIndex)
+{
+    ensure_region_init();
+    if (anchorIndex < 0 || anchorIndex >= kMaxRegions)
+        return true;
+    return g_region_on[anchorIndex];
+}
+
+void region_set_enabled(int anchorIndex, bool on)
+{
+    ensure_region_init();
+    if (anchorIndex < 0 || anchorIndex >= kMaxRegions)
+        return;
+    g_region_on[anchorIndex] = on;
+    persist_regions(); // mirror into config::regionToggles for the next Save (matches the native chip)
+}
+
 // ── Item search highlight (F1 search bar) ───────────────────────────────────────────────────────
 // The overlay resolves which marker name_ids match the search query (rebuilt only when the query
 // changes) and hands a pointer to that set here each frame; render_markers rings those markers and
