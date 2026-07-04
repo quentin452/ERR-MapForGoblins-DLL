@@ -25,6 +25,7 @@
 #include "goblin_geom_spawn.hpp"    // spawn_asset cmd — ADD via pivot-2 asset-request path (MSB-write RE)
 #include "goblin_heightfield.hpp"   // hf_probe cmd — terrain raycast heightfield (Track D2)
 #include "goblin_custom_markers.hpp" // death_mark cmd — the DropSoul death marker
+#include "goblin_add_collision.hpp"  // add_collision cmd — Route D walkable box (recon phase)
 #include "goblin_field_probe.hpp"  // arm_raw — serialize find-what-accesses (Phase 2)
 #include "goblin_build_id.hpp"     // er_exe_version — er_version verb (build fingerprint)
 
@@ -1036,6 +1037,24 @@ namespace goblin::debug_rpc
             {
                 goblin::heightfield::request_shape_probe();
                 return "ok hf_shape_probe queued — stay in gameplay (map CLOSED); grep [HFSHAPE]";
+            }
+            // add_collision recon — Route D phase 1: resolve hknpWorld/bodyMgr + dump hknpBodyCinfo defaults
+            // + a real body header ([ADDCOL] log) to pin the cinfo layout. Read-only (safe on present/RPC).
+            if (cmd == "add_collision")
+            {
+                std::string sub = next_token(rest);
+                if (sub == "recon")
+                {
+                    auto r = goblin::add_collision::recon();
+                    char b[192];
+                    std::snprintf(b, sizeof(b), r.ok ? "ok add_collision recon: world=%#llx bodyMgr=%#llx count=%u — see [ADDCOL] log"
+                                                     : "err add_collision recon: %s",
+                                  r.ok ? (unsigned long long)r.world : 0ull,
+                                  r.ok ? (unsigned long long)r.bodyMgr : 0ull, r.ok ? r.count : 0u);
+                    if (!r.ok) std::snprintf(b, sizeof(b), "err add_collision recon: %s", r.err);
+                    return std::string(b);
+                }
+                return "err usage: add_collision recon";
             }
             // hf_sample [extent] [res] — queue a heightfield GRID sample around the player (D2.2).
             // extent = world-units square side (default 4096), res = cells/side (default 48). Runs on the
