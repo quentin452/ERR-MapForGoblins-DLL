@@ -28,6 +28,7 @@
 #include "goblin_markers.hpp"   // goblin::markers::set_event_flag()
 #include "goblin_worldmap_probe.hpp"   // get_live_view() for the marker prototype
 #include "goblin_heightfield.hpp"      // tick_present() — heightfield present-thread probe (D2.2)
+#include "goblin_custom_markers.hpp"   // death_marker::tick() — mirror the native GameDataMan bloodstain
 #include "goblin_map_data.hpp"         // generated::MAP_ENTRIES (graces for Phase 1)
 #include "worldmap/grace_layer.hpp"      // goblin::worldmap::GraceLayer
 #include "worldmap/quest_npc_layer.hpp"  // goblin::worldmap::QuestNpcLayer
@@ -1994,6 +1995,10 @@ namespace
         // Heightfield present-thread probe (D2.2 experiment): no-op unless queued; casts only during
         // gameplay (map closed). Tests whether a read-only ray-cast is safe off the present thread.
         goblin::heightfield::tick_present();
+
+        // Death marker: watch player HP for the alive->dead edge → drop the DropSoul bloodstain at the
+        // death spot. Cheap HP read; no-op until the chain resolves (load/menu). See goblin_custom_markers.
+        goblin::death_marker::tick();
 
         // Sidecar flag replay (slice 1b): SetEventFlag must run on the present thread, so
         // the poll-thread world-enter edge only QUEUES the replay; this drains it. No-op

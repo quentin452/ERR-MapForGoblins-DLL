@@ -25,6 +25,9 @@ Everything below is specific to this fork (`master`, ~990 commits ahead of `upst
 not present in the upstream ELDEN RING Reforged / MapForGoblins project.
 
 ### Added
+- **Death marker (bloodstain).** The map + minimap now show where you died — mirrors the game's own
+  persistent bloodstain (native `MENU_MAP_DropSoul` icon), so it survives a restart and clears itself when
+  you collect the runes, exactly like the base game. Overworld deaths for now (underground/legacy TBD).
 - **Custom map markers (Virtual World Map).** Right-click the map to drop your own marker (a blue pin
   drawn on top of everything), and manage them from the `Custom` sidebar: each row shows which map it's on
   + its coordinates, with Go (pan the map there), TP (teleport in-game), Delete, and an editable name.

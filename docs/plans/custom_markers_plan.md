@@ -22,8 +22,19 @@ grace-warp streaming path (or a coordinate warp that triggers the load), not jus
 the warp findings + `warp` (LuaWarp) already work for graces; a coord-warp with streaming is the gap.
 
 ### Native icons (replace our hand-made ones) — 2 items to NOTE
-1. **Death rune icon (bloodstain)** — show a marker where the player died / dropped runes.
-   **RECON 2026-07-04 — feasible, 2 small gaps:**
+1. **Death rune icon (bloodstain)** — ✅ DONE 2026-07-04 (native, persistent).
+   Mirrors the game's OWN bloodstain: `read_bloodstain` (`goblin_inventory.cpp`) reads `[GameDataMan+0x48]`
+   — area-local X/Y/Z @ +0/+4/+8, mapId @ +0x38, runes @ +0x34 (Hexinton CT). `death_marker::tick()` (per
+   present frame, `goblin_overlay.cpp`) reads it: `souls>0` → project mapId→(area,gridX,gridZ), `wx=gridX*
+   256+x` (overworld frame, same as graces) → `death_marker::set`; `souls<=0` (collected) → `clear`. So it's
+   SAVE-BACKED (persists across restart), auto-clears on pickup, one marker replaced on death — EXACTLY ER,
+   no hook (simpler than DisableRuneLoss which patches the drop). Drawn = native `MENU_MAP_DropSoul` on vmap
+   + minimap. Verified in-game (souls=1154 → icon auto-placed at the projected Limgrave spot).
+   **TODO:** underground/legacy dungeon deaths (area != 60/61) need the WorldMapLegacyConvParam fold (tick
+   currently skips them). Also `get_player_hp` (ChrDataModule `[[LP+0x190]+0]+0x138` cur / +0x13C max,
+   validated cur/max=1214) is committed + exposed (RPC `hp_probe`) — unused by the marker now, kept for Track B.
+
+   ~~RECON 2026-07-04 — feasible, 2 small gaps:~~ (superseded by the native read above)
    - **Location is EASY (no frame bridge):** at the death moment, record `get_player_map_pos` — that is
      already the WORLD/marker frame our markers use (the same reader that draws the player dot). We do NOT
      need the game's native bloodstain coords (the Hexinton CT has "Bloodstain coords" but those are

@@ -45,6 +45,8 @@ namespace goblin::inventory
     // — the inventory the SAVE serialize reads (sidecar Phase-2 strip-bracket RE target). nullptr
     // before the world loads / on fault. SEH-guarded chain walk.
     void *equip_game_data();
+    // Native persistent bloodstain ([GameDataMan+0x48]): area-local X/Y/Z, mapId, runes. souls>0 = exists.
+    bool read_bloodstain(float &x, float &y, float &z, uint32_t &mapid, int32_t &souls);
 
     // How many of the category-encoded `item_id` the player currently HOLDS (carried inventory).
     // Read-only RPM walk of EquipInventoryData (EquipGameData+0x158) — the two-segment slot list,

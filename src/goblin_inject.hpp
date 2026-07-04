@@ -84,6 +84,9 @@ namespace goblin
     // get_player_map_pos). Confirmed == WorldMapPointParam posX/posZ frame. Cached WCM chain.
     // Returns false if not yet resolvable (early load) or the chain faulted.
     bool get_player_world_pos(float &x, float &y, float &z);
+    // Player HP (cur, max) via the ChrDataModule chain. False = not resolvable / no plausible pair.
+    bool get_player_hp(int &cur, int &max);
+    bool debug_player_hp_candidates(int &a_cur, int &a_max, int &b_cur, int &b_max);
 
     // Teleport by WRITING the tile-local Havok pos (LocalPlayer+0x6C0/+0x6C4/+0x6C8) — the SAME
     // frame get_player_world_pos reads and er_console_mod's `tp` writes. set_y=false keeps the

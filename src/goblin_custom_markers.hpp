@@ -39,4 +39,7 @@ namespace goblin::death_marker
 void set(float wx, float wz, int group);
 bool get(float &wx, float &wz, int &group);   // false = none active
 void clear();
+// Per-frame: reads player HP, and on the alive->dead edge records get_player_map_pos as the death spot.
+// Call every present frame (runs during gameplay, map closed). Cheap; no-op until the HP chain resolves.
+void tick();
 } // namespace goblin::death_marker

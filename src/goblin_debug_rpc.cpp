@@ -1076,6 +1076,25 @@ namespace goblin::debug_rpc
                 return std::string(b);
             }
             if (cmd == "death_clear") { goblin::death_marker::clear(); return "ok death_clear"; }
+            if (cmd == "bloodstain_probe")
+            {
+                float x = 0, y = 0, z = 0; uint32_t map = 0; int32_t souls = 0;
+                bool ok = goblin::inventory::read_bloodstain(x, y, z, map, souls);
+                char b[160];
+                std::snprintf(b, sizeof(b), "ok bloodstain xyz=(%.1f,%.1f,%.1f) map=0x%08X souls=%d read=%d",
+                              x, y, z, map, souls, (int)ok);
+                return std::string(b);
+            }
+            if (cmd == "hp_probe")
+            {
+                int ac = 0, am = 0, bc = 0, bm = 0, cur = 0, mx = 0;
+                bool ok = goblin::debug_player_hp_candidates(ac, am, bc, bm);
+                bool got = goblin::get_player_hp(cur, mx);
+                char b[192];
+                std::snprintf(b, sizeof(b), "ok hp_probe A=(%d/%d) B=(%d/%d) picked=%s(%d/%d) resolved=%d",
+                              ac, am, bc, bm, got ? "yes" : "no", cur, mx, (int)ok);
+                return std::string(b);
+            }
             // mfg_build — FRESHNESS GUARD. Returns the compile time of THIS RPC translation unit
             // (goblin_debug_rpc.cpp). Adding/changing ANY verb edits this file → its __TIME__ advances,
             // so a stale DLL is detectable: `ping` answers even from an OLD DLL (the listener lives), but

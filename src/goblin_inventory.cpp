@@ -131,6 +131,37 @@ void *equip_game_data()
     return egd;
 }
 
+// Native persistent bloodstain (dropped runes on death) — Hexinton CT: block = [GameDataMan+0x48],
+// X/Y/Z @ +0/+4/+8 (area-local physics frame), mapId @ +0x38, runes @ +0x34. Save-backed → persists +
+// auto-clears on pickup (no hook needed, unlike DisableRuneLoss which patches the drop). souls>0 = exists.
+bool read_bloodstain(float &x, float &y, float &z, uint32_t &mapid, int32_t &souls)
+{
+    static void **gdm_slot = nullptr;
+    static bool tried = false;
+    if (!tried)
+    {
+        tried = true;
+        if (auto *m = reinterpret_cast<uint8_t *>(modutils::scan<void>({.aob = goblin::sig::GAME_DATA_MAN})))
+        {
+            int32_t disp = *reinterpret_cast<int32_t *>(m + 3);
+            gdm_slot = reinterpret_cast<void **>(m + 7 + disp);
+        }
+    }
+    if (!gdm_slot) return false;
+    auto rd = [](void *p, void *out, SIZE_T n) -> bool {
+        SIZE_T got = 0;
+        return p && ReadProcessMemory(GetCurrentProcess(), p, out, n, &got) && got == n;
+    };
+    void *gdm = nullptr;
+    if (!rd(gdm_slot, &gdm, sizeof(gdm)) || reinterpret_cast<uintptr_t>(gdm) < 0x10000) return false;
+    uint8_t *blk = nullptr;
+    if (!rd(reinterpret_cast<uint8_t *>(gdm) + 0x48, &blk, sizeof(blk)) ||
+        reinterpret_cast<uintptr_t>(blk) < 0x10000)
+        return false;
+    return rd(blk + 0x0, &x, 4) && rd(blk + 0x4, &y, 4) && rd(blk + 0x8, &z, 4) &&
+           rd(blk + 0x38, &mapid, 4) && rd(blk + 0x34, &souls, 4);
+}
+
 namespace
 {
 // One guarded RPM read of a POD from the game address space. false on a bad/unmapped ptr (the

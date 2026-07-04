@@ -584,6 +584,61 @@ bool goblin::get_player_world_pos(float &x, float &y, float &z)
     return true;
 }
 
+// Player HP. CT chain (Hexinton v6) reaches HP via ChrDataModule: cur@+0x138, max@+0x13C. The exact
+// hop from OUR LocalPlayer ([WCM+0x1E508]) is validated at runtime — probe two candidate tails
+// (module = [LP+0x190], or one extra deref [[LP+0x190]+0]) and let the caller pick the plausible pair.
+struct HpProbe { int a_cur, a_max, b_cur, b_max; bool ok; };
+__declspec(noinline) static void probe_hp_body(void **wcm_static, HpProbe *pr)
+{
+    auto *wcm = *reinterpret_cast<uint8_t **>(wcm_static);
+    if (!wcm) return;
+    auto *lp = *reinterpret_cast<uint8_t **>(wcm + 0x1E508);
+    if (!lp) return;
+    auto *m = *reinterpret_cast<uint8_t **>(lp + 0x190);   // candidate A: module directly at LP+0x190
+    if (m)
+    {
+        pr->a_cur = *reinterpret_cast<int *>(m + 0x138);
+        pr->a_max = *reinterpret_cast<int *>(m + 0x13C);
+        auto *m0 = *reinterpret_cast<uint8_t **>(m + 0);   // candidate B: extra +0 deref (CT's stray 0)
+        if (m0)
+        {
+            pr->b_cur = *reinterpret_cast<int *>(m0 + 0x138);
+            pr->b_max = *reinterpret_cast<int *>(m0 + 0x13C);
+        }
+    }
+    pr->ok = true;
+}
+static void probe_hp_seh(void **wcm_static, HpProbe *pr)
+{
+    *pr = HpProbe{};
+    __try { probe_hp_body(wcm_static, pr); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { pr->ok = false; }
+}
+static bool hp_plausible(int cur, int max) { return max > 0 && max <= 99999 && cur >= 0 && cur <= max; }
+
+bool goblin::get_player_hp(int &cur, int &max)
+{
+    if (!g_wcm_tried) resolve_world_chr_man();
+    if (!g_wcm_static) return false;
+    HpProbe pr{};
+    probe_hp_seh(g_wcm_static, &pr);
+    if (!pr.ok) return false;
+    if (hp_plausible(pr.a_cur, pr.a_max)) { cur = pr.a_cur; max = pr.a_max; return true; }
+    if (hp_plausible(pr.b_cur, pr.b_max)) { cur = pr.b_cur; max = pr.b_max; return true; }
+    return false;
+}
+
+// Debug: expose both raw candidates for the offset-pinning probe (hp_probe RPC).
+bool goblin::debug_player_hp_candidates(int &a_cur, int &a_max, int &b_cur, int &b_max)
+{
+    if (!g_wcm_tried) resolve_world_chr_man();
+    if (!g_wcm_static) return false;
+    HpProbe pr{};
+    probe_hp_seh(g_wcm_static, &pr);
+    a_cur = pr.a_cur; a_max = pr.a_max; b_cur = pr.b_cur; b_max = pr.b_max;
+    return pr.ok;
+}
+
 // Raw player-chain pointers for the inventory-accessor RE + the Gap C / sidecar grant
 // chain. probe_player_seh writes wcm then lp BEFORE the (possibly faulting) float reads,
 // so both are valid even when pr.ok is false (position field moved / not yet live) — we
