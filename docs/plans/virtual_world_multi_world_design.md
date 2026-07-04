@@ -153,3 +153,47 @@ regressions — so the user compiles + tests without memorizing the ninja/cmake/
 - mapId→world lookup + a reserved-mapId/area allocator (only for walkable worlds — not on the marker path).
 - The exact M-open hook point to swap in the virtual page (worldmap-open is RE'd; the suppress/overlay of
   the native Scaleform map for a full-screen mod surface needs a probe).
+
+## ★ PIVOT (2026-07-05, user directive): a vworld IS a 3D world — restructure around real dimensions
+
+Reframe that supersedes "world 0 = base ER + groups 0/1/2" above. **A vworld = a real 3D streamable world,
+not a 2D map page.** Consequences:
+
+1. **"Base ER" is NOT one world (id 0) — it is MANY 3D worlds.** The overworld (m60), the underground
+   (m12), the DLC / Land of Shadow (m61), and each legacy dungeon (m10/m11/m15/m30s/…) are physically
+   SEPARATE 3D spaces (they overlap in XZ; they are not sub-pages). The current model conflates them into
+   "world 0 with a group toggle" — conceptually wrong.
+2. **The player occupies exactly ONE vworld at any instant.** Its identity = the live **mapId**
+   (`PLAYER_MAPID_SLOT`, already RE'd: `mapId = *(singleton+0x2c)`, `AA=area, BB=gridX, CC=gridZ`, decoded
+   in `get_player_map_pos`). So **`PlayerDim` already exists** — no new RE. `set_active(PlayerDim)` = "show
+   the 3D world the player is standing in", which is why hardcoding `set_active(0)` is wrong.
+3. **3D-world identity vs MAP-space are different axes.** Many 3D worlds share ONE map projection: the
+   overworld + all its legacy dungeons project onto the overworld page (via WorldMapLegacyConvParam); m12
+   projects to the underground page; m61 to the DLC page. So a vworld has *a map-space it renders to*, and
+   several vworlds can share one. The 3 current "groups" are really the 3 base **map-spaces**, not the
+   worlds. A vworld → (mapId range, map-space, projection).
+
+### Restructured model
+- **vworld registry keyed by dimension**, not a flat id list. Each entry: `{ mapId-range/predicate,
+  map-space (which of the 3 base pages, or a custom surface), projection (origin/scale), marker source }`.
+  Base ER contributes several built-in dimension-vworlds (overworld, underground, DLC); custom bundles add
+  more (Track-B walkable 3D worlds get a reserved mapId + their own map-space).
+- **`PlayerDim` resolver** (cheap, no RE): live mapId → matching vworld. Overworld+dungeons → the overworld
+  vworld; m12 → underground; m61 → DLC; a reserved custom mapId → that custom world (Decision 2, engine-
+  backed). The map **auto-selects the player's vworld** on open / follows it live.
+- **`set_active`** becomes: explicit user pick OR `PlayerDim`. The "Player" button + map-open use `PlayerDim`
+  so they recentre on the player IN whatever world they're in — the natural fix for the recenter bug that
+  started this (base ER isn't special; it's just "the world the player happens to be in").
+
+### Migration (don't break the working base-ER map)
+1. **PlayerDim resolver first** (small): `int player_vworld()` = mapId→dimension using the mapId+group we
+   already read. Make the "Player" button + focus use it instead of hardcoded 0.
+2. **Promote the 3 base map-spaces to built-in dimension-vworlds** in the registry (overworld/UG/DLC), so
+   the world dropdown lists real dimensions + custom worlds uniformly; the group toggle becomes a
+   consequence of the active dimension-vworld, not a separate control.
+3. **Custom 3D worlds** slot into the same registry (marker-only now; walkable = the ADD-geom frontier,
+   Decision 1/2 — reserved mapId allocator, blocked on geom-spawn RE).
+
+Frontier unchanged: marker-only + map-read = doable now; a truly WALKABLE custom 3D world still needs the
+MSB/geom-ADD wall (pivot 2). This pivot is about the MODEL (dimensions are worlds) + the cheap PlayerDim
+win, not about new walkable worlds.
