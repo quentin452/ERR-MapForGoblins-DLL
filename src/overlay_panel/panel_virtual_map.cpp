@@ -550,8 +550,8 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
     };
     const float icoHalf = 8.0f;  // on-canvas icon size (px)
     // Hover tooltip: track the marker nearest the cursor (within a pixel radius) while drawing.
-    float hoverBestD = 1e18f; int hoverName = -1, hoverCat = -1; std::string hoverV; uint64_t hoverRow = 0;
-    auto plot = [&](float wx, float wz, uint32_t col, int cat, int nameId, const char *vname, uint64_t rowId) {
+    float hoverBestD = 1e18f; int hoverName = -1, hoverCat = -1, hoverDisc = 0; std::string hoverV; uint64_t hoverRow = 0;
+    auto plot = [&](float wx, float wz, uint32_t col, int cat, int nameId, const char *vname, uint64_t rowId, int discFlag) {
         if (wx < minx) minx = wx;
         if (wx > maxx) maxx = wx;
         if (wz < minz) minz = wz;
@@ -569,7 +569,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         {
             float dx = ps.x - io.MousePos.x, dy = ps.y - io.MousePos.y, d = dx * dx + dy * dy;
             if (d < hoverBestD && d < icoHalf * icoHalf * 2.0f)
-            { hoverBestD = d; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; }
+            { hoverBestD = d; hoverName = nameId; hoverCat = cat; hoverV = vname ? vname : ""; hoverRow = rowId; hoverDisc = discFlag; }
         }
     };
     if (active_world == 0)
@@ -578,7 +578,7 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         {
             if (!L) continue;
             for (const goblin::worldmap::Marker &m : L->markers())
-                if (m.group == s_group) plot(m.worldX, m.worldZ, m.color, m.category, m.name_id, nullptr, m.row_id);
+                if (m.group == s_group) plot(m.worldX, m.worldZ, m.color, m.category, m.name_id, nullptr, m.row_id, m.discover_flag);
         }
     }
     else
@@ -586,12 +586,15 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
         goblin::vworld::World w;
         if (goblin::vworld::get_world(active_world, w))
             for (const goblin::vworld::Marker &m : w.markers)
-                plot(m.x + w.originX, m.z + w.originZ, m.color, m.category, -1, m.name.c_str(), 0);  // C1 identity
+                plot(m.x + w.originX, m.z + w.originZ, m.color, m.category, -1, m.name.c_str(), 0, 0);  // C1 identity
     }
     // Tooltip for the hovered marker (name via FMG + category label). A grace (has a warp rowId) also
     // offers double-click → fast-travel (the make-or-break map feature).
     constexpr int kGraceCat = static_cast<int>(goblin::generated::Category::WorldGraces);
     const bool hoverGrace = (hoverCat == kGraceCat && hoverRow != 0);
+    // ONLY discovered graces are warpable — the layer holds discovered AND undiscovered graces, and warping
+    // to an undiscovered one hangs on an infinite loading screen. Discovered = its discovery event flag set.
+    const bool graceDiscovered = hoverGrace && hoverDisc > 0 && goblin::overlay_api::read_event_flag((uint32_t)hoverDisc);
     if (hoverBestD < 1e17f)
     {
         std::string nm = !hoverV.empty() ? hoverV
@@ -603,12 +606,14 @@ void draw_virtual_map(const OverlayFrameCtx &ctx)
             if (!nm.empty()) ImGui::TextUnformatted(nm.c_str());
             else ImGui::TextDisabled("(unnamed)");
             if (clab) ImGui::TextDisabled("%s", clab);
-            if (hoverGrace) ImGui::TextColored(ImVec4(0.90f, 0.78f, 0.35f, 1.f), "double-click to warp");
+            if (hoverGrace)
+                graceDiscovered ? ImGui::TextColored(ImVec4(0.90f, 0.78f, 0.35f, 1.f), "double-click to warp")
+                                : ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.f), "not discovered — cannot warp");
             ImGui::EndTooltip();
         }
-        // Double-click a grace → fast-travel. Deferred to the next frame's top (warp tears down menu/UI
-        // state; firing it mid-ImGui-draw is unsafe). Double-click avoids the drag-pan click conflict.
-        if (hoverGrace && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+        // Double-click a DISCOVERED grace → fast-travel. Deferred to next frame's top (warp tears down UI
+        // state; firing mid-ImGui-draw is unsafe). Double-click avoids the drag-pan click conflict.
+        if (graceDiscovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
             s_warp_pending = hoverRow;
     }
     s_drawn = drawn;
