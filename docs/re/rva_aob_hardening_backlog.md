@@ -14,6 +14,10 @@ mod-agnostic. Doctrine (`re_signatures.hpp`) is to pin AOBs, keep an RVA only as
 fallback. This lists every fixed-RVA / hardcoded module-relative resolution still lacking an AOB, so it
 can be hardened. STRUCT FIELD offsets (`+0x98`, `+0x6C0`, `+0x1E508`, …) are stable and excluded.
 
+**See also [fragile_primitives_audit.md](fragile_primitives_audit.md)** — ranks the primitives that are
+MORE dangerous than a fixed RVA (engine vtable slot indices, code-patching hooks, direct engine/save
+writes) plus the field-offset silent-failure surface and the QPC verdict (leave it).
+
 ## ✅ FUNC — hardened 2026-07-04 (AOB-first, RVA cross-check fallback)
 Prologue AOBs crafted from a LIVE dump via `tools/hf_hook_scout.py disasm --aob`, added to
 `re_signatures.hpp`, and resolved through the new `sig::resolve_func_aob(aob, base, rva, name)` helper
