@@ -2590,6 +2590,12 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
     constexpr float kMinimapIconHalfBase = 6.0f; // matches the old fixed size at scale=1
     float half = kMinimapIconHalfBase * uiScale * cfg::overlayMasterScale * cfg::overlayIconScale;
     half = half < 3.0f * uiScale ? 3.0f * uiScale : (half > 10.0f * uiScale ? 10.0f * uiScale : half);
+    // ONE inner radius for clamping icon/marker CENTERS. An icon centered exactly here has its OUTER
+    // edge at (edgeR + half) = R - 2 → just inside the border ring at R, so nothing pokes past it.
+    // Distinct from cullR / g_minimap_clip_r above, which is a pure disc-clip radius for badges and is
+    // deliberately left as-is. Use edgeR for every icon-center edge case: normal cull/placement, the
+    // search-hit edge-clamp, and the custom-marker clamp — so they all kiss the same inner edge.
+    const float edgeR = R - half - 2.f;
 
     // Item 13 tried screen-space clustering here; disabled by user feedback 2026-07-01 (see the
     // key-computation comment below) — piles popped in/out too jarringly on the small HUD. Kept
@@ -2615,7 +2621,7 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
             float dx = (m.worldX - pwx) * scale;
             float dy = -(m.worldZ - pwz) * scale;
             const float d2 = dx * dx + dy * dy;
-            if (d2 > cullR * cullR)
+            if (d2 > edgeR * edgeR)
             {
                 // <user> 2026-07-01 DX: an active item-search target outside the minimap's
                 // radius used to just vanish (only markers near the player ever showed) —
@@ -2625,8 +2631,10 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
                 // from cluttering with the whole map's contents.
                 if (!search_hit(m))
                     continue;
+                // Land the located marker's CENTER exactly on edgeR → outer edge at R-2, right on the
+                // inner border, consistent with the custom-marker clamp below.
                 const float d = std::sqrt(d2);
-                const float edgeScale = (cullR - half - 2.f) / d;
+                const float edgeScale = edgeR / d;
                 dx *= edgeScale;
                 dy *= edgeScale;
             }
@@ -2680,9 +2688,9 @@ void draw_minimap(const std::vector<MarkerLayer *> &layers, void *atlas_texture,
         if (c.group != pgroup) continue;
         float dx = (c.wx - pwx) * scale, dy = -(c.wz - pwz) * scale;
         const float d = std::sqrt(dx * dx + dy * dy);
-        if (d > cullR - half)   // clamp to the HUD edge (keep the bearing) instead of vanishing
+        if (d > edgeR)   // clamp CENTER to the same inner edge as the icons (keep the bearing)
         {
-            const float k = (cullR - half) / (d > 1e-3f ? d : 1e-3f);
+            const float k = edgeR / (d > 1e-3f ? d : 1e-3f);
             dx *= k; dy *= k;
         }
         const ImVec2 p(ctr.x + dx, ctr.y + dy);
