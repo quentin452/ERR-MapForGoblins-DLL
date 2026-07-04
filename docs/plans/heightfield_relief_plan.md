@@ -113,15 +113,16 @@ ctx, **NO game-thread hook needed**. The entire "find a safe game-thread gamepla
    Screenshot-verified: 791 shaded quads around the player, markers layered on top. **Gotcha:** relief
    gates to `active_world==0`, so a persisted active custom world hides it — select Base ER. Sea/biome
    tint deferred (currently shaded grey only).
-3. **D2.4 coverage extension + persistence** (accumulate as the player warps; log nodata).
-   **KEY CONSTRAINT found 2026-07-04:** the world→cast-local transform is a single translation captured at
-   the player, so it is only valid NEAR the player's physics chunk — ER recenters the Havok frame across
-   map tiles (float precision). Measured deterministic hit rate is distance-gated: **75% @ ±512u, 36% @
-   ±1024u** (same spot, repeatable — NOT a torn-ctx/timing issue). So the correct coverage model is
-   ACCUMULATE small accurate samples as the player moves/warps (each position samples its own chunk in the
-   right frame) into a persistent world-XZ field, NOT one big grid. The Sample button now uses 1024u
-   (~76% coherent) as the accurate single-shot; D2.4 = the moving accumulation + per-chunk-origin handling
-   (or a re-capture of the offset per sample position). Sea/biome tint still deferred (grey only).
+3. **D2.4 coverage extension + persistence** (accumulate as the player warps; log nodata). NB the raycast is
+   fundamentally **loaded-region-only** (collision) — it can NEVER cover the distant terrain you SEE (that's
+   visual LOD with no collision, "fake 3D"). Warp-accumulate (now automatable via the `warp_xyz` RPC) extends
+   coverage the slow way; the COMPLETE far-map source is the far-LOD heightmap → `docs/re/far_terrain_heightmap_re_prompt.md`.
+   Within the player's block, misses are the ±2000 vertical window (widen it) + sea (filter 0x5e skips water →
+   classify miss-under-sealevel as sea, don't "fix"), NOT frame drift.
+   Supporting measurement: hit rate is distance-gated — ~**75% @ ±512u vs ~36% @ ±1024u** (same spot,
+   deterministic) — because the farther cells fall OUTSIDE the loaded collision region (the loaded-region
+   constraint above), so the `Sample terrain` button uses the accurate **1024u** zone (~76% coherent) as
+   the single-shot. Sea/biome tint still deferred (grey only).
 
 The primitive is proven; this is now normal feature work, not RE. Good candidate for a focused session.
 
