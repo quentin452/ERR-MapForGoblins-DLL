@@ -1030,6 +1030,13 @@ namespace goblin::debug_rpc
                 goblin::heightfield::request_present_probe();
                 return "ok hf_probe_present queued — stay in gameplay (map CLOSED); grep [HEIGHTFIELD]";
             }
+            // hf_shape_probe — cast at the player + scan the ctx for an hknp shape vtable → is the ground a
+            // heightfield GRID (readable) or a compressed mesh (raycast-only)? Gameplay, map CLOSED. [HFSHAPE].
+            if (cmd == "hf_shape_probe")
+            {
+                goblin::heightfield::request_shape_probe();
+                return "ok hf_shape_probe queued — stay in gameplay (map CLOSED); grep [HFSHAPE]";
+            }
             // hf_sample [extent] [res] — queue a heightfield GRID sample around the player (D2.2).
             // extent = world-units square side (default 4096), res = cells/side (default 48). Runs on the
             // game thread → OPEN THE MAP after issuing. Result → [HEIGHTFIELD] sample DONE (hit%, Y range).

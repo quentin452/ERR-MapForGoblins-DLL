@@ -66,5 +66,8 @@ void tick_game_thread();
 // safe. request_present_probe() queues a one-shot; tick_present() (called from hk_present) fires it only
 // when the world is playable and the map is closed. RPC `hf_probe_present`.
 void request_present_probe();
+// Ground-shape probe (a): cast at the player + scan the query ctx for an hknp shape vtable → logs whether
+// the ground is a heightfield GRID (readable direct) or a compressed mesh (raycast-only). See [HFSHAPE] log.
+void request_shape_probe();
 void tick_present();
 } // namespace goblin::heightfield

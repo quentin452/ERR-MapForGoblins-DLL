@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <set>
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -33,6 +34,7 @@ bool g_logged_ctx = false;
 // ── one-shot validation probe ──
 std::atomic<bool> g_probe_pending{false};
 std::atomic<bool> g_present_probe_pending{false};
+std::atomic<bool> g_shape_probe_pending{false};
 
 // ── grid sampler ──
 std::atomic<bool> g_sample_pending{false};   // request → capture-frame-and-build on the next game tick
@@ -323,6 +325,7 @@ void tick_game_thread()
 }
 
 void request_present_probe() { g_present_probe_pending.store(true); }
+void request_shape_probe() { g_shape_probe_pending.store(true); }
 
 // Present thread, every frame (from hk_present via goblin_overlay). Drives the one-shot probe AND the
 // D2.2 grid sampler — both need world collision LOADED, i.e. in-world with the map CLOSED (map-open
@@ -338,6 +341,54 @@ void tick_present()
     {
         if (g_sample_pending.exchange(false)) start_sample();
         if (g_sampling) step_sample();
+    }
+
+    // Ground-SHAPE probe (a): cast at the player, then scan the query ctx for a pointer whose vtable is an
+    // hknp shape (RVA in the 0x2ee_ neighbourhood) → tells us if the ground is hknpHeightFieldShape
+    // (0x2ee2a18 = a readable grid) or hknpCompressedMeshShape (0x2eeb908/0x2eec698 = baked mesh, raycast-only).
+    if (!map_open && g_shape_probe_pending.exchange(false))
+    {
+        float px = 0.f, py = 0.f, pz = 0.f;
+        if (goblin::get_player_world_pos(px, py, pz))
+        {
+            RayHit h{};
+            cast_down(px, py + 2000.f, pz, 4000.f, FILTER_GROUND, h);   // populate the ctx's last hit
+            void *ctx = resolve_ctx();
+            uintptr_t er = reinterpret_cast<uintptr_t>(GetModuleHandleA("eldenring.exe"));
+            spdlog::info("[HFSHAPE] cast hit={} y={:.2f} ctx={} — scanning ctx for hknp shape vtables", h.hit, h.pt[1], ctx);
+            auto rdp = [](void *a) -> void * { void *v = nullptr; SIZE_T g = 0;
+                return (a && ReadProcessMemory(GetCurrentProcess(), a, &v, 8, &g) && g == 8) ? v : nullptr; };
+            auto vtrva = [&](void *p) -> uintptr_t { return reinterpret_cast<uintptr_t>(rdp(p)) - er; };
+            auto is_shape = [&](uintptr_t rva) { return rva >= 0x2ee0000 && rva < 0x2ef0000 && rva != 0x2eedc78; };
+            auto name = [&](uintptr_t rva) -> const char * {
+                return rva == 0x2ee2a18 ? "hknpHeightFieldShape (GRID -> READABLE!)"
+                     : (rva == 0x2eeb908 || rva == 0x2eec698) ? "hknpCompressedMeshShape (baked mesh, raycast-only)"
+                     : "hknp shape (other — resolve vtable in Ghidra)"; };
+            // 2-level scan from hknpWorld (= *(ctx+8)): world field p1 → (its vtable, OR p1's fields p2 →
+            // shape). Bodies/shape-manager sit a level below the world. Dedup + capped.
+            void *world = rdp(reinterpret_cast<uint8_t *>(ctx) + 8);
+            std::set<void *> seen;
+            int found = 0;
+            for (int o1 = 0; world && o1 < 0x1000 && found < 40; o1 += 8)
+            {
+                void *p1 = rdp(reinterpret_cast<uint8_t *>(world) + o1);
+                if (reinterpret_cast<uintptr_t>(p1) < 0x10000 || seen.count(p1)) continue;
+                seen.insert(p1);
+                if (is_shape(vtrva(p1)))
+                { spdlog::info("[HFSHAPE]   world+0x{:x} -> shape {} vt er+0x{:x}  {}", o1, p1, vtrva(p1), name(vtrva(p1))); ++found; continue; }
+                for (int o2 = 0; o2 < 0x300 && found < 40; o2 += 8)   // level 2
+                {
+                    void *p2 = rdp(reinterpret_cast<uint8_t *>(p1) + o2);
+                    if (reinterpret_cast<uintptr_t>(p2) < 0x10000 || seen.count(p2)) continue;
+                    seen.insert(p2);
+                    uintptr_t r = vtrva(p2);
+                    if (is_shape(r))
+                    { spdlog::info("[HFSHAPE]   world+0x{:x}->+0x{:x} -> shape {} vt er+0x{:x}  {}", o1, o2, p2, r, name(r)); ++found; }
+                }
+            }
+            spdlog::info("[HFSHAPE] world={} — {} hknp shape(s) found (2-level)", world, found);
+        }
+        return;
     }
 
     // One-shot validation probe (D2.1) — unchanged behaviour, gated on its own request.
