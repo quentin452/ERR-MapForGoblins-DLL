@@ -70,11 +70,34 @@ archive** → each entry is a TPF (maybe DCX'd) → `tpf_find_texture` → DDS �
   BHD5 — reuse its logic minus RSA) + the per-tile DDS naming inside. New code, light format RE.
 
 ## Recommended sub-slices (do Path B's offline recon FIRST to de-risk)
-1. **Offline archive recon:** standalone tool — `dvdbnd::read_packed_file("menu/71_MapTile.tpfbhd"/".tpfbdt")`
-   from the base-game dvdbnd, parse BHD5, dump entry count + names + first entry's magic (TPF? DCX? DDS?
-   dims). Answers "what's inside + the naming" with zero game run, zero DLL risk.
-2. **One tile → GPU → canvas:** whichever path recon-1 favours, load ONE tile, `create_tex_from_dds_mem`,
-   draw it at its grid quad on the vmap canvas (Base ER world 0). Verify a real ER map fragment renders.
+1. **✅ DONE 2026-07-04 — archive recon (BHF4 cracked + parsed, offline AND in-game).**
+   - **Offline (1a):** `tools/tpfbhd_recon.cpp` parses any loose `.tpfbhd`/`.tpfbdt` and probes each entry
+     DCX→TPF→DDS. Validated on `00_Solo.tpfbhd` (the ERR loose sample, same format): 6/6 DCX→TPF(1MB)→DDS
+     1024×1024. BHF4 layout below (corrects the earlier guesses — names are stored UTF-16LE not hashed;
+     offsets are u32 not u64):
+     ```
+     header: "BHF4" | fileCount u32@0x0C | entriesStart u64@0x10 (=0x40) | version@0x18 | stride u64@0x20 (=0x24)
+     entry(36B): rawFlags u32 | -1 u32 | compressedSize u64@0x08 | uncompressedSize u64@0x10 |
+                 dataOffset u32@0x18 | fileId u32@0x1c | nameOffset u32@0x20 (UTF-16LE null-term into .tpfbhd)
+     ```
+   - **In-game (1b):** `src/worldmap/maptile.{hpp,cpp}` = the DLL BHF4 reader (`parse_bhf4` / `load_archive`
+     / `extract_dds`) + `maptile_probe [rel_base] [max] [filter]` RPC. Reads the PACKED `menu/71_MapTile`
+     off the dvdbnd via `read_game_file_decompressed`. Findings (real box, base+DLC):
+     - **28469 entries**, every probed tile extracts, tiles are **256×256** (DDS ~64KB each, BC).
+     - Naming: `MENU_MapTile_M{MM}_L{L}_{col}_{row}_{suffix8}.tpf.dcx`. **Dimensions:** M00 overworld,
+       M01 underground, M10 DLC (Shadow), M11 DLC underground. **LOD pyramid** L0(fine)→L3/L4(coarse):
+       M00 L0=6873 L1=4660 L2=2166 L3=561 L4=4517; M01 L0=2948…L4=64; M10 L0=2461 L1=1476 L2=179;
+       M11 L0=160 L1=117 L2=12. (`.tpfbdt` is ~1.26 GB total in the archive; the DLL reads it whole today.)
+     - The `{suffix8}` is a fixed-point sub-cell offset (a `col_row` block can have several suffixes, e.g.
+       `L0_00_05_00000000` + `L0_00_05_00010000`) — decode against `WorldMapTileParam` / the projection
+       findings in slice 3.
+   - **⇒ SRV-cap implication for slice 3:** even the COARSEST overworld level (M00_L3 = 561 tiles) exceeds
+     the 256 SRV cap, so "full map" REQUIRES either a grown/recycling SRV heap or visible-only streaming —
+     it is NOT optional. Also: reading the whole 1.26 GB `.tpfbdt` per load is wasteful; slice 3 should read
+     only the wanted entries' byte ranges (the BHF4 gives each `dataOffset`+`compressedSize`).
+2. **One tile → GPU → canvas (NEXT):** `maptile::extract_dds` already yields DDS bytes in-game; feed one to
+   `create_tex_from_dds_mem` (off the icon batch) and draw at its grid quad on the vmap canvas (Base ER
+   world 0). Verify a real ER map fragment renders. `maptile.extract_dds` + the probe are the plumbing.
 3. **All overworld tiles + positioning:** load group-0 tiles, place each by grid, mind the SRV cap (stream
    only visible tiles, or grow/recycle the SRV heap). The mod map now shows the ER overworld.
 4. **Groups 1/2 (UG/DLC) + per-group converter coords.** Then fast-travel (separate feature) makes it a

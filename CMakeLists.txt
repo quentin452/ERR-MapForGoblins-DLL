@@ -135,6 +135,8 @@ set(GOBLIN_RENDER_SOURCES
   src/worldmap/category_meta.cpp
   src/worldmap/map_entry_layer.hpp
   src/worldmap/map_entry_layer.cpp
+  src/worldmap/maptile.hpp
+  src/worldmap/maptile.cpp
   src/worldmap/map_renderer.hpp
   src/worldmap/map_renderer.cpp)
 

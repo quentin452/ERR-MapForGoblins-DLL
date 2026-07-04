@@ -10,6 +10,7 @@
 #include "goblin_overlay.hpp"
 #include "goblin_virtual_world.hpp"  // vworld registry — `vworld` RPC (custom virtual worlds)
 #include "worldmap/loot_disk.hpp"    // read_game_file_decompressed — `assets_probe` path-loading guard
+#include "worldmap/maptile.hpp"      // maptile::probe — `maptile_probe` (endgame phase-1a tile recon)
 #include "goblin_worldmap_probe.hpp"  // dump_menu_state (dumpmenu cmd)
 #include "goblin_overlay_render_loader.hpp"
 #include "goblin_param_edit.hpp"  // param_get/param_set commands — Slice 1 in-game smoke test
@@ -400,7 +401,7 @@ namespace goblin::debug_rpc
             // help — one-line verb list (the client reads a single reply line, so no embedded \n).
             // Full usages + caveats: docs/memory/tooling/rpc-commands.md. Keep in sync when adding a cmd.
             if (cmd == "help" || cmd == "?")
-                return "ok commands: help ping status open_f1 f1_tab vmap vworld assets_probe pause set screenshot dumpmenu reload_overlay"
+                return "ok commands: help ping status open_f1 f1_tab vmap vworld assets_probe maptile_probe pause set screenshot dumpmenu reload_overlay"
                        " | param_get param_set param_getf param_setf param_clone"
                        " | loot_at refresh_markers warp we_scan"
                        " | give_item goods_count strip_test inv_probe fmg_set sidecar bundle"
@@ -519,6 +520,21 @@ namespace goblin::debug_rpc
                 std::snprintf(head, sizeof(head), "ok assets_probe shape=%s loose=%d packed=%d missing=%d |",
                               overall, nloose, npacked, nmiss);
                 return std::string(head) + per;
+            }
+            // maptile_probe [rel_base] [maxProbe] [nameFilter] — endgame phase-1a sub-slice 1b: read the
+            // world-map tile archive (BHF4 split: menu/71_MapTile.tpfbhd/.tpfbdt) off the active install,
+            // parse the entry table, and probe the first entries through DCX->TPF->DDS so we learn the tile
+            // naming/count/dims in-game (the packed 71_MapTile can't be read offline). Full per-tile detail
+            // goes to the log; the reply is a one-line summary. Dev-only; no game memory touched.
+            if (cmd == "maptile_probe")
+            {
+                std::string base = next_token(rest);
+                if (base.empty()) base = "menu/71_MapTile";
+                std::string ms = next_token(rest);
+                int mx = 8;
+                if (!ms.empty()) { try { mx = std::stoi(ms); } catch (...) {} }
+                std::string filt = next_token(rest);
+                return goblin::worldmap::maptile::probe(base, mx, filt.empty() ? nullptr : filt.c_str());
             }
             // vworld create <name> | marker <id> <x> <z> [name] | active <id> | list | clear —
             // drive the virtual-world registry (custom mod worlds shown on the virtual map).
