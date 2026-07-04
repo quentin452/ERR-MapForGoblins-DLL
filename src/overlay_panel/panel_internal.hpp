@@ -85,6 +85,7 @@ std::string virtual_map_load_lod(int dim, int lod, int cap);
 std::string virtual_map_load_resident();
 int dump_markers_csv(const char *path);  // export all markers → CSV (offline procedural-style prototyping)
 void virtual_map_set_view(float camX, float camZ, float zoom);  // dev/test: frame the canvas directly
+void virtual_map_set_flip(bool flipX, bool flipZ);  // dev: world→screen axis signs (orientation calib)
 int virtual_map_group();
 } // namespace panel
 } // namespace goblin::overlay

@@ -39,6 +39,9 @@ namespace
     bool s_open = false;
     float s_cam_x = 0.0f, s_cam_z = 0.0f;
     float s_zoom = 0.05f;  // 0.05 px/unit → ~10k-unit ER map spans ~525px; a sane default overview
+    // Orientation calibration (dev): sign per axis for world→screen. Minimap convention = +X, -Z
+    // (north-up), so default sx=+1, sz=-1. `vmap flip` toggles these live to match the native map.
+    float s_sx = 1.0f, s_sz = -1.0f;
     constexpr float kZoomMin = 0.002f, kZoomMax = 4.0f;
     // Which marker group to lay out on the canvas (slice B uses the live mod markers as test data;
     // slice C ties markers to a custom world). group = isDLC*2|isUG → 0/1/2/3.
@@ -87,6 +90,15 @@ bool &virtual_map_open() { return s_open; }
 void virtual_map_request_fit() { s_fit_requested = true; }
 void virtual_map_set_group(int g) { if (g >= 0 && g < 4) s_group = g; }
 int virtual_map_group() { return s_group; }
+
+// Dev orientation calibration: set world→screen axis signs. flipX/flipZ toggle each axis relative to the
+// minimap default (+X, -Z). Lets us match the native map live without a rebuild per guess.
+void virtual_map_set_flip(bool flipX, bool flipZ)
+{
+    s_sx = flipX ? -1.0f : 1.0f;
+    s_sz = flipZ ? 1.0f : -1.0f;   // default (no flip) = -Z (minimap north-up)
+    s_open = true;
+}
 
 // Dev/test: set the canvas view directly (world-space cam centre + zoom px/unit). Lets a driver frame a
 // region for a screenshot without the marker-bbox Fit. zoom<=0 leaves zoom unchanged.
@@ -377,6 +389,10 @@ void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
     if (ImGui::SmallButton(tr("Resident cells"))) virtual_map_load_resident();  // engine positions (aligned)
     ImGui::SameLine();
     if (ImGui::SmallButton(tr("Clear tiles"))) virtual_map_clear_tiles();
+    ImGui::SameLine();
+    if (ImGui::SmallButton(tr("Flip X"))) s_sx = -s_sx;   // orientation calibration vs native map
+    ImGui::SameLine();
+    if (ImGui::SmallButton(tr("Flip Z"))) s_sz = -s_sz;
     // World selector: "Base ER" (id 0 → live ER markers by group) or a custom virtual world (its own
     // markers). The active world is framework state (goblin::vworld), shared with the RPC.
     ImGui::SameLine();
@@ -428,18 +444,18 @@ void draw_virtual_map(const OverlayFrameCtx & /*ctx*/)
     // native ER map orientation — the engine converter flips Z (mapZ = -worldZ + bias); without this the
     // vmap was a vertical mirror of the game map. Keep w2s/s2w inverse so zoom-about-cursor stays exact.
     auto w2s = [&](float wx, float wz) {
-        return ImVec2(center.x + (wx - s_cam_x) * s_zoom, center.y - (wz - s_cam_z) * s_zoom);
+        return ImVec2(center.x + s_sx * (wx - s_cam_x) * s_zoom, center.y + s_sz * (wz - s_cam_z) * s_zoom);
     };
     auto s2w = [&](ImVec2 s, float &wx, float &wz) {
-        wx = s_cam_x + (s.x - center.x) / s_zoom;
-        wz = s_cam_z - (s.y - center.y) / s_zoom;
+        wx = s_cam_x + (s.x - center.x) / (s_sx * s_zoom);
+        wz = s_cam_z + (s.y - center.y) / (s_sz * s_zoom);
     };
 
     // Pan: dragging moves the camera opposite the mouse delta (in world units).
     if (hovered && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f))
     {
-        s_cam_x -= io.MouseDelta.x / s_zoom;
-        s_cam_z += io.MouseDelta.y / s_zoom;   // Z flipped in w2s → drag-pan Z sign flips too
+        s_cam_x -= io.MouseDelta.x / (s_sx * s_zoom);
+        s_cam_z -= io.MouseDelta.y / (s_sz * s_zoom);   // axis signs (s_sx/s_sz) keep drag correct on flip
     }
     // Zoom about the cursor: keep the world point under the mouse fixed across the zoom step.
     if (hovered && io.MouseWheel != 0.0f)

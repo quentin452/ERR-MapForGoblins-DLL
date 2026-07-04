@@ -507,6 +507,15 @@ namespace goblin::debug_rpc
                 // outline cells that overlay markers exactly. Confirms the placement calibration. Map must be open.
                 if (arg == "tiles_resident")
                     return "ok vmap tiles_resident " + goblin::overlay_api::virtual_map_load_resident();
+                // vmap flip <none|x|z|xz> — orientation calibration: toggle world→screen axis signs live
+                // (default none = minimap +X/-Z north-up). Try until it matches the native map.
+                if (arg == "flip")
+                {
+                    std::string m = next_token(rest);
+                    bool fx = (m == "x" || m == "xz"), fz = (m == "z" || m == "xz");
+                    goblin::overlay_api::virtual_map_set_flip(fx, fz);
+                    return "ok vmap flip x=" + std::to_string(fx) + " z=" + std::to_string(fz);
+                }
                 // vmap dump_markers <path> — export every marker to CSV for offline procedural-map styling.
                 if (arg == "dump_markers")
                 {

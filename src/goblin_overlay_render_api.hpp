@@ -118,6 +118,7 @@ namespace goblin::overlay_api
     GOBLIN_RENDER_API std::string virtual_map_load_resident();  // harvest live resident tile rects (aligned)
     GOBLIN_RENDER_API int virtual_map_dump_markers(const char *path);  // export markers CSV (offline styling)
     GOBLIN_RENDER_API void virtual_map_set_view(float camX, float camZ, float zoom);  // dev/test framing
+    GOBLIN_RENDER_API void virtual_map_set_flip(bool flipX, bool flipZ);  // dev orientation calib
     GOBLIN_RENDER_API int virtual_map_get_group();
     GOBLIN_RENDER_API void request_save();
     GOBLIN_RENDER_API void reset_quest_progress();
